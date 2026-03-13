@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>获取有效Token</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .token-box {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            word-break: break-all;
+            font-family: monospace;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-left: 4px solid #2196F3;
+            margin: 20px 0;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔑 获取WebSocket有效Token</h1>
+
+        <div class="info">
+            <strong>📌 使用说明:</strong><br>
+            1. 点击下面的按钮复制有效token<br>
+            2. 打开前端竞赛页面 (http://localhost:5173/student/competition)<br>
+            3. 按F12打开浏览器控制台<br>
+            4. 粘贴并执行下面的命令
+        </div>
+
+        <h3>✅ 有效Token (7天有效期):</h3>
+        <div class="token-box" id="tokenBox">
+            eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJzdHVkZW50IiwiZXhwIjoxNzY0MzA1NTMwfQ.v_7jK49pWneQsia0zi6bhOLowDM2hlKkSdTsNq1BdIQ
+        </div>
+
+        <button onclick="copyToken()">📋 复制Token</button>
+        <div id="copySuccess" class="success" style="display:none;">✅ Token已复制到剪贴板!</div>
+
+        <h3>🔧 浏览器控制台执行:</h3>
+        <div class="token-box" id="commandBox">
+// 1. 设置有效token
+localStorage.setItem('access_token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJzdHVkZW50IiwiZXhwIjoxNzY0MzA1NTMwfQ.v_7jK49pWneQsia0zi6bhOLowDM2hlKkSdTsNq1BdIQ');
+
+// 2. 刷新页面
+location.reload();
+        </div>
+
+        <button onclick="copyCommand()">📋 复制控制台命令</button>
+        <div id="commandSuccess" class="success" style="display:none;">✅ 命令已复制到剪贴板!</div>
+
+        <div class="info" style="margin-top: 30px;">
+            <strong>🎯 预期结果:</strong><br>
+            刷新后浏览器控制台应该显示:<br>
+            <code>✅ WebSocket连接成功!</code><br>
+            <code>📩 收到消息: connected</code>
+        </div>
+
+        <h3>📊 或者直接点击:</h3>
+        <button onclick="openAndSetToken()">🚀 打开竞赛页面并自动设置Token</button>
+    </div>
+
+    <script>
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJzdHVkZW50IiwiZXhwIjoxNzY0MzA1NTMwfQ.v_7jK49pWneQsia0zi6bhOLowDM2hlKkSdTsNq1BdIQ';
+
+        function copyToken() {
+            navigator.clipboard.writeText(token).then(() => {
+                document.getElementById('copySuccess').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('copySuccess').style.display = 'none';
+                }, 3000);
+            });
+        }
+
+        function copyCommand() {
+            const command = `localStorage.setItem('access_token', '${token}');\nlocation.reload();`;
+            navigator.clipboard.writeText(command).then(() => {
+                document.getElementById('commandSuccess').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('commandSuccess').style.display = 'none';
+                }, 3000);
+            });
+        }
+
+        function openAndSetToken() {
+            // 在新窗口打开并设置token
+            const url = 'http://localhost:5173/student/competition';
+            const win = window.open(url, '_blank');
+
+            // 等待页面加载后设置token
+            setTimeout(() => {
+                if (win) {
+                    alert('请在打开的新页面中:\n1. 按F12打开控制台\n2. 执行以下命令:\n\nlocalStorage.setItem(\'access_token\', \'' + token + '\');\nlocation.reload();');
+                }
+            }, 1000);
+        }
+
+        // 页面加载时检查是否在竞赛页面
+        if (window.location.href.includes('localhost:5173')) {
+            if (confirm('检测到你在前端页面!\n\n点击确定将自动设置有效token并刷新页面')) {
+                localStorage.setItem('access_token', token);
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>

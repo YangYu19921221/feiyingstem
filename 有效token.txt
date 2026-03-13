@@ -1,0 +1,25 @@
+========================================
+有效的WebSocket Token
+生成时间: 2025年11月21日 星期五 13时00分33秒 CST
+有效期: 7天
+========================================
+
+Token:
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJzdHVkZW50IiwiZXhwIjoxNzY0MzA2MDMzfQ.moNfAGaztNf2q0Jlmine-TKUBDpqrPcypctrYgiQ8Ig
+
+========================================
+使用方法:
+========================================
+
+在浏览器控制台(F12)执行:
+
+localStorage.setItem('access_token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJzdHVkZW50IiwiZXhwIjoxNzY0MzA2MDMzfQ.moNfAGaztNf2q0Jlmine-TKUBDpqrPcypctrYgiQ8Ig');
+location.reload();
+
+========================================
+WebSocket URL:
+========================================
+
+ws://localhost:8000/api/v1/competition/ws/competition?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJzdHVkZW50IiwiZXhwIjoxNzY0MzA2MDMzfQ.moNfAGaztNf2q0Jlmine-TKUBDpqrPcypctrYgiQ8Ig&season_id=1
+
+========================================
