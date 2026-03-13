@@ -36,19 +36,33 @@ english-learning-app/
 
 ### 前置要求
 
-- **Python 3.9+**
-- **Node.js 18+**
-- **npm 或 pnpm**
-- **Git** (用于克隆项目)
+- **Python 3.9+** - [下载地址](https://www.python.org/downloads/)
+- **Node.js 18+** - [下载地址](https://nodejs.org/)
+- **npm 或 pnpm** - Node.js自带npm
+- **Git** - [下载地址](https://git-scm.com/downloads)
 
 ### 安装步骤
 
 #### 1. 克隆项目
 
+**方式一：使用SSH（推荐，需要配置SSH密钥）**
 ```bash
 git clone git@github.com:YangYu19921221/feiyingstem.git
 cd feiyingstem
 ```
+
+**方式二：使用HTTPS（无需配置，直接克隆）**
+```bash
+git clone https://github.com/YangYu19921221/feiyingstem.git
+cd feiyingstem
+```
+
+**方式三：下载ZIP压缩包**
+1. 访问 https://github.com/YangYu19921221/feiyingstem
+2. 点击绿色的 "Code" 按钮
+3. 选择 "Download ZIP"
+4. 解压到本地目录
+5. 在终端中进入解压后的目录
 
 #### 2. 启动后端
 
