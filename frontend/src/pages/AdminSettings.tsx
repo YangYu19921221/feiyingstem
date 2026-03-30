@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../api/client';
 
 const AdminSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -250,6 +251,9 @@ const AdminSettings: React.FC = () => {
           </div>
         </div>
 
+        {/* 系统更新 */}
+        <SystemUpdatePanel />
+
         {/* 操作按钮 */}
         <div className="flex gap-4">
           <button
@@ -266,6 +270,157 @@ const AdminSettings: React.FC = () => {
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+// 系统更新面板
+const SystemUpdatePanel: React.FC = () => {
+  const [version, setVersion] = useState<any>(null);
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [updateResult, setUpdateResult] = useState<any>(null);
+
+  useEffect(() => {
+    api.get('/admin/system/version').then(setVersion).catch(() => {});
+  }, []);
+
+  const handleCheckUpdate = async () => {
+    setChecking(true);
+    setUpdateInfo(null);
+    try {
+      const data = await api.get('/admin/system/check-update');
+      setUpdateInfo(data);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || '检查更新失败');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!confirm('确定要更新系统吗？更新过程中服务会短暂中断。')) return;
+    setUpdating(true);
+    setUpdateResult(null);
+    try {
+      const data = await api.post('/admin/system/update');
+      setUpdateResult(data);
+      if (data.success) {
+        setTimeout(() => window.location.reload(), 3000);
+      }
+    } catch (err: any) {
+      setUpdateResult({ success: false, message: err?.response?.data?.detail || '更新失败' });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+      <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+        <span>🚀</span> 系统更新
+      </h2>
+
+      {/* 当前版本 */}
+      <div className="p-4 bg-gray-50 rounded-lg mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-gray-500">当前版本</div>
+            <div className="font-mono font-bold text-gray-800">{version?.commit || '加载中...'}</div>
+          </div>
+          <button
+            onClick={handleCheckUpdate}
+            disabled={checking}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition disabled:opacity-50 font-medium"
+          >
+            {checking ? '检查中...' : '检查更新'}
+          </button>
+        </div>
+      </div>
+
+      {/* 更新信息 */}
+      {updateInfo && (
+        <div className={`p-4 rounded-lg mb-4 ${updateInfo.has_update ? 'bg-orange-50 border border-orange-200' : 'bg-green-50 border border-green-200'}`}>
+          {updateInfo.has_update ? (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="font-bold text-orange-700">发现新版本!</div>
+                  <div className="text-sm text-orange-600">
+                    {updateInfo.local_version} → {updateInfo.remote_version}
+                  </div>
+                </div>
+                <button
+                  onClick={handleUpdate}
+                  disabled={updating}
+                  className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-lg transition disabled:opacity-50 font-bold"
+                >
+                  {updating ? '更新中...' : '立即更新'}
+                </button>
+              </div>
+              {updateInfo.changelog && (
+                <div className="mt-2 p-3 bg-white rounded-lg">
+                  <div className="text-xs text-gray-500 mb-1">更新内容：</div>
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap">{updateInfo.changelog}</pre>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-green-700 font-medium">已是最新版本</div>
+          )}
+        </div>
+      )}
+
+      {/* 更新进度 */}
+      {updating && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
+            <span className="text-blue-700 font-medium">正在更新系统，请勿关闭页面...</span>
+          </div>
+        </div>
+      )}
+
+      {/* 更新结果 */}
+      {updateResult && (
+        <div className={`p-4 rounded-lg mb-4 ${updateResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+          <div className={`font-bold mb-2 ${updateResult.success ? 'text-green-700' : 'text-red-700'}`}>
+            {updateResult.success ? '更新成功!' : '更新失败'}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">{updateResult.message}</p>
+          {updateResult.steps && (
+            <div className="space-y-1">
+              {updateResult.steps.map((step: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span>{step.success ? '✅' : '❌'}</span>
+                  <span className="text-gray-700">{step.step}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {updateResult.success && (
+            <p className="text-sm text-green-600 mt-2">页面将在 3 秒后自动刷新...</p>
+          )}
+        </div>
+      )}
+
+      {/* 更新历史 */}
+      {version?.update_history?.length > 0 && (
+        <div className="mt-4">
+          <div className="text-sm font-medium text-gray-500 mb-2">更新历史</div>
+          <div className="space-y-1">
+            {version.update_history.slice(-5).reverse().map((log: any, i: number) => (
+              <div key={i} className="flex items-center gap-3 text-sm p-2 bg-gray-50 rounded">
+                <span>{log.success ? '✅' : '❌'}</span>
+                <span className="font-mono text-gray-600">{log.commit}</span>
+                <span className="text-gray-400">{log.duration}</span>
+                <span className="text-gray-400 ml-auto">{new Date(log.time).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
