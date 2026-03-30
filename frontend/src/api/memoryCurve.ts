@@ -29,6 +29,7 @@ export interface ReviewWord {
   last_practiced_at: string | null;
   word: string;
   phonetic: string | null;
+  syllables: string | null;
   meaning: string | null;
   part_of_speech: string | null;
   example_sentence: string | null;

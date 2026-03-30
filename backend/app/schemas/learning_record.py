@@ -103,6 +103,7 @@ class ReviewWordResponse(BaseModel):
     last_practiced_at: Optional[datetime]
     word: str
     phonetic: Optional[str] = None
+    syllables: Optional[str] = None
     meaning: Optional[str] = None
     part_of_speech: Optional[str] = None
     example_sentence: Optional[str] = None

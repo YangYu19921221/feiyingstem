@@ -498,6 +498,7 @@ async def get_review_due_words(
             last_practiced_at=mastery.last_practiced_at,
             word=word.word,
             phonetic=word.phonetic,
+            syllables=word.syllables,
             meaning=definition.meaning if definition else None,
             part_of_speech=definition.part_of_speech if definition else None,
             example_sentence=definition.example_sentence if definition else None,

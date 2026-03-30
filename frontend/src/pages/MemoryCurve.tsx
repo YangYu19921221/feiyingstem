@@ -68,7 +68,7 @@ const MemoryCurve = () => {
         example_sentence: w.example_sentence || '',
         example_translation: w.example_translation || '',
         difficulty: w.difficulty,
-        syllables: '',
+        syllables: w.syllables || '',
         audio_url: '',
         image_url: '',
         tags: [],
