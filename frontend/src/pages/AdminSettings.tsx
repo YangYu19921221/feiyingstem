@@ -284,6 +284,8 @@ const SystemUpdatePanel: React.FC = () => {
 
   useEffect(() => {
     api.get('/admin/system/version').then(setVersion).catch(() => {});
+    // 自动检查更新
+    api.get('/admin/system/check-update').then(setUpdateInfo).catch(() => {});
   }, []);
 
   const handleCheckUpdate = async () => {
@@ -327,15 +329,25 @@ const SystemUpdatePanel: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm text-gray-500">当前版本</div>
-            <div className="font-mono font-bold text-gray-800">{version?.commit || '加载中...'}</div>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl font-bold text-gray-800">v{version?.version || '...'}</span>
+              <span className="text-xs text-gray-400 font-mono">{version?.commit?.slice(0, 7) || ''}</span>
+            </div>
           </div>
-          <button
-            onClick={handleCheckUpdate}
-            disabled={checking}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition disabled:opacity-50 font-medium"
-          >
-            {checking ? '检查中...' : '检查更新'}
-          </button>
+          <div className="flex items-center gap-2">
+            {updateInfo?.has_update && !checking && (
+              <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-sm font-medium animate-pulse">
+                有新版本 v{updateInfo.remote_version}
+              </span>
+            )}
+            <button
+              onClick={handleCheckUpdate}
+              disabled={checking}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition disabled:opacity-50 font-medium"
+            >
+              {checking ? '检查中...' : '检查更新'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -348,7 +360,7 @@ const SystemUpdatePanel: React.FC = () => {
                 <div>
                   <div className="font-bold text-orange-700">发现新版本!</div>
                   <div className="text-sm text-orange-600">
-                    {updateInfo.local_version} → {updateInfo.remote_version}
+                    v{updateInfo.local_version} → v{updateInfo.remote_version}
                   </div>
                 </div>
                 <button

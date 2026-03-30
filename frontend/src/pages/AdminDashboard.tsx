@@ -42,9 +42,22 @@ const AdminDashboard = () => {
 
   const [stats, setStats] = useState<Statistics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState('');
 
   useEffect(() => {
     loadStatistics();
+    // 检查版本更新
+    axios.get(`${API_BASE_URL}/admin/system/version`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    }).then(res => {
+      setCurrentVersion(res.data.version || '');
+    }).catch(() => {});
+    axios.get(`${API_BASE_URL}/admin/system/check-update`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    }).then(res => {
+      setHasUpdate(res.data.has_update);
+    }).catch(() => {});
   }, []);
 
   const loadStatistics = async () => {
@@ -103,8 +116,19 @@ const AdminDashboard = () => {
           <div className="flex items-center gap-3">
             <span className="text-3xl">⚡</span>
             <h1 className="text-xl font-bold text-gray-800">系统管理后台</h1>
+            {currentVersion && (
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-mono">v{currentVersion}</span>
+            )}
           </div>
           <div className="flex items-center gap-4">
+            {hasUpdate && (
+              <button
+                onClick={() => navigate('/admin/settings')}
+                className="flex items-center gap-1 px-3 py-1 bg-red-500 text-white rounded-full text-sm font-medium animate-pulse hover:bg-red-600 transition"
+              >
+                🔔 有新版本可更新
+              </button>
+            )}
             <div className="flex items-center gap-2 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm">
               <span>👑</span>
               <span className="font-medium">{user?.full_name || '管理员'}</span>

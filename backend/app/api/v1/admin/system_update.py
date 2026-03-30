@@ -3,25 +3,38 @@
 管理员一键从 Gitee 拉取最新代码并重部署
 """
 import asyncio
+import json
 import logging
+import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_user, get_current_admin
 from app.models.user import User
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# 项目根目录（服务器上的部署路径）
-PROJECT_ROOT = "/www/wwwroot/english-helper"
+PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/www/wwwroot/english-helper")
 
 _update_lock = asyncio.Lock()
 _update_log: list[dict] = []
+_MAX_LOG_ENTRIES = 50
+
+
+def _get_version() -> dict:
+    """读取 version.json"""
+    version_file = Path(PROJECT_ROOT) / "version.json"
+    if version_file.exists():
+        try:
+            return json.loads(version_file.read_text())
+        except Exception:
+            pass
+    return {"version": "1.0.1", "build_date": "未知"}
 
 
 def _run_cmd(cmd: str, cwd: str = PROJECT_ROOT, timeout: int = 120) -> tuple[int, str]:
-    """执行 shell 命令，返回 (returncode, output)"""
     try:
         result = subprocess.run(
             cmd, shell=True, cwd=cwd,
@@ -37,31 +50,24 @@ def _run_cmd(cmd: str, cwd: str = PROJECT_ROOT, timeout: int = 120) -> tuple[int
 
 @router.get("/version")
 async def get_current_version(current_user: User = Depends(get_current_user)):
-    """获取当前版本信息"""
+    """获取当前版本信息（所有登录用户可见）"""
+    ver = _get_version()
     code, commit = _run_cmd("git log --oneline -1", timeout=5)
-    code2, branch = _run_cmd("git branch --show-current", timeout=5)
-    code3, remote_url = _run_cmd("git remote get-url origin", timeout=5)
 
     return {
+        "version": ver.get("version", "1.0.1"),
+        "build_date": ver.get("build_date", "未知"),
         "commit": commit if code == 0 else "未知",
-        "branch": branch.strip() if code2 == 0 else "未知",
-        "remote": remote_url.strip() if code3 == 0 else "未配置",
-        "update_history": _update_log[-10:],  # 最近10条更新记录
     }
 
 
 @router.get("/check-update")
-async def check_for_update(current_user: User = Depends(get_current_user)):
-    """检查是否有新版本"""
-    if current_user.role != 'admin':
-        raise HTTPException(403, "仅管理员可操作")
-
-    # fetch 远程最新
+async def check_for_update(current_user: User = Depends(get_current_admin)):
+    """检查是否有新版本（管理员）"""
     code, output = _run_cmd("git fetch origin main --depth 1", timeout=30)
     if code != 0:
         raise HTTPException(500, f"检查更新失败: {output}")
 
-    # 对比本地和远程
     code, local_hash = _run_cmd("git rev-parse HEAD", timeout=5)
     code2, remote_hash = _run_cmd("git rev-parse origin/main", timeout=5)
 
@@ -72,7 +78,19 @@ async def check_for_update(current_user: User = Depends(get_current_user)):
     remote_hash = remote_hash.strip()
     has_update = local_hash != remote_hash
 
-    # 获取更新日志
+    # 获取远程 version.json 中的版本号
+    remote_version = None
+    if has_update:
+        code3, ver_content = _run_cmd(
+            f"git show origin/main:version.json 2>/dev/null",
+            timeout=5
+        )
+        if code3 == 0:
+            try:
+                remote_version = json.loads(ver_content).get("version")
+            except Exception:
+                pass
+
     changelog = ""
     if has_update:
         code, changelog = _run_cmd(
@@ -80,20 +98,20 @@ async def check_for_update(current_user: User = Depends(get_current_user)):
             timeout=10
         )
 
+    local_ver = _get_version()
+
     return {
         "has_update": has_update,
-        "local_version": local_hash[:7],
-        "remote_version": remote_hash[:7],
+        "local_version": local_ver.get("version", "1.0.1"),
+        "remote_version": remote_version or remote_hash[:7],
         "changelog": changelog if has_update else "已是最新版本",
+        "update_history": _update_log[-10:],
     }
 
 
 @router.post("/update")
-async def perform_update(current_user: User = Depends(get_current_user)):
+async def perform_update(current_user: User = Depends(get_current_admin)):
     """执行系统更新：git pull → pip install → npm build → 重启"""
-    if current_user.role != 'admin':
-        raise HTTPException(403, "仅管理员可操作")
-
     if _update_lock.locked():
         raise HTTPException(409, "更新正在进行中，请稍候")
 
@@ -148,6 +166,8 @@ async def perform_update(current_user: User = Depends(get_current_user)):
                 "operator": current_user.username,
             }
             _update_log.append(log_entry)
+            if len(_update_log) > _MAX_LOG_ENTRIES:
+                _update_log[:] = _update_log[-_MAX_LOG_ENTRIES:]
 
             return {
                 "success": True,
@@ -158,6 +178,7 @@ async def perform_update(current_user: User = Depends(get_current_user)):
             }
 
         except Exception as e:
+            logger.error(f"系统更新失败: {e}", exc_info=True)
             duration = (datetime.now() - start_time).total_seconds()
             _update_log.append({
                 "time": start_time.isoformat(),
