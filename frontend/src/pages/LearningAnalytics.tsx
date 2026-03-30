@@ -14,6 +14,8 @@ import {
   type RecentActivity,
   type RetentionCurveResponse
 } from '../api/analytics';
+import { getWordTrends } from '../api/analytics';
+import WordTrendChart from '../components/WordTrendChart';
 
 const LearningAnalytics = () => {
   const navigate = useNavigate();
@@ -72,7 +74,7 @@ const LearningAnalytics = () => {
 
   // 模式名称映射
   const modeNames: Record<string, { name: string; icon: string; color: string }> = {
-    flashcard: { name: '卡片学习', icon: '🃏', color: 'from-blue-500 to-cyan-500' },
+    classify: { name: '分类学习', icon: '🧠', color: 'from-teal-500 to-emerald-500' },
     spelling: { name: '拼写练习', icon: '✏️', color: 'from-purple-500 to-pink-500' },
     fillblank: { name: '填空练习', icon: '📝', color: 'from-orange-500 to-red-500' },
     quiz: { name: '选择测试', icon: '✅', color: 'from-green-500 to-teal-500' }
@@ -425,6 +427,9 @@ const LearningAnalytics = () => {
             </div>
           </motion.div>
         )}
+
+        {/* 单词学习趋势（日/月/年） */}
+        <WordTrendChart fetchData={getWordTrends} />
 
         {/* 记忆曲线 */}
         <motion.div

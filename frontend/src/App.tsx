@@ -7,12 +7,8 @@ import TeacherDashboard from './pages/TeacherDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Learn from './pages/Learn';
 import UnitSelector from './pages/UnitSelector';
-import FlashCardLearning from './pages/FlashCardLearning';
 import TeacherBooks from './pages/TeacherBooks';
 import TeacherUnitManagement from './pages/TeacherUnitManagement';
-import TeacherWordEntry from './pages/TeacherWordEntry';
-import TeacherWordLibrary from './pages/TeacherWordLibrary';
-import TeacherWordImport from './pages/TeacherWordImport';
 import TeacherStudents from './pages/TeacherStudents';
 import SpellingPractice from './pages/SpellingPractice';
 import FillBlankPractice from './pages/FillBlankPractice';
@@ -45,6 +41,10 @@ import TeacherExamPreview from './pages/TeacherExamPreview';
 import RedeemSubscription from './pages/RedeemSubscription';
 import AdminSubscriptions from './pages/AdminSubscriptions';
 import PetPage from './pages/PetPage';
+import WordClassifyLearning from './pages/WordClassifyLearning';
+import MemoryCurve from './pages/MemoryCurve';
+import UnitExam from './pages/UnitExam';
+import UnitExamResult from './pages/UnitExamResult';
 
 // 路由保护组件
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
@@ -194,16 +194,6 @@ function App() {
           }
         />
 
-        {/* 学生端 - 卡片学习页 */}
-        <Route
-          path="/student/units/:unitId/flashcard"
-          element={
-            <ProtectedRoute allowedRoles={['student']}>
-              <FlashCardLearning />
-            </ProtectedRoute>
-          }
-        />
-
         {/* 学生端 - 拼写练习页 */}
         <Route
           path="/student/units/:unitId/spelling"
@@ -230,6 +220,34 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <QuizPractice />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 分类记忆学习页 */}
+        <Route
+          path="/student/units/:unitId/classify"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <WordClassifyLearning />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 单元考试 */}
+        <Route
+          path="/student/units/:unitId/exam"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <UnitExam />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/exam/result/:paperId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <UnitExamResult />
             </ProtectedRoute>
           }
         />
@@ -270,6 +288,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <LearningAnalytics />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 记忆曲线 */}
+        <Route
+          path="/student/memory-curve"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <MemoryCurve />
             </ProtectedRoute>
           }
         />
@@ -344,35 +372,6 @@ function App() {
           }
         />
 
-        {/* 教师端 - 单词录入 */}
-        <Route
-          path="/teacher/words"
-          element={
-            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
-              <TeacherWordEntry />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* 教师端 - 单词库管理 */}
-        <Route
-          path="/teacher/words/list"
-          element={
-            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
-              <TeacherWordLibrary />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* 教师端 - 批量导入单词 */}
-        <Route
-          path="/teacher/words/import"
-          element={
-            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
-              <TeacherWordImport />
-            </ProtectedRoute>
-          }
-        />
 
         {/* 教师端 - 学生管理 */}
         <Route

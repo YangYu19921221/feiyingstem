@@ -47,7 +47,7 @@ export interface CreatePetRequest {
 export interface EarnFoodRequest {
   score: number;
   total: number;
-  mode: 'flashcard' | 'quiz' | 'fillblank' | 'spelling';
+  mode: 'classify' | 'quiz' | 'fillblank' | 'spelling';
 }
 
 export interface EarnFoodResponse {
@@ -62,8 +62,13 @@ export interface EarnFoodResponse {
   };
 }
 
-export const getMyPet = async (): Promise<Pet> => {
-  return api.get('/student/pet');
+export const getMyPet = async (): Promise<Pet | null> => {
+  try {
+    return await api.get('/student/pet');
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    throw err;
+  }
 };
 
 export const createPet = async (data: CreatePetRequest): Promise<Pet> => {

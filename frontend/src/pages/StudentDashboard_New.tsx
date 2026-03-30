@@ -6,6 +6,7 @@ import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
 import { getSubscriptionStatus } from '../api/subscription';
+import { getReviewDueCount } from '../api/memoryCurve';
 import PetWidget from '../components/PetWidget';
 
 interface UserData {
@@ -50,6 +51,7 @@ const StudentDashboard = () => {
   const [onlineUsers, setOnlineUsers] = useState<number>(0);
   const [mistakeStats, setMistakeStats] = useState<{ unresolved_mistakes: number } | null>(null);
   const [subStatus, setSubStatus] = useState<{ has_subscription: boolean; is_expired: boolean; days_remaining: number } | null>(null);
+  const [reviewDueCount, setReviewDueCount] = useState<number>(0);
 
   useEffect(() => {
     // 加载学生的单词本列表和统计数据
@@ -58,6 +60,7 @@ const StudentDashboard = () => {
     loadOnlineUsers();
     loadMistakeStats();
     loadSubscriptionStatus();
+    loadReviewDueCount();
 
     // 定期更新在线人数(每30秒)
     const interval = setInterval(loadOnlineUsers, 30000);
@@ -115,6 +118,15 @@ const StudentDashboard = () => {
       setSubStatus(data);
     } catch (error) {
       console.error('加载订阅状态失败:', error);
+    }
+  };
+
+  const loadReviewDueCount = async () => {
+    try {
+      const data = await getReviewDueCount();
+      setReviewDueCount(data.due_today);
+    } catch (error) {
+      console.error('加载复习数据失败:', error);
     }
   };
 
@@ -299,6 +311,56 @@ const StudentDashboard = () => {
                 <button className="px-6 py-2 bg-white text-orange-600 font-bold rounded-lg hover:bg-yellow-50 transition-colors group-hover:scale-110 transform">
                   立即挑战 →
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 记忆曲线复习入口 */}
+        <div className="mb-8">
+          <div
+            onClick={() => navigate('/student/memory-curve')}
+            className="relative bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all cursor-pointer group overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-teal-400/20 to-transparent animate-pulse"></div>
+
+            <div className="relative z-10 flex items-center justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-4xl">🧠</span>
+                  <h3 className="text-2xl font-bold text-white">记忆曲线</h3>
+                  <span className="px-3 py-1 bg-white text-cyan-600 text-xs font-bold rounded-full">
+                    NEW
+                  </span>
+                </div>
+                <p className="text-white/90 mb-3">
+                  基于艾宾浩斯遗忘曲线,科学安排复习时间,让记忆更持久!
+                </p>
+                <div className="flex items-center gap-4 text-sm text-white/80">
+                  <span>📈 遗忘曲线</span>
+                  <span>🔔 智能提醒</span>
+                  <span>📅 复习计划</span>
+                  <span>🎯 精准巩固</span>
+                </div>
+              </div>
+
+              <div className="hidden md:flex flex-col items-center gap-2 ml-6">
+                {reviewDueCount > 0 ? (
+                  <>
+                    <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
+                      <div className="text-3xl font-bold text-white">{reviewDueCount}</div>
+                      <div className="text-xs text-white/80">待复习</div>
+                    </div>
+                    <button className="px-6 py-2 bg-white text-cyan-600 font-bold rounded-lg hover:bg-cyan-50 transition-colors group-hover:scale-110 transform">
+                      立即复习 →
+                    </button>
+                  </>
+                ) : (
+                  <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
+                    <div className="text-2xl">✅</div>
+                    <div className="text-xs text-white/80">复习已完成</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -495,6 +557,7 @@ const StudentDashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { icon: '📝', title: '我的作业', desc: '老师分配的任务', route: '/student/assignments', color: 'from-indigo-400 to-blue-500' },
+              { icon: '🧠', title: '记忆曲线', desc: '复习巩固', route: '/student/memory-curve', color: 'from-teal-400 to-cyan-500' },
               { icon: '🏆', title: '我的成就', desc: '查看成就徽章', route: '/student/achievements', color: 'from-yellow-400 to-orange-500' },
               { icon: '📊', title: '学习数据', desc: '统计与分析', route: '/student/analytics', color: 'from-blue-400 to-purple-500' },
               { icon: '🔥', title: '竞赛模式', desc: '实时PK排名', route: '/student/competition', color: 'from-red-400 to-pink-500' },

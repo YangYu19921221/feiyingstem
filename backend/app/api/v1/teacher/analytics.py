@@ -572,3 +572,24 @@ async def get_class_ranking(
         ))
 
     return rankings
+
+
+@router.get("/student/{student_id}/word-trends")
+async def get_student_word_trends(
+    student_id: int,
+    period: str = Query("daily", regex="^(daily|monthly|yearly)$"),
+    year: int = Query(None),
+    month: int = Query(None),
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取指定学生的单词学习趋势（日/月/年）"""
+    from app.api.v1.analytics import fetch_word_trends
+
+    today = date.today()
+    if year is None:
+        year = today.year
+    if month is None:
+        month = today.month
+
+    return await fetch_word_trends(db, student_id, period, year, month)

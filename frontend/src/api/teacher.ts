@@ -50,6 +50,7 @@ export interface WordInUnit {
   id: number;
   word: string;
   phonetic: string | null;
+  syllables: string | null;
   difficulty: number;
   order_index: number;
   meaning: string | null;
@@ -160,6 +161,27 @@ export const removeWordFromUnit = async (unitId: number, wordId: number): Promis
   await axios.delete(`${API_BASE_URL}/teacher/units/${unitId}/words/${wordId}`);
 };
 
+/**
+ * 编辑单元中的单词
+ * PUT /api/v1/teacher/units/{unit_id}/words/{word_id}
+ */
+export const updateWordInUnit = async (
+  unitId: number,
+  wordId: number,
+  wordData: {
+    word?: string;
+    phonetic?: string;
+    syllables?: string;
+    difficulty?: number;
+    meaning?: string;
+    part_of_speech?: string;
+    example_sentence?: string;
+    example_translation?: string;
+  }
+): Promise<void> => {
+  await axios.put(`${API_BASE_URL}/teacher/units/${unitId}/words/${wordId}`, wordData);
+};
+
 // ========================================
 // 单词本相关API (使用现有的words API)
 // ========================================
@@ -268,5 +290,22 @@ export const getStudentExams = async (studentId: number, skip: number = 0, limit
   const response = await axios.get(`${API_BASE_URL}/teacher/students/${studentId}/exams`, {
     params: { skip, limit }
   });
+  return response.data;
+};
+
+/**
+ * 批量预缓存单元发音
+ * POST /api/v1/teacher/units/{unit_id}/cache-pronunciations
+ */
+export interface CachePronunciationsResponse {
+  total: number;
+  cambridge: number;
+  edge_tts: number;
+  failed: string[];
+  message: string;
+}
+
+export const cacheUnitPronunciations = async (unitId: number): Promise<CachePronunciationsResponse> => {
+  const response = await axios.post(`${API_BASE_URL}/teacher/units/${unitId}/cache-pronunciations`);
   return response.data;
 };

@@ -360,7 +360,7 @@ const TeacherWordEntry = () => {
                 <input
                   type="text"
                   value={newWord.word}
-                  onChange={(e) => setNewWord({ ...newWord, word: e.target.value.toLowerCase() })}
+                  onChange={(e) => setNewWord({ ...newWord, word: e.target.value })}
                   placeholder="例如: apple"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
                 />

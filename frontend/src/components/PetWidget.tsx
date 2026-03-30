@@ -85,7 +85,7 @@ export default function PetWidget() {
   const [tapCount, setTapCount] = useState(0);
   const [showHeart, setShowHeart] = useState(false);
 
-  const { data: pet, isLoading, isError } = useQuery<Pet>({
+  const { data: pet, isLoading } = useQuery<Pet | null>({
     queryKey: ['myPet'],
     queryFn: getMyPet,
     retry: false,
@@ -103,7 +103,7 @@ export default function PetWidget() {
     setTimeout(() => setShowBubble(false), 2500);
   };
 
-  if (isError || (!isLoading && !pet)) {
+  if (!isLoading && !pet) {
     return (
       <motion.div
         whileHover={{ scale: 1.02 }}

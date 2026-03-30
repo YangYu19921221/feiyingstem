@@ -47,6 +47,9 @@ logs/
 tmp/
 temp/
 .cache/
+*.png
+backend/tts_cache/
+.playwright-mcp/
 
 # 构建产物
 *.pyc

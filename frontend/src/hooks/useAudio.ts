@@ -1,34 +1,27 @@
 import { useCallback } from 'react';
+import { API_BASE_URL } from '../config/env';
 
 /**
  * 共享发音 hook
- * 优先使用有道词典真人发音(英式)，失败时降级到浏览器 Speech API
+ * 统一使用后端 Edge TTS 接口（en-GB-SoniaNeural 英式女声）
  */
+
+// 版本号：修改发音源时递增，使浏览器缓存失效
+const TTS_VERSION = 4;
+
+export function edgeTtsUrl(word: string): string {
+  return `${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(word)}&v=${TTS_VERSION}`;
+}
+
 export function useAudio() {
   const playAudio = useCallback(async (text: string) => {
     try {
-      // 优先使用有道词典发音（type=1 英式，type=2 美式）
-      const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=1`;
-      const audio = new Audio(url);
-      audio.onerror = () => {
-        // 有道失败时降级到浏览器 Web Speech API
-        fallbackSpeak(text);
-      };
+      const audio = new Audio(edgeTtsUrl(text));
       await audio.play();
-    } catch {
-      fallbackSpeak(text);
+    } catch (e) {
+      console.warn('Edge TTS 播放失败:', e);
     }
   }, []);
 
   return { playAudio };
-}
-
-function fallbackSpeak(text: string) {
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-GB';
-    u.rate = 0.8;
-    window.speechSynthesis.speak(u);
-  }
 }

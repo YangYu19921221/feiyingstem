@@ -84,7 +84,7 @@ const TeacherAnalytics = () => {
 
   const getModeIcon = (mode: string) => {
     switch (mode) {
-      case 'flashcard': return '🎴';
+      case 'classify': return '🧠';
       case 'quiz': return '📝';
       case 'spelling': return '✍️';
       case 'fillblank': return '📋';
@@ -94,7 +94,7 @@ const TeacherAnalytics = () => {
 
   const getModeName = (mode: string) => {
     switch (mode) {
-      case 'flashcard': return '卡片学习';
+      case 'classify': return '分类学习';
       case 'quiz': return '选择题';
       case 'spelling': return '拼写练习';
       case 'fillblank': return '填空练习';

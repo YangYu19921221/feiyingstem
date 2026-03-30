@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Volume2 } from 'lucide-react';
 import type { Word } from '../api/words';
 import ColoredPhonetic from './ColoredPhonetic';
+import { edgeTtsUrl } from '../hooks/useAudio';
 
 interface FlashCardProps {
   word: Word;
@@ -19,51 +20,15 @@ const FlashCard = ({ word, onNext, onKnow, onDontKnow }: FlashCardProps) => {
     setIsFlipped(!isFlipped);
   };
 
-  // 语音播放函数 - 支持Web Speech API和自定义音频
+  // 语音播放 - 统一使用 Edge TTS 接口（剑桥真人发音 → Edge TTS 英式女声）
   const handlePlayAudio = () => {
-    if (isPlaying) return; // 防止重复播放
-
+    if (isPlaying) return;
     setIsPlaying(true);
-
-    // 如果有自定义音频URL(后续接入阿里云TTS后会有)
-    if (word.audio_url) {
-      const audio = new Audio(word.audio_url);
-      audio.onended = () => setIsPlaying(false);
-      audio.onerror = () => {
-        setIsPlaying(false);
-        console.error('音频播放失败,使用Web Speech API备用');
-        playWithSpeechAPI();
-      };
-      audio.play().catch(() => {
-        setIsPlaying(false);
-        playWithSpeechAPI();
-      });
-    } else {
-      // 使用浏览器自带的Web Speech API(临时方案)
-      playWithSpeechAPI();
-    }
-  };
-
-  // Web Speech API播放
-  const playWithSpeechAPI = () => {
-    if ('speechSynthesis' in window) {
-      // 取消之前的语音
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(word.word);
-      utterance.lang = 'en-US'; // 英语发音
-      utterance.rate = 0.9; // 稍慢一点,适合学习
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-
-      utterance.onend = () => setIsPlaying(false);
-      utterance.onerror = () => setIsPlaying(false);
-
-      window.speechSynthesis.speak(utterance);
-    } else {
-      setIsPlaying(false);
-      alert('您的浏览器不支持语音功能');
-    }
+    const url = edgeTtsUrl(word.word);
+    const audio = new Audio(url);
+    audio.onended = () => setIsPlaying(false);
+    audio.onerror = () => setIsPlaying(false);
+    audio.play().catch(() => setIsPlaying(false));
   };
 
   return (

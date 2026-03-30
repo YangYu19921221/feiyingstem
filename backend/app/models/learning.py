@@ -39,6 +39,7 @@ class WordMastery(Base):
 
     last_practiced_at = Column(DateTime)
     next_review_at = Column(DateTime)  # 间隔重复学习
+    review_stage = Column(Integer, default=0, server_default="0", nullable=False)  # SRS阶段: 0-8
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

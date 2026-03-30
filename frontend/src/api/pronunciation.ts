@@ -44,3 +44,45 @@ export async function checkPronunciationConfig(): Promise<boolean> {
   const data = await res.json();
   return data.configured === true;
 }
+
+// Whisper 本地语音校验
+export interface WordVerifyResult {
+  matched: boolean;
+  transcript: string;
+  target: string;
+  confidence: number;
+}
+
+export async function verifyWordPronunciation(
+  audioBlob: Blob,
+  word: string,
+): Promise<WordVerifyResult> {
+  const form = new FormData();
+  form.append('audio', audioBlob, 'recording.webm');
+  form.append('word', word);
+
+  const res = await fetch(`${API_BASE_URL}/pronunciation/verify-word`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || '语音校验失败');
+  }
+  return res.json();
+}
+
+export async function checkWhisperAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/pronunciation/whisper-status`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.available === true;
+  } catch {
+    return false;
+  }
+}

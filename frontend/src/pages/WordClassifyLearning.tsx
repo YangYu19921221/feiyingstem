@@ -1,0 +1,638 @@
+/**
+ * 单词分类记忆学习模式 - 主页面
+ * 管理6个阶段的流转：分类 → 语音校验 → 听写 → 句子填空 → 过关检测 → 总结
+ * 支持分组学习：小学每组10个，初中/高中每组20个
+ */
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft } from 'lucide-react';
+import { startLearning, updateProgress } from '../api/progress';
+import {
+  createLearningRecords,
+  createStudySession,
+  updateStudySession,
+  type WordAnswerCreate,
+  type StudySessionResponse,
+} from '../api/learningRecords';
+import type { StartLearningResponse, WordData } from '../api/progress';
+import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
+import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
+import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
+import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
+import ClassifySummary from '../components/classify/ClassifySummary';
+import { edgeTtsUrl } from '../hooks/useAudio';
+import GroupExamPhase from '../components/classify/GroupExamPhase';
+
+type Phase = 'classify' | 'speechVerify' | 'dictation' | 'sentenceFill' | 'exam' | 'summary';
+
+/** 根据年级将单词数组分组 */
+function splitIntoGroups(words: WordData[], gradeLevel: string | null): WordData[][] {
+  const groupSize = gradeLevel?.includes('小学') ? 10 : 20;
+  const groups: WordData[][] = [];
+  for (let i = 0; i < words.length; i += groupSize) {
+    groups.push(words.slice(i, i + groupSize));
+  }
+  return groups;
+}
+
+/** 每组的学习结果 */
+interface GroupResult {
+  classifyResults: Map<number, WordCategory>;
+  dictationResults: DictationResult[];
+  fillBlankResults: FillBlankResult[];
+  words: WordData[];
+}
+
+const WordClassifyLearning = () => {
+  const { unitId } = useParams<{ unitId: string }>();
+  const navigate = useNavigate();
+
+  const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const [currentGroupIndex, setCurrentGroupIndex] = useState(0);
+  const [allGroupResults, setAllGroupResults] = useState<GroupResult[]>([]);
+
+  const [phase, setPhase] = useState<Phase>('classify');
+  const [classifyResults, setClassifyResults] = useState<Map<number, WordCategory>>(new Map());
+  const [dictationResults, setDictationResults] = useState<DictationResult[]>([]);
+  const [fillBlankResults, setFillBlankResults] = useState<FillBlankResult[]>([]);
+
+  const [speechVerifyIndex, setSpeechVerifyIndex] = useState(0);
+  const [speechRoundWords, setSpeechRoundWords] = useState<WordData[]>([]);
+  const [speechSkippedWords, setSpeechSkippedWords] = useState<WordData[]>([]);
+  const [speechRound, setSpeechRound] = useState(1);
+  const [showSpeechRoundSummary, setShowSpeechRoundSummary] = useState(false);
+  const [examAttempt, setExamAttempt] = useState(0);
+  const [speechRoundDone, setSpeechRoundDone] = useState(false);
+
+  const [studySession, setStudySession] = useState<StudySessionResponse | null>(null);
+  const [startTime] = useState(Date.now());
+
+  const [showExitDialog, setShowExitDialog] = useState(false);
+
+  // 从 learningData 派生分组（不存储在 state 中）
+  const groups = useMemo(
+    () => learningData ? splitIntoGroups(learningData.words, learningData.unit_info.grade_level) : [],
+    [learningData]
+  );
+  const currentGroupWords = groups[currentGroupIndex] || [];
+  const totalGroups = groups.length;
+  const isLastGroup = currentGroupIndex >= totalGroups - 1;
+
+  useEffect(() => {
+    if (unitId) {
+      initLearning(parseInt(unitId));
+    }
+  }, [unitId]);
+
+  const initLearning = async (id: number) => {
+    try {
+      setLoading(true);
+      const data = await startLearning({ unit_id: id, learning_mode: 'classify' });
+
+      if (!data.words || data.words.length === 0) {
+        setError('该单元没有单词');
+        setLoading(false);
+        return;
+      }
+
+      setLearningData(data);
+      setCurrentGroupIndex(0);
+
+      // 创建学习会话
+      try {
+        const session = await createStudySession({
+          unit_id: id,
+          learning_mode: 'classify',
+          total_words: data.words.length,
+        });
+        setStudySession(session);
+      } catch (e) {
+        console.error('创建学习会话失败:', e);
+      }
+    } catch (e) {
+      console.error('初始化学习失败:', e);
+      setError('加载失败，请重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 音频播放（正常速度）：统一使用 Edge TTS 女声
+  const playAudio = useCallback((word: string) => {
+    playEdgeTTS(word);
+  }, []);
+
+  const playEdgeTTS = (word: string) => {
+    const url = edgeTtsUrl(word);
+    const audio = new Audio(url);
+    audio.play().catch((e) => console.warn('Edge TTS 播放失败:', e));
+  };
+
+  // 音频播放（慢速，用于听写）
+  const playAudioSlow = useCallback((word: string) => {
+    const url = edgeTtsUrl(word);
+    const audio = new Audio(url);
+    audio.playbackRate = 0.75;
+    audio.play().catch((e) => console.warn('Edge TTS 慢速播放失败:', e));
+  }, []);
+
+
+  // 阶段1完成：分类结束 → 进入语音校验
+  const handleClassifyComplete = (results: Map<number, WordCategory>) => {
+    setClassifyResults(results);
+    setPhase('speechVerify');
+    setSpeechRoundWords(currentGroupWords);
+    setSpeechSkippedWords([]);
+    setSpeechVerifyIndex(0);
+    setSpeechRound(1);
+    setSpeechRoundDone(false);
+  };
+
+  const handleSpeechVerifyNext = () => {
+    goToNextSpeechWord();
+  };
+
+  const handleSpeechSkip = () => {
+    const currentWord = speechRoundWords[speechVerifyIndex];
+    if (currentWord) {
+      setSpeechSkippedWords(prev => [...prev, currentWord]);
+    }
+    goToNextSpeechWord();
+  };
+
+  const goToNextSpeechWord = () => {
+    if (speechVerifyIndex + 1 < speechRoundWords.length) {
+      setSpeechVerifyIndex(speechVerifyIndex + 1);
+    } else {
+      setSpeechRoundDone(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!speechRoundDone || phase !== 'speechVerify') return;
+    setSpeechRoundDone(false);
+
+    // 全部通过 → 直接进入听写
+    if (speechSkippedWords.length === 0) {
+      setPhase('dictation');
+      return;
+    }
+
+    // 有跳过的 → 显示轮次总结，让用户选择
+    setShowSpeechRoundSummary(true);
+  }, [speechRoundDone, phase, speechSkippedWords]);
+
+  // 用户选择「重读」
+  const handleSpeechRetry = () => {
+    setSpeechRound(prev => prev + 1);
+    setSpeechRoundWords([...speechSkippedWords]);
+    setSpeechSkippedWords([]);
+    setSpeechVerifyIndex(0);
+    setShowSpeechRoundSummary(false);
+  };
+
+  // 用户选择「跳过语音，进入听写」
+  const handleSkipSpeechPhase = () => {
+    setShowSpeechRoundSummary(false);
+    setPhase('dictation');
+  };
+
+  // 听写完成 → 句子填空
+  const handleDictationComplete = (results: DictationResult[]) => {
+    setDictationResults(results);
+    setPhase('sentenceFill');
+  };
+
+  // 句子填空完成 → 过关检测
+  const handleSentenceFillComplete = (results: FillBlankResult[]) => {
+    setFillBlankResults(results);
+    setPhase('exam');
+
+    // 保存当前组的进度
+    saveGroupProgress(results);
+  };
+
+  // 过关检测通过 → 组内总结
+  const handleExamPass = (correct: number, total: number) => {
+    setPhase('summary');
+  };
+
+  // 过关检测重考
+  const handleExamRetry = () => {
+    setExamAttempt(a => a + 1);
+    setPhase('exam');
+  };
+
+  // 过关检测重学 → 回到分类
+  const handleExamRelearn = () => {
+    setPhase('classify');
+  };
+
+  // 保存当前组的进度到后端
+  const saveGroupProgress = async (fillResults: FillBlankResult[]) => {
+    if (!learningData || !unitId) return;
+
+    const totalTime = Math.round((Date.now() - startTime) / 1000);
+
+    // 构建当前组的学习记录
+    const records: WordAnswerCreate[] = currentGroupWords.map(w => {
+      const category = classifyResults.get(w.id) || 'unknown';
+      const dictResult = dictationResults.find(r => r.wordId === w.id);
+
+      let isCorrect = category === 'familiar';
+      if (dictResult) {
+        isCorrect = dictResult.isCorrect;
+      }
+
+      return {
+        word_id: w.id,
+        is_correct: isCorrect,
+        time_spent: Math.round(totalTime * 1000 / learningData.words.length),
+        learning_mode: 'classify',
+      };
+    });
+
+    try {
+      await createLearningRecords({
+        unit_id: parseInt(unitId),
+        learning_mode: 'classify',
+        records,
+      });
+    } catch (e) {
+      console.error('提交学习记录失败:', e);
+    }
+
+    // 计算当前组在全局的最后一个单词索引
+    let globalEndIndex = 0;
+    for (let i = 0; i <= currentGroupIndex; i++) {
+      globalEndIndex += groups[i].length;
+    }
+
+    // 更新进度
+    try {
+      await updateProgress({
+        unit_id: parseInt(unitId),
+        learning_mode: 'classify',
+        current_word_index: globalEndIndex - 1,
+        is_completed: isLastGroup,
+      });
+    } catch (e) {
+      console.error('更新进度失败:', e);
+    }
+
+    // 最后一组时更新会话
+    if (isLastGroup && studySession) {
+      const allResults = buildAllResults();
+      const allRecords = allResults.flatMap(gr =>
+        gr.words.map(w => {
+          const category = gr.classifyResults.get(w.id) || 'unknown';
+          const dictResult = gr.dictationResults.find(r => r.wordId === w.id);
+          return dictResult ? dictResult.isCorrect : category === 'familiar';
+        })
+      );
+      const correctCount = allRecords.filter(Boolean).length;
+      try {
+        await updateStudySession(studySession.id, {
+          completed_words: learningData.words.length,
+          correct_count: correctCount,
+          wrong_count: learningData.words.length - correctCount,
+          total_time: totalTime,
+        });
+      } catch (e) {
+        console.error('更新会话失败:', e);
+      }
+    }
+  };
+
+  // 进入下一组
+  const handleNextGroup = () => {
+    // 保存当前组结果
+    setAllGroupResults(prev => [
+      ...prev,
+      {
+        classifyResults,
+        dictationResults,
+        fillBlankResults,
+        words: currentGroupWords,
+      },
+    ]);
+
+    // 重置当前组的阶段状态
+    setCurrentGroupIndex(prev => prev + 1);
+    setPhase('classify');
+    setClassifyResults(new Map());
+    setDictationResults([]);
+    setFillBlankResults([]);
+    setSpeechVerifyIndex(0);
+    setSpeechRoundWords([]);
+    setSpeechSkippedWords([]);
+    setSpeechRound(1);
+    setSpeechRoundDone(false);
+    setShowSpeechRoundSummary(false);
+  };
+
+  const handleBack = () => {
+    // 最后一组的总结页直接返回
+    if (phase === 'summary' && isLastGroup) {
+      navigate(-1);
+    } else {
+      setShowExitDialog(true);
+    }
+  };
+
+  /** 汇总所有组结果（含当前组），用于最终总结页 */
+  const buildAllResults = useCallback((): GroupResult[] => [
+    ...allGroupResults,
+    { classifyResults, dictationResults, fillBlankResults, words: currentGroupWords },
+  ], [allGroupResults, classifyResults, dictationResults, fillBlankResults, currentGroupWords]);
+
+  // 最终总结页的汇总数据
+  const finalSummaryData = useMemo(() => {
+    if (phase !== 'summary' || !isLastGroup) return null;
+    const all = buildAllResults();
+    return {
+      allDictation: all.flatMap(gr => gr.dictationResults),
+      allFillBlank: all.flatMap(gr => gr.fillBlankResults),
+      totalWords: all.reduce((sum, gr) => sum + gr.words.length, 0),
+    };
+  }, [phase, isLastGroup, buildAllResults]);
+
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+          <p className="text-gray-500 mt-4">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !learningData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <span className="text-6xl mb-4 block">😞</span>
+          <p className="text-gray-500">{error || '加载失败'}</p>
+          <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const phaseLabels: Record<Phase, string> = {
+    classify: '分类阶段',
+    speechVerify: '语音校验',
+    dictation: '听写阶段',
+    sentenceFill: '句子填空',
+    exam: '过关检测',
+    summary: '学习总结',
+  };
+
+  const currentSpeechWord = speechRoundWords[speechVerifyIndex];
+
+  // 导航栏副标题
+  const navSubtitle = totalGroups > 1
+    ? `${learningData.unit_info.name} · 第${currentGroupIndex + 1}/${totalGroups}组 · ${phaseLabels[phase]}`
+    : `${learningData.unit_info.name} · ${phaseLabels[phase]}`;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+      {/* 顶部导航 */}
+      <nav className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
+          <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg transition">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-bold text-gray-800">
+              🧠 分类记忆法
+            </h1>
+            <p className="text-xs text-gray-500">
+              {navSubtitle}
+            </p>
+          </div>
+          {/* 阶段指示器 */}
+          <div className="flex gap-1">
+            {(['classify', 'speechVerify', 'dictation', 'sentenceFill', 'exam', 'summary'] as Phase[]).map((p, i) => (
+              <div
+                key={p}
+                className={`w-2 h-2 rounded-full transition ${
+                  p === phase ? 'bg-primary scale-125' : i < ['classify', 'speechVerify', 'dictation', 'sentenceFill', 'exam', 'summary'].indexOf(phase) ? 'bg-green-400' : 'bg-gray-200'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+        {/* 分组进度条（多组时显示） */}
+        {totalGroups > 1 && (
+          <div className="h-1 bg-gray-100">
+            <motion.div
+              className="h-full bg-gradient-to-r from-primary to-yellow-400"
+              animate={{ width: `${((currentGroupIndex + (phase === 'summary' ? 1 : 0)) / totalGroups) * 100}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+        )}
+      </nav>
+
+      {/* 主内容 */}
+      <div className="max-w-3xl mx-auto py-6">
+        <AnimatePresence mode="wait">
+          {/* 阶段1：分类 */}
+          {phase === 'classify' && (
+            <motion.div key={`classify-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ClassificationPhase
+                words={currentGroupWords}
+                onComplete={handleClassifyComplete}
+                playAudio={playAudio}
+              />
+            </motion.div>
+          )}
+
+          {/* 阶段2：语音校验 */}
+          {phase === 'speechVerify' && showSpeechRoundSummary && (
+            <motion.div key="speech-summary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-center px-4"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+              >
+                <div className="text-5xl mb-4">🔄</div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">语音第 {speechRound} 轮完成</h3>
+                <div className="flex justify-center gap-6 mb-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-500">{speechRoundWords.length - speechSkippedWords.length}</div>
+                    <div className="text-xs text-gray-400">✅ 已通过</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-500">{speechSkippedWords.length}</div>
+                    <div className="text-xs text-gray-400">需重读</div>
+                  </div>
+                </div>
+                <p className="text-gray-500 text-sm mb-6">
+                  还有 <span className="font-bold text-red-500">{speechSkippedWords.length}</span> 个词未通过语音校验
+                </p>
+                <div className="flex flex-col gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleSpeechRetry}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition"
+                  >
+                    🎙️ 重新朗读这些词
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleSkipSpeechPhase}
+                    className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl font-medium transition"
+                  >
+                    跳过，进入听写 →
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+          {phase === 'speechVerify' && !showSpeechRoundSummary && currentSpeechWord && (
+            <motion.div key={`speech-${speechRound}-${currentSpeechWord.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-col min-h-[calc(100vh-64px)]"
+            >
+              <div className="flex-1 flex flex-col items-center justify-center px-4 pb-4">
+                <div className="mb-4 text-center">
+                  {speechRound > 1 && (
+                    <span className="text-xs text-orange-500 font-medium mr-2">第{speechRound}轮</span>
+                  )}
+                  <span className="text-sm text-gray-400 font-medium">
+                    🎙️ {speechVerifyIndex + 1} / {speechRoundWords.length}
+                  </span>
+                </div>
+
+                <SpeechVerifyCard
+                  key={`${speechRound}-${currentSpeechWord.id}`}
+                  word={currentSpeechWord}
+                  onNext={handleSpeechVerifyNext}
+                  onSkip={handleSpeechSkip}
+                  playAudio={playAudio}
+                />
+              </div>
+            </motion.div>
+          )}
+
+          {/* 阶段3：听写 */}
+          {phase === 'dictation' && (
+            <motion.div key={`dictation-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <DictationPhase
+                words={currentGroupWords}
+                onComplete={handleDictationComplete}
+                playAudioSlow={playAudioSlow}
+              />
+            </motion.div>
+          )}
+
+          {/* 阶段4：句子填空 */}
+          {phase === 'sentenceFill' && (
+            <motion.div key={`sentenceFill-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <SentenceFillPhase
+                words={currentGroupWords}
+                onComplete={handleSentenceFillComplete}
+                playAudio={playAudio}
+              />
+            </motion.div>
+          )}
+
+          {/* 阶段5：过关检测 */}
+          {phase === 'exam' && (
+            <motion.div key={`exam-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <GroupExamPhase
+                key={`exam-${currentGroupIndex}-${examAttempt}`}
+                words={currentGroupWords}
+                onPass={handleExamPass}
+                onRetry={handleExamRetry}
+                onRelearn={handleExamRelearn}
+              />
+            </motion.div>
+          )}
+
+          {/* 阶段6：总结 */}
+          {phase === 'summary' && !isLastGroup && (
+            <motion.div key={`group-summary-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ClassifySummary
+                dictationResults={dictationResults}
+                fillBlankResults={fillBlankResults}
+                totalWords={currentGroupWords.length}
+                startTime={startTime}
+                onBack={() => navigate(-1)}
+                mode="groupSummary"
+                groupIndex={currentGroupIndex}
+                totalGroups={totalGroups}
+                onNextGroup={handleNextGroup}
+              />
+            </motion.div>
+          )}
+          {phase === 'summary' && isLastGroup && finalSummaryData && (
+            <motion.div key="final-summary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ClassifySummary
+                dictationResults={finalSummaryData.allDictation}
+                fillBlankResults={finalSummaryData.allFillBlank}
+                totalWords={finalSummaryData.totalWords}
+                startTime={startTime}
+                onBack={() => navigate(-1)}
+                mode="finalSummary"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* 退出确认对话框 */}
+      <AnimatePresence>
+        {showExitDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+            onClick={() => setShowExitDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-sm w-full"
+            >
+              <h3 className="text-lg font-bold text-gray-800 mb-2">确认退出？</h3>
+              <p className="text-gray-500 text-sm mb-4">当前学习进度将不会保存</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowExitDialog(false)}
+                  className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 font-medium"
+                >
+                  继续学习
+                </button>
+                <button
+                  onClick={() => navigate(-1)}
+                  className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium"
+                >
+                  退出
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default WordClassifyLearning;

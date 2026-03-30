@@ -40,6 +40,8 @@ const SpellingPractice = () => {
   const handleHint = () => {
     const answer = questions[currentIndex].correct_answer.toLowerCase();
     for (let i = 0; i < answer.length; i++) {
+      // 跳过空格位置
+      if (answer[i] === ' ') continue;
       if (!revealedLetters.has(i)) {
         setRevealedLetters(prev => new Set(prev).add(i));
         setHintsUsed(h => h + 1);
@@ -50,8 +52,8 @@ const SpellingPractice = () => {
 
   const handleCheck = () => {
     const currentQuestion = questions[currentIndex];
-    const answer = currentQuestion.correct_answer.toLowerCase();
-    const input = userInput.toLowerCase();
+    const answer = currentQuestion.correct_answer.trim().toLowerCase();
+    const input = userInput.trim().toLowerCase();
     const correct = input === answer;
 
     // 逐字母对比
@@ -123,7 +125,7 @@ const SpellingPractice = () => {
               🔊 播放发音
             </button>
             <p className="text-sm text-gray-400 mt-2">
-              共 {answerLength} 个字母
+              共 {answerLength} 个字符{currentQuestion?.correct_answer.includes(' ') ? '（含空格）' : ''}
             </p>
           </div>
 
@@ -134,7 +136,7 @@ const SpellingPractice = () => {
             value={userInput}
             onChange={(e) => {
               if (!isChecking) {
-                const val = e.target.value.replace(/[^a-zA-Z]/g, '');
+                const val = e.target.value.replace(/[^a-zA-Z '\-]/g, '');
                 setUserInput(val.slice(0, answerLength));
               }
             }}
@@ -150,6 +152,22 @@ const SpellingPractice = () => {
           <div className="flex justify-center gap-2 mb-6 flex-wrap" onClick={focusInput}>
             {currentQuestion && Array.from({ length: answerLength }).map((_, i) => {
               const answer = currentQuestion.correct_answer.toLowerCase();
+              const isSpace = answer[i] === ' ';
+
+              // 空格位置固定显示为间隔标记
+              if (isSpace) {
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    className="w-6 h-14 flex items-center justify-center text-gray-300 text-sm"
+                  >
+                    ␣
+                  </motion.div>
+                );
+              }
+
               let bgColor = 'bg-gray-100 border-gray-300';
               let textColor = 'text-gray-800';
               let letter = '';

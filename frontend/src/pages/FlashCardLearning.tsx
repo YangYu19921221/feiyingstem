@@ -16,7 +16,9 @@ import {
   type StudySessionResponse,
   type WordMasteryResponse,
 } from '../api/learningRecords';
+import { submitReviewRecords } from '../api/memoryCurve';
 import { API_BASE_URL } from '../config/env';
+import { edgeTtsUrl } from '../hooks/useAudio';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 
@@ -49,6 +51,7 @@ const FlashCardLearning = () => {
   const [emptyUnit, setEmptyUnit] = useState(false);
   const [emptyMessage, setEmptyMessage] = useState('');
   const [pronunciationEnabled, setPronunciationEnabled] = useState(false);
+  const [practiceMode, setPracticeMode] = useState<'normal' | 'mistake' | 'review'>('normal');
 
   // 防划水功能状态
   const [combo, setCombo] = useState(0);  // 连击数
@@ -84,8 +87,15 @@ const FlashCardLearning = () => {
     try {
       setLoading(true);
 
-      // 检查是否为错题练习模式
+      // 检查是否为特殊练习模式
       const isMistakePractice = sessionStorage.getItem('is_mistake_practice') === 'true';
+      const isReviewPractice = sessionStorage.getItem('is_review_practice') === 'true';
+      const isSpecialPractice = isMistakePractice || isReviewPractice;
+
+      if (isMistakePractice) setPracticeMode('mistake');
+      else if (isReviewPractice) setPracticeMode('review');
+      else setPracticeMode('normal');
+
       let data: StartLearningResponse;
 
       if (isMistakePractice && id === 0) {
@@ -114,6 +124,7 @@ const FlashCardLearning = () => {
             name: '错题集练习',
             description: '针对性练习错题',
             book_id: 0,
+            grade_level: null,
           },
           words: mistakeWords.map((w: any) => ({
             id: w.word_id,
@@ -132,6 +143,38 @@ const FlashCardLearning = () => {
 
         // 清除错题练习标记(仅使用一次)
         sessionStorage.removeItem('is_mistake_practice');
+      } else if (isReviewPractice && id === 0) {
+        // 记忆曲线复习模式:从sessionStorage获取单词列表
+        const reviewWordsJson = sessionStorage.getItem('review_practice_words');
+        if (!reviewWordsJson) {
+          setEmptyUnit(true);
+          setEmptyMessage('复习数据丢失,请重新进入记忆曲线');
+          setLoading(false);
+          return;
+        }
+
+        const reviewWordsData = JSON.parse(reviewWordsJson);
+
+        data = {
+          has_existing_progress: false,
+          current_word_index: 0,
+          completed_words: 0,
+          total_words: reviewWordsData.length,
+          progress_percentage: 0,
+          message: '记忆曲线复习模式',
+          unit_info: {
+            id: 0,
+            unit_number: 0,
+            name: '记忆曲线复习',
+            description: '基于艾宾浩斯遗忘曲线的智能复习',
+            book_id: 0,
+            grade_level: null,
+          },
+          words: reviewWordsData,
+        };
+
+        sessionStorage.removeItem('is_review_practice');
+        sessionStorage.removeItem('review_practice_words');
       } else {
         // 正常学习模式
         data = await startLearning({
@@ -153,8 +196,8 @@ const FlashCardLearning = () => {
       const safeIndex = data.current_word_index < data.words.length ? data.current_word_index : 0;
       setCurrentIndex(safeIndex); // 断点续学:从保存的位置开始
 
-      // 创建学习会话(仅非错题练习模式)
-      if (!isMistakePractice || id !== 0) {
+      // 创建学习会话(仅非特殊练习模式)
+      if (!isSpecialPractice || id !== 0) {
         try {
           const session = await createStudySession({
             unit_id: id,
@@ -176,8 +219,8 @@ const FlashCardLearning = () => {
         loadWordMastery(data.words[safeIndex].id);
       }
 
-      // 加载薄弱单词提醒(仅非错题练习模式)
-      if (!isMistakePractice || id !== 0) {
+      // 加载薄弱单词提醒(仅非特殊练习模式)
+      if (!isSpecialPractice || id !== 0) {
         loadWeakWordsReminder(id);
       }
     } catch (error: any) {
@@ -231,72 +274,11 @@ const FlashCardLearning = () => {
     const word = learningData.words[currentIndex];
     setIsPlaying(true);
 
-    // 优先使用预设的音频URL
-    if (word.audio_url) {
-      const audio = new Audio(word.audio_url);
-      audio.onended = () => setIsPlaying(false);
-      audio.onerror = () => {
-        setIsPlaying(false);
-        playWithTTS(word.word);
-      };
-      audio.play().catch(() => {
-        setIsPlaying(false);
-        playWithTTS(word.word);
-      });
-    } else {
-      // 尝试使用阿里云TTS
-      await playWithTTS(word.word);
-    }
-  };
-
-  const playWithTTS = async (text: string) => {
-    try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/ai/tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ text })
-      });
-
-      if (response.ok) {
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        audio.onended = () => {
-          setIsPlaying(false);
-          URL.revokeObjectURL(audioUrl);
-        };
-        audio.onerror = () => {
-          setIsPlaying(false);
-          URL.revokeObjectURL(audioUrl);
-          // TTS失败，降级到Web Speech API
-          playWithSpeechAPI(text);
-        };
-        audio.play();
-      } else {
-        // TTS服务不可用，降级到Web Speech API
-        playWithSpeechAPI(text);
-      }
-    } catch (error) {
-      console.error('TTS请求失败:', error);
-      playWithSpeechAPI(text);
-    }
-  };
-
-  const playWithSpeechAPI = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 0.9;
-      utterance.onend = () => setIsPlaying(false);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      setIsPlaying(false);
-    }
+    const url = edgeTtsUrl(word.word);
+    const audio = new Audio(url);
+    audio.onended = () => setIsPlaying(false);
+    audio.onerror = () => setIsPlaying(false);
+    audio.play().catch(() => setIsPlaying(false));
   };
 
   // 🆕 验证用户答案（关卡1和关卡2）
@@ -498,7 +480,9 @@ const FlashCardLearning = () => {
     });
 
     const nextIndex = currentIndex + 1;
-    const isMistakePracticeMode = (learningData.unit_info.id === 0);
+    const isMistakePracticeMode = practiceMode === 'mistake';
+    const isReviewPracticeMode = practiceMode === 'review';
+    const isSpecialMode = practiceMode !== 'normal';
 
     // 检查是否有复习单词需要处理
     const hasReviewWords = reviewQueue.length > (isReviewWord ? 1 : 0);
@@ -507,8 +491,11 @@ const FlashCardLearning = () => {
     const isLastWord = !isReviewWord && nextIndex >= learningData.words.length && !hasReviewWords && pendingReview.size === 0;
 
     try {
-      // 实时提交单词记录,立即更新掌握度(非错题练习模式)
-      if (!isMistakePracticeMode) {
+      // 实时提交单词记录,立即更新掌握度
+      if (isReviewPracticeMode) {
+        // 记忆曲线复习模式:使用专用的复习记录接口
+        await submitReviewRecords([answer]);
+      } else if (!isMistakePracticeMode) {
         await createLearningRecords({
           unit_id: learningData.unit_info.id,
           learning_mode: mode || 'flashcard',
@@ -530,7 +517,7 @@ const FlashCardLearning = () => {
 
       if (isLastWord) {
         // 完成学习 - 更新会话
-        if (!isMistakePracticeMode && studySession) {
+        if (!isSpecialMode && studySession) {
           const totalTime = Math.floor((Date.now() - new Date(studySession.started_at).getTime()) / 1000);
           await updateStudySession(studySession.id, {
             completed_words: updatedWordAnswers.length,
@@ -632,14 +619,15 @@ const FlashCardLearning = () => {
     }
   };
 
+  const getExitRoute = () => {
+    if (practiceMode === 'review') return '/student/memory-curve';
+    if (practiceMode === 'mistake') return '/student/mistake-book';
+    return `/student/books/${learningData?.unit_info.book_id}/units`;
+  };
+
   const handleBackToUnits = () => {
     setShowCompletionModal(false);
-    const isMistakePracticeMode = learningData?.unit_info.id === 0;
-    if (isMistakePracticeMode) {
-      navigate('/student/mistake-book');
-    } else {
-      navigate(`/student/books/${learningData?.unit_info.book_id}/units`);
-    }
+    navigate(getExitRoute());
   };
 
   const handleExit = () => {
@@ -647,13 +635,7 @@ const FlashCardLearning = () => {
   };
 
   const confirmExit = () => {
-    const isMistakePracticeMode = learningData?.unit_info.id === 0;
-
-    if (isMistakePracticeMode) {
-      navigate('/student/mistake-book');
-    } else {
-      navigate(`/student/books/${learningData?.unit_info.book_id}/units`);
-    }
+    navigate(getExitRoute());
   };
 
   if (loading) {
@@ -670,13 +652,7 @@ const FlashCardLearning = () => {
   // 单元为空的提示
   if (emptyUnit) {
     const handleBack = () => {
-      // 如果是错题集丢失,返回错题集页面
-      if (emptyMessage.includes('错题')) {
-        navigate('/student/mistake-book');
-      } else {
-        // 否则返回上一页
-        navigate(-1);
-      }
+      navigate(getExitRoute());
     };
 
     return (
@@ -1331,7 +1307,7 @@ const FlashCardLearning = () => {
               <div className="text-center mb-6">
                 <span className="text-5xl mb-4 block">🎉</span>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
-                  {learningData?.unit_info.id === 0 ? '错题练习完成!' : '单元学习完成!'}
+                  {practiceMode === 'review' ? '复习完成!' : practiceMode === 'mistake' ? '错题练习完成!' : '单元学习完成!'}
                 </h3>
                 <p className="text-gray-600">
                   共学习 {wordAnswers.length} 个单词，正确 {correctCount} 个
@@ -1339,6 +1315,9 @@ const FlashCardLearning = () => {
                 <p className="text-sm text-green-600 mt-2 font-medium">
                   正确率: {wordAnswers.length > 0 ? Math.round(correctCount / wordAnswers.length * 100) : 0}%
                 </p>
+                {practiceMode === 'review' && (
+                  <p className="text-sm text-cyan-600 mt-1">坚持复习,记忆更牢固!</p>
+                )}
               </div>
               <div className="flex flex-col gap-3">
                 <button
@@ -1351,7 +1330,7 @@ const FlashCardLearning = () => {
                   onClick={handleBackToUnits}
                   className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition"
                 >
-                  {learningData?.unit_info.id === 0 ? '返回错题集' : '返回单元列表'}
+                  {practiceMode === 'review' ? '返回记忆曲线' : practiceMode === 'mistake' ? '返回错题集' : '返回单元列表'}
                 </button>
               </div>
             </motion.div>

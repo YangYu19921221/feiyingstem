@@ -43,8 +43,10 @@ instance.interceptors.response.use(
         }
         return Promise.reject(error);
       }
-      // 服务器返回错误
-      console.error('API Error:', error.response.data);
+      // 服务器返回错误（404 不打印，由调用方处理）
+      if (error.response.status !== 404) {
+        console.error('API Error:', error.response.data);
+      }
       // 保留原始的error对象,这样可以访问error.response.status
       return Promise.reject(error);
     } else if (error.request) {

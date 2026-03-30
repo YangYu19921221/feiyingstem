@@ -3,27 +3,67 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from typing import List
 from datetime import datetime, date, timedelta
+from collections import defaultdict
 import logging
 
 from app.core.database import get_db
 from app.models.user import User, StudyCalendar
-from app.models.word import Unit, Word
+from app.models.word import Unit, Word, WordDefinition
 from app.models.learning import (
     LearningRecord, WordMastery, StudySession, LearningProgress
 )
 from app.schemas.learning_record import (
     LearningRecordBatchCreate, LearningRecordResponse,
     StudySessionCreate, StudySessionUpdate, StudySessionResponse,
-    WordMasteryResponse, StudyCalendarUpdate
+    WordMasteryResponse, StudyCalendarUpdate,
+    ReviewWordResponse, ReviewRecordBatchCreate
 )
 from app.api.v1.auth import get_current_student
 from app.services.learning_quality import learning_quality_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# 艾宾浩斯间隔重复时间表（小时）
+SRS_INTERVALS = [
+    0.083,   # Stage 0→1: 5分钟
+    0.5,     # Stage 1→2: 30分钟
+    12,      # Stage 2→3: 12小时
+    24,      # Stage 3→4: 1天
+    48,      # Stage 4→5: 2天
+    96,      # Stage 5→6: 4天
+    168,     # Stage 6→7: 7天
+    360,     # Stage 7→8: 15天
+    720,     # Stage 8→毕业: 30天
+]
+
+SRS_LABELS = ["5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天", "15天", "30天", "已掌握"]
+
+
+async def update_study_calendar(db: AsyncSession, user_id: int, record_count: int, total_time_ms: int):
+    """更新学习日历（共用辅助函数）"""
+    today = date.today()
+    result = await db.execute(
+        select(StudyCalendar).where(
+            and_(StudyCalendar.user_id == user_id, StudyCalendar.study_date == today)
+        )
+    )
+    calendar_record = result.scalar_one_or_none()
+
+    if calendar_record:
+        calendar_record.words_learned += record_count
+        calendar_record.duration += total_time_ms // 1000
+    else:
+        calendar_record = StudyCalendar(
+            user_id=user_id,
+            study_date=today,
+            words_learned=record_count,
+            duration=total_time_ms // 1000
+        )
+        db.add(calendar_record)
 
 
 # ========================================
@@ -84,30 +124,8 @@ async def create_learning_records(
         )
 
     # 3. 更新学习日历
-    today = date.today()
-    result = await db.execute(
-        select(StudyCalendar).where(
-            and_(
-                StudyCalendar.user_id == user_id,
-                StudyCalendar.study_date == today
-            )
-        )
-    )
-    calendar_record = result.scalar_one_or_none()
-
-    if calendar_record:
-        # 更新今天的记录
-        calendar_record.words_learned += len(data.records)
-        calendar_record.duration += sum(r.time_spent for r in data.records) // 1000
-    else:
-        # 创建今天的记录
-        calendar_record = StudyCalendar(
-            user_id=user_id,
-            study_date=today,
-            words_learned=len(data.records),
-            duration=sum(r.time_spent for r in data.records) // 1000
-        )
-        db.add(calendar_record)
+    total_time_ms = sum(r.time_spent for r in data.records)
+    await update_study_calendar(db, user_id, len(data.records), total_time_ms)
 
     await db.commit()
 
@@ -238,16 +256,22 @@ async def update_word_mastery(
     # 更新时间戳
     mastery.last_practiced_at = datetime.utcnow()
 
-    # 计算下次复习时间(间隔重复算法 - 简化版)
-    if mastery.mastery_level >= 4:
-        # 掌握良好,7天后复习
-        mastery.next_review_at = datetime.utcnow() + timedelta(days=7)
-    elif mastery.mastery_level >= 2:
-        # 一般掌握,3天后复习
-        mastery.next_review_at = datetime.utcnow() + timedelta(days=3)
+    # 计算下次复习时间(艾宾浩斯间隔重复算法)
+    if is_correct:
+        current_stage = mastery.review_stage or 0
+        if current_stage < len(SRS_INTERVALS):
+            interval_hours = SRS_INTERVALS[current_stage]
+            mastery.review_stage = current_stage + 1
+        else:
+            interval_hours = 720  # 毕业后30天复习一次
+            mastery.review_stage = len(SRS_INTERVALS)
     else:
-        # 掌握较差,1天后复习
-        mastery.next_review_at = datetime.utcnow() + timedelta(days=1)
+        # 答错回退2个阶段（不完全重置，避免因一次失误惩罚过重）
+        current_stage = mastery.review_stage or 0
+        mastery.review_stage = max(0, current_stage - 2)
+        interval_hours = SRS_INTERVALS[mastery.review_stage]
+
+    mastery.next_review_at = datetime.utcnow() + timedelta(hours=interval_hours)
 
 
 # ========================================
@@ -437,27 +461,222 @@ async def get_weak_words(
     return weak_words
 
 
-@router.get("/review-due", response_model=List[WordMasteryResponse])
+@router.get("/review-due", response_model=List[ReviewWordResponse])
 async def get_review_due_words(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student)
 ):
-    """获取需要复习的单词"""
+    """获取需要复习的单词（含完整单词信息）"""
     user_id = current_user.id
     now = datetime.utcnow()
 
     result = await db.execute(
-        select(WordMastery)
-        .where(
-            and_(
-                WordMastery.user_id == user_id,
-                WordMastery.next_review_at <= now
-            )
-        )
+        select(WordMastery, Word, WordDefinition)
+        .join(Word, WordMastery.word_id == Word.id)
+        .outerjoin(WordDefinition, and_(
+            WordDefinition.word_id == Word.id,
+            WordDefinition.is_primary == True
+        ))
+        .where(and_(
+            WordMastery.user_id == user_id,
+            WordMastery.next_review_at <= now
+        ))
         .order_by(WordMastery.next_review_at.asc())
         .limit(limit)
     )
-    review_words = result.scalars().all()
+    rows = result.all()
+
+    review_words = []
+    for mastery, word, definition in rows:
+        review_words.append(ReviewWordResponse(
+            mastery_id=mastery.id,
+            word_id=word.id,
+            mastery_level=mastery.mastery_level,
+            review_stage=mastery.review_stage or 0,
+            next_review_at=mastery.next_review_at,
+            last_practiced_at=mastery.last_practiced_at,
+            word=word.word,
+            phonetic=word.phonetic,
+            meaning=definition.meaning if definition else None,
+            part_of_speech=definition.part_of_speech if definition else None,
+            example_sentence=definition.example_sentence if definition else None,
+            example_translation=definition.example_translation if definition else None,
+            difficulty=word.difficulty or 1,
+        ))
 
     return review_words
+
+
+@router.get("/memory-curve-stats")
+async def get_memory_curve_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student)
+):
+    """获取记忆曲线统计数据"""
+    user_id = current_user.id
+    now = datetime.utcnow()
+
+    # 查询该用户所有的单词掌握记录
+    result = await db.execute(
+        select(WordMastery).where(WordMastery.user_id == user_id)
+    )
+    all_mastery = result.scalars().all()
+
+    if not all_mastery:
+        return {
+            "due_today": 0,
+            "due_tomorrow": 0,
+            "upcoming_7_days": [],
+            "stage_distribution": [
+                {"stage": i, "label": SRS_LABELS[i], "count": 0}
+                for i in range(len(SRS_LABELS))
+            ],
+            "total_learned": 0,
+            "total_mastered": 0,
+            "retention_rate": 0,
+        }
+
+    # 预计算7天的日期边界
+    day_boundaries = []
+    for day_offset in range(7):
+        day_start = (now + timedelta(days=day_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        day_boundaries.append((day_start, day_end, day_offset))
+
+    tomorrow = now + timedelta(days=1)
+
+    # 单次遍历统计所有指标
+    due_today = 0
+    due_tomorrow = 0
+    day_counts = [0] * 7
+    stage_counts = defaultdict(int)
+    total_mastered = 0
+    mastered_count = 0
+
+    for m in all_mastery:
+        stage = m.review_stage or 0
+        stage_counts[stage] += 1
+
+        if stage >= len(SRS_INTERVALS):
+            total_mastered += 1
+        if m.mastery_level >= 3:
+            mastered_count += 1
+
+        if m.next_review_at:
+            if m.next_review_at <= now:
+                due_today += 1
+            elif m.next_review_at <= tomorrow:
+                due_tomorrow += 1
+
+            for day_start, day_end, offset in day_boundaries:
+                if offset == 0:
+                    if m.next_review_at <= day_end:
+                        day_counts[offset] += 1
+                elif day_start < m.next_review_at <= day_end:
+                    day_counts[offset] += 1
+
+    # 构造7天预测
+    WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    upcoming_7_days = []
+    for day_start, _, offset in day_boundaries:
+        upcoming_7_days.append({
+            "date": day_start.strftime("%Y-%m-%d"),
+            "weekday": WEEKDAYS[day_start.weekday()],
+            "count": day_counts[offset],
+            "is_today": offset == 0,
+        })
+
+    # SRS阶段分布
+    stage_distribution = []
+    for i in range(len(SRS_LABELS)):
+        if i < len(SRS_INTERVALS):
+            count = stage_counts.get(i, 0)
+        else:
+            count = total_mastered
+        stage_distribution.append({
+            "stage": i,
+            "label": SRS_LABELS[i],
+            "count": count,
+        })
+
+    total_learned = len(all_mastery)
+    retention_rate = round(mastered_count / total_learned * 100, 1) if total_learned > 0 else 0
+
+    return {
+        "due_today": due_today,
+        "due_tomorrow": due_tomorrow,
+        "upcoming_7_days": upcoming_7_days,
+        "stage_distribution": stage_distribution,
+        "total_learned": total_learned,
+        "total_mastered": total_mastered,
+        "retention_rate": retention_rate,
+    }
+
+
+@router.get("/review-due-count")
+async def get_review_due_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student)
+):
+    """仅返回今日待复习数量（轻量级，用于仪表板）"""
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(func.count(WordMastery.id)).where(
+            and_(
+                WordMastery.user_id == current_user.id,
+                WordMastery.next_review_at <= now
+            )
+        )
+    )
+    count = result.scalar() or 0
+    return {"due_today": count}
+
+
+@router.post("/review-records")
+async def submit_review_records(
+    data: ReviewRecordBatchCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student)
+):
+    """提交复习记录（不需要unit_id）"""
+    user_id = current_user.id
+
+    total_correct = 0
+    total_wrong = 0
+
+    for record_data in data.records:
+        # 创建学习记录
+        learning_record = LearningRecord(
+            user_id=user_id,
+            word_id=record_data.word_id,
+            learning_mode="review",
+            is_correct=record_data.is_correct,
+            time_spent=record_data.time_spent
+        )
+        db.add(learning_record)
+
+        if record_data.is_correct:
+            total_correct += 1
+        else:
+            total_wrong += 1
+
+        # 更新单词掌握度
+        await update_word_mastery(
+            db, user_id, record_data.word_id,
+            record_data.learning_mode, record_data.is_correct
+        )
+
+    # 更新学习日历
+    total_time_ms = sum(r.time_spent for r in data.records)
+    await update_study_calendar(db, user_id, len(data.records), total_time_ms)
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"成功记录 {len(data.records)} 条复习数据",
+        "total_records": len(data.records),
+        "correct_count": total_correct,
+        "wrong_count": total_wrong,
+    }

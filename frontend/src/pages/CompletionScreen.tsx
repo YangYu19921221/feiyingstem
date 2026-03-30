@@ -53,7 +53,7 @@ const CompletionScreen = () => {
       earnFood({
         score: data.score,
         total: data.total,
-        mode: data.mode as 'flashcard' | 'quiz' | 'fillblank' | 'spelling',
+        mode: data.mode as 'classify' | 'quiz' | 'fillblank' | 'spelling',
       }).then(res => setFoodResult(res)).catch(() => {});
     }
   }, []);
@@ -98,11 +98,11 @@ const CompletionScreen = () => {
   // 根据模式返回不同的颜色主题
   const getThemeColors = () => {
     switch (data.mode) {
-      case 'flashcard':
+      case 'classify':
         return {
-          gradient: 'from-blue-500 via-cyan-500 to-teal-500',
-          bg: 'from-blue-50 via-cyan-50 to-teal-50',
-          icon: '🃏'
+          gradient: 'from-teal-500 via-emerald-500 to-green-500',
+          bg: 'from-teal-50 via-emerald-50 to-green-50',
+          icon: '🧠'
         };
       case 'spelling':
         return {

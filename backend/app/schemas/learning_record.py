@@ -77,6 +77,7 @@ class WordMasteryResponse(BaseModel):
     correct_count: int
     wrong_count: int
     mastery_level: int
+    review_stage: int = 0
     flashcard_correct: int
     flashcard_wrong: int
     quiz_correct: int
@@ -90,6 +91,28 @@ class WordMasteryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ReviewWordResponse(BaseModel):
+    """复习单词响应（含完整单词信息）"""
+    mastery_id: int
+    word_id: int
+    mastery_level: int
+    review_stage: int = 0
+    next_review_at: Optional[datetime]
+    last_practiced_at: Optional[datetime]
+    word: str
+    phonetic: Optional[str] = None
+    meaning: Optional[str] = None
+    part_of_speech: Optional[str] = None
+    example_sentence: Optional[str] = None
+    example_translation: Optional[str] = None
+    difficulty: int = 1
+
+
+class ReviewRecordBatchCreate(BaseModel):
+    """批量创建复习记录（不需要unit_id）"""
+    records: List[WordAnswerCreate]
 
 
 class StudyCalendarUpdate(BaseModel):

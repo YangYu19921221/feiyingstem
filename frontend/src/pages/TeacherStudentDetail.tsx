@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Clock, BookOpen, Target, TrendingDown, Calendar, Sparkles, FileText, Loader2 } from 'lucide-react';
 import api from '../api/client';
 import { analyzeStudentMistakes, generatePersonalizedExam } from '../api/teacher';
+import { getStudentWordTrends } from '../api/analytics';
+import WordTrendChart from '../components/WordTrendChart';
 import type { StudentMistakeAnalysis } from '../types/exam';
 
 interface StudentStats {
@@ -75,7 +77,7 @@ const TeacherStudentDetail = () => {
 
   const getModeIcon = (mode: string) => {
     switch (mode) {
-      case 'flashcard': return '🎴';
+      case 'classify': return '🧠';
       case 'quiz': return '📝';
       case 'spelling': return '✍️';
       case 'fillblank': return '📋';
@@ -85,7 +87,7 @@ const TeacherStudentDetail = () => {
 
   const getModeName = (mode: string) => {
     switch (mode) {
-      case 'flashcard': return '卡片';
+      case 'classify': return '分类';
       case 'quiz': return '选择题';
       case 'spelling': return '拼写';
       case 'fillblank': return '填空';
@@ -298,6 +300,13 @@ const TeacherStudentDetail = () => {
             <div className="text-3xl font-bold text-gray-800">{stats.weak_words_count}</div>
           </motion.div>
         </div>
+
+        {/* 单词学习趋势（日/月/年） */}
+        <WordTrendChart
+          fetchData={(period, year, month) =>
+            getStudentWordTrends(parseInt(studentId || '0'), period, year, month)
+          }
+        />
 
         {/* 薄弱点详情 */}
         <motion.div

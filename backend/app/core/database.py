@@ -60,6 +60,58 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 为 word_mastery 表添加 review_stage 字段
+        try:
+            await conn.execute(text(
+                "ALTER TABLE word_mastery ADD COLUMN review_stage INTEGER NOT NULL DEFAULT 0"
+            ))
+        except Exception:
+            pass
+        # 回填已有的 NULL 值
+        try:
+            await conn.execute(text(
+                "UPDATE word_mastery SET review_stage = 0 WHERE review_stage IS NULL"
+            ))
+        except Exception:
+            pass
+        # 添加索引加速复习查询
+        try:
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_word_mastery_user_review ON word_mastery(user_id, next_review_at)"
+            ))
+        except Exception:
+            pass
+
+        # 迁移: 重建 exam_questions 表去掉 question_type 的 CHECK 约束（支持新题型）
+        try:
+            # 检查是否需要迁移（如果旧约束存在）
+            check_result = await conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE name='exam_questions'"
+            ))
+            row = check_result.fetchone()
+            if row and 'CHECK' in (row[0] or ''):
+                await conn.execute(text(
+                    "CREATE TABLE IF NOT EXISTS exam_questions_new ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    "paper_id INTEGER NOT NULL,"
+                    "question_type VARCHAR(20),"
+                    "word_id INTEGER,"
+                    "question_text TEXT NOT NULL,"
+                    "options TEXT,"
+                    "correct_answer TEXT NOT NULL,"
+                    "score INTEGER DEFAULT 5,"
+                    "order_index INTEGER DEFAULT 0,"
+                    "FOREIGN KEY (paper_id) REFERENCES exam_papers(id) ON DELETE CASCADE,"
+                    "FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE SET NULL)"
+                ))
+                await conn.execute(text(
+                    "INSERT OR IGNORE INTO exam_questions_new SELECT * FROM exam_questions"
+                ))
+                await conn.execute(text("DROP TABLE exam_questions"))
+                await conn.execute(text("ALTER TABLE exam_questions_new RENAME TO exam_questions"))
+        except Exception:
+            pass
+
         # 迁移: 为 users 表添加 phone 字段
         try:
             await conn.execute(text(

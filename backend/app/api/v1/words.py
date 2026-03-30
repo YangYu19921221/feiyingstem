@@ -233,19 +233,17 @@ async def create_word(
     - 支持一词多义
     - 支持标签分类
     """
-    # 检查单词是否已存在
-    result = await db.execute(select(Word).where(Word.word == word_data.word.lower()))
+    # 检查单词是否已存在（忽略大小写查重，但保留原始大小写存储）
+    result = await db.execute(select(Word).where(func.lower(Word.word) == word_data.word.strip().lower()))
     existing_word = result.scalar_one_or_none()
 
     if existing_word:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"单词 '{word_data.word}' 已存在"
-        )
+        # 返回已有单词的信息，前端可以直接将其添加到单元
+        return await get_word_detail(existing_word.id, db)
 
-    # 创建单词
+    # 创建单词（保留原始大小写）
     db_word = Word(
-        word=word_data.word.lower(),
+        word=word_data.word.strip(),
         phonetic=word_data.phonetic,
         syllables=word_data.syllables,
         difficulty=word_data.difficulty,
@@ -316,7 +314,7 @@ async def list_words(
     if search:
         query = query.where(
             or_(
-                Word.word.like(f"%{search}%"),
+                func.lower(Word.word).like(f"%{search.lower()}%"),
                 Word.phonetic.like(f"%{search}%")
             )
         )
@@ -471,16 +469,15 @@ async def batch_import_words(
         try:
             # 检查是否已存在
             result = await db.execute(
-                select(Word).where(Word.word == word_data.word.lower())
+                select(Word).where(func.lower(Word.word) == word_data.word.lower())
             )
             if result.scalar_one_or_none():
                 failed_words.append(f"{word_data.word} (已存在)")
                 failed_count += 1
                 continue
 
-            # 创建单词
             db_word = Word(
-                word=word_data.word.lower(),
+                word=word_data.word.strip(),
                 phonetic=word_data.phonetic,
                 syllables=word_data.syllables,
                 difficulty=word_data.difficulty,

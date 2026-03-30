@@ -25,6 +25,7 @@ interface WordItem {
   id: number;
   word: string;
   phonetic: string;
+  syllables: string;
   difficulty: number;
   grade_level: string;
   definitions: WordDefinition[];
@@ -728,8 +729,8 @@ const TeacherWordLibrary = () => {
                     <input
                       type="text"
                       value={editingWord.word}
-                      onChange={(e) => setEditingWord({ ...editingWord, word: e.target.value.toLowerCase() })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                      readOnly
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
                     />
                   </div>
 
@@ -754,6 +755,20 @@ const TeacherWordLibrary = () => {
                         AI
                       </button>
                     </div>
+                  </div>
+
+                  {/* 划节 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      划节 <span className="text-xs text-gray-400">(用 - 分隔音节，如 coun-try)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editingWord.syllables || ''}
+                      onChange={(e) => setEditingWord({ ...editingWord, syllables: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                      placeholder="如: beau-ti-ful"
+                    />
                   </div>
 
                   {/* 难度 */}

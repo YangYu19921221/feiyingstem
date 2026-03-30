@@ -1,7 +1,7 @@
 """
 学习数据分析API
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc, Integer, case
 from typing import List, Dict, Any, Optional
@@ -10,6 +10,7 @@ import math
 
 from app.core.database import get_db
 from app.models.user import User
+from app.models.user import StudyCalendar
 from app.models.learning import WordMastery, LearningRecord
 from app.api.v1.auth import get_current_user
 from pydantic import BaseModel
@@ -423,3 +424,244 @@ async def get_retention_curve(
         has_enough_data=has_any_actual,
         message=message,
     )
+
+
+# ========================================
+# 单词学习趋势 (日/月/年)
+# ========================================
+
+async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: int, month: int):
+    """
+    查询用户的单词学习趋势数据（共用函数，学生端和教师端复用）
+    period: daily | monthly | yearly
+    """
+    import calendar as cal
+    from collections import defaultdict
+
+    if period == "daily":
+        # 查当月每天的数据
+        first_day = date(year, month, 1)
+        days_in_month = cal.monthrange(year, month)[1]
+        last_day = date(year, month, days_in_month)
+
+        result = await db.execute(
+            select(StudyCalendar)
+            .where(and_(
+                StudyCalendar.user_id == user_id,
+                StudyCalendar.study_date >= first_day,
+                StudyCalendar.study_date <= last_day,
+            ))
+        )
+        records = {r.study_date: r for r in result.scalars().all()}
+
+        # 查当月新掌握的单词数（mastery_level >= 3 且 updated_at 在当月）
+        mastered_result = await db.execute(
+            select(func.count(WordMastery.id))
+            .where(and_(
+                WordMastery.user_id == user_id,
+                WordMastery.mastery_level >= 3,
+                WordMastery.updated_at >= datetime(year, month, 1),
+                WordMastery.updated_at < datetime(year, month, days_in_month, 23, 59, 59),
+            ))
+        )
+        total_mastered = mastered_result.scalar() or 0
+
+        data = []
+        total_words = 0
+        total_duration = 0
+        study_days = 0
+        for day in range(1, days_in_month + 1):
+            d = date(year, month, day)
+            rec = records.get(d)
+            words = rec.words_learned if rec else 0
+            dur = rec.duration if rec else 0
+            total_words += words
+            total_duration += dur
+            if words > 0:
+                study_days += 1
+            data.append({
+                "label": f"{month}/{day}",
+                "date": d.isoformat(),
+                "words_learned": words,
+                "duration_minutes": round(dur / 60, 1),
+            })
+
+        # 查上月数据做环比
+        prev_month = month - 1 if month > 1 else 12
+        prev_year = year if month > 1 else year - 1
+        prev_days = cal.monthrange(prev_year, prev_month)[1]
+        prev_result = await db.execute(
+            select(func.sum(StudyCalendar.words_learned), func.sum(StudyCalendar.duration))
+            .where(and_(
+                StudyCalendar.user_id == user_id,
+                StudyCalendar.study_date >= date(prev_year, prev_month, 1),
+                StudyCalendar.study_date <= date(prev_year, prev_month, prev_days),
+            ))
+        )
+        prev_row = prev_result.one()
+        prev_words = prev_row[0] or 0
+        prev_duration = prev_row[1] or 0
+
+        return {
+            "period": "daily",
+            "year": year,
+            "month": month,
+            "data": data,
+            "summary": {
+                "total_words": total_words,
+                "total_mastered": total_mastered,
+                "total_duration_minutes": round(total_duration / 60),
+                "avg_daily_words": round(total_words / max(study_days, 1), 1),
+                "study_days": study_days,
+                "prev_total_words": prev_words,
+                "prev_total_duration_minutes": round(prev_duration / 60),
+            },
+        }
+
+    elif period == "monthly":
+        # 查当年12个月的数据
+        result = await db.execute(
+            select(StudyCalendar)
+            .where(and_(
+                StudyCalendar.user_id == user_id,
+                StudyCalendar.study_date >= date(year, 1, 1),
+                StudyCalendar.study_date <= date(year, 12, 31),
+            ))
+        )
+        all_records = result.scalars().all()
+
+        # 按月份分组
+        monthly_data = defaultdict(lambda: {"words": 0, "duration": 0, "days": 0})
+        for rec in all_records:
+            m = rec.study_date.month
+            monthly_data[m]["words"] += rec.words_learned
+            monthly_data[m]["duration"] += rec.duration
+            if rec.words_learned > 0:
+                monthly_data[m]["days"] += 1
+
+        # 查每月掌握数
+        mastered_by_month = defaultdict(int)
+        mastered_result = await db.execute(
+            select(WordMastery.updated_at)
+            .where(and_(
+                WordMastery.user_id == user_id,
+                WordMastery.mastery_level >= 3,
+                WordMastery.updated_at >= datetime(year, 1, 1),
+                WordMastery.updated_at <= datetime(year, 12, 31, 23, 59, 59),
+            ))
+        )
+        for row in mastered_result.scalars().all():
+            if row:
+                mastered_by_month[row.month] += 1
+
+        MONTH_LABELS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
+        data = []
+        total_words = 0
+        total_duration = 0
+        total_mastered = 0
+        total_study_days = 0
+        for m in range(1, 13):
+            md = monthly_data[m]
+            total_words += md["words"]
+            total_duration += md["duration"]
+            total_mastered += mastered_by_month[m]
+            total_study_days += md["days"]
+            data.append({
+                "label": MONTH_LABELS[m - 1],
+                "date": f"{year}-{m:02d}",
+                "words_learned": md["words"],
+                "words_mastered": mastered_by_month[m],
+                "duration_minutes": round(md["duration"] / 60, 1),
+            })
+
+        # 查上一年数据做同比
+        prev_result = await db.execute(
+            select(func.sum(StudyCalendar.words_learned), func.sum(StudyCalendar.duration))
+            .where(and_(
+                StudyCalendar.user_id == user_id,
+                StudyCalendar.study_date >= date(year - 1, 1, 1),
+                StudyCalendar.study_date <= date(year - 1, 12, 31),
+            ))
+        )
+        prev_row = prev_result.one()
+        prev_words = prev_row[0] or 0
+        prev_duration = prev_row[1] or 0
+
+        return {
+            "period": "monthly",
+            "year": year,
+            "data": data,
+            "summary": {
+                "total_words": total_words,
+                "total_mastered": total_mastered,
+                "total_duration_minutes": round(total_duration / 60),
+                "avg_daily_words": round(total_words / max(total_study_days, 1), 1),
+                "study_days": total_study_days,
+                "prev_total_words": prev_words,
+                "prev_total_duration_minutes": round(prev_duration / 60),
+            },
+        }
+
+    else:  # yearly
+        # 查所有年份的数据
+        result = await db.execute(
+            select(StudyCalendar)
+            .where(StudyCalendar.user_id == user_id)
+            .order_by(StudyCalendar.study_date)
+        )
+        all_records = result.scalars().all()
+
+        yearly_data = defaultdict(lambda: {"words": 0, "duration": 0, "days": 0})
+        for rec in all_records:
+            y = rec.study_date.year
+            yearly_data[y]["words"] += rec.words_learned
+            yearly_data[y]["duration"] += rec.duration
+            if rec.words_learned > 0:
+                yearly_data[y]["days"] += 1
+
+        if not yearly_data:
+            current_year = date.today().year
+            yearly_data[current_year] = {"words": 0, "duration": 0, "days": 0}
+
+        data = []
+        total_words = 0
+        total_duration = 0
+        for y in sorted(yearly_data.keys()):
+            yd = yearly_data[y]
+            total_words += yd["words"]
+            total_duration += yd["duration"]
+            data.append({
+                "label": f"{y}年",
+                "date": str(y),
+                "words_learned": yd["words"],
+                "duration_minutes": round(yd["duration"] / 60, 1),
+                "study_days": yd["days"],
+            })
+
+        return {
+            "period": "yearly",
+            "data": data,
+            "summary": {
+                "total_words": total_words,
+                "total_duration_minutes": round(total_duration / 60),
+                "study_days": sum(yd["days"] for yd in yearly_data.values()),
+            },
+        }
+
+
+@router.get("/word-trends")
+async def get_word_trends(
+    period: str = Query("daily", regex="^(daily|monthly|yearly)$"),
+    year: int = Query(None),
+    month: int = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取单词学习趋势（日/月/年）"""
+    today = date.today()
+    if year is None:
+        year = today.year
+    if month is None:
+        month = today.month
+
+    return await fetch_word_trends(db, current_user.id, period, year, month)

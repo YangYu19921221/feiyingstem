@@ -18,7 +18,7 @@ const MistakeBook = () => {
   const [mistakeWords, setMistakeWords] = useState<MistakeWordDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<string>('flashcard');
+  const [selectedMode, setSelectedMode] = useState<string>('quiz');
 
   useEffect(() => {
     loadData();
@@ -60,7 +60,6 @@ const MistakeBook = () => {
       // 跳转到对应的学习模式
       // 注意: 这里使用一个特殊的unitId (0或'mistake')来标识错题练习模式
       const modeRoutes: { [key: string]: string } = {
-        flashcard: '/student/units/0/flashcard',
         quiz: '/student/units/0/quiz',
         spelling: '/student/units/0/spelling',
         fillblank: '/student/units/0/fillblank',
@@ -180,9 +179,8 @@ const MistakeBook = () => {
             快速开始练习
           </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-3 gap-4 mb-4">
             {[
-              { id: 'flashcard', name: '闪卡', icon: '🃏' },
               { id: 'quiz', name: '选择题', icon: '✅' },
               { id: 'spelling', name: '拼写', icon: '✏️' },
               { id: 'fillblank', name: '填空', icon: '📝' },
@@ -303,11 +301,6 @@ const MistakeBook = () => {
 
                         {/* 错误模式统计 */}
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {word.flashcard_wrong > 0 && (
-                            <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
-                              闪卡错{word.flashcard_wrong}次
-                            </span>
-                          )}
                           {word.quiz_wrong > 0 && (
                             <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">
                               选择题错{word.quiz_wrong}次

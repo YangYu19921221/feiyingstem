@@ -80,3 +80,55 @@ export interface RetentionCurveResponse {
 export const getRetentionCurve = async (): Promise<RetentionCurveResponse> => {
   return client.get('/analytics/retention-curve');
 };
+
+// ===== 单词学习趋势 =====
+
+export interface TrendDataItem {
+  label: string;
+  date: string;
+  words_learned: number;
+  words_mastered?: number;
+  duration_minutes: number;
+  study_days?: number;
+}
+
+export interface TrendSummary {
+  total_words: number;
+  total_mastered?: number;
+  total_duration_minutes: number;
+  avg_daily_words?: number;
+  study_days: number;
+  prev_total_words?: number;
+  prev_total_duration_minutes?: number;
+}
+
+export interface WordTrendResponse {
+  period: 'daily' | 'monthly' | 'yearly';
+  year?: number;
+  month?: number;
+  data: TrendDataItem[];
+  summary: TrendSummary;
+}
+
+export const getWordTrends = async (
+  period: 'daily' | 'monthly' | 'yearly',
+  year?: number,
+  month?: number,
+): Promise<WordTrendResponse> => {
+  const params = new URLSearchParams({ period });
+  if (year) params.set('year', String(year));
+  if (month) params.set('month', String(month));
+  return client.get(`/analytics/word-trends?${params}`);
+};
+
+export const getStudentWordTrends = async (
+  studentId: number,
+  period: 'daily' | 'monthly' | 'yearly',
+  year?: number,
+  month?: number,
+): Promise<WordTrendResponse> => {
+  const params = new URLSearchParams({ period });
+  if (year) params.set('year', String(year));
+  if (month) params.set('month', String(month));
+  return client.get(`/teacher/analytics/student/${studentId}/word-trends?${params}`);
+};

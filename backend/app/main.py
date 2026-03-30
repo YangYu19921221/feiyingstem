@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1 import auth, words, learning, exams, ai, competition, achievements, analytics
 from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator
-from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet
+from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions
 from app.api.v1 import subscription, pronunciation
 
@@ -58,6 +58,7 @@ app.include_router(student_assignments.router, prefix="/api/v1/student", tags=["
 app.include_router(student_homework.router, prefix="/api/v1/student", tags=["学生端-作业完成"])
 app.include_router(student_dashboard.router, prefix="/api/v1/student", tags=["学生端-仪表板"])
 app.include_router(student_pet.router, prefix="/api/v1/student", tags=["学生端-宠物养成"])
+app.include_router(student_unit_exam.router, prefix="/api/v1/student/exam", tags=["学生端-单元考试"])
 app.include_router(admin_users.router, prefix="/api/v1/admin", tags=["管理员-用户管理"])
 app.include_router(admin_content.router, prefix="/api/v1/admin/content", tags=["管理员-内容管理"])
 app.include_router(admin_statistics.router, prefix="/api/v1/admin", tags=["管理员-统计数据"])

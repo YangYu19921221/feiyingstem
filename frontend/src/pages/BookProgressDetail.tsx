@@ -229,7 +229,7 @@ const BookProgressDetail = () => {
                       </div>
 
                       <button
-                        onClick={() => navigate(`/student/units/${unit.unit_id}/flashcard`)}
+                        onClick={() => navigate(`/student/units/${unit.unit_id}/classify`)}
                         className={`px-6 py-2 rounded-lg hover:shadow-md transition font-medium whitespace-nowrap ${
                           unit.is_completed
                             ? 'bg-green-500 text-white'

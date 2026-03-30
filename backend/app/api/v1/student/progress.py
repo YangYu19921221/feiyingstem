@@ -18,6 +18,18 @@ from app.api.v1.auth import get_current_student
 
 router = APIRouter()
 
+
+def _build_unit_info(unit: Unit, word_book: WordBook) -> dict:
+    """构建 unit_info 响应字典"""
+    return {
+        "id": unit.id,
+        "unit_number": unit.unit_number,
+        "name": unit.name,
+        "description": unit.description,
+        "book_id": unit.book_id,
+        "grade_level": word_book.grade_level if word_book else None,
+    }
+
 # ========================================
 # 开始/继续学习 (断点续学核心)
 # ========================================
@@ -40,15 +52,20 @@ async def start_learning(
     user_id = current_user.id
     learning_mode = request.learning_mode
 
-    # 1. 验证单元是否存在
-    result = await db.execute(select(Unit).where(Unit.id == unit_id))
-    unit = result.scalar_one_or_none()
+    # 1. 验证单元是否存在，同时获取单词本的 grade_level
+    result = await db.execute(
+        select(Unit, WordBook)
+        .join(WordBook, WordBook.id == Unit.book_id)
+        .where(Unit.id == unit_id)
+    )
+    row = result.one_or_none()
 
-    if not unit:
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"单元ID {unit_id} 不存在"
         )
+    unit, word_book = row
 
     # 2. 获取该单元的所有单词(按order_index排序)
     result = await db.execute(
@@ -116,13 +133,7 @@ async def start_learning(
             progress_percentage=0.0,
             words=[],
             message=f"该单元暂时没有单词,请联系老师添加单词后再开始学习",
-            unit_info={
-                "id": unit.id,
-                "unit_number": unit.unit_number,
-                "name": unit.name,
-                "description": unit.description,
-                "book_id": unit.book_id
-            }
+            unit_info=_build_unit_info(unit, word_book)
         )
 
     # 5. 查询是否有学习进度记录
@@ -196,13 +207,7 @@ async def start_learning(
         progress_percentage=round(progress_percentage, 2),
         words=words,
         message=message,
-        unit_info={
-            "id": unit.id,
-            "unit_number": unit.unit_number,
-            "name": unit.name,
-            "description": unit.description,
-            "book_id": unit.book_id
-        }
+        unit_info=_build_unit_info(unit, word_book)
     )
 
 
@@ -352,7 +357,10 @@ async def get_book_progress(
                     learning_mode = p.learning_mode
                     is_completed = p.is_completed
 
-        word_count = unit.word_count
+        word_count_result = await db.execute(
+            select(func.count()).select_from(UnitWord).where(UnitWord.unit_id == unit.id)
+        )
+        word_count = word_count_result.scalar() or 0
         progress_percentage = (max_completed / word_count * 100) if word_count > 0 else 0.0
 
         total_words_in_book += word_count
@@ -427,6 +435,12 @@ async def get_unit_progress(
     )
     progress = result.scalar_one_or_none()
 
+    # 实时查单词数
+    uc_result = await db.execute(
+        select(func.count()).select_from(UnitWord).where(UnitWord.unit_id == unit.id)
+    )
+    real_wc = uc_result.scalar() or 0
+
     # 3. 组装响应
     if progress:
         progress_percentage = (progress.completed_words / progress.total_words * 100) if progress.total_words > 0 else 0.0
@@ -435,7 +449,7 @@ async def get_unit_progress(
             unit_id=unit.id,
             unit_number=unit.unit_number,
             unit_name=unit.name,
-            word_count=unit.word_count,
+            word_count=real_wc,
             completed_words=progress.completed_words,
             progress_percentage=round(progress_percentage, 2),
             has_progress=True,
@@ -445,12 +459,11 @@ async def get_unit_progress(
             is_completed=progress.is_completed
         )
     else:
-        # 没有学习进度
         return UnitProgressResponse(
             unit_id=unit.id,
             unit_number=unit.unit_number,
             unit_name=unit.name,
-            word_count=unit.word_count,
+            word_count=real_wc,
             completed_words=0,
             progress_percentage=0.0,
             has_progress=False,
@@ -495,9 +508,11 @@ async def get_student_books(
         )
         unit_count = result.scalar()
 
-        # 获取总单词数
+        # 获取总单词数（实时计算）
         result = await db.execute(
-            select(func.sum(Unit.word_count)).where(Unit.book_id == book.id)
+            select(func.count()).select_from(UnitWord)
+            .join(Unit, UnitWord.unit_id == Unit.id)
+            .where(Unit.book_id == book.id)
         )
         word_count = result.scalar() or 0
 

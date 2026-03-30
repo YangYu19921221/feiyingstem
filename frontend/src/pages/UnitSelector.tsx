@@ -68,10 +68,11 @@ const UnitSelector = () => {
   }
 
   const learningModes = [
-    { key: 'flashcard', icon: '🃏', name: '卡片', color: 'from-blue-500 to-cyan-500', requiresPrevious: null },
-    { key: 'quiz', icon: '✅', name: '测试', color: 'from-green-500 to-teal-500', badge: 'AI', requiresPrevious: 'flashcard' },
+    { key: 'classify', icon: '🧠', name: '分类', color: 'from-teal-500 to-emerald-500', requiresPrevious: null },
+    { key: 'quiz', icon: '✅', name: '测试', color: 'from-green-500 to-teal-500', badge: 'AI', requiresPrevious: 'classify' },
     { key: 'spelling', icon: '✏️', name: '拼写', color: 'from-purple-500 to-pink-500', badge: 'AI', requiresPrevious: 'quiz' },
     { key: 'fillblank', icon: '📝', name: '填空', color: 'from-orange-500 to-red-500', badge: 'AI', requiresPrevious: 'spelling' },
+    { key: 'exam', icon: '📋', name: '考试', color: 'from-indigo-500 to-purple-600', badge: '测验', requiresPrevious: 'classify' },
   ];
 
   return (
@@ -212,7 +213,7 @@ const UnitSelector = () => {
                 {/* 学习模式按钮 */}
                 <div>
                   <p className="text-sm text-gray-500 mb-3">选择学习模式:</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {learningModes.map((mode, modeIndex) => {
                       return (
                         <motion.button
