@@ -91,7 +91,48 @@ const WordClassifyLearning = () => {
   const initLearning = async (id: number) => {
     try {
       setLoading(true);
-      const data = await startLearning({ unit_id: id, learning_mode: 'classify' });
+
+      const isReviewPractice = sessionStorage.getItem('is_review_practice') === 'true';
+      const isMistakePractice = sessionStorage.getItem('is_mistake_practice') === 'true';
+
+      let data: StartLearningResponse;
+
+      if ((isReviewPractice || isMistakePractice) && id === 0) {
+        // 复习模式或错题模式：从 sessionStorage 读取单词
+        const storageKey = isReviewPractice ? 'review_practice_words' : 'mistake_practice_words';
+        const label = isReviewPractice ? '记忆曲线复习' : '错题练习';
+        const wordsJson = sessionStorage.getItem(storageKey);
+
+        sessionStorage.removeItem('is_review_practice');
+        sessionStorage.removeItem('is_mistake_practice');
+
+        if (!wordsJson) {
+          setError(`${label}数据丢失，请返回重试`);
+          setLoading(false);
+          return;
+        }
+
+        const words = JSON.parse(wordsJson);
+        data = {
+          has_existing_progress: false,
+          current_word_index: 0,
+          completed_words: 0,
+          total_words: words.length,
+          progress_percentage: 0,
+          message: label,
+          unit_info: {
+            id: 0,
+            unit_number: 0,
+            name: label,
+            description: null,
+            book_id: 0,
+            grade_level: null,
+          },
+          words,
+        };
+      } else {
+        data = await startLearning({ unit_id: id, learning_mode: 'classify' });
+      }
 
       if (!data.words || data.words.length === 0) {
         setError('该单元没有单词');
@@ -102,16 +143,18 @@ const WordClassifyLearning = () => {
       setLearningData(data);
       setCurrentGroupIndex(0);
 
-      // 创建学习会话
-      try {
-        const session = await createStudySession({
-          unit_id: id,
-          learning_mode: 'classify',
-          total_words: data.words.length,
-        });
-        setStudySession(session);
-      } catch (e) {
-        console.error('创建学习会话失败:', e);
+      // 创建学习会话（复习/错题模式跳过）
+      if (id !== 0) {
+        try {
+          const session = await createStudySession({
+            unit_id: id,
+            learning_mode: 'classify',
+            total_words: data.words.length,
+          });
+          setStudySession(session);
+        } catch (e) {
+          console.error('创建学习会话失败:', e);
+        }
       }
     } catch (e) {
       console.error('初始化学习失败:', e);
