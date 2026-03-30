@@ -330,7 +330,7 @@ const SystemUpdatePanel: React.FC = () => {
           <div>
             <div className="text-sm text-gray-500">当前版本</div>
             <div className="flex items-center gap-3">
-              <span className="text-2xl font-bold text-gray-800">v{version?.version || '...'}</span>
+              <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600 animate-pulse">v{version?.version || '...'}</span>
               <span className="text-xs text-gray-400 font-mono">{version?.commit?.slice(0, 7) || ''}</span>
             </div>
           </div>

@@ -117,7 +117,7 @@ const AdminDashboard = () => {
             <span className="text-3xl">⚡</span>
             <h1 className="text-xl font-bold text-gray-800">系统管理后台</h1>
             {currentVersion && (
-              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full font-mono">v{currentVersion}</span>
+              <span className="text-xs px-2 py-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-full font-mono animate-pulse shadow-sm">v{currentVersion}</span>
             )}
           </div>
           <div className="flex items-center gap-4">
