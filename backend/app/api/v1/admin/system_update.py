@@ -16,7 +16,9 @@ from app.models.user import User
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/www/wwwroot/english-helper")
+# 自动检测项目根目录：backend 的上级目录
+_DEFAULT_ROOT = str(Path(__file__).resolve().parents[5])
+PROJECT_ROOT = os.getenv("PROJECT_ROOT", _DEFAULT_ROOT)
 
 _update_lock = asyncio.Lock()
 _update_log: list[dict] = []
