@@ -58,8 +58,7 @@ export default function DictationPhase({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (submitted) return;
-    const val = e.target.value.replace(/[^a-zA-Z '\-]/g, '').slice(0, wordLength);
-    setUserInput(val);
+    setUserInput(e.target.value.slice(0, wordLength));
   };
 
   const handleSubmit = useCallback(() => {
@@ -238,15 +237,15 @@ export default function DictationPhase({
 
           {/* 字母格子 */}
           <div
-            className="flex flex-wrap gap-1.5 justify-center mb-4 cursor-text"
+            className="flex flex-wrap gap-0.5 justify-center mb-4 cursor-text"
             onClick={() => inputRef.current?.focus()}
           >
             {Array.from({ length: wordLength }, (_, i) => {
               const answer = currentWord.word;
-              const isSpace = answer[i] === ' ';
+              const ch = answer[i];
 
               // 空格位置显示为间隔标记
-              if (isSpace) {
+              if (ch === ' ') {
                 return (
                   <div
                     key={i}
@@ -254,6 +253,27 @@ export default function DictationPhase({
                   >
                     ␣
                   </div>
+                );
+              }
+
+              // 连字符/标点用窄格子显示
+              if (ch === '-' || ch === '.' || ch === '\'') {
+                const letter = getSlotLetter(i);
+                return (
+                  <motion.div
+                    key={i}
+                    initial={submitted ? { scale: 0.8 } : false}
+                    animate={submitted ? { scale: 1 } : {}}
+                    transition={{ delay: i * 0.04 }}
+                    className={`
+                      w-4 h-12 flex items-end justify-center pb-1
+                      text-2xl font-mono font-bold
+                      border-b-[3px] transition-colors duration-200
+                      ${getSlotStyle(i)}
+                    `}
+                  >
+                    {letter}
+                  </motion.div>
                 );
               }
 

@@ -88,14 +88,24 @@ def _sync_verify(audio_bytes: bytes, target_word: str) -> dict:
         tmp.close()
 
         # Whisper 识别（关闭 VAD，短单词容易被误判为静音）
-        segments, info = model.transcribe(
-            tmp.name,
-            language="en",
-            beam_size=5,
-            word_timestamps=False,
-            vad_filter=False,
-            initial_prompt=f"The student is reading the English word: {target_word}",
-        )
+        try:
+            segments, info = model.transcribe(
+                tmp.name,
+                language="en",
+                beam_size=5,
+                word_timestamps=False,
+                vad_filter=False,
+                initial_prompt=f"The student is reading the English word: {target_word}",
+            )
+        except Exception as e:
+            logger.warning(f"Whisper 音频解码失败: {e}")
+            return {
+                "matched": False,
+                "transcript": "",
+                "target": target_word,
+                "confidence": 0,
+                "error": "音频解码失败，请重新录音",
+            }
 
         # 拼接识别结果
         transcript = ""

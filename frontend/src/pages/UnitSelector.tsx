@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getBookProgress } from '../api/progress';
 import type { BookProgress } from '../api/progress';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 
 const UnitSelector = () => {
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
   const [bookProgress, setBookProgress] = useState<BookProgress | null>(null);
   const [loading, setLoading] = useState(true);
-  const hasLoadedOnce = useRef(false); // 使用ref避免触发重新渲染
+  const hasLoadedOnce = useRef(false);
+  const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
 
   useEffect(() => {
     if (bookId) {
@@ -27,7 +28,7 @@ const UnitSelector = () => {
       console.error('加载单词本进度失败:', error);
     } finally {
       setLoading(false);
-      hasLoadedOnce.current = true; // 标记已加载,不触发渲染
+      hasLoadedOnce.current = true;
     }
   };
 
@@ -75,11 +76,14 @@ const UnitSelector = () => {
     { key: 'exam', icon: '📋', name: '考试', color: 'from-indigo-500 to-purple-600', badge: '测验', requiresPrevious: 'classify' },
   ];
 
+  // 找到第一个未完成的单元，作为"当前学习"高亮
+  const firstIncompleteIndex = bookProgress.units.findIndex(u => !u.is_completed);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3">
+        <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
             <button
               onClick={handleBack}
@@ -88,17 +92,17 @@ const UnitSelector = () => {
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div className="flex items-center gap-3 flex-1">
-              <span className="text-3xl">📖</span>
+              <span className="text-2xl">📖</span>
               <div>
-                <h1 className="text-xl font-bold text-gray-800">{bookProgress.book_name}</h1>
-                <p className="text-sm text-gray-500">
+                <h1 className="text-lg font-bold text-gray-800">{bookProgress.book_name}</h1>
+                <p className="text-xs text-gray-500">
                   {bookProgress.unit_count} 个单元 · {bookProgress.word_count} 个单词
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-500">整体进度</p>
-              <p className="text-2xl font-bold text-primary">
+              <p className="text-xs text-gray-500">整体进度</p>
+              <p className="text-xl font-bold text-primary">
                 {bookProgress.progress_percentage.toFixed(0)}%
               </p>
             </div>
@@ -106,13 +110,7 @@ const UnitSelector = () => {
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        {/* 选择提示 */}
-        <div className="mb-6 text-center">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">请选择要学习的单元</h2>
-          <p className="text-gray-500">点击学习模式按钮开始学习</p>
-        </div>
-
+      <div className="max-w-3xl mx-auto px-4 py-6">
         {/* 单元列表 */}
         {bookProgress.units.length === 0 ? (
           <motion.div
@@ -125,121 +123,151 @@ const UnitSelector = () => {
             <p className="text-sm text-gray-400">等待老师添加单元</p>
           </motion.div>
         ) : (
-          <div className="space-y-6">
-            {bookProgress.units.map((unit, index) => (
-              <motion.div
-                key={unit.unit_id}
-                initial={!hasLoadedOnce.current ? { opacity: 0, y: 10 } : false}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: !hasLoadedOnce.current ? Math.min(0.05 * index, 0.3) : 0 }}
-                className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition"
-              >
-                {/* 单元标题 */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-2xl">📌</span>
-                      <h3 className="text-xl font-bold text-gray-800">{unit.unit_name}</h3>
-                      {unit.is_completed && (
-                        <span className="px-3 py-1 bg-green-100 text-green-700 text-sm rounded-full font-medium">
-                          ✅ 已完成
-                        </span>
-                      )}
+          <div className="bg-white rounded-2xl shadow-md overflow-hidden divide-y divide-gray-100">
+            {bookProgress.units.map((unit, index) => {
+              const isExpanded = expandedUnitId === unit.unit_id;
+              const isCurrent = index === firstIncompleteIndex;
+              const progressColor = unit.is_completed
+                ? 'from-green-400 to-green-500'
+                : unit.progress_percentage > 0
+                ? 'from-blue-400 to-cyan-500'
+                : 'from-gray-300 to-gray-300';
+
+              return (
+                <motion.div
+                  key={unit.unit_id}
+                  initial={!hasLoadedOnce.current ? { opacity: 0 } : false}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.2, delay: !hasLoadedOnce.current ? Math.min(0.03 * index, 0.3) : 0 }}
+                >
+                  {/* 单元行 */}
+                  <div
+                    className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-gray-50 transition ${isCurrent ? 'bg-teal-50/50' : ''}`}
+                    onClick={() => setExpandedUnitId(isExpanded ? null : unit.unit_id)}
+                  >
+                    {/* 序号 */}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                      unit.is_completed
+                        ? 'bg-green-100 text-green-600'
+                        : isCurrent
+                        ? 'bg-teal-500 text-white'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {unit.is_completed ? '✓' : unit.unit_number || index + 1}
                     </div>
-                    <p className="text-sm text-gray-500 ml-11">
-                      {unit.word_count} 个单词 · 已掌握 {unit.completed_words} 个 · 剩余 {unit.word_count - unit.completed_words} 个
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-3xl font-bold text-primary">
-                      {unit.progress_percentage.toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-gray-500">完成度</p>
-                  </div>
-                </div>
 
-                {/* 进度条 */}
-                <div className="mb-4">
-                  <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={!hasLoadedOnce.current ? { width: 0 } : { width: `${unit.progress_percentage}%` }}
-                      animate={{ width: `${unit.progress_percentage}%` }}
-                      transition={{ duration: 0.5, delay: !hasLoadedOnce.current ? 0.2 : 0 }}
-                      className="h-full bg-gradient-to-r from-green-400 to-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {/* 断点续学提示 */}
-                {unit.has_progress && !unit.is_completed && (
-                  <motion.div
-                    initial={!hasLoadedOnce.current ? { opacity: 0, y: 5 } : false}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: !hasLoadedOnce.current ? 0.3 : 0 }}
-                    className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2"
-                  >
-                    <span className="text-xl">💡</span>
-                    <p className="text-sm text-yellow-800 flex-1">
-                      继续上次的学习,从第 <span className="font-bold">{unit.current_word_index + 1}</span> 个单词开始
-                      {unit.last_studied_at && (
-                        <span className="text-xs ml-2 opacity-75">
-                          (上次学习: {new Date(unit.last_studied_at).toLocaleString('zh-CN', {
-                            month: 'numeric',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: 'numeric'
-                          })})
+                    {/* 单元信息 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className={`font-bold truncate ${isCurrent ? 'text-teal-700' : 'text-gray-800'}`}>
+                          {unit.unit_name}
+                        </h3>
+                        {isCurrent && (
+                          <span className="px-1.5 py-0.5 bg-teal-500 text-white text-[10px] rounded font-medium shrink-0">
+                            当前
+                          </span>
+                        )}
+                      </div>
+                      {/* 进度条 */}
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full bg-gradient-to-r ${progressColor} rounded-full transition-all duration-500`}
+                            style={{ width: `${Math.max(unit.progress_percentage, 0)}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-400 w-8 text-right shrink-0">
+                          {unit.progress_percentage.toFixed(0)}%
                         </span>
-                      )}
-                    </p>
-                  </motion.div>
-                )}
+                      </div>
+                    </div>
 
-                {/* 已完成单元的复习提示 */}
-                {unit.is_completed && (
-                  <motion.div
-                    initial={!hasLoadedOnce.current ? { opacity: 0, y: 5 } : false}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: !hasLoadedOnce.current ? 0.3 : 0 }}
-                    className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2"
-                  >
-                    <span className="text-xl">🔄</span>
-                    <p className="text-sm text-green-800 flex-1">
-                      已完成学习，点击下方按钮可以重新复习巩固
-                    </p>
-                  </motion.div>
-                )}
+                    {/* 右侧按钮 */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartLearning(unit.unit_id, 'classify');
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg text-sm font-medium hover:shadow-md transition shrink-0 active:scale-95"
+                    >
+                      学习
+                    </button>
 
-                {/* 学习模式按钮 */}
-                <div>
-                  <p className="text-sm text-gray-500 mb-3">选择学习模式:</p>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {learningModes.map((mode, modeIndex) => {
-                      return (
-                        <motion.button
-                          key={mode.key}
-                          initial={!hasLoadedOnce.current ? { opacity: 0, scale: 0.95 } : false}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ duration: 0.2, delay: !hasLoadedOnce.current ? 0.3 + 0.03 * modeIndex : 0 }}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleStartLearning(unit.unit_id, mode.key)}
-                          className={`relative py-3 px-4 rounded-lg shadow-md transition font-medium flex items-center justify-center gap-2 bg-gradient-to-r ${mode.color} text-white hover:shadow-lg cursor-pointer`}
-                        >
-                          <span className="text-xl">{mode.icon}</span>
-                          <span>{mode.name}</span>
-                          {mode.badge && (
-                            <span className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-white text-purple-600 text-xs rounded-full font-bold shadow">
-                              {mode.badge}
-                            </span>
-                          )}
-                        </motion.button>
-                      );
-                    })}
+                    {/* 展开箭头 */}
+                    <ChevronDown className={`w-4 h-4 text-gray-300 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                   </div>
-                </div>
-              </motion.div>
-            ))}
+
+                  {/* 展开详情 */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 pb-4 pt-1 bg-gray-50/50">
+                          {/* 单元详情 */}
+                          <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
+                            <span>{unit.word_count} 个单词</span>
+                            <span>已掌握 {unit.completed_words} 个</span>
+                            <span>剩余 {unit.word_count - unit.completed_words} 个</span>
+                          </div>
+
+                          {/* 断点续学提示 */}
+                          {unit.has_progress && !unit.is_completed && (
+                            <div className="mb-3 p-2.5 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2 text-sm">
+                              <span>💡</span>
+                              <span className="text-yellow-800">
+                                从第 <span className="font-bold">{unit.current_word_index + 1}</span> 个单词继续
+                                {unit.last_studied_at && (
+                                  <span className="text-xs ml-1 opacity-75">
+                                    (上次: {new Date(unit.last_studied_at).toLocaleString('zh-CN', {
+                                      month: 'numeric',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: 'numeric'
+                                    })})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+
+                          {unit.is_completed && (
+                            <div className="mb-3 p-2.5 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-sm">
+                              <span>🔄</span>
+                              <span className="text-green-800">已完成，可重新复习巩固</span>
+                            </div>
+                          )}
+
+                          {/* 其他学习模式 */}
+                          <p className="text-xs text-gray-400 mb-2">其他学习模式:</p>
+                          <div className="grid grid-cols-4 gap-2">
+                            {learningModes.filter(m => m.key !== 'classify').map((mode) => (
+                              <button
+                                key={mode.key}
+                                onClick={() => handleStartLearning(unit.unit_id, mode.key)}
+                                className={`relative py-2 px-2 rounded-lg shadow-sm font-medium flex items-center justify-center gap-1 bg-gradient-to-r ${mode.color} text-white hover:shadow-md transition text-xs active:scale-95`}
+                              >
+                                <span>{mode.icon}</span>
+                                <span>{mode.name}</span>
+                                {mode.badge && (
+                                  <span className="absolute -top-1 -right-1 px-1 py-0.5 bg-white text-purple-600 text-[10px] rounded-full font-bold shadow leading-none">
+                                    {mode.badge}
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
