@@ -122,8 +122,12 @@ async def perform_update(current_user: User = Depends(get_current_admin)):
         start_time = datetime.now()
 
         try:
-            # Step 1: Git Pull
-            code, output = _run_cmd("git pull origin main", timeout=60)
+            # Step 1: Git fetch + reset（避免分叉历史导致 pull 失败）
+            code, output = _run_cmd("git fetch origin main", timeout=60)
+            if code != 0:
+                steps.append({"step": "拉取代码", "success": False, "output": output})
+                raise Exception(f"拉取代码失败: {output}")
+            code, output = _run_cmd("git reset --hard origin/main", timeout=30)
             steps.append({"step": "拉取代码", "success": code == 0, "output": output})
             if code != 0:
                 raise Exception(f"拉取代码失败: {output}")
