@@ -1,7 +1,7 @@
 /**
  * 听写阶段（循环模式）
- * 全部单词听写，拼错的收集起来再来一轮
- * 直到全部拼对才结束
+ * 拼错显示正确答案，一轮结束后错词再来
+ * 只有首次拼对才算通过，用于错题集记录
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,7 +13,7 @@ export interface DictationResult {
   wordId: number;
   word: string;
   userInput: string;
-  isCorrect: boolean;
+  isCorrect: boolean;  // 首次是否拼对
 }
 
 interface DictationPhaseProps {
@@ -27,17 +27,15 @@ export default function DictationPhase({
   onComplete,
   playAudioSlow,
 }: DictationPhaseProps) {
-  // 当前轮要听写的单词
   const [roundWords, setRoundWords] = useState<WordData[]>(words);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [round, setRound] = useState(1);
   const [userInput, setUserInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
-  const [allResults, setAllResults] = useState<DictationResult[]>([]);
-  // 本轮错误词
+  // 只记录首次尝试结果
+  const [firstAttemptResults, setFirstAttemptResults] = useState<Map<number, boolean>>(new Map());
   const [roundErrorWords, setRoundErrorWords] = useState<WordData[]>([]);
-  // 轮次过渡
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [roundCorrectCount, setRoundCorrectCount] = useState(0);
 
@@ -68,31 +66,35 @@ export default function DictationPhase({
     setIsCorrect(correct);
     setSubmitted(true);
 
-    // 记录结果
-    const result: DictationResult = {
-      wordId: currentWord.id,
-      word: currentWord.word,
-      userInput,
-      isCorrect: correct,
-    };
-    setAllResults(prev => [...prev, result]);
+    // 记录首次结果（只记一次）
+    setFirstAttemptResults(prev => {
+      if (prev.has(currentWord.id)) return prev;
+      const next = new Map(prev);
+      next.set(currentWord.id, correct);
+      return next;
+    });
 
-    // 本轮错误词收集
     if (!correct) {
-      setRoundErrorWords(prev => [...prev, currentWord]);
+      setRoundErrorWords(prev => {
+        if (prev.some(w => w.id === currentWord.id)) return prev;
+        return [...prev, currentWord];
+      });
     }
   }, [submitted, currentWord, userInput]);
 
-  // 一轮结束处理
   const handleRoundEnd = useCallback(() => {
     if (roundErrorWords.length === 0) {
-      // 全对，听写结束
-      onComplete(allResults);
+      // 全部通过，构建结果（用首次记录）
+      const results: DictationResult[] = words.map(w => ({
+        wordId: w.id,
+        word: w.word,
+        userInput: w.word,
+        isCorrect: firstAttemptResults.get(w.id) ?? true,
+      }));
+      onComplete(results);
     } else {
-      // 还有错误词，显示总结后进入下一轮
       setRoundCorrectCount(roundWords.length - roundErrorWords.length);
       setShowRoundSummary(true);
-
       setTimeout(() => {
         setRound(prev => prev + 1);
         setRoundWords([...roundErrorWords]);
@@ -104,12 +106,10 @@ export default function DictationPhase({
         setShowRoundSummary(false);
       }, 2500);
     }
-  }, [roundErrorWords, roundWords.length, allResults, onComplete]);
+  }, [roundErrorWords, roundWords.length, words, firstAttemptResults, onComplete]);
 
   const handleNext = useCallback(() => {
     if (currentIndex + 1 >= roundWords.length) {
-      // 本轮结束
-      // 需要在下一个 tick 处理，因为 roundErrorWords 可能还没更新
       setTimeout(() => handleRoundEnd(), 50);
     } else {
       setCurrentIndex(currentIndex + 1);
@@ -129,7 +129,6 @@ export default function DictationPhase({
     }
   };
 
-  // submitted 后 input 被 disabled，用全局键盘事件监听回车
   useEffect(() => {
     if (!submitted) return;
     const handler = (e: KeyboardEvent) => {
@@ -157,7 +156,6 @@ export default function DictationPhase({
     return userInput[index] || currentWord.word[index] || '';
   };
 
-  // 轮次过渡画面
   if (showRoundSummary) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
@@ -214,19 +212,14 @@ export default function DictationPhase({
           exit={{ opacity: 0, y: -20 }}
           className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
         >
-          {/* 标签 */}
           <div className="mb-4">
             <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
               ✍️ 听写模式
             </span>
           </div>
 
-          {/* 释义提示 */}
-          <p className="text-lg text-gray-600 mb-4">
-            {currentWord.meaning}
-          </p>
+          <p className="text-lg text-gray-600 mb-4">{currentWord.meaning}</p>
 
-          {/* 播放按钮 */}
           <button
             onClick={() => playAudioSlow(currentWord.word)}
             className="mb-6 p-4 rounded-full bg-blue-50 hover:bg-blue-100 transition"
@@ -241,38 +234,26 @@ export default function DictationPhase({
             onClick={() => inputRef.current?.focus()}
           >
             {Array.from({ length: wordLength }, (_, i) => {
-              const answer = currentWord.word;
-              const ch = answer[i];
+              const ch = currentWord.word[i];
 
-              // 空格位置显示为间隔标记
               if (ch === ' ') {
                 return (
-                  <div
-                    key={i}
-                    className="w-4 h-12 flex items-end justify-center pb-1 text-gray-300 text-sm"
-                  >
+                  <div key={i} className="w-4 h-12 flex items-end justify-center pb-1 text-gray-300 text-sm">
                     ␣
                   </div>
                 );
               }
 
-              // 连字符/标点用窄格子显示
               if (ch === '-' || ch === '.' || ch === '\'') {
-                const letter = getSlotLetter(i);
                 return (
                   <motion.div
                     key={i}
                     initial={submitted ? { scale: 0.8 } : false}
                     animate={submitted ? { scale: 1 } : {}}
                     transition={{ delay: i * 0.04 }}
-                    className={`
-                      w-4 h-12 flex items-end justify-center pb-1
-                      text-2xl font-mono font-bold
-                      border-b-[3px] transition-colors duration-200
-                      ${getSlotStyle(i)}
-                    `}
+                    className={`w-4 h-12 flex items-end justify-center pb-1 text-2xl font-mono font-bold border-b-[3px] transition-colors duration-200 ${getSlotStyle(i)}`}
                   >
-                    {letter}
+                    {getSlotLetter(i)}
                   </motion.div>
                 );
               }
@@ -286,12 +267,7 @@ export default function DictationPhase({
                   initial={submitted ? { scale: 0.8 } : false}
                   animate={submitted ? { scale: 1 } : {}}
                   transition={{ delay: i * 0.04 }}
-                  className={`
-                    w-9 h-12 flex items-end justify-center pb-1
-                    text-2xl font-mono font-bold
-                    border-b-[3px] transition-colors duration-200
-                    ${getSlotStyle(i)}
-                  `}
+                  className={`w-9 h-12 flex items-end justify-center pb-1 text-2xl font-mono font-bold border-b-[3px] transition-colors duration-200 ${getSlotStyle(i)}`}
                 >
                   {letter}
                   {isCursor && (
@@ -308,7 +284,6 @@ export default function DictationPhase({
             })}
           </div>
 
-          {/* 隐藏输入框 */}
           <input
             ref={inputRef}
             type="text"
@@ -324,7 +299,6 @@ export default function DictationPhase({
             className="sr-only"
           />
 
-          {/* 字母数提示 */}
           {!submitted && (
             <p className="text-xs text-gray-400 mb-2">
               {wordLength} 个字符{currentWord.word.includes(' ') ? '（含空格）' : ''} · {userInput.length}/{wordLength}
@@ -339,20 +313,16 @@ export default function DictationPhase({
               className="mt-4"
             >
               {isCorrect ? (
-                <div className="text-green-600 font-medium text-lg">
-                  ✅ 正确！
-                </div>
+                <div className="text-green-600 font-medium text-lg">✅ 正确！</div>
               ) : (
                 <div>
-                  <div className="text-red-600 font-medium text-lg mb-2">
-                    ❌ 不对哦
-                  </div>
+                  <div className="text-red-600 font-medium text-lg mb-2">❌ 不对哦</div>
                   <p className="text-gray-500 text-sm mb-1">正确拼写：</p>
                   <div className="flex justify-center mb-1">
                     <ColoredWord
                       word={currentWord.word}
                       syllables={currentWord.syllables}
-                      className="text-xl font-bold"
+                      className="text-2xl font-bold"
                     />
                   </div>
                   {currentWord.phonetic && (
@@ -392,7 +362,7 @@ export default function DictationPhase({
             </motion.button>
           )}
 
-          {/* 跳过按钮 */}
+          {/* 跳过 = 提交空答案，显示正确答案 */}
           {!submitted && (
             <motion.button
               initial={{ opacity: 0 }}
@@ -401,23 +371,19 @@ export default function DictationPhase({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => {
-                // 标记为错误并跳过
-                const result: DictationResult = {
-                  wordId: currentWord.id,
-                  word: currentWord.word,
-                  userInput: '',
-                  isCorrect: false,
-                };
-                setAllResults(prev => [...prev, result]);
-                setRoundErrorWords(prev => [...prev, currentWord]);
-                if (currentIndex + 1 >= roundWords.length) {
-                  setTimeout(() => handleRoundEnd(), 50);
-                } else {
-                  setCurrentIndex(currentIndex + 1);
-                  setUserInput('');
-                  setSubmitted(false);
-                  setIsCorrect(false);
-                }
+                setUserInput('');
+                setIsCorrect(false);
+                setSubmitted(true);
+                setFirstAttemptResults(prev => {
+                  if (prev.has(currentWord.id)) return prev;
+                  const next = new Map(prev);
+                  next.set(currentWord.id, false);
+                  return next;
+                });
+                setRoundErrorWords(prev => {
+                  if (prev.some(w => w.id === currentWord.id)) return prev;
+                  return [...prev, currentWord];
+                });
               }}
               className="mt-3 px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm font-medium transition cursor-pointer"
             >
