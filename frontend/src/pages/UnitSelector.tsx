@@ -76,8 +76,13 @@ const UnitSelector = () => {
     { key: 'exam', icon: '📋', name: '考试', color: 'from-indigo-500 to-purple-600', badge: '测验', requiresPrevious: 'classify' },
   ];
 
+  // 按 unit_number 排序
+  const sortedUnits = bookProgress
+    ? [...bookProgress.units].sort((a, b) => (a.unit_number || 0) - (b.unit_number || 0))
+    : [];
+
   // 找到第一个未完成的单元，作为"当前学习"高亮
-  const firstIncompleteIndex = bookProgress.units.findIndex(u => !u.is_completed);
+  const firstIncompleteIndex = sortedUnits.findIndex(u => !u.is_completed);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
@@ -124,7 +129,7 @@ const UnitSelector = () => {
           </motion.div>
         ) : (
           <div className="bg-white rounded-2xl shadow-md overflow-hidden divide-y divide-gray-100">
-            {bookProgress.units.map((unit, index) => {
+            {sortedUnits.map((unit, index) => {
               const isExpanded = expandedUnitId === unit.unit_id;
               const isCurrent = index === firstIncompleteIndex;
               const progressColor = unit.is_completed
@@ -160,7 +165,7 @@ const UnitSelector = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className={`font-bold truncate ${isCurrent ? 'text-teal-700' : 'text-gray-800'}`}>
-                          Unit {unit.unit_number || index + 1}: {unit.unit_name}
+                          {unit.unit_name}
                         </h3>
                         {isCurrent && (
                           <span className="px-1.5 py-0.5 bg-teal-500 text-white text-[10px] rounded font-medium shrink-0">
