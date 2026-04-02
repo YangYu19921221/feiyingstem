@@ -113,6 +113,9 @@ export default function DictationPhase({
         setUserInput('');
         setSubmitted(false);
         setIsCorrect(false);
+        setRetryMode(false);
+        setRetryInput('');
+        setRetryPassed(false);
         setShowRoundSummary(false);
       }, 2500);
     }
