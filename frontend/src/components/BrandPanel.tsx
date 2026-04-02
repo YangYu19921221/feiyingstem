@@ -8,7 +8,7 @@ interface BrandPanelProps {
 }
 
 /**
- * 飞鹰英语品牌展示面板
+ * 飞鹰AI英语品牌展示面板
  * 用于登录/注册页左侧（桌面端）
  */
 const BrandPanel = ({ tagline, children }: BrandPanelProps) => (
@@ -39,7 +39,7 @@ const BrandPanel = ({ tagline, children }: BrandPanelProps) => (
         transition={{ delay: 0.3 }}
         className="text-4xl font-bold text-white mb-2 tracking-wider"
       >
-        飞鹰英语
+        飞鹰AI英语
       </motion.h1>
 
       <motion.p
@@ -78,7 +78,7 @@ export const MobileBrandHeader = () => (
     <div className="flex items-center justify-center gap-3 mb-2">
       <span className="text-4xl">🦅</span>
       <div className="text-left">
-        <h1 className="text-2xl font-bold text-[#1E3A5F]">飞鹰英语</h1>
+        <h1 className="text-2xl font-bold text-[#1E3A5F]">飞鹰AI英语</h1>
         <p className="text-xs text-blue-400 tracking-widest">FLYING EAGLE ENGLISH</p>
       </div>
     </div>

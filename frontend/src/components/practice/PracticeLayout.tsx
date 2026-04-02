@@ -25,6 +25,8 @@ interface PracticeLayoutProps {
   /** 加载状态 */
   loading?: boolean;
   loadingText?: string;
+  /** 隐藏答案（选择题/填空题模式） */
+  hideAnswer?: boolean;
 }
 
 const PracticeLayout: React.FC<PracticeLayoutProps> = ({
@@ -44,6 +46,7 @@ const PracticeLayout: React.FC<PracticeLayoutProps> = ({
   questionWords,
   loading,
   loadingText = '正在准备题目...',
+  hideAnswer = false,
 }) => {
   if (loading) {
     return (
@@ -88,6 +91,7 @@ const PracticeLayout: React.FC<PracticeLayoutProps> = ({
               unitWords={unitWords}
               results={results}
               questionWords={questionWords}
+              hideAnswer={hideAnswer}
             />
           </div>
         </div>

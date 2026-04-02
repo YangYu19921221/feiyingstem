@@ -77,7 +77,7 @@ const Register = () => {
 
   return (
     <div className="min-h-screen flex bg-white">
-      <BrandPanel tagline={<>加入飞鹰，展翅翱翔<br />让英语成为你的翅膀</>}>
+      <BrandPanel tagline={<>加入飞鹰AI英语，展翅翱翔<br />让英语成为你的翅膀</>}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

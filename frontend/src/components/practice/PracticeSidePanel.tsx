@@ -14,6 +14,8 @@ interface PracticeSidePanelProps {
   results: (boolean | null)[];
   /** 题目列表（用于匹配 unitWords 中的高亮） */
   questionWords: string[];
+  /** 是否隐藏答案信息（选择题/填空题模式下隐藏当前单词和列表中的高亮） */
+  hideAnswer?: boolean;
 }
 
 const PracticeSidePanel: React.FC<PracticeSidePanelProps> = ({
@@ -23,38 +25,41 @@ const PracticeSidePanel: React.FC<PracticeSidePanelProps> = ({
   unitWords,
   results,
   questionWords,
+  hideAnswer = false,
 }) => {
   const { playAudio } = useAudio();
 
   return (
     <div className="space-y-5">
-      {/* 当前单词详情 */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-        <h3 className="text-xs text-gray-400 uppercase tracking-wider mb-3">当前单词</h3>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl font-bold text-gray-800">{currentWord}</span>
-          <button
-            onClick={() => playAudio(currentWord)}
-            className="text-gray-400 hover:text-orange-500 transition-colors"
-          >
-            🔊
-          </button>
-        </div>
-        {currentPhonetic && (
-          <div className="mb-2">
-            <ColoredPhonetic phonetic={currentPhonetic} size="sm" />
+      {/* 当前单词详情 - hideAnswer 模式下隐藏 */}
+      {!hideAnswer && (
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-xs text-gray-400 uppercase tracking-wider mb-3">当前单词</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl font-bold text-gray-800">{currentWord}</span>
+            <button
+              onClick={() => playAudio(currentWord)}
+              className="text-gray-400 hover:text-orange-500 transition-colors"
+            >
+              🔊
+            </button>
           </div>
-        )}
-        {currentMeaning && (
-          <p className="text-sm text-gray-600">{currentMeaning}</p>
-        )}
-      </div>
+          {currentPhonetic && (
+            <div className="mb-2">
+              <ColoredPhonetic phonetic={currentPhonetic} size="sm" />
+            </div>
+          )}
+          {currentMeaning && (
+            <p className="text-sm text-gray-600">{currentMeaning}</p>
+          )}
+        </div>
+      )}
 
       {/* 单元单词列表 */}
       {unitWords.length > 0 && (
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <h3 className="text-xs text-gray-400 uppercase tracking-wider mb-3">
-            单元单词 ({unitWords.length})
+            {hideAnswer ? '答题进度' : `单元单词 (${unitWords.length})`}
           </h3>
           <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
             {unitWords.map((w) => {
@@ -71,16 +76,16 @@ const PracticeSidePanel: React.FC<PracticeSidePanelProps> = ({
                 <div
                   key={w.id}
                   className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                    isCurrent
+                    !hideAnswer && isCurrent
                       ? 'bg-orange-50 border border-orange-200'
                       : 'hover:bg-gray-50'
                   }`}
                 >
-                  <span className={`font-medium ${isCurrent ? 'text-orange-600' : textColor}`}>
-                    {w.word}
+                  <span className={`font-medium ${!hideAnswer && isCurrent ? 'text-orange-600' : textColor}`}>
+                    {hideAnswer && result === null ? '••••' : w.word}
                   </span>
                   <span className="text-xs">
-                    {statusIcon || (isCurrent ? '👈' : '')}
+                    {statusIcon || (!hideAnswer && isCurrent ? '👈' : '')}
                   </span>
                 </div>
               );

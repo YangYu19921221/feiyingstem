@@ -96,6 +96,7 @@ const FillBlankPractice = () => {
       currentMeaning={currentQuestion?.meaning}
       unitWords={unitWords}
       questionWords={questionWords}
+      hideAnswer
     >
       {/* 题目卡片 */}
       <AnimatePresence mode="wait">

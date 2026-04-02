@@ -78,6 +78,7 @@ const QuizPractice = () => {
       currentMeaning={currentQuestion?.meaning}
       unitWords={unitWords}
       questionWords={questionWords}
+      hideAnswer
     >
       {/* Combo 动画 */}
       <AnimatePresence>

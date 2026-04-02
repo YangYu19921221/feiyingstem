@@ -269,7 +269,7 @@ const ForgotPassword = () => {
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="mt-10 text-center text-xs text-gray-300">
-            飞鹰英语培训机构 · AI 智能学习平台
+            飞鹰AI英语培训机构 · AI 智能学习平台
           </motion.div>
         </motion.div>
       </div>
