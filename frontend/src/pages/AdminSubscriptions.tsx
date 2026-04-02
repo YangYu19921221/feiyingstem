@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/env';
 import {
   getSubscriptionStats,
   generateCodes,
   listCodes,
   disableCode,
 } from '../api/subscription';
+import { getTeacherWordBooks } from '../api/teacher';
 
 interface Stats {
   total_codes: number;
@@ -61,14 +60,11 @@ const AdminSubscriptions = () => {
 
   const fetchBooks = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await axios.get(`${API_BASE_URL}/words/books`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const bookList = res.data.map((b: any) => ({ id: b.id, name: b.name }));
+      const data = await getTeacherWordBooks();
+      const bookList = data.map(b => ({ id: b.id, name: b.name }));
       setBooks(bookList);
-      if (bookList.length > 0 && genBookId === 0) {
-        setGenBookId(bookList[0].id);
+      if (bookList.length > 0) {
+        setGenBookId(prev => prev === 0 ? bookList[0].id : prev);
       }
     } catch { /* ignore */ }
   }, []);

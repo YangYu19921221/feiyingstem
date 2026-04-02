@@ -4,8 +4,13 @@ import { motion } from 'framer-motion';
 import { getTeacherWordBooks } from '../api/teacher';
 import type { TeacherWordBook } from '../api/teacher';
 import { BookOpen, Settings, Trash2 } from 'lucide-react';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/env';
+import api from '../api/client';
+
+const GRADE_OPTIONS = [
+  '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
+  '七年级', '八年级', '九年级', '高一', '高二', '高三',
+];
+const VOLUME_OPTIONS = ['上册', '下册', '全册'];
 
 interface UserData {
   id: number;
@@ -86,14 +91,7 @@ const TeacherBooks = () => {
     }
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.post(
-        `${API_BASE_URL}/words/books/batch-delete`,
-        selectedBooks,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+      const response: any = await api.post('/words/books/batch-delete', selectedBooks);
 
       const { deleted_count, failed_count } = response.data;
 
@@ -120,8 +118,7 @@ const TeacherBooks = () => {
   const handleCreateBook = async () => {
     if (!newBook.name.trim()) return;
     try {
-      const token = localStorage.getItem('access_token');
-      await axios.post(`${API_BASE_URL}/words/books`, {
+      await api.post('/words/books', {
         name: newBook.name,
         description: newBook.description || null,
         grade_level: newBook.grade_level || null,
@@ -129,7 +126,7 @@ const TeacherBooks = () => {
         cover_color: newBook.cover_color,
         is_public: true,
         word_ids: [],
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       setShowCreateModal(false);
       setNewBook({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
       loadBooks();
@@ -138,12 +135,6 @@ const TeacherBooks = () => {
       alert('创建失败，请重试');
     }
   };
-
-  const GRADE_OPTIONS = [
-    '', '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
-    '七年级', '八年级', '九年级', '高一', '高二', '高三',
-  ];
-  const VOLUME_OPTIONS = ['', '上册', '下册', '全册'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
@@ -267,9 +258,7 @@ const TeacherBooks = () => {
                   initial={!hasLoadedOnce.current ? { opacity: 0, y: 20 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={!hasLoadedOnce.current ? { delay: 0.1 * index } : {}}
-                  className={`bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group relative ${
-                    isSelectionMode ? 'cursor-pointer' : 'cursor-pointer'
-                  } ${
+                  className={`bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer relative ${
                     selectedBooks.includes(book.id) ? 'ring-2 ring-primary' : ''
                   }`}
                   onClick={() => {
@@ -311,16 +300,16 @@ const TeacherBooks = () => {
                   )}
 
                   {/* 标签 */}
-                  {(book.grade_level || (book as any).volume) && (
+                  {(book.grade_level || book.volume) && (
                     <div className="flex items-center gap-2 mb-4">
                       {book.grade_level && (
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
                           {book.grade_level}
                         </span>
                       )}
-                      {(book as any).volume && (
+                      {book.volume && (
                         <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">
-                          {(book as any).volume}
+                          {book.volume}
                         </span>
                       )}
                     </div>

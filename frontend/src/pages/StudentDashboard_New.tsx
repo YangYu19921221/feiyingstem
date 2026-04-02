@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
@@ -117,6 +117,9 @@ const StudentDashboard = () => {
       console.error('加载复习数据失败:', error);
     }
   };
+
+  const ownedBooks = useMemo(() => books.filter(b => b.owned), [books]);
+  const unownedBooks = useMemo(() => books.filter(b => !b.owned), [books]);
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -439,7 +442,7 @@ const StudentDashboard = () => {
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <span>📚</span> 我的书架
               </h3>
-              {books.filter(b => b.owned).length === 0 ? (
+              {ownedBooks.length === 0 ? (
                 <div className="bg-white rounded-2xl p-8 text-center shadow-md mb-8">
                   <span className="text-5xl mb-3 block">📭</span>
                   <p className="text-gray-500 mb-1">还没有书籍</p>
@@ -453,7 +456,7 @@ const StudentDashboard = () => {
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                  {books.filter(b => b.owned).map((book) => (
+                  {ownedBooks.map((book) => (
                     <div
                       key={book.id}
                       className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer flex flex-col"
@@ -523,13 +526,13 @@ const StudentDashboard = () => {
               )}
 
               {/* 更多书籍（未购买） */}
-              {books.filter(b => !b.owned).length > 0 && (
+              {unownedBooks.length > 0 && (
                 <>
                   <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <span>🛒</span> 更多书籍
                   </h3>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                    {books.filter(b => !b.owned).map((book) => (
+                    {unownedBooks.map((book) => (
                       <div
                         key={book.id}
                         className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition cursor-pointer flex flex-col opacity-80"
