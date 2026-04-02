@@ -309,10 +309,16 @@ const SystemUpdatePanel: React.FC = () => {
       const data = await api.post('/admin/system/update');
       setUpdateResult(data);
       if (data.success) {
-        setTimeout(() => window.location.reload(), 3000);
+        setTimeout(() => window.location.reload(), 5000);
       }
     } catch (err: any) {
-      setUpdateResult({ success: false, message: err?.response?.data?.detail || '更新失败' });
+      // 网络错误通常是因为后端重启导致连接断开，实际更新已成功
+      if (!err?.response) {
+        setUpdateResult({ success: true, message: '系统正在重启中，请稍候...' });
+        setTimeout(() => window.location.reload(), 6000);
+      } else {
+        setUpdateResult({ success: false, message: err?.response?.data?.detail || '更新失败' });
+      }
     } finally {
       setUpdating(false);
     }
