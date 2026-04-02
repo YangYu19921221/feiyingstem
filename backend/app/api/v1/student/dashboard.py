@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.models.user import User
-from app.models.learning import LearningProgress, StudySession
+from app.models.learning import LearningProgress, StudySession, LearningRecord
 from app.models.word import WordBook
 from app.api.v1.auth import get_current_student
 
@@ -111,8 +111,7 @@ async def get_student_dashboard_stats(
 
     rank_percentage = 100 - (higher_ranked / total_students * 100)
 
-    # 8. 学习质量统计 — 满分轮次 & 首次正确率
-    # 满分轮次：wrong_count = 0 且 correct_count > 0 的会话数
+    # 满分轮次
     result = await db.execute(
         select(func.count()).select_from(StudySession)
         .where(
@@ -137,8 +136,7 @@ async def get_student_dashboard_stats(
     )
     total_sessions = result.scalar() or 0
 
-    # 首次正确率：每个单词首次遇到时答对的比例
-    from app.models.learning import LearningRecord
+    # 首次正确率
     result = await db.execute(
         select(
             func.count(func.distinct(LearningRecord.word_id))
@@ -146,9 +144,6 @@ async def get_student_dashboard_stats(
     )
     total_unique_words = result.scalar() or 0
 
-    # 首次答对的单词数：该单词的第一条记录 is_correct = True
-    # 使用子查询找每个单词的最早记录
-    from sqlalchemy import literal_column
     first_record_subq = (
         select(
             LearningRecord.word_id,

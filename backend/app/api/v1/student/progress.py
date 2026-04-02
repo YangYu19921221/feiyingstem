@@ -322,7 +322,31 @@ async def get_book_progress(
     )
     units = result.scalars().all()
 
-    # 3. 获取每个单元的学习进度
+    # 3. 批量查询所有单元的最佳成绩（避免 N+1）
+    unit_ids = [u.id for u in units]
+    unit_best_scores: dict[int, tuple[float | None, bool]] = {uid: (None, False) for uid in unit_ids}
+    if unit_ids:
+        sessions_result = await db.execute(
+            select(StudySession.unit_id, StudySession.correct_count, StudySession.wrong_count)
+            .where(
+                and_(
+                    StudySession.user_id == user_id,
+                    StudySession.unit_id.in_(unit_ids),
+                    StudySession.correct_count > 0,
+                )
+            )
+        )
+        for uid, correct, wrong in sessions_result.all():
+            total = correct + wrong
+            if total > 0:
+                acc = correct / total * 100
+                prev_acc, prev_perfect = unit_best_scores[uid]
+                if prev_acc is None or acc > prev_acc:
+                    unit_best_scores[uid] = (acc, prev_perfect or wrong == 0)
+                elif wrong == 0:
+                    unit_best_scores[uid] = (prev_acc, True)
+
+    # 4. 获取每个单元的学习进度
     unit_progresses = []
     total_words_in_book = 0
     total_completed_words = 0
@@ -366,27 +390,7 @@ async def get_book_progress(
         total_words_in_book += word_count
         total_completed_words += max_completed
 
-        # 查询该单元的最佳正确率（从 study_sessions 中取）
-        best_accuracy = None
-        is_perfect = False
-        best_result = await db.execute(
-            select(StudySession.correct_count, StudySession.wrong_count)
-            .where(
-                and_(
-                    StudySession.user_id == user_id,
-                    StudySession.unit_id == unit.id,
-                    StudySession.correct_count > 0,
-                )
-            )
-        )
-        for correct, wrong in best_result.all():
-            total = correct + wrong
-            if total > 0:
-                acc = correct / total * 100
-                if best_accuracy is None or acc > best_accuracy:
-                    best_accuracy = acc
-                if wrong == 0:
-                    is_perfect = True
+        best_accuracy, is_perfect = unit_best_scores.get(unit.id, (None, False))
 
         unit_progresses.append(UnitProgressResponse(
             unit_id=unit.id,
