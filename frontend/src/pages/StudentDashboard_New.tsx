@@ -151,12 +151,6 @@ const StudentDashboard = () => {
               👤 {user?.full_name || '学生'}
             </span>
             <button
-              onClick={() => navigate('/subscription/redeem')}
-              className="text-xs px-3 py-1 rounded-full font-medium transition bg-blue-100 text-blue-700 hover:bg-blue-200"
-            >
-              兑换单词本
-            </button>
-            <button
               onClick={handleLogout}
               className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
             >
