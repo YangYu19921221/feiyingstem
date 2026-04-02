@@ -16,6 +16,7 @@ interface UserData {
 interface WordRow {
   word: string;
   phonetic: string;
+  syllables?: string;
   part_of_speech: string;
   meaning: string;
   difficulty: number;
@@ -58,6 +59,7 @@ const TeacherWordImport = () => {
       {
         word: 'apple',
         phonetic: '/ˈæpl/',
+        syllables: 'ap-ple',
         part_of_speech: 'n.',
         meaning: '苹果',
         difficulty: 1,
@@ -69,6 +71,7 @@ const TeacherWordImport = () => {
       {
         word: 'book',
         phonetic: '/bʊk/',
+        syllables: 'book',
         part_of_speech: 'n.',
         meaning: '书;书籍',
         difficulty: 1,
@@ -80,6 +83,7 @@ const TeacherWordImport = () => {
       {
         word: 'beautiful',
         phonetic: '/ˈbjuːtɪfl/',
+        syllables: 'beau-ti-ful',
         part_of_speech: 'adj.',
         meaning: '美丽的;漂亮的',
         difficulty: 3,
@@ -153,8 +157,9 @@ const TeacherWordImport = () => {
           }
 
           validData.push({
-            word: String(row.word).toLowerCase().trim(),
+            word: String(row.word).trim(),
             phonetic: String(row.phonetic).trim(),
+            syllables: row.syllables ? String(row.syllables).trim() : undefined,
             part_of_speech: String(row.part_of_speech).trim(),
             meaning: String(row.meaning).trim(),
             difficulty: Number(row.difficulty),
@@ -204,6 +209,7 @@ const TeacherWordImport = () => {
       const words = parsedData.map(row => ({
         word: row.word,
         phonetic: row.phonetic,
+        syllables: row.syllables || null,
         difficulty: row.difficulty,
         grade_level: row.grade_level,
         definitions: [
@@ -515,6 +521,7 @@ const TeacherWordImport = () => {
           </h3>
           <ul className="text-sm text-blue-700 space-y-2">
             <li>• 必填字段: word(单词)、phonetic(音标)、part_of_speech(词性)、meaning(释义)、difficulty(难度)、grade_level(年级)</li>
+            <li>• 可选字段: syllables(音节划分,用-分隔,如 beau-ti-ful)、example_sentence、example_translation、tags</li>
             <li>• 难度范围: 1-5 (1=简单, 5=困难)</li>
             <li>• 年级选项: 小学、初中、高中</li>
             <li>• 词性选项: n.(名词)、v.(动词)、adj.(形容词)、adv.(副词)、prep.(介词)、conj.(连词)、pron.(代词)</li>
