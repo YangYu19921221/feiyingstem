@@ -1,5 +1,6 @@
 import React from 'react';
 import ColoredPhonetic from '../ColoredPhonetic';
+import ColoredWord from '../ColoredWord';
 import { useAudio } from '../../hooks/useAudio';
 
 interface AnswerFeedbackProps {
@@ -11,6 +12,7 @@ interface AnswerFeedbackProps {
   userAnswer?: string;
   onNext: () => void;
   isLast: boolean;
+  syllables?: string;
 }
 
 const AnswerFeedback: React.FC<AnswerFeedbackProps> = ({
@@ -22,6 +24,7 @@ const AnswerFeedback: React.FC<AnswerFeedbackProps> = ({
   userAnswer,
   onNext,
   isLast,
+  syllables,
 }) => {
   const { playAudio } = useAudio();
 
@@ -35,7 +38,11 @@ const AnswerFeedback: React.FC<AnswerFeedbackProps> = ({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-lg">{isCorrect ? '✅' : '❌'}</span>
-            <span className="font-bold text-lg">{word}</span>
+            {syllables ? (
+              <ColoredWord word={word} syllables={syllables} className="text-lg font-bold" />
+            ) : (
+              <span className="font-bold text-lg">{word}</span>
+            )}
             <button
               onClick={() => playAudio(word)}
               className="text-gray-400 hover:text-orange-500 transition-colors"

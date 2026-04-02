@@ -7,6 +7,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
+import ColoredWord from '../ColoredWord';
+import ColoredPhonetic from '../ColoredPhonetic';
 
 export interface FillBlankResult {
   wordId: number;
@@ -330,9 +332,15 @@ export default function SentenceFillPhase({
               ) : (
                 <div>
                   <div className="text-red-600 font-medium text-lg mb-2">❌ 不对哦</div>
-                  <p className="text-gray-500 text-sm">
-                    正确答案：<span className="font-bold text-gray-800">{currentWord.word}</span>
-                  </p>
+                  <p className="text-gray-500 text-sm mb-1">正确答案：</p>
+                  <div className="flex justify-center mb-1">
+                    <ColoredWord word={currentWord.word} syllables={currentWord.syllables} className="text-xl font-bold" />
+                  </div>
+                  {currentWord.phonetic && (
+                    <div className="flex justify-center">
+                      <ColoredPhonetic phonetic={currentWord.phonetic} size="sm" />
+                    </div>
+                  )}
                 </div>
               )}
 

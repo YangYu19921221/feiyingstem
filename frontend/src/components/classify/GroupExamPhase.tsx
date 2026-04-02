@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import { API_BASE_URL } from '../../config/env';
+import ColoredWord from '../ColoredWord';
 
 interface ExamQuestion {
   id: number;
@@ -227,7 +228,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
               {results.filter(r => !r.isCorrect).map(r => (
                 <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-gray-100 text-sm">
                   <span className="text-red-400">✗</span>
-                  <span className="text-gray-800 font-medium">{r.word.word}</span>
+                  <ColoredWord word={r.word.word} syllables={r.word.syllables} className="font-medium text-sm" />
                   <span className="text-gray-400">→</span>
                   <span className="text-green-600">{r.correctAnswer}</span>
                   {r.userAnswer && (
