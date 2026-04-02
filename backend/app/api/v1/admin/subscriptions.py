@@ -1,5 +1,5 @@
 """
-管理员订阅兑换码管理API
+管理员兑换码管理API
 """
 from datetime import datetime
 from typing import Optional
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.user import User, RedemptionCode, RedemptionCodeStatus
+from app.models.word import WordBook
 from app.api.v1.auth import get_current_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
@@ -29,17 +30,37 @@ async def generate_codes(
     db: AsyncSession = Depends(get_db),
 ):
     """批量生成兑换码"""
-    if req.duration_days not in (30, 90, 180, 365):
-        raise HTTPException(status_code=400, detail="订阅天数必须为 30/90/180/365")
+    # 检查单词本是否存在
+    book = await db.get(WordBook, req.book_id)
+    if not book:
+        raise HTTPException(status_code=400, detail="指定的单词本不存在")
 
     codes = await subscription_service.batch_generate_codes(
         db=db,
         admin_id=current_user.id,
         count=req.count,
-        duration_days=req.duration_days,
+        book_id=req.book_id,
         batch_note=req.batch_note,
     )
-    return codes
+
+    # 为响应添加 book_name
+    result = []
+    for code in codes:
+        code_dict = {
+            "id": code.id,
+            "code": code.code,
+            "book_id": code.book_id,
+            "book_name": book.name,
+            "status": code.status,
+            "created_by": code.created_by,
+            "created_at": code.created_at,
+            "code_expires_at": code.code_expires_at,
+            "used_by": code.used_by,
+            "used_at": code.used_at,
+            "batch_note": code.batch_note,
+        }
+        result.append(code_dict)
+    return result
 
 
 @router.get("/codes", response_model=RedemptionCodeListResponse)
@@ -67,7 +88,34 @@ async def list_codes(
     total_result = await db.execute(count_query)
     total = total_result.scalar()
 
-    return RedemptionCodeListResponse(total=total, codes=codes)
+    # 收集所有涉及的 book_id，批量查询 book_name
+    book_ids = set(c.book_id for c in codes)
+    book_name_map = {}
+    if book_ids:
+        books_result = await db.execute(
+            select(WordBook).where(WordBook.id.in_(book_ids))
+        )
+        for book in books_result.scalars().all():
+            book_name_map[book.id] = book.name
+
+    # 构造响应，添加 book_name
+    code_responses = []
+    for code in codes:
+        code_responses.append(RedemptionCodeResponse(
+            id=code.id,
+            code=code.code,
+            book_id=code.book_id,
+            book_name=book_name_map.get(code.book_id, "未知"),
+            status=code.status,
+            created_by=code.created_by,
+            created_at=code.created_at,
+            code_expires_at=code.code_expires_at,
+            used_by=code.used_by,
+            used_at=code.used_at,
+            batch_note=code.batch_note,
+        ))
+
+    return RedemptionCodeListResponse(total=total, codes=code_responses)
 
 
 @router.get("/stats", response_model=SubscriptionStatsResponse)
@@ -75,15 +123,10 @@ async def subscription_stats(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """订阅统计"""
-    now = datetime.utcnow()
-
+    """兑换码统计"""
     # 兑换码统计
     total_q = await db.execute(select(func.count(RedemptionCode.id)))
     total = total_q.scalar() or 0
-
-    for s_name in ("unused", "used", "expired", "disabled"):
-        pass  # 下面逐个查询
 
     unused_q = await db.execute(
         select(func.count(RedemptionCode.id)).where(
@@ -113,33 +156,12 @@ async def subscription_stats(
     )
     disabled = disabled_q.scalar() or 0
 
-    # 活跃订阅用户数
-    active_q = await db.execute(
-        select(func.count(User.id)).where(
-            User.role == "student",
-            User.subscription_expires_at > now,
-        )
-    )
-    active_subs = active_q.scalar() or 0
-
-    # 过期订阅用户数
-    expired_subs_q = await db.execute(
-        select(func.count(User.id)).where(
-            User.role == "student",
-            User.subscription_expires_at != None,
-            User.subscription_expires_at <= now,
-        )
-    )
-    expired_subs = expired_subs_q.scalar() or 0
-
     return SubscriptionStatsResponse(
         total_codes=total,
         unused_codes=unused,
         used_codes=used,
         expired_codes=expired_codes,
         disabled_codes=disabled,
-        active_subscribers=active_subs,
-        expired_subscribers=expired_subs,
     )
 
 

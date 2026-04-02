@@ -5,7 +5,6 @@ import { API_BASE_URL } from '../config/env';
 import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
-import { getSubscriptionStatus } from '../api/subscription';
 import { getReviewDueCount } from '../api/memoryCurve';
 import PetWidget from '../components/PetWidget';
 
@@ -50,7 +49,6 @@ const StudentDashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<number>(0);
   const [mistakeStats, setMistakeStats] = useState<{ unresolved_mistakes: number } | null>(null);
-  const [subStatus, setSubStatus] = useState<{ has_subscription: boolean; is_expired: boolean; days_remaining: number } | null>(null);
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
 
   useEffect(() => {
@@ -59,7 +57,6 @@ const StudentDashboard = () => {
     loadStats();
     loadOnlineUsers();
     loadMistakeStats();
-    loadSubscriptionStatus();
     loadReviewDueCount();
 
     // 定期更新在线人数(每30秒)
@@ -112,15 +109,6 @@ const StudentDashboard = () => {
     }
   };
 
-  const loadSubscriptionStatus = async () => {
-    try {
-      const data = await getSubscriptionStatus();
-      setSubStatus(data);
-    } catch (error) {
-      console.error('加载订阅状态失败:', error);
-    }
-  };
-
   const loadReviewDueCount = async () => {
     try {
       const data = await getReviewDueCount();
@@ -162,24 +150,12 @@ const StudentDashboard = () => {
             <span className="text-sm text-gray-600">
               👤 {user?.full_name || '学生'}
             </span>
-            {subStatus && (
-              <button
-                onClick={() => navigate('/subscription/redeem')}
-                className={`text-xs px-3 py-1 rounded-full font-medium transition ${
-                  subStatus.is_expired || !subStatus.has_subscription
-                    ? 'bg-red-100 text-red-600 hover:bg-red-200'
-                    : subStatus.days_remaining <= 7
-                    ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                }`}
-              >
-                {subStatus.is_expired || !subStatus.has_subscription
-                  ? '订阅已过期'
-                  : subStatus.days_remaining <= 7
-                  ? `订阅剩余${subStatus.days_remaining}天`
-                  : '订阅有效'}
-              </button>
-            )}
+            <button
+              onClick={() => navigate('/subscription/redeem')}
+              className="text-xs px-3 py-1 rounded-full font-medium transition bg-blue-100 text-blue-700 hover:bg-blue-200"
+            >
+              兑换单词本
+            </button>
             <button
               onClick={handleLogout}
               className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"

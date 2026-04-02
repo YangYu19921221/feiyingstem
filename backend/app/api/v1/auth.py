@@ -58,14 +58,7 @@ async def get_current_user_no_sub_check(
 async def get_current_user(
     user: User = Depends(_authenticate_token),
 ) -> User:
-    """获取当前登录用户（学生需检查订阅）"""
-    if user.role == "student":
-        now = datetime.utcnow()
-        if not user.subscription_expires_at or user.subscription_expires_at < now:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="subscription_expired",
-            )
+    """获取当前登录用户（不再检查订阅，学生通过购买单词本获取权限）"""
     return user
 
 async def get_current_teacher(

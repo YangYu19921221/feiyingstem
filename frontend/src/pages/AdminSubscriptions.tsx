@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import axios from 'axios';
+import { API_BASE_URL } from '../config/env';
 import {
   getSubscriptionStats,
   generateCodes,
@@ -14,20 +16,24 @@ interface Stats {
   used_codes: number;
   expired_codes: number;
   disabled_codes: number;
-  active_subscribers: number;
-  expired_subscribers: number;
 }
 
 interface CodeItem {
   id: number;
   code: string;
-  duration_days: number;
+  book_id: number;
+  book_name?: string;
   status: string;
   created_at: string;
   code_expires_at: string;
   used_by: number | null;
   used_at: string | null;
   batch_note: string | null;
+}
+
+interface BookOption {
+  id: number;
+  name: string;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -37,13 +43,6 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   disabled: { label: '已禁用', color: 'bg-red-100 text-red-600' },
 };
 
-const DURATION_OPTIONS = [
-  { value: 30, label: '30天' },
-  { value: 90, label: '90天' },
-  { value: 180, label: '半年' },
-  { value: 365, label: '一年' },
-];
-
 const AdminSubscriptions = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -52,12 +51,27 @@ const AdminSubscriptions = () => {
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState('');
   const [genCount, setGenCount] = useState(10);
-  const [genDuration, setGenDuration] = useState(30);
+  const [genBookId, setGenBookId] = useState<number>(0);
   const [genNote, setGenNote] = useState('');
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<CodeItem[]>([]);
   const [copied, setCopied] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [books, setBooks] = useState<BookOption[]>([]);
+
+  const fetchBooks = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get(`${API_BASE_URL}/words/books`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const bookList = res.data.map((b: any) => ({ id: b.id, name: b.name }));
+      setBooks(bookList);
+      if (bookList.length > 0 && genBookId === 0) {
+        setGenBookId(bookList[0].id);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -76,16 +90,17 @@ const AdminSubscriptions = () => {
     } catch { /* ignore */ }
   }, [page, filterStatus]);
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => { fetchBooks(); fetchStats(); }, [fetchBooks, fetchStats]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
   const handleGenerate = async () => {
+    if (!genBookId) return;
     setGenerating(true);
     setGenResult([]);
     try {
       const res: any = await generateCodes({
         count: genCount,
-        duration_days: genDuration,
+        book_id: genBookId,
         batch_note: genNote || undefined,
       });
       setGenResult(res);
@@ -117,12 +132,18 @@ const AdminSubscriptions = () => {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
+  const getBookName = (bookId: number, bookName?: string) => {
+    if (bookName) return bookName;
+    const b = books.find((b) => b.id === bookId);
+    return b?.name || `书#${bookId}`;
+  };
+
   const exportCSV = () => {
-    const header = '兑换码,时长(天),状态,创建时间,使用时间,备注';
+    const header = '兑换码,绑定书籍,状态,创建时间,使用时间,备注';
     const rows = codes.map((c) =>
       [
         c.code,
-        c.duration_days,
+        getBookName(c.book_id, c.book_name),
         STATUS_MAP[c.status]?.label || c.status,
         new Date(c.created_at).toLocaleDateString('zh-CN'),
         c.used_at ? new Date(c.used_at).toLocaleDateString('zh-CN') : '',
@@ -147,8 +168,8 @@ const AdminSubscriptions = () => {
         {/* 头部 */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">🎫 订阅管理</h1>
-            <p className="text-gray-500 text-sm mt-1">管理兑换码和订阅状态</p>
+            <h1 className="text-2xl font-bold text-gray-800">📖 书籍兑换码管理</h1>
+            <p className="text-gray-500 text-sm mt-1">生成兑换码，学生兑换后解锁对应单词本</p>
           </div>
           <button
             onClick={() => navigate('/admin/dashboard')}
@@ -164,8 +185,8 @@ const AdminSubscriptions = () => {
             {[
               { label: '未使用', value: stats.unused_codes, icon: '🎟️', bg: 'bg-green-50' },
               { label: '已使用', value: stats.used_codes, icon: '✅', bg: 'bg-blue-50' },
-              { label: '活跃订阅', value: stats.active_subscribers, icon: '👥', bg: 'bg-orange-50' },
-              { label: '过期订阅', value: stats.expired_subscribers, icon: '⏰', bg: 'bg-gray-50' },
+              { label: '已过期', value: stats.expired_codes, icon: '⏰', bg: 'bg-gray-50' },
+              { label: '已禁用', value: stats.disabled_codes, icon: '🚫', bg: 'bg-red-50' },
             ].map((item) => (
               <div key={item.label} className={`${item.bg} rounded-xl p-4 border`}>
                 <div className="text-2xl mb-1">{item.icon}</div>
@@ -190,15 +211,16 @@ const AdminSubscriptions = () => {
                 className="w-24 px-3 py-2 border rounded-lg"
               />
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">时长</label>
+            <div className="min-w-[200px]">
+              <label className="block text-sm text-gray-600 mb-1">绑定单词本</label>
               <select
-                value={genDuration}
-                onChange={(e) => setGenDuration(Number(e.target.value))}
-                className="px-3 py-2 border rounded-lg"
+                value={genBookId}
+                onChange={(e) => setGenBookId(Number(e.target.value))}
+                className="w-full px-3 py-2 border rounded-lg"
               >
-                {DURATION_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                {books.length === 0 && <option value={0}>暂无单词本</option>}
+                {books.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
             </div>
@@ -216,9 +238,9 @@ const AdminSubscriptions = () => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleGenerate}
-              disabled={generating}
+              disabled={generating || !genBookId}
               className={`px-6 py-2 rounded-lg font-medium text-white ${
-                generating ? 'bg-gray-400' : 'bg-[#FF6B35] hover:bg-[#e55a2b]'
+                generating || !genBookId ? 'bg-gray-400' : 'bg-[#FF6B35] hover:bg-[#e55a2b]'
               }`}
             >
               {generating ? '生成中...' : '生成'}
@@ -279,7 +301,7 @@ const AdminSubscriptions = () => {
               <thead>
                 <tr className="border-b text-left text-gray-500">
                   <th className="pb-2 pr-4">兑换码</th>
-                  <th className="pb-2 pr-4">时长</th>
+                  <th className="pb-2 pr-4">绑定书籍</th>
                   <th className="pb-2 pr-4">状态</th>
                   <th className="pb-2 pr-4">创建时间</th>
                   <th className="pb-2 pr-4">使用时间</th>
@@ -290,7 +312,11 @@ const AdminSubscriptions = () => {
                 {codes.map((c) => (
                   <tr key={c.id} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="py-2.5 pr-4 font-mono text-xs">{c.code}</td>
-                    <td className="py-2.5 pr-4">{c.duration_days}天</td>
+                    <td className="py-2.5 pr-4">
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                        {getBookName(c.book_id, c.book_name)}
+                      </span>
+                    </td>
                     <td className="py-2.5 pr-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_MAP[c.status]?.color || ''}`}>
                         {STATUS_MAP[c.status]?.label || c.status}

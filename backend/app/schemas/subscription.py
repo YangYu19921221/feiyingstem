@@ -1,5 +1,5 @@
 """
-订阅兑换码相关Schema
+单词本兑换码相关Schema
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -9,7 +9,7 @@ from datetime import datetime
 class RedemptionCodeGenerate(BaseModel):
     """批量生成兑换码请求"""
     count: int = Field(..., ge=1, le=100, description="生成数量(1-100)")
-    duration_days: int = Field(..., description="订阅天数(30/90/180/365)")
+    book_id: int = Field(..., description="绑定的单词本ID")
     batch_note: Optional[str] = Field(None, max_length=200, description="批次备注")
 
 
@@ -22,22 +22,15 @@ class RedeemResponse(BaseModel):
     """兑换响应"""
     success: bool
     message: str
-    subscription_expires_at: Optional[datetime] = None
-
-
-class SubscriptionStatusResponse(BaseModel):
-    """订阅状态响应"""
-    has_subscription: bool
-    subscription_expires_at: Optional[datetime] = None
-    is_expired: bool
-    days_remaining: int = 0
+    book_name: Optional[str] = None
 
 
 class RedemptionCodeResponse(BaseModel):
     """兑换码响应"""
     id: int
     code: str
-    duration_days: int
+    book_id: int
+    book_name: Optional[str] = None
     status: str
     created_by: int
     created_at: datetime
@@ -57,11 +50,9 @@ class RedemptionCodeListResponse(BaseModel):
 
 
 class SubscriptionStatsResponse(BaseModel):
-    """订阅统计响应"""
+    """兑换码统计响应"""
     total_codes: int
     unused_codes: int
     used_codes: int
     expired_codes: int
     disabled_codes: int
-    active_subscribers: int
-    expired_subscribers: int

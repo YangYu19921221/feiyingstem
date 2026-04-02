@@ -86,7 +86,7 @@ class RedemptionCode(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(19), unique=True, nullable=False, index=True)  # XXXX-XXXX-XXXX-XXXX
-    duration_days = Column(Integer, nullable=False)  # 订阅天数 30/90/180/365
+    book_id = Column(Integer, ForeignKey('word_books.id'), nullable=False)  # 绑定的单词本ID
     status = Column(String(20), default=RedemptionCodeStatus.UNUSED)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime, server_default=func.now())

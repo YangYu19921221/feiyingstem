@@ -32,17 +32,6 @@ instance.interceptors.response.use(
   (error) => {
     // 统一错误处理
     if (error.response) {
-      // 学生订阅过期，跳转到兑换页
-      if (
-        error.response.status === 403 &&
-        error.response.data?.detail === 'subscription_expired'
-      ) {
-        const currentPath = window.location.pathname;
-        if (currentPath !== '/subscription/redeem') {
-          window.location.href = '/subscription/redeem';
-        }
-        return Promise.reject(error);
-      }
       // 服务器返回错误（404 不打印，由调用方处理）
       if (error.response.status !== 404) {
         console.error('API Error:', error.response.data);

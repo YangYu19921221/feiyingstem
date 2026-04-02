@@ -257,7 +257,7 @@ CREATE INDEX idx_exam_papers_user ON exam_papers(user_id);
 CREATE TABLE redemption_codes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code VARCHAR(19) UNIQUE NOT NULL, -- XXXX-XXXX-XXXX-XXXX
-    duration_days INTEGER NOT NULL, -- 订阅天数 30/90/180/365
+    book_id INTEGER NOT NULL REFERENCES word_books(id), -- 绑定的单词本ID
     status VARCHAR(20) DEFAULT 'unused' CHECK(status IN ('unused', 'used', 'expired', 'disabled')),
     created_by INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

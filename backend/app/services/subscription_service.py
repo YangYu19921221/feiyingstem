@@ -1,5 +1,5 @@
 """
-订阅兑换码服务
+单词本兑换码服务
 """
 import random
 import string
@@ -10,6 +10,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, RedemptionCode, RedemptionCodeStatus
+from app.models.learning import BookAssignment
+from app.models.word import WordBook
 
 # 去掉易混淆字符 0/O/1/I/L
 CHARSET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
@@ -28,7 +30,7 @@ async def batch_generate_codes(
     db: AsyncSession,
     admin_id: int,
     count: int,
-    duration_days: int,
+    book_id: int,
     batch_note: Optional[str] = None,
     code_valid_days: int = 180,
 ) -> List[RedemptionCode]:
@@ -54,7 +56,7 @@ async def batch_generate_codes(
     for code_str in generated:
         code = RedemptionCode(
             code=code_str,
-            duration_days=duration_days,
+            book_id=book_id,
             status=RedemptionCodeStatus.UNUSED,
             created_by=admin_id,
             code_expires_at=code_expires_at,
@@ -74,7 +76,7 @@ async def redeem_code(
     user: User,
     code_str: str,
 ) -> dict:
-    """兑换激活订阅"""
+    """兑换码激活单词本"""
     # 查找兑换码
     result = await db.execute(
         select(RedemptionCode).where(RedemptionCode.code == code_str)
@@ -97,26 +99,37 @@ async def redeem_code(
         await db.commit()
         return {"success": False, "message": "兑换码已过期"}
 
-    # 续期逻辑：未过期从到期日延续，已过期从当前时间开始
-    duration = timedelta(days=code.duration_days)
-    current_expires = user.subscription_expires_at
-    if current_expires and current_expires > now:
-        new_expires = current_expires + duration
-    else:
-        new_expires = now + duration
+    # 查询绑定的单词本名称
+    book = await db.get(WordBook, code.book_id)
+    book_name = book.name if book else "未知"
 
-    # 更新用户订阅
-    user.subscription_expires_at = new_expires
+    # 检查学生是否已拥有该单词本
+    existing_assignment = await db.execute(
+        select(BookAssignment).where(
+            BookAssignment.book_id == code.book_id,
+            BookAssignment.student_id == user.id,
+        )
+    )
+    if existing_assignment.scalar_one_or_none():
+        return {"success": False, "message": f"你已拥有单词本《{book_name}》，无需重复兑换"}
+
+    # 创建单词本分配记录
+    assignment = BookAssignment(
+        book_id=code.book_id,
+        student_id=user.id,
+        teacher_id=code.created_by,
+    )
+    db.add(assignment)
+
     # 更新兑换码状态
     code.status = RedemptionCodeStatus.USED
     code.used_by = user.id
     code.used_at = now
 
     await db.commit()
-    await db.refresh(user)
 
     return {
         "success": True,
-        "message": f"兑换成功！订阅有效期至 {new_expires.strftime('%Y-%m-%d %H:%M')}",
-        "subscription_expires_at": new_expires,
+        "message": f"兑换成功！已获得单词本《{book_name}》",
+        "book_name": book_name,
     }

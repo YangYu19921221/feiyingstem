@@ -1,17 +1,13 @@
 import api from './client';
 
-// 订阅状态查询
-export const getSubscriptionStatus = () =>
-  api.get('/subscription/status');
-
-// 兑换码激活
+// 兑换码激活（兑换单词本）
 export const redeemCode = (code: string) =>
   api.post('/subscription/redeem', { code });
 
-// 管理员：批量生成兑换码
+// 管理员：批量生成兑换码（绑定单词本）
 export const generateCodes = (data: {
   count: number;
-  duration_days: number;
+  book_id: number;
   batch_note?: string;
 }) => api.post('/admin/subscriptions/generate', data);
 
@@ -22,7 +18,7 @@ export const listCodes = (params: {
   status?: string;
 }) => api.get('/admin/subscriptions/codes', { params });
 
-// 管理员：订阅统计
+// 管理员：兑换码统计
 export const getSubscriptionStats = () =>
   api.get('/admin/subscriptions/stats');
 
