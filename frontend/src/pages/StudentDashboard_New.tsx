@@ -428,124 +428,150 @@ const StudentDashboard = () => {
 
         {/* 我的单词本 */}
         <div className="mb-8">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>📚</span> 我的单词本
-          </h3>
-
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               <p className="text-gray-500 mt-4">加载中...</p>
             </div>
-          ) : books.length === 0 ? (
-            <div
-              className="bg-white rounded-2xl p-12 text-center shadow-md"
-            >
-              <span className="text-6xl mb-4 block">📭</span>
-              <p className="text-gray-500 mb-2">还没有单词本</p>
-              <p className="text-sm text-gray-400">等待老师分配单词本给你</p>
-            </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {books.map((book, index) => (
-                <div
-                  key={book.id}
-                  className={`bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer flex flex-col ${!book.owned ? 'opacity-80' : ''}`}
-                  onClick={() => book.owned ? handleStartLearning(book.id) : navigate('/subscription/redeem')}
-                >
-                  {/* 封面色块 */}
-                  <div
-                    className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl relative"
-                    style={{ background: book.owned ? book.cover_color : '#9CA3AF' }}
+            <>
+              {/* 我的书架（已购买） */}
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <span>📚</span> 我的书架
+              </h3>
+              {books.filter(b => b.owned).length === 0 ? (
+                <div className="bg-white rounded-2xl p-8 text-center shadow-md mb-8">
+                  <span className="text-5xl mb-3 block">📭</span>
+                  <p className="text-gray-500 mb-1">还没有书籍</p>
+                  <p className="text-sm text-gray-400">请联系老师分配或使用兑换码获取</p>
+                  <button
+                    onClick={() => navigate('/subscription/redeem')}
+                    className="mt-4 px-5 py-2 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg font-medium hover:shadow-md transition"
                   >
-                    {book.owned ? '📖' : '🔒'}
-                    {book.owned && (
-                      <span className="absolute top-2 right-2 px-2 py-0.5 bg-green-500 text-white text-xs rounded-full font-medium">
-                        已购买
-                      </span>
-                    )}
-                  </div>
-
-                  {/* 单词本信息 */}
-                  <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-primary transition">
-                    {book.name}
-                  </h4>
-
-                  {book.description && (
-                    <p className="text-sm text-gray-500 mb-3">{book.description}</p>
-                  )}
-
-                  {/* 统计信息 */}
-                  <div className="flex items-center gap-3 mb-4 text-sm text-gray-600 flex-wrap">
-                    <span>📊 {book.unit_count} 个单元</span>
-                    <span>📝 {book.word_count} 个单词</span>
-                    {book.grade_level && (
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs">{book.grade_level}</span>
-                    )}
-                    {book.volume && (
-                      <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs">{book.volume}</span>
-                    )}
-                  </div>
-
-                  {/* 已购买：显示进度和学习按钮 */}
-                  {book.owned ? (
-                    <>
-                      <div className="mb-3">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-600">学习进度</span>
-                          <span className="font-bold text-primary">
-                            {book.progress_percentage.toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-green-400 to-blue-500"
-                            style={{ width: `${book.progress_percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartLearning(book.id);
-                          }}
-                          className="flex-1 py-2 px-4 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:shadow-md transition font-medium"
-                        >
-                          🧠 开始学习
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/student/books/${book.id}/progress`);
-                          }}
-                          className="py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
-                        >
-                          📊
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    /* 未购买：显示锁定状态和兑换入口 */
-                    <div className="mt-auto">
-                      <div className="flex items-center gap-2 mb-3 text-sm text-gray-400">
-                        <span>🔒</span>
-                        <span>需要兑换后才能学习</span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate('/subscription/redeem');
-                        }}
-                        className="w-full py-2 px-4 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg hover:shadow-md transition font-medium"
-                      >
-                        🔑 去兑换
-                      </button>
-                    </div>
-                  )}
+                    🔑 输入兑换码
+                  </button>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                  {books.filter(b => b.owned).map((book) => (
+                    <div
+                      key={book.id}
+                      className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer flex flex-col"
+                      onClick={() => handleStartLearning(book.id)}
+                    >
+                      <div
+                        className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl relative"
+                        style={{ background: book.cover_color }}
+                      >
+                        📖
+                      </div>
+                      <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-primary transition">
+                        {book.name}
+                      </h4>
+                      {book.description && (
+                        <p className="text-sm text-gray-500 mb-3">{book.description}</p>
+                      )}
+                      <div className="flex items-center gap-3 mb-4 text-sm text-gray-600 flex-wrap">
+                        <span>📊 {book.unit_count} 个单元</span>
+                        <span>📝 {book.word_count} 个单词</span>
+                        {book.grade_level && (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs">{book.grade_level}</span>
+                        )}
+                        {book.volume && (
+                          <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs">{book.volume}</span>
+                        )}
+                      </div>
+                      <div className="mt-auto">
+                        <div className="mb-3">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-gray-600">学习进度</span>
+                            <span className="font-bold text-primary">
+                              {book.progress_percentage.toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-green-400 to-blue-500"
+                              style={{ width: `${book.progress_percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartLearning(book.id);
+                            }}
+                            className="flex-1 py-2 px-4 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:shadow-md transition font-medium"
+                          >
+                            🧠 开始学习
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/student/books/${book.id}/progress`);
+                            }}
+                            className="py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                          >
+                            📊
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 更多书籍（未购买） */}
+              {books.filter(b => !b.owned).length > 0 && (
+                <>
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <span>🛒</span> 更多书籍
+                  </h3>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    {books.filter(b => !b.owned).map((book) => (
+                      <div
+                        key={book.id}
+                        className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition cursor-pointer flex flex-col opacity-80"
+                        onClick={() => navigate('/subscription/redeem')}
+                      >
+                        <div
+                          className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl"
+                          style={{ background: '#9CA3AF' }}
+                        >
+                          🔒
+                        </div>
+                        <h4 className="text-lg font-bold text-gray-800 mb-2">{book.name}</h4>
+                        {book.description && (
+                          <p className="text-sm text-gray-500 mb-3">{book.description}</p>
+                        )}
+                        <div className="flex items-center gap-3 mb-4 text-sm text-gray-600 flex-wrap">
+                          <span>📊 {book.unit_count} 个单元</span>
+                          <span>📝 {book.word_count} 个单词</span>
+                          {book.grade_level && (
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs">{book.grade_level}</span>
+                          )}
+                          {book.volume && (
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs">{book.volume}</span>
+                          )}
+                        </div>
+                        <div className="mt-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/subscription/redeem');
+                            }}
+                            className="w-full py-2 px-4 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg hover:shadow-md transition font-medium"
+                          >
+                            🔑 去兑换
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
           )}
         </div>
 
