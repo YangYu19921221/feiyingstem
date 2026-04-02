@@ -160,7 +160,7 @@ const UnitSelector = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className={`font-bold truncate ${isCurrent ? 'text-teal-700' : 'text-gray-800'}`}>
-                          {unit.unit_name}
+                          Unit {unit.unit_number || index + 1}: {unit.unit_name}
                         </h3>
                         {isCurrent && (
                           <span className="px-1.5 py-0.5 bg-teal-500 text-white text-[10px] rounded font-medium shrink-0">
