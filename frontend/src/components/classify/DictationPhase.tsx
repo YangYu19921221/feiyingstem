@@ -33,6 +33,10 @@ export default function DictationPhase({
   const [userInput, setUserInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  // 错误后需要重新输入正确答案
+  const [retryMode, setRetryMode] = useState(false);
+  const [retryInput, setRetryInput] = useState('');
+  const [retryPassed, setRetryPassed] = useState(false);
   // 只记录首次尝试结果
   const [firstAttemptResults, setFirstAttemptResults] = useState<Map<number, boolean>>(new Map());
   const [roundErrorWords, setRoundErrorWords] = useState<WordData[]>([]);
@@ -55,6 +59,10 @@ export default function DictationPhase({
   }, [currentIndex, currentWord, playAudioSlow, round, showRoundSummary]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (retryMode) {
+      setRetryInput(e.target.value.slice(0, wordLength));
+      return;
+    }
     if (submitted) return;
     setUserInput(e.target.value.slice(0, wordLength));
   };
@@ -79,6 +87,8 @@ export default function DictationPhase({
         if (prev.some(w => w.id === currentWord.id)) return prev;
         return [...prev, currentWord];
       });
+      setRetryMode(true);
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [submitted, currentWord, userInput]);
 
@@ -116,15 +126,30 @@ export default function DictationPhase({
       setUserInput('');
       setSubmitted(false);
       setIsCorrect(false);
+      setRetryMode(false);
+      setRetryInput('');
+      setRetryPassed(false);
     }
   }, [currentIndex, roundWords.length, handleRoundEnd]);
 
+  const handleRetrySubmit = useCallback(() => {
+    if (!currentWord || retryInput.length === 0) return;
+    if (retryInput.trim() === currentWord.word.trim()) {
+      setRetryPassed(true);
+    } else {
+      setRetryInput('');
+      inputRef.current?.focus();
+    }
+  }, [currentWord, retryInput]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      if (!submitted && userInput.length > 0) {
-        handleSubmit();
-      } else if (submitted) {
+      if (retryMode && !retryPassed) {
+        handleRetrySubmit();
+      } else if (retryPassed || (submitted && isCorrect)) {
         handleNext();
+      } else if (!submitted && userInput.length > 0) {
+        handleSubmit();
       }
     }
   };
@@ -132,11 +157,17 @@ export default function DictationPhase({
   useEffect(() => {
     if (!submitted) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') handleNext();
+      if (e.key === 'Enter') {
+        if (retryMode && !retryPassed) {
+          handleRetrySubmit();
+        } else if (retryPassed || isCorrect) {
+          handleNext();
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [submitted, handleNext]);
+  }, [submitted, isCorrect, retryMode, retryPassed, handleNext, handleRetrySubmit]);
 
   const getSlotStyle = (index: number): string => {
     if (!submitted) {
@@ -287,10 +318,10 @@ export default function DictationPhase({
           <input
             ref={inputRef}
             type="text"
-            value={userInput}
+            value={retryMode ? retryInput : userInput}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            disabled={submitted}
+            disabled={submitted && !retryMode}
             maxLength={wordLength}
             autoComplete="off"
             autoCorrect="off"
@@ -313,7 +344,17 @@ export default function DictationPhase({
               className="mt-4"
             >
               {isCorrect ? (
-                <div className="text-green-600 font-medium text-lg">✅ 正确！</div>
+                <>
+                  <div className="text-green-600 font-medium text-lg">✅ 正确！</div>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleNext}
+                    className="mt-4 px-8 py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90 cursor-pointer"
+                  >
+                    下一个
+                  </motion.button>
+                </>
               ) : (
                 <div>
                   <div className="text-red-600 font-medium text-lg mb-2">❌ 不对哦</div>
@@ -330,17 +371,55 @@ export default function DictationPhase({
                       <ColoredPhonetic phonetic={currentWord.phonetic} size="sm" />
                     </div>
                   )}
+
+                  {/* 重新输入区域 */}
+                  {!retryPassed ? (
+                    <div className="mt-4">
+                      <p className="text-sm text-orange-600 font-medium mb-2">请重新输入正确拼写：</p>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={retryInput}
+                        onChange={handleInputChange}
+                        onKeyDown={handleKeyDown}
+                        maxLength={wordLength}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        className="w-full px-4 py-3 text-center text-xl font-mono border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition"
+                        placeholder="输入正确的单词"
+                        autoFocus
+                      />
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleRetrySubmit}
+                        disabled={retryInput.length === 0}
+                        className={`mt-3 px-8 py-3 rounded-2xl text-lg font-medium shadow-lg cursor-pointer transition ${
+                          retryInput.length > 0
+                            ? 'bg-accent text-white hover:opacity-90'
+                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        }`}
+                      >
+                        确认 (Enter)
+                      </motion.button>
+                    </div>
+                  ) : (
+                    <div className="mt-4">
+                      <div className="text-green-600 font-medium">✅ 输入正确！</div>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleNext}
+                        className="mt-3 px-8 py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90 cursor-pointer"
+                      >
+                        下一个
+                      </motion.button>
+                    </div>
+                  )}
                 </div>
               )}
-
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleNext}
-                className="mt-4 px-8 py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90 cursor-pointer"
-              >
-                下一个
-              </motion.button>
             </motion.div>
           )}
 
@@ -374,6 +453,7 @@ export default function DictationPhase({
                 setUserInput('');
                 setIsCorrect(false);
                 setSubmitted(true);
+                setRetryMode(true);
                 setFirstAttemptResults(prev => {
                   if (prev.has(currentWord.id)) return prev;
                   const next = new Map(prev);
@@ -384,6 +464,7 @@ export default function DictationPhase({
                   if (prev.some(w => w.id === currentWord.id)) return prev;
                   return [...prev, currentWord];
                 });
+                setTimeout(() => inputRef.current?.focus(), 100);
               }}
               className="mt-3 px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm font-medium transition cursor-pointer"
             >
