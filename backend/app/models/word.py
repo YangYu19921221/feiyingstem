@@ -41,7 +41,8 @@ class WordBook(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     description = Column(Text)
-    grade_level = Column(String(20))
+    grade_level = Column(String(20))       # 年级，如 "三年级"，课外书留空
+    volume = Column(String(20))             # 册次，如 "上册"、"下册"，课外书留空
     created_by = Column(Integer, nullable=True)  # 暂时不使用外键
     is_public = Column(Boolean, default=True)
     cover_color = Column(String(20), default="#FF6B6B")

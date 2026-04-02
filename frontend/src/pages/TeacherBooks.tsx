@@ -21,7 +21,9 @@ const TeacherBooks = () => {
   const [loading, setLoading] = useState(true);
   const [selectedBooks, setSelectedBooks] = useState<number[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const hasLoadedOnce = useRef(false); // 使用ref避免触发重新渲染
+  const hasLoadedOnce = useRef(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -115,6 +117,34 @@ const TeacherBooks = () => {
     setIsSelectionMode(false);
   };
 
+  const handleCreateBook = async () => {
+    if (!newBook.name.trim()) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.post(`${API_BASE_URL}/words/books`, {
+        name: newBook.name,
+        description: newBook.description || null,
+        grade_level: newBook.grade_level || null,
+        volume: newBook.volume || null,
+        cover_color: newBook.cover_color,
+        is_public: true,
+        word_ids: [],
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      setShowCreateModal(false);
+      setNewBook({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
+      loadBooks();
+    } catch (error) {
+      console.error('创建单词本失败:', error);
+      alert('创建失败，请重试');
+    }
+  };
+
+  const GRADE_OPTIONS = [
+    '', '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
+    '七年级', '八年级', '九年级', '高一', '高二', '高三',
+  ];
+  const VOLUME_OPTIONS = ['', '上册', '下册', '全册'];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* 顶部导航栏 */}
@@ -203,6 +233,12 @@ const TeacherBooks = () => {
                       批量管理
                     </button>
                   )}
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium shadow-md"
+                  >
+                    + 新建单词本
+                  </button>
                 </>
               )}
             </div>
@@ -275,11 +311,18 @@ const TeacherBooks = () => {
                   )}
 
                   {/* 标签 */}
-                  {book.grade_level && (
+                  {(book.grade_level || (book as any).volume) && (
                     <div className="flex items-center gap-2 mb-4">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
-                        {book.grade_level}
-                      </span>
+                      {book.grade_level && (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                          {book.grade_level}
+                        </span>
+                      )}
+                      {(book as any).volume && (
+                        <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">
+                          {(book as any).volume}
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -342,6 +385,94 @@ const TeacherBooks = () => {
         </motion.div>
       </div>
 
+    </div>
+
+      {/* 新建单词本模态框 */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => setShowCreateModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">新建单词本</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">名称 *</label>
+                <input
+                  type="text"
+                  value={newBook.name}
+                  onChange={e => setNewBook({...newBook, name: e.target.value})}
+                  placeholder="如：PEP小学英语"
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">年级（可选）</label>
+                  <select
+                    value={newBook.grade_level}
+                    onChange={e => setNewBook({...newBook, grade_level: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">课外书/不限</option>
+                    {GRADE_OPTIONS.filter(g => g).map(g => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">册次（可选）</label>
+                  <select
+                    value={newBook.volume}
+                    onChange={e => setNewBook({...newBook, volume: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">不限</option>
+                    {VOLUME_OPTIONS.filter(v => v).map(v => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">描述（可选）</label>
+                <input
+                  type="text"
+                  value={newBook.description}
+                  onChange={e => setNewBook({...newBook, description: e.target.value})}
+                  placeholder="简要描述"
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">封面颜色</label>
+                <div className="flex gap-2">
+                  {['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#FF6B35'].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setNewBook({...newBook, cover_color: c})}
+                      className={`w-8 h-8 rounded-full border-2 ${newBook.cover_color === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 font-medium"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateBook}
+                disabled={!newBook.name.trim()}
+                className="flex-1 py-2 rounded-xl bg-blue-600 text-white font-medium disabled:opacity-50"
+              >
+                创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

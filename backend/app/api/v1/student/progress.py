@@ -7,7 +7,7 @@ from datetime import datetime
 from app.core.database import get_db
 from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition
 from app.models.user import User
-from app.models.learning import LearningProgress, StudySession
+from app.models.learning import LearningProgress, StudySession, BookAssignment
 from app.schemas.progress import (
     StartLearningRequest, StartLearningResponse,
     UpdateProgressRequest, UpdateProgressResponse,
@@ -484,16 +484,16 @@ async def get_student_books(
     current_user: User = Depends(get_current_student)
 ):
     """
-    获取学生的所有单词本(含学习进度)
-
-    暂时返回所有单词本,后续可以基于 BookAssignment 表只返回分配给该学生的单词本
+    获取学生已购买/已分配的单词本(含学习进度)
+    只返回通过 BookAssignment 分配给该学生的单词本
     """
-    # 从认证用户获取user_id
     user_id = current_user.id
 
-    # 1. 获取所有单词本
+    # 1. 获取该学生已分配的单词本
     result = await db.execute(
         select(WordBook)
+        .join(BookAssignment, BookAssignment.book_id == WordBook.id)
+        .where(BookAssignment.student_id == user_id)
         .order_by(WordBook.created_at.desc())
     )
     books = result.scalars().all()

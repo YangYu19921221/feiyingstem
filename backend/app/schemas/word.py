@@ -81,7 +81,8 @@ class WordListItem(BaseModel):
 class WordBookBase(BaseModel):
     name: str = Field(..., description="单词本名称", min_length=1, max_length=100)
     description: Optional[str] = Field(None, description="描述")
-    grade_level: Optional[str] = Field(None, description="适合年级")
+    grade_level: Optional[str] = Field(None, description="年级，如三年级、七年级，课外书留空")
+    volume: Optional[str] = Field(None, description="册次，如上册、下册，课外书留空")
     is_public: bool = Field(True, description="是否公开")
     cover_color: str = Field("#FF6B6B", description="封面颜色")
 
@@ -92,6 +93,7 @@ class WordBookUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     grade_level: Optional[str] = None
+    volume: Optional[str] = None
     is_public: Optional[bool] = None
     cover_color: Optional[str] = None
 
