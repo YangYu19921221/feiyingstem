@@ -524,7 +524,7 @@ async def submit_challenge_level(
         if not word:
             continue
 
-        is_correct = answer.user_answer.strip().lower() == word.word.strip().lower()
+        is_correct = answer.user_answer.strip() == word.word.strip()
 
         # 记录学习记录
         record = LearningRecord(

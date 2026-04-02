@@ -38,7 +38,7 @@ const SpellingPractice = () => {
   const [letterResults, setLetterResults] = useState<string[]>([]);
 
   const handleHint = () => {
-    const answer = questions[currentIndex].correct_answer.toLowerCase();
+    const answer = questions[currentIndex].correct_answer;
     for (let i = 0; i < answer.length; i++) {
       // 跳过空格位置
       if (answer[i] === ' ') continue;
@@ -52,8 +52,8 @@ const SpellingPractice = () => {
 
   const handleCheck = () => {
     const currentQuestion = questions[currentIndex];
-    const answer = currentQuestion.correct_answer.trim().toLowerCase();
-    const input = userInput.trim().toLowerCase();
+    const answer = currentQuestion.correct_answer.trim();
+    const input = userInput.trim();
     const correct = input === answer;
 
     // 逐字母对比
@@ -151,7 +151,7 @@ const SpellingPractice = () => {
           {/* Wordle 风格字母格子 */}
           <div className="flex justify-center gap-2 mb-6 flex-wrap" onClick={focusInput}>
             {currentQuestion && Array.from({ length: answerLength }).map((_, i) => {
-              const answer = currentQuestion.correct_answer.toLowerCase();
+              const answer = currentQuestion.correct_answer;
               const isSpace = answer[i] === ' ';
 
               // 空格位置固定显示为间隔标记

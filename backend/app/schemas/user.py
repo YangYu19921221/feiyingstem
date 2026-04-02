@@ -18,7 +18,7 @@ class UserLogin(BaseModel):
 class SendCodeRequest(BaseModel):
     """发送验证码请求"""
     phone: str = Field(..., pattern=r"^1[3-9]\d{9}$", description="手机号")
-    purpose: str = Field(..., description="用途: register 或 login")
+    purpose: str = Field(..., description="用途: register、login 或 reset_password")
 
 class UserRegister(BaseModel):
     """手机号注册请求"""
@@ -64,3 +64,14 @@ class TokenData(BaseModel):
     """Token数据"""
     username: Optional[str] = None
     user_id: Optional[int] = None
+
+class ResetPasswordRequest(BaseModel):
+    """忘记密码 - 通过手机验证码重置"""
+    phone: str = Field(..., pattern=r"^1[3-9]\d{9}$", description="手机号")
+    code: str = Field(..., min_length=4, max_length=6, description="验证码")
+    new_password: str = Field(..., min_length=6, max_length=50, description="新密码")
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码 - 已登录用户"""
+    old_password: str = Field(..., description="旧密码")
+    new_password: str = Field(..., min_length=6, max_length=50, description="新密码")

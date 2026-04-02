@@ -9,7 +9,7 @@ from jose import JWTError, jwt
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister
+from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest
 from app.services import auth_service
 from app.services.sms_service import code_store, send_sms_code
 from app.models.user import User
@@ -125,8 +125,8 @@ async def send_verification_code(
         existing = await auth_service.get_user_by_phone(db, data.phone)
         if existing:
             raise HTTPException(status_code=400, detail="该手机号已注册")
-    elif data.purpose == "login":
-        # 登录时检查手机号是否存在
+    elif data.purpose in ("login", "reset_password"):
+        # 登录或重置密码时检查手机号是否存在
         existing = await auth_service.get_user_by_phone(db, data.phone)
         if not existing:
             raise HTTPException(status_code=400, detail="该手机号未注册")
@@ -317,3 +317,39 @@ async def get_students(
     # 获取所有学生
     students = await auth_service.get_users_by_role(db, role="student")
     return students
+
+
+@router.post("/reset-password")
+async def reset_password(
+    data: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """通过手机验证码重置密码（忘记密码，公开接口）"""
+    ok, msg = code_store.verify(data.phone, data.code)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+
+    user = await auth_service.get_user_by_phone(db, data.phone)
+    if not user:
+        raise HTTPException(status_code=400, detail="该手机号未注册")
+
+    user.hashed_password = auth_service.get_password_hash(data.new_password)
+    await db.commit()
+
+    return {"message": "密码重置成功，请使用新密码登录"}
+
+
+@router.put("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """修改密码（已登录用户）"""
+    if not auth_service.verify_password(data.old_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="旧密码错误")
+
+    current_user.hashed_password = auth_service.get_password_hash(data.new_password)
+    await db.commit()
+
+    return {"message": "密码修改成功"}

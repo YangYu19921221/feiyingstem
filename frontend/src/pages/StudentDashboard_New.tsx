@@ -7,6 +7,7 @@ import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount } from '../api/memoryCurve';
 import PetWidget from '../components/PetWidget';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
 interface UserData {
   id: number;
@@ -127,6 +128,8 @@ const StudentDashboard = () => {
     navigate('/login');
   };
 
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
   const handleStartLearning = (bookId: number) => {
     navigate(`/student/books/${bookId}/units`);
   };
@@ -153,6 +156,12 @@ const StudentDashboard = () => {
             <span className="text-sm text-gray-600">
               👤 {user?.full_name || '学生'}
             </span>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="text-sm px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition"
+            >
+              修改密码
+            </button>
             <button
               onClick={handleLogout}
               className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
@@ -642,6 +651,11 @@ const StudentDashboard = () => {
           </div>
         </div>
       </div>
+
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 };

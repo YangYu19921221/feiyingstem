@@ -62,7 +62,7 @@ export default function DictationPhase({
   const handleSubmit = useCallback(() => {
     if (submitted || !currentWord || userInput.length === 0) return;
 
-    const correct = userInput.trim().toLowerCase() === currentWord.word.trim().toLowerCase();
+    const correct = userInput.trim() === currentWord.word.trim();
     setIsCorrect(correct);
     setSubmitted(true);
 
@@ -144,8 +144,8 @@ export default function DictationPhase({
       if (index === userInput.length) return 'border-primary/60';
       return 'border-gray-300';
     }
-    const correctChar = currentWord.word[index]?.toLowerCase();
-    const userChar = userInput[index]?.toLowerCase();
+    const correctChar = currentWord.word[index];
+    const userChar = userInput[index];
     if (!userChar) return 'border-red-300 text-red-300';
     if (userChar === correctChar) return 'border-green-400 text-green-600 bg-green-50';
     return 'border-red-400 text-red-600 bg-red-50';

@@ -299,8 +299,8 @@ async def submit_exam(
         db_q = db_questions.get(ans.question_id)
         score = db_q.score if db_q else 5
 
-        # 判分（忽略大小写和首尾空格）
-        is_correct = ans.answer.strip().lower() == correct_answer.strip().lower()
+        # 判分（严格区分大小写）
+        is_correct = ans.answer.strip() == correct_answer.strip()
         earned = score if is_correct else 0
         total_score += earned
 

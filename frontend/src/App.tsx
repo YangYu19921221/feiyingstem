@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
 import StudentDashboard from './pages/StudentDashboard_New';
 import TeacherDashboard from './pages/TeacherDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -125,6 +126,9 @@ function App() {
 
         {/* 注册页面 */}
         <Route path="/register" element={<Register />} />
+
+        {/* 忘记密码 */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {/* 根据角色显示不同的仪表盘 */}
         <Route

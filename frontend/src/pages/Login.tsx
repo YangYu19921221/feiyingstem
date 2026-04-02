@@ -241,6 +241,8 @@ const Login = () => {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }} className="mt-8 text-center text-sm text-gray-400">
             还没有账号？
             <Link to="/register" className="text-blue-600 font-semibold hover:underline ml-1">立即注册</Link>
+            <span className="mx-2">·</span>
+            <Link to="/forgot-password" className="text-blue-600 font-semibold hover:underline">忘记密码</Link>
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="mt-10 text-center text-xs text-gray-300">
