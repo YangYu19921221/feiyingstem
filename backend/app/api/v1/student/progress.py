@@ -366,6 +366,28 @@ async def get_book_progress(
         total_words_in_book += word_count
         total_completed_words += max_completed
 
+        # 查询该单元的最佳正确率（从 study_sessions 中取）
+        best_accuracy = None
+        is_perfect = False
+        best_result = await db.execute(
+            select(StudySession.correct_count, StudySession.wrong_count)
+            .where(
+                and_(
+                    StudySession.user_id == user_id,
+                    StudySession.unit_id == unit.id,
+                    StudySession.correct_count > 0,
+                )
+            )
+        )
+        for correct, wrong in best_result.all():
+            total = correct + wrong
+            if total > 0:
+                acc = correct / total * 100
+                if best_accuracy is None or acc > best_accuracy:
+                    best_accuracy = acc
+                if wrong == 0:
+                    is_perfect = True
+
         unit_progresses.append(UnitProgressResponse(
             unit_id=unit.id,
             unit_number=unit.unit_number,
@@ -377,7 +399,9 @@ async def get_book_progress(
             current_word_index=current_word_index,
             last_studied_at=last_studied_at,
             learning_mode=learning_mode,
-            is_completed=is_completed
+            is_completed=is_completed,
+            best_accuracy=round(best_accuracy, 1) if best_accuracy is not None else None,
+            is_perfect=is_perfect,
         ))
 
     # 4. 计算整体进度

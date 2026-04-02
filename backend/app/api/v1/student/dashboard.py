@@ -111,6 +111,62 @@ async def get_student_dashboard_stats(
 
     rank_percentage = 100 - (higher_ranked / total_students * 100)
 
+    # 8. 学习质量统计 — 满分轮次 & 首次正确率
+    # 满分轮次：wrong_count = 0 且 correct_count > 0 的会话数
+    result = await db.execute(
+        select(func.count()).select_from(StudySession)
+        .where(
+            and_(
+                StudySession.user_id == user_id,
+                StudySession.wrong_count == 0,
+                StudySession.correct_count > 0,
+            )
+        )
+    )
+    perfect_sessions = result.scalar() or 0
+
+    # 总完成会话数
+    result = await db.execute(
+        select(func.count()).select_from(StudySession)
+        .where(
+            and_(
+                StudySession.user_id == user_id,
+                StudySession.correct_count > 0,
+            )
+        )
+    )
+    total_sessions = result.scalar() or 0
+
+    # 首次正确率：每个单词首次遇到时答对的比例
+    from app.models.learning import LearningRecord
+    result = await db.execute(
+        select(
+            func.count(func.distinct(LearningRecord.word_id))
+        ).where(LearningRecord.user_id == user_id)
+    )
+    total_unique_words = result.scalar() or 0
+
+    # 首次答对的单词数：该单词的第一条记录 is_correct = True
+    # 使用子查询找每个单词的最早记录
+    from sqlalchemy import literal_column
+    first_record_subq = (
+        select(
+            LearningRecord.word_id,
+            func.min(LearningRecord.id).label('first_id')
+        )
+        .where(LearningRecord.user_id == user_id)
+        .group_by(LearningRecord.word_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(func.count())
+        .select_from(LearningRecord)
+        .join(first_record_subq, LearningRecord.id == first_record_subq.c.first_id)
+        .where(LearningRecord.is_correct == True)
+    )
+    first_time_correct = result.scalar() or 0
+    first_time_accuracy = (first_time_correct / total_unique_words * 100) if total_unique_words > 0 else 0
+
     return {
         "total_words_studied": int(total_words_studied),
         "today_words": today_words,
@@ -122,4 +178,7 @@ async def get_student_dashboard_stats(
         "level": current_user.level or 1,
         "experience_points": current_user.experience_points or 0,
         "total_points": current_user.total_points or 0,
+        "perfect_sessions": perfect_sessions,
+        "total_sessions": total_sessions,
+        "first_time_accuracy": round(first_time_accuracy, 1),
     }

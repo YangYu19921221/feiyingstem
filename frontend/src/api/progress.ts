@@ -108,6 +108,8 @@ export interface UnitProgress {
   last_studied_at: string | null;
   learning_mode: string | null;
   is_completed: boolean;
+  best_accuracy: number | null;
+  is_perfect: boolean;
 }
 
 export interface BookProgress {

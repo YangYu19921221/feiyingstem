@@ -172,6 +172,16 @@ const UnitSelector = () => {
                             当前
                           </span>
                         )}
+                        {unit.is_perfect && (
+                          <span className="px-1.5 py-0.5 bg-amber-400 text-white text-[10px] rounded font-medium shrink-0">
+                            ⭐ 满分
+                          </span>
+                        )}
+                        {!unit.is_perfect && unit.best_accuracy !== null && unit.best_accuracy !== undefined && (
+                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 text-[10px] rounded font-medium shrink-0">
+                            最佳 {unit.best_accuracy.toFixed(0)}%
+                          </span>
+                        )}
                       </div>
                       {/* 进度条 */}
                       <div className="flex items-center gap-2 mt-1">

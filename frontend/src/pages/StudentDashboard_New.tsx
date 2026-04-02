@@ -27,6 +27,9 @@ interface DashboardStats {
   level: number;
   experience_points: number;
   total_points: number;
+  perfect_sessions: number;
+  total_sessions: number;
+  first_time_accuracy: number;
 }
 
 const StudentDashboard = () => {
@@ -253,6 +256,45 @@ const StudentDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* 学习质量 */}
+        {stats && (stats.perfect_sessions > 0 || stats.total_sessions > 0) && (
+          <div className="mb-8">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <span>🏅</span> 学习质量
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-5 shadow-sm text-center">
+                <div className="text-3xl mb-1">⭐</div>
+                <div className="text-2xl font-bold text-amber-600">{stats.perfect_sessions}</div>
+                <div className="text-sm text-gray-600">满分轮次</div>
+                {stats.total_sessions > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    共 {stats.total_sessions} 次练习
+                  </div>
+                )}
+              </div>
+              <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-5 shadow-sm text-center">
+                <div className="text-3xl mb-1">🎯</div>
+                <div className="text-2xl font-bold text-emerald-600">{stats.first_time_accuracy}%</div>
+                <div className="text-sm text-gray-600">首次正确率</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  第一次就答对
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-5 shadow-sm text-center">
+                <div className="text-3xl mb-1">📈</div>
+                <div className="text-2xl font-bold text-violet-600">
+                  {stats.total_sessions > 0 ? Math.round(stats.perfect_sessions / stats.total_sessions * 100) : 0}%
+                </div>
+                <div className="text-sm text-gray-600">满分率</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  满分/总练习
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 竞赛模式入口 */}
         <div
