@@ -55,7 +55,6 @@ const TeacherUnitManagement = () => {
 
   // 创建单元表单
   const [newUnit, setNewUnit] = useState({
-    unit_number: 1,
     name: '',
     description: '',
   });
@@ -87,14 +86,12 @@ const TeacherUnitManagement = () => {
 
     try {
       await createUnit(parseInt(bookId!), {
-        unit_number: newUnit.unit_number,
         name: newUnit.name,
         description: newUnit.description || undefined,
-        order_index: units.length,
       });
 
       setShowCreateDialog(false);
-      setNewUnit({ unit_number: 1, name: '', description: '' });
+      setNewUnit({ name: '', description: '' });
       loadUnits();
       alert('创建成功!');
     } catch (error: any) {
@@ -547,19 +544,6 @@ const TeacherUnitManagement = () => {
               <h3 className="text-xl font-bold text-gray-800 mb-4">创建新单元</h3>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    单元序号 *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newUnit.unit_number}
-                    onChange={(e) => setNewUnit({ ...newUnit, unit_number: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                  />
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     单元名称 *

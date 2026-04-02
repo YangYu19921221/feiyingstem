@@ -22,10 +22,8 @@ axios.interceptors.request.use(
 
 // 单元相关类型定义
 export interface UnitCreate {
-  unit_number: number;
   name: string;
   description?: string;
-  order_index?: number;
 }
 
 export interface UnitUpdate {

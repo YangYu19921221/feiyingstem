@@ -40,27 +40,21 @@ async def create_unit(
             detail=f"单词本ID {book_id} 不存在"
         )
 
-    # 2. 检查单元序号是否重复
+    # 2. 自动计算下一个单元序号
     result = await db.execute(
-        select(Unit).where(
-            and_(Unit.book_id == book_id, Unit.unit_number == unit_data.unit_number)
-        )
+        select(func.max(Unit.unit_number))
+        .where(Unit.book_id == book_id)
     )
-    existing_unit = result.scalar_one_or_none()
-
-    if existing_unit:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"单元序号 {unit_data.unit_number} 已存在,请使用其他序号"
-        )
+    max_number = result.scalar() or 0
+    actual_unit_number = max_number + 1
 
     # 3. 创建单元
     db_unit = Unit(
         book_id=book_id,
-        unit_number=unit_data.unit_number,
+        unit_number=actual_unit_number,
         name=unit_data.name,
         description=unit_data.description,
-        order_index=unit_data.order_index,
+        order_index=actual_unit_number - 1,
     )
     db.add(db_unit)
     await db.commit()
@@ -256,7 +250,20 @@ async def delete_unit(
         )
 
     # 2. 删除单元(级联删除 unit_words)
+    book_id = unit.book_id
     await db.delete(unit)
+    await db.flush()
+
+    # 3. 重排剩余单元序号为连续的 1,2,3...
+    remaining = await db.execute(
+        select(Unit)
+        .where(Unit.book_id == book_id)
+        .order_by(Unit.order_index, Unit.unit_number)
+    )
+    for i, u in enumerate(remaining.scalars().all(), start=1):
+        u.unit_number = i
+        u.order_index = i - 1
+
     await db.commit()
 
     return None

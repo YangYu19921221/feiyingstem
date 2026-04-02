@@ -7,10 +7,10 @@ from datetime import datetime
 # ========================================
 
 class UnitBase(BaseModel):
-    unit_number: int = Field(..., ge=1, description="单元序号(从1开始)")
+    unit_number: Optional[int] = Field(None, ge=1, description="单元序号(自动生成)")
     name: str = Field(..., min_length=1, max_length=100, description="单元名称")
     description: Optional[str] = Field(None, description="单元描述")
-    order_index: int = Field(0, description="排序索引")
+    order_index: Optional[int] = Field(0, description="排序索引")
 
 class UnitCreate(UnitBase):
     """创建单元"""
