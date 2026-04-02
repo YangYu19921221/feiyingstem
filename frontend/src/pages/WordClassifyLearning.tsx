@@ -3,7 +3,7 @@
  * 管理6个阶段的流转：分类 → 语音校验 → 听写 → 句子填空 → 过关检测 → 总结
  * 支持分组学习：小学每组10个，初中/高中每组20个
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -81,9 +81,11 @@ const WordClassifyLearning = () => {
   const currentGroupWords = groups[currentGroupIndex] || [];
   const totalGroups = groups.length;
   const isLastGroup = currentGroupIndex >= totalGroups - 1;
+  const initRef = useRef(false);
 
   useEffect(() => {
-    if (unitId) {
+    if (unitId && !initRef.current) {
+      initRef.current = true;
       initLearning(parseInt(unitId));
     }
   }, [unitId]);
