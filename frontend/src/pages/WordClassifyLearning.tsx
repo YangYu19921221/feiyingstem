@@ -21,7 +21,7 @@ import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
-import { edgeTtsUrl } from '../hooks/useAudio';
+import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
 
 type Phase = 'classify' | 'speechVerify' | 'dictation' | 'sentenceFill' | 'exam' | 'summary';
@@ -166,24 +166,23 @@ const WordClassifyLearning = () => {
     }
   };
 
-  // 音频播放（正常速度）：统一使用 Edge TTS 女声
+  // 音频播放：使用改进的 hook（预加载、缓存、重试、fallback）
+  const { playAudio: playAudioHook } = useAudio();
+
   const playAudio = useCallback((word: string) => {
-    playEdgeTTS(word);
-  }, []);
+    playAudioHook(word);
+  }, [playAudioHook]);
 
-  const playEdgeTTS = (word: string) => {
-    const url = edgeTtsUrl(word);
-    const audio = new Audio(url);
-    audio.play().catch((e) => console.warn('Edge TTS 播放失败:', e));
-  };
-
-  // 音频播放（慢速，用于听写）
   const playAudioSlow = useCallback((word: string) => {
-    const url = edgeTtsUrl(word);
-    const audio = new Audio(url);
-    audio.playbackRate = 0.75;
-    audio.play().catch((e) => console.warn('Edge TTS 慢速播放失败:', e));
-  }, []);
+    playAudioHook(word, 0.75);
+  }, [playAudioHook]);
+
+  // 进入新一组时预加载该组所有单词的发音
+  useEffect(() => {
+    if (currentGroupWords.length > 0) {
+      preloadAudio(currentGroupWords.map(w => w.word));
+    }
+  }, [currentGroupWords]);
 
 
   // 阶段1完成：分类结束 → 进入语音校验
