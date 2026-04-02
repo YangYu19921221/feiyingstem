@@ -385,8 +385,6 @@ const TeacherBooks = () => {
         </motion.div>
       </div>
 
-    </div>
-
       {/* 新建单词本模态框 */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => setShowCreateModal(false)}>
