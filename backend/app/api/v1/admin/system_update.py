@@ -156,9 +156,9 @@ async def perform_update(current_user: User = Depends(get_current_admin)):
             )
             steps.append({"step": "部署前端", "success": True, "output": "完成"})
 
-            # Step 6: 重启后端服务
-            code, output = _run_cmd("systemctl restart english-helper", timeout=30)
-            steps.append({"step": "重启服务", "success": code == 0, "output": output or "服务已重启"})
+            # Step 6: 延迟重启后端服务（先返回响应，再重启，避免连接中断）
+            _run_cmd("bash -c 'sleep 2 && systemctl restart english-helper' &", timeout=5)
+            steps.append({"step": "重启服务", "success": True, "output": "服务将在2秒后重启"})
 
             # 记录更新日志
             code, new_commit = _run_cmd("git log --oneline -1", timeout=5)
