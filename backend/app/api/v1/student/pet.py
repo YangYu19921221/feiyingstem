@@ -60,7 +60,7 @@ def build_pet_response(pet: UserPet) -> PetResponse:
     )
 
 
-@router.get("/pet", response_model=PetResponse)
+@router.get("/pet")
 async def get_my_pet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
@@ -71,7 +71,7 @@ async def get_my_pet(
     )
     pet = result.scalar_one_or_none()
     if not pet:
-        raise HTTPException(status_code=404, detail="还没有宠物，快去领养一只吧！")
+        return None
     pet = apply_decay(pet)
     await db.commit()
     return build_pet_response(pet)
