@@ -456,15 +456,20 @@ const StudentDashboard = () => {
               {books.map((book, index) => (
                 <div
                   key={book.id}
-                  className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer"
-                  onClick={() => handleStartLearning(book.id)}
+                  className={`bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer flex flex-col ${!book.owned ? 'opacity-80' : ''}`}
+                  onClick={() => book.owned ? handleStartLearning(book.id) : navigate('/subscription/redeem')}
                 >
                   {/* 封面色块 */}
                   <div
-                    className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl"
-                    style={{ background: book.cover_color }}
+                    className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl relative"
+                    style={{ background: book.owned ? book.cover_color : '#9CA3AF' }}
                   >
-                    📖
+                    {book.owned ? '📖' : '🔒'}
+                    {book.owned && (
+                      <span className="absolute top-2 right-2 px-2 py-0.5 bg-green-500 text-white text-xs rounded-full font-medium">
+                        已购买
+                      </span>
+                    )}
                   </div>
 
                   {/* 单词本信息 */}
@@ -477,48 +482,73 @@ const StudentDashboard = () => {
                   )}
 
                   {/* 统计信息 */}
-                  <div className="flex items-center gap-4 mb-4 text-sm text-gray-600">
+                  <div className="flex items-center gap-3 mb-4 text-sm text-gray-600 flex-wrap">
                     <span>📊 {book.unit_count} 个单元</span>
                     <span>📝 {book.word_count} 个单词</span>
+                    {book.grade_level && (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs">{book.grade_level}</span>
+                    )}
+                    {book.volume && (
+                      <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs">{book.volume}</span>
+                    )}
                   </div>
 
-                  {/* 进度条 */}
-                  <div className="mb-3">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-600">学习进度</span>
-                      <span className="font-bold text-primary">
-                        {book.progress_percentage.toFixed(0)}%
-                      </span>
+                  {/* 已购买：显示进度和学习按钮 */}
+                  {book.owned ? (
+                    <>
+                      <div className="mb-3">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-600">学习进度</span>
+                          <span className="font-bold text-primary">
+                            {book.progress_percentage.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-green-400 to-blue-500"
+                            style={{ width: `${book.progress_percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartLearning(book.id);
+                          }}
+                          className="flex-1 py-2 px-4 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:shadow-md transition font-medium"
+                        >
+                          🧠 开始学习
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/student/books/${book.id}/progress`);
+                          }}
+                          className="py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                        >
+                          📊
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* 未购买：显示锁定状态和兑换入口 */
+                    <div className="mt-auto">
+                      <div className="flex items-center gap-2 mb-3 text-sm text-gray-400">
+                        <span>🔒</span>
+                        <span>需要兑换后才能学习</span>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/subscription/redeem');
+                        }}
+                        className="w-full py-2 px-4 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg hover:shadow-md transition font-medium"
+                      >
+                        🔑 去兑换
+                      </button>
                     </div>
-                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-green-400 to-blue-500"
-                        style={{ width: `${book.progress_percentage}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 操作按钮 */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartLearning(book.id);
-                      }}
-                      className="flex-1 py-2 px-4 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:shadow-md transition font-medium"
-                    >
-                      🃏 开始学习
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/student/books/${book.id}/progress`);
-                      }}
-                      className="py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
-                    >
-                      📊
-                    </button>
-                  </div>
+                  )}
                 </div>
               ))}
             </div>

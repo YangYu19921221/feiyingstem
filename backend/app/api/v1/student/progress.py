@@ -484,17 +484,19 @@ async def get_student_books(
     current_user: User = Depends(get_current_student)
 ):
     """
-    获取学生已购买/已分配的单词本(含学习进度)
-    只返回通过 BookAssignment 分配给该学生的单词本
+    获取所有单词本(含学习进度和购买状态)
     """
     user_id = current_user.id
 
-    # 1. 获取该学生已分配的单词本
+    # 1. 获取该学生已拥有的书ID集合
+    owned_result = await db.execute(
+        select(BookAssignment.book_id).where(BookAssignment.student_id == user_id)
+    )
+    owned_book_ids = set(row for row in owned_result.scalars())
+
+    # 2. 获取所有单词本
     result = await db.execute(
-        select(WordBook)
-        .join(BookAssignment, BookAssignment.book_id == WordBook.id)
-        .where(BookAssignment.student_id == user_id)
-        .order_by(WordBook.created_at.desc())
+        select(WordBook).order_by(WordBook.created_at.desc())
     )
     books = result.scalars().all()
 
@@ -539,10 +541,12 @@ async def get_student_books(
             name=book.name,
             description=book.description,
             grade_level=book.grade_level,
+            volume=getattr(book, 'volume', None),
             cover_color=book.cover_color,
             unit_count=unit_count,
             word_count=word_count,
             progress_percentage=round(progress_percentage, 2),
+            owned=book.id in owned_book_ids,
             created_at=book.created_at
         ))
 

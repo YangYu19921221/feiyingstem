@@ -82,10 +82,12 @@ class StudentBookListItem(BaseModel):
     name: str
     description: Optional[str]
     grade_level: Optional[str]
+    volume: Optional[str] = None
     cover_color: str
     unit_count: int = Field(0, description="单元数量")
     word_count: int = Field(0, description="总单词数")
     progress_percentage: float = Field(0.0, description="学习进度百分比")
+    owned: bool = Field(False, description="是否已购买/已分配")
     created_at: datetime
 
     class Config:

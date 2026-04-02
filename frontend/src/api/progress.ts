@@ -125,10 +125,12 @@ export interface StudentBook {
   name: string;
   description: string | null;
   grade_level: string | null;
+  volume: string | null;
   cover_color: string;
   unit_count: number;
   word_count: number;
   progress_percentage: number;
+  owned: boolean;
   created_at: string;
 }
 
