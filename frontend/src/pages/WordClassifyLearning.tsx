@@ -167,15 +167,11 @@ const WordClassifyLearning = () => {
   };
 
   // 音频播放：使用改进的 hook（预加载、缓存、重试、fallback）
-  const { playAudio: playAudioHook } = useAudio();
-
-  const playAudio = useCallback((word: string) => {
-    playAudioHook(word);
-  }, [playAudioHook]);
+  const { playAudio } = useAudio();
 
   const playAudioSlow = useCallback((word: string) => {
-    playAudioHook(word, 0.75);
-  }, [playAudioHook]);
+    playAudio(word, 0.75);
+  }, [playAudio]);
 
   // 进入新一组时预加载该组所有单词的发音
   useEffect(() => {

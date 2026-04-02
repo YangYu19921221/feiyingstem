@@ -36,9 +36,9 @@ async function fetchAudioBlob(word: string): Promise<string> {
     const url = edgeTtsUrl(word);
     const maxRetries = 2;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeout);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -47,12 +47,12 @@ async function fetchAudioBlob(word: string): Promise<string> {
         audioCache.set(key, blobUrl);
         return blobUrl;
       } catch (e) {
+        clearTimeout(timeout);
         if (attempt === maxRetries) throw e;
-        // 短暂等待后重试
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
     }
-    throw new Error('加载失败');
+    throw new Error('unreachable');
   })();
 
   loadingMap.set(key, promise);
@@ -106,5 +106,5 @@ export function useAudio() {
     }
   }, []);
 
-  return { playAudio, preloadAudio };
+  return { playAudio };
 }
