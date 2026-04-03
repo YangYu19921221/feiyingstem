@@ -576,9 +576,23 @@ const TeacherClassManagement = () => {
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-gray-500 mb-3">
-                    已选 {selectedStudentIds.length} 名学生
-                  </p>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm text-gray-500">
+                      已选 {selectedStudentIds.length} / {availableStudents.length} 名学生
+                    </p>
+                    <button
+                      onClick={() => {
+                        if (selectedStudentIds.length === availableStudents.length) {
+                          setSelectedStudentIds([]);
+                        } else {
+                          setSelectedStudentIds(availableStudents.map(s => s.id));
+                        }
+                      }}
+                      className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      {selectedStudentIds.length === availableStudents.length ? '取消全选' : '全选'}
+                    </button>
+                  </div>
                   <div className="space-y-2 max-h-80 overflow-y-auto">
                     {availableStudents.map(s => (
                       <label
