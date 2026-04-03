@@ -48,6 +48,7 @@ export async function checkPronunciationConfig(): Promise<boolean> {
 // Whisper 本地语音校验
 export interface WordVerifyResult {
   matched: boolean;
+  score: number;
   transcript: string;
   target: string;
   confidence: number;

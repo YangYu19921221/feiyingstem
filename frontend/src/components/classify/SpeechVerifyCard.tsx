@@ -31,6 +31,7 @@ export default function SpeechVerifyCard({
   const [phase, setPhase] = useState<VerifyPhase>('recording');
   const [transcript, setTranscript] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [score, setScore] = useState<number | null>(null);
 
   const mountedRef = useRef(true);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -74,6 +75,7 @@ export default function SpeechVerifyCard({
     setPhase('recording');
     setErrorMsg('');
     setTranscript('');
+    setScore(null);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -158,18 +160,20 @@ export default function SpeechVerifyCard({
           if (!mountedRef.current) return;
 
           setTranscript(result.transcript);
+          setScore(result.score ?? null);
 
           if (result.matched) {
-            // 对了 → 立马过
             setPhase('success');
-            onNext();
+            // 延迟一下让用户看到分数
+            timerRef.current = setTimeout(() => {
+              if (mountedRef.current) onNext();
+            }, 1200);
           } else {
-            // 错了 → 播放正确发音 → 自动重录
             setPhase('error');
             playAudio(word.word);
             timerRef.current = setTimeout(() => {
               if (mountedRef.current) startRecordingRef.current();
-            }, 1500);
+            }, 2000);
           }
         } catch (err) {
           if (!mountedRef.current) return;
@@ -406,7 +410,7 @@ export default function SpeechVerifyCard({
           </motion.div>
         )}
 
-        {/* 通过 */}
+        {/* 通过 - 展示分数 */}
         {phase === 'success' && (
           <motion.div
             key="success"
@@ -415,19 +419,38 @@ export default function SpeechVerifyCard({
             exit={{ opacity: 0 }}
             className="mb-6"
           >
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: [0, 1.3, 1] }}
-              transition={{ duration: 0.4 }}
-              className="text-6xl mb-3"
-            >
-              ✅
-            </motion.div>
-            <p className="text-green-600 font-bold text-lg">发音正确！</p>
+            {/* 分数环 */}
+            <div className="relative w-24 h-24 mx-auto mb-3">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="42" fill="none" stroke="#E5E7EB" strokeWidth="6" />
+                <motion.circle
+                  cx="50" cy="50" r="42"
+                  fill="none"
+                  stroke={score !== null && score >= 90 ? '#22C55E' : score !== null && score >= 70 ? '#3B82F6' : '#F59E0B'}
+                  strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 42}
+                  initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
+                  animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - (score || 0) / 100) }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className={`text-2xl font-bold ${
+                  score !== null && score >= 90 ? 'text-green-600' : score !== null && score >= 70 ? 'text-blue-600' : 'text-yellow-600'
+                }`}>
+                  {score ?? 0}
+                </span>
+              </div>
+            </div>
+            <p className={`font-bold text-lg ${
+              score !== null && score >= 90 ? 'text-green-600' : score !== null && score >= 70 ? 'text-blue-600' : 'text-yellow-600'
+            }`}>
+              {score !== null && score >= 90 ? '发音优秀！' : score !== null && score >= 70 ? '发音不错！' : '发音通过'}
+            </p>
           </motion.div>
         )}
 
-        {/* 未通过 - 播放正确发音后自动重录 */}
+        {/* 未通过 - 展示分数 + 播放正确发音后自动重录 */}
         {phase === 'error' && (
           <motion.div
             key="error"
@@ -436,14 +459,36 @@ export default function SpeechVerifyCard({
             exit={{ opacity: 0 }}
             className="mb-6"
           >
-            {transcript ? (
+            {score !== null && score > 0 ? (
+              <>
+                {/* 有分数但不够 */}
+                <div className="relative w-20 h-20 mx-auto mb-3">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#E5E7EB" strokeWidth="6" />
+                    <motion.circle
+                      cx="50" cy="50" r="42"
+                      fill="none" stroke="#EF4444" strokeWidth="6" strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 42}
+                      initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
+                      animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - score / 100) }}
+                      transition={{ duration: 0.6 }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-xl font-bold text-red-500">{score}</span>
+                  </div>
+                </div>
+                <p className="text-red-500 font-bold text-lg mb-1">还差一点，再试试！</p>
+                <p className="text-gray-400 text-xs mb-2">60分以上通过</p>
+              </>
+            ) : transcript ? (
               <p className="text-orange-500 text-sm mb-2">
                 听到: "<span className="font-medium">{transcript}</span>"
               </p>
             ) : (
               <p className="text-gray-400 text-sm mb-2">未识别到语音</p>
             )}
-            <p className="text-red-500 font-bold text-xl mb-2">❌ 再读一遍！</p>
+            {!score && <p className="text-red-500 font-bold text-xl mb-2">再读一遍！</p>}
             {errorMsg && (
               <p className="text-gray-400 text-xs mb-2">{errorMsg}</p>
             )}
