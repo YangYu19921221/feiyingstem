@@ -42,7 +42,7 @@ export interface UnitResponse {
   description: string | null;
   order_index: number;
   word_count: number;
-  group_size: number;
+  group_size?: number;
   created_at: string;
   updated_at: string;
 }

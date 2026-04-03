@@ -134,6 +134,7 @@ const WordClassifyLearning = () => {
             description: null,
             book_id: 0,
             grade_level: null,
+            group_size: 0,
           },
           words,
         };
