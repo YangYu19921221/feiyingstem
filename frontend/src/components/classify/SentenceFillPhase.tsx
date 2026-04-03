@@ -57,7 +57,13 @@ export default function SentenceFillPhase({
   // 聚焦输入框
   useEffect(() => {
     if (!currentWord || showRoundSummary) return;
-    setTimeout(() => inputRef.current?.focus(), 400);
+    // 延迟聚焦，确保动画完成后再弹出键盘
+    const t = setTimeout(() => {
+      inputRef.current?.focus({ preventScroll: true });
+      // 移动端需要额外触发一次 click 才能弹出键盘
+      inputRef.current?.click();
+    }, 300);
+    return () => clearTimeout(t);
   }, [currentIndex, currentWord, round, showRoundSummary]);
 
   // 把例句中的目标词替换成空格
@@ -317,7 +323,9 @@ export default function SentenceFillPhase({
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
-              className="opacity-0 absolute -z-10 w-0 h-0"
+              className="opacity-0 absolute -z-10"
+              style={{ width: 1, height: 1 }}
+              autoFocus
             />
           </div>
 
