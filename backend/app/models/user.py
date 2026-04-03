@@ -80,6 +80,34 @@ class StudyCalendar(Base):
     duration = Column(Integer, default=0)  # 学习时长(秒)
 
 
+class Class(Base):
+    """班级表"""
+    __tablename__ = "classes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    teacher_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # 关系
+    students = relationship("ClassStudent", back_populates="class_")
+
+
+class ClassStudent(Base):
+    """班级-学生关联表"""
+    __tablename__ = "class_students"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    class_id = Column(Integer, ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
+    student_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    joined_at = Column(DateTime, server_default=func.now())
+
+    # 关系
+    class_ = relationship("Class", back_populates="students")
+
+
 class RedemptionCode(Base):
     """兑换码表"""
     __tablename__ = "redemption_codes"

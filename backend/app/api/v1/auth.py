@@ -147,10 +147,11 @@ async def register(
     db: AsyncSession = Depends(get_db)
 ):
     """手机号注册（公开接口）"""
-    # 校验验证码
-    ok, msg = code_store.verify(data.phone, data.code)
-    if not ok:
-        raise HTTPException(status_code=400, detail=msg)
+    # 校验验证码（暂时跳过，测试阶段不校验）
+    if data.code:
+        ok, msg = code_store.verify(data.phone, data.code)
+        if not ok:
+            raise HTTPException(status_code=400, detail=msg)
 
     # 检查用户名是否已存在
     existing = await auth_service.get_user_by_username(db, data.username)

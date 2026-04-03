@@ -11,6 +11,7 @@ import UnitSelector from './pages/UnitSelector';
 import TeacherBooks from './pages/TeacherBooks';
 import TeacherUnitManagement from './pages/TeacherUnitManagement';
 import TeacherStudents from './pages/TeacherStudents';
+import TeacherClassManagement from './pages/TeacherClassManagement';
 import SpellingPractice from './pages/SpellingPractice';
 import FillBlankPractice from './pages/FillBlankPractice';
 import QuizPractice from './pages/QuizPractice';
@@ -383,6 +384,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherStudents />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 班级管理 */}
+        <Route
+          path="/teacher/classes"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherClassManagement />
             </ProtectedRoute>
           }
         />

@@ -32,7 +32,15 @@ const UnitSelector = () => {
     }
   };
 
-  const handleStartLearning = (unitId: number, mode: string) => {
+  const handleStartLearning = (unitId: number, mode: string, unitIndex: number) => {
+    // 第一个单元总是可以进入
+    if (unitIndex > 0) {
+      const prevUnit = sortedUnits[unitIndex - 1];
+      if (!prevUnit.is_completed) {
+        alert('请先完成上一个单元的学习');
+        return;
+      }
+    }
     navigate(`/student/units/${unitId}/${mode}`);
   };
 
@@ -132,6 +140,7 @@ const UnitSelector = () => {
             {sortedUnits.map((unit, index) => {
               const isExpanded = expandedUnitId === unit.unit_id;
               const isCurrent = index === firstIncompleteIndex;
+              const isLocked = index > 0 && !sortedUnits[index - 1].is_completed;
               const progressColor = unit.is_completed
                 ? 'from-green-400 to-green-500'
                 : unit.progress_percentage > 0
@@ -201,11 +210,16 @@ const UnitSelector = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleStartLearning(unit.unit_id, 'classify');
+                        handleStartLearning(unit.unit_id, 'classify', index);
                       }}
-                      className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-lg text-sm font-medium hover:shadow-md transition shrink-0 active:scale-95"
+                      disabled={isLocked}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition shrink-0 active:scale-95 ${
+                        isLocked
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white hover:shadow-md'
+                      }`}
                     >
-                      学习
+                      {isLocked ? '🔒' : '学习'}
                     </button>
 
                     {/* 展开箭头 */}
@@ -263,8 +277,13 @@ const UnitSelector = () => {
                             {learningModes.filter(m => m.key !== 'classify').map((mode) => (
                               <button
                                 key={mode.key}
-                                onClick={() => handleStartLearning(unit.unit_id, mode.key)}
-                                className={`relative py-2 px-2 rounded-lg shadow-sm font-medium flex items-center justify-center gap-1 bg-gradient-to-r ${mode.color} text-white hover:shadow-md transition text-xs active:scale-95`}
+                                onClick={() => handleStartLearning(unit.unit_id, mode.key, index)}
+                                disabled={isLocked}
+                                className={`relative py-2 px-2 rounded-lg shadow-sm font-medium flex items-center justify-center gap-1 text-xs active:scale-95 ${
+                                  isLocked
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : `bg-gradient-to-r ${mode.color} text-white hover:shadow-md transition`
+                                }`}
                               >
                                 <span>{mode.icon}</span>
                                 <span>{mode.name}</span>

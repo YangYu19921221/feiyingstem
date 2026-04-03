@@ -26,9 +26,13 @@ import GroupExamPhase from '../components/classify/GroupExamPhase';
 
 type Phase = 'classify' | 'speechVerify' | 'dictation' | 'sentenceFill' | 'exam' | 'summary';
 
+function getGroupSize(gradeLevel: string | null): number {
+  return gradeLevel?.includes('小学') ? 10 : 20;
+}
+
 /** 根据年级将单词数组分组 */
 function splitIntoGroups(words: WordData[], gradeLevel: string | null): WordData[][] {
-  const groupSize = gradeLevel?.includes('小学') ? 10 : 20;
+  const groupSize = getGroupSize(gradeLevel);
   const groups: WordData[][] = [];
   for (let i = 0; i < words.length; i += groupSize) {
     groups.push(words.slice(i, i + groupSize));
@@ -143,7 +147,16 @@ const WordClassifyLearning = () => {
       }
 
       setLearningData(data);
-      setCurrentGroupIndex(0);
+
+      // 根据后端返回的进度计算起始组
+      if (data.has_existing_progress && data.current_word_index > 0) {
+        const groupSize = getGroupSize(data.unit_info.grade_level);
+        const resumeGroup = Math.floor((data.current_word_index + 1) / groupSize);
+        const totalGroups = Math.ceil(data.words.length / groupSize);
+        setCurrentGroupIndex(Math.min(resumeGroup, totalGroups - 1));
+      } else {
+        setCurrentGroupIndex(0);
+      }
 
       // 创建学习会话（复习/错题模式跳过）
       if (id !== 0) {

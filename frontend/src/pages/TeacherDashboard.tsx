@@ -75,6 +75,7 @@ const TeacherDashboard = () => {
 
   const quickActions = [
     { icon: '📚', title: '单词本管理', desc: '管理单元和单词', color: 'from-blue-500 to-cyan-500', route: '/teacher/books' },
+    { icon: '🏫', title: '班级管理', desc: '班级分组和每日数据', color: 'from-indigo-500 to-purple-500', route: '/teacher/classes' },
     { icon: '📝', title: '阅读理解', desc: '文章和题目', color: 'from-yellow-500 to-orange-500', route: '/teacher/reading' },
     { icon: '🏆', title: '竞赛管理', desc: 'AI生成题目', color: 'from-red-500 to-pink-500', route: '/teacher/competition' },
     { icon: '📤', title: '分配作业', desc: '分配给学生', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },

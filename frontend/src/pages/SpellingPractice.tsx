@@ -204,7 +204,7 @@ const SpellingPractice = () => {
                   key={i}
                   initial={{ scale: 0.8 }}
                   animate={{ scale: 1 }}
-                  className={`w-12 h-14 flex items-center justify-center border-2 rounded-xl text-2xl font-bold uppercase ${bgColor} ${textColor} ${
+                  className={`w-12 h-14 flex items-center justify-center border-2 rounded-xl text-2xl font-bold ${bgColor} ${textColor} ${
                     isCurrent ? 'ring-2 ring-orange-400 animate-pulse' : ''
                   }`}
                 >

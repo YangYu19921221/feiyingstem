@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
-import { useCountdown } from '../hooks/useCountdown';
 import BrandPanel, { MobileBrandHeader } from '../components/BrandPanel';
 import Spinner from '../components/Spinner';
 
@@ -25,33 +24,13 @@ const INPUT_CLASS = 'border border-gray-200 rounded-xl focus:ring-2 focus:ring-b
 
 const Register = () => {
   const navigate = useNavigate();
-  const { remaining, isActive, start } = useCountdown(60);
 
   const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sendingCode, setSendingCode] = useState(false);
-
-  const handleSendCode = async () => {
-    if (!/^1[3-9]\d{9}$/.test(phone)) {
-      setError('请输入正确的手机号');
-      return;
-    }
-    setError('');
-    setSendingCode(true);
-    try {
-      await axios.post(`${API_BASE_URL}/auth/send-code`, { phone, purpose: 'register' });
-      start();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '发送验证码失败');
-    } finally {
-      setSendingCode(false);
-    }
-  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +42,7 @@ const Register = () => {
     setLoading(true);
     try {
       const response = await axios.post<RegisterResponse>(`${API_BASE_URL}/auth/register`, {
-        phone, username: username.trim(), password, code,
+        phone, username: username.trim(), password,
       });
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -134,47 +113,19 @@ const Register = () => {
 
             <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
               <label className="block text-sm font-medium text-gray-600 mb-1.5">手机号</label>
-              <div className="flex gap-2">
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className={`flex-1 px-4 py-3 ${INPUT_CLASS}`}
-                  placeholder="请输入手机号"
-                  required
-                  disabled={loading}
-                  maxLength={11}
-                />
-                <button
-                  type="button"
-                  onClick={handleSendCode}
-                  disabled={isActive || sendingCode || loading}
-                  className={`px-4 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition ${
-                    isActive || sendingCode
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  }`}
-                >
-                  {sendingCode ? '...' : isActive ? `${remaining}s` : '发送验证码'}
-                </button>
-              </div>
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">验证码</label>
               <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 className={`w-full px-4 py-3 ${INPUT_CLASS}`}
-                placeholder="请输入验证码"
+                placeholder="请输入手机号"
                 required
                 disabled={loading}
-                maxLength={6}
+                maxLength={11}
               />
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
               <label className="block text-sm font-medium text-gray-600 mb-1.5">用户名</label>
               <input
                 type="text"

@@ -25,7 +25,7 @@ class UserRegister(BaseModel):
     phone: str = Field(..., pattern=r"^1[3-9]\d{9}$", description="手机号")
     username: str = Field(..., min_length=3, max_length=50, description="用户名")
     password: str = Field(..., min_length=6, max_length=50, description="密码")
-    code: str = Field(..., min_length=4, max_length=6, description="验证码")
+    code: Optional[str] = Field(None, min_length=4, max_length=6, description="验证码（暂时可选）")
 
 class UserCreate(UserBase):
     """创建用户(管理员使用)"""

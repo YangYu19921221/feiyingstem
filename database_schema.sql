@@ -238,6 +238,36 @@ CREATE TABLE ai_cache (
 );
 
 -- ========================================
+-- 10. 班级管理
+-- ========================================
+
+-- 班级表
+CREATE TABLE classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL,          -- 班级名称，如 "三年级1班"
+    description TEXT,                     -- 班级描述
+    teacher_id INTEGER NOT NULL,         -- 创建教师ID
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 班级-学生关联表
+CREATE TABLE class_students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(class_id, student_id)
+);
+
+CREATE INDEX idx_classes_teacher ON classes(teacher_id);
+CREATE INDEX idx_class_students_class ON class_students(class_id);
+CREATE INDEX idx_class_students_student ON class_students(student_id);
+
+-- ========================================
 -- 索引优化
 -- ========================================
 

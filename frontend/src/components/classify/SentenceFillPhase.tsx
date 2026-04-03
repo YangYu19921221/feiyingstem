@@ -20,7 +20,7 @@ export interface FillBlankResult {
 interface SentenceFillPhaseProps {
   words: WordData[];
   onComplete: (results: FillBlankResult[]) => void;
-  playAudio: (word: string) => void;
+  playAudio: (text: string) => void;
 }
 
 export default function SentenceFillPhase({
@@ -98,14 +98,14 @@ export default function SentenceFillPhase({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (submitted) return;
-    const val = e.target.value.replace(/[^a-zA-Z '\-]/g, '').slice(0, wordLength);
-    setUserInput(val);
+    const val = e.target.value.replace(/[^a-zA-Z '\-]/g, '');
+    setUserInput(val.slice(0, wordLength));
   };
 
   const handleSubmit = useCallback(() => {
     if (submitted || !currentWord || userInput.length === 0) return;
 
-    const correct = userInput.trim().toLowerCase() === currentWord.word.trim().toLowerCase();
+    const correct = userInput.trim() === currentWord.word.trim();
     setIsCorrect(correct);
     setSubmitted(true);
 
@@ -240,9 +240,17 @@ export default function SentenceFillPhase({
             </span>
           </div>
 
-          {/* 例句（目标词挖空） */}
+          {/* 例句（目标词挖空）+ 朗读按钮 */}
           <div className="mb-4 px-2 text-left">
             {currentWord.example_sentence && renderSentence(currentWord.example_sentence, currentWord.word)}
+            {currentWord.example_sentence && (
+              <button
+                onClick={() => playAudio(currentWord.example_sentence!)}
+                className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-violet-100 text-violet-700 rounded-full text-sm hover:bg-violet-200 transition"
+              >
+                🔊 朗读句子
+              </button>
+            )}
           </div>
 
           {/* 中文翻译 */}
@@ -267,8 +275,8 @@ export default function SentenceFillPhase({
                   if (i < userInput.length) slotStyle = 'border-violet-500 text-gray-800';
                   else if (i === userInput.length) slotStyle = 'border-violet-400/60';
                 } else {
-                  const correctChar = currentWord.word[i]?.toLowerCase();
-                  const userChar = userInput[i]?.toLowerCase();
+                  const correctChar = currentWord.word[i];
+                  const userChar = userInput[i];
                   if (!userChar) slotStyle = 'border-red-300 text-red-300';
                   else if (userChar === correctChar) slotStyle = 'border-green-400 text-green-600 bg-green-50';
                   else slotStyle = 'border-red-400 text-red-600 bg-red-50';
@@ -309,7 +317,7 @@ export default function SentenceFillPhase({
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
-              className="sr-only"
+              className="opacity-0 absolute -z-10 w-0 h-0"
             />
           </div>
 

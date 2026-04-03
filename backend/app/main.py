@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1 import auth, words, learning, exams, ai, competition, achievements, analytics
-from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator
+from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes
 from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
 from app.api.v1 import subscription, pronunciation
@@ -50,6 +50,7 @@ app.include_router(teacher_assignments.router, prefix="/api/v1/teacher", tags=["
 app.include_router(teacher_homework.router, prefix="/api/v1/teacher", tags=["教师端-作业管理"])
 app.include_router(teacher_dashboard.router, prefix="/api/v1/teacher", tags=["教师端-仪表板"])
 app.include_router(teacher_exam_generator.router, prefix="/api/v1/teacher", tags=["教师端-AI试卷生成"])
+app.include_router(teacher_classes.router, prefix="/api/v1/teacher", tags=["教师端-班级管理"])
 app.include_router(student_progress.router, prefix="/api/v1/student", tags=["学生端-学习进度"])
 app.include_router(student_learning_records.router, prefix="/api/v1/student", tags=["学生端-学习记录"])
 app.include_router(student_mistake_book.router, prefix="/api/v1/student", tags=["学生端-错题集"])

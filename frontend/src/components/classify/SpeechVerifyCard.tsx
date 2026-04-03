@@ -18,7 +18,9 @@ interface SpeechVerifyCardProps {
 
 type VerifyPhase = 'recording' | 'evaluating' | 'success' | 'error' | 'mic-error';
 
-const RECORD_DURATION = 3000; // 录音时长 3 秒
+const RECORD_MAX_DURATION = 3000; // 最长录音 3 秒
+const VAD_SILENCE_THRESHOLD = 0.01; // 静音能量阈值
+const VAD_SILENCE_DURATION = 600; // 静音持续 600ms 则自动停止
 
 export default function SpeechVerifyCard({
   word,
@@ -36,11 +38,18 @@ export default function SpeechVerifyCard({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const startRecordingRef = useRef<() => void>(() => {});
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const vadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
+    }
+    if (vadTimerRef.current) {
+      clearInterval(vadTimerRef.current);
+      vadTimerRef.current = null;
     }
     if (recorderRef.current?.state === 'recording') {
       try { recorderRef.current.stop(); } catch { /* ignore */ }
@@ -49,6 +58,11 @@ export default function SpeechVerifyCard({
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    analyserRef.current = null;
     recorderRef.current = null;
   }, []);
 
@@ -75,6 +89,45 @@ export default function SpeechVerifyCard({
           : 'audio/webm',
       });
 
+      // VAD: 用 AnalyserNode 实时检测音量，说完自动停录
+      let hadSpeech = false;
+      let silenceStart = 0;
+      try {
+        const audioCtx = new AudioContext();
+        audioCtxRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+        const dataArr = new Float32Array(analyser.fftSize);
+
+        vadTimerRef.current = setInterval(() => {
+          if (!analyserRef.current || recorderRef.current?.state !== 'recording') return;
+          analyserRef.current.getFloatTimeDomainData(dataArr);
+          // RMS 能量
+          let sum = 0;
+          for (let i = 0; i < dataArr.length; i++) sum += dataArr[i] * dataArr[i];
+          const rms = Math.sqrt(sum / dataArr.length);
+
+          if (rms > VAD_SILENCE_THRESHOLD) {
+            hadSpeech = true;
+            silenceStart = 0;
+          } else if (hadSpeech) {
+            if (silenceStart === 0) {
+              silenceStart = Date.now();
+            } else if (Date.now() - silenceStart >= VAD_SILENCE_DURATION) {
+              // 说完了，自动停录
+              if (recorderRef.current?.state === 'recording') {
+                recorderRef.current.stop();
+              }
+            }
+          }
+        }, 50);
+      } catch {
+        // AudioContext 不可用时忽略 VAD，靠超时兜底
+      }
+
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -85,6 +138,18 @@ export default function SpeechVerifyCard({
         if (!mountedRef.current || chunksRef.current.length === 0) return;
 
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+
+        // 前端噪音检测：录音文件太小说明没有有效语音
+        if (blob.size < 3000) {
+          if (!mountedRef.current) return;
+          setTranscript('');
+          setErrorMsg('未检测到语音，请靠近麦克风重新朗读');
+          setPhase('error');
+          timerRef.current = setTimeout(() => {
+            if (mountedRef.current) startRecordingRef.current();
+          }, 1500);
+          return;
+        }
 
         // 送 Whisper 识别
         setPhase('evaluating');
@@ -119,12 +184,12 @@ export default function SpeechVerifyCard({
       recorderRef.current = recorder;
       recorder.start(100);
 
-      // 3 秒后自动停止录音
+      // 最长 3 秒兜底停止（VAD 会更早停）
       timerRef.current = setTimeout(() => {
         if (recorderRef.current?.state === 'recording') {
           recorderRef.current.stop();
         }
-      }, RECORD_DURATION);
+      }, RECORD_MAX_DURATION);
     } catch (err) {
       if (!mountedRef.current) return;
       setPhase('mic-error');
@@ -248,7 +313,7 @@ export default function SpeechVerifyCard({
                   strokeDasharray={2 * Math.PI * 44}
                   initial={{ strokeDashoffset: 0 }}
                   animate={{ strokeDashoffset: 2 * Math.PI * 44 }}
-                  transition={{ duration: RECORD_DURATION / 1000, ease: 'linear' }}
+                  transition={{ duration: RECORD_MAX_DURATION / 1000, ease: 'linear' }}
                 />
               </svg>
 
