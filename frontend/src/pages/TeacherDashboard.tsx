@@ -181,7 +181,7 @@ const TeacherDashboard = () => {
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <span>📝</span> 最近录入的单词
               </h3>
-              <button className="text-sm text-blue-600 hover:text-blue-700">
+              <button onClick={() => navigate('/teacher/books')} className="text-sm text-blue-600 hover:text-blue-700">
                 查看全部 →
               </button>
             </div>
@@ -221,7 +221,7 @@ const TeacherDashboard = () => {
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <span>📊</span> 学生学习情况
               </h3>
-              <button className="text-sm text-blue-600 hover:text-blue-700">
+              <button onClick={() => navigate('/teacher/classes')} className="text-sm text-blue-600 hover:text-blue-700">
                 查看全部 →
               </button>
             </div>
