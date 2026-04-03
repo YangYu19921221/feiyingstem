@@ -120,6 +120,14 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 为 units 表添加 group_size 字段
+        try:
+            await conn.execute(text(
+                "ALTER TABLE units ADD COLUMN group_size INTEGER DEFAULT 0"
+            ))
+        except Exception:
+            pass
+
         print("✅ 数据库初始化完成")
 
 async def get_db() -> AsyncSession:

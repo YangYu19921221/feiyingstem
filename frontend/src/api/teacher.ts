@@ -24,12 +24,14 @@ axios.interceptors.request.use(
 export interface UnitCreate {
   name: string;
   description?: string;
+  group_size?: number;
 }
 
 export interface UnitUpdate {
   name?: string;
   description?: string;
   order_index?: number;
+  group_size?: number;
 }
 
 export interface UnitResponse {
@@ -40,6 +42,7 @@ export interface UnitResponse {
   description: string | null;
   order_index: number;
   word_count: number;
+  group_size: number;
   created_at: string;
   updated_at: string;
 }

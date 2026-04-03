@@ -69,6 +69,7 @@ class Unit(Base):
 
     # 统计信息
     word_count = Column(Integer, default=0)         # 单词数量
+    group_size = Column(Integer, default=0)          # 每组单词数，0表示使用默认值
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

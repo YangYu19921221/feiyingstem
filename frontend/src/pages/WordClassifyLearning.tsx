@@ -26,13 +26,14 @@ import GroupExamPhase from '../components/classify/GroupExamPhase';
 
 type Phase = 'classify' | 'speechVerify' | 'dictation' | 'sentenceFill' | 'exam' | 'summary';
 
-function getGroupSize(gradeLevel: string | null): number {
+function getGroupSize(gradeLevel: string | null, customGroupSize?: number): number {
+  if (customGroupSize && customGroupSize > 0) return customGroupSize;
   return gradeLevel?.includes('小学') ? 10 : 20;
 }
 
 /** 根据年级将单词数组分组 */
-function splitIntoGroups(words: WordData[], gradeLevel: string | null): WordData[][] {
-  const groupSize = getGroupSize(gradeLevel);
+function splitIntoGroups(words: WordData[], gradeLevel: string | null, customGroupSize?: number): WordData[][] {
+  const groupSize = getGroupSize(gradeLevel, customGroupSize);
   const groups: WordData[][] = [];
   for (let i = 0; i < words.length; i += groupSize) {
     groups.push(words.slice(i, i + groupSize));
@@ -79,7 +80,7 @@ const WordClassifyLearning = () => {
 
   // 从 learningData 派生分组（不存储在 state 中）
   const groups = useMemo(
-    () => learningData ? splitIntoGroups(learningData.words, learningData.unit_info.grade_level) : [],
+    () => learningData ? splitIntoGroups(learningData.words, learningData.unit_info.grade_level, learningData.unit_info.group_size) : [],
     [learningData]
   );
   const currentGroupWords = groups[currentGroupIndex] || [];
@@ -150,7 +151,7 @@ const WordClassifyLearning = () => {
 
       // 根据后端返回的进度计算起始组
       if (data.has_existing_progress && data.current_word_index > 0) {
-        const groupSize = getGroupSize(data.unit_info.grade_level);
+        const groupSize = getGroupSize(data.unit_info.grade_level, data.unit_info.group_size);
         const resumeGroup = Math.floor((data.current_word_index + 1) / groupSize);
         const totalGroups = Math.ceil(data.words.length / groupSize);
         setCurrentGroupIndex(Math.min(resumeGroup, totalGroups - 1));

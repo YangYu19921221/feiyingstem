@@ -28,6 +28,7 @@ def _build_unit_info(unit: Unit, word_book: WordBook) -> dict:
         "description": unit.description,
         "book_id": unit.book_id,
         "grade_level": word_book.grade_level if word_book else None,
+        "group_size": getattr(unit, 'group_size', 0) or 0,
     }
 
 # ========================================

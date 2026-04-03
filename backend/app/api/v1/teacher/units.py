@@ -55,6 +55,7 @@ async def create_unit(
         name=unit_data.name,
         description=unit_data.description,
         order_index=actual_unit_number - 1,
+        group_size=unit_data.group_size or 0,
     )
     db.add(db_unit)
     await db.commit()

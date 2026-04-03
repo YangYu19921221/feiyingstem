@@ -75,6 +75,7 @@ export interface StartLearningResponse {
     description: string | null;
     book_id: number;
     grade_level: string | null;
+    group_size: number;
   };
 }
 

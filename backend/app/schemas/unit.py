@@ -11,6 +11,7 @@ class UnitBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="单元名称")
     description: Optional[str] = Field(None, description="单元描述")
     order_index: Optional[int] = Field(0, description="排序索引")
+    group_size: Optional[int] = Field(0, ge=0, le=50, description="每组单词数，0表示使用默认值")
 
 class UnitCreate(UnitBase):
     """创建单元"""
@@ -21,6 +22,7 @@ class UnitUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
     order_index: Optional[int] = None
+    group_size: Optional[int] = Field(None, ge=0, le=50)
 
 class UnitResponse(UnitBase):
     """单元响应"""
