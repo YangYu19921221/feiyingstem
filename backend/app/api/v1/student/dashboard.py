@@ -4,7 +4,7 @@ from sqlalchemy import select, func, and_, desc
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
-from app.models.user import User
+from app.models.user import User, StudyCalendar
 from app.models.learning import LearningProgress, StudySession, LearningRecord
 from app.models.word import WordBook
 from app.api.v1.auth import get_current_student
@@ -76,17 +76,21 @@ async def get_student_dashboard_stats(
         if streak_days >= 30:
             break
 
-    # 6. 学习总时长(分钟) - 从StudySession计算
+    # 6. 学习总时长(分钟) - 优先从study_calendar汇总，兜底从StudySession计算
     result = await db.execute(
-        select(StudySession.started_at, StudySession.ended_at)
+        select(func.sum(StudyCalendar.duration))
+        .where(StudyCalendar.user_id == user_id)
+    )
+    calendar_seconds = result.scalar() or 0
+
+    # 也从session的time_spent取
+    result = await db.execute(
+        select(func.sum(StudySession.time_spent))
         .where(StudySession.user_id == user_id)
     )
-    sessions = result.all()
-    total_minutes = 0
-    for started, ended in sessions:
-        if started and ended:
-            duration = (ended - started).total_seconds() / 60
-            total_minutes += duration
+    session_seconds = result.scalar() or 0
+
+    total_minutes = max(calendar_seconds, session_seconds) // 60
 
     # 7. 排名百分比 (根据经验值)
     # 获取所有学生的经验值排名

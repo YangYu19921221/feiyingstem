@@ -246,12 +246,15 @@ const WordClassifyLearning = () => {
   const submitMistakesRealtime = useCallback((records: WordAnswerCreate[]) => {
     const wrongRecords = records.filter(r => !r.is_correct);
     if (wrongRecords.length === 0 || !unitId) return;
+    // 填入实际用时
+    const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
+    const withTime = wrongRecords.map(r => ({ ...r, time_spent: elapsed }));
     createLearningRecords({
       unit_id: parseInt(unitId),
-      learning_mode: wrongRecords[0].learning_mode,
-      records: wrongRecords,
+      learning_mode: withTime[0].learning_mode,
+      records: withTime,
     }).catch(() => {});
-  }, [unitId]);
+  }, [unitId, startTime]);
 
   // 阶段1完成：分类结束 → 进入语音校验
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
