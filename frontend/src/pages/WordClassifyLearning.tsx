@@ -202,7 +202,7 @@ const WordClassifyLearning = () => {
     if (wrongRecords.length === 0 || !unitId) return;
     createLearningRecords({
       unit_id: parseInt(unitId),
-      learning_mode: 'classify',
+      learning_mode: wrongRecords[0].learning_mode,
       records: wrongRecords,
     }).catch(() => {});
   }, [unitId]);
@@ -326,7 +326,7 @@ const WordClassifyLearning = () => {
     const totalTime = Math.round((Date.now() - startTime) / 1000);
     const avgTime = Math.round(totalTime * 1000 / learningData.words.length);
 
-    // 按题型分别构建学习记录，错题会被正确分类到错题集
+    // 只提交正确记录（错题已在各阶段实时提交过，避免重复）
     const records: WordAnswerCreate[] = [];
     const dictMap = new Map(dictationResults.map(r => [r.wordId, r]));
     const fillMap = new Map(fillResults.map(r => [r.wordId, r]));
@@ -334,18 +334,14 @@ const WordClassifyLearning = () => {
     for (const w of currentGroupWords) {
       const category = classifyResults.get(w.id) || 'unknown';
 
-      if (category === 'semi' || category === 'unknown') {
-        records.push({ word_id: w.id, is_correct: false, time_spent: avgTime, learning_mode: 'classify' });
-      }
-
       const dictResult = dictMap.get(w.id);
-      if (dictResult) {
-        records.push({ word_id: w.id, is_correct: dictResult.isCorrect, time_spent: avgTime, learning_mode: 'spelling' });
+      if (dictResult?.isCorrect) {
+        records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'spelling' });
       }
 
       const fillResult = fillMap.get(w.id);
-      if (fillResult) {
-        records.push({ word_id: w.id, is_correct: fillResult.isCorrect, time_spent: avgTime, learning_mode: 'fillblank' });
+      if (fillResult?.isCorrect) {
+        records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'fillblank' });
       }
 
       if (category === 'familiar' && !dictResult && !fillResult) {
