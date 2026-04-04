@@ -93,6 +93,9 @@ const TeacherClassManagement = () => {
   const [availableStudents, setAvailableStudents] = useState<AvailableStudent[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
 
+  // 每日数据多选删除
+  const [selectedForRemove, setSelectedForRemove] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     loadClasses();
   }, []);
@@ -202,6 +205,22 @@ const TeacherClassManagement = () => {
     if (!confirm('确定要从班级中移除该学生吗？')) return;
     try {
       await axios.delete(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/students/${studentId}`, { headers: headers() });
+      loadClassStudents(selectedClass.id);
+      loadClasses();
+      loadDailyStats(selectedClass.id, selectedDate);
+    } catch (error: any) {
+      alert(error.response?.data?.detail || '移除失败');
+    }
+  };
+
+  const handleBatchRemove = async () => {
+    if (!selectedClass || selectedForRemove.size === 0) return;
+    if (!confirm(`确定要从班级中移除选中的 ${selectedForRemove.size} 名学生吗？`)) return;
+    try {
+      for (const sid of selectedForRemove) {
+        await axios.delete(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/students/${sid}`, { headers: headers() });
+      }
+      setSelectedForRemove(new Set());
       loadClassStudents(selectedClass.id);
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
@@ -360,13 +379,23 @@ const TeacherClassManagement = () => {
                       <Calendar className="w-5 h-5 text-indigo-600" />
                       每日学习数据
                     </h3>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      max={new Date().toISOString().split('T')[0]}
-                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
-                    />
+                    <div className="flex items-center gap-3">
+                      {selectedForRemove.size > 0 && (
+                        <button
+                          onClick={handleBatchRemove}
+                          className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition font-medium"
+                        >
+                          移除选中 ({selectedForRemove.size})
+                        </button>
+                      )}
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        max={new Date().toISOString().split('T')[0]}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                      />
+                    </div>
                   </div>
 
                   {dailyStats.length === 0 ? (
@@ -379,6 +408,20 @@ const TeacherClassManagement = () => {
                       <table className="w-full">
                         <thead>
                           <tr className="border-b-2 border-gray-200">
+                            <th className="py-3 px-2 w-8">
+                              <input
+                                type="checkbox"
+                                checked={dailyStats.length > 0 && selectedForRemove.size === dailyStats.length}
+                                onChange={() => {
+                                  if (selectedForRemove.size === dailyStats.length) {
+                                    setSelectedForRemove(new Set());
+                                  } else {
+                                    setSelectedForRemove(new Set(dailyStats.map(s => s.user_id)));
+                                  }
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded"
+                              />
+                            </th>
                             <th className="text-left py-3 px-3 font-semibold text-gray-700 text-sm">学生</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习单词</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习时长</th>
@@ -399,6 +442,21 @@ const TeacherClassManagement = () => {
                               transition={{ delay: i * 0.03 }}
                               className="border-b border-gray-100 hover:bg-indigo-50/50 transition"
                             >
+                              <td className="py-3 px-2 w-8">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedForRemove.has(s.user_id)}
+                                  onChange={() => {
+                                    setSelectedForRemove(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(s.user_id)) next.delete(s.user_id);
+                                      else next.add(s.user_id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 rounded"
+                                />
+                              </td>
                               <td className="py-3 px-3">
                                 <div className="flex items-center gap-2">
                                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
