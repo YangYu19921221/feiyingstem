@@ -65,10 +65,10 @@ const TeacherAnalytics = () => {
         api.get('/teacher/analytics/modes/stats', { headers }),
       ]);
 
-      setOverview(overviewData.data);
-      setStudents(studentsData.data);
-      setDifficultWords(wordsData.data.slice(0, 10)); // 显示前10个最难单词
-      setModeStats(modesData.data);
+      setOverview(overviewData.data ?? overviewData);
+      setStudents(studentsData.data ?? studentsData);
+      setDifficultWords((wordsData.data ?? wordsData).slice(0, 10));
+      setModeStats(modesData.data ?? modesData);
     } catch (error) {
       console.error('获取数据失败:', error);
     } finally {
