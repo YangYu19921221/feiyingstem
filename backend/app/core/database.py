@@ -128,6 +128,39 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 重建 learning_records 表去掉 learning_mode 的 CHECK 约束
+        try:
+            check_result = await conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE name='learning_records'"
+            ))
+            row = check_result.fetchone()
+            if row and 'CHECK' in (row[0] or ''):
+                await conn.execute(text(
+                    "CREATE TABLE IF NOT EXISTS learning_records_new ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    "user_id INTEGER NOT NULL,"
+                    "word_id INTEGER NOT NULL,"
+                    "learning_mode VARCHAR(20),"
+                    "is_correct BOOLEAN,"
+                    "time_spent INTEGER,"
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                    "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,"
+                    "FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE)"
+                ))
+                await conn.execute(text(
+                    "INSERT OR IGNORE INTO learning_records_new SELECT * FROM learning_records"
+                ))
+                await conn.execute(text("DROP TABLE learning_records"))
+                await conn.execute(text("ALTER TABLE learning_records_new RENAME TO learning_records"))
+                await conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_learning_records_user ON learning_records(user_id)"
+                ))
+                await conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS idx_learning_records_created ON learning_records(created_at)"
+                ))
+        except Exception:
+            pass
+
         print("✅ 数据库初始化完成")
 
 async def get_db() -> AsyncSession:
