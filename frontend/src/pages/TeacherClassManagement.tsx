@@ -79,6 +79,10 @@ const TeacherClassManagement = () => {
   // 学生详情弹窗
   const [studentDetail, setStudentDetail] = useState<StudentDetail | null>(null);
 
+  // AI学习建议
+  const [aiAdvice, setAiAdvice] = useState<any>(null);
+  const [loadingAdvice, setLoadingAdvice] = useState(false);
+
   // 创建班级弹窗
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newClassName, setNewClassName] = useState('');
@@ -208,9 +212,16 @@ const TeacherClassManagement = () => {
 
   const handleViewStudentDetail = async (studentId: number) => {
     if (!selectedClass) return;
+    setAiAdvice(null);
     try {
       const res = await axios.get(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/student/${studentId}/detail`, { headers: headers() });
       setStudentDetail(res.data);
+      // 同时加载AI建议
+      setLoadingAdvice(true);
+      axios.get(`${API_BASE_URL}/teacher/student/${studentId}/ai-advice`, { headers: headers() })
+        .then(r => setAiAdvice(r.data))
+        .catch(() => {})
+        .finally(() => setLoadingAdvice(false));
     } catch (error) {
       console.error('加载学生详情失败:', error);
     }
@@ -388,12 +399,21 @@ const TeacherClassManagement = () => {
                             >
                               <td className="py-3 px-3">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                                    <span className="text-indigo-600 font-semibold text-sm">
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                    s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50 ? 'bg-red-100' : 'bg-indigo-100'
+                                  }`}>
+                                    <span className={`font-semibold text-sm ${
+                                      s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50 ? 'text-red-600' : 'text-indigo-600'
+                                    }`}>
                                       {s.full_name.charAt(0)}
                                     </span>
                                   </div>
                                   <span className="font-medium text-gray-800 text-sm">{s.full_name}</span>
+                                  {s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50 && (
+                                    <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded font-bold" title="准确率偏低，需重点关注">
+                                      需关注
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                               <td className="py-3 px-3 text-center">
@@ -747,6 +767,62 @@ const TeacherClassManagement = () => {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* AI学习建议 */}
+              <div className="mt-6">
+                <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <span>🤖</span> AI学习建议
+                </h4>
+                {loadingAdvice ? (
+                  <div className="bg-gray-50 rounded-xl p-4 text-center text-gray-400 text-sm">分析中...</div>
+                ) : aiAdvice ? (
+                  <div className={`rounded-xl p-4 border ${
+                    aiAdvice.level === 'danger' ? 'bg-red-50 border-red-200' :
+                    aiAdvice.level === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                    'bg-green-50 border-green-200'
+                  }`}>
+                    {/* 预警 */}
+                    {aiAdvice.alerts?.length > 0 && (
+                      <div className="mb-3">
+                        {aiAdvice.alerts.map((a: string, i: number) => (
+                          <div key={i} className="flex items-start gap-2 mb-1">
+                            <span className="text-red-500 flex-shrink-0">⚠️</span>
+                            <span className="text-red-700 text-sm font-medium">{a}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* 建议 */}
+                    <div className="space-y-1.5">
+                      {aiAdvice.suggestions?.map((s: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className="text-blue-500 flex-shrink-0">💡</span>
+                          <span className="text-gray-700 text-sm">{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* 题型分析 */}
+                    {aiAdvice.mode_analysis && Object.keys(aiAdvice.mode_analysis).length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200/50">
+                        <p className="text-xs text-gray-500 mb-2">各题型表现：</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(aiAdvice.mode_analysis).map(([mode, stats]: [string, any]) => (
+                            <span key={mode} className={`px-2 py-1 rounded text-xs font-medium ${
+                              stats.accuracy >= 80 ? 'bg-green-100 text-green-700' :
+                              stats.accuracy >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {mode} {stats.accuracy}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-xl p-4 text-center text-gray-400 text-sm">暂无建议</div>
+                )}
               </div>
 
               {/* 查看完整数据按钮 */}
