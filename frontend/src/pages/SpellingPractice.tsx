@@ -36,6 +36,8 @@ const SpellingPractice = () => {
   const [hintsUsed, setHintsUsed] = useState(0);
   const [revealedLetters, setRevealedLetters] = useState<Set<number>>(new Set());
   const [letterResults, setLetterResults] = useState<string[]>([]);
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
 
   const handleHint = () => {
     const answer = questions[currentIndex].correct_answer;
@@ -66,7 +68,19 @@ const SpellingPractice = () => {
       }
     }
     setLetterResults(compareResults);
-    recordAnswer(correct);
+
+    if (correct) {
+      setShowCorrectAnswer(false);
+      recordAnswer(true);
+    } else {
+      const newCount = attemptCount + 1;
+      setAttemptCount(newCount);
+      if (newCount >= 3) {
+        setShowCorrectAnswer(true);
+        recordAnswer(false);
+      }
+      // 前3次不调用 recordAnswer，让用户重试
+    }
   };
 
   const handleNext = () => {
@@ -74,6 +88,8 @@ const SpellingPractice = () => {
       setUserInput('');
       setLetterResults([]);
       setRevealedLetters(new Set());
+      setAttemptCount(0);
+      setShowCorrectAnswer(false);
     });
   };
 
@@ -99,6 +115,7 @@ const SpellingPractice = () => {
       currentMeaning={currentQuestion?.meaning}
       unitWords={unitWords}
       questionWords={questionWords}
+      hideAnswer
     >
       {/* 题目卡片 */}
       <AnimatePresence mode="wait">
@@ -228,6 +245,15 @@ const SpellingPractice = () => {
             </div>
           )}
 
+          {/* 错误重试提示 */}
+          {attemptCount > 0 && !isChecking && (
+            <div className="text-center mb-4">
+              <p className="text-red-500 text-sm font-medium">
+                拼写不正确，请重试 ({attemptCount}/3)
+              </p>
+            </div>
+          )}
+
           {/* 检查按钮 */}
           {!isChecking && (
             <button
@@ -235,7 +261,7 @@ const SpellingPractice = () => {
               disabled={!userInput.trim()}
               className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
             >
-              检查拼写 ✏️
+              {attemptCount > 0 ? `再试一次 (${3 - attemptCount}次机会)` : '检查拼写 ✏️'}
             </button>
           )}
         </motion.div>
