@@ -402,8 +402,8 @@ const StudentDashboard = () => {
                   </>
                 ) : (
                   <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
-                    <div className="text-2xl">✅</div>
-                    <div className="text-xs text-white/80">复习已完成</div>
+                    <div className="text-2xl">📖</div>
+                    <div className="text-xs text-white/80">学完单词后自动安排</div>
                   </div>
                 )}
               </div>

@@ -175,6 +175,34 @@ const MemoryCurve = () => {
                 </div>
               </div>
             </div>
+          ) : stats && stats.total_learned === 0 ? (
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-cyan-200 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <span className="text-4xl">📖</span>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-2">还没有开始学习</h3>
+                  <p className="text-gray-600 text-sm mb-3">
+                    完成单词学习后，系统会根据<span className="font-bold text-cyan-600">艾宾浩斯遗忘曲线</span>自动安排复习计划。
+                  </p>
+                  <div className="bg-white rounded-xl p-4 mb-3">
+                    <p className="text-sm font-bold text-gray-700 mb-2">使用方法：</p>
+                    <ol className="text-sm text-gray-600 space-y-1.5">
+                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">1.</span> 回到首页，选择单词本进入学习</li>
+                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">2.</span> 完成分类记忆学习后，单词自动加入复习计划</li>
+                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">3.</span> 系统按间隔提醒你复习：5分钟→30分钟→12小时→1天→2天→4天→7天→15天→30天</li>
+                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">4.</span> 复习答对→进入下一阶段；答错→回退2级重新巩固</li>
+                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">5.</span> 通过全部9个阶段 = 完全掌握</li>
+                    </ol>
+                  </div>
+                  <button
+                    onClick={() => navigate('/student/dashboard')}
+                    className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl font-medium hover:shadow-lg transition"
+                  >
+                    去学习单词
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="bg-gradient-to-r from-green-400 to-emerald-500 rounded-2xl p-6 text-white shadow-lg">
               <div className="flex items-center gap-4">
