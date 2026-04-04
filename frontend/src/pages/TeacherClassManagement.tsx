@@ -389,7 +389,9 @@ const TeacherClassManagement = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {dailyStats.map((s, i) => (
+                          {dailyStats.map((s, i) => {
+                            const isLowScore = s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50;
+                            return (
                             <motion.tr
                               key={s.user_id}
                               initial={{ opacity: 0, y: 5 }}
@@ -400,16 +402,16 @@ const TeacherClassManagement = () => {
                               <td className="py-3 px-3">
                                 <div className="flex items-center gap-2">
                                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                    s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50 ? 'bg-red-100' : 'bg-indigo-100'
+                                    isLowScore ? 'bg-red-100' : 'bg-indigo-100'
                                   }`}>
                                     <span className={`font-semibold text-sm ${
-                                      s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50 ? 'text-red-600' : 'text-indigo-600'
+                                      isLowScore ? 'text-red-600' : 'text-indigo-600'
                                     }`}>
                                       {s.full_name.charAt(0)}
                                     </span>
                                   </div>
                                   <span className="font-medium text-gray-800 text-sm">{s.full_name}</span>
-                                  {s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50 && (
+                                  {isLowScore && (
                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded font-bold" title="准确率偏低，需重点关注">
                                       需关注
                                     </span>
@@ -453,7 +455,8 @@ const TeacherClassManagement = () => {
                                 </button>
                               </td>
                             </motion.tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

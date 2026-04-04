@@ -485,14 +485,12 @@ async def get_student_ai_advice(
             func.count(WordMastery.id).label('total'),
             func.sum((WordMastery.mastery_level >= 4).cast(Integer)).label('mastered'),
             func.sum((WordMastery.mastery_level < 3).cast(Integer)).label('weak'),
-            func.avg(WordMastery.mastery_level).label('avg_level'),
         ).where(WordMastery.user_id == student_id)
     )
     m = mastery_result.first()
     total_words = m.total or 0
     mastered = m.mastered or 0
     weak = m.weak or 0
-    avg_level = float(m.avg_level or 0)
 
     rec_result = await db.execute(
         select(
