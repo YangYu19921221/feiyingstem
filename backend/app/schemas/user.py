@@ -41,9 +41,13 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     """用户响应"""
     id: int
+    username: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    role: str = "student"
     is_active: bool
     avatar_url: Optional[str] = None
     phone: Optional[str] = None
