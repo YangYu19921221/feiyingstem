@@ -95,38 +95,38 @@ async def get_learning_overview(
 
     # 总学习单词数
     result = await db.execute(
-        select(func.count(UserWordProgress.id))
-        .where(UserWordProgress.user_id == current_user.id)
+        select(func.count(WordMastery.id))
+        .where(WordMastery.user_id == current_user.id)
     )
     total_words = result.scalar() or 0
 
     # 已掌握单词数(掌握度>=4)
     result = await db.execute(
-        select(func.count(UserWordProgress.id))
+        select(func.count(WordMastery.id))
         .where(and_(
-            UserWordProgress.user_id == current_user.id,
-            UserWordProgress.mastery_level >= 4
+            WordMastery.user_id == current_user.id,
+            WordMastery.mastery_level >= 4
         ))
     )
     mastered_words = result.scalar() or 0
 
     # 学习中单词数(掌握度2-3)
     result = await db.execute(
-        select(func.count(UserWordProgress.id))
+        select(func.count(WordMastery.id))
         .where(and_(
-            UserWordProgress.user_id == current_user.id,
-            UserWordProgress.mastery_level >= 2,
-            UserWordProgress.mastery_level < 4
+            WordMastery.user_id == current_user.id,
+            WordMastery.mastery_level >= 2,
+            WordMastery.mastery_level < 4
         ))
     )
     learning_words = result.scalar() or 0
 
     # 薄弱单词数(掌握度<2)
     result = await db.execute(
-        select(func.count(UserWordProgress.id))
+        select(func.count(WordMastery.id))
         .where(and_(
-            UserWordProgress.user_id == current_user.id,
-            UserWordProgress.mastery_level < 2
+            WordMastery.user_id == current_user.id,
+            WordMastery.mastery_level < 2
         ))
     )
     weak_words = result.scalar() or 0
