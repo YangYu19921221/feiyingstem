@@ -151,6 +151,7 @@ const MistakeChallenge = () => {
             <ResultPhase
               key="result"
               result={resultData}
+              userAnswers={userAnswers}
               onRetry={retryLevel}
               onBack={backToMap}
             />
@@ -315,9 +316,10 @@ function PlayingPhase({
 
 // ===== 结果阶段 =====
 function ResultPhase({
-  result, onRetry, onBack
+  result, userAnswers, onRetry, onBack
 }: {
   result: ResultData;
+  userAnswers: Record<number, string>;
   onRetry: () => void;
   onBack: () => void;
 }) {
@@ -358,12 +360,24 @@ function ResultPhase({
               <h3 className="font-bold text-gray-800 mb-4">需要复习的单词：</h3>
               <div className="space-y-3">
                 {result.wrong_words.map(w => (
-                  <div key={w.word_id} className="flex items-center gap-3 p-3 bg-red-50 rounded-xl">
-                    <span className="text-red-500">✗</span>
-                    <span className="font-bold text-gray-800">{w.word}</span>
-                    <span className="text-gray-500">—</span>
-                    <span className="text-gray-600">{w.meaning}</span>
-                    {w.phonetic && <ColoredPhonetic phonetic={w.phonetic} className="text-sm" />}
+                  <div key={w.word_id} className="p-3 bg-red-50 rounded-xl">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="text-red-500">✗</span>
+                      <span className="font-bold text-green-700 text-lg">{w.word}</span>
+                      <span className="text-gray-500">—</span>
+                      <span className="text-gray-600">{w.meaning}</span>
+                    </div>
+                    <div className="ml-7 flex items-center gap-2 text-sm">
+                      <span className="text-gray-400">你的答案：</span>
+                      <span className="text-red-500 line-through font-medium">{userAnswers[w.word_id] || '(未作答)'}</span>
+                      <span className="text-gray-400">→</span>
+                      <span className="text-green-600 font-bold">{w.word}</span>
+                    </div>
+                    {w.phonetic && (
+                      <div className="ml-7 mt-1">
+                        <ColoredPhonetic phonetic={w.phonetic} size="sm" />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

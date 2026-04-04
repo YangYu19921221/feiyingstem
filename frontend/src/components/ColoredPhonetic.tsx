@@ -179,7 +179,7 @@ export default function ColoredPhonetic({
               className={`inline-flex items-baseline ${cfg.gap} ${bg} ${color.border} border ${cfg.pill} rounded-xl relative`}
             >
               {syl.stressed && (
-                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-red-400 font-bold leading-none" style={{ fontSize: '14px' }}>&#x2032;</span>
+                <span className="absolute -top-2 -left-1 text-red-400 font-bold leading-none" style={{ fontSize: '16px' }}>&#x2C8;</span>
               )}
               {syl.phonemes.map((p, pi) => (
                 <span
@@ -201,7 +201,7 @@ export default function ColoredPhonetic({
       {showLegend && (
         <span className="flex items-center gap-4 mt-2 text-xs text-gray-500">
           <span className="flex items-center gap-1">
-            <span className="text-red-400 font-bold">&#x2032;</span> 重读音节
+            <span className="text-red-400 font-bold">&#x2C8;</span> 重读音节
           </span>
           <span className="flex items-center gap-1">
             <span className="font-extrabold text-sm text-gray-600">大</span> 元音
