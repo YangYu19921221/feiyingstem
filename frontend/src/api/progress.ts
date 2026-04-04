@@ -111,6 +111,8 @@ export interface UnitProgress {
   is_completed: boolean;
   best_accuracy: number | null;
   is_perfect: boolean;
+  total_study_time?: number;
+  attempt_count?: number;
 }
 
 export interface BookProgress {

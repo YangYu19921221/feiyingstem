@@ -323,23 +323,32 @@ async def get_book_progress(
     )
     units = result.scalars().all()
 
-    # 3. 批量查询所有单元的最佳成绩（避免 N+1）
+    # 3. 批量查询所有单元的最佳成绩、学习时间、会话数（避免 N+1）
     unit_ids = [u.id for u in units]
     unit_best_scores: dict[int, tuple[float | None, bool]] = {uid: (None, False) for uid in unit_ids}
+    unit_study_time: dict[int, int] = {uid: 0 for uid in unit_ids}
+    unit_attempt_count: dict[int, int] = {uid: 0 for uid in unit_ids}
     if unit_ids:
         sessions_result = await db.execute(
-            select(StudySession.unit_id, StudySession.correct_count, StudySession.wrong_count)
+            select(
+                StudySession.unit_id,
+                StudySession.correct_count,
+                StudySession.wrong_count,
+                StudySession.time_spent,
+            )
             .where(
                 and_(
                     StudySession.user_id == user_id,
                     StudySession.unit_id.in_(unit_ids),
-                    StudySession.correct_count > 0,
                 )
             )
         )
-        for uid, correct, wrong in sessions_result.all():
-            total = correct + wrong
-            if total > 0:
+        for uid, correct, wrong, time_spent in sessions_result.all():
+            unit_attempt_count[uid] += 1
+            unit_study_time[uid] += (time_spent or 0)
+            # 最佳成绩
+            total = (correct or 0) + (wrong or 0)
+            if total > 0 and correct and correct > 0:
                 acc = correct / total * 100
                 prev_acc, prev_perfect = unit_best_scores[uid]
                 if prev_acc is None or acc > prev_acc:
@@ -407,6 +416,8 @@ async def get_book_progress(
             is_completed=is_completed,
             best_accuracy=round(best_accuracy, 1) if best_accuracy is not None else None,
             is_perfect=is_perfect,
+            total_study_time=unit_study_time.get(unit.id, 0),
+            attempt_count=unit_attempt_count.get(unit.id, 0),
         ))
 
     # 4. 计算整体进度

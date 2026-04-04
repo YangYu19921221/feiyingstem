@@ -292,24 +292,34 @@ const WordClassifyLearning = () => {
     if (!learningData || !unitId) return;
 
     const totalTime = Math.round((Date.now() - startTime) / 1000);
+    const avgTime = Math.round(totalTime * 1000 / learningData.words.length);
 
-    // 构建当前组的学习记录
-    const records: WordAnswerCreate[] = currentGroupWords.map(w => {
+    // 按题型分别构建学习记录，错题会被正确分类到错题集
+    const records: WordAnswerCreate[] = [];
+    const dictMap = new Map(dictationResults.map(r => [r.wordId, r]));
+    const fillMap = new Map(fillResults.map(r => [r.wordId, r]));
+
+    for (const w of currentGroupWords) {
       const category = classifyResults.get(w.id) || 'unknown';
-      const dictResult = dictationResults.find(r => r.wordId === w.id);
 
-      let isCorrect = category === 'familiar';
-      if (dictResult) {
-        isCorrect = dictResult.isCorrect;
+      if (category === 'unfamiliar' || category === 'unknown') {
+        records.push({ word_id: w.id, is_correct: false, time_spent: avgTime, learning_mode: 'classify' });
       }
 
-      return {
-        word_id: w.id,
-        is_correct: isCorrect,
-        time_spent: Math.round(totalTime * 1000 / learningData.words.length),
-        learning_mode: 'classify',
-      };
-    });
+      const dictResult = dictMap.get(w.id);
+      if (dictResult) {
+        records.push({ word_id: w.id, is_correct: dictResult.isCorrect, time_spent: avgTime, learning_mode: 'spelling' });
+      }
+
+      const fillResult = fillMap.get(w.id);
+      if (fillResult) {
+        records.push({ word_id: w.id, is_correct: fillResult.isCorrect, time_spent: avgTime, learning_mode: 'fillblank' });
+      }
+
+      if (category === 'familiar' && !dictResult && !fillResult) {
+        records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'classify' });
+      }
+    }
 
     try {
       await createLearningRecords({

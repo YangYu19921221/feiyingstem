@@ -63,6 +63,8 @@ class UnitProgressResponse(BaseModel):
     is_completed: bool = Field(False, description="是否完成")
     best_accuracy: Optional[float] = Field(None, description="最佳正确率")
     is_perfect: bool = Field(False, description="是否满分通过过")
+    total_study_time: int = Field(0, description="总学习时长(秒)")
+    attempt_count: int = Field(0, description="学习轮次(会话数)")
 
 class BookProgressResponse(BaseModel):
     """单词本进度响应"""

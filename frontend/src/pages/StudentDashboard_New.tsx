@@ -186,6 +186,27 @@ const StudentDashboard = () => {
           <p className="opacity-90">继续保持,你已经超越了85%的学习者!</p>
         </div>
 
+        {/* 错题提醒 */}
+        {mistakeStats && mistakeStats.unresolved_mistakes > 0 && (
+          <div
+            onClick={() => navigate('/student/mistake-book')}
+            className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between cursor-pointer hover:bg-red-100 transition"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📕</span>
+              <div>
+                <p className="font-bold text-red-700">
+                  你有 {mistakeStats.unresolved_mistakes} 个错题待处理
+                </p>
+                <p className="text-xs text-red-500">及时复习错题，巩固薄弱知识点</p>
+              </div>
+            </div>
+            <span className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition">
+              去处理
+            </span>
+          </div>
+        )}
+
         {/* 宠物小组件 */}
         <div className="mb-8">
           <PetWidget />

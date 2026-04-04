@@ -32,6 +32,11 @@ const UnitSelector = () => {
     }
   };
 
+  const formatStudyTime = (s: number) => {
+    if (!s) return '--';
+    return s >= 60 ? `${Math.floor(s / 60)}分${s % 60}秒` : `${s}秒`;
+  };
+
   const handleStartLearning = (unitId: number, mode: string, unitIndex: number) => {
     // 第一个单元总是可以进入
     if (unitIndex > 0) {
@@ -243,6 +248,34 @@ const UnitSelector = () => {
                             <span>已掌握 {unit.completed_words} 个</span>
                             <span>剩余 {unit.word_count - unit.completed_words} 个</span>
                           </div>
+
+                          {/* 学习成绩统计 */}
+                          {unit.has_progress && (
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="p-2 bg-white rounded-lg text-center border border-gray-100">
+                                <p className={`text-lg font-bold ${
+                                  unit.best_accuracy !== null && unit.best_accuracy !== undefined
+                                    ? unit.best_accuracy >= 90 ? 'text-green-600' : unit.best_accuracy >= 60 ? 'text-blue-600' : 'text-orange-500'
+                                    : 'text-gray-400'
+                                }`}>
+                                  {unit.best_accuracy !== null && unit.best_accuracy !== undefined ? `${unit.best_accuracy.toFixed(0)}%` : '--'}
+                                </p>
+                                <p className="text-xs text-gray-400">最佳成绩</p>
+                              </div>
+                              <div className="p-2 bg-white rounded-lg text-center border border-gray-100">
+                                <p className="text-lg font-bold text-purple-600">
+                                  {formatStudyTime(unit.total_study_time || 0)}
+                                </p>
+                                <p className="text-xs text-gray-400">学习时间</p>
+                              </div>
+                              <div className="p-2 bg-white rounded-lg text-center border border-gray-100">
+                                <p className="text-lg font-bold text-teal-600">
+                                  {unit.attempt_count || 0}
+                                </p>
+                                <p className="text-xs text-gray-400">学习轮次</p>
+                              </div>
+                            </div>
+                          )}
 
                           {/* 断点续学提示 */}
                           {unit.has_progress && !unit.is_completed && (
