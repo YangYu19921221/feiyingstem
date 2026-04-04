@@ -81,15 +81,15 @@ const WordClassifyLearning = () => {
   // 组内进度存档 key
   const progressKey = unitId ? `classify_progress_${unitId}` : '';
 
-  // 保存组内进度到 localStorage
+  // 保存组内进度到 localStorage（仅数据加载后生效）
   const saveLocalProgress = useCallback(() => {
-    if (!progressKey || phase === 'summary') return;
+    if (!progressKey || phase === 'summary' || !learningData) return;
     localStorage.setItem(progressKey, JSON.stringify({
       groupIndex: currentGroupIndex,
       phase,
       timestamp: Date.now(),
     }));
-  }, [progressKey, currentGroupIndex, phase]);
+  }, [progressKey, currentGroupIndex, phase, learningData]);
 
   // phase 变化时自动保存
   useEffect(() => {
