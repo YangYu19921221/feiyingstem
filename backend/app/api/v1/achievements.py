@@ -136,14 +136,14 @@ class UnlockedAchievement(BaseModel):
 
 async def get_user_stats(db: AsyncSession, user_id: int):
     """获取用户学习统计数据"""
-    from app.models.learning import UserWordProgress, LearningRecord
+    from app.models.learning import WordMastery, LearningRecord
 
     # 总学习单词数
     result = await db.execute(
-        select(func.count(UserWordProgress.id))
+        select(func.count(WordMastery.id))
         .where(and_(
-            UserWordProgress.user_id == user_id,
-            UserWordProgress.mastery_level >= 3  # 掌握度>=3算学会
+            WordMastery.user_id == user_id,
+            WordMastery.mastery_level >= 3
         ))
     )
     total_words = result.scalar() or 0
