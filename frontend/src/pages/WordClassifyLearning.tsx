@@ -210,15 +210,6 @@ const WordClassifyLearning = () => {
   // 阶段1完成：分类结束 → 进入语音校验
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
     setClassifyResults(results);
-
-    // 实时记录分类阶段的错题（夹生和陌生）
-    const mistakes: WordAnswerCreate[] = [];
-    results.forEach((category, wordId) => {
-      if (category === 'semi' || category === 'unknown') {
-        mistakes.push({ word_id: wordId, is_correct: false, time_spent: 0, learning_mode: 'classify' });
-      }
-    });
-    submitMistakesRealtime(mistakes);
     setPhase('speechVerify');
     setSpeechRoundWords(currentGroupWords);
     setSpeechSkippedWords([]);
@@ -545,6 +536,11 @@ const WordClassifyLearning = () => {
               <ClassificationPhase
                 words={currentGroupWords}
                 onComplete={handleClassifyComplete}
+                onRoundMistakes={(wordIds) => {
+                  submitMistakesRealtime(
+                    wordIds.map(id => ({ word_id: id, is_correct: false, time_spent: 0, learning_mode: 'classify' }))
+                  );
+                }}
                 playAudio={playAudio}
               />
             </motion.div>

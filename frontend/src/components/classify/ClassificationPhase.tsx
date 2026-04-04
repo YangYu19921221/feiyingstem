@@ -14,6 +14,7 @@ export type WordCategory = 'familiar' | 'semi' | 'unknown';
 interface ClassificationPhaseProps {
   words: WordData[];
   onComplete: (results: Map<number, WordCategory>) => void;
+  onRoundMistakes?: (wordIds: number[]) => void;
   playAudio: (word: string) => void;
 }
 
@@ -23,6 +24,7 @@ const PLAY_INTERVAL = 1800;
 export default function ClassificationPhase({
   words,
   onComplete,
+  onRoundMistakes,
   playAudio,
 }: ClassificationPhaseProps) {
   // 当前轮要过的单词列表
@@ -79,6 +81,9 @@ export default function ClassificationPhase({
       // 全部熟悉，分类结束
       onComplete(newResults);
     } else {
+      // 实时通知错题
+      onRoundMistakes?.(errorWords.map(w => w.id));
+
       // 还有错误词，显示轮次总结后进入下一轮
       setRoundErrors(errorWords.length);
       setShowRoundSummary(true);
@@ -92,7 +97,7 @@ export default function ClassificationPhase({
         setShowRoundSummary(false);
       }, 2000);
     }
-  }, [roundWords, onComplete]);
+  }, [roundWords, onComplete, onRoundMistakes]);
 
   const handleClassify = useCallback((category: WordCategory) => {
     if (isTransitioning || !currentWord) return;
