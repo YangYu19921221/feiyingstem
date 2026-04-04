@@ -341,8 +341,16 @@ async def get_retention_curve(
         (720, "30天"),
     ]
 
-    # 稳定性常数 S=36 (小时)
-    S = 36.0
+    # 艾宾浩斯理论保留率（基于实验校准数据）
+    theoretical_values = {
+        1: 98.0,      # 1小时
+        24: 58.0,     # 1天
+        48: 44.0,     # 2天
+        96: 33.0,     # 4天
+        168: 25.0,    # 7天
+        336: 20.0,    # 14天
+        720: 15.0,    # 30天
+    }
 
     # 查询用户总学习单词数
     total_result = await db.execute(
@@ -356,8 +364,7 @@ async def get_retention_curve(
     has_any_actual = False
 
     for hours, label in time_points:
-        # 理论保留率: R = e^(-t/S) * 100
-        theoretical = math.exp(-hours / S) * 100
+        theoretical = theoretical_values.get(hours, 0)
 
         # 实际保留率: 查询在 [hours-窗口, hours+窗口] 前学习的单词
         # 窗口大小随时间点增大
