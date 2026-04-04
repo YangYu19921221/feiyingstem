@@ -229,11 +229,8 @@ async def get_mode_stats(
         select(
             LearningProgress.learning_mode,
             func.count(LearningProgress.id).label('count'),
-            func.avg(
-                func.cast(LearningProgress.completed_words, float) /
-                func.nullif(LearningProgress.total_words, 0) * 100
-            ).label('avg_accuracy'),
-            func.sum(LearningProgress.completed_words).label('total_words')
+            func.sum(LearningProgress.completed_words).label('total_completed'),
+            func.sum(LearningProgress.total_words).label('total_words')
         )
         .where(LearningProgress.user_id == current_user.id)
         .group_by(LearningProgress.learning_mode)
@@ -241,12 +238,13 @@ async def get_mode_stats(
 
     mode_stats = []
     for row in result:
-        mode, count, avg_accuracy, total_words = row
+        mode, count, total_completed, total_words = row
+        avg_accuracy = (total_completed / total_words * 100) if total_words and total_words > 0 else 0
         mode_stats.append(ModeStats(
             mode=mode or 'flashcard',
             count=count or 0,
-            avg_accuracy=round(avg_accuracy or 0, 1),
-            total_words=total_words or 0
+            avg_accuracy=round(avg_accuracy, 1),
+            total_words=total_completed or 0
         ))
 
     return mode_stats
