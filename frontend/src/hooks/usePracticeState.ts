@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createLearningRecords } from '../api/learningRecords';
 
 export interface PracticeResult {
   correct: boolean | null;
@@ -27,7 +28,7 @@ interface UsePracticeStateOptions {
   mode: string;
   modeName: string;
   unitId: string | undefined;
-  questions: Array<{ word: string; question: string; correct_answer: string }>;
+  questions: Array<{ word: string; word_id?: number; question: string; correct_answer: string }>;
   unitName?: string;
   totalUnitWords?: number;
 }
@@ -83,7 +84,22 @@ export function usePracticeState({
     } else {
       setWrongAnswers(prev => new Set(prev).add(currentIndex));
     }
-  }, [currentIndex]);
+
+    // 实时提交学习记录到后端（错题会自动进入错题集）
+    const q = questions[currentIndex];
+    if (q?.word_id && unitId) {
+      createLearningRecords({
+        unit_id: parseInt(unitId),
+        learning_mode: mode,
+        records: [{
+          word_id: q.word_id,
+          is_correct: correct,
+          time_spent: timeSpent * 1000,
+          learning_mode: mode,
+        }],
+      }).catch(() => {}); // 静默失败，不影响答题体验
+    }
+  }, [currentIndex, questions, unitId, mode, timeSpent]);
 
   const goToNext = useCallback((resetExtra?: () => void) => {
     if (currentIndex < questions.length - 1) {

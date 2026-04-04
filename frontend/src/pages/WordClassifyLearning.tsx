@@ -196,9 +196,29 @@ const WordClassifyLearning = () => {
   }, [currentGroupWords]);
 
 
+  // 实时提交错题到后端（不等整组结束）
+  const submitMistakesRealtime = useCallback((records: WordAnswerCreate[]) => {
+    const wrongRecords = records.filter(r => !r.is_correct);
+    if (wrongRecords.length === 0 || !unitId) return;
+    createLearningRecords({
+      unit_id: parseInt(unitId),
+      learning_mode: 'classify',
+      records: wrongRecords,
+    }).catch(() => {});
+  }, [unitId]);
+
   // 阶段1完成：分类结束 → 进入语音校验
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
     setClassifyResults(results);
+
+    // 实时记录分类阶段的错题（夹生和陌生）
+    const mistakes: WordAnswerCreate[] = [];
+    results.forEach((category, wordId) => {
+      if (category === 'semi' || category === 'unknown') {
+        mistakes.push({ word_id: wordId, is_correct: false, time_spent: 0, learning_mode: 'classify' });
+      }
+    });
+    submitMistakesRealtime(mistakes);
     setPhase('speechVerify');
     setSpeechRoundWords(currentGroupWords);
     setSpeechSkippedWords([]);
@@ -260,6 +280,12 @@ const WordClassifyLearning = () => {
   const handleDictationComplete = (results: DictationResult[]) => {
     setDictationResults(results);
     setPhase('sentenceFill');
+
+    // 实时记录听写错题
+    const mistakes = results
+      .filter(r => !r.isCorrect)
+      .map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }));
+    submitMistakesRealtime(mistakes);
   };
 
   // 句子填空完成 → 过关检测
@@ -267,7 +293,13 @@ const WordClassifyLearning = () => {
     setFillBlankResults(results);
     setPhase('exam');
 
-    // 保存当前组的进度
+    // 实时记录填空错题
+    const mistakes = results
+      .filter(r => !r.isCorrect)
+      .map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'fillblank' as string }));
+    submitMistakesRealtime(mistakes);
+
+    // 保存当前组的进度（含正确记录）
     saveGroupProgress(results);
   };
 
