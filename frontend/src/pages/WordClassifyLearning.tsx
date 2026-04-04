@@ -302,7 +302,7 @@ const WordClassifyLearning = () => {
     for (const w of currentGroupWords) {
       const category = classifyResults.get(w.id) || 'unknown';
 
-      if (category === 'unfamiliar' || category === 'unknown') {
+      if (category === 'semi' || category === 'unknown') {
         records.push({ word_id: w.id, is_correct: false, time_spent: avgTime, learning_mode: 'classify' });
       }
 
