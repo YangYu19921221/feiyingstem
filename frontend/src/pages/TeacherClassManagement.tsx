@@ -217,9 +217,11 @@ const TeacherClassManagement = () => {
     if (!selectedClass || selectedForRemove.size === 0) return;
     if (!confirm(`确定要从班级中移除选中的 ${selectedForRemove.size} 名学生吗？`)) return;
     try {
-      for (const sid of selectedForRemove) {
-        await axios.delete(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/students/${sid}`, { headers: headers() });
-      }
+      await Promise.all(
+        Array.from(selectedForRemove).map(sid =>
+          axios.delete(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/students/${sid}`, { headers: headers() })
+        )
+      );
       setSelectedForRemove(new Set());
       loadClassStudents(selectedClass.id);
       loadClasses();
