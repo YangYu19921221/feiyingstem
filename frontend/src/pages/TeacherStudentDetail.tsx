@@ -60,8 +60,8 @@ const TeacherStudentDetail = () => {
         api.get(`/teacher/analytics/student/${id}/weak-points`, { headers }),
       ]);
 
-      setStats(statsData.data);
-      setWeakPoints(weakPointsData.data);
+      setStats(statsData.data ?? statsData);
+      setWeakPoints(weakPointsData.data ?? weakPointsData);
     } catch (error) {
       console.error('获取学生数据失败:', error);
     } finally {
