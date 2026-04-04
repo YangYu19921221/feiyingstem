@@ -78,6 +78,29 @@ const WordClassifyLearning = () => {
 
   const [showExitDialog, setShowExitDialog] = useState(false);
 
+  // 组内进度存档 key
+  const progressKey = unitId ? `classify_progress_${unitId}` : '';
+
+  // 保存组内进度到 localStorage
+  const saveLocalProgress = useCallback(() => {
+    if (!progressKey || phase === 'summary') return;
+    localStorage.setItem(progressKey, JSON.stringify({
+      groupIndex: currentGroupIndex,
+      phase,
+      timestamp: Date.now(),
+    }));
+  }, [progressKey, currentGroupIndex, phase]);
+
+  // phase 变化时自动保存
+  useEffect(() => {
+    saveLocalProgress();
+  }, [phase, currentGroupIndex, saveLocalProgress]);
+
+  // 清除存档（一组完成或全部完成时）
+  const clearLocalProgress = useCallback(() => {
+    if (progressKey) localStorage.removeItem(progressKey);
+  }, [progressKey]);
+
   // 从 learningData 派生分组（不存储在 state 中）
   const groups = useMemo(
     () => learningData ? splitIntoGroups(learningData.words, learningData.unit_info.grade_level, learningData.unit_info.group_size) : [],
@@ -150,14 +173,37 @@ const WordClassifyLearning = () => {
 
       setLearningData(data);
 
-      // 根据后端返回的进度计算起始组
-      if (data.has_existing_progress && data.current_word_index > 0) {
-        const groupSize = getGroupSize(data.unit_info.grade_level, data.unit_info.group_size);
-        const resumeGroup = Math.floor((data.current_word_index + 1) / groupSize);
-        const totalGroups = Math.ceil(data.words.length / groupSize);
-        setCurrentGroupIndex(Math.min(resumeGroup, totalGroups - 1));
-      } else {
-        setCurrentGroupIndex(0);
+      // 检查 localStorage 是否有组内进度存档
+      const savedKey = `classify_progress_${id}`;
+      const savedJson = localStorage.getItem(savedKey);
+      let resumedFromLocal = false;
+
+      if (savedJson) {
+        try {
+          const saved = JSON.parse(savedJson);
+          // 存档不超过24小时才恢复
+          if (saved.timestamp && Date.now() - saved.timestamp < 24 * 3600 * 1000) {
+            const groupSize = getGroupSize(data.unit_info.grade_level, data.unit_info.group_size);
+            const totalGroups = Math.ceil(data.words.length / groupSize);
+            if (saved.groupIndex < totalGroups) {
+              setCurrentGroupIndex(saved.groupIndex);
+              setPhase(saved.phase || 'classify');
+              resumedFromLocal = true;
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (!resumedFromLocal) {
+        // 根据后端返回的进度计算起始组
+        if (data.has_existing_progress && data.current_word_index > 0) {
+          const groupSize = getGroupSize(data.unit_info.grade_level, data.unit_info.group_size);
+          const resumeGroup = Math.floor((data.current_word_index + 1) / groupSize);
+          const totalGroups = Math.ceil(data.words.length / groupSize);
+          setCurrentGroupIndex(Math.min(resumeGroup, totalGroups - 1));
+        } else {
+          setCurrentGroupIndex(0);
+        }
       }
 
       // 创建学习会话（复习/错题模式跳过）
@@ -297,6 +343,7 @@ const WordClassifyLearning = () => {
   // 过关检测通过 → 组内总结
   const handleExamPass = (correct: number, total: number) => {
     setPhase('summary');
+    clearLocalProgress();
   };
 
   // 过关检测重考
@@ -420,10 +467,11 @@ const WordClassifyLearning = () => {
   };
 
   const handleBack = () => {
-    // 最后一组的总结页直接返回
     if (phase === 'summary' && isLastGroup) {
+      clearLocalProgress();
       navigate(-1);
     } else {
+      saveLocalProgress();
       setShowExitDialog(true);
     }
   };
@@ -701,7 +749,7 @@ const WordClassifyLearning = () => {
               className="bg-white rounded-2xl p-6 max-w-sm w-full"
             >
               <h3 className="text-lg font-bold text-gray-800 mb-2">确认退出？</h3>
-              <p className="text-gray-500 text-sm mb-4">当前学习进度将不会保存</p>
+              <p className="text-gray-500 text-sm mb-4">进度已保存，下次进入将从当前位置继续</p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowExitDialog(false)}
