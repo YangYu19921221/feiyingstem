@@ -250,7 +250,7 @@ const Login = () => {
               to="/assessment"
               className="mt-6 block w-full py-3 text-center rounded-xl font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:shadow-lg transition"
             >
-              🎤 免费口语测评（无需注册）
+              🏥 公益英语口语体检（无需注册）
             </Link>
           </motion.div>
 

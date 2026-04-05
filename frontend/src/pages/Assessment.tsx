@@ -181,7 +181,7 @@ const Assessment = () => {
       <div className="bg-white/80 backdrop-blur-md shadow-sm">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           <span className="text-2xl">🦅</span>
-          <h1 className="text-lg font-bold text-gray-800">飞鹰AI英语 · 口语测评</h1>
+          <h1 className="text-lg font-bold text-gray-800">飞鹰AI英语 · 公益口语体检</h1>
         </div>
       </div>
 
@@ -192,9 +192,13 @@ const Assessment = () => {
           {phase === 'welcome' && (
             <motion.div key="welcome" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="text-center mb-8 mt-8">
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-7xl mb-4">🎤</motion.div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">AI英语口语测评</h2>
-                <p className="text-gray-500">3分钟快速诊断，发现发音薄弱点</p>
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-7xl mb-4">🏥</motion.div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">公益英语口语体检</h2>
+                <p className="text-gray-500">3分钟AI智能检测，发现发音薄弱点</p>
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2 mb-6 text-center">
+                <p className="text-sm text-green-700">🌿 本活动由飞鹰AI英语公益支持 · 完全免费</p>
               </div>
 
               <div className="bg-white rounded-2xl p-6 shadow-md mb-6">
@@ -215,13 +219,13 @@ const Assessment = () => {
               </div>
 
               <div className="bg-white rounded-2xl p-6 shadow-md mb-6">
-                <p className="text-sm font-bold text-gray-700 mb-3">测评流程</p>
+                <p className="text-sm font-bold text-gray-700 mb-3">体检流程</p>
                 <div className="space-y-3">
                   {[
                     { icon: '🎯', text: 'AI推荐6个诊断词' },
                     { icon: '🎤', text: '逐词朗读录音（每词3秒）' },
-                    { icon: '📊', text: '即时获取发音评分' },
-                    { icon: '📋', text: '生成口语诊断报告' },
+                    { icon: '📊', text: '即时获取发音体检报告' },
+                    { icon: '📋', text: '生成口语体检报告' },
                   ].map((item, i) => (
                     <div key={i} className="flex items-center gap-3 text-sm text-gray-600">
                       <span className="text-lg">{item.icon}</span>
@@ -239,10 +243,10 @@ const Assessment = () => {
                 disabled={loading}
                 className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl font-bold text-lg shadow-lg disabled:opacity-50"
               >
-                {loading ? '准备中...' : '开始免费测评'}
+                {loading ? '准备中...' : '开始公益体检'}
               </motion.button>
 
-              <p className="text-center text-xs text-gray-400 mt-4">无需注册 · 完全免费 · 即测即出</p>
+              <p className="text-center text-xs text-gray-400 mt-4">无需注册 · 公益免费 · 即测即出</p>
             </motion.div>
           )}
 
@@ -363,7 +367,7 @@ const Assessment = () => {
             <motion.div key="report" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="text-center mb-6">
                 <div className="text-5xl mb-3">{report.grade_label === '优秀' ? '🏆' : report.grade_label === '良好' ? '👍' : '💪'}</div>
-                <h2 className="text-2xl font-bold text-gray-800">口语测评报告</h2>
+                <h2 className="text-2xl font-bold text-gray-800">公益口语体检报告</h2>
               </div>
 
               {/* 总分 */}
@@ -428,7 +432,7 @@ const Assessment = () => {
 
               {/* CTA: 获取深度报告 */}
               <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl p-6 text-white text-center shadow-lg">
-                <h3 className="text-lg font-bold mb-2">获取深度诊断报告</h3>
+                <h3 className="text-lg font-bold mb-2">获取完整体检报告</h3>
                 <p className="text-white/80 text-sm mb-4">包含个性化学习路径 + 发音纠错建议 + 薄弱点详解</p>
                 <button
                   onClick={() => setPhase('phone')}
@@ -445,7 +449,7 @@ const Assessment = () => {
             <motion.div key="phone" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="text-center mb-6 mt-4">
                 <div className="text-5xl mb-3">📋</div>
-                <h2 className="text-xl font-bold text-gray-800">获取深度诊断报告</h2>
+                <h2 className="text-xl font-bold text-gray-800">获取完整体检报告</h2>
                 <p className="text-gray-500 text-sm mt-1">输入手机号，AI为您生成个性化分析</p>
               </div>
 
@@ -483,11 +487,11 @@ const Assessment = () => {
                 disabled={loading || !phone || !code}
                 className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl font-bold text-lg shadow-lg disabled:opacity-50"
               >
-                {loading ? 'AI分析中...' : '获取深度报告'}
+                {loading ? 'AI分析中...' : '获取完整报告'}
               </button>
 
               <button onClick={() => setPhase('report')} className="w-full py-3 text-gray-400 text-sm mt-3">
-                返回基础报告
+                返回体检报告
               </button>
             </motion.div>
           )}
@@ -497,7 +501,7 @@ const Assessment = () => {
             <motion.div key="deep" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="text-center mb-6">
                 <div className="text-5xl mb-3">🎓</div>
-                <h2 className="text-2xl font-bold text-gray-800">AI深度诊断报告</h2>
+                <h2 className="text-2xl font-bold text-gray-800">AI深度体检报告</h2>
               </div>
 
               {/* 总评 */}
@@ -562,7 +566,7 @@ const Assessment = () => {
                 <h3 className="text-lg font-bold mb-2">想进一步提升？</h3>
                 <p className="text-white/80 text-sm mb-3">添加老师微信，获取专属学习方案</p>
                 <div className="bg-white/20 rounded-xl px-4 py-3 inline-block">
-                  <p className="text-sm">飞鹰AI英语培训</p>
+                  <p className="text-sm">飞鹰AI英语 · 公益体检活动</p>
                 </div>
               </div>
             </motion.div>
