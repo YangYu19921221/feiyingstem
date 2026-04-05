@@ -24,7 +24,7 @@ async def init_db():
     """初始化数据库"""
     from sqlalchemy import text
     # 导入所有模型以确保它们被注册到Base.metadata
-    from app.models import user, word, learning, pet
+    from app.models import user, word, learning, pet, assessment
     try:
         from app.models import competition
     except Exception:

@@ -80,6 +80,7 @@ const TeacherDashboard = () => {
     { icon: '🏆', title: '竞赛管理', desc: 'AI生成题目', color: 'from-red-500 to-pink-500', route: '/teacher/competition' },
     { icon: '📤', title: '分配作业', desc: '分配给学生', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },
     { icon: '📊', title: '学生监控', desc: '查看学习数据', color: 'from-green-500 to-teal-500', route: '/teacher/students' },
+    { icon: '📋', title: '测评线索', desc: '地推扫码线索', color: 'from-pink-500 to-rose-500', route: '/teacher/leads' },
   ];
 
   const statsCards = [

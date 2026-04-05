@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
+import Assessment from './pages/Assessment';
 import StudentDashboard from './pages/StudentDashboard_New';
 import TeacherDashboard from './pages/TeacherDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -12,6 +13,7 @@ import TeacherBooks from './pages/TeacherBooks';
 import TeacherUnitManagement from './pages/TeacherUnitManagement';
 import TeacherStudents from './pages/TeacherStudents';
 import TeacherClassManagement from './pages/TeacherClassManagement';
+import TeacherLeads from './pages/TeacherLeads';
 import SpellingPractice from './pages/SpellingPractice';
 import FillBlankPractice from './pages/FillBlankPractice';
 import QuizPractice from './pages/QuizPractice';
@@ -130,6 +132,9 @@ function App() {
 
         {/* 忘记密码 */}
         <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* 匿名测评（公开，无需登录） */}
+        <Route path="/assessment" element={<Assessment />} />
 
         {/* 根据角色显示不同的仪表盘 */}
         <Route
@@ -394,6 +399,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherClassManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 测评线索管理 */}
+        <Route
+          path="/teacher/leads"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherLeads />
             </ProtectedRoute>
           }
         />
