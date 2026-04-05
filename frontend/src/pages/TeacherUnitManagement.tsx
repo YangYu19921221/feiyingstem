@@ -488,7 +488,7 @@ const TeacherUnitManagement = () => {
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-2xl">📌</span>
                       <h3 className="text-xl font-bold text-gray-800">
-                        Unit {unit.unit_number}: {unit.name}
+                        {unit.name.toLowerCase().startsWith('unit') ? unit.name : `Unit ${unit.unit_number}: ${unit.name}`}
                       </h3>
                     </div>
                     {unit.description && (
