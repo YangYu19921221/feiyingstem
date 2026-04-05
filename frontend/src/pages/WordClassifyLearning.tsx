@@ -205,7 +205,8 @@ const WordClassifyLearning = () => {
             const totalGroups = Math.ceil(data.words.length / groupSize);
             if (saved.groupIndex < totalGroups) {
               setCurrentGroupIndex(saved.groupIndex);
-              setPhase(saved.phase || 'classify');
+              // 只恢复组位置，阶段始终从classify开始（中间阶段的数据没有持久化）
+              setPhase('classify');
               resumedFromLocal = true;
             }
           }
