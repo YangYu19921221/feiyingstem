@@ -1,4 +1,5 @@
 """语音评测 & TTS API端点"""
+import re
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -110,8 +111,10 @@ async def best_pronunciation(
     优先级：剑桥词典真人女声录音 → Edge TTS en-GB-SoniaNeural 英式女声
     支持通过 word 或 word_id 查询
     """
+    from app.models.word import Word
+
+    db_word = None
     if not word and word_id:
-        from app.models.word import Word
         result = await db.execute(select(Word).where(Word.id == word_id))
         db_word = result.scalar_one_or_none()
         if not db_word:
@@ -122,18 +125,12 @@ async def best_pronunciation(
         raise HTTPException(400, "请提供 word 或 word_id 参数")
 
     # TTS 文本：优先用数据库的 tts_text 字段，没有则自动展开缩写
-    import re
     tts_text = None
-    if word_id or word:
-        from app.models.word import Word as WordModel
-        lookup = word_id or word
-        if word_id:
-            w_result = await db.execute(select(WordModel).where(WordModel.id == word_id))
-        else:
-            w_result = await db.execute(select(WordModel).where(WordModel.word == word))
-        w_obj = w_result.scalar_one_or_none()
-        if w_obj and w_obj.tts_text:
-            tts_text = w_obj.tts_text
+    if not db_word:
+        result = await db.execute(select(Word).where(Word.word == word))
+        db_word = result.scalar_one_or_none()
+    if db_word and db_word.tts_text:
+        tts_text = db_word.tts_text
 
     if not tts_text:
         tts_text = word
