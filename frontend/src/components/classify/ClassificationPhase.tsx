@@ -4,7 +4,7 @@
  * 直到全部标为熟悉才结束
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
@@ -306,13 +306,8 @@ export default function ClassificationPhase({
         </div>
 
         {/* 单词卡片 */}
-        <AnimatePresence mode="wait">
-          <motion.div
+          <div
             key={`${round}-${currentWord.id}`}
-            initial={{ opacity: 0, x: 60 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -60 }}
-            transition={{ duration: 0.25 }}
             className="bg-white rounded-3xl shadow-lg w-full max-w-md overflow-hidden"
           >
             {/* 顶部倒计时条 */}
@@ -382,8 +377,7 @@ export default function ClassificationPhase({
                 <span className="text-2xl">🔊</span>
               </button>
             </div>
-          </motion.div>
-        </AnimatePresence>
+          </div>
       </div>
 
       {/* 底部分类按钮 */}
