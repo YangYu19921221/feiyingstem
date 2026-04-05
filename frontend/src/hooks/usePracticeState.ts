@@ -58,10 +58,34 @@ export function usePracticeState({
     }
   }, [questions.length]);
 
-  // 计时器
+  // 计时器（离开页面暂停，回来超30秒重置）
   useEffect(() => {
-    const timer = setInterval(() => setTimeSpent(t => t + 1), 1000);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setInterval>;
+    let hiddenAt = 0;
+
+    const startTimer = () => {
+      timer = setInterval(() => setTimeSpent(t => t + 1), 1000);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(timer);
+        hiddenAt = Date.now();
+      } else {
+        const away = (Date.now() - hiddenAt) / 1000;
+        if (away > 30) {
+          // 离开超过30秒，不累计这段时间
+        }
+        startTimer();
+      }
+    };
+
+    startTimer();
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   const answered = results.filter(r => r !== null).length;
