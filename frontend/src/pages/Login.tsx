@@ -245,6 +245,15 @@ const Login = () => {
             <Link to="/forgot-password" className="text-blue-600 font-semibold hover:underline">忘记密码</Link>
           </motion.div>
 
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}>
+            <Link
+              to="/assessment"
+              className="mt-6 block w-full py-3 text-center rounded-xl font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:shadow-lg transition"
+            >
+              🎤 免费口语测评（无需注册）
+            </Link>
+          </motion.div>
+
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="mt-10 text-center text-xs text-gray-300">
             飞鹰AI英语培训机构 · AI 智能学习平台
           </motion.div>
