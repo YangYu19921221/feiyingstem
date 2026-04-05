@@ -38,10 +38,10 @@ const UnitSelector = () => {
   };
 
   const handleStartLearning = (unitId: number, mode: string, unitIndex: number) => {
-    // 第一个单元总是可以进入
+    // 第一个单元总是可以进入；后续单元要求前一个有学习进度
     if (unitIndex > 0) {
       const prevUnit = sortedUnits[unitIndex - 1];
-      if (!prevUnit.is_completed) {
+      if (!prevUnit.has_progress && !prevUnit.is_completed) {
         alert('请先完成上一个单元的学习');
         return;
       }
@@ -145,7 +145,7 @@ const UnitSelector = () => {
             {sortedUnits.map((unit, index) => {
               const isExpanded = expandedUnitId === unit.unit_id;
               const isCurrent = index === firstIncompleteIndex;
-              const isLocked = index > 0 && !sortedUnits[index - 1].is_completed;
+              const isLocked = index > 0 && !sortedUnits[index - 1].has_progress && !sortedUnits[index - 1].is_completed;
               const progressColor = unit.is_completed
                 ? 'from-green-400 to-green-500'
                 : unit.progress_percentage > 0
