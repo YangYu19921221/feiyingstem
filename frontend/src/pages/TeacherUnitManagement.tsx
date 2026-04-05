@@ -385,7 +385,7 @@ const TeacherUnitManagement = () => {
 
         try {
           const res = await axios.post(`${API_BASE_URL}/words/`, {
-            word: word.toLowerCase(),
+            word: word,
             phonetic: phonetic || undefined,
             syllables: syllables || undefined,
             difficulty: 1,

@@ -46,7 +46,7 @@ export default function DictationPhase({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const currentWord = roundWords[currentIndex];
-  const wordLength = currentWord?.word.length || 0;
+  const wordLength = currentWord?.word.replace(/\s+/g, '').length || 0;
 
   // 自动播放发音
   useEffect(() => {
@@ -70,7 +70,10 @@ export default function DictationPhase({
   const handleSubmit = useCallback(() => {
     if (submitted || !currentWord || userInput.length === 0) return;
 
-    const correct = userInput.trim() === currentWord.word.trim();
+    // 校验时忽略空格：用户不需要输入空格
+    const normalizedInput = userInput.trim().replace(/\s+/g, '');
+    const normalizedTarget = currentWord.word.trim().replace(/\s+/g, '');
+    const correct = normalizedInput === normalizedTarget;
     setIsCorrect(correct);
     setSubmitted(true);
 
@@ -137,7 +140,7 @@ export default function DictationPhase({
 
   const handleRetrySubmit = useCallback(() => {
     if (!currentWord || retryInput.length === 0) return;
-    if (retryInput.trim() === currentWord.word.trim()) {
+    if (retryInput.trim().replace(/\s+/g, '') === currentWord.word.trim().replace(/\s+/g, '')) {
       setRetryPassed(true);
     } else {
       setRetryInput('');
