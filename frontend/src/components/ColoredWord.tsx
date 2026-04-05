@@ -2,10 +2,10 @@
  * 彩色单词组件
  * 根据 syllables 字段按音节给单词字母上不同颜色
  *
- * 单词示例：syllables = "coun-try" → "coun"(橙) + "try"(蓝)
+ * 单词示例：syllables = "coun#try" → "coun"(橙) + "try"(蓝)
  * 短语示例：syllables = "look at" → "look"(橙) + " "(无色) + "at"(蓝)
  *          syllables = "ice cream" → "ice"(橙) + " "(无色) + "cream"(蓝)
- *          syllables = "look-ing at" → "look"(橙) + "ing"(蓝) + " "(无色) + "at"(绿)
+ *          syllables = "look#ing at" → "look"(橙) + "ing"(蓝) + " "(无色) + "at"(绿)
  */
 
 const SYLLABLE_COLORS = [
@@ -28,14 +28,14 @@ export default function ColoredWord({ word, syllables, className = '' }: Colored
     return <span className={className}>{word}</span>;
   }
 
-  // 按空格拆分为单词组，每个单词组内部用 - 分音节
+  // 按空格拆分为单词组，每个单词组内部用 # 分音节
   const wordGroups = syllables.split(' ');
   let colorIndex = 0;
 
   return (
     <span className={className}>
       {wordGroups.map((group, gi) => {
-        const parts = group.includes('-') ? group.split('-') : [group];
+        const parts = group.includes('#') ? group.split('#') : [group];
         return (
           <span key={gi}>
             {gi > 0 && <span> </span>}

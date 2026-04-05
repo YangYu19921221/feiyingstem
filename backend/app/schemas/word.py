@@ -29,7 +29,7 @@ class WordDefinitionResponse(WordDefinitionBase):
 class WordBase(BaseModel):
     word: str = Field(..., description="英文单词", min_length=1, max_length=100)
     phonetic: Optional[str] = Field(None, description="音标")
-    syllables: Optional[str] = Field(None, description="音节划分,用-分隔")
+    syllables: Optional[str] = Field(None, description="音节划分,用#分隔")
     difficulty: int = Field(3, ge=1, le=5, description="难度(1-5)")
     grade_level: Optional[str] = Field(None, description="适合年级")
     audio_url: Optional[str] = Field(None, description="发音音频URL")

@@ -34,7 +34,7 @@ export default function SyllableRhythmCard({
   onComplete,
   playAudio,
 }: SyllableRhythmCardProps) {
-  const syllables = word.syllables ? word.syllables.split('-') : [word.word];
+  const syllables = word.syllables ? word.syllables.split('#') : [word.word];
   const totalRounds = isUnknown ? 3 : 2;
 
   // 陌生词先听4遍的状态
