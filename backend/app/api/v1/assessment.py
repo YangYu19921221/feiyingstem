@@ -126,14 +126,16 @@ async def evaluate_word(
     except RuntimeError as e:
         logger.warning(f"ISE评测失败，尝试Whisper: {e}")
 
-    # Whisper fallback
+    # Whisper fallback（只做语音识别，不评发音质量，分数上限50）
     if whisper_service.is_available():
         result = await whisper_service.verify_word(audio_data, word)
+        whisper_score = min(result.get("score", 0) * 0.5, 50)
         return {
             "success": True, "word": word,
-            "total_score": result.get("score", 0),
-            "accuracy": result.get("score", 0),
+            "total_score": round(whisper_score, 1),
+            "accuracy": round(whisper_score, 1),
             "fluency": 0, "integrity": 0,
+            "note": "语音识别模式（讯飞ISE未配置，无法评测发音质量）",
         }
 
     raise HTTPException(500, "语音评测服务不可用")

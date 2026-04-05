@@ -5,6 +5,7 @@ import {
   type AssessmentWord, type WordScore, type BasicReport, type DeepReport,
 } from '../api/assessment';
 import { useCountdown } from '../hooks/useCountdown';
+import { useAudio } from '../hooks/useAudio';
 
 type Phase = 'welcome' | 'recording' | 'report' | 'phone' | 'deep';
 
@@ -12,6 +13,7 @@ const GRADE_OPTIONS = ['小学', '初中', '高中'];
 
 const Assessment = () => {
   const [phase, setPhase] = useState<Phase>('welcome');
+  const { playAudio } = useAudio();
   const [grade, setGrade] = useState('小学');
   const [sessionId, setSessionId] = useState('');
   const [words, setWords] = useState<AssessmentWord[]>([]);
@@ -97,6 +99,9 @@ const Assessment = () => {
           };
           setCurrentScore(score);
           setScores(prev => [...prev, score]);
+          if (score.total_score < 60) {
+            playAudio(word.word);
+          }
         } catch {
           setCurrentScore({ word: words[currentIndex].word, total_score: 0, accuracy: 0, fluency: 0, integrity: 0 });
           setScores(prev => [...prev, { word: words[currentIndex].word, total_score: 0, accuracy: 0, fluency: 0, integrity: 0 }]);
@@ -317,6 +322,15 @@ const Assessment = () => {
                         <span>准确 {currentScore.accuracy.toFixed(0)}</span>
                         <span>流利 {currentScore.fluency.toFixed(0)}</span>
                       </div>
+                      <button
+                        onClick={() => playAudio(currentWord.word)}
+                        className="mt-3 px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-sm hover:bg-blue-100 transition"
+                      >
+                        🔊 听标准发音
+                      </button>
+                      {currentScore.total_score < 60 && (
+                        <p className="mt-2 text-xs text-orange-500">发音需要加强，请听标准发音后重试</p>
+                      )}
                     </div>
                   ) : (
                     <motion.button
