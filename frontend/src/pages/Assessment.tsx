@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   startAssessment, evaluateWord, generateReport, capturePhone, verifyPhone,
@@ -28,6 +28,21 @@ const Assessment = () => {
   const [currentScore, setCurrentScore] = useState<WordScore | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 清理录音资源
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      if (recorderRef.current?.state === 'recording') {
+        try { recorderRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, []);
 
   // 手机号
   const [phone, setPhone] = useState('');
@@ -58,6 +73,7 @@ const Assessment = () => {
     try {
       chunksRef.current = [];
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       const recorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus' : 'audio/webm',
@@ -65,6 +81,7 @@ const Assessment = () => {
       recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       recorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setIsRecording(false);
         setIsEvaluating(true);
@@ -90,8 +107,7 @@ const Assessment = () => {
       recorder.start(100);
       setIsRecording(true);
       setCurrentScore(null);
-      // 3秒自动停
-      setTimeout(() => {
+      stopTimerRef.current = setTimeout(() => {
         if (recorder.state === 'recording') recorder.stop();
       }, 3000);
     } catch {

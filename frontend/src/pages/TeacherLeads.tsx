@@ -22,6 +22,8 @@ const TeacherLeads = () => {
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
+  const [phoneCount, setPhoneCount] = useState(0);
+  const [convertedCount, setConvertedCount] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [phoneOnly, setPhoneOnly] = useState(false);
@@ -42,6 +44,8 @@ const TeacherLeads = () => {
       });
       setLeads(res.data.leads);
       setTotal(res.data.total);
+      setPhoneCount(res.data.phone_count ?? res.data.leads.filter((l: Lead) => l.phone_verified).length);
+      setConvertedCount(res.data.converted_count ?? res.data.leads.filter((l: Lead) => l.converted).length);
     } catch (error) {
       console.error('加载线索失败:', error);
     } finally {
@@ -103,16 +107,16 @@ const TeacherLeads = () => {
             <p className="text-sm text-gray-500">总测评数</p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-            <p className="text-3xl font-bold text-green-600">{leads.filter(l => l.phone_verified).length}</p>
+            <p className="text-3xl font-bold text-green-600">{phoneCount}</p>
             <p className="text-sm text-gray-500">已留号</p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm text-center">
-            <p className="text-3xl font-bold text-indigo-600">{leads.filter(l => l.converted).length}</p>
+            <p className="text-3xl font-bold text-indigo-600">{convertedCount}</p>
             <p className="text-sm text-gray-500">已转化</p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm text-center">
             <p className="text-3xl font-bold text-orange-600">
-              {total > 0 ? Math.round(leads.filter(l => l.phone_verified).length / Math.max(leads.length, 1) * 100) : 0}%
+              {total > 0 ? Math.round(phoneCount / total * 100) : 0}%
             </p>
             <p className="text-sm text-gray-500">留号率</p>
           </div>

@@ -3,6 +3,7 @@
 """
 import uuid
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, desc
@@ -16,8 +17,11 @@ from app.models.word import Word, WordDefinition
 from app.models.assessment import AssessmentLead
 from app.api.v1.auth import get_current_teacher
 from app.services.sms_service import code_store, send_sms_code
+from app.services import iflytek_ise_service, whisper_service
+from app.services.ai_service import ai_service
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 MAX_AUDIO_SIZE = 5 * 1024 * 1024
 
@@ -111,8 +115,6 @@ async def evaluate_word(
     session_id: str = Form(...),
 ):
     """评测单个单词发音"""
-    from app.services import iflytek_ise_service, whisper_service
-
     audio_data = await audio.read()
     if len(audio_data) > MAX_AUDIO_SIZE:
         raise HTTPException(400, "音频文件不能超过5MB")
@@ -121,8 +123,8 @@ async def evaluate_word(
     try:
         scores = await iflytek_ise_service.evaluate(audio_data, word, "read_word")
         return {"success": True, "word": word, **scores}
-    except RuntimeError:
-        pass
+    except RuntimeError as e:
+        logger.warning(f"ISE评测失败，尝试Whisper: {e}")
 
     # Whisper fallback
     if whisper_service.is_available():
@@ -240,7 +242,6 @@ async def verify_phone(
     # AI 深度报告
     deep_report = _fallback_report(lead)
     try:
-        from app.services.ai_service import ai_service
         scores = json.loads(lead.scores_json or "[]")
         weak_areas = json.loads(lead.weak_areas or "[]")
 
@@ -258,8 +259,8 @@ async def verify_phone(
         if ai_result.startswith("```"):
             ai_result = ai_result.split("\n", 1)[1].rsplit("```", 1)[0]
         deep_report = json.loads(ai_result)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"AI深度报告生成失败，使用兜底: {e}")
 
     lead.deep_report = json.dumps(deep_report, ensure_ascii=False)
     await db.commit()
@@ -304,12 +305,22 @@ async def get_leads(
         count_query = count_query.where(AssessmentLead.phone_verified == True)
 
     total = (await db.execute(count_query)).scalar() or 0
+
+    # 聚合统计
+    phone_count = (await db.execute(
+        select(func.count(AssessmentLead.id)).where(AssessmentLead.phone_verified == True)
+    )).scalar() or 0
+    converted_count = (await db.execute(
+        select(func.count(AssessmentLead.id)).where(AssessmentLead.converted == True)
+    )).scalar() or 0
+
     leads = (await db.execute(
         query.offset((page - 1) * page_size).limit(page_size)
     )).scalars().all()
 
     return {
         "total": total, "page": page, "page_size": page_size,
+        "phone_count": phone_count, "converted_count": converted_count,
         "leads": [
             {
                 "id": l.id,
