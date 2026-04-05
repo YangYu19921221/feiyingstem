@@ -161,6 +161,14 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 为 words 表添加 tts_text 字段
+        try:
+            await conn.execute(text(
+                "ALTER TABLE words ADD COLUMN tts_text VARCHAR(200)"
+            ))
+        except Exception:
+            pass
+
         print("✅ 数据库初始化完成")
 
 async def get_db() -> AsyncSession:

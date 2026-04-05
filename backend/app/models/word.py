@@ -9,6 +9,7 @@ class Word(Base):
     word = Column(String(100), unique=True, nullable=False)
     phonetic = Column(String(100))
     syllables = Column(String(200))
+    tts_text = Column(String(200))  # TTS发音文本，有缩写时填完整版如 "say hi to somebody"
     difficulty = Column(Integer, default=3)
     grade_level = Column(String(20))
     audio_url = Column(String(255))

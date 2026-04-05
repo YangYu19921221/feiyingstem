@@ -379,6 +379,7 @@ const TeacherUnitManagement = () => {
         const meaning = (row['释义'] || row['meaning'] || '').toString().trim();
         const phonetic = (row['音标'] || row['phonetic'] || '').toString().trim();
         const syllables = (row['音节'] || row['syllables'] || '').toString().trim();
+        const ttsText = (row['发音文本'] || row['tts_text'] || '').toString().trim();
         const pos = (row['词性'] || row['part_of_speech'] || 'n.').toString().trim();
         const example = (row['例句'] || row['example'] || '').toString().trim();
         const exTrans = (row['例句翻译'] || row['translation'] || '').toString().trim();
@@ -388,6 +389,7 @@ const TeacherUnitManagement = () => {
             word: word,
             phonetic: phonetic || undefined,
             syllables: syllables || undefined,
+            tts_text: ttsText || undefined,
             difficulty: 1,
             grade_level: '小学',
             definitions: [{

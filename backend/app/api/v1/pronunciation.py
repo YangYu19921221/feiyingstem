@@ -121,16 +121,24 @@ async def best_pronunciation(
     if not word:
         raise HTTPException(400, "请提供 word 或 word_id 参数")
 
-    # TTS 文本预处理：展开常见缩写，避免 TTS 按字母读
+    # TTS 文本：优先用数据库的 tts_text 字段，没有则自动展开缩写
     import re
-    tts_text = word
-    tts_text = re.sub(r'\bsb\.?\b', 'somebody', tts_text, flags=re.IGNORECASE)
-    tts_text = re.sub(r'\bsth\.?\b', 'something', tts_text, flags=re.IGNORECASE)
-    tts_text = re.sub(r'\badj\.?\b', 'adjective', tts_text, flags=re.IGNORECASE)
-    tts_text = re.sub(r'\badv\.?\b', 'adverb', tts_text, flags=re.IGNORECASE)
-    tts_text = re.sub(r'\bvt\.?\b', 'verb transitive', tts_text, flags=re.IGNORECASE)
-    tts_text = re.sub(r'\bvi\.?\b', 'verb intransitive', tts_text, flags=re.IGNORECASE)
-    tts_text = re.sub(r'\besp\.?\b', 'especially', tts_text, flags=re.IGNORECASE)
+    tts_text = None
+    if word_id or word:
+        from app.models.word import Word as WordModel
+        lookup = word_id or word
+        if word_id:
+            w_result = await db.execute(select(WordModel).where(WordModel.id == word_id))
+        else:
+            w_result = await db.execute(select(WordModel).where(WordModel.word == word))
+        w_obj = w_result.scalar_one_or_none()
+        if w_obj and w_obj.tts_text:
+            tts_text = w_obj.tts_text
+
+    if not tts_text:
+        tts_text = word
+        tts_text = re.sub(r'\bsb\.?\b', 'somebody', tts_text, flags=re.IGNORECASE)
+        tts_text = re.sub(r'\bsth\.?\b', 'something', tts_text, flags=re.IGNORECASE)
 
     # 1. 优先使用 Edge TTS 英式女声
     if edge_tts_service.is_available():
