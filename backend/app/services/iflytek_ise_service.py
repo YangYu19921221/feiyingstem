@@ -44,7 +44,8 @@ def _decrypt_api_key(encrypted_key: str) -> str:
         f = Fernet(_get_encryption_key())
         return f.decrypt(encrypted_key.encode()).decode()
     except Exception:
-        return ""
+        # 解密失败，可能是明文存储的key，直接返回
+        return encrypted_key if encrypted_key and len(encrypted_key) < 100 else ""
 
 
 async def get_config() -> dict | None:
