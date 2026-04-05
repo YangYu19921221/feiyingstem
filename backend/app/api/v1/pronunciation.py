@@ -121,10 +121,21 @@ async def best_pronunciation(
     if not word:
         raise HTTPException(400, "请提供 word 或 word_id 参数")
 
-    # 1. 优先使用 Edge TTS 英式女声（保证一致的女声体验）
+    # TTS 文本预处理：展开常见缩写，避免 TTS 按字母读
+    import re
+    tts_text = word
+    tts_text = re.sub(r'\bsb\.?\b', 'somebody', tts_text, flags=re.IGNORECASE)
+    tts_text = re.sub(r'\bsth\.?\b', 'something', tts_text, flags=re.IGNORECASE)
+    tts_text = re.sub(r'\badj\.?\b', 'adjective', tts_text, flags=re.IGNORECASE)
+    tts_text = re.sub(r'\badv\.?\b', 'adverb', tts_text, flags=re.IGNORECASE)
+    tts_text = re.sub(r'\bvt\.?\b', 'verb transitive', tts_text, flags=re.IGNORECASE)
+    tts_text = re.sub(r'\bvi\.?\b', 'verb intransitive', tts_text, flags=re.IGNORECASE)
+    tts_text = re.sub(r'\besp\.?\b', 'especially', tts_text, flags=re.IGNORECASE)
+
+    # 1. 优先使用 Edge TTS 英式女声
     if edge_tts_service.is_available():
         try:
-            audio_bytes = await edge_tts_service.generate_pronunciation(word)
+            audio_bytes = await edge_tts_service.generate_pronunciation(tts_text)
             return Response(
                 content=audio_bytes,
                 media_type="audio/mpeg",
