@@ -47,6 +47,7 @@ export default function DictationPhase({
 
   const currentWord = roundWords[currentIndex];
   const wordLength = currentWord?.word.replace(/\s+/g, '').length || 0;
+  const wordLengthWithSpaces = currentWord?.word.length || 0;
 
   // 自动播放发音
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function DictationPhase({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (retryMode) {
-      setRetryInput(e.target.value.slice(0, wordLength));
+      setRetryInput(e.target.value.slice(0, wordLengthWithSpaces));
       return;
     }
     if (submitted) return;
@@ -175,22 +176,19 @@ export default function DictationPhase({
     return () => window.removeEventListener('keydown', handler);
   }, [submitted, isCorrect, retryMode, retryPassed, handleNext, handleRetrySubmit]);
 
-  const getSlotStyle = (index: number): string => {
-    if (!submitted) {
-      if (index < userInput.length) return 'border-primary text-gray-800';
-      if (index === userInput.length) return 'border-primary/60';
-      return 'border-gray-300';
+  // 提交后逐字符对比（忽略空格位，按非空格偏移对比）
+  const getCharResult = (charIndex: number): 'correct' | 'wrong' | 'missing' => {
+    const word = currentWord.word;
+    // 计算该位置对应 userInput 的偏移（跳过空格）
+    let nonSpaceOffset = 0;
+    for (let i = 0; i < charIndex; i++) {
+      if (word[i] !== ' ') nonSpaceOffset++;
     }
-    const correctChar = currentWord.word[index];
-    const userChar = userInput[index];
-    if (!userChar) return 'border-red-300 text-red-300';
-    if (userChar === correctChar) return 'border-green-400 text-green-600 bg-green-50';
-    return 'border-red-400 text-red-600 bg-red-50';
-  };
-
-  const getSlotLetter = (index: number): string => {
-    if (!submitted) return userInput[index] || '';
-    return userInput[index] || currentWord.word[index] || '';
+    const userChar = userInput[nonSpaceOffset];
+    const correctChar = word[charIndex];
+    if (!userChar) return 'missing';
+    if (userChar === correctChar) return 'correct';
+    return 'wrong';
   };
 
   if (showRoundSummary) {
@@ -265,80 +263,56 @@ export default function DictationPhase({
           </button>
           <p className="text-xs text-gray-400 mb-6">点击重新播放</p>
 
-          {/* 字母格子 */}
-          <div
-            className="flex flex-wrap gap-0.5 justify-center mb-4 cursor-text"
-            onClick={() => inputRef.current?.focus()}
-          >
-            {Array.from({ length: wordLength }, (_, i) => {
-              const ch = currentWord.word[i];
-
-              if (ch === ' ') {
+          {/* 输入区 / 结果展示区 */}
+          {!submitted ? (
+            /* 输入状态：大字体下划线输入框 */
+            <div className="mb-4 px-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={userInput}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                disabled={false}
+                maxLength={wordLength}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                placeholder="输入单词..."
+                className="w-full text-center text-3xl font-mono font-bold bg-transparent border-0 border-b-4 border-primary/40 focus:border-primary outline-none transition-colors duration-200 py-2 text-gray-800 placeholder:text-gray-300"
+              />
+            </div>
+          ) : (
+            /* 提交后：逐字符彩色显示用户输入，错的字母标红 */
+            <div className="mb-4 flex justify-center items-baseline gap-0.5 flex-wrap">
+              {Array.from(currentWord.word).map((ch, i) => {
+                if (ch === ' ') {
+                  return <span key={i} className="w-3 inline-block" />;
+                }
+                const result = getCharResult(i);
+                // 计算用户实际输入的字符
+                let nonSpaceOffset = 0;
+                for (let j = 0; j < i; j++) {
+                  if (currentWord.word[j] !== ' ') nonSpaceOffset++;
+                }
+                const displayChar = result === 'missing' ? ch : (userInput[nonSpaceOffset] || ch);
+                const colorClass =
+                  result === 'correct' ? 'text-green-600' :
+                  result === 'wrong'   ? 'text-red-500 line-through decoration-2' :
+                                         'text-red-300';
                 return (
-                  <div key={i} className="w-4 h-12 flex items-end justify-center pb-1 text-gray-300 text-sm">
-                    ␣
-                  </div>
+                  <span key={i} className={`text-3xl font-mono font-bold ${colorClass}`}>
+                    {displayChar}
+                  </span>
                 );
-              }
-
-              if (ch === '-' || ch === '.' || ch === '\'') {
-                return (
-                  <motion.div
-                    key={i}
-                    initial={submitted ? { scale: 0.8 } : false}
-                    animate={submitted ? { scale: 1 } : {}}
-                    transition={{ delay: i * 0.04 }}
-                    className={`w-4 h-12 flex items-end justify-center pb-1 text-2xl font-mono font-bold border-b-[3px] transition-colors duration-200 ${getSlotStyle(i)}`}
-                  >
-                    {getSlotLetter(i)}
-                  </motion.div>
-                );
-              }
-
-              const letter = getSlotLetter(i);
-              const isCursor = !submitted && i === userInput.length;
-
-              return (
-                <motion.div
-                  key={i}
-                  initial={submitted ? { scale: 0.8 } : false}
-                  animate={submitted ? { scale: 1 } : {}}
-                  transition={{ delay: i * 0.04 }}
-                  className={`w-9 h-12 flex items-end justify-center pb-1 text-2xl font-mono font-bold border-b-[3px] transition-colors duration-200 ${getSlotStyle(i)}`}
-                >
-                  {letter}
-                  {isCursor && (
-                    <motion.span
-                      animate={{ opacity: [1, 0] }}
-                      transition={{ repeat: Infinity, duration: 0.8 }}
-                      className="text-primary"
-                    >
-                      |
-                    </motion.span>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-
-          <input
-            ref={inputRef}
-            type="text"
-            value={retryMode ? retryInput : userInput}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            disabled={submitted && !retryMode}
-            maxLength={wordLength}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            className="sr-only"
-          />
+              })}
+            </div>
+          )}
 
           {!submitted && (
             <p className="text-xs text-gray-400 mb-2">
-              {wordLength} 个字符{currentWord.word.includes(' ') ? '（含空格）' : ''} · {userInput.length}/{wordLength}
+              {wordLength} 个字母{currentWord.word.includes(' ') ? '（短语，含空格）' : ''} · {userInput.length}/{wordLength}
             </p>
           )}
 
@@ -383,12 +357,11 @@ export default function DictationPhase({
                     <div className="mt-4">
                       <p className="text-sm text-orange-600 font-medium mb-2">请重新输入正确拼写：</p>
                       <input
-                        ref={inputRef}
                         type="text"
                         value={retryInput}
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
-                        maxLength={wordLength}
+                        maxLength={wordLengthWithSpaces}
                         autoComplete="off"
                         autoCorrect="off"
                         autoCapitalize="off"

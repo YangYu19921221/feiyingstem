@@ -166,7 +166,7 @@ const SpellingPractice = () => {
           />
 
           {/* Wordle 风格字母格子 */}
-          <div className="flex justify-center gap-2 mb-6 flex-wrap" onClick={focusInput}>
+          <div className="flex justify-center gap-2 mb-6 overflow-x-auto pb-1" style={{ flexWrap: 'nowrap' }} onClick={focusInput}>
             {currentQuestion && Array.from({ length: answerLength }).map((_, i) => {
               const answer = currentQuestion.correct_answer;
               const isSpace = answer[i] === ' ';
