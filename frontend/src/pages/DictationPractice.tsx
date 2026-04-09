@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
-import type { StartLearningResponse, WordData } from '../api/progress';
+import type { StartLearningResponse } from '../api/progress';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import { useAudio } from '../hooks/useAudio';
 
@@ -118,18 +118,20 @@ export default function DictationPractice() {
                 答对 {correctCount}/{totalCount} 个单词
               </p>
 
-              {/* 错词回顾 */}
-              {results.some(r => !r.isCorrect) && (
+              {(() => {
+                const wrongResults = results.filter(r => !r.isCorrect);
+                return wrongResults.length > 0 && (
                 <div className="text-left mb-6 max-h-48 overflow-y-auto">
                   <p className="text-sm font-medium text-gray-600 mb-2">错词回顾：</p>
-                  {results.filter(r => !r.isCorrect).map(r => (
+                  {wrongResults.map(r => (
                     <div key={r.wordId} className="flex items-center gap-2 py-1.5 border-b border-gray-100 text-sm">
                       <span className="text-red-400">✗</span>
                       <span className="font-medium">{r.word}</span>
                     </div>
                   ))}
                 </div>
-              )}
+                );
+              })()}
 
               <div className="flex flex-col gap-3">
                 <button

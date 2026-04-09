@@ -109,17 +109,20 @@ export default function SentenceFillPractice() {
               </div>
               <p className="text-gray-500 mb-6">答对 {correctCount}/{totalCount} 个单词</p>
 
-              {results.some(r => !r.isCorrect) && (
+              {(() => {
+                const wrongResults = results.filter(r => !r.isCorrect);
+                return wrongResults.length > 0 && (
                 <div className="text-left mb-6 max-h-48 overflow-y-auto">
                   <p className="text-sm font-medium text-gray-600 mb-2">错词回顾：</p>
-                  {results.filter(r => !r.isCorrect).map(r => (
+                  {wrongResults.map(r => (
                     <div key={r.wordId} className="flex items-center gap-2 py-1.5 border-b border-gray-100 text-sm">
                       <span className="text-red-400">✗</span>
                       <span className="font-medium">{r.word}</span>
                     </div>
                   ))}
                 </div>
-              )}
+                );
+              })()}
 
               <div className="flex flex-col gap-3">
                 <button

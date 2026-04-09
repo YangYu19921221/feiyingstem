@@ -65,7 +65,7 @@ export default function DictationPhase({
       return;
     }
     if (submitted) return;
-    setUserInput(e.target.value.slice(0, wordLength));
+    setUserInput(e.target.value.slice(0, wordLengthWithSpaces));
   };
 
   const handleSubmit = useCallback(() => {
@@ -177,18 +177,17 @@ export default function DictationPhase({
   }, [submitted, isCorrect, retryMode, retryPassed, handleNext, handleRetrySubmit]);
 
   // 提交后逐字符对比（忽略空格位，按非空格偏移对比）
-  const getCharResult = (charIndex: number): 'correct' | 'wrong' | 'missing' => {
+  const getCharInfo = (charIndex: number): { result: 'correct' | 'wrong' | 'missing'; displayChar: string } => {
     const word = currentWord.word;
-    // 计算该位置对应 userInput 的偏移（跳过空格）
     let nonSpaceOffset = 0;
     for (let i = 0; i < charIndex; i++) {
       if (word[i] !== ' ') nonSpaceOffset++;
     }
     const userChar = userInput[nonSpaceOffset];
     const correctChar = word[charIndex];
-    if (!userChar) return 'missing';
-    if (userChar === correctChar) return 'correct';
-    return 'wrong';
+    if (!userChar) return { result: 'missing', displayChar: correctChar };
+    if (userChar === correctChar) return { result: 'correct', displayChar: userChar };
+    return { result: 'wrong', displayChar: userChar };
   };
 
   if (showRoundSummary) {
@@ -263,9 +262,7 @@ export default function DictationPhase({
           </button>
           <p className="text-xs text-gray-400 mb-6">点击重新播放</p>
 
-          {/* 输入区 / 结果展示区 */}
           {!submitted ? (
-            /* 输入状态：大字体下划线输入框 */
             <div className="mb-4 px-2">
               <input
                 ref={inputRef}
@@ -273,8 +270,8 @@ export default function DictationPhase({
                 value={userInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                disabled={false}
-                maxLength={wordLength}
+
+                maxLength={wordLengthWithSpaces}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="off"
@@ -284,19 +281,12 @@ export default function DictationPhase({
               />
             </div>
           ) : (
-            /* 提交后：逐字符彩色显示用户输入，错的字母标红 */
             <div className="mb-4 flex justify-center items-baseline gap-0.5 flex-wrap">
               {Array.from(currentWord.word).map((ch, i) => {
                 if (ch === ' ') {
                   return <span key={i} className="w-3 inline-block" />;
                 }
-                const result = getCharResult(i);
-                // 计算用户实际输入的字符
-                let nonSpaceOffset = 0;
-                for (let j = 0; j < i; j++) {
-                  if (currentWord.word[j] !== ' ') nonSpaceOffset++;
-                }
-                const displayChar = result === 'missing' ? ch : (userInput[nonSpaceOffset] || ch);
+                const { result, displayChar } = getCharInfo(i);
                 const colorClass =
                   result === 'correct' ? 'text-green-600' :
                   result === 'wrong'   ? 'text-red-500 line-through decoration-2' :
@@ -312,7 +302,7 @@ export default function DictationPhase({
 
           {!submitted && (
             <p className="text-xs text-gray-400 mb-2">
-              {wordLength} 个字母{currentWord.word.includes(' ') ? '（短语，含空格）' : ''} · {userInput.length}/{wordLength}
+              {wordLength} 个字母{currentWord.word.includes(' ') ? `（短语，共 ${wordLengthWithSpaces} 个字符含空格）` : ''} · {userInput.length}/{wordLengthWithSpaces}
             </p>
           )}
 
