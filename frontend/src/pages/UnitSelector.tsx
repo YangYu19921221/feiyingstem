@@ -83,9 +83,11 @@ const UnitSelector = () => {
 
   const learningModes = [
     { key: 'classify', icon: '🧠', name: '分类', color: 'from-teal-500 to-emerald-500', requiresPrevious: null },
+    { key: 'dictation', icon: '✍️', name: '听写', color: 'from-blue-500 to-cyan-500', requiresPrevious: 'classify' },
+    { key: 'sentencefill', icon: '📝', name: '填句', color: 'from-violet-500 to-purple-500', requiresPrevious: 'classify' },
     { key: 'quiz', icon: '✅', name: '测试', color: 'from-green-500 to-teal-500', badge: 'AI', requiresPrevious: 'classify' },
     { key: 'spelling', icon: '✏️', name: '拼写', color: 'from-purple-500 to-pink-500', badge: 'AI', requiresPrevious: 'quiz' },
-    { key: 'fillblank', icon: '📝', name: '填空', color: 'from-orange-500 to-red-500', badge: 'AI', requiresPrevious: 'spelling' },
+    { key: 'fillblank', icon: '📖', name: '选词', color: 'from-orange-500 to-red-500', badge: 'AI', requiresPrevious: 'spelling' },
     { key: 'exam', icon: '📋', name: '考试', color: 'from-indigo-500 to-purple-600', badge: '测验', requiresPrevious: 'classify' },
   ];
 
@@ -306,7 +308,7 @@ const UnitSelector = () => {
 
                           {/* 其他学习模式 */}
                           <p className="text-xs text-gray-400 mb-2">其他学习模式:</p>
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-3 gap-2">
                             {learningModes.filter(m => m.key !== 'classify').map((mode) => (
                               <button
                                 key={mode.key}

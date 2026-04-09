@@ -49,6 +49,8 @@ import WordClassifyLearning from './pages/WordClassifyLearning';
 import MemoryCurve from './pages/MemoryCurve';
 import UnitExam from './pages/UnitExam';
 import UnitExamResult from './pages/UnitExamResult';
+import DictationPractice from './pages/DictationPractice';
+import SentenceFillPractice from './pages/SentenceFillPractice';
 
 // 路由保护组件
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
@@ -244,12 +246,52 @@ function App() {
           }
         />
 
+        {/* 学生端 - 独立听写 */}
+        <Route
+          path="/student/units/:unitId/dictation"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <DictationPractice />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 独立句子填空 */}
+        <Route
+          path="/student/units/:unitId/sentencefill"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <SentenceFillPractice />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 学生端 - 单元考试 */}
         <Route
           path="/student/units/:unitId/exam"
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <UnitExam />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 独立听写 */}
+        <Route
+          path="/student/units/:unitId/dictation"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <DictationPractice />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 独立句子填空 */}
+        <Route
+          path="/student/units/:unitId/sentencefill"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <SentenceFillPractice />
             </ProtectedRoute>
           }
         />

@@ -266,70 +266,34 @@ export default function SentenceFillPhase({
             </p>
           )}
 
-          {/* 输入区 */}
-          <div className="mb-4">
-            <div
-              className="flex flex-wrap gap-1.5 justify-center cursor-text"
-              onClick={() => inputRef.current?.focus()}
-            >
-              {Array.from({ length: wordLength }, (_, i) => {
-                const letter = submitted ? (userInput[i] || currentWord.word[i] || '') : (userInput[i] || '');
-                const isCursor = !submitted && i === userInput.length;
-
-                let slotStyle = 'border-gray-300';
-                if (!submitted) {
-                  if (i < userInput.length) slotStyle = 'border-violet-500 text-gray-800';
-                  else if (i === userInput.length) slotStyle = 'border-violet-400/60';
-                } else {
-                  const correctChar = currentWord.word[i];
-                  const userChar = userInput[i];
-                  if (!userChar) slotStyle = 'border-red-300 text-red-300';
-                  else if (userChar === correctChar) slotStyle = 'border-green-400 text-green-600 bg-green-50';
-                  else slotStyle = 'border-red-400 text-red-600 bg-red-50';
-                }
-
-                return (
-                  <motion.div
-                    key={i}
-                    initial={submitted ? { scale: 0.8 } : false}
-                    animate={submitted ? { scale: 1 } : {}}
-                    transition={{ delay: i * 0.04 }}
-                    className={`w-9 h-12 flex items-end justify-center pb-1 text-2xl font-mono font-bold border-b-[3px] transition-colors duration-200 ${slotStyle}`}
-                  >
-                    {letter}
-                    {isCursor && (
-                      <motion.span
-                        animate={{ opacity: [1, 0] }}
-                        transition={{ repeat: Infinity, duration: 0.8 }}
-                        className="text-violet-500"
-                      >
-                        |
-                      </motion.span>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </div>
-
-            <input
-              ref={inputRef}
-              type="text"
-              value={userInput}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={submitted}
-              maxLength={wordLength}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              className="opacity-0 absolute -z-10"
-              style={{ width: 1, height: 1 }}
-              autoFocus
-            />
+          {/* 输入区：扁平长条输入框 */}
+          <div className="mb-4 px-2">
+            {!submitted ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={userInput}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                maxLength={wordLength}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                placeholder="输入单词..."
+                className="w-full text-center text-2xl font-mono font-bold bg-transparent border-0 border-b-4 border-violet-300 focus:border-violet-500 outline-none transition-colors duration-200 py-3 text-gray-800 placeholder:text-gray-300"
+                autoFocus
+              />
+            ) : (
+              <div className="text-center py-3 border-b-4 border-transparent">
+                <span className={`text-2xl font-mono font-bold ${isCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                  {userInput || '(未作答)'}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* 字母数提示 */}
+          {/* 字数提示 */}
           {!submitted && (
             <p className="text-xs text-gray-400 mb-2">
               {wordLength} 个字母 · {userInput.length}/{wordLength}
