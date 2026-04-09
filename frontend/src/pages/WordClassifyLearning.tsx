@@ -275,15 +275,10 @@ const WordClassifyLearning = () => {
     }).catch(() => {});
   }, [unitId, startTime]);
 
-  // 阶段1完成：分类结束 → 进入语音校验
+  // 阶段1完成：分类结束 → 跳过语音校验，直接进入听写
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
     setClassifyResults(results);
-    setPhase('speechVerify');
-    setSpeechRoundWords(currentGroupWords);
-    setSpeechSkippedWords([]);
-    setSpeechVerifyIndex(0);
-    setSpeechRound(1);
-    setSpeechRoundDone(false);
+    setPhase('dictation');
   };
 
   const handleSpeechVerifyNext = () => {
@@ -575,11 +570,11 @@ const WordClassifyLearning = () => {
           </div>
           {/* 阶段指示器 */}
           <div className="flex gap-1">
-            {(['classify', 'speechVerify', 'dictation', 'sentenceFill', 'exam', 'summary'] as Phase[]).map((p, i) => (
+            {(['classify', 'dictation', 'sentenceFill', 'exam', 'summary'] as Phase[]).map((p, i) => (
               <div
                 key={p}
                 className={`w-2 h-2 rounded-full transition ${
-                  p === phase ? 'bg-primary scale-125' : i < ['classify', 'speechVerify', 'dictation', 'sentenceFill', 'exam', 'summary'].indexOf(phase) ? 'bg-green-400' : 'bg-gray-200'
+                  p === phase ? 'bg-primary scale-125' : i < ['classify', 'dictation', 'sentenceFill', 'exam', 'summary'].indexOf(phase) ? 'bg-green-400' : 'bg-gray-200'
                 }`}
               />
             ))}
