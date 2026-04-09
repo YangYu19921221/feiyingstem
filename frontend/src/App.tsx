@@ -276,25 +276,6 @@ function App() {
           }
         />
 
-        {/* 学生端 - 独立听写 */}
-        <Route
-          path="/student/units/:unitId/dictation"
-          element={
-            <ProtectedRoute allowedRoles={['student']}>
-              <DictationPractice />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* 学生端 - 独立句子填空 */}
-        <Route
-          path="/student/units/:unitId/sentencefill"
-          element={
-            <ProtectedRoute allowedRoles={['student']}>
-              <SentenceFillPractice />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/student/exam/result/:paperId"
           element={
