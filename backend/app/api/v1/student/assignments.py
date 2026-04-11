@@ -76,9 +76,9 @@ async def get_my_assignments(
         )
         word_count = word_result.scalar() or 0
 
-        # 计算完成进度
+        # 计算完成进度 — 用 DISTINCT unit_id 避免多 learning_mode 重复计数
         progress_result = await db.execute(
-            select(LearningProgress).where(
+            select(func.count(func.distinct(LearningProgress.unit_id))).where(
                 and_(
                     LearningProgress.user_id == current_user.id,
                     LearningProgress.book_id == book.id,
@@ -86,7 +86,7 @@ async def get_my_assignments(
                 )
             )
         )
-        completed_units = len(progress_result.scalars().all())
+        completed_units = progress_result.scalar() or 0
         progress_percentage = (completed_units / unit_count * 100) if unit_count > 0 else 0
 
         assignments.append(StudentBookAssignmentResponse(
@@ -138,7 +138,7 @@ async def mark_assignment_complete(
     units = unit_result.scalars().all()
 
     completed_result = await db.execute(
-        select(LearningProgress).where(
+        select(func.count(func.distinct(LearningProgress.unit_id))).where(
             and_(
                 LearningProgress.user_id == current_user.id,
                 LearningProgress.book_id == assignment.book_id,
@@ -146,9 +146,9 @@ async def mark_assignment_complete(
             )
         )
     )
-    completed_units = completed_result.scalars().all()
+    completed_count = completed_result.scalar() or 0
 
-    if len(completed_units) >= len(units):
+    if completed_count >= len(units):
         assignment.is_completed = True
         await db.commit()
         return {"message": "标记完成成功", "is_completed": True}
@@ -156,6 +156,6 @@ async def mark_assignment_complete(
         return {
             "message": "还有单元未完成",
             "is_completed": False,
-            "completed": len(completed_units),
+            "completed": completed_count,
             "total": len(units)
         }
