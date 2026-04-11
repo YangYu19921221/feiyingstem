@@ -73,34 +73,30 @@ async def get_word_book(
     if not db_book:
         raise HTTPException(status_code=404, detail="单词本不存在")
 
-    # 获取单词列表
+    # 获取单词列表（含主要释义，一次查询）
     words_result = await db.execute(
-        select(Word)
+        select(Word, WordDefinition.meaning)
         .join(BookWord, BookWord.word_id == Word.id)
+        .outerjoin(WordDefinition, and_(
+            WordDefinition.word_id == Word.id,
+            WordDefinition.is_primary == True
+        ))
         .where(BookWord.book_id == book_id)
         .order_by(BookWord.order_index)
     )
-    words = words_result.scalars().all()
+    rows = words_result.all()
 
-    # 构建单词列表
-    word_list = []
-    for word in words:
-        def_result = await db.execute(
-            select(WordDefinition)
-            .where(WordDefinition.word_id == word.id)
-            .order_by(WordDefinition.is_primary.desc())
-            .limit(1)
-        )
-        definition = def_result.scalar_one_or_none()
-
-        word_list.append(WordListItem(
+    word_list = [
+        WordListItem(
             id=word.id,
             word=word.word,
             phonetic=word.phonetic,
             difficulty=word.difficulty,
             grade_level=word.grade_level,
-            primary_meaning=definition.meaning if definition else None
-        ))
+            primary_meaning=meaning,
+        )
+        for word, meaning in rows
+    ]
 
     return WordBookDetailResponse(
         id=db_book.id,
@@ -134,15 +130,20 @@ async def list_word_books(
     result = await db.execute(query)
     books = result.scalars().all()
 
-    # 统计每个单词本的单词数
-    book_list = []
-    for book in books:
-        count_result = await db.execute(
-            select(func.count(BookWord.id)).where(BookWord.book_id == book.id)
-        )
-        word_count = count_result.scalar() or 0
+    if not books:
+        return []
 
-        book_list.append(WordBookResponse(
+    # 一次性统计所有相关单词本的单词数
+    book_ids = [b.id for b in books]
+    count_result = await db.execute(
+        select(BookWord.book_id, func.count(BookWord.id).label("cnt"))
+        .where(BookWord.book_id.in_(book_ids))
+        .group_by(BookWord.book_id)
+    )
+    count_map = {row.book_id: row.cnt for row in count_result.all()}
+
+    return [
+        WordBookResponse(
             id=book.id,
             name=book.name,
             description=book.description,
@@ -151,11 +152,11 @@ async def list_word_books(
             is_public=book.is_public,
             cover_color=book.cover_color,
             created_by=book.created_by or 0,
-            word_count=word_count,
-            created_at=book.created_at
-        ))
-
-    return book_list
+            word_count=count_map.get(book.id, 0),
+            created_at=book.created_at,
+        )
+        for book in books
+    ]
 
 
 @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -332,28 +333,33 @@ async def list_words(
     result = await db.execute(query)
     words = result.scalars().all()
 
-    # 构建响应(获取主要释义)
-    word_list = []
-    for word in words:
-        # 获取主要释义
-        def_result = await db.execute(
-            select(WordDefinition)
-            .where(WordDefinition.word_id == word.id)
-            .order_by(WordDefinition.is_primary.desc())
-            .limit(1)
-        )
-        definition = def_result.scalar_one_or_none()
+    # 构建响应(一次查询获取所有单词的主要释义)
+    if not words:
+        return []
 
-        word_list.append(WordListItem(
+    word_ids = [w.id for w in words]
+    def_result = await db.execute(
+        select(WordDefinition.word_id, WordDefinition.meaning)
+        .where(
+            and_(
+                WordDefinition.word_id.in_(word_ids),
+                WordDefinition.is_primary == True
+            )
+        )
+    )
+    meaning_map = {row.word_id: row.meaning for row in def_result.all()}
+
+    return [
+        WordListItem(
             id=word.id,
             word=word.word,
             phonetic=word.phonetic,
             difficulty=word.difficulty,
             grade_level=word.grade_level,
-            primary_meaning=definition.meaning if definition else None
-        ))
-
-    return word_list
+            primary_meaning=meaning_map.get(word.id),
+        )
+        for word in words
+    ]
 
 
 @router.put("/{word_id}", response_model=WordResponse)
