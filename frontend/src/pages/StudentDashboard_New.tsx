@@ -126,7 +126,8 @@ const StudentDashboard = () => {
   const ownedBooks = useMemo(() => books.filter(b => b.owned), [books]);
   const unownedBooks = useMemo(() => books.filter(b => !b.owned), [books]);
 
-  // 书架排序：从 localStorage 读取保存的顺序
+  const BOOKSHELF_ORDER_KEY = 'bookshelf_order';
+  // useState 而非 useMemo：拖拽事件也需要直接写入排序结果
   const [sortedOwnedBooks, setSortedOwnedBooks] = useState<StudentBook[]>([]);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
 
@@ -135,12 +136,11 @@ const StudentDashboard = () => {
       setSortedOwnedBooks([]);
       return;
     }
-    const savedOrder: number[] = (() => {
-      try {
-        const raw = localStorage.getItem('bookshelf_order');
-        return raw ? JSON.parse(raw) : [];
-      } catch { return []; }
-    })();
+    let savedOrder: number[] = [];
+    try {
+      const raw = localStorage.getItem(BOOKSHELF_ORDER_KEY);
+      savedOrder = raw ? JSON.parse(raw) : [];
+    } catch { /* ignore */ }
     if (savedOrder.length > 0) {
       const orderMap = new Map(savedOrder.map((id: number, i: number) => [id, i]));
       const sorted = [...ownedBooks].sort((a, b) =>
@@ -154,7 +154,7 @@ const StudentDashboard = () => {
 
   const handleReorder = (newOrder: StudentBook[]) => {
     setSortedOwnedBooks(newOrder);
-    localStorage.setItem('bookshelf_order', JSON.stringify(newOrder.map(b => b.id)));
+    localStorage.setItem(BOOKSHELF_ORDER_KEY, JSON.stringify(newOrder.map(b => b.id)));
   };
 
   const handleLogout = () => {
@@ -263,7 +263,7 @@ const StudentDashboard = () => {
                   </button>
                 )}
               </h3>
-              {sortedOwnedBooks.length === 0 ? (
+              {ownedBooks.length === 0 ? (
                 <div className="bg-white rounded-2xl p-8 text-center shadow-md mb-8">
                   <span className="text-5xl mb-3 block">📭</span>
                   <p className="text-gray-500 mb-1">还没有书籍</p>
