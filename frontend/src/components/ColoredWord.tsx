@@ -3,6 +3,7 @@
  * 根据 syllables 字段按音节给单词字母上不同颜色
  *
  * 单词示例：syllables = "coun#try" → "coun"(橙) + "try"(蓝)
+ * 连字符：  syllables = "self#stu#dy" + word "self-study" → "self-"(橙) + "stu"(蓝) + "dy"(绿)
  * 短语示例：syllables = "look at" → "look"(橙) + " "(无色) + "at"(蓝)
  *          syllables = "ice cream" → "ice"(橙) + " "(无色) + "cream"(蓝)
  *          syllables = "look#ing at" → "look"(橙) + "ing"(蓝) + " "(无色) + "at"(绿)
@@ -28,36 +29,54 @@ export default function ColoredWord({ word, syllables, className = '' }: Colored
     return <span className={className}>{word}</span>;
   }
 
-  // syllables 只用来决定分段长度和颜色，实际字符取自 word，避免大小写不一致问题
-  // syllables 去掉 # 后的纯字母长度应与 word 对应单词长度一致
-  const wordGroups = syllables.split(' ');
-  const wordParts = word.split(' ');
+  // syllables 只用来决定分段长度和颜色，实际字符取自 word
+  // 用全局游标遍历 word，避免连字符/短语空格不匹配导致字符丢失
+  const groups = syllables.split(' ');
   let colorIndex = 0;
+  let cursor = 0; // 在 word 中的位置
 
-  return (
-    <span className={className}>
-      {wordGroups.map((group, gi) => {
-        const syllableParts = group.includes('#') ? group.split('#') : [group];
-        // 从 word 对应单词里按音节长度切片取字符
-        const sourceWord = wordParts[gi] ?? '';
-        let charOffset = 0;
-        return (
-          <span key={gi}>
-            {gi > 0 && <span> </span>}
-            {syllableParts.map((part, pi) => {
-              const color = SYLLABLE_COLORS[colorIndex % SYLLABLE_COLORS.length];
-              colorIndex++;
-              const slice = sourceWord.slice(charOffset, charOffset + part.length);
-              charOffset += part.length;
-              return (
-                <span key={pi} className={color}>
-                  {slice}
-                </span>
-              );
-            })}
-          </span>
-        );
-      })}
-    </span>
-  );
+  const elements: React.ReactNode[] = [];
+
+  groups.forEach((group, gi) => {
+    // 组间空格
+    if (gi > 0) {
+      if (cursor < word.length && word[cursor] === ' ') {
+        elements.push(<span key={`sp-${gi}`}> </span>);
+        cursor++;
+      } else {
+        elements.push(<span key={`sp-${gi}`}> </span>);
+      }
+    }
+
+    const parts = group.includes('#') ? group.split('#') : [group];
+    const isLastGroup = gi === groups.length - 1;
+
+    parts.forEach((part, pi) => {
+      const color = SYLLABLE_COLORS[colorIndex % SYLLABLE_COLORS.length];
+      colorIndex++;
+      const isLastPart = pi === parts.length - 1;
+
+      let end = cursor + part.length;
+
+      if (isLastPart && isLastGroup) {
+        // 最后一段：取完所有剩余字符，防止末尾丢字
+        end = word.length;
+      } else {
+        // 把紧跟的非字母非空格字符（连字符 - 等）并入当前段
+        while (end < word.length && word[end] !== ' ' && !/[a-zA-Z]/.test(word[end])) {
+          end++;
+        }
+      }
+
+      const slice = word.slice(cursor, end);
+      cursor = end;
+      elements.push(
+        <span key={`${gi}-${pi}`} className={color}>
+          {slice}
+        </span>
+      );
+    });
+  });
+
+  return <span className={className}>{elements}</span>;
 }

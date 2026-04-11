@@ -159,7 +159,7 @@ const TeacherWordImport = () => {
           validData.push({
             word: String(row.word).trim(),
             phonetic: String(row.phonetic).trim(),
-            syllables: row.syllables ? String(row.syllables).trim() : undefined,
+            syllables: row.syllables ? String(row.syllables).trim().replace(/-/g, '#') : undefined,
             part_of_speech: String(row.part_of_speech).trim(),
             meaning: String(row.meaning).trim(),
             difficulty: Number(row.difficulty),

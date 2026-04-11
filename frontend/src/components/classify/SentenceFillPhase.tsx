@@ -76,7 +76,7 @@ export default function SentenceFillPhase({
     if (idx === -1) {
       // 找不到目标词，显示全句 + 独立填空
       return (
-        <p className="text-gray-700 text-lg leading-relaxed whitespace-nowrap overflow-x-auto">
+        <p className="text-gray-700 text-lg leading-relaxed">
           {sentence}
         </p>
       );
@@ -86,7 +86,7 @@ export default function SentenceFillPhase({
     const after = sentence.slice(idx + targetWord.length);
 
     return (
-      <p className="text-gray-700 text-lg leading-relaxed whitespace-nowrap overflow-x-auto">
+      <p className="text-gray-700 text-lg leading-relaxed">
         {before}
         <span className="inline-block border-b-2 border-dashed border-primary mx-1 min-w-[60px] text-center font-bold text-primary">
           {submitted ? (
@@ -104,7 +104,7 @@ export default function SentenceFillPhase({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (submitted) return;
-    const val = e.target.value.replace(/[^a-zA-Z '\-]/g, '');
+    const val = e.target.value.replace(/[^a-zA-Z '\-!?.,]/g, '');
     setUserInput(val.slice(0, wordLength));
   };
 

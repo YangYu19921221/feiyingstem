@@ -71,10 +71,8 @@ export default function DictationPhase({
   const handleSubmit = useCallback(() => {
     if (submitted || !currentWord || userInput.length === 0) return;
 
-    // 校验时忽略空格：用户不需要输入空格
-    const normalizedInput = userInput.trim().replace(/\s+/g, '');
-    const normalizedTarget = currentWord.word.trim().replace(/\s+/g, '');
-    const correct = normalizedInput === normalizedTarget;
+    // 校验：精确匹配（含空格），短语必须输入空格
+    const correct = userInput.trim() === currentWord.word.trim();
     setIsCorrect(correct);
     setSubmitted(true);
 
@@ -141,7 +139,7 @@ export default function DictationPhase({
 
   const handleRetrySubmit = useCallback(() => {
     if (!currentWord || retryInput.length === 0) return;
-    if (retryInput.trim().replace(/\s+/g, '') === currentWord.word.trim().replace(/\s+/g, '')) {
+    if (retryInput.trim() === currentWord.word.trim()) {
       setRetryPassed(true);
     } else {
       setRetryInput('');
@@ -176,15 +174,11 @@ export default function DictationPhase({
     return () => window.removeEventListener('keydown', handler);
   }, [submitted, isCorrect, retryMode, retryPassed, handleNext, handleRetrySubmit]);
 
-  // 提交后逐字符对比（忽略空格位，按非空格偏移对比）
+  // 提交后逐字符直接对比
   const getCharInfo = (charIndex: number): { result: 'correct' | 'wrong' | 'missing'; displayChar: string } => {
-    const word = currentWord.word;
-    let nonSpaceOffset = 0;
-    for (let i = 0; i < charIndex; i++) {
-      if (word[i] !== ' ') nonSpaceOffset++;
-    }
-    const userChar = userInput[nonSpaceOffset];
-    const correctChar = word[charIndex];
+    const correctChar = currentWord.word[charIndex];
+    if (correctChar === ' ') return { result: 'correct', displayChar: ' ' };
+    const userChar = userInput[charIndex];
     if (!userChar) return { result: 'missing', displayChar: correctChar };
     if (userChar === correctChar) return { result: 'correct', displayChar: userChar };
     return { result: 'wrong', displayChar: userChar };
@@ -401,7 +395,7 @@ export default function DictationPhase({
               whileTap={{ scale: 0.95 }}
               onClick={handleSubmit}
               className={`mt-4 px-8 py-3 rounded-2xl text-lg font-medium shadow-lg cursor-pointer transition ${
-                userInput.length === wordLength
+                userInput.length === wordLengthWithSpaces
                   ? 'bg-accent text-white hover:opacity-90'
                   : 'bg-gray-200 text-gray-500'
               }`}
