@@ -82,7 +82,7 @@ const UnitExam = () => {
     const existing = currentQuestion ? answers.get(currentQuestion.id) : '';
     setInputValue(existing || '');
     if (currentQuestion && ['listening', 'spelling', 'sentence_fill'].includes(currentQuestion.type)) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 350);
     }
   }, [currentIndex]);
 

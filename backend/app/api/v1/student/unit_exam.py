@@ -17,7 +17,8 @@ from app.core.database import get_db
 from app.models.word import Word, Unit, UnitWord, WordDefinition
 from app.models.user import User
 from app.models.learning import (
-    ExamPaper, ExamQuestion, ExamSubmission, ExamAnswer, WordMastery
+    ExamPaper, ExamQuestion, ExamSubmission, ExamAnswer, WordMastery,
+    LearningRecord,
 )
 from app.api.v1.auth import get_current_student
 
@@ -374,6 +375,17 @@ async def submit_exam(
             is_correct=d["is_correct"],
         )
         db.add(ea)
+
+    # 写入 LearningRecord，使考试错题出现在错题集
+    for d in details:
+        if d.get("word_id"):
+            db.add(LearningRecord(
+                user_id=current_user.id,
+                word_id=d["word_id"],
+                learning_mode="exam",
+                is_correct=d["is_correct"],
+                time_spent=0,
+            ))
 
     # 更新错题的掌握度
     for word_id in set(wrong_word_ids):
