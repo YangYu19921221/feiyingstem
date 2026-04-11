@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { BookOpen, Plus, Sparkles, Save, Trash2 } from 'lucide-react';
+import { toast } from '../components/Toast';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 
@@ -70,7 +71,7 @@ const TeacherWordEntry = () => {
   // AI一键生成完整信息
   const handleGenerateComplete = async (index: number) => {
     if (!newWord.word.trim()) {
-      alert('请先输入单词');
+      toast.warning('请先输入单词');
       return;
     }
 
@@ -112,11 +113,11 @@ const TeacherWordEntry = () => {
           definitions: updatedDefs
         }));
       } else {
-        alert('未能生成完整信息,请手动输入');
+        toast.warning('未能生成完整信息,请手动输入');
       }
     } catch (error: any) {
       console.error('生成失败:', error);
-      alert('生成失败,请手动输入');
+      toast.error('生成失败,请手动输入');
     } finally {
       setGeneratingMeaning(null);
     }
@@ -125,7 +126,7 @@ const TeacherWordEntry = () => {
   // 生成释义
   const handleGenerateMeaning = async (index: number) => {
     if (!newWord.word.trim()) {
-      alert('请先输入单词');
+      toast.warning('请先输入单词');
       return;
     }
 
@@ -144,11 +145,11 @@ const TeacherWordEntry = () => {
       if (response.data?.meaning) {
         handleUpdateDefinition(index, 'meaning', response.data.meaning);
       } else {
-        alert('未能生成释义,请手动输入');
+        toast.warning('未能生成释义,请手动输入');
       }
     } catch (error: any) {
       console.error('生成释义失败:', error);
-      alert('生成释义失败,请手动输入');
+      toast.error('生成释义失败,请手动输入');
     } finally {
       setGeneratingMeaning(null);
     }
@@ -157,7 +158,7 @@ const TeacherWordEntry = () => {
   // 自动生成音标
   const handleGeneratePhonetic = async () => {
     if (!newWord.word.trim()) {
-      alert('请先输入单词');
+      toast.warning('请先输入单词');
       return;
     }
 
@@ -173,9 +174,9 @@ const TeacherWordEntry = () => {
 
       if (response.data?.phonetic) {
         setNewWord({ ...newWord, phonetic: response.data.phonetic });
-        alert('音标生成成功!');
+        toast.success('音标生成成功!');
       } else {
-        alert('未能生成音标,请手动输入');
+        toast.warning('未能生成音标,请手动输入');
       }
     } catch (error: any) {
       console.error('生成音标失败:', error);
@@ -188,16 +189,16 @@ const TeacherWordEntry = () => {
 
         if (dictResponse.data && dictResponse.data[0]?.phonetic) {
           setNewWord({ ...newWord, phonetic: dictResponse.data[0].phonetic });
-          alert('音标生成成功!(使用字典API)');
+          toast.success('音标生成成功!(使用字典API)');
         } else if (dictResponse.data && dictResponse.data[0]?.phonetics?.[0]?.text) {
           setNewWord({ ...newWord, phonetic: dictResponse.data[0].phonetics[0].text });
-          alert('音标生成成功!(使用字典API)');
+          toast.success('音标生成成功!(使用字典API)');
         } else {
-          alert('未找到该单词的音标,请手动输入');
+          toast.warning('未找到该单词的音标,请手动输入');
         }
       } catch (fallbackError) {
         console.error('字典API也失败:', fallbackError);
-        alert('音标生成失败,请手动输入');
+        toast.error('音标生成失败,请手动输入');
       }
     } finally {
       setGeneratingPhonetic(false);
@@ -224,7 +225,7 @@ const TeacherWordEntry = () => {
   // 删除释义
   const handleRemoveDefinition = (index: number) => {
     if (newWord.definitions.length <= 1) {
-      alert('至少需要保留一个释义');
+      toast.warning('至少需要保留一个释义');
       return;
     }
     const newDefinitions = newWord.definitions.filter((_, i) => i !== index);
@@ -254,15 +255,15 @@ const TeacherWordEntry = () => {
   // 提交单词
   const handleSubmit = async () => {
     if (!newWord.word.trim()) {
-      alert('请输入单词');
+      toast.warning('请输入单词');
       return;
     }
     if (!newWord.phonetic.trim()) {
-      alert('请输入或生成音标');
+      toast.warning('请输入或生成音标');
       return;
     }
     if (!newWord.definitions[0].meaning.trim()) {
-      alert('请至少输入一个释义');
+      toast.warning('请至少输入一个释义');
       return;
     }
 
@@ -272,7 +273,7 @@ const TeacherWordEntry = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      alert('单词添加成功!');
+      toast.success('单词添加成功!');
       // 重置表单
       setNewWord({
         word: '',
@@ -294,9 +295,9 @@ const TeacherWordEntry = () => {
     } catch (error: any) {
       console.error('添加单词失败:', error);
       if (error.response?.data?.detail) {
-        alert(`添加失败: ${error.response.data.detail}`);
+        toast.error(`添加失败: ${error.response.data.detail}`);
       } else {
-        alert('添加单词失败,请重试');
+        toast.error('添加单词失败,请重试');
       }
     }
   };

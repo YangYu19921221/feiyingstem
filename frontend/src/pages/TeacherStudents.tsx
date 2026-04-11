@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Users, UserPlus, X, Mail, Check, Eye } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { toast } from '../components/Toast';
 
 interface UserData {
   id: number;
@@ -73,7 +74,7 @@ const TeacherStudents = () => {
       setBooks(booksRes.data);
     } catch (error) {
       console.error('加载数据失败:', error);
-      alert('加载数据失败,请重试');
+      toast.error('加载数据失败,请重试');
     } finally {
       setLoading(false);
     }
@@ -87,11 +88,11 @@ const TeacherStudents = () => {
 
   const handleCreateStudent = async () => {
     if (!newStudent.username.trim()) {
-      alert('请输入用户名');
+      toast.warning('请输入用户名');
       return;
     }
     if (!newStudent.password.trim()) {
-      alert('请输入密码');
+      toast.warning('请输入密码');
       return;
     }
 
@@ -111,16 +112,16 @@ const TeacherStudents = () => {
         }
       );
 
-      alert('学生创建成功!');
+      toast.success('学生创建成功!');
       setShowCreateDialog(false);
       setNewStudent({ username: '', password: '', full_name: '', email: '' });
       loadData();
     } catch (error: any) {
       console.error('创建学生失败:', error);
       if (error.response?.data?.detail) {
-        alert(`创建失败: ${error.response.data.detail}`);
+        toast.error(`创建失败: ${error.response.data.detail}`);
       } else {
-        alert('创建学生失败,请重试');
+        toast.error('创建学生失败,请重试');
       }
     }
   };

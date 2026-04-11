@@ -6,6 +6,7 @@ import { startLearning, updateProgress } from '../api/progress';
 import { checkPronunciationConfig, type PronunciationScore } from '../api/pronunciation';
 import PronunciationPanel from '../components/PronunciationPanel';
 import type { StartLearningResponse, WordData } from '../api/progress';
+import { toast } from '../components/Toast';
 import {
   createLearningRecords,
   createStudySession,
@@ -247,7 +248,7 @@ const FlashCardLearning = () => {
         errorMessage = error.message;
       }
 
-      alert(errorMessage);
+      toast.error(errorMessage);
       navigate(-1);
     } finally {
       setLoading(false);

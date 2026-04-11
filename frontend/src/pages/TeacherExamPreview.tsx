@@ -5,6 +5,7 @@ import { ArrowLeft, Download, Printer, Share2, CheckCircle } from 'lucide-react'
 import { getExamDetail } from '../api/teacher';
 import type { ExamPaper, ExamQuestion } from '../types/exam';
 import html2pdf from 'html2pdf.js';
+import { toast } from '../components/Toast';
 
 const TeacherExamPreview = () => {
   const { examId } = useParams<{ examId: string }>();
@@ -35,7 +36,7 @@ const TeacherExamPreview = () => {
       setExam(data);
     } catch (error) {
       console.error('获取试卷失败:', error);
-      alert('获取试卷失败,请稍后重试');
+      toast.error('获取试卷失败,请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -126,7 +127,7 @@ const TeacherExamPreview = () => {
 
     } catch (error) {
       console.error('生成PDF失败:', error);
-      alert('生成PDF失败,请稍后重试');
+      toast.error('生成PDF失败,请稍后重试');
 
       // 确保恢复显示状态
       if (pdfContentRef.current) {

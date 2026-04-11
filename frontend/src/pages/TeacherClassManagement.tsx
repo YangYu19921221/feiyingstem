@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
+import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
 
 interface ClassInfo {
@@ -145,7 +146,7 @@ const TeacherClassManagement = () => {
 
   const handleCreateClass = async () => {
     if (!newClassName.trim()) {
-      alert('请输入班级名称');
+      toast.warning('请输入班级名称');
       return;
     }
     try {
@@ -158,7 +159,7 @@ const TeacherClassManagement = () => {
       setNewClassDesc('');
       loadClasses();
     } catch (error: any) {
-      alert(error.response?.data?.detail || '创建失败');
+      toast.error(error.response?.data?.detail || '创建失败');
     }
   };
 
@@ -171,7 +172,7 @@ const TeacherClassManagement = () => {
       }
       loadClasses();
     } catch (error: any) {
-      alert(error.response?.data?.detail || '删除失败');
+      toast.error(error.response?.data?.detail || '删除失败');
     }
   };
 
@@ -196,7 +197,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      alert(error.response?.data?.detail || '添加失败');
+      toast.error(error.response?.data?.detail || '添加失败');
     }
   };
 
@@ -209,7 +210,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      alert(error.response?.data?.detail || '移除失败');
+      toast.error(error.response?.data?.detail || '移除失败');
     }
   };
 
@@ -227,7 +228,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      alert(error.response?.data?.detail || '移除失败');
+      toast.error(error.response?.data?.detail || '移除失败');
     }
   };
 

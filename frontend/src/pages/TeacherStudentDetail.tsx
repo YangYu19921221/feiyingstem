@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Clock, BookOpen, Target, TrendingDown, Calendar, Sparkles, FileText, Loader2 } from 'lucide-react';
+import { toast } from '../components/Toast';
 import api from '../api/client';
 import { analyzeStudentMistakes, generatePersonalizedExam } from '../api/teacher';
 import { getStudentWordTrends } from '../api/analytics';
@@ -106,7 +107,7 @@ const TeacherStudentDetail = () => {
       setShowAnalysis(true);
     } catch (error: any) {
       console.error('分析错题失败:', error);
-      alert(error.response?.data?.detail || '分析失败,请稍后重试');
+      toast.error(error.response?.data?.detail || '分析失败,请稍后重试');
     } finally {
       setAnalyzing(false);
     }
@@ -160,7 +161,7 @@ const TeacherStudentDetail = () => {
 
     } catch (error: any) {
       console.error('生成试卷失败:', error);
-      alert(error.response?.data?.detail || '生成失败,请稍后重试');
+      toast.error(error.response?.data?.detail || '生成失败,请稍后重试');
       setGenerationProgress(0);
       setGenerationStage('');
     } finally {

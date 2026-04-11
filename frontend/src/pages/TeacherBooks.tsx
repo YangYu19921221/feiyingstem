@@ -5,6 +5,7 @@ import { getTeacherWordBooks } from '../api/teacher';
 import type { TeacherWordBook } from '../api/teacher';
 import { BookOpen, Settings, Trash2 } from 'lucide-react';
 import api from '../api/client';
+import { toast } from '../components/Toast';
 
 const GRADE_OPTIONS = [
   '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
@@ -46,7 +47,7 @@ const TeacherBooks = () => {
       setBooks(data);
     } catch (error) {
       console.error('加载单词本失败:', error);
-      alert('加载单词本失败,请重试');
+      toast.error('加载单词本失败,请重试');
     } finally {
       setLoading(false);
       hasLoadedOnce.current = true; // 标记已加载,不触发渲染
@@ -81,7 +82,7 @@ const TeacherBooks = () => {
 
   const handleBatchDelete = async () => {
     if (selectedBooks.length === 0) {
-      alert('请先选择要删除的单词本');
+      toast.warning('请先选择要删除的单词本');
       return;
     }
 
@@ -96,9 +97,9 @@ const TeacherBooks = () => {
       const { deleted_count, failed_count } = response.data;
 
       if (failed_count > 0) {
-        alert(`删除完成!\n成功: ${deleted_count} 个\n失败: ${failed_count} 个`);
+        toast.warning(`删除完成! 成功: ${deleted_count} 个, 失败: ${failed_count} 个`);
       } else {
-        alert(`成功删除 ${deleted_count} 个单词本!`);
+        toast.success(`成功删除 ${deleted_count} 个单词本!`);
       }
 
       setSelectedBooks([]);
@@ -106,7 +107,7 @@ const TeacherBooks = () => {
       loadBooks();
     } catch (error) {
       console.error('批量删除失败:', error);
-      alert('批量删除失败,请重试');
+      toast.error('批量删除失败,请重试');
     }
   };
 
@@ -132,7 +133,7 @@ const TeacherBooks = () => {
       loadBooks();
     } catch (error) {
       console.error('创建单词本失败:', error);
-      alert('创建失败，请重试');
+      toast.error('创建失败，请重试');
     }
   };
 

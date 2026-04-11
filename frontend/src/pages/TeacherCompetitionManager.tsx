@@ -3,6 +3,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { toast } from '../components/Toast';
 import axios from 'axios';
 
 interface QuestionOption {
@@ -136,7 +137,7 @@ const TeacherCompetitionManager: React.FC = () => {
 
       // 验证必填字段
       if (!formData.content.trim()) {
-        alert('请填写题目内容');
+        toast.warning('请填写题目内容');
         return;
       }
 
@@ -144,18 +145,18 @@ const TeacherCompetitionManager: React.FC = () => {
       if (formData.question_type === 'choice') {
         const hasCorrect = formData.options.some(opt => opt.is_correct);
         if (!hasCorrect) {
-          alert('请至少选择一个正确答案');
+          toast.warning('请至少选择一个正确答案');
           return;
         }
         const filledOptions = formData.options.filter(opt => opt.option_text.trim());
         if (filledOptions.length < 4) {
-          alert('选择题必须填写所有4个选项(A/B/C/D)');
+          toast.warning('选择题必须填写所有4个选项(A/B/C/D)');
           return;
         }
       } else {
         // 非选择题需要填写正确答案
         if (!formData.correct_answer.trim()) {
-          alert('请填写正确答案');
+          toast.warning('请填写正确答案');
           return;
         }
       }
@@ -198,7 +199,7 @@ const TeacherCompetitionManager: React.FC = () => {
       );
 
       if (response.status === 200) {
-        alert('题目创建成功!');
+        toast.success('题目创建成功!');
         setShowCreateModal(false);
         // 重置表单
         setFormData({
@@ -222,7 +223,7 @@ const TeacherCompetitionManager: React.FC = () => {
       }
     } catch (error) {
       console.error('创建题目失败:', error);
-      alert('创建题目失败,请检查输入');
+      toast.error('创建题目失败,请检查输入');
     } finally {
       setCreating(false);
     }
@@ -260,7 +261,7 @@ const TeacherCompetitionManager: React.FC = () => {
 
       setTimeout(() => {
         if (response.data.success) {
-          alert(`AI生成成功! 共生成 ${response.data.generated_count} 道题目`);
+          toast.success(`AI生成成功! 共生成 ${response.data.generated_count} 道题目`);
           setShowAIModal(false);
           // 重置表单
           setAiFormData({
@@ -282,7 +283,7 @@ const TeacherCompetitionManager: React.FC = () => {
       console.error('AI生成失败:', error);
       setGeneratingMessage('❌ 生成失败');
       setTimeout(() => {
-        alert('AI生成失败,请检查输入或稍后重试');
+        toast.error('AI生成失败,请检查输入或稍后重试');
         setGeneratingProgress(0);
         setGeneratingMessage('');
       }, 1000);
@@ -296,7 +297,7 @@ const TeacherCompetitionManager: React.FC = () => {
   // 批量删除题目
   const handleBatchDelete = async () => {
     if (selectedQuestions.length === 0) {
-      alert('请先选择要删除的题目');
+      toast.warning('请先选择要删除的题目');
       return;
     }
 
@@ -313,13 +314,13 @@ const TeacherCompetitionManager: React.FC = () => {
         }
       });
 
-      alert(`成功删除 ${selectedQuestions.length} 道题目`);
+      toast.success(`成功删除 ${selectedQuestions.length} 道题目`);
       setSelectedQuestions([]);
       loadQuestions();
       loadStats();
     } catch (error) {
       console.error('批量删除失败:', error);
-      alert('批量删除失败,请稍后重试');
+      toast.error('批量删除失败,请稍后重试');
     } finally {
       setDeleting(false);
     }

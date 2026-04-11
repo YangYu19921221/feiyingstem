@@ -10,6 +10,7 @@ import {
   type MistakeBookStats,
 } from '../api/mistakeBook';
 import ColoredPhonetic from '../components/ColoredPhonetic';
+import { toast } from '../components/Toast';
 
 const PAGE_SIZE = 20;
 
@@ -78,7 +79,7 @@ const MistakeBook = () => {
       });
 
       if (response.practice_words.length === 0) {
-        alert(response.message);
+        toast.info(response.message);
         return;
       }
 
@@ -98,11 +99,11 @@ const MistakeBook = () => {
       if (route) {
         navigate(route);
       } else {
-        alert('暂不支持该学习模式');
+        toast.warning('暂不支持该学习模式');
       }
     } catch (error) {
       console.error('开始练习失败:', error);
-      alert('开始练习失败,请重试');
+      toast.error('开始练习失败,请重试');
     }
   };
 

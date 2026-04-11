@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/env';
+import { toast } from '../../components/Toast';
 
 interface AIProvider {
   id: number;
@@ -39,7 +40,7 @@ const AI配置管理 = () => {
 
   // 处理401错误
   const handle401 = () => {
-    alert('登录已过期,请重新登录');
+    toast.warning('登录已过期,请重新登录');
     localStorage.removeItem('access_token');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -210,12 +211,12 @@ const AI配置管理 = () => {
       setShowAddModal(false);
       setEditingProvider(null);
       loadProviders();
-      alert('保存成功!');
+      toast.success('保存成功!');
     } catch (error: any) {
       if (error.response?.status === 401) {
         handle401();
       } else {
-        alert(`保存失败: ${error.response?.data?.detail || error.message}`);
+        toast.error(`保存失败: ${error.response?.data?.detail || error.message}`);
       }
     }
   };
@@ -238,7 +239,7 @@ const AI配置管理 = () => {
       if (error.response?.status === 401) {
         handle401();
       } else {
-        alert(`删除失败: ${error.response?.data?.detail || error.message}`);
+        toast.error(`删除失败: ${error.response?.data?.detail || error.message}`);
       }
     }
   };

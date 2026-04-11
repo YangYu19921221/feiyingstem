@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getMyAssignments } from '../api/assignments';
 import type { StudentBookAssignmentResponse } from '../api/assignments';
+import { toast } from '../components/Toast';
 
 const StudentAssignments = () => {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ const StudentAssignments = () => {
       setAssignments(data);
     } catch (error: any) {
       console.error('加载作业失败:', error);
-      alert(error.response?.data?.detail || '加载失败');
+      toast.error(error.response?.data?.detail || '加载失败');
     } finally {
       setLoading(false);
     }

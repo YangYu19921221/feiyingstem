@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FlashCard from '../components/FlashCard';
 import { getWords, type Word } from '../api/words';
+import { toast } from '../components/Toast';
 
 const Learn = () => {
   const navigate = useNavigate();
@@ -76,15 +77,7 @@ const Learn = () => {
       setCurrentIndex(currentIndex + 1);
     } else {
       // 完成所有单词
-      alert(`
-        学习完成! 📚
-
-        认识: ${stats.known + 1} 个 ✅
-        不认识: ${stats.unknown} 个 ❌
-        跳过: ${stats.skipped} 个 ⏭️
-
-        总计: ${words.length} 个单词
-      `);
+      toast.success(`学习完成! 📚 认识: ${stats.known + 1} 个 ✅ 不认识: ${stats.unknown} 个 ❌ 跳过: ${stats.skipped} 个 ⏭️ 总计: ${words.length} 个单词`);
 
       // 重新开始
       setCurrentIndex(0);

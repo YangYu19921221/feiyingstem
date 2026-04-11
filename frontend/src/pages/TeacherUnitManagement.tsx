@@ -16,6 +16,7 @@ import { ArrowLeft, Plus, Trash2, Edit, BookOpen, X, Sparkles, Download, Save } 
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import * as XLSX from 'xlsx';
+import { toast } from '../components/Toast';
 
 const TeacherUnitManagement = () => {
   const { bookId } = useParams<{ bookId: string }>();
@@ -73,7 +74,7 @@ const TeacherUnitManagement = () => {
       setUnits(data);
     } catch (error) {
       console.error('加载单元失败:', error);
-      alert('加载单元失败,请重试');
+      toast.error('加载单元失败,请重试');
     } finally {
       setLoading(false);
     }
@@ -81,7 +82,7 @@ const TeacherUnitManagement = () => {
 
   const handleCreateUnit = async () => {
     if (!newUnit.name.trim()) {
-      alert('请输入单元名称');
+      toast.warning('请输入单元名称');
       return;
     }
 
@@ -95,10 +96,10 @@ const TeacherUnitManagement = () => {
       setShowCreateDialog(false);
       setNewUnit({ name: '', description: '', group_size: 10 });
       loadUnits();
-      alert('创建成功!');
+      toast.success('创建成功!');
     } catch (error: any) {
       console.error('创建单元失败:', error);
-      alert(error.response?.data?.detail || '创建失败,请重试');
+      toast.error(error.response?.data?.detail || '创建失败,请重试');
     }
   };
 
@@ -111,10 +112,10 @@ const TeacherUnitManagement = () => {
       await deleteUnit(unitId);
       loadUnits();
       if (selectedUnit?.id === unitId) setSelectedUnit(null);
-      alert('删除成功!');
+      toast.success('删除成功!');
     } catch (error: any) {
       console.error('删除单元失败:', error);
-      alert(error.response?.data?.detail || '删除失败,请重试');
+      toast.error(error.response?.data?.detail || '删除失败,请重试');
     }
   };
 
@@ -126,7 +127,7 @@ const TeacherUnitManagement = () => {
       setSelectedRemoveIds([]);
     } catch (error) {
       console.error('加载单元详情失败:', error);
-      alert('加载失败,请重试');
+      toast.error('加载失败,请重试');
     }
   };
 
@@ -139,7 +140,7 @@ const TeacherUnitManagement = () => {
       setShowAddWordsDialog(true);
     } catch (error) {
       console.error('加载单词失败:', error);
-      alert('加载失败,请重试');
+      toast.error('加载失败,请重试');
     }
   };
 
@@ -155,7 +156,7 @@ const TeacherUnitManagement = () => {
       loadUnits();
     } catch (error: any) {
       console.error('删除单词失败:', error);
-      alert(error.response?.data?.detail || '删除失败,请重试');
+      toast.error(error.response?.data?.detail || '删除失败,请重试');
     }
   };
 
@@ -172,10 +173,10 @@ const TeacherUnitManagement = () => {
       const updatedUnit = await getUnitDetail(selectedUnit!.id);
       setSelectedUnit(updatedUnit);
       loadUnits();
-      alert(`成功删除 ${selectedRemoveIds.length} 个单词`);
+      toast.success(`成功删除 ${selectedRemoveIds.length} 个单词`);
     } catch (error: any) {
       console.error('批量删除失败:', error);
-      alert('部分单词删除失败,请重试');
+      toast.error('部分单词删除失败,请重试');
     } finally {
       setRemovingWords(false);
     }
@@ -199,7 +200,7 @@ const TeacherUnitManagement = () => {
   // 保存编辑
   const handleSaveEdit = async () => {
     if (!editFormData.word.trim()) {
-      alert('单词不能为空');
+      toast.warning('单词不能为空');
       return;
     }
     setSavingEdit(true);
@@ -210,7 +211,7 @@ const TeacherUnitManagement = () => {
       setSelectedUnit(updatedUnit);
     } catch (error: any) {
       console.error('保存失败:', error);
-      alert(error.response?.data?.detail || '保存失败,请重试');
+      toast.error(error.response?.data?.detail || '保存失败,请重试');
     } finally {
       setSavingEdit(false);
     }
@@ -226,7 +227,7 @@ const TeacherUnitManagement = () => {
       setCacheResult(result);
     } catch (error: any) {
       console.error('发音预缓存失败:', error);
-      alert('发音预缓存失败，请重试');
+      toast.error('发音预缓存失败，请重试');
     } finally {
       setCachingPron(false);
     }
@@ -249,11 +250,11 @@ const TeacherUnitManagement = () => {
 
   const handleCreateAndAddWord = async () => {
     if (!newWordData.word.trim()) {
-      alert('请输入单词');
+      toast.warning('请输入单词');
       return;
     }
     if (!newWordData.definitions[0].meaning.trim()) {
-      alert('请至少输入一个释义');
+      toast.warning('请至少输入一个释义');
       return;
     }
 
@@ -289,10 +290,10 @@ const TeacherUnitManagement = () => {
       setSelectedUnit(updatedUnit);
       loadUnits();
 
-      alert('单词添加成功!');
+      toast.success('单词添加成功!');
     } catch (error: any) {
       console.error('创建单词失败:', error);
-      alert(error.response?.data?.detail || '创建失败,请重试');
+      toast.error(error.response?.data?.detail || '创建失败,请重试');
     } finally {
       setCreatingWord(false);
     }
@@ -300,7 +301,7 @@ const TeacherUnitManagement = () => {
 
   const handleAIGenerate = async (index: number) => {
     if (!newWordData.word.trim()) {
-      alert('请先输入单词');
+      toast.warning('请先输入单词');
       return;
     }
     setGeneratingAI(index);
@@ -333,7 +334,7 @@ const TeacherUnitManagement = () => {
       }
     } catch (error) {
       console.error('AI生成失败:', error);
-      alert('AI生成失败,请手动输入');
+      toast.error('AI生成失败,请手动输入');
     } finally {
       setGeneratingAI(null);
     }
@@ -364,7 +365,7 @@ const TeacherUnitManagement = () => {
       const rows = XLSX.utils.sheet_to_json<any>(ws);
 
       if (rows.length === 0) {
-        alert('Excel 文件为空');
+        toast.warning('Excel 文件为空');
         return;
       }
 
@@ -418,10 +419,10 @@ const TeacherUnitManagement = () => {
       if (errors.length > 0) {
         msg += `\n失败 ${errors.length} 个:\n${errors.slice(0, 5).join('\n')}`;
       }
-      alert(msg);
+      toast.info(msg);
     } catch (error) {
       console.error('Excel导入失败:', error);
-      alert('Excel文件解析失败，请检查格式');
+      toast.error('Excel文件解析失败，请检查格式');
     } finally {
       setImportingExcel(false);
     }

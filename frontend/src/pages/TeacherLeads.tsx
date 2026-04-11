@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Phone, CheckCircle, Clock } from 'lucide-react';
+import { toast } from '../components/Toast';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 
@@ -59,7 +60,7 @@ const TeacherLeads = () => {
       setEditingId(null);
       loadLeads();
     } catch (error) {
-      alert('保存失败');
+      toast.error('保存失败');
     }
   };
 
@@ -68,7 +69,7 @@ const TeacherLeads = () => {
       await axios.put(`${API_BASE_URL}/assessment/leads/${lead.id}/notes`, { converted: !lead.converted }, { headers });
       loadLeads();
     } catch (error) {
-      alert('操作失败');
+      toast.error('操作失败');
     }
   };
 

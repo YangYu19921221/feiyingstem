@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from '../components/Toast';
 import {
   createPassage,
   updatePassage,
@@ -77,7 +78,7 @@ const TeacherReadingEditor = () => {
       });
     } catch (error: any) {
       console.error('加载文章失败:', error);
-      alert(error.response?.data?.detail || '加载失败');
+      toast.error(error.response?.data?.detail || '加载失败');
       navigate('/teacher/reading');
     } finally {
       setLoading(false);
@@ -86,7 +87,7 @@ const TeacherReadingEditor = () => {
 
   const handleSavePassage = async () => {
     if (!formData.title || !formData.content) {
-      alert('请填写标题和内容');
+      toast.warning('请填写标题和内容');
       return;
     }
 
@@ -94,16 +95,16 @@ const TeacherReadingEditor = () => {
       setSaving(true);
       if (isEdit && passageId) {
         await updatePassage(Number(passageId), formData);
-        alert('更新成功！');
+        toast.success('更新成功！');
         await loadPassage();
       } else {
         const newPassage = await createPassage(formData);
-        alert('创建成功！');
+        toast.success('创建成功！');
         navigate(`/teacher/reading/${newPassage.id}/edit`);
       }
     } catch (error: any) {
       console.error('保存失败:', error);
-      alert(error.response?.data?.detail || '保存失败');
+      toast.error(error.response?.data?.detail || '保存失败');
     } finally {
       setSaving(false);
     }
@@ -111,24 +112,24 @@ const TeacherReadingEditor = () => {
 
   const handleAddQuestion = async () => {
     if (!passage) {
-      alert('请先保存文章');
+      toast.warning('请先保存文章');
       return;
     }
 
     if (!newQuestion.question_text) {
-      alert('请填写题目内容');
+      toast.warning('请填写题目内容');
       return;
     }
 
     try {
       await addQuestion(passage.id, newQuestion);
-      alert('题目添加成功！');
+      toast.success('题目添加成功！');
       setShowQuestionForm(false);
       resetQuestionForm();
       await loadPassage();
     } catch (error: any) {
       console.error('添加题目失败:', error);
-      alert(error.response?.data?.detail || '添加失败');
+      toast.error(error.response?.data?.detail || '添加失败');
     }
   };
 
@@ -137,11 +138,11 @@ const TeacherReadingEditor = () => {
 
     try {
       await deleteQuestion(questionId);
-      alert('删除成功！');
+      toast.success('删除成功！');
       await loadPassage();
     } catch (error: any) {
       console.error('删除失败:', error);
-      alert(error.response?.data?.detail || '删除失败');
+      toast.error(error.response?.data?.detail || '删除失败');
     }
   };
 

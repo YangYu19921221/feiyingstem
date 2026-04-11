@@ -12,6 +12,7 @@ import {
   type HomeworkAttemptResponse,
 } from '../api/homework';
 import { getTeacherWordBooks, getUnitsByBook, getStudentsList, type TeacherWordBook, type UnitResponse, type StudentInfo } from '../api/teacher';
+import { toast } from '../components/Toast';
 
 // 学习模式映射
 const LEARNING_MODE_MAP: Record<string, string> = {
@@ -81,7 +82,7 @@ const TeacherHomework: React.FC = () => {
       setHomeworkList(data);
     } catch (error) {
       console.error('加载作业列表失败:', error);
-      alert('加载作业列表失败,请重试');
+      toast.error('加载作业列表失败,请重试');
     } finally {
       setLoading(false);
     }
@@ -137,28 +138,28 @@ const TeacherHomework: React.FC = () => {
     e.preventDefault();
 
     if (!formData.title.trim()) {
-      alert('请输入作业标题');
+      toast.warning('请输入作业标题');
       return;
     }
     if (!formData.unit_id) {
-      alert('请选择单元');
+      toast.warning('请选择单元');
       return;
     }
     if (formData.student_ids.length === 0) {
-      alert('请至少选择一个学生');
+      toast.warning('请至少选择一个学生');
       return;
     }
 
     try {
       setLoading(true);
       await createHomework(formData);
-      alert('作业创建成功!');
+      toast.success('作业创建成功!');
       setShowCreateModal(false);
       resetForm();
       loadHomework();
     } catch (error: any) {
       console.error('创建作业失败:', error);
-      alert(`创建作业失败: ${error.response?.data?.detail || error.message}`);
+      toast.error(`创建作业失败: ${error.response?.data?.detail || error.message}`);
     } finally {
       setLoading(false);
     }
@@ -188,14 +189,14 @@ const TeacherHomework: React.FC = () => {
     try {
       setLoading(true);
       await deleteHomework(homeworkId);
-      alert('作业删除成功!');
+      toast.success('作业删除成功!');
       loadHomework();
       if (selectedHomework?.id === homeworkId) {
         setSelectedHomework(null);
       }
     } catch (error: any) {
       console.error('删除作业失败:', error);
-      alert(`删除作业失败: ${error.response?.data?.detail || error.message}`);
+      toast.error(`删除作业失败: ${error.response?.data?.detail || error.message}`);
     } finally {
       setLoading(false);
     }

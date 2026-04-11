@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Search, Filter, Edit2, Trash2, X, Plus, Sparkles, Upload } from 'lucide-react';
+import { toast } from '../components/Toast';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 
@@ -82,7 +83,7 @@ const TeacherWordLibrary = () => {
       setWords(response.data);
     } catch (error) {
       console.error('加载单词失败:', error);
-      alert('加载单词失败,请重试');
+      toast.error('加载单词失败,请重试');
     } finally {
       setLoading(false);
     }
@@ -108,7 +109,7 @@ const TeacherWordLibrary = () => {
       setShowEditDialog(true);
     } catch (error) {
       console.error('获取单词详情失败:', error);
-      alert('获取单词详情失败');
+      toast.error('获取单词详情失败');
     }
   };
 
@@ -122,11 +123,11 @@ const TeacherWordLibrary = () => {
       await axios.delete(`${API_BASE_URL}/words/${wordId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert('删除成功!');
+      toast.success('删除成功!');
       loadWords();
     } catch (error) {
       console.error('删除单词失败:', error);
-      alert('删除单词失败,请重试');
+      toast.error('删除单词失败,请重试');
     }
   };
 
@@ -134,15 +135,15 @@ const TeacherWordLibrary = () => {
     if (!editingWord) return;
 
     if (!editingWord.word.trim()) {
-      alert('请输入单词');
+      toast.warning('请输入单词');
       return;
     }
     if (!editingWord.phonetic.trim()) {
-      alert('请输入音标');
+      toast.warning('请输入音标');
       return;
     }
     if (!editingWord.definitions[0]?.meaning.trim()) {
-      alert('请至少输入一个释义');
+      toast.warning('请至少输入一个释义');
       return;
     }
 
@@ -151,23 +152,23 @@ const TeacherWordLibrary = () => {
       await axios.put(`${API_BASE_URL}/words/${editingWord.id}`, editingWord, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert('更新成功!');
+      toast.success('更新成功!');
       setShowEditDialog(false);
       setEditingWord(null);
       loadWords();
     } catch (error: any) {
       console.error('更新单词失败:', error);
       if (error.response?.data?.detail) {
-        alert(`更新失败: ${error.response.data.detail}`);
+        toast.error(`更新失败: ${error.response.data.detail}`);
       } else {
-        alert('更新单词失败,请重试');
+        toast.error('更新单词失败,请重试');
       }
     }
   };
 
   const handleGeneratePhonetic = async () => {
     if (!editingWord?.word.trim()) {
-      alert('请先输入单词');
+      toast.warning('请先输入单词');
       return;
     }
 
@@ -179,16 +180,16 @@ const TeacherWordLibrary = () => {
 
       if (response.data && response.data[0]?.phonetic) {
         setEditingWord({ ...editingWord, phonetic: response.data[0].phonetic });
-        alert('音标生成成功!');
+        toast.success('音标生成成功!');
       } else if (response.data && response.data[0]?.phonetics?.[0]?.text) {
         setEditingWord({ ...editingWord, phonetic: response.data[0].phonetics[0].text });
-        alert('音标生成成功!');
+        toast.success('音标生成成功!');
       } else {
-        alert('未找到该单词的音标,请手动输入');
+        toast.warning('未找到该单词的音标,请手动输入');
       }
     } catch (error) {
       console.error('生成音标失败:', error);
-      alert('音标生成失败,请手动输入');
+      toast.error('音标生成失败,请手动输入');
     } finally {
       setGeneratingPhonetic(false);
     }
@@ -214,7 +215,7 @@ const TeacherWordLibrary = () => {
 
   const handleRemoveDefinition = (index: number) => {
     if (!editingWord || editingWord.definitions.length <= 1) {
-      alert('至少需要保留一个释义');
+      toast.warning('至少需要保留一个释义');
       return;
     }
     const newDefinitions = editingWord.definitions.filter((_, i) => i !== index);
@@ -258,7 +259,7 @@ const TeacherWordLibrary = () => {
 
   const handleBatchDelete = async () => {
     if (selectedWords.length === 0) {
-      alert('请先选择要删除的单词');
+      toast.warning('请先选择要删除的单词');
       return;
     }
 
@@ -280,9 +281,9 @@ const TeacherWordLibrary = () => {
       const { deleted_count, failed_count } = response.data;
 
       if (failed_count > 0) {
-        alert(`删除完成!\n成功: ${deleted_count} 个\n失败: ${failed_count} 个`);
+        toast.warning(`删除完成!\n成功: ${deleted_count} 个\n失败: ${failed_count} 个`);
       } else {
-        alert(`成功删除 ${deleted_count} 个单词!`);
+        toast.success(`成功删除 ${deleted_count} 个单词!`);
       }
 
       setSelectedWords([]);
@@ -290,7 +291,7 @@ const TeacherWordLibrary = () => {
       loadWords();
     } catch (error) {
       console.error('批量删除失败:', error);
-      alert('批量删除失败,请重试');
+      toast.error('批量删除失败,请重试');
     }
   };
 

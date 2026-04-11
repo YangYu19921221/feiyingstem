@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { toast } from '../components/Toast';
 import { getTeacherPassages, deletePassage } from '../api/reading';
 import type { ReadingPassage } from '../api/reading';
 
@@ -41,10 +42,10 @@ const TeacherReadingList = () => {
     try {
       await deletePassage(passageId);
       setPassages(passages.filter((p) => p.id !== passageId));
-      alert('删除成功！');
+      toast.success('删除成功！');
     } catch (error: any) {
       console.error('删除失败:', error);
-      alert(error.response?.data?.detail || '删除失败');
+      toast.error(error.response?.data?.detail || '删除失败');
     }
   };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { toast } from '../components/Toast';
 
 const AdminSettings: React.FC = () => {
   const navigate = useNavigate();
@@ -295,7 +296,7 @@ const SystemUpdatePanel: React.FC = () => {
       const data = await api.get('/admin/system/check-update');
       setUpdateInfo(data);
     } catch (err: any) {
-      alert(err?.response?.data?.detail || '检查更新失败');
+      toast.error(err?.response?.data?.detail || '检查更新失败');
     } finally {
       setChecking(false);
     }

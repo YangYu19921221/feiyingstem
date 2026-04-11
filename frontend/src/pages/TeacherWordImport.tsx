@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { toast } from '../components/Toast';
 import * as XLSX from 'xlsx';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
@@ -113,7 +114,7 @@ const TeacherWordImport = () => {
     ];
 
     if (!allowedTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(xlsx|xls|csv)$/i)) {
-      alert('请上传Excel文件(.xlsx, .xls)或CSV文件(.csv)');
+      toast.warning('请上传Excel文件(.xlsx, .xls)或CSV文件(.csv)');
       return;
     }
 
@@ -171,20 +172,20 @@ const TeacherWordImport = () => {
         });
 
         if (errors.length > 0) {
-          alert(`文件解析发现错误:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...还有${errors.length - 5}个错误` : ''}`);
+          toast.warning(`文件解析发现错误:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...还有${errors.length - 5}个错误` : ''}`);
         }
 
         if (validData.length === 0) {
-          alert('没有有效的数据可以导入');
+          toast.error('没有有效的数据可以导入');
           setFile(null);
           return;
         }
 
         setParsedData(validData);
-        alert(`成功解析 ${validData.length} 个单词`);
+        toast.success(`成功解析 ${validData.length} 个单词`);
       } catch (error) {
         console.error('文件解析失败:', error);
-        alert('文件解析失败,请检查文件格式是否正确');
+        toast.error('文件解析失败,请检查文件格式是否正确');
         setFile(null);
       }
     };
@@ -195,7 +196,7 @@ const TeacherWordImport = () => {
   // 执行导入
   const handleImport = async () => {
     if (parsedData.length === 0) {
-      alert('请先选择并解析文件');
+      toast.warning('请先选择并解析文件');
       return;
     }
 
@@ -236,7 +237,7 @@ const TeacherWordImport = () => {
       );
 
       setImportResult(response.data);
-      alert(`导入完成!\n成功: ${response.data.success_count} 个\n失败: ${response.data.failed_count} 个`);
+      toast.success(`导入完成!\n成功: ${response.data.success_count} 个\n失败: ${response.data.failed_count} 个`);
 
       // 清空数据
       setFile(null);
@@ -244,9 +245,9 @@ const TeacherWordImport = () => {
     } catch (error: any) {
       console.error('导入失败:', error);
       if (error.response?.data?.detail) {
-        alert(`导入失败: ${error.response.data.detail}`);
+        toast.error(`导入失败: ${error.response.data.detail}`);
       } else {
-        alert('导入失败,请重试');
+        toast.error('导入失败,请重试');
       }
     } finally {
       setImporting(false);

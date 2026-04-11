@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getBookProgress } from '../api/progress';
 import type { BookProgress } from '../api/progress';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { toast } from '../components/Toast';
 
 const UnitSelector = () => {
   const { bookId } = useParams<{ bookId: string }>();
@@ -42,7 +43,7 @@ const UnitSelector = () => {
     if (unitIndex > 0) {
       const prevUnit = sortedUnits[unitIndex - 1];
       if (!prevUnit.has_progress && !prevUnit.is_completed) {
-        alert('请先完成上一个单元的学习');
+        toast.warning('请先完成上一个单元的学习');
         return;
       }
     }

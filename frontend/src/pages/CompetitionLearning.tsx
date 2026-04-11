@@ -9,6 +9,7 @@ import LiveLeaderboard from '../components/LiveLeaderboard';
 import RankNotification from '../components/RankNotification';
 import RankBadge, { type RankInfo } from '../components/RankBadge';
 import { competitionWS } from '../services/websocket';
+import { toast } from '../components/Toast';
 
 // 题目选项接口
 interface QuestionOption {
@@ -130,7 +131,7 @@ const CompetitionLearning: React.FC = () => {
       }
 
       const errorMsg = error.response?.data?.detail || '加载题目失败,请稍后重试';
-      alert(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
       console.log('✔️ 加载完成');
@@ -173,7 +174,7 @@ const CompetitionLearning: React.FC = () => {
       fetchRankInfo();
     } catch (error: any) {
       console.error('提交答案失败:', error);
-      alert(error.response?.data?.detail || '提交失败');
+      toast.error(error.response?.data?.detail || '提交失败');
       setIsSubmitting(false);
       setSelectedOption(null);
     }

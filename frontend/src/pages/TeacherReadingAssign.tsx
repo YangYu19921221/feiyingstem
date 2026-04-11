@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { toast } from '../components/Toast';
 import { getTeacherPassageDetail, assignReading, getPassageAssignments } from '../api/reading';
 import type { ReadingPassageDetail } from '../api/reading';
 import axios from 'axios';
@@ -69,7 +70,7 @@ const TeacherReadingAssign = () => {
 
   const handleAssign = async () => {
     if (selectedStudents.length === 0) {
-      alert('请至少选择一个学生');
+      toast.warning('请至少选择一个学生');
       return;
     }
 
@@ -83,12 +84,12 @@ const TeacherReadingAssign = () => {
         max_attempts: formData.max_attempts,
       });
 
-      alert('分配成功！');
+      toast.success('分配成功！');
       setSelectedStudents([]);
       await loadData();
     } catch (error: any) {
       console.error('分配失败:', error);
-      alert(error.response?.data?.detail || '分配失败');
+      toast.error(error.response?.data?.detail || '分配失败');
     } finally {
       setSubmitting(false);
     }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../config/env';
+import { toast } from '../components/Toast';
 
 interface User {
   id: number;
@@ -101,9 +102,9 @@ const AdminUserManagement = () => {
       setNewUser({ username: '', email: '', password: '', full_name: '', role: 'student' });
       loadUsers();
       loadStats();
-      alert('用户创建成功');
+      toast.success('用户创建成功');
     } catch (error: any) {
-      alert(error.response?.data?.detail || '创建失败');
+      toast.error(error.response?.data?.detail || '创建失败');
     }
   };
 
@@ -124,9 +125,9 @@ const AdminUserManagement = () => {
       setShowEditModal(false);
       setEditingUser(null);
       loadUsers();
-      alert('用户更新成功');
+      toast.success('用户更新成功');
     } catch (error: any) {
-      alert(error.response?.data?.detail || '更新失败');
+      toast.error(error.response?.data?.detail || '更新失败');
     }
   };
 
@@ -141,14 +142,14 @@ const AdminUserManagement = () => {
       loadUsers();
       loadStats();
     } catch (error: any) {
-      alert(error.response?.data?.detail || '操作失败');
+      toast.error(error.response?.data?.detail || '操作失败');
     }
   };
 
   const handleResetPassword = async (userId: number) => {
     const newPassword = prompt('请输入新密码（至少6位）:');
     if (!newPassword || newPassword.length < 6) {
-      alert('密码长度至少6位');
+      toast.warning('密码长度至少6位');
       return;
     }
     try {
@@ -158,9 +159,9 @@ const AdminUserManagement = () => {
         { new_password: newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert('密码重置成功');
+      toast.success('密码重置成功');
     } catch (error: any) {
-      alert(error.response?.data?.detail || '重置失败');
+      toast.error(error.response?.data?.detail || '重置失败');
     }
   };
 
@@ -173,9 +174,9 @@ const AdminUserManagement = () => {
       });
       loadUsers();
       loadStats();
-      alert('用户已删除');
+      toast.success('用户已删除');
     } catch (error: any) {
-      alert(error.response?.data?.detail || '删除失败');
+      toast.error(error.response?.data?.detail || '删除失败');
     }
   };
 
