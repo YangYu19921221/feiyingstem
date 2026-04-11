@@ -23,6 +23,8 @@ const SRS_STAGE_COLORS = [
   '#5FD35F', // 已掌握 (草绿)
 ];
 
+const REVIEW_PAGE_SIZE = 20;
+
 const MemoryCurve = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<MemoryCurveStats | null>(null);
@@ -31,6 +33,7 @@ const MemoryCurve = () => {
   const [loading, setLoading] = useState(true);
   const [showWordList, setShowWordList] = useState(false);
   const [startingReview, setStartingReview] = useState(false);
+  const [reviewPage, setReviewPage] = useState(1);
 
   useEffect(() => {
     loadData();
@@ -42,7 +45,7 @@ const MemoryCurve = () => {
       const [statsData, retentionRes, wordsData] = await Promise.all([
         getMemoryCurveStats(),
         getRetentionCurve().catch(() => null),
-        getReviewDueWords(50),
+        getReviewDueWords(200),
       ]);
       setStats(statsData);
       setRetentionData(retentionRes);
@@ -446,7 +449,14 @@ const MemoryCurve = () => {
         )}
 
         {/* 待复习单词列表 */}
-        {reviewWords.length > 0 && (
+        {reviewWords.length > 0 && (() => {
+          const totalReviewCount = stats?.due_today || reviewWords.length;
+          const totalPages = Math.ceil(reviewWords.length / REVIEW_PAGE_SIZE);
+          const pagedWords = reviewWords.slice(
+            (reviewPage - 1) * REVIEW_PAGE_SIZE,
+            reviewPage * REVIEW_PAGE_SIZE,
+          );
+          return (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -458,7 +468,7 @@ const MemoryCurve = () => {
               className="w-full flex items-center justify-between"
             >
               <h2 className="text-lg font-bold text-gray-800">
-                📋 待复习单词 ({reviewWords.length})
+                📋 待复习单词 ({totalReviewCount})
               </h2>
               <span className={`text-gray-400 transition-transform ${showWordList ? 'rotate-180' : ''}`}>
                 ▼
@@ -474,8 +484,8 @@ const MemoryCurve = () => {
                   transition={{ duration: 0.3 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-4 space-y-2 max-h-96 overflow-y-auto">
-                    {reviewWords.map((word) => {
+                  <div className="mt-4 space-y-2">
+                    {pagedWords.map((word) => {
                       const badge = getMasteryBadge(word.mastery_level, word.review_stage);
                       return (
                         <div
@@ -500,11 +510,35 @@ const MemoryCurve = () => {
                       );
                     })}
                   </div>
+
+                  {/* 分页控件 */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-4 pt-3 border-t border-gray-100">
+                      <button
+                        onClick={() => setReviewPage(p => Math.max(1, p - 1))}
+                        disabled={reviewPage <= 1}
+                        className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        上一页
+                      </button>
+                      <span className="text-sm text-gray-500">
+                        {reviewPage} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setReviewPage(p => Math.min(totalPages, p + 1))}
+                        disabled={reviewPage >= totalPages}
+                        className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        下一页
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
           </motion.div>
-        )}
+          );
+        })()}
 
         {/* 空状态 */}
         {stats && stats.total_learned === 0 && (
