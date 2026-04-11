@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { Reorder } from 'framer-motion';
 import { API_BASE_URL } from '../config/env';
 import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
@@ -125,6 +126,37 @@ const StudentDashboard = () => {
   const ownedBooks = useMemo(() => books.filter(b => b.owned), [books]);
   const unownedBooks = useMemo(() => books.filter(b => !b.owned), [books]);
 
+  // 书架排序：从 localStorage 读取保存的顺序
+  const [sortedOwnedBooks, setSortedOwnedBooks] = useState<StudentBook[]>([]);
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+
+  useEffect(() => {
+    if (ownedBooks.length === 0) {
+      setSortedOwnedBooks([]);
+      return;
+    }
+    const savedOrder: number[] = (() => {
+      try {
+        const raw = localStorage.getItem('bookshelf_order');
+        return raw ? JSON.parse(raw) : [];
+      } catch { return []; }
+    })();
+    if (savedOrder.length > 0) {
+      const orderMap = new Map(savedOrder.map((id: number, i: number) => [id, i]));
+      const sorted = [...ownedBooks].sort((a, b) =>
+        (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity)
+      );
+      setSortedOwnedBooks(sorted);
+    } else {
+      setSortedOwnedBooks(ownedBooks);
+    }
+  }, [ownedBooks]);
+
+  const handleReorder = (newOrder: StudentBook[]) => {
+    setSortedOwnedBooks(newOrder);
+    localStorage.setItem('bookshelf_order', JSON.stringify(newOrder.map(b => b.id)));
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
@@ -218,8 +250,20 @@ const StudentDashboard = () => {
             <>
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <span>📚</span> 我的书架
+                {sortedOwnedBooks.length > 1 && (
+                  <button
+                    onClick={() => setIsEditingOrder(!isEditingOrder)}
+                    className={`ml-auto text-sm px-3 py-1 rounded-lg transition font-medium ${
+                      isEditingOrder
+                        ? 'bg-primary text-white'
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {isEditingOrder ? '✓ 完成' : '↕ 排序'}
+                  </button>
+                )}
               </h3>
-              {ownedBooks.length === 0 ? (
+              {sortedOwnedBooks.length === 0 ? (
                 <div className="bg-white rounded-2xl p-8 text-center shadow-md mb-8">
                   <span className="text-5xl mb-3 block">📭</span>
                   <p className="text-gray-500 mb-1">还没有书籍</p>
@@ -231,9 +275,40 @@ const StudentDashboard = () => {
                     🔑 输入兑换码
                   </button>
                 </div>
+              ) : isEditingOrder ? (
+                <Reorder.Group
+                  axis="y"
+                  values={sortedOwnedBooks}
+                  onReorder={handleReorder}
+                  className="space-y-3 mb-8"
+                >
+                  {sortedOwnedBooks.map((book) => (
+                    <Reorder.Item
+                      key={book.id}
+                      value={book}
+                      className="bg-white rounded-xl p-4 shadow-md flex items-center gap-4 cursor-grab active:cursor-grabbing active:shadow-lg active:z-10"
+                      whileDrag={{ scale: 1.02, boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}
+                    >
+                      <span className="text-gray-300 text-lg select-none">☰</span>
+                      <div
+                        className="w-12 h-12 rounded-lg flex items-center justify-center text-white text-xl flex-shrink-0"
+                        style={{ background: book.cover_color }}
+                      >
+                        📖
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-gray-800 truncate">{book.name}</h4>
+                        <p className="text-xs text-gray-500">{book.unit_count} 个单元 · {book.word_count} 个单词</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-sm font-bold text-primary">{book.progress_percentage.toFixed(0)}%</span>
+                      </div>
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
               ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                  {ownedBooks.map((book) => (
+                  {sortedOwnedBooks.map((book) => (
                     <div
                       key={book.id}
                       className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer flex flex-col"
@@ -649,7 +724,7 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        {/* 宠物小组件 */}
+        {/* 快捷功能 */}
         <div className="mb-8">
           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>🎯</span> 快捷功能

@@ -3,7 +3,7 @@
  * 夹生词：分音节显示 + 加速度动画，循环2轮
  * 陌生词：先播放4遍完整发音，再进入音节加速度动画，循环3轮
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
@@ -103,6 +103,25 @@ export default function SyllableRhythmCard({
     if (!canConfirmListen) return;
     setMode('rhythm');
   };
+
+  // 预计算音节切片，避免每次节拍渲染时重复计算
+  const syllableSlices = useMemo(() => {
+    let cursor = 0;
+    return syllables.map((syl, i) => {
+      const isLast = i === syllables.length - 1;
+      let end = cursor + syl.length;
+      if (isLast) {
+        end = word.word.length;
+      } else {
+        while (end < word.word.length && word.word[end] !== ' ' && !/[a-zA-Z]/.test(word.word[end])) {
+          end++;
+        }
+      }
+      const slice = word.word.slice(cursor, end);
+      cursor = end;
+      return slice;
+    });
+  }, [word.word, syllables]);
 
   // 陌生词听4遍阶段
   if (mode === 'unknown_listen') {
@@ -212,37 +231,19 @@ export default function SyllableRhythmCard({
 
       {/* 音节显示 — 用 word.word 的字符渲染，避免大小写不一致 */}
       <div className="flex items-center justify-center gap-2 mb-6 min-h-[80px]">
-        {(() => {
-          let cursor = 0;
-          return syllables.map((syl, i) => {
-            const isLast = i === syllables.length - 1;
-            let end = cursor + syl.length;
-            if (isLast) {
-              // 最后一段取完剩余字符，防止连字符导致末尾丢字
-              end = word.word.length;
-            } else {
-              // 非字母非空格字符（连字符等）并入当前段
-              while (end < word.word.length && word.word[end] !== ' ' && !/[a-zA-Z]/.test(word.word[end])) {
-                end++;
-              }
-            }
-            const slice = word.word.slice(cursor, end);
-            cursor = end;
-            return (
-              <motion.span
-                key={i}
-                animate={{
-                  scale: i === currentSyllableIndex ? 1.3 : 1,
-                  opacity: i === currentSyllableIndex ? 1 : 0.4,
-                }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                className={`text-4xl font-bold ${SYLLABLE_COLORS[i % SYLLABLE_COLORS.length]}`}
-              >
-                {slice}
-              </motion.span>
-            );
-          });
-        })()}
+        {syllableSlices.map((slice, i) => (
+          <motion.span
+            key={i}
+            animate={{
+              scale: i === currentSyllableIndex ? 1.3 : 1,
+              opacity: i === currentSyllableIndex ? 1 : 0.4,
+            }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            className={`text-4xl font-bold ${SYLLABLE_COLORS[i % SYLLABLE_COLORS.length]}`}
+          >
+            {slice}
+          </motion.span>
+        ))}
       </div>
 
       {/* 音标 */}

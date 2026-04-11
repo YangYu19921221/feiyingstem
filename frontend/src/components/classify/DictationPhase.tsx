@@ -177,7 +177,6 @@ export default function DictationPhase({
   // 提交后逐字符直接对比
   const getCharInfo = (charIndex: number): { result: 'correct' | 'wrong' | 'missing'; displayChar: string } => {
     const correctChar = currentWord.word[charIndex];
-    if (correctChar === ' ') return { result: 'correct', displayChar: ' ' };
     const userChar = userInput[charIndex];
     if (!userChar) return { result: 'missing', displayChar: correctChar };
     if (userChar === correctChar) return { result: 'correct', displayChar: userChar };
