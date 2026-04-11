@@ -1,56 +1,69 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import Assessment from './pages/Assessment';
-import StudentDashboard from './pages/StudentDashboard_New';
-import TeacherDashboard from './pages/TeacherDashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import Learn from './pages/Learn';
-import UnitSelector from './pages/UnitSelector';
-import TeacherBooks from './pages/TeacherBooks';
-import TeacherUnitManagement from './pages/TeacherUnitManagement';
-import TeacherStudents from './pages/TeacherStudents';
-import TeacherClassManagement from './pages/TeacherClassManagement';
-import TeacherLeads from './pages/TeacherLeads';
-import SpellingPractice from './pages/SpellingPractice';
-import FillBlankPractice from './pages/FillBlankPractice';
-import QuizPractice from './pages/QuizPractice';
-import CompetitionLearning from './pages/CompetitionLearning';
-import CompletionScreen from './pages/CompletionScreen';
-import AchievementsPage from './pages/AchievementsPage';
-import LearningAnalytics from './pages/LearningAnalytics';
-import TeacherCompetitionManager from './pages/TeacherCompetitionManager';
-import TeacherAnalytics from './pages/TeacherAnalytics';
-import TeacherStudentDetail from './pages/TeacherStudentDetail';
-import MistakeBook from './pages/MistakeBook';
-import MistakeChallenge from './pages/MistakeChallenge';
-import BookProgressDetail from './pages/BookProgressDetail';
-import StudentReadingList from './pages/StudentReadingList';
-import StudentReadingPractice from './pages/StudentReadingPractice';
-import TeacherReadingList from './pages/TeacherReadingList';
-import TeacherReadingEditor from './pages/TeacherReadingEditor';
-import TeacherReadingAssign from './pages/TeacherReadingAssign';
-import TeacherBookAssignment from './pages/TeacherBookAssignment';
-import StudentAssignments from './pages/StudentAssignments';
-import TeacherHomework from './pages/TeacherHomework';
-import StudentHomework from './pages/StudentHomework';
-import AdminUserManagement from './pages/AdminUserManagement';
-import AdminContentManagement from './pages/AdminContentManagement';
-import AdminStatistics from './pages/AdminStatistics';
-import AdminSettings from './pages/AdminSettings';
-import AIConfig from './pages/Admin/AIConfig';
-import TeacherExamPreview from './pages/TeacherExamPreview';
-import RedeemSubscription from './pages/RedeemSubscription';
-import AdminSubscriptions from './pages/AdminSubscriptions';
-import PetPage from './pages/PetPage';
-import WordClassifyLearning from './pages/WordClassifyLearning';
-import MemoryCurve from './pages/MemoryCurve';
-import UnitExam from './pages/UnitExam';
-import UnitExamResult from './pages/UnitExamResult';
-import DictationPractice from './pages/DictationPractice';
-import SentenceFillPractice from './pages/SentenceFillPractice';
+import { useState, useEffect, Suspense, lazy } from 'react';
+import ErrorBoundary from './components/ErrorBoundary';
+
+// 路由懒加载 — 按需拆包,减少首屏 bundle
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const Assessment = lazy(() => import('./pages/Assessment'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard_New'));
+const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const Learn = lazy(() => import('./pages/Learn'));
+const UnitSelector = lazy(() => import('./pages/UnitSelector'));
+const TeacherBooks = lazy(() => import('./pages/TeacherBooks'));
+const TeacherUnitManagement = lazy(() => import('./pages/TeacherUnitManagement'));
+const TeacherStudents = lazy(() => import('./pages/TeacherStudents'));
+const TeacherClassManagement = lazy(() => import('./pages/TeacherClassManagement'));
+const TeacherLeads = lazy(() => import('./pages/TeacherLeads'));
+const SpellingPractice = lazy(() => import('./pages/SpellingPractice'));
+const FillBlankPractice = lazy(() => import('./pages/FillBlankPractice'));
+const QuizPractice = lazy(() => import('./pages/QuizPractice'));
+const CompetitionLearning = lazy(() => import('./pages/CompetitionLearning'));
+const CompletionScreen = lazy(() => import('./pages/CompletionScreen'));
+const AchievementsPage = lazy(() => import('./pages/AchievementsPage'));
+const LearningAnalytics = lazy(() => import('./pages/LearningAnalytics'));
+const TeacherCompetitionManager = lazy(() => import('./pages/TeacherCompetitionManager'));
+const TeacherAnalytics = lazy(() => import('./pages/TeacherAnalytics'));
+const TeacherStudentDetail = lazy(() => import('./pages/TeacherStudentDetail'));
+const MistakeBook = lazy(() => import('./pages/MistakeBook'));
+const MistakeChallenge = lazy(() => import('./pages/MistakeChallenge'));
+const BookProgressDetail = lazy(() => import('./pages/BookProgressDetail'));
+const StudentReadingList = lazy(() => import('./pages/StudentReadingList'));
+const StudentReadingPractice = lazy(() => import('./pages/StudentReadingPractice'));
+const TeacherReadingList = lazy(() => import('./pages/TeacherReadingList'));
+const TeacherReadingEditor = lazy(() => import('./pages/TeacherReadingEditor'));
+const TeacherReadingAssign = lazy(() => import('./pages/TeacherReadingAssign'));
+const TeacherBookAssignment = lazy(() => import('./pages/TeacherBookAssignment'));
+const StudentAssignments = lazy(() => import('./pages/StudentAssignments'));
+const TeacherHomework = lazy(() => import('./pages/TeacherHomework'));
+const StudentHomework = lazy(() => import('./pages/StudentHomework'));
+const AdminUserManagement = lazy(() => import('./pages/AdminUserManagement'));
+const AdminContentManagement = lazy(() => import('./pages/AdminContentManagement'));
+const AdminStatistics = lazy(() => import('./pages/AdminStatistics'));
+const AdminSettings = lazy(() => import('./pages/AdminSettings'));
+const AIConfig = lazy(() => import('./pages/Admin/AIConfig'));
+const TeacherExamPreview = lazy(() => import('./pages/TeacherExamPreview'));
+const RedeemSubscription = lazy(() => import('./pages/RedeemSubscription'));
+const AdminSubscriptions = lazy(() => import('./pages/AdminSubscriptions'));
+const PetPage = lazy(() => import('./pages/PetPage'));
+const WordClassifyLearning = lazy(() => import('./pages/WordClassifyLearning'));
+const MemoryCurve = lazy(() => import('./pages/MemoryCurve'));
+const UnitExam = lazy(() => import('./pages/UnitExam'));
+const UnitExamResult = lazy(() => import('./pages/UnitExamResult'));
+const DictationPractice = lazy(() => import('./pages/DictationPractice'));
+const SentenceFillPractice = lazy(() => import('./pages/SentenceFillPractice'));
+
+// 路由级 loading 占位
+const PageLoading = () => (
+  <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mx-auto mb-4"></div>
+      <p className="text-gray-600">加载中...</p>
+    </div>
+  </div>
+);
 
 // 路由保护组件
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
@@ -124,8 +137,10 @@ const DashboardRedirect = () => {
 
 function App() {
   return (
-    <Router>
-      <Routes>
+    <ErrorBoundary>
+      <Router>
+        <Suspense fallback={<PageLoading />}>
+          <Routes>
         {/* 登录页面 */}
         <Route path="/login" element={<Login />} />
 
@@ -639,7 +654,9 @@ function App() {
         {/* 默认路由 */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </Suspense>
     </Router>
+    </ErrorBoundary>
   );
 }
 
