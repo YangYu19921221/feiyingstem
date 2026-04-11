@@ -203,6 +203,12 @@ const StudentDashboard = () => {
             >
               开始复习
             </button>
+            <button
+              onClick={handleLogout}
+              className="mt-3 text-sm text-gray-400 hover:text-gray-600 transition"
+            >
+              退出登录
+            </button>
           </div>
         </div>
       )}

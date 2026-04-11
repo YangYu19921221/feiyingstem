@@ -8,6 +8,7 @@ import {
   EXAM_TYPE_LABELS,
 } from '../api/unitExam';
 import { API_BASE_URL } from '../config/env';
+import { toast } from '../components/Toast';
 
 type ExamPhase = 'start' | 'testing' | 'submitting';
 
@@ -156,8 +157,10 @@ const UnitExam = () => {
       navigate(`/student/exam/result/${result.paper_id}`, {
         state: { result, unitId },
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('提交失败:', err);
+      const msg = err?.response?.data?.detail || '提交失败，请重试';
+      toast.error(msg);
       setPhase('testing');
     }
   };
