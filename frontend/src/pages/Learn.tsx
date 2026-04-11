@@ -58,26 +58,30 @@ const Learn = () => {
   };
 
   const handleNext = () => {
-    setStats({ ...stats, skipped: stats.skipped + 1 });
-    moveToNext();
+    moveToNext('skipped');
   };
 
   const handleKnow = () => {
-    setStats({ ...stats, known: stats.known + 1 });
-    moveToNext();
+    moveToNext('known');
   };
 
   const handleDontKnow = () => {
-    setStats({ ...stats, unknown: stats.unknown + 1 });
-    moveToNext();
+    moveToNext('unknown');
   };
 
-  const moveToNext = () => {
+  const moveToNext = (action: 'known' | 'unknown' | 'skipped') => {
+    const newStats = {
+      known: stats.known + (action === 'known' ? 1 : 0),
+      unknown: stats.unknown + (action === 'unknown' ? 1 : 0),
+      skipped: stats.skipped + (action === 'skipped' ? 1 : 0),
+    };
+    setStats(newStats);
+
     if (currentIndex < words.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
       // 完成所有单词
-      toast.success(`学习完成! 📚 认识: ${stats.known + 1} 个 ✅ 不认识: ${stats.unknown} 个 ❌ 跳过: ${stats.skipped} 个 ⏭️ 总计: ${words.length} 个单词`);
+      toast.success(`学习完成! 📚 认识: ${newStats.known} 个 ✅ 不认识: ${newStats.unknown} 个 ❌ 跳过: ${newStats.skipped} 个 ⏭️ 总计: ${words.length} 个单词`);
 
       // 重新开始
       setCurrentIndex(0);
