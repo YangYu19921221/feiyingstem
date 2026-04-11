@@ -14,6 +14,7 @@ from app.models.learning import LearningRecord, WordMastery
 from app.api.v1.auth import get_current_student
 from app.schemas.mistake_book import (
     MistakeWordDetail,
+    MistakeWordPage,
     MistakeBookStats,
     MistakePracticeRequest,
     MistakePracticeResponse,
@@ -162,19 +163,23 @@ async def get_mistake_book_stats(
     )
 
 
-@router.get("/mistake-book/words", response_model=List[MistakeWordDetail])
+@router.get("/mistake-book/words", response_model=MistakeWordPage)
 async def get_mistake_words(
     only_unresolved: bool = True,
     unit_id: int = None,
+    page: int = 1,
+    page_size: int = 20,
     current_user: User = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    获取错题单词列表
+    获取错题单词列表（分页）
 
     参数:
     - only_unresolved: 只显示未解决的错题 (掌握度 < 4)
     - unit_id: 筛选指定单元的错题
+    - page: 页码（从1开始）
+    - page_size: 每页数量（默认20）
     """
     user_id = current_user.id
 
@@ -241,6 +246,19 @@ async def get_mistake_words(
     # 按错误次数降序排列
     query = query.order_by(desc('total_mistakes'))
 
+    # 先获取总数
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = count_result.scalar() or 0
+
+    # 分页
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 20
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+    query = query.limit(page_size).offset(offset)
+
     result = await db.execute(query)
     rows = result.fetchall()
 
@@ -285,7 +303,13 @@ async def get_mistake_words(
             is_resolved=is_resolved,
         ))
 
-    return mistake_words
+    return MistakeWordPage(
+        items=mistake_words,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.post("/mistake-book/practice", response_model=MistakePracticeResponse)
