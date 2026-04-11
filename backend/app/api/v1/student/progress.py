@@ -155,14 +155,13 @@ async def start_learning(
         completed_words = progress.completed_words
         has_existing_progress = True
 
-        # 如果已经完成,从头开始
+        # 如果已经完成,从头开始复习但保留完成状态
         if progress.is_completed:
             current_word_index = 0
-            completed_words = 0
-            progress.is_completed = False
+            completed_words = progress.completed_words  # 保留已完成数
             progress.current_word_index = 0
-            progress.completed_words = 0
-            message = "该单元已完成,现在重新开始学习"
+            # 不重置 is_completed 和 completed_words,避免丢失进度
+            message = "该单元已完成,现在从头复习"
         else:
             message = f"继续上次的学习,从第 {current_word_index + 1} 个单词开始"
 
