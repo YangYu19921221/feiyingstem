@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, X } from 'lucide-react';
@@ -19,6 +19,7 @@ import {
 import { submitReviewRecords } from '../api/memoryCurve';
 import { API_BASE_URL } from '../config/env';
 import { edgeTtsUrl } from '../hooks/useAudio';
+import useIdleDetector from '../hooks/useIdleDetector';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 
@@ -43,6 +44,18 @@ const FlashCardLearning = () => {
   const [studySession, setStudySession] = useState<StudySessionResponse | null>(null);
   const [wordAnswers, setWordAnswers] = useState<WordAnswerCreate[]>([]);
   const [wordStartTime, setWordStartTime] = useState<number>(0);
+  // 空闲检测：无操作60秒 或 标签页隐藏 → 补偿 wordStartTime
+  const isIdle = useIdleDetector();
+  const idleStartRef = useRef(0);
+  useEffect(() => {
+    if (isIdle) {
+      idleStartRef.current = Date.now();
+    } else if (idleStartRef.current > 0) {
+      const idleTime = Date.now() - idleStartRef.current;
+      setWordStartTime(prev => prev > 0 ? prev + idleTime : prev);
+      idleStartRef.current = 0;
+    }
+  }, [isIdle]);
   const [currentWordMastery, setCurrentWordMastery] = useState<WordMasteryResponse | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);

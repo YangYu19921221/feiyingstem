@@ -22,6 +22,7 @@ import DictationPhase, { type DictationResult } from '../components/classify/Dic
 import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
+import useIdleDetector from '../hooks/useIdleDetector';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
 
 type Phase = 'classify' | 'speechVerify' | 'dictation' | 'sentenceFill' | 'exam' | 'summary';
@@ -75,24 +76,18 @@ const WordClassifyLearning = () => {
 
   const [studySession, setStudySession] = useState<StudySessionResponse | null>(null);
   const [startTime, setStartTime] = useState(Date.now());
-  // 离开页面暂停计时
-  const hiddenAtRef = useRef(0);
+  // 空闲检测：无操作60秒 或 标签页隐藏 → 暂停计时
+  const isIdle = useIdleDetector();
+  const idleStartRef = useRef(0);
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.hidden) {
-        hiddenAtRef.current = Date.now();
-      } else if (hiddenAtRef.current > 0) {
-        const away = Date.now() - hiddenAtRef.current;
-        if (away > 30000) {
-          // 离开超30秒，补偿startTime使这段时间不计入
-          setStartTime(prev => prev + away);
-        }
-        hiddenAtRef.current = 0;
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
+    if (isIdle) {
+      idleStartRef.current = Date.now();
+    } else if (idleStartRef.current > 0) {
+      const idleTime = Date.now() - idleStartRef.current;
+      setStartTime(prev => prev + idleTime);
+      idleStartRef.current = 0;
+    }
+  }, [isIdle]);
 
   const [showExitDialog, setShowExitDialog] = useState(false);
 

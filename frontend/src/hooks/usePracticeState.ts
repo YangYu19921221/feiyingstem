@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createLearningRecords } from '../api/learningRecords';
+import useIdleDetector from './useIdleDetector';
 
 export interface PracticeResult {
   correct: boolean | null;
@@ -51,6 +52,8 @@ export function usePracticeState({
   const [wrongAnswers, setWrongAnswers] = useState<Set<number>>(new Set());
   const [results, setResults] = useState<(boolean | null)[]>([]);
 
+  const isIdle = useIdleDetector();
+
   // 初始化 results 数组
   useEffect(() => {
     if (questions.length > 0) {
@@ -58,35 +61,12 @@ export function usePracticeState({
     }
   }, [questions.length]);
 
-  // 计时器（离开页面暂停，回来超30秒重置）
+  // 计时器：空闲时暂停（无键盘/鼠标操作60秒 或 标签页隐藏）
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval>;
-    let hiddenAt = 0;
-
-    const startTimer = () => {
-      timer = setInterval(() => setTimeSpent(t => t + 1), 1000);
-    };
-
-    const handleVisibility = () => {
-      if (document.hidden) {
-        clearInterval(timer);
-        hiddenAt = Date.now();
-      } else {
-        const away = (Date.now() - hiddenAt) / 1000;
-        if (away > 30) {
-          // 离开超过30秒，不累计这段时间
-        }
-        startTimer();
-      }
-    };
-
-    startTimer();
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
+    if (isIdle) return;
+    const timer = setInterval(() => setTimeSpent(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isIdle]);
 
   const answered = results.filter(r => r !== null).length;
   const accuracy = answered > 0 ? Math.round((score / answered) * 100) : 0;
