@@ -41,11 +41,9 @@ export default function ColoredWord({ word, syllables, className = '' }: Colored
     // 组间空格
     if (gi > 0) {
       if (cursor < word.length && word[cursor] === ' ') {
-        elements.push(<span key={`sp-${gi}`}> </span>);
         cursor++;
-      } else {
-        elements.push(<span key={`sp-${gi}`}> </span>);
       }
+      elements.push(<span key={`sp-${gi}`}> </span>);
     }
 
     const parts = group.includes('#') ? group.split('#') : [group];
