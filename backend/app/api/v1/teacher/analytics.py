@@ -140,115 +140,130 @@ async def get_all_students_stats(
     - 学习时长
     - 准确率
     """
-    # 获取所有学生
-    result = await db.execute(
-        select(User).where(User.role == "student")
-    )
+    return await _build_students_stats(db)
+
+
+async def _build_students_stats(
+    db: AsyncSession,
+    student_id: int | None = None,
+) -> list[StudentLearningStats]:
+    """
+    聚合查询所有（或单个）学生的学习统计，避免 N+1。
+
+    当 student_id 不为 None 时，只返回该学生的统计。
+    """
+    # 学生基本信息
+    student_query = select(User).where(User.role == "student")
+    if student_id is not None:
+        student_query = student_query.where(User.id == student_id)
+    result = await db.execute(student_query)
     students = result.scalars().all()
+    if not students:
+        return []
+    student_map = {s.id: s for s in students}
 
-    students_stats = []
-
-    for student in students:
-        # 统计该学生的数据
-
-        # 学习单词数
-        result = await db.execute(
-            select(func.count(WordMastery.id))
-            .where(WordMastery.user_id == student.id)
+    # --- 聚合1: WordMastery 统计 (学习数/掌握数/平均掌握度/薄弱数) ---
+    mastery_filter = WordMastery.user_id == student_id if student_id else True
+    result = await db.execute(
+        select(
+            WordMastery.user_id,
+            func.count(WordMastery.id).label("total_words"),
+            func.sum((WordMastery.mastery_level >= 4).cast(Integer)).label("mastered"),
+            func.avg(WordMastery.mastery_level).label("avg_mastery"),
+            func.sum((WordMastery.mastery_level < 3).cast(Integer)).label("weak"),
         )
-        total_words_studied = result.scalar() or 0
+        .where(mastery_filter)
+        .group_by(WordMastery.user_id)
+    )
+    mastery_map = {}
+    for row in result.all():
+        mastery_map[row.user_id] = {
+            "total_words": row.total_words or 0,
+            "mastered": row.mastered or 0,
+            "avg_mastery": row.avg_mastery or 0.0,
+            "weak": row.weak or 0,
+        }
 
-        # 掌握单词数
-        result = await db.execute(
-            select(func.count(WordMastery.id))
-            .where(
-                and_(
-                    WordMastery.user_id == student.id,
-                    WordMastery.mastery_level >= 4
-                )
-            )
+    # --- 聚合2: StudyCalendar 统计 (学习天数/总时长/最后学习日期) ---
+    cal_filter = StudyCalendar.user_id == student_id if student_id else True
+    result = await db.execute(
+        select(
+            StudyCalendar.user_id,
+            func.count(StudyCalendar.id).label("study_days"),
+            func.sum(StudyCalendar.duration).label("total_duration"),
+            func.max(StudyCalendar.study_date).label("last_date"),
         )
-        mastered_words = result.scalar() or 0
+        .where(cal_filter)
+        .group_by(StudyCalendar.user_id)
+    )
+    calendar_map = {}
+    for row in result.all():
+        last_dt = datetime.combine(row.last_date, datetime.min.time()) if row.last_date else None
+        calendar_map[row.user_id] = {
+            "study_days": row.study_days or 0,
+            "total_duration": row.total_duration or 0,
+            "last_date": last_dt,
+        }
 
-        # 平均掌握度
-        result = await db.execute(
-            select(func.avg(WordMastery.mastery_level))
-            .where(WordMastery.user_id == student.id)
+    # --- 聚合3: LearningRecord 统计 (正确数/总数) ---
+    lr_filter = LearningRecord.user_id == student_id if student_id else True
+    result = await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.sum(LearningRecord.is_correct.cast(Integer)).label("correct"),
+            func.count(LearningRecord.id).label("total"),
         )
-        average_mastery = result.scalar() or 0.0
+        .where(lr_filter)
+        .group_by(LearningRecord.user_id)
+    )
+    record_map = {}
+    for row in result.all():
+        record_map[row.user_id] = {
+            "correct": row.correct or 0,
+            "total": row.total or 0,
+        }
 
-        # 学习天数
-        result = await db.execute(
-            select(func.count(StudyCalendar.id))
-            .where(StudyCalendar.user_id == student.id)
-        )
-        total_study_days = result.scalar() or 0
+    # --- 组装结果 ---
+    stats_list: list[StudentLearningStats] = []
+    for sid, student in student_map.items():
+        m = mastery_map.get(sid, {})
+        c = calendar_map.get(sid, {})
+        r = record_map.get(sid, {})
 
-        # 学习时长
-        result = await db.execute(
-            select(func.sum(StudyCalendar.duration))
-            .where(StudyCalendar.user_id == student.id)
-        )
-        total_study_time = result.scalar() or 0
+        total_words = m.get("total_words", 0)
+        mastered_words = m.get("mastered", 0)
+        avg_mastery = m.get("avg_mastery", 0.0)
+        weak_count = m.get("weak", 0)
 
-        # 最后学习日期
-        result = await db.execute(
-            select(StudyCalendar.study_date)
-            .where(StudyCalendar.user_id == student.id)
-            .order_by(StudyCalendar.study_date.desc())
-            .limit(1)
-        )
-        last_date_row = result.first()
-        last_study_date = datetime.combine(last_date_row[0], datetime.min.time()) if last_date_row else None
+        study_days = c.get("study_days", 0)
+        total_time = c.get("total_duration", 0)
+        last_date = c.get("last_date")
 
-        # 准确率
-        result = await db.execute(
-            select(
-                func.sum(LearningRecord.is_correct.cast(Integer)).label('correct'),
-                func.count(LearningRecord.id).label('total')
-            )
-            .where(LearningRecord.user_id == student.id)
-        )
-        row = result.first()
-        total_correct = row.correct or 0
-        total_records = row.total or 0
-        accuracy_rate = (total_correct / total_records * 100) if total_records > 0 else 0
+        total_correct = r.get("correct", 0)
+        total_records = r.get("total", 0)
+        accuracy = (total_correct / total_records * 100) if total_records > 0 else 0
 
-        # 薄弱单词数(掌握度<3)
-        result = await db.execute(
-            select(func.count(WordMastery.id))
-            .where(
-                and_(
-                    WordMastery.user_id == student.id,
-                    WordMastery.mastery_level < 3
-                )
-            )
-        )
-        weak_words_count = result.scalar() or 0
-
-        students_stats.append(StudentLearningStats(
-            user_id=student.id,
+        stats_list.append(StudentLearningStats(
+            user_id=sid,
             username=student.username,
             full_name=student.full_name or student.username,
-            # 新字段(前端期望)
-            words_learned=total_words_studied,
-            total_learning_time=total_study_time,
-            study_sessions=total_study_days,  # 暂时用学习天数代替会话数
-            last_active=last_study_date,
-            weak_words_count=weak_words_count,
-            # 旧字段(保留兼容性)
-            total_words_studied=total_words_studied,
+            words_learned=total_words,
+            total_learning_time=total_time,
+            study_sessions=study_days,
+            last_active=last_date,
+            weak_words_count=weak_count,
+            total_words_studied=total_words,
             mastered_words=mastered_words,
-            average_mastery=round(average_mastery, 2),
-            total_study_days=total_study_days,
-            total_study_time=total_study_time,
-            last_study_date=last_study_date,
+            average_mastery=round(avg_mastery, 2),
+            total_study_days=study_days,
+            total_study_time=total_time,
+            last_study_date=last_date,
             total_correct=total_correct,
             total_wrong=total_records - total_correct,
-            accuracy_rate=round(accuracy_rate, 2)
+            accuracy_rate=round(accuracy, 2),
         ))
 
-    return students_stats
+    return stats_list
 
 
 # ========================================
@@ -279,24 +294,21 @@ async def get_student_stats(
             detail=f"学生ID {student_id} 不存在"
         )
 
-    # 复用上面的逻辑获取统计数据(简化处理)
-    all_stats = await get_all_students_stats(db, current_user)
-    for stats in all_stats:
-        if stats.user_id == student_id:
-            return stats
+    # 只查询该学生的统计数据
+    stats_list = await _build_students_stats(db, student_id=student_id)
+    if stats_list:
+        return stats_list[0]
 
     # 如果没有任何学习记录,返回空统计
     return StudentLearningStats(
         user_id=student.id,
         username=student.username,
         full_name=student.full_name or student.username,
-        # 新字段
         words_learned=0,
         total_learning_time=0,
         study_sessions=0,
         last_active=None,
         weak_words_count=0,
-        # 旧字段
         total_words_studied=0,
         mastered_words=0,
         average_mastery=0.0,
@@ -305,7 +317,7 @@ async def get_student_stats(
         last_study_date=None,
         total_correct=0,
         total_wrong=0,
-        accuracy_rate=0.0
+        accuracy_rate=0.0,
     )
 
 
@@ -535,7 +547,7 @@ async def get_class_ranking(
     - study_time: 学习时长
     """
     # 获取所有学生统计
-    all_stats = await get_all_students_stats(db, current_user)
+    all_stats = await _build_students_stats(db)
 
     # 根据指标排序
     metric_name_map = {
