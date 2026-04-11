@@ -983,24 +983,17 @@ class AIService:
 
                     # 尝试解密API Key,如果失败或返回DECRYPTION_FAILED则直接使用明文
                     api_key = provider.api_key
-                    print(f"🔍 [DEBUG] 原始API Key: {api_key[:20] if api_key else 'None'}..., 长度: {len(api_key) if api_key else 0}")
 
                     try:
                         from app.api.v1.admin.ai_config import decrypt_api_key
                         decrypted_key = decrypt_api_key(provider.api_key)
-                        print(f"🔍 [DEBUG] 解密后API Key: {decrypted_key[:20] if decrypted_key else 'None'}..., 长度: {len(decrypted_key) if decrypted_key else 0}")
-                        # 如果解密返回DECRYPTION_FAILED,说明是明文key,使用原始key
                         if decrypted_key == "DECRYPTION_FAILED":
-                            print(f"⚠️  解密返回DECRYPTION_FAILED,使用明文API Key")
                             api_key = provider.api_key
                         else:
                             api_key = decrypted_key
-                    except Exception as decrypt_error:
+                    except Exception:
                         # 解密失败,使用明文API Key
-                        print(f"⚠️  API Key解密异常,使用明文: {decrypt_error}")
                         api_key = provider.api_key
-
-                    print(f"🔍 [DEBUG] 最终API Key: {api_key[:20] if api_key else 'None'}..., 长度: {len(api_key) if api_key else 0}")
 
                     print(f"✓ 从数据库加载AI配置: provider={provider.provider_name}, model={provider.model_name}")
                     config = {
@@ -1081,13 +1074,6 @@ class AIService:
         """调用OpenAI兼容API (包括通义千问等)"""
         try:
             from openai import AsyncOpenAI
-
-            # 详细日志:API调用参数
-            print(f"🔧 [DEBUG] API调用参数:")
-            print(f"  - base_url: {base_url}")
-            print(f"  - model: {model}")
-            print(f"  - api_key前缀: {api_key[:20] if api_key else 'None'}...")
-            print(f"  - api_key长度: {len(api_key) if api_key else 0}")
 
             client = AsyncOpenAI(
                 api_key=api_key,
