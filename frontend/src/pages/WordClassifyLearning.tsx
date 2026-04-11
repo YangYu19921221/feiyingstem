@@ -57,6 +57,7 @@ const WordClassifyLearning = () => {
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const isReviewRef = useRef(false);
 
   const [currentGroupIndex, setCurrentGroupIndex] = useState(0);
   const [allGroupResults, setAllGroupResults] = useState<GroupResult[]>([]);
@@ -137,6 +138,7 @@ const WordClassifyLearning = () => {
 
       const isReviewPractice = sessionStorage.getItem('is_review_practice') === 'true';
       const isMistakePractice = sessionStorage.getItem('is_mistake_practice') === 'true';
+      if (isReviewPractice) isReviewRef.current = true;
 
       let data: StartLearningResponse;
 
@@ -356,6 +358,10 @@ const WordClassifyLearning = () => {
   const handleExamPass = (correct: number, total: number) => {
     setPhase('summary');
     clearLocalProgress();
+    // 复习模式完成 → 标记强制复习已完成
+    if (isReviewRef.current) {
+      sessionStorage.setItem('forced_review_done', 'true');
+    }
   };
 
   // 过关检测重考

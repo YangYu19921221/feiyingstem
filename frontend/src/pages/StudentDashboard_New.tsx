@@ -56,6 +56,10 @@ const StudentDashboard = () => {
   const [mistakeStats, setMistakeStats] = useState<{ unresolved_mistakes: number } | null>(null);
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
 
+  // 强制复习：本次会话未完成复习则拦截
+  const forcedReviewDone = sessionStorage.getItem('forced_review_done') === 'true';
+  const showForcedReview = !loading && !forcedReviewDone && reviewDueCount > 0;
+
   useEffect(() => {
     // 加载学生的单词本列表和统计数据
     loadBooks();
@@ -160,6 +164,7 @@ const StudentDashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
+    sessionStorage.removeItem('forced_review_done');
     navigate('/login');
   };
 
@@ -180,6 +185,27 @@ const StudentDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+      {/* 强制复习遮罩 */}
+      {showForcedReview && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+            <div className="text-6xl mb-4">🧠</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-3">先复习再学习</h2>
+            <p className="text-gray-600 mb-2">
+              你有 <span className="font-bold text-primary text-xl">{reviewDueCount}</span> 个单词待复习
+            </p>
+            <p className="text-sm text-gray-400 mb-6">
+              根据记忆曲线，这些单词即将遗忘，现在复习效果最好
+            </p>
+            <button
+              onClick={() => navigate('/student/memory-curve')}
+              className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-2xl text-lg font-bold hover:shadow-lg transition"
+            >
+              开始复习
+            </button>
+          </div>
+        </div>
+      )}
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
