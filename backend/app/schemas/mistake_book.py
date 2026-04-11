@@ -34,6 +34,15 @@ class MistakeWordDetail(BaseModel):
     is_resolved: bool = False  # 如果掌握度 >= 4,视为已解决
 
 
+class MistakeWordPage(BaseModel):
+    """错题分页响应"""
+    items: List[MistakeWordDetail]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class MistakeBookStats(BaseModel):
     """错题集统计"""
     total_mistakes: int  # 总错题数

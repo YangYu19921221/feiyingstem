@@ -31,6 +31,14 @@ export interface MistakeWordDetail {
   is_resolved: boolean;
 }
 
+export interface MistakeWordPage {
+  items: MistakeWordDetail[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export interface MistakeBookStats {
   total_mistakes: number;
   unresolved_mistakes: number;
@@ -72,13 +80,15 @@ export const getMistakeBookStats = async (): Promise<MistakeBookStats> => {
 };
 
 /**
- * 获取错题单词列表
+ * 获取错题单词列表（分页）
  */
 export const getMistakeWords = async (
   onlyUnresolved: boolean = true,
-  unitId?: number
-): Promise<MistakeWordDetail[]> => {
-  let url = `/student/mistake-book/words?only_unresolved=${onlyUnresolved}`;
+  unitId?: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<MistakeWordPage> => {
+  let url = `/student/mistake-book/words?only_unresolved=${onlyUnresolved}&page=${page}&page_size=${pageSize}`;
   if (unitId) {
     url += `&unit_id=${unitId}`;
   }

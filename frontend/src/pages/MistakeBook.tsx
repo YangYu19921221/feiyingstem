@@ -19,25 +19,39 @@ const MistakeBook = () => {
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
   const [selectedMode, setSelectedMode] = useState<string>('quiz');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
-    loadData();
+    setCurrentPage(1);
+    loadData(1);
   }, [showResolved]);
 
-  const loadData = async () => {
+  const loadData = async (page: number = currentPage) => {
     try {
       setLoading(true);
       const [statsData, wordsData] = await Promise.all([
         getMistakeBookStats(),
-        getMistakeWords(!showResolved),
+        getMistakeWords(!showResolved, undefined, page, PAGE_SIZE),
       ]);
       setStats(statsData);
-      setMistakeWords(wordsData || []);
+      setMistakeWords(wordsData.items || []);
+      setTotalPages(wordsData.total_pages);
+      setTotalCount(wordsData.total);
+      setCurrentPage(wordsData.page);
     } catch (error) {
       console.error('加载错题集失败:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages) return;
+    loadData(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleStartPractice = async () => {
@@ -246,6 +260,7 @@ const MistakeBook = () => {
               </p>
             </div>
           ) : (
+            <>
             <div className="grid grid-cols-1 gap-4">
               <AnimatePresence>
                 {mistakeWords.map((word, index) => (
@@ -338,6 +353,54 @@ const MistakeBook = () => {
                 ))}
               </AnimatePresence>
             </div>
+
+            {/* 分页控件 */}
+            {totalPages > 1 && (() => {
+              const pages: (number | 'dots')[] = [];
+              const nums = Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2);
+              nums.forEach((p, i) => {
+                if (i > 0 && p - nums[i - 1] > 1) pages.push('dots');
+                pages.push(p);
+              });
+              return (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage <= 1}
+                    className="px-3 py-2 rounded-lg text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed bg-white shadow hover:bg-gray-50"
+                  >
+                    上一页
+                  </button>
+                  {pages.map((p, i) =>
+                    p === 'dots' ? (
+                      <span key={`dots-${i}`} className="px-2 text-gray-400">...</span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => handlePageChange(p)}
+                        className={`w-10 h-10 rounded-lg text-sm font-medium transition ${
+                          p === currentPage
+                            ? 'bg-primary text-white shadow-md'
+                            : 'bg-white shadow hover:bg-gray-50 text-gray-700'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage >= totalPages}
+                    className="px-3 py-2 rounded-lg text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed bg-white shadow hover:bg-gray-50"
+                  >
+                    下一页
+                  </button>
+                  <span className="text-xs text-gray-400 ml-2">共 {totalCount} 个</span>
+                </div>
+              );
+            })()}
+            </>
           )}
         </div>
       </div>
