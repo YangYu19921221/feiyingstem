@@ -14,6 +14,8 @@ import { toast } from '../components/Toast';
 
 const PAGE_SIZE = 20;
 
+const PAGE_SIZE = 20;
+
 const MistakeBook = () => {
   const navigate = useNavigate();
 
