@@ -122,16 +122,23 @@ const DashboardRedirect = () => {
     return <Navigate to="/login" replace />;
   }
 
-  const user = JSON.parse(userStr);
+  try {
+    const user = JSON.parse(userStr);
 
-  switch (user.role) {
-    case 'admin':
-      return <AdminDashboard />;
-    case 'teacher':
-      return <TeacherDashboard />;
-    case 'student':
-    default:
-      return <StudentDashboard />;
+    switch (user.role) {
+      case 'admin':
+        return <AdminDashboard />;
+      case 'teacher':
+        return <TeacherDashboard />;
+      case 'student':
+      default:
+        return <StudentDashboard />;
+    }
+  } catch {
+    // localStorage 数据损坏,清理后跳转登录
+    localStorage.removeItem('user');
+    localStorage.removeItem('access_token');
+    return <Navigate to="/login" replace />;
   }
 };
 
