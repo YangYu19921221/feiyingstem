@@ -540,40 +540,50 @@ async def get_student_books(
     )
     books = result.scalars().all()
 
-    # 2. 为每个单词本计算进度
-    book_list = []
+    if not books:
+        return []
 
-    for book in books:
-        # 获取该单词本下的所有单元
-        result = await db.execute(
-            select(func.count()).select_from(Unit).where(Unit.book_id == book.id)
+    book_ids = [b.id for b in books]
+
+    # 3. 一次性统计每本书的单元数
+    result = await db.execute(
+        select(Unit.book_id, func.count().label("cnt"))
+        .where(Unit.book_id.in_(book_ids))
+        .group_by(Unit.book_id)
+    )
+    unit_count_map = {row.book_id: row.cnt for row in result.all()}
+
+    # 4. 一次性统计每本书的单词数
+    result = await db.execute(
+        select(Unit.book_id, func.count(UnitWord.id).label("cnt"))
+        .join(UnitWord, UnitWord.unit_id == Unit.id)
+        .where(Unit.book_id.in_(book_ids))
+        .group_by(Unit.book_id)
+    )
+    word_count_map = {row.book_id: row.cnt for row in result.all()}
+
+    # 5. 一次性获取该学生所有单词本的学习进度
+    result = await db.execute(
+        select(
+            LearningProgress.book_id,
+            func.sum(LearningProgress.completed_words).label("completed")
         )
-        unit_count = result.scalar()
-
-        # 获取总单词数（实时计算）
-        result = await db.execute(
-            select(func.count()).select_from(UnitWord)
-            .join(Unit, UnitWord.unit_id == Unit.id)
-            .where(Unit.book_id == book.id)
-        )
-        word_count = result.scalar() or 0
-
-        # 获取该单词本的学习进度
-        result = await db.execute(
-            select(LearningProgress)
-            .where(
-                and_(
-                    LearningProgress.user_id == user_id,
-                    LearningProgress.book_id == book.id
-                )
+        .where(
+            and_(
+                LearningProgress.user_id == user_id,
+                LearningProgress.book_id.in_(book_ids)
             )
         )
-        progresses = result.scalars().all()
+        .group_by(LearningProgress.book_id)
+    )
+    progress_map = {row.book_id: row.completed or 0 for row in result.all()}
 
-        # 计算已完成单词数(取所有单元所有模式的最大进度)
-        completed_words = sum([p.completed_words for p in progresses]) if progresses else 0
-
-        # 计算进度百分比
+    # 6. 组装结果
+    book_list = []
+    for book in books:
+        unit_count = unit_count_map.get(book.id, 0)
+        word_count = word_count_map.get(book.id, 0)
+        completed_words = progress_map.get(book.id, 0)
         progress_percentage = (completed_words / word_count * 100) if word_count > 0 else 0.0
 
         book_list.append(StudentBookListItem(
@@ -587,7 +597,7 @@ async def get_student_books(
             word_count=word_count,
             progress_percentage=round(progress_percentage, 2),
             owned=book.id in owned_book_ids,
-            created_at=book.created_at
+            created_at=book.created_at,
         ))
 
     return book_list
