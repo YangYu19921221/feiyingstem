@@ -1,59 +1,74 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect, Suspense, lazy } from 'react';
+import { useState, useEffect, Suspense, lazy, type ComponentType } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// chunk 加载失败时自动刷新一次（部署后旧 chunk 404）
+function lazyWithRetry(factory: () => Promise<{ default: ComponentType<any> }>) {
+  return lazy(() =>
+    factory().catch(() => {
+      const reloaded = sessionStorage.getItem('chunk_reload');
+      if (!reloaded) {
+        sessionStorage.setItem('chunk_reload', '1');
+        window.location.reload();
+      }
+      sessionStorage.removeItem('chunk_reload');
+      return factory();
+    })
+  );
+}
+
 // 路由懒加载 — 按需拆包,减少首屏 bundle
-const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const Assessment = lazy(() => import('./pages/Assessment'));
-const StudentDashboard = lazy(() => import('./pages/StudentDashboard_New'));
-const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const Learn = lazy(() => import('./pages/Learn'));
-const UnitSelector = lazy(() => import('./pages/UnitSelector'));
-const TeacherBooks = lazy(() => import('./pages/TeacherBooks'));
-const TeacherUnitManagement = lazy(() => import('./pages/TeacherUnitManagement'));
-const TeacherStudents = lazy(() => import('./pages/TeacherStudents'));
-const TeacherClassManagement = lazy(() => import('./pages/TeacherClassManagement'));
-const TeacherLeads = lazy(() => import('./pages/TeacherLeads'));
-const SpellingPractice = lazy(() => import('./pages/SpellingPractice'));
-const FillBlankPractice = lazy(() => import('./pages/FillBlankPractice'));
-const QuizPractice = lazy(() => import('./pages/QuizPractice'));
-const CompetitionLearning = lazy(() => import('./pages/CompetitionLearning'));
-const CompletionScreen = lazy(() => import('./pages/CompletionScreen'));
-const AchievementsPage = lazy(() => import('./pages/AchievementsPage'));
-const LearningAnalytics = lazy(() => import('./pages/LearningAnalytics'));
-const TeacherCompetitionManager = lazy(() => import('./pages/TeacherCompetitionManager'));
-const TeacherAnalytics = lazy(() => import('./pages/TeacherAnalytics'));
-const TeacherStudentDetail = lazy(() => import('./pages/TeacherStudentDetail'));
-const MistakeBook = lazy(() => import('./pages/MistakeBook'));
-const MistakeChallenge = lazy(() => import('./pages/MistakeChallenge'));
-const BookProgressDetail = lazy(() => import('./pages/BookProgressDetail'));
-const StudentReadingList = lazy(() => import('./pages/StudentReadingList'));
-const StudentReadingPractice = lazy(() => import('./pages/StudentReadingPractice'));
-const TeacherReadingList = lazy(() => import('./pages/TeacherReadingList'));
-const TeacherReadingEditor = lazy(() => import('./pages/TeacherReadingEditor'));
-const TeacherReadingAssign = lazy(() => import('./pages/TeacherReadingAssign'));
-const TeacherBookAssignment = lazy(() => import('./pages/TeacherBookAssignment'));
-const StudentAssignments = lazy(() => import('./pages/StudentAssignments'));
-const TeacherHomework = lazy(() => import('./pages/TeacherHomework'));
-const StudentHomework = lazy(() => import('./pages/StudentHomework'));
-const AdminUserManagement = lazy(() => import('./pages/AdminUserManagement'));
-const AdminContentManagement = lazy(() => import('./pages/AdminContentManagement'));
-const AdminStatistics = lazy(() => import('./pages/AdminStatistics'));
-const AdminSettings = lazy(() => import('./pages/AdminSettings'));
-const AIConfig = lazy(() => import('./pages/Admin/AIConfig'));
-const TeacherExamPreview = lazy(() => import('./pages/TeacherExamPreview'));
-const RedeemSubscription = lazy(() => import('./pages/RedeemSubscription'));
-const AdminSubscriptions = lazy(() => import('./pages/AdminSubscriptions'));
-const PetPage = lazy(() => import('./pages/PetPage'));
-const WordClassifyLearning = lazy(() => import('./pages/WordClassifyLearning'));
-const MemoryCurve = lazy(() => import('./pages/MemoryCurve'));
-const UnitExam = lazy(() => import('./pages/UnitExam'));
-const UnitExamResult = lazy(() => import('./pages/UnitExamResult'));
-const DictationPractice = lazy(() => import('./pages/DictationPractice'));
-const SentenceFillPractice = lazy(() => import('./pages/SentenceFillPractice'));
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const Register = lazyWithRetry(() => import('./pages/Register'));
+const ForgotPassword = lazyWithRetry(() => import('./pages/ForgotPassword'));
+const Assessment = lazyWithRetry(() => import('./pages/Assessment'));
+const StudentDashboard = lazyWithRetry(() => import('./pages/StudentDashboard_New'));
+const TeacherDashboard = lazyWithRetry(() => import('./pages/TeacherDashboard'));
+const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
+const Learn = lazyWithRetry(() => import('./pages/Learn'));
+const UnitSelector = lazyWithRetry(() => import('./pages/UnitSelector'));
+const TeacherBooks = lazyWithRetry(() => import('./pages/TeacherBooks'));
+const TeacherUnitManagement = lazyWithRetry(() => import('./pages/TeacherUnitManagement'));
+const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
+const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
+const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
+const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
+const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
+const QuizPractice = lazyWithRetry(() => import('./pages/QuizPractice'));
+const CompetitionLearning = lazyWithRetry(() => import('./pages/CompetitionLearning'));
+const CompletionScreen = lazyWithRetry(() => import('./pages/CompletionScreen'));
+const AchievementsPage = lazyWithRetry(() => import('./pages/AchievementsPage'));
+const LearningAnalytics = lazyWithRetry(() => import('./pages/LearningAnalytics'));
+const TeacherCompetitionManager = lazyWithRetry(() => import('./pages/TeacherCompetitionManager'));
+const TeacherAnalytics = lazyWithRetry(() => import('./pages/TeacherAnalytics'));
+const TeacherStudentDetail = lazyWithRetry(() => import('./pages/TeacherStudentDetail'));
+const MistakeBook = lazyWithRetry(() => import('./pages/MistakeBook'));
+const MistakeChallenge = lazyWithRetry(() => import('./pages/MistakeChallenge'));
+const BookProgressDetail = lazyWithRetry(() => import('./pages/BookProgressDetail'));
+const StudentReadingList = lazyWithRetry(() => import('./pages/StudentReadingList'));
+const StudentReadingPractice = lazyWithRetry(() => import('./pages/StudentReadingPractice'));
+const TeacherReadingList = lazyWithRetry(() => import('./pages/TeacherReadingList'));
+const TeacherReadingEditor = lazyWithRetry(() => import('./pages/TeacherReadingEditor'));
+const TeacherReadingAssign = lazyWithRetry(() => import('./pages/TeacherReadingAssign'));
+const TeacherBookAssignment = lazyWithRetry(() => import('./pages/TeacherBookAssignment'));
+const StudentAssignments = lazyWithRetry(() => import('./pages/StudentAssignments'));
+const TeacherHomework = lazyWithRetry(() => import('./pages/TeacherHomework'));
+const StudentHomework = lazyWithRetry(() => import('./pages/StudentHomework'));
+const AdminUserManagement = lazyWithRetry(() => import('./pages/AdminUserManagement'));
+const AdminContentManagement = lazyWithRetry(() => import('./pages/AdminContentManagement'));
+const AdminStatistics = lazyWithRetry(() => import('./pages/AdminStatistics'));
+const AdminSettings = lazyWithRetry(() => import('./pages/AdminSettings'));
+const AIConfig = lazyWithRetry(() => import('./pages/Admin/AIConfig'));
+const TeacherExamPreview = lazyWithRetry(() => import('./pages/TeacherExamPreview'));
+const RedeemSubscription = lazyWithRetry(() => import('./pages/RedeemSubscription'));
+const AdminSubscriptions = lazyWithRetry(() => import('./pages/AdminSubscriptions'));
+const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
+const WordClassifyLearning = lazyWithRetry(() => import('./pages/WordClassifyLearning'));
+const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
+const UnitExam = lazyWithRetry(() => import('./pages/UnitExam'));
+const UnitExamResult = lazyWithRetry(() => import('./pages/UnitExamResult'));
+const DictationPractice = lazyWithRetry(() => import('./pages/DictationPractice'));
+const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
 
 // 路由级 loading 占位
 const PageLoading = () => (
