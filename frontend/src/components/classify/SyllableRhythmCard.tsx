@@ -210,21 +210,39 @@ export default function SyllableRhythmCard({
         </span>
       </div>
 
-      {/* 音节显示 */}
+      {/* 音节显示 — 用 word.word 的字符渲染，避免大小写不一致 */}
       <div className="flex items-center justify-center gap-2 mb-6 min-h-[80px]">
-        {syllables.map((syl, i) => (
-          <motion.span
-            key={i}
-            animate={{
-              scale: i === currentSyllableIndex ? 1.3 : 1,
-              opacity: i === currentSyllableIndex ? 1 : 0.4,
-            }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            className={`text-4xl font-bold ${SYLLABLE_COLORS[i % SYLLABLE_COLORS.length]}`}
-          >
-            {syl}
-          </motion.span>
-        ))}
+        {(() => {
+          let cursor = 0;
+          return syllables.map((syl, i) => {
+            const isLast = i === syllables.length - 1;
+            let end = cursor + syl.length;
+            if (isLast) {
+              // 最后一段取完剩余字符，防止连字符导致末尾丢字
+              end = word.word.length;
+            } else {
+              // 非字母非空格字符（连字符等）并入当前段
+              while (end < word.word.length && word.word[end] !== ' ' && !/[a-zA-Z]/.test(word.word[end])) {
+                end++;
+              }
+            }
+            const slice = word.word.slice(cursor, end);
+            cursor = end;
+            return (
+              <motion.span
+                key={i}
+                animate={{
+                  scale: i === currentSyllableIndex ? 1.3 : 1,
+                  opacity: i === currentSyllableIndex ? 1 : 0.4,
+                }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                className={`text-4xl font-bold ${SYLLABLE_COLORS[i % SYLLABLE_COLORS.length]}`}
+              >
+                {slice}
+              </motion.span>
+            );
+          });
+        })()}
       </div>
 
       {/* 音标 */}

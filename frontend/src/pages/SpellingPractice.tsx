@@ -153,7 +153,7 @@ const SpellingPractice = () => {
             value={userInput}
             onChange={(e) => {
               if (!isChecking) {
-                const val = e.target.value.replace(/[^a-zA-Z '\-]/g, '');
+                const val = e.target.value.replace(/[^a-zA-Z '\-!?.,]/g, '');
                 setUserInput(val.slice(0, answerLength));
               }
             }}
