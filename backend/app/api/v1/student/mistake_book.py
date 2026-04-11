@@ -1,9 +1,9 @@
 """
 学生端错题集API
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc
+from sqlalchemy import select, func, and_, or_, desc, case
 from datetime import datetime, timedelta, date
 from typing import List
 
@@ -167,8 +167,8 @@ async def get_mistake_book_stats(
 async def get_mistake_words(
     only_unresolved: bool = True,
     unit_id: int = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
@@ -182,6 +182,7 @@ async def get_mistake_words(
     - page_size: 每页数量（默认20）
     """
     user_id = current_user.id
+    week_ago = datetime.utcnow() - timedelta(days=7)
 
     # 构建查询:获取所有答错的单词及其统计
     query = (
@@ -192,6 +193,10 @@ async def get_mistake_words(
             WordDefinition.meaning,
             WordDefinition.part_of_speech,
             func.count(LearningRecord.id).label('total_mistakes'),
+            func.count(case(
+                (LearningRecord.created_at >= week_ago, LearningRecord.id),
+                else_=None
+            )).label('recent_mistakes'),
             func.max(LearningRecord.created_at).label('last_mistake_at'),
             WordMastery.mastery_level,
             WordMastery.correct_count,
@@ -251,10 +256,6 @@ async def get_mistake_words(
     total = count_result.scalar() or 0
 
     # 分页
-    if page < 1:
-        page = 1
-    if page_size < 1:
-        page_size = 20
     total_pages = max(1, (total + page_size - 1) // page_size)
     offset = (page - 1) * page_size
     query = query.limit(page_size).offset(offset)
@@ -262,46 +263,27 @@ async def get_mistake_words(
     result = await db.execute(query)
     rows = result.fetchall()
 
-    # 计算最近7天的错误次数
-    week_ago = datetime.utcnow() - timedelta(days=7)
-
-    mistake_words = []
-    for row in rows:
-        # 查询最近7天的错误次数
-        recent_result = await db.execute(
-            select(func.count(LearningRecord.id))
-            .where(
-                and_(
-                    LearningRecord.user_id == user_id,
-                    LearningRecord.word_id == row.id,
-                    LearningRecord.is_correct == False,
-                    LearningRecord.created_at >= week_ago
-                )
-            )
-        )
-        recent_mistakes = recent_result.scalar() or 0
-
-        mastery_level = row.mastery_level or 0
-        is_resolved = mastery_level >= 4
-
-        mistake_words.append(MistakeWordDetail(
+    mistake_words = [
+        MistakeWordDetail(
             word_id=row.id,
             word=row.word,
             phonetic=row.phonetic,
             meaning=row.meaning,
             part_of_speech=row.part_of_speech,
             total_mistakes=row.total_mistakes,
-            recent_mistakes=recent_mistakes,
+            recent_mistakes=row.recent_mistakes,
             last_mistake_at=row.last_mistake_at,
-            mastery_level=mastery_level,
+            mastery_level=row.mastery_level or 0,
             correct_count=row.correct_count or 0,
             wrong_count=row.wrong_count or 0,
             flashcard_wrong=row.flashcard_wrong or 0,
             quiz_wrong=row.quiz_wrong or 0,
             spelling_wrong=row.spelling_wrong or 0,
             fillblank_wrong=row.fillblank_wrong or 0,
-            is_resolved=is_resolved,
-        ))
+            is_resolved=(row.mastery_level or 0) >= 4,
+        )
+        for row in rows
+    ]
 
     return MistakeWordPage(
         items=mistake_words,
