@@ -77,7 +77,7 @@ const TeacherWordEntry = () => {
 
     setGeneratingMeaning(index);
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
 
       // 收集已有的释义,用于避免重复
       const existingMeanings = newWord.definitions
@@ -132,7 +132,7 @@ const TeacherWordEntry = () => {
 
     setGeneratingMeaning(index);
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await axios.post(
         `${API_BASE_URL}/ai/generate-meaning`,
         {
@@ -165,7 +165,7 @@ const TeacherWordEntry = () => {
     setGeneratingPhonetic(true);
     try {
       // 使用AI API生成音标
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await axios.post(
         `${API_BASE_URL}/ai/generate-phonetic`,
         { word: newWord.word.trim() },
@@ -268,7 +268,7 @@ const TeacherWordEntry = () => {
     }
 
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       await axios.post(`${API_BASE_URL}/words/`, newWord, {
         headers: { Authorization: `Bearer ${token}` }
       });

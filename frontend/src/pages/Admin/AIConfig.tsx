@@ -35,7 +35,7 @@ const AI配置管理 = () => {
 
   // 获取token的辅助函数
   const getToken = () => {
-    return localStorage.getItem('access_token') || localStorage.getItem('token');
+    return localStorage.getItem('access_token');
   };
 
   // 处理401错误

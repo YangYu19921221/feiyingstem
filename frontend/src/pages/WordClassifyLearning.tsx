@@ -1,6 +1,6 @@
 /**
  * 单词分类记忆学习模式 - 主页面
- * 管理6个阶段的流转：分类 → 语音校验 → 听写 → 句子填空 → 过关检测 → 总结
+ * 管理5个阶段的流转：分类 → 语音校验 → 听写 → 过关检测 → 总结
  * 支持分组学习：小学每组10个，初中/高中每组20个
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -19,13 +19,12 @@ import type { StartLearningResponse, WordData } from '../api/progress';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
-import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
 
-type Phase = 'classify' | 'speechVerify' | 'dictation' | 'sentenceFill' | 'exam' | 'summary';
+type Phase = 'classify' | 'speechVerify' | 'dictation' | 'exam' | 'summary';
 
 function getGroupSize(gradeLevel: string | null, customGroupSize?: number): number {
   if (customGroupSize && customGroupSize > 0) return customGroupSize;
@@ -46,7 +45,6 @@ function splitIntoGroups(words: WordData[], gradeLevel: string | null, customGro
 interface GroupResult {
   classifyResults: Map<number, WordCategory>;
   dictationResults: DictationResult[];
-  fillBlankResults: FillBlankResult[];
   words: WordData[];
 }
 
@@ -65,7 +63,6 @@ const WordClassifyLearning = () => {
   const [phase, setPhase] = useState<Phase>('classify');
   const [classifyResults, setClassifyResults] = useState<Map<number, WordCategory>>(new Map());
   const [dictationResults, setDictationResults] = useState<DictationResult[]>([]);
-  const [fillBlankResults, setFillBlankResults] = useState<FillBlankResult[]>([]);
 
   const [speechVerifyIndex, setSpeechVerifyIndex] = useState(0);
   const [speechRoundWords, setSpeechRoundWords] = useState<WordData[]>([]);
@@ -327,30 +324,18 @@ const WordClassifyLearning = () => {
     setPhase('dictation');
   };
 
-  // 听写完成 → 句子填空
+  // 听写完成 → 过关检测
   const handleDictationComplete = (results: DictationResult[]) => {
     setDictationResults(results);
-    setPhase('sentenceFill');
+    setPhase('exam');
 
     // 实时记录听写错题
     const mistakes = results
       .filter(r => !r.isCorrect)
       .map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }));
     submitMistakesRealtime(mistakes);
-  };
 
-  // 句子填空完成 → 过关检测
-  const handleSentenceFillComplete = (results: FillBlankResult[]) => {
-    setFillBlankResults(results);
-    setPhase('exam');
-
-    // 实时记录填空错题
-    const mistakes = results
-      .filter(r => !r.isCorrect)
-      .map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'fillblank' as string }));
-    submitMistakesRealtime(mistakes);
-
-    // 保存当前组的进度（含正确记录）
+    // 保存当前组进度
     saveGroupProgress(results);
   };
 
@@ -376,7 +361,7 @@ const WordClassifyLearning = () => {
   };
 
   // 保存当前组的进度到后端
-  const saveGroupProgress = async (fillResults: FillBlankResult[]) => {
+  const saveGroupProgress = async (dictResults: DictationResult[]) => {
     if (!learningData || !unitId) return;
 
     const totalTime = Math.round((Date.now() - startTime) / 1000);
@@ -384,8 +369,7 @@ const WordClassifyLearning = () => {
 
     // 只提交正确记录（错题已在各阶段实时提交过，避免重复）
     const records: WordAnswerCreate[] = [];
-    const dictMap = new Map(dictationResults.map(r => [r.wordId, r]));
-    const fillMap = new Map(fillResults.map(r => [r.wordId, r]));
+    const dictMap = new Map(dictResults.map(r => [r.wordId, r]));
 
     for (const w of currentGroupWords) {
       const category = classifyResults.get(w.id) || 'unknown';
@@ -395,12 +379,7 @@ const WordClassifyLearning = () => {
         records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'spelling' });
       }
 
-      const fillResult = fillMap.get(w.id);
-      if (fillResult?.isCorrect) {
-        records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'fillblank' });
-      }
-
-      if (category === 'familiar' && !dictResult && !fillResult) {
+      if (category === 'familiar' && !dictResult) {
         records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'classify' });
       }
     }
@@ -465,7 +444,6 @@ const WordClassifyLearning = () => {
       {
         classifyResults,
         dictationResults,
-        fillBlankResults,
         words: currentGroupWords,
       },
     ]);
@@ -475,7 +453,6 @@ const WordClassifyLearning = () => {
     setPhase('classify');
     setClassifyResults(new Map());
     setDictationResults([]);
-    setFillBlankResults([]);
     setSpeechVerifyIndex(0);
     setSpeechRoundWords([]);
     setSpeechSkippedWords([]);
@@ -497,8 +474,8 @@ const WordClassifyLearning = () => {
   /** 汇总所有组结果（含当前组），用于最终总结页 */
   const buildAllResults = useCallback((): GroupResult[] => [
     ...allGroupResults,
-    { classifyResults, dictationResults, fillBlankResults, words: currentGroupWords },
-  ], [allGroupResults, classifyResults, dictationResults, fillBlankResults, currentGroupWords]);
+    { classifyResults, dictationResults, words: currentGroupWords },
+  ], [allGroupResults, classifyResults, dictationResults, currentGroupWords]);
 
   // 最终总结页的汇总数据
   const finalSummaryData = useMemo(() => {
@@ -506,11 +483,9 @@ const WordClassifyLearning = () => {
     const all = buildAllResults();
     return {
       allDictation: all.flatMap(gr => gr.dictationResults),
-      allFillBlank: all.flatMap(gr => gr.fillBlankResults),
       totalWords: all.reduce((sum, gr) => sum + gr.words.length, 0),
     };
   }, [phase, isLastGroup, buildAllResults]);
-
 
   if (loading) {
     return (
@@ -541,7 +516,6 @@ const WordClassifyLearning = () => {
     classify: '分类阶段',
     speechVerify: '语音校验',
     dictation: '听写阶段',
-    sentenceFill: '句子填空',
     exam: '过关检测',
     summary: '学习总结',
   };
@@ -571,11 +545,11 @@ const WordClassifyLearning = () => {
           </div>
           {/* 阶段指示器 */}
           <div className="flex gap-1">
-            {(['classify', 'dictation', 'sentenceFill', 'exam', 'summary'] as Phase[]).map((p, i) => (
+            {(['classify', 'dictation', 'exam', 'summary'] as Phase[]).map((p, i) => (
               <div
                 key={p}
                 className={`w-2 h-2 rounded-full transition ${
-                  p === phase ? 'bg-primary scale-125' : i < ['classify', 'dictation', 'sentenceFill', 'exam', 'summary'].indexOf(phase) ? 'bg-green-400' : 'bg-gray-200'
+                  p === phase ? 'bg-primary scale-125' : i < ['classify', 'dictation', 'exam', 'summary'].indexOf(phase) ? 'bg-green-400' : 'bg-gray-200'
                 }`}
               />
             ))}
@@ -694,18 +668,7 @@ const WordClassifyLearning = () => {
             </motion.div>
           )}
 
-          {/* 阶段4：句子填空 */}
-          {phase === 'sentenceFill' && (
-            <motion.div key={`sentenceFill-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <SentenceFillPhase
-                words={currentGroupWords}
-                onComplete={handleSentenceFillComplete}
-                playAudio={playAudio}
-              />
-            </motion.div>
-          )}
-
-          {/* 阶段5：过关检测 */}
+          {/* 阶段4：过关检测 */}
           {phase === 'exam' && (
             <motion.div key={`exam-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <GroupExamPhase
@@ -723,7 +686,7 @@ const WordClassifyLearning = () => {
             <motion.div key={`group-summary-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <ClassifySummary
                 dictationResults={dictationResults}
-                fillBlankResults={fillBlankResults}
+                fillBlankResults={[]}
                 totalWords={currentGroupWords.length}
                 startTime={startTime}
                 onBack={() => navigate(-1)}
@@ -738,7 +701,7 @@ const WordClassifyLearning = () => {
             <motion.div key="final-summary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <ClassifySummary
                 dictationResults={finalSummaryData.allDictation}
-                fillBlankResults={finalSummaryData.allFillBlank}
+                fillBlankResults={[]}
                 totalWords={finalSummaryData.totalWords}
                 startTime={startTime}
                 onBack={() => navigate(-1)}

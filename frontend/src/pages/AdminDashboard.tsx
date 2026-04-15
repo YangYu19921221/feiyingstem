@@ -62,7 +62,7 @@ const AdminDashboard = () => {
 
   const loadStatistics = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await axios.get(`${API_BASE_URL}/admin/stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });

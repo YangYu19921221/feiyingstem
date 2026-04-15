@@ -91,7 +91,7 @@ const AdminContentManagement: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const response = await axios.get(`${API_BASE_URL}/admin/content/stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -104,7 +104,7 @@ const AdminContentManagement: React.FC = () => {
   const loadContent = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
 
       if (activeTab === 'wordbooks') {
         const params: any = { page: bookPage, page_size: pageSize };
@@ -153,7 +153,7 @@ const AdminContentManagement: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       await axios.delete(`${API_BASE_URL}/admin/content/word-books/${bookId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -172,7 +172,7 @@ const AdminContentManagement: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       await axios.delete(`${API_BASE_URL}/admin/content/words/${wordId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -191,7 +191,7 @@ const AdminContentManagement: React.FC = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       await axios.delete(`${API_BASE_URL}/admin/content/reading-passages/${passageId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -307,7 +307,7 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
           }
 
           // 调用后端API
-          const token = localStorage.getItem('token');
+          const token = localStorage.getItem('access_token');
           const response = await axios.post(
             `${API_BASE_URL}/words/batch-import`,
             { words },

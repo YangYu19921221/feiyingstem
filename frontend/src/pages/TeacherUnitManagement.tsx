@@ -260,7 +260,7 @@ const TeacherUnitManagement = () => {
 
     try {
       setCreatingWord(true);
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const res = await axios.post(`${API_BASE_URL}/words/`, {
         word: newWordData.word.trim(),
         phonetic: newWordData.phonetic.trim() || undefined,
@@ -306,7 +306,7 @@ const TeacherUnitManagement = () => {
     }
     setGeneratingAI(index);
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const existingMeanings = newWordData.definitions
         .filter((_, i) => i !== index && _.meaning.trim())
         .map(d => d.meaning.trim());
@@ -369,7 +369,7 @@ const TeacherUnitManagement = () => {
         return;
       }
 
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const token = localStorage.getItem('access_token');
       const newWordIds: number[] = [];
       const errors: string[] = [];
 
