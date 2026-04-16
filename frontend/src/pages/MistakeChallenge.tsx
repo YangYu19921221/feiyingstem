@@ -209,9 +209,17 @@ function MapPhase({ levels, onStart }: { levels: ChallengeLevel[]; onStart: (l: 
   }
 
   const cleared = levels.filter(l => l.status === 'cleared').length;
+  const reviewCount = levels.filter(l => l.status === 'review').length;
+  const hasReview = reviewCount > 0;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {hasReview && (
+        <div className="mb-6 p-4 bg-red-50 border-2 border-red-300 rounded-2xl text-center">
+          <p className="text-red-600 font-bold text-lg">⏰ 有 {reviewCount} 关需要复习！</p>
+          <p className="text-red-500 text-sm mt-1">请先完成复习关卡，巩固已学内容</p>
+        </div>
+      )}
       <div className="text-center mb-8">
         <p className="text-gray-600">共 {levels.length} 关，已通关 <span className="font-bold text-green-600">{cleared}</span> 关</p>
       </div>
@@ -220,6 +228,7 @@ function MapPhase({ levels, onStart }: { levels: ChallengeLevel[]; onStart: (l: 
           const isCleared = level.status === 'cleared';
           const isUnlocked = level.status === 'unlocked';
           const isLocked = level.status === 'locked';
+          const isReview = level.status === 'review';
           return (
             <motion.button
               key={level.level}
@@ -229,21 +238,23 @@ function MapPhase({ levels, onStart }: { levels: ChallengeLevel[]; onStart: (l: 
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: level.level * 0.05 }}
               className={`w-full p-5 rounded-2xl text-left transition-all ${
-                isCleared ? 'bg-green-50 border-2 border-green-300'
+                isReview ? 'bg-red-50 border-2 border-red-400 shadow-lg shadow-red-100 animate-pulse'
+                : isCleared ? 'bg-green-50 border-2 border-green-300'
                 : isUnlocked ? 'bg-white border-2 border-orange-400 shadow-lg shadow-orange-100'
                 : 'bg-gray-100 border-2 border-gray-200 opacity-60 cursor-not-allowed'
               }`}
             >
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${
-                  isCleared ? 'bg-green-500 text-white' : isUnlocked ? 'bg-orange-500 text-white' : 'bg-gray-300 text-gray-500'
+                  isReview ? 'bg-red-500 text-white' : isCleared ? 'bg-green-500 text-white' : isUnlocked ? 'bg-orange-500 text-white' : 'bg-gray-300 text-gray-500'
                 }`}>
-                  {isCleared ? '✓' : isLocked ? '🔒' : level.level}
+                  {isReview ? '🔄' : isCleared ? '✓' : isLocked ? '🔒' : level.level}
                 </div>
                 <div className="flex-1">
-                  <div className="font-bold text-gray-800">第 {level.level} 关</div>
+                  <div className="font-bold text-gray-800">{isReview ? `复习第 ${level.level} 关` : `第 ${level.level} 关`}</div>
                   <div className="text-sm text-gray-500">{level.word_count} 个单词</div>
                 </div>
+                {isReview && <span className="text-red-600 font-bold">需复习 ⏰</span>}
                 {isCleared && <span className="text-green-600 font-bold">已通关 ✨</span>}
                 {isUnlocked && <span className="text-orange-600 font-bold">挑战 →</span>}
               </div>

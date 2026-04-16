@@ -169,6 +169,30 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 创建 challenge_reviews 表（错题闯关复习）
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS challenge_reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    word_id INTEGER NOT NULL,
+                    clear_count INTEGER DEFAULT 1,
+                    last_cleared_at DATETIME NOT NULL,
+                    next_review_at DATETIME NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE,
+                    UNIQUE(user_id, word_id)
+                )
+            """))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_challenge_reviews_user_review ON challenge_reviews(user_id, next_review_at)"
+            ))
+        except Exception:
+            pass
+
         print("✅ 数据库初始化完成")
 
 async def get_db() -> AsyncSession:

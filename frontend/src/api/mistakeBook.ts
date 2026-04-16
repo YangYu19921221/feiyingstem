@@ -128,7 +128,7 @@ export interface ChallengeLevelWord {
 
 export interface ChallengeLevel {
   level: number;
-  status: 'locked' | 'unlocked' | 'cleared';
+  status: 'locked' | 'unlocked' | 'cleared' | 'review';
   words: ChallengeLevelWord[];
   word_count: number;
 }
@@ -167,4 +167,11 @@ export const submitChallengeLevel = async (
     '/student/mistake-book/challenge-submit',
     { level, answers }
   );
+};
+
+/**
+ * 获取闯关复习到期数量
+ */
+export const getChallengeReviewDue = async (): Promise<{ due_count: number }> => {
+  return api.get('/student/mistake-book/challenge-review-due');
 };

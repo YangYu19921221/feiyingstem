@@ -227,3 +227,19 @@ class ExamAnswer(Base):
     user_answer = Column(Text, nullable=True)
     is_correct = Column(Boolean, nullable=True)
     time_spent = Column(Integer, nullable=True)
+
+
+class ChallengeReview(Base):
+    """错题闯关复习表 - 记录闯关通关的单词及下次复习时间"""
+    __tablename__ = "challenge_reviews"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    word_id = Column(Integer, ForeignKey("words.id", ondelete="CASCADE"), nullable=False)
+    clear_count = Column(Integer, default=1)           # 通关次数
+    last_cleared_at = Column(DateTime, nullable=False)  # 最近通关时间
+    next_review_at = Column(DateTime, nullable=False)   # 下次需复习时间
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'word_id', name='uq_challenge_review_user_word'),
+    )

@@ -6,6 +6,7 @@ import {
   getMistakeBookStats,
   getMistakeWords,
   startMistakePractice,
+  getChallengeReviewDue,
   type MistakeWordDetail,
   type MistakeBookStats,
 } from '../api/mistakeBook';
@@ -25,10 +26,12 @@ const MistakeBook = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [reviewDueCount, setReviewDueCount] = useState(0);
 
   // 统计只在挂载和切换筛选时加载
   useEffect(() => {
     getMistakeBookStats().then(setStats).catch(() => {});
+    getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
   }, [showResolved]);
 
   // 单词列表在筛选切换时重置到第1页
@@ -239,6 +242,16 @@ const MistakeBook = () => {
               ? `开始练习 (${stats.unresolved_mistakes}个待攻克)`
               : '暂无待练习错题'}
           </button>
+
+          {/* 闯关复习到期强制提醒 */}
+          {reviewDueCount > 0 && (
+            <button
+              onClick={() => navigate('/student/mistake-challenge')}
+              className="w-full mb-3 py-4 bg-gradient-to-r from-red-600 to-red-500 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all animate-pulse"
+            >
+              ⏰ 有 {reviewDueCount} 个错词需要复习！点击立即闯关
+            </button>
+          )}
 
           {/* 错题闯关入口 */}
           {stats && stats.unresolved_mistakes > 0 && (

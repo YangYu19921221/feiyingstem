@@ -7,14 +7,18 @@ from sqlalchemy import select, func, and_, or_, desc, case
 from datetime import datetime, timedelta, date
 from typing import List
 
-# 错题通关后进入SRS的起始阶段：stage 3 = 1天后复习
-MISTAKE_SRS_STAGE = 3
-MISTAKE_SRS_HOURS = 24
+# 错题闯关复习间隔（小时），按通关次数递增
+CHALLENGE_REVIEW_INTERVALS = {
+    1: 3 * 24,    # 第1次通关：3天后复习
+    2: 7 * 24,    # 第2次通关：7天后复习
+    3: 15 * 24,   # 第3次通关：15天后复习
+    4: 30 * 24,   # 第4次通关：30天后复习（毕业）
+}
 
 from app.core.database import get_db
 from app.models.user import User
 from app.models.word import Word, WordDefinition
-from app.models.learning import LearningRecord, WordMastery
+from app.models.learning import LearningRecord, WordMastery, ChallengeReview
 from app.api.v1.auth import get_current_student
 from app.schemas.mistake_book import (
     MistakeWordDetail,
@@ -394,10 +398,10 @@ async def mark_mistake_as_resolved(
             "message": "该单词已经掌握了!"
         }
 
-    # 提升掌握度到4级，并加入SRS复习队列（1天后）
+    # 提升掌握度到4级，并记录闯关复习
     mastery.mastery_level = 4
-    mastery.review_stage = MISTAKE_SRS_STAGE
-    mastery.next_review_at = datetime.utcnow() + timedelta(hours=MISTAKE_SRS_HOURS)
+    # 写入复习记录
+    await _upsert_challenge_review(db, user_id, word_id)
     await db.commit()
 
     return {
@@ -413,11 +417,36 @@ async def get_challenge_levels(
 ):
     """
     获取错题闯关关卡列表
-    将未解决错题按掌握度降序排列，每5个一组分为关卡
+    1. 到期复习关卡（标记为 review，排在最前，必须先通过）
+    2. 未解决错题关卡（mastery < 4）
     """
     user_id = current_user.id
+    now = datetime.utcnow()
 
-    # 查询所有未解决的错题单词 (mastery_level < 4)
+    # 1. 查询到期复习的单词
+    review_query = (
+        select(
+            Word.id,
+            Word.word,
+            WordDefinition.meaning,
+            Word.phonetic,
+            WordDefinition.part_of_speech,
+        )
+        .join(ChallengeReview, and_(
+            ChallengeReview.word_id == Word.id,
+            ChallengeReview.user_id == user_id,
+            ChallengeReview.next_review_at <= now,
+        ))
+        .join(WordDefinition, Word.id == WordDefinition.word_id)
+        .group_by(Word.id, WordDefinition.id)
+    )
+    review_result = await db.execute(review_query)
+    review_rows = review_result.fetchall()
+
+    # 收集复习词ID，避免在未解决关卡中重复
+    review_word_ids = {row.id for row in review_rows}
+
+    # 2. 查询未解决的错题单词 (mastery_level < 4)
     query = (
         select(
             Word.id,
@@ -454,46 +483,48 @@ async def get_challenge_levels(
 
     result = await db.execute(query)
     rows = result.fetchall()
+    # 去重：排除已在复习关卡中的词
+    rows = [r for r in rows if r.id not in review_word_ids]
 
-    if not rows:
-        return ChallengeLevelsResponse(
-            levels=[],
-            total_levels=0,
-            cleared_levels=0,
-            total_unresolved=0,
-            message="没有未解决的错题，太棒了！"
-        )
-
-    # 每5个一组分为关卡
+    # 3. 构建关卡列表
     words_per_level = 5
     levels = []
-    for i in range(0, len(rows), words_per_level):
-        chunk = rows[i:i + words_per_level]
-        level_num = (i // words_per_level) + 1
 
+    # 先加复习关卡（标记 review 状态，强制优先）
+    for i in range(0, len(review_rows), words_per_level):
+        chunk = review_rows[i:i + words_per_level]
+        level_num = len(levels) + 1
         level_words = [
             ChallengeLevelWord(
-                word_id=row.id,
-                word=row.word,
-                meaning=row.meaning,
-                phonetic=row.phonetic,
-                part_of_speech=row.part_of_speech,
-            )
-            for row in chunk
+                word_id=row.id, word=row.word, meaning=row.meaning,
+                phonetic=row.phonetic, part_of_speech=row.part_of_speech,
+            ) for row in chunk
         ]
+        levels.append(ChallengeLevel(
+            level=level_num,
+            status="review",
+            words=level_words,
+            word_count=len(level_words),
+        ))
 
-        # 判断关卡状态: 所有词 mastery >= 4 为 cleared
-        all_cleared = all(
-            (row.mastery_level or 0) >= 4 for row in chunk
-        )
-
+    # 再加未解决关卡
+    for i in range(0, len(rows), words_per_level):
+        chunk = rows[i:i + words_per_level]
+        level_num = len(levels) + 1
+        level_words = [
+            ChallengeLevelWord(
+                word_id=row.id, word=row.word, meaning=row.meaning,
+                phonetic=row.phonetic, part_of_speech=row.part_of_speech,
+            ) for row in chunk
+        ]
+        # 判断状态
+        all_cleared = all((row.mastery_level or 0) >= 4 for row in chunk)
         if all_cleared:
             level_status = "cleared"
-        elif level_num == 1:
+        elif len(levels) == 0 or levels[-1].status in ("cleared", "review"):
             level_status = "unlocked"
         else:
-            # 前一关是否已通关
-            prev_cleared = len(levels) > 0 and levels[-1].status == "cleared"
+            prev_cleared = levels[-1].status in ("cleared", "review")
             level_status = "unlocked" if prev_cleared else "locked"
 
         levels.append(ChallengeLevel(
@@ -503,14 +534,29 @@ async def get_challenge_levels(
             word_count=len(level_words),
         ))
 
+    review_level_count = len([l for l in levels if l.status == "review"])
     cleared_count = sum(1 for l in levels if l.status == "cleared")
+    total_unresolved = len(rows) + len(review_rows)
+
+    if not levels:
+        return ChallengeLevelsResponse(
+            levels=[],
+            total_levels=0,
+            cleared_levels=0,
+            total_unresolved=0,
+            message="没有未解决的错题，太棒了！"
+        )
+
+    msg = f"共 {len(levels)} 关，已通关 {cleared_count} 关"
+    if review_level_count > 0:
+        msg = f"⏰ {review_level_count} 关需复习！" + msg
 
     return ChallengeLevelsResponse(
         levels=levels,
         total_levels=len(levels),
         cleared_levels=cleared_count,
-        total_unresolved=len(rows),
-        message=f"共 {len(levels)} 关，已通关 {cleared_count} 关",
+        total_unresolved=total_unresolved,
+        message=msg,
     )
 
 
@@ -615,9 +661,6 @@ async def submit_challenge_level(
                 if mastery.mastery_level < 4:
                     mastery.mastery_level = 4
                     mastery.last_practiced_at = now
-                # 无论之前是什么阶段，通关后重新进入SRS（1天后复习）
-                mastery.review_stage = MISTAKE_SRS_STAGE
-                mastery.next_review_at = datetime.utcnow() + timedelta(hours=MISTAKE_SRS_HOURS)
             else:
                 mastery = WordMastery(
                     user_id=user_id,
@@ -625,12 +668,12 @@ async def submit_challenge_level(
                     mastery_level=4,
                     correct_count=1,
                     wrong_count=0,
-                    review_stage=MISTAKE_SRS_STAGE,
-                    next_review_at=datetime.utcnow() + timedelta(hours=MISTAKE_SRS_HOURS),
                     created_at=now,
                     last_practiced_at=now,
                 )
                 db.add(mastery)
+            # 写入闯关复习记录
+            await _upsert_challenge_review(db, user_id, answer.word_id)
 
     await db.commit()
 
@@ -646,3 +689,60 @@ async def submit_challenge_level(
         wrong_words=wrong_words,
         message=message,
     )
+
+
+# ========================================
+# 闯关复习辅助函数和接口
+# ========================================
+
+async def _upsert_challenge_review(db: AsyncSession, user_id: int, word_id: int):
+    """写入或更新闯关复习记录，根据通关次数递增复习间隔"""
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(ChallengeReview).where(
+            and_(ChallengeReview.user_id == user_id, ChallengeReview.word_id == word_id)
+        )
+    )
+    review = result.scalar_one_or_none()
+
+    if review:
+        review.clear_count += 1
+        review.last_cleared_at = now
+    else:
+        review = ChallengeReview(
+            user_id=user_id,
+            word_id=word_id,
+            clear_count=1,
+            last_cleared_at=now,
+            next_review_at=now,  # 先占位，下面计算
+        )
+        db.add(review)
+        await db.flush()
+
+    # 计算下次复习时间，超过4次就毕业（不再复习）
+    count = review.clear_count
+    if count >= 5:
+        # 毕业：设到遥远的未来
+        review.next_review_at = now + timedelta(days=3650)
+    else:
+        hours = CHALLENGE_REVIEW_INTERVALS.get(count, 30 * 24)
+        review.next_review_at = now + timedelta(hours=hours)
+
+
+@router.get("/mistake-book/challenge-review-due")
+async def get_challenge_review_due(
+    current_user: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取到期需要复习的闯关错题数量"""
+    now = datetime.utcnow()
+    result = await db.execute(
+        select(func.count(ChallengeReview.id)).where(
+            and_(
+                ChallengeReview.user_id == current_user.id,
+                ChallengeReview.next_review_at <= now,
+            )
+        )
+    )
+    due_count = result.scalar() or 0
+    return {"due_count": due_count}
