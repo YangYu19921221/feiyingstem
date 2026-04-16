@@ -314,20 +314,24 @@ async def start_mistake_practice(
     """
     user_id = current_user.id
 
-    # 获取错题单词列表
-    mistake_words = await get_mistake_words(
+    # 获取错题单词列表（传入明确的分页参数）
+    mistake_words_page = await get_mistake_words(
         only_unresolved=request.only_unresolved,
         unit_id=request.unit_id,
+        page=1,
+        page_size=100,
         current_user=current_user,
         db=db
     )
 
-    if not mistake_words:
+    if not mistake_words_page or not mistake_words_page.items:
         return MistakePracticeResponse(
             total_mistakes=0,
             practice_words=[],
             message="恭喜!暂时没有需要练习的错题。"
         )
+
+    mistake_words = mistake_words_page.items
 
     # 智能排序:优先练习最需要掌握的单词
     # 排序规则: 最近错误次数 > 低掌握度 > 总错误次数
@@ -348,7 +352,7 @@ async def start_mistake_practice(
         message += " (只包含未掌握的错题)"
 
     return MistakePracticeResponse(
-        total_mistakes=len(mistake_words),
+        total_mistakes=mistake_words_page.total,
         practice_words=practice_words,
         message=message
     )
