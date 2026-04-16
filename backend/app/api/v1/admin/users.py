@@ -3,6 +3,7 @@
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
@@ -13,6 +14,10 @@ from app.schemas.user import UserResponse, UserCreate, UserUpdate
 from app.services import auth_service
 
 router = APIRouter()
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
 
 
 @router.get("/users", response_model=dict)
@@ -212,7 +217,7 @@ async def update_user(
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
     user_id: int,
-    new_password: str,
+    body: ResetPasswordRequest,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
@@ -223,8 +228,11 @@ async def reset_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="密码长度至少6位")
+
     # 更新密码
-    user.password_hash = auth_service.get_password_hash(new_password)
+    user.password_hash = auth_service.get_password_hash(body.new_password)
     await db.commit()
 
     return {"message": "密码重置成功"}
