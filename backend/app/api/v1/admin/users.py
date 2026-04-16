@@ -232,7 +232,7 @@ async def reset_user_password(
         raise HTTPException(status_code=400, detail="密码长度至少6位")
 
     # 更新密码
-    user.password_hash = auth_service.get_password_hash(body.new_password)
+    user.hashed_password = auth_service.get_password_hash(body.new_password)
     await db.commit()
 
     return {"message": "密码重置成功"}
