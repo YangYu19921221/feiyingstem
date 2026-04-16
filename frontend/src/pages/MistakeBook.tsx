@@ -28,11 +28,13 @@ const MistakeBook = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [reviewDueCount, setReviewDueCount] = useState(0);
 
-  // 统计只在挂载和切换筛选时加载
   useEffect(() => {
     getMistakeBookStats().then(setStats).catch(() => {});
-    getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
   }, [showResolved]);
+
+  useEffect(() => {
+    getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
+  }, []);
 
   // 单词列表在筛选切换时重置到第1页
   useEffect(() => {

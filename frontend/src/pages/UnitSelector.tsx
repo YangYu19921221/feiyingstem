@@ -6,6 +6,8 @@ import type { BookProgress } from '../api/progress';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from '../components/Toast';
 
+const DAILY_GOAL = 10;
+
 const UnitSelector = () => {
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
@@ -13,9 +15,6 @@ const UnitSelector = () => {
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
   const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
-
-  // 每日目标单词数（固定10个，分散学习压力）
-  const DAILY_GOAL = 10;
 
   useEffect(() => {
     if (bookId) {
@@ -252,8 +251,7 @@ const UnitSelector = () => {
                           {(() => {
                             const remaining = unit.word_count - unit.completed_words;
                             const pct = unit.word_count > 0 ? Math.round((unit.completed_words / unit.word_count) * 100) : 0;
-                            const dailyGoal = DAILY_GOAL;
-                            const todayGroups = Math.ceil(remaining / dailyGoal);
+                            const todayGroups = Math.ceil(remaining / DAILY_GOAL);
                             return (
                               <div className="mb-3">
                                 {/* 进度条 */}
@@ -270,7 +268,7 @@ const UnitSelector = () => {
                                 {/* 每日目标提示（仅未完成时显示） */}
                                 {remaining > 0 && (
                                   <p className="text-xs text-orange-500">
-                                    🎯 每天学 {dailyGoal} 个，还需约 {todayGroups} 天完成
+                                    🎯 每天学 {DAILY_GOAL} 个，还需约 {todayGroups} 天完成
                                   </p>
                                 )}
                               </div>
