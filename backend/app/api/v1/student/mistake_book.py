@@ -7,6 +7,10 @@ from sqlalchemy import select, func, and_, or_, desc, case
 from datetime import datetime, timedelta, date
 from typing import List
 
+# 错题通关后进入SRS的起始阶段：stage 3 = 1天后复习
+MISTAKE_SRS_STAGE = 3
+MISTAKE_SRS_HOURS = 24
+
 from app.core.database import get_db
 from app.models.user import User
 from app.models.word import Word, WordDefinition
@@ -386,8 +390,10 @@ async def mark_mistake_as_resolved(
             "message": "该单词已经掌握了!"
         }
 
-    # 提升掌握度到4级
+    # 提升掌握度到4级，并加入SRS复习队列（1天后）
     mastery.mastery_level = 4
+    mastery.review_stage = MISTAKE_SRS_STAGE
+    mastery.next_review_at = datetime.utcnow() + timedelta(hours=MISTAKE_SRS_HOURS)
     await db.commit()
 
     return {
@@ -605,6 +611,9 @@ async def submit_challenge_level(
                 if mastery.mastery_level < 4:
                     mastery.mastery_level = 4
                     mastery.last_practiced_at = now
+                # 无论之前是什么阶段，通关后重新进入SRS（1天后复习）
+                mastery.review_stage = MISTAKE_SRS_STAGE
+                mastery.next_review_at = datetime.utcnow() + timedelta(hours=MISTAKE_SRS_HOURS)
             else:
                 mastery = WordMastery(
                     user_id=user_id,
@@ -612,6 +621,8 @@ async def submit_challenge_level(
                     mastery_level=4,
                     correct_count=1,
                     wrong_count=0,
+                    review_stage=MISTAKE_SRS_STAGE,
+                    next_review_at=datetime.utcnow() + timedelta(hours=MISTAKE_SRS_HOURS),
                     created_at=now,
                     last_practiced_at=now,
                 )

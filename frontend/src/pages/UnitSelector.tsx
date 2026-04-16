@@ -14,6 +14,9 @@ const UnitSelector = () => {
   const hasLoadedOnce = useRef(false);
   const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
 
+  // 每日目标单词数（固定10个，分散学习压力）
+  const DAILY_GOAL = 10;
+
   useEffect(() => {
     if (bookId) {
       loadBookProgress(parseInt(bookId));
@@ -246,11 +249,33 @@ const UnitSelector = () => {
                       >
                         <div className="px-4 pb-4 pt-1 bg-gray-50/50">
                           {/* 单元详情 */}
-                          <div className="flex items-center gap-4 text-sm text-gray-500 mb-3">
-                            <span>{unit.word_count} 个单词</span>
-                            <span>已掌握 {unit.completed_words} 个</span>
-                            <span>剩余 {unit.word_count - unit.completed_words} 个</span>
-                          </div>
+                          {(() => {
+                            const remaining = unit.word_count - unit.completed_words;
+                            const pct = unit.word_count > 0 ? Math.round((unit.completed_words / unit.word_count) * 100) : 0;
+                            const dailyGoal = DAILY_GOAL;
+                            const todayGroups = Math.ceil(remaining / dailyGoal);
+                            return (
+                              <div className="mb-3">
+                                {/* 进度条 */}
+                                <div className="flex items-center justify-between text-sm mb-1">
+                                  <span className="text-green-600 font-medium">✅ 已掌握 {unit.completed_words}/{unit.word_count} 个</span>
+                                  <span className="text-gray-400">{pct}%</span>
+                                </div>
+                                <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full transition-all"
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                {/* 每日目标提示（仅未完成时显示） */}
+                                {remaining > 0 && (
+                                  <p className="text-xs text-orange-500">
+                                    🎯 每天学 {dailyGoal} 个，还需约 {todayGroups} 天完成
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {/* 学习成绩统计 */}
                           {unit.has_progress && (
