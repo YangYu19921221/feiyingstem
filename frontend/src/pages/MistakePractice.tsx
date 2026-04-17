@@ -49,7 +49,7 @@ async function loadQuestions(): Promise<MixedQuestion[]> {
             word_ids: wds.map(w => w.word_id),
             question_count: wds.length,
             question_type: type,
-          })
+          }, { timeout: 60000 })
           .then((r: any) => r.questions as any[]);
 
   const [quizQs, fillQs] = await Promise.all([

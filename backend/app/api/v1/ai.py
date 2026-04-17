@@ -11,6 +11,7 @@ from sqlalchemy import select, and_
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 import random
+import asyncio
 from app.core.database import get_db
 from app.services.ai_service import ai_service
 from app.models.word import Word, WordDefinition, Unit, UnitWord
@@ -658,24 +659,25 @@ async def generate_quiz_from_words(
             ))
 
     elif request.question_type == "fillblank":
-        # 填空题: 根据例句填空
-        for word_data in selected_words:
-            if not word_data["example"]:
-                # 如果没有例句,调用AI生成
-                example_data = await ai_service.generate_example_sentence(
-                    word=word_data["word"],
-                    meaning=word_data["meaning"],
-                    difficulty="middle-school"
-                )
-                example_sentence = example_data["sentence"]
-            else:
-                example_sentence = word_data["example"]
+        # 填空题: 并行生成所有例句，大幅减少等待时间
+        async def get_example_sentence(word_data: dict) -> str:
+            if word_data["example"]:
+                return word_data["example"]
+            example_data = await ai_service.generate_example_sentence(
+                word=word_data["word"],
+                meaning=word_data["meaning"],
+                difficulty="middle-school"
+            )
+            return example_data["sentence"]
 
-            # 将单词替换为下划线
+        example_sentences = await asyncio.gather(
+            *[get_example_sentence(w) for w in selected_words]
+        )
+
+        for word_data, example_sentence in zip(selected_words, example_sentences):
             blanked_sentence = example_sentence.replace(word_data["word"], "______")
             blanked_sentence = blanked_sentence.replace(word_data["word"].capitalize(), "______")
 
-            # 生成选项(正确答案+3个干扰项)
             other_words = [w for w in words_data if w["id"] != word_data["id"]]
             if len(other_words) >= 3:
                 distractors = random.sample(other_words, 3)
