@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Lightbulb } from 'lucide-react';
-import axios from 'axios';
-import { API_BASE_URL } from '../config/env';
+import api from '../api/client';
 import AnswerFeedback from '../components/practice/AnswerFeedback';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import { useAudio } from '../hooks/useAudio';
+import { toast } from '../components/Toast';
 
 type QuestionType = 'quiz' | 'fillblank' | 'spelling';
 
@@ -44,13 +44,13 @@ async function loadQuestions(): Promise<MixedQuestion[]> {
   const call = (wds: any[], type: string) =>
     wds.length === 0
       ? Promise.resolve([])
-      : axios
-          .post(`${API_BASE_URL}/ai/generate-quiz-from-words`, {
+      : api
+          .post('/ai/generate-quiz-from-words', {
             word_ids: wds.map(w => w.word_id),
             question_count: wds.length,
             question_type: type,
           })
-          .then(r => r.data.questions as any[]);
+          .then((r: any) => r.questions as any[]);
 
   const [quizQs, fillQs] = await Promise.all([
     call(quizWords, 'choice'),
@@ -118,8 +118,8 @@ const MistakePractice = () => {
   useEffect(() => {
     loadQuestions()
       .then(qs => { setQuestions(qs); setLoading(false); })
-      .catch(() => { alert('加载题目失败，请重试'); navigate(-1); });
-  }, []);
+      .catch(() => { toast.error('加载题目失败，请重试'); navigate(-1); });
+  }, [navigate]);
 
   const resetState = () => {
     setSelectedAnswer('');
@@ -420,7 +420,7 @@ const MistakePractice = () => {
   }
 
   const currentQ = questions[currentIndex];
-  const pct = Math.round((currentIndex / questions.length) * 100);
+  const pct = Math.round(((currentIndex + 1) / questions.length) * 100);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
