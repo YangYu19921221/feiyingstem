@@ -44,6 +44,7 @@ const TeacherAnalytics = lazyWithRetry(() => import('./pages/TeacherAnalytics'))
 const TeacherStudentDetail = lazyWithRetry(() => import('./pages/TeacherStudentDetail'));
 const MistakeBook = lazyWithRetry(() => import('./pages/MistakeBook'));
 const MistakeChallenge = lazyWithRetry(() => import('./pages/MistakeChallenge'));
+const MistakePractice = lazyWithRetry(() => import('./pages/MistakePractice'));
 const BookProgressDetail = lazyWithRetry(() => import('./pages/BookProgressDetail'));
 const StudentReadingList = lazyWithRetry(() => import('./pages/StudentReadingList'));
 const StudentReadingPractice = lazyWithRetry(() => import('./pages/StudentReadingPractice'));
@@ -388,6 +389,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <MistakeChallenge />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 统一错题练习 */}
+        <Route
+          path="/student/mistake-practice"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <MistakePractice />
             </ProtectedRoute>
           }
         />
