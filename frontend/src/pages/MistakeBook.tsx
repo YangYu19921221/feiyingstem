@@ -22,7 +22,6 @@ const MistakeBook = () => {
   const [mistakeWords, setMistakeWords] = useState<MistakeWordDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<string>('quiz');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -78,7 +77,7 @@ const MistakeBook = () => {
   const handleStartPractice = async () => {
     try {
       const response = await startMistakePractice({
-        learning_mode: selectedMode,
+        learning_mode: 'quiz',
         limit: 20,
         only_unresolved: true,
       });
@@ -88,24 +87,9 @@ const MistakeBook = () => {
         return;
       }
 
-      // 将错题单词存储到sessionStorage,供学习页面使用
       sessionStorage.setItem('mistake_practice_words', JSON.stringify(response.practice_words));
       sessionStorage.setItem('is_mistake_practice', 'true');
-
-      // 跳转到对应的学习模式
-      // 注意: 这里使用一个特殊的unitId (0或'mistake')来标识错题练习模式
-      const modeRoutes: { [key: string]: string } = {
-        quiz: '/student/units/0/quiz',
-        spelling: '/student/units/0/spelling',
-        fillblank: '/student/units/0/fillblank',
-      };
-
-      const route = modeRoutes[selectedMode];
-      if (route) {
-        navigate(route);
-      } else {
-        toast.warning('暂不支持该学习模式');
-      }
+      navigate('/student/mistake-practice');
     } catch (error) {
       console.error('开始练习失败:', error);
       toast.error('开始练习失败,请重试');
@@ -214,34 +198,13 @@ const MistakeBook = () => {
             快速开始练习
           </h2>
 
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            {[
-              { id: 'quiz', name: '选择题', icon: '✅' },
-              { id: 'spelling', name: '拼写', icon: '✏️' },
-              { id: 'fillblank', name: '填空', icon: '📝' },
-            ].map((mode) => (
-              <button
-                key={mode.id}
-                onClick={() => setSelectedMode(mode.id)}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  selectedMode === mode.id
-                    ? 'border-primary bg-primary/10 scale-105'
-                    : 'border-gray-200 hover:border-primary/50'
-                }`}
-              >
-                <div className="text-3xl mb-2">{mode.icon}</div>
-                <div className="font-medium">{mode.name}</div>
-              </button>
-            ))}
-          </div>
-
           <button
             onClick={handleStartPractice}
             disabled={!stats || stats.unresolved_mistakes === 0}
             className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {stats && stats.unresolved_mistakes > 0
-              ? `开始练习 (${stats.unresolved_mistakes}个待攻克)`
+              ? `🚀 开始练习（${stats.unresolved_mistakes}个待攻克）`
               : '暂无待练习错题'}
           </button>
 
