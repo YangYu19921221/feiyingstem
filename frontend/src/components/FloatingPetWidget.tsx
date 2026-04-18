@@ -52,6 +52,13 @@ export default function FloatingPetWidget() {
   const [expanded, setExpanded] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDragging = useRef(false);
+
+  // 读取上次保存的位置，默认右下角
+  const savedPos = (() => {
+    try { return JSON.parse(localStorage.getItem('pet_pos') || 'null'); } catch { return null; }
+  })();
+  const [dragPos] = useState<{ x: number; y: number }>(savedPos ?? { x: 0, y: 0 });
 
   const { data: pet } = useQuery<Pet | null>({
     queryKey: ['myPet'],
@@ -139,7 +146,27 @@ export default function FloatingPetWidget() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 pointer-events-none">
+    <motion.div
+      drag
+      dragMomentum={false}
+      initial={dragPos}
+      onDragStart={() => { isDragging.current = true; }}
+      onDragEnd={(_, info) => {
+        setTimeout(() => { isDragging.current = false; }, 100);
+        // 保存位置（相对于初始定位的偏移）
+        const el = document.querySelector('[data-pet-widget]') as HTMLElement;
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          localStorage.setItem('pet_pos', JSON.stringify({
+            x: info.offset.x + dragPos.x,
+            y: info.offset.y + dragPos.y,
+          }));
+        }
+      }}
+      data-pet-widget
+      className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 cursor-grab active:cursor-grabbing"
+      style={{ touchAction: 'none' }}
+    >
       {/* 气泡 */}
       <AnimatePresence>
         {showBubble && (
@@ -205,6 +232,7 @@ export default function FloatingPetWidget() {
       <motion.button
         className="pointer-events-auto relative w-16 h-16 flex items-center justify-center"
         onClick={() => {
+          if (isDragging.current) return; // 拖拽结束不触发点击
           setExpanded(e => !e);
           if (!showBubble) say(pick(MESSAGES.idle.slice(0, 2)), 'happy', 2000);
         }}
@@ -230,6 +258,6 @@ export default function FloatingPetWidget() {
           )}
         </motion.div>
       </motion.button>
-    </div>
+    </motion.div>
   );
 }
