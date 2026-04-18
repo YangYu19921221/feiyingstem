@@ -45,8 +45,7 @@ type MoodState = 'happy' | 'excited' | 'sad' | 'idle' | 'normal';
 export default function FloatingPetWidget() {
   const navigate = useNavigate();
   const location = useLocation();
-  // 只在学生端页面显示
-  if (!location.pathname.startsWith('/student')) return null;
+  // 所有 Hook 必须在条件判断前声明
   const [bubble, setBubble] = useState('');
   const [showBubble, setShowBubble] = useState(false);
   const [mood, setMood] = useState<MoodState>('normal');
@@ -59,6 +58,7 @@ export default function FloatingPetWidget() {
     queryFn: getMyPet,
     retry: false,
     staleTime: 60_000,
+    enabled: location.pathname.startsWith('/student'), // 只在学生端请求
   });
 
   const say = useCallback((msg: string, newMood: MoodState = 'happy', duration = 3000) => {
@@ -121,6 +121,8 @@ export default function FloatingPetWidget() {
     return () => clearInterval(interval);
   }, [pet, say]);
 
+  // 所有 Hook 执行完后再做条件渲染
+  if (!location.pathname.startsWith('/student')) return null;
   if (!pet) return null;
 
   const emoji = (PET_EMOJIS[pet.species] || PET_EMOJIS.pikachu)[Math.min(pet.evolution_stage, 4)];
