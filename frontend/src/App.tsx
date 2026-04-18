@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect, Suspense, lazy, type ComponentType } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
+import FloatingPetWidget from './components/FloatingPetWidget';
 
 // chunk 加载失败时自动刷新一次（部署后旧 chunk 404）
 function lazyWithRetry(factory: () => Promise<{ default: ComponentType<any> }>) {
@@ -688,6 +689,7 @@ function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>
       </Suspense>
+      <FloatingPetWidget />
     </Router>
     </ErrorBoundary>
   );
