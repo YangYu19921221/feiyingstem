@@ -128,14 +128,24 @@ const MemoryCurve = () => {
               <span className="text-gray-600 font-medium">返回</span>
             </button>
 
-            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
-              🧠 记忆曲线
-            </h1>
+            <h1 className="text-xl font-bold text-gray-800">记忆曲线</h1>
 
             <div className="w-24"></div>
           </div>
         </div>
       </nav>
+
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 160 }}>
+        <img src="/hero-memory.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-6 max-w-7xl mx-auto">
+          <div className="text-white">
+            <h2 className="text-3xl font-bold drop-shadow">🧠 记忆曲线</h2>
+            <p className="text-sm opacity-80 mt-1 drop-shadow">科学复习，让知识永驻脑海</p>
+          </div>
+        </div>
+      </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* 今日复习卡片 */}

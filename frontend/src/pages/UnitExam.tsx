@@ -204,14 +204,19 @@ const UnitExam = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full text-center"
+          className="bg-white rounded-3xl shadow-xl max-w-md w-full text-center overflow-hidden"
         >
-          <div className="text-6xl mb-4">📝</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">{examData.unit_name}</h2>
-          <p className="text-gray-500 mb-6">单元测验</p>
-
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="bg-blue-50 rounded-xl p-3">
+          {/* 考试封面图 */}
+          <div className="relative h-40 overflow-hidden">
+            <img src="/hero-exam.jpeg" alt="" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            <div className="absolute bottom-3 left-0 right-0 text-white">
+              <h2 className="text-xl font-bold drop-shadow">{examData.unit_name}</h2>
+              <p className="text-sm opacity-80">单元测验</p>
+            </div>
+          </div>
+          <div className="p-8">
+            <div className="grid grid-cols-3 gap-4 mb-8">
               <div className="text-2xl font-bold text-blue-600">{examData.question_count}</div>
               <div className="text-xs text-gray-500">题目</div>
             </div>
@@ -223,7 +228,7 @@ const UnitExam = () => {
               <div className="text-2xl font-bold text-orange-600">{Math.floor(examData.time_limit / 60)}</div>
               <div className="text-xs text-gray-500">分钟</div>
             </div>
-          </div>
+            </div>
 
           <div className="text-left mb-6 space-y-2 text-sm text-gray-600">
             <p>📌 英译中选择 × 5 + 中译英选择 × 5</p>

@@ -202,8 +202,19 @@ const CompletionScreen = () => {
         </div>
       </nav>
 
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 200 }}>
+        <img src="/hero-completion.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50" />
+        <div className="relative z-10 h-full flex flex-col items-center justify-center text-white">
+          <div className="text-5xl mb-2">{isExcellent ? '🎉' : isGood ? '👏' : '💪'}</div>
+          <h1 className="text-3xl font-bold drop-shadow-lg">{isExcellent ? '太棒了！' : isGood ? '做得不错！' : '继续加油！'}</h1>
+          <p className="text-sm opacity-80 mt-1 drop-shadow">你已完成 {data.modeName} 学习</p>
+        </div>
+      </div>
+
       {/* 主内容区 */}
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto px-4 py-8">
         {/* 标题区 */}
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
@@ -211,18 +222,6 @@ const CompletionScreen = () => {
           transition={{ duration: 0.5 }}
           className="text-center mb-12"
         >
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="text-8xl mb-6"
-          >
-            {isExcellent ? '🎉' : isGood ? '👏' : '💪'}
-          </motion.div>
-
-          <h1 className="text-4xl font-bold text-gray-800 mb-3">
-            {isExcellent ? '太棒了!' : isGood ? '做得不错!' : '继续加油!'}
-          </h1>
           <p className="text-xl text-gray-600">
             你已完成 <span className={`font-bold bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent`}>
               {data.modeName}

@@ -114,24 +114,22 @@ const UnitSelector = () => {
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
-            <div className="flex items-center gap-3 flex-1">
-              <span className="text-2xl">📖</span>
-              <div>
-                <h1 className="text-lg font-bold text-gray-800">{bookProgress.book_name}</h1>
-                <p className="text-xs text-gray-500">
-                  {bookProgress.unit_count} 个单元 · {bookProgress.word_count} 个单词
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500">整体进度</p>
-              <p className="text-xl font-bold text-primary">
-                {bookProgress.progress_percentage.toFixed(0)}%
-              </p>
-            </div>
+            <h1 className="text-lg font-bold text-gray-800 flex-1">{bookProgress.book_name}</h1>
           </div>
         </div>
       </nav>
+
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 130 }}>
+        <img src="/hero-login.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/40 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-4 max-w-3xl mx-auto w-full">
+          <div className="text-white">
+            <h2 className="text-2xl font-bold drop-shadow">📖 {bookProgress.book_name}</h2>
+            <p className="text-sm opacity-75 mt-0.5 drop-shadow">{bookProgress.unit_count} 个单元 · {bookProgress.word_count} 个单词 · 已完成 {bookProgress.progress_percentage.toFixed(0)}%</p>
+          </div>
+        </div>
+      </div>
 
       <div className="max-w-3xl mx-auto px-4 py-6">
         {/* 单元列表 */}

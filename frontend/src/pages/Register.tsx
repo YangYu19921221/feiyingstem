@@ -83,7 +83,11 @@ const Register = () => {
         </motion.div>
       </BrandPanel>
 
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-gradient-to-b from-white to-blue-50/30">
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-gradient-to-br from-white via-orange-50/30 to-yellow-50/40 relative overflow-hidden">
+        {/* 右下角装饰图 */}
+        <div className="absolute bottom-0 right-0 w-72 h-72 opacity-10 pointer-events-none select-none overflow-hidden rounded-tl-full">
+          <img src="/hero-register.jpeg" alt="" className="w-full h-full object-cover object-bottom" />
+        </div>
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}

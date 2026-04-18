@@ -48,6 +48,13 @@ const MistakeChallenge = () => {
     loadLevels();
   }, []);
 
+  // 从答题页返回关卡地图时刷新（页面可见时触发）
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden && phase === 'map') loadLevels(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [phase]);
+
   const loadLevels = async () => {
     try {
       setLoading(true);
@@ -156,6 +163,18 @@ const MistakeChallenge = () => {
           </div>
         </div>
       </nav>
+
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 160 }}>
+        <img src="/hero-challenge.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/35 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-4 max-w-3xl mx-auto">
+          <div className="text-white">
+            <h2 className="text-3xl font-bold drop-shadow">🏰 错题闯关</h2>
+            <p className="text-sm opacity-80 mt-1 drop-shadow">逐关攻克，成为英语战士</p>
+          </div>
+        </div>
+      </div>
 
       <div className="max-w-3xl mx-auto px-4 py-8">
         <AnimatePresence mode="wait">

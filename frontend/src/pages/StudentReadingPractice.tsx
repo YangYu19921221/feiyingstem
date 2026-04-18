@@ -109,13 +109,25 @@ const StudentReadingPractice = () => {
   if (result) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
-        <nav className="bg-white shadow-sm mb-6">
+        <nav className="bg-white shadow-sm">
           <div className="max-w-5xl mx-auto px-4 py-4">
-            <h1 className="text-2xl font-bold text-gray-800">📊 答题结果</h1>
+            <h1 className="text-xl font-bold text-gray-800">答题结果</h1>
           </div>
         </nav>
 
-        <div className="max-w-5xl mx-auto px-4 pb-12">
+        {/* Hero 横幅 */}
+        <div className="relative overflow-hidden" style={{ height: 140 }}>
+          <img src="/hero-reading.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+          <div className="relative z-10 h-full flex items-center px-6 max-w-5xl mx-auto">
+            <div className="text-white">
+              <h2 className="text-2xl font-bold drop-shadow">📖 阅读完成</h2>
+              <p className="text-sm opacity-80 mt-1 drop-shadow">查看你的答题成绩</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-5xl mx-auto px-4 pb-12 mt-6">
           {/* 成绩卡片 */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}

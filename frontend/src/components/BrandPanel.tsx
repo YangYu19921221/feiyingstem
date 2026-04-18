@@ -13,6 +13,13 @@ interface BrandPanelProps {
  */
 const BrandPanel = ({ tagline, children }: BrandPanelProps) => (
   <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden bg-gradient-to-br from-[#1E3A5F] via-[#1E40AF] to-[#3B82F6] items-center justify-center p-12">
+    {/* AI生成背景图 */}
+    <img
+      src="/login-hero.jpeg"
+      alt=""
+      className="absolute inset-0 w-full h-full object-cover opacity-40"
+      style={{ mixBlendMode: 'luminosity' }}
+    />
     <FloatingElements />
 
     <div className="absolute top-0 right-0 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />

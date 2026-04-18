@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Lightbulb } from 'lucide-react';
 import api from '../api/client';
+import { submitMistakePracticeRecord } from '../api/learningRecords';
 import AnswerFeedback from '../components/practice/AnswerFeedback';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import { useAudio } from '../hooks/useAudio';
@@ -136,6 +137,11 @@ const MistakePractice = () => {
     setIsCorrect(correct);
     setIsChecking(true);
     setResults(prev => [...prev, correct]);
+    // 答对 → 立即标记为已解决，移出待攻克；答错 → 记录错误
+    const q = questions[currentIndex];
+    if (q?.word_id) {
+      submitMistakePracticeRecord(q.word_id, correct).catch(() => {});
+    }
   };
 
   const handleNext = () => {

@@ -148,6 +148,18 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
         </div>
       </nav>
 
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 140 }}>
+        <img src="/hero-pet.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/60 via-purple-800/30 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-4 max-w-5xl mx-auto">
+          <div className="text-white">
+            <h2 className="text-3xl font-bold drop-shadow">🐾 领养宠物</h2>
+            <p className="text-sm opacity-80 mt-1 drop-shadow">选择你的学习伙伴，一起成长✨</p>
+          </div>
+        </div>
+      </div>
+
       <div className="max-w-5xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
           {/* 左侧: 预览 */}
@@ -288,6 +300,18 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
           </div>
         </div>
       </nav>
+
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 140 }}>
+        <img src="/hero-pet.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/60 via-purple-800/30 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-4 max-w-5xl mx-auto">
+          <div className="text-white">
+            <h2 className="text-3xl font-bold drop-shadow">🐾 我的宠物</h2>
+            <p className="text-sm opacity-80 mt-1 drop-shadow">学习越多，宠物成长越快✨</p>
+          </div>
+        </div>
+      </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

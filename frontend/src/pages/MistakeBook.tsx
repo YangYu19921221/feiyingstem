@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, BookOpen, TrendingUp, Clock, Target, PlayCircle } from 'lucide-react';
@@ -27,6 +27,12 @@ const MistakeBook = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [reviewDueCount, setReviewDueCount] = useState(0);
 
+  // 刷新统计数据（返回页面时调用）
+  const refreshStats = useCallback(() => {
+    getMistakeBookStats().then(setStats).catch(() => {});
+    getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     getMistakeBookStats().then(setStats).catch(() => {});
   }, [showResolved]);
@@ -34,6 +40,13 @@ const MistakeBook = () => {
   useEffect(() => {
     getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
   }, []);
+
+  // 从练习/闯关页返回时自动刷新（页面重新可见时触发）
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) refreshStats(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refreshStats]);
 
   // 单词列表在筛选切换时重置到第1页
   useEffect(() => {
@@ -121,14 +134,24 @@ const MistakeBook = () => {
               <span className="text-gray-600 font-medium">返回</span>
             </button>
 
-            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">
-              📕 我的错题集
-            </h1>
+            <h1 className="text-xl font-bold text-gray-800">错题集</h1>
 
             <div className="w-24"></div>
           </div>
         </div>
       </nav>
+
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 160 }}>
+        <img src="/hero-mistake.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-6 max-w-7xl mx-auto">
+          <div className="text-white">
+            <h2 className="text-3xl font-bold drop-shadow">📕 我的错题集</h2>
+            <p className="text-sm opacity-80 mt-1 drop-shadow">攻克错题，每一次挑战都是成长</p>
+          </div>
+        </div>
+      </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* 统计卡片 */}

@@ -72,6 +72,19 @@ const UnitExamResult = () => {
         </div>
       </nav>
 
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 160 }}>
+        <img src="/hero-exam-result.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-6 max-w-3xl mx-auto">
+          <div className="text-white">
+            <div className="text-4xl mb-1">{gradeInfo.emoji}</div>
+            <h2 className="text-2xl font-bold drop-shadow">{gradeInfo.text}</h2>
+            <p className="text-sm opacity-80 drop-shadow">单元考试结果</p>
+          </div>
+        </div>
+      </div>
+
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         {/* 得分卡 */}
         <motion.div

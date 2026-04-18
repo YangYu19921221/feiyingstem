@@ -536,17 +536,20 @@ const CompetitionLearning: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-red-50 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* 顶部标题栏 */}
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold text-center mb-2">
-            🏆 竞赛模式学习
-          </h1>
-          <p className="text-center text-gray-600">
-            边学边PK,冲击排行榜!
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-red-50">
+      {/* Hero 横幅 */}
+      <div className="relative overflow-hidden" style={{ height: 160 }}>
+        <img src="/hero-competition.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/35 to-transparent" />
+        <div className="relative z-10 h-full flex items-center px-6 max-w-7xl mx-auto">
+          <div className="text-white">
+            <h1 className="text-3xl font-bold drop-shadow">🏆 竞赛模式</h1>
+            <p className="text-sm opacity-80 mt-1 drop-shadow">边学边PK，冲击排行榜！</p>
+          </div>
         </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-4">
 
         {/* 主要内容区域 */}
         <div className="flex gap-6">

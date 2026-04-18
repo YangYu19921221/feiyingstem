@@ -99,6 +99,24 @@ export const createLearningRecords = async (
 };
 
 /**
+ * 提交错题练习结果（答对直接标记为已解决，移出待攻克）
+ */
+export const submitMistakePracticeRecord = async (
+  wordId: number,
+  isCorrect: boolean,
+): Promise<void> => {
+  if (isCorrect) {
+    // 答对 → 直接标记为已解决（mastery_level=4），移出待攻克
+    await axios.delete(`${API_BASE_URL}/student/mistake-book/words/${wordId}`);
+  } else {
+    // 答错 → 仅记录错误，不改变解决状态
+    await axios.post(`${API_BASE_URL}/student/review-records`, {
+      records: [{ word_id: wordId, is_correct: false, learning_mode: 'quiz', time_spent: 0 }],
+    });
+  }
+};
+
+/**
  * 创建学习会话
  */
 export const createStudySession = async (

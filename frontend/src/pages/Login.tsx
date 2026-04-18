@@ -103,7 +103,11 @@ const Login = () => {
         </motion.div>
       </BrandPanel>
 
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-gradient-to-b from-white to-blue-50/30">
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-gradient-to-br from-white via-blue-50/40 to-orange-50/30 relative overflow-hidden">
+        {/* 右上角装饰图 */}
+        <div className="absolute top-0 right-0 w-64 h-64 opacity-10 pointer-events-none select-none overflow-hidden rounded-bl-full">
+          <img src="/hero-login.jpeg" alt="" className="w-full h-full object-cover" />
+        </div>
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}

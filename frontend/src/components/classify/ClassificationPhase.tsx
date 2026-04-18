@@ -2,6 +2,7 @@
  * 阶段1：分类（循环模式）
  * 每轮过完所有词后，夹生+陌生的词再来一轮
  * 直到全部标为熟悉才结束
+ * 每连续标记3个熟悉，插入快速回顾卡确认
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
@@ -20,6 +21,7 @@ interface ClassificationPhaseProps {
 
 const CLASSIFY_TIME = 10;
 const PLAY_INTERVAL = 1800;
+const FAMILIAR_REVIEW_EVERY = 3; // 每N个熟悉词触发一次回顾
 
 export default function ClassificationPhase({
   words,
@@ -27,20 +29,22 @@ export default function ClassificationPhase({
   onRoundMistakes,
   playAudio,
 }: ClassificationPhaseProps) {
-  // 当前轮要过的单词列表
   const [roundWords, setRoundWords] = useState<WordData[]>(words);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [round, setRound] = useState(1);
   const [timeLeft, setTimeLeft] = useState(CLASSIFY_TIME);
   const [results, setResults] = useState<Map<number, WordCategory>>(new Map());
   const [isTransitioning, setIsTransitioning] = useState(false);
-  // 轮次间过渡
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [roundErrors, setRoundErrors] = useState(0);
-  // 使用教程
   const [showTutorial, setShowTutorial] = useState(() => {
     return !localStorage.getItem('classify_tutorial_done');
   });
+
+  // 熟悉词回顾相关状态
+  const [familiarBuffer, setFamiliarBuffer] = useState<WordData[]>([]); // 待回顾的熟悉词
+  const [showFamiliarReview, setShowFamiliarReview] = useState(false);   // 显示回顾卡
+  const [reviewWords, setReviewWords] = useState<WordData[]>([]);        // 本次回顾的词
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,13 +92,13 @@ export default function ClassificationPhase({
       setRoundErrors(errorWords.length);
       setShowRoundSummary(true);
 
-      // 2秒后自动进入下一轮
       setTimeout(() => {
         setRound(prev => prev + 1);
         setRoundWords(errorWords);
         setCurrentIndex(0);
         setTimeLeft(CLASSIFY_TIME);
         setShowRoundSummary(false);
+        setFamiliarBuffer([]); // 新一轮清空熟悉词缓冲
       }, 2000);
     }
   }, [roundWords, onComplete, onRoundMistakes]);
@@ -110,9 +114,28 @@ export default function ClassificationPhase({
     newResults.set(currentWord.id, category);
     setResults(newResults);
 
+    // 如果标记为熟悉，加入缓冲区
+    const newBuffer = category === 'familiar'
+      ? [...familiarBuffer, currentWord]
+      : familiarBuffer;
+
     setTimeout(() => {
-      if (currentIndex + 1 >= roundWords.length) {
-        // 本轮结束
+      const isLastInRound = currentIndex + 1 >= roundWords.length;
+
+      // 只有当前词标为熟悉才检查是否触发回顾
+      if (category === 'familiar' && newBuffer.length >= FAMILIAR_REVIEW_EVERY && !isLastInRound) {
+        setReviewWords([...newBuffer]);
+        setFamiliarBuffer([]);
+        setCurrentIndex(currentIndex + 1);
+        setTimeLeft(CLASSIFY_TIME);
+        setIsTransitioning(false);
+        setShowFamiliarReview(true);
+        return;
+      }
+
+      setFamiliarBuffer(newBuffer);
+
+      if (isLastInRound) {
         handleRoundEnd(newResults);
       } else {
         setCurrentIndex(currentIndex + 1);
@@ -120,7 +143,7 @@ export default function ClassificationPhase({
       }
       setIsTransitioning(false);
     }, 200);
-  }, [currentWord, currentIndex, roundWords.length, results, handleRoundEnd, isTransitioning]);
+  }, [currentWord, currentIndex, roundWords.length, results, handleRoundEnd, isTransitioning, familiarBuffer]);
 
   useEffect(() => {
     classifyRef.current = handleClassify;
@@ -128,7 +151,7 @@ export default function ClassificationPhase({
 
   // 键盘快捷键: 1=熟悉, 2=夹生, 3=陌生, 空格=播放发音
   useEffect(() => {
-    if (showTutorial || showRoundSummary) return;
+    if (showTutorial || showRoundSummary || showFamiliarReview) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
       switch (e.key) {
@@ -143,11 +166,11 @@ export default function ClassificationPhase({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTutorial, showRoundSummary, currentWord, playAudio]);
+  }, [showTutorial, showRoundSummary, showFamiliarReview, currentWord, playAudio]);
 
-  // 倒计时
+  // 倒计时（回顾时暂停）
   useEffect(() => {
-    if (isTransitioning || showRoundSummary || showTutorial) return;
+    if (isTransitioning || showRoundSummary || showTutorial || showFamiliarReview) return;
 
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
@@ -169,6 +192,43 @@ export default function ClassificationPhase({
     setShowTutorial(false);
     localStorage.setItem('classify_tutorial_done', '1');
   };
+
+  // ── 熟悉词快速回顾卡 ──────────────────────────────────────
+  if (showFamiliarReview) {
+    return (
+      <div className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white rounded-3xl shadow-lg p-6 w-full max-w-md"
+        >
+          <div className="text-center mb-4">
+            <div className="text-4xl mb-2">👀</div>
+            <h3 className="text-lg font-bold text-gray-800">快速回顾一下</h3>
+            <p className="text-sm text-gray-400 mt-1">你标记了 {reviewWords.length} 个熟悉的词，确认都认识吗？</p>
+          </div>
+
+          <div className="space-y-3 mb-6">
+            {reviewWords.map(w => (
+              <div key={w.id} className="flex items-center justify-between bg-green-50 rounded-xl px-4 py-3">
+                <span className="font-bold text-gray-800 text-lg">{w.word}</span>
+                <span className="text-gray-500 text-sm">{w.meaning}</span>
+              </div>
+            ))}
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowFamiliarReview(false)}
+            className="w-full py-3 bg-primary text-white rounded-2xl font-bold text-lg shadow-lg"
+          >
+            认识，继续 →
+          </motion.button>
+        </motion.div>
+      </div>
+    );
+  }
 
   // 使用教程
   if (showTutorial) {
