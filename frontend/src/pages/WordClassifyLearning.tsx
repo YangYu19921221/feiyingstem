@@ -23,6 +23,7 @@ import ClassifySummary from '../components/classify/ClassifySummary';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
+import { dispatchPetEvent } from '../utils/petEventBus';
 
 type Phase = 'classify' | 'speechVerify' | 'dictation' | 'exam' | 'summary';
 
@@ -329,19 +330,21 @@ const WordClassifyLearning = () => {
     setDictationResults(results);
     setPhase('exam');
 
-    // 实时记录听写错题
-    const mistakes = results
-      .filter(r => !r.isCorrect)
-      .map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }));
-    submitMistakesRealtime(mistakes);
+    const mistakes = results.filter(r => !r.isCorrect);
+    const correct = results.filter(r => r.isCorrect);
+    if (correct.length > 0) dispatchPetEvent('correct', { combo: correct.length });
+    if (mistakes.length > 0) dispatchPetEvent('wrong');
 
-    // 保存当前组进度
+    submitMistakesRealtime(
+      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }))
+    );
     saveGroupProgress(results);
   };
 
   // 过关检测通过 → 组内总结
   const handleExamPass = (correct: number, total: number) => {
     setPhase('summary');
+    dispatchPetEvent('complete');
     clearLocalProgress();
     // 复习模式完成 → 标记强制复习已完成
     if (isReviewRef.current) {
