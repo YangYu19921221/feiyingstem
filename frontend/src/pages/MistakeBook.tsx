@@ -10,6 +10,7 @@ import {
   type MistakeBookStats,
 } from '../api/mistakeBook';
 import ColoredPhonetic from '../components/ColoredPhonetic';
+import ColoredWord from '../components/ColoredWord';
 import { toast } from '../components/Toast';
 
 const PAGE_SIZE = 20;
@@ -324,7 +325,11 @@ const MistakeBook = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-2xl font-bold">{word.word}</h3>
+                            <ColoredWord
+                              word={word.word}
+                              syllables={word.syllables}
+                              className="text-2xl font-bold"
+                            />
                             {word.phonetic && (
                               <ColoredPhonetic phonetic={word.phonetic} className="text-base" />
                             )}

@@ -8,6 +8,7 @@ export interface MistakeWordDetail {
   word_id: number;
   word: string;
   phonetic: string | null;
+  syllables: string | null;  // 音节划分
   meaning: string;
   part_of_speech: string | null;
 

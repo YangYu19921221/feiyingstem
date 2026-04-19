@@ -11,6 +11,7 @@ class MistakeWordDetail(BaseModel):
     word_id: int
     word: str
     phonetic: Optional[str]
+    syllables: Optional[str] = None  # 音节划分，用于彩色显示
     meaning: str
     part_of_speech: Optional[str]
 

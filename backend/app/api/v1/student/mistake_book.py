@@ -225,6 +225,7 @@ async def get_mistake_words(
             Word.id,
             Word.word,
             Word.phonetic,
+            Word.syllables,
             WordDefinition.meaning,
             WordDefinition.part_of_speech,
             func.count(LearningRecord.id).label('total_mistakes'),
@@ -259,6 +260,7 @@ async def get_mistake_words(
         )
         .group_by(
             Word.id,
+            Word.syllables,
             WordDefinition.id,
             WordMastery.mastery_level,
             WordMastery.correct_count,
@@ -304,6 +306,7 @@ async def get_mistake_words(
             word_id=row.id,
             word=row.word,
             phonetic=row.phonetic,
+            syllables=row.syllables,
             meaning=row.meaning,
             part_of_speech=row.part_of_speech,
             total_mistakes=row.total_mistakes,
