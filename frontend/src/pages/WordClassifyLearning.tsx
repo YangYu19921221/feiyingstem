@@ -135,7 +135,9 @@ const WordClassifyLearning = () => {
       setLoading(true);
 
       const isReviewPractice = sessionStorage.getItem('is_review_practice') === 'true';
-      const isMistakePractice = sessionStorage.getItem('is_mistake_practice') === 'true';
+      // 双重判断：标志位 OR (unit_id=0 且有错题词数据)
+      const isMistakePractice = sessionStorage.getItem('is_mistake_practice') === 'true'
+        || (id === 0 && !!sessionStorage.getItem('mistake_practice_words'));
       if (isReviewPractice) isReviewRef.current = true;
 
       let data: StartLearningResponse;
