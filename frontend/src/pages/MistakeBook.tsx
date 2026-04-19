@@ -295,94 +295,103 @@ const MistakeBook = () => {
             <>
             <div className="grid grid-cols-1 gap-4">
               <AnimatePresence>
-                {mistakeWords.map((word, index) => (
-                  <motion.div
-                    key={word.word_id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={`border-2 rounded-xl p-4 ${
-                      word.is_resolved
-                        ? 'border-green-200 bg-green-50'
-                        : 'border-red-200 bg-red-50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-2xl font-bold">{word.word}</h3>
-                          {word.phonetic && (
-                            <ColoredPhonetic phonetic={word.phonetic} className="text-base" />
-                          )}
-                          {word.is_resolved && (
-                            <span className="px-2 py-1 bg-green-500 text-white text-xs rounded-full">
-                              已掌握
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-gray-700 mb-3">{word.meaning}</p>
+                {mistakeWords.map((word, index) => {
+                  const cardStyle = word.is_resolved
+                    ? 'border-green-200 bg-green-50'
+                    : word.mastery_level === 0
+                    ? 'border-red-300 bg-red-50'
+                    : word.mastery_level <= 2
+                    ? 'border-orange-300 bg-orange-50'
+                    : 'border-blue-300 bg-blue-50';
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">总错误:</span>
-                            <span className="font-bold text-red-600">{word.total_mistakes}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">最近7天:</span>
-                            <span className="font-bold text-orange-600">{word.recent_mistakes}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">掌握度:</span>
-                            <span className="font-bold text-blue-600">{word.mastery_level}/5</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">正确率:</span>
-                            <span className="font-bold text-green-600">
-                              {word.correct_count + word.wrong_count > 0
-                                ? Math.round((word.correct_count / (word.correct_count + word.wrong_count)) * 100)
-                                : 0}%
+                  const categoryBadge = word.is_resolved
+                    ? { label: '已掌握', cls: 'bg-green-500 text-white' }
+                    : word.mastery_level === 0
+                    ? { label: '😰 陌生', cls: 'bg-red-100 text-red-700' }
+                    : word.mastery_level <= 2
+                    ? { label: '🤔 夹生', cls: 'bg-orange-100 text-orange-700' }
+                    : { label: '💡 接近', cls: 'bg-blue-100 text-blue-700' };
+
+                  return (
+                    <motion.div
+                      key={word.word_id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      transition={{ delay: index * 0.05 }}
+                      className={`border-2 rounded-xl p-4 ${cardStyle}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-2xl font-bold">{word.word}</h3>
+                            {word.phonetic && (
+                              <ColoredPhonetic phonetic={word.phonetic} className="text-base" />
+                            )}
+                            <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${categoryBadge.cls}`}>
+                              {categoryBadge.label}
                             </span>
+                          </div>
+                          <p className="text-gray-700 mb-3">{word.meaning}</p>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">总错误:</span>
+                              <span className="font-bold text-red-600">{word.total_mistakes}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">最近7天:</span>
+                              <span className="font-bold text-orange-600">{word.recent_mistakes}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">掌握度:</span>
+                              <span className="font-bold text-blue-600">{word.mastery_level}/5</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">正确率:</span>
+                              <span className="font-bold text-green-600">
+                                {word.correct_count + word.wrong_count > 0
+                                  ? Math.round((word.correct_count / (word.correct_count + word.wrong_count)) * 100)
+                                  : 0}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {word.quiz_wrong > 0 && (
+                              <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">
+                                选择题错{word.quiz_wrong}次
+                              </span>
+                            )}
+                            {word.spelling_wrong > 0 && (
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
+                                拼写错{word.spelling_wrong}次
+                              </span>
+                            )}
+                            {word.fillblank_wrong > 0 && (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                                填空错{word.fillblank_wrong}次
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {/* 错误模式统计 */}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {word.quiz_wrong > 0 && (
-                            <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">
-                              选择题错{word.quiz_wrong}次
-                            </span>
-                          )}
-                          {word.spelling_wrong > 0 && (
-                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
-                              拼写错{word.spelling_wrong}次
-                            </span>
-                          )}
-                          {word.fillblank_wrong > 0 && (
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
-                              填空错{word.fillblank_wrong}次
-                            </span>
-                          )}
+                        <div className="ml-4">
+                          <div className="flex gap-1">
+                            {[0, 1, 2, 3, 4].map((level) => (
+                              <div
+                                key={level}
+                                className={`w-2 h-8 rounded ${
+                                  level < word.mastery_level ? 'bg-green-500' : 'bg-gray-200'
+                                }`}
+                              />
+                            ))}
+                          </div>
                         </div>
                       </div>
-
-                      <div className="ml-4">
-                        <div className="flex gap-1">
-                          {[0, 1, 2, 3, 4].map((level) => (
-                            <div
-                              key={level}
-                              className={`w-2 h-8 rounded ${
-                                level < word.mastery_level
-                                  ? 'bg-green-500'
-                                  : 'bg-gray-200'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
 
