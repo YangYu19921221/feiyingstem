@@ -130,6 +130,30 @@ async def get_mistake_book_stats(
     )
     fillblank_mistakes = fillblank_result.scalar() or 0
 
+    # 分类学习中标为夹生/陌生的词（classify 模式答错，mastery < 4）
+    classify_result = await db.execute(
+        select(func.count(func.distinct(LearningRecord.word_id)))
+        .join(
+            WordMastery,
+            and_(
+                WordMastery.word_id == LearningRecord.word_id,
+                WordMastery.user_id == user_id,
+            )
+        )
+        .where(
+            and_(
+                LearningRecord.user_id == user_id,
+                LearningRecord.is_correct == False,
+                LearningRecord.learning_mode == 'classify',
+                or_(
+                    WordMastery.mastery_level == None,
+                    WordMastery.mastery_level < 4
+                )
+            )
+        )
+    )
+    classify_mistakes = classify_result.scalar() or 0
+
     # 今天和本周练习的错题数
     today = date.today()
     week_ago = today - timedelta(days=7)
@@ -166,6 +190,7 @@ async def get_mistake_book_stats(
         quiz_mistakes=quiz_mistakes,
         spelling_mistakes=spelling_mistakes,
         fillblank_mistakes=fillblank_mistakes,
+        classify_mistakes=classify_mistakes,
         today_practice_count=today_practice_count,
         week_practice_count=week_practice_count,
     )
@@ -175,6 +200,7 @@ async def get_mistake_book_stats(
 async def get_mistake_words(
     only_unresolved: bool = True,
     unit_id: int = None,
+    source: str = Query(default='all', description="来源: all=全部, classify=仅分类学习夹生/陌生词"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(get_current_student),
@@ -185,6 +211,7 @@ async def get_mistake_words(
 
     参数:
     - only_unresolved: 只显示未解决的错题 (掌握度 < 4)
+    - source: all=全部模式错题, classify=仅分类学习中夹生/陌生的词
     - unit_id: 筛选指定单元的错题
     - page: 页码（从1开始）
     - page_size: 每页数量（默认20）
@@ -226,7 +253,8 @@ async def get_mistake_words(
         .where(
             and_(
                 LearningRecord.user_id == user_id,
-                LearningRecord.is_correct == False
+                LearningRecord.is_correct == False,
+                LearningRecord.learning_mode == 'classify' if source == 'classify' else True
             )
         )
         .group_by(

@@ -54,6 +54,7 @@ class MistakeBookStats(BaseModel):
     quiz_mistakes: int = 0
     spelling_mistakes: int = 0
     fillblank_mistakes: int = 0
+    classify_mistakes: int = 0  # 分类学习中标为夹生/陌生的词
 
     # 时间统计
     today_practice_count: int = 0  # 今天练习的错题数

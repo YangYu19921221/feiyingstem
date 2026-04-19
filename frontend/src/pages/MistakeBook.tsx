@@ -57,7 +57,8 @@ const MistakeBook = () => {
   const loadWords = async (page: number) => {
     try {
       setLoading(true);
-      const data = await getMistakeWords(!showResolved, undefined, page, PAGE_SIZE);
+      // 词列表改为展示分类学习中的夹生/陌生词
+      const data = await getMistakeWords(!showResolved, undefined, page, PAGE_SIZE, 'classify');
       setMistakeWords(data.items || []);
       setTotalPages(data.total_pages);
       setTotalCount(data.total);
@@ -177,9 +178,10 @@ const MistakeBook = () => {
             >
               <div className="flex items-center justify-between mb-2">
                 <Target className="w-8 h-8" />
-                <span className="text-3xl font-bold">{stats.unresolved_mistakes}</span>
+                <span className="text-3xl font-bold">{stats.classify_mistakes || 0}</span>
               </div>
               <p className="text-white/90">待攻克</p>
+              <p className="text-white/60 text-xs mt-1">分类学习夹生/陌生词</p>
             </motion.div>
 
             <motion.div
@@ -233,21 +235,21 @@ const MistakeBook = () => {
 
           <button
             onClick={handleStartPractice}
-            disabled={!stats || stats.unresolved_mistakes === 0}
+            disabled={!stats || (stats.classify_mistakes || 0) === 0}
             className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {stats && stats.unresolved_mistakes > 0
-              ? `🚀 开始练习（${stats.unresolved_mistakes}个待攻克）`
-              : '暂无待练习错题'}
+            {stats && (stats.classify_mistakes || 0) > 0
+              ? `🚀 开始练习（${stats.classify_mistakes}个待攻克）`
+              : '暂无分类学习待攻克词'}
           </button>
 
           {/* 错题闯关入口 */}
-          {stats && stats.unresolved_mistakes > 0 && (
+          {stats && (stats.classify_mistakes || 0) > 0 && (
             <button
               onClick={() => navigate('/student/mistake-challenge')}
               className="w-full mt-3 py-4 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all"
             >
-              🏰 错题闯关模式 ({Math.ceil(stats.unresolved_mistakes / 5)} 关)
+              🏰 错题闯关模式 ({Math.ceil((stats.classify_mistakes || 0) / 5)} 关)
             </button>
           )}
         </motion.div>

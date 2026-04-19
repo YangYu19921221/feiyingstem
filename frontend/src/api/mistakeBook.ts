@@ -49,6 +49,7 @@ export interface MistakeBookStats {
   quiz_mistakes: number;
   spelling_mistakes: number;
   fillblank_mistakes: number;
+  classify_mistakes: number; // 分类学习夹生/陌生词
 
   // 时间统计
   today_practice_count: number;
@@ -86,9 +87,10 @@ export const getMistakeWords = async (
   onlyUnresolved: boolean = true,
   unitId?: number,
   page: number = 1,
-  pageSize: number = 20
+  pageSize: number = 20,
+  source: 'all' | 'classify' = 'all'
 ): Promise<MistakeWordPage> => {
-  let url = `/student/mistake-book/words?only_unresolved=${onlyUnresolved}&page=${page}&page_size=${pageSize}`;
+  let url = `/student/mistake-book/words?only_unresolved=${onlyUnresolved}&page=${page}&page_size=${pageSize}&source=${source}`;
   if (unitId) {
     url += `&unit_id=${unitId}`;
   }
