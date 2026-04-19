@@ -334,14 +334,10 @@ const MistakeBook = () => {
                           </div>
                           <p className="text-gray-700 mb-3">{word.meaning}</p>
 
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                          <div className="grid grid-cols-3 gap-2 text-sm">
                             <div className="flex items-center gap-2">
-                              <span className="text-gray-500">总错误:</span>
-                              <span className="font-bold text-red-600">{word.total_mistakes}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-500">最近7天:</span>
-                              <span className="font-bold text-orange-600">{word.recent_mistakes}</span>
+                              <span className="text-gray-500">分类错误:</span>
+                              <span className="font-bold text-red-600">{word.total_mistakes}次</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-gray-500">掌握度:</span>
@@ -357,23 +353,12 @@ const MistakeBook = () => {
                             </div>
                           </div>
 
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {word.quiz_wrong > 0 && (
-                              <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">
-                                选择题错{word.quiz_wrong}次
-                              </span>
-                            )}
-                            {word.spelling_wrong > 0 && (
-                              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
-                                拼写错{word.spelling_wrong}次
-                              </span>
-                            )}
-                            {word.fillblank_wrong > 0 && (
-                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
-                                填空错{word.fillblank_wrong}次
-                              </span>
-                            )}
-                          </div>
+                          {/* 最近错误时间 */}
+                          {word.last_mistake_at && (
+                            <p className="text-xs text-gray-400 mt-2">
+                              最近一次: {new Date(word.last_mistake_at).toLocaleDateString('zh-CN')}
+                            </p>
+                          )}
                         </div>
 
                         <div className="ml-4">
