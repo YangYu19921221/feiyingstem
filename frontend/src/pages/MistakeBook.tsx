@@ -5,7 +5,6 @@ import { ArrowLeft, BookOpen, TrendingUp, Clock, Target, PlayCircle } from 'luci
 import {
   getMistakeBookStats,
   getMistakeWords,
-  startMistakePractice,
   getChallengeReviewDue,
   type MistakeWordDetail,
   type MistakeBookStats,
@@ -90,20 +89,34 @@ const MistakeBook = () => {
 
   const handleStartPractice = async () => {
     try {
-      const response = await startMistakePractice({
-        learning_mode: 'quiz',
-        limit: 20,
-        only_unresolved: true,
-      });
+      // 获取分类学习中未掌握的词（夹生+陌生）
+      const data = await getMistakeWords(true, undefined, 1, 50, 'classify');
 
-      if (response.practice_words.length === 0) {
-        toast.info(response.message);
+      if (!data.items || data.items.length === 0) {
+        toast.info('没有分类学习中待攻克的词，先去做分类记忆法学习吧！');
         return;
       }
 
-      sessionStorage.setItem('mistake_practice_words', JSON.stringify(response.practice_words));
+      // 转换为 WordClassifyLearning 需要的 WordData 格式
+      const words = data.items.map(w => ({
+        id: w.word_id,
+        word: w.word,
+        phonetic: w.phonetic,
+        syllables: null,
+        difficulty: 3,
+        audio_url: null,
+        image_url: null,
+        order_index: 0,
+        meaning: w.meaning,
+        part_of_speech: w.part_of_speech,
+        example_sentence: null,
+        example_translation: null,
+      }));
+
+      // 走分类记忆法流程复习这些词
+      sessionStorage.setItem('mistake_practice_words', JSON.stringify(words));
       sessionStorage.setItem('is_mistake_practice', 'true');
-      navigate('/student/mistake-practice');
+      navigate('/student/units/0/classify');
     } catch (error) {
       console.error('开始练习失败:', error);
       toast.error('开始练习失败,请重试');
