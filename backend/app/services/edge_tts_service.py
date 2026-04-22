@@ -21,7 +21,7 @@ CACHE_DIR.mkdir(exist_ok=True)
 
 def _cache_path(word: str) -> Path:
     """根据单词生成缓存文件路径"""
-    key = hashlib.md5(f"{word.lower().strip()}:{VOICE}".encode()).hexdigest()
+    key = hashlib.md5(f"{word.lower().strip()}:{VOICE}:v3".encode()).hexdigest()
     return CACHE_DIR / f"{key}.mp3"
 
 
@@ -32,20 +32,23 @@ async def generate_pronunciation(word: str) -> bytes:
     """
     cache = _cache_path(word)
 
-    # 命中缓存
     if cache.exists():
         return cache.read_bytes()
 
-    # 调用 Edge TTS
     try:
         import edge_tts
-        communicate = edge_tts.Communicate(word.strip(), VOICE)
+        text = word.strip()
+        # 补句末标点，触发自然的语调下降，避免尾音被吞
+        if not text.endswith(('.', '!', '?')):
+            text += '.'
+
+        communicate = edge_tts.Communicate(text, VOICE)
         await communicate.save(str(cache))
+
         logger.info(f"Edge TTS 生成并缓存: {word}")
         return cache.read_bytes()
     except Exception as e:
         logger.error(f"Edge TTS 生成失败: {word} - {e}")
-        # 清理可能的空文件
         if cache.exists() and cache.stat().st_size == 0:
             cache.unlink()
         raise RuntimeError(f"发音生成失败: {e}")

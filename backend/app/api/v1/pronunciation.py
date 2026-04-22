@@ -102,7 +102,7 @@ async def whisper_status():
 
 @router.get("/edge-tts")
 async def best_pronunciation(
-    word: str = Query(None, max_length=100),
+    word: str = Query(None, max_length=500),
     word_id: int = Query(None),
     db: AsyncSession = Depends(get_db),
 ):

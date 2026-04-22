@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { useCountdown } from '../hooks/useCountdown';
-import BrandPanel, { MobileBrandHeader } from '../components/BrandPanel';
 import Spinner from '../components/Spinner';
+import AuthShell from '../components/auth/AuthShell';
 
 interface LoginResponse {
   access_token: string;
@@ -21,7 +21,12 @@ interface LoginResponse {
   };
 }
 
-const INPUT_CLASS = 'border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400 outline-none transition bg-gray-50/50 hover:bg-white';
+const INPUT_BASE =
+  'w-full px-4 py-3.5 rounded-xl outline-none transition text-white placeholder-gray-500';
+const inputStyle: React.CSSProperties = {
+  background: 'rgba(15, 23, 34, 0.85)',
+  border: '1px solid #2a3442',
+};
 
 const Login = () => {
   const navigate = useNavigate();
@@ -75,51 +80,23 @@ const Login = () => {
     }
   };
 
+  const onFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.borderColor = 'var(--glow)';
+    e.currentTarget.style.boxShadow = '0 0 0 3px var(--glow-ring)';
+  };
+  const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.borderColor = '#2a3442';
+    e.currentTarget.style.boxShadow = 'none';
+  };
+
   return (
-    <div className="min-h-screen flex bg-white">
-      <BrandPanel tagline={<>展翅高飞，征服英语<br />AI 赋能，高效提分</>}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          className="grid grid-cols-3 gap-4"
-        >
-          {[
-            { num: '10万+', label: '学员选择' },
-            { num: '98%', label: '提分率' },
-            { num: '500+', label: '精选词库' },
-          ].map((item, i) => (
-            <motion.div
-              key={item.label}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9 + i * 0.1 }}
-              className="text-center"
-            >
-              <div className="text-2xl font-bold text-white">{item.num}</div>
-              <div className="text-xs text-blue-300 mt-1">{item.label}</div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </BrandPanel>
-
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-gradient-to-br from-white via-blue-50/40 to-orange-50/30 relative overflow-hidden">
-        {/* 右上角装饰图 */}
-        <div className="absolute top-0 right-0 w-64 h-64 opacity-10 pointer-events-none select-none overflow-hidden rounded-bl-full">
-          <img src="/hero-login.jpeg" alt="" className="w-full h-full object-cover" />
-        </div>
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-md"
-        >
-          <MobileBrandHeader />
-
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-800">欢迎回来</h2>
-            <p className="text-gray-400 mt-1">登录账号，继续你的学习计划</p>
-          </motion.div>
+    <AuthShell>
+      {() => (
+        <>
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold" style={{ color: '#fff' }}>欢迎回来</h2>
+            <p className="mt-1 text-sm" style={{ color: '#8a95a5' }}>登录账号，继续你的学习计划</p>
+          </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <AnimatePresence>
@@ -128,46 +105,62 @@ const Login = () => {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm"
+                  className="px-4 py-3 rounded-xl text-sm"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#fca5a5',
+                  }}
                 >
                   {error}
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-600 mb-1.5">用户名或邮箱</label>
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>
+                用户名或邮箱
+              </label>
               <input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className={`w-full px-4 py-3.5 text-base ${INPUT_CLASS}`}
+                className={INPUT_BASE}
+                style={inputStyle}
+                onFocus={onFocus}
+                onBlur={onBlur}
                 placeholder="请输入用户名或邮箱"
                 required
                 disabled={loading}
               />
-            </motion.div>
+            </div>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-600 mb-1.5">密码</label>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>
+                密码
+              </label>
               <input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={`w-full px-4 py-3.5 text-base ${INPUT_CLASS}`}
+                className={INPUT_BASE}
+                style={inputStyle}
+                onFocus={onFocus}
+                onBlur={onBlur}
                 placeholder="请输入密码"
                 required
                 disabled={loading}
               />
-            </motion.div>
+            </div>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+            <div>
               <button
                 type="button"
                 onClick={() => setShowPhoneVerify(!showPhoneVerify)}
-                className="text-sm text-gray-400 hover:text-gray-500 transition flex items-center gap-1"
+                className="text-sm transition flex items-center gap-1"
+                style={{ color: '#8a95a5' }}
               >
                 <span className={`transition-transform text-xs ${showPhoneVerify ? 'rotate-90' : ''}`}>▸</span>
                 手机验证码（可选）
@@ -187,7 +180,10 @@ const Login = () => {
                           type="tel"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                          className={`flex-1 px-4 py-3 ${INPUT_CLASS}`}
+                          className={`flex-1 px-4 py-3 rounded-xl outline-none transition text-white placeholder-gray-500`}
+                          style={inputStyle}
+                          onFocus={onFocus}
+                          onBlur={onBlur}
                           placeholder="手机号"
                           disabled={loading}
                           maxLength={11}
@@ -196,11 +192,12 @@ const Login = () => {
                           type="button"
                           onClick={handleSendCode}
                           disabled={isActive || sendingCode || loading}
-                          className={`px-4 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition ${
-                            isActive || sendingCode
-                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                              : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                          }`}
+                          className={`px-4 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition`}
+                          style={{
+                            background: isActive || sendingCode ? '#23303f' : 'var(--glow)',
+                            color: isActive || sendingCode ? '#8a95a5' : '#0b1320',
+                            cursor: isActive || sendingCode ? 'not-allowed' : 'pointer',
+                          }}
                         >
                           {sendingCode ? '...' : isActive ? `${remaining}s` : '发送'}
                         </button>
@@ -209,7 +206,10 @@ const Login = () => {
                         type="text"
                         value={code}
                         onChange={(e) => setCode(e.target.value)}
-                        className={`w-full px-4 py-3 ${INPUT_CLASS}`}
+                        className={`w-full px-4 py-3 rounded-xl outline-none transition text-white placeholder-gray-500`}
+                        style={inputStyle}
+                        onFocus={onFocus}
+                        onBlur={onBlur}
                         placeholder="请输入验证码"
                         disabled={loading}
                         maxLength={6}
@@ -218,19 +218,21 @@ const Login = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
+            </div>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="pt-2">
+            <div className="pt-1">
               <motion.button
                 type="submit"
                 disabled={loading}
                 whileHover={{ scale: loading ? 1 : 1.01 }}
                 whileTap={{ scale: loading ? 1 : 0.99 }}
-                className={`w-full py-4 rounded-xl font-bold text-white text-lg transition-all ${
-                  loading
-                    ? 'bg-gray-300 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-[#1E40AF] to-[#3B82F6] hover:shadow-lg hover:shadow-blue-300/40 shadow-md'
-                }`}
+                className="w-full py-4 rounded-xl font-bold text-lg transition-all"
+                style={{
+                  background: loading ? '#23303f' : 'var(--glow)',
+                  color: loading ? '#8a95a5' : '#0b1320',
+                  boxShadow: loading ? 'none' : '0 8px 24px var(--glow-soft)',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                }}
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -239,31 +241,34 @@ const Login = () => {
                   </span>
                 ) : '登录'}
               </motion.button>
-            </motion.div>
+            </div>
           </form>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }} className="mt-8 text-center text-sm text-gray-400">
+          <div className="mt-8 text-center text-sm" style={{ color: '#8a95a5' }}>
             还没有账号？
-            <Link to="/register" className="text-blue-600 font-semibold hover:underline ml-1">立即注册</Link>
+            <Link to="/register" className="font-semibold hover:underline ml-1" style={{ color: 'var(--glow)' }}>立即注册</Link>
             <span className="mx-2">·</span>
-            <Link to="/forgot-password" className="text-blue-600 font-semibold hover:underline">忘记密码</Link>
-          </motion.div>
+            <Link to="/forgot-password" className="font-semibold hover:underline" style={{ color: 'var(--glow)' }}>忘记密码</Link>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}>
-            <Link
-              to="/assessment"
-              className="mt-6 block w-full py-3 text-center rounded-xl font-bold text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:shadow-lg transition"
-            >
-              🏥 公益英语口语体检（无需注册）
-            </Link>
-          </motion.div>
+          <Link
+            to="/assessment"
+            className="mt-6 block w-full py-3 text-center rounded-xl font-bold transition"
+            style={{
+              background: 'rgba(168, 85, 247, 0.15)',
+              border: '1px solid rgba(168, 85, 247, 0.4)',
+              color: '#d8b4fe',
+            }}
+          >
+            🏥 公益英语口语体检（无需注册）
+          </Link>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="mt-10 text-center text-xs text-gray-300">
-            飞鹰AI英语培训机构 · AI 智能学习平台
-          </motion.div>
-        </motion.div>
-      </div>
-    </div>
+          <div className="mt-8 text-center text-xs" style={{ color: '#5a6778' }}>
+            AI 智能学习平台 · 展翅高飞，征服英语
+          </div>
+        </>
+      )}
+    </AuthShell>
   );
 };
 

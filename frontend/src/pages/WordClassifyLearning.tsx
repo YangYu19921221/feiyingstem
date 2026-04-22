@@ -94,19 +94,22 @@ const WordClassifyLearning = () => {
   const progressKey = unitId ? `classify_progress_${unitId}` : '';
 
   // 保存组内进度到 localStorage（仅数据加载后生效）
+  // 连同 classifyResults / dictationResults 一起存，恢复时能精确回到上次的阶段
   const saveLocalProgress = useCallback(() => {
     if (!progressKey || phase === 'summary' || !learningData) return;
     localStorage.setItem(progressKey, JSON.stringify({
       groupIndex: currentGroupIndex,
       phase,
+      classifyResults: Array.from(classifyResults.entries()),
+      dictationResults,
       timestamp: Date.now(),
     }));
-  }, [progressKey, currentGroupIndex, phase, learningData]);
+  }, [progressKey, currentGroupIndex, phase, classifyResults, dictationResults, learningData]);
 
-  // phase 变化时自动保存
+  // phase / groupIndex / 阶段产出数据 变化时自动保存
   useEffect(() => {
     saveLocalProgress();
-  }, [phase, currentGroupIndex, saveLocalProgress]);
+  }, [phase, currentGroupIndex, classifyResults, dictationResults, saveLocalProgress]);
 
   // 清除存档（一组完成或全部完成时）
   const clearLocalProgress = useCallback(() => {
@@ -202,8 +205,20 @@ const WordClassifyLearning = () => {
             const totalGroups = Math.ceil(data.words.length / groupSize);
             if (saved.groupIndex < totalGroups) {
               setCurrentGroupIndex(saved.groupIndex);
-              // 只恢复组位置，阶段始终从classify开始（中间阶段的数据没有持久化）
-              setPhase('classify');
+
+              // 恢复分类/听写结果（若有）
+              if (Array.isArray(saved.classifyResults) && saved.classifyResults.length > 0) {
+                setClassifyResults(new Map(saved.classifyResults));
+              }
+              if (Array.isArray(saved.dictationResults) && saved.dictationResults.length > 0) {
+                setDictationResults(saved.dictationResults);
+              }
+
+              // 按存档阶段恢复；classify 阶段内部进度未持久化，所以回到 classify 从头
+              // dictation / exam 能直接续上（前序阶段的产出已被恢复）
+              const validPhases: Phase[] = ['classify', 'dictation', 'exam'];
+              const restored: Phase = validPhases.includes(saved.phase) ? saved.phase : 'classify';
+              setPhase(restored);
               resumedFromLocal = true;
             }
           }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, BookOpen, TrendingUp, Clock, Target, PlayCircle } from 'lucide-react';
 import {
@@ -17,6 +17,7 @@ const PAGE_SIZE = 20;
 
 const MistakeBook = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [stats, setStats] = useState<MistakeBookStats | null>(null);
   const [mistakeWords, setMistakeWords] = useState<MistakeWordDetail[]>([]);
@@ -34,12 +35,8 @@ const MistakeBook = () => {
   }, []);
 
   useEffect(() => {
-    getMistakeBookStats().then(setStats).catch(() => {});
-  }, [showResolved]);
-
-  useEffect(() => {
-    getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
-  }, []);
+    refreshStats();
+  }, [refreshStats, showResolved, location.key]);
 
   // 从练习/闯关页返回时自动刷新（页面重新可见时触发）
   useEffect(() => {
@@ -47,6 +44,12 @@ const MistakeBook = () => {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refreshStats]);
+
+  // SPA 内从闯关页 navigate(-1) 回来时，location.key 会变 → 同时刷新词列表
+  useEffect(() => {
+    loadWords(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   // 单词列表在筛选切换时重置到第1页
   useEffect(() => {
@@ -103,7 +106,7 @@ const MistakeBook = () => {
         id: w.word_id,
         word: w.word,
         phonetic: w.phonetic,
-        syllables: null,
+        syllables: w.syllables,
         difficulty: 3,
         audio_url: null,
         image_url: null,

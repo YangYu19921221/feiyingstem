@@ -37,6 +37,7 @@ const TeacherBookAssignment = () => {
 
   // 表单数据
   const [deadline, setDeadline] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
 
   // 加载状态
   const [loadingBooks, setLoadingBooks] = useState(true);
@@ -320,13 +321,86 @@ const TeacherBookAssignment = () => {
                 >
                   <h2 className="text-xl font-bold text-gray-800 mb-4">👥 选择学生</h2>
 
+                  {/* 搜索 + 批量操作 */}
+                  <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={studentSearch}
+                        onChange={(e) => setStudentSearch(e.target.value)}
+                        placeholder="🔍 搜索姓名 / 用户名 / 邮箱"
+                        className="w-full pl-10 pr-8 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-400"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
+                      {studentSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setStudentSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+                          aria-label="清空搜索"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    {(() => {
+                      const assignedIds = getAssignedStudentIds(selectedBook.id);
+                      const kw = studentSearch.trim().toLowerCase();
+                      const filtered = students.filter(s => {
+                        if (!kw) return true;
+                        return (s.full_name || '').toLowerCase().includes(kw)
+                          || (s.username || '').toLowerCase().includes(kw)
+                          || (s.email || '').toLowerCase().includes(kw);
+                      });
+                      const selectableIds = filtered.filter(s => !assignedIds.includes(s.id)).map(s => s.id);
+                      const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedStudents.includes(id));
+                      return (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (allSelected) {
+                                setSelectedStudents(selectedStudents.filter(id => !selectableIds.includes(id)));
+                              } else {
+                                setSelectedStudents(Array.from(new Set([...selectedStudents, ...selectableIds])));
+                              }
+                            }}
+                            disabled={selectableIds.length === 0}
+                            className="px-3 py-2 text-sm rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                          >
+                            {allSelected ? '取消全选' : `全选(${selectableIds.length})`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStudents([])}
+                            disabled={selectedStudents.length === 0}
+                            className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                          >
+                            清空
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
                   {loadingStudents ? (
                     <div className="text-center py-8 text-gray-500">加载中...</div>
                   ) : students.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">暂无学生</div>
-                  ) : (
+                  ) : (() => {
+                    const kw = studentSearch.trim().toLowerCase();
+                    const filtered = students.filter(s => {
+                      if (!kw) return true;
+                      return (s.full_name || '').toLowerCase().includes(kw)
+                        || (s.username || '').toLowerCase().includes(kw)
+                        || (s.email || '').toLowerCase().includes(kw);
+                    });
+                    if (filtered.length === 0) {
+                      return <div className="text-center py-8 text-gray-400">没有匹配的学生</div>;
+                    }
+                    return (
                     <div className="space-y-2 max-h-80 overflow-y-auto">
-                      {students.map((student) => {
+                      {filtered.map((student) => {
                         const isAssigned = getAssignedStudentIds(selectedBook.id).includes(
                           student.id
                         );
@@ -359,7 +433,8 @@ const TeacherBookAssignment = () => {
                         );
                       })}
                     </div>
-                  )}
+                    );
+                  })()}
                 </motion.div>
 
                 {/* 截止时间和分配按钮 */}

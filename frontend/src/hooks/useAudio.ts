@@ -37,7 +37,7 @@ async function fetchAudioBlob(word: string): Promise<string> {
     const maxRetries = 2;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 20000);
       try {
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeout);
@@ -83,10 +83,16 @@ export function useAudio() {
     };
   }, []);
 
+  // 循环/单次播放共用的取消令牌：每次新播放会递增，旧循环据此退出
+  const loopTokenRef = useRef(0);
+
   const playAudio = useCallback(async (text: string, rate: number = 1) => {
+    // 打断上一轮循环/正在播放的音频
+    loopTokenRef.current++;
+    const audio = audioRef.current;
+    if (audio) { try { audio.pause(); audio.currentTime = 0; } catch {} }
     try {
       const blobUrl = await fetchAudioBlob(text);
-      const audio = audioRef.current;
       if (!audio) return;
       audio.pause();
       audio.src = blobUrl;
@@ -96,6 +102,7 @@ export function useAudio() {
     } catch (e) {
       // 最终 fallback：浏览器内置 TTS
       if ('speechSynthesis' in window) {
+        try { speechSynthesis.cancel(); } catch {}
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'en-GB';
         utterance.rate = rate;
@@ -106,5 +113,48 @@ export function useAudio() {
     }
   }, []);
 
-  return { playAudio };
+  /**
+   * 循环播放：播放 times 遍，每遍之间间隔 gapMs 毫秒
+   * 后续调用 playAudio / playAudioLoop / stopAudio 会打断上一轮循环
+   */
+  const playAudioLoop = useCallback(async (
+    text: string,
+    times: number = 6,
+    gapMs: number = 600,
+    rate: number = 1,
+  ) => {
+    const token = ++loopTokenRef.current;
+    const audio = audioRef.current;
+    if (audio) { try { audio.pause(); audio.currentTime = 0; } catch {} }
+    try {
+      const blobUrl = await fetchAudioBlob(text);
+      if (!audio) return;
+      for (let i = 0; i < times; i++) {
+        if (loopTokenRef.current !== token) return;
+        audio.pause();
+        audio.src = blobUrl;
+        audio.playbackRate = rate;
+        audio.currentTime = 0;
+        await new Promise<void>((resolve) => {
+          const onEnd = () => { audio.removeEventListener('ended', onEnd); resolve(); };
+          audio.addEventListener('ended', onEnd);
+          audio.play().catch(() => resolve());
+        });
+        if (loopTokenRef.current !== token) return;
+        if (i < times - 1) {
+          await new Promise(r => setTimeout(r, gapMs));
+        }
+      }
+    } catch (e) {
+      console.warn('循环播放失败:', e);
+    }
+  }, []);
+
+  const stopAudio = useCallback(() => {
+    loopTokenRef.current++;
+    const audio = audioRef.current;
+    if (audio) { try { audio.pause(); } catch {} }
+  }, []);
+
+  return { playAudio, playAudioLoop, stopAudio };
 }

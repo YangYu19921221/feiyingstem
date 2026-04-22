@@ -3,8 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
-import BrandPanel, { MobileBrandHeader } from '../components/BrandPanel';
 import Spinner from '../components/Spinner';
+import AuthShell from '../components/auth/AuthShell';
 
 interface RegisterResponse {
   access_token: string;
@@ -20,7 +20,11 @@ interface RegisterResponse {
   };
 }
 
-const INPUT_CLASS = 'border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400 outline-none transition bg-gray-50/50 hover:bg-white';
+const INPUT_BASE = 'w-full px-4 py-3 rounded-xl outline-none transition text-white placeholder-gray-500';
+const inputStyle: React.CSSProperties = {
+  background: 'rgba(15, 23, 34, 0.85)',
+  border: '1px solid #2a3442',
+};
 
 const Register = () => {
   const navigate = useNavigate();
@@ -54,52 +58,30 @@ const Register = () => {
     }
   };
 
+  const onFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.borderColor = 'var(--glow)';
+    e.currentTarget.style.boxShadow = '0 0 0 3px var(--glow-ring)';
+  };
+  const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.borderColor = '#2a3442';
+    e.currentTarget.style.boxShadow = 'none';
+  };
+
+  const fields: Array<{ label: string; type: string; value: string; setter: (v:string)=>void; placeholder: string; maxLength?: number; minLength?: number; }> = [
+    { label: '手机号', type: 'tel', value: phone, setter: setPhone, placeholder: '请输入手机号', maxLength: 11 },
+    { label: '用户名', type: 'text', value: username, setter: setUsername, placeholder: '请输入用户名（至少3个字符）', minLength: 3 },
+    { label: '密码', type: 'password', value: password, setter: setPassword, placeholder: '请输入密码（至少6位）', minLength: 6 },
+    { label: '确认密码', type: 'password', value: confirmPassword, setter: setConfirmPassword, placeholder: '请再次输入密码', minLength: 6 },
+  ];
+
   return (
-    <div className="min-h-screen flex bg-white">
-      <BrandPanel tagline={<>加入飞鹰AI英语，展翅翱翔<br />让英语成为你的翅膀</>}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-          className="space-y-3 text-left max-w-xs mx-auto"
-        >
-          {[
-            { icon: '🧠', text: '艾宾浩斯记忆曲线，科学复习' },
-            { icon: '🎙️', text: '剑桥真人发音，AI 纠音' },
-            { icon: '📝', text: '智能出题，精准测评' },
-            { icon: '📊', text: '学习数据可视化，进步看得见' },
-          ].map((item, i) => (
-            <motion.div
-              key={item.text}
-              initial={{ opacity: 0, x: -15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.8 + i * 0.1 }}
-              className="flex items-center gap-3 text-white/85"
-            >
-              <span className="text-lg flex-shrink-0">{item.icon}</span>
-              <span className="text-sm">{item.text}</span>
-            </motion.div>
-          ))}
-        </motion.div>
-      </BrandPanel>
-
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-gradient-to-br from-white via-orange-50/30 to-yellow-50/40 relative overflow-hidden">
-        {/* 右下角装饰图 */}
-        <div className="absolute bottom-0 right-0 w-72 h-72 opacity-10 pointer-events-none select-none overflow-hidden rounded-tl-full">
-          <img src="/hero-register.jpeg" alt="" className="w-full h-full object-cover object-bottom" />
-        </div>
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-md"
-        >
-          <MobileBrandHeader />
-
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">创建账号</h2>
-            <p className="text-gray-400 mt-1">填写信息，开启学习之旅</p>
-          </motion.div>
+    <AuthShell>
+      {() => (
+        <>
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold" style={{ color: '#fff' }}>创建账号</h2>
+            <p className="mt-1 text-sm" style={{ color: '#8a95a5' }}>填写信息，开启学习之旅</p>
+          </div>
 
           <form onSubmit={handleRegister} className="space-y-4">
             <AnimatePresence>
@@ -108,80 +90,51 @@ const Register = () => {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm"
+                  className="px-4 py-3 rounded-xl text-sm"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#fca5a5',
+                  }}
                 >
                   {error}
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">手机号</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className={`w-full px-4 py-3 ${INPUT_CLASS}`}
-                placeholder="请输入手机号"
-                required
-                disabled={loading}
-                maxLength={11}
-              />
-            </motion.div>
+            {fields.map((f) => (
+              <div key={f.label}>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>{f.label}</label>
+                <input
+                  type={f.type}
+                  value={f.value}
+                  onChange={(e) => f.setter(e.target.value)}
+                  className={INPUT_BASE}
+                  style={inputStyle}
+                  onFocus={onFocus}
+                  onBlur={onBlur}
+                  placeholder={f.placeholder}
+                  required
+                  disabled={loading}
+                  maxLength={f.maxLength}
+                  minLength={f.minLength}
+                />
+              </div>
+            ))}
 
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">用户名</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={`w-full px-4 py-3 ${INPUT_CLASS}`}
-                placeholder="请输入用户名（至少3个字符）"
-                required
-                disabled={loading}
-                minLength={3}
-              />
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">密码</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={`w-full px-4 py-3 ${INPUT_CLASS}`}
-                placeholder="请输入密码（至少6位）"
-                required
-                disabled={loading}
-                minLength={6}
-              />
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">确认密码</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`w-full px-4 py-3 ${INPUT_CLASS}`}
-                placeholder="请再次输入密码"
-                required
-                disabled={loading}
-                minLength={6}
-              />
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} className="pt-1">
+            <div className="pt-1">
               <motion.button
                 type="submit"
                 disabled={loading}
                 whileHover={{ scale: loading ? 1 : 1.01 }}
                 whileTap={{ scale: loading ? 1 : 0.99 }}
-                className={`w-full py-3.5 rounded-xl font-bold text-white text-lg transition-all ${
-                  loading
-                    ? 'bg-gray-300 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-[#1E40AF] to-[#3B82F6] hover:shadow-lg hover:shadow-blue-300/40 shadow-md'
-                }`}
+                className="w-full py-3.5 rounded-xl font-bold text-lg transition-all"
+                style={{
+                  background: loading ? '#23303f' : 'var(--glow)',
+                  color: loading ? '#8a95a5' : '#0b1320',
+                  boxShadow: loading ? 'none' : '0 8px 24px var(--glow-soft)',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                }}
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -190,20 +143,20 @@ const Register = () => {
                   </span>
                 ) : '创建账号'}
               </motion.button>
-            </motion.div>
+            </div>
           </form>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-6 text-center text-sm text-gray-400">
+          <div className="mt-6 text-center text-sm" style={{ color: '#8a95a5' }}>
             已有账号？
-            <Link to="/login" className="text-blue-600 font-semibold hover:underline ml-1">去登录</Link>
-          </motion.div>
+            <Link to="/login" className="font-semibold hover:underline ml-1" style={{ color: 'var(--glow)' }}>去登录</Link>
+          </div>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mt-8 text-center text-xs text-gray-300">
-            飞鹰英语培训机构 · AI 智能学习平台
-          </motion.div>
-        </motion.div>
-      </div>
-    </div>
+          <div className="mt-8 text-center text-xs" style={{ color: '#5a6778' }}>
+            AI 智能学习平台 · 让英语成为你的翅膀
+          </div>
+        </>
+      )}
+    </AuthShell>
   );
 };
 
