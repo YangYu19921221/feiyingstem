@@ -8,7 +8,7 @@ import { API_BASE_URL } from '../config/env';
  */
 
 // 版本号：修改发音源时递增，使浏览器缓存失效
-const TTS_VERSION = 4;
+const TTS_VERSION = 5;
 
 export function edgeTtsUrl(word: string): string {
   return `${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(word)}&v=${TTS_VERSION}`;
