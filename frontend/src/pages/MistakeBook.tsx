@@ -6,6 +6,7 @@ import {
   getMistakeBookStats,
   getMistakeWords,
   getChallengeReviewDue,
+  getChallengeLevels,
   type MistakeWordDetail,
   type MistakeBookStats,
 } from '../api/mistakeBook';
@@ -27,11 +28,15 @@ const MistakeBook = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [reviewDueCount, setReviewDueCount] = useState(0);
+  const [challengeSummary, setChallengeSummary] = useState<{ totalLevels: number; totalUnresolved: number } | null>(null);
 
   // 刷新统计数据（返回页面时调用）
   const refreshStats = useCallback(() => {
     getMistakeBookStats().then(setStats).catch(() => {});
     getChallengeReviewDue().then(d => setReviewDueCount(d.due_count)).catch(() => {});
+    getChallengeLevels()
+      .then(d => setChallengeSummary({ totalLevels: d.total_levels, totalUnresolved: d.total_unresolved }))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -261,12 +266,12 @@ const MistakeBook = () => {
           </button>
 
           {/* 错题闯关入口 */}
-          {stats && (stats.classify_mistakes || 0) > 0 && (
+          {challengeSummary && challengeSummary.totalLevels > 0 && (
             <button
               onClick={() => navigate('/student/mistake-challenge')}
               className="w-full mt-3 py-4 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all"
             >
-              🏰 错题闯关模式 ({Math.ceil((stats.classify_mistakes || 0) / 5)} 关)
+              🏰 错题闯关模式（{challengeSummary.totalUnresolved} 词 / {challengeSummary.totalLevels} 关）
             </button>
           )}
         </motion.div>
