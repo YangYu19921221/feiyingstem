@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import ColoredPhonetic from '../components/ColoredPhonetic';
+import ChallengeVictory from '../components/challenge-fx/ChallengeVictory';
 import {
   getChallengeLevels,
   submitChallengeLevel,
@@ -425,6 +426,22 @@ function ResultPhase({
 }) {
   const score = result.total_count > 0 ? Math.round(result.correct_count / result.total_count * 100) : 0;
   const isPerfect = score === 100;
+
+  // Phase 1: 满分通关时先播放三幕动画，完成后再显示结果面板
+  const [victoryDone, setVictoryDone] = useState(!isPerfect);
+  const featureWord = feedbackHistory.filter(fb => fb.isCorrect).pop()?.word.word ?? '';
+
+  if (isPerfect && !victoryDone && featureWord) {
+    return (
+      <ChallengeVictory
+        featureWord={featureWord}
+        tier="normal"
+        expGained={5}
+        coinGained={5}
+        onFinished={() => setVictoryDone(true)}
+      />
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-center">
