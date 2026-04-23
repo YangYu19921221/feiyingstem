@@ -7,6 +7,9 @@ interface Props {
   onComplete: () => void;
 }
 
+const SHAKE_X = [0, -8, 8, -6, 6, 0];
+const SHAKE_Y = [0, 4, -4, 2, -2, 0];
+
 /**
  * 第一幕（0 – 1.2s）：震屏 + 光剑劈字 + 闪白
  * 完成后调 onComplete 进入第二幕
@@ -17,16 +20,14 @@ export default function SwordSlash({ word, onComplete }: Props) {
   const [split, setSplit] = useState(false);
 
   useEffect(() => {
-    // 0.50s 光剑落下 + 劈字
     const t1 = setTimeout(() => {
       play('sword_slash');
       setSplit(true);
       setFlash(true);
-      setTimeout(() => setFlash(false), 80);
     }, 500);
-    // 1.20s 完成
-    const t2 = setTimeout(onComplete, 1200);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const t2 = setTimeout(() => setFlash(false), 580);
+    const t3 = setTimeout(onComplete, 1200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [onComplete, play]);
 
   const half = Math.ceil(word.length / 2);
@@ -37,7 +38,7 @@ export default function SwordSlash({ word, onComplete }: Props) {
     <div className="fixed inset-0 z-[100] pointer-events-none flex items-center justify-center">
       {/* 震屏容器 */}
       <motion.div
-        animate={{ x: [0, -8, 8, -6, 6, 0], y: [0, 4, -4, 2, -2, 0] }}
+        animate={{ x: SHAKE_X, y: SHAKE_Y }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
         className="relative"
       >

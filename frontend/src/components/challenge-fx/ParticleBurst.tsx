@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChallengeSfx } from '../../hooks/useChallengeSfx';
 
 interface Props {
@@ -31,13 +31,15 @@ export default function ParticleBurst({ onComplete, particleCount = 60 }: Props)
   const { play } = useChallengeSfx();
   const [target, setTarget] = useState<{ x: number; y: number } | null>(null);
   const hitCountRef = useRef(0);
-  const cx = window.innerWidth / 2;
-  const cy = window.innerHeight / 2;
+  const pendingTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // 低端设备降级
-  const actualCount = useMemo(() => {
+  const { cx, cy, actualCount } = useMemo(() => {
     const cores = (navigator as unknown as { hardwareConcurrency?: number }).hardwareConcurrency || 4;
-    return cores < 4 ? Math.min(30, particleCount) : particleCount;
+    return {
+      cx: window.innerWidth / 2,
+      cy: window.innerHeight / 2,
+      actualCount: cores < 4 ? Math.min(30, particleCount) : particleCount,
+    };
   }, [particleCount]);
 
   const particles = useMemo<Particle[]>(() => {
@@ -67,10 +69,15 @@ export default function ParticleBurst({ onComplete, particleCount = 60 }: Props)
       setTarget({ x: window.innerWidth - 60, y: 60 });
     }
     const t = setTimeout(onComplete, 1300);
-    return () => clearTimeout(t);
+    const timers = pendingTimersRef.current;
+    return () => {
+      clearTimeout(t);
+      timers.forEach(clearTimeout);
+      timers.length = 0;
+    };
   }, [onComplete]);
 
-  const handleHit = () => {
+  const handleHit = useCallback(() => {
     hitCountRef.current += 1;
     if (hitCountRef.current <= 10) {
       const rate = 1 + (hitCountRef.current - 1) * 0.06;
@@ -80,9 +87,10 @@ export default function ParticleBurst({ onComplete, particleCount = 60 }: Props)
     if (el) {
       el.style.transition = 'transform 0.12s';
       el.style.transform = 'scale(1.08)';
-      setTimeout(() => { el.style.transform = 'scale(1)'; }, 120);
+      const timer = setTimeout(() => { el.style.transform = 'scale(1)'; }, 120);
+      pendingTimersRef.current.push(timer);
     }
-  };
+  }, [play]);
 
   if (!target) return null;
 
@@ -95,7 +103,7 @@ export default function ParticleBurst({ onComplete, particleCount = 60 }: Props)
           animate={{
             x: [p.startX, p.ctrlX, target.x],
             y: [p.startY, p.ctrlY, target.y],
-            opacity: [0, 1, 1, 0.3],
+            opacity: [0, 1, 0.3],
             scale: [0.5, 1.2, 0.6],
           }}
           transition={{

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useChallengeSfx } from '../../hooks/useChallengeSfx';
 
 export type RewardTier = 'normal' | 'lucky' | 'crit' | 'miracle';
@@ -11,6 +11,13 @@ interface Props {
   onComplete: () => void;
 }
 
+const TIER_COLOR: Record<RewardTier, string> = {
+  normal:  '#06B6D4',
+  lucky:   '#8B5CF6',
+  crit:    '#DC2626',
+  miracle: '#FCD34D',
+};
+
 /**
  * 第三幕（2.5 – 4.0s）：奖励入账
  * Phase 1 只做 normal 档（70%）；lucky/crit/miracle 留给 Phase 2 扩展
@@ -19,6 +26,8 @@ export default function RewardReveal({ tier, expGained, coinGained, onComplete }
   const { play } = useChallengeSfx();
   const [expDisplay, setExpDisplay] = useState(0);
   const [coinDisplay, setCoinDisplay] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     play('coin_drop', { volume: 0.5 });
@@ -32,11 +41,11 @@ export default function RewardReveal({ tier, expGained, coinGained, onComplete }
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    const done = setTimeout(onComplete, 1500);
+    const done = setTimeout(() => onCompleteRef.current(), 1500);
     return () => { cancelAnimationFrame(raf); clearTimeout(done); };
-  }, [expGained, coinGained, onComplete, play]);
+  }, [expGained, coinGained, play]);
 
-  const tierColor = tier === 'miracle' ? '#FCD34D' : tier === 'crit' ? '#DC2626' : tier === 'lucky' ? '#8B5CF6' : '#06B6D4';
+  const tierColor = TIER_COLOR[tier];
 
   return (
     <div className="fixed inset-0 z-[98] pointer-events-none flex flex-col items-center justify-center">

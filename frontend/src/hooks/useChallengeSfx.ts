@@ -62,13 +62,13 @@ export function useChallengeSfx() {
     if (mutedRef.current) return;
     try {
       const howl = getOrLoad(key);
-      if (opts?.rate) howl.rate(opts.rate);
-      if (opts?.volume !== undefined) howl.volume(opts.volume);
-      howl.play();
+      const id = howl.play();
+      if (opts?.rate !== undefined) howl.rate(opts.rate, id);
+      if (opts?.volume !== undefined) howl.volume(opts.volume, id);
     } catch {
       // autoplay 拦截或资源缺失，静默
     }
   }, []);
 
-  return { play, isMuted: mutedRef.current, setMuted };
+  return { play, setMuted };
 }
