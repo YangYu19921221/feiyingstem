@@ -19,9 +19,25 @@ interface ClassificationPhaseProps {
   playAudio: (word: string) => void;
 }
 
-const CLASSIFY_TIME = 10;
+const CLASSIFY_TIME_SHORT = 10;       // 单词
+const CLASSIFY_TIME_PHRASE = 14;      // 短语（2-3 个单词）
+const CLASSIFY_TIME_SENTENCE = 20;    // 句子（4+ 个单词或带标点）
 const PLAY_INTERVAL = 1800;
 const FAMILIAR_REVIEW_EVERY = 3; // 每N个熟悉词触发一次回顾
+
+/**
+ * 根据文本长度动态决定每项的倒计时时长。
+ * 长句子 TTS 音频本身就可能 1.5-2s，学生需要至少听两遍再反应，
+ * 写死 10s 会在句子场景下被自动判 unknown。
+ */
+function getClassifyTime(text: string | undefined): number {
+  if (!text) return CLASSIFY_TIME_SHORT;
+  const wordCount = text.trim().split(/\s+/).length;
+  const hasSentencePunct = /[.!?,]/.test(text);
+  if (wordCount >= 4 || hasSentencePunct) return CLASSIFY_TIME_SENTENCE;
+  if (wordCount >= 2) return CLASSIFY_TIME_PHRASE;
+  return CLASSIFY_TIME_SHORT;
+}
 
 export default function ClassificationPhase({
   words,
@@ -32,7 +48,7 @@ export default function ClassificationPhase({
   const [roundWords, setRoundWords] = useState<WordData[]>(words);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [round, setRound] = useState(1);
-  const [timeLeft, setTimeLeft] = useState(CLASSIFY_TIME);
+  const [timeLeft, setTimeLeft] = useState(() => getClassifyTime(words[0]?.word));
   const [results, setResults] = useState<Map<number, WordCategory>>(new Map());
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
@@ -96,7 +112,7 @@ export default function ClassificationPhase({
         setRound(prev => prev + 1);
         setRoundWords(errorWords);
         setCurrentIndex(0);
-        setTimeLeft(CLASSIFY_TIME);
+        setTimeLeft(getClassifyTime(errorWords[0]?.word));
         setShowRoundSummary(false);
         setFamiliarBuffer([]); // 新一轮清空熟悉词缓冲
       }, 2000);
@@ -127,7 +143,7 @@ export default function ClassificationPhase({
         setReviewWords([...newBuffer]);
         setFamiliarBuffer([]);
         setCurrentIndex(currentIndex + 1);
-        setTimeLeft(CLASSIFY_TIME);
+        setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
         setIsTransitioning(false);
         setShowFamiliarReview(true);
         return;
@@ -139,7 +155,7 @@ export default function ClassificationPhase({
         handleRoundEnd(newResults);
       } else {
         setCurrentIndex(currentIndex + 1);
-        setTimeLeft(CLASSIFY_TIME);
+        setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
       }
       setIsTransitioning(false);
     }, 200);
@@ -176,7 +192,7 @@ export default function ClassificationPhase({
       setTimeLeft(prev => {
         if (prev <= 0.1) {
           classifyRef.current('unknown');
-          return CLASSIFY_TIME;
+          return getClassifyTime(currentWord?.word);
         }
         return prev - 0.1;
       });
@@ -298,7 +314,7 @@ export default function ClassificationPhase({
               <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">空格</kbd> 播放发音
             </span>
             <span className="mx-2">·</span>
-            <span>每词 {CLASSIFY_TIME} 秒倒计时</span>
+            <span>每词 {CLASSIFY_TIME_SHORT}-{CLASSIFY_TIME_SENTENCE} 秒倒计时（长句子自动延长）</span>
           </div>
 
           <motion.button
@@ -346,8 +362,9 @@ export default function ClassificationPhase({
 
   if (!currentWord) return null;
 
-  const progress = timeLeft / CLASSIFY_TIME;
-  const timerColor = timeLeft > 7 ? '#5FD35F' : timeLeft > 3 ? '#FFD23F' : '#FF5757';
+  const currentMaxTime = getClassifyTime(currentWord.word);
+  const progress = timeLeft / currentMaxTime;
+  const timerColor = timeLeft > currentMaxTime * 0.7 ? '#5FD35F' : timeLeft > currentMaxTime * 0.3 ? '#FFD23F' : '#FF5757';
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-64px)]">
