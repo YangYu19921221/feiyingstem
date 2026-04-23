@@ -164,6 +164,7 @@ export default function FloatingPetWidget() {
         }
       }}
       data-pet-widget
+      id="floating-pet-anchor"
       className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 cursor-grab active:cursor-grabbing"
       style={{ touchAction: 'none' }}
     >
