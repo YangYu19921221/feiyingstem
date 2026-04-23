@@ -341,7 +341,9 @@ export default function ClassificationPhase({
           className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
         >
           <div className="text-5xl mb-4">🔄</div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">第 {round} 轮完成</h3>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">
+            {round === 1 ? '第一遍完成' : `第 ${round - 1} 次补遍完成`}
+          </h3>
           <div className="flex justify-center gap-6 mb-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-500">{familiarCount}</div>
@@ -370,11 +372,11 @@ export default function ClassificationPhase({
     <div className="flex flex-col min-h-[calc(100vh-64px)]">
       {/* 卡片区域 */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 pb-4">
-        {/* 轮次 + 进度 */}
+        {/* 第几遍 + 进度 */}
         <div className="mb-4 text-center">
           {round > 1 && (
             <span className="text-xs text-orange-500 font-medium mr-2">
-              第{round}轮
+              第{round - 1}次补遍
             </span>
           )}
           <span className="text-sm text-gray-400 font-medium">
