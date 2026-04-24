@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 
 class UserBase(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
+    username: str = Field(..., min_length=1, max_length=50)
     email: EmailStr
     full_name: Optional[str] = None
     role: str = "student"
@@ -23,7 +23,7 @@ class SendCodeRequest(BaseModel):
 class UserRegister(BaseModel):
     """手机号注册请求"""
     phone: str = Field(..., pattern=r"^1[3-9]\d{9}$", description="手机号")
-    username: str = Field(..., min_length=3, max_length=50, description="用户名")
+    username: str = Field(..., min_length=1, max_length=50, description="用户名（支持中文，至少 1 个字符）")
     password: str = Field(..., min_length=6, max_length=50, description="密码")
     code: Optional[str] = Field(None, min_length=4, max_length=6, description="验证码（暂时可选）")
 

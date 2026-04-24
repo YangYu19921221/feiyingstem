@@ -69,7 +69,7 @@ const Register = () => {
 
   const fields: Array<{ label: string; type: string; value: string; setter: (v:string)=>void; placeholder: string; maxLength?: number; minLength?: number; }> = [
     { label: '手机号', type: 'tel', value: phone, setter: setPhone, placeholder: '请输入手机号', maxLength: 11 },
-    { label: '用户名', type: 'text', value: username, setter: setUsername, placeholder: '请输入用户名（至少3个字符）', minLength: 3 },
+    { label: '用户名', type: 'text', value: username, setter: setUsername, placeholder: '请输入用户名（支持中文，不限字数）', minLength: 1 },
     { label: '密码', type: 'password', value: password, setter: setPassword, placeholder: '请输入密码（至少6位）', minLength: 6 },
     { label: '确认密码', type: 'password', value: confirmPassword, setter: setConfirmPassword, placeholder: '请再次输入密码', minLength: 6 },
   ];
