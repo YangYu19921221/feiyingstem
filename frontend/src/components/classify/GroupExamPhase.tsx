@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import { API_BASE_URL } from '../../config/env';
 import ColoredWord from '../ColoredWord';
+import ChallengeVictory from '../challenge-fx/ChallengeVictory';
 
 interface ExamQuestion {
   id: number;
@@ -190,9 +191,32 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   });
   const correctCount = results.filter(r => r.isCorrect).length;
   const score = Math.round((correctCount / totalQuestions) * 100);
-  const passed = score >= 60;
+  const passed = score >= 80;
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+
+  // 满分时优先播三幕通关动画
+  const isPerfect = score === 100;
+  const [victoryDone, setVictoryDone] = useState(!isPerfect);
+  useEffect(() => {
+    // result 阶段进入时若是满分则播动画；非满分跳过
+    if (phase === 'result' && isPerfect) setVictoryDone(false);
+  }, [phase, isPerfect]);
+
+  if (phase === 'result' && isPerfect && !victoryDone) {
+    const featureWord = results.find(r => r.isCorrect)?.word.word ?? '';
+    if (featureWord) {
+      return (
+        <ChallengeVictory
+          featureWord={featureWord}
+          tier="normal"
+          expGained={5}
+          coinGained={5}
+          onFinished={() => setVictoryDone(true)}
+        />
+      );
+    }
+  }
 
   if (phase === 'result') {
     return (
@@ -220,7 +244,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
           </div>
           <p className="text-gray-500 mb-6">
             答对 {correctCount}/{totalQuestions} 题
-            {!passed && <span className="text-orange-500 ml-2">（需要60分通过）</span>}
+            {!passed && <span className="text-orange-500 ml-2">（需要80分通过）</span>}
           </p>
 
           {/* 错题列表 */}
