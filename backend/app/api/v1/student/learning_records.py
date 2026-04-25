@@ -464,13 +464,23 @@ async def get_weak_words(
 @router.get("/review-due", response_model=List[ReviewWordResponse])
 async def get_review_due_words(
     limit: int = 20,
+    randomize: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student)
 ):
-    """获取需要复习的单词（含完整单词信息）"""
+    """
+    获取需要复习的单词（含完整单词信息）。
+
+    - randomize=False（默认）：按 next_review_at 升序取前 limit 条，确定性结果
+    - randomize=True：取前 limit*5（或不足时全部）候选，Python 层随机打乱再截取 limit 条，
+      用于"登录强制复习"避免每次都是同样 20 个词
+    """
+    import random as _random
+
     user_id = current_user.id
     now = datetime.utcnow()
 
+    fetch_count = limit * 5 if randomize else limit
     result = await db.execute(
         select(WordMastery, Word, WordDefinition)
         .join(Word, WordMastery.word_id == Word.id)
@@ -483,9 +493,14 @@ async def get_review_due_words(
             WordMastery.next_review_at <= now
         ))
         .order_by(WordMastery.next_review_at.asc())
-        .limit(limit)
+        .limit(fetch_count)
     )
     rows = result.all()
+
+    if randomize and rows:
+        rows = list(rows)
+        _random.shuffle(rows)
+        rows = rows[:limit]
 
     review_words = []
     for mastery, word, definition in rows:

@@ -6,7 +6,7 @@ import { API_BASE_URL } from '../config/env';
 import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
-import { getReviewDueCount } from '../api/memoryCurve';
+import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import PetWidget from '../components/PetWidget';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 
@@ -168,6 +168,48 @@ const StudentDashboard = () => {
     navigate('/login');
   };
 
+  /**
+   * 强制复习：拉随机打乱的到期词 → 塞 sessionStorage → 跳 classify 复习流程。
+   * 仅完成流程后 WordClassifyLearning 才会写 forced_review_done = true，保证学生必须做完才能进主页。
+   */
+  const handleStartForcedReview = async () => {
+    try {
+      const words = await getReviewDueWords(20, true);
+      if (!words.length) {
+        sessionStorage.setItem('forced_review_done', 'true');
+        return;
+      }
+      const wordData = words.map((w, index) => ({
+        id: w.word_id,
+        word: w.word,
+        phonetic: w.phonetic || '',
+        meaning: w.meaning || '',
+        part_of_speech: w.part_of_speech || '',
+        example_sentence: w.example_sentence || '',
+        example_translation: w.example_translation || '',
+        difficulty: w.difficulty,
+        syllables: w.syllables || '',
+        audio_url: '',
+        image_url: '',
+        tags: [],
+        definitions: w.meaning ? [{
+          id: 0,
+          part_of_speech: w.part_of_speech || '',
+          meaning: w.meaning,
+          example_sentence: w.example_sentence || '',
+          example_translation: w.example_translation || '',
+          is_primary: true,
+        }] : [],
+        order_index: index,
+      }));
+      sessionStorage.setItem('review_practice_words', JSON.stringify(wordData));
+      sessionStorage.setItem('is_review_practice', 'true');
+      navigate('/student/units/0/classify');
+    } catch (e) {
+      console.error('启动强制复习失败:', e);
+    }
+  };
+
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleStartLearning = (bookId: number) => {
@@ -198,7 +240,7 @@ const StudentDashboard = () => {
               根据记忆曲线，这些单词即将遗忘，现在复习效果最好
             </p>
             <button
-              onClick={() => navigate('/student/memory-curve')}
+              onClick={handleStartForcedReview}
               className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-2xl text-lg font-bold hover:shadow-lg transition"
             >
               开始复习

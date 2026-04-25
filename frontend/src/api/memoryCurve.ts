@@ -48,8 +48,9 @@ export const getReviewDueCount = async (): Promise<{ due_today: number }> => {
 };
 
 // 获取需要复习的单词
-export const getReviewDueWords = async (limit: number = 20): Promise<ReviewWord[]> => {
-  return client.get(`/student/review-due?limit=${limit}`);
+export const getReviewDueWords = async (limit: number = 20, randomize: boolean = false): Promise<ReviewWord[]> => {
+  const qs = new URLSearchParams({ limit: String(limit), randomize: String(randomize) }).toString();
+  return client.get(`/student/review-due?${qs}`);
 };
 
 // 提交复习记录

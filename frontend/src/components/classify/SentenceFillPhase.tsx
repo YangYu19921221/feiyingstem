@@ -68,25 +68,26 @@ export default function SentenceFillPhase({
 
   // 把例句中的目标词替换成空格
   const renderSentence = (sentence: string, targetWord: string) => {
-    // 不区分大小写查找目标词在句子中的位置
-    const lowerSentence = sentence.toLowerCase();
-    const lowerTarget = targetWord.toLowerCase();
-    const idx = lowerSentence.indexOf(lowerTarget);
+    // 用整词边界匹配，避免 "run" 命中 "runs" 导致例句被切错、残留 "s"
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`\\b${escape(targetWord)}\\b`, 'i');
+    const match = pattern.exec(sentence);
 
-    if (idx === -1) {
-      // 找不到目标词，显示全句 + 独立填空
+    if (!match) {
       return (
-        <p className="text-gray-700 text-lg leading-relaxed">
+        <p className="text-gray-700 text-lg leading-relaxed break-words whitespace-normal">
           {sentence}
         </p>
       );
     }
 
+    const idx = match.index;
+    const matchedLen = match[0].length;
     const before = sentence.slice(0, idx);
-    const after = sentence.slice(idx + targetWord.length);
+    const after = sentence.slice(idx + matchedLen);
 
     return (
-      <p className="text-gray-700 text-lg leading-relaxed">
+      <p className="text-gray-700 text-lg leading-relaxed break-words whitespace-normal">
         {before}
         <span className="inline-block border-b-2 border-dashed border-primary mx-1 min-w-[60px] text-center font-bold text-primary">
           {submitted ? (
@@ -104,8 +105,11 @@ export default function SentenceFillPhase({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (submitted) return;
-    const val = e.target.value.replace(/[^a-zA-Z '\-!?.,]/g, '');
-    setUserInput(val.slice(0, wordLength));
+    // 允许 ASCII 字母 + 空格 + 连字符 + 撇号 + 常见标点 (!?.,) + 全角标点 (！？，。…)
+    const val = e.target.value.replace(/[^a-zA-Z '\-!?.,！？，。…]/g, '');
+    // 放开字数上限：允许稍长的答案，但不超过目标词的 1.5 倍以防粘贴过长
+    const cap = Math.max(wordLength + 4, Math.ceil(wordLength * 1.5));
+    setUserInput(val.slice(0, cap));
   };
 
   const handleSubmit = useCallback(() => {
@@ -275,7 +279,7 @@ export default function SentenceFillPhase({
                 value={userInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                maxLength={wordLength}
+                maxLength={Math.max(wordLength + 4, Math.ceil(wordLength * 1.5))}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="off"

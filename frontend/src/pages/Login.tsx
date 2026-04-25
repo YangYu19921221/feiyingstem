@@ -72,6 +72,7 @@ const Login = () => {
       const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/login/json`, payload);
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
+      sessionStorage.removeItem('forced_review_done');
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.status === 401 ? '用户名或密码错误' : '登录失败，请稍后重试');

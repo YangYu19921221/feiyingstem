@@ -71,8 +71,9 @@ export default function DictationPhase({
   const handleSubmit = useCallback(() => {
     if (submitted || !currentWord || userInput.length === 0) return;
 
-    // 校验：精确匹配（含空格），短语必须输入空格
-    const correct = userInput.trim() === currentWord.word.trim();
+    // 校验：完全一致（包括空格位置和数量）。短语 "many kinds of" 必须原样输入，
+    // 不能去除中间空格；也不容忍首尾空格误输入。
+    const correct = userInput === currentWord.word;
     setIsCorrect(correct);
     setSubmitted(true);
 
@@ -139,7 +140,7 @@ export default function DictationPhase({
 
   const handleRetrySubmit = useCallback(() => {
     if (!currentWord || retryInput.length === 0) return;
-    if (retryInput.trim() === currentWord.word.trim()) {
+    if (retryInput === currentWord.word) {
       setRetryPassed(true);
     } else {
       setRetryInput('');

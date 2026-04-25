@@ -243,7 +243,12 @@ async def create_word(
     existing_word = result.scalar_one_or_none()
 
     if existing_word:
-        # 返回已有单词的信息，前端可以直接将其添加到单元
+        # 若上传时传入了不同大小写（如 "play Chinese chess" vs 已存的 "play chinese chess"），
+        # 以新的为准更新存储，避免分类学习/听写显示为小写
+        new_word = word_data.word.strip()
+        if existing_word.word != new_word:
+            existing_word.word = new_word
+            await db.commit()
         return await get_word_detail(existing_word.id, db)
 
     # 创建单词（保留原始大小写）
@@ -481,7 +486,12 @@ async def batch_import_words(
             result = await db.execute(
                 select(Word).where(func.lower(Word.word) == word_data.word.lower())
             )
-            if result.scalar_one_or_none():
+            dup = result.scalar_one_or_none()
+            if dup:
+                # 若传入的大小写与已有不同，更新库里的大小写（以最新上传为准）
+                new_word = word_data.word.strip()
+                if dup.word != new_word:
+                    dup.word = new_word
                 failed_words.append(f"{word_data.word} (已存在)")
                 failed_count += 1
                 continue
