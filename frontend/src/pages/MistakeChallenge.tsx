@@ -84,7 +84,7 @@ const MistakeChallenge = () => {
   const handleCheckWord = () => {
     if (!currentLevel || !inputValue.trim() || showFeedback) return;
     const word = currentLevel.words[currentWordIndex];
-    const answer = inputValue.trim();
+    const answer = inputValue;
     const isCorrect = answer === word.word;
 
     const newAnswers = { ...userAnswers, [word.word_id]: answer };

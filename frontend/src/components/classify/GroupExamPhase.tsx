@@ -183,7 +183,9 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   // 计算成绩
   const results = questions.map(q => {
     const userAnswer = answers.get(q.id) || '';
-    const isCorrect = userAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+    // 拼写/听写题目需严格相等（区分大小写+保留空格），避免 "many kinds of" 被错判；
+    // 选择题（en_to_cn / cn_to_en）无需正则化
+    const isCorrect = userAnswer === q.correctAnswer;
     return { ...q, userAnswer, isCorrect };
   });
   const correctCount = results.filter(r => r.isCorrect).length;

@@ -287,8 +287,8 @@ const MistakePractice = () => {
   };
 
   const handleCheck = (q: MixedQuestion) => {
-    const answer = q.correct_answer.trim();
-    const input = userInput.trim();
+    const answer = q.correct_answer;
+    const input = userInput;
     const correct = input === answer;
     const compareResults: string[] = [];
     for (let i = 0; i < answer.length; i++) {

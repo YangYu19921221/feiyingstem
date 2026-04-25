@@ -115,7 +115,7 @@ export default function SentenceFillPhase({
   const handleSubmit = useCallback(() => {
     if (submitted || !currentWord || userInput.length === 0) return;
 
-    const correct = userInput.trim() === currentWord.word.trim();
+    const correct = userInput === currentWord.word;
     setIsCorrect(correct);
     setSubmitted(true);
 

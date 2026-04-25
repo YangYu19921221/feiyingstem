@@ -317,9 +317,15 @@ const FlashCardLearning = () => {
         isCorrect = true;
       }
     } else {
-      // 看翻译写单词：检查用户输入的英文单词是否正确
-      const correctWord = currentWord.word.toLowerCase();
-      isCorrect = userInput === correctWord;
+      // 看翻译写单词
+      if (/\s/.test(currentWord.word)) {
+        // 短语/句子：严格相等（含大小写和空格），避免 "many kinds of" 被错判
+        isCorrect = userAnswer === currentWord.word;
+      } else {
+        // 单个单词：忽略大小写（对小学生更友好）
+        const correctWord = currentWord.word.toLowerCase();
+        isCorrect = userInput === correctWord;
+      }
     }
 
     setIsAnswerCorrect(isCorrect);
