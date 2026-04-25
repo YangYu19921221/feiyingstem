@@ -195,11 +195,9 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-  // 满分时优先播三幕通关动画
   const isPerfect = score === 100;
   const [victoryDone, setVictoryDone] = useState(!isPerfect);
   useEffect(() => {
-    // result 阶段进入时若是满分则播动画；非满分跳过
     if (phase === 'result' && isPerfect) setVictoryDone(false);
   }, [phase, isPerfect]);
 
