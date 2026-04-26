@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { assignBookToStudents, getBookAssignments, deleteAssignment } from '../api/assignments';
@@ -254,7 +254,7 @@ const TeacherBookAssignment = () => {
   };
 
   /** 按 student_id 分组（视图模式 byStudent 用） */
-  const groupedByStudent = (() => {
+  const groupedByStudent = useMemo(() => {
     const map = new Map<number, { studentName: string; items: BookAssignmentResponse[] }>();
     for (const a of assignments) {
       const g = map.get(a.student_id);
@@ -264,7 +264,7 @@ const TeacherBookAssignment = () => {
     return Array.from(map.entries())
       .map(([studentId, v]) => ({ studentId, ...v }))
       .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh'));
-  })();
+  }, [assignments]);
 
   /** 折叠/展开某学生分组 */
   const toggleStudentExpand = (studentId: number) => {
@@ -277,8 +277,8 @@ const TeacherBookAssignment = () => {
 
   /** 一次勾选/取消该学生的所有分配 */
   const toggleSelectStudentGroup = (studentId: number) => {
-    const items = groupedByStudent.find(g => g.studentId === studentId)?.items ?? [];
-    const ids = items.map(i => i.id);
+    const ids = assignments.filter(a => a.student_id === studentId).map(a => a.id);
+    if (ids.length === 0) return;
     const allSelected = ids.every(id => selectedAssignmentIds.has(id));
     setSelectedAssignmentIds(prev => {
       const next = new Set(prev);
