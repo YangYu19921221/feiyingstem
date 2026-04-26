@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { assignBookToStudents, getBookAssignments, deleteAssignment } from '../api/assignments';
 import type { BookAssignmentResponse } from '../api/assignments';
 import axios from 'axios';
@@ -53,7 +53,12 @@ const TeacherBookAssignment = () => {
 
   // 撤销快照：刚被删除的记录，10 秒内可一键恢复
   const [undoSnapshot, setUndoSnapshot] = useState<BookAssignmentResponse[] | null>(null);
-  const [undoTimer, setUndoTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 组件卸载时清掉残留 timer，防泄漏
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+  }, []);
 
   // 加载单词本列表
   useEffect(() => {
@@ -174,38 +179,37 @@ const TeacherBookAssignment = () => {
 
   /** 批量撤销 */
   const handleBatchDelete = async () => {
-    const ids = Array.from(selectedAssignmentIds);
-    if (ids.length === 0) return;
     const targets = assignments.filter(a => selectedAssignmentIds.has(a.id));
-    try {
-      await Promise.all(ids.map(id => deleteAssignment(id)));
-      armUndo(targets);
-      setSelectedAssignmentIds(new Set());
-      showMessage('success', `已撤销 ${targets.length} 条分配`);
-      await loadAllAssignments();
-    } catch (error: any) {
-      console.error('批量删除失败:', error);
-      showMessage('error', error.response?.data?.detail || '批量删除失败');
-      await loadAllAssignments();
+    if (targets.length === 0) return;
+    // 用 allSettled 容忍部分失败，已成功删除的仍纳入撤销快照
+    const results = await Promise.allSettled(targets.map(t => deleteAssignment(t.id)));
+    const succeeded = targets.filter((_, i) => results[i].status === 'fulfilled');
+    const failedCount = results.length - succeeded.length;
+
+    if (succeeded.length > 0) armUndo(succeeded);
+    setSelectedAssignmentIds(new Set());
+    if (failedCount > 0) {
+      showMessage('error', `已撤销 ${succeeded.length} 条，${failedCount} 条失败`);
+    } else {
+      showMessage('success', `已撤销 ${succeeded.length} 条分配`);
     }
+    await loadAllAssignments();
   };
 
   /** 装载撤销快照 + 10 秒过期 */
   const armUndo = (snapshot: BookAssignmentResponse[]) => {
-    if (undoTimer) clearTimeout(undoTimer);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoSnapshot(snapshot);
-    const t = setTimeout(() => {
+    undoTimerRef.current = setTimeout(() => {
       setUndoSnapshot(null);
-      setUndoTimer(null);
+      undoTimerRef.current = null;
     }, 10000);
-    setUndoTimer(t);
   };
 
   /** 撤回：按 (book_id, deadline) 分组重新分配 */
   const handleUndo = async () => {
     if (!undoSnapshot || undoSnapshot.length === 0) return;
     try {
-      // 同 book_id+deadline 的批量一次提交，减少请求
       const groups = new Map<string, { book_id: number; student_ids: number[]; deadline?: string }>();
       for (const a of undoSnapshot) {
         const key = `${a.book_id}|${a.deadline ?? ''}`;
@@ -219,7 +223,7 @@ const TeacherBookAssignment = () => {
       await Promise.all(Array.from(groups.values()).map(g => assignBookToStudents(g)));
       showMessage('success', `已恢复 ${undoSnapshot.length} 条分配`);
       setUndoSnapshot(null);
-      if (undoTimer) { clearTimeout(undoTimer); setUndoTimer(null); }
+      if (undoTimerRef.current) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
       await loadAllAssignments();
     } catch (error: any) {
       console.error('撤回失败:', error);
@@ -690,34 +694,36 @@ const TeacherBookAssignment = () => {
       </div>
 
       {/* 撤销提示（删除后 10 秒内可点击恢复） */}
-      {undoSnapshot && undoSnapshot.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 40 }}
-          className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4"
-        >
-          <span className="text-sm">
-            已撤销 <span className="font-bold text-yellow-300">{undoSnapshot.length}</span> 条分配
-          </span>
-          <button
-            onClick={handleUndo}
-            className="px-3 py-1.5 rounded-lg bg-yellow-400 text-gray-900 font-bold text-sm hover:bg-yellow-300 transition"
+      <AnimatePresence>
+        {undoSnapshot && undoSnapshot.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4"
           >
-            ↺ 撤回
-          </button>
-          <button
-            onClick={() => {
-              if (undoTimer) clearTimeout(undoTimer);
-              setUndoSnapshot(null);
-              setUndoTimer(null);
-            }}
-            className="text-gray-400 hover:text-white transition text-sm"
-          >
-            ✕
-          </button>
-        </motion.div>
-      )}
+            <span className="text-sm">
+              已撤销 <span className="font-bold text-yellow-300">{undoSnapshot.length}</span> 条分配
+            </span>
+            <button
+              onClick={handleUndo}
+              className="px-3 py-1.5 rounded-lg bg-yellow-400 text-gray-900 font-bold text-sm hover:bg-yellow-300 transition"
+            >
+              ↺ 撤回
+            </button>
+            <button
+              onClick={() => {
+                if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+                setUndoSnapshot(null);
+                undoTimerRef.current = null;
+              }}
+              className="text-gray-400 hover:text-white transition text-sm"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
