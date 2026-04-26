@@ -51,6 +51,10 @@ const TeacherBookAssignment = () => {
   // 分配记录批量选中（用于多选撤销）
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<Set<number>>(new Set());
 
+  // 视图切换：平铺列表 vs 按学生分组
+  const [viewMode, setViewMode] = useState<'flat' | 'byStudent'>('flat');
+  const [expandedStudents, setExpandedStudents] = useState<Set<number>>(new Set());
+
   // 撤销快照：刚被删除的记录，10 秒内可一键恢复
   const [undoSnapshot, setUndoSnapshot] = useState<BookAssignmentResponse[] | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -247,6 +251,41 @@ const TeacherBookAssignment = () => {
     } else {
       setSelectedAssignmentIds(new Set(assignments.map(a => a.id)));
     }
+  };
+
+  /** 按 student_id 分组（视图模式 byStudent 用） */
+  const groupedByStudent = (() => {
+    const map = new Map<number, { studentName: string; items: BookAssignmentResponse[] }>();
+    for (const a of assignments) {
+      const g = map.get(a.student_id);
+      if (g) g.items.push(a);
+      else map.set(a.student_id, { studentName: a.student_name, items: [a] });
+    }
+    return Array.from(map.entries())
+      .map(([studentId, v]) => ({ studentId, ...v }))
+      .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh'));
+  })();
+
+  /** 折叠/展开某学生分组 */
+  const toggleStudentExpand = (studentId: number) => {
+    setExpandedStudents(prev => {
+      const next = new Set(prev);
+      if (next.has(studentId)) next.delete(studentId); else next.add(studentId);
+      return next;
+    });
+  };
+
+  /** 一次勾选/取消该学生的所有分配 */
+  const toggleSelectStudentGroup = (studentId: number) => {
+    const items = groupedByStudent.find(g => g.studentId === studentId)?.items ?? [];
+    const ids = items.map(i => i.id);
+    const allSelected = ids.every(id => selectedAssignmentIds.has(id));
+    setSelectedAssignmentIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
   };
 
   const showMessage = (type: 'success' | 'error', text: string) => {
@@ -573,7 +612,29 @@ const TeacherBookAssignment = () => {
           className="mt-6 bg-white rounded-2xl shadow-md p-6"
         >
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-            <h2 className="text-xl font-bold text-gray-800">📊 分配记录</h2>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-xl font-bold text-gray-800">📊 分配记录</h2>
+              {assignments.length > 0 && (
+                <div className="inline-flex rounded-lg overflow-hidden border border-gray-200 text-sm">
+                  <button
+                    onClick={() => setViewMode('flat')}
+                    className={`px-3 py-1.5 transition ${
+                      viewMode === 'flat' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    📋 平铺
+                  </button>
+                  <button
+                    onClick={() => setViewMode('byStudent')}
+                    className={`px-3 py-1.5 transition border-l border-gray-200 ${
+                      viewMode === 'byStudent' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    👥 按学生
+                  </button>
+                </div>
+              )}
+            </div>
             {assignments.length > 0 && (
               <div className="flex items-center gap-3 text-sm">
                 <button
@@ -603,6 +664,74 @@ const TeacherBookAssignment = () => {
             <div className="text-center py-8 text-gray-500">加载中...</div>
           ) : assignments.length === 0 ? (
             <div className="text-center py-8 text-gray-500">暂无分配记录</div>
+          ) : viewMode === 'byStudent' ? (
+            <div className="space-y-3">
+              {groupedByStudent.map(group => {
+                const expanded = expandedStudents.has(group.studentId);
+                const groupIds = group.items.map(i => i.id);
+                const allSelected = groupIds.every(id => selectedAssignmentIds.has(id));
+                const someSelected = groupIds.some(id => selectedAssignmentIds.has(id));
+                return (
+                  <div key={group.studentId} className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 transition">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 cursor-pointer"
+                        checked={allSelected}
+                        ref={el => { if (el) el.indeterminate = !allSelected && someSelected; }}
+                        onChange={() => toggleSelectStudentGroup(group.studentId)}
+                      />
+                      <button
+                        onClick={() => toggleStudentExpand(group.studentId)}
+                        className="flex-1 flex items-center justify-between text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 text-sm">{expanded ? '▼' : '▶'}</span>
+                          <span className="font-medium text-gray-800">{group.studentName}</span>
+                          <span className="text-xs text-gray-500">· {group.items.length} 本</span>
+                        </div>
+                      </button>
+                    </div>
+                    {expanded && (
+                      <ul className="divide-y divide-gray-100">
+                        {group.items.map(a => (
+                          <li
+                            key={a.id}
+                            className={`flex items-center gap-3 px-4 py-2.5 transition ${
+                              selectedAssignmentIds.has(a.id) ? 'bg-orange-50' : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 cursor-pointer"
+                              checked={selectedAssignmentIds.has(a.id)}
+                              onChange={() => toggleAssignmentSelected(a.id)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-800 truncate">{a.book_name}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {new Date(a.assigned_at).toLocaleDateString('zh-CN')}
+                                {a.deadline && ` · 截止 ${new Date(a.deadline).toLocaleDateString('zh-CN')}`}
+                                {a.is_completed
+                                  ? <span className="ml-2 text-green-600">✅ 已完成</span>
+                                  : <span className="ml-2 text-yellow-600">⏳ 进行中</span>}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteAssignment(a.id)}
+                              className="text-red-500 hover:text-red-700 transition text-sm"
+                              title="撤销该分配"
+                            >
+                              🗑️
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
