@@ -9,6 +9,16 @@ import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
 import ColoredWord from '../ColoredWord';
 
+/** 比对前规范化：去前后空白、折叠中间空白、移除零宽字符、统一 NFC 编码 */
+function normalizeAnswer(s: string): string {
+  return s
+    .normalize('NFC')
+    .replace(/[​-‍﻿]/g, '')
+    .replace(/[ 　]/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 export interface DictationResult {
   wordId: number;
   word: string;
@@ -73,7 +83,7 @@ export default function DictationPhase({
 
     // 校验：完全一致（包括空格位置和数量）。短语 "many kinds of" 必须原样输入，
     // 不能去除中间空格；也不容忍首尾空格误输入。
-    const correct = userInput === currentWord.word;
+    const correct = normalizeAnswer(userInput) === normalizeAnswer(currentWord.word);
     setIsCorrect(correct);
     setSubmitted(true);
 
@@ -140,7 +150,7 @@ export default function DictationPhase({
 
   const handleRetrySubmit = useCallback(() => {
     if (!currentWord || retryInput.length === 0) return;
-    if (retryInput === currentWord.word) {
+    if (normalizeAnswer(retryInput) === normalizeAnswer(currentWord.word)) {
       setRetryPassed(true);
     } else {
       setRetryInput('');

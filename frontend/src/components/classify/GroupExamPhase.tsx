@@ -9,6 +9,16 @@ import type { WordData } from '../../api/progress';
 import { API_BASE_URL } from '../../config/env';
 import VictoryScreen, { type WrongAnswer } from './VictoryScreen';
 
+/** 比对前规范化：去前后空白、折叠中间空白、移除零宽字符、统一 NFC 编码 */
+function normalizeAnswer(s: string): string {
+  return s
+    .normalize('NFC')
+    .replace(/[​-‍﻿]/g, '')
+    .replace(/[ 　]/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 interface ExamQuestion {
   id: number;
   type: 'en_to_cn' | 'cn_to_en' | 'listening' | 'spelling';
@@ -185,7 +195,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
     const userAnswer = answers.get(q.id) || '';
     // 拼写/听写题目需严格相等（区分大小写+保留空格），避免 "many kinds of" 被错判；
     // 选择题（en_to_cn / cn_to_en）无需正则化
-    const isCorrect = userAnswer === q.correctAnswer;
+    const isCorrect = normalizeAnswer(userAnswer) === normalizeAnswer(q.correctAnswer);
     return { ...q, userAnswer, isCorrect };
   });
   const correctCount = results.filter(r => r.isCorrect).length;
