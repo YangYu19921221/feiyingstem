@@ -48,6 +48,13 @@ const TeacherBookAssignment = () => {
   // 消息提示
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // 分配记录批量选中（用于多选撤销）
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<Set<number>>(new Set());
+
+  // 撤销快照：刚被删除的记录，10 秒内可一键恢复
+  const [undoSnapshot, setUndoSnapshot] = useState<BookAssignmentResponse[] | null>(null);
+  const [undoTimer, setUndoTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
   // 加载单词本列表
   useEffect(() => {
     loadBooks();
@@ -150,18 +157,91 @@ const TeacherBookAssignment = () => {
     }
   };
 
+  /** 单个删除：删完留快照，10s 内可撤回（不再二次确认弹窗） */
   const handleDeleteAssignment = async (assignmentId: number) => {
-    if (!confirm('确定要删除这条分配记录吗?')) {
-      return;
-    }
-
+    const target = assignments.find(a => a.id === assignmentId);
+    if (!target) return;
     try {
       await deleteAssignment(assignmentId);
-      showMessage('success', '删除成功');
+      armUndo([target]);
+      showMessage('success', '已撤销 1 条分配');
       await loadAllAssignments();
     } catch (error: any) {
       console.error('删除失败:', error);
       showMessage('error', error.response?.data?.detail || '删除失败');
+    }
+  };
+
+  /** 批量撤销 */
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedAssignmentIds);
+    if (ids.length === 0) return;
+    const targets = assignments.filter(a => selectedAssignmentIds.has(a.id));
+    try {
+      await Promise.all(ids.map(id => deleteAssignment(id)));
+      armUndo(targets);
+      setSelectedAssignmentIds(new Set());
+      showMessage('success', `已撤销 ${targets.length} 条分配`);
+      await loadAllAssignments();
+    } catch (error: any) {
+      console.error('批量删除失败:', error);
+      showMessage('error', error.response?.data?.detail || '批量删除失败');
+      await loadAllAssignments();
+    }
+  };
+
+  /** 装载撤销快照 + 10 秒过期 */
+  const armUndo = (snapshot: BookAssignmentResponse[]) => {
+    if (undoTimer) clearTimeout(undoTimer);
+    setUndoSnapshot(snapshot);
+    const t = setTimeout(() => {
+      setUndoSnapshot(null);
+      setUndoTimer(null);
+    }, 10000);
+    setUndoTimer(t);
+  };
+
+  /** 撤回：按 (book_id, deadline) 分组重新分配 */
+  const handleUndo = async () => {
+    if (!undoSnapshot || undoSnapshot.length === 0) return;
+    try {
+      // 同 book_id+deadline 的批量一次提交，减少请求
+      const groups = new Map<string, { book_id: number; student_ids: number[]; deadline?: string }>();
+      for (const a of undoSnapshot) {
+        const key = `${a.book_id}|${a.deadline ?? ''}`;
+        const existing = groups.get(key);
+        if (existing) {
+          existing.student_ids.push(a.student_id);
+        } else {
+          groups.set(key, { book_id: a.book_id, student_ids: [a.student_id], deadline: a.deadline });
+        }
+      }
+      await Promise.all(Array.from(groups.values()).map(g => assignBookToStudents(g)));
+      showMessage('success', `已恢复 ${undoSnapshot.length} 条分配`);
+      setUndoSnapshot(null);
+      if (undoTimer) { clearTimeout(undoTimer); setUndoTimer(null); }
+      await loadAllAssignments();
+    } catch (error: any) {
+      console.error('撤回失败:', error);
+      showMessage('error', error.response?.data?.detail || '撤回失败');
+    }
+  };
+
+  /** 单行复选框切换 */
+  const toggleAssignmentSelected = (id: number) => {
+    setSelectedAssignmentIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  /** 全选 / 反选当前列表 */
+  const toggleSelectAll = () => {
+    if (selectedAssignmentIds.size === assignments.length) {
+      setSelectedAssignmentIds(new Set());
+    } else {
+      setSelectedAssignmentIds(new Set(assignments.map(a => a.id)));
     }
   };
 
@@ -488,7 +568,32 @@ const TeacherBookAssignment = () => {
           transition={{ delay: 0.3 }}
           className="mt-6 bg-white rounded-2xl shadow-md p-6"
         >
-          <h2 className="text-xl font-bold text-gray-800 mb-4">📊 分配记录</h2>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <h2 className="text-xl font-bold text-gray-800">📊 分配记录</h2>
+            {assignments.length > 0 && (
+              <div className="flex items-center gap-3 text-sm">
+                <button
+                  onClick={toggleSelectAll}
+                  className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
+                >
+                  {selectedAssignmentIds.size === assignments.length ? '取消全选' : '全选'}
+                </button>
+                <span className="text-gray-500">已选 {selectedAssignmentIds.size}</span>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  disabled={selectedAssignmentIds.size === 0}
+                  onClick={handleBatchDelete}
+                  className={`px-4 py-1.5 rounded-lg font-medium transition ${
+                    selectedAssignmentIds.size === 0
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : 'bg-red-500 text-white hover:bg-red-600 shadow-md'
+                  }`}
+                >
+                  🗑️ 批量撤销
+                </motion.button>
+              </div>
+            )}
+          </div>
 
           {loadingAssignments ? (
             <div className="text-center py-8 text-gray-500">加载中...</div>
@@ -499,6 +604,17 @@ const TeacherBookAssignment = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b-2 border-gray-200">
+                    <th className="py-3 px-3 w-10">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 cursor-pointer"
+                        checked={selectedAssignmentIds.size > 0 && selectedAssignmentIds.size === assignments.length}
+                        ref={el => {
+                          if (el) el.indeterminate = selectedAssignmentIds.size > 0 && selectedAssignmentIds.size < assignments.length;
+                        }}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 font-medium text-gray-700">单词本</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-700">学生</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-700">分配时间</th>
@@ -513,8 +629,18 @@ const TeacherBookAssignment = () => {
                       key={assignment.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="border-b border-gray-100 hover:bg-gray-50 transition"
+                      className={`border-b border-gray-100 transition ${
+                        selectedAssignmentIds.has(assignment.id) ? 'bg-orange-50' : 'hover:bg-gray-50'
+                      }`}
                     >
+                      <td className="py-3 px-3">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 cursor-pointer"
+                          checked={selectedAssignmentIds.has(assignment.id)}
+                          onChange={() => toggleAssignmentSelected(assignment.id)}
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="font-medium text-gray-800">{assignment.book_name}</div>
                       </td>
@@ -562,6 +688,36 @@ const TeacherBookAssignment = () => {
           )}
         </motion.div>
       </div>
+
+      {/* 撤销提示（删除后 10 秒内可点击恢复） */}
+      {undoSnapshot && undoSnapshot.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 40 }}
+          className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4"
+        >
+          <span className="text-sm">
+            已撤销 <span className="font-bold text-yellow-300">{undoSnapshot.length}</span> 条分配
+          </span>
+          <button
+            onClick={handleUndo}
+            className="px-3 py-1.5 rounded-lg bg-yellow-400 text-gray-900 font-bold text-sm hover:bg-yellow-300 transition"
+          >
+            ↺ 撤回
+          </button>
+          <button
+            onClick={() => {
+              if (undoTimer) clearTimeout(undoTimer);
+              setUndoSnapshot(null);
+              setUndoTimer(null);
+            }}
+            className="text-gray-400 hover:text-white transition text-sm"
+          >
+            ✕
+          </button>
+        </motion.div>
+      )}
     </div>
   );
 };
