@@ -9,16 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
+import { normalizeAnswer } from '../../utils/normalizeAnswer';
 
-/** 比对前规范化：去前后空白、折叠中间空白、移除零宽字符、统一 NFC 编码 */
-function normalizeAnswer(s: string): string {
-  return s
-    .normalize('NFC')
-    .replace(/[​-‍﻿]/g, '')
-    .replace(/[ 　]/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
-}
 
 export interface FillBlankResult {
   wordId: number;
