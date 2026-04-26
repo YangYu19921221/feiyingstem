@@ -4,7 +4,7 @@
  * - finalSummary: 颁奖典礼级别仪式感，国风赛博配色
  */
 import { motion } from 'framer-motion';
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import type { DictationResult } from './DictationPhase';
 import type { FillBlankResult } from './SentenceFillPhase';
 
@@ -29,51 +29,83 @@ interface Rank {
   textGradient: string;
 }
 
+const RANK_TIERS: Array<{ min: number; rank: Rank }> = [
+  {
+    min: 100,
+    rank: {
+      emoji: '👑',
+      label: 'PERFECT',
+      subtitle: '满分通关 · 传说级表现',
+      ringColor: '#FCD34D',
+      glow: 'drop-shadow(0 0 24px #FCD34D) drop-shadow(0 0 60px #F97316)',
+      textGradient: 'linear-gradient(135deg, #FCD34D 0%, #F97316 50%, #DC2626 100%)',
+    },
+  },
+  {
+    min: 90,
+    rank: {
+      emoji: '🏆',
+      label: 'EXCELLENT',
+      subtitle: '优秀 · 几乎完美',
+      ringColor: '#A855F7',
+      glow: 'drop-shadow(0 0 16px #A855F7) drop-shadow(0 0 40px #6366F1)',
+      textGradient: 'linear-gradient(135deg, #A855F7 0%, #6366F1 100%)',
+    },
+  },
+  {
+    min: 80,
+    rank: {
+      emoji: '🌟',
+      label: 'GREAT',
+      subtitle: '非常棒 · 已掌握',
+      ringColor: '#06B6D4',
+      glow: 'drop-shadow(0 0 12px #06B6D4) drop-shadow(0 0 32px #0EA5E9)',
+      textGradient: 'linear-gradient(135deg, #06B6D4 0%, #0EA5E9 100%)',
+    },
+  },
+  {
+    min: 60,
+    rank: {
+      emoji: '💪',
+      label: 'GOOD',
+      subtitle: '不错 · 继续巩固',
+      ringColor: '#F59E0B',
+      glow: 'drop-shadow(0 0 8px #F59E0B)',
+      textGradient: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)',
+    },
+  },
+  {
+    min: 0,
+    rank: {
+      emoji: '📚',
+      label: 'KEEP GOING',
+      subtitle: '再接再厉',
+      ringColor: '#EF4444',
+      glow: 'none',
+      textGradient: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+    },
+  },
+];
+
 function getRank(rate: number): Rank {
-  if (rate === 100) return {
-    emoji: '👑',
-    label: 'PERFECT',
-    subtitle: '满分通关 · 传说级表现',
-    ringColor: '#FCD34D',
-    glow: 'drop-shadow(0 0 24px #FCD34D) drop-shadow(0 0 60px #F97316)',
-    textGradient: 'linear-gradient(135deg, #FCD34D 0%, #F97316 50%, #DC2626 100%)',
-  };
-  if (rate >= 90) return {
-    emoji: '🏆',
-    label: 'EXCELLENT',
-    subtitle: '优秀 · 几乎完美',
-    ringColor: '#A855F7',
-    glow: 'drop-shadow(0 0 16px #A855F7) drop-shadow(0 0 40px #6366F1)',
-    textGradient: 'linear-gradient(135deg, #A855F7 0%, #6366F1 100%)',
-  };
-  if (rate >= 80) return {
-    emoji: '🌟',
-    label: 'GREAT',
-    subtitle: '非常棒 · 已掌握',
-    ringColor: '#06B6D4',
-    glow: 'drop-shadow(0 0 12px #06B6D4) drop-shadow(0 0 32px #0EA5E9)',
-    textGradient: 'linear-gradient(135deg, #06B6D4 0%, #0EA5E9 100%)',
-  };
-  if (rate >= 60) return {
-    emoji: '💪',
-    label: 'GOOD',
-    subtitle: '不错 · 继续巩固',
-    ringColor: '#F59E0B',
-    glow: 'drop-shadow(0 0 8px #F59E0B)',
-    textGradient: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)',
-  };
-  return {
-    emoji: '📚',
-    label: 'KEEP GOING',
-    subtitle: '再接再厉',
-    ringColor: '#EF4444',
-    glow: 'none',
-    textGradient: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-  };
+  return RANK_TIERS.find(t => rate >= t.min)!.rank;
 }
 
 const rateColor = (rate: number) =>
   rate >= 80 ? 'text-emerald-400' : rate >= 50 ? 'text-amber-400' : 'text-rose-400';
+
+// 玻璃卡 / 错词标签 / 阶段勋章共用样式
+const GLASS_CARD_STYLE: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.1)',
+};
+const WRONG_CHIP_CLASS =
+  'px-2 py-0.5 bg-rose-500/20 text-rose-300 rounded text-xs font-medium border border-rose-500/30';
+const MEDAL_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(135deg, rgba(252,211,77,0.2), rgba(249,115,22,0.2))',
+  border: '1.5px solid rgba(252,211,77,0.4)',
+  boxShadow: '0 0 12px rgba(252,211,77,0.3)',
+};
 
 function StarDust({ count = 40 }: { count?: number }) {
   const stars = useMemo(
@@ -203,8 +235,9 @@ export default function ClassifySummary({
   }
 
   // ========== finalSummary：颁奖典礼级别 ==========
-  const rank = getRank(overallRate);
+  const rank = useMemo(() => getRank(overallRate), [overallRate]);
   const isPerfect = overallRate === 100;
+  const ringGradId = `ringGrad-${useId()}`;
 
   return (
     <div
@@ -221,7 +254,6 @@ export default function ClassifySummary({
         transition={{ duration: 0.6, ease: 'easeOut' }}
         className="relative z-10 w-full max-w-md"
       >
-        {/* 顶部奖杯 */}
         <motion.div
           initial={{ scale: 0, rotate: -30 }}
           animate={{ scale: 1, rotate: 0 }}
@@ -236,7 +268,6 @@ export default function ClassifySummary({
           </span>
         </motion.div>
 
-        {/* 评级文字 */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -257,75 +288,62 @@ export default function ClassifySummary({
           <p className="mt-2 text-base text-slate-300">{rank.subtitle}</p>
         </motion.div>
 
-        {/* 大圆环 */}
-        <div className="flex justify-center mb-6">
-          <div className="relative">
-            <svg width="240" height="240" viewBox="0 0 100 100">
-              <defs>
-                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={rank.ringColor} />
-                  <stop offset="100%" stopColor={isPerfect ? '#F97316' : rank.ringColor} />
-                </linearGradient>
-              </defs>
-              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
-              <motion.circle
-                cx="50" cy="50" r="42" fill="none"
-                stroke="url(#ringGrad)"
-                strokeWidth="5"
-                strokeLinecap="round"
-                strokeDasharray={2 * Math.PI * 42}
-                initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
-                animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - overallRate / 100) }}
-                transition={{ duration: 1.4, delay: 0.6, ease: 'easeOut' }}
-                transform="rotate(-90 50 50)"
-                style={{ filter: rank.glow }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <motion.span
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 1.0, type: 'spring', stiffness: 220, damping: 12 }}
-                className="text-7xl font-black tracking-tight leading-none"
-                style={{
-                  background: rank.textGradient,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  WebkitTextStroke: isPerfect ? '0.5px #FCD34D' : 'none',
-                }}
-              >
-                {overallRate}
-              </motion.span>
-              <span className="text-sm text-slate-400 tracking-widest mt-1">% 总正确率</span>
-            </div>
+        <div className="relative flex justify-center mb-6">
+          <svg width="240" height="240" viewBox="0 0 100 100">
+            <defs>
+              <linearGradient id={ringGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor={rank.ringColor} />
+                <stop offset="100%" stopColor={isPerfect ? '#F97316' : rank.ringColor} />
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
+            <motion.circle
+              cx="50" cy="50" r="42" fill="none"
+              stroke={`url(#${ringGradId})`}
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 42}
+              initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
+              animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - overallRate / 100) }}
+              transition={{ duration: 1.4, delay: 0.6, ease: 'easeOut' }}
+              transform="rotate(-90 50 50)"
+              style={{ filter: rank.glow }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <motion.span
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 1.0, type: 'spring', stiffness: 220, damping: 12 }}
+              className="text-7xl font-black tracking-tight leading-none"
+              style={{
+                background: rank.textGradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                WebkitTextStroke: isPerfect ? '0.5px #FCD34D' : 'none',
+              }}
+            >
+              {overallRate}
+            </motion.span>
+            <span className="text-sm text-slate-400 tracking-widest mt-1">% 总正确率</span>
           </div>
         </div>
 
-        {/* 数据卡片三联（玻璃拟态） */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.2 }}
           className="grid grid-cols-3 gap-3 mb-6"
         >
-          <div
-            className="rounded-2xl p-3 text-center backdrop-blur"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
+          <div className="rounded-2xl p-3 text-center backdrop-blur" style={GLASS_CARD_STYLE}>
             <div className="text-2xl font-bold text-white">{totalWords}</div>
             <div className="text-xs text-slate-400 mt-1">单词总数</div>
           </div>
-          <div
-            className="rounded-2xl p-3 text-center backdrop-blur"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
+          <div className="rounded-2xl p-3 text-center backdrop-blur" style={GLASS_CARD_STYLE}>
             <div className="text-2xl font-bold text-emerald-400">{allCorrect}</div>
             <div className="text-xs text-slate-400 mt-1">答对题数</div>
           </div>
-          <div
-            className="rounded-2xl p-3 text-center backdrop-blur"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
+          <div className="rounded-2xl p-3 text-center backdrop-blur" style={GLASS_CARD_STYLE}>
             <div className="text-2xl font-bold text-cyan-400">
               {minutes > 0 ? `${minutes}` : seconds}
               <span className="text-sm text-slate-400 ml-0.5">{minutes > 0 ? '分' : '秒'}</span>
@@ -334,7 +352,6 @@ export default function ClassifySummary({
           </div>
         </motion.div>
 
-        {/* 听写 / 句子填空 详细面板 */}
         {dictTotal > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -353,12 +370,7 @@ export default function ClassifySummary({
             {dictWrong.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {dictWrong.map(r => (
-                  <span
-                    key={r.wordId}
-                    className="px-2 py-0.5 bg-rose-500/20 text-rose-300 rounded text-xs font-medium border border-rose-500/30"
-                  >
-                    {r.word}
-                  </span>
+                  <span key={r.wordId} className={WRONG_CHIP_CLASS}>{r.word}</span>
                 ))}
               </div>
             )}
@@ -383,19 +395,13 @@ export default function ClassifySummary({
             {fillWrong.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {fillWrong.map(r => (
-                  <span
-                    key={r.wordId}
-                    className="px-2 py-0.5 bg-rose-500/20 text-rose-300 rounded text-xs font-medium border border-rose-500/30"
-                  >
-                    {r.word}
-                  </span>
+                  <span key={r.wordId} className={WRONG_CHIP_CLASS}>{r.word}</span>
                 ))}
               </div>
             )}
           </motion.div>
         )}
 
-        {/* 阶段勋章 */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -415,14 +421,7 @@ export default function ClassifySummary({
               transition={{ delay: 1.7 + i * 0.12, type: 'spring', stiffness: 200, damping: 12 }}
               className="flex flex-col items-center gap-1"
             >
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center text-xl"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(252,211,77,0.2), rgba(249,115,22,0.2))',
-                  border: '1.5px solid rgba(252,211,77,0.4)',
-                  boxShadow: '0 0 12px rgba(252,211,77,0.3)',
-                }}
-              >
+              <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl" style={MEDAL_STYLE}>
                 {s.emoji}
               </div>
               <span className="text-xs text-slate-400">{s.label}</span>
@@ -430,7 +429,6 @@ export default function ClassifySummary({
           ))}
         </motion.div>
 
-        {/* 返回按钮 */}
         <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
