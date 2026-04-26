@@ -7,8 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import { API_BASE_URL } from '../../config/env';
-import ColoredWord from '../ColoredWord';
-import ChallengeVictory from '../challenge-fx/ChallengeVictory';
+import VictoryScreen, { type WrongAnswer } from './VictoryScreen';
 
 interface ExamQuestion {
   id: number;
@@ -191,108 +190,31 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   });
   const correctCount = results.filter(r => r.isCorrect).length;
   const score = Math.round((correctCount / totalQuestions) * 100);
-  const passed = score >= 80;
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const isPerfect = score === 100;
-  const [victoryDone, setVictoryDone] = useState(!isPerfect);
-  useEffect(() => {
-    if (phase === 'result' && isPerfect) setVictoryDone(false);
-  }, [phase, isPerfect]);
-
-  if (phase === 'result' && isPerfect && !victoryDone) {
-    const featureWord = results.find(r => r.isCorrect)?.word.word ?? '';
-    if (featureWord) {
-      return (
-        <ChallengeVictory
-          featureWord={featureWord}
-          tier="normal"
-          expGained={5}
-          coinGained={5}
-          onFinished={() => setVictoryDone(true)}
-        />
-      );
-    }
-  }
-
   if (phase === 'result') {
+    const wrongAnswers: WrongAnswer[] = results
+      .filter(r => !r.isCorrect)
+      .map(r => ({
+        id: r.id,
+        word: r.word.word,
+        syllables: r.word.syllables,
+        correctAnswer: r.correctAnswer,
+        userAnswer: r.userAnswer,
+      }));
+    const elapsedSeconds = totalQuestions * 15 - timeLeft;
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-center px-4"
-      >
-        <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: [0, 1.3, 1] }}
-            transition={{ duration: 0.5 }}
-            className="text-6xl mb-4"
-          >
-            {passed ? '🎉' : '💪'}
-          </motion.div>
-
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">
-            {passed ? '过关成功！' : '未通过'}
-          </h3>
-
-          <div className={`text-5xl font-bold mb-2 ${passed ? 'text-green-500' : 'text-orange-500'}`}>
-            {score}分
-          </div>
-          <p className="text-gray-500 mb-6">
-            答对 {correctCount}/{totalQuestions} 题
-            {!passed && <span className="text-orange-500 ml-2">（需要80分通过）</span>}
-          </p>
-
-          {/* 错题列表 */}
-          {results.some(r => !r.isCorrect) && (
-            <div className="text-left mb-6 max-h-48 overflow-y-auto">
-              <p className="text-sm font-medium text-gray-600 mb-2">错题回顾：</p>
-              {results.filter(r => !r.isCorrect).map(r => (
-                <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-gray-100 text-sm">
-                  <span className="text-red-400">✗</span>
-                  <ColoredWord word={r.word.word} syllables={r.word.syllables} className="font-medium text-sm" />
-                  <span className="text-gray-400">→</span>
-                  <span className="text-green-600">{r.correctAnswer}</span>
-                  {r.userAnswer && (
-                    <span className="text-red-400 text-xs">（你答: {r.userAnswer}）</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3">
-            {passed ? (
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => onPass(correctCount, totalQuestions)}
-                className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-xl shadow-md"
-              >
-                继续下一组 →
-              </motion.button>
-            ) : (
-              <>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={onRetry}
-                  className="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl shadow-md"
-                >
-                  重新检测
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={onRelearn}
-                  className="w-full py-3 bg-gray-100 text-gray-600 font-medium rounded-xl"
-                >
-                  重学本组
-                </motion.button>
-              </>
-            )}
-          </div>
-        </div>
-      </motion.div>
+      <VictoryScreen
+        score={score}
+        correctCount={correctCount}
+        totalQuestions={totalQuestions}
+        elapsedSeconds={elapsedSeconds}
+        wrongAnswers={wrongAnswers}
+        onPass={() => onPass(correctCount, totalQuestions)}
+        onRetry={onRetry}
+        onRelearn={onRelearn}
+      />
     );
   }
 
