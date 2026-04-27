@@ -258,21 +258,31 @@ export default function VictoryScreen({
   const isPerfect = score === 100;
   const [showWrongList, setShowWrongList] = useState(false);
   const [animatedScore, setAnimatedScore] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
-  // 分数从 0 滚到 score（1.5s）
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener?.('change', handler);
+    return () => mq.removeEventListener?.('change', handler);
+  }, []);
+
+  // 分数从 0 滚到 score（1.5s）；setTimeout 兜底，防止 tab 后台 rAF 被冻结时数字停在中途
   useEffect(() => {
     const duration = 1500;
     const start = performance.now();
     let raf = 0;
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / duration);
-      // easeOutCubic
       const eased = 1 - Math.pow(1 - p, 3);
       setAnimatedScore(Math.round(score * eased));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const safety = setTimeout(() => setAnimatedScore(score), duration + 400);
+    return () => { cancelAnimationFrame(raf); clearTimeout(safety); };
   }, [score]);
 
   const minutes = Math.floor(elapsedSeconds / 60);
@@ -284,27 +294,34 @@ export default function VictoryScreen({
       className="fixed inset-0 z-40 flex flex-col overflow-hidden"
       style={{ background: theme.bgGradient }}
     >
-      {/* 旋转阳光（仅满分） */}
-      {isPerfect && <SunRays color="#FFFFFF" />}
-      {isPerfect && <LightningRing color="#FFD23F" />}
+      {/* 粒子特效（尊重 prefers-reduced-motion；弱机/Firefox/低端安卓避免卡顿） */}
+      {!reducedMotion && (
+        <>
+          {isPerfect && <SunRays color="#FFFFFF" />}
+          {isPerfect && <LightningRing color="#FFD23F" />}
+          <FlashOverlay />
+          <ConfettiBurst
+            colors={
+              isPerfect
+                ? ['#FFD23F', '#FF6B35', '#FFFFFF', '#FFEB99']
+                : passed
+                  ? ['#00D9FF', '#FFFFFF', '#5FD35F', '#FFD23F']
+                  : ['#FF8A65', '#FFD23F', '#FFFFFF']
+            }
+            count={isPerfect ? 100 : 70}
+          />
+          <FloatingParticles color={theme.particleColor} count={isPerfect ? 40 : 25} />
+        </>
+      )}
 
-      {/* 入场闪白 */}
-      <FlashOverlay />
-
-      {/* 中心礼花爆炸 */}
-      <ConfettiBurst
-        colors={
-          isPerfect
-            ? ['#FFD23F', '#FF6B35', '#FFFFFF', '#FFEB99']
-            : passed
-              ? ['#00D9FF', '#FFFFFF', '#5FD35F', '#FFD23F']
-              : ['#FF8A65', '#FFD23F', '#FFFFFF']
-        }
-        count={isPerfect ? 100 : 70}
-      />
-
-      {/* 漂浮粒子 */}
-      <FloatingParticles color={theme.particleColor} count={isPerfect ? 40 : 25} />
+      {/* 顶部常驻关闭按钮（无延迟、无动画，任何情况下都能逃出） */}
+      <button
+        onClick={passed ? onPass : onRelearn}
+        aria-label="关闭"
+        className="fixed top-3 right-3 z-50 w-10 h-10 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur text-white text-xl font-bold flex items-center justify-center border border-white/30"
+      >
+        ✕
+      </button>
 
       {/* 内容容器 */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 py-8 max-w-xl mx-auto w-full">
@@ -440,13 +457,8 @@ export default function VictoryScreen({
           </motion.div>
         )}
 
-        {/* 按钮区 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1.6 }}
-          className="w-full max-w-md flex flex-col gap-3"
-        >
+        {/* 按钮区（不用 motion 包裹，确保任何浏览器/动画异常下都可交互） */}
+        <div className="w-full max-w-md flex flex-col gap-3">
           {passed ? (
             <motion.button
               whileHover={{ scale: 1.03 }}
@@ -483,7 +495,7 @@ export default function VictoryScreen({
               </motion.button>
             </>
           )}
-        </motion.div>
+        </div>
       </div>
     </div>
   );
