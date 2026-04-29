@@ -102,7 +102,9 @@ class ClassStudent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     class_id = Column(Integer, ForeignKey('classes.id', ondelete='CASCADE'), nullable=False)
     student_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)  # 是否仍在班级中
     joined_at = Column(DateTime, server_default=func.now())
+    left_at = Column(DateTime, nullable=True)  # 离开班级时间
 
     # 关系
     class_ = relationship("Class", back_populates="students")
