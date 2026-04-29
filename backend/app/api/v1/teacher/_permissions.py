@@ -3,15 +3,20 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import Class, ClassStudent
+from app.models.user import Class, ClassStudent, User
 
 
 async def get_my_class_student_ids(db: AsyncSession, teacher_id: int) -> set[int]:
-    """该教师所有班级里 is_active=True 的学生 id"""
+    """该教师所有班级里 is_active=True 且 role='student' 的学生 id"""
     res = await db.execute(
         select(ClassStudent.student_id)
         .join(Class, Class.id == ClassStudent.class_id)
-        .where(Class.teacher_id == teacher_id, ClassStudent.is_active.is_(True))
+        .join(User, User.id == ClassStudent.student_id)
+        .where(
+            Class.teacher_id == teacher_id,
+            ClassStudent.is_active.is_(True),
+            User.role == "student",
+        )
     )
     return {row[0] for row in res.all()}
 

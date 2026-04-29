@@ -17,6 +17,10 @@ from app.schemas.teacher_analytics import (
     ClassRanking, StudyTrendData
 )
 from app.api.v1.auth import get_current_teacher
+from app.api.v1.teacher._permissions import (
+    get_my_class_student_ids,
+    assert_student_in_my_class,
+)
 
 router = APIRouter()
 
@@ -40,9 +44,22 @@ async def get_class_overview(
     - 平均掌握单词数
     - 平均准确率
     """
-    # 1. 获取所有学生
+    # 0. 获取本教师班级内的学生ID集合
+    my_student_ids = await get_my_class_student_ids(db, current_user.id)
+    if not my_student_ids:
+        return ClassOverviewStats(
+            total_students=0,
+            active_students=0,
+            total_words_studied=0,
+            average_mastered_words=0.0,
+            average_accuracy=0.0,
+            total_study_hours=0.0,
+            average_study_time_per_student=0.0
+        )
+
+    # 1. 获取班级学生总数
     result = await db.execute(
-        select(User).where(User.role == "student")
+        select(User).where(User.id.in_(my_student_ids))
     )
     all_students = result.scalars().all()
     total_students = len(all_students)
@@ -62,25 +79,28 @@ async def get_class_overview(
     seven_days_ago = date.today() - timedelta(days=7)
     result = await db.execute(
         select(func.count(func.distinct(StudyCalendar.user_id)))
-        .where(StudyCalendar.study_date >= seven_days_ago)
+        .where(
+            and_(
+                StudyCalendar.study_date >= seven_days_ago,
+                StudyCalendar.user_id.in_(my_student_ids)
+            )
+        )
     )
     active_students = result.scalar() or 0
 
     # 3. 统计总学习单词数
     result = await db.execute(
         select(func.count(func.distinct(WordMastery.word_id)))
-        .join(User, WordMastery.user_id == User.id)
-        .where(User.role == "student")
+        .where(WordMastery.user_id.in_(my_student_ids))
     )
     total_words_studied = result.scalar() or 0
 
     # 4. 统计平均掌握单词数(掌握度>=4)
     result = await db.execute(
         select(func.count(WordMastery.id))
-        .join(User, WordMastery.user_id == User.id)
         .where(
             and_(
-                User.role == "student",
+                WordMastery.user_id.in_(my_student_ids),
                 WordMastery.mastery_level >= 4
             )
         )
@@ -94,8 +114,7 @@ async def get_class_overview(
             func.sum(LearningRecord.is_correct.cast(Integer)).label('total_correct'),
             func.count(LearningRecord.id).label('total_records')
         )
-        .join(User, LearningRecord.user_id == User.id)
-        .where(User.role == "student")
+        .where(LearningRecord.user_id.in_(my_student_ids))
     )
     row = result.first()
     total_correct = row.total_correct or 0
@@ -105,8 +124,7 @@ async def get_class_overview(
     # 6. 统计总学习时长
     result = await db.execute(
         select(func.sum(StudyCalendar.duration))
-        .join(User, StudyCalendar.user_id == User.id)
-        .where(User.role == "student")
+        .where(StudyCalendar.user_id.in_(my_student_ids))
     )
     total_study_seconds = result.scalar() or 0
     total_study_hours = total_study_seconds / 3600
@@ -140,30 +158,44 @@ async def get_all_students_stats(
     - 学习时长
     - 准确率
     """
-    return await _build_students_stats(db)
+    my_student_ids = await get_my_class_student_ids(db, current_user.id)
+    if not my_student_ids:
+        return []
+    return await _build_students_stats(db, student_ids=my_student_ids)
 
 
 async def _build_students_stats(
     db: AsyncSession,
     student_id: int | None = None,
+    student_ids: set[int] | None = None,
 ) -> list[StudentLearningStats]:
     """
     聚合查询所有（或单个）学生的学习统计，避免 N+1。
 
+    优先级：student_id > student_ids > 全部（不推荐，应通过调用方传 student_ids）
     当 student_id 不为 None 时，只返回该学生的统计。
+    当 student_ids 不为 None 时，只返回该集合内学生的统计。
     """
     # 学生基本信息
-    student_query = select(User).where(User.role == "student")
     if student_id is not None:
-        student_query = student_query.where(User.id == student_id)
+        student_query = select(User).where(
+            and_(User.role == "student", User.id == student_id)
+        )
+    elif student_ids is not None:
+        student_query = select(User).where(User.id.in_(student_ids))
+    else:
+        raise ValueError("_build_students_stats requires student_id or student_ids; bare call is unsafe")
+
     result = await db.execute(student_query)
     students = result.scalars().all()
     if not students:
         return []
     student_map = {s.id: s for s in students}
 
+    # 用于子查询过滤的 user_id 集合
+    uid_set = {student_id} if student_id is not None else set(student_map.keys())
+
     # --- 聚合1: WordMastery 统计 (学习数/掌握数/平均掌握度/薄弱数) ---
-    mastery_filter = WordMastery.user_id == student_id if student_id else True
     result = await db.execute(
         select(
             WordMastery.user_id,
@@ -172,7 +204,7 @@ async def _build_students_stats(
             func.avg(WordMastery.mastery_level).label("avg_mastery"),
             func.sum((WordMastery.mastery_level < 3).cast(Integer)).label("weak"),
         )
-        .where(mastery_filter)
+        .where(WordMastery.user_id.in_(uid_set))
         .group_by(WordMastery.user_id)
     )
     mastery_map = {}
@@ -185,7 +217,6 @@ async def _build_students_stats(
         }
 
     # --- 聚合2: StudyCalendar 统计 (学习天数/总时长/最后学习日期) ---
-    cal_filter = StudyCalendar.user_id == student_id if student_id else True
     result = await db.execute(
         select(
             StudyCalendar.user_id,
@@ -193,7 +224,7 @@ async def _build_students_stats(
             func.sum(StudyCalendar.duration).label("total_duration"),
             func.max(StudyCalendar.study_date).label("last_date"),
         )
-        .where(cal_filter)
+        .where(StudyCalendar.user_id.in_(uid_set))
         .group_by(StudyCalendar.user_id)
     )
     calendar_map = {}
@@ -206,14 +237,13 @@ async def _build_students_stats(
         }
 
     # --- 聚合3: LearningRecord 统计 (正确数/总数) ---
-    lr_filter = LearningRecord.user_id == student_id if student_id else True
     result = await db.execute(
         select(
             LearningRecord.user_id,
             func.sum(LearningRecord.is_correct.cast(Integer)).label("correct"),
             func.count(LearningRecord.id).label("total"),
         )
-        .where(lr_filter)
+        .where(LearningRecord.user_id.in_(uid_set))
         .group_by(LearningRecord.user_id)
     )
     record_map = {}
@@ -277,6 +307,9 @@ async def get_student_stats(
     current_user: User = Depends(get_current_teacher)
 ):
     """获取单个学生的详细统计"""
+    # 验证该学生是否属于当前教师的班级
+    await assert_student_in_my_class(db, current_user.id, student_id)
+
     # 验证学生是否存在
     result = await db.execute(
         select(User).where(
@@ -329,6 +362,9 @@ async def get_student_weak_points(
     current_user: User = Depends(get_current_teacher)
 ):
     """获取学生的薄弱单词"""
+    # 验证该学生是否属于当前教师的班级
+    await assert_student_in_my_class(db, current_user.id, student_id)
+
     # 查询掌握度低的单词
     result = await db.execute(
         select(WordMastery, Word, WordDefinition)
@@ -408,7 +444,11 @@ async def get_words_difficulty_analysis(
     - 错误率
     - 掌握/困难的学生数
     """
-    # 查询所有学生的单词掌握情况
+    my_student_ids = await get_my_class_student_ids(db, current_user.id)
+    if not my_student_ids:
+        return []
+
+    # 查询班级内学生的单词掌握情况
     query = select(
         Word.id.label('word_id'),
         Word.word,
@@ -426,8 +466,7 @@ async def get_words_difficulty_analysis(
          WordDefinition.word_id == Word.id,
          WordDefinition.is_primary == True
      ))\
-     .join(User, WordMastery.user_id == User.id)\
-     .where(User.role == "student")\
+     .where(WordMastery.user_id.in_(my_student_ids))\
      .group_by(Word.id, Word.word, Word.phonetic, WordDefinition.meaning)
 
     # 如果指定了单词本,只查询该单词本的单词
@@ -479,6 +518,10 @@ async def get_learning_modes_stats(
     current_user: User = Depends(get_current_teacher)
 ):
     """获取各学习模式的统计数据"""
+    my_student_ids = await get_my_class_student_ids(db, current_user.id)
+    if not my_student_ids:
+        return []
+
     # 查询各模式的学习记录
     result = await db.execute(
         select(
@@ -487,8 +530,7 @@ async def get_learning_modes_stats(
             func.sum(LearningRecord.is_correct.cast(Integer)).label('correct_count'),
             func.avg(LearningRecord.time_spent).label('avg_time')
         )
-        .join(User, LearningRecord.user_id == User.id)
-        .where(User.role == "student")
+        .where(LearningRecord.user_id.in_(my_student_ids))
         .group_by(LearningRecord.learning_mode)
     )
     rows = result.all()
@@ -499,8 +541,7 @@ async def get_learning_modes_stats(
             StudySession.learning_mode,
             func.count(StudySession.id).label('session_count')
         )
-        .join(User, StudySession.user_id == User.id)
-        .where(User.role == "student")
+        .where(StudySession.user_id.in_(my_student_ids))
         .group_by(StudySession.learning_mode)
     )
     session_rows = session_result.all()
@@ -546,8 +587,12 @@ async def get_class_ranking(
     - accuracy: 准确率
     - study_time: 学习时长
     """
-    # 获取所有学生统计
-    all_stats = await _build_students_stats(db)
+    my_student_ids = await get_my_class_student_ids(db, current_user.id)
+    if not my_student_ids:
+        return []
+
+    # 获取本班学生统计
+    all_stats = await _build_students_stats(db, student_ids=my_student_ids)
 
     # 根据指标排序
     metric_name_map = {
@@ -596,6 +641,9 @@ async def get_student_word_trends(
     db: AsyncSession = Depends(get_db),
 ):
     """获取指定学生的单词学习趋势（日/月/年）"""
+    # 验证该学生是否属于当前教师的班级
+    await assert_student_in_my_class(db, current_user.id, student_id)
+
     from app.api.v1.analytics import fetch_word_trends
 
     today = date.today()
