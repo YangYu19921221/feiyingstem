@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, Integer, update
 from typing import List, Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
@@ -206,7 +206,7 @@ async def remove_student_from_class(
             ClassStudent.student_id == student_id,
             ClassStudent.is_active.is_(True),
         )
-        .values(is_active=False, left_at=datetime.utcnow())
+        .values(is_active=False, left_at=datetime.now(timezone.utc).replace(tzinfo=None))
     )
     if result.rowcount == 0:
         raise HTTPException(404, "学生不在该班级或已移出")

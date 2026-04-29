@@ -1,6 +1,7 @@
 """管理员 - 教师管理"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -119,7 +120,11 @@ async def create_teacher(
         is_active=True,
     )
     db.add(t)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="用户名或邮箱已存在")
     await db.refresh(t)
     return {"id": t.id, "username": t.username, "initial_password": pwd}
 

@@ -1,5 +1,5 @@
 """管理员 - 班级监控 + 跨教师转班"""
-from datetime import datetime as dt
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -140,7 +140,7 @@ async def transfer_student(
             ClassStudent.student_id == student_id,
             ClassStudent.is_active.is_(True),
         )
-        .values(is_active=False, left_at=dt.utcnow())
+        .values(is_active=False, left_at=datetime.now(timezone.utc).replace(tzinfo=None))
     )
 
     # 4. 插入新班级记录
