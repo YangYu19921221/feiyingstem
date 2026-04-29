@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, Integer
+from sqlalchemy import select, func, and_, Integer, update
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 from pydantic import BaseModel, Field
@@ -138,22 +138,25 @@ async def delete_class(
 @router.get("/classes/{class_id}/students")
 async def get_class_students(
     class_id: int,
+    q: Optional[str] = Query(None, description="搜索学生姓名或用户名"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取班级学生列表"""
+    """获取班级学生列表（仅 active），支持 q= 搜索"""
     await _get_class_or_404(db, class_id, current_user.id)
-    result = await db.execute(
+    stmt = (
         select(User, ClassStudent.joined_at)
         .join(ClassStudent, ClassStudent.student_id == User.id)
-        .where(ClassStudent.class_id == class_id)
-        .order_by(User.username)
+        .where(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
     )
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where((User.full_name.like(like)) | (User.username.like(like)))
+    result = await db.execute(stmt.order_by(User.username))
     return [
         {
             "id": user.id, "username": user.username,
-            "full_name": user.full_name or user.username,
-            "phone": user.phone, "is_active": user.is_active,
+            "full_name": user.full_name,
             "joined_at": joined_at.isoformat() if joined_at else None,
         }
         for user, joined_at in result.all()
@@ -166,29 +169,26 @@ async def add_students_to_class(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """批量添加学生到班级"""
+    """批量添加学生到班级（检查学生是否已在任意班级）"""
     await _get_class_or_404(db, class_id, current_user.id)
 
-    # 批量查询有效学生
-    valid_result = await db.execute(
-        select(User.id).where(and_(User.id.in_(data.student_ids), User.role == "student"))
-    )
-    valid_ids = {r[0] for r in valid_result.all()}
-
-    # 批量查询已在班级中的
-    existing_result = await db.execute(
-        select(ClassStudent.student_id).where(
-            and_(ClassStudent.class_id == class_id, ClassStudent.student_id.in_(valid_ids))
+    # 检查请求的 student_ids 中是否有已在任意班级的 active 成员
+    if data.student_ids:
+        busy_result = await db.execute(
+            select(ClassStudent.student_id).where(
+                ClassStudent.student_id.in_(data.student_ids),
+                ClassStudent.is_active.is_(True),
+            )
         )
-    )
-    existing_ids = {r[0] for r in existing_result.all()}
+        busy = {row[0] for row in busy_result.all()}
+        if busy:
+            raise HTTPException(409, f"以下学生已在其他班级：{sorted(busy)}")
 
-    to_add = valid_ids - existing_ids
-    for sid in to_add:
-        db.add(ClassStudent(class_id=class_id, student_id=sid))
+    for sid in data.student_ids:
+        db.add(ClassStudent(class_id=class_id, student_id=sid, is_active=True))
 
     await db.commit()
-    return {"message": f"已添加 {len(to_add)} 名学生", "added": len(to_add)}
+    return {"added": len(data.student_ids)}
 
 
 @router.delete("/classes/{class_id}/students/{student_id}")
@@ -197,19 +197,21 @@ async def remove_student_from_class(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """从班级移除学生"""
+    """软删除：将学生标记为 is_active=False"""
     await _get_class_or_404(db, class_id, current_user.id)
     result = await db.execute(
-        select(ClassStudent).where(
-            and_(ClassStudent.class_id == class_id, ClassStudent.student_id == student_id)
+        update(ClassStudent)
+        .where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.student_id == student_id,
+            ClassStudent.is_active.is_(True),
         )
+        .values(is_active=False, left_at=datetime.utcnow())
     )
-    cs = result.scalar_one_or_none()
-    if not cs:
-        raise HTTPException(404, "学生不在该班级中")
-    await db.delete(cs)
+    if result.rowcount == 0:
+        raise HTTPException(404, "学生不在该班级或已移出")
     await db.commit()
-    return {"message": "已移除"}
+    return {"removed": True}
 
 
 @router.get("/classes/{class_id}/available-students")
