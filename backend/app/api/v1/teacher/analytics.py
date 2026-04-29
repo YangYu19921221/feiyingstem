@@ -8,9 +8,9 @@ from typing import List, Optional
 from datetime import datetime, date, timedelta
 
 from app.core.database import get_db
-from app.models.user import User, StudyCalendar
+from app.models.user import User, StudyCalendar, Class, ClassStudent
 from app.models.word import Word, WordBook, Unit, WordDefinition
-from app.models.learning import WordMastery, LearningRecord, StudySession, LearningProgress
+from app.models.learning import WordMastery, LearningRecord, StudySession, LearningProgress, HomeworkAssignment, HomeworkStudentAssignment, BookAssignment
 from app.schemas.teacher_analytics import (
     StudentLearningStats, ClassOverviewStats, WordDifficultyStats,
     LearningModeStats, StudentProgressDetail, StudentWeakPoint,
@@ -653,3 +653,187 @@ async def get_student_word_trends(
         month = today.month
 
     return await fetch_word_trends(db, student_id, period, year, month)
+
+
+# ========================================
+# 按班级 ID 的数据接口（Task 9）
+# ========================================
+
+@router.get("/classes/{class_id}/overview")
+async def get_class_id_overview(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """获取指定班级的概览统计"""
+    # 验证班级属于当前教师
+    cls_res = await db.execute(
+        select(Class).where(Class.id == class_id, Class.teacher_id == current_user.id)
+    )
+    if cls_res.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="班级不存在或无权访问")
+
+    # 获取该班级的活跃学生 ID
+    stu_res = await db.execute(
+        select(ClassStudent.student_id).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    student_ids = [row[0] for row in stu_res.all()]
+    if not student_ids:
+        return {
+            "student_count": 0,
+            "avg_accuracy": 0.0,
+            "total_words_studied": 0,
+            "mastered_words": 0,
+        }
+
+    # 聚合 WordMastery
+    agg_res = await db.execute(
+        select(
+            func.count(func.distinct(WordMastery.word_id)).label("total_words_studied"),
+            func.sum(WordMastery.correct_count).label("correct"),
+            func.sum(WordMastery.total_encounters).label("attempts"),
+        ).where(WordMastery.user_id.in_(student_ids))
+    )
+    agg = agg_res.one()
+    total_words_studied = agg.total_words_studied or 0
+    correct = int(agg.correct or 0)
+    attempts = int(agg.attempts or 0)
+    avg_accuracy = round(correct / attempts, 4) if attempts else 0.0
+
+    mastered_res = await db.execute(
+        select(func.count(WordMastery.id)).where(
+            WordMastery.user_id.in_(student_ids),
+            WordMastery.mastery_level >= 4,
+        )
+    )
+    mastered_words = mastered_res.scalar() or 0
+
+    return {
+        "student_count": len(student_ids),
+        "avg_accuracy": avg_accuracy,
+        "total_words_studied": total_words_studied,
+        "mastered_words": mastered_words,
+    }
+
+
+@router.get("/classes/{class_id}/word-completion")
+async def get_class_word_completion(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """获取指定班级每个单词的学习/掌握情况"""
+    cls_res = await db.execute(
+        select(Class).where(Class.id == class_id, Class.teacher_id == current_user.id)
+    )
+    if cls_res.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="班级不存在或无权访问")
+
+    stu_res = await db.execute(
+        select(ClassStudent.student_id).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    student_ids = [row[0] for row in stu_res.all()]
+    if not student_ids:
+        return []
+
+    rows_res = await db.execute(
+        select(
+            WordMastery.word_id,
+            Word.word,
+            func.count(func.distinct(WordMastery.user_id)).label("learners"),
+            func.sum(
+                func.cast(WordMastery.mastery_level >= 4, Integer)
+            ).label("mastered"),
+        )
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(WordMastery.user_id.in_(student_ids))
+        .group_by(WordMastery.word_id, Word.word)
+        .order_by(desc("learners"))
+    )
+    result = []
+    for row in rows_res.all():
+        result.append({
+            "word_id": row.word_id,
+            "word": row.word,
+            "learners": row.learners,
+            "mastered": int(row.mastered or 0),
+        })
+    return result
+
+
+@router.get("/classes/{class_id}/assignments-progress")
+async def get_class_assignments_progress(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """获取指定班级的所有分配作业进度"""
+    cls_res = await db.execute(
+        select(Class).where(Class.id == class_id, Class.teacher_id == current_user.id)
+    )
+    if cls_res.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="班级不存在或无权访问")
+
+    stu_res = await db.execute(
+        select(ClassStudent.student_id).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    student_ids = [row[0] for row in stu_res.all()]
+    if not student_ids:
+        return {"book_assignments": [], "homework_assignments": []}
+
+    # 单词本分配
+    ba_res = await db.execute(
+        select(BookAssignment).where(BookAssignment.student_id.in_(student_ids))
+    )
+    book_assignments = [
+        {
+            "id": ba.id,
+            "book_id": ba.book_id,
+            "scope_type": ba.scope_type,
+            "unit_id": ba.unit_id,
+            "group_index": ba.group_index,
+            "is_completed": ba.is_completed,
+            "student_id": ba.student_id,
+        }
+        for ba in ba_res.scalars().all()
+    ]
+
+    # 作业分配
+    hw_res = await db.execute(
+        select(
+            HomeworkAssignment.id.label("homework_id"),
+            HomeworkAssignment.title,
+            HomeworkStudentAssignment.student_id,
+            HomeworkStudentAssignment.status,
+            HomeworkStudentAssignment.best_score,
+        )
+        .join(
+            HomeworkStudentAssignment,
+            HomeworkStudentAssignment.homework_id == HomeworkAssignment.id,
+        )
+        .where(HomeworkStudentAssignment.student_id.in_(student_ids))
+    )
+    homework_assignments = [
+        {
+            "homework_id": row.homework_id,
+            "title": row.title,
+            "student_id": row.student_id,
+            "status": row.status,
+            "best_score": row.best_score,
+        }
+        for row in hw_res.all()
+    ]
+
+    return {
+        "book_assignments": book_assignments,
+        "homework_assignments": homework_assignments,
+    }
