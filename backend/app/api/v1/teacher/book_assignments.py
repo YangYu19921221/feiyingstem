@@ -109,7 +109,14 @@ async def assign_book_to_students(
     if not book:
         raise HTTPException(status_code=404, detail="单词本不存在")
 
-    # 3) 如果是 group，校验 group_index 在合法范围
+    # 3) 如果是 unit/group，校验 unit 存在（先于 group_index 范围检查）
+    if request.scope_type in ('unit', 'group'):
+        unit_res = await db.execute(select(Unit).where(Unit.id == request.unit_id))
+        unit_obj = unit_res.scalar_one_or_none()
+        if not unit_obj:
+            raise HTTPException(status_code=404, detail="单元不存在")
+
+    # 4) 如果是 group，校验 group_index 在合法范围
     if request.scope_type == 'group':
         try:
             groups = await get_unit_groups(db, request.unit_id)  # type: ignore[arg-type]
@@ -120,12 +127,6 @@ async def assign_book_to_students(
                 status_code=422,
                 detail=f"组序号超出范围（单元共 {len(groups)} 组）"
             )
-
-    # 4) 如果是 unit，校验 unit 存在
-    if request.scope_type in ('unit', 'group') and request.unit_id is not None:
-        unit_res = await db.execute(select(Unit).where(Unit.id == request.unit_id))
-        if unit_res.scalar_one_or_none() is None:
-            raise HTTPException(status_code=404, detail="单元不存在")
 
     # 5) 班级权限：所有 student_ids 必须在本教师班级（admin 跳过）
     if current_user.role == 'teacher' and request.student_ids:
@@ -161,15 +162,12 @@ async def assign_book_to_students(
             deadline=deadline_dt,
             is_completed=False,
         )
-        db.add(assignment)
         try:
-            await db.flush()
+            async with db.begin_nested():
+                db.add(assignment)
+                await db.flush()
             created += 1
         except IntegrityError:
-            await db.rollback()
-            skipped += 1
-        except Exception:
-            await db.rollback()
             skipped += 1
 
     await db.commit()
