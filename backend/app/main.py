@@ -7,6 +7,7 @@ from app.api.v1 import auth, words, learning, exams, ai, competition, achievemen
 from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes, student_monitor as teacher_student_monitor
 from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
+from app.api.v1.admin import teachers as admin_teachers, classes as admin_classes
 from app.api.v1 import subscription, pronunciation, assessment
 
 @asynccontextmanager
@@ -67,6 +68,8 @@ app.include_router(admin_statistics.router, prefix="/api/v1/admin", tags=["管�
 app.include_router(admin_ai_config.router, prefix="/api/v1/admin/ai", tags=["管理员-AI配置"])
 app.include_router(admin_subscriptions.router, prefix="/api/v1/admin/subscriptions", tags=["管理员-订阅管理"])
 app.include_router(admin_system_update.router, prefix="/api/v1/admin/system", tags=["管理员-系统更新"])
+app.include_router(admin_teachers.router, prefix="/api/v1/admin", tags=["管理员-教师"])
+app.include_router(admin_classes.router, prefix="/api/v1/admin", tags=["管理员-班级"])
 app.include_router(subscription.router, prefix="/api/v1/subscription", tags=["订阅兑换"])
 app.include_router(pronunciation.router, prefix="/api/v1/pronunciation", tags=["语音评测"])
 app.include_router(assessment.router, prefix="/api/v1/assessment", tags=["测评漏斗"])
