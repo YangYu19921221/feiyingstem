@@ -6,9 +6,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
-import { API_BASE_URL } from '../../config/env';
 import VictoryScreen, { type WrongAnswer } from './VictoryScreen';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
+import { useAudio } from '../../hooks/useAudio';
 
 
 interface ExamQuestion {
@@ -106,7 +106,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   const [playCount, setPlayCount] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { playAudio: sharedPlayAudio, stopAudio } = useAudio();
   const handleSubmitRef = useRef<() => void>(() => {});
 
   const currentQ = questions[currentIndex];
@@ -156,10 +156,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   const playAudio = () => {
     if (!currentQ || playCount >= 3) return;
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    const audio = new Audio(`${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(currentQ.word.word)}&v=4`);
-    audioRef.current = audio;
-    audio.play().then(() => setPlayCount(p => p + 1)).catch(() => {});
+    sharedPlayAudio(currentQ.word.word).then(() => setPlayCount(p => p + 1)).catch(() => {});
   };
 
   // 自动播放听写题
@@ -167,13 +164,11 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
     const q = questions[currentIndex];
     if (q?.type === 'listening' && phase === 'testing') {
       const t = setTimeout(() => {
-        const audio = new Audio(`${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(q.word.word)}&v=4`);
-        audioRef.current = audio;
-        audio.play().then(() => setPlayCount(1)).catch(() => {});
+        sharedPlayAudio(q.word.word).then(() => setPlayCount(1)).catch(() => {});
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [currentIndex, phase, questions]);
+  }, [currentIndex, phase, questions, sharedPlayAudio]);
 
   handleSubmitRef.current = handleSubmit;
 

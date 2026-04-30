@@ -19,7 +19,7 @@ import {
 } from '../api/learningRecords';
 import { submitReviewRecords } from '../api/memoryCurve';
 import { API_BASE_URL } from '../config/env';
-import { edgeTtsUrl } from '../hooks/useAudio';
+import { useAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
@@ -38,6 +38,7 @@ const FlashCardLearning = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const { playAudio: sharedPlay } = useAudio();
   const [loading, setLoading] = useState(true);
   const [showExitDialog, setShowExitDialog] = useState(false);
 
@@ -287,12 +288,7 @@ const FlashCardLearning = () => {
 
     const word = learningData.words[currentIndex];
     setIsPlaying(true);
-
-    const url = edgeTtsUrl(word.word);
-    const audio = new Audio(url);
-    audio.onended = () => setIsPlaying(false);
-    audio.onerror = () => setIsPlaying(false);
-    audio.play().catch(() => setIsPlaying(false));
+    sharedPlay(word.word).finally(() => setIsPlaying(false));
   };
 
   // 🆕 验证用户答案（关卡1和关卡2）

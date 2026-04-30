@@ -70,16 +70,11 @@ export function preloadAudio(words: string[]) {
 }
 
 export function useAudio() {
-  // 复用同一个 Audio 元素，避免移动端多实例问题
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(new Audio());
 
   useEffect(() => {
-    audioRef.current = new Audio();
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      audioRef.current.pause();
     };
   }, []);
 
@@ -138,7 +133,19 @@ export function useAudio() {
         await new Promise<void>((resolve) => {
           const onEnd = () => { audio.removeEventListener('ended', onEnd); resolve(); };
           audio.addEventListener('ended', onEnd);
-          audio.play().catch(() => resolve());
+          audio.play().catch(() => {
+            if ('speechSynthesis' in window) {
+              try { speechSynthesis.cancel(); } catch {}
+              const u = new SpeechSynthesisUtterance(text);
+              u.lang = 'en-GB';
+              u.rate = rate;
+              u.onend = () => resolve();
+              u.onerror = () => resolve();
+              speechSynthesis.speak(u);
+            } else {
+              resolve();
+            }
+          });
         });
         if (loopTokenRef.current !== token) return;
         if (i < times - 1) {

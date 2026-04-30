@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Volume2 } from 'lucide-react';
 import type { Word } from '../api/words';
 import ColoredPhonetic from './ColoredPhonetic';
-import { edgeTtsUrl } from '../hooks/useAudio';
+import { useAudio } from '../hooks/useAudio';
 
 interface FlashCardProps {
   word: Word;
@@ -15,20 +15,16 @@ interface FlashCardProps {
 const FlashCard = ({ word, onNext, onKnow, onDontKnow }: FlashCardProps) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const { playAudio } = useAudio();
 
   const handleFlip = () => {
     setIsFlipped(!isFlipped);
   };
 
-  // 语音播放 - 统一使用 Edge TTS 接口（剑桥真人发音 → Edge TTS 英式女声）
   const handlePlayAudio = () => {
     if (isPlaying) return;
     setIsPlaying(true);
-    const url = edgeTtsUrl(word.word);
-    const audio = new Audio(url);
-    audio.onended = () => setIsPlaying(false);
-    audio.onerror = () => setIsPlaying(false);
-    audio.play().catch(() => setIsPlaying(false));
+    playAudio(word.word).finally(() => setIsPlaying(false));
   };
 
   return (
