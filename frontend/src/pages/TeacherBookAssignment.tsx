@@ -225,25 +225,41 @@ const TeacherBookAssignment = () => {
     }, 10000);
   };
 
-  /** 撤回：按 (book_id, deadline) 分组重新分配 */
+  /** 撤回：按 (book_id, scope_type, unit_id, group_index, deadline) 分组重新分配，保留原始范围 */
   const handleUndo = async () => {
     if (!undoSnapshot || undoSnapshot.length === 0) return;
     try {
-      const groups = new Map<string, { book_id: number; student_ids: number[]; deadline?: string }>();
+      const groups = new Map<string, {
+        book_id: number;
+        student_ids: number[];
+        scope_type: string;
+        unit_id: number | null;
+        group_index: number | null;
+        deadline?: string;
+      }>();
       for (const a of undoSnapshot) {
-        const key = `${a.book_id}|${a.deadline ?? ''}`;
+        const key = `${a.book_id}|${a.scope_type ?? 'book'}|${a.unit_id ?? ''}|${a.group_index ?? ''}|${a.deadline ?? ''}`;
         const existing = groups.get(key);
         if (existing) {
           existing.student_ids.push(a.student_id);
         } else {
-          groups.set(key, { book_id: a.book_id, student_ids: [a.student_id], deadline: a.deadline });
+          groups.set(key, {
+            book_id: a.book_id,
+            student_ids: [a.student_id],
+            scope_type: a.scope_type || 'book',
+            unit_id: a.unit_id ?? null,
+            group_index: a.group_index ?? null,
+            deadline: a.deadline,
+          });
         }
       }
       await Promise.all(Array.from(groups.values()).map(g => teacherAssignments.assignBook({
-        ...g,
-        scope_type: 'book',
-        unit_id: null,
-        group_index: null,
+        book_id: g.book_id,
+        student_ids: g.student_ids,
+        scope_type: g.scope_type as 'book' | 'unit' | 'group',
+        unit_id: g.unit_id,
+        group_index: g.group_index,
+        deadline: g.deadline || undefined,
       })));
       showMessage('success', `已恢复 ${undoSnapshot.length} 条分配`);
       setUndoSnapshot(null);

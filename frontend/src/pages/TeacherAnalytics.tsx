@@ -94,7 +94,7 @@ const TeacherAnalytics = () => {
     fetchClassData();
   }, [selectedClassId]);
 
-  // Fetch legacy analytics (students, words, modes) — backend already scopes by teacher
+  // Fetch legacy analytics (students, words, modes) — backend already scopes by teacher, not by class
   useEffect(() => {
     const fetchLegacyAnalytics = async () => {
       try {
@@ -115,7 +115,7 @@ const TeacherAnalytics = () => {
       }
     };
     fetchLegacyAnalytics();
-  }, []);
+  }, [selectedClassId]);
 
   const formatTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -297,6 +297,12 @@ const TeacherAnalytics = () => {
             </div>
           </motion.div>
         )}
+
+        {/* 全部班级汇总分隔线 */}
+        <div className="mt-8 mb-4 border-t pt-4">
+          <h2 className="text-lg font-bold text-gray-700">全部班级汇总</h2>
+          <p className="text-sm text-gray-500">以下数据为所有班级的汇总统计</p>
+        </div>
 
         {/* 学习模式统计 */}
         <motion.div

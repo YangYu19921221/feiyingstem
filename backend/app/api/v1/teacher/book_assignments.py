@@ -5,13 +5,14 @@ from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel
+import math
 
 from app.core.database import get_db
 from app.models.user import User
 from app.models.learning import BookAssignment
 from app.models.word import WordBook, Unit
 from app.api.v1.auth import get_current_user
-from app.services.scope_service import validate_scope, get_unit_groups
+from app.services.scope_service import validate_scope, get_unit_groups, DEFAULT_GROUP_SIZE
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 
 router = APIRouter()
@@ -199,17 +200,16 @@ async def list_book_units(
         select(Unit).where(Unit.book_id == book_id).order_by(Unit.order_index)
     )
     units = res.scalars().all()
-    out = []
-    for u in units:
-        groups = await get_unit_groups(db, u.id)
-        out.append({
+    return [
+        {
             "id": u.id,
             "unit_number": u.unit_number,
             "name": u.name,
             "word_count": u.word_count,
-            "group_count": len(groups),
-        })
-    return out
+            "group_count": math.ceil(u.word_count / (u.group_size or DEFAULT_GROUP_SIZE)) if u.word_count else 0,
+        }
+        for u in units
+    ]
 
 
 @router.get("/units/{unit_id}/groups")
