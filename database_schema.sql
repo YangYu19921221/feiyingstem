@@ -258,6 +258,8 @@ CREATE TABLE class_students (
     class_id INTEGER NOT NULL,
     student_id INTEGER NOT NULL,
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT 1 NOT NULL,  -- 是否仍在班级中(退出班级时置0)
+    left_at DATETIME,                       -- 退出班级的时间
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(class_id, student_id)
@@ -266,6 +268,86 @@ CREATE TABLE class_students (
 CREATE INDEX idx_classes_teacher ON classes(teacher_id);
 CREATE INDEX idx_class_students_class ON class_students(class_id);
 CREATE INDEX idx_class_students_student ON class_students(student_id);
+-- 确保每个学生同时只活跃在一个班级中
+CREATE UNIQUE INDEX IF NOT EXISTS uq_active_student ON class_students(student_id) WHERE is_active = 1;
+
+-- 单词本分配表 (教师分配单词本/单元/分组给学生)
+-- scope_type: 'book'=整本, 'unit'=单元, 'group'=分组
+CREATE TABLE book_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    teacher_id INTEGER NOT NULL,
+    scope_type VARCHAR(10) NOT NULL DEFAULT 'book' CHECK(scope_type IN ('book','unit','group')),  -- book / unit / group
+    unit_id INTEGER,                                  -- 仅 scope_type='unit'/'group' 时有值
+    group_index INTEGER,                              -- 仅 scope_type='group' 时有值
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deadline DATETIME,
+    is_completed BOOLEAN DEFAULT 0,
+    FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_book_assignments_student ON book_assignments(student_id);
+CREATE INDEX idx_book_assignments_teacher ON book_assignments(teacher_id);
+CREATE INDEX idx_book_assignments_book    ON book_assignments(book_id);
+-- 部分唯一索引：每个 scope tier 一个，解决 NULL ≠ NULL 导致复合 UNIQUE 无法防重问题
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assign_book  ON book_assignments(book_id, student_id) WHERE scope_type='book';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assign_unit  ON book_assignments(book_id, student_id, unit_id) WHERE scope_type='unit';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assign_group ON book_assignments(book_id, student_id, unit_id, group_index) WHERE scope_type='group';
+
+-- 作业分配表 (教师布置的作业)
+CREATE TABLE homework_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    teacher_id INTEGER NOT NULL,
+    unit_id INTEGER NOT NULL,
+    learning_mode VARCHAR(50) NOT NULL,  -- flashcard, spelling, fillblank, quiz
+    target_score INTEGER DEFAULT 80,     -- 目标分数
+    min_completion_time INTEGER,         -- 最少完成时间(秒)
+    max_attempts INTEGER DEFAULT 3,      -- 最多尝试次数
+    deadline DATETIME,
+    group_index INTEGER,                 -- 指定分组索引(NULL=整个单元)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+);
+
+-- 作业-学生关联表
+CREATE TABLE homework_student_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    homework_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'pending',  -- pending, in_progress, completed, overdue
+    started_at DATETIME,
+    completed_at DATETIME,
+    attempts_count INTEGER DEFAULT 0,
+    best_score INTEGER DEFAULT 0,
+    total_time_spent INTEGER DEFAULT 0,    -- 秒
+    FOREIGN KEY (homework_id) REFERENCES homework_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(homework_id, student_id)
+);
+
+-- 作业完成记录表 (每次尝试的详细记录)
+CREATE TABLE homework_attempt_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    homework_student_assignment_id INTEGER NOT NULL,
+    attempt_number INTEGER NOT NULL,
+    score INTEGER NOT NULL,
+    time_spent INTEGER NOT NULL,  -- 秒
+    correct_count INTEGER DEFAULT 0,
+    wrong_count INTEGER DEFAULT 0,
+    total_words INTEGER DEFAULT 0,
+    completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    details TEXT,                 -- JSON格式存储详细答题记录
+    FOREIGN KEY (homework_student_assignment_id) REFERENCES homework_student_assignments(id) ON DELETE CASCADE
+);
 
 -- ========================================
 -- 索引优化

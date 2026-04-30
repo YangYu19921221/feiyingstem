@@ -52,6 +52,9 @@ class BookAssignment(Base):
     book_id = Column(Integer, ForeignKey("word_books.id", ondelete="CASCADE"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     teacher_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    scope_type = Column(String(10), nullable=False, default='book')  # 分配范围: book/unit/group
+    unit_id = Column(Integer, ForeignKey("units.id", ondelete="SET NULL"), nullable=True)  # 指定单元(scope_type=unit/group时)
+    group_index = Column(Integer, nullable=True)  # 指定分组索引(scope_type=group时)
     assigned_at = Column(DateTime, server_default=func.now())
     deadline = Column(DateTime, nullable=True)  # 学习截止日期
     is_completed = Column(Boolean, default=False)
@@ -138,6 +141,7 @@ class HomeworkAssignment(Base):
     min_completion_time = Column(Integer, nullable=True)  # 最少完成时间(秒)
     max_attempts = Column(Integer, default=3)  # 最多尝试次数
     deadline = Column(DateTime, nullable=True)
+    group_index = Column(Integer, nullable=True)  # null=整单元, 有值=指定分组
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

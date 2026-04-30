@@ -82,6 +82,7 @@ const AdminDashboard = () => {
 
   const quickActions = [
     { icon: '👥', title: '用户管理', desc: '管理师生账号', color: 'from-blue-500 to-cyan-500', path: '/admin/users' },
+    { icon: '👨‍🏫', title: '教师管理', desc: '教师列表与班级', color: 'from-teal-500 to-green-500', path: '/admin/teachers' },
     { icon: '📚', title: '内容管理', desc: '单词/单词本', color: 'from-purple-500 to-pink-500', path: '/admin/content' },
     { icon: '🤖', title: 'AI配置', desc: '通义千问等服务', color: 'from-indigo-500 to-purple-500', path: '/admin/ai-config' },
     { icon: '📊', title: '数据统计', desc: '系统使用情况', color: 'from-green-500 to-teal-500', path: '/admin/statistics' },

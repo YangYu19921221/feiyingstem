@@ -1,6 +1,8 @@
 """
 认证服务 - 处理密码加密、JWT生成等
 """
+import secrets
+import string
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
@@ -20,6 +22,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """生成密码哈希"""
     return pwd_context.hash(password)
+
+def generate_random_password(length: int = 12) -> str:
+    """生成随机密码（字母+数字组合）"""
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """创建JWT token"""

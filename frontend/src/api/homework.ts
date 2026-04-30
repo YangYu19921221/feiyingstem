@@ -23,6 +23,7 @@ export interface CreateHomeworkRequest {
   title: string;
   description?: string;
   unit_id: number;
+  group_index?: number | null;
   learning_mode: string; // flashcard, spelling, fillblank, quiz
   student_ids: number[];
   target_score: number;

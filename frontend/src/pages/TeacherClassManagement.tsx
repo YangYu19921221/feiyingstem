@@ -94,6 +94,9 @@ const TeacherClassManagement = () => {
   const [availableStudents, setAvailableStudents] = useState<AvailableStudent[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
 
+  // 学生搜索
+  const [studentSearch, setStudentSearch] = useState('');
+
   // 每日数据多选删除
   const [selectedForRemove, setSelectedForRemove] = useState<Set<number>>(new Set());
 
@@ -107,6 +110,14 @@ const TeacherClassManagement = () => {
       loadDailyStats(selectedClass.id, selectedDate);
     }
   }, [selectedClass, selectedDate]);
+
+  // 搜索防抖：studentSearch 变化时重新加载学生列表
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (selectedClass) loadClassStudents(selectedClass.id);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [studentSearch]);
 
   const loadClasses = async () => {
     try {
@@ -125,7 +136,10 @@ const TeacherClassManagement = () => {
 
   const loadClassStudents = async (classId: number) => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/students`, { headers: headers() });
+      const res = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/students`, {
+        headers: headers(),
+        params: studentSearch ? { q: studentSearch } : {},
+      });
       setClassStudents(res.data);
     } catch (error) {
       console.error('加载班级学生失败:', error);
@@ -531,6 +545,15 @@ const TeacherClassManagement = () => {
                     班级成员 ({classStudents.length})
                   </h3>
 
+                  {/* 学生搜索框 */}
+                  <input
+                    type="text"
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    placeholder="搜索学生姓名/用户名"
+                    className="w-full px-3 py-2 border rounded-lg mb-3 text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                  />
+
                   {classStudents.length === 0 ? (
                     <div className="text-center py-8">
                       <Users className="w-12 h-12 mx-auto text-gray-300 mb-2" />
@@ -560,13 +583,22 @@ const TeacherClassManagement = () => {
                               <p className="text-xs text-gray-400">@{s.username}</p>
                             </div>
                           </div>
-                          <button
-                            onClick={() => handleRemoveStudent(s.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 transition"
-                            title="移出班级"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/teacher/students/${s.id}/monitor`); }}
+                              className="text-xs text-orange-500 hover:text-orange-700 px-1.5 py-1 rounded transition"
+                              title="学习监控"
+                            >
+                              监控
+                            </button>
+                            <button
+                              onClick={() => handleRemoveStudent(s.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 transition"
+                              title="移出班级"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>

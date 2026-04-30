@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { assignBookToStudents, getBookAssignments, deleteAssignment } from '../api/assignments';
+import { deleteAssignment } from '../api/assignments';
 import type { BookAssignmentResponse } from '../api/assignments';
+import { teacherAssignments } from '../api/teacherAssignments';
+import { ScopeSelector } from '../components/teacher/ScopeSelector';
+import type { ScopeValue } from '../components/teacher/ScopeSelector';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 
@@ -26,7 +29,11 @@ const TeacherBookAssignment = () => {
 
   // 单词本列表和选中状态
   const [books, setBooks] = useState<WordBook[]>([]);
-  const [selectedBook, setSelectedBook] = useState<WordBook | null>(null);
+  const [scope, setScope] = useState<ScopeValue>({
+    scope_type: 'book', book_id: null, unit_id: null, group_index: null,
+  });
+  // selectedBook derived from scope so the rest of the UI stays unchanged
+  const selectedBook = books.find(b => b.id === scope.book_id) ?? null;
 
   // 学生列表和选中状态
   const [students, setStudents] = useState<Student[]>([]);
@@ -72,10 +79,10 @@ const TeacherBookAssignment = () => {
 
   // 当选择单词本时,加载学生列表
   useEffect(() => {
-    if (selectedBook) {
+    if (scope.book_id) {
       loadStudents();
     }
-  }, [selectedBook]);
+  }, [scope.book_id]);
 
   const loadBooks = async () => {
     try {
@@ -133,8 +140,13 @@ const TeacherBookAssignment = () => {
   };
 
   const handleAssign = async () => {
-    if (!selectedBook) {
+    if (!scope.book_id) {
       showMessage('error', '请先选择单词本');
+      return;
+    }
+
+    if (scope.scope_type === 'group' && scope.group_index === null) {
+      showMessage('error', '请选择具体分组');
       return;
     }
 
@@ -145,15 +157,18 @@ const TeacherBookAssignment = () => {
 
     try {
       setSubmitting(true);
-      const result = await assignBookToStudents({
-        book_id: selectedBook.id,
+      const result = await teacherAssignments.assignBook({
+        book_id: scope.book_id,
         student_ids: selectedStudents,
+        scope_type: scope.scope_type,
+        unit_id: scope.unit_id ?? null,
+        group_index: scope.group_index ?? null,
         deadline: deadline || undefined,
       });
 
       showMessage(
         'success',
-        `分配成功! 共分配 ${result.assigned_count} 个,跳过 ${result.skipped_count} 个(已分配过)`
+        `已分配 ${result.created} 个学生，跳过 ${result.skipped} 个重复（共 ${result.total} 人）`
       );
       setSelectedStudents([]);
       setDeadline('');
@@ -210,21 +225,42 @@ const TeacherBookAssignment = () => {
     }, 10000);
   };
 
-  /** 撤回：按 (book_id, deadline) 分组重新分配 */
+  /** 撤回：按 (book_id, scope_type, unit_id, group_index, deadline) 分组重新分配，保留原始范围 */
   const handleUndo = async () => {
     if (!undoSnapshot || undoSnapshot.length === 0) return;
     try {
-      const groups = new Map<string, { book_id: number; student_ids: number[]; deadline?: string }>();
+      const groups = new Map<string, {
+        book_id: number;
+        student_ids: number[];
+        scope_type: string;
+        unit_id: number | null;
+        group_index: number | null;
+        deadline?: string;
+      }>();
       for (const a of undoSnapshot) {
-        const key = `${a.book_id}|${a.deadline ?? ''}`;
+        const key = `${a.book_id}|${a.scope_type ?? 'book'}|${a.unit_id ?? ''}|${a.group_index ?? ''}|${a.deadline ?? ''}`;
         const existing = groups.get(key);
         if (existing) {
           existing.student_ids.push(a.student_id);
         } else {
-          groups.set(key, { book_id: a.book_id, student_ids: [a.student_id], deadline: a.deadline });
+          groups.set(key, {
+            book_id: a.book_id,
+            student_ids: [a.student_id],
+            scope_type: a.scope_type || 'book',
+            unit_id: a.unit_id ?? null,
+            group_index: a.group_index ?? null,
+            deadline: a.deadline,
+          });
         }
       }
-      await Promise.all(Array.from(groups.values()).map(g => assignBookToStudents(g)));
+      await Promise.all(Array.from(groups.values()).map(g => teacherAssignments.assignBook({
+        book_id: g.book_id,
+        student_ids: g.student_ids,
+        scope_type: g.scope_type as 'book' | 'unit' | 'group',
+        unit_id: g.unit_id,
+        group_index: g.group_index,
+        deadline: g.deadline || undefined,
+      })));
       showMessage('success', `已恢复 ${undoSnapshot.length} 条分配`);
       setUndoSnapshot(null);
       if (undoTimerRef.current) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null; }
@@ -344,57 +380,19 @@ const TeacherBookAssignment = () => {
 
       <div className="max-w-7xl mx-auto px-4 pb-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 左侧: 单词本列表 */}
+          {/* 左侧: 单词本 + 范围选择 */}
           <div className="lg:col-span-1">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="bg-white rounded-2xl shadow-md p-6"
             >
-              <h2 className="text-xl font-bold text-gray-800 mb-4">📖 选择单词本</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4">📖 选择范围</h2>
 
               {loadingBooks ? (
                 <div className="text-center py-8 text-gray-500">加载中...</div>
-              ) : books.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">暂无单词本</div>
               ) : (
-                <div className="space-y-3 max-h-[calc(100vh-250px)] overflow-y-auto">
-                  {books.map((book) => (
-                    <motion.div
-                      key={book.id}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setSelectedBook(book)}
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition ${
-                        selectedBook?.id === book.id
-                          ? 'border-orange-400 bg-orange-50'
-                          : 'border-gray-200 hover:border-orange-200'
-                      }`}
-                    >
-                      <div className="font-medium text-gray-800 mb-1">{book.name}</div>
-                      <div className="text-xs text-gray-500 mb-2">
-                        {book.description || '暂无描述'}
-                      </div>
-                      <div className="flex gap-3 text-xs text-gray-600">
-                        <span>📑 {book.unit_count} 单元</span>
-                        <span>📝 {book.word_count} 单词</span>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedBook(book);
-                        }}
-                        className={`w-full mt-3 py-2 rounded-lg text-sm font-medium transition ${
-                          selectedBook?.id === book.id
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                        }`}
-                      >
-                        {selectedBook?.id === book.id ? '✓ 已选择' : '选择分配'}
-                      </button>
-                    </motion.div>
-                  ))}
-                </div>
+                <ScopeSelector books={books} value={scope} onChange={setScope} />
               )}
             </motion.div>
           </div>
@@ -409,7 +407,7 @@ const TeacherBookAssignment = () => {
               >
                 <div className="text-6xl mb-4">📚</div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">请先选择单词本</h3>
-                <p className="text-gray-500">从左侧列表中选择要分配的单词本</p>
+                <p className="text-gray-500">从左侧选择要分配的单词本和范围</p>
               </motion.div>
             ) : (
               <div className="space-y-6">
@@ -585,9 +583,17 @@ const TeacherBookAssignment = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleAssign}
-                    disabled={submitting || selectedStudents.length === 0}
+                    disabled={
+                      submitting ||
+                      scope.book_id === null ||
+                      (scope.scope_type === 'group' && scope.group_index === null) ||
+                      selectedStudents.length === 0
+                    }
                     className={`w-full py-3 rounded-lg font-medium text-white transition ${
-                      submitting || selectedStudents.length === 0
+                      submitting ||
+                      scope.book_id === null ||
+                      (scope.scope_type === 'group' && scope.group_index === null) ||
+                      selectedStudents.length === 0
                         ? 'bg-gray-400 cursor-not-allowed'
                         : 'bg-gradient-to-r from-orange-500 to-yellow-500 hover:shadow-lg'
                     }`}

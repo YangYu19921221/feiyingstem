@@ -11,7 +11,9 @@ import {
   type StudentHomeworkStatusResponse,
   type HomeworkAttemptResponse,
 } from '../api/homework';
-import { getTeacherWordBooks, getUnitsByBook, getStudentsList, type TeacherWordBook, type UnitResponse, type StudentInfo } from '../api/teacher';
+import { getTeacherWordBooks, getStudentsList, type TeacherWordBook, type StudentInfo } from '../api/teacher';
+import { ScopeSelector } from '../components/teacher/ScopeSelector';
+import type { ScopeValue } from '../components/teacher/ScopeSelector';
 import { toast } from '../components/Toast';
 
 // 学习模式映射
@@ -34,7 +36,6 @@ const TeacherHomework: React.FC = () => {
   // 状态管理
   const [homeworkList, setHomeworkList] = useState<HomeworkResponse[]>([]);
   const [wordBooks, setWordBooks] = useState<TeacherWordBook[]>([]);
-  const [units, setUnits] = useState<UnitResponse[]>([]);
   const [students, setStudents] = useState<StudentInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -51,13 +52,18 @@ const TeacherHomework: React.FC = () => {
     title: '',
     description: '',
     unit_id: 0,
+    group_index: null,
     learning_mode: 'flashcard',
     student_ids: [],
     target_score: 80,
     max_attempts: 3,
     deadline: '',
   });
-  const [selectedBookId, setSelectedBookId] = useState<number>(0);
+  // ScopeSelector state: allowBook=false means book_id is used for cascading but not submitted.
+  // Only unit_id and group_index are included in the homework create payload.
+  const [scope, setScope] = useState<ScopeValue>({
+    scope_type: 'unit', book_id: null, unit_id: null, group_index: null,
+  });
 
   // 加载数据
   useEffect(() => {
@@ -65,15 +71,6 @@ const TeacherHomework: React.FC = () => {
     loadWordBooks();
     loadStudents();
   }, []);
-
-  // 当选择单词本时加载单元
-  useEffect(() => {
-    if (selectedBookId > 0) {
-      loadUnits(selectedBookId);
-    } else {
-      setUnits([]);
-    }
-  }, [selectedBookId]);
 
   const loadHomework = async () => {
     try {
@@ -94,15 +91,6 @@ const TeacherHomework: React.FC = () => {
       setWordBooks(data);
     } catch (error) {
       console.error('加载单词本失败:', error);
-    }
-  };
-
-  const loadUnits = async (bookId: number) => {
-    try {
-      const data = await getUnitsByBook(bookId);
-      setUnits(data);
-    } catch (error) {
-      console.error('加载单元失败:', error);
     }
   };
 
@@ -141,7 +129,7 @@ const TeacherHomework: React.FC = () => {
       toast.warning('请输入作业标题');
       return;
     }
-    if (!formData.unit_id) {
+    if (!scope.unit_id) {
       toast.warning('请选择单元');
       return;
     }
@@ -152,7 +140,11 @@ const TeacherHomework: React.FC = () => {
 
     try {
       setLoading(true);
-      await createHomework(formData);
+      await createHomework({
+        ...formData,
+        unit_id: scope.unit_id,
+        group_index: scope.group_index ?? null,
+      });
       toast.success('作业创建成功!');
       setShowCreateModal(false);
       resetForm();
@@ -171,13 +163,14 @@ const TeacherHomework: React.FC = () => {
       title: '',
       description: '',
       unit_id: 0,
+      group_index: null,
       learning_mode: 'flashcard',
       student_ids: [],
       target_score: 80,
       max_attempts: 3,
       deadline: '',
     });
-    setSelectedBookId(0);
+    setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null });
   };
 
   // 处理删除作业
@@ -434,49 +427,17 @@ const TeacherHomework: React.FC = () => {
                     />
                   </div>
 
-                  {/* 选择单词本 */}
+                  {/* 选择单元和分组（ScopeSelector 内部处理书→单元的级联，allowBook=false 不提交整本范围） */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      📚 选择单词本 *
+                      📚 选择单词本 / 单元 *
                     </label>
-                    <select
-                      value={selectedBookId}
-                      onChange={(e) => {
-                        const bookId = Number(e.target.value);
-                        setSelectedBookId(bookId);
-                        setFormData({ ...formData, unit_id: 0 });
-                      }}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      required
-                    >
-                      <option value={0}>请选择单词本</option>
-                      {wordBooks.map((book) => (
-                        <option key={book.id} value={book.id}>
-                          {book.name} {book.grade_level ? `(${book.grade_level})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* 选择单元 */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      📑 选择单元 *
-                    </label>
-                    <select
-                      value={formData.unit_id}
-                      onChange={(e) => setFormData({ ...formData, unit_id: Number(e.target.value) })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      required
-                      disabled={!selectedBookId}
-                    >
-                      <option value={0}>请选择单元</option>
-                      {units.map((unit) => (
-                        <option key={unit.id} value={unit.id}>
-                          {unit.name} ({unit.word_count}个单词)
-                        </option>
-                      ))}
-                    </select>
+                    <ScopeSelector
+                      books={wordBooks}
+                      value={scope}
+                      onChange={setScope}
+                      allowBook={false}
+                    />
                   </div>
 
                   {/* 学习模式 */}

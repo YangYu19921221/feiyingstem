@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, HomeworkAttemptRecord
 from app.models.word import Unit, WordBook
 from app.api.v1.auth import get_current_user
+from app.services.scope_service import get_unit_groups
 
 router = APIRouter()
 
@@ -28,6 +29,7 @@ class CreateHomeworkRequest(BaseModel):
     min_completion_time: Optional[int] = None
     max_attempts: int = 3
     deadline: Optional[str] = None
+    group_index: Optional[int] = None  # null=整单元, 有值=指定分组
 
 
 class HomeworkResponse(BaseModel):
@@ -110,6 +112,18 @@ async def create_homework(
 
     unit, book = unit_book
 
+    # 验证 group_index 在合法范围（如果指定）
+    if request.group_index is not None:
+        try:
+            groups = await get_unit_groups(db, request.unit_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        if request.group_index < 1 or request.group_index > len(groups):
+            raise HTTPException(
+                status_code=422,
+                detail=f"组序号超出范围（单元共 {len(groups)} 组）"
+            )
+
     # 验证学生存在
     result = await db.execute(
         select(User).where(
@@ -141,7 +155,8 @@ async def create_homework(
         target_score=request.target_score,
         min_completion_time=request.min_completion_time,
         max_attempts=request.max_attempts,
-        deadline=deadline
+        deadline=deadline,
+        group_index=request.group_index,
     )
     db.add(homework)
     await db.flush()  # 获取homework.id
