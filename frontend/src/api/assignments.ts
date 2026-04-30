@@ -32,6 +32,9 @@ export interface BookAssignmentResponse {
   student_id: number;
   student_name: string;
   teacher_id: number;
+  scope_type: string;
+  unit_id: number | null;
+  group_index: number | null;
   assigned_at: string;
   deadline?: string;
   is_completed: boolean;

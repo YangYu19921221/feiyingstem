@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { admin, AdminClassOverview } from '../api/admin';
-import { teacherMonitor, ClassStudent } from '../api/teacherMonitor';
+import { admin } from '../api/admin';
+import type { AdminClassOverview } from '../api/admin';
+import { teacherMonitor } from '../api/teacherMonitor';
+import type { ClassStudent } from '../api/teacherMonitor';
 import { toast } from '../components/Toast';
 import TransferStudentDialog from '../components/admin/TransferStudentDialog';
 

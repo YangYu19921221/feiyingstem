@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { admin, AdminTeacherDetail } from '../api/admin';
+import { admin } from '../api/admin';
+import type { AdminTeacherDetail } from '../api/admin';
 import { toast } from '../components/Toast';
 
 const AdminTeacherDetailPage = () => {
