@@ -249,6 +249,7 @@ async def get_book_assignments(
         .join(User, BookAssignment.student_id == User.id)
         .join(WordBook, BookAssignment.book_id == WordBook.id)
         .where(BookAssignment.book_id == book_id)
+        .where(BookAssignment.teacher_id == current_user.id)
         .order_by(BookAssignment.assigned_at.desc())
     )
 

@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -96,7 +96,7 @@ async def admin_class_overview(
             func.count(func.distinct(WordMastery.word_id)),
             func.sum(WordMastery.correct_count),
             func.sum(WordMastery.total_encounters),
-            func.sum(WordMastery.mastery_level >= 4),
+            func.sum(func.cast(WordMastery.mastery_level >= 4, Integer)),
         ).where(WordMastery.user_id.in_(sids))
     )
     total_words, correct, encounters, mastered = res.one()

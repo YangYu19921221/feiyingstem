@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar
 from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.api.v1.auth import get_current_teacher
+from app.api.v1.teacher._permissions import assert_student_in_my_class
 
 router = APIRouter()
 
@@ -266,7 +267,7 @@ async def get_class_daily_stats(
     students_result = await db.execute(
         select(User)
         .join(ClassStudent, ClassStudent.student_id == User.id)
-        .where(ClassStudent.class_id == class_id)
+        .where(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
         .order_by(User.username)
     )
     students = students_result.scalars().all()
@@ -345,7 +346,8 @@ async def get_class_student_detail(
 
     result = await db.execute(
         select(ClassStudent).where(
-            and_(ClassStudent.class_id == class_id, ClassStudent.student_id == student_id)
+            and_(ClassStudent.class_id == class_id, ClassStudent.student_id == student_id,
+                 ClassStudent.is_active.is_(True))
         )
     )
     if not result.scalar_one_or_none():
@@ -474,6 +476,7 @@ async def get_student_ai_advice(
     current_user: User = Depends(get_current_teacher)
 ):
     """基于学生学习数据生成AI学习建议"""
+    await assert_student_in_my_class(db, current_user.id, student_id)
     result = await db.execute(select(User).where(User.id == student_id))
     student = result.scalar_one_or_none()
     if not student:
