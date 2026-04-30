@@ -65,6 +65,9 @@ const AIConfig = lazyWithRetry(() => import('./pages/Admin/AIConfig'));
 const TeacherExamPreview = lazyWithRetry(() => import('./pages/TeacherExamPreview'));
 const RedeemSubscription = lazyWithRetry(() => import('./pages/RedeemSubscription'));
 const AdminSubscriptions = lazyWithRetry(() => import('./pages/AdminSubscriptions'));
+const AdminTeacherList = lazyWithRetry(() => import('./pages/AdminTeacherList'));
+const AdminTeacherDetail = lazyWithRetry(() => import('./pages/AdminTeacherDetail'));
+const AdminClassDetail = lazyWithRetry(() => import('./pages/AdminClassDetail'));
 const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
 const WordClassifyLearning = lazyWithRetry(() => import('./pages/WordClassifyLearning'));
 const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
@@ -672,6 +675,32 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminSubscriptions />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 管理员 - 教师管理 */}
+        <Route
+          path="/admin/teachers"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminTeacherList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/teachers/:id"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminTeacherDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/classes/:id"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminClassDetail />
             </ProtectedRoute>
           }
         />
