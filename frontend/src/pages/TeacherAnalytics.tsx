@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, Users, BookOpen, Target } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Users, BookOpen, Target, Star } from 'lucide-react';
 import api from '../api/client';
-
-interface ClassOverviewStats {
-  total_students: number;
-  active_students: number;
-  total_learning_time: number;
-  total_words_learned: number;
-  average_accuracy: number;
-  total_sessions: number;
-}
+import { teacherMonitor } from '../api/teacherMonitor';
+import type { ClassOverview, WordCompletionItem } from '../api/teacherMonitor';
+import axios from 'axios';
+import { API_BASE_URL } from '../config/env';
 
 interface StudentLearningStats {
   user_id: number;
@@ -40,41 +35,87 @@ interface LearningModeStats {
   average_accuracy: number;
 }
 
+interface ClassItem {
+  id: number;
+  name: string;
+  student_count: number;
+}
+
 const TeacherAnalytics = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [overview, setOverview] = useState<ClassOverviewStats | null>(null);
+
+  // Class selector state
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [classOverview, setClassOverview] = useState<ClassOverview | null>(null);
+  const [wordCompletion, setWordCompletion] = useState<WordCompletionItem[]>([]);
+
+  // Legacy flat-view state (students, difficult words, mode stats)
   const [students, setStudents] = useState<StudentLearningStats[]>([]);
   const [difficultWords, setDifficultWords] = useState<WordDifficultyStats[]>([]);
   const [modeStats, setModeStats] = useState<LearningModeStats[]>([]);
 
+  // Fetch class list on mount
   useEffect(() => {
-    fetchAnalytics();
+    const fetchClasses = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        const res = await axios.get(`${API_BASE_URL}/teacher/classes`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setClasses(res.data);
+        if (res.data.length > 0) setSelectedClassId(res.data[0].id);
+      } catch (err) {
+        console.error('获取班级列表失败:', err);
+      }
+    };
+    fetchClasses();
   }, []);
 
-  const fetchAnalytics = async () => {
-    try {
+  // Fetch class-scoped analytics when selectedClassId changes
+  useEffect(() => {
+    if (!selectedClassId) return;
+    const fetchClassData = async () => {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const headers = { Authorization: `Bearer ${token}` };
+      try {
+        const [overview, words] = await Promise.all([
+          teacherMonitor.classOverview(selectedClassId),
+          teacherMonitor.classWordCompletion(selectedClassId),
+        ]);
+        setClassOverview(overview);
+        setWordCompletion(words);
+      } catch (err) {
+        console.error('获取班级数据失败:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchClassData();
+  }, [selectedClassId]);
 
-      const [overviewData, studentsData, wordsData, modesData] = await Promise.all([
-        api.get('/teacher/analytics/class/overview', { headers }),
-        api.get('/teacher/analytics/class/students', { headers }),
-        api.get('/teacher/analytics/words/difficulty', { headers }),
-        api.get('/teacher/analytics/modes/stats', { headers }),
-      ]);
+  // Fetch legacy analytics (students, words, modes) — backend already scopes by teacher
+  useEffect(() => {
+    const fetchLegacyAnalytics = async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        const headers = { Authorization: `Bearer ${token}` };
 
-      setOverview(overviewData.data ?? overviewData);
-      setStudents(studentsData.data ?? studentsData);
-      setDifficultWords((wordsData.data ?? wordsData).slice(0, 10));
-      setModeStats(modesData.data ?? modesData);
-    } catch (error) {
-      console.error('获取数据失败:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+        const [studentsData, wordsData, modesData] = await Promise.all([
+          api.get('/teacher/analytics/class/students', { headers }),
+          api.get('/teacher/analytics/words/difficulty', { headers }),
+          api.get('/teacher/analytics/modes/stats', { headers }),
+        ]);
+
+        setStudents(studentsData.data ?? studentsData);
+        setDifficultWords((wordsData.data ?? wordsData).slice(0, 10));
+        setModeStats(modesData.data ?? modesData);
+      } catch (error) {
+        console.error('获取学生/单词/模式数据失败:', error);
+      }
+    };
+    fetchLegacyAnalytics();
+  }, []);
 
   const formatTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -133,7 +174,7 @@ const TeacherAnalytics = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6"
         >
           <h1 className="text-3xl font-bold text-gray-800 mb-2 flex items-center gap-3">
             <TrendingUp className="w-8 h-8 text-primary" />
@@ -142,9 +183,22 @@ const TeacherAnalytics = () => {
           <p className="text-gray-600">全面了解学生学习情况和教学效果</p>
         </motion.div>
 
+        {/* 班级选择器 */}
+        <div className="mb-6">
+          <select
+            value={selectedClassId ?? ''}
+            onChange={(e) => setSelectedClassId(Number(e.target.value))}
+            className="border rounded-lg px-3 py-2 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          >
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}（{c.student_count}人）</option>
+            ))}
+          </select>
+        </div>
+
         {/* 班级概览统计 */}
-        {overview && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {classOverview && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -154,9 +208,8 @@ const TeacherAnalytics = () => {
                 <Users className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">学生</span>
               </div>
-              <div className="text-4xl font-bold mb-1">{overview.total_students}</div>
-              <div className="text-blue-100">总学生数</div>
-              <div className="mt-2 text-sm">活跃: {overview.active_students} 人</div>
+              <div className="text-4xl font-bold mb-1">{classOverview.student_count}</div>
+              <div className="text-blue-100">班级学生数</div>
             </motion.div>
 
             <motion.div
@@ -169,9 +222,15 @@ const TeacherAnalytics = () => {
                 <BookOpen className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">单词</span>
               </div>
-              <div className="text-4xl font-bold mb-1">{overview.total_words_learned}</div>
+              <div className="text-4xl font-bold mb-1">{classOverview.total_words_studied}</div>
               <div className="text-purple-100">累计学习单词</div>
-              <div className="mt-2 text-sm">平均每人 {Math.round(overview.total_words_learned / overview.total_students)} 个</div>
+              <div className="mt-2 text-sm">
+                平均每人{' '}
+                {classOverview.student_count > 0
+                  ? Math.round(classOverview.total_words_studied / classOverview.student_count)
+                  : 0}{' '}
+                个
+              </div>
             </motion.div>
 
             <motion.div
@@ -184,11 +243,59 @@ const TeacherAnalytics = () => {
                 <Target className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">准确率</span>
               </div>
-              <div className="text-4xl font-bold mb-1">{overview.average_accuracy.toFixed(1)}%</div>
+              <div className="text-4xl font-bold mb-1">
+                {(classOverview.avg_accuracy * 100).toFixed(1)}%
+              </div>
               <div className="text-green-100">班级平均准确率</div>
-              <div className="mt-2 text-sm">学习时长: {formatTime(overview.total_learning_time)}</div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
+              className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-lg"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <Star className="w-8 h-8" />
+                <span className="text-sm bg-white/20 px-3 py-1 rounded-full">已掌握</span>
+              </div>
+              <div className="text-4xl font-bold mb-1">{classOverview.mastered_words}</div>
+              <div className="text-orange-100">已掌握单词数</div>
             </motion.div>
           </div>
+        )}
+
+        {/* 单词完成度 */}
+        {wordCompletion.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl shadow-sm p-4 mb-8"
+          >
+            <h3 className="font-bold text-gray-800 mb-3 text-lg flex items-center gap-2">
+              📖 单词完成度
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="p-2 text-left">单词</th>
+                    <th className="p-2 text-center">学习人数</th>
+                    <th className="p-2 text-center">已掌握</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wordCompletion.slice(0, 50).map(w => (
+                    <tr key={w.word_id} className="border-t hover:bg-gray-50 transition">
+                      <td className="p-2 font-medium">{w.word}</td>
+                      <td className="p-2 text-center">{w.learners}</td>
+                      <td className="p-2 text-center text-green-600 font-medium">{w.mastered}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
         )}
 
         {/* 学习模式统计 */}
