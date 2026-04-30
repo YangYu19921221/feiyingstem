@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { admin, AdminClassListItem } from '../../api/admin';
+import { admin } from '../../api/admin';
+import type { AdminClassListItem } from '../../api/admin';
 import { toast } from '../Toast';
 
 interface Props {
