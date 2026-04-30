@@ -43,6 +43,7 @@ const LearningAnalytics = lazyWithRetry(() => import('./pages/LearningAnalytics'
 const TeacherCompetitionManager = lazyWithRetry(() => import('./pages/TeacherCompetitionManager'));
 const TeacherAnalytics = lazyWithRetry(() => import('./pages/TeacherAnalytics'));
 const TeacherStudentDetail = lazyWithRetry(() => import('./pages/TeacherStudentDetail'));
+const TeacherStudentMonitor = lazyWithRetry(() => import('./pages/TeacherStudentMonitor'));
 const MistakeBook = lazyWithRetry(() => import('./pages/MistakeBook'));
 const MistakeChallenge = lazyWithRetry(() => import('./pages/MistakeChallenge'));
 const MistakePractice = lazyWithRetry(() => import('./pages/MistakePractice'));
@@ -511,6 +512,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherStudentDetail />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 学生学习监控 */}
+        <Route
+          path="/teacher/students/:id/monitor"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherStudentMonitor />
             </ProtectedRoute>
           }
         />
