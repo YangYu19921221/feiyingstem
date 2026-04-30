@@ -291,7 +291,7 @@ export default function VictoryScreen({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex flex-col overflow-hidden"
+      className="fixed inset-0 z-40 flex flex-col overflow-y-auto"
       style={{ background: theme.bgGradient }}
     >
       {/* 粒子特效（尊重 prefers-reduced-motion；弱机/Firefox/低端安卓避免卡顿） */}
@@ -324,7 +324,7 @@ export default function VictoryScreen({
       </button>
 
       {/* 内容容器 */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 py-8 max-w-xl mx-auto w-full">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-4 max-w-xl mx-auto w-full">
 
         {/* 主 emoji */}
         <motion.div
@@ -336,7 +336,7 @@ export default function VictoryScreen({
           <motion.div
             animate={{ y: [0, -16, 0] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ filter: theme.glow, fontSize: 'clamp(120px, 30vh, 240px)', lineHeight: 1 }}
+            style={{ filter: theme.glow, fontSize: 'clamp(72px, 18vh, 160px)', lineHeight: 1 }}
           >
             {theme.emoji}
           </motion.div>
@@ -347,7 +347,7 @@ export default function VictoryScreen({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="text-3xl md:text-4xl font-black text-white tracking-widest mb-1"
+          className="text-2xl md:text-3xl font-black text-white tracking-widest mb-1"
           style={{
             textShadow: `0 4px 20px rgba(0,0,0,0.3), 0 2px 4px ${theme.ringColor}66`,
           }}
@@ -359,7 +359,7 @@ export default function VictoryScreen({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.7 }}
-          className="text-white/90 text-base md:text-lg mb-2"
+          className="text-white/90 text-sm md:text-base mb-1"
         >
           {theme.subtitle}
         </motion.p>
@@ -369,12 +369,12 @@ export default function VictoryScreen({
           initial={{ scale: 0.3, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.9, type: 'spring', stiffness: 180, damping: 14 }}
-          className="relative my-2"
+          className="relative my-1"
         >
           <div
             className="font-black tracking-tighter leading-none"
             style={{
-              fontSize: 'clamp(140px, 28vh, 280px)',
+              fontSize: 'clamp(80px, 18vh, 180px)',
               background: theme.textGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -397,7 +397,7 @@ export default function VictoryScreen({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.2 }}
-          className="grid grid-cols-3 gap-3 w-full max-w-md mb-6"
+          className="grid grid-cols-3 gap-3 w-full max-w-md mb-4"
         >
           <div className="rounded-2xl px-3 py-3 text-center bg-white/15 backdrop-blur-md border border-white/30">
             <div className="text-2xl md:text-3xl font-black text-white">
@@ -421,7 +421,7 @@ export default function VictoryScreen({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.4 }}
-            className="w-full max-w-md mb-5"
+            className="w-full max-w-md mb-3"
           >
             <button
               onClick={() => setShowWrongList(v => !v)}
