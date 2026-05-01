@@ -482,7 +482,7 @@ const TeacherClassManagement = () => {
                                     <span className={`font-semibold text-sm ${
                                       isLowScore ? 'text-red-600' : 'text-indigo-600'
                                     }`}>
-                                      {s.full_name.charAt(0)}
+                                      {(s.full_name || s.username || '?').charAt(0)}
                                     </span>
                                   </div>
                                   <span className="font-medium text-gray-800 text-sm">{s.full_name}</span>
@@ -575,7 +575,7 @@ const TeacherClassManagement = () => {
                           <div className="flex items-center gap-2">
                             <div className="w-9 h-9 bg-indigo-100 rounded-full flex items-center justify-center">
                               <span className="text-indigo-600 font-semibold text-sm">
-                                {s.full_name.charAt(0)}
+                                {(s.full_name || s.username || '?').charAt(0)}
                               </span>
                             </div>
                             <div>
@@ -730,7 +730,7 @@ const TeacherClassManagement = () => {
                           className="w-4 h-4 text-indigo-600 rounded"
                         />
                         <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                          <span className="text-indigo-600 font-semibold text-sm">{s.full_name.charAt(0)}</span>
+                          <span className="text-indigo-600 font-semibold text-sm">{(s.full_name || s.username || '?').charAt(0)}</span>
                         </div>
                         <div>
                           <p className="font-medium text-gray-800 text-sm">{s.full_name}</p>
@@ -776,7 +776,7 @@ const TeacherClassManagement = () => {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 bg-indigo-100 rounded-full flex items-center justify-center">
-                    <span className="text-indigo-600 font-bold text-xl">{studentDetail.full_name.charAt(0)}</span>
+                    <span className="text-indigo-600 font-bold text-xl">{(studentDetail.full_name || studentDetail.username || '?').charAt(0)}</span>
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-800">{studentDetail.full_name}</h3>

@@ -225,7 +225,7 @@ const TeacherStudentDetail = () => {
         >
           <div className="flex items-center gap-6">
             <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center text-4xl font-bold">
-              {stats.full_name.charAt(0)}
+              {(stats.full_name || stats.username || '?').charAt(0)}
             </div>
             <div className="flex-1">
               <h1 className="text-3xl font-bold mb-2">{stats.full_name}</h1>

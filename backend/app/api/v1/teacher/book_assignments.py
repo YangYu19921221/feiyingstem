@@ -36,7 +36,7 @@ class BookAssignmentResponse(BaseModel):
     book_id: int
     book_name: str
     student_id: int
-    student_name: str
+    student_name: Optional[str]
     teacher_id: int
     assigned_at: str
     deadline: Optional[str]

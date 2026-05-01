@@ -653,7 +653,7 @@ const TeacherHomework: React.FC = () => {
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-yellow-400 rounded-full flex items-center justify-center text-white font-bold">
-                                {status.student_name.charAt(0).toUpperCase()}
+                                {(status.student_name || '?').charAt(0).toUpperCase()}
                               </div>
                               <div>
                                 <div className="font-semibold text-gray-800">{status.student_name}</div>

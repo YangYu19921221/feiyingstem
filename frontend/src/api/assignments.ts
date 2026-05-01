@@ -30,7 +30,7 @@ export interface BookAssignmentResponse {
   book_id: number;
   book_name: string;
   student_id: number;
-  student_name: string;
+  student_name: string | null;
   teacher_id: number;
   scope_type: string;
   unit_id: number | null;
