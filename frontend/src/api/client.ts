@@ -30,6 +30,15 @@ instance.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      const { pathname } = window.location;
+      if (pathname !== '/login' && pathname !== '/register') {
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
     // 统一错误处理
     if (error.response) {
       // 服务器返回错误（404 不打印，由调用方处理）
