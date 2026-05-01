@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft } from 'lucide-react';
+import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight } from 'lucide-react';
 import axios from 'axios';
 import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
@@ -97,6 +97,11 @@ const TeacherClassManagement = () => {
 
   // 学生搜索
   const [studentSearch, setStudentSearch] = useState('');
+
+  // 转班弹窗
+  const [transferStudent, setTransferStudent] = useState<{ id: number; full_name: string; username: string } | null>(null);
+  const [transferTargetClassId, setTransferTargetClassId] = useState<number | null>(null);
+  const [transferring, setTransferring] = useState(false);
 
   // 每日数据多选删除
   const [selectedForRemove, setSelectedForRemove] = useState<Set<number>>(new Set());
@@ -226,6 +231,33 @@ const TeacherClassManagement = () => {
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
       toast.error(error.response?.data?.detail || '移除失败');
+    }
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!selectedClass || !transferStudent || transferTargetClassId === null) return;
+    if (transferTargetClassId === selectedClass.id) {
+      toast.error('请选择不同的目标班级');
+      return;
+    }
+    try {
+      setTransferring(true);
+      await axios.post(
+        `${API_BASE_URL}/teacher/students/${transferStudent.id}/transfer`,
+        { from_class_id: selectedClass.id, to_class_id: transferTargetClassId },
+        { headers: headers() }
+      );
+      const targetName = classes.find(c => c.id === transferTargetClassId)?.name || '目标班级';
+      toast.success(`已将「${transferStudent.full_name}」转到「${targetName}」`);
+      setTransferStudent(null);
+      setTransferTargetClassId(null);
+      loadClassStudents(selectedClass.id);
+      loadClasses();
+      loadDailyStats(selectedClass.id, selectedDate);
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || '转班失败');
+    } finally {
+      setTransferring(false);
     }
   };
 
@@ -593,6 +625,18 @@ const TeacherClassManagement = () => {
                               监控
                             </button>
                             <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTransferStudent({ id: s.id, full_name: s.full_name || s.username, username: s.username });
+                                setTransferTargetClassId(null);
+                              }}
+                              disabled={classes.length < 2}
+                              className="p-1.5 text-gray-400 hover:text-indigo-500 disabled:hover:text-gray-300 disabled:cursor-not-allowed transition"
+                              title={classes.length < 2 ? '至少需要 2 个班级才能转班' : '转到其他班级'}
+                            >
+                              <ArrowLeftRight className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => handleRemoveStudent(s.id)}
                               className="p-1.5 text-gray-400 hover:text-red-500 transition"
                               title="移出班级"
@@ -795,6 +839,96 @@ const TeacherClassManagement = () => {
                   className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   添加 ({selectedStudentIds.length})
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 转班弹窗 */}
+      <AnimatePresence>
+        {transferStudent && selectedClass && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => { if (!transferring) { setTransferStudent(null); setTransferTargetClassId(null); } }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <ArrowLeftRight className="w-6 h-6 text-indigo-600" />
+                转到其他班级
+              </h3>
+
+              <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <span className="text-indigo-600 font-semibold">
+                    {(transferStudent.full_name || transferStudent.username || '?').charAt(0)}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-800">{transferStudent.full_name}</p>
+                  <p className="text-xs text-gray-500">@{transferStudent.username} · 当前班级：{selectedClass.name}</p>
+                </div>
+              </div>
+
+              {classes.filter(c => c.id !== selectedClass.id).length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm">
+                  你只有这一个班级，无法转班。请先创建另一个班级。
+                </div>
+              ) : (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">选择目标班级</label>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {classes.filter(c => c.id !== selectedClass.id).map(c => (
+                      <label
+                        key={c.id}
+                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
+                          transferTargetClassId === c.id
+                            ? 'bg-indigo-100 border-2 border-indigo-300'
+                            : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="transferTarget"
+                          checked={transferTargetClassId === c.id}
+                          onChange={() => setTransferTargetClassId(c.id)}
+                          className="w-4 h-4 text-indigo-600"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-800 text-sm truncate">{c.name}</p>
+                          {c.description && (
+                            <p className="text-xs text-gray-400 truncate">{c.description}</p>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          {c.student_count} 人
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => { setTransferStudent(null); setTransferTargetClassId(null); }}
+                  disabled={transferring}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmTransfer}
+                  disabled={transferring || transferTargetClassId === null}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {transferring ? '转班中...' : '确认转班'}
                 </button>
               </div>
             </motion.div>

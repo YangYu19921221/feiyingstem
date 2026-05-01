@@ -215,6 +215,78 @@ async def remove_student_from_class(
     return {"removed": True}
 
 
+# 同教师内转班 schema
+class TeacherTransferRequest(BaseModel):
+    from_class_id: int
+    to_class_id: int
+
+
+@router.post("/students/{student_id}/transfer")
+async def teacher_transfer_student(
+    student_id: int,
+    body: TeacherTransferRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """同教师内转班 — 原子事务
+
+    限制：
+    - from_class_id 与 to_class_id 必须都属于当前教师
+    - 学生必须当前在 from_class_id 班级（is_active=True）
+    - 不允许 from == to
+    跨教师转班请走 admin 端 /admin/students/{id}/transfer
+    """
+    if body.from_class_id == body.to_class_id:
+        raise HTTPException(400, "源班级与目标班级不能相同")
+
+    # 1. 校验两个班级都属于当前教师
+    await _get_class_or_404(db, body.from_class_id, current_user.id)
+    await _get_class_or_404(db, body.to_class_id, current_user.id)
+
+    # 2. 校验学生当前在 from_class_id 班级
+    cur_res = await db.execute(
+        select(ClassStudent).where(
+            ClassStudent.class_id == body.from_class_id,
+            ClassStudent.student_id == student_id,
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    if cur_res.scalar_one_or_none() is None:
+        raise HTTPException(404, "学生不在源班级")
+
+    # 3. 检查目标班级是否已有该学生 active 记录
+    dup_res = await db.execute(
+        select(ClassStudent).where(
+            ClassStudent.class_id == body.to_class_id,
+            ClassStudent.student_id == student_id,
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    if dup_res.scalar_one_or_none() is not None:
+        raise HTTPException(409, "学生已在目标班级")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # 4. 原子操作：将所有 active 记录置为不活跃 + 插入新班级记录
+    await db.execute(
+        update(ClassStudent)
+        .where(
+            ClassStudent.student_id == student_id,
+            ClassStudent.is_active.is_(True),
+        )
+        .values(is_active=False, left_at=now)
+    )
+    db.add(
+        ClassStudent(
+            class_id=body.to_class_id,
+            student_id=student_id,
+            is_active=True,
+        )
+    )
+    await db.commit()
+    return {"transferred": True, "from_class_id": body.from_class_id, "to_class_id": body.to_class_id}
+
+
 @router.get("/classes/{class_id}/available-students")
 async def get_available_students(
     class_id: int,
