@@ -215,7 +215,7 @@ async def remove_student_from_class(
     return {"removed": True}
 
 
-# 同教师内转班 schema
+# 同教师内转班
 class TeacherTransferRequest(BaseModel):
     from_class_id: int
     to_class_id: int
@@ -239,11 +239,9 @@ async def teacher_transfer_student(
     if body.from_class_id == body.to_class_id:
         raise HTTPException(400, "源班级与目标班级不能相同")
 
-    # 1. 校验两个班级都属于当前教师
     await _get_class_or_404(db, body.from_class_id, current_user.id)
     await _get_class_or_404(db, body.to_class_id, current_user.id)
 
-    # 2. 校验学生当前在 from_class_id 班级
     cur_res = await db.execute(
         select(ClassStudent).where(
             ClassStudent.class_id == body.from_class_id,
@@ -254,7 +252,6 @@ async def teacher_transfer_student(
     if cur_res.scalar_one_or_none() is None:
         raise HTTPException(404, "学生不在源班级")
 
-    # 3. 检查目标班级是否已有该学生 active 记录
     dup_res = await db.execute(
         select(ClassStudent).where(
             ClassStudent.class_id == body.to_class_id,
@@ -267,7 +264,6 @@ async def teacher_transfer_student(
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    # 4. 原子操作：将所有 active 记录置为不活跃 + 插入新班级记录
     await db.execute(
         update(ClassStudent)
         .where(

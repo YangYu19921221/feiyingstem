@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from jose import JWTError, jwt
 
 from app.core.database import get_db
@@ -321,8 +322,10 @@ async def get_students(
         my_ids = await get_my_class_student_ids(db, current_user.id)
         if not my_ids:
             return []
-        all_students = await auth_service.get_users_by_role(db, role="student")
-        return [s for s in all_students if s.id in my_ids]
+        result = await db.execute(
+            select(User).where(User.id.in_(my_ids), User.is_active == True)
+        )
+        return result.scalars().all()
 
     return await auth_service.get_users_by_role(db, role="student")
 

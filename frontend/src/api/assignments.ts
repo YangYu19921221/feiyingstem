@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { onUnauthorized, isUnauthorizedError } from './_authInterceptors';
 
 // 配置axios拦截器,自动添加token
 axios.interceptors.request.use(
@@ -18,14 +19,7 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      const { pathname } = window.location;
-      if (pathname !== '/login' && pathname !== '/register') {
-        window.location.href = '/login';
-      }
-    }
+    if (isUnauthorizedError(error)) onUnauthorized();
     return Promise.reject(error);
   }
 );

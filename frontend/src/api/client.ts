@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { onUnauthorized, isUnauthorizedError } from './_authInterceptors';
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
@@ -30,13 +31,8 @@ instance.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      const { pathname } = window.location;
-      if (pathname !== '/login' && pathname !== '/register') {
-        window.location.href = '/login';
-      }
+    if (isUnauthorizedError(error)) {
+      onUnauthorized();
       return Promise.reject(error);
     }
     // 统一错误处理

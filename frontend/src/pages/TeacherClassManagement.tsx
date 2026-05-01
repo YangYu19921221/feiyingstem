@@ -743,7 +743,7 @@ const TeacherClassManagement = () => {
                       type="text"
                       value={availableSearch}
                       onChange={(e) => setAvailableSearch(e.target.value)}
-                      placeholder="🔍 搜索姓名 / 用户名 / 邮箱"
+                      placeholder="🔍 搜索姓名 / 用户名"
                       className="w-full pl-10 pr-8 py-2 border border-gray-300 rounded-lg outline-none focus:border-indigo-400 text-sm"
                     />
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
@@ -764,8 +764,7 @@ const TeacherClassManagement = () => {
                     const filtered = availableStudents.filter(s => {
                       if (!kw) return true;
                       return (s.full_name || '').toLowerCase().includes(kw)
-                        || (s.username || '').toLowerCase().includes(kw)
-                        || ((s as any).email || '').toLowerCase().includes(kw);
+                        || (s.username || '').toLowerCase().includes(kw);
                     });
                     const filteredIds = filtered.map(s => s.id);
                     const visibleSelectedCount = filteredIds.filter(id => selectedStudentIds.includes(id)).length;
