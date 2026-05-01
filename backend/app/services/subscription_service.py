@@ -99,15 +99,20 @@ async def redeem_code(
         await db.commit()
         return {"success": False, "message": "兑换码已过期"}
 
-    # 查询绑定的单词本名称
+    # 查询绑定的单词本是否还存在
     book = await db.get(WordBook, code.book_id)
-    book_name = book.name if book else "未知"
+    if not book:
+        code.status = RedemptionCodeStatus.DISABLED
+        await db.commit()
+        return {"success": False, "message": "兑换码绑定的单词本已不存在，请联系管理员"}
+    book_name = book.name
 
-    # 检查学生是否已拥有该单词本
+    # 检查学生是否已拥有该单词本（任何粒度的分配都算已拥有）
     existing_assignment = await db.execute(
         select(BookAssignment).where(
             BookAssignment.book_id == code.book_id,
             BookAssignment.student_id == user.id,
+            BookAssignment.scope_type == 'book',
         )
     )
     if existing_assignment.scalar_one_or_none():
@@ -118,6 +123,7 @@ async def redeem_code(
         book_id=code.book_id,
         student_id=user.id,
         teacher_id=code.created_by,
+        scope_type='book',
     )
     db.add(assignment)
 
