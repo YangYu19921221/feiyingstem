@@ -1,5 +1,6 @@
 /**
  * 比对单词/短语答案前的规范化：
+ * - 转小写（忽略大小写）
  * - NFC 统一 Unicode 组合形式
  * - 移除零宽字符（U+200B-U+200D / U+FEFF）
  * - 不间断空格（U+00A0）/ 全角空格（U+3000）→ 普通空格
@@ -10,6 +11,7 @@
  */
 export function normalizeAnswer(s: string): string {
   return s
+    .toLowerCase()
     .normalize('NFC')
     .replace(/[​-‍﻿]/g, '')
     .replace(/[ 　]/g, ' ')
