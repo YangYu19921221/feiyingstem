@@ -46,17 +46,17 @@ export const teacherAssignments = {
   },
 
   assignBook: async (payload: AssignBookPayload): Promise<{ created: number; total: number; skipped: number }> => {
-    const r = await axios.post(`${BASE}/book-assignments/assign`, payload);
+    const r = await axios.post(`${BASE}/assign`, payload);
     return r.data;
   },
 
   listAssignments: async (params: ListAssignmentsParams) => {
-    const r = await axios.get(`${BASE}/book-assignments`, { params });
+    const r = await axios.get(`${BASE}/assignments`, { params });
     return r.data;
   },
 
   deleteAssignment: async (id: number) => {
-    const r = await axios.delete(`${BASE}/book-assignments/${id}`);
+    const r = await axios.delete(`${BASE}/assignments/${id}`);
     return r.data;
   },
 };
