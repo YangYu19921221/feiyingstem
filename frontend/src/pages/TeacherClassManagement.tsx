@@ -93,6 +93,7 @@ const TeacherClassManagement = () => {
   const [showAddStudents, setShowAddStudents] = useState(false);
   const [availableStudents, setAvailableStudents] = useState<AvailableStudent[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
+  const [availableSearch, setAvailableSearch] = useState('');
 
   // 学生搜索
   const [studentSearch, setStudentSearch] = useState('');
@@ -674,7 +675,7 @@ const TeacherClassManagement = () => {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => { setShowAddStudents(false); setSelectedStudentIds([]); }}
+            onClick={() => { setShowAddStudents(false); setSelectedStudentIds([]); setAvailableSearch(''); }}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
@@ -692,58 +693,100 @@ const TeacherClassManagement = () => {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-gray-500">
-                      已选 {selectedStudentIds.length} / {availableStudents.length} 名学生
-                    </p>
-                    <button
-                      onClick={() => {
-                        if (selectedStudentIds.length === availableStudents.length) {
-                          setSelectedStudentIds([]);
-                        } else {
-                          setSelectedStudentIds(availableStudents.map(s => s.id));
-                        }
-                      }}
-                      className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
-                    >
-                      {selectedStudentIds.length === availableStudents.length ? '取消全选' : '全选'}
-                    </button>
-                  </div>
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {availableStudents.map(s => (
-                      <label
-                        key={s.id}
-                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
-                          selectedStudentIds.includes(s.id) ? 'bg-indigo-100 border-2 border-indigo-300' : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                        }`}
+                  {/* 搜索框 */}
+                  <div className="relative mb-3">
+                    <input
+                      type="text"
+                      value={availableSearch}
+                      onChange={(e) => setAvailableSearch(e.target.value)}
+                      placeholder="🔍 搜索姓名 / 用户名 / 邮箱"
+                      className="w-full pl-10 pr-8 py-2 border border-gray-300 rounded-lg outline-none focus:border-indigo-400 text-sm"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
+                    {availableSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setAvailableSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+                        aria-label="清空搜索"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedStudentIds.includes(s.id)}
-                          onChange={() => {
-                            setSelectedStudentIds(prev =>
-                              prev.includes(s.id)
-                                ? prev.filter(id => id !== s.id)
-                                : [...prev, s.id]
-                            );
-                          }}
-                          className="w-4 h-4 text-indigo-600 rounded"
-                        />
-                        <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                          <span className="text-indigo-600 font-semibold text-sm">{(s.full_name || s.username || '?').charAt(0)}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-800 text-sm">{s.full_name}</p>
-                          <p className="text-xs text-gray-400">@{s.username}</p>
-                        </div>
-                      </label>
-                    ))}
+                        ×
+                      </button>
+                    )}
                   </div>
+
+                  {(() => {
+                    const kw = availableSearch.trim().toLowerCase();
+                    const filtered = availableStudents.filter(s => {
+                      if (!kw) return true;
+                      return (s.full_name || '').toLowerCase().includes(kw)
+                        || (s.username || '').toLowerCase().includes(kw)
+                        || ((s as any).email || '').toLowerCase().includes(kw);
+                    });
+                    const filteredIds = filtered.map(s => s.id);
+                    const visibleSelectedCount = filteredIds.filter(id => selectedStudentIds.includes(id)).length;
+                    const allFilteredSelected = filteredIds.length > 0 && visibleSelectedCount === filteredIds.length;
+                    return (
+                      <>
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-sm text-gray-500">
+                            已选 {selectedStudentIds.length} / 共 {availableStudents.length}
+                            {kw && <span className="ml-2 text-indigo-600">（匹配 {filtered.length}）</span>}
+                          </p>
+                          <button
+                            onClick={() => {
+                              if (allFilteredSelected) {
+                                setSelectedStudentIds(prev => prev.filter(id => !filteredIds.includes(id)));
+                              } else {
+                                setSelectedStudentIds(prev => Array.from(new Set([...prev, ...filteredIds])));
+                              }
+                            }}
+                            disabled={filtered.length === 0}
+                            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium disabled:text-gray-300 disabled:cursor-not-allowed"
+                          >
+                            {allFilteredSelected ? '取消全选' : `全选${kw ? '匹配' : ''}`}
+                          </button>
+                        </div>
+                        <div className="space-y-2 max-h-80 overflow-y-auto">
+                          {filtered.length === 0 ? (
+                            <div className="text-center py-6 text-gray-400 text-sm">没有匹配的学生</div>
+                          ) : filtered.map(s => (
+                            <label
+                              key={s.id}
+                              className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
+                                selectedStudentIds.includes(s.id) ? 'bg-indigo-100 border-2 border-indigo-300' : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedStudentIds.includes(s.id)}
+                                onChange={() => {
+                                  setSelectedStudentIds(prev =>
+                                    prev.includes(s.id)
+                                      ? prev.filter(id => id !== s.id)
+                                      : [...prev, s.id]
+                                  );
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded"
+                              />
+                              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
+                                <span className="text-indigo-600 font-semibold text-sm">{(s.full_name || s.username || '?').charAt(0)}</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-800 text-sm">{s.full_name}</p>
+                                <p className="text-xs text-gray-400">@{s.username}</p>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </>
               )}
 
               <div className="flex gap-3 mt-6">
-                <button onClick={() => { setShowAddStudents(false); setSelectedStudentIds([]); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                <button onClick={() => { setShowAddStudents(false); setSelectedStudentIds([]); setAvailableSearch(''); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
                   取消
                 </button>
                 <button
