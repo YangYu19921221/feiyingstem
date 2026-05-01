@@ -295,7 +295,7 @@ const TeacherBookAssignment = () => {
     for (const a of assignments) {
       const g = map.get(a.student_id);
       if (g) g.items.push(a);
-      else map.set(a.student_id, { studentName: a.student_name, items: [a] });
+      else map.set(a.student_id, { studentName: a.student_name || '未命名', items: [a] });
     }
     return Array.from(map.entries())
       .map(([studentId, v]) => ({ studentId, ...v }))
