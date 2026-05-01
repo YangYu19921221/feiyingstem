@@ -13,6 +13,7 @@ from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenDa
 from app.services import auth_service
 from app.services.sms_service import code_store, send_sms_code
 from app.models.user import User
+from app.api.v1.teacher._permissions import get_my_class_student_ids
 
 router = APIRouter()
 
@@ -309,15 +310,21 @@ async def get_students(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    获取所有学生列表(教师/管理员功能)
+    获取学生列表
+    - admin: 所有学生
+    - teacher: 仅自己班级的学生（与 /teacher/assign 等接口的权限边界一致）
     """
-    # 检查权限
     if current_user.role not in ["admin", "teacher"]:
         raise HTTPException(status_code=403, detail="权限不足")
 
-    # 获取所有学生
-    students = await auth_service.get_users_by_role(db, role="student")
-    return students
+    if current_user.role == "teacher":
+        my_ids = await get_my_class_student_ids(db, current_user.id)
+        if not my_ids:
+            return []
+        all_students = await auth_service.get_users_by_role(db, role="student")
+        return [s for s in all_students if s.id in my_ids]
+
+    return await auth_service.get_users_by_role(db, role="student")
 
 
 @router.post("/reset-password")
