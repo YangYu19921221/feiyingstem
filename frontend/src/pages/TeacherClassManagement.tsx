@@ -573,10 +573,15 @@ const TeacherClassManagement = () => {
 
                 {/* 班级学生列表 */}
                 <div className="bg-white rounded-2xl shadow-md p-6">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
                     <Users className="w-5 h-5 text-indigo-600" />
                     班级成员 ({classStudents.length})
                   </h3>
+                  <p className="text-xs text-gray-500 mb-4">
+                    💡 每位学生右侧可点击：<span className="text-orange-600 font-medium">监控</span> 查看学习数据 ·
+                    <span className="text-indigo-600 font-medium ml-1">转班</span> 调整到你的其他班级 ·
+                    <span className="text-red-500 font-medium ml-1">×</span> 移出班级
+                  </p>
 
                   {/* 学生搜索框 */}
                   <input
@@ -627,14 +632,22 @@ const TeacherClassManagement = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (classes.length < 2) {
+                                  toast.warning('需要至少 2 个班级才能转班，请先创建另一个班级');
+                                  return;
+                                }
                                 setTransferStudent({ id: s.id, full_name: s.full_name || s.username, username: s.username });
                                 setTransferTargetClassId(null);
                               }}
-                              disabled={classes.length < 2}
-                              className="p-1.5 text-gray-400 hover:text-indigo-500 disabled:hover:text-gray-300 disabled:cursor-not-allowed transition"
+                              className={`text-xs px-2 py-1 rounded transition flex items-center gap-1 ${
+                                classes.length < 2
+                                  ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
+                                  : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
+                              }`}
                               title={classes.length < 2 ? '至少需要 2 个班级才能转班' : '转到其他班级'}
                             >
-                              <ArrowLeftRight className="w-4 h-4" />
+                              <ArrowLeftRight className="w-3.5 h-3.5" />
+                              转班
                             </button>
                             <button
                               onClick={() => handleRemoveStudent(s.id)}
