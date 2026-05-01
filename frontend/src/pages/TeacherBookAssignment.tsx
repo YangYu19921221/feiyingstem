@@ -75,14 +75,8 @@ const TeacherBookAssignment = () => {
   useEffect(() => {
     loadBooks();
     loadAllAssignments();
+    loadStudents();
   }, []);
-
-  // 当选择单词本时,加载学生列表
-  useEffect(() => {
-    if (scope.book_id) {
-      loadStudents();
-    }
-  }, [scope.book_id]);
 
   const loadBooks = async () => {
     try {
@@ -397,21 +391,11 @@ const TeacherBookAssignment = () => {
             </motion.div>
           </div>
 
-          {/* 右侧: 分配界面 */}
+          {/* 右侧: 分配界面（始终可见） */}
           <div className="lg:col-span-2">
-            {!selectedBook ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-white rounded-2xl shadow-md p-12 text-center"
-              >
-                <div className="text-6xl mb-4">📚</div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">请先选择单词本</h3>
-                <p className="text-gray-500">从左侧选择要分配的单词本和范围</p>
-              </motion.div>
-            ) : (
-              <div className="space-y-6">
-                {/* 单词本信息 */}
+            <div className="space-y-6">
+              {/* 当前范围提示 */}
+              {selectedBook ? (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -419,6 +403,10 @@ const TeacherBookAssignment = () => {
                 >
                   <h2 className="text-xl font-bold text-gray-800 mb-3">
                     📖 {selectedBook.name}
+                    <span className="ml-2 text-sm font-normal text-gray-600">
+                      {scope.scope_type === 'unit' && ` · 单元粒度`}
+                      {scope.scope_type === 'group' && ` · 分组粒度`}
+                    </span>
                   </h2>
                   <p className="text-sm text-gray-700 mb-4">
                     {selectedBook.description || '暂无描述'}
@@ -432,83 +420,56 @@ const TeacherBookAssignment = () => {
                     </span>
                   </div>
                 </motion.div>
-
-                {/* 学生选择 */}
+              ) : (
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="bg-white rounded-2xl shadow-md p-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 text-sm text-yellow-800"
                 >
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">👥 选择学生</h2>
+                  💡 请先在左侧选择单词本和分配范围。学生可以先勾选，选好范围后一起分配。
+                </motion.div>
+              )}
 
-                  {/* 搜索 + 批量操作 */}
-                  <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={studentSearch}
-                        onChange={(e) => setStudentSearch(e.target.value)}
-                        placeholder="🔍 搜索姓名 / 用户名 / 邮箱"
-                        className="w-full pl-10 pr-8 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-400"
-                      />
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
-                      {studentSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setStudentSearch('')}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
-                          aria-label="清空搜索"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                    {(() => {
-                      const assignedIds = getAssignedStudentIds(selectedBook.id);
-                      const kw = studentSearch.trim().toLowerCase();
-                      const filtered = students.filter(s => {
-                        if (!kw) return true;
-                        return (s.full_name || '').toLowerCase().includes(kw)
-                          || (s.username || '').toLowerCase().includes(kw)
-                          || (s.email || '').toLowerCase().includes(kw);
-                      });
-                      const selectableIds = filtered.filter(s => !assignedIds.includes(s.id)).map(s => s.id);
-                      const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedStudents.includes(id));
-                      return (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (allSelected) {
-                                setSelectedStudents(selectedStudents.filter(id => !selectableIds.includes(id)));
-                              } else {
-                                setSelectedStudents(Array.from(new Set([...selectedStudents, ...selectableIds])));
-                              }
-                            }}
-                            disabled={selectableIds.length === 0}
-                            className="px-3 py-2 text-sm rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                          >
-                            {allSelected ? '取消全选' : `全选(${selectableIds.length})`}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStudents([])}
-                            disabled={selectedStudents.length === 0}
-                            className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                          >
-                            清空
-                          </button>
-                        </div>
-                      );
-                    })()}
+              {/* 学生选择 */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-white rounded-2xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold text-gray-800 mb-4">
+                  👥 选择学生
+                  {students.length > 0 && (
+                    <span className="ml-2 text-sm font-normal text-gray-500">
+                      （共 {students.length} 人）
+                    </span>
+                  )}
+                </h2>
+
+                {/* 搜索 + 批量操作 */}
+                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      placeholder="🔍 搜索姓名 / 用户名 / 邮箱"
+                      className="w-full pl-10 pr-8 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-400"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
+                    {studentSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setStudentSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+                        aria-label="清空搜索"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
-
-                  {loadingStudents ? (
-                    <div className="text-center py-8 text-gray-500">加载中...</div>
-                  ) : students.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">暂无学生</div>
-                  ) : (() => {
+                  {(() => {
+                    const assignedIds = selectedBook ? getAssignedStudentIds(selectedBook.id) : [];
                     const kw = studentSearch.trim().toLowerCase();
                     const filtered = students.filter(s => {
                       if (!kw) return true;
@@ -516,97 +477,151 @@ const TeacherBookAssignment = () => {
                         || (s.username || '').toLowerCase().includes(kw)
                         || (s.email || '').toLowerCase().includes(kw);
                     });
-                    if (filtered.length === 0) {
-                      return <div className="text-center py-8 text-gray-400">没有匹配的学生</div>;
-                    }
+                    const selectableIds = filtered.filter(s => !assignedIds.includes(s.id)).map(s => s.id);
+                    const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedStudents.includes(id));
                     return (
-                    <div className="space-y-2 max-h-80 overflow-y-auto">
-                      {filtered.map((student) => {
-                        const isAssigned = getAssignedStudentIds(selectedBook.id).includes(
-                          student.id
-                        );
-                        return (
-                          <label
-                            key={student.id}
-                            className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${
-                              selectedStudents.includes(student.id)
-                                ? 'border-orange-400 bg-orange-50'
-                                : 'border-gray-200 hover:border-orange-200'
-                            } ${isAssigned ? 'opacity-50' : ''}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedStudents.includes(student.id)}
-                              onChange={() => toggleStudent(student.id)}
-                              disabled={isAssigned}
-                              className="w-5 h-5 text-orange-500 focus:ring-orange-400 rounded"
-                            />
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-800">{student.full_name}</div>
-                              <div className="text-xs text-gray-500">{student.username}</div>
-                            </div>
-                            {isAssigned && (
-                              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                                已分配
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (allSelected) {
+                              setSelectedStudents(selectedStudents.filter(id => !selectableIds.includes(id)));
+                            } else {
+                              setSelectedStudents(Array.from(new Set([...selectedStudents, ...selectableIds])));
+                            }
+                          }}
+                          disabled={selectableIds.length === 0}
+                          className="px-3 py-2 text-sm rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          {allSelected ? '取消全选' : `全选(${selectableIds.length})`}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStudents([])}
+                          disabled={selectedStudents.length === 0}
+                          className="px-3 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          清空
+                        </button>
+                      </div>
                     );
                   })()}
-                </motion.div>
+                </div>
 
-                {/* 截止时间和分配按钮 */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="bg-white rounded-2xl shadow-md p-6"
-                >
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ 分配设置</h2>
-
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      截止时间 (可选)
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-400"
-                    />
+                {loadingStudents ? (
+                  <div className="text-center py-8 text-gray-500">加载中...</div>
+                ) : students.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-4xl mb-3">👥</div>
+                    <p className="text-gray-500 mb-2">你的班级里还没有学生</p>
+                    <button
+                      onClick={() => navigate('/teacher/classes')}
+                      className="text-sm text-orange-600 hover:underline"
+                    >
+                      前往班级管理添加学生 →
+                    </button>
                   </div>
+                ) : (() => {
+                  const kw = studentSearch.trim().toLowerCase();
+                  const assignedIds = selectedBook ? getAssignedStudentIds(selectedBook.id) : [];
+                  const filtered = students.filter(s => {
+                    if (!kw) return true;
+                    return (s.full_name || '').toLowerCase().includes(kw)
+                      || (s.username || '').toLowerCase().includes(kw)
+                      || (s.email || '').toLowerCase().includes(kw);
+                  });
+                  if (filtered.length === 0) {
+                    return <div className="text-center py-8 text-gray-400">没有匹配的学生</div>;
+                  }
+                  return (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {filtered.map((student) => {
+                      const isAssigned = assignedIds.includes(student.id);
+                      return (
+                        <label
+                          key={student.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${
+                            selectedStudents.includes(student.id)
+                              ? 'border-orange-400 bg-orange-50'
+                              : 'border-gray-200 hover:border-orange-200'
+                          } ${isAssigned ? 'opacity-50' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedStudents.includes(student.id)}
+                            onChange={() => toggleStudent(student.id)}
+                            disabled={isAssigned}
+                            className="w-5 h-5 text-orange-500 focus:ring-orange-400 rounded"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-800">{student.full_name || student.username}</div>
+                            <div className="text-xs text-gray-500">{student.username}</div>
+                          </div>
+                          {isAssigned && (
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                              已分配
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  );
+                })()}
+              </motion.div>
 
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleAssign}
-                    disabled={
-                      submitting ||
-                      scope.book_id === null ||
-                      (scope.scope_type === 'group' && scope.group_index === null) ||
-                      selectedStudents.length === 0
-                    }
-                    className={`w-full py-3 rounded-lg font-medium text-white transition ${
-                      submitting ||
-                      scope.book_id === null ||
-                      (scope.scope_type === 'group' && scope.group_index === null) ||
-                      selectedStudents.length === 0
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-orange-500 to-yellow-500 hover:shadow-lg'
-                    }`}
-                  >
-                    {submitting
-                      ? '分配中...'
-                      : selectedStudents.length > 0
-                      ? `📌 分配给 ${selectedStudents.length} 名学生`
-                      : '请选择学生'}
-                  </motion.button>
-                </motion.div>
-              </div>
-            )}
+              {/* 截止时间和分配按钮 */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white rounded-2xl shadow-md p-6"
+              >
+                <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ 分配设置</h2>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    截止时间 (可选)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={deadline}
+                    onChange={(e) => setDeadline(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-orange-400"
+                  />
+                </div>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleAssign}
+                  disabled={
+                    submitting ||
+                    scope.book_id === null ||
+                    (scope.scope_type === 'group' && scope.group_index === null) ||
+                    selectedStudents.length === 0
+                  }
+                  className={`w-full py-3 rounded-lg font-medium text-white transition ${
+                    submitting ||
+                    scope.book_id === null ||
+                    (scope.scope_type === 'group' && scope.group_index === null) ||
+                    selectedStudents.length === 0
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-orange-500 to-yellow-500 hover:shadow-lg'
+                  }`}
+                >
+                  {submitting
+                    ? '分配中...'
+                    : scope.book_id === null
+                    ? '请先选择单词本'
+                    : scope.scope_type === 'group' && scope.group_index === null
+                    ? '请选择具体分组'
+                    : selectedStudents.length === 0
+                    ? '请选择学生'
+                    : `📌 分配给 ${selectedStudents.length} 名学生`}
+                </motion.button>
+              </motion.div>
+            </div>
           </div>
         </div>
 
