@@ -42,7 +42,7 @@ const TeacherWordEntry = () => {
     grade_level: '小学',
     definitions: [
       {
-        part_of_speech: 'n.',
+        part_of_speech: '',
         meaning: '',
         example_sentence: '',
         example_translation: '',
@@ -212,7 +212,7 @@ const TeacherWordEntry = () => {
       definitions: [
         ...newWord.definitions,
         {
-          part_of_speech: 'n.',
+          part_of_speech: '',
           meaning: '',
           example_sentence: '',
           example_translation: '',
@@ -283,7 +283,7 @@ const TeacherWordEntry = () => {
         grade_level: '小学',
         definitions: [
           {
-            part_of_speech: 'n.',
+            part_of_speech: '',
             meaning: '',
             example_sentence: '',
             example_translation: '',
@@ -304,6 +304,19 @@ const TeacherWordEntry = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
+      <datalist id="pos-options">
+        <option value="n." />
+        <option value="v." />
+        <option value="adj." />
+        <option value="adv." />
+        <option value="prep." />
+        <option value="pron." />
+        <option value="conj." />
+        <option value="phr." />
+        <option value="sent." />
+        <option value="num." />
+        <option value="art." />
+      </datalist>
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
@@ -474,19 +487,14 @@ const TeacherWordEntry = () => {
                       {/* 词性 */}
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">词性</label>
-                        <select
+                        <input
+                          type="text"
+                          list="pos-options"
                           value={def.part_of_speech}
                           onChange={(e) => handleUpdateDefinition(index, 'part_of_speech', e.target.value)}
+                          placeholder="n./v./phr. 等，可留空"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
-                        >
-                          <option value="n.">n. 名词</option>
-                          <option value="v.">v. 动词</option>
-                          <option value="adj.">adj. 形容词</option>
-                          <option value="adv.">adv. 副词</option>
-                          <option value="prep.">prep. 介词</option>
-                          <option value="conj.">conj. 连词</option>
-                          <option value="pron.">pron. 代词</option>
-                        </select>
+                        />
                       </div>
 
                       {/* 主要释义 */}

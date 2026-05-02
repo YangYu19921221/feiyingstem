@@ -33,7 +33,7 @@ const TeacherUnitManagement = () => {
     syllables: '',
     difficulty: 1,
     grade_level: '小学',
-    definitions: [{ part_of_speech: 'n.', meaning: '', example_sentence: '', example_translation: '', is_primary: true }] as Array<{ part_of_speech: string; meaning: string; example_sentence: string; example_translation: string; is_primary: boolean }>,
+    definitions: [{ part_of_speech: '', meaning: '', example_sentence: '', example_translation: '', is_primary: true }] as Array<{ part_of_speech: string; meaning: string; example_sentence: string; example_translation: string; is_primary: boolean }>,
     tags: [] as string[],
   });
   const [creatingWord, setCreatingWord] = useState(false);
@@ -47,7 +47,7 @@ const TeacherUnitManagement = () => {
   const [editFormData, setEditFormData] = useState<{
     word: string; phonetic: string; syllables: string; difficulty: number;
     meaning: string; part_of_speech: string; example_sentence: string; example_translation: string;
-  }>({ word: '', phonetic: '', syllables: '', difficulty: 1, meaning: '', part_of_speech: 'n.', example_sentence: '', example_translation: '' });
+  }>({ word: '', phonetic: '', syllables: '', difficulty: 1, meaning: '', part_of_speech: '', example_sentence: '', example_translation: '' });
   const [savingEdit, setSavingEdit] = useState(false);
 
   // 发音预缓存
@@ -191,7 +191,7 @@ const TeacherUnitManagement = () => {
       syllables: word.syllables || '',
       difficulty: word.difficulty,
       meaning: word.meaning || '',
-      part_of_speech: word.part_of_speech || 'n.',
+      part_of_speech: word.part_of_speech || '',
       example_sentence: word.example_sentence || '',
       example_translation: word.example_translation || '',
     });
@@ -282,7 +282,7 @@ const TeacherUnitManagement = () => {
 
       setNewWordData({
         word: '', phonetic: '', syllables: '', difficulty: 1, grade_level: '小学',
-        definitions: [{ part_of_speech: 'n.', meaning: '', example_sentence: '', example_translation: '', is_primary: true }],
+        definitions: [{ part_of_speech: '', meaning: '', example_sentence: '', example_translation: '', is_primary: true }],
         tags: [],
       });
 
@@ -381,7 +381,7 @@ const TeacherUnitManagement = () => {
         const phonetic = (row['音标'] || row['phonetic'] || '').toString().trim();
         const syllables = (row['音节'] || row['syllables'] || '').toString().trim();
         const ttsText = (row['发音文本'] || row['tts_text'] || '').toString().trim();
-        const pos = (row['词性'] || row['part_of_speech'] || 'n.').toString().trim();
+        const pos = (row['词性'] || row['part_of_speech'] || '').toString().trim();
         const example = (row['例句'] || row['example'] || '').toString().trim();
         const exTrans = (row['例句翻译'] || row['translation'] || '').toString().trim();
 
@@ -430,6 +430,19 @@ const TeacherUnitManagement = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <datalist id="pos-options">
+        <option value="n." />
+        <option value="v." />
+        <option value="adj." />
+        <option value="adv." />
+        <option value="prep." />
+        <option value="pron." />
+        <option value="conj." />
+        <option value="phr." />
+        <option value="sent." />
+        <option value="num." />
+        <option value="art." />
+      </datalist>
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-3">
@@ -734,16 +747,10 @@ const TeacherUnitManagement = () => {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <select value={def.part_of_speech}
+                      <input type="text" list="pos-options" value={def.part_of_speech}
                         onChange={(e) => { const d = [...newWordData.definitions]; d[idx] = { ...d[idx], part_of_speech: e.target.value }; setNewWordData({ ...newWordData, definitions: d }); }}
-                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
-                        <option value="n.">n. 名词</option>
-                        <option value="v.">v. 动词</option>
-                        <option value="adj.">adj. 形容词</option>
-                        <option value="adv.">adv. 副词</option>
-                        <option value="prep.">prep. 介词</option>
-                        <option value="pron.">pron. 代词</option>
-                      </select>
+                        placeholder="词性（可选：n./v./phr. 等，也可留空）"
+                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
                       <input type="text" value={def.meaning}
                         onChange={(e) => { const d = [...newWordData.definitions]; d[idx] = { ...d[idx], meaning: e.target.value }; setNewWordData({ ...newWordData, definitions: d }); }}
                         placeholder="中文释义 *" className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
@@ -757,7 +764,7 @@ const TeacherUnitManagement = () => {
                   </div>
                 ))}
 
-                <button onClick={() => setNewWordData({ ...newWordData, definitions: [...newWordData.definitions, { part_of_speech: 'n.', meaning: '', example_sentence: '', example_translation: '', is_primary: false }] })}
+                <button onClick={() => setNewWordData({ ...newWordData, definitions: [...newWordData.definitions, { part_of_speech: '', meaning: '', example_sentence: '', example_translation: '', is_primary: false }] })}
                   className="w-full py-1.5 border-2 border-dashed border-gray-300 text-gray-500 rounded-lg hover:border-primary hover:text-primary transition text-sm flex items-center justify-center gap-1">
                   <Plus className="w-4 h-4" /> 添加释义
                 </button>
@@ -902,16 +909,10 @@ const TeacherUnitManagement = () => {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <label className="block text-xs font-medium text-gray-500 mb-1">词性</label>
-                              <select value={editFormData.part_of_speech}
+                              <input type="text" list="pos-options" value={editFormData.part_of_speech}
                                 onChange={(e) => setEditFormData({ ...editFormData, part_of_speech: e.target.value })}
-                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent">
-                                <option value="n.">n.</option>
-                                <option value="v.">v.</option>
-                                <option value="adj.">adj.</option>
-                                <option value="adv.">adv.</option>
-                                <option value="prep.">prep.</option>
-                                <option value="pron.">pron.</option>
-                              </select>
+                                placeholder="可留空"
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
                             </div>
                             <div className="col-span-2">
                               <label className="block text-xs font-medium text-gray-500 mb-1">释义</label>
