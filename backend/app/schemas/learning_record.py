@@ -1,7 +1,7 @@
 """
 学习记录相关的数据模型
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
 from typing import Optional, List
 from datetime import datetime
 
@@ -42,12 +42,21 @@ class StudySessionCreate(BaseModel):
 
 
 class StudySessionUpdate(BaseModel):
-    """更新学习会话"""
-    session_id: int
-    words_studied: int = Field(ge=0)
+    """更新学习会话 — 兼容前端 completed_words/total_time 与后端 words_studied/time_spent 两套命名"""
+    session_id: Optional[int] = None
+    words_studied: int = Field(
+        ge=0,
+        validation_alias=AliasChoices('words_studied', 'completed_words'),
+    )
     correct_count: int = Field(ge=0)
     wrong_count: int = Field(ge=0)
-    time_spent: int = Field(ge=0, description="总用时(秒)")
+    time_spent: int = Field(
+        ge=0,
+        description="总用时(秒)",
+        validation_alias=AliasChoices('time_spent', 'total_time'),
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class StudySessionResponse(BaseModel):

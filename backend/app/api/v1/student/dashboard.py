@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from app.core.database import get_db
 from app.models.user import User, StudyCalendar
 from app.models.learning import LearningProgress, StudySession, LearningRecord
-from app.models.word import WordBook
+from app.models.word import WordBook, Unit
 from app.api.v1.auth import get_current_student
 
 router = APIRouter()
@@ -115,12 +115,16 @@ async def get_student_dashboard_stats(
 
     rank_percentage = 100 - (higher_ranked / total_students * 100)
 
-    # 满分轮次
+    # 满分轮次：需完整走完单元（words_studied >= 单元 word_count）且 0 错
     result = await db.execute(
         select(func.count()).select_from(StudySession)
+        .join(Unit, Unit.id == StudySession.unit_id)
         .where(
             and_(
                 StudySession.user_id == user_id,
+                StudySession.unit_id.isnot(None),
+                StudySession.words_studied >= Unit.word_count,
+                Unit.word_count > 0,
                 StudySession.wrong_count == 0,
                 StudySession.correct_count > 0,
             )
@@ -128,13 +132,16 @@ async def get_student_dashboard_stats(
     )
     perfect_sessions = result.scalar() or 0
 
-    # 总完成会话数
+    # 总完成会话数：同样要求完整走完单元
     result = await db.execute(
         select(func.count()).select_from(StudySession)
+        .join(Unit, Unit.id == StudySession.unit_id)
         .where(
             and_(
                 StudySession.user_id == user_id,
-                StudySession.correct_count > 0,
+                StudySession.unit_id.isnot(None),
+                StudySession.words_studied >= Unit.word_count,
+                Unit.word_count > 0,
             )
         )
     )

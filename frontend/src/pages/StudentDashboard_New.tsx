@@ -577,9 +577,10 @@ const StudentDashboard = () => {
                 <div className="text-3xl mb-1">⭐</div>
                 <div className="text-2xl font-bold text-amber-600">{stats.perfect_sessions}</div>
                 <div className="text-sm text-gray-600">满分轮次</div>
+                <div className="text-[10px] text-gray-400 mt-0.5">完整走完一单元且全对</div>
                 {stats.total_sessions > 0 && (
                   <div className="text-xs text-gray-400 mt-1">
-                    共 {stats.total_sessions} 次练习
+                    共 {stats.total_sessions} 次完整轮
                   </div>
                 )}
               </div>
