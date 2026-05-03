@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, desc, Integer
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
@@ -115,37 +115,33 @@ async def get_student_dashboard_stats(
 
     rank_percentage = 100 - (higher_ranked / total_students * 100)
 
-    # 满分轮次：需完整走完单元（words_studied >= 单元 word_count）且 0 错
+    # 满分轮次 / 总轮次：完整走完单元（words_studied >= word_count）才计入
     result = await db.execute(
-        select(func.count()).select_from(StudySession)
-        .join(Unit, Unit.id == StudySession.unit_id)
-        .where(
-            and_(
-                StudySession.user_id == user_id,
-                StudySession.unit_id.isnot(None),
-                StudySession.words_studied >= Unit.word_count,
-                Unit.word_count > 0,
-                StudySession.wrong_count == 0,
-                StudySession.correct_count > 0,
-            )
+        select(
+            func.count().label("total"),
+            func.sum(
+                func.cast(
+                    and_(
+                        StudySession.wrong_count == 0,
+                        StudySession.correct_count > 0,
+                    ),
+                    Integer,
+                )
+            ).label("perfect"),
         )
-    )
-    perfect_sessions = result.scalar() or 0
-
-    # 总完成会话数：同样要求完整走完单元
-    result = await db.execute(
-        select(func.count()).select_from(StudySession)
+        .select_from(StudySession)
         .join(Unit, Unit.id == StudySession.unit_id)
         .where(
             and_(
                 StudySession.user_id == user_id,
-                StudySession.unit_id.isnot(None),
                 StudySession.words_studied >= Unit.word_count,
                 Unit.word_count > 0,
             )
         )
     )
-    total_sessions = result.scalar() or 0
+    total_sessions, perfect_sessions = result.one()
+    total_sessions = total_sessions or 0
+    perfect_sessions = perfect_sessions or 0
 
     # 首次正确率
     result = await db.execute(
