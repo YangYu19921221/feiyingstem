@@ -161,13 +161,17 @@ const MemoryCurve = () => {
               <div className="relative z-10">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-white/80 text-sm mb-1">今日待复习</p>
+                    <p className="text-white/80 text-sm mb-1">今日推荐复习</p>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-5xl font-bold">{stats.due_today}</span>
-                      <span className="text-white/70">个单词</span>
+                      <span className="text-5xl font-bold">{Math.min(20, stats.due_today)}</span>
+                      <span className="text-white/70">个单词 · 约 5 分钟</span>
                     </div>
-                    <p className="text-white/60 text-sm mt-2">
-                      明天还有 {stats.due_tomorrow} 个待复习
+                    <p className="text-white/60 text-xs mt-2">
+                      {stats.due_today > 20 ? (
+                        <>队列里共 {stats.due_today} 个待复习，按遗忘紧急度优先推送最该复习的 20 个</>
+                      ) : (
+                        <>明天还有 {stats.due_tomorrow} 个待复习</>
+                      )}
                     </p>
                   </div>
                   <motion.button
