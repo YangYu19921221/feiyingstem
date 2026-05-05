@@ -44,7 +44,7 @@ const UnitExamResult = () => {
 
   if (!result) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
           <span className="text-5xl">📄</span>
           <h3 className="text-xl font-bold mt-4 mb-2">未找到考试结果</h3>

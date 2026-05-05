@@ -92,7 +92,7 @@ const StudentReadingPractice = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="mt-4 text-gray-600">加载中...</p>
@@ -108,7 +108,7 @@ const StudentReadingPractice = () => {
   // 显示结果页面
   if (result) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+      <div className="min-h-screen bg-paper">
         <nav className="bg-white shadow-sm">
           <div className="max-w-5xl mx-auto px-4 py-4">
             <h1 className="text-xl font-bold text-gray-800">答题结果</h1>
@@ -221,7 +221,7 @@ const StudentReadingPractice = () => {
 
   // 答题页面
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
       <nav className="bg-white shadow-sm mb-6 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">

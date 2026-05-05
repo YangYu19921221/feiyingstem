@@ -175,7 +175,7 @@ const UnitExam = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-gray-500 mt-4">正在出题...</p>
@@ -186,7 +186,7 @@ const UnitExam = () => {
 
   if (error || !examData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
           <span className="text-5xl">😅</span>
           <h3 className="text-xl font-bold text-gray-800 mt-4 mb-2">出题失败</h3>

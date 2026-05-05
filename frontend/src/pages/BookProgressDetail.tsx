@@ -56,7 +56,7 @@ const BookProgressDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-gray-500 mt-4">加载中...</p>
@@ -67,7 +67,7 @@ const BookProgressDetail = () => {
 
   if (!progress) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-center">
           <span className="text-6xl mb-4 block">😕</span>
           <p className="text-gray-500">无法加载进度数据</p>
@@ -83,7 +83,7 @@ const BookProgressDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-pink-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
       <div className="bg-white shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4">

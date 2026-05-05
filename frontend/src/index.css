@@ -11,6 +11,39 @@
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
   }
+
+  .bg-paper {
+    background-color: oklch(0.985 0.008 55);
+  }
+  .text-ink {
+    color: oklch(0.22 0.015 55);
+  }
+  .text-ink-soft {
+    color: oklch(0.52 0.012 55);
+  }
+  .text-ink-mute {
+    color: oklch(0.72 0.008 55);
+  }
+  .bg-accent-warm {
+    background-color: oklch(0.68 0.185 40);
+  }
+  .text-accent-warm {
+    color: oklch(0.62 0.19 40);
+  }
+  .border-accent-warm {
+    border-color: oklch(0.68 0.185 40);
+  }
+  .ring-accent-warm {
+    --tw-ring-color: oklch(0.68 0.185 40 / 0.25);
+  }
+  .font-display {
+    font-family: 'Inter Display', Inter, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    letter-spacing: -0.015em;
+  }
+  .font-numeric {
+    font-feature-settings: 'tnum';
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 :root {

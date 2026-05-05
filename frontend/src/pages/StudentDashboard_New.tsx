@@ -226,54 +226,53 @@ const StudentDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+    <div className="min-h-screen bg-paper">
       {/* 强制复习遮罩 */}
       {showForcedReview && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
-            <div className="text-6xl mb-4">🧠</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-3">先复习再学习</h2>
-            <p className="text-gray-600 mb-2">
-              你有 <span className="font-bold text-primary text-xl">{reviewDueCount}</span> 个单词待复习
-            </p>
-            <p className="text-sm text-gray-400 mb-6">
-              根据记忆曲线，这些单词即将遗忘，现在复习效果最好
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+            <div className="flex items-baseline gap-3 mb-4">
+              <span className="font-display text-5xl font-semibold text-accent-warm font-numeric">{reviewDueCount}</span>
+              <span className="text-ink-soft text-lg">个词等你回顾</span>
+            </div>
+            <h2 className="font-display text-2xl font-semibold text-ink mb-2">先复习再学习</h2>
+            <p className="text-ink-soft text-sm mb-6 leading-relaxed">
+              根据记忆曲线，这些单词正处在最容易遗忘的节点。现在花 5 分钟，记忆会更牢固。
             </p>
             <button
               onClick={handleStartForcedReview}
-              className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-2xl text-lg font-bold hover:shadow-lg transition"
+              className="w-full py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
             >
               开始复习
             </button>
             <button
               onClick={handleLogout}
-              className="mt-3 text-sm text-gray-400 hover:text-gray-600 transition"
+              className="w-full mt-3 text-sm text-ink-mute hover:text-ink-soft transition"
             >
               退出登录
             </button>
           </div>
         </div>
       )}
-      {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">📚</span>
-            <h1 className="text-xl font-bold text-gray-800">飞鹰AI英语</h1>
+
+      {/* 顶部导航 */}
+      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-5 py-3.5 flex justify-between items-center">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-xl font-semibold text-ink tracking-tight">飞鹰</span>
+            <span className="text-xs text-ink-mute">AI 英语</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              👤 {user?.full_name || '学生'}
-            </span>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-ink-soft mr-2">{user?.full_name || '同学'}</span>
             <button
               onClick={() => setShowChangePassword(true)}
-              className="text-sm px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition"
+              className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
             >
-              修改密码
+              密码
             </button>
             <button
               onClick={handleLogout}
-              className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
+              className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
             >
               退出
             </button>
@@ -281,583 +280,336 @@ const StudentDashboard = () => {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* 欢迎横幅 */}
-        <div
-          className="relative rounded-2xl mb-8 shadow-lg overflow-hidden"
-          style={{ minHeight: 140 }}
-        >
-          {/* AI生成背景图 */}
-          <img
-            src="/dashboard-banner.jpeg"
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover object-top"
-          />
-          {/* 渐变遮罩让文字可读 */}
-          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
-          {/* 文字内容 */}
-          <div className="relative z-10 p-6 text-white">
-            <h2 className="text-2xl font-bold mb-2 drop-shadow">
-              👋 Hi, {user?.full_name}！今天是第 7 天打卡 🔥🔥🔥
-            </h2>
-            <p className="opacity-90 drop-shadow text-sm">继续保持，你已经超越了 85% 的学习者！</p>
-          </div>
-        </div>
-
-        {/* 错题提醒 */}
-        {mistakeStats && mistakeStats.unresolved_mistakes > 0 && (
-          <div
-            onClick={() => navigate('/student/mistake-book')}
-            className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between cursor-pointer hover:bg-red-100 transition"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">📕</span>
-              <div>
-                <p className="font-bold text-red-700">
-                  你有 {mistakeStats.unresolved_mistakes} 个错题待处理
-                </p>
-                <p className="text-xs text-red-500">及时复习错题，巩固薄弱知识点</p>
-              </div>
-            </div>
-            <span className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-medium hover:bg-red-600 transition">
-              去处理
-            </span>
-          </div>
-        )}
-
-        {/* 我的书架 — 置顶，一进来就能看到 */}
-        <div className="mb-8">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <p className="text-gray-500 mt-4">加载中...</p>
-            </div>
-          ) : (
+      <div className="max-w-6xl mx-auto px-5 py-10">
+        {/* Hero：今日核心任务（最重要的一件事） */}
+        <section className="mb-12">
+          <p className="text-ink-mute text-sm mb-2">
+            👋 {user?.full_name || '同学'} · 第 7 天打卡
+          </p>
+          {reviewDueCount > 0 ? (
             <>
-              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <span>📚</span> 我的书架
-                {sortedOwnedBooks.length > 1 && (
-                  <button
-                    onClick={() => setIsEditingOrder(!isEditingOrder)}
-                    className={`ml-auto text-sm px-3 py-1 rounded-lg transition font-medium ${
-                      isEditingOrder
-                        ? 'bg-primary text-white'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {isEditingOrder ? '✓ 完成' : '↕ 排序'}
-                  </button>
-                )}
-              </h3>
-              {ownedBooks.length === 0 ? (
-                <div className="bg-white rounded-2xl p-8 text-center shadow-md mb-8">
-                  <span className="text-5xl mb-3 block">📭</span>
-                  <p className="text-gray-500 mb-1">还没有书籍</p>
-                  <p className="text-sm text-gray-400">请联系老师分配或使用兑换码获取</p>
-                  <button
-                    onClick={() => navigate('/subscription/redeem')}
-                    className="mt-4 px-5 py-2 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg font-medium hover:shadow-md transition"
-                  >
-                    🔑 输入兑换码
-                  </button>
-                </div>
-              ) : isEditingOrder ? (
-                <Reorder.Group
-                  axis="y"
-                  values={sortedOwnedBooks}
-                  onReorder={handleReorder}
-                  className="space-y-3 mb-8"
+              <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                今天，先复习<br />
+                <span className="font-numeric text-accent-warm">{Math.min(20, reviewDueCount)}</span>{' '}
+                <span className="text-ink-soft">个该回顾的词</span>
+              </h1>
+              <p className="text-ink-soft text-base mb-6 max-w-xl leading-relaxed">
+                根据艾宾浩斯曲线，这些是你现在最该温习的单词。预计花费 5 分钟。
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleStartForcedReview}
+                  className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
                 >
-                  {sortedOwnedBooks.map((book) => {
-                    const coverIndex = (book.id % 4) + 1;
-                    return (
-                    <Reorder.Item
-                      key={book.id}
-                      value={book}
-                      className="bg-white rounded-xl p-4 shadow-md flex items-center gap-4 cursor-grab active:cursor-grabbing active:shadow-lg active:z-10"
-                      whileDrag={{ scale: 1.02, boxShadow: '0 8px 30px rgba(0,0,0,0.15)' }}
-                    >
-                      <span className="text-gray-300 text-lg select-none">☰</span>
-                      <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                        <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-gray-800 truncate">{book.name}</h4>
-                        <p className="text-xs text-gray-500">{book.unit_count} 个单元 · {book.word_count} 个单词</p>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <span className="text-sm font-bold text-primary">{book.progress_percentage.toFixed(0)}%</span>
-                      </div>
-                    </Reorder.Item>
-                  )})}
-                </Reorder.Group>
-              ) : (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                  {sortedOwnedBooks.map((book) => {
-                    const coverIndex = (book.id % 4) + 1;
-                    return (
-                      <div
-                        key={book.id}
-                        className="bg-white rounded-2xl shadow-md hover:shadow-lg transition group cursor-pointer flex flex-col overflow-hidden"
-                        onClick={() => handleStartLearning(book.id)}
-                      >
-                        <div className="relative h-40 overflow-hidden">
-                          <img
-                            src={book.cover_url || `/book-cover-${coverIndex}.jpeg`}
-                            alt={book.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                          <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-xs font-bold px-2 py-1 rounded-full">
-                            {book.progress_percentage.toFixed(0)}%
-                          </div>
-                        </div>
-                        <div className="p-4 flex flex-col flex-1">
-                          <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-primary transition">
-                            {book.name}
-                          </h4>
-                          {book.description && (
-                            <p className="text-sm text-gray-500 mb-3">{book.description}</p>
-                          )}
-                          <div className="flex items-center gap-3 mb-4 text-sm text-gray-600 flex-wrap">
-                            <span>📊 {book.unit_count} 个单元</span>
-                            <span>📝 {book.word_count} 个单词</span>
-                            {book.grade_level && (
-                              <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs">{book.grade_level}</span>
-                            )}
-                            {book.volume && (
-                              <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs">{book.volume}</span>
-                            )}
-                          </div>
-                          <div className="mt-auto">
-                            <div className="mb-3">
-                              <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-600">学习进度</span>
-                                <span className="font-bold text-primary">{book.progress_percentage.toFixed(0)}%</span>
-                              </div>
-                              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-gradient-to-r from-green-400 to-blue-500"
-                                  style={{ width: `${book.progress_percentage}%` }}
-                                />
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleStartLearning(book.id); }}
-                                className="flex-1 py-2 px-4 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:shadow-md transition font-medium"
-                              >
-                                🧠 开始学习
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); navigate(`/student/books/${book.id}/progress`); }}
-                                className="py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
-                              >
-                                📊
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* 更多书籍（未购买） */}
-              {unownedBooks.length > 0 && (
-                <>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <span>🛒</span> 更多书籍
-                  </h3>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                    {unownedBooks.map((book) => {
-                      const coverIndex = (book.id % 4) + 1;
-                      return (
-                        <div
-                          key={book.id}
-                          className="bg-white rounded-2xl shadow-md hover:shadow-lg transition cursor-pointer flex flex-col opacity-80 overflow-hidden"
-                          onClick={() => navigate('/subscription/redeem')}
-                        >
-                          <div className="relative h-32 overflow-hidden">
-                            <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                              <span className="text-4xl">🔒</span>
-                            </div>
-                          </div>
-                          <div className="p-4">
-                            <h4 className="text-lg font-bold text-gray-800 mb-2">{book.name}</h4>
-                            {book.description && (
-                              <p className="text-sm text-gray-500 mb-3">{book.description}</p>
-                            )}
-                            <div className="flex items-center gap-3 mb-4 text-sm text-gray-600 flex-wrap">
-                              <span>📊 {book.unit_count} 个单元</span>
-                              <span>📝 {book.word_count} 个单词</span>
-                              {book.grade_level && (
-                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs">{book.grade_level}</span>
-                              )}
-                              {book.volume && (
-                                <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full text-xs">{book.volume}</span>
-                              )}
-                            </div>
-                            <div className="mt-auto">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate('/subscription/redeem');
-                                }}
-                                className="w-full py-2 px-4 bg-gradient-to-r from-orange-400 to-pink-500 text-white rounded-lg hover:shadow-md transition font-medium"
-                              >
-                                🔑 去兑换
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* 宠物小组件 */}
-        <div className="mb-8">
-          <PetWidget />
-        </div>
-
-        {/* 学习数据概览 */}
-        <div
-          className="mb-8"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <span>📊</span> 学习概览
-            </h3>
-            <button
-              onClick={() => navigate('/student/analytics')}
-              className="text-sm text-primary hover:text-secondary font-medium flex items-center gap-1 transition"
-            >
-              详细数据 →
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { icon: '📚', label: '学习单词', value: stats?.total_words_studied || 0, badge: `+${stats?.today_words || 0} 今日`, color: 'bg-blue-500', bg: 'from-blue-50 to-cyan-50', text: 'text-blue-600' },
-              { icon: '✅', label: '已掌握', value: stats?.mastered_words || 0, badge: `${stats?.mastery_rate || 0}%`, color: 'bg-green-500', bg: 'from-green-50 to-emerald-50', text: 'text-green-600' },
-              { icon: '🔥', label: '打卡天数', value: stats?.streak_days || 0, badge: '连续', color: 'bg-orange-500', bg: 'from-orange-50 to-yellow-50', text: 'text-orange-600' },
-              { icon: '⏰', label: '学习分钟', value: stats?.total_minutes || 0, badge: '总计', color: 'bg-purple-500', bg: 'from-purple-50 to-pink-50', text: 'text-purple-600' },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className={`bg-gradient-to-br ${item.bg} rounded-xl p-5 shadow-sm hover:shadow-md transition cursor-pointer`}
-                onClick={() => navigate('/student/analytics')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`w-10 h-10 ${item.color} rounded-full flex items-center justify-center shadow-sm`}>
-                    <span className="text-xl">{item.icon}</span>
-                  </div>
-                  <span className={`text-xs ${item.text} font-medium bg-white/60 px-2 py-0.5 rounded-full`}>{item.badge}</span>
-                </div>
-                <div className="text-3xl font-bold text-gray-800 mb-1">{item.value}</div>
-                <div className="text-sm text-gray-500">{item.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 学习质量 */}
-        {stats && (stats.perfect_sessions > 0 || stats.total_sessions > 0) && (
-          <div className="mb-8">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span>🏅</span> 学习质量
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-5 shadow-sm text-center">
-                <div className="text-3xl mb-1">⭐</div>
-                <div className="text-2xl font-bold text-amber-600">{stats.perfect_sessions}</div>
-                <div className="text-sm text-gray-600">满分轮次</div>
-                <div className="text-[10px] text-gray-400 mt-0.5">完整走完一单元且全对</div>
-                {stats.total_sessions > 0 && (
-                  <div className="text-xs text-gray-400 mt-1">
-                    共 {stats.total_sessions} 次完整轮
-                  </div>
-                )}
-              </div>
-              <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-5 shadow-sm text-center">
-                <div className="text-3xl mb-1">🎯</div>
-                <div className="text-2xl font-bold text-emerald-600">{stats.first_time_accuracy}%</div>
-                <div className="text-sm text-gray-600">首次正确率</div>
-                <div className="text-xs text-gray-400 mt-1">
-                  第一次就答对
-                </div>
-              </div>
-              <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-5 shadow-sm text-center">
-                <div className="text-3xl mb-1">📈</div>
-                <div className="text-2xl font-bold text-violet-600">
-                  {stats.total_sessions > 0 ? Math.round(stats.perfect_sessions / stats.total_sessions * 100) : 0}%
-                </div>
-                <div className="text-sm text-gray-600">满分率</div>
-                <div className="text-xs text-gray-400 mt-1">
-                  满分/总练习
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 竞赛模式入口 */}
-        <div
-          className="mb-8"
-        >
-          <div
-            onClick={() => navigate('/student/competition')}
-            className="relative bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all cursor-pointer group overflow-hidden"
-          >
-            {/* 背景动画元素 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/20 to-transparent animate-pulse"></div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-4xl">🏆</span>
-                  <h3 className="text-2xl font-bold text-white">竞赛模式</h3>
-                  <span className="px-3 py-1 bg-yellow-400 text-orange-900 text-xs font-bold rounded-full animate-bounce">
-                    NEW
-                  </span>
-                </div>
-                <p className="text-white/90 mb-3">
-                  实时PK排名,边学边比赛!答题越快,得分越高!
-                </p>
-                <div className="flex items-center gap-4 text-sm text-white/80">
-                  <span>🔥 连击系统</span>
-                  <span>📊 实时排行</span>
-                  <span>🎯 积分奖励</span>
-                  <span>⚡ 成就徽章</span>
-                </div>
-              </div>
-
-              <div className="hidden md:flex flex-col items-center gap-2 ml-6">
-                <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
-                  <div className="text-3xl font-bold text-white">{onlineUsers}</div>
-                  <div className="text-xs text-white/80">人在线</div>
-                </div>
-                <button className="px-6 py-2 bg-white text-orange-600 font-bold rounded-lg hover:bg-yellow-50 transition-colors group-hover:scale-110 transform">
-                  立即挑战 →
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 记忆曲线复习入口 */}
-        <div className="mb-8">
-          <div
-            onClick={() => navigate('/student/memory-curve')}
-            className="relative bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all cursor-pointer group overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-teal-400/20 to-transparent animate-pulse"></div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-4xl">🧠</span>
-                  <h3 className="text-2xl font-bold text-white">记忆曲线</h3>
-                  <span className="px-3 py-1 bg-white text-cyan-600 text-xs font-bold rounded-full">
-                    NEW
-                  </span>
-                </div>
-                <p className="text-white/90 mb-3">
-                  基于艾宾浩斯遗忘曲线,科学安排复习时间,让记忆更持久!
-                </p>
-                <div className="flex items-center gap-4 text-sm text-white/80">
-                  <span>📈 遗忘曲线</span>
-                  <span>🔔 智能提醒</span>
-                  <span>📅 复习计划</span>
-                  <span>🎯 精准巩固</span>
-                </div>
-              </div>
-
-              <div className="hidden md:flex flex-col items-center gap-2 ml-6">
-                {reviewDueCount > 0 ? (
-                  <>
-                    <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
-                      <div className="text-3xl font-bold text-white">{reviewDueCount}</div>
-                      <div className="text-xs text-white/80">待复习</div>
-                    </div>
-                    <button className="px-6 py-2 bg-white text-cyan-600 font-bold rounded-lg hover:bg-cyan-50 transition-colors group-hover:scale-110 transform">
-                      立即复习 →
-                    </button>
-                  </>
-                ) : (
-                  <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
-                    <div className="text-2xl">📖</div>
-                    <div className="text-xs text-white/80">学完单词后自动安排</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 阅读理解入口 */}
-        <div
-          className="mb-8"
-        >
-          <div
-            onClick={() => navigate('/student/reading')}
-            className="relative bg-gradient-to-r from-purple-500 via-indigo-500 to-blue-500 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all cursor-pointer group overflow-hidden"
-          >
-            {/* 背景动画元素 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-400/20 to-transparent animate-pulse"></div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-4xl">📖</span>
-                  <h3 className="text-2xl font-bold text-white">阅读理解</h3>
-                  <span className="px-3 py-1 bg-white text-purple-600 text-xs font-bold rounded-full">
-                    提升能力
-                  </span>
-                </div>
-                <p className="text-white/90 mb-3">
-                  精选英语文章,趣味阅读答题,全面提升阅读理解能力!
-                </p>
-                <div className="flex items-center gap-4 text-sm text-white/80">
-                  <span>📚 精选文章</span>
-                  <span>💡 重点词汇</span>
-                  <span>❓ 多题型</span>
-                  <span>🎯 自动判分</span>
-                </div>
-              </div>
-
-              <div className="hidden md:flex flex-col items-center gap-2 ml-6">
-                <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
-                  <div className="text-3xl font-bold text-white">--</div>
-                  <div className="text-xs text-white/80">篇文章</div>
-                </div>
-                <button className="px-6 py-2 bg-white text-purple-600 font-bold rounded-lg hover:bg-purple-50 transition-colors group-hover:scale-110 transform">
-                  开始阅读 →
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 错题集入口 */}
-        <div
-          className="mb-8"
-        >
-          <div
-            onClick={() => navigate('/student/mistake-book')}
-            className="relative bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all cursor-pointer group overflow-hidden"
-          >
-            {/* 背景动画元素 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-red-400/20 to-transparent animate-pulse"></div>
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-4xl">📕</span>
-                  <h3 className="text-2xl font-bold text-white">我的错题集</h3>
-                  <span className="px-3 py-1 bg-white text-red-600 text-xs font-bold rounded-full">
-                    查漏补缺
-                  </span>
-                </div>
-                <p className="text-white/90 mb-3">
-                  自动整理答错的单词,针对性练习,快速攻克薄弱点!
-                </p>
-                <div className="flex items-center gap-4 text-sm text-white/80">
-                  <span>🎯 智能排序</span>
-                  <span>📊 统计分析</span>
-                  <span>🔄 反复练习</span>
-                  <span>✅ 掌握跟踪</span>
-                </div>
-              </div>
-
-              <div className="hidden md:flex flex-col items-center gap-2 ml-6">
-                <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 text-center">
-                  <div className="text-3xl font-bold text-white">
-                    {mistakeStats ? mistakeStats.unresolved_mistakes : '--'}
-                  </div>
-                  <div className="text-xs text-white/80">待攻克</div>
-                </div>
-                <button className="px-6 py-2 bg-white text-red-600 font-bold rounded-lg hover:bg-orange-50 transition-colors group-hover:scale-110 transform">
                   开始复习 →
                 </button>
+                <button
+                  onClick={() => navigate('/student/memory-curve')}
+                  className="text-ink-soft hover:text-ink text-sm transition"
+                >
+                  查看完整复习计划
+                </button>
               </div>
-            </div>
-          </div>
-        </div>
+            </>
+          ) : (
+            <>
+              <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                今天没有待复习。<br />
+                <span className="text-ink-soft">从书架挑一本继续吧。</span>
+              </h1>
+              <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                完成新单元学习后，单词会自动进入复习计划。
+              </p>
+            </>
+          )}
+        </section>
 
-        {/* 快捷功能 */}
-        <div className="mb-8">
-          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>🎯</span> 快捷功能
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { icon: '📝', title: '我的作业', desc: '老师分配的任务', route: '/student/assignments', color: 'from-indigo-500 to-blue-600', light: 'bg-indigo-50' },
-              { icon: '🧠', title: '记忆曲线', desc: '复习巩固', route: '/student/memory-curve', color: 'from-teal-500 to-cyan-600', light: 'bg-teal-50' },
-              { icon: '🏆', title: '我的成就', desc: '查看成就徽章', route: '/student/achievements', color: 'from-yellow-500 to-orange-500', light: 'bg-yellow-50' },
-              { icon: '📊', title: '学习数据', desc: '统计与分析', route: '/student/analytics', color: 'from-blue-500 to-purple-600', light: 'bg-blue-50' },
-              { icon: '🔥', title: '竞赛模式', desc: '实时PK排名', route: '/student/competition', color: 'from-red-500 to-pink-600', light: 'bg-red-50' },
-            ].map((action) => (
+        {/* 我的书架 */}
+        <section className="mb-12">
+          <header className="flex items-baseline justify-between mb-5">
+            <h2 className="font-display text-xl font-semibold text-ink">我的书架</h2>
+            {sortedOwnedBooks.length > 1 && !loading && (
               <button
-                key={action.title}
-                onClick={() => navigate(action.route)}
-                className="rounded-2xl shadow-md hover:shadow-xl hover:scale-105 active:scale-95 transition-all text-center group overflow-hidden"
+                onClick={() => setIsEditingOrder(!isEditingOrder)}
+                className={`text-sm transition ${
+                  isEditingOrder
+                    ? 'text-accent-warm font-semibold'
+                    : 'text-ink-soft hover:text-ink'
+                }`}
               >
-                {/* 顶部彩色渐变区 */}
-                <div className={`bg-gradient-to-br ${action.color} p-5 flex items-center justify-center`}>
-                  <span className="text-4xl filter drop-shadow-md">{action.icon}</span>
+                {isEditingOrder ? '完成排序' : '调整顺序'}
+              </button>
+            )}
+          </header>
+
+          {loading ? (
+            <div className="py-16 text-center text-ink-mute text-sm">加载中…</div>
+          ) : ownedBooks.length === 0 ? (
+            <div className="py-16 text-center border border-dashed border-black/10 rounded-2xl">
+              <p className="text-ink-soft mb-1">还没有书籍</p>
+              <p className="text-ink-mute text-sm mb-5">请联系老师分配，或使用兑换码获取</p>
+              <button
+                onClick={() => navigate('/subscription/redeem')}
+                className="px-5 py-2.5 bg-accent-warm text-white rounded-lg text-sm font-medium hover:opacity-90 transition"
+              >
+                输入兑换码
+              </button>
+            </div>
+          ) : isEditingOrder ? (
+            <Reorder.Group
+              axis="y"
+              values={sortedOwnedBooks}
+              onReorder={handleReorder}
+              className="space-y-2"
+            >
+              {sortedOwnedBooks.map((book) => {
+                const coverIndex = (book.id % 4) + 1;
+                return (
+                  <Reorder.Item
+                    key={book.id}
+                    value={book}
+                    className="bg-white rounded-xl px-4 py-3 border border-black/[0.06] flex items-center gap-4 cursor-grab active:cursor-grabbing"
+                    whileDrag={{ scale: 1.01, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
+                  >
+                    <span className="text-ink-mute select-none">⋮⋮</span>
+                    <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0 bg-black/5">
+                      <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-ink truncate">{book.name}</h3>
+                      <p className="text-xs text-ink-mute font-numeric">{book.unit_count} 单元 · {book.word_count} 词</p>
+                    </div>
+                    <span className="text-sm font-numeric font-semibold text-accent-warm">{book.progress_percentage.toFixed(0)}%</span>
+                  </Reorder.Item>
+                );
+              })}
+            </Reorder.Group>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {sortedOwnedBooks.map((book) => {
+                const coverIndex = (book.id % 4) + 1;
+                return (
+                  <article
+                    key={book.id}
+                    className="bg-white rounded-2xl overflow-hidden border border-black/[0.05] hover:border-black/15 transition cursor-pointer flex flex-col"
+                    onClick={() => handleStartLearning(book.id)}
+                  >
+                    <div className="relative h-36 overflow-hidden bg-black/5">
+                      <img
+                        src={book.cover_url || `/book-cover-${coverIndex}.jpeg`}
+                        alt={book.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="p-4 flex-1 flex flex-col">
+                      <h3 className="font-display text-base font-semibold text-ink mb-1.5 line-clamp-1">{book.name}</h3>
+                      <p className="text-xs text-ink-mute font-numeric mb-3">
+                        {book.unit_count} 单元 · {book.word_count} 词
+                        {book.grade_level && <span className="ml-1.5 text-ink-soft">· {book.grade_level}</span>}
+                        {book.volume && <span className="text-ink-soft"> {book.volume}</span>}
+                      </p>
+                      <div className="mt-auto">
+                        <div className="flex items-baseline justify-between mb-1.5">
+                          <span className="text-xs text-ink-soft">学习进度</span>
+                          <span className="text-sm font-numeric font-semibold text-ink">{book.progress_percentage.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-black/[0.06] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-accent-warm rounded-full transition-all"
+                            style={{ width: `${book.progress_percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {unownedBooks.length > 0 && !loading && (
+            <>
+              <header className="flex items-baseline justify-between mt-10 mb-5">
+                <h2 className="font-display text-xl font-semibold text-ink">更多书籍</h2>
+                <span className="text-xs text-ink-mute">需兑换码解锁</span>
+              </header>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {unownedBooks.map((book) => {
+                  const coverIndex = (book.id % 4) + 1;
+                  return (
+                    <article
+                      key={book.id}
+                      className="rounded-2xl overflow-hidden border border-black/[0.05] hover:border-black/15 transition cursor-pointer flex flex-col bg-white opacity-75 hover:opacity-100"
+                      onClick={() => navigate('/subscription/redeem')}
+                    >
+                      <div className="relative h-32 overflow-hidden bg-black/5">
+                        <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
+                        <div className="absolute inset-0 bg-black/30" />
+                      </div>
+                      <div className="p-4">
+                        <h3 className="font-display text-base font-semibold text-ink mb-1.5 line-clamp-1">{book.name}</h3>
+                        <p className="text-xs text-ink-mute font-numeric mb-3">
+                          {book.unit_count} 单元 · {book.word_count} 词
+                        </p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate('/subscription/redeem'); }}
+                          className="w-full py-2 border border-black/15 text-ink rounded-lg text-sm font-medium hover:bg-black/5 transition"
+                        >
+                          输入兑换码
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* 错题提醒 — 只在有错题时显示，做成内联条带不打扰 */}
+        {mistakeStats && mistakeStats.unresolved_mistakes > 0 && (
+          <button
+            onClick={() => navigate('/student/mistake-book')}
+            className="w-full mb-10 px-5 py-4 border-l-2 border-accent-warm bg-white hover:bg-black/[0.02] transition flex items-center justify-between text-left rounded-r-md"
+          >
+            <div>
+              <p className="font-medium text-ink">有 <span className="font-numeric text-accent-warm">{mistakeStats.unresolved_mistakes}</span> 个错题待处理</p>
+              <p className="text-xs text-ink-mute mt-0.5">及时复习薄弱知识点</p>
+            </div>
+            <span className="text-ink-soft text-sm">去处理 →</span>
+          </button>
+        )}
+
+        {/* 宠物 */}
+        <section className="mb-12">
+          <PetWidget />
+        </section>
+
+        {/* 功能磁贴 — 等权重，去渐变，去 hero 化 */}
+        <section className="mb-12">
+          <header className="flex items-baseline justify-between mb-5">
+            <h2 className="font-display text-xl font-semibold text-ink">学习工具</h2>
+          </header>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {[
+              { title: '记忆曲线', desc: '科学复习', route: '/student/memory-curve', metric: reviewDueCount > 0 ? Math.min(20, reviewDueCount) : null, metricLabel: '待复习' },
+              { title: '错题集', desc: '查漏补缺', route: '/student/mistake-book', metric: mistakeStats?.unresolved_mistakes || null, metricLabel: '待攻克' },
+              { title: '我的作业', desc: '老师分配', route: '/student/assignments' },
+              { title: '阅读理解', desc: '提升能力', route: '/student/reading' },
+              { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', metric: onlineUsers, metricLabel: '在线' },
+              { title: '我的成就', desc: '徽章收藏', route: '/student/achievements' },
+              { title: '学习数据', desc: '统计分析', route: '/student/analytics' },
+            ].map((tile) => (
+              <button
+                key={tile.title}
+                onClick={() => navigate(tile.route)}
+                className="text-left bg-white rounded-xl p-4 border border-black/[0.05] hover:border-black/15 hover:-translate-y-0.5 transition-all"
+              >
+                <div className="flex items-baseline justify-between mb-1">
+                  <h3 className="font-display text-base font-semibold text-ink">{tile.title}</h3>
+                  {tile.metric != null && tile.metric > 0 && (
+                    <span className="font-numeric text-sm font-semibold text-accent-warm">{tile.metric}</span>
+                  )}
                 </div>
-                {/* 底部文字区 */}
-                <div className="bg-white px-3 py-3">
-                  <h4 className="font-bold text-gray-800 text-sm mb-0.5">{action.title}</h4>
-                  <p className="text-xs text-gray-400">{action.desc}</p>
-                </div>
+                <p className="text-xs text-ink-mute">
+                  {tile.metric != null && tile.metric > 0 && tile.metricLabel ? `${tile.metricLabel} · ` : ''}{tile.desc}
+                </p>
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
-        {/* 成就预览 */}
-        <div
-          className="bg-white rounded-2xl p-6 shadow-md"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <span>🏆</span> 最近成就
-            </h3>
+        {/* 学习概览 — 数据条带式，紧凑 */}
+        <section className="mb-12">
+          <header className="flex items-baseline justify-between mb-5">
+            <h2 className="font-display text-xl font-semibold text-ink">学习概览</h2>
             <button
-              onClick={() => navigate('/student/achievements')}
-              className="text-sm text-primary hover:text-secondary font-medium flex items-center gap-1 transition"
+              onClick={() => navigate('/student/analytics')}
+              className="text-sm text-ink-soft hover:text-ink transition"
             >
-              查看全部 →
+              详细数据 →
             </button>
-          </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-4">
-            {achievements.map((achievement) => (
-              <div
-                key={achievement.name}
-                className={`text-center p-4 rounded-xl transition cursor-pointer hover:scale-105 ${
-                  achievement.unlocked
-                    ? 'bg-gradient-to-br from-yellow-100 to-orange-100'
-                    : 'bg-gray-100 opacity-50'
-                }`}
-                onClick={() => navigate('/student/achievements')}
-              >
-                <div className="text-4xl mb-2">{achievement.icon}</div>
-                <p className="text-xs font-medium text-gray-700">{achievement.name}</p>
+          </header>
+          <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05]">
+            {[
+              { label: '已学单词', value: stats?.total_words_studied || 0, suffix: stats?.today_words ? `今日 +${stats.today_words}` : '' },
+              { label: '已掌握', value: stats?.mastered_words || 0, suffix: `${stats?.mastery_rate || 0}% 掌握率` },
+              { label: '连续打卡', value: stats?.streak_days || 0, suffix: '天' },
+              { label: '学习时长', value: stats?.total_minutes || 0, suffix: '分钟' },
+            ].map((row) => (
+              <div key={row.label} className="px-5 py-4 flex items-baseline justify-between">
+                <span className="text-ink-soft text-sm">{row.label}</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display font-semibold text-2xl text-ink font-numeric">{row.value}</span>
+                  {row.suffix && <span className="text-xs text-ink-mute">{row.suffix}</span>}
+                </div>
               </div>
             ))}
           </div>
-          <div className="pt-4 border-t border-gray-100 flex items-center justify-between text-sm">
-            <span className="text-gray-600">🎯 已解锁 {achievements.filter(a => a.unlocked).length} 个成就</span>
-            <span className="text-gray-600">💎 总积分: {stats?.total_points || 0} 分</span>
+        </section>
+
+        {/* 学习质量 — 仅在有数据时出现 */}
+        {stats && stats.total_sessions > 0 && (
+          <section className="mb-12">
+            <header className="mb-5">
+              <h2 className="font-display text-xl font-semibold text-ink">学习质量</h2>
+            </header>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-white rounded-xl border border-black/[0.05] p-5">
+                <p className="text-xs text-ink-mute mb-1.5">满分轮次</p>
+                <p className="font-display text-3xl font-semibold text-ink font-numeric">{stats.perfect_sessions}</p>
+                <p className="text-[11px] text-ink-mute mt-1">共 {stats.total_sessions} 次完整轮</p>
+              </div>
+              <div className="bg-white rounded-xl border border-black/[0.05] p-5">
+                <p className="text-xs text-ink-mute mb-1.5">首次正确率</p>
+                <p className="font-display text-3xl font-semibold text-ink font-numeric">{stats.first_time_accuracy}<span className="text-base text-ink-soft">%</span></p>
+                <p className="text-[11px] text-ink-mute mt-1">第一次就答对</p>
+              </div>
+              <div className="bg-white rounded-xl border border-black/[0.05] p-5">
+                <p className="text-xs text-ink-mute mb-1.5">满分率</p>
+                <p className="font-display text-3xl font-semibold text-ink font-numeric">
+                  {Math.round(stats.perfect_sessions / stats.total_sessions * 100)}<span className="text-base text-ink-soft">%</span>
+                </p>
+                <p className="text-[11px] text-ink-mute mt-1">满分 / 总练习</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* 成就预览 — 紧凑 */}
+        <section className="mb-12">
+          <header className="flex items-baseline justify-between mb-5">
+            <h2 className="font-display text-xl font-semibold text-ink">最近成就</h2>
+            <button
+              onClick={() => navigate('/student/achievements')}
+              className="text-sm text-ink-soft hover:text-ink transition"
+            >
+              查看全部 →
+            </button>
+          </header>
+          <div className="bg-white rounded-2xl border border-black/[0.05] p-5">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+              {achievements.map((achievement) => (
+                <button
+                  key={achievement.name}
+                  onClick={() => navigate('/student/achievements')}
+                  className={`text-center p-3 rounded-lg transition ${
+                    achievement.unlocked
+                      ? 'hover:bg-black/[0.04]'
+                      : 'opacity-40'
+                  }`}
+                >
+                  <div className="text-3xl mb-1.5">{achievement.icon}</div>
+                  <p className="text-[11px] text-ink-soft truncate">{achievement.name}</p>
+                </button>
+              ))}
+            </div>
+            <div className="pt-4 border-t border-black/[0.05] flex items-center justify-between text-sm">
+              <span className="text-ink-soft">已解锁 <span className="font-numeric font-semibold text-ink">{achievements.filter(a => a.unlocked).length}</span> 个成就</span>
+              <span className="text-ink-soft">总积分 <span className="font-numeric font-semibold text-ink">{stats?.total_points || 0}</span></span>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
 
       <ChangePasswordModal

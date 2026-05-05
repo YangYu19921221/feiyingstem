@@ -97,7 +97,7 @@ const Learn = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50">
+      <div className="flex items-center justify-center min-h-screen bg-paper">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mx-auto mb-4"></div>
           <p className="text-xl text-gray-600">加载中...</p>
@@ -108,7 +108,7 @@ const Learn = () => {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 p-4">
+      <div className="flex items-center justify-center min-h-screen bg-paper p-4">
         <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md text-center">
           <div className="text-6xl mb-4">😕</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-4">出错了</h2>
@@ -126,7 +126,7 @@ const Learn = () => {
 
   if (words.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50">
+      <div className="flex items-center justify-center min-h-screen bg-paper">
         <div className="text-center">
           <p className="text-xl text-gray-600">暂无单词数据</p>
         </div>
