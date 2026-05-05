@@ -164,10 +164,15 @@ const CompletionScreen = () => {
       </nav>
 
       <div className="max-w-3xl mx-auto px-5 pt-10 pb-12">
-        {/* Hero：折纸鹰飞翔插图 + 大数字 */}
+        {/* Hero：根据成绩显示不同的飞鹰插图 + 大数字 */}
         <section className="text-center mb-12">
           <motion.img
-            src="/hero-completion.jpeg"
+            src={
+              pct >= 90 ? '/result-excellent.jpeg'
+              : pct >= 70 ? '/result-good.jpeg'
+              : pct >= 50 ? '/result-pass.jpeg'
+              : '/result-retry.jpeg'
+            }
             alt=""
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}

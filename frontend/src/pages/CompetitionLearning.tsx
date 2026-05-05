@@ -466,58 +466,59 @@ const CompetitionLearning: React.FC = () => {
   // 完成界面
   const renderCompletionScreen = () => {
     return (
-      <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-        <div className="mb-6">
-          <div className="text-8xl mb-4">🎉</div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">恭喜完成!</h2>
-          <p className="text-gray-600">你已经完成了所有可用的题目</p>
-        </div>
+      <div className="bg-white rounded-2xl border border-black/[0.05] p-8 text-center">
+        <img
+          src="/result-champion.jpeg"
+          alt=""
+          className="w-36 h-36 md:w-44 md:h-44 mx-auto mb-6 rounded-2xl object-cover"
+          loading="lazy"
+        />
+        <p className="text-ink-mute text-sm mb-2">竞赛轮次完成</p>
+        <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-tight tracking-tight mb-3">
+          恭喜过关
+        </h2>
+        <p className="text-ink-soft text-base mb-8">已完成所有可用题目</p>
 
         {myStats?.today && (
-          <div className="space-y-6 mb-8">
-            {/* 总分卡片 */}
-            <div className="bg-gradient-to-br from-orange-100 to-red-100 rounded-xl p-6">
-              <div className="text-sm text-gray-600 mb-1">今日总积分</div>
-              <div className="text-5xl font-bold text-orange-600">
+          <div className="bg-paper rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05] mb-8 text-left">
+            <div className="px-5 py-4 flex items-baseline justify-between">
+              <span className="text-ink-soft text-sm">今日总积分</span>
+              <span className="font-display font-semibold text-3xl text-accent-warm font-numeric">
                 {myStats.today.score || 0}
-              </div>
+              </span>
             </div>
-
-            {/* 统计数据 */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 rounded-xl p-4">
-                <div className="text-3xl font-bold text-blue-600">
-                  {myStats.today.questions_answered || 0}
-                </div>
-                <div className="text-sm text-gray-600 mt-1">答题总数</div>
-              </div>
-              <div className="bg-green-50 rounded-xl p-4">
-                <div className="text-3xl font-bold text-green-600">
-                  {(myStats.today.accuracy_rate || 0).toFixed(1)}%
-                </div>
-                <div className="text-sm text-gray-600 mt-1">正确率</div>
-              </div>
-              <div className="bg-purple-50 rounded-xl p-4">
-                <div className="text-3xl font-bold text-purple-600">
-                  #{myStats.today.rank || '-'}
-                </div>
-                <div className="text-sm text-gray-600 mt-1">今日排名</div>
-              </div>
-              <div className="bg-yellow-50 rounded-xl p-4">
-                <div className="text-3xl font-bold text-yellow-600">
-                  {myStats.today.max_combo || 0}
-                </div>
-                <div className="text-sm text-gray-600 mt-1">最高连击</div>
-              </div>
+            <div className="px-5 py-4 flex items-baseline justify-between">
+              <span className="text-ink-soft text-sm">答题总数</span>
+              <span className="font-display font-semibold text-2xl text-ink font-numeric">
+                {myStats.today.questions_answered || 0}
+              </span>
+            </div>
+            <div className="px-5 py-4 flex items-baseline justify-between">
+              <span className="text-ink-soft text-sm">正确率</span>
+              <span className="font-display font-semibold text-2xl text-ink font-numeric">
+                {(myStats.today.accuracy_rate || 0).toFixed(1)}<span className="text-base text-ink-soft">%</span>
+              </span>
+            </div>
+            <div className="px-5 py-4 flex items-baseline justify-between">
+              <span className="text-ink-soft text-sm">今日排名</span>
+              <span className="font-display font-semibold text-2xl text-ink font-numeric">
+                #{myStats.today.rank || '—'}
+              </span>
+            </div>
+            <div className="px-5 py-4 flex items-baseline justify-between">
+              <span className="text-ink-soft text-sm">最高连击</span>
+              <span className="font-display font-semibold text-2xl text-ink font-numeric">
+                {myStats.today.max_combo || 0}
+              </span>
             </div>
           </div>
         )}
 
         {/* 操作按钮 */}
-        <div className="flex gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
             onClick={() => navigate('/student/dashboard')}
-            className="flex-1 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-bold rounded-xl hover:shadow-lg transition"
+            className="py-3.5 border border-black/15 text-ink rounded-xl text-base font-medium hover:bg-black/5 transition"
           >
             返回首页
           </button>
@@ -526,9 +527,9 @@ const CompetitionLearning: React.FC = () => {
               setIsCompleted(false);
               loadQuestion();
             }}
-            className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold rounded-xl hover:shadow-lg transition"
+            className="py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
           >
-            再来一轮
+            再来一轮 →
           </button>
         </div>
       </div>

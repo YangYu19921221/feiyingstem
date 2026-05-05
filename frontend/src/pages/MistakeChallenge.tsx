@@ -445,10 +445,10 @@ function ResultPhase({
 
   return (
     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-center">
-      {/* 满分彩蛋 */}
+      {/* 满分彩蛋 — 暖橙系，去六色 */}
       {isPerfect && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-          {Array.from({ length: 40 }).map((_, i) => (
+          {Array.from({ length: 30 }).map((_, i) => (
             <motion.div
               key={i}
               initial={{
@@ -466,67 +466,36 @@ function ResultPhase({
                 delay: Math.random() * 1.5,
                 ease: 'easeIn',
               }}
-              className="absolute text-2xl"
-            >
-              {['🎉', '⭐', '🏆', '💯', '🎊', '✨', '🌟', '👑'][i % 8]}
-            </motion.div>
+              className={`absolute w-2 h-6 rounded-sm ${['bg-accent-warm', 'bg-amber-400', 'bg-accent-warm/60'][i % 3]}`}
+            />
           ))}
         </div>
       )}
 
-      {/* 分数环 */}
-      <div className="relative w-36 h-36 mx-auto mb-6">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="42" fill="none" stroke="#E5E7EB" strokeWidth="6" />
-          <motion.circle
-            cx="50" cy="50" r="42"
-            fill="none"
-            stroke={isPerfect ? '#22C55E' : score >= 80 ? '#3B82F6' : score >= 60 ? '#F59E0B' : '#EF4444'}
-            strokeWidth="6" strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 42}
-            initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
-            animate={{ strokeDashoffset: 2 * Math.PI * 42 * (1 - score / 100) }}
-            transition={{ duration: 1.2, ease: 'easeOut' }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <motion.span
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.5, type: 'spring' }}
-            className={`text-4xl font-bold ${
-              isPerfect ? 'text-green-600' : score >= 80 ? 'text-blue-600' : score >= 60 ? 'text-yellow-600' : 'text-red-500'
-            }`}
-          >
-            {score}
-          </motion.span>
-          <span className="text-xs text-gray-400">分</span>
-        </div>
-      </div>
+      {/* 结果插图 + 分数 */}
+      <motion.img
+        src={
+          isPerfect ? '/result-victory.jpeg'
+          : score >= 80 ? '/result-good.jpeg'
+          : score >= 60 ? '/result-pass.jpeg'
+          : '/result-retry.jpeg'
+        }
+        alt=""
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="w-36 h-36 md:w-44 md:h-44 mx-auto mb-5 rounded-2xl object-cover"
+      />
 
-      {/* 标题 */}
-      {isPerfect ? (
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.3 }}>
-          <div className="text-5xl mb-3">👑</div>
-          <h2 className="text-3xl font-bold text-green-600 mb-2">满分通关！</h2>
-          <p className="text-gray-500 mb-6">太棒了，全部答对！</p>
-        </motion.div>
-      ) : score >= 80 ? (
-        <>
-          <h2 className="text-2xl font-bold text-blue-600 mb-2">表现优秀！</h2>
-          <p className="text-gray-500 mb-6">{result.correct_count}/{result.total_count} 正确</p>
-        </>
-      ) : score >= 60 ? (
-        <>
-          <h2 className="text-2xl font-bold text-yellow-600 mb-2">继续加油！</h2>
-          <p className="text-gray-500 mb-6">{result.correct_count}/{result.total_count} 正确</p>
-        </>
-      ) : (
-        <>
-          <h2 className="text-2xl font-bold text-red-500 mb-2">需要多练习</h2>
-          <p className="text-gray-500 mb-6">{result.correct_count}/{result.total_count} 正确</p>
-        </>
-      )}
+      <p className="text-ink-mute text-sm mb-2">
+        {isPerfect ? '满分通关' : score >= 80 ? '表现优秀' : score >= 60 ? '继续加油' : '需要多练习'}
+      </p>
+      <h2 className="font-display text-5xl font-semibold text-ink leading-none tracking-tight mb-3 font-numeric">
+        {score}<span className="text-2xl text-ink-soft"> 分</span>
+      </h2>
+      <p className="text-ink-soft text-base mb-8">
+        {result.correct_count}/{result.total_count} 正确
+      </p>
 
       {/* 每题回顾 */}
       {feedbackHistory.length > 0 && (
