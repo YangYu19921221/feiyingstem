@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, BookOpen, TrendingUp, Clock, Target, PlayCircle } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import {
   getMistakeBookStats,
   getMistakeWords,
@@ -135,146 +135,128 @@ const MistakeBook = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-gray-500 mt-4">加载中...</p>
-        </div>
+        <p className="text-ink-mute text-sm">加载中…</p>
       </div>
     );
   }
 
+  const unresolvedTotal = stats?.total_mistakes ? stats.total_mistakes - stats.resolved_mistakes : 0;
+
   return (
     <div className="min-h-screen bg-paper">
-      {/* 顶部导航栏 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 px-4 py-2 hover:bg-white rounded-xl transition-all hover:shadow-md"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-              <span className="text-gray-600 font-medium">返回</span>
-            </button>
-
-            <h1 className="text-xl font-bold text-gray-800">错题集</h1>
-
-            <div className="w-24"></div>
-          </div>
+      {/* 顶部导航 */}
+      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回
+          </button>
+          <h1 className="font-display text-base font-semibold text-ink">错题集</h1>
+          <div className="w-12" />
         </div>
       </nav>
 
-      {/* Hero 横幅 */}
-      <div className="relative overflow-hidden" style={{ height: 160 }}>
-        <img src="/hero-mistake.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
-        <div className="relative z-10 h-full flex items-center px-6 max-w-7xl mx-auto">
-          <div className="text-white">
-            <h2 className="text-3xl font-bold drop-shadow">📕 我的错题集</h2>
-            <p className="text-sm opacity-80 mt-1 drop-shadow">攻克错题，每一次挑战都是成长</p>
+      <div className="max-w-5xl mx-auto px-5 py-10">
+        {/* Hero：共情 + 飞鹰陪伴 */}
+        <section className="mb-10 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
+          <div>
+            <p className="text-ink-mute text-sm mb-2">错题是进步的台阶</p>
+            {unresolvedTotal > 0 ? (
+              <>
+                <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-3">
+                  一起攻克这 <span className="font-numeric text-accent-warm">{unresolvedTotal}</span> 个词
+                </h2>
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                  错题记录让你看清薄弱点。每次认真复习一个，都会变成牢固的记忆。
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-3">
+                  {stats?.total_mistakes ? '暂时没有待攻克的词' : '还没有错题记录'}
+                </h2>
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                  {stats?.total_mistakes
+                    ? '保持下去，继续多做练习就好。'
+                    : '开始学习后，答错的单词会自动收录在这里。'}
+                </p>
+              </>
+            )}
           </div>
-        </div>
-      </div>
+          <img
+            src="/eagle-mistake.jpeg"
+            alt=""
+            className="w-32 h-32 md:w-44 md:h-44 justify-self-center md:justify-self-end rounded-2xl select-none"
+            loading="lazy"
+          />
+        </section>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* 统计卡片 */}
+        {/* 统计 — 数据条带 */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-red-500 to-pink-500 rounded-2xl p-6 text-white shadow-lg"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <BookOpen className="w-8 h-8" />
-                <span className="text-3xl font-bold">{stats.total_mistakes}</span>
-              </div>
-              <p className="text-white/90">总错题数</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-gradient-to-br from-orange-500 to-yellow-500 rounded-2xl p-6 text-white shadow-lg"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Target className="w-8 h-8" />
-                <span className="text-3xl font-bold">{stats.classify_mistakes || 0}</span>
-              </div>
-              <p className="text-white/90">待攻克</p>
-              <p className="text-white/60 text-xs mt-1">分类学习夹生/陌生词</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl p-6 text-white shadow-lg"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <TrendingUp className="w-8 h-8" />
-                <span className="text-3xl font-bold">{stats.resolved_mistakes}</span>
-              </div>
-              <p className="text-white/90">已掌握</p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl p-6 text-white shadow-lg"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Clock className="w-8 h-8" />
-                <span className="text-3xl font-bold">{stats.today_practice_count}</span>
-              </div>
-              <p className="text-white/90">今日练习</p>
-            </motion.div>
-          </div>
+          <section className="mb-10">
+            <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05]">
+              {[
+                { label: '总错题数', value: stats.total_mistakes, suffix: '' },
+                { label: '待攻克', value: stats.classify_mistakes || 0, suffix: '', hint: '分类学习夹生 / 陌生词' },
+                { label: '已掌握', value: stats.resolved_mistakes, suffix: '' },
+                { label: '今日练习', value: stats.today_practice_count, suffix: '' },
+              ].map((row) => (
+                <div key={row.label} className="px-5 py-4 flex items-baseline justify-between">
+                  <div>
+                    <span className="text-ink-soft text-sm">{row.label}</span>
+                    {row.hint && <span className="ml-2 text-xs text-ink-mute">{row.hint}</span>}
+                  </div>
+                  <span className="font-display font-semibold text-2xl text-ink font-numeric">
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
-        {/* 快速练习区域 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 shadow-lg mb-8"
-        >
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <PlayCircle className="w-6 h-6 text-primary" />
-            快速开始练习
-          </h2>
-
-          {/* 闯关复习到期强制提醒（置顶，优先级最高） */}
+        {/* 练习入口 */}
+        <section className="mb-10">
+          {/* 到期复习优先 */}
           {reviewDueCount > 0 && (
             <button
               onClick={() => navigate('/student/mistake-challenge')}
-              className="w-full mb-3 py-4 bg-gradient-to-r from-red-600 to-red-500 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all animate-pulse"
+              className="w-full mb-3 px-5 py-4 border-l-2 border-accent-warm bg-white hover:bg-black/[0.02] transition flex items-center justify-between text-left rounded-r-md"
             >
-              ⏰ 有 {reviewDueCount} 个错词需要复习！点击立即闯关
+              <div>
+                <p className="font-medium text-ink">
+                  有 <span className="font-numeric text-accent-warm">{reviewDueCount}</span> 个错词到了复习节点
+                </p>
+                <p className="text-xs text-ink-mute mt-0.5">现在复习，记忆最牢</p>
+              </div>
+              <span className="text-ink-soft text-sm">立即闯关 →</span>
             </button>
           )}
 
+          {/* 主练习按钮 */}
           <button
             onClick={handleStartPractice}
             disabled={!stats || (stats.classify_mistakes || 0) === 0}
-            className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-4 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 disabled:bg-black/[0.08] disabled:text-ink-mute disabled:cursor-not-allowed transition"
           >
             {stats && (stats.classify_mistakes || 0) > 0
-              ? `🚀 开始练习（${stats.classify_mistakes}个待攻克）`
-              : '暂无分类学习待攻克词'}
+              ? `开始练习 · ${stats.classify_mistakes} 个待攻克`
+              : '暂无待攻克词'}
           </button>
 
-          {/* 错题闯关入口 */}
+          {/* 闯关模式 */}
           {challengeSummary && challengeSummary.totalLevels > 0 && (
             <button
               onClick={() => navigate('/student/mistake-challenge')}
-              className="w-full mt-3 py-4 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all"
+              className="w-full mt-3 py-3.5 border border-black/15 text-ink rounded-xl text-sm font-medium hover:bg-black/5 transition"
             >
-              🏰 错题闯关模式（{challengeSummary.totalUnresolved} 词 / {challengeSummary.totalLevels} 关）
+              错题闯关模式 · {challengeSummary.totalUnresolved} 词 / {challengeSummary.totalLevels} 关
             </button>
           )}
-        </motion.div>
+        </section>
 
         {/* 错题列表 */}
         <div className="bg-white rounded-2xl p-6 shadow-lg">
