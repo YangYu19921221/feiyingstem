@@ -144,7 +144,7 @@ const MistakeBook = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-pink-50 to-blue-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航栏 */}
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3">

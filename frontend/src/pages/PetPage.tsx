@@ -508,7 +508,7 @@ function LeaderboardView({ pet, onBack }: { pet: Pet; onBack: () => void }) {
   const podiumOrder = [top3.find(e => e.rank === 2), top3.find(e => e.rank === 1), top3.find(e => e.rank === 3)];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#FFF8F0] to-[#FFF0E0]">
+    <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-2">

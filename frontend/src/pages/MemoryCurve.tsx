@@ -106,156 +106,96 @@ const MemoryCurve = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500"></div>
-          <p className="text-gray-500 mt-4">加载中...</p>
-        </div>
+        <p className="text-ink-mute text-sm">加载中…</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-paper">
-      {/* 顶部导航栏 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 px-4 py-2 hover:bg-white rounded-xl transition-all hover:shadow-md"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-              <span className="text-gray-600 font-medium">返回</span>
-            </button>
-
-            <h1 className="text-xl font-bold text-gray-800">记忆曲线</h1>
-
-            <div className="w-24"></div>
-          </div>
+      {/* 顶部导航 */}
+      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回
+          </button>
+          <h1 className="font-display text-base font-semibold text-ink">记忆曲线</h1>
+          <div className="w-12" />
         </div>
       </nav>
 
-      {/* Hero 横幅 */}
-      <div className="relative overflow-hidden" style={{ height: 160 }}>
-        <img src="/hero-memory.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent" />
-        <div className="relative z-10 h-full flex items-center px-6 max-w-7xl mx-auto">
-          <div className="text-white">
-            <h2 className="text-3xl font-bold drop-shadow">🧠 记忆曲线</h2>
-            <p className="text-sm opacity-80 mt-1 drop-shadow">科学复习，让知识永驻脑海</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* 今日复习卡片 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
+      <div className="max-w-5xl mx-auto px-5 py-10 space-y-10">
+        {/* Hero：今日复习 */}
+        <section>
           {stats && stats.due_today > 0 ? (
-            <div className="bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-6 -translate-x-6" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white/80 text-sm mb-1">今日推荐复习</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-5xl font-bold">{Math.min(20, stats.due_today)}</span>
-                      <span className="text-white/70">个单词 · 约 5 分钟</span>
-                    </div>
-                    <p className="text-white/60 text-xs mt-2">
-                      {stats.due_today > 20 ? (
-                        <>队列里共 {stats.due_today} 个待复习，按遗忘紧急度优先推送最该复习的 20 个</>
-                      ) : (
-                        <>明天还有 {stats.due_tomorrow} 个待复习</>
-                      )}
-                    </p>
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleStartReview}
-                    disabled={startingReview}
-                    className="bg-white text-cyan-600 font-bold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                  >
-                    <motion.span
-                      animate={{ scale: [1, 1.05, 1] }}
-                      transition={{ repeat: Infinity, duration: 2 }}
-                      className="inline-block"
-                    >
-                      {startingReview ? '准备中...' : '开始复习'}
-                    </motion.span>
-                  </motion.button>
-                </div>
-              </div>
-            </div>
+            <>
+              <p className="text-ink-mute text-sm mb-2">今日推荐复习 · 约 5 分钟</p>
+              <h2 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                <span className="font-numeric text-accent-warm">{Math.min(20, stats.due_today)}</span>{' '}
+                <span className="text-ink-soft">个该回顾的词</span>
+              </h2>
+              <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
+                {stats.due_today > 20
+                  ? `队列里共 ${stats.due_today} 个待复习，按遗忘紧急度优先推送最该复习的 20 个。`
+                  : `明天还有 ${stats.due_tomorrow} 个待复习。`}
+              </p>
+              <button
+                onClick={handleStartReview}
+                disabled={startingReview}
+                className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition disabled:opacity-50"
+              >
+                {startingReview ? '准备中…' : '开始复习 →'}
+              </button>
+            </>
           ) : stats && stats.total_learned === 0 ? (
-            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-cyan-200 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-start gap-4">
-                <span className="text-4xl">📖</span>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-2">还没有开始学习</h3>
-                  <p className="text-gray-600 text-sm mb-3">
-                    完成单词学习后，系统会根据<span className="font-bold text-cyan-600">艾宾浩斯遗忘曲线</span>自动安排复习计划。
-                  </p>
-                  <div className="bg-white rounded-xl p-4 mb-3">
-                    <p className="text-sm font-bold text-gray-700 mb-2">使用方法：</p>
-                    <ol className="text-sm text-gray-600 space-y-1.5">
-                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">1.</span> 回到首页，选择单词本进入学习</li>
-                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">2.</span> 完成分类记忆学习后，单词自动加入复习计划</li>
-                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">3.</span> 系统按间隔提醒你复习：5分钟→30分钟→12小时→1天→2天→4天→7天→15天→30天</li>
-                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">4.</span> 复习答对→进入下一阶段；答错→回退2级重新巩固</li>
-                      <li className="flex items-start gap-2"><span className="text-cyan-500 font-bold">5.</span> 通过全部9个阶段 = 完全掌握</li>
-                    </ol>
-                  </div>
-                  <button
-                    onClick={() => navigate('/student/dashboard')}
-                    className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl font-medium hover:shadow-lg transition"
-                  >
-                    去学习单词
-                  </button>
-                </div>
-              </div>
-            </div>
+            <>
+              <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-4">
+                还没开始学习
+              </h2>
+              <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
+                完成新单词学习后，系统按艾宾浩斯曲线自动安排复习：5 分 → 30 分 → 12 时 → 1 天 → 2 天 → 4 天 → 7 天 → 15 天 → 30 天。答对进下一阶段；答错回退 2 级。
+              </p>
+              <button
+                onClick={() => navigate('/student/dashboard')}
+                className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
+              >
+                去学习单词 →
+              </button>
+            </>
           ) : (
-            <div className="bg-gradient-to-r from-green-400 to-emerald-500 rounded-2xl p-6 text-white shadow-lg">
-              <div className="flex items-center gap-4">
-                <span className="text-4xl">🎉</span>
-                <div>
-                  <h3 className="text-xl font-bold">今日复习已完成!</h3>
-                  <p className="text-white/80 text-sm mt-1">
-                    {stats?.due_tomorrow ? `明天有 ${stats.due_tomorrow} 个单词需要复习` : '继续保持!'}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <>
+              <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-3">
+                今日复习已完成
+              </h2>
+              <p className="text-ink-soft text-base">
+                {stats?.due_tomorrow ? `明天有 ${stats.due_tomorrow} 个单词等你回顾。` : '继续保持节奏。'}
+              </p>
+            </>
           )}
-        </motion.div>
+        </section>
 
-        {/* 总体统计 */}
+        {/* 总体统计 — 数据条带 */}
         {stats && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-3 gap-4"
-          >
-            <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-              <p className="text-3xl font-bold text-cyan-600">{stats.total_learned}</p>
-              <p className="text-sm text-gray-500 mt-1">已学单词</p>
+          <section>
+            <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05]">
+              {[
+                { label: '已学单词', value: stats.total_learned, suffix: '' },
+                { label: '已掌握', value: stats.total_mastered, suffix: '' },
+                { label: '保留率', value: stats.retention_rate, suffix: '%' },
+              ].map((row) => (
+                <div key={row.label} className="px-5 py-4 flex items-baseline justify-between">
+                  <span className="text-ink-soft text-sm">{row.label}</span>
+                  <span className="font-display font-semibold text-2xl text-ink font-numeric">
+                    {row.value}{row.suffix && <span className="text-base text-ink-soft">{row.suffix}</span>}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-              <p className="text-3xl font-bold text-green-500">{stats.total_mastered}</p>
-              <p className="text-sm text-gray-500 mt-1">已掌握</p>
-            </div>
-            <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-              <p className="text-3xl font-bold text-blue-500">{stats.retention_rate}%</p>
-              <p className="text-sm text-gray-500 mt-1">保留率</p>
-            </div>
-          </motion.div>
+          </section>
         )}
 
         {/* 艾宾浩斯记忆曲线 */}
@@ -263,7 +203,7 @@ const MemoryCurve = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-2xl p-6 shadow-lg"
+          className="bg-white rounded-2xl p-6 border border-black/[0.05]"
         >
           <h2 className="text-lg font-bold text-gray-800 mb-1">📈 艾宾浩斯遗忘曲线</h2>
           <p className="text-sm text-gray-500 mb-4">
@@ -379,7 +319,7 @@ const MemoryCurve = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="bg-white rounded-2xl p-6 border border-black/[0.05]"
           >
             <h2 className="text-lg font-bold text-gray-800 mb-4">📅 7天复习计划</h2>
             <div className="grid grid-cols-7 gap-2">
@@ -423,7 +363,7 @@ const MemoryCurve = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="bg-white rounded-2xl p-6 border border-black/[0.05]"
           >
             <h2 className="text-lg font-bold text-gray-800 mb-4">🎯 学习阶段分布</h2>
 
@@ -475,7 +415,7 @@ const MemoryCurve = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="bg-white rounded-2xl p-6 border border-black/[0.05]"
           >
             <button
               onClick={() => setShowWordList(!showWordList)}

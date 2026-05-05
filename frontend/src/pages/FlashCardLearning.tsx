@@ -656,7 +656,7 @@ const FlashCardLearning = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-gray-500 mt-4">加载中...</p>
@@ -672,7 +672,7 @@ const FlashCardLearning = () => {
     };
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -696,7 +696,7 @@ const FlashCardLearning = () => {
 
   if (!learningData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <p className="text-gray-500">加载失败</p>
       </div>
     );
@@ -708,7 +708,7 @@ const FlashCardLearning = () => {
   const progress = ((currentIndex + 1) / learningData.words.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-pink-50 to-blue-50 relative overflow-hidden">
+    <div className="min-h-screen bg-paper relative overflow-hidden">
       {/* 装饰性背景元素 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-32 h-32 bg-yellow-200 rounded-full opacity-20 blur-3xl"></div>

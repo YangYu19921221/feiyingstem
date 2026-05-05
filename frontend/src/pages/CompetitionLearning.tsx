@@ -536,7 +536,7 @@ const CompetitionLearning: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-red-50">
+    <div className="min-h-screen bg-paper">
       {/* Hero 横幅 */}
       <div className="relative overflow-hidden" style={{ height: 160 }}>
         <img src="/hero-competition.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />

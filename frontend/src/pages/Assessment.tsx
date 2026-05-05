@@ -176,7 +176,7 @@ const Assessment = () => {
   const currentWord = words[currentIndex];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部 */}
       <div className="bg-white/80 backdrop-blur-md shadow-sm">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">

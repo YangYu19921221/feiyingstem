@@ -9,6 +9,7 @@ import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import PetWidget from '../components/PetWidget';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import { BookGridSkeleton } from '../components/Skeleton';
 
 interface UserData {
   id: number;
@@ -343,7 +344,7 @@ const StudentDashboard = () => {
           </header>
 
           {loading ? (
-            <div className="py-16 text-center text-ink-mute text-sm">加载中…</div>
+            <BookGridSkeleton count={3} />
           ) : ownedBooks.length === 0 ? (
             <div className="py-16 text-center border border-dashed border-black/10 rounded-2xl">
               <p className="text-ink-soft mb-1">还没有书籍</p>
