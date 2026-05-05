@@ -132,6 +132,7 @@ export interface StudentBook {
   grade_level: string | null;
   volume: string | null;
   cover_color: string;
+  cover_url: string | null;
   unit_count: number;
   word_count: number;
   progress_percentage: number;

@@ -47,6 +47,7 @@ class WordBook(Base):
     created_by = Column(Integer, nullable=True)  # 暂时不使用外键
     is_public = Column(Boolean, default=True)
     cover_color = Column(String(20), default="#FF6B6B")
+    cover_url = Column(String(500), nullable=True)  # AI 生成的封面图 URL，可空
     created_at = Column(DateTime, server_default=func.now())
 
 class BookWord(Base):

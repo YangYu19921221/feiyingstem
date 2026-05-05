@@ -88,6 +88,7 @@ class StudentBookListItem(BaseModel):
     grade_level: Optional[str]
     volume: Optional[str] = None
     cover_color: str
+    cover_url: Optional[str] = None
     unit_count: int = Field(0, description="单元数量")
     word_count: int = Field(0, description="总单词数")
     progress_percentage: float = Field(0.0, description="学习进度百分比")

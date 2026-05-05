@@ -194,6 +194,7 @@ export interface TeacherWordBook {
   grade_level: string | null;
   volume: string | null;
   cover_color: string;
+  cover_url: string | null;
   created_by: number;
   created_at: string;
   updated_at: string;

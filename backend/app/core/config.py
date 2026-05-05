@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-3-sonnet-20240229"
 
+    # 图片生成（gpt-image-2 OpenAI 兼容代理）
+    IMAGE_API_URL: str = "https://pikachu.claudecode.love/v1/images/generations"
+    IMAGE_API_KEY: str = ""
+    IMAGE_MODEL: str = "gpt-image-2"
+
     # 腾讯云短信配置
     TENCENT_SMS_SECRET_ID: str = ""
     TENCENT_SMS_SECRET_KEY: str = ""

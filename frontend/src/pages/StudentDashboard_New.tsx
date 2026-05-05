@@ -379,7 +379,7 @@ const StudentDashboard = () => {
                     >
                       <span className="text-gray-300 text-lg select-none">☰</span>
                       <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                        <img src={`/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
+                        <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-gray-800 truncate">{book.name}</h4>
@@ -403,7 +403,7 @@ const StudentDashboard = () => {
                       >
                         <div className="relative h-40 overflow-hidden">
                           <img
-                            src={`/book-cover-${coverIndex}.jpeg`}
+                            src={book.cover_url || `/book-cover-${coverIndex}.jpeg`}
                             alt={book.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
@@ -479,7 +479,7 @@ const StudentDashboard = () => {
                           onClick={() => navigate('/subscription/redeem')}
                         >
                           <div className="relative h-32 overflow-hidden">
-                            <img src={`/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
+                            <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                               <span className="text-4xl">🔒</span>
                             </div>

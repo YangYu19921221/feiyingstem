@@ -11,6 +11,7 @@ from app.schemas.word import (
     WordBatchImport, WordBatchImportResponse
 )
 from app.api.v1.auth import get_current_teacher
+from app.services.image_service import generate_book_cover
 
 router = APIRouter()
 
@@ -23,7 +24,13 @@ async def create_word_book(
     book_data: WordBookCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    """创建单词本"""
+    """创建单词本（同步生成 AI 封面，失败降级到 cover_color）"""
+    cover_url = await generate_book_cover(
+        name=book_data.name,
+        grade_level=book_data.grade_level,
+        description=book_data.description,
+    )
+
     db_book = WordBook(
         name=book_data.name,
         description=book_data.description,
@@ -31,12 +38,11 @@ async def create_word_book(
         volume=book_data.volume,
         is_public=book_data.is_public,
         cover_color=book_data.cover_color,
-        # created_by=current_user.id
+        cover_url=cover_url,
     )
     db.add(db_book)
     await db.flush()
 
-    # 添加单词到单词本
     for idx, word_id in enumerate(book_data.word_ids):
         book_word = BookWord(
             book_id=db_book.id,
@@ -55,6 +61,7 @@ async def create_word_book(
         volume=db_book.volume,
         is_public=db_book.is_public,
         cover_color=db_book.cover_color,
+        cover_url=db_book.cover_url,
         created_by=db_book.created_by or 0,
         word_count=len(book_data.word_ids),
         created_at=db_book.created_at
@@ -106,6 +113,7 @@ async def get_word_book(
         volume=db_book.volume,
         is_public=db_book.is_public,
         cover_color=db_book.cover_color,
+        cover_url=db_book.cover_url,
         created_by=db_book.created_by or 0,
         word_count=len(word_list),
         created_at=db_book.created_at,
@@ -151,6 +159,7 @@ async def list_word_books(
             volume=book.volume,
             is_public=book.is_public,
             cover_color=book.cover_color,
+            cover_url=book.cover_url,
             created_by=book.created_by or 0,
             word_count=count_map.get(book.id, 0),
             created_at=book.created_at,

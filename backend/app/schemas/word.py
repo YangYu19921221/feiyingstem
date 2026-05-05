@@ -86,6 +86,7 @@ class WordBookBase(BaseModel):
     volume: Optional[str] = Field(None, description="册次，如上册、下册，课外书留空")
     is_public: bool = Field(True, description="是否公开")
     cover_color: str = Field("#FF6B6B", description="封面颜色")
+    cover_url: Optional[str] = Field(None, description="AI 生成的封面图 URL，可空")
 
 class WordBookCreate(WordBookBase):
     word_ids: List[int] = Field(default_factory=list, description="单词ID列表")

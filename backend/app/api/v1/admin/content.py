@@ -106,6 +106,7 @@ async def get_all_word_books(
                 "grade_level": book.grade_level,
                 "is_public": book.is_public,
                 "cover_color": book.cover_color,
+                "cover_url": book.cover_url,
                 "created_by": book.created_by,
                 "created_at": book.created_at.isoformat() if book.created_at else None
             }

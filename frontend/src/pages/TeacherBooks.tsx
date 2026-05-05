@@ -283,13 +283,25 @@ const TeacherBooks = () => {
                     </div>
                   )}
 
-                  {/* 封面色块 */}
-                  <div
-                    className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl relative"
-                    style={{ background: book.cover_color }}
-                  >
-                    📖
-                  </div>
+                  {/* 封面：优先 AI 生成图，否则降级到色块 */}
+                  {book.cover_url ? (
+                    <div className="w-full h-32 rounded-xl mb-4 overflow-hidden relative bg-gray-100">
+                      <img
+                        src={book.cover_url}
+                        alt={book.name}
+                        loading="lazy"
+                        onError={(e) => { (e.currentTarget.style.display = 'none'); }}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl relative"
+                      style={{ background: book.cover_color }}
+                    >
+                      📖
+                    </div>
+                  )}
 
                   {/* 单词本信息 */}
                   <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-primary transition">
