@@ -7,6 +7,7 @@ import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
+import { getMyAchievements, type Achievement } from '../api/achievements';
 import PetWidget from '../components/PetWidget';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { BookGridSkeleton } from '../components/Skeleton';
@@ -56,6 +57,7 @@ const StudentDashboard = () => {
   const [onlineUsers, setOnlineUsers] = useState<number>(0);
   const [mistakeStats, setMistakeStats] = useState<{ unresolved_mistakes: number } | null>(null);
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
 
   // 强制复习：本次会话未完成复习则拦截
   const forcedReviewDone = sessionStorage.getItem('forced_review_done') === 'true';
@@ -68,6 +70,7 @@ const StudentDashboard = () => {
     loadOnlineUsers();
     loadMistakeStats();
     loadReviewDueCount();
+    loadAchievements();
 
     // 定期更新在线人数(每30秒)
     const interval = setInterval(loadOnlineUsers, 30000);
@@ -125,6 +128,15 @@ const StudentDashboard = () => {
       setReviewDueCount(data.due_today);
     } catch (error) {
       console.error('加载复习数据失败:', error);
+    }
+  };
+
+  const loadAchievements = async () => {
+    try {
+      const data = await getMyAchievements();
+      setAchievements(data.achievements || []);
+    } catch (error) {
+      console.error('加载成就失败:', error);
     }
   };
 
@@ -217,14 +229,15 @@ const StudentDashboard = () => {
     navigate(`/student/books/${bookId}/units`);
   };
 
-  const achievements = [
-    { icon: '🌱', name: '初出茅庐', unlocked: true },
-    { icon: '📚', name: '小有成就', unlocked: true },
-    { icon: '🔥', name: '每日一练', unlocked: true },
-    { icon: '💪', name: '坚持不懈', unlocked: true },
-    { icon: '🔒', name: '单词大师', unlocked: false },
-    { icon: '🔒', name: '精准射手', unlocked: false },
-  ];
+  // 取首页展示的成就（已解锁优先 + 兜底未解锁，最多 6 个）
+  const previewAchievements = useMemo(() => {
+    const unlocked = achievements.filter(a => a.unlocked);
+    const locked = achievements.filter(a => !a.unlocked);
+    return [...unlocked, ...locked].slice(0, 6);
+  }, [achievements]);
+
+  const unlockedCount = achievements.filter(a => a.unlocked).length;
+
 
   return (
     <div className="min-h-screen bg-paper">
@@ -285,7 +298,10 @@ const StudentDashboard = () => {
         {/* Hero：今日核心任务（最重要的一件事） */}
         <section className="mb-12">
           <p className="text-ink-mute text-sm mb-2">
-            👋 {user?.full_name || '同学'} · 第 7 天打卡
+            👋 {user?.full_name || '同学'}
+            {stats && stats.streak_days > 0 && (
+              <> · 连续学习 <span className="font-numeric text-ink-soft">{stats.streak_days}</span> 天</>
+            )}
           </p>
           {reviewDueCount > 0 ? (
             <>
@@ -577,40 +593,43 @@ const StudentDashboard = () => {
           </section>
         )}
 
-        {/* 成就预览 — 紧凑 */}
-        <section className="mb-12">
-          <header className="flex items-baseline justify-between mb-5">
-            <h2 className="font-display text-xl font-semibold text-ink">最近成就</h2>
-            <button
-              onClick={() => navigate('/student/achievements')}
-              className="text-sm text-ink-soft hover:text-ink transition"
-            >
-              查看全部 →
-            </button>
-          </header>
-          <div className="bg-white rounded-2xl border border-black/[0.05] p-5">
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
-              {achievements.map((achievement) => (
-                <button
-                  key={achievement.name}
-                  onClick={() => navigate('/student/achievements')}
-                  className={`text-center p-3 rounded-lg transition ${
-                    achievement.unlocked
-                      ? 'hover:bg-black/[0.04]'
-                      : 'opacity-40'
-                  }`}
-                >
-                  <div className="text-3xl mb-1.5">{achievement.icon}</div>
-                  <p className="text-[11px] text-ink-soft truncate">{achievement.name}</p>
-                </button>
-              ))}
+        {/* 成就预览 — 紧凑（仅在有成就数据时显示） */}
+        {achievements.length > 0 && (
+          <section className="mb-12">
+            <header className="flex items-baseline justify-between mb-5">
+              <h2 className="font-display text-xl font-semibold text-ink">最近成就</h2>
+              <button
+                onClick={() => navigate('/student/achievements')}
+                className="text-sm text-ink-soft hover:text-ink transition"
+              >
+                查看全部 →
+              </button>
+            </header>
+            <div className="bg-white rounded-2xl border border-black/[0.05] p-5">
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+                {previewAchievements.map((achievement) => (
+                  <button
+                    key={achievement.id}
+                    onClick={() => navigate('/student/achievements')}
+                    className={`text-center p-3 rounded-lg transition ${
+                      achievement.unlocked
+                        ? 'hover:bg-black/[0.04]'
+                        : 'opacity-40'
+                    }`}
+                    title={achievement.description || achievement.name}
+                  >
+                    <div className="text-3xl mb-1.5">{achievement.icon || '🏆'}</div>
+                    <p className="text-[11px] text-ink-soft truncate">{achievement.name}</p>
+                  </button>
+                ))}
+              </div>
+              <div className="pt-4 border-t border-black/[0.05] flex items-center justify-between text-sm">
+                <span className="text-ink-soft">已解锁 <span className="font-numeric font-semibold text-ink">{unlockedCount}</span> / {achievements.length} 个成就</span>
+                <span className="text-ink-soft">总积分 <span className="font-numeric font-semibold text-ink">{stats?.total_points || 0}</span></span>
+              </div>
             </div>
-            <div className="pt-4 border-t border-black/[0.05] flex items-center justify-between text-sm">
-              <span className="text-ink-soft">已解锁 <span className="font-numeric font-semibold text-ink">{achievements.filter(a => a.unlocked).length}</span> 个成就</span>
-              <span className="text-ink-soft">总积分 <span className="font-numeric font-semibold text-ink">{stats?.total_points || 0}</span></span>
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
       </div>
 
       <ChangePasswordModal
