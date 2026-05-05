@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle, Star, Trophy, Clock, Target, TrendingUp, ArrowLeft, Play } from 'lucide-react';
+import { CheckCircle, Star, ArrowLeft, Play } from 'lucide-react';
 import { checkAchievements, type UnlockedAchievement } from '../api/achievements';
 import { earnFood, feedPet, type EarnFoodResponse } from '../api/pet';
 import AchievementModal from '../components/AchievementModal';
@@ -85,8 +85,9 @@ const CompletionScreen = () => {
   }
 
   const percentage = (data.score / data.total * 100).toFixed(0);
-  const isExcellent = parseInt(percentage) >= 90;
-  const isGood = parseInt(percentage) >= 70;
+  const pct = parseInt(percentage);
+  const isExcellent = pct >= 90;
+  const isGood = pct >= 70;
 
   const formatTime = (seconds?: number) => {
     if (!seconds) return '未计时';
@@ -95,50 +96,10 @@ const CompletionScreen = () => {
     return `${mins}分${secs}秒`;
   };
 
-  // 根据模式返回不同的颜色主题
-  const getThemeColors = () => {
-    switch (data.mode) {
-      case 'classify':
-        return {
-          gradient: 'from-teal-500 via-emerald-500 to-green-500',
-          bg: 'from-teal-50 via-emerald-50 to-green-50',
-          icon: '🧠'
-        };
-      case 'spelling':
-        return {
-          gradient: 'from-purple-500 via-pink-500 to-blue-500',
-          bg: 'from-purple-50 via-pink-50 to-blue-50',
-          icon: '✏️'
-        };
-      case 'fillblank':
-        return {
-          gradient: 'from-orange-500 via-pink-500 to-red-500',
-          bg: 'from-orange-50 via-yellow-50 to-pink-50',
-          icon: '📝'
-        };
-      case 'quiz':
-        return {
-          gradient: 'from-green-500 via-emerald-500 to-teal-500',
-          bg: 'from-green-50 via-emerald-50 to-teal-50',
-          icon: '✅'
-        };
-      default:
-        return {
-          gradient: 'from-blue-500 to-purple-500',
-          bg: 'from-blue-50 to-purple-50',
-          icon: '🎯'
-        };
-    }
-  };
-
-  const theme = getThemeColors();
-
-  // 计算获得的星星数
   const getStars = () => {
-    const percent = parseInt(percentage);
-    if (percent >= 90) return 3;
-    if (percent >= 70) return 2;
-    if (percent >= 50) return 1;
+    if (pct >= 90) return 3;
+    if (pct >= 70) return 2;
+    if (pct >= 50) return 1;
     return 0;
   };
 
@@ -160,11 +121,11 @@ const CompletionScreen = () => {
   };
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br ${theme.bg} relative overflow-hidden`}>
-      {/* 简易彩带效果 (使用CSS动画) */}
+    <div className="min-h-screen bg-paper relative">
+      {/* 彩带 — 暖橙色，不再六色乱炖 */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-50">
-          {Array.from({ length: 50 }).map((_, i) => (
+          {Array.from({ length: 40 }).map((_, i) => (
             <motion.div
               key={i}
               initial={{
@@ -181,246 +142,173 @@ const CompletionScreen = () => {
                 delay: Math.random() * 0.5,
                 ease: 'linear'
               }}
-              className={`absolute w-3 h-8 ${
-                ['bg-red-500', 'bg-blue-500', 'bg-yellow-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500'][i % 6]
-              } rounded-sm`}
+              className={`absolute w-2 h-6 rounded-sm ${
+                ['bg-accent-warm', 'bg-amber-400', 'bg-accent-warm/60'][i % 3]
+              }`}
             />
           ))}
         </div>
       )}
 
       {/* 顶部导航 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 py-3">
+      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
+        <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2 px-4 py-2 hover:bg-white rounded-xl transition-all hover:shadow-md"
+            className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-            <span className="text-gray-600 font-medium">返回</span>
+            <ArrowLeft className="w-4 h-4" />
+            返回
           </button>
         </div>
       </nav>
 
-      {/* Hero 横幅 */}
-      <div className="relative overflow-hidden" style={{ height: 200 }}>
-        <img src="/hero-completion.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50" />
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-white">
-          <div className="text-5xl mb-2">{isExcellent ? '🎉' : isGood ? '👏' : '💪'}</div>
-          <h1 className="text-3xl font-bold drop-shadow-lg">{isExcellent ? '太棒了！' : isGood ? '做得不错！' : '继续加油！'}</h1>
-          <p className="text-sm opacity-80 mt-1 drop-shadow">你已完成 {data.modeName} 学习</p>
-        </div>
-      </div>
-
-      {/* 主内容区 */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* 标题区 */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-12"
-        >
-          <p className="text-xl text-gray-600">
-            你已完成 <span className={`font-bold bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent`}>
-              {data.modeName}
-            </span> 学习
+      <div className="max-w-3xl mx-auto px-5 pt-10 pb-12">
+        {/* Hero：折纸鹰飞翔插图 + 大数字 */}
+        <section className="text-center mb-12">
+          <motion.img
+            src="/hero-completion.jpeg"
+            alt=""
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+            className="w-44 h-44 md:w-56 md:h-56 mx-auto mb-6 rounded-2xl object-cover"
+          />
+          <p className="text-ink-mute text-sm mb-2">
+            {data.modeName} 学习完成
+            {data.unitName && <> · {data.unitName}</>}
           </p>
+          <h1 className="font-display text-5xl md:text-6xl font-semibold text-ink leading-none tracking-tight mb-3 font-numeric">
+            {percentage}<span className="text-3xl md:text-4xl text-ink-soft">%</span>
+          </h1>
+          <p className="text-ink-soft text-base">
+            {isExcellent ? '表现非常出色' : isGood ? '不错的成绩' : '继续努力会进步'}
+          </p>
+        </section>
 
-          {/* 单元上下文 */}
-          {data.unitName && (
-            <p className="mt-3 text-sm text-gray-500 bg-white/60 inline-block px-4 py-1.5 rounded-full">
-              📖 {data.unitName}
-              {data.totalUnitWords ? ` · 本次练习 ${data.total}/${data.totalUnitWords} 个单词` : ''}
-            </p>
-          )}
-        </motion.div>
-
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {/* 得分卡片 */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`p-3 bg-gradient-to-r ${theme.gradient} rounded-xl`}>
-                <Target className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-700">正确率</h3>
-            </div>
-            <div className="text-center">
-              <p className={`text-5xl font-bold bg-gradient-to-r ${theme.gradient} bg-clip-text text-transparent mb-2`}>
-                {percentage}%
-              </p>
-              <p className="text-gray-500">
-                {data.score} / {data.total} 题正确
-              </p>
-            </div>
-          </motion.div>
-
-          {/* 用时卡片 */}
+        {/* 统计 — 三栏数据条带 */}
+        <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05] mb-8">
+          <div className="px-5 py-4 flex items-baseline justify-between">
+            <span className="text-ink-soft text-sm">答对</span>
+            <span className="font-display font-semibold text-2xl text-ink font-numeric">
+              {data.score}<span className="text-base text-ink-soft"> / {data.total}</span>
+            </span>
+          </div>
           {data.timeSpent !== undefined && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="bg-white rounded-2xl p-6 shadow-lg"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`p-3 bg-gradient-to-r ${theme.gradient} rounded-xl`}>
-                  <Clock className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-700">用时</h3>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-gray-800 mb-2">
+            <div className="px-5 py-4 flex items-baseline justify-between">
+              <span className="text-ink-soft text-sm">用时</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display font-semibold text-2xl text-ink font-numeric">
                   {formatTime(data.timeSpent)}
-                </p>
-                <p className="text-gray-500">
-                  平均 {(data.timeSpent / data.total).toFixed(1)} 秒/题
-                </p>
+                </span>
+                <span className="text-xs text-ink-mute font-numeric">
+                  平均 {(data.timeSpent / data.total).toFixed(1)}s/题
+                </span>
               </div>
-            </motion.div>
+            </div>
           )}
-
-          {/* 星星卡片 */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`p-3 bg-gradient-to-r ${theme.gradient} rounded-xl`}>
-                <Trophy className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-700">获得星星</h3>
+          <div className="px-5 py-4 flex items-baseline justify-between">
+            <span className="text-ink-soft text-sm">星星</span>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.3 + i * 0.1, type: 'spring', stiffness: 200 }}
+                >
+                  <Star
+                    className={`w-6 h-6 ${
+                      i < stars
+                        ? 'fill-accent-warm text-accent-warm'
+                        : 'fill-black/[0.06] text-black/[0.06]'
+                    }`}
+                  />
+                </motion.div>
+              ))}
             </div>
-            <div className="text-center">
-              <div className="flex justify-center gap-2 mb-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ scale: 0, rotate: -180 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    transition={{
-                      delay: 0.6 + i * 0.1,
-                      type: 'spring',
-                      stiffness: 200
-                    }}
-                  >
-                    <Star
-                      className={`w-10 h-10 ${
-                        i < stars
-                          ? 'fill-yellow-400 text-yellow-400'
-                          : 'fill-gray-200 text-gray-200'
-                      }`}
-                    />
-                  </motion.div>
-                ))}
-              </div>
-              <p className="text-gray-500">
-                {stars === 3 ? '完美!' : stars === 2 ? '优秀!' : stars === 1 ? '良好!' : '继续努力!'}
-              </p>
-            </div>
-          </motion.div>
+          </div>
         </div>
 
-        {/* 宠物粮奖励卡片 */}
+        {/* 宠物粮 */}
         {foodResult && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.55 }}
-            className="bg-white rounded-2xl p-6 shadow-lg mb-8"
+            transition={{ delay: 0.4 }}
+            className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">🦴</span>
-                <h3 className="text-lg font-bold text-gray-700">获得宠物粮</h3>
-              </div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.7, type: 'spring', stiffness: 300 }}
-                className="text-3xl font-bold text-orange-500"
-              >
+            <div className="flex items-baseline justify-between mb-3">
+              <h3 className="font-display text-base font-semibold text-ink">获得宠物粮</h3>
+              <span className="font-display text-2xl font-semibold text-accent-warm font-numeric">
                 +{foodResult.food_earned}
-              </motion.div>
+              </span>
             </div>
-            <div className="flex flex-wrap gap-2 text-sm text-gray-500 mb-4">
-              <span className="bg-gray-100 px-2 py-1 rounded-lg">基础 +{foodResult.breakdown.base}</span>
-              <span className="bg-blue-50 px-2 py-1 rounded-lg">正确率 +{foodResult.breakdown.accuracy_bonus}</span>
+            <div className="flex flex-wrap gap-1.5 text-xs text-ink-mute mb-4">
+              <span>基础 +{foodResult.breakdown.base}</span>
+              <span>·</span>
+              <span>正确率 +{foodResult.breakdown.accuracy_bonus}</span>
               {foodResult.breakdown.mode_bonus > 0 && (
-                <span className="bg-purple-50 px-2 py-1 rounded-lg">模式 +{foodResult.breakdown.mode_bonus}</span>
+                <><span>·</span><span>模式 +{foodResult.breakdown.mode_bonus}</span></>
               )}
               {foodResult.is_first_today && (
-                <span className="bg-yellow-50 px-2 py-1 rounded-lg">每日首练 +{foodResult.breakdown.daily_bonus}</span>
+                <><span>·</span><span>每日首练 +{foodResult.breakdown.daily_bonus}</span></>
               )}
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-gray-500">当前余额: 🦴 {foodResult.food_balance}</p>
+            <div className="flex items-center justify-between pt-3 border-t border-black/[0.05]">
+              <p className="text-sm text-ink-soft font-numeric">余额 {foodResult.food_balance}</p>
               {foodResult.food_balance >= 5 ? (
                 <button
                   onClick={handleFeedPet}
                   disabled={feedingPet}
-                  className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white rounded-xl font-medium transition-colors"
+                  className="px-4 py-2 bg-accent-warm hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition"
                 >
-                  {feedingPet ? '喂食中...' : '🦴 5 喂食宠物'}
+                  {feedingPet ? '喂食中…' : '喂食宠物（5）'}
                 </button>
               ) : (
-                <span className="text-sm text-gray-400">粮食不足，继续练习吧</span>
+                <span className="text-xs text-ink-mute">粮食不足</span>
               )}
             </div>
             {feedMessage && (
-              <p className="mt-3 text-center text-green-600 font-medium">{feedMessage}</p>
+              <p className="mt-3 text-center text-sm text-ink-soft">{feedMessage}</p>
             )}
           </motion.div>
         )}
 
-        {/* 薄弱词汇列表 */}
+        {/* 薄弱词汇 */}
         {data.weakWords && data.weakWords.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl p-8 shadow-lg mb-8"
+            transition={{ delay: 0.5 }}
+            className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
           >
-            <div className="flex items-center gap-3 mb-6">
-              <TrendingUp className="w-7 h-7 text-orange-500" />
-              <h2 className="text-2xl font-bold text-gray-800">需要加强的单词</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <h2 className="font-display text-base font-semibold text-ink mb-4">需要加强的单词</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {data.weakWords.map((word, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.7 + index * 0.1 }}
-                  className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200 rounded-xl p-4"
+                  transition={{ delay: 0.6 + index * 0.05 }}
+                  className="flex items-center justify-between gap-3 p-3 border-l-2 border-accent-warm bg-black/[0.015] rounded-r-md"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-xl font-bold text-gray-800">{word.word}</p>
-                        <button
-                          onClick={() => playAudio(word.word)}
-                          className="text-gray-400 hover:text-orange-500 transition-colors"
-                          title="播放发音"
-                        >
-                          🔊
-                        </button>
-                      </div>
-                      <p className="text-gray-600">{word.meaning}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-display font-semibold text-ink truncate">{word.word}</p>
+                      <button
+                        onClick={() => playAudio(word.word)}
+                        className="text-ink-mute hover:text-accent-warm transition shrink-0"
+                        title="播放发音"
+                      >
+                        🔊
+                      </button>
                     </div>
-                    <div className="bg-orange-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                      错 {word.attempts} 次
-                    </div>
+                    <p className="text-xs text-ink-soft truncate">{word.meaning}</p>
                   </div>
+                  <span className="text-xs text-accent-warm font-numeric font-medium shrink-0">
+                    错 {word.attempts}
+                  </span>
                 </motion.div>
               ))}
             </div>
@@ -431,81 +319,59 @@ const CompletionScreen = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.65 }}
-          className="bg-white rounded-2xl p-6 shadow-lg mb-8"
+          transition={{ delay: 0.55 }}
+          className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
         >
-          <h3 className="text-lg font-bold text-gray-800 mb-3">💡 学习建议</h3>
-          {parseInt(percentage) >= 90 ? (
-            <p className="text-gray-600">
-              掌握得很好！可以尝试下一个单元，或者用拼写模式挑战自己。
+          <h3 className="font-display text-base font-semibold text-ink mb-2">学习建议</h3>
+          {pct >= 90 ? (
+            <p className="text-ink-soft text-sm leading-relaxed">
+              掌握得很好。可以挑战下一个单元，或用拼写模式做更高强度练习。
             </p>
-          ) : parseInt(percentage) >= 70 ? (
-            <div className="text-gray-600">
-              <p className="mb-2">建议用拼写模式巩固这些单词：</p>
-              <div className="flex flex-wrap gap-2">
+          ) : pct >= 70 ? (
+            <div className="text-ink-soft text-sm leading-relaxed">
+              <p className="mb-3">建议用拼写模式巩固这些单词：</p>
+              <div className="flex flex-wrap gap-1.5">
                 {data.weakWords?.map((w, i) => (
-                  <span key={i} className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium">
+                  <span key={i} className="px-2 py-0.5 border border-black/10 text-ink rounded text-xs font-medium">
                     {w.word}
                   </span>
                 ))}
               </div>
             </div>
           ) : (
-            <p className="text-gray-600">
-              建议回到卡片模式重新学习这些单词，熟悉后再来练习。
+            <p className="text-ink-soft text-sm leading-relaxed">
+              建议回到分类模式重新学习这些单词，熟悉后再回来挑战。
             </p>
           )}
         </motion.div>
 
-        {/* 激励语 */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className={`bg-gradient-to-r ${theme.gradient} rounded-2xl p-8 text-white text-center shadow-2xl mb-8`}
-        >
-          <CheckCircle className="w-16 h-16 mx-auto mb-4" />
-          <p className="text-2xl font-bold mb-2">
-            {isExcellent
-              ? '你的表现非常出色!保持这个状态!'
-              : isGood
-                ? '很不错的成绩!再接再厉!'
-                : '不要气馁,多练习就会进步!'}
-          </p>
-          <p className="text-lg opacity-90">
-            坚持每天学习,你会越来越棒! 💪
-          </p>
-        </motion.div>
-
         {/* 操作按钮 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {data.weakWords && data.weakWords.length > 0 && (
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.9 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              transition={{ delay: 0.7 }}
               onClick={() => navigate(`/student/units/${data.unitId}/${data.mode}`, {
-                state: { reviewWords: data.weakWords.map(w => w.word) }
+                state: { reviewWords: data.weakWords!.map(w => w.word) }
               })}
-              className="flex items-center justify-center gap-2 py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-lg shadow-lg transition"
+              className="flex items-center justify-center gap-2 py-3.5 border border-black/15 text-ink rounded-xl text-base font-medium hover:bg-black/5 transition"
             >
-              <Play className="w-5 h-5" />
-              复习薄弱词汇
+              <Play className="w-4 h-4" />
+              复习薄弱词
             </motion.button>
           )}
 
           <motion.button
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.0 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            transition={{ delay: 0.8 }}
             onClick={() => navigate(-1)}
-            className={`flex items-center justify-center gap-2 py-4 bg-gradient-to-r ${theme.gradient} text-white rounded-xl font-bold text-lg shadow-lg`}
+            className={`flex items-center justify-center gap-2 py-3.5 bg-accent-warm hover:opacity-90 text-white rounded-xl text-base font-semibold transition ${
+              !(data.weakWords && data.weakWords.length > 0) ? 'md:col-span-2' : ''
+            }`}
           >
-            <CheckCircle className="w-5 h-5" />
+            <CheckCircle className="w-4 h-4" />
             返回单元列表
           </motion.button>
         </div>
