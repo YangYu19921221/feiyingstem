@@ -238,6 +238,20 @@ const StudentDashboard = () => {
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
 
+  // 飞鹰状态：跟随今日学习节奏，给学生情感反馈
+  // - alert 警觉：有待复习
+  // - soaring 翱翔：有书架且全部 100% 完成（毕业感）
+  // - studying 苦读：有书架，且至少一本进度 0~100%（学习中）
+  // - idle 睡觉：默认（无书 / 全 0%）
+  const eagleState: 'idle' | 'alert' | 'studying' | 'soaring' = useMemo(() => {
+    if (reviewDueCount > 0) return 'alert';
+    if (ownedBooks.length === 0) return 'idle';
+    const allDone = ownedBooks.every(b => b.progress_percentage >= 100);
+    if (allDone) return 'soaring';
+    const anyInProgress = ownedBooks.some(b => b.progress_percentage > 0);
+    return anyInProgress ? 'studying' : 'idle';
+  }, [reviewDueCount, ownedBooks]);
+
 
   return (
     <div className="min-h-screen bg-paper">
@@ -295,50 +309,81 @@ const StudentDashboard = () => {
       </nav>
 
       <div className="max-w-6xl mx-auto px-5 py-10">
-        {/* Hero：今日核心任务（最重要的一件事） */}
-        <section className="mb-12">
-          <p className="text-ink-mute text-sm mb-2">
-            👋 {user?.full_name || '同学'}
-            {stats && stats.streak_days > 0 && (
-              <> · 连续学习 <span className="font-numeric text-ink-soft">{stats.streak_days}</span> 天</>
+        {/* Hero：今日核心任务 + 飞鹰陪伴 */}
+        <section className="mb-12 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
+          <div>
+            <p className="text-ink-mute text-sm mb-2">
+              👋 {user?.full_name || '同学'}
+              {stats && stats.streak_days > 0 && (
+                <> · 连续学习 <span className="font-numeric text-ink-soft">{stats.streak_days}</span> 天</>
+              )}
+            </p>
+            {reviewDueCount > 0 ? (
+              <>
+                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                  今天，先复习<br />
+                  <span className="font-numeric text-accent-warm">{Math.min(20, reviewDueCount)}</span>{' '}
+                  <span className="text-ink-soft">个该回顾的词</span>
+                </h1>
+                <p className="text-ink-soft text-base mb-6 max-w-xl leading-relaxed">
+                  根据艾宾浩斯曲线，这些是你现在最该温习的单词。预计花费 5 分钟。
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={handleStartForcedReview}
+                    className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
+                  >
+                    开始复习 →
+                  </button>
+                  <button
+                    onClick={() => navigate('/student/memory-curve')}
+                    className="text-ink-soft hover:text-ink text-sm transition"
+                  >
+                    查看完整复习计划
+                  </button>
+                </div>
+              </>
+            ) : eagleState === 'soaring' ? (
+              <>
+                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                  全部完成。<br />
+                  <span className="text-ink-soft">了不起。</span>
+                </h1>
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                  今天的任务都做完了，明天再来。
+                </p>
+              </>
+            ) : eagleState === 'studying' ? (
+              <>
+                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                  继续上次的进度<br />
+                  <span className="text-ink-soft">从书架挑一本</span>
+                </h1>
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                  你正在学习中。完成单元后，单词会自动进入复习计划。
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                  开始第一本<br />
+                  <span className="text-ink-soft">单词本吧</span>
+                </h1>
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                  从书架挑一本，每天 20 分钟，三个月看到变化。
+                </p>
+              </>
             )}
-          </p>
-          {reviewDueCount > 0 ? (
-            <>
-              <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
-                今天，先复习<br />
-                <span className="font-numeric text-accent-warm">{Math.min(20, reviewDueCount)}</span>{' '}
-                <span className="text-ink-soft">个该回顾的词</span>
-              </h1>
-              <p className="text-ink-soft text-base mb-6 max-w-xl leading-relaxed">
-                根据艾宾浩斯曲线，这些是你现在最该温习的单词。预计花费 5 分钟。
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={handleStartForcedReview}
-                  className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
-                >
-                  开始复习 →
-                </button>
-                <button
-                  onClick={() => navigate('/student/memory-curve')}
-                  className="text-ink-soft hover:text-ink text-sm transition"
-                >
-                  查看完整复习计划
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
-                今天没有待复习。<br />
-                <span className="text-ink-soft">从书架挑一本继续吧。</span>
-              </h1>
-              <p className="text-ink-soft text-base max-w-xl leading-relaxed">
-                完成新单元学习后，单词会自动进入复习计划。
-              </p>
-            </>
-          )}
+          </div>
+          {/* 飞鹰陪伴：根据学习状态切换 */}
+          <img
+            key={eagleState}
+            src={`/eagle-${eagleState}.jpeg`}
+            alt=""
+            className="w-32 h-32 md:w-44 md:h-44 justify-self-center md:justify-self-end rounded-2xl select-none"
+            style={{ animation: 'fadeIn 0.4s ease-out' }}
+            loading="lazy"
+          />
         </section>
 
         {/* 我的书架 */}
