@@ -8,6 +8,7 @@ import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import { getMyAchievements, type Achievement } from '../api/achievements';
+import { getMyHomework } from '../api/homework';
 import PetWidget from '../components/PetWidget';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { BookGridSkeleton } from '../components/Skeleton';
@@ -59,6 +60,7 @@ const StudentDashboard = () => {
   const [mistakeStats, setMistakeStats] = useState<{ unresolved_mistakes: number } | null>(null);
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [pendingHomeworkCount, setPendingHomeworkCount] = useState<number>(0);
 
   // 强制复习：本次会话未完成复习则拦截
   const forcedReviewDone = sessionStorage.getItem('forced_review_done') === 'true';
@@ -72,6 +74,7 @@ const StudentDashboard = () => {
     loadMistakeStats();
     loadReviewDueCount();
     loadAchievements();
+    loadPendingHomework();
 
     // 定期更新在线人数(每30秒)
     const interval = setInterval(loadOnlineUsers, 30000);
@@ -138,6 +141,18 @@ const StudentDashboard = () => {
       setAchievements(data.achievements || []);
     } catch (error) {
       console.error('加载成就失败:', error);
+    }
+  };
+
+  const loadPendingHomework = async () => {
+    try {
+      const data = await getMyHomework();
+      const pending = data.filter((h: { status: string }) =>
+        h.status !== 'completed' && h.status !== 'graded',
+      ).length;
+      setPendingHomeworkCount(pending);
+    } catch (error) {
+      console.error('加载作业失败:', error);
     }
   };
 
@@ -548,16 +563,80 @@ const StudentDashboard = () => {
           <PetWidget />
         </section>
 
-        {/* 功能磁贴 — 等权重，去渐变，去 hero 化 */}
+        {/* 学习工具 — 分层：3 主磁贴 + 4 小磁贴 */}
         <section className="mb-12">
           <header className="flex items-baseline justify-between mb-5">
             <h2 className="font-display text-xl font-semibold text-ink">学习工具</h2>
           </header>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+
+          {/* 3 大磁贴：图 + 数字 + 动作 */}
+          <div className="grid md:grid-cols-3 gap-3 mb-3">
             {[
-              { title: '记忆曲线', desc: '科学复习', route: '/student/memory-curve', metric: reviewDueCount > 0 ? Math.min(20, reviewDueCount) : null, metricLabel: '待复习' },
-              { title: '错题集', desc: '查漏补缺', route: '/student/mistake-book', metric: mistakeStats?.unresolved_mistakes || null, metricLabel: '待攻克' },
-              { title: '我的作业', desc: '老师分配', route: '/student/assignments' },
+              {
+                title: '记忆曲线',
+                route: '/student/memory-curve',
+                image: reviewDueCount > 0 ? '/eagle-alert.jpeg' : '/eagle-idle.jpeg',
+                metric: reviewDueCount > 0 ? Math.min(20, reviewDueCount) : null,
+                metricLabel: '个词待回顾',
+                empty: '今日无需复习',
+                action: reviewDueCount > 0 ? '开始复习 →' : '查看计划 →',
+              },
+              {
+                title: '错题集',
+                route: '/student/mistake-book',
+                image: '/eagle-mistake.jpeg',
+                metric: mistakeStats?.unresolved_mistakes || null,
+                metricLabel: '个错题待处理',
+                empty: '没有待攻克的词',
+                action: (mistakeStats?.unresolved_mistakes || 0) > 0 ? '去攻克 →' : '查看记录 →',
+              },
+              {
+                title: '我的作业',
+                route: '/student/assignments',
+                image: '/eagle-homework.jpeg',
+                metric: pendingHomeworkCount || null,
+                metricLabel: '份作业待完成',
+                empty: '作业都做完了',
+                action: pendingHomeworkCount > 0 ? '去完成 →' : '查看历史 →',
+              },
+            ].map((tile) => (
+              <button
+                key={tile.title}
+                onClick={() => navigate(tile.route)}
+                className="text-left bg-white rounded-2xl p-5 border border-black/[0.05] hover:border-black/15 hover:-translate-y-0.5 transition-all flex gap-4 items-center"
+              >
+                <img
+                  src={tile.image}
+                  alt=""
+                  className="w-16 h-16 md:w-20 md:h-20 rounded-xl object-cover shrink-0 select-none"
+                  loading="lazy"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-ink-mute text-xs mb-1">{tile.title}</p>
+                  {tile.metric ? (
+                    <>
+                      <p className="font-display text-2xl font-semibold text-ink leading-tight mb-1">
+                        <span className="font-numeric text-accent-warm">{tile.metric}</span>
+                        <span className="text-sm text-ink-soft ml-1.5 font-normal">{tile.metricLabel}</span>
+                      </p>
+                      <p className="text-xs text-ink-soft">{tile.action}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-display text-base font-semibold text-ink leading-tight mb-1">
+                        {tile.empty}
+                      </p>
+                      <p className="text-xs text-ink-mute">{tile.action}</p>
+                    </>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* 4 小磁贴：等权重，紧凑 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
               { title: '阅读理解', desc: '提升能力', route: '/student/reading' },
               { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', metric: onlineUsers, metricLabel: '在线' },
               { title: '我的成就', desc: '徽章收藏', route: '/student/achievements' },
