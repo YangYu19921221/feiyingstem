@@ -11,6 +11,7 @@ import { getMyAchievements, type Achievement } from '../api/achievements';
 import PetWidget from '../components/PetWidget';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { BookGridSkeleton } from '../components/Skeleton';
+import { AchievementIcon } from '../components/AchievementIcon';
 
 interface UserData {
   id: number;
@@ -663,7 +664,9 @@ const StudentDashboard = () => {
                     }`}
                     title={achievement.description || achievement.name}
                   >
-                    <div className="text-3xl mb-1.5">{achievement.icon || '🏆'}</div>
+                  <div className="mb-1.5 flex items-center justify-center">
+                    <AchievementIcon icon={achievement.icon} size={48} />
+                  </div>
                     <p className="text-[11px] text-ink-soft truncate">{achievement.name}</p>
                   </button>
                 ))}

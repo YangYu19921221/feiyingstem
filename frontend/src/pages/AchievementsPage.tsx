@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Award, Lock, Trophy, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getMyAchievements, getMyStats, type Achievement, type UserStats } from '../api/achievements';
+import { AchievementIcon } from '../components/AchievementIcon';
 
 const AchievementsPage = () => {
   const navigate = useNavigate();
@@ -156,9 +157,8 @@ const AchievementsPage = () => {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 + 0.1 * index, type: 'spring' }}
-                      className="text-5xl"
                     >
-                      {achievement.icon || '🏆'}
+                      <AchievementIcon icon={achievement.icon} size={72} />
                     </motion.div>
                     <div className="flex-1">
                       <h3 className="text-lg font-bold text-gray-800 mb-1">
@@ -202,8 +202,8 @@ const AchievementsPage = () => {
                   className="bg-white border-2 border-gray-200 rounded-2xl p-6 opacity-60 hover:opacity-80 transition"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="text-5xl grayscale">
-                      {achievement.icon || '🏆'}
+                    <div className="grayscale opacity-70">
+                      <AchievementIcon icon={achievement.icon} size={72} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">

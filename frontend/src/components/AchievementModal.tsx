@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Award } from 'lucide-react';
+import { AchievementIcon } from './AchievementIcon';
 
 interface UnlockedAchievement {
   id: number;
@@ -79,9 +80,9 @@ const AchievementModal = ({ achievements, onClose }: AchievementModalProps) => {
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
                     transition={{ delay: 0.4 + index * 0.1, type: 'spring' }}
-                    className="text-5xl flex-shrink-0"
+                    className="flex-shrink-0"
                   >
-                    {achievement.icon}
+                    <AchievementIcon icon={achievement.icon} size={72} />
                   </motion.div>
 
                   {/* 内容 */}
