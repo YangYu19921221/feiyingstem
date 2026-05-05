@@ -22,6 +22,10 @@ const PET_IMAGES: Record<string, string[]> = {
   magikarp:   ['/pets/magikarp.png', '/pets/magikarp.png', '/pets/magikarp.png', '/pets/gyarados.png'],
   oddish:     ['/pets/oddish.png', '/pets/oddish.png', '/pets/gloom.png', '/pets/vileplume.png'],
   poliwag:    ['/pets/poliwag.png', '/pets/poliwag.png', '/pets/poliwhirl.png', '/pets/poliwrath.png'],
+  // 原创折纸系宠物 — 4 个阶段（蛋/幼/中/终）
+  book_fox:    ['/pets/fox-1.jpeg',    '/pets/fox-1.jpeg',    '/pets/fox-2.jpeg',    '/pets/fox-3.jpeg'],
+  paper_owl:   ['/pets/owl-1.jpeg',    '/pets/owl-1.jpeg',    '/pets/owl-2.jpeg',    '/pets/owl-3.jpeg'],
+  word_turtle: ['/pets/turtle-1.jpeg', '/pets/turtle-1.jpeg', '/pets/turtle-2.jpeg', '/pets/turtle-3.jpeg'],
 };
 
 // 保留 emoji 作为后备
@@ -42,6 +46,9 @@ const PET_EMOJIS: Record<string, string[]> = {
   magikarp:   ['🥚', '🐟', '🐟', '✨🐟✨'],
   oddish:     ['🥚', '🌱', '🌱', '✨🌸✨'],
   poliwag:    ['🥚', '💧', '💧', '✨💧✨'],
+  book_fox:    ['🥚', '🦊', '📚', '✨🦊📚✨'],
+  paper_owl:   ['🥚', '🦉', '📜', '✨🦉🎓✨'],
+  word_turtle: ['🥚', '🐢', '🐢', '✨🐢📖✨'],
 };
 
 const SPECIES_OPTIONS = [
@@ -61,6 +68,9 @@ const SPECIES_OPTIONS = [
   { id: 'magikarp', img: '/pets/magikarp.png', label: '鲤鱼王', desc: '坚持不懈，终成暴鲤龙' },
   { id: 'oddish', img: '/pets/oddish.png', label: '走路草', desc: '草毒系，安静可爱' },
   { id: 'poliwag', img: '/pets/poliwag.png', label: '蚊香蝌蚪', desc: '水系小蝌蚪，活泼好动' },
+  { id: 'book_fox',    img: '/pets/fox-2.jpeg',    label: '书狐',   desc: '爱读书的折纸小狐，进化为贤者狐' },
+  { id: 'paper_owl',   img: '/pets/owl-2.jpeg',    label: '文鸮',   desc: '博学的折纸猫头鹰，进化为毕业博士' },
+  { id: 'word_turtle', img: '/pets/turtle-2.jpeg', label: '词龟',   desc: '沉稳的折纸小龟，龟壳刻着智慧纹路' },
 ];
 
 const EVOLUTION_THRESHOLDS = [5, 15, 30];
@@ -77,6 +87,9 @@ const PET_MOODS: Record<string, { emoji: string; text: string }[]> = {
   dog:    [{ emoji: '🐕', text: '汪...肚子咕咕叫' }, { emoji: '🐶', text: '汪汪！心情不错' }, { emoji: '🦮', text: '汪汪汪！超级开心！' }],
   rabbit: [{ emoji: '🐇', text: '...好饿想吃胡萝卜' }, { emoji: '🐰', text: '蹦蹦~还可以' }, { emoji: '🐰', text: '蹦蹦跳跳~太开心了！' }],
   dragon: [{ emoji: '🐲', text: '...力量在消退...' }, { emoji: '🐉', text: '嗯，状态还行' }, { emoji: '🔥', text: '火焰全开！状态极佳！' }],
+  book_fox:    [{ emoji: '😢', text: '小狐饿了，书都翻不动…' }, { emoji: '🦊', text: '嗯，今天状态不错' }, { emoji: '📚', text: '知识满满，一起看书吧！' }],
+  paper_owl:   [{ emoji: '😢', text: '咕…羽毛有点蔫了' }, { emoji: '🦉', text: '咕咕，继续用功' }, { emoji: '🎓', text: '满腹经纶，带你一起学！' }],
+  word_turtle: [{ emoji: '😢', text: '慢吞吞…有点饿了' }, { emoji: '🐢', text: '稳稳前行，状态可以' }, { emoji: '📖', text: '一步一字，厚积薄发' }],
 };
 
 function getPetEmoji(species: string, stage: number): string {

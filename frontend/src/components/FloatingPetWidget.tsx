@@ -14,6 +14,9 @@ const PET_IMAGES: Record<string, string> = {
   bulbasaur: '/pets/bulbasaur.png', charmander: '/pets/charmander.png',
   squirtle: '/pets/squirtle.png', jigglypuff: '/pets/jigglypuff.png',
   pikachu_adult: '/pets/pikachu_adult.png',
+  book_fox: '/pets/fox-2.jpeg',
+  paper_owl: '/pets/owl-2.jpeg',
+  word_turtle: '/pets/turtle-2.jpeg',
 };
 
 const PET_EMOJIS: Record<string, string[]> = {
@@ -25,6 +28,9 @@ const PET_EMOJIS: Record<string, string[]> = {
   jigglypuff: ['🥚', '🎀', '🎀', '🎀', '✨🎀✨'],
   cat: ['🥚', '🐱', '😺', '😸', '✨🐱✨'],
   dog: ['🥚', '🐶', '🐕', '🦮', '✨🐶✨'],
+  book_fox:    ['🥚', '🦊', '🦊', '📚', '✨🦊📚✨'],
+  paper_owl:   ['🥚', '🦉', '🦉', '📜', '✨🦉🎓✨'],
+  word_turtle: ['🥚', '🐢', '🐢', '🐢', '✨🐢📖✨'],
 };
 
 const MESSAGES: Record<PetEventType | 'idle' | 'hungry' | 'unhappy', string[]> = {

@@ -6,7 +6,7 @@ from datetime import datetime
 class PetCreate(BaseModel):
     """领养宠物请求"""
     name: str = Field(default="小伙伴", min_length=1, max_length=50)
-    species: str = Field(default="pikachu", pattern="^(pikachu|eevee|bulbasaur|charmander|squirtle|jigglypuff|gastly|dratini|machop|abra|geodude|vulpix|growlithe|magikarp|oddish|poliwag)$")
+    species: str = Field(default="pikachu", pattern="^(pikachu|eevee|bulbasaur|charmander|squirtle|jigglypuff|gastly|dratini|machop|abra|geodude|vulpix|growlithe|magikarp|oddish|poliwag|book_fox|paper_owl|word_turtle)$")
 
 
 class PetResponse(BaseModel):

@@ -11,6 +11,9 @@ const PET_IMAGES: Record<string, string> = {
   charmander: '/pets/charmander.png',
   squirtle: '/pets/squirtle.png',
   jigglypuff: '/pets/jigglypuff.png',
+  book_fox: '/pets/fox-2.jpeg',
+  paper_owl: '/pets/owl-2.jpeg',
+  word_turtle: '/pets/turtle-2.jpeg',
 };
 
 const PET_EMOJIS: Record<string, string[]> = {
@@ -24,6 +27,9 @@ const PET_EMOJIS: Record<string, string[]> = {
   dog:    ['🥚', '🐶', '🐕', '🦮', '✨🐶✨'],
   rabbit: ['🥚', '🐰', '🐇', '🐇', '✨🐰✨'],
   dragon: ['🥚', '🐲', '🐉', '🔥', '✨🔥✨'],
+  book_fox:    ['🥚', '🦊', '🦊', '📚', '✨🦊📚✨'],
+  paper_owl:   ['🥚', '🦉', '🦉', '📜', '✨🦉🎓✨'],
+  word_turtle: ['🥚', '🐢', '🐢', '🐢', '✨🐢📖✨'],
 };
 
 const PET_SAYINGS: Record<string, string[]> = {
@@ -37,6 +43,9 @@ const PET_SAYINGS: Record<string, string[]> = {
   dog:    ['汪汪！一起学习！', '尾巴摇摇~ 等你好久了', '汪！今天也要努力！', '来玩来玩！'],
   rabbit: ['蹦蹦~ 学习时间到！', '嘿嘿，想吃胡萝卜', '一起加油吧~', '蹦蹦跳跳好开心！'],
   dragon: ['吼~ 来修炼吧！', '火焰在燃烧...', '今天要变更强！', '龙之力量觉醒中...'],
+  book_fox:    ['小狐在等你来读书~', '翻翻翻…看到你啦', '今天学什么呢？', '知识就是力量！'],
+  paper_owl:   ['咕咕~学习时间到', '羽毛笔已备好', '博学越多越好', '一起做个小博士吧'],
+  word_turtle: ['慢慢来，一步一个字', '壳上又多了一道纹', '稳扎稳打~', '厚积薄发！'],
 };
 
 function getPetEmoji(species: string, stage: number): string {

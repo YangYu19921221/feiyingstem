@@ -10,7 +10,7 @@ class UserPet(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True)
     name = Column(String(50), nullable=False, default='小伙伴')
-    species = Column(String(20), nullable=False, default='pikachu')  # pikachu/eevee/bulbasaur/charmander/squirtle/jigglypuff
+    species = Column(String(20), nullable=False, default='pikachu')  # 支持的 species 在 schemas/pet.py 的 pattern 中维护
     level = Column(Integer, default=1)
     experience = Column(Integer, default=0)
     happiness = Column(Integer, default=80)       # 0-100
