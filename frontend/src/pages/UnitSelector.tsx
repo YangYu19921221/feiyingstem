@@ -189,9 +189,31 @@ const UnitSelector = () => {
                           </span>
                         )}
                         {(unit.attempt_count || 0) > 0 && (
-                          <span className="text-ink-mute text-[10px] font-numeric">
-                            · {unit.attempt_count} 轮
-                          </span>
+                          (() => {
+                            const n = unit.attempt_count!;
+                            if (n >= 5) {
+                              // 高手：金色流光胶囊
+                              return (
+                                <span className="px-2 py-0.5 rounded-full text-[11px] font-numeric font-semibold text-white progress-gold shrink-0 inline-flex items-center gap-0.5">
+                                  ⟳ {n} 轮
+                                </span>
+                              );
+                            }
+                            if (n >= 2) {
+                              // 多次完成：实色橙
+                              return (
+                                <span className="px-2 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold shrink-0 inline-flex items-center gap-0.5">
+                                  ⟳ {n} 轮
+                                </span>
+                              );
+                            }
+                            // 第一次：浅橙底
+                            return (
+                              <span className="px-2 py-0.5 rounded-full bg-accent-warm/15 text-accent-warm text-[11px] font-numeric font-semibold shrink-0 inline-flex items-center gap-0.5">
+                                ✓ 1 轮
+                              </span>
+                            );
+                          })()
                         )}
                       </div>
                       {/* 进度条 */}
