@@ -53,7 +53,7 @@ export default function SentenceFillPractice() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500" />
           <p className="text-gray-500 mt-4">加载句子填空...</p>
@@ -64,7 +64,7 @@ export default function SentenceFillPractice() {
 
   if (error || !learningData) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <span className="text-6xl mb-4 block">😞</span>
           <p className="text-gray-500">{error || '加载失败'}</p>
@@ -79,7 +79,7 @@ export default function SentenceFillPractice() {
   const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition">

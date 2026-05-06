@@ -142,7 +142,7 @@ const MistakeChallenge = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <div className="text-5xl animate-bounce mb-4">🏰</div>
           <p className="text-gray-500">加载关卡中...</p>
@@ -152,7 +152,7 @@ const MistakeChallenge = () => {
   }
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
           <button onClick={() => phase === 'map' ? navigate(-1) : backToMap()} className="p-2 hover:bg-gray-100 rounded-lg transition">

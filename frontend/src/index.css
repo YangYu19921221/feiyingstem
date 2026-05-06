@@ -151,6 +151,24 @@
   .card-soft:hover .tile-image {
     transform: scale(1.06) rotate(-2deg);
   }
+
+  /* 学习核心区禁选中：阻止学生划词翻译/复制粘贴单词答案。
+     输入框 / 文本输入区域内部需重新启用，see .allow-select. */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .no-select input,
+  .no-select textarea,
+  .no-select [contenteditable],
+  .no-select .allow-select {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
 }
 
 @keyframes fadeIn {

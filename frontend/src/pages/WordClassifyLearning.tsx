@@ -509,7 +509,7 @@ const WordClassifyLearning = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
           <p className="text-gray-500 mt-4">加载中...</p>
@@ -520,7 +520,7 @@ const WordClassifyLearning = () => {
 
   if (error || !learningData) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <span className="text-6xl mb-4 block">😞</span>
           <p className="text-gray-500">{error || '加载失败'}</p>
@@ -548,7 +548,7 @@ const WordClassifyLearning = () => {
     : `${learningData.unit_info.name} · ${phaseLabels[phase]}`;
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper no-select">
       {/* 顶部导航 */}
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">

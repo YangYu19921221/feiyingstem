@@ -175,7 +175,7 @@ const UnitExam = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-gray-500 mt-4">正在出题...</p>
@@ -186,7 +186,7 @@ const UnitExam = () => {
 
   if (error || !examData) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
           <span className="text-5xl">😅</span>
           <h3 className="text-xl font-bold text-gray-800 mt-4 mb-2">出题失败</h3>
@@ -200,7 +200,7 @@ const UnitExam = () => {
   // 开始页
   if (phase === 'start') {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -255,7 +255,7 @@ const UnitExam = () => {
   const isUrgent = timeLeft <= 60;
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper no-select">
       {/* 顶部栏 */}
       <nav className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 py-3">

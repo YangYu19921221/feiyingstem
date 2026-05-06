@@ -387,7 +387,7 @@ const MistakePractice = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
           <p className="text-gray-500">生成混合题目中...</p>
@@ -400,7 +400,7 @@ const MistakePractice = () => {
     const correctCount = results.filter(Boolean).length;
     const wrongWords = questions.filter((_, i) => !results[i]);
     return (
-      <div className="min-h-screen bg-paper p-4">
+      <div className="min-h-screen bg-paper no-select p-4">
         <div className="max-w-lg mx-auto pt-12">
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-3xl shadow-xl p-8 text-center">
             <div className="text-6xl mb-4">{correctCount / questions.length >= 0.8 ? '🎉' : '💪'}</div>
@@ -442,7 +442,7 @@ const MistakePractice = () => {
   const pct = Math.round(((currentIndex + 1) / questions.length) * 100);
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition">
