@@ -323,10 +323,24 @@ async def get_book_progress(
     units = result.scalars().all()
 
     # 3. 批量查询所有单元的最佳成绩、学习时间、会话数（避免 N+1）
-    # 轮次 attempt_count 仅统计「完整走完单元」的会话（words_studied >= Unit.word_count）
-    # 与 dashboard 满分轮次口径一致，避免半途退出也被计入
+    # 轮次 attempt_count 仅统计「完整走完单元」的会话（words_studied >= 单元真实词数）
+    # 历史数据 units.word_count 字段未维护（多为 0），改为从 unit_words 实时统计
     unit_ids = [u.id for u in units]
-    unit_word_count = {u.id: u.word_count or 0 for u in units}
+    unit_word_count: dict[int, int] = {uid: 0 for uid in unit_ids}
+    if unit_ids:
+        # 用 UnitWord 实际关联数补一遍 word_count（容错 units 表字段过期）
+        from sqlalchemy import func as _func
+        wc_result = await db.execute(
+            select(UnitWord.unit_id, _func.count(UnitWord.id))
+            .where(UnitWord.unit_id.in_(unit_ids))
+            .group_by(UnitWord.unit_id)
+        )
+        for uid, cnt in wc_result.all():
+            unit_word_count[uid] = cnt
+        # 如 unit_words 没有数据，回退到 units.word_count
+        for u in units:
+            if unit_word_count[u.id] == 0:
+                unit_word_count[u.id] = u.word_count or 0
     unit_best_scores: dict[int, tuple[float | None, bool]] = {uid: (None, False) for uid in unit_ids}
     unit_study_time: dict[int, int] = {uid: 0 for uid in unit_ids}
     unit_attempt_count: dict[int, int] = {uid: 0 for uid in unit_ids}
