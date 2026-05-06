@@ -104,6 +104,53 @@
       radial-gradient(ellipse 80% 60% at 50% -10%, oklch(0.85 0.12 45 / 0.12), transparent 60%),
       radial-gradient(ellipse 60% 40% at 90% 30%, oklch(0.85 0.12 45 / 0.06), transparent 70%);
   }
+
+  /* 大数字柔光：text-shadow 模拟光晕，不是 gradient text */
+  .text-glow-warm {
+    text-shadow:
+      0 0 1px oklch(0.55 0.2 35 / 0.15),
+      0 2px 8px oklch(0.55 0.2 35 / 0.18),
+      0 4px 24px oklch(0.55 0.2 35 / 0.08);
+  }
+
+  /* 进度条满进度时变金色光带（用于 100% 完成的书） */
+  .progress-gold {
+    background-image: linear-gradient(90deg,
+      oklch(0.78 0.16 80) 0%,
+      oklch(0.85 0.18 75) 50%,
+      oklch(0.78 0.16 80) 100%);
+    background-size: 200% 100%;
+    animation: shimmerGold 3s ease-in-out infinite;
+    box-shadow: 0 0 8px oklch(0.78 0.16 80 / 0.6);
+  }
+  @keyframes shimmerGold {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  /* 进度条条纹纹理（进行中的进度） */
+  .progress-striped {
+    background-image:
+      linear-gradient(135deg,
+        oklch(1 0 0 / 0.18) 25%, transparent 25%,
+        transparent 50%,
+        oklch(1 0 0 / 0.18) 50%, oklch(1 0 0 / 0.18) 75%,
+        transparent 75%);
+    background-size: 1rem 1rem;
+    animation: stripeMove 1.6s linear infinite;
+  }
+  @keyframes stripeMove {
+    from { background-position: 0 0; }
+    to { background-position: 1rem 0; }
+  }
+
+  /* 卡片悬停时图片柔和缩放 + 旋转 */
+  .tile-image {
+    transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .card-soft:hover .tile-image {
+    transform: scale(1.06) rotate(-2deg);
+  }
 }
 
 @keyframes fadeIn {

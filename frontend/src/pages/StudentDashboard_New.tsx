@@ -338,7 +338,7 @@ const StudentDashboard = () => {
               <>
                 <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
                   今天，先复习<br />
-                  <span className="font-numeric text-accent-warm">{Math.min(20, reviewDueCount)}</span>{' '}
+                  <span className="font-numeric text-accent-warm text-glow-warm">{Math.min(20, reviewDueCount)}</span>{' '}
                   <span className="text-ink-soft">个该回顾的词</span>
                 </h1>
                 <p className="text-ink-soft text-base mb-6 max-w-xl leading-relaxed">
@@ -491,9 +491,15 @@ const StudentDashboard = () => {
                           <span className="text-xs text-ink-soft">学习进度</span>
                           <span className="text-sm font-numeric font-semibold text-ink">{book.progress_percentage.toFixed(0)}%</span>
                         </div>
-                        <div className="w-full h-1 bg-black/[0.06] rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-black/[0.06] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-accent-warm rounded-full transition-all"
+                            className={`h-full rounded-full transition-all ${
+                              book.progress_percentage >= 100
+                                ? 'progress-gold'
+                                : book.progress_percentage > 0
+                                ? 'bg-accent-warm progress-striped'
+                                : 'bg-accent-warm'
+                            }`}
                             style={{ width: `${book.progress_percentage}%` }}
                           />
                         </div>
@@ -608,7 +614,7 @@ const StudentDashboard = () => {
                 <img
                   src={tile.image}
                   alt=""
-                  className="w-16 h-16 md:w-20 md:h-20 rounded-xl object-cover shrink-0 select-none"
+                  className="tile-image w-16 h-16 md:w-20 md:h-20 rounded-xl object-cover shrink-0 select-none"
                   loading="lazy"
                 />
                 <div className="flex-1 min-w-0">
