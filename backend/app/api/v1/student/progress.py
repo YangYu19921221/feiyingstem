@@ -323,7 +323,10 @@ async def get_book_progress(
     units = result.scalars().all()
 
     # 3. 批量查询所有单元的最佳成绩、学习时间、会话数（避免 N+1）
+    # 轮次 attempt_count 仅统计「完整走完单元」的会话（words_studied >= Unit.word_count）
+    # 与 dashboard 满分轮次口径一致，避免半途退出也被计入
     unit_ids = [u.id for u in units]
+    unit_word_count = {u.id: u.word_count or 0 for u in units}
     unit_best_scores: dict[int, tuple[float | None, bool]] = {uid: (None, False) for uid in unit_ids}
     unit_study_time: dict[int, int] = {uid: 0 for uid in unit_ids}
     unit_attempt_count: dict[int, int] = {uid: 0 for uid in unit_ids}
@@ -334,6 +337,7 @@ async def get_book_progress(
                 StudySession.correct_count,
                 StudySession.wrong_count,
                 StudySession.time_spent,
+                StudySession.words_studied,
             )
             .where(
                 and_(
@@ -342,10 +346,11 @@ async def get_book_progress(
                 )
             )
         )
-        for uid, correct, wrong, time_spent in sessions_result.all():
-            unit_attempt_count[uid] += 1
+        for uid, correct, wrong, time_spent, words_studied in sessions_result.all():
+            # 学习时长：只要有学就累计（与轮次解耦）
             unit_study_time[uid] += (time_spent or 0)
-            # 最佳成绩
+
+            # 最佳成绩：所有会话都参与排名
             total = (correct or 0) + (wrong or 0)
             if total > 0 and correct and correct > 0:
                 acc = correct / total * 100
@@ -354,6 +359,11 @@ async def get_book_progress(
                     unit_best_scores[uid] = (acc, prev_perfect or wrong == 0)
                 elif wrong == 0:
                     unit_best_scores[uid] = (prev_acc, True)
+
+            # 轮次：必须完整走完该单元
+            target = unit_word_count.get(uid, 0)
+            if target > 0 and (words_studied or 0) >= target:
+                unit_attempt_count[uid] += 1
 
     # 4. 获取每个单元的学习进度
     unit_progresses = []
