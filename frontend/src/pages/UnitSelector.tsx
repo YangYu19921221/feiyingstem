@@ -5,6 +5,7 @@ import { getBookProgress } from '../api/progress';
 import type { BookProgress } from '../api/progress';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from '../components/Toast';
+import FullscreenBookComplete from '../components/challenge-fx/FullscreenBookComplete';
 
 const DAILY_GOAL = 10;
 
@@ -15,12 +16,23 @@ const UnitSelector = () => {
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
   const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
+  const [showBookComplete, setShowBookComplete] = useState(false);
 
   useEffect(() => {
     if (bookId) {
       loadBookProgress(parseInt(bookId));
     }
   }, [bookId]);
+
+  // 整本书 100% 完成 → 一次性全屏庆祝（每本书每个学生只触发一次）
+  useEffect(() => {
+    if (!bookProgress || !bookId) return;
+    if (bookProgress.progress_percentage < 100) return;
+    const key = `book-complete-fx-${bookId}`;
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+    setShowBookComplete(true);
+  }, [bookProgress, bookId]);
 
   const loadBookProgress = async (id: number) => {
     try {
@@ -98,6 +110,12 @@ const UnitSelector = () => {
 
   return (
     <div className="min-h-screen bg-paper">
+      {showBookComplete && bookProgress && (
+        <FullscreenBookComplete
+          bookName={bookProgress.book_name}
+          onComplete={() => setShowBookComplete(false)}
+        />
+      )}
       {/* 顶部导航 */}
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center gap-3">
