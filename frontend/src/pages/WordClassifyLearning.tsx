@@ -15,6 +15,7 @@ import {
   type WordAnswerCreate,
   type StudySessionResponse,
 } from '../api/learningRecords';
+import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
@@ -506,6 +507,23 @@ const WordClassifyLearning = () => {
       totalWords: all.reduce((sum, gr) => sum + gr.words.length, 0),
     };
   }, [phase, isLastGroup, buildAllResults]);
+
+  // 进入 finalSummary 时给宠物发粮（每个会话仅一次）
+  const foodEarnedRef = useRef(false);
+  useEffect(() => {
+    if (!finalSummaryData || foodEarnedRef.current) return;
+    foodEarnedRef.current = true;
+    const correct = finalSummaryData.allDictation.filter(r => r.isCorrect).length;
+    const total = Math.max(finalSummaryData.totalWords, 1);
+    earnFood({ score: correct, total, mode: 'classify' })
+      .then(() => {
+        dispatchPetEvent('complete');
+      })
+      .catch(err => {
+        console.error('赚粮失败:', err);
+        foodEarnedRef.current = false;
+      });
+  }, [finalSummaryData]);
 
   if (loading) {
     return (

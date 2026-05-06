@@ -224,7 +224,7 @@ async def earn_food(
     base = 2
     accuracy = data.score / data.total
     accuracy_bonus = math.floor(accuracy * 6)
-    mode_map = {"flashcard": 0, "quiz": 1, "fillblank": 2, "spelling": 2}
+    mode_map = {"flashcard": 0, "quiz": 1, "fillblank": 2, "spelling": 2, "classify": 2}
     mode_bonus = mode_map.get(data.mode, 0)
     daily_bonus = 3 if is_first_today else 0
 

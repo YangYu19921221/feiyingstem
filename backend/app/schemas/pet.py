@@ -74,7 +74,7 @@ class EarnFoodRequest(BaseModel):
     """做题赚粮请求"""
     score: int = Field(ge=0, description="答对题数")
     total: int = Field(ge=1, description="总题数")
-    mode: str = Field(pattern="^(flashcard|quiz|fillblank|spelling)$", description="练习模式")
+    mode: str = Field(pattern="^(flashcard|quiz|fillblank|spelling|classify)$", description="练习模式")
 
 
 class EarnFoodResponse(BaseModel):
