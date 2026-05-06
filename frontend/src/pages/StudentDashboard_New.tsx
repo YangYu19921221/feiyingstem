@@ -270,7 +270,7 @@ const StudentDashboard = () => {
 
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 强制复习遮罩 */}
       {showForcedReview && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -285,7 +285,7 @@ const StudentDashboard = () => {
             </p>
             <button
               onClick={handleStartForcedReview}
-              className="w-full py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
+              className="w-full py-3.5 btn-glow text-white rounded-xl text-base font-semibold"
             >
               开始复习
             </button>
@@ -347,7 +347,7 @@ const StudentDashboard = () => {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     onClick={handleStartForcedReview}
-                    className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
+                    className="px-7 py-3.5 btn-glow text-white rounded-xl text-base font-semibold"
                   >
                     开始复习 →
                   </button>
@@ -469,7 +469,7 @@ const StudentDashboard = () => {
                 return (
                   <article
                     key={book.id}
-                    className="bg-white rounded-2xl overflow-hidden border border-black/[0.05] hover:border-black/15 transition cursor-pointer flex flex-col"
+                    className="card-soft rounded-2xl overflow-hidden cursor-pointer flex flex-col"
                     onClick={() => handleStartLearning(book.id)}
                   >
                     <div className="relative h-36 overflow-hidden bg-black/5">
@@ -603,7 +603,7 @@ const StudentDashboard = () => {
               <button
                 key={tile.title}
                 onClick={() => navigate(tile.route)}
-                className="text-left bg-white rounded-2xl p-5 border border-black/[0.05] hover:border-black/15 hover:-translate-y-0.5 transition-all flex gap-4 items-center"
+                className="text-left card-soft rounded-2xl p-5 flex gap-4 items-center"
               >
                 <img
                   src={tile.image}
@@ -645,7 +645,7 @@ const StudentDashboard = () => {
               <button
                 key={tile.title}
                 onClick={() => navigate(tile.route)}
-                className="text-left bg-white rounded-xl p-4 border border-black/[0.05] hover:border-black/15 hover:-translate-y-0.5 transition-all"
+                className="text-left card-soft rounded-xl p-4"
               >
                 <div className="flex items-baseline justify-between mb-1">
                   <h3 className="font-display text-base font-semibold text-ink">{tile.title}</h3>
@@ -672,7 +672,7 @@ const StudentDashboard = () => {
               详细数据 →
             </button>
           </header>
-          <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05]">
+          <div className="card-soft rounded-2xl divide-y divide-black/[0.05]">
             {[
               { label: '已学单词', value: stats?.total_words_studied || 0, suffix: stats?.today_words ? `今日 +${stats.today_words}` : '' },
               { label: '已掌握', value: stats?.mastered_words || 0, suffix: `${stats?.mastery_rate || 0}% 掌握率` },
@@ -697,17 +697,17 @@ const StudentDashboard = () => {
               <h2 className="font-display text-xl font-semibold text-ink">学习质量</h2>
             </header>
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-white rounded-xl border border-black/[0.05] p-5">
+              <div className="card-soft rounded-xl p-5">
                 <p className="text-xs text-ink-mute mb-1.5">满分轮次</p>
                 <p className="font-display text-3xl font-semibold text-ink font-numeric">{stats.perfect_sessions}</p>
                 <p className="text-[11px] text-ink-mute mt-1">共 {stats.total_sessions} 次完整轮</p>
               </div>
-              <div className="bg-white rounded-xl border border-black/[0.05] p-5">
+              <div className="card-soft rounded-xl p-5">
                 <p className="text-xs text-ink-mute mb-1.5">首次正确率</p>
                 <p className="font-display text-3xl font-semibold text-ink font-numeric">{stats.first_time_accuracy}<span className="text-base text-ink-soft">%</span></p>
                 <p className="text-[11px] text-ink-mute mt-1">第一次就答对</p>
               </div>
-              <div className="bg-white rounded-xl border border-black/[0.05] p-5">
+              <div className="card-soft rounded-xl p-5">
                 <p className="text-xs text-ink-mute mb-1.5">满分率</p>
                 <p className="font-display text-3xl font-semibold text-ink font-numeric">
                   {Math.round(stats.perfect_sessions / stats.total_sessions * 100)}<span className="text-base text-ink-soft">%</span>
@@ -730,7 +730,7 @@ const StudentDashboard = () => {
                 查看全部 →
               </button>
             </header>
-            <div className="bg-white rounded-2xl border border-black/[0.05] p-5">
+            <div className="card-soft rounded-2xl p-5">
               <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
                 {previewAchievements.map((achievement) => (
                   <button
