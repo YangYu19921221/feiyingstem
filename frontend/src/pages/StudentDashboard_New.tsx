@@ -643,6 +643,7 @@ const StudentDashboard = () => {
           {/* 4 小磁贴：等权重，紧凑 */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
+              { title: '光荣榜', desc: '看看谁最厉害', route: '/student/leaderboard' },
               { title: '阅读理解', desc: '提升能力', route: '/student/reading' },
               { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', metric: onlineUsers, metricLabel: '在线' },
               { title: '我的成就', desc: '徽章收藏', route: '/student/achievements' },

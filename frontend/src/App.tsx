@@ -50,6 +50,7 @@ const MistakePractice = lazyWithRetry(() => import('./pages/MistakePractice'));
 const BookProgressDetail = lazyWithRetry(() => import('./pages/BookProgressDetail'));
 const StudentReadingList = lazyWithRetry(() => import('./pages/StudentReadingList'));
 const StudentReadingPractice = lazyWithRetry(() => import('./pages/StudentReadingPractice'));
+const StudentLeaderboard = lazyWithRetry(() => import('./pages/StudentLeaderboard'));
 const TeacherReadingList = lazyWithRetry(() => import('./pages/TeacherReadingList'));
 const TeacherReadingEditor = lazyWithRetry(() => import('./pages/TeacherReadingEditor'));
 const TeacherReadingAssign = lazyWithRetry(() => import('./pages/TeacherReadingAssign'));
@@ -424,6 +425,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <StudentReadingList />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 光荣榜 */}
+        <Route
+          path="/student/leaderboard"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentLeaderboard />
             </ProtectedRoute>
           }
         />
