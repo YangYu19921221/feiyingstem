@@ -9,6 +9,7 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"      # 管理员
     TEACHER = "teacher"  # 教师
     STUDENT = "student"  # 学生
+    PARENT = "parent"    # 家长
 
 class RedemptionCodeStatus(str, enum.Enum):
     """兑换码状态"""
@@ -124,3 +125,24 @@ class RedemptionCode(Base):
     used_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     used_at = Column(DateTime, nullable=True)
     batch_note = Column(String(200), nullable=True)  # 批次备注
+
+
+class ParentStudentLink(Base):
+    """家长-学生绑定表（一对多：一个家长可绑多个孩子，一个孩子可被多家长绑）"""
+    __tablename__ = "parent_student_links"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    parent_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    bound_at = Column(DateTime, server_default=func.now())
+
+
+class ParentBindCode(Base):
+    """家长绑定临时码（学生生成 → 家长输入注册）"""
+    __tablename__ = "parent_bind_codes"
+
+    code = Column(String(8), primary_key=True)
+    student_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

@@ -51,6 +51,9 @@ const BookProgressDetail = lazyWithRetry(() => import('./pages/BookProgressDetai
 const StudentReadingList = lazyWithRetry(() => import('./pages/StudentReadingList'));
 const StudentReadingPractice = lazyWithRetry(() => import('./pages/StudentReadingPractice'));
 const StudentLeaderboard = lazyWithRetry(() => import('./pages/StudentLeaderboard'));
+const ParentLogin = lazyWithRetry(() => import('./pages/ParentLogin'));
+const ParentRegister = lazyWithRetry(() => import('./pages/ParentRegister'));
+const ParentDashboard = lazyWithRetry(() => import('./pages/ParentDashboard'));
 const TeacherReadingList = lazyWithRetry(() => import('./pages/TeacherReadingList'));
 const TeacherReadingEditor = lazyWithRetry(() => import('./pages/TeacherReadingEditor'));
 const TeacherReadingAssign = lazyWithRetry(() => import('./pages/TeacherReadingAssign'));
@@ -435,6 +438,18 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <StudentLeaderboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 家长端 - 登录 / 注册 / 看板 */}
+        <Route path="/parent/login" element={<ParentLogin />} />
+        <Route path="/parent/register" element={<ParentRegister />} />
+        <Route
+          path="/parent/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['parent']}>
+              <ParentDashboard />
             </ProtectedRoute>
           }
         />

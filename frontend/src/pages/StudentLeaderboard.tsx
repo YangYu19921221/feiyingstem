@@ -8,6 +8,8 @@ import {
   type LeaderboardPeriod,
   type LeaderboardResponse,
 } from '../api/leaderboard';
+import { generateParentBindCode } from '../api/parent';
+import { toast } from '../components/Toast';
 
 const KIND_TABS: { id: LeaderboardKind; label: string; unit: string; emoji: string }[] = [
   { id: 'vocabulary', label: '词汇王', unit: '词', emoji: '📚' },
@@ -33,6 +35,20 @@ const StudentLeaderboard = () => {
   const [period, setPeriod] = useState<LeaderboardPeriod>('this_week');
   const [data, setData] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bindCode, setBindCode] = useState<{ code: string; minutesLeft: number } | null>(null);
+  const [genLoading, setGenLoading] = useState(false);
+
+  const handleGenerateBindCode = async () => {
+    setGenLoading(true);
+    try {
+      const res = await generateParentBindCode();
+      setBindCode({ code: res.code, minutesLeft: res.minutes_left });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '生成失败');
+    } finally {
+      setGenLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +100,55 @@ const StudentLeaderboard = () => {
             光荣榜
           </h2>
         </section>
+
+        {/* 邀请家长 — 内联条带，不打扰主流 */}
+        <button
+          onClick={handleGenerateBindCode}
+          disabled={genLoading || !!bindCode}
+          className="card-soft rounded-xl px-5 py-3.5 w-full text-left mb-6 flex items-center justify-between hover:border-accent-warm/30 disabled:cursor-not-allowed"
+        >
+          <div>
+            <p className="font-medium text-ink text-sm">让家长看到你的进步</p>
+            <p className="text-xs text-ink-soft mt-0.5">生成 6 位绑定码，5 分钟内告诉家长去注册</p>
+          </div>
+          <span className="text-accent-warm text-sm font-medium">
+            {genLoading ? '生成中…' : bindCode ? '已生成' : '生成绑定码 →'}
+          </span>
+        </button>
+
+        {/* 绑定码弹窗 */}
+        {bindCode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5"
+            onClick={() => setBindCode(null)}
+          >
+            <motion.div
+              initial={{ y: 20 }}
+              animate={{ y: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 w-full max-w-sm text-center"
+            >
+              <p className="text-ink-mute text-xs uppercase tracking-widest mb-4">家长绑定码</p>
+              <p className="font-display text-5xl font-bold text-accent-warm font-numeric text-glow-warm tracking-[0.2em] mb-4">
+                {bindCode.code}
+              </p>
+              <p className="text-ink-soft text-sm mb-2">
+                请告诉家长：访问 <span className="font-mono text-ink">/parent/register</span>
+              </p>
+              <p className="text-ink-mute text-xs mb-6">
+                {bindCode.minutesLeft} 分钟内有效，过期请重新生成
+              </p>
+              <button
+                onClick={() => setBindCode(null)}
+                className="btn-glow w-full py-3 text-white rounded-xl font-semibold"
+              >
+                我已告诉家长
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
 
         {/* Tab：榜种切换 */}
         <div className="grid grid-cols-3 gap-2 mb-4">
