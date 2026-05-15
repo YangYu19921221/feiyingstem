@@ -47,9 +47,25 @@ const ParentRegister = () => {
         <h1 className="font-display text-3xl font-semibold text-ink mb-3 tracking-tight">
           绑定孩子账号
         </h1>
-        <p className="text-ink-soft text-sm mb-6 leading-relaxed">
-          请孩子在「我的 → 邀请家长」中获取 6 位绑定码（5 分钟有效）。
+        <p className="text-ink-soft text-sm mb-4 leading-relaxed">
+          请孩子在「光荣榜 → 让家长看到你的进步」中获取 6 位绑定码（5 分钟内有效）。
         </p>
+
+        {/* 注册后能看到什么的简介 */}
+        <details className="mb-6 text-sm">
+          <summary className="cursor-pointer text-accent-warm font-medium hover:underline">
+            注册后能看到什么？
+          </summary>
+          <ul className="mt-3 space-y-1.5 text-ink-soft text-xs leading-relaxed pl-4">
+            <li>· 今日学习时长 / 新词数 / 连续打卡天数</li>
+            <li>· 本周与上周对比（时长/词数/正确率）</li>
+            <li>· 孩子在系统中的排名（词汇王 / 勤奋王 / 精准王）</li>
+            <li>· 30 天学习日历（哪天学了多少分钟）</li>
+            <li>· 正在学的书 + 每本进度</li>
+            <li>· 最薄弱的 10 个词 + 错过次数</li>
+            <li>· 解锁的成就徽章</li>
+          </ul>
+        </details>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

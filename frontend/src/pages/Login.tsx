@@ -264,6 +264,27 @@ const Login = () => {
             🏥 公益英语口语体检（无需注册）
           </Link>
 
+          {/* 家长入口 — 视觉低优先级，但显眼到不会被错过 */}
+          <div className="mt-4 pt-4 border-t border-white/[0.06] text-center text-sm" style={{ color: '#8a95a5' }}>
+            <span className="mr-1">👨‍👩‍👧</span>
+            您是家长？
+            <Link
+              to="/parent/login"
+              className="font-semibold hover:underline ml-1"
+              style={{ color: 'var(--glow)' }}
+            >
+              家长登录
+            </Link>
+            <span className="mx-2">·</span>
+            <Link
+              to="/parent/register"
+              className="font-semibold hover:underline"
+              style={{ color: 'var(--glow)' }}
+            >
+              首次注册
+            </Link>
+          </div>
+
           <div className="mt-8 text-center text-xs" style={{ color: '#5a6778' }}>
             AI 智能学习平台 · 展翅高飞，征服英语
           </div>
