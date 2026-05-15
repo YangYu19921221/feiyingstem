@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, and_, or_, case
+from sqlalchemy import select, func, and_, or_, case, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -524,22 +524,18 @@ async def parent_child_dashboard(
         units = unit_res.scalars().all()
         unit_count = len(units)
         completed_units = 0
-        total_words = 0
-        completed_words = 0
         for u in units:
-            wc_res = await db.execute(select(func.count(BookWord.id)).where(BookWord.book_id == book.id))
-            total_words += int(wc_res.scalar() or 0)
+            # 一个单元在不同 learning_mode 下可能有多条 LearningProgress
+            # 任意一种模式完成即视为单元完成
             lp_res = await db.execute(
-                select(LearningProgress).where(and_(
+                select(func.max(func.cast(LearningProgress.is_completed, Integer)))
+                .where(and_(
                     LearningProgress.user_id == student_id,
                     LearningProgress.unit_id == u.id,
                 ))
             )
-            lp = lp_res.scalar_one_or_none()
-            if lp and lp.is_completed:
+            if (lp_res.scalar() or 0) == 1:
                 completed_units += 1
-            if lp:
-                completed_words += lp.completed_words or 0
         progress_pct = (completed_units / unit_count * 100) if unit_count > 0 else 0
         book_items.append(BookProgressItem(
             book_id=book.id,
