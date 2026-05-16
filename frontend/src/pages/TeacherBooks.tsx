@@ -127,12 +127,16 @@ const TeacherBooks = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedBooks.length === books.length) {
-      setSelectedBooks([]);
+    const visibleIds = filteredBooks.map(b => b.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedBooks.includes(id));
+    if (allVisibleSelected) {
+      setSelectedBooks(prev => prev.filter(id => !visibleIds.includes(id)));
     } else {
-      setSelectedBooks(books.map(book => book.id));
+      setSelectedBooks(prev => Array.from(new Set([...prev, ...visibleIds])));
     }
   };
+
+  const isAllVisibleSelected = filteredBooks.length > 0 && filteredBooks.every(b => selectedBooks.includes(b.id));
 
   const handleBatchDelete = async () => {
     if (selectedBooks.length === 0) {
@@ -246,7 +250,7 @@ const TeacherBooks = () => {
                   onClick={toggleSelectAll}
                   className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition"
                 >
-                  {selectedBooks.length === books.length ? '取消全选' : '全选'}
+                  {isAllVisibleSelected ? '取消全选' : '全选'}
                 </button>
               )}
             </div>
