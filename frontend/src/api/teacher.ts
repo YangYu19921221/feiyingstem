@@ -205,7 +205,9 @@ export interface TeacherWordBook {
  * GET /api/v1/words/books
  */
 export const getTeacherWordBooks = async (): Promise<TeacherWordBook[]> => {
-  const response = await axios.get(`${API_BASE_URL}/words/books`);
+  const response = await axios.get(`${API_BASE_URL}/words/books`, {
+    params: { limit: 1000 },
+  });
   return response.data;
 };
 

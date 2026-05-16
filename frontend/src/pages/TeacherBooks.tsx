@@ -252,14 +252,14 @@ const TeacherBooks = () => {
               <p className="text-sm text-gray-400 mb-4">请联系管理员添加单词本</p>
             </motion.div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {books.map((book, index) => (
                 <motion.div
                   key={book.id}
-                  initial={!hasLoadedOnce.current ? { opacity: 0, y: 20 } : false}
+                  initial={!hasLoadedOnce.current ? { opacity: 0, y: 12 } : false}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={!hasLoadedOnce.current ? { delay: 0.1 * index } : {}}
-                  className={`bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition group cursor-pointer relative ${
+                  transition={!hasLoadedOnce.current ? { duration: 0.2, delay: Math.min(0.02 * index, 0.4) } : {}}
+                  className={`bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition group cursor-pointer relative ${
                     selectedBooks.includes(book.id) ? 'ring-2 ring-primary' : ''
                   }`}
                   onClick={() => {
@@ -272,20 +272,20 @@ const TeacherBooks = () => {
                 >
                   {/* 选择框 */}
                   {isSelectionMode && (
-                    <div className="absolute top-4 right-4 z-10">
+                    <div className="absolute top-2 right-2 z-10">
                       <input
                         type="checkbox"
                         checked={selectedBooks.includes(book.id)}
                         onChange={() => toggleBookSelection(book.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                       />
                     </div>
                   )}
 
                   {/* 封面：优先 AI 生成图，否则降级到色块 */}
                   {book.cover_url ? (
-                    <div className="w-full h-32 rounded-xl mb-4 overflow-hidden relative bg-gray-100">
+                    <div className="w-full aspect-[4/3] rounded-lg mb-2 overflow-hidden relative bg-gray-100">
                       <img
                         src={book.cover_url}
                         alt={book.name}
@@ -296,52 +296,46 @@ const TeacherBooks = () => {
                     </div>
                   ) : (
                     <div
-                      className="w-full h-32 rounded-xl mb-4 flex items-center justify-center text-white text-4xl relative"
+                      className="w-full aspect-[4/3] rounded-lg mb-2 flex items-center justify-center text-white text-2xl relative"
                       style={{ background: book.cover_color }}
                     >
                       📖
                     </div>
                   )}
 
-                  {/* 单词本信息 */}
-                  <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-primary transition">
+                  {/* 单词本信息 — 紧凑版 */}
+                  <h4 className="text-sm font-semibold text-gray-800 mb-1 group-hover:text-primary transition line-clamp-2 leading-snug min-h-[2.5em]">
                     {book.name}
                   </h4>
 
-                  {book.description && (
-                    <p className="text-sm text-gray-500 mb-3 line-clamp-2">{book.description}</p>
-                  )}
-
-                  {/* 标签 */}
+                  {/* 标签 — 同行显示，节省高度 */}
                   {(book.grade_level || book.volume) && (
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-1 mb-2 flex-wrap">
                       {book.grade_level && (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">
                           {book.grade_level}
                         </span>
                       )}
                       {book.volume && (
-                        <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full">
+                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded">
                           {book.volume}
                         </span>
                       )}
                     </div>
                   )}
 
-                  {/* 操作按钮 */}
+                  {/* 操作按钮 — 紧凑版 */}
                   {!isSelectionMode && (
-                    <div className="flex gap-2 pt-4 border-t">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleManageUnits(book.id);
-                        }}
-                        className="flex-1 py-2 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-md transition font-medium flex items-center justify-center gap-2"
-                      >
-                        <Settings className="w-4 h-4" />
-                        管理单元
-                      </button>
-                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleManageUnits(book.id);
+                      }}
+                      className="w-full mt-1 py-1.5 px-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-md hover:shadow-md transition text-xs font-medium flex items-center justify-center gap-1"
+                    >
+                      <Settings className="w-3 h-3" />
+                      管理单元
+                    </button>
                   )}
                 </motion.div>
               ))}

@@ -124,11 +124,11 @@ async def get_word_book(
 @router.get("/books", response_model=List[WordBookResponse])
 async def list_word_books(
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(500, ge=1, le=1000),
     grade_level: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取单词本列表"""
+    """获取单词本列表（默认一次返回 500 本，教师端无需分页）"""
     query = select(WordBook).where(WordBook.is_public == True)
 
     if grade_level:
