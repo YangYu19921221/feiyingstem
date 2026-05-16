@@ -5,6 +5,7 @@ import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock
 import axios from 'axios';
 import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface ClassInfo {
   id: number;
@@ -179,7 +180,7 @@ const TeacherClassManagement = () => {
       setNewClassDesc('');
       loadClasses();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '创建失败');
+      toast.error(getErrorMessage(error, '创建失败'));
     }
   };
 
@@ -192,7 +193,7 @@ const TeacherClassManagement = () => {
       }
       loadClasses();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '删除失败');
+      toast.error(getErrorMessage(error, '删除失败'));
     }
   };
 
@@ -217,7 +218,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '添加失败');
+      toast.error(getErrorMessage(error, '添加失败'));
     }
   };
 
@@ -230,7 +231,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '移除失败');
+      toast.error(getErrorMessage(error, '移除失败'));
     }
   };
 
@@ -255,7 +256,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '转班失败');
+      toast.error(getErrorMessage(error, '转班失败'));
     } finally {
       setTransferring(false);
     }
@@ -275,7 +276,7 @@ const TeacherClassManagement = () => {
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '移除失败');
+      toast.error(getErrorMessage(error, '移除失败'));
     }
   };
 

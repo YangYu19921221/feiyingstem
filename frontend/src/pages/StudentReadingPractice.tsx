@@ -5,6 +5,7 @@ import { getPassageDetail, submitReadingAttempt } from '../api/reading';
 import type { ReadingPassageDetail, AnswerSubmission, ReadingAttemptResult } from '../api/reading';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const StudentReadingPractice = () => {
   const { passageId } = useParams<{ passageId: string }>();
@@ -31,7 +32,7 @@ const StudentReadingPractice = () => {
       setPassage(data);
     } catch (error: any) {
       console.error('加载文章失败:', error);
-      toast.error(error.response?.data?.detail || '加载失败');
+      toast.error(getErrorMessage(error, '加载失败'));
       navigate('/student/reading');
     } finally {
       setLoading(false);
@@ -74,7 +75,7 @@ const StudentReadingPractice = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       console.error('提交失败:', error);
-      toast.error(error.response?.data?.detail || '提交失败');
+      toast.error(getErrorMessage(error, '提交失败'));
     } finally {
       setSubmitting(false);
     }

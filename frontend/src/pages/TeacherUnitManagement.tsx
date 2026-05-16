@@ -17,6 +17,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import * as XLSX from 'xlsx';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const TeacherUnitManagement = () => {
   const { bookId } = useParams<{ bookId: string }>();
@@ -99,7 +100,7 @@ const TeacherUnitManagement = () => {
       toast.success('创建成功!');
     } catch (error: any) {
       console.error('创建单元失败:', error);
-      toast.error(error.response?.data?.detail || '创建失败,请重试');
+      toast.error(getErrorMessage(error, '创建失败,请重试'));
     }
   };
 
@@ -115,7 +116,7 @@ const TeacherUnitManagement = () => {
       toast.success('删除成功!');
     } catch (error: any) {
       console.error('删除单元失败:', error);
-      toast.error(error.response?.data?.detail || '删除失败,请重试');
+      toast.error(getErrorMessage(error, '删除失败,请重试'));
     }
   };
 
@@ -156,7 +157,7 @@ const TeacherUnitManagement = () => {
       loadUnits();
     } catch (error: any) {
       console.error('删除单词失败:', error);
-      toast.error(error.response?.data?.detail || '删除失败,请重试');
+      toast.error(getErrorMessage(error, '删除失败,请重试'));
     }
   };
 
@@ -211,7 +212,7 @@ const TeacherUnitManagement = () => {
       setSelectedUnit(updatedUnit);
     } catch (error: any) {
       console.error('保存失败:', error);
-      toast.error(error.response?.data?.detail || '保存失败,请重试');
+      toast.error(getErrorMessage(error, '保存失败,请重试'));
     } finally {
       setSavingEdit(false);
     }
@@ -293,7 +294,7 @@ const TeacherUnitManagement = () => {
       toast.success('单词添加成功!');
     } catch (error: any) {
       console.error('创建单词失败:', error);
-      toast.error(error.response?.data?.detail || '创建失败,请重试');
+      toast.error(getErrorMessage(error, '创建失败,请重试'));
     } finally {
       setCreatingWord(false);
     }
@@ -404,7 +405,7 @@ const TeacherUnitManagement = () => {
           }, { headers: { Authorization: `Bearer ${token}` } });
           newWordIds.push(res.data.id);
         } catch (err: any) {
-          errors.push(`${word}: ${err.response?.data?.detail || '创建失败'}`);
+          errors.push(`${word}: ${getErrorMessage(err, '创建失败')}`);
         }
       }
 

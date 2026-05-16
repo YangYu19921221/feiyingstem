@@ -5,6 +5,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface RegisterResponse {
   access_token: string;
@@ -52,7 +53,7 @@ const Register = () => {
       localStorage.setItem('user', JSON.stringify(response.data.user));
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.detail || '注册失败，请稍后重试');
+      setError(getErrorMessage(err, '注册失败，请稍后重试'));
     } finally {
       setLoading(false);
     }

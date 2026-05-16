@@ -6,6 +6,7 @@ import { getTeacherPassageDetail, assignReading, getPassageAssignments } from '.
 import type { ReadingPassageDetail } from '../api/reading';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface Student {
   id: number;
@@ -89,7 +90,7 @@ const TeacherReadingAssign = () => {
       await loadData();
     } catch (error: any) {
       console.error('分配失败:', error);
-      toast.error(error.response?.data?.detail || '分配失败');
+      toast.error(getErrorMessage(error, '分配失败'));
     } finally {
       setSubmitting(false);
     }

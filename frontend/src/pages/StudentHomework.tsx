@@ -9,6 +9,7 @@ import {
   type HomeworkAttemptResponse,
 } from '../api/homework';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 // 学习模式中文映射
 const LEARNING_MODE_MAP: Record<string, string> = {
@@ -72,7 +73,7 @@ const StudentHomework = () => {
         state: { fromHomework: true, assignmentId },
       });
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '开始作业失败');
+      toast.error(getErrorMessage(error, '开始作业失败'));
     }
   };
 

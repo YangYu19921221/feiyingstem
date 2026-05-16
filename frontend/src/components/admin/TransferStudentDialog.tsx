@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { admin } from '../../api/admin';
 import type { AdminClassListItem } from '../../api/admin';
 import { toast } from '../Toast';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 interface Props {
   studentId: number;
@@ -38,7 +39,7 @@ const TransferStudentDialog = ({ studentId, currentClassId, open, onClose, onSuc
       toast.success('转班成功');
       onSuccess();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '转班失败，请重试');
+      setError(getErrorMessage(err, '转班失败，请重试'));
     } finally {
       setSubmitting(false);
     }

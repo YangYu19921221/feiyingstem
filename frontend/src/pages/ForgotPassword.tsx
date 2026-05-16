@@ -6,6 +6,7 @@ import { API_BASE_URL } from '../config/env';
 import { useCountdown } from '../hooks/useCountdown';
 import BrandPanel, { MobileBrandHeader } from '../components/BrandPanel';
 import Spinner from '../components/Spinner';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const INPUT_CLASS = 'border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400 outline-none transition bg-gray-50/50 hover:bg-white';
 
@@ -39,7 +40,7 @@ const ForgotPassword = () => {
       await axios.post(`${API_BASE_URL}/auth/send-code`, { phone, purpose: 'reset_password' });
       start();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '发送验证码失败');
+      setError(getErrorMessage(err, '发送验证码失败'));
     } finally {
       setSendingCode(false);
     }
@@ -78,9 +79,9 @@ const ForgotPassword = () => {
       setSuccess(true);
       timerRef.current = setTimeout(() => navigate('/login'), 2000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '重置密码失败');
+      setError(getErrorMessage(err, '重置密码失败'));
       // 验证码错误时回到验证步骤
-      if (err.response?.data?.detail?.includes('验证码')) {
+      if (getErrorMessage(err)?.includes('验证码')) {
         setStep('verify');
         setCode('');
       }

@@ -23,6 +23,7 @@ import { useAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const FlashCardLearning = () => {
   const { unitId } = useParams<{ unitId: string }>();
@@ -243,8 +244,8 @@ const FlashCardLearning = () => {
 
       // 提取错误信息
       let errorMessage = '开始学习失败,请重试';
-      if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
+      if (getErrorMessage(error)) {
+        errorMessage = getErrorMessage(error);
       } else if (error.message) {
         errorMessage = error.message;
       }

@@ -5,6 +5,7 @@ import { BookOpen, Search, Filter, Edit2, Trash2, X, Plus, Sparkles, Upload } fr
 import { toast } from '../components/Toast';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface UserData {
   id: number;
@@ -158,8 +159,8 @@ const TeacherWordLibrary = () => {
       loadWords();
     } catch (error: any) {
       console.error('更新单词失败:', error);
-      if (error.response?.data?.detail) {
-        toast.error(`更新失败: ${error.response.data.detail}`);
+      if (getErrorMessage(error)) {
+        toast.error(`更新失败: ${getErrorMessage(error)}`);
       } else {
         toast.error('更新单词失败,请重试');
       }

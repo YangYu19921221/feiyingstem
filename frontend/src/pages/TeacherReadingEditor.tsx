@@ -12,6 +12,7 @@ import {
   deleteVocabulary,
 } from '../api/reading';
 import type { ReadingPassageDetail, CreateQuestionRequest } from '../api/reading';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const TeacherReadingEditor = () => {
   const { passageId } = useParams<{ passageId?: string }>();
@@ -78,7 +79,7 @@ const TeacherReadingEditor = () => {
       });
     } catch (error: any) {
       console.error('加载文章失败:', error);
-      toast.error(error.response?.data?.detail || '加载失败');
+      toast.error(getErrorMessage(error, '加载失败'));
       navigate('/teacher/reading');
     } finally {
       setLoading(false);
@@ -104,7 +105,7 @@ const TeacherReadingEditor = () => {
       }
     } catch (error: any) {
       console.error('保存失败:', error);
-      toast.error(error.response?.data?.detail || '保存失败');
+      toast.error(getErrorMessage(error, '保存失败'));
     } finally {
       setSaving(false);
     }
@@ -129,7 +130,7 @@ const TeacherReadingEditor = () => {
       await loadPassage();
     } catch (error: any) {
       console.error('添加题目失败:', error);
-      toast.error(error.response?.data?.detail || '添加失败');
+      toast.error(getErrorMessage(error, '添加失败'));
     }
   };
 
@@ -142,7 +143,7 @@ const TeacherReadingEditor = () => {
       await loadPassage();
     } catch (error: any) {
       console.error('删除失败:', error);
-      toast.error(error.response?.data?.detail || '删除失败');
+      toast.error(getErrorMessage(error, '删除失败'));
     }
   };
 

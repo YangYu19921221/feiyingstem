@@ -8,6 +8,7 @@ import { ScopeSelector } from '../components/teacher/ScopeSelector';
 import type { ScopeValue } from '../components/teacher/ScopeSelector';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface Student {
   id: number;
@@ -169,7 +170,7 @@ const TeacherBookAssignment = () => {
       await loadAllAssignments();
     } catch (error: any) {
       console.error('分配失败:', error);
-      showMessage('error', error.response?.data?.detail || '分配失败');
+      showMessage('error', getErrorMessage(error, '分配失败'));
     } finally {
       setSubmitting(false);
     }
@@ -186,7 +187,7 @@ const TeacherBookAssignment = () => {
       await loadAllAssignments();
     } catch (error: any) {
       console.error('删除失败:', error);
-      showMessage('error', error.response?.data?.detail || '删除失败');
+      showMessage('error', getErrorMessage(error, '删除失败'));
     }
   };
 
@@ -261,7 +262,7 @@ const TeacherBookAssignment = () => {
       await loadAllAssignments();
     } catch (error: any) {
       console.error('撤回失败:', error);
-      showMessage('error', error.response?.data?.detail || '撤回失败');
+      showMessage('error', getErrorMessage(error, '撤回失败'));
     }
   };
 

@@ -10,6 +10,7 @@ import RankNotification from '../components/RankNotification';
 import RankBadge, { type RankInfo } from '../components/RankBadge';
 import { competitionWS } from '../services/websocket';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 // 题目选项接口
 interface QuestionOption {
@@ -130,7 +131,7 @@ const CompetitionLearning: React.FC = () => {
         return;
       }
 
-      const errorMsg = error.response?.data?.detail || '加载题目失败,请稍后重试';
+      const errorMsg = getErrorMessage(error, '加载题目失败,请稍后重试');
       toast.error(errorMsg);
     } finally {
       setLoading(false);
@@ -174,7 +175,7 @@ const CompetitionLearning: React.FC = () => {
       fetchRankInfo();
     } catch (error: any) {
       console.error('提交答案失败:', error);
-      toast.error(error.response?.data?.detail || '提交失败');
+      toast.error(getErrorMessage(error, '提交失败'));
       setIsSubmitting(false);
       setSelectedOption(null);
     }

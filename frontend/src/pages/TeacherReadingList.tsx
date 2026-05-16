@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { toast } from '../components/Toast';
 import { getTeacherPassages, deletePassage } from '../api/reading';
 import type { ReadingPassage } from '../api/reading';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const TeacherReadingList = () => {
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ const TeacherReadingList = () => {
       toast.success('删除成功！');
     } catch (error: any) {
       console.error('删除失败:', error);
-      toast.error(error.response?.data?.detail || '删除失败');
+      toast.error(getErrorMessage(error, '删除失败'));
     }
   };
 

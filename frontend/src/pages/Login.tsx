@@ -6,6 +6,7 @@ import { API_BASE_URL } from '../config/env';
 import { useCountdown } from '../hooks/useCountdown';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface LoginResponse {
   access_token: string;
@@ -52,7 +53,7 @@ const Login = () => {
       await axios.post(`${API_BASE_URL}/auth/send-code`, { phone, purpose: 'login' });
       start();
     } catch (err: any) {
-      setError(err.response?.data?.detail || '发送验证码失败');
+      setError(getErrorMessage(err, '发送验证码失败'));
     } finally {
       setSendingCode(false);
     }

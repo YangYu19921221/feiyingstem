@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/client';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -60,7 +61,7 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
       setSuccess(true);
       timerRef.current = setTimeout(handleClose, 1500);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '修改密码失败');
+      setError(getErrorMessage(err, '修改密码失败'));
     } finally {
       setLoading(false);
     }

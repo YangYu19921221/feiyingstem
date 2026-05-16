@@ -5,6 +5,7 @@ import { BookOpen, Users, UserPlus, X, Mail, Check, Eye } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface UserData {
   id: number;
@@ -118,8 +119,8 @@ const TeacherStudents = () => {
       loadData();
     } catch (error: any) {
       console.error('创建学生失败:', error);
-      if (error.response?.data?.detail) {
-        toast.error(`创建失败: ${error.response.data.detail}`);
+      if (getErrorMessage(error)) {
+        toast.error(`创建失败: ${getErrorMessage(error)}`);
       } else {
         toast.error('创建学生失败,请重试');
       }

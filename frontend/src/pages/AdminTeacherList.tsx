@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { admin } from '../api/admin';
 import type { AdminTeacherListItem } from '../api/admin';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const AdminTeacherList = () => {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ const AdminTeacherList = () => {
       await loadTeachers();
       alert(`教师创建成功！\n用户名: ${result.username}\n初始密码: ${result.initial_password}\n\n请妥善保存初始密码。`);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || '创建失败');
+      toast.error(getErrorMessage(err, '创建失败'));
     } finally {
       setCreating(false);
     }

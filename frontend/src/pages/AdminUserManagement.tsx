@@ -4,6 +4,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface User {
   id: number;
@@ -104,7 +105,7 @@ const AdminUserManagement = () => {
       loadStats();
       toast.success('用户创建成功');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '创建失败');
+      toast.error(getErrorMessage(error, '创建失败'));
     }
   };
 
@@ -127,7 +128,7 @@ const AdminUserManagement = () => {
       loadUsers();
       toast.success('用户更新成功');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '更新失败');
+      toast.error(getErrorMessage(error, '更新失败'));
     }
   };
 
@@ -142,7 +143,7 @@ const AdminUserManagement = () => {
       loadUsers();
       loadStats();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '操作失败');
+      toast.error(getErrorMessage(error, '操作失败'));
     }
   };
 
@@ -161,7 +162,7 @@ const AdminUserManagement = () => {
       );
       toast.success('密码重置成功');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '重置失败');
+      toast.error(getErrorMessage(error, '重置失败'));
     }
   };
 
@@ -176,7 +177,7 @@ const AdminUserManagement = () => {
       loadStats();
       toast.success('用户已删除');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || '删除失败');
+      toast.error(getErrorMessage(error, '删除失败'));
     }
   };
 

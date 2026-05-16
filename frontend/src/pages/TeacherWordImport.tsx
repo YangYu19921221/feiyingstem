@@ -6,6 +6,7 @@ import { toast } from '../components/Toast';
 import * as XLSX from 'xlsx';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface UserData {
   id: number;
@@ -244,8 +245,8 @@ const TeacherWordImport = () => {
       setParsedData([]);
     } catch (error: any) {
       console.error('导入失败:', error);
-      if (error.response?.data?.detail) {
-        toast.error(`导入失败: ${error.response.data.detail}`);
+      if (getErrorMessage(error)) {
+        toast.error(`导入失败: ${getErrorMessage(error)}`);
       } else {
         toast.error('导入失败,请重试');
       }

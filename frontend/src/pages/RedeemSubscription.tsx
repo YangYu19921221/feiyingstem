@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { redeemCode } from '../api/subscription';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const RedeemSubscription = () => {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ const RedeemSubscription = () => {
         setError(res.message);
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || '兑换失败，请稍后重试');
+      setError(getErrorMessage(err, '兑换失败，请稍后重试'));
     } finally {
       setLoading(false);
     }
