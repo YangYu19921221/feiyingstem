@@ -307,7 +307,7 @@ const StudentDashboard = () => {
             <span className="text-xs text-ink-mute">AI 英语</span>
           </div>
           <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-ink-soft mr-2">{user?.full_name || '同学'}</span>
+            <span className="text-ink-soft mr-2">{user?.full_name || user?.username || '同学'}</span>
             <button
               onClick={() => setShowChangePassword(true)}
               className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
@@ -329,7 +329,7 @@ const StudentDashboard = () => {
         <section className="mb-12 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
           <div>
             <p className="text-ink-mute text-sm mb-2">
-              👋 {user?.full_name || '同学'}
+              👋 {user?.full_name || user?.username || '同学'}
               {stats && stats.streak_days > 0 && (
                 <> · 连续学习 <span className="font-numeric text-ink-soft">{stats.streak_days}</span> 天</>
               )}

@@ -188,7 +188,7 @@ const StudentHomework = () => {
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">
-              👤 {user?.full_name || '学生'}
+              👤 {user?.full_name || user?.username || '同学'}
             </span>
             <button
               onClick={handleLogout}
