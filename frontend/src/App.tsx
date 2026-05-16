@@ -51,6 +51,7 @@ const BookProgressDetail = lazyWithRetry(() => import('./pages/BookProgressDetai
 const StudentReadingList = lazyWithRetry(() => import('./pages/StudentReadingList'));
 const StudentReadingPractice = lazyWithRetry(() => import('./pages/StudentReadingPractice'));
 const StudentLeaderboard = lazyWithRetry(() => import('./pages/StudentLeaderboard'));
+const StudentJoinClass = lazyWithRetry(() => import('./pages/StudentJoinClass'));
 const ParentLogin = lazyWithRetry(() => import('./pages/ParentLogin'));
 const ParentRegister = lazyWithRetry(() => import('./pages/ParentRegister'));
 const ParentDashboard = lazyWithRetry(() => import('./pages/ParentDashboard'));
@@ -438,6 +439,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <StudentLeaderboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 加入班级 */}
+        <Route
+          path="/student/join-class"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentJoinClass />
             </ProtectedRoute>
           }
         />

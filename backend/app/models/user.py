@@ -146,3 +146,21 @@ class ParentBindCode(Base):
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ClassInviteCode(Base):
+    """班级邀请码（教师生成 → 学生输入加入班级）
+
+    设计：
+    - 一个班级只保留 1 条 active 码（重复生成会替换）
+    - 24 小时有效，过期自动失效（不删除，仅作历史记录）
+    - 一次性兑换码（学生兑换会增量加入；不限领取人数前不标 used_at）
+    """
+    __tablename__ = "class_invite_codes"
+
+    code = Column(String(8), primary_key=True)
+    class_id = Column(Integer, ForeignKey('classes.id', ondelete='CASCADE'), nullable=False, index=True)
+    teacher_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    redemption_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())

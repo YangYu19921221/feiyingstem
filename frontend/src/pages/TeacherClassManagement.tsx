@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight } from 'lucide-react';
+import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search } from 'lucide-react';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -30,6 +31,9 @@ interface AvailableStudent {
   username: string;
   full_name: string;
   phone: string | null;
+  email?: string | null;
+  from_class?: { class_id: number; class_name: string } | null;
+  created_at?: string | null;
 }
 
 interface DailyStudentData {
@@ -67,6 +71,8 @@ interface StudentDetail {
 const getToken = () => localStorage.getItem('access_token');
 const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 
+const AVAILABLE_PAGE_SIZE = 50;
+
 const TeacherClassManagement = () => {
   const navigate = useNavigate();
   const [classes, setClasses] = useState<ClassInfo[]>([]);
@@ -95,6 +101,21 @@ const TeacherClassManagement = () => {
   const [availableStudents, setAvailableStudents] = useState<AvailableStudent[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([]);
   const [availableSearch, setAvailableSearch] = useState('');
+  const [availableDebouncedKw, setAvailableDebouncedKw] = useState('');
+  const [availablePage, setAvailablePage] = useState(1);
+  const [availableTotal, setAvailableTotal] = useState(0);
+  const [availableLoading, setAvailableLoading] = useState(false);
+
+  // 邀请码弹窗
+  const [showInviteCode, setShowInviteCode] = useState(false);
+  const [inviteCode, setInviteCode] = useState<{
+    code: string; class_name: string;
+    expires_at: string; hours_left: number; redemption_count: number;
+  } | null>(null);
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+
+  // Excel 批量入班
+  const [importingExcel, setImportingExcel] = useState(false);
 
   // 学生搜索
   const [studentSearch, setStudentSearch] = useState('');
@@ -117,6 +138,24 @@ const TeacherClassManagement = () => {
       loadDailyStats(selectedClass.id, selectedDate);
     }
   }, [selectedClass, selectedDate]);
+
+  // 添加学生弹窗：debounce 关键字
+  useEffect(() => {
+    const t = setTimeout(() => setAvailableDebouncedKw(availableSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [availableSearch]);
+
+  // 关键字 / 分页变化时（仅弹窗打开时）重新拉
+  useEffect(() => {
+    setAvailablePage(1);
+  }, [availableDebouncedKw]);
+
+  useEffect(() => {
+    if (showAddStudents && selectedClass) {
+      loadAvailableStudents(selectedClass.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableDebouncedKw, availablePage, showAddStudents]);
 
   // 搜索防抖：studentSearch 变化时重新加载学生列表
   useEffect(() => {
@@ -199,10 +238,21 @@ const TeacherClassManagement = () => {
 
   const loadAvailableStudents = async (classId: number) => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/available-students`, { headers: headers() });
-      setAvailableStudents(res.data);
+      setAvailableLoading(true);
+      const res = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/available-students`, {
+        headers: headers(),
+        params: {
+          q: availableDebouncedKw || undefined,
+          page: availablePage,
+          size: AVAILABLE_PAGE_SIZE,
+        },
+      });
+      setAvailableStudents(res.data.items || []);
+      setAvailableTotal(res.data.total || 0);
     } catch (error) {
       console.error('加载可用学生失败:', error);
+    } finally {
+      setAvailableLoading(false);
     }
   };
 
@@ -232,6 +282,102 @@ const TeacherClassManagement = () => {
       loadDailyStats(selectedClass.id, selectedDate);
     } catch (error: any) {
       toast.error(getErrorMessage(error, '移除失败'));
+    }
+  };
+
+  // 邀请码
+  const handleOpenInvite = async (classId: number) => {
+    setShowInviteCode(true);
+    setInviteCode(null);
+    try {
+      const res = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/invite-code`, { headers: headers() });
+      if (res.data) {
+        setInviteCode(res.data);
+      }
+    } catch (error: any) {
+      // 没有也不报错，让用户主动生成
+    }
+  };
+
+  const handleRefreshInvite = async () => {
+    if (!selectedClass) return;
+    setGeneratingInvite(true);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/invite-code`, {}, { headers: headers() });
+      setInviteCode(res.data);
+      toast.success('已生成新邀请码（24 小时有效）');
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '生成失败'));
+    } finally {
+      setGeneratingInvite(false);
+    }
+  };
+
+  const handleCopyInvite = async () => {
+    if (!inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(inviteCode.code);
+      toast.success('邀请码已复制');
+    } catch {
+      toast.error('复制失败，请手动选中复制');
+    }
+  };
+
+  // Excel 批量入班
+  const handleDownloadInviteTemplate = () => {
+    const data = [
+      { '手机号': '13800000000' },
+      { '手机号': '13800000001' },
+    ];
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [{ wch: 15 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '入班手机号');
+    XLSX.writeFile(wb, '入班手机号模板.xlsx');
+  };
+
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedClass) return;
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImportingExcel(true);
+    try {
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<any>(ws);
+      const phones: string[] = [];
+      for (const row of rows) {
+        const v = (row['手机号'] ?? row['phone'] ?? row['Phone'] ?? '').toString().trim();
+        if (v) phones.push(v);
+      }
+      if (phones.length === 0) {
+        toast.warning('Excel 中没有"手机号"列或内容为空');
+        return;
+      }
+
+      const res = await axios.post(
+        `${API_BASE_URL}/teacher/classes/${selectedClass.id}/students-by-phones`,
+        { phones },
+        { headers: headers() }
+      );
+      const d = res.data;
+      const lines: string[] = [
+        `成功入班 ${d.added} 人${d.transferred ? `（含从你其他班转入 ${d.transferred} 人）` : ''}`,
+      ];
+      if (d.already_in?.length) lines.push(`已在本班 ${d.already_in.length} 人：${d.already_in.slice(0, 5).join(', ')}${d.already_in.length > 5 ? ' …' : ''}`);
+      if (d.blocked?.length) lines.push(`在其他教师班，跳过 ${d.blocked.length} 人：${d.blocked.slice(0, 5).join(', ')}${d.blocked.length > 5 ? ' …' : ''}`);
+      if (d.not_found?.length) lines.push(`没找到对应学生 ${d.not_found.length} 个：${d.not_found.slice(0, 5).join(', ')}${d.not_found.length > 5 ? ' …' : ''}`);
+      alert(lines.join('\n'));
+      loadClassStudents(selectedClass.id);
+      loadClasses();
+      loadDailyStats(selectedClass.id, selectedDate);
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '导入失败'));
+    } finally {
+      setImportingExcel(false);
     }
   };
 
@@ -410,16 +556,36 @@ const TeacherClassManagement = () => {
                       )}
                       <p className="text-white/60 text-sm mt-2">{selectedClass.student_count} 名学生</p>
                     </div>
-                    <button
-                      onClick={() => {
-                        loadAvailableStudents(selectedClass.id);
-                        setShowAddStudents(true);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium"
-                    >
-                      <UserPlus className="w-5 h-5" />
-                      添加学生
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      <button
+                        onClick={() => handleOpenInvite(selectedClass.id)}
+                        className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium text-sm"
+                        title="生成班级邀请码，发给学生自助加入"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                        邀请码
+                      </button>
+                      <label
+                        className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium text-sm cursor-pointer"
+                        title="按 Excel 中的手机号批量入班"
+                      >
+                        <FileSpreadsheet className="w-4 h-4" />
+                        {importingExcel ? '导入中...' : 'Excel 导入'}
+                        <input type="file" accept=".xlsx,.xls" disabled={importingExcel} onChange={handleExcelImport} className="hidden" />
+                      </label>
+                      <button
+                        onClick={() => {
+                          setSelectedStudentIds([]);
+                          setAvailableSearch('');
+                          setAvailablePage(1);
+                          setShowAddStudents(true);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium text-sm"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        添加学生
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
 
@@ -599,7 +765,9 @@ const TeacherClassManagement = () => {
                       <p className="text-gray-400 mb-3">暂无学生</p>
                       <button
                         onClick={() => {
-                          loadAvailableStudents(selectedClass.id);
+                          setSelectedStudentIds([]);
+                          setAvailableSearch('');
+                          setAvailablePage(1);
                           setShowAddStudents(true);
                         }}
                         className="text-sm text-indigo-600 hover:underline"
@@ -745,69 +913,64 @@ const TeacherClassManagement = () => {
                 添加学生到班级
               </h3>
 
-              {availableStudents.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">所有学生都已分配到该班级</p>
+              {/* 搜索框 */}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={availableSearch}
+                  onChange={(e) => setAvailableSearch(e.target.value)}
+                  placeholder="搜索姓名 / 用户名 / 手机 / 邮箱"
+                  className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg outline-none focus:border-indigo-400 text-sm"
+                />
+                {availableSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAvailableSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label="清空搜索"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {availableLoading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">加载中...</div>
+              ) : availableTotal === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-sm">
+                  {availableDebouncedKw
+                    ? <>没有匹配「{availableDebouncedKw}」的学生</>
+                    : '没有可加入的学生（所有人都已在其他教师的班）'}
                 </div>
               ) : (
                 <>
-                  {/* 搜索框 */}
-                  <div className="relative mb-3">
-                    <input
-                      type="text"
-                      value={availableSearch}
-                      onChange={(e) => setAvailableSearch(e.target.value)}
-                      placeholder="🔍 搜索姓名 / 用户名"
-                      className="w-full pl-10 pr-8 py-2 border border-gray-300 rounded-lg outline-none focus:border-indigo-400 text-sm"
-                    />
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔎</span>
-                    {availableSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setAvailableSearch('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
-                        aria-label="清空搜索"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-
                   {(() => {
-                    const kw = availableSearch.trim().toLowerCase();
-                    const filtered = availableStudents.filter(s => {
-                      if (!kw) return true;
-                      return (s.full_name || '').toLowerCase().includes(kw)
-                        || (s.username || '').toLowerCase().includes(kw);
-                    });
-                    const filteredIds = filtered.map(s => s.id);
-                    const visibleSelectedCount = filteredIds.filter(id => selectedStudentIds.includes(id)).length;
-                    const allFilteredSelected = filteredIds.length > 0 && visibleSelectedCount === filteredIds.length;
+                    const pageIds = availableStudents.map(s => s.id);
+                    const visibleSelected = pageIds.filter(id => selectedStudentIds.includes(id)).length;
+                    const allPageSelected = pageIds.length > 0 && visibleSelected === pageIds.length;
                     return (
                       <>
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-sm text-gray-500">
-                            已选 {selectedStudentIds.length} / 共 {availableStudents.length}
-                            {kw && <span className="ml-2 text-indigo-600">（匹配 {filtered.length}）</span>}
-                          </p>
+                        <div className="flex items-center justify-between mb-3 text-sm">
+                          <span className="text-gray-500">
+                            已选 {selectedStudentIds.length} 人 · 当前页 {availableStudents.length} / 共 {availableTotal}
+                          </span>
                           <button
                             onClick={() => {
-                              if (allFilteredSelected) {
-                                setSelectedStudentIds(prev => prev.filter(id => !filteredIds.includes(id)));
+                              if (allPageSelected) {
+                                setSelectedStudentIds(prev => prev.filter(id => !pageIds.includes(id)));
                               } else {
-                                setSelectedStudentIds(prev => Array.from(new Set([...prev, ...filteredIds])));
+                                setSelectedStudentIds(prev => Array.from(new Set([...prev, ...pageIds])));
                               }
                             }}
-                            disabled={filtered.length === 0}
-                            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium disabled:text-gray-300 disabled:cursor-not-allowed"
+                            disabled={pageIds.length === 0}
+                            className="text-indigo-600 hover:text-indigo-800 font-medium disabled:text-gray-300 disabled:cursor-not-allowed"
                           >
-                            {allFilteredSelected ? '取消全选' : `全选${kw ? '匹配' : ''}`}
+                            {allPageSelected ? '取消本页' : '全选本页'}
                           </button>
                         </div>
                         <div className="space-y-2 max-h-80 overflow-y-auto">
-                          {filtered.length === 0 ? (
-                            <div className="text-center py-6 text-gray-400 text-sm">没有匹配的学生</div>
-                          ) : filtered.map(s => (
+                          {availableStudents.map(s => (
                             <label
                               key={s.id}
                               className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
@@ -829,13 +992,43 @@ const TeacherClassManagement = () => {
                               <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
                                 <span className="text-indigo-600 font-semibold text-sm">{(s.full_name || s.username || '?').charAt(0)}</span>
                               </div>
-                              <div>
-                                <p className="font-medium text-gray-800 text-sm">{s.full_name}</p>
-                                <p className="text-xs text-gray-400">@{s.username}</p>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-800 text-sm truncate">{s.full_name || s.username}</p>
+                                <p className="text-xs text-gray-400 truncate">
+                                  @{s.username}{s.phone ? ` · ${s.phone}` : ''}
+                                </p>
                               </div>
+                              {s.from_class ? (
+                                <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded shrink-0" title="将从该班转出">
+                                  我的「{s.from_class.class_name}」
+                                </span>
+                              ) : (
+                                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded shrink-0">未入班</span>
+                              )}
                             </label>
                           ))}
                         </div>
+
+                        {availableTotal > AVAILABLE_PAGE_SIZE && (
+                          <div className="flex items-center justify-end gap-2 mt-3 text-sm">
+                            <button
+                              onClick={() => setAvailablePage(p => Math.max(1, p - 1))}
+                              disabled={availablePage <= 1}
+                              className="px-3 py-1 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+                            >上一页</button>
+                            <span className="text-gray-500">
+                              {availablePage} / {Math.max(1, Math.ceil(availableTotal / AVAILABLE_PAGE_SIZE))}
+                            </span>
+                            <button
+                              onClick={() => setAvailablePage(p => Math.min(
+                                Math.max(1, Math.ceil(availableTotal / AVAILABLE_PAGE_SIZE)),
+                                p + 1
+                              ))}
+                              disabled={availablePage >= Math.ceil(availableTotal / AVAILABLE_PAGE_SIZE)}
+                              className="px-3 py-1 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+                            >下一页</button>
+                          </div>
+                        )}
                       </>
                     );
                   })()}
@@ -859,7 +1052,91 @@ const TeacherClassManagement = () => {
         )}
       </AnimatePresence>
 
-      {/* 转班弹窗 */}
+      {/* 邀请码弹窗 */}
+      <AnimatePresence>
+        {showInviteCode && selectedClass && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowInviteCode(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <KeyRound className="w-6 h-6 text-amber-500" />
+                  班级邀请码
+                </h3>
+                <button onClick={() => setShowInviteCode(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-500 mb-4">
+                把这串数字发给学生，让他们在「学生端 → 加入班级」里输入即可加入「{selectedClass.name}」。
+              </p>
+
+              {inviteCode ? (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 text-center">
+                    <div className="text-5xl font-bold tracking-[0.4em] text-amber-700 font-mono select-all">
+                      {inviteCode.code}
+                    </div>
+                    <p className="text-xs text-amber-600 mt-3">
+                      剩余 {inviteCode.hours_left} 小时 ·
+                      已被 {inviteCode.redemption_count} 人兑换
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCopyInvite}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition font-medium"
+                    >
+                      <Copy className="w-4 h-4" />
+                      复制
+                    </button>
+                    <button
+                      onClick={handleRefreshInvite}
+                      disabled={generatingInvite}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition font-medium disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${generatingInvite ? 'animate-spin' : ''}`} />
+                      重新生成
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-gray-500 text-sm mb-4">还没有有效的邀请码</p>
+                  <button
+                    onClick={handleRefreshInvite}
+                    disabled={generatingInvite}
+                    className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition font-medium disabled:opacity-50"
+                  >
+                    {generatingInvite ? '生成中…' : '生成邀请码'}
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-6 pt-4 border-t border-gray-100">
+                <p className="text-xs text-gray-400">
+                  邀请码有效期 24 小时；学生输入后自动加入本班，若已在你其他班则会自动转过来。
+                </p>
+                <button
+                  onClick={handleDownloadInviteTemplate}
+                  className="mt-3 text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  顺便：下载 Excel 入班模板
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {transferStudent && selectedClass && (
           <motion.div

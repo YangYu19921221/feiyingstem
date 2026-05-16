@@ -1,16 +1,17 @@
 """
 教师端班级管理API
 """
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, Integer, update
+from sqlalchemy import select, func, and_, or_, Integer, update, delete
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime, date, timedelta, timezone
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
-from app.models.user import User, Class, ClassStudent, StudyCalendar
+from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
 from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import assert_student_in_my_class, get_my_class_student_ids
@@ -175,29 +176,68 @@ async def add_students_to_class(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """批量添加学生到班级（检查学生是否已在任意班级）"""
+    """
+    批量添加学生到班级
+    池子规则：散户 + 该教师其他班的学生
+    - 在别的教师班里 active 的 → 409 拒绝（避免抢学生）
+    - 在我自己其他班 active 的 → 自动从源班 set is_active=False（视作内部转班）
+    """
     await _get_class_or_404(db, class_id, current_user.id)
+    if not data.student_ids:
+        return {"added": 0, "transferred": 0}
 
-    # 检查请求的 student_ids 中是否有已在“真实存在的班级”里 active 的成员
-    # —— 关联 Class 表是为了排除孤儿 class_students 行（指向已删除班级的）
+    # 拉所有该学生当前的 active 班级关系
+    cur_links_res = await db.execute(
+        select(ClassStudent, Class)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(
+            ClassStudent.student_id.in_(data.student_ids),
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    cur_links = cur_links_res.all()
+
+    # 检测"在别的教师班里"的，直接拒绝
+    blocked = []
+    for link, cls in cur_links:
+        if cls.teacher_id != current_user.id:
+            blocked.append(link.student_id)
+    if blocked:
+        raise HTTPException(409, f"以下学生已在其他教师的班级，无法直接添加：{sorted(set(blocked))}")
+
+    # 对在我自己其他班 active 的，关闭旧关系（内部转班）
+    transferred = 0
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for link, cls in cur_links:
+        if cls.teacher_id == current_user.id and link.class_id != class_id:
+            link.is_active = False
+            link.left_at = now
+            transferred += 1
+        elif link.class_id == class_id:
+            # 已在本班 active —— 跳过（不重复添加）
+            data.student_ids = [sid for sid in data.student_ids if sid != link.student_id]
+
+    # 对剩下的目标学生，开新关系（同时检查同班是否有 inactive 历史 → 复活）
     if data.student_ids:
-        busy_result = await db.execute(
-            select(ClassStudent.student_id)
-            .join(Class, Class.id == ClassStudent.class_id)
-            .where(
+        existing_inactive_res = await db.execute(
+            select(ClassStudent).where(
+                ClassStudent.class_id == class_id,
                 ClassStudent.student_id.in_(data.student_ids),
-                ClassStudent.is_active.is_(True),
+                ClassStudent.is_active.is_(False),
             )
         )
-        busy = {row[0] for row in busy_result.all()}
-        if busy:
-            raise HTTPException(409, f"以下学生已在其他班级：{sorted(busy)}")
+        revive_map = {row.student_id: row for row in existing_inactive_res.scalars().all()}
 
-    for sid in data.student_ids:
-        db.add(ClassStudent(class_id=class_id, student_id=sid, is_active=True))
+        for sid in data.student_ids:
+            if sid in revive_map:
+                row = revive_map[sid]
+                row.is_active = True
+                row.left_at = None
+            else:
+                db.add(ClassStudent(class_id=class_id, student_id=sid, is_active=True))
 
     await db.commit()
-    return {"added": len(data.student_ids)}
+    return {"added": len(data.student_ids), "transferred": transferred}
 
 
 @router.delete("/classes/{class_id}/students/{student_id}")
@@ -294,26 +334,93 @@ async def teacher_transfer_student(
 @router.get("/classes/{class_id}/available-students")
 async def get_available_students(
     class_id: int,
+    q: Optional[str] = Query(None, description="按用户名/姓名/手机/邮箱模糊搜索"),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取未分配到该班级的学生列表"""
+    """
+    可加入该班的学生池：
+      - 不在任何"真实存在的"active 班里的散户（自助注册的孩子）
+      - ∪ 当前教师其他班里 active 的学生（不含本班）
+    支持 q 搜索 + 分页，返回 {items, total, page, size}
+    """
     await _get_class_or_404(db, class_id, current_user.id)
 
-    existing_result = await db.execute(
-        select(ClassStudent.student_id).where(ClassStudent.class_id == class_id)
+    # 1) 不在本班 active 的所有 active 学生
+    in_this_class_subq = (
+        select(ClassStudent.student_id)
+        .where(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
+    ).scalar_subquery()
+
+    # 2) "属于其它教师班级"的学生（被排除）
+    other_teacher_subq = (
+        select(ClassStudent.student_id)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(
+            ClassStudent.is_active.is_(True),
+            Class.teacher_id != current_user.id,
+        )
+    ).scalar_subquery()
+
+    base = (
+        select(User)
+        .where(
+            User.role == "student",
+            User.is_active == True,
+            User.id.notin_(in_this_class_subq),
+            User.id.notin_(other_teacher_subq),
+        )
     )
-    existing_ids = [r[0] for r in existing_result.all()]
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        base = base.where(
+            or_(
+                User.username.like(like),
+                User.full_name.like(like),
+                User.phone.like(like),
+                User.email.like(like),
+            )
+        )
 
-    query = select(User).where(and_(User.role == "student", User.is_active == True))
-    if existing_ids:
-        query = query.where(User.id.notin_(existing_ids))
+    total_res = await db.execute(select(func.count()).select_from(base.subquery()))
+    total = total_res.scalar() or 0
 
-    result = await db.execute(query.order_by(User.username))
-    return [
-        {"id": s.id, "username": s.username, "full_name": s.full_name or s.username, "phone": s.phone}
-        for s in result.scalars().all()
-    ]
+    res = await db.execute(
+        base.order_by(User.created_at.desc()).offset((page - 1) * size).limit(size)
+    )
+    students = res.scalars().all()
+
+    # 标记每个学生的"来源"：unassigned（散户）/ my_class:N（我自己其他班）
+    my_class_map_res = await db.execute(
+        select(ClassStudent.student_id, Class.id, Class.name)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(
+            Class.teacher_id == current_user.id,
+            ClassStudent.is_active.is_(True),
+            ClassStudent.class_id != class_id,
+            ClassStudent.student_id.in_([s.id for s in students]) if students else False,
+        )
+    )
+    src_map: dict = {}
+    for sid, cid, cname in my_class_map_res.all():
+        src_map[sid] = {"class_id": cid, "class_name": cname}
+
+    items = []
+    for s in students:
+        from_class = src_map.get(s.id)
+        items.append({
+            "id": s.id,
+            "username": s.username,
+            "full_name": s.full_name or s.username,
+            "phone": s.phone,
+            "email": s.email,
+            "from_class": from_class,  # None = 散户；非空 = 我其他班的学生
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        })
+
+    return {"items": items, "total": total, "page": page, "size": size}
 
 
 # 班级学生每日学习数据
@@ -783,27 +890,41 @@ async def create_student(
 
 @router.get("/students")
 async def list_my_students(
-    q: Optional[str] = Query(None, description="按用户名/姓名/邮箱模糊搜索"),
+    q: Optional[str] = Query(None, description="按用户名/姓名/手机/邮箱模糊搜索"),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """教师"我的学生" — 自己班级里在册的所有学生，可 q= 搜索"""
+    """教师"我的学生" — 自己班里在册的所有学生，支持 q 搜索 + 分页"""
     ids = await get_my_class_student_ids(db, current_user.id)
     if not ids:
-        return []
+        return {"items": [], "total": 0, "page": page, "size": size}
     stmt = select(User).where(User.id.in_(ids), User.is_active == True)
-    if q:
+    if q and q.strip():
         like = f"%{q.strip()}%"
         stmt = stmt.where(
-            or_(User.username.like(like), User.full_name.like(like), User.email.like(like))
+            or_(
+                User.username.like(like),
+                User.full_name.like(like),
+                User.email.like(like),
+                User.phone.like(like),
+            )
         )
-    res = await db.execute(stmt.order_by(User.username))
-    return [
+
+    total_res = await db.execute(select(func.count()).select_from(stmt.subquery()))
+    total = total_res.scalar() or 0
+
+    res = await db.execute(
+        stmt.order_by(User.username).offset((page - 1) * size).limit(size)
+    )
+    items = [
         {
             "id": u.id,
             "username": u.username,
             "full_name": u.full_name,
             "email": u.email,
+            "phone": u.phone,
             "role": u.role,
             "is_active": u.is_active,
             "created_at": u.created_at.isoformat() if u.created_at else None,
@@ -811,3 +932,210 @@ async def list_my_students(
         }
         for u in res.scalars().all()
     ]
+    return {"items": items, "total": total, "page": page, "size": size}
+
+
+# ========================================
+# 班级邀请码（教师生成 → 学生输入加入）
+# ========================================
+
+INVITE_CODE_TTL_HOURS = 24
+
+
+def _gen_invite_code() -> str:
+    """6 位数字"""
+    return "".join(secrets.choice("0123456789") for _ in range(6))
+
+
+class InviteCodeResponse(BaseModel):
+    code: str
+    class_id: int
+    class_name: str
+    expires_at: datetime
+    hours_left: int
+    redemption_count: int
+
+
+@router.post("/classes/{class_id}/invite-code", response_model=InviteCodeResponse)
+async def create_class_invite_code(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """生成或刷新班级邀请码（24h 有效）— 同一班只保留最新一条"""
+    cls = await _get_class_or_404(db, class_id, current_user.id)
+
+    # 删旧码（无论是否过期），只保留最新
+    await db.execute(
+        delete(ClassInviteCode).where(ClassInviteCode.class_id == class_id)
+    )
+
+    code = ""
+    for _ in range(5):
+        candidate = _gen_invite_code()
+        check = await db.execute(
+            select(ClassInviteCode).where(ClassInviteCode.code == candidate)
+        )
+        if not check.scalar_one_or_none():
+            code = candidate
+            break
+    if not code:
+        raise HTTPException(500, "邀请码生成失败，请重试")
+
+    expires_at = datetime.utcnow() + timedelta(hours=INVITE_CODE_TTL_HOURS)
+    db.add(ClassInviteCode(
+        code=code,
+        class_id=class_id,
+        teacher_id=current_user.id,
+        expires_at=expires_at,
+    ))
+    await db.commit()
+    return InviteCodeResponse(
+        code=code, class_id=class_id, class_name=cls.name,
+        expires_at=expires_at, hours_left=INVITE_CODE_TTL_HOURS,
+        redemption_count=0,
+    )
+
+
+@router.get("/classes/{class_id}/invite-code")
+async def get_class_invite_code(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """查看当前班级未过期的邀请码（可能没有，返回 null）"""
+    cls = await _get_class_or_404(db, class_id, current_user.id)
+    res = await db.execute(
+        select(ClassInviteCode).where(ClassInviteCode.class_id == class_id)
+    )
+    code_row = res.scalar_one_or_none()
+    if not code_row:
+        return None
+    if code_row.expires_at < datetime.utcnow():
+        return None
+    seconds_left = max(0, int((code_row.expires_at - datetime.utcnow()).total_seconds()))
+    hours_left = seconds_left // 3600
+    return {
+        "code": code_row.code,
+        "class_id": class_id,
+        "class_name": cls.name,
+        "expires_at": code_row.expires_at.isoformat(),
+        "hours_left": hours_left,
+        "redemption_count": code_row.redemption_count or 0,
+    }
+
+
+# ========================================
+# Excel 批量入班（手机号匹配）
+# ========================================
+
+class BatchByPhonesRequest(BaseModel):
+    phones: List[str] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/classes/{class_id}/students-by-phones")
+async def add_students_by_phones(
+    class_id: int,
+    body: BatchByPhonesRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """
+    Excel 批量入班 — 按手机号精确匹配 active student
+    - 命中且符合池子规则 → 入班（含我自己其他班的"内部转班"）
+    - 在别的教师班里 active → 跳过并列在 blocked
+    - DB 找不到 → 列在 not_found
+    - 已经在本班 active → 列在 already_in
+    """
+    await _get_class_or_404(db, class_id, current_user.id)
+
+    phones = list({p.strip() for p in body.phones if p and p.strip()})
+    if not phones:
+        return {"added": 0, "transferred": 0, "not_found": [], "blocked": [], "already_in": []}
+
+    res = await db.execute(
+        select(User).where(
+            User.phone.in_(phones),
+            User.role == "student",
+            User.is_active == True,
+        )
+    )
+    found_users = res.scalars().all()
+    found_phone_to_user = {u.phone: u for u in found_users}
+    not_found = [p for p in phones if p not in found_phone_to_user]
+
+    if not found_users:
+        return {"added": 0, "transferred": 0, "not_found": not_found, "blocked": [], "already_in": []}
+
+    user_ids = [u.id for u in found_users]
+    cur_links_res = await db.execute(
+        select(ClassStudent, Class)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(
+            ClassStudent.student_id.in_(user_ids),
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    links = cur_links_res.all()
+
+    uid_to_phone = {u.id: u.phone for u in found_users}
+    blocked_phones: List[str] = []
+    already_in_phones: List[str] = []
+    transfer_targets: List[int] = []
+    skip_user_ids: set = set()
+
+    for link, cls in links:
+        if cls.teacher_id != current_user.id:
+            blocked_phones.append(uid_to_phone[link.student_id])
+            skip_user_ids.add(link.student_id)
+        elif link.class_id == class_id:
+            already_in_phones.append(uid_to_phone[link.student_id])
+            skip_user_ids.add(link.student_id)
+        else:
+            transfer_targets.append(link.id)
+
+    transferred = 0
+    if transfer_targets:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        await db.execute(
+            update(ClassStudent)
+            .where(ClassStudent.id.in_(transfer_targets))
+            .values(is_active=False, left_at=now)
+        )
+        transferred = len(transfer_targets)
+
+    target_ids = [u.id for u in found_users if u.id not in skip_user_ids]
+    if not target_ids:
+        await db.commit()
+        return {
+            "added": 0, "transferred": transferred,
+            "not_found": not_found,
+            "blocked": sorted(set(blocked_phones)),
+            "already_in": sorted(set(already_in_phones)),
+        }
+
+    inactive_res = await db.execute(
+        select(ClassStudent).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.student_id.in_(target_ids),
+            ClassStudent.is_active.is_(False),
+        )
+    )
+    revive_map = {r.student_id: r for r in inactive_res.scalars().all()}
+
+    for sid in target_ids:
+        if sid in revive_map:
+            row = revive_map[sid]
+            row.is_active = True
+            row.left_at = None
+        else:
+            db.add(ClassStudent(class_id=class_id, student_id=sid, is_active=True))
+
+    await db.commit()
+    return {
+        "added": len(target_ids),
+        "transferred": transferred,
+        "not_found": not_found,
+        "blocked": sorted(set(blocked_phones)),
+        "already_in": sorted(set(already_in_phones)),
+    }

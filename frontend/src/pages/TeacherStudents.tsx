@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Users, UserPlus, X, Mail, Check, Eye, Search } from 'lucide-react';
@@ -19,6 +19,7 @@ interface Student {
   username: string;
   full_name: string | null;
   email: string | null;
+  phone?: string | null;
   role: string;
   is_active: boolean;
   created_at: string;
@@ -34,13 +35,18 @@ interface WordBook {
   word_count: number;
 }
 
+const PAGE_SIZE = 50;
+
 const TeacherStudents = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<UserData | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [books, setBooks] = useState<WordBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [debouncedKw, setDebouncedKw] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [creatingStudent, setCreatingStudent] = useState(false);
   const [newStudent, setNewStudent] = useState({
@@ -55,43 +61,61 @@ const TeacherStudents = () => {
     if (userStr) {
       setUser(JSON.parse(userStr));
     }
-    loadData();
   }, []);
 
-  const loadData = async () => {
+  // debounce 搜索关键字
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedKw(searchKeyword.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchKeyword]);
+
+  // 搜索词变化时回到第 1 页
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedKw]);
+
+  // 加载学生（搜索词 / 分页变化时）
+  useEffect(() => {
+    loadStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedKw, page]);
+
+  // 单词本只加载一次
+  useEffect(() => {
+    loadBooks();
+  }, []);
+
+  const loadStudents = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('access_token');
-
-      // 并行加载学生列表（教师"我的学生"）和单词本
-      const [studentsRes, booksRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/teacher/students`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_BASE_URL}/words/books`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-      ]);
-
-      setStudents(studentsRes.data);
-      setBooks(booksRes.data);
+      const res = await axios.get(`${API_BASE_URL}/teacher/students`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { q: debouncedKw || undefined, page, size: PAGE_SIZE },
+      });
+      setStudents(res.data.items || []);
+      setTotal(res.data.total || 0);
     } catch (error) {
-      console.error('加载数据失败:', error);
-      toast.error('加载数据失败,请重试');
+      console.error('加载学生列表失败:', error);
+      toast.error('加载学生列表失败,请重试');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredStudents = useMemo(() => {
-    const kw = searchKeyword.trim().toLowerCase();
-    if (!kw) return students;
-    return students.filter(s =>
-      (s.username || '').toLowerCase().includes(kw) ||
-      (s.full_name || '').toLowerCase().includes(kw) ||
-      (s.email || '').toLowerCase().includes(kw)
-    );
-  }, [students, searchKeyword]);
+  const loadBooks = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get(`${API_BASE_URL}/words/books`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBooks(res.data);
+    } catch (error) {
+      console.error('加载单词本失败:', error);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -126,7 +150,9 @@ const TeacherStudents = () => {
       toast.success(`学生「${res.data.username}」已创建并加入您的班级`);
       setShowCreateDialog(false);
       setNewStudent({ username: '', password: '', full_name: '', email: '' });
-      loadData();
+      // 创建后回到第一页 + 重新加载
+      setPage(1);
+      setTimeout(() => loadStudents(), 0);
     } catch (error: any) {
       toast.error(getErrorMessage(error, '创建学生失败'));
     } finally {
@@ -189,7 +215,7 @@ const TeacherStudents = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">学生总数</p>
-                <p className="text-3xl font-bold text-gray-800">{students.length}</p>
+                <p className="text-3xl font-bold text-gray-800">{total}</p>
               </div>
             </div>
           </motion.div>
@@ -222,9 +248,10 @@ const TeacherStudents = () => {
                 <Check className="w-7 h-7 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">活跃学生</p>
+                <p className="text-sm text-gray-500">当前页</p>
                 <p className="text-3xl font-bold text-gray-800">
-                  {students.filter(s => s.is_active).length}
+                  {students.length}
+                  <span className="text-sm font-normal text-gray-500 ml-2">/ {total}</span>
                 </p>
               </div>
             </div>
@@ -243,7 +270,7 @@ const TeacherStudents = () => {
               <Users className="w-5 h-5" />
               学生列表
               <span className="text-sm font-normal text-gray-500">
-                （{filteredStudents.length}{searchKeyword.trim() ? ` / ${students.length}` : ''}）
+                （第 {page} / {totalPages} 页，共 {total} 人{debouncedKw ? ` · 含「${debouncedKw}」` : ''}）
               </span>
             </h3>
             <div className="flex items-center gap-3 flex-1 max-w-md ml-auto">
@@ -253,7 +280,7 @@ const TeacherStudents = () => {
                   type="text"
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
-                  placeholder="搜索用户名 / 姓名 / 邮箱"
+                  placeholder="搜索用户名 / 姓名 / 手机 / 邮箱"
                   className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
                 />
                 {searchKeyword && (
@@ -281,16 +308,16 @@ const TeacherStudents = () => {
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               <p className="text-gray-500 mt-4">加载中...</p>
             </div>
-          ) : students.length === 0 ? (
+          ) : total === 0 && !debouncedKw ? (
             <div className="text-center py-12">
               <Users className="w-16 h-16 mx-auto text-gray-300 mb-4" />
               <p className="text-gray-500 mb-2">暂无学生</p>
               <p className="text-sm text-gray-400 mb-4">点击"添加学生"按钮创建新学生，会自动归到您的班级</p>
             </div>
-          ) : filteredStudents.length === 0 ? (
+          ) : students.length === 0 ? (
             <div className="text-center py-12">
               <Search className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">没有匹配「{searchKeyword}」的学生</p>
+              <p className="text-gray-500">没有匹配「{debouncedKw}」的学生</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -306,7 +333,7 @@ const TeacherStudents = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((student, index) => (
+                  {students.map((student, index) => (
                     <motion.tr
                       key={student.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -363,6 +390,23 @@ const TeacherStudents = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* 分页 */}
+          {totalPages > 1 && !loading && (
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+              >上一页</button>
+              <span className="text-sm text-gray-500 px-2">{page} / {totalPages}</span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+              >下一页</button>
             </div>
           )}
         </motion.div>
