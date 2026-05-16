@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search } from 'lucide-react';
+import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search, HelpCircle } from 'lucide-react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import ReviewRulesModal from '../components/ReviewRulesModal';
 import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -119,6 +120,9 @@ const TeacherClassManagement = () => {
 
   // Excel 批量入班
   const [importingExcel, setImportingExcel] = useState(false);
+
+  // 复习规则弹窗
+  const [showReviewRules, setShowReviewRules] = useState(false);
 
   // 学生搜索
   const [studentSearch, setStudentSearch] = useState('');
@@ -648,6 +652,14 @@ const TeacherClassManagement = () => {
                       每日学习数据
                     </h3>
                     <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setShowReviewRules(true)}
+                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition"
+                        title="艾宾浩斯复习规则"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        复习规则
+                      </button>
                       {selectedForRemove.size > 0 && (
                         <button
                           onClick={handleBatchRemove}
@@ -1476,6 +1488,12 @@ const TeacherClassManagement = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ReviewRulesModal
+        open={showReviewRules}
+        onClose={() => setShowReviewRules(false)}
+        audience="teacher"
+      />
     </div>
   );
 };

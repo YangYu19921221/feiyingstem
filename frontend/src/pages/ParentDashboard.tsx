@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus } from 'lucide-react';
+import ReviewRulesModal from '../components/ReviewRulesModal';
 import {
   parentListChildren,
   parentChildDashboard,
@@ -21,6 +22,7 @@ const ParentDashboard = () => {
   const [showBindDialog, setShowBindDialog] = useState(false);
   const [bindCode, setBindCode] = useState('');
   const [binding, setBinding] = useState(false);
+  const [showReviewRules, setShowReviewRules] = useState(false);
 
   useEffect(() => {
     loadChildren();
@@ -157,7 +159,7 @@ const ParentDashboard = () => {
         {dashboardLoading || !dashboard ? (
           <div className="py-16 text-center text-ink-mute text-sm">加载孩子数据中…</div>
         ) : (
-          <DashboardContent data={dashboard} />
+          <DashboardContent data={dashboard} onOpenReviewRules={() => setShowReviewRules(true)} />
         )}
       </div>
 
@@ -166,13 +168,19 @@ const ParentDashboard = () => {
         loading={binding} onConfirm={handleBindAdditional}
         onClose={() => { setShowBindDialog(false); setBindCode(''); }}
       />}
+
+      <ReviewRulesModal
+        open={showReviewRules}
+        onClose={() => setShowReviewRules(false)}
+        audience="parent"
+      />
     </div>
   );
 };
 
 // ============ 看板内容 ============
 
-function DashboardContent({ data }: { data: ChildDashboard }) {
+function DashboardContent({ data, onOpenReviewRules }: { data: ChildDashboard; onOpenReviewRules: () => void }) {
   // 7 天热力图分级
   const heatColor = (mins: number) => {
     if (mins === 0) return 'bg-black/[0.04]';
@@ -225,7 +233,15 @@ function DashboardContent({ data }: { data: ChildDashboard }) {
       {/* 复习进度（艾宾浩斯曲线同口径） */}
       <section className="card-soft rounded-2xl p-6 mb-6">
         <div className="flex items-baseline justify-between mb-3">
-          <p className="text-ink-mute text-xs">复习</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-ink-mute text-xs">复习</p>
+            <button
+              onClick={onOpenReviewRules}
+              className="text-[11px] text-ink-mute hover:text-accent-warm underline-offset-2 hover:underline transition"
+            >
+              了解算法
+            </button>
+          </div>
           {(data.review_due_today + data.review_done_today) > 0 && (
             <p className="text-xs text-ink-soft">
               进度{' '}

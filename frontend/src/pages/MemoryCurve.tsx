@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, HelpCircle } from 'lucide-react';
+import ReviewRulesModal from '../components/ReviewRulesModal';
 import {
   getMemoryCurveStats,
   getReviewDueWords,
@@ -37,9 +38,20 @@ const MemoryCurve = () => {
   const [showWordList, setShowWordList] = useState(false);
   const [startingReview, setStartingReview] = useState(false);
   const [reviewPage, setReviewPage] = useState(1);
+  const [showRules, setShowRules] = useState(false);
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // 首次进入复习页自动弹一次规则说明
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('review_rules_seen')) {
+        setShowRules(true);
+        localStorage.setItem('review_rules_seen', '1');
+      }
+    } catch {}
   }, []);
 
   const loadData = async () => {
@@ -129,7 +141,14 @@ const MemoryCurve = () => {
             返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">记忆曲线</h1>
-          <div className="w-12" />
+          <button
+            onClick={() => setShowRules(true)}
+            className="flex items-center gap-1 text-ink-soft hover:text-accent-warm transition text-xs"
+            title="复习规则"
+          >
+            <HelpCircle className="w-4 h-4" />
+            规则
+          </button>
         </div>
       </nav>
 
@@ -556,6 +575,12 @@ const MemoryCurve = () => {
           </motion.div>
         )}
       </div>
+
+      <ReviewRulesModal
+        open={showRules}
+        onClose={() => setShowRules(false)}
+        audience="student"
+      />
     </div>
   );
 };
