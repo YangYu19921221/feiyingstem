@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search } from 'lucide-react';
@@ -125,6 +125,19 @@ const TeacherClassManagement = () => {
   const [transferTargetClassId, setTransferTargetClassId] = useState<number | null>(null);
   const [transferring, setTransferring] = useState(false);
 
+  // 顶部使用说明卡片：本地记住"是否已折叠"
+  const [helpOpen, setHelpOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('teacher_classes_help_collapsed') !== '1'; }
+    catch { return true; }
+  });
+  const toggleHelp = () => {
+    setHelpOpen(prev => {
+      const next = !prev;
+      try { localStorage.setItem('teacher_classes_help_collapsed', next ? '0' : '1'); } catch {}
+      return next;
+    });
+  };
+
   // 每日数据多选删除
   const [selectedForRemove, setSelectedForRemove] = useState<Set<number>>(new Set());
 
@@ -139,16 +152,14 @@ const TeacherClassManagement = () => {
     }
   }, [selectedClass, selectedDate]);
 
-  // 添加学生弹窗：debounce 关键字
+  // 添加学生弹窗：debounce 关键字，搜索变化时同步把页码重置回 1（避免 setPage 单独触发额外一次请求）
   useEffect(() => {
-    const t = setTimeout(() => setAvailableDebouncedKw(availableSearch.trim()), 300);
+    const t = setTimeout(() => {
+      setAvailableDebouncedKw(availableSearch.trim());
+      setAvailablePage(1);
+    }, 300);
     return () => clearTimeout(t);
   }, [availableSearch]);
-
-  // 关键字 / 分页变化时（仅弹窗打开时）重新拉
-  useEffect(() => {
-    setAvailablePage(1);
-  }, [availableDebouncedKw]);
 
   useEffect(() => {
     if (showAddStudents && selectedClass) {
@@ -370,7 +381,7 @@ const TeacherClassManagement = () => {
       if (d.already_in?.length) lines.push(`已在本班 ${d.already_in.length} 人：${d.already_in.slice(0, 5).join(', ')}${d.already_in.length > 5 ? ' …' : ''}`);
       if (d.blocked?.length) lines.push(`在其他教师班，跳过 ${d.blocked.length} 人：${d.blocked.slice(0, 5).join(', ')}${d.blocked.length > 5 ? ' …' : ''}`);
       if (d.not_found?.length) lines.push(`没找到对应学生 ${d.not_found.length} 个：${d.not_found.slice(0, 5).join(', ')}${d.not_found.length > 5 ? ' …' : ''}`);
-      alert(lines.join('\n'));
+      toast.info(lines.join('\n'));
       loadClassStudents(selectedClass.id);
       loadClasses();
       loadDailyStats(selectedClass.id, selectedDate);
@@ -472,6 +483,43 @@ const TeacherClassManagement = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* 使用说明 */}
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2 flex-1 min-w-0">
+              <KeyRound className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-800">三种方式把学生加进班级（推荐顺序：邀请码 → Excel → 手动添加）</p>
+                {helpOpen && (
+                  <ul className="mt-2 space-y-1.5 text-amber-900/80 text-[13px] leading-relaxed">
+                    <li>
+                      <span className="font-medium">① 邀请码（推荐）</span>：点右上「邀请码」生成 6 位数字（24h 有效），转发到家长群。
+                      学生在「学生端首页 → 加入班级」输码即可自动入班；如果学生原本在你别的班，会自动转过来。
+                    </li>
+                    <li>
+                      <span className="font-medium">② Excel 批量入班</span>：点右上「Excel 导入」，上传一列「手机号」清单。
+                      命中数据库里已注册的学生 → 入班；模板可在「邀请码」弹窗里下载。
+                    </li>
+                    <li>
+                      <span className="font-medium">③ 手动添加</span>：点右上「添加学生」，弹窗里能搜姓名 / 用户名 / 手机 / 邮箱。
+                      候选池 = 还没归班的散户 + 你自己其他班的学生（标签会显示"我的『某班』"，加进来等于内部转班）。
+                    </li>
+                    <li className="text-amber-700/70">
+                      注：别的老师班里的学生看不到、加不了，需要找管理员转。
+                    </li>
+                  </ul>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={toggleHelp}
+              className="text-xs text-amber-700 hover:text-amber-900 underline flex-shrink-0"
+            >
+              {helpOpen ? '收起' : '展开使用说明'}
+            </button>
+          </div>
+        </div>
+
         <div className="flex gap-6">
           {/* 左侧 - 班级列表 */}
           <div className="w-72 flex-shrink-0">

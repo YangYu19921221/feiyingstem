@@ -1,12 +1,13 @@
 """学生端 - 班级（加入 / 查看）"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
-from datetime import datetime, timezone
+from sqlalchemy import select
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.api.v1.auth import get_current_student
+from app.api.v1.teacher._permissions import place_students_in_class
 from app.models.user import User, Class, ClassStudent, ClassInviteCode
 
 router = APIRouter()
@@ -20,7 +21,7 @@ class JoinResult(BaseModel):
     class_id: int
     class_name: str
     teacher_name: str | None
-    transferred_from: str | None  # 若是从其它班转过来，提示来源班名
+    transferred_from: str | None
 
 
 @router.post("/class/join-by-code", response_model=JoinResult)
@@ -48,53 +49,22 @@ async def join_class_by_code(
     teacher_res = await db.execute(select(User).where(User.id == cls.teacher_id))
     teacher = teacher_res.scalar_one_or_none()
 
-    # 是否已在本班 active？
-    in_this_res = await db.execute(
-        select(ClassStudent).where(
-            ClassStudent.class_id == cls.id,
-            ClassStudent.student_id == current_user.id,
-            ClassStudent.is_active.is_(True),
-        )
-    )
-    if in_this_res.scalar_one_or_none():
-        invite.redemption_count = (invite.redemption_count or 0) + 1  # 算一次"重复点击"
-        await db.commit()
-        return JoinResult(
-            class_id=cls.id, class_name=cls.name,
-            teacher_name=teacher.full_name or teacher.username if teacher else None,
-            transferred_from=None,
-        )
-
-    # 当前其它 active 班 → 关闭
     cur_res = await db.execute(
-        select(ClassStudent, Class)
-        .join(Class, Class.id == ClassStudent.class_id)
+        select(Class.name)
+        .join(ClassStudent, ClassStudent.class_id == Class.id)
         .where(
             ClassStudent.student_id == current_user.id,
             ClassStudent.is_active.is_(True),
+            ClassStudent.class_id != cls.id,
         )
     )
     transferred_from_name = None
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    for link, old_cls in cur_res.all():
-        link.is_active = False
-        link.left_at = now
-        transferred_from_name = old_cls.name
+    for (name,) in cur_res.all():
+        transferred_from_name = name
 
-    # 复活同班 inactive 历史 / 否则新增
-    revive_res = await db.execute(
-        select(ClassStudent).where(
-            ClassStudent.class_id == cls.id,
-            ClassStudent.student_id == current_user.id,
-            ClassStudent.is_active.is_(False),
-        )
+    place = await place_students_in_class(
+        db, [current_user.id], cls.id, cls.teacher_id, on_other_teacher="steal",
     )
-    inactive = revive_res.scalar_one_or_none()
-    if inactive:
-        inactive.is_active = True
-        inactive.left_at = None
-    else:
-        db.add(ClassStudent(class_id=cls.id, student_id=current_user.id, is_active=True))
 
     invite.redemption_count = (invite.redemption_count or 0) + 1
     await db.commit()
@@ -103,7 +73,7 @@ async def join_class_by_code(
         class_id=cls.id,
         class_name=cls.name,
         teacher_name=(teacher.full_name or teacher.username) if teacher else None,
-        transferred_from=transferred_from_name,
+        transferred_from=transferred_from_name if place.added or place.transferred else None,
     )
 
 

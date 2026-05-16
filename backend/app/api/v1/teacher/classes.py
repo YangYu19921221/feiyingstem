@@ -14,7 +14,11 @@ from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
 from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.api.v1.auth import get_current_teacher
-from app.api.v1.teacher._permissions import assert_student_in_my_class, get_my_class_student_ids
+from app.api.v1.teacher._permissions import (
+    assert_student_in_my_class,
+    get_my_class_student_ids,
+    place_students_in_class,
+)
 from app.services.auth_service import get_password_hash, generate_random_password
 
 router = APIRouter()
@@ -177,67 +181,29 @@ async def add_students_to_class(
     current_user: User = Depends(get_current_teacher)
 ):
     """
-    批量添加学生到班级
-    池子规则：散户 + 该教师其他班的学生
-    - 在别的教师班里 active 的 → 409 拒绝（避免抢学生）
-    - 在我自己其他班 active 的 → 自动从源班 set is_active=False（视作内部转班）
+    批量添加学生到班级 — 池子：散户 + 本教师其他班的学生
+    - 在别的教师班里 active 的 → 409 拒绝
+    - 在本教师其他班 active 的 → 自动从源班关掉旧关系（内部转班）
     """
     await _get_class_or_404(db, class_id, current_user.id)
     if not data.student_ids:
-        return {"added": 0, "transferred": 0}
+        return {"added": 0, "transferred": 0, "blocked": [], "already_in": []}
 
-    # 拉所有该学生当前的 active 班级关系
-    cur_links_res = await db.execute(
-        select(ClassStudent, Class)
-        .join(Class, Class.id == ClassStudent.class_id)
-        .where(
-            ClassStudent.student_id.in_(data.student_ids),
-            ClassStudent.is_active.is_(True),
-        )
+    res = await place_students_in_class(
+        db, data.student_ids, class_id, current_user.id, on_other_teacher="block"
     )
-    cur_links = cur_links_res.all()
-
-    # 检测"在别的教师班里"的，直接拒绝
-    blocked = []
-    for link, cls in cur_links:
-        if cls.teacher_id != current_user.id:
-            blocked.append(link.student_id)
-    if blocked:
-        raise HTTPException(409, f"以下学生已在其他教师的班级，无法直接添加：{sorted(set(blocked))}")
-
-    # 对在我自己其他班 active 的，关闭旧关系（内部转班）
-    transferred = 0
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    for link, cls in cur_links:
-        if cls.teacher_id == current_user.id and link.class_id != class_id:
-            link.is_active = False
-            link.left_at = now
-            transferred += 1
-        elif link.class_id == class_id:
-            # 已在本班 active —— 跳过（不重复添加）
-            data.student_ids = [sid for sid in data.student_ids if sid != link.student_id]
-
-    # 对剩下的目标学生，开新关系（同时检查同班是否有 inactive 历史 → 复活）
-    if data.student_ids:
-        existing_inactive_res = await db.execute(
-            select(ClassStudent).where(
-                ClassStudent.class_id == class_id,
-                ClassStudent.student_id.in_(data.student_ids),
-                ClassStudent.is_active.is_(False),
-            )
+    if res.blocked_student_ids:
+        raise HTTPException(
+            409,
+            f"以下学生已在其他教师的班级，无法直接添加：{res.blocked_student_ids}",
         )
-        revive_map = {row.student_id: row for row in existing_inactive_res.scalars().all()}
-
-        for sid in data.student_ids:
-            if sid in revive_map:
-                row = revive_map[sid]
-                row.is_active = True
-                row.left_at = None
-            else:
-                db.add(ClassStudent(class_id=class_id, student_id=sid, is_active=True))
-
     await db.commit()
-    return {"added": len(data.student_ids), "transferred": transferred}
+    return {
+        "added": res.added,
+        "transferred": res.transferred,
+        "blocked": res.blocked_student_ids,
+        "already_in": res.already_in_student_ids,
+    }
 
 
 @router.delete("/classes/{class_id}/students/{student_id}")
@@ -392,33 +358,33 @@ async def get_available_students(
     )
     students = res.scalars().all()
 
-    # 标记每个学生的"来源"：unassigned（散户）/ my_class:N（我自己其他班）
-    my_class_map_res = await db.execute(
-        select(ClassStudent.student_id, Class.id, Class.name)
-        .join(Class, Class.id == ClassStudent.class_id)
-        .where(
-            Class.teacher_id == current_user.id,
-            ClassStudent.is_active.is_(True),
-            ClassStudent.class_id != class_id,
-            ClassStudent.student_id.in_([s.id for s in students]) if students else False,
-        )
-    )
     src_map: dict = {}
-    for sid, cid, cname in my_class_map_res.all():
-        src_map[sid] = {"class_id": cid, "class_name": cname}
+    if students:
+        my_class_map_res = await db.execute(
+            select(ClassStudent.student_id, Class.id, Class.name)
+            .join(Class, Class.id == ClassStudent.class_id)
+            .where(
+                Class.teacher_id == current_user.id,
+                ClassStudent.is_active.is_(True),
+                ClassStudent.class_id != class_id,
+                ClassStudent.student_id.in_([s.id for s in students]),
+            )
+        )
+        for sid, cid, cname in my_class_map_res.all():
+            src_map[sid] = {"class_id": cid, "class_name": cname}
 
-    items = []
-    for s in students:
-        from_class = src_map.get(s.id)
-        items.append({
+    items = [
+        {
             "id": s.id,
             "username": s.username,
             "full_name": s.full_name or s.username,
             "phone": s.phone,
             "email": s.email,
-            "from_class": from_class,  # None = 散户；非空 = 我其他班的学生
+            "from_class": src_map.get(s.id),
             "created_at": s.created_at.isoformat() if s.created_at else None,
-        })
+        }
+        for s in students
+    ]
 
     return {"items": items, "total": total, "page": page, "size": size}
 
@@ -997,7 +963,7 @@ async def create_class_invite_code(
     )
 
 
-@router.get("/classes/{class_id}/invite-code")
+@router.get("/classes/{class_id}/invite-code", response_model=Optional[InviteCodeResponse])
 async def get_class_invite_code(
     class_id: int,
     db: AsyncSession = Depends(get_db),
@@ -1015,14 +981,14 @@ async def get_class_invite_code(
         return None
     seconds_left = max(0, int((code_row.expires_at - datetime.utcnow()).total_seconds()))
     hours_left = seconds_left // 3600
-    return {
-        "code": code_row.code,
-        "class_id": class_id,
-        "class_name": cls.name,
-        "expires_at": code_row.expires_at.isoformat(),
-        "hours_left": hours_left,
-        "redemption_count": code_row.redemption_count or 0,
-    }
+    return InviteCodeResponse(
+        code=code_row.code,
+        class_id=class_id,
+        class_name=cls.name,
+        expires_at=code_row.expires_at,
+        hours_left=hours_left,
+        redemption_count=code_row.redemption_count or 0,
+    )
 
 
 # ========================================
@@ -1042,7 +1008,7 @@ async def add_students_by_phones(
 ):
     """
     Excel 批量入班 — 按手机号精确匹配 active student
-    - 命中且符合池子规则 → 入班（含我自己其他班的"内部转班"）
+    - 命中且符合池子规则 → 入班（含本教师其他班"内部转班"）
     - 在别的教师班里 active → 跳过并列在 blocked
     - DB 找不到 → 列在 not_found
     - 已经在本班 active → 列在 already_in
@@ -1064,78 +1030,19 @@ async def add_students_by_phones(
     found_phone_to_user = {u.phone: u for u in found_users}
     not_found = [p for p in phones if p not in found_phone_to_user]
 
-    if not found_users:
-        return {"added": 0, "transferred": 0, "not_found": not_found, "blocked": [], "already_in": []}
-
-    user_ids = [u.id for u in found_users]
-    cur_links_res = await db.execute(
-        select(ClassStudent, Class)
-        .join(Class, Class.id == ClassStudent.class_id)
-        .where(
-            ClassStudent.student_id.in_(user_ids),
-            ClassStudent.is_active.is_(True),
-        )
-    )
-    links = cur_links_res.all()
-
     uid_to_phone = {u.id: u.phone for u in found_users}
-    blocked_phones: List[str] = []
-    already_in_phones: List[str] = []
-    transfer_targets: List[int] = []
-    skip_user_ids: set = set()
-
-    for link, cls in links:
-        if cls.teacher_id != current_user.id:
-            blocked_phones.append(uid_to_phone[link.student_id])
-            skip_user_ids.add(link.student_id)
-        elif link.class_id == class_id:
-            already_in_phones.append(uid_to_phone[link.student_id])
-            skip_user_ids.add(link.student_id)
-        else:
-            transfer_targets.append(link.id)
-
-    transferred = 0
-    if transfer_targets:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        await db.execute(
-            update(ClassStudent)
-            .where(ClassStudent.id.in_(transfer_targets))
-            .values(is_active=False, left_at=now)
-        )
-        transferred = len(transfer_targets)
-
-    target_ids = [u.id for u in found_users if u.id not in skip_user_ids]
-    if not target_ids:
-        await db.commit()
-        return {
-            "added": 0, "transferred": transferred,
-            "not_found": not_found,
-            "blocked": sorted(set(blocked_phones)),
-            "already_in": sorted(set(already_in_phones)),
-        }
-
-    inactive_res = await db.execute(
-        select(ClassStudent).where(
-            ClassStudent.class_id == class_id,
-            ClassStudent.student_id.in_(target_ids),
-            ClassStudent.is_active.is_(False),
-        )
+    place = await place_students_in_class(
+        db,
+        [u.id for u in found_users],
+        class_id,
+        current_user.id,
+        on_other_teacher="block",
     )
-    revive_map = {r.student_id: r for r in inactive_res.scalars().all()}
-
-    for sid in target_ids:
-        if sid in revive_map:
-            row = revive_map[sid]
-            row.is_active = True
-            row.left_at = None
-        else:
-            db.add(ClassStudent(class_id=class_id, student_id=sid, is_active=True))
-
     await db.commit()
     return {
-        "added": len(target_ids),
-        "transferred": transferred,
+        "added": place.added,
+        "transferred": place.transferred,
         "not_found": not_found,
-        "blocked": sorted(set(blocked_phones)),
-        "already_in": sorted(set(already_in_phones)),
+        "blocked": sorted({uid_to_phone[i] for i in place.blocked_student_ids}),
+        "already_in": sorted({uid_to_phone[i] for i in place.already_in_student_ids}),
     }

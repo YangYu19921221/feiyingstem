@@ -63,24 +63,19 @@ const TeacherStudents = () => {
     }
   }, []);
 
-  // debounce 搜索关键字
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedKw(searchKeyword.trim()), 300);
+    const t = setTimeout(() => {
+      setDebouncedKw(searchKeyword.trim());
+      setPage(1);
+    }, 300);
     return () => clearTimeout(t);
   }, [searchKeyword]);
 
-  // 搜索词变化时回到第 1 页
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedKw]);
-
-  // 加载学生（搜索词 / 分页变化时）
   useEffect(() => {
     loadStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedKw, page]);
 
-  // 单词本只加载一次
   useEffect(() => {
     loadBooks();
   }, []);
@@ -150,9 +145,11 @@ const TeacherStudents = () => {
       toast.success(`学生「${res.data.username}」已创建并加入您的班级`);
       setShowCreateDialog(false);
       setNewStudent({ username: '', password: '', full_name: '', email: '' });
-      // 创建后回到第一页 + 重新加载
-      setPage(1);
-      setTimeout(() => loadStudents(), 0);
+      if (page === 1) {
+        loadStudents();
+      } else {
+        setPage(1);
+      }
     } catch (error: any) {
       toast.error(getErrorMessage(error, '创建学生失败'));
     } finally {

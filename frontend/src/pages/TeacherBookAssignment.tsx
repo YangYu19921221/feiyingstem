@@ -95,16 +95,14 @@ const TeacherBookAssignment = () => {
     }
   };
 
-  const loadStudents = async (kw?: string) => {
+  const loadStudents = async () => {
     try {
       setLoadingStudents(true);
       const token = localStorage.getItem('access_token');
       const response = await axios.get(`${API_BASE_URL}/teacher/students`, {
         headers: { Authorization: `Bearer ${token}` },
-        // 一次拿全（教师只看自己班学生，量不大）；后端默认 size=50，给个足够大值
-        params: { q: kw && kw.trim() ? kw.trim() : undefined, page: 1, size: 200 },
+        params: { page: 1, size: 200 },
       });
-      // 后端返回 {items, total, ...}
       setStudents(response.data.items || []);
     } catch (error) {
       console.error('加载学生列表失败:', error);
