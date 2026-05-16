@@ -101,7 +101,71 @@ const LearningAnalytics = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* 总览卡片 */}
+        {/* 今日实时数据 */}
+        {overview && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 rounded-2xl p-6 mb-6 shadow-lg text-white"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Zap className="w-5 h-5" />
+                  今日实时
+                </h2>
+                <p className="text-white/80 text-xs mt-1">
+                  {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+                </p>
+              </div>
+              <button
+                onClick={loadData}
+                className="text-xs px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition"
+                title="刷新今日数据"
+              >
+                ↻ 刷新
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white/15 rounded-xl p-3">
+                <p className="text-white/80 text-xs">今日背词</p>
+                <p className="text-3xl font-bold mt-1">
+                  {overview.today_words}
+                  <span className="text-sm font-normal opacity-80 ml-1">个</span>
+                </p>
+              </div>
+              <div className="bg-white/15 rounded-xl p-3">
+                <p className="text-white/80 text-xs">今日时长</p>
+                <p className="text-3xl font-bold mt-1">
+                  {Math.floor(overview.today_duration / 60)}
+                  <span className="text-sm font-normal opacity-80 ml-1">分钟</span>
+                </p>
+              </div>
+              <div className="bg-white/15 rounded-xl p-3">
+                <p className="text-white/80 text-xs">今日次数</p>
+                <p className="text-3xl font-bold mt-1">
+                  {overview.today_sessions}
+                  <span className="text-sm font-normal opacity-80 ml-1">次</span>
+                </p>
+              </div>
+              <div className="bg-white/15 rounded-xl p-3">
+                <p className="text-white/80 text-xs">今日正确率</p>
+                <p className="text-3xl font-bold mt-1">
+                  {overview.today_accuracy.toFixed(0)}
+                  <span className="text-sm font-normal opacity-80 ml-1">%</span>
+                </p>
+              </div>
+            </div>
+            {overview.today_words === 0 && overview.today_sessions === 0 && (
+              <p className="text-white/90 text-sm mt-4">
+                今天还没开始学呢，去单词本背几个吧 ✨
+              </p>
+            )}
+          </motion.div>
+        )}
+
+        {/* 累计总览卡片 */}
+        <h3 className="text-sm font-medium text-gray-500 mb-3">累计数据</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}

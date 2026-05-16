@@ -9,6 +9,10 @@ export interface LearningOverview {
   total_duration: number;
   avg_daily_words: number;
   current_streak: number;
+  today_words: number;
+  today_duration: number;
+  today_sessions: number;
+  today_accuracy: number;
 }
 
 export interface DailyStats {

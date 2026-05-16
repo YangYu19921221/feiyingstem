@@ -11,7 +11,7 @@ import math
 from app.core.database import get_db
 from app.models.user import User
 from app.models.user import StudyCalendar
-from app.models.learning import WordMastery, LearningRecord, LearningProgress
+from app.models.learning import WordMastery, LearningRecord, LearningProgress, StudySession
 from app.api.v1.auth import get_current_user
 from pydantic import BaseModel
 
@@ -49,6 +49,10 @@ class LearningOverview(BaseModel):
     total_duration: int
     avg_daily_words: float
     current_streak: int
+    today_words: int = 0
+    today_duration: int = 0  # 当天累计学习秒数
+    today_sessions: int = 0
+    today_accuracy: float = 0.0  # 当天答题正确率（百分比）
 
 
 class ModeStats(BaseModel):
@@ -167,6 +171,61 @@ async def get_learning_overview(
             else:
                 break
 
+    # 今日实时数据
+    today_d = date.today()
+    today_start = datetime.combine(today_d, datetime.min.time())
+    tomorrow_start = today_start + timedelta(days=1)
+
+    cal_today_res = await db.execute(
+        select(StudyCalendar).where(
+            StudyCalendar.user_id == current_user.id,
+            StudyCalendar.study_date == today_d,
+        )
+    )
+    cal_today = cal_today_res.scalar_one_or_none()
+    today_words = cal_today.words_learned if cal_today else 0
+    today_duration = cal_today.duration if cal_today else 0
+
+    # 没打卡日历的话退化到 StudySession 累加（兼容旧数据 / 学习中尚未结算的情况）
+    if not cal_today:
+        sess_sum_res = await db.execute(
+            select(
+                func.coalesce(func.sum(StudySession.words_studied), 0),
+                func.coalesce(func.sum(StudySession.time_spent), 0),
+            ).where(
+                StudySession.user_id == current_user.id,
+                StudySession.started_at >= today_start,
+                StudySession.started_at < tomorrow_start,
+            )
+        )
+        ws, ts = sess_sum_res.one()
+        today_words = int(ws or 0)
+        today_duration = int(ts or 0)
+
+    sess_cnt_res = await db.execute(
+        select(func.count(StudySession.id)).where(
+            StudySession.user_id == current_user.id,
+            StudySession.started_at >= today_start,
+            StudySession.started_at < tomorrow_start,
+        )
+    )
+    today_sessions = int(sess_cnt_res.scalar() or 0)
+
+    rec_today_res = await db.execute(
+        select(
+            func.count(LearningRecord.id),
+            func.sum(LearningRecord.is_correct.cast(Integer)),
+        ).where(
+            LearningRecord.user_id == current_user.id,
+            LearningRecord.created_at >= today_start,
+            LearningRecord.created_at < tomorrow_start,
+        )
+    )
+    rec_total, rec_correct = rec_today_res.one()
+    rec_total = int(rec_total or 0)
+    rec_correct = int(rec_correct or 0)
+    today_accuracy = round((rec_correct / rec_total * 100), 1) if rec_total > 0 else 0.0
+
     return LearningOverview(
         total_words=total_words,
         mastered_words=mastered_words,
@@ -175,7 +234,11 @@ async def get_learning_overview(
         total_study_days=total_study_days,
         total_duration=total_duration,
         avg_daily_words=round(avg_daily_words, 1),
-        current_streak=current_streak
+        current_streak=current_streak,
+        today_words=today_words,
+        today_duration=today_duration,
+        today_sessions=today_sessions,
+        today_accuracy=today_accuracy,
     )
 
 

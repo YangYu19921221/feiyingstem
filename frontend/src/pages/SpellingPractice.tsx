@@ -36,8 +36,11 @@ const SpellingPractice = () => {
   const [hintsUsed, setHintsUsed] = useState(0);
   const [revealedLetters, setRevealedLetters] = useState<Set<number>>(new Set());
   const [letterResults, setLetterResults] = useState<string[]>([]);
-  const [attemptCount, setAttemptCount] = useState(0);
   const [showCorrectAnswer, setShowCorrectAnswer] = useState(false);
+  // 错答后进入"抄写模式"：需连续 3 次完整正确输入才能继续
+  const [copyMode, setCopyMode] = useState(false);
+  const [copyDoneCount, setCopyDoneCount] = useState(0);
+  const COPY_REQUIRED = 3;
 
   const handleHint = () => {
     const answer = questions[currentIndex].correct_answer;
@@ -58,7 +61,38 @@ const SpellingPractice = () => {
     const input = userInput.trim();
     const correct = input === answer;
 
-    // 逐字母对比
+    // 抄写模式下：只判断是否完整正确，正确则计数；不再调 recordAnswer
+    if (copyMode) {
+      const compareResults: string[] = [];
+      for (let i = 0; i < answer.length; i++) {
+        if (i < input.length) {
+          compareResults.push(input[i] === answer[i] ? 'correct' : 'wrong');
+        } else {
+          compareResults.push('missing');
+        }
+      }
+      setLetterResults(compareResults);
+
+      if (correct) {
+        const nextDone = copyDoneCount + 1;
+        setCopyDoneCount(nextDone);
+        if (nextDone >= COPY_REQUIRED) {
+          // 抄完三遍 → 真正进入"已答完"状态，让 PracticeLayout 的反馈卡出现并允许下一题
+          recordAnswer(false);
+        } else {
+          // 还差几遍：清空输入、保持答案可见，重新让用户写
+          setTimeout(() => {
+            setUserInput('');
+            setLetterResults([]);
+            hiddenInputRef.current?.focus();
+          }, 350);
+        }
+      }
+      // 抄写时输错不计数，也不影响成绩 — 提示用户重写当前这遍
+      return;
+    }
+
+    // 正常首答
     const compareResults: string[] = [];
     for (let i = 0; i < answer.length; i++) {
       if (i < input.length) {
@@ -73,13 +107,15 @@ const SpellingPractice = () => {
       setShowCorrectAnswer(false);
       recordAnswer(true);
     } else {
-      const newCount = attemptCount + 1;
-      setAttemptCount(newCount);
-      if (newCount >= 3) {
-        setShowCorrectAnswer(true);
-        recordAnswer(false);
-      }
-      // 前3次不调用 recordAnswer，让用户重试
+      // 错一次就进抄写模式，亮答案、清输入、要求抄 3 遍
+      setShowCorrectAnswer(true);
+      setCopyMode(true);
+      setCopyDoneCount(0);
+      setTimeout(() => {
+        setUserInput('');
+        setLetterResults([]);
+        hiddenInputRef.current?.focus();
+      }, 700);
     }
   };
 
@@ -88,8 +124,9 @@ const SpellingPractice = () => {
       setUserInput('');
       setLetterResults([]);
       setRevealedLetters(new Set());
-      setAttemptCount(0);
       setShowCorrectAnswer(false);
+      setCopyMode(false);
+      setCopyDoneCount(0);
     });
   };
 
@@ -144,6 +181,15 @@ const SpellingPractice = () => {
             <p className="text-sm text-gray-400 mt-2">
               共 {answerLength} 个字符{currentQuestion?.correct_answer.includes(' ') ? '（含空格）' : ''}
             </p>
+            {/* 抄写模式：显示正确答案让学生照着抄 */}
+            {copyMode && currentQuestion && (
+              <div className="mt-4 inline-block bg-amber-50 border-2 border-amber-300 rounded-xl px-5 py-3">
+                <p className="text-xs text-amber-700 mb-1">正确拼写</p>
+                <p className="text-3xl font-bold text-amber-700 tracking-wider font-mono">
+                  {currentQuestion.correct_answer}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* 隐藏输入框 */}
@@ -232,8 +278,8 @@ const SpellingPractice = () => {
             })}
           </div>
 
-          {/* 提示按钮 */}
-          {!isChecking && (
+          {/* 提示按钮（抄写模式下隐藏：答案已经亮在上面） */}
+          {!isChecking && !copyMode && (
             <div className="text-center mb-6">
               <button
                 onClick={handleHint}
@@ -246,11 +292,11 @@ const SpellingPractice = () => {
             </div>
           )}
 
-          {/* 错误重试提示 */}
-          {attemptCount > 0 && !isChecking && (
+          {/* 抄写模式提示 */}
+          {copyMode && !isChecking && (
             <div className="text-center mb-4">
-              <p className="text-red-500 text-sm font-medium">
-                拼写不正确，请重试 ({attemptCount}/3)
+              <p className="text-amber-700 text-sm font-medium">
+                ✏️ 拼错了，请照着上方正确拼写抄写 {COPY_REQUIRED} 遍（已完成 {copyDoneCount} / {COPY_REQUIRED}）
               </p>
             </div>
           )}
@@ -262,7 +308,9 @@ const SpellingPractice = () => {
               disabled={!userInput.trim()}
               className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
             >
-              {attemptCount > 0 ? `再试一次 (${3 - attemptCount}次机会)` : '检查拼写 ✏️'}
+              {copyMode
+                ? `提交本遍（${copyDoneCount + 1} / ${COPY_REQUIRED}）`
+                : '检查拼写 ✏️'}
             </button>
           )}
         </motion.div>
