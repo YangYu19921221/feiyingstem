@@ -222,6 +222,58 @@ function DashboardContent({ data }: { data: ChildDashboard }) {
         </div>
       </section>
 
+      {/* 复习进度（艾宾浩斯曲线同口径） */}
+      <section className="card-soft rounded-2xl p-6 mb-6">
+        <div className="flex items-baseline justify-between mb-3">
+          <p className="text-ink-mute text-xs">复习</p>
+          {(data.review_due_today + data.review_done_today) > 0 && (
+            <p className="text-xs text-ink-soft">
+              进度{' '}
+              <span className="font-numeric text-ink font-semibold">
+                {Math.round(
+                  (data.review_done_today /
+                    Math.max(1, data.review_due_today + data.review_done_today)) * 100
+                )}
+              </span>
+              %
+            </p>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-3">
+          <div>
+            <p className="font-display text-3xl font-semibold text-accent-warm font-numeric leading-none">
+              {data.review_due_today}
+            </p>
+            <p className="text-xs text-ink-soft mt-1.5">今日待复习</p>
+          </div>
+          <div>
+            <p className="font-display text-3xl font-semibold text-ink font-numeric leading-none">
+              {data.review_done_today}
+            </p>
+            <p className="text-xs text-ink-soft mt-1.5">今日已复习</p>
+          </div>
+          <div>
+            <p className="font-display text-3xl font-semibold text-green-600 font-numeric leading-none">
+              {data.graduated_words}
+            </p>
+            <p className="text-xs text-ink-soft mt-1.5">已毕业单词</p>
+          </div>
+        </div>
+        {data.review_due_today === 0 && data.review_done_today > 0 && (
+          <p className="text-xs text-green-700">🎉 今日复习已清零</p>
+        )}
+        {data.review_due_today > 0 && (
+          <div className="h-1.5 rounded-full overflow-hidden bg-black/5">
+            <div
+              className="h-full bg-accent-warm transition-all"
+              style={{
+                width: `${(data.review_done_today / Math.max(1, data.review_due_today + data.review_done_today)) * 100}%`,
+              }}
+            />
+          </div>
+        )}
+      </section>
+
       {/* 本周对比 */}
       <section className="mb-6">
         <h2 className="font-display text-lg font-semibold text-ink mb-3">本周与上周</h2>

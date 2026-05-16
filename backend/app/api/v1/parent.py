@@ -303,6 +303,10 @@ class ChildDashboard(BaseModel):
     today_minutes: int
     today_words: int
     streak_days: int
+    # 复习进度（与 /student/review-progress 同口径）
+    review_due_today: int = 0
+    review_done_today: int = 0
+    graduated_words: int = 0
     total_words_learned: int
     total_words_mastered: int
     total_minutes: int
@@ -555,6 +559,10 @@ async def parent_child_dashboard(
     )
     unlocked_ach = int(res.scalar() or 0)
 
+    # 复习进度（与 /student/review-progress 同口径）
+    from app.api.v1.student.learning_records import compute_review_progress
+    review_prog = await compute_review_progress(db, student_id)
+
     return ChildDashboard(
         student_id=student.id,
         full_name=student.full_name,
@@ -562,6 +570,9 @@ async def parent_child_dashboard(
         today_minutes=today_minutes,
         today_words=today_words,
         streak_days=streak_days,
+        review_due_today=review_prog["review_due_today"],
+        review_done_today=review_prog["review_done_today"],
+        graduated_words=review_prog["graduated_words"],
         total_words_learned=total_words_learned,
         total_words_mastered=total_words_mastered,
         total_minutes=total_minutes,

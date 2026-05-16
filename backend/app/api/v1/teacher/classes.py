@@ -461,12 +461,54 @@ async def get_class_daily_stats(
     )
     sess_map = {r.user_id: r.cnt for r in sess_result.all()}
 
+    # 复习进度（批量）
+    from app.api.v1.student.learning_records import SRS_INTERVALS
+    now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    review_progress_map: dict[int, dict] = {sid: {"review_due_today": 0, "review_done_today": 0, "graduated_words": 0} for sid in student_ids}
+
+    due_res = await db.execute(
+        select(WordMastery.user_id, func.count(WordMastery.id))
+        .where(
+            WordMastery.user_id.in_(student_ids),
+            WordMastery.next_review_at.isnot(None),
+            WordMastery.next_review_at <= now_dt,
+        )
+        .group_by(WordMastery.user_id)
+    )
+    for uid, cnt in due_res.all():
+        review_progress_map[uid]["review_due_today"] = int(cnt)
+
+    done_res = await db.execute(
+        select(LearningRecord.user_id, func.count(func.distinct(LearningRecord.word_id)))
+        .where(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.learning_mode == 'review',
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        )
+        .group_by(LearningRecord.user_id)
+    )
+    for uid, cnt in done_res.all():
+        review_progress_map[uid]["review_done_today"] = int(cnt)
+
+    graduated_res = await db.execute(
+        select(WordMastery.user_id, func.count(WordMastery.id))
+        .where(
+            WordMastery.user_id.in_(student_ids),
+            WordMastery.review_stage >= len(SRS_INTERVALS),
+        )
+        .group_by(WordMastery.user_id)
+    )
+    for uid, cnt in graduated_res.all():
+        review_progress_map[uid]["graduated_words"] = int(cnt)
+
     daily_stats = []
     for student in students:
         cal = cal_map.get(student.id)
         total_records, correct = rec_map.get(student.id, (0, 0))
         sessions = sess_map.get(student.id, 0)
         accuracy = (correct / total_records * 100) if total_records > 0 else 0
+        rev = review_progress_map.get(student.id, {"review_due_today": 0, "review_done_today": 0, "graduated_words": 0})
 
         daily_stats.append({
             "user_id": student.id,
@@ -479,6 +521,9 @@ async def get_class_daily_stats(
             "wrong_count": total_records - correct,
             "accuracy_rate": round(accuracy, 1),
             "sessions_count": sessions,
+            "review_due_today": rev["review_due_today"],
+            "review_done_today": rev["review_done_today"],
+            "graduated_words": rev["graduated_words"],
         })
 
     return {"class_id": class_id, "date": dt.isoformat(), "students": daily_stats}

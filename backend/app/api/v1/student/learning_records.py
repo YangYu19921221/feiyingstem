@@ -649,6 +649,64 @@ async def get_review_due_count(
     return {"due_today": count}
 
 
+async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
+    """
+    复习进度的统一口径（学生 / 家长 / 教师都用这个）
+    - review_due_today  : 当前 next_review_at <= now 的单词数（剩多少没复习）
+    - review_done_today : 今日 LearningRecord(learning_mode='review') 的去重 word_id 数
+    - graduated_words   : review_stage 已到顶（>=len(SRS_INTERVALS)) 的单词数
+    """
+    now = datetime.utcnow()
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+    tomorrow_start = today_start + timedelta(days=1)
+
+    due_res = await db.execute(
+        select(func.count(WordMastery.id)).where(
+            WordMastery.user_id == user_id,
+            WordMastery.next_review_at.isnot(None),
+            WordMastery.next_review_at <= now,
+        )
+    )
+    review_due_today = int(due_res.scalar() or 0)
+
+    done_res = await db.execute(
+        select(func.count(func.distinct(LearningRecord.word_id))).where(
+            LearningRecord.user_id == user_id,
+            LearningRecord.learning_mode == 'review',
+            LearningRecord.created_at >= today_start,
+            LearningRecord.created_at < tomorrow_start,
+        )
+    )
+    review_done_today = int(done_res.scalar() or 0)
+
+    graduated_res = await db.execute(
+        select(func.count(WordMastery.id)).where(
+            WordMastery.user_id == user_id,
+            WordMastery.review_stage >= len(SRS_INTERVALS),
+        )
+    )
+    graduated_words = int(graduated_res.scalar() or 0)
+
+    return {
+        "review_due_today": review_due_today,
+        "review_done_today": review_done_today,
+        "graduated_words": graduated_words,
+    }
+
+
+@router.get("/review-progress")
+async def get_review_progress(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """
+    复习进度统一接口：今日待复习 / 今日已复习 / 已毕业。
+    今日清零标志：review_due_today == 0 && review_done_today > 0
+    """
+    return await compute_review_progress(db, current_user.id)
+
+
 @router.post("/review-records")
 async def submit_review_records(
     data: ReviewRecordBatchCreate,

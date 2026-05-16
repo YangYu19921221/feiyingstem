@@ -47,6 +47,9 @@ interface DailyStudentData {
   wrong_count: number;
   accuracy_rate: number;
   sessions_count: number;
+  review_due_today?: number;
+  review_done_today?: number;
+  graduated_words?: number;
 }
 
 interface StudentDetail {
@@ -693,6 +696,9 @@ const TeacherClassManagement = () => {
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">正确/错误</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">准确率</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">会话数</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="艾宾浩斯曲线下今日还应回顾的单词">复习待</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="今日已完成的复习数（去重）">复习已</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="掌握度达到顶档（30天间隔）的累计数">已毕业</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">操作</th>
                           </tr>
                         </thead>
@@ -768,6 +774,21 @@ const TeacherClassManagement = () => {
                               </td>
                               <td className="py-3 px-3 text-center text-sm text-gray-600">
                                 {s.sessions_count || '-'}
+                              </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                <span className={s.review_due_today ? 'font-bold text-orange-600' : 'text-gray-400'}>
+                                  {s.review_due_today ?? 0}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                <span className={s.review_done_today ? 'text-gray-700' : 'text-gray-400'}>
+                                  {s.review_done_today ?? 0}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                <span className={s.graduated_words ? 'font-medium text-green-600' : 'text-gray-400'}>
+                                  {s.graduated_words ?? 0}
+                                </span>
                               </td>
                               <td className="py-3 px-3 text-center">
                                 <button

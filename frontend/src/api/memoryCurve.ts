@@ -47,6 +47,17 @@ export const getReviewDueCount = async (): Promise<{ due_today: number }> => {
   return client.get('/student/review-due-count');
 };
 
+export interface ReviewProgress {
+  review_due_today: number;
+  review_done_today: number;
+  graduated_words: number;
+}
+
+// 复习进度（学生 / 家长 / 教师同口径）
+export const getReviewProgress = async (): Promise<ReviewProgress> => {
+  return client.get('/student/review-progress');
+};
+
 // 获取需要复习的单词
 export const getReviewDueWords = async (limit: number = 20, randomize: boolean = false): Promise<ReviewWord[]> => {
   const qs = new URLSearchParams({ limit: String(limit), randomize: String(randomize) }).toString();

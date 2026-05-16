@@ -57,6 +57,9 @@ export interface ChildDashboard {
   today_minutes: number;
   today_words: number;
   streak_days: number;
+  review_due_today: number;
+  review_done_today: number;
+  graduated_words: number;
   total_words_learned: number;
   total_words_mastered: number;
   total_minutes: number;

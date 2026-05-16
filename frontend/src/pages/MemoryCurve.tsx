@@ -5,8 +5,10 @@ import { ArrowLeft } from 'lucide-react';
 import {
   getMemoryCurveStats,
   getReviewDueWords,
+  getReviewProgress,
   type MemoryCurveStats,
   type ReviewWord,
+  type ReviewProgress,
 } from '../api/memoryCurve';
 import { getRetentionCurve, type RetentionCurveResponse } from '../api/analytics';
 
@@ -28,6 +30,7 @@ const REVIEW_PAGE_SIZE = 20;
 const MemoryCurve = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<MemoryCurveStats | null>(null);
+  const [progress, setProgress] = useState<ReviewProgress | null>(null);
   const [retentionData, setRetentionData] = useState<RetentionCurveResponse | null>(null);
   const [reviewWords, setReviewWords] = useState<ReviewWord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,14 +45,16 @@ const MemoryCurve = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, retentionRes, wordsData] = await Promise.all([
+      const [statsData, retentionRes, wordsData, progressData] = await Promise.all([
         getMemoryCurveStats(),
         getRetentionCurve().catch(() => null),
-        getReviewDueWords(200),
+        getReviewDueWords(500),  // 不限上限：把今日全部到期词都拿回来
+        getReviewProgress().catch(() => null),
       ]);
       setStats(statsData);
       setRetentionData(retentionRes);
       setReviewWords(wordsData || []);
+      setProgress(progressData);
     } catch (error) {
       console.error('加载记忆曲线数据失败:', error);
     } finally {
@@ -61,8 +66,8 @@ const MemoryCurve = () => {
     if (reviewWords.length === 0) return;
     setStartingReview(true);
     try {
-      // 转换为 FlashCardLearning 期望的格式
-      const wordData = reviewWords.slice(0, 20).map((w, index) => ({
+      // 把今日到期的全部词传给 FlashCardLearning（不限上限）
+      const wordData = reviewWords.map((w, index) => ({
         id: w.word_id,
         word: w.word,
         phonetic: w.phonetic || '',
@@ -133,15 +138,35 @@ const MemoryCurve = () => {
         <section>
           {stats && stats.due_today > 0 ? (
             <>
-              <p className="text-ink-mute text-sm mb-2">今日推荐复习 · 约 5 分钟</p>
+              <p className="text-ink-mute text-sm mb-2">今日复习</p>
               <h2 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
-                <span className="font-numeric text-accent-warm">{Math.min(20, stats.due_today)}</span>{' '}
+                <span className="font-numeric text-accent-warm">{progress?.review_due_today ?? stats.due_today}</span>{' '}
                 <span className="text-ink-soft">个该回顾的词</span>
               </h2>
+              {progress && (progress.review_done_today > 0 || progress.review_due_today > 0) && (() => {
+                const total = progress.review_done_today + progress.review_due_today;
+                const pct = total > 0 ? Math.round((progress.review_done_today / total) * 100) : 0;
+                return (
+                  <div className="max-w-xl mb-5">
+                    <div className="flex items-baseline justify-between text-sm mb-1.5">
+                      <span className="text-ink-soft">今日进度</span>
+                      <span className="text-ink-soft">
+                        已复习 <span className="font-numeric text-ink font-semibold">{progress.review_done_today}</span>
+                        {' / 共 '}
+                        <span className="font-numeric text-ink font-semibold">{total}</span>
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden bg-black/5">
+                      <div
+                        className="h-full bg-accent-warm transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
               <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
-                {stats.due_today > 20
-                  ? `队列里共 ${stats.due_today} 个待复习，按遗忘紧急度优先推送最该复习的 20 个。`
-                  : `明天还有 ${stats.due_tomorrow} 个待复习。`}
+                按艾宾浩斯曲线智能排序，背得越熟的下次间隔越长；今日全部清零会触发庆祝 🎉
               </p>
               <button
                 onClick={handleStartReview}
@@ -169,14 +194,31 @@ const MemoryCurve = () => {
           ) : (
             <>
               <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-3">
-                今日复习已完成
+                🎉 今日复习已清零
               </h2>
               <p className="text-ink-soft text-base">
-                {stats?.due_tomorrow ? `明天有 ${stats.due_tomorrow} 个单词等你回顾。` : '继续保持节奏。'}
+                今日已复习 <span className="font-numeric font-semibold text-ink">{progress?.review_done_today ?? 0}</span> 个单词。
+                {stats?.due_tomorrow ? ` 明天有 ${stats.due_tomorrow} 个等你回顾。` : ' 继续保持节奏。'}
               </p>
             </>
           )}
         </section>
+
+        {/* 复习全景 3 个数字 */}
+        {progress && (stats?.total_learned ?? 0) > 0 && (
+          <section className="grid grid-cols-3 gap-3">
+            {[
+              { label: '今日待复习', value: progress.review_due_today, tone: 'text-accent-warm' },
+              { label: '今日已复习', value: progress.review_done_today, tone: 'text-ink' },
+              { label: '已毕业单词', value: progress.graduated_words, tone: 'text-green-600' },
+            ].map((m) => (
+              <div key={m.label} className="bg-white rounded-2xl border border-black/[0.05] p-4 text-center">
+                <p className="text-ink-soft text-xs mb-1">{m.label}</p>
+                <p className={`font-numeric font-bold text-3xl ${m.tone}`}>{m.value}</p>
+              </div>
+            ))}
+          </section>
+        )}
 
         {/* 总体统计 — 数据条带 */}
         {stats && (
