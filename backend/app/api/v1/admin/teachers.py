@@ -168,3 +168,48 @@ async def reset_teacher_password(
     t.hashed_password = get_password_hash(new_pwd)
     await db.commit()
     return {"new_password": new_pwd}
+
+
+@router.delete("/teachers/{teacher_id}")
+async def delete_teacher(
+    teacher_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """
+    删除教师账号
+    - 仅当该教师名下没有班级与学生时允许删除
+    - 否则返回 409 并提示先解散班级 / 转移学生
+    （SQLite 默认未启用外键，依赖 ORM 显式清理；此处保守处理避免遗留学生数据）
+    """
+    res = await db.execute(
+        select(User).where(User.id == teacher_id, User.role == "teacher")
+    )
+    t = res.scalar_one_or_none()
+    if not t:
+        raise HTTPException(status_code=404, detail="教师不存在")
+
+    # 统计名下班级和在册学生
+    count_res = await db.execute(
+        select(
+            func.count(func.distinct(Class.id)),
+            func.count(func.distinct(ClassStudent.student_id)),
+        )
+        .select_from(Class)
+        .outerjoin(
+            ClassStudent,
+            (ClassStudent.class_id == Class.id) & (ClassStudent.is_active.is_(True)),
+        )
+        .where(Class.teacher_id == teacher_id)
+    )
+    cls_cnt, stu_cnt = count_res.one()
+
+    if (cls_cnt or 0) > 0 or (stu_cnt or 0) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"该教师名下还有 {cls_cnt or 0} 个班级 / {stu_cnt or 0} 名在册学生，请先解散班级或转移学生再删除",
+        )
+
+    await db.delete(t)
+    await db.commit()
+    return {"deleted": True}

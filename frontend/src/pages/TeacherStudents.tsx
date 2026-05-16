@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Users, UserPlus, X, Mail, Check, Eye } from 'lucide-react';
+import { BookOpen, Users, UserPlus, X, Mail, Check, Eye, Search } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
@@ -40,7 +40,9 @@ const TeacherStudents = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [books, setBooks] = useState<WordBook[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchKeyword, setSearchKeyword] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [creatingStudent, setCreatingStudent] = useState(false);
   const [newStudent, setNewStudent] = useState({
     username: '',
     password: '',
@@ -61,9 +63,9 @@ const TeacherStudents = () => {
       setLoading(true);
       const token = localStorage.getItem('access_token');
 
-      // 并行加载学生列表和单词本
+      // 并行加载学生列表（教师"我的学生"）和单词本
       const [studentsRes, booksRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/auth/students`, {
+        axios.get(`${API_BASE_URL}/teacher/students`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
         axios.get(`${API_BASE_URL}/words/books`, {
@@ -81,6 +83,16 @@ const TeacherStudents = () => {
     }
   };
 
+  const filteredStudents = useMemo(() => {
+    const kw = searchKeyword.trim().toLowerCase();
+    if (!kw) return students;
+    return students.filter(s =>
+      (s.username || '').toLowerCase().includes(kw) ||
+      (s.full_name || '').toLowerCase().includes(kw) ||
+      (s.email || '').toLowerCase().includes(kw)
+    );
+  }, [students, searchKeyword]);
+
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
@@ -97,33 +109,28 @@ const TeacherStudents = () => {
       return;
     }
 
+    setCreatingStudent(true);
     try {
       const token = localStorage.getItem('access_token');
-      await axios.post(
-        `${API_BASE_URL}/auth/users`,
+      const res = await axios.post(
+        `${API_BASE_URL}/teacher/students`,
         {
-          username: newStudent.username,
+          username: newStudent.username.trim(),
           password: newStudent.password,
-          full_name: newStudent.full_name || newStudent.username,
-          email: newStudent.email || `${newStudent.username}@example.com`,
-          role: 'student'
+          full_name: newStudent.full_name.trim() || newStudent.username.trim(),
+          email: newStudent.email.trim() || undefined,
         },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      toast.success('学生创建成功!');
+      toast.success(`学生「${res.data.username}」已创建并加入您的班级`);
       setShowCreateDialog(false);
       setNewStudent({ username: '', password: '', full_name: '', email: '' });
       loadData();
     } catch (error: any) {
-      console.error('创建学生失败:', error);
-      if (getErrorMessage(error)) {
-        toast.error(`创建失败: ${getErrorMessage(error)}`);
-      } else {
-        toast.error('创建学生失败,请重试');
-      }
+      toast.error(getErrorMessage(error, '创建学生失败'));
+    } finally {
+      setCreatingStudent(false);
     }
   };
 
@@ -231,18 +238,42 @@ const TeacherStudents = () => {
           transition={{ delay: 0.3 }}
           className="bg-white rounded-2xl p-6 shadow-md"
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
               <Users className="w-5 h-5" />
               学生列表
+              <span className="text-sm font-normal text-gray-500">
+                （{filteredStudents.length}{searchKeyword.trim() ? ` / ${students.length}` : ''}）
+              </span>
             </h3>
-            <button
-              onClick={() => setShowCreateDialog(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-md"
-            >
-              <UserPlus className="w-5 h-5" />
-              添加学生
-            </button>
+            <div className="flex items-center gap-3 flex-1 max-w-md ml-auto">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="搜索用户名 / 姓名 / 邮箱"
+                  className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                />
+                {searchKeyword && (
+                  <button
+                    onClick={() => setSearchKeyword('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    title="清空"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setShowCreateDialog(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-md whitespace-nowrap"
+              >
+                <UserPlus className="w-5 h-5" />
+                添加学生
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -254,7 +285,12 @@ const TeacherStudents = () => {
             <div className="text-center py-12">
               <Users className="w-16 h-16 mx-auto text-gray-300 mb-4" />
               <p className="text-gray-500 mb-2">暂无学生</p>
-              <p className="text-sm text-gray-400 mb-4">点击"添加学生"按钮创建新学生</p>
+              <p className="text-sm text-gray-400 mb-4">点击"添加学生"按钮创建新学生，会自动归到您的班级</p>
+            </div>
+          ) : filteredStudents.length === 0 ? (
+            <div className="text-center py-12">
+              <Search className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500">没有匹配「{searchKeyword}」的学生</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -270,7 +306,7 @@ const TeacherStudents = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((student, index) => (
+                  {filteredStudents.map((student, index) => (
                     <motion.tr
                       key={student.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -449,15 +485,17 @@ const TeacherStudents = () => {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setShowCreateDialog(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                  disabled={creatingStudent}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium disabled:opacity-50"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleCreateStudent}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition font-medium"
+                  disabled={creatingStudent}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition font-medium disabled:opacity-50"
                 >
-                  创建
+                  {creatingStudent ? '创建中...' : '创建'}
                 </button>
               </div>
             </motion.div>

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   getUnitsByBook,
   createUnit,
+  updateUnit,
   deleteUnit,
   getUnitDetail,
   addWordsToUnit,
@@ -62,6 +63,11 @@ const TeacherUnitManagement = () => {
     group_size: 10,
   });
 
+  // 编辑单元表单
+  const [editingUnit, setEditingUnit] = useState<UnitResponse | null>(null);
+  const [editUnitForm, setEditUnitForm] = useState({ name: '', description: '', group_size: 10 });
+  const [savingUnit, setSavingUnit] = useState(false);
+
   useEffect(() => {
     if (bookId) {
       loadUnits();
@@ -117,6 +123,43 @@ const TeacherUnitManagement = () => {
     } catch (error: any) {
       console.error('删除单元失败:', error);
       toast.error(getErrorMessage(error, '删除失败,请重试'));
+    }
+  };
+
+  const handleStartEditUnit = (unit: UnitResponse) => {
+    setEditingUnit(unit);
+    setEditUnitForm({
+      name: unit.name || '',
+      description: unit.description || '',
+      group_size: unit.group_size || 10,
+    });
+  };
+
+  const handleSaveEditUnit = async () => {
+    if (!editingUnit) return;
+    if (!editUnitForm.name.trim()) {
+      toast.warning('单元名称不能为空');
+      return;
+    }
+    setSavingUnit(true);
+    try {
+      await updateUnit(editingUnit.id, {
+        name: editUnitForm.name.trim(),
+        description: editUnitForm.description.trim() || undefined,
+        group_size: editUnitForm.group_size || undefined,
+      });
+      setEditingUnit(null);
+      await loadUnits();
+      // 如果右侧详情打开的是同一个单元，刷新一下名字
+      if (selectedUnit?.id === editingUnit.id) {
+        const updated = await getUnitDetail(editingUnit.id);
+        setSelectedUnit(updated);
+      }
+      toast.success('已更新');
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '保存失败,请重试'));
+    } finally {
+      setSavingUnit(false);
     }
   };
 
@@ -529,6 +572,13 @@ const TeacherUnitManagement = () => {
                       <Plus className="w-5 h-5" />
                     </button>
                     <button
+                      onClick={() => handleStartEditUnit(unit)}
+                      className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg transition"
+                      title="编辑单元"
+                    >
+                      <Edit className="w-5 h-5" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteUnit(unit.id, unit.name)}
                       className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition"
                       title="删除单元"
@@ -633,6 +683,114 @@ const TeacherUnitManagement = () => {
                   className="flex-1 py-2 px-4 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition"
                 >
                   创建
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 编辑单元对话框 */}
+      <AnimatePresence>
+        {editingUnit && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setEditingUnit(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-800">
+                  编辑单元 #{editingUnit.unit_number}
+                </h3>
+                <button
+                  onClick={() => setEditingUnit(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    单元名称 *
+                  </label>
+                  <input
+                    type="text"
+                    value={editUnitForm.name}
+                    onChange={(e) => setEditUnitForm({ ...editUnitForm, name: e.target.value })}
+                    placeholder="例如: Unit 1: Colors"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    描述（可选）
+                  </label>
+                  <textarea
+                    value={editUnitForm.description}
+                    onChange={(e) => setEditUnitForm({ ...editUnitForm, description: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    每组单词数
+                  </label>
+                  <div className="flex items-center gap-3">
+                    {[5, 10, 15, 20].map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setEditUnitForm({ ...editUnitForm, group_size: n })}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                          editUnitForm.group_size === n
+                            ? 'bg-primary text-white shadow-md'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {n}个
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={2}
+                      max={50}
+                      value={editUnitForm.group_size}
+                      onChange={(e) => setEditUnitForm({ ...editUnitForm, group_size: Math.max(2, Math.min(50, parseInt(e.target.value) || 10)) })}
+                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setEditingUnit(null)}
+                  disabled={savingUnit}
+                  className="flex-1 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSaveEditUnit}
+                  disabled={savingUnit}
+                  className="flex-1 py-2 px-4 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition disabled:opacity-50 flex items-center justify-center gap-1"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingUnit ? '保存中...' : '保存'}
                 </button>
               </div>
             </motion.div>

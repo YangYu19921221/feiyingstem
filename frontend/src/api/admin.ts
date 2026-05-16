@@ -72,6 +72,11 @@ export const admin = {
     return r.data;
   },
 
+  deleteTeacher: async (id: number): Promise<{ deleted: boolean }> => {
+    const r = await axios.delete(`${BASE}/teachers/${id}`);
+    return r.data;
+  },
+
   listClasses: async (teacher_id?: number): Promise<AdminClassListItem[]> => {
     const r = await axios.get(`${BASE}/classes`, { params: teacher_id ? { teacher_id } : {} });
     return r.data;

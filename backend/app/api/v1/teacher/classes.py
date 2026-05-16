@@ -3,7 +3,8 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, Integer, update
+from sqlalchemy import select, func, and_, or_, Integer, update
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime, date, timedelta, timezone
 from pydantic import BaseModel, Field
@@ -12,7 +13,8 @@ from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar
 from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.api.v1.auth import get_current_teacher
-from app.api.v1.teacher._permissions import assert_student_in_my_class
+from app.api.v1.teacher._permissions import assert_student_in_my_class, get_my_class_student_ids
+from app.services.auth_service import get_password_hash, generate_random_password
 
 router = APIRouter()
 
@@ -695,3 +697,111 @@ async def get_student_ai_advice(
         "mode_analysis": {mode_names.get(k, k): v for k, v in mode_stats.items()},
         "study_habit": habit_desc,
     }
+
+
+# ========================================
+# 教师端学生 CRUD（"我的学生" — 直接归到该教师名下）
+# ========================================
+
+DEFAULT_TEACHER_CLASS_NAME = "我的学生"
+
+
+async def _get_or_create_default_class(db: AsyncSession, teacher_id: int) -> Class:
+    """教师没有任何班级时建一个默认班；否则返回最早创建的班级"""
+    res = await db.execute(
+        select(Class).where(Class.teacher_id == teacher_id).order_by(Class.id)
+    )
+    cls = res.scalars().first()
+    if cls:
+        return cls
+    cls = Class(name=DEFAULT_TEACHER_CLASS_NAME, description="默认班级", teacher_id=teacher_id)
+    db.add(cls)
+    await db.flush()
+    return cls
+
+
+class TeacherStudentCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: Optional[str] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    class_id: Optional[int] = None  # 不传则放进默认班
+
+
+@router.post("/students")
+async def create_student(
+    body: TeacherStudentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """
+    教师创建学生 — 创建后自动加入指定班级（不传则进默认班）
+    返回学生 + 初始密码（密码不传则随机生成，仅返回一次）
+    """
+    if body.class_id is not None:
+        await _get_class_or_404(db, body.class_id, current_user.id)
+        target_class_id = body.class_id
+    else:
+        cls = await _get_or_create_default_class(db, current_user.id)
+        target_class_id = cls.id
+
+    pwd = body.password or generate_random_password()
+    new_user = User(
+        username=body.username,
+        email=body.email or f"{body.username}@feiying.local",
+        full_name=body.full_name or body.username,
+        hashed_password=get_password_hash(pwd),
+        role="student",
+        is_active=True,
+    )
+    db.add(new_user)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="用户名或邮箱已存在")
+
+    db.add(ClassStudent(class_id=target_class_id, student_id=new_user.id, is_active=True))
+    await db.commit()
+    await db.refresh(new_user)
+    return {
+        "id": new_user.id,
+        "username": new_user.username,
+        "full_name": new_user.full_name,
+        "email": new_user.email,
+        "is_active": new_user.is_active,
+        "class_id": target_class_id,
+        "initial_password": pwd,
+    }
+
+
+@router.get("/students")
+async def list_my_students(
+    q: Optional[str] = Query(None, description="按用户名/姓名/邮箱模糊搜索"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """教师"我的学生" — 自己班级里在册的所有学生，可 q= 搜索"""
+    ids = await get_my_class_student_ids(db, current_user.id)
+    if not ids:
+        return []
+    stmt = select(User).where(User.id.in_(ids), User.is_active == True)
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(User.username.like(like), User.full_name.like(like), User.email.like(like))
+        )
+    res = await db.execute(stmt.order_by(User.username))
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "full_name": u.full_name,
+            "email": u.email,
+            "role": u.role,
+            "is_active": u.is_active,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "last_login": u.last_login.isoformat() if u.last_login else None,
+        }
+        for u in res.scalars().all()
+    ]

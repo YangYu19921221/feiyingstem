@@ -40,6 +40,7 @@ const AdminTeacherList = () => {
       await loadTeachers();
       alert(`教师创建成功！\n用户名: ${result.username}\n初始密码: ${result.initial_password}\n\n请妥善保存初始密码。`);
     } catch (err: any) {
+      // 409 = 用户名/邮箱已存在；其他错误也按 detail 展示
       toast.error(getErrorMessage(err, '创建失败'));
     } finally {
       setCreating(false);
@@ -63,6 +64,20 @@ const AdminTeacherList = () => {
       alert(`密码重置成功！\n新密码: ${result.new_password}\n\n请妥善保存新密码。`);
     } catch {
       toast.error('重置密码失败');
+    }
+  };
+
+  const handleDelete = async (t: AdminTeacherListItem) => {
+    if (!confirm(
+      `确认删除教师「${t.username}${t.full_name ? ' / ' + t.full_name : ''}」？\n\n` +
+      `仅当其名下没有班级和学生时才能删除；\n如有班级请先解散，有学生请先转移到其他教师。`
+    )) return;
+    try {
+      await admin.deleteTeacher(t.id);
+      toast.success('教师已删除');
+      await loadTeachers();
+    } catch (err: any) {
+      toast.error(getErrorMessage(err, '删除失败'));
     }
   };
 
@@ -126,6 +141,7 @@ const AdminTeacherList = () => {
                           {t.is_active ? '禁用' : '启用'}
                         </button>
                         <button onClick={() => handleResetPassword(t.id)} className="text-purple-600 hover:text-purple-800">重置密码</button>
+                        <button onClick={() => handleDelete(t)} className="text-red-600 hover:text-red-800">删除</button>
                       </div>
                     </td>
                   </tr>
