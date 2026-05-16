@@ -1,4 +1,5 @@
 import axios from 'axios';
+import './_axiosBootstrap';
 import { API_BASE_URL } from '../config/env';
 
 export interface ClassStudent {

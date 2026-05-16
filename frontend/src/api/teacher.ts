@@ -1,20 +1,7 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import './_axiosBootstrap';
 import type { StudentMistakeAnalysis, ExamPaper, GenerateExamRequest } from '../types/exam';
-
-// 配置axios拦截器,自动添加token
-axios.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
 
 // ========================================
 // 教师端单元管理API

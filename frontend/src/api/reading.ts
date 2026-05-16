@@ -1,19 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
-
-// 配置axios拦截器,自动添加token
-axios.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+import './_axiosBootstrap';
 
 // ========================================
 // 类型定义

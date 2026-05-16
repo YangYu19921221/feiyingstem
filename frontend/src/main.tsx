@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import './api/_axiosBootstrap'  // 副作用：装好全局 axios 的 Authorization / 401 拦截器
 import './index.css'
 import App from './App.tsx'
 import ToastContainer from './components/Toast'
