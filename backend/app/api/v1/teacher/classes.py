@@ -63,10 +63,13 @@ async def list_classes(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取教师的所有班级（含学生数）"""
+    """获取教师的所有班级（含在册学生数，已过滤 is_active=True）"""
     result = await db.execute(
         select(Class, func.count(ClassStudent.id).label("student_count"))
-        .outerjoin(ClassStudent, ClassStudent.class_id == Class.id)
+        .outerjoin(
+            ClassStudent,
+            (ClassStudent.class_id == Class.id) & (ClassStudent.is_active.is_(True)),
+        )
         .where(Class.teacher_id == current_user.id)
         .group_by(Class.id)
         .order_by(Class.created_at.desc())
@@ -175,10 +178,13 @@ async def add_students_to_class(
     """批量添加学生到班级（检查学生是否已在任意班级）"""
     await _get_class_or_404(db, class_id, current_user.id)
 
-    # 检查请求的 student_ids 中是否有已在任意班级的 active 成员
+    # 检查请求的 student_ids 中是否有已在“真实存在的班级”里 active 的成员
+    # —— 关联 Class 表是为了排除孤儿 class_students 行（指向已删除班级的）
     if data.student_ids:
         busy_result = await db.execute(
-            select(ClassStudent.student_id).where(
+            select(ClassStudent.student_id)
+            .join(Class, Class.id == ClassStudent.class_id)
+            .where(
                 ClassStudent.student_id.in_(data.student_ids),
                 ClassStudent.is_active.is_(True),
             )
