@@ -159,7 +159,7 @@ function pickTitle(count: number, tier: TierKey): string {
 function IntroTitle({ text, intro, color, stroke }: {
   text: string; intro: Intro; color: string; stroke: string;
 }) {
-  const className = "font-display text-3xl md:text-5xl font-black tracking-[0.18em] flex justify-center flex-wrap";
+  const className = "font-display text-3xl md:text-5xl lg:text-6xl font-black tracking-[0.18em] flex justify-center flex-wrap";
   const baseStyle: React.CSSProperties = {
     color,
     textShadow: `0 2px 0 ${stroke}, 0 4px 24px rgba(0,0,0,0.35)`,
@@ -338,7 +338,7 @@ export default function VictoryScreen({
         ✕
       </button>
 
-      <div className="relative z-10 min-h-full flex flex-col px-5 py-8 md:py-12 max-w-2xl mx-auto w-full">
+      <div className="relative z-10 min-h-full flex flex-col px-5 py-8 md:py-12 max-w-4xl mx-auto w-full">
         <div className="text-center mt-2 mb-auto">
           <motion.p
             initial={{ opacity: 0, y: -8 }}

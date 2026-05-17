@@ -128,7 +128,7 @@ const StudentLeaderboard = () => {
   return (
     <div className="min-h-screen bg-paper page-warm-glow">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-5 py-3.5 flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
@@ -141,30 +141,15 @@ const StudentLeaderboard = () => {
         </div>
       </nav>
 
-      <div className="max-w-3xl mx-auto px-5 py-8 md:py-10">
-        {/* Hero 标题 */}
-        <section className="mb-6">
+      <div className="max-w-6xl mx-auto px-5 py-8 md:py-10">
+        {/* Hero 标题 — 跨两栏 */}
+        <section className="mb-6 lg:mb-8">
           <p className="text-ink-mute text-sm mb-1.5">向同学看齐 · 也跟自己比</p>
-          <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight">
+          <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-semibold text-ink leading-[1.1] tracking-tight">
             {tabInfo.label}争霸
           </h2>
-          <p className="text-ink-soft text-sm mt-1.5">{tabInfo.sub}</p>
+          <p className="text-ink-soft text-sm md:text-base mt-1.5">{tabInfo.sub}</p>
         </section>
-
-        {/* 邀请家长 */}
-        <button
-          onClick={handleGenerateBindCode}
-          disabled={genLoading || !!bindCode}
-          className="card-soft rounded-xl px-5 py-3.5 w-full text-left mb-6 flex items-center justify-between hover:border-accent-warm/30 disabled:cursor-not-allowed"
-        >
-          <div>
-            <p className="font-medium text-ink text-sm">让家长看到你的进步</p>
-            <p className="text-xs text-ink-soft mt-0.5">生成 6 位绑定码，5 分钟内告诉家长去注册</p>
-          </div>
-          <span className="text-accent-warm text-sm font-medium">
-            {genLoading ? '生成中…' : bindCode ? '已生成' : '生成绑定码 →'}
-          </span>
-        </button>
 
         {bindCode && (
           <BindCodeDialog
@@ -174,142 +159,164 @@ const StudentLeaderboard = () => {
           />
         )}
 
-        {/* 榜种切换 */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          {KIND_TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setKind(t.id)}
-              className={`py-3 rounded-xl text-sm font-semibold transition-all ${
-                kind === t.id ? 'btn-glow text-white' : 'card-soft text-ink hover:text-accent-warm'
-              }`}
-            >
-              <span className="text-lg mr-1.5">{t.emoji}</span>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {/* 双栏：左主榜 + 右控制/统计 */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+          {/* ===== 左：冠 / 亚 / 季 + 4-10 名 ===== */}
+          <div className="lg:col-span-7">
+            {loading ? (
+              <div className="py-20 text-center text-ink-mute text-sm">加载中…</div>
+            ) : !data ? (
+              <div className="card-soft rounded-2xl p-12 text-center text-ink-soft">数据加载失败</div>
+            ) : (
+              <>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${kind}-${period}-top3`}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <div className="mb-3">
+                      {champCard(data.top.find(e => e.rank === 1), 'gold', 'lg')}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                      {champCard(data.top.find(e => e.rank === 2), 'silver', 'md')}
+                      {champCard(data.top.find(e => e.rank === 3), 'bronze', 'md')}
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
 
-        {/* 周期切换 */}
-        <div className="inline-flex card-soft rounded-full p-1 mb-8">
-          {PERIOD_TABS.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPeriod(p.id)}
-              className={`px-4 py-1.5 rounded-full text-xs font-medium transition ${
-                period === p.id ? 'bg-accent-warm text-white' : 'text-ink-soft hover:text-ink'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+                {data.top.filter(e => e.rank >= 4).length > 0 && (
+                  <div className="card-soft rounded-2xl divide-y divide-black/[0.05] overflow-hidden">
+                    {data.top.filter(e => e.rank >= 4).map(entry => (
+                      <div key={entry.user_id} className="flex items-center gap-3 px-5 py-3">
+                        <span className="font-numeric font-semibold text-ink-mute text-sm w-7">
+                          {entry.rank}
+                        </span>
+                        <p className="flex-1 min-w-0 font-medium text-ink truncate text-sm">
+                          {entry.full_name || entry.username}
+                        </p>
+                        <p className="font-numeric font-semibold text-ink text-sm">
+                          {formatValue(entry.value)}
+                          <span className="text-xs text-ink-mute ml-1 font-normal">
+                            {kind === 'accuracy' ? '' : tabInfo.unit}
+                          </span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-        {loading ? (
-          <div className="py-20 text-center text-ink-mute text-sm">加载中…</div>
-        ) : !data ? (
-          <div className="card-soft rounded-2xl p-12 text-center text-ink-soft">数据加载失败</div>
-        ) : (
-          <>
-            {/* 冠 / 亚 / 季：1 大 + 2 小 平铺，不堆叠 */}
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${kind}-${period}-top3`}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              >
-                {/* 冠军大卡 */}
-                <div className="mb-3">
-                  {champCard(data.top.find(e => e.rank === 1), 'gold', 'lg')}
-                </div>
-                {/* 亚 + 季并列 */}
-                <div className="grid grid-cols-2 gap-3 mb-8">
-                  {champCard(data.top.find(e => e.rank === 2), 'silver', 'md')}
-                  {champCard(data.top.find(e => e.rank === 3), 'bronze', 'md')}
-                </div>
-              </motion.div>
-            </AnimatePresence>
-
-            {/* 4 - 10 名简洁列表 */}
-            {data.top.filter(e => e.rank >= 4).length > 0 && (
-              <div className="card-soft rounded-2xl divide-y divide-black/[0.05] mb-6 overflow-hidden">
-                {data.top.filter(e => e.rank >= 4).map(entry => (
-                  <div key={entry.user_id} className="flex items-center gap-3 px-5 py-3">
-                    <span className="font-numeric font-semibold text-ink-mute text-sm w-7">
-                      {entry.rank}
-                    </span>
-                    <p className="flex-1 min-w-0 font-medium text-ink truncate text-sm">
-                      {entry.full_name || entry.username}
-                    </p>
-                    <p className="font-numeric font-semibold text-ink text-sm">
-                      {formatValue(entry.value)}
-                      <span className="text-xs text-ink-mute ml-1 font-normal">
-                        {kind === 'accuracy' ? '' : tabInfo.unit}
-                      </span>
+                {data.top.length === 0 && (
+                  <div className="card-soft rounded-2xl p-12 text-center">
+                    <p className="text-ink-soft mb-1">这周还没人解锁这个段位</p>
+                    <p className="text-xs text-ink-mute">
+                      {kind === 'accuracy' ? '至少答 20 道题，正确率达标即可入榜' : '坚持几天就能上榜'}
                     </p>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
+          </div>
 
-            {data.top.length === 0 && (
-              <div className="card-soft rounded-2xl p-12 text-center mb-6">
-                <p className="text-ink-soft mb-1">这周还没人解锁这个段位</p>
-                <p className="text-xs text-ink-mute">
-                  {kind === 'accuracy' ? '至少答 20 道题，正确率达标即可入榜' : '坚持几天就能上榜'}
-                </p>
-              </div>
-            )}
-
-            {/* 我的位置 */}
-            <div className="card-soft rounded-2xl p-5">
-              <p className="text-ink-mute text-xs mb-2">你本{period === 'this_month' ? '月' : '周'}的成绩</p>
-              <div className="flex items-baseline justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-display text-3xl font-semibold text-ink font-numeric leading-none">
-                    {formatValue(data.my_value)}
-                  </p>
-                  <p className="text-xs text-ink-soft mt-1">
-                    {kind === 'accuracy' ? '本期正确率' : `本期累计 ${tabInfo.unit}`}
-                  </p>
-                </div>
-                <div className="text-right">
-                  {data.my_rank && data.my_rank <= 3 ? (
-                    <p className="font-display text-2xl font-semibold font-numeric"
-                       style={{ color: TIER_THEME[RANK_TIER[data.my_rank]].text }}>
-                      {TIER_THEME[RANK_TIER[data.my_rank]].label}
-                    </p>
-                  ) : data.my_rank && data.my_rank <= 10 ? (
-                    <p className="font-display text-2xl font-semibold text-accent-warm font-numeric">
-                      第 {data.my_rank} 名
-                    </p>
-                  ) : data.my_rank ? (
-                    <p className="font-display text-base font-medium text-ink-soft">继续加油上榜</p>
-                  ) : (
-                    <p className="font-display text-base font-medium text-ink-mute">
-                      {kind === 'accuracy' ? '答够 20 题就能入榜' : '本期还没参与'}
-                    </p>
-                  )}
-                  {period === 'this_week' && data.my_value > 0 && (
-                    <p className={`text-xs mt-1 font-numeric ${
-                      data.my_delta > 0 ? 'text-accent-warm font-semibold' :
-                      data.my_delta < 0 ? 'text-ink-soft' : 'text-ink-mute'
-                    }`}>
-                      比上周 {formatDelta(data.my_delta)}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {data.total_participants > 0 && (
-                <p className="text-[11px] text-ink-mute mt-3 pt-3 border-t border-black/[0.04]">
-                  共 {data.total_participants} 名同学参与
-                </p>
-              )}
+          {/* ===== 右：榜种 / 周期 / 我的位置 / 邀请家长 ===== */}
+          <aside className="lg:col-span-5 space-y-5 lg:sticky lg:top-20 self-start">
+            {/* 榜种切换 */}
+            <div className="grid grid-cols-3 gap-2">
+              {KIND_TABS.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setKind(t.id)}
+                  className={`py-3 rounded-xl text-sm font-semibold transition-all ${
+                    kind === t.id ? 'btn-glow text-white' : 'card-soft text-ink hover:text-accent-warm'
+                  }`}
+                >
+                  <span className="text-lg mr-1.5">{t.emoji}</span>
+                  {t.label}
+                </button>
+              ))}
             </div>
-          </>
-        )}
+
+            {/* 周期切换 */}
+            <div className="inline-flex card-soft rounded-full p-1">
+              {PERIOD_TABS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setPeriod(p.id)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-medium transition ${
+                    period === p.id ? 'bg-accent-warm text-white' : 'text-ink-soft hover:text-ink'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 我的位置（无数据时也保留壳，避免跳动） */}
+            {data && (
+              <div className="card-soft rounded-2xl p-5">
+                <p className="text-ink-mute text-xs mb-2">你本{period === 'this_month' ? '月' : '周'}的成绩</p>
+                <div className="flex items-baseline justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-display text-3xl font-semibold text-ink font-numeric leading-none">
+                      {formatValue(data.my_value)}
+                    </p>
+                    <p className="text-xs text-ink-soft mt-1">
+                      {kind === 'accuracy' ? '本期正确率' : `本期累计 ${tabInfo.unit}`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    {data.my_rank && data.my_rank <= 3 ? (
+                      <p className="font-display text-2xl font-semibold font-numeric"
+                         style={{ color: TIER_THEME[RANK_TIER[data.my_rank]].text }}>
+                        {TIER_THEME[RANK_TIER[data.my_rank]].label}
+                      </p>
+                    ) : data.my_rank && data.my_rank <= 10 ? (
+                      <p className="font-display text-2xl font-semibold text-accent-warm font-numeric">
+                        第 {data.my_rank} 名
+                      </p>
+                    ) : data.my_rank ? (
+                      <p className="font-display text-base font-medium text-ink-soft">继续加油上榜</p>
+                    ) : (
+                      <p className="font-display text-base font-medium text-ink-mute">
+                        {kind === 'accuracy' ? '答够 20 题就能入榜' : '本期还没参与'}
+                      </p>
+                    )}
+                    {period === 'this_week' && data.my_value > 0 && (
+                      <p className={`text-xs mt-1 font-numeric ${
+                        data.my_delta > 0 ? 'text-accent-warm font-semibold' :
+                        data.my_delta < 0 ? 'text-ink-soft' : 'text-ink-mute'
+                      }`}>
+                        比上周 {formatDelta(data.my_delta)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {data.total_participants > 0 && (
+                  <p className="text-[11px] text-ink-mute mt-3 pt-3 border-t border-black/[0.04]">
+                    共 {data.total_participants} 名同学参与
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 邀请家长 */}
+            <button
+              onClick={handleGenerateBindCode}
+              disabled={genLoading || !!bindCode}
+              className="card-soft rounded-xl px-5 py-3.5 w-full text-left flex items-center justify-between hover:border-accent-warm/30 disabled:cursor-not-allowed"
+            >
+              <div>
+                <p className="font-medium text-ink text-sm">让家长看到你的进步</p>
+                <p className="text-xs text-ink-soft mt-0.5">生成 6 位绑定码，5 分钟内告诉家长去注册</p>
+              </div>
+              <span className="text-accent-warm text-sm font-medium ml-3 shrink-0">
+                {genLoading ? '生成中…' : bindCode ? '已生成' : '生成 →'}
+              </span>
+            </button>
+          </aside>
+        </div>
       </div>
     </div>
   );
