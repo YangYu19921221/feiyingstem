@@ -6,7 +6,7 @@ import { API_BASE_URL } from '../config/env';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
 import FormError from '../components/auth/FormError';
-import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
+import { parseError } from '../utils/errorMessage';
 
 interface RegisterResponse {
   access_token: string;
@@ -56,8 +56,9 @@ const Register = () => {
       localStorage.setItem('user', JSON.stringify(response.data.user));
       navigate('/dashboard');
     } catch (err: any) {
-      setError(getErrorMessage(err, '注册失败，请稍后重试'));
-      setErrorCode(getErrorCode(err));
+      const e = parseError(err, '注册失败，请稍后重试');
+      setError(e.message);
+      setErrorCode(e.code);
     } finally {
       setLoading(false);
     }

@@ -3,7 +3,7 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { parentRegister } from '../api/parent';
 import { toast } from '../components/Toast';
 import FormError from '../components/auth/FormError';
-import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
+import { parseError } from '../utils/errorMessage';
 
 const ParentRegister = () => {
   const navigate = useNavigate();
@@ -49,8 +49,9 @@ const ParentRegister = () => {
       toast.success('注册成功');
       navigate('/parent/dashboard');
     } catch (err: any) {
-      setError(getErrorMessage(err, '注册失败，请稍后重试'));
-      setErrorCode(getErrorCode(err));
+      const e = parseError(err, '注册失败，请稍后重试');
+      setError(e.message);
+      setErrorCode(e.code);
     } finally {
       setLoading(false);
     }

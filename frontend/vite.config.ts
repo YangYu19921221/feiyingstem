@@ -10,7 +10,6 @@ export default defineConfig({
     // 现代浏览器仍走 esm 包，体积/性能不受影响
     legacy({
       targets: ['ios >= 11', 'safari >= 11', 'chrome >= 60', 'firefox >= 60'],
-      modernPolyfills: ['es.promise.finally'],
       additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
     }),
   ],

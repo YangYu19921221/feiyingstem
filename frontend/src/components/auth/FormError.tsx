@@ -42,9 +42,9 @@ export default function FormError({ message, code, context, onDismiss }: Props) 
         role="alert"
         className="rounded-xl px-4 py-3 flex items-start gap-3 text-sm"
         style={{
-          background: 'oklch(0.96 0.05 25)',
-          border: '1px solid oklch(0.85 0.13 25)',
-          color: 'oklch(0.40 0.18 25)',
+          background: '#FEE2E2',
+          border: '1px solid #FCA5A5',
+          color: '#991B1B',
         }}
       >
         <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />

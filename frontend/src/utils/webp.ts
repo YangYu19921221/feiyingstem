@@ -46,10 +46,15 @@ export function isWebpSupported(): boolean | null {
 
 /**
  * webp 路径 → 按支持情况返回 webp 或 jpg。
- * 非 webp 路径原样返回。探测中默认按支持（最常见情况）。
+ * 非 webp 路径原样返回。
+ *
+ * 探测期间（cached === null，首次访问且 sessionStorage 无记录）保守返 jpg：
+ *   - 老 Safari 看到能解码的 jpg 而不是空背景
+ *   - 现代浏览器单次访问慢一点，第二个请求 cached=true 后回到 webp
+ * 第二次会话起命中 sessionStorage，结果稳定。
  */
 export function resolveImage(src: string): string {
   if (!src.endsWith('.webp')) return src;
-  if (cached === false) return src.slice(0, -5) + '.jpg';
-  return src;
+  if (cached === true) return src;
+  return src.slice(0, -5) + '.jpg';
 }

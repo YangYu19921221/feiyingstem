@@ -7,7 +7,7 @@ import { useCountdown } from '../hooks/useCountdown';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
 import FormError from '../components/auth/FormError';
-import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
+import { parseError } from '../utils/errorMessage';
 
 interface LoginResponse {
   access_token: string;
@@ -57,8 +57,9 @@ const Login = () => {
       await axios.post(`${API_BASE_URL}/auth/send-code`, { phone, purpose: 'login' });
       start();
     } catch (err: any) {
-      setError(getErrorMessage(err, '发送验证码失败'));
-      setErrorCode(getErrorCode(err));
+      const e = parseError(err, '发送验证码失败');
+      setError(e.message);
+      setErrorCode(e.code);
     } finally {
       setSendingCode(false);
     }
@@ -82,8 +83,9 @@ const Login = () => {
       sessionStorage.removeItem('forced_review_done');
       navigate('/dashboard');
     } catch (err: any) {
-      setError(getErrorMessage(err, '登录失败，请稍后重试'));
-      setErrorCode(getErrorCode(err));
+      const e = parseError(err, '登录失败，请稍后重试');
+      setError(e.message);
+      setErrorCode(e.code);
     } finally {
       setLoading(false);
     }

@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { parentLogin } from '../api/parent';
 import { toast } from '../components/Toast';
 import FormError from '../components/auth/FormError';
-import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
+import { parseError } from '../utils/errorMessage';
 
 const ParentLogin = () => {
   const navigate = useNavigate();
@@ -32,8 +32,9 @@ const ParentLogin = () => {
       }));
       navigate('/parent/dashboard');
     } catch (err: any) {
-      setError(getErrorMessage(err, '登录失败，请稍后重试'));
-      setErrorCode(getErrorCode(err));
+      const e = parseError(err, '登录失败，请稍后重试');
+      setError(e.message);
+      setErrorCode(e.code);
     } finally {
       setLoading(false);
     }

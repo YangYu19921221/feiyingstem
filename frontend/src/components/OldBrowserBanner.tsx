@@ -3,46 +3,30 @@ import { useEffect, useState } from 'react';
 const DISMISS_KEY = 'old_browser_banner_dismissed_v1';
 
 /**
- * 检测老浏览器（iOS 12 及以下、Safari 13 及以下、其它无 oklch / webp 的旧引擎）。
- * 命中则在页面顶部显示一条提示横幅，可关闭。dismissed 状态存 localStorage。
- *
- * 通过 vite-plugin-legacy 自动产出的 ES5 包，老 Safari 仍能跑；
- * 但 oklch / webp / backdrop-filter 等渲染特性还是不支持，
- * 横幅是在告诉用户"建议升级体验"。
+ * 老浏览器一次性检测：用 oklch 支持作为现代特性闸门
+ *   - Safari 15.4+ / Chrome 111+ / Firefox 113+ 才支持 oklch
+ *   - 任何不支持 oklch 的引擎，几乎必然也不支持 webp、backdrop-filter 等其他特性
+ *   - 模块级常量，全应用只评估一次，避免 UA 正则误判
  */
-function detectOldBrowser(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
+const IS_OLD_BROWSER = (() => {
+  if (typeof window === 'undefined') return false;
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return true;
+  return !CSS.supports('color', 'oklch(0.5 0.1 50)');
+})();
 
-  // iOS 12 及以下
-  const iosMatch = ua.match(/OS (\d+)_(\d+)(?:_\d+)? like Mac OS X/);
-  if (iosMatch) {
-    const major = parseInt(iosMatch[1], 10);
-    if (major <= 13) return true;
-  }
-
-  // 桌面 Safari 13 及以下（Mac OS X）
-  const macSafari = ua.match(/Version\/(\d+)\.(\d+)\sSafari/);
-  if (macSafari && !ua.includes('Chrome') && !ua.includes('Edg')) {
-    if (parseInt(macSafari[1], 10) <= 13) return true;
-  }
-
-  // 用 CSS.supports 兜底：不支持 oklch 也算老
-  if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function') {
-    if (!CSS.supports('color', 'oklch(0.5 0.1 50)')) return true;
-  }
-
-  return false;
-}
-
+/**
+ * 老浏览器提示横幅：靠 vite-plugin-legacy 让 JS 跑起来后，
+ * 提示用户某些动效/色彩会降级。可关闭并 localStorage 记忆。
+ */
 export default function OldBrowserBanner() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
+    if (!IS_OLD_BROWSER) return;
     try {
       if (localStorage.getItem(DISMISS_KEY) === '1') return;
     } catch {}
-    if (detectOldBrowser()) setShow(true);
+    setShow(true);
   }, []);
 
   const dismiss = () => {

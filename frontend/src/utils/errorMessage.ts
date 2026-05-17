@@ -40,6 +40,14 @@ export function getErrorMessage(error: unknown, fallback = '操作失败'): stri
 }
 
 /**
+ * 一次解析后端错误对象，返回展示用的 message + 业务 code（如有）。
+ * 比单独 `getErrorMessage(err) + getErrorCode(err)` 少一次 detail 读取。
+ */
+export function parseError(error: unknown, fallback = '操作失败'): { message: string; code: string | null } {
+  return { message: getErrorMessage(error, fallback), code: getErrorCode(error) };
+}
+
+/**
  * 抓后端 detail.code（业务错误码），用来给 UI 决定显示什么"建议链接"
  * 比如登录页 user_not_found → "去注册"，wrong_password → "忘记密码"
  */
