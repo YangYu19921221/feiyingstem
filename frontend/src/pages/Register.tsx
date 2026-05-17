@@ -5,7 +5,8 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
-import { getErrorMessage } from '../utils/errorMessage';
+import FormError from '../components/auth/FormError';
+import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
 
 interface RegisterResponse {
   access_token: string;
@@ -35,11 +36,13 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorCode(null);
     if (password !== confirmPassword) {
       setError('两次密码输入不一致');
       return;
@@ -54,6 +57,7 @@ const Register = () => {
       navigate('/dashboard');
     } catch (err: any) {
       setError(getErrorMessage(err, '注册失败，请稍后重试'));
+      setErrorCode(getErrorCode(err));
     } finally {
       setLoading(false);
     }
@@ -85,23 +89,12 @@ const Register = () => {
           </div>
 
           <form onSubmit={handleRegister} className="space-y-4">
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="px-4 py-3 rounded-xl text-sm"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#fca5a5',
-                  }}
-                >
-                  {error}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <FormError
+              message={error}
+              code={errorCode}
+              context="register"
+              onDismiss={() => { setError(''); setErrorCode(null); }}
+            />
 
             {fields.map((f) => (
               <div key={f.label}>

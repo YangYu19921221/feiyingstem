@@ -91,11 +91,11 @@ async def parent_register(
     )
     code_row = res.scalar_one_or_none()
     if not code_row:
-        raise HTTPException(400, "绑定码无效")
+        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码无效，请让孩子重新生成"})
     if code_row.used_at is not None:
-        raise HTTPException(400, "绑定码已使用，请让孩子重新生成")
+        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码已使用，请让孩子重新生成"})
     if code_row.expires_at < datetime.utcnow():
-        raise HTTPException(400, "绑定码已过期，请让孩子重新生成")
+        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码已过期，请让孩子重新生成"})
 
     # 2. 校验手机号未占用
     existing = await db.execute(
@@ -105,8 +105,8 @@ async def parent_register(
     if existing_user:
         # 如果已是家长账号 → 提示登录
         if existing_user.role == "parent":
-            raise HTTPException(400, "该手机号已注册为家长，请直接登录后绑定新孩子")
-        raise HTTPException(400, "该手机号已被注册")
+            raise HTTPException(400, detail={"code": "phone_taken", "message": "该手机号已注册为家长，直接登录就能绑定新孩子"})
+        raise HTTPException(400, detail={"code": "phone_taken", "message": "该手机号已被其它角色注册"})
 
     # 3. 创建家长账号
     parent = User(
@@ -144,11 +144,11 @@ async def parent_login(
     res = await db.execute(select(User).where(User.phone == data.phone))
     user = res.scalar_one_or_none()
     if not user or user.role != "parent":
-        raise HTTPException(401, "手机号或密码错误")
+        raise HTTPException(401, detail={"code": "user_not_found", "message": "该手机号还没有注册家长账号"})
     if not verify_password(data.password, user.hashed_password):
-        raise HTTPException(401, "手机号或密码错误")
+        raise HTTPException(401, detail={"code": "wrong_password", "message": "密码不正确，请重试"})
     if not user.is_active:
-        raise HTTPException(403, "账号已被禁用")
+        raise HTTPException(403, detail={"code": "inactive", "message": "账号已被禁用，请联系管理员"})
 
     token = create_access_token({"sub": str(user.id)})
     return ParentTokenResponse(

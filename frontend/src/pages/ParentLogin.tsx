@@ -2,16 +2,25 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { parentLogin } from '../api/parent';
 import { toast } from '../components/Toast';
+import FormError from '../components/auth/FormError';
+import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
 
 const ParentLogin = () => {
   const navigate = useNavigate();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone || !password) return toast.warning('请填写完整');
+    setError('');
+    setErrorCode(null);
+    if (!phone || !password) {
+      toast.warning('请填写完整');
+      return;
+    }
     setLoading(true);
     try {
       const res = await parentLogin(phone, password);
@@ -23,7 +32,8 @@ const ParentLogin = () => {
       }));
       navigate('/parent/dashboard');
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '登录失败');
+      setError(getErrorMessage(err, '登录失败，请稍后重试'));
+      setErrorCode(getErrorCode(err));
     } finally {
       setLoading(false);
     }
@@ -38,6 +48,13 @@ const ParentLogin = () => {
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <FormError
+            message={error}
+            code={errorCode}
+            context="parent-login"
+            onDismiss={() => { setError(''); setErrorCode(null); }}
+          />
+
           <div>
             <label className="block text-xs text-ink-soft mb-1.5">手机号</label>
             <input

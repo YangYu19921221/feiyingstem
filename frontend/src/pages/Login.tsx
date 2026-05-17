@@ -6,7 +6,8 @@ import { API_BASE_URL } from '../config/env';
 import { useCountdown } from '../hooks/useCountdown';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
-import { getErrorMessage } from '../utils/errorMessage';
+import FormError from '../components/auth/FormError';
+import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
 
 interface LoginResponse {
   access_token: string;
@@ -38,6 +39,7 @@ const Login = () => {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [showPhoneVerify, setShowPhoneVerify] = useState(false);
@@ -45,15 +47,18 @@ const Login = () => {
   const handleSendCode = async () => {
     if (!/^1[3-9]\d{9}$/.test(phone)) {
       setError('请输入正确的手机号');
+      setErrorCode(null);
       return;
     }
     setError('');
+    setErrorCode(null);
     setSendingCode(true);
     try {
       await axios.post(`${API_BASE_URL}/auth/send-code`, { phone, purpose: 'login' });
       start();
     } catch (err: any) {
       setError(getErrorMessage(err, '发送验证码失败'));
+      setErrorCode(getErrorCode(err));
     } finally {
       setSendingCode(false);
     }
@@ -62,6 +67,7 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setErrorCode(null);
     setLoading(true);
 
     try {
@@ -76,7 +82,8 @@ const Login = () => {
       sessionStorage.removeItem('forced_review_done');
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.status === 401 ? '用户名或密码错误' : '登录失败，请稍后重试');
+      setError(getErrorMessage(err, '登录失败，请稍后重试'));
+      setErrorCode(getErrorCode(err));
     } finally {
       setLoading(false);
     }
@@ -101,23 +108,12 @@ const Login = () => {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="px-4 py-3 rounded-xl text-sm"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    color: '#fca5a5',
-                  }}
-                >
-                  {error}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <FormError
+              message={error}
+              code={errorCode}
+              context="login"
+              onDismiss={() => { setError(''); setErrorCode(null); }}
+            />
 
             <div>
               <label htmlFor="username" className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>

@@ -164,17 +164,17 @@ async def register(
     if data.code:
         ok, msg = code_store.verify(data.phone, data.code)
         if not ok:
-            raise HTTPException(status_code=400, detail=msg)
+            raise HTTPException(status_code=400, detail={"code": "invalid_code", "message": msg})
 
     # 检查用户名是否已存在
     existing = await auth_service.get_user_by_username(db, data.username)
     if existing:
-        raise HTTPException(status_code=400, detail="用户名已存在")
+        raise HTTPException(status_code=400, detail={"code": "username_taken", "message": "用户名已被使用，换一个或直接登录"})
 
     # 检查手机号是否已注册
     existing_phone = await auth_service.get_user_by_phone(db, data.phone)
     if existing_phone:
-        raise HTTPException(status_code=400, detail="该手机号已注册")
+        raise HTTPException(status_code=400, detail={"code": "phone_taken", "message": "该手机号已注册，直接登录即可"})
 
     # 创建用户（用手机号生成默认邮箱）
     user = await auth_service.create_user(
@@ -205,27 +205,23 @@ async def login(
 ):
     """
     用户登录
-    - 支持用户名或邮箱登录
+    - 支持用户名、邮箱或手机号登录
     - 返回JWT token
     """
-    user = await auth_service.authenticate_user(
-        db,
-        username=form_data.username,
-        password=form_data.password
-    )
-
-    if not user:
+    try:
+        user = await auth_service.authenticate_user_strict(
+            db, username=form_data.username, password=form_data.password,
+        )
+    except auth_service.AuthFailure as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            status_code=status.HTTP_403_FORBIDDEN if exc.code == "inactive" else status.HTTP_401_UNAUTHORIZED,
+            detail={"code": exc.code, "message": exc.detail},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 更新最后登录时间
     user.last_login = datetime.utcnow()
     await db.commit()
 
-    # 生成token
     access_token = auth_service.create_access_token(
         data={"sub": str(user.id), "username": user.username}
     )
@@ -247,23 +243,21 @@ async def login_json(
     - 如果提供了 phone 和 code，则校验验证码
     - 返回JWT token
     """
-    user = await auth_service.authenticate_user(
-        db,
-        username=login_data.username,
-        password=login_data.password
-    )
-
-    if not user:
+    try:
+        user = await auth_service.authenticate_user_strict(
+            db, username=login_data.username, password=login_data.password,
+        )
+    except auth_service.AuthFailure as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            status_code=status.HTTP_403_FORBIDDEN if exc.code == "inactive" else status.HTTP_401_UNAUTHORIZED,
+            detail={"code": exc.code, "message": exc.detail},
         )
 
     # 如果提供了手机号和验证码，校验验证码
     if login_data.phone and login_data.code:
         ok, msg = code_store.verify(login_data.phone, login_data.code)
         if not ok:
-            raise HTTPException(status_code=400, detail=msg)
+            raise HTTPException(status_code=400, detail={"code": "invalid_code", "message": msg})
 
     # 更新最后登录时间
     user.last_login = datetime.utcnow()

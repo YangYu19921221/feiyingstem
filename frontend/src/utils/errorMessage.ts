@@ -29,10 +29,24 @@ export function getErrorMessage(error: unknown, fallback = '操作失败'): stri
   }
 
   if (typeof detail === 'object' && detail !== null) {
-    if (typeof (detail as any).msg === 'string') return (detail as any).msg;
+    const d = detail as any;
+    if (typeof d.message === 'string') return d.message;
+    if (typeof d.msg === 'string') return d.msg;
   }
 
   if (typeof (error as any)?.message === 'string') return (error as any).message;
 
   return fallback;
+}
+
+/**
+ * 抓后端 detail.code（业务错误码），用来给 UI 决定显示什么"建议链接"
+ * 比如登录页 user_not_found → "去注册"，wrong_password → "忘记密码"
+ */
+export function getErrorCode(error: unknown): string | null {
+  const detail = (error as any)?.response?.data?.detail;
+  if (detail && typeof detail === 'object' && typeof (detail as any).code === 'string') {
+    return (detail as any).code;
+  }
+  return null;
 }

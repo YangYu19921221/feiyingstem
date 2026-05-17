@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { parentRegister } from '../api/parent';
 import { toast } from '../components/Toast';
+import FormError from '../components/auth/FormError';
+import { getErrorMessage, getErrorCode } from '../utils/errorMessage';
 
 const ParentRegister = () => {
   const navigate = useNavigate();
@@ -11,12 +13,25 @@ const ParentRegister = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bindCode || !phone || !password) return toast.warning('请填写完整');
-    if (password.length < 6) return toast.warning('密码至少 6 位');
-    if (phone.length < 11) return toast.warning('请输入正确的手机号');
+    setError('');
+    setErrorCode(null);
+    if (!bindCode || !phone || !password) {
+      toast.warning('请填写完整');
+      return;
+    }
+    if (password.length < 6) {
+      toast.warning('密码至少 6 位');
+      return;
+    }
+    if (phone.length < 11) {
+      toast.warning('请输入正确的手机号');
+      return;
+    }
     setLoading(true);
     try {
       const res = await parentRegister({
@@ -34,7 +49,8 @@ const ParentRegister = () => {
       toast.success('注册成功');
       navigate('/parent/dashboard');
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '注册失败');
+      setError(getErrorMessage(err, '注册失败，请稍后重试'));
+      setErrorCode(getErrorCode(err));
     } finally {
       setLoading(false);
     }
@@ -68,6 +84,13 @@ const ParentRegister = () => {
         </details>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <FormError
+            message={error}
+            code={errorCode}
+            context="parent-register"
+            onDismiss={() => { setError(''); setErrorCode(null); }}
+          />
+
           <div>
             <label className="block text-xs text-ink-soft mb-1.5">6 位绑定码</label>
             <input

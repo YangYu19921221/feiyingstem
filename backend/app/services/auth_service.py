@@ -40,10 +40,27 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt
 
+class AuthFailure(Exception):
+    """登录失败的细分原因（前端按 code 显示对应文案与跳转链接）"""
+    def __init__(self, code: str, detail: str):
+        self.code = code
+        self.detail = detail
+
+
 async def authenticate_user(db: AsyncSession, username: str, password: str) -> Optional[User]:
     """
-    验证用户
-    支持用户名、邮箱或手机号登录
+    验证用户 — 兼容旧调用方，三种失败统一返 None。
+    要细分原因，请用 authenticate_user_strict（会 raise AuthFailure）。
+    """
+    try:
+        return await authenticate_user_strict(db, username, password)
+    except AuthFailure:
+        return None
+
+
+async def authenticate_user_strict(db: AsyncSession, username: str, password: str) -> User:
+    """
+    严格版：区分 user_not_found / wrong_password / inactive 三种失败。
     """
     stmt = select(User).where(
         or_(
@@ -56,12 +73,11 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> O
     user = result.scalar_one_or_none()
 
     if not user:
-        return None
+        raise AuthFailure("user_not_found", "该账号不存在，请检查输入或先去注册")
     if not verify_password(password, user.hashed_password):
-        return None
+        raise AuthFailure("wrong_password", "密码不正确，请重试或找回密码")
     if not user.is_active:
-        return None
-
+        raise AuthFailure("inactive", "账号已被禁用，请联系老师或管理员")
     return user
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
