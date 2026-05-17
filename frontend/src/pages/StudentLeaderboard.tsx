@@ -11,6 +11,7 @@ import {
 } from '../api/leaderboard';
 import { generateParentBindCode } from '../api/parent';
 import { toast } from '../components/Toast';
+import PictureFallback from '../components/PictureFallback';
 
 const KIND_TABS: { id: LeaderboardKind; label: string; unit: string; emoji: string; sub: string }[] = [
   { id: 'vocabulary', label: '词汇王', unit: '词',    emoji: '📚', sub: '本期累计学了多少词' },
@@ -367,7 +368,7 @@ function ChampionCard({
             background: `radial-gradient(circle at 50% 65%, ${theme.glow}, transparent 70%)`,
           }}
         >
-          <img
+          <PictureFallback
             src={imgSrc}
             alt={`${theme.label} ${entry.full_name || entry.username}`}
             className={`tile-image select-none ${isLg ? 'w-32 md:w-44 h-32 md:h-44' : 'w-28 h-28'} object-contain drop-shadow-md`}

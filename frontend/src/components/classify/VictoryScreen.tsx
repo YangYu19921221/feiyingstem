@@ -10,6 +10,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import ColoredWord from '../ColoredWord';
+import { resolveImage } from '../../utils/webp';
 
 export interface WrongAnswer {
   id: number;
@@ -238,7 +239,7 @@ export default function VictoryScreen({
   const [animatedScore, setAnimatedScore] = useState(0);
 
   // theme 在组件生命周期内不变（score 是 props 一次性传入），直接派生
-  const heroImage = pickImage(theme);
+  const heroImage = resolveImage(pickImage(theme));
 
   // 入场风格 / 数据顺序：组件挂载时一次性随机；用 useState 初始化避免 StrictMode 双调
   const [intro] = useState<Intro>(randomIntro);

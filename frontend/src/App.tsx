@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useState, useEffect, Suspense, lazy, type ComponentType } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import FloatingPetWidget from './components/FloatingPetWidget';
+import OldBrowserBanner from './components/OldBrowserBanner';
 
 // chunk 加载失败时自动刷新一次（部署后旧 chunk 404）
 function lazyWithRetry(factory: () => Promise<{ default: ComponentType<any> }>) {
@@ -172,6 +173,7 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
+        <OldBrowserBanner />
         <Suspense fallback={<PageLoading />}>
           <Routes>
         {/* 登录页面 */}
