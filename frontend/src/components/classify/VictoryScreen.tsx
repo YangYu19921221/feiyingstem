@@ -8,7 +8,7 @@
  *   4) 学生称号按 localStorage 累计本档通关次数选档
  */
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ColoredWord from '../ColoredWord';
 
 export interface WrongAnswer {
@@ -109,8 +109,20 @@ function pickImage(theme: Theme): string {
 
 type Intro = 'upward' | 'shutter' | 'typewriter' | 'stamp';
 const INTROS: Intro[] = ['upward', 'shutter', 'typewriter', 'stamp'];
-function pickIntro(seed: number): Intro {
-  return INTROS[seed % INTROS.length];
+function randomIntro(): Intro {
+  return INTROS[Math.floor(Math.random() * INTROS.length)];
+}
+
+// 4 种数据带排列；4 项独立，不重复
+type ChipKind = 'correct' | 'score' | 'time';
+const DATA_ORDERS: ChipKind[][] = [
+  ['correct', 'score', 'time'],
+  ['time', 'score', 'correct'],
+  ['score', 'correct', 'time'],
+  ['correct', 'time', 'score'],
+];
+function randomDataOrder(): ChipKind[] {
+  return DATA_ORDERS[Math.floor(Math.random() * DATA_ORDERS.length)];
 }
 
 const TIER_TITLES: Record<TierKey, string[]> = {
@@ -119,21 +131,28 @@ const TIER_TITLES: Record<TierKey, string[]> = {
   retry:   ['继续努力', '别灰心', '再来一遍', '坚持就赢', '收拾再战'],
 };
 
-function bumpAndPickTitle(tier: TierKey): string {
-  const key = `victory_count_${tier}`;
-  let n = 1;
+// 累计次数 → 称号档位的阈值（升档点）
+const TITLE_THRESHOLDS = [3, 6, 11, 21];
+
+function readVictoryCount(tier: TierKey): number {
   try {
-    n = parseInt(localStorage.getItem(key) || '0', 10) + 1;
-    localStorage.setItem(key, String(n));
+    return parseInt(localStorage.getItem(`victory_count_${tier}`) || '0', 10);
   } catch {
-    n = 1;
+    return 0;
   }
+}
+
+function writeVictoryCount(tier: TierKey, n: number): void {
+  try {
+    localStorage.setItem(`victory_count_${tier}`, String(n));
+  } catch {
+    // ignore
+  }
+}
+
+function pickTitle(count: number, tier: TierKey): string {
   const list = TIER_TITLES[tier];
-  let idx = 0;
-  if (n >= 21) idx = 4;
-  else if (n >= 11) idx = 3;
-  else if (n >= 6) idx = 2;
-  else if (n >= 3) idx = 1;
+  const idx = TITLE_THRESHOLDS.filter(t => count >= t).length;
   return list[Math.min(idx, list.length - 1)];
 }
 
@@ -218,19 +237,20 @@ export default function VictoryScreen({
   const [showWrongList, setShowWrongList] = useState(false);
   const [animatedScore, setAnimatedScore] = useState(0);
 
-  const heroImage = useMemo(() => pickImage(theme), [theme.key]);
-  const intro = useMemo(() => pickIntro(Math.floor(Math.random() * 100)), []);
-  const learnerTitle = useMemo(() => bumpAndPickTitle(theme.key), [theme.key]);
+  // theme 在组件生命周期内不变（score 是 props 一次性传入），直接派生
+  const heroImage = pickImage(theme);
 
-  const dataOrder = useMemo<('correct' | 'score' | 'time')[]>(() => {
-    const orders: ('correct' | 'score' | 'time')[][] = [
-      ['correct', 'score', 'time'],
-      ['time', 'score', 'correct'],
-      ['correct', 'score', 'time'],
-      ['score', 'correct', 'time'],
-    ];
-    return orders[Math.floor(Math.random() * orders.length)];
-  }, []);
+  // 入场风格 / 数据顺序：组件挂载时一次性随机；用 useState 初始化避免 StrictMode 双调
+  const [intro] = useState<Intro>(randomIntro);
+  const [dataOrder] = useState<ChipKind[]>(randomDataOrder);
+
+  // 称号：用本次通关 = 历史 +1 显示；副作用（写 storage）放 useEffect 里，
+  // 避免 StrictMode 下 useState 初始化器双调用导致计数翻倍
+  const [victoryCount] = useState<number>(() => readVictoryCount(theme.key) + 1);
+  const learnerTitle = pickTitle(victoryCount, theme.key);
+  useEffect(() => {
+    writeVictoryCount(theme.key, victoryCount);
+  }, [theme.key, victoryCount]);
 
   useEffect(() => {
     const duration = 1200;

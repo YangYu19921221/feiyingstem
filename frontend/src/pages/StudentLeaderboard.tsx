@@ -365,7 +365,8 @@ function ChampionCard({
             alt={`${theme.label} ${entry.full_name || entry.username}`}
             className={`tile-image select-none ${isLg ? 'w-32 md:w-44 h-32 md:h-44' : 'w-28 h-28'} object-contain drop-shadow-md`}
             draggable={false}
-            loading="lazy"
+            decoding="async"
+            {...(isLg ? { fetchPriority: 'high' as 'high' } : {})}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
           />
         </div>
