@@ -35,10 +35,12 @@ export default function DictationPhase({
   const [userInput, setUserInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
-  // 错误后需要重新输入正确答案
+  // 错误后需要重新输入正确答案 - 必须连续 3 遍正确才放行（强化记忆）
   const [retryMode, setRetryMode] = useState(false);
   const [retryInput, setRetryInput] = useState('');
   const [retryPassed, setRetryPassed] = useState(false);
+  const [copyDoneCount, setCopyDoneCount] = useState(0);
+  const COPY_REQUIRED = 3;
   // 只记录首次尝试结果
   const [firstAttemptResults, setFirstAttemptResults] = useState<Map<number, boolean>>(new Map());
   const [roundErrorWords, setRoundErrorWords] = useState<WordData[]>([]);
@@ -121,6 +123,7 @@ export default function DictationPhase({
         setRetryMode(false);
         setRetryInput('');
         setRetryPassed(false);
+        setCopyDoneCount(0);
         setShowRoundSummary(false);
       }, 2500);
     }
@@ -137,18 +140,27 @@ export default function DictationPhase({
       setRetryMode(false);
       setRetryInput('');
       setRetryPassed(false);
+      setCopyDoneCount(0);
     }
   }, [currentIndex, roundWords.length, handleRoundEnd]);
 
   const handleRetrySubmit = useCallback(() => {
     if (!currentWord || retryInput.length === 0) return;
     if (normalizeAnswer(retryInput) === normalizeAnswer(currentWord.word)) {
-      setRetryPassed(true);
+      const next = copyDoneCount + 1;
+      if (next >= COPY_REQUIRED) {
+        setCopyDoneCount(next);
+        setRetryPassed(true);
+      } else {
+        setCopyDoneCount(next);
+        setRetryInput('');
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
     } else {
       setRetryInput('');
       inputRef.current?.focus();
     }
-  }, [currentWord, retryInput]);
+  }, [currentWord, retryInput, copyDoneCount]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -338,10 +350,12 @@ export default function DictationPhase({
                     </div>
                   )}
 
-                  {/* 重新输入区域 */}
+                  {/* 重新输入区域：需连续 3 次正确 */}
                   {!retryPassed ? (
                     <div className="mt-4">
-                      <p className="text-sm text-orange-600 font-medium mb-2">请重新输入正确拼写：</p>
+                      <p className="text-sm text-orange-600 font-medium mb-2">
+                        请重新输入正确拼写 <span className="font-numeric">({copyDoneCount} / {COPY_REQUIRED})</span>
+                      </p>
                       <input
                         type="text"
                         value={retryInput}
@@ -367,12 +381,12 @@ export default function DictationPhase({
                             : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         }`}
                       >
-                        确认 (Enter)
+                        提交本遍（{copyDoneCount + 1} / {COPY_REQUIRED}）
                       </motion.button>
                     </div>
                   ) : (
                     <div className="mt-4">
-                      <div className="text-green-600 font-medium">✅ 输入正确！</div>
+                      <div className="text-green-600 font-medium">✅ 已抄写 {COPY_REQUIRED} 遍</div>
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
