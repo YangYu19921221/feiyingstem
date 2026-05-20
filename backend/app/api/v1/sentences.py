@@ -113,6 +113,34 @@ class BookUpdate(BaseModel):
     cover_color: Optional[str] = None
 
 
+# ============================ 权限 helper ============================
+
+async def _assert_book_owner(db: AsyncSession, book_id: int, user: User) -> SentenceBook:
+    """教师只能改 / 删自己的；admin 不限"""
+    b = (await db.execute(select(SentenceBook).where(SentenceBook.id == book_id))).scalar_one_or_none()
+    if not b:
+        raise HTTPException(404, "句子集不存在")
+    if user.role != "admin" and b.created_by != user.id:
+        raise HTTPException(403, "无权操作他人的句子集")
+    return b
+
+
+async def _assert_unit_owner(db: AsyncSession, unit_id: int, user: User) -> SentenceUnit:
+    u = (await db.execute(select(SentenceUnit).where(SentenceUnit.id == unit_id))).scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, "单元不存在")
+    await _assert_book_owner(db, u.book_id, user)
+    return u
+
+
+async def _assert_sentence_owner(db: AsyncSession, sentence_id: int, user: User) -> Sentence:
+    s = (await db.execute(select(Sentence).where(Sentence.id == sentence_id))).scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "句子不存在")
+    await _assert_unit_owner(db, s.unit_id, user)
+    return s
+
+
 # ============================ 句子集 (Book) ============================
 
 @router.get("/books", response_model=List[BookOut])
@@ -120,10 +148,21 @@ async def list_books(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """所有学生和教师都能列出公开句子集。"""
-    res = await db.execute(
-        select(SentenceBook).where(SentenceBook.is_public == True).order_by(SentenceBook.id.desc())
-    )
+    """
+    学生：所有公开句子集
+    教师：自己创建的（不论公开与否）+ 其他教师公开的
+    admin：全部
+    """
+    stmt = select(SentenceBook).order_by(SentenceBook.id.desc())
+    role = getattr(current_user, "role", None)
+    if role == "student":
+        stmt = stmt.where(SentenceBook.is_public == True)
+    elif role == "teacher":
+        stmt = stmt.where(
+            (SentenceBook.is_public == True) | (SentenceBook.created_by == current_user.id)
+        )
+    # admin 走原 stmt 拿全部
+    res = await db.execute(stmt)
     books = res.scalars().all()
 
     counts_res = await db.execute(
@@ -180,9 +219,7 @@ async def update_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    b = (await db.execute(select(SentenceBook).where(SentenceBook.id == book_id))).scalar_one_or_none()
-    if not b:
-        raise HTTPException(404, "句子集不存在")
+    b = await _assert_book_owner(db, book_id, current_user)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(b, k, v)
     await db.commit()
@@ -201,9 +238,16 @@ async def delete_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    b = (await db.execute(select(SentenceBook).where(SentenceBook.id == book_id))).scalar_one_or_none()
-    if not b:
-        raise HTTPException(404, "句子集不存在")
+    b = await _assert_book_owner(db, book_id, current_user)
+    # SQLite 默认未启用 FK，显式级联清理子记录（unit → sentence）
+    unit_ids = [
+        row[0] for row in (await db.execute(
+            select(SentenceUnit.id).where(SentenceUnit.book_id == book_id)
+        )).all()
+    ]
+    if unit_ids:
+        await db.execute(delete(Sentence).where(Sentence.unit_id.in_(unit_ids)))
+        await db.execute(delete(SentenceUnit).where(SentenceUnit.id.in_(unit_ids)))
     await db.delete(b)
     await db.commit()
     return {"deleted": True}
@@ -241,9 +285,7 @@ async def create_unit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    book = (await db.execute(select(SentenceBook).where(SentenceBook.id == book_id))).scalar_one_or_none()
-    if not book:
-        raise HTTPException(404, "句子集不存在")
+    await _assert_book_owner(db, book_id, current_user)
     max_num = (await db.execute(
         select(func.max(SentenceUnit.unit_number)).where(SentenceUnit.book_id == book_id)
     )).scalar() or 0
@@ -268,9 +310,7 @@ async def update_unit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    u = (await db.execute(select(SentenceUnit).where(SentenceUnit.id == unit_id))).scalar_one_or_none()
-    if not u:
-        raise HTTPException(404, "单元不存在")
+    u = await _assert_unit_owner(db, unit_id, current_user)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(u, k, v)
     await db.commit()
@@ -289,9 +329,8 @@ async def delete_unit_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    u = (await db.execute(select(SentenceUnit).where(SentenceUnit.id == unit_id))).scalar_one_or_none()
-    if not u:
-        raise HTTPException(404, "单元不存在")
+    u = await _assert_unit_owner(db, unit_id, current_user)
+    await db.execute(delete(Sentence).where(Sentence.unit_id == unit_id))
     await db.delete(u)
     await db.commit()
     return {"deleted": True}
@@ -318,9 +357,7 @@ async def create_sentence(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    u = (await db.execute(select(SentenceUnit).where(SentenceUnit.id == unit_id))).scalar_one_or_none()
-    if not u:
-        raise HTTPException(404, "单元不存在")
+    await _assert_unit_owner(db, unit_id, current_user)
     max_idx = (await db.execute(
         select(func.max(Sentence.order_index)).where(Sentence.unit_id == unit_id)
     )).scalar() or 0
@@ -343,9 +380,7 @@ async def update_sentence(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    s = (await db.execute(select(Sentence).where(Sentence.id == sentence_id))).scalar_one_or_none()
-    if not s:
-        raise HTTPException(404, "句子不存在")
+    s = await _assert_sentence_owner(db, sentence_id, current_user)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(s, k, v)
     await db.commit()
@@ -359,9 +394,8 @@ async def delete_sentence(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    res = await db.execute(delete(Sentence).where(Sentence.id == sentence_id))
-    if res.rowcount == 0:
-        raise HTTPException(404, "句子不存在")
+    await _assert_sentence_owner(db, sentence_id, current_user)
+    await db.execute(delete(Sentence).where(Sentence.id == sentence_id))
     await db.commit()
     return {"deleted": True}
 
@@ -374,6 +408,9 @@ class BulkImportResult(BaseModel):
     errors: List[str]
 
 
+MAX_BULK_IMPORT_BYTES = 2 * 1024 * 1024  # 2 MB ≈ 数万行 CSV，远超教师常见用量
+
+
 @router.post("/units/{unit_id}/bulk-import", response_model=BulkImportResult)
 async def bulk_import(
     unit_id: int,
@@ -382,14 +419,17 @@ async def bulk_import(
     current_user: User = Depends(get_current_teacher),
 ):
     """
-    上传 CSV 批量录入句子。列：english,chinese,phonetic,difficulty,topic,grammar_focus
-    只 english + chinese 是必填。空行 / 重复英文整句跳过。
+    上传 CSV 批量录入句子。表头列名英中双语都识别：
+      english/英文/句子 · chinese/中文/翻译 · phonetic/音标 ·
+      difficulty/难度 · topic/主题 · grammar_focus/语法
+    只 english + chinese 必填。空行 / 重复英文整句跳过。
     """
-    u = (await db.execute(select(SentenceUnit).where(SentenceUnit.id == unit_id))).scalar_one_or_none()
-    if not u:
-        raise HTTPException(404, "单元不存在")
+    await _assert_unit_owner(db, unit_id, current_user)
 
     raw = await file.read()
+    if len(raw) > MAX_BULK_IMPORT_BYTES:
+        raise HTTPException(413, f"文件过大（>{MAX_BULK_IMPORT_BYTES // 1024} KB），请拆分后再传")
+
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -402,12 +442,19 @@ async def bulk_import(
     if not reader.fieldnames:
         raise HTTPException(400, "CSV 缺少表头")
 
-    # 列名容错
+    # 必须至少含 english 列（容错命名）
+    eng_col_names = {"english", "英文", "句子", "english_sentence"}
+    if not any(
+        (h or "").strip().lower() in eng_col_names
+        for h in reader.fieldnames
+    ):
+        raise HTTPException(400, "CSV 表头缺少 english（或「英文」「句子」）列")
+
     def col(row: dict, *keys: str) -> str:
-        for k in keys:
-            for actual in row.keys():
-                if actual and actual.strip().lower() == k.lower():
-                    return (row[actual] or "").strip()
+        keys_lower = [k.lower() for k in keys]
+        for actual, val in row.items():
+            if actual and actual.strip().lower() in keys_lower:
+                return (val or "").strip()
         return ""
 
     existing_eng_res = await db.execute(
@@ -421,17 +468,19 @@ async def bulk_import(
     cur_idx = max_idx
 
     added = 0
-    skipped = 0
+    skipped_empty = 0
+    skipped_dup = 0
     errors: List[str] = []
+    BATCH = 200
 
     for row_no, row in enumerate(reader, start=2):
         en = col(row, "english", "英文", "句子", "english_sentence")
         cn = col(row, "chinese", "中文", "翻译", "translation")
         if not en or not cn:
-            skipped += 1
+            skipped_empty += 1
             continue
         if en.lower() in existing_eng:
-            skipped += 1
+            skipped_dup += 1
             continue
 
         try:
@@ -452,5 +501,12 @@ async def bulk_import(
         existing_eng.add(en.lower())
         added += 1
 
+        if added % BATCH == 0:
+            await db.flush()  # 分批 flush 释放写锁
+
     await db.commit()
-    return BulkImportResult(added=added, skipped=skipped, errors=errors)
+    if skipped_empty:
+        errors.append(f"{skipped_empty} 行 english 或 chinese 为空")
+    if skipped_dup:
+        errors.append(f"{skipped_dup} 行 english 与已有句子重复")
+    return BulkImportResult(added=added, skipped=skipped_empty + skipped_dup, errors=errors)

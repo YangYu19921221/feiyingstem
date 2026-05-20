@@ -6,6 +6,7 @@ import { listSentences, type Sentence } from '../api/sentences';
 import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
 import { parseError } from '../utils/errorMessage';
+import { normalizeAnswer } from '../utils/normalizeAnswer';
 
 type Mode = 'choice' | 'dictation';
 
@@ -231,12 +232,13 @@ function DictationCard({ sentence, onAnswer, onNext, playAudio }: {
     setTimeout(() => inputRef.current?.focus(), 200);
   }, [sentence.id, playAudio, sentence.tts_text, sentence.english]);
 
-  const normalize = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
-  const targetNorm = normalize(sentence.english);
+  // 句子默写场景按整句严格匹配，大小写不敏感（学生不一定按规范敲首字母大写）
+  const norm = (s: string) => normalizeAnswer(s).toLowerCase();
+  const targetNorm = norm(sentence.english);
 
   const handleCheck = () => {
     if (!input.trim()) return;
-    const ok = normalize(input) === targetNorm;
+    const ok = norm(input) === targetNorm;
     setIsCorrect(ok);
     setSubmitted(true);
     if (ok) {
@@ -254,10 +256,13 @@ function DictationCard({ sentence, onAnswer, onNext, playAudio }: {
 
   const handleCopySubmit = () => {
     if (!input.trim()) return;
-    if (normalize(input) === targetNorm) {
+    if (norm(input) === targetNorm) {
       const next = copyDoneCount + 1;
       setCopyDoneCount(next);
-      if (next < COPY_REQUIRED) {
+      if (next >= COPY_REQUIRED) {
+        // 抄写完成，退出抄写模式（amber 提示框换成"参考答案"）
+        setCopyMode(false);
+      } else {
         setTimeout(() => {
           setInput('');
           inputRef.current?.focus();
@@ -271,7 +276,6 @@ function DictationCard({ sentence, onAnswer, onNext, playAudio }: {
   const handleNext = () => {
     setInput(''); setSubmitted(false); setIsCorrect(false);
     setCopyMode(false); setCopyDoneCount(0);
-    playedRef.current = false;
     onNext();
   };
 

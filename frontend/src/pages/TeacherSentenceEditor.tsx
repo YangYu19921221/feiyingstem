@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Trash2, Edit, Upload, FileSpreadsheet, ChevronDown, Save } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, Upload, FileSpreadsheet, Save } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
   listSentenceUnits, createSentenceUnit, updateSentenceUnit, deleteSentenceUnit,
   listSentences, createSentence, updateSentence, deleteSentence,
@@ -10,6 +11,7 @@ import {
 } from '../api/sentences';
 import { toast } from '../components/Toast';
 import { parseError } from '../utils/errorMessage';
+import Field from '../components/Field';
 
 /**
  * 句子集详情：左侧单元列表，右侧句子列表 + 录入。
@@ -157,8 +159,25 @@ export default function TeacherSentenceEditor() {
   const handleFileUpload = async (file: File | null) => {
     if (!file || !activeUnit) return;
     try {
-      const r = await bulkImportSentences(activeUnit.id, file);
-      toast.success(`成功导入 ${r.added} 条${r.skipped ? `，跳过 ${r.skipped} 条（重复或缺字段）` : ''}`);
+      // 后端只解析 CSV — 若是 xlsx，浏览器先转 CSV 再上传
+      let toUpload: File = file;
+      if (/\.xlsx?$/i.test(file.name)) {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        // 加 UTF-8 BOM，避免后端 GBK 误判（虽然后端会试 utf-8-sig）
+        toUpload = new File(
+          [new Uint8Array([0xEF, 0xBB, 0xBF]), csv],
+          file.name.replace(/\.xlsx?$/i, '.csv'),
+          { type: 'text/csv;charset=utf-8' },
+        );
+      }
+      const r = await bulkImportSentences(activeUnit.id, toUpload);
+      const tip = `成功导入 ${r.added} 条`
+        + (r.skipped ? `，跳过 ${r.skipped} 条` : '')
+        + (r.errors?.length ? `\n${r.errors.join('；')}` : '');
+      toast.success(tip);
       loadSentences(activeUnit.id);
       loadUnits();
     } catch (err: any) {
@@ -167,15 +186,17 @@ export default function TeacherSentenceEditor() {
   };
 
   const downloadTemplate = () => {
-    const csv = '﻿' +
-      'english,chinese,phonetic,difficulty,topic,grammar_focus\n' +
-      'How are you?,你好吗？,/haʊ ɑːr juː/,1,问候,一般疑问句\n' +
-      'I am a student.,我是一个学生。,,2,自我介绍,系动词\n';
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = '句子导入模板.csv'; a.click();
-    URL.revokeObjectURL(url);
+    const rows = [
+      { english: 'How are you?', chinese: '你好吗？', phonetic: '/haʊ ɑːr juː/', difficulty: 1, topic: '问候', grammar_focus: '一般疑问句' },
+      { english: 'I am a student.', chinese: '我是一个学生。', phonetic: '', difficulty: 2, topic: '自我介绍', grammar_focus: '系动词' },
+    ];
+    const ws = XLSX.utils.json_to_sheet(rows, {
+      header: ['english', 'chinese', 'phonetic', 'difficulty', 'topic', 'grammar_focus'],
+    });
+    ws['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 6 }, { wch: 12 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '句子导入模板');
+    XLSX.writeFile(wb, '句子导入模板.xlsx');
   };
 
   return (
@@ -248,9 +269,9 @@ export default function TeacherSentenceEditor() {
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-accent-warm hover:underline cursor-pointer inline-flex items-center gap-1">
                         <Upload className="w-3.5 h-3.5" />
-                        CSV 批量导入
+                        批量导入（CSV / Excel）
                         <input
-                          type="file" accept=".csv" className="hidden"
+                          type="file" accept=".csv,.xls,.xlsx" className="hidden"
                           onChange={e => { handleFileUpload(e.target.files?.[0] || null); e.target.value = ''; }}
                         />
                       </label>
@@ -419,13 +440,3 @@ export default function TeacherSentenceEditor() {
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-xs text-ink-soft mb-1 block">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </span>
-      {children}
-    </label>
-  );
-}

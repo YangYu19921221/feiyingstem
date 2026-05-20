@@ -8,6 +8,7 @@ import {
 } from '../api/sentences';
 import { toast } from '../components/Toast';
 import { parseError } from '../utils/errorMessage';
+import Field from '../components/Field';
 
 export default function TeacherSentenceBooks() {
   const navigate = useNavigate();
@@ -236,13 +237,3 @@ export default function TeacherSentenceBooks() {
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-xs text-ink-soft mb-1.5 block">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
