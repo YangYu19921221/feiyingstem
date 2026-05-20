@@ -53,6 +53,11 @@ const StudentReadingList = lazyWithRetry(() => import('./pages/StudentReadingLis
 const StudentReadingPractice = lazyWithRetry(() => import('./pages/StudentReadingPractice'));
 const StudentLeaderboard = lazyWithRetry(() => import('./pages/StudentLeaderboard'));
 const StudentJoinClass = lazyWithRetry(() => import('./pages/StudentJoinClass'));
+const TeacherSentenceBooks = lazyWithRetry(() => import('./pages/TeacherSentenceBooks'));
+const TeacherSentenceEditor = lazyWithRetry(() => import('./pages/TeacherSentenceEditor'));
+const StudentSentenceBooks = lazyWithRetry(() => import('./pages/StudentSentenceBooks'));
+const StudentSentenceUnits = lazyWithRetry(() => import('./pages/StudentSentenceUnits'));
+const SentenceLearning = lazyWithRetry(() => import('./pages/SentenceLearning'));
 const ParentLogin = lazyWithRetry(() => import('./pages/ParentLogin'));
 const ParentRegister = lazyWithRetry(() => import('./pages/ParentRegister'));
 const ParentDashboard = lazyWithRetry(() => import('./pages/ParentDashboard'));
@@ -453,6 +458,28 @@ function App() {
               <StudentJoinClass />
             </ProtectedRoute>
           }
+        />
+
+        {/* 句子背诵 */}
+        <Route
+          path="/teacher/sentences"
+          element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><TeacherSentenceBooks /></ProtectedRoute>}
+        />
+        <Route
+          path="/teacher/sentences/:bookId"
+          element={<ProtectedRoute allowedRoles={['teacher', 'admin']}><TeacherSentenceEditor /></ProtectedRoute>}
+        />
+        <Route
+          path="/student/sentences"
+          element={<ProtectedRoute allowedRoles={['student']}><StudentSentenceBooks /></ProtectedRoute>}
+        />
+        <Route
+          path="/student/sentences/:bookId"
+          element={<ProtectedRoute allowedRoles={['student']}><StudentSentenceUnits /></ProtectedRoute>}
+        />
+        <Route
+          path="/student/sentences/:bookId/:unitId/learn"
+          element={<ProtectedRoute allowedRoles={['student']}><SentenceLearning /></ProtectedRoute>}
         />
 
         {/* 家长端 - 登录 / 注册 / 看板 */}

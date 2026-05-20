@@ -29,6 +29,10 @@ async def init_db():
         from app.models import competition
     except Exception:
         pass
+    try:
+        from app.models import sentence  # 句子背诵
+    except Exception:
+        pass
 
     # 使用SQLAlchemy的create_all创建所有表
     async with engine.begin() as conn:
