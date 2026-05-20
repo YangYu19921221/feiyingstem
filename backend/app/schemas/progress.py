@@ -70,6 +70,8 @@ class BookProgressResponse(BaseModel):
     """单词本进度响应"""
     book_id: int
     book_name: str
+    grade_level: Optional[str] = Field(None, description="年级，如「三年级」「七年级」，课外书为 null")
+    volume: Optional[str] = Field(None, description="册次，如「上册」「下册」")
     unit_count: int = Field(..., description="单元数量")
     word_count: int = Field(..., description="总单词数")
     completed_words: int = Field(0, description="已完成单词数")

@@ -449,6 +449,8 @@ async def get_book_progress(
     return BookProgressResponse(
         book_id=book.id,
         book_name=book.name,
+        grade_level=book.grade_level,
+        volume=book.volume,
         unit_count=len(units),
         word_count=total_words_in_book,
         completed_words=total_completed_words,

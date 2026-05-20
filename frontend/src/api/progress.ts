@@ -118,6 +118,8 @@ export interface UnitProgress {
 export interface BookProgress {
   book_id: number;
   book_name: string;
+  grade_level: string | null;
+  volume: string | null;
   unit_count: number;
   word_count: number;
   completed_words: number;

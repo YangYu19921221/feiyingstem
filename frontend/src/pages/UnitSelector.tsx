@@ -132,6 +132,13 @@ const UnitSelector = () => {
       <div className="max-w-3xl mx-auto px-5 py-10">
         {/* Hero：书本信息 */}
         <section className="mb-10">
+          {(bookProgress.grade_level || bookProgress.volume) && (
+            <div className="inline-flex items-center gap-1.5 mb-3 px-2.5 py-0.5 rounded-full bg-accent-warm/[0.10] text-accent-warm text-xs font-medium">
+              {bookProgress.grade_level && <span>{bookProgress.grade_level}</span>}
+              {bookProgress.grade_level && bookProgress.volume && <span className="opacity-50">·</span>}
+              {bookProgress.volume && <span>{bookProgress.volume}</span>}
+            </div>
+          )}
           <p className="text-ink-mute text-sm mb-2">{bookProgress.unit_count} 单元 · {bookProgress.word_count} 词</p>
           <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-4">
             {bookProgress.book_name}
