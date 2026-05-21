@@ -289,6 +289,15 @@ const StudentDashboard = () => {
             >
               开始复习
             </button>
+            {/* 测试账号 student 专属：跳过强制复习直接进主页 */}
+            {user?.username === 'student' && (
+              <button
+                onClick={() => { sessionStorage.setItem('forced_review_done', 'true'); window.location.reload(); }}
+                className="w-full mt-3 text-sm text-ink-mute hover:text-accent-warm transition"
+              >
+                跳过（仅测试账号可见）
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="w-full mt-3 text-sm text-ink-mute hover:text-ink-soft transition"
