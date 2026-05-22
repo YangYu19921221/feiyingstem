@@ -7,7 +7,7 @@ from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord
 from app.models.user import User
 from app.schemas.word import (
     WordCreate, WordResponse, WordUpdate, WordListItem,
-    WordBookCreate, WordBookResponse, WordBookDetailResponse,
+    WordBookCreate, WordBookResponse, WordBookDetailResponse, WordBookUpdate,
     WordBatchImport, WordBatchImportResponse
 )
 from app.api.v1.auth import get_current_teacher
@@ -166,6 +166,43 @@ async def list_word_books(
         )
         for book in books
     ]
+
+
+@router.patch("/books/{book_id}", response_model=WordBookResponse)
+async def update_word_book(
+    book_id: int,
+    body: WordBookUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """更新单词本（重命名、描述、年级、册次、封面色、公开状态）"""
+    result = await db.execute(select(WordBook).where(WordBook.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(status_code=404, detail="单词本不存在")
+    if book.created_by and book.created_by != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权编辑此单词本")
+
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and not (data["name"] or "").strip():
+        raise HTTPException(status_code=400, detail="名称不能为空")
+    for k, v in data.items():
+        setattr(book, k, v.strip() if isinstance(v, str) else v)
+    await db.commit()
+    await db.refresh(book)
+
+    word_count_res = await db.execute(
+        select(func.count(BookWord.id)).where(BookWord.book_id == book.id)
+    )
+    word_count = int(word_count_res.scalar() or 0)
+
+    return WordBookResponse(
+        id=book.id, name=book.name, description=book.description,
+        grade_level=book.grade_level, volume=book.volume,
+        is_public=book.is_public, cover_color=book.cover_color,
+        cover_url=book.cover_url, created_by=book.created_by or 0,
+        word_count=word_count, created_at=book.created_at,
+    )
 
 
 @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)

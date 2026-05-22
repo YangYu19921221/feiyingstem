@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getTeacherWordBooks } from '../api/teacher';
 import type { TeacherWordBook } from '../api/teacher';
-import { BookOpen, Settings, Trash2, Search, ChevronDown, LayoutGrid, List } from 'lucide-react';
+import { BookOpen, Settings, Trash2, Search, ChevronDown, LayoutGrid, List, Pencil } from 'lucide-react';
 import api from '../api/client';
 import { toast } from '../components/Toast';
 
@@ -84,6 +84,9 @@ const TeacherBooks = () => {
   const hasLoadedOnce = useRef(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
+  const [renameTarget, setRenameTarget] = useState<TeacherWordBook | null>(null);
+  const [renameForm, setRenameForm] = useState({ name: '', grade_level: '', volume: '' });
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -116,6 +119,39 @@ const TeacherBooks = () => {
 
   const handleManageUnits = (bookId: number) => {
     navigate(`/teacher/books/${bookId}/units`);
+  };
+
+  const openRename = (book: TeacherWordBook) => {
+    setRenameForm({
+      name: book.name,
+      grade_level: book.grade_level || '',
+      volume: book.volume || '',
+    });
+    setRenameTarget(book);
+  };
+
+  const submitRename = async () => {
+    if (!renameTarget) return;
+    const name = renameForm.name.trim();
+    if (!name) {
+      toast.warning('名称不能为空');
+      return;
+    }
+    setRenaming(true);
+    try {
+      await api.patch(`/words/books/${renameTarget.id}`, {
+        name,
+        grade_level: renameForm.grade_level.trim() || null,
+        volume: renameForm.volume.trim() || null,
+      });
+      toast.success('已保存');
+      setRenameTarget(null);
+      loadBooks();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || '保存失败');
+    } finally {
+      setRenaming(false);
+    }
   };
 
   const toggleBookSelection = (bookId: number) => {
@@ -444,13 +480,23 @@ const TeacherBooks = () => {
                                   </div>
                                   {/* 操作按钮 */}
                                   {!isSelectionMode && (
-                                    <button
-                                      onClick={e => { e.stopPropagation(); handleManageUnits(book.id); }}
-                                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium flex items-center gap-1 shrink-0"
-                                    >
-                                      <Settings className="w-3 h-3" />
-                                      管理
-                                    </button>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <button
+                                        onClick={e => { e.stopPropagation(); openRename(book); }}
+                                        className="px-2.5 py-1.5 border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 rounded-md text-xs font-medium flex items-center gap-1"
+                                        title="重命名"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                        重命名
+                                      </button>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleManageUnits(book.id); }}
+                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium flex items-center gap-1"
+                                      >
+                                        <Settings className="w-3 h-3" />
+                                        管理
+                                      </button>
+                                    </div>
                                   )}
                                 </li>
                               ))}
@@ -512,13 +558,22 @@ const TeacherBooks = () => {
                                     </div>
                                   )}
                                   {!isSelectionMode && (
-                                    <button
-                                      onClick={e => { e.stopPropagation(); handleManageUnits(book.id); }}
-                                      className="w-full mt-1 py-1.5 px-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-md text-xs font-medium flex items-center justify-center gap-1 hover:shadow-md transition"
-                                    >
-                                      <Settings className="w-3 h-3" />
-                                      管理单元
-                                    </button>
+                                    <div className="mt-1 flex items-center gap-1.5">
+                                      <button
+                                        onClick={e => { e.stopPropagation(); openRename(book); }}
+                                        className="px-2 py-1.5 border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 rounded-md text-xs font-medium flex items-center justify-center"
+                                        title="重命名"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleManageUnits(book.id); }}
+                                        className="flex-1 py-1.5 px-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-md text-xs font-medium flex items-center justify-center gap-1 hover:shadow-md transition"
+                                      >
+                                        <Settings className="w-3 h-3" />
+                                        管理单元
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -571,6 +626,57 @@ const TeacherBooks = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* 重命名单词本弹窗 */}
+      {renameTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => !renaming && setRenameTarget(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-800 mb-4">编辑单词本</h3>
+            <label className="block mb-3">
+              <span className="text-xs text-gray-600 block mb-1">名称<span className="text-red-500">*</span></span>
+              <input
+                value={renameForm.name}
+                onChange={e => setRenameForm({ ...renameForm, name: e.target.value })}
+                autoFocus
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400"
+                placeholder="例如：人教版七年级上册"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <label className="block">
+                <span className="text-xs text-gray-600 block mb-1">年级</span>
+                <input
+                  value={renameForm.grade_level}
+                  onChange={e => setRenameForm({ ...renameForm, grade_level: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400"
+                  placeholder="七年级"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-600 block mb-1">册次</span>
+                <input
+                  value={renameForm.volume}
+                  onChange={e => setRenameForm({ ...renameForm, volume: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400"
+                  placeholder="上册"
+                />
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRenameTarget(null)}
+                disabled={renaming}
+                className="flex-1 py-2 border border-gray-300 text-gray-600 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
+              >取消</button>
+              <button
+                onClick={submitRename}
+                disabled={renaming}
+                className="flex-1 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >{renaming ? '保存中…' : '保存'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 新建单词本模态框 */}
       {showCreateModal && (
