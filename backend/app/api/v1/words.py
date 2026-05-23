@@ -285,8 +285,10 @@ async def create_word(
     - 支持标签分类
     """
     # 检查单词是否已存在（忽略大小写查重，但保留原始大小写存储）
-    result = await db.execute(select(Word).where(func.lower(Word.word) == word_data.word.strip().lower()))
-    existing_word = result.scalar_one_or_none()
+    result = await db.execute(
+        select(Word).where(func.lower(Word.word) == word_data.word.strip().lower()).limit(1)
+    )
+    existing_word = result.scalars().first()
 
     if existing_word:
         # 若上传时传入了不同大小写（如 "play Chinese chess" vs 已存的 "play chinese chess"），
@@ -383,6 +385,17 @@ async def list_words(
 
     result = await db.execute(query)
     words = result.scalars().all()
+
+    # 同拼写多副本时只显示最早一条(id 最小)。fork 出来的副本不在全局列表暴露。
+    seen_lower = set()
+    deduped = []
+    for w in sorted(words, key=lambda x: x.id):
+        key = (w.word or "").lower()
+        if key in seen_lower:
+            continue
+        seen_lower.add(key)
+        deduped.append(w)
+    words = deduped
 
     # 构建响应(一次查询获取所有单词的主要释义)
     if not words:
@@ -530,9 +543,9 @@ async def batch_import_words(
         try:
             # 检查是否已存在
             result = await db.execute(
-                select(Word).where(func.lower(Word.word) == word_data.word.lower())
+                select(Word).where(func.lower(Word.word) == word_data.word.lower()).limit(1)
             )
-            dup = result.scalar_one_or_none()
+            dup = result.scalars().first()
             if dup:
                 # 若传入的大小写与已有不同，更新库里的大小写（以最新上传为准）
                 new_word = word_data.word.strip()

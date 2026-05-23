@@ -127,8 +127,8 @@ async def best_pronunciation(
     # TTS 文本：优先用数据库的 tts_text 字段，没有则自动展开缩写
     tts_text = None
     if not db_word:
-        result = await db.execute(select(Word).where(Word.word == word))
-        db_word = result.scalar_one_or_none()
+        result = await db.execute(select(Word).where(Word.word == word).limit(1))
+        db_word = result.scalars().first()
     if db_word and db_word.tts_text:
         tts_text = db_word.tts_text
 

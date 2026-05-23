@@ -284,9 +284,9 @@ async def generate_personalized_exam(
         word_id = None
         if question.get("word"):
             word_result = await db.execute(
-                select(Word.id).where(Word.word == question["word"])
+                select(Word.id).where(Word.word == question["word"]).limit(1)
             )
-            word_obj = word_result.scalar_one_or_none()
+            word_obj = word_result.scalars().first()
             if word_obj:
                 word_id = word_obj
 
