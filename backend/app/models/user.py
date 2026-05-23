@@ -29,6 +29,7 @@ class User(Base):
     role = Column(String(20), default=UserRole.STUDENT)
     is_active = Column(Boolean, default=True)
     avatar_url = Column(String(255))
+    hero_id = Column(String(32), nullable=True)  # 英雄角色 ID（注册时分配，用于通关画面与光荣榜立绘）
 
     # 等级和经验值系统
     level = Column(Integer, default=1)  # 用户等级
