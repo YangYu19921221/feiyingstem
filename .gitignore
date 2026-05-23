@@ -48,6 +48,7 @@ tmp/
 temp/
 .cache/
 *.png
+!frontend/public/heroes/*.png
 backend/tts_cache/
 .playwright-mcp/
 
