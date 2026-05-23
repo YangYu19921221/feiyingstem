@@ -152,7 +152,16 @@ export const removeWordFromUnit = async (unitId: number, wordId: number): Promis
 /**
  * 编辑单元中的单词
  * PUT /api/v1/teacher/units/{unit_id}/words/{word_id}
+ *
+ * 后端语义:如果该单词同时被多个单元引用,后端会复制一份新副本给本单元独占,
+ * 此时响应中 forked === true 且 word_id 是新副本的 id;否则原单词被 in-place 修改。
  */
+export interface UpdateWordInUnitResponse {
+  message: string;
+  forked: boolean;
+  word_id: number;
+}
+
 export const updateWordInUnit = async (
   unitId: number,
   wordId: number,
@@ -166,8 +175,12 @@ export const updateWordInUnit = async (
     example_sentence?: string;
     example_translation?: string;
   }
-): Promise<void> => {
-  await axios.put(`${API_BASE_URL}/teacher/units/${unitId}/words/${wordId}`, wordData);
+): Promise<UpdateWordInUnitResponse> => {
+  const res = await axios.put<UpdateWordInUnitResponse>(
+    `${API_BASE_URL}/teacher/units/${unitId}/words/${wordId}`,
+    wordData
+  );
+  return res.data;
 };
 
 // ========================================

@@ -249,10 +249,15 @@ const TeacherUnitManagement = () => {
     }
     setSavingEdit(true);
     try {
-      await updateWordInUnit(selectedUnit!.id, editingWordId!, editFormData);
+      const result = await updateWordInUnit(selectedUnit!.id, editingWordId!, editFormData);
       setEditingWordId(null);
       const updatedUnit = await getUnitDetail(selectedUnit!.id);
       setSelectedUnit(updatedUnit);
+      if (result.forked) {
+        toast.success('保存成功(已为本单元生成独立副本,不会影响其他单元)');
+      } else {
+        toast.success('保存成功');
+      }
     } catch (error: any) {
       console.error('保存失败:', error);
       toast.error(getErrorMessage(error, '保存失败,请重试'));
