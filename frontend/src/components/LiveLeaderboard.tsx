@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { competitionWS, type LeaderboardData } from '../services/websocket';
+import { pickEncourageHero } from '../utils/hero';
 
 interface LiveLeaderboardProps {
   token: string;
@@ -16,6 +17,10 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
   seasonId = 1,
   className = ''
 }) => {
+  // mount 时抽一次鼓励角色，避免 setLeaderboard 触发的重渲染都换人
+  const [encourageHero] = useState(() => pickEncourageHero());
+  const [encourageImgError, setEncourageImgError] = useState(false);
+
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'overall'>('daily');
   const [isConnected, setIsConnected] = useState(false);
@@ -214,6 +219,30 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
           ))}
         </AnimatePresence>
       </div>
+
+      {/* 鼓励位：排名 >= 10 或处于后 30% 时显示 */}
+      {leaderboard.my_rank && (
+        leaderboard.my_rank >= 10 ||
+        (leaderboard.total_participants > 0 &&
+         leaderboard.my_rank / leaderboard.total_participants >= 0.7)
+      ) && (
+        <div className="mx-3 my-2 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50 to-pink-50 border border-orange-200 p-3 flex items-center gap-3">
+          {!encourageImgError && (
+            <img
+              src={encourageHero.imageUrl}
+              alt=""
+              onError={() => setEncourageImgError(true)}
+              className="w-14 h-14 rounded-full object-cover flex-shrink-0 border-2 border-orange-300"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-orange-700">{encourageHero.name} 在为你加油</div>
+            <div className="text-xs text-gray-600 mt-0.5">
+              {encourageHero.taglineEncourage || '坚持就是胜利，下次见！'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 底部信息 */}
       <div className="bg-gray-50 p-3 text-xs text-gray-600 flex items-center justify-between">
