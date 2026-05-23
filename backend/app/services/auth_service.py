@@ -1,6 +1,7 @@
 """
 认证服务 - 处理密码加密、JWT生成等
 """
+import random
 import secrets
 import string
 from datetime import datetime, timedelta
@@ -14,6 +15,13 @@ from app.core.config import settings
 
 # 密码加密上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# 学生英雄角色池
+HERO_POOL = [
+    'hero_blaze', 'hero_thunder', 'hero_galaxy',
+    'hero_sunny', 'hero_wave', 'hero_breeze',
+    'hero_phoenix', 'hero_dawn',
+]
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
@@ -101,7 +109,8 @@ async def create_user(
         full_name=full_name,
         role=role,
         phone=phone,
-        is_active=True
+        is_active=True,
+        hero_id=random.choice(HERO_POOL) if role == "student" else None,
     )
 
     db.add(user)
