@@ -169,6 +169,8 @@ commit
 
 这一项作为**已知限制**记录,不在本期修复。如果未来要彻底解决,把发音 API 改成 `word_id` 优先(`pronunciation.py` 已经接受 `word_id` 参数,`UnitExam.tsx:125` 已经走的是 word_id),把 `useAudio` 改成按 `word_id` 缓存即可,但前端调用点较多,与本期"编辑隔离"是独立的事。
 
+- **并发编辑竞态(单一进程下罕见,记录一笔)**:两个老师同时对同一 `(unit_id, word_id)` 触发 fork,会各自创建一份新 Word/Definition/Tag,最后只有一份被 `unit_words` 指向,另一份成为孤行(数据正确但有少量垃圾)。修复方案是在 `select(UnitWord)` 之前对该行加锁(SQLite `BEGIN IMMEDIATE`,Postgres `FOR UPDATE`),本期不实现。
+
 ## 不在本期范围
 
 - 给老师一个"将本单元的副本合并回主词"的反向操作。

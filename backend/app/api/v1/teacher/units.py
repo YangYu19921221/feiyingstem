@@ -411,41 +411,38 @@ async def update_word_in_unit(
 
     返回 {"message", "forked", "word_id"}。
     """
-    # 1. 验证 (unit_id, word_id) 关联存在
-    uw_row = (await db.execute(
-        select(UnitWord).where(
-            and_(UnitWord.unit_id == unit_id, UnitWord.word_id == word_id)
-        )
-    )).scalar_one_or_none()
-    if not uw_row:
+    # 1. 验证 (unit_id, word_id) 关联存在,同时把 Word 一起取出
+    row = (await db.execute(
+        select(UnitWord, Word)
+        .join(Word, Word.id == UnitWord.word_id)
+        .where(and_(UnitWord.unit_id == unit_id, UnitWord.word_id == word_id))
+    )).first()
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"单词ID {word_id} 不在单元ID {unit_id} 中"
         )
+    uw_row, target_word = row
 
-    # 2. 看 word_id 被几个单元引用
+    # 2. 看 word_id 被几个单元引用(仅 unit_words;book_words 不参与 fork 决策)
     ref_count = (await db.execute(
         select(func.count()).select_from(UnitWord).where(UnitWord.word_id == word_id)
     )).scalar()
 
     forked = False
-    target_word_id = word_id
 
     if ref_count > 1:
         # 3a. fork:复制 Word
-        original = (await db.execute(
-            select(Word).where(Word.id == word_id)
-        )).scalar_one()
         new_word = Word(
-            word=original.word,
-            phonetic=original.phonetic,
-            syllables=original.syllables,
-            tts_text=original.tts_text,
-            difficulty=original.difficulty,
-            grade_level=original.grade_level,
-            audio_url=original.audio_url,
-            image_url=original.image_url,
-            created_by=original.created_by,
+            word=target_word.word,
+            phonetic=target_word.phonetic,
+            syllables=target_word.syllables,
+            tts_text=target_word.tts_text,
+            difficulty=target_word.difficulty,
+            grade_level=target_word.grade_level,
+            audio_url=target_word.audio_url,
+            image_url=target_word.image_url,
+            created_by=target_word.created_by,
         )
         db.add(new_word)
         await db.flush()  # 拿到 new_word.id
@@ -473,16 +470,12 @@ async def update_word_in_unit(
 
         # 3d. 把当前单元的 unit_words 改指向新 word_id
         uw_row.word_id = new_word.id
-
-        await db.flush()
-
-        target_word_id = new_word.id
+        target_word = new_word
         forked = True
 
-    # 4. 把编辑应用到 target_word_id(同时支持新副本和 in-place)
-    target_word = (await db.execute(
-        select(Word).where(Word.id == target_word_id)
-    )).scalar_one()
+    target_word_id = target_word.id
+
+    # 4. 把编辑应用到 target_word(同时支持新副本和 in-place)
     for field in ['word', 'phonetic', 'syllables', 'difficulty']:
         if field in word_data and word_data[field] is not None:
             setattr(target_word, field, word_data[field])
