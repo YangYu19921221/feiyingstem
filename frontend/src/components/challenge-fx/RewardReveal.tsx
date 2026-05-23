@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { useChallengeSfx } from '../../hooks/useChallengeSfx';
+import { getHeroById } from '../../utils/hero';
 
 export type RewardTier = 'normal' | 'lucky' | 'crit' | 'miracle';
 
@@ -23,6 +24,12 @@ const TIER_COLOR: Record<RewardTier, string> = {
  * Phase 1 只做 normal 档（70%）；lucky/crit/miracle 留给 Phase 2 扩展
  */
 export default function RewardReveal({ tier, expGained, coinGained, onComplete }: Props) {
+  const userInfo = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || 'null'); }
+    catch { return null; }
+  })();
+  const hero = getHeroById(userInfo?.hero_id);
+  const [heroImgError, setHeroImgError] = useState(false);
   const { play } = useChallengeSfx();
   const [expDisplay, setExpDisplay] = useState(0);
   const [coinDisplay, setCoinDisplay] = useState(0);
@@ -49,11 +56,35 @@ export default function RewardReveal({ tier, expGained, coinGained, onComplete }
 
   return (
     <div className="fixed inset-0 z-[98] pointer-events-none flex flex-col items-center justify-center">
+      {/* 学生英雄立绘作为背景（虚化，加载失败静默隐藏） */}
+      {!heroImgError && (
+        <motion.img
+          src={hero.imageUrl}
+          alt=""
+          aria-hidden
+          onError={() => setHeroImgError(true)}
+          initial={{ opacity: 0, scale: 1.1 }}
+          animate={{ opacity: 0.4, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="absolute"
+          style={{
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(420px, 60vw)',
+            height: 'min(420px, 60vw)',
+            objectFit: 'cover',
+            borderRadius: '32px',
+            filter: `drop-shadow(0 0 40px ${tierColor})`,
+          }}
+        />
+      )}
+
       <motion.div
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', damping: 14, stiffness: 200 }}
-        className="bg-gradient-to-br from-gray-900/90 to-gray-800/90 backdrop-blur rounded-3xl px-10 py-6 border-2"
+        className="bg-gradient-to-br from-gray-900/90 to-gray-800/90 backdrop-blur rounded-3xl px-10 py-6 border-2 relative z-10"
         style={{ borderColor: tierColor }}
       >
         <div className="flex items-center gap-8">
