@@ -9,6 +9,7 @@ import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import PetWidget from '../components/PetWidget';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import HallOfFame from '../components/HallOfFame';
 
 interface UserData {
   id: number;
@@ -302,6 +303,11 @@ const StudentDashboard = () => {
             </h2>
             <p className="opacity-90 drop-shadow text-sm">继续保持，你已经超越了 85% 的学习者！</p>
           </div>
+        </div>
+
+        {/* 班级光荣榜 - 显眼位置 */}
+        <div className="mb-8">
+          <HallOfFame />
         </div>
 
         {/* 错题提醒 */}
