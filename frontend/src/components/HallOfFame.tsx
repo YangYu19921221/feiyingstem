@@ -38,7 +38,7 @@ type ChampionKey = keyof typeof TIER_THEME;
 function ChampionCard({ kind, champion }: { kind: ChampionKey; champion: ChampionItem | null }) {
   const theme = TIER_THEME[kind];
   const [imgError, setImgError] = useState(false);
-  const encourageHero = pickEncourageHero();
+  const [encourageHero] = useState(() => pickEncourageHero());
 
   if (!champion) {
     return (

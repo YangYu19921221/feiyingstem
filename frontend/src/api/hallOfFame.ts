@@ -20,5 +20,5 @@ export interface HallOfFameResponse {
 }
 
 export async function getClassHallOfFame(): Promise<HallOfFameResponse> {
-  return client.get('/api/v1/student/class/hall-of-fame');
+  return client.get('/student/class/hall-of-fame');
 }
