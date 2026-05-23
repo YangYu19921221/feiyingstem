@@ -50,6 +50,7 @@ class UserResponse(BaseModel):
     role: str = "student"
     is_active: bool
     avatar_url: Optional[str] = None
+    hero_id: Optional[str] = None
     phone: Optional[str] = None
     subscription_expires_at: Optional[datetime] = None
     created_at: datetime
