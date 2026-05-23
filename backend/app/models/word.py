@@ -6,7 +6,7 @@ class Word(Base):
     __tablename__ = "words"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    word = Column(String(100), unique=True, nullable=False)
+    word = Column(String(100), nullable=False, index=True)
     phonetic = Column(String(100))
     syllables = Column(String(200))
     tts_text = Column(String(200))  # TTS发音文本，有缩写时填完整版如 "say hi to somebody"
