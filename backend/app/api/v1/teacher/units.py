@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, and_
 from typing import List
 from app.core.database import get_db
-from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition
+from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition, WordTag
 from app.models.user import User
 from app.schemas.unit import (
     UnitCreate, UnitUpdate, UnitResponse, UnitDetailResponse,
@@ -401,56 +401,115 @@ async def update_word_in_unit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """
-    编辑单元中某个单词的信息
+    """编辑单元中某个单词的信息。
 
-    - 更新单词基本信息(word, phonetic, syllables, difficulty)
-    - 更新释义(meaning, part_of_speech, example_sentence, example_translation)
+    隔离策略(fork-on-edit):
+    - 如果该 word_id 只被当前单元引用 → 直接 in-place 修改
+    - 如果被多个单元引用 → 复制一份新的 Word + WordDefinition + WordTag,
+      把当前单元的 unit_words 指向新副本,再把编辑应用到新副本。
+      其他单元仍引用原 word_id,不受影响。
+
+    返回 {"message", "forked", "word_id"}。
     """
-    # 1. 验证单词在该单元中，同时获取单词
-    result = await db.execute(
-        select(Word)
-        .join(UnitWord, Word.id == UnitWord.word_id)
-        .where(and_(UnitWord.unit_id == unit_id, UnitWord.word_id == word_id))
-    )
-    word = result.scalar_one_or_none()
-    if not word:
+    # 1. 验证 (unit_id, word_id) 关联存在
+    uw_row = (await db.execute(
+        select(UnitWord).where(
+            and_(UnitWord.unit_id == unit_id, UnitWord.word_id == word_id)
+        )
+    )).scalar_one_or_none()
+    if not uw_row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"单词ID {word_id} 不在单元ID {unit_id} 中"
         )
 
-    # 2. 更新基本字段
+    # 2. 看 word_id 被几个单元引用
+    ref_count = (await db.execute(
+        select(func.count()).select_from(UnitWord).where(UnitWord.word_id == word_id)
+    )).scalar()
+
+    forked = False
+    target_word_id = word_id
+
+    if ref_count > 1:
+        # 3a. fork:复制 Word
+        original = (await db.execute(
+            select(Word).where(Word.id == word_id)
+        )).scalar_one()
+        new_word = Word(
+            word=original.word,
+            phonetic=original.phonetic,
+            syllables=original.syllables,
+            tts_text=original.tts_text,
+            difficulty=original.difficulty,
+            grade_level=original.grade_level,
+            audio_url=original.audio_url,
+            image_url=original.image_url,
+            created_by=original.created_by,
+        )
+        db.add(new_word)
+        await db.flush()  # 拿到 new_word.id
+
+        # 3b. 复制 definitions
+        orig_defs = (await db.execute(
+            select(WordDefinition).where(WordDefinition.word_id == word_id)
+        )).scalars().all()
+        for d in orig_defs:
+            db.add(WordDefinition(
+                word_id=new_word.id,
+                part_of_speech=d.part_of_speech,
+                meaning=d.meaning,
+                example_sentence=d.example_sentence,
+                example_translation=d.example_translation,
+                is_primary=d.is_primary,
+            ))
+
+        # 3c. 复制 tags
+        orig_tags = (await db.execute(
+            select(WordTag).where(WordTag.word_id == word_id)
+        )).scalars().all()
+        for t in orig_tags:
+            db.add(WordTag(word_id=new_word.id, tag=t.tag))
+
+        # 3d. 把当前单元的 unit_words 改指向新 word_id
+        uw_row.word_id = new_word.id
+
+        await db.flush()
+
+        target_word_id = new_word.id
+        forked = True
+
+    # 4. 把编辑应用到 target_word_id(同时支持新副本和 in-place)
+    target_word = (await db.execute(
+        select(Word).where(Word.id == target_word_id)
+    )).scalar_one()
     for field in ['word', 'phonetic', 'syllables', 'difficulty']:
         if field in word_data and word_data[field] is not None:
-            setattr(word, field, word_data[field])
+            setattr(target_word, field, word_data[field])
 
-    # 3. 更新主释义
     if any(k in word_data for k in ['meaning', 'part_of_speech', 'example_sentence', 'example_translation']):
-        result = await db.execute(
+        primary_def = (await db.execute(
             select(WordDefinition)
-            .where(WordDefinition.word_id == word_id)
+            .where(WordDefinition.word_id == target_word_id)
             .order_by(WordDefinition.is_primary.desc(), WordDefinition.id)
-        )
-        primary_def = result.scalars().first()
+        )).scalars().first()
 
         if primary_def:
             for field in ['meaning', 'part_of_speech', 'example_sentence', 'example_translation']:
                 if field in word_data:
                     setattr(primary_def, field, word_data[field])
         elif word_data.get('meaning'):
-            new_def = WordDefinition(
-                word_id=word_id,
+            db.add(WordDefinition(
+                word_id=target_word_id,
                 meaning=word_data.get('meaning', ''),
                 part_of_speech=word_data.get('part_of_speech', 'n.'),
                 example_sentence=word_data.get('example_sentence'),
                 example_translation=word_data.get('example_translation'),
                 is_primary=True,
-            )
-            db.add(new_def)
+            ))
 
     await db.commit()
-    return {"message": "更新成功"}
+    return {"message": "更新成功", "forked": forked, "word_id": target_word_id}
 
 
 # ========================================
