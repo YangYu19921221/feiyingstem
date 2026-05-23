@@ -6,6 +6,7 @@ import { checkAchievements, type UnlockedAchievement } from '../api/achievements
 import { earnFood, feedPet, type EarnFoodResponse } from '../api/pet';
 import AchievementModal from '../components/AchievementModal';
 import { useAudio } from '../hooks/useAudio';
+import { getHeroById } from '../utils/hero';
 
 interface CompletionData {
   mode: string;
@@ -27,6 +28,13 @@ const CompletionScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const data = location.state as CompletionData;
+
+  const userInfo = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || 'null'); }
+    catch { return null; }
+  })();
+  const studentHero = getHeroById(userInfo?.hero_id);
+  const [heroImgError, setHeroImgError] = useState(false);
 
   const { playAudio } = useAudio();
   const [showConfetti, setShowConfetti] = useState(true);
@@ -204,12 +212,27 @@ const CompletionScreen = () => {
 
       {/* Hero 横幅 */}
       <div className="relative overflow-hidden" style={{ height: 200 }}>
-        <img src="/hero-completion.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/50" />
+        {!heroImgError ? (
+          <img
+            src={studentHero.imageUrl}
+            alt={studentHero.name}
+            onError={() => setHeroImgError(true)}
+            className="absolute inset-0 w-full h-full object-cover object-top"
+          />
+        ) : (
+          <img src="/hero-completion.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-top" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+        {isExcellent && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ boxShadow: `inset 0 0 120px ${studentHero.accentColor}` }}
+          />
+        )}
         <div className="relative z-10 h-full flex flex-col items-center justify-center text-white">
           <div className="text-5xl mb-2">{isExcellent ? '🎉' : isGood ? '👏' : '💪'}</div>
           <h1 className="text-3xl font-bold drop-shadow-lg">{isExcellent ? '太棒了！' : isGood ? '做得不错！' : '继续加油！'}</h1>
-          <p className="text-sm opacity-80 mt-1 drop-shadow">你已完成 {data.modeName} 学习</p>
+          <p className="text-sm opacity-80 mt-1 drop-shadow">{studentHero.name} · 你已完成 {data.modeName} 学习</p>
         </div>
       </div>
 
