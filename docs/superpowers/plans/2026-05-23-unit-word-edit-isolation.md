@@ -149,11 +149,15 @@ git commit -m "chore(test): add pytest async infrastructure"
 
 Create: `backend/migrations/011_drop_word_unique.sql`
 
+> 注:此 SQL 保留了 `difficulty` 的 CHECK 约束和 `idx_words_difficulty` 索引(它们与 UNIQUE 无关,不应被丢)。
+
 ```sql
 -- Migration: 011
 -- Date: 2026-05-23
 -- Description: 去掉 words.word 的 UNIQUE 约束(改为普通索引),
 --              为「教师在单元里编辑单词时 fork 出独立副本」铺路。
+-- 保留:difficulty CHECK 约束,idx_words_difficulty 索引。
+-- 不保留:created_by FOREIGN KEY(模型层已经声明不使用)。
 -- 回滚提示:回滚到 010 前需要先去重 (DELETE 重复 word) 否则恢复 UNIQUE 会失败。
 
 BEGIN TRANSACTION;
@@ -164,7 +168,7 @@ CREATE TABLE words_new (
     phonetic VARCHAR(100),
     syllables VARCHAR(200),
     tts_text VARCHAR(200),
-    difficulty INTEGER DEFAULT 3,
+    difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5) DEFAULT 3,
     grade_level VARCHAR(20),
     audio_url VARCHAR(255),
     image_url VARCHAR(255),
@@ -180,6 +184,7 @@ DROP TABLE words;
 ALTER TABLE words_new RENAME TO words;
 
 CREATE INDEX IF NOT EXISTS idx_words_word ON words(word);
+CREATE INDEX IF NOT EXISTS idx_words_difficulty ON words(difficulty);
 
 COMMIT;
 ```
