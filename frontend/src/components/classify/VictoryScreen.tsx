@@ -9,6 +9,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import ColoredWord from '../ColoredWord';
+import { pickHeroByScore, TIER_FALLBACK_EMOJI } from '../../utils/hero';
 
 export interface WrongAnswer {
   id: number;
@@ -254,6 +255,10 @@ export default function VictoryScreen({
   onPass, onRetry, onRelearn,
 }: Props) {
   const theme = pickTheme(score);
+  const tier: 'perfect' | 'great' | 'retry' =
+    score >= 100 ? 'perfect' : score >= 80 ? 'great' : 'retry';
+  const hero = useMemo(() => pickHeroByScore(score), [score]);
+  const [heroImgError, setHeroImgError] = useState(false);
   const passed = score >= 80;
   const isPerfect = score === 100;
   const [showWrongList, setShowWrongList] = useState(false);
@@ -294,6 +299,17 @@ export default function VictoryScreen({
       className="fixed inset-0 z-40 flex flex-col overflow-y-auto"
       style={{ background: theme.bgGradient }}
     >
+      {/* 英雄立绘背景层 - 虚化作沉浸底图，加载失败时静默隐藏 */}
+      {!heroImgError && (
+        <img
+          src={hero.imageUrl}
+          alt=""
+          aria-hidden
+          onError={() => setHeroImgError(true)}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          style={{ filter: 'blur(12px) saturate(1.3) brightness(0.85)', opacity: 0.35 }}
+        />
+      )}
       {/* 粒子特效（尊重 prefers-reduced-motion；弱机/Firefox/低端安卓避免卡顿） */}
       {!reducedMotion && (
         <>
@@ -326,19 +342,38 @@ export default function VictoryScreen({
       {/* 内容容器 */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-4 max-w-xl mx-auto w-full">
 
-        {/* 主 emoji */}
+        {/* 英雄立绘登场（图片加载失败回退到 emoji） */}
         <motion.div
           initial={{ scale: 0, y: -200, rotate: -30 }}
           animate={{ scale: 1, y: 0, rotate: 0 }}
           transition={{ type: 'spring', damping: 12, stiffness: 140, delay: 0.1 }}
-          className="mb-2"
+          className="mb-2 relative"
         >
           <motion.div
             animate={{ y: [0, -16, 0] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ filter: theme.glow, fontSize: 'clamp(72px, 18vh, 160px)', lineHeight: 1 }}
+            className="relative"
           >
-            {theme.emoji}
+            {!heroImgError ? (
+              <img
+                src={hero.imageUrl}
+                alt={hero.name}
+                onError={() => setHeroImgError(true)}
+                style={{
+                  width: 'clamp(180px, 32vh, 320px)',
+                  height: 'clamp(180px, 32vh, 320px)',
+                  objectFit: 'cover',
+                  borderRadius: '24px',
+                  border: `3px solid ${theme.ringColor}`,
+                  filter: theme.glow,
+                  boxShadow: `0 12px 60px ${theme.ringColor}80`,
+                }}
+              />
+            ) : (
+              <div style={{ filter: theme.glow, fontSize: 'clamp(72px, 18vh, 160px)', lineHeight: 1 }}>
+                {TIER_FALLBACK_EMOJI[tier]}
+              </div>
+            )}
           </motion.div>
         </motion.div>
 
@@ -359,9 +394,13 @@ export default function VictoryScreen({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.7 }}
-          className="text-white/90 text-sm md:text-base mb-1"
+          className="text-white/90 text-sm md:text-base mb-1 text-center px-4"
         >
-          {theme.subtitle}
+          {tier === 'retry' && hero.taglineEncourage
+            ? hero.taglineEncourage
+            : tier !== 'retry' && hero.taglineWin
+              ? hero.taglineWin
+              : theme.subtitle}
         </motion.p>
 
         {/* 巨型分数 */}
