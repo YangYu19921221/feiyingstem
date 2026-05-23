@@ -12,4 +12,4 @@ async def test_db_session_works(db_session):
 
 async def test_client_works(client):
     response = await client.get("/")
-    assert response.status_code in (200, 404)  # 看 main.py 是否暴露根路径
+    assert response.status_code == 200

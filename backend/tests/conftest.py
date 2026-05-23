@@ -5,9 +5,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 
 from app.main import app
 from app.core.database import Base, get_db
-from app.models import user as _user_models  # noqa: F401 触发表元数据加载
-from app.models import word as _word_models  # noqa: F401
-from app.models import learning as _learning_models  # noqa: F401
+from app import models  # noqa: F401  确保所有 SQLAlchemy 模型注册到 Base.metadata
 
 
 @pytest_asyncio.fixture
@@ -17,9 +15,11 @@ async def db_session():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-    async with SessionLocal() as session:
-        yield session
-    await engine.dispose()
+    try:
+        async with SessionLocal() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -28,6 +28,8 @@ async def client(db_session):
     async def override_get_db():
         yield db_session
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
-    app.dependency_overrides.clear()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            yield c
+    finally:
+        app.dependency_overrides.pop(get_db, None)
