@@ -119,6 +119,31 @@ async def init_db():
             ))
         except Exception:
             pass
+        # 迁移: 为 users 表添加 hero_id 字段（英雄角色，通关画面 + 光荣榜立绘）
+        try:
+            await conn.execute(text(
+                "ALTER TABLE users ADD COLUMN hero_id VARCHAR(32)"
+            ))
+        except Exception:
+            pass
+        # 回填存量学生的 hero_id（按 id % 8 映射到 8 个角色，保证均匀且幂等）
+        try:
+            await conn.execute(text(
+                "UPDATE users SET hero_id = "
+                "CASE (id % 8) "
+                "  WHEN 0 THEN 'hero_blaze' "
+                "  WHEN 1 THEN 'hero_thunder' "
+                "  WHEN 2 THEN 'hero_galaxy' "
+                "  WHEN 3 THEN 'hero_sunny' "
+                "  WHEN 4 THEN 'hero_wave' "
+                "  WHEN 5 THEN 'hero_breeze' "
+                "  WHEN 6 THEN 'hero_phoenix' "
+                "  WHEN 7 THEN 'hero_dawn' "
+                "END "
+                "WHERE hero_id IS NULL AND role = 'student'"
+            ))
+        except Exception:
+            pass
 
         # 迁移: 为 units 表添加 group_size 字段
         try:
