@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// 错题闯关 / 整本完成 / 成就解锁 — 3 张通关 FX 立绘，统一原创英雄风格
+// 错题闯关 / 整本完成 / 成就解锁 — 3 张通关 FX 立绘
+// 风格：日系少年漫扉页彩页，少年英雄帅气热血。统一画风、不同原型、不同必杀技。
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -7,38 +8,51 @@ import { execFile } from 'node:child_process';
 const API = 'https://pikachu.claudecode.love/v1/images/generations';
 const KEY = 'sk-54936f745ee385e62e6f6b304c988928faead2a727dc4cd8bcbc2fc45912533f';
 
+// 统一锚点：日系少年漫扉页彩页风格，确保三张是"同一个世界观"
 const STYLE = (
-  'Low-poly paper-craft RPG hero illustration, soft cinematic rim light, ' +
-  'painterly clean shading. Friendly young hero, original character not based on any existing IP. ' +
-  'NO text, NO watermark, NO logo, NOT chibi, NOT anime, NOT cartoon Saturday-morning. ' +
-  'Cinematic widescreen feel, sharp details, high quality. ' +
-  '16:9 widescreen composition optimized for fullscreen overlay backgrounds (cover-fit).'
+  'Japanese shounen manga color splash page illustration, clean confident line art with cel-shading ' +
+  'and sharp highlights, dynamic action composition (NOT a static standing pose). ' +
+  'Handsome cool teenage male hero around 14 years old, original character not based on any existing IP, ' +
+  'sharp facial features, fierce determined expression, slim athletic build. ' +
+  'Cinematic 16:9 widescreen, subject in lower-center with sky/atmosphere above leaving room for overlay text. ' +
+  'NO text, NO watermark, NO logo, NO speech bubbles, NO signature. ' +
+  'NOT chibi, NOT super-deformed, NOT western cartoon, NOT 3D render, NOT pixar style. ' +
+  'High detail, vivid saturated colors, professional manga magazine cover quality.'
 );
 
 const SCENES = {
-  // 错题闯关满分 — 主视觉：英雄高举一把剑刺穿"错题怪"，胜利瞬间
+  // 错题满分 — 爆气型英雄（超赛悟空原型）
   victory:
-    'A heroic young scholar-warrior standing atop crumbling glowing "X" marks shaped like ' +
-    'stone shards (representing mistakes vanquished), arms raised high in triumph, ' +
-    'holding a shining sword skyward emitting golden rays. Behind: warm golden sunrise breaking ' +
-    'through low-poly clouds, ribbons and floating paper letters drifting upward. ' +
-    'Vivid amber and orange palette, gold laurel wreath on head, dynamic windswept cape. ' +
-    'Triumphant "conquered the mistakes" moment. ',
+    'A teenage male warrior hero in a powerful low-stance pose, both fists slammed downward to the ground ' +
+    'unleashing an explosive burst of golden ki energy mixed with crackling blue lightning. ' +
+    'Spiky upright golden hair glowing with energy, fierce blue eyes, white-and-orange martial arts gi with belt sash. ' +
+    'Beneath his fists: shattered glowing "X" marks (wrong-answers) bursting into golden light shards. ' +
+    'Background: explosive orange-gold radial energy lines, blue electric arcs, scattered torn paper fragments flying. ' +
+    'Color palette: vivid orange, gold, electric blue, white. ' +
+    'Mood: explosive heroic power-up moment, mistakes destroyed. ',
 
-  // 整本完成 — 主视觉：英雄打开一本巨大发光的书，星辰从书中涌出
+  // 整本通关 — 守护者型英雄（水门原型）
   book:
-    'A young scholar hero kneeling before a massive open glowing book floating mid-air, ' +
-    'pages fluttering, golden letters and constellations of stars rising from its pages into the night sky. ' +
-    'Hero gazes upward in wonder, hand reaching toward the light. ' +
-    'Deep blue night sky with a galaxy, warm golden book glow, low-poly mountains in distance. ' +
-    'Magical "knowledge unlocked" moment, cinematic. ',
+    'A teenage male hero standing tall with windswept golden short hair and piercing deep blue eyes, ' +
+    'wearing a long flowing white cape with red flame-pattern trim along the bottom edge that billows dramatically in the wind. ' +
+    'In front of him floats a massive glowing ancient scroll/tome unfurled in mid-air, golden runes and letters spiraling out of it ' +
+    'into the starry night sky. He holds his right hand calmly raised toward the floating book. ' +
+    'Background: deep blue starry night sky with a soft galaxy, full moon, distant mountain silhouettes, ' +
+    'golden particles drifting upward from the scroll. ' +
+    'Color palette: blue night, white cape, red flame trim, warm golden book glow. ' +
+    'Mood: composed, mastered all knowledge, guardian of wisdom. ',
 
-  // 成就解锁 — 主视觉：英雄站姿手举刚获得的奖章/徽章，背后金色光环爆发
+  // 成就解锁 — 觉醒型英雄（佐助原型）
   achievement:
-    'A young scholar hero standing center, proudly holding up a glowing emerald medal pendant, ' +
-    'huge radiant golden halo and explosive light rays bursting behind them, ' +
-    'floating origami cranes and warm golden particles surround. ' +
-    'Sense of grand reward, accomplishment unlocked. Warm amber + emerald + cream palette. ',
+    'A teenage male hero in a cool side-three-quarter view, dark messy spiky black-purple hair, ' +
+    'sharp cold expression, heterochromatic eyes (one silver-white, one glowing gold). ' +
+    'Wearing a high-collar dark purple-black cape flaring up dramatically. ' +
+    'His left hand raised holding up a glowing emerald-green hexagonal medal/orb wrapped in crackling purple lightning, ' +
+    'his right hand at his side trailing electric sparks. ' +
+    'Background: dark purple-black storm clouds, jagged golden lightning bolts splitting the sky, ' +
+    'floating ancient runes and symbols scattering around him. ' +
+    'Color palette: deep purple-black, electric gold lightning, emerald green orb, silver. ' +
+    'Mood: cool awakening moment, new power obtained. ',
 };
 
 async function genOne(name, prompt, outDir) {
@@ -55,7 +69,7 @@ async function genOne(name, prompt, outDir) {
   const buf = Buffer.from(await img.arrayBuffer());
   const pngPath = path.join(outDir, `fx-${name}.png`);
   await fs.writeFile(pngPath, buf);
-  // cwebp 不存在，改用 sips 压成 jpeg q=88 长边 1600（错题页背景）
+  // sips 压成 jpeg q=88 长边 1600
   await new Promise((resolve, reject) => {
     execFile(
       'sips',
