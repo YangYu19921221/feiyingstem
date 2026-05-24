@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, delete
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord
+from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord
 from app.models.user import User
 from app.schemas.word import (
     WordCreate, WordResponse, WordUpdate, WordListItem,
@@ -273,32 +273,43 @@ async def batch_delete_word_books(
 # 单词CRUD操作
 # ========================================
 
-@router.post("/", response_model=WordResponse, status_code=status.HTTP_201_CREATED)
-async def create_word(
-    word_data: WordCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_teacher)
-):
-    """
-    老师录入单词
-    - 支持一词多义
-    - 支持标签分类
-    """
-    # 检查单词是否已存在（忽略大小写查重，但保留原始大小写存储）
-    result = await db.execute(select(Word).where(func.lower(Word.word) == word_data.word.strip().lower()))
-    existing_word = result.scalar_one_or_none()
+async def _overwrite_word_fields(db: AsyncSession, target: Word, word_data: WordCreate) -> None:
+    """整体覆盖 target 的基础字段 + definitions + tags。
 
-    if existing_word:
-        # 若上传时传入了不同大小写（如 "play Chinese chess" vs 已存的 "play chinese chess"），
-        # 以新的为准更新存储，避免分类学习/听写显示为小写
-        new_word = word_data.word.strip()
-        if existing_word.word != new_word:
-            existing_word.word = new_word
-            await db.commit()
-        return await get_word_detail(existing_word.id, db)
+    Why: 老师"重传同拼写"语义 = 此次填写的就是正确版本,
+    旧 definitions/tags 必须整体替换,否则旧例句/翻译会沾染新版本。
+    不 commit, 由调用方决定事务边界。
+    """
+    target.word = word_data.word.strip()
+    target.phonetic = word_data.phonetic
+    target.syllables = word_data.syllables
+    target.difficulty = word_data.difficulty
+    target.grade_level = word_data.grade_level
+    if word_data.audio_url is not None:
+        target.audio_url = word_data.audio_url
+    if word_data.image_url is not None:
+        target.image_url = word_data.image_url
 
-    # 创建单词（保留原始大小写）
-    db_word = Word(
+    await db.execute(delete(WordDefinition).where(WordDefinition.word_id == target.id))
+    await db.execute(delete(WordTag).where(WordTag.word_id == target.id))
+    await db.flush()
+
+    for d in word_data.definitions:
+        db.add(WordDefinition(
+            word_id=target.id,
+            part_of_speech=d.part_of_speech,
+            meaning=d.meaning,
+            example_sentence=d.example_sentence,
+            example_translation=d.example_translation,
+            is_primary=d.is_primary,
+        ))
+    for tag in word_data.tags:
+        db.add(WordTag(word_id=target.id, tag=tag))
+
+
+async def _create_new_word_row(db: AsyncSession, word_data: WordCreate) -> Word:
+    """新建一条 Word + definitions + tags;不 commit;返回带 id 的对象。"""
+    new_word = Word(
         word=word_data.word.strip(),
         phonetic=word_data.phonetic,
         syllables=word_data.syllables,
@@ -306,33 +317,117 @@ async def create_word(
         grade_level=word_data.grade_level,
         audio_url=word_data.audio_url,
         image_url=word_data.image_url,
-        # created_by=current_user.id
     )
-    db.add(db_word)
+    db.add(new_word)
     await db.flush()
-
-    # 创建释义
-    for def_data in word_data.definitions:
-        db_definition = WordDefinition(
-            word_id=db_word.id,
-            part_of_speech=def_data.part_of_speech,
-            meaning=def_data.meaning,
-            example_sentence=def_data.example_sentence,
-            example_translation=def_data.example_translation,
-            is_primary=def_data.is_primary
-        )
-        db.add(db_definition)
-
-    # 创建标签
+    for d in word_data.definitions:
+        db.add(WordDefinition(
+            word_id=new_word.id,
+            part_of_speech=d.part_of_speech,
+            meaning=d.meaning,
+            example_sentence=d.example_sentence,
+            example_translation=d.example_translation,
+            is_primary=d.is_primary,
+        ))
     for tag in word_data.tags:
-        db_tag = WordTag(word_id=db_word.id, tag=tag)
-        db.add(db_tag)
+        db.add(WordTag(word_id=new_word.id, tag=tag))
+    return new_word
 
+
+async def _upsert_word(
+    db: AsyncSession, word_data: WordCreate, book_id: Optional[int]
+) -> Word:
+    """书范围隔离的 upsert。
+
+    book_id is None: 维持全局去重 + 覆盖语义(代表行 = 同拼写中 id 最小)。
+    book_id 给定: 严格按"本书"作用域:
+      - 本书内已有同拼写, 同时被别的书引用 → fork 新 Word, 把本书的 BookWord/UnitWord 重指向新 Word, 别的书不变
+      - 本书内已有同拼写, 本书独占 → 直接覆盖
+      - 本书内没有同拼写 → 新建 Word + BookWord(book_id, new) 关联本书
+    """
+    spelling = word_data.word.strip().lower()
+
+    if book_id is None:
+        rep = (await db.execute(
+            select(Word).where(func.lower(Word.word) == spelling)
+            .order_by(Word.id).limit(1)
+        )).scalars().first()
+        if rep is not None:
+            await _overwrite_word_fields(db, rep, word_data)
+            return rep
+        return await _create_new_word_row(db, word_data)
+
+    # book-scoped: 本书内是否已有该拼写? 既看 BookWord 直挂, 也看 UnitWord 间接挂
+    in_book_via_bw = (await db.execute(
+        select(Word).join(BookWord, BookWord.word_id == Word.id)
+        .where(BookWord.book_id == book_id)
+        .where(func.lower(Word.word) == spelling)
+        .order_by(Word.id).limit(1)
+    )).scalars().first()
+    in_book_via_unit = (await db.execute(
+        select(Word).join(UnitWord, UnitWord.word_id == Word.id)
+        .join(Unit, Unit.id == UnitWord.unit_id)
+        .where(Unit.book_id == book_id)
+        .where(func.lower(Word.word) == spelling)
+        .order_by(Word.id).limit(1)
+    )).scalars().first()
+    in_book = in_book_via_bw or in_book_via_unit
+
+    if in_book is None:
+        new_word = await _create_new_word_row(db, word_data)
+        db.add(BookWord(book_id=book_id, word_id=new_word.id, order_index=0))
+        return new_word
+
+    # 是否被别的书 (BookWord 或 跨书 unit) 引用?
+    other_bw = (await db.execute(
+        select(func.count(BookWord.id))
+        .where(BookWord.word_id == in_book.id)
+        .where(BookWord.book_id != book_id)
+    )).scalar() or 0
+    other_unit_books = (await db.execute(
+        select(func.count(func.distinct(Unit.book_id)))
+        .select_from(UnitWord)
+        .join(Unit, Unit.id == UnitWord.unit_id)
+        .where(UnitWord.word_id == in_book.id)
+        .where(Unit.book_id != book_id)
+    )).scalar() or 0
+
+    if other_bw + other_unit_books > 0:
+        # fork: 新建 Word, 把本书的 BookWord/UnitWord 改指过去
+        new_word = await _create_new_word_row(db, word_data)
+        await db.execute(
+            BookWord.__table__.update()
+            .where(BookWord.book_id == book_id)
+            .where(BookWord.word_id == in_book.id)
+            .values(word_id=new_word.id)
+        )
+        # 把"本书内"所有指向旧 word 的 UnitWord 改指到新 word
+        own_unit_ids_subq = select(Unit.id).where(Unit.book_id == book_id).scalar_subquery()
+        await db.execute(
+            UnitWord.__table__.update()
+            .where(UnitWord.word_id == in_book.id)
+            .where(UnitWord.unit_id.in_(own_unit_ids_subq))
+            .values(word_id=new_word.id)
+        )
+        # 若本书内既无 BookWord 也无 UnitWord 入口(理论不会到这分支), 兜底加挂
+        return new_word
+
+    # 本书独占 → 原地覆盖
+    await _overwrite_word_fields(db, in_book, word_data)
+    return in_book
+
+
+@router.post("/", response_model=WordResponse, status_code=status.HTTP_201_CREATED)
+async def create_word(
+    word_data: WordCreate,
+    book_id: Optional[int] = Query(None, description="把单词归属到指定单词本(决定隔离范围)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """老师录入单词。带 book_id 走 book 隔离;不带 book_id 走全局去重+覆盖。"""
+    target = await _upsert_word(db, word_data, book_id)
     await db.commit()
-    await db.refresh(db_word)
-
-    # 构建响应
-    return await get_word_detail(db_word.id, db)
+    return await get_word_detail(target.id, db)
 
 
 @router.get("/{word_id}", response_model=WordResponse)
@@ -360,29 +455,37 @@ async def list_words(
     - 支持按年级/难度/标签筛选
     - 支持关键词搜索
     """
-    query = select(Word)
+    # 同拼写多副本时只显示最早一条 (id 最小)。fork 副本不在全局列表暴露。
+    # 注意: dedup 必须在 SQL 层完成,放在 offset/limit 之前。否则 Python 侧
+    # 去重会让分页失真:每页可能 < limit、跨页可能漏拼写。
+    rep_ids = select(func.min(Word.id).label("id")).group_by(func.lower(Word.word))
 
-    # 筛选条件
     if grade_level:
-        query = query.where(Word.grade_level == grade_level)
+        rep_ids = rep_ids.where(Word.grade_level == grade_level)
     if difficulty:
-        query = query.where(Word.difficulty == difficulty)
+        rep_ids = rep_ids.where(Word.difficulty == difficulty)
     if search:
-        query = query.where(
+        rep_ids = rep_ids.where(
             or_(
                 func.lower(Word.word).like(f"%{search.lower()}%"),
                 Word.phonetic.like(f"%{search}%")
             )
         )
     if tag:
-        # 需要join标签表
-        query = query.join(WordTag).where(WordTag.tag == tag)
+        rep_ids = rep_ids.join(WordTag, WordTag.word_id == Word.id).where(WordTag.tag == tag)
 
-    # 分页
-    query = query.offset(skip).limit(limit)
+    rep_subq = rep_ids.subquery()
+
+    query = (
+        select(Word)
+        .join(rep_subq, Word.id == rep_subq.c.id)
+        .order_by(Word.id)
+        .offset(skip)
+        .limit(limit)
+    )
 
     result = await db.execute(query)
-    words = result.scalars().all()
+    words = list(result.scalars().all())
 
     # 构建响应(一次查询获取所有单词的主要释义)
     if not words:
@@ -521,63 +624,20 @@ async def batch_import_words(
     import_data: WordBatchImport,
     db: AsyncSession = Depends(get_db)
 ):
-    """批量导入单词"""
+    """批量导入单词。
+
+    带 book_id 时按本书作用域 upsert(同拼写在本书内 → 覆盖,
+    在别的书内 → fork 新副本到本书);
+    不带 book_id 时按全局覆盖。任一已存在条目计入 success_count。
+    """
     success_count = 0
     failed_count = 0
     failed_words = []
 
     for word_data in import_data.words:
         try:
-            # 检查是否已存在
-            result = await db.execute(
-                select(Word).where(func.lower(Word.word) == word_data.word.lower())
-            )
-            dup = result.scalar_one_or_none()
-            if dup:
-                # 若传入的大小写与已有不同，更新库里的大小写（以最新上传为准）
-                new_word = word_data.word.strip()
-                if dup.word != new_word:
-                    dup.word = new_word
-                failed_words.append(f"{word_data.word} (已存在)")
-                failed_count += 1
-                continue
-
-            db_word = Word(
-                word=word_data.word.strip(),
-                phonetic=word_data.phonetic,
-                syllables=word_data.syllables,
-                difficulty=word_data.difficulty,
-                grade_level=word_data.grade_level,
-                audio_url=word_data.audio_url,
-                image_url=word_data.image_url,
-            )
-            db.add(db_word)
-            await db.flush()
-
-            # 创建释义
-            for def_data in word_data.definitions:
-                db_definition = WordDefinition(
-                    word_id=db_word.id,
-                    **def_data.model_dump()
-                )
-                db.add(db_definition)
-
-            # 创建标签
-            for tag in word_data.tags:
-                db_tag = WordTag(word_id=db_word.id, tag=tag)
-                db.add(db_tag)
-
-            # 如果指定了单词本,添加到单词本
-            if import_data.book_id:
-                book_word = BookWord(
-                    book_id=import_data.book_id,
-                    word_id=db_word.id,
-                    order_index=success_count
-                )
-                db.add(book_word)
-
+            await _upsert_word(db, word_data, import_data.book_id)
             success_count += 1
-
         except Exception as e:
             failed_words.append(f"{word_data.word} ({str(e)})")
             failed_count += 1
@@ -587,7 +647,7 @@ async def batch_import_words(
     return WordBatchImportResponse(
         success_count=success_count,
         failed_count=failed_count,
-        failed_words=failed_words
+        failed_words=failed_words,
     )
 
 
