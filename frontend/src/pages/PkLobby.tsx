@@ -66,10 +66,17 @@ export default function PkLobby() {
       return;
     }
     try {
-      const data = await pkApi.lookupByCode(code);
+      const data = await pkApi.joinRoomByCode(code);
       navigate(`/pk/arena/${data.room_id}`);
     } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || '邀请码无效或房间已开始');
+      const detail = e?.response?.data?.detail;
+      const errorMap: Record<string, string> = {
+        ROOM_NOT_FOUND: '邀请码无效',
+        ROOM_FULL: '房间已满',
+        ROOM_ALREADY_STARTED: '房间已开始',
+        USER_ALREADY_IN_ROOM: '你已在另一个 PK 房间中',
+      };
+      setError(errorMap[detail] || detail || e?.message || '加入失败');
     }
   };
 

@@ -73,6 +73,26 @@ async def lookup_room(code: str, user: User = Depends(get_current_user)):
     return _snapshot(manager.ROOMS[room_id])
 
 
+@router.post("/rooms/by-code/{code}/join", response_model=RoomSnapshot)
+async def join_room_by_code(
+    code: str,
+    user: User = Depends(get_current_user),
+):
+    """非房主玩家通过邀请码加入房间。将玩家加入 manager.ROOMS,后续 WS 连接才能通过 player 校验。"""
+    nickname = user.full_name or user.username or f"User{user.id}"
+    try:
+        room = manager.join_room(invite_code=code, user_id=user.id, nickname=nickname)
+    except manager.RoomNotFound:
+        raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
+    except manager.RoomFull:
+        raise HTTPException(status_code=409, detail="ROOM_FULL")
+    except manager.RoomAlreadyStarted:
+        raise HTTPException(status_code=409, detail="ROOM_ALREADY_STARTED")
+    except manager.UserAlreadyInRoom:
+        raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
+    return _snapshot(room)
+
+
 @router.get("/me/history", response_model=list[PlayerHistoryItem])
 async def my_history(
     user: User = Depends(get_current_user),
