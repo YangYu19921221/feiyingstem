@@ -61,10 +61,3 @@ class RoomState:
     def current_word_id(self) -> int:
         idx_in_phase = self.current_word_idx % len(self.word_ids)
         return self.word_ids[idx_in_phase]
-
-    def is_phase_complete(self) -> bool:
-        """当前 phase 的 word_ids 是否全部答完(全员到齐 OR 时间到)。"""
-        next_word_idx_global = self.current_word_idx + 1
-        phase_idx = next_word_idx_global // len(self.word_ids)
-        prev_phase_idx = self.current_word_idx // len(self.word_ids)
-        return phase_idx > prev_phase_idx

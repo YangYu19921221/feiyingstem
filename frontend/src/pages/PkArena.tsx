@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
-import type { PkRoomSnapshot } from '../api/pk';
+import type { PkRoomSnapshot, PkPhase } from '../api/pk';
 import ClassificationPhase from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationSingle from '../components/classify/DictationSingle';
@@ -11,7 +11,7 @@ import PkResultBoard from '../components/pk/PkResultBoard';
 
 interface CurrentQuestion {
   word_idx: number;
-  phase: string;
+  phase: PkPhase;
   word: { id: number; word: string; translation: string };
 }
 
@@ -73,7 +73,7 @@ export default function PkArena() {
         case 'question_pushed':
           setCurrentQ({
             word_idx: event.word_idx,
-            phase: event.phase,
+            phase: event.phase as PkPhase,
             word: event.word,
           });
           questionStartedAtRef.current = Date.now();
