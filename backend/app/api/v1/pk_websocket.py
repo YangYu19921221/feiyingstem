@@ -1,7 +1,7 @@
 """PK 竞技场 WebSocket 端点。"""
 from __future__ import annotations
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -77,6 +77,49 @@ def _schedule_disconnect_cleanup(room, user_id: int):
                 await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
 
     asyncio.create_task(_cleanup())
+
+
+HEARTBEAT_CHECK_INTERVAL_S = 5  # how often the watchdog scans rooms
+
+_heartbeat_watchdog_task: asyncio.Task | None = None
+
+
+async def _heartbeat_watchdog_loop():
+    """Periodically scan all rooms; flip players offline if no heartbeat for HEARTBEAT_TIMEOUT_S."""
+    while True:
+        try:
+            await asyncio.sleep(HEARTBEAT_CHECK_INTERVAL_S)
+            now = datetime.utcnow()
+            cutoff = now - timedelta(seconds=HEARTBEAT_TIMEOUT_S)
+            # Iterate over a snapshot — manager.ROOMS may mutate during await.
+            for room in list(manager.ROOMS.values()):
+                stale_uids: list[int] = []
+                for uid, ps in list(room.players.items()):
+                    if ps.online and ps.last_heartbeat_at < cutoff:
+                        stale_uids.append(uid)
+                for uid in stale_uids:
+                    ps = room.players.get(uid)
+                    if ps is None or not ps.online:
+                        continue
+                    ps.online = False
+                    ps.disconnected_at = now
+                    # Don't clear ps.ws — the OS-level socket may still be alive,
+                    # we just stopped trusting the heartbeat.
+                    await _broadcast(room, {"type": "player_disconnected", "user_id": uid})
+                    _schedule_disconnect_cleanup(room, uid)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Don't let one bad iteration kill the watchdog.
+            # In production, log this; for now, swallow.
+            continue
+
+
+def _ensure_heartbeat_watchdog():
+    """Start the global watchdog if not running. Called lazily on each WS connect."""
+    global _heartbeat_watchdog_task
+    if _heartbeat_watchdog_task is None or _heartbeat_watchdog_task.done():
+        _heartbeat_watchdog_task = asyncio.create_task(_heartbeat_watchdog_loop())
 
 
 async def _broadcast(room, event: dict, exclude: int | None = None):
@@ -174,6 +217,8 @@ async def pk_ws(
     p.online = True
     p.last_heartbeat_at = datetime.utcnow()
     p.disconnected_at = None
+
+    _ensure_heartbeat_watchdog()
 
     await ws.send_json({"type": "room_state", "room": _snapshot_dict(room)})
     await _broadcast(room, {"type": "player_reconnected", "user_id": user.id}, exclude=user.id)
