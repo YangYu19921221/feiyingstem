@@ -42,6 +42,14 @@ export interface CreateRoomResponse {
   invite_code: string;
 }
 
+export interface PkUnitItem {
+  id: number;
+  name: string;
+  unit_number: number;
+  description: string | null;
+  word_count: number;
+}
+
 export const pkApi = {
   createRoom: (unitId: number, maxPlayers: number) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
@@ -53,4 +61,7 @@ export const pkApi = {
     api.get<PkRoomSnapshot>(`/pk/rooms/by-code/${code}`),
 
   myHistory: () => api.get<PkHistoryItem[]>('/pk/me/history'),
+
+  listUnitsByBook: (bookId: number) =>
+    api.get<PkUnitItem[]>(`/student/books/${bookId}/units`),
 };
