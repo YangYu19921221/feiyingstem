@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_student
 from app.core.database import get_db
 from app.models.learning import LearningRecord, StudySession, WordMastery
-from app.models.user import User
+from app.models.user import User, Class, ClassStudent
 
 router = APIRouter()
 
 LeaderboardKind = Literal["vocabulary", "diligence", "accuracy"]
 PeriodKind = Literal["this_week", "last_week", "this_month"]
+ScopeKind = Literal["all", "class"]
 
 
 def _period_range(period: PeriodKind) -> tuple[datetime, datetime]:
@@ -51,6 +52,8 @@ class LeaderboardEntry(BaseModel):
 class LeaderboardResponse(BaseModel):
     kind: LeaderboardKind
     period: PeriodKind
+    scope: ScopeKind
+    class_name: str | None
     top: list[LeaderboardEntry]
     my_rank: int | None
     my_value: int
@@ -62,6 +65,7 @@ async def _vocabulary_leaderboard(
     db: AsyncSession,
     user_id: int,
     period: PeriodKind,
+    scope: ScopeKind = "all",
 ) -> LeaderboardResponse:
     """词汇王：本周期内新掌握的不同词数"""
     start, end = _period_range(period)
@@ -85,13 +89,14 @@ async def _vocabulary_leaderboard(
     )
     result = await db.execute(stmt)
     rows = result.all()
-    return await _build_response(db, "vocabulary", period, user_id, rows, start, end)
+    return await _build_response(db, "vocabulary", period, scope, user_id, rows, start, end)
 
 
 async def _diligence_leaderboard(
     db: AsyncSession,
     user_id: int,
     period: PeriodKind,
+    scope: ScopeKind = "all",
 ) -> LeaderboardResponse:
     """勤奋王：本周期内学习总分钟数（StudySession.time_spent 累加）"""
     start, end = _period_range(period)
@@ -111,13 +116,14 @@ async def _diligence_leaderboard(
     )
     result = await db.execute(stmt)
     rows = result.all()
-    return await _build_response(db, "diligence", period, user_id, rows, start, end)
+    return await _build_response(db, "diligence", period, scope, user_id, rows, start, end)
 
 
 async def _accuracy_leaderboard(
     db: AsyncSession,
     user_id: int,
     period: PeriodKind,
+    scope: ScopeKind = "all",
 ) -> LeaderboardResponse:
     """精准王：本周期内首次答对率（>=80% 才入榜）
     分子：is_correct = True 的不重复 word_id 数
@@ -147,30 +153,65 @@ async def _accuracy_leaderboard(
     )
     result = await db.execute(stmt)
     rows = [(r[0], r[1]) for r in result.all()]
-    return await _build_response(db, "accuracy", period, user_id, rows, start, end)
+    return await _build_response(db, "accuracy", period, scope, user_id, rows, start, end)
+
+
+async def _resolve_class_scope(db: AsyncSession, user_id: int) -> tuple[str | None, set[int]]:
+    """返回当前用户最近 active 班级名 + 班内所有 active 同学 student_id 集合。
+
+    没班级 → (None, empty set)。
+    """
+    cs = (await db.execute(
+        select(ClassStudent).where(
+            and_(ClassStudent.student_id == user_id, ClassStudent.is_active.is_(True))
+        ).order_by(ClassStudent.joined_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    if cs is None:
+        return None, set()
+    cls = (await db.execute(select(Class).where(Class.id == cs.class_id))).scalar_one_or_none()
+    members = (await db.execute(
+        select(ClassStudent.student_id).where(
+            and_(ClassStudent.class_id == cs.class_id, ClassStudent.is_active.is_(True))
+        )
+    )).scalars().all()
+    return (cls.name if cls else None), set(members)
 
 
 async def _build_response(
     db: AsyncSession,
     kind: LeaderboardKind,
     period: PeriodKind,
+    scope: ScopeKind,
     user_id: int,
     rows: list[tuple],
     start: datetime,
     end: datetime,
 ) -> LeaderboardResponse:
-    """通用响应构造：取 top10 + 当前用户排名 + 总人数 + 周环比"""
+    """通用响应构造：scope 过滤 + 完整排名 + 当前用户排名 + 周环比。"""
+    class_name: str | None = None
+    if scope == "class":
+        class_name, allowed = await _resolve_class_scope(db, user_id)
+        # 没班级 → 直接空榜
+        if not allowed:
+            return LeaderboardResponse(
+                kind=kind, period=period, scope=scope, class_name=None,
+                top=[], my_rank=None, my_value=0, my_delta=0,
+                total_participants=0,
+            )
+        rows = [r for r in rows if r[0] in allowed]
+
     total = len(rows)
 
-    # top 10 需要 join users 拿用户名
-    top_ids = [r[0] for r in rows[:10]]
+    # 完整排名(上限 100), join users
+    capped = rows[:100]
+    top_ids = [r[0] for r in capped]
     top_users: dict[int, User] = {}
     if top_ids:
         user_result = await db.execute(select(User).where(User.id.in_(top_ids)))
         top_users = {u.id: u for u in user_result.scalars().all()}
 
     top_entries: list[LeaderboardEntry] = []
-    for rank, (uid, val) in enumerate(rows[:10], start=1):
+    for rank, (uid, val) in enumerate(capped, start=1):
         u = top_users.get(uid)
         if not u:
             continue
@@ -201,6 +242,8 @@ async def _build_response(
     return LeaderboardResponse(
         kind=kind,
         period=period,
+        scope=scope,
+        class_name=class_name,
         top=top_entries,
         my_rank=my_rank,
         my_value=my_value,
@@ -265,12 +308,13 @@ async def _get_my_period_value(
 async def get_leaderboard(
     kind: LeaderboardKind = Query("vocabulary"),
     period: PeriodKind = Query("this_week"),
+    scope: ScopeKind = Query("all"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """光荣榜 — 词汇/勤奋/精准王，三种周期"""
+    """光荣榜 — 词汇/勤奋/精准王 × 班级/全平台范围"""
     if kind == "vocabulary":
-        return await _vocabulary_leaderboard(db, current_user.id, period)
+        return await _vocabulary_leaderboard(db, current_user.id, period, scope)
     if kind == "diligence":
-        return await _diligence_leaderboard(db, current_user.id, period)
-    return await _accuracy_leaderboard(db, current_user.id, period)
+        return await _diligence_leaderboard(db, current_user.id, period, scope)
+    return await _accuracy_leaderboard(db, current_user.id, period, scope)
