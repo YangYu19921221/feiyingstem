@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
+import os
+from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_, delete
 from typing import List, Optional
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord
 from app.models.user import User
 from app.schemas.word import (
@@ -11,7 +15,7 @@ from app.schemas.word import (
     WordBatchImport, WordBatchImportResponse
 )
 from app.api.v1.auth import get_current_teacher
-from app.services.image_service import generate_book_cover
+from app.services.image_service import generate_book_cover, generate_image_with_fallback, download_image_to_uploads
 
 router = APIRouter()
 
@@ -699,3 +703,89 @@ async def get_word_detail(word_id: int, db: AsyncSession) -> WordResponse:
         created_at=db_word.created_at,
         updated_at=db_word.updated_at
     )
+
+
+ALLOWED_COVER_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+MAX_COVER_BYTES = 5 * 1024 * 1024
+
+
+class CoverGenerateBody(BaseModel):
+    prompt: Optional[str] = None
+
+
+def _book_to_response(book: WordBook, word_count: int) -> WordBookResponse:
+    return WordBookResponse(
+        id=book.id, name=book.name, description=book.description,
+        grade_level=book.grade_level, volume=book.volume,
+        is_public=book.is_public, cover_color=book.cover_color,
+        cover_url=book.cover_url, created_by=book.created_by or 0,
+        word_count=word_count, created_at=book.created_at,
+    )
+
+
+async def _load_book_for_edit(db: AsyncSession, book_id: int, current_user: User) -> WordBook:
+    res = await db.execute(select(WordBook).where(WordBook.id == book_id))
+    book = res.scalar_one_or_none()
+    if not book:
+        raise HTTPException(status_code=404, detail="单词本不存在")
+    if book.created_by and book.created_by != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权编辑此单词本")
+    return book
+
+
+async def _book_word_count(db: AsyncSession, book_id: int) -> int:
+    res = await db.execute(select(func.count(BookWord.id)).where(BookWord.book_id == book_id))
+    return int(res.scalar() or 0)
+
+
+@router.post("/books/{book_id}/cover/upload", response_model=WordBookResponse)
+async def upload_book_cover(
+    book_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """老师上传单词本封面 (png/jpg/webp, ≤5MB)。"""
+    book = await _load_book_for_edit(db, book_id, current_user)
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_COVER_EXTS:
+        raise HTTPException(status_code=400, detail="仅支持 png/jpg/webp")
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="文件类型不是图片")
+    data = await file.read()
+    if len(data) > MAX_COVER_BYTES:
+        raise HTTPException(status_code=400, detail="图片不能超过 5MB")
+    if len(data) < 64:
+        raise HTTPException(status_code=400, detail="图片格式无效")
+    fname = f"book-{book.id}-{uuid.uuid4().hex[:8]}{ext}"
+    target_dir = os.path.join(settings.UPLOAD_DIR, "book-covers")
+    os.makedirs(target_dir, exist_ok=True)
+    with open(os.path.join(target_dir, fname), "wb") as f:
+        f.write(data)
+    book.cover_url = f"/uploads/book-covers/{fname}"
+    await db.commit()
+    await db.refresh(book)
+    return _book_to_response(book, await _book_word_count(db, book.id))
+
+
+@router.post("/books/{book_id}/cover/generate", response_model=WordBookResponse)
+async def regenerate_book_cover(
+    book_id: int,
+    body: CoverGenerateBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """用 image2 重新生成封面;失败时 200 + cover_url 不变。"""
+    book = await _load_book_for_edit(db, book_id, current_user)
+    base = body.prompt or f"少儿英语单词本封面: {book.name}"
+    if book.grade_level:
+        base = f"{base}, {book.grade_level}"
+    full_prompt = f"{base}, 卡通风格, 明亮活泼, 适合中小学生, 无文字, 无 logo"
+    remote = await generate_image_with_fallback(full_prompt, quality="medium")
+    if remote:
+        local = await download_image_to_uploads(remote, "book-covers", f"book-{book.id}")
+        if local:
+            book.cover_url = local
+            await db.commit()
+            await db.refresh(book)
+    return _book_to_response(book, await _book_word_count(db, book.id))

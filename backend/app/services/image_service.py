@@ -14,7 +14,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-ImageSize = Literal["1024x1024", "1024x1536", "1536x1024"]
+ImageSize = Literal["1024x1024", "1024x1536", "1536x1024", "2048x2048"]
 ImageQuality = Literal["low", "medium", "high"]
 
 DEFAULT_TIMEOUT = 30.0  # gpt-image-2 典型 10-20s
@@ -94,3 +94,39 @@ async def generate_book_cover(
         f"Warm inviting atmosphere, soft natural lighting."
     )
     return await generate_image(prompt, size="1024x1024", quality="high")
+
+
+async def generate_image_with_fallback(prompt: str, quality: str = "medium") -> Optional[str]:
+    """三阶降级: 2048 -> 1536x1024 -> 1024x1024。任一成功即返回远端 URL。"""
+    for size in ("2048x2048", "1536x1024", "1024x1024"):
+        try:
+            url = await generate_image(prompt=prompt, size=size, quality=quality)
+            if url:
+                return url
+        except Exception as e:
+            logger.warning(f"image2 size={size} 失败: {e}")
+    return None
+
+
+async def download_image_to_uploads(url: str, subdir: str, base_name: str) -> Optional[str]:
+    """下载远端图片到 UPLOAD_DIR/<subdir>/<base>-<rand>.png, 返回 /uploads/... 路径。"""
+    import uuid as _uuid
+    import os as _os
+    import httpx as _httpx
+    from app.core.config import settings as _settings
+    try:
+        async with _httpx.AsyncClient(timeout=60) as cli:
+            r = await cli.get(url)
+            r.raise_for_status()
+            content = r.content
+        if len(content) < 64:
+            return None
+        fname = f"{base_name}-{_uuid.uuid4().hex[:8]}.png"
+        target_dir = _os.path.join(_settings.UPLOAD_DIR, subdir)
+        _os.makedirs(target_dir, exist_ok=True)
+        with open(_os.path.join(target_dir, fname), "wb") as f:
+            f.write(content)
+        return f"/uploads/{subdir}/{fname}"
+    except Exception as e:
+        logger.warning(f"下载远端图片失败: {e}")
+        return None

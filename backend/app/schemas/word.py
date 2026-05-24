@@ -98,6 +98,7 @@ class WordBookUpdate(BaseModel):
     volume: Optional[str] = None
     is_public: Optional[bool] = None
     cover_color: Optional[str] = None
+    cover_url: Optional[str] = None
 
 class WordBookResponse(WordBookBase):
     id: int
