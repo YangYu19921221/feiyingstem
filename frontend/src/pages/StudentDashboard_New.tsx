@@ -62,9 +62,6 @@ const StudentDashboard = () => {
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [pendingHomeworkCount, setPendingHomeworkCount] = useState<number>(0);
 
-  // 强制复习：本次会话未完成复习则拦截
-  const forcedReviewDone = sessionStorage.getItem('forced_review_done') === 'true';
-  const showForcedReview = !loading && !forcedReviewDone && reviewDueCount > 0;
 
   useEffect(() => {
     // 加载学生的单词本列表和统计数据
@@ -193,19 +190,16 @@ const StudentDashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
-    sessionStorage.removeItem('forced_review_done');
     navigate('/login');
   };
 
   /**
-   * 强制复习：拉随机打乱的到期词 → 塞 sessionStorage → 跳 classify 复习流程。
-   * 仅完成流程后 WordClassifyLearning 才会写 forced_review_done = true，保证学生必须做完才能进主页。
+   * 启动一次复习：拉随机打乱的到期词 → 塞 sessionStorage → 跳 classify 复习流程。
    */
-  const handleStartForcedReview = async () => {
+  const handleStartReview = async () => {
     try {
       const words = await getReviewDueWords(20, true);
       if (!words.length) {
-        sessionStorage.setItem('forced_review_done', 'true');
         return;
       }
       const wordData = words.map((w, index) => ({
@@ -235,7 +229,7 @@ const StudentDashboard = () => {
       sessionStorage.setItem('is_review_practice', 'true');
       navigate('/student/units/0/classify');
     } catch (e) {
-      console.error('启动强制复习失败:', e);
+      console.error('启动复习失败:', e);
     }
   };
 
@@ -271,43 +265,6 @@ const StudentDashboard = () => {
 
   return (
     <div className="min-h-screen bg-paper page-warm-glow">
-      {/* 强制复习遮罩 */}
-      {showForcedReview && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-            <div className="flex items-baseline gap-3 mb-4">
-              <span className="font-display text-5xl font-semibold text-accent-warm font-numeric">{reviewDueCount}</span>
-              <span className="text-ink-soft text-lg">个词等你回顾</span>
-            </div>
-            <h2 className="font-display text-2xl font-semibold text-ink mb-2">先复习再学习</h2>
-            <p className="text-ink-soft text-sm mb-6 leading-relaxed">
-              根据记忆曲线，这些单词正处在最容易遗忘的节点。现在花 5 分钟，记忆会更牢固。
-            </p>
-            <button
-              onClick={handleStartForcedReview}
-              className="w-full py-3.5 btn-glow text-white rounded-xl text-base font-semibold"
-            >
-              开始复习
-            </button>
-            {/* 测试账号 student 专属：跳过强制复习直接进主页 */}
-            {user?.username === 'student' && (
-              <button
-                onClick={() => { sessionStorage.setItem('forced_review_done', 'true'); window.location.reload(); }}
-                className="w-full mt-3 text-sm text-ink-mute hover:text-accent-warm transition"
-              >
-                跳过（仅测试账号可见）
-              </button>
-            )}
-            <button
-              onClick={handleLogout}
-              className="w-full mt-3 text-sm text-ink-mute hover:text-ink-soft transition"
-            >
-              退出登录
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 顶部导航 */}
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-5 py-3.5 flex justify-between items-center">
@@ -355,7 +312,7 @@ const StudentDashboard = () => {
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
                   <button
-                    onClick={handleStartForcedReview}
+                    onClick={handleStartReview}
                     className="px-7 py-3.5 btn-glow text-white rounded-xl text-base font-semibold"
                   >
                     开始复习 →
