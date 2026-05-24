@@ -88,6 +88,31 @@ async def sample_unit_with_words(db_session):
 
 
 @pytest_asyncio.fixture
+async def two_student_tokens(db_session):
+    user1 = User(
+        username="stu_pk_1",
+        email="stu_pk_1_e2e@example.com",
+        hashed_password="x",
+        role="student",
+        full_name="Student 1",
+        is_active=True,
+    )
+    user2 = User(
+        username="stu_pk_2",
+        email="stu_pk_2_e2e@example.com",
+        hashed_password="x",
+        role="student",
+        full_name="Student 2",
+        is_active=True,
+    )
+    db_session.add_all([user1, user2])
+    await db_session.commit()
+    await db_session.refresh(user1)
+    await db_session.refresh(user2)
+    return _make_token(user1.id), _make_token(user2.id), user1.id, user2.id
+
+
+@pytest_asyncio.fixture
 async def empty_unit(db_session):
     book = WordBook(name="Empty Book", is_public=True)
     db_session.add(book)
