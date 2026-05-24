@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
 import type { PkRoomSnapshot } from '../api/pk';
@@ -59,6 +59,7 @@ export default function PkArena() {
 
   const [snapshot, setSnapshot] = useState<PkRoomSnapshot | null>(null);
   const [currentQ, setCurrentQ] = useState<CurrentQuestion | null>(null);
+  const questionStartedAtRef = useRef<number>(0);
   const [waitingForOthers, setWaitingForOthers] = useState(false);
   const [ranking, setRanking] = useState<RankItem[] | null>(null);
   const [errorBanner, setErrorBanner] = useState('');
@@ -75,6 +76,7 @@ export default function PkArena() {
             phase: event.phase,
             word: event.word,
           });
+          questionStartedAtRef.current = Date.now();
           setWaitingForOthers(false);
           break;
         case 'player_answered':
@@ -213,8 +215,8 @@ export default function PkArena() {
             <SpeechVerifyCard
               key={`speech-${currentQ.word_idx}`}
               word={wordDataStub as any}
-              onNext={() => submit({ result: 'pass' }, 0)}
-              onSkip={() => submit({ result: 'skip' }, 0)}
+              onNext={() => submit({ result: 'pass' }, Date.now() - questionStartedAtRef.current)}
+              onSkip={() => submit({ result: 'skip' }, Date.now() - questionStartedAtRef.current)}
               playAudio={noOpAudio}
               disabled={waitingForOthers}
             />

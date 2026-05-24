@@ -249,3 +249,96 @@ def test_ensure_heartbeat_watchdog_starts_task():
         pk_websocket._heartbeat_watchdog_task = None
 
     asyncio.run(go())
+
+
+@pytest.mark.asyncio
+async def test_start_game_rejected_with_solo_host(two_student_tokens):
+    """Host cannot start_game alone; server replies with NOT_ENOUGH_PLAYERS error."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+
+    room = manager.create_room(
+        host_id=host_id, unit_id=999, max_players=2, word_ids=[1],
+    )
+    # NOTE: not joining the second player
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_solo@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    async def fake_auth(t):
+        return fake_users.get(t)
+    async def fake_word_lookup(db, word_ids):
+        class FW:
+            id = word_ids[0]; word = "x"; translation = "y"
+        return {word_ids[0]: FW()}
+
+    original_auth = pk_websocket._authenticate
+    original_lookup = pk_websocket._word_lookup_for_room
+    pk_websocket._authenticate = fake_auth
+    pk_websocket._word_lookup_for_room = fake_word_lookup
+
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                ws1.receive_json()  # room_state
+                ws1.send_json({"type": "start_game"})
+                msg = ws1.receive_json()
+                assert msg["type"] == "error"
+                assert msg["code"] == "NOT_ENOUGH_PLAYERS"
+                # Room still in waiting status
+                assert manager.get_room(room.room_id).status == "waiting"
+    finally:
+        pk_websocket._authenticate = original_auth
+        pk_websocket._word_lookup_for_room = original_lookup
+
+
+def test_cancel_room_timers_removes_all_keys_for_room():
+    """Verify the I1 fix: _cancel_room_timers cancels and pops all entries
+    matching a room_id while leaving other rooms untouched."""
+    import asyncio
+    from app.api.v1 import pk_websocket
+
+    async def go():
+        # Set up 3 fake tasks: 2 for room 100, 1 for room 200
+        async def _noop():
+            await asyncio.sleep(60)
+
+        t1 = asyncio.create_task(_noop())
+        t2 = asyncio.create_task(_noop())
+        t3 = asyncio.create_task(_noop())
+        pk_websocket._TIMEOUT_TASKS[(100, 0, "classify")] = t1
+        pk_websocket._TIMEOUT_TASKS[(100, 1, "classify")] = t2
+        pk_websocket._TIMEOUT_TASKS[(200, 0, "classify")] = t3
+
+        pk_websocket._cancel_room_timers(100)
+
+        # Yield so the cancellations propagate.
+        for t in (t1, t2):
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        # room 100's keys gone, room 200's intact
+        assert (100, 0, "classify") not in pk_websocket._TIMEOUT_TASKS
+        assert (100, 1, "classify") not in pk_websocket._TIMEOUT_TASKS
+        assert (200, 0, "classify") in pk_websocket._TIMEOUT_TASKS
+        assert t1.cancelled() or t1.done()
+        assert t2.cancelled() or t2.done()
+
+        # Cleanup t3
+        t3.cancel()
+        try:
+            await t3
+        except (asyncio.CancelledError, Exception):
+            pass
+        pk_websocket._TIMEOUT_TASKS.pop((200, 0, "classify"), None)
+
+    asyncio.run(go())

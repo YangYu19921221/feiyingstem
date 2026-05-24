@@ -22,13 +22,14 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
     db.add(db_room)
     await db.flush()
 
+    total_questions = len(room.word_ids) * 4
     ranked = rank_players([
         {
             "user_id": ps.user_id,
             "correct": ps.correct,
             "wrong": ps.wrong,
             "total_time_ms": ps.total_time_ms,
-            "is_disconnected": ps.online is False,
+            "is_disconnected": (ps.correct + ps.wrong) < total_questions,
         }
         for ps in room.players.values()
     ])

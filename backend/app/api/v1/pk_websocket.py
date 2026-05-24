@@ -73,7 +73,9 @@ def _schedule_disconnect_cleanup(room, user_id: int):
             old_host = cur.host_id
             manager.leave_room(cur.room_id, user_id)
             cur_after = manager.get_room(room.room_id)
-            if cur_after and cur_after.host_id != old_host:
+            if cur_after is None:
+                _cancel_room_timers(room.room_id)
+            elif cur_after.host_id != old_host:
                 await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
 
     asyncio.create_task(_cleanup())
@@ -158,6 +160,15 @@ def _cancel_timer(room_id: int, word_idx: int, phase: str):
         task.cancel()
 
 
+def _cancel_room_timers(room_id: int) -> None:
+    """Cancel all pending per-question timers for a room (called on abandon/finish)."""
+    keys_to_remove = [k for k in _TIMEOUT_TASKS if k[0] == room_id]
+    for key in keys_to_remove:
+        task = _TIMEOUT_TASKS.pop(key, None)
+        if task and not task.done():
+            task.cancel()
+
+
 def _schedule_timer(room, word_idx: int, phase: str, word_lookup: dict):
     _cancel_timer(room.room_id, word_idx, phase)
     timeout_ms = PHASE_TIMEOUT_MS.get(phase, 30_000)
@@ -187,6 +198,7 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
                 manager.USER_ACTIVE.pop(uid, None)
             manager.INVITE_INDEX.pop(room.invite_code, None)
             manager.ROOMS.pop(room.room_id, None)
+            _cancel_room_timers(room.room_id)
 
 
 @router.websocket("/ws")
@@ -234,21 +246,29 @@ async def pk_ws(
                 p.last_heartbeat_at = datetime.utcnow()
             elif mtype == "start_game" and user.id == room.host_id:
                 if room.status == "waiting":
-                    room.status = "playing"
-                    room.started_at = datetime.utcnow()
-                    first_word = word_lookup.get(room.word_ids[0])
-                    push_event = {
-                        "type": "question_pushed", "word_idx": 0,
-                        "phase": "classify",
-                        "word": {
-                            "id": getattr(first_word, "id", None),
-                            "word": getattr(first_word, "word", ""),
-                            "translation": getattr(first_word, "translation", ""),
-                        },
-                    }
-                    await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
-                    await _broadcast(room, push_event)
-                    _schedule_timer(room, 0, "classify", word_lookup)
+                    online_count = sum(1 for p in room.players.values() if p.online)
+                    if online_count < 2:
+                        await ws.send_json({
+                            "type": "error",
+                            "code": "NOT_ENOUGH_PLAYERS",
+                            "message": "至少需要 2 名在线玩家",
+                        })
+                    else:
+                        room.status = "playing"
+                        room.started_at = datetime.utcnow()
+                        first_word = word_lookup.get(room.word_ids[0])
+                        push_event = {
+                            "type": "question_pushed", "word_idx": 0,
+                            "phase": "classify",
+                            "word": {
+                                "id": getattr(first_word, "id", None),
+                                "word": getattr(first_word, "word", ""),
+                                "translation": getattr(first_word, "translation", ""),
+                            },
+                        }
+                        await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+                        await _broadcast(room, push_event)
+                        _schedule_timer(room, 0, "classify", word_lookup)
             elif mtype == "submit_answer":
                 events = engine.submit_answer(
                     room=room, user_id=user.id,
