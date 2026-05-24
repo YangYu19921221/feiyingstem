@@ -2,6 +2,7 @@ import client from './client';
 
 export type LeaderboardKind = 'vocabulary' | 'diligence' | 'accuracy';
 export type LeaderboardPeriod = 'this_week' | 'last_week' | 'this_month';
+export type LeaderboardScope = 'class' | 'all';
 
 export interface LeaderboardEntry {
   user_id: number;
@@ -14,6 +15,8 @@ export interface LeaderboardEntry {
 export interface LeaderboardResponse {
   kind: LeaderboardKind;
   period: LeaderboardPeriod;
+  scope: LeaderboardScope;
+  class_name: string | null;
   top: LeaderboardEntry[];
   my_rank: number | null;
   my_value: number;
@@ -24,6 +27,7 @@ export interface LeaderboardResponse {
 export const getLeaderboard = async (
   kind: LeaderboardKind,
   period: LeaderboardPeriod,
+  scope: LeaderboardScope = 'all',
 ): Promise<LeaderboardResponse> => {
-  return client.get(`/student/leaderboard`, { params: { kind, period } });
+  return client.get(`/student/leaderboard`, { params: { kind, period, scope } });
 };
