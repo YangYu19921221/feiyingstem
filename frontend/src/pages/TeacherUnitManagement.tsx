@@ -305,7 +305,7 @@ const TeacherUnitManagement = () => {
     try {
       setCreatingWord(true);
       const token = localStorage.getItem('access_token');
-      const res = await axios.post(`${API_BASE_URL}/words/`, {
+      const res = await axios.post(`${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}`, {
         word: newWordData.word.trim(),
         phonetic: newWordData.phonetic.trim() || undefined,
         syllables: newWordData.syllables.trim() || undefined,
@@ -430,7 +430,7 @@ const TeacherUnitManagement = () => {
         const exTrans = (row['例句翻译'] || row['translation'] || '').toString().trim();
 
         try {
-          const res = await axios.post(`${API_BASE_URL}/words/`, {
+          const res = await axios.post(`${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}`, {
             word: word,
             phonetic: phonetic || undefined,
             syllables: syllables || undefined,
