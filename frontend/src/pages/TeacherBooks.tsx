@@ -166,7 +166,7 @@ const TeacherBooks = () => {
         setRenameForm(f => ({ ...f, cover_url: url }));
         toast.success('AI 封面生成成功');
       } else {
-        toast('AI 服务暂时繁忙,可手动上传或稍后重试', { icon: '⚠️' });
+        toast('AI 服务暂时繁忙,可手动上传或稍后重试', 'warning');
       }
     } catch (err) {
       console.error('AI 生成失败:', err);
