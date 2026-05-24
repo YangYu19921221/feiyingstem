@@ -184,3 +184,60 @@ async def test_join_room_when_full(
     )
     assert join2.status_code == 409
     assert join2.json()["detail"] == "ROOM_FULL"
+
+
+@pytest.mark.asyncio
+async def test_lookup_finished_room_returns_410(
+    client, two_student_tokens, sample_unit_with_words, db_session,
+):
+    """A finished/archived room returns 410 ROOM_FINISHED, distinct from 404."""
+    from app.models.pk import PkRoom
+    import json
+    token1, token2, host_id, joiner_id = two_student_tokens
+    unit, _ = sample_unit_with_words
+    # Insert a fake archived room
+    archived = PkRoom(
+        invite_code="DONEXX",
+        host_id=host_id,
+        unit_id=unit.id,
+        max_players=2,
+        status="finished",
+        word_ids=json.dumps([1]),
+    )
+    db_session.add(archived)
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/pk/rooms/by-code/DONEXX",
+        headers={"Authorization": f"Bearer {token1}"},
+    )
+    assert resp.status_code == 410
+    assert resp.json()["detail"] == "ROOM_FINISHED"
+
+
+@pytest.mark.asyncio
+async def test_join_finished_room_returns_410(
+    client, two_student_tokens, sample_unit_with_words, db_session,
+):
+    """Joining a finished/archived room returns 410, not 404."""
+    from app.models.pk import PkRoom
+    import json
+    token1, _, host_id, _ = two_student_tokens
+    unit, _ = sample_unit_with_words
+    archived = PkRoom(
+        invite_code="DONEYY",
+        host_id=host_id,
+        unit_id=unit.id,
+        max_players=2,
+        status="finished",
+        word_ids=json.dumps([1]),
+    )
+    db_session.add(archived)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/pk/rooms/by-code/DONEYY/join",
+        headers={"Authorization": f"Bearer {token1}"},
+    )
+    assert resp.status_code == 410
+    assert resp.json()["detail"] == "ROOM_FINISHED"

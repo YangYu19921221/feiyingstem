@@ -71,9 +71,20 @@ async def create_room(
 
 
 @router.get("/rooms/by-code/{code}", response_model=RoomSnapshot)
-async def lookup_room(code: str, user: User = Depends(get_current_user)):
+async def lookup_room(
+    code: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     room_id = manager.INVITE_INDEX.get(code)
     if room_id is None:
+        # Check archive: maybe it finished
+        result = await db.execute(
+            select(PkRoom).where(PkRoom.invite_code == code).limit(1)
+        )
+        archived = result.scalar_one_or_none()
+        if archived is not None:
+            raise HTTPException(status_code=410, detail="ROOM_FINISHED")
         raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
     return _snapshot(manager.ROOMS[room_id])
 
@@ -82,12 +93,20 @@ async def lookup_room(code: str, user: User = Depends(get_current_user)):
 async def join_room_by_code(
     code: str,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """非房主玩家通过邀请码加入房间。将玩家加入 manager.ROOMS,后续 WS 连接才能通过 player 校验。"""
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
         room = manager.join_room(invite_code=code, user_id=user.id, nickname=nickname)
     except manager.RoomNotFound:
+        # Distinguish never-existed from finished
+        result = await db.execute(
+            select(PkRoom).where(PkRoom.invite_code == code).limit(1)
+        )
+        archived = result.scalar_one_or_none()
+        if archived is not None:
+            raise HTTPException(status_code=410, detail="ROOM_FINISHED")
         raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
     except manager.RoomFull:
         raise HTTPException(status_code=409, detail="ROOM_FULL")

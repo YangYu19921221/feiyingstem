@@ -27,25 +27,17 @@ interface RankItem {
 }
 
 function getMeId(): number {
-  // Project stores user info under 'user' key (see Login.tsx / Register.tsx).
-  try {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const parsed = JSON.parse(userStr);
-      if (parsed?.id) return Number(parsed.id);
-    }
-  } catch {
-    // ignore parse errors
-  }
-  const direct = localStorage.getItem('user_id');
-  if (direct) return Number(direct);
+  // JWT sub is canonical: server uses it for auth, so we use it for "我" identity.
+  // localStorage user/user_id can drift between tabs; don't trust it.
   const token = localStorage.getItem('access_token') || '';
   try {
     const payload = JSON.parse(atob(token.split('.')[1] || ''));
-    return Number(payload.sub) || 0;
+    const fromJwt = Number(payload.sub);
+    if (fromJwt) return fromJwt;
   } catch {
-    return 0;
+    // fall through — invalid/missing token. Auth guard will handle navigation.
   }
+  return 0;
 }
 
 const noOp = () => {};

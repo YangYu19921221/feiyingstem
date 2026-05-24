@@ -72,6 +72,7 @@ export default function PkLobby() {
       const detail = e?.response?.data?.detail;
       const errorMap: Record<string, string> = {
         ROOM_NOT_FOUND: '邀请码无效',
+        ROOM_FINISHED: '该房间的 PK 已结束',
         ROOM_FULL: '房间已满',
         ROOM_ALREADY_STARTED: '房间已开始',
         USER_ALREADY_IN_ROOM: '你已在另一个 PK 房间中',
