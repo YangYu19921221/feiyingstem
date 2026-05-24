@@ -35,6 +35,20 @@ def test_dictation_adapter_case_insensitive_trim():
     assert ad.judge(word, {"text": "appel"}) is False
 
 
+def test_dictation_adapter_lenient_punct_and_unicode():
+    ad = get_adapter("dictation")
+    word = FakeWord(1, "apple", "苹果")
+    # Trailing period
+    assert ad.judge(word, {"text": "apple."}) is True
+    # Multiple trailing punctuation
+    assert ad.judge(word, {"text": "apple!?"}) is True
+    # NBSP and fullwidth chars
+    assert ad.judge(word, {"text": " apple "}) is True
+    # Smart apostrophe should match ASCII apostrophe via NFKC
+    word2 = FakeWord(2, "don't", "不要")
+    assert ad.judge(word2, {"text": "don’t"}) is True
+
+
 def test_exam_adapter_correct_option():
     ad = get_adapter("exam")
     word = FakeWord(1, "apple", "苹果")
