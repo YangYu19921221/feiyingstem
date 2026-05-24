@@ -35,11 +35,20 @@ async def _make_book_units_word(
     phonetic="/huː/",
     meaning="谁",
     unit_count=2,
+    book_count=1,
 ):
-    """造一本书 + N 个单元,所有单元都引用同一个 Word。返回 (book, units, word)。"""
-    book = WordBook(name="B", grade_level="一年级")
-    db_session.add(book)
-    await db_session.flush()
+    """造 book_count 本书,unit_count 个 unit 都引用同一个 Word。
+
+    book_count == 1 → 同一本书 + unit_count 个 unit(同 book 共享)。
+    book_count > 1  → units 按 round-robin 分到各 book(跨 book 共享)。
+    返回 (units, word)。
+    """
+    books = []
+    for b in range(book_count):
+        bk = WordBook(name=f"B{b+1}", grade_level="一年级")
+        db_session.add(bk)
+        await db_session.flush()
+        books.append(bk)
 
     word = Word(word=word_text, phonetic=phonetic)
     db_session.add(word)
@@ -53,14 +62,16 @@ async def _make_book_units_word(
 
     units = []
     for i in range(unit_count):
-        u = Unit(book_id=book.id, unit_number=i + 1, name=f"Unit {i+1}")
+        bk = books[i % book_count]
+        same_book = sum(1 for u in units if u.book_id == bk.id)
+        u = Unit(book_id=bk.id, unit_number=same_book + 1, name=f"Unit {i+1}")
         db_session.add(u)
         await db_session.flush()
         db_session.add(UnitWord(unit_id=u.id, word_id=word.id, order_index=0))
         units.append(u)
 
     await db_session.commit()
-    return book, units, word
+    return units, word
 
 
 async def _login_as(client, db_session, teacher: User) -> str:
@@ -74,7 +85,7 @@ async def _login_as(client, db_session, teacher: User) -> str:
 async def test_edit_when_only_one_unit_references_word_does_not_fork(client, db_session):
     teacher = await _make_teacher(db_session)
     token = await _login_as(client, db_session, teacher)
-    book, units, word = await _make_book_units_word(db_session, unit_count=1)
+    units, word = await _make_book_units_word(db_session, unit_count=1)
     unit = units[0]
 
     res = await client.put(
@@ -106,7 +117,7 @@ async def test_edit_when_only_one_unit_references_word_does_not_fork(client, db_
 async def test_edit_when_multiple_units_reference_word_forks(client, db_session):
     teacher = await _make_teacher(db_session)
     token = await _login_as(client, db_session, teacher)
-    book, units, word = await _make_book_units_word(db_session, unit_count=2)
+    units, word = await _make_book_units_word(db_session, unit_count=2, book_count=2)
     unit_a, unit_b = units
 
     res = await client.put(
@@ -166,7 +177,7 @@ async def test_edit_when_multiple_units_reference_word_forks(client, db_session)
 async def test_other_unit_unaffected_after_fork(client, db_session):
     teacher = await _make_teacher(db_session)
     token = await _login_as(client, db_session, teacher)
-    book, units, word = await _make_book_units_word(db_session, unit_count=2)
+    units, word = await _make_book_units_word(db_session, unit_count=2, book_count=2)
     unit_a, unit_b = units
     original_phonetic = word.phonetic
 
@@ -190,7 +201,7 @@ async def test_other_unit_unaffected_after_fork(client, db_session):
 async def test_fork_copies_all_word_fields(client, db_session):
     teacher = await _make_teacher(db_session)
     token = await _login_as(client, db_session, teacher)
-    book, units, word = await _make_book_units_word(db_session, unit_count=2)
+    units, word = await _make_book_units_word(db_session, unit_count=2, book_count=2)
     word.tts_text = "who pronounced"
     word.syllables = "who"
     word.difficulty = 2

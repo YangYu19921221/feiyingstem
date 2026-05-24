@@ -362,40 +362,37 @@ async def list_words(
     - 支持按年级/难度/标签筛选
     - 支持关键词搜索
     """
-    query = select(Word)
+    # 同拼写多副本时只显示最早一条 (id 最小)。fork 副本不在全局列表暴露。
+    # 注意: dedup 必须在 SQL 层完成,放在 offset/limit 之前。否则 Python 侧
+    # 去重会让分页失真:每页可能 < limit、跨页可能漏拼写。
+    rep_ids = select(func.min(Word.id).label("id")).group_by(func.lower(Word.word))
 
-    # 筛选条件
     if grade_level:
-        query = query.where(Word.grade_level == grade_level)
+        rep_ids = rep_ids.where(Word.grade_level == grade_level)
     if difficulty:
-        query = query.where(Word.difficulty == difficulty)
+        rep_ids = rep_ids.where(Word.difficulty == difficulty)
     if search:
-        query = query.where(
+        rep_ids = rep_ids.where(
             or_(
                 func.lower(Word.word).like(f"%{search.lower()}%"),
                 Word.phonetic.like(f"%{search}%")
             )
         )
     if tag:
-        # 需要join标签表
-        query = query.join(WordTag).where(WordTag.tag == tag)
+        rep_ids = rep_ids.join(WordTag, WordTag.word_id == Word.id).where(WordTag.tag == tag)
 
-    # 分页
-    query = query.offset(skip).limit(limit)
+    rep_subq = rep_ids.subquery()
+
+    query = (
+        select(Word)
+        .join(rep_subq, Word.id == rep_subq.c.id)
+        .order_by(Word.id)
+        .offset(skip)
+        .limit(limit)
+    )
 
     result = await db.execute(query)
-    words = result.scalars().all()
-
-    # 同拼写多副本时只显示最早一条(id 最小)。fork 出来的副本不在全局列表暴露。
-    seen_lower = set()
-    deduped = []
-    for w in sorted(words, key=lambda x: x.id):
-        key = (w.word or "").lower()
-        if key in seen_lower:
-            continue
-        seen_lower.add(key)
-        deduped.append(w)
-    words = deduped
+    words = list(result.scalars().all())
 
     # 构建响应(一次查询获取所有单词的主要释义)
     if not words:

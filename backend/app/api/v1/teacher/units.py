@@ -424,14 +424,17 @@ async def update_word_in_unit(
         )
     uw_row, target_word = row
 
-    # 2. 看 word_id 被几个单元引用(仅 unit_words;book_words 不参与 fork 决策)
-    ref_count = (await db.execute(
-        select(func.count()).select_from(UnitWord).where(UnitWord.word_id == word_id)
+    # 2. 看 word_id 被几本 *book* 引用(跨 book 才 fork;同 book 多 unit 共享视为同步改)
+    book_ref_count = (await db.execute(
+        select(func.count(func.distinct(Unit.book_id)))
+        .select_from(UnitWord)
+        .join(Unit, Unit.id == UnitWord.unit_id)
+        .where(UnitWord.word_id == word_id)
     )).scalar()
 
     forked = False
 
-    if ref_count > 1:
+    if book_ref_count > 1:
         # 3a. fork:复制 Word
         new_word = Word(
             word=target_word.word,
@@ -476,11 +479,19 @@ async def update_word_in_unit(
     target_word_id = target_word.id
 
     # 4. 把编辑应用到 target_word(同时支持新副本和 in-place)
+    # 空字符串视为「未提交此字段」,不覆盖原值——前端 editFormData 会把
+    # 未填字段初始化成 '',若直接 setattr 会把原音标/释义抹掉。
+    def _provided(field: str) -> bool:
+        if field not in word_data:
+            return False
+        v = word_data[field]
+        return v is not None and v != ""
+
     for field in ['word', 'phonetic', 'syllables', 'difficulty']:
-        if field in word_data and word_data[field] is not None:
+        if _provided(field):
             setattr(target_word, field, word_data[field])
 
-    if any(k in word_data for k in ['meaning', 'part_of_speech', 'example_sentence', 'example_translation']):
+    if any(_provided(k) for k in ['meaning', 'part_of_speech', 'example_sentence', 'example_translation']):
         primary_def = (await db.execute(
             select(WordDefinition)
             .where(WordDefinition.word_id == target_word_id)
@@ -489,15 +500,15 @@ async def update_word_in_unit(
 
         if primary_def:
             for field in ['meaning', 'part_of_speech', 'example_sentence', 'example_translation']:
-                if field in word_data:
+                if _provided(field):
                     setattr(primary_def, field, word_data[field])
-        elif word_data.get('meaning'):
+        elif _provided('meaning'):
             db.add(WordDefinition(
                 word_id=target_word_id,
-                meaning=word_data.get('meaning', ''),
-                part_of_speech=word_data.get('part_of_speech', 'n.'),
-                example_sentence=word_data.get('example_sentence'),
-                example_translation=word_data.get('example_translation'),
+                meaning=word_data['meaning'],
+                part_of_speech=word_data.get('part_of_speech') or 'n.',
+                example_sentence=word_data.get('example_sentence') or None,
+                example_translation=word_data.get('example_translation') or None,
                 is_primary=True,
             ))
 
