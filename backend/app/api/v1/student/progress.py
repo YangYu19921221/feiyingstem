@@ -14,7 +14,7 @@ from app.schemas.progress import (
     UnitProgressResponse, BookProgressResponse,
     StudentBookListItem
 )
-from app.api.v1.auth import get_current_student
+from app.api.v1.auth import get_current_student, get_current_user
 
 router = APIRouter()
 
@@ -627,3 +627,26 @@ async def get_student_books(
         ))
 
     return book_list
+
+
+@router.get("/books/{book_id}/units")
+async def list_units_in_book(
+    book_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """List units of a book — for the PK lobby unit picker."""
+    result = await db.execute(
+        select(Unit).where(Unit.book_id == book_id).order_by(Unit.order_index, Unit.unit_number)
+    )
+    units = result.scalars().all()
+    return [
+        {
+            "id": u.id,
+            "name": u.name,
+            "unit_number": u.unit_number,
+            "description": u.description,
+            "word_count": u.word_count,
+        }
+        for u in units
+    ]
