@@ -8,7 +8,7 @@ from app.api.v1.teacher import units as teacher_units, competition_questions as 
 from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam, leaderboard as student_leaderboard, class_join as student_class_join
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
 from app.api.v1.admin import teachers as admin_teachers, classes as admin_classes
-from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes
+from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -78,6 +78,7 @@ app.include_router(pronunciation.router, prefix="/api/v1/pronunciation", tags=["
 app.include_router(assessment.router, prefix="/api/v1/assessment", tags=["测评漏斗"])
 app.include_router(sentences.router, prefix="/api/v1/sentences", tags=["句子背诵"])
 app.include_router(pk_routes.router, prefix="/api/v1/pk", tags=["PK竞技场"])
+app.include_router(pk_websocket.router, prefix="/api/v1/pk", tags=["PK竞技场-WS"])
 
 @app.get("/")
 async def root():
