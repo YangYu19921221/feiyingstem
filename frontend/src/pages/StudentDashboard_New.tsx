@@ -659,6 +659,7 @@ const StudentDashboard = () => {
               { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', metric: onlineUsers, metricLabel: '在线' },
               { title: '我的成就', desc: '徽章收藏', route: '/student/achievements' },
               { title: '学习数据', desc: '统计分析', route: '/student/analytics' },
+              { title: 'PK 竞技场', desc: '和同班同学实时对战,5 阶段比成绩', route: '/pk/lobby' },
             ].map((tile) => (
               <button
                 key={tile.title}

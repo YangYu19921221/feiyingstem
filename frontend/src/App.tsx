@@ -86,6 +86,8 @@ const UnitExam = lazyWithRetry(() => import('./pages/UnitExam'));
 const UnitExamResult = lazyWithRetry(() => import('./pages/UnitExamResult'));
 const DictationPractice = lazyWithRetry(() => import('./pages/DictationPractice'));
 const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
+const PkLobby = lazyWithRetry(() => import('./pages/PkLobby'));
+const PkArena = lazyWithRetry(() => import('./pages/PkArena'));
 
 // 路由级 loading 占位
 const PageLoading = () => (
@@ -787,6 +789,26 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <PetPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - PK 大厅 */}
+        <Route
+          path="/pk/lobby"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PkLobby />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - PK 竞技场 */}
+        <Route
+          path="/pk/arena/:roomId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PkArena />
             </ProtectedRoute>
           }
         />
