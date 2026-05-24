@@ -71,3 +71,93 @@ async def test_ws_join_then_receive_room_state(client, auth_student_token, sampl
     finally:
         pk_websocket._authenticate = original_auth
         pk_websocket._word_lookup_for_room = original_lookup
+
+
+@pytest.mark.asyncio
+async def test_broadcast_send_failure_marks_player_offline(two_student_tokens):
+    """If send_json fails for player X (e.g., dead socket) during a broadcast,
+    X must be marked offline (ws=None, online=False) AND a player_disconnected
+    event must be broadcast to surviving players. Verifies C2 fix."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+
+    room = manager.create_room(
+        host_id=host_id, unit_id=999, max_players=2, word_ids=[1],
+    )
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_e2e_c2@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token2: User(id=joiner_id, username="j", email="j_e2e_c2@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+
+    async def fake_auth(t):
+        return fake_users.get(t)
+
+    async def fake_word_lookup(db, word_ids):
+        class FW:
+            id = word_ids[0]; word = "apple"; translation = "苹果"
+        return {word_ids[0]: FW()}
+
+    original_auth = pk_websocket._authenticate
+    original_lookup = pk_websocket._word_lookup_for_room
+    pk_websocket._authenticate = fake_auth
+    pk_websocket._word_lookup_for_room = fake_word_lookup
+
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                ws1.receive_json()  # room_state
+                with tc.websocket_connect(
+                    f"/api/v1/pk/ws?token={token2}&room_id={room.room_id}"
+                ) as ws2:
+                    ws2.receive_json()  # room_state
+                    # drain ws1's messages until we see player_reconnected
+                    for _ in range(10):
+                        msg = ws1.receive_json()
+                        if msg["type"] == "player_reconnected":
+                            break
+
+                    # Simulate ws2's send failing: replace ws2's ws with a stub
+                    # whose send_json raises.
+                    class _DeadSocket:
+                        async def send_json(self, *a, **kw):
+                            raise RuntimeError("simulated dead socket")
+                        async def close(self, *a, **kw):
+                            pass
+
+                    room_state = manager.get_room(room.room_id)
+                    assert room_state is not None
+                    joiner_ps = room_state.players[joiner_id]
+                    joiner_ps.ws = _DeadSocket()
+
+                    # Trigger a broadcast: host sends start_game.
+                    # Server will broadcast room_state to both players;
+                    # joiner's send fails -> joiner marked offline + player_disconnected sent.
+                    ws1.send_json({"type": "start_game"})
+
+                    # ws1 should eventually receive player_disconnected for joiner
+                    received_types: list[str] = []
+                    seen_disconnect = False
+                    for _ in range(20):
+                        msg = ws1.receive_json()
+                        received_types.append(msg["type"])
+                        if msg["type"] == "player_disconnected" and msg.get("user_id") == joiner_id:
+                            seen_disconnect = True
+                            break
+                    assert seen_disconnect, f"Did not see player_disconnected for joiner. Got: {received_types}"
+
+                    # Verify state: joiner is offline + ws cleared
+                    assert joiner_ps.online is False
+                    assert joiner_ps.ws is None
+    finally:
+        pk_websocket._authenticate = original_auth
+        pk_websocket._word_lookup_for_room = original_lookup

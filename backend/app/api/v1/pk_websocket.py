@@ -57,15 +57,52 @@ def _snapshot_dict(room) -> dict:
     }
 
 
+def _schedule_disconnect_cleanup(room, user_id: int):
+    """Schedule the 90s reconnect window before evicting a disconnected player.
+
+    If the player is still offline at the deadline, leave_room() runs and
+    host_changed is broadcast if the host transferred.
+    """
+    async def _cleanup():
+        await asyncio.sleep(RECONNECT_WINDOW_S)
+        cur = manager.get_room(room.room_id)
+        if cur is None:
+            return
+        ps_after = cur.players.get(user_id)
+        if ps_after and not ps_after.online:
+            old_host = cur.host_id
+            manager.leave_room(cur.room_id, user_id)
+            cur_after = manager.get_room(room.room_id)
+            if cur_after and cur_after.host_id != old_host:
+                await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
+
+    asyncio.create_task(_cleanup())
+
+
 async def _broadcast(room, event: dict, exclude: int | None = None):
+    """Broadcast an event to all players except `exclude`. If a send fails,
+    mark the player as disconnected and schedule cleanup. Notifications about
+    the failure are deferred until iteration completes (avoid recursive sends)."""
+    failed_user_ids: list[int] = []
     for uid, ps in list(room.players.items()):
         if uid == exclude or ps.ws is None:
             continue
         try:
             await ps.ws.send_json(event)
         except Exception:
-            ps.online = False
-            ps.disconnected_at = datetime.utcnow()
+            failed_user_ids.append(uid)
+
+    for uid in failed_user_ids:
+        ps = room.players.get(uid)
+        if ps is None:
+            continue
+        ps.ws = None
+        ps.online = False
+        ps.disconnected_at = datetime.utcnow()
+        # Notify other players (this re-enters _broadcast but failed_user_ids is
+        # bounded, and the failed player is now ws=None so it'll be skipped).
+        await _broadcast(room, {"type": "player_disconnected", "user_id": uid})
+        _schedule_disconnect_cleanup(room, uid)
 
 
 _TIMEOUT_TASKS: dict[tuple[int, int, str], asyncio.Task] = {}
@@ -197,18 +234,4 @@ async def pk_ws(
         p.online = False
         p.disconnected_at = datetime.utcnow()
         await _broadcast(room, {"type": "player_disconnected", "user_id": user.id})
-
-        async def _cleanup():
-            await asyncio.sleep(RECONNECT_WINDOW_S)
-            cur = manager.get_room(room.room_id)
-            if cur is None:
-                return
-            ps = cur.players.get(user.id)
-            if ps and not ps.online:
-                old_host = cur.host_id
-                manager.leave_room(cur.room_id, user.id)
-                cur_after = manager.get_room(room.room_id)
-                if cur_after and cur_after.host_id != old_host:
-                    await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
-
-        asyncio.create_task(_cleanup())
+        _schedule_disconnect_cleanup(room, user.id)
