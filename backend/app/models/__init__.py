@@ -38,6 +38,7 @@ from app.models.competition import (
     CompetitionQuestionSet,
     QuestionSetItem
 )
+from app.models.pk import PkRoom, PkRoomPlayer, PkAnswerRecord
 
 __all__ = [
     # User models
@@ -86,4 +87,8 @@ __all__ = [
     "CompetitionQuestionOption",
     "CompetitionQuestionSet",
     "QuestionSetItem",
+    # PK arena models
+    "PkRoom",
+    "PkRoomPlayer",
+    "PkAnswerRecord",
 ]
