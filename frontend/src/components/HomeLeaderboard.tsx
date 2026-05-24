@@ -58,6 +58,8 @@ const HomeLeaderboard = () => {
       .then(d => {
         if (cancelled) return;
         // 班级模式但没班 / 班级人数 < 5 → 自动切到 all 并提示
+        // 关键: 不 setLoading(false), 让加载态一路保持到第二轮请求回来,
+        // 避免 UI 在 setScope 触发 useEffect 重跑前闪过"本周还没人入榜"。
         if (scope === 'class' && (d.class_name === null || d.total_participants < 5)) {
           setAutoFellBack(true);
           setScope('all');
@@ -65,9 +67,12 @@ const HomeLeaderboard = () => {
         }
         setAutoFellBack(false);
         setData(d);
+        setLoading(false);
       })
-      .catch(e => console.error('加载榜单失败:', e))
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .catch(e => {
+        console.error('加载榜单失败:', e);
+        if (!cancelled) setLoading(false);
+      });
     return () => { cancelled = true; };
   }, [kind, scope]);
 
