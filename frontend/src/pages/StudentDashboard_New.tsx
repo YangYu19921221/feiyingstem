@@ -7,6 +7,7 @@ import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
+import HomeLeaderboard from '../components/HomeLeaderboard';
 import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework } from '../api/homework';
 import PetWidget from '../components/PetWidget';
@@ -367,6 +368,8 @@ const StudentDashboard = () => {
             loading="lazy"
           />
         </section>
+
+        <HomeLeaderboard />
 
         {/* 我的书架 */}
         <section className="mb-12">
