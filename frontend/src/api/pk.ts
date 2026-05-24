@@ -60,6 +60,9 @@ export const pkApi = {
   lookupByCode: (code: string) =>
     api.get<PkRoomSnapshot>(`/pk/rooms/by-code/${code}`),
 
+  joinRoomByCode: (code: string) =>
+    api.post<PkRoomSnapshot>(`/pk/rooms/by-code/${code}/join`),
+
   myHistory: () => api.get<PkHistoryItem[]>('/pk/me/history'),
 
   listUnitsByBook: (bookId: number) =>
