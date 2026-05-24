@@ -85,8 +85,10 @@ const TeacherBooks = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
   const [renameTarget, setRenameTarget] = useState<TeacherWordBook | null>(null);
-  const [renameForm, setRenameForm] = useState({ name: '', grade_level: '', volume: '' });
+  const [renameForm, setRenameForm] = useState<{ name: string; grade_level: string; volume: string; cover_url: string | null }>({ name: '', grade_level: '', volume: '', cover_url: null });
   const [renaming, setRenaming] = useState(false);
+  const [coverBusy, setCoverBusy] = useState<null | 'upload' | 'generate'>(null);
+  const coverFileRef = (window as any).__coverFileRef || ((window as any).__coverFileRef = { current: null });
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -126,8 +128,52 @@ const TeacherBooks = () => {
       name: book.name,
       grade_level: book.grade_level || '',
       volume: book.volume || '',
+      cover_url: book.cover_url || null,
     });
     setRenameTarget(book);
+  };
+
+  const onPickCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !renameTarget) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('图片不能超过 5MB'); return; }
+    if (!/\.(png|jpe?g|webp)$/i.test(file.name)) { toast.error('仅支持 png/jpg/webp'); return; }
+    setCoverBusy('upload');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post(`/words/books/${renameTarget.id}/cover/upload`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setRenameForm(f => ({ ...f, cover_url: res.data.cover_url }));
+      toast.success('封面已更新');
+    } catch (err) {
+      console.error('封面上传失败:', err);
+      toast.error('上传失败');
+    } finally {
+      setCoverBusy(null);
+    }
+  };
+
+  const onGenerateCover = async () => {
+    if (!renameTarget) return;
+    setCoverBusy('generate');
+    try {
+      const res = await api.post(`/words/books/${renameTarget.id}/cover/generate`, {});
+      const url = res.data.cover_url;
+      if (url && url !== renameForm.cover_url) {
+        setRenameForm(f => ({ ...f, cover_url: url }));
+        toast.success('AI 封面生成成功');
+      } else {
+        toast('AI 服务暂时繁忙,可手动上传或稍后重试', { icon: '⚠️' });
+      }
+    } catch (err) {
+      console.error('AI 生成失败:', err);
+      toast.error('生成失败');
+    } finally {
+      setCoverBusy(null);
+    }
   };
 
   const submitRename = async () => {
@@ -143,6 +189,7 @@ const TeacherBooks = () => {
         name,
         grade_level: renameForm.grade_level.trim() || null,
         volume: renameForm.volume.trim() || null,
+        cover_url: renameForm.cover_url,
       });
       toast.success('已保存');
       setRenameTarget(null);
@@ -662,6 +709,54 @@ const TeacherBooks = () => {
                 />
               </label>
             </div>
+
+            <div className="mb-4">
+              <span className="text-xs text-gray-600 block mb-2">封面</span>
+              <div className="flex items-center gap-3">
+                <div className="w-20 h-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center flex-shrink-0">
+                  {renameForm.cover_url ? (
+                    <img src={renameForm.cover_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-3xl">📘</span>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <input
+                    ref={el => { coverFileRef.current = el; }}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={onPickCoverFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={coverBusy !== null}
+                    onClick={() => coverFileRef.current?.click()}
+                    className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {coverBusy === 'upload' ? '上传中…' : '上传图片'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={coverBusy !== null}
+                    onClick={onGenerateCover}
+                    className="w-full px-3 py-1.5 text-xs rounded-md bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 disabled:opacity-50"
+                  >
+                    {coverBusy === 'generate' ? 'AI 生成中…' : '✨ AI 生成'}
+                  </button>
+                  {renameForm.cover_url && (
+                    <button
+                      type="button"
+                      onClick={() => setRenameForm(f => ({ ...f, cover_url: null }))}
+                      className="w-full px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      清除封面
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <button
                 onClick={() => setRenameTarget(null)}
