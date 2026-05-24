@@ -364,10 +364,6 @@ const WordClassifyLearning = () => {
     setPhase('summary');
     dispatchPetEvent('complete');
     clearLocalProgress();
-    // 复习模式完成 → 标记强制复习已完成
-    if (isReviewRef.current) {
-      sessionStorage.setItem('forced_review_done', 'true');
-    }
   };
 
   // 过关检测重考
