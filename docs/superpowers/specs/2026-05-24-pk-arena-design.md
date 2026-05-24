@@ -185,7 +185,7 @@ USER_ACTIVE: dict[int, int] = {}     # user_id -> room_id
 
 | Phase | 一题的内容 | 玩家提交什么 | 跳过策略 |
 |---|---|---|---|
-| `classify` | 一个词 | `familiar` / `learned` / `unknown` 之一 | 不可跳，超时记错 |
+| `classify` | 一个词 | `familiar` / `semi` / `unknown` 之一 | 不可跳，超时记错 |
 | `speech` | 一个词 | `pass` / `skip`（前端识别后送结果） | 跳过即记错 |
 | `dictation` | 一个词 | 文本输入 | 不可跳，超时记错 |
 | `exam` | 一道选择题 | 选项编号 | 不可跳，超时记错 |
