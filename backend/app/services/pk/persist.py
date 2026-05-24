@@ -1,10 +1,13 @@
 """房间结束落库:写 pk_rooms + pk_room_players + pk_answer_records。"""
 from __future__ import annotations
 import json
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.pk import PkRoom, PkRoomPlayer, PkAnswerRecord
 from app.services.pk.state import RoomState
 from app.services.pk.score import rank_players
+
+logger = logging.getLogger(__name__)
 
 
 async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
@@ -58,4 +61,9 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
             ))
 
     await db.commit()
+    logger.info(
+        "PK room persisted: room_id=%d db_id=%d players=%d answers=%d",
+        room.room_id, db_room.id, len(room.players),
+        sum(len(b) for b in room.answers.values()),
+    )
     return db_room.id

@@ -1,6 +1,7 @@
 """PK 竞技场 WebSocket 端点。"""
 from __future__ import annotations
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
@@ -14,6 +15,8 @@ from app.services.pk import manager, engine
 from app.services.pk.persist import persist_finished_room
 from app.services.pk.engine import PHASE_TIMEOUT_MS
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 HEARTBEAT_TIMEOUT_S = 30
@@ -24,7 +27,8 @@ async def _authenticate(token: str) -> User | None:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id = int(payload["sub"])
-    except (JWTError, KeyError, ValueError):
+    except (JWTError, KeyError, ValueError) as e:
+        logger.info("PK WS auth failed: %s", e)
         return None
     async with AsyncSessionLocal() as db:
         return await db.get(User, user_id)
@@ -134,7 +138,11 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
             continue
         try:
             await ps.ws.send_json(event)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "PK broadcast send failed: room_id=%d user_id=%d error=%s",
+                room.room_id, uid, e,
+            )
             failed_user_ids.append(uid)
 
     for uid in failed_user_ids:
@@ -192,6 +200,10 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
         elif event["type"] == "question_settled":
             _cancel_timer(room.room_id, event["word_idx"], room.current_phase)
         elif event["type"] == "game_finished":
+            logger.info(
+                "PK game finished: room_id=%d players=%d",
+                room.room_id, len(room.players),
+            )
             async with AsyncSessionLocal() as db:
                 await persist_finished_room(room, db)
             for uid in list(room.players.keys()):
@@ -229,6 +241,10 @@ async def pk_ws(
     p.online = True
     p.last_heartbeat_at = datetime.utcnow()
     p.disconnected_at = None
+    logger.info(
+        "PK WS connected: room_id=%d user_id=%d",
+        room.room_id, user.id,
+    )
 
     _ensure_heartbeat_watchdog()
 
@@ -298,5 +314,9 @@ async def pk_ws(
         p.ws = None
         p.online = False
         p.disconnected_at = datetime.utcnow()
+        logger.info(
+            "PK WS disconnected: room_id=%d user_id=%d",
+            room.room_id, user.id,
+        )
         await _broadcast(room, {"type": "player_disconnected", "user_id": user.id})
         _schedule_disconnect_cleanup(room, user.id)

@@ -1,4 +1,5 @@
 """PK 房间 REST 端点:创建房间 / 通过邀请码查询 / 我的历史。"""
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,8 @@ from app.schemas.pk import (
     RoomSnapshot, PlayerSnapshot, PlayerHistoryItem,
 )
 from app.services.pk import manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,10 +58,12 @@ async def create_room(
     word_ids = await _load_unit_word_ids(db, body.unit_id)
     if not word_ids:
         raise HTTPException(status_code=400, detail="UNIT_HAS_NO_WORDS")
+    nickname = user.full_name or user.username or f"User{user.id}"
     try:
         room = manager.create_room(
             host_id=user.id, unit_id=body.unit_id,
             max_players=body.max_players, word_ids=word_ids,
+            nickname=nickname,
         )
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")

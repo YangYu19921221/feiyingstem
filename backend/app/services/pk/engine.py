@@ -38,7 +38,7 @@ def submit_answer(
     if user_id in bucket:
         return []  # 重复提交丢弃
 
-    word_id = room.word_ids[word_idx % len(room.word_ids)]
+    word_id = room.current_word_id  # word_idx == room.current_word_idx by guard above
     word = word_lookup.get(word_id)
     is_correct = bool(get_adapter(phase).judge(word, payload))
 
@@ -69,7 +69,7 @@ def force_timeout(
     if word_idx != room.current_word_idx or phase != room.current_phase:
         return []
     bucket = room.answers.setdefault(word_idx, {})
-    word_id = room.word_ids[word_idx % len(room.word_ids)]
+    word_id = room.current_word_id  # word_idx == room.current_word_idx by guard above
     timeout_ms = PHASE_TIMEOUT_MS.get(phase, 30_000)
     for uid, ps in room.players.items():
         if not ps.online or uid in bucket:
@@ -119,7 +119,7 @@ def _settle_and_advance(
         events.append({"type": "phase_advanced", "new_phase": new_phase})
     room.current_word_idx = new_global
 
-    next_word_id = room.word_ids[new_global % n_words]
+    next_word_id = room.current_word_id
     next_word = word_lookup.get(next_word_id)
     events.append({
         "type": "question_pushed",
