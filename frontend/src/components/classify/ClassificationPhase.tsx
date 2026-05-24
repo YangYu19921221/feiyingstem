@@ -17,6 +17,11 @@ interface ClassificationPhaseProps {
   onComplete: (results: Map<number, WordCategory>) => void;
   onRoundMistakes?: (wordIds: number[]) => void;
   playAudio: (word: string) => void;
+  // PK mode: shows just the current word with classify buttons; single-word controlled mode.
+  mode?: 'solo' | 'pk';
+  pkCurrentWord?: { id: number; word: string; translation: string };
+  pkOnAnswer?: (category: WordCategory, timeSpentMs: number) => void;
+  pkDisabled?: boolean;
 }
 
 const CLASSIFY_TIME_SHORT = 10;       // 单词
@@ -44,7 +49,23 @@ export default function ClassificationPhase({
   onComplete,
   onRoundMistakes,
   playAudio,
+  mode,
+  pkCurrentWord,
+  pkOnAnswer,
+  pkDisabled,
 }: ClassificationPhaseProps) {
+  // PK mode: render a controlled single-word card; skip solo loop entirely.
+  if (mode === 'pk' && pkCurrentWord && pkOnAnswer) {
+    return (
+      <PkClassifySingle
+        word={pkCurrentWord}
+        onAnswer={pkOnAnswer}
+        disabled={!!pkDisabled}
+        playAudio={playAudio}
+      />
+    );
+  }
+
   const [roundWords, setRoundWords] = useState<WordData[]>(words);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [round, setRound] = useState(1);
@@ -480,6 +501,60 @@ export default function ClassificationPhase({
             </motion.button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PkClassifySingle({
+  word,
+  onAnswer,
+  disabled,
+  playAudio,
+}: {
+  word: { id: number; word: string; translation: string };
+  onAnswer: (category: WordCategory, timeSpentMs: number) => void;
+  disabled: boolean;
+  playAudio: (word: string) => void;
+}) {
+  const startRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    if (word.word) playAudio(word.word);
+  }, [word.id, word.word, playAudio]);
+
+  const handle = (cat: WordCategory) => {
+    if (disabled) return;
+    onAnswer(cat, Date.now() - startRef.current);
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-md min-h-[300px]">
+      <ColoredWord word={word.word} className="text-4xl font-bold mb-2" />
+      <p className="text-base text-gray-500 mb-8">{word.translation}</p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => handle('familiar')}
+          disabled={disabled}
+          className="px-5 py-2.5 bg-green-500 text-white rounded-lg font-medium disabled:opacity-50"
+        >
+          熟悉
+        </button>
+        <button
+          onClick={() => handle('semi')}
+          disabled={disabled}
+          className="px-5 py-2.5 bg-yellow-500 text-white rounded-lg font-medium disabled:opacity-50"
+        >
+          学过
+        </button>
+        <button
+          onClick={() => handle('unknown')}
+          disabled={disabled}
+          className="px-5 py-2.5 bg-red-500 text-white rounded-lg font-medium disabled:opacity-50"
+        >
+          陌生
+        </button>
       </div>
     </div>
   );

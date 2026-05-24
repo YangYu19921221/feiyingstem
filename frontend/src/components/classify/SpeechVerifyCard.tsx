@@ -14,6 +14,7 @@ interface SpeechVerifyCardProps {
   onNext: () => void;
   onSkip?: () => void;
   playAudio: (word: string) => void;
+  disabled?: boolean;
 }
 
 type VerifyPhase = 'recording' | 'evaluating' | 'success' | 'error' | 'mic-error';
@@ -27,6 +28,7 @@ export default function SpeechVerifyCard({
   onNext,
   onSkip,
   playAudio,
+  disabled = false,
 }: SpeechVerifyCardProps) {
   const [phase, setPhase] = useState<VerifyPhase>('recording');
   const [transcript, setTranscript] = useState('');
@@ -213,6 +215,12 @@ export default function SpeechVerifyCard({
   // 切换单词时自动开始
   useEffect(() => {
     mountedRef.current = true;
+    if (disabled) {
+      return () => {
+        mountedRef.current = false;
+        cleanup();
+      };
+    }
     const t = setTimeout(() => startRecordingRef.current(), 400);
     return () => {
       mountedRef.current = false;
@@ -220,7 +228,7 @@ export default function SpeechVerifyCard({
       cleanup();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [word.id]);
+  }, [word.id, disabled]);
 
   // 麦克风不可用
   if (phase === 'mic-error') {
@@ -240,10 +248,11 @@ export default function SpeechVerifyCard({
         )}
         <p className="text-red-400 text-sm mb-4">{errorMsg}</p>
         <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={onNext}
-          className="px-8 py-3 rounded-2xl bg-primary text-white font-medium cursor-pointer"
+          whileHover={{ scale: disabled ? 1 : 1.05 }}
+          whileTap={{ scale: disabled ? 1 : 0.95 }}
+          onClick={() => { if (disabled) return; onNext(); }}
+          disabled={disabled}
+          className="px-8 py-3 rounded-2xl bg-primary text-white font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           跳过 →
         </motion.button>
@@ -503,10 +512,11 @@ export default function SpeechVerifyCard({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { cleanup(); onSkip(); }}
-          className="mt-4 px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm font-medium transition"
+          whileHover={{ scale: disabled ? 1 : 1.05 }}
+          whileTap={{ scale: disabled ? 1 : 0.95 }}
+          onClick={() => { if (disabled) return; cleanup(); onSkip(); }}
+          disabled={disabled}
+          className="mt-4 px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           跳过（标记为未掌握）
         </motion.button>
