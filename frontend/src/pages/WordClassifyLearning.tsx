@@ -107,9 +107,10 @@ const WordClassifyLearning = () => {
       phase,
       classifyResults: Array.from(classifyResults.entries()),
       dictationResults,
+      dictationSource,
       timestamp: Date.now(),
     }));
-  }, [progressKey, currentGroupIndex, phase, classifyResults, dictationResults, learningData]);
+  }, [progressKey, currentGroupIndex, phase, classifyResults, dictationResults, dictationSource, learningData]);
 
   // phase / groupIndex / 阶段产出数据 变化时自动保存
   useEffect(() => {
@@ -221,9 +222,12 @@ const WordClassifyLearning = () => {
 
               // 按存档阶段恢复；classify 阶段内部进度未持久化，所以回到 classify 从头
               // dictation / exam 能直接续上（前序阶段的产出已被恢复）
-              const validPhases: Phase[] = ['classify', 'dictation', 'exam'];
+              const validPhases: Phase[] = ['classify', 'dictation', 'exam', 'unitRecap'];
               const restored: Phase = validPhases.includes(saved.phase) ? saved.phase : 'classify';
               setPhase(restored);
+              if (saved.dictationSource === 'recap' || saved.dictationSource === 'normal') {
+                setDictationSource(saved.dictationSource);
+              }
               resumedFromLocal = true;
             }
           }
