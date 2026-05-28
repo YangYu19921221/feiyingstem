@@ -24,9 +24,11 @@ import ClassifySummary from '../components/classify/ClassifySummary';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
+import UnitRecapPhase from '../components/classify/recap/UnitRecapPhase';
 import { dispatchPetEvent } from '../utils/petEventBus';
 
-type Phase = 'classify' | 'speechVerify' | 'dictation' | 'exam' | 'summary';
+type Phase = 'classify' | 'speechVerify' | 'dictation' | 'exam' | 'unitRecap' | 'summary';
+type DictationSource = 'normal' | 'recap';
 
 function getGroupSize(gradeLevel: string | null, customGroupSize?: number): number {
   if (customGroupSize && customGroupSize > 0) return customGroupSize;
@@ -63,6 +65,8 @@ const WordClassifyLearning = () => {
   const [allGroupResults, setAllGroupResults] = useState<GroupResult[]>([]);
 
   const [phase, setPhase] = useState<Phase>('classify');
+  const [dictationSource, setDictationSource] = useState<DictationSource>('normal');
+  const [recapRetryWords, setRecapRetryWords] = useState<WordData[] | null>(null);
   const [classifyResults, setClassifyResults] = useState<Map<number, WordCategory>>(new Map());
   const [dictationResults, setDictationResults] = useState<DictationResult[]>([]);
 
@@ -343,10 +347,9 @@ const WordClassifyLearning = () => {
     setPhase('dictation');
   };
 
-  // 听写完成 → 过关检测
+  // 听写完成 → 来自 recap 的二次听写直接进 summary, 否则进过关检测
   const handleDictationComplete = (results: DictationResult[]) => {
     setDictationResults(results);
-    setPhase('exam');
 
     const mistakes = results.filter(r => !r.isCorrect);
     const correct = results.filter(r => r.isCorrect);
@@ -357,13 +360,27 @@ const WordClassifyLearning = () => {
       mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }))
     );
     saveGroupProgress(results);
+
+    if (dictationSource === 'recap') {
+      setPhase('summary');
+      setDictationSource('normal');
+      setRecapRetryWords(null);
+      clearLocalProgress();
+    } else {
+      setPhase('exam');
+    }
   };
 
-  // 过关检测通过 → 组内总结
+  // 过关检测通过 → 最后一组进单元复习, 否则进组内总结
   const handleExamPass = (correct: number, total: number) => {
-    setPhase('summary');
     dispatchPetEvent('complete');
-    clearLocalProgress();
+    if (isLastGroup) {
+      setPhase('unitRecap');
+      // 不 clearLocalProgress, 让 unitRecap 也能恢复
+    } else {
+      setPhase('summary');
+      clearLocalProgress();
+    }
   };
 
   // 过关检测重考
@@ -551,6 +568,7 @@ const WordClassifyLearning = () => {
     speechVerify: '语音校验',
     dictation: '听写阶段',
     exam: '过关检测',
+    unitRecap: '单元复习',
     summary: '学习总结',
   };
 
@@ -695,7 +713,7 @@ const WordClassifyLearning = () => {
           {phase === 'dictation' && (
             <motion.div key={`dictation-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <DictationPhase
-                words={currentGroupWords}
+                words={recapRetryWords ?? currentGroupWords}
                 onComplete={handleDictationComplete}
                 playAudioSlow={playAudioSlow}
               />
@@ -711,6 +729,26 @@ const WordClassifyLearning = () => {
                 onPass={handleExamPass}
                 onRetry={handleExamRetry}
                 onRelearn={handleExamRelearn}
+              />
+            </motion.div>
+          )}
+
+          {/* 阶段5：单元复习 (仅最后一组通关后) */}
+          {phase === 'unitRecap' && learningData && (
+            <motion.div key={`recap-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <UnitRecapPhase
+                words={learningData.words}
+                unitName={learningData.unit_info?.name}
+                playAudio={playAudio}
+                onRetryDictation={(words) => {
+                  setRecapRetryWords(words);
+                  setDictationSource('recap');
+                  setPhase('dictation');
+                }}
+                onSkipToSummary={() => {
+                  setPhase('summary');
+                  clearLocalProgress();
+                }}
               />
             </motion.div>
           )}
