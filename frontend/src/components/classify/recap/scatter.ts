@@ -1,13 +1,3 @@
-/**
- * 卡片池散落算法。
- *
- * 把矩形池切成 cols × rows 网格,每张卡 anchor 在格子中心,
- * 加 ±15% jitter + ±12° rotation。结构上是网格,视觉上是散落。
- *
- * @param n 卡片总数
- * @param layout: 'mobile'=3 cols, 'desktop'=4 cols, 'large'=5 cols
- * @param seed 可选随机种子,便于测试; 默认用 Math.random()
- */
 export interface ScatteredCard {
   x: number       // 0-100 百分比
   y: number       // 0-100 百分比
@@ -31,6 +21,17 @@ function mulberry32(seed: number) {
   }
 }
 
+/**
+ * 卡片池散落算法。
+ *
+ * 把矩形池切成 cols × rows 网格,每张卡 anchor 在格子中心,
+ * 加 ±15% jitter 和 ±12° rotation。结构上是网格,视觉上是散落。
+ *
+ * @param opts.n 卡片总数
+ * @param opts.layout 'mobile' (3 cols) | 'desktop' (4 cols) | 'large' (5 cols)
+ * @param opts.seed 可选随机种子,便于测试; 默认用 Math.random()
+ * @returns N 个 ScatteredCard, 每个含 x/y (0-100 百分比), rotation (-12~12°), zIndex (1..n, 后者覆盖前者)
+ */
 export function scatter(opts: ScatterOptions): ScatteredCard[] {
   const { n, layout } = opts
   const rand = opts.seed !== undefined ? mulberry32(opts.seed) : Math.random
