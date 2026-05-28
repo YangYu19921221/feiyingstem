@@ -53,15 +53,17 @@ export default function DictationPhase({
   const wordLength = currentWord?.word.replace(/\s+/g, '').length || 0;
   const wordLengthWithSpaces = currentWord?.word.length || 0;
 
-  // 自动播放发音
+  // 自动播放发音 (含 retry 抄写阶段每次状态变化都重新播一次, 让学生听不止 1 遍)
   useEffect(() => {
     if (!currentWord || showRoundSummary) return;
+    // 已经抄完 3 遍, 准备进入下一题, 不再播
+    if (retryMode && retryPassed) return;
     const t = setTimeout(() => {
       playAudioSlow(currentWord.word);
     }, 500);
     setTimeout(() => inputRef.current?.focus(), 600);
     return () => clearTimeout(t);
-  }, [currentIndex, currentWord, playAudioSlow, round, showRoundSummary]);
+  }, [currentIndex, currentWord, playAudioSlow, round, showRoundSummary, retryMode, copyDoneCount, retryPassed]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (retryMode) {
@@ -159,8 +161,10 @@ export default function DictationPhase({
     } else {
       setRetryInput('');
       inputRef.current?.focus();
+      // 抄错: copyDoneCount 不变, useEffect 不会重跑, 显式再播一次
+      setTimeout(() => playAudioSlow(currentWord.word), 200);
     }
-  }, [currentWord, retryInput, copyDoneCount]);
+  }, [currentWord, retryInput, copyDoneCount, playAudioSlow]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
