@@ -10,6 +10,7 @@ import type { WordData } from '../../api/progress';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
+import { findBlankRange, canBlank } from '../../utils/blankSentence';
 
 
 export interface FillBlankResult {
@@ -30,8 +31,8 @@ export default function SentenceFillPhase({
   onComplete,
   playAudio,
 }: SentenceFillPhaseProps) {
-  // 只取有例句的单词
-  const wordsWithSentence = words.filter(w => w.example_sentence);
+  // 只取「有例句且能正确挖空」的单词，避免出现没有横线的坏句
+  const wordsWithSentence = words.filter(w => canBlank(w.example_sentence, w.word));
 
   const [roundWords, setRoundWords] = useState<WordData[]>(wordsWithSentence);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -68,14 +69,11 @@ export default function SentenceFillPhase({
     return () => clearTimeout(t);
   }, [currentIndex, currentWord, round, showRoundSummary]);
 
-  // 把例句中的目标词替换成空格
+  // 把例句中的目标词替换成空格（容忍词形变化，见 findBlankRange）
   const renderSentence = (sentence: string, targetWord: string) => {
-    // 用整词边界匹配，避免 "run" 命中 "runs" 导致例句被切错、残留 "s"
-    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b${escape(targetWord)}\\b`, 'i');
-    const match = pattern.exec(sentence);
+    const range = findBlankRange(sentence, targetWord);
 
-    if (!match) {
+    if (!range) {
       return (
         <p className="text-gray-700 text-lg leading-relaxed break-words whitespace-normal">
           {sentence}
@@ -83,10 +81,9 @@ export default function SentenceFillPhase({
       );
     }
 
-    const idx = match.index;
-    const matchedLen = match[0].length;
-    const before = sentence.slice(0, idx);
-    const after = sentence.slice(idx + matchedLen);
+    const before = sentence.slice(0, range.start);
+    const after = sentence.slice(range.end);
+    const matchedLen = range.end - range.start;
 
     return (
       <p className="text-gray-700 text-lg leading-relaxed break-words whitespace-normal">
