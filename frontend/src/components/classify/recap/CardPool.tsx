@@ -41,6 +41,9 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   const practiceBasketRef = useRef<HTMLDivElement>(null)
   const undoTimer = useRef<number | null>(null)
   const didFinish = useRef(false)
+  // cards 镜像 ref: finish() 用它而不是闭包 cards, 避免学生拖最后一张到篮子的同时
+  // 立即点 "完成 →" 时, finish 用了上一渲染的 stale cards (最后一张 verdict 仍 unknown).
+  const cardsRef = useRef<PoolCardState[]>([])
 
   const [cards, setCards] = useState<PoolCardState[]>(() => {
     if (initialCards && initialCards.length === words.length) return initialCards
@@ -75,14 +78,22 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   function finish() {
     if (didFinish.current) return
     didFinish.current = true
+    // 用 cardsRef.current 而不是闭包 cards: 学生拖最后一张到篮子的同时立即点 "完成 →",
+    // 闭包 cards 是上一渲染的快照, 最后一张 verdict 仍是 'unknown' → 漏报.
+    const latest = cardsRef.current.length > 0 ? cardsRef.current : cards
     const masteredWordIds: number[] = []
     const practiceWords: WordData[] = []
-    for (const c of cards) {
+    for (const c of latest) {
       if (c.verdict === 'mastered') masteredWordIds.push(c.word.id)
       else if (c.verdict === 'practice') practiceWords.push(c.word)
     }
     onComplete({ masteredWordIds, practiceWords })
   }
+
+  // 同步 cardsRef → finish() 能拿到最新 cards 而非闭包快照
+  useEffect(() => {
+    cardsRef.current = cards
+  }, [cards])
 
   // 全部分类完毕自动收官
   useEffect(() => {
