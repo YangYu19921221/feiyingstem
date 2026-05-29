@@ -353,26 +353,32 @@ const WordClassifyLearning = () => {
 
   // 听写完成 → 来自 recap 的二次听写直接进 summary, 否则进过关检测
   const handleDictationComplete = (results: DictationResult[]) => {
-    setDictationResults(results);
-
     const mistakes = results.filter(r => !r.isCorrect);
     const correct = results.filter(r => r.isCorrect);
     if (correct.length > 0) dispatchPetEvent('correct', { combo: correct.length });
     if (mistakes.length > 0) dispatchPetEvent('wrong');
 
-    submitMistakesRealtime(
-      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }))
-    );
-    saveGroupProgress(results);
-
     if (dictationSource === 'recap') {
+      // recap 是单元复习内的自评再练, 不污染主流程统计/学习记录:
+      // - 不 setDictationResults: 会用 M-个子集结果覆盖 last-group 的 N 个原结果,
+      //   破坏 finalSummaryData 的准确率统计
+      // - 不 submitMistakesRealtime: 这些 wrong 记录已在 normal dictation 中提交过,
+      //   重复提交会让 word_mastery.wrong_count 和 review_stage 倒退翻倍
+      // - 不 saveGroupProgress: 会重提 'familiar' 词的 classify correct 记录,
+      //   并污染本组 records
       setPhase('summary');
       setDictationSource('normal');
       setRecapRetryWords(null);
       clearLocalProgress();
-    } else {
-      setPhase('exam');
+      return;
     }
+
+    setDictationResults(results);
+    submitMistakesRealtime(
+      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }))
+    );
+    saveGroupProgress(results);
+    setPhase('exam');
   };
 
   // 过关检测通过 → 最后一组进单元复习, 否则进组内总结
