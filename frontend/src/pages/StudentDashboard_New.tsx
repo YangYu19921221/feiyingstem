@@ -10,6 +10,7 @@ import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework } from '../api/homework';
 import PetWidget from '../components/PetWidget';
+import RankingBanner from '../components/leaderboard/RankingBanner';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import { BookGridSkeleton } from '../components/Skeleton';
 import { AchievementIcon } from '../components/AchievementIcon';
@@ -367,6 +368,9 @@ const StudentDashboard = () => {
             loading="lazy"
           />
         </section>
+
+        {/* 光荣榜入口横幅 — 一进首页就看到「上榜」钩子 */}
+        <RankingBanner />
 
         {/* 我的书架 */}
         <section className="mb-12">

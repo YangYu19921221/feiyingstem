@@ -1,5 +1,6 @@
 """学生端光荣榜 — 词汇王 / 勤奋王 / 精准王
-周维度统计，只展示前 10 名 + 当前学生位置（不展示完整名次榜）
+周维度统计。展示前 10 名 + 当前学生「邻居区」（我的上下各 2 名）。
+支持 scope=班级榜 / 全平台榜（无班级时自动回退到全平台）。
 """
 from datetime import datetime, timedelta
 from typing import Literal
@@ -12,12 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_student
 from app.core.database import get_db
 from app.models.learning import LearningRecord, StudySession, WordMastery
-from app.models.user import User
+from app.models.user import User, Class, ClassStudent
 
 router = APIRouter()
 
 LeaderboardKind = Literal["vocabulary", "diligence", "accuracy"]
 PeriodKind = Literal["this_week", "last_week", "this_month"]
+ScopeKind = Literal["class", "global"]
 
 
 def _period_range(period: PeriodKind) -> tuple[datetime, datetime]:
@@ -25,13 +27,11 @@ def _period_range(period: PeriodKind) -> tuple[datetime, datetime]:
     now = datetime.utcnow()
     today = datetime(now.year, now.month, now.day)
     if period == "this_week":
-        # 本周一 00:00 → 下周一 00:00
         monday = today - timedelta(days=today.weekday())
         return monday, monday + timedelta(days=7)
     if period == "last_week":
         monday = today - timedelta(days=today.weekday() + 7)
         return monday, monday + timedelta(days=7)
-    # this_month
     first = datetime(now.year, now.month, 1)
     if now.month == 12:
         next_first = datetime(now.year + 1, 1, 1)
@@ -51,211 +51,202 @@ class LeaderboardEntry(BaseModel):
 class LeaderboardResponse(BaseModel):
     kind: LeaderboardKind
     period: PeriodKind
+    scope: ScopeKind          # 实际生效的范围（无班级时即使请求 class 也回 global）
+    has_class: bool           # 学生是否在某个班级里（决定前端是否显示班级榜开关）
+    class_name: str | None
     top: list[LeaderboardEntry]
+    neighbors: list[LeaderboardEntry]  # 我的上下各 2 名（含自己），按 rank 升序
     my_rank: int | None
     my_value: int
-    my_delta: int  # 与上一周期相比的 +/-，词数/分钟为绝对差，正确率为百分点差
+    my_delta: int             # 与上一周期相比的 +/-；正确率为百分点差
     total_participants: int
 
 
-async def _vocabulary_leaderboard(
-    db: AsyncSession,
-    user_id: int,
-    period: PeriodKind,
-) -> LeaderboardResponse:
-    """词汇王：本周期内新掌握的不同词数"""
-    start, end = _period_range(period)
+async def _resolve_scope(
+    db: AsyncSession, user_id: int, scope: ScopeKind,
+) -> tuple[ScopeKind, set[int] | None, bool, str | None]:
+    """解析范围。返回 (生效scope, 允许的user_id集合或None, 是否有班级, 班级名)。
+    allowed 为 None 表示不限制（全平台）。学生在多个班级时取最近加入的一个。
+    """
+    row = (await db.execute(
+        select(ClassStudent.class_id, Class.name)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(and_(
+            ClassStudent.student_id == user_id,
+            ClassStudent.is_active.is_(True),
+        ))
+        .order_by(ClassStudent.joined_at.desc())
+    )).first()
 
-    # 本周期内首次答对（mastery 升到 ≥3）的词数
-    # 使用 LearningRecord：本周期内该用户答对的不重复 word_id 数
+    has_class = row is not None
+    class_name = row[1] if row else None
+
+    if scope == "class" and has_class:
+        members = await db.execute(
+            select(ClassStudent.student_id).where(and_(
+                ClassStudent.class_id == row[0],
+                ClassStudent.is_active.is_(True),
+            ))
+        )
+        return "class", {r[0] for r in members.all()}, has_class, class_name
+
+    return "global", None, has_class, class_name
+
+
+async def _vocabulary_rows(db, period, allowed):
+    """词汇王：本周期内答对的不重复 word_id 数"""
+    start, end = _period_range(period)
+    conds = [
+        LearningRecord.created_at >= start,
+        LearningRecord.created_at < end,
+        LearningRecord.is_correct.is_(True),
+    ]
+    if allowed is not None:
+        conds.append(LearningRecord.user_id.in_(allowed))
     stmt = (
         select(
             LearningRecord.user_id,
             func.count(func.distinct(LearningRecord.word_id)).label("v"),
         )
-        .where(
-            and_(
-                LearningRecord.created_at >= start,
-                LearningRecord.created_at < end,
-                LearningRecord.is_correct.is_(True),
-            )
-        )
+        .where(and_(*conds))
         .group_by(LearningRecord.user_id)
         .order_by(func.count(func.distinct(LearningRecord.word_id)).desc())
     )
-    result = await db.execute(stmt)
-    rows = result.all()
-    return await _build_response(db, "vocabulary", period, user_id, rows, start, end)
+    return [(r[0], r[1]) for r in (await db.execute(stmt)).all()]
 
 
-async def _diligence_leaderboard(
-    db: AsyncSession,
-    user_id: int,
-    period: PeriodKind,
-) -> LeaderboardResponse:
-    """勤奋王：本周期内学习总分钟数（StudySession.time_spent 累加）"""
+async def _diligence_rows(db, period, allowed):
+    """勤奋王：本周期内学习总分钟数"""
     start, end = _period_range(period)
+    conds = [StudySession.started_at >= start, StudySession.started_at < end]
+    if allowed is not None:
+        conds.append(StudySession.user_id.in_(allowed))
     stmt = (
         select(
             StudySession.user_id,
             (func.coalesce(func.sum(StudySession.time_spent), 0) / 60).label("v"),
         )
-        .where(
-            and_(
-                StudySession.started_at >= start,
-                StudySession.started_at < end,
-            )
-        )
+        .where(and_(*conds))
         .group_by(StudySession.user_id)
         .order_by(func.coalesce(func.sum(StudySession.time_spent), 0).desc())
     )
-    result = await db.execute(stmt)
-    rows = result.all()
-    return await _build_response(db, "diligence", period, user_id, rows, start, end)
+    return [(r[0], r[1]) for r in (await db.execute(stmt)).all()]
 
 
-async def _accuracy_leaderboard(
-    db: AsyncSession,
-    user_id: int,
-    period: PeriodKind,
-) -> LeaderboardResponse:
-    """精准王：本周期内首次答对率（>=80% 才入榜）
-    分子：is_correct = True 的不重复 word_id 数
-    分母：该用户在该词上的第一条 LearningRecord 数（即"遇到过"的不重复词数）
-    简化：用本期总答题正确率（不区分首次/重复），降低 SQL 复杂度
-    """
+async def _accuracy_rows(db, period, allowed):
+    """精准王：本周期答题正确率（至少 20 题才入榜）"""
     start, end = _period_range(period)
     total = func.count(LearningRecord.id)
     correct = func.sum(case((LearningRecord.is_correct.is_(True), 1), else_=0))
     accuracy = func.cast(correct * 100, Integer) / total
-
+    conds = [LearningRecord.created_at >= start, LearningRecord.created_at < end]
+    if allowed is not None:
+        conds.append(LearningRecord.user_id.in_(allowed))
     stmt = (
-        select(
-            LearningRecord.user_id,
-            accuracy.label("v"),
-            total.label("attempts"),
-        )
-        .where(
-            and_(
-                LearningRecord.created_at >= start,
-                LearningRecord.created_at < end,
-            )
-        )
+        select(LearningRecord.user_id, accuracy.label("v"))
+        .where(and_(*conds))
         .group_by(LearningRecord.user_id)
-        .having(total >= 20)  # 至少答 20 题才入榜，避免 1 题 100% 霸榜
+        .having(total >= 20)
         .order_by(accuracy.desc())
     )
-    result = await db.execute(stmt)
-    rows = [(r[0], r[1]) for r in result.all()]
-    return await _build_response(db, "accuracy", period, user_id, rows, start, end)
+    return [(r[0], r[1]) for r in (await db.execute(stmt)).all()]
 
 
-async def _build_response(
-    db: AsyncSession,
-    kind: LeaderboardKind,
-    period: PeriodKind,
-    user_id: int,
-    rows: list[tuple],
-    start: datetime,
-    end: datetime,
-) -> LeaderboardResponse:
-    """通用响应构造：取 top10 + 当前用户排名 + 总人数 + 周环比"""
-    total = len(rows)
-
-    # top 10 需要 join users 拿用户名
-    top_ids = [r[0] for r in rows[:10]]
-    top_users: dict[int, User] = {}
-    if top_ids:
-        user_result = await db.execute(select(User).where(User.id.in_(top_ids)))
-        top_users = {u.id: u for u in user_result.scalars().all()}
-
-    top_entries: list[LeaderboardEntry] = []
-    for rank, (uid, val) in enumerate(rows[:10], start=1):
-        u = top_users.get(uid)
+def _slice_entries(rows, users, lo, hi) -> list[LeaderboardEntry]:
+    """把 rows[lo-1:hi]（1-based rank 区间）构造成 entry 列表"""
+    out: list[LeaderboardEntry] = []
+    for offset, (uid, val) in enumerate(rows[lo - 1:hi]):
+        u = users.get(uid)
         if not u:
             continue
-        top_entries.append(LeaderboardEntry(
+        out.append(LeaderboardEntry(
             user_id=uid,
             username=u.username,
             full_name=u.full_name,
             value=int(val or 0),
-            rank=rank,
+            rank=lo + offset,
         ))
+    return out
 
-    # 当前学生的排名 + 本期值
+
+async def _build_response(
+    db, kind, period, scope, has_class, class_name, user_id, rows,
+) -> LeaderboardResponse:
+    """通用响应：top10 + 邻居区 + 我的名次 + 总人数 + 周环比"""
+    start, end = _period_range(period)
+    total = len(rows)
+
+    # 我的名次 / 本期值
     my_rank: int | None = None
     my_value = 0
     for rank, (uid, val) in enumerate(rows, start=1):
         if uid == user_id:
-            my_rank = rank
-            my_value = int(val or 0)
+            my_rank, my_value = rank, int(val or 0)
             break
 
-    # 周环比：拿上一周期同样的值，做差
+    # 一次性取齐 top10 + 邻居区所需的用户
+    nb_lo = max(1, my_rank - 2) if my_rank else 0
+    nb_hi = min(total, my_rank + 2) if my_rank else -1
+    need_ids = {r[0] for r in rows[:10]}
+    if my_rank:
+        need_ids |= {r[0] for r in rows[nb_lo - 1:nb_hi]}
+    users: dict[int, User] = {}
+    if need_ids:
+        res = await db.execute(select(User).where(User.id.in_(need_ids)))
+        users = {u.id: u for u in res.scalars().all()}
+
+    top_entries = _slice_entries(rows, users, 1, 10)
+    neighbors = _slice_entries(rows, users, nb_lo, nb_hi) if my_rank else []
+
+    # 周环比（我自己的值，与范围无关）
     my_delta = 0
     if period == "this_week":
-        prev_start = start - timedelta(days=7)
-        prev_value = await _get_my_period_value(db, kind, user_id, prev_start, start)
+        prev_value = await _get_my_period_value(
+            db, kind, user_id, start - timedelta(days=7), start,
+        )
         my_delta = my_value - prev_value
 
     return LeaderboardResponse(
-        kind=kind,
-        period=period,
-        top=top_entries,
-        my_rank=my_rank,
-        my_value=my_value,
-        my_delta=my_delta,
+        kind=kind, period=period, scope=scope,
+        has_class=has_class, class_name=class_name,
+        top=top_entries, neighbors=neighbors,
+        my_rank=my_rank, my_value=my_value, my_delta=my_delta,
         total_participants=total,
     )
 
 
-async def _get_my_period_value(
-    db: AsyncSession,
-    kind: LeaderboardKind,
-    user_id: int,
-    start: datetime,
-    end: datetime,
-) -> int:
-    """单独取当前学生在某周期的指标值（用于环比）"""
+async def _get_my_period_value(db, kind, user_id, start, end) -> int:
+    """当前学生在某周期的指标值（用于环比，全口径不分范围）"""
     if kind == "vocabulary":
-        result = await db.execute(
-            select(func.count(func.distinct(LearningRecord.word_id)))
-            .where(
-                and_(
-                    LearningRecord.user_id == user_id,
-                    LearningRecord.created_at >= start,
-                    LearningRecord.created_at < end,
-                    LearningRecord.is_correct.is_(True),
-                )
-            )
-        )
-        return int(result.scalar() or 0)
-    if kind == "diligence":
-        result = await db.execute(
-            select(func.coalesce(func.sum(StudySession.time_spent), 0))
-            .where(
-                and_(
-                    StudySession.user_id == user_id,
-                    StudySession.started_at >= start,
-                    StudySession.started_at < end,
-                )
-            )
-        )
-        return int((result.scalar() or 0) / 60)
-    # accuracy：百分点差
-    result = await db.execute(
-        select(
-            func.count(LearningRecord.id),
-            func.sum(case((LearningRecord.is_correct.is_(True), 1), else_=0)),
-        ).where(
-            and_(
+        r = await db.execute(
+            select(func.count(func.distinct(LearningRecord.word_id))).where(and_(
                 LearningRecord.user_id == user_id,
                 LearningRecord.created_at >= start,
                 LearningRecord.created_at < end,
-            )
+                LearningRecord.is_correct.is_(True),
+            ))
         )
+        return int(r.scalar() or 0)
+    if kind == "diligence":
+        r = await db.execute(
+            select(func.coalesce(func.sum(StudySession.time_spent), 0)).where(and_(
+                StudySession.user_id == user_id,
+                StudySession.started_at >= start,
+                StudySession.started_at < end,
+            ))
+        )
+        return int((r.scalar() or 0) / 60)
+    r = await db.execute(
+        select(
+            func.count(LearningRecord.id),
+            func.sum(case((LearningRecord.is_correct.is_(True), 1), else_=0)),
+        ).where(and_(
+            LearningRecord.user_id == user_id,
+            LearningRecord.created_at >= start,
+            LearningRecord.created_at < end,
+        ))
     )
-    row = result.first()
+    row = r.first()
     if not row or not row[0]:
         return 0
     return int((row[1] or 0) * 100 / row[0])
@@ -265,12 +256,20 @@ async def _get_my_period_value(
 async def get_leaderboard(
     kind: LeaderboardKind = Query("vocabulary"),
     period: PeriodKind = Query("this_week"),
+    scope: ScopeKind = Query("class"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """光荣榜 — 词汇/勤奋/精准王，三种周期"""
+    """光荣榜 — 词汇/勤奋/精准王 × 三种周期 × 班级榜/全平台榜"""
+    eff_scope, allowed, has_class, class_name = await _resolve_scope(
+        db, current_user.id, scope,
+    )
     if kind == "vocabulary":
-        return await _vocabulary_leaderboard(db, current_user.id, period)
-    if kind == "diligence":
-        return await _diligence_leaderboard(db, current_user.id, period)
-    return await _accuracy_leaderboard(db, current_user.id, period)
+        rows = await _vocabulary_rows(db, period, allowed)
+    elif kind == "diligence":
+        rows = await _diligence_rows(db, period, allowed)
+    else:
+        rows = await _accuracy_rows(db, period, allowed)
+    return await _build_response(
+        db, kind, period, eff_scope, has_class, class_name, current_user.id, rows,
+    )
