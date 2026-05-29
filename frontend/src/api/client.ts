@@ -6,9 +6,10 @@ import { onUnauthorized, isUnauthorizedError } from './_authInterceptors';
 const instance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // 不要在这里写死 Content-Type: application/json。
+  // axios 对普通对象 body 会自动补 application/json;
+  // 若写死,FormData 上传(如句子批量导入)会被序列化成 JSON,
+  // 后端 UploadFile=File(...) 收不到文件 → 422。留空让浏览器自动设 multipart 边界。
 });
 
 // 请求拦截器
