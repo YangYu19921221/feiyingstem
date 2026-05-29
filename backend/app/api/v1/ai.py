@@ -545,6 +545,118 @@ async def generate_unit_quiz(
 
 
 # ========================================
+# 选词填空 (word-bank cloze)：一个共享词库 + 多个句子，每空一词、每词一次
+# 答案天然唯一（每空的答案就是它自己那个单词），不引入会超纲的干扰项
+# ========================================
+
+class UnitClozeRequest(BaseModel):
+    unit_id: int = Field(..., description="单元ID")
+    blank_count: int = Field(6, ge=3, le=10, description="一组里的句子/空格数")
+
+class ClozeItem(BaseModel):
+    word_id: int
+    answer: str                 # 该空的正确单词
+    sentence: str               # 含 ______ 的英文句
+    translation: str = ""       # 中文翻译，帮助理解
+    phonetic: Optional[str] = None
+    meaning: Optional[str] = None
+
+class ClozeBankWord(BaseModel):
+    word_id: int
+    word: str
+
+class UnitClozeResponse(BaseModel):
+    unit_id: int
+    unit_name: str
+    bank: List[ClozeBankWord]   # 共享词库（已打乱）
+    items: List[ClozeItem]      # 句子列表，与 bank 一一对应但顺序不同
+
+
+def _blank_out(sentence: str, word: str) -> str:
+    """把句子里的目标词换成 ______（大小写都处理），失败则在末尾补一空"""
+    import re
+    pattern = re.compile(rf"\b{re.escape(word)}\b", re.IGNORECASE)
+    blanked, n = pattern.subn("______", sentence, count=1)
+    return blanked if n else f"{sentence.rstrip('.')} ______."
+
+
+@router.post("/generate-unit-cloze", response_model=UnitClozeResponse)
+async def generate_unit_cloze(
+    request: UnitClozeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    生成「选词填空」一组题：共享词库 + 多句，每个空唯一答案。
+    句子优先用老师录入的例句；缺失时按单元年级约束 AI 生成，杜绝超纲。
+    """
+    result = await db.execute(select(Unit).where(Unit.id == request.unit_id))
+    unit = result.scalar_one_or_none()
+    if not unit:
+        raise HTTPException(status_code=404, detail=f"单元ID {request.unit_id} 不存在")
+
+    result = await db.execute(
+        select(Word, WordDefinition, UnitWord.order_index)
+        .join(UnitWord, Word.id == UnitWord.word_id)
+        .outerjoin(WordDefinition, and_(
+            WordDefinition.word_id == Word.id,
+            WordDefinition.is_primary == True
+        ))
+        .where(UnitWord.unit_id == request.unit_id)
+        .order_by(UnitWord.order_index)
+    )
+    word_rows = result.all()
+    if len(word_rows) < 3:
+        raise HTTPException(status_code=400, detail="单元单词不足，至少需要3个单词")
+
+    # 单元年级，用于约束生成范围（books/words 均可能带 grade_level）
+    grade = (getattr(unit, "grade_level", "") or "")
+
+    pool = []
+    for word, definition, _ in word_rows:
+        pool.append({
+            "id": word.id,
+            "word": word.word,
+            "phonetic": word.phonetic or "",
+            "meaning": definition.meaning if definition else "",
+            "example": (definition.example_sentence if definition else "") or "",
+        })
+
+    count = min(request.blank_count, len(pool))
+    chosen = random.sample(pool, count)
+
+    # 并行准备每个空的句子：有例句直接用，否则约束生成
+    async def build_item(wd: dict) -> ClozeItem:
+        sentence, translation = wd["example"], ""
+        if not sentence or wd["word"].lower() not in sentence.lower():
+            data = await ai_service.generate_cloze_sentence(
+                word=wd["word"], meaning=wd["meaning"], grade_level=grade,
+            )
+            sentence, translation = data["sentence"], data.get("translation", "")
+        return ClozeItem(
+            word_id=wd["id"],
+            answer=wd["word"],
+            sentence=_blank_out(sentence, wd["word"]),
+            translation=translation,
+            phonetic=wd["phonetic"],
+            meaning=wd["meaning"],
+        )
+
+    items = await asyncio.gather(*[build_item(wd) for wd in chosen])
+
+    bank = [ClozeBankWord(word_id=wd["id"], word=wd["word"]) for wd in chosen]
+    random.shuffle(bank)
+    items = list(items)
+    random.shuffle(items)
+
+    return UnitClozeResponse(
+        unit_id=unit.id,
+        unit_name=unit.name,
+        bank=bank,
+        items=items,
+    )
+
+
+# ========================================
 # 基于单词ID列表生成练习题(错题练习使用)
 # ========================================
 

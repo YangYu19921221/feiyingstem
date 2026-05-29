@@ -91,6 +91,50 @@ class AIService:
                 "translation": f"我喜欢使用{word}。"
             }
 
+    async def generate_cloze_sentence(
+        self,
+        word: str,
+        meaning: str,
+        grade_level: str = "",
+    ) -> Dict[str, str]:
+        """
+        为「选词填空」生成一句不超纲的语境句。
+        要求短句、人教版年级水平、答案唯一(去掉该词后语境仍指向它)。
+        返回: {"sentence": "...含该词的英文句...", "translation": "中文翻译"}
+        """
+        grade_hint = f"该词来自人教版{grade_level}教材," if grade_level else "该词来自人教版中小学教材,"
+        cache_key = self._generate_cache_key(
+            "cloze", word=word, meaning=meaning, grade=grade_level,
+        )
+        cached = self._get_cache(cache_key)
+        if cached:
+            return json.loads(cached)
+
+        prompt = f"""请为单词 "{word}"(意思:{meaning})写一个英文例句,用于中小学生的「选词填空」练习。
+
+{grade_hint}严格遵守:
+1. 句子里必须完整出现 "{word}" 这个词(原形或合理变形)
+2. 长度 6-12 个单词,只用人教版同年级学生学过的基础高频词,绝不出现超纲、生僻或专业词汇
+3. 语境要让 "{word}" 成为唯一合理的答案:把它抠掉后,根据上下文只能填回它,不能换成别的近义词
+4. 语法简单、地道、贴近校园或日常生活
+5. 配准确的中文翻译
+
+只返回JSON,不要其他文字:
+{{"sentence": "英文例句", "translation": "中文翻译"}}
+"""
+        result = await self._call_llm(prompt)
+        try:
+            data = json.loads(result)
+            if word.lower() not in data.get("sentence", "").lower():
+                raise ValueError("生成句不含目标词")
+            self._set_cache(cache_key, json.dumps(data, ensure_ascii=False))
+            return data
+        except (json.JSONDecodeError, ValueError):
+            return {
+                "sentence": f"I can see a {word} here.",
+                "translation": f"我在这里能看到一个{meaning}。",
+            }
+
     async def generate_distractors(
         self,
         word: str,
@@ -102,7 +146,6 @@ class AIService:
         返回: ["错误选项1", "错误选项2", "错误选项3"]
         """
         cache_key = self._generate_cache_key(
-            "distractors",
             word=word,
             correct_meaning=correct_meaning,
             count=count
