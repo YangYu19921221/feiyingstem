@@ -359,6 +359,8 @@ CREATE INDEX idx_user_progress_user ON user_word_progress(user_id);
 CREATE INDEX idx_user_progress_next_review ON user_word_progress(next_review_time);
 CREATE INDEX idx_learning_records_user ON learning_records(user_id);
 CREATE INDEX idx_learning_records_created ON learning_records(created_at);
+-- 错题集/光荣榜重度过滤 user_id + is_correct(+word_id 覆盖去重),避免退化为整表扫描
+CREATE INDEX IF NOT EXISTS idx_lr_user_correct_word ON learning_records(user_id, is_correct, word_id);
 CREATE INDEX idx_book_words_book ON book_words(book_id);
 CREATE INDEX idx_exam_papers_user ON exam_papers(user_id);
 

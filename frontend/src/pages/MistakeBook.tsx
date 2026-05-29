@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -50,14 +50,19 @@ const MistakeBook = () => {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refreshStats]);
 
-  // SPA 内从闯关页 navigate(-1) 回来时，location.key 会变 → 同时刷新词列表
+  // SPA 内从闯关页 navigate(-1) 回来时，location.key 会变 → 刷新词列表（也负责首次挂载加载）
   useEffect(() => {
     loadWords(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
-  // 单词列表在筛选切换时重置到第1页
+  // 筛选切换时重置到第1页。跳过首次挂载，避免和上面的 location.key effect 重复请求最重的查询
+  const didMountFilter = useRef(false);
   useEffect(() => {
+    if (!didMountFilter.current) {
+      didMountFilter.current = true;
+      return;
+    }
     setCurrentPage(1);
     loadWords(1);
   }, [showResolved]);
