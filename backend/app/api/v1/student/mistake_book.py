@@ -518,7 +518,7 @@ async def get_challenge_levels(
     rows = [r for r in rows if r.id not in review_word_ids]
 
     # 3. 构建关卡列表
-    words_per_level = 5
+    words_per_level = 10
     levels = []
 
     # 先加复习关卡（标记 review 状态，强制优先）
