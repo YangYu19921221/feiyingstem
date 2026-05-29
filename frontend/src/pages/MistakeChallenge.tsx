@@ -317,14 +317,15 @@ function PlayingPhase({
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-      {/* 进度指示器 */}
-      <div className="flex items-center justify-center gap-3 mb-8">
+      {/* 进度指示器 — 词数多时圆点自适应缩小, 并允许换行兜底窄屏 */}
+      <div className={`flex flex-wrap items-center justify-center mb-8 ${total > 6 ? 'gap-2' : 'gap-3'}`}>
         {level.words.map((_, i) => {
           const fb = feedbackHistory[i];
+          const dot = total > 6 ? 'w-3 h-3' : 'w-4 h-4';
           return (
             <div
               key={i}
-              className={`w-4 h-4 rounded-full transition-all ${
+              className={`${dot} rounded-full transition-all ${
                 fb ? (fb.isCorrect ? 'bg-green-500' : 'bg-red-500') :
                 i === currentIndex ? 'bg-orange-500 scale-125 animate-pulse' : 'bg-gray-300'
               }`}
