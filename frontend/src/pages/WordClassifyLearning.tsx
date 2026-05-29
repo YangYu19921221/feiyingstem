@@ -108,9 +108,10 @@ const WordClassifyLearning = () => {
       classifyResults: Array.from(classifyResults.entries()),
       dictationResults,
       dictationSource,
+      recapRetryWords,
       timestamp: Date.now(),
     }));
-  }, [progressKey, currentGroupIndex, phase, classifyResults, dictationResults, dictationSource, learningData]);
+  }, [progressKey, currentGroupIndex, phase, classifyResults, dictationResults, dictationSource, recapRetryWords, learningData]);
 
   // phase / groupIndex / 阶段产出数据 变化时自动保存
   useEffect(() => {
@@ -227,6 +228,9 @@ const WordClassifyLearning = () => {
               setPhase(restored);
               if (saved.dictationSource === 'recap' || saved.dictationSource === 'normal') {
                 setDictationSource(saved.dictationSource);
+              }
+              if (Array.isArray(saved.recapRetryWords) && saved.recapRetryWords.length > 0) {
+                setRecapRetryWords(saved.recapRetryWords);
               }
               resumedFromLocal = true;
             }
