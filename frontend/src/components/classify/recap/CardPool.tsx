@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, type PanInfo } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
 import RecapCard, { type PoolCardState, type Verdict } from './RecapCard'
+import FlyingCardLayer, { type FlyingCard } from './FlyingCardLayer'
 import { scatter } from './scatter'
 
 interface Props {
@@ -61,6 +62,10 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   })
 
   const [lastSorted, setLastSorted] = useState<{ wordId: number; prev: Verdict } | null>(null)
+  const [flying, setFlying] = useState<FlyingCard[]>([])
+  // 篮子「接住」脉冲：飞行卡落地时 +1，驱动对应篮子弹一下，时序与落地对齐
+  const [caught, setCaught] = useState<{ mastered: number; practice: number }>({ mastered: 0, practice: 0 })
+  const flyId = useRef(0)
 
   const sortedCount = useMemo(
     () => cards.filter(c => c.verdict !== 'unknown').length,
@@ -127,6 +132,20 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
     for (const z of drop) {
       if (pointInRect(info.point.x, info.point.y, z.rect)) {
         const prev = cards.find(c => c.word.id === wordId)?.verdict ?? 'unknown'
+        const card = cards.find(c => c.word.id === wordId)
+        // 生成「飞入篮子」过场卡：从松手点飞向篮子中心，缩小淡出
+        if (card) {
+          flyId.current += 1
+          setFlying(prevFly => [...prevFly, {
+            id: flyId.current,
+            word: card.word,
+            from: { x: info.point.x, y: info.point.y },
+            to: { x: z.rect.left + z.rect.width / 2, y: z.rect.top + z.rect.height / 2 },
+            verdict: z.verdict,
+            rotation: card.rotation,
+          }])
+        }
+        // 立刻把原卡设为已分类（从池中消失），由飞行卡接管视觉过场
         setCards(prevCards => prevCards.map(c =>
           c.word.id === wordId ? { ...c, verdict: z.verdict } : c
         ))
@@ -136,6 +155,19 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
         return
       }
     }
+  }
+
+  function removeFlying(id: number) {
+    setFlying(prev => {
+      const landed = prev.find(f => f.id === id)
+      if (landed) {
+        // 落地瞬间触发对应篮子「接住」脉冲，时序与飞入对齐
+        setCaught(c => landed.verdict === 'mastered'
+          ? { ...c, mastered: c.mastered + 1 }
+          : { ...c, practice: c.practice + 1 })
+      }
+      return prev.filter(f => f.id !== id)
+    })
   }
 
   function undoLast() {
@@ -201,9 +233,9 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
         {/* 篮子: 我会了 */}
         <motion.div
           ref={masteredBasketRef}
-          animate={{ scale: masteredCount > 0 ? [1, 1.06, 1] : 1 }}
-          transition={{ duration: 0.3 }}
-          key={`m-${masteredCount}`}
+          animate={{ scale: caught.mastered > 0 ? [1, 1.18, 1] : 1 }}
+          transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+          key={`m-${caught.mastered}`}
           className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center shadow-lg"
         >
           <div className="text-2xl">🏆</div>
@@ -214,9 +246,9 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
         {/* 篮子: 再练 */}
         <motion.div
           ref={practiceBasketRef}
-          animate={{ scale: practiceCount > 0 ? [1, 1.06, 1] : 1 }}
-          transition={{ duration: 0.3 }}
-          key={`p-${practiceCount}`}
+          animate={{ scale: caught.practice > 0 ? [1, 1.18, 1] : 1 }}
+          transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+          key={`p-${caught.practice}`}
           className="absolute bottom-3 right-28 w-20 h-20 rounded-2xl bg-rose-400 text-white flex flex-col items-center justify-center shadow-lg"
         >
           <div className="text-2xl">💪</div>
@@ -224,6 +256,11 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
           <div className="font-numeric text-sm font-semibold">{practiceCount}</div>
         </motion.div>
       </div>
+
+      {/* 飞入篮子过场层（脱离卡池布局，按视口定位，落点精准） */}
+      {flying.map(f => (
+        <FlyingCardLayer key={f.id} fly={f} onDone={removeFlying} />
+      ))}
 
       {/* 撤销 + 完成按钮 */}
       <div className="max-w-3xl mx-auto w-full mt-4 flex items-center justify-between">

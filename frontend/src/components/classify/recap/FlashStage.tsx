@@ -16,7 +16,6 @@ const PER_CARD_MS = ENTER_MS + HOLD_MS + EXIT_MS + GAP_MS
 
 export default function FlashStage({ words, playAudio, onDone }: Props) {
   const [index, setIndex] = useState(0)
-  const [showSkip, setShowSkip] = useState(false)
   const [showCurtain, setShowCurtain] = useState(false)
   const advanceTimer = useRef<number | null>(null)
   const audioTimer = useRef<number | null>(null)
@@ -54,12 +53,11 @@ export default function FlashStage({ words, playAudio, onDone }: Props) {
     advanceTimer.current = window.setTimeout(() => {
       if (!cancelled.current) setIndex(i => i + 1)
     }, PER_CARD_MS)
-    if (index >= 30 && !showSkip) setShowSkip(true)
     return () => {
       if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current)
       if (audioTimer.current !== null) window.clearTimeout(audioTimer.current)
     }
-  }, [index, words, playAudio, onDone, showCurtain, showSkip])
+  }, [index, words, playAudio, onDone, showCurtain])
 
   function skip() {
     if (showCurtain) return
@@ -88,16 +86,14 @@ export default function FlashStage({ words, playAudio, onDone }: Props) {
 
   return (
     <div className="fixed inset-0 bg-ink/95 z-40 flex flex-col">
-      {/* 跳到池子按钮 (30 张后才出现) */}
-      {showSkip && (
-        <button
-          type="button"
-          onClick={skip}
-          className="absolute top-4 right-4 text-xs text-paper/60 hover:text-paper/90 px-3 py-1 rounded-full border border-paper/20"
-        >
-          跳到池子 →
-        </button>
-      )}
+      {/* 已经熟悉的学生可随时跳过快闪，直接进分类池 */}
+      <button
+        type="button"
+        onClick={skip}
+        className="absolute top-4 right-4 text-xs text-paper/70 hover:text-paper px-3 py-1.5 rounded-full border border-paper/25 hover:border-paper/50 transition"
+      >
+        都认识，跳过 →
+      </button>
 
       <div className="flex-1 flex items-center justify-center">
         <AnimatePresence mode="wait">
