@@ -15,15 +15,38 @@ interface Props {
   initialCards?: PoolCardState[]  // 用于 localStorage 恢复
 }
 
-function pickLayout(n: number): 'mobile' | 'desktop' | 'large' {
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
-  if (isMobile) return 'mobile'
-  if (n > 32) return 'large'
-  return 'desktop'
-}
+// 发牌式:池子里最多一批,避免单词太多时一次铺满、卡片重叠拥挤
+const BATCH_MOBILE = 6
+const BATCH_DESKTOP = 8
+const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768
+const pickBatch = () => (isMobile() ? BATCH_MOBILE : BATCH_DESKTOP)
+const freshRotation = () => (Math.random() - 0.5) * 20
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
+}
+
+/** 初始化:全部卡为数据源,只把前 batch 张未分类卡放进池子(active),其余在牌堆 */
+function buildInitial(words: WordData[], initialCards?: PoolCardState[]) {
+  const batch = pickBatch()
+  const layout = isMobile() ? 'mobile' : 'desktop'
+  const positions = scatter({ n: batch, layout })
+  const cards: PoolCardState[] = (initialCards && initialCards.length === words.length)
+    ? initialCards.map(c => ({ ...c }))
+    : words.map(w => ({
+        word: w, x: 50, y: 50, rotation: 0, zIndex: 1, flipped: false, verdict: 'unknown' as Verdict,
+      }))
+  const activeIds: number[] = []
+  let slot = 0
+  for (const c of cards) {
+    if (c.verdict !== 'unknown') continue
+    if (slot >= batch) break
+    const p = positions[slot]
+    c.x = p.x; c.y = p.y; c.rotation = p.rotation; c.zIndex = slot + 1
+    activeIds.push(c.word.id)
+    slot++
+  }
+  return { cards, activeIds }
 }
 
 export default function CardPool({ words, playAudio, onComplete, initialCards }: Props) {
@@ -32,49 +55,26 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   const practiceBasketRef = useRef<HTMLDivElement>(null)
   const undoTimer = useRef<number | null>(null)
   const didFinish = useRef(false)
-  // cards 镜像 ref: finish() 用它而不是闭包 cards, 避免学生拖最后一张到篮子的同时
-  // 立即点 "完成 →" 时, finish 用了上一渲染的 stale cards (最后一张 verdict 仍 unknown).
   const cardsRef = useRef<PoolCardState[]>([])
 
-  const [cards, setCards] = useState<PoolCardState[]>(() => {
-    if (initialCards && initialCards.length === words.length) return initialCards
-    const layout = pickLayout(words.length)
-    const positions = scatter({ n: words.length, layout })
-    return words.map((w, i) => ({
-      word: w,
-      x: positions[i].x,
-      y: positions[i].y,
-      rotation: positions[i].rotation,
-      zIndex: positions[i].zIndex,
-      flipped: false,
-      verdict: 'unknown' as Verdict,
-    }))
-  })
+  const init = useMemo(() => buildInitial(words, initialCards), [])  // 仅挂载时
+  const [cards, setCards] = useState<PoolCardState[]>(init.cards)
+  const [activeIds, setActiveIds] = useState<number[]>(init.activeIds)
 
   const [lastSorted, setLastSorted] = useState<{ wordId: number; prev: Verdict } | null>(null)
   const [flying, setFlying] = useState<FlyingCard[]>([])
-  // 篮子「接住」脉冲：飞行卡落地时 +1，驱动对应篮子弹一下，时序与落地对齐
   const [caught, setCaught] = useState<{ mastered: number; practice: number }>({ mastered: 0, practice: 0 })
   const flyId = useRef(0)
 
-  const sortedCount = useMemo(
-    () => cards.filter(c => c.verdict !== 'unknown').length,
-    [cards],
-  )
-  const masteredCount = useMemo(
-    () => cards.filter(c => c.verdict === 'mastered').length,
-    [cards],
-  )
-  const practiceCount = useMemo(
-    () => cards.filter(c => c.verdict === 'practice').length,
-    [cards],
-  )
+  const sortedCount = useMemo(() => cards.filter(c => c.verdict !== 'unknown').length, [cards])
+  const masteredCount = useMemo(() => cards.filter(c => c.verdict === 'mastered').length, [cards])
+  const practiceCount = useMemo(() => cards.filter(c => c.verdict === 'practice').length, [cards])
+  const unknownCount = cards.length - sortedCount
+  const deckCount = Math.max(0, unknownCount - activeIds.length)
 
   function finish() {
     if (didFinish.current) return
     didFinish.current = true
-    // 用 cardsRef.current 而不是闭包 cards: 学生拖最后一张到篮子的同时立即点 "完成 →",
-    // 闭包 cards 是上一渲染的快照, 最后一张 verdict 仍是 'unknown' → 漏报.
     const latest = cardsRef.current.length > 0 ? cardsRef.current : cards
     const masteredWordIds: number[] = []
     const practiceWords: WordData[] = []
@@ -85,24 +85,15 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
     onComplete({ masteredWordIds, practiceWords })
   }
 
-  // 同步 cardsRef → finish() 能拿到最新 cards 而非闭包快照
-  useEffect(() => {
-    cardsRef.current = cards
-  }, [cards])
+  useEffect(() => { cardsRef.current = cards }, [cards])
 
-  // 全部分类完毕自动收官
   useEffect(() => {
-    if (sortedCount === words.length && words.length > 0 && !didFinish.current) {
-      finish()
-    }
+    if (sortedCount === words.length && words.length > 0 && !didFinish.current) finish()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedCount, words.length])
 
-  // 卸载清理 undoTimer
-  useEffect(() => {
-    return () => {
-      if (undoTimer.current !== null) window.clearTimeout(undoTimer.current)
-    }
+  useEffect(() => () => {
+    if (undoTimer.current !== null) window.clearTimeout(undoTimer.current)
   }, [])
 
   function flipCard(wordId: number) {
@@ -116,50 +107,53 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   }
 
   function handleDragEnd(wordId: number, info: PanInfo) {
-    // 命中判定放大：篮子只有 80px，卡片 120×160，指针中心常落在篮子框外。
-    // 把篮子命中区按半卡尺寸 + 余量膨胀；两个相邻篮子都命中时按最近中心归属。
+    // 命中判定放大:篮子 80px、卡片 120×160,按半卡 + 余量膨胀;两篮都命中按最近中心
     const MARGIN_X = 72
     const MARGIN_Y = 92
-    const zones: { rect: DOMRect; verdict: 'mastered' | 'practice'; cx: number; cy: number }[] = []
+    const zones: { verdict: 'mastered' | 'practice'; rect: DOMRect; cx: number; cy: number }[] = []
     if (masteredBasketRef.current) {
       const r = masteredBasketRef.current.getBoundingClientRect()
-      zones.push({ rect: r, verdict: 'mastered', cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
+      zones.push({ verdict: 'mastered', rect: r, cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
     }
     if (practiceBasketRef.current) {
       const r = practiceBasketRef.current.getBoundingClientRect()
-      zones.push({ rect: r, verdict: 'practice', cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
+      zones.push({ verdict: 'practice', rect: r, cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
     }
-
     const { x: px, y: py } = info.point
-    const inflated = (r: DOMRect) =>
-      px >= r.left - MARGIN_X && px <= r.right + MARGIN_X &&
-      py >= r.top - MARGIN_Y && py <= r.bottom + MARGIN_Y
-
-    const candidates = zones.filter(z => inflated(z.rect))
+    const candidates = zones.filter(z =>
+      px >= z.rect.left - MARGIN_X && px <= z.rect.right + MARGIN_X &&
+      py >= z.rect.top - MARGIN_Y && py <= z.rect.bottom + MARGIN_Y)
     if (candidates.length === 0) return
-    // 最近中心胜出
     candidates.sort((a, b) =>
       ((px - a.cx) ** 2 + (py - a.cy) ** 2) - ((px - b.cx) ** 2 + (py - b.cy) ** 2))
     const z = candidates[0]
 
-    const card = cards.find(c => c.word.id === wordId)
-    const prev = card?.verdict ?? 'unknown'
-    // 生成「飞入篮子」过场卡：从松手点飞向篮子中心，收窄淡出
-    if (card) {
+    const freed = cards.find(c => c.word.id === wordId)
+    const prev = freed?.verdict ?? 'unknown'
+    // 牌堆里下一张(未分类且不在池中),发到刚空出的位置
+    const deckCard = cards.find(c =>
+      c.verdict === 'unknown' && c.word.id !== wordId && !activeIds.includes(c.word.id))
+
+    if (freed) {
       flyId.current += 1
-      setFlying(prevFly => [...prevFly, {
-        id: flyId.current,
-        word: card.word,
-        from: { x: px, y: py },
-        to: { x: z.cx, y: z.cy },
-        verdict: z.verdict,
-        rotation: card.rotation,
+      setFlying(p => [...p, {
+        id: flyId.current, word: freed.word,
+        from: { x: px, y: py }, to: { x: z.cx, y: z.cy },
+        verdict: z.verdict, rotation: freed.rotation,
       }])
     }
-    // 立刻把原卡设为已分类（从池中消失），由飞行卡接管视觉过场
-    setCards(prevCards => prevCards.map(c =>
-      c.word.id === wordId ? { ...c, verdict: z.verdict } : c
-    ))
+    setCards(prevCards => prevCards.map(c => {
+      if (c.word.id === wordId) return { ...c, verdict: z.verdict }
+      if (deckCard && freed && c.word.id === deckCard.word.id) {
+        return { ...c, x: freed.x, y: freed.y, rotation: freshRotation(), zIndex: freed.zIndex }
+      }
+      return c
+    }))
+    setActiveIds(prevIds => {
+      const next = prevIds.filter(id => id !== wordId)
+      if (deckCard) next.push(deckCard.word.id)
+      return next
+    })
     setLastSorted({ wordId, prev })
     if (undoTimer.current) window.clearTimeout(undoTimer.current)
     undoTimer.current = window.setTimeout(() => setLastSorted(null), 5000)
@@ -169,7 +163,6 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
     setFlying(prev => {
       const landed = prev.find(f => f.id === id)
       if (landed) {
-        // 落地瞬间触发对应篮子「接住」脉冲，时序与飞入对齐
         setCaught(c => landed.verdict === 'mastered'
           ? { ...c, mastered: c.mastered + 1 }
           : { ...c, practice: c.practice + 1 })
@@ -182,25 +175,31 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
     if (!lastSorted) return
     const { wordId, prev } = lastSorted
     setCards(prevCards => prevCards.map(c =>
-      c.word.id === wordId ? { ...c, verdict: prev } : c
+      c.word.id === wordId
+        ? { ...c, verdict: prev, x: 50, y: 28, rotation: freshRotation() }
+        : c
     ))
+    if (prev === 'unknown') {
+      setActiveIds(ids => ids.includes(wordId) ? ids : [...ids, wordId])
+    }
     setLastSorted(null)
     if (undoTimer.current) window.clearTimeout(undoTimer.current)
   }
 
   function shake() {
-    const layout = pickLayout(words.length)
-    const positions = scatter({ n: words.length, layout })
-    setCards(prev => prev.map((c, i) => ({
-      ...c,
-      x: positions[i].x,
-      y: positions[i].y,
-      rotation: positions[i].rotation,
-    })))
+    const positions = scatter({ n: pickBatch(), layout: isMobile() ? 'mobile' : 'desktop' })
+    let slot = 0
+    setCards(prev => prev.map(c => {
+      if (c.verdict === 'unknown' && activeIds.includes(c.word.id)) {
+        const p = positions[slot % positions.length]; slot++
+        return { ...c, x: p.x, y: p.y, rotation: p.rotation }
+      }
+      return c
+    }))
   }
 
-  const visibleCards = cards.filter(c => c.verdict === 'unknown')
-  const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768
+  const visibleCards = cards.filter(c => c.verdict === 'unknown' && activeIds.includes(c.word.id))
+  const mobileView = isMobile()
 
   return (
     <div className="min-h-[80vh] px-4 py-6 flex flex-col">
@@ -222,7 +221,7 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
       <div
         ref={containerRef}
         className="relative max-w-3xl mx-auto w-full bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl overflow-hidden"
-        style={{ aspectRatio: isMobileView ? '9/14' : '16/10' }}
+        style={{ aspectRatio: mobileView ? '9/14' : '16/10' }}
       >
         <AnimatePresence>
           {visibleCards.map(c => (
@@ -237,6 +236,23 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
             />
           ))}
         </AnimatePresence>
+
+        {/* 牌堆「还剩 N 张」,给一堆单词以进度感,而非一次全铺出来 */}
+        {deckCount > 0 && (
+          <div className="absolute bottom-3 left-3 flex items-center gap-2 pointer-events-none select-none">
+            <div className="relative w-9 h-12">
+              <div className="absolute inset-0 rounded-md bg-white"
+                style={{ border: '1px solid oklch(0.82 0.085 65)', transform: 'rotate(-7deg)' }} />
+              <div className="absolute inset-0 rounded-md bg-white"
+                style={{ border: '1px solid oklch(0.82 0.085 65)', transform: 'rotate(4deg)' }} />
+              <div className="absolute inset-0 rounded-md bg-white flex items-center justify-center font-numeric font-bold text-ink"
+                style={{ border: '1px solid oklch(0.82 0.085 65)' }}>
+                {deckCount}
+              </div>
+            </div>
+            <span className="text-xs text-ink-soft">还剩 {deckCount} 张</span>
+          </div>
+        )}
 
         {/* 篮子: 我会了 */}
         <motion.div
@@ -265,7 +281,7 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
         </motion.div>
       </div>
 
-      {/* 飞入篮子过场层（脱离卡池布局，按视口定位，落点精准） */}
+      {/* 飞入篮子过场层 */}
       {flying.map(f => (
         <FlyingCardLayer key={f.id} fly={f} onDone={removeFlying} />
       ))}
