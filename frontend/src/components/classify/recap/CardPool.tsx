@@ -16,7 +16,8 @@ interface Props {
 }
 
 // 发牌式:池子里最多一批,避免单词太多时一次铺满、卡片重叠拥挤
-const BATCH_MOBILE = 6
+// 手机竖屏一屏空间小,5 张最聚焦不挤;桌面 8 张是不挤又不冷清的舒适上限
+const BATCH_MOBILE = 5
 const BATCH_DESKTOP = 8
 const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768
 const pickBatch = () => (isMobile() ? BATCH_MOBILE : BATCH_DESKTOP)
