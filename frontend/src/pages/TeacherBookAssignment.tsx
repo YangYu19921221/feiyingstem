@@ -17,6 +17,12 @@ interface Student {
   email: string;
 }
 
+interface ClassOption {
+  id: number;
+  name: string;
+  student_count: number;
+}
+
 interface WordBook {
   id: number;
   name: string;
@@ -39,6 +45,11 @@ const TeacherBookAssignment = () => {
   // 学生列表和选中状态
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<number[]>([]);
+
+  // 班级筛选：老师先选班，再在班里勾学生（避免几百人平铺、也绕开学生总表分页上限）
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<number | 'all'>('all');
+  const [loadingClasses, setLoadingClasses] = useState(true);
 
   // 分配列表
   const [assignments, setAssignments] = useState<BookAssignmentResponse[]>([]);
@@ -76,6 +87,7 @@ const TeacherBookAssignment = () => {
   useEffect(() => {
     loadBooks();
     loadAllAssignments();
+    loadClasses();
     loadStudents();
   }, []);
 
@@ -95,15 +107,40 @@ const TeacherBookAssignment = () => {
     }
   };
 
-  const loadStudents = async () => {
+  // 班级列表（含在册人数），老师按班筛选学生
+  const loadClasses = async () => {
+    try {
+      setLoadingClasses(true);
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`${API_BASE_URL}/teacher/classes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setClasses(response.data || []);
+    } catch (error) {
+      console.error('加载班级失败:', error);
+    } finally {
+      setLoadingClasses(false);
+    }
+  };
+
+  // 加载学生：选了某个班就拉该班全员（无分页上限），否则拉全部在册学生。
+  // 注意 /teacher/students 上限 size=200，学生多时必须按班拉，否则会漏人。
+  const loadStudents = async (classId: number | 'all' = 'all') => {
     try {
       setLoadingStudents(true);
       const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API_BASE_URL}/teacher/students`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { page: 1, size: 200 },
-      });
-      setStudents(response.data.items || []);
+      const headers = { Authorization: `Bearer ${token}` };
+      if (classId !== 'all') {
+        const response = await axios.get(
+          `${API_BASE_URL}/teacher/classes/${classId}/students`, { headers });
+        setStudents(response.data || []);
+      } else {
+        const response = await axios.get(`${API_BASE_URL}/teacher/students`, {
+          headers,
+          params: { page: 1, size: 200 },
+        });
+        setStudents(response.data.items || []);
+      }
     } catch (error) {
       console.error('加载学生列表失败:', error);
       showMessage('error', '加载学生列表失败');
@@ -125,6 +162,14 @@ const TeacherBookAssignment = () => {
     } finally {
       setLoadingAssignments(false);
     }
+  };
+
+  // 切换班级筛选：重拉该班学生，并清空已勾选（避免选了别班看不见的人）
+  const handleClassChange = (next: number | 'all') => {
+    setSelectedClassId(next);
+    setSelectedStudents([]);
+    setStudentSearch('');
+    loadStudents(next);
   };
 
   const toggleStudent = (studentId: number) => {
@@ -448,6 +493,47 @@ const TeacherBookAssignment = () => {
                   )}
                 </h2>
 
+                {/* 第一步：先选班级（老师的真实心智是"把这本书发给我的某个班"） */}
+                {!loadingClasses && classes.length > 0 && (
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      先选班级
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleClassChange('all')}
+                        className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                          selectedClassId === 'all'
+                            ? 'bg-orange-500 text-white border-orange-500'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50'
+                        }`}
+                      >
+                        全部学生
+                      </button>
+                      {classes.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleClassChange(c.id)}
+                          className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                            selectedClassId === c.id
+                              ? 'bg-orange-500 text-white border-orange-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50'
+                          }`}
+                        >
+                          {c.name}
+                          <span className={`ml-1.5 text-xs ${
+                            selectedClassId === c.id ? 'text-orange-100' : 'text-gray-400'
+                          }`}>
+                            {c.student_count}人
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* 搜索 + 批量操作 */}
                 <div className="flex flex-col sm:flex-row gap-2 mb-3">
                   <div className="relative flex-1">
@@ -513,15 +599,37 @@ const TeacherBookAssignment = () => {
                 {loadingStudents ? (
                   <div className="text-center py-8 text-gray-500">加载中...</div>
                 ) : students.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="text-4xl mb-3">👥</div>
-                    <p className="text-gray-500 mb-2">你的班级里还没有学生</p>
-                    <button
-                      onClick={() => navigate('/teacher/classes')}
-                      className="text-sm text-orange-600 hover:underline"
-                    >
-                      前往班级管理添加学生 →
-                    </button>
+                  <div className="text-center py-10 px-4">
+                    <div className="text-5xl mb-3">{classes.length === 0 ? '🏫' : '🙋'}</div>
+                    {classes.length === 0 ? (
+                      <>
+                        <p className="text-gray-800 font-medium mb-1">你还没有创建班级</p>
+                        <p className="text-gray-500 text-sm mb-4">
+                          分三步走：① 建一个班 → ② 把学生加进班 → ③ 回这里就能选学生发单词本
+                        </p>
+                        <button
+                          onClick={() => navigate('/teacher/classes')}
+                          className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-yellow-500 text-white font-medium hover:shadow-lg transition"
+                        >
+                          ① 去创建班级 →
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-gray-800 font-medium mb-1">
+                          {selectedClassId === 'all' ? '还没有任何学生加入你的班级' : '这个班还没有学生'}
+                        </p>
+                        <p className="text-gray-500 text-sm mb-4">
+                          先把学生加进班级，回到这里就能勾选他们发单词本
+                        </p>
+                        <button
+                          onClick={() => navigate('/teacher/classes')}
+                          className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-yellow-500 text-white font-medium hover:shadow-lg transition"
+                        >
+                          去班级管理添加学生 →
+                        </button>
+                      </>
+                    )}
                   </div>
                 ) : (() => {
                   const kw = studentSearch.trim().toLowerCase();
