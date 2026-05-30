@@ -15,11 +15,6 @@ interface Props {
   initialCards?: PoolCardState[]  // 用于 localStorage 恢复
 }
 
-interface DropZone {
-  rect: DOMRect
-  verdict: 'mastered' | 'practice'
-}
-
 function pickLayout(n: number): 'mobile' | 'desktop' | 'large' {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
   if (isMobile) return 'mobile'
@@ -29,11 +24,6 @@ function pickLayout(n: number): 'mobile' | 'desktop' | 'large' {
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
-}
-
-function pointInRect(px: number, py: number, rect: DOMRect | undefined): boolean {
-  if (!rect) return false
-  return px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom
 }
 
 export default function CardPool({ words, playAudio, onComplete, initialCards }: Props) {
@@ -126,35 +116,53 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   }
 
   function handleDragEnd(wordId: number, info: PanInfo) {
-    const drop: DropZone[] = []
-    if (masteredBasketRef.current) drop.push({ rect: masteredBasketRef.current.getBoundingClientRect(), verdict: 'mastered' })
-    if (practiceBasketRef.current) drop.push({ rect: practiceBasketRef.current.getBoundingClientRect(), verdict: 'practice' })
-    for (const z of drop) {
-      if (pointInRect(info.point.x, info.point.y, z.rect)) {
-        const prev = cards.find(c => c.word.id === wordId)?.verdict ?? 'unknown'
-        const card = cards.find(c => c.word.id === wordId)
-        // 生成「飞入篮子」过场卡：从松手点飞向篮子中心，缩小淡出
-        if (card) {
-          flyId.current += 1
-          setFlying(prevFly => [...prevFly, {
-            id: flyId.current,
-            word: card.word,
-            from: { x: info.point.x, y: info.point.y },
-            to: { x: z.rect.left + z.rect.width / 2, y: z.rect.top + z.rect.height / 2 },
-            verdict: z.verdict,
-            rotation: card.rotation,
-          }])
-        }
-        // 立刻把原卡设为已分类（从池中消失），由飞行卡接管视觉过场
-        setCards(prevCards => prevCards.map(c =>
-          c.word.id === wordId ? { ...c, verdict: z.verdict } : c
-        ))
-        setLastSorted({ wordId, prev })
-        if (undoTimer.current) window.clearTimeout(undoTimer.current)
-        undoTimer.current = window.setTimeout(() => setLastSorted(null), 5000)
-        return
-      }
+    // 命中判定放大：篮子只有 80px，卡片 120×160，指针中心常落在篮子框外。
+    // 把篮子命中区按半卡尺寸 + 余量膨胀；两个相邻篮子都命中时按最近中心归属。
+    const MARGIN_X = 72
+    const MARGIN_Y = 92
+    const zones: { rect: DOMRect; verdict: 'mastered' | 'practice'; cx: number; cy: number }[] = []
+    if (masteredBasketRef.current) {
+      const r = masteredBasketRef.current.getBoundingClientRect()
+      zones.push({ rect: r, verdict: 'mastered', cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
     }
+    if (practiceBasketRef.current) {
+      const r = practiceBasketRef.current.getBoundingClientRect()
+      zones.push({ rect: r, verdict: 'practice', cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
+    }
+
+    const { x: px, y: py } = info.point
+    const inflated = (r: DOMRect) =>
+      px >= r.left - MARGIN_X && px <= r.right + MARGIN_X &&
+      py >= r.top - MARGIN_Y && py <= r.bottom + MARGIN_Y
+
+    const candidates = zones.filter(z => inflated(z.rect))
+    if (candidates.length === 0) return
+    // 最近中心胜出
+    candidates.sort((a, b) =>
+      ((px - a.cx) ** 2 + (py - a.cy) ** 2) - ((px - b.cx) ** 2 + (py - b.cy) ** 2))
+    const z = candidates[0]
+
+    const card = cards.find(c => c.word.id === wordId)
+    const prev = card?.verdict ?? 'unknown'
+    // 生成「飞入篮子」过场卡：从松手点飞向篮子中心，收窄淡出
+    if (card) {
+      flyId.current += 1
+      setFlying(prevFly => [...prevFly, {
+        id: flyId.current,
+        word: card.word,
+        from: { x: px, y: py },
+        to: { x: z.cx, y: z.cy },
+        verdict: z.verdict,
+        rotation: card.rotation,
+      }])
+    }
+    // 立刻把原卡设为已分类（从池中消失），由飞行卡接管视觉过场
+    setCards(prevCards => prevCards.map(c =>
+      c.word.id === wordId ? { ...c, verdict: z.verdict } : c
+    ))
+    setLastSorted({ wordId, prev })
+    if (undoTimer.current) window.clearTimeout(undoTimer.current)
+    undoTimer.current = window.setTimeout(() => setLastSorted(null), 5000)
   }
 
   function removeFlying(id: number) {

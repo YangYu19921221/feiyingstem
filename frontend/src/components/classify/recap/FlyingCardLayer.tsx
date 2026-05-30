@@ -1,6 +1,9 @@
 import { motion } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
 
+const CARD_W = 120
+const CARD_H = 160
+
 export interface FlyingCard {
   id: number              // 自增 key
   word: WordData
@@ -18,9 +21,10 @@ interface Props {
 const EASE = [0.16, 1, 0.3, 1] as const  // ease-out-expo，丝滑收束
 
 /**
- * 卡片放进篮子后的「飞入并缩小」过场。
- * 从松手点出发，沿 ease-out-expo 飞向篮子中心，同时缩小、淡出、转正，
- * 像被吸进篮子。用 fixed 视口定位，脱离卡池布局，落点精准。
+ * 卡片放进篮子后的「飞入并收窄」过场。
+ * 从松手点出发飞向篮子中心，过程中宽度快速收窄(scaleX→很小)、
+ * 高度只略缩(scaleY 收一半)，像一张卡被竖着塞进篮子的投币口，最后淡出。
+ * 用 transform(x/y/scale) 而非 left/top，GPU 友好、符合 motion 规范。
  * 尊重 prefers-reduced-motion：直接快速淡出。
  */
 export default function FlyingCardLayer({ fly, onDone }: Props) {
@@ -35,17 +39,25 @@ export default function FlyingCardLayer({ fly, onDone }: Props) {
     ? 'oklch(0.8 0.12 80)'
     : 'oklch(0.78 0.13 22)'
 
+  // 卡片左上角定位到松手点(减去半卡尺寸即居中)，之后用 transform 位移到篮子
+  const baseStyle: React.CSSProperties = {
+    position: 'fixed',
+    left: fly.from.x - CARD_W / 2,
+    top: fly.from.y - CARD_H / 2,
+    zIndex: 1000,
+    pointerEvents: 'none',
+  }
+  const dx = fly.to.x - fly.from.x
+  const dy = fly.to.y - fly.from.y
+
   if (reduce) {
     return (
       <motion.div
-        initial={{ opacity: 0.9 }}
-        animate={{ opacity: 0 }}
-        transition={{ duration: 0.25 }}
+        initial={{ x: 0, y: 0, opacity: 0.9 }}
+        animate={{ x: dx, y: dy, opacity: 0 }}
+        transition={{ duration: 0.28, ease: EASE }}
         onAnimationComplete={() => onDone(fly.id)}
-        style={{
-          position: 'fixed', left: fly.to.x, top: fly.to.y,
-          translateX: '-50%', translateY: '-50%', zIndex: 1000, pointerEvents: 'none',
-        }}
+        style={baseStyle}
       >
         <Card word={fly.word} tint={tint} edge={edge} />
       </motion.div>
@@ -54,28 +66,19 @@ export default function FlyingCardLayer({ fly, onDone }: Props) {
 
   return (
     <motion.div
-      initial={{
-        left: fly.from.x, top: fly.from.y,
-        scale: 1.1, opacity: 1, rotate: fly.rotation,
-      }}
+      initial={{ x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1, rotate: fly.rotation }}
       animate={{
-        left: fly.to.x, top: fly.to.y,
-        // 先稍微放大被「拎起」，再一路缩到很小被吸入篮子
-        scale: [1.1, 1.15, 0.18],
+        x: dx,
+        y: dy,
+        // 宽变窄：宽度从 1 → 略撑 → 收到很窄(0.06)；高度只收一半，呈竖条被吸入
+        scaleX: [1, 1.05, 0.06],
+        scaleY: [1, 1.05, 0.4],
         opacity: [1, 1, 0],
         rotate: 0,
       }}
-      transition={{
-        duration: 0.62,
-        ease: EASE,
-        times: [0, 0.18, 1],
-      }}
+      transition={{ duration: 0.7, ease: EASE, times: [0, 0.22, 1] }}
       onAnimationComplete={() => onDone(fly.id)}
-      style={{
-        position: 'fixed',
-        translateX: '-50%', translateY: '-50%',
-        zIndex: 1000, pointerEvents: 'none',
-      }}
+      style={{ ...baseStyle, transformOrigin: 'center center' }}
     >
       <Card word={fly.word} tint={tint} edge={edge} />
     </motion.div>
@@ -85,8 +88,8 @@ export default function FlyingCardLayer({ fly, onDone }: Props) {
 function Card({ word, tint, edge }: { word: WordData; tint: string; edge: string }) {
   return (
     <div
-      className="w-[120px] h-[160px] rounded-lg shadow-lg flex flex-col items-center justify-center p-3"
-      style={{ background: tint, border: `1.5px solid ${edge}` }}
+      className="rounded-lg shadow-lg flex flex-col items-center justify-center p-3"
+      style={{ width: CARD_W, height: CARD_H, background: tint, border: `1.5px solid ${edge}` }}
     >
       <div className="text-center font-display text-xl font-bold text-ink leading-tight">
         {word.word}
