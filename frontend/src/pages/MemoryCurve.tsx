@@ -28,6 +28,38 @@ const SRS_STAGE_COLORS = [
 
 const REVIEW_PAGE_SIZE = 20;
 
+// 复习分组:按掌握度把今日待复习词分成 薄弱/一般/熟练 三档(已毕业词不在待复习列表里)
+type ReviewTier = 'weak' | 'medium' | 'fluent';
+
+const tierOf = (level: number): ReviewTier => {
+  if (level >= 4) return 'fluent';
+  if (level >= 2) return 'medium';
+  return 'weak';
+};
+
+// 三档视觉:珊瑚红=薄弱(最该补) / 琥珀=一般 / 草绿=熟练。OKLCH 暖色系
+const TIER_META: Record<ReviewTier, {
+  key: ReviewTier; emoji: string; name: string; hint: string;
+  fill: string; edge: string; text: string; dot: string;
+}> = {
+  weak: {
+    key: 'weak', emoji: '🌱', name: '薄弱', hint: '最该补的词，先把它们拿下',
+    fill: 'oklch(0.965 0.035 25)', edge: 'oklch(0.82 0.11 25)',
+    text: 'oklch(0.52 0.17 25)', dot: 'oklch(0.65 0.2 25)',
+  },
+  medium: {
+    key: 'medium', emoji: '⚡', name: '一般', hint: '再巩固一遍就稳了',
+    fill: 'oklch(0.965 0.05 80)', edge: 'oklch(0.83 0.1 78)',
+    text: 'oklch(0.5 0.12 68)', dot: 'oklch(0.72 0.15 75)',
+  },
+  fluent: {
+    key: 'fluent', emoji: '✨', name: '熟练', hint: '快毕业了，确认一遍就过',
+    fill: 'oklch(0.96 0.05 150)', edge: 'oklch(0.8 0.12 150)',
+    text: 'oklch(0.46 0.12 150)', dot: 'oklch(0.72 0.16 150)',
+  },
+};
+const TIER_ORDER: ReviewTier[] = ['weak', 'medium', 'fluent'];
+
 const MemoryCurve = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<MemoryCurveStats | null>(null);
@@ -74,12 +106,13 @@ const MemoryCurve = () => {
     }
   };
 
-  const handleStartReview = async () => {
-    if (reviewWords.length === 0) return;
+  const handleStartReview = async (subset?: ReviewWord[]) => {
+    const list = subset && subset.length > 0 ? subset : reviewWords;
+    if (list.length === 0) return;
     setStartingReview(true);
     try {
-      // 把今日到期的全部词传给 FlashCardLearning（不限上限）
-      const wordData = reviewWords.map((w, index) => ({
+      // 把待复习词传给 FlashCardLearning（可只传某一档）
+      const wordData = list.map((w, index) => ({
         id: w.word_id,
         word: w.word,
         phonetic: w.phonetic || '',
@@ -118,6 +151,13 @@ const MemoryCurve = () => {
     if (level >= 4) return { text: '熟练', color: 'bg-blue-100 text-blue-700' };
     if (level >= 2) return { text: '一般', color: 'bg-yellow-100 text-yellow-700' };
     return { text: '薄弱', color: 'bg-red-100 text-red-700' };
+  };
+
+  // 今日待复习词按掌握度分三档,供分组复习
+  const tierGroups = {
+    weak: reviewWords.filter(w => tierOf(w.mastery_level) === 'weak'),
+    medium: reviewWords.filter(w => tierOf(w.mastery_level) === 'medium'),
+    fluent: reviewWords.filter(w => tierOf(w.mastery_level) === 'fluent'),
   };
 
   if (loading) {
@@ -185,14 +225,55 @@ const MemoryCurve = () => {
                 );
               })()}
               <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
-                按艾宾浩斯曲线智能排序，背得越熟的下次间隔越长；今日全部清零会触发庆祝 🎉
+                按掌握度分成三组，先啃硬骨头再确认熟词；今日全部清零会触发庆祝 🎉
               </p>
+
+              {/* 分组复习:薄弱/一般/熟练，各组单独开练，薄弱排首位最该先做 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                {TIER_ORDER.map((t) => {
+                  const meta = TIER_META[t];
+                  const group = tierGroups[t];
+                  const empty = group.length === 0;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => !empty && handleStartReview(group)}
+                      disabled={empty || startingReview}
+                      className="text-left rounded-2xl p-4 transition disabled:opacity-45 disabled:cursor-not-allowed enabled:hover:-translate-y-0.5"
+                      style={{
+                        background: meta.fill,
+                        border: `1px solid ${meta.edge}`,
+                        boxShadow: empty ? 'none' : `0 8px 20px -12px ${meta.edge}`,
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-2xl">{meta.emoji}</span>
+                        <span className="font-numeric font-bold text-3xl" style={{ color: meta.text }}>
+                          {group.length}
+                        </span>
+                      </div>
+                      <p className="font-display font-semibold text-base" style={{ color: meta.text }}>
+                        {meta.name}
+                      </p>
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: meta.text, opacity: 0.78 }}>
+                        {empty ? '这组今天没有待复习的词' : meta.hint}
+                      </p>
+                      {!empty && (
+                        <span className="inline-block mt-3 text-xs font-semibold" style={{ color: meta.text }}>
+                          复习这组 →
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
               <button
-                onClick={handleStartReview}
+                onClick={() => handleStartReview()}
                 disabled={startingReview}
                 className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition disabled:opacity-50"
               >
-                {startingReview ? '准备中…' : '开始复习 →'}
+                {startingReview ? '准备中…' : `全部一起复习 (${reviewWords.length}) →`}
               </button>
             </>
           ) : stats && stats.total_learned === 0 ? (
