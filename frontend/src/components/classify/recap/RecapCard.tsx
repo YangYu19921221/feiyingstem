@@ -19,6 +19,7 @@ interface Props {
   containerRef: React.RefObject<HTMLDivElement | null>
   onFlip: (wordId: number) => void
   onPositionChange: (wordId: number, x: number, y: number) => void
+  onDrag: (wordId: number, info: PanInfo) => void
   onDragEnd: (wordId: number, info: PanInfo) => void
   playAudio: (word: string) => void
 }
@@ -27,7 +28,7 @@ const LONG_PRESS_MS = 400
 const AUDIO_THROTTLE_MS = 800
 
 export default function RecapCard({
-  card, containerRef, onFlip, onPositionChange, onDragEnd, playAudio,
+  card, containerRef, onFlip, onPositionChange, onDrag, onDragEnd, playAudio,
 }: Props) {
   const longPressTimer = useRef<number | null>(null)
   const lastAudioAt = useRef<number>(0)
@@ -84,6 +85,10 @@ export default function RecapCard({
     onPositionChange(card.word.id, newX, newY)
   }, [card.word.id, onDragEnd, onPositionChange, containerRef, cancelLongPress])
 
+  const handleDrag = useCallback((_: unknown, info: PanInfo) => {
+    onDrag(card.word.id, info)
+  }, [card.word.id, onDrag])
+
   return (
     <motion.div
       drag
@@ -94,9 +99,10 @@ export default function RecapCard({
       onPointerUp={cancelLongPress}
       onPointerCancel={cancelLongPress}
       onDragStart={handleDragStart}
+      onDrag={handleDrag}
       onClick={handleClick}
       onDragEnd={handleDragEnd}
-      whileDrag={{ scale: 1.1, zIndex: 999 }}
+      whileDrag={{ scale: 1.12, zIndex: 999 }}
       style={{
         position: 'absolute',
         left: `${card.x}%`,

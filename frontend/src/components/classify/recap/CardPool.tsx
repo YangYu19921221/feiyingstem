@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type PanInfo } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
 import RecapCard, { type PoolCardState, type Verdict } from './RecapCard'
@@ -65,6 +66,8 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
   const [lastSorted, setLastSorted] = useState<{ wordId: number; prev: Verdict } | null>(null)
   const [flying, setFlying] = useState<FlyingCard[]>([])
   const [caught, setCaught] = useState<{ mastered: number; practice: number }>({ mastered: 0, practice: 0 })
+  // 拖动中指针悬停在哪个篮子上方 → 该篮子实时放大发光「准备接住」
+  const [hoverBasket, setHoverBasket] = useState<'mastered' | 'practice' | null>(null)
   const flyId = useRef(0)
 
   const sortedCount = useMemo(() => cards.filter(c => c.verdict !== 'unknown').length, [cards])
@@ -107,10 +110,10 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
     ))
   }
 
-  function handleDragEnd(wordId: number, info: PanInfo) {
-    // 命中判定放大:篮子 80px、卡片 120×160,按半卡 + 余量膨胀;两篮都命中按最近中心
-    const MARGIN_X = 72
-    const MARGIN_Y = 92
+  // 命中判定放大:篮子 80px、卡片 120×160,按半卡 + 余量膨胀;两篮都命中按最近中心
+  const MARGIN_X = 72
+  const MARGIN_Y = 92
+  function hitBasket(px: number, py: number): 'mastered' | 'practice' | null {
     const zones: { verdict: 'mastered' | 'practice'; rect: DOMRect; cx: number; cy: number }[] = []
     if (masteredBasketRef.current) {
       const r = masteredBasketRef.current.getBoundingClientRect()
@@ -120,14 +123,31 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
       const r = practiceBasketRef.current.getBoundingClientRect()
       zones.push({ verdict: 'practice', rect: r, cx: r.left + r.width / 2, cy: r.top + r.height / 2 })
     }
-    const { x: px, y: py } = info.point
     const candidates = zones.filter(z =>
       px >= z.rect.left - MARGIN_X && px <= z.rect.right + MARGIN_X &&
       py >= z.rect.top - MARGIN_Y && py <= z.rect.bottom + MARGIN_Y)
-    if (candidates.length === 0) return
+    if (candidates.length === 0) return null
     candidates.sort((a, b) =>
       ((px - a.cx) ** 2 + (py - a.cy) ** 2) - ((px - b.cx) ** 2 + (py - b.cy) ** 2))
-    const z = candidates[0]
+    return candidates[0].verdict
+  }
+
+  // 拖动中实时反馈:指针进入某篮子膨胀区 → 该篮子放大发光「准备接住」
+  function handleDrag(_wordId: number, info: PanInfo) {
+    const hit = hitBasket(info.point.x, info.point.y)
+    setHoverBasket(prev => (prev === hit ? prev : hit))
+  }
+
+  function handleDragEnd(wordId: number, info: PanInfo) {
+    setHoverBasket(null)
+    const { x: px, y: py } = info.point
+    const verdict = hitBasket(px, py)
+    if (!verdict) return
+    const z = verdict === 'mastered'
+      ? masteredBasketRef.current!.getBoundingClientRect()
+      : practiceBasketRef.current!.getBoundingClientRect()
+    const toX = z.left + z.width / 2
+    const toY = z.top + z.height / 2
 
     const freed = cards.find(c => c.word.id === wordId)
     const prev = freed?.verdict ?? 'unknown'
@@ -139,12 +159,12 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
       flyId.current += 1
       setFlying(p => [...p, {
         id: flyId.current, word: freed.word,
-        from: { x: px, y: py }, to: { x: z.cx, y: z.cy },
-        verdict: z.verdict, rotation: freed.rotation,
+        from: { x: px, y: py }, to: { x: toX, y: toY },
+        verdict, rotation: freed.rotation,
       }])
     }
     setCards(prevCards => prevCards.map(c => {
-      if (c.word.id === wordId) return { ...c, verdict: z.verdict }
+      if (c.word.id === wordId) return { ...c, verdict }
       if (deckCard && freed && c.word.id === deckCard.word.id) {
         return { ...c, x: freed.x, y: freed.y, rotation: freshRotation(), zIndex: freed.zIndex }
       }
@@ -232,6 +252,7 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
               containerRef={containerRef}
               onFlip={flipCard}
               onPositionChange={setPosition}
+              onDrag={handleDrag}
               onDragEnd={handleDragEnd}
               playAudio={playAudio}
             />
@@ -258,12 +279,20 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
         {/* 篮子: 我会了 */}
         <motion.div
           ref={masteredBasketRef}
-          animate={{ scale: caught.mastered > 0 ? [1, 1.18, 1] : 1 }}
-          transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+          animate={{
+            scale: hoverBasket === 'mastered' ? 1.22 : caught.mastered > 0 ? [1, 1.18, 1] : 1,
+            boxShadow: hoverBasket === 'mastered'
+              ? '0 0 0 4px oklch(0.85 0.16 80 / 0.5), 0 12px 28px -8px oklch(0.7 0.16 75 / 0.6)'
+              : '0 8px 18px -8px oklch(0.6 0.12 60 / 0.4)',
+          }}
+          transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
           key={`m-${caught.mastered}`}
-          className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center shadow-lg"
+          className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center"
         >
-          <div className="text-2xl">🏆</div>
+          <motion.div animate={{ scale: hoverBasket === 'mastered' ? 1.25 : 1 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="text-2xl">
+            {hoverBasket === 'mastered' ? '🤲' : '🏆'}
+          </motion.div>
           <div className="text-xs mt-0.5">我会了</div>
           <div className="font-numeric text-sm font-semibold">{masteredCount}</div>
         </motion.div>
@@ -271,21 +300,32 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
         {/* 篮子: 再练 */}
         <motion.div
           ref={practiceBasketRef}
-          animate={{ scale: caught.practice > 0 ? [1, 1.18, 1] : 1 }}
-          transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+          animate={{
+            scale: hoverBasket === 'practice' ? 1.22 : caught.practice > 0 ? [1, 1.18, 1] : 1,
+            boxShadow: hoverBasket === 'practice'
+              ? '0 0 0 4px oklch(0.8 0.13 25 / 0.5), 0 12px 28px -8px oklch(0.65 0.16 25 / 0.6)'
+              : '0 8px 18px -8px oklch(0.6 0.12 30 / 0.4)',
+          }}
+          transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
           key={`p-${caught.practice}`}
-          className="absolute bottom-3 right-28 w-20 h-20 rounded-2xl bg-rose-400 text-white flex flex-col items-center justify-center shadow-lg"
+          className="absolute bottom-3 right-28 w-20 h-20 rounded-2xl bg-rose-400 text-white flex flex-col items-center justify-center"
         >
-          <div className="text-2xl">💪</div>
+          <motion.div animate={{ scale: hoverBasket === 'practice' ? 1.25 : 1 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }} className="text-2xl">
+            {hoverBasket === 'practice' ? '🤲' : '💪'}
+          </motion.div>
           <div className="text-xs mt-0.5">再练</div>
           <div className="font-numeric text-sm font-semibold">{practiceCount}</div>
         </motion.div>
       </div>
 
-      {/* 飞入篮子过场层 */}
-      {flying.map(f => (
-        <FlyingCardLayer key={f.id} fly={f} onDone={removeFlying} />
-      ))}
+      {/* 飞入篮子过场层:portal 到 body,避免被有 transform 的祖先把 fixed 定位顶歪而看不见 */}
+      {typeof document !== 'undefined' && createPortal(
+        flying.map(f => (
+          <FlyingCardLayer key={f.id} fly={f} onDone={removeFlying} />
+        )),
+        document.body,
+      )}
 
       {/* 撤销 + 完成按钮 */}
       <div className="max-w-3xl mx-auto w-full mt-4 flex items-center justify-between">
