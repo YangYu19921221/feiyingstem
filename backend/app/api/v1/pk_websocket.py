@@ -254,6 +254,7 @@ async def pk_ws(
     async with AsyncSessionLocal() as db:
         word_lookup = await _word_lookup_for_room(db, room.word_ids)
 
+    explicit_leave = False
     try:
         while True:
             msg = await ws.receive_json()
@@ -307,6 +308,7 @@ async def pk_ws(
                             pass
                     await _broadcast(room, {"type": "player_kicked", "user_id": target})
             elif mtype == "leave_room":
+                explicit_leave = True
                 break
     except WebSocketDisconnect:
         pass
@@ -315,8 +317,21 @@ async def pk_ws(
         p.online = False
         p.disconnected_at = datetime.utcnow()
         logger.info(
-            "PK WS disconnected: room_id=%d user_id=%d",
-            room.room_id, user.id,
+            "PK WS disconnected: room_id=%d user_id=%d explicit=%s",
+            room.room_id, user.id, explicit_leave,
         )
-        await _broadcast(room, {"type": "player_disconnected", "user_id": user.id})
-        _schedule_disconnect_cleanup(room, user.id)
+        if explicit_leave:
+            # 主动离开:立即出房并释放 USER_ACTIVE,允许马上再开/加入下一局
+            old_host = room.host_id
+            manager.leave_room(room.room_id, user.id)
+            after = manager.get_room(room.room_id)
+            if after is None:
+                _cancel_room_timers(room.room_id)
+            else:
+                await _broadcast(after, {"type": "player_left", "user_id": user.id})
+                if after.host_id != old_host:
+                    await _broadcast(after, {"type": "host_changed", "new_host_id": after.host_id})
+        else:
+            # 意外断线:保留 90s 重连窗口
+            await _broadcast(room, {"type": "player_disconnected", "user_id": user.id})
+            _schedule_disconnect_cleanup(room, user.id)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { pkApi, type PkUnitItem } from '../api/pk';
 import { getStudentBooks, type StudentBook } from '../api/progress';
@@ -16,6 +16,11 @@ export default function PkLobby() {
   const [showInvite, setShowInvite] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
+  const navTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (navTimer.current !== null) window.clearTimeout(navTimer.current);
+  }, []);
 
   useEffect(() => {
     getStudentBooks()
@@ -51,7 +56,7 @@ export default function PkLobby() {
     try {
       const data = await pkApi.createRoom(selectedUnit, maxPlayers);
       setShowInvite(data.invite_code);
-      setTimeout(() => navigate(`/pk/arena/${data.room_id}`), 1500);
+      navTimer.current = window.setTimeout(() => navigate(`/pk/arena/${data.room_id}`), 1500);
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.message || '创建失败');
       setCreating(false);
