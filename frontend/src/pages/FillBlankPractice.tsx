@@ -36,7 +36,7 @@ const FillBlankPractice = () => {
       try {
         const [cloze, unitData] = await Promise.all([
           generateUnitCloze(id, BLANK_COUNT),
-          startLearning({ unit_id: id, learning_mode: 'flashcard' }).catch(() => null),
+          startLearning({ unit_id: id, learning_mode: 'fillblank' }).catch(() => null),
         ]);
         if (cancelled) return;
         setData(cloze);

@@ -15,6 +15,7 @@ import asyncio
 from app.core.database import get_db
 from app.services.ai_service import ai_service
 from app.models.word import Word, WordDefinition, Unit, UnitWord
+from app.utils.blank_sentence import blank_out, can_blank
 
 router = APIRouter()
 
@@ -624,18 +625,26 @@ async def generate_unit_cloze(
     count = min(request.blank_count, len(pool))
     chosen = random.sample(pool, count)
 
-    # 并行准备每个空的句子：有例句直接用，否则约束生成
+    # 并行准备每个空的句子：有可挖空的例句直接用，否则约束生成
     async def build_item(wd: dict) -> ClozeItem:
         sentence, translation = wd["example"], ""
-        if not sentence or wd["word"].lower() not in sentence.lower():
+        # 例句必须能按词形容忍地挖出空，否则视为不可用，改走 AI 生成
+        if not can_blank(sentence, wd["word"]):
             data = await ai_service.generate_cloze_sentence(
                 word=wd["word"], meaning=wd["meaning"], grade_level=grade,
             )
             sentence, translation = data["sentence"], data.get("translation", "")
+
+        blanked = blank_out(sentence, wd["word"])
+        if blanked is None:
+            # AI 生成句仍挖不出空（极少数）：用确定能挖空的兜底句，绝不让答案暴露在题面
+            sentence = f"I can see a {wd['word']} here."
+            translation = translation or f"我能看到一个{wd['meaning']}。"
+            blanked = blank_out(sentence, wd["word"]) or "I can see a ______ here."
         return ClozeItem(
             word_id=wd["id"],
             answer=wd["word"],
-            sentence=_blank_out(sentence, wd["word"]),
+            sentence=blanked,
             translation=translation,
             phonetic=wd["phonetic"],
             meaning=wd["meaning"],
