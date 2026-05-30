@@ -119,16 +119,23 @@ export default function RecapCard({
           transform: card.flipped ? 'rotateY(180deg)' : 'rotateY(0)',
         }}
       >
-        {/* 正面 */}
+        {/* 正面：近白卡(比暖池更亮更冷一点)+ 实暖描边 + 软阴影，从池子里浮起来 */}
         <div
-          className="absolute inset-0 bg-paper rounded-lg border border-amber-200 shadow-md p-3 flex flex-col items-center justify-center"
-          style={{ backfaceVisibility: 'hidden' }}
+          className="absolute inset-0 rounded-lg p-3 flex flex-col items-center justify-center"
+          style={{
+            backfaceVisibility: 'hidden',
+            background: 'oklch(0.995 0.004 240)',
+            border: '1px solid oklch(0.82 0.085 65)',
+            boxShadow: '0 6px 16px -6px oklch(0.6 0.12 55 / 0.35), 0 2px 4px oklch(0.6 0.12 55 / 0.16)',
+          }}
         >
           <div className="text-center font-display text-xl font-bold text-ink leading-tight">
             {card.word.word}
           </div>
           {card.word.phonetic && (
-            <div className="mt-2 text-xs text-ink-soft">{card.word.phonetic}</div>
+            <div className="mt-2 text-xs font-medium" style={{ color: 'oklch(0.62 0.19 40)' }}>
+              {card.word.phonetic}
+            </div>
           )}
           <div
             className={`absolute bottom-1 right-1 text-sm transition-colors ${
@@ -138,23 +145,30 @@ export default function RecapCard({
             🔊
           </div>
         </div>
-        {/* 背面 */}
+        {/* 背面：冷天空蓝(品牌 #00D9FF 淡版)，与暖橙池子冷暖对比，翻面像揭晓答案 */}
         <div
-          className="absolute inset-0 bg-amber-50 rounded-lg border border-amber-200 shadow-md p-3 flex flex-col items-center justify-center"
-          style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+          className="absolute inset-0 rounded-lg p-3 flex flex-col items-center justify-center"
+          style={{
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+            background: 'oklch(0.95 0.045 230)',
+            border: '1px solid oklch(0.78 0.1 230)',
+            boxShadow: '0 6px 16px -6px oklch(0.6 0.1 230 / 0.35), 0 2px 4px oklch(0.6 0.1 230 / 0.16)',
+          }}
         >
           <div className="text-center text-base font-semibold text-ink">
             {card.word.meaning}
           </div>
           {card.word.example_sentence && (
-            <div className="mt-1 text-[10px] text-ink-soft text-center line-clamp-2">
+            <div className="mt-1 text-[10px] text-center line-clamp-2" style={{ color: 'oklch(0.42 0.05 230)' }}>
               {card.word.example_sentence}
             </div>
           )}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); playAudio(card.word.word) }}
-            className="absolute bottom-1 right-1 text-sm text-ink-mute hover:text-accent-warm"
+            className="absolute bottom-1 right-1 text-sm hover:text-accent-warm"
+            style={{ color: 'oklch(0.55 0.09 230)' }}
           >
             🔊
           </button>
