@@ -200,9 +200,12 @@ function DashboardContent({ data, onOpenReviewRules }: { data: ChildDashboard; o
       {/* 标题 */}
       <section className="mb-8">
         <p className="text-ink-mute text-sm mb-2">孩子的学习数据</p>
-        <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight">
-          {data.full_name || data.username}
-        </h1>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight">
+            {data.full_name || data.username}
+          </h1>
+          <span className="text-ink-mute text-sm font-numeric">账号 @{data.username}</span>
+        </div>
       </section>
 
       {/* 今日状态 */}
