@@ -272,7 +272,7 @@ const WordClassifyLearning = () => {
   };
 
   // 音频播放：使用改进的 hook（预加载、缓存、重试、fallback）
-  const { playAudio } = useAudio();
+  const { playAudio, stopAudio } = useAudio();
 
   const playAudioSlow = useCallback((word: string) => {
     playAudio(word, 0.75);
@@ -648,6 +648,7 @@ const WordClassifyLearning = () => {
                   );
                 }}
                 playAudio={playAudio}
+                stopAudio={stopAudio}
               />
             </motion.div>
           )}

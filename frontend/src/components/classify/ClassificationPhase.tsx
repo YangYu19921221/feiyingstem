@@ -17,6 +17,7 @@ interface ClassificationPhaseProps {
   onComplete: (results: Map<number, WordCategory>) => void;
   onRoundMistakes?: (wordIds: number[]) => void;
   playAudio: (word: string) => void;
+  stopAudio?: () => void;
   // PK mode: shows just the current word with classify buttons; single-word controlled mode.
   mode?: 'solo' | 'pk';
   pkCurrentWord?: { id: number; word: string; translation: string };
@@ -49,6 +50,7 @@ export default function ClassificationPhase({
   onComplete,
   onRoundMistakes,
   playAudio,
+  stopAudio,
   mode,
   pkCurrentWord,
   pkOnAnswer,
@@ -110,8 +112,11 @@ export default function ClassificationPhase({
         clearInterval(audioTimerRef.current);
         audioTimerRef.current = null;
       }
+      // 切词/卸载时立刻打断旧词发音(含飞行中的请求)：否则切词后的 300ms 空档里,
+      // 上一个词还没被 token 作废、fetch 返回后会照样播出来,造成与新词重叠/听到旧词。
+      stopAudio?.();
     };
-  }, [currentIndex, currentWord, playAudio, showRoundSummary]);
+  }, [currentIndex, currentWord, playAudio, stopAudio, showRoundSummary]);
 
   // 一轮结束时的处理
   const handleRoundEnd = useCallback((newResults: Map<number, WordCategory>) => {
