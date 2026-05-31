@@ -86,7 +86,9 @@ export function encourage(data: LeaderboardResponse): {
   hook: string | null;   // 追赶前一名的具体目标
   beat: number;          // 已超过多少人
 } {
-  const { kind, my_rank, my_value, total_participants, neighbors } = data;
+  const { kind, my_rank, my_value, total_participants } = data;
+  // neighbors 可能缺失（旧响应结构/无数据），兜底成数组，否则 .find 会让首页整页崩
+  const neighbors = Array.isArray(data.neighbors) ? data.neighbors : [];
   const unit = unitOf(kind);
   const beat = my_rank ? Math.max(0, total_participants - my_rank) : 0;
 
