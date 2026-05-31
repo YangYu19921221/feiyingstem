@@ -72,6 +72,8 @@ const MemoryCurve = () => {
   const [startingReview, setStartingReview] = useState(false);
   const [reviewPage, setReviewPage] = useState(1);
   const [showRules, setShowRules] = useState(false);
+  // 复习完成小结：背完返回时对比快照，给"刚复习 N 个、X 个升档"的正反馈
+  const [recap, setRecap] = useState<{ done: number; promoted: number } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -100,6 +102,25 @@ const MemoryCurve = () => {
       setRetentionData(retentionRes);
       setReviewWords(wordsData || []);
       setProgress(progressData);
+
+      // 背完返回：用复习前快照对比现状，给"刚复习 N 个、X 个升档"的正反馈
+      try {
+        const raw = sessionStorage.getItem('review_snapshot');
+        if (raw) {
+          sessionStorage.removeItem('review_snapshot');
+          const snap: { id: number; level: number }[] = JSON.parse(raw);
+          if (Array.isArray(snap) && snap.length > 0) {
+            // 现在仍到期的词按 id 取最新掌握度；不在到期列表里 = 已答对推到未来 = 视为升档
+            const nowLevel = new Map((wordsData || []).map(w => [w.word_id, w.mastery_level]));
+            let promoted = 0;
+            for (const s of snap) {
+              const cur = nowLevel.get(s.id);
+              if (cur === undefined || cur > s.level) promoted += 1;
+            }
+            setRecap({ done: snap.length, promoted });
+          }
+        }
+      } catch {}
     } catch (error) {
       console.error('加载记忆曲线数据失败:', error);
     } finally {
@@ -139,6 +160,10 @@ const MemoryCurve = () => {
 
       sessionStorage.setItem('review_practice_words', JSON.stringify(wordData));
       sessionStorage.setItem('is_review_practice', 'true');
+      // 复习前快照：记下这批词的 id 与当前掌握度，背完返回时对比，给"进步了多少"的正反馈
+      sessionStorage.setItem('review_snapshot', JSON.stringify(
+        list.map(w => ({ id: w.word_id, level: w.mastery_level }))
+      ));
       navigate('/student/units/0/classify');
     } catch (error) {
       console.error('开始复习失败:', error);
@@ -196,6 +221,44 @@ const MemoryCurve = () => {
       <div className="max-w-5xl mx-auto px-5 py-10 space-y-10">
         {/* 学生身份：家长拍照时一眼知道是谁 */}
         <StudentIdentityBadge tone="paper" className="-mb-4" />
+
+        {/* 复习完成小结：背完返回时出现，给即时正反馈 */}
+        <AnimatePresence>
+          {recap && (
+            <motion.div
+              key="recap"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="-mb-4 rounded-2xl px-5 py-4 flex items-center gap-4"
+              style={{
+                background: 'oklch(0.96 0.05 150)',
+                border: '1px solid oklch(0.8 0.12 150)',
+              }}
+            >
+              <span className="text-3xl shrink-0">🎉</span>
+              <div className="flex-1">
+                <p className="font-display font-semibold text-base" style={{ color: 'oklch(0.4 0.12 150)' }}>
+                  刚刚复习了 {recap.done} 个词
+                  {recap.promoted > 0 && <>，其中 {recap.promoted} 个记得更牢了</>}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'oklch(0.46 0.1 150)' }}>
+                  {recap.promoted === recap.done
+                    ? '全部答对，下次会更晚再出现，继续保持'
+                    : '答对的词会推到更晚复习，答错的稍后再练一次'}
+                </p>
+              </div>
+              <button
+                onClick={() => setRecap(null)}
+                className="shrink-0 text-xs px-2.5 py-1 rounded-full transition hover:opacity-80"
+                style={{ color: 'oklch(0.46 0.1 150)', background: 'oklch(0.92 0.06 150)' }}
+              >
+                知道了
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Hero：今日复习 */}
         <section>
