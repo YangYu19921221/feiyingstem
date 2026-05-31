@@ -38,10 +38,12 @@ export default function RankingBanner() {
   if (!data) {
     return <div className="mb-10 h-[104px] rounded-2xl card-soft animate-pulse opacity-60" />;
   }
-  if (data.total_participants === 0) return null;
+  // 数据结构异常或无人上榜时安静不渲染，绝不让首页崩（top 缺失会导致 .find 崩溃）
+  const top = Array.isArray(data.top) ? data.top : [];
+  if (!data.total_participants || top.length === 0) return null;
 
   const enc = encourage(data);
-  const top3 = [1, 2, 3].map(r => data.top.find(e => e.rank === r));
+  const top3 = [1, 2, 3].map(r => top.find(e => e.rank === r));
   const scopeLabel = data.scope === 'class' ? (data.class_name || '本班') : '全平台';
 
   return (
