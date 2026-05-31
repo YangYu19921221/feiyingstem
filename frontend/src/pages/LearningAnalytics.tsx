@@ -16,16 +16,10 @@ import {
 } from '../api/analytics';
 import { getWordTrends } from '../api/analytics';
 import WordTrendChart from '../components/WordTrendChart';
+import StudentIdentityBadge from '../components/StudentIdentityBadge';
 
 const LearningAnalytics = () => {
   const navigate = useNavigate();
-  // 当前学生身份，给家长拍照时辨认是谁
-  const me = (() => {
-    try { return JSON.parse(localStorage.getItem('user') || '{}'); }
-    catch { return {}; }
-  })();
-  const myName: string = me.full_name || me.username || '同学';
-  const myAccount: string = me.username || '';
   const [overview, setOverview] = useState<LearningOverview | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [modeStats, setModeStats] = useState<ModeStats[]>([]);
@@ -118,15 +112,7 @@ const LearningAnalytics = () => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 {/* 学生身份：家长拍照时一眼知道是谁 */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/25 text-base font-bold">
-                    {myName.slice(0, 1)}
-                  </span>
-                  <div className="leading-tight">
-                    <p className="text-lg font-bold">{myName}</p>
-                    {myAccount && <p className="text-white/75 text-xs">账号 @{myAccount}</p>}
-                  </div>
-                </div>
+                <StudentIdentityBadge tone="color" className="mb-2" />
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Zap className="w-5 h-5" />
                   今日实时

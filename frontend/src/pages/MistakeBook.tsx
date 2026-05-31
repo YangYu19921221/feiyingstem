@@ -10,6 +10,7 @@ import {
   type MistakeWordDetail,
   type MistakeBookStats,
 } from '../api/mistakeBook';
+import StudentIdentityBadge from '../components/StudentIdentityBadge';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 import { toast } from '../components/Toast';
@@ -165,6 +166,9 @@ const MistakeBook = () => {
       </nav>
 
       <div className="max-w-5xl mx-auto px-5 py-10">
+        {/* 学生身份：家长拍照时一眼知道是谁 */}
+        <StudentIdentityBadge tone="paper" className="mb-6" />
+
         {/* Hero：共情 + 飞鹰陪伴 */}
         <section className="mb-10 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
           <div>

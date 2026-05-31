@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, HelpCircle } from 'lucide-react';
 import ReviewRulesModal from '../components/ReviewRulesModal';
+import StudentIdentityBadge from '../components/StudentIdentityBadge';
 import {
   getMemoryCurveStats,
   getReviewDueWords,
@@ -62,13 +63,6 @@ const TIER_ORDER: ReviewTier[] = ['weak', 'medium', 'fluent'];
 
 const MemoryCurve = () => {
   const navigate = useNavigate();
-  // 当前学生身份，给家长拍照时辨认是谁
-  const me = (() => {
-    try { return JSON.parse(localStorage.getItem('user') || '{}'); }
-    catch { return {}; }
-  })();
-  const myName: string = me.full_name || me.username || '同学';
-  const myAccount: string = me.username || '';
   const [stats, setStats] = useState<MemoryCurveStats | null>(null);
   const [progress, setProgress] = useState<ReviewProgress | null>(null);
   const [retentionData, setRetentionData] = useState<RetentionCurveResponse | null>(null);
@@ -201,15 +195,7 @@ const MemoryCurve = () => {
 
       <div className="max-w-5xl mx-auto px-5 py-10 space-y-10">
         {/* 学生身份：家长拍照时一眼知道是谁 */}
-        <div className="flex items-center gap-2.5 -mb-4">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-accent-warm/15 text-accent-warm text-base font-bold">
-            {myName.slice(0, 1)}
-          </span>
-          <div className="leading-tight">
-            <p className="font-display text-base font-semibold text-ink">{myName}</p>
-            {myAccount && <p className="text-ink-mute text-xs">账号 @{myAccount}</p>}
-          </div>
-        </div>
+        <StudentIdentityBadge tone="paper" className="-mb-4" />
 
         {/* Hero：今日复习 */}
         <section>

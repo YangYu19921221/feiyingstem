@@ -4,6 +4,7 @@ import { ArrowLeft, Award, Lock, Trophy, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getMyAchievements, getMyStats, type Achievement, type UserStats } from '../api/achievements';
 import { AchievementIcon } from '../components/AchievementIcon';
+import StudentIdentityBadge from '../components/StudentIdentityBadge';
 
 const AchievementsPage = () => {
   const navigate = useNavigate();
@@ -74,6 +75,9 @@ const AchievementsPage = () => {
       </nav>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* 学生身份：家长拍照时一眼知道是谁 */}
+        <StudentIdentityBadge tone="paper" className="mb-6" />
+
         {/* 统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <motion.div
