@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createLearningRecords } from '../api/learningRecords';
 import useIdleDetector from './useIdleDetector';
@@ -49,6 +49,8 @@ export function usePracticeState({
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [score, setScore] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
+  // 已计入后端的累计秒数：每题只上报"本题增量"，避免每条记录都传整场累计时长导致时长成倍虚高
+  const lastRecordedSecRef = useRef(0);
   const [wrongAnswers, setWrongAnswers] = useState<Set<number>>(new Set());
   const [results, setResults] = useState<(boolean | null)[]>([]);
 
@@ -92,13 +94,16 @@ export function usePracticeState({
     // 实时提交学习记录到后端（错题会自动进入错题集）
     const q = questions[currentIndex];
     if (q?.word_id && unitId) {
+      // 只上报本题增量耗时（本次累计 − 上次已记录），所有增量之和 = 整场实际时长
+      const deltaSec = Math.max(0, timeSpent - lastRecordedSecRef.current);
+      lastRecordedSecRef.current = timeSpent;
       createLearningRecords({
         unit_id: parseInt(unitId),
         learning_mode: mode,
         records: [{
           word_id: q.word_id,
           is_correct: correct,
-          time_spent: timeSpent * 1000,
+          time_spent: deltaSec * 1000,
           learning_mode: mode,
         }],
       }).catch(() => {}); // 静默失败，不影响答题体验
