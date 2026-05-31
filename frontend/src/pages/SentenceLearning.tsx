@@ -47,6 +47,11 @@ export default function SentenceLearning() {
     setIdx(0); setDone(false); setCorrectCount(0); setWrongCount(0);
   };
 
+  // 统一返回上一层（单元列表）：用 navigate(-1) 出栈。
+  // 不要 navigate 到单元页 URL —— 那是 push，会和单元页自身的 navigate(-1)
+  // 形成 学习页⇄单元页 无限来回（点返回一直循环）。
+  const goBack = () => navigate(-1);
+
   const handleResult = (ok: boolean) => {
     if (ok) setCorrectCount(c => c + 1);
     else setWrongCount(w => w + 1);
@@ -62,7 +67,7 @@ export default function SentenceLearning() {
   }
   if (sentences.length === 0) {
     return (
-      <Shell title="句子背诵" onBack={() => navigate(`/student/sentences/${bookId}`)}>
+      <Shell title="句子背诵" onBack={goBack}>
         <div className="py-20 text-center text-sm text-ink-mute">该单元还没有句子</div>
       </Shell>
     );
@@ -71,7 +76,7 @@ export default function SentenceLearning() {
     const total = correctCount + wrongCount;
     const acc = total > 0 ? Math.round((correctCount / total) * 100) : 0;
     return (
-      <Shell title="本组完成" onBack={() => navigate(`/student/sentences/${bookId}`)}>
+      <Shell title="本组完成" onBack={goBack}>
         <div className="py-12 text-center">
           <div className="text-5xl mb-3">🎉</div>
           <h2 className="font-display text-2xl font-semibold text-ink mb-2">练完啦</h2>
@@ -82,7 +87,7 @@ export default function SentenceLearning() {
             <button onClick={restart} className="px-5 py-2.5 rounded-xl border border-black/10 hover:bg-black/[0.02] inline-flex items-center gap-1.5 text-sm">
               <RefreshCw className="w-4 h-4" /> 再练一组
             </button>
-            <button onClick={() => navigate(`/student/sentences/${bookId}`)} className="px-5 py-2.5 rounded-xl bg-accent-warm text-white hover:opacity-90 text-sm">
+            <button onClick={goBack} className="px-5 py-2.5 rounded-xl bg-accent-warm text-white hover:opacity-90 text-sm">
               换一个单元
             </button>
           </div>
@@ -92,7 +97,7 @@ export default function SentenceLearning() {
   }
 
   return (
-    <Shell title={`句子背诵 ${idx + 1} / ${sentences.length}`} onBack={() => navigate(`/student/sentences/${bookId}`)}>
+    <Shell title={`句子背诵 ${idx + 1} / ${sentences.length}`} onBack={goBack}>
       {/* 模式切换 */}
       <div className="inline-flex bg-black/[0.04] p-1 rounded-full mb-6">
         {(['choice', 'dictation'] as Mode[]).map(m => (
