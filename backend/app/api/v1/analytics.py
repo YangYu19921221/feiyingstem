@@ -211,6 +211,9 @@ async def get_learning_overview(
     )
     today_sessions = int(sess_cnt_res.scalar() or 0)
 
+    # 正确率只统计「有对错」的答题模式；classify(分类拖卡)/review(复习) 等无对错，
+    # 它们会往 learning_records 写 is_correct=0,若计入会把正确率严重拉低(显示假错题)
+    SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank')
     rec_today_res = await db.execute(
         select(
             func.count(LearningRecord.id),
@@ -219,6 +222,7 @@ async def get_learning_overview(
             LearningRecord.user_id == current_user.id,
             LearningRecord.created_at >= today_start,
             LearningRecord.created_at < tomorrow_start,
+            LearningRecord.learning_mode.in_(SCORING_MODES),
         )
     )
     rec_total, rec_correct = rec_today_res.one()
