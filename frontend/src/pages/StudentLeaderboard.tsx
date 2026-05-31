@@ -128,10 +128,10 @@ const StudentLeaderboard = () => {
                 <motion.div key={`${kind}-${period}-${scope}-podium`}
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   transition={{ duration: 0.35, ease: EASE }}>
-                  <Podium top={data.top} kind={kind} myUserId={uid} />
+                  <Podium top={data.top ?? []} kind={kind} myUserId={uid} />
                 </motion.div>
               </AnimatePresence>
-              <RankList top={data.top} neighbors={data.neighbors} kind={kind}
+              <RankList top={data.top ?? []} neighbors={data.neighbors ?? []} kind={kind}
                 myUserId={uid} myRank={data.my_rank} />
             </div>
 
