@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 from typing import List
 from datetime import datetime, date, timedelta
 from collections import defaultdict
@@ -661,11 +661,17 @@ async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
     today_start = datetime.combine(today, datetime.min.time())
     tomorrow_start = today_start + timedelta(days=1)
 
+    # 今日待复习：到期、且今天还没练过的词。排除"今天已练过"使其与 review_done_today
+    # 不相交,这样进度条 done/(done+due) 是干净的 0%→100%(否则答错仍到期的词会被两边重复计)。
     due_res = await db.execute(
         select(func.count(WordMastery.id)).where(
             WordMastery.user_id == user_id,
             WordMastery.next_review_at.isnot(None),
             WordMastery.next_review_at <= now,
+            or_(
+                WordMastery.last_practiced_at.is_(None),
+                WordMastery.last_practiced_at < today_start,
+            ),
         )
     )
     review_due_today = int(due_res.scalar() or 0)

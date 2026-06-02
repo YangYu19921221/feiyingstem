@@ -13,6 +13,9 @@
 export type ReviewTier = 'weak' | 'medium' | 'fluent';
 
 const KEY = 'review_last_wrong';
+// 上限：防止 localStorage 里这张表无限增长。超过则丢弃最早的一批(被丢的词回退按
+// mastery_level 分,无副作用)。5000 远超任何学生实际复习过的不同词数。
+const MAX_ENTRIES = 5000;
 
 function read(): Record<string, number> {
   try {
@@ -25,7 +28,16 @@ function read(): Record<string, number> {
 }
 
 function write(map: Record<string, number>) {
-  try { localStorage.setItem(KEY, JSON.stringify(map)); } catch { /* 忽略配额错误 */ }
+  try {
+    let toStore = map;
+    const keys = Object.keys(map);
+    if (keys.length > MAX_ENTRIES) {
+      // 只保留最后 MAX_ENTRIES 个键，丢弃最早写入的
+      toStore = {};
+      for (const k of keys.slice(keys.length - MAX_ENTRIES)) toStore[k] = map[k];
+    }
+    localStorage.setItem(KEY, JSON.stringify(toStore));
+  } catch { /* 忽略配额错误 */ }
 }
 
 /** 复习开始：把本批词的"本轮错误数"重置为 0（复习了且没错 = 0 = 熟练，不回退 mastery） */
