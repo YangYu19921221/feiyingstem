@@ -13,6 +13,7 @@ import {
   type ReviewProgress,
 } from '../api/memoryCurve';
 import { getRetentionCurve, type RetentionCurveResponse } from '../api/analytics';
+import { lastWrongCount, tierByWrong } from '../utils/reviewTier';
 
 const SRS_STAGE_COLORS = [
   '#ef4444', // Stage 0 - 5分钟 (红)
@@ -29,12 +30,15 @@ const SRS_STAGE_COLORS = [
 
 const REVIEW_PAGE_SIZE = 20;
 
-// 复习分组:按掌握度把今日待复习词分成 薄弱/一般/熟练 三档(已毕业词不在待复习列表里)
+// 复习分组:优先按"最近一轮复习错几遍"分档(错≥3薄弱/2一般/≤1熟练,只错1遍多半是手滑,
+// 仍算熟悉);该词还没复习过(无本轮记录)才回退按累计 mastery_level 分。
 type ReviewTier = 'weak' | 'medium' | 'fluent';
 
-const tierOf = (level: number): ReviewTier => {
-  if (level >= 4) return 'fluent';
-  if (level >= 2) return 'medium';
+const tierOfWord = (w: { word_id: number; mastery_level: number }): ReviewTier => {
+  const wrong = lastWrongCount(w.word_id);
+  if (wrong !== null) return tierByWrong(wrong);
+  if (w.mastery_level >= 4) return 'fluent';
+  if (w.mastery_level >= 2) return 'medium';
   return 'weak';
 };
 
@@ -181,9 +185,9 @@ const MemoryCurve = () => {
 
   // 今日待复习词按掌握度分三档,供分组复习
   const tierGroups = {
-    weak: reviewWords.filter(w => tierOf(w.mastery_level) === 'weak'),
-    medium: reviewWords.filter(w => tierOf(w.mastery_level) === 'medium'),
-    fluent: reviewWords.filter(w => tierOf(w.mastery_level) === 'fluent'),
+    weak: reviewWords.filter(w => tierOfWord(w) === 'weak'),
+    medium: reviewWords.filter(w => tierOfWord(w) === 'medium'),
+    fluent: reviewWords.filter(w => tierOfWord(w) === 'fluent'),
   };
 
   if (loading) {

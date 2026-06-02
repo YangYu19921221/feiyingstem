@@ -1,0 +1,57 @@
+/**
+ * 复习「本轮错误次数」→ 薄弱/一般/熟练 分档。
+ *
+ * 记忆曲线的三档原本只按累计 mastery_level 分，会把"打错一个字母"误判成薄弱。
+ * 改为：以"最近一次复习这一轮答错几遍"为准 —— 错≥3 薄弱、错2 一般、错≤1 熟练
+ *（只错一遍多半是手滑，仍算熟悉）。没有本轮记录的词回退到 mastery_level，不影响首次出现。
+ *
+ * 生产者：WordClassifyLearning 复习模式下，开练前 initReviewWords 清零本批，
+ *         每次答错 bumpReviewWrong 累加，即时写盘（中途退出也不丢）。
+ * 消费者：MemoryCurve.tierOf 优先读这里。
+ * 纯前端 localStorage，零后端、零其它模块影响。
+ */
+export type ReviewTier = 'weak' | 'medium' | 'fluent';
+
+const KEY = 'review_last_wrong';
+
+function read(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function write(map: Record<string, number>) {
+  try { localStorage.setItem(KEY, JSON.stringify(map)); } catch { /* 忽略配额错误 */ }
+}
+
+/** 复习开始：把本批词的"本轮错误数"重置为 0（复习了且没错 = 0 = 熟练，不回退 mastery） */
+export function initReviewWords(wordIds: number[]) {
+  const map = read();
+  for (const id of wordIds) map[String(id)] = 0;
+  write(map);
+}
+
+/** 答错时累加这些词的本轮错误数 */
+export function bumpReviewWrong(wordIds: number[]) {
+  if (wordIds.length === 0) return;
+  const map = read();
+  for (const id of wordIds) map[String(id)] = (map[String(id)] || 0) + 1;
+  write(map);
+}
+
+/** 取某词最近一轮错误数；没有记录返回 null */
+export function lastWrongCount(wordId: number): number | null {
+  const v = read()[String(wordId)];
+  return typeof v === 'number' ? v : null;
+}
+
+/** 错误数 → 档位 */
+export function tierByWrong(wrong: number): ReviewTier {
+  if (wrong >= 3) return 'weak';
+  if (wrong === 2) return 'medium';
+  return 'fluent';
+}

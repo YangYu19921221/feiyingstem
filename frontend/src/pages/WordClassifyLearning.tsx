@@ -17,6 +17,7 @@ import {
 } from '../api/learningRecords';
 import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
+import { initReviewWords, bumpReviewWrong } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
@@ -168,6 +169,10 @@ const WordClassifyLearning = () => {
         }
 
         const words = JSON.parse(wordsJson);
+        // 复习模式：把本批词的"本轮错误数"清零(复习了且没错 = 0 = 熟练)，供记忆曲线分档
+        if (isReviewPractice && Array.isArray(words)) {
+          initReviewWords(words.map((w: any) => w.id).filter((x: any) => typeof x === 'number'));
+        }
         data = {
           has_existing_progress: false,
           current_word_index: 0,
@@ -290,6 +295,10 @@ const WordClassifyLearning = () => {
   const submitMistakesRealtime = useCallback((records: WordAnswerCreate[]) => {
     const wrongRecords = records.filter(r => !r.is_correct);
     if (wrongRecords.length === 0 || !unitId) return;
+    // 复习模式：累加本轮错误数，供记忆曲线按"本轮错几遍"分档(错≥3薄弱/2一般/≤1熟练)
+    if (isReviewRef.current) {
+      bumpReviewWrong(wrongRecords.map(r => r.word_id));
+    }
     // 填入实际用时
     const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
     const withTime = wrongRecords.map(r => ({ ...r, time_spent: elapsed }));
