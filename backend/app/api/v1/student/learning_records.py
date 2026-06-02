@@ -670,12 +670,17 @@ async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
     )
     review_due_today = int(due_res.scalar() or 0)
 
+    # 今日已复习：今天练过、且该词在今天之前就已存在(= 复习老词,非今天新学)。
+    # 记忆曲线复习走 classify/spelling 流程,不写 learning_mode='review',
+    # 故不能只按 mode 数;改为按 WordMastery.last_practiced_at 是今天 + created_at 在今天之前判定,
+    # 既能覆盖各种复习入口,又能排除今天首学的新词,且不重复更新掌握度。
     done_res = await db.execute(
-        select(func.count(func.distinct(LearningRecord.word_id))).where(
-            LearningRecord.user_id == user_id,
-            LearningRecord.learning_mode == 'review',
-            LearningRecord.created_at >= today_start,
-            LearningRecord.created_at < tomorrow_start,
+        select(func.count(func.distinct(WordMastery.word_id))).where(
+            WordMastery.user_id == user_id,
+            WordMastery.last_practiced_at.isnot(None),
+            WordMastery.last_practiced_at >= today_start,
+            WordMastery.last_practiced_at < tomorrow_start,
+            WordMastery.created_at < today_start,
         )
     )
     review_done_today = int(done_res.scalar() or 0)
