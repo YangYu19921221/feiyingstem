@@ -135,11 +135,22 @@ const TeacherBookAssignment = () => {
           `${API_BASE_URL}/teacher/classes/${classId}/students`, { headers });
         setStudents(response.data || []);
       } else {
-        const response = await axios.get(`${API_BASE_URL}/teacher/students`, {
-          headers,
-          params: { page: 1, size: 200 },
-        });
-        setStudents(response.data.items || []);
+        // 全部学生：循环翻页拉全，避免 size 上限(200)把人数多的老师截断、201+ 选不到也搜不到
+        const PAGE = 200;
+        let page = 1;
+        let all: Student[] = [];
+        while (true) {
+          const response = await axios.get(`${API_BASE_URL}/teacher/students`, {
+            headers,
+            params: { page, size: PAGE },
+          });
+          const items: Student[] = response.data.items || [];
+          all = all.concat(items);
+          const total: number = response.data.total ?? all.length;
+          if (items.length < PAGE || all.length >= total) break;
+          page += 1;
+        }
+        setStudents(all);
       }
     } catch (error) {
       console.error('加载学生列表失败:', error);
