@@ -54,8 +54,11 @@ const FlashCard = ({ word, onNext, onKnow, onDontKnow }: FlashCardProps) => {
             style={{ backfaceVisibility: 'hidden' }}
           >
             <div className="w-full h-full bg-white rounded-3xl shadow-2xl p-8 flex flex-col items-center justify-center border-4 border-primary">
-              <div className="text-center">
-                <h1 className="text-5xl font-bold text-gray-800 mb-4">
+              <div className="text-center w-full">
+                <h1
+                  className="font-bold text-gray-800 mb-4 break-words max-w-full leading-tight"
+                  style={{ fontSize: 'clamp(1.5rem, 7vw, 3rem)' }}
+                >
                   {word.word}
                 </h1>
 

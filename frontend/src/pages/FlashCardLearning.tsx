@@ -910,7 +910,7 @@ const FlashCardLearning = () => {
               {showPreview && currentGate === 1 ? (
                 <div className="text-center py-4">
                   <p className="text-sm text-gray-400 mb-6">📖 先认识这个单词</p>
-                  <h1 className="text-7xl font-bold text-gray-900 mb-4">
+                  <h1 className="font-bold text-gray-900 mb-4 break-words max-w-full leading-tight" style={{ fontSize: 'clamp(2rem, 11vw, 4.5rem)' }}>
                     <ColoredWord word={currentWord.word} syllables={currentWord.syllables} />
                   </h1>
                   {currentWord.phonetic && (
@@ -956,7 +956,7 @@ const FlashCardLearning = () => {
                   // 关卡3：发音模式
                   <div className="text-center">
                     <p className="text-sm text-gray-500 mb-4">请朗读下面的单词并录音</p>
-                    <h1 className="text-7xl font-bold text-gray-900 mb-6">
+                    <h1 className="font-bold text-gray-900 mb-6 break-words max-w-full leading-tight" style={{ fontSize: 'clamp(2rem, 11vw, 4.5rem)' }}>
                       <ColoredWord word={currentWord.word} syllables={currentWord.syllables} />
                     </h1>
                     {currentWord.phonetic && (
@@ -987,7 +987,7 @@ const FlashCardLearning = () => {
                   // 看单词写翻译：显示英文单词
                   <div className="text-center">
                     <p className="text-sm text-gray-500 mb-4">请输入中文意思</p>
-                    <h1 className="text-7xl font-bold text-gray-900 mb-6">
+                    <h1 className="font-bold text-gray-900 mb-6 break-words max-w-full leading-tight" style={{ fontSize: 'clamp(2rem, 11vw, 4.5rem)' }}>
                       <ColoredWord word={currentWord.word} syllables={currentWord.syllables} />
                     </h1>
                     {currentWord.phonetic && (

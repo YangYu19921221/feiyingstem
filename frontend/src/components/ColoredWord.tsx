@@ -26,7 +26,7 @@ interface ColoredWordProps {
 
 export default function ColoredWord({ word, syllables, className = '' }: ColoredWordProps) {
   if (!syllables) {
-    return <span className={className}>{word}</span>;
+    return <span className={`break-words ${className}`}>{word}</span>;
   }
 
   // syllables 只用来决定分段长度和颜色，实际字符取自 word
