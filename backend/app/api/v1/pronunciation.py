@@ -15,6 +15,27 @@ from app.services import cambridge_service
 
 router = APIRouter()
 
+# 常见缩写的发音文本：TTS 直接念拼写会念成字母(Ms→"M-S"),这里给整词级映射成表音串。
+# 仅在该词没填 tts_text 时兜底;生僻缩写仍可在导入文档的 tts_text 列手动指定。
+_ABBR_TTS = {
+    'ms': 'miz', 'mrs': 'missus', 'mr': 'mister', 'dr': 'doctor',
+    'mt': 'mount', 'st': 'saint', 'vs': 'versus', 'jr': 'junior',
+    'sr': 'senior', 'etc': 'etcetera', 'ave': 'avenue',
+}
+
+
+def _expand_for_tts(word: str) -> str:
+    """把要送 TTS 的拼写展开成更可读的发音文本。
+    1) 整词命中常见缩写表 → 用表音串(Ms→miz);
+    2) 否则保留原文,只展开 sb/sth 占位。
+    """
+    key = word.strip().rstrip('.').lower()
+    if key in _ABBR_TTS:
+        return _ABBR_TTS[key]
+    t = re.sub(r'\bsb\.?\b', 'somebody', word, flags=re.IGNORECASE)
+    t = re.sub(r'\bsth\.?\b', 'something', t, flags=re.IGNORECASE)
+    return t
+
 MAX_AUDIO_SIZE = 5 * 1024 * 1024  # 5MB
 
 
@@ -133,9 +154,7 @@ async def best_pronunciation(
         tts_text = db_word.tts_text
 
     if not tts_text:
-        tts_text = word
-        tts_text = re.sub(r'\bsb\.?\b', 'somebody', tts_text, flags=re.IGNORECASE)
-        tts_text = re.sub(r'\bsth\.?\b', 'something', tts_text, flags=re.IGNORECASE)
+        tts_text = _expand_for_tts(word)
 
     # 1. 优先使用 Edge TTS 英式女声
     if edge_tts_service.is_available():
