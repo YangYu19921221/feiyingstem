@@ -80,30 +80,31 @@ function parsePhonemes(phonetic: string): Phoneme[] {
 
 interface Syllable {
   phonemes: Phoneme[];
-  stressed: boolean;
+  stress: 'none' | 'primary' | 'secondary';  // 主重音 ˈ / 次重音 ˌ / 无
 }
 
 function groupSyllables(phonemes: Phoneme[]): Syllable[] {
   const syllables: Syllable[] = [];
   let current: Phoneme[] = [];
-  let stressed = false;
+  let stress: 'none' | 'primary' | 'secondary' = 'none';
 
   for (const p of phonemes) {
     if (p.type === 'delimiter') continue;
     if (p.type === 'space') {
       if (current.length > 0) {
-        syllables.push({ phonemes: current, stressed });
+        syllables.push({ phonemes: current, stress });
         current = [];
-        stressed = false;
+        stress = 'none';
       }
       continue;
     }
     if (p.type === 'stress') {
       if (current.length > 0) {
-        syllables.push({ phonemes: current, stressed });
+        syllables.push({ phonemes: current, stress });
         current = [];
       }
-      stressed = true;
+      // ˈ(U+02C8)=主重音, ˌ(U+02CC)=次重音
+      stress = p.text === 'ˌ' ? 'secondary' : 'primary';
       continue;
     }
     // 元音触发新音节（如果当前已有元音）
@@ -114,8 +115,8 @@ function groupSyllables(phonemes: Phoneme[]): Syllable[] {
         const lastC = current.length > 0 && current[current.length - 1].type === 'consonant'
           ? current.pop()! : null;
         if (current.length > 0) {
-          syllables.push({ phonemes: current, stressed });
-          stressed = false;
+          syllables.push({ phonemes: current, stress });
+          stress = 'none';
         }
         current = lastC ? [lastC] : [];
       }
@@ -123,7 +124,7 @@ function groupSyllables(phonemes: Phoneme[]): Syllable[] {
     current.push(p);
   }
   if (current.length > 0) {
-    syllables.push({ phonemes: current, stressed });
+    syllables.push({ phonemes: current, stress });
   }
   return syllables;
 }
@@ -172,14 +173,18 @@ export default function ColoredPhonetic({
         <span className="text-gray-300 font-light">/</span>
         {syllables.map((syl, si) => {
           const color = SYLLABLE_COLORS[si % SYLLABLE_COLORS.length];
-          const bg = syl.stressed ? color.stressBg : color.bg;
+          const bg = syl.stress !== 'none' ? color.stressBg : color.bg;
           return (
             <span
               key={si}
               className={`inline-flex items-baseline ${cfg.gap} ${bg} ${color.border} border ${cfg.pill} rounded-xl relative`}
             >
-              {syl.stressed && (
+              {/* IPA：主重音 ˈ 标在音节左上，次重音 ˌ 标在音节左下 */}
+              {syl.stress === 'primary' && (
                 <span className="absolute -top-2 -left-1 text-red-400 font-bold leading-none" style={{ fontSize: '16px' }}>&#x2C8;</span>
+              )}
+              {syl.stress === 'secondary' && (
+                <span className="absolute -bottom-2 -left-1 text-sky-500 font-bold leading-none" style={{ fontSize: '16px' }}>&#x2CC;</span>
               )}
               {syl.phonemes.map((p, pi) => (
                 <span
