@@ -5,9 +5,10 @@
  * 改为：以"最近一次复习这一轮答错几遍"为准 —— 错≥3 薄弱、错2 一般、错≤1 熟练
  *（只错一遍多半是手滑，仍算熟悉）。没有本轮记录的词回退到 mastery_level，不影响首次出现。
  *
- * 生产者：WordClassifyLearning 复习模式下，开练前 initReviewWords 清零本批，
- *         每次答错 bumpReviewWrong 累加，即时写盘（中途退出也不丢）。
- * 消费者：MemoryCurve.tierOf 优先读这里。
+ * 生产者：WordClassifyLearning 复习模式下，答错即 bumpReviewWrong 累加；
+ *         只有真正答对/通过该词时才 markReviewPassed(记 0=熟练)。
+ *         绝不在"开练时"预置 0，否则没做/中途退出的词会被误判成熟练。
+ * 消费者：MemoryCurve.tierOfWord 优先读这里。
  * 纯前端 localStorage，零后端、零其它模块影响。
  */
 export type ReviewTier = 'weak' | 'medium' | 'fluent';
@@ -40,10 +41,18 @@ function write(map: Record<string, number>) {
   } catch { /* 忽略配额错误 */ }
 }
 
-/** 复习开始：把本批词的"本轮错误数"重置为 0（复习了且没错 = 0 = 熟练，不回退 mastery） */
-export function initReviewWords(wordIds: number[]) {
+/**
+ * 答对/通过该词：记本轮错误数为 0（= 熟练）。
+ * 只在确实答对时调用,绝不在开练时预置,否则没答对就会被误升熟练。
+ * 已有错误记录(说明本轮错过)时不覆盖,保留其薄弱/一般档。
+ */
+export function markReviewPassed(wordIds: number[]) {
+  if (wordIds.length === 0) return;
   const map = read();
-  for (const id of wordIds) map[String(id)] = 0;
+  for (const id of wordIds) {
+    const k = String(id);
+    if (!(map[k] > 0)) map[k] = 0;  // 本轮没错过才标熟练
+  }
   write(map);
 }
 

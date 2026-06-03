@@ -17,7 +17,7 @@ import {
 } from '../api/learningRecords';
 import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
-import { initReviewWords, bumpReviewWrong } from '../utils/reviewTier';
+import { markReviewPassed, bumpReviewWrong } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
@@ -169,10 +169,8 @@ const WordClassifyLearning = () => {
         }
 
         const words = JSON.parse(wordsJson);
-        // 复习模式：把本批词的"本轮错误数"清零(复习了且没错 = 0 = 熟练)，供记忆曲线分档
-        if (isReviewPractice && Array.isArray(words)) {
-          initReviewWords(words.map((w: any) => w.id).filter((x: any) => typeof x === 'number'));
-        }
+        // 注意:不在开练时预置档位。答对才标熟练(saveGroupProgress 里 markReviewPassed),
+        // 答错才累加(bumpReviewWrong)。否则没做/中途退出的薄弱词会被误判成熟练。
         data = {
           has_existing_progress: false,
           current_word_index: 0,
@@ -427,6 +425,7 @@ const WordClassifyLearning = () => {
     // 只提交正确记录（错题已在各阶段实时提交过，避免重复）
     const records: WordAnswerCreate[] = [];
     const dictMap = new Map(dictResults.map(r => [r.wordId, r]));
+    const passedWordIds: number[] = [];  // 本组确实答对/已会的词,用于复习分档标熟练
 
     for (const w of currentGroupWords) {
       const category = classifyResults.get(w.id) || 'unknown';
@@ -434,11 +433,19 @@ const WordClassifyLearning = () => {
       const dictResult = dictMap.get(w.id);
       if (dictResult?.isCorrect) {
         records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'spelling' });
+        passedWordIds.push(w.id);
       }
 
       if (category === 'familiar' && !dictResult) {
         records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'classify' });
+        passedWordIds.push(w.id);
       }
+    }
+
+    // 复习模式:只有真正答对/已会的词才标熟练(本轮错过的不会被覆盖)。
+    // 没做到的词不写记录 → 记忆曲线回退按 mastery_level 分,不会被误升熟练。
+    if (isReviewRef.current) {
+      markReviewPassed(passedWordIds);
     }
 
     try {
