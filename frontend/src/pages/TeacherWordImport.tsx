@@ -544,6 +544,7 @@ const TeacherWordImport = () => {
             <li>• 必填字段: word(单词)、phonetic(音标)、part_of_speech(词性)、meaning(释义)、difficulty(难度)、grade_level(年级)</li>
             <li>• 可选字段: syllables(音节划分,用-分隔,如 beau-ti-ful)、tts_text(发音文本)、example_sentence、example_translation、tags</li>
             <li>• <span className="font-semibold">tts_text(发音文本)</span>: 只在"读音和拼写不一样"时才填,用普通字母拼出实际读音。如 Ms 填 miz、Mrs 填 missus、kg 填 kilogram;普通单词留空即可,系统按拼写发音。常见缩写(Ms/Mrs/Dr 等)即使不填也会自动读对。</li>
+            <li>• <span className="font-semibold">同形不同音</span>(如 record 名词 ˈrekɔːd / 动词 rɪˈkɔːd、read 现在式 riːd / 过去式 red): 拆成两行录入,word 都写同一拼写,但 tts_text、词性、释义各填各的(如 record 一行 tts_text=rekord 词性 n.,另一行 tts_text=rikord 词性 v.)。</li>
             <li>• 难度范围: 1-5 (1=简单, 5=困难)</li>
             <li>• 年级选项: 小学、初中、高中</li>
             <li>• 词性选项: n.(名词)、v.(动词)、adj.(形容词)、adv.(副词)、prep.(介词)、conj.(连词)、pron.(代词)</li>
