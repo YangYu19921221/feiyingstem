@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, HelpCircle } from 'lucide-react';
@@ -13,7 +13,7 @@ import {
   type ReviewProgress,
 } from '../api/memoryCurve';
 import { getRetentionCurve, type RetentionCurveResponse } from '../api/analytics';
-import { lastWrongCount, tierByWrong } from '../utils/reviewTier';
+import { readAllWrong, tierByWrong } from '../utils/reviewTier';
 
 const SRS_STAGE_COLORS = [
   '#ef4444', // Stage 0 - 5分钟 (红)
@@ -34,9 +34,12 @@ const REVIEW_PAGE_SIZE = 20;
 // 仍算熟悉);该词还没复习过(无本轮记录)才回退按累计 mastery_level 分。
 type ReviewTier = 'weak' | 'medium' | 'fluent';
 
-const tierOfWord = (w: { word_id: number; mastery_level: number }): ReviewTier => {
-  const wrong = lastWrongCount(w.word_id);
-  if (wrong !== null) return tierByWrong(wrong);
+const tierOfWord = (
+  w: { word_id: number; mastery_level: number },
+  wrongMap: Record<string, number>,
+): ReviewTier => {
+  const wrong = wrongMap[String(w.word_id)];
+  if (typeof wrong === 'number') return tierByWrong(wrong);
   if (w.mastery_level >= 4) return 'fluent';
   if (w.mastery_level >= 2) return 'medium';
   return 'weak';
@@ -184,11 +187,13 @@ const MemoryCurve = () => {
   };
 
   // 今日待复习词按掌握度分三档,供分组复习
-  const tierGroups = {
-    weak: reviewWords.filter(w => tierOfWord(w) === 'weak'),
-    medium: reviewWords.filter(w => tierOfWord(w) === 'medium'),
-    fluent: reviewWords.filter(w => tierOfWord(w) === 'fluent'),
-  };
+  // 今日待复习词按掌握度分三档:读一次本轮错误表,单遍分组(避免逐词反复读 localStorage)
+  const tierGroups = useMemo(() => {
+    const wrongMap = readAllWrong();
+    const groups: Record<ReviewTier, ReviewWord[]> = { weak: [], medium: [], fluent: [] };
+    for (const w of reviewWords) groups[tierOfWord(w, wrongMap)].push(w);
+    return groups;
+  }, [reviewWords]);
 
   if (loading) {
     return (

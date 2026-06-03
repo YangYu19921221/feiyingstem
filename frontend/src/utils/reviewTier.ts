@@ -70,6 +70,11 @@ export function lastWrongCount(wordId: number): number | null {
   return typeof v === 'number' ? v : null;
 }
 
+/** 一次性读出整张「本轮错误数」表，供批量分档时避免逐词反复读 localStorage/JSON.parse */
+export function readAllWrong(): Record<string, number> {
+  return read();
+}
+
 /** 错误数 → 档位 */
 export function tierByWrong(wrong: number): ReviewTier {
   if (wrong >= 3) return 'weak';
