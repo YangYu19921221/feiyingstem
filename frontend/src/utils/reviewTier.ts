@@ -50,33 +50,31 @@ export function readAllStages(): Record<string, number> {
   return read();
 }
 
-/** 取某词当前晋级档位；没有记录返回 null(由调用方回退 mastery_level 定档) */
-export function getStage(wordId: number): number | null {
-  const v = read()[String(wordId)];
-  return typeof v === 'number' ? v : null;
-}
-
 /**
- * 复习答对：该词往上升一档(薄弱→一般→熟练→毕业)。
- * baseStage：该词此前没有晋级记录时的起始档(由 mastery_level 推出)，确保第一次答对
- * 从它当前真实档位 +1，而不是从 0 +1。
+ * 批量复习答对：一次读、内存逐词升一档、一次写(避免逐词反复 parse/stringify 整表)。
+ * baseStage：没有晋级记录的词的起始档。
  */
-export function promoteReviewWord(wordId: number, baseStage: number) {
+export function promoteReviewWords(wordIds: number[], baseStage: number) {
+  if (wordIds.length === 0) return;
   const map = read();
-  const k = String(wordId);
-  const cur = typeof map[k] === 'number' ? map[k] : baseStage;
-  map[k] = Math.min(STAGE_GRADUATED, cur + 1);
+  for (const id of wordIds) {
+    const k = String(id);
+    const cur = typeof map[k] === 'number' ? map[k] : baseStage;
+    map[k] = Math.min(STAGE_GRADUATED, cur + 1);
+  }
   write(map);
 }
 
-/** 答错：确保该词有记录且不升档(留在原档)。无记录则按 baseStage 落档。 */
-export function keepReviewWord(wordId: number, baseStage: number) {
+/** 批量答错：留原档(无记录才按 baseStage 落档),一次读一次写。 */
+export function keepReviewWords(wordIds: number[], baseStage: number) {
+  if (wordIds.length === 0) return;
   const map = read();
-  const k = String(wordId);
-  if (typeof map[k] !== 'number') {
-    map[k] = baseStage;
-    write(map);
+  let changed = false;
+  for (const id of wordIds) {
+    const k = String(id);
+    if (typeof map[k] !== 'number') { map[k] = baseStage; changed = true; }
   }
+  if (changed) write(map);
 }
 
 /** 档位数值 → 三档名 */

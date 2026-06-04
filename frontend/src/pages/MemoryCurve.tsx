@@ -13,7 +13,7 @@ import {
   type ReviewProgress,
 } from '../api/memoryCurve';
 import { getRetentionCurve, type RetentionCurveResponse } from '../api/analytics';
-import { readAllStages, getStage, tierByStage, isGraduated, stageFromMastery } from '../utils/reviewTier';
+import { readAllStages, tierByStage, isGraduated, stageFromMastery } from '../utils/reviewTier';
 
 const SRS_STAGE_COLORS = [
   '#ef4444', // Stage 0 - 5分钟 (红)

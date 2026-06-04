@@ -17,7 +17,7 @@ import {
 } from '../api/learningRecords';
 import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
-import { promoteReviewWord, keepReviewWord } from '../utils/reviewTier';
+import { promoteReviewWords, keepReviewWords } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
@@ -295,7 +295,7 @@ const WordClassifyLearning = () => {
     if (wrongRecords.length === 0 || !unitId) return;
     // 复习模式：答错的词留在原档(不升级)；逐级晋级 薄弱→一般→熟练→毕业
     if (isReviewRef.current) {
-      wrongRecords.forEach(r => keepReviewWord(r.word_id, 0));
+      keepReviewWords(wrongRecords.map(r => r.word_id), 0);
     }
     // 填入实际用时
     const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
@@ -445,7 +445,7 @@ const WordClassifyLearning = () => {
     // 复习模式:本组答对/已会的词逐级升一档(薄弱→一般→熟练→毕业)。
     // 答错的词已在 submitMistakesRealtime 里 keepReviewWord 留原档,不会被这里覆盖升级。
     if (isReviewRef.current) {
-      passedWordIds.forEach(id => promoteReviewWord(id, 0));
+      promoteReviewWords(passedWordIds, 0);
     }
 
     try {
