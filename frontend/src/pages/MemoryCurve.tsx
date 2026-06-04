@@ -13,7 +13,7 @@ import {
   type ReviewProgress,
 } from '../api/memoryCurve';
 import { getRetentionCurve, type RetentionCurveResponse } from '../api/analytics';
-import { readAllWrong, tierByWrong } from '../utils/reviewTier';
+import { readAllStages, getStage, tierByStage, isGraduated, stageFromMastery } from '../utils/reviewTier';
 
 const SRS_STAGE_COLORS = [
   '#ef4444', // Stage 0 - 5分钟 (红)
@@ -34,15 +34,18 @@ const REVIEW_PAGE_SIZE = 20;
 // 仍算熟悉);该词还没复习过(无本轮记录)才回退按累计 mastery_level 分。
 type ReviewTier = 'weak' | 'medium' | 'fluent';
 
+// 逐级晋级分档:有晋级记录按档位(薄弱→一般→熟练),已毕业返回 'graduated'(从列表隐藏);
+// 没复习过的词回退按 mastery_level 初始定档。
 const tierOfWord = (
   w: { word_id: number; mastery_level: number },
-  wrongMap: Record<string, number>,
-): ReviewTier => {
-  const wrong = wrongMap[String(w.word_id)];
-  if (typeof wrong === 'number') return tierByWrong(wrong);
-  if (w.mastery_level >= 4) return 'fluent';
-  if (w.mastery_level >= 2) return 'medium';
-  return 'weak';
+  stageMap: Record<string, number>,
+): ReviewTier | 'graduated' => {
+  const stage = stageMap[String(w.word_id)];
+  if (typeof stage === 'number') {
+    if (isGraduated(stage)) return 'graduated';
+    return tierByStage(stage);
+  }
+  return tierByStage(stageFromMastery(w.mastery_level));
 };
 
 // 三档视觉:珊瑚红=薄弱(最该补) / 琥珀=一般 / 草绿=熟练。OKLCH 暖色系
@@ -186,12 +189,15 @@ const MemoryCurve = () => {
     return { text: '薄弱', color: 'bg-red-100 text-red-700' };
   };
 
-  // 今日待复习词按掌握度分三档,供分组复习
-  // 今日待复习词按掌握度分三档:读一次本轮错误表,单遍分组(避免逐词反复读 localStorage)
+  // 今日待复习词分三档:读一次晋级表,单遍分组;已毕业(熟练答对过)的词从列表隐藏
   const tierGroups = useMemo(() => {
-    const wrongMap = readAllWrong();
+    const stageMap = readAllStages();
     const groups: Record<ReviewTier, ReviewWord[]> = { weak: [], medium: [], fluent: [] };
-    for (const w of reviewWords) groups[tierOfWord(w, wrongMap)].push(w);
+    for (const w of reviewWords) {
+      const tier = tierOfWord(w, stageMap);
+      if (tier === 'graduated') continue;  // 毕业的不再出现在今日复习
+      groups[tier].push(w);
+    }
     return groups;
   }, [reviewWords]);
 

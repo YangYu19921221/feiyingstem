@@ -17,7 +17,7 @@ import {
 } from '../api/learningRecords';
 import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
-import { markReviewPassed, bumpReviewWrong } from '../utils/reviewTier';
+import { promoteReviewWord, keepReviewWord } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
@@ -169,8 +169,8 @@ const WordClassifyLearning = () => {
         }
 
         const words = JSON.parse(wordsJson);
-        // 注意:不在开练时预置档位。答对才标熟练(saveGroupProgress 里 markReviewPassed),
-        // 答错才累加(bumpReviewWrong)。否则没做/中途退出的薄弱词会被误判成熟练。
+        // 注意:不在开练时预置档位。复习答对才升一档(saveGroupProgress 里 promoteReviewWord),
+        // 答错留原档(keepReviewWord)。逐级晋级 薄弱→一般→熟练→毕业。
         data = {
           has_existing_progress: false,
           current_word_index: 0,
@@ -293,9 +293,9 @@ const WordClassifyLearning = () => {
   const submitMistakesRealtime = useCallback((records: WordAnswerCreate[]) => {
     const wrongRecords = records.filter(r => !r.is_correct);
     if (wrongRecords.length === 0 || !unitId) return;
-    // 复习模式：累加本轮错误数，供记忆曲线按"本轮错几遍"分档(错≥3薄弱/2一般/≤1熟练)
+    // 复习模式：答错的词留在原档(不升级)；逐级晋级 薄弱→一般→熟练→毕业
     if (isReviewRef.current) {
-      bumpReviewWrong(wrongRecords.map(r => r.word_id));
+      wrongRecords.forEach(r => keepReviewWord(r.word_id, 0));
     }
     // 填入实际用时
     const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
@@ -442,10 +442,10 @@ const WordClassifyLearning = () => {
       }
     }
 
-    // 复习模式:只有真正答对/已会的词才标熟练(本轮错过的不会被覆盖)。
-    // 没做到的词不写记录 → 记忆曲线回退按 mastery_level 分,不会被误升熟练。
+    // 复习模式:本组答对/已会的词逐级升一档(薄弱→一般→熟练→毕业)。
+    // 答错的词已在 submitMistakesRealtime 里 keepReviewWord 留原档,不会被这里覆盖升级。
     if (isReviewRef.current) {
-      markReviewPassed(passedWordIds);
+      passedWordIds.forEach(id => promoteReviewWord(id, 0));
     }
 
     try {

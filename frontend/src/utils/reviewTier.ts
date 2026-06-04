@@ -1,22 +1,27 @@
 /**
- * 复习「本轮错误次数」→ 薄弱/一般/熟练 分档。
+ * 复习「逐级晋级」档位：薄弱 → 一般 → 熟练 → 毕业。
  *
- * 记忆曲线的三档原本只按累计 mastery_level 分，会把"打错一个字母"误判成薄弱。
- * 改为：以"最近一次复习这一轮答错几遍"为准 —— 错≥3 薄弱、错2 一般、错≤1 熟练
- *（只错一遍多半是手滑，仍算熟悉）。没有本轮记录的词回退到 mastery_level，不影响首次出现。
+ * 规则(用户确认)：复习中每答对一次，该词往上升一档；答错留在原档；
+ * 熟练再答对则毕业(从今日复习列表消失，靠后端 SRS 排期隔几天再到期巩固)。
  *
- * 生产者：WordClassifyLearning 复习模式下，答错即 bumpReviewWrong 累加；
- *         只有真正答对/通过该词时才 markReviewPassed(记 0=熟练)。
- *         绝不在"开练时"预置 0，否则没做/中途退出的词会被误判成熟练。
+ * 纯前端 localStorage，不动后端 mastery_level 算法，零影响成就/统计/光荣榜等。
+ * 没有晋级记录的词，由 MemoryCurve 回退按 mastery_level 初始定档。
+ *
+ * 档位编码: 0=薄弱 1=一般 2=熟练 3=毕业(隐藏)
+ * 生产者：WordClassifyLearning 复习模式下答对 promoteReviewWord、答错不变。
  * 消费者：MemoryCurve.tierOfWord 优先读这里。
- * 纯前端 localStorage，零后端、零其它模块影响。
  */
 export type ReviewTier = 'weak' | 'medium' | 'fluent';
 
-const KEY = 'review_last_wrong';
-// 上限：防止 localStorage 里这张表无限增长。超过则丢弃最早的一批(被丢的词回退按
-// mastery_level 分,无副作用)。5000 远超任何学生实际复习过的不同词数。
+const KEY = 'review_stage_map';
+// 上限：防止 localStorage 无限增长。超过丢弃最早一批(被丢的词回退按 mastery_level 定档)。
 const MAX_ENTRIES = 5000;
+
+// 档位数值 → 三档名(3=毕业，调用方据 isGraduated 单独隐藏)
+const STAGE_WEAK = 0;
+const STAGE_MEDIUM = 1;
+const STAGE_FLUENT = 2;
+const STAGE_GRADUATED = 3;
 
 function read(): Record<string, number> {
   try {
@@ -33,7 +38,6 @@ function write(map: Record<string, number>) {
     let toStore = map;
     const keys = Object.keys(map);
     if (keys.length > MAX_ENTRIES) {
-      // 只保留最后 MAX_ENTRIES 个键，丢弃最早写入的
       toStore = {};
       for (const k of keys.slice(keys.length - MAX_ENTRIES)) toStore[k] = map[k];
     }
@@ -41,43 +45,55 @@ function write(map: Record<string, number>) {
   } catch { /* 忽略配额错误 */ }
 }
 
-/**
- * 答对/通过该词：记本轮错误数为 0（= 熟练）。
- * 只在确实答对时调用,绝不在开练时预置,否则没答对就会被误升熟练。
- * 已有错误记录(说明本轮错过)时不覆盖,保留其薄弱/一般档。
- */
-export function markReviewPassed(wordIds: number[]) {
-  if (wordIds.length === 0) return;
-  const map = read();
-  for (const id of wordIds) {
-    const k = String(id);
-    if (!(map[k] > 0)) map[k] = 0;  // 本轮没错过才标熟练
-  }
-  write(map);
+/** 一次性读出整张晋级表，供批量分档避免逐词反复读 localStorage */
+export function readAllStages(): Record<string, number> {
+  return read();
 }
 
-/** 答错时累加这些词的本轮错误数 */
-export function bumpReviewWrong(wordIds: number[]) {
-  if (wordIds.length === 0) return;
-  const map = read();
-  for (const id of wordIds) map[String(id)] = (map[String(id)] || 0) + 1;
-  write(map);
-}
-
-/** 取某词最近一轮错误数；没有记录返回 null */
-export function lastWrongCount(wordId: number): number | null {
+/** 取某词当前晋级档位；没有记录返回 null(由调用方回退 mastery_level 定档) */
+export function getStage(wordId: number): number | null {
   const v = read()[String(wordId)];
   return typeof v === 'number' ? v : null;
 }
 
-/** 一次性读出整张「本轮错误数」表，供批量分档时避免逐词反复读 localStorage/JSON.parse */
-export function readAllWrong(): Record<string, number> {
-  return read();
+/**
+ * 复习答对：该词往上升一档(薄弱→一般→熟练→毕业)。
+ * baseStage：该词此前没有晋级记录时的起始档(由 mastery_level 推出)，确保第一次答对
+ * 从它当前真实档位 +1，而不是从 0 +1。
+ */
+export function promoteReviewWord(wordId: number, baseStage: number) {
+  const map = read();
+  const k = String(wordId);
+  const cur = typeof map[k] === 'number' ? map[k] : baseStage;
+  map[k] = Math.min(STAGE_GRADUATED, cur + 1);
+  write(map);
 }
 
-/** 错误数 → 档位 */
-export function tierByWrong(wrong: number): ReviewTier {
-  if (wrong >= 3) return 'weak';
-  if (wrong === 2) return 'medium';
-  return 'fluent';
+/** 答错：确保该词有记录且不升档(留在原档)。无记录则按 baseStage 落档。 */
+export function keepReviewWord(wordId: number, baseStage: number) {
+  const map = read();
+  const k = String(wordId);
+  if (typeof map[k] !== 'number') {
+    map[k] = baseStage;
+    write(map);
+  }
+}
+
+/** 档位数值 → 三档名 */
+export function tierByStage(stage: number): ReviewTier {
+  if (stage <= STAGE_WEAK) return 'weak';
+  if (stage === STAGE_MEDIUM) return 'medium';
+  return 'fluent';  // 2=熟练；3=毕业由 isGraduated 单独判隐藏
+}
+
+/** 是否已毕业(应从今日复习列表隐藏) */
+export function isGraduated(stage: number | null): boolean {
+  return stage !== null && stage >= STAGE_GRADUATED;
+}
+
+/** 由 mastery_level 推初始档位(没复习过的词的起点): 0-1→薄弱 2-3→一般 4+→熟练 */
+export function stageFromMastery(level: number): number {
+  if (level >= 4) return STAGE_FLUENT;
+  if (level >= 2) return STAGE_MEDIUM;
+  return STAGE_WEAK;
 }
