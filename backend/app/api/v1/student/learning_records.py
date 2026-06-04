@@ -257,21 +257,28 @@ async def update_word_mastery(
     mastery.last_practiced_at = datetime.utcnow()
 
     # 计算下次复习时间(艾宾浩斯间隔重复算法)
+    graduated = False
     if is_correct:
         current_stage = mastery.review_stage or 0
         if current_stage < len(SRS_INTERVALS):
             interval_hours = SRS_INTERVALS[current_stage]
             mastery.review_stage = current_stage + 1
         else:
-            interval_hours = 720  # 毕业后30天复习一次
+            # 已走完所有 SRS 阶段、再次答对 → 永久毕业:不再排下次复习,
+            # next_review_at=None 使复习查询(next_review_at<=now)永远查不到它。
+            # 若以后别的模块重新学这个词(走普通学习路径)会重写 next_review_at 复活。
             mastery.review_stage = len(SRS_INTERVALS)
+            graduated = True
     else:
         # 答错回退2个阶段（不完全重置，避免因一次失误惩罚过重）
         current_stage = mastery.review_stage or 0
         mastery.review_stage = max(0, current_stage - 2)
         interval_hours = SRS_INTERVALS[mastery.review_stage]
 
-    mastery.next_review_at = datetime.utcnow() + timedelta(hours=interval_hours)
+    if graduated:
+        mastery.next_review_at = None
+    else:
+        mastery.next_review_at = datetime.utcnow() + timedelta(hours=interval_hours)
 
 
 # ========================================
