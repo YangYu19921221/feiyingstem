@@ -45,7 +45,7 @@ function PodiumColumn({
         {entry ? theme.crown : '✨'}
       </motion.div>
 
-      {/* 立绘 + 光晕 */}
+      {/* 立绘 + 光晕 + 旋转光环(金牌更强) */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -53,11 +53,26 @@ function PodiumColumn({
         className="relative flex items-end justify-center mt-1"
         style={{ background: `radial-gradient(circle at 50% 70%, ${theme.glow}, transparent 68%)` }}
       >
+        {/* 冠军身后旋转光环:营造"出场光效",仅在有人时显示 */}
+        {entry && (
+          <motion.div
+            aria-hidden
+            className="absolute inset-0 -z-0 pointer-events-none"
+            animate={{ rotate: 360 }}
+            transition={{ duration: isGold ? 14 : 20, ease: 'linear', repeat: Infinity }}
+            style={{
+              background: `conic-gradient(from 0deg, transparent, ${theme.glow}, transparent 40%, ${theme.glow} 60%, transparent)`,
+              borderRadius: '9999px',
+              filter: 'blur(6px)',
+              opacity: isGold ? 0.75 : 0.5,
+            }}
+          />
+        )}
         {entry ? (
           <PictureFallback
             src={`/champions/${kind}-${tier}.webp`}
             alt={`${theme.label} ${name}`}
-            className={`${slot.portrait} object-contain drop-shadow-md select-none`}
+            className={`relative ${slot.portrait} object-contain drop-shadow-md select-none`}
             draggable={false}
             decoding="async"
             {...(isGold ? { fetchPriority: 'high' as const } : {})}
@@ -123,15 +138,20 @@ export default function Podium({
   const byRank = (r: number) => top.find(e => e.rank === r);
   return (
     <div
-      className="relative rounded-3xl overflow-hidden px-4 pt-6 pb-0 bg-white"
+      className="relative rounded-3xl overflow-hidden px-4 pt-6 pb-0"
       style={{
-        border: '1px solid oklch(0.68 0.185 40 / 0.1)',
-        boxShadow: '0 1px 0 oklch(0.68 0.185 40 / 0.05), 0 14px 40px -16px oklch(0.6 0.16 60 / 0.35)',
+        // 冠军舞台:暖米白 → 顶部聚光的深一点底,营造"舞台灯下"氛围
+        background: 'linear-gradient(180deg, oklch(0.99 0.012 70), oklch(0.965 0.02 65))',
+        border: '1px solid oklch(0.68 0.185 40 / 0.12)',
+        boxShadow: '0 1px 0 oklch(0.68 0.185 40 / 0.05), 0 14px 40px -16px oklch(0.6 0.16 60 / 0.4)',
       }}
     >
+      {/* 舞台聚光:顶部中心放射光束(金色) */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-56"
+           style={{ background: 'conic-gradient(from 180deg at 50% -10%, transparent 0deg, oklch(0.92 0.14 80 / 0.28) 70deg, transparent 110deg, oklch(0.92 0.14 80 / 0.22) 180deg, transparent 220deg, oklch(0.92 0.14 80 / 0.28) 290deg, transparent 360deg)' }} />
       {/* 顶部庆祝暖光 */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40"
-           style={{ background: 'radial-gradient(ellipse 70% 100% at 50% 0%, oklch(0.9 0.13 78 / 0.3), transparent 70%)' }} />
+           style={{ background: 'radial-gradient(ellipse 70% 100% at 50% 0%, oklch(0.9 0.13 78 / 0.35), transparent 70%)' }} />
       <div className="relative flex items-end gap-2 md:gap-4">
         <PodiumColumn entry={byRank(2)} tier="silver" kind={kind} isMe={byRank(2)?.user_id === myUserId} />
         <PodiumColumn entry={byRank(1)} tier="gold"   kind={kind} isMe={byRank(1)?.user_id === myUserId} />
