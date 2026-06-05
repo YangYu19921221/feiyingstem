@@ -134,12 +134,16 @@ const MemoryCurve = () => {
     }
   };
 
+  // 一批最多背多少:避免一档几百个词一次性涌出来。背完这批回到本页,列表会刷新出下一批。
+  const REVIEW_BATCH = 20;
+
   const handleStartReview = async (subset?: ReviewWord[]) => {
-    const list = subset && subset.length > 0 ? subset : reviewWords;
-    if (list.length === 0) return;
+    const source = subset && subset.length > 0 ? subset : reviewWords;
+    if (source.length === 0) return;
+    const list = source.slice(0, REVIEW_BATCH);  // 自动分批:这次只背前 20 个
     setStartingReview(true);
     try {
-      // 把待复习词传给 FlashCardLearning（可只传某一档）
+      // 把这一批待复习词传给 FlashCardLearning（可只传某一档）
       const wordData = list.map((w, index) => ({
         id: w.word_id,
         word: w.word,
@@ -338,7 +342,7 @@ const MemoryCurve = () => {
                       </p>
                       {!empty && (
                         <span className="inline-block mt-3 text-xs font-semibold" style={{ color: meta.text }}>
-                          复习这组 →
+                          {group.length > REVIEW_BATCH ? `先背 ${REVIEW_BATCH} 个 →` : '复习这组 →'}
                         </span>
                       )}
                     </button>
@@ -351,7 +355,10 @@ const MemoryCurve = () => {
                 disabled={startingReview}
                 className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition disabled:opacity-50"
               >
-                {startingReview ? '准备中…' : `全部一起复习 (${reviewWords.length}) →`}
+                {startingReview ? '准备中…'
+                  : reviewWords.length > REVIEW_BATCH
+                    ? `先背 ${REVIEW_BATCH} 个 (共 ${reviewWords.length}) →`
+                    : `开始复习 (${reviewWords.length}) →`}
               </button>
             </>
           ) : stats && stats.total_learned === 0 ? (
