@@ -12,7 +12,6 @@ import {
   type ReviewWord,
   type ReviewProgress,
 } from '../api/memoryCurve';
-import { getRetentionCurve, type RetentionCurveResponse } from '../api/analytics';
 import { readAllStages, tierByStage, isGraduated, stageFromMastery } from '../utils/reviewTier';
 
 const SRS_STAGE_COLORS = [
@@ -75,7 +74,6 @@ const MemoryCurve = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<MemoryCurveStats | null>(null);
   const [progress, setProgress] = useState<ReviewProgress | null>(null);
-  const [retentionData, setRetentionData] = useState<RetentionCurveResponse | null>(null);
   const [reviewWords, setReviewWords] = useState<ReviewWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWordList, setShowWordList] = useState(false);
@@ -102,14 +100,12 @@ const MemoryCurve = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, retentionRes, wordsData, progressData] = await Promise.all([
+      const [statsData, wordsData, progressData] = await Promise.all([
         getMemoryCurveStats(),
-        getRetentionCurve().catch(() => null),
         getReviewDueWords(500),  // 不限上限：把今日全部到期词都拿回来
         getReviewProgress().catch(() => null),
       ]);
       setStats(statsData);
-      setRetentionData(retentionRes);
       setReviewWords(wordsData || []);
       setProgress(progressData);
 
@@ -421,121 +417,6 @@ const MemoryCurve = () => {
             </div>
           </section>
         )}
-
-        {/* 艾宾浩斯记忆曲线 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-2xl p-6 border border-black/[0.05]"
-        >
-          <h2 className="text-lg font-bold text-gray-800 mb-1">📈 艾宾浩斯遗忘曲线</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            {retentionData?.message || '理论遗忘曲线 vs 你的实际保留率'}
-          </p>
-
-          {(() => {
-            const points = retentionData?.data_points || [
-              { hours_since_learning: 1, label: '1小时', theoretical_retention: 97.3, actual_retention: null, sample_size: 0 },
-              { hours_since_learning: 24, label: '1天', theoretical_retention: 51.3, actual_retention: null, sample_size: 0 },
-              { hours_since_learning: 48, label: '2天', theoretical_retention: 26.4, actual_retention: null, sample_size: 0 },
-              { hours_since_learning: 96, label: '4天', theoretical_retention: 7.0, actual_retention: null, sample_size: 0 },
-              { hours_since_learning: 168, label: '7天', theoretical_retention: 0.9, actual_retention: null, sample_size: 0 },
-              { hours_since_learning: 336, label: '14天', theoretical_retention: 0.0, actual_retention: null, sample_size: 0 },
-              { hours_since_learning: 720, label: '30天', theoretical_retention: 0.0, actual_retention: null, sample_size: 0 },
-            ];
-
-            const W = 600, H = 280;
-            const padL = 50, padR = 30, padT = 20, padB = 40;
-            const chartW = W - padL - padR;
-            const chartH = H - padT - padB;
-
-            const minLog = Math.log(1);
-            const maxLog = Math.log(720);
-            const xScale = (hours: number) => {
-              const logVal = Math.log(Math.max(hours, 1));
-              return padL + ((logVal - minLog) / (maxLog - minLog)) * chartW;
-            };
-            const yScale = (val: number) => padT + chartH - (val / 100) * chartH;
-
-            const theoreticalPath = points
-              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.hours_since_learning)} ${yScale(p.theoretical_retention)}`)
-              .join(' ');
-
-            const actualPoints = points.filter(p => p.actual_retention !== null);
-            const actualPath = actualPoints
-              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.hours_since_learning)} ${yScale(p.actual_retention!)}`)
-              .join(' ');
-
-            // 复习节点标记（SRS间隔对应的时间点）
-            const reviewIntervals = [0.083, 0.5, 12, 24, 48, 96, 168, 360, 720];
-
-            return (
-              <div className="overflow-x-auto">
-                <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[600px] mx-auto">
-                  {/* 网格线 */}
-                  {[0, 25, 50, 75, 100].map(v => (
-                    <g key={v}>
-                      <line x1={padL} y1={yScale(v)} x2={W - padR} y2={yScale(v)} stroke="#e5e7eb" strokeWidth="1" />
-                      <text x={padL - 8} y={yScale(v) + 4} textAnchor="end" className="text-[10px]" fill="#9ca3af">{v}%</text>
-                    </g>
-                  ))}
-
-                  {/* X轴标签 */}
-                  {points.map((p) => (
-                    <text key={p.label} x={xScale(p.hours_since_learning)} y={H - 8} textAnchor="middle" className="text-[10px]" fill="#9ca3af">
-                      {p.label}
-                    </text>
-                  ))}
-
-                  {/* 复习节点标记线 */}
-                  {reviewIntervals.filter(h => h >= 1).map((h, i) => (
-                    <line key={`rv-${i}`} x1={xScale(h)} y1={padT} x2={xScale(h)} y2={padT + chartH} stroke="#06b6d4" strokeWidth="1" strokeDasharray="3 3" opacity="0.3" />
-                  ))}
-
-                  {/* 理论遗忘曲线 (红色虚线) */}
-                  <path d={theoreticalPath} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="6 4" />
-
-                  {/* 实际保留率 (蓝色实线) */}
-                  {actualPoints.length > 1 && (
-                    <path d={actualPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" />
-                  )}
-
-                  {/* 理论曲线数据点 */}
-                  {points.map((p) => (
-                    <circle key={`t-${p.label}`} cx={xScale(p.hours_since_learning)} cy={yScale(p.theoretical_retention)} r="3" fill="#ef4444" />
-                  ))}
-
-                  {/* 实际数据点 */}
-                  {actualPoints.map((p) => (
-                    <g key={`a-${p.label}`}>
-                      <circle cx={xScale(p.hours_since_learning)} cy={yScale(p.actual_retention!)} r="4" fill="#3b82f6" />
-                      <text x={xScale(p.hours_since_learning)} y={yScale(p.actual_retention!) - 10} textAnchor="middle" className="text-[10px]" fill="#3b82f6" fontWeight="bold">
-                        {p.actual_retention}%
-                      </text>
-                    </g>
-                  ))}
-                </svg>
-
-                {/* 图例 */}
-                <div className="flex items-center justify-center gap-6 mt-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-0.5 border-t-2 border-dashed border-red-500" />
-                    <span className="text-sm text-gray-600">理论遗忘曲线</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-0.5 bg-blue-500" />
-                    <span className="text-sm text-gray-600">实际保留率</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-0.5 border-t border-dashed border-cyan-500" />
-                    <span className="text-sm text-gray-600">复习节点</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </motion.div>
 
         {/* 7天复习预测 */}
         {stats && stats.upcoming_7_days.length > 0 && (
