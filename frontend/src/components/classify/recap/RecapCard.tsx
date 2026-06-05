@@ -115,7 +115,7 @@ export default function RecapCard({
         userSelect: 'none',
         touchAction: 'none',
       }}
-      className="w-[120px] h-[160px]"
+      className="w-[120px] h-[160px] cursor-grab active:cursor-grabbing"
     >
       <div
         className="relative w-full h-full"
