@@ -391,11 +391,16 @@ const TeacherUnitManagement = () => {
 
   const handleDownloadTemplate = () => {
     const templateData = [
-      { '单词': 'apple', '音标': '/ˈæp.l/', '音节': 'ap-ple', '词性': 'n.', '释义': '苹果', '例句': 'I like to eat apples.', '例句翻译': '我喜欢吃苹果。' },
-      { '单词': 'happy', '音标': '/ˈhæp.i/', '音节': 'hap-py', '词性': 'adj.', '释义': '快乐的', '例句': 'She is very happy today.', '例句翻译': '她今天很开心。' },
+      { '单词': 'apple', '音标': '/ˈæp.l/', '音节': 'ap-ple', '发音文本': '', '词性': 'n.', '释义': '苹果', '例句': 'I like to eat apples.', '例句翻译': '我喜欢吃苹果。' },
+      { '单词': 'happy', '音标': '/ˈhæp.i/', '音节': 'hap-py', '发音文本': '', '词性': 'adj.', '释义': '快乐的', '例句': 'She is very happy today.', '例句翻译': '她今天很开心。' },
+      // 发音文本：只在“读音和拼写不一样”时才填，用普通字母拼出实际读音；普通单词留空
+      { '单词': 'Ms', '音标': '/mɪz/', '音节': 'Ms', '发音文本': 'miz', '词性': 'n.', '释义': '女士（用于女子姓名前）', '例句': 'This is Ms Green.', '例句翻译': '这是格林女士。' },
+      // 一词多音（同形不同音）：拆成两行，单词写同一拼写，发音文本/词性/释义各填各的
+      { '单词': 'record', '音标': '/ˈrek.ɔːd/', '音节': 're-cord', '发音文本': 'rekord', '词性': 'n.', '释义': '记录；唱片', '例句': 'She broke the world record.', '例句翻译': '她打破了世界纪录。' },
+      { '单词': 'record', '音标': '/rɪˈkɔːd/', '音节': 're-cord', '发音文本': 'rikord', '词性': 'v.', '释义': '记录；录制', '例句': 'Please record the meeting.', '例句翻译': '请把会议录下来。' },
     ];
     const ws = XLSX.utils.json_to_sheet(templateData);
-    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 30 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 18 }, { wch: 30 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '单词导入模板');
     XLSX.writeFile(wb, '单词导入模板.xlsx');
