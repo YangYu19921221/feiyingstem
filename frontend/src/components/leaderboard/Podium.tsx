@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import PictureFallback from '../PictureFallback';
+import ChampionSparkles from './ChampionSparkles';
 import {
   TIER_THEME, formatValue, unitOf, useCountUp,
   type Tier, type LeaderboardEntry,
@@ -68,6 +69,8 @@ function PodiumColumn({
             }}
           />
         )}
+        {/* 金牌冠军登顶星芒:迸发庆祝粒子,只在金牌且有人时 */}
+        {entry && isGold && <ChampionSparkles color={theme.glow} />}
         {entry ? (
           <PictureFallback
             src={`/champions/${kind}-${tier}.webp`}

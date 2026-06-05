@@ -179,9 +179,16 @@ function MyPosition({ data, enc, kind, periodWord }: {
   const onPodium = data.my_rank != null && data.my_rank <= 3;
   const tierText = onPodium ? TIER_THEME[RANK_TIER[data.my_rank!]].text : undefined;
   return (
-    <div className="rounded-2xl p-5 bg-white relative overflow-hidden"
-      style={{ border: '1px solid oklch(0.68 0.185 40 / 0.16)',
-               boxShadow: '0 10px 30px -14px oklch(0.6 0.16 60 / 0.4)' }}>
+    <motion.div className="rounded-2xl p-5 bg-white relative overflow-hidden"
+      style={{ border: '1px solid oklch(0.68 0.185 40 / 0.16)' }}
+      animate={{
+        boxShadow: [
+          '0 10px 30px -14px oklch(0.6 0.16 60 / 0.4)',
+          '0 12px 34px -12px oklch(0.68 0.185 50 / 0.6)',
+          '0 10px 30px -14px oklch(0.6 0.16 60 / 0.4)',
+        ],
+      }}
+      transition={{ duration: 2.6, ease: [0.16, 1, 0.3, 1], repeat: Infinity }}>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-16"
         style={{ background: 'radial-gradient(ellipse 60% 100% at 50% 0%, oklch(0.9 0.13 60 / 0.18), transparent 70%)' }} />
       <p className="text-ink-mute text-xs mb-3 relative">你本{periodWord}的战绩</p>
@@ -218,7 +225,7 @@ function MyPosition({ data, enc, kind, periodWord }: {
           </p>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
