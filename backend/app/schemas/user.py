@@ -79,3 +79,9 @@ class ChangePasswordRequest(BaseModel):
     """修改密码 - 已登录用户"""
     old_password: str = Field(..., description="旧密码")
     new_password: str = Field(..., min_length=6, max_length=50, description="新密码")
+
+
+class ChangeUsernameRequest(BaseModel):
+    """修改用户名 - 已登录用户(需当前密码确认)"""
+    new_username: str = Field(..., min_length=1, max_length=50, description="新用户名")
+    password: str = Field(..., description="当前密码(确认本人操作)")

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import ChangeUsernameModal from '../components/ChangeUsernameModal';
 
 interface UserData {
   id: number;
@@ -72,6 +73,7 @@ const TeacherDashboard = () => {
   };
 
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangeUsername, setShowChangeUsername] = useState(false);
 
   const quickActions = [
     { icon: '📚', title: '单词本管理', desc: '管理单元和单词', color: 'from-blue-500 to-cyan-500', route: '/teacher/books' },
@@ -109,6 +111,12 @@ const TeacherDashboard = () => {
             <span className="text-sm text-gray-600">
               👤 {user?.full_name || '教师'}
             </span>
+            <button
+              onClick={() => setShowChangeUsername(true)}
+              className="text-sm px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition"
+            >
+              修改用户名
+            </button>
             <button
               onClick={() => setShowChangePassword(true)}
               className="text-sm px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition"
@@ -293,6 +301,12 @@ const TeacherDashboard = () => {
       <ChangePasswordModal
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
+      />
+
+      <ChangeUsernameModal
+        isOpen={showChangeUsername}
+        onClose={() => setShowChangeUsername(false)}
+        currentUsername={user?.username}
       />
     </div>
   );

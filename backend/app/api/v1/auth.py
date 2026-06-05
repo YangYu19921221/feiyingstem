@@ -10,7 +10,7 @@ from jose import JWTError, jwt
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest
+from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest, ChangeUsernameRequest
 from app.services import auth_service
 from app.services.sms_service import code_store, send_sms_code
 from app.models.user import User
@@ -369,3 +369,34 @@ async def change_password(
     await db.commit()
 
     return {"message": "密码修改成功"}
+
+
+@router.put("/change-username", response_model=UserResponse)
+async def change_username(
+    data: ChangeUsernameRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """修改用户名（已登录用户，需当前密码确认）"""
+    # 验证密码，确认本人操作
+    if not auth_service.verify_password(data.password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="密码错误")
+
+    new_username = data.new_username.strip()
+    if not new_username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+
+    # 与现有用户名相同则无需修改
+    if new_username == current_user.username:
+        raise HTTPException(status_code=400, detail="新用户名与当前用户名相同")
+
+    # 检查用户名是否已被占用
+    existing = await auth_service.get_user_by_username(db, new_username)
+    if existing and existing.id != current_user.id:
+        raise HTTPException(status_code=400, detail="用户名已被使用，换一个吧")
+
+    current_user.username = new_username
+    await db.commit()
+    await db.refresh(current_user)
+
+    return current_user

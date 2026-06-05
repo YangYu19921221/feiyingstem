@@ -12,6 +12,7 @@ import { getMyHomework } from '../api/homework';
 import PetWidget from '../components/PetWidget';
 import RankingBanner from '../components/leaderboard/RankingBanner';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import { BookGridSkeleton } from '../components/Skeleton';
 import { AchievementIcon } from '../components/AchievementIcon';
 
@@ -42,7 +43,7 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
 
   // 直接从 localStorage 初始化用户数据,避免闪烁
-  const [user] = useState<UserData | null>(() => {
+  const [user, setUser] = useState<UserData | null>(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
@@ -235,6 +236,7 @@ const StudentDashboard = () => {
   };
 
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangeUsername, setShowChangeUsername] = useState(false);
 
   const handleStartLearning = (bookId: number) => {
     navigate(`/student/books/${bookId}/units`);
@@ -275,6 +277,12 @@ const StudentDashboard = () => {
           </div>
           <div className="flex items-center gap-1.5 text-sm">
             <span className="text-ink-soft mr-2">{user?.full_name || user?.username || '同学'}</span>
+            <button
+              onClick={() => setShowChangeUsername(true)}
+              className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
+            >
+              用户名
+            </button>
             <button
               onClick={() => setShowChangePassword(true)}
               className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
@@ -742,6 +750,13 @@ const StudentDashboard = () => {
       <ChangePasswordModal
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
+      />
+
+      <ChangeUsernameModal
+        isOpen={showChangeUsername}
+        onClose={() => setShowChangeUsername(false)}
+        currentUsername={user?.username}
+        onSuccess={(newName) => setUser((prev) => (prev ? { ...prev, username: newName } : prev))}
       />
     </div>
   );
