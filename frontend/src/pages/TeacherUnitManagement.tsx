@@ -20,6 +20,21 @@ import * as XLSX from 'xlsx';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
+/**
+ * 音节分隔符统一为 #。
+ * 仅当音节串还没用 # 且单词本身不含连字符/空格(纯单词)时,
+ * 才把录入的 - 当作音节分隔转成 #。
+ * 连字符词(self-study)、短语(ice cream)、已用 # 的一律原样保留,
+ * 避免把单词里的真连字符误当分隔符转掉。
+ */
+function normalizeSyllables(syllables: string, word: string): string {
+  const s = (syllables || '').trim();
+  if (!s) return s;
+  if (s.includes('#')) return s;
+  if (word.includes('-') || word.includes(' ')) return s;
+  return s.replace(/-/g, '#');
+}
+
 const TeacherUnitManagement = () => {
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
@@ -249,7 +264,12 @@ const TeacherUnitManagement = () => {
     }
     setSavingEdit(true);
     try {
-      const result = await updateWordInUnit(selectedUnit!.id, editingWordId!, editFormData);
+      // 音节统一用 # 分隔,容忍录入时打成 -(连字符词/短语不动)
+      const payload = {
+        ...editFormData,
+        syllables: normalizeSyllables(editFormData.syllables, editFormData.word.trim()),
+      };
+      const result = await updateWordInUnit(selectedUnit!.id, editingWordId!, payload);
       setEditingWordId(null);
       const updatedUnit = await getUnitDetail(selectedUnit!.id);
       setSelectedUnit(updatedUnit);
@@ -313,7 +333,7 @@ const TeacherUnitManagement = () => {
       const res = await axios.post(`${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}`, {
         word: newWordData.word.trim(),
         phonetic: newWordData.phonetic.trim() || undefined,
-        syllables: newWordData.syllables.trim() || undefined,
+        syllables: normalizeSyllables(newWordData.syllables, newWordData.word.trim()) || undefined,
         difficulty: newWordData.difficulty,
         grade_level: newWordData.grade_level,
         definitions: newWordData.definitions.map(d => ({
@@ -391,13 +411,13 @@ const TeacherUnitManagement = () => {
 
   const handleDownloadTemplate = () => {
     const templateData = [
-      { '单词': 'apple', '音标': '/ˈæp.l/', '音节': 'ap-ple', '发音文本': '', '词性': 'n.', '释义': '苹果', '例句': 'I like to eat apples.', '例句翻译': '我喜欢吃苹果。' },
-      { '单词': 'happy', '音标': '/ˈhæp.i/', '音节': 'hap-py', '发音文本': '', '词性': 'adj.', '释义': '快乐的', '例句': 'She is very happy today.', '例句翻译': '她今天很开心。' },
+      { '单词': 'apple', '音标': '/ˈæp.l/', '音节': 'ap#ple', '发音文本': '', '词性': 'n.', '释义': '苹果', '例句': 'I like to eat apples.', '例句翻译': '我喜欢吃苹果。' },
+      { '单词': 'happy', '音标': '/ˈhæp.i/', '音节': 'hap#py', '发音文本': '', '词性': 'adj.', '释义': '快乐的', '例句': 'She is very happy today.', '例句翻译': '她今天很开心。' },
       // 发音文本：只在“读音和拼写不一样”时才填，用普通字母拼出实际读音；普通单词留空
       { '单词': 'Ms', '音标': '/mɪz/', '音节': 'Ms', '发音文本': 'miz', '词性': 'n.', '释义': '女士（用于女子姓名前）', '例句': 'This is Ms Green.', '例句翻译': '这是格林女士。' },
       // 一词多音（同形不同音）：拆成两行，单词写同一拼写，发音文本/词性/释义各填各的
-      { '单词': 'record', '音标': '/ˈrek.ɔːd/', '音节': 're-cord', '发音文本': 'rekord', '词性': 'n.', '释义': '记录；唱片', '例句': 'She broke the world record.', '例句翻译': '她打破了世界纪录。' },
-      { '单词': 'record', '音标': '/rɪˈkɔːd/', '音节': 're-cord', '发音文本': 'rikord', '词性': 'v.', '释义': '记录；录制', '例句': 'Please record the meeting.', '例句翻译': '请把会议录下来。' },
+      { '单词': 'record', '音标': '/ˈrek.ɔːd/', '音节': 're#cord', '发音文本': 'rekord', '词性': 'n.', '释义': '记录；唱片', '例句': 'She broke the world record.', '例句翻译': '她打破了世界纪录。' },
+      { '单词': 'record', '音标': '/rɪˈkɔːd/', '音节': 're#cord', '发音文本': 'rikord', '词性': 'v.', '释义': '记录；录制', '例句': 'Please record the meeting.', '例句翻译': '请把会议录下来。' },
     ];
     const ws = XLSX.utils.json_to_sheet(templateData);
     ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 18 }, { wch: 30 }, { wch: 20 }];
@@ -433,7 +453,7 @@ const TeacherUnitManagement = () => {
 
         const meaning = (row['释义'] || row['meaning'] || '').toString().trim();
         const phonetic = (row['音标'] || row['phonetic'] || '').toString().trim();
-        const syllables = (row['音节'] || row['syllables'] || '').toString().trim();
+        const syllables = normalizeSyllables((row['音节'] || row['syllables'] || '').toString(), word);
         const ttsText = (row['发音文本'] || row['tts_text'] || '').toString().trim();
         const pos = (row['词性'] || row['part_of_speech'] || '').toString().trim();
         const example = (row['例句'] || row['example'] || '').toString().trim();
@@ -876,7 +896,7 @@ const TeacherUnitManagement = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">音节划分</label>
                     <input type="text" value={newWordData.syllables}
                       onChange={(e) => setNewWordData({ ...newWordData, syllables: e.target.value })}
-                      placeholder="例如: dum-p-ling"
+                      placeholder="用 # 分隔,如 ap#ple"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
                   </div>
                   <div>
