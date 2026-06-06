@@ -421,10 +421,22 @@ async def _upsert_word(
 async def create_word(
     word_data: WordCreate,
     book_id: Optional[int] = Query(None, description="把单词归属到指定单词本(决定隔离范围)"),
+    force_new: bool = Query(False, description="强制新建一行,跳过同拼写去重(用于一词多音同批导入)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """老师录入单词。带 book_id 走 book 隔离;不带 book_id 走全局去重+覆盖。"""
+    """老师录入单词。带 book_id 走 book 隔离;不带 book_id 走全局去重+覆盖。
+
+    force_new=True 时直接新建一行并挂到 book_id(若给定),
+    不做同拼写查重——支持一词多音(同拼写、不同读音/词性)在同一本书内并存。
+    """
+    if force_new:
+        new_word = await _create_new_word_row(db, word_data)
+        if book_id is not None:
+            db.add(BookWord(book_id=book_id, word_id=new_word.id, order_index=0))
+        await db.commit()
+        return await get_word_detail(new_word.id, db)
+
     target = await _upsert_word(db, word_data, book_id)
     await db.commit()
     return await get_word_detail(target.id, db)

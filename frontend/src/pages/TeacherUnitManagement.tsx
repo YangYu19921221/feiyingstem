@@ -446,6 +446,8 @@ const TeacherUnitManagement = () => {
       const token = localStorage.getItem('access_token');
       const newWordIds: number[] = [];
       const errors: string[] = [];
+      // 本批已出现的拼写:同批内同拼写再次出现 = 一词多音,强制新建不去重
+      const seenSpellings = new Set<string>();
 
       for (const row of rows) {
         const word = (row['单词'] || row['word'] || '').toString().trim();
@@ -459,8 +461,14 @@ const TeacherUnitManagement = () => {
         const example = (row['例句'] || row['example'] || '').toString().trim();
         const exTrans = (row['例句翻译'] || row['translation'] || '').toString().trim();
 
+        const spelling = word.toLowerCase();
+        const forceNew = seenSpellings.has(spelling);
+        seenSpellings.add(spelling);
+
         try {
-          const res = await axios.post(`${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}`, {
+          const res = await axios.post(
+            `${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}${forceNew ? '&force_new=true' : ''}`,
+            {
             word: word,
             phonetic: phonetic || undefined,
             syllables: syllables || undefined,
