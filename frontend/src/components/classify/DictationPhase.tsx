@@ -21,7 +21,7 @@ export interface DictationResult {
 interface DictationPhaseProps {
   words: WordData[];
   onComplete: (results: DictationResult[]) => void;
-  playAudioSlow: (word: string) => void;
+  playAudioSlow: (word: string, wordId?: number) => void;
 }
 
 export default function DictationPhase({
@@ -59,7 +59,7 @@ export default function DictationPhase({
     // 已经抄完 3 遍, 准备进入下一题, 不再播
     if (retryMode && retryPassed) return;
     const t = setTimeout(() => {
-      playAudioSlow(currentWord.word);
+      playAudioSlow(currentWord.word, currentWord.id);
     }, 500);
     setTimeout(() => inputRef.current?.focus(), 600);
     return () => clearTimeout(t);
@@ -162,7 +162,7 @@ export default function DictationPhase({
       setRetryInput('');
       inputRef.current?.focus();
       // 抄错: copyDoneCount 不变, useEffect 不会重跑, 显式再播一次
-      setTimeout(() => playAudioSlow(currentWord.word), 200);
+      setTimeout(() => playAudioSlow(currentWord.word, currentWord.id), 200);
     }
   }, [currentWord, retryInput, copyDoneCount, playAudioSlow]);
 
@@ -267,7 +267,7 @@ export default function DictationPhase({
           <p className="text-lg text-gray-600 mb-4">{currentWord.meaning}</p>
 
           <button
-            onClick={() => playAudioSlow(currentWord.word)}
+            onClick={() => playAudioSlow(currentWord.word, currentWord.id)}
             className="mb-6 p-4 rounded-full bg-blue-50 hover:bg-blue-100 transition"
           >
             <span className="text-3xl">🔊</span>

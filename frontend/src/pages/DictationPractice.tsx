@@ -53,8 +53,8 @@ export default function DictationPractice() {
     }
   };
 
-  const playAudioSlow = (word: string) => {
-    playAudio(word, 0.75);
+  const playAudioSlow = (word: string, wordId?: number) => {
+    playAudio(word, 0.75, wordId);
   };
 
   if (loading) {

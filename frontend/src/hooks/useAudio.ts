@@ -157,9 +157,15 @@ async function fetchAudioBlob(word: string, wordId?: number): Promise<string> {
 /**
  * 预加载一组单词的发音
  */
-export function preloadAudio(words: string[]) {
-  words.forEach(word => {
-    fetchAudioBlob(word).catch(() => {});
+export function preloadAudio(words: Array<string | { word: string; id?: number }>) {
+  words.forEach(w => {
+    // 接受纯字符串或带 id 的词对象。带 id 时按 id 预热,与播放时
+    // playAudio(text, rate, id) 的缓存键(`id:N`)一致,确保预热真正命中。
+    if (typeof w === 'string') {
+      fetchAudioBlob(w).catch(() => {});
+    } else {
+      fetchAudioBlob(w.word, w.id).catch(() => {});
+    }
   });
 }
 

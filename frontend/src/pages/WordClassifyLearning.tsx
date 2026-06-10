@@ -277,14 +277,14 @@ const WordClassifyLearning = () => {
   // 音频播放：使用改进的 hook（预加载、缓存、重试、fallback）
   const { playAudio, stopAudio } = useAudio();
 
-  const playAudioSlow = useCallback((word: string) => {
-    playAudio(word, 0.75);
+  const playAudioSlow = useCallback((word: string, wordId?: number) => {
+    playAudio(word, 0.75, wordId);
   }, [playAudio]);
 
   // 进入新一组时预加载该组所有单词的发音
   useEffect(() => {
     if (currentGroupWords.length > 0) {
-      preloadAudio(currentGroupWords.map(w => w.word));
+      preloadAudio(currentGroupWords.map(w => ({ word: w.word, id: w.id })));
     }
   }, [currentGroupWords]);
 
