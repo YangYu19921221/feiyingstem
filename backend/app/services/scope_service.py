@@ -72,7 +72,18 @@ async def _get_book_words(db: AsyncSession, book_id: int) -> list[Word]:
         select(Word).join(BookWord, BookWord.word_id == Word.id)
         .where(BookWord.book_id == book_id).order_by(BookWord.order_index)
     )
-    return list(res.scalars().all())
+    # 单元级隔离后,同一本书的不同单元各有一份同拼写副本,book_words 里会出现
+    # 多条同拼写行;book 作用域学习按拼写去重(保留 order_index 最靠前的那条),
+    # 避免学生在整本学习时同一个词出现多次。
+    seen: set[str] = set()
+    deduped: list[Word] = []
+    for w in res.scalars().all():
+        key = (w.word or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(w)
+    return deduped
 
 
 async def _get_unit_words_full(db: AsyncSession, unit_id: int) -> list[Word]:

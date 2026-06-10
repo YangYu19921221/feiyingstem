@@ -125,13 +125,16 @@ async def best_pronunciation(
     from app.models.word import Word
 
     db_word = None
-    # word_id 优先:精确定位到具体那条(区分一词多音),即使同时传了 word 文本
+    # word_id 优先:精确定位到具体那条(区分一词多音),即使同时传了 word 文本。
+    # 若 word_id 查不到(已被删/客户端持有过期 id),但带了 word 文本则回退按拼写发音,
+    # 不直接 404——避免改词/迁移后旧页面发音整个失败。
     if word_id:
         result = await db.execute(select(Word).where(Word.id == word_id))
         db_word = result.scalar_one_or_none()
-        if not db_word:
+        if db_word:
+            word = db_word.word
+        elif not word:
             raise HTTPException(404, "单词不存在")
-        word = db_word.word
 
     if not word:
         raise HTTPException(400, "请提供 word 或 word_id 参数")

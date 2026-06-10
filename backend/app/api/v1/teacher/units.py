@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, and_
 from typing import List
 from app.core.database import get_db
-from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition, WordTag
+from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition, WordTag, BookWord
 from app.models.learning import WordMastery
 from app.models.user import User
 from app.schemas.unit import (
@@ -475,7 +475,29 @@ async def update_word_in_unit(
         # 3d. 把当前单元的 unit_words 改指向新 word_id
         uw_row.word_id = new_word.id
 
-        # 3e. 复制学习进度到新副本,避免本单元学生背词进度清零
+        # 3e. 同步本单元所属 book 的 book_words 指向:若该 book 下已没有别的单元
+        # 仍引用旧 word,则把这本书的 book_words(旧)改指新副本,让 book 作用域
+        # 学习也能看到本次编辑(book 作用域按拼写去重,不会因此重复)。
+        cur_unit = (await db.execute(
+            select(Unit).where(Unit.id == unit_id)
+        )).scalars().first()
+        if cur_unit is not None:
+            still_old_in_book = (await db.execute(
+                select(func.count(UnitWord.id))
+                .select_from(UnitWord)
+                .join(Unit, Unit.id == UnitWord.unit_id)
+                .where(UnitWord.word_id == word_id)
+                .where(Unit.book_id == cur_unit.book_id)
+            )).scalar() or 0
+            if still_old_in_book == 0:
+                await db.execute(
+                    BookWord.__table__.update()
+                    .where(BookWord.book_id == cur_unit.book_id)
+                    .where(BookWord.word_id == word_id)
+                    .values(word_id=new_word.id)
+                )
+
+        # 3f. 复制学习进度到新副本,避免本单元学生背词进度清零
         src_masteries = (await db.execute(
             select(WordMastery).where(WordMastery.word_id == word_id)
         )).scalars().all()
