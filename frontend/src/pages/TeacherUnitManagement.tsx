@@ -429,6 +429,71 @@ const TeacherUnitManagement = () => {
     XLSX.writeFile(wb, '单词导入模板.xlsx');
   };
 
+  // 把单元里的单词转成与导入模板一致的行(导出→改→再导入可闭环)
+  const wordToExportRow = (w: WordInUnit) => ({
+    '单词': w.word,
+    '音标': w.phonetic || '',
+    '音节': w.syllables || '',
+    '发音文本': w.tts_text || '',
+    '词性': w.part_of_speech || '',
+    '释义': w.meaning || '',
+    '例句': w.example_sentence || '',
+    '例句翻译': w.example_translation || '',
+  });
+
+  const EXPORT_COLS = [{ wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 32 }, { wch: 22 }];
+  const sanitizeSheetName = (name: string) =>
+    (name || '单元').replace(/[\\/?*[\]:]/g, ' ').slice(0, 28) || '单元';
+
+  // 导出当前单元的单词
+  const handleExportUnit = () => {
+    if (!selectedUnit || selectedUnit.words.length === 0) {
+      toast.warning('该单元还没有单词可导出');
+      return;
+    }
+    const rows = selectedUnit.words.map(wordToExportRow);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = EXPORT_COLS;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(selectedUnit.name));
+    XLSX.writeFile(wb, `${selectedUnit.name || '单元'}_单词.xlsx`);
+  };
+
+  // 导出整本单词本(每个单元一个 sheet)
+  const [exportingBook, setExportingBook] = useState(false);
+  const handleExportBook = async () => {
+    if (units.length === 0) {
+      toast.warning('这本单词本还没有单元');
+      return;
+    }
+    setExportingBook(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const usedNames = new Set<string>();
+      let totalWords = 0;
+      for (const u of units) {
+        const detail = await getUnitDetail(u.id);
+        const rows = (detail.words || []).map(wordToExportRow);
+        totalWords += rows.length;
+        // sheet 名去重(Excel 不允许重名)
+        let name = sanitizeSheetName(detail.name || `单元${u.unit_number}`);
+        let base = name, n = 2;
+        while (usedNames.has(name)) { name = `${base.slice(0, 25)}_${n++}`; }
+        usedNames.add(name);
+        const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '单词': '', '音标': '', '音节': '', '发音文本': '', '词性': '', '释义': '', '例句': '', '例句翻译': '' }]);
+        ws['!cols'] = EXPORT_COLS;
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      }
+      XLSX.writeFile(wb, `单词本导出_${units.length}个单元_${totalWords}词.xlsx`);
+      toast.success(`已导出 ${units.length} 个单元、${totalWords} 个单词`);
+    } catch (e) {
+      console.error('整本导出失败:', e);
+      toast.error('导出失败,请重试');
+    } finally {
+      setExportingBook(false);
+    }
+  };
+
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -545,6 +610,15 @@ const TeacherUnitManagement = () => {
                 <p className="text-sm text-gray-500">管理单元和单词</p>
               </div>
             </div>
+            <button
+              onClick={handleExportBook}
+              disabled={exportingBook || units.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title="导出整本单词本(每个单元一个工作表,格式与导入模板一致)"
+            >
+              <Download className="w-5 h-5" />
+              {exportingBook ? '导出中...' : '导出整本'}
+            </button>
             <button
               onClick={() => setShowCreateDialog(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-md"
@@ -1019,6 +1093,15 @@ const TeacherUnitManagement = () => {
                   >
                     <Plus className="w-4 h-4" />
                     录入单词
+                  </button>
+                  <button
+                    onClick={handleExportUnit}
+                    disabled={selectedUnit.words.length === 0}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="导出本单元单词为 Excel(格式与导入模板一致)"
+                  >
+                    <Download className="w-4 h-4" />
+                    导出本单元
                   </button>
                   <button
                     onClick={() => { setSelectedUnit(null); setEditingWordId(null); }}
