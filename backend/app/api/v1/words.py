@@ -4,6 +4,7 @@ from sqlalchemy import select, func, and_, or_, delete
 from typing import List, Optional
 from app.core.database import get_db
 from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord
+from app.models.learning import WordMastery
 from app.models.user import User
 from app.schemas.word import (
     WordCreate, WordResponse, WordUpdate, WordListItem,
@@ -338,18 +339,101 @@ async def _create_new_word_row(db: AsyncSession, word_data: WordCreate) -> Word:
     return new_word
 
 
-async def _upsert_word(
-    db: AsyncSession, word_data: WordCreate, book_id: Optional[int]
-) -> Word:
-    """书范围隔离的 upsert。
+async def _copy_word_progress(db: AsyncSession, src_word_id: int, dst_word_id: int) -> None:
+    """fork 出新 Word 时,把学生对原词的掌握度复制到新副本,避免进度清零。
 
-    book_id is None: 维持全局去重 + 覆盖语义(代表行 = 同拼写中 id 最小)。
-    book_id 给定: 严格按"本书"作用域:
-      - 本书内已有同拼写, 同时被别的书引用 → fork 新 Word, 把本书的 BookWord/UnitWord 重指向新 Word, 别的书不变
-      - 本书内已有同拼写, 本书独占 → 直接覆盖
-      - 本书内没有同拼写 → 新建 Word + BookWord(book_id, new) 关联本书
+    WordMastery 按 (user_id, word_id) 记录。新副本初始无任何记录,
+    逐个学生复制一份指向新 word_id 的记录(若该学生在新词上已有记录则跳过)。
+    """
+    src_rows = (await db.execute(
+        select(WordMastery).where(WordMastery.word_id == src_word_id)
+    )).scalars().all()
+    if not src_rows:
+        return
+    existing_users = set((await db.execute(
+        select(WordMastery.user_id).where(WordMastery.word_id == dst_word_id)
+    )).scalars().all())
+    for m in src_rows:
+        if m.user_id in existing_users:
+            continue
+        db.add(WordMastery(
+            user_id=m.user_id,
+            word_id=dst_word_id,
+            total_encounters=m.total_encounters,
+            correct_count=m.correct_count,
+            wrong_count=m.wrong_count,
+            mastery_level=m.mastery_level,
+            flashcard_correct=m.flashcard_correct,
+            flashcard_wrong=m.flashcard_wrong,
+            quiz_correct=m.quiz_correct,
+            quiz_wrong=m.quiz_wrong,
+            spelling_correct=m.spelling_correct,
+            spelling_wrong=m.spelling_wrong,
+            fillblank_correct=m.fillblank_correct,
+            fillblank_wrong=m.fillblank_wrong,
+            last_practiced_at=m.last_practiced_at,
+            next_review_at=m.next_review_at,
+            review_stage=m.review_stage,
+        ))
+
+
+async def _upsert_word(
+    db: AsyncSession, word_data: WordCreate, book_id: Optional[int],
+    unit_id: Optional[int] = None,
+) -> Word:
+    """单词 upsert,支持单元/单词本两级隔离。
+
+    unit_id 给定: 严格按"本单元"作用域(最细粒度,单元间互不干扰):
+      - 本单元内已有同拼写, 同时被别的单元引用 → fork 新 Word,
+        只把本单元的 UnitWord 改指新 Word(并复制学习进度), 别的单元不变
+      - 本单元内已有同拼写, 本单元独占 → 直接覆盖
+      - 本单元内没有同拼写 → 新建 Word, 同时挂 UnitWord(本单元) + BookWord(本书)
+    book_id 给定(无 unit_id): 按"本书"作用域(保留兼容)。
+    都为 None: 全局去重 + 覆盖。
     """
     spelling = word_data.word.strip().lower()
+
+    if unit_id is not None:
+        # 本单元内是否已有该拼写?
+        in_unit = (await db.execute(
+            select(Word).join(UnitWord, UnitWord.word_id == Word.id)
+            .where(UnitWord.unit_id == unit_id)
+            .where(func.lower(Word.word) == spelling)
+            .order_by(Word.id).limit(1)
+        )).scalars().first()
+
+        if in_unit is None:
+            # 本单元没有 → 新建独立副本, 直接挂本单元 + 本书
+            new_word = await _create_new_word_row(db, word_data)
+            db.add(UnitWord(unit_id=unit_id, word_id=new_word.id, order_index=0))
+            if book_id is not None:
+                db.add(BookWord(book_id=book_id, word_id=new_word.id, order_index=0))
+            return new_word
+
+        # 本单元已有 → 是否还被别的单元引用?
+        other_units = (await db.execute(
+            select(func.count(UnitWord.id))
+            .where(UnitWord.word_id == in_unit.id)
+            .where(UnitWord.unit_id != unit_id)
+        )).scalar() or 0
+
+        if other_units > 0:
+            # 被别的单元共享 → fork, 只改本单元的指向, 并复制学习进度
+            new_word = await _create_new_word_row(db, word_data)
+            await db.execute(
+                UnitWord.__table__.update()
+                .where(UnitWord.word_id == in_unit.id)
+                .where(UnitWord.unit_id == unit_id)
+                .values(word_id=new_word.id)
+            )
+            if book_id is not None:
+                db.add(BookWord(book_id=book_id, word_id=new_word.id, order_index=0))
+            await _copy_word_progress(db, in_unit.id, new_word.id)
+            return new_word
+
+        # 本单元独占 → 原地覆盖
+        await _overwrite_word_fields(db, in_unit, word_data)
+        return in_unit
 
     if book_id is None:
         rep = (await db.execute(
@@ -425,23 +509,27 @@ async def _upsert_word(
 async def create_word(
     word_data: WordCreate,
     book_id: Optional[int] = Query(None, description="把单词归属到指定单词本(决定隔离范围)"),
+    unit_id: Optional[int] = Query(None, description="把单词归属到指定单元(单元级隔离,优先级高于 book_id)"),
     force_new: bool = Query(False, description="强制新建一行,跳过同拼写去重(用于一词多音同批导入)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """老师录入单词。带 book_id 走 book 隔离;不带 book_id 走全局去重+覆盖。
+    """老师录入单词。
 
-    force_new=True 时直接新建一行并挂到 book_id(若给定),
-    不做同拼写查重——支持一词多音(同拼写、不同读音/词性)在同一本书内并存。
+    隔离优先级:unit_id(单元级,最细) > book_id(单词本级) > 全局去重+覆盖。
+    force_new=True 时直接新建一行并挂到 unit_id/book_id,不做同拼写查重——
+    支持一词多音(同拼写、不同读音/词性)并存。
     """
     if force_new:
         new_word = await _create_new_word_row(db, word_data)
+        if unit_id is not None:
+            db.add(UnitWord(unit_id=unit_id, word_id=new_word.id, order_index=0))
         if book_id is not None:
             db.add(BookWord(book_id=book_id, word_id=new_word.id, order_index=0))
         await db.commit()
         return await get_word_detail(new_word.id, db)
 
-    target = await _upsert_word(db, word_data, book_id)
+    target = await _upsert_word(db, word_data, book_id, unit_id)
     await db.commit()
     return await get_word_detail(target.id, db)
 

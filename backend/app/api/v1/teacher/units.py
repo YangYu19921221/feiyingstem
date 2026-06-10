@@ -4,6 +4,7 @@ from sqlalchemy import select, delete, func, and_
 from typing import List
 from app.core.database import get_db
 from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition, WordTag
+from app.models.learning import WordMastery
 from app.models.user import User
 from app.schemas.unit import (
     UnitCreate, UnitUpdate, UnitResponse, UnitDetailResponse,
@@ -425,17 +426,16 @@ async def update_word_in_unit(
         )
     uw_row, target_word = row
 
-    # 2. 看 word_id 被几本 *book* 引用(跨 book 才 fork;同 book 多 unit 共享视为同步改)
-    book_ref_count = (await db.execute(
-        select(func.count(func.distinct(Unit.book_id)))
-        .select_from(UnitWord)
-        .join(Unit, Unit.id == UnitWord.unit_id)
+    # 2. 看 word_id 是否被"别的单元"引用(被其他单元共享才 fork,确保单元间互不干扰)
+    other_unit_count = (await db.execute(
+        select(func.count(UnitWord.id))
         .where(UnitWord.word_id == word_id)
+        .where(UnitWord.unit_id != unit_id)
     )).scalar()
 
     forked = False
 
-    if book_ref_count > 1:
+    if other_unit_count > 0:
         # 3a. fork:复制 Word
         new_word = Word(
             word=target_word.word,
@@ -474,6 +474,32 @@ async def update_word_in_unit(
 
         # 3d. 把当前单元的 unit_words 改指向新 word_id
         uw_row.word_id = new_word.id
+
+        # 3e. 复制学习进度到新副本,避免本单元学生背词进度清零
+        src_masteries = (await db.execute(
+            select(WordMastery).where(WordMastery.word_id == word_id)
+        )).scalars().all()
+        for m in src_masteries:
+            db.add(WordMastery(
+                user_id=m.user_id,
+                word_id=new_word.id,
+                total_encounters=m.total_encounters,
+                correct_count=m.correct_count,
+                wrong_count=m.wrong_count,
+                mastery_level=m.mastery_level,
+                flashcard_correct=m.flashcard_correct,
+                flashcard_wrong=m.flashcard_wrong,
+                quiz_correct=m.quiz_correct,
+                quiz_wrong=m.quiz_wrong,
+                spelling_correct=m.spelling_correct,
+                spelling_wrong=m.spelling_wrong,
+                fillblank_correct=m.fillblank_correct,
+                fillblank_wrong=m.fillblank_wrong,
+                last_practiced_at=m.last_practiced_at,
+                next_review_at=m.next_review_at,
+                review_stage=m.review_stage,
+            ))
+
         target_word = new_word
         forked = True
 

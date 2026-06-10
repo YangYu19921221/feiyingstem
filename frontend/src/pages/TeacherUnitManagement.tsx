@@ -332,7 +332,7 @@ const TeacherUnitManagement = () => {
     try {
       setCreatingWord(true);
       const token = localStorage.getItem('access_token');
-      const res = await axios.post(`${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}`, {
+      const res = await axios.post(`${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}&unit_id=${selectedUnit!.id}`, {
         word: newWordData.word.trim(),
         phonetic: newWordData.phonetic.trim() || undefined,
         syllables: normalizeSyllables(newWordData.syllables, newWordData.word.trim()) || undefined,
@@ -470,7 +470,7 @@ const TeacherUnitManagement = () => {
 
         try {
           const res = await axios.post(
-            `${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}${forceNew ? '&force_new=true' : ''}`,
+            `${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}&unit_id=${selectedUnit!.id}${forceNew ? '&force_new=true' : ''}`,
             {
             word: word,
             phonetic: phonetic || undefined,
