@@ -280,10 +280,21 @@ const MemoryCurve = () => {
           {stats && stats.due_today > 0 ? (
             <>
               <p className="text-ink-mute text-sm mb-2">今日复习</p>
-              <h2 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
-                <span className="font-numeric text-accent-warm">{progress?.review_due_today ?? stats.due_today}</span>{' '}
-                <span className="text-ink-soft">个该回顾的词</span>
-              </h2>
+              {(() => {
+                const dueTotal = progress?.review_due_today ?? stats.due_today;
+                const batch = Math.min(REVIEW_BATCH, dueTotal);
+                return (
+                  <h2 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                    <span className="font-numeric text-accent-warm">{batch}</span>{' '}
+                    <span className="text-ink-soft">个该回顾的词</span>
+                    {dueTotal > batch && (
+                      <span className="block text-base text-ink-mute font-normal mt-2">
+                        共 <span className="font-numeric">{dueTotal}</span> 个待复习,先背这 {batch} 个,背完自动出下一批
+                      </span>
+                    )}
+                  </h2>
+                );
+              })()}
               {progress && (progress.review_done_today > 0 || progress.review_due_today > 0) && (() => {
                 const total = progress.review_done_today + progress.review_due_today;
                 const pct = total > 0 ? Math.round((progress.review_done_today / total) * 100) : 0;

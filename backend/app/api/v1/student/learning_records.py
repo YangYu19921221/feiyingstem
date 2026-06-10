@@ -486,6 +486,7 @@ async def get_review_due_words(
 
     user_id = current_user.id
     now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     fetch_count = limit * 5 if randomize else limit
     result = await db.execute(
@@ -497,7 +498,12 @@ async def get_review_due_words(
         ))
         .where(and_(
             WordMastery.user_id == user_id,
-            WordMastery.next_review_at <= now
+            WordMastery.next_review_at <= now,
+            # 今天已练过的词当天不再回到待复习列表,避免刚背的词反复出现
+            or_(
+                WordMastery.last_practiced_at.is_(None),
+                WordMastery.last_practiced_at < today_start,
+            ),
         ))
         .order_by(WordMastery.next_review_at.asc())
         .limit(fetch_count)
@@ -570,6 +576,7 @@ async def get_memory_curve_stats(
     tomorrow = now + timedelta(days=1)
 
     # 单次遍历统计所有指标
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     due_today = 0
     due_tomorrow = 0
     day_counts = [0] * 7
@@ -587,8 +594,14 @@ async def get_memory_curve_stats(
             mastered_count += 1
 
         if m.next_review_at:
+            # 今日待复习:到期 且 今天还没练过。刷过的词当天不再计入,
+            # 否则短间隔(5分/30分)会让刚背的词当天反复回到待复习,数字只增不减。
+            practiced_today = (
+                m.last_practiced_at is not None and m.last_practiced_at >= today_start
+            )
             if m.next_review_at <= now:
-                due_today += 1
+                if not practiced_today:
+                    due_today += 1
             elif m.next_review_at <= tomorrow:
                 due_tomorrow += 1
 
@@ -644,11 +657,17 @@ async def get_review_due_count(
 ):
     """仅返回今日待复习数量（轻量级，用于仪表板）"""
     now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     result = await db.execute(
         select(func.count(WordMastery.id)).where(
             and_(
                 WordMastery.user_id == current_user.id,
-                WordMastery.next_review_at <= now
+                WordMastery.next_review_at <= now,
+                # 今天已练过的词不再计入,刷过即减、不自增
+                or_(
+                    WordMastery.last_practiced_at.is_(None),
+                    WordMastery.last_practiced_at < today_start,
+                ),
             )
         )
     )
