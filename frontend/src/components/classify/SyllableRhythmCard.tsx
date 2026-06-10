@@ -25,7 +25,7 @@ interface SyllableRhythmCardProps {
   word: WordData;
   isUnknown: boolean; // true=陌生词(4遍+3轮), false=夹生词(2轮)
   onComplete: () => void;
-  playAudio: (word: string) => void;
+  playAudio: (word: string, rate?: number, wordId?: number) => void;
 }
 
 export default function SyllableRhythmCard({
@@ -46,7 +46,7 @@ export default function SyllableRhythmCard({
 
   // 音节节奏
   const onRoundStart = useCallback(() => {
-    playAudio(word.word);
+    playAudio(word.word, 1, word.id);
   }, [word.word, playAudio]);
 
   const onRhythmComplete = useCallback(() => {
@@ -76,7 +76,7 @@ export default function SyllableRhythmCard({
         setCanConfirmListen(true);
         return;
       }
-      playAudio(word.word);
+      playAudio(word.word, 1, word.id);
       count++;
       setListenCount(count);
       listenTimerRef.current = setTimeout(playNext, 1500);

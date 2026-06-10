@@ -10,7 +10,12 @@ import { API_BASE_URL } from '../config/env';
 // 版本号：修改发音源时递增，使浏览器缓存失效
 const TTS_VERSION = 5;
 
-export function edgeTtsUrl(word: string): string {
+export function edgeTtsUrl(word: string, wordId?: number): string {
+  // 传 word_id 时按 id 精确定位发音（区分一词多音，如 record 名词/动词），
+  // 否则按拼写查库（普通词足够）
+  if (wordId != null) {
+    return `${API_BASE_URL}/pronunciation/edge-tts?word_id=${wordId}&word=${encodeURIComponent(word)}&v=${TTS_VERSION}`;
+  }
   return `${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(word)}&v=${TTS_VERSION}`;
 }
 
@@ -101,8 +106,9 @@ async function speakWithBrowserTTS(text: string, rate: number, token: number, on
   speechSynthesis.speak(utterance);
 }
 
-async function fetchAudioBlob(word: string): Promise<string> {
-  const key = word.trim().toLowerCase();
+async function fetchAudioBlob(word: string, wordId?: number): Promise<string> {
+  // 缓存键带 word_id,避免一词多音(同拼写不同 id)共用同一音频
+  const key = wordId != null ? `id:${wordId}` : word.trim().toLowerCase();
 
   // 命中缓存
   if (audioCache.has(key)) {
@@ -115,7 +121,7 @@ async function fetchAudioBlob(word: string): Promise<string> {
   }
 
   const promise = (async () => {
-    const url = edgeTtsUrl(word);
+    const url = edgeTtsUrl(word, wordId);
     const maxRetries = 2;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController();
@@ -174,13 +180,13 @@ export function useAudio() {
     };
   }, []);
 
-  const playAudio = useCallback(async (text: string, rate: number = 1) => {
+  const playAudio = useCallback(async (text: string, rate: number = 1, wordId?: number) => {
     const audio = audioRef.current;
     // 全局打断：掐断所有 <audio> 与浏览器 TTS，拿到本次播放的全局令牌
     const token = interruptAllAudio();
     if (audio) activeAudioEl = audio;
     try {
-      const blobUrl = await fetchAudioBlob(text);
+      const blobUrl = await fetchAudioBlob(text, wordId);
       // fetch 期间若已发起新的播放（快速切词/循环重播），本次已过期，直接放弃，
       // 否则慢请求 resolve 后会把 audio.src 改回旧词并打断当前播放，造成静音/串音
       if (!audio || globalPlayToken !== token) return;
@@ -207,12 +213,13 @@ export function useAudio() {
     times: number = 6,
     gapMs: number = 600,
     rate: number = 1,
+    wordId?: number,
   ) => {
     const audio = audioRef.current;
     const token = interruptAllAudio();
     if (audio) activeAudioEl = audio;
     try {
-      const blobUrl = await fetchAudioBlob(text);
+      const blobUrl = await fetchAudioBlob(text, wordId);
       if (!audio || globalPlayToken !== token) return;
       for (let i = 0; i < times; i++) {
         if (globalPlayToken !== token) return;

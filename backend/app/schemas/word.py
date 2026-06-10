@@ -45,6 +45,7 @@ class WordUpdate(BaseModel):
     """更新单词信息"""
     phonetic: Optional[str] = None
     syllables: Optional[str] = None
+    tts_text: Optional[str] = None
     difficulty: Optional[int] = Field(None, ge=1, le=5)
     grade_level: Optional[str] = None
     audio_url: Optional[str] = None
@@ -68,6 +69,8 @@ class WordListItem(BaseModel):
     id: int
     word: str
     phonetic: Optional[str]
+    syllables: Optional[str] = None
+    tts_text: Optional[str] = None
     difficulty: int
     grade_level: Optional[str]
     primary_meaning: Optional[str]  # 主要释义

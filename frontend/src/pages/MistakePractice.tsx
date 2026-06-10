@@ -315,7 +315,7 @@ const MistakePractice = () => {
       <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
         <div className="text-center mb-6">
           <button
-            onClick={() => playAudio(q.word)}
+            onClick={() => playAudio(q.word, 1, q.word_id)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition mb-2"
           >
             🔊 {q.word}

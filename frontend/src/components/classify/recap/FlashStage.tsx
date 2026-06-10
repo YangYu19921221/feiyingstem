@@ -4,7 +4,7 @@ import type { WordData } from '../../../api/progress'
 
 interface Props {
   words: WordData[]
-  playAudio: (word: string) => void
+  playAudio: (word: string, rate?: number, wordId?: number) => void
   onDone: () => void
 }
 
@@ -48,7 +48,7 @@ export default function FlashStage({ words, playAudio, onDone }: Props) {
     const word = words[index]
     // 入场后 0.2s 触发 TTS
     audioTimer.current = window.setTimeout(() => {
-      if (!cancelled.current) playAudio(word.word)
+      if (!cancelled.current) playAudio(word.word, 1, word.id)
     }, ENTER_MS - 200 > 0 ? ENTER_MS - 200 : 0)
     advanceTimer.current = window.setTimeout(() => {
       if (!cancelled.current) setIndex(i => i + 1)

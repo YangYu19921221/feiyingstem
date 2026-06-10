@@ -39,6 +39,7 @@ export interface WordInUnit {
   word: string;
   phonetic: string | null;
   syllables: string | null;
+  tts_text: string | null;
   difficulty: number;
   order_index: number;
   meaning: string | null;
@@ -169,6 +170,7 @@ export const updateWordInUnit = async (
     word?: string;
     phonetic?: string;
     syllables?: string;
+    tts_text?: string;
     difficulty?: number;
     meaning?: string;
     part_of_speech?: string;

@@ -11,7 +11,7 @@ import ColoredPhonetic from '../ColoredPhonetic';
 interface FamiliarWordCardProps {
   word: WordData;
   onConfirm: () => void;
-  playAudio: (word: string) => void;
+  playAudio: (word: string, rate?: number, wordId?: number) => void;
 }
 
 export default function FamiliarWordCard({
@@ -29,13 +29,13 @@ export default function FamiliarWordCard({
 
     // 播放第1遍（通过setTimeout避免同步setState）
     const t1 = setTimeout(() => {
-      playAudio(word.word);
+      playAudio(word.word, 1, word.id);
       setPlayCount(1);
     }, 100);
 
     // 播放第2遍
     const t2 = setTimeout(() => {
-      playAudio(word.word);
+      playAudio(word.word, 1, word.id);
       setPlayCount(2);
     }, 1300);
 

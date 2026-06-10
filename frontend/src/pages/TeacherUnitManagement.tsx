@@ -48,6 +48,7 @@ const TeacherUnitManagement = () => {
     word: '',
     phonetic: '',
     syllables: '',
+    tts_text: '',
     difficulty: 1,
     grade_level: '小学',
     definitions: [{ part_of_speech: '', meaning: '', example_sentence: '', example_translation: '', is_primary: true }] as Array<{ part_of_speech: string; meaning: string; example_sentence: string; example_translation: string; is_primary: boolean }>,
@@ -62,9 +63,9 @@ const TeacherUnitManagement = () => {
   // 编辑单词
   const [editingWordId, setEditingWordId] = useState<number | null>(null);
   const [editFormData, setEditFormData] = useState<{
-    word: string; phonetic: string; syllables: string; difficulty: number;
+    word: string; phonetic: string; syllables: string; tts_text: string; difficulty: number;
     meaning: string; part_of_speech: string; example_sentence: string; example_translation: string;
-  }>({ word: '', phonetic: '', syllables: '', difficulty: 1, meaning: '', part_of_speech: '', example_sentence: '', example_translation: '' });
+  }>({ word: '', phonetic: '', syllables: '', tts_text: '', difficulty: 1, meaning: '', part_of_speech: '', example_sentence: '', example_translation: '' });
   const [savingEdit, setSavingEdit] = useState(false);
 
   // 发音预缓存
@@ -248,6 +249,7 @@ const TeacherUnitManagement = () => {
       word: word.word,
       phonetic: word.phonetic || '',
       syllables: word.syllables || '',
+      tts_text: word.tts_text || '',
       difficulty: word.difficulty,
       meaning: word.meaning || '',
       part_of_speech: word.part_of_speech || '',
@@ -334,6 +336,7 @@ const TeacherUnitManagement = () => {
         word: newWordData.word.trim(),
         phonetic: newWordData.phonetic.trim() || undefined,
         syllables: normalizeSyllables(newWordData.syllables, newWordData.word.trim()) || undefined,
+        tts_text: newWordData.tts_text.trim() || undefined,
         difficulty: newWordData.difficulty,
         grade_level: newWordData.grade_level,
         definitions: newWordData.definitions.map(d => ({
@@ -350,7 +353,7 @@ const TeacherUnitManagement = () => {
       await addWordsToUnit(selectedUnit!.id, [newWordId]);
 
       setNewWordData({
-        word: '', phonetic: '', syllables: '', difficulty: 1, grade_level: '小学',
+        word: '', phonetic: '', syllables: '', tts_text: '', difficulty: 1, grade_level: '小学',
         definitions: [{ part_of_speech: '', meaning: '', example_sentence: '', example_translation: '', is_primary: true }],
         tags: [],
       });
@@ -920,6 +923,13 @@ const TeacherUnitManagement = () => {
                     </select>
                   </div>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">发音文本（读音≠拼写时填，如 Ms→miz；普通单词留空按拼写读）</label>
+                  <input type="text" value={newWordData.tts_text}
+                    onChange={(e) => setNewWordData({ ...newWordData, tts_text: e.target.value })}
+                    placeholder="普通单词留空即可"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                </div>
 
                 {/* 释义列表 */}
                 {newWordData.definitions.map((def, idx) => (
@@ -1102,6 +1112,13 @@ const TeacherUnitManagement = () => {
                                 onChange={(e) => setEditFormData({ ...editFormData, syllables: e.target.value })}
                                 className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
                             </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">发音文本（读音≠拼写时填，如 Ms→miz；留空按拼写读）</label>
+                            <input type="text" value={editFormData.tts_text}
+                              onChange={(e) => setEditFormData({ ...editFormData, tts_text: e.target.value })}
+                              placeholder="普通单词留空即可"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
                           </div>
                           <div className="grid grid-cols-3 gap-2">
                             <div>

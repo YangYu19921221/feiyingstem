@@ -125,7 +125,8 @@ async def best_pronunciation(
     from app.models.word import Word
 
     db_word = None
-    if not word and word_id:
+    # word_id 优先:精确定位到具体那条(区分一词多音),即使同时传了 word 文本
+    if word_id:
         result = await db.execute(select(Word).where(Word.id == word_id))
         db_word = result.scalar_one_or_none()
         if not db_word:

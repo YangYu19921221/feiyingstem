@@ -21,7 +21,7 @@ interface Props {
   onPositionChange: (wordId: number, x: number, y: number) => void
   onDrag: (wordId: number, info: PanInfo) => void
   onDragEnd: (wordId: number, info: PanInfo) => void
-  playAudio: (word: string) => void
+  playAudio: (word: string, rate?: number, wordId?: number) => void
 }
 
 const LONG_PRESS_MS = 400
@@ -60,7 +60,7 @@ export default function RecapCard({
       if (now - lastAudioAt.current < AUDIO_THROTTLE_MS) return
       lastAudioAt.current = now
       setIsLongPressing(true)
-      playAudio(card.word.word)
+      playAudio(card.word.word, 1, card.word.id)
       window.setTimeout(() => setIsLongPressing(false), 600)
     }, LONG_PRESS_MS)
   }, [card.word.word, playAudio, cancelLongPress])
@@ -172,7 +172,7 @@ export default function RecapCard({
           )}
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); playAudio(card.word.word) }}
+            onClick={(e) => { e.stopPropagation(); playAudio(card.word.word, 1, card.word.id) }}
             className="absolute bottom-1 right-1 text-sm hover:text-accent-warm"
             style={{ color: 'oklch(0.55 0.09 230)' }}
           >

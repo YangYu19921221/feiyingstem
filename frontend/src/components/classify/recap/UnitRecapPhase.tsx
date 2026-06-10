@@ -10,7 +10,7 @@ interface Props {
   words: WordData[]
   unitName?: string
   initialSub?: Sub
-  playAudio: (word: string) => void
+  playAudio: (word: string, rate?: number, wordId?: number) => void
   onRetryDictation: (words: WordData[]) => void
   onSkipToSummary: () => void
 }

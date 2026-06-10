@@ -100,7 +100,7 @@ const Assessment = () => {
           setCurrentScore(score);
           setScores(prev => [...prev, score]);
           if (score.total_score < 60) {
-            playAudio(word.word);
+            playAudio(word.word, 1, word.word_id);
           }
         } catch {
           setCurrentScore({ word: words[currentIndex].word, total_score: 0, accuracy: 0, fluency: 0, integrity: 0 });
@@ -327,7 +327,7 @@ const Assessment = () => {
                         <span>流利 {currentScore.fluency.toFixed(0)}</span>
                       </div>
                       <button
-                        onClick={() => playAudio(currentWord.word)}
+                        onClick={() => playAudio(currentWord.word, 1, currentWord.word_id)}
                         className="mt-3 px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-sm hover:bg-blue-100 transition"
                       >
                         🔊 听标准发音

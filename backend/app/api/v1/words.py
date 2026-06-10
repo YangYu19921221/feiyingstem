@@ -98,6 +98,8 @@ async def get_word_book(
             id=word.id,
             word=word.word,
             phonetic=word.phonetic,
+            syllables=word.syllables,
+            tts_text=word.tts_text,
             difficulty=word.difficulty,
             grade_level=word.grade_level,
             primary_meaning=meaning,
@@ -283,6 +285,7 @@ async def _overwrite_word_fields(db: AsyncSession, target: Word, word_data: Word
     target.word = word_data.word.strip()
     target.phonetic = word_data.phonetic
     target.syllables = word_data.syllables
+    target.tts_text = word_data.tts_text
     target.difficulty = word_data.difficulty
     target.grade_level = word_data.grade_level
     if word_data.audio_url is not None:
@@ -313,6 +316,7 @@ async def _create_new_word_row(db: AsyncSession, word_data: WordCreate) -> Word:
         word=word_data.word.strip(),
         phonetic=word_data.phonetic,
         syllables=word_data.syllables,
+        tts_text=word_data.tts_text,
         difficulty=word_data.difficulty,
         grade_level=word_data.grade_level,
         audio_url=word_data.audio_url,
@@ -520,6 +524,8 @@ async def list_words(
             id=word.id,
             word=word.word,
             phonetic=word.phonetic,
+            syllables=word.syllables,
+            tts_text=word.tts_text,
             difficulty=word.difficulty,
             grade_level=word.grade_level,
             primary_meaning=meaning_map.get(word.id),
@@ -692,6 +698,7 @@ async def get_word_detail(word_id: int, db: AsyncSession) -> WordResponse:
         word=db_word.word,
         phonetic=db_word.phonetic,
         syllables=db_word.syllables,
+        tts_text=db_word.tts_text,
         difficulty=db_word.difficulty,
         grade_level=db_word.grade_level,
         audio_url=db_word.audio_url,

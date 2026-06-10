@@ -23,7 +23,7 @@ export interface FillBlankResult {
 interface SentenceFillPhaseProps {
   words: WordData[];
   onComplete: (results: FillBlankResult[]) => void;
-  playAudio: (text: string) => void;
+  playAudio: (text: string, rate?: number, wordId?: number) => void;
 }
 
 export default function SentenceFillPhase({
@@ -119,7 +119,7 @@ export default function SentenceFillPhase({
     setSubmitted(true);
 
     if (correct) {
-      playAudio(currentWord.word);
+      playAudio(currentWord.word, 1, currentWord.id);
     }
 
     setAllResults(prev => [...prev, {

@@ -13,7 +13,7 @@ interface SpeechVerifyCardProps {
   word: WordData;
   onNext: () => void;
   onSkip?: () => void;
-  playAudio: (word: string) => void;
+  playAudio: (word: string, rate?: number, wordId?: number) => void;
   disabled?: boolean;
 }
 
@@ -172,7 +172,7 @@ export default function SpeechVerifyCard({
             }, 1200);
           } else {
             setPhase('error');
-            playAudio(word.word);
+            playAudio(word.word, 1, word.id);
             timerRef.current = setTimeout(() => {
               if (mountedRef.current) startRecordingRef.current();
             }, 2000);

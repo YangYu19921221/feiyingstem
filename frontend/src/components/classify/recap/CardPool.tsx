@@ -8,7 +8,7 @@ import { scatter } from './scatter'
 
 interface Props {
   words: WordData[]
-  playAudio: (word: string) => void
+  playAudio: (word: string, rate?: number, wordId?: number) => void
   onComplete: (result: {
     masteredWordIds: number[]
     practiceWords: WordData[]

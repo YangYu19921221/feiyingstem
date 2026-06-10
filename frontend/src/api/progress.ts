@@ -50,6 +50,7 @@ export interface WordData {
   word: string;
   phonetic: string | null;
   syllables: string | null;
+  tts_text: string | null;
   difficulty: number;
   audio_url: string | null;
   image_url: string | null;

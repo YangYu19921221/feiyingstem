@@ -170,6 +170,7 @@ async def get_unit_detail(
             "word": word.word,
             "phonetic": word.phonetic,
             "syllables": word.syllables,
+            "tts_text": word.tts_text,
             "difficulty": word.difficulty,
             "order_index": order_index,
             "meaning": primary_def.meaning if primary_def else None,
@@ -487,7 +488,7 @@ async def update_word_in_unit(
         v = word_data[field]
         return v is not None and v != ""
 
-    for field in ['word', 'phonetic', 'syllables', 'difficulty']:
+    for field in ['word', 'phonetic', 'syllables', 'tts_text', 'difficulty']:
         if _provided(field):
             setattr(target_word, field, word_data[field])
 

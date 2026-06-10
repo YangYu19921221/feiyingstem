@@ -111,6 +111,7 @@ async def start_learning(
             "word": word.word,
             "phonetic": word.phonetic,
             "syllables": word.syllables,
+            "tts_text": word.tts_text,
             "difficulty": word.difficulty,
             "audio_url": word.audio_url,
             "image_url": word.image_url,

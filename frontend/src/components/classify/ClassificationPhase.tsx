@@ -16,7 +16,7 @@ interface ClassificationPhaseProps {
   words: WordData[];
   onComplete: (results: Map<number, WordCategory>) => void;
   onRoundMistakes?: (wordIds: number[]) => void;
-  playAudio: (word: string) => void;
+  playAudio: (word: string, rate?: number, wordId?: number) => void;
   stopAudio?: () => void;
   // PK mode: shows just the current word with classify buttons; single-word controlled mode.
   mode?: 'solo' | 'pk';
@@ -96,12 +96,12 @@ export default function ClassificationPhase({
     if (!currentWord || showRoundSummary || showTutorial) return;
 
     const t = setTimeout(() => {
-      playAudio(currentWord.word);
+      playAudio(currentWord.word, 1, currentWord.id);
     }, 300);
 
     const t2 = setTimeout(() => {
       audioTimerRef.current = setInterval(() => {
-        playAudio(currentWord.word);
+        playAudio(currentWord.word, 1, currentWord.id);
       }, PLAY_INTERVAL);
     }, 300 + PLAY_INTERVAL);
 
@@ -202,7 +202,7 @@ export default function ClassificationPhase({
         case '3': classifyRef.current('unknown'); break;
         case ' ':
           e.preventDefault();
-          if (currentWord) playAudio(currentWord.word);
+          if (currentWord) playAudio(currentWord.word, 1, currentWord.id);
           break;
       }
     };
@@ -476,7 +476,7 @@ export default function ClassificationPhase({
               )}
 
               <button
-                onClick={() => playAudio(currentWord.word)}
+                onClick={() => playAudio(currentWord.word, 1, currentWord.id)}
                 className="mt-4 p-3 rounded-full bg-blue-50 hover:bg-blue-100 transition active:scale-95"
               >
                 <span className="text-2xl">🔊</span>
@@ -520,13 +520,13 @@ function PkClassifySingle({
   word: { id: number; word: string; translation: string };
   onAnswer: (category: WordCategory, timeSpentMs: number) => void;
   disabled: boolean;
-  playAudio: (word: string) => void;
+  playAudio: (word: string, rate?: number, wordId?: number) => void;
 }) {
   const startRef = useRef<number>(Date.now());
 
   useEffect(() => {
     startRef.current = Date.now();
-    if (word.word) playAudio(word.word);
+    if (word.word) playAudio(word.word, 1, word.id);
   }, [word.id, word.word, playAudio]);
 
   const handle = (cat: WordCategory) => {

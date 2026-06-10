@@ -24,7 +24,7 @@ const FlashCard = ({ word, onNext, onKnow, onDontKnow }: FlashCardProps) => {
   const handlePlayAudio = () => {
     if (isPlaying) return;
     setIsPlaying(true);
-    playAudio(word.word).finally(() => setIsPlaying(false));
+    playAudio(word.word, 1, word.id).finally(() => setIsPlaying(false));
   };
 
   return (
