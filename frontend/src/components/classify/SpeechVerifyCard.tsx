@@ -239,7 +239,7 @@ export default function SpeechVerifyCard({
         className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
       >
         <div className="mb-3">
-          <ColoredWord word={word.word} syllables={word.syllables} className="text-5xl font-bold" />
+          <span style={{ fontSize: 'clamp(1.75rem, 9vw, 3rem)' }}><ColoredWord word={word.word} syllables={word.syllables} className="font-bold break-words max-w-full leading-tight inline-block" /></span>
         </div>
         {word.phonetic && (
           <div className="mb-4 flex justify-center">
@@ -269,7 +269,7 @@ export default function SpeechVerifyCard({
     >
       {/* 单词（彩色音节） */}
       <div className="mb-3">
-        <ColoredWord word={word.word} syllables={word.syllables} className="text-5xl font-bold" />
+        <span style={{ fontSize: 'clamp(1.75rem, 9vw, 3rem)' }}><ColoredWord word={word.word} syllables={word.syllables} className="font-bold break-words max-w-full leading-tight inline-block" /></span>
       </div>
 
       {/* 音标（彩色） */}

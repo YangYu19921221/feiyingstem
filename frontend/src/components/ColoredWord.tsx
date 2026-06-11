@@ -76,5 +76,5 @@ export default function ColoredWord({ word, syllables, className = '' }: Colored
     });
   });
 
-  return <span className={className}>{elements}</span>;
+  return <span className={`break-words ${className}`}>{elements}</span>;
 }

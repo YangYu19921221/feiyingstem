@@ -437,11 +437,11 @@ export default function ClassificationPhase({
 
             {/* 卡片内容 */}
             <div className="px-8 pb-8 pt-2 text-center">
-              <div className="mb-3">
+              <div className="mb-3" style={{ fontSize: 'clamp(1.75rem, 9vw, 3rem)' }}>
                 <ColoredWord
                   word={currentWord.word}
                   syllables={currentWord.syllables}
-                  className="text-5xl font-bold"
+                  className="font-bold break-words max-w-full leading-tight inline-block"
                 />
               </div>
 
