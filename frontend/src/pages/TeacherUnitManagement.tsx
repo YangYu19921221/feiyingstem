@@ -516,18 +516,37 @@ const TeacherUnitManagement = () => {
       const errors: string[] = [];
       // 本批已出现的拼写:同批内同拼写再次出现 = 一词多音,强制新建不去重
       const seenSpellings = new Set<string>();
+      let ttsFilledCount = 0;  // 本次带了发音文本的词数,导入后反馈给老师
+
+      // 列名宽容匹配:去掉表头里的空格、转小写后比对,认多种常见写法,
+      // 避免老师表头写成"发音 文本"/"读音"/"TTS"等导致整列读不到、静默丢数据。
+      const pick = (row: any, aliases: string[]): string => {
+        const norm = (s: string) => s.toString().replace(/\s+/g, '').toLowerCase();
+        const want = aliases.map(norm);
+        for (const key of Object.keys(row)) {
+          if (want.includes(norm(key))) {
+            const v = row[key];
+            if (v !== undefined && v !== null && String(v).trim() !== '') {
+              return String(v).trim();
+            }
+          }
+        }
+        return '';
+      };
 
       for (const row of rows) {
-        const word = (row['单词'] || row['word'] || '').toString().trim();
+        const word = pick(row, ['单词', 'word']);
         if (!word) continue;
 
-        const meaning = (row['释义'] || row['meaning'] || '').toString().trim();
-        const phonetic = (row['音标'] || row['phonetic'] || '').toString().trim();
-        const syllables = normalizeSyllables((row['音节'] || row['syllables'] || '').toString(), word);
-        const ttsText = (row['发音文本'] || row['tts_text'] || '').toString().trim();
-        const pos = (row['词性'] || row['part_of_speech'] || '').toString().trim();
-        const example = (row['例句'] || row['example'] || '').toString().trim();
-        const exTrans = (row['例句翻译'] || row['translation'] || '').toString().trim();
+        const meaning = pick(row, ['释义', 'meaning', '意思', '中文释义']);
+        const phonetic = pick(row, ['音标', 'phonetic']);
+        const syllables = normalizeSyllables(pick(row, ['音节', 'syllables', '音节划分']), word);
+        const ttsText = pick(row, ['发音文本', 'tts_text', 'tts', '读音', '发音']);
+        const pos = pick(row, ['词性', 'part_of_speech', '词类']);
+        const example = pick(row, ['例句', 'example', 'example_sentence']);
+        const exTrans = pick(row, ['例句翻译', 'translation', 'example_translation', '例句中文']);
+
+        if (ttsText) ttsFilledCount++;
 
         const spelling = word.toLowerCase();
         const forceNew = seenSpellings.has(spelling);
@@ -566,6 +585,11 @@ const TeacherUnitManagement = () => {
       }
 
       let msg = `成功导入 ${newWordIds.length} 个单词`;
+      if (ttsFilledCount > 0) {
+        msg += `,其中 ${ttsFilledCount} 个带发音文本`;
+      } else {
+        msg += `(未读到发音文本列,如需特殊读音请确认表头为"发音文本")`;
+      }
       if (errors.length > 0) {
         msg += `\n失败 ${errors.length} 个:\n${errors.slice(0, 5).join('\n')}`;
       }
