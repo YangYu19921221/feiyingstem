@@ -22,12 +22,16 @@ interface DictationPhaseProps {
   words: WordData[];
   onComplete: (results: DictationResult[]) => void;
   playAudioSlow: (word: string, wordId?: number) => void;
+  /** 拼错后订正需连续正确几遍才放行。默认 3(正常学习强化记忆);
+   *  复习模式传 1,拼错订正 1 遍即过,不再重复抄。 */
+  copyRequired?: number;
 }
 
 export default function DictationPhase({
   words,
   onComplete,
   playAudioSlow,
+  copyRequired = 3,
 }: DictationPhaseProps) {
   const [roundWords, setRoundWords] = useState<WordData[]>(words);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -35,12 +39,12 @@ export default function DictationPhase({
   const [userInput, setUserInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
-  // 错误后需要重新输入正确答案 - 必须连续 3 遍正确才放行（强化记忆）
+  // 错误后需要重新输入正确答案 - 连续 copyRequired 遍正确才放行(默认3强化记忆,复习模式传1)
   const [retryMode, setRetryMode] = useState(false);
   const [retryInput, setRetryInput] = useState('');
   const [retryPassed, setRetryPassed] = useState(false);
   const [copyDoneCount, setCopyDoneCount] = useState(0);
-  const COPY_REQUIRED = 3;
+  const COPY_REQUIRED = copyRequired;
   // 只记录首次尝试结果
   const [firstAttemptResults, setFirstAttemptResults] = useState<Map<number, boolean>>(new Map());
   const [roundErrorWords, setRoundErrorWords] = useState<WordData[]>([]);

@@ -747,6 +747,7 @@ const WordClassifyLearning = () => {
                 words={recapRetryWords ?? currentGroupWords}
                 onComplete={handleDictationComplete}
                 playAudioSlow={playAudioSlow}
+                copyRequired={isReviewRef.current ? 1 : 3}
               />
             </motion.div>
           )}
