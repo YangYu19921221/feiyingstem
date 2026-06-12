@@ -516,12 +516,14 @@ const TeacherUnitManagement = () => {
       const errors: string[] = [];
       // 本批已出现的拼写:同批内同拼写再次出现 = 一词多音,强制新建不去重
       const seenSpellings = new Set<string>();
-      let ttsFilledCount = 0;  // 本次带了发音文本的词数,导入后反馈给老师
+      let ttsImportedCount = 0;  // 成功导入且带发音文本的词数,导入后反馈给老师
+
+      const norm = (s: string) => s.toString().replace(/\s+/g, '').toLowerCase();
+      const TTS_ALIASES = ['发音文本', 'tts_text', 'tts', '读音', '发音'];
 
       // 列名宽容匹配:去掉表头里的空格、转小写后比对,认多种常见写法,
       // 避免老师表头写成"发音 文本"/"读音"/"TTS"等导致整列读不到、静默丢数据。
       const pick = (row: any, aliases: string[]): string => {
-        const norm = (s: string) => s.toString().replace(/\s+/g, '').toLowerCase();
         const want = aliases.map(norm);
         for (const key of Object.keys(row)) {
           if (want.includes(norm(key))) {
@@ -534,6 +536,12 @@ const TeacherUnitManagement = () => {
         return '';
       };
 
+      // 表里到底有没有"发音文本"这一列(无视是否填值)——用于区分
+      // "压根没这列(表头不对)" vs "有列但都留空(普通词正常情况)"。
+      const headerKeys = rows.length ? Object.keys(rows[0]).map(norm) : [];
+      const ttsWanted = TTS_ALIASES.map(norm);
+      const hasTtsColumn = headerKeys.some(k => ttsWanted.includes(k));
+
       for (const row of rows) {
         const word = pick(row, ['单词', 'word']);
         if (!word) continue;
@@ -541,12 +549,10 @@ const TeacherUnitManagement = () => {
         const meaning = pick(row, ['释义', 'meaning', '意思', '中文释义']);
         const phonetic = pick(row, ['音标', 'phonetic']);
         const syllables = normalizeSyllables(pick(row, ['音节', 'syllables', '音节划分']), word);
-        const ttsText = pick(row, ['发音文本', 'tts_text', 'tts', '读音', '发音']);
+        const ttsText = pick(row, TTS_ALIASES);
         const pos = pick(row, ['词性', 'part_of_speech', '词类']);
         const example = pick(row, ['例句', 'example', 'example_sentence']);
         const exTrans = pick(row, ['例句翻译', 'translation', 'example_translation', '例句中文']);
-
-        if (ttsText) ttsFilledCount++;
 
         const spelling = word.toLowerCase();
         const forceNew = seenSpellings.has(spelling);
@@ -572,6 +578,7 @@ const TeacherUnitManagement = () => {
             tags: [],
           }, { headers: { Authorization: `Bearer ${token}` } });
           newWordIds.push(res.data.id);
+          if (ttsText) ttsImportedCount++;  // 仅成功导入的才计入
         } catch (err: any) {
           errors.push(`${word}: ${getErrorMessage(err, '创建失败')}`);
         }
@@ -584,14 +591,26 @@ const TeacherUnitManagement = () => {
         loadUnits();
       }
 
-      let msg = `成功导入 ${newWordIds.length} 个单词`;
-      if (ttsFilledCount > 0) {
-        msg += `,其中 ${ttsFilledCount} 个带发音文本`;
-      } else {
-        msg += `(未读到发音文本列,如需特殊读音请确认表头为"发音文本")`;
+      const failedCount = errors.length;
+
+      // 全失败:以失败为主,不误报"成功"
+      if (newWordIds.length === 0) {
+        let failMsg = `导入失败,0 个成功`;
+        if (failedCount > 0) failMsg += `\n${errors.slice(0, 5).join('\n')}`;
+        toast.error(failMsg);
+        return;
       }
-      if (errors.length > 0) {
-        msg += `\n失败 ${errors.length} 个:\n${errors.slice(0, 5).join('\n')}`;
+
+      let msg = `成功导入 ${newWordIds.length} 个单词`;
+      if (ttsImportedCount > 0) {
+        msg += `,其中 ${ttsImportedCount} 个带发音文本`;
+      } else if (!hasTtsColumn) {
+        // 仅在"表里压根没有发音文本列"时提醒检查表头;
+        // 有列但都留空(普通词正常情况)不提示,避免误报。
+        msg += `(未识别到"发音文本"列;如需特殊读音,请确认表头含"发音文本")`;
+      }
+      if (failedCount > 0) {
+        msg += `\n失败 ${failedCount} 个:\n${errors.slice(0, 5).join('\n')}`;
       }
       toast.info(msg);
     } catch (error) {
