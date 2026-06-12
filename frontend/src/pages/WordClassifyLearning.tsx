@@ -17,7 +17,7 @@ import {
 } from '../api/learningRecords';
 import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
-import { promoteReviewWords, keepReviewWords } from '../utils/reviewTier';
+import { promoteReviewWords, demoteReviewWords } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
@@ -170,7 +170,7 @@ const WordClassifyLearning = () => {
 
         const words = JSON.parse(wordsJson);
         // 注意:不在开练时预置档位。复习答对才升一档(saveGroupProgress 里 promoteReviewWord),
-        // 答错留原档(keepReviewWord)。逐级晋级 薄弱→一般→熟练→毕业。
+        // 答错跌回薄弱(demoteReviewWords)。逐级晋级 薄弱→一般→熟练→毕业。
         data = {
           has_existing_progress: false,
           current_word_index: 0,
@@ -293,9 +293,9 @@ const WordClassifyLearning = () => {
   const submitMistakesRealtime = useCallback((records: WordAnswerCreate[]) => {
     const wrongRecords = records.filter(r => !r.is_correct);
     if (wrongRecords.length === 0 || !unitId) return;
-    // 复习模式：答错的词留在原档(不升级)；逐级晋级 薄弱→一般→熟练→毕业
+    // 复习模式：答错的词直接跌回「薄弱」档,重新一档档往上爬;逐级晋级 薄弱→一般→熟练→毕业
     if (isReviewRef.current) {
-      keepReviewWords(wrongRecords.map(r => r.word_id), 0);
+      demoteReviewWords(wrongRecords.map(r => r.word_id));
     }
     // 填入实际用时
     const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
@@ -443,7 +443,7 @@ const WordClassifyLearning = () => {
     }
 
     // 复习模式:本组答对/已会的词逐级升一档(薄弱→一般→熟练→毕业)。
-    // 答错的词已在 submitMistakesRealtime 里 keepReviewWord 留原档,不会被这里覆盖升级。
+    // 答错的词已在 submitMistakesRealtime 里 demoteReviewWords 跌回薄弱,不会被这里覆盖升级。
     if (isReviewRef.current) {
       promoteReviewWords(passedWordIds, 0);
     }

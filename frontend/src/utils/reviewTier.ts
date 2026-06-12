@@ -1,14 +1,14 @@
 /**
  * 复习「逐级晋级」档位：薄弱 → 一般 → 熟练 → 毕业。
  *
- * 规则(用户确认)：复习中每答对一次，该词往上升一档；答错留在原档；
+ * 规则(用户确认)：复习中每答对一次，该词往上升一档；答错直接跌回「薄弱」重新爬；
  * 熟练再答对则毕业(从今日复习列表消失，靠后端 SRS 排期隔几天再到期巩固)。
  *
  * 纯前端 localStorage，不动后端 mastery_level 算法，零影响成就/统计/光荣榜等。
  * 没有晋级记录的词，由 MemoryCurve 回退按 mastery_level 初始定档。
  *
  * 档位编码: 0=薄弱 1=一般 2=熟练 3=毕业(隐藏)
- * 生产者：WordClassifyLearning 复习模式下答对 promoteReviewWord、答错不变。
+ * 生产者：WordClassifyLearning 复习模式下答对 promoteReviewWords、答错 demoteReviewWords(跌回薄弱)。
  * 消费者：MemoryCurve.tierOfWord 优先读这里。
  */
 export type ReviewTier = 'weak' | 'medium' | 'fluent';
@@ -65,16 +65,18 @@ export function promoteReviewWords(wordIds: number[], baseStage: number) {
   write(map);
 }
 
-/** 批量答错：留原档(无记录才按 baseStage 落档),一次读一次写。 */
-export function keepReviewWords(wordIds: number[], baseStage: number) {
+/**
+ * 批量答错：直接打回「薄弱」档(0)。
+ * 规则(用户确认)：在一般/熟练档答错 → 跌回薄弱,重新一档一档往上爬;
+ * 已在薄弱的保持薄弱。一次读一次写。
+ */
+export function demoteReviewWords(wordIds: number[]) {
   if (wordIds.length === 0) return;
   const map = read();
-  let changed = false;
   for (const id of wordIds) {
-    const k = String(id);
-    if (typeof map[k] !== 'number') { map[k] = baseStage; changed = true; }
+    map[String(id)] = STAGE_WEAK;
   }
-  if (changed) write(map);
+  write(map);
 }
 
 /** 档位数值 → 三档名 */
