@@ -106,7 +106,21 @@ const MemoryCurve = () => {
         getReviewProgress().catch(() => null),
       ]);
       setStats(statsData);
-      setReviewWords(wordsData || []);
+      // 单元隔离后同一拼写在不同单元各有独立词条,到期会一起涌进复习列表,
+      // 导致同一个词(如 name)在薄弱/一般里重复出现、要背好多遍。
+      // 这里按拼写去重:同拼写只保留一条(取掌握度最低=最该补的那条)。
+      const dedupBySpelling = (list: ReviewWord[]): ReviewWord[] => {
+        const best = new Map<string, ReviewWord>();
+        for (const w of list) {
+          const key = (w.word || '').trim().toLowerCase();
+          const prev = best.get(key);
+          if (!prev || w.mastery_level < prev.mastery_level) best.set(key, w);
+        }
+        // 保持后端原有顺序(按 next_review_at 升序),只是滤掉重复拼写
+        const kept = new Set<number>([...best.values()].map(w => w.word_id));
+        return list.filter(w => kept.has(w.word_id));
+      };
+      setReviewWords(dedupBySpelling(wordsData || []));
       setProgress(progressData);
 
       // 背完返回：用复习前快照对比现状，给"刚复习 N 个、X 个升档"的正反馈
@@ -281,7 +295,9 @@ const MemoryCurve = () => {
             <>
               <p className="text-ink-mute text-sm mb-2">今日复习</p>
               {(() => {
-                const dueTotal = progress?.review_due_today ?? stats.due_today;
+                // 用去重后的实际待复习词数(reviewWords 已按拼写去重),
+                // 与下方三档卡片口径一致;后端 due_today 可能含同拼写多条不一致。
+                const dueTotal = reviewWords.length || (progress?.review_due_today ?? stats.due_today);
                 const batch = Math.min(REVIEW_BATCH, dueTotal);
                 return (
                   <h2 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
