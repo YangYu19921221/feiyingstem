@@ -546,11 +546,22 @@ async def get_memory_curve_stats(
     user_id = current_user.id
     now = datetime.utcnow()
 
-    # 查询该用户所有的单词掌握记录
+    # 查询该用户所有的单词掌握记录(连同拼写,用于按拼写去重)。
+    # 单元隔离后同一拼写在不同单元各有独立 word 记录,统计若按 word_id 全算,
+    # 会与记忆曲线复习列表(已按拼写去重)对不上。这里同样按拼写去重:
+    # 同拼写只保留掌握度最低(最该补)的一条,与前端口径一致。
     result = await db.execute(
-        select(WordMastery).where(WordMastery.user_id == user_id)
+        select(WordMastery, func.lower(Word.word))
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(WordMastery.user_id == user_id)
     )
-    all_mastery = result.scalars().all()
+    rows = result.all()
+    by_spelling: dict[str, object] = {}
+    for m, sp in rows:
+        prev = by_spelling.get(sp)
+        if prev is None or (m.mastery_level or 0) < (prev.mastery_level or 0):
+            by_spelling[sp] = m
+    all_mastery = list(by_spelling.values())
 
     if not all_mastery:
         return {
@@ -689,8 +700,12 @@ async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
 
     # 今日待复习：到期、且今天还没练过的词。排除"今天已练过"使其与 review_done_today
     # 不相交,这样进度条 done/(done+due) 是干净的 0%→100%(否则答错仍到期的词会被两边重复计)。
+    # 按拼写去重(count distinct lower(word)):单元隔离后同拼写多条只算一个,
+    # 与记忆曲线复习列表(已按拼写去重)口径一致。
     due_res = await db.execute(
-        select(func.count(WordMastery.id)).where(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
+        .where(
             WordMastery.user_id == user_id,
             WordMastery.next_review_at.isnot(None),
             WordMastery.next_review_at <= now,
@@ -706,8 +721,11 @@ async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
     # 不再用 created_at < today_start 判定——fork/迁移会让老词的 mastery 行
     # created_at 变成今天,导致复习了却不计入 done、进度条不动。改用
     # "练过 + 有复习排期"作为复习信号,既覆盖各复习入口,又让 done 随复习增长。
+    # 同样按拼写去重,与 due 口径一致。
     done_res = await db.execute(
-        select(func.count(func.distinct(WordMastery.word_id))).where(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
+        .where(
             WordMastery.user_id == user_id,
             WordMastery.last_practiced_at.isnot(None),
             WordMastery.last_practiced_at >= today_start,
@@ -718,7 +736,9 @@ async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
     review_done_today = int(done_res.scalar() or 0)
 
     graduated_res = await db.execute(
-        select(func.count(WordMastery.id)).where(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
+        .where(
             WordMastery.user_id == user_id,
             WordMastery.review_stage >= len(SRS_INTERVALS),
         )
