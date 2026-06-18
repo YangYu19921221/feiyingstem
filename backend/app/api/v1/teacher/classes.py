@@ -630,7 +630,7 @@ async def get_class_student_detail(
     )
     m_rows = mastery_result.all()
     total_words_learned = len(m_rows)
-    total_mastered = sum(1 for r in m_rows if (r.lvl or 0) >= 4)
+    total_mastered = sum(1 for r in m_rows if (r.lvl or 0) >= 3)
     weak_words_count = sum(1 for r in m_rows if (r.lvl or 0) < 3)
 
     # 累计: StudyCalendar 聚合 (1 query)

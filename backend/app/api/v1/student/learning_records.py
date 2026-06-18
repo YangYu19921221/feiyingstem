@@ -40,7 +40,7 @@ SRS_INTERVALS = [
     720,     # Stage 8→毕业: 30天
 ]
 
-SRS_LABELS = ["5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天", "15天", "30天", "已掌握"]
+SRS_LABELS = ["5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天", "15天", "30天", "已毕业"]
 
 
 async def update_study_calendar(db: AsyncSession, user_id: int, record_count: int, total_time_ms: int):
@@ -592,7 +592,7 @@ async def get_memory_curve_stats(
     due_tomorrow = 0
     day_counts = [0] * 7
     stage_counts = defaultdict(int)
-    total_mastered = 0
+    graduated_count = 0
     mastered_count = 0
 
     for m in all_mastery:
@@ -600,7 +600,7 @@ async def get_memory_curve_stats(
         stage_counts[stage] += 1
 
         if stage >= len(SRS_INTERVALS):
-            total_mastered += 1
+            graduated_count += 1
         if m.mastery_level >= 3:
             mastered_count += 1
 
@@ -640,7 +640,8 @@ async def get_memory_curve_stats(
         if i < len(SRS_INTERVALS):
             count = stage_counts.get(i, 0)
         else:
-            count = total_mastered
+            # SRS 分布图最后一档 = 复习排期走完(毕业),用 graduated 计数
+            count = graduated_count
         stage_distribution.append({
             "stage": i,
             "label": SRS_LABELS[i],
@@ -656,7 +657,7 @@ async def get_memory_curve_stats(
         "upcoming_7_days": upcoming_7_days,
         "stage_distribution": stage_distribution,
         "total_learned": total_learned,
-        "total_mastered": total_mastered,
+        "total_mastered": mastered_count,
         "retention_rate": retention_rate,
     }
 

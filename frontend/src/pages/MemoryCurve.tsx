@@ -197,7 +197,7 @@ const MemoryCurve = () => {
   };
 
   const getMasteryBadge = (level: number, stage: number) => {
-    if (stage >= 9) return { text: '已掌握', color: 'bg-green-100 text-green-700' };
+    if (stage >= 9) return { text: '已毕业', color: 'bg-green-100 text-green-700' };
     if (level >= 4) return { text: '熟练', color: 'bg-blue-100 text-blue-700' };
     if (level >= 2) return { text: '一般', color: 'bg-yellow-100 text-yellow-700' };
     return { text: '薄弱', color: 'bg-red-100 text-red-700' };

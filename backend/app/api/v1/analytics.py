@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.user import StudyCalendar
 from app.models.learning import WordMastery, LearningRecord, LearningProgress, StudySession
+from app.models.word import Word
 from app.api.v1.auth import get_current_user
 from pydantic import BaseModel
 
@@ -97,37 +98,41 @@ async def get_learning_overview(
 ):
     """获取学习总览数据"""
 
-    # 总学习单词数
+    # 总学习单词数(按拼写去重,与各端一致;三档之和=总数)
     result = await db.execute(
-        select(func.count(WordMastery.id))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
         .where(WordMastery.user_id == current_user.id)
     )
     total_words = result.scalar() or 0
 
-    # 已掌握单词数(掌握度>=4)
+    # 已掌握单词数(掌握度>=3 基本掌握,全站统一口径;按拼写去重与各端一致)
     result = await db.execute(
-        select(func.count(WordMastery.id))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
         .where(and_(
             WordMastery.user_id == current_user.id,
-            WordMastery.mastery_level >= 4
+            WordMastery.mastery_level >= 3
         ))
     )
     mastered_words = result.scalar() or 0
 
-    # 学习中单词数(掌握度2-3)
+    # 学习中单词数(掌握度2)
     result = await db.execute(
-        select(func.count(WordMastery.id))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
         .where(and_(
             WordMastery.user_id == current_user.id,
             WordMastery.mastery_level >= 2,
-            WordMastery.mastery_level < 4
+            WordMastery.mastery_level < 3
         ))
     )
     learning_words = result.scalar() or 0
 
     # 薄弱单词数(掌握度<2)
     result = await db.execute(
-        select(func.count(WordMastery.id))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
         .where(and_(
             WordMastery.user_id == current_user.id,
             WordMastery.mastery_level < 2

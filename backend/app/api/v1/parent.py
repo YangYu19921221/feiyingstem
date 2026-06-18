@@ -386,7 +386,9 @@ async def parent_child_dashboard(
     total_words_learned = int(res.scalar() or 0)
 
     res = await db.execute(
-        select(func.count(WordMastery.id)).where(and_(WordMastery.user_id == student_id, WordMastery.mastery_level >= 4))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
+        .where(and_(WordMastery.user_id == student_id, WordMastery.mastery_level >= 3))
     )
     total_words_mastered = int(res.scalar() or 0)
 
