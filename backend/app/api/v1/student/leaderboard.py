@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_student
 from app.core.database import get_db
+from app.core.timeutil import local_today, local_day_utc_range
 from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.user import User, Class, ClassStudent
 
@@ -23,21 +24,28 @@ ScopeKind = Literal["class", "global"]
 
 
 def _period_range(period: PeriodKind) -> tuple[datetime, datetime]:
-    """返回 [start, end) UTC，按学生作息周一为一周开始"""
-    now = datetime.utcnow()
-    today = datetime(now.year, now.month, now.day)
+    """返回 [start, end) UTC,按北京时间周一为一周开始/月初。
+    先按北京日历算出起止日,再转成 UTC 区间与 UTC 时间戳比较。"""
+    today = local_today()
     if period == "this_week":
         monday = today - timedelta(days=today.weekday())
-        return monday, monday + timedelta(days=7)
+        start, _ = local_day_utc_range(monday)
+        _, end = local_day_utc_range(monday + timedelta(days=6))
+        return start, end
     if period == "last_week":
         monday = today - timedelta(days=today.weekday() + 7)
-        return monday, monday + timedelta(days=7)
-    first = datetime(now.year, now.month, 1)
-    if now.month == 12:
-        next_first = datetime(now.year + 1, 1, 1)
+        start, _ = local_day_utc_range(monday)
+        _, end = local_day_utc_range(monday + timedelta(days=6))
+        return start, end
+    # 本月
+    first = today.replace(day=1)
+    if today.month == 12:
+        next_first = first.replace(year=today.year + 1, month=1)
     else:
-        next_first = datetime(now.year, now.month + 1, 1)
-    return first, next_first
+        next_first = first.replace(month=today.month + 1)
+    start, _ = local_day_utc_range(first)
+    end, _ = local_day_utc_range(next_first)
+    return start, end
 
 
 class LeaderboardEntry(BaseModel):

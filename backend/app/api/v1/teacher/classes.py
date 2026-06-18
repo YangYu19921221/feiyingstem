@@ -8,7 +8,7 @@ from sqlalchemy import select, func, and_, or_, Integer, update, delete
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime, date, timedelta, timezone
-from zoneinfo import ZoneInfo
+from app.core.timeutil import local_today, local_day_utc_range
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
@@ -26,24 +26,14 @@ from app.services.auth_service import get_password_hash, generate_random_passwor
 router = APIRouter()
 
 
-# 服务器及用户时区(本项目部署在 Asia/Shanghai)。学习时间戳(created_at/
-# started_at/last_practiced_at)都按 UTC 存(func.now()/utcnow()),而"某一天"
-# 对老师/学生是本地日历日。下面把本地日历日转成对应的 UTC 区间用于筛选,
-# 避免用本地午夜直接筛 UTC 时间戳造成 8 小时跨天错位。
-LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+# 时区:全站"今天/分天"统一按北京时间,见 app/core/timeutil。
+# 这两个薄封装保留原函数名,复用公用实现。
+def _local_today() -> date:
+    return local_today()
 
 
 def _local_day_utc_range(d: date) -> tuple[datetime, datetime]:
-    """本地日历日 d 的 [起, 止) 对应的 UTC naive 时间(与 DB 存储口径一致)。"""
-    start_local = datetime(d.year, d.month, d.day, tzinfo=LOCAL_TZ)
-    end_local = start_local + timedelta(days=1)
-    to_utc = lambda x: x.astimezone(timezone.utc).replace(tzinfo=None)
-    return to_utc(start_local), to_utc(end_local)
-
-
-def _local_today() -> date:
-    """服务器本地(Asia/Shanghai)当前日历日。"""
-    return datetime.now(LOCAL_TZ).date()
+    return local_day_utc_range(d)
 
 
 # Schemas

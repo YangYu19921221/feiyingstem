@@ -395,7 +395,7 @@ async def submit_reading_attempt(
         total_points=total_score,
         percentage=percentage,
         time_spent=submission.time_spent,
-        submitted_at=datetime.now(),
+        submitted_at=datetime.utcnow(),
         answers=json.dumps([a.model_dump() for a in submission.answers]),
         is_passed=is_passed
     )

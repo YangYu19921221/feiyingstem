@@ -77,9 +77,10 @@ async def get_teacher_dashboard_stats(
             "date": word.created_at.strftime('%Y-%m-%d') if word.created_at else ""
         })
 
-    # 6. 今日完成学习的学生数
+    # 6. 今日完成学习的学生数(北京今天)
     from app.models.learning import StudySession
-    today_start = datetime(now.year, now.month, now.day)
+    from app.core.timeutil import local_today_utc_range
+    today_start, _ = local_today_utc_range()
 
     result = await db.execute(
         select(func.count(func.distinct(StudySession.user_id)))

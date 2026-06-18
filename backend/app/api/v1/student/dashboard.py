@@ -4,6 +4,7 @@ from sqlalchemy import select, func, and_, desc, Integer
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
+from app.core.timeutil import local_today_utc_range
 from app.models.user import User, StudyCalendar
 from app.models.learning import LearningProgress, StudySession, LearningRecord
 from app.models.word import WordBook, Unit
@@ -21,7 +22,8 @@ async def get_student_dashboard_stats(
     """
     user_id = current_user.id
     now = datetime.utcnow()
-    today_start = datetime(now.year, now.month, now.day)
+    # 北京"今天"起点(UTC),与 UTC 存储的 started_at 比较;按北京日历日分天
+    today_start, _ = local_today_utc_range()
 
     # 1. 学习单词总数 (所有学习进度中的单词数)
     result = await db.execute(

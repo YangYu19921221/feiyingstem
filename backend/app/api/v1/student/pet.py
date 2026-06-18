@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import math
 
 from app.core.database import get_db
+from app.core.timeutil import local_today_utc_range
 from app.models.user import User
 from app.models.pet import UserPet, PetEventLog
 from app.schemas.pet import (
@@ -129,7 +130,7 @@ async def feed_pet(
 
     # 检查每日喂食上限（3次）
     now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start, _ = local_today_utc_range()  # 北京今天起点(UTC),每日喂食上限按北京日重置
     feed_count_result = await db.execute(
         select(sa_func.count(PetEventLog.id)).where(
             PetEventLog.pet_id == pet.id,
@@ -208,7 +209,7 @@ async def earn_food(
         raise HTTPException(status_code=404, detail="还没有宠物")
 
     now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start, _ = local_today_utc_range()  # 北京今天起点(UTC),每日喂食上限按北京日重置
 
     # 检查是否今日首练
     earn_count_result = await db.execute(

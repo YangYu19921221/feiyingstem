@@ -10,6 +10,7 @@ from collections import defaultdict
 import logging
 
 from app.core.database import get_db
+from app.core.timeutil import local_today, local_day_utc_range, local_today_utc_range
 from app.models.user import User, StudyCalendar
 from app.models.word import Unit, Word, WordDefinition
 from app.models.learning import (
@@ -45,7 +46,7 @@ SRS_LABELS = ["5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天",
 
 async def update_study_calendar(db: AsyncSession, user_id: int, record_count: int, total_time_ms: int):
     """更新学习日历（共用辅助函数）"""
-    today = date.today()
+    today = local_today()  # 北京日历日,与全站口径一致
     result = await db.execute(
         select(StudyCalendar).where(
             and_(StudyCalendar.user_id == user_id, StudyCalendar.study_date == today)
@@ -414,8 +415,8 @@ async def get_word_mastery(
             fillblank_wrong=0,
             last_practiced_at=None,
             next_review_at=None,
-            created_at=datetime.now(),
-            updated_at=datetime.now()
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
 
     return mastery
@@ -486,7 +487,7 @@ async def get_review_due_words(
 
     user_id = current_user.id
     now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start, _ = local_today_utc_range()  # 北京"今天"起点(UTC),用于"今天已练过"判定
 
     fetch_count = limit * 5 if randomize else limit
     result = await db.execute(
@@ -577,17 +578,18 @@ async def get_memory_curve_stats(
             "retention_rate": 0,
         }
 
-    # 预计算7天的日期边界
+    # 预计算7天的日期边界(按北京日历日,各日转 UTC 区间与 next_review_at 比)
+    today_local = local_today()
     day_boundaries = []
     for day_offset in range(7):
-        day_start = (now + timedelta(days=day_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
+        d = today_local + timedelta(days=day_offset)
+        day_start, day_end = local_day_utc_range(d)
         day_boundaries.append((day_start, day_end, day_offset))
 
-    tomorrow = now + timedelta(days=1)
+    tomorrow = day_boundaries[1][0] if len(day_boundaries) > 1 else (now + timedelta(days=1))
 
     # 单次遍历统计所有指标
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = day_boundaries[0][0]  # 北京"今天"起点(UTC),用于"今天已练过"判定
     due_today = 0
     due_tomorrow = 0
     day_counts = [0] * 7
@@ -623,13 +625,14 @@ async def get_memory_curve_stats(
                 elif day_start < m.next_review_at <= day_end:
                     day_counts[offset] += 1
 
-    # 构造7天预测
+    # 构造7天预测(日期标签用北京日历日,不能用 day_start 这个 UTC 瞬间)
     WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     upcoming_7_days = []
     for day_start, _, offset in day_boundaries:
+        local_d = today_local + timedelta(days=offset)
         upcoming_7_days.append({
-            "date": day_start.strftime("%Y-%m-%d"),
-            "weekday": WEEKDAYS[day_start.weekday()],
+            "date": local_d.strftime("%Y-%m-%d"),
+            "weekday": WEEKDAYS[local_d.weekday()],
             "count": day_counts[offset],
             "is_today": offset == 0,
         })
@@ -669,7 +672,7 @@ async def get_review_due_count(
 ):
     """仅返回今日待复习数量（轻量级，用于仪表板）"""
     now = datetime.utcnow()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start, _ = local_today_utc_range()  # 北京"今天"起点(UTC)
     result = await db.execute(
         select(func.count(WordMastery.id)).where(
             and_(
@@ -695,9 +698,8 @@ async def compute_review_progress(db: AsyncSession, user_id: int) -> dict:
     - graduated_words   : review_stage 已到顶（>=len(SRS_INTERVALS)) 的单词数
     """
     now = datetime.utcnow()
-    today = date.today()
-    today_start = datetime.combine(today, datetime.min.time())
-    tomorrow_start = today_start + timedelta(days=1)
+    # 北京"今天"的 UTC 区间,与 UTC 存储的 last_practiced_at 比较
+    today_start, tomorrow_start = local_today_utc_range()
 
     # 今日待复习：到期、且今天还没练过的词。排除"今天已练过"使其与 review_done_today
     # 不相交,这样进度条 done/(done+due) 是干净的 0%→100%(否则答错仍到期的词会被两边重复计)。

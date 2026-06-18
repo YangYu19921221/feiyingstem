@@ -110,7 +110,7 @@ async def get_my_homework(
     for assignment, homework, unit, book, teacher_name in result.all():
         # 自动更新过期状态
         if (homework.deadline and
-            datetime.now() > homework.deadline and
+            datetime.utcnow() > homework.deadline and
             assignment.status not in ['completed']):
             assignment.status = 'overdue'
             await db.commit()
@@ -175,7 +175,7 @@ async def start_homework(
         raise HTTPException(status_code=400, detail="已达到最大尝试次数")
 
     # 检查是否过期
-    if homework.deadline and datetime.now() > homework.deadline:
+    if homework.deadline and datetime.utcnow() > homework.deadline:
         assignment.status = 'overdue'
         await db.commit()
         raise HTTPException(status_code=400, detail="作业已过期")
@@ -183,7 +183,7 @@ async def start_homework(
     # 更新状态
     if assignment.status == 'pending':
         assignment.status = 'in_progress'
-        assignment.started_at = datetime.now()
+        assignment.started_at = datetime.utcnow()
         await db.commit()
 
     return {
@@ -241,7 +241,7 @@ async def submit_homework_attempt(
     is_passed = request.score >= homework.target_score
     if is_passed:
         assignment.status = 'completed'
-        assignment.completed_at = datetime.now()
+        assignment.completed_at = datetime.utcnow()
 
     # 创建尝试记录
     attempt = HomeworkAttemptRecord(

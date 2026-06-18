@@ -13,6 +13,7 @@ from sqlalchemy import select, func, and_, or_, case, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.timeutil import local_today, local_day_utc_range, local_today_utc_range
 from app.api.v1.auth import get_current_student, get_current_parent
 from app.services.auth_service import get_password_hash, verify_password, create_access_token
 from app.models.user import User, ParentStudentLink, ParentBindCode
@@ -212,8 +213,7 @@ async def _build_child_summary(db: AsyncSession, student_id: int) -> ChildSummar
     res = await db.execute(select(User).where(User.id == student_id))
     student = res.scalar_one()
 
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    tomorrow = today + timedelta(days=1)
+    today, tomorrow = local_today_utc_range()  # 北京今天的 UTC 区间
 
     # 今日学习分钟
     res = await db.execute(
@@ -355,11 +355,12 @@ async def parent_child_dashboard(
         raise HTTPException(404, "学生不存在")
 
     now = datetime.utcnow()
-    today = datetime(now.year, now.month, now.day)
-    tomorrow = today + timedelta(days=1)
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=7)
-    last_week_start = week_start - timedelta(days=7)
+    _today_d = local_today()
+    today, tomorrow = local_day_utc_range(_today_d)
+    _monday = _today_d - timedelta(days=_today_d.weekday())
+    week_start, _ = local_day_utc_range(_monday)
+    week_end, _ = local_day_utc_range(_monday + timedelta(days=7))
+    last_week_start, _ = local_day_utc_range(_monday - timedelta(days=7))
 
     # 今日 / 累计
     res = await db.execute(

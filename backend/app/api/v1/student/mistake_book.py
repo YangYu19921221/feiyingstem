@@ -16,6 +16,7 @@ CHALLENGE_REVIEW_INTERVALS = {
 }
 
 from app.core.database import get_db
+from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User
 from app.models.word import Word, WordDefinition
 from app.models.learning import LearningRecord, WordMastery, ChallengeReview
@@ -154,9 +155,10 @@ async def get_mistake_book_stats(
     )
     classify_mistakes = classify_result.scalar() or 0
 
-    # 今天和本周练习的错题数
-    today = date.today()
-    week_ago = today - timedelta(days=7)
+    # 今天和本周练习的错题数(北京日历日,用 UTC 区间筛 UTC 的 created_at)
+    today = local_today()
+    today_start, tomorrow_start = local_day_utc_range(today)
+    week_start, _ = local_day_utc_range(today - timedelta(days=7))
 
     today_result = await db.execute(
         select(func.count(func.distinct(LearningRecord.word_id)))
@@ -164,7 +166,8 @@ async def get_mistake_book_stats(
             and_(
                 LearningRecord.user_id == user_id,
                 LearningRecord.word_id.in_(mistake_word_ids),
-                func.date(LearningRecord.created_at) == today
+                LearningRecord.created_at >= today_start,
+                LearningRecord.created_at < tomorrow_start,
             )
         )
     )
@@ -176,7 +179,7 @@ async def get_mistake_book_stats(
             and_(
                 LearningRecord.user_id == user_id,
                 LearningRecord.word_id.in_(mistake_word_ids),
-                func.date(LearningRecord.created_at) >= week_ago
+                LearningRecord.created_at >= week_start,
             )
         )
     )

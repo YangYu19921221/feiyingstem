@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.user import StudyCalendar
 from app.models.learning import WordMastery, LearningRecord, LearningProgress, StudySession
 from app.models.word import Word
+from app.core.timeutil import local_today, local_day_utc_range
 from app.api.v1.auth import get_current_user
 from pydantic import BaseModel
 
@@ -168,7 +169,7 @@ async def get_learning_overview(
 
     current_streak = 0
     if study_dates:
-        today = date.today()
+        today = local_today()
         for i, study_date in enumerate(study_dates):
             expected_date = today - timedelta(days=i)
             if study_date == expected_date:
@@ -176,10 +177,9 @@ async def get_learning_overview(
             else:
                 break
 
-    # 今日实时数据
-    today_d = date.today()
-    today_start = datetime.combine(today_d, datetime.min.time())
-    tomorrow_start = today_start + timedelta(days=1)
+    # 今日实时数据(北京日历日:study_date 用本地日,session/record 用对应 UTC 区间)
+    today_d = local_today()
+    today_start, tomorrow_start = local_day_utc_range(today_d)
 
     cal_today_res = await db.execute(
         select(StudyCalendar).where(

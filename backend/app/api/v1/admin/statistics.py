@@ -4,6 +4,7 @@ from sqlalchemy import select, func, and_
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
+from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User
 from app.models.word import Word, WordBook, Unit
 from app.models.learning import LearningProgress, StudySession
@@ -19,10 +20,11 @@ async def get_statistics(
     """
     获取系统统计数据
     """
-    # 获取今天和本周的起始时间
+    # 获取今天和本周的起始时间(北京时间)
     now = datetime.utcnow()
-    today_start = datetime(now.year, now.month, now.day)
-    week_start = today_start - timedelta(days=now.weekday())  # 本周一
+    _today = local_today()
+    today_start, _ = local_day_utc_range(_today)
+    week_start, _ = local_day_utc_range(_today - timedelta(days=_today.weekday()))  # 本周一(北京)
 
     # 1. 总用户数
     result = await db.execute(select(func.count()).select_from(User))
