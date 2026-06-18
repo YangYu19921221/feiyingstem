@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
 from app.models.learning import WordMastery, LearningRecord, StudySession
+from app.models.word import Word
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import (
     assert_student_in_my_class,
@@ -461,17 +462,24 @@ async def get_class_daily_stats(
     )
     sess_map = {r.user_id: r.cnt for r in sess_result.all()}
 
-    # 复习进度（批量）
+    # 复习进度（批量）—— 按拼写 lower(word) 去重,与学生端记忆曲线口径一致
+    # (单元隔离后同拼写多条 mastery,若按 word_id 全算会虚高且和学生端对不上)
     from app.api.v1.student.learning_records import SRS_INTERVALS
     now_dt = datetime.now(timezone.utc).replace(tzinfo=None)
     review_progress_map: dict[int, dict] = {sid: {"review_due_today": 0, "review_done_today": 0, "graduated_words": 0} for sid in student_ids}
 
+    # 今日待复习:到期 且 今天还没练过(与 compute_review_progress 一致),按拼写去重
     due_res = await db.execute(
-        select(WordMastery.user_id, func.count(WordMastery.id))
+        select(WordMastery.user_id, func.count(func.distinct(func.lower(Word.word))))
+        .join(Word, Word.id == WordMastery.word_id)
         .where(
             WordMastery.user_id.in_(student_ids),
             WordMastery.next_review_at.isnot(None),
             WordMastery.next_review_at <= now_dt,
+            or_(
+                WordMastery.last_practiced_at.is_(None),
+                WordMastery.last_practiced_at < day_start,
+            ),
         )
         .group_by(WordMastery.user_id)
     )
@@ -479,7 +487,8 @@ async def get_class_daily_stats(
         review_progress_map[uid]["review_due_today"] = int(cnt)
 
     done_res = await db.execute(
-        select(LearningRecord.user_id, func.count(func.distinct(LearningRecord.word_id)))
+        select(LearningRecord.user_id, func.count(func.distinct(func.lower(Word.word))))
+        .join(Word, Word.id == LearningRecord.word_id)
         .where(
             LearningRecord.user_id.in_(student_ids),
             LearningRecord.learning_mode == 'review',
@@ -492,7 +501,8 @@ async def get_class_daily_stats(
         review_progress_map[uid]["review_done_today"] = int(cnt)
 
     graduated_res = await db.execute(
-        select(WordMastery.user_id, func.count(WordMastery.id))
+        select(WordMastery.user_id, func.count(func.distinct(func.lower(Word.word))))
+        .join(Word, Word.id == WordMastery.word_id)
         .where(
             WordMastery.user_id.in_(student_ids),
             WordMastery.review_stage >= len(SRS_INTERVALS),
@@ -589,18 +599,19 @@ async def get_class_student_detail(
     )
     today_sessions = sess_result.scalar() or 0
 
-    # 累计: WordMastery 聚合 (1 query)
+    # 累计: WordMastery 按拼写 lower(word) 去重(与学生端记忆曲线一致;
+    # 单元隔离的同拼写副本不重复计)。total=不同拼写数,mastered/weak 按
+    # "该拼写下掌握度最高的那条"判定,避免同词多条各算一次。
     mastery_result = await db.execute(
-        select(
-            func.count(WordMastery.id).label('total'),
-            func.sum((WordMastery.mastery_level >= 4).cast(Integer)).label('mastered'),
-            func.sum((WordMastery.mastery_level < 3).cast(Integer)).label('weak'),
-        ).where(WordMastery.user_id == student_id)
+        select(func.lower(Word.word).label('sp'), func.max(WordMastery.mastery_level).label('lvl'))
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(WordMastery.user_id == student_id)
+        .group_by(func.lower(Word.word))
     )
-    m_row = mastery_result.first()
-    total_words_learned = m_row.total or 0
-    total_mastered = m_row.mastered or 0
-    weak_words_count = m_row.weak or 0
+    m_rows = mastery_result.all()
+    total_words_learned = len(m_rows)
+    total_mastered = sum(1 for r in m_rows if (r.lvl or 0) >= 4)
+    weak_words_count = sum(1 for r in m_rows if (r.lvl or 0) < 3)
 
     # 累计: StudyCalendar 聚合 (1 query)
     cal_agg_result = await db.execute(
