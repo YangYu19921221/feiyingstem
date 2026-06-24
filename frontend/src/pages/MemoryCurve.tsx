@@ -87,16 +87,6 @@ const MemoryCurve = () => {
     loadData();
   }, []);
 
-  // 首次进入复习页自动弹一次规则说明
-  useEffect(() => {
-    try {
-      if (!localStorage.getItem('review_rules_seen')) {
-        setShowRules(true);
-        localStorage.setItem('review_rules_seen', '1');
-      }
-    } catch {}
-  }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
