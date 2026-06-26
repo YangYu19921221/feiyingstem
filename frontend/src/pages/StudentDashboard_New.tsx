@@ -557,7 +557,7 @@ const StudentDashboard = () => {
           <div className="grid md:grid-cols-3 gap-3 mb-3">
             {[
               {
-                title: '记忆曲线',
+                title: '今日复习',
                 route: '/student/memory-curve',
                 image: reviewDueCount > 0 ? '/eagle-alert.jpeg' : '/eagle-idle.jpeg',
                 metric: reviewDueCount > 0 ? Math.min(20, reviewDueCount) : null,

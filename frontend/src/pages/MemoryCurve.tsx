@@ -14,19 +14,6 @@ import {
 } from '../api/memoryCurve';
 import { readAllStages, tierByStage, isGraduated, stageFromMastery, initStagesIfMissing } from '../utils/reviewTier';
 
-const SRS_STAGE_COLORS = [
-  '#ef4444', // Stage 0 - 5分钟 (红)
-  '#f97316', // Stage 1 - 30分钟 (橙)
-  '#f59e0b', // Stage 2 - 12小时 (琥珀)
-  '#eab308', // Stage 3 - 1天 (黄)
-  '#84cc16', // Stage 4 - 2天 (黄绿)
-  '#22c55e', // Stage 5 - 4天 (绿)
-  '#14b8a6', // Stage 6 - 7天 (蓝绿)
-  '#06b6d4', // Stage 7 - 15天 (青)
-  '#3b82f6', // Stage 8 - 30天 (蓝)
-  '#5FD35F', // 已掌握 (草绿)
-];
-
 const REVIEW_PAGE_SIZE = 20;
 
 // 复习分组:优先按"最近一轮复习错几遍"分档(错≥3薄弱/2一般/≤1熟练,只错1遍多半是手滑,
@@ -228,7 +215,7 @@ const MemoryCurve = () => {
             <ArrowLeft className="w-4 h-4" />
             返回
           </button>
-          <h1 className="font-display text-base font-semibold text-ink">记忆曲线</h1>
+          <h1 className="font-display text-base font-semibold text-ink">今日复习</h1>
           <button
             onClick={() => setShowRules(true)}
             className="flex items-center gap-1 text-ink-soft hover:text-accent-warm transition text-xs"
@@ -387,7 +374,7 @@ const MemoryCurve = () => {
                 还没开始学习
               </h2>
               <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
-                完成新单词学习后，系统按艾宾浩斯曲线自动安排复习：5 分 → 30 分 → 12 时 → 1 天 → 2 天 → 4 天 → 7 天 → 15 天 → 30 天。答对进下一阶段；答错回退 2 级。
+                完成新单词学习后，到期需要复习的词会按掌握度分成「薄弱 / 一般 / 熟练」三组出现在这里，答对升档、答错回到薄弱，逐步背牢。
               </p>
               <button
                 onClick={() => navigate('/student/dashboard')}
@@ -443,95 +430,6 @@ const MemoryCurve = () => {
               ))}
             </div>
           </section>
-        )}
-
-        {/* 7天复习预测 */}
-        {stats && stats.upcoming_7_days.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="bg-white rounded-2xl p-6 border border-black/[0.05]"
-          >
-            <h2 className="text-lg font-bold text-gray-800 mb-4">📅 7天复习计划</h2>
-            <div className="grid grid-cols-7 gap-2">
-              {stats.upcoming_7_days.map((day) => {
-                const maxCount = Math.max(...stats.upcoming_7_days.map(d => d.count), 1);
-                const barHeight = (day.count / maxCount) * 60;
-                return (
-                  <div
-                    key={day.date}
-                    className={`flex flex-col items-center p-2 rounded-xl transition-all ${
-                      day.is_today ? 'ring-2 ring-cyan-400 bg-cyan-50' : 'bg-gray-50'
-                    }`}
-                  >
-                    <span className={`text-xs font-medium ${day.is_today ? 'text-cyan-600' : 'text-gray-500'}`}>
-                      {day.is_today ? '今天' : day.weekday}
-                    </span>
-                    <div className="w-full flex justify-center items-end h-16 my-2">
-                      <div
-                        className={`w-6 rounded-t-md transition-all ${
-                          day.is_today ? 'bg-gradient-to-t from-cyan-500 to-cyan-300' : 'bg-gradient-to-t from-gray-300 to-gray-200'
-                        }`}
-                        style={{ height: `${Math.max(barHeight, 4)}px` }}
-                      />
-                    </div>
-                    <span className={`text-lg font-bold ${day.is_today ? 'text-cyan-600' : 'text-gray-700'}`}>
-                      {day.count}
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      {day.date.slice(5)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-
-        {/* SRS 阶段分布 */}
-        {stats && stats.total_learned > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="bg-white rounded-2xl p-6 border border-black/[0.05]"
-          >
-            <h2 className="text-lg font-bold text-gray-800 mb-4">🎯 学习阶段分布</h2>
-
-            {/* 水平进度条 */}
-            <div className="h-8 rounded-full overflow-hidden flex bg-gray-100 mb-4">
-              {stats.stage_distribution.map((item) => {
-                const percentage = stats.total_learned > 0 ? (item.count / stats.total_learned) * 100 : 0;
-                if (percentage === 0) return null;
-                return (
-                  <div
-                    key={item.stage}
-                    className="h-full transition-all relative group cursor-pointer"
-                    style={{
-                      width: `${Math.max(percentage, 2)}%`,
-                      backgroundColor: SRS_STAGE_COLORS[item.stage],
-                    }}
-                    title={`${item.label}: ${item.count}个 (${percentage.toFixed(1)}%)`}
-                  />
-                );
-              })}
-            </div>
-
-            {/* 阶段图例 */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {stats.stage_distribution.filter(item => item.count > 0).map((item) => (
-                <div key={item.stage} className="flex items-center gap-2 text-sm">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: SRS_STAGE_COLORS[item.stage] }}
-                  />
-                  <span className="text-gray-600 truncate">{item.label}</span>
-                  <span className="font-medium text-gray-800">{item.count}</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
         )}
 
         {/* 待复习单词列表 */}
@@ -636,7 +534,7 @@ const MemoryCurve = () => {
           >
             <span className="text-6xl">📚</span>
             <h3 className="text-xl font-bold text-gray-700 mt-4">还没有学习记录</h3>
-            <p className="text-gray-500 mt-2">去学习一些单词后,记忆曲线就会出现啦!</p>
+            <p className="text-gray-500 mt-2">去学习一些单词后,这里会出现需要复习的词!</p>
             <button
               onClick={() => navigate('/student')}
               className="mt-4 px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl font-medium hover:shadow-lg transition-all"
