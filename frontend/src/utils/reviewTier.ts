@@ -97,3 +97,21 @@ export function stageFromMastery(level: number): number {
   if (level >= 2) return STAGE_MEDIUM;
   return STAGE_WEAK;
 }
+
+/**
+ * 开始复习前调用：为没有 localStorage 记录的词写入基于 mastery_level 的初始档位。
+ * 这样 promoteReviewWords 升级时能从正确的起点出发，而不是总从 0(薄弱) 开始。
+ */
+export function initStagesIfMissing(words: { id: number; mastery_level: number }[]) {
+  if (words.length === 0) return;
+  const map = read();
+  let changed = false;
+  for (const w of words) {
+    const k = String(w.id);
+    if (typeof map[k] !== 'number') {
+      map[k] = stageFromMastery(w.mastery_level);
+      changed = true;
+    }
+  }
+  if (changed) write(map);
+}

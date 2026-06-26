@@ -4,13 +4,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func, update, Integer
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.api.v1.auth import get_current_admin
 from app.models.user import User, Class, ClassStudent
 from app.models.learning import WordMastery
+from app.models.word import Word
 
 router = APIRouter()
 
@@ -96,10 +97,18 @@ async def admin_class_overview(
             func.count(func.distinct(WordMastery.word_id)),
             func.sum(WordMastery.correct_count),
             func.sum(WordMastery.total_encounters),
-            func.sum(func.cast(WordMastery.mastery_level >= 4, Integer)),
         ).where(WordMastery.user_id.in_(sids))
     )
-    total_words, correct, encounters, mastered = res.one()
+    total_words, correct, encounters = res.one()
+
+    # 已掌握: 按 lower(word) 去重取该拼写最高掌握度,>=3 计为掌握(全站统一口径)
+    mastered_res = await db.execute(
+        select(func.max(WordMastery.mastery_level).label("lvl"))
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(WordMastery.user_id.in_(sids))
+        .group_by(func.lower(Word.word))
+    )
+    mastered = sum(1 for r in mastered_res.all() if (r.lvl or 0) >= 3)
 
     return {
         "class_id": class_id,

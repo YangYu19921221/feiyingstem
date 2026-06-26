@@ -95,13 +95,14 @@ async def get_class_overview(
     )
     total_words_studied = result.scalar() or 0
 
-    # 4. 统计平均掌握单词数(掌握度>=4)
+    # 4. 统计平均掌握单词数(掌握线对齐为 >=3;注:此处按 WordMastery 行计数,
+    #    未按 lower(word) 去重,与 admin/student 端的去重口径略有差异)
     result = await db.execute(
         select(func.count(WordMastery.id))
         .where(
             and_(
                 WordMastery.user_id.in_(my_student_ids),
-                WordMastery.mastery_level >= 4
+                WordMastery.mastery_level >= 3
             )
         )
     )

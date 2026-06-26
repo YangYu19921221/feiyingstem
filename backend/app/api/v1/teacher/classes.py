@@ -80,12 +80,19 @@ async def list_classes(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取教师的所有班级（含在册学生数，已过滤 is_active=True）"""
+    """获取教师的所有班级（含在册学生数，口径与 get_class_students 一致：
+    enrollment active + user 为 active 的 student）"""
     result = await db.execute(
-        select(Class, func.count(ClassStudent.id).label("student_count"))
+        select(Class, func.count(User.id).label("student_count"))
         .outerjoin(
             ClassStudent,
             (ClassStudent.class_id == Class.id) & (ClassStudent.is_active.is_(True)),
+        )
+        .outerjoin(
+            User,
+            (User.id == ClassStudent.student_id)
+            & (User.role == "student")
+            & (User.is_active.is_(True)),
         )
         .where(Class.teacher_id == current_user.id)
         .group_by(Class.id)
@@ -165,12 +172,22 @@ async def get_class_students(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取班级学生列表（仅 active），支持 q= 搜索"""
+    """获取班级学生列表（仅 active），支持 q= 搜索
+
+    口径与作业分配端点（list_my_students / get_my_class_student_ids）保持一致：
+    既要 enrollment active，也要 user 本身是 active 的 student，
+    否则会出现"班级里看得到、分配作业搜不到"的不一致。
+    """
     await _get_class_or_404(db, class_id, current_user.id)
     stmt = (
         select(User, ClassStudent.joined_at)
         .join(ClassStudent, ClassStudent.student_id == User.id)
-        .where(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
+        .where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.is_active.is_(True),
+            User.role == "student",
+            User.is_active.is_(True),
+        )
     )
     if q:
         like = f"%{q}%"

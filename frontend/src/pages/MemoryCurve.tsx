@@ -12,7 +12,7 @@ import {
   type ReviewWord,
   type ReviewProgress,
 } from '../api/memoryCurve';
-import { readAllStages, tierByStage, isGraduated, stageFromMastery } from '../utils/reviewTier';
+import { readAllStages, tierByStage, isGraduated, stageFromMastery, initStagesIfMissing } from '../utils/reviewTier';
 
 const SRS_STAGE_COLORS = [
   '#ef4444', // Stage 0 - 5分钟 (红)
@@ -147,6 +147,9 @@ const MemoryCurve = () => {
     const list = source.slice(0, REVIEW_BATCH);  // 自动分批:这次只背前 20 个
     setStartingReview(true);
     try {
+      // 预写入初始档位：没有 localStorage 记录的词按 mastery_level 定起点，
+      // 确保 promoteReviewWords 从正确档位升级而非总从 0 开始
+      initStagesIfMissing(list.map(w => ({ id: w.word_id, mastery_level: w.mastery_level })));
       // 把这一批待复习词传给 FlashCardLearning（可只传某一档）
       const wordData = list.map((w, index) => ({
         id: w.word_id,

@@ -197,6 +197,18 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 创建 system_settings 表（管理员系统设置 key-value 存储）
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(50) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        except Exception:
+            pass
+
         print("✅ 数据库初始化完成")
 
 async def get_db() -> AsyncSession:

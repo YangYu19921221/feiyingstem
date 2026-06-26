@@ -3,46 +3,54 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { toast } from '../components/Toast';
 
+const DEFAULT_SETTINGS = {
+  siteName: '英语学习助手',
+  allowRegistration: true,
+  requireEmailVerification: false,
+  enableAI: true,
+  aiProvider: 'openai',
+  maxUploadSize: 10,
+  sessionTimeout: 30,
+  enableNotifications: true,
+  enableBackup: true,
+  backupInterval: 24,
+};
+
 const AdminSettings: React.FC = () => {
   const navigate = useNavigate();
 
-  // 系统设置状态
-  const [settings, setSettings] = useState({
-    siteName: '英语学习助手',
-    allowRegistration: true,
-    requireEmailVerification: false,
-    enableAI: true,
-    aiProvider: 'openai',
-    maxUploadSize: 10,
-    sessionTimeout: 30,
-    enableNotifications: true,
-    enableBackup: true,
-    backupInterval: 24,
-  });
-
+  // 系统设置状态(从后端加载)
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    // TODO: 调用后端API保存设置
-    console.log('保存设置:', settings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  // 加载已保存的设置
+  useEffect(() => {
+    api.get('/admin/settings')
+      .then((data: any) => {
+        if (data && typeof data === 'object') {
+          setSettings({ ...DEFAULT_SETTINGS, ...data });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.put('/admin/settings', settings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || '保存失败,请重试');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReset = () => {
     if (confirm('确定要重置为默认设置吗?')) {
-      setSettings({
-        siteName: '英语学习助手',
-        allowRegistration: true,
-        requireEmailVerification: false,
-        enableAI: true,
-        aiProvider: 'openai',
-        maxUploadSize: 10,
-        sessionTimeout: 30,
-        enableNotifications: true,
-        enableBackup: true,
-        backupInterval: 24,
-      });
+      setSettings(DEFAULT_SETTINGS);
     }
   };
 
@@ -259,9 +267,10 @@ const AdminSettings: React.FC = () => {
         <div className="flex gap-4">
           <button
             onClick={handleSave}
-            className="flex-1 px-6 py-3 bg-gradient-to-r from-[#FF6B35] to-[#FFD23F] text-white rounded-xl hover:shadow-lg transition-all font-medium"
+            disabled={saving}
+            className="flex-1 px-6 py-3 bg-gradient-to-r from-[#FF6B35] to-[#FFD23F] text-white rounded-xl hover:shadow-lg transition-all font-medium disabled:opacity-50"
           >
-            💾 保存设置
+            {saving ? '保存中...' : '💾 保存设置'}
           </button>
           <button
             onClick={handleReset}
