@@ -23,7 +23,7 @@ interface ExamQuestion {
 
 interface GroupExamPhaseProps {
   words: WordData[];
-  onPass: (score: number, total: number) => void;
+  onPass: (score: number, total: number, scorePercent: number, elapsedSeconds: number) => void;
   onRetry: () => void;
   onRelearn: () => void;
 }
@@ -208,7 +208,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
         totalQuestions={totalQuestions}
         elapsedSeconds={elapsedSeconds}
         wrongAnswers={wrongAnswers}
-        onPass={() => onPass(correctCount, totalQuestions)}
+        onPass={() => onPass(correctCount, totalQuestions, score, elapsedSeconds)}
         onRetry={onRetry}
         onRelearn={onRelearn}
       />

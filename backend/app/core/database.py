@@ -197,6 +197,34 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 创建 system_settings 表（管理员系统设置 key-value 存储）
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    key VARCHAR(50) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        except Exception:
+            pass
+
+        # 迁移: 为 exam_submissions 添加 unit_id（单元考试历史按单元归类）
+        try:
+            await conn.execute(text(
+                "ALTER TABLE exam_submissions ADD COLUMN unit_id INTEGER"
+            ))
+        except Exception:
+            pass
+
+        # 迁移: group_exam_records 索引（表本身由 create_all 建）
+        try:
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_group_exam_user_created ON group_exam_records(user_id, created_at)"
+            ))
+        except Exception:
+            pass
+
         print("✅ 数据库初始化完成")
 
 async def get_db() -> AsyncSession:

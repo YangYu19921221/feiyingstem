@@ -8,13 +8,14 @@ from typing import List
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 import logging
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range, local_today_utc_range
 from app.models.user import User, StudyCalendar
 from app.models.word import Unit, Word, WordDefinition
 from app.models.learning import (
-    LearningRecord, WordMastery, StudySession, LearningProgress
+    LearningRecord, WordMastery, StudySession, LearningProgress, GroupExamRecord
 )
 from app.schemas.learning_record import (
     LearningRecordBatchCreate, LearningRecordResponse,
@@ -814,3 +815,33 @@ async def submit_review_records(
         "correct_count": total_correct,
         "wrong_count": total_wrong,
     }
+
+
+class GroupExamRecordCreate(BaseModel):
+    unit_id: int | None = None
+    group_index: int = 0
+    correct_count: int = 0
+    total_questions: int = 0
+    score: int = 0
+    time_spent: int = 0
+
+
+@router.post("/group-exam-record")
+async def create_group_exam_record(
+    data: GroupExamRecordCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """记录一次小组过关检测成绩(正常学习流程,非复习/错题)。"""
+    rec = GroupExamRecord(
+        user_id=current_user.id,
+        unit_id=data.unit_id,
+        group_index=data.group_index,
+        correct_count=data.correct_count,
+        total_questions=data.total_questions,
+        score=data.score,
+        time_spent=data.time_spent,
+    )
+    db.add(rec)
+    await db.commit()
+    return {"success": True, "id": rec.id}

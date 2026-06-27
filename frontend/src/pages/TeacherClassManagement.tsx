@@ -126,6 +126,8 @@ const TeacherClassManagement = () => {
 
   // 学生搜索
   const [studentSearch, setStudentSearch] = useState('');
+  // 班级搜索(按班级名筛选左侧列表)
+  const [classSearch, setClassSearch] = useState('');
 
   // 转班弹窗
   const [transferStudent, setTransferStudent] = useState<{ id: number; full_name: string; username: string } | null>(null);
@@ -558,8 +560,31 @@ const TeacherClassManagement = () => {
                   </button>
                 </div>
               ) : (
+                <>
+                  {/* 班级搜索:班级多时按名称快速筛选 */}
+                  {classes.length > 5 && (
+                    <div className="relative mb-3">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={classSearch}
+                        onChange={(e) => setClassSearch(e.target.value)}
+                        placeholder="搜索班级"
+                        className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      />
+                    </div>
+                  )}
+                  {(() => {
+                    const kw = classSearch.trim().toLowerCase();
+                    const visibleClasses = kw
+                      ? classes.filter(c => c.name.toLowerCase().includes(kw))
+                      : classes;
+                    if (visibleClasses.length === 0) {
+                      return <p className="text-sm text-gray-400 text-center py-6">没有匹配的班级</p>;
+                    }
+                    return (
                 <div className="space-y-2">
-                  {classes.map(cls => (
+                  {visibleClasses.map(cls => (
                     <div
                       key={cls.id}
                       onClick={() => setSelectedClass(cls)}
@@ -588,6 +613,9 @@ const TeacherClassManagement = () => {
                     </div>
                   ))}
                 </div>
+                    );
+                  })()}
+                </>
               )}
             </div>
           </div>

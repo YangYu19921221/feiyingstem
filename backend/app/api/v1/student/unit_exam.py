@@ -357,6 +357,7 @@ async def submit_exam(
     submission = ExamSubmission(
         paper_id=paper_id,
         user_id=current_user.id,
+        unit_id=cached.get("unit_id"),
         score=total_score,
         total_score=max_score,
     )

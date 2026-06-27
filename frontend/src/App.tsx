@@ -79,9 +79,11 @@ const AdminSubscriptions = lazyWithRetry(() => import('./pages/AdminSubscription
 const AdminTeacherList = lazyWithRetry(() => import('./pages/AdminTeacherList'));
 const AdminTeacherDetail = lazyWithRetry(() => import('./pages/AdminTeacherDetail'));
 const AdminClassDetail = lazyWithRetry(() => import('./pages/AdminClassDetail'));
+const AdminClassList = lazyWithRetry(() => import('./pages/AdminClassList'));
+const AdminCompetition = lazyWithRetry(() => import('./pages/AdminCompetition'));
+const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
 const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
 const WordClassifyLearning = lazyWithRetry(() => import('./pages/WordClassifyLearning'));
-const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
 const UnitExam = lazyWithRetry(() => import('./pages/UnitExam'));
 const UnitExamResult = lazyWithRetry(() => import('./pages/UnitExamResult'));
 const DictationPractice = lazyWithRetry(() => import('./pages/DictationPractice'));
@@ -765,10 +767,26 @@ function App() {
           }
         />
         <Route
+          path="/admin/classes"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminClassList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/admin/classes/:id"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminClassDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/competition"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminCompetition />
             </ProtectedRoute>
           }
         />

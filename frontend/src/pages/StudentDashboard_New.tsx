@@ -162,6 +162,13 @@ const StudentDashboard = () => {
   // useState 而非 useMemo：拖拽事件也需要直接写入排序结果
   const [sortedOwnedBooks, setSortedOwnedBooks] = useState<StudentBook[]>([]);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
+  // 书架搜索：按书名筛选(忽略大小写、去首尾空格)
+  const [bookQuery, setBookQuery] = useState('');
+  const displayedBooks = useMemo(() => {
+    const q = bookQuery.trim().toLowerCase();
+    if (!q) return sortedOwnedBooks;
+    return sortedOwnedBooks.filter(b => b.name.toLowerCase().includes(q));
+  }, [sortedOwnedBooks, bookQuery]);
 
   useEffect(() => {
     if (ownedBooks.length === 0) {
@@ -398,6 +405,29 @@ const StudentDashboard = () => {
             )}
           </header>
 
+          {/* 书架搜索：书多时按书名快速筛选(排序模式下隐藏) */}
+          {!loading && !isEditingOrder && sortedOwnedBooks.length > 3 && (
+            <div className="relative mb-5">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none">🔍</span>
+              <input
+                type="text"
+                value={bookQuery}
+                onChange={(e) => setBookQuery(e.target.value)}
+                placeholder="搜索书名"
+                className="w-full sm:max-w-xs pl-9 pr-9 py-2 rounded-xl border border-black/[0.08] bg-white text-sm text-ink placeholder:text-ink-mute focus:outline-none focus:ring-2 focus:ring-accent-warm/40"
+              />
+              {bookQuery && (
+                <button
+                  onClick={() => setBookQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-mute hover:text-ink text-sm"
+                  aria-label="清除搜索"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <BookGridSkeleton count={3} />
           ) : ownedBooks.length === 0 ? (
@@ -440,9 +470,19 @@ const StudentDashboard = () => {
                 );
               })}
             </Reorder.Group>
+          ) : displayedBooks.length === 0 ? (
+            <div className="py-12 text-center border border-dashed border-black/10 rounded-2xl">
+              <p className="text-ink-soft">没有匹配「{bookQuery}」的书</p>
+              <button
+                onClick={() => setBookQuery('')}
+                className="mt-3 text-sm text-accent-warm hover:underline"
+              >
+                清除搜索
+              </button>
+            </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {sortedOwnedBooks.map((book) => {
+              {displayedBooks.map((book) => {
                 const coverIndex = (book.id % 4) + 1;
                 return (
                   <article
@@ -557,7 +597,7 @@ const StudentDashboard = () => {
           <div className="grid md:grid-cols-3 gap-3 mb-3">
             {[
               {
-                title: '记忆曲线',
+                title: '今日复习',
                 route: '/student/memory-curve',
                 image: reviewDueCount > 0 ? '/eagle-alert.jpeg' : '/eagle-idle.jpeg',
                 metric: reviewDueCount > 0 ? Math.min(20, reviewDueCount) : null,
