@@ -3,8 +3,6 @@
 加书复用 book_assignments 表(owned 即由此判定);考试成绩合并
 单元考试(ExamSubmission)与小组过关检测(GroupExamRecord)按时间倒序。
 """
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, and_, desc

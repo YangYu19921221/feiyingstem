@@ -15,7 +15,6 @@ const StudentBooksDialog = ({ studentId, studentName, open, onClose }: Props) =>
   const [books, setBooks] = useState<AdminStudentBook[]>([]);
   const [allBooks, setAllBooks] = useState<AdminWordBookOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState<number | ''>('');
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
 
@@ -38,7 +37,6 @@ const StudentBooksDialog = ({ studentId, studentName, open, onClose }: Props) =>
   useEffect(() => {
     if (!open) return;
     setQ('');
-    setAdding('');
     load();
   }, [open, studentId]);
 
@@ -54,7 +52,6 @@ const StudentBooksDialog = ({ studentId, studentName, open, onClose }: Props) =>
       await admin.addStudentBook(studentId, bookId);
       toast.success('已添加书本');
       setQ('');
-      setAdding('');
       await load();
     } catch (err: any) {
       toast.error(getErrorMessage(err, '添加失败'));

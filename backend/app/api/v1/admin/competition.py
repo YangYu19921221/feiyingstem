@@ -5,10 +5,8 @@
 
 只读统计,不涉及赛季 CRUD。
 """
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, desc, Integer
+from sqlalchemy import select, func, desc, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -25,18 +23,15 @@ async def competition_overview(
     current_user: User = Depends(get_current_admin),
 ):
     """竞赛概览:参与人数 / 总答题数 / 平均正确率 / 活跃赛季数"""
-    # 参与人数(在 answer_records 里出现过的不同用户)
-    participants = (await db.execute(
-        select(func.count(func.distinct(AnswerRecord.user_id)))
-    )).scalar() or 0
-
-    # 总答题数 + 答对数(算平均正确率)
+    # 参与人数 + 总答题数 + 答对数,一次扫 answer_records
     row = (await db.execute(
         select(
+            func.count(func.distinct(AnswerRecord.user_id)).label("participants"),
             func.count(AnswerRecord.id).label("total"),
             func.sum(AnswerRecord.is_correct.cast(Integer)).label("correct"),
         )
     )).first()
+    participants = (row.participants or 0) if row else 0
     total_answers = (row.total or 0) if row else 0
     correct_answers = (row.correct or 0) if row else 0
     avg_accuracy = (correct_answers / total_answers * 100) if total_answers > 0 else 0
