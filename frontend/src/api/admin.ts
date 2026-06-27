@@ -108,6 +108,34 @@ export interface AdminLeaderboardItem {
   max_combo: number;
 }
 
+// 学生已授权书本
+export interface AdminStudentBook {
+  assignment_id: number;
+  book_id: number;
+  book_name: string;
+  scope_type: string;
+  assigned_at: string | null;
+}
+
+// 可选单词本(供添加)
+export interface AdminWordBookOption {
+  id: number;
+  name: string;
+  grade_level: string | null;
+}
+
+// 学生考试成绩(单元 + 小组合并)
+export interface AdminStudentExam {
+  type: 'unit' | 'group';
+  label: string;
+  score: number;
+  total_score: number;
+  accuracy: number;
+  correct_count?: number;
+  total_questions?: number;
+  at: string | null;
+}
+
 const BASE = `${API_BASE_URL}/admin`;
 
 export const admin = {
@@ -190,6 +218,33 @@ export const admin = {
     limit = 50,
   ): Promise<{ board: string; items: AdminLeaderboardItem[] }> => {
     const r = await axios.get(`${BASE}/competition/leaderboard`, { params: { board, limit } });
+    return r.data;
+  },
+
+  // 学生订阅书本
+  studentBooks: async (studentId: number): Promise<AdminStudentBook[]> => {
+    const r = await axios.get(`${BASE}/students/${studentId}/books`);
+    return r.data;
+  },
+  addStudentBook: async (studentId: number, bookId: number) => {
+    const r = await axios.post(`${BASE}/students/${studentId}/books`, { book_id: bookId });
+    return r.data;
+  },
+  removeStudentBook: async (studentId: number, assignmentId: number) => {
+    const r = await axios.delete(`${BASE}/students/${studentId}/books/${assignmentId}`);
+    return r.data;
+  },
+
+  // 所有单词本(供添加选择,复用内容管理接口)
+  listWordBooks: async (): Promise<AdminWordBookOption[]> => {
+    const r = await axios.get(`${BASE}/content/word-books`, { params: { page: 1, page_size: 100 } });
+    const arr = r.data?.books || [];
+    return arr.map((b: any) => ({ id: b.id, name: b.name, grade_level: b.grade_level ?? null }));
+  },
+
+  // 学生考试成绩(单元 + 小组)
+  studentExams: async (studentId: number): Promise<AdminStudentExam[]> => {
+    const r = await axios.get(`${BASE}/students/${studentId}/exams`);
     return r.data;
   },
 };

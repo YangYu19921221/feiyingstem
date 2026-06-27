@@ -216,6 +216,7 @@ class ExamSubmission(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     paper_id = Column(Integer, ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(Integer, ForeignKey("units.id", ondelete="SET NULL"), nullable=True)  # 单元考试归属单元
     score = Column(Integer, nullable=True)
     total_score = Column(Integer, nullable=True)
     submitted_at = Column(DateTime, server_default=func.now())
@@ -247,3 +248,18 @@ class ChallengeReview(Base):
     __table_args__ = (
         UniqueConstraint('user_id', 'word_id', name='uq_challenge_review_user_word'),
     )
+
+
+class GroupExamRecord(Base):
+    """小组过关检测成绩 - 学习流程中每组结束的过关检测每次记录"""
+    __tablename__ = "group_exam_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(Integer, ForeignKey("units.id", ondelete="SET NULL"), nullable=True)
+    group_index = Column(Integer, default=0)        # 第几组(0基)
+    correct_count = Column(Integer, default=0)
+    total_questions = Column(Integer, default=0)
+    score = Column(Integer, default=0)              # 百分制
+    time_spent = Column(Integer, default=0)         # 用时(秒)
+    created_at = Column(DateTime, server_default=func.now())

@@ -12,6 +12,7 @@ import {
   createLearningRecords,
   createStudySession,
   updateStudySession,
+  submitGroupExamRecord,
   type WordAnswerCreate,
   type StudySessionResponse,
 } from '../api/learningRecords';
@@ -393,8 +394,20 @@ const WordClassifyLearning = () => {
   };
 
   // 过关检测通过 → 最后一组进单元复习, 否则进组内总结
-  const handleExamPass = (correct: number, total: number) => {
+  const handleExamPass = (correct: number, total: number, scorePercent?: number, elapsedSeconds?: number) => {
     dispatchPetEvent('complete');
+    // 上报小组过关检测成绩(仅正常学习流程:排除复习/错题练习;unitId=0 是错题练习)
+    const isMistake = !unitId || unitId === '0';
+    if (!isReviewRef.current && !isMistake && total > 0) {
+      submitGroupExamRecord({
+        unit_id: parseInt(unitId),
+        group_index: currentGroupIndex,
+        correct_count: correct,
+        total_questions: total,
+        score: scorePercent ?? Math.round((correct / total) * 100),
+        time_spent: elapsedSeconds ?? 0,
+      }).catch(() => {});  // 失败静默,不挡学习流程
+    }
     if (isLastGroup) {
       setPhase('unitRecap');
       // 不 clearLocalProgress, 让 unitRecap 也能恢复

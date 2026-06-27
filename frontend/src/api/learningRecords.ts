@@ -173,3 +173,18 @@ export const getReviewDueWords = async (
 };
 
 // 类型已在文件顶部使用export interface导出
+
+/**
+ * 上报一次小组过关检测成绩(仅正常学习流程调用,复习/错题模式不调)
+ */
+export const submitGroupExamRecord = async (payload: {
+  unit_id: number | null;
+  group_index: number;
+  correct_count: number;
+  total_questions: number;
+  score: number;
+  time_spent: number;
+}): Promise<{ success: boolean; id: number }> => {
+  const response = await axios.post(`${API_BASE_URL}/student/group-exam-record`, payload);
+  return response.data;
+};

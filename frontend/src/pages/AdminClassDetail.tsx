@@ -6,9 +6,11 @@ import type {
   AdminClassStudent,
   AdminClassStatsSummary,
   AdminStudentDetail,
+  AdminStudentExam,
 } from '../api/admin';
 import { toast } from '../components/Toast';
 import TransferStudentDialog from '../components/admin/TransferStudentDialog';
+import StudentBooksDialog from '../components/admin/StudentBooksDialog';
 
 // 三个指标 × 三个时间维度
 type MetricKey = 'training' | 'vocab' | 'time';
@@ -47,6 +49,9 @@ const AdminClassDetail = () => {
   // 学生详情弹窗
   const [detail, setDetail] = useState<AdminStudentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [exams, setExams] = useState<AdminStudentExam[]>([]);
+  // 管理书本弹窗
+  const [booksTarget, setBooksTarget] = useState<AdminClassStudent | null>(null);
 
   const loadData = async () => {
     if (!classId) return;
@@ -71,9 +76,14 @@ const AdminClassDetail = () => {
 
   const openStudent = async (sid: number) => {
     setDetailLoading(true);
+    setExams([]);
     try {
-      const d = await admin.studentDetail(sid);
+      const [d, ex] = await Promise.all([
+        admin.studentDetail(sid),
+        admin.studentExams(sid).catch(() => []),
+      ]);
       setDetail(d);
+      setExams(ex);
     } catch {
       toast.error('加载学生详情失败');
     } finally {
@@ -231,6 +241,12 @@ const AdminClassDetail = () => {
                         学习详情
                       </button>
                       <button
+                        onClick={() => setBooksTarget(s)}
+                        className="text-green-600 hover:text-green-800"
+                      >
+                        管理书本
+                      </button>
+                      <button
                         onClick={() => setTransferTarget(s)}
                         className="text-orange-600 hover:text-orange-800"
                       >
@@ -338,10 +354,51 @@ const AdminClassDetail = () => {
                     })()}
                   </div>
                 </div>
+
+                {/* 考试成绩(单元 + 小组,按时间倒序) */}
+                <div className="mt-4">
+                  <div className="text-sm font-medium text-gray-600 mb-2">考试成绩</div>
+                  {exams.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-3 text-center bg-gray-50 rounded-lg">暂无考试记录</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                      {exams.map((e, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                e.type === 'unit' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {e.type === 'unit' ? '单元' : '小组'}
+                              </span>
+                              <span className="text-sm text-gray-800 truncate">{e.label}</span>
+                            </div>
+                            {e.at && <div className="text-[10px] text-gray-400 mt-0.5">{new Date(e.at).toLocaleString('zh-CN')}</div>}
+                          </div>
+                          <div className="text-right shrink-0 ml-3">
+                            <div className="text-sm font-semibold text-gray-800">{e.accuracy}%</div>
+                            {e.type === 'group' && e.total_questions
+                              ? <div className="text-[10px] text-gray-400">{e.correct_count}/{e.total_questions}</div>
+                              : <div className="text-[10px] text-gray-400">{e.score}/{e.total_score}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
         </div>
+      )}
+
+      {booksTarget && (
+        <StudentBooksDialog
+          studentId={booksTarget.id}
+          studentName={booksTarget.full_name || booksTarget.username}
+          open={true}
+          onClose={() => setBooksTarget(null)}
+        />
       )}
     </div>
   );

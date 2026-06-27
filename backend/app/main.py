@@ -9,6 +9,7 @@ from app.api.v1.student import progress as student_progress, learning_records as
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
 from app.api.v1.admin import teachers as admin_teachers, classes as admin_classes, settings as admin_settings
 from app.api.v1.admin import class_analytics as admin_class_analytics, competition as admin_competition
+from app.api.v1.admin import student_books as admin_student_books
 from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket
 
 @asynccontextmanager
@@ -77,6 +78,7 @@ app.include_router(admin_classes.router, prefix="/api/v1/admin", tags=["管理�
 app.include_router(admin_settings.router, prefix="/api/v1/admin", tags=["管理员-系统设置"])
 app.include_router(admin_class_analytics.router, prefix="/api/v1/admin", tags=["管理员-班级学习统计"])
 app.include_router(admin_competition.router, prefix="/api/v1/admin", tags=["管理员-单词比赛"])
+app.include_router(admin_student_books.router, prefix="/api/v1/admin", tags=["管理员-学生书本与成绩"])
 app.include_router(subscription.router, prefix="/api/v1/subscription", tags=["订阅兑换"])
 app.include_router(pronunciation.router, prefix="/api/v1/pronunciation", tags=["语音评测"])
 app.include_router(assessment.router, prefix="/api/v1/assessment", tags=["测评漏斗"])
