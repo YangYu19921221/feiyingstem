@@ -302,6 +302,12 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
           </h1>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => navigate('/student/pet/battle-hall')}
+              className="text-sm font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full hover:bg-purple-100 transition-colors"
+            >
+              ⚔️ 对战
+            </button>
+            <button
               onClick={onShowLeaderboard}
               className="text-sm font-bold text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-full hover:bg-yellow-100 transition-colors"
             >
@@ -327,6 +333,43 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6">
+        {/* 受伤状态提示 */}
+        {pet.is_injured && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-50 border-2 border-red-200 rounded-3xl p-6 mb-6 shadow-lg"
+          >
+            <div className="text-center">
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ repeat: Infinity, duration: 2 }}
+                className="text-6xl mb-3"
+              >
+                💔
+              </motion.div>
+              <h3 className="text-2xl font-bold text-red-600 mb-2">宠物受伤了！</h3>
+              <p className="text-gray-700 mb-1">
+                当前HP: <span className="font-bold text-red-500">{pet.current_hp || 0}</span> / {100 + pet.level * 5 + pet.evolution_stage * 20}
+              </p>
+              <p className="text-gray-600 mb-4">
+                学习单词可以治疗它，每答对1题恢复5 HP
+              </p>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => navigate('/student/pet/heal')}
+                className="px-8 py-3 bg-gradient-to-r from-green-400 to-emerald-500 text-white font-bold text-lg rounded-xl shadow-lg inline-flex items-center gap-2"
+              >
+                💊 立即治疗
+                <span className="text-sm opacity-90">
+                  (需答对约 {Math.ceil(((100 + pet.level * 5 + pet.evolution_stage * 20) * 0.8 - (pet.current_hp || 0)) / 5)} 题)
+                </span>
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 左列: 宠物展示 + 互动 */}
           <div className="lg:col-span-1 space-y-4">

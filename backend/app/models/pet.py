@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -17,6 +17,8 @@ class UserPet(Base):
     hunger = Column(Integer, default=80)           # 0-100
     evolution_stage = Column(Integer, default=0)   # 0=egg,1=baby,2=teen,3=adult,4=legendary
     food_balance = Column(Integer, default=10)     # 宠物粮余额，新用户送10粮
+    current_hp = Column(Integer, default=120)      # 当前HP（对战后会变化）
+    is_injured = Column(Boolean, default=False)    # 是否受伤（HP<50%时为True）
     last_fed_at = Column(DateTime, nullable=True)
     last_interaction_at = Column(DateTime, server_default=func.now())
     created_at = Column(DateTime, server_default=func.now())

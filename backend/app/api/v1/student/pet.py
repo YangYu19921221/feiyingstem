@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.timeutil import local_today_utc_range
 from app.models.user import User
 from app.models.pet import UserPet, PetEventLog
+from app.models.word import Word
 from app.schemas.pet import (
     PetCreate, PetResponse, PetFeedResponse, PetEventResponse,
     EarnFoodRequest, EarnFoodResponse,
@@ -25,6 +26,14 @@ STAGE_NAMES = {0: "蛋", 1: "基础形态", 2: "一阶进化", 3: "最终进化"
 def calc_xp_to_next_level(level: int) -> int:
     """每级所需 XP = 80 + level × 40，越高级越难升"""
     return 80 + level * 40
+
+
+def calculate_max_hp(level: int, evolution_stage: int) -> int:
+    """计算宠物最大HP"""
+    base_hp = 100
+    level_bonus = level * 5
+    stage_bonus = evolution_stage * 20
+    return base_hp + level_bonus + stage_bonus
 
 
 def apply_decay(pet: UserPet) -> UserPet:

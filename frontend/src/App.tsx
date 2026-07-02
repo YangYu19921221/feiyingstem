@@ -83,6 +83,9 @@ const AdminClassList = lazyWithRetry(() => import('./pages/AdminClassList'));
 const AdminCompetition = lazyWithRetry(() => import('./pages/AdminCompetition'));
 const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
 const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
+const PetBattleHallPage = lazyWithRetry(() => import('./pages/PetBattleHallPage'));
+const PetBattlePage = lazyWithRetry(() => import('./pages/PetBattlePage'));
+const PetHealingPage = lazyWithRetry(() => import('./pages/PetHealingPage'));
 const WordClassifyLearning = lazyWithRetry(() => import('./pages/WordClassifyLearning'));
 const UnitExam = lazyWithRetry(() => import('./pages/UnitExam'));
 const UnitExamResult = lazyWithRetry(() => import('./pages/UnitExamResult'));
@@ -807,6 +810,36 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <PetPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 宠物对战大厅 */}
+        <Route
+          path="/student/pet/battle-hall"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PetBattleHallPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 宠物对战页面 */}
+        <Route
+          path="/student/pet/battle/:battleId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PetBattlePage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 宠物治疗 */}
+        <Route
+          path="/student/pet/heal"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PetHealingPage />
             </ProtectedRoute>
           }
         />
