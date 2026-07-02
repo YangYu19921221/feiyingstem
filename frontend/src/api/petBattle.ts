@@ -140,7 +140,7 @@ export interface WSMessage {
 export class BattleWebSocket {
   private ws: WebSocket | null = null;
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
-  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
 

@@ -17,6 +17,8 @@ export interface Pet {
   xp_to_next_level: number;
   evolution_stage_name: string;
   food_balance: number;
+  current_hp: number;
+  is_injured: boolean;
   last_fed_at: string | null;
   last_interaction_at: string | null;
   created_at: string;
