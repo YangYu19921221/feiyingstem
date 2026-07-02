@@ -143,8 +143,13 @@ export class BattleWebSocket {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private battleId: number;
+  private token: string;
 
-  constructor(private battleId: number, private token: string) {}
+  constructor(battleId: number, token: string) {
+    this.battleId = battleId;
+    this.token = token;
+  }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -242,8 +247,13 @@ export class BattleWebSocket {
 
 export class AnswerWebSocket {
   private ws: WebSocket | null = null;
+  private battleId: number;
+  private token: string;
 
-  constructor(private battleId: number, private token: string) {}
+  constructor(battleId: number, token: string) {
+    this.battleId = battleId;
+    this.token = token;
+  }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
