@@ -1,3 +1,24 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func as sa_func
+from datetime import datetime
+import math
+
+from app.core.database import get_db
+from app.models.user import User
+from app.models.pet import UserPet, PetEventLog
+from app.models.word import Word, WordDefinition
+from app.api.v1.auth import get_current_student
+
+router = APIRouter()
+
+
+def calculate_max_hp(level: int, evolution_stage: int) -> int:
+    """计算宠物最大HP"""
+    base_hp = 100
+    level_bonus = level * 5
+    stage_bonus = evolution_stage * 20
+    return base_hp + level_bonus + stage_bonus
 
 
 # ========== 宠物治疗系统 ==========
