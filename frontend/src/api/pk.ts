@@ -16,6 +16,12 @@ export interface PkPlayer {
   finished: boolean;
 }
 
+export interface PkSpectator {
+  user_id: number;
+  nickname: string;
+  online: boolean;
+}
+
 export interface PkRoomSnapshot {
   room_id: number;
   invite_code: string;
@@ -28,6 +34,7 @@ export interface PkRoomSnapshot {
   total_words: number;   // 开局前为 0,开局后 = 实际抽到的词数
   word_count: number;    // 房主设定的目标词数
   players: PkPlayer[];
+  spectators: PkSpectator[];
 }
 
 /** live_ranking 事件里的单行榜单数据 */
@@ -71,6 +78,9 @@ export const pkApi = {
 
   joinRoomByCode: (code: string) =>
     api.post<PkRoomSnapshot>(`/pk/rooms/by-code/${code}/join`),
+
+  spectateByCode: (code: string) =>
+    api.post<PkRoomSnapshot>(`/pk/rooms/by-code/${code}/spectate`),
 
   myHistory: () => api.get<PkHistoryItem[]>('/pk/me/history'),
 };

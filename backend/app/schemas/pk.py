@@ -29,6 +29,12 @@ class PlayerSnapshot(BaseModel):
     finished: bool
 
 
+class SpectatorSnapshot(BaseModel):
+    user_id: int
+    nickname: str
+    online: bool = True
+
+
 class RoomSnapshot(BaseModel):
     room_id: int
     invite_code: str
@@ -41,6 +47,7 @@ class RoomSnapshot(BaseModel):
     total_words: int          # 开局前为 0,开局后 = 实际抽到的词数
     word_count: int = 10      # 房主设定的目标词数
     players: list[PlayerSnapshot]
+    spectators: list[SpectatorSnapshot] = []
 
 
 class CreateRoomResponse(BaseModel):

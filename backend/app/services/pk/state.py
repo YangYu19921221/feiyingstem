@@ -39,6 +39,16 @@ class PlayerState:
 
 
 @dataclass
+class SpectatorState:
+    """观战者:只收广播不作答,不占玩家名额,掉线即移除(无重连窗口)。"""
+    user_id: int
+    nickname: str
+    ws: Any = None  # WebSocket | None
+    online: bool = True
+    joined_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
 class RoomState:
     room_id: int
     invite_code: str
@@ -54,6 +64,7 @@ class RoomState:
     current_phase: PhaseLiteral = "classify"
     current_word_idx: int = 0  # 全局题号(跨 phase 不重置)
     players: dict[int, PlayerState] = field(default_factory=dict)
+    spectators: dict[int, "SpectatorState"] = field(default_factory=dict)  # 观战者(不参与结算)
     answers: dict[int, dict[int, AnswerRecord]] = field(default_factory=dict)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

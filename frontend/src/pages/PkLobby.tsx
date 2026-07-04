@@ -63,11 +63,32 @@ export default function PkLobby() {
       const errorMap: Record<string, string> = {
         ROOM_NOT_FOUND: '邀请码无效',
         ROOM_FINISHED: '该房间的 PK 已结束',
-        ROOM_FULL: '房间已满',
-        ROOM_ALREADY_STARTED: '房间已开始',
+        ROOM_FULL: '房间已满——可以点「👀 观战」进去看比赛',
+        ROOM_ALREADY_STARTED: '房间已开始——可以点「👀 观战」进去看比赛',
         USER_ALREADY_IN_ROOM: '你已在另一个 PK 房间中',
       };
       setError(errorMap[detail] || detail || e?.message || '加入失败');
+    }
+  };
+
+  const handleSpectate = async () => {
+    setError('');
+    const code = inviteCode.trim().toUpperCase();
+    if (code.length !== 6) {
+      setError('邀请码必须是 6 位');
+      return;
+    }
+    try {
+      const data = await pkApi.spectateByCode(code);
+      navigate(`/pk/arena/${data.room_id}`);
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      const errorMap: Record<string, string> = {
+        ROOM_NOT_FOUND: '邀请码无效',
+        ROOM_FINISHED: '该房间的 PK 已结束',
+        SPECTATORS_FULL: '观众席满啦(30 人)',
+      };
+      setError(errorMap[detail] || detail || e?.message || '观战失败');
     }
   };
 
@@ -231,6 +252,12 @@ export default function PkLobby() {
                 className="btn-glow w-full py-3.5 mt-5 text-white rounded-2xl font-semibold text-base"
               >
                 ⚔️ 加入对战
+              </button>
+              <button
+                onClick={handleSpectate}
+                className="w-full py-3 mt-2.5 rounded-2xl font-semibold text-base bg-gray-100 hover:bg-orange-100 text-ink-soft transition"
+              >
+                👀 观战(满员/已开局也能看)
               </button>
             </div>
             <p className="text-[11px] text-ink-mute mt-3 text-center">

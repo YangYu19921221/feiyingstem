@@ -310,3 +310,75 @@ async def test_load_learned_word_ids_full_vocab(db_session, auth_student_token, 
 
     learned = await load_learned_word_ids(db_session, [user_id], None)
     assert learned[user_id] == set(word_ids[:3])
+
+
+# ---------- 观战模式 ----------
+
+@pytest.mark.asyncio
+async def test_spectate_waiting_room(client, two_student_tokens):
+    """等待中的房间可观战,快照 spectators 含观众。"""
+    token1, token2, host_id, joiner_id = two_student_tokens
+    resp = await client.post(
+        "/api/v1/pk/rooms",
+        headers={"Authorization": f"Bearer {token1}"},
+        json={"max_players": 2, "word_count": 10},
+    )
+    code = resp.json()["invite_code"]
+    spec = await client.post(
+        f"/api/v1/pk/rooms/by-code/{code}/spectate",
+        headers={"Authorization": f"Bearer {token2}"},
+    )
+    assert spec.status_code == 200
+    body = spec.json()
+    assert len(body["players"]) == 1           # 不占玩家名额
+    assert len(body["spectators"]) == 1
+    assert body["spectators"][0]["user_id"] == joiner_id
+
+
+@pytest.mark.asyncio
+async def test_spectate_full_or_started_room(client, db_session, two_student_tokens):
+    """房间满员/已开局时仍可观战(玩家 join 会被拒)。"""
+    from app.models.user import User
+    from tests.conftest import _make_token
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    user3 = User(username="stu_pk_spec", email="spec@example.com",
+                 hashed_password="x", role="student", is_active=True)
+    db_session.add(user3)
+    await db_session.commit()
+    await db_session.refresh(user3)
+    token3 = _make_token(user3.id)
+
+    resp = await client.post(
+        "/api/v1/pk/rooms",
+        headers={"Authorization": f"Bearer {token1}"},
+        json={"max_players": 2, "word_count": 10},
+    )
+    code = resp.json()["invite_code"]
+    await client.post(f"/api/v1/pk/rooms/by-code/{code}/join",
+                      headers={"Authorization": f"Bearer {token2}"})
+
+    # 满员:join 拒,spectate 可
+    join3 = await client.post(f"/api/v1/pk/rooms/by-code/{code}/join",
+                              headers={"Authorization": f"Bearer {token3}"})
+    assert join3.status_code == 409
+    spec3 = await client.post(f"/api/v1/pk/rooms/by-code/{code}/spectate",
+                              headers={"Authorization": f"Bearer {token3}"})
+    assert spec3.status_code == 200
+
+    # 已开局(直接改内存状态)仍可再次观战(幂等)
+    room = manager.ROOMS[resp.json()["room_id"]]
+    room.status = "playing"
+    spec_again = await client.post(f"/api/v1/pk/rooms/by-code/{code}/spectate",
+                                   headers={"Authorization": f"Bearer {token3}"})
+    assert spec_again.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_spectate_invalid_code_404(client, auth_student_token):
+    token, _ = auth_student_token
+    resp = await client.post(
+        "/api/v1/pk/rooms/by-code/ZZZZZZ/spectate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404

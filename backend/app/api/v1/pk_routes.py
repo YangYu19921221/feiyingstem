@@ -9,7 +9,7 @@ from app.models.user import User
 from app.models.pk import PkRoom, PkRoomPlayer
 from app.schemas.pk import (
     CreateRoomRequest, CreateRoomResponse,
-    RoomSnapshot, PlayerSnapshot, PlayerHistoryItem,
+    RoomSnapshot, PlayerSnapshot, PlayerHistoryItem, SpectatorSnapshot,
 )
 from app.services.pk import manager
 from app.services.pk.score import base_points_for_word_grades
@@ -39,6 +39,10 @@ def _snapshot(room) -> RoomSnapshot:
                 points=p.points, streak=p.streak, finished=p.finished,
             )
             for p in room.players.values()
+        ],
+        spectators=[
+            SpectatorSnapshot(user_id=s.user_id, nickname=s.nickname, online=s.online)
+            for s in room.spectators.values()
         ],
     )
 
@@ -160,6 +164,29 @@ async def join_room_by_code(
         raise HTTPException(status_code=409, detail="ROOM_ALREADY_STARTED")
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
+    return _snapshot(room)
+
+
+@router.post("/rooms/by-code/{code}/spectate", response_model=RoomSnapshot)
+async def spectate_room_by_code(
+    code: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """以观众身份进房:等待中/对局中都可以,房间满员也不受限。"""
+    nickname = user.full_name or user.username or f"User{user.id}"
+    try:
+        room = manager.spectate_room(invite_code=code, user_id=user.id, nickname=nickname)
+    except manager.RoomNotFound:
+        result = await db.execute(
+            select(PkRoom).where(PkRoom.invite_code == code).limit(1)
+        )
+        archived = result.scalar_one_or_none()
+        if archived is not None:
+            raise HTTPException(status_code=410, detail="ROOM_FINISHED")
+        raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
+    except manager.SpectatorsFull:
+        raise HTTPException(status_code=409, detail="SPECTATORS_FULL")
     return _snapshot(room)
 
 

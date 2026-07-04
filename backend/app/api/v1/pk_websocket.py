@@ -6,7 +6,7 @@ import random
 from datetime import datetime, timedelta
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -38,8 +38,28 @@ async def _authenticate(token: str) -> User | None:
 
 
 async def _word_lookup_for_room(db: AsyncSession, word_ids: list[int]) -> dict:
+    """word_id → Word,并补上中文释义。
+
+    words 表没有 translation 列(释义在 word_definitions),这里取主释义
+    动态挂到实例上,否则听写/过关阶段玩家只会看到空白提示。
+    """
     result = await db.execute(select(Word).where(Word.id.in_(word_ids)))
-    return {w.id: w for w in result.scalars().all()}
+    words = {w.id: w for w in result.scalars().all()}
+    if words:
+        wid_marks = ",".join(f":w{i}" for i in range(len(word_ids)))
+        params = {f"w{i}": v for i, v in enumerate(word_ids)}
+        rows = await db.execute(
+            text(
+                f"SELECT word_id, part_of_speech, meaning FROM word_definitions "
+                f"WHERE word_id IN ({wid_marks}) ORDER BY is_primary DESC, id"
+            ),
+            params,
+        )
+        for wid, pos, meaning in rows.fetchall():
+            w = words.get(wid)
+            if w is not None and not getattr(w, "translation", None):
+                w.translation = f"{pos} {meaning}" if pos else (meaning or "")
+    return words
 
 
 async def _load_learned_for_room(user_ids: list[int], word_ids: list[int] | None = None) -> dict[int, set[int]]:
@@ -81,7 +101,20 @@ def _snapshot_dict(room) -> dict:
             }
             for p in room.players.values()
         ],
+        "spectators": [
+            {"user_id": s.user_id, "nickname": s.nickname, "online": s.online}
+            for s in room.spectators.values()
+        ],
     }
+
+
+def _mask_for_spectators(event: dict) -> dict:
+    """听写/过关阶段的题目对观众隐藏英文原词,防止场边报答案。"""
+    if event.get("type") == "question_pushed" and event.get("phase") in ("dictation", "exam"):
+        word = dict(event.get("word") or {})
+        word["word"] = ""
+        return {**event, "word": word, "masked": True}
+    return event
 
 
 def _schedule_disconnect_cleanup(room, user_id: int):
@@ -102,6 +135,7 @@ def _schedule_disconnect_cleanup(room, user_id: int):
             cur_after = manager.get_room(room.room_id)
             if cur_after is None:
                 _cancel_room_timers(room.room_id)
+                await _notify_room_closed(cur)
             else:
                 if cur_after.host_id != old_host:
                     await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
@@ -171,6 +205,20 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
             )
             failed_user_ids.append(uid)
 
+    # 观众:题目脱敏后发送;发送失败直接移除(观众无重连窗口)
+    spec_event = _mask_for_spectators(event)
+    for uid, ss in list(room.spectators.items()):
+        if uid == exclude or ss.ws is None:
+            continue
+        try:
+            await ss.ws.send_json(spec_event)
+        except Exception as e:
+            logger.warning(
+                "PK spectator send failed: room_id=%d user_id=%d error=%s",
+                room.room_id, uid, e,
+            )
+            room.spectators.pop(uid, None)
+
     for uid in failed_user_ids:
         ps = room.players.get(uid)
         if ps is None:
@@ -190,6 +238,19 @@ _TIMEOUT_TASKS: dict[tuple[int, int, str], asyncio.Task] = {}
 async def _broadcast_room_state(room):
     """成员/在线状态变化后同步全房快照——等待室的玩家列表靠它实时刷新。"""
     await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+
+
+async def _notify_room_closed(room):
+    """房间解散(最后一名玩家离开):通知并断开所有观众。"""
+    for uid, ss in list(room.spectators.items()):
+        if ss.ws is None:
+            continue
+        try:
+            await ss.ws.send_json({"type": "room_closed", "message": "房间已解散"})
+            await ss.ws.close()
+        except Exception:
+            pass
+    room.spectators.clear()
 
 
 def _cancel_timer(room_id: int, word_idx: int, phase: str):
@@ -256,13 +317,60 @@ async def pk_ws(
         await ws.close(code=1008, reason="AUTH_FAILED")
         return
     room = manager.get_room(room_id)
-    if room is None or user.id not in room.players:
+    if room is None or (user.id not in room.players and user.id not in room.spectators):
         await ws.accept()
         await ws.send_json({"type": "error", "code": "ROOM_NOT_FOUND", "message": "Room not found"})
         await ws.close()
         return
 
     await ws.accept()
+
+    # ---------- 观众连接:只收广播不作答 ----------
+    if user.id not in room.players:
+        s = room.spectators[user.id]
+        if s.ws is not None and s.ws is not ws:
+            try:
+                await s.ws.close(code=1000, reason="REPLACED_BY_NEW_CONNECTION")
+            except Exception:
+                pass
+        s.ws = ws
+        s.online = True
+        logger.info("PK spectator WS connected: room_id=%d user_id=%d", room.room_id, user.id)
+        await _broadcast_room_state(room)  # 全房刷新观众数(自己也借此拿到快照)
+        if room.status == "playing" and room.word_ids:
+            cur_id = room.current_word_id
+            cur_word = room.word_lookup.get(cur_id)
+            await ws.send_json(_mask_for_spectators({
+                "type": "question_pushed",
+                "word_idx": room.current_word_idx,
+                "phase": room.current_phase,
+                "word": {
+                    "id": getattr(cur_word, "id", None),
+                    "word": getattr(cur_word, "word", ""),
+                    "translation": getattr(cur_word, "translation", ""),
+                },
+                "points": room.points_for_word(cur_id),
+            }))
+        try:
+            while True:
+                msg = await ws.receive_json()
+                mtype = msg.get("type")
+                if mtype == "leave_room":
+                    break
+                # heartbeat 收下即可;submit/start/kick 等一律忽略(观众无权)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            s.ws = None
+            s.online = False
+            manager.leave_spectator(room.room_id, user.id)
+            logger.info("PK spectator WS disconnected: room_id=%d user_id=%d", room.room_id, user.id)
+            cur = manager.get_room(room.room_id)
+            if cur is not None:
+                await _broadcast_room_state(cur)
+        return
+
+    # ---------- 玩家连接 ----------
     p = room.players[user.id]
     if p.ws is not None and p.ws is not ws:
         try:
@@ -424,6 +532,7 @@ async def pk_ws(
             after = manager.get_room(room.room_id)
             if after is None:
                 _cancel_room_timers(room.room_id)
+                await _notify_room_closed(room)
             else:
                 await _broadcast(after, {"type": "player_left", "user_id": user.id})
                 if after.host_id != old_host:

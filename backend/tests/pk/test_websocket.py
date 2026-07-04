@@ -694,3 +694,105 @@ async def test_host_sees_joiner_via_room_state_broadcast(two_student_tokens):
                     assert got_two_players, "房主没有收到包含新玩家的 room_state 广播"
     finally:
         restore()
+
+
+# ---------- 观战模式 WS ----------
+
+@pytest.mark.asyncio
+async def test_spectator_does_not_block_settle_and_gets_masked_word(two_student_tokens, db_session):
+    """观众连线后:不阻塞玩家结算;听写阶段收到的题目英文被脱敏。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+    from tests.conftest import _make_token
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    user3 = User(username="stu_pk_watch", email="watch@example.com",
+                 hashed_password="x", role="student", is_active=True)
+    db_session.add(user3)
+    await db_session.commit()
+    await db_session.refresh(user3)
+    token3 = _make_token(user3.id)
+
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+    manager.spectate_room(invite_code=room.invite_code, user_id=user3.id, nickname="Watcher")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_w@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token2: User(id=joiner_id, username="j", email="j_w@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token3: User(id=user3.id, username="w", email="w_w@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    pool = {11, 12, 13, 14}
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {
+        host_id: pool, joiner_id: pool,
+    })
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}") as ws1, \
+                 tc.websocket_connect(f"/api/v1/pk/ws?token={token2}&room_id={room.room_id}") as ws2, \
+                 tc.websocket_connect(f"/api/v1/pk/ws?token={token3}&room_id={room.room_id}") as ws3:
+                # 排空到大家都拿到快照
+                for _ in range(10):
+                    if ws1.receive_json()["type"] == "room_state":
+                        break
+                ws3.receive_json()  # 观众的 room_state(经广播)
+
+                ws1.send_json({"type": "start_game"})
+
+                # 观众也收到第一题(classify 阶段不脱敏)
+                spec_push = None
+                for _ in range(10):
+                    m = ws3.receive_json()
+                    if m["type"] == "question_pushed":
+                        spec_push = m
+                        break
+                assert spec_push is not None
+                assert spec_push["phase"] == "classify"
+                assert spec_push["word"]["word"] != ""  # classify 不脱敏
+
+                # 观众发 submit_answer 应被忽略(不产生 player_answered 广播)
+                ws3.send_json({"type": "submit_answer", "word_idx": 0, "phase": "classify",
+                               "payload": {"category": "familiar"}, "time_spent_ms": 100})
+
+                # 仅两名玩家作答 → 应正常结算(观众不阻塞)
+                for wsx, ms in ((ws1, 1000), (ws2, 1500)):
+                    # 玩家先排空自己队列里的题
+                    for _ in range(10):
+                        m = wsx.receive_json()
+                        if m["type"] == "question_pushed":
+                            break
+                    wsx.send_json({"type": "submit_answer", "word_idx": 0, "phase": "classify",
+                                   "payload": {"category": "familiar"}, "time_spent_ms": ms})
+                settled = None
+                for _ in range(20):
+                    m = ws3.receive_json()
+                    if m["type"] == "question_settled":
+                        settled = m
+                        break
+                assert settled is not None, "观众应看到结算(且观众不阻塞结算)"
+                # 结算结果里只有两名玩家,没有观众
+                assert set(settled["results"].keys()) == {str(host_id), str(joiner_id)}
+    finally:
+        restore()
+
+
+def test_mask_for_spectators_only_hides_dictation_and_exam():
+    from app.api.v1.pk_websocket import _mask_for_spectators
+
+    base = {"type": "question_pushed", "phase": "dictation",
+            "word": {"id": 1, "word": "apple", "translation": "苹果"}, "points": 100}
+    masked = _mask_for_spectators(base)
+    assert masked["word"]["word"] == "" and masked["word"]["translation"] == "苹果"
+    assert base["word"]["word"] == "apple"  # 原事件不被改动
+
+    classify = {**base, "phase": "classify"}
+    assert _mask_for_spectators(classify)["word"]["word"] == "apple"
+    exam = {**base, "phase": "exam"}
+    assert _mask_for_spectators(exam)["word"]["word"] == ""
+    other = {"type": "live_ranking", "ranking": []}
+    assert _mask_for_spectators(other) is other

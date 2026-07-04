@@ -46,6 +46,13 @@ function getMeId(): number {
 const noOp = () => {};
 const noOpAudio: (w: string) => void = () => {};
 
+const PHASE_LABEL: Record<string, string> = {
+  classify: '🗂️ 分类',
+  speech: '🎤 语音',
+  dictation: '✍️ 听写',
+  exam: '🏁 过关',
+};
+
 /** 从房间快照推导初始榜单(开局/重连时 live_ranking 还没来) */
 function rankingFromSnapshot(snap: PkRoomSnapshot): PkLiveRankItem[] {
   const items = snap.players.map((p) => ({
@@ -132,6 +139,10 @@ export default function PkArena() {
         case 'game_finished':
           setRanking(event.ranking as RankItem[]);
           break;
+        case 'room_closed':
+          setErrorBanner(event.message || '房间已解散');
+          window.setTimeout(() => navigate('/pk/lobby'), 1600);
+          break;
         case 'error':
           setErrorBanner(event.message || event.code || 'Error');
           break;
@@ -141,7 +152,7 @@ export default function PkArena() {
           break;
       }
     },
-    [meId]
+    [meId, navigate]
   );
 
   const { send, connected } = usePkSocket({
@@ -208,14 +219,18 @@ export default function PkArena() {
   // 等待室(房主未开局)
   if (snapshot.status === 'waiting') {
     const isHost = snapshot.host_id === meId;
+    const isSpectator = !snapshot.players.some((p) => p.user_id === meId);
     const onlineCount = snapshot.players.filter((p) => p.online).length;
+    const specCount = snapshot.spectators?.length ?? 0;
     return (
       <div className="min-h-screen bg-paper relative overflow-hidden">
         <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-secondary/20 blur-3xl" />
         <div className="pointer-events-none absolute top-1/2 -left-32 w-80 h-80 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative max-w-2xl mx-auto p-5 sm:py-10">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">⚔️ 等待开始</h2>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">
+              {isSpectator ? '👀 观战 · 等待开始' : '⚔️ 等待开始'}
+            </h2>
             <span className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-secondary/25 text-amber-700 font-medium">
               {snapshot.word_count} 词 · 每词 4 关 ≈ {snapshot.word_count * 4} 题
             </span>
@@ -241,9 +256,14 @@ export default function PkArena() {
           <div className="card-soft rounded-3xl p-5 sm:p-6 mb-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-ink">玩家</h3>
-              <span className="font-numeric text-ink-soft">
-                {snapshot.players.length}/{snapshot.max_players} 人
-              </span>
+              <div className="flex items-center gap-3">
+                {specCount > 0 && (
+                  <span className="text-xs text-ink-mute">👀 {specCount} 人观战</span>
+                )}
+                <span className="font-numeric text-ink-soft">
+                  {snapshot.players.length}/{snapshot.max_players} 人
+                </span>
+              </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <AnimatePresence>
@@ -284,7 +304,9 @@ export default function PkArena() {
             </div>
           </div>
 
-          {isHost ? (
+          {isSpectator ? (
+            <p className="text-center text-ink-soft py-4">👀 观战中,等待房主开始比赛…</p>
+          ) : isHost ? (
             <motion.button
               onClick={() => send({ type: 'start_game' })}
               disabled={onlineCount < 2}
@@ -322,6 +344,8 @@ export default function PkArena() {
   const globalIdx = currentQ?.word_idx ?? snapshot.current_word_idx;
   const phase = currentQ?.phase ?? snapshot.current_phase;
   const onlineTotal = snapshot.players.filter((p) => p.online).length;
+  const isSpectator = !snapshot.players.some((p) => p.user_id === meId);
+  const specCount = snapshot.spectators?.length ?? 0;
   const wordDataStub = currentQ
     ? {
         id: currentQ.word.id,
@@ -343,7 +367,28 @@ export default function PkArena() {
           {errorBanner && (
             <div className="mb-2 text-error text-sm bg-red-50 rounded-lg px-3 py-2">⚠️ {errorBanner}</div>
           )}
-          {currentQ && wordDataStub && currentQ.phase === 'classify' && (
+          {/* 观众:只读题卡(听写/过关阶段答案已由服务端脱敏) */}
+          {isSpectator && currentQ && (
+            <div className="card-soft rounded-3xl p-8 text-center">
+              <p className="text-xs text-ink-mute mb-4">
+                👀 观战中 · {PHASE_LABEL[currentQ.phase] || currentQ.phase} · 本题 {currentQ.points ?? '-'} 分
+              </p>
+              <p className="font-display text-4xl sm:text-5xl font-bold text-ink mb-3">
+                {currentQ.word.word || '🔒'}
+              </p>
+              <p className="text-lg text-ink-soft mb-4">{currentQ.word.translation}</p>
+              {!currentQ.word.word && (
+                <p className="text-[11px] text-ink-mute">拼写阶段答案对观众隐藏,等玩家作答…</p>
+              )}
+              <p className="text-sm text-ink-soft mt-2 font-numeric">
+                已作答 {answeredIds.size}/{onlineTotal} 人
+              </p>
+            </div>
+          )}
+          {isSpectator && !currentQ && (
+            <div className="p-6 text-center text-ink-mute">👀 观战中,等待题目…</div>
+          )}
+          {!isSpectator && currentQ && wordDataStub && currentQ.phase === 'classify' && (
             <ClassificationPhase
               key={`classify-${currentQ.word_idx}`}
               words={[]}
@@ -355,7 +400,7 @@ export default function PkArena() {
               pkDisabled={waitingForOthers}
             />
           )}
-          {currentQ && wordDataStub && currentQ.phase === 'speech' && (
+          {!isSpectator && currentQ && wordDataStub && currentQ.phase === 'speech' && (
             <SpeechVerifyCard
               key={`speech-${currentQ.word_idx}`}
               word={wordDataStub as any}
@@ -365,7 +410,7 @@ export default function PkArena() {
               disabled={waitingForOthers}
             />
           )}
-          {currentQ && wordDataStub && currentQ.phase === 'dictation' && (
+          {!isSpectator && currentQ && wordDataStub && currentQ.phase === 'dictation' && (
             <DictationSingle
               key={`dictation-${currentQ.word_idx}`}
               word={wordDataStub}
@@ -374,7 +419,7 @@ export default function PkArena() {
               timeoutMs={60_000}
             />
           )}
-          {currentQ && wordDataStub && currentQ.phase === 'exam' && (
+          {!isSpectator && currentQ && wordDataStub && currentQ.phase === 'exam' && (
             // 过关阶段:看中文重新拼写单词,服务端按文本判对错(超时 30s,与后端一致)
             <DictationSingle
               key={`exam-${currentQ.word_idx}`}
@@ -385,7 +430,7 @@ export default function PkArena() {
               label="过关 · 拼出这个词"
             />
           )}
-          {!currentQ && (
+          {!isSpectator && !currentQ && (
             <div className="p-6 text-center text-ink-mute">等待第一题…</div>
           )}
 
@@ -412,6 +457,9 @@ export default function PkArena() {
         </div>
 
         <div>
+          {specCount > 0 && (
+            <p className="text-xs text-ink-mute mb-2 text-right">👀 {specCount} 人观战</p>
+          )}
           {liveRanking && (
             <PkLiveRanking
               items={liveRanking}

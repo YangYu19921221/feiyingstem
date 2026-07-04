@@ -4,7 +4,7 @@ import logging
 import secrets
 import string
 from itertools import count
-from app.services.pk.state import RoomState, PlayerState
+from app.services.pk.state import RoomState, PlayerState, SpectatorState
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,8 @@ INVITE_INDEX: dict[str, int] = {}
 USER_ACTIVE: dict[int, int] = {}
 _id_seq = count(1)
 _INVITE_ALPHABET = string.ascii_uppercase + string.digits
+
+MAX_SPECTATORS = 30  # 每房观众上限
 
 
 class PkError(Exception):
@@ -33,6 +35,10 @@ class RoomFull(PkError):
 
 class RoomAlreadyStarted(PkError):
     code = "ROOM_ALREADY_STARTED"
+
+
+class SpectatorsFull(PkError):
+    code = "SPECTATORS_FULL"
 
 
 class NotHost(PkError):
@@ -95,6 +101,36 @@ def join_room(invite_code: str, user_id: int, nickname: str) -> RoomState:
     USER_ACTIVE[user_id] = room_id
     logger.info("PK player joined: room_id=%d user_id=%d", room_id, user_id)
     return room
+
+
+def spectate_room(invite_code: str, user_id: int, nickname: str) -> RoomState:
+    """以观众身份进房:等待中/对局中都可以,不占玩家名额。
+
+    观众不进 USER_ACTIVE(旁观是轻量行为,不阻止其另开房间);
+    自己已是该房玩家时原样返回(按玩家身份连 WS 即可)。
+    """
+    room_id = INVITE_INDEX.get(invite_code)
+    if room_id is None:
+        raise RoomNotFound()
+    room = ROOMS[room_id]
+    if user_id in room.players:
+        return room  # 本来就是玩家,无需观战
+    if user_id in room.spectators:
+        room.spectators[user_id].nickname = nickname
+        return room  # 重复观战幂等
+    if len(room.spectators) >= MAX_SPECTATORS:
+        raise SpectatorsFull()
+    room.spectators[user_id] = SpectatorState(user_id=user_id, nickname=nickname)
+    logger.info("PK spectator joined: room_id=%d user_id=%d", room_id, user_id)
+    return room
+
+
+def leave_spectator(room_id: int, user_id: int) -> None:
+    room = ROOMS.get(room_id)
+    if room is None:
+        return
+    if room.spectators.pop(user_id, None) is not None:
+        logger.info("PK spectator left: room_id=%d user_id=%d", room_id, user_id)
 
 
 def leave_room(room_id: int, user_id: int) -> None:
