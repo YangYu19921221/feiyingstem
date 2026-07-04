@@ -46,8 +46,10 @@ def _gen_invite_code() -> str:
             return code
 
 
-def create_room(host_id: int, unit_id: int, max_players: int, word_ids: list[int],
-                nickname: str | None = None) -> RoomState:
+def create_room(host_id: int, max_players: int, word_ids: list[int] | None = None,
+                unit_id: int | None = None, nickname: str | None = None,
+                word_count: int = 10) -> RoomState:
+    """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。"""
     if host_id in USER_ACTIVE:
         raise UserAlreadyInRoom()
     room_id = next(_id_seq)
@@ -59,7 +61,8 @@ def create_room(host_id: int, unit_id: int, max_players: int, word_ids: list[int
         unit_id=unit_id,
         max_players=max_players,
         status="waiting",
-        word_ids=list(word_ids),
+        word_ids=list(word_ids or []),
+        word_count=word_count,
     )
     room.players[host_id] = PlayerState(
         user_id=host_id,
@@ -70,8 +73,8 @@ def create_room(host_id: int, unit_id: int, max_players: int, word_ids: list[int
     INVITE_INDEX[code] = room_id
     USER_ACTIVE[host_id] = room_id
     logger.info(
-        "PK room created: room_id=%d host_id=%d unit_id=%d max_players=%d",
-        room_id, host_id, unit_id, max_players,
+        "PK room created: room_id=%d host_id=%d max_players=%d word_count=%d",
+        room_id, host_id, max_players, word_count,
     )
     return room
 

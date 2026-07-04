@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import logging
+import random
 from datetime import datetime, timedelta
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
@@ -14,6 +15,7 @@ from app.models.word import Word
 from app.services.pk import manager, engine
 from app.services.pk.persist import persist_finished_room
 from app.services.pk.engine import PHASE_TIMEOUT_MS
+from app.api.v1.pk_routes import load_learned_word_ids, load_word_points
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ router = APIRouter()
 
 HEARTBEAT_TIMEOUT_S = 30
 RECONNECT_WINDOW_S = 90
+MIN_COMMON_WORDS = 4  # 所有玩家共同背过的词少于该数时不允许开局
 
 
 async def _authenticate(token: str) -> User | None:
@@ -39,6 +42,24 @@ async def _word_lookup_for_room(db: AsyncSession, word_ids: list[int]) -> dict:
     return {w.id: w for w in result.scalars().all()}
 
 
+async def _load_learned_for_room(user_ids: list[int], word_ids: list[int] | None = None) -> dict[int, set[int]]:
+    """查各玩家背过的词(独立会话;模块级方便测试打桩)。word_ids=None 表示全库。"""
+    async with AsyncSessionLocal() as db:
+        return await load_learned_word_ids(db, user_ids, word_ids)
+
+
+async def _load_word_points_for_room(word_ids: list[int]) -> dict[int, int]:
+    """按词定基础分(独立会话;模块级方便测试打桩)。"""
+    async with AsyncSessionLocal() as db:
+        return await load_word_points(db, word_ids)
+
+
+async def _load_word_lookup(word_ids: list[int]) -> dict:
+    """装载 word_id → Word(独立会话;模块级方便测试打桩)。"""
+    async with AsyncSessionLocal() as db:
+        return await _word_lookup_for_room(db, word_ids)
+
+
 def _snapshot_dict(room) -> dict:
     return {
         "room_id": room.room_id,
@@ -50,11 +71,13 @@ def _snapshot_dict(room) -> dict:
         "current_phase": room.current_phase,
         "current_word_idx": room.current_word_idx,
         "total_words": len(room.word_ids),
+        "word_count": room.word_count,
         "players": [
             {
                 "user_id": p.user_id, "nickname": p.nickname, "online": p.online,
                 "current_word_idx": p.current_word_idx, "correct": p.correct,
-                "wrong": p.wrong, "total_time_ms": p.total_time_ms, "finished": p.finished,
+                "wrong": p.wrong, "total_time_ms": p.total_time_ms,
+                "points": p.points, "streak": p.streak, "finished": p.finished,
             }
             for p in room.players.values()
         ],
@@ -79,8 +102,10 @@ def _schedule_disconnect_cleanup(room, user_id: int):
             cur_after = manager.get_room(room.room_id)
             if cur_after is None:
                 _cancel_room_timers(room.room_id)
-            elif cur_after.host_id != old_host:
-                await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
+            else:
+                if cur_after.host_id != old_host:
+                    await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
+                await _broadcast_room_state(cur_after)
 
     asyncio.create_task(_cleanup())
 
@@ -112,6 +137,7 @@ async def _heartbeat_watchdog_loop():
                     # Don't clear ps.ws — the OS-level socket may still be alive,
                     # we just stopped trusting the heartbeat.
                     await _broadcast(room, {"type": "player_disconnected", "user_id": uid})
+                    await _broadcast_room_state(room)
                     _schedule_disconnect_cleanup(room, uid)
         except asyncio.CancelledError:
             raise
@@ -161,6 +187,11 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
 _TIMEOUT_TASKS: dict[tuple[int, int, str], asyncio.Task] = {}
 
 
+async def _broadcast_room_state(room):
+    """成员/在线状态变化后同步全房快照——等待室的玩家列表靠它实时刷新。"""
+    await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+
+
 def _cancel_timer(room_id: int, word_idx: int, phase: str):
     key = (room_id, word_idx, phase)
     task = _TIMEOUT_TASKS.pop(key, None)
@@ -198,7 +229,8 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
         if event["type"] == "question_pushed":
             _schedule_timer(room, event["word_idx"], event["phase"], word_lookup)
         elif event["type"] == "question_settled":
-            _cancel_timer(room.room_id, event["word_idx"], room.current_phase)
+            # 用事件里记录的本题阶段取消计时器——阶段切换时 room.current_phase 已是新阶段
+            _cancel_timer(room.room_id, event["word_idx"], event.get("phase", room.current_phase))
         elif event["type"] == "game_finished":
             logger.info(
                 "PK game finished: room_id=%d players=%d",
@@ -248,11 +280,36 @@ async def pk_ws(
 
     _ensure_heartbeat_watchdog()
 
-    await ws.send_json({"type": "room_state", "room": _snapshot_dict(room)})
+    # 广播给全房(含自己):新玩家加入/重连上线,等待室所有人的玩家列表都要刷新
+    await _broadcast_room_state(room)
     await _broadcast(room, {"type": "player_reconnected", "user_id": user.id}, exclude=user.id)
 
-    async with AsyncSessionLocal() as db:
-        word_lookup = await _word_lookup_for_room(db, room.word_ids)
+    # 中途重连:房间已有词但共享词表为空时补装载(正常开局时由 start_game 装载)
+    if room.word_ids and not room.word_lookup:
+        room.word_lookup.update(await _load_word_lookup(room.word_ids))
+
+    # 对局中重连:单发当前题,否则客户端会卡在"等待下一题"直到本题结算
+    if room.status == "playing" and room.word_ids:
+        cur_id = room.current_word_id
+        cur_word = room.word_lookup.get(cur_id)
+        await ws.send_json({
+            "type": "question_pushed",
+            "word_idx": room.current_word_idx,
+            "phase": room.current_phase,
+            "word": {
+                "id": getattr(cur_word, "id", None),
+                "word": getattr(cur_word, "word", ""),
+                "translation": getattr(cur_word, "translation", ""),
+            },
+            "points": room.points_for_word(cur_id),
+        })
+        # 本题已作答过 → 补发"已作答"状态,让客户端进入等待其他玩家的界面
+        if user.id in room.answers.get(room.current_word_idx, {}):
+            await ws.send_json({
+                "type": "player_answered",
+                "user_id": user.id,
+                "word_idx": room.current_word_idx,
+            })
 
     explicit_leave = False
     try:
@@ -263,38 +320,77 @@ async def pk_ws(
                 p.last_heartbeat_at = datetime.utcnow()
             elif mtype == "start_game" and user.id == room.host_id:
                 if room.status == "waiting":
-                    online_count = sum(1 for p in room.players.values() if p.online)
-                    if online_count < 2:
+                    online_ids = [uid for uid, ps in room.players.items() if ps.online]
+                    if len(online_ids) < 2:
                         await ws.send_json({
                             "type": "error",
                             "code": "NOT_ENOUGH_PLAYERS",
                             "message": "至少需要 2 名在线玩家",
                         })
                     else:
-                        room.status = "playing"
-                        room.started_at = datetime.utcnow()
-                        first_word = word_lookup.get(room.word_ids[0])
-                        push_event = {
-                            "type": "question_pushed", "word_idx": 0,
-                            "phase": "classify",
-                            "word": {
-                                "id": getattr(first_word, "id", None),
-                                "word": getattr(first_word, "word", ""),
-                                "translation": getattr(first_word, "translation", ""),
-                            },
-                        }
-                        await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
-                        await _broadcast(room, push_event)
-                        _schedule_timer(room, 0, "classify", word_lookup)
+                        # 全库取「所有在线玩家都背过」的交集,再随机抽 word_count 个
+                        learned = await _load_learned_for_room(online_ids)
+                        common = set.intersection(
+                            *(learned.get(uid, set()) for uid in online_ids)
+                        )
+                        if len(common) < MIN_COMMON_WORDS:
+                            await ws.send_json({
+                                "type": "error",
+                                "code": "NOT_ENOUGH_COMMON_WORDS",
+                                "common_count": len(common),
+                                "message": (
+                                    f"大家共同背过的单词只有 {len(common)} 个"
+                                    f"(至少需要 {MIN_COMMON_WORDS} 个),"
+                                    "先去学习流程多背一些单词再来 PK 吧"
+                                ),
+                            })
+                        else:
+                            chosen = random.sample(
+                                sorted(common), min(room.word_count, len(common))
+                            )
+                            room.word_ids = chosen
+                            room.word_points = await _load_word_points_for_room(chosen)
+                            room.word_lookup.clear()
+                            room.word_lookup.update(await _load_word_lookup(chosen))
+                            room.status = "playing"
+                            room.started_at = datetime.utcnow()
+                            logger.info(
+                                "PK game started: room_id=%d players=%d common_words=%d chosen=%d",
+                                room.room_id, len(online_ids), len(common), len(chosen),
+                            )
+                            first_id = room.word_ids[0]
+                            first_word = room.word_lookup.get(first_id)
+                            push_event = {
+                                "type": "question_pushed", "word_idx": 0,
+                                "phase": "classify",
+                                "word": {
+                                    "id": getattr(first_word, "id", None),
+                                    "word": getattr(first_word, "word", ""),
+                                    "translation": getattr(first_word, "translation", ""),
+                                },
+                                "points": room.points_for_word(first_id),
+                            }
+                            await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+                            await _broadcast(room, push_event)
+                            _schedule_timer(room, 0, "classify", room.word_lookup)
             elif mtype == "submit_answer":
+                # 客户端消息不可信:类型不对直接丢弃,不让异常炸断连接
+                try:
+                    word_idx = int(msg.get("word_idx"))
+                    time_spent_ms = int(msg.get("time_spent_ms", 0))
+                except (TypeError, ValueError):
+                    continue
+                payload = msg.get("payload", {})
+                if not isinstance(payload, dict):
+                    continue
                 events = engine.submit_answer(
                     room=room, user_id=user.id,
-                    word_idx=msg.get("word_idx"), phase=msg.get("phase"),
-                    payload=msg.get("payload", {}),
-                    time_spent_ms=msg.get("time_spent_ms", 0),
-                    word_lookup=word_lookup,
+                    word_idx=word_idx, phase=msg.get("phase"),
+                    payload=payload,
+                    time_spent_ms=time_spent_ms,
+                    word_lookup=room.word_lookup,
                 )
-                await _process_events(room, events, word_lookup)
+                await _process_events(room, events, room.word_lookup)
             elif mtype == "kick_player" and user.id == room.host_id:
                 target = msg.get("user_id")
                 if target in room.players and target != user.id:
@@ -307,6 +403,7 @@ async def pk_ws(
                         except Exception:
                             pass
                     await _broadcast(room, {"type": "player_kicked", "user_id": target})
+                    await _broadcast_room_state(room)
             elif mtype == "leave_room":
                 explicit_leave = True
                 break
@@ -331,7 +428,9 @@ async def pk_ws(
                 await _broadcast(after, {"type": "player_left", "user_id": user.id})
                 if after.host_id != old_host:
                     await _broadcast(after, {"type": "host_changed", "new_host_id": after.host_id})
+                await _broadcast_room_state(after)
         else:
             # 意外断线:保留 90s 重连窗口
             await _broadcast(room, {"type": "player_disconnected", "user_id": user.id})
+            await _broadcast_room_state(room)
             _schedule_disconnect_cleanup(room, user.id)

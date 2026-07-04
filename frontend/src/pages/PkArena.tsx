@@ -1,18 +1,20 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
-import type { PkRoomSnapshot, PkPhase } from '../api/pk';
+import type { PkRoomSnapshot, PkPhase, PkLiveRankItem } from '../api/pk';
 import ClassificationPhase from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationSingle from '../components/classify/DictationSingle';
-import PkPlayerList from '../components/pk/PkPlayerList';
-import PkLiveProgress from '../components/pk/PkLiveProgress';
+import PkPhaseStepper from '../components/pk/PkPhaseStepper';
+import PkLiveRanking from '../components/pk/PkLiveRanking';
 import PkResultBoard from '../components/pk/PkResultBoard';
 
 interface CurrentQuestion {
   word_idx: number;
   phase: PkPhase;
   word: { id: number; word: string; translation: string };
+  points?: number; // 本题分值(按该词学段)
 }
 
 interface RankItem {
@@ -24,6 +26,7 @@ interface RankItem {
   total_time_ms: number;
   accuracy: number;
   final_score: number;
+  best_streak?: number;
 }
 
 function getMeId(): number {
@@ -41,7 +44,26 @@ function getMeId(): number {
 }
 
 const noOp = () => {};
-const noOpAudio = (_w: string) => {};
+const noOpAudio: (w: string) => void = () => {};
+
+/** 从房间快照推导初始榜单(开局/重连时 live_ranking 还没来) */
+function rankingFromSnapshot(snap: PkRoomSnapshot): PkLiveRankItem[] {
+  const items = snap.players.map((p) => ({
+    user_id: p.user_id,
+    nickname: p.nickname,
+    points: p.points ?? 0,
+    correct: p.correct,
+    wrong: p.wrong,
+    streak: p.streak ?? 0,
+    total_time_ms: p.total_time_ms,
+    current_word_idx: p.current_word_idx,
+    online: p.online,
+    rank: 0,
+  }));
+  items.sort((a, b) => (b.points - a.points) || (a.total_time_ms - b.total_time_ms));
+  items.forEach((it, i) => { it.rank = i + 1; });
+  return items;
+}
 
 export default function PkArena() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -53,29 +75,56 @@ export default function PkArena() {
   const [currentQ, setCurrentQ] = useState<CurrentQuestion | null>(null);
   const questionStartedAtRef = useRef<number>(0);
   const [waitingForOthers, setWaitingForOthers] = useState(false);
+  const [answeredIds, setAnsweredIds] = useState<Set<number>>(new Set());
+  const [liveRanking, setLiveRanking] = useState<PkLiveRankItem[] | null>(null);
+  const [lastGains, setLastGains] = useState<Record<string, number>>({});
+  const [settleSeq, setSettleSeq] = useState(0);
   const [ranking, setRanking] = useState<RankItem[] | null>(null);
   const [errorBanner, setErrorBanner] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const handleEvent = useCallback(
     (event: PkServerEvent) => {
       switch (event.type) {
-        case 'room_state':
-          setSnapshot(event.room as PkRoomSnapshot);
+        case 'room_state': {
+          const room = event.room as PkRoomSnapshot;
+          setSnapshot(room);
+          setLiveRanking((cur) => cur ?? rankingFromSnapshot(room));
+          setErrorBanner('');
           break;
+        }
         case 'question_pushed':
           setCurrentQ({
             word_idx: event.word_idx,
             phase: event.phase as PkPhase,
             word: event.word,
+            points: event.points,
           });
           questionStartedAtRef.current = Date.now();
           setWaitingForOthers(false);
+          setAnsweredIds(new Set());
           break;
         case 'player_answered':
           if (event.user_id === meId) setWaitingForOthers(true);
+          setAnsweredIds((prev) => {
+            const next = new Set(prev);
+            next.add(event.user_id);
+            return next;
+          });
           break;
-        case 'question_settled':
+        case 'question_settled': {
           setWaitingForOthers(false);
+          const gains: Record<string, number> = {};
+          const results = (event.results ?? {}) as Record<string, { points_gained?: number }>;
+          for (const [uid, r] of Object.entries(results)) {
+            gains[uid] = r?.points_gained ?? 0;
+          }
+          setLastGains(gains);
+          setSettleSeq((s) => s + 1);
+          break;
+        }
+        case 'live_ranking':
+          setLiveRanking(event.ranking as PkLiveRankItem[]);
           break;
         case 'phase_advanced':
           setSnapshot((s) => (s ? { ...s, current_phase: event.new_phase } : s));
@@ -116,61 +165,163 @@ export default function PkArena() {
     [send, currentQ]
   );
 
-  // Game finished → result board
+  const copyInvite = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard 可能被拒绝,忽略
+    }
+  };
+
+  // 终局 → 结算榜
   if (ranking) {
     return (
       <PkResultBoard
         ranking={ranking}
         meId={meId}
         onExit={() => navigate('/student/dashboard')}
+        onAgain={() => navigate('/pk/lobby')}
       />
     );
   }
 
-  // Connection / loading
+  // 连接/加载中
   if (!snapshot) {
     return (
-      <div className="p-6 text-center text-gray-500">
-        {connected ? '加载中…' : '连接中…'}
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <div className="text-center">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
+            className="text-4xl mb-3"
+          >
+            ⚔️
+          </motion.div>
+          <p className="text-ink-soft">{connected ? '加载中…' : '连接中…'}</p>
+        </div>
       </div>
     );
   }
 
-  // Waiting room (host hasn't started yet)
+  // 等待室(房主未开局)
   if (snapshot.status === 'waiting') {
     const isHost = snapshot.host_id === meId;
+    const onlineCount = snapshot.players.filter((p) => p.online).length;
     return (
-      <div className="p-6 max-w-md mx-auto">
-        <h2 className="text-xl font-bold mb-3">等待开始</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          邀请码: <span className="font-mono tracking-widest">{snapshot.invite_code}</span>
-        </p>
-        <PkPlayerList
-          players={snapshot.players}
-          totalQuestions={snapshot.total_words * 4}
-          hostId={snapshot.host_id}
-          meId={meId}
-        />
-        {isHost ? (
-          <button
-            onClick={() => send({ type: 'start_game' })}
-            disabled={snapshot.players.length < 2}
-            className="mt-4 w-full py-2 bg-green-500 text-white rounded-lg font-medium disabled:opacity-50"
-          >
-            {snapshot.players.length < 2 ? '至少需要 2 人' : '开始 PK'}
-          </button>
-        ) : (
-          <p className="mt-4 text-center text-sm text-gray-500">等待房主开始…</p>
-        )}
-        {errorBanner && (
-          <p className="mt-3 text-sm text-red-500">{errorBanner}</p>
-        )}
+      <div className="min-h-screen bg-paper relative overflow-hidden">
+        <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-secondary/20 blur-3xl" />
+        <div className="pointer-events-none absolute top-1/2 -left-32 w-80 h-80 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative max-w-2xl mx-auto p-5 sm:py-10">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">⚔️ 等待开始</h2>
+            <span className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-secondary/25 text-amber-700 font-medium">
+              {snapshot.word_count} 词 · 每词 4 关 ≈ {snapshot.word_count * 4} 题
+            </span>
+          </div>
+
+          {/* 邀请码大卡 */}
+          <div className="rounded-3xl bg-gradient-to-br from-primary via-orange-400 to-secondary p-[2px] shadow-xl mb-5">
+            <div className="rounded-3xl bg-white px-6 py-6 sm:py-8 text-center">
+              <p className="text-sm text-ink-mute mb-2">邀请码 · 发给同学一起 PK</p>
+              <p className="font-mono text-5xl sm:text-6xl font-bold tracking-[0.3em] text-primary select-all">
+                {snapshot.invite_code}
+              </p>
+              <button
+                onClick={() => copyInvite(snapshot.invite_code)}
+                className="mt-4 text-sm px-5 py-2 rounded-full bg-orange-100 text-primary font-medium active:scale-95 transition"
+              >
+                {copied ? '✅ 已复制' : '📋 复制邀请码'}
+              </button>
+            </div>
+          </div>
+
+          {/* 玩家网格 */}
+          <div className="card-soft rounded-3xl p-5 sm:p-6 mb-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-ink">玩家</h3>
+              <span className="font-numeric text-ink-soft">
+                {snapshot.players.length}/{snapshot.max_players} 人
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <AnimatePresence>
+                {snapshot.players.map((p) => (
+                  <motion.div
+                    key={p.user_id}
+                    initial={{ scale: 0.6, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.6, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 350, damping: 22 }}
+                    className={`flex items-center gap-2.5 rounded-2xl px-3.5 py-3 ${
+                      p.user_id === meId ? 'bg-orange-50 ring-2 ring-primary/40' : 'bg-gray-50'
+                    } ${!p.online ? 'opacity-50' : ''}`}
+                  >
+                    <span className="text-2xl">
+                      {p.user_id === snapshot.host_id ? '👑' : '🧑‍🎓'}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink truncate">{p.nickname}</p>
+                      <p className="text-[11px] text-ink-mute">
+                        {p.user_id === snapshot.host_id ? '房主' : '玩家'}
+                        {p.user_id === meId ? ' · 我' : ''}
+                        {!p.online ? ' · 掉线' : ''}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              {/* 空位 */}
+              {Array.from({ length: Math.max(0, Math.min(snapshot.max_players - snapshot.players.length, 6)) }).map((_, i) => (
+                <div
+                  key={`empty-${i}`}
+                  className="flex items-center justify-center rounded-2xl px-3.5 py-3 border-2 border-dashed border-orange-200 text-ink-mute text-xs min-h-[3.5rem]"
+                >
+                  等待加入…
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {isHost ? (
+            <motion.button
+              onClick={() => send({ type: 'start_game' })}
+              disabled={onlineCount < 2}
+              animate={onlineCount >= 2 ? { scale: [1, 1.02, 1] } : {}}
+              transition={{ repeat: Infinity, duration: 1.6 }}
+              className="btn-glow w-full py-4 text-white rounded-2xl font-semibold text-lg"
+            >
+              {onlineCount < 2 ? '至少需要 2 名在线玩家' : `🚀 开始 PK(${onlineCount} 人在线)`}
+            </motion.button>
+          ) : (
+            <p className="text-center text-ink-soft py-4">⏳ 等待房主开始…</p>
+          )}
+
+          <p className="text-xs text-ink-mute text-center mt-4">
+            开局时自动从「所有人都背过的单词」里随机抽 {snapshot.word_count} 个,公平比拼
+          </p>
+
+          {errorBanner && (
+            <motion.p
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 text-sm text-error bg-red-50 rounded-2xl px-4 py-3"
+            >
+              ⚠️ {errorBanner}
+            </motion.p>
+          )}
+        </div>
       </div>
     );
   }
 
-  // Playing — render current phase
-  const totalQ = snapshot.total_words * 4;
+  // 对局中
+  const wordsPerPhase = snapshot.total_words;
+  const totalQ = wordsPerPhase * 4;
+  const globalIdx = currentQ?.word_idx ?? snapshot.current_word_idx;
+  const phase = currentQ?.phase ?? snapshot.current_phase;
+  const onlineTotal = snapshot.players.filter((p) => p.online).length;
   const wordDataStub = currentQ
     ? {
         id: currentQ.word.id,
@@ -180,16 +331,17 @@ export default function PkArena() {
     : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <PkLiveProgress
-        phase={snapshot.current_phase}
-        currentIdx={snapshot.current_word_idx}
-        totalQuestions={totalQ}
+    <div className="min-h-screen flex flex-col bg-paper">
+      <PkPhaseStepper
+        phase={phase}
+        currentIdx={globalIdx}
+        wordsPerPhase={wordsPerPhase}
+        currentPoints={currentQ?.points}
       />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 flex-1">
-        <div className="md:col-span-2">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 flex-1 max-w-5xl mx-auto w-full">
+        <div className="md:col-span-2 relative">
           {errorBanner && (
-            <div className="mb-2 text-red-500 text-sm">{errorBanner}</div>
+            <div className="mb-2 text-error text-sm bg-red-50 rounded-lg px-3 py-2">⚠️ {errorBanner}</div>
           )}
           {currentQ && wordDataStub && currentQ.phase === 'classify' && (
             <ClassificationPhase
@@ -219,34 +371,56 @@ export default function PkArena() {
               word={wordDataStub}
               onAnswer={(text, ms) => submit({ text }, ms)}
               disabled={waitingForOthers}
+              timeoutMs={60_000}
             />
           )}
           {currentQ && wordDataStub && currentQ.phase === 'exam' && (
-            // First-cut exam UI: reuse dictation single (typing English).
-            // Future task will extend to multiple-choice once backend pushes options.
+            // 过关阶段:看中文重新拼写单词,服务端按文本判对错(超时 30s,与后端一致)
             <DictationSingle
               key={`exam-${currentQ.word_idx}`}
               word={wordDataStub}
-              onAnswer={(text, ms) =>
-                submit({ selected: 0, correct: 0, text }, ms)
-              }
+              onAnswer={(text, ms) => submit({ text }, ms)}
               disabled={waitingForOthers}
+              timeoutMs={30_000}
+              label="过关 · 拼出这个词"
             />
           )}
           {!currentQ && (
-            <div className="p-6 text-center text-gray-400">
-              等待第一题…
-            </div>
+            <div className="p-6 text-center text-ink-mute">等待第一题…</div>
           )}
+
+          {/* 已作答等待浮层 */}
+          <AnimatePresence>
+            {waitingForOthers && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white text-xs px-3.5 py-2 rounded-full flex items-center gap-2 backdrop-blur"
+                style={{ backgroundColor: 'rgba(40,35,30,0.82)' }}
+              >
+                <motion.span
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                >
+                  ⏳
+                </motion.span>
+                已作答,等待其他玩家({answeredIds.size}/{onlineTotal})
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+
         <div>
-          <h3 className="font-semibold mb-2">玩家</h3>
-          <PkPlayerList
-            players={snapshot.players}
-            totalQuestions={totalQ}
-            hostId={snapshot.host_id}
-            meId={meId}
-          />
+          {liveRanking && (
+            <PkLiveRanking
+              items={liveRanking}
+              meId={meId}
+              totalQuestions={totalQ}
+              gains={lastGains}
+              settleSeq={settleSeq}
+            />
+          )}
         </div>
       </div>
     </div>

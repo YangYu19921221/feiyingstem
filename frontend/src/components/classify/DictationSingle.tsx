@@ -6,6 +6,8 @@ interface DictationSingleProps {
   disabled?: boolean;
   /** Server-side timeout in ms; UI countdown only — server is source of truth. */
   timeoutMs?: number;
+  /** 左上角题型标签,如 听写 / 过关 */
+  label?: string;
 }
 
 export default function DictationSingle({
@@ -13,6 +15,7 @@ export default function DictationSingle({
   onAnswer,
   disabled = false,
   timeoutMs = 60_000,
+  label = '听写',
 }: DictationSingleProps) {
   const [text, setText] = useState('');
   const [remaining, setRemaining] = useState(timeoutMs);
@@ -35,7 +38,7 @@ export default function DictationSingle({
 
   return (
     <div className="flex flex-col p-6 bg-white rounded-2xl shadow-md">
-      <p className="text-sm text-gray-500">听写</p>
+      <p className="text-sm text-gray-500">{label}</p>
       <p className="text-2xl font-semibold mb-1">{word.translation}</p>
       <p className="text-xs text-gray-400 mb-4">剩余 {Math.ceil(remaining / 1000)} 秒</p>
       <input

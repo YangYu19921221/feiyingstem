@@ -29,6 +29,9 @@ class PlayerState:
     correct: int = 0
     wrong: int = 0
     total_time_ms: int = 0
+    points: int = 0          # 累计得分(基础分+手速加成,服务端权威)
+    streak: int = 0          # 当前连击(连续答对数)
+    best_streak: int = 0     # 本局最高连击
     current_word_idx: int = 0
     finished: bool = False
     last_heartbeat_at: datetime = field(default_factory=datetime.utcnow)
@@ -40,10 +43,14 @@ class RoomState:
     room_id: int
     invite_code: str
     host_id: int
-    unit_id: int
     max_players: int
     status: StatusLiteral
-    word_ids: list[int]
+    word_ids: list[int]                  # 开局前为空;开局时从「所有人都背过」交集里随机抽 word_count 个
+    unit_id: Optional[int] = None        # 旧版按单元开房的遗留字段,现不再使用
+    word_count: int = 10                 # 房主选的每局词数(每词 4 阶段)
+    base_points: int = 100               # 无学段信息单词的兜底基础分
+    word_points: dict[int, int] = field(default_factory=dict)  # word_id → 每题基础分(按该词学段)
+    word_lookup: dict[int, Any] = field(default_factory=dict)  # word_id → Word ORM(开局时装载,全房共享)
     current_phase: PhaseLiteral = "classify"
     current_word_idx: int = 0  # 全局题号(跨 phase 不重置)
     players: dict[int, PlayerState] = field(default_factory=dict)
@@ -61,3 +68,6 @@ class RoomState:
     def current_word_id(self) -> int:
         idx_in_phase = self.current_word_idx % len(self.word_ids)
         return self.word_ids[idx_in_phase]
+
+    def points_for_word(self, word_id: int) -> int:
+        return self.word_points.get(word_id, self.base_points)

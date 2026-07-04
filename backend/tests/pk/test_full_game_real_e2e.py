@@ -79,7 +79,7 @@ async def test_real_e2e_http_create_join_then_full_game(
     create_resp = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token1}"},
-        json={"unit_id": unit.id, "max_players": 2},
+        json={"max_players": 2, "word_count": 10},
     )
     assert create_resp.status_code == 200, create_resp.text
     create_body = create_resp.json()
@@ -102,7 +102,7 @@ async def test_real_e2e_http_create_join_then_full_game(
     assert room_state is not None
     assert host_id in room_state.players
     assert joiner_id in room_state.players  # ← THIS would fail before C1 fix
-    assert room_state.word_ids == word_ids
+    assert room_state.word_ids == []  # 词在开局时才抽
 
     # === Patch WS-side DB hooks (structural; same as test_full_game.py) ===
     fake_user1 = User(
@@ -121,6 +121,13 @@ async def test_real_e2e_http_create_join_then_full_game(
     async def fake_word_lookup(db, ids):
         return {wid: _FakeWord(wid) for wid in ids}
 
+    async def fake_learned(user_ids, ids=None):
+        # 所有玩家背过 fixture 里的全部词 → 交集 = 全部 4 个
+        return {uid: set(word_ids) for uid in user_ids}
+
+    async def fake_word_points(ids):
+        return {wid: 100 for wid in ids}
+
     persist_calls = []
 
     async def fake_persist(room, db):
@@ -130,9 +137,13 @@ async def test_real_e2e_http_create_join_then_full_game(
     original_auth = pk_websocket._authenticate
     original_lookup = pk_websocket._word_lookup_for_room
     original_persist = pk_websocket.persist_finished_room
+    original_learned = pk_websocket._load_learned_for_room
+    original_points = pk_websocket._load_word_points_for_room
     pk_websocket._authenticate = fake_auth
     pk_websocket._word_lookup_for_room = fake_word_lookup
     pk_websocket.persist_finished_room = fake_persist
+    pk_websocket._load_learned_for_room = fake_learned
+    pk_websocket._load_word_points_for_room = fake_word_points
 
     try:
         with TestClient(app) as tc:
@@ -209,3 +220,5 @@ async def test_real_e2e_http_create_join_then_full_game(
         pk_websocket._authenticate = original_auth
         pk_websocket._word_lookup_for_room = original_lookup
         pk_websocket.persist_finished_room = original_persist
+        pk_websocket._load_learned_for_room = original_learned
+        pk_websocket._load_word_points_for_room = original_points

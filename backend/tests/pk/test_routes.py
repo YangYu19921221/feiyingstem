@@ -14,13 +14,12 @@ def reset_manager():
 
 
 @pytest.mark.asyncio
-async def test_create_room_returns_invite_code(client, auth_student_token, sample_unit_with_words):
+async def test_create_room_returns_invite_code(client, auth_student_token):
     token, user_id = auth_student_token
-    unit, word_ids = sample_unit_with_words
     resp = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token}"},
-        json={"unit_id": unit.id, "max_players": 4},
+        json={"max_players": 4, "word_count": 10},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -29,24 +28,25 @@ async def test_create_room_returns_invite_code(client, auth_student_token, sampl
 
 
 @pytest.mark.asyncio
-async def test_create_room_requires_words_in_unit(client, auth_student_token, empty_unit):
+async def test_create_room_word_count_bounds(client, auth_student_token):
+    """word_count 超出 4~30 → 422。"""
     token, _ = auth_student_token
-    resp = await client.post(
-        "/api/v1/pk/rooms",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"unit_id": empty_unit.id, "max_players": 4},
-    )
-    assert resp.status_code == 400
+    for bad in (3, 31):
+        resp = await client.post(
+            "/api/v1/pk/rooms",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"max_players": 4, "word_count": bad},
+        )
+        assert resp.status_code == 422, f"word_count={bad}"
 
 
 @pytest.mark.asyncio
-async def test_lookup_room_by_invite_code(client, auth_student_token, sample_unit_with_words):
+async def test_lookup_room_by_invite_code(client, auth_student_token):
     token, _ = auth_student_token
-    unit, _ = sample_unit_with_words
     resp = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token}"},
-        json={"unit_id": unit.id, "max_players": 4},
+        json={"max_players": 4, "word_count": 8},
     )
     code = resp.json()["invite_code"]
     look = await client.get(
@@ -54,7 +54,10 @@ async def test_lookup_room_by_invite_code(client, auth_student_token, sample_uni
         headers={"Authorization": f"Bearer {token}"},
     )
     assert look.status_code == 200
-    assert look.json()["status"] == "waiting"
+    body = look.json()
+    assert body["status"] == "waiting"
+    assert body["word_count"] == 8
+    assert body["total_words"] == 0  # 开局前词还没抽
 
 
 @pytest.mark.asyncio
@@ -69,16 +72,13 @@ async def test_my_history_empty(client, auth_student_token):
 
 
 @pytest.mark.asyncio
-async def test_join_room_by_code_success(
-    client, two_student_tokens, sample_unit_with_words,
-):
+async def test_join_room_by_code_success(client, two_student_tokens):
     """房主创建房间,加入者通过邀请码加入 → 返回包含两位玩家的房间快照。"""
     token1, token2, host_id, joiner_id = two_student_tokens
-    unit, _ = sample_unit_with_words
     resp = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token1}"},
-        json={"unit_id": unit.id, "max_players": 4},
+        json={"max_players": 4, "word_count": 10},
     )
     code = resp.json()["invite_code"]
 
@@ -106,25 +106,22 @@ async def test_join_room_invalid_code(client, auth_student_token):
 
 
 @pytest.mark.asyncio
-async def test_join_room_already_in_other_room(
-    client, two_student_tokens, sample_unit_with_words,
-):
+async def test_join_room_already_in_other_room(client, two_student_tokens):
     """已在某个房间中的用户不能再加入另一个房间。"""
     token1, token2, _host_id, _joiner_id = two_student_tokens
-    unit, _ = sample_unit_with_words
 
     # token1 创建房间 A
     resp_a = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token1}"},
-        json={"unit_id": unit.id, "max_players": 4},
+        json={"max_players": 4, "word_count": 10},
     )
     code_a = resp_a.json()["invite_code"]
     # token2 创建房间 B(成为另一个房间的房主)
     resp_b = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token2}"},
-        json={"unit_id": unit.id, "max_players": 4},
+        json={"max_players": 4, "word_count": 10},
     )
     assert resp_b.status_code == 200
 
@@ -138,15 +135,12 @@ async def test_join_room_already_in_other_room(
 
 
 @pytest.mark.asyncio
-async def test_join_room_when_full(
-    client, db_session, two_student_tokens, sample_unit_with_words,
-):
+async def test_join_room_when_full(client, db_session, two_student_tokens):
     """max_players=2 的房间已满 2 人,第三个用户加入 → 409 ROOM_FULL。"""
     from app.models.user import User
     from tests.conftest import _make_token
 
     token1, token2, _h, _j = two_student_tokens
-    unit, _ = sample_unit_with_words
 
     # 创建一个第三方用户(避免与 auth_student_token 中的 username 冲突)
     user3 = User(
@@ -166,7 +160,7 @@ async def test_join_room_when_full(
     resp = await client.post(
         "/api/v1/pk/rooms",
         headers={"Authorization": f"Bearer {token1}"},
-        json={"unit_id": unit.id, "max_players": 2},
+        json={"max_players": 2, "word_count": 10},
     )
     code = resp.json()["invite_code"]
 
@@ -187,19 +181,16 @@ async def test_join_room_when_full(
 
 
 @pytest.mark.asyncio
-async def test_lookup_finished_room_returns_410(
-    client, two_student_tokens, sample_unit_with_words, db_session,
-):
+async def test_lookup_finished_room_returns_410(client, two_student_tokens, db_session):
     """A finished/archived room returns 410 ROOM_FINISHED, distinct from 404."""
     from app.models.pk import PkRoom
     import json
     token1, token2, host_id, joiner_id = two_student_tokens
-    unit, _ = sample_unit_with_words
-    # Insert a fake archived room
+    # Insert a fake archived room(unit_id 已可空)
     archived = PkRoom(
         invite_code="DONEXX",
         host_id=host_id,
-        unit_id=unit.id,
+        unit_id=None,
         max_players=2,
         status="finished",
         word_ids=json.dumps([1]),
@@ -216,18 +207,15 @@ async def test_lookup_finished_room_returns_410(
 
 
 @pytest.mark.asyncio
-async def test_join_finished_room_returns_410(
-    client, two_student_tokens, sample_unit_with_words, db_session,
-):
+async def test_join_finished_room_returns_410(client, two_student_tokens, db_session):
     """Joining a finished/archived room returns 410, not 404."""
     from app.models.pk import PkRoom
     import json
     token1, _, host_id, _ = two_student_tokens
-    unit, _ = sample_unit_with_words
     archived = PkRoom(
         invite_code="DONEYY",
         host_id=host_id,
-        unit_id=unit.id,
+        unit_id=None,
         max_players=2,
         status="finished",
         word_ids=json.dumps([1]),
@@ -241,3 +229,84 @@ async def test_join_finished_room_returns_410(
     )
     assert resp.status_code == 410
     assert resp.json()["detail"] == "ROOM_FINISHED"
+
+
+# ---------- 自定义人数(2~20) ----------
+
+@pytest.mark.asyncio
+async def test_create_room_allows_up_to_20_players(client, auth_student_token):
+    token, _ = auth_student_token
+    resp = await client.post(
+        "/api/v1/pk/rooms",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"max_players": 20, "word_count": 10},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_create_room_rejects_over_20_players(client, auth_student_token):
+    token, _ = auth_student_token
+    resp = await client.post(
+        "/api/v1/pk/rooms",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"max_players": 21, "word_count": 10},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_room_rejects_solo_room(client, auth_student_token):
+    token, _ = auth_student_token
+    resp = await client.post(
+        "/api/v1/pk/rooms",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"max_players": 1, "word_count": 10},
+    )
+    assert resp.status_code == 422
+
+
+# ---------- 逐词学段分值 ----------
+
+@pytest.mark.asyncio
+async def test_load_word_points_by_book_grade(db_session, sample_unit_with_words, senior_unit_with_words):
+    """无年级书的词 → 100;高一书的词 → 150。"""
+    from app.api.v1.pk_routes import load_word_points
+
+    _, primary_ids = sample_unit_with_words   # 书无 grade_level
+    _, senior_ids = senior_unit_with_words    # 书 grade_level=高一
+    points = await load_word_points(db_session, primary_ids + senior_ids)
+    for wid in primary_ids:
+        assert points[wid] == 100
+    for wid in senior_ids:
+        assert points[wid] == 150
+
+
+@pytest.mark.asyncio
+async def test_load_word_points_word_without_book_defaults_primary(db_session):
+    """不属于任何书的词按小学 100 兜底。"""
+    from app.api.v1.pk_routes import load_word_points
+    from app.models.word import Word
+
+    w = Word(word="orphan_word", difficulty=1)
+    db_session.add(w)
+    await db_session.commit()
+    await db_session.refresh(w)
+    points = await load_word_points(db_session, [w.id])
+    assert points[w.id] == 100
+
+
+@pytest.mark.asyncio
+async def test_load_learned_word_ids_full_vocab(db_session, auth_student_token, sample_unit_with_words):
+    """word_ids=None 时返回该生全库背过的词。"""
+    from app.api.v1.pk_routes import load_learned_word_ids
+    from app.models.learning import WordMastery
+
+    _, user_id = auth_student_token
+    _, word_ids = sample_unit_with_words
+    for wid in word_ids[:3]:
+        db_session.add(WordMastery(user_id=user_id, word_id=wid, total_encounters=2))
+    await db_session.commit()
+
+    learned = await load_learned_word_ids(db_session, [user_id], None)
+    assert learned[user_id] == set(word_ids[:3])

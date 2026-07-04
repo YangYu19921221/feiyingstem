@@ -32,6 +32,7 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
             "correct": ps.correct,
             "wrong": ps.wrong,
             "total_time_ms": ps.total_time_ms,
+            "points": ps.points,
             "is_disconnected": (ps.correct + ps.wrong) < total_questions,
         }
         for ps in room.players.values()

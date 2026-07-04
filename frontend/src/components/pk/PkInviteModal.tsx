@@ -21,23 +21,24 @@ export default function PkInviteModal({ inviteCode, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl p-6 w-80 shadow-xl">
-        <h3 className="text-lg font-bold mb-2">邀请码</h3>
-        <div className="text-3xl font-mono tracking-widest text-center my-4 select-all">
+        <h3 className="text-lg font-bold mb-1 text-ink">🎉 房间创建成功</h3>
+        <p className="text-xs text-ink-mute">邀请码</p>
+        <div className="text-4xl font-mono font-bold tracking-[0.3em] text-center my-4 select-all text-primary">
           {inviteCode}
         </div>
-        <p className="text-sm text-gray-500 mb-4">
-          把这个 6 位码发给同班同学,他们就能加入这一局 PK
+        <p className="text-sm text-ink-soft mb-4">
+          把这个 6 位码发给同班同学,他们就能加入这一局 PK,马上进入房间…
         </p>
         <div className="flex gap-2">
           <button
             onClick={copy}
-            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg font-medium"
+            className="btn-glow flex-1 px-4 py-2 text-white rounded-xl font-medium"
           >
-            {copied ? '已复制' : '复制'}
+            {copied ? '✅ 已复制' : '📋 复制'}
           </button>
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 bg-gray-200 rounded-lg font-medium"
+            className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-ink rounded-xl font-medium transition"
           >
             关闭
           </button>

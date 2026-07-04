@@ -8,8 +8,8 @@ StatusLiteral = Literal["waiting", "playing", "finished", "abandoned"]
 
 
 class CreateRoomRequest(BaseModel):
-    unit_id: int
-    max_players: int = Field(4, ge=2, le=6)
+    max_players: int = Field(4, ge=2, le=20)
+    word_count: int = Field(10, ge=4, le=30)  # 每局词数,每词 4 阶段
 
 
 class JoinRoomRequest(BaseModel):
@@ -24,6 +24,8 @@ class PlayerSnapshot(BaseModel):
     correct: int
     wrong: int
     total_time_ms: int
+    points: int = 0
+    streak: int = 0
     finished: bool
 
 
@@ -31,12 +33,13 @@ class RoomSnapshot(BaseModel):
     room_id: int
     invite_code: str
     host_id: int
-    unit_id: int
+    unit_id: Optional[int] = None
     max_players: int
     status: StatusLiteral
     current_phase: PhaseLiteral
     current_word_idx: int
-    total_words: int
+    total_words: int          # 开局前为 0,开局后 = 实际抽到的词数
+    word_count: int = 10      # 房主设定的目标词数
     players: list[PlayerSnapshot]
 
 
@@ -48,7 +51,7 @@ class CreateRoomResponse(BaseModel):
 class PlayerHistoryItem(BaseModel):
     room_id: int
     invite_code: str
-    unit_id: int
+    unit_id: Optional[int] = None
     finished_at: Optional[datetime]
     rank: Optional[int]
     accuracy: Optional[float]

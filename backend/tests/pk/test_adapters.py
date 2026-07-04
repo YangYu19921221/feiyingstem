@@ -59,3 +59,21 @@ def test_exam_adapter_correct_option():
 def test_unknown_phase_raises():
     with pytest.raises(KeyError):
         get_adapter("unknown_phase")
+
+
+def test_exam_adapter_text_mode_judges_spelling():
+    """过关阶段当前是「重新拼写」:payload 带 text 时按文本判(修复恒判对 bug)。"""
+    ad = get_adapter("exam")
+    word = FakeWord(1, "apple", "苹果")
+    assert ad.judge(word, {"text": "apple"}) is True
+    assert ad.judge(word, {"text": " Apple. "}) is True   # 容错同听写
+    assert ad.judge(word, {"text": "aple"}) is False
+    assert ad.judge(word, {"text": ""}) is False
+
+
+def test_exam_adapter_text_takes_precedence_over_selected():
+    """带 text 时忽略 selected/correct(旧客户端曾固定发 0/0)。"""
+    ad = get_adapter("exam")
+    word = FakeWord(1, "apple", "苹果")
+    assert ad.judge(word, {"text": "wrong", "selected": 0, "correct": 0}) is False
+    assert ad.judge(word, {"text": "apple", "selected": 1, "correct": 2}) is True

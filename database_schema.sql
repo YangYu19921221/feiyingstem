@@ -441,8 +441,8 @@ CREATE TABLE IF NOT EXISTS pk_rooms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     invite_code VARCHAR(6) UNIQUE NOT NULL,
     host_id INTEGER NOT NULL,
-    unit_id INTEGER NOT NULL,
-    max_players INTEGER NOT NULL DEFAULT 4 CHECK(max_players BETWEEN 2 AND 6),
+    unit_id INTEGER,  -- 旧版按单元开房的遗留字段,现为空
+    max_players INTEGER NOT NULL DEFAULT 4 CHECK(max_players BETWEEN 2 AND 20),
     status VARCHAR(10) NOT NULL,  -- waiting/playing/finished/abandoned
     word_ids TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

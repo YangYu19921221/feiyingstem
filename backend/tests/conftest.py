@@ -76,8 +76,29 @@ async def sample_unit_with_words(db_session):
     db_session.add(unit)
     await db_session.flush()
     word_ids = []
-    for i, text in enumerate(["apple", "banana", "cat"]):
+    for i, text in enumerate(["apple", "banana", "cat", "dog"]):
         w = Word(word=f"{text}_pk_{i}", difficulty=2)
+        db_session.add(w)
+        await db_session.flush()
+        db_session.add(BookWord(book_id=book.id, word_id=w.id, order_index=i))
+        db_session.add(UnitWord(unit_id=unit.id, word_id=w.id, order_index=i))
+        word_ids.append(w.id)
+    await db_session.commit()
+    return unit, word_ids
+
+
+@pytest_asyncio.fixture
+async def senior_unit_with_words(db_session):
+    """高中(高一)单词本的单元,用于学段分值测试。"""
+    book = WordBook(name="高中必修一", is_public=True, grade_level="高一")
+    db_session.add(book)
+    await db_session.flush()
+    unit = Unit(book_id=book.id, unit_number=1, name="Unit 1")
+    db_session.add(unit)
+    await db_session.flush()
+    word_ids = []
+    for i, text in enumerate(["ambition", "biology", "campus", "dilemma"]):
+        w = Word(word=f"{text}_sr_{i}", difficulty=2)
         db_session.add(w)
         await db_session.flush()
         db_session.add(BookWord(book_id=book.id, word_id=w.id, order_index=i))

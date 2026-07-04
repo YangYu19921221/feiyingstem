@@ -68,6 +68,13 @@ async def test_full_two_player_game_emits_game_finished(two_student_tokens):
     async def fake_word_lookup(db, word_ids):
         return {wid: _FakeWord(wid) for wid in word_ids}
 
+    async def fake_learned(user_ids, word_ids=None):
+        # 所有玩家共同背过词 {word_id}
+        return {uid: {word_id} for uid in user_ids}
+
+    async def fake_word_points(ids):
+        return {wid: 100 for wid in ids}
+
     persist_calls = []
 
     async def fake_persist(room, db):
@@ -77,9 +84,15 @@ async def test_full_two_player_game_emits_game_finished(two_student_tokens):
     original_auth = pk_websocket._authenticate
     original_lookup = pk_websocket._word_lookup_for_room
     original_persist = pk_websocket.persist_finished_room
+    original_learned = pk_websocket._load_learned_for_room
+    original_points = pk_websocket._load_word_points_for_room
+    original_min_common = pk_websocket.MIN_COMMON_WORDS
     pk_websocket._authenticate = fake_auth
     pk_websocket._word_lookup_for_room = fake_word_lookup
     pk_websocket.persist_finished_room = fake_persist
+    pk_websocket._load_learned_for_room = fake_learned
+    pk_websocket._load_word_points_for_room = fake_word_points
+    pk_websocket.MIN_COMMON_WORDS = 1  # 本测试用 1 词局
 
     try:
         with TestClient(app) as tc:
@@ -144,3 +157,6 @@ async def test_full_two_player_game_emits_game_finished(two_student_tokens):
         pk_websocket._authenticate = original_auth
         pk_websocket._word_lookup_for_room = original_lookup
         pk_websocket.persist_finished_room = original_persist
+        pk_websocket._load_learned_for_room = original_learned
+        pk_websocket._load_word_points_for_room = original_points
+        pk_websocket.MIN_COMMON_WORDS = original_min_common

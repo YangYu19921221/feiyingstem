@@ -12,7 +12,7 @@ class PkRoom(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     invite_code = Column(String(6), unique=True, nullable=False, index=True)
     host_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    unit_id = Column(Integer, ForeignKey("units.id"), nullable=False)
+    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)  # 旧版按单元开房的遗留,现为空
     max_players = Column(Integer, nullable=False, default=4)
     status = Column(String(10), nullable=False, index=True)
     word_ids = Column(String, nullable=False)  # JSON string
@@ -21,7 +21,7 @@ class PkRoom(Base):
     finished_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
-        CheckConstraint("max_players BETWEEN 2 AND 6", name="ck_pk_rooms_max_players"),
+        CheckConstraint("max_players BETWEEN 2 AND 20", name="ck_pk_rooms_max_players"),
     )
 
 

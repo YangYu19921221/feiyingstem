@@ -105,10 +105,22 @@ async def test_broadcast_send_failure_marks_player_offline(two_student_tokens):
             id = word_ids[0]; word = "apple"; translation = "苹果"
         return {word_ids[0]: FW()}
 
+    async def fake_learned(user_ids, word_ids=None):
+        return {uid: {1} for uid in user_ids}  # 共同背过词 {1}
+
+    async def fake_word_points(word_ids):
+        return {wid: 100 for wid in word_ids}
+
     original_auth = pk_websocket._authenticate
     original_lookup = pk_websocket._word_lookup_for_room
+    original_learned = pk_websocket._load_learned_for_room
+    original_points = pk_websocket._load_word_points_for_room
+    original_min_common = pk_websocket.MIN_COMMON_WORDS
     pk_websocket._authenticate = fake_auth
     pk_websocket._word_lookup_for_room = fake_word_lookup
+    pk_websocket._load_learned_for_room = fake_learned
+    pk_websocket._load_word_points_for_room = fake_word_points
+    pk_websocket.MIN_COMMON_WORDS = 1  # 本测试 1 词局,只为触发广播
 
     try:
         with TestClient(app) as tc:
@@ -161,6 +173,9 @@ async def test_broadcast_send_failure_marks_player_offline(two_student_tokens):
     finally:
         pk_websocket._authenticate = original_auth
         pk_websocket._word_lookup_for_room = original_lookup
+        pk_websocket._load_learned_for_room = original_learned
+        pk_websocket._load_word_points_for_room = original_points
+        pk_websocket.MIN_COMMON_WORDS = original_min_common
 
 
 def test_heartbeat_watchdog_marks_stale_players_offline():
@@ -342,3 +357,340 @@ def test_cancel_room_timers_removes_all_keys_for_room():
         pk_websocket._TIMEOUT_TASKS.pop((200, 0, "classify"), None)
 
     asyncio.run(go())
+
+
+# ---------- 开局选词:只考所有人都背过的单词 ----------
+
+def _setup_start_game_patches(pk_websocket, fake_users, learned_map):
+    """打桩 auth / word_lookup / learned / word_points;返回恢复函数。"""
+    async def fake_auth(t):
+        return fake_users.get(t)
+
+    class _FW:
+        def __init__(self, wid):
+            self.id = wid
+            self.word = f"w{wid}"
+            self.translation = f"释义{wid}"
+
+    async def fake_word_lookup(db, word_ids):
+        return {wid: _FW(wid) for wid in word_ids}
+
+    async def fake_learned(user_ids, word_ids=None):
+        # word_ids=None 表示全库:直接返回 learned_map
+        return {uid: set(learned_map.get(uid, set())) for uid in user_ids}
+
+    async def fake_word_points(word_ids):
+        return {wid: 100 for wid in word_ids}
+
+    originals = (
+        pk_websocket._authenticate,
+        pk_websocket._word_lookup_for_room,
+        pk_websocket._load_learned_for_room,
+        pk_websocket._load_word_points_for_room,
+    )
+    pk_websocket._authenticate = fake_auth
+    pk_websocket._word_lookup_for_room = fake_word_lookup
+    pk_websocket._load_learned_for_room = fake_learned
+    pk_websocket._load_word_points_for_room = fake_word_points
+
+    def restore():
+        (pk_websocket._authenticate,
+         pk_websocket._word_lookup_for_room,
+         pk_websocket._load_learned_for_room,
+         pk_websocket._load_word_points_for_room) = originals
+
+    return restore
+
+
+@pytest.mark.asyncio
+async def test_start_game_draws_from_common_learned_words(two_student_tokens):
+    """开局时从「所有在线玩家都背过」的交集里抽词(word_count 上限)。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_filter@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token2: User(id=joiner_id, username="j", email="j_filter@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {
+        host_id: {11, 12, 13, 14, 15},
+        joiner_id: {11, 12, 14, 15},  # 没背过 13
+    })
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                ws1.receive_json()  # room_state
+                with tc.websocket_connect(
+                    f"/api/v1/pk/ws?token={token2}&room_id={room.room_id}"
+                ) as ws2:
+                    ws2.receive_json()  # room_state
+                    for _ in range(10):
+                        if ws1.receive_json()["type"] == "player_reconnected":
+                            break
+
+                    ws1.send_json({"type": "start_game"})
+                    # 先收 room_state(词已抽好),再收第一题
+                    state_msg = None
+                    push_msg = None
+                    for _ in range(10):
+                        msg = ws1.receive_json()
+                        if msg["type"] == "room_state":
+                            state_msg = msg
+                        if msg["type"] == "question_pushed":
+                            push_msg = msg
+                            break
+                    assert state_msg is not None and push_msg is not None
+                    assert state_msg["room"]["total_words"] == 4
+                    assert state_msg["room"]["status"] == "playing"
+                    assert push_msg["word"]["id"] in {11, 12, 14, 15}
+                    assert push_msg["points"] == 100
+
+                    cur = manager.get_room(room.room_id)
+                    # 交集抽词(13 被排除),word_count=10 > 4 → 全抽
+                    assert set(cur.word_ids) == {11, 12, 14, 15}
+                    assert len(cur.word_lookup) == 4
+    finally:
+        restore()
+
+
+@pytest.mark.asyncio
+async def test_start_game_respects_word_count_cap(two_student_tokens):
+    """交集词多于 word_count 时只抽 word_count 个。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=5)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    pool = set(range(100, 120))  # 20 个共同词
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_cap@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token2: User(id=joiner_id, username="j", email="j_cap@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {
+        host_id: pool, joiner_id: pool,
+    })
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                ws1.receive_json()
+                with tc.websocket_connect(
+                    f"/api/v1/pk/ws?token={token2}&room_id={room.room_id}"
+                ) as ws2:
+                    ws2.receive_json()
+                    for _ in range(10):
+                        if ws1.receive_json()["type"] == "player_reconnected":
+                            break
+                    ws1.send_json({"type": "start_game"})
+                    for _ in range(10):
+                        if ws1.receive_json()["type"] == "question_pushed":
+                            break
+                    cur = manager.get_room(room.room_id)
+                    assert len(cur.word_ids) == 5           # 抽满 word_count
+                    assert set(cur.word_ids) <= pool        # 全部来自交集
+                    assert len(set(cur.word_ids)) == 5      # 不重复
+    finally:
+        restore()
+
+
+@pytest.mark.asyncio
+async def test_start_game_rejects_when_not_enough_common_words(two_student_tokens):
+    """共同背过的词 < MIN_COMMON_WORDS 时拒绝开局,房间保持 waiting。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_few@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token2: User(id=joiner_id, username="j", email="j_few@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {
+        host_id: {11, 12, 13, 14, 15},
+        joiner_id: {11, 12},  # 只背过 2 个 → 交集不足
+    })
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                ws1.receive_json()  # room_state
+                with tc.websocket_connect(
+                    f"/api/v1/pk/ws?token={token2}&room_id={room.room_id}"
+                ) as ws2:
+                    ws2.receive_json()  # room_state
+                    for _ in range(10):
+                        if ws1.receive_json()["type"] == "player_reconnected":
+                            break
+
+                    ws1.send_json({"type": "start_game"})
+                    msg = ws1.receive_json()
+                    assert msg["type"] == "error"
+                    assert msg["code"] == "NOT_ENOUGH_COMMON_WORDS"
+                    assert msg["common_count"] == 2
+
+                    cur = manager.get_room(room.room_id)
+                    assert cur.status == "waiting"
+                    assert cur.word_ids == []  # 未被修改
+    finally:
+        restore()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_mid_game_receives_current_question(two_student_tokens):
+    """对局中重连:应立即收到当前题 question_pushed(否则卡到下一题)。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+    from app.services.pk.state import PlayerState
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_rejoin@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {})
+    try:
+        # 直接把房间置为对局中(绕过 start_game,聚焦重连路径)
+        room.status = "playing"
+        room.word_ids = [11, 12, 13, 14]
+        room.word_points = {11: 100, 12: 100, 13: 150, 14: 100}
+        class _FW:
+            def __init__(self, wid):
+                self.id = wid; self.word = f"w{wid}"; self.translation = f"释义{wid}"
+        room.word_lookup.update({wid: _FW(wid) for wid in room.word_ids})
+        room.current_word_idx = 2  # 第 3 题(word 13,高中词 150 分)
+        # 其他玩家保持在房(joiner 离线中)
+        room.players[joiner_id].online = False
+
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                first = ws1.receive_json()
+                assert first["type"] == "room_state"
+                second = ws1.receive_json()
+                assert second["type"] == "question_pushed"
+                assert second["word_idx"] == 2
+                assert second["word"]["id"] == 13
+                assert second["points"] == 150
+                assert second["phase"] == "classify"
+    finally:
+        restore()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_after_answering_gets_answered_marker(two_student_tokens):
+    """重连时若本题已作答,补发 player_answered 让客户端进入等待态。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+    from app.services.pk.state import AnswerRecord
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_rejoin2@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {})
+    try:
+        room.status = "playing"
+        room.word_ids = [11, 12]
+        class _FW:
+            def __init__(self, wid):
+                self.id = wid; self.word = f"w{wid}"; self.translation = f"释义{wid}"
+        room.word_lookup.update({wid: _FW(wid) for wid in room.word_ids})
+        room.current_word_idx = 0
+        # host 已答过第 0 题
+        room.answers[0] = {host_id: AnswerRecord(
+            user_id=host_id, word_id=11, phase="classify",
+            is_correct=True, time_spent_ms=1000, payload={},
+        )}
+
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                types = [ws1.receive_json()["type"] for _ in range(3)]
+                assert types == ["room_state", "question_pushed", "player_answered"]
+    finally:
+        restore()
+
+
+@pytest.mark.asyncio
+async def test_host_sees_joiner_via_room_state_broadcast(two_student_tokens):
+    """回归:新玩家连上 WS 后,房主必须收到含 2 名玩家的 room_state 广播。
+
+    (旧版只把 room_state 发给新玩家自己,房主列表永远 1/N,无法开局)
+    """
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+    manager.join_room(invite_code=room.invite_code, user_id=joiner_id, nickname="Joiner")
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_seen@example.com",
+                     hashed_password="x", role="student", is_active=True),
+        token2: User(id=joiner_id, username="j", email="j_seen@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {})
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                first = ws1.receive_json()
+                assert first["type"] == "room_state"
+
+                with tc.websocket_connect(
+                    f"/api/v1/pk/ws?token={token2}&room_id={room.room_id}"
+                ) as ws2:
+                    ws2.receive_json()  # joiner 自己的 room_state
+                    # host 侧:必须收到刷新后的 room_state,包含 2 名在线玩家
+                    got_two_players = False
+                    for _ in range(10):
+                        msg = ws1.receive_json()
+                        if msg["type"] == "room_state" and len(msg["room"]["players"]) == 2:
+                            players = {p["user_id"]: p for p in msg["room"]["players"]}
+                            assert players[joiner_id]["online"] is True
+                            got_two_players = True
+                            break
+                    assert got_two_players, "房主没有收到包含新玩家的 room_state 广播"
+    finally:
+        restore()

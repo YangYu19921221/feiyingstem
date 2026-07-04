@@ -25,9 +25,11 @@ async def test_persist_finished_room(db_session):
     room.players[1].correct = 5
     room.players[1].wrong = 3
     room.players[1].total_time_ms = 12000
+    room.players[1].points = 500
     room.players[2].correct = 7
     room.players[2].wrong = 1
     room.players[2].total_time_ms = 14000
+    room.players[2].points = 700
 
     await persist_finished_room(room, db_session)
 
@@ -39,7 +41,8 @@ async def test_persist_finished_room(db_session):
     players = (await db_session.execute(select(PkRoomPlayer).order_by(PkRoomPlayer.rank))).scalars().all()
     assert len(players) == 2
     assert players[0].rank == 1
-    assert players[0].user_id == 2  # 700-140=560 vs 500-120=380, Bob 第一
+    assert players[0].user_id == 2  # points 700 vs 500,Bob 第一
+    assert players[0].final_score == 700
     assert players[1].rank == 2
 
 

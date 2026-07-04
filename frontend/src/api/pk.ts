@@ -11,6 +11,8 @@ export interface PkPlayer {
   correct: number;
   wrong: number;
   total_time_ms: number;
+  points: number;
+  streak: number;
   finished: boolean;
 }
 
@@ -18,13 +20,28 @@ export interface PkRoomSnapshot {
   room_id: number;
   invite_code: string;
   host_id: number;
-  unit_id: number;
+  unit_id: number | null;
   max_players: number;
   status: PkStatus;
   current_phase: PkPhase;
   current_word_idx: number;
-  total_words: number;
+  total_words: number;   // 开局前为 0,开局后 = 实际抽到的词数
+  word_count: number;    // 房主设定的目标词数
   players: PkPlayer[];
+}
+
+/** live_ranking 事件里的单行榜单数据 */
+export interface PkLiveRankItem {
+  user_id: number;
+  nickname: string;
+  points: number;
+  correct: number;
+  wrong: number;
+  streak: number;
+  total_time_ms: number;
+  current_word_idx: number;
+  online: boolean;
+  rank: number;
 }
 
 export interface PkHistoryItem {
@@ -42,19 +59,11 @@ export interface CreateRoomResponse {
   invite_code: string;
 }
 
-export interface PkUnitItem {
-  id: number;
-  name: string;
-  unit_number: number;
-  description: string | null;
-  word_count: number;
-}
-
 export const pkApi = {
-  createRoom: (unitId: number, maxPlayers: number) =>
+  createRoom: (maxPlayers: number, wordCount: number) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
-      unit_id: unitId,
       max_players: maxPlayers,
+      word_count: wordCount,
     }),
 
   lookupByCode: (code: string) =>
@@ -64,7 +73,4 @@ export const pkApi = {
     api.post<PkRoomSnapshot>(`/pk/rooms/by-code/${code}/join`),
 
   myHistory: () => api.get<PkHistoryItem[]>('/pk/me/history'),
-
-  listUnitsByBook: (bookId: number) =>
-    api.get<PkUnitItem[]>(`/student/books/${bookId}/units`),
 };

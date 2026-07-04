@@ -12,6 +12,7 @@ from app.schemas.pk import (
     RoomSnapshot, PlayerSnapshot, PlayerHistoryItem,
 )
 from app.services.pk import manager
+from app.services.pk.score import base_points_for_word_grades
 
 logger = logging.getLogger(__name__)
 
@@ -29,24 +30,70 @@ def _snapshot(room) -> RoomSnapshot:
         current_phase=room.current_phase,
         current_word_idx=room.current_word_idx,
         total_words=len(room.word_ids),
+        word_count=room.word_count,
         players=[
             PlayerSnapshot(
                 user_id=p.user_id, nickname=p.nickname, online=p.online,
                 current_word_idx=p.current_word_idx, correct=p.correct,
-                wrong=p.wrong, total_time_ms=p.total_time_ms, finished=p.finished,
+                wrong=p.wrong, total_time_ms=p.total_time_ms,
+                points=p.points, streak=p.streak, finished=p.finished,
             )
             for p in room.players.values()
         ],
     )
 
 
-async def _load_unit_word_ids(db: AsyncSession, unit_id: int) -> list[int]:
-    """读 unit_words 关联,按 order_index 返回 word_id 列表。"""
+async def load_learned_word_ids(
+    db: AsyncSession, user_ids: list[int], word_ids: list[int] | None = None,
+) -> dict[int, set[int]]:
+    """查各玩家「背过」的 word_id 集合(背过 = word_mastery 有记录)。
+
+    word_ids 为 None 时不限词表(全库),用于 PK 开局跨书选词。
+    """
+    per_user: dict[int, set[int]] = {uid: set() for uid in user_ids}
+    if not user_ids or (word_ids is not None and not word_ids):
+        return per_user
+    uid_marks = ",".join(f":u{i}" for i in range(len(user_ids)))
+    params: dict = {f"u{i}": v for i, v in enumerate(user_ids)}
+    word_filter = ""
+    if word_ids is not None:
+        wid_marks = ",".join(f":w{i}" for i in range(len(word_ids)))
+        params.update({f"w{i}": v for i, v in enumerate(word_ids)})
+        word_filter = f"AND word_id IN ({wid_marks}) "
     result = await db.execute(
-        text("SELECT word_id FROM unit_words WHERE unit_id = :uid ORDER BY order_index"),
-        {"uid": unit_id},
+        text(
+            f"SELECT user_id, word_id FROM word_mastery "
+            f"WHERE user_id IN ({uid_marks}) {word_filter}"
+            f"AND total_encounters > 0"
+        ),
+        params,
     )
-    return [row[0] for row in result.fetchall()]
+    for uid, wid in result.fetchall():
+        per_user[uid].add(wid)
+    return per_user
+
+
+async def load_word_points(db: AsyncSession, word_ids: list[int]) -> dict[int, int]:
+    """按词定每题基础分:取该词出现过的所有单词本年级里最早的学段。
+
+    小学 100 / 初中 120 / 高中 150;没有书籍信息的词按小学。
+    """
+    if not word_ids:
+        return {}
+    wid_marks = ",".join(f":w{i}" for i in range(len(word_ids)))
+    params = {f"w{i}": v for i, v in enumerate(word_ids)}
+    result = await db.execute(
+        text(
+            f"SELECT bw.word_id, wb.grade_level FROM book_words bw "
+            f"JOIN word_books wb ON wb.id = bw.book_id "
+            f"WHERE bw.word_id IN ({wid_marks})"
+        ),
+        params,
+    )
+    grades: dict[int, list] = {}
+    for wid, grade in result.fetchall():
+        grades.setdefault(wid, []).append(grade)
+    return {wid: base_points_for_word_grades(grades.get(wid, [])) for wid in word_ids}
 
 
 @router.post("/rooms", response_model=CreateRoomResponse)
@@ -55,14 +102,13 @@ async def create_room(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    word_ids = await _load_unit_word_ids(db, body.unit_id)
-    if not word_ids:
-        raise HTTPException(status_code=400, detail="UNIT_HAS_NO_WORDS")
+    """建房只定人数和题量;单词在开局时从「所有人都背过」的交集里随机抽取。"""
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
         room = manager.create_room(
-            host_id=user.id, unit_id=body.unit_id,
-            max_players=body.max_players, word_ids=word_ids,
+            host_id=user.id,
+            max_players=body.max_players,
+            word_count=body.word_count,
             nickname=nickname,
         )
     except manager.UserAlreadyInRoom:

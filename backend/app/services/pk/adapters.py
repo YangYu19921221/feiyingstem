@@ -60,6 +60,13 @@ class DictationAdapter:
 
 class ExamAdapter:
     def judge(self, word: Any, payload: dict) -> bool:
+        # 当前前端过关阶段是「重新拼写」题型:带 text 时按听写规则判文本。
+        # (旧版曾固定发 selected=0/correct=0,导致乱打字也恒判对)
+        if "text" in payload:
+            text = _normalize_dictation_text(payload.get("text") or "")
+            target = _normalize_dictation_text(getattr(word, "word", "") or "")
+            return text == target and target != ""
+        # 未来的选择题题型:比对选项
         selected = payload.get("selected")
         correct = payload.get("correct")
         return selected is not None and selected == correct

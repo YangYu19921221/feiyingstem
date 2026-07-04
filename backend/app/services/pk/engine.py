@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 from app.services.pk.state import RoomState, AnswerRecord, PHASES_IN_ORDER, PhaseLiteral
 from app.services.pk.adapters import get_adapter
-from app.services.pk.score import rank_players
+from app.services.pk.score import rank_players, live_ranking, compute_question_points
 
 
 PHASE_TIMEOUT_MS: dict[str, int] = {
@@ -38,9 +38,16 @@ def submit_answer(
     if user_id in bucket:
         return []  # 重复提交丢弃
 
+    # 用时只信 [0, 阶段超时] 区间:负数/超大值都会被恶意利用(手速加成、同分比时)
+    timeout_ms = PHASE_TIMEOUT_MS.get(phase, 30_000)
+    time_spent_ms = max(0, min(int(time_spent_ms), timeout_ms))
+
     word_id = room.current_word_id  # word_idx == room.current_word_idx by guard above
     word = word_lookup.get(word_id)
     is_correct = bool(get_adapter(phase).judge(word, payload))
+    points_gained = compute_question_points(
+        room.points_for_word(word_id), is_correct, time_spent_ms, timeout_ms,
+    )
 
     bucket[user_id] = AnswerRecord(
         user_id=user_id, word_id=word_id, phase=phase,  # type: ignore[arg-type]
@@ -49,8 +56,12 @@ def submit_answer(
     p = room.players[user_id]
     if is_correct:
         p.correct += 1
+        p.streak += 1
+        p.best_streak = max(p.best_streak, p.streak)
     else:
         p.wrong += 1
+        p.streak = 0
+    p.points += points_gained
     p.total_time_ms += time_spent_ms
     p.current_word_idx = word_idx + 1
 
@@ -79,6 +90,7 @@ def force_timeout(
             is_correct=False, time_spent_ms=timeout_ms, payload={"timeout": True},
         )
         ps.wrong += 1
+        ps.streak = 0
         ps.total_time_ms += timeout_ms
         ps.current_word_idx = word_idx + 1
     return _settle_and_advance(room, word_idx, word_lookup)
@@ -87,13 +99,22 @@ def force_timeout(
 def _settle_and_advance(
     room: RoomState, word_idx: int, word_lookup: dict[int, Any],
 ) -> list[dict]:
+    settled_phase = room.current_phase  # 结算发生在推进之前,此时还是本题的阶段
     bucket = room.answers.get(word_idx, {})
     settled = {
-        str(uid): {"is_correct": ans.is_correct, "time_spent_ms": ans.time_spent_ms}
+        str(uid): {
+            "is_correct": ans.is_correct,
+            "time_spent_ms": ans.time_spent_ms,
+            "points_gained": compute_question_points(
+                room.points_for_word(ans.word_id), ans.is_correct, ans.time_spent_ms,
+                PHASE_TIMEOUT_MS.get(ans.phase, 30_000),
+            ),
+        }
         for uid, ans in bucket.items()
     }
     events: list[dict] = [
-        {"type": "question_settled", "word_idx": word_idx, "results": settled}
+        {"type": "question_settled", "word_idx": word_idx, "phase": settled_phase, "results": settled},
+        {"type": "live_ranking", "word_idx": word_idx, "ranking": live_ranking(room)},
     ]
 
     new_global = word_idx + 1
@@ -106,7 +127,9 @@ def _settle_and_advance(
         ranking = rank_players([
             {
                 "user_id": ps.user_id, "nickname": ps.nickname,
-                "correct": ps.correct, "wrong": ps.wrong, "total_time_ms": ps.total_time_ms,
+                "correct": ps.correct, "wrong": ps.wrong,
+                "total_time_ms": ps.total_time_ms,
+                "points": ps.points, "best_streak": ps.best_streak,
             }
             for ps in room.players.values()
         ])
@@ -126,6 +149,7 @@ def _settle_and_advance(
         "word_idx": new_global,
         "phase": new_phase,
         "word": _serialize_word(next_word),
+        "points": room.points_for_word(next_word_id),
     })
     return events
 
