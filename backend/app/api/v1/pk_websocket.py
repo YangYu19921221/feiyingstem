@@ -320,7 +320,9 @@ async def pk_ws(
     if room is None or (user.id not in room.players and user.id not in room.spectators):
         await ws.accept()
         await ws.send_json({"type": "error", "code": "ROOM_NOT_FOUND", "message": "Room not found"})
-        await ws.close()
+        # 非 1000 关闭:让客户端保留自动重连能力(观众掉线被移除后,
+        # 前端会重新登记观战,下一次重连即可成功)
+        await ws.close(code=4004, reason="ROOM_NOT_FOUND")
         return
 
     await ws.accept()
@@ -354,6 +356,8 @@ async def pk_ws(
         try:
             while True:
                 msg = await ws.receive_json()
+                if not isinstance(msg, dict):
+                    continue
                 mtype = msg.get("type")
                 if mtype == "leave_room":
                     break
@@ -361,13 +365,14 @@ async def pk_ws(
         except WebSocketDisconnect:
             pass
         finally:
-            s.ws = None
-            s.online = False
-            manager.leave_spectator(room.room_id, user.id)
-            logger.info("PK spectator WS disconnected: room_id=%d user_id=%d", room.room_id, user.id)
-            cur = manager.get_room(room.room_id)
-            if cur is not None:
-                await _broadcast_room_state(cur)
+            if s.ws is ws:  # 仅当仍是本连接时清理;已被新连接替换则不动
+                s.ws = None
+                s.online = False
+                manager.leave_spectator(room.room_id, user.id)
+                logger.info("PK spectator WS disconnected: room_id=%d user_id=%d", room.room_id, user.id)
+                cur = manager.get_room(room.room_id)
+                if cur is not None:
+                    await _broadcast_room_state(cur)
         return
 
     # ---------- 玩家连接 ----------
@@ -423,9 +428,18 @@ async def pk_ws(
     try:
         while True:
             msg = await ws.receive_json()
+            if not isinstance(msg, dict):
+                continue
             mtype = msg.get("type")
             if mtype == "heartbeat":
+                # 收到心跳即在线:watchdog 误标离线(如手机短暂锁屏)后靠这里恢复,
+                # 否则 90s 清退会把活着的玩家踢出房间
                 p.last_heartbeat_at = datetime.utcnow()
+                p.disconnected_at = None
+                if not p.online:
+                    p.online = True
+                    await _broadcast(room, {"type": "player_reconnected", "user_id": user.id}, exclude=user.id)
+                    await _broadcast_room_state(room)
             elif mtype == "start_game" and user.id == room.host_id:
                 if room.status == "waiting":
                     online_ids = [uid for uid, ps in room.players.items() if ps.online]
@@ -518,15 +532,18 @@ async def pk_ws(
     except WebSocketDisconnect:
         pass
     finally:
-        p.ws = None
-        p.online = False
-        p.disconnected_at = datetime.utcnow()
+        replaced = p.ws is not ws  # 已被同一用户的新连接接管
+        if not replaced:
+            p.ws = None
+            p.online = False
+            p.disconnected_at = datetime.utcnow()
         logger.info(
-            "PK WS disconnected: room_id=%d user_id=%d explicit=%s",
-            room.room_id, user.id, explicit_leave,
+            "PK WS disconnected: room_id=%d user_id=%d explicit=%s replaced=%s",
+            room.room_id, user.id, explicit_leave, replaced,
         )
         if explicit_leave:
             # 主动离开:立即出房并释放 USER_ACTIVE,允许马上再开/加入下一局
+            # (即使已被新连接替换,用户的离开意图依然生效)
             old_host = room.host_id
             manager.leave_room(room.room_id, user.id)
             after = manager.get_room(room.room_id)
@@ -538,7 +555,7 @@ async def pk_ws(
                 if after.host_id != old_host:
                     await _broadcast(after, {"type": "host_changed", "new_host_id": after.host_id})
                 await _broadcast_room_state(after)
-        else:
+        elif not replaced:
             # 意外断线:保留 90s 重连窗口
             await _broadcast(room, {"type": "player_disconnected", "user_id": user.id})
             await _broadcast_room_state(room)

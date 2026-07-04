@@ -796,3 +796,116 @@ def test_mask_for_spectators_only_hides_dictation_and_exam():
     assert _mask_for_spectators(exam)["word"]["word"] == ""
     other = {"type": "live_ranking", "ranking": []}
     assert _mask_for_spectators(other) is other
+
+
+# ---------- 重连/心跳竞态修复回归 ----------
+
+@pytest.mark.asyncio
+async def test_replaced_connection_does_not_clobber_new_one(two_student_tokens):
+    """同一用户新连接替换旧连接后,旧连接的清理不得把玩家清成离线。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_repl@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {})
+    try:
+        with TestClient(app) as tc:
+            ws1 = tc.websocket_connect(f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}")
+            ws1.__enter__()
+            ws1.receive_json()  # room_state
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws2:
+                ws2.receive_json()  # room_state(新连接)
+                # 旧连接被服务端关闭;退出其上下文触发旧 handler 的 finally
+                try:
+                    ws1.__exit__(None, None, None)
+                except Exception:
+                    pass
+                # 用 start_game(solo → error 回复)做同步屏障,确保服务端处理完毕
+                ws2.send_json({"type": "start_game"})
+                for _ in range(10):
+                    if ws2.receive_json()["type"] == "error":
+                        break
+                ps = manager.get_room(room.room_id).players[host_id]
+                assert ps.online is True, "旧连接清理不应把新连接玩家标离线"
+                assert ps.ws is not None, "旧连接清理不应清掉新连接的 ws"
+    finally:
+        restore()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_restores_online_flag(two_student_tokens):
+    """watchdog 误标离线后,心跳应恢复 online(否则 90s 会误清活玩家)。"""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+
+    token1, token2, host_id, joiner_id = two_student_tokens
+    room = manager.create_room(host_id=host_id, max_players=4, word_count=10)
+
+    fake_users = {
+        token1: User(id=host_id, username="h", email="h_hb@example.com",
+                     hashed_password="x", role="student", is_active=True),
+    }
+    restore = _setup_start_game_patches(pk_websocket, fake_users, {})
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                f"/api/v1/pk/ws?token={token1}&room_id={room.room_id}"
+            ) as ws1:
+                ws1.receive_json()  # room_state
+                ps = manager.get_room(room.room_id).players[host_id]
+                ps.online = False  # 模拟 watchdog 误标离线
+                ws1.send_json({"type": "heartbeat"})
+                # 心跳恢复会广播 player_reconnected + room_state
+                got_state = False
+                for _ in range(10):
+                    m = ws1.receive_json()
+                    if m["type"] == "room_state":
+                        got_state = True
+                        break
+                assert got_state
+                assert ps.online is True
+                assert ps.disconnected_at is None
+    finally:
+        restore()
+
+
+def test_ws_room_not_found_closes_with_4004():
+    """不存在的房间:错误后以非 1000 码关闭,保留客户端自动重连能力。"""
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+    from app.main import app
+    from app.api.v1 import pk_websocket
+    from app.models.user import User
+    from tests.conftest import _make_token
+
+    token = _make_token(424242)
+    fake_user = User(id=424242, username="ghost", email="g@example.com",
+                     hashed_password="x", role="student", is_active=True)
+
+    async def fake_auth(t):
+        return fake_user
+
+    original_auth = pk_websocket._authenticate
+    pk_websocket._authenticate = fake_auth
+    try:
+        with TestClient(app) as tc:
+            with pytest.raises(WebSocketDisconnect) as ei:
+                with tc.websocket_connect("/api/v1/pk/ws?token=x&room_id=999999") as ws:
+                    msg = ws.receive_json()
+                    assert msg["code"] == "ROOM_NOT_FOUND"
+                    ws.receive_json()  # 触发感知关闭
+            assert ei.value.code == 4004
+    finally:
+        pk_websocket._authenticate = original_auth

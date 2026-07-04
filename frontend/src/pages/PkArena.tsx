@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
-import type { PkRoomSnapshot, PkPhase, PkLiveRankItem } from '../api/pk';
+import { pkApi, type PkRoomSnapshot, type PkPhase, type PkLiveRankItem } from '../api/pk';
 import ClassificationPhase from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationSingle from '../components/classify/DictationSingle';
@@ -145,6 +145,17 @@ export default function PkArena() {
           break;
         case 'error':
           setErrorBanner(event.message || event.code || 'Error');
+          // 观众断线后服务端会立即移除:收到 ROOM_NOT_FOUND 时自动重新登记观战,
+          // 配合 socket 的自动重连即可无感恢复
+          if (event.code === 'ROOM_NOT_FOUND') {
+            setSnapshot((snap) => {
+              const wasSpectator = snap && !snap.players.some((pl) => pl.user_id === meId);
+              if (wasSpectator && snap?.invite_code) {
+                pkApi.spectateByCode(snap.invite_code).catch(() => {});
+              }
+              return snap;
+            });
+          }
           break;
         default:
           // player_disconnected / reconnected / kicked / host_changed:
