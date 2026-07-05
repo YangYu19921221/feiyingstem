@@ -15,6 +15,7 @@ export interface Pet {
   hunger: number;
   evolution_stage: number;
   xp_to_next_level: number;
+  xp_per_feed: number;
   evolution_stage_name: string;
   food_balance: number;
   current_hp: number;

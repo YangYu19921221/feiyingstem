@@ -22,6 +22,9 @@ router = APIRouter()
 EVOLUTION_THRESHOLDS = {0: 5, 1: 15, 2: 30}
 STAGE_NAMES = {0: "蛋", 1: "基础形态", 2: "一阶进化", 3: "最终进化"}
 
+# 每次喂食获得的经验（放慢升级速度：原为15，现为8，约2倍慢）
+FEED_XP = 8
+
 
 def calc_xp_to_next_level(level: int) -> int:
     """每级所需 XP = 80 + level × 40，越高级越难升"""
@@ -62,8 +65,11 @@ def build_pet_response(pet: UserPet) -> PetResponse:
         hunger=pet.hunger,
         evolution_stage=pet.evolution_stage,
         xp_to_next_level=calc_xp_to_next_level(pet.level),
+        xp_per_feed=FEED_XP,
         evolution_stage_name=STAGE_NAMES.get(pet.evolution_stage, "未知"),
         food_balance=pet.food_balance,
+        current_hp=pet.current_hp,
+        is_injured=pet.is_injured,
         last_fed_at=pet.last_fed_at,
         last_interaction_at=pet.last_interaction_at,
         created_at=pet.created_at,
@@ -157,7 +163,7 @@ async def feed_pet(
     pet.food_balance -= 5
     pet.hunger = min(100, pet.hunger + 25)
     pet.happiness = min(100, pet.happiness + 10)
-    pet.experience += 15
+    pet.experience += FEED_XP
     pet.last_fed_at = now
     pet.last_interaction_at = now
 
@@ -187,7 +193,7 @@ async def feed_pet(
     db.add(PetEventLog(
         pet_id=pet.id,
         event_type="feed",
-        detail=f"喂食 -5粮 +15XP (Lv{pet.level})",
+        detail=f"喂食 -5粮 +{FEED_XP}XP (Lv{pet.level})",
     ))
 
     await db.commit()

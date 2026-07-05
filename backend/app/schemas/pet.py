@@ -21,8 +21,11 @@ class PetResponse(BaseModel):
     hunger: int
     evolution_stage: int
     xp_to_next_level: int
+    xp_per_feed: int = 8
     evolution_stage_name: str
     food_balance: int = 0
+    current_hp: int = 0
+    is_injured: bool = False
     last_fed_at: Optional[datetime] = None
     last_interaction_at: Optional[datetime] = None
     created_at: datetime

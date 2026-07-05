@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { getMyPet, createPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
+import { quickMatchBattle } from '../api/petBattle';
 
 const PET_IMAGES: Record<string, string[]> = {
   pikachu:    ['/pets/pichu.png', '/pets/pichu.png', '/pets/pikachu.png', '/pets/raichu.png'],
@@ -273,6 +274,26 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
     },
   });
 
+  const quickMatchMutation = useMutation({
+    mutationFn: quickMatchBattle,
+    onSuccess: (battle) => {
+      console.log('快速对战成功，battle:', battle);
+      console.log('准备跳转到:', `/student/pet/battle/${battle.id}`);
+      // 使用window.location直接跳转，确保刷新
+      window.location.href = `/student/pet/battle/${battle.id}`;
+    },
+    onError: (err: any) => {
+      console.error('快速对战失败:', err);
+      const msg = err?.response?.data?.detail || '匹配失败';
+      setFeedMsg(msg);
+      setTimeout(() => setFeedMsg(''), 3000);
+    },
+  });
+
+  const handleQuickBattle = () => {
+    quickMatchMutation.mutate();
+  };
+
   const { data: events } = useQuery<PetEvent[]>({
     queryKey: ['petEvents'],
     queryFn: getPetEvents,
@@ -282,6 +303,13 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
   const petImage = getPetImage(pet.species, pet.evolution_stage);
   const nextThreshold = EVOLUTION_THRESHOLDS[pet.evolution_stage] || null;
   const mood = getPetMood(pet.species, pet.happiness, pet.hunger);
+
+  // 距离升到下一级还需喂食多少次
+  const xpPerFeed = pet.xp_per_feed || 8;
+  const xpRemaining = Math.max(0, pet.xp_to_next_level - pet.experience);
+  const feedsToNextLevel = Math.ceil(xpRemaining / xpPerFeed);
+  // 宠物最大HP（与后端 calculate_max_hp 一致）
+  const maxHp = 100 + pet.level * 5 + pet.evolution_stage * 20;
 
   const handlePetTap = () => {
     setPetTaps(prev => prev + 1);
@@ -302,10 +330,17 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
           </h1>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/student/pet/battle-hall')}
-              className="text-sm font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full hover:bg-purple-100 transition-colors"
+              onClick={handleQuickBattle}
+              disabled={quickMatchMutation.isPending}
+              className="text-sm font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full hover:bg-purple-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ⚔️ 对战
+              {quickMatchMutation.isPending ? '⏳ 匹配中...' : '⚔️ 快速对战'}
+            </button>
+            <button
+              onClick={() => navigate('/student/pet/battle-hall')}
+              className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
+            >
+              👥 好友对战
             </button>
             <button
               onClick={onShowLeaderboard}
@@ -456,10 +491,20 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
             {/* 属性面板 */}
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-orange-100">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">📊 宠物属性</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Bar value={pet.happiness} max={100} color="bg-yellow-400" label="😊 心情" />
                 <Bar value={pet.hunger} max={100} color="bg-green-400" label="🍖 饱食度" />
+                <Bar value={pet.current_hp || maxHp} max={maxHp} color={pet.is_injured ? 'bg-red-400' : 'bg-rose-400'} label="❤️ 生命值 HP" />
                 <Bar value={pet.experience} max={pet.xp_to_next_level} color="bg-blue-400" label="⭐ 经验值" />
+              </div>
+              {/* 距下一级还需喂食 */}
+              <div className="mt-4 flex items-center justify-between bg-blue-50 rounded-xl px-4 py-2.5">
+                <span className="text-sm text-gray-600">
+                  距 <span className="font-bold text-blue-600">Lv.{pet.level + 1}</span> 还差 {xpRemaining} 经验
+                </span>
+                <span className="text-sm font-bold text-blue-600">
+                  🍖 约需喂食 {feedsToNextLevel} 次
+                </span>
               </div>
             </div>
 
