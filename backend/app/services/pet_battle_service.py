@@ -7,19 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 
 from app.models.pet_battle import PetBattle, PetBattleRound, PetBattleStats
-from app.models.pet import UserPet
+from app.models.pet import UserPet, PetEventLog
 from app.models.user import User
 from app.models.word import Word, WordDefinition
-
-
-# ========== 宠物属性配置 ==========
-
-def calculate_initial_hp(pet_level: int, evolution_stage: int) -> int:
-    """计算宠物初始HP"""
-    base_hp = 100
-    level_bonus = pet_level * 5
-    stage_bonus = evolution_stage * 20
-    return base_hp + level_bonus + stage_bonus
+# 统一数值真源；calculate_initial_hp 是 calculate_max_hp 的别名，保留名字兼容既有 import
+from app.core.pet_formulas import (
+    calculate_initial_hp, calculate_max_hp, STAGE_NAMES, apply_xp_and_level,
+)
 
 
 def calculate_damage(
@@ -520,16 +514,16 @@ async def finish_battle(
         combo_max = battle.player1_combo if is_player1 else battle.player2_combo
         final_hp = battle.player1_hp if is_player1 else battle.player2_hp
 
-        # 基础奖励
+        # 基础奖励（经验较原值下调约一半，避免对战刷等级过快）
         if is_winner:
             food = 15 + correct_count * 2
-            xp = 100 + combo_max * 10
+            xp = 50 + combo_max * 5
         elif is_draw:
             food = 12 + correct_count * 1
-            xp = 60
+            xp = 30
         else:
             food = 8 + correct_count * 1
-            xp = 50
+            xp = 25
 
         rewards[player_id] = {
             "food": food,
@@ -544,16 +538,30 @@ async def finish_battle(
         pet.food_balance += food
         pet.experience += xp
 
+        # 对战后立即结算升级+进化（此前只加经验不结算，会攒到下次喂食才一次性连跳多级）
+        leveled_up, evolved = apply_xp_and_level(pet)
+        if leveled_up:
+            db.add(PetEventLog(
+                pet_id=pet.id,
+                event_type="level_up",
+                detail=f"对战后升级到 Lv{pet.level}！",
+            ))
+        if evolved:
+            db.add(PetEventLog(
+                pet_id=pet.id,
+                event_type="evolve",
+                detail=f"进化到{STAGE_NAMES.get(pet.evolution_stage, '未知')}阶段！(Lv{pet.level})",
+            ))
+
         # 更新当前HP
         pet.current_hp = final_hp
 
-        # 计算最大HP
-        max_hp = calculate_initial_hp(pet.level, pet.evolution_stage)
+        # 计算最大HP（升级后重新计算，阈值随等级变化）
+        max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
 
         # 如果HP < 50%，标记为受伤
         if pet.current_hp < max_hp * 0.5:
             pet.is_injured = True
-            from app.models.pet import PetEventLog
             db.add(PetEventLog(
                 pet_id=pet.id,
                 event_type="injured",

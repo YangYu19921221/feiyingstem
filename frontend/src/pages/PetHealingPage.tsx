@@ -188,7 +188,7 @@ export default function PetHealingPage() {
           </div>
 
           <div className="text-center text-sm text-gray-600">
-            还需答对约 {Math.max(0, healingStatus.questions_needed - Math.floor(healedTotal / 5))} 题恢复健康
+            还需答对约 {Math.max(0, healingStatus.questions_needed - Math.floor(healedTotal / healingStatus.heal_per_question))} 题恢复健康
           </div>
         </div>
 
@@ -269,7 +269,7 @@ export default function PetHealingPage() {
                 {isCorrect ? (
                   <>
                     <div className="text-3xl mb-2">✨</div>
-                    <div className="font-bold">答对了！宠物恢复了 5 HP</div>
+                    <div className="font-bold">答对了！宠物恢复了 {healingStatus.heal_per_question} HP</div>
                   </>
                 ) : (
                   <>

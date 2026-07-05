@@ -15,28 +15,12 @@ from app.schemas.pet import (
     PetLeaderboardEntry, PetLeaderboardResponse,
 )
 from app.api.v1.auth import get_current_student
+from app.core.pet_formulas import (
+    FEED_XP, EVOLUTION_THRESHOLDS, STAGE_NAMES,
+    calculate_max_hp, calc_xp_to_next_level, apply_xp_and_level,
+)
 
 router = APIRouter()
-
-# 进化阈值: egg(Lv1) → 基础形态(Lv5) → 一阶进化(Lv15) → 最终进化(Lv30)
-EVOLUTION_THRESHOLDS = {0: 5, 1: 15, 2: 30}
-STAGE_NAMES = {0: "蛋", 1: "基础形态", 2: "一阶进化", 3: "最终进化"}
-
-# 每次喂食获得的经验（放慢升级速度：原为15，现为8，约2倍慢）
-FEED_XP = 8
-
-
-def calc_xp_to_next_level(level: int) -> int:
-    """每级所需 XP = 80 + level × 40，越高级越难升"""
-    return 80 + level * 40
-
-
-def calculate_max_hp(level: int, evolution_stage: int) -> int:
-    """计算宠物最大HP"""
-    base_hp = 100
-    level_bonus = level * 5
-    stage_bonus = evolution_stage * 20
-    return base_hp + level_bonus + stage_bonus
 
 
 def apply_decay(pet: UserPet) -> UserPet:
@@ -89,6 +73,22 @@ async def get_my_pet(
     if not pet:
         return None
     pet = apply_decay(pet)
+
+    # 长期不喂养（≥2天不互动）且饱食度过低 → 宠物挨饿受伤，需背单词治疗
+    # 只在查看时判定：喂食路径会先抬高饱食度不会误伤；治疗/喂食都会刷新 last_interaction_at
+    # 使 days_inactive 归零，故治疗后不会立刻复发
+    if not pet.is_injured and pet.last_interaction_at:
+        days_inactive = (datetime.utcnow() - pet.last_interaction_at).days
+        if days_inactive >= 2 and pet.hunger <= 15:
+            max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+            pet.is_injured = True
+            pet.current_hp = min(pet.current_hp, int(max_hp * 0.4))
+            db.add(PetEventLog(
+                pet_id=pet.id,
+                event_type="injured",
+                detail="太久没喂食，宠物挨饿受伤了！背单词可以治疗它",
+            ))
+
     await db.commit()
     return build_pet_response(pet)
 
@@ -167,28 +167,14 @@ async def feed_pet(
     pet.last_fed_at = now
     pet.last_interaction_at = now
 
-    leveled_up = False
-    evolved = False
-
-    # 检查升级
-    xp_needed = calc_xp_to_next_level(pet.level)
-    while pet.experience >= xp_needed:
-        pet.experience -= xp_needed
-        pet.level += 1
-        leveled_up = True
-        xp_needed = calc_xp_to_next_level(pet.level)
-
-    # 检查进化
-    if pet.evolution_stage in EVOLUTION_THRESHOLDS:
-        threshold = EVOLUTION_THRESHOLDS[pet.evolution_stage]
-        if pet.level >= threshold:
-            pet.evolution_stage += 1
-            evolved = True
-            db.add(PetEventLog(
-                pet_id=pet.id,
-                event_type="evolve",
-                detail=f"进化到{STAGE_NAMES.get(pet.evolution_stage, '未知')}阶段！(Lv{pet.level})",
-            ))
+    # 结算升级与进化（共享逻辑）
+    leveled_up, evolved = apply_xp_and_level(pet)
+    if evolved:
+        db.add(PetEventLog(
+            pet_id=pet.id,
+            event_type="evolve",
+            detail=f"进化到{STAGE_NAMES.get(pet.evolution_stage, '未知')}阶段！(Lv{pet.level})",
+        ))
 
     db.add(PetEventLog(
         pet_id=pet.id,

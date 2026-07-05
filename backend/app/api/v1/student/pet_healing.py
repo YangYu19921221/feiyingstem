@@ -9,16 +9,14 @@ from app.models.user import User
 from app.models.pet import UserPet, PetEventLog
 from app.models.word import Word, WordDefinition
 from app.api.v1.auth import get_current_student
+from app.core.pet_formulas import calculate_max_hp
 
 router = APIRouter()
 
 
-def calculate_max_hp(level: int, evolution_stage: int) -> int:
-    """计算宠物最大HP"""
-    base_hp = 100
-    level_bonus = level * 5
-    stage_bonus = evolution_stage * 20
-    return base_hp + level_bonus + stage_bonus
+def heal_amount_for(max_hp: int) -> int:
+    """每答对1题的回血量 = 最大HP的10%（至少5），高级宠物不必答太多题"""
+    return max(5, round(max_hp * 0.1))
 
 
 # ========== 宠物治疗系统 ==========
@@ -38,12 +36,13 @@ async def get_healing_status(
 
     max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
     hp_percent = (pet.current_hp / max_hp) * 100
+    heal_per_question = heal_amount_for(max_hp)
 
     # 计算需要治疗的题目数
     if pet.is_injured:
         target_hp = int(max_hp * 0.8)  # 恢复到80%
         needed_heal = max(0, target_hp - pet.current_hp)
-        questions_needed = math.ceil(needed_heal / 5)
+        questions_needed = math.ceil(needed_heal / heal_per_question)
     else:
         questions_needed = 0
 
@@ -55,7 +54,7 @@ async def get_healing_status(
         "hp_percent": round(hp_percent, 1),
         "is_injured": pet.is_injured,
         "questions_needed": questions_needed,
-        "heal_per_question": 5,
+        "heal_per_question": heal_per_question,
     }
 
 
@@ -83,10 +82,10 @@ async def heal_pet(
 
     max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
 
-    # 答对才恢复HP
+    # 答对才恢复HP（每题回血 = 最大HP的10%）
     healed = 0
     if is_correct:
-        healed = 5
+        healed = heal_amount_for(max_hp)
         pet.current_hp = min(max_hp, pet.current_hp + healed)
 
         # HP恢复到80%以上，解除受伤状态
@@ -130,17 +129,35 @@ async def get_healing_words(
     if not pet.is_injured:
         raise HTTPException(status_code=400, detail="宠物不需要治疗")
 
-    # 随机抽取单词
+    # 优先从「学生已学过的单词」中抽取（word_mastery 有遇到记录的词）
     from app.models.word import WordDefinition
-    stmt = (
+    from app.models.learning import WordMastery
+    learned_stmt = (
         select(Word, WordDefinition)
         .join(WordDefinition, WordDefinition.word_id == Word.id)
-        .where(WordDefinition.is_primary == True)
+        .join(WordMastery, WordMastery.word_id == Word.id)
+        .where(
+            WordMastery.user_id == current_user.id,
+            WordMastery.total_encounters > 0,
+            WordDefinition.is_primary == True,
+        )
         .order_by(sa_func.random())
         .limit(limit)
     )
-    result = await db.execute(stmt)
+    result = await db.execute(learned_stmt)
     rows = result.all()
+
+    # 已学单词不足以出选择题（<4，无法凑够干扰项）时，回退到全库随机，保证功能可用
+    if len(rows) < 4:
+        fallback_stmt = (
+            select(Word, WordDefinition)
+            .join(WordDefinition, WordDefinition.word_id == Word.id)
+            .where(WordDefinition.is_primary == True)
+            .order_by(sa_func.random())
+            .limit(limit)
+        )
+        result = await db.execute(fallback_stmt)
+        rows = result.all()
 
     words = []
     for word, definition in rows:

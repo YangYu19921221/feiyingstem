@@ -310,6 +310,8 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
   const feedsToNextLevel = Math.ceil(xpRemaining / xpPerFeed);
   // 宠物最大HP（与后端 calculate_max_hp 一致）
   const maxHp = 100 + pet.level * 5 + pet.evolution_stage * 20;
+  // 每题回血 = 最大HP的10%（至少5），与后端 heal_amount_for 一致
+  const healPerQuestion = Math.max(5, Math.round(maxHp * 0.1));
 
   const handlePetTap = () => {
     setPetTaps(prev => prev + 1);
@@ -388,7 +390,7 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
                 当前HP: <span className="font-bold text-red-500">{pet.current_hp || 0}</span> / {100 + pet.level * 5 + pet.evolution_stage * 20}
               </p>
               <p className="text-gray-600 mb-4">
-                学习单词可以治疗它，每答对1题恢复5 HP
+                学习单词可以治疗它，每答对1题恢复 {healPerQuestion} HP
               </p>
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -398,7 +400,7 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
               >
                 💊 立即治疗
                 <span className="text-sm opacity-90">
-                  (需答对约 {Math.ceil(((100 + pet.level * 5 + pet.evolution_stage * 20) * 0.8 - (pet.current_hp || 0)) / 5)} 题)
+                  (需答对约 {Math.max(0, Math.ceil((maxHp * 0.8 - (pet.current_hp ?? 0)) / healPerQuestion))} 题)
                 </span>
               </motion.button>
             </div>
@@ -494,7 +496,7 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Bar value={pet.happiness} max={100} color="bg-yellow-400" label="😊 心情" />
                 <Bar value={pet.hunger} max={100} color="bg-green-400" label="🍖 饱食度" />
-                <Bar value={pet.current_hp || maxHp} max={maxHp} color={pet.is_injured ? 'bg-red-400' : 'bg-rose-400'} label="❤️ 生命值 HP" />
+                <Bar value={pet.current_hp ?? maxHp} max={maxHp} color={pet.is_injured ? 'bg-red-400' : 'bg-rose-400'} label="❤️ 生命值 HP" />
                 <Bar value={pet.experience} max={pet.xp_to_next_level} color="bg-blue-400" label="⭐ 经验值" />
               </div>
               {/* 距下一级还需喂食 */}
