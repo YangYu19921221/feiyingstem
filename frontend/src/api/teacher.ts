@@ -316,3 +316,30 @@ export const cacheUnitPronunciations = async (unitId: number): Promise<CachePron
   const response = await axios.post(`${API_BASE_URL}/teacher/units/${unitId}/cache-pronunciations`);
   return response.data;
 };
+
+// ========================================
+// 学生 AI 学情周报（与家长端共用同一份缓存）
+// ========================================
+
+export interface WeeklyReport {
+  student_id: number;
+  week_start: string;
+  summary: string;
+  highlights: string[];
+  focus_areas: string[];
+  suggestions: string[];
+  stats_snapshot: Record<string, any>;
+  generated_at: string | null;
+}
+
+// 教师：获取本班学生本周周报
+export const getStudentWeeklyReport = async (studentId: number): Promise<WeeklyReport> => {
+  const response = await axios.get(`${API_BASE_URL}/teacher/analytics/student/${studentId}/weekly-report`);
+  return response.data;
+};
+
+// 教师：强制重新生成周报
+export const regenerateStudentWeeklyReport = async (studentId: number): Promise<WeeklyReport> => {
+  const response = await axios.post(`${API_BASE_URL}/teacher/analytics/student/${studentId}/weekly-report/regenerate`);
+  return response.data;
+};

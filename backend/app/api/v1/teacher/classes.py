@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
-from app.models.learning import WordMastery, LearningRecord, StudySession
-from app.models.word import Word
+from app.models.learning import WordMastery, LearningRecord, StudySession, GroupExamRecord
+from app.models.word import Word, Unit, WordBook
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import (
     assert_student_in_my_class,
@@ -478,6 +478,25 @@ async def get_class_daily_stats(
     )
     rec_map = {r.user_id: (r.total or 0, r.correct or 0) for r in rec_result.all()}
 
+    # 批量查询「当天实际学习的去重单词数」
+    # 注意:StudyCalendar.words_learned 累加的是答题记录条数(len(records)),
+    # 分类等模式一个词会产生多条记录,导致该字段严重虚高(实测有学生 70 词显示成 1330)。
+    # 这里按 lower(word) 去重实时统计,口径与下方「复习待/复习已」一致。
+    words_res = await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(func.distinct(func.lower(Word.word))).label('cnt'),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+        .group_by(LearningRecord.user_id)
+    )
+    words_learned_map = {r.user_id: (r.cnt or 0) for r in words_res.all()}
+
     # 批量查询会话数
     sess_result = await db.execute(
         select(StudySession.user_id, func.count(StudySession.id).label('cnt'))
@@ -489,6 +508,25 @@ async def get_class_daily_stats(
         .group_by(StudySession.user_id)
     )
     sess_map = {r.user_id: r.cnt for r in sess_result.all()}
+
+    # 批量查询「当天真实学习时长」= 各学习会话 time_spent 之和。
+    # 不用 StudyCalendar.duration:它由前端每题上报的 time_spent 累加,classify 模式
+    # 一个词多条记录会把时长乘以词数,严重虚高(实测有学生显示成 14 小时)。
+    # 会话时长按单次时段记,不受多记录放大;再对单会话封顶 2 小时,兜底极端挂机。
+    SESSION_CAP_SEC = 7200
+    dur_result = await db.execute(
+        select(
+            StudySession.user_id,
+            func.sum(func.min(StudySession.time_spent, SESSION_CAP_SEC)).label('dur'),
+        )
+        .where(and_(
+            StudySession.user_id.in_(student_ids),
+            StudySession.started_at >= day_start,
+            StudySession.started_at < day_end,
+        ))
+        .group_by(StudySession.user_id)
+    )
+    sess_duration_map = {r.user_id: int(r.dur or 0) for r in dur_result.all()}
 
     # 复习进度（批量）—— 按拼写 lower(word) 去重,与学生端记忆曲线口径一致
     # (单元隔离后同拼写多条 mastery,若按 word_id 全算会虚高且和学生端对不上)
@@ -553,8 +591,8 @@ async def get_class_daily_stats(
             "username": student.username,
             "full_name": student.full_name or student.username,
             "study_date": dt.isoformat(),
-            "words_learned": cal.words_learned if cal else 0,
-            "study_duration": cal.duration if cal else 0,
+            "words_learned": words_learned_map.get(student.id, 0),
+            "study_duration": sess_duration_map.get(student.id, 0),
             "correct_count": correct,
             "wrong_count": total_records - correct,
             "accuracy_rate": round(accuracy, 1),
@@ -565,6 +603,109 @@ async def get_class_daily_stats(
         })
 
     return {"class_id": class_id, "date": dt.isoformat(), "students": daily_stats}
+
+
+@router.get("/classes/{class_id}/daily-stats/{student_id}/content")
+async def get_class_daily_stats_student_content(
+    class_id: int,
+    student_id: int,
+    target_date: Optional[str] = Query(None, description="日期 YYYY-MM-DD，默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher)
+):
+    """获取某学生当天具体背了哪本书/哪个单元/第几组"""
+    await _get_class_or_404(db, class_id, current_user.id)
+    await assert_student_in_my_class(db, current_user.id, student_id)
+
+    if target_date:
+        try:
+            dt = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "日期格式错误，应为 YYYY-MM-DD")
+    else:
+        dt = _local_today()
+
+    day_start, day_end = _local_day_utc_range(dt)
+
+    # 1. 该生当天的学习会话,按单元聚合(学了多少词/多久/几次)
+    sess_res = await db.execute(
+        select(
+            StudySession.unit_id,
+            StudySession.book_id,
+            func.sum(StudySession.words_studied).label("words_studied"),
+            func.sum(StudySession.time_spent).label("time_spent"),
+            func.count(StudySession.id).label("sessions_count"),
+        )
+        .where(
+            StudySession.user_id == student_id,
+            StudySession.started_at >= day_start,
+            StudySession.started_at < day_end,
+        )
+        .group_by(StudySession.unit_id, StudySession.book_id)
+    )
+    sess_rows = sess_res.all()
+    sess_map: dict[int, dict] = {}
+    book_id_by_unit: dict[int, int] = {}
+    for row in sess_rows:
+        if row.unit_id is None:
+            continue
+        sess_map[row.unit_id] = {
+            "words_studied": int(row.words_studied or 0),
+            "time_spent": int(row.time_spent or 0),
+            "sessions_count": int(row.sessions_count or 0),
+        }
+        if row.book_id is not None:
+            book_id_by_unit[row.unit_id] = row.book_id
+
+    # 2. 该生当天完成过关检测的分组(第几组),按单元聚合
+    group_res = await db.execute(
+        select(GroupExamRecord.unit_id, GroupExamRecord.group_index)
+        .where(
+            GroupExamRecord.user_id == student_id,
+            GroupExamRecord.created_at >= day_start,
+            GroupExamRecord.created_at < day_end,
+            GroupExamRecord.unit_id.isnot(None),
+        )
+        .distinct()
+    )
+    groups_by_unit: dict[int, set] = {}
+    for uid, gidx in group_res.all():
+        groups_by_unit.setdefault(uid, set()).add(gidx)
+
+    unit_ids = set(sess_map.keys()) | set(groups_by_unit.keys())
+    if not unit_ids:
+        return {"student_id": student_id, "date": dt.isoformat(), "items": []}
+
+    # 3. 单元 + 单词本信息
+    units_res = await db.execute(select(Unit).where(Unit.id.in_(unit_ids)))
+    units = {u.id: u for u in units_res.scalars().all()}
+    book_ids = {u.book_id for u in units.values()} | set(book_id_by_unit.values())
+    books_res = await db.execute(select(WordBook).where(WordBook.id.in_(book_ids)))
+    books = {b.id: b for b in books_res.scalars().all()}
+
+    items = []
+    for uid in unit_ids:
+        unit = units.get(uid)
+        book_id = unit.book_id if unit else book_id_by_unit.get(uid)
+        book = books.get(book_id) if book_id else None
+        s = sess_map.get(uid, {"words_studied": 0, "time_spent": 0, "sessions_count": 0})
+        groups = sorted(groups_by_unit.get(uid, set()))
+        items.append({
+            "unit_id": uid,
+            "unit_name": unit.name if unit else "（单元已删除）",
+            "unit_number": unit.unit_number if unit else None,
+            "book_id": book_id,
+            "book_name": book.name if book else "（单词本已删除）",
+            "group_indices": groups,
+            "words_studied": s["words_studied"],
+            "time_spent": s["time_spent"],
+            "sessions_count": s["sessions_count"],
+        })
+
+    # 按学习词数从多到少排序,方便老师一眼看到主要学习内容
+    items.sort(key=lambda x: x["words_studied"], reverse=True)
+
+    return {"student_id": student_id, "date": dt.isoformat(), "items": items}
 
 
 @router.get("/classes/{class_id}/student/{student_id}/detail")

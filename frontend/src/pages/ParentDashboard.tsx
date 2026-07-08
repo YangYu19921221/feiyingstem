@@ -7,9 +7,13 @@ import {
   parentListChildren,
   parentChildDashboard,
   parentBindAdditional,
+  getWeeklyReport,
+  regenerateWeeklyReport,
   type ChildSummary,
   type ChildDashboard,
+  type WeeklyReport,
 } from '../api/parent';
+import WeeklyReportCard from '../components/WeeklyReportCard';
 import { toast } from '../components/Toast';
 
 const ParentDashboard = () => {
@@ -23,6 +27,10 @@ const ParentDashboard = () => {
   const [bindCode, setBindCode] = useState('');
   const [binding, setBinding] = useState(false);
   const [showReviewRules, setShowReviewRules] = useState(false);
+  const [report, setReport] = useState<WeeklyReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportRegenerating, setReportRegenerating] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   useEffect(() => {
     loadChildren();
@@ -51,6 +59,36 @@ const ParentDashboard = () => {
       .catch(e => console.error(e))
       .finally(() => setDashboardLoading(false));
   }, [activeStudentId]);
+
+  // 加载本周 AI 学情周报（命中缓存则秒返回）
+  useEffect(() => {
+    if (activeStudentId === null) return;
+    setReport(null);
+    setReportError(null);
+    setReportLoading(true);
+    getWeeklyReport(activeStudentId)
+      .then(r => setReport(r))
+      .catch(e => {
+        console.error(e);
+        setReportError('暂时无法生成周报，请稍后重试');
+      })
+      .finally(() => setReportLoading(false));
+  }, [activeStudentId]);
+
+  const handleRegenerateReport = async () => {
+    if (activeStudentId === null) return;
+    setReportRegenerating(true);
+    setReportError(null);
+    try {
+      const r = await regenerateWeeklyReport(activeStudentId);
+      setReport(r);
+    } catch (e) {
+      console.error(e);
+      toast.error('重新生成失败，请稍后重试');
+    } finally {
+      setReportRegenerating(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -154,6 +192,16 @@ const ParentDashboard = () => {
               </button>
             ))}
           </div>
+        )}
+
+        {activeStudentId !== null && (
+          <WeeklyReportCard
+            report={report}
+            loading={reportLoading}
+            regenerating={reportRegenerating}
+            onRegenerate={handleRegenerateReport}
+            error={reportError}
+          />
         )}
 
         {dashboardLoading || !dashboard ? (

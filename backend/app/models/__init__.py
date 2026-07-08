@@ -13,7 +13,8 @@ from app.models.learning import (
     StudySession,
     HomeworkAssignment,
     HomeworkStudentAssignment,
-    HomeworkAttemptRecord
+    HomeworkAttemptRecord,
+    WeeklyReport,
 )
 from app.models.reading import (
     ReadingPassage,
@@ -64,6 +65,7 @@ __all__ = [
     "HomeworkAssignment",
     "HomeworkStudentAssignment",
     "HomeworkAttemptRecord",
+    "WeeklyReport",
     # Reading models
     "ReadingPassage",
     "ReadingVocabulary",

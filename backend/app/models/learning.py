@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Date, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -263,3 +263,28 @@ class GroupExamRecord(Base):
     score = Column(Integer, default=0)              # 百分制
     time_spent = Column(Integer, default=0)         # 用时(秒)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class WeeklyReport(Base):
+    """AI 学情周报 - 按 (学生, 自然周) 缓存 LLM 生成的人话报告
+
+    同一周内家长和老师反复查看只调一次 LLM;提供"重新生成"入口强制刷新。
+    JSON 字段统一以 Text 存储(与本模块其它模型一致),读写时手动 json 序列化。
+    """
+    __tablename__ = "weekly_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    week_start = Column(Date, nullable=False)       # 该周周一(北京时间)
+
+    summary = Column(Text, nullable=False)          # 一段总体评价
+    highlights = Column(Text, nullable=True)        # 进步点 JSON: list[str]
+    focus_areas = Column(Text, nullable=True)       # 待加强 JSON: list[str]
+    suggestions = Column(Text, nullable=True)       # 3 条建议 JSON: list[str]
+    stats_snapshot = Column(Text, nullable=True)    # 生成时的原始数字 JSON
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'week_start', name='uq_weekly_report_user_week'),
+    )

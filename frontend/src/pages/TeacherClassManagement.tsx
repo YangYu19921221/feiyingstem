@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, X, Trash2, ChevronRight, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search, HelpCircle } from 'lucide-react';
+import { Users, Plus, X, Trash2, ChevronRight, ChevronDown, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search, HelpCircle, Trophy, Image as ImageIcon, Download } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import ReviewRulesModal from '../components/ReviewRulesModal';
 import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
+import { teacherMonitor } from '../api/teacherMonitor';
+import type { DailyContentItem, ClassRankingEntry, ClassRankingMetric, ClassRankingPeriod } from '../api/teacherMonitor';
 
 interface ClassInfo {
   id: number;
@@ -76,6 +79,34 @@ const getToken = () => localStorage.getItem('access_token');
 const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 
 const AVAILABLE_PAGE_SIZE = 50;
+
+// 每日数据表列数：基础列(不含首列勾选框) + 可收起的次要列。展开行 colSpan 据此计算，避免魔法数字。
+const DAILY_BASE_COLS = 7;       // 学生/学习内容/学习单词/学习时长/正确错误/准确率/操作
+const DAILY_SECONDARY_COLS = 4;  // 会话数/复习待/复习已/已毕业
+
+// 分段切换按钮组（排行榜的"时间维度""指标"共用）
+function TabGroup<T extends string>({ options, value, activeColor, onChange }: {
+  options: { key: T; label: string }[];
+  value: T;
+  activeColor: string;
+  onChange: (k: T) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+      {options.map(o => (
+        <button
+          key={o.key}
+          onClick={() => onChange(o.key)}
+          className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
+            value === o.key ? `bg-white shadow-sm ${activeColor}` : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const TeacherClassManagement = () => {
   const navigate = useNavigate();
@@ -150,6 +181,28 @@ const TeacherClassManagement = () => {
   // 每日数据多选删除
   const [selectedForRemove, setSelectedForRemove] = useState<Set<number>>(new Set());
 
+  // 每日数据 - 按姓名/用户名搜索（纯前端过滤，不影响日报图=全班）
+  const [dailySearch, setDailySearch] = useState('');
+
+  // 每日数据 - 生成分享图（发家长群）
+  const [showShareImage, setShowShareImage] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const shareRef = useRef<HTMLDivElement>(null);
+
+  // 每日数据 - 展开某学生查看当天具体背了哪本书/哪个单元/第几组
+  const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
+  const [dailyContent, setDailyContent] = useState<DailyContentItem[]>([]);
+  const [loadingDailyContent, setLoadingDailyContent] = useState(false);
+
+  // 班级排行榜
+  const [rankingMetric, setRankingMetric] = useState<ClassRankingMetric>('mastered_words');
+  const [rankingPeriod, setRankingPeriod] = useState<ClassRankingPeriod>('this_week');
+  const [ranking, setRanking] = useState<ClassRankingEntry[]>([]);
+  const [loadingRanking, setLoadingRanking] = useState(false);
+
+  // 每日数据表：收起次要列（复习待/复习已/已毕业/会话数）
+  const [showSecondaryCols, setShowSecondaryCols] = useState(false);
+
   useEffect(() => {
     loadClasses();
   }, []);
@@ -159,7 +212,16 @@ const TeacherClassManagement = () => {
       loadClassStudents(selectedClass.id);
       loadDailyStats(selectedClass.id, selectedDate);
     }
+    setExpandedStudentId(null);
+    setDailyContent([]);
+    setDailySearch('');  // 切换班级/日期时清空搜索，避免残留过滤
   }, [selectedClass, selectedDate]);
+
+  useEffect(() => {
+    if (selectedClass) {
+      loadRanking(selectedClass.id, rankingMetric, rankingPeriod);
+    }
+  }, [selectedClass, rankingMetric, rankingPeriod]);
 
   // 添加学生弹窗：debounce 关键字，搜索变化时同步把页码重置回 1（避免 setPage 单独触发额外一次请求）
   useEffect(() => {
@@ -221,6 +283,38 @@ const TeacherClassManagement = () => {
       setDailyStats(res.data.students || []);
     } catch (error) {
       console.error('加载每日数据失败:', error);
+    }
+  };
+
+  const toggleDailyContent = async (studentId: number) => {
+    if (!selectedClass) return;
+    if (expandedStudentId === studentId) {
+      setExpandedStudentId(null);
+      setDailyContent([]);
+      return;
+    }
+    setExpandedStudentId(studentId);
+    setDailyContent([]);
+    setLoadingDailyContent(true);
+    try {
+      const res = await teacherMonitor.dailyStatsContent(selectedClass.id, studentId, selectedDate);
+      setDailyContent(res.items || []);
+    } catch (error) {
+      console.error('加载学习内容明细失败:', error);
+    } finally {
+      setLoadingDailyContent(false);
+    }
+  };
+
+  const loadRanking = async (classId: number, metric: ClassRankingMetric, period: ClassRankingPeriod) => {
+    setLoadingRanking(true);
+    try {
+      const data = await teacherMonitor.classRanking(classId, metric, period);
+      setRanking(data);
+    } catch (error) {
+      console.error('加载排行榜失败:', error);
+    } finally {
+      setLoadingRanking(false);
     }
   };
 
@@ -472,6 +566,116 @@ const TeacherClassManagement = () => {
     return `${hours}小时${remainMins}分钟`;
   };
 
+  // ============ 生成分享图（发家长群）============
+  // 只呈现家长关心的客观数据，不含勾选/操作等交互列，也不做负面标记。
+  // 学新词前 3 名标 🌟（按分值取前3档，并列同分都给），当天全班无数据则不标。
+
+  // 学新词前 3 高的「分值」集合(去重后取前3)，落在其中且>0 的学生标星。
+  // 用分值集合而非名次，保证并列同分的孩子都被表扬，也自然限制在前3档内。
+  // 注意:按全班 dailyStats 计算，与屏幕搜索过滤无关，保证日报图口径一致。
+  const shareStarThreshold = (() => {
+    const distinct = Array.from(new Set(
+      dailyStats.map(s => s.words_learned).filter(w => w > 0)
+    )).sort((a, b) => b - a);
+    return new Set(distinct.slice(0, 3));
+  })();
+
+  // 屏幕表格用的过滤列表(按姓名/用户名，纯前端)。日报图仍用全班 dailyStats。
+  const filteredDailyStats = (() => {
+    const kw = dailySearch.trim().toLowerCase();
+    if (!kw) return dailyStats;
+    return dailyStats.filter(s =>
+      (s.full_name || '').toLowerCase().includes(kw) ||
+      (s.username || '').toLowerCase().includes(kw)
+    );
+  })();
+
+  // 用 html2canvas 把隐藏的分享视图渲染成 canvas
+  const renderShareCanvas = async (): Promise<HTMLCanvasElement | null> => {
+    const node = shareRef.current;
+    if (!node) return null;
+    return html2canvas(node, {
+      backgroundColor: '#ffffff',
+      scale: 2,             // 2 倍分辨率，转发到微信更清晰
+      useCORS: true,
+      logging: false,
+    });
+  };
+
+  const buildShareFilename = () => {
+    const cls = selectedClass?.name || '班级';
+    return `${cls}_学习日报_${selectedDate}.png`;
+  };
+
+  // 下载 PNG
+  const handleDownloadShareImage = async () => {
+    if (dailyStats.length === 0) {
+      toast('该日期暂无学习数据，无法生成图片', 'warning');
+      return;
+    }
+    setExporting(true);
+    try {
+      // 先挂载分享视图（下一帧再截图，确保 DOM 已渲染）
+      setShowShareImage(true);
+      await new Promise(r => setTimeout(r, 60));
+      const canvas = await renderShareCanvas();
+      if (!canvas) throw new Error('render failed');
+      const link = document.createElement('a');
+      link.download = buildShareFilename();
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      toast('图片已生成，去相册/下载里找它发群吧', 'success');
+    } catch (e) {
+      console.error('生成图片失败:', e);
+      toast('生成图片失败，请重试', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // 复制到剪贴板（浏览器支持时可直接粘贴进微信）
+  const handleCopyShareImage = async () => {
+    if (dailyStats.length === 0) {
+      toast('该日期暂无学习数据，无法生成图片', 'warning');
+      return;
+    }
+    if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+      toast('当前浏览器不支持复制图片，请用"下载图片"', 'warning');
+      return;
+    }
+    setExporting(true);
+    try {
+      setShowShareImage(true);
+      await new Promise(r => setTimeout(r, 60));
+      const canvas = await renderShareCanvas();
+      if (!canvas) throw new Error('render failed');
+      const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('blob failed');
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast('已复制到剪贴板，直接粘贴到微信群即可', 'success');
+    } catch (e) {
+      console.error('复制图片失败:', e);
+      toast('复制失败，请改用"下载图片"', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // 排行榜派生值（只展示有分值的学生，条形按最高分归一化）
+  const visibleRanking = ranking.filter(r => r.score > 0);
+  const rankingMax = Math.max(...visibleRanking.map(r => r.score), 1);
+  const rankingUnit = rankingMetric === 'accuracy' ? '%' : rankingMetric === 'study_time' ? 'h' : '词';
+  const rankingEmptyMsg: Record<ClassRankingPeriod, string> = {
+    today: '今日暂无学习数据',
+    this_week: '本周暂无学习数据',
+    this_month: '本月暂无学习数据',
+    all: '暂无排名数据',
+  };
+  const rankingBarColor = (rank: number) =>
+    rank === 1 ? 'from-amber-400 to-yellow-300' :
+    rank === 2 ? 'from-gray-300 to-gray-200' :
+    rank === 3 ? 'from-orange-300 to-amber-200' : 'from-indigo-400 to-indigo-300';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
       {/* 顶部导航 */}
@@ -681,6 +885,14 @@ const TeacherClassManagement = () => {
                     </h3>
                     <div className="flex items-center gap-3">
                       <button
+                        onClick={() => setShowSecondaryCols(v => !v)}
+                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
+                        title="显示/隐藏 会话数、复习待、复习已、已毕业 等次要列"
+                      >
+                        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showSecondaryCols ? 'rotate-90' : ''}`} />
+                        {showSecondaryCols ? '精简列' : '更多列'}
+                      </button>
+                      <button
                         onClick={() => setShowReviewRules(true)}
                         className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition"
                         title="艾宾浩斯复习规则"
@@ -696,6 +908,34 @@ const TeacherClassManagement = () => {
                           移除选中 ({selectedForRemove.size})
                         </button>
                       )}
+                      <button
+                        onClick={handleDownloadShareImage}
+                        disabled={exporting || dailyStats.length === 0}
+                        title="生成一张干净的学习日报图片，可发家长群"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 transition font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                        {exporting ? '生成中…' : '生成日报图'}
+                      </button>
+                      <button
+                        onClick={handleCopyShareImage}
+                        disabled={exporting || dailyStats.length === 0}
+                        title="复制图片到剪贴板，直接粘贴进微信群"
+                        className="flex items-center gap-1 px-3 py-1.5 border border-orange-300 text-orange-600 text-sm rounded-lg hover:bg-orange-50 transition font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Copy className="w-4 h-4" />
+                        复制图片
+                      </button>
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={dailySearch}
+                          onChange={(e) => setDailySearch(e.target.value)}
+                          placeholder="搜索学生"
+                          className="pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm w-36 focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                        />
+                      </div>
                       <input
                         type="date"
                         value={selectedDate}
@@ -731,21 +971,25 @@ const TeacherClassManagement = () => {
                               />
                             </th>
                             <th className="text-left py-3 px-3 font-semibold text-gray-700 text-sm">学生</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习内容</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习单词</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习时长</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">正确/错误</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">准确率</th>
+                            {showSecondaryCols && <>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">会话数</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="艾宾浩斯曲线下今日还应回顾的单词">复习待</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="今日已完成的复习数（去重）">复习已</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="掌握度达到顶档（30天间隔）的累计数">已毕业</th>
+                            </>}
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">操作</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {dailyStats.map((s, i) => {
+                          {filteredDailyStats.map((s, i) => {
                             const isLowScore = s.correct_count + s.wrong_count > 0 && s.accuracy_rate < 50;
                             return (
+                            <>
                             <motion.tr
                               key={s.user_id}
                               initial={{ opacity: 0, y: 5 }}
@@ -788,6 +1032,20 @@ const TeacherClassManagement = () => {
                                 </div>
                               </td>
                               <td className="py-3 px-3 text-center">
+                                <button
+                                  onClick={() => toggleDailyContent(s.user_id)}
+                                  disabled={s.words_learned === 0 && s.sessions_count === 0}
+                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition font-medium disabled:opacity-40 disabled:cursor-not-allowed bg-orange-50 text-orange-600 hover:bg-orange-100"
+                                >
+                                  {expandedStudentId === s.user_id ? (
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  )}
+                                  查看
+                                </button>
+                              </td>
+                              <td className="py-3 px-3 text-center">
                                 <span className={`font-bold ${s.words_learned > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
                                   {s.words_learned}
                                 </span>
@@ -812,6 +1070,7 @@ const TeacherClassManagement = () => {
                                   <span className="text-gray-400">-</span>
                                 )}
                               </td>
+                              {showSecondaryCols && <>
                               <td className="py-3 px-3 text-center text-sm text-gray-600">
                                 {s.sessions_count || '-'}
                               </td>
@@ -830,6 +1089,7 @@ const TeacherClassManagement = () => {
                                   {s.graduated_words ?? 0}
                                 </span>
                               </td>
+                              </>}
                               <td className="py-3 px-3 text-center">
                                 <button
                                   onClick={() => handleViewStudentDetail(s.user_id)}
@@ -839,10 +1099,220 @@ const TeacherClassManagement = () => {
                                 </button>
                               </td>
                             </motion.tr>
+                            {expandedStudentId === s.user_id && (
+                              <motion.tr
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="bg-orange-50/40"
+                              >
+                                <td></td>
+                                <td colSpan={showSecondaryCols ? DAILY_BASE_COLS + DAILY_SECONDARY_COLS : DAILY_BASE_COLS} className="px-3 pb-4 pt-2">
+                                  {loadingDailyContent ? (
+                                    <div className="py-4 text-center text-sm text-gray-400">加载中...</div>
+                                  ) : dailyContent.length === 0 ? (
+                                    <div className="py-4 text-center text-sm text-gray-400">该日期没有可展示的学习内容</div>
+                                  ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                      {dailyContent.map(item => (
+                                        <div
+                                          key={item.unit_id}
+                                          className="bg-white rounded-xl border border-orange-100 shadow-sm p-3"
+                                        >
+                                          {/* 单词本 · 单元 */}
+                                          <div className="flex items-start gap-2 mb-2">
+                                            <BookOpen className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
+                                            <div className="min-w-0">
+                                              <div className="text-[13px] font-semibold text-gray-800 leading-tight truncate" title={item.unit_name}>
+                                                {item.unit_name}
+                                              </div>
+                                              <div className="text-[11px] text-gray-400 truncate" title={item.book_name}>
+                                                {item.book_name}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          {/* 组别 chips */}
+                                          {item.group_indices.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mb-2">
+                                              {item.group_indices.map(g => (
+                                                <span key={g} className="px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded text-[11px] font-medium">
+                                                  第{g}组
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {/* 词数 / 时长 */}
+                                          <div className="flex items-center gap-3 text-[12px] text-gray-500">
+                                            <span className="flex items-center gap-1">
+                                              <Target className="w-3.5 h-3.5 text-indigo-400" />
+                                              {item.words_studied} 词
+                                            </span>
+                                            {item.time_spent > 0 && (
+                                              <span className="flex items-center gap-1">
+                                                <Clock className="w-3.5 h-3.5 text-green-400" />
+                                                {formatDuration(item.time_spent)}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              </motion.tr>
+                            )}
+                            </>
                             );
                           })}
+                          {filteredDailyStats.length === 0 && (
+                            <tr>
+                              <td colSpan={showSecondaryCols ? DAILY_BASE_COLS + DAILY_SECONDARY_COLS + 1 : DAILY_BASE_COLS + 1} className="py-8 text-center text-gray-400 text-sm">
+                                没有匹配「{dailySearch}」的学生
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+
+                  {/* 离屏分享视图：专供 html2canvas 截图发家长群。
+                      定位到屏幕外(不用 display:none，否则截不到)，只展示客观数据、无交互列。 */}
+                  {showShareImage && (
+                    <div style={{ position: 'fixed', left: '-99999px', top: 0, zIndex: -1 }}>
+                      <div
+                        ref={shareRef}
+                        style={{ width: '720px', background: '#ffffff', padding: '28px 32px', fontFamily: 'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif' }}
+                      >
+                        {/* 标题 */}
+                        <div style={{ borderBottom: '3px solid #FF6B35', paddingBottom: '14px', marginBottom: '18px' }}>
+                          <div style={{ fontSize: '24px', fontWeight: 700, color: '#1f2937' }}>
+                            📚 {selectedClass?.name || '班级'} · 学习日报
+                          </div>
+                          <div style={{ fontSize: '15px', color: '#6b7280', marginTop: '6px' }}>
+                            {selectedDate}　·　共 {dailyStats.length} 名同学
+                          </div>
+                        </div>
+
+                        {/* 数据表 */}
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '15px' }}>
+                          <thead>
+                            <tr style={{ background: '#FFF3E9', color: '#9a3412' }}>
+                              <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>学生</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>学新词</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>学习时长</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>正确率</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>复习完成</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dailyStats.map((s, i) => {
+                              const isTop = s.words_learned > 0 && shareStarThreshold.has(s.words_learned);
+                              return (
+                                <tr key={s.user_id} style={{ background: i % 2 === 0 ? '#ffffff' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                                  <td style={{ padding: '9px 12px', color: '#1f2937', fontWeight: 500 }}>
+                                    {isTop && '🌟 '}{s.full_name || s.username}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: s.words_learned > 0 ? '#c2410c' : '#9ca3af', fontWeight: s.words_learned > 0 ? 700 : 400 }}>
+                                    {s.words_learned}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
+                                    {s.study_duration > 0 ? formatDuration(s.study_duration) : '-'}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
+                                    {(s.correct_count + s.wrong_count) > 0 ? `${s.accuracy_rate}%` : '-'}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
+                                    {s.review_done_today ?? 0}/{(s.review_done_today ?? 0) + (s.review_due_today ?? 0)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+
+                        {/* 落款 */}
+                        <div style={{ marginTop: '18px', textAlign: 'right', fontSize: '13px', color: '#9ca3af' }}>
+                          飞鹰AI英语 · 每日坚持，进步看得见 🌈
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 班级排行榜 */}
+                <div className="bg-white rounded-2xl shadow-md p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-amber-500" />
+                      班级排行榜
+                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <TabGroup<ClassRankingPeriod>
+                        options={[
+                          { key: 'today', label: '今日' },
+                          { key: 'this_week', label: '本周' },
+                          { key: 'this_month', label: '本月' },
+                          { key: 'all', label: '累计' },
+                        ]}
+                        value={rankingPeriod}
+                        activeColor="text-amber-600"
+                        onChange={setRankingPeriod}
+                      />
+                      <TabGroup<ClassRankingMetric>
+                        options={[
+                          { key: 'mastered_words', label: '单词' },
+                          { key: 'study_time', label: '时长' },
+                          { key: 'accuracy', label: '正确率' },
+                        ]}
+                        value={rankingMetric}
+                        activeColor="text-indigo-600"
+                        onChange={setRankingMetric}
+                      />
+                    </div>
+                  </div>
+
+                  {loadingRanking ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                    </div>
+                  ) : visibleRanking.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Trophy className="w-12 h-12 mx-auto text-gray-300 mb-2" />
+                      <p className="text-gray-400">{rankingEmptyMsg[rankingPeriod]}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {visibleRanking.map(r => {
+                        const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : null;
+                        const pct = Math.max((r.score / rankingMax) * 100, 3);
+                        const top3 = r.rank <= 3;
+                        return (
+                          <div key={r.user_id} className="flex items-center gap-3">
+                            {/* 名次 */}
+                            <div className={`w-7 text-center flex-shrink-0 ${medal ? 'text-lg' : 'text-sm font-bold text-gray-400'}`}>
+                              {medal || r.rank}
+                            </div>
+                            {/* 姓名 */}
+                            <div className={`w-20 truncate flex-shrink-0 text-sm ${top3 ? 'font-semibold text-gray-800' : 'font-medium text-gray-600'}`} title={r.full_name}>
+                              {r.full_name}
+                            </div>
+                            {/* 条形 + 数值(数值叠在条形右端，减少列拥挤) */}
+                            <div className="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.5, ease: 'easeOut' }}
+                                className={`h-full rounded-full bg-gradient-to-r ${rankingBarColor(r.rank)}`}
+                              />
+                              <div className="absolute inset-0 flex items-center justify-end pr-2.5">
+                                <span className="text-xs font-bold text-gray-700">
+                                  {r.score}{rankingUnit}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

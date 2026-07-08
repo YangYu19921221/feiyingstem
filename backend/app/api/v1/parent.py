@@ -19,6 +19,7 @@ from app.services.auth_service import get_password_hash, verify_password, create
 from app.models.user import User, ParentStudentLink, ParentBindCode
 from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.word import Word, WordDefinition
+from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
 
 router = APIRouter()
 
@@ -594,3 +595,39 @@ async def parent_child_dashboard(
         unlocked_achievements=unlocked_ach,
         total_achievements=total_ach,
     )
+
+
+# ================== 家长：孩子的 AI 学情周报 ==================
+
+async def _assert_my_child(db: AsyncSession, parent_id: int, student_id: int):
+    """校验 student_id 确实是该家长绑定的孩子,否则 403。"""
+    res = await db.execute(
+        select(ParentStudentLink).where(and_(
+            ParentStudentLink.parent_id == parent_id,
+            ParentStudentLink.student_id == student_id,
+        ))
+    )
+    if not res.scalar_one_or_none():
+        raise HTTPException(403, "无权查看该孩子的数据")
+
+
+@router.get("/parent/children/{student_id}/weekly-report", response_model=WeeklyReportResponse)
+async def parent_child_weekly_report(
+    student_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_parent: User = Depends(get_current_parent),
+):
+    """家长查看孩子本周 AI 学情周报(命中本周缓存则不重复调用 AI)。"""
+    await _assert_my_child(db, current_parent.id, student_id)
+    return await build_and_cache_weekly_report(db, student_id, force=False)
+
+
+@router.post("/parent/children/{student_id}/weekly-report/regenerate", response_model=WeeklyReportResponse)
+async def parent_regenerate_weekly_report(
+    student_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_parent: User = Depends(get_current_parent),
+):
+    """家长强制重新生成本周周报。"""
+    await _assert_my_child(db, current_parent.id, student_id)
+    return await build_and_cache_weekly_report(db, student_id, force=True)

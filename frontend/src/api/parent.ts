@@ -118,3 +118,26 @@ export const parentListChildren = async (): Promise<ChildSummary[]> => {
 export const parentChildDashboard = async (studentId: number): Promise<ChildDashboard> => {
   return client.get(`/parent/children/${studentId}/dashboard`);
 };
+
+// ================== AI 学情周报 ==================
+
+export interface WeeklyReport {
+  student_id: number;
+  week_start: string;
+  summary: string;
+  highlights: string[];
+  focus_areas: string[];
+  suggestions: string[];
+  stats_snapshot: Record<string, any>;
+  generated_at: string | null;
+}
+
+// 家长：获取孩子本周周报（命中缓存不重复调 AI）
+export const getWeeklyReport = async (studentId: number): Promise<WeeklyReport> => {
+  return client.get(`/parent/children/${studentId}/weekly-report`);
+};
+
+// 家长：强制重新生成周报
+export const regenerateWeeklyReport = async (studentId: number): Promise<WeeklyReport> => {
+  return client.post(`/parent/children/${studentId}/weekly-report/regenerate`);
+};

@@ -550,6 +550,159 @@ class AIService:
             "accuracy": accuracy
         }
 
+    async def generate_weekly_report(self, report_data: Dict) -> Dict:
+        """
+        把一名学生本周的学习数据翻译成一段"人话"周报,给家长/老师看。
+
+        Args:
+            report_data: 已聚合好的数字,形如:
+                {
+                    "student_name": "小明",
+                    "this_week": {"minutes": int, "words": int, "accuracy": int,
+                                  "study_days": int, "answered": int},
+                    "last_week": {"minutes": int, "words": int, "accuracy": int},
+                    "mode_accuracy": [{"mode": "spelling", "accuracy": 62, "answered": 30}, ...],
+                    "weak_words": [{"word": "receive", "meaning": "收到", "wrong_count": 5}, ...],
+                    "new_mastered": int,
+                }
+
+        Returns:
+            {"summary": str, "highlights": [str], "focus_areas": [str], "suggestions": [str]}
+            LLM 不可用或解析失败时返回规则兜底文本,保证调用方不崩。
+        """
+        name = report_data.get("student_name") or "孩子"
+        tw = report_data.get("this_week", {}) or {}
+        lw = report_data.get("last_week", {}) or {}
+        mode_acc = report_data.get("mode_accuracy", []) or []
+        weak = report_data.get("weak_words", []) or []
+        new_mastered = report_data.get("new_mastered", 0)
+
+        # 中文模式名,便于 LLM 和兜底文案表达
+        mode_cn = {
+            "flashcard": "单词卡", "quiz": "选择题",
+            "spelling": "拼写", "fillblank": "填空",
+        }
+        mode_lines = "\n".join(
+            f"- {mode_cn.get(m.get('mode'), m.get('mode', '未知'))}: "
+            f"正确率 {m.get('accuracy', 0)}% (共 {m.get('answered', 0)} 题)"
+            for m in mode_acc
+        ) or "- 本周暂无分模式数据"
+        weak_lines = "\n".join(
+            f"- {w.get('word')} ({w.get('meaning') or '释义缺失'}): 错 {w.get('wrong_count', 0)} 次"
+            for w in weak[:10]
+        ) or "- 本周暂无明显薄弱词"
+
+        prompt = f"""你是一位有经验、懂沟通的中小学英语老师。请根据 {name} 本周的英语学习数据,写一份给家长看的学情周报。语气温暖、具体、鼓励为主,不要空话套话。
+
+本周数据:
+- 学习时长: {tw.get('minutes', 0)} 分钟 (上周 {lw.get('minutes', 0)} 分钟)
+- 学习天数: {tw.get('study_days', 0)} 天
+- 新学单词(答对去重): {tw.get('words', 0)} 个 (上周 {lw.get('words', 0)} 个)
+- 本周答题正确率: {tw.get('accuracy', 0)}% (上周 {lw.get('accuracy', 0)}%)
+- 本周新掌握单词数: {new_mastered} 个
+- 本周答题总数: {tw.get('answered', 0)} 题
+
+各学习模式正确率:
+{mode_lines}
+
+本周最易错的单词:
+{weak_lines}
+
+请输出 JSON,严格按以下结构,不要输出任何多余文字:
+{{
+  "summary": "一段 2-4 句的整体评价,结合与上周的对比,点出本周最突出的表现",
+  "highlights": ["具体的进步点1", "进步点2"],
+  "focus_areas": ["需要加强的地方1(要具体到单词类型或学习模式)", "地方2"],
+  "suggestions": ["可执行的建议1", "建议2", "建议3"]
+}}
+
+要求:
+1. summary 要提到具体数字或与上周的变化
+2. highlights / focus_areas 结合上面的分模式正确率和易错词,不要泛泛而谈
+3. suggestions 必须是 3 条家长在家能陪孩子做的具体动作
+4. 全部用中文,面向家长口吻"""
+
+        result = await self._call_llm(prompt, max_tokens=800)
+
+        try:
+            data = json.loads(result)
+            # 基本结构校验
+            if not isinstance(data.get("summary"), str) or not data["summary"].strip():
+                raise ValueError("summary 缺失")
+            for key in ("highlights", "focus_areas", "suggestions"):
+                if not isinstance(data.get(key), list):
+                    data[key] = []
+            return {
+                "summary": data["summary"].strip(),
+                "highlights": [str(x) for x in data.get("highlights", [])][:5],
+                "focus_areas": [str(x) for x in data.get("focus_areas", [])][:5],
+                "suggestions": [str(x) for x in data.get("suggestions", [])][:5],
+            }
+        except (json.JSONDecodeError, ValueError, TypeError):
+            # 规则兜底:AI 不可用/解析失败时也能给出有意义的报告
+            return self._fallback_weekly_report(name, tw, lw, mode_acc, weak, new_mastered, mode_cn)
+
+    def _fallback_weekly_report(self, name, tw, lw, mode_acc, weak, new_mastered, mode_cn) -> Dict:
+        """无 AI 或解析失败时的规则兜底周报(不调用 LLM)。"""
+        minutes = tw.get("minutes", 0)
+        words = tw.get("words", 0)
+        accuracy = tw.get("accuracy", 0)
+        study_days = tw.get("study_days", 0)
+        acc_delta = accuracy - lw.get("accuracy", 0)
+        min_delta = minutes - lw.get("minutes", 0)
+
+        summary = (
+            f"{name}本周学习了 {study_days} 天,累计 {minutes} 分钟,"
+            f"新学 {words} 个单词,答题正确率 {accuracy}%。"
+        )
+        if acc_delta > 0:
+            summary += f"正确率比上周提升了 {acc_delta} 个百分点,继续保持!"
+        elif acc_delta < 0:
+            summary += f"正确率比上周下降了 {abs(acc_delta)} 个百分点,需要多加巩固。"
+        else:
+            summary += "整体表现平稳。"
+
+        highlights = []
+        if min_delta > 0:
+            highlights.append(f"学习时长比上周多了 {min_delta} 分钟,更加投入了")
+        if new_mastered > 0:
+            highlights.append(f"本周新掌握了 {new_mastered} 个单词")
+        if study_days >= 5:
+            highlights.append(f"坚持学习 {study_days} 天,学习习惯很好")
+        if not highlights:
+            highlights.append("本周保持了学习节奏,值得肯定")
+
+        focus_areas = []
+        # 找出正确率最低的模式
+        weak_mode = min(
+            (m for m in mode_acc if m.get("answered", 0) >= 5),
+            key=lambda m: m.get("accuracy", 100),
+            default=None,
+        )
+        if weak_mode and weak_mode.get("accuracy", 100) < 70:
+            focus_areas.append(
+                f"{mode_cn.get(weak_mode.get('mode'), weak_mode.get('mode'))}正确率偏低"
+                f"({weak_mode.get('accuracy')}%),建议重点练习"
+            )
+        if weak:
+            top_weak = "、".join(w.get("word", "") for w in weak[:3])
+            focus_areas.append(f"这些单词反复出错,需要重点记忆:{top_weak}")
+        if not focus_areas:
+            focus_areas.append("暂无明显薄弱环节,继续拓展词汇量")
+
+        suggestions = [
+            "每天固定 15-20 分钟陪孩子复习当天单词,重质不重量",
+            "把本周易错单词做成小卡片,利用碎片时间反复认读",
+            "多用错得多的单词造句或对话,在真实语境里加深记忆",
+        ]
+
+        return {
+            "summary": summary,
+            "highlights": highlights,
+            "focus_areas": focus_areas,
+            "suggestions": suggestions,
+        }
+
     async def analyze_student_mistakes(
         self,
         student_id: int,
@@ -1116,11 +1269,15 @@ class AIService:
     ) -> str:
         """调用OpenAI兼容API (包括通义千问等)"""
         try:
+            import httpx
             from openai import AsyncOpenAI
 
+            # trust_env=False: 忽略 all_proxy/http_proxy 等环境变量,直连 API。
+            # dashscope 等国内域名本不该走本地 SOCKS 代理,直连更稳且无需 socksio 依赖。
             client = AsyncOpenAI(
                 api_key=api_key,
-                base_url=base_url
+                base_url=base_url,
+                http_client=httpx.AsyncClient(trust_env=False),
             )
 
             # 合并额外配置
@@ -1169,13 +1326,18 @@ class AIService:
     ) -> str:
         """调用Claude API"""
         try:
+            import httpx
             from anthropic import AsyncAnthropic
 
             # 如果没有提供参数,使用环境变量 (向后兼容)
             api_key = api_key or settings.ANTHROPIC_API_KEY
             model = model or settings.ANTHROPIC_MODEL
 
-            client = AsyncAnthropic(api_key=api_key)
+            # trust_env=False: 同 openai 分支,忽略本地代理环境变量直连
+            client = AsyncAnthropic(
+                api_key=api_key,
+                http_client=httpx.AsyncClient(trust_env=False),
+            )
 
             message = await client.messages.create(
                 model=model,

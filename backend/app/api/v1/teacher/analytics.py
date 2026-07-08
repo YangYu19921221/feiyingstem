@@ -21,6 +21,7 @@ from app.api.v1.teacher._permissions import (
     get_my_class_student_ids,
     assert_student_in_my_class,
 )
+from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
 
 router = APIRouter()
 
@@ -838,3 +839,183 @@ async def get_class_assignments_progress(
         "book_assignments": book_assignments,
         "homework_assignments": homework_assignments,
     }
+
+
+def _ranking_period_range(period: str):
+    """把 period 解析成 UTC naive 区间 [start, end)；'all' 返回 (None, None)。
+    周/月的日历边界计算复用 timeutil,与学生端 leaderboard 口径一致。"""
+    from app.core.timeutil import (
+        local_today, local_day_utc_range, local_week_utc_range, local_month_utc_range,
+    )
+    if period == "all":
+        return None, None
+    today = local_today()
+    if period == "today":
+        return local_day_utc_range(today)
+    if period == "this_week":
+        return local_week_utc_range(today)
+    if period == "this_month":
+        return local_month_utc_range(today)
+    raise HTTPException(status_code=400, detail=f"不支持的时间维度: {period}")
+
+
+async def _period_ranking_scores(db, student_ids, metric, start, end) -> dict:
+    """周期口径下每个学生的分值。
+    - mastered_words: 周期内答对的不重复 word_id 数（可回溯，替代累计快照）
+    - study_time: 周期内 StudySession 时长(小时)
+    - accuracy: 周期内答题正确率(%)
+    """
+    if metric == "mastered_words":
+        res = await db.execute(
+            select(
+                LearningRecord.user_id,
+                func.count(func.distinct(LearningRecord.word_id)),
+            ).where(and_(
+                LearningRecord.user_id.in_(student_ids),
+                LearningRecord.is_correct.is_(True),
+                LearningRecord.created_at >= start,
+                LearningRecord.created_at < end,
+            )).group_by(LearningRecord.user_id)
+        )
+        return {uid: float(v or 0) for uid, v in res.all()}
+    if metric == "study_time":
+        res = await db.execute(
+            select(
+                StudySession.user_id,
+                func.coalesce(func.sum(StudySession.time_spent), 0),
+            ).where(and_(
+                StudySession.user_id.in_(student_ids),
+                StudySession.started_at >= start,
+                StudySession.started_at < end,
+            )).group_by(StudySession.user_id)
+        )
+        return {uid: round(float(v or 0) / 3600, 2) for uid, v in res.all()}
+    # accuracy
+    res = await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(LearningRecord.id),
+            func.sum(LearningRecord.is_correct.cast(Integer)),
+        ).where(and_(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.created_at >= start,
+            LearningRecord.created_at < end,
+        )).group_by(LearningRecord.user_id)
+    )
+    out = {}
+    for uid, total, correct in res.all():
+        out[uid] = round((correct or 0) / total * 100, 2) if total else 0.0
+    return out
+
+
+@router.get("/classes/{class_id}/ranking", response_model=List[ClassRanking])
+async def get_class_id_ranking(
+    class_id: int,
+    metric: str = Query("mastered_words", description="排行依据: mastered_words, accuracy, study_time"),
+    period: str = Query("all", description="时间维度: today, this_week, this_month, all"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """
+    获取指定班级的排行榜
+
+    时间维度 period:
+    - today / this_week / this_month: 该周期内的表现（按北京时间）
+    - all: 累计（mastered_words 为掌握度≥4 快照，accuracy/study_time 为全期聚合）
+
+    排行依据 metric:
+    - mastered_words: 掌握单词数（周期口径 = 周期内答对的不重复单词数）
+    - study_time: 学习时长（小时）
+    - accuracy: 正确率（%）
+    """
+    if metric not in ("mastered_words", "accuracy", "study_time"):
+        raise HTTPException(status_code=400, detail=f"不支持的排行指标: {metric}")
+
+    cls_res = await db.execute(
+        select(Class).where(Class.id == class_id, Class.teacher_id == current_user.id)
+    )
+    if cls_res.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="班级不存在或无权访问")
+
+    stu_res = await db.execute(
+        select(ClassStudent.student_id).where(
+            ClassStudent.class_id == class_id,
+            ClassStudent.is_active.is_(True),
+        )
+    )
+    student_ids = {row[0] for row in stu_res.all()}
+    if not student_ids:
+        return []
+
+    metric_name_map = {
+        "mastered_words": "掌握单词数",
+        "accuracy": "正确率",
+        "study_time": "学习时长",
+    }
+
+    # 学生基本信息（用于展示名字）
+    users_res = await db.execute(select(User).where(User.id.in_(student_ids)))
+    users = {u.id: u for u in users_res.scalars().all()}
+
+    start, end = _ranking_period_range(period)
+
+    if period == "all":
+        # 累计口径：复用既有聚合（mastered_words 用真实掌握度快照）
+        all_stats = await _build_students_stats(db, student_ids=student_ids)
+        if metric == "mastered_words":
+            score_map = {s.user_id: float(s.mastered_words) for s in all_stats}
+        elif metric == "accuracy":
+            score_map = {s.user_id: s.accuracy_rate for s in all_stats}
+        else:
+            score_map = {s.user_id: round(s.total_study_time / 3600, 2) for s in all_stats}
+    else:
+        score_map = await _period_ranking_scores(db, student_ids, metric, start, end)
+
+    # 组装：所有在册学生都列出（无数据补 0），按分值降序
+    rows = []
+    for uid in student_ids:
+        u = users.get(uid)
+        if not u:
+            continue
+        rows.append((uid, u, score_map.get(uid, 0.0)))
+    rows.sort(key=lambda x: x[2], reverse=True)
+
+    rankings = []
+    for idx, (uid, u, score) in enumerate(rows[:limit], 1):
+        rankings.append(ClassRanking(
+            rank=idx,
+            user_id=uid,
+            username=u.username,
+            full_name=u.full_name or u.username,
+            score=round(score, 2),
+            metric_name=metric_name_map.get(metric, metric),
+        ))
+
+    return rankings
+
+
+# ========================================
+# 学生 AI 学情周报
+# ========================================
+
+@router.get("/student/{student_id}/weekly-report", response_model=WeeklyReportResponse)
+async def get_student_weekly_report(
+    student_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """教师查看本班学生本周 AI 学情周报(与家长端共用同一份缓存)。"""
+    await assert_student_in_my_class(db, current_user.id, student_id)
+    return await build_and_cache_weekly_report(db, student_id, force=False)
+
+
+@router.post("/student/{student_id}/weekly-report/regenerate", response_model=WeeklyReportResponse)
+async def regenerate_student_weekly_report(
+    student_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """教师强制重新生成本周周报。"""
+    await assert_student_in_my_class(db, current_user.id, student_id)
+    return await build_and_cache_weekly_report(db, student_id, force=True)

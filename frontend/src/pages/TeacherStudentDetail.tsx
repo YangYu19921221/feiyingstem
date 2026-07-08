@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Clock, BookOpen, Target, TrendingDown, Calendar, Sparkles, FileText, Loader2 } from 'lucide-react';
 import { toast } from '../components/Toast';
 import api from '../api/client';
-import { analyzeStudentMistakes, generatePersonalizedExam } from '../api/teacher';
+import { analyzeStudentMistakes, generatePersonalizedExam, getStudentWeeklyReport, regenerateStudentWeeklyReport, type WeeklyReport } from '../api/teacher';
 import { getStudentWordTrends } from '../api/analytics';
 import WordTrendChart from '../components/WordTrendChart';
+import WeeklyReportCard from '../components/WeeklyReportCard';
 import type { StudentMistakeAnalysis } from '../types/exam';
 import { getErrorMessage } from '../utils/errorMessage';
 
@@ -44,12 +45,47 @@ const TeacherStudentDetail = () => {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStage, setGenerationStage] = useState('');
+  const [report, setReport] = useState<WeeklyReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportRegenerating, setReportRegenerating] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (studentId) {
       fetchStudentData(parseInt(studentId));
     }
   }, [studentId]);
+
+  // 加载本周 AI 学情周报（与家长端共用同一份缓存）
+  useEffect(() => {
+    if (!studentId) return;
+    const id = parseInt(studentId);
+    setReport(null);
+    setReportError(null);
+    setReportLoading(true);
+    getStudentWeeklyReport(id)
+      .then(r => setReport(r))
+      .catch(e => {
+        console.error(e);
+        setReportError('暂时无法生成周报，请稍后重试');
+      })
+      .finally(() => setReportLoading(false));
+  }, [studentId]);
+
+  const handleRegenerateReport = async () => {
+    if (!studentId) return;
+    setReportRegenerating(true);
+    setReportError(null);
+    try {
+      const r = await regenerateStudentWeeklyReport(parseInt(studentId));
+      setReport(r);
+    } catch (e) {
+      console.error(e);
+      toast.error('重新生成失败，请稍后重试');
+    } finally {
+      setReportRegenerating(false);
+    }
+  };
 
   const fetchStudentData = async (id: number) => {
     try {
@@ -302,6 +338,15 @@ const TeacherStudentDetail = () => {
             <div className="text-3xl font-bold text-gray-800">{stats.weak_words_count}</div>
           </motion.div>
         </div>
+
+        {/* AI 学情周报 */}
+        <WeeklyReportCard
+          report={report}
+          loading={reportLoading}
+          regenerating={reportRegenerating}
+          onRegenerate={handleRegenerateReport}
+          error={reportError}
+        />
 
         {/* 单词学习趋势（日/月/年） */}
         <WordTrendChart
