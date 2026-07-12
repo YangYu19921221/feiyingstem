@@ -92,6 +92,98 @@ async def do_checkin(
         return {"checked_in": True, "checkin_time": _fmt_bjt(row.checkin_at) if row.checkin_at else None, "already": True}
 
 
+@router.get("/teacher/checkins")
+async def all_classes_checkins(
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """总签到:老师名下所有班级(admin=全部班级)合并的某天签到情况。
+
+    返回与单班级接口同构(checked/unchecked),每行多带 class_name;
+    另附 by_class 各班签到率小结,方便一眼看出哪个班拖后腿。
+    """
+    if target_date:
+        try:
+            from datetime import date
+            dt = date.fromisoformat(target_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式错误,应为 YYYY-MM-DD")
+    else:
+        dt = local_today()
+
+    cls_q = select(Class)
+    if current_user.role != 'admin':
+        cls_q = cls_q.where(Class.teacher_id == current_user.id)
+    classes = (await db.execute(cls_q)).scalars().all()
+    class_names = {c.id: c.name for c in classes}
+
+    # 学生一次查全:同一学生进多个班时按第一个班归属,只计一次(签到本来就是人级别的)
+    stu_res = await db.execute(
+        select(User.id, User.username, User.full_name, ClassStudent.class_id)
+        .join(ClassStudent, ClassStudent.student_id == User.id)
+        .where(ClassStudent.class_id.in_(list(class_names.keys())), ClassStudent.is_active.is_(True))
+    )
+    name_map: dict[int, str] = {}
+    stu_class: dict[int, int] = {}
+    class_members: dict[int, set] = {cid: set() for cid in class_names}
+    for r in stu_res.all():
+        if r.id not in name_map:
+            name_map[r.id] = r.full_name or r.username
+            stu_class[r.id] = r.class_id
+        class_members[r.class_id].add(r.id)
+
+    checkins = []
+    if name_map:
+        ck_res = await db.execute(
+            select(DailyCheckin).where(
+                and_(DailyCheckin.user_id.in_(list(name_map.keys())), DailyCheckin.checkin_date == dt)
+            ).order_by(DailyCheckin.checkin_at)
+        )
+        checkins = ck_res.scalars().all()
+    checked_ids = {c.user_id for c in checkins}
+
+    by_class = []
+    for cid, members in class_members.items():
+        if not members:
+            continue
+        done = len(members & checked_ids)
+        by_class.append({
+            "class_id": cid,
+            "class_name": class_names[cid],
+            "total": len(members),
+            "checked": done,
+        })
+    by_class.sort(key=lambda x: (x["checked"] / x["total"] if x["total"] else 0))
+
+    return {
+        "class_id": 0,
+        "class_name": "全部班级",
+        "date": dt.isoformat(),
+        "total_students": len(name_map),
+        "checked_count": len(checkins),
+        "checked": [
+            {
+                "user_id": c.user_id,
+                "student_name": name_map.get(c.user_id, "?"),
+                "class_name": class_names.get(stu_class.get(c.user_id, -1), ""),
+                "checkin_time": _fmt_bjt(c.checkin_at) if c.checkin_at else None,
+                "rank": i + 1,
+            }
+            for i, c in enumerate(checkins)
+        ],
+        "unchecked": [
+            {
+                "user_id": uid,
+                "student_name": nm,
+                "class_name": class_names.get(stu_class.get(uid, -1), ""),
+            }
+            for uid, nm in name_map.items() if uid not in checked_ids
+        ],
+        "by_class": by_class,
+    }
+
+
 @router.get("/teacher/classes/{class_id}/checkins")
 async def class_checkins(
     class_id: int,

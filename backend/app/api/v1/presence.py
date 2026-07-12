@@ -219,6 +219,21 @@ async def class_live_status(
                 else:
                     live.append(entry)
 
+    # 今日切屏/走神次数:以 study_calendar(focus-event 落库)为准 ——
+    # 内存计数器进程重启就清零,库里是当天累积真实值,更准也跨重启。
+    from app.models.user import StudyCalendar
+    from app.core.timeutil import local_today
+    today = local_today()
+    cal_res = await db.execute(
+        select(StudyCalendar.user_id, StudyCalendar.switch_count, StudyCalendar.distracted_count)
+        .where(StudyCalendar.user_id.in_(list(name_map.keys())), StudyCalendar.study_date == today)
+    )
+    focus_by_user = {uid: (sw or 0, dc or 0) for uid, sw, dc in cal_res.all()}
+    for item in live:
+        sw, dc = focus_by_user.get(item["user_id"], (0, 0))
+        item["switch_count_today"] = sw
+        item["distracted_count_today"] = dc
+
     # 排序:切出置顶 > 疑似走神 > 学习中 > 离线;同状态按切屏次数降序
     order = {"away": 0, "distracted": 1, "studying": 2, "offline": 3}
     live.sort(key=lambda x: (order.get(x["status"], 9), -x["switch_count_today"]))

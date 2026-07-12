@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 
-interface CheckedRow { user_id: number; student_name: string; checkin_time: string | null; rank: number }
+interface CheckedRow { user_id: number; student_name: string; class_name?: string; checkin_time: string | null; rank: number }
+interface ClassSummary { class_id: number; class_name: string; total: number; checked: number }
 interface CheckinData {
   class_id: number;
   class_name: string;
@@ -16,11 +17,14 @@ interface CheckinData {
   total_students: number;
   checked_count: number;
   checked: CheckedRow[];
-  unchecked: { user_id: number; student_name: string }[];
+  unchecked: { user_id: number; student_name: string; class_name?: string }[];
+  by_class?: ClassSummary[];
 }
 interface ClassOption { id: number; name: string; student_count: number }
 
 const PAGE_SIZE = 20;
+// classId 用 0 表示「全部班级」汇总视图
+const ALL_CLASSES = 0;
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -44,8 +48,9 @@ const TeacherCheckins = () => {
       .then(r => {
         const list: ClassOption[] = Array.isArray(r.data) ? r.data : (r.data?.items ?? []);
         setClasses(list);
-        if (list.length > 0) setClassId(list[0].id);
-        else setLoading(false);
+        // 默认进「全部班级」总览;没有班级时也能看到空态
+        setClassId(ALL_CLASSES);
+        if (list.length === 0) setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
@@ -53,7 +58,11 @@ const TeacherCheckins = () => {
   const load = useCallback(async (cid: number, d: string) => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API_BASE_URL}/teacher/classes/${cid}/checkins`, {
+      // cid=0 → 全部班级汇总端点;否则单班级
+      const url = cid === ALL_CLASSES
+        ? `${API_BASE_URL}/teacher/checkins`
+        : `${API_BASE_URL}/teacher/classes/${cid}/checkins`;
+      const r = await axios.get(url, {
         headers: authHeaders(),
         params: { target_date: d },
       });
@@ -67,7 +76,7 @@ const TeacherCheckins = () => {
   }, []);
 
   useEffect(() => {
-    if (classId) load(classId, date);
+    if (classId !== null) load(classId, date);
   }, [classId, date, load]);
 
   const shiftDate = (delta: number) => {
@@ -109,10 +118,11 @@ const TeacherCheckins = () => {
           </h1>
           {classes.length > 0 && (
             <select
-              value={classId ?? ''}
+              value={classId ?? ALL_CLASSES}
               onChange={e => setClassId(Number(e.target.value))}
               className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
             >
+              <option value={ALL_CLASSES}>📋 全部班级</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
@@ -158,11 +168,22 @@ const TeacherCheckins = () => {
           </div>
         </div>
 
-        {/* 汇总条 */}
+        {/* 汇总条:单班级视图时带「返回全部班级」按钮 */}
         {data && (
-          <div className="flex items-center gap-4 px-1">
+          <div className="flex items-center gap-3 px-1 flex-wrap">
+            {classId !== ALL_CLASSES && (
+              <button
+                onClick={() => setClassId(ALL_CLASSES)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 transition font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                返回全部班级
+              </button>
+            )}
             <span className="text-sm text-gray-600">
-              {isToday ? '今天' : data.date} · 已签到{' '}
+              {isToday ? '今天' : data.date} · {data.class_name} · 已签到{' '}
               <span className={`font-bold font-mono ${data.checked_count === data.total_students ? 'text-green-600' : 'text-orange-500'}`}>
                 {data.checked_count}/{data.total_students}
               </span>
@@ -170,6 +191,40 @@ const TeacherCheckins = () => {
             {data.checked_count === data.total_students && data.total_students > 0 && (
               <span className="text-sm text-green-600">🎉 全员签到</span>
             )}
+          </div>
+        )}
+
+        {/* 全部班级视图:各班签到率小卡(签到率低的排前面,点击跳到该班) */}
+        {data && classId === ALL_CLASSES && (data.by_class?.length ?? 0) > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+            {data.by_class!.map(c => {
+              const pct = c.total > 0 ? Math.round((c.checked / c.total) * 100) : 0;
+              const full = c.checked === c.total && c.total > 0;
+              return (
+                <button
+                  key={c.class_id}
+                  onClick={() => setClassId(c.class_id)}
+                  className={`text-left bg-white rounded-xl p-3 shadow-sm border transition hover:shadow-md ${
+                    full ? 'border-green-200' : pct < 50 ? 'border-red-200' : 'border-gray-100'
+                  }`}
+                  title={`查看 ${c.class_name} 明细`}
+                >
+                  <p className="text-xs text-gray-500 truncate mb-1">{c.class_name}</p>
+                  <p className="flex items-baseline gap-1.5">
+                    <span className={`text-lg font-bold font-mono ${full ? 'text-green-600' : pct < 50 ? 'text-red-500' : 'text-orange-500'}`}>
+                      {c.checked}/{c.total}
+                    </span>
+                    <span className="text-xs text-gray-400">{full ? '✅ 全签' : `${pct}%`}</span>
+                  </p>
+                  <div className="h-1.5 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${full ? 'bg-green-400' : pct < 50 ? 'bg-red-400' : 'bg-orange-400'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -188,6 +243,7 @@ const TeacherCheckins = () => {
                   <tr className="border-b-2 border-gray-100 text-left text-sm text-gray-500">
                     <th className="py-3 px-4 font-medium w-16 text-center">名次</th>
                     <th className="py-3 px-4 font-medium">学生</th>
+                    {classId === ALL_CLASSES && <th className="py-3 px-4 font-medium hidden sm:table-cell">班级</th>}
                     <th className="py-3 px-4 font-medium text-right">签到时间</th>
                   </tr>
                 </thead>
@@ -207,7 +263,15 @@ const TeacherCheckins = () => {
                             ? <span className="text-lg">{['🥇', '🥈', '🥉'][c.rank - 1]}</span>
                             : <span className="text-sm font-mono text-gray-400">{c.rank}</span>}
                         </td>
-                        <td className="py-2.5 px-4 text-sm font-medium text-gray-800">{c.student_name}</td>
+                        <td className="py-2.5 px-4 text-sm font-medium text-gray-800">
+                          {c.student_name}
+                          {classId === ALL_CLASSES && c.class_name && (
+                            <span className="sm:hidden text-xs text-gray-400 ml-1.5">· {c.class_name}</span>
+                          )}
+                        </td>
+                        {classId === ALL_CLASSES && (
+                          <td className="py-2.5 px-4 text-sm text-gray-500 hidden sm:table-cell">{c.class_name || '—'}</td>
+                        )}
                         <td className="py-2.5 px-4 text-sm font-mono text-gray-500 text-right">{c.checkin_time || '—'}</td>
                       </motion.tr>
                     ))}
@@ -253,6 +317,9 @@ const TeacherCheckins = () => {
                   {filteredUnchecked.map(s => (
                     <span key={s.user_id} className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
                       {s.student_name}
+                      {classId === ALL_CLASSES && s.class_name && (
+                        <span className="text-red-400 text-xs ml-1">· {s.class_name}</span>
+                      )}
                     </span>
                   ))}
                 </div>

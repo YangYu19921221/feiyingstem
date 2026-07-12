@@ -11,6 +11,7 @@ from app.api.v1.admin import teachers as admin_teachers, classes as admin_classe
 from app.api.v1.admin import class_analytics as admin_class_analytics, competition as admin_competition
 from app.api.v1.admin import student_books as admin_student_books
 from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket
+from app.api.v1 import pk_tournament_routes
 from app.api.v1 import presence
 from app.api.v1 import checkin
 
@@ -92,6 +93,7 @@ app.include_router(assessment.router, prefix="/api/v1/assessment", tags=["测评
 app.include_router(sentences.router, prefix="/api/v1/sentences", tags=["句子背诵"])
 app.include_router(pk_routes.router, prefix="/api/v1/pk", tags=["PK竞技场"])
 app.include_router(pk_websocket.router, prefix="/api/v1/pk", tags=["PK竞技场-WS"])
+app.include_router(pk_tournament_routes.router, prefix="/api/v1/pk", tags=["PK晋级赛"])
 
 @app.get("/")
 async def root():

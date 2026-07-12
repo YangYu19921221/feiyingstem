@@ -69,6 +69,11 @@ class RoomState:
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     join_order: list[int] = field(default_factory=list)  # 用于房主转移
+    # 晋级赛对局:非 None 时这间房属于某场锦标赛,结束后由 tournament service
+    # 记结果并自动推进赛程(出线/下一轮对阵)
+    tournament_match_id: Optional[int] = None
+    # 晋级赛房间的词表在建房时就按赛事单元预置,开局不再走"共同背过"交集
+    fixed_words: bool = False
 
     @property
     def total_questions(self) -> int:

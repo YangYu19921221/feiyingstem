@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { pkApi } from '../api/pk';
 import PkInviteModal from '../components/pk/PkInviteModal';
+import { tournamentApi, type MyMatch } from '../api/tournament';
+import { toast } from '../components/Toast';
 
 const QUICK_COUNTS = [2, 4, 6, 10, 20];
 const WORD_COUNTS = [5, 10, 15, 20];
@@ -18,11 +20,34 @@ export default function PkLobby() {
   const [showInvite, setShowInvite] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [myMatches, setMyMatches] = useState<MyMatch[]>([]);
+  const [entering, setEntering] = useState<number | null>(null);
   const navTimer = useRef<number | null>(null);
 
   useEffect(() => () => {
     if (navTimer.current !== null) window.clearTimeout(navTimer.current);
   }, []);
+
+  // 晋级赛待打对局:进大厅拉一次 + 每 20 秒刷(对手先开好房后,这里能拿到 invite_code)
+  useEffect(() => {
+    const load = () => tournamentApi.myMatches().then(setMyMatches).catch(() => {});
+    load();
+    const t = setInterval(() => { if (!document.hidden) load(); }, 20000);
+    return () => clearInterval(t);
+  }, []);
+
+  const enterMatch = async (m: MyMatch) => {
+    setEntering(m.match_id);
+    try {
+      const r = await tournamentApi.enterMatch(m.match_id);
+      navigate(`/pk/arena/${r.room_id}`);
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      toast.error(detail === 'MATCH_ALREADY_FINISHED' ? '这场对局已结束' : detail || '进入对局失败');
+      setEntering(null);
+      tournamentApi.myMatches().then(setMyMatches).catch(() => {});
+    }
+  };
 
   const clampPlayers = (n: number) =>
     Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.floor(n) || MIN_PLAYERS));
@@ -132,6 +157,40 @@ export default function PkLobby() {
             ))}
           </div>
         </motion.div>
+
+        {/* 晋级赛待打对局:老师办的正式赛事,置顶醒目 */}
+        {myMatches.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 mb-6"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">🏆</span>
+              <h2 className="font-bold text-amber-900">晋级赛 · 你有 {myMatches.length} 场对局要打</h2>
+            </div>
+            <div className="space-y-2">
+              {myMatches.map((m) => (
+                <div key={m.match_id} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 shadow-sm">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-ink truncate">{m.tournament_name}</p>
+                    <p className="text-xs text-ink-mute">
+                      {m.stage === 'group' ? `小组赛` : m.stage === 'ko' ? '淘汰赛' : '黑马组'}
+                      {' · 对阵 '}<span className="font-medium text-ink">{m.opponent_name}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => enterMatch(m)}
+                    disabled={entering === m.match_id}
+                    className="shrink-0 px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold shadow disabled:opacity-50"
+                  >
+                    {entering === m.match_id ? '进入中…' : m.invite_code ? '⚔️ 对手在等你!' : '⚔️ 开打'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* 创建 / 加入 双卡 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

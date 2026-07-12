@@ -95,6 +95,7 @@ const TeacherDashboard = () => {
     { icon: '📝', title: '阅读理解', desc: '文章和题目', color: 'from-yellow-500 to-orange-500', route: '/teacher/reading' },
     { icon: '💬', title: '句子背诵', desc: '句子集 · 单元 · CSV 导入', color: 'from-green-500 to-emerald-500', route: '/teacher/sentences' },
     { icon: '🏆', title: '竞赛管理', desc: 'AI生成题目', color: 'from-red-500 to-pink-500', route: '/teacher/competition' },
+    { icon: '⚔️', title: 'PK 晋级赛', desc: '分组·淘汰·自动出冠军', color: 'from-violet-500 to-fuchsia-500', route: '/teacher/tournaments' },
     { icon: '📡', title: '实时课堂', desc: '谁在学·谁切屏了', color: 'from-emerald-500 to-green-500', route: '/teacher/live' },
     { icon: '📍', title: '签到记录', desc: '每日签到·历史可查', color: 'from-cyan-500 to-sky-500', route: '/teacher/checkins' },
     { icon: '📤', title: '分配单词本', desc: '划学习范围:整本/单元/分组', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },

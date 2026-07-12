@@ -493,3 +493,60 @@ CREATE TABLE IF NOT EXISTS client_submit_dedup (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_client_dedup_created ON client_submit_dedup(created_at);
+
+-- ============ PK 晋级赛(锦标赛)============
+CREATE TABLE IF NOT EXISTS pk_tournaments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(80) NOT NULL,
+    teacher_id INTEGER NOT NULL,
+    status VARCHAR(12) NOT NULL DEFAULT 'running',
+    group_size INTEGER NOT NULL DEFAULT 4,
+    word_count INTEGER NOT NULL DEFAULT 8,
+    unit_ids TEXT NOT NULL,
+    class_ids TEXT NOT NULL,
+    has_consolation BOOLEAN NOT NULL DEFAULT 1,
+    champion_id INTEGER,
+    consolation_champion_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pk_tourn_status ON pk_tournaments(status);
+
+CREATE TABLE IF NOT EXISTS pk_tournament_players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    seed_metric INTEGER NOT NULL DEFAULT 0,
+    group_no INTEGER NOT NULL DEFAULT 0,
+    points INTEGER NOT NULL DEFAULT 0,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    correct_total INTEGER NOT NULL DEFAULT 0,
+    time_total_ms INTEGER NOT NULL DEFAULT 0,
+    qualified BOOLEAN NOT NULL DEFAULT 0,
+    UNIQUE(tournament_id, user_id),
+    FOREIGN KEY (tournament_id) REFERENCES pk_tournaments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pk_tourn_players_t ON pk_tournament_players(tournament_id);
+
+CREATE TABLE IF NOT EXISTS pk_tournament_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER NOT NULL,
+    stage VARCHAR(12) NOT NULL,
+    round_no INTEGER NOT NULL DEFAULT 1,
+    bracket_pos INTEGER NOT NULL DEFAULT 0,
+    group_no INTEGER,
+    p1_id INTEGER NOT NULL,
+    p2_id INTEGER,
+    winner_id INTEGER,
+    status VARCHAR(10) NOT NULL DEFAULT 'pending',
+    invite_code VARCHAR(6),
+    room_db_id INTEGER,
+    p1_correct INTEGER, p1_score INTEGER, p1_time_ms INTEGER,
+    p2_correct INTEGER, p2_score INTEGER, p2_time_ms INTEGER,
+    finished_at TIMESTAMP,
+    FOREIGN KEY (tournament_id) REFERENCES pk_tournaments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pk_tourn_matches_t ON pk_tournament_matches(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_pk_tourn_matches_status ON pk_tournament_matches(status);

@@ -16,6 +16,7 @@ interface LiveStudent {
   status: 'away' | 'distracted' | 'studying' | 'offline';
   away_seconds: number;
   switch_count_today: number;
+  distracted_count_today: number;
   unit_name: string | null;
   last_seen_ago: number;
 }
@@ -716,16 +717,28 @@ const TeacherLiveClassroom = () => {
 
                       <MiniWave color={color} active={s.status === 'studying'} />
 
-                      {s.switch_count_today > 0 && (
-                        <span
-                          className="shrink-0 text-xs font-mono font-medium px-2 py-1 rounded-md"
-                          style={s.switch_count_today > 5
-                            ? { color: t.red, border: `1px solid ${t.awayBorder}`, background: t.awayBg }
-                            : { color: t.sub, border: `1px solid ${t.cardBorder}` }}
-                        >
-                          切屏 {s.switch_count_today}
-                        </span>
-                      )}
+                      <div className="shrink-0 flex flex-col items-end gap-1">
+                        {s.switch_count_today > 0 && (
+                          <span
+                            className="text-xs font-mono font-medium px-2 py-1 rounded-md whitespace-nowrap"
+                            style={s.switch_count_today > 5
+                              ? { color: t.red, border: `1px solid ${t.awayBorder}`, background: t.awayBg }
+                              : { color: t.sub, border: `1px solid ${t.cardBorder}` }}
+                          >
+                            切屏 {s.switch_count_today}
+                          </span>
+                        )}
+                        {s.distracted_count_today > 0 && (
+                          <span
+                            className="text-xs font-mono font-medium px-2 py-1 rounded-md whitespace-nowrap"
+                            style={s.distracted_count_today > 5
+                              ? { color: t.red, border: `1px solid ${t.awayBorder}`, background: t.awayBg }
+                              : { color: t.sub, border: `1px solid ${t.cardBorder}` }}
+                          >
+                            走神 {s.distracted_count_today}
+                          </span>
+                        )}
+                      </div>
                     </motion.div>
                   );
                 })}

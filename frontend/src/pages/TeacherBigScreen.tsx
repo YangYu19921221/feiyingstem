@@ -18,6 +18,7 @@ interface LiveStudent {
   status: 'away' | 'distracted' | 'studying' | 'offline';
   away_seconds: number;
   switch_count_today: number;
+  distracted_count_today: number;
   unit_name: string | null;
   last_seen_ago: number;
 }
@@ -457,11 +458,23 @@ const TeacherBigScreen = () => {
                           {s.status === 'distracted' && '发呆中 😶'}
                         </p>
                       </div>
-                      {s.switch_count_today > 3 && (
-                        <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ color: C.red, border: `1px solid ${C.red}55` }}>
-                          ×{s.switch_count_today}
-                        </span>
-                      )}
+                      {/* 今日切屏/走神次数徽章:>0 就显示,一眼看出谁不专心 */}
+                      <div className="shrink-0 flex flex-col items-end gap-0.5">
+                        {s.switch_count_today > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap"
+                                style={{ color: C.red, border: `1px solid ${C.red}55` }}
+                                title="今日切屏次数">
+                            切屏 {s.switch_count_today}
+                          </span>
+                        )}
+                        {s.distracted_count_today > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap"
+                                style={{ color: C.yellow, border: `1px solid ${C.yellow}55` }}
+                                title="今日走神次数">
+                            走神 {s.distracted_count_today}
+                          </span>
+                        )}
+                      </div>
                     </motion.div>
                   );
                 })}

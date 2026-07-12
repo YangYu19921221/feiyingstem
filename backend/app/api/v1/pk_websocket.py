@@ -13,6 +13,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.user import User
 from app.models.word import Word
 from app.services.pk import manager, engine
+from app.services.pk import tournament as tsvc
 from app.services.pk.persist import persist_finished_room
 from app.services.pk.engine import PHASE_TIMEOUT_MS
 from app.api.v1.pk_routes import load_learned_word_ids, load_word_points
@@ -284,6 +285,40 @@ def _schedule_timer(room, word_idx: int, phase: str, word_lookup: dict):
     _TIMEOUT_TASKS[(room.room_id, word_idx, phase)] = asyncio.create_task(_run())
 
 
+async def _record_tournament_result(db, room, room_db_id: int, ranking: list[dict]) -> None:
+    """把一场晋级赛对局的胜负 + 双方数据交给 tournament service 记录并推进赛程。
+
+    胜者判定:优先用最终榜首(rank_players 已按 得分>用时 排好);
+    掉线/一人未答完也能判——榜首就是赢家。平局(极罕见)按用时少者胜,
+    rank_players 已内建该规则,取 rank==1 即可。
+    """
+    stats: dict[int, dict] = {}
+    winner_id = None
+    for r in ranking:
+        uid = r.get("user_id")
+        if uid is None:
+            continue
+        stats[uid] = {
+            "correct": r.get("correct", 0),
+            "score": r.get("final_score", r.get("points", 0)),
+            "time_ms": r.get("total_time_ms", 0),
+        }
+        if r.get("rank") == 1:
+            winner_id = uid
+    # 兜底:ranking 里没有明确 rank==1 时,取 players 里得分最高者
+    if winner_id is None and room.players:
+        winner_id = max(room.players.values(), key=lambda p: (p.points, -p.total_time_ms)).user_id
+        stats.setdefault(winner_id, {"correct": 0, "score": 0, "time_ms": 0})
+    await tsvc.record_match_result(
+        db, room.tournament_match_id,
+        winner_id=winner_id, stats=stats, room_db_id=room_db_id,
+    )
+    logger.info(
+        "晋级赛对局结果已记录: match=%s winner=%s",
+        room.tournament_match_id, winner_id,
+    )
+
+
 async def _process_events(room, events: list[dict], word_lookup: dict):
     for event in events:
         await _broadcast(room, event)
@@ -298,7 +333,16 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
                 room.room_id, len(room.players),
             )
             async with AsyncSessionLocal() as db:
-                await persist_finished_room(room, db)
+                room_db_id = await persist_finished_room(room, db)
+                # 晋级赛对局:回写结果并自动推进赛程(出线/下一轮/冠军)
+                if room.tournament_match_id is not None:
+                    try:
+                        await _record_tournament_result(db, room, room_db_id, event.get("ranking", []))
+                    except Exception:
+                        logger.exception(
+                            "回写晋级赛结果失败: match=%s room=%d",
+                            room.tournament_match_id, room.room_id,
+                        )
             for uid in list(room.players.keys()):
                 manager.USER_ACTIVE.pop(uid, None)
             manager.INVITE_INDEX.pop(room.invite_code, None)
@@ -449,6 +493,31 @@ async def pk_ws(
                             "code": "NOT_ENOUGH_PLAYERS",
                             "message": "至少需要 2 名在线玩家",
                         })
+                    elif room.fixed_words and room.word_ids:
+                        # 晋级赛房:词表建房时已按赛事单元预置,不走"共同背过"交集
+                        room.word_lookup.clear()
+                        room.word_lookup.update(await _load_word_lookup(room.word_ids))
+                        room.status = "playing"
+                        room.started_at = datetime.utcnow()
+                        logger.info(
+                            "PK tournament game started: room_id=%d match=%s words=%d",
+                            room.room_id, room.tournament_match_id, len(room.word_ids),
+                        )
+                        first_id = room.word_ids[0]
+                        first_word = room.word_lookup.get(first_id)
+                        push_event = {
+                            "type": "question_pushed", "word_idx": 0,
+                            "phase": "classify",
+                            "word": {
+                                "id": getattr(first_word, "id", None),
+                                "word": getattr(first_word, "word", ""),
+                                "translation": getattr(first_word, "translation", ""),
+                            },
+                            "points": room.points_for_word(first_id),
+                        }
+                        await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+                        await _broadcast(room, push_event)
+                        _schedule_timer(room, 0, "classify", room.word_lookup)
                     else:
                         # 全库取「所有在线玩家都背过」的交集,再随机抽 word_count 个
                         learned = await _load_learned_for_room(online_ids)
