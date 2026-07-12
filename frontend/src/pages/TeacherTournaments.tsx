@@ -333,8 +333,13 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <label className="text-sm text-gray-600 font-medium">每组人数</label>
             <select value={groupSize} onChange={e => setGroupSize(Number(e.target.value))}
               className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              {[3, 4, 5, 6].map(n => <option key={n} value={n}>{n} 人/组</option>)}
+              {[3, 4, 5, 6, 8, 10, 12, 16, 20].map(n => <option key={n} value={n}>{n} 人/组</option>)}
             </select>
+            {groupSize >= 8 && (
+              <p className="mt-1 text-xs text-orange-500">
+                ⚠️ 每组 {groupSize} 人 → 组内单循环 {groupSize * (groupSize - 1) / 2} 场,场次较多,酌情选择
+              </p>
+            )}
           </div>
           <div>
             <label className="text-sm text-gray-600 font-medium">每场词数</label>

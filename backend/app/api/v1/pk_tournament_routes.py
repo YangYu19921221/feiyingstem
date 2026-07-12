@@ -24,7 +24,7 @@ from app.models.user import User, Class, ClassStudent
 from app.models.pk_tournament import PkTournament, PkTournamentPlayer, PkTournamentMatch
 from app.services.pk import manager
 from app.services.pk import tournament as tsvc
-from app.api.v1.pk_routes import load_word_points
+from app.api.v1.pk_routes import load_word_points, load_learned_word_ids
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,7 +34,7 @@ class CreateTournamentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     class_ids: list[int] = Field(min_length=1)
     unit_ids: list[int] = Field(min_length=1)
-    group_size: int = Field(default=4, ge=3, le=8)
+    group_size: int = Field(default=4, ge=3, le=20)
     word_count: int = Field(default=8, ge=5, le=20)
     has_consolation: bool = True
 
@@ -265,11 +265,22 @@ async def enter_match(
                 raise HTTPException(status_code=409, detail="ROOM_ALREADY_STARTED")
         return {"room_id": room.room_id, "invite_code": room.invite_code}
 
-    # 开新房:词表当场从赛事单元里随机抽(每场词都可能不同,防背题)
+    # 开新房:词表从赛事单元里选,优先「对阵双方都背过」的词(考已学的更公平),
+    # 学过的不够一场时,用单元里其余词补齐(晋级赛以赛促学,不因某人没学就缩水题量)
     word_ids = await _unit_word_ids(db, json.loads(t.unit_ids))
     if len(word_ids) < t.word_count:
         raise HTTPException(status_code=400, detail="赛事单元词量不足(单元可能被改动)")
-    chosen = random.sample(word_ids, t.word_count)
+
+    both = [m.p1_id, m.p2_id] if m.p2_id else [m.p1_id]
+    learned = await load_learned_word_ids(db, both, word_ids)
+    common = set.intersection(*(learned.get(uid, set()) for uid in both)) if both else set()
+    common_list = [w for w in word_ids if w in common]  # 保持单元内顺序稳定
+    rest = [w for w in word_ids if w not in common]
+    random.shuffle(common_list)
+    random.shuffle(rest)
+    # 先填学过的,不够再拿其余词补
+    chosen = (common_list + rest)[:t.word_count]
+    random.shuffle(chosen)
 
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
