@@ -22,6 +22,8 @@ export interface BookAssignmentResponse {
   scope_type: string;
   unit_id: number | null;
   group_index: number | null;
+  unit_name?: string | null;
+  unit_number?: number | null;
   assigned_at: string;
   deadline?: string;
   is_completed: boolean;
@@ -47,6 +49,12 @@ export interface StudentBookAssignmentResponse {
   progress_percentage: number;
   unit_count: number;
   word_count: number;
+  // 分配范围:book=整本 / unit=单元 / group=单元内分组
+  scope_type: 'book' | 'unit' | 'group';
+  unit_id?: number | null;
+  unit_name?: string | null;
+  unit_number?: number | null;
+  group_index?: number | null;
 }
 
 // ========================================

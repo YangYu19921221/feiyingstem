@@ -1,5 +1,5 @@
 """宠物对战系统 - ORM 模型"""
-from sqlalchemy import Column, Integer, String, Boolean, Text, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Text, TIMESTAMP, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.core.database import Base
@@ -54,6 +54,10 @@ class PetBattle(Base):
     started_at = Column(TIMESTAMP)
     finished_at = Column(TIMESTAMP)
     expires_at = Column(TIMESTAMP)
+    
+    # AI对战相关
+    is_ai_battle = Column(Boolean, default=False)
+    ai_config = Column(Text)  # JSON格式的AI配置
 
     # 关系
     player1 = relationship("User", foreign_keys=[player1_id])
@@ -84,6 +88,8 @@ class PetBattleRound(Base):
     player1_time_ms = Column(Integer)
     player1_damage = Column(Integer, default=0)
     player1_used_ultimate = Column(Boolean, default=False)
+    player1_type_multiplier = Column(Float, default=1.0)
+    player1_type_text = Column(String(50))
 
     # 玩家2答题
     player2_answer = Column(String(1))
@@ -92,6 +98,8 @@ class PetBattleRound(Base):
     player2_time_ms = Column(Integer)
     player2_damage = Column(Integer, default=0)
     player2_used_ultimate = Column(Boolean, default=False)
+    player2_type_multiplier = Column(Float, default=1.0)
+    player2_type_text = Column(String(50))
 
     # 回合结果
     player1_hp_after = Column(Integer)

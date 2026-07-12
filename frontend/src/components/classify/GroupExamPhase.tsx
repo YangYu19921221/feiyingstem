@@ -112,10 +112,11 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   const currentQ = questions[currentIndex];
   const totalQuestions = questions.length;
 
-  // 倒计时
+  // 倒计时(切出页面时暂停:否则孩子被叫走/切屏,考试在后台被烧完自动交白卷)
   useEffect(() => {
     if (phase !== 'testing') return;
     const timer = setInterval(() => {
+      if (document.hidden) return; // 页面不可见不走表
       setTimeLeft(prev => {
         if (prev <= 1) { clearInterval(timer); handleSubmitRef.current(); return 0; }
         return prev - 1;

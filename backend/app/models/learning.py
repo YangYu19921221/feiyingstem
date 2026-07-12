@@ -142,6 +142,8 @@ class HomeworkAssignment(Base):
     max_attempts = Column(Integer, default=3)  # 最多尝试次数
     deadline = Column(DateTime, nullable=True)
     group_index = Column(Integer, nullable=True)  # null=整单元, 有值=指定分组
+    # 关闭状态:发错/提前结束时关闭——学生端隐藏、不能再交卷,保留全部做题记录;可重新开放
+    is_closed = Column(Boolean, default=False, server_default="0", nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

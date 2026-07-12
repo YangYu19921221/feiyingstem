@@ -51,6 +51,8 @@ class SubmitHomeworkAttemptRequest(BaseModel):
     wrong_count: int
     total_words: int
     details: Optional[str] = None  # JSON字符串
+    # 幂等键:断网/5xx 重试补交带同一 id,防止一次成绩烧掉两次尝试机会
+    client_batch_id: Optional[str] = None
 
 
 class HomeworkAttemptResponse(BaseModel):
@@ -96,6 +98,8 @@ async def get_my_homework(
         .join(WordBook, Unit.book_id == WordBook.id)
         .join(User, HomeworkAssignment.teacher_id == User.id)
         .where(HomeworkStudentAssignment.student_id == current_user.id)
+        # 已关闭的作业学生端不显示(老师发错/提前结束,做题记录保留在教师端)
+        .where(HomeworkAssignment.is_closed.is_(False))
     )
 
     # 状态过滤
@@ -170,6 +174,10 @@ async def start_homework(
 
     assignment, homework = assignment_hw
 
+    # 作业已被老师关闭
+    if getattr(homework, 'is_closed', False):
+        raise HTTPException(status_code=400, detail="这份作业已被老师关闭")
+
     # 检查是否超过最大尝试次数
     if assignment.attempts_count >= homework.max_attempts:
         raise HTTPException(status_code=400, detail="已达到最大尝试次数")
@@ -223,6 +231,32 @@ async def submit_homework_attempt(
 
     assignment, homework = assignment_hw
 
+    # 作业已被老师关闭:不再接受交卷(已有记录保留)
+    if getattr(homework, 'is_closed', False):
+        raise HTTPException(status_code=400, detail="这份作业已被老师关闭")
+
+    # 幂等去重:响应丢失后前端重发同一 client_batch_id,直接返回当前状态,
+    # 不再新增尝试记录(否则一次成绩烧掉两次机会)。
+    # 注意:claim 失败内部会 rollback,之后 ORM 对象过期不可再访问(MissingGreenlet),
+    # 所以先把要用的值抓成局部变量。
+    if request.client_batch_id:
+        from app.api.v1.student.learning_records import claim_client_batch
+        prev_state = {
+            "is_passed": assignment.status == 'completed',
+            "best_score": assignment.best_score,
+            "attempts_count": assignment.attempts_count,
+            "remaining": max(0, homework.max_attempts - assignment.attempts_count),
+        }
+        if not await claim_client_batch(db, request.client_batch_id, current_user.id):
+            return {
+                "message": "该次成绩已提交过(重试补交,自动忽略)",
+                "is_passed": prev_state["is_passed"],
+                "score": request.score,
+                "best_score": prev_state["best_score"],
+                "attempts_count": prev_state["attempts_count"],
+                "remaining_attempts": prev_state["remaining"],
+            }
+
     # 检查是否超过最大尝试次数
     if assignment.attempts_count >= homework.max_attempts:
         raise HTTPException(status_code=400, detail="已达到最大尝试次数")
@@ -242,6 +276,10 @@ async def submit_homework_attempt(
     if is_passed:
         assignment.status = 'completed'
         assignment.completed_at = datetime.utcnow()
+    elif assignment.attempts_count >= homework.max_attempts:
+        # 次数用完仍未达标:标记为"未达标结束",从学生待办消失(否则永远挂着成死局),
+        # 教师端学生状态里标红,老师知道该找孩子单独辅导
+        assignment.status = 'failed'
 
     # 创建尝试记录
     attempt = HomeworkAttemptRecord(

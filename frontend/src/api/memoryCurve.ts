@@ -1,5 +1,6 @@
 import client from './client';
 import type { WordAnswerCreate } from './learningRecords';
+import { submitReliably } from './submitQueue';
 
 export interface MemoryCurveStats {
   due_today: number;
@@ -65,6 +66,11 @@ export const getReviewDueWords = async (limit: number = 20, randomize: boolean =
 };
 
 // 提交复习记录
-export const submitReviewRecords = async (records: WordAnswerCreate[]): Promise<any> => {
-  return client.post('/student/review-records', { records });
+// sessionSeconds: 本次提交对应的「增量净活动秒数」(已扣挂机),用于日历时长统计
+// 走可靠提交队列:失败先落本地,恢复后带幂等键自动补交(复习模式存档曾因 404 全丢过,不能再丢)
+export const submitReviewRecords = async (
+  records: WordAnswerCreate[],
+  sessionSeconds?: number,
+): Promise<any> => {
+  return submitReliably('/student/review-records', { records, session_seconds: sessionSeconds });
 };

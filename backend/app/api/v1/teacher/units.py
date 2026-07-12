@@ -254,8 +254,14 @@ async def delete_unit(
             detail=f"单元ID {unit_id} 不存在"
         )
 
-    # 2. 删除单元(级联删除 unit_words)
+    # 2. 显式清理关联再删单元。
+    # 注释里写的"级联删除 unit_words"从未生效:SQLite 默认不开 PRAGMA foreign_keys,
+    # ondelete=CASCADE 是摆设(实测库里积了 1868 条孤儿关联,教师端每日数据
+    # 会冒出「(单元已删除)」)。这里在应用层按 unit_id 直接删,不依赖级联。
+    from sqlalchemy import delete as sa_delete
+    from app.models.word import UnitWord
     book_id = unit.book_id
+    await db.execute(sa_delete(UnitWord).where(UnitWord.unit_id == unit_id))
     await db.delete(unit)
     await db.flush()
 

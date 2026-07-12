@@ -45,6 +45,9 @@ const FlashCardLearning = () => {
 
   // 学习记录相关状态
   const [studySession, setStudySession] = useState<StudySessionResponse | null>(null);
+  // 会话延迟创建:答第一题时才建(避免"点了单元没学"留下0词0秒的空会话)
+  const sessionRef = useRef<StudySessionResponse | null>(null);
+  const sessionCreatingRef = useRef(false);
   const [wordAnswers, setWordAnswers] = useState<WordAnswerCreate[]>([]);
   const [wordStartTime, setWordStartTime] = useState<number>(0);
   // 空闲检测：无操作60秒 或 标签页隐藏 → 补偿 wordStartTime
@@ -212,20 +215,9 @@ const FlashCardLearning = () => {
       const safeIndex = data.current_word_index < data.words.length ? data.current_word_index : 0;
       setCurrentIndex(safeIndex); // 断点续学:从保存的位置开始
 
-      // 创建学习会话(仅非特殊练习模式)
-      if (!isSpecialPractice || id !== 0) {
-        try {
-          const session = await createStudySession({
-            unit_id: id,
-            learning_mode: learningMode,
-            total_words: data.words.length,
-          });
-          setStudySession(session);
-        } catch (err) {
-          console.error('创建学习会话失败:', err);
-          // 不影响主流程
-        }
-      }
+      // 学习会话改为延迟创建:答第一题时(handleAnswer)才建。
+      // 之前一进页面就 createStudySession,"点了单元没学"也会留下空会话,
+      // 教师端每日学习内容会出现幽灵单元。
 
       // 开始计时
       setWordStartTime(Date.now());
@@ -508,10 +500,28 @@ const FlashCardLearning = () => {
     const isLastWord = !isReviewWord && nextIndex >= learningData.words.length && !hasReviewWords && pendingReview.size === 0;
 
     try {
+      // 延迟创建学习会话:答第一题才建(点开不学不留痕);创建失败不影响主流程
+      if (!isSpecialMode && !sessionRef.current && !sessionCreatingRef.current) {
+        sessionCreatingRef.current = true;
+        try {
+          sessionRef.current = await createStudySession({
+            unit_id: learningData.unit_info.id,
+            learning_mode: mode || 'flashcard',
+            total_words: learningData.words.length,
+          });
+          setStudySession(sessionRef.current);
+        } catch (err) {
+          console.error('创建学习会话失败:', err);
+        } finally {
+          sessionCreatingRef.current = false;
+        }
+      }
+
       // 实时提交单词记录,立即更新掌握度
       if (isReviewPracticeMode) {
         // 记忆曲线复习模式:使用专用的复习记录接口
-        await submitReviewRecords([answer]);
+        // 本词净用时(wordStartTime 已扣挂机)即本次提交的时长增量,用于日历统计
+        await submitReviewRecords([answer], Math.round(timeSpent / 1000));
       } else if (!isMistakePracticeMode) {
         await createLearningRecords({
           unit_id: learningData.unit_info.id,
@@ -534,9 +544,9 @@ const FlashCardLearning = () => {
 
       if (isLastWord) {
         // 完成学习 - 更新会话
-        if (!isSpecialMode && studySession) {
-          const totalTime = Math.floor((Date.now() - new Date(studySession.started_at).getTime()) / 1000);
-          await updateStudySession(studySession.id, {
+        if (!isSpecialMode && sessionRef.current) {
+          const totalTime = Math.floor((Date.now() - new Date(sessionRef.current.started_at).getTime()) / 1000);
+          await updateStudySession(sessionRef.current.id, {
             completed_words: updatedWordAnswers.length,
             correct_count: correctCount + (actualIsCorrect ? 1 : 0),
             wrong_count: wrongCount + (actualIsCorrect ? 0 : 1),
@@ -590,10 +600,10 @@ const FlashCardLearning = () => {
         records: allAnswers,
       });
 
-      // 更新学习会话
-      if (studySession) {
-        const totalTime = Math.floor((Date.now() - new Date(studySession.started_at).getTime()) / 1000);
-        await updateStudySession(studySession.id, {
+      // 更新学习会话(会话可能因延迟创建尚不存在,跳过即可)
+      if (sessionRef.current) {
+        const totalTime = Math.floor((Date.now() - new Date(sessionRef.current.started_at).getTime()) / 1000);
+        await updateStudySession(sessionRef.current.id, {
           completed_words: allAnswers.length,
           correct_count: correctCount + (allAnswers[allAnswers.length - 1]?.is_correct ? 1 : 0),
           wrong_count: wrongCount + (allAnswers[allAnswers.length - 1]?.is_correct ? 0 : 1),

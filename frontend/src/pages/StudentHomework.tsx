@@ -25,6 +25,7 @@ const STATUS_MAP: Record<string, string> = {
   in_progress: '进行中',
   completed: '已完成',
   overdue: '已过期',
+  failed: '未达标结束',
 };
 
 // 状态颜色配置

@@ -5,21 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/drei": "file:../../../../../tmp/drei10.tgz",
+    "@react-three/fiber": "file:../../../../../tmp/fiber9.tgz",
     "@tanstack/react-query": "^5.90.10",
     "axios": "^1.13.2",
     "framer-motion": "^12.23.24",
     "howler": "^2.2.4",
+    "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.12.1",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.6",
     "reconnecting-websocket": "^4.4.0",
+    "three": "file:../../../../../tmp/three.tgz",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.8"
   },

@@ -485,3 +485,11 @@ CREATE TABLE IF NOT EXISTS pk_answer_records (
     FOREIGN KEY (word_id) REFERENCES words(id)
 );
 CREATE INDEX IF NOT EXISTS idx_pk_records_room ON pk_answer_records(room_id);
+
+-- 客户端提交幂等去重表(前端断网/5xx 重试补交时防止同一批学习数据重复入库)
+CREATE TABLE IF NOT EXISTS client_submit_dedup (
+    batch_id VARCHAR(80) PRIMARY KEY,
+    user_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_client_dedup_created ON client_submit_dedup(created_at);

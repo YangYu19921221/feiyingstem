@@ -10,6 +10,12 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.pet_battle import PetBattle
 from app.services import pet_battle_service
+from app.services.ai_opponent_service import (
+    ai_should_answer_correctly,
+    generate_ai_answer_time,
+    generate_ai_wrong_answer,
+    calculate_ai_ultimate_usage_chance,
+)
 from app.schemas.pet_battle import (
     WSBattleStart,
     WSNewRound,
@@ -60,13 +66,17 @@ class BattleConnectionManager:
     async def broadcast(self, battle_id: int, message: dict):
         """向对战双方广播消息"""
         if battle_id not in self.active_connections:
+            print(f"❌ 广播失败: battle_id={battle_id} 不在active_connections中")
             return
 
+        print(f"📡 广播消息: battle_id={battle_id}, type={message.get('type', '?')}, 连接数={len(self.active_connections[battle_id])}")
         disconnected = []
         for player_id, ws in self.active_connections[battle_id].items():
             try:
                 await ws.send_json(message)
-            except Exception:
+                print(f"  ✓ 发送给玩家 {player_id}")
+            except Exception as e:
+                print(f"  ✗ 发送失败给玩家 {player_id}: {e}")
                 disconnected.append(player_id)
 
         # 清理断开的连接
@@ -83,8 +93,13 @@ class BattleConnectionManager:
                 except Exception:
                     self.disconnect(battle_id, player_id)
 
-    def both_connected(self, battle_id: int) -> bool:
+    def both_connected(self, battle_id: int, is_ai_battle: bool = False) -> bool:
         """检查双方是否都已连接"""
+        if is_ai_battle:
+            # AI对战只需要一个真人连接
+            return battle_id in self.active_connections and len(
+                self.active_connections[battle_id]
+            ) >= 1
         return battle_id in self.active_connections and len(
             self.active_connections[battle_id]
         ) == 2
@@ -115,14 +130,11 @@ manager = BattleConnectionManager()
 
 async def verify_token_ws(token: str, db: AsyncSession) -> User:
     """WebSocket Token验证"""
-    from app.api.v1.auth import verify_access_token
+    from app.api.v1.auth import _authenticate_token
+    from sqlalchemy import select
 
     try:
-        user_id = verify_access_token(token)
-        from sqlalchemy import select
-
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
+        user = await _authenticate_token(token, db)
         if not user:
             raise ValueError("用户不存在")
         return user
@@ -160,22 +172,24 @@ async def battle_websocket(
     await manager.connect(battle_id, current_user.id, websocket)
 
     try:
-        # 等待双方都连接
-        if not manager.both_connected(battle_id):
-            await websocket.send_json(
-                {"type": "waiting", "message": "等待对手连接..."}
-            )
-
-            # 等待最多30秒
-            for _ in range(30):
-                await asyncio.sleep(1)
-                if manager.both_connected(battle_id):
-                    break
-            else:
+        # AI对战直接开始，不等待对手连接
+        if not battle.is_ai_battle:
+            # 等待双方都连接（仅非AI对战）
+            if not manager.both_connected(battle_id, battle.is_ai_battle):
                 await websocket.send_json(
-                    WSError(message="对手未连接,对战取消").dict()
+                    {"type": "waiting", "message": "等待对手连接..."}
                 )
-                return
+
+                # 等待最多30秒
+                for _ in range(30):
+                    await asyncio.sleep(1)
+                    if manager.both_connected(battle_id, battle.is_ai_battle):
+                        break
+                else:
+                    await websocket.send_json(
+                        WSError(message="对手未连接,对战取消").model_dump(mode="json")
+                    )
+                    return
 
         # 双方都连接了,开始倒计时
         await manager.broadcast(
@@ -183,22 +197,44 @@ async def battle_websocket(
         )
         await asyncio.sleep(3)
 
+        # 重新查询battle对象（避免session过期）
+        battle = await db.get(PetBattle, battle_id)
+        if not battle:
+            await websocket.send_json(WSError(message="对战不存在").model_dump(mode="json"))
+            return
+
         # 开始对战
-        questions_data = json.loads(battle.questions_data)
+        print(f"开始对战: battle_id={battle_id}, is_ai={battle.is_ai_battle}")
+        try:
+            questions_data = json.loads(battle.questions_data)
+            print(f"题目数据已加载: {len(questions_data)} 题")
+        except Exception as e:
+            print(f"❌ 加载题目失败: {e}")
+            raise
 
+        print("准备广播战斗开始")
         # 广播战斗开始
-        from app.api.v1.student.pet_battle import build_battle_response
+        try:
+            from app.api.v1.student.pet_battle import build_battle_response
 
-        battle_response = await build_battle_response(battle, db)
-        await manager.broadcast(
-            battle_id,
-            WSBattleStart(battle=battle_response).dict(),
-        )
+            battle_response = await build_battle_response(battle, db)
+            print(f"battle_response已构建")
+            await manager.broadcast(
+                battle_id,
+                WSBattleStart(battle=battle_response).model_dump(mode="json"),
+            )
+            print(f"战斗开始已广播")
+        except Exception as e:
+            print(f"❌ 广播战斗开始失败: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
         # 进行回合
         for round_num in range(1, battle.max_rounds + 1):
             manager.clear_answers(battle_id)
 
+            print(f"第{round_num}回合开始")
             # 发送新回合题目
             question = questions_data[round_num - 1]
             await manager.broadcast(
@@ -209,6 +245,19 @@ async def battle_websocket(
                     time_limit=battle.time_per_question,
                 ).dict(),
             )
+
+            # 如果是AI对战，启动AI答题任务
+            if battle.is_ai_battle:
+                asyncio.create_task(
+                    schedule_ai_answer(
+                        battle_id=battle_id,
+                        round_number=round_num,
+                        question=question,
+                        battle=battle,
+                        manager=manager,
+                        db=db,
+                    )
+                )
 
             # 等待答题(超时时间 + 1秒缓冲)
             timeout = battle.time_per_question + 1
@@ -363,13 +412,13 @@ async def battle_websocket(
         # 通知对手
         await manager.broadcast(
             battle_id,
-            WSError(message="对手已断开连接", code="opponent_disconnected").dict(),
+            WSError(message="对手已断开连接", code="opponent_disconnected").model_dump(mode="json"),
         )
 
     except Exception as e:
         print(f"对战WebSocket错误: {e}")
         await websocket.send_json(
-            WSError(message=f"服务器错误: {e}").dict()
+            WSError(message=f"服务器错误: {e}").model_dump(mode="json")
         )
 
     finally:
@@ -405,10 +454,83 @@ async def answer_websocket(
                 WSAnswerReceived(
                     player_id=current_user.id,
                     round_number=data["round_number"],
-                ).dict(),
+                ).model_dump(mode="json"),
             )
 
     except WebSocketDisconnect:
         pass
     except Exception as e:
         print(f"答题WS错误: {e}")
+
+
+async def schedule_ai_answer(
+    battle_id: int,
+    round_number: int,
+    question: dict,
+    battle: PetBattle,
+    manager: BattleConnectionManager,
+    db: AsyncSession,
+):
+    """AI自动答题任务"""
+    # 解析AI配置
+    ai_config = json.loads(battle.ai_config) if battle.ai_config else {}
+    
+    # 确定AI是玩家1还是玩家2
+    ai_player_id = battle.player2_id if battle.player1_id > 0 else battle.player1_id
+    
+    # 生成AI答题时间
+    answer_time_ms = generate_ai_answer_time(
+        ai_config.get('speed_min_ms', 3000),
+        ai_config.get('speed_max_ms', 8000)
+    )
+    
+    # 等待AI思考时间
+    await asyncio.sleep(answer_time_ms / 1000.0)
+    
+    # 判断AI是否答对
+    is_correct = ai_should_answer_correctly(ai_config.get('accuracy', 0.7))
+    
+    # 生成答案
+    if is_correct:
+        answer = question['correct_answer']
+    else:
+        answer = generate_ai_wrong_answer(
+            question['correct_answer'],
+            question['options']
+        )
+    
+    # 判断是否使用必杀技
+    from app.models.pet import UserPet
+    ai_pet = await db.get(UserPet, battle.player2_pet_id if ai_player_id == battle.player2_id else battle.player1_pet_id)
+    combo = battle.player2_combo if ai_player_id == battle.player2_id else battle.player1_combo
+    ultimate_charges = battle.player2_ultimate_charges if ai_player_id == battle.player2_id else battle.player1_ultimate_charges
+    
+    use_ultimate = calculate_ai_ultimate_usage_chance(combo, ultimate_charges)
+    
+    # 提交AI答案
+    try:
+        await pet_battle_service.process_round_answer(
+            db=db,
+            battle_id=battle_id,
+            player_id=ai_player_id,
+            round_number=round_number,
+            answer=answer,
+            time_ms=answer_time_ms,
+            use_ultimate=use_ultimate,
+        )
+        
+        # 通知答题接收
+        await manager.broadcast(
+            battle_id,
+            WSAnswerReceived(player_id=ai_player_id, round_number=round_number).model_dump(mode="json"),
+        )
+        
+        # 标记AI已答题
+        manager.store_answer(battle_id, ai_player_id, {
+            'answer': answer,
+            'time_ms': answer_time_ms,
+            'use_ultimate': use_ultimate,
+        })
+        
+    except Exception as e:
+        print(f'AI答题失败: {e}')

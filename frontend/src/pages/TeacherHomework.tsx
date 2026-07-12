@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getTeacherHomework,
@@ -6,6 +6,7 @@ import {
   getHomeworkStudentStatus,
   getStudentHomeworkAttempts,
   deleteHomework,
+  toggleHomeworkClosed,
   type HomeworkResponse,
   type CreateHomeworkRequest,
   type StudentHomeworkStatusResponse,
@@ -30,6 +31,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; emoji: string }
   in_progress: { label: '进行中', color: 'bg-blue-100 text-blue-600', emoji: '✍️' },
   completed: { label: '已完成', color: 'bg-green-100 text-green-600', emoji: '✅' },
   overdue: { label: '已逾期', color: 'bg-red-100 text-red-600', emoji: '⏰' },
+  failed: { label: '未达标(次数用完)', color: 'bg-red-100 text-red-600 font-bold', emoji: '❗' },
 };
 
 const TeacherHomework: React.FC = () => {
@@ -64,6 +66,77 @@ const TeacherHomework: React.FC = () => {
   const [scope, setScope] = useState<ScopeValue>({
     scope_type: 'unit', book_id: null, unit_id: null, group_index: null,
   });
+  // 创建弹窗里的学生搜索关键词
+  const [studentQuery, setStudentQuery] = useState('');
+  // 列表:搜索 / 分页 / 多选
+  const [listQuery, setListQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 15;
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // 过滤 + 分页派生(前端过滤:作业总量在几百级,无需后端分页)
+  const filteredList = useMemo(() => {
+    const kw = listQuery.trim().toLowerCase();
+    if (!kw) return homeworkList;
+    return homeworkList.filter(h =>
+      (h.title || '').toLowerCase().includes(kw) ||
+      (h.unit_name || '').toLowerCase().includes(kw) ||
+      (h.book_name || '').toLowerCase().includes(kw) ||
+      (LEARNING_MODE_MAP[h.learning_mode] || h.learning_mode || '').toLowerCase().includes(kw)
+    );
+  }, [homeworkList, listQuery]);
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / PAGE_SIZE));
+  const pagedList = useMemo(
+    () => filteredList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredList, page]
+  );
+  // 搜索词变化回到第一页;数据变化时页码越界纠正
+  useEffect(() => { setPage(1); }, [listQuery]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const pageAllSelected = pagedList.length > 0 && pagedList.every(h => selectedIds.has(h.id));
+  const togglePageAll = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (pageAllSelected) pagedList.forEach(h => next.delete(h.id));
+      else pagedList.forEach(h => next.add(h.id));
+      return next;
+    });
+  };
+
+  // 关闭/重新开放作业(保留做题记录的"撤回")
+  const handleToggleClosed = async (homeworkId: number) => {
+    try {
+      const r = await toggleHomeworkClosed(homeworkId);
+      toast.success(r.message);
+      loadHomework();
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '操作失败'));
+    }
+  };
+
+  // 批量删除:allSettled 容忍部分失败
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`确定删除选中的 ${ids.length} 份作业吗?删除后无法恢复!`)) return;
+    setLoading(true);
+    const results = await Promise.allSettled(ids.map(id => deleteHomework(id)));
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const fail = ids.length - ok;
+    setSelectedIds(new Set());
+    if (fail > 0) toast.error(`已删除 ${ok} 份,${fail} 份失败`);
+    else toast.success(`已删除 ${ok} 份作业`);
+    setLoading(false);
+    loadHomework();
+  };
 
   // 加载数据
   useEffect(() => {
@@ -129,7 +202,7 @@ const TeacherHomework: React.FC = () => {
       toast.warning('请输入作业标题');
       return;
     }
-    if (!scope.unit_id) {
+    if (!scope.unit_id && !(scope.unit_ids?.length)) {
       toast.warning('请选择单元');
       return;
     }
@@ -138,14 +211,19 @@ const TeacherHomework: React.FC = () => {
       return;
     }
 
+    const unitIds = scope.unit_ids ?? [];
+    const multi = unitIds.length > 1;
+
     try {
       setLoading(true);
-      await createHomework({
+      const result = await createHomework({
         ...formData,
-        unit_id: scope.unit_id,
-        group_index: scope.group_index ?? null,
+        unit_id: scope.unit_id ?? unitIds[0],
+        group_index: multi ? null : (scope.group_index ?? null),
+        // 多选:一次为每个单元建一份作业
+        unit_ids: multi ? unitIds : undefined,
       });
-      toast.success('作业创建成功!');
+      toast.success(multi ? `已创建 ${result.homework_ids?.length ?? unitIds.length} 份作业!` : '作业创建成功!');
       setShowCreateModal(false);
       resetForm();
       loadHomework();
@@ -170,12 +248,13 @@ const TeacherHomework: React.FC = () => {
       max_attempts: 3,
       deadline: '',
     });
-    setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null });
+    setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
+    setStudentQuery('');
   };
 
   // 处理删除作业
   const handleDeleteHomework = async (homeworkId: number) => {
-    if (!confirm('确定要删除这个作业吗?删除后无法恢复!')) {
+    if (!confirm('确定要彻底删除这个作业吗?学生的做题记录会一起删除且无法恢复!\n(只是发错了或想提前结束,建议用 ⏸ 关闭——学生端隐藏但记录保留)')) {
       return;
     }
 
@@ -256,6 +335,33 @@ const TeacherHomework: React.FC = () => {
           </motion.button>
         </div>
 
+        {/* 工具栏:搜索 + 批量删除 */}
+        {homeworkList.length > 0 && (
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="relative flex-1 max-w-md">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+              <input
+                type="text"
+                value={listQuery}
+                onChange={(e) => setListQuery(e.target.value)}
+                placeholder="搜索作业标题 / 单元 / 单词本 / 模式"
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent shadow-sm"
+              />
+            </div>
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleBatchDelete}
+                className="px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 transition shadow-sm whitespace-nowrap"
+              >
+                🗑️ 删除选中({selectedIds.size})
+              </button>
+            )}
+            <div className="flex items-center text-sm text-gray-500 whitespace-nowrap">
+              共 {filteredList.length} 份{listQuery.trim() && ` · 匹配「${listQuery.trim()}」`}
+            </div>
+          </div>
+        )}
+
         {/* 作业列表 */}
         {loading && homeworkList.length === 0 ? (
           <div className="text-center py-20">
@@ -269,104 +375,188 @@ const TeacherHomework: React.FC = () => {
             <p className="text-gray-500 mt-2">点击右上角按钮创建第一个作业吧!</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence mode="popLayout">
-              {homeworkList.map((homework) => (
-                <motion.div
-                  key={homework.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  whileHover={{ y: -5 }}
-                  className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow p-6 cursor-pointer"
-                  onClick={() => handleViewHomeworkDetail(homework)}
-                >
-                  {/* 标题和学习模式 */}
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-bold text-gray-800 flex-1">{homework.title}</h3>
-                    <span className="ml-2 px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm font-medium whitespace-nowrap">
-                      {LEARNING_MODE_MAP[homework.learning_mode] || homework.learning_mode}
-                    </span>
-                  </div>
-
-                  {/* 单词本和单元 */}
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <span>📖</span>
-                      <span className="text-sm">{homework.book_name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <span>📑</span>
-                      <span className="text-sm">{homework.unit_name}</span>
-                    </div>
-                  </div>
-
-                  {/* 目标和截止时间 */}
-                  <div className="space-y-2 mb-4 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <span>🎯</span>
-                      <span>目标分数: {homework.target_score}分</span>
-                    </div>
-                    {homework.deadline && (
-                      <div className="flex items-center gap-2">
-                        <span>⏰</span>
-                        <span>截止: {formatDate(homework.deadline)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 统计数据 */}
-                  <div className="grid grid-cols-4 gap-2 mb-4">
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-gray-800">{homework.total_assigned}</div>
-                      <div className="text-xs text-gray-500">总数</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-green-600">{homework.completed_count}</div>
-                      <div className="text-xs text-gray-500">完成</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-blue-600">{homework.in_progress_count}</div>
-                      <div className="text-xs text-gray-500">进行中</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-gray-600">{homework.pending_count}</div>
-                      <div className="text-xs text-gray-500">待开始</div>
-                    </div>
-                  </div>
-
-                  {/* 完成率进度条 */}
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs text-gray-600">完成率</span>
-                      <span className="text-xs font-bold text-gray-800">{calculateCompletionRate(homework)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${calculateCompletionRate(homework)}%` }}
-                        transition={{ duration: 0.5, delay: 0.2 }}
-                        className="bg-gradient-to-r from-green-400 to-green-600 h-full rounded-full"
+          /* 列表模式:一行一份作业,信息密度高,方便扫视和对比 */
+          <div className="bg-white rounded-2xl shadow-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="border-b-2 border-gray-100 text-left text-sm text-gray-500">
+                    <th className="py-3 px-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={pageAllSelected}
+                        onChange={togglePageAll}
+                        className="w-4 h-4 cursor-pointer accent-orange-500"
+                        title="全选本页"
                       />
-                    </div>
-                  </div>
-
-                  {/* 删除按钮 */}
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteHomework(homework.id);
-                    }}
-                    className="w-full mt-2 px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                    </th>
+                    <th className="py-3 px-4 font-medium">作业</th>
+                    <th className="py-3 px-3 font-medium">单元</th>
+                    <th className="py-3 px-3 font-medium">模式</th>
+                    <th className="py-3 px-3 font-medium text-center">目标分</th>
+                    <th className="py-3 px-3 font-medium">截止</th>
+                    <th className="py-3 px-3 font-medium text-center">完成/进行/待做</th>
+                    <th className="py-3 px-3 font-medium w-40">完成率</th>
+                    <th className="py-3 px-3 font-medium text-center w-16">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* 不做逐行进出场动画:搜索时整表 layout+exit 动画同时触发会闪屏 */}
+                  {pagedList.map((homework) => {
+                      const rate = calculateCompletionRate(homework);
+                      const overdue = homework.deadline && new Date(homework.deadline) < new Date();
+                      return (
+                        <tr
+                          key={homework.id}
+                          className={`border-b border-gray-50 hover:bg-orange-50/40 cursor-pointer transition ${
+                            selectedIds.has(homework.id) ? 'bg-orange-50/60' : ''
+                          }`}
+                          onClick={() => handleViewHomeworkDetail(homework)}
+                        >
+                          <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(homework.id)}
+                              onChange={() => toggleSelect(homework.id)}
+                              className="w-4 h-4 cursor-pointer accent-orange-500"
+                            />
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-gray-800">
+                              {homework.title}
+                              {homework.is_closed && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-normal">
+                                  ⏸ 已关闭
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">{homework.book_name}</div>
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-600">{homework.unit_name}</td>
+                          <td className="py-3 px-3">
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium whitespace-nowrap">
+                              {LEARNING_MODE_MAP[homework.learning_mode] || homework.learning_mode}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-sm text-gray-700 text-center font-mono">{homework.target_score}</td>
+                          <td className="py-3 px-3 text-sm whitespace-nowrap">
+                            {homework.deadline ? (
+                              <span className={overdue ? 'text-red-500 font-medium' : 'text-gray-600'}>
+                                {formatDate(homework.deadline)}
+                                {overdue && ' · 已截止'}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-center text-sm font-mono whitespace-nowrap">
+                            <span className="text-green-600 font-semibold">{homework.completed_count}</span>
+                            <span className="text-gray-300 mx-1">/</span>
+                            <span className="text-blue-500">{homework.in_progress_count}</span>
+                            <span className="text-gray-300 mx-1">/</span>
+                            <span className="text-gray-400">{homework.pending_count}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    rate >= 80 ? 'bg-green-500' : rate >= 40 ? 'bg-yellow-400' : 'bg-gray-300'
+                                  }`}
+                                  style={{ width: `${rate}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-mono text-gray-600 w-9 text-right">{rate}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleClosed(homework.id);
+                              }}
+                              className={`p-1.5 rounded-lg transition ${
+                                homework.is_closed
+                                  ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                                  : 'text-orange-400 hover:text-orange-600 hover:bg-orange-50'
+                              }`}
+                              title={homework.is_closed ? '重新开放(学生端恢复显示)' : '关闭作业(学生端隐藏,做题记录保留)'}
+                            >
+                              {homework.is_closed ? '▶️' : '⏸'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteHomework(homework.id);
+                              }}
+                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="彻底删除(连做题记录一起删,建议优先用关闭)"
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+              {/* 搜索无结果 */}
+              {filteredList.length === 0 && (
+                <div className="text-center py-12 text-gray-400 text-sm">
+                  没有匹配「{listQuery.trim()}」的作业
+                </div>
+              )}
+            </div>
+            {/* 分页 */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                <span className="text-xs text-gray-400">
+                  第 {page}/{totalPages} 页 · 每页 {PAGE_SIZE} 份
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
                   >
-                    🗑️ 删除作业
-                  </motion.button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                    ← 上一页
+                  </button>
+                  {/* 页码:最多显示 7 个,当前页居中 */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                    .reduce<(number | '…')[]>((acc, p) => {
+                      const last = acc[acc.length - 1];
+                      if (typeof last === 'number' && p - last > 1) acc.push('…');
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, i) =>
+                      p === '…' ? (
+                        <span key={`e${i}`} className="px-1 text-gray-300">…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setPage(p)}
+                          className={`w-8 h-8 rounded-lg text-sm transition ${
+                            p === page
+                              ? 'bg-orange-500 text-white font-semibold'
+                              : 'border border-gray-200 hover:bg-gray-50 text-gray-600'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
+                  >
+                    下一页 →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -437,7 +627,13 @@ const TeacherHomework: React.FC = () => {
                       value={scope}
                       onChange={setScope}
                       allowBook={false}
+                      multiUnit
                     />
+                    {(scope.unit_ids?.length || 0) > 1 && (
+                      <p className="mt-1.5 text-xs text-blue-600">
+                        已选 {scope.unit_ids!.length} 个单元,将创建 {scope.unit_ids!.length} 份独立作业(标题自动加单元名),各自追踪完成情况
+                      </p>
+                    )}
                   </div>
 
                   {/* 学习模式 */}
@@ -511,33 +707,95 @@ const TeacherHomework: React.FC = () => {
 
                   {/* 选择学生 */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      👥 选择学生 * (已选择 {formData.student_ids.length} 人)
-                    </label>
-                    <div className="border border-gray-300 rounded-xl p-4 max-h-48 overflow-y-auto">
-                      {students.length === 0 ? (
-                        <p className="text-gray-500 text-center py-4">暂无学生</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {students.map((student) => (
-                            <label
-                              key={student.id}
-                              className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-semibold text-gray-700">
+                        👥 选择学生 * (已选择 {formData.student_ids.length} / 共 {students.length} 人)
+                      </label>
+                      {(() => {
+                        const kw = studentQuery.trim().toLowerCase();
+                        const filtered = kw
+                          ? students.filter(s =>
+                              (s.full_name || '').toLowerCase().includes(kw) ||
+                              (s.username || '').toLowerCase().includes(kw))
+                          : students;
+                        const allSelected = filtered.length > 0 && filtered.every(s => formData.student_ids.includes(s.id));
+                        return (
+                          <div className="flex gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const ids = filtered.map(s => s.id);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  student_ids: allSelected
+                                    ? prev.student_ids.filter(id => !ids.includes(id))
+                                    : Array.from(new Set([...prev.student_ids, ...ids])),
+                                }));
+                              }}
+                              className="text-orange-600 hover:text-orange-700 font-medium"
                             >
-                              <input
-                                type="checkbox"
-                                checked={formData.student_ids.includes(student.id)}
-                                onChange={() => toggleStudentSelection(student.id)}
-                                className="w-5 h-5 text-orange-500 rounded focus:ring-2 focus:ring-orange-500"
-                              />
-                              <div className="flex-1">
-                                <div className="font-medium text-gray-800">{student.full_name}</div>
-                                <div className="text-sm text-gray-500">{student.username}</div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      )}
+                              {allSelected ? '取消全选' : kw ? '全选搜索结果' : '全选'}
+                            </button>
+                            {formData.student_ids.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, student_ids: [] }))}
+                                className="text-gray-500 hover:text-gray-700"
+                              >
+                                清空
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    {/* 搜索框 */}
+                    <div className="relative mb-2">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                      <input
+                        type="text"
+                        value={studentQuery}
+                        onChange={(e) => setStudentQuery(e.target.value)}
+                        placeholder="搜索学生姓名 / 用户名"
+                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div className="border border-gray-300 rounded-xl p-3 max-h-56 overflow-y-auto">
+                      {(() => {
+                        const kw = studentQuery.trim().toLowerCase();
+                        const filtered = kw
+                          ? students.filter(s =>
+                              (s.full_name || '').toLowerCase().includes(kw) ||
+                              (s.username || '').toLowerCase().includes(kw))
+                          : students;
+                        if (students.length === 0) {
+                          return <p className="text-gray-500 text-center py-4">暂无学生</p>;
+                        }
+                        if (filtered.length === 0) {
+                          return <p className="text-gray-400 text-center py-4">没有匹配「{studentQuery}」的学生</p>;
+                        }
+                        return (
+                          <div className="space-y-1">
+                            {filtered.map((student) => (
+                              <label
+                                key={student.id}
+                                className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={formData.student_ids.includes(student.id)}
+                                  onChange={() => toggleStudentSelection(student.id)}
+                                  className="w-5 h-5 text-orange-500 rounded focus:ring-2 focus:ring-orange-500"
+                                />
+                                <div className="flex-1 flex items-baseline gap-2 min-w-0">
+                                  <span className="font-medium text-gray-800 truncate">{student.full_name}</span>
+                                  <span className="text-xs text-gray-400 truncate">{student.username}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

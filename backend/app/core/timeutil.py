@@ -34,6 +34,26 @@ def local_today_utc_range() -> tuple[datetime, datetime]:
     return local_day_utc_range(local_today())
 
 
+def local_week_utc_range(d: date) -> tuple[datetime, datetime]:
+    """d 所在自然周(北京时间周一为起始)的 UTC naive 区间 [周一0点, 下周一0点)。"""
+    monday = d - timedelta(days=d.weekday())
+    start, _ = local_day_utc_range(monday)
+    _, end = local_day_utc_range(monday + timedelta(days=6))
+    return start, end
+
+
+def local_month_utc_range(d: date) -> tuple[datetime, datetime]:
+    """d 所在自然月的 UTC naive 区间 [月初0点, 下月初0点)。处理 12→1 月跨年。"""
+    first = d.replace(day=1)
+    if d.month == 12:
+        next_first = first.replace(year=d.year + 1, month=1)
+    else:
+        next_first = first.replace(month=d.month + 1)
+    start, _ = local_day_utc_range(first)
+    end, _ = local_day_utc_range(next_first)
+    return start, end
+
+
 def utc_now() -> datetime:
     """当前 UTC naive 时间(与 datetime.utcnow() 一致,供统一引用)。"""
     return datetime.now(timezone.utc).replace(tzinfo=None)

@@ -43,6 +43,30 @@ export interface WordCompletionItem {
   mastered: number;
 }
 
+export interface DailyContentItem {
+  unit_id: number;
+  unit_name: string;
+  unit_number: number | null;
+  book_id: number | null;
+  book_name: string;
+  group_indices: number[];
+  words_studied: number;
+  time_spent: number;
+  sessions_count: number;
+}
+
+export interface ClassRankingEntry {
+  rank: number;
+  user_id: number;
+  username: string;
+  full_name: string;
+  score: number;
+  metric_name: string;
+}
+
+export type ClassRankingMetric = 'mastered_words' | 'accuracy' | 'study_time';
+export type ClassRankingPeriod = 'today' | 'this_week' | 'this_month' | 'all';
+
 const BASE = `${API_BASE_URL}/teacher`;
 const ANALYTICS = `${API_BASE_URL}/teacher/analytics`;
 
@@ -78,6 +102,27 @@ export const teacherMonitor = {
 
   classAssignmentsProgress: async (class_id: number) => {
     const r = await axios.get(`${ANALYTICS}/classes/${class_id}/assignments-progress`);
+    return r.data;
+  },
+
+  dailyStatsContent: async (
+    class_id: number, student_id: number, target_date: string
+  ): Promise<{ student_id: number; date: string; items: DailyContentItem[] }> => {
+    const r = await axios.get(
+      `${BASE}/classes/${class_id}/daily-stats/${student_id}/content`,
+      { params: { target_date } }
+    );
+    return r.data;
+  },
+
+  classRanking: async (
+    class_id: number,
+    metric: ClassRankingMetric = 'mastered_words',
+    period: ClassRankingPeriod = 'all',
+  ): Promise<ClassRankingEntry[]> => {
+    const r = await axios.get(`${ANALYTICS}/classes/${class_id}/ranking`, {
+      params: { metric, period },
+    });
     return r.data;
   },
 };

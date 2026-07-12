@@ -67,3 +67,6 @@ Thumbs.db
 .claude/worktrees/
 .claire/worktrees/
 .superpowers/
+
+# 调试用打包产物(rsync 部署时代的临时文件)
+*.tar.gz

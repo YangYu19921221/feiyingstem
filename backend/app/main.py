@@ -11,6 +11,8 @@ from app.api.v1.admin import teachers as admin_teachers, classes as admin_classe
 from app.api.v1.admin import class_analytics as admin_class_analytics, competition as admin_competition
 from app.api.v1.admin import student_books as admin_student_books
 from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket
+from app.api.v1 import presence
+from app.api.v1 import checkin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +57,8 @@ app.include_router(teacher_dashboard.router, prefix="/api/v1/teacher", tags=["�
 app.include_router(teacher_exam_generator.router, prefix="/api/v1/teacher", tags=["教师端-AI试卷生成"])
 app.include_router(teacher_classes.router, prefix="/api/v1/teacher", tags=["教师端-班级管理"])
 app.include_router(teacher_student_monitor.router, prefix="/api/v1/teacher", tags=["教师-学生监控"])
+app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
+app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])
 app.include_router(student_progress.router, prefix="/api/v1/student", tags=["学生端-学习进度"])
 app.include_router(student_learning_records.router, prefix="/api/v1/student", tags=["学生端-学习记录"])
 app.include_router(student_mistake_book.router, prefix="/api/v1/student", tags=["学生端-错题集"])

@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
+import AutoFitText from '../AutoFitText';
 import { useSyllableRhythm } from '../../hooks/useSyllableRhythm';
 
 // 音节颜色（与 ColoredWord 一致）
@@ -137,7 +138,9 @@ export default function SyllableRhythmCard({
           </span>
         </div>
 
-        <div className="text-4xl font-bold mb-3 text-gray-800">{word.word}</div>
+        <AutoFitText maxPx={40} minPx={20} fitKey={word.word} className="mb-3 text-center">
+          <span className="font-bold text-gray-800">{word.word}</span>
+        </AutoFitText>
 
         {word.phonetic && (
           <div className="mb-3 flex justify-center">

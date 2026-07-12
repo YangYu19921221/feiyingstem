@@ -11,30 +11,27 @@ from app.api.v1.auth import get_current_teacher
 
 router = APIRouter()
 
-@router.get("/stats")
+@router.get("/dashboard/stats")
 async def get_teacher_dashboard_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
     """
     获取教师仪表板统计数据
+
+    注意路径必须是 /dashboard/stats:book_assignments 路由先注册且有 GET /stats,
+    用 /stats 会被遮蔽(实测浏览器打到的是分配统计数组,仪表板全显示 0)。
     """
     teacher_id = current_user.id
     now = datetime.utcnow()
     week_start = now - timedelta(days=now.weekday())  # 本周一
 
-    # 1. 总单词数 (教师创建的单词)
-    result = await db.execute(
-        select(func.count()).select_from(Word)
-        .where(Word.created_by == teacher_id)
-    )
+    # 1. 总单词数(全局词库:词是批量导入的,created_by 为空;词库全校共享,按全局统计)
+    result = await db.execute(select(func.count()).select_from(Word))
     total_words = result.scalar() or 0
 
-    # 2. 单词本数 (教师创建的单词本)
-    result = await db.execute(
-        select(func.count()).select_from(WordBook)
-        .where(WordBook.created_by == teacher_id)
-    )
+    # 2. 单词本数(同上,全局)
+    result = await db.execute(select(func.count()).select_from(WordBook))
     total_books = result.scalar() or 0
 
     # 3. 学生人数 (所有学生用户)
@@ -143,4 +140,147 @@ async def get_teacher_dashboard_stats(
         "pending_assignments": max(pending_assignments, 0),
         "completion_rate": round(completion_rate, 1),
         "weekly_new_assignments": weekly_new_assignments
+    }
+
+
+@router.get("/recent-activities")
+async def get_recent_activities(
+    days: int = 3,
+    limit: int = 20,
+    q: str = "",
+    student_id: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher)
+):
+    """
+    今日动态:本教师学生最近的完成事件(作业完成 + 单元学完)。
+
+    - 作业完成:homework_student_assignments.status='completed',仅本教师布置的作业
+    - 单元学完:learning_progress.is_completed,仅本教师班级的学生;
+      同一学生同一单元多模式完成只显示一条(取最新时间)
+    - q:按学生姓名/用户名/作业标题/书名/单元名模糊搜索
+    - student_id:只看某个学生(实时课堂点学生查「最近做了哪些任务」)
+    - 时间戳按 UTC 存储,输出转北京时间字符串,前端直接展示
+    """
+    from sqlalchemy import or_
+    from app.models.learning import (
+        HomeworkAssignment, HomeworkStudentAssignment, LearningProgress,
+    )
+    from app.api.v1.teacher._permissions import get_my_class_student_ids
+    from app.core.timeutil import LOCAL_TZ
+    from zoneinfo import ZoneInfo
+
+    days = max(1, min(days, 30))
+    limit = max(1, min(limit, 200))
+    q = (q or "").strip()
+    like = f"%{q}%" if q else None
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    utc = ZoneInfo("UTC")
+
+    def fmt_bjt(dt: datetime) -> str:
+        """UTC naive → 北京时间 'MM-DD HH:MM'"""
+        return dt.replace(tzinfo=utc).astimezone(LOCAL_TZ).strftime('%m-%d %H:%M')
+
+    activities: list[dict] = []
+
+    # 1) 作业完成事件(本教师布置的作业)
+    hw_stmt = (
+        select(
+            HomeworkStudentAssignment.completed_at,
+            HomeworkStudentAssignment.best_score,
+            User.full_name,
+            User.username,
+            HomeworkAssignment.title,
+        )
+        .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
+        .join(User, User.id == HomeworkStudentAssignment.student_id)
+        .where(
+            HomeworkStudentAssignment.status == 'completed',
+            HomeworkStudentAssignment.completed_at.isnot(None),
+            HomeworkStudentAssignment.completed_at >= cutoff,
+            HomeworkAssignment.teacher_id == current_user.id,
+        )
+    )
+    if like:
+        hw_stmt = hw_stmt.where(or_(
+            User.full_name.like(like),
+            User.username.like(like),
+            HomeworkAssignment.title.like(like),
+        ))
+    if student_id:
+        hw_stmt = hw_stmt.where(HomeworkStudentAssignment.student_id == student_id)
+    hw_res = await db.execute(
+        hw_stmt.order_by(desc(HomeworkStudentAssignment.completed_at)).limit(limit)
+    )
+    for completed_at, best_score, student_name, username, title in hw_res.all():
+        activities.append({
+            "type": "homework",
+            "student_name": student_name or username,
+            "title": title,
+            "score": best_score,
+            "completed_at": completed_at,
+        })
+
+    # 2) 单元学完事件(本教师班级的学生)
+    class_ids = await get_my_class_student_ids(db, current_user.id)
+    if class_ids:
+        lp_stmt = (
+            select(
+                LearningProgress.user_id,
+                LearningProgress.unit_id,
+                func.max(LearningProgress.completed_at).label('done_at'),
+                User.full_name,
+                User.username,
+                Unit.unit_number,
+                Unit.name,
+                WordBook.name.label('book_name'),
+            )
+            .join(User, User.id == LearningProgress.user_id)
+            .join(Unit, Unit.id == LearningProgress.unit_id)
+            .join(WordBook, WordBook.id == Unit.book_id)
+            .where(
+                LearningProgress.is_completed == True,
+                LearningProgress.completed_at.isnot(None),
+                LearningProgress.completed_at >= cutoff,
+                LearningProgress.user_id.in_(class_ids),
+            )
+        )
+        if like:
+            lp_stmt = lp_stmt.where(or_(
+                User.full_name.like(like),
+                User.username.like(like),
+                Unit.name.like(like),
+                WordBook.name.like(like),
+            ))
+        if student_id:
+            lp_stmt = lp_stmt.where(LearningProgress.user_id == student_id)
+        lp_res = await db.execute(
+            # 同一学生同一单元多模式完成 → 合并成一条
+            lp_stmt.group_by(LearningProgress.user_id, LearningProgress.unit_id,
+                             User.full_name, User.username, Unit.unit_number, Unit.name, WordBook.name)
+                   .order_by(desc('done_at'))
+                   .limit(limit)
+        )
+        for _uid, _unit_id, done_at, student_name, username, unit_number, unit_name, book_name in lp_res.all():
+            activities.append({
+                "type": "unit",
+                "student_name": student_name or username,
+                "title": f"{book_name} · Unit {unit_number} {unit_name}",
+                "score": None,
+                "completed_at": done_at,
+            })
+
+    # 3) 合并排序,取最新 limit 条,时间转北京展示格式
+    activities.sort(key=lambda a: a["completed_at"], reverse=True)
+    return {
+        "activities": [
+            {
+                "type": a["type"],
+                "student_name": a["student_name"],
+                "title": a["title"],
+                "score": a["score"],
+                "time": fmt_bjt(a["completed_at"]),
+            }
+            for a in activities[:limit]
+        ]
     }

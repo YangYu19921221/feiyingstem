@@ -7,9 +7,36 @@
     perspective: 1000px;
   }
 
+  .perspective-1400 {
+    perspective: 1400px;
+  }
+
+  .perspective-1500 {
+    perspective: 1500px;
+  }
+
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+
   .backface-hidden {
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+  }
+
+  /* 屏幕震动(受击/暴击) */
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    10%, 30%, 50%, 70%, 90% { transform: translate(-5px, 3px); }
+    20%, 40%, 60%, 80% { transform: translate(5px, -3px); }
+  }
+  .animate-shake {
+    animation: shake 0.45s cubic-bezier(.36,.07,.19,.97) both;
+  }
+
+  /* 径向渐变工具类(天空光晕) */
+  .bg-gradient-radial {
+    background-image: radial-gradient(ellipse at center, var(--tw-gradient-stops));
   }
 
   .bg-paper {

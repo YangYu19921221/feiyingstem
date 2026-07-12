@@ -29,6 +29,8 @@ class AssignBookRequest(BaseModel):
     scope_type: Literal['book', 'unit', 'group'] = 'book'
     unit_id: Optional[int] = None
     group_index: Optional[int] = None
+    # 单元粒度多选:一次分配多个单元(scope_type='unit' 时生效,优先于 unit_id)
+    unit_ids: Optional[List[int]] = None
 
 
 class BookAssignmentResponse(BaseModel):
@@ -44,6 +46,8 @@ class BookAssignmentResponse(BaseModel):
     scope_type: str
     unit_id: Optional[int]
     group_index: Optional[int]
+    unit_name: Optional[str] = None
+    unit_number: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -98,9 +102,16 @@ async def assign_book_to_students(
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="只有教师可以分配单词本")
 
-    # 1) scope 参数校验
+    # 0) 归一化单元目标:unit 粒度支持多选(unit_ids),去重保序;其余粒度单目标
+    if request.scope_type == 'unit' and request.unit_ids:
+        unit_targets: List[Optional[int]] = list(dict.fromkeys(request.unit_ids))
+    else:
+        unit_targets = [request.unit_id]
+
+    # 1) scope 参数校验(逐个单元目标)
     try:
-        validate_scope(request.scope_type, request.unit_id, request.group_index)
+        for uid in unit_targets:
+            validate_scope(request.scope_type, uid, request.group_index)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -110,12 +121,17 @@ async def assign_book_to_students(
     if not book:
         raise HTTPException(status_code=404, detail="单词本不存在")
 
-    # 3) 如果是 unit/group，校验 unit 存在（先于 group_index 范围检查）
+    # 3) 如果是 unit/group,校验所有单元存在且属于该单词本
     if request.scope_type in ('unit', 'group'):
-        unit_res = await db.execute(select(Unit).where(Unit.id == request.unit_id))
-        unit_obj = unit_res.scalar_one_or_none()
-        if not unit_obj:
-            raise HTTPException(status_code=404, detail="单元不存在")
+        target_ids = [uid for uid in unit_targets if uid is not None]
+        unit_res = await db.execute(select(Unit).where(Unit.id.in_(target_ids)))
+        found_units = {u.id: u for u in unit_res.scalars().all()}
+        for uid in target_ids:
+            unit_obj = found_units.get(uid)
+            if not unit_obj:
+                raise HTTPException(status_code=404, detail=f"单元 {uid} 不存在")
+            if unit_obj.book_id != request.book_id:
+                raise HTTPException(status_code=422, detail=f"单元 {uid} 不属于该单词本")
 
     # 4) 如果是 group，校验 group_index 在合法范围
     if request.scope_type == 'group':
@@ -147,29 +163,30 @@ async def assign_book_to_students(
         except Exception:
             raise HTTPException(status_code=400, detail="截止时间格式错误")
 
-    # 7) 写入，用唯一约束兜底重复分配
+    # 7) 写入(学生 × 单元目标),用唯一约束兜底重复分配
     created = 0
     skipped = 0
-    total = len(request.student_ids)
+    total = len(request.student_ids) * len(unit_targets)
 
     for sid in request.student_ids:
-        assignment = BookAssignment(
-            book_id=request.book_id,
-            student_id=sid,
-            teacher_id=current_user.id,
-            scope_type=request.scope_type,
-            unit_id=request.unit_id,
-            group_index=request.group_index,
-            deadline=deadline_dt,
-            is_completed=False,
-        )
-        try:
-            async with db.begin_nested():
-                db.add(assignment)
-                await db.flush()
-            created += 1
-        except IntegrityError:
-            skipped += 1
+        for uid in unit_targets:
+            assignment = BookAssignment(
+                book_id=request.book_id,
+                student_id=sid,
+                teacher_id=current_user.id,
+                scope_type=request.scope_type,
+                unit_id=uid,
+                group_index=request.group_index,
+                deadline=deadline_dt,
+                is_completed=False,
+            )
+            try:
+                async with db.begin_nested():
+                    db.add(assignment)
+                    await db.flush()
+                created += 1
+            except IntegrityError:
+                skipped += 1
 
     await db.commit()
 
@@ -239,22 +256,24 @@ async def get_book_assignments(
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="无权限")
 
-    # 查询分配记录
+    # 查询分配记录(LEFT JOIN 单元,unit/group 粒度时带出单元名)
     result = await db.execute(
         select(
             BookAssignment,
             User.full_name.label('student_name'),
-            WordBook.name.label('book_name')
+            WordBook.name.label('book_name'),
+            Unit,
         )
         .join(User, BookAssignment.student_id == User.id)
         .join(WordBook, BookAssignment.book_id == WordBook.id)
+        .outerjoin(Unit, BookAssignment.unit_id == Unit.id)
         .where(BookAssignment.book_id == book_id)
         .where(BookAssignment.teacher_id == current_user.id)
         .order_by(BookAssignment.assigned_at.desc())
     )
 
     assignments = []
-    for assignment, student_name, book_name in result.all():
+    for assignment, student_name, book_name, unit in result.all():
         assignments.append(BookAssignmentResponse(
             id=assignment.id,
             book_id=assignment.book_id,
@@ -268,6 +287,8 @@ async def get_book_assignments(
             scope_type=assignment.scope_type,
             unit_id=assignment.unit_id,
             group_index=assignment.group_index,
+            unit_name=unit.name if unit else None,
+            unit_number=unit.unit_number if unit else None,
         ))
 
     return assignments
@@ -287,16 +308,18 @@ async def get_teacher_assignments(
         select(
             BookAssignment,
             User.full_name.label('student_name'),
-            WordBook.name.label('book_name')
+            WordBook.name.label('book_name'),
+            Unit,
         )
         .join(User, BookAssignment.student_id == User.id)
         .join(WordBook, BookAssignment.book_id == WordBook.id)
+        .outerjoin(Unit, BookAssignment.unit_id == Unit.id)
         .where(BookAssignment.teacher_id == current_user.id)
         .order_by(BookAssignment.assigned_at.desc())
     )
 
     assignments = []
-    for assignment, student_name, book_name in result.all():
+    for assignment, student_name, book_name, unit in result.all():
         assignments.append(BookAssignmentResponse(
             id=assignment.id,
             book_id=assignment.book_id,
@@ -310,6 +333,8 @@ async def get_teacher_assignments(
             scope_type=assignment.scope_type,
             unit_id=assignment.unit_id,
             group_index=assignment.group_index,
+            unit_name=unit.name if unit else None,
+            unit_number=unit.unit_number if unit else None,
         ))
 
     return assignments

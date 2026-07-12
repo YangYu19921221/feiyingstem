@@ -198,4 +198,4 @@ class WSError(BaseModel):
     """错误消息"""
     type: str = "error"
     message: str
-    code: Optional[str]
+    code: Optional[str] = None

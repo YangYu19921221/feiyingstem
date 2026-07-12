@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
+import AutoFitText from '../AutoFitText';
 
 interface FamiliarWordCardProps {
   word: WordData;
@@ -64,13 +65,13 @@ export default function FamiliarWordCard({
       </div>
 
       {/* 单词 */}
-      <div className="mb-3">
+      <AutoFitText maxPx={40} minPx={20} fitKey={word.word} className="mb-3 text-center">
         <ColoredWord
           word={word.word}
           syllables={word.syllables}
-          className="text-4xl font-bold"
+          className="font-bold"
         />
-      </div>
+      </AutoFitText>
 
       {/* 音标 */}
       {word.phonetic && (

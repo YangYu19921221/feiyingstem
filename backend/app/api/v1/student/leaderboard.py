@@ -12,14 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_student
 from app.core.database import get_db
-from app.core.timeutil import local_today, local_day_utc_range
+from app.core.timeutil import (
+    local_today, local_day_utc_range, local_week_utc_range, local_month_utc_range,
+)
 from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.user import User, Class, ClassStudent
+from app.models.word import Word
 
 router = APIRouter()
 
 LeaderboardKind = Literal["vocabulary", "diligence", "accuracy"]
-PeriodKind = Literal["this_week", "last_week", "this_month"]
+PeriodKind = Literal["today", "this_week", "last_week", "this_month"]
 ScopeKind = Literal["class", "global"]
 
 
@@ -27,25 +30,13 @@ def _period_range(period: PeriodKind) -> tuple[datetime, datetime]:
     """返回 [start, end) UTC,按北京时间周一为一周开始/月初。
     先按北京日历算出起止日,再转成 UTC 区间与 UTC 时间戳比较。"""
     today = local_today()
+    if period == "today":
+        return local_day_utc_range(today)
     if period == "this_week":
-        monday = today - timedelta(days=today.weekday())
-        start, _ = local_day_utc_range(monday)
-        _, end = local_day_utc_range(monday + timedelta(days=6))
-        return start, end
+        return local_week_utc_range(today)
     if period == "last_week":
-        monday = today - timedelta(days=today.weekday() + 7)
-        start, _ = local_day_utc_range(monday)
-        _, end = local_day_utc_range(monday + timedelta(days=6))
-        return start, end
-    # 本月
-    first = today.replace(day=1)
-    if today.month == 12:
-        next_first = first.replace(year=today.year + 1, month=1)
-    else:
-        next_first = first.replace(month=today.month + 1)
-    start, _ = local_day_utc_range(first)
-    end, _ = local_day_utc_range(next_first)
-    return start, end
+        return local_week_utc_range(today - timedelta(days=7))
+    return local_month_utc_range(today)
 
 
 class LeaderboardEntry(BaseModel):
@@ -102,23 +93,29 @@ async def _resolve_scope(
 
 
 async def _vocabulary_rows(db, period, allowed):
-    """词汇王：本周期内答对的不重复 word_id 数"""
+    """词汇王:本周期内学过的不重复单词数(按拼写去重,与教师端每日数据同口径)。
+
+    两处口径修正(否则学生端名次和教师端/大屏对不上):
+    - 按 LOWER(word.word) 拼写去重:单元级隔离后同一拼写在不同单元是不同 word_id,
+      按 word_id 数会虚高
+    - 不再要求 is_correct:教师端「学了多少词」统计的是接触过的词;答错也算学过
+    """
     start, end = _period_range(period)
     conds = [
         LearningRecord.created_at >= start,
         LearningRecord.created_at < end,
-        LearningRecord.is_correct.is_(True),
     ]
     if allowed is not None:
         conds.append(LearningRecord.user_id.in_(allowed))
     stmt = (
         select(
             LearningRecord.user_id,
-            func.count(func.distinct(LearningRecord.word_id)).label("v"),
+            func.count(func.distinct(func.lower(Word.word))).label("v"),
         )
+        .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(*conds))
         .group_by(LearningRecord.user_id)
-        .order_by(func.count(func.distinct(LearningRecord.word_id)).desc())
+        .order_by(func.count(func.distinct(func.lower(Word.word))).desc())
     )
     return [(r[0], r[1]) for r in (await db.execute(stmt)).all()]
 
@@ -227,11 +224,13 @@ async def _get_my_period_value(db, kind, user_id, start, end) -> int:
     """当前学生在某周期的指标值（用于环比，全口径不分范围）"""
     if kind == "vocabulary":
         r = await db.execute(
-            select(func.count(func.distinct(LearningRecord.word_id))).where(and_(
+            select(func.count(func.distinct(func.lower(Word.word))))
+            .select_from(LearningRecord)
+            .join(Word, Word.id == LearningRecord.word_id)
+            .where(and_(
                 LearningRecord.user_id == user_id,
                 LearningRecord.created_at >= start,
                 LearningRecord.created_at < end,
-                LearningRecord.is_correct.is_(True),
             ))
         )
         return int(r.scalar() or 0)

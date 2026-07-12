@@ -1,4 +1,5 @@
 import api from './client';
+import { getWebSocketUrl } from '../config/websocket';
 
 // ========================================
 // 宠物对战系统 API
@@ -31,12 +32,16 @@ export interface RoundResult {
   player1_time_ms: number | null;
   player1_damage: number;
   player1_used_ultimate: boolean;
+  player1_type_multiplier?: number;
+  player1_type_text?: string;
   player1_hp_after: number;
   player2_answer: string | null;
   player2_correct: boolean;
   player2_time_ms: number | null;
   player2_damage: number;
   player2_used_ultimate: boolean;
+  player2_type_multiplier?: number;
+  player2_type_text?: string;
   player2_hp_after: number;
 }
 
@@ -110,6 +115,12 @@ export const acceptBattle = async (battleId: number): Promise<Battle> => {
   return api.post(`/student/battle/${battleId}/accept`);
 };
 
+export const quickMatchBattle = async (wordbookId?: number): Promise<Battle> => {
+  return api.post('/student/battle/quick-match', null, {
+    params: { wordbook_id: wordbookId }
+  });
+};
+
 export const cancelBattle = async (battleId: number): Promise<{ message: string }> => {
   return api.post(`/student/battle/${battleId}/cancel`);
 };
@@ -145,6 +156,8 @@ export class BattleWebSocket {
   private maxReconnectAttempts = 5;
   private battleId: number;
   private token: string;
+  // 主动 close 后禁止一切回调/重连(否则 StrictMode 双挂载或页面切换会产生僵尸重连)
+  private closedByUser = false;
 
   constructor(battleId: number, token: string) {
     this.battleId = battleId;
@@ -153,7 +166,7 @@ export class BattleWebSocket {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/api/v1/student/battle/ws/${this.battleId}?token=${this.token}`;
+      const wsUrl = getWebSocketUrl(`/api/v1/student/battle/ws/${this.battleId}?token=${this.token}`);
 
       this.ws = new WebSocket(wsUrl);
 
@@ -173,11 +186,13 @@ export class BattleWebSocket {
       };
 
       this.ws.onerror = (error) => {
+        if (this.closedByUser) return; // 主动关闭引发的 error 不算失败
         console.error('Battle WebSocket error:', error);
         reject(error);
       };
 
       this.ws.onclose = () => {
+        if (this.closedByUser) return; // 主动关闭不触发重连
         console.log('Battle WebSocket closed');
         this.emit('close', {});
         this.attemptReconnect();
@@ -233,6 +248,7 @@ export class BattleWebSocket {
   }
 
   close() {
+    this.closedByUser = true;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
@@ -249,6 +265,7 @@ export class AnswerWebSocket {
   private ws: WebSocket | null = null;
   private battleId: number;
   private token: string;
+  private closedByUser = false;
 
   constructor(battleId: number, token: string) {
     this.battleId = battleId;
@@ -257,7 +274,7 @@ export class AnswerWebSocket {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/api/v1/student/battle/ws/${this.battleId}/answer?token=${this.token}`;
+      const wsUrl = getWebSocketUrl(`/api/v1/student/battle/ws/${this.battleId}/answer?token=${this.token}`);
 
       this.ws = new WebSocket(wsUrl);
 
@@ -267,6 +284,7 @@ export class AnswerWebSocket {
       };
 
       this.ws.onerror = (error) => {
+        if (this.closedByUser) return;
         console.error('Answer WebSocket error:', error);
         reject(error);
       };
@@ -287,6 +305,7 @@ export class AnswerWebSocket {
   }
 
   close() {
+    this.closedByUser = true;
     if (this.ws) {
       this.ws.close();
       this.ws = null;

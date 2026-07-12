@@ -250,10 +250,25 @@ export interface StudentInfo {
 /**
  * 获取所有学生列表
  * GET /api/v1/teacher/students
+ *
+ * 端点是分页信封 {items, total, page, size}(单页上限 200)。
+ * 这里自动翻页拉全:实测有老师班级 400+ 人,只拉一页会漏一半学生。
  */
 export const getStudentsList = async (): Promise<StudentInfo[]> => {
-  const response = await axios.get(`${API_BASE_URL}/teacher/students`);
-  return response.data;
+  const size = 200;
+  const all: StudentInfo[] = [];
+  for (let page = 1; page <= 20; page++) {  // 上限 4000 人,防御死循环
+    const response = await axios.get(`${API_BASE_URL}/teacher/students`, {
+      params: { page, size },
+    });
+    const data = response.data;
+    if (Array.isArray(data)) return data;   // 兼容旧的裸数组返回
+    const items: StudentInfo[] = data?.items ?? [];
+    all.push(...items);
+    const total: number = data?.total ?? items.length;
+    if (all.length >= total || items.length < size) break;
+  }
+  return all;
 };
 
 // 已通过顶层export interface导出类型

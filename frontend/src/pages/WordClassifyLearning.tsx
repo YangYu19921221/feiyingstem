@@ -4,7 +4,7 @@
  * 支持分组学习：小学每组10个，初中/高中每组20个
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
@@ -20,6 +20,12 @@ import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
 import { promoteReviewWords, demoteReviewWords } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
+import FocusReminder from '../components/FocusReminder';
+import LiveRankBadge from '../components/LiveRankBadge';
+import usePresence from '../hooks/usePresence';
+import { toast } from '../components/Toast';
+import { submitHomeworkAttempt, getMyHomework, type StudentHomeworkResponse } from '../api/homework';
+import { submitReviewRecords } from '../api/memoryCurve';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
@@ -57,6 +63,25 @@ interface GroupResult {
 const WordClassifyLearning = () => {
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  // 从「老师布置的任务/我的作业」进来时带 assignmentId,学完整单元后回传成绩
+  const homeworkAssignmentId: number | null =
+    (location.state as any)?.fromHomework ? ((location.state as any)?.assignmentId ?? null) : null;
+  // 本单元的待办作业(实时横幅):不管从哪进来的,只要这个单元有任务就显示;完成后自动消失
+  const [unitTask, setUnitTask] = useState<StudentHomeworkResponse | null>(null);
+  const [taskDone, setTaskDone] = useState(false);
+
+  // 拉本单元的待办作业:直接进单元学习(不经任务入口)也能看到任务横幅、完成也能交卷
+  useEffect(() => {
+    const uid = parseInt(unitId || '0');
+    if (!uid) return;
+    getMyHomework()
+      .then(all => {
+        const t = all.find(h => h.unit_id === uid && (h.status === 'pending' || h.status === 'in_progress'));
+        setUnitTask(t ?? null);
+      })
+      .catch(() => {});
+  }, [unitId]);
 
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,9 +106,18 @@ const WordClassifyLearning = () => {
   const [speechRoundDone, setSpeechRoundDone] = useState(false);
 
   const [studySession, setStudySession] = useState<StudySessionResponse | null>(null);
+  // 会话延迟创建:点进单元不建会话,第一组学完才建(避免"点了就有数据"的幽灵会话)。
+  // ref 保存避免 setState 异步导致同一次 saveGroupProgress 里拿不到刚建的会话。
+  const sessionRef = useRef<StudySessionResponse | null>(null);
+  // 本次坐下(sitting)累计:学过词数/对/错,每组结束回写会话
+  const sessionWordsRef = useRef(0);
+  const sessionCorrectRef = useRef(0);
+  const sessionWrongRef = useRef(0);
   const [startTime, setStartTime] = useState(Date.now());
   // 空闲检测：无操作60秒 或 标签页隐藏 → 暂停计时
   const isIdle = useIdleDetector();
+  // 专注力提醒:30秒无操作先轻提醒(底部胶囊),60秒(isIdle)升级全屏拦截+提示音
+  const isNudge = useIdleDetector(30_000);
   const idleStartRef = useRef(0);
   useEffect(() => {
     if (isIdle) {
@@ -94,6 +128,24 @@ const WordClassifyLearning = () => {
       idleStartRef.current = 0;
     }
   }, [isIdle]);
+
+  // 已上报给日历的净活动秒数,用于计算每次提交的增量(见 takeSessionDelta)
+  const lastReportedSecRef = useRef(0);
+  // 实时课堂:心跳 + 切屏即时上报,老师端可看到在学/切出/走神状态
+  usePresence({
+    unitId: learningData?.unit_info.id,
+    unitName: learningData?.unit_info.name,
+    idle: isIdle,
+    enabled: !!learningData,
+  });
+  // 取本次提交对应的增量净活动秒数:当前净时长(startTime 已扣挂机) − 上次已报。
+  // 所有增量之和 = 整场真实活动时长,不依赖逐题 time_spent。
+  const takeSessionDelta = useCallback(() => {
+    const net = Math.round((Date.now() - startTime) / 1000);
+    const delta = Math.max(0, net - lastReportedSecRef.current);
+    lastReportedSecRef.current = net;
+    return delta;
+  }, [startTime]);
 
   const [showExitDialog, setShowExitDialog] = useState(false);
 
@@ -217,18 +269,36 @@ const WordClassifyLearning = () => {
             if (saved.groupIndex < totalGroups) {
               setCurrentGroupIndex(saved.groupIndex);
 
-              // 恢复分类/听写结果（若有）
-              if (Array.isArray(saved.classifyResults) && saved.classifyResults.length > 0) {
-                setClassifyResults(new Map(saved.classifyResults));
+              // 恢复分类结果（若有）
+              const savedClassify: Array<[number, WordCategory]> =
+                Array.isArray(saved.classifyResults) ? saved.classifyResults : [];
+              if (savedClassify.length > 0) {
+                setClassifyResults(new Map(savedClassify));
               }
               if (Array.isArray(saved.dictationResults) && saved.dictationResults.length > 0) {
                 setDictationResults(saved.dictationResults);
               }
 
               // 按存档阶段恢复；classify 阶段内部进度未持久化，所以回到 classify 从头
-              // dictation / exam 能直接续上（前序阶段的产出已被恢复）
+              // dictation / exam / unitRecap 依赖分类阶段的产出，能续上的前提是
+              // 存档里的 classifyResults 已覆盖「当前组」的全部单词。
+              // 否则（例如学生只误触进出、分类还没做完就退出）强制回落到 classify，
+              // 避免出现「还没分类就直接进听写」。
               const validPhases: Phase[] = ['classify', 'dictation', 'exam', 'unitRecap'];
-              const restored: Phase = validPhases.includes(saved.phase) ? saved.phase : 'classify';
+              let restored: Phase = validPhases.includes(saved.phase) ? saved.phase : 'classify';
+              if (restored !== 'classify') {
+                // 计算当前组应有的单词 id，校验分类是否完整
+                const groupWords = data.words.slice(
+                  saved.groupIndex * groupSize,
+                  (saved.groupIndex + 1) * groupSize
+                );
+                const classifiedIds = new Set(savedClassify.map(([id]) => id));
+                const classifyComplete =
+                  groupWords.length > 0 && groupWords.every(w => classifiedIds.has(w.id));
+                if (!classifyComplete) {
+                  restored = 'classify';
+                }
+              }
               setPhase(restored);
               if (saved.dictationSource === 'recap' || saved.dictationSource === 'normal') {
                 setDictationSource(saved.dictationSource);
@@ -254,19 +324,9 @@ const WordClassifyLearning = () => {
         }
       }
 
-      // 创建学习会话（复习/错题模式跳过）
-      if (id !== 0) {
-        try {
-          const session = await createStudySession({
-            unit_id: id,
-            learning_mode: 'classify',
-            total_words: data.words.length,
-          });
-          setStudySession(session);
-        } catch (e) {
-          console.error('创建学习会话失败:', e);
-        }
-      }
+      // 学习会话改为延迟创建:第一组真正学完时(saveGroupProgress)才建。
+      // 之前在这里一进页面就 createStudySession,学生"点了单元没学"也会留下
+      // 0词0秒的空会话,教师端每日学习内容就会出现幽灵单元(实测一天82%是空会话)。
     } catch (e) {
       console.error('初始化学习失败:', e);
       setError('加载失败，请重试');
@@ -301,12 +361,19 @@ const WordClassifyLearning = () => {
     // 填入实际用时
     const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
     const withTime = wrongRecords.map(r => ({ ...r, time_spent: elapsed }));
+    // 复习/错题模式(unit 0):/student/records 会因"单元ID 0 不存在"404,记录全丢。
+    // 走专用 review-records 接口(不需要 unit_id,mastery/日历照常更新)。
+    if (parseInt(unitId) === 0) {
+      submitReviewRecords(withTime, takeSessionDelta()).catch(() => {});
+      return;
+    }
     createLearningRecords({
       unit_id: parseInt(unitId),
       learning_mode: withTime[0].learning_mode,
       records: withTime,
+      session_seconds: takeSessionDelta(),  // 日历时长用净活动增量,不受逐题 time_spent 影响
     }).catch(() => {});
-  }, [unitId, startTime]);
+  }, [unitId, startTime, takeSessionDelta]);
 
   // 阶段1完成：分类结束 → 跳过语音校验，直接进入听写
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
@@ -462,11 +529,17 @@ const WordClassifyLearning = () => {
     }
 
     try {
-      await createLearningRecords({
-        unit_id: parseInt(unitId),
-        learning_mode: 'classify',
-        records,
-      });
+      // 复习/错题模式(unit 0):走专用 review-records(unit_id=0 会 404,存档全丢)
+      if (parseInt(unitId) === 0) {
+        await submitReviewRecords(records, takeSessionDelta());
+      } else {
+        await createLearningRecords({
+          unit_id: parseInt(unitId),
+          learning_mode: 'classify',
+          records,
+          session_seconds: takeSessionDelta(),  // 日历时长用净活动增量,不受逐题 time_spent 影响
+        });
+      }
     } catch (e) {
       console.error('提交学习记录失败:', e);
     }
@@ -477,34 +550,44 @@ const WordClassifyLearning = () => {
       globalEndIndex += groups[i].length;
     }
 
-    // 更新进度
-    try {
-      await updateProgress({
-        unit_id: parseInt(unitId),
-        learning_mode: 'classify',
-        current_word_index: globalEndIndex - 1,
-        is_completed: isLastGroup,
-      });
-    } catch (e) {
-      console.error('更新进度失败:', e);
+    // 更新进度(复习/错题模式 unit 0 没有单元进度,跳过,否则 404)
+    if (parseInt(unitId) !== 0) {
+      try {
+        await updateProgress({
+          unit_id: parseInt(unitId),
+          learning_mode: 'classify',
+          current_word_index: globalEndIndex - 1,
+          is_completed: isLastGroup,
+        });
+      } catch (e) {
+        console.error('更新进度失败:', e);
+      }
     }
 
-    // 最后一组时更新会话
-    if (isLastGroup && studySession) {
-      const allResults = buildAllResults();
-      const allRecords = allResults.flatMap(gr =>
-        gr.words.map(w => {
-          const category = gr.classifyResults.get(w.id) || 'unknown';
-          const dictResult = gr.dictationResults.find(r => r.wordId === w.id);
-          return dictResult ? dictResult.isCorrect : category === 'familiar';
-        })
-      );
-      const correctCount = allRecords.filter(Boolean).length;
+    // 每组结束都回写会话(不再只等最后一组):本次坐下的累计词数/对错/净时长。
+    // 会话在第一组学完时才创建 → 点了单元没学不会留下空会话;
+    // 中途退出也有真实 words_studied/time_spent,教师端内容明细与时长不再缺数。
+    const uid = parseInt(unitId);
+    if (uid !== 0 && !isReviewRef.current) {
+      sessionWordsRef.current += currentGroupWords.length;
+      sessionCorrectRef.current += passedWordIds.length;
+      sessionWrongRef.current += currentGroupWords.length - passedWordIds.length;
       try {
-        await updateStudySession(studySession.id, {
-          completed_words: learningData.words.length,
-          correct_count: correctCount,
-          wrong_count: learningData.words.length - correctCount,
+        if (!sessionRef.current) {
+          sessionRef.current = await createStudySession({
+            unit_id: uid,
+            learning_mode: 'classify',
+            total_words: learningData.words.length,
+          });
+          setStudySession(sessionRef.current);
+        }
+        await updateStudySession(sessionRef.current.id, {
+          // 只写本次坐下的真实累计。勿写整单元词数:分多次学完时最后一次会把
+          // 前几次坐下的词重复计入,教师端按会话求和就虚高(实测一天120对超标)。
+          // 轮数判定已改为后端按「单元累计词数 ÷ 单元词数」计算,不依赖单会话满额。
+          completed_words: sessionWordsRef.current,
+          correct_count: sessionCorrectRef.current,
+          wrong_count: sessionWrongRef.current,
           total_time: totalTime,
         });
       } catch (e) {
@@ -579,6 +662,33 @@ const WordClassifyLearning = () => {
         console.error('赚粮失败:', err);
         foodEarnedRef.current = false;
       });
+
+    // 作业模式:学完整单元自动交卷(听写正确率作为百分制得分)。
+    // 交卷目标:导航带来的 assignmentId 优先,否则用本单元查到的待办任务——
+    // 学生自己点进单元学完,任务同样算完成
+    const submitId = homeworkAssignmentId ?? unitTask?.id ?? null;
+    if (submitId) {
+      submitHomeworkAttempt(submitId, {
+        score: Math.round((correct / total) * 100),
+        time_spent: Math.max(1, Math.round((Date.now() - startTime) / 1000)),
+        correct_count: correct,
+        wrong_count: total - correct,
+        total_words: total,
+      })
+        .then(r => {
+          if (r.is_passed) setTaskDone(true);  // 横幅变绿打勾后淡出
+          toast.success(r.is_passed
+            ? `🎉 作业达标!得分 ${r.score}`
+            : `作业已提交,得分 ${r.score}(目标未达,还可再试 ${r.remaining_attempts} 次)`);
+        })
+        .catch(err => {
+          console.error('提交作业成绩失败:', err);
+          // 网络/服务器故障:成绩已进本地补交队列,联网后自动送达,给孩子吃个定心丸
+          if (!err?.response || err.response.status >= 500) {
+            toast.success('📡 网络不稳,成绩已保存,恢复后会自动提交');
+          }
+        });
+    }
   }, [finalSummaryData]);
 
   if (loading) {
@@ -624,6 +734,10 @@ const WordClassifyLearning = () => {
 
   return (
     <div className="min-h-screen bg-paper no-select">
+      {/* 专注力提醒:30秒轻提醒 → 60秒全屏拦截(计时同步暂停);总结页不提醒 */}
+      {phase !== 'summary' && <FocusReminder nudge={isNudge} block={isIdle} />}
+      {/* 实时班级排名浮标(激励) */}
+      <LiveRankBadge />
       {/* 顶部导航 */}
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -664,6 +778,45 @@ const WordClassifyLearning = () => {
 
       {/* 主内容 */}
       <div className="max-w-3xl mx-auto py-6">
+        {/* 本单元任务横幅:实时显示目标,达标后变绿打勾并淡出 */}
+        <AnimatePresence>
+          {unitTask && !taskDone && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              className="mx-4 mb-4 px-4 py-2.5 rounded-xl flex items-center gap-2.5 bg-accent-warm/[0.08] border border-accent-warm/30"
+            >
+              <span className="text-base shrink-0">📣</span>
+              <p className="text-sm text-ink flex-1 min-w-0 truncate">
+                <span className="font-semibold">{unitTask.title}</span>
+                <span className="text-ink-mute"> · 目标 {unitTask.target_score} 分</span>
+                {unitTask.attempts_count > 0 && (
+                  <span className="text-accent-warm font-medium"> · 上次 {unitTask.best_score} 分,差 {Math.max(0, unitTask.target_score - unitTask.best_score)} 分达标</span>
+                )}
+                {unitTask.deadline && (
+                  <span className="text-ink-mute"> · 截止 {new Date(unitTask.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</span>
+                )}
+              </p>
+              <span className="text-xs text-accent-warm font-medium shrink-0">学完自动交卷,达到 {unitTask.target_score} 分任务消除</span>
+            </motion.div>
+          )}
+          {unitTask && taskDone && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ exit: { delay: 2.5 } }}
+              onAnimationComplete={() => setTimeout(() => setUnitTask(null), 2500)}
+              className="mx-4 mb-4 px-4 py-2.5 rounded-xl flex items-center gap-2.5 bg-green-50 border border-green-300"
+            >
+              <span className="text-base shrink-0">✅</span>
+              <p className="text-sm text-green-700 font-semibold flex-1">
+                任务完成!{unitTask.title}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <AnimatePresence mode="wait">
           {/* 阶段1：分类 */}
           {phase === 'classify' && (
@@ -678,6 +831,7 @@ const WordClassifyLearning = () => {
                 }}
                 playAudio={playAudio}
                 stopAudio={stopAudio}
+                paused={isIdle}
               />
             </motion.div>
           )}

@@ -51,6 +51,8 @@ interface DailyStudentData {
   wrong_count: number;
   accuracy_rate: number;
   sessions_count: number;
+  switch_count?: number;
+  distracted_count?: number;
   review_due_today?: number;
   review_done_today?: number;
   graduated_words?: number;
@@ -81,7 +83,7 @@ const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 const AVAILABLE_PAGE_SIZE = 50;
 
 // 每日数据表列数：基础列(不含首列勾选框) + 可收起的次要列。展开行 colSpan 据此计算，避免魔法数字。
-const DAILY_BASE_COLS = 7;       // 学生/学习内容/学习单词/学习时长/正确错误/准确率/操作
+const DAILY_BASE_COLS = 9;       // 学生/学习内容/学习单词/学习时长/正确错误/准确率/切屏/发呆/操作
 const DAILY_SECONDARY_COLS = 4;  // 会话数/复习待/复习已/已毕业
 
 // 分段切换按钮组（排行榜的"时间维度""指标"共用）
@@ -193,6 +195,10 @@ const TeacherClassManagement = () => {
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
   const [dailyContent, setDailyContent] = useState<DailyContentItem[]>([]);
   const [loadingDailyContent, setLoadingDailyContent] = useState(false);
+  // 展开明细的独立日期:默认=全班选中日期,可按天前后翻看该生历史(如前一天学了什么)
+  const [contentDate, setContentDate] = useState<string>('');
+  // 翻历史日期时该生该日的汇总(词数/时长/正确率),与明细一起展示
+  const [contentSummary, setContentSummary] = useState<{ words: number; duration: number; accuracy: number } | null>(null);
 
   // 班级排行榜
   const [rankingMetric, setRankingMetric] = useState<ClassRankingMetric>('mastered_words');
@@ -291,19 +297,53 @@ const TeacherClassManagement = () => {
     if (expandedStudentId === studentId) {
       setExpandedStudentId(null);
       setDailyContent([]);
+      setContentSummary(null);
       return;
     }
     setExpandedStudentId(studentId);
+    setContentDate(selectedDate);   // 展开时从全班选中日期开始
+    setContentSummary(null);
+    await loadDailyContentFor(studentId, selectedDate);
+  };
+
+  /** 拉某学生某天的明细 + 汇总(明细面板内翻日期用) */
+  const loadDailyContentFor = async (studentId: number, date: string) => {
+    if (!selectedClass) return;
     setDailyContent([]);
     setLoadingDailyContent(true);
     try {
-      const res = await teacherMonitor.dailyStatsContent(selectedClass.id, studentId, selectedDate);
+      const res = await teacherMonitor.dailyStatsContent(selectedClass.id, studentId, date);
       setDailyContent(res.items || []);
+      // 该日汇总:当天=直接用表格行;历史=单独拉该日 daily-stats 找此学生
+      if (date === selectedDate) {
+        const row = dailyStats.find(s => s.user_id === studentId);
+        setContentSummary(row ? { words: row.words_learned, duration: row.study_duration, accuracy: row.accuracy_rate } : null);
+      } else {
+        const token = localStorage.getItem('access_token');
+        const r = await axios.get(`${API_BASE_URL}/teacher/classes/${selectedClass.id}/daily-stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { target_date: date },
+        });
+        const row = (r.data?.students ?? []).find((s: DailyStudentData) => s.user_id === studentId);
+        setContentSummary(row ? { words: row.words_learned, duration: row.study_duration, accuracy: row.accuracy_rate } : null);
+      }
     } catch (error) {
       console.error('加载学习内容明细失败:', error);
     } finally {
       setLoadingDailyContent(false);
     }
+  };
+
+  /** 明细面板内前后翻日期(不允许超过今天) */
+  const shiftContentDate = (deltaDays: number) => {
+    if (!expandedStudentId) return;
+    const d = new Date(contentDate + 'T00:00:00');
+    d.setDate(d.getDate() + deltaDays);
+    const next = d.toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    if (next > today) return;
+    setContentDate(next);
+    loadDailyContentFor(expandedStudentId, next);
   };
 
   const loadRanking = async (classId: number, metric: ClassRankingMetric, period: ClassRankingPeriod) => {
@@ -976,6 +1016,8 @@ const TeacherClassManagement = () => {
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习时长</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">正确/错误</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">准确率</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="离开学习页面的次数(切去别的标签页/应用)">切屏</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="60秒无操作被全屏提醒的次数">发呆</th>
                             {showSecondaryCols && <>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">会话数</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="艾宾浩斯曲线下今日还应回顾的单词">复习待</th>
@@ -1070,6 +1112,16 @@ const TeacherClassManagement = () => {
                                   <span className="text-gray-400">-</span>
                                 )}
                               </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                <span className={(s.switch_count ?? 0) > 5 ? 'font-bold text-red-500' : (s.switch_count ?? 0) > 0 ? 'text-orange-500' : 'text-gray-300'}>
+                                  {s.switch_count || '-'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                <span className={(s.distracted_count ?? 0) > 5 ? 'font-bold text-red-500' : (s.distracted_count ?? 0) > 0 ? 'text-yellow-600' : 'text-gray-300'}>
+                                  {s.distracted_count || '-'}
+                                </span>
+                              </td>
                               {showSecondaryCols && <>
                               <td className="py-3 px-3 text-center text-sm text-gray-600">
                                 {s.sessions_count || '-'}
@@ -1107,6 +1159,42 @@ const TeacherClassManagement = () => {
                               >
                                 <td></td>
                                 <td colSpan={showSecondaryCols ? DAILY_BASE_COLS + DAILY_SECONDARY_COLS : DAILY_BASE_COLS} className="px-3 pb-4 pt-2">
+                                  {/* 明细头:学生名 + 日期翻页(可回看前一天) */}
+                                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                                    <span className="text-sm font-semibold text-gray-700">
+                                      📖 {s.full_name} 的学习内容
+                                    </span>
+                                    <div className="flex items-center gap-1 ml-1">
+                                      <button
+                                        onClick={() => shiftContentDate(-1)}
+                                        className="px-2 py-1 text-xs rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 transition"
+                                      >
+                                        ← {contentDate === new Date().toISOString().split('T')[0] ? '昨天' : '再往前'}
+                                      </button>
+                                      <span className="px-2.5 py-1 text-xs font-mono font-semibold text-gray-700 bg-white rounded-lg border border-gray-200">
+                                        {contentDate}
+                                        {contentDate === new Date().toISOString().split('T')[0] && ' · 今天'}
+                                        {(() => {
+                                          const y = new Date(); y.setDate(y.getDate() - 1);
+                                          return contentDate === y.toISOString().split('T')[0] ? ' · 昨天' : '';
+                                        })()}
+                                      </span>
+                                      <button
+                                        onClick={() => shiftContentDate(1)}
+                                        disabled={contentDate >= new Date().toISOString().split('T')[0]}
+                                        className="px-2 py-1 text-xs rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 transition disabled:opacity-35 disabled:cursor-not-allowed"
+                                      >
+                                        往后 →
+                                      </button>
+                                    </div>
+                                    {contentSummary && (
+                                      <span className="text-xs text-gray-500 ml-auto">
+                                        当日:<span className="font-semibold text-gray-700">{contentSummary.words}</span> 词
+                                        · <span className="font-semibold text-gray-700">{formatDuration(contentSummary.duration)}</span>
+                                        · 正确率 <span className="font-semibold text-gray-700">{contentSummary.accuracy}%</span>
+                                      </span>
+                                    )}
+                                  </div>
                                   {loadingDailyContent ? (
                                     <div className="py-4 text-center text-sm text-gray-400">加载中...</div>
                                   ) : dailyContent.length === 0 ? (

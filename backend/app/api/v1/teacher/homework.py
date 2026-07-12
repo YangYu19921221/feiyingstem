@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, or_
+from sqlalchemy import select, and_, func, or_, case
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -30,6 +30,8 @@ class CreateHomeworkRequest(BaseModel):
     max_attempts: int = 3
     deadline: Optional[str] = None
     group_index: Optional[int] = None  # null=整单元, 有值=指定分组
+    # 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略 group_index)
+    unit_ids: Optional[List[int]] = None
 
 
 class HomeworkResponse(BaseModel):
@@ -49,6 +51,7 @@ class HomeworkResponse(BaseModel):
     completed_count: int
     in_progress_count: int
     pending_count: int
+    is_closed: bool = False
 
     class Config:
         from_attributes = True
@@ -95,30 +98,37 @@ async def create_homework(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """创建作业并分配给学生"""
+    """创建作业并分配给学生。unit_ids 多选时为每个单元各建一份作业(标题自动带单元名)"""
 
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="只有教师可以创建作业")
 
-    # 验证单元存在
+    # 归一化单元目标:多选去重保序;单选保持旧行为
+    if request.unit_ids:
+        unit_targets = list(dict.fromkeys(request.unit_ids))
+    else:
+        unit_targets = [request.unit_id]
+    multi = len(unit_targets) > 1
+
+    # 验证所有单元存在
     result = await db.execute(
         select(Unit, WordBook)
         .join(WordBook, Unit.book_id == WordBook.id)
-        .where(Unit.id == request.unit_id)
+        .where(Unit.id.in_(unit_targets))
     )
-    unit_book = result.first()
-    if not unit_book:
-        raise HTTPException(status_code=404, detail="单元不存在")
+    unit_map = {u.id: (u, b) for u, b in result.all()}
+    missing = [uid for uid in unit_targets if uid not in unit_map]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"单元不存在: {missing}")
 
-    unit, book = unit_book
-
-    # 验证 group_index 在合法范围（如果指定）
-    if request.group_index is not None:
+    # 验证 group_index 在合法范围(仅单单元时有意义;多选时忽略)
+    group_index = None if multi else request.group_index
+    if group_index is not None:
         try:
-            groups = await get_unit_groups(db, request.unit_id)
+            groups = await get_unit_groups(db, unit_targets[0])
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        if request.group_index < 1 or request.group_index > len(groups):
+        if group_index < 1 or group_index > len(groups):
             raise HTTPException(
                 status_code=422,
                 detail=f"组序号超出范围（单元共 {len(groups)} 组）"
@@ -145,59 +155,48 @@ async def create_homework(
         except:
             raise HTTPException(status_code=400, detail="截止时间格式错误")
 
-    # 创建作业
-    homework = HomeworkAssignment(
-        title=request.title,
-        description=request.description,
-        teacher_id=current_user.id,
-        unit_id=request.unit_id,
-        learning_mode=request.learning_mode,
-        target_score=request.target_score,
-        min_completion_time=request.min_completion_time,
-        max_attempts=request.max_attempts,
-        deadline=deadline,
-        group_index=request.group_index,
-    )
-    db.add(homework)
-    await db.flush()  # 获取homework.id
-
-    # 批量分配给学生
+    # 逐单元创建作业(多选时标题带单元名区分,各自独立追踪完成情况)
+    homework_ids = []
     assigned_count = 0
     skipped_count = 0
 
-    for student_id in request.student_ids:
-        # 检查是否已分配
-        result = await db.execute(
-            select(HomeworkStudentAssignment).where(
-                and_(
-                    HomeworkStudentAssignment.homework_id == homework.id,
-                    HomeworkStudentAssignment.student_id == student_id
-                )
+    for uid in unit_targets:
+        unit, _book = unit_map[uid]
+        homework = HomeworkAssignment(
+            title=f"{request.title} · {unit.name}" if multi else request.title,
+            description=request.description,
+            teacher_id=current_user.id,
+            unit_id=uid,
+            learning_mode=request.learning_mode,
+            target_score=request.target_score,
+            min_completion_time=request.min_completion_time,
+            max_attempts=request.max_attempts,
+            deadline=deadline,
+            group_index=group_index,
+        )
+        db.add(homework)
+        await db.flush()  # 获取homework.id
+        homework_ids.append(homework.id)
+
+        for student_id in request.student_ids:
+            # 新建的 homework 不会有旧分配,直接创建即可(homework_id 唯一约束兜底)
+            student_assignment = HomeworkStudentAssignment(
+                homework_id=homework.id,
+                student_id=student_id,
+                status='pending'
             )
-        )
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            skipped_count += 1
-            continue
-
-        # 创建学生作业分配
-        student_assignment = HomeworkStudentAssignment(
-            homework_id=homework.id,
-            student_id=student_id,
-            status='pending'
-        )
-        db.add(student_assignment)
-        assigned_count += 1
+            db.add(student_assignment)
+            assigned_count += 1
 
     await db.commit()
 
     return {
-        "message": "作业创建成功",
-        "homework_id": homework.id,
+        "message": f"作业创建成功({len(homework_ids)} 份)" if multi else "作业创建成功",
+        "homework_id": homework_ids[0],
+        "homework_ids": homework_ids,
         "assigned_count": assigned_count,
         "skipped_count": skipped_count,
-        "total": len(request.student_ids)
+        "total": len(request.student_ids) * len(unit_targets)
     }
 
 
@@ -221,13 +220,13 @@ async def get_teacher_homework(
 
     homework_list = []
     for homework, unit, book in result.all():
-        # 统计完成情况
+        # 统计完成情况(case 需从 sqlalchemy 顶层导入;func.case 会生成不认识 else_ 的通用函数)
         stats_result = await db.execute(
             select(
                 func.count(HomeworkStudentAssignment.id).label('total'),
-                func.sum(func.case((HomeworkStudentAssignment.status == 'completed', 1), else_=0)).label('completed'),
-                func.sum(func.case((HomeworkStudentAssignment.status == 'in_progress', 1), else_=0)).label('in_progress'),
-                func.sum(func.case((HomeworkStudentAssignment.status == 'pending', 1), else_=0)).label('pending')
+                func.sum(case((HomeworkStudentAssignment.status == 'completed', 1), else_=0)).label('completed'),
+                func.sum(case((HomeworkStudentAssignment.status == 'in_progress', 1), else_=0)).label('in_progress'),
+                func.sum(case((HomeworkStudentAssignment.status == 'pending', 1), else_=0)).label('pending')
             )
             .where(HomeworkStudentAssignment.homework_id == homework.id)
         )
@@ -249,7 +248,8 @@ async def get_teacher_homework(
             total_assigned=stats.total or 0,
             completed_count=stats.completed or 0,
             in_progress_count=stats.in_progress or 0,
-            pending_count=stats.pending or 0
+            pending_count=stats.pending or 0,
+            is_closed=bool(homework.is_closed),
         ))
 
     return homework_list
@@ -281,19 +281,20 @@ async def get_homework_student_status(
 
     # 查询学生完成情况
     result = await db.execute(
-        select(HomeworkStudentAssignment, User.full_name)
+        select(HomeworkStudentAssignment, User.full_name, User.username)
         .join(User, HomeworkStudentAssignment.student_id == User.id)
         .where(HomeworkStudentAssignment.homework_id == homework_id)
         .order_by(HomeworkStudentAssignment.assigned_at.desc())
     )
 
     student_list = []
-    for assignment, student_name in result.all():
+    for assignment, student_name, username in result.all():
         student_list.append(StudentHomeworkStatusResponse(
             id=assignment.id,
             homework_id=assignment.homework_id,
             student_id=assignment.student_id,
-            student_name=student_name,
+            # 手机注册学生 full_name 为空,回落 username(否则 str 校验炸 500)
+            student_name=student_name or username or f"学生{assignment.student_id}",
             status=assignment.status,
             assigned_at=assignment.assigned_at.isoformat(),
             started_at=assignment.started_at.isoformat() if assignment.started_at else None,
@@ -357,13 +358,44 @@ async def get_student_homework_attempts(
     return attempts
 
 
+@router.post("/homework/{homework_id}/toggle-closed")
+async def toggle_homework_closed(
+    homework_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """关闭/重新开放作业。关闭 = 学生端隐藏、不能再交卷,做题记录全部保留(区别于删除)"""
+    if current_user.role not in ['teacher', 'admin']:
+        raise HTTPException(status_code=403, detail="无权限")
+    result = await db.execute(
+        select(HomeworkAssignment).where(
+            and_(
+                HomeworkAssignment.id == homework_id,
+                HomeworkAssignment.teacher_id == current_user.id
+            )
+        )
+    )
+    homework = result.scalar_one_or_none()
+    if not homework:
+        raise HTTPException(status_code=404, detail="作业不存在")
+    homework.is_closed = not bool(homework.is_closed)
+    await db.commit()
+    return {"homework_id": homework_id, "is_closed": homework.is_closed,
+            "message": "作业已关闭(学生做题记录已保留)" if homework.is_closed else "作业已重新开放"}
+
+
 @router.delete("/homework/{homework_id}")
 async def delete_homework(
     homework_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """删除作业"""
+    """删除/撤回作业(连带清理学生分配与尝试记录)。
+
+    SQLite 默认不开 PRAGMA foreign_keys,ondelete=CASCADE 不生效
+    (实测生产已有 5 条孤儿分配行,学生端「我的作业」会 JOIN 出脏数据),
+    这里显式手动级联删除。
+    """
 
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="无权限")
@@ -381,6 +413,18 @@ async def delete_homework(
     if not homework:
         raise HTTPException(status_code=404, detail="作业不存在")
 
+    # 手动级联:先删尝试记录,再删学生分配,最后删作业本体
+    from sqlalchemy import delete as sa_delete
+    assign_ids = (await db.execute(
+        select(HomeworkStudentAssignment.id).where(HomeworkStudentAssignment.homework_id == homework_id)
+    )).scalars().all()
+    if assign_ids:
+        await db.execute(sa_delete(HomeworkAttemptRecord).where(
+            HomeworkAttemptRecord.homework_student_assignment_id.in_(assign_ids)
+        ))
+        await db.execute(sa_delete(HomeworkStudentAssignment).where(
+            HomeworkStudentAssignment.homework_id == homework_id
+        ))
     await db.delete(homework)
     await db.commit()
 

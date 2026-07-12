@@ -1,8 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Zap, Heart, Shield } from 'lucide-react';
-import { BattleWebSocket, AnswerWebSocket, Battle, QuestionData, RoundResult } from '../../api/petBattle';
+import { BattleWebSocket, AnswerWebSocket, Battle, QuestionData, RoundResult } from '../api/petBattle';
+// three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
+const BattleScene3D = lazy(() => import('../components/BattleScene3D'));
+import {
+  getPetType,
+  getEffectiveness,
+  getEffectivenessText,
+  getEffectivenessEmoji,
+  TYPE_ICONS,
+  TYPE_COLORS,
+  TYPE_NAMES
+} from '../utils/typeEffectiveness';
 
 // 宠物图片映射
 const PET_IMAGES: Record<string, string[]> = {
@@ -43,25 +54,49 @@ export default function PetBattlePage() {
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
   const [countdown, setCountdown] = useState(3);
   const [endResult, setEndResult] = useState<any>(null);
-  const [damageAnimation, setDamageAnimation] = useState<{player: 1 | 2, damage: number} | null>(null);
+  const [damageAnimation, setDamageAnimation] = useState<{player: 1 | 2, damage: number, typeText?: string} | null>(null);
 
   const battleWs = useRef<BattleWebSocket | null>(null);
   const answerWs = useRef<AnswerWebSocket | null>(null);
   const questionStartTime = useRef<number>(0);
 
   // 获取Token
-  const token = localStorage.getItem('token') || '';
-  const currentUserId = Number(localStorage.getItem('user_id') || 0);
+  // 注意：全项目登录时存的是 access_token 和 user(对象)，
+  // 这里必须用相同的 key，否则 token 读空 → WS 永不连接 → 卡在"准备战斗中"
+  const token = localStorage.getItem('access_token') || '';
+  const currentUserId = (() => {
+    try {
+      return Number(JSON.parse(localStorage.getItem('user') || '{}').id) || 0;
+    } catch {
+      return 0;
+    }
+  })();
+
+  console.log('PetBattlePage render - battleId:', battleId, 'token:', token ? 'exists' : 'missing', 'userId:', currentUserId);
 
   // 判断是玩家1还是玩家2
   const isPlayer1 = battle?.player1_id === currentUserId;
   const myPet = isPlayer1 ? battle?.player1_pet : battle?.player2_pet;
   const opponentPet = isPlayer1 ? battle?.player2_pet : battle?.player1_pet;
 
+  // 计算属性克制关系
+  const myType = myPet ? getPetType(myPet.species) : 'normal';
+  const opponentType = opponentPet ? getPetType(opponentPet.species) : 'normal';
+  const myEffectiveness = getEffectiveness(myType, opponentType);
+  const opponentEffectiveness = getEffectiveness(opponentType, myType);
+  const myTypeIcon = TYPE_ICONS[myType];
+  const opponentTypeIcon = TYPE_ICONS[opponentType];
+
   useEffect(() => {
-    if (!battleId || !token) return;
+    console.log('PetBattlePage mounted, battleId:', battleId, 'token:', token ? 'exists' : 'missing');
+
+    if (!battleId || !token) {
+      console.error('缺少battleId或token');
+      return;
+    }
 
     // 连接WebSocket
+    console.log('正在连接WebSocket...');
     const ws = new BattleWebSocket(Number(battleId), token);
     const ansWs = new AnswerWebSocket(Number(battleId), token);
 
@@ -69,8 +104,10 @@ export default function PetBattlePage() {
     answerWs.current = ansWs;
 
     // 连接
-    Promise.all([ws.connect(), ansWs.connect()]).catch((error) => {
-      console.error('WebSocket连接失败:', error);
+    Promise.all([ws.connect(), ansWs.connect()]).then(() => {
+      console.log('✅ WebSocket连接成功');
+    }).catch((error) => {
+      console.error('❌ WebSocket连接失败:', error);
       alert('连接失败,请重试');
       navigate(-1);
     });
@@ -141,11 +178,19 @@ export default function PetBattlePage() {
 
         // 显示伤害动画
         if (data.result.player1_damage > 0) {
-          setDamageAnimation({ player: 2, damage: data.result.player1_damage });
+          setDamageAnimation({
+            player: 2,
+            damage: data.result.player1_damage,
+            typeText: data.result.player1_type_text
+          });
           setTimeout(() => setDamageAnimation(null), 1500);
         }
         if (data.result.player2_damage > 0) {
-          setDamageAnimation({ player: 1, damage: data.result.player2_damage });
+          setDamageAnimation({
+            player: 1,
+            damage: data.result.player2_damage,
+            typeText: data.result.player2_type_text
+          });
           setTimeout(() => setDamageAnimation(null), 1500);
         }
       }
@@ -194,8 +239,30 @@ export default function PetBattlePage() {
     return (
       <div className="min-h-screen bg-[#FFF8F0] flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4 animate-bounce">⚔️</div>
-          <div className="text-gray-600">加载中...</div>
+          <motion.div
+            className="text-6xl mb-4"
+            animate={{
+              rotate: [0, 10, -10, 0],
+              scale: [1, 1.1, 1]
+            }}
+            transition={{
+              repeat: Infinity,
+              duration: 1.5
+            }}
+          >
+            ⚔️
+          </motion.div>
+          <div className="text-gray-800 font-bold text-xl mb-2">准备战斗中...</div>
+          <div className="text-gray-600 text-sm">
+            {phase === 'waiting' ? '等待对手连接...' : '加载战斗数据...'}
+          </div>
+          <div className="mt-4 w-48 mx-auto bg-gray-200 rounded-full h-2 overflow-hidden">
+            <motion.div
+              className="h-full bg-purple-500"
+              animate={{ width: ['0%', '100%'] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -207,7 +274,7 @@ export default function PetBattlePage() {
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/student/pet')}
             className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -254,24 +321,36 @@ export default function PetBattlePage() {
         {/* 战斗阶段 */}
         {(phase === 'question' || phase === 'answering' || phase === 'result') && (
           <div className="space-y-6">
-            {/* 宠物对战区域 */}
-            <div className="grid grid-cols-2 gap-8">
-              {/* 我的宠物 */}
-              <PetCard
-                pet={myPet!}
-                username={isPlayer1 ? battle.player1_username : battle.player2_username}
-                isMe={true}
-                damage={damageAnimation?.player === 1 ? damageAnimation.damage : null}
-              />
+            {/* 属性克制提示 */}
+            <TypeMatchupBanner
+              myType={myType}
+              opponentType={opponentType}
+              myTypeIcon={myTypeIcon}
+              opponentTypeIcon={opponentTypeIcon}
+              myEffectiveness={myEffectiveness}
+              opponentEffectiveness={opponentEffectiveness}
+            />
 
-              {/* 对手宠物 */}
-              <PetCard
-                pet={opponentPet!}
-                username={isPlayer1 ? battle.player2_username : battle.player1_username}
-                isMe={false}
-                damage={damageAnimation?.player === 2 ? damageAnimation.damage : null}
+            {/* 宠物对战区域 - 真 3D 场景(懒加载,加载中先显示占位) */}
+            <Suspense fallback={
+              <div className="w-full h-[500px] rounded-3xl bg-gradient-to-b from-blue-400 to-green-400 flex items-center justify-center shadow-2xl">
+                <div className="text-white text-xl font-bold animate-pulse">⚔️ 3D战场加载中...</div>
+              </div>
+            }>
+              <BattleScene3D
+                myPetImage={getPetImage(myPet!.species, myPet!.evolution_stage)}
+                opponentPetImage={getPetImage(opponentPet!.species, opponentPet!.evolution_stage)}
+                myPetName={`Lv.${myPet!.level} ${myPet!.name}`}
+                opponentPetName={`Lv.${opponentPet!.level} ${opponentPet!.name}`}
+                myHp={myPet!.hp}
+                myMaxHp={myPet!.max_hp}
+                opponentHp={opponentPet!.hp}
+                opponentMaxHp={opponentPet!.max_hp}
+                damagePlayer={damageAnimation?.player || null}
+                damageValue={damageAnimation?.damage || null}
+                typeText={damageAnimation?.typeText}
               />
-            </div>
+            </Suspense>
 
             {/* 题目区域 */}
             {currentQuestion && phase !== 'result' && (
@@ -380,105 +459,277 @@ export default function PetBattlePage() {
   );
 }
 
-// 宠物卡片组件
+// 属性克制提示横幅
+function TypeMatchupBanner({
+  myType,
+  opponentType,
+  myTypeIcon,
+  opponentTypeIcon,
+  myEffectiveness,
+  opponentEffectiveness,
+}: {
+  myType: string;
+  opponentType: string;
+  myTypeIcon: string;
+  opponentTypeIcon: string;
+  myEffectiveness: number;
+  opponentEffectiveness: number;
+}) {
+  const getMatchupText = () => {
+    if (myEffectiveness === 2 && opponentEffectiveness === 0.5) {
+      return { text: '你占优势！', color: 'text-green-600', emoji: '💪' };
+    } else if (myEffectiveness === 0.5 && opponentEffectiveness === 2) {
+      return { text: '对手占优势！', color: 'text-red-600', emoji: '⚠️' };
+    } else if (myEffectiveness === 2) {
+      return { text: '你的攻击效果拔群！', color: 'text-green-600', emoji: '💥' };
+    } else if (opponentEffectiveness === 2) {
+      return { text: '对手攻击效果拔群！', color: 'text-orange-600', emoji: '🛡️' };
+    } else if (myEffectiveness === 0) {
+      return { text: '你的攻击完全无效！', color: 'text-gray-600', emoji: '❌' };
+    } else if (opponentEffectiveness === 0) {
+      return { text: '对手攻击完全无效！', color: 'text-green-600', emoji: '✨' };
+    } else if (myEffectiveness === 0.5) {
+      return { text: '你的攻击效果不好...', color: 'text-yellow-600', emoji: '🛡️' };
+    } else if (opponentEffectiveness === 0.5) {
+      return { text: '对手攻击效果不好', color: 'text-blue-600', emoji: '💪' };
+    }
+    return { text: '势均力敌', color: 'text-gray-600', emoji: '⚖️' };
+  };
+
+  const matchup = getMatchupText();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-lg mb-6"
+    >
+      <div className="flex items-center justify-center gap-4">
+        <div className="text-3xl">{myTypeIcon}</div>
+        <div className="text-center">
+          <div className={`text-lg font-bold ${matchup.color}`}>
+            {matchup.emoji} {matchup.text}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            你 {myEffectiveness === 2 ? '×2.0' : myEffectiveness === 0.5 ? '×0.5' : myEffectiveness === 0 ? '×0' : '×1.0'} |
+            对手 {opponentEffectiveness === 2 ? '×2.0' : opponentEffectiveness === 0.5 ? '×0.5' : opponentEffectiveness === 0 ? '×0' : '×1.0'}
+          </div>
+        </div>
+        <div className="text-3xl">{opponentTypeIcon}</div>
+      </div>
+    </motion.div>
+  );
+}
+
+// 宠物卡片 3D 组件 - 宝可梦风格立体对战
 function PetCard({
   pet,
   username,
   isMe,
   damage,
+  typeEffectText,
 }: {
   pet: any;
   username: string;
   isMe: boolean;
   damage: number | null;
+  typeEffectText?: string;
 }) {
   const petImage = getPetImage(pet.species, pet.evolution_stage);
   const hpPercent = (pet.hp / pet.max_hp) * 100;
   const skill = ULTIMATE_SKILLS[pet.species] || ULTIMATE_SKILLS.pikachu;
+  const [isHit, setIsHit] = useState(false);
+
+  // 获取宠物属性
+  const petType = getPetType(pet.species);
+  const typeIcon = TYPE_ICONS[petType];
+  const typeColor = TYPE_COLORS[petType];
+  const typeName = TYPE_NAMES[petType];
+
+  // 监听 damage 触发受击动画
+  useEffect(() => {
+    if (damage) {
+      setIsHit(true);
+      const timer = setTimeout(() => setIsHit(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [damage]);
+
+  const isOpponent = !isMe;
 
   return (
-    <div className={`relative ${isMe ? 'text-left' : 'text-right'}`}>
-      {/* 伤害数字动画 */}
+    <motion.div
+      className="relative"
+      style={{ transformStyle: 'preserve-3d' }}
+      animate={isHit ? {
+        rotateY: isOpponent ? [-5, -20, -5] : [5, 20, 5],
+        x: isOpponent ? [0, -15, 0] : [0, 15, 0],
+        scale: [1, 0.92, 1],
+      } : {
+        y: [0, -8, 0],
+      }}
+      transition={isHit ? {
+        duration: 0.6,
+        times: [0, 0.3, 1]
+      } : {
+        repeat: Infinity,
+        duration: 2.5,
+        ease: 'easeInOut'
+      }}
+    >
+      {/* 受击红闪遮罩 */}
+      <AnimatePresence>
+        {isHit && (
+          <motion.div
+            className="absolute inset-0 bg-red-500 rounded-3xl pointer-events-none z-30"
+            initial={{ opacity: 0.8 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            style={{ mixBlendMode: 'color-dodge' }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* 伤害数字 3D 弹出 */}
       <AnimatePresence>
         {damage && (
           <motion.div
-            initial={{ opacity: 1, y: 0, scale: 1 }}
-            animate={{ opacity: 0, y: -50, scale: 1.5 }}
+            className="absolute -top-10 left-1/2 -translate-x-1/2 z-40 pointer-events-none"
+            initial={{ opacity: 1, y: 0, scale: 0.5, rotateX: -30 }}
+            animate={{ opacity: 0, y: -90, scale: 2.2, rotateX: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1 }}
-            className="absolute top-0 left-1/2 transform -translate-x-1/2 z-20 text-5xl font-bold text-red-600"
-            style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.3)' }}
+            transition={{ duration: 1.3, ease: [0.16, 1, 0.3, 1] }}
+            style={{ transformStyle: 'preserve-3d' }}
           >
-            -{damage}
+            <div
+              className="text-6xl font-black text-red-600"
+              style={{
+                textShadow: '0 4px 12px rgba(0,0,0,0.6), 0 0 30px rgba(255,0,0,0.9), 0 2px 0 white, 0 -2px 0 white, 2px 0 0 white, -2px 0 0 white',
+                WebkitTextStroke: '3px white',
+                filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.4))'
+              }}
+            >
+              -{damage}
+            </div>
+            {typeEffectText && (
+              <motion.div
+                className="text-xl font-bold text-yellow-300 mt-1 text-center"
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 }}
+                style={{
+                  textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(255,215,0,1)',
+                  WebkitTextStroke: '1px rgba(139,69,19,0.8)'
+                }}
+              >
+                {typeEffectText}
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className={`bg-white rounded-3xl p-6 shadow-lg border-2 ${isMe ? 'border-blue-200' : 'border-red-200'}`}>
+      {/* 立体地面投影 */}
+      <div
+        className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-[85%] h-10 bg-black/25 rounded-full blur-xl"
+        style={{
+          transform: 'translateZ(-15px) scaleX(1.3)',
+          filter: 'blur(20px)'
+        }}
+      />
+
+      {/* 卡片本体 */}
+      <div
+        className={`relative bg-white/95 backdrop-blur-sm rounded-3xl p-5 border-2 ${
+          isMe ? 'border-blue-400 shadow-blue-500/40' : 'border-red-400 shadow-red-500/40'
+        }`}
+        style={{
+          transform: 'translateZ(15px)',
+          boxShadow: isHit
+            ? '0 15px 50px rgba(255,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.3) inset'
+            : '0 12px 45px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.2) inset',
+          filter: isHit ? 'brightness(1.3) saturate(0.7)' : 'none'
+        }}
+      >
         {/* 用户名 */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="font-bold text-gray-800">{username}</div>
-            <div className="text-sm text-gray-500">Lv.{pet.level} {pet.name}</div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-gray-800">{username}</span>
+              <span
+                className="text-lg px-2 py-0.5 rounded-full text-white text-xs font-bold shadow-md"
+                style={{ backgroundColor: typeColor }}
+                title={typeName}
+              >
+                {typeIcon}
+              </span>
+            </div>
+            <div className="text-xs text-gray-500 font-medium">Lv.{pet.level} {pet.name}</div>
           </div>
           {pet.ultimate_charges > 0 && (
-            <div className="flex items-center gap-1 text-purple-500">
+            <div className="flex items-center gap-0.5 text-purple-500">
               {Array.from({ length: pet.ultimate_charges }).map((_, i) => (
-                <Zap key={i} className="w-5 h-5 fill-current" />
+                <Zap key={i} className="w-4 h-4 fill-current drop-shadow-md" />
               ))}
             </div>
           )}
         </div>
 
-        {/* 宠物图片 */}
-        <div className="flex justify-center mb-4">
+        {/* 宠物图片 - 微妙倾斜制造深度 */}
+        <div className="flex justify-center mb-3">
           <motion.img
             src={petImage}
             alt={pet.name}
-            className="w-32 h-32 object-contain"
-            animate={{
-              y: [0, -10, 0],
-            }}
-            transition={{
-              repeat: Infinity,
-              duration: 2,
-              ease: 'easeInOut',
+            className="w-36 h-36 object-contain"
+            style={{
+              filter: 'drop-shadow(0 10px 25px rgba(0,0,0,0.4))',
+              transform: isOpponent ? 'rotateY(-12deg)' : 'rotateY(12deg)'
             }}
           />
         </div>
 
         {/* HP条 */}
         <div className="mb-2">
-          <div className="flex justify-between text-sm mb-1">
-            <span className="text-gray-600">HP</span>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-gray-600 font-semibold">HP</span>
             <span className="font-bold text-gray-700">
               {pet.hp}/{pet.max_hp}
             </span>
           </div>
-          <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
+          <div className="h-3.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
             <motion.div
               className={`h-full ${
                 hpPercent > 50
-                  ? 'bg-green-500'
+                  ? 'bg-gradient-to-r from-green-400 to-green-500'
                   : hpPercent > 20
-                  ? 'bg-yellow-500'
-                  : 'bg-red-500'
+                  ? 'bg-gradient-to-r from-yellow-400 to-orange-400'
+                  : 'bg-gradient-to-r from-red-500 to-red-600'
               }`}
               initial={{ width: '100%' }}
               animate={{ width: `${hpPercent}%` }}
-              transition={{ duration: 0.5 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              style={{
+                boxShadow: hpPercent < 30 ? '0 0 10px rgba(239, 68, 68, 0.7)' : 'none'
+              }}
             />
           </div>
         </div>
 
         {/* 连击数 */}
         {pet.combo > 0 && (
-          <div className="flex items-center gap-2 justify-center text-orange-500 font-bold">
-            🔥 {pet.combo} 连击!
-          </div>
+          <motion.div
+            className="flex items-center gap-1.5 justify-center text-orange-500 font-bold text-sm"
+            initial={{ scale: 0 }}
+            animate={{ scale: [0, 1.2, 1] }}
+            transition={{ duration: 0.4 }}
+          >
+            <span className="text-lg">🔥</span>
+            {pet.combo} 连击!
+          </motion.div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -490,12 +741,14 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
         correct: result.player1_correct,
         damage: result.player1_damage,
         ultimate: result.player1_used_ultimate,
+        typeText: result.player1_type_text,
       }
     : {
         answer: result.player2_answer,
         correct: result.player2_correct,
         damage: result.player2_damage,
         ultimate: result.player2_used_ultimate,
+        typeText: result.player2_type_text,
       };
 
   const opponentResult = isPlayer1
@@ -504,12 +757,14 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
         correct: result.player2_correct,
         damage: result.player2_damage,
         ultimate: result.player2_used_ultimate,
+        typeText: result.player2_type_text,
       }
     : {
         answer: result.player1_answer,
         correct: result.player1_correct,
         damage: result.player1_damage,
         ultimate: result.player1_used_ultimate,
+        typeText: result.player1_type_text,
       };
 
   return (
@@ -533,8 +788,15 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
             <div className="font-bold text-gray-700">你的答案: {myResult.answer}</div>
             {myResult.ultimate && <div className="text-purple-600 font-bold">⚡ 使用了必杀技!</div>}
             {myResult.damage > 0 && (
-              <div className="text-2xl font-bold text-red-600 mt-2">
-                造成 {myResult.damage} 伤害!
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-red-600">
+                  造成 {myResult.damage} 伤害!
+                </div>
+                {myResult.typeText && (
+                  <div className="text-lg font-bold text-yellow-600 mt-1">
+                    {myResult.typeText}
+                  </div>
+                )}
               </div>
             )}
             {myResult.damage < 0 && (
@@ -552,8 +814,15 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
             <div className="font-bold text-gray-700">对手答案: {opponentResult.answer}</div>
             {opponentResult.ultimate && <div className="text-purple-600 font-bold">⚡ 使用了必杀技!</div>}
             {opponentResult.damage > 0 && (
-              <div className="text-2xl font-bold text-red-600 mt-2">
-                造成 {opponentResult.damage} 伤害!
+              <div className="mt-2">
+                <div className="text-2xl font-bold text-red-600">
+                  造成 {opponentResult.damage} 伤害!
+                </div>
+                {opponentResult.typeText && (
+                  <div className="text-lg font-bold text-yellow-600 mt-1">
+                    {opponentResult.typeText}
+                  </div>
+                )}
               </div>
             )}
           </div>

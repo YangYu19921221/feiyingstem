@@ -15,6 +15,7 @@ from app.schemas.progress import (
     StudentBookListItem
 )
 from app.api.v1.auth import get_current_student, get_current_user
+from app.services.scope_service import get_allowed_unit_ids
 
 router = APIRouter()
 
@@ -67,6 +68,22 @@ async def start_learning(
             detail=f"单元ID {unit_id} 不存在"
         )
     unit, word_book = row
+
+    # 1.4 每日签到门槛:今天没签到不能开始学习(前端会先引导签到,这里是兜底)
+    from app.api.v1.checkin import has_checked_in_today
+    if not await has_checked_in_today(db, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="今天还没有签到,请先回到首页签到"
+        )
+
+    # 1.5 严格模式:校验该单元在学生的分配范围内(白名单见 get_allowed_unit_ids)
+    allowed = await get_allowed_unit_ids(db, user_id, unit.book_id)
+    if allowed is not None and unit_id not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="这个单元还没有分配给你,请联系老师"
+        )
 
     # 2. 获取该单元的所有单词(按order_index排序)
     result = await db.execute(
@@ -323,6 +340,9 @@ async def get_book_progress(
     )
     units = result.scalars().all()
 
+    # 2.5 严格模式:该学生在这本书的可学单元白名单(None=整本可学)
+    allowed = await get_allowed_unit_ids(db, user_id, book_id)
+
     # 3. 批量查询所有单元的最佳成绩、学习时间、会话数（避免 N+1）
     # 轮次 attempt_count 仅统计「完整走完单元」的会话（words_studied >= 单元真实词数）
     # 历史数据 units.word_count 字段未维护（多为 0），改为从 unit_words 实时统计
@@ -345,6 +365,7 @@ async def get_book_progress(
     unit_best_scores: dict[int, tuple[float | None, bool]] = {uid: (None, False) for uid in unit_ids}
     unit_study_time: dict[int, int] = {uid: 0 for uid in unit_ids}
     unit_attempt_count: dict[int, int] = {uid: 0 for uid in unit_ids}
+    unit_words_sum: dict[int, int] = {uid: 0 for uid in unit_ids}
     if unit_ids:
         sessions_result = await db.execute(
             select(
@@ -375,10 +396,15 @@ async def get_book_progress(
                 elif wrong == 0:
                     unit_best_scores[uid] = (prev_acc, True)
 
-            # 轮次：必须完整走完该单元
+            # 轮次改为累计口径:单元累计学习词数 ÷ 单元词数(向下取整)。
+            # 旧口径要求"单会话满额",分多次坐下学完永远不+1;前端为绕它曾在
+            # 最后一组写整单元词数,又造成教师端按会话求和虚高。两边都回归真实值。
+            unit_words_sum[uid] += (words_studied or 0)
+
+        for uid in unit_ids:
             target = unit_word_count.get(uid, 0)
-            if target > 0 and (words_studied or 0) >= target:
-                unit_attempt_count[uid] += 1
+            if target > 0:
+                unit_attempt_count[uid] = unit_words_sum[uid] // target
 
     # 4. 获取每个单元的学习进度
     unit_progresses = []
@@ -421,8 +447,11 @@ async def get_book_progress(
         word_count = word_count_result.scalar() or 0
         progress_percentage = (max_completed / word_count * 100) if word_count > 0 else 0.0
 
-        total_words_in_book += word_count
-        total_completed_words += max_completed
+        # 严格模式:锁定的单元不计入书级进度分母(分配 1 个单元时进度=该单元完成度)
+        is_allowed = allowed is None or unit.id in allowed
+        if is_allowed:
+            total_words_in_book += word_count
+            total_completed_words += max_completed
 
         best_accuracy, is_perfect = unit_best_scores.get(unit.id, (None, False))
 
@@ -442,6 +471,7 @@ async def get_book_progress(
             is_perfect=is_perfect,
             total_study_time=unit_study_time.get(unit.id, 0),
             attempt_count=unit_attempt_count.get(unit.id, 0),
+            is_allowed=is_allowed,
         ))
 
     # 4. 计算整体进度
@@ -452,7 +482,8 @@ async def get_book_progress(
         book_name=book.name,
         grade_level=book.grade_level,
         volume=book.volume,
-        unit_count=len(units),
+        # 严格模式:计数与进度都按可学范围口径(白名单时=分配的单元数/词数)
+        unit_count=len(units) if allowed is None else sum(1 for u in units if u.id in allowed),
         word_count=total_words_in_book,
         completed_words=total_completed_words,
         progress_percentage=round(overall_progress, 2),
@@ -559,6 +590,19 @@ async def get_student_books(
         select(BookAssignment.book_id).where(BookAssignment.student_id == user_id)
     )
     owned_book_ids = set(row for row in owned_result.scalars())
+
+    # 1.5 老师布置了作业 → 默认开书:作业单元所在的书也算「已拥有」,
+    # 否则只发作业没分配单词本时,学生书架上这本书是锁的,进不去做作业。
+    # (get_allowed_unit_ids 已把作业单元并入白名单,这里补书级入口)
+    from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
+    hw_books_result = await db.execute(
+        select(Unit.book_id)
+        .join(HomeworkAssignment, HomeworkAssignment.unit_id == Unit.id)
+        .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+        .where(HomeworkStudentAssignment.student_id == user_id)
+        .distinct()
+    )
+    owned_book_ids |= set(row for row in hw_books_result.scalars())
 
     # 2. 获取所有单词本
     result = await db.execute(

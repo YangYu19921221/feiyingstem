@@ -65,6 +65,7 @@ class UnitProgressResponse(BaseModel):
     is_perfect: bool = Field(False, description="是否满分通过过")
     total_study_time: int = Field(0, description="总学习时长(秒)")
     attempt_count: int = Field(0, description="学习轮次（完整走完该单元的会话数，半途退出不计）")
+    is_allowed: bool = Field(True, description="是否在教师分配范围内(严格模式,False=锁定)")
 
 class BookProgressResponse(BaseModel):
     """单词本进度响应"""

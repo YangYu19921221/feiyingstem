@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, Text, Date, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -70,6 +70,20 @@ class UserAchievement(Base):
     unlocked_at = Column(DateTime, server_default=func.now())
 
 
+class DailyCheckin(Base):
+    """每日签到:学生每天使用平台前先签到(教师端可查签到列表)"""
+    __tablename__ = "daily_checkins"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    checkin_date = Column(Date, nullable=False)               # 北京日历日
+    checkin_at = Column(DateTime, server_default=func.now())  # 具体签到时刻(UTC)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'checkin_date', name='uq_user_checkin_date'),
+    )
+
+
 class StudyCalendar(Base):
     """学习日历(打卡记录)"""
     __tablename__ = "study_calendar"
@@ -79,6 +93,8 @@ class StudyCalendar(Base):
     study_date = Column(Date, nullable=False)
     words_learned = Column(Integer, default=0)
     duration = Column(Integer, default=0)  # 学习时长(秒)
+    switch_count = Column(Integer, default=0, server_default="0")  # 当日切屏次数(离开学习页面)
+    distracted_count = Column(Integer, default=0, server_default="0")  # 当日发呆次数(60秒无操作被全屏提醒)
 
 
 class Class(Base):

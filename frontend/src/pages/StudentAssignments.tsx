@@ -162,6 +162,23 @@ const StudentAssignments = () => {
                       </span>
                     </div>
 
+                    {/* 分配范围徽章:整本 / 单元 / 分组 */}
+                    <div className="mb-3">
+                      {assignment.scope_type === 'unit' || assignment.scope_type === 'group' ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white/70 text-sm font-semibold text-orange-600 border border-orange-200">
+                          📖 Unit {assignment.unit_number ?? '?'}
+                          {assignment.unit_name ? ` · ${assignment.unit_name}` : ''}
+                          {assignment.scope_type === 'group' && assignment.group_index
+                            ? ` · 第 ${assignment.group_index} 组`
+                            : ''}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white/70 text-sm font-semibold text-gray-600 border border-gray-200">
+                          📕 整本书
+                        </span>
+                      )}
+                    </div>
+
                     {assignment.book_description && (
                       <p className="text-gray-600 text-sm mb-4 line-clamp-2">
                         {assignment.book_description}
@@ -223,11 +240,15 @@ const StudentAssignments = () => {
                       </div>
                     </div>
 
-                    {/* 单元和单词统计 */}
+                    {/* 单元和单词统计(按分配范围口径) */}
                     <div className="flex items-center justify-between mb-4 text-sm">
                       <div className="flex items-center text-gray-700">
                         <span className="mr-1">📚</span>
-                        <span>{assignment.unit_count} 个单元</span>
+                        <span>
+                          {assignment.scope_type === 'unit' || assignment.scope_type === 'group'
+                            ? '指定范围'
+                            : `${assignment.unit_count} 个单元`}
+                        </span>
                       </div>
                       <div className="flex items-center text-gray-700">
                         <span className="mr-1">📝</span>
@@ -237,7 +258,11 @@ const StudentAssignments = () => {
 
                     {/* 开始学习按钮 */}
                     <button
-                      onClick={() => navigate(`/student/books/${assignment.book_id}/units`)}
+                      onClick={() => navigate(
+                        assignment.unit_id
+                          ? `/student/books/${assignment.book_id}/units?focus=${assignment.unit_id}`
+                          : `/student/books/${assignment.book_id}/units`
+                      )}
                       disabled={assignment.is_completed}
                       className={`w-full py-3 rounded-xl font-semibold transition-all transform hover:scale-105 ${
                         assignment.is_completed

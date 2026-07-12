@@ -31,13 +31,26 @@ interface WordBook {
   word_count: number;
 }
 
+/** 分配范围文案:整本 / Unit X·名称 / Unit X·第 Y 组 */
+const scopeLabel = (a: BookAssignmentResponse): string => {
+  if (a.scope_type === 'unit' || a.scope_type === 'group') {
+    const unitPart = a.unit_number != null
+      ? `Unit ${a.unit_number}${a.unit_name ? `·${a.unit_name}` : ''}`
+      : (a.unit_name || '指定单元');
+    return a.scope_type === 'group' && a.group_index != null
+      ? `${unitPart}·第 ${a.group_index} 组`
+      : unitPart;
+  }
+  return '整本';
+};
+
 const TeacherBookAssignment = () => {
   const navigate = useNavigate();
 
   // 单词本列表和选中状态
   const [books, setBooks] = useState<WordBook[]>([]);
   const [scope, setScope] = useState<ScopeValue>({
-    scope_type: 'book', book_id: null, unit_id: null, group_index: null,
+    scope_type: 'book', book_id: null, unit_id: null, group_index: null, unit_ids: [],
   });
   // selectedBook derived from scope so the rest of the UI stays unchanged
   const selectedBook = books.find(b => b.id === scope.book_id) ?? null;
@@ -197,6 +210,11 @@ const TeacherBookAssignment = () => {
       return;
     }
 
+    if (scope.scope_type === 'unit' && !(scope.unit_ids?.length || scope.unit_id)) {
+      showMessage('error', '请至少选择一个单元');
+      return;
+    }
+
     if (scope.scope_type === 'group' && scope.group_index === null) {
       showMessage('error', '请选择具体分组');
       return;
@@ -207,6 +225,8 @@ const TeacherBookAssignment = () => {
       return;
     }
 
+    const unitCount = scope.scope_type === 'unit' ? (scope.unit_ids?.length || 1) : 1;
+
     try {
       setSubmitting(true);
       const result = await teacherAssignments.assignBook({
@@ -215,12 +235,16 @@ const TeacherBookAssignment = () => {
         scope_type: scope.scope_type,
         unit_id: scope.unit_id ?? null,
         group_index: scope.group_index ?? null,
+        // 单元多选:一次分配多个单元(后端按 学生×单元 逐条创建)
+        unit_ids: scope.scope_type === 'unit' ? (scope.unit_ids ?? undefined) : undefined,
         deadline: deadline || undefined,
       });
 
       showMessage(
         'success',
-        `已分配 ${result.created} 个学生，跳过 ${result.skipped} 个重复（共 ${result.total} 人）`
+        unitCount > 1
+          ? `已创建 ${result.created} 条分配(${selectedStudents.length} 名学生 × ${unitCount} 个单元),跳过 ${result.skipped} 条重复`
+          : `已分配 ${result.created} 个学生,跳过 ${result.skipped} 个重复(共 ${result.total} 人)`
       );
       setSelectedStudents([]);
       setDeadline('');
@@ -444,7 +468,7 @@ const TeacherBookAssignment = () => {
               {loadingBooks ? (
                 <div className="text-center py-8 text-gray-500">加载中...</div>
               ) : (
-                <ScopeSelector books={books} value={scope} onChange={setScope} />
+                <ScopeSelector books={books} value={scope} onChange={setScope} multiUnit />
               )}
             </motion.div>
           </div>
@@ -462,7 +486,8 @@ const TeacherBookAssignment = () => {
                   <h2 className="text-xl font-bold text-gray-800 mb-3">
                     📖 {selectedBook.name}
                     <span className="ml-2 text-sm font-normal text-gray-600">
-                      {scope.scope_type === 'unit' && ` · 单元粒度`}
+                      {scope.scope_type === 'unit' &&
+                        ` · ${(scope.unit_ids?.length || 1) > 1 ? `${scope.unit_ids!.length} 个单元` : '单元粒度'}`}
                       {scope.scope_type === 'group' && ` · 分组粒度`}
                     </span>
                   </h2>
@@ -850,7 +875,16 @@ const TeacherBookAssignment = () => {
                               onChange={() => toggleAssignmentSelected(a.id)}
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-800 truncate">{a.book_name}</div>
+                              <div className="font-medium text-gray-800 truncate">
+                                {a.book_name}
+                                <span className={`ml-2 px-1.5 py-0.5 rounded text-xs font-normal ${
+                                  a.scope_type === 'unit' || a.scope_type === 'group'
+                                    ? 'bg-orange-100 text-orange-700'
+                                    : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {scopeLabel(a)}
+                                </span>
+                              </div>
                               <div className="text-xs text-gray-500 mt-0.5">
                                 {new Date(a.assigned_at).toLocaleDateString('zh-CN')}
                                 {a.deadline && ` · 截止 ${new Date(a.deadline).toLocaleDateString('zh-CN')}`}
@@ -917,7 +951,16 @@ const TeacherBookAssignment = () => {
                         />
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-medium text-gray-800">{assignment.book_name}</div>
+                        <div className="font-medium text-gray-800">
+                          {assignment.book_name}
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-xs font-normal ${
+                            assignment.scope_type === 'unit' || assignment.scope_type === 'group'
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {scopeLabel(assignment)}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <div className="text-gray-700">{assignment.student_name}</div>

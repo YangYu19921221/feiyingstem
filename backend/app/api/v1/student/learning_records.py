@@ -3,8 +3,10 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, or_
-from typing import List
+from sqlalchemy import select, and_, func, or_, text as sa_text
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import IntegrityError
+from typing import List, Optional
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 import logging
@@ -45,27 +47,76 @@ SRS_INTERVALS = [
 SRS_LABELS = ["5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天", "15天", "30天", "已毕业"]
 
 
-async def update_study_calendar(db: AsyncSession, user_id: int, record_count: int, total_time_ms: int):
-    """更新学习日历（共用辅助函数）"""
-    today = local_today()  # 北京日历日,与全站口径一致
-    result = await db.execute(
-        select(StudyCalendar).where(
-            and_(StudyCalendar.user_id == user_id, StudyCalendar.study_date == today)
-        )
-    )
-    calendar_record = result.scalar_one_or_none()
+# 单次提交时长封顶(秒),防刷/防异常大值。正常一组学习几分钟,30 分钟足够宽松。
+STUDY_CALENDAR_SESSION_CAP_SEC = 1800
 
-    if calendar_record:
-        calendar_record.words_learned += record_count
-        calendar_record.duration += total_time_ms // 1000
+
+async def update_study_calendar(
+    db: AsyncSession,
+    user_id: int,
+    record_count: int,
+    total_time_ms: int,
+    session_seconds: Optional[int] = None,
+):
+    """更新学习日历（共用辅助函数）
+
+    时长口径:优先用前端上报的「增量净活动秒数」session_seconds(已扣挂机),
+    未提供时退回按逐题 time_spent 累加(兼容旧客户端)。单次封顶防刷。
+    """
+    today = local_today()  # 北京日历日,与全站口径一致
+
+    if session_seconds is not None:
+        add_sec = session_seconds
     else:
-        calendar_record = StudyCalendar(
-            user_id=user_id,
-            study_date=today,
-            words_learned=record_count,
-            duration=total_time_ms // 1000
-        )
-        db.add(calendar_record)
+        add_sec = total_time_ms // 1000
+    add_sec = max(0, min(add_sec, STUDY_CALENDAR_SESSION_CAP_SEC))
+
+    # UPSERT 原子累加。之前是"先查后插",学生当天第一次提交时若两个请求并发
+    # (听写错词实时上报 与 组结束存档几乎同时发),都查不到当日行 → 都走 INSERT,
+    # 后到的撞 (user_id, study_date) 唯一约束 → 整批学习记录 500 回滚丢失。
+    stmt = sqlite_insert(StudyCalendar).values(
+        user_id=user_id,
+        study_date=today,
+        words_learned=record_count,
+        duration=add_sec,
+    ).on_conflict_do_update(
+        index_elements=["user_id", "study_date"],
+        set_={
+            "words_learned": StudyCalendar.words_learned + record_count,
+            "duration": StudyCalendar.duration + add_sec,
+        },
+    )
+    await db.execute(stmt)
+
+
+async def claim_client_batch(db: AsyncSession, batch_id: Optional[str], user_id: int) -> bool:
+    """幂等键占位:前端重试补交时防止同一批数据重复入库。
+
+    返回 True = 首次见到该批次,继续正常处理;
+    返回 False = 已处理过(响应丢了前端重发),调用方应直接返回成功,不再写任何数据。
+    占位行与业务数据在同一事务提交:中途崩溃则一起回滚,重试仍能完整入库。
+    """
+    if not batch_id:
+        return True  # 旧客户端不带幂等键,保持原行为
+    try:
+        # SAVEPOINT 内执行:撞唯一约束只回滚这一条 INSERT,
+        # 不污染外层事务、不过期调用方已读出的 ORM 对象
+        async with db.begin_nested():
+            await db.execute(
+                sa_text("INSERT INTO client_submit_dedup (batch_id, user_id) VALUES (:b, :u)"),
+                {"b": str(batch_id)[:80], "u": user_id},
+            )
+            # 顺手清理 7 天前的旧占位行(约 1/36 的提交触发一次,表常年保持很小)
+            if str(batch_id).endswith("0"):
+                await db.execute(
+                    sa_text("DELETE FROM client_submit_dedup WHERE created_at < datetime('now', '-7 day')")
+                )
+        return True
+    except IntegrityError:
+        return False
+    except Exception:
+        # 表不存在等意外(如迁移未跑):宁可放弃去重也不能挡学习数据入库
+        return True
 
 
 # ========================================
@@ -87,6 +138,17 @@ async def create_learning_records(
     3. 更新学习日历
     """
     user_id = current_user.id
+
+    # 0. 幂等去重:前端断网/502 后会带同一 client_batch_id 重发,已入库的直接返回成功
+    if not await claim_client_batch(db, data.client_batch_id, user_id):
+        return {
+            "success": True,
+            "message": "该批次已记录过(重试补交,自动忽略)",
+            "total_records": len(data.records),
+            "correct_count": sum(1 for r in data.records if r.is_correct),
+            "wrong_count": sum(1 for r in data.records if not r.is_correct),
+            "quality": {"score": 50, "level": "normal", "flags": [], "suspicious": False},
+        }
 
     # 1. 验证单元是否存在
     result = await db.execute(select(Unit).where(Unit.id == data.unit_id))
@@ -127,7 +189,10 @@ async def create_learning_records(
 
     # 3. 更新学习日历
     total_time_ms = sum(r.time_spent for r in data.records)
-    await update_study_calendar(db, user_id, len(data.records), total_time_ms)
+    await update_study_calendar(
+        db, user_id, len(data.records), total_time_ms,
+        session_seconds=data.session_seconds,
+    )
 
     await db.commit()
 
@@ -777,6 +842,16 @@ async def submit_review_records(
     """提交复习记录（不需要unit_id）"""
     user_id = current_user.id
 
+    # 幂等去重(重试补交,自动忽略)
+    if not await claim_client_batch(db, data.client_batch_id, user_id):
+        return {
+            "success": True,
+            "message": "该批次已记录过(重试补交,自动忽略)",
+            "total_records": len(data.records),
+            "correct_count": sum(1 for r in data.records if r.is_correct),
+            "wrong_count": sum(1 for r in data.records if not r.is_correct),
+        }
+
     total_correct = 0
     total_wrong = 0
 
@@ -804,7 +879,10 @@ async def submit_review_records(
 
     # 更新学习日历
     total_time_ms = sum(r.time_spent for r in data.records)
-    await update_study_calendar(db, user_id, len(data.records), total_time_ms)
+    await update_study_calendar(
+        db, user_id, len(data.records), total_time_ms,
+        session_seconds=data.session_seconds,
+    )
 
     await db.commit()
 
@@ -824,6 +902,7 @@ class GroupExamRecordCreate(BaseModel):
     total_questions: int = 0
     score: int = 0
     time_spent: int = 0
+    client_batch_id: Optional[str] = None  # 前端重试补交的幂等键
 
 
 @router.post("/group-exam-record")
@@ -833,6 +912,9 @@ async def create_group_exam_record(
     current_user: User = Depends(get_current_student),
 ):
     """记录一次小组过关检测成绩(正常学习流程,非复习/错题)。"""
+    # 幂等去重(重试补交,自动忽略)
+    if not await claim_client_batch(db, data.client_batch_id, current_user.id):
+        return {"success": True, "id": 0}
     rec = GroupExamRecord(
         user_id=current_user.id,
         unit_id=data.unit_id,

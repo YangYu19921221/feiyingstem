@@ -13,7 +13,7 @@ import {
   type BattleListItem,
   type Battle,
   type BattleStats,
-} from '../../api/petBattle';
+} from '../api/petBattle';
 
 export default function PetBattleHallPage() {
   const navigate = useNavigate();

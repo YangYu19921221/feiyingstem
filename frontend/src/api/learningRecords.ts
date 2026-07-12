@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import './_axiosBootstrap';
+import { submitReliably } from './submitQueue';
 
 // ========================================
 // 学习记录相关类型定义
@@ -17,6 +18,8 @@ export interface LearningRecordBatchCreate {
   unit_id: number;
   learning_mode: string;
   records: WordAnswerCreate[];
+  // 本次提交对应的「增量净活动秒数」(已扣挂机),用于日历时长统计。不传则后端退回按 time_spent 累加
+  session_seconds?: number;
 }
 
 export interface StudySessionCreate {
@@ -77,12 +80,12 @@ export interface WordMasteryResponse {
 
 /**
  * 批量创建学习记录
+ * 走可靠提交队列:断网/重启部署/5xx 时先落本地,恢复后带幂等键自动补交,不丢不重
  */
 export const createLearningRecords = async (
   data: LearningRecordBatchCreate
 ): Promise<{ success: boolean; message: string; records_created: number }> => {
-  const response = await axios.post(`${API_BASE_URL}/student/records`, data);
-  return response.data;
+  return submitReliably('/student/records', data);
 };
 
 /**
@@ -115,13 +118,21 @@ export const createStudySession = async (
 
 /**
  * 更新学习会话
+ * PUT 绝对值天然幂等,走队列重发无副作用(不带去重键)
  */
 export const updateStudySession = async (
   sessionId: number,
   data: StudySessionUpdate
 ): Promise<StudySessionResponse> => {
-  const response = await axios.put(`${API_BASE_URL}/student/sessions/${sessionId}`, data);
-  return response.data;
+  if (!sessionId && sessionId !== 0) {
+    // 防御:历史上出现过 sessions/undefined 422 刷日志
+    return Promise.reject(new Error('sessionId 缺失'));
+  }
+  return submitReliably(`/student/sessions/${sessionId}`, data, {
+    method: 'put',
+    dedupe: false,
+    staleKey: `session:${sessionId}`,
+  });
 };
 
 /**
@@ -185,6 +196,5 @@ export const submitGroupExamRecord = async (payload: {
   score: number;
   time_spent: number;
 }): Promise<{ success: boolean; id: number }> => {
-  const response = await axios.post(`${API_BASE_URL}/student/group-exam-record`, payload);
-  return response.data;
+  return submitReliably('/student/group-exam-record', payload);
 };

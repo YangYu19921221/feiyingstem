@@ -3,6 +3,9 @@ import { useState, useEffect, Suspense, lazy, type ComponentType } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import FloatingPetWidget from './components/FloatingPetWidget';
 import OldBrowserBanner from './components/OldBrowserBanner';
+import UpdateNudge from './components/UpdateNudge';
+// 可靠提交队列:App 启动即注册补交时机(上次没送达的学习数据开机自动补交)
+import './api/submitQueue';
 
 // chunk 加载失败时自动刷新一次（部署后旧 chunk 404）
 function lazyWithRetry(factory: () => Promise<{ default: ComponentType<any> }>) {
@@ -67,6 +70,10 @@ const TeacherReadingAssign = lazyWithRetry(() => import('./pages/TeacherReadingA
 const TeacherBookAssignment = lazyWithRetry(() => import('./pages/TeacherBookAssignment'));
 const StudentAssignments = lazyWithRetry(() => import('./pages/StudentAssignments'));
 const TeacherHomework = lazyWithRetry(() => import('./pages/TeacherHomework'));
+const TeacherActivities = lazyWithRetry(() => import('./pages/TeacherActivities'));
+const TeacherLiveClassroom = lazyWithRetry(() => import('./pages/TeacherLiveClassroom'));
+const TeacherCheckins = lazyWithRetry(() => import('./pages/TeacherCheckins'));
+const TeacherBigScreen = lazyWithRetry(() => import('./pages/TeacherBigScreen'));
 const StudentHomework = lazyWithRetry(() => import('./pages/StudentHomework'));
 const AdminUserManagement = lazyWithRetry(() => import('./pages/AdminUserManagement'));
 const AdminContentManagement = lazyWithRetry(() => import('./pages/AdminContentManagement'));
@@ -169,6 +176,9 @@ const DashboardRedirect = () => {
         return <AdminDashboard />;
       case 'teacher':
         return <TeacherDashboard />;
+      case 'display':
+        // 大屏只读账号:登录后直接进大屏,无处可去
+        return <Navigate to="/teacher/bigscreen" replace />;
       case 'student':
       default:
         return <StudentDashboard />;
@@ -274,6 +284,17 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <SpellingPractice />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 闪卡记忆作业。学习体验已统一为分类记忆法,flashcard 路由同样指向分类页
+            (老 FlashCardLearning 是历史版本 UI,不再挂载) */}
+        <Route
+          path="/student/units/:unitId/flashcard"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <WordClassifyLearning />
             </ProtectedRoute>
           }
         />
@@ -682,6 +703,46 @@ function App() {
           }
         />
 
+        {/* 教师端 - 学生动态列表 */}
+        <Route
+          path="/teacher/activities"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherActivities />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 实时课堂 */}
+        <Route
+          path="/teacher/live"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherLiveClassroom />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 签到记录 */}
+        <Route
+          path="/teacher/checkins"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherCheckins />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 教室大屏(投屏,独立URL: /teacher/bigscreen?class=ID;display=大屏只读账号) */}
+        <Route
+          path="/teacher/bigscreen"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin', 'display']}>
+              <TeacherBigScreen />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 学生端 - 我的作业任务 */}
         <Route
           path="/student/homework"
@@ -869,6 +930,7 @@ function App() {
       </Routes>
       </Suspense>
       <FloatingPetWidget />
+      <UpdateNudge />
     </Router>
     </ErrorBoundary>
   );

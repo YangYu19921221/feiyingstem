@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
 from app.models.learning import WordMastery, LearningRecord, StudySession, GroupExamRecord
-from app.models.word import Word, Unit, WordBook
+from app.models.word import Word, Unit, WordBook, UnitWord
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import (
     assert_student_in_my_class,
@@ -503,16 +503,20 @@ async def get_class_daily_stats(
         .where(and_(
             StudySession.user_id.in_(student_ids),
             StudySession.started_at >= day_start,
-            StudySession.started_at < day_end
+            StudySession.started_at < day_end,
+            # 点开单元没学留下的 0词0秒 空会话不算学习次数
+            or_(StudySession.words_studied > 0, StudySession.time_spent > 0)
         ))
         .group_by(StudySession.user_id)
     )
     sess_map = {r.user_id: r.cnt for r in sess_result.all()}
 
-    # 批量查询「当天真实学习时长」= 各学习会话 time_spent 之和。
-    # 不用 StudyCalendar.duration:它由前端每题上报的 time_spent 累加,classify 模式
-    # 一个词多条记录会把时长乘以词数,严重虚高(实测有学生显示成 14 小时)。
-    # 会话时长按单次时段记,不受多记录放大;再对单会话封顶 2 小时,兜底极端挂机。
+    # 「当天真实学习时长」改用 StudyCalendar.duration:
+    # 07-09 起它由前端 session_seconds(净活动时长,已扣60s挂机,单次提交封顶30分钟)累加,
+    # 覆盖普通学习+复习+错题全部路径,是最完整的口径。
+    # 旧口径(会话 time_spent 之和)有系统性低估:①复习/错题模式不建会话,时长全丢
+    # ②会话时长在中途退出/多次坐下时经常没回写全。实测有学生真实学2小时只显示52分钟。
+    # 兜底:日历无数据的学生(极老缓存前端)回落会话求和。
     SESSION_CAP_SEC = 7200
     dur_result = await db.execute(
         select(
@@ -527,6 +531,11 @@ async def get_class_daily_stats(
         .group_by(StudySession.user_id)
     )
     sess_duration_map = {r.user_id: int(r.dur or 0) for r in dur_result.all()}
+    # 用日历净活动时长覆盖(取两者较大值:两条通道各有遗漏场景,大值更接近真实)
+    for uid_, cal_ in cal_map.items():
+        cal_dur = int(cal_.duration or 0)
+        if cal_dur > sess_duration_map.get(uid_, 0):
+            sess_duration_map[uid_] = min(cal_dur, 12 * 3600)  # 单日封顶12小时防异常
 
     # 复习进度（批量）—— 按拼写 lower(word) 去重,与学生端记忆曲线口径一致
     # (单元隔离后同拼写多条 mastery,若按 word_id 全算会虚高且和学生端对不上)
@@ -597,6 +606,8 @@ async def get_class_daily_stats(
             "wrong_count": total_records - correct,
             "accuracy_rate": round(accuracy, 1),
             "sessions_count": sessions,
+            "switch_count": int(getattr(cal, 'switch_count', 0) or 0) if cal else 0,
+            "distracted_count": int(getattr(cal, 'distracted_count', 0) or 0) if cal else 0,
             "review_due_today": rev["review_due_today"],
             "review_done_today": rev["review_done_today"],
             "graduated_words": rev["graduated_words"],
@@ -640,6 +651,8 @@ async def get_class_daily_stats_student_content(
             StudySession.user_id == student_id,
             StudySession.started_at >= day_start,
             StudySession.started_at < day_end,
+            # 点开单元没学留下的 0词0秒 空会话不显示(教师端只看真学过的单元)
+            or_(StudySession.words_studied > 0, StudySession.time_spent > 0),
         )
         .group_by(StudySession.unit_id, StudySession.book_id)
     )
@@ -670,7 +683,37 @@ async def get_class_daily_stats_student_content(
     )
     groups_by_unit: dict[int, set] = {}
     for uid, gidx in group_res.all():
-        groups_by_unit.setdefault(uid, set()).add(gidx)
+        # group_index 库里是 0 基(前端上报数组下标),展示统一 +1(与管理员端口径一致)
+        groups_by_unit.setdefault(uid, set()).add((gidx or 0) + 1)
+
+    # 2.5 答题记录兜底:会话是"延迟创建+组末回写",学生第一组没学完就退出
+    # (或回写失败)时该单元没有非空会话,明细会整个漏掉——但答题记录都在。
+    # 按单元聚合当天答题(去重词数),没有会话数据的单元用它补上。
+    rec_res = await db.execute(
+        select(
+            UnitWord.unit_id,
+            func.count(func.distinct(LearningRecord.word_id)).label("wc"),
+        )
+        .select_from(LearningRecord)
+        .join(UnitWord, UnitWord.word_id == LearningRecord.word_id)
+        # 只统计仍存在的单元:unit_words 有大量孤儿行(删单元时没清关联),
+        # 不过滤会把复习旧词 JOIN 到已删单元,明细里冒出「(单元已删除)」
+        .join(Unit, Unit.id == UnitWord.unit_id)
+        .where(
+            LearningRecord.user_id == student_id,
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        )
+        .group_by(UnitWord.unit_id)
+    )
+    for uid, wc in rec_res.all():
+        if uid is None or int(wc or 0) == 0:
+            continue
+        if uid not in sess_map:
+            sess_map[uid] = {"words_studied": int(wc), "time_spent": 0, "sessions_count": 0}
+        elif sess_map[uid]["words_studied"] < int(wc):
+            # 会话回写不全时,用答题去重词数补齐(不会超过真实值)
+            sess_map[uid]["words_studied"] = int(wc)
 
     unit_ids = set(sess_map.keys()) | set(groups_by_unit.keys())
     if not unit_ids:

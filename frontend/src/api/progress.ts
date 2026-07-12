@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import { submitReliably } from './submitQueue';
 
 // 创建axios实例
 const apiClient = axios.create({
@@ -114,6 +115,8 @@ export interface UnitProgress {
   is_perfect: boolean;
   total_study_time?: number;
   attempt_count?: number;
+  // 严格模式:false = 未在教师分配范围内,锁定不可学
+  is_allowed?: boolean;
 }
 
 export interface BookProgress {
@@ -153,9 +156,14 @@ export const startLearning = async (request: StartLearningRequest): Promise<Star
   return response.data;
 };
 
+// 进度更新是绝对值写入(天然幂等),走可靠队列:失败自动补交,
+// 最后一组的 is_completed 丢了会导致单元不解锁/轮数不涨,必须保证送达
 export const updateProgress = async (request: UpdateProgressRequest): Promise<UpdateProgressResponse> => {
-  const response = await apiClient.put(`/student/progress`, request);
-  return response.data;
+  return submitReliably('/student/progress', request, {
+    method: 'put',
+    dedupe: false,
+    staleKey: `progress:${request.unit_id}:${request.learning_mode}`,
+  });
 };
 
 export const getBookProgress = async (bookId: number): Promise<BookProgress> => {

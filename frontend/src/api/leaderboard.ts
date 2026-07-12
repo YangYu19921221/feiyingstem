@@ -1,7 +1,7 @@
 import client from './client';
 
 export type LeaderboardKind = 'vocabulary' | 'diligence' | 'accuracy';
-export type LeaderboardPeriod = 'this_week' | 'last_week' | 'this_month';
+export type LeaderboardPeriod = 'today' | 'this_week' | 'last_week' | 'this_month';
 export type LeaderboardScope = 'class' | 'global';
 
 export interface LeaderboardEntry {

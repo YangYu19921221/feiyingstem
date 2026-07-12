@@ -1,5 +1,5 @@
 """宠物对战系统 - HTTP API"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, desc
 from typing import List
@@ -16,7 +16,9 @@ from app.schemas.pet_battle import (
     PetBattleInfo,
 )
 from app.services import pet_battle_service
+from app.services.ai_opponent_service import generate_ai_opponent
 from app.api.v1.auth import get_current_student
+import json
 
 router = APIRouter()
 
@@ -311,3 +313,111 @@ async def get_battle_stats(
         rating=stats.rating,
         peak_rating=stats.peak_rating,
     )
+
+
+@router.post("/battle/quick-match", response_model=BattleResponse)
+async def quick_match_battle(
+    wordbook_id: int = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """
+    快速对战 - 自动匹配AI对手
+    
+    优先匹配真人玩家（3秒），无真人则生成AI对手
+    """
+    # 检查自己的宠物
+    my_pet_result = await db.execute(
+        select(UserPet).where(UserPet.user_id == current_user.id)
+    )
+    my_pet = my_pet_result.scalar_one_or_none()
+    if not my_pet:
+        raise HTTPException(status_code=400, detail="你还没有宠物")
+    
+    # TODO: 这里可以添加真人匹配逻辑（查找在线等待的玩家）
+    # 暂时直接生成AI对手
+    
+    # 生成AI对手配置
+    ai_config = generate_ai_opponent(
+        player_level=my_pet.level,
+        player_pet_species=my_pet.species
+    )
+    
+    # 创建虚拟AI用户（使用负数ID）
+    ai_user_id = -1  # 固定的AI用户ID
+    ai_user = await db.get(User, ai_user_id)
+    
+    if not ai_user:
+        # 首次创建AI用户
+        ai_user = User(
+            id=ai_user_id,
+            username="AI训练师",
+            email="ai@system.local",
+            hashed_password="",  # AI不需要密码
+            role="student",
+            is_active=True
+        )
+        db.add(ai_user)
+        await db.commit()
+        await db.refresh(ai_user)
+    
+    # 创建或获取AI宠物
+    ai_pet_result = await db.execute(
+        select(UserPet).where(UserPet.user_id == ai_user_id)
+    )
+    ai_pet = ai_pet_result.scalar_one_or_none()
+    
+    if not ai_pet:
+        # 创建AI宠物
+        from app.services.pet_battle_service import calculate_initial_hp
+        
+        ai_pet = UserPet(
+            user_id=ai_user_id,
+            name=ai_config['name'],
+            species=ai_config['species'],
+            level=ai_config['level'],
+            experience=0,
+            evolution_stage=min(3, ai_config['level'] // 10),
+            happiness=100,
+            hunger=100,
+            current_hp=calculate_initial_hp(ai_config['level'], min(3, ai_config['level'] // 10)),
+        )
+        db.add(ai_pet)
+        await db.commit()
+        await db.refresh(ai_pet)
+    else:
+        # 更新AI宠物属性
+        from app.services.pet_battle_service import calculate_initial_hp
+        
+        ai_pet.name = ai_config['name']
+        ai_pet.species = ai_config['species']
+        ai_pet.level = ai_config['level']
+        ai_pet.evolution_stage = min(3, ai_config['level'] // 10)
+        ai_pet.current_hp = calculate_initial_hp(ai_config['level'], min(3, ai_config['level'] // 10))
+        await db.commit()
+        await db.refresh(ai_pet)
+    
+    # 创建AI对战
+    battle = await pet_battle_service.create_battle(
+        db=db,
+        player1_id=current_user.id,
+        player2_id=ai_user_id,
+        wordbook_id=wordbook_id,
+        mode='ai',  # AI对战模式
+        max_rounds=10,
+    )
+    
+    # 标记为AI对战并保存配置
+    battle.is_ai_battle = True
+    battle.ai_config = json.dumps(ai_config, ensure_ascii=False)
+    
+    # AI对战立即开始（不需要接受）
+    battle.status = 'active'
+    from datetime import datetime
+    battle.started_at = datetime.utcnow()
+    
+    await db.commit()
+    await db.refresh(battle)
+    
+    print(f"快速对战创建成功: battle_id={battle.id}, status={battle.status}, is_ai={battle.is_ai_battle}")
+    return await build_battle_response(battle, db)

@@ -1,28 +1,68 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getBookProgress } from '../api/progress';
 import type { BookProgress } from '../api/progress';
+import { getMyHomework, startHomework } from '../api/homework';
+import type { StudentHomeworkResponse } from '../api/homework';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 import FullscreenBookComplete from '../components/challenge-fx/FullscreenBookComplete';
 
 const DAILY_GOAL = 10;
 
+const MODE_LABELS: Record<string, string> = {
+  flashcard: '闪卡', classify: '分类', dictation: '听写', sentencefill: '填句',
+  quiz: '测试', spelling: '拼写', fillblank: '选词',
+};
+
 const UnitSelector = () => {
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // 「我的作业」单元级分配跳转过来时定位到指定单元
+  const focusUnitId = searchParams.get('focus') ? parseInt(searchParams.get('focus')!) : null;
   const [bookProgress, setBookProgress] = useState<BookProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
+  const hasFocused = useRef(false);
   const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
   const [showBookComplete, setShowBookComplete] = useState(false);
+  // 老师布置的任务(本书未完成的作业),常驻在单元列表上方
+  const [bookTasks, setBookTasks] = useState<StudentHomeworkResponse[]>([]);
 
   useEffect(() => {
     if (bookId) {
       loadBookProgress(parseInt(bookId));
     }
   }, [bookId]);
+
+  // 拉本书的待办作业:pending/in_progress 都算「今日任务」;失败静默不影响主流程
+  useEffect(() => {
+    let cancelled = false;
+    getMyHomework()
+      .then((all) => {
+        if (cancelled || !bookProgress) return;
+        const unitIds = new Set(bookProgress.units.map(u => u.unit_id));
+        setBookTasks(
+          all.filter(h => unitIds.has(h.unit_id) && (h.status === 'pending' || h.status === 'in_progress'))
+        );
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [bookProgress]);
+
+  const handleStartTask = async (task: StudentHomeworkResponse) => {
+    try {
+      const result = await startHomework(task.id);
+      navigate(`/student/units/${result.unit_id}/${result.learning_mode}`, {
+        state: { fromHomework: true, assignmentId: task.id },
+      });
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '开始作业失败'));
+    }
+  };
 
   // 整本书 100% 完成 → 一次性全屏庆祝（每本书每个学生只触发一次）
   useEffect(() => {
@@ -52,9 +92,32 @@ const UnitSelector = () => {
     return s >= 60 ? `${Math.floor(s / 60)}分${s % 60}秒` : `${s}秒`;
   };
 
+  // 严格模式:后端 is_allowed=false 的单元未被分配,锁定不可学。
+  // 白名单模式(存在锁定单元)下,被分配的单元不受「前一单元完成」顺序约束——老师点名的直接可学。
+  const whitelistMode = (bookProgress?.units ?? []).some(u => u.is_allowed === false);
+  // 有待办作业的单元:豁免顺序锁(老师点名的单元直接可学,即使前面单元没学完)
+  const taskUnitIds = new Set(bookTasks.map(t => t.unit_id));
+
+  // ?focus= 定位:数据加载后自动展开并滚动到指定单元(只执行一次)
+  useEffect(() => {
+    if (!bookProgress || !focusUnitId || hasFocused.current) return;
+    hasFocused.current = true;
+    setExpandedUnitId(focusUnitId);
+    // 等待列表渲染完成后滚动定位
+    setTimeout(() => {
+      document.getElementById(`unit-row-${focusUnitId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }, [bookProgress, focusUnitId]);
+
   const handleStartLearning = (unitId: number, mode: string, unitIndex: number) => {
-    // 第一个单元总是可以进入；后续单元要求前一个有学习进度
-    if (unitIndex > 0) {
+    const unit = sortedUnits[unitIndex];
+    // 未分配的单元锁定
+    if (unit && unit.is_allowed === false) {
+      toast.warning('这个单元还没有分配,请联系老师');
+      return;
+    }
+    // 顺序解锁只在整本可学时生效;白名单模式或有作业的单元直接可学
+    if (!whitelistMode && !taskUnitIds.has(unitId) && unitIndex > 0) {
       const prevUnit = sortedUnits[unitIndex - 1];
       if (!prevUnit.has_progress && !prevUnit.is_completed) {
         toast.warning('请先完成上一个单元的学习');
@@ -106,7 +169,8 @@ const UnitSelector = () => {
     ? [...bookProgress.units].sort((a, b) => (a.unit_number || 0) - (b.unit_number || 0))
     : [];
 
-  const firstIncompleteIndex = sortedUnits.findIndex(u => !u.is_completed);
+  // 「当前」单元:第一个未完成且可学的单元
+  const firstIncompleteIndex = sortedUnits.findIndex(u => !u.is_completed && u.is_allowed !== false);
 
   return (
     <div className="min-h-screen bg-paper">
@@ -156,6 +220,59 @@ const UnitSelector = () => {
           </div>
         </section>
 
+        {/* 老师布置的任务:常驻显示,完成后自动消失 */}
+        {bookTasks.length > 0 && (
+          <section className="mb-8">
+            <div className="rounded-2xl border-2 border-accent-warm/40 bg-accent-warm/[0.06] overflow-hidden">
+              <div className="px-5 py-3 flex items-center gap-2 border-b border-accent-warm/20">
+                <span className="text-lg">📣</span>
+                <h3 className="font-semibold text-ink text-sm">老师布置的任务</h3>
+                <span className="px-1.5 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold">
+                  {bookTasks.length}
+                </span>
+                <span className="ml-auto text-xs text-ink-mute">完成后自动消失</span>
+              </div>
+              <div className="divide-y divide-accent-warm/10">
+                {bookTasks.map((task) => {
+                  const overdue = task.deadline && new Date(task.deadline) < new Date();
+                  return (
+                    <div key={task.id} className="px-5 py-3.5 flex items-center gap-3">
+                      <span className="text-xl shrink-0">📘</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-ink text-sm truncate">
+                          {task.title}
+                          <span className="ml-2 px-1.5 py-0.5 rounded bg-black/[0.05] text-ink-soft text-[11px]">
+                            {MODE_LABELS[task.learning_mode] || task.learning_mode}
+                          </span>
+                        </p>
+                        <p className="text-xs text-ink-mute mt-0.5">
+                          {task.unit_name} · 目标 {task.target_score} 分
+                          {task.deadline && (
+                            <span className={overdue ? 'text-red-500 font-semibold' : ''}>
+                              {' '}· {overdue ? '已逾期!' : `截止 ${new Date(task.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`}
+                            </span>
+                          )}
+                          {task.attempts_count > 0 && ` · 已试 ${task.attempts_count}/${task.max_attempts} 次`}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleStartTask(task)}
+                        className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition active:scale-95 ${
+                          overdue
+                            ? 'bg-red-500 text-white hover:opacity-90'
+                            : 'bg-accent-warm text-white hover:opacity-90'
+                        }`}
+                      >
+                        {task.status === 'in_progress' ? '继续 →' : '去完成 →'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* 单元列表 */}
         {bookProgress.units.length === 0 ? (
           <div className="py-16 text-center border border-dashed border-black/10 rounded-2xl">
@@ -167,14 +284,20 @@ const UnitSelector = () => {
             {sortedUnits.map((unit, index) => {
               const isExpanded = expandedUnitId === unit.unit_id;
               const isCurrent = index === firstIncompleteIndex;
-              const isLocked = index > 0 && !sortedUnits[index - 1].has_progress && !sortedUnits[index - 1].is_completed;
+              // 未分配 → 硬锁定;顺序解锁只在整本可学(非白名单)时生效;有作业的单元豁免顺序锁
+              const isNotAllowed = unit.is_allowed === false;
+              const hasTask = taskUnitIds.has(unit.unit_id);
+              const isSeqLocked = !whitelistMode && !hasTask && index > 0 && !sortedUnits[index - 1].has_progress && !sortedUnits[index - 1].is_completed;
+              const isLocked = isNotAllowed || isSeqLocked;
 
               return (
                 <motion.div
                   key={unit.unit_id}
+                  id={`unit-row-${unit.unit_id}`}
                   initial={!hasLoadedOnce.current ? { opacity: 0 } : false}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2, delay: !hasLoadedOnce.current ? Math.min(0.03 * index, 0.3) : 0 }}
+                  className={isNotAllowed ? 'opacity-55' : ''}
                 >
                   {/* 单元行 */}
                   <div
@@ -201,6 +324,16 @@ const UnitSelector = () => {
                         {isCurrent && (
                           <span className="px-1.5 py-0.5 bg-accent-warm text-white text-[10px] rounded font-medium">
                             当前
+                          </span>
+                        )}
+                        {isNotAllowed && (
+                          <span className="px-1.5 py-0.5 bg-black/[0.06] text-ink-mute text-[10px] rounded font-medium">
+                            🔒 待老师分配
+                          </span>
+                        )}
+                        {hasTask && (
+                          <span className="px-1.5 py-0.5 bg-accent-warm/15 text-accent-warm text-[10px] rounded font-medium">
+                            📣 有作业
                           </span>
                         )}
                         {unit.is_perfect && (
@@ -272,7 +405,7 @@ const UnitSelector = () => {
                           : 'border border-black/15 text-ink hover:bg-black/5'
                       }`}
                     >
-                      {isLocked ? '🔒' : '学习'}
+                      {isNotAllowed ? '🔒 待分配' : isLocked ? '🔒' : '学习'}
                     </button>
 
                     <ChevronDown className={`w-4 h-4 text-ink-mute transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />

@@ -8,6 +8,7 @@ import type { WordData } from '../../api/progress';
 import { verifyWordPronunciation } from '../../api/pronunciation';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
+import AutoFitText from '../AutoFitText';
 
 interface SpeechVerifyCardProps {
   word: WordData;
@@ -238,9 +239,9 @@ export default function SpeechVerifyCard({
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
       >
-        <div className="mb-3">
-          <span style={{ fontSize: 'clamp(1.75rem, 9vw, 3rem)' }}><ColoredWord word={word.word} syllables={word.syllables} className="font-bold break-words max-w-full leading-tight inline-block" /></span>
-        </div>
+        <AutoFitText maxPx={48} minPx={22} fitKey={word.word} className="mb-3">
+          <ColoredWord word={word.word} syllables={word.syllables} className="font-bold" />
+        </AutoFitText>
         {word.phonetic && (
           <div className="mb-4 flex justify-center">
             <ColoredPhonetic phonetic={word.phonetic} size="sm" />
@@ -268,9 +269,9 @@ export default function SpeechVerifyCard({
       className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
     >
       {/* 单词（彩色音节） */}
-      <div className="mb-3">
-        <span style={{ fontSize: 'clamp(1.75rem, 9vw, 3rem)' }}><ColoredWord word={word.word} syllables={word.syllables} className="font-bold break-words max-w-full leading-tight inline-block" /></span>
-      </div>
+      <AutoFitText maxPx={48} minPx={22} fitKey={word.word} className="mb-3">
+        <ColoredWord word={word.word} syllables={word.syllables} className="font-bold" />
+      </AutoFitText>
 
       {/* 音标（彩色） */}
       {word.phonetic && (

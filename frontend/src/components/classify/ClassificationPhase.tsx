@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
+import AutoFitText from '../AutoFitText';
 
 export type WordCategory = 'familiar' | 'semi' | 'unknown';
 
@@ -18,6 +19,9 @@ interface ClassificationPhaseProps {
   onRoundMistakes?: (wordIds: number[]) => void;
   playAudio: (word: string, rate?: number, wordId?: number) => void;
   stopAudio?: () => void;
+  /** 走神/切屏时置 true:暂停倒计时和循环发音。
+   *  否则孩子人不在,单词还在被倒计时一个个自动判"陌生"(幽灵错题+数据污染) */
+  paused?: boolean;
   // PK mode: shows just the current word with classify buttons; single-word controlled mode.
   mode?: 'solo' | 'pk';
   pkCurrentWord?: { id: number; word: string; translation: string };
@@ -51,6 +55,7 @@ export default function ClassificationPhase({
   onRoundMistakes,
   playAudio,
   stopAudio,
+  paused = false,
   mode,
   pkCurrentWord,
   pkOnAnswer,
@@ -91,9 +96,9 @@ export default function ClassificationPhase({
 
   const currentWord = roundWords[currentIndex];
 
-  // 循环播放发音
+  // 循环播放发音(走神/切屏暂停时停播,人回来自动续上)
   useEffect(() => {
-    if (!currentWord || showRoundSummary || showTutorial) return;
+    if (!currentWord || showRoundSummary || showTutorial || paused) return;
 
     const t = setTimeout(() => {
       playAudio(currentWord.word, 1, currentWord.id);
@@ -116,7 +121,7 @@ export default function ClassificationPhase({
       // 上一个词还没被 token 作废、fetch 返回后会照样播出来,造成与新词重叠/听到旧词。
       stopAudio?.();
     };
-  }, [currentIndex, currentWord, playAudio, stopAudio, showRoundSummary]);
+  }, [currentIndex, currentWord, playAudio, stopAudio, showRoundSummary, paused]);
 
   // 一轮结束时的处理
   const handleRoundEnd = useCallback((newResults: Map<number, WordCategory>) => {
@@ -210,9 +215,9 @@ export default function ClassificationPhase({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showTutorial, showRoundSummary, showFamiliarReview, currentWord, playAudio]);
 
-  // 倒计时（回顾时暂停）
+  // 倒计时（回顾时暂停;走神/切屏 paused 时也暂停,人不在不烧词）
   useEffect(() => {
-    if (isTransitioning || showRoundSummary || showTutorial || showFamiliarReview) return;
+    if (isTransitioning || showRoundSummary || showTutorial || showFamiliarReview || paused) return;
 
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
@@ -227,7 +232,7 @@ export default function ClassificationPhase({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentIndex, isTransitioning, showRoundSummary]);
+  }, [currentIndex, isTransitioning, showRoundSummary, paused]);
 
   // 关闭教程
   const dismissTutorial = () => {
@@ -437,13 +442,13 @@ export default function ClassificationPhase({
 
             {/* 卡片内容 */}
             <div className="px-8 pb-8 pt-2 text-center">
-              <div className="mb-3" style={{ fontSize: 'clamp(1.75rem, 9vw, 3rem)' }}>
+              <AutoFitText maxPx={48} minPx={22} fitKey={currentWord.word} className="mb-3">
                 <ColoredWord
                   word={currentWord.word}
                   syllables={currentWord.syllables}
-                  className="font-bold break-words max-w-full leading-tight inline-block"
+                  className="font-bold"
                 />
-              </div>
+              </AutoFitText>
 
               {currentWord.phonetic && (
                 <div className="mb-3 flex justify-center">
@@ -536,7 +541,9 @@ function PkClassifySingle({
 
   return (
     <div className="flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-md min-h-[300px]">
-      <ColoredWord word={word.word} className="text-4xl font-bold mb-2" />
+      <AutoFitText maxPx={40} minPx={20} fitKey={word.word} className="mb-2 text-center">
+        <ColoredWord word={word.word} className="font-bold" />
+      </AutoFitText>
       <p className="text-base text-gray-500 mb-8">{word.translation}</p>
       <div className="flex gap-3">
         <button

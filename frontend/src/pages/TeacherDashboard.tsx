@@ -28,6 +28,14 @@ interface DashboardStats {
   weekly_new_assignments: number;
 }
 
+interface RecentActivity {
+  type: 'homework' | 'unit';
+  student_name: string;
+  title: string;
+  score: number | null;
+  time: string; // 北京时间 MM-DD HH:MM,后端已格式化
+}
+
 const TeacherDashboard = () => {
   const navigate = useNavigate();
 
@@ -45,6 +53,7 @@ const TeacherDashboard = () => {
   });
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [activities, setActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,10 +64,15 @@ const TeacherDashboard = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API_BASE_URL}/teacher/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setStats(response.data);
+      const headers = { Authorization: `Bearer ${token}` };
+      // 统计与动态并行加载,动态失败不影响统计展示
+      // 注意:必须用 /teacher/dashboard/stats——/teacher/stats 被"单词本分配统计"路由遮蔽
+      const [statsRes, actRes] = await Promise.allSettled([
+        axios.get(`${API_BASE_URL}/teacher/dashboard/stats`, { headers }),
+        axios.get(`${API_BASE_URL}/teacher/recent-activities`, { headers }),
+      ]);
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
+      if (actRes.status === 'fulfilled') setActivities(actRes.value.data.activities || []);
     } catch (error) {
       console.error('加载统计数据失败:', error);
     } finally {
@@ -81,7 +95,10 @@ const TeacherDashboard = () => {
     { icon: '📝', title: '阅读理解', desc: '文章和题目', color: 'from-yellow-500 to-orange-500', route: '/teacher/reading' },
     { icon: '💬', title: '句子背诵', desc: '句子集 · 单元 · CSV 导入', color: 'from-green-500 to-emerald-500', route: '/teacher/sentences' },
     { icon: '🏆', title: '竞赛管理', desc: 'AI生成题目', color: 'from-red-500 to-pink-500', route: '/teacher/competition' },
-    { icon: '📤', title: '分配作业', desc: '分配给学生', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },
+    { icon: '📡', title: '实时课堂', desc: '谁在学·谁切屏了', color: 'from-emerald-500 to-green-500', route: '/teacher/live' },
+    { icon: '📍', title: '签到记录', desc: '每日签到·历史可查', color: 'from-cyan-500 to-sky-500', route: '/teacher/checkins' },
+    { icon: '📤', title: '分配单词本', desc: '划学习范围:整本/单元/分组', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },
+    { icon: '📘', title: '作业管理', desc: '布置作业·目标分·截止', color: 'from-sky-500 to-blue-500', route: '/teacher/homework' },
     { icon: '📊', title: '学生监控', desc: '查看学习数据', color: 'from-green-500 to-teal-500', route: '/teacher/students' },
     { icon: '📋', title: '测评线索', desc: '地推扫码线索', color: 'from-pink-500 to-rose-500', route: '/teacher/leads' },
   ];
@@ -91,11 +108,6 @@ const TeacherDashboard = () => {
     { label: '单词本数', valueKey: 'total_books', icon: '📖', color: 'bg-purple-100 text-purple-600' },
     { label: '学生人数', valueKey: 'total_students', icon: '👥', color: 'bg-green-100 text-green-600' },
     { label: '本周文章', valueKey: 'weekly_passages', icon: '📝', color: 'bg-orange-100 text-orange-600' },
-  ];
-
-  // 学生学习情况 - 暂时使用占位数据,未来可以从API获取
-  const students = [
-    { name: '学生数据', progress: 0, words: 0, emoji: '📊' },
   ];
 
   return (
@@ -225,35 +237,55 @@ const TeacherDashboard = () => {
 
           {/* 学生学习情况 */}
           <div
-            className="bg-white rounded-2xl p-6 shadow-md"
+            className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition cursor-pointer"
+            onClick={() => navigate('/teacher/activities')}
+            title="点击查看全部动态并搜索"
           >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <span>📊</span> 学生学习情况
+                <span>🔔</span> 今日动态
               </h3>
-              <button onClick={() => navigate('/teacher/classes')} className="text-sm text-blue-600 hover:text-blue-700">
-                查看全部 →
-              </button>
+              <span className="text-sm text-blue-600 hover:text-blue-700">
+                查看全部 / 搜索 →
+              </span>
             </div>
-            <div className="space-y-4">
-              {students.map((student, index) => (
-                <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{student.emoji}</span>
-                      <span className="font-medium text-gray-800">{student.name}</span>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {loading ? (
+                <div className="text-center text-gray-500 py-4">加载中...</div>
+              ) : activities.length > 0 ? (
+                activities.map((act, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                  >
+                    <span className="text-lg shrink-0">{act.type === 'homework' ? '📘' : '✅'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-800">
+                        <span className="font-semibold">{act.student_name}</span>
+                        {act.type === 'homework' ? ' 完成了作业 ' : ' 学完了 '}
+                        <span className="font-medium">{act.title}</span>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">{act.time}</p>
                     </div>
-                    <span className="text-sm text-gray-600">{student.words} 词</span>
+                    {act.score !== null && (
+                      <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-full ${
+                        act.score >= 80
+                          ? 'bg-green-100 text-green-700'
+                          : act.score >= 60
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-red-100 text-red-600'
+                      }`}>
+                        {act.score}分
+                      </span>
+                    )}
                   </div>
-                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-green-400 to-blue-500"
-                      style={{ width: `${student.progress}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">进度: {student.progress}%</p>
+                ))
+              ) : (
+                <div className="text-center text-gray-500 py-8">
+                  <div className="text-4xl mb-2">🌱</div>
+                  <p className="text-sm">最近 3 天还没有学生完成作业或单元</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>

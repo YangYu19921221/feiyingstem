@@ -19,6 +19,11 @@ class LearningRecordBatchCreate(BaseModel):
     unit_id: int
     learning_mode: str
     records: List[WordAnswerCreate]
+    # 本次提交对应的「增量净活动秒数」(已扣挂机)。用于日历时长统计,
+    # 不提供时退回按 records 的 time_spent 累加(兼容旧客户端)。
+    session_seconds: Optional[int] = Field(default=None, ge=0)
+    # 幂等键:前端断网/5xx 重试补交时带同一 id,后端据此去重防止重复入库
+    client_batch_id: Optional[str] = Field(default=None, max_length=80)
 
 
 class LearningRecordResponse(BaseModel):
@@ -123,6 +128,10 @@ class ReviewWordResponse(BaseModel):
 class ReviewRecordBatchCreate(BaseModel):
     """批量创建复习记录（不需要unit_id）"""
     records: List[WordAnswerCreate]
+    # 本次提交对应的「增量净活动秒数」(已扣挂机),用途同 LearningRecordBatchCreate。
+    session_seconds: Optional[int] = Field(default=None, ge=0)
+    # 幂等键,用途同 LearningRecordBatchCreate
+    client_batch_id: Optional[str] = Field(default=None, max_length=80)
 
 
 class StudyCalendarUpdate(BaseModel):

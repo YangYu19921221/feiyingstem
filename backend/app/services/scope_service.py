@@ -8,6 +8,51 @@ from app.models.word import Word, Unit, UnitWord, BookWord
 DEFAULT_GROUP_SIZE = 10
 
 
+async def get_allowed_unit_ids(
+    db: AsyncSession, student_id: int, book_id: int
+) -> Optional[set[int]]:
+    """学生在某本书下可学的单元白名单(严格模式)。
+
+    返回值语义:
+    - None      → 整本可学(存在任一 scope_type='book' 的分配)
+    - set()     → 一个单元都不能学(该书没有任何分配)
+    - {ids...}  → 只能学这些单元(unit/group 分配 ∪ 作业单元;group 权限放宽到单元级)
+
+    作业自带授权:老师通过「作业管理」布置过的单元,学生必须能进,
+    即使该单元不在单词本分配范围内——否则作业流程会被 403 挡死。
+    """
+    from app.models.learning import (  # 局部导入,避免模型/服务层循环依赖
+        BookAssignment, HomeworkAssignment, HomeworkStudentAssignment,
+    )
+
+    res = await db.execute(
+        select(BookAssignment.scope_type, BookAssignment.unit_id).where(
+            BookAssignment.student_id == student_id,
+            BookAssignment.book_id == book_id,
+        )
+    )
+    allowed: set[int] = set()
+    for scope_type, unit_id in res.all():
+        # 历史数据 scope_type 可能为 NULL,按整本处理(与旧行为一致)
+        if scope_type in (None, "book"):
+            return None
+        if unit_id is not None:
+            allowed.add(unit_id)
+
+    # 并入该书下布置给该学生的作业单元
+    hw_res = await db.execute(
+        select(HomeworkAssignment.unit_id)
+        .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+        .join(Unit, Unit.id == HomeworkAssignment.unit_id)
+        .where(
+            HomeworkStudentAssignment.student_id == student_id,
+            Unit.book_id == book_id,
+        )
+    )
+    allowed.update(uid for (uid,) in hw_res.all() if uid is not None)
+    return allowed
+
+
 def validate_scope(scope_type: str, unit_id: Optional[int], group_index: Optional[int]) -> None:
     """422 级别的应用层校验"""
     if scope_type not in ("book", "unit", "group"):

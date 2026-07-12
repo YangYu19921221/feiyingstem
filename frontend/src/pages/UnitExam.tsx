@@ -9,6 +9,7 @@ import {
 } from '../api/unitExam';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
+import usePresence from '../hooks/usePresence';
 
 type ExamPhase = 'start' | 'testing' | 'submitting';
 
@@ -25,6 +26,14 @@ const UnitExam = () => {
   const [answers, setAnswers] = useState<Map<number, string>>(new Map());
   const [timeLeft, setTimeLeft] = useState(900);
   const [startTime, setStartTime] = useState(0);
+
+  // 实时课堂:考试中也上报在线状态(考试切屏更要盯)
+  usePresence({
+    unitId: unitId ? parseInt(unitId) : undefined,
+    unitName: examData?.unit_name ? `${examData.unit_name}(考试)` : '考试中',
+    idle: false,  // 考试页有倒计时,不做无操作判定
+    enabled: phase === 'testing',
+  });
 
   // 听写播放次数
   const [playCount, setPlayCount] = useState(0);

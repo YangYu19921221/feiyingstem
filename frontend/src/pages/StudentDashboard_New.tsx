@@ -8,7 +8,7 @@ import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import { getMyAchievements, type Achievement } from '../api/achievements';
-import { getMyHomework } from '../api/homework';
+import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
 import PetWidget from '../components/PetWidget';
 import RankingBanner from '../components/leaderboard/RankingBanner';
 import ChangePasswordModal from '../components/ChangePasswordModal';
@@ -63,6 +63,37 @@ const StudentDashboard = () => {
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [pendingHomeworkCount, setPendingHomeworkCount] = useState<number>(0);
+  // 老师布置的待办任务(待开始/进行中),显示在 Hero 下方
+  const [pendingTasks, setPendingTasks] = useState<StudentHomeworkResponse[]>([]);
+  // 每日签到:未签到时置顶大卡引导,签到后小徽章
+  const [checkin, setCheckin] = useState<{ checked_in: boolean; checkin_time: string | null } | null>(null);
+  const [checkinBusy, setCheckinBusy] = useState(false);
+
+  const loadCheckin = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const r = await axios.get(`${API_BASE_URL}/student/checkin/today`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCheckin(r.data);
+    } catch { /* 静默 */ }
+  };
+
+  const handleCheckin = async () => {
+    if (checkinBusy) return;
+    setCheckinBusy(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const r = await axios.post(`${API_BASE_URL}/student/checkin`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCheckin({ checked_in: true, checkin_time: r.data.checkin_time });
+    } catch (e) {
+      console.error('签到失败:', e);
+    } finally {
+      setCheckinBusy(false);
+    }
+  };
 
 
   useEffect(() => {
@@ -74,10 +105,21 @@ const StudentDashboard = () => {
     loadReviewDueCount();
     loadAchievements();
     loadPendingHomework();
-
-    // 定期更新在线人数(每30秒)
+    loadCheckin();
     const interval = setInterval(loadOnlineUsers, 30000);
-    return () => clearInterval(interval);
+    // 老师布置的任务近实时:60 秒轮询 + 切回页面立即刷(布置作业后学生开着仪表盘也能看到)
+    const hwInterval = setInterval(() => {
+      if (!document.hidden) loadPendingHomework();
+    }, 60000);
+    const onVisible = () => {
+      if (!document.hidden) loadPendingHomework();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      clearInterval(hwInterval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   const loadBooks = async () => {
@@ -147,11 +189,29 @@ const StudentDashboard = () => {
     try {
       const data = await getMyHomework();
       const pending = data.filter((h: { status: string }) =>
-        h.status !== 'completed' && h.status !== 'graded',
-      ).length;
-      setPendingHomeworkCount(pending);
+        h.status !== 'completed' && h.status !== 'graded' && h.status !== 'failed',
+      );
+      setPendingHomeworkCount(pending.length);
+      // 仪表盘任务卡:逾期/截止近的在前,没截止的最后
+      const sorted = [...pending].sort((a, b) => {
+        const da = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        const db_ = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+        return da - db_;
+      });
+      setPendingTasks(sorted);
     } catch (error) {
       console.error('加载作业失败:', error);
+    }
+  };
+
+  const handleStartTask = async (task: StudentHomeworkResponse) => {
+    try {
+      const result = await startHomework(task.id);
+      navigate(`/student/units/${result.unit_id}/${result.learning_mode}`, {
+        state: { fromHomework: true, assignmentId: task.id },
+      });
+    } catch (error: any) {
+      console.error('开始作业失败:', error);
     }
   };
 
@@ -307,6 +367,35 @@ const StudentDashboard = () => {
       </nav>
 
       <div className="max-w-6xl mx-auto px-5 py-10">
+        {/* 每日签到:未签到时置顶引导(签到才能开始学习);已签到显示小徽章 */}
+        {checkin && !checkin.checked_in && (
+          <section className="mb-8">
+            <div className="rounded-2xl bg-gradient-to-r from-accent-warm to-amber-400 p-6 md:p-7 flex flex-col md:flex-row items-center gap-4 shadow-lg">
+              <div className="flex-1 text-center md:text-left">
+                <h2 className="font-display text-2xl md:text-3xl font-bold text-white mb-1">
+                  ✋ 今天还没签到
+                </h2>
+                <p className="text-white/85 text-sm">
+                  每天先签到再开始学习,老师会看到签到名单哦
+                </p>
+              </div>
+              <button
+                onClick={handleCheckin}
+                disabled={checkinBusy}
+                className="px-8 py-3.5 bg-white text-accent-warm rounded-xl text-lg font-bold shadow-md hover:scale-105 active:scale-95 transition disabled:opacity-60"
+              >
+                {checkinBusy ? '签到中…' : '📍 立即签到'}
+              </button>
+            </div>
+          </section>
+        )}
+        {checkin?.checked_in && (
+          <div className="mb-6 -mt-4 flex justify-end">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 border border-green-200 text-green-700 text-xs font-medium">
+              ✅ 今日已签到 {checkin.checkin_time && `· ${checkin.checkin_time}`}
+            </span>
+          </div>
+        )}
         {/* Hero：今日核心任务 + 飞鹰陪伴 */}
         <section className="mb-12 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
           <div>
@@ -383,6 +472,63 @@ const StudentDashboard = () => {
             loading="lazy"
           />
         </section>
+
+        {/* 老师布置的任务:一登录就看到今天要做什么(最多3条,更多去「我的作业」) */}
+        {pendingTasks.length > 0 && (
+          <section className="mb-10">
+            <div className="rounded-2xl border-2 border-accent-warm/40 bg-accent-warm/[0.06] overflow-hidden">
+              <div className="px-5 py-3 flex items-center gap-2 border-b border-accent-warm/20">
+                <span className="text-lg">📣</span>
+                <h3 className="font-semibold text-ink text-sm">老师布置的任务</h3>
+                <span className="px-1.5 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold">
+                  {pendingTasks.length}
+                </span>
+                {pendingTasks.length > 3 && (
+                  <button
+                    onClick={() => navigate('/student/homework')}
+                    className="ml-auto text-xs text-accent-warm hover:opacity-80"
+                  >
+                    查看全部 →
+                  </button>
+                )}
+              </div>
+              <div className="divide-y divide-accent-warm/10">
+                {pendingTasks.slice(0, 3).map((task) => {
+                  const overdue = task.deadline && new Date(task.deadline) < new Date();
+                  return (
+                    <div key={task.id} className="px-5 py-3.5 flex items-center gap-3">
+                      <span className="text-xl shrink-0">📘</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-ink text-sm truncate">{task.title}</p>
+                        <p className="text-xs text-ink-mute mt-0.5 truncate">
+                          {task.book_name} · {task.unit_name} · 目标 {task.target_score} 分
+                          {task.attempts_count > 0 && (
+                            <span className="text-accent-warm font-medium">
+                              {' '}· 最好 {task.best_score} 分,差 {Math.max(0, task.target_score - task.best_score)} 分达标(剩 {Math.max(0, task.max_attempts - task.attempts_count)} 次)
+                            </span>
+                          )}
+                          {task.deadline && (
+                            <span className={overdue ? 'text-red-500 font-semibold' : ''}>
+                              {' '}· {overdue ? '已逾期!' : `截止 ${new Date(task.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleStartTask(task)}
+                        className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition active:scale-95 text-white ${
+                          overdue ? 'bg-red-500 hover:opacity-90' : 'btn-glow'
+                        }`}
+                      >
+                        {task.attempts_count > 0 ? '再战一次 →' : task.status === 'in_progress' ? '继续 →' : '去完成 →'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* 光荣榜入口横幅 — 一进首页就看到「上榜」钩子 */}
         <RankingBanner />

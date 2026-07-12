@@ -65,6 +65,12 @@ async def generate_exam(
     if not unit:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "单元不存在")
 
+    # 1.5 严格模式:考试也只能考分配范围内的单元(与 units/start 同一口径)
+    from app.services.scope_service import get_allowed_unit_ids
+    allowed = await get_allowed_unit_ids(db, current_user.id, unit.book_id)
+    if allowed is not None and unit_id not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "这个单元还没有分配给你,请联系老师")
+
     # 2. 获取单元所有单词 + 释义
     result = await db.execute(
         select(Word, WordDefinition)

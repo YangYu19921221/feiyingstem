@@ -113,10 +113,16 @@ const AdminUserManagement = () => {
     if (!editingUser) return;
     try {
       const token = localStorage.getItem('access_token');
+      // 手机注册用户的邮箱是 xxx@phone.local 占位符,后端 EmailStr 会拒绝(.local 是保留域)。
+      // 只有管理员真的改了邮箱才提交该字段;没改就不传,避免 422(生产 425 个手机用户全中招)。
+      const orig = users.find(u => u.id === editingUser.id);
+      const email = (editingUser.email || '').trim();
+      const emailChanged = email !== ((orig?.email || '').trim());
       await axios.put(
         `${API_BASE_URL}/admin/users/${editingUser.id}`,
         {
-          email: editingUser.email,
+          username: editingUser.username,
+          email: emailChanged && email ? email : undefined,
           full_name: editingUser.full_name,
           role: editingUser.role,
           is_active: editingUser.is_active
@@ -477,8 +483,9 @@ const AdminUserManagement = () => {
                 <input
                   type="text"
                   value={editingUser.username}
-                  disabled
-                  className="w-full px-4 py-2 border rounded-lg bg-gray-100"
+                  onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg"
+                  placeholder="请输入用户名"
                 />
               </div>
               <div>

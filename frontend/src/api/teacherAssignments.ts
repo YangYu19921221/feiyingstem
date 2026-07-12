@@ -10,6 +10,8 @@ export interface AssignBookPayload {
   scope_type: ScopeType;
   unit_id?: number | null;
   group_index?: number | null;
+  // 单元粒度多选:一次分配多个单元(scope_type='unit' 时生效,优先于 unit_id)
+  unit_ids?: number[];
   deadline?: string;
 }
 
