@@ -75,6 +75,55 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
     )
 
 
+@router.get("/battle/search-opponents")
+async def search_opponents(
+    q: str = Query("", max_length=50),
+    limit: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """可挑战对手列表(需已有宠物)。q 为空时按最近活跃排序返回默认列表,否则按用户名/昵称过滤"""
+    conditions = [
+        User.id != current_user.id,
+        User.id > 0,  # 排除AI训练师等系统账号
+        User.role == "student",
+    ]
+
+    q = q.strip()
+    if q:
+        pattern = f"%{q}%"
+        conditions.append(
+            or_(
+                User.username.ilike(pattern),
+                User.full_name.ilike(pattern),
+            )
+        )
+
+    stmt = (
+        select(User, UserPet)
+        .join(UserPet, UserPet.user_id == User.id)
+        .where(and_(*conditions))
+        .order_by(desc(User.last_login))
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return [
+        {
+            "user_id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "avatar_url": user.avatar_url,
+            "pet_name": pet.name,
+            "pet_species": pet.species,
+            "pet_level": pet.level,
+            "pet_evolution_stage": pet.evolution_stage,
+        }
+        for user, pet in rows
+    ]
+
+
 @router.post("/battle/create", response_model=BattleResponse)
 async def create_battle(
     data: BattleCreateRequest,
@@ -97,6 +146,8 @@ async def create_battle(
     my_pet = my_pet_result.scalar_one_or_none()
     if not my_pet:
         raise HTTPException(status_code=400, detail="你还没有宠物")
+    if my_pet.is_injured:
+        raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
 
     # 检查对手的宠物
     opponent_pet_result = await db.execute(
@@ -136,6 +187,13 @@ async def accept_battle(
     if battle.player2_id != current_user.id:
         raise HTTPException(status_code=403, detail="这不是发给你的邀请")
 
+    # 受伤门：受伤宠物不能应战
+    accept_pet = (await db.execute(
+        select(UserPet).where(UserPet.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if accept_pet and accept_pet.is_injured:
+        raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能应战哦！")
+
     try:
         battle = await pet_battle_service.accept_battle(db, battle_id)
     except ValueError as e:
@@ -165,6 +223,32 @@ async def cancel_battle(
     await db.commit()
 
     return {"message": "已取消对战邀请"}
+
+
+@router.post("/battle/{battle_id}/forfeit")
+async def forfeit_battle_endpoint(
+    battle_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """逃跑判负：对战进行中主动退出 = 判负 + 额外掉分 + 奖励归零（对手判胜）。"""
+    battle = await db.get(PetBattle, battle_id)
+    if not battle:
+        raise HTTPException(status_code=404, detail="对战不存在")
+    if current_user.id not in (battle.player1_id, battle.player2_id):
+        raise HTTPException(status_code=403, detail="你不在这场对战里")
+    # 未开打(pending)直接取消，不算逃跑
+    if battle.status == "pending":
+        battle.status = "cancelled"
+        await db.commit()
+        return {"forfeited": False, "message": "对战未开始，已取消"}
+    if battle.status == "finished":
+        return {"forfeited": False, "message": "对战已结束"}
+
+    result = await pet_battle_service.forfeit_battle(db, battle_id, current_user.id)
+    if result is None:
+        return {"forfeited": False, "message": "无法判负"}
+    return {"forfeited": True, "message": "已判负（逃跑）", **result}
 
 
 @router.get("/battle/{battle_id}", response_model=BattleResponse)
@@ -333,7 +417,9 @@ async def quick_match_battle(
     my_pet = my_pet_result.scalar_one_or_none()
     if not my_pet:
         raise HTTPException(status_code=400, detail="你还没有宠物")
-    
+    if my_pet.is_injured:
+        raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
+
     # TODO: 这里可以添加真人匹配逻辑（查找在线等待的玩家）
     # 暂时直接生成AI对手
     

@@ -192,6 +192,13 @@ async def update_user(
         raise HTTPException(status_code=400, detail="不能修改自己的管理员权限")
 
     # 更新字段
+    if user_data.username is not None:
+        # 检查用户名是否被其他用户使用
+        existing = await auth_service.get_user_by_username(db, user_data.username)
+        if existing and existing.id != user_id:
+            raise HTTPException(status_code=400, detail="用户名已被使用")
+        user.username = user_data.username
+
     if user_data.email is not None:
         # 检查邮箱是否被其他用户使用
         existing = await auth_service.get_user_by_email(db, user_data.email)

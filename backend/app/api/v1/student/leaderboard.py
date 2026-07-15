@@ -93,13 +93,7 @@ async def _resolve_scope(
 
 
 async def _vocabulary_rows(db, period, allowed):
-    """词汇王:本周期内学过的不重复单词数(按拼写去重,与教师端每日数据同口径)。
-
-    两处口径修正(否则学生端名次和教师端/大屏对不上):
-    - 按 LOWER(word.word) 拼写去重:单元级隔离后同一拼写在不同单元是不同 word_id,
-      按 word_id 数会虚高
-    - 不再要求 is_correct:教师端「学了多少词」统计的是接触过的词;答错也算学过
-    """
+    """词汇王：本周期内答对的不重复 word_id 数"""
     start, end = _period_range(period)
     conds = [
         LearningRecord.created_at >= start,
@@ -107,6 +101,7 @@ async def _vocabulary_rows(db, period, allowed):
     ]
     if allowed is not None:
         conds.append(LearningRecord.user_id.in_(allowed))
+    # 口径与教师端每日数据一致:LOWER(word) 拼写去重,接触过即算(不要求答对)
     stmt = (
         select(
             LearningRecord.user_id,

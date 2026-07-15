@@ -34,7 +34,7 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     """更新用户信息"""
-    # min_length=2:中文姓名用户名(如「小明」)只有2字(生产为 min_length=3 时 admin 改名 422)
+    # min_length=2:中文姓名用户名(如「小明」)只有2字,原 3 会把 admin 改名请求 422 掉
     username: Optional[str] = Field(None, min_length=2, max_length=50)
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None

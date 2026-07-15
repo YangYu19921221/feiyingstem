@@ -184,10 +184,14 @@ class WSBattleEnd(BaseModel):
     winner_id: Optional[int]
     winner_name: Optional[str]
 
-    # 奖励
+    # 奖励（兼容旧字段：当前连接玩家的值）
     food_earned: int
     xp_earned: int
     rating_change: Optional[int]
+
+    # 奖惩明细（按玩家，含段位/积分升降/连胜全对等加成；前端按 isPlayer1 取自己那份）
+    player1_reward: Optional[dict] = None
+    player2_reward: Optional[dict] = None
 
     # 统计
     player1_final_stats: dict
@@ -198,4 +202,4 @@ class WSError(BaseModel):
     """错误消息"""
     type: str = "error"
     message: str
-    code: Optional[str] = None
+    code: Optional[str]

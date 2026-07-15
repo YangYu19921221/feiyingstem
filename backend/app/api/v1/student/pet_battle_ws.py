@@ -394,6 +394,8 @@ async def battle_websocket(
                 food_earned=rewards.get(current_user.id, {}).get("food", 0),
                 xp_earned=rewards.get(current_user.id, {}).get("xp", 0),
                 rating_change=rewards.get(current_user.id, {}).get("rating_change", 0),
+                player1_reward=rewards.get(battle.player1_id),
+                player2_reward=rewards.get(battle.player2_id),
                 player1_final_stats={
                     "correct": battle.player1_total_correct,
                     "damage": battle.player1_total_damage,
