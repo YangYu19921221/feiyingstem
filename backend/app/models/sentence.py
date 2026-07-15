@@ -21,6 +21,7 @@ class SentenceBook(Base):
     cover_color = Column(String(20), default="#5FD35F")  # 句子集默认绿色，与单词本橙色区分
     cover_url = Column(String(500), nullable=True)
     is_public = Column(Boolean, default=True)
+    org_id = Column(Integer, nullable=True, index=True)  # 多租户: NULL=平台共享库,非NULL=机构自建
     created_by = Column(Integer, nullable=True)  # 教师 id
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

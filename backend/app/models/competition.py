@@ -157,6 +157,7 @@ class LeaderboardSnapshot(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     season_id = Column(Integer, ForeignKey("competition_seasons.id", ondelete="CASCADE"), nullable=False)
+    org_id = Column(Integer, nullable=False, server_default="1", index=True)  # 榜单快照按机构分(多租户)
     snapshot_type = Column(String(20), nullable=False, default='daily')
     snapshot_date = Column(Date, nullable=False)
     rankings = Column(Text, nullable=False)  # JSON格式
@@ -244,6 +245,7 @@ class CompetitionQuestionSet(Base):
     description = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     total_questions = Column(Integer, default=0)
+    org_id = Column(Integer, nullable=True, index=True)  # 多租户: NULL=平台共享题库,非NULL=机构自建
     is_public = Column(Boolean, default=False)  # 是否公开
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

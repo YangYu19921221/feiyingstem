@@ -28,6 +28,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(100))
     role = Column(String(20), default=UserRole.STUDENT)
+    org_id = Column(Integer, nullable=False, server_default="1", index=True)  # 所属机构(多租户),1=直营
     is_active = Column(Boolean, default=True)
     avatar_url = Column(String(255))
 
@@ -105,6 +106,7 @@ class Class(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     teacher_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    org_id = Column(Integer, nullable=False, server_default="1", index=True)  # 冗余自 teacher.org_id(多租户)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

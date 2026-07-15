@@ -45,6 +45,7 @@ class WordBook(Base):
     grade_level = Column(String(20))       # 年级，如 "三年级"，课外书留空
     volume = Column(String(20))             # 册次，如 "上册"、"下册"，课外书留空
     created_by = Column(Integer, nullable=True)  # 暂时不使用外键
+    org_id = Column(Integer, nullable=True, index=True)  # 多租户: NULL=平台共享库,非NULL=机构自建
     is_public = Column(Boolean, default=True)
     cover_color = Column(String(20), default="#FF6B6B")
     cover_url = Column(String(500), nullable=True)  # AI 生成的封面图 URL，可空

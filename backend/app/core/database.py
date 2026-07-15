@@ -25,6 +25,7 @@ async def init_db():
     from sqlalchemy import text
     # 导入所有模型以确保它们被注册到Base.metadata
     from app.models import user, word, learning, pet, assessment
+    from app.models import organization  # 多租户: 机构(租户)表
     try:
         from app.models import competition
     except Exception:
@@ -225,7 +226,59 @@ async def init_db():
         except Exception:
             pass
 
+        # ===== 多租户 P1: organizations + 锚点表 org_id(幂等迁移) =====
+        # 直营机构(org_id=1),现有数据全部归属它
+        try:
+            await conn.execute(text(
+                "INSERT OR IGNORE INTO organizations (id, name, code, plan, student_quota, status) "
+                "VALUES (1, '雪域飞鹰(直营)', 'HQ001', 'headquarters', 999999, 'active')"
+            ))
+        except Exception:
+            pass
+        # 9 张锚点表加 org_id:
+        # - 用户/班级/房间/线索/快照: NOT NULL DEFAULT 1(SQLite 对存量行直接生效)
+        # - 内容表(word_books等): 可空,NULL=平台共享库;私有(is_public=0)回填到直营
+        #   注: 回填每次启动都跑,兼做 P1 期间新建私有内容未设 org 的兜底,P2 写入侧补齐后自然空转
+        for _sql in [
+            "ALTER TABLE users ADD COLUMN org_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE classes ADD COLUMN org_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE pk_rooms ADD COLUMN org_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE assessment_leads ADD COLUMN org_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE leaderboard_snapshots ADD COLUMN org_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE word_books ADD COLUMN org_id INTEGER",
+            "ALTER TABLE sentence_books ADD COLUMN org_id INTEGER",
+            "ALTER TABLE reading_passages ADD COLUMN org_id INTEGER",
+            "ALTER TABLE competition_question_sets ADD COLUMN org_id INTEGER",
+            "UPDATE word_books SET org_id = 1 WHERE org_id IS NULL AND (is_public = 0 OR is_public IS NULL)",
+            "UPDATE sentence_books SET org_id = 1 WHERE org_id IS NULL AND (is_public = 0 OR is_public IS NULL)",
+            "UPDATE reading_passages SET org_id = 1 WHERE org_id IS NULL AND (is_public = 0 OR is_public IS NULL)",
+            "UPDATE competition_question_sets SET org_id = 1 WHERE org_id IS NULL AND (is_public = 0 OR is_public IS NULL)",
+            "CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_classes_org ON classes(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_word_books_org ON word_books(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_sentence_books_org ON sentence_books(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reading_passages_org ON reading_passages(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_assessment_leads_org ON assessment_leads(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_pk_rooms_org ON pk_rooms(org_id)",
+        ]:
+            try:
+                await conn.execute(text(_sql))
+            except Exception:
+                pass
+
+        # 注册租户锚点模型(全局过滤安全网,TENANCY_ENFORCE 控制是否生效)
+        from app.core.tenancy import register_tenant_models
+        register_tenant_models()
+
         print("✅ 数据库初始化完成")
+
+    # 开启 WAL(提高读写并发,持久化到库文件)。PRAGMA journal_mode 不能在事务内执行,
+    # 必须走 AUTOCOMMIT 连接,故放在上面 engine.begin() 事务块之外
+    try:
+        async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as wal_conn:
+            await wal_conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
 
 async def get_db() -> AsyncSession:
     """获取数据库会话"""

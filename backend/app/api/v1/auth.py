@@ -10,6 +10,7 @@ from jose import JWTError, jwt
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.tenancy import current_org_id, OrgContext, check_org_active
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest, ChangeUsernameRequest
 from app.services import auth_service
 from app.services.sms_service import code_store, send_sms_code
@@ -46,6 +47,9 @@ async def _authenticate_token(
 
     if not user.is_active:
         raise HTTPException(status_code=400, detail="用户已被禁用")
+
+    # 多租户: 设置请求级机构上下文(平台admin设None=跨租户不过滤)
+    current_org_id.set(None if user.role == "admin" else (getattr(user, "org_id", None) or 1))
 
     return user
 
@@ -106,6 +110,19 @@ async def get_current_parent(
             detail="需要家长权限"
         )
     return current_user
+
+
+async def get_org_context(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrgContext:
+    """多租户: 获取当前请求的机构上下文(平台admin跨租户;机构停用/到期返回402)"""
+    org_id = getattr(current_user, "org_id", None) or 1
+    if current_user.role == "admin":
+        return OrgContext(org_id=org_id, is_platform_admin=True)
+    if not await check_org_active(db, org_id):
+        raise HTTPException(status_code=402, detail="机构服务已到期，请联系机构管理员续费")
+    return OrgContext(org_id=org_id)
 
 
 def require_role(*allowed_roles: str):
