@@ -2,8 +2,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminOrgApi, Organization } from '../api/organizations';
+import { adminOrgApi, Organization, OrgManager } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
+
+/** 生成随机密码(重置用,弹窗只显示一次) */
+function genPassword(len = 10): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const buf = new Uint32Array(len);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, n => chars[n % chars.length]).join('');
+}
 
 const PLAN_LABELS: Record<string, string> = {
   trial: '体验', standard: '标准', county: '县级独家', city: '市级独家', headquarters: '总部直营',
@@ -16,6 +24,37 @@ export default function AdminOrganizations() {
   const [form, setForm] = useState({ name: '', code: '', plan: 'standard', student_quota: 100, contact_name: '', contact_phone: '' });
   // 新开管理员账号的初始密码(仅展示一次)
   const [issued, setIssued] = useState<{ username: string; password: string; orgName: string } | null>(null);
+  // 管理员面板: 查看某机构的管理员账号列表
+  const [managerPanel, setManagerPanel] = useState<{ org: Organization; managers: OrgManager[] } | null>(null);
+
+  const openManagerPanel = async (org: Organization) => {
+    try {
+      const managers = await adminOrgApi.listOrgAdmins(org.id);
+      setManagerPanel({ org, managers });
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || '获取管理员列表失败');
+    }
+  };
+
+  const resetManagerPwd = async (m: OrgManager, orgName: string) => {
+    if (!window.confirm(`重置「${m.username}」的密码?旧密码将立即失效`)) return;
+    const pwd = genPassword();
+    try {
+      await adminOrgApi.resetUserPassword(m.id, pwd);
+      setIssued({ username: m.username, password: pwd, orgName });
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || '重置失败');
+    }
+  };
+
+  const toggleManager = async (m: OrgManager, org: Organization) => {
+    try {
+      await adminOrgApi.toggleUserStatus(m.id);
+      await openManagerPanel(org); // 刷新面板
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || '操作失败');
+    }
+  };
 
   const { data: orgs, isLoading } = useQuery({ queryKey: ['admin-orgs'], queryFn: adminOrgApi.list });
 
@@ -81,12 +120,51 @@ export default function AdminOrganizations() {
         {/* 初始密码弹窗(仅展示一次) */}
         {issued && (
           <InitialPasswordModal
-            title="✅ 机构管理员账号已开通"
-            subtitle={`「${issued.orgName}」— 请立即复制发给加盟商,密码仅显示这一次!`}
+            title="✅ 账号密码已就绪"
+            subtitle={`「${issued.orgName}」— 请立即复制发给对方,密码仅显示这一次!`}
             username={issued.username}
             password={issued.password}
             onClose={() => setIssued(null)}
           />
+        )}
+
+        {/* 机构管理员面板 */}
+        {managerPanel && !issued && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40" onClick={() => setManagerPanel(null)}>
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-bold mb-1">👤 「{managerPanel.org.name}」的管理员</h3>
+              <p className="text-xs text-gray-400 mb-4">密码加密存储无法查看,可一键重置生成新密码(改用户名去"用户管理"页)</p>
+              {managerPanel.managers.length === 0 ? (
+                <div className="py-6 text-center text-gray-400 text-sm">还没有管理员,先在机构列表点「开管理员」</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-2">账号</th><th className="py-2">姓名</th>
+                      <th className="py-2">最近登录</th><th className="py-2">状态</th><th className="py-2">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerPanel.managers.map(m => (
+                      <tr key={m.id} className="border-b last:border-0">
+                        <td className="py-2 font-mono">{m.username}</td>
+                        <td className="py-2">{m.full_name || '—'}</td>
+                        <td className="py-2 text-gray-400 text-xs">{m.last_login ? String(m.last_login).slice(0, 16).replace('T', ' ') : '从未登录'}</td>
+                        <td className="py-2">{m.is_active ? '✅' : '⛔'}</td>
+                        <td className="py-2 space-x-2 whitespace-nowrap">
+                          <button className="text-orange-500 hover:underline" onClick={() => resetManagerPwd(m, managerPanel.org.name)}>重置密码</button>
+                          <button className={m.is_active ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'} onClick={() => toggleManager(m, managerPanel.org)}>
+                            {m.is_active ? '停用' : '恢复'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <button className="mt-4 w-full py-2 rounded-xl bg-gray-100" onClick={() => setManagerPanel(null)}>关闭</button>
+            </div>
+          </div>
         )}
 
         {/* 开通表单 */}
@@ -164,6 +242,7 @@ export default function AdminOrganizations() {
                       </td>
                       <td className="px-4 py-3 space-x-2 whitespace-nowrap">
                         <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
+                        <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
                         <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
                         {org.id !== 1 && (
                           <button

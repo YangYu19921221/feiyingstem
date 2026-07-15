@@ -32,6 +32,15 @@ export interface OrgTeacher {
   created_at?: string;
 }
 
+export interface OrgManager {
+  id: number;
+  username: string;
+  full_name?: string | null;
+  phone?: string | null;
+  is_active: boolean;
+  last_login?: string | null;
+}
+
 // ---------- 平台管理端(admin) ----------
 export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
@@ -42,6 +51,13 @@ export const adminOrgApi = {
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     // 路径避开 */admins: Safari 内容拦截器会按关键词掐掉该 XHR
     client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data),
+  listOrgAdmins: (orgId: number) =>
+    client.get<OrgManager[]>(`/admin/organizations/${orgId}/managers`),
+  // 复用通用用户接口: 重置密码(新密码由前端生成,弹窗只显示一次)与停用/恢复
+  resetUserPassword: (userId: number, newPassword: string) =>
+    client.post(`/admin/users/${userId}/reset-password`, { new_password: newPassword }),
+  toggleUserStatus: (userId: number) =>
+    client.post<{ is_active: boolean }>(`/admin/users/${userId}/toggle-status`),
 };
 
 // ---------- 机构管理端(org_admin) ----------
