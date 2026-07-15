@@ -24,8 +24,8 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 def generate_random_password(length: int = 12) -> str:
-    """生成随机密码（字母+数字组合）"""
-    alphabet = string.ascii_letters + string.digits
+    """生成随机密码。排除易混淆字符(0/O、1/l/I):初始密码靠人工抄传,混淆字符是登录失败重灾区"""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
