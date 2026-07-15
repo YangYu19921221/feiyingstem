@@ -40,7 +40,8 @@ export const adminOrgApi = {
   update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string }>) =>
     client.patch<Organization>(`/admin/organizations/${orgId}`, data).then(r => r.data),
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
-    client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/admins`, data).then(r => r.data),
+    // 路径避开 */admins: Safari 内容拦截器会按关键词掐掉该 XHR
+    client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data).then(r => r.data),
 };
 
 // ---------- 机构管理端(org_admin) ----------

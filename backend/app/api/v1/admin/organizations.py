@@ -154,8 +154,10 @@ async def update_organization(
 
 
 # ---------- 机构管理员账号 ----------
+# 路径用 /managers 而非 /admins: 实测 Safari 内容拦截器会按 URL 关键词
+# 掐掉 */admins 结尾的 XHR(请求根本不出浏览器,报 Network Error)
 
-@router.get("/organizations/{org_id}/admins")
+@router.get("/organizations/{org_id}/managers")
 async def list_org_admins(
     org_id: int,
     db: AsyncSession = Depends(get_db),
@@ -169,7 +171,7 @@ async def list_org_admins(
             for u in rows]
 
 
-@router.post("/organizations/{org_id}/admins")
+@router.post("/organizations/{org_id}/managers")
 async def create_org_admin(
     org_id: int,
     data: OrgAdminCreate,
