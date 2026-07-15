@@ -51,6 +51,11 @@ async def _authenticate_token(
     # 多租户: 设置请求级机构上下文(平台admin设None=跨租户不过滤)
     current_org_id.set(None if user.role == "admin" else (getattr(user, "org_id", None) or 1))
 
+    # 多租户: 机构停用/到期时,该机构师生全站拦截(org_admin放行以便登录看续费提示)
+    if user.role in ("student", "teacher", "parent"):
+        if not await check_org_active(db, user.org_id or 1):
+            raise HTTPException(status_code=402, detail="机构服务已到期，请联系机构管理员续费")
+
     return user
 
 

@@ -6,10 +6,11 @@ import enum
 
 class UserRole(str, enum.Enum):
     """用户角色"""
-    ADMIN = "admin"      # 管理员
-    TEACHER = "teacher"  # 教师
-    STUDENT = "student"  # 学生
-    PARENT = "parent"    # 家长
+    ADMIN = "admin"          # 平台管理员(总部,跨机构)
+    ORG_ADMIN = "org_admin"  # 机构管理员(加盟商老板,只管本机构)
+    TEACHER = "teacher"      # 教师
+    STUDENT = "student"      # 学生
+    PARENT = "parent"        # 家长
 
 class RedemptionCodeStatus(str, enum.Enum):
     """兑换码状态"""

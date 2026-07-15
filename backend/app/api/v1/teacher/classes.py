@@ -1095,6 +1095,9 @@ async def create_student(
         target_class_id = cls.id
 
     pwd = body.password or generate_random_password()
+    # 多租户配额: 建学生即占名额,先校验
+    from app.services.org_service import check_student_quota
+    await check_student_quota(db, current_user.org_id or 1)
     new_user = User(
         username=body.username,
         email=body.email or f"{body.username}@feiying.local",

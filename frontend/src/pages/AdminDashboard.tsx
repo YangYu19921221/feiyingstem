@@ -108,6 +108,7 @@ const AdminDashboard = () => {
   };
 
   const quickActions = [
+    { icon: '🏢', title: '机构管理', desc: '加盟商开户与配额', color: 'from-rose-500 to-orange-500', path: '/admin/organizations' },
     { icon: '👥', title: '用户管理', desc: '管理师生账号', color: 'from-blue-500 to-cyan-500', path: '/admin/users' },
     { icon: '👨‍🏫', title: '教师管理', desc: '教师列表与班级', color: 'from-teal-500 to-green-500', path: '/admin/teachers' },
     { icon: '📊', title: '班级数据', desc: '学习统计与名册', color: 'from-sky-500 to-blue-500', path: '/admin/classes' },

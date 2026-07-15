@@ -10,6 +10,8 @@ from app.api.v1.admin import users as admin_users, content as admin_content, sta
 from app.api.v1.admin import teachers as admin_teachers, classes as admin_classes, settings as admin_settings
 from app.api.v1.admin import class_analytics as admin_class_analytics, competition as admin_competition
 from app.api.v1.admin import student_books as admin_student_books
+from app.api.v1.admin import organizations as admin_organizations  # 多租户: 平台管理端-机构管理
+from app.api.v1 import org_admin  # 多租户: 机构管理端(加盟商)
 from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket
 from app.api.v1 import pk_tournament_routes
 from app.api.v1 import presence
@@ -76,6 +78,8 @@ app.include_router(student_leaderboard.router, prefix="/api/v1/student", tags=["
 app.include_router(student_class_join.router, prefix="/api/v1/student", tags=["学生端-加入班级"])
 app.include_router(parent.router, prefix="/api/v1", tags=["家长端"])
 app.include_router(admin_users.router, prefix="/api/v1/admin", tags=["管理员-用户管理"])
+app.include_router(admin_organizations.router, prefix="/api/v1/admin", tags=["管理员-机构管理"])
+app.include_router(org_admin.router, prefix="/api/v1/org", tags=["机构管理端"])
 app.include_router(admin_content.router, prefix="/api/v1/admin/content", tags=["管理员-内容管理"])
 app.include_router(admin_statistics.router, prefix="/api/v1/admin", tags=["管理员-统计数据"])
 app.include_router(admin_ai_config.router, prefix="/api/v1/admin/ai", tags=["管理员-AI配置"])

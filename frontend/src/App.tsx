@@ -88,6 +88,8 @@ const AdminTeacherDetail = lazyWithRetry(() => import('./pages/AdminTeacherDetai
 const AdminClassDetail = lazyWithRetry(() => import('./pages/AdminClassDetail'));
 const AdminClassList = lazyWithRetry(() => import('./pages/AdminClassList'));
 const AdminCompetition = lazyWithRetry(() => import('./pages/AdminCompetition'));
+const AdminOrganizations = lazyWithRetry(() => import('./pages/AdminOrganizations'));
+const OrgAdminDashboard = lazyWithRetry(() => import('./pages/OrgAdminDashboard'));
 const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
 const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
 const PetBattleHallPage = lazyWithRetry(() => import('./pages/PetBattleHallPage'));
@@ -175,6 +177,9 @@ const DashboardRedirect = () => {
     switch (user.role) {
       case 'admin':
         return <AdminDashboard />;
+      case 'org_admin':
+        // 机构管理端(加盟商): 管本机构老师/配额/机构码
+        return <OrgAdminDashboard />;
       case 'teacher':
         return <TeacherDashboard />;
       case 'display':
@@ -760,6 +765,22 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminUserManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/organizations"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminOrganizations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/org"
+          element={
+            <ProtectedRoute allowedRoles={['org_admin', 'admin']}>
+              <OrgAdminDashboard />
             </ProtectedRoute>
           }
         />

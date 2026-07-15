@@ -66,6 +66,20 @@ async def join_class_by_code(
         else:
             raise HTTPException(403, "该邀请码属于其他机构，请联系你的老师处理")
 
+    # 多租户配额: 学生尚未占用该机构名额(无该机构活跃班级关系)时,入班前校验
+    from app.services.org_service import check_student_quota
+    already_in_org_class = (await db.execute(
+        select(ClassStudent.id)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(
+            ClassStudent.student_id == current_user.id,
+            ClassStudent.is_active.is_(True),
+            Class.org_id == class_org,
+        ).limit(1)
+    )).first()
+    if not already_in_org_class:
+        await check_student_quota(db, class_org)
+
     teacher_res = await db.execute(
         select(User).where(User.id == cls.teacher_id)
         .execution_options(skip_tenant_filter=True)
