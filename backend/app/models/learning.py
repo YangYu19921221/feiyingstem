@@ -16,6 +16,10 @@ class LearningRecord(Base):
 class WordMastery(Base):
     """学生单词掌握度表 - 记录每个学生对每个单词的掌握程度"""
     __tablename__ = "word_mastery"
+    # (user_id, word_id) 唯一——对齐 database_schema.sql 的约束。
+    # ORM 之前没声明,create_all 建的库缺约束,并发首插会产生重复行,
+    # 之后 scalar_one_or_none 抛 MultipleResultsFound → 该词提交永久500
+    __table_args__ = (UniqueConstraint('user_id', 'word_id', name='uq_word_mastery_user_word'),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

@@ -17,6 +17,8 @@ interface ClassificationPhaseProps {
   words: WordData[];
   onComplete: (results: Map<number, WordCategory>) => void;
   onRoundMistakes?: (wordIds: number[]) => void;
+  /** 每轮结束时上报本轮标"熟悉"的词(实时落正确记录,教师端监控才有中间数据) */
+  onRoundFamiliar?: (wordIds: number[]) => void;
   playAudio: (word: string, rate?: number, wordId?: number) => void;
   stopAudio?: () => void;
   /** 走神/切屏时置 true:暂停倒计时和循环发音。
@@ -53,6 +55,7 @@ export default function ClassificationPhase({
   words,
   onComplete,
   onRoundMistakes,
+  onRoundFamiliar,
   playAudio,
   stopAudio,
   paused = false,
@@ -77,6 +80,9 @@ export default function ClassificationPhase({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [round, setRound] = useState(1);
   const [timeLeft, setTimeLeft] = useState(() => getClassifyTime(words[0]?.word));
+  // 倒计时的权威值放 ref(interval 里读写),state 仅驱动进度条渲染;
+  // 外部 setTimeLeft 重置时由下方 effect 同步回 ref
+  const timeLeftRef = useRef(timeLeft);
   const [results, setResults] = useState<Map<number, WordCategory>>(new Map());
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
@@ -93,6 +99,13 @@ export default function ClassificationPhase({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const classifyRef = useRef<(category: WordCategory) => void>(() => {});
+  // 同步重入锁: isTransitioning state 是渲染快照,定时器/事件在 commit 前读到旧值
+  // 会绕过防抖(同词双分类)。ref 同步生效,state 只留给 UI 禁用态。
+  const lockRef = useRef(false);
+  // 轮结束防重入: 双触发会导致错题重复提交(batch_id 每次新生成,后端幂等挡不住)
+  const roundEndedRef = useRef(false);
+  // 200ms 过渡 setTimeout 存引用,卸载时清理
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentWord = roundWords[currentIndex];
 
@@ -125,8 +138,19 @@ export default function ClassificationPhase({
 
   // 一轮结束时的处理
   const handleRoundEnd = useCallback((newResults: Map<number, WordCategory>) => {
+    // 防重入: 定时器归零与手点竞态下可能被同一轮触发两次,
+    // 第二次会把错题再提交一遍(统计翻倍),这里同步拦掉
+    if (roundEndedRef.current) return;
+    roundEndedRef.current = true;
+
     // 收集本轮中不是熟悉的词
     const errorWords = roundWords.filter(w => newResults.get(w.id) !== 'familiar');
+    // 本轮标熟悉的词立即上报正确记录:否则全对的学生整组(5-15分钟)
+    // 零落库,教师端实时课堂的"今日单词数"一直不动
+    const familiarWords = roundWords.filter(w => newResults.get(w.id) === 'familiar');
+    if (familiarWords.length > 0) {
+      onRoundFamiliar?.(familiarWords.map(w => w.id));
+    }
 
     if (errorWords.length === 0) {
       // 全部熟悉，分类结束
@@ -146,12 +170,16 @@ export default function ClassificationPhase({
         setTimeLeft(getClassifyTime(errorWords[0]?.word));
         setShowRoundSummary(false);
         setFamiliarBuffer([]); // 新一轮清空熟悉词缓冲
+        roundEndedRef.current = false; // 新一轮解锁
       }, 2000);
     }
-  }, [roundWords, onComplete, onRoundMistakes]);
+  }, [roundWords, onComplete, onRoundMistakes, onRoundFamiliar]);
 
   const handleClassify = useCallback((category: WordCategory) => {
-    if (isTransitioning || !currentWord) return;
+    // lockRef 同步生效: 定时器归零瞬间的手点、渲染 commit 前的连点都会被拦,
+    // 不依赖 state 闭包快照(isTransitioning 仅驱动按钮禁用态 UI)
+    if (lockRef.current || !currentWord) return;
+    lockRef.current = true;
     setIsTransitioning(true);
 
     if (timerRef.current) clearInterval(timerRef.current);
@@ -166,7 +194,7 @@ export default function ClassificationPhase({
       ? [...familiarBuffer, currentWord]
       : familiarBuffer;
 
-    setTimeout(() => {
+    transitionTimeoutRef.current = setTimeout(() => {
       const isLastInRound = currentIndex + 1 >= roundWords.length;
 
       // 只有当前词标为熟悉才检查是否触发回顾
@@ -176,6 +204,7 @@ export default function ClassificationPhase({
         setCurrentIndex(currentIndex + 1);
         setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
         setIsTransitioning(false);
+        lockRef.current = false;
         setShowFamiliarReview(true);
         return;
       }
@@ -189,12 +218,23 @@ export default function ClassificationPhase({
         setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
       }
       setIsTransitioning(false);
+      lockRef.current = false;
     }, 200);
-  }, [currentWord, currentIndex, roundWords.length, results, handleRoundEnd, isTransitioning, familiarBuffer]);
+  }, [currentWord, currentIndex, roundWords.length, results, handleRoundEnd, familiarBuffer]);
+
+  // 卸载时清理飞行中的过渡 timeout
+  useEffect(() => () => {
+    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     classifyRef.current = handleClassify;
   }, [handleClassify]);
+
+  // setTimeLeft 重置(切词/新一轮)时同步权威 ref
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+  }, [timeLeft]);
 
   // 键盘快捷键: 1=熟悉, 2=夹生, 3=陌生, 空格=播放发音
   useEffect(() => {
@@ -220,13 +260,16 @@ export default function ClassificationPhase({
     if (isTransitioning || showRoundSummary || showTutorial || showFamiliarReview || paused) return;
 
     timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 0.1) {
-          classifyRef.current('unknown');
-          return getClassifyTime(currentWord?.word);
-        }
-        return prev - 0.1;
-      });
+      // 副作用(自动判陌生)必须在 interval 回调顶层做,不能写进 setTimeLeft 的
+      // updater 里: updater 要求纯函数,StrictMode/并发渲染下会双调用或重放,
+      // 曾导致同词双分类、下一词被"幽灵判陌生"(快速点击压测的跳词/状态错乱)。
+      if (timeLeftRef.current <= 0.1) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        classifyRef.current('unknown');
+        return;
+      }
+      timeLeftRef.current -= 0.1;
+      setTimeLeft(timeLeftRef.current);
     }, 100);
 
     return () => {
@@ -505,7 +548,8 @@ export default function ClassificationPhase({
               whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.92 }}
               onClick={() => handleClassify(btn.category)}
-              className={`${btn.color} text-white rounded-2xl flex-1 py-4 flex flex-col items-center gap-1 shadow-lg transition`}
+              disabled={isTransitioning}
+              className={`${btn.color} text-white rounded-2xl flex-1 py-4 flex flex-col items-center gap-1 shadow-lg transition disabled:opacity-60`}
             >
               <span className="text-3xl">{btn.emoji}</span>
               <span className="text-sm font-medium">{btn.label}</span>

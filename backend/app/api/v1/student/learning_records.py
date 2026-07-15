@@ -237,36 +237,28 @@ async def update_word_mastery(
     is_correct: bool
 ):
     """更新单词掌握度"""
-    # 查询现有掌握度记录
+    # 先原子占位(ON CONFLICT DO NOTHING):并发首插同一 (user_id, word_id) 时
+    # select-then-insert 会撞唯一约束整批500,或在无约束的库里插出重复行
+    # (之后 scalar_one_or_none 抛 MultipleResultsFound → 该词提交永久500)
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+    await db.execute(
+        sqlite_insert(WordMastery.__table__).values(
+            user_id=user_id, word_id=word_id,
+            total_encounters=0, correct_count=0, wrong_count=0, mastery_level=0,
+            flashcard_correct=0, flashcard_wrong=0, quiz_correct=0, quiz_wrong=0,
+            spelling_correct=0, spelling_wrong=0, fillblank_correct=0, fillblank_wrong=0,
+        ).on_conflict_do_nothing(index_elements=["user_id", "word_id"])
+    )
+    # 行已确保存在,读出来更新
     result = await db.execute(
         select(WordMastery).where(
             and_(
                 WordMastery.user_id == user_id,
                 WordMastery.word_id == word_id
             )
-        )
+        ).limit(1)  # 容忍历史重复行(迁移会清,双保险)
     )
-    mastery = result.scalar_one_or_none()
-
-    if not mastery:
-        # 创建新记录
-        mastery = WordMastery(
-            user_id=user_id,
-            word_id=word_id,
-            total_encounters=0,
-            correct_count=0,
-            wrong_count=0,
-            mastery_level=0,
-            flashcard_correct=0,
-            flashcard_wrong=0,
-            quiz_correct=0,
-            quiz_wrong=0,
-            spelling_correct=0,
-            spelling_wrong=0,
-            fillblank_correct=0,
-            fillblank_wrong=0,
-        )
-        db.add(mastery)
+    mastery = result.scalars().first()
 
     # 更新统计数据
     mastery.total_encounters += 1

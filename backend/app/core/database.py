@@ -268,6 +268,24 @@ async def init_db():
             except Exception:
                 pass
 
+        # ===== word_mastery 唯一约束修复(幂等) =====
+        # create_all 建的库缺 UNIQUE(user_id, word_id),并发首插会产生重复行。
+        # 先清历史重复(保留每组最早一行,计数合并),再补唯一索引。
+        try:
+            await conn.execute(text(
+                "DELETE FROM word_mastery WHERE id NOT IN ("
+                "SELECT MIN(id) FROM word_mastery GROUP BY user_id, word_id)"
+            ))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_word_mastery_user_word "
+                "ON word_mastery(user_id, word_id)"
+            ))
+        except Exception:
+            pass
+
         # 注册租户锚点模型(全局过滤安全网,TENANCY_ENFORCE 控制是否生效)
         from app.core.tenancy import register_tenant_models
         register_tenant_models()

@@ -87,6 +87,8 @@ const WordClassifyLearning = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const isReviewRef = useRef(false);
+  // 分类各轮已实时上报过"熟悉"正确记录的词:组末 saveGroupProgress 要跳过它们,防重复计
+  const familiarSubmittedRef = useRef<Set<number>>(new Set());
 
   const [currentGroupIndex, setCurrentGroupIndex] = useState(0);
   const [allGroupResults, setAllGroupResults] = useState<GroupResult[]>([]);
@@ -375,6 +377,24 @@ const WordClassifyLearning = () => {
     }).catch(() => {});
   }, [unitId, startTime, takeSessionDelta]);
 
+  // 分类各轮标"熟悉"的正确记录实时提交(教师端实时课堂词数用);
+  // 复习分档升级仍在组末 saveGroupProgress 统一做,这里只落记录
+  const submitCorrectRealtime = useCallback((records: WordAnswerCreate[]) => {
+    if (records.length === 0 || !unitId) return;
+    const elapsed = Math.round((Date.now() - startTime) / Math.max(records.length, 1));
+    const withTime = records.map(r => ({ ...r, time_spent: elapsed }));
+    if (parseInt(unitId) === 0) {
+      submitReviewRecords(withTime, takeSessionDelta()).catch(() => {});
+      return;
+    }
+    createLearningRecords({
+      unit_id: parseInt(unitId),
+      learning_mode: 'classify',
+      records: withTime,
+      session_seconds: takeSessionDelta(),
+    }).catch(() => {});
+  }, [unitId, startTime, takeSessionDelta]);
+
   // 阶段1完成：分类结束 → 跳过语音校验，直接进入听写
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
     setClassifyResults(results);
@@ -517,10 +537,16 @@ const WordClassifyLearning = () => {
       }
 
       if (category === 'familiar' && !dictResult) {
-        records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'classify' });
+        // 分类轮末已实时提交过的熟悉词不再重复落记录(防 word_mastery/日历双计),
+        // 但仍计入 passedWordIds 参与复习分档升级
+        if (!familiarSubmittedRef.current.has(w.id)) {
+          records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'classify' });
+        }
         passedWordIds.push(w.id);
       }
     }
+    // 本组结束,清空已提交集合供下一组使用
+    familiarSubmittedRef.current = new Set();
 
     // 复习模式:本组答对/已会的词逐级升一档(薄弱→一般→熟练→毕业)。
     // 答错的词已在 submitMistakesRealtime 里 demoteReviewWords 跌回薄弱,不会被这里覆盖升级。
@@ -827,6 +853,17 @@ const WordClassifyLearning = () => {
                 onRoundMistakes={(wordIds) => {
                   submitMistakesRealtime(
                     wordIds.map(id => ({ word_id: id, is_correct: false, time_spent: 0, learning_mode: 'classify' }))
+                  );
+                }}
+                onRoundFamiliar={(wordIds) => {
+                  // 每轮标熟悉的词实时落正确记录:教师端实时课堂的"今日词数"
+                  // 才能组中就涨,不再等整组学完才批量跳变。
+                  // 记录进 familiarSubmittedRef,组末 saveGroupProgress 跳过防重复计。
+                  const fresh = wordIds.filter(id => !familiarSubmittedRef.current.has(id));
+                  if (fresh.length === 0) return;
+                  fresh.forEach(id => familiarSubmittedRef.current.add(id));
+                  submitCorrectRealtime(
+                    fresh.map(id => ({ word_id: id, is_correct: true, time_spent: 0, learning_mode: 'classify' }))
                   );
                 }}
                 playAudio={playAudio}

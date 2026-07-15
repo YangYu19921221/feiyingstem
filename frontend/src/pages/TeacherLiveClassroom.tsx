@@ -489,10 +489,19 @@ const TeacherLiveClassroom = () => {
   useEffect(() => {
     if (!classId) return;
     pollDaily(classId);
+    // 30 秒一刷(学生端已改为分类轮末实时落正确记录,统计有中间数据可看);
+    // 切回前台立即补拉,不用等下个周期
     dailyTimerRef.current = setInterval(() => {
       if (!document.hidden) pollDaily(classId);
-    }, 60_000);
-    return () => clearInterval(dailyTimerRef.current);
+    }, 30_000);
+    const onVis = () => {
+      if (!document.hidden) pollDaily(classId);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(dailyTimerRef.current);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [classId, pollDaily]);
 
   const counts = useMemo(() => {
