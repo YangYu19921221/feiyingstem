@@ -63,10 +63,21 @@ export default function OrgAdminDashboard() {
           <div className="bg-white rounded-2xl p-5 shadow">
             <div className="text-sm text-gray-400 mb-1">📇 机构码(招生/测评链接用)</div>
             <div className="text-2xl font-mono font-bold text-[#FF6B35]">{info?.code || '—'}</div>
-            <button
-              className="mt-2 text-xs text-blue-500 hover:underline"
-              onClick={() => info && navigator.clipboard?.writeText(info.code)}
-            >复制机构码</button>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs">
+              <button
+                className="text-blue-500 hover:underline"
+                onClick={() => info && navigator.clipboard?.writeText(info.code)}
+              >复制机构码</button>
+              <button
+                className="text-blue-500 hover:underline"
+                onClick={() => info && navigator.clipboard?.writeText(`${window.location.origin}/register?org=${info.code}`)}
+              >复制注册链接</button>
+              <button
+                className="text-blue-500 hover:underline"
+                onClick={() => info && navigator.clipboard?.writeText(`${window.location.origin}/assessment?org=${info.code}`)}
+              >复制测评链接</button>
+            </div>
+            <div className="mt-1 text-[11px] text-gray-400">学生用注册链接注册即归属本机构;测评链接的线索进本机构线索池</div>
           </div>
           <div className="bg-white rounded-2xl p-5 shadow">
             <div className="text-sm text-gray-400 mb-1">👦 学生名额</div>

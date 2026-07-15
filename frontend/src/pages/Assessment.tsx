@@ -57,7 +57,9 @@ const Assessment = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await startAssessment(grade);
+      // 机构测评链接带 ?org=机构码,线索归属该机构(无码归直营)
+      const orgCode = new URLSearchParams(window.location.search).get('org') || undefined;
+      const data = await startAssessment(grade, orgCode);
       setSessionId(data.session_id);
       setWords(data.words);
       setCurrentIndex(0);

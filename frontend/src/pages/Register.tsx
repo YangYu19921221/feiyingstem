@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
@@ -30,11 +30,14 @@ const inputStyle: React.CSSProperties = {
 
 const Register = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // 机构码: 加盟机构招生链接带 ?org=机构码 自动填入,注册即归属该机构;手动填也行
+  const [orgCode, setOrgCode] = useState(() => (searchParams.get('org') || '').toUpperCase());
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -51,6 +54,7 @@ const Register = () => {
     try {
       const response = await axios.post<RegisterResponse>(`${API_BASE_URL}/auth/register`, {
         phone, username: username.trim(), password,
+        org_code: orgCode.trim() || undefined,
       });
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -78,6 +82,7 @@ const Register = () => {
     { label: '用户名', type: 'text', value: username, setter: setUsername, placeholder: '请输入用户名（支持中文，不限字数）', minLength: 1 },
     { label: '密码', type: 'password', value: password, setter: setPassword, placeholder: '请输入密码（至少6位）', minLength: 6 },
     { label: '确认密码', type: 'password', value: confirmPassword, setter: setConfirmPassword, placeholder: '请再次输入密码', minLength: 6 },
+    { label: '机构码（选填）', type: 'text', value: orgCode, setter: (v) => setOrgCode(v.toUpperCase()), placeholder: '机构提供的邀请码，没有可留空', maxLength: 16 },
   ];
 
   return (

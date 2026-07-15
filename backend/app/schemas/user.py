@@ -26,6 +26,7 @@ class UserRegister(BaseModel):
     username: str = Field(..., min_length=1, max_length=50, description="用户名（支持中文，至少 1 个字符）")
     password: str = Field(..., min_length=6, max_length=50, description="密码")
     code: Optional[str] = Field(None, min_length=4, max_length=6, description="验证码（暂时可选）")
+    org_code: Optional[str] = Field(None, max_length=16, description="机构码(多租户): 加盟机构招生链接带上,注册即归属该机构")
 
 class UserCreate(UserBase):
     """创建用户(管理员使用)"""

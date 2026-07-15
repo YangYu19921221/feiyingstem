@@ -185,6 +185,10 @@ async def register(
     if existing_phone:
         raise HTTPException(status_code=400, detail={"code": "phone_taken", "message": "该手机号已注册，直接登录即可"})
 
+    # 多租户: 带机构码注册直接归属该机构(招生链接 ?org=机构码);无码/无效码归直营
+    from app.services.org_service import resolve_org_code
+    reg_org_id = await resolve_org_code(db, data.org_code)
+
     # 创建用户（用手机号生成默认邮箱）
     user = await auth_service.create_user(
         db=db,
@@ -192,7 +196,8 @@ async def register(
         email=f"{data.phone}@phone.local",
         password=data.password,
         phone=data.phone,
-        role="student"
+        role="student",
+        org_id=reg_org_id,
     )
 
     # 自动登录，生成 token
