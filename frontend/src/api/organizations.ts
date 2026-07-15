@@ -34,22 +34,22 @@ export interface OrgTeacher {
 
 // ---------- 平台管理端(admin) ----------
 export const adminOrgApi = {
-  list: () => client.get<Organization[]>('/admin/organizations').then(r => r.data),
+  list: () => client.get<Organization[]>('/admin/organizations'),
   create: (data: { name: string; code?: string; plan?: string; student_quota?: number; contact_name?: string; contact_phone?: string }) =>
-    client.post<Organization>('/admin/organizations', data).then(r => r.data),
+    client.post<Organization>('/admin/organizations', data),
   update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string }>) =>
-    client.patch<Organization>(`/admin/organizations/${orgId}`, data).then(r => r.data),
+    client.patch<Organization>(`/admin/organizations/${orgId}`, data),
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     // 路径避开 */admins: Safari 内容拦截器会按关键词掐掉该 XHR
-    client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data).then(r => r.data),
+    client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data),
 };
 
 // ---------- 机构管理端(org_admin) ----------
 export const orgAdminApi = {
-  info: () => client.get<OrgInfo>('/org/info').then(r => r.data),
-  teachers: () => client.get<OrgTeacher[]>('/org/teachers').then(r => r.data),
+  info: () => client.get<OrgInfo>('/org/info'),
+  teachers: () => client.get<OrgTeacher[]>('/org/teachers'),
   createTeacher: (data: { username: string; password?: string; full_name?: string; phone?: string }) =>
-    client.post<{ id: number; username: string; initial_password: string }>('/org/teachers', data).then(r => r.data),
+    client.post<{ id: number; username: string; initial_password: string }>('/org/teachers', data),
   toggleTeacher: (teacherId: number) =>
-    client.patch<{ id: number; is_active: boolean }>(`/org/teachers/${teacherId}/toggle-active`).then(r => r.data),
+    client.patch<{ id: number; is_active: boolean }>(`/org/teachers/${teacherId}/toggle-active`),
 };
