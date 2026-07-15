@@ -15,6 +15,7 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
     db_room = PkRoom(
         invite_code=room.invite_code,
         host_id=room.host_id,
+        org_id=getattr(room, "org_id", 1),  # 多租户: 落库带机构归属
         unit_id=room.unit_id,
         max_players=room.max_players,
         status=room.status,

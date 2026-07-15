@@ -89,7 +89,7 @@ const StudentLeaderboard = () => {
           {/* 范围切换：仅当学生在班级里才出现 */}
           {data?.has_class && (
             <div className="inline-flex card-soft rounded-full p-1">
-              {([['class', data.class_name || '本班'], ['global', '全平台']] as const).map(([s, label]) => (
+              {([['class', data.class_name || '本班'], ['global', '全机构']] as const).map(([s, label]) => (
                 <button key={s} onClick={() => setScope(s)}
                   className={`px-4 py-1.5 rounded-full text-xs font-semibold transition max-w-[8rem] truncate ${
                     scope === s ? 'bg-accent-warm text-white' : 'text-ink-soft hover:text-ink'}`}>
@@ -221,7 +221,7 @@ function MyPosition({ data, enc, kind, periodWord }: {
         {enc.hook && <p className="text-xs text-accent-warm mt-1 font-medium">🎯 {enc.hook}</p>}
         {data.total_participants > 0 && (
           <p className="text-[11px] text-ink-mute mt-2">
-            {data.scope === 'class' ? '本班' : '全平台'}共 {data.total_participants} 名同学参与
+            {data.scope === 'class' ? '本班' : '全机构'}共 {data.total_participants} 名同学参与
           </p>
         )}
       </div>

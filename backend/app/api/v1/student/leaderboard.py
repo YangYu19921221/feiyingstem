@@ -89,7 +89,14 @@ async def _resolve_scope(
         )
         return "class", {r[0] for r in members.all()}, has_class, class_name
 
-    return "global", None, has_class, class_name
+    # 多租户: "全平台榜"实为全机构榜 — 圈定本机构全部学生,跨机构不同榜
+    org_id = (await db.execute(
+        select(User.org_id).where(User.id == user_id)
+    )).scalar() or 1
+    org_members = await db.execute(
+        select(User.id).where(and_(User.org_id == org_id, User.role == "student"))
+    )
+    return "global", {r[0] for r in org_members.all()}, has_class, class_name
 
 
 async def _vocabulary_rows(db, period, allowed):

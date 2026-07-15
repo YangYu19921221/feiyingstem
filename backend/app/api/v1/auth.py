@@ -321,7 +321,9 @@ async def create_user_by_admin(
         email=user_data.email,
         password=user_data.password,
         full_name=user_data.full_name,
-        role=user_data.role
+        role=user_data.role,
+        # 多租户: 教师建的用户归教师机构; admin建的暂归直营(P3机构管理页可指定)
+        org_id=(current_user.org_id or 1) if current_user.role == "teacher" else None,
     )
 
     return user

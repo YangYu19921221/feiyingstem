@@ -56,6 +56,7 @@ class RoomState:
     max_players: int
     status: StatusLiteral
     word_ids: list[int]                  # 开局前为空;开局时从「所有人都背过」交集里随机抽 word_count 个
+    org_id: int = 1                      # 房间归属机构(多租户): 随房主,跨机构不可见/不可加入
     unit_id: Optional[int] = None        # 旧版按单元开房的遗留字段,现不再使用
     word_count: int = 10                 # 房主选的每局词数(每词 4 阶段)
     base_points: int = 100               # 无学段信息单词的兜底基础分

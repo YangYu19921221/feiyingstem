@@ -41,12 +41,35 @@ async def join_class_by_code(
     if invite.expires_at < datetime.utcnow():
         raise HTTPException(400, "邀请码已过期，请联系老师重新生成")
 
-    cls_res = await db.execute(select(Class).where(Class.id == invite.class_id))
+    # 多租户: 班级/老师可能在其他机构(未认领学生扫码入班的归属判定),显式跳过租户过滤读取
+    cls_res = await db.execute(
+        select(Class).where(Class.id == invite.class_id)
+        .execution_options(skip_tenant_filter=True)
+    )
     cls = cls_res.scalar_one_or_none()
     if not cls:
         raise HTTPException(400, "邀请码对应的班级已不存在")
 
-    teacher_res = await db.execute(select(User).where(User.id == cls.teacher_id))
+    # 多租户归属规则: 班级和学生不同机构时——
+    # 未被认领的直营散户(org=1 且无任何活跃班级)随班转入该机构;已属其他机构则拒绝
+    student_org = current_user.org_id or 1
+    class_org = cls.org_id or 1
+    if class_org != student_org:
+        has_any_class = (await db.execute(
+            select(ClassStudent.id).where(
+                ClassStudent.student_id == current_user.id,
+                ClassStudent.is_active.is_(True),
+            ).limit(1)
+        )).first()
+        if student_org == 1 and not has_any_class:
+            current_user.org_id = class_org  # 认领: 随班归属机构
+        else:
+            raise HTTPException(403, "该邀请码属于其他机构，请联系你的老师处理")
+
+    teacher_res = await db.execute(
+        select(User).where(User.id == cls.teacher_id)
+        .execution_options(skip_tenant_filter=True)
+    )
     teacher = teacher_res.scalar_one_or_none()
 
     cur_res = await db.execute(

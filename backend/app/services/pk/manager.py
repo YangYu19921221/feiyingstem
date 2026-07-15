@@ -54,7 +54,7 @@ def _gen_invite_code() -> str:
 
 def create_room(host_id: int, max_players: int, word_ids: list[int] | None = None,
                 unit_id: int | None = None, nickname: str | None = None,
-                word_count: int = 10) -> RoomState:
+                word_count: int = 10, org_id: int = 1) -> RoomState:
     """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。"""
     if host_id in USER_ACTIVE:
         raise UserAlreadyInRoom()
@@ -64,6 +64,7 @@ def create_room(host_id: int, max_players: int, word_ids: list[int] | None = Non
         room_id=room_id,
         invite_code=code,
         host_id=host_id,
+        org_id=org_id,
         unit_id=unit_id,
         max_players=max_players,
         status="waiting",
@@ -85,13 +86,15 @@ def create_room(host_id: int, max_players: int, word_ids: list[int] | None = Non
     return room
 
 
-def join_room(invite_code: str, user_id: int, nickname: str) -> RoomState:
+def join_room(invite_code: str, user_id: int, nickname: str, org_id: int = 1) -> RoomState:
     if user_id in USER_ACTIVE:
         raise UserAlreadyInRoom()
     room_id = INVITE_INDEX.get(invite_code)
     if room_id is None:
         raise RoomNotFound()
     room = ROOMS[room_id]
+    if room.org_id != org_id:
+        raise RoomNotFound()  # 跨机构不可见(多租户): 按不存在处理,不泄露房间存在性
     if room.status != "waiting":
         raise RoomAlreadyStarted()
     if len(room.players) >= room.max_players:
@@ -103,7 +106,7 @@ def join_room(invite_code: str, user_id: int, nickname: str) -> RoomState:
     return room
 
 
-def spectate_room(invite_code: str, user_id: int, nickname: str) -> RoomState:
+def spectate_room(invite_code: str, user_id: int, nickname: str, org_id: int = 1) -> RoomState:
     """以观众身份进房:等待中/对局中都可以,不占玩家名额。
 
     观众不进 USER_ACTIVE(旁观是轻量行为,不阻止其另开房间);
@@ -113,6 +116,8 @@ def spectate_room(invite_code: str, user_id: int, nickname: str) -> RoomState:
     if room_id is None:
         raise RoomNotFound()
     room = ROOMS[room_id]
+    if room.org_id != org_id:
+        raise RoomNotFound()  # 跨机构不可见(多租户)
     if user_id in room.players:
         return room  # 本来就是玩家,无需观战
     if user_id in room.spectators:

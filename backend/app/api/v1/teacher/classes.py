@@ -115,7 +115,8 @@ async def create_class(
     current_user: User = Depends(get_current_teacher)
 ):
     """创建班级"""
-    new_class = Class(name=data.name, description=data.description, teacher_id=current_user.id)
+    new_class = Class(name=data.name, description=data.description, teacher_id=current_user.id,
+                      org_id=current_user.org_id or 1)  # 多租户: 班级随老师归属机构
     db.add(new_class)
     await db.commit()
     await db.refresh(new_class)
@@ -1057,7 +1058,12 @@ async def _get_or_create_default_class(db: AsyncSession, teacher_id: int) -> Cla
     cls = res.scalars().first()
     if cls:
         return cls
-    cls = Class(name=DEFAULT_TEACHER_CLASS_NAME, description="默认班级", teacher_id=teacher_id)
+    # 多租户: 默认班随老师归属机构
+    teacher_org = (await db.execute(
+        select(User.org_id).where(User.id == teacher_id)
+    )).scalar() or 1
+    cls = Class(name=DEFAULT_TEACHER_CLASS_NAME, description="默认班级", teacher_id=teacher_id,
+                org_id=teacher_org)
     db.add(cls)
     await db.flush()
     return cls
@@ -1095,6 +1101,7 @@ async def create_student(
         full_name=body.full_name or body.username,
         hashed_password=get_password_hash(pwd),
         role="student",
+        org_id=current_user.org_id or 1,  # 多租户: 老师建的学生归老师机构
         is_active=True,
     )
     db.add(new_user)

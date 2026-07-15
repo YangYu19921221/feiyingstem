@@ -30,6 +30,7 @@ MAX_AUDIO_SIZE = 5 * 1024 * 1024
 
 class StartRequest(BaseModel):
     grade_level: str = Field("小学", description="年级: 小学/初中/高中")
+    org_code: str | None = Field(None, description="机构码(多租户): 测评链接带 ?org=机构码,线索归属该机构")
 
 class ReportRequest(BaseModel):
     session_id: str
@@ -101,7 +102,18 @@ async def start_assessment(
                     "meaning": defn.meaning if defn else None,
                 })
 
-    lead = AssessmentLead(session_id=session_id, grade_level=data.grade_level)
+    # 多租户: 按机构码归属线索,无码/无效码归直营(1)
+    lead_org_id = 1
+    if data.org_code:
+        from sqlalchemy import text as _text
+        row = (await db.execute(
+            _text("SELECT id FROM organizations WHERE code = :c AND status = 'active'"),
+            {"c": data.org_code.strip().upper()},
+        )).first()
+        if row:
+            lead_org_id = row[0]
+
+    lead = AssessmentLead(session_id=session_id, grade_level=data.grade_level, org_id=lead_org_id)
     db.add(lead)
     await db.commit()
 

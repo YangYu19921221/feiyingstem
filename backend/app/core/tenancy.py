@@ -58,6 +58,10 @@ def _tenant_filter(execute_state):
             or execute_state.is_column_load
             or execute_state.is_relationship_load):
         return
+    # 逃生口: 需要跨机构读取的场景(如学生入班时读取他机构班级做归属判定)
+    # 显式 .execution_options(skip_tenant_filter=True) 跳过
+    if execute_state.execution_options.get("skip_tenant_filter"):
+        return
     org_id = current_org_id.get()
     if org_id is None:
         return  # 平台admin/系统任务不过滤

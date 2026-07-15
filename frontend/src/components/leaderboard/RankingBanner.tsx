@@ -44,7 +44,7 @@ export default function RankingBanner() {
 
   const enc = encourage(data);
   const top3 = [1, 2, 3].map(r => top.find(e => e.rank === r));
-  const scopeLabel = data.scope === 'class' ? (data.class_name || '本班') : '全平台';
+  const scopeLabel = data.scope === 'class' ? (data.class_name || '本班') : '全机构';
 
   return (
     <motion.button

@@ -354,7 +354,7 @@ async def enter_match(
             if user.id not in room.players:
                 nickname = user.full_name or user.username or f"User{user.id}"
                 try:
-                    room = manager.join_room(invite_code=m.invite_code, user_id=user.id, nickname=nickname)
+                    room = manager.join_room(invite_code=m.invite_code, user_id=user.id, nickname=nickname, org_id=user.org_id or 1)
                 except manager.UserAlreadyInRoom:
                     raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
                 except (manager.RoomFull, manager.RoomAlreadyStarted):
@@ -383,6 +383,7 @@ async def enter_match(
             room = manager.create_room(
                 host_id=user.id, max_players=2,
                 word_ids=chosen, nickname=nickname, word_count=t.word_count,
+                org_id=user.org_id or 1,
             )
         except manager.UserAlreadyInRoom:
             raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")

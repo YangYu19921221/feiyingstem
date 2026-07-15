@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "英语学习助手"
     DEBUG: bool = True
 
-    # 多租户: P1 观察模式(False=全局过滤器不注入,现网零行为变化); P2 验收后置 True 开启强制隔离
-    TENANCY_ENFORCE: bool = False
+    # 多租户: P2 起默认开启强制隔离(全局过滤器注入 org 条件)。排查问题可临时置 False 回观察模式
+    TENANCY_ENFORCE: bool = True
 
     # 数据库
     DATABASE_URL: str = "sqlite+aiosqlite:///./english_helper.db"

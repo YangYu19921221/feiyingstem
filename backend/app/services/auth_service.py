@@ -105,9 +105,10 @@ async def create_user(
     password: str,
     full_name: Optional[str] = None,
     role: str = "student",
-    phone: Optional[str] = None
+    phone: Optional[str] = None,
+    org_id: Optional[int] = None,
 ) -> User:
-    """创建新用户"""
+    """创建新用户。org_id 不传时走表默认(1=直营)"""
     hashed_password = get_password_hash(password)
 
     user = User(
@@ -117,7 +118,8 @@ async def create_user(
         full_name=full_name,
         role=role,
         phone=phone,
-        is_active=True
+        is_active=True,
+        **({"org_id": org_id} if org_id is not None else {}),
     )
 
     db.add(user)

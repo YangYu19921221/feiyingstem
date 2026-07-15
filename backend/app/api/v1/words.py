@@ -23,7 +23,8 @@ router = APIRouter()
 @router.post("/books", response_model=WordBookResponse, status_code=status.HTTP_201_CREATED)
 async def create_word_book(
     book_data: WordBookCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
 ):
     """创建单词本（同步生成 AI 封面，失败降级到 cover_color）"""
     cover_url = await generate_book_cover(
@@ -40,6 +41,9 @@ async def create_word_book(
         is_public=book_data.is_public,
         cover_color=book_data.cover_color,
         cover_url=cover_url,
+        created_by=current_user.id,
+        # 多租户: admin建的是平台共享库(NULL),教师建的归本机构
+        org_id=None if current_user.role == "admin" else current_user.org_id,
     )
     db.add(db_book)
     await db.flush()
