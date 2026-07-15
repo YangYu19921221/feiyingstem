@@ -9,14 +9,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.tenancy import invalidate_org_cache
 from app.api.v1.auth import get_current_admin
 from app.models.organization import Organization
-from app.models.user import User
+from app.models.user import User, Class, ClassStudent
 from app.services import auth_service
 from app.services.org_service import count_active_students
 
@@ -78,20 +78,26 @@ async def list_organizations(
         select(Organization).order_by(Organization.id)
     )).scalars().all()
 
-    # 每机构老师数(一次聚合)
+    # 每机构老师数/活跃学生数,各一次 GROUP BY 聚合(admin 上下文本就不过滤,无需逃生口)
     teacher_rows = (await db.execute(
         select(User.org_id, func.count(User.id))
         .where(User.role.in_(["teacher", "org_admin"]), User.is_active.is_(True))
         .group_by(User.org_id)
-        .execution_options(skip_tenant_filter=True)
     )).all()
     teachers_by_org = {r[0]: r[1] for r in teacher_rows}
 
-    out = []
-    for org in orgs:
-        active = await count_active_students(db, org.id)
-        out.append(_org_out(org, active, teachers_by_org.get(org.id, 0)))
-    return out
+    student_rows = (await db.execute(
+        select(Class.org_id, func.count(distinct(ClassStudent.student_id)))
+        .join(ClassStudent, ClassStudent.class_id == Class.id)
+        .where(ClassStudent.is_active.is_(True))
+        .group_by(Class.org_id)
+    )).all()
+    students_by_org = {r[0]: r[1] for r in student_rows}
+
+    return [
+        _org_out(org, students_by_org.get(org.id, 0), teachers_by_org.get(org.id, 0))
+        for org in orgs
+    ]
 
 
 @router.post("/organizations")
@@ -157,7 +163,6 @@ async def list_org_admins(
 ):
     rows = (await db.execute(
         select(User).where(User.org_id == org_id, User.role == "org_admin")
-        .execution_options(skip_tenant_filter=True)
     )).scalars().all()
     return [{"id": u.id, "username": u.username, "full_name": u.full_name,
              "phone": u.phone, "is_active": u.is_active, "last_login": u.last_login}
@@ -182,8 +187,7 @@ async def create_org_admin(
     if existing:
         raise HTTPException(400, "用户名已存在")
 
-    pwd = data.password or "".join(
-        secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
+    pwd = data.password or auth_service.generate_random_password()
     user = await auth_service.create_user(
         db=db,
         username=data.username,

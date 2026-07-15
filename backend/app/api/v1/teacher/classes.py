@@ -22,6 +22,7 @@ from app.api.v1.teacher._permissions import (
     place_students_in_class,
 )
 from app.services.auth_service import get_password_hash, generate_random_password
+from app.services.org_service import check_student_quota
 
 router = APIRouter()
 
@@ -115,8 +116,8 @@ async def create_class(
     current_user: User = Depends(get_current_teacher)
 ):
     """创建班级"""
-    new_class = Class(name=data.name, description=data.description, teacher_id=current_user.id,
-                      org_id=current_user.org_id or 1)  # 多租户: 班级随老师归属机构
+    # org_id 由 tenancy.before_flush 写侧安全网自动打戳(随当前教师机构)
+    new_class = Class(name=data.name, description=data.description, teacher_id=current_user.id)
     db.add(new_class)
     await db.commit()
     await db.refresh(new_class)
@@ -1058,12 +1059,8 @@ async def _get_or_create_default_class(db: AsyncSession, teacher_id: int) -> Cla
     cls = res.scalars().first()
     if cls:
         return cls
-    # 多租户: 默认班随老师归属机构
-    teacher_org = (await db.execute(
-        select(User.org_id).where(User.id == teacher_id)
-    )).scalar() or 1
-    cls = Class(name=DEFAULT_TEACHER_CLASS_NAME, description="默认班级", teacher_id=teacher_id,
-                org_id=teacher_org)
+    # org_id 由 tenancy.before_flush 写侧安全网自动打戳(调用方均为教师上下文)
+    cls = Class(name=DEFAULT_TEACHER_CLASS_NAME, description="默认班级", teacher_id=teacher_id)
     db.add(cls)
     await db.flush()
     return cls
@@ -1095,16 +1092,14 @@ async def create_student(
         target_class_id = cls.id
 
     pwd = body.password or generate_random_password()
-    # 多租户配额: 建学生即占名额,先校验
-    from app.services.org_service import check_student_quota
-    await check_student_quota(db, current_user.org_id or 1)
+    # 多租户配额: 建学生即占名额,先校验(org_id 由写侧安全网随教师机构打戳)
+    await check_student_quota(db, current_user.org_id)
     new_user = User(
         username=body.username,
         email=body.email or f"{body.username}@feiying.local",
         full_name=body.full_name or body.username,
         hashed_password=get_password_hash(pwd),
         role="student",
-        org_id=current_user.org_id or 1,  # 多租户: 老师建的学生归老师机构
         is_active=True,
     )
     db.add(new_user)

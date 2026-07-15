@@ -102,16 +102,9 @@ async def start_assessment(
                     "meaning": defn.meaning if defn else None,
                 })
 
-    # 多租户: 按机构码归属线索,无码/无效码归直营(1)
-    lead_org_id = 1
-    if data.org_code:
-        from sqlalchemy import text as _text
-        row = (await db.execute(
-            _text("SELECT id FROM organizations WHERE code = :c AND status = 'active'"),
-            {"c": data.org_code.strip().upper()},
-        )).first()
-        if row:
-            lead_org_id = row[0]
+    # 多租户: 按机构码归属线索,无码/无效码归直营(解析语义统一在 org_service)
+    from app.services.org_service import resolve_org_code
+    lead_org_id = await resolve_org_code(db, data.org_code)
 
     lead = AssessmentLead(session_id=session_id, grade_level=data.grade_level, org_id=lead_org_id)
     db.add(lead)

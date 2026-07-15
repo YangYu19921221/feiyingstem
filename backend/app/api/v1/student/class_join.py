@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
+from app.core.tenancy import current_org_id
 from app.api.v1.auth import get_current_student
 from app.api.v1.teacher._permissions import place_students_in_class
 from app.models.user import User, Class, ClassStudent, ClassInviteCode
@@ -52,8 +53,8 @@ async def join_class_by_code(
 
     # 多租户归属规则: 班级和学生不同机构时——
     # 未被认领的直营散户(org=1 且无任何活跃班级)随班转入该机构;已属其他机构则拒绝
-    student_org = current_user.org_id or 1
-    class_org = cls.org_id or 1
+    student_org = current_user.org_id
+    class_org = cls.org_id
     if class_org != student_org:
         has_any_class = (await db.execute(
             select(ClassStudent.id).where(
@@ -63,22 +64,11 @@ async def join_class_by_code(
         )).first()
         if student_org == 1 and not has_any_class:
             current_user.org_id = class_org  # 认领: 随班归属机构
+            # 同步请求级租户上下文,否则本请求后续查询仍按旧机构过滤,
+            # place_students_in_class 里的 User/Class 查询会看不到刚认领的数据
+            current_org_id.set(class_org)
         else:
             raise HTTPException(403, "该邀请码属于其他机构，请联系你的老师处理")
-
-    # 多租户配额: 学生尚未占用该机构名额(无该机构活跃班级关系)时,入班前校验
-    from app.services.org_service import check_student_quota
-    already_in_org_class = (await db.execute(
-        select(ClassStudent.id)
-        .join(Class, Class.id == ClassStudent.class_id)
-        .where(
-            ClassStudent.student_id == current_user.id,
-            ClassStudent.is_active.is_(True),
-            Class.org_id == class_org,
-        ).limit(1)
-    )).first()
-    if not already_in_org_class:
-        await check_student_quota(db, class_org)
 
     teacher_res = await db.execute(
         select(User).where(User.id == cls.teacher_id)

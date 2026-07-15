@@ -42,8 +42,7 @@ async def create_word_book(
         cover_color=book_data.cover_color,
         cover_url=cover_url,
         created_by=current_user.id,
-        # 多租户: admin建的是平台共享库(NULL),教师建的归本机构
-        org_id=None if current_user.role == "admin" else current_user.org_id,
+        # org_id 由 tenancy.before_flush 写侧安全网打戳: admin=平台共享(NULL),教师=本机构
     )
     db.add(db_book)
     await db.flush()

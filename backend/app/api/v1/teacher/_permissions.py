@@ -81,8 +81,24 @@ async def place_students_in_class(
             ClassStudent.student_id.in_(valid_ids),
             ClassStudent.is_active.is_(True),
         )
+        # 服务层跨机构判定需要看到学生在任何机构的班级关系,不受调用方上下文影响
+        .execution_options(skip_tenant_filter=True)
     )
     cur_links = cur_links_res.all()
+
+    # 多租户配额: 目标班所属机构里,尚无活跃班级关系的学生 = 净新增计费学生,入班前校验。
+    # 这里是所有「建立班级成员关系」路径的中心挂点(教师加学生/转移/邀请码入班全走这)。
+    # 机构内转班不是净新增,不占新名额。
+    from app.services.org_service import check_student_quota
+    target_org = (await db.execute(
+        select(Class.org_id).where(Class.id == target_class_id)
+        .execution_options(skip_tenant_filter=True)
+    )).scalar()
+    if target_org is not None:
+        in_org = {link.student_id for link, cls in cur_links if cls.org_id == target_org}
+        net_new = [sid for sid in valid_ids if sid not in in_org]
+        if net_new:
+            await check_student_quota(db, target_org, adding=len(net_new))
 
     already_in = {link.student_id for link, cls in cur_links if link.class_id == target_class_id}
     deactivate_link_ids: list[int] = []

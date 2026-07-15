@@ -12,7 +12,7 @@ class AssessmentLead(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(36), unique=True, nullable=False, index=True)
-    org_id = Column(Integer, nullable=False, server_default="1", index=True)  # 线索归属机构(多租户),测评链接带机构码
+    org_id = Column(Integer, nullable=False, default=1, server_default="1")  # 线索归属机构(多租户),测评链接带机构码;索引由init_db迁移建
     grade_level = Column(String(20))  # 小学/初中/高中
 
     # 测评数据

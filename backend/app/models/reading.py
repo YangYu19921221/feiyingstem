@@ -29,7 +29,7 @@ class ReadingPassage(Base):
     # 元数据
     created_by = Column(Integer, ForeignKey("users.id"))   # 教师ID
     is_public = Column(Boolean, default=False)             # 是否公开
-    org_id = Column(Integer, nullable=True, index=True)    # 多租户: NULL=平台共享,非NULL=机构自建
+    org_id = Column(Integer, nullable=True)                # 多租户: NULL=平台共享,非NULL=机构自建;索引由init_db迁移建
     cover_image = Column(String(255))                      # 封面图片
 
     # 统计信息

@@ -114,7 +114,7 @@ async def create_room(
             max_players=body.max_players,
             word_count=body.word_count,
             nickname=nickname,
-            org_id=user.org_id or 1,
+            org_id=user.org_id,
         )
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
@@ -127,8 +127,10 @@ async def lookup_room(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    room_id = manager.INVITE_INDEX.get(code)
-    if room_id is None:
+    try:
+        # 可见性裁决统一在 manager: 跨机构一律按不存在处理
+        room = manager.get_room_by_code(code, user.org_id)
+    except manager.RoomNotFound:
         # Check archive: maybe it finished
         result = await db.execute(
             select(PkRoom).where(PkRoom.invite_code == code).limit(1)
@@ -137,9 +139,7 @@ async def lookup_room(
         if archived is not None:
             raise HTTPException(status_code=410, detail="ROOM_FINISHED")
         raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
-    if manager.ROOMS[room_id].org_id != (user.org_id or 1):
-        raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")  # 跨机构不可见(多租户)
-    return _snapshot(manager.ROOMS[room_id])
+    return _snapshot(room)
 
 
 @router.post("/rooms/by-code/{code}/join", response_model=RoomSnapshot)
@@ -151,7 +151,7 @@ async def join_room_by_code(
     """非房主玩家通过邀请码加入房间。将玩家加入 manager.ROOMS,后续 WS 连接才能通过 player 校验。"""
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
-        room = manager.join_room(invite_code=code, user_id=user.id, nickname=nickname, org_id=user.org_id or 1)
+        room = manager.join_room(invite_code=code, user_id=user.id, nickname=nickname, org_id=user.org_id)
     except manager.RoomNotFound:
         # Distinguish never-existed from finished
         result = await db.execute(
@@ -179,7 +179,7 @@ async def spectate_room_by_code(
     """以观众身份进房:等待中/对局中都可以,房间满员也不受限。"""
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
-        room = manager.spectate_room(invite_code=code, user_id=user.id, nickname=nickname, org_id=user.org_id or 1)
+        room = manager.spectate_room(invite_code=code, user_id=user.id, nickname=nickname, org_id=user.org_id)
     except manager.RoomNotFound:
         result = await db.execute(
             select(PkRoom).where(PkRoom.invite_code == code).limit(1)

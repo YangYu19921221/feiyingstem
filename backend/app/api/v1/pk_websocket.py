@@ -35,7 +35,12 @@ async def _authenticate(token: str) -> User | None:
         logger.info("PK WS auth failed: %s", e)
         return None
     async with AsyncSessionLocal() as db:
-        return await db.get(User, user_id)
+        user = await db.get(User, user_id)
+    if user is not None:
+        # 多租户: 自建鉴权路径也要设机构上下文,否则该WS连接内的DB查询不被过滤
+        from app.core.tenancy import current_org_id
+        current_org_id.set(None if user.role == "admin" else user.org_id)
+    return user
 
 
 async def _word_lookup_for_room(db: AsyncSession, word_ids: list[int]) -> dict:

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminOrgApi, Organization } from '../api/organizations';
+import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
 
 const PLAN_LABELS: Record<string, string> = {
   trial: '体验', standard: '标准', county: '县级独家', city: '市级独家', headquarters: '总部直营',
@@ -79,22 +80,13 @@ export default function AdminOrganizations() {
 
         {/* 初始密码弹窗(仅展示一次) */}
         {issued && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setIssued(null)}>
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold mb-2">✅ 机构管理员账号已开通</h3>
-              <p className="text-sm text-gray-500 mb-4">「{issued.orgName}」— 请立即复制发给加盟商,密码仅显示这一次!</p>
-              <div className="bg-orange-50 rounded-xl p-4 font-mono text-sm space-y-1">
-                <div>账号: <b>{issued.username}</b></div>
-                <div>初始密码: <b className="text-[#FF6B35]">{issued.password}</b></div>
-              </div>
-              <button
-                className="mt-4 w-full py-2 rounded-xl bg-[#FF6B35] text-white font-bold"
-                onClick={() => { navigator.clipboard?.writeText(`账号:${issued.username} 密码:${issued.password}`); setIssued(null); }}
-              >
-                复制并关闭
-              </button>
-            </div>
-          </div>
+          <InitialPasswordModal
+            title="✅ 机构管理员账号已开通"
+            subtitle={`「${issued.orgName}」— 请立即复制发给加盟商,密码仅显示这一次!`}
+            username={issued.username}
+            password={issued.password}
+            onClose={() => setIssued(null)}
+          />
         )}
 
         {/* 开通表单 */}
@@ -151,10 +143,8 @@ export default function AdminOrganizations() {
                 </tr>
               </thead>
               <tbody>
-                {(orgs || []).map(org => {
-                  const pct = Math.min(100, Math.round(org.active_students / Math.max(1, org.student_quota) * 100));
-                  return (
-                    <tr key={org.id} className="border-t">
+                {(orgs || []).map(org => (
+                  <tr key={org.id} className="border-t">
                       <td className="px-4 py-3 font-bold">{org.name}{org.id === 1 && <span className="ml-1 text-xs text-orange-400">(直营)</span>}</td>
                       <td className="px-4 py-3 font-mono">{org.code}</td>
                       <td className="px-4 py-3">{PLAN_LABELS[org.plan] || org.plan}</td>
@@ -162,9 +152,7 @@ export default function AdminOrganizations() {
                         <div className="flex items-center gap-2">
                           <span>{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>
                           {org.student_quota < 999999 && (
-                            <div className="w-16 h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className={`h-full ${pct >= 90 ? 'bg-red-400' : 'bg-[#5FD35F]'}`} style={{ width: `${pct}%` }} />
-                            </div>
+                            <QuotaBar active={org.active_students} quota={org.student_quota} className="w-16" />
                           )}
                         </div>
                       </td>
@@ -190,8 +178,7 @@ export default function AdminOrganizations() {
                         )}
                       </td>
                     </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>

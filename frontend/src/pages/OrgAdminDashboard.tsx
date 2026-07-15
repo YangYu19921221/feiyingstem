@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { orgAdminApi } from '../api/organizations';
+import { InitialPasswordModal, QuotaBar, quotaPercent } from '../components/OrgWidgets';
 
 export default function OrgAdminDashboard() {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ export default function OrgAdminDashboard() {
     navigate('/login');
   };
 
-  const quotaPct = info ? Math.min(100, Math.round(info.active_students / Math.max(1, info.student_quota) * 100)) : 0;
+  const quotaPct = info ? quotaPercent(info.active_students, info.student_quota) : 0;
 
   return (
     <div className="min-h-screen bg-[#FFF8F0] p-6">
@@ -70,8 +71,8 @@ export default function OrgAdminDashboard() {
           <div className="bg-white rounded-2xl p-5 shadow">
             <div className="text-sm text-gray-400 mb-1">👦 学生名额</div>
             <div className="text-2xl font-bold">{info?.active_students ?? '—'} <span className="text-base text-gray-400">/ {info?.student_quota ?? '—'}</span></div>
-            <div className="mt-2 w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className={`h-full ${quotaPct >= 90 ? 'bg-red-400' : 'bg-[#5FD35F]'}`} style={{ width: `${quotaPct}%` }} />
+            <div className="mt-2">
+              <QuotaBar active={info?.active_students ?? 0} quota={info?.student_quota ?? 1} />
             </div>
             {quotaPct >= 90 && <div className="mt-1 text-xs text-red-500">名额将满,联系平台扩容</div>}
           </div>
@@ -84,20 +85,13 @@ export default function OrgAdminDashboard() {
 
         {/* 初始密码弹窗 */}
         {issued && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setIssued(null)}>
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold mb-2">✅ 老师账号已创建</h3>
-              <p className="text-sm text-gray-500 mb-4">请立即发给老师,初始密码仅显示这一次!</p>
-              <div className="bg-orange-50 rounded-xl p-4 font-mono text-sm space-y-1">
-                <div>账号: <b>{issued.username}</b></div>
-                <div>初始密码: <b className="text-[#FF6B35]">{issued.password}</b></div>
-              </div>
-              <button
-                className="mt-4 w-full py-2 rounded-xl bg-[#FF6B35] text-white font-bold"
-                onClick={() => { navigator.clipboard?.writeText(`账号:${issued.username} 密码:${issued.password}`); setIssued(null); }}
-              >复制并关闭</button>
-            </div>
-          </div>
+          <InitialPasswordModal
+            title="✅ 老师账号已创建"
+            subtitle="请立即发给老师,初始密码仅显示这一次!"
+            username={issued.username}
+            password={issued.password}
+            onClose={() => setIssued(null)}
+          />
         )}
 
         {/* 老师管理 */}

@@ -3,8 +3,6 @@
 能力边界: 只管本机构 — 建/停老师账号、看机构概况与配额水位、领机构码。
 数据隔离由 tenancy 全局过滤器 + org_id 显式条件双保险。
 """
-import secrets
-import string
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,7 +11,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import require_role
 from app.models.organization import Organization
 from app.models.user import User
 from app.services import auth_service
@@ -21,14 +19,8 @@ from app.services.org_service import count_active_students
 
 router = APIRouter()
 
-
-async def get_current_org_admin(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    """机构管理员(平台admin也可,方便代操作)"""
-    if current_user.role not in ["org_admin", "admin"]:
-        raise HTTPException(status_code=403, detail="需要机构管理员权限")
-    return current_user
+# 机构管理员(平台admin也可,方便代操作)
+get_current_org_admin = require_role("org_admin", "admin")
 
 
 class TeacherCreate(BaseModel):
@@ -45,7 +37,7 @@ async def org_info(
 ):
     """机构概况: 名称/机构码/配额水位/到期时间(测评链接、注册引导都用机构码)"""
     org = (await db.execute(
-        select(Organization).where(Organization.id == (current_user.org_id or 1))
+        select(Organization).where(Organization.id == current_user.org_id)
     )).scalar_one_or_none()
     if not org:
         raise HTTPException(404, "机构不存在")
@@ -70,7 +62,7 @@ async def list_teachers(
     """本机构老师列表"""
     rows = (await db.execute(
         select(User).where(
-            User.org_id == (current_user.org_id or 1), User.role == "teacher")
+            User.org_id == current_user.org_id, User.role == "teacher")
         .order_by(User.id)
     )).scalars().all()
     return [{"id": u.id, "username": u.username, "full_name": u.full_name,
@@ -90,9 +82,8 @@ async def create_teacher(
     if existing:
         raise HTTPException(400, "用户名已存在")
 
-    pwd = data.password or "".join(
-        secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
-    org_id = current_user.org_id or 1
+    pwd = data.password or auth_service.generate_random_password()
+    org_id = current_user.org_id
     user = await auth_service.create_user(
         db=db,
         username=data.username,
@@ -116,7 +107,7 @@ async def toggle_teacher_active(
     teacher = (await db.execute(
         select(User).where(
             User.id == teacher_id, User.role == "teacher",
-            User.org_id == (current_user.org_id or 1))
+            User.org_id == current_user.org_id)
     )).scalar_one_or_none()
     if not teacher:
         raise HTTPException(404, "老师不存在或不属于本机构")

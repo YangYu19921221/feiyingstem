@@ -75,6 +75,10 @@ async def websocket_endpoint(
         if user is None or not user.is_active:
             raise ValueError("用户不存在或已禁用")
 
+        # 多租户: 自建鉴权路径也要设机构上下文,否则该WS连接内的DB查询不被过滤
+        from app.core.tenancy import current_org_id
+        current_org_id.set(None if user.role == "admin" else user.org_id)
+
     except (JWTError, ValueError, Exception) as e:
         print(f"❌ WebSocket认证失败: {e}")
         await websocket.close(code=1008, reason=f"认证失败: {str(e)}")

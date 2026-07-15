@@ -52,10 +52,12 @@ def _gen_invite_code() -> str:
             return code
 
 
-def create_room(host_id: int, max_players: int, word_ids: list[int] | None = None,
+def create_room(host_id: int, max_players: int, org_id: int,
+                word_ids: list[int] | None = None,
                 unit_id: int | None = None, nickname: str | None = None,
-                word_count: int = 10, org_id: int = 1) -> RoomState:
-    """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。"""
+                word_count: int = 10) -> RoomState:
+    """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。
+    org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。"""
     if host_id in USER_ACTIVE:
         raise UserAlreadyInRoom()
     room_id = next(_id_seq)
@@ -86,38 +88,40 @@ def create_room(host_id: int, max_players: int, word_ids: list[int] | None = Non
     return room
 
 
-def join_room(invite_code: str, user_id: int, nickname: str, org_id: int = 1) -> RoomState:
-    if user_id in USER_ACTIVE:
-        raise UserAlreadyInRoom()
+def get_room_by_code(invite_code: str, org_id: int) -> RoomState:
+    """按邀请码取房间,统一裁决跨机构可见性:不同机构一律 RoomNotFound,
+    不泄露房间存在性。路由层不要直接摸 ROOMS/INVITE_INDEX。"""
     room_id = INVITE_INDEX.get(invite_code)
     if room_id is None:
         raise RoomNotFound()
     room = ROOMS[room_id]
     if room.org_id != org_id:
-        raise RoomNotFound()  # 跨机构不可见(多租户): 按不存在处理,不泄露房间存在性
+        raise RoomNotFound()
+    return room
+
+
+def join_room(invite_code: str, user_id: int, nickname: str, org_id: int) -> RoomState:
+    if user_id in USER_ACTIVE:
+        raise UserAlreadyInRoom()
+    room = get_room_by_code(invite_code, org_id)
     if room.status != "waiting":
         raise RoomAlreadyStarted()
     if len(room.players) >= room.max_players:
         raise RoomFull()
     room.players[user_id] = PlayerState(user_id=user_id, nickname=nickname)
     room.join_order.append(user_id)
-    USER_ACTIVE[user_id] = room_id
-    logger.info("PK player joined: room_id=%d user_id=%d", room_id, user_id)
+    USER_ACTIVE[user_id] = room.room_id
+    logger.info("PK player joined: room_id=%d user_id=%d", room.room_id, user_id)
     return room
 
 
-def spectate_room(invite_code: str, user_id: int, nickname: str, org_id: int = 1) -> RoomState:
+def spectate_room(invite_code: str, user_id: int, nickname: str, org_id: int) -> RoomState:
     """以观众身份进房:等待中/对局中都可以,不占玩家名额。
 
     观众不进 USER_ACTIVE(旁观是轻量行为,不阻止其另开房间);
     自己已是该房玩家时原样返回(按玩家身份连 WS 即可)。
     """
-    room_id = INVITE_INDEX.get(invite_code)
-    if room_id is None:
-        raise RoomNotFound()
-    room = ROOMS[room_id]
-    if room.org_id != org_id:
-        raise RoomNotFound()  # 跨机构不可见(多租户)
+    room = get_room_by_code(invite_code, org_id)
     if user_id in room.players:
         return room  # 本来就是玩家,无需观战
     if user_id in room.spectators:
@@ -126,7 +130,7 @@ def spectate_room(invite_code: str, user_id: int, nickname: str, org_id: int = 1
     if len(room.spectators) >= MAX_SPECTATORS:
         raise SpectatorsFull()
     room.spectators[user_id] = SpectatorState(user_id=user_id, nickname=nickname)
-    logger.info("PK spectator joined: room_id=%d user_id=%d", room_id, user_id)
+    logger.info("PK spectator joined: room_id=%d user_id=%d", room.room_id, user_id)
     return room
 
 

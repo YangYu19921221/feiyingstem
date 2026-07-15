@@ -200,8 +200,7 @@ async def create_book(
         grade_level=body.grade_level, volume=body.volume,
         cover_color=body.cover_color or "#5FD35F",
         is_public=True, created_by=current_user.id,
-        # 多租户: admin建的是平台共享库(NULL),教师建的归本机构
-        org_id=None if current_user.role == "admin" else current_user.org_id,
+        # org_id 由 tenancy.before_flush 写侧安全网打戳: admin=平台共享(NULL),教师=本机构
     )
     db.add(b)
     await db.commit()

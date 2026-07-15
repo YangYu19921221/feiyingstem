@@ -17,17 +17,10 @@ export interface Organization {
   created_at?: string;
 }
 
-export interface OrgInfo {
-  id: number;
-  name: string;
-  code: string;
-  plan: string;
-  student_quota: number;
-  active_students: number;
-  teacher_count: number;
-  status: string;
-  expires_at?: string | null;
-}
+export type OrgInfo = Pick<
+  Organization,
+  'id' | 'name' | 'code' | 'plan' | 'student_quota' | 'active_students' | 'teacher_count' | 'status' | 'expires_at'
+>;
 
 export interface OrgTeacher {
   id: number;
@@ -48,8 +41,6 @@ export const adminOrgApi = {
     client.patch<Organization>(`/admin/organizations/${orgId}`, data).then(r => r.data),
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/admins`, data).then(r => r.data),
-  listOrgAdmins: (orgId: number) =>
-    client.get(`/admin/organizations/${orgId}/admins`).then(r => r.data),
 };
 
 // ---------- 机构管理端(org_admin) ----------

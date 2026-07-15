@@ -1,8 +1,9 @@
-"""机构服务(多租户 P3): 配额统计与校验"""
+"""机构服务(多租户 P3): 配额统计与校验、机构码解析"""
 from fastapi import HTTPException
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tenancy import DEFAULT_ORG_ID
 from app.models.user import User, Class, ClassStudent
 from app.models.organization import Organization
 
@@ -21,6 +22,20 @@ async def get_org(db: AsyncSession, org_id: int) -> Organization | None:
     return (await db.execute(
         select(Organization).where(Organization.id == org_id)
     )).scalar_one_or_none()
+
+
+async def resolve_org_code(db: AsyncSession, code: str | None) -> int:
+    """机构码 → org_id。无码/无效码/机构停用 → 直营。
+    测评链接、注册页、后台共用这一处语义(大小写不敏感)。"""
+    if not code:
+        return DEFAULT_ORG_ID
+    org_id = (await db.execute(
+        select(Organization.id).where(
+            Organization.code == code.strip().upper(),
+            Organization.status == "active",
+        )
+    )).scalar_one_or_none()
+    return org_id or DEFAULT_ORG_ID
 
 
 async def check_student_quota(db: AsyncSession, org_id: int, adding: int = 1):

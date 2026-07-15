@@ -90,8 +90,7 @@ async def create_passage(
         is_public=passage_data.is_public,
         cover_image=passage_data.cover_image,
         created_by=current_user.id,
-        # 多租户: admin建的是平台共享(NULL),教师建的归本机构
-        org_id=None if current_user.role == "admin" else current_user.org_id,
+        # org_id 由 tenancy.before_flush 写侧安全网打戳: admin=平台共享(NULL),教师=本机构
         source='manual'
     )
 

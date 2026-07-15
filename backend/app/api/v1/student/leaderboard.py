@@ -62,10 +62,12 @@ class LeaderboardResponse(BaseModel):
 
 
 async def _resolve_scope(
-    db: AsyncSession, user_id: int, scope: ScopeKind,
-) -> tuple[ScopeKind, set[int] | None, bool, str | None]:
-    """解析范围。返回 (生效scope, 允许的user_id集合或None, 是否有班级, 班级名)。
-    allowed 为 None 表示不限制（全平台）。学生在多个班级时取最近加入的一个。
+    db: AsyncSession, user_id: int, scope: ScopeKind, org_id: int,
+) -> tuple[ScopeKind, object | None, bool, str | None]:
+    """解析范围。返回 (生效scope, 允许的user_id集合或子查询, 是否有班级, 班级名)。
+    班级榜返回 id 集合(几十人);全机构榜返回 SQL 子查询——不把整机构学生 id
+    物化到 Python 再 IN 回去(机构大了会撞 SQLite 绑定参数上限)。
+    学生在多个班级时取最近加入的一个。
     """
     row = (await db.execute(
         select(ClassStudent.class_id, Class.name)
@@ -89,14 +91,12 @@ async def _resolve_scope(
         )
         return "class", {r[0] for r in members.all()}, has_class, class_name
 
-    # 多租户: "全平台榜"实为全机构榜 — 圈定本机构全部学生,跨机构不同榜
-    org_id = (await db.execute(
-        select(User.org_id).where(User.id == user_id)
-    )).scalar() or 1
-    org_members = await db.execute(
-        select(User.id).where(and_(User.org_id == org_id, User.role == "student"))
-    )
-    return "global", {r[0] for r in org_members.all()}, has_class, class_name
+    # 多租户: "全平台榜"实为全机构榜。返回子查询让 SQLite 做 semi-join,
+    # 零 id 传输、无绑定参数上限;org_id 来自调用方 current_user,不再回库查
+    org_members_sq = select(User.id).where(
+        and_(User.org_id == org_id, User.role == "student")
+    ).scalar_subquery()
+    return "global", org_members_sq, has_class, class_name
 
 
 async def _vocabulary_rows(db, period, allowed):
@@ -271,7 +271,7 @@ async def get_leaderboard(
 ):
     """光荣榜 — 词汇/勤奋/精准王 × 三种周期 × 班级榜/全平台榜"""
     eff_scope, allowed, has_class, class_name = await _resolve_scope(
-        db, current_user.id, scope,
+        db, current_user.id, scope, current_user.org_id,
     )
     if kind == "vocabulary":
         rows = await _vocabulary_rows(db, period, allowed)
