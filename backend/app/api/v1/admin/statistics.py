@@ -8,14 +8,14 @@ from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User
 from app.models.word import Word, WordBook, Unit
 from app.models.learning import LearningProgress, StudySession
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 
 router = APIRouter()
 
 @router.get("/stats")
 async def get_statistics(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin_or_org_admin)
 ):
     """
     获取系统统计数据

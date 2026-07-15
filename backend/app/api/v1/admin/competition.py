@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.user import User
 from app.models.competition import UserScore, AnswerRecord, CompetitionSeason
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ router = APIRouter()
 @router.get("/competition/overview")
 async def competition_overview(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """竞赛概览:参与人数 / 总答题数 / 平均正确率 / 活跃赛季数"""
     # 参与人数 + 总答题数 + 答对数,一次扫 answer_records
@@ -54,7 +54,7 @@ async def competition_leaderboard(
     board: str = Query("overall", description="榜单: overall/daily/weekly/monthly"),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """全员竞赛排行榜。按所选榜单的分数倒序,聚合同一用户跨赛季的分数。"""
     score_col = {

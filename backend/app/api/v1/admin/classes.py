@@ -8,7 +8,7 @@ from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.models.user import User, Class, ClassStudent
 from app.models.learning import WordMastery
 from app.models.word import Word
@@ -24,7 +24,7 @@ class TransferRequest(BaseModel):
 async def list_all_classes(
     teacher_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """列出所有班级（可按 teacher_id 过滤），附带教师用户名与在册学生数"""
     stmt = (
@@ -65,7 +65,7 @@ async def list_all_classes(
 async def admin_class_overview(
     class_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """班级学习概览（管理员无需 teacher_id 校验）"""
     cls_res = await db.execute(select(Class).where(Class.id == class_id))
@@ -125,7 +125,7 @@ async def transfer_student(
     student_id: int,
     body: TransferRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """跨教师转班 — 原子事务"""
     # 1. 校验学生存在

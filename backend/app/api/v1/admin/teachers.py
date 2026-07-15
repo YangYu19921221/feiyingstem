@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.models.user import User, Class, ClassStudent
 from app.services.auth_service import get_password_hash, generate_random_password
 
@@ -29,7 +29,7 @@ class TeacherUpdate(BaseModel):
 @router.get("/teachers")
 async def list_teachers(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """列出所有教师，包含班级数与在册学生数"""
     res = await db.execute(
@@ -71,7 +71,7 @@ async def list_teachers(
 async def get_teacher(
     teacher_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """获取单个教师详情及其班级列表"""
     res = await db.execute(
@@ -107,7 +107,7 @@ async def get_teacher(
 async def create_teacher(
     body: TeacherCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """创建教师账号（密码不传则随机生成并在响应中返回一次）"""
     pwd = body.password or generate_random_password()
@@ -134,7 +134,7 @@ async def update_teacher(
     teacher_id: int,
     body: TeacherUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """更新教师 full_name 或 is_active"""
     res = await db.execute(
@@ -155,7 +155,7 @@ async def update_teacher(
 async def reset_teacher_password(
     teacher_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """重置教师密码，返回一次性新密码"""
     res = await db.execute(
@@ -174,7 +174,7 @@ async def reset_teacher_password(
 async def delete_teacher(
     teacher_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """
     删除教师账号

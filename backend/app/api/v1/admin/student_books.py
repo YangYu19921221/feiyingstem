@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.word import WordBook, Unit
 from app.models.learning import BookAssignment, ExamSubmission, ExamPaper, GroupExamRecord
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 
 router = APIRouter()
 
@@ -36,7 +36,7 @@ async def _student_or_404(db: AsyncSession, student_id: int) -> User:
 async def list_student_books(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """列出学生已授权的书本(book_assignments)。"""
     await _student_or_404(db, student_id)
@@ -63,7 +63,7 @@ async def add_student_book(
     student_id: int,
     body: AddBookRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """给学生整本授权一本单词本(已存在则不重复加)。"""
     await _student_or_404(db, student_id)
@@ -98,7 +98,7 @@ async def remove_student_book(
     student_id: int,
     assignment_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """取消一条书本授权(校验归属此学生)。"""
     a = (await db.execute(
@@ -121,7 +121,7 @@ async def remove_student_book(
 async def list_student_exams(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """学生的单元考试 + 小组过关检测历史,合并按时间倒序。"""
     await _student_or_404(db, student_id)

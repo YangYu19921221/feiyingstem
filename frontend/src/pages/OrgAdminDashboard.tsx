@@ -105,6 +105,28 @@ export default function OrgAdminDashboard() {
           />
         )}
 
+        {/* 管理功能导航: 复用平台管理端页面,数据由租户过滤自动限定在本机构 */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+          {[
+            { icon: '👥', title: '用户管理', desc: '本机构师生账号', path: '/admin/users' },
+            { icon: '👨‍🏫', title: '教师管理', desc: '老师与名下班级', path: '/admin/teachers' },
+            { icon: '📊', title: '班级数据', desc: '学习统计与名册', path: '/admin/classes' },
+            { icon: '📈', title: '数据统计', desc: '本机构使用情况', path: '/admin/statistics' },
+            { icon: '🏆', title: '单词比赛', desc: '赛事排行与概览', path: '/admin/competition' },
+            { icon: '📚', title: '词库浏览', desc: '平台词库(只读)', path: '/admin/content' },
+          ].map(card => (
+            <button
+              key={card.path}
+              onClick={() => navigate(card.path)}
+              className="bg-white rounded-2xl p-4 shadow text-left hover:shadow-md transition"
+            >
+              <div className="text-2xl">{card.icon}</div>
+              <div className="font-bold mt-1">{card.title}</div>
+              <div className="text-xs text-gray-400">{card.desc}</div>
+            </button>
+          ))}
+        </div>
+
         {/* 老师管理 */}
         <div className="bg-white rounded-2xl shadow p-5">
           <div className="flex items-center justify-between mb-4">

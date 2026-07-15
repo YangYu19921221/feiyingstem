@@ -20,7 +20,7 @@ from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User, Class, ClassStudent, StudyCalendar
 from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.models.word import Word
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 
 router = APIRouter()
 
@@ -57,7 +57,7 @@ async def admin_class_students(
     class_id: int,
     q: Optional[str] = Query(None, description="搜索学生姓名或用户名"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """管理员查看班级学生名册。口径与教师端一致:enrollment active + active student。"""
     await _class_or_404(db, class_id)
@@ -93,7 +93,7 @@ async def admin_class_students(
 async def admin_student_detail(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """管理员查看任意学生的学习详情(当日+累计+7天趋势)。掌握线 >=3,lower(word) 去重。"""
     result = await db.execute(select(User).where(User.id == student_id))
@@ -215,7 +215,7 @@ async def admin_student_detail(
 async def admin_class_stats_summary(
     class_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """一次性返回班级的 今日/昨日/近7天 各指标 + 词汇总量,供前端柱状图下拉切换。
 

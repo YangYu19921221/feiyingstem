@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.models.user import User
 from app.schemas.user import UserResponse, UserCreate, UserUpdate
 from app.services import auth_service
@@ -27,7 +27,7 @@ async def get_all_users(
     role: Optional[str] = Query(None, description="角色筛选: student/teacher/admin"),
     search: Optional[str] = Query(None, description="搜索关键词(用户名/姓名)"),
     is_active: Optional[bool] = Query(None, description="是否激活"),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -93,7 +93,7 @@ async def get_all_users(
 
 @router.get("/users/stats", response_model=dict)
 async def get_user_stats(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -127,7 +127,7 @@ async def get_user_stats(
 @router.get("/users/{user_id}", response_model=UserResponse)
 async def get_user_detail(
     user_id: int,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -143,12 +143,16 @@ async def get_user_detail(
 @router.post("/users", response_model=UserResponse)
 async def create_user(
     user_data: UserCreate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
     创建新用户
     """
+    # 防提权: 机构管理员只能建普通角色,不能造 admin/org_admin
+    if current_user.role == "org_admin" and user_data.role in ("admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="机构管理员不能创建管理员账号")
+
     # 检查用户名是否已存在
     existing_user = await auth_service.get_user_by_username(db, user_data.username)
     if existing_user:
@@ -177,7 +181,7 @@ async def create_user(
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -186,6 +190,13 @@ async def update_user(
     user = await auth_service.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 防提权: 机构管理员不能动管理员账号,也不能把人升成 admin/org_admin
+    if current_user.role == "org_admin":
+        if user.role in ("admin", "org_admin") and user.id != current_user.id:
+            raise HTTPException(status_code=403, detail="机构管理员不能修改管理员账号")
+        if user_data.role in ("admin", "org_admin"):
+            raise HTTPException(status_code=403, detail="机构管理员不能授予管理员角色")
 
     # 检查是否在修改自己的管理员权限
     if user.id == current_user.id and user_data.role and user_data.role != 'admin':
@@ -225,7 +236,7 @@ async def update_user(
 async def reset_user_password(
     user_id: int,
     body: ResetPasswordRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -234,6 +245,10 @@ async def reset_user_password(
     user = await auth_service.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 防提权: 机构管理员不能重置管理员账号的密码
+    if current_user.role == "org_admin" and user.role in ("admin", "org_admin") and user.id != current_user.id:
+        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
 
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="密码长度至少6位")
@@ -248,7 +263,7 @@ async def reset_user_password(
 @router.post("/users/{user_id}/toggle-status")
 async def toggle_user_status(
     user_id: int,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -262,6 +277,10 @@ async def toggle_user_status(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能禁用自己的账号")
 
+    # 防提权: 机构管理员不能停用管理员账号
+    if current_user.role == "org_admin" and user.role in ("admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
+
     user.is_active = not user.is_active
     await db.commit()
 
@@ -274,7 +293,7 @@ async def toggle_user_status(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -287,6 +306,10 @@ async def delete_user(
     # 不能删除自己
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能删除自己的账号")
+
+    # 防提权: 机构管理员不能删除管理员账号
+    if current_user.role == "org_admin" and user.role in ("admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
 
     await db.delete(user)
     await db.commit()

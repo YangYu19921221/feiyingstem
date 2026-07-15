@@ -763,7 +763,7 @@ function App() {
         <Route
           path="/admin/users"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminUserManagement />
             </ProtectedRoute>
           }
@@ -789,7 +789,7 @@ function App() {
         <Route
           path="/admin/content"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminContentManagement />
             </ProtectedRoute>
           }
@@ -799,7 +799,7 @@ function App() {
         <Route
           path="/admin/statistics"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminStatistics />
             </ProtectedRoute>
           }
@@ -839,7 +839,7 @@ function App() {
         <Route
           path="/admin/teachers"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminTeacherList />
             </ProtectedRoute>
           }
@@ -847,7 +847,7 @@ function App() {
         <Route
           path="/admin/teachers/:id"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminTeacherDetail />
             </ProtectedRoute>
           }
@@ -855,7 +855,7 @@ function App() {
         <Route
           path="/admin/classes"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminClassList />
             </ProtectedRoute>
           }
@@ -863,7 +863,7 @@ function App() {
         <Route
           path="/admin/classes/:id"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminClassDetail />
             </ProtectedRoute>
           }
@@ -871,7 +871,7 @@ function App() {
         <Route
           path="/admin/competition"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
               <AdminCompetition />
             </ProtectedRoute>
           }

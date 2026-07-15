@@ -105,6 +105,7 @@ async def get_current_admin(
         )
     return current_user
 
+
 async def get_current_parent(
     current_user: User = Depends(get_current_user)
 ) -> User:
@@ -130,6 +131,12 @@ def require_role(*allowed_roles: str):
             )
         return current_user
     return role_checker
+
+
+# 多租户: 管理端白名单接口对机构管理员放行(数据由租户过滤器自动限定在本机构;
+# admin 上下文为 None 不过滤=平台全量)。写操作端点需自行防提权(role 字段等)。
+get_current_admin_or_org_admin = require_role("admin", "org_admin")
+
 
 @router.post("/send-code")
 async def send_verification_code(

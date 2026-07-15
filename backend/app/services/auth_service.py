@@ -87,14 +87,20 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
     return result.scalar_one_or_none()
 
 async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
-    """通过用户名获取用户"""
-    stmt = select(User).where(User.username == username)
+    """通过用户名获取用户(username 全局唯一,查重/登录需跨机构,跳过租户过滤)"""
+    stmt = select(User).where(User.username == username).execution_options(skip_tenant_filter=True)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 
 async def get_user_by_phone(db: AsyncSession, phone: str) -> Optional[User]:
-    """通过手机号获取用户"""
-    stmt = select(User).where(User.phone == phone)
+    """通过手机号获取用户(phone 全局唯一,查重需跨机构,跳过租户过滤)"""
+    stmt = select(User).where(User.phone == phone).execution_options(skip_tenant_filter=True)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+    """通过邮箱获取用户(email 全局唯一,查重需跨机构,跳过租户过滤)"""
+    stmt = select(User).where(User.email == email).execution_options(skip_tenant_filter=True)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
 

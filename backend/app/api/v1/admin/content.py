@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, desc
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.models.user import User
 from app.models.word import WordBook, Unit, Word, WordDefinition
 from app.models.reading import ReadingPassage
@@ -17,7 +17,7 @@ router = APIRouter()
 
 @router.get("/stats")
 async def get_content_stats(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -65,7 +65,7 @@ async def get_all_word_books(
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     is_public: Optional[bool] = Query(None),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -123,7 +123,7 @@ async def get_all_words(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -194,7 +194,7 @@ async def get_all_reading_passages(
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     difficulty: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
