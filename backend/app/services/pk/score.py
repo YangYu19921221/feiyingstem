@@ -86,11 +86,15 @@ def rank_players(players: list[dict]) -> list[dict]:
         wrong = p.get("wrong", 0)
         total = correct + wrong
         accuracy = round(correct / total * 100, 2) if total > 0 else 0.0
-        enriched.append({**p, "final_score": p.get("points", 0), "accuracy": accuracy})
+        enriched.append({**p, "final_score": p.get("points", 0), "accuracy": accuracy, "_answered": total})
 
-    enriched.sort(key=lambda x: (-x["final_score"], x["total_time_ms"]))
+    # 排名:得分高优先;同分再看用时少。但"一题没答"的人(缺席/全程掉线)一律垫底——
+    # 否则双方都 0 分时,没答题的人 total_time_ms=0 反而排到认真答完(全错)的人前面,
+    # 把胜利判给根本没参赛的一方。用时只在"确实答过题"的人之间比。
+    enriched.sort(key=lambda x: (-x["final_score"], x["_answered"] == 0, x["total_time_ms"]))
     for idx, p in enumerate(enriched, start=1):
         p["rank"] = idx
+        p.pop("_answered", None)
     return enriched
 
 

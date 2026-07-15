@@ -29,6 +29,19 @@ from app.api.v1.pk_routes import load_word_points, load_learned_word_ids
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# 每场对局一把进程内锁:enter_match 的"查房→开房"必须原子,
+# 否则两个玩家同时点进入会各开一间房、永远对不上(单 uvicorn worker,锁 asyncio 竞态足够)
+import asyncio as _asyncio
+_MATCH_LOCKS: dict[int, _asyncio.Lock] = {}
+
+
+def _match_lock(match_id: int) -> _asyncio.Lock:
+    lk = _MATCH_LOCKS.get(match_id)
+    if lk is None:
+        lk = _asyncio.Lock()
+        _MATCH_LOCKS[match_id] = lk
+    return lk
+
 
 class CreateTournamentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
@@ -180,6 +193,10 @@ async def tournament_detail(
     t = (await db.execute(select(PkTournament).where(PkTournament.id == tid))).scalar_one_or_none()
     if t is None:
         raise HTTPException(status_code=404, detail="赛事不存在")
+    if t.status == "running":
+        # 自愈:若赛程曾因回写异常/并发丢事件卡在"本轮全完却没下一轮",
+        # 刷新详情页即补跑推进(教师端每 15s 自动轮询详情,卡死可自动恢复)
+        await tsvc.ensure_advanced(db, tid)
     players = (await db.execute(
         select(PkTournamentPlayer).where(PkTournamentPlayer.tournament_id == tid)
     )).scalars().all()
@@ -229,6 +246,67 @@ async def delete_tournament(
     return {"success": True}
 
 
+class JudgeMatchRequest(BaseModel):
+    winner_id: int  # 判某一方晋级(缺席/弃权/设备问题时,老师手动判胜)
+
+
+@router.post("/tournament-matches/{match_id}/judge")
+async def judge_match(
+    match_id: int,
+    body: JudgeMatchRequest,
+    user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """老师手动判定一场对局的胜者(弃权/缺席/掉线打不成时用)。
+
+    没有这个出口的话,某个学生请假不来打,他那场就永远 pending,
+    整个赛程卡在小组阶段或某轮淘汰赛,冠军永远出不来。走 record_match_result
+    同一套逻辑,判完自动推进赛程。
+    """
+    # 与 enter_match 抢同一把锁:判胜和学生"点开打"并发时序列化,
+    # 否则可能判完后学生又开出一间没人管的孤儿房(还占着他的 USER_ACTIVE)
+    async with _match_lock(match_id):
+        m = (await db.execute(
+            select(PkTournamentMatch).where(PkTournamentMatch.id == match_id)
+        )).scalar_one_or_none()
+        if m is None:
+            raise HTTPException(status_code=404, detail="对局不存在")
+        t = (await db.execute(select(PkTournament).where(PkTournament.id == m.tournament_id))).scalar_one()
+        if user.role != "admin" and t.teacher_id != user.id:
+            raise HTTPException(status_code=403, detail="不是你的赛事")
+        if m.status != "pending":
+            raise HTTPException(status_code=409, detail="这场对局已结束")
+        if body.winner_id not in (m.p1_id, m.p2_id):
+            raise HTTPException(status_code=400, detail="胜者必须是本场两名选手之一")
+
+        # 判胜方按 0 分/0 用时记(纯轮空性质,不虚增数据);若房间还开着先回收:
+        # 必须通知玩家 + 停掉题目计时器,否则房里的学生会不知情地打完一局"幽灵赛",
+        # game_finished 还会再落一条无效的对局历史
+        if m.invite_code and m.invite_code in manager.INVITE_INDEX:
+            room = manager.ROOMS.get(manager.INVITE_INDEX[m.invite_code])
+            # 校验归属:invite_code 会被后来的无关房间随机复用,别误杀别人的房
+            if room is not None and room.tournament_match_id == m.id:
+                from app.api.v1.pk_websocket import _broadcast, _cancel_room_timers
+                room.status = "abandoned"  # 若此刻恰好打完落库,历史记为 abandoned 而非正常完赛
+                # (真正防"打完的结果覆盖判定"的,是 record_match_result 锁内的 pending 复查)
+                _cancel_room_timers(room.room_id)
+                try:
+                    await _broadcast(room, {"type": "room_closed", "message": "老师已判定本场结果"})
+                except Exception:
+                    logger.exception("判胜后通知房间失败: room=%d", room.room_id)
+                for uid in list(room.players.keys()):
+                    manager.USER_ACTIVE.pop(uid, None)
+                manager.INVITE_INDEX.pop(room.invite_code, None)
+                manager.ROOMS.pop(room.room_id, None)
+
+        await tsvc.record_match_result(
+            db, match_id, winner_id=body.winner_id,
+            stats={m.p1_id: {"correct": 0, "score": 0, "time_ms": 0},
+                   **({m.p2_id: {"correct": 0, "score": 0, "time_ms": 0}} if m.p2_id else {})},
+        )
+    return {"success": True, "winner_id": body.winner_id}
+
+
 # ---------- 学生端:进入对局 ----------
 
 @router.post("/tournament-matches/{match_id}/enter")
@@ -252,49 +330,67 @@ async def enter_match(
 
     t = (await db.execute(select(PkTournament).where(PkTournament.id == m.tournament_id))).scalar_one()
 
-    # 房间还活着 → 直接进(对手已开好)
-    if m.invite_code and m.invite_code in manager.INVITE_INDEX:
-        room = manager.ROOMS[manager.INVITE_INDEX[m.invite_code]]
-        if user.id not in room.players:
-            nickname = user.full_name or user.username or f"User{user.id}"
-            try:
-                room = manager.join_room(invite_code=m.invite_code, user_id=user.id, nickname=nickname)
-            except manager.UserAlreadyInRoom:
-                raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
-            except (manager.RoomFull, manager.RoomAlreadyStarted):
-                raise HTTPException(status_code=409, detail="ROOM_ALREADY_STARTED")
+    # 整个"查房→开房/加入"临界区上锁:两玩家同时进入时序列化,后进的一定能看到先进者开的房
+    async with _match_lock(match_id):
+        # 锁内重新读最新状态(先进者可能刚写好 invite_code / 老师可能刚判胜)。
+        # populate_existing 必须加:本会话锁外已加载过这行,identity map 会原样
+        # 返回旧对象,不加则这次"重读"根本看不到别的会话刚提交的数据
+        m = (await db.execute(
+            select(PkTournamentMatch).where(PkTournamentMatch.id == match_id)
+            .execution_options(populate_existing=True)
+        )).scalar_one()
+        if m.status != "pending":
+            raise HTTPException(status_code=409, detail="MATCH_ALREADY_FINISHED")
+
+        # 房间还活着 → 直接进(对手已开好)。必须校验归属:invite_code 会被
+        # 后来的无关房间随机复用,不校验会把选手塞进陌生人的普通 PK 房
+        live_room = None
+        if m.invite_code and m.invite_code in manager.INVITE_INDEX:
+            cand = manager.ROOMS.get(manager.INVITE_INDEX[m.invite_code])
+            if cand is not None and cand.tournament_match_id == m.id:
+                live_room = cand
+        if live_room is not None:
+            room = live_room
+            if user.id not in room.players:
+                nickname = user.full_name or user.username or f"User{user.id}"
+                try:
+                    room = manager.join_room(invite_code=m.invite_code, user_id=user.id, nickname=nickname)
+                except manager.UserAlreadyInRoom:
+                    raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
+                except (manager.RoomFull, manager.RoomAlreadyStarted):
+                    raise HTTPException(status_code=409, detail="ROOM_ALREADY_STARTED")
+            return {"room_id": room.room_id, "invite_code": room.invite_code}
+
+        # 开新房:词表从赛事单元里选,优先「对阵双方都背过」的词(考已学的更公平),
+        # 学过的不够一场时,用单元里其余词补齐(晋级赛以赛促学,不因某人没学就缩水题量)
+        word_ids = await _unit_word_ids(db, json.loads(t.unit_ids))
+        if len(word_ids) < t.word_count:
+            raise HTTPException(status_code=400, detail="赛事单元词量不足(单元可能被改动)")
+
+        both = [m.p1_id, m.p2_id] if m.p2_id else [m.p1_id]
+        learned = await load_learned_word_ids(db, both, word_ids)
+        common = set.intersection(*(learned.get(uid, set()) for uid in both)) if both else set()
+        common_list = [w for w in word_ids if w in common]  # 保持单元内顺序稳定
+        rest = [w for w in word_ids if w not in common]
+        random.shuffle(common_list)
+        random.shuffle(rest)
+        # 先填学过的,不够再拿其余词补
+        chosen = (common_list + rest)[:t.word_count]
+        random.shuffle(chosen)
+
+        nickname = user.full_name or user.username or f"User{user.id}"
+        try:
+            room = manager.create_room(
+                host_id=user.id, max_players=2,
+                word_ids=chosen, nickname=nickname, word_count=t.word_count,
+            )
+        except manager.UserAlreadyInRoom:
+            raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
+        room.tournament_match_id = m.id
+        room.fixed_words = True
+        room.word_points = await load_word_points(db, chosen)
+
+        m.invite_code = room.invite_code
+        await db.commit()
+        logger.info("Tournament match room opened: match=%d room=%d code=%s", m.id, room.room_id, room.invite_code)
         return {"room_id": room.room_id, "invite_code": room.invite_code}
-
-    # 开新房:词表从赛事单元里选,优先「对阵双方都背过」的词(考已学的更公平),
-    # 学过的不够一场时,用单元里其余词补齐(晋级赛以赛促学,不因某人没学就缩水题量)
-    word_ids = await _unit_word_ids(db, json.loads(t.unit_ids))
-    if len(word_ids) < t.word_count:
-        raise HTTPException(status_code=400, detail="赛事单元词量不足(单元可能被改动)")
-
-    both = [m.p1_id, m.p2_id] if m.p2_id else [m.p1_id]
-    learned = await load_learned_word_ids(db, both, word_ids)
-    common = set.intersection(*(learned.get(uid, set()) for uid in both)) if both else set()
-    common_list = [w for w in word_ids if w in common]  # 保持单元内顺序稳定
-    rest = [w for w in word_ids if w not in common]
-    random.shuffle(common_list)
-    random.shuffle(rest)
-    # 先填学过的,不够再拿其余词补
-    chosen = (common_list + rest)[:t.word_count]
-    random.shuffle(chosen)
-
-    nickname = user.full_name or user.username or f"User{user.id}"
-    try:
-        room = manager.create_room(
-            host_id=user.id, max_players=2,
-            word_ids=chosen, nickname=nickname, word_count=t.word_count,
-        )
-    except manager.UserAlreadyInRoom:
-        raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
-    room.tournament_match_id = m.id
-    room.fixed_words = True
-    room.word_points = await load_word_points(db, chosen)
-
-    m.invite_code = room.invite_code
-    await db.commit()
-    logger.info("Tournament match room opened: match=%d room=%d code=%s", m.id, room.room_id, room.invite_code)
-    return {"room_id": room.room_id, "invite_code": room.invite_code}

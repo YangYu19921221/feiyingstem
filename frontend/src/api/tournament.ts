@@ -103,4 +103,8 @@ export const tournamentApi = {
     const r = await axios.post(`${API_BASE_URL}/pk/tournament-matches/${matchId}/enter`, {}, { headers: auth() });
     return r.data as { room_id: number; invite_code: string };
   },
+  judgeMatch: async (matchId: number, winnerId: number) => {
+    const r = await axios.post(`${API_BASE_URL}/pk/tournament-matches/${matchId}/judge`, { winner_id: winnerId }, { headers: auth() });
+    return r.data as { success: boolean; winner_id: number };
+  },
 };

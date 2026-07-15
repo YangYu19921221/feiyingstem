@@ -2,7 +2,7 @@
  * 教师端 - 签到记录
  * 独立列表页:按班级/日期查(含历史),已签到表格分页展示,未签到红色名单
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
@@ -55,7 +55,11 @@ const TeacherCheckins = () => {
       .catch(() => setLoading(false));
   }, []);
 
+  // 请求竞态守卫:快速切班级/日期时,只让最后一次请求的结果生效,
+  // 防止先发的慢响应后返回、把新班级的数据覆盖成旧班级的
+  const loadSeqRef = useRef(0);
   const load = useCallback(async (cid: number, d: string) => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       // cid=0 → 全部班级汇总端点;否则单班级
@@ -66,12 +70,14 @@ const TeacherCheckins = () => {
         headers: authHeaders(),
         params: { target_date: d },
       });
+      if (seq !== loadSeqRef.current) return;  // 已有更新的请求,丢弃过期响应
       setData(r.data);
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       console.error('加载签到记录失败:', e);
       setData(null);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, []);
 

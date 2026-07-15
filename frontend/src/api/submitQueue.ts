@@ -60,11 +60,13 @@ export function genClientId(): string {
   return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** 网络层失败/超时/5xx/429 值得重试;其余 4xx 是业务错误,重试也不会成功 */
+/** 网络层失败/超时/5xx/429/401/408 值得重试;其余 4xx 是业务错误,重试也不会成功。
+ *  401 保留可重试很关键:孩子应用常开着超过 token 有效期,交卷时 401 若当业务错误
+ *  丢弃,刚学完的整组数据就没了。保留在队列,重新登录后按 uid 匹配自动补交。 */
 function isRetryable(err: any): boolean {
   const st = err?.response?.status;
   if (st === undefined) return true;
-  return st === 429 || st >= 500;
+  return st === 401 || st === 408 || st === 429 || st >= 500;
 }
 
 // 正在发送中的条目,防止 flush 和原始请求双发
@@ -147,15 +149,22 @@ export async function flushQueue(): Promise<void> {
       try {
         await send(item);
         removeItem(item.id);
-      } catch (err) {
+      } catch (err: any) {
         if (!isRetryable(err)) {
           removeItem(item.id);              // 永远不会成功的,丢弃
-        } else {
-          // 服务器还没恢复:记一次尝试,本轮就到这,别把剩下的也白打一遍
+        } else if (err?.response === undefined) {
+          // 没有响应 = 服务器/网络整体不可达:本轮到此为止,别把剩下的也白打一遍,等下个时机
           const cur = loadQueue();
           const found = cur.find(it => it.id === item.id);
           if (found) { found.tries += 1; saveQueue(cur); }
           break;
+        } else {
+          // 服务器有响应但报错(5xx/429):可能是这一条的问题(脏 payload),
+          // 记一次尝试后跳过它继续补后面的,别让一条"毒数据"卡住整个队列头。
+          // tries 累计到上限会被过滤淘汰,不会无限卡。
+          const cur = loadQueue();
+          const found = cur.find(it => it.id === item.id);
+          if (found) { found.tries += 1; saveQueue(cur); }
         }
       } finally {
         inflight.delete(item.id);

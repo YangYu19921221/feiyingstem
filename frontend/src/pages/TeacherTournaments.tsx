@@ -127,6 +127,21 @@ function TournamentBoard({ detail, onRefresh }: { detail: TournamentDetail; onRe
   const consMatches = detail.matches.filter(m => m.stage === 'consolation');
   const koRounds = groupByRound(koMatches);
   const consRounds = groupByRound(consMatches);
+  // 待打对局(双方都在、还没打):老师可手动判胜,处理请假/缺席/掉线打不成的情况
+  const pending = detail.matches.filter(m => m.status === 'pending' && m.p2_id);
+  const [judging, setJudging] = useState<number | null>(null);
+
+  const judge = async (m: TournamentMatch, winnerId: number, winnerName: string) => {
+    if (!window.confirm(`确定判「${winnerName}」晋级?对手缺席/弃权时用,判后无法撤销。`)) return;
+    setJudging(m.id);
+    try {
+      await tournamentApi.judgeMatch(m.id, winnerId);
+      toast.success(`已判 ${winnerName} 晋级`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '判定失败');
+    } finally { setJudging(null); }
+  };
 
   return (
     <div className="space-y-5">
@@ -140,6 +155,28 @@ function TournamentBoard({ detail, onRefresh }: { detail: TournamentDetail; onRe
             <p className="text-amber-800/80 text-sm mt-1">🐎 黑马奖 · {detail.consolation_champion_name}</p>
           )}
         </motion.div>
+      )}
+
+      {/* 待打对局 + 手动判胜(缺席/弃权兜底,防止某场没人打导致赛程卡死) */}
+      {detail.status === 'running' && pending.length > 0 && (
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-sm font-semibold text-gray-700 mb-1">⏳ 待打对局 {pending.length} 场</p>
+          <p className="text-xs text-gray-400 mb-3">学生自己进 PK 大厅开打。若有人请假/缺席打不成,可手动判对方晋级,避免赛程卡住。</p>
+          <div className="space-y-2">
+            {pending.map(m => (
+              <div key={m.id} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-2">
+                <span className="text-[10px] text-gray-400 shrink-0">
+                  {STAGE_LABEL[m.stage]}{m.group_no ? `·${m.group_no}组` : ''}
+                </span>
+                <span className="flex-1 truncate text-gray-700">{m.p1_name} <span className="text-gray-300">vs</span> {m.p2_name}</span>
+                <button disabled={judging === m.id} onClick={() => judge(m, m.p1_id, m.p1_name)}
+                  className="shrink-0 text-xs px-2 py-1 rounded border border-gray-200 hover:bg-white text-gray-600 disabled:opacity-50">判{m.p1_name}胜</button>
+                <button disabled={judging === m.id} onClick={() => judge(m, m.p2_id!, m.p2_name)}
+                  className="shrink-0 text-xs px-2 py-1 rounded border border-gray-200 hover:bg-white text-gray-600 disabled:opacity-50">判{m.p2_name}胜</button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="flex items-center justify-between">

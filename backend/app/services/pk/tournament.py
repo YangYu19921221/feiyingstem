@@ -9,6 +9,7 @@
   一场打完立即检查:本轮全结束→自动生成下一轮;决赛结束→产生冠军收官
 """
 from __future__ import annotations
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -20,6 +21,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.pk_tournament import PkTournament, PkTournamentPlayer, PkTournamentMatch
 
 logger = logging.getLogger(__name__)
+
+# 赛事级进程内锁:record_match_result 的"写结果→查 pending→推进→提交"必须整体原子。
+# 两场对局几乎同时打完时,两个 DB 会话各自标记 finished 但都未提交,互相看不见对方,
+# 双双以为"还有别场没打完"跳过推进 → 赛程永久卡死(再无对局结束事件能触发它);
+# 反向时序则双双推进 → 下一轮生成两份。单 uvicorn worker 下 asyncio.Lock 足以串行化。
+_TOURNAMENT_LOCKS: dict[int, asyncio.Lock] = {}
+
+
+def _tournament_lock(tournament_id: int) -> asyncio.Lock:
+    lk = _TOURNAMENT_LOCKS.get(tournament_id)
+    if lk is None:
+        lk = asyncio.Lock()
+        _TOURNAMENT_LOCKS[tournament_id] = lk
+    return lk
 
 
 # ---------- 分组 ----------
@@ -112,10 +127,28 @@ async def record_match_result(
     room_db_id: Optional[int] = None,
 ) -> None:
     """一场对局打完:写结果 → 若整轮/整阶段完成则自动生成下一步。幂等(已 finished 直接跳过)。"""
+    tid = (await db.execute(
+        select(PkTournamentMatch.tournament_id).where(PkTournamentMatch.id == match_id)
+    )).scalar_one_or_none()
+    if tid is None:
+        return
+    async with _tournament_lock(tid):
+        await _record_match_result_locked(
+            db, match_id, winner_id=winner_id, stats=stats, room_db_id=room_db_id,
+        )
+
+
+async def _record_match_result_locked(
+    db: AsyncSession, match_id: int, *,
+    winner_id: int, stats: dict[int, dict], room_db_id: Optional[int],
+) -> None:
+    # populate_existing:调用方会话可能在锁外就加载过这行(expire_on_commit=False,
+    # identity map 会返回旧对象),必须强制刷新才能看到别的会话刚提交的 finished
     m = (await db.execute(
         select(PkTournamentMatch).where(PkTournamentMatch.id == match_id)
+        .execution_options(populate_existing=True)
     )).scalar_one_or_none()
-    if m is None or m.status == "finished":
+    if m is None or m.status != "pending":
         return
     m.status = "finished"
     m.winner_id = winner_id
@@ -151,9 +184,34 @@ async def record_match_result(
     await db.commit()
 
 
+async def ensure_advanced(db: AsyncSession, tournament_id: int) -> None:
+    """自愈:对 running 中的赛事补跑一次推进检查。
+
+    正常流转全靠"对局结束"事件触发推进;该事件若曾丢失(历史并发 bug、
+    回写异常被吞),赛程会停在"本轮全打完却没有下一轮"的死局——之后再无
+    任何事件能触发推进。挂在读赛事详情处,老师/学生刷新页面即可自动修复。
+    没卡时等价于几个只读查询,幂等、开销极小。
+    """
+    async with _tournament_lock(tournament_id):
+        t = (await db.execute(
+            select(PkTournament).where(PkTournament.id == tournament_id)
+            .execution_options(populate_existing=True)
+        )).scalar_one_or_none()
+        if t is None or t.status != "running":
+            return
+        await _advance(db, tournament_id)
+        await db.commit()
+
+
 async def _advance(db: AsyncSession, tournament_id: int) -> None:
-    """检查赛程:小组赛全完→生成淘汰赛(+安慰赛);某轮淘汰赛全完→生成下一轮;决赛完→收官。"""
-    t = (await db.execute(select(PkTournament).where(PkTournament.id == tournament_id))).scalar_one()
+    """检查赛程:小组赛全完→生成淘汰赛(+安慰赛);某轮淘汰赛全完→生成下一轮;决赛完→收官。
+
+    调用方必须已持有 _tournament_lock(见 record_match_result / ensure_advanced)。
+    """
+    t = (await db.execute(
+        select(PkTournament).where(PkTournament.id == tournament_id)
+        .execution_options(populate_existing=True)  # 会话可能在锁外加载过旧状态
+    )).scalar_one()
     if t.status == "finished":
         return
 
@@ -257,7 +315,19 @@ async def _advance_stage_rounds(db: AsyncSession, t: PkTournament) -> None:
         if any(m.status == "pending" for m in cur):
             all_done = False
             continue
-        winners = [m.winner_id for m in cur if m.winner_id]
+        # 用 p1_id 兜底 winner 为空的已结束对局:正常不会发生(记结果时必判胜者),
+        # 但若真出现(极端掉线时序),丢掉这条会让下一轮少一人、对阵错位。
+        # 宁可用 p1 补位保持对阵树完整,也不静默丢人。
+        winners = []
+        for m in cur:
+            if m.status == "bye":
+                winners.append(m.winner_id)
+            elif m.winner_id:
+                winners.append(m.winner_id)
+            elif m.p1_id:
+                logger.warning("对局 %d 已结束但无 winner_id,用 p1 兜底避免对阵树错位", m.id)
+                winners.append(m.p1_id)
+        winners = [w for w in winners if w]
         if len(winners) >= 2:
             _make_ko_round(db, t.id, stage, last_round + 1, winners)
             await db.flush()

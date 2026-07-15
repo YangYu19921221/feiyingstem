@@ -60,6 +60,10 @@ export default function FocusReminder({ nudge, block }: Props) {
     if (block) {
       clearTimeout(hideTimerRef.current);
       if (!blockShown) {
+        // 切屏(document.hidden)引起的 isIdle 不算"发呆":那是切屏事件的范畴,
+        // 由下面的 5 秒切屏逻辑单独判定和计数。这里只处理"页面还开着但 60 秒没动"
+        // 的真·发呆,否则每次切标签都会既记一次 switch 又记一次 distracted,双重污染。
+        if (document.hidden) return;
         blockShownAtRef.current = Date.now();
         setBlockShown(true);
         playChime();
@@ -79,6 +83,7 @@ export default function FocusReminder({ nudge, block }: Props) {
   // 输入法弹窗/瞬间切回这类 1-2 秒的假切屏不弹不计,免得误吓孩子、污染统计
   const [switchBack, setSwitchBack] = useState(false);
   const hiddenAtRef = useRef(0);
+  const switchHideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     const onVis = () => {
       if (document.hidden) {
@@ -90,12 +95,16 @@ export default function FocusReminder({ nudge, block }: Props) {
           reportFocusEvent('switch');
           setSwitchBack(true);
           playChime();
-          setTimeout(() => setSwitchBack(false), 3500);
+          clearTimeout(switchHideTimerRef.current);
+          switchHideTimerRef.current = setTimeout(() => setSwitchBack(false), 3500);
         }
       }
     };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      clearTimeout(switchHideTimerRef.current);
+    };
   }, []);
 
   return (

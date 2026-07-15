@@ -131,7 +131,9 @@ async def all_classes_checkins(
         if r.id not in name_map:
             name_map[r.id] = r.full_name or r.username
             stu_class[r.id] = r.class_id
-        class_members[r.class_id].add(r.id)
+            # 每个学生只归属首个班,by_class 与顶部汇总口径一致(都按人去重)——
+            # 否则一人多班时各班签到数相加会大于顶部"已签 X/Y",老师看着对不上
+            class_members[r.class_id].add(r.id)
 
     checkins = []
     if name_map:

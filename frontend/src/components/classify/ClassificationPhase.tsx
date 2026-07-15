@@ -232,7 +232,9 @@ export default function ClassificationPhase({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentIndex, isTransitioning, showRoundSummary, paused]);
+    // 依赖必须含所有 guard 条件:否则回顾卡/教程关闭(showFamiliarReview/showTutorial
+    // 变 false)后 effect 不重跑,倒计时不会恢复,当前词卡死不再自动判定
+  }, [currentIndex, isTransitioning, showRoundSummary, showFamiliarReview, showTutorial, paused]);
 
   // 关闭教程
   const dismissTutorial = () => {
