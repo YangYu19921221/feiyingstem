@@ -18,6 +18,7 @@ import {
   formatValue, unitOf, encourage,
 } from '../components/leaderboard/shared';
 import BindCodeDialog from '../components/leaderboard/BindCodeDialog';
+import { maskName, isLivePrivacyOn, setLivePrivacy } from '../utils/livePrivacy';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -35,6 +36,11 @@ const StudentLeaderboard = () => {
   const [loading, setLoading] = useState(true);
   const [bindCode, setBindCode] = useState<{ code: string; minutesLeft: number } | null>(null);
   const [genLoading, setGenLoading] = useState(false);
+  // 直播打码: 镜头对着排行榜时开启,全名 → "杨同学"(未成年人隐私红线)
+  const [privacy, setPrivacy] = useState(isLivePrivacyOn());
+  const togglePrivacy = () => setPrivacy(v => { setLivePrivacy(!v); return !v; });
+  const maskEntries = <T extends { full_name: string | null; username: string }>(arr: T[]): T[] =>
+    privacy ? arr.map(e => ({ ...e, full_name: maskName(e.full_name || e.username), username: '' })) : arr;
   const uid = myUserId();
 
   useEffect(() => {
@@ -72,7 +78,12 @@ const StudentLeaderboard = () => {
             <ArrowLeft className="w-4 h-4" />返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">🏆 光荣榜</h1>
-          <div className="w-12" />
+          <button onClick={togglePrivacy}
+            title="直播打码: 姓名显示为「杨同学」,镜头拍屏幕前开启"
+            className={`w-12 text-xs py-1 rounded-lg transition text-center ${
+              privacy ? 'bg-accent-warm text-white font-semibold' : 'text-ink-mute hover:text-ink'}`}>
+            {privacy ? '打码中' : '🎥'}
+          </button>
         </div>
       </nav>
 
@@ -128,10 +139,10 @@ const StudentLeaderboard = () => {
                 <motion.div key={`${kind}-${period}-${scope}-podium`}
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   transition={{ duration: 0.35, ease: EASE }}>
-                  <Podium top={data.top ?? []} kind={kind} myUserId={uid} />
+                  <Podium top={maskEntries(data.top ?? [])} kind={kind} myUserId={uid} />
                 </motion.div>
               </AnimatePresence>
-              <RankList top={data.top ?? []} neighbors={data.neighbors ?? []} kind={kind}
+              <RankList top={maskEntries(data.top ?? [])} neighbors={maskEntries(data.neighbors ?? [])} kind={kind}
                 myUserId={uid} myRank={data.my_rank} />
             </div>
 
