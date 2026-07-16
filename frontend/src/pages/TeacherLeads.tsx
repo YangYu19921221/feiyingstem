@@ -12,12 +12,28 @@ interface Lead {
   grade_level: string;
   avg_score: number;
   grade_label: string;
+  source: string | null;
   phone: string | null;
   phone_verified: boolean;
   converted: boolean;
   notes: string | null;
   created_at: string;
 }
+
+interface SourceStat {
+  source: string | null;
+  total: number;
+  phone_count: number;
+  converted_count: number;
+}
+
+// 渠道标识 → 展示名(直播/推广链接带 ?src=xxx)
+const SOURCE_META: Record<string, string> = {
+  douyin: '🎵 抖音',
+  shipinhao: '📺 视频号',
+  referral: '🤝 老带新',
+};
+const sourceLabel = (s: string | null) => (s ? SOURCE_META[s] || `🔗 ${s}` : '🌱 自然流量');
 
 const TeacherLeads = () => {
   const navigate = useNavigate();
@@ -28,30 +44,47 @@ const TeacherLeads = () => {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [phoneOnly, setPhoneOnly] = useState(false);
+  const [todayOnly, setTodayOnly] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [sourceStats, setSourceStats] = useState<SourceStat[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editNotes, setEditNotes] = useState('');
 
   const token = localStorage.getItem('access_token');
   const headers = { Authorization: `Bearer ${token}` };
 
-  useEffect(() => { loadLeads(); }, [page, phoneOnly]);
+  useEffect(() => { loadLeads(); }, [page, phoneOnly, todayOnly, sourceFilter]);
 
   const loadLeads = async () => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE_URL}/assessment/leads`, {
         headers,
-        params: { page, page_size: 20, phone_only: phoneOnly },
+        params: {
+          page, page_size: 20, phone_only: phoneOnly, today_only: todayOnly,
+          // 'none' = 只看不带渠道参数的自然流量
+          source: sourceFilter === null ? undefined : (sourceFilter || 'none'),
+        },
       });
       setLeads(res.data.leads);
       setTotal(res.data.total);
       setPhoneCount(res.data.phone_count ?? res.data.leads.filter((l: Lead) => l.phone_verified).length);
       setConvertedCount(res.data.converted_count ?? res.data.leads.filter((l: Lead) => l.converted).length);
+      setSourceStats(res.data.source_stats ?? []);
     } catch (error) {
       console.error('加载线索失败:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // 直播/推广专属测评链接(放小风车/私域,线索自动归渠道)
+  const copyChannelLink = (src: string, label: string) => {
+    const orgCode = new URLSearchParams(window.location.search).get('org');
+    const url = `${window.location.origin}/assessment?src=${src}${orgCode ? `&org=${orgCode}` : ''}`;
+    navigator.clipboard?.writeText(url)
+      .then(() => toast.success(`${label}链接已复制`))
+      .catch(() => toast.error('复制失败,请手动复制'));
   };
 
   const handleSaveNotes = async (id: number) => {
@@ -91,6 +124,10 @@ const TeacherLeads = () => {
             <h1 className="text-xl font-bold text-gray-800">测评线索管理</h1>
           </div>
           <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-orange-600">
+              <input type="checkbox" checked={todayOnly} onChange={e => { setTodayOnly(e.target.checked); setPage(1); }} className="rounded" />
+              只看今天(下播战报)
+            </label>
             <label className="flex items-center gap-2 text-sm text-gray-600">
               <input type="checkbox" checked={phoneOnly} onChange={e => { setPhoneOnly(e.target.checked); setPage(1); }} className="rounded" />
               只看留号
@@ -123,6 +160,53 @@ const TeacherLeads = () => {
           </div>
         </div>
 
+        {/* 分渠道战报: 直播下播直接看哪个平台成交强;点卡片过滤列表 */}
+        <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h3 className="text-sm font-bold text-gray-700">
+              📊 渠道战报{todayOnly ? '(今天)' : '(累计)'}
+            </h3>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400">复制推广链接:</span>
+              <button onClick={() => copyChannelLink('douyin', '抖音')} className="px-2.5 py-1 rounded-lg bg-gray-900 text-white hover:opacity-80">🎵 抖音</button>
+              <button onClick={() => copyChannelLink('shipinhao', '视频号')} className="px-2.5 py-1 rounded-lg bg-green-600 text-white hover:opacity-80">📺 视频号</button>
+              <button onClick={() => copyChannelLink('referral', '老带新')} className="px-2.5 py-1 rounded-lg bg-amber-500 text-white hover:opacity-80">🤝 老带新</button>
+            </div>
+          </div>
+          {sourceStats.length === 0 ? (
+            <p className="text-sm text-gray-300 text-center py-2">暂无数据——把渠道链接挂到直播间小风车,线索会自动分渠道</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setSourceFilter(null); setPage(1); }}
+                className={`px-3 py-2 rounded-xl text-sm border transition ${
+                  sourceFilter === null ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+              >
+                全部渠道
+              </button>
+              {sourceStats.map(s => {
+                const key = s.source ?? '';
+                const active = sourceFilter === key;
+                return (
+                  <button
+                    key={key || 'none'}
+                    onClick={() => { setSourceFilter(active ? null : key); setPage(1); }}
+                    className={`px-3 py-2 rounded-xl text-sm border transition text-left ${
+                      active ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-200'}`}
+                  >
+                    <span className={`font-semibold ${active ? 'text-indigo-700' : 'text-gray-700'}`}>{sourceLabel(s.source)}</span>
+                    <span className="ml-2 text-xs text-gray-500">
+                      测评 <b className="text-gray-800">{s.total}</b>
+                      <span className="mx-1">·</span>留号 <b className="text-green-600">{s.phone_count}</b>
+                      <span className="mx-1">·</span>转化 <b className="text-indigo-600">{s.converted_count}</b>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* 线索列表 */}
         <div className="bg-white rounded-2xl shadow-md overflow-hidden">
           {loading ? (
@@ -138,6 +222,7 @@ const TeacherLeads = () => {
               <thead>
                 <tr className="border-b-2 border-gray-200 bg-gray-50">
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">时间</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">渠道</th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">年级</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">评分</th>
                   <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">评级</th>
@@ -157,6 +242,7 @@ const TeacherLeads = () => {
                     <td className="py-3 px-4 text-sm text-gray-600">
                       {lead.created_at ? new Date(lead.created_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }) : '-'}
                     </td>
+                    <td className="py-3 px-4 text-xs text-gray-600 whitespace-nowrap">{sourceLabel(lead.source)}</td>
                     <td className="py-3 px-4 text-sm">{lead.grade_level || '-'}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`font-bold ${lead.avg_score >= 80 ? 'text-green-600' : lead.avg_score >= 60 ? 'text-blue-600' : 'text-red-500'}`}>

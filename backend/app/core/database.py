@@ -273,6 +273,8 @@ async def init_db():
             # 学习效率功能: AI记忆钩子缓存列 + 学生实际输入(拼写诊断数据地基)
             "ALTER TABLE words ADD COLUMN memory_hook TEXT",
             "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",
+            # 测评线索渠道来源: 直播/推广链接带 ?src=douyin|shipinhao|referral,下播看分渠道战报
+            "ALTER TABLE assessment_leads ADD COLUMN source VARCHAR(30)",
         ]:
             try:
                 await conn.execute(text(_sql))

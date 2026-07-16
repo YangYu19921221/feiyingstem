@@ -46,8 +46,8 @@ export interface DeepReport {
   focus_words: string[];
 }
 
-export const startAssessment = (grade_level: string, org_code?: string) =>
-  api('/start', { method: 'POST', body: JSON.stringify({ grade_level, org_code: org_code || undefined }) });
+export const startAssessment = (grade_level: string, org_code?: string, source?: string) =>
+  api('/start', { method: 'POST', body: JSON.stringify({ grade_level, org_code: org_code || undefined, source: source || undefined }) });
 
 export const evaluateWord = async (sessionId: string, word: string, audioBlob: Blob) => {
   const form = new FormData();

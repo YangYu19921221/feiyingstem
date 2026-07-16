@@ -6,8 +6,8 @@ import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc
-from datetime import datetime
+from sqlalchemy import select, func, and_, desc, case
+from datetime import datetime, timedelta
 from typing import Optional
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,7 @@ MAX_AUDIO_SIZE = 5 * 1024 * 1024
 class StartRequest(BaseModel):
     grade_level: str = Field("小学", description="年级: 小学/初中/高中")
     org_code: str | None = Field(None, description="机构码(多租户): 测评链接带 ?org=机构码,线索归属该机构")
+    source: str | None = Field(None, max_length=30, description="渠道来源: 直播/推广链接带 ?src=douyin|shipinhao|referral")
 
 class ReportRequest(BaseModel):
     session_id: str
@@ -106,7 +107,9 @@ async def start_assessment(
     from app.services.org_service import resolve_org_code
     lead_org_id = await resolve_org_code(db, data.org_code)
 
-    lead = AssessmentLead(session_id=session_id, grade_level=data.grade_level, org_id=lead_org_id)
+    # 渠道来源: 只留干净的短标识(去空白截断),空串归 None = 自然流量
+    source = (data.source or "").strip()[:30] or None
+    lead = AssessmentLead(session_id=session_id, grade_level=data.grade_level, org_id=lead_org_id, source=source)
     db.add(lead)
     await db.commit()
 
@@ -300,26 +303,61 @@ async def get_leads(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     phone_only: bool = Query(False),
+    source: Optional[str] = Query(None, max_length=30, description="按渠道过滤: douyin/shipinhao/referral;'none'=自然流量"),
+    today_only: bool = Query(False, description="只看今天(北京时间),直播下播看战报用"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取测评线索列表"""
+    """获取测评线索列表 + 分渠道战报(测评/留号/转化)"""
     query = select(AssessmentLead).order_by(desc(AssessmentLead.created_at))
     count_query = select(func.count(AssessmentLead.id))
+
+    # created_at 是 SQLite CURRENT_TIMESTAMP(UTC),"今天"按北京时间换算回 UTC 边界
+    today_start_utc = None
+    if today_only:
+        now_bj = datetime.utcnow() + timedelta(hours=8)
+        today_start_utc = datetime(now_bj.year, now_bj.month, now_bj.day) - timedelta(hours=8)
+        query = query.where(AssessmentLead.created_at >= today_start_utc)
+        count_query = count_query.where(AssessmentLead.created_at >= today_start_utc)
 
     if phone_only:
         query = query.where(AssessmentLead.phone_verified == True)
         count_query = count_query.where(AssessmentLead.phone_verified == True)
 
+    if source:
+        # 'none' = 链接不带渠道参数的自然流量
+        source_cond = AssessmentLead.source.is_(None) if source == "none" else AssessmentLead.source == source
+        query = query.where(source_cond)
+        count_query = count_query.where(source_cond)
+
     total = (await db.execute(count_query)).scalar() or 0
 
-    # 聚合统计
+    # 聚合统计(跟随今日开关,不跟随列表过滤——战报永远看全渠道漏斗)
+    agg_conds = [AssessmentLead.created_at >= today_start_utc] if today_start_utc else []
     phone_count = (await db.execute(
-        select(func.count(AssessmentLead.id)).where(AssessmentLead.phone_verified == True)
+        select(func.count(AssessmentLead.id)).where(AssessmentLead.phone_verified == True, *agg_conds)
     )).scalar() or 0
     converted_count = (await db.execute(
-        select(func.count(AssessmentLead.id)).where(AssessmentLead.converted == True)
+        select(func.count(AssessmentLead.id)).where(AssessmentLead.converted == True, *agg_conds)
     )).scalar() or 0
+
+    # 分渠道战报: 每个渠道的 测评数/留号数/转化数(直播下播直接看哪个平台强)
+    stats_query = select(
+        AssessmentLead.source,
+        func.count(AssessmentLead.id),
+        func.sum(case((AssessmentLead.phone_verified == True, 1), else_=0)),
+        func.sum(case((AssessmentLead.converted == True, 1), else_=0)),
+    ).group_by(AssessmentLead.source)
+    if agg_conds:
+        stats_query = stats_query.where(*agg_conds)
+    stats_rows = (await db.execute(stats_query)).all()
+    source_stats = sorted(
+        [
+            {"source": row[0], "total": row[1], "phone_count": int(row[2] or 0), "converted_count": int(row[3] or 0)}
+            for row in stats_rows
+        ],
+        key=lambda s: s["total"], reverse=True,
+    )
 
     leads = (await db.execute(
         query.offset((page - 1) * page_size).limit(page_size)
@@ -328,6 +366,7 @@ async def get_leads(
     return {
         "total": total, "page": page, "page_size": page_size,
         "phone_count": phone_count, "converted_count": converted_count,
+        "source_stats": source_stats,
         "leads": [
             {
                 "id": l.id,
@@ -335,6 +374,7 @@ async def get_leads(
                 "grade_level": l.grade_level,
                 "avg_score": l.avg_score,
                 "grade_label": l.grade_label,
+                "source": l.source,
                 "phone": l.phone,
                 "phone_verified": l.phone_verified,
                 "converted": l.converted,
