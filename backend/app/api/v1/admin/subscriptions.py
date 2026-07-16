@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.user import User, RedemptionCode, RedemptionCodeStatus
 from app.models.word import WordBook
-from app.api.v1.auth import get_current_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
     RedemptionCodeResponse,
@@ -26,14 +26,36 @@ router = APIRouter()
 @router.post("/generate", response_model=list[RedemptionCodeResponse])
 async def generate_codes(
     req: RedemptionCodeGenerate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """批量生成兑换码"""
-    # 检查单词本是否存在
+    """批量生成兑换码。
+
+    机构管理员: 发码总量与学生配额对等——累计已发(未禁用)不得超过 student_quota,
+    防止用兑换码绕过名额;删除/禁用的码归还额度。平台 admin 不限。
+    """
+    # 检查单词本是否存在(org_admin 受租户过滤: 只能选平台共享库或本机构自建)
     book = await db.get(WordBook, req.book_id)
     if not book:
         raise HTTPException(status_code=400, detail="指定的单词本不存在")
+
+    if current_user.role == "org_admin":
+        from app.services.org_service import get_org
+        org = await get_org(db, current_user.org_id)
+        quota = org.student_quota if org else 0
+        issued = (await db.execute(
+            select(func.count(RedemptionCode.id)).where(
+                RedemptionCode.created_by.in_(
+                    select(User.id).where(User.org_id == current_user.org_id)
+                ),
+                RedemptionCode.status != RedemptionCodeStatus.DISABLED,
+            )
+        )).scalar() or 0
+        if issued + req.count > quota:
+            raise HTTPException(
+                status_code=403,
+                detail=f"兑换码额度不足: 已发 {issued}/{quota}(与学生名额对等),本次申请 {req.count} 个超出上限",
+            )
 
     codes = await subscription_service.batch_generate_codes(
         db=db,
@@ -68,12 +90,17 @@ async def list_codes(
     status: Optional[str] = Query(None, description="按状态筛选"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """兑换码列表（分页+筛选）"""
+    """兑换码列表（分页+筛选;机构管理员只见本机构发的码）"""
     query = select(RedemptionCode)
     count_query = select(func.count(RedemptionCode.id))
+
+    if current_user.role == "org_admin":
+        org_users = select(User.id).where(User.org_id == current_user.org_id)
+        query = query.where(RedemptionCode.created_by.in_(org_users))
+        count_query = count_query.where(RedemptionCode.created_by.in_(org_users))
 
     if status:
         query = query.where(RedemptionCode.status == status)
@@ -120,40 +147,34 @@ async def list_codes(
 
 @router.get("/stats", response_model=SubscriptionStatsResponse)
 async def subscription_stats(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """兑换码统计"""
-    # 兑换码统计
-    total_q = await db.execute(select(func.count(RedemptionCode.id)))
+    """兑换码统计(机构管理员只统计本机构发的码)"""
+    base_cond = []
+    if current_user.role == "org_admin":
+        org_users = select(User.id).where(User.org_id == current_user.org_id)
+        base_cond.append(RedemptionCode.created_by.in_(org_users))
+
+    def _q(*conds):
+        stmt = select(func.count(RedemptionCode.id))
+        for c in [*base_cond, *conds]:
+            stmt = stmt.where(c)
+        return stmt
+
+    total_q = await db.execute(_q())
     total = total_q.scalar() or 0
 
-    unused_q = await db.execute(
-        select(func.count(RedemptionCode.id)).where(
-            RedemptionCode.status == RedemptionCodeStatus.UNUSED
-        )
-    )
+    unused_q = await db.execute(_q(RedemptionCode.status == RedemptionCodeStatus.UNUSED))
     unused = unused_q.scalar() or 0
 
-    used_q = await db.execute(
-        select(func.count(RedemptionCode.id)).where(
-            RedemptionCode.status == RedemptionCodeStatus.USED
-        )
-    )
+    used_q = await db.execute(_q(RedemptionCode.status == RedemptionCodeStatus.USED))
     used = used_q.scalar() or 0
 
-    expired_q = await db.execute(
-        select(func.count(RedemptionCode.id)).where(
-            RedemptionCode.status == RedemptionCodeStatus.EXPIRED
-        )
-    )
+    expired_q = await db.execute(_q(RedemptionCode.status == RedemptionCodeStatus.EXPIRED))
     expired_codes = expired_q.scalar() or 0
 
-    disabled_q = await db.execute(
-        select(func.count(RedemptionCode.id)).where(
-            RedemptionCode.status == RedemptionCodeStatus.DISABLED
-        )
-    )
+    disabled_q = await db.execute(_q(RedemptionCode.status == RedemptionCodeStatus.DISABLED))
     disabled = disabled_q.scalar() or 0
 
     return SubscriptionStatsResponse(
@@ -168,7 +189,7 @@ async def subscription_stats(
 @router.post("/codes/{code_id}/disable")
 async def disable_code(
     code_id: int,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """禁用兑换码"""
@@ -178,6 +199,14 @@ async def disable_code(
     code = result.scalar_one_or_none()
     if not code:
         raise HTTPException(status_code=404, detail="兑换码不存在")
+
+    # 机构管理员只能操作本机构发的码(按不存在处理,不泄露)
+    if current_user.role == "org_admin":
+        creator_org = (await db.execute(
+            select(User.org_id).where(User.id == code.created_by)
+        )).scalar()
+        if creator_org != current_user.org_id:
+            raise HTTPException(status_code=404, detail="兑换码不存在")
 
     if code.status == RedemptionCodeStatus.USED:
         raise HTTPException(status_code=400, detail="已使用的兑换码无法禁用")

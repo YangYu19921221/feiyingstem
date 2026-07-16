@@ -173,6 +173,7 @@ export default function OrgAdminDashboard() {
             { icon: '📊', title: '班级数据', desc: '学习统计与名册', path: '/admin/classes' },
             { icon: '📈', title: '数据统计', desc: '本机构使用情况', path: '/admin/statistics' },
             { icon: '🏆', title: '单词比赛', desc: '赛事排行与概览', path: '/admin/competition' },
+            { icon: '🎫', title: '兑换码', desc: '发码上限=学生名额', path: '/admin/subscriptions' },
             { icon: '📚', title: '词库浏览', desc: '平台词库(只读)', path: '/admin/content' },
           ].map(card => (
             <button

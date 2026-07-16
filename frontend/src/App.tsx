@@ -832,7 +832,7 @@ function App() {
         <Route
           path="/admin/subscriptions"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminSubscriptions />
             </ProtectedRoute>
           }
