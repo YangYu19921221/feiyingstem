@@ -11,6 +11,7 @@ class LearningRecord(Base):
     learning_mode = Column(String(20))
     is_correct = Column(Boolean)
     time_spent = Column(Integer)
+    user_answer = Column(String(100), nullable=True)  # 学生实际输入(答错时),拼写错误模式诊断用
     created_at = Column(DateTime, server_default=func.now())
 
 class WordMastery(Base):

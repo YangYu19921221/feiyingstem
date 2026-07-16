@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
+import client from '../../api/client';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
 import AutoFitText from '../AutoFitText';
@@ -95,6 +96,14 @@ export default function ClassificationPhase({
   const [familiarBuffer, setFamiliarBuffer] = useState<WordData[]>([]); // 待回顾的熟悉词
   const [showFamiliarReview, setShowFamiliarReview] = useState(false);   // 显示回顾卡
   const [reviewWords, setReviewWords] = useState<WordData[]>([]);        // 本次回顾的词
+  // 回顾卡类型: familiar=熟悉词确认(绿) / struggle=连错消化卡(橙,先记一记再继续)
+  const [reviewKind, setReviewKind] = useState<'familiar' | 'struggle'>('familiar');
+  // 连错缩组: 连续标"陌生"的词,攒到3个立即弹消化卡——防止状态差时硬灌,后面全是无效曝光
+  const unknownStreakRef = useRef<WordData[]>([]);
+  // AI记忆妙招: 带 wordId 存储——响应飞行中若倒计时切了词,渲染时按词校验,
+  // 晚到的响应不会把上一个词的妙招挂到新词上(也因此无需"切词清空"的effect)
+  const [memoryHook, setMemoryHook] = useState<{ wordId: number; text: string } | null>(null);
+  const [hookLoading, setHookLoading] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -109,9 +118,10 @@ export default function ClassificationPhase({
 
   const currentWord = roundWords[currentIndex];
 
-  // 循环播放发音(走神/切屏暂停时停播,人回来自动续上)
+  // 循环播放发音(走神/切屏暂停时停播,人回来自动续上;
+  // 回顾/消化卡打开时也停——弹卡前 index 已+1,不停会循环播孩子还没见过的下一词)
   useEffect(() => {
-    if (!currentWord || showRoundSummary || showTutorial || paused) return;
+    if (!currentWord || showRoundSummary || showTutorial || showFamiliarReview || paused) return;
 
     const t = setTimeout(() => {
       playAudio(currentWord.word, 1, currentWord.id);
@@ -134,7 +144,7 @@ export default function ClassificationPhase({
       // 上一个词还没被 token 作废、fetch 返回后会照样播出来,造成与新词重叠/听到旧词。
       stopAudio?.();
     };
-  }, [currentIndex, currentWord, playAudio, stopAudio, showRoundSummary, paused]);
+  }, [currentIndex, currentWord, playAudio, stopAudio, showRoundSummary, showFamiliarReview, paused]);
 
   // 一轮结束时的处理
   const handleRoundEnd = useCallback((newResults: Map<number, WordCategory>) => {
@@ -170,6 +180,7 @@ export default function ClassificationPhase({
         setTimeLeft(getClassifyTime(errorWords[0]?.word));
         setShowRoundSummary(false);
         setFamiliarBuffer([]); // 新一轮清空熟悉词缓冲
+        unknownStreakRef.current = []; // 连错计数不跨轮:残留会让下一轮首个陌生词就误弹消化卡
         roundEndedRef.current = false; // 新一轮解锁
       }, 2000);
     }
@@ -197,15 +208,35 @@ export default function ClassificationPhase({
     transitionTimeoutRef.current = setTimeout(() => {
       const isLastInRound = currentIndex + 1 >= roundWords.length;
 
-      // 只有当前词标为熟悉才检查是否触发回顾
-      if (category === 'familiar' && newBuffer.length >= FAMILIAR_REVIEW_EVERY && !isLastInRound) {
-        setReviewWords([...newBuffer]);
-        setFamiliarBuffer([]);
+      // 打断卡通用推进: 切到下一词并弹回顾/消化卡(两种卡同一套推进样板,别再抄第三份)
+      const advanceWithReviewCard = (kind: 'familiar' | 'struggle', words: WordData[]) => {
+        setReviewWords(words);
+        setReviewKind(kind);
         setCurrentIndex(currentIndex + 1);
         setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
         setIsTransitioning(false);
         lockRef.current = false;
         setShowFamiliarReview(true);
+      };
+
+      // 连错消化: 连续3个"陌生"先停一停,把这3个词摆出来记一记再继续
+      // (状态差时继续硬灌只是无效曝光)
+      if (category === 'unknown') {
+        unknownStreakRef.current = [...unknownStreakRef.current, currentWord];
+      } else {
+        unknownStreakRef.current = [];
+      }
+      if (category === 'unknown' && unknownStreakRef.current.length >= 3 && !isLastInRound) {
+        const streak = [...unknownStreakRef.current];
+        unknownStreakRef.current = [];
+        advanceWithReviewCard('struggle', streak);
+        return;
+      }
+
+      // 只有当前词标为熟悉才检查是否触发回顾
+      if (category === 'familiar' && newBuffer.length >= FAMILIAR_REVIEW_EVERY && !isLastInRound) {
+        setFamiliarBuffer([]);
+        advanceWithReviewCard('familiar', [...newBuffer]);
         return;
       }
 
@@ -235,6 +266,20 @@ export default function ClassificationPhase({
   useEffect(() => {
     timeLeftRef.current = timeLeft;
   }, [timeLeft]);
+
+  const fetchMemoryHook = useCallback(async () => {
+    if (!currentWord || hookLoading) return;
+    const wordId = currentWord.id;
+    setHookLoading(true);
+    try {
+      const r = await client.post<{ hook: string }>(`/ai/memory-hook/${wordId}`);
+      setMemoryHook({ wordId, text: r.hook });
+    } catch (e: any) {
+      setMemoryHook({ wordId, text: e?.response?.data?.detail || '妙招获取失败,先靠自己记~' });
+    } finally {
+      setHookLoading(false);
+    }
+  }, [currentWord, hookLoading]);
 
   // 键盘快捷键: 1=熟悉, 2=夹生, 3=陌生, 空格=播放发音
   useEffect(() => {
@@ -287,6 +332,7 @@ export default function ClassificationPhase({
 
   // ── 熟悉词快速回顾卡 ──────────────────────────────────────
   if (showFamiliarReview) {
+    const isStruggle = reviewKind === 'struggle';
     return (
       <div className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-center px-4">
         <motion.div
@@ -295,14 +341,18 @@ export default function ClassificationPhase({
           className="bg-white rounded-3xl shadow-lg p-6 w-full max-w-md"
         >
           <div className="text-center mb-4">
-            <div className="text-4xl mb-2">👀</div>
-            <h3 className="text-lg font-bold text-gray-800">快速回顾一下</h3>
-            <p className="text-sm text-gray-400 mt-1">你标记了 {reviewWords.length} 个熟悉的词，确认都认识吗？</p>
+            <div className="text-4xl mb-2">{isStruggle ? '🍵' : '👀'}</div>
+            <h3 className="text-lg font-bold text-gray-800">{isStruggle ? '别急,先记一记' : '快速回顾一下'}</h3>
+            <p className="text-sm text-gray-400 mt-1">
+              {isStruggle
+                ? `这 ${reviewWords.length} 个词有点难,看一眼意思再继续`
+                : `你标记了 ${reviewWords.length} 个熟悉的词，确认都认识吗？`}
+            </p>
           </div>
 
           <div className="space-y-3 mb-6">
             {reviewWords.map(w => (
-              <div key={w.id} className="flex items-center justify-between bg-green-50 rounded-xl px-4 py-3">
+              <div key={w.id} className={`flex items-center justify-between rounded-xl px-4 py-3 ${isStruggle ? 'bg-orange-50' : 'bg-green-50'}`}>
                 <span className="font-bold text-gray-800 text-lg">{w.word}</span>
                 <span className="text-gray-500 text-sm">{w.meaning}</span>
               </div>
@@ -315,7 +365,7 @@ export default function ClassificationPhase({
             onClick={() => setShowFamiliarReview(false)}
             className="w-full py-3 bg-primary text-white rounded-2xl font-bold text-lg shadow-lg"
           >
-            认识，继续 →
+            {isStruggle ? '记住了,继续 →' : '认识，继续 →'}
           </motion.button>
         </motion.div>
       </div>
@@ -510,6 +560,23 @@ export default function ClassificationPhase({
                   )}
                   {currentWord.meaning}
                 </p>
+              )}
+
+              {/* AI记忆妙招: 第2轮起(这个词已经错过一次)可点——难词才给钩子,好词不打扰 */}
+              {round >= 2 && (
+                memoryHook?.wordId === currentWord.id ? (
+                  <div className="mb-3 px-4 py-2 bg-purple-50 rounded-xl text-left text-sm text-purple-700">
+                    💡 {memoryHook.text}
+                  </div>
+                ) : (
+                  <button
+                    onClick={fetchMemoryHook}
+                    disabled={hookLoading}
+                    className="mb-3 text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200 transition disabled:opacity-60"
+                  >
+                    {hookLoading ? '妙招生成中…' : '💡 记忆妙招'}
+                  </button>
+                )
               )}
 
               {currentWord.example_sentence && (

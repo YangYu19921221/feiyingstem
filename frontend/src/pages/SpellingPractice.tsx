@@ -12,6 +12,7 @@ const SpellingPractice = () => {
   const { unitId } = useParams<{ unitId: string }>();
   const { playAudio } = useAudio();
   const hiddenInputRef = useRef<HTMLInputElement>(null);
+  const firstWrongInputRef = useRef<string>('');  // 本题首次错误输入(抄写3遍后随记录上报)
 
   const { questions, unitInfo, unitWords, loading } = usePracticeQuestions({
     unitId,
@@ -78,7 +79,7 @@ const SpellingPractice = () => {
         setCopyDoneCount(nextDone);
         if (nextDone >= COPY_REQUIRED) {
           // 抄完三遍 → 真正进入"已答完"状态，让 PracticeLayout 的反馈卡出现并允许下一题
-          recordAnswer(false);
+          recordAnswer(false, firstWrongInputRef.current || undefined);
         } else {
           // 还差几遍：清空输入、保持答案可见，重新让用户写
           setTimeout(() => {
@@ -108,6 +109,7 @@ const SpellingPractice = () => {
       recordAnswer(true);
     } else {
       // 错一次就进抄写模式，亮答案、清输入、要求抄 3 遍
+      firstWrongInputRef.current = input;  // 记住首次错误输入(拼写诊断数据源)
       setShowCorrectAnswer(true);
       setCopyMode(true);
       setCopyDoneCount(0);

@@ -35,6 +35,15 @@ class AIService:
         expires_at = datetime.now() + timedelta(days=ttl_days)
         self.cache[key] = (value, expires_at)
 
+    async def generate_memory_hook(self, word: str, meaning: str, syllables: str | None = None) -> str:
+        """生成单词记忆钩子(谐音/词根/联想)。调用方负责缓存与限额。"""
+        prompt = f"""为中小学生生成单词记忆法。单词: {word}({meaning})
+音节: {syllables or '无'}
+
+要求: 用谐音联想、词根拆解或荒诞画面联想中最适合这个词的一种,一两句话,
+生动好记、适合孩子,不要解释方法论。直接输出记忆法文本,不要任何前缀。"""
+        return (await self._call_llm(prompt, max_tokens=150)).strip()
+
     async def generate_example_sentence(
         self,
         word: str,

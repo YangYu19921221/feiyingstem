@@ -477,7 +477,7 @@ const WordClassifyLearning = () => {
 
     setDictationResults(results);
     submitMistakesRealtime(
-      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string }))
+      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string, user_answer: r.userInput || undefined }))
     );
     saveGroupProgress(results);
     setPhase('exam');

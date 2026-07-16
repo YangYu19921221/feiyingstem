@@ -46,10 +46,15 @@ async def get_daily_plan(
         ))
     )).scalar() or 0
 
-    # 3) 今日已学词数(distinct,任何模式)与目标
+    # 3) 今日已学词数(distinct lower(word),与教师端学情口径一致——
+    #    单元隔离下同拼写多 word_id,按 word_id 算会虚高,学生端与老师端对不上)
     NEW_WORDS_TARGET = 10
+    from app.models.word import Word
     today_words = (await db.execute(
-        select(func.count(func.distinct(LearningRecord.word_id))).where(and_(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(LearningRecord)
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
             LearningRecord.user_id == current_user.id,
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,

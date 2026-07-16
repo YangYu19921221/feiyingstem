@@ -10,6 +10,7 @@ class Word(Base):
     phonetic = Column(String(100))
     syllables = Column(String(200))
     tts_text = Column(String(200))  # TTS发音文本，有缩写时填完整版如 "say hi to somebody"
+    memory_hook = Column(Text, nullable=True)  # AI记忆钩子(谐音/词根/联想),一词一次全平台缓存
     difficulty = Column(Integer, default=3)
     grade_level = Column(String(20))
     audio_url = Column(String(255))

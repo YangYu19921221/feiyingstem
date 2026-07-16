@@ -12,6 +12,8 @@ class WordAnswerCreate(BaseModel):
     is_correct: bool
     time_spent: int = Field(ge=0, description="答题用时(毫秒)")
     learning_mode: str = Field(description="学习模式: flashcard/quiz/spelling/fillblank")
+    # 学生实际输入(拼写/听写答错时携带): 拼写错误模式诊断的数据地基,选填兼容旧客户端
+    user_answer: Optional[str] = Field(default=None, max_length=100)
 
 
 class LearningRecordBatchCreate(BaseModel):

@@ -12,6 +12,7 @@ export interface WordAnswerCreate {
   is_correct: boolean;
   time_spent: number; // 毫秒
   learning_mode: string; // flashcard/quiz/spelling/fillblank
+  user_answer?: string; // 答错时的实际输入(拼写/听写),拼写错误模式诊断用
 }
 
 export interface LearningRecordBatchCreate {
@@ -94,14 +95,15 @@ export const createLearningRecords = async (
 export const submitMistakePracticeRecord = async (
   wordId: number,
   isCorrect: boolean,
+  userAnswer?: string,
 ): Promise<void> => {
   if (isCorrect) {
     // 答对 → 直接标记为已解决（mastery_level=4），移出待攻克
     await axios.delete(`${API_BASE_URL}/student/mistake-book/words/${wordId}`);
   } else {
-    // 答错 → 仅记录错误，不改变解决状态
+    // 答错 → 仅记录错误，不改变解决状态(拼写题型带上真实输入,供诊断)
     await axios.post(`${API_BASE_URL}/student/review-records`, {
-      records: [{ word_id: wordId, is_correct: false, learning_mode: 'quiz', time_spent: 0 }],
+      records: [{ word_id: wordId, is_correct: false, learning_mode: 'quiz', time_spent: 0, user_answer: userAnswer || undefined }],
     });
   }
 };

@@ -13,6 +13,7 @@ from typing import List, Dict, Optional
 import random
 import asyncio
 from app.core.database import get_db
+from app.api.v1.auth import get_current_user
 from app.services.ai_service import ai_service
 from app.models.word import Word, WordDefinition, Unit, UnitWord
 from app.utils.blank_sentence import blank_out, can_blank
@@ -106,6 +107,47 @@ class WeakPointsAnalysis(BaseModel):
 # ========================================
 # AI功能接口
 # ========================================
+
+# ---- AI记忆钩子: 一词一次全平台缓存(成本上界=词表大小),真实生成才计每日额度 ----
+
+@router.post("/memory-hook/{word_id}")
+async def get_memory_hook(
+    word_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """记忆钩子(谐音/词根/联想记忆法)。缓存命中不计额度;首次生成计入每日限额。"""
+    result = await db.execute(select(Word).where(Word.id == word_id))
+    word = result.scalar_one_or_none()
+    if not word:
+        raise HTTPException(status_code=404, detail="单词不存在")
+
+    # 全平台缓存命中: 零成本直接返回(词是平台共享资产,hook 同理,与 ai_cache 同思路)
+    if word.memory_hook:
+        return {"word": word.word, "hook": word.memory_hook, "cached": True}
+
+    # 通用AI限额: 只对真实生成计数
+    from app.services.ai_quota import check_and_consume
+    check_and_consume(current_user.id, "memory_hook", daily_limit=20)
+
+    # 取主释义给AI做素材
+    defn = (await db.execute(
+        select(WordDefinition).where(WordDefinition.word_id == word_id)
+        .order_by(WordDefinition.is_primary.desc()).limit(1)
+    )).scalar_one_or_none()
+
+    try:
+        hook = await ai_service.generate_memory_hook(
+            word.word, defn.meaning if defn else "", word.syllables)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"AI服务暂不可用: {e}")
+    if not hook:
+        raise HTTPException(status_code=503, detail="AI未返回内容")
+
+    word.memory_hook = hook  # 写入全平台缓存,之后所有学生免费复用
+    await db.commit()
+    return {"word": word.word, "hook": hook, "cached": False}
+
 
 @router.post("/generate-example", response_model=ExampleSentenceResponse)
 async def generate_example_sentence(

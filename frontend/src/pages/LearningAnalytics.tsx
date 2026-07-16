@@ -16,6 +16,7 @@ import {
 } from '../api/analytics';
 import { getWordTrends } from '../api/analytics';
 import WordTrendChart from '../components/WordTrendChart';
+import SpellingDiagnosisCard from '../components/SpellingDiagnosisCard';
 import StudentIdentityBadge from '../components/StudentIdentityBadge';
 
 const LearningAnalytics = () => {
@@ -307,6 +308,9 @@ const LearningAnalytics = () => {
             </div>
           </div>
         </motion.div>
+
+        {/* 拼写错误模式诊断(数据不足时自动隐藏) */}
+        <SpellingDiagnosisCard />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* 模式统计 */}

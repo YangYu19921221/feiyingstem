@@ -19,6 +19,11 @@ export interface MemoryCurveStats {
   total_learned: number;
   total_mastered: number;
   retention_rate: number;
+  /** 一周前学的词: 隔天复习过 vs 没复习 的保持率对比(样本不足时后端返回 null) */
+  retention_compare?: {
+    reviewed: { total: number; rate: number };
+    unreviewed: { total: number; rate: number };
+  } | null;
 }
 
 export interface ReviewWord {

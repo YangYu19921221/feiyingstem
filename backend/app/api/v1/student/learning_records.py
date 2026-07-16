@@ -171,7 +171,8 @@ async def create_learning_records(
             word_id=record_data.word_id,
             learning_mode=record_data.learning_mode,
             is_correct=record_data.is_correct,
-            time_spent=record_data.time_spent
+            time_spent=record_data.time_spent,
+            user_answer=record_data.user_answer,  # 答错时的实际输入,拼写诊断用
         )
         db.add(learning_record)
         created_records.append(learning_record)
@@ -618,6 +619,83 @@ async def get_review_due_words(
     return review_words
 
 
+@router.get("/spelling-diagnosis")
+async def get_spelling_diagnosis(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """拼写错误模式诊断: 聚类学生的真实错误输入,找出系统性混淆(如 ei/ie 不分)。
+
+    数据来自 learning_records.user_answer(答错时前端携带的实际输入),
+    比无差别刷错题精准——直接告诉孩子"你总栽在哪类字母组合"。
+    """
+    rows = (await db.execute(
+        select(LearningRecord.user_answer, Word.word)
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
+            LearningRecord.user_id == current_user.id,
+            LearningRecord.is_correct.is_(False),
+            LearningRecord.user_answer.isnot(None),
+            LearningRecord.user_answer != "",
+        ))
+        .order_by(LearningRecord.created_at.desc())
+        .limit(200)
+    )).all()
+
+    # 逐条对齐正确拼写与学生输入,提取"该写X写成了Y"的混淆对
+    from collections import defaultdict as _dd
+    stats: dict = _dd(lambda: {"count": 0, "examples": []})   # (expected, got) -> 计数+样例
+    analyzed = 0
+    for got_raw, expect_raw in rows:
+        expect = (expect_raw or "").strip().lower()
+        got = (got_raw or "").strip().lower()
+        if not expect or not got or got == expect:
+            continue
+        analyzed += 1
+        pair = _first_diff_chunk(expect, got)
+        if pair:
+            s = stats[pair]
+            s["count"] += 1
+            if expect not in s["examples"] and len(s["examples"]) < 3:
+                s["examples"].append(expect)
+
+    patterns = [
+        {
+            "expected": exp, "got": got, "count": s["count"],
+            "examples": s["examples"],
+            "tip": f"该写「{exp}」时写成了「{got}」,出现 {s['count']} 次",
+        }
+        for (exp, got), s in sorted(stats.items(), key=lambda kv: -kv[1]["count"])[:5]
+        if s["count"] >= 2  # 出现≥2次才算"模式",孤例不提
+    ]
+    return {
+        "analyzed_mistakes": analyzed,
+        "patterns": patterns,
+        "enough_data": analyzed >= 5,
+    }
+
+
+def _first_diff_chunk(expect: str, got: str) -> tuple | None:
+    """找出第一处差异的字符块(前后各扩1个字符做上下文),如 believe/beleive → ('ie','ei')。
+    简单双指针,不做完整编辑距离——诊断要的是'哪一小块写错',不是精确对齐。"""
+    # 掐头
+    i = 0
+    while i < len(expect) and i < len(got) and expect[i] == got[i]:
+        i += 1
+    # 去尾
+    j_e, j_g = len(expect), len(got)
+    while j_e > i and j_g > i and expect[j_e - 1] == got[j_g - 1]:
+        j_e -= 1
+        j_g -= 1
+    exp_chunk, got_chunk = expect[i:j_e], got[i:j_g]
+    if not exp_chunk and not got_chunk:
+        return None
+    # 差异块太长说明整词写错(不是局部混淆),不计入模式
+    if len(exp_chunk) > 4 or len(got_chunk) > 4:
+        return None
+    return (exp_chunk or "(漏写)", got_chunk or "(多写)")
+
+
 @router.get("/memory-curve-stats")
 async def get_memory_curve_stats(
     db: AsyncSession = Depends(get_db),
@@ -676,6 +754,14 @@ async def get_memory_curve_stats(
     stage_counts = defaultdict(int)
     graduated_count = 0
     mastered_count = 0
+    # 记忆保持率对比: 一周前学的词里,"隔天以上回头练过"(真复习) vs "再没碰过"
+    # 各自现在还记住多少。口径说明: 分桶用【练习行为的时间间隔】而非 review_stage——
+    # stage 每次答对就+1,同一节课连对两次也算 stage2,与掌握度同源会循环论证
+    # (未复习桶结构性≈0%,图就成了摆设)。间隔≥1天才算"复习过",与结果指标解耦。
+    week_ago = now - timedelta(days=7)
+    one_day = timedelta(days=1)
+    rt_reviewed = {"total": 0, "kept": 0}
+    rt_unreviewed = {"total": 0, "kept": 0}
 
     for m in all_mastery:
         stage = m.review_stage or 0
@@ -685,6 +771,16 @@ async def get_memory_curve_stats(
             graduated_count += 1
         if m.mastery_level >= 3:
             mastered_count += 1
+
+        if m.created_at and m.created_at <= week_ago:
+            spaced_practice = (
+                m.last_practiced_at is not None
+                and m.last_practiced_at - m.created_at >= one_day
+            )
+            bucket = rt_reviewed if spaced_practice else rt_unreviewed
+            bucket["total"] += 1
+            if (m.mastery_level or 0) >= 3:
+                bucket["kept"] += 1
 
         if m.next_review_at:
             # 今日待复习:到期 且 今天还没练过。刷过的词当天不再计入,
@@ -742,6 +838,13 @@ async def get_memory_curve_stats(
         "total_learned": total_learned,
         "total_mastered": mastered_count,
         "retention_rate": retention_rate,
+        # 两组样本都≥5才有统计意义,阈值只在后端一处,不足返回 null 前端自然不渲染
+        "retention_compare": {
+            "reviewed": {"total": rt_reviewed["total"],
+                         "rate": round(rt_reviewed["kept"] / rt_reviewed["total"] * 100)},
+            "unreviewed": {"total": rt_unreviewed["total"],
+                           "rate": round(rt_unreviewed["kept"] / rt_unreviewed["total"] * 100)},
+        } if rt_reviewed["total"] >= 5 and rt_unreviewed["total"] >= 5 else None,
     }
 
 
@@ -876,7 +979,8 @@ async def submit_review_records(
             word_id=record_data.word_id,
             learning_mode="review",
             is_correct=record_data.is_correct,
-            time_spent=record_data.time_spent
+            time_spent=record_data.time_spent,
+            user_answer=record_data.user_answer,  # 复习/错题练习的错误输入同样进诊断
         )
         db.add(learning_record)
 

@@ -47,6 +47,9 @@ export default function DictationPhase({
   const COPY_REQUIRED = copyRequired;
   // 只记录首次尝试结果
   const [firstAttemptResults, setFirstAttemptResults] = useState<Map<number, boolean>>(new Map());
+  // 首次答错时的真实输入(拼写错误模式诊断的数据源——之前结果里 userInput 写死成
+  // 正确拼写,整条诊断链对真实用户是死的)
+  const firstWrongInputsRef = useRef<Map<number, string>>(new Map());
   const [roundErrorWords, setRoundErrorWords] = useState<WordData[]>([]);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [roundCorrectCount, setRoundCorrectCount] = useState(0);
@@ -94,6 +97,10 @@ export default function DictationPhase({
       next.set(currentWord.id, correct);
       return next;
     });
+    // 首次答错的实际输入(只记一次,与首次结果同口径)
+    if (!correct && !firstWrongInputsRef.current.has(currentWord.id)) {
+      firstWrongInputsRef.current.set(currentWord.id, userInput.trim());
+    }
 
     if (!correct) {
       setRoundErrorWords(prev => {
@@ -107,11 +114,11 @@ export default function DictationPhase({
 
   const handleRoundEnd = useCallback(() => {
     if (roundErrorWords.length === 0) {
-      // 全部通过，构建结果（用首次记录）
+      // 全部通过，构建结果（用首次记录;答错过的词带首次真实输入,供拼写诊断)
       const results: DictationResult[] = words.map(w => ({
         wordId: w.id,
         word: w.word,
-        userInput: w.word,
+        userInput: firstWrongInputsRef.current.get(w.id) ?? w.word,
         isCorrect: firstAttemptResults.get(w.id) ?? true,
       }));
       onComplete(results);

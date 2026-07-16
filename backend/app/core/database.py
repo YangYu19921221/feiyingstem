@@ -148,12 +148,19 @@ async def init_db():
                     "learning_mode VARCHAR(20),"
                     "is_correct BOOLEAN,"
                     "time_spent INTEGER,"
+                    "user_answer VARCHAR(100),"
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                     "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,"
                     "FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE)"
                 ))
+                # 注: SELECT * 依赖两表列序一致;此重建仅在老库(带CHECK约束、尚无
+                # user_answer 列)上触发,重建后下方 ALTER 才加 user_answer——
+                # 但重建DDL已含该列,故 ALTER 会因列已存在被 except 吞掉,状态自洽
                 await conn.execute(text(
-                    "INSERT OR IGNORE INTO learning_records_new SELECT * FROM learning_records"
+                    "INSERT OR IGNORE INTO learning_records_new "
+                    "(id, user_id, word_id, learning_mode, is_correct, time_spent, created_at) "
+                    "SELECT id, user_id, word_id, learning_mode, is_correct, time_spent, created_at "
+                    "FROM learning_records"
                 ))
                 await conn.execute(text("DROP TABLE learning_records"))
                 await conn.execute(text("ALTER TABLE learning_records_new RENAME TO learning_records"))
@@ -263,6 +270,9 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_leaderboard_snapshots_org ON leaderboard_snapshots(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_competition_question_sets_org ON competition_question_sets(org_id)",
             "ALTER TABLE organizations ADD COLUMN logo_url VARCHAR(500)",
+            # 学习效率功能: AI记忆钩子缓存列 + 学生实际输入(拼写诊断数据地基)
+            "ALTER TABLE words ADD COLUMN memory_hook TEXT",
+            "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",
         ]:
             try:
                 await conn.execute(text(_sql))

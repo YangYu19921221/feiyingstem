@@ -107,7 +107,7 @@ export function usePracticeState({
     return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
   }, []);
 
-  const recordAnswer = useCallback((correct: boolean) => {
+  const recordAnswer = useCallback((correct: boolean, userAnswer?: string) => {
     setIsChecking(true);
     setIsCorrect(correct);
     setResults(prev => {
@@ -135,6 +135,8 @@ export function usePracticeState({
           is_correct: correct,
           time_spent: deltaSec * 1000,
           learning_mode: mode,
+          // 答错时的真实输入(拼写模式携带),拼写错误诊断的数据源
+          user_answer: !correct && userAnswer ? userAnswer : undefined,
         }],
       }).catch(() => {}); // 静默失败，不影响答题体验
     }

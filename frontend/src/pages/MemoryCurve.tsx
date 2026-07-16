@@ -429,6 +429,26 @@ const MemoryCurve = () => {
                 </div>
               ))}
             </div>
+
+            {/* 复习价值可视化: 复习过 vs 没复习 的保持率对比——让孩子看到复习的回报
+                (样本不足时后端返回 null,阈值只在后端一处) */}
+            {stats.retention_compare && (
+              <div className="mt-4 bg-white rounded-2xl border border-black/[0.05] px-5 py-4">
+                <div className="text-sm text-ink-soft mb-3">🧪 复习的魔力(一周前学的词,现在还记得多少)</div>
+                {[
+                  { label: '✅ 复习过的', c: stats.retention_compare.reviewed, color: 'bg-green-500' },
+                  { label: '😴 没复习的', c: stats.retention_compare.unreviewed, color: 'bg-gray-400' },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center gap-3 mb-2">
+                    <span className="text-sm w-24 shrink-0">{row.label}</span>
+                    <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full ${row.color}`} style={{ width: `${row.c.rate}%` }} />
+                    </div>
+                    <span className="text-sm font-semibold w-20 text-right">{row.c.rate}%({row.c.total}词)</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

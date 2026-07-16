@@ -152,7 +152,9 @@ const MistakePractice = () => {
     });
     const q = questions[currentIndex];
     if (q?.word_id) {
-      submitMistakePracticeRecord(q.word_id, correct).catch(() => {});
+      // 拼写题答错时带上真实输入(拼写错误诊断数据源)
+      const wrongInput = !correct && q.type === 'spelling' ? userInput.trim() : undefined;
+      submitMistakePracticeRecord(q.word_id, correct, wrongInput).catch(() => {});
     }
   };
 
