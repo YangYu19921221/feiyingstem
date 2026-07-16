@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import DailyPlanCard from '../components/DailyPlanCard';
 
 interface UserData {
   id: number;
@@ -145,6 +146,9 @@ const StudentDashboard = () => {
           </motion.div>
         )}
 
+        {/* 今日智能任务: 到期复习→错题闯关→新词,替孩子排好顺序 */}
+        <DailyPlanCard />
+
         {/* 快速开始 */}
         <div className="mb-8">
           <h3 className="text-lg font-bold text-gray-800 mb-4">快速开始</h3>
@@ -174,8 +178,9 @@ const StudentDashboard = () => {
         </div>
 
         <div className="grid md:grid-cols-2 gap-8">
-          {/* 我的单词本 */}
+          {/* 我的单词本(id 供今日任务卡"学新词"滚动定位) */}
           <motion.div
+            id="my-books"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.4 }}

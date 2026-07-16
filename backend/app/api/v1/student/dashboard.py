@@ -12,6 +12,80 @@ from app.api.v1.auth import get_current_student
 
 router = APIRouter()
 
+
+@router.get("/daily-plan")
+async def get_daily_plan(
+    current_user: User = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """今日智能任务: 把「到期复习 → 错题闯关 → 新词学习」编排成一条默认路径。
+
+    间隔重复的效果取决于"到期了有没有真的复习",而孩子自选时永远选新词跳过复习——
+    这里替他排好顺序,学生端只看到一个"开始今日任务"按钮。
+    数据全部来自既有表,无新增状态;done 口径服务端统一判定,前端只管渲染。
+    """
+    from app.models.learning import WordMastery, ChallengeReview
+
+    now = datetime.utcnow()
+    day_start, day_end = local_today_utc_range()
+
+    # 1) 记忆曲线到期复习词数(与 /student/review-due-count 同口径)
+    review_due = (await db.execute(
+        select(func.count(WordMastery.id)).where(and_(
+            WordMastery.user_id == current_user.id,
+            WordMastery.next_review_at.isnot(None),
+            WordMastery.next_review_at <= now,
+        ))
+    )).scalar() or 0
+
+    # 2) 错题闯关到期数
+    challenge_due = (await db.execute(
+        select(func.count(ChallengeReview.id)).where(and_(
+            ChallengeReview.user_id == current_user.id,
+            ChallengeReview.next_review_at <= now,
+        ))
+    )).scalar() or 0
+
+    # 3) 今日已学词数(distinct,任何模式)与目标
+    NEW_WORDS_TARGET = 10
+    today_words = (await db.execute(
+        select(func.count(func.distinct(LearningRecord.word_id))).where(and_(
+            LearningRecord.user_id == current_user.id,
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+    )).scalar() or 0
+
+    steps = [
+        {
+            "key": "review", "label": "记忆复习", "icon": "🧠",
+            "desc": f"{review_due} 个词到期待复习" if review_due else "今日无到期复习",
+            "count": review_due, "done": review_due == 0,
+            "route": "/student/memory-curve",
+        },
+        {
+            "key": "challenge", "label": "错题闯关", "icon": "⚔️",
+            "desc": f"{challenge_due} 个错词等你征服" if challenge_due else "错题全部消灭",
+            "count": challenge_due, "done": challenge_due == 0,
+            "route": "/student/mistake-challenge",
+        },
+        {
+            "key": "new", "label": "今日学词", "icon": "📚",
+            "desc": f"已学 {min(today_words, NEW_WORDS_TARGET)}/{NEW_WORDS_TARGET} 个",
+            "count": max(0, NEW_WORDS_TARGET - today_words),
+            "done": today_words >= NEW_WORDS_TARGET,
+            "route": "/dashboard",  # 前端跳"继续学习"入口(单元选择)
+        },
+    ]
+    all_done = all(s["done"] for s in steps)
+    return {
+        "steps": steps,
+        "all_done": all_done,
+        "today_words": today_words,
+        "target": NEW_WORDS_TARGET,
+    }
+
+
 @router.get("/stats")
 async def get_student_dashboard_stats(
     db: AsyncSession = Depends(get_db),
