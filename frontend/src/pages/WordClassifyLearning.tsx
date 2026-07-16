@@ -20,6 +20,7 @@ import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
 import { promoteReviewWords, demoteReviewWords } from '../utils/reviewTier';
 import ClassificationPhase, { type WordCategory } from '../components/classify/ClassificationPhase';
+import AchievementModal from '../components/AchievementModal';
 import FocusReminder from '../components/FocusReminder';
 import LiveRankBadge from '../components/LiveRankBadge';
 import usePresence from '../hooks/usePresence';
@@ -87,6 +88,8 @@ const WordClassifyLearning = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const isReviewRef = useRef(false);
+  // 组末提交后端返回的新解锁成就 → 弹窗庆祝(成就检查已下沉到后端提交必经之路)
+  const [newAchievements, setNewAchievements] = useState<any[] | null>(null);
   // 分类各轮已实时上报过"熟悉"正确记录的词:组末 saveGroupProgress 要跳过它们,防重复计
   const familiarSubmittedRef = useRef<Set<number>>(new Set());
 
@@ -556,15 +559,20 @@ const WordClassifyLearning = () => {
 
     try {
       // 复习/错题模式(unit 0):走专用 review-records(unit_id=0 会 404,存档全丢)
+      let resp: any;
       if (parseInt(unitId) === 0) {
-        await submitReviewRecords(records, takeSessionDelta());
+        resp = await submitReviewRecords(records, takeSessionDelta());
       } else {
-        await createLearningRecords({
+        resp = await createLearningRecords({
           unit_id: parseInt(unitId),
           learning_mode: 'classify',
           records,
           session_seconds: takeSessionDelta(),  // 日历时长用净活动增量,不受逐题 time_spent 影响
         });
+      }
+      // 后端在提交时顺带做了成就检查,有新解锁就弹窗
+      if (resp?.new_achievements?.length) {
+        setNewAchievements(resp.new_achievements);
       }
     } catch (e) {
       console.error('提交学习记录失败:', e);
@@ -762,6 +770,10 @@ const WordClassifyLearning = () => {
     <div className="min-h-screen bg-paper no-select">
       {/* 专注力提醒:30秒轻提醒 → 60秒全屏拦截(计时同步暂停);总结页不提醒 */}
       {phase !== 'summary' && <FocusReminder nudge={isNudge} block={isIdle} />}
+      {/* 新解锁成就弹窗(后端随组末提交返回) */}
+      {newAchievements && (
+        <AchievementModal achievements={newAchievements} onClose={() => setNewAchievements(null)} />
+      )}
       {/* 实时班级排名浮标(激励) */}
       <LiveRankBadge />
       {/* 顶部导航 */}

@@ -214,12 +214,19 @@ async def create_learning_records(
             f"flags={quality_result.get('flags')}, score={quality_result.get('score')}"
         )
 
+    # 成就检查挂在提交记录的必经之路: 任何学习模式落库都会触发,
+    # 不再依赖各模式前端记得跳"完成页"(此前只有填空练习会触发,分类/听写等主力模式成就永远不亮)。
+    # 批次≥10条才参与"满分/正确率"类判定,防止一两个词全对就白拿"满分时刻"。
+    new_achievements = await _check_achievements_safe(
+        db, user_id, total_correct, len(created_records))
+
     return {
         "success": True,
         "message": f"成功记录 {len(created_records)} 条学习数据",
         "total_records": len(created_records),
         "correct_count": total_correct,
         "wrong_count": total_wrong,
+        "new_achievements": new_achievements,
         "quality": {
             "score": quality_result.get("score", 50),
             "level": learning_quality_service.get_quality_level(quality_result.get("score", 50)),
@@ -227,6 +234,21 @@ async def create_learning_records(
             "suspicious": quality_result.get("suspicious", False)
         }
     }
+
+
+async def _check_achievements_safe(db, user_id: int, correct: int, total: int) -> list:
+    """检查并解锁成就,任何异常都不影响学习记录提交(成就是锦上添花)"""
+    try:
+        from app.api.v1.achievements import check_and_unlock_achievements, get_user_stats
+        stats = await get_user_stats(db, user_id)
+        # 小批次(实时错词上报等)不参与满分/正确率判定,只判词数/打卡类
+        score, tot = (correct, total) if total >= 10 else (None, None)
+        unlocked = await check_and_unlock_achievements(
+            db=db, user_id=user_id, stats=stats, test_score=score, test_total=tot)
+        return [u.model_dump() for u in unlocked]
+    except Exception as e:
+        logger.warning(f"成就检查失败(不影响提交): user_id={user_id}, {e}")
+        return []
 
 
 async def update_word_mastery(
@@ -884,6 +906,9 @@ async def submit_review_records(
         "total_records": len(data.records),
         "correct_count": total_correct,
         "wrong_count": total_wrong,
+        # 复习模式同样触发成就检查(打卡天数类成就主要靠这里和普通学习)
+        "new_achievements": await _check_achievements_safe(
+            db, user_id, total_correct, len(data.records)),
     }
 
 
