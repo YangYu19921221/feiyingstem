@@ -8,6 +8,9 @@ import api from '../api/client';
 import { toast } from '../components/Toast';
 import * as XLSX from 'xlsx';
 import { parseWordRows, type ParsedWord } from '../utils/excelWords';
+import { getErrorMessage } from '../utils/errorMessage';
+
+type PreviewUnit = { name: string; words: ParsedWord[] };
 
 const GRADE_OPTIONS = [
   '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
@@ -150,7 +153,7 @@ const TeacherBooks = () => {
       setRenameTarget(null);
       loadBooks();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '保存失败');
+      toast.error(getErrorMessage(err, '保存失败'));
     } finally {
       setRenaming(false);
     }
@@ -240,7 +243,7 @@ const TeacherBooks = () => {
     bookName: string;
     gradeLevel: string;
     volume: string;
-    units: { name: string; words: ParsedWord[] }[];
+    units: PreviewUnit[];
     skippedSheets: string[];
   }>(null);
 
@@ -249,9 +252,12 @@ const TeacherBooks = () => {
     if (!file) return;
     e.target.value = '';
     try {
+      // 大文件在主线程解析会卡一拍,先让提示绘制出来
+      toast.info('正在解析工作簿…');
+      await new Promise(r => setTimeout(r, 50));
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf);
-      const units: { name: string; words: ParsedWord[] }[] = [];
+      const units: PreviewUnit[] = [];
       const skippedSheets: string[] = [];
       for (const sheetName of wb.SheetNames) {
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheetName]);
@@ -264,7 +270,8 @@ const TeacherBooks = () => {
         return;
       }
       setImportPreview({
-        bookName: file.name.replace(/\.(xlsx|xls)$/i, '').trim(),
+        // 后端 book_name 限 100 字符,超长文件名(教辅下载常带一串后缀)先截掉
+        bookName: file.name.replace(/\.(xlsx|xls)$/i, '').trim().slice(0, 100),
         gradeLevel: '',
         volume: '',
         units,
@@ -277,10 +284,7 @@ const TeacherBooks = () => {
   };
 
   const handleImportConfirm = async () => {
-    if (!importPreview || !importPreview.bookName.trim()) {
-      toast.warning('请填写单词本名称');
-      return;
-    }
+    if (!importPreview) return;  // 空书名由按钮 disabled 兜住,这里只为 TS 收窄
     setImporting(true);
     try {
       const res: any = await api.post('/teacher/books/import-workbook', {
@@ -288,12 +292,17 @@ const TeacherBooks = () => {
         grade_level: importPreview.gradeLevel || null,
         volume: importPreview.volume || null,
         units: importPreview.units,
+      }, {
+        // 几千词的批量事务 + 服务器低配,默认 10s 会"假失败"(后端还在跑,
+        // 老师重试就撞 409/建出双份书)——给足余量
+        timeout: 120000,
       });
       toast.success(`「${res.book_name}」导入完成:${res.unit_count} 个单元,共 ${res.word_count} 个单词`);
       setImportPreview(null);
       loadBooks();
     } catch (error: any) {
-      toast.error(error?.response?.data?.detail || '导入失败,请重试');
+      // 422 时 detail 是数组,裸塞 toast 会触发 React #31 崩整页——必须走 getErrorMessage
+      toast.error(getErrorMessage(error, '导入失败,请重试'));
     } finally {
       setImporting(false);
     }
@@ -773,6 +782,7 @@ const TeacherBooks = () => {
                 <label className="block text-sm text-gray-600 mb-1">单词本名称 *</label>
                 <input
                   type="text"
+                  maxLength={100}
                   value={importPreview.bookName}
                   onChange={e => setImportPreview({ ...importPreview, bookName: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg"

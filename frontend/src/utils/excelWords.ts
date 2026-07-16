@@ -54,16 +54,20 @@ export function parseWordRows(rows: Record<string, unknown>[]): { words: ParsedW
   const ttsWanted = TTS_ALIASES.map(norm);
   const hasTtsColumn = headerKeys.some(k => ttsWanted.includes(k));
 
+  // 截断到与后端 schema/数据库列宽一致(word 100/音标 100/音节 200/发音 200/词性 20),
+  // 一格超长只损失尾巴,不会让整本导入被 422 拒掉
+  const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s) || undefined;
+
   const words: ParsedWord[] = [];
   for (const row of rows) {
     const word = pickCell(row, ['单词', 'word']);
     if (!word) continue;
     words.push({
-      word,
-      phonetic: pickCell(row, ['音标', 'phonetic']) || undefined,
-      syllables: normalizeSyllables(pickCell(row, ['音节', 'syllables', '音节划分']), word) || undefined,
-      tts_text: pickCell(row, TTS_ALIASES) || undefined,
-      part_of_speech: pickCell(row, ['词性', 'part_of_speech', '词类']) || undefined,
+      word: word.slice(0, 100),
+      phonetic: cut(pickCell(row, ['音标', 'phonetic']), 100),
+      syllables: cut(normalizeSyllables(pickCell(row, ['音节', 'syllables', '音节划分']), word), 200),
+      tts_text: cut(pickCell(row, TTS_ALIASES), 200),
+      part_of_speech: cut(pickCell(row, ['词性', 'part_of_speech', '词类']), 20),
       meaning: pickCell(row, ['释义', 'meaning', '意思', '中文释义']) || undefined,
       example_sentence: pickCell(row, ['例句', 'example', 'example_sentence']) || undefined,
       example_translation: pickCell(row, ['例句翻译', 'translation', 'example_translation', '例句中文']) || undefined,

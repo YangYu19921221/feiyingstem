@@ -731,7 +731,9 @@ async def batch_delete_words(
 @router.post("/batch-import", response_model=WordBatchImportResponse)
 async def batch_import_words(
     import_data: WordBatchImport,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    # 补鉴权: 此前无任何登录校验,任何人可全局覆盖单词库(/simplify 审查发现的存量洞)
+    current_user: User = Depends(get_current_teacher),
 ):
     """批量导入单词。
 

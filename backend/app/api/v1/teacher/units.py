@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, and_
 from typing import List
@@ -19,25 +19,45 @@ router = APIRouter()
 # 整本 Excel 一键导入
 # ========================================
 
+async def _fill_book_cover(book_id: int, name: str, grade_level: str | None, description: str | None):
+    """导入完成后在后台补 AI 封面(gpt-image-2 典型 10-20s,不能挡在事务路径上——
+    否则前端 10s 超时会看到'假失败',重试再撞 409/建出双份书)。失败保持纯色封面。"""
+    from app.core.database import AsyncSessionLocal
+    from app.services.image_service import generate_book_cover
+    try:
+        cover_url = await generate_book_cover(name=name, grade_level=grade_level, description=description)
+        if not cover_url:
+            return
+        async with AsyncSessionLocal() as session:
+            book = (await session.execute(
+                select(WordBook).where(WordBook.id == book_id)
+                .execution_options(skip_tenant_filter=True)  # 后台任务无请求上下文
+            )).scalars().first()
+            if book:
+                book.cover_url = cover_url
+                await session.commit()
+    except Exception:
+        pass  # 封面是锦上添花,失败不打扰导入结果
+
+
 @router.post("/books/import-workbook", status_code=status.HTTP_201_CREATED)
 async def import_workbook(
     data: WorkbookImportRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
     """整本 Excel 一键导入: 一次请求建好 单词本 → 全部单元 → 全部单词。
 
     书名=工作簿文件名、单元名=工作表名,由前端解析(复用单元内导入的列名
-    别名匹配)后整体上送。单一事务,任何一步失败整体回滚,不会留半本书。
+    别名匹配,utils/excelWords)后整体上送。单一事务,失败整体回滚不留半本书。
 
     全新书里每个单元都是空的,所以每行都是"新建词+挂链",不需要走
     _upsert_word 的三分支;同一工作表内重复拼写视为一词多音照样新建,
     与单元内 Excel 导入(force_new)行为一致。
+    字段清理(去空白/限长)由 WorkbookImport* schema 声明完成。
     """
-    book_name = data.book_name.strip()
-    if not book_name:
-        raise HTTPException(status_code=400, detail="单词本名称不能为空")
-
+    # 空工作表(目录/说明页)静默跳过,前端预览也同样过滤——保持宽容语义
     units_payload = [u for u in data.units if u.words]
     if not units_payload:
         raise HTTPException(status_code=400, detail="工作簿里没有可导入的单词(所有工作表都是空的?)")
@@ -45,71 +65,65 @@ async def import_workbook(
     if total_words > 20000:
         raise HTTPException(status_code=400, detail=f"单次最多导入 20000 词,当前 {total_words} 词,请拆分工作簿")
 
-    # 同名防呆: 同一老师建过同名书,大概率是重复导入
+    # 同名防呆: 同一老师建过同名书,大概率是重复导入(只拦自己,
+    # 同机构他师同名是合法常态,见 /simplify 深度审查结论)
     dup = (await db.execute(
         select(WordBook)
-        .where(WordBook.name == book_name, WordBook.created_by == current_user.id)
+        .where(WordBook.name == data.book_name, WordBook.created_by == current_user.id)
         .limit(1)
     )).scalars().first()
     if dup:
         raise HTTPException(
             status_code=409,
-            detail=f"你已创建过同名单词本「{book_name}」,请先改名/删除旧本,或改用单元内导入追加",
+            detail=f"你已创建过同名单词本「{data.book_name}」,请先改名/删除旧本,或改用单元内导入追加",
         )
 
-    # AI 封面与手动建本同款(生成失败自动降级纯色)
-    from app.services.image_service import generate_book_cover
-    cover_url = await generate_book_cover(
-        name=book_name, grade_level=data.grade_level, description=data.description,
-    )
-
     book = WordBook(
-        name=book_name,
+        name=data.book_name,
         description=data.description,
         grade_level=data.grade_level,
         volume=data.volume,
         is_public=True,
         cover_color="#FF6B6B",
-        cover_url=cover_url,
+        cover_url=None,  # AI 封面 commit 后台补(_fill_book_cover),不挡主路径
         created_by=current_user.id,
         # org_id 由 tenancy 写侧安全网打戳: 教师=本机构,与手动建本一致
     )
     db.add(book)
     await db.flush()
 
-    unit_summaries = []
     book_order = 0  # BookWord 全书连续排序
     for i, u in enumerate(units_payload):
         unit = Unit(
             book_id=book.id,
             unit_number=i + 1,
-            name=(u.name.strip() or f"Unit {i + 1}")[:100],
+            name=u.name,
             order_index=i,
             group_size=0,
         )
         db.add(unit)
         await db.flush()
 
-        items = [w for w in u.words if w.word and w.word.strip()]
         # 先批量建 Word 行,一次 flush 拿全 id,再挂释义和链接(比逐词 flush 快一个量级)
+        # 字段映射与 words.py:_create_new_word_row 保持同步(Word 模型加列时两处都要改)
         word_objs = [
             Word(
-                word=w.word.strip(),
+                word=w.word,
                 phonetic=w.phonetic or None,
                 syllables=w.syllables or None,
                 tts_text=w.tts_text or None,
                 difficulty=1,
                 grade_level=data.grade_level or "小学",
             )
-            for w in items
+            for w in u.words
         ]
         db.add_all(word_objs)
         await db.flush()
-        for j, (obj, w) in enumerate(zip(word_objs, items)):
+        for j, (obj, w) in enumerate(zip(word_objs, u.words)):
             db.add(WordDefinition(
                 word_id=obj.id,
                 part_of_speech=w.part_of_speech or "",
-                meaning=(w.meaning or w.word).strip(),
+                meaning=w.meaning or w.word,
                 example_sentence=w.example_sentence or None,
                 example_translation=w.example_translation or None,
                 is_primary=True,
@@ -118,20 +132,16 @@ async def import_workbook(
             db.add(BookWord(book_id=book.id, word_id=obj.id, order_index=book_order))
             book_order += 1
 
-        unit_summaries.append({
-            "unit_number": unit.unit_number,
-            "name": unit.name,
-            "word_count": len(items),
-        })
-
     await db.commit()
+    background_tasks.add_task(
+        _fill_book_cover, book.id, data.book_name, data.grade_level, data.description,
+    )
 
     return {
         "book_id": book.id,
         "book_name": book.name,
-        "unit_count": len(unit_summaries),
+        "unit_count": len(units_payload),
         "word_count": book_order,
-        "units": unit_summaries,
     }
 
 # ========================================
