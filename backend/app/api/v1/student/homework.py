@@ -276,6 +276,30 @@ async def submit_homework_attempt(
     if is_passed:
         assignment.status = 'completed'
         assignment.completed_at = datetime.utcnow()
+        # 同内容作业连带完成: 同一学生名下"同单元+同模式+同分组"的其他未完成作业,
+        # 且本次成绩也达到其目标分,一并标完成——老师重复布置同一单元(或先班级
+        # 作业后个人任务)时,学生一次达标不必再做第二遍(实案: 学生98分后另一份
+        # 同单元任务仍挂着)。跨作业只认"本次这份成绩",不回溯历史成绩。
+        dup_rows = (await db.execute(
+            select(HomeworkStudentAssignment, HomeworkAssignment)
+            .join(HomeworkAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+            .where(and_(
+                HomeworkStudentAssignment.student_id == current_user.id,
+                HomeworkStudentAssignment.id != assignment.id,
+                HomeworkStudentAssignment.status.in_(['pending', 'in_progress']),
+                HomeworkAssignment.unit_id == homework.unit_id,
+                HomeworkAssignment.learning_mode == homework.learning_mode,
+                HomeworkAssignment.group_index.is_(None) if homework.group_index is None
+                else HomeworkAssignment.group_index == homework.group_index,
+                HomeworkAssignment.is_closed.is_(False),
+            ))
+        )).all()
+        for dup_sa, dup_hw in dup_rows:
+            if request.score >= dup_hw.target_score:
+                dup_sa.status = 'completed'
+                dup_sa.completed_at = datetime.utcnow()
+                if request.score > (dup_sa.best_score or 0):
+                    dup_sa.best_score = request.score
     elif assignment.attempts_count >= homework.max_attempts:
         # 次数用完仍未达标:标记为"未达标结束",从学生待办消失(否则永远挂着成死局),
         # 教师端学生状态里标红,老师知道该找孩子单独辅导
