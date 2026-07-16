@@ -85,6 +85,35 @@ export default function AdminOrganizations() {
     qc.invalidateQueries({ queryKey: ['admin-orgs'] });
   };
 
+  const changeExpiry = async (org: Organization) => {
+    const cur = org.expires_at ? String(org.expires_at).slice(0, 10) : '';
+    const v = window.prompt(
+      `「${org.name}」服务有效期至(YYYY-MM-DD,当天仍可用,次日起自动停服;清空=永不过期):`,
+      cur,
+    );
+    if (v === null) return;
+    const trimmed = v.trim();
+    if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return alert('日期格式应为 YYYY-MM-DD');
+    try {
+      // 后端 datetime 字段: 传当天末尾时刻;清空走 clear_expires(datetime的null=未传不动)
+      await adminOrgApi.update(org.id, trimmed
+        ? { expires_at: `${trimmed}T23:59:59` }
+        : { clear_expires: true });
+      qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || '设置失败');
+    }
+  };
+
+  /** 到期状态: null=有效 */
+  const expiryBadge = (org: Organization) => {
+    if (!org.expires_at) return null;
+    const days = Math.floor((new Date(String(org.expires_at)).getTime() - Date.now()) / 86400000);
+    if (days < 0) return <span className="ml-1 text-xs text-red-500">已到期</span>;
+    if (days <= 14) return <span className="ml-1 text-xs text-orange-500">剩{days + 1}天</span>;
+    return null;
+  };
+
   const issueAdmin = async (org: Organization) => {
     const username = window.prompt(`给「${org.name}」开机构管理员账号,输入用户名:`);
     if (!username) return;
@@ -242,11 +271,18 @@ export default function AdminOrganizations() {
                         {org.status === 'active'
                           ? <span className="text-green-600">✅ 正常</span>
                           : <span className="text-red-500">⛔ 已停用</span>}
+                        {expiryBadge(org)}
+                        {org.expires_at && (
+                          <div className="text-[10px] text-gray-400">至 {String(org.expires_at).slice(0, 10)}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 space-x-2 whitespace-nowrap">
                         <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
                         <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
                         <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
+                        {org.id !== 1 && (
+                          <button className="text-purple-500 hover:underline" onClick={() => changeExpiry(org)}>有效期</button>
+                        )}
                         {org.id !== 1 && (
                           <button
                             className={org.status === 'active' ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}

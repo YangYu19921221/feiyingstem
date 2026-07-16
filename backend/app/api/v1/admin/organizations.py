@@ -43,6 +43,9 @@ class OrgUpdate(BaseModel):
     contact_phone: Optional[str] = None
     status: Optional[str] = Field(None, description="active/suspended/expired")
     expires_at: Optional[datetime] = None
+    # 显式清空有效期(改回永不过期): expires_at 的 None 语义是"未传不动",
+    # 无法表达"传了要清",用独立布尔区分
+    clear_expires: Optional[bool] = None
 
 
 class OrgAdminCreate(BaseModel):
@@ -147,8 +150,10 @@ async def update_organization(
         v = getattr(data, field)
         if v is not None:
             setattr(org, field, v)
+    if data.clear_expires:
+        org.expires_at = None  # 改回永不过期
     await db.commit()
-    invalidate_org_cache(org_id)  # 停用/恢复立即生效
+    invalidate_org_cache(org_id)  # 停用/恢复/续费立即生效
     active = await count_active_students(db, org_id)
     return _org_out(org, active)
 

@@ -107,15 +107,29 @@ _ORG_CACHE_TTL = 300
 
 
 async def check_org_active(db, org_id: int) -> bool:
-    """机构是否可用(status=active),带进程内缓存"""
+    """机构是否可用(status=active 且未过服务期),带进程内缓存。
+
+    到期自动停: expires_at < 今天即视为停用——不需要定时任务,到期后该机构
+    第一个请求进来就生效;续费(admin 改 expires_at)+缓存失效后立即恢复。
+    """
     now = time.time()
     hit = _org_cache.get(org_id)
     if hit and hit[0] > now:
         return hit[1]
     row = (await db.execute(
-        text("SELECT status FROM organizations WHERE id = :i"), {"i": org_id}
+        text("SELECT status, expires_at FROM organizations WHERE id = :i"), {"i": org_id}
     )).first()
     active = bool(row and row[0] == "active")
+    if active and row[1]:
+        # SQLite 存 ISO 字符串;expires_at 语义为"服务有效期最后一天",过了当天才停
+        from datetime import datetime, timedelta
+        try:
+            exp = datetime.fromisoformat(str(row[1]).replace(" ", "T"))
+            from app.core.timeutil import local_today
+            if exp.date() < local_today():
+                active = False
+        except (ValueError, TypeError):
+            pass  # 脏数据不拦服务
     _org_cache[org_id] = (now + _ORG_CACHE_TTL, active)
     return active
 
