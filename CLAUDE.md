@@ -242,17 +242,34 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 ## 项目状态
 
-**已完成**:
-- ✅ 后端API框架和单词管理
-- ✅ AI服务集成(OpenAI/Claude)
-- ✅ 前端基础框架和部分页面
-- ✅ 单元管理和学习进度追踪
+**已完成(截至 2026-07)**:
+- ✅ 全部学习模式(分类/听写/拼写/填空/选择/例句/句子背诵/单元考试)+ 阅读理解
+- ✅ 多租户 SaaS(加盟): organizations 表 + org_id 隔离(core/tenancy.py 读写双安全网)、
+  三层管理(admin→org_admin→teacher)、学生配额、服务有效期(到期自动停)、
+  机构兑换码(上限=配额)、机构码招生链接、机构自定义名称/Logo
+- ✅ 学习效率引擎: 今日智能任务(/student/daily-plan)、记忆曲线SRS、AI记忆钩子
+  (words.memory_hook 全平台缓存)、拼写错误诊断(learning_records.user_answer)、
+  连错消化卡、保持率对比
+- ✅ 游戏化: 宠物养成/对战、实时PK竞技场、全自动晋级赛、段位、成就(挂在提交记录必经之路)、机构内排行榜
+- ✅ 教学闭环: 实时课堂监控、大屏、作业、AI组卷、竞赛题库、家长端、AI测评招生漏斗
+- ✅ 可靠性: 提交队列幂等(claim_client_batch)、防划水/切屏监控、学习质量分
+- ✅ ai_quota.py 通用AI限流(记忆钩子已接入)
 
-**开发中**:
-- 🚧 完整的学习模式(选择题、拼写、填空)
-- 🚧 试卷系统前端界面
-- 🚧 成就系统实现
-- 🚧 数据可视化统计
+**待做**:
+- 🚧 AI 限流覆盖全部 LLM 端点(错因讲解/组卷/周报接入 ai_quota)
+- 🚧 organizations.ai_quota_json 按机构覆盖限额(P3 预留列)
+- 🚧 多 worker 部署时限流/机构状态缓存换共享存储
+
+## 多租户开发须知
+
+- 9 张锚点表带 org_id(users/classes/pk_rooms/assessment_leads/leaderboard_snapshots
+  为 NOT NULL;word_books/sentence_books/reading_passages/competition_question_sets
+  可空,NULL=平台共享)。其余表经 user_id/创建链推导,靠 tenancy 过滤器自动隔离
+- **聚合/统计查询若不经锚点模型(如直查 StudySession/AnswerRecord),过滤器罩不住,
+  必须手动 join User**——已有两次此类泄漏教训
+- 对 org_admin 放行的 admin 端点写操作必须调 guard_org_admin();内容管理对机构只读
+  (路由级按 HTTP 方法裁决,新端点默认安全)
+- 跨机构读取(归属判定等)用 .execution_options(skip_tenant_filter=True),仅限 service 层
 
 ## 故障排查
 
