@@ -58,3 +58,34 @@ class UnitWordBatchOperation(BaseModel):
     """批量操作单元内的单词"""
     word_ids: List[int] = Field(..., min_items=1, description="单词ID列表")
     operation: str = Field(..., description="操作类型: add/remove/reorder")
+
+
+# ========================================
+# 整本 Excel 一键导入 Schemas
+# ========================================
+
+class WorkbookImportWord(BaseModel):
+    """工作表里的一行单词(前端已按列名别名解析好)"""
+    word: str = Field(..., min_length=1, max_length=100)
+    phonetic: Optional[str] = Field(None, max_length=100)
+    syllables: Optional[str] = Field(None, max_length=100)
+    tts_text: Optional[str] = Field(None, max_length=200)
+    part_of_speech: Optional[str] = Field(None, max_length=50)
+    meaning: Optional[str] = Field(None, max_length=500)
+    example_sentence: Optional[str] = Field(None, max_length=500)
+    example_translation: Optional[str] = Field(None, max_length=500)
+
+
+class WorkbookImportUnit(BaseModel):
+    """一个工作表 = 一个单元"""
+    name: str = Field(..., min_length=1, max_length=100, description="单元名 = 工作表名")
+    words: List[WorkbookImportWord] = Field(default_factory=list)
+
+
+class WorkbookImportRequest(BaseModel):
+    """整本导入: 书名=工作簿文件名,单元=工作表,一次请求全建好"""
+    book_name: str = Field(..., min_length=1, max_length=100)
+    grade_level: Optional[str] = Field(None, max_length=20)
+    volume: Optional[str] = Field(None, max_length=20)
+    description: Optional[str] = Field(None, max_length=500)
+    units: List[WorkbookImportUnit] = Field(..., min_length=1)

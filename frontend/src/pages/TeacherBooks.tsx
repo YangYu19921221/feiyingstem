@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getTeacherWordBooks } from '../api/teacher';
 import type { TeacherWordBook } from '../api/teacher';
-import { BookOpen, Settings, Trash2, Search, ChevronDown, LayoutGrid, List, Pencil } from 'lucide-react';
+import { BookOpen, Settings, Trash2, Search, ChevronDown, LayoutGrid, List, Pencil, FileSpreadsheet } from 'lucide-react';
 import api from '../api/client';
 import { toast } from '../components/Toast';
+import * as XLSX from 'xlsx';
+import { parseWordRows, type ParsedWord } from '../utils/excelWords';
 
 const GRADE_OPTIONS = [
   '一年级', '二年级', '三年级', '四年级', '五年级', '六年级',
@@ -231,6 +233,72 @@ const TeacherBooks = () => {
     }
   };
 
+  // ===== Excel 整本一键导入: 书名=文件名,单元=工作表 =====
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<null | {
+    bookName: string;
+    gradeLevel: string;
+    volume: string;
+    units: { name: string; words: ParsedWord[] }[];
+    skippedSheets: string[];
+  }>(null);
+
+  const handleWorkbookPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const units: { name: string; words: ParsedWord[] }[] = [];
+      const skippedSheets: string[] = [];
+      for (const sheetName of wb.SheetNames) {
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheetName]);
+        const { words } = parseWordRows(rows);
+        if (words.length > 0) units.push({ name: sheetName, words });
+        else skippedSheets.push(sheetName);  // 目录/说明等无"单词"列的表,跳过不建单元
+      }
+      if (units.length === 0) {
+        toast.error('没有解析到任何单词:请确认各工作表都有"单词"列(表头支持:单词/word)');
+        return;
+      }
+      setImportPreview({
+        bookName: file.name.replace(/\.(xlsx|xls)$/i, '').trim(),
+        gradeLevel: '',
+        volume: '',
+        units,
+        skippedSheets,
+      });
+    } catch (error) {
+      console.error('解析工作簿失败:', error);
+      toast.error('文件解析失败,请确认是有效的 Excel 文件(.xlsx/.xls)');
+    }
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importPreview || !importPreview.bookName.trim()) {
+      toast.warning('请填写单词本名称');
+      return;
+    }
+    setImporting(true);
+    try {
+      const res: any = await api.post('/teacher/books/import-workbook', {
+        book_name: importPreview.bookName.trim(),
+        grade_level: importPreview.gradeLevel || null,
+        volume: importPreview.volume || null,
+        units: importPreview.units,
+      });
+      toast.success(`「${res.book_name}」导入完成:${res.unit_count} 个单元,共 ${res.word_count} 个单词`);
+      setImportPreview(null);
+      loadBooks();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || '导入失败,请重试');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* 顶部导航栏 */}
@@ -319,6 +387,18 @@ const TeacherBooks = () => {
                       批量管理
                     </button>
                   )}
+                  <button
+                    onClick={() => importInputRef.current?.click()}
+                    title="书名=Excel文件名,单元=各工作表名,一次建好整本"
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-medium shadow-md"
+                  >
+                    <FileSpreadsheet className="w-5 h-5" />
+                    Excel 整本导入
+                  </button>
+                  <input
+                    ref={importInputRef} type="file" accept=".xlsx,.xls"
+                    className="hidden" onChange={handleWorkbookPick}
+                  />
                   <button
                     onClick={() => setShowCreateModal(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium shadow-md"
@@ -679,6 +759,92 @@ const TeacherBooks = () => {
       )}
 
       {/* 新建单词本模态框 */}
+      {/* Excel 整本导入 - 解析预览确认 */}
+      {importPreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => !importing && setImportPreview(null)}>
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-green-600" />
+              整本导入确认
+            </h3>
+            <p className="text-xs text-gray-400 mb-4">书名默认取文件名,单元按工作表顺序创建,可先改名再导入</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">单词本名称 *</label>
+                <input
+                  type="text"
+                  value={importPreview.bookName}
+                  onChange={e => setImportPreview({ ...importPreview, bookName: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">年级（可选）</label>
+                  <select
+                    value={importPreview.gradeLevel}
+                    onChange={e => setImportPreview({ ...importPreview, gradeLevel: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">课外书/不限</option>
+                    {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">册次（可选）</label>
+                  <select
+                    value={importPreview.volume}
+                    onChange={e => setImportPreview({ ...importPreview, volume: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">不限</option>
+                    {VOLUME_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
+              将创建 {importPreview.units.length} 个单元,共 {importPreview.units.reduce((s, u) => s + u.words.length, 0)} 个单词
+              {importPreview.skippedSheets.length > 0 && (
+                <span className="block text-xs text-gray-400 font-normal mt-0.5">
+                  跳过无"单词"列的工作表:{importPreview.skippedSheets.join('、')}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-2 flex-1 min-h-0 overflow-y-auto border rounded-lg divide-y">
+              {importPreview.units.map((u, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                  <span className="text-gray-700 truncate">
+                    <span className="text-gray-300 mr-2 font-mono">{String(i + 1).padStart(2, '0')}</span>
+                    {u.name}
+                  </span>
+                  <span className="text-gray-400 shrink-0 ml-2">{u.words.length} 词</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setImportPreview(null)}
+                disabled={importing}
+                className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 font-medium disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleImportConfirm}
+                disabled={importing || !importPreview.bookName.trim()}
+                className="flex-1 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50"
+              >
+                {importing ? '导入中,请勿关闭…' : '确认导入'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4" onClick={() => setShowCreateModal(false)}>
           <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>

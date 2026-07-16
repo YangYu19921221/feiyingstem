@@ -17,23 +17,11 @@ import { ArrowLeft, Plus, Trash2, Edit, BookOpen, X, Sparkles, Download, Save } 
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import * as XLSX from 'xlsx';
+import { normalizeSyllables, parseWordRows } from '../utils/excelWords';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
-/**
- * 音节分隔符统一为 #。
- * 仅当音节串还没用 # 且单词本身不含连字符/空格(纯单词)时,
- * 才把录入的 - 当作音节分隔转成 #。
- * 连字符词(self-study)、短语(ice cream)、已用 # 的一律原样保留,
- * 避免把单词里的真连字符误当分隔符转掉。
- */
-function normalizeSyllables(syllables: string, word: string): string {
-  const s = (syllables || '').trim();
-  if (!s) return s;
-  if (s.includes('#')) return s;
-  if (word.includes('-') || word.includes(' ')) return s;
-  return s.replace(/-/g, '#');
-}
+// 音节归一/Excel 列名解析已抽到 utils/excelWords,与"整本导入"共用同一套规则
 
 const TeacherUnitManagement = () => {
   const { bookId } = useParams<{ bookId: string }>();
@@ -518,43 +506,12 @@ const TeacherUnitManagement = () => {
       const seenSpellings = new Set<string>();
       let ttsImportedCount = 0;  // 成功导入且带发音文本的词数,导入后反馈给老师
 
-      const norm = (s: string) => s.toString().replace(/\s+/g, '').toLowerCase();
-      const TTS_ALIASES = ['发音文本', 'tts_text', 'tts', '读音', '发音'];
+      // 列名宽容匹配(别名规则见 utils/excelWords,与整本导入共用);
+      // hasTtsColumn 用于区分"压根没发音文本列(表头不对)" vs "有列但留空(正常)"
+      const { words: parsed, hasTtsColumn } = parseWordRows(rows);
 
-      // 列名宽容匹配:去掉表头里的空格、转小写后比对,认多种常见写法,
-      // 避免老师表头写成"发音 文本"/"读音"/"TTS"等导致整列读不到、静默丢数据。
-      const pick = (row: any, aliases: string[]): string => {
-        const want = aliases.map(norm);
-        for (const key of Object.keys(row)) {
-          if (want.includes(norm(key))) {
-            const v = row[key];
-            if (v !== undefined && v !== null && String(v).trim() !== '') {
-              return String(v).trim();
-            }
-          }
-        }
-        return '';
-      };
-
-      // 表里到底有没有"发音文本"这一列(无视是否填值)——用于区分
-      // "压根没这列(表头不对)" vs "有列但都留空(普通词正常情况)"。
-      const headerKeys = rows.length ? Object.keys(rows[0]).map(norm) : [];
-      const ttsWanted = TTS_ALIASES.map(norm);
-      const hasTtsColumn = headerKeys.some(k => ttsWanted.includes(k));
-
-      for (const row of rows) {
-        const word = pick(row, ['单词', 'word']);
-        if (!word) continue;
-
-        const meaning = pick(row, ['释义', 'meaning', '意思', '中文释义']);
-        const phonetic = pick(row, ['音标', 'phonetic']);
-        const syllables = normalizeSyllables(pick(row, ['音节', 'syllables', '音节划分']), word);
-        const ttsText = pick(row, TTS_ALIASES);
-        const pos = pick(row, ['词性', 'part_of_speech', '词类']);
-        const example = pick(row, ['例句', 'example', 'example_sentence']);
-        const exTrans = pick(row, ['例句翻译', 'translation', 'example_translation', '例句中文']);
-
-        const spelling = word.toLowerCase();
+      for (const w of parsed) {
+        const spelling = w.word.toLowerCase();
         const forceNew = seenSpellings.has(spelling);
         seenSpellings.add(spelling);
 
@@ -562,25 +519,25 @@ const TeacherUnitManagement = () => {
           const res = await axios.post(
             `${API_BASE_URL}/words/?book_id=${selectedUnit!.book_id}&unit_id=${selectedUnit!.id}${forceNew ? '&force_new=true' : ''}`,
             {
-            word: word,
-            phonetic: phonetic || undefined,
-            syllables: syllables || undefined,
-            tts_text: ttsText || undefined,
+            word: w.word,
+            phonetic: w.phonetic,
+            syllables: w.syllables,
+            tts_text: w.tts_text,
             difficulty: 1,
             grade_level: '小学',
             definitions: [{
-              part_of_speech: pos,
-              meaning: meaning || word,
-              example_sentence: example || undefined,
-              example_translation: exTrans || undefined,
+              part_of_speech: w.part_of_speech || '',
+              meaning: w.meaning || w.word,
+              example_sentence: w.example_sentence,
+              example_translation: w.example_translation,
               is_primary: true,
             }],
             tags: [],
           }, { headers: { Authorization: `Bearer ${token}` } });
           newWordIds.push(res.data.id);
-          if (ttsText) ttsImportedCount++;  // 仅成功导入的才计入
+          if (w.tts_text) ttsImportedCount++;  // 仅成功导入的才计入
         } catch (err: any) {
-          errors.push(`${word}: ${getErrorMessage(err, '创建失败')}`);
+          errors.push(`${w.word}: ${getErrorMessage(err, '创建失败')}`);
         }
       }
 
