@@ -30,6 +30,7 @@ import { submitReviewRecords } from '../api/memoryCurve';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
+import ChaseBanner from '../components/classify/ChaseBanner';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
@@ -1004,6 +1005,8 @@ const WordClassifyLearning = () => {
           {/* 阶段6：总结 */}
           {phase === 'summary' && !isLastGroup && (
             <motion.div key={`group-summary-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {/* 追赶战报: 身后的人差几个词追上我(keyed 重挂载,每组重新拉榜) */}
+              <ChaseBanner />
               <ClassifySummary
                 dictationResults={dictationResults}
                 fillBlankResults={[]}
@@ -1019,6 +1022,7 @@ const WordClassifyLearning = () => {
           )}
           {phase === 'summary' && isLastGroup && finalSummaryData && (
             <motion.div key="final-summary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ChaseBanner />
               <ClassifySummary
                 dictationResults={finalSummaryData.allDictation}
                 fillBlankResults={[]}
