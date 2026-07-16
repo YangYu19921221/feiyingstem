@@ -20,7 +20,7 @@ from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User, Class, ClassStudent, StudyCalendar
 from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.models.word import Word
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 
 router = APIRouter()
 

@@ -5,14 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminOrgApi, Organization, OrgManager } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
 
-/** 生成随机密码(重置用,弹窗只显示一次) */
-function genPassword(len = 10): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const buf = new Uint32Array(len);
-  crypto.getRandomValues(buf);
-  return Array.from(buf, n => chars[n % chars.length]).join('');
-}
-
 const PLAN_LABELS: Record<string, string> = {
   trial: '体验', standard: '标准', county: '县级独家', city: '市级独家', headquarters: '总部直营',
 };
@@ -38,10 +30,10 @@ export default function AdminOrganizations() {
 
   const resetManagerPwd = async (m: OrgManager, orgName: string) => {
     if (!window.confirm(`重置「${m.username}」的密码?旧密码将立即失效`)) return;
-    const pwd = genPassword();
     try {
-      await adminOrgApi.resetUserPassword(m.id, pwd);
-      setIssued({ username: m.username, password: pwd, orgName });
+      // 不传密码=服务端生成(密码策略单点在后端,防混淆字符)
+      const r = await adminOrgApi.resetUserPassword(m.id);
+      if (r.new_password) setIssued({ username: m.username, password: r.new_password, orgName });
     } catch (e: any) {
       alert(e?.response?.data?.detail || '重置失败');
     }
@@ -49,8 +41,12 @@ export default function AdminOrganizations() {
 
   const toggleManager = async (m: OrgManager, org: Organization) => {
     try {
-      await adminOrgApi.toggleUserStatus(m.id);
-      await openManagerPanel(org); // 刷新面板
+      const r = await adminOrgApi.toggleUserStatus(m.id);
+      // 响应已带新状态,本地更新即可,不必整表重拉
+      setManagerPanel(p => p && {
+        ...p,
+        managers: p.managers.map(x => x.id === m.id ? { ...x, is_active: r.is_active } : x),
+      });
     } catch (e: any) {
       alert(e?.response?.data?.detail || '操作失败');
     }
@@ -128,8 +124,8 @@ export default function AdminOrganizations() {
           />
         )}
 
-        {/* 机构管理员面板 */}
-        {managerPanel && !issued && (
+        {/* 机构管理员面板(密码弹窗 z-50 天然盖在面板 z-40 之上,无需状态耦合) */}
+        {managerPanel && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40" onClick={() => setManagerPanel(null)}>
             <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-bold mb-1">👤 「{managerPanel.org.name}」的管理员</h3>

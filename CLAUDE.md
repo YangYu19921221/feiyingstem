@@ -230,6 +230,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   - 不要提交 `.env` 文件
   - 用户输入必须通过 Pydantic 验证
   - 密码使用 bcrypt 加密 (见 `auth_service.py`)
+  - **API 路径禁止以 `/admins` 结尾**:实测 Safari 内容拦截器按 URL 关键词掐掉此类 XHR(请求不出浏览器),已有先例改名 `/managers`(见 admin/organizations.py)
+  - **UPLOAD_DIR 整体经 `/api/v1/files` 公开无鉴权**:只准写公开图片(Logo/封面),导出报表/试卷/录音等敏感文件禁止落入此目录
+  - **多租户防提权**:对 org_admin 放行的写端点必须调用 `admin/users.py` 的 `guard_org_admin()`,不要手写角色判断
 
 ## 数据库Schema位置
 

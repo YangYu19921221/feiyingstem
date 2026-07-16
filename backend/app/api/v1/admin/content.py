@@ -1,8 +1,12 @@
 """
 管理员 - 内容管理API
+
+多租户规则: 机构管理员(org_admin)对本模块【只读】——平台词库/文章是全机构共享资产。
+只读不靠逐端点换依赖(fail-open,新端点会漏),而是路由级守卫按 HTTP 方法裁决:
+新增任何写端点,org_admin 自动被拦,无需记得设防。
 """
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, desc
 
@@ -12,7 +16,18 @@ from app.models.user import User
 from app.models.word import WordBook, Unit, Word, WordDefinition
 from app.models.reading import ReadingPassage
 
-router = APIRouter()
+
+async def _org_admin_read_only(
+    request: Request,
+    current_user: User = Depends(get_current_admin_or_org_admin),
+):
+    """路由级只读守卫: org_admin 仅放行读方法,写方法一律403"""
+    if current_user.role == "org_admin" and request.method not in ("GET", "HEAD", "OPTIONS"):
+        raise HTTPException(status_code=403, detail="机构账号对平台内容只读")
+    return current_user
+
+
+router = APIRouter(dependencies=[Depends(_org_admin_read_only)])
 
 
 @router.get("/stats")

@@ -19,7 +19,7 @@ from app.api.v1.auth import require_role
 from app.models.organization import Organization
 from app.models.user import User
 from app.services import auth_service
-from app.services.org_service import count_active_students
+from app.services.org_service import count_active_students, get_org
 
 router = APIRouter()
 
@@ -28,9 +28,7 @@ get_current_org_admin = require_role("org_admin", "admin")
 
 
 async def _my_org(db: AsyncSession, current_user: User) -> Organization:
-    org = (await db.execute(
-        select(Organization).where(Organization.id == current_user.org_id)
-    )).scalar_one_or_none()
+    org = await get_org(db, current_user.org_id)
     if not org:
         raise HTTPException(404, "机构不存在")
     return org
@@ -81,7 +79,7 @@ async def update_org_info(
     org = await _my_org(db, current_user)
     for field in ["name", "contact_name", "contact_phone"]:
         v = getattr(data, field)
-        if v is not None:
+        if v is not None and v.strip():  # strip后为空(纯空格)视为未填,防机构名被改成空白
             setattr(org, field, v.strip())
     await db.commit()
     return {"updated": True, "name": org.name}
@@ -98,13 +96,15 @@ async def upload_org_logo(
     ext = ext_map.get(file.content_type or "")
     if not ext:
         raise HTTPException(400, "仅支持 png/jpg/webp 图片")
+    # 先看声明大小再读,超限的大文件不吃进内存
+    if file.size and file.size > 2 * 1024 * 1024:
+        raise HTTPException(400, "图片不能超过 2MB")
     content = await file.read()
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(400, "图片不能超过 2MB")
 
     org = await _my_org(db, current_user)
-    logo_dir = os.path.join(settings.UPLOAD_DIR, "org-logos")
-    os.makedirs(logo_dir, exist_ok=True)
+    logo_dir = os.path.join(settings.UPLOAD_DIR, "org-logos")  # 目录由 main.py 启动时创建
     # 换扩展名时清掉旧文件,避免残留
     for old_ext in ext_map.values():
         old = os.path.join(logo_dir, f"org_{org.id}.{old_ext}")

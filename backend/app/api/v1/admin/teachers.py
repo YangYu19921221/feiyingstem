@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 from app.models.user import User, Class, ClassStudent
 from app.services.auth_service import get_password_hash, generate_random_password
 

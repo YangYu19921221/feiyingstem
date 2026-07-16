@@ -18,10 +18,7 @@ export interface Organization {
   created_at?: string;
 }
 
-export type OrgInfo = Pick<
-  Organization,
-  'id' | 'name' | 'code' | 'plan' | 'student_quota' | 'active_students' | 'teacher_count' | 'status' | 'expires_at' | 'logo_url' | 'contact_name' | 'contact_phone'
->;
+export type OrgInfo = Omit<Organization, 'created_at'>;
 
 export interface OrgTeacher {
   id: number;
@@ -33,14 +30,8 @@ export interface OrgTeacher {
   created_at?: string;
 }
 
-export interface OrgManager {
-  id: number;
-  username: string;
-  full_name?: string | null;
-  phone?: string | null;
-  is_active: boolean;
-  last_login?: string | null;
-}
+/** 机构管理员账号(与 OrgTeacher 同构,少一个 created_at) */
+export type OrgManager = Omit<OrgTeacher, 'created_at'>;
 
 // ---------- 平台管理端(admin) ----------
 export const adminOrgApi = {
@@ -54,9 +45,9 @@ export const adminOrgApi = {
     client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data),
   listOrgAdmins: (orgId: number) =>
     client.get<OrgManager[]>(`/admin/organizations/${orgId}/managers`),
-  // 复用通用用户接口: 重置密码(新密码由前端生成,弹窗只显示一次)与停用/恢复
-  resetUserPassword: (userId: number, newPassword: string) =>
-    client.post(`/admin/users/${userId}/reset-password`, { new_password: newPassword }),
+  // 复用通用用户接口: 重置密码(不传密码=服务端生成防混淆字符的新密码,响应返回一次)与停用/恢复
+  resetUserPassword: (userId: number) =>
+    client.post<{ message: string; new_password: string | null }>(`/admin/users/${userId}/reset-password`, {}),
   toggleUserStatus: (userId: number) =>
     client.post<{ is_active: boolean }>(`/admin/users/${userId}/toggle-status`),
 };

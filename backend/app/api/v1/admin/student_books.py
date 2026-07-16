@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.word import WordBook, Unit
 from app.models.learning import BookAssignment, ExamSubmission, ExamPaper, GroupExamRecord
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 
 router = APIRouter()
 

@@ -115,6 +115,9 @@ const PageLoading = () => (
 );
 
 // 路由保护组件
+// 机构管理端复用的管理页面: 角色白名单集中一处,与后端27端点放行/机构导航卡保持同步
+const ADMIN_AND_ORG = ['admin', 'org_admin'];
+
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -763,7 +766,7 @@ function App() {
         <Route
           path="/admin/users"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminUserManagement />
             </ProtectedRoute>
           }
@@ -789,7 +792,7 @@ function App() {
         <Route
           path="/admin/content"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminContentManagement />
             </ProtectedRoute>
           }
@@ -799,7 +802,7 @@ function App() {
         <Route
           path="/admin/statistics"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminStatistics />
             </ProtectedRoute>
           }
@@ -839,7 +842,7 @@ function App() {
         <Route
           path="/admin/teachers"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminTeacherList />
             </ProtectedRoute>
           }
@@ -847,7 +850,7 @@ function App() {
         <Route
           path="/admin/teachers/:id"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminTeacherDetail />
             </ProtectedRoute>
           }
@@ -855,7 +858,7 @@ function App() {
         <Route
           path="/admin/classes"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminClassList />
             </ProtectedRoute>
           }
@@ -863,7 +866,7 @@ function App() {
         <Route
           path="/admin/classes/:id"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminClassDetail />
             </ProtectedRoute>
           }
@@ -871,7 +874,7 @@ function App() {
         <Route
           path="/admin/competition"
           element={
-            <ProtectedRoute allowedRoles={['admin', 'org_admin']}>
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminCompetition />
             </ProtectedRoute>
           }

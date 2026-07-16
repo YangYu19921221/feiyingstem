@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.user import User
 from app.models.competition import UserScore, AnswerRecord, CompetitionSeason
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 
 router = APIRouter()
 
@@ -23,13 +23,14 @@ async def competition_overview(
     current_user: User = Depends(get_current_admin_or_org_admin),
 ):
     """竞赛概览:参与人数 / 总答题数 / 平均正确率 / 活跃赛季数"""
-    # 参与人数 + 总答题数 + 答对数,一次扫 answer_records
+    # 参与人数 + 总答题数 + 答对数,一次扫 answer_records。
+    # join User(租户锚点): AnswerRecord 非锚点表,不 join 的话 org_admin 会看到全平台聚合
     row = (await db.execute(
         select(
             func.count(func.distinct(AnswerRecord.user_id)).label("participants"),
             func.count(AnswerRecord.id).label("total"),
             func.sum(AnswerRecord.is_correct.cast(Integer)).label("correct"),
-        )
+        ).join(User, User.id == AnswerRecord.user_id)
     )).first()
     participants = (row.participants or 0) if row else 0
     total_answers = (row.total or 0) if row else 0

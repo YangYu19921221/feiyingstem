@@ -8,7 +8,7 @@ from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 from app.models.user import User, Class, ClassStudent
 from app.models.learning import WordMastery
 from app.models.word import Word
@@ -139,8 +139,20 @@ async def transfer_student(
     nc_res = await db.execute(
         select(Class).where(Class.id == body.new_class_id)
     )
-    if not nc_res.scalar_one_or_none():
+    target_class = nc_res.scalar_one_or_none()
+    if not target_class:
         raise HTTPException(status_code=404, detail="目标班级不存在")
+
+    # 2.5 多租户配额: 学生原本没有任何活跃班级时,"转班"实为入班(净新增计费学生),需过配额
+    has_active = (await db.execute(
+        select(ClassStudent.id).where(
+            ClassStudent.student_id == student_id,
+            ClassStudent.is_active.is_(True),
+        ).limit(1)
+    )).first()
+    if not has_active and target_class.org_id is not None:
+        from app.services.org_service import check_student_quota
+        await check_student_quota(db, target_class.org_id)
 
     # 3. 将所有现有 active 记录置为不活跃
     await db.execute(

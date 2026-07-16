@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -41,7 +41,8 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
     password: Optional[str] = Field(None, min_length=6)
-    role: Optional[str] = None
+    # 限定合法角色: 自由字符串会被写进库弄坏账号(如"ADMIN"登录后无任何权限)
+    role: Optional[Literal["admin", "org_admin", "teacher", "student", "parent", "display"]] = None
     is_active: Optional[bool] = None
 
 class UserResponse(BaseModel):

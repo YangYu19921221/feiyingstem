@@ -37,6 +37,7 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   // 机构码: 加盟机构招生链接带 ?org=机构码 自动填入,注册即归属该机构;手动填也行
+  const hasOrgParam = !!searchParams.get('org');
   const [orgCode, setOrgCode] = useState(() => (searchParams.get('org') || '').toUpperCase());
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -82,7 +83,10 @@ const Register = () => {
     { label: '用户名', type: 'text', value: username, setter: setUsername, placeholder: '请输入用户名（支持中文，不限字数）', minLength: 1 },
     { label: '密码', type: 'password', value: password, setter: setPassword, placeholder: '请输入密码（至少6位）', minLength: 6 },
     { label: '确认密码', type: 'password', value: confirmPassword, setter: setConfirmPassword, placeholder: '请再次输入密码', minLength: 6 },
-    { label: '机构码（选填）', type: 'text', value: orgCode, setter: (v) => setOrgCode(v.toUpperCase()), placeholder: '机构提供的邀请码，没有可留空', maxLength: 16 },
+    // 机构码字段只在招生链接(?org=机构码)进来时显示——散户手动注册看不到,不困惑;
+    // 没带码的正常注册归直营,之后班级邀请码入班时仍会自动转入对应机构。
+    // 用 hasOrgParam(URL参数)而非 orgCode(当前值)判断,避免用户清空输入时字段消失
+    ...(hasOrgParam ? [{ label: '机构码（来自邀请链接）', type: 'text', value: orgCode, setter: (v: string) => setOrgCode(v.toUpperCase()), placeholder: '机构提供的邀请码', maxLength: 16 }] : []),
   ];
 
   return (

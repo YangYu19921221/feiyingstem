@@ -15,10 +15,10 @@ export default function OrgAdminDashboard() {
   const { data: info } = useQuery({ queryKey: ['org-info'], queryFn: orgAdminApi.info });
   const { data: teachers } = useQuery({ queryKey: ['org-teachers'], queryFn: orgAdminApi.teachers });
 
-  // 机构信息编辑
-  const [editingInfo, setEditingInfo] = useState(false);
-  const [infoForm, setInfoForm] = useState({ name: '', contact_name: '', contact_phone: '' });
+  // 机构信息编辑: null=未在编辑,非null=表单内容(一个状态表达一个概念)
+  const [infoForm, setInfoForm] = useState<{ name: string; contact_name: string; contact_phone: string } | null>(null);
   const saveInfo = async () => {
+    if (!infoForm) return;
     try {
       await orgAdminApi.updateInfo({
         name: infoForm.name.trim() || undefined,
@@ -26,7 +26,7 @@ export default function OrgAdminDashboard() {
         contact_phone: infoForm.contact_phone.trim() || undefined,
       });
       qc.invalidateQueries({ queryKey: ['org-info'] });
-      setEditingInfo(false);
+      setInfoForm(null);
     } catch (e: any) {
       alert(e?.response?.data?.detail || '保存失败');
     }
@@ -36,8 +36,9 @@ export default function OrgAdminDashboard() {
     e.target.value = '';
     if (!f) return;
     try {
-      await orgAdminApi.uploadLogo(f);
-      qc.invalidateQueries({ queryKey: ['org-info'] });
+      const r = await orgAdminApi.uploadLogo(f);
+      // 响应已带新URL,本地写缓存即可,不必重拉 /org/info(3条SQL)
+      qc.setQueryData(['org-info'], (old: any) => old && { ...old, logo_url: r.logo_url });
     } catch (err: any) {
       alert(err?.response?.data?.detail || 'Logo 上传失败');
     }
@@ -88,17 +89,14 @@ export default function OrgAdminDashboard() {
             <h1 className="text-2xl font-bold text-gray-800">{info?.name || '机构管理'}</h1>
             <button
               className="text-xs text-blue-500 hover:underline"
-              onClick={() => {
-                setInfoForm({ name: info?.name || '', contact_name: info?.contact_name || '', contact_phone: info?.contact_phone || '' });
-                setEditingInfo(true);
-              }}
+              onClick={() => setInfoForm({ name: info?.name || '', contact_name: info?.contact_name || '', contact_phone: info?.contact_phone || '' })}
             >✏️ 编辑</button>
           </div>
           <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600">退出登录</button>
         </div>
 
         {/* 机构信息编辑表单 */}
-        {editingInfo && (
+        {infoForm && (
           <div className="bg-white rounded-2xl p-4 mb-6 shadow grid grid-cols-1 md:grid-cols-4 gap-3">
             <input className="border rounded-xl px-3 py-2" placeholder="机构名称" value={infoForm.name}
                    onChange={e => setInfoForm({ ...infoForm, name: e.target.value })} />
@@ -108,7 +106,7 @@ export default function OrgAdminDashboard() {
                    onChange={e => setInfoForm({ ...infoForm, contact_phone: e.target.value })} />
             <div className="flex gap-2">
               <button className="flex-1 py-2 rounded-xl bg-[#5FD35F] text-white font-bold" onClick={saveInfo}>保存</button>
-              <button className="flex-1 py-2 rounded-xl bg-gray-200" onClick={() => setEditingInfo(false)}>取消</button>
+              <button className="flex-1 py-2 rounded-xl bg-gray-200" onClick={() => setInfoForm(null)}>取消</button>
             </div>
           </div>
         )}

@@ -8,16 +8,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.core.database import get_db
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 from app.models.user import User
 from app.schemas.user import UserResponse, UserCreate, UserUpdate
 from app.services import auth_service
 
 router = APIRouter()
 
+# 防提权: 机构管理员不得触碰的角色
+PRIVILEGED_ROLES = ("admin", "org_admin")
+
+
+def guard_org_admin(current_user: User, target: Optional[User] = None, new_role: Optional[str] = None):
+    """防提权统一裁决: org_admin 不能操作管理员账号(自己除外),不能授予管理员角色。
+
+    所有对 org_admin 放行的写端点都必须调用这一个函数,不要各自手写——
+    手写副本形状会漂移,并依赖隐式检查顺序。
+    """
+    if current_user.role != "org_admin":
+        return
+    if target is not None and target.role in PRIVILEGED_ROLES and target.id != current_user.id:
+        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
+    if new_role in PRIVILEGED_ROLES:
+        raise HTTPException(status_code=403, detail="机构管理员不能授予管理员角色")
+
 
 class ResetPasswordRequest(BaseModel):
-    new_password: str
+    # 不传则服务端生成并在响应中返回一次(与教师重置的既有模式一致,密码策略单点在 auth_service)
+    new_password: Optional[str] = None
 
 
 @router.get("/users", response_model=dict)
@@ -149,9 +167,7 @@ async def create_user(
     """
     创建新用户
     """
-    # 防提权: 机构管理员只能建普通角色,不能造 admin/org_admin
-    if current_user.role == "org_admin" and user_data.role in ("admin", "org_admin"):
-        raise HTTPException(status_code=403, detail="机构管理员不能创建管理员账号")
+    guard_org_admin(current_user, new_role=user_data.role)
 
     # 检查用户名是否已存在
     existing_user = await auth_service.get_user_by_username(db, user_data.username)
@@ -191,12 +207,7 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    # 防提权: 机构管理员不能动管理员账号,也不能把人升成 admin/org_admin
-    if current_user.role == "org_admin":
-        if user.role in ("admin", "org_admin") and user.id != current_user.id:
-            raise HTTPException(status_code=403, detail="机构管理员不能修改管理员账号")
-        if user_data.role in ("admin", "org_admin"):
-            raise HTTPException(status_code=403, detail="机构管理员不能授予管理员角色")
+    guard_org_admin(current_user, target=user, new_role=user_data.role)
 
     # 检查是否在修改自己的管理员权限
     if user.id == current_user.id and user_data.role and user_data.role != 'admin':
@@ -246,18 +257,18 @@ async def reset_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    # 防提权: 机构管理员不能重置管理员账号的密码
-    if current_user.role == "org_admin" and user.role in ("admin", "org_admin") and user.id != current_user.id:
-        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
+    guard_org_admin(current_user, target=user)
 
-    if len(body.new_password) < 6:
+    # 不传密码=服务端生成防混淆字符的随机密码,响应中返回一次
+    new_password = body.new_password or auth_service.generate_random_password()
+    if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="密码长度至少6位")
 
     # 更新密码
-    user.hashed_password = auth_service.get_password_hash(body.new_password)
+    user.hashed_password = auth_service.get_password_hash(new_password)
     await db.commit()
 
-    return {"message": "密码重置成功"}
+    return {"message": "密码重置成功", "new_password": new_password if not body.new_password else None}
 
 
 @router.post("/users/{user_id}/toggle-status")
@@ -277,9 +288,7 @@ async def toggle_user_status(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能禁用自己的账号")
 
-    # 防提权: 机构管理员不能停用管理员账号
-    if current_user.role == "org_admin" and user.role in ("admin", "org_admin"):
-        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
+    guard_org_admin(current_user, target=user)
 
     user.is_active = not user.is_active
     await db.commit()
@@ -307,9 +316,7 @@ async def delete_user(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="不能删除自己的账号")
 
-    # 防提权: 机构管理员不能删除管理员账号
-    if current_user.role == "org_admin" and user.role in ("admin", "org_admin"):
-        raise HTTPException(status_code=403, detail="机构管理员不能操作管理员账号")
+    guard_org_admin(current_user, target=user)
 
     await db.delete(user)
     await db.commit()

@@ -8,7 +8,7 @@ from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User
 from app.models.word import Word, WordBook, Unit
 from app.models.learning import LearningProgress, StudySession
-from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 
 router = APIRouter()
 
@@ -42,9 +42,12 @@ async def get_statistics(
     result = await db.execute(select(func.count()).select_from(Unit))
     total_units = result.scalar() or 0
 
+    # 5-8. 活跃/学习次数统计。join User(租户锚点): StudySession 非锚点表,
+    # 不 join 的话 org_admin 会看到全平台数字而非本机构
     # 5. 今日活跃用户数 (今天有学习记录的用户)
     result = await db.execute(
         select(func.count(func.distinct(StudySession.user_id)))
+        .join(User, User.id == StudySession.user_id)
         .where(StudySession.started_at >= today_start)
     )
     active_users_today = result.scalar() or 0
@@ -52,20 +55,23 @@ async def get_statistics(
     # 6. 本周活跃用户数
     result = await db.execute(
         select(func.count(func.distinct(StudySession.user_id)))
+        .join(User, User.id == StudySession.user_id)
         .where(StudySession.started_at >= week_start)
     )
     active_users_week = result.scalar() or 0
 
     # 7. 今日学习次数 (学习会话数)
     result = await db.execute(
-        select(func.count()).select_from(StudySession)
+        select(func.count(StudySession.id))
+        .join(User, User.id == StudySession.user_id)
         .where(StudySession.started_at >= today_start)
     )
     learning_records_today = result.scalar() or 0
 
     # 8. 本周学习次数
     result = await db.execute(
-        select(func.count()).select_from(StudySession)
+        select(func.count(StudySession.id))
+        .join(User, User.id == StudySession.user_id)
         .where(StudySession.started_at >= week_start)
     )
     learning_records_week = result.scalar() or 0

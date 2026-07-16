@@ -1,5 +1,9 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import init_db
@@ -32,11 +36,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 上传文件静态服务(机构Logo等): 挂在 /api/v1/files 下,nginx 的 /api/ 代理天然覆盖
-import os as _os
-from fastapi.staticfiles import StaticFiles
-_os.makedirs(_os.path.join(settings.UPLOAD_DIR, "org-logos"), exist_ok=True)
-app.mount("/api/v1/files", StaticFiles(directory=settings.UPLOAD_DIR), name="files")
+# 上传文件静态服务(机构Logo等): 挂在 /api/v1/files 下,nginx 的 /api/ 代理天然覆盖。
+# ⚠️ 红线: 此目录整体公开无鉴权,任何敏感文件(导出报表/试卷/录音)禁止写入 UPLOAD_DIR。
+class _ImmutableStatic(StaticFiles):
+    """URL 已带 ?v=版本号,可放心长缓存——否则每次渲染都发条件请求穿透到 Python 换 304"""
+    def file_response(self, *args, **kwargs) -> Response:
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+os.makedirs(os.path.join(settings.UPLOAD_DIR, "org-logos"), exist_ok=True)
+app.mount("/api/v1/files", _ImmutableStatic(directory=settings.UPLOAD_DIR), name="files")
 
 # CORS配置
 app.add_middleware(
