@@ -262,6 +262,7 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_pk_rooms_org ON pk_rooms(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_leaderboard_snapshots_org ON leaderboard_snapshots(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_competition_question_sets_org ON competition_question_sets(org_id)",
+            "ALTER TABLE organizations ADD COLUMN logo_url VARCHAR(500)",
         ]:
             try:
                 await conn.execute(text(_sql))

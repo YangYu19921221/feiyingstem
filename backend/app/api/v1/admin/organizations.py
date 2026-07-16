@@ -60,7 +60,7 @@ def _org_out(org: Organization, active_students: int = 0, teacher_count: int = 0
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
         "student_quota": org.student_quota, "active_students": active_students,
-        "teacher_count": teacher_count,
+        "teacher_count": teacher_count, "logo_url": getattr(org, "logo_url", None),
         "contact_name": org.contact_name, "contact_phone": org.contact_phone,
         "status": org.status, "expires_at": org.expires_at, "created_at": org.created_at,
     }

@@ -223,7 +223,14 @@ export default function AdminOrganizations() {
               <tbody>
                 {(orgs || []).map(org => (
                   <tr key={org.id} className="border-t">
-                      <td className="px-4 py-3 font-bold">{org.name}{org.id === 1 && <span className="ml-1 text-xs text-orange-400">(直营)</span>}</td>
+                      <td className="px-4 py-3 font-bold">
+                        <span className="inline-flex items-center gap-2">
+                          {org.logo_url
+                            ? <img src={org.logo_url} alt="" className="w-6 h-6 rounded object-cover" />
+                            : <span>🏫</span>}
+                          {org.name}{org.id === 1 && <span className="ml-1 text-xs text-orange-400">(直营)</span>}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 font-mono">{org.code}</td>
                       <td className="px-4 py-3">{PLAN_LABELS[org.plan] || org.plan}</td>
                       <td className="px-4 py-3">

@@ -19,6 +19,7 @@ class Organization(Base):
     ai_quota_json = Column(Text, nullable=True)                   # AI限额覆盖配置(NULL=全局默认)
     contact_name = Column(String(50))
     contact_phone = Column(String(20))
+    logo_url = Column(String(500), nullable=True)             # 机构Logo(机构管理端可自传)
     status = Column(String(20), default="active", nullable=False) # active/suspended/expired
     expires_at = Column(DateTime, nullable=True)                  # 年费到期,过期→suspended
     created_at = Column(DateTime, server_default=func.now())

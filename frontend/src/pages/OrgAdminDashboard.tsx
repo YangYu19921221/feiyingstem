@@ -15,6 +15,34 @@ export default function OrgAdminDashboard() {
   const { data: info } = useQuery({ queryKey: ['org-info'], queryFn: orgAdminApi.info });
   const { data: teachers } = useQuery({ queryKey: ['org-teachers'], queryFn: orgAdminApi.teachers });
 
+  // 机构信息编辑
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoForm, setInfoForm] = useState({ name: '', contact_name: '', contact_phone: '' });
+  const saveInfo = async () => {
+    try {
+      await orgAdminApi.updateInfo({
+        name: infoForm.name.trim() || undefined,
+        contact_name: infoForm.contact_name.trim() || undefined,
+        contact_phone: infoForm.contact_phone.trim() || undefined,
+      });
+      qc.invalidateQueries({ queryKey: ['org-info'] });
+      setEditingInfo(false);
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || '保存失败');
+    }
+  };
+  const onLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      await orgAdminApi.uploadLogo(f);
+      qc.invalidateQueries({ queryKey: ['org-info'] });
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Logo 上传失败');
+    }
+  };
+
   const createMut = useMutation({
     mutationFn: () => orgAdminApi.createTeacher({
       username: form.username, full_name: form.full_name || undefined, phone: form.phone || undefined,
@@ -45,11 +73,45 @@ export default function OrgAdminDashboard() {
   return (
     <div className="min-h-screen bg-[#FFF8F0] p-6">
       <div className="max-w-4xl mx-auto">
-        {/* 顶栏 */}
+        {/* 顶栏: Logo + 机构名 + 编辑 */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">🏫 {info?.name || '机构管理'}</h1>
+          <div className="flex items-center gap-3">
+            <label className="cursor-pointer group relative" title="点击更换Logo">
+              {info?.logo_url ? (
+                <img src={info.logo_url} alt="logo" className="w-12 h-12 rounded-xl object-cover shadow" />
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-2xl shadow">🏫</div>
+              )}
+              <span className="absolute inset-0 rounded-xl bg-black/40 text-white text-[10px] hidden group-hover:flex items-center justify-center">换图</span>
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onLogoPick} />
+            </label>
+            <h1 className="text-2xl font-bold text-gray-800">{info?.name || '机构管理'}</h1>
+            <button
+              className="text-xs text-blue-500 hover:underline"
+              onClick={() => {
+                setInfoForm({ name: info?.name || '', contact_name: info?.contact_name || '', contact_phone: info?.contact_phone || '' });
+                setEditingInfo(true);
+              }}
+            >✏️ 编辑</button>
+          </div>
           <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600">退出登录</button>
         </div>
+
+        {/* 机构信息编辑表单 */}
+        {editingInfo && (
+          <div className="bg-white rounded-2xl p-4 mb-6 shadow grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input className="border rounded-xl px-3 py-2" placeholder="机构名称" value={infoForm.name}
+                   onChange={e => setInfoForm({ ...infoForm, name: e.target.value })} />
+            <input className="border rounded-xl px-3 py-2" placeholder="联系人" value={infoForm.contact_name}
+                   onChange={e => setInfoForm({ ...infoForm, contact_name: e.target.value })} />
+            <input className="border rounded-xl px-3 py-2" placeholder="联系电话" value={infoForm.contact_phone}
+                   onChange={e => setInfoForm({ ...infoForm, contact_phone: e.target.value })} />
+            <div className="flex gap-2">
+              <button className="flex-1 py-2 rounded-xl bg-[#5FD35F] text-white font-bold" onClick={saveInfo}>保存</button>
+              <button className="flex-1 py-2 rounded-xl bg-gray-200" onClick={() => setEditingInfo(false)}>取消</button>
+            </div>
+          </div>
+        )}
 
         {/* 停用/到期提示 */}
         {info && info.status !== 'active' && (

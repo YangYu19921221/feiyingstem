@@ -32,6 +32,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# 上传文件静态服务(机构Logo等): 挂在 /api/v1/files 下,nginx 的 /api/ 代理天然覆盖
+import os as _os
+from fastapi.staticfiles import StaticFiles
+_os.makedirs(_os.path.join(settings.UPLOAD_DIR, "org-logos"), exist_ok=True)
+app.mount("/api/v1/files", StaticFiles(directory=settings.UPLOAD_DIR), name="files")
+
 # CORS配置
 app.add_middleware(
     CORSMiddleware,

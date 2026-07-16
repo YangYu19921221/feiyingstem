@@ -10,6 +10,7 @@ export interface Organization {
   student_quota: number;
   active_students: number;
   teacher_count: number;
+  logo_url?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
   status: 'active' | 'suspended' | 'expired';
@@ -19,7 +20,7 @@ export interface Organization {
 
 export type OrgInfo = Pick<
   Organization,
-  'id' | 'name' | 'code' | 'plan' | 'student_quota' | 'active_students' | 'teacher_count' | 'status' | 'expires_at'
+  'id' | 'name' | 'code' | 'plan' | 'student_quota' | 'active_students' | 'teacher_count' | 'status' | 'expires_at' | 'logo_url' | 'contact_name' | 'contact_phone'
 >;
 
 export interface OrgTeacher {
@@ -63,6 +64,13 @@ export const adminOrgApi = {
 // ---------- 机构管理端(org_admin) ----------
 export const orgAdminApi = {
   info: () => client.get<OrgInfo>('/org/info'),
+  updateInfo: (data: Partial<{ name: string; contact_name: string; contact_phone: string }>) =>
+    client.patch<{ updated: boolean; name: string }>('/org/info', data),
+  uploadLogo: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return client.post<{ logo_url: string }>('/org/logo', form);
+  },
   teachers: () => client.get<OrgTeacher[]>('/org/teachers'),
   createTeacher: (data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     client.post<{ id: number; username: string; initial_password: string }>('/org/teachers', data),
