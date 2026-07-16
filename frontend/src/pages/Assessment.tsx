@@ -58,10 +58,10 @@ const Assessment = () => {
     setError('');
     try {
       // 机构测评链接带 ?org=机构码,线索归属该机构(无码归直营)
-      // 渠道来源带 ?src=douyin|shipinhao|referral,下播看分渠道战报
+      // 渠道来源带 ?src=douyin|shipinhao|referral,下播看分渠道战报(截断防脏参数)
       const params = new URLSearchParams(window.location.search);
       const orgCode = params.get('org') || undefined;
-      const source = params.get('src') || params.get('source') || undefined;
+      const source = params.get('src')?.slice(0, 30) || undefined;
       const data = await startAssessment(grade, orgCode, source);
       setSessionId(data.session_id);
       setWords(data.words);

@@ -167,7 +167,6 @@ const TeacherBigScreen = () => {
   const [clock, setClock] = useState('');
   // 直播打码: 开启后所有学生姓名显示为"杨同学",镜头对大屏前必开(未成年人隐私红线)
   const [privacy, setPrivacy] = useState(isLivePrivacyOn());
-  const dn = useCallback((name: string) => (privacy ? maskName(name) : name), [privacy]);
   const togglePrivacy = useCallback(() => {
     setPrivacy(v => { setLivePrivacy(!v); return !v; });
   }, []);
@@ -231,9 +230,17 @@ const TeacherBigScreen = () => {
   const active = counts.studying + counts.distracted + counts.away;
   const focusRatio = active > 0 ? counts.studying / active : 1;
 
+  // 打码在数据派生点统一做一次——下游(冠军条/前三/轮播/热血播报文案)全部
+  // 从 ranking 取名,逐渲染点包裹迟早漏(播报是拼进字符串的)
   const ranking = useMemo(
-    () => daily.filter(d => d.words_learned > 0).sort((a, b) => b.words_learned - a.words_learned),
-    [daily]
+    () => daily.filter(d => d.words_learned > 0).sort((a, b) => b.words_learned - a.words_learned)
+      .map(d => (privacy ? { ...d, full_name: maskName(d.full_name) } : d)),
+    [daily, privacy]
+  );
+  const gridStudents = useMemo(
+    () => (snap?.students ?? []).filter(s => s.status !== 'offline')
+      .map(s => (privacy ? { ...s, student_name: maskName(s.student_name) } : s)),
+    [snap, privacy]
   );
   const maxWords = ranking[0]?.words_learned || 1;
   const champion = ranking[0] ?? null;
@@ -275,7 +282,7 @@ const TeacherBigScreen = () => {
     // 王座易主
     const champId = ranking[0].user_id;
     if (!isFirstLoad && prevChampionRef.current !== null && prevChampionRef.current !== champId) {
-      setCrownBlast(dn(ranking[0].full_name));
+      setCrownBlast(ranking[0].full_name);
       setTimeout(() => setCrownBlast(null), 4500);
     }
     prevChampionRef.current = champId;
@@ -287,7 +294,7 @@ const TeacherBigScreen = () => {
         const old = prev.get(d.user_id);
         if (old !== undefined && i < old && i > 0) {
           const overtaken = ranking[i + 1] ?? null;
-          pushFeed(`🔥 ${dn(d.full_name)} 超越了${overtaken ? ` ${dn(overtaken.full_name)},` : ''}升至第 ${i + 1} 名!`, true);
+          pushFeed(`🔥 ${d.full_name} 超越了${overtaken ? ` ${overtaken.full_name},` : ''}升至第 ${i + 1} 名!`, true);
           break;
         }
       }
@@ -297,7 +304,7 @@ const TeacherBigScreen = () => {
         const key = `chase-${ranking[1].user_id}-${gap}`;
         if (gap > 0 && gap <= 3 && (window as any).__lastChaseKey !== key) {
           (window as any).__lastChaseKey = key;
-          pushFeed(`🚀 ${dn(ranking[1].full_name)} 距离第一只差 ${gap} 个词!`, true);
+          pushFeed(`🚀 ${ranking[1].full_name} 距离第一只差 ${gap} 个词!`, true);
         }
       }
       // 升段播报:跨过段位门槛(荣耀黄金→璀璨钻石…)
@@ -305,14 +312,19 @@ const TeacherBigScreen = () => {
         const tier = tierOf(d.words_learned);
         const oldMin = prevTierRef.current.get(d.user_id);
         if (oldMin !== undefined && tier.min > oldMin) {
-          pushFeed(`${tier.icon} ${dn(d.full_name)} 晋升「${tier.name}」段位!`);
+          pushFeed(`${tier.icon} ${d.full_name} 晋升「${tier.name}」段位!`);
           break;  // 每轮最多报一条,避免刷屏
         }
       }
     }
     prevTierRef.current = new Map(ranking.map(d => [d.user_id, tierOf(d.words_learned).min]));
     prevRankRef.current = new Map(ranking.map((d, i) => [d.user_id, i]));
-  }, [ranking, pushFeed, dn]);
+  }, [ranking, pushFeed]);
+
+  // 开打码瞬间清掉已烘焙真名的播报/王座横幅(否则最长 9s 残留在镜头里)
+  useEffect(() => {
+    if (privacy) { setFeed([]); setCrownBlast(null); }
+  }, [privacy]);
 
   // 整班学词破百里程碑(300/400/500…)
   useEffect(() => {
@@ -444,7 +456,7 @@ const TeacherBigScreen = () => {
                style={{ background: 'rgba(10,16,36,0.5)', border: '1px solid rgba(148,163,184,0.14)' }}>
             <motion.div layout className="grid grid-cols-2 xl:grid-cols-3 gap-3">
               <AnimatePresence>
-                {(snap?.students ?? []).filter(s => s.status !== 'offline').map(s => {
+                {gridStudents.map(s => {
                   const color = statusColor(s.status);
                   return (
                     <motion.div
@@ -468,7 +480,7 @@ const TeacherBigScreen = () => {
                         <span className="relative h-3 w-3 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-white font-semibold text-base truncate">{dn(s.student_name)}</p>
+                        <p className="text-white font-semibold text-base truncate">{s.student_name}</p>
                         <p className="text-xs font-mono truncate" style={{ color }}>
                           {s.status === 'away' && `已离开 ${s.away_seconds >= 60 ? Math.floor(s.away_seconds / 60) + 'm' : s.away_seconds + 's'}`}
                           {s.status === 'studying' && (s.unit_name || '学习中')}
@@ -529,7 +541,7 @@ const TeacherBigScreen = () => {
                 <motion.span className="text-3xl" animate={{ y: [0, -4, 0], rotate: [0, -6, 6, 0] }} transition={{ duration: 1.8, repeat: Infinity }}>👑</motion.span>
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-black text-lg truncate">
-                    {dn(champion.full_name)}
+                    {champion.full_name}
                     <span className="ml-2 text-sm font-normal" style={{ color: C.gold }}>正在统治今日榜单!</span>
                   </p>
                 </div>
@@ -568,7 +580,7 @@ const TeacherBigScreen = () => {
                     </span>
                     <div className="relative flex-1 min-w-0">
                       <span className={`block truncate font-semibold ${i === 0 ? 'text-xl' : 'text-lg'} text-white`}>
-                        {dn(d.full_name)}
+                        {d.full_name}
                       </span>
                       <span className="text-[11px] font-mono" style={{ color: tier.color }}>
                         {tier.icon} {tier.name}
@@ -622,7 +634,7 @@ const TeacherBigScreen = () => {
                           transition={{ duration: 0.8 }}
                         />
                         <span className="relative w-9 text-center shrink-0 text-sm font-mono text-white/35">{globalIdx + 1}</span>
-                        <span className="relative flex-1 truncate font-medium text-base text-white">{dn(d.full_name)}</span>
+                        <span className="relative flex-1 truncate font-medium text-base text-white">{d.full_name}</span>
                         <span className="relative text-xs shrink-0" style={{ color: tier.color }}>{tier.icon}</span>
                         <span className="relative font-mono font-bold text-base shrink-0" style={{ color: C.cyan }}>{d.words_learned}</span>
                         <span className="relative text-xs font-mono text-white/35 shrink-0">词</span>

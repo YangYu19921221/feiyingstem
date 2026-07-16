@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Phone, CheckCircle, Clock } from 'lucide-react';
@@ -27,13 +27,15 @@ interface SourceStat {
   converted_count: number;
 }
 
-// 渠道标识 → 展示名(直播/推广链接带 ?src=xxx)
-const SOURCE_META: Record<string, string> = {
-  douyin: '🎵 抖音',
-  shipinhao: '📺 视频号',
-  referral: '🤝 老带新',
-};
-const sourceLabel = (s: string | null) => (s ? SOURCE_META[s] || `🔗 ${s}` : '🌱 自然流量');
+// 渠道单一事实源: 复制按钮/标签映射都从这张表走,加渠道只改这里
+// (捕获端与后端是自由字符串,未知渠道照样入库进战报,只是标签走兜底)
+const CHANNELS = [
+  { id: 'douyin', label: '🎵 抖音', btn: 'bg-gray-900' },
+  { id: 'shipinhao', label: '📺 视频号', btn: 'bg-green-600' },
+  { id: 'referral', label: '🤝 老带新', btn: 'bg-amber-500' },
+] as const;
+const SOURCE_LABELS: Record<string, string> = Object.fromEntries(CHANNELS.map(c => [c.id, c.label]));
+const sourceLabel = (s: string | null) => (s ? SOURCE_LABELS[s] || `🔗 ${s}` : '🌱 自然流量');
 
 const TeacherLeads = () => {
   const navigate = useNavigate();
@@ -45,10 +47,13 @@ const TeacherLeads = () => {
   const [loading, setLoading] = useState(true);
   const [phoneOnly, setPhoneOnly] = useState(false);
   const [todayOnly, setTodayOnly] = useState(false);
+  // null=全部;'none'=自然流量;其余=渠道标识(直接存 API 的 wire 值,不再二次翻译)
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [sourceStats, setSourceStats] = useState<SourceStat[]>([]);
+  const [orgCode, setOrgCode] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editNotes, setEditNotes] = useState('');
+  const reqSeq = useRef(0);  // 快速切换过滤时丢弃过期响应
 
   const token = localStorage.getItem('access_token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -56,35 +61,36 @@ const TeacherLeads = () => {
   useEffect(() => { loadLeads(); }, [page, phoneOnly, todayOnly, sourceFilter]);
 
   const loadLeads = async () => {
+    const seq = ++reqSeq.current;
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE_URL}/assessment/leads`, {
         headers,
-        params: {
-          page, page_size: 20, phone_only: phoneOnly, today_only: todayOnly,
-          // 'none' = 只看不带渠道参数的自然流量
-          source: sourceFilter === null ? undefined : (sourceFilter || 'none'),
-        },
+        params: { page, page_size: 20, phone_only: phoneOnly, today_only: todayOnly, source: sourceFilter ?? undefined },
       });
+      if (seq !== reqSeq.current) return;  // 已有更新的请求,丢弃本次
       setLeads(res.data.leads);
       setTotal(res.data.total);
       setPhoneCount(res.data.phone_count ?? res.data.leads.filter((l: Lead) => l.phone_verified).length);
       setConvertedCount(res.data.converted_count ?? res.data.leads.filter((l: Lead) => l.converted).length);
       setSourceStats(res.data.source_stats ?? []);
+      setOrgCode(res.data.org_code ?? null);
     } catch (error) {
       console.error('加载线索失败:', error);
     } finally {
-      setLoading(false);
+      if (seq === reqSeq.current) setLoading(false);
     }
   };
 
-  // 直播/推广专属测评链接(放小风车/私域,线索自动归渠道)
+  // 直播/推广专属测评链接(放小风车/私域,线索自动归渠道)。
+  // 机构码来自 /leads 接口(登录教师的机构),不能从页面 URL 猜——
+  // 机构教师复制的链接必须带 org,否则线索归直营且本机构看不到
   const copyChannelLink = (src: string, label: string) => {
-    const orgCode = new URLSearchParams(window.location.search).get('org');
     const url = `${window.location.origin}/assessment?src=${src}${orgCode ? `&org=${orgCode}` : ''}`;
-    navigator.clipboard?.writeText(url)
+    if (!navigator.clipboard) { window.prompt(`${label}链接(请手动复制):`, url); return; }
+    navigator.clipboard.writeText(url)
       .then(() => toast.success(`${label}链接已复制`))
-      .catch(() => toast.error('复制失败,请手动复制'));
+      .catch(() => window.prompt(`${label}链接(请手动复制):`, url));
   };
 
   const handleSaveNotes = async (id: number) => {
@@ -168,9 +174,12 @@ const TeacherLeads = () => {
             </h3>
             <div className="flex items-center gap-2 text-xs">
               <span className="text-gray-400">复制推广链接:</span>
-              <button onClick={() => copyChannelLink('douyin', '抖音')} className="px-2.5 py-1 rounded-lg bg-gray-900 text-white hover:opacity-80">🎵 抖音</button>
-              <button onClick={() => copyChannelLink('shipinhao', '视频号')} className="px-2.5 py-1 rounded-lg bg-green-600 text-white hover:opacity-80">📺 视频号</button>
-              <button onClick={() => copyChannelLink('referral', '老带新')} className="px-2.5 py-1 rounded-lg bg-amber-500 text-white hover:opacity-80">🤝 老带新</button>
+              {CHANNELS.map(c => (
+                <button key={c.id} onClick={() => copyChannelLink(c.id, c.label)}
+                  className={`px-2.5 py-1 rounded-lg text-white hover:opacity-80 ${c.btn}`}>
+                  {c.label}
+                </button>
+              ))}
             </div>
           </div>
           {sourceStats.length === 0 ? (
@@ -185,11 +194,11 @@ const TeacherLeads = () => {
                 全部渠道
               </button>
               {sourceStats.map(s => {
-                const key = s.source ?? '';
+                const key = s.source ?? 'none';  // wire 值: 'none'=自然流量
                 const active = sourceFilter === key;
                 return (
                   <button
-                    key={key || 'none'}
+                    key={key}
                     onClick={() => { setSourceFilter(active ? null : key); setPage(1); }}
                     className={`px-3 py-2 rounded-xl text-sm border transition text-left ${
                       active ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-200'}`}

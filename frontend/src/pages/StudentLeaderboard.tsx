@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -39,9 +39,16 @@ const StudentLeaderboard = () => {
   // 直播打码: 镜头对着排行榜时开启,全名 → "杨同学"(未成年人隐私红线)
   const [privacy, setPrivacy] = useState(isLivePrivacyOn());
   const togglePrivacy = () => setPrivacy(v => { setLivePrivacy(!v); return !v; });
-  const maskEntries = <T extends { full_name: string | null; username: string }>(arr: T[]): T[] =>
-    privacy ? arr.map(e => ({ ...e, full_name: maskName(e.full_name || e.username), username: '' })) : arr;
   const uid = myUserId();
+
+  // 在页面数据边界统一打码——下游(Podium/RankList/encourage 派生文案)全部
+  // 从 view 取数,姓名不可能绕过掩码(逐渲染点包裹会漏掉拼进字符串的名字)
+  const view = useMemo(() => {
+    if (!data || !privacy) return data;
+    const mask = <T extends { full_name: string | null; username: string }>(arr: T[] | undefined): T[] =>
+      (arr ?? []).map(e => ({ ...e, full_name: maskName(e.full_name || e.username), username: '' }));
+    return { ...data, top: mask(data.top), neighbors: mask(data.neighbors) };
+  }, [data, privacy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +73,7 @@ const StudentLeaderboard = () => {
   };
 
   const tab = KIND_TABS.find(t => t.id === kind)!;
-  const enc = data ? encourage(data) : null;
+  const enc = view ? encourage(view) : null;  // 用打码后的 view,鼓励文案里的人名一并掩码
   const periodWord = period === 'this_month' ? '月' : '周';
 
   return (
@@ -129,7 +136,7 @@ const StudentLeaderboard = () => {
 
         {loading ? (
           <div className="py-24 text-center text-ink-mute text-sm">加载中…</div>
-        ) : !data ? (
+        ) : !view ? (
           <div className="card-soft rounded-2xl p-12 text-center text-ink-soft">数据加载失败，稍后再试</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
@@ -139,11 +146,11 @@ const StudentLeaderboard = () => {
                 <motion.div key={`${kind}-${period}-${scope}-podium`}
                   initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   transition={{ duration: 0.35, ease: EASE }}>
-                  <Podium top={maskEntries(data.top ?? [])} kind={kind} myUserId={uid} />
+                  <Podium top={view.top ?? []} kind={kind} myUserId={uid} />
                 </motion.div>
               </AnimatePresence>
-              <RankList top={maskEntries(data.top ?? [])} neighbors={maskEntries(data.neighbors ?? [])} kind={kind}
-                myUserId={uid} myRank={data.my_rank} />
+              <RankList top={view.top ?? []} neighbors={view.neighbors ?? []} kind={kind}
+                myUserId={uid} myRank={view.my_rank} />
             </div>
 
             {/* 右：周期 + 我的位置 + 邀请家长 */}
@@ -159,7 +166,7 @@ const StudentLeaderboard = () => {
               </div>
 
               {enc && (
-                <MyPosition data={data} enc={enc} kind={kind} periodWord={periodWord} />
+                <MyPosition data={view} enc={enc} kind={kind} periodWord={periodWord} />
               )}
 
               <button onClick={handleGenerateBindCode} disabled={genLoading || !!bindCode}
