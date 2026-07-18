@@ -74,3 +74,8 @@ Thumbs.db
 # SQLite WAL 产物
 *.db-wal
 *.db-shm
+
+# 对内经营资料(机密,禁止入库)
+docs/*机密*
+docs/加盟成本测算*.docx
+docs/直播运营方案.*
