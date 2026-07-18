@@ -54,6 +54,12 @@
   .bg-accent-warm {
     background-color: oklch(0.68 0.185 40);
   }
+  /* 渐变起点色:Tailwind 不会为 index.css 里的自定义色生成 from-*,需手写(签到横幅/实时排名徽章在用) */
+  .from-accent-warm {
+    --tw-gradient-from: oklch(0.68 0.185 40) var(--tw-gradient-from-position);
+    --tw-gradient-to: oklch(0.68 0.185 40 / 0) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+  }
   .text-accent-warm {
     color: oklch(0.62 0.19 40);
   }

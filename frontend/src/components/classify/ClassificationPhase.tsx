@@ -21,6 +21,8 @@ interface ClassificationPhaseProps {
   /** 每轮结束时上报本轮标"熟悉"的词(实时落正确记录,教师端监控才有中间数据) */
   onRoundFamiliar?: (wordIds: number[]) => void;
   playAudio: (word: string, rate?: number, wordId?: number) => void;
+  /** 循环播放(每遍播完 ended 再等间隔):长词组/句子不会被固定间隔拦腰掐断 */
+  playAudioLoop?: (word: string, times?: number, gapMs?: number, rate?: number, wordId?: number) => Promise<void>;
   stopAudio?: () => void;
   /** 走神/切屏时置 true:暂停倒计时和循环发音。
    *  否则孩子人不在,单词还在被倒计时一个个自动判"陌生"(幽灵错题+数据污染) */
@@ -36,6 +38,7 @@ const CLASSIFY_TIME_SHORT = 10;       // 单词
 const CLASSIFY_TIME_PHRASE = 14;      // 短语（2-3 个单词）
 const CLASSIFY_TIME_SENTENCE = 20;    // 句子（4+ 个单词或带标点）
 const PLAY_INTERVAL = 1800;
+const PLAY_GAP = 1000; // 循环播放模式:每遍播完(ended)后到下一遍的间隔
 const FAMILIAR_REVIEW_EVERY = 3; // 每N个熟悉词触发一次回顾
 
 /**
@@ -58,6 +61,7 @@ export default function ClassificationPhase({
   onRoundMistakes,
   onRoundFamiliar,
   playAudio,
+  playAudioLoop,
   stopAudio,
   paused = false,
   mode,
@@ -123,19 +127,30 @@ export default function ClassificationPhase({
   useEffect(() => {
     if (!currentWord || showRoundSummary || showTutorial || showFamiliarReview || paused) return;
 
+    // 优先用"播完一遍(ended)再等间隔"的循环:固定 setInterval 会在长词组/句子
+    // (TTS 音频常 2-3s,超过 1.8s 间隔)播到一半时被下一次 playAudio 的全局互斥
+    // 拦腰掐断,家长/学生反馈"发音读不完整"即此因
     const t = setTimeout(() => {
-      playAudio(currentWord.word, 1, currentWord.id);
+      if (playAudioLoop) {
+        playAudioLoop(currentWord.word, Infinity, PLAY_GAP, 1, currentWord.id);
+      } else {
+        playAudio(currentWord.word, 1, currentWord.id);
+      }
     }, 300);
 
-    const t2 = setTimeout(() => {
-      audioTimerRef.current = setInterval(() => {
-        playAudio(currentWord.word, 1, currentWord.id);
-      }, PLAY_INTERVAL);
-    }, 300 + PLAY_INTERVAL);
+    // 兼容未传 playAudioLoop 的调用方:维持旧的固定间隔重播
+    let t2: ReturnType<typeof setTimeout> | null = null;
+    if (!playAudioLoop) {
+      t2 = setTimeout(() => {
+        audioTimerRef.current = setInterval(() => {
+          playAudio(currentWord.word, 1, currentWord.id);
+        }, PLAY_INTERVAL);
+      }, 300 + PLAY_INTERVAL);
+    }
 
     return () => {
       clearTimeout(t);
-      clearTimeout(t2);
+      if (t2) clearTimeout(t2);
       if (audioTimerRef.current) {
         clearInterval(audioTimerRef.current);
         audioTimerRef.current = null;
@@ -144,7 +159,9 @@ export default function ClassificationPhase({
       // 上一个词还没被 token 作废、fetch 返回后会照样播出来,造成与新词重叠/听到旧词。
       stopAudio?.();
     };
-  }, [currentIndex, currentWord, playAudio, stopAudio, showRoundSummary, showFamiliarReview, paused]);
+    // showTutorial 必须在依赖里:教程打开(含中途重看)要停发音,关闭要自动开播——
+    // 缺它时"关掉教程后第一个词不自动发音"且重看教程时旧词还在循环朗读
+  }, [currentIndex, currentWord, playAudio, playAudioLoop, stopAudio, showRoundSummary, showTutorial, showFamiliarReview, paused]);
 
   // 一轮结束时的处理
   const handleRoundEnd = useCallback((newResults: Map<number, WordCategory>) => {
@@ -508,6 +525,14 @@ export default function ClassificationPhase({
           <span className="text-sm text-gray-400 font-medium">
             {currentIndex + 1} / {roundWords.length}
           </span>
+          {/* 教程原来每台设备只显示一次,家长/老师想再看"分类记忆法"介绍时找不到入口 */}
+          <button
+            onClick={() => setShowTutorial(true)}
+            className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition"
+            title="重看分类记忆法玩法说明"
+          >
+            ❓玩法
+          </button>
         </div>
 
         {/* 单词卡片 */}
@@ -562,21 +587,21 @@ export default function ClassificationPhase({
                 </p>
               )}
 
-              {/* AI记忆妙招: 第2轮起(这个词已经错过一次)可点——难词才给钩子,好词不打扰 */}
-              {round >= 2 && (
-                memoryHook?.wordId === currentWord.id ? (
-                  <div className="mb-3 px-4 py-2 bg-purple-50 rounded-xl text-left text-sm text-purple-700">
-                    💡 {memoryHook.text}
-                  </div>
-                ) : (
-                  <button
-                    onClick={fetchMemoryHook}
-                    disabled={hookLoading}
-                    className="mb-3 text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200 transition disabled:opacity-60"
-                  >
-                    {hookLoading ? '妙招生成中…' : '💡 记忆妙招'}
-                  </button>
-                )
+              {/* AI记忆妙招: 第1轮就可点——陌生词第一次见才最需要记忆法,
+                  原来要求 round>=2(错过一次才给)导致"分类记忆法不显示"的困惑。
+                  点了才调 AI(后端 ai_quota 限流 + words.memory_hook 全平台缓存),不点零成本 */}
+              {memoryHook?.wordId === currentWord.id ? (
+                <div className="mb-3 px-4 py-2 bg-purple-50 rounded-xl text-left text-sm text-purple-700">
+                  💡 {memoryHook.text}
+                </div>
+              ) : (
+                <button
+                  onClick={fetchMemoryHook}
+                  disabled={hookLoading}
+                  className="mb-3 text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200 transition disabled:opacity-60"
+                >
+                  {hookLoading ? '妙招生成中…' : '💡 记忆妙招'}
+                </button>
               )}
 
               {currentWord.example_sentence && (

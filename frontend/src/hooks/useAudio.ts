@@ -247,7 +247,10 @@ export function useAudio() {
         }
       }
     } catch (e) {
-      console.warn('循环播放失败:', e);
+      // 音频拉取失败也要出声(与 playAudio 的兜底一致),但只兜一遍,不无限循环
+      if (globalPlayToken !== token) return;
+      console.warn('循环播放失败，回退浏览器发音:', e);
+      await speakWithBrowserTTS(text, rate, token);
     }
   }, []);
 

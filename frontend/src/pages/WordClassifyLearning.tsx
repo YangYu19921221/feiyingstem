@@ -8,6 +8,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
+import apiClient from '../api/client';
 import {
   createLearningRecords,
   createStudySession,
@@ -88,6 +89,10 @@ const WordClassifyLearning = () => {
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // 签到门槛:后端 /units/{id}/start 会对未签到返回 403(兜底),
+  // 这里不甩"加载失败",给一键签到、签完原地重试进入学习
+  const [needCheckin, setNeedCheckin] = useState(false);
+  const [checkinBusy, setCheckinBusy] = useState(false);
   const isReviewRef = useRef(false);
   // 组末提交后端返回的新解锁成就 → 弹窗庆祝(成就检查已下沉到后端提交必经之路)
   const [newAchievements, setNewAchievements] = useState<any[] | null>(null);
@@ -333,16 +338,45 @@ const WordClassifyLearning = () => {
       // 学习会话改为延迟创建:第一组真正学完时(saveGroupProgress)才建。
       // 之前在这里一进页面就 createStudySession,学生"点了单元没学"也会留下
       // 0词0秒的空会话,教师端每日学习内容就会出现幽灵单元(实测一天82%是空会话)。
-    } catch (e) {
-      console.error('初始化学习失败:', e);
-      setError('加载失败，请重试');
+    } catch (e: any) {
+      const status = e?.response?.status;
+      // detail 优先取 response,取不到退回 message:progress.ts 拦截器会把后端
+      // detail 写进 message,不能只依赖 response 存在(曾因拦截器偷换对象而失效)
+      const detail = String(e?.response?.data?.detail ?? e?.message ?? '');
+      if (detail.includes('签到')) {
+        // 未签到(后端 403 兜底):显示签到引导页,不算错误
+        setNeedCheckin(true);
+      } else if (status === 403 && detail) {
+        // 其他 403(如"单元未分配")给真实原因,别让学生看"加载失败"干着急
+        setError(detail);
+      } else {
+        console.error('初始化学习失败:', e);
+        setError('加载失败，请重试');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // 一键签到并原地重试进入学习(签到仍是显式动作,教师端签到名单照常有记录)
+  const handleCheckinAndStart = async () => {
+    if (checkinBusy) return;
+    setCheckinBusy(true);
+    try {
+      await apiClient.post('/student/checkin', {});
+      setNeedCheckin(false);
+      setLoading(true);
+      if (unitId) await initLearning(parseInt(unitId));
+    } catch (err) {
+      console.error('签到失败:', err);
+      toast('签到失败,请返回首页重试', 'error');
+    } finally {
+      setCheckinBusy(false);
+    }
+  };
+
   // 音频播放：使用改进的 hook（预加载、缓存、重试、fallback）
-  const { playAudio, stopAudio } = useAudio();
+  const { playAudio, playAudioLoop, stopAudio } = useAudio();
 
   const playAudioSlow = useCallback((word: string, wordId?: number) => {
     playAudio(word, 0.75, wordId);
@@ -737,6 +771,28 @@ const WordClassifyLearning = () => {
     );
   }
 
+  if (needCheckin) {
+    return (
+      <div className="min-h-screen bg-paper no-select flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <span className="text-6xl mb-4 block">✋</span>
+          <h2 className="text-2xl font-bold text-ink mb-2">今天还没签到</h2>
+          <p className="text-gray-500 mb-6">每天先签到再开始学习,老师会看到签到名单哦</p>
+          <button
+            onClick={handleCheckinAndStart}
+            disabled={checkinBusy}
+            className="w-full px-8 py-3.5 bg-accent-warm text-white rounded-xl text-lg font-bold shadow-md hover:scale-105 active:scale-95 transition disabled:opacity-60"
+          >
+            {checkinBusy ? '签到中…' : '📍 签到并开始学习'}
+          </button>
+          <button onClick={() => navigate(-1)} className="mt-3 px-4 py-2 text-gray-400 text-sm hover:text-gray-600">
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (error || !learningData) {
     return (
       <div className="min-h-screen bg-paper no-select flex items-center justify-center">
@@ -880,6 +936,7 @@ const WordClassifyLearning = () => {
                   );
                 }}
                 playAudio={playAudio}
+                playAudioLoop={playAudioLoop}
                 stopAudio={stopAudio}
                 paused={isIdle}
               />
