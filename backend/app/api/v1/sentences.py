@@ -11,6 +11,7 @@ import csv
 import io
 
 from app.core.database import get_db
+from app.core.rate_limit import check_rate
 from app.api.v1.auth import get_current_user, get_current_teacher
 from app.models.user import User
 from app.models.sentence import SentenceBook, SentenceUnit, Sentence
@@ -345,6 +346,8 @@ async def list_sentences(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # 反爬:句子是教材内容,登录后仍按账号限速,逐单元枚举会被压到 ~1 次/秒
+    check_rate(str(current_user.id), "sentence_content", [(10.0, 40), (60.0, 120), (300.0, 400)])
     res = await db.execute(
         select(Sentence).where(Sentence.unit_id == unit_id).order_by(Sentence.order_index, Sentence.id)
     )

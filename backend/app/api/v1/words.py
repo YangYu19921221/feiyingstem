@@ -12,6 +12,7 @@ from app.schemas.word import (
     WordBatchImport, WordBatchImportResponse
 )
 from app.api.v1.auth import get_current_teacher, get_current_user
+from app.core.rate_limit import check_rate
 from app.services.image_service import generate_book_cover
 
 router = APIRouter()
@@ -21,6 +22,17 @@ router = APIRouter()
 # ========================================
 
 MAX_ORG_SERIES = 20  # 每机构自定义教材版本上限,防手滑建一堆
+
+# 反爬虫:内容读取端点的滑动窗口限额(每账号)。给正常人最猛的一次交互留足
+# (学习页一次并发拉 20+ 个词、教师翻页浏览),持续枚举全库会被压到 ~1 次/秒。
+# 学生真正学习走 /student/progress/* 断点续学,不经这些端点,不受影响。
+_CONTENT_WINDOWS = [(10.0, 60), (60.0, 150), (300.0, 500)]
+
+
+async def anti_crawl(current_user: User = Depends(get_current_user)) -> User:
+    """内容读取端点的防抓取闸:必须登录 + 按账号限速。返回当前用户供端点复用。"""
+    check_rate(str(current_user.id), "word_content", _CONTENT_WINDOWS)
+    return current_user
 
 
 @router.get("/book-series")
@@ -138,7 +150,8 @@ async def create_word_book(
 @router.get("/books/{book_id}", response_model=WordBookDetailResponse)
 async def get_word_book(
     book_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(anti_crawl),  # 反爬:登录+限速(整本词表一次吐出,是抓取重点)
 ):
     """获取单词本详情(含单词列表)"""
     result = await db.execute(select(WordBook).where(WordBook.id == book_id))
@@ -605,7 +618,8 @@ async def create_word(
 @router.get("/{word_id}", response_model=WordResponse)
 async def get_word(
     word_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(anti_crawl),  # 反爬:登录+限速(逐 id 遍历可扫全库)
 ):
     """获取单词详细信息"""
     return await get_word_detail(word_id, db)
@@ -619,7 +633,8 @@ async def list_words(
     difficulty: Optional[int] = Query(None, ge=1, le=5, description="难度筛选"),
     tag: Optional[str] = Query(None, description="标签筛选"),
     search: Optional[str] = Query(None, description="搜索关键词"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(anti_crawl),  # 反爬:登录+限速(翻页可枚举全库)
 ):
     """
     获取单词列表
