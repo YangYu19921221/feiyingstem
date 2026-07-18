@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { teacherAssignments } from '../../api/teacherAssignments';
 import type { ScopeType } from '../../api/teacherAssignments';
@@ -15,6 +15,8 @@ export interface ScopeValue {
 interface BookOption {
   id: number;
   name: string;
+  /** 教材版本(人教版/苏教版/自定义…),调用方数据源带上即启用版本筛选 */
+  series?: string | null;
 }
 
 interface Props {
@@ -28,6 +30,82 @@ interface Props {
 
 export function ScopeSelector({ books, value, onChange, allowBook = true, multiUnit = false }: Props) {
   const bookId = value.book_id;
+
+  // 单词本 combobox:书多了下拉难翻(机构自建+平台共享几十本),输入即时过滤浮出候选
+  const selectedBook = bookId != null ? books.find((b) => b.id === bookId) : null;
+  const [bookSearch, setBookSearch] = useState(selectedBook?.name ?? '');
+  const [bookOpen, setBookOpen] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const comboRef = useRef<HTMLDivElement>(null);
+
+  // 教材版本筛选:books 数据源带 series 时才显示下拉,与文字搜索叠加
+  const [seriesFilter, setSeriesFilter] = useState('');
+  const seriesOptions = useMemo(() => {
+    const set = new Set<string>();
+    books.forEach((b) => { if (b.series) set.add(b.series); });
+    return Array.from(set);
+  }, [books]);
+
+  const filteredBooks = useMemo(() => {
+    const kw = bookSearch.trim().toLowerCase();
+    let list = books;
+    if (seriesFilter) list = list.filter((b) => b.series === seriesFilter);
+    // 输入框还是选中书名原文时(刚聚焦未改动),展示全部候选而非只剩它自己
+    if (!kw || (selectedBook && bookSearch === selectedBook.name)) return list;
+    return list.filter((b) => b.name.toLowerCase().includes(kw));
+  }, [books, bookSearch, selectedBook, seriesFilter]);
+
+  // 列表收起时输入框始终回显选中书名(外部切书/清空也同步)
+  useEffect(() => {
+    if (!bookOpen) setBookSearch(selectedBook?.name ?? '');
+  }, [bookOpen, selectedBook]);
+
+  // 候选变化后高亮复位,避免越界
+  useEffect(() => {
+    setHighlight(-1);
+  }, [bookSearch]);
+
+  // 点击组件外部收起列表(输入框文字由上面的 effect 恢复为选中书名)
+  useEffect(() => {
+    if (!bookOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) {
+        setBookOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [bookOpen]);
+
+  const selectBook = (b: BookOption) => {
+    onChange({ scope_type: 'book', book_id: b.id, unit_id: null, group_index: null, unit_ids: [] });
+    setBookSearch(b.name);
+    setBookOpen(false);
+  };
+
+  const clearBook = () => {
+    onChange({ scope_type: 'book', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
+    setBookSearch('');
+    setBookOpen(false);
+  };
+
+  const onBookKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setBookOpen(true);
+      setHighlight((h) => Math.min(h + 1, filteredBooks.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (bookOpen && highlight >= 0 && highlight < filteredBooks.length) {
+        e.preventDefault();
+        selectBook(filteredBooks[highlight]);
+      }
+    } else if (e.key === 'Escape') {
+      setBookOpen(false);
+    }
+  };
 
   // 当前选中的单元集合(多选模式);单选模式退化为 0/1 个
   const selectedUnitIds: number[] = value.unit_ids ?? (value.unit_id != null ? [value.unit_id] : []);
@@ -103,27 +181,74 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-sm mb-1 font-medium">单词本</label>
-        <select
-          className="w-full border rounded px-3 py-2"
-          value={bookId ?? ''}
-          onChange={(e) =>
-            onChange({
-              scope_type: 'book',
-              book_id: e.target.value ? Number(e.target.value) : null,
-              unit_id: null,
-              group_index: null,
-              unit_ids: [],
-            })
-          }
-        >
-          <option value="">— 选择 —</option>
-          {books.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-sm font-medium">单词本</label>
+          {seriesOptions.length >= 2 && (
+            <select
+              value={seriesFilter}
+              onChange={(e) => { setSeriesFilter(e.target.value); setBookOpen(true); }}
+              className="text-xs border rounded px-1.5 py-0.5 text-gray-600"
+              title="按教材版本筛选"
+            >
+              <option value="">全部版本</option>
+              {seriesOptions.map((sn) => (
+                <option key={sn} value={sn}>{sn}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div ref={comboRef} className="relative">
+          <input
+            type="text"
+            value={bookSearch}
+            onChange={(e) => {
+              setBookSearch(e.target.value);
+              setBookOpen(true);
+            }}
+            onFocus={(e) => {
+              setBookOpen(true);
+              // 已有选中书时全选文本,方便直接输入重新搜索
+              if (selectedBook) e.target.select();
+            }}
+            onKeyDown={onBookKeyDown}
+            placeholder="🔍 搜索并选择单词本…"
+            className="w-full border rounded px-3 py-2 pr-8 placeholder:text-gray-400"
+          />
+          {selectedBook && (
+            <button
+              type="button"
+              onClick={clearBook}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm px-1"
+              title="清除选择"
+            >
+              ✕
+            </button>
+          )}
+          {bookOpen && (
+            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border rounded shadow max-h-60 overflow-y-auto">
+              {filteredBooks.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-gray-400">没有匹配的单词本</div>
+              ) : (
+                filteredBooks.map((b, i) => (
+                  <div
+                    key={b.id}
+                    onMouseDown={(e) => {
+                      // mousedown 抢在外部点击监听/失焦之前完成选中
+                      e.preventDefault();
+                      selectBook(b);
+                    }}
+                    onMouseEnter={() => setHighlight(i)}
+                    className={`px-3 py-2 text-sm cursor-pointer ${
+                      i === highlight ? 'bg-orange-50' : ''
+                    } ${b.id === bookId ? 'font-medium' : ''}`}
+                  >
+                    {b.name}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {bookId && (

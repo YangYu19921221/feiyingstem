@@ -90,6 +90,7 @@ class StudentBookListItem(BaseModel):
     description: Optional[str]
     grade_level: Optional[str]
     volume: Optional[str] = None
+    series: Optional[str] = None
     cover_color: str
     cover_url: Optional[str] = None
     unit_count: int = Field(0, description="单元数量")

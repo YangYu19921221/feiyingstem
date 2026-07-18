@@ -100,5 +100,6 @@ class WorkbookImportRequest(BaseModel):
     book_name: str = Field(..., min_length=1, max_length=100)
     grade_level: Optional[str] = Field(None, max_length=20)
     volume: Optional[str] = Field(None, max_length=20)
+    series: Optional[str] = Field(None, max_length=30, description="教材版本,如人教版/苏教版")
     description: Optional[str] = Field(None, max_length=500)
     units: List[WorkbookImportUnit] = Field(..., min_length=1)

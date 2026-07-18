@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, delete
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord
+from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord, BookSeries
 from app.models.learning import WordMastery
 from app.models.user import User
 from app.schemas.word import (
@@ -11,7 +11,7 @@ from app.schemas.word import (
     WordBookCreate, WordBookResponse, WordBookDetailResponse, WordBookUpdate,
     WordBatchImport, WordBatchImportResponse
 )
-from app.api.v1.auth import get_current_teacher
+from app.api.v1.auth import get_current_teacher, get_current_user
 from app.services.image_service import generate_book_cover
 
 router = APIRouter()
@@ -19,6 +19,67 @@ router = APIRouter()
 # ========================================
 # 单词本管理 (Must come BEFORE /{word_id} to avoid route conflict)
 # ========================================
+
+MAX_ORG_SERIES = 20  # 每机构自定义教材版本上限,防手滑建一堆
+
+
+@router.get("/book-series")
+async def list_book_series(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """教材版本选项:平台预置(org_id=NULL) + 本机构自定义(tenancy 读侧自动过滤)"""
+    rows = (await db.execute(
+        select(BookSeries).order_by(BookSeries.sort_order, BookSeries.id)
+    )).scalars().all()
+    return [
+        {"id": s.id, "name": s.name, "is_preset": s.org_id is None}
+        for s in rows
+    ]
+
+
+@router.post("/book-series", status_code=status.HTTP_201_CREATED)
+async def create_book_series(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """新增教材版本分类。admin 建平台级;org_admin/teacher 建机构级
+    (org_id 由 tenancy 写侧打戳)。实操中传书的是老师,org_admin 又进不了
+    教师端单词本页,收窄到管理员会把入口变成死的;写法混乱由同名 409 +
+    每机构上限兜底"""
+    if current_user.role not in ("admin", "org_admin", "teacher"):
+        raise HTTPException(status_code=403, detail="学生不能新增分类")
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="分类名称不能为空")
+    if len(name) > 30:
+        raise HTTPException(status_code=400, detail="分类名称不能超过30个字符")
+
+    # 同名查重: 可见范围内(平台预置+本机构,tenancy 已过滤)不允许重名
+    dup = (await db.execute(
+        select(BookSeries).where(BookSeries.name == name).limit(1)
+    )).scalars().first()
+    if dup:
+        raise HTTPException(status_code=409, detail=f"分类「{name}」已存在")
+
+    # 机构上限(仅数本机构自建的,平台预置不占额度)
+    if current_user.role != "admin":
+        cnt = (await db.execute(
+            select(func.count(BookSeries.id)).where(BookSeries.org_id.is_not(None))
+        )).scalar() or 0
+        if cnt >= MAX_ORG_SERIES:
+            raise HTTPException(status_code=400, detail=f"自定义分类最多 {MAX_ORG_SERIES} 个")
+
+    max_sort = (await db.execute(select(func.max(BookSeries.sort_order)))).scalar() or 0
+    row = BookSeries(name=name, sort_order=max_sort + 1)
+    if current_user.role == "admin":
+        row.org_id = None  # admin 建平台级;org_admin 留给 tenancy 写侧打本机构戳
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"id": row.id, "name": row.name, "is_preset": row.org_id is None}
+
 
 @router.post("/books", response_model=WordBookResponse, status_code=status.HTTP_201_CREATED)
 async def create_word_book(
@@ -38,6 +99,7 @@ async def create_word_book(
         description=book_data.description,
         grade_level=book_data.grade_level,
         volume=book_data.volume,
+        series=book_data.series,
         is_public=book_data.is_public,
         cover_color=book_data.cover_color,
         cover_url=cover_url,
@@ -63,6 +125,7 @@ async def create_word_book(
         description=db_book.description,
         grade_level=db_book.grade_level,
         volume=db_book.volume,
+        series=db_book.series,
         is_public=db_book.is_public,
         cover_color=db_book.cover_color,
         cover_url=db_book.cover_url,
@@ -117,6 +180,7 @@ async def get_word_book(
         description=db_book.description,
         grade_level=db_book.grade_level,
         volume=db_book.volume,
+        series=db_book.series,
         is_public=db_book.is_public,
         cover_color=db_book.cover_color,
         cover_url=db_book.cover_url,
@@ -163,6 +227,7 @@ async def list_word_books(
             description=book.description,
             grade_level=book.grade_level,
             volume=book.volume,
+            series=book.series,
             is_public=book.is_public,
             cover_color=book.cover_color,
             cover_url=book.cover_url,
@@ -204,7 +269,7 @@ async def update_word_book(
 
     return WordBookResponse(
         id=book.id, name=book.name, description=book.description,
-        grade_level=book.grade_level, volume=book.volume,
+        grade_level=book.grade_level, volume=book.volume, series=book.series,
         is_public=book.is_public, cover_color=book.cover_color,
         cover_url=book.cover_url, created_by=book.created_by or 0,
         word_count=word_count, created_at=book.created_at,

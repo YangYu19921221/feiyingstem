@@ -45,12 +45,26 @@ class WordBook(Base):
     description = Column(Text)
     grade_level = Column(String(20))       # 年级，如 "三年级"，课外书留空
     volume = Column(String(20))             # 册次，如 "上册"、"下册"，课外书留空
+    series = Column(String(30), nullable=True)  # 教材版本，如 "人教版"、"苏教版"，选项见 book_series 表
     created_by = Column(Integer, nullable=True)  # 暂时不使用外键
     org_id = Column(Integer, nullable=True)  # 多租户: NULL=平台共享库,非NULL=机构自建;索引由init_db迁移建
     is_public = Column(Boolean, default=True)
     cover_color = Column(String(20), default="#FF6B6B")
     cover_url = Column(String(500), nullable=True)  # AI 生成的封面图 URL，可空
     created_at = Column(DateTime, server_default=func.now())
+
+class BookSeries(Base):
+    """教材版本分类选项(单词本的 series 字段取值范围)
+    org_id=NULL 为平台预置(所有机构可见),非 NULL 为机构自定义(仅本机构,tenancy 锚点隔离)
+    """
+    __tablename__ = "book_series"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(30), nullable=False)
+    org_id = Column(Integer, nullable=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
 
 class BookWord(Base):
     __tablename__ = "book_words"

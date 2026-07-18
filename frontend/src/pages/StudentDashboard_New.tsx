@@ -224,11 +224,22 @@ const StudentDashboard = () => {
   const [isEditingOrder, setIsEditingOrder] = useState(false);
   // 书架搜索：按书名筛选(忽略大小写、去首尾空格)
   const [bookQuery, setBookQuery] = useState('');
+  // 教材版本筛选(书架 chips):''=全部
+  const [shelfSeries, setShelfSeries] = useState<string>('');
   const displayedBooks = useMemo(() => {
     const q = bookQuery.trim().toLowerCase();
-    if (!q) return sortedOwnedBooks;
-    return sortedOwnedBooks.filter(b => b.name.toLowerCase().includes(q));
-  }, [sortedOwnedBooks, bookQuery]);
+    let list = sortedOwnedBooks;
+    if (shelfSeries) list = list.filter(b => b.series === shelfSeries);
+    if (!q) return list;
+    return list.filter(b => b.name.toLowerCase().includes(q));
+  }, [sortedOwnedBooks, bookQuery, shelfSeries]);
+
+  // 书架上实际存在的版本(有两种以上才显示 chips,单一版本没有筛选意义)
+  const shelfSeriesOptions = useMemo(() => {
+    const set = new Set<string>();
+    sortedOwnedBooks.forEach(b => { if (b.series) set.add(b.series); });
+    return Array.from(set);
+  }, [sortedOwnedBooks]);
 
   useEffect(() => {
     if (ownedBooks.length === 0) {
@@ -571,6 +582,31 @@ const StudentDashboard = () => {
                   ✕
                 </button>
               )}
+            </div>
+          )}
+
+          {/* 教材版本筛选 chips:书架上有两种以上版本才显示(单一版本没有筛选意义) */}
+          {!loading && !isEditingOrder && shelfSeriesOptions.length >= 2 && (
+            <div className="flex items-center gap-1.5 mb-5 flex-wrap">
+              <button
+                onClick={() => setShelfSeries('')}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                  shelfSeries === '' ? 'bg-accent-warm text-white' : 'bg-black/5 text-ink-soft hover:bg-black/10'
+                }`}
+              >
+                全部
+              </button>
+              {shelfSeriesOptions.map(sn => (
+                <button
+                  key={sn}
+                  onClick={() => setShelfSeries(shelfSeries === sn ? '' : sn)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                    shelfSeries === sn ? 'bg-accent-warm text-white' : 'bg-black/5 text-ink-soft hover:bg-black/10'
+                  }`}
+                >
+                  {sn}
+                </button>
+              ))}
             </div>
           )}
 

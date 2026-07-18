@@ -195,6 +195,7 @@ export interface TeacherWordBook {
   description: string | null;
   grade_level: string | null;
   volume: string | null;
+  series: string | null;
   cover_color: string;
   cover_url: string | null;
   created_by: number;
@@ -210,6 +211,28 @@ export const getTeacherWordBooks = async (): Promise<TeacherWordBook[]> => {
   const response = await axios.get(`${API_BASE_URL}/words/books`, {
     params: { limit: 1000 },
   });
+  return response.data;
+};
+
+// ========================================
+// 教材版本分类(book series)
+// ========================================
+
+export interface BookSeriesOption {
+  id: number;
+  name: string;
+  is_preset: boolean;  // true=平台预置,false=机构自定义
+}
+
+/** 教材版本选项列表(平台预置 + 本机构自定义) */
+export const getBookSeries = async (): Promise<BookSeriesOption[]> => {
+  const response = await axios.get(`${API_BASE_URL}/words/book-series`);
+  return response.data;
+};
+
+/** 新增自定义分类(仅 admin/org_admin) */
+export const createBookSeries = async (name: string): Promise<BookSeriesOption> => {
+  const response = await axios.post(`${API_BASE_URL}/words/book-series`, { name });
   return response.data;
 };
 

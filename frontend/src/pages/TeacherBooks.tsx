@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTeacherWordBooks } from '../api/teacher';
-import type { TeacherWordBook } from '../api/teacher';
+import { getTeacherWordBooks, getBookSeries, createBookSeries } from '../api/teacher';
+import type { TeacherWordBook, BookSeriesOption } from '../api/teacher';
 import { BookOpen, Settings, Trash2, Search, ChevronDown, LayoutGrid, List, Pencil, FileSpreadsheet } from 'lucide-react';
 import api from '../api/client';
 import { toast } from '../components/Toast';
@@ -35,22 +35,31 @@ const TeacherBooks = () => {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => (localStorage.getItem('teacherBooksView') as 'list' | 'grid') || 'list');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // 教材版本分类:选项(平台预置+机构自定义)与筛选
+  const [seriesOptions, setSeriesOptions] = useState<BookSeriesOption[]>([]);
+  const [seriesFilter, setSeriesFilter] = useState<string>('');  // ''=全部, '__none__'=未分类
+  const [newSeriesName, setNewSeriesName] = useState('');
+  const [addingSeries, setAddingSeries] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('teacherBooksView', viewMode);
   }, [viewMode]);
 
-  // 按搜索过滤
+  // 按搜索过滤 + 教材版本筛选叠加
   const filteredBooks = useMemo(() => {
     const kw = searchKeyword.trim().toLowerCase();
-    if (!kw) return books;
-    return books.filter(b =>
+    let list = books;
+    if (seriesFilter === '__none__') list = list.filter(b => !b.series);
+    else if (seriesFilter) list = list.filter(b => b.series === seriesFilter);
+    if (!kw) return list;
+    return list.filter(b =>
       (b.name || '').toLowerCase().includes(kw)
       || (b.description || '').toLowerCase().includes(kw)
       || (b.grade_level || '').toLowerCase().includes(kw)
       || (b.volume || '').toLowerCase().includes(kw)
+      || (b.series || '').toLowerCase().includes(kw)
     );
-  }, [books, searchKeyword]);
+  }, [books, searchKeyword, seriesFilter]);
 
   // 按年级阶段分组
   const groupedBooks = useMemo(() => {
@@ -88,9 +97,9 @@ const TeacherBooks = () => {
   };
   const hasLoadedOnce = useRef(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
+  const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', series: '', cover_color: '#FF6B6B' });
   const [renameTarget, setRenameTarget] = useState<TeacherWordBook | null>(null);
-  const [renameForm, setRenameForm] = useState({ name: '', grade_level: '', volume: '' });
+  const [renameForm, setRenameForm] = useState({ name: '', grade_level: '', volume: '', series: '' });
   const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
@@ -100,6 +109,7 @@ const TeacherBooks = () => {
     }
 
     loadBooks();
+    getBookSeries().then(setSeriesOptions).catch(() => {});
   }, []);
 
   const loadBooks = async () => {
@@ -131,6 +141,7 @@ const TeacherBooks = () => {
       name: book.name,
       grade_level: book.grade_level || '',
       volume: book.volume || '',
+      series: book.series || '',
     });
     setRenameTarget(book);
   };
@@ -148,6 +159,7 @@ const TeacherBooks = () => {
         name,
         grade_level: renameForm.grade_level.trim() || null,
         volume: renameForm.volume.trim() || null,
+        series: renameForm.series || null,
       });
       toast.success('已保存');
       setRenameTarget(null);
@@ -223,12 +235,13 @@ const TeacherBooks = () => {
         description: newBook.description || null,
         grade_level: newBook.grade_level || null,
         volume: newBook.volume || null,
+        series: newBook.series || null,
         cover_color: newBook.cover_color,
         is_public: true,
         word_ids: [],
       });
       setShowCreateModal(false);
-      setNewBook({ name: '', description: '', grade_level: '', volume: '', cover_color: '#FF6B6B' });
+      setNewBook({ name: '', description: '', grade_level: '', volume: '', series: '', cover_color: '#FF6B6B' });
       loadBooks();
     } catch (error) {
       console.error('创建单词本失败:', error);
@@ -243,6 +256,7 @@ const TeacherBooks = () => {
     bookName: string;
     gradeLevel: string;
     volume: string;
+    series: string;
     units: PreviewUnit[];
     skippedSheets: string[];
   }>(null);
@@ -274,6 +288,7 @@ const TeacherBooks = () => {
         bookName: file.name.replace(/\.(xlsx|xls)$/i, '').trim().slice(0, 100),
         gradeLevel: '',
         volume: '',
+        series: '',
         units,
         skippedSheets,
       });
@@ -291,6 +306,7 @@ const TeacherBooks = () => {
         book_name: importPreview.bookName.trim(),
         grade_level: importPreview.gradeLevel || null,
         volume: importPreview.volume || null,
+        series: importPreview.series || null,
         units: importPreview.units,
       }, {
         // 几千词的批量事务 + 服务器低配,默认 10s 会"假失败"(后端还在跑,
@@ -307,6 +323,60 @@ const TeacherBooks = () => {
       setImporting(false);
     }
   };
+
+
+  /** 教材版本下拉(三个弹窗共用)。老师/管理员都可内联新增分类
+      (同名 409 + 每机构上限由后端兜底) */
+  const canManageSeries = !!user && user.role !== 'student';
+  const handleAddSeries = async () => {
+    const name = newSeriesName.trim();
+    if (!name || addingSeries) return;
+    setAddingSeries(true);
+    try {
+      const created = await createBookSeries(name);
+      setSeriesOptions(prev => [...prev, created]);
+      setNewSeriesName('');
+      toast.success(`分类「${created.name}」已添加`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '添加分类失败');
+    } finally {
+      setAddingSeries(false);
+    }
+  };
+  const renderSeriesSelect = (value: string, onChange: (v: string) => void) => (
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">教材版本（可选）</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-2 border rounded-lg"
+      >
+        <option value="">未分类</option>
+        {seriesOptions.map(so => (
+          <option key={so.id} value={so.name}>{so.name}</option>
+        ))}
+      </select>
+      {canManageSeries && (
+        <div className="flex gap-1.5 mt-1.5">
+          <input
+            value={newSeriesName}
+            onChange={e => setNewSeriesName(e.target.value)}
+            placeholder="新增分类,如:XX冲刺班"
+            className="flex-1 px-2 py-1 border border-dashed rounded text-xs"
+            maxLength={30}
+          />
+          <button
+            type="button"
+            onClick={handleAddSeries}
+            disabled={!newSeriesName.trim() || addingSeries}
+            className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40"
+          >
+            {addingSeries ? '…' : '➕添加'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
@@ -466,6 +536,39 @@ const TeacherBooks = () => {
             </div>
           )}
 
+          {/* 教材版本筛选 chips(与搜索叠加) */}
+          {books.length > 0 && seriesOptions.length > 0 && (
+            <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+              <button
+                onClick={() => setSeriesFilter('')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                  seriesFilter === '' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                全部
+              </button>
+              {seriesOptions.map(so => (
+                <button
+                  key={so.id}
+                  onClick={() => setSeriesFilter(seriesFilter === so.name ? '' : so.name)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                    seriesFilter === so.name ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {so.name}{!so.is_preset && ' ·自定义'}
+                </button>
+              ))}
+              <button
+                onClick={() => setSeriesFilter(seriesFilter === '__none__' ? '' : '__none__')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                  seriesFilter === '__none__' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                }`}
+              >
+                未分类
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -556,6 +659,11 @@ const TeacherBooks = () => {
                                   {/* 名字 + 标签 同行 */}
                                   <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-gray-800 truncate">{book.name}</span>
+                                    {book.series && (
+                                      <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded text-[11px]">
+                                        {book.series}
+                                      </span>
+                                    )}
                                     {book.grade_level && (
                                       <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded shrink-0">
                                         {book.grade_level}
@@ -634,6 +742,11 @@ const TeacherBooks = () => {
                                   </h4>
                                   {(book.grade_level || book.volume) && (
                                     <div className="flex items-center gap-1 mb-2 flex-wrap">
+                                      {book.series && (
+                                        <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded text-[11px]">
+                                          {book.series}
+                                        </span>
+                                      )}
                                       {book.grade_level && (
                                         <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] rounded">
                                           {book.grade_level}
@@ -751,6 +864,9 @@ const TeacherBooks = () => {
                 />
               </label>
             </div>
+            <div className="mb-4">
+              {renderSeriesSelect(renameForm.series, v => setRenameForm({ ...renameForm, series: v }))}
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setRenameTarget(null)}
@@ -811,6 +927,9 @@ const TeacherBooks = () => {
                     {VOLUME_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
+              </div>
+              <div className="mt-3">
+                {renderSeriesSelect(importPreview.series, v => setImportPreview({ ...importPreview, series: v }))}
               </div>
             </div>
 
@@ -898,6 +1017,7 @@ const TeacherBooks = () => {
                   </select>
                 </div>
               </div>
+              {renderSeriesSelect(newBook.series, v => setNewBook({ ...newBook, series: v }))}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">描述（可选）</label>
                 <input

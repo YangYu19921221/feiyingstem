@@ -87,6 +87,7 @@ class WordBookBase(BaseModel):
     description: Optional[str] = Field(None, description="描述")
     grade_level: Optional[str] = Field(None, description="年级，如三年级、七年级，课外书留空")
     volume: Optional[str] = Field(None, description="册次，如上册、下册，课外书留空")
+    series: Optional[str] = Field(None, description="教材版本，如人教版、苏教版，选项见 book-series 接口")
     is_public: bool = Field(True, description="是否公开")
     cover_color: str = Field("#FF6B6B", description="封面颜色")
     cover_url: Optional[str] = Field(None, description="AI 生成的封面图 URL，可空")
@@ -99,6 +100,7 @@ class WordBookUpdate(BaseModel):
     description: Optional[str] = None
     grade_level: Optional[str] = None
     volume: Optional[str] = None
+    series: Optional[str] = None
     is_public: Optional[bool] = None
     cover_color: Optional[str] = None
 

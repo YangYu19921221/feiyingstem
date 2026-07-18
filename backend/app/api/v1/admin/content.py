@@ -119,6 +119,7 @@ async def get_all_word_books(
                 "name": book.name,
                 "description": book.description,
                 "grade_level": book.grade_level,
+                "series": book.series,
                 "is_public": book.is_public,
                 "cover_color": book.cover_color,
                 "cover_url": book.cover_url,

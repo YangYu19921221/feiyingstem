@@ -275,9 +275,36 @@ async def init_db():
             "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",
             # 测评线索渠道来源: 直播/推广链接带 ?src=douyin|shipinhao|referral,下播看分渠道战报
             "ALTER TABLE assessment_leads ADD COLUMN source VARCHAR(30)",
+            # 教材版本分类: 单词本归属的教材系列(人教版/苏教版/机构自定义),选项表 book_series 由 create_all 建
+            "ALTER TABLE word_books ADD COLUMN series VARCHAR(30)",
         ]:
             try:
                 await conn.execute(text(_sql))
+            except Exception:
+                pass
+
+        # ===== 教材版本分类: 预置选项 + 存量回填(均幂等) =====
+        # 预置仅当表空时插入(机构后续自定义/排序不被启动覆盖)
+        try:
+            has_series = (await conn.execute(text("SELECT COUNT(*) FROM book_series"))).scalar()
+            if not has_series:
+                for i, name in enumerate(["人教版", "苏教版", "外研版", "牛津译林版", "北师大版", "课外读物", "校本教材"]):
+                    await conn.execute(text(
+                        "INSERT INTO book_series (name, org_id, sort_order) VALUES (:n, NULL, :s)"
+                    ), {"n": name, "s": i})
+        except Exception:
+            pass
+        # 存量回填: 按书名关键词打标,只动 series IS NULL 的行(老师手动改过的不覆盖);
+        # 识别不出的留空,由教师端编辑补
+        for kw, series_name in [
+            ("%人教%", "人教版"), ("%苏教%", "苏教版"), ("%外研%", "外研版"),
+            ("%牛津%", "牛津译林版"), ("%译林%", "牛津译林版"), ("%北师大%", "北师大版"),
+            ("%飞鹰%", "校本教材"),
+        ]:
+            try:
+                await conn.execute(text(
+                    "UPDATE word_books SET series = :s WHERE series IS NULL AND name LIKE :kw"
+                ), {"s": series_name, "kw": kw})
             except Exception:
                 pass
 

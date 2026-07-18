@@ -32,7 +32,7 @@ TENANT_MODELS: list = []
 def register_tenant_models():
     """注册需要自动过滤/打戳的锚点模型(延迟导入避免循环依赖),init_db 时调用"""
     from app.models.user import User, Class
-    from app.models.word import WordBook
+    from app.models.word import WordBook, BookSeries
     from app.models.sentence import SentenceBook
     from app.models.reading import ReadingPassage
     from app.models.competition import CompetitionQuestionSet, LeaderboardSnapshot
@@ -47,6 +47,7 @@ def register_tenant_models():
         (AssessmentLead, False),
         (LeaderboardSnapshot, False),
         (WordBook, True),
+        (BookSeries, True),
         (SentenceBook, True),
         (ReadingPassage, True),
         (CompetitionQuestionSet, True),

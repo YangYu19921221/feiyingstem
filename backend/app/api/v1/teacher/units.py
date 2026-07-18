@@ -83,6 +83,7 @@ async def import_workbook(
         description=data.description,
         grade_level=data.grade_level,
         volume=data.volume,
+        series=data.series,
         is_public=True,
         cover_color="#FF6B6B",
         cover_url=None,  # AI 封面 commit 后台补(_fill_book_cover),不挡主路径

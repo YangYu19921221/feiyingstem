@@ -662,6 +662,7 @@ async def get_student_books(
             description=book.description,
             grade_level=book.grade_level,
             volume=getattr(book, 'volume', None),
+            series=getattr(book, 'series', None),
             cover_color=book.cover_color,
             cover_url=getattr(book, 'cover_url', None),
             unit_count=unit_count,
