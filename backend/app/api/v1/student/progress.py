@@ -445,7 +445,9 @@ async def get_book_progress(
             select(func.count()).select_from(UnitWord).where(UnitWord.unit_id == unit.id)
         )
         word_count = word_count_result.scalar() or 0
-        progress_percentage = (max_completed / word_count * 100) if word_count > 0 else 0.0
+        # 封顶:completed_words 是历史写入值,老师删词/换词后可能大于现有词数
+        max_completed = min(max_completed, word_count)
+        progress_percentage = min(100.0, max_completed / word_count * 100) if word_count > 0 else 0.0
 
         # 严格模式:锁定的单元不计入书级进度分母(分配 1 个单元时进度=该单元完成度)
         is_allowed = allowed is None or unit.id in allowed
@@ -633,10 +635,14 @@ async def get_student_books(
     word_count_map = {row.book_id: row.cnt for row in result.all()}
 
     # 5. 一次性获取该学生所有单词本的学习进度
-    result = await db.execute(
+    # learning_progress 是每单元×每模式一行:直接按书 SUM 会把同一单元的
+    # flashcard/quiz/spelling 各模式进度叠加,书架进度飙到 200%+。
+    # 与书详情页(get_book_progress)同口径:每单元取各模式 MAX,再按书求和
+    per_unit_max = (
         select(
-            LearningProgress.book_id,
-            func.sum(LearningProgress.completed_words).label("completed")
+            LearningProgress.book_id.label("book_id"),
+            LearningProgress.unit_id.label("unit_id"),
+            func.max(LearningProgress.completed_words).label("unit_done"),
         )
         .where(
             and_(
@@ -644,9 +650,14 @@ async def get_student_books(
                 LearningProgress.book_id.in_(book_ids)
             )
         )
-        .group_by(LearningProgress.book_id)
+        .group_by(LearningProgress.book_id, LearningProgress.unit_id)
+        .subquery()
     )
-    progress_map = {row.book_id: row.completed or 0 for row in result.all()}
+    result = await db.execute(
+        select(per_unit_max.c.book_id, func.sum(per_unit_max.c.unit_done))
+        .group_by(per_unit_max.c.book_id)
+    )
+    progress_map = {row[0]: row[1] or 0 for row in result.all()}
 
     # 6. 组装结果
     book_list = []
@@ -654,7 +665,8 @@ async def get_student_books(
         unit_count = unit_count_map.get(book.id, 0)
         word_count = word_count_map.get(book.id, 0)
         completed_words = progress_map.get(book.id, 0)
-        progress_percentage = (completed_words / word_count * 100) if word_count > 0 else 0.0
+        # 封顶100%:老师后期删词会让历史 completed_words 大于现有词数
+        progress_percentage = min(100.0, completed_words / word_count * 100) if word_count > 0 else 0.0
 
         book_list.append(StudentBookListItem(
             id=book.id,
