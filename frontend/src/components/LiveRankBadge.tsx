@@ -1,22 +1,26 @@
 /**
- * 学习页实时排名浮标
- * 右上角小胶囊:今日班级排名 + 距上一名差几个词;60 秒轮询,超越时弹动画。
- * 定位是"激励",不打扰:紧凑、可点击收起,数据失败静默隐藏。
+ * 学习页实时排名浮标(重设计)
+ * 右上角卡片:今日班级词量榜「前三名 + 词数」+ 我的名次/差距;60 秒轮询,超越时弹动画。
+ * 定位是"激励"不打扰:可点标题收成小圆点(不彻底消失,再点恢复);无班级/接口失败静默隐藏。
+ * 直播打码开启时(投屏场景),榜上同学真名 → "X同学",与光荣榜/大屏口径一致。
  */
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getLeaderboard } from '../api/leaderboard';
+import { getLeaderboard, type LeaderboardEntry } from '../api/leaderboard';
+import { maskName, isLivePrivacyOn } from '../utils/livePrivacy';
 
 const POLL_MS = 60_000;
+const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function LiveRankBadge() {
-  const [rank, setRank] = useState<number | null>(null);
-  const [gap, setGap] = useState<number | null>(null);       // 距上一名差几个词
+  const [top, setTop] = useState<LeaderboardEntry[]>([]);   // 前三名(名字 + 词数)
+  const [rank, setRank] = useState<number | null>(null);    // 我的名次
+  const [value, setValue] = useState(0);                    // 我今天的词数
+  const [gap, setGap] = useState<number | null>(null);      // 距上一名差几个词
   const [behindGap, setBehindGap] = useState<number | null>(null); // 身后的人差几个词追上我
-  const [value, setValue] = useState(0);                     // 我今天的词数
-  const [climb, setClimb] = useState<number | null>(null);   // 上升动画:升了几名
-  // 点击 = 收成小圆点(不彻底消失,再点恢复)。原来点一下整个没了,
-  // 孩子手滑就再也看不到排名,家长还以为功能坏了
+  const [className, setClassName] = useState<string | null>(null);
+  const [climb, setClimb] = useState<number | null>(null);  // 上升动画:升了几名
+  // 点标题 = 收成小圆点(不彻底消失,再点恢复)。手滑不会让排名彻底消失,家长也不误以为坏了
   const [collapsed, setCollapsed] = useState(false);
   const prevRankRef = useRef<number | null>(null);
 
@@ -32,8 +36,10 @@ export default function LiveRankBadge() {
           setTimeout(() => setClimb(null), 3500);
         }
         prevRankRef.current = r.my_rank;
+        setTop(r.top.slice(0, 3));
         setRank(r.my_rank);
         setValue(r.my_value);
+        setClassName(r.class_name);
         // 上一名差距(从 neighbors 里找 rank = 我的-1)
         const ahead = r.neighbors.find(n => n.rank === r.my_rank! - 1);
         setGap(ahead ? Math.max(0, ahead.value - r.my_value) : null);
@@ -49,6 +55,16 @@ export default function LiveRankBadge() {
 
   if (rank === null) return null;
 
+  const isTop = rank === 1;
+  const inTop3 = rank <= 3;
+
+  // 投屏打码时榜上真名掩码为"X同学"
+  const displayName = (e: LeaderboardEntry) => {
+    const name = e.full_name || e.username;
+    return isLivePrivacyOn() ? maskName(name) : name;
+  };
+
+  // 收成小圆点
   if (collapsed) {
     return (
       <motion.button
@@ -58,65 +74,114 @@ export default function LiveRankBadge() {
         title="展开今日班级排名"
         className="fixed top-16 right-3 z-30 w-9 h-9 rounded-full bg-white/95 border-2 border-accent-warm/50 shadow-lg text-sm font-bold text-accent-warm flex items-center justify-center"
       >
-        {rank === 1 ? '👑' : `#${rank}`}
+        {isTop ? '👑' : `#${rank}`}
       </motion.button>
     );
   }
 
-  const isTop = rank === 1;
+  // 底部激励话术:冲上一名 + 身后追兵(两条都可能出现)
+  const hints: { text: string; hot: boolean }[] = [];
+  if (gap !== null && gap > 0 && rank > 1) {
+    hints.push({ text: `再学 ${gap} 词升第 ${rank - 1} 名 🚀`, hot: false });
+  }
+  if (behindGap !== null && behindGap >= 0 && behindGap <= 3) {
+    hints.push({
+      text: behindGap === 0 ? '⚡ 已被追平,快冲下一组!' : `⚡ 身后只差 ${behindGap} 词,别停!`,
+      hot: true,
+    });
+  }
 
   return (
     <>
-      <motion.button
-        initial={{ opacity: 0, y: -8 }}
+      <motion.div
+        initial={{ opacity: 0, y: -8, scale: 0.96 }}
         animate={isTop
-          ? { opacity: 1, y: 0, boxShadow: ['0 0 0px rgba(255,180,0,0.0)', '0 0 22px rgba(255,180,0,0.55)', '0 0 0px rgba(255,180,0,0.0)'] }
-          : { opacity: 1, y: 0 }}
-        transition={isTop ? { boxShadow: { duration: 2, repeat: Infinity } } : undefined}
-        onClick={() => setCollapsed(true)}
-        title="今日班级排名(点击收成小圆点)"
-        className={`fixed top-16 right-3 z-30 flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-lg text-sm font-bold backdrop-blur border-2 ${
-          isTop
-            ? 'bg-gradient-to-r from-amber-400 to-yellow-300 border-amber-500 text-amber-900'
-            : 'bg-white/95 border-accent-warm/50 text-ink'
-        }`}
+          ? { opacity: 1, y: 0, scale: 1, boxShadow: ['0 4px 14px rgba(0,0,0,0.1)', '0 0 22px rgba(255,180,0,0.5)', '0 4px 14px rgba(0,0,0,0.1)'] }
+          : { opacity: 1, y: 0, scale: 1 }}
+        transition={isTop ? { boxShadow: { duration: 2.4, repeat: Infinity } } : { type: 'spring', stiffness: 300, damping: 24 }}
+        className="fixed top-16 right-3 z-30 w-56 rounded-2xl bg-white/95 backdrop-blur border-2 border-accent-warm/40 shadow-lg overflow-hidden"
       >
-        <motion.span
-          className="text-xl"
-          animate={isTop ? { y: [0, -3, 0], rotate: [0, -8, 8, 0] } : {}}
-          transition={{ duration: 1.6, repeat: Infinity }}
+        {/* 标题:点击收成小圆点 */}
+        <button
+          onClick={() => setCollapsed(true)}
+          title="今日班级排名(点击收起)"
+          className={`w-full flex items-center justify-between px-3 py-2 text-left ${
+            isTop ? 'bg-gradient-to-r from-amber-400 to-yellow-300' : 'bg-accent-warm/10'
+          }`}
         >
-          {isTop ? '👑' : rank <= 3 ? '🏅' : '📊'}
-        </motion.span>
-        <span>
-          {isTop ? '今日班级第一!' : <>班级第 <span className="font-numeric text-accent-warm text-lg">{rank}</span></>}
-        </span>
-        <span className={`font-semibold ${isTop ? 'text-amber-800/80' : 'text-ink-mute'}`}>· {value} 词</span>
-        {!isTop && gap !== null && gap > 0 && (
-          <motion.span
-            className="text-accent-warm"
-            animate={{ opacity: [1, 0.5, 1] }}
-            transition={{ duration: 1.4, repeat: Infinity }}
-          >
-            · 差 {gap} 词升一名!
-          </motion.span>
-        )}
-        {/* 身后追兵:第一名或普通名次都显示,学习中就有"别停"的紧迫感 */}
-        {behindGap !== null && behindGap >= 0 && (
-          <span className={`text-xs font-medium ${behindGap <= 2 ? 'text-red-500' : isTop ? 'text-amber-800/70' : 'text-ink-mute'}`}>
-            · 身后差 {behindGap} 词{behindGap <= 2 ? ' 快被追上!' : ''}
-          </span>
-        )}
-      </motion.button>
+          <div className="min-w-0">
+            <p className={`text-xs font-bold ${isTop ? 'text-amber-900' : 'text-ink'}`}>
+              🏆 今日班级词量榜
+            </p>
+            {className && (
+              <p className={`text-[10px] truncate ${isTop ? 'text-amber-800/70' : 'text-ink-mute'}`}>
+                {className}
+              </p>
+            )}
+          </div>
+          <span className={`text-base leading-none shrink-0 ml-2 ${isTop ? 'text-amber-800/70' : 'text-ink-mute'}`}>—</span>
+        </button>
 
-      {/* 超越动画:升名瞬间全屏轻弹 */}
+        {/* 前三名领奖台(名字 + 词数),我在其中则高亮 */}
+        <div className="px-2 pt-1.5 pb-1 space-y-0.5">
+          {top.map((e) => {
+            const me = e.rank === rank;
+            return (
+              <div
+                key={e.user_id}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${
+                  me ? 'bg-accent-warm/15 ring-1 ring-accent-warm/40' : ''
+                }`}
+              >
+                <span className="text-base w-5 text-center shrink-0">{MEDALS[e.rank - 1]}</span>
+                <span className={`text-xs truncate flex-1 ${me ? 'font-bold text-accent-warm' : 'text-ink'}`}>
+                  {me ? '我' : displayName(e)}
+                </span>
+                <span className={`text-xs font-numeric font-semibold shrink-0 ${me ? 'text-accent-warm' : 'text-ink-soft'}`}>
+                  {e.value} 词
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 我的名次(仅当不在前三):让中游/垫底的孩子也看到自己在哪 */}
+        {!inTop3 && (
+          <div className="border-t border-black/5 px-3 py-1.5 flex items-center justify-between">
+            <span className="text-xs text-ink">
+              第 <span className="font-numeric text-accent-warm font-bold text-sm">{rank}</span> 名 · 我
+            </span>
+            <span className="text-xs font-numeric font-semibold text-ink-soft">{value} 词</span>
+          </div>
+        )}
+
+        {/* 激励话术条 */}
+        {hints.length > 0 && (
+          <div className="border-t border-black/5">
+            {hints.map((h, i) => (
+              <motion.p
+                key={i}
+                className={`px-3 py-1.5 text-[11px] font-medium ${
+                  h.hot ? 'bg-red-50 text-red-500' : 'text-accent-warm'
+                }`}
+                animate={h.hot ? { opacity: [1, 0.55, 1] } : undefined}
+                transition={h.hot ? { duration: 1.3, repeat: Infinity } : undefined}
+              >
+                {h.text}
+              </motion.p>
+            ))}
+          </div>
+        )}
+      </motion.div>
+
+      {/* 超越动画:升名瞬间轻弹 */}
       <AnimatePresence>
         {climb !== null && (
           <motion.div
             initial={{ opacity: 0, scale: 0.6, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
-            className="fixed top-28 right-3 z-40 pointer-events-none"
+            className="fixed top-3 right-3 z-40 pointer-events-none"
           >
             <div className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-accent-warm to-amber-400 text-white font-bold text-sm shadow-lg">
               🚀 超越 {climb} 人!现在班级第 {rank}
