@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, Check, X as XIcon, RefreshCw } from 'lucide-react';
 import { listSentences, type Sentence } from '../api/sentences';
+import { reportStudyTime } from '../api/learningRecords';
+import useIdleDetector from '../hooks/useIdleDetector';
 import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
 import { parseError } from '../utils/errorMessage';
@@ -28,6 +30,33 @@ export default function SentenceLearning() {
   const [done, setDone] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
+
+  // ── 学习时长上报:背诵没有逐题落库,单独按净活动时长计入学习日历 ──
+  // 空闲检测:鼠标点击/移动、键盘、触摸都算活动信号;无操作60秒或切后台→暂停计时
+  const isIdle = useIdleDetector();
+  const startTimeRef = useRef(Date.now());
+  const idleStartRef = useRef(0);
+  useEffect(() => {
+    if (isIdle) {
+      idleStartRef.current = Date.now();
+    } else if (idleStartRef.current > 0) {
+      startTimeRef.current += Date.now() - idleStartRef.current; // 挂机时段不计入
+      idleStartRef.current = 0;
+    }
+  }, [isIdle]);
+  // 已上报的净活动秒数,每次只报增量(与单词学习页 takeSessionDelta 同一口径)
+  const lastReportedSecRef = useRef(0);
+  const reportDelta = useCallback(() => {
+    let start = startTimeRef.current;
+    if (idleStartRef.current > 0) start += Date.now() - idleStartRef.current; // 正在挂机的这段也扣掉
+    const net = Math.round((Date.now() - start) / 1000);
+    const delta = net - lastReportedSecRef.current;
+    lastReportedSecRef.current = net;
+    if (delta > 0) reportStudyTime(delta).catch(() => {});
+  }, []);
+  // 完成一组时结一次;退出页面(含中途返回)把尾巴补上
+  useEffect(() => { if (done) reportDelta(); }, [done, reportDelta]);
+  useEffect(() => () => reportDelta(), [reportDelta]);
 
   useEffect(() => {
     if (!uid) return;

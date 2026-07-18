@@ -2,11 +2,13 @@
  * 独立句子填空练习页面
  * 加载单元全部单词，使用 SentenceFillPhase 组件
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
+import { reportStudyTime } from '../api/learningRecords';
+import useIdleDetector from '../hooks/useIdleDetector';
 import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import { useAudio } from '../hooks/useAudio';
 
@@ -20,6 +22,30 @@ export default function SentenceFillPractice() {
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [results, setResults] = useState<FillBlankResult[]>([]);
+
+  // ── 学习时长上报:独立句子填空页此前不计时,按净活动时长计入学习日历 ──
+  const isIdle = useIdleDetector();
+  const startTimeRef = useRef(Date.now());
+  const idleStartRef = useRef(0);
+  useEffect(() => {
+    if (isIdle) {
+      idleStartRef.current = Date.now();
+    } else if (idleStartRef.current > 0) {
+      startTimeRef.current += Date.now() - idleStartRef.current; // 挂机时段不计入
+      idleStartRef.current = 0;
+    }
+  }, [isIdle]);
+  const lastReportedSecRef = useRef(0);
+  const reportDelta = useCallback(() => {
+    let start = startTimeRef.current;
+    if (idleStartRef.current > 0) start += Date.now() - idleStartRef.current;
+    const net = Math.round((Date.now() - start) / 1000);
+    const delta = net - lastReportedSecRef.current;
+    lastReportedSecRef.current = net;
+    if (delta > 0) reportStudyTime(delta).catch(() => {});
+  }, []);
+  useEffect(() => { if (completed) reportDelta(); }, [completed, reportDelta]);
+  useEffect(() => () => reportDelta(), [reportDelta]);
 
   useEffect(() => {
     if (!unitId) return;

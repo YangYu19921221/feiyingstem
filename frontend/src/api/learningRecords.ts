@@ -109,6 +109,15 @@ export const submitMistakePracticeRecord = async (
 };
 
 /**
+ * 上报纯学习时长(句子背诵等没有逐题落库的场景),计入学习日历。
+ * 走可靠队列:断网/关页后下次打开自动补交,幂等键防重复计时。
+ */
+export const reportStudyTime = async (sessionSeconds: number): Promise<void> => {
+  if (!sessionSeconds || sessionSeconds <= 0) return;
+  await submitReliably('/student/study-time', { session_seconds: Math.round(sessionSeconds) });
+};
+
+/**
  * 创建学习会话
  */
 export const createStudySession = async (

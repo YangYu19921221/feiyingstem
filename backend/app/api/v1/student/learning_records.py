@@ -119,6 +119,31 @@ async def claim_client_batch(db: AsyncSession, batch_id: Optional[str], user_id:
         return True
 
 
+def _spread_created_at(records: List[LearningRecord], session_seconds: Optional[int]) -> None:
+    """回填逐题时间戳,还原真实学习时段。
+
+    背景:前端整组做完才批量提交,created_at 默认=入库时刻,一批 14 条
+    全盖同一秒的戳。教师端时间线/学习时段按 created_at 聚簇,会显示成
+    "15:33~15:33 学习 14 题",看起来像刷题作弊,实际学了十几分钟。
+
+    做法:用本批净活动时长(session_seconds,前端已扣挂机)从提交时刻
+    往回均匀铺开——末题=现在,首题=现在-时长。单题间隔封顶 240 秒
+    (小于时间线 5 分钟断窗),避免超长时长把一批铺成多个 1 题碎段。
+    """
+    n = len(records)
+    if n == 0:
+        return
+    now = datetime.utcnow()
+    span = min(int(session_seconds or 0), STUDY_CALENDAR_SESSION_CAP_SEC)
+    if n == 1 or span <= 0:
+        for r in records:
+            r.created_at = now
+        return
+    step = min(span / (n - 1), 240.0)
+    for i, r in enumerate(records):
+        r.created_at = now - timedelta(seconds=step * (n - 1 - i))
+
+
 # ========================================
 # 学习记录 API
 # ========================================
@@ -187,6 +212,9 @@ async def create_learning_records(
             db, user_id, record_data.word_id,
             record_data.learning_mode, record_data.is_correct
         )
+
+    # 逐题时间戳按净时长回铺,教师端时间线才能还原真实学习时段
+    _spread_created_at(created_records, data.session_seconds)
 
     # 3. 更新学习日历
     total_time_ms = sum(r.time_spent for r in data.records)
@@ -444,6 +472,12 @@ async def update_study_session(
     session.wrong_count = data.wrong_count
     session.time_spent = data.time_spent
     session.ended_at = datetime.utcnow()
+    # 回填真实开始时间:前端为避免"点了单元没学"留下空会话,学习结束时才
+    # 创建会话,started_at 默认=创建时刻≈结束时刻,时间段会显示成 0。
+    # 用 结束时刻-时长 反推,封顶与日历口径一致。
+    if data.time_spent and data.time_spent > 0:
+        session.started_at = session.ended_at - timedelta(
+            seconds=min(data.time_spent, STUDY_CALENDAR_SESSION_CAP_SEC))
 
     await db.commit()
     await db.refresh(session)
@@ -971,6 +1005,7 @@ async def submit_review_records(
 
     total_correct = 0
     total_wrong = 0
+    created_records = []
 
     for record_data in data.records:
         # 创建学习记录
@@ -983,6 +1018,7 @@ async def submit_review_records(
             user_answer=record_data.user_answer,  # 复习/错题练习的错误输入同样进诊断
         )
         db.add(learning_record)
+        created_records.append(learning_record)
 
         if record_data.is_correct:
             total_correct += 1
@@ -994,6 +1030,9 @@ async def submit_review_records(
             db, user_id, record_data.word_id,
             record_data.learning_mode, record_data.is_correct
         )
+
+    # 逐题时间戳按净时长回铺,教师端时间线才能还原真实学习时段
+    _spread_created_at(created_records, data.session_seconds)
 
     # 更新学习日历
     total_time_ms = sum(r.time_spent for r in data.records)
@@ -1014,6 +1053,34 @@ async def submit_review_records(
         "new_achievements": await _check_achievements_safe(
             db, user_id, total_correct, len(data.records)),
     }
+
+
+class StudyTimeReport(BaseModel):
+    session_seconds: int = 0
+    client_batch_id: Optional[str] = None  # 前端重试补交的幂等键
+
+
+@router.post("/study-time")
+async def report_study_time(
+    data: StudyTimeReport,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """无逐题落库的学习场景(句子背诵等)单独上报净活动时长。
+
+    背诵页此前不上报任何数据,学生点鼠标背了半小时,教师端时长为 0。
+    只累加学习日历 duration(words_learned 不动),口径与其他模式一致:
+    session_seconds 是前端已扣挂机的增量净活动秒数,单次封顶 30 分钟。
+    """
+    # 幂等去重(重试补交,自动忽略)
+    if not await claim_client_batch(db, data.client_batch_id, current_user.id):
+        return {"success": True, "message": "该批次已记录过(重试补交,自动忽略)"}
+    await update_study_calendar(
+        db, current_user.id, record_count=0, total_time_ms=0,
+        session_seconds=data.session_seconds,
+    )
+    await db.commit()
+    return {"success": True}
 
 
 class GroupExamRecordCreate(BaseModel):
