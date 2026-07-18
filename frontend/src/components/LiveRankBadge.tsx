@@ -84,11 +84,15 @@ export default function LiveRankBadge() {
   if (gap !== null && gap > 0 && rank > 1) {
     hints.push({ text: `再学 ${gap} 词升第 ${rank - 1} 名 🚀`, hot: false });
   }
-  if (behindGap !== null && behindGap >= 0 && behindGap <= 3) {
-    hints.push({
-      text: behindGap === 0 ? '⚡ 已被追平,快冲下一组!' : `⚡ 身后只差 ${behindGap} 词,别停!`,
-      hot: true,
-    });
+  // 身后有人就提示(不再只在≤3词时):贴身(≤3词)红色跳动催紧,拉开距离则平和地报领先量
+  if (behindGap !== null && behindGap >= 0) {
+    if (behindGap === 0) {
+      hints.push({ text: '⚡ 已被追平,快冲下一组!', hot: true });
+    } else if (behindGap <= 3) {
+      hints.push({ text: `⚡ 身后只差 ${behindGap} 词,别停!`, hot: true });
+    } else {
+      hints.push({ text: `🛡️ 领先身后同学 ${behindGap} 词,继续保持!`, hot: false });
+    }
   }
 
   return (
