@@ -221,6 +221,13 @@ const TeacherStudentDetail = () => {
     );
   }
 
+  // 返回按钮走浏览器历史:从班级管理/数据分析等多个入口都能进本页,
+  // 写死跳数据分析会把从班级管理来的老师带错地方。无历史(直开链接)才兜底
+  const goBack = () => {
+    if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
+    else navigate('/teacher/analytics');
+  };
+
   if (!stats) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
@@ -228,10 +235,10 @@ const TeacherStudentDetail = () => {
           <span className="text-6xl mb-4 block">😕</span>
           <p className="text-gray-500">未找到学生数据</p>
           <button
-            onClick={() => navigate('/teacher/analytics')}
+            onClick={goBack}
             className="mt-4 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
           >
-            返回数据分析
+            返回
           </button>
         </div>
       </div>
@@ -244,11 +251,11 @@ const TeacherStudentDetail = () => {
       <div className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <button
-            onClick={() => navigate('/teacher/analytics')}
+            onClick={goBack}
             className="flex items-center gap-2 text-gray-600 hover:text-primary transition"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>返回数据分析</span>
+            <span>返回</span>
           </button>
         </div>
       </div>

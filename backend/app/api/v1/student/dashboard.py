@@ -265,3 +265,52 @@ async def get_student_dashboard_stats(
         "total_sessions": total_sessions,
         "first_time_accuracy": round(first_time_accuracy, 1),
     }
+
+
+@router.get("/today-words")
+async def get_today_words_split(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """今日词数拆分:总去重词数 + 其中史上首见的新词数。
+
+    学习页(分类等)组末展示"今天学了 N 个词,其中 M 个新词"——
+    复习旧词时 M=0 属正常,和教师端每日数据「新N」同口径。
+    """
+    from sqlalchemy import text, bindparam
+    from app.models.word import Word
+
+    day_start, day_end = local_today_utc_range()
+
+    total = (await db.execute(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(LearningRecord)
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
+            LearningRecord.user_id == current_user.id,
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+    )).scalar() or 0
+
+    new_cnt = 0
+    if total:
+        new_cnt = (await db.execute(text("""
+            SELECT COUNT(*) FROM (
+                SELECT LOWER(w.word) AS lw
+                FROM learning_records lr
+                JOIN words w ON w.id = lr.word_id
+                WHERE lr.user_id = :uid
+                  AND lr.created_at >= :day_start AND lr.created_at < :day_end
+                GROUP BY LOWER(w.word)
+            ) t
+            WHERE NOT EXISTS (
+                SELECT 1 FROM learning_records lr2
+                JOIN words w2 ON w2.id = lr2.word_id
+                WHERE lr2.user_id = :uid
+                  AND LOWER(w2.word) = t.lw
+                  AND lr2.created_at < :day_start
+            )
+        """), {"uid": current_user.id, "day_start": day_start, "day_end": day_end})).scalar() or 0
+
+    return {"today_words": int(total), "new_words": int(new_cnt)}

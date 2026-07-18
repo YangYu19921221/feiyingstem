@@ -188,24 +188,32 @@ async def get_learning_overview(
         )
     )
     cal_today = cal_today_res.scalar_one_or_none()
-    today_words = cal_today.words_learned if cal_today else 0
     today_duration = cal_today.duration if cal_today else 0
 
-    # 没打卡日历的话退化到 StudySession 累加（兼容旧数据 / 学习中尚未结算的情况）
+    # 今日词数按 distinct(lower(word)) 从 LearningRecord 实算,与 daily-plan/教师端统一口径;
+    # StudyCalendar.words_learned 历史上被 classify 多记录放大过,不再直接展示
+    words_today_res = await db.execute(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(LearningRecord)
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(
+            LearningRecord.user_id == current_user.id,
+            LearningRecord.created_at >= today_start,
+            LearningRecord.created_at < tomorrow_start,
+        )
+    )
+    today_words = int(words_today_res.scalar() or 0)
+
+    # 没打卡日历的话时长退化到 StudySession 累加（兼容旧数据 / 学习中尚未结算的情况）
     if not cal_today:
         sess_sum_res = await db.execute(
-            select(
-                func.coalesce(func.sum(StudySession.words_studied), 0),
-                func.coalesce(func.sum(StudySession.time_spent), 0),
-            ).where(
+            select(func.coalesce(func.sum(StudySession.time_spent), 0)).where(
                 StudySession.user_id == current_user.id,
                 StudySession.started_at >= today_start,
                 StudySession.started_at < tomorrow_start,
             )
         )
-        ws, ts = sess_sum_res.one()
-        today_words = int(ws or 0)
-        today_duration = int(ts or 0)
+        today_duration = int(sess_sum_res.scalar() or 0)
 
     sess_cnt_res = await db.execute(
         select(func.count(StudySession.id)).where(

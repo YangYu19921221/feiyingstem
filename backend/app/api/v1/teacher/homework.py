@@ -217,20 +217,32 @@ async def get_teacher_homework(
         .where(HomeworkAssignment.teacher_id == current_user.id)
         .order_by(HomeworkAssignment.created_at.desc())
     )
+    rows = result.all()
 
-    homework_list = []
-    for homework, unit, book in result.all():
-        # 统计完成情况(case 需从 sqlalchemy 顶层导入;func.case 会生成不认识 else_ 的通用函数)
-        stats_result = await db.execute(
+    # 完成情况一次聚合(原先每作业单发一条统计查询,2000+作业时页面要跑2000+条SQL,
+    # 实测加载数秒;case 需从 sqlalchemy 顶层导入,func.case 不认识 else_)
+    stats_map: dict[int, tuple] = {}
+    if rows:
+        stats_rows = await db.execute(
             select(
+                HomeworkStudentAssignment.homework_id,
                 func.count(HomeworkStudentAssignment.id).label('total'),
                 func.sum(case((HomeworkStudentAssignment.status == 'completed', 1), else_=0)).label('completed'),
                 func.sum(case((HomeworkStudentAssignment.status == 'in_progress', 1), else_=0)).label('in_progress'),
                 func.sum(case((HomeworkStudentAssignment.status == 'pending', 1), else_=0)).label('pending')
             )
-            .where(HomeworkStudentAssignment.homework_id == homework.id)
+            .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
+            .where(HomeworkAssignment.teacher_id == current_user.id)
+            .group_by(HomeworkStudentAssignment.homework_id)
         )
-        stats = stats_result.first()
+        stats_map = {r.homework_id: r for r in stats_rows.all()}
+
+    class _Zero:
+        total = completed = in_progress = pending = 0
+
+    homework_list = []
+    for homework, unit, book in rows:
+        stats = stats_map.get(homework.id, _Zero)
 
         homework_list.append(HomeworkResponse(
             id=homework.id,

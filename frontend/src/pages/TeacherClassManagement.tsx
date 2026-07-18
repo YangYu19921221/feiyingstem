@@ -6,6 +6,7 @@ import html2canvas from 'html2canvas';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import ReviewRulesModal from '../components/ReviewRulesModal';
+import StatsRulesModal from '../components/StatsRulesModal';
 import { toast } from '../components/Toast';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -83,7 +84,7 @@ const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 const AVAILABLE_PAGE_SIZE = 50;
 
 // 每日数据表列数：基础列(不含首列勾选框) + 可收起的次要列。展开行 colSpan 据此计算，避免魔法数字。
-const DAILY_BASE_COLS = 9;       // 学生/学习内容/学习单词/学习时长/正确错误/准确率/切屏/发呆/操作
+const DAILY_BASE_COLS = 10;      // 学生/学习内容/学习单词/学习时长/效率/正确错误/准确率/切屏/发呆/操作
 const DAILY_SECONDARY_COLS = 4;  // 会话数/复习待/复习已/已毕业
 
 // 分段切换按钮组（排行榜的"时间维度""指标"共用）
@@ -156,6 +157,8 @@ const TeacherClassManagement = () => {
 
   // 复习规则弹窗
   const [showReviewRules, setShowReviewRules] = useState(false);
+  // 数据统计规则弹窗(时长/词数/新词怎么算,白话版给老师看)
+  const [showStatsRules, setShowStatsRules] = useState(false);
 
   // 学生搜索
   const [studentSearch, setStudentSearch] = useState('');
@@ -185,6 +188,9 @@ const TeacherClassManagement = () => {
 
   // 每日数据 - 按姓名/用户名搜索（纯前端过滤，不影响日报图=全班）
   const [dailySearch, setDailySearch] = useState('');
+  // 每日数据排序:默认按学新词;效率维度让"短时间高效"的孩子也能被看见,
+  // 不然纯词量排名对认真但时间少的孩子不公平
+  const [dailySortKey, setDailySortKey] = useState<'words' | 'duration' | 'efficiency' | 'accuracy'>('words');
 
   // 每日数据 - 生成分享图（发家长群）
   const [showShareImage, setShowShareImage] = useState(false);
@@ -194,6 +200,14 @@ const TeacherClassManagement = () => {
   // 每日数据 - 展开某学生查看当天具体背了哪本书/哪个单元/第几组
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
   const [dailyContent, setDailyContent] = useState<DailyContentItem[]>([]);
+  // 学生单日行为时间线(签到→活跃段→空窗段→作业事件),回答"这两小时他在干嘛"
+  const [dayTimeline, setDayTimeline] = useState<{ type: string; time: string; text: string }[] | null>(null);
+  // 全班"实际学习时段"(首次~末次答题),表格与家长日报图共用
+  const [activitySpans, setActivitySpans] = useState<Record<string, { first: string; last: string }>>({});
+  // 全班当日学习内容(单元名列表),日报图"学习内容"列用
+  const [dayUnits, setDayUnits] = useState<Record<string, string[]>>({});
+  // 全班当日"真·新词数"(史上首见拼写):投入量与词汇量增量分开看,复习日新词≈0是正常的
+  const [dayNewWords, setDayNewWords] = useState<Record<string, number>>({});
   const [loadingDailyContent, setLoadingDailyContent] = useState(false);
   // 展开明细的独立日期:默认=全班选中日期,可按天前后翻看该生历史(如前一天学了什么)
   const [contentDate, setContentDate] = useState<string>('');
@@ -290,6 +304,30 @@ const TeacherClassManagement = () => {
     } catch (error) {
       console.error('加载每日数据失败:', error);
     }
+    // 学习时段(首次~末次答题)并行拉取,供表格/日报图展示;失败不影响主数据
+    try {
+      const r = await axios.get(`${API_BASE_URL}/teacher/analytics/classes/${classId}/day-activity-spans`, {
+        headers: headers(),
+        params: { target_date: date }
+      });
+      setActivitySpans(r.data?.spans || {});
+    } catch { setActivitySpans({}); }
+    // 当日学习内容(单元列表),日报图用;失败不影响主数据
+    try {
+      const r = await axios.get(`${API_BASE_URL}/teacher/analytics/classes/${classId}/day-units`, {
+        headers: headers(),
+        params: { target_date: date }
+      });
+      setDayUnits(r.data?.units || {});
+    } catch { setDayUnits({}); }
+    // 当日新词数(史上首见),表格与日报图共用;失败不影响主数据
+    try {
+      const r = await axios.get(`${API_BASE_URL}/teacher/analytics/classes/${classId}/day-new-words`, {
+        headers: headers(),
+        params: { target_date: date }
+      });
+      setDayNewWords(r.data?.new_words || {});
+    } catch { setDayNewWords({}); }
   };
 
   const toggleDailyContent = async (studentId: number) => {
@@ -298,6 +336,7 @@ const TeacherClassManagement = () => {
       setExpandedStudentId(null);
       setDailyContent([]);
       setContentSummary(null);
+      setDayTimeline(null);
       return;
     }
     setExpandedStudentId(studentId);
@@ -310,7 +349,19 @@ const TeacherClassManagement = () => {
   const loadDailyContentFor = async (studentId: number, date: string) => {
     if (!selectedClass) return;
     setDailyContent([]);
+    setDayTimeline(null);
     setLoadingDailyContent(true);
+    // 行为时间线并行拉取,失败不影响学习内容展示
+    (async () => {
+      try {
+        const token = localStorage.getItem('access_token');
+        const r = await axios.get(`${API_BASE_URL}/teacher/analytics/students/${studentId}/day-timeline`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { target_date: date },
+        });
+        setDayTimeline(r.data?.timeline ?? []);
+      } catch { setDayTimeline([]); }
+    })();
     try {
       const res = await teacherMonitor.dailyStatsContent(selectedClass.id, studentId, date);
       setDailyContent(res.items || []);
@@ -620,14 +671,61 @@ const TeacherClassManagement = () => {
     return new Set(distinct.slice(0, 3));
   })();
 
-  // 屏幕表格用的过滤列表(按姓名/用户名，纯前端)。日报图仍用全班 dailyStats。
+  // ============ 学习效率(词/10分钟) ============
+  // 纯词量排名奖励"耗时间"、纯时长排名奖励"挂机",效率把两者归一:
+  // 效率 = 去重词数 ÷ (时长/10分钟)。时长不足5分钟不计(防"2分钟背3词"刷假高效)。
+  const EFFICIENCY_MIN_SECONDS = 300;
+  const efficiencyOf = (s: DailyStudentData): number | null => {
+    if (s.study_duration < EFFICIENCY_MIN_SECONDS || s.words_learned <= 0) return null;
+    return s.words_learned / (s.study_duration / 600);
+  };
+
+  // 班级效率中位数(仅计有效效率),用于分档徽章。用中位数而非平均,防个别极端值拉偏
+  const efficiencyMedian = (() => {
+    const effs = dailyStats
+      .map(efficiencyOf)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b);
+    if (effs.length === 0) return null;
+    const mid = Math.floor(effs.length / 2);
+    return effs.length % 2 ? effs[mid] : (effs[mid - 1] + effs[mid]) / 2;
+  })();
+
+  // 效率分档:档位不排名次,群里截图不伤人。🐢"沉浸"是中性表述(时间投入型)
+  const efficiencyBadge = (eff: number | null): { icon: string; label: string; cls: string } | null => {
+    if (eff == null || efficiencyMedian == null) return null;
+    if (eff >= efficiencyMedian * 1.3) return { icon: '🚀', label: '高效', cls: 'bg-orange-100 text-orange-700' };
+    if (eff >= efficiencyMedian * 0.7) return { icon: '⚖️', label: '稳健', cls: 'bg-sky-100 text-sky-700' };
+    return { icon: '🐢', label: '沉浸', cls: 'bg-emerald-100 text-emerald-700' };
+  };
+
+  // 日报图⚡效率之星:效率前3档(并列同档都给),与🌟词量之星并列表扬两种孩子
+  const shareEffStarThreshold = (() => {
+    const distinct = Array.from(new Set(
+      dailyStats
+        .map(efficiencyOf)
+        .filter((v): v is number => v != null)
+        .map(v => Math.round(v * 10) / 10)
+    )).sort((a, b) => b - a);
+    return new Set(distinct.slice(0, 3));
+  })();
+
+  // 屏幕表格用的过滤+排序列表(纯前端)。日报图仍用全班 dailyStats。
   const filteredDailyStats = (() => {
     const kw = dailySearch.trim().toLowerCase();
-    if (!kw) return dailyStats;
-    return dailyStats.filter(s =>
+    const base = !kw ? dailyStats : dailyStats.filter(s =>
       (s.full_name || '').toLowerCase().includes(kw) ||
       (s.username || '').toLowerCase().includes(kw)
     );
+    const val = (s: DailyStudentData): number => {
+      switch (dailySortKey) {
+        case 'duration': return s.study_duration;
+        case 'efficiency': return efficiencyOf(s) ?? -1;
+        case 'accuracy': return (s.correct_count + s.wrong_count) > 0 ? s.accuracy_rate : -1;
+        default: return s.words_learned;
+      }
+    };
+    return [...base].sort((a, b) => val(b) - val(a));
   })();
 
   // 用 html2canvas 把隐藏的分享视图渲染成 canvas
@@ -674,7 +772,11 @@ const TeacherClassManagement = () => {
   };
 
   // 复制到剪贴板（浏览器支持时可直接粘贴进微信）
-  const handleCopyShareImage = async () => {
+  // 注意:不能"先渲染 canvas 再 clipboard.write"——html2canvas 要跑 1~3 秒,
+  // Safari/Chrome 会判定用户手势已过期而抛 NotAllowedError(实测踩坑)。
+  // 正确姿势:在点击的同步调用栈里创建 ClipboardItem,值传 Promise<Blob>,
+  // 渲染由浏览器在剪贴板事务内等待。
+  const handleCopyShareImage = () => {
     if (dailyStats.length === 0) {
       toast('该日期暂无学习数据，无法生成图片', 'warning');
       return;
@@ -684,21 +786,22 @@ const TeacherClassManagement = () => {
       return;
     }
     setExporting(true);
-    try {
-      setShowShareImage(true);
-      await new Promise(r => setTimeout(r, 60));
+    setShowShareImage(true);
+    const blobPromise: Promise<Blob> = (async () => {
+      await new Promise(r => setTimeout(r, 60));  // 等分享视图挂载
       const canvas = await renderShareCanvas();
       if (!canvas) throw new Error('render failed');
       const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/png'));
       if (!blob) throw new Error('blob failed');
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      toast('已复制到剪贴板，直接粘贴到微信群即可', 'success');
-    } catch (e) {
-      console.error('复制图片失败:', e);
-      toast('复制失败，请改用"下载图片"', 'error');
-    } finally {
-      setExporting(false);
-    }
+      return blob;
+    })();
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })])
+      .then(() => toast('已复制到剪贴板，直接粘贴到微信群即可', 'success'))
+      .catch((e) => {
+        console.error('复制图片失败:', e);
+        toast('复制失败，请改用"下载图片"', 'error');
+      })
+      .finally(() => setExporting(false));
   };
 
   // 排行榜派生值（只展示有分值的学生，条形按最高分归一化）
@@ -940,6 +1043,14 @@ const TeacherClassManagement = () => {
                         <HelpCircle className="w-3.5 h-3.5" />
                         复习规则
                       </button>
+                      <button
+                        onClick={() => setShowStatsRules(true)}
+                        title="学习时长/词数/新词/效率是怎么算的(白话说明,可照此向家长解释)"
+                        className="flex items-center gap-1 px-3 py-1.5 border border-indigo-200 text-indigo-600 text-sm rounded-lg hover:bg-indigo-50 transition font-medium"
+                      >
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        数据怎么算
+                      </button>
                       {selectedForRemove.size > 0 && (
                         <button
                           onClick={handleBatchRemove}
@@ -1012,10 +1123,35 @@ const TeacherClassManagement = () => {
                             </th>
                             <th className="text-left py-3 px-3 font-semibold text-gray-700 text-sm">学生</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习内容</th>
-                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习单词</th>
-                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">学习时长</th>
+                            <th
+                              onClick={() => setDailySortKey('words')}
+                              className={`text-center py-3 px-3 font-semibold text-sm cursor-pointer select-none hover:text-indigo-600 ${dailySortKey === 'words' ? 'text-indigo-600' : 'text-gray-700'}`}
+                              title="点击按学新词排序"
+                            >
+                              学习单词{dailySortKey === 'words' && ' ↓'}
+                            </th>
+                            <th
+                              onClick={() => setDailySortKey('duration')}
+                              className={`text-center py-3 px-3 font-semibold text-sm cursor-pointer select-none hover:text-indigo-600 ${dailySortKey === 'duration' ? 'text-indigo-600' : 'text-gray-700'}`}
+                              title="点击按学习时长排序"
+                            >
+                              学习时长{dailySortKey === 'duration' && ' ↓'}
+                            </th>
+                            <th
+                              onClick={() => setDailySortKey('efficiency')}
+                              className={`text-center py-3 px-3 font-semibold text-sm cursor-pointer select-none hover:text-indigo-600 ${dailySortKey === 'efficiency' ? 'text-indigo-600' : 'text-gray-700'}`}
+                              title="每10分钟学的去重新词数。时长不足5分钟不计。点击按效率排序"
+                            >
+                              效率{dailySortKey === 'efficiency' && ' ↓'}
+                            </th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">正确/错误</th>
-                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">准确率</th>
+                            <th
+                              onClick={() => setDailySortKey('accuracy')}
+                              className={`text-center py-3 px-3 font-semibold text-sm cursor-pointer select-none hover:text-indigo-600 ${dailySortKey === 'accuracy' ? 'text-indigo-600' : 'text-gray-700'}`}
+                              title="点击按准确率排序"
+                            >
+                              准确率{dailySortKey === 'accuracy' && ' ↓'}
+                            </th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="离开学习页面的次数(切去别的标签页/应用)">切屏</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="60秒无操作被全屏提醒的次数">发呆</th>
                             {showSecondaryCols && <>
@@ -1091,9 +1227,35 @@ const TeacherClassManagement = () => {
                                 <span className={`font-bold ${s.words_learned > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
                                   {s.words_learned}
                                 </span>
+                                {s.words_learned > 0 && (
+                                  <span
+                                    className={`ml-1 text-[10px] font-medium ${(dayNewWords[String(s.user_id)] ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-400'}`}
+                                    title="当天第一次学的新拼写数;复习旧词不计入,复习日为0是正常的"
+                                  >
+                                    新{dayNewWords[String(s.user_id)] ?? 0}
+                                  </span>
+                                )}
                               </td>
                               <td className="py-3 px-3 text-center text-sm text-gray-600">
                                 {s.study_duration > 0 ? formatDuration(s.study_duration) : '-'}
+                              </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                {(() => {
+                                  const eff = efficiencyOf(s);
+                                  if (eff == null) return <span className="text-gray-400">-</span>;
+                                  const badge = efficiencyBadge(eff);
+                                  return (
+                                    <span className="inline-flex items-center gap-1">
+                                      <span className="font-semibold text-gray-700">{eff.toFixed(1)}</span>
+                                      <span className="text-[10px] text-gray-400">词/10分</span>
+                                      {badge && (
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.cls}`} title={`班级效率中位数的${badge.label === '高效' ? '1.3倍以上' : badge.label === '稳健' ? '0.7~1.3倍' : '0.7倍以下(时间投入型)'}`}>
+                                          {badge.icon}{badge.label}
+                                        </span>
+                                      )}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="py-3 px-3 text-center text-sm">
                                 <span className="text-green-600">{s.correct_count}</span>
@@ -1195,6 +1357,33 @@ const TeacherClassManagement = () => {
                                       </span>
                                     )}
                                   </div>
+                                  {/* 行为时间线:签到→活跃段→空窗段→作业事件,回答"这两小时他在干嘛" */}
+                                  {dayTimeline && dayTimeline.length > 0 && (
+                                    <div className="mb-3 bg-white rounded-xl border border-orange-100 shadow-sm px-4 py-3">
+                                      <div className="text-xs font-semibold text-gray-500 mb-2">⏱ 当日行为时间线</div>
+                                      <div className="space-y-1">
+                                        {dayTimeline.map((ev, i) => (
+                                          <div key={i} className="flex items-start gap-2 text-xs leading-relaxed">
+                                            <span className="shrink-0">
+                                              {ev.type === 'checkin' && '📍'}
+                                              {ev.type === 'active' && '✅'}
+                                              {ev.type === 'gap' && '⚠️'}
+                                              {ev.type === 'homework' && '📝'}
+                                              {ev.type === 'end' && '🌙'}
+                                            </span>
+                                            <span className={
+                                              ev.type === 'gap' ? 'text-red-500 font-medium'
+                                              : ev.type === 'active' ? 'text-gray-700'
+                                              : ev.type === 'homework' ? 'text-indigo-600'
+                                              : 'text-gray-500'
+                                            }>
+                                              {ev.type === 'checkin' ? `${ev.time} 签到` : ev.text}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                   {loadingDailyContent ? (
                                     <div className="py-4 text-center text-sm text-gray-400">加载中...</div>
                                   ) : dailyContent.length === 0 ? (
@@ -1269,7 +1458,7 @@ const TeacherClassManagement = () => {
                     <div style={{ position: 'fixed', left: '-99999px', top: 0, zIndex: -1 }}>
                       <div
                         ref={shareRef}
-                        style={{ width: '720px', background: '#ffffff', padding: '28px 32px', fontFamily: 'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif' }}
+                        style={{ width: '860px', background: '#ffffff', padding: '28px 32px', fontFamily: 'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif' }}
                       >
                         {/* 标题 */}
                         <div style={{ borderBottom: '3px solid #FF6B35', paddingBottom: '14px', marginBottom: '18px' }}>
@@ -1286,25 +1475,45 @@ const TeacherClassManagement = () => {
                           <thead>
                             <tr style={{ background: '#FFF3E9', color: '#9a3412' }}>
                               <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600 }}>学生</th>
-                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>学新词</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>学习时段</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>学词（新增）</th>
                               <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>学习时长</th>
+                              <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>效率(词/10分)</th>
                               <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>正确率</th>
                               <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 600 }}>复习完成</th>
+                              <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 600 }}>学习内容</th>
                             </tr>
                           </thead>
                           <tbody>
                             {dailyStats.map((s, i) => {
                               const isTop = s.words_learned > 0 && shareStarThreshold.has(s.words_learned);
+                              const eff = efficiencyOf(s);
+                              // ⚡效率之星与🌟词量之星并列:让"短时间高效"的孩子在家长群里也被表扬
+                              const isEffTop = eff != null && shareEffStarThreshold.has(Math.round(eff * 10) / 10);
                               return (
                                 <tr key={s.user_id} style={{ background: i % 2 === 0 ? '#ffffff' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
                                   <td style={{ padding: '9px 12px', color: '#1f2937', fontWeight: 500 }}>
-                                    {isTop && '🌟 '}{s.full_name || s.username}
+                                    {isTop && '🌟 '}{isEffTop && '⚡ '}{s.full_name || s.username}
                                   </td>
-                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: s.words_learned > 0 ? '#c2410c' : '#9ca3af', fontWeight: s.words_learned > 0 ? 700 : 400 }}>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                    {(() => {
+                                      const sp = activitySpans[String(s.user_id)];
+                                      return sp ? `${sp.first}~${sp.last}` : '-';
+                                    })()}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: s.words_learned > 0 ? '#c2410c' : '#9ca3af', fontWeight: s.words_learned > 0 ? 700 : 400, whiteSpace: 'nowrap' }}>
                                     {s.words_learned}
+                                    {s.words_learned > 0 && (
+                                      <span style={{ fontSize: '11px', fontWeight: 400, color: (dayNewWords[String(s.user_id)] ?? 0) > 0 ? '#059669' : '#9ca3af' }}>
+                                        {'（新' + (dayNewWords[String(s.user_id)] ?? 0) + '）'}
+                                      </span>
+                                    )}
                                   </td>
                                   <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
                                     {s.study_duration > 0 ? formatDuration(s.study_duration) : '-'}
+                                  </td>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: eff != null && isEffTop ? '#c2410c' : '#374151', fontWeight: eff != null && isEffTop ? 700 : 400 }}>
+                                    {eff != null ? eff.toFixed(1) : '-'}
                                   </td>
                                   <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
                                     {(s.correct_count + s.wrong_count) > 0 ? `${s.accuracy_rate}%` : '-'}
@@ -1312,14 +1521,28 @@ const TeacherClassManagement = () => {
                                   <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
                                     {s.review_done_today ?? 0}/{(s.review_done_today ?? 0) + (s.review_due_today ?? 0)}
                                   </td>
+                                  <td style={{ textAlign: 'left', padding: '9px 8px', color: '#4b5563', fontSize: '12px', maxWidth: '150px' }}>
+                                    {(() => {
+                                      const us = dayUnits[String(s.user_id)] || [];
+                                      if (us.length === 0) return '-';
+                                      // 最多列2个单元,更多的用 +N 概括,防止图片被撑爆
+                                      const shown = us.slice(0, 2).join('、');
+                                      return us.length > 2 ? `${shown} 等${us.length}个单元` : shown;
+                                    })()}
+                                  </td>
                                 </tr>
                               );
                             })}
                           </tbody>
                         </table>
 
+                        {/* 图例:两种星并列表扬,词量多和效率高是两种同样值得肯定的努力 */}
+                        <div style={{ marginTop: '14px', fontSize: '12.5px', color: '#6b7280' }}>
+                          🌟 词量之星:今日学词最多　·　⚡ 效率之星:每10分钟学得多　·　（新N）=第一次学的新词数,复习巩固日为 0 属正常
+                        </div>
+
                         {/* 落款 */}
-                        <div style={{ marginTop: '18px', textAlign: 'right', fontSize: '13px', color: '#9ca3af' }}>
+                        <div style={{ marginTop: '10px', textAlign: 'right', fontSize: '13px', color: '#9ca3af' }}>
                           飞鹰AI英语 · 每日坚持，进步看得见 🌈
                         </div>
                       </div>
@@ -2075,6 +2298,7 @@ const TeacherClassManagement = () => {
         )}
       </AnimatePresence>
 
+      <StatsRulesModal open={showStatsRules} onClose={() => setShowStatsRules(false)} />
       <ReviewRulesModal
         open={showReviewRules}
         onClose={() => setShowReviewRules(false)}

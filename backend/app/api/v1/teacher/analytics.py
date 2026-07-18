@@ -3,12 +3,13 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc, Integer
+from sqlalchemy import select, func, and_, or_, desc, Integer, case, text, bindparam
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 
 from app.core.database import get_db
-from app.models.user import User, StudyCalendar, Class, ClassStudent
+from app.models.user import User, StudyCalendar, Class, ClassStudent, DailyCheckin
+from app.core.timeutil import local_today, local_day_utc_range
 from app.models.word import Word, WordBook, Unit, WordDefinition
 from app.models.learning import WordMastery, LearningRecord, StudySession, LearningProgress, HomeworkAssignment, HomeworkStudentAssignment, BookAssignment
 from app.schemas.teacher_analytics import (
@@ -24,6 +25,10 @@ from app.api.v1.teacher._permissions import (
 from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
 
 router = APIRouter()
+
+# 正确率只统计「有对错」的答题模式,与学生端 analytics.py 保持一致;
+# classify(分类拖卡)/review(复习) 会写 is_correct=0 的记录,计入会把正确率结构性拉低
+SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank')
 
 
 # ========================================
@@ -89,34 +94,45 @@ async def get_class_overview(
     )
     active_students = result.scalar() or 0
 
-    # 3. 统计总学习单词数
+    # 3. 统计总学习单词数(按拼写去重,与学生端 analytics.py /overview 全站统一口径一致;
+    #    单元隔离下同拼写多 word_id,按 word_id 算会虚高)
     result = await db.execute(
-        select(func.count(func.distinct(WordMastery.word_id)))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
         .where(WordMastery.user_id.in_(my_student_ids))
     )
     total_words_studied = result.scalar() or 0
 
-    # 4. 统计平均掌握单词数(掌握线对齐为 >=3;注:此处按 WordMastery 行计数,
-    #    未按 lower(word) 去重,与 admin/student 端的去重口径略有差异)
-    result = await db.execute(
-        select(func.count(WordMastery.id))
+    # 4. 统计平均掌握单词数(掌握线 >=3,按 lower(word) 去重,与学生端口径一致;
+    #    先按学生分组各自去重计数,再求和÷人数,才是真实的人均)
+    per_student_mastered = (
+        select(func.count(func.distinct(func.lower(Word.word))).label('cnt'))
+        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
         .where(
             and_(
                 WordMastery.user_id.in_(my_student_ids),
                 WordMastery.mastery_level >= 3
             )
         )
+        .group_by(WordMastery.user_id)
+        .subquery()
     )
+    result = await db.execute(select(func.sum(per_student_mastered.c.cnt)))
     total_mastered = result.scalar() or 0
     average_mastered_words = total_mastered / total_students if total_students > 0 else 0
 
-    # 5. 统计平均准确率
+    # 5. 统计平均准确率(仅计分模式,与学生端一致)
     result = await db.execute(
         select(
             func.sum(LearningRecord.is_correct.cast(Integer)).label('total_correct'),
             func.count(LearningRecord.id).label('total_records')
         )
-        .where(LearningRecord.user_id.in_(my_student_ids))
+        .where(
+            and_(
+                LearningRecord.user_id.in_(my_student_ids),
+                LearningRecord.learning_mode.in_(SCORING_MODES)
+            )
+        )
     )
     row = result.first()
     total_correct = row.total_correct or 0
@@ -198,14 +214,22 @@ async def _build_students_stats(
     uid_set = {student_id} if student_id is not None else set(student_map.keys())
 
     # --- 聚合1: WordMastery 统计 (学习数/掌握数/平均掌握度/薄弱数) ---
+    # 词数按 lower(word) 去重、掌握线 >=3,与学生端 analytics.py /overview 全站统一口径一致
+    # (原先按行计数+掌握线>=4,学生自己页面和老师看到的对不上)
     result = await db.execute(
         select(
             WordMastery.user_id,
-            func.count(WordMastery.id).label("total_words"),
-            func.sum((WordMastery.mastery_level >= 4).cast(Integer)).label("mastered"),
+            func.count(func.distinct(func.lower(Word.word))).label("total_words"),
+            func.count(func.distinct(
+                case((WordMastery.mastery_level >= 3, func.lower(Word.word)))
+            )).label("mastered"),
             func.avg(WordMastery.mastery_level).label("avg_mastery"),
-            func.sum((WordMastery.mastery_level < 3).cast(Integer)).label("weak"),
+            func.count(func.distinct(
+                case((WordMastery.mastery_level < 3, func.lower(Word.word)))
+            )).label("weak"),
         )
+        .select_from(WordMastery)
+        .join(Word, Word.id == WordMastery.word_id)
         .where(WordMastery.user_id.in_(uid_set))
         .group_by(WordMastery.user_id)
     )
@@ -238,14 +262,19 @@ async def _build_students_stats(
             "last_date": last_dt,
         }
 
-    # --- 聚合3: LearningRecord 统计 (正确数/总数) ---
+    # --- 聚合3: LearningRecord 统计 (正确数/总数,仅计分模式,与学生端一致) ---
     result = await db.execute(
         select(
             LearningRecord.user_id,
             func.sum(LearningRecord.is_correct.cast(Integer)).label("correct"),
             func.count(LearningRecord.id).label("total"),
         )
-        .where(LearningRecord.user_id.in_(uid_set))
+        .where(
+            and_(
+                LearningRecord.user_id.in_(uid_set),
+                LearningRecord.learning_mode.in_(SCORING_MODES),
+            )
+        )
         .group_by(LearningRecord.user_id)
     )
     record_map = {}
@@ -367,7 +396,11 @@ async def get_student_weak_points(
     # 验证该学生是否属于当前教师的班级
     await assert_student_in_my_class(db, current_user.id, student_id)
 
-    # 查询掌握度低的单词
+    # 查询掌握度低的单词。
+    # 排序按"最近练过的排前":原来的 mastery ASC + last_practiced ASC 会让
+    # 几个月前碰过一次就再没学的陈年词霸榜(实测前20全是仨月前的对0错1),
+    # 对老师毫无行动价值;近期还在错的词才是当下真正的薄弱点。
+    # 另:同拼写在多本书各有一行,取数多抓几倍后按拼写去重,保留最近练过的那行。
     result = await db.execute(
         select(WordMastery, Word, WordDefinition)
         .join(Word, WordMastery.word_id == Word.id)
@@ -381,13 +414,24 @@ async def get_student_weak_points(
                 WordMastery.mastery_level < 3
             )
         )
-        .order_by(WordMastery.mastery_level.asc(), WordMastery.last_practiced_at.asc())
-        .limit(limit)
+        .order_by(func.coalesce(WordMastery.last_practiced_at, WordMastery.created_at).desc())
+        .limit(max(limit * 3, 60))
     )
     rows = result.all()
 
-    weak_points = []
+    seen_spellings: set[str] = set()
+    picked = []
     for mastery, word, definition in rows:
+        key = (word.word or "").strip().lower()
+        if key in seen_spellings:
+            continue
+        seen_spellings.add(key)
+        picked.append((mastery, word, definition))
+        if len(picked) >= limit:
+            break
+
+    weak_points = []
+    for mastery, word, definition in picked:
         total_attempts = mastery.correct_count + mastery.wrong_count
         error_rate = (mastery.wrong_count / total_attempts * 100) if total_attempts > 0 else 0
         accuracy_rate = 100 - error_rate
@@ -691,13 +735,15 @@ async def get_class_id_overview(
             "mastered_words": 0,
         }
 
-    # 聚合 WordMastery
+    # 聚合 WordMastery(词数按 lower(word) 去重、掌握线 >=3,与学生端统一口径)
     agg_res = await db.execute(
         select(
-            func.count(func.distinct(WordMastery.word_id)).label("total_words_studied"),
+            func.count(func.distinct(func.lower(Word.word))).label("total_words_studied"),
             func.sum(WordMastery.correct_count).label("correct"),
             func.sum(WordMastery.total_encounters).label("attempts"),
-        ).where(WordMastery.user_id.in_(student_ids))
+        ).select_from(WordMastery)
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(WordMastery.user_id.in_(student_ids))
     )
     agg = agg_res.one()
     total_words_studied = agg.total_words_studied or 0
@@ -706,9 +752,12 @@ async def get_class_id_overview(
     avg_accuracy = round(correct / attempts, 4) if attempts else 0.0
 
     mastered_res = await db.execute(
-        select(func.count(WordMastery.id)).where(
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(WordMastery)
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(
             WordMastery.user_id.in_(student_ids),
-            WordMastery.mastery_level >= 4,
+            WordMastery.mastery_level >= 3,
         )
     )
     mastered_words = mastered_res.scalar() or 0
@@ -1019,3 +1068,320 @@ async def regenerate_student_weekly_report(
     """教师强制重新生成本周周报。"""
     await assert_student_in_my_class(db, current_user.id, student_id)
     return await build_and_cache_weekly_report(db, student_id, force=True)
+
+
+# ========================================
+# 学生单日行为时间线
+# ========================================
+
+@router.get("/students/{student_id}/day-timeline")
+async def get_student_day_timeline(
+    student_id: int,
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """学生单日行为时间线:回答"这两小时他在干嘛"。
+
+    签到→活跃段→空窗段→作业事件,按时间排序:
+    - 活跃段:答题记录时间戳聚簇(相邻间隔>5分钟即断开),含题数与模式
+    - 空窗段:签到后/活跃段之间/最后一次活动至今的静默,只列>5分钟的
+    - 作业事件:当日布置/开始/完成(含得分)
+    净时长等汇总数字与每日数据表格同源(study_calendar)。
+    """
+    await assert_student_in_my_class(db, current_user.id, student_id)
+
+    if target_date:
+        try:
+            dt = date.fromisoformat(target_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式错误,应为 YYYY-MM-DD")
+    else:
+        dt = local_today()
+    day_start, day_end = local_day_utc_range(dt)
+
+    def bjt(d: datetime) -> str:
+        """naive-UTC → 北京 HH:MM"""
+        return (d + timedelta(hours=8)).strftime("%H:%M")
+
+    GAP_SEC = 300  # 超过5分钟无答题 → 视为空窗
+
+    # 签到
+    ck = (await db.execute(
+        select(DailyCheckin).where(and_(
+            DailyCheckin.user_id == student_id, DailyCheckin.checkin_date == dt))
+    )).scalar_one_or_none()
+
+    # 答题记录时间戳聚簇成活跃段
+    recs = (await db.execute(
+        select(LearningRecord.created_at, LearningRecord.learning_mode)
+        .where(and_(
+            LearningRecord.user_id == student_id,
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+        .order_by(LearningRecord.created_at)
+    )).all()
+
+    segments: list[dict] = []
+    cur: dict | None = None
+    for created_at, mode in recs:
+        if cur is None or (created_at - cur["end"]).total_seconds() > GAP_SEC:
+            if cur:
+                segments.append(cur)
+            cur = {"start": created_at, "end": created_at, "count": 0, "modes": set()}
+        cur["end"] = created_at
+        cur["count"] += 1
+        cur["modes"].add(mode or "?")
+    if cur:
+        segments.append(cur)
+
+    MODE_LABELS = {
+        "classify": "分类", "spelling": "拼写", "dictation": "听写",
+        "fillblank": "填空", "exam": "考试", "quiz": "选择",
+        "review": "复习", "flashcard": "卡片", "sentence": "句子",
+    }
+
+    # 时间线事件(带排序锚点)
+    events: list[tuple[datetime, dict]] = []
+    if ck and ck.checkin_at:
+        events.append((ck.checkin_at, {"type": "checkin", "time": bjt(ck.checkin_at), "text": "签到"}))
+
+    prev_end: datetime | None = ck.checkin_at if (ck and ck.checkin_at) else None
+    for seg in segments:
+        if prev_end is not None:
+            gap = (seg["start"] - prev_end).total_seconds()
+            if gap > GAP_SEC:
+                events.append((prev_end, {
+                    "type": "gap", "time": bjt(prev_end),
+                    "text": f"{bjt(prev_end)}~{bjt(seg['start'])} 无学习活动 {int(gap // 60)} 分钟",
+                }))
+        modes = "/".join(MODE_LABELS.get(m, m) for m in sorted(seg["modes"]))
+        events.append((seg["start"], {
+            "type": "active", "time": bjt(seg["start"]),
+            "text": f"{bjt(seg['start'])}~{bjt(seg['end'])} 学习 {seg['count']} 题({modes})",
+        }))
+        prev_end = seg["end"]
+
+    # 尾部静默:今天算到当前时刻,历史日只标"此后无活动"
+    if prev_end is not None:
+        if dt == local_today():
+            tail = (datetime.utcnow() - prev_end).total_seconds()
+            if tail > GAP_SEC:
+                events.append((prev_end, {
+                    "type": "gap", "time": bjt(prev_end),
+                    "text": f"{bjt(prev_end)} 至今无学习活动(已 {int(tail // 60)} 分钟)",
+                }))
+        elif segments:
+            events.append((prev_end, {
+                "type": "end", "time": bjt(prev_end),
+                "text": f"{bjt(prev_end)} 之后当日无学习活动",
+            }))
+
+    # 作业事件(当日布置/开始/完成)
+    hw_rows = (await db.execute(
+        select(HomeworkStudentAssignment, HomeworkAssignment.title)
+        .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
+        .where(HomeworkStudentAssignment.student_id == student_id)
+    )).all()
+    for hsa, title in hw_rows:
+        for field, label in (("assigned_at", "老师布置作业"), ("started_at", "打开作业"), ("completed_at", "完成作业")):
+            v = getattr(hsa, field, None)
+            if v is not None and day_start <= v < day_end:
+                txt = f"{label}「{title}」"
+                if field == "completed_at" and hsa.best_score:
+                    txt += f",得分 {hsa.best_score}"
+                events.append((v, {"type": "homework", "time": bjt(v), "text": f"{bjt(v)} {txt}"}))
+
+    events.sort(key=lambda x: x[0])
+
+    # 汇总(与每日数据表格同源)
+    cal = (await db.execute(
+        select(StudyCalendar).where(and_(
+            StudyCalendar.user_id == student_id, StudyCalendar.study_date == dt))
+    )).scalar_one_or_none()
+
+    return {
+        "student_id": student_id,
+        "date": dt.isoformat(),
+        "checkin_time": bjt(ck.checkin_at) if (ck and ck.checkin_at) else None,
+        "net_duration": (cal.duration if cal else 0) or 0,
+        "words_learned": (cal.words_learned if cal else 0) or 0,
+        "distracted_count": int(getattr(cal, "distracted_count", 0) or 0) if cal else 0,
+        "switch_count": int(getattr(cal, "switch_count", 0) or 0) if cal else 0,
+        "timeline": [e for _, e in events],
+    }
+
+
+@router.get("/classes/{class_id}/day-activity-spans")
+async def get_class_day_activity_spans(
+    class_id: int,
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """全班某日"实际学习时段"(首次~末次答题,北京时间)。
+
+    供每日数据表格/家长日报图加"学习时段"列:中性事实,不含空窗等
+    负面细节(群发图不伤孩子;详细时间线在教师端逐生查看)。
+    """
+    cls = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if cls is None:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    if current_user.role != "admin" and cls.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="不是你的班级")
+
+    if target_date:
+        try:
+            dt = date.fromisoformat(target_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式错误,应为 YYYY-MM-DD")
+    else:
+        dt = local_today()
+    day_start, day_end = local_day_utc_range(dt)
+
+    members = (await db.execute(
+        select(ClassStudent.student_id).where(and_(
+            ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True)))
+    )).scalars().all()
+    if not members:
+        return {"date": dt.isoformat(), "spans": {}}
+
+    rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.min(LearningRecord.created_at),
+            func.max(LearningRecord.created_at),
+        )
+        .where(and_(
+            LearningRecord.user_id.in_(members),
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+        .group_by(LearningRecord.user_id)
+    )).all()
+
+    def bjt(d: datetime) -> str:
+        return (d + timedelta(hours=8)).strftime("%H:%M")
+
+    return {
+        "date": dt.isoformat(),
+        "spans": {str(uid): {"first": bjt(mn), "last": bjt(mx)} for uid, mn, mx in rows},
+    }
+
+
+@router.get("/classes/{class_id}/day-units")
+async def get_class_day_units(
+    class_id: int,
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """全班某日每个学生学了哪些单元(供日报图"学习内容"列)。
+
+    单元归属取自 StudySession.unit_id,与教师端"学习内容"展开明细同源;
+    只列有实际产出(词数或时长>0)的会话,点开没学的幽灵单元不出现。
+    """
+    cls = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if cls is None:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    if current_user.role != "admin" and cls.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="不是你的班级")
+
+    if target_date:
+        try:
+            dt = date.fromisoformat(target_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式错误,应为 YYYY-MM-DD")
+    else:
+        dt = local_today()
+    day_start, day_end = local_day_utc_range(dt)
+
+    members = (await db.execute(
+        select(ClassStudent.student_id).where(and_(
+            ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True)))
+    )).scalars().all()
+    if not members:
+        return {"date": dt.isoformat(), "units": {}}
+
+    rows = (await db.execute(
+        select(
+            StudySession.user_id,
+            Unit.name,
+            func.sum(StudySession.words_studied).label("w"),
+        )
+        .join(Unit, Unit.id == StudySession.unit_id)
+        .where(and_(
+            StudySession.user_id.in_(members),
+            StudySession.started_at >= day_start,
+            StudySession.started_at < day_end,
+            or_(StudySession.words_studied > 0, StudySession.time_spent > 0),
+        ))
+        .group_by(StudySession.user_id, Unit.id, Unit.name)
+        .order_by(func.sum(StudySession.words_studied).desc())
+    )).all()
+
+    units: dict[str, list[str]] = {}
+    for uid, uname, _w in rows:
+        units.setdefault(str(uid), []).append(uname)
+    return {"date": dt.isoformat(), "units": units}
+
+
+@router.get("/classes/{class_id}/day-new-words")
+async def get_class_day_new_words(
+    class_id: int,
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """全班某日每个学生的"真·新词数":当天学的去重拼写里,历史上第一次见的数量。
+
+    背景:「学过单词数」按拼写去重,复习旧词不涨,家长/老师会疑惑"学了没涨"。
+    拆开展示:当日词数(投入量) vs 新词数(词汇量增量),复习日新词≈0 是正常的。
+    """
+    cls = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if cls is None:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    if current_user.role != "admin" and cls.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="不是你的班级")
+
+    if target_date:
+        try:
+            dt = date.fromisoformat(target_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式错误,应为 YYYY-MM-DD")
+    else:
+        dt = local_today()
+    day_start, day_end = local_day_utc_range(dt)
+
+    members = (await db.execute(
+        select(ClassStudent.student_id).where(and_(
+            ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True)))
+    )).scalars().all()
+    if not members:
+        return {"date": dt.isoformat(), "new_words": {}}
+
+    # 当日词(user, lower(word)) 去重,排除当天开始前已学过该拼写的
+    # 用相关子查询按(用户,拼写)判断"是否史上首见";班级几十人×当日几百词,SQLite 可承受
+    rows = (await db.execute(text("""
+        SELECT t.user_id, COUNT(*) FROM (
+            SELECT lr.user_id AS user_id, LOWER(w.word) AS lw
+            FROM learning_records lr
+            JOIN words w ON w.id = lr.word_id
+            WHERE lr.user_id IN :uids
+              AND lr.created_at >= :day_start AND lr.created_at < :day_end
+            GROUP BY lr.user_id, LOWER(w.word)
+        ) t
+        WHERE NOT EXISTS (
+            SELECT 1 FROM learning_records lr2
+            JOIN words w2 ON w2.id = lr2.word_id
+            WHERE lr2.user_id = t.user_id
+              AND LOWER(w2.word) = t.lw
+              AND lr2.created_at < :day_start
+        )
+        GROUP BY t.user_id
+    """).bindparams(bindparam("uids", expanding=True)),
+        {"uids": list(members), "day_start": day_start, "day_end": day_end},
+    )).all()
+
+    return {"date": dt.isoformat(), "new_words": {str(uid): int(cnt) for uid, cnt in rows}}
