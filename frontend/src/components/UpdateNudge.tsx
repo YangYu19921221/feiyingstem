@@ -16,6 +16,7 @@ const CHECK_MS = 5 * 60_000;
 
 export default function UpdateNudge() {
   const [hasNew, setHasNew] = useState(false);
+  const [serverV, setServerV] = useState('');
 
   useEffect(() => {
     let stopped = false;
@@ -24,7 +25,13 @@ export default function UpdateNudge() {
         const resp = await fetch(`/version.json?_=${Date.now()}`, { cache: 'no-store' });
         if (!resp.ok) return;
         const data = await resp.json();
-        if (!stopped && data?.v && data.v !== __BUILD_TS__) setHasNew(true);
+        if (stopped || !data?.v || data.v === __BUILD_TS__) return;
+        // 防死循环:若已为这个服务器版本号刷新过一次(sessionStorage 记录)仍对不上,
+        // 说明服务器 bundle 与 version.json 不一致(部署混装事故),再弹也没用,静默。
+        // 实测踩坑:混装部署后提示条对全员永远弹,点了刷新也消不掉。
+        if (sessionStorage.getItem('nudge_reloaded_for') === data.v) return;
+        setServerV(data.v);
+        setHasNew(true);
       } catch { /* 网络失败静默 */ }
     };
     const t = setInterval(() => { if (!document.hidden) check(); }, CHECK_MS);
@@ -47,7 +54,10 @@ export default function UpdateNudge() {
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 60 }}
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            try { sessionStorage.setItem('nudge_reloaded_for', serverV); } catch { /* 隐私模式忽略 */ }
+            window.location.reload();
+          }}
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 px-5 py-2.5 rounded-full bg-gray-900/90 text-white text-sm font-medium shadow-xl backdrop-blur hover:bg-gray-900"
         >
           ✨ 系统更新啦 · 点一下用新版

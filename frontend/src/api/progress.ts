@@ -25,12 +25,11 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 提取友好的错误信息
+    // 提取友好的错误信息:原地覆盖 message,不要 new Error() 偷换对象——
+    // 那样会丢掉 error.response,调用方就无法按 status 分流处理
+    // (签到 403 引导页就曾因此失效:catch 里 e.response 是 undefined)
     if (error.response?.data?.detail) {
-      // 创建新的错误对象,包含后端返回的详细信息
-      const friendlyError = new Error(error.response.data.detail);
-      friendlyError.name = error.name;
-      return Promise.reject(friendlyError);
+      error.message = error.response.data.detail;
     }
     return Promise.reject(error);
   }
@@ -137,6 +136,7 @@ export interface StudentBook {
   description: string | null;
   grade_level: string | null;
   volume: string | null;
+  series: string | null;
   cover_color: string;
   cover_url: string | null;
   unit_count: number;
@@ -149,6 +149,20 @@ export interface StudentBook {
 // API函数
 
 export const startLearning = async (request: StartLearningRequest): Promise<StartLearningResponse> => {
+  // 签到前置检查:未签到时后端 /start 必返 403,浏览器会在控制台记一条
+  // 无法抑制的红色网络错误(家长/老师看到会以为系统坏了)。先查状态,
+  // 未签到就不发 /start,抛出与后端兜底同文案的错误,各页面按"签到"分流。
+  // 状态查询失败(网络抖动等)不拦路,放行给后端兜底判。
+  const st = await apiClient
+    .get('/student/checkin/today')
+    .then(r => r.data)
+    .catch(() => null);
+  if (st && st.checked_in === false) {
+    const err: any = new Error('今天还没有签到,请先回到首页签到');
+    err.response = { status: 403, data: { detail: '今天还没有签到,请先回到首页签到' } };
+    throw err;
+  }
+
   const response = await apiClient.post(
     `/student/units/${request.unit_id}/start`,
     { learning_mode: request.learning_mode }  // 只发送learning_mode,unit_id已在URL中
