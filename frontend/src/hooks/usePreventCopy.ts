@@ -1,14 +1,19 @@
 /**
- * 答题页「防划走答案」闸(防君子款)
+ * 答题页「防复制粘贴作弊」闸
  *
- * 背景:学生做题时可右键/长按选中页面上的题干或提示,复制去查,相当于作弊。
- * 本 hook 在挂载期间拦截:右键菜单、复制、剪切、拖拽、选中开始。
+ * 背景:学生做题时的两条剪贴板作弊路径——
+ *  ① 右键/长按选中页面题干或提示,复制去别处查;
+ *  ② 把别处查到的答案「粘贴」进答题框,一键交卷。
+ * 本 hook 在挂载期间同时封死这两条。
  *
- * 边界:
- * - 答题输入框(input/textarea/contentEditable)内一律放行——学生要能选中、
- *   退格重打、右键改自己的输入,不能误伤正常编辑。
- * - 这是「防君子不防小人」:挡住顺手划词复制,挡不住 F12/开发者工具。
- *   真防作弊需答案不下发前端+后端校验(见方案 B),本 hook 不涉及。
+ * 拦截策略:
+ * - contextmenu / copy / cut / selectstart / dragstart:输入框内放行(学生要能
+ *   选中、退格重打、右键改自己的输入),框外一律拦(挡划词复制题干)。
+ * - paste / drop:**一律拦,连输入框内也拦**——答题框没有任何正当粘贴场景,
+ *   粘贴=把外部答案塞进来,这是核心作弊动作,必须堵死。
+ *
+ * 边界:这是剪贴板层防护,挡不了输入法自身词库的联想(那是系统 IME 行为,
+ * 网页碰不到),也挡不了 F12。但「粘贴答案」是最常见、最省事的作弊手法,堵它性价比最高。
  *
  * 用法:在学生答题页组件顶部调用 usePreventCopy();
  */
@@ -23,12 +28,21 @@ function isEditable(target: EventTarget | null): boolean {
 export function usePreventCopy(enabled = true): void {
   useEffect(() => {
     if (!enabled) return;
-    const block = (e: Event) => {
-      if (isEditable(e.target)) return; // 输入框内正常编辑,放行
+    // 框外拦(选中/复制题干);框内放行,不误伤学生编辑自己的输入
+    const blockOutsideEditable = (e: Event) => {
+      if (isEditable(e.target)) return;
       e.preventDefault();
     };
-    const events = ['contextmenu', 'copy', 'cut', 'selectstart', 'dragstart'];
-    events.forEach((ev) => document.addEventListener(ev, block));
-    return () => events.forEach((ev) => document.removeEventListener(ev, block));
+    // 粘贴/拖入:一律拦,答题框无正当粘贴场景,粘贴=塞外部答案
+    const blockAlways = (e: Event) => e.preventDefault();
+
+    const outside = ['contextmenu', 'copy', 'cut', 'selectstart', 'dragstart'];
+    const always = ['paste', 'drop'];
+    outside.forEach((ev) => document.addEventListener(ev, blockOutsideEditable));
+    always.forEach((ev) => document.addEventListener(ev, blockAlways));
+    return () => {
+      outside.forEach((ev) => document.removeEventListener(ev, blockOutsideEditable));
+      always.forEach((ev) => document.removeEventListener(ev, blockAlways));
+    };
   }, [enabled]);
 }
