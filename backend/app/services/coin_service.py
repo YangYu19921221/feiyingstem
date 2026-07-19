@@ -188,6 +188,7 @@ async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
         best = max((word_count.get(sid, 0) for sid, _ in members), default=0)
         if best <= 0:
             continue
+        # 词量并列第一时,都算单词王、都发 2 币(用户确认:词数一样可以并列)
         for sid, org_id in members:
             if word_count.get(sid, 0) == best:
                 king_ids.add(sid)
