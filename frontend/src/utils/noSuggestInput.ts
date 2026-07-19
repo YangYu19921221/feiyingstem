@@ -26,29 +26,30 @@ export const noSuggestInputProps = () => ({
 });
 
 /**
- * 「防输入法联想」答题框属性集(比 noSuggestInputProps 更狠,专治搜狗等系统级 IME)
+ * 「防输入法联想」答题框属性集
  *
- * 痛点:搜狗/微软拼音等系统输入法的候选栏在浏览器之外,HTML 的 autoComplete/
- * spellCheck 等属性管不到——学生在中文态打英文字母,搜狗直接补全出整词(打
- * app 联想出 apple),等于把答案递手上。
+ * 痛点:搜狗/微软拼音等系统输入法的候选栏在浏览器之外,HTML 属性管不到——
+ * 学生在中文态打英文字母,搜狗直接补全出整词(打 app 联想 apple),等于给答案。
  *
- * 解法:DOM 层设 type="password" —— 所有输入法遇到密码框都自动关联想/切英文;
- * 再用 CSS -webkit-text-security:none 把默认的小圆点还原成明文,学生照常看得见
- * 自己拼的字母。输入法读 type(不联想),CSS 管显示(可见),两不误。
+ * 曾用 type="password" 强制输入法关联想,但代价是很多输入法在密码框直接禁用
+ * 中文输入(用户实测"中文打不了了")——这俩是绑死的,不能兼得。已回退。
  *
- * 局限:-webkit-text-security 仅 Blink/WebKit(Chrome/Edge/Safari/360/QQ,覆盖
- * K12 绝大多数)。Firefox 不认→会显示成圆点(占比极低);隐藏输入框(opacity-0
- * + 格子展示)不受此限,任意浏览器都零影响。
+ * 现方案:在 noSuggest 基础上加 onBeforeInput 拦截 `insertReplacementText`——
+ * 用户从联想候选栏「点词上屏」时浏览器发的正是这个 inputType,直接 preventDefault
+ * 挡掉;而逐字母打字(insertText)、中文组字(insertCompositionText)、粘贴
+ * (insertFromPaste)都不受影响,中文输入正常。
  *
- * 用法:可见框 <input {...imeSafeInputProps()} />(勿再单独写 type=);
- *       隐藏框(格子展示层)用 imeSafeInputProps({ visible:false }) 省掉明文样式。
+ * 局限:仅对「候选栏选词触发 insertReplacementText」的输入法有效(iOS QuickType
+ * 走这条)。若某些输入法的英文补全走普通 insertText,前端无法与手打区分——
+ * 那是系统输入法层的行为,网页碰不到,属技术天花板。visible 参数保留仅为兼容
+ * 调用点,不再产生特殊样式。
  */
-export const imeSafeInputProps = (opts: { visible?: boolean } = {}) => {
-  const { visible = true } = opts;
-  return {
-    ...noSuggestInputProps(),
-    type: 'password' as const,
-    // 明文显示(隐藏框本就不可见,不加样式避免多余覆盖)
-    ...(visible ? { style: { WebkitTextSecurity: 'none' } as Record<string, string> } : {}),
-  };
-};
+export const imeSafeInputProps = (_opts: { visible?: boolean } = {}) => ({
+  ...noSuggestInputProps(),
+  onBeforeInput: (e: { nativeEvent: Event; preventDefault: () => void }) => {
+    // 联想候选「替换上屏」→ 拦掉;正常打字/组字/粘贴放行
+    if ((e.nativeEvent as InputEvent).inputType === 'insertReplacementText') {
+      e.preventDefault();
+    }
+  },
+});
