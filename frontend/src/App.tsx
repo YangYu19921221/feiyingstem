@@ -36,6 +36,7 @@ const TeacherBooks = lazyWithRetry(() => import('./pages/TeacherBooks'));
 const TeacherUnitManagement = lazyWithRetry(() => import('./pages/TeacherUnitManagement'));
 const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
 const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
+const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
 const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
 const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
 const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
@@ -578,6 +579,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherClassManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 金币管理 */}
+        <Route
+          path="/teacher/coins"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin', 'org_admin']}>
+              <TeacherCoins />
             </ProtectedRoute>
           }
         />

@@ -26,6 +26,7 @@ async def init_db():
     # 导入所有模型以确保它们被注册到Base.metadata
     from app.models import user, word, learning, pet, assessment
     from app.models import organization  # 多租户: 机构(租户)表
+    from app.models import coin  # 金币系统: 余额 + 流水
     try:
         from app.models import competition
     except Exception:

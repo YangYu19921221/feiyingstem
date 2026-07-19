@@ -100,6 +100,7 @@ const TeacherDashboard = () => {
     { icon: '📍', title: '签到记录', desc: '每日签到·历史可查', color: 'from-cyan-500 to-sky-500', route: '/teacher/checkins' },
     { icon: '📤', title: '分配单词本', desc: '划学习范围:整本/单元/分组', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },
     { icon: '📘', title: '作业管理', desc: '布置作业·目标分·截止', color: 'from-sky-500 to-blue-500', route: '/teacher/homework' },
+    { icon: '🪙', title: '金币管理', desc: '完成作业/单词王发币·兑换记录', color: 'from-amber-500 to-yellow-500', route: '/teacher/coins' },
     { icon: '📊', title: '学生监控', desc: '查看学习数据', color: 'from-green-500 to-teal-500', route: '/teacher/students' },
     { icon: '📋', title: '测评线索', desc: '地推扫码线索', color: 'from-pink-500 to-rose-500', route: '/teacher/leads' },
   ];

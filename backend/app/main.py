@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1 import auth, words, learning, exams, ai, competition, achievements, analytics, parent
-from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes, student_monitor as teacher_student_monitor
+from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes, student_monitor as teacher_student_monitor, coins as teacher_coins
 from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam, leaderboard as student_leaderboard, class_join as student_class_join, pet_battle as student_pet_battle, pet_battle_ws as student_pet_battle_ws, pet_healing as student_pet_healing
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
 from app.api.v1.admin import teachers as admin_teachers, classes as admin_classes, settings as admin_settings
@@ -72,6 +72,7 @@ app.include_router(teacher_analytics.router, prefix="/api/v1/teacher/analytics",
 app.include_router(teacher_reading.router, prefix="/api/v1/teacher", tags=["教师端-阅读理解"])
 app.include_router(teacher_assignments.router, prefix="/api/v1/teacher", tags=["教师端-单词本分配"])
 app.include_router(teacher_homework.router, prefix="/api/v1/teacher", tags=["教师端-作业管理"])
+app.include_router(teacher_coins.router, prefix="/api/v1/teacher", tags=["教师端-金币管理"])
 app.include_router(teacher_dashboard.router, prefix="/api/v1/teacher", tags=["教师端-仪表板"])
 app.include_router(teacher_exam_generator.router, prefix="/api/v1/teacher", tags=["教师端-AI试卷生成"])
 app.include_router(teacher_classes.router, prefix="/api/v1/teacher", tags=["教师端-班级管理"])
