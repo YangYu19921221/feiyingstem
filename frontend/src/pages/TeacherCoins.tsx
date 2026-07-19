@@ -38,6 +38,7 @@ export default function TeacherCoins() {
   const [txPage, setTxPage] = useState(1);
   const [txSource, setTxSource] = useState('');
   const [txQ, setTxQ] = useState('');
+  const [txDate, setTxDate] = useState('');  // YYYY-MM-DD,空=全部
   const [loading, setLoading] = useState(false);
 
   // 加/减金币弹窗
@@ -88,6 +89,7 @@ export default function TeacherCoins() {
         class_id: classId,
         source: txSource || undefined,
         q: txQ.trim() || undefined,
+        target_date: txDate || undefined,
         page: txPage,
         page_size: PAGE_SIZE,
       });
@@ -95,12 +97,12 @@ export default function TeacherCoins() {
       setTxTotal(r.total);
     } catch { toast.error('加载流水失败'); }
     finally { setLoading(false); }
-  }, [classId, txSource, txQ, txPage]);
+  }, [classId, txSource, txQ, txDate, txPage]);
 
   useEffect(() => { loadBalances(); }, [loadBalances]);
   useEffect(() => { loadTx(); }, [loadTx]);
-  // 切换班级/搜索时回到第一页
-  useEffect(() => { setTxPage(1); }, [classId, txSource]);
+  // 切换班级/来源/日期时回到第一页
+  useEffect(() => { setTxPage(1); }, [classId, txSource, txDate]);
 
   const refreshAll = () => { loadBalances(); loadTx(); };
 
@@ -216,6 +218,16 @@ export default function TeacherCoins() {
               >
                 {SOURCE_FILTERS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
               </select>
+              <input
+                type="date"
+                value={txDate}
+                onChange={(e) => setTxDate(e.target.value)}
+                className="px-2 py-1.5 rounded-lg border border-black/10 text-xs"
+                title="只看某天"
+              />
+              {txDate && (
+                <button onClick={() => setTxDate('')} className="text-xs text-gray-400 hover:text-gray-600">清除</button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -235,10 +247,14 @@ export default function TeacherCoins() {
                     <tr key={t.id} className="border-b border-black/[0.03]">
                       <td className="py-2 pr-2 text-gray-700">{t.student_name}</td>
                       <td className={`py-2 pr-2 font-numeric font-semibold ${t.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {t.amount >= 0 ? `+${t.amount}` : t.amount}
+                        {t.amount >= 0 ? `+${t.amount}` : t.amount}{t.source === 'word_king' ? ' 🪙' : ''}
                       </td>
                       <td className="py-2 pr-2">
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-500">{t.source_label}</span>
+                        {t.source === 'word_king' ? (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 单词王</span>
+                        ) : (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-500">{t.source_label}</span>
+                        )}
                       </td>
                       <td className="py-2 pr-2 text-gray-500 text-xs max-w-[140px] truncate">{t.reason || '—'}</td>
                       <td className="py-2 pr-2 text-gray-400 text-xs">{t.created_at.slice(5, 16).replace('T', ' ')}</td>

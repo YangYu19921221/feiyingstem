@@ -53,6 +53,7 @@ export const getCoinTransactions = (params: {
   student_id?: number;
   source?: string;
   q?: string;
+  target_date?: string;
   page?: number;
   page_size?: number;
 }) => client.get<CoinTxPage>(`/teacher/coins/transactions`, { params });
@@ -71,3 +72,24 @@ export const updateCoinTx = (txId: number, body: { amount?: number; reason?: str
 
 export const deleteCoinTx = (txId: number) =>
   client.delete<{ success: boolean }>(`/teacher/coins/transactions/${txId}`);
+
+// ---------- 学生端:我的金币 ----------
+export interface MyCoinTx {
+  id: number;
+  amount: number;
+  source: string;
+  source_label: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface MyCoinsResp {
+  balance: number;
+  total: number;
+  page: number;
+  page_size: number;
+  items: MyCoinTx[];
+}
+
+export const getMyCoins = (page = 1, pageSize = 20) =>
+  client.get<MyCoinsResp>(`/student/coins/me`, { params: { page, page_size: pageSize } });

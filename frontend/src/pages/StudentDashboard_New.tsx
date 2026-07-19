@@ -10,6 +10,7 @@ import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
 import PetWidget from '../components/PetWidget';
+import MyCoinsCard from '../components/MyCoinsCard';
 import RankingBanner from '../components/leaderboard/RankingBanner';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
@@ -869,6 +870,11 @@ const StudentDashboard = () => {
               </button>
             ))}
           </div>
+        </section>
+
+        {/* 我的金币 */}
+        <section className="mb-6">
+          <MyCoinsCard />
         </section>
 
         {/* 学习概览 — 数据条带式，紧凑 */}

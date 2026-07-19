@@ -12,7 +12,7 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.timeutil import local_today
+from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User, Class, ClassStudent
 from app.models.coin import StudentCoin, CoinTransaction
 from app.api.v1.auth import get_current_teacher
@@ -125,6 +125,7 @@ async def list_transactions(
     student_id: Optional[int] = Query(None),
     source: Optional[str] = Query(None, description="task/word_king/manual/redeem"),
     q: Optional[str] = Query(None, description="按学生姓名/用户名搜索"),
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,只看某天流水"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -134,6 +135,14 @@ async def list_transactions(
     visible = await _visible_student_ids(db, current_user)
 
     conds = []
+    # 按北京日历日筛选(created_at 存 UTC,转成当日 UTC 区间比较)
+    if target_date:
+        d = _parse_date(target_date)
+        day_start, day_end = local_day_utc_range(d)
+        conds.append(and_(
+            CoinTransaction.created_at >= day_start,
+            CoinTransaction.created_at < day_end,
+        ))
     # 权限收口:普通老师限定在本班学生
     if visible is not None:
         if not visible:
