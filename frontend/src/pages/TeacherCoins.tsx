@@ -41,6 +41,7 @@ export default function TeacherCoins() {
   const [txQ, setTxQ] = useState('');
   const [txDate, setTxDate] = useState('');  // YYYY-MM-DD,空=全部
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);  // 变更类操作(兑换/加减/改)进行中,防双击重复提交
 
   // 加/减金币弹窗
   const [adjustFor, setAdjustFor] = useState<CoinBalance | null>(null);
@@ -120,10 +121,11 @@ export default function TeacherCoins() {
   const refreshAll = () => { loadBalances(); loadTx(); };
 
   const submitAdjust = async () => {
-    if (!adjustFor) return;
+    if (!adjustFor || busy) return;  // busy 防双击重复扣/发
     const n = parseInt(adjustAmount, 10);
     if (!n || n <= 0) { toast.warning('请输入正整数'); return; }
     const amount = adjustMode === 'redeem' ? -n : n;
+    setBusy(true);
     try {
       await adjustCoins({
         student_id: adjustFor.student_id, amount,
@@ -135,21 +137,23 @@ export default function TeacherCoins() {
       refreshAll();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || '操作失败');
-    }
+    } finally { setBusy(false); }
   };
 
   const submitEdit = async () => {
-    if (!editTx) return;
+    if (!editTx || busy) return;
     const body: { amount?: number; reason?: string } = { reason: editReason.trim() };
     if (editAmount.trim()) {
       const n = parseInt(editAmount, 10);
       if (!n || n === 0) { toast.warning('金额需为非零整数'); return; }
       body.amount = n;
     }
+    setBusy(true);
     try {
       await updateCoinTx(editTx.id, body);
       toast.success('已修改'); setEditTx(null); refreshAll();
     } catch (e: any) { toast.error(e?.response?.data?.detail || '修改失败'); }
+    finally { setBusy(false); }
   };
 
   const doDelete = async (tx: CoinTx) => {
@@ -161,13 +165,15 @@ export default function TeacherCoins() {
   };
 
   const doRedeem = async (reward: CoinReward) => {
-    if (!redeemFor) return;
+    if (!redeemFor || busy) return;  // busy 防双击:兑换是最要紧的扣币路径
     if (redeemFor.balance < reward.cost) { toast.warning(`金币不足(当前 ${redeemFor.balance},需 ${reward.cost})`); return; }
+    setBusy(true);
     try {
       await redeemReward(redeemFor.student_id, reward.id);
       toast.success(`已为 ${redeemFor.name} 兑换「${reward.name}」`);
       setRedeemFor(null); refreshAll(); loadRewards();
     } catch (e: any) { toast.error(e?.response?.data?.detail || '兑换失败'); }
+    finally { setBusy(false); }
   };
 
   const submitReward = async () => {
@@ -394,7 +400,7 @@ export default function TeacherCoins() {
             />
             <div className="flex gap-2">
               <button onClick={() => setAdjustFor(null)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
-              <button onClick={submitAdjust} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium">确定</button>
+              <button onClick={submitAdjust} disabled={busy} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '确定'}</button>
             </div>
           </div>
         </div>
@@ -420,7 +426,7 @@ export default function TeacherCoins() {
             />
             <div className="flex gap-2">
               <button onClick={() => setEditTx(null)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
-              <button onClick={submitEdit} className="flex-1 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium">保存</button>
+              <button onClick={submitEdit} disabled={busy} className="flex-1 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '保存'}</button>
             </div>
           </div>
         </div>
@@ -448,10 +454,10 @@ export default function TeacherCoins() {
                         </p>
                       </div>
                       <button
-                        disabled={!afford || outOfStock}
+                        disabled={!afford || outOfStock || busy}
                         onClick={() => doRedeem(r)}
                         className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium disabled:opacity-40 shrink-0 ml-2"
-                      >{outOfStock ? '缺货' : afford ? '兑换' : '币不足'}</button>
+                      >{busy ? '…' : outOfStock ? '缺货' : afford ? '兑换' : '币不足'}</button>
                     </div>
                   );
                 })}
