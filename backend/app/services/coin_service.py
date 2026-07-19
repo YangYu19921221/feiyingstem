@@ -72,11 +72,33 @@ async def apply_delta(
     return tx
 
 
-async def _award_word_king(db: AsyncSession, d: date) -> int:
-    """给 d 这天每个班的词量榜第一发 word_king 币(幂等)。返回本次实际发放人数。
+async def _refund_task_coin(db: AsyncSession, sid: int, key_date: str) -> None:
+    """撤销某生某天已发的作业币(单词王不与作业币叠加,一天封顶 2)。
+
+    作业币是当天实时发的;次日结算单词王时,若该生已拿作业 1 币,先删掉并回滚
+    余额,再发单词王 2 币,最终恰好 2 而非 3。
+    """
+    tx = (await db.execute(
+        select(CoinTransaction).where(CoinTransaction.dedup_key == f"task:{sid}:{key_date}")
+    )).scalar_one_or_none()
+    if tx is None:
+        return
+    coin = (await db.execute(
+        select(StudentCoin).where(StudentCoin.user_id == sid)
+    )).scalar_one_or_none()
+    if coin:
+        coin.balance = max(0, coin.balance - tx.amount)
+    await db.delete(tx)
+    await db.flush()
+
+
+async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
+    """给 d 这天每个班的词量榜第一发 word_king 币(幂等)。
+    返回 (本次实际发放人数, 本日全部单词王的 student_id 集合)。
 
     单词王口径与教师端每日榜一致:LearningRecord 里 distinct(lower(word)) 最多者。
-    并列第一都发(不搞随机裁决)。0 词不算王。
+    并列第一都发(不搞随机裁决)。0 词不算王。发王前先撤掉该生当天的作业币,
+    保证「单词王只给 2、不与作业币叠加」。
     """
     day_start, day_end = local_day_utc_range(d)
     key_date = d.strftime("%Y%m%d")
@@ -88,7 +110,7 @@ async def _award_word_king(db: AsyncSession, d: date) -> int:
         .where(and_(ClassStudent.is_active.is_(True), User.role == "student"))
     )).all()
     if not rows:
-        return 0
+        return 0, set()
 
     class_members: dict[int, list[tuple[int, int]]] = {}  # class_id -> [(student_id, org_id)]
     all_student_ids: set[int] = set()
@@ -113,6 +135,7 @@ async def _award_word_king(db: AsyncSession, d: date) -> int:
     word_count = {uid: v for uid, v in word_rows}
 
     granted = 0
+    king_ids: set[int] = set()
     for class_id, members in class_members.items():
         # 本班最高词量(>0)
         best = max((word_count.get(sid, 0) for sid, _ in members), default=0)
@@ -120,32 +143,39 @@ async def _award_word_king(db: AsyncSession, d: date) -> int:
             continue
         for sid, org_id in members:
             if word_count.get(sid, 0) == best:
+                king_ids.add(sid)
+                # 不叠加:先撤当天作业币(若有),再发单词王 2 币,最终=2
+                await _refund_task_coin(db, sid, key_date)
                 tx = await apply_delta(
                     db, sid, org_id, WORD_KING_REWARD, "word_king",
                     reason=f"{d.isoformat()} 单词王", dedup_key=f"word_king:{sid}:{key_date}",
                 )
                 if tx is not None:
                     granted += 1
-    return granted
+    return granted, king_ids
 
 
 async def settle_day(db: AsyncSession, d: date) -> dict:
-    """幂等结算 d 这天的系统金币:单词王 +2、完成全部作业 +1。
+    """幂等结算 d 这天的系统金币。规则:一天最多 2 币,不叠加。
+    - 单词王(当日班级词量榜第一)→ 2 币;
+    - 非单词王但完成当天全部作业 → 1 币。
+    单词王与作业币二选一:当了单词王就只给 2,不再另给作业的 1。
 
     「完成全部作业」= 当天有布置给该生的作业(assigned_at 落在当天),且这些作业
-    全部 status='completed'。当天无作业不发。调用方负责 commit。
+    全部 status='completed'(达到老师设的目标分才算 completed)。当天无作业不发。
 
     单词王只在「d 这天已经结束」(d < 今天)才结算——当天榜单未定,过早发放会把
-    2 币发给暂列第一者并写死 dedup_key,下午被反超也无法纠正。故当天只发 task,
-    单词王留到次日任意一次结算补发(教师端打开页面会顺带结算昨天)。
+    2 币发给暂列第一者并写死 dedup_key,下午被反超也无法纠正。故当天先发 task,
+    单词王留到次日结算补发(补发时会撤掉当天已发的作业币,净为 2)。
     返回 {"word_king": n, "task": m} 本次新发放人数。
     """
     day_start, day_end = local_day_utc_range(d)
     key_date = d.strftime("%Y%m%d")
 
     king_granted = 0
+    king_ids: set[int] = set()
     if d < local_today():  # 那天已结束,榜单已定,才发单词王
-        king_granted = await _award_word_king(db, d)
+        king_granted, king_ids = await _award_word_king(db, d)
 
     # 完成全部作业:按学生聚合当天布置的作业,total==completed 且 total>0
     done_expr = func.sum(case((HomeworkStudentAssignment.status == "completed", 1), else_=0))
@@ -166,6 +196,8 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
 
     task_granted = 0
     for student_id, org_id, total, done in hw_rows:
+        if student_id in king_ids:
+            continue  # 单词王不叠加作业币(已给 2)
         if total > 0 and total == done:
             tx = await apply_delta(
                 db, student_id, org_id or 1, TASK_REWARD, "task",
