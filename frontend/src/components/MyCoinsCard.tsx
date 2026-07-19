@@ -73,6 +73,11 @@ export default function MyCoinsCard() {
                     <p className="text-[11px] text-gray-400 mt-0.5 truncate">
                       {t.reason || ''} · {t.created_at.slice(5, 16).replace('T', ' ')}
                     </p>
+                    {(t.source === 'task' || t.source === 'word_king') && (t.day_tasks_done != null || t.day_words != null) && (
+                      <p className="text-[11px] text-emerald-600 mt-0.5">
+                        当天完成 {t.day_tasks_done ?? 0} 个任务 · 学了 {t.day_words ?? 0} 个单词
+                      </p>
+                    )}
                   </div>
                   <span className={`font-numeric font-bold text-sm shrink-0 ${t.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                     {t.amount >= 0 ? `+${t.amount}` : t.amount} 🪙

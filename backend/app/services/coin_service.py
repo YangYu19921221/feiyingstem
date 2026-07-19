@@ -24,6 +24,53 @@ TASK_REWARD = 1        # 完成当日全部作业
 WORD_KING_REWARD = 2   # 当日班级词量榜第一
 
 
+async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> dict:
+    """一批学生在 d 这天的「完成任务数 + 学习单词数」,供金币流水附带展示。
+
+    - 完成任务数: 当天布置(assigned_at 落当天)且已完成(status=completed)的作业份数
+    - 学习单词数: 当天 LearningRecord 里 distinct(lower(word)) —— 与单词王同口径
+    返回 {user_id: {"tasks_done": n, "words": m}}(缺省 0)。
+    """
+    if not user_ids:
+        return {}
+    day_start, day_end = local_day_utc_range(d)
+    out: dict = {uid: {"tasks_done": 0, "words": 0} for uid in user_ids}
+
+    task_rows = (await db.execute(
+        select(
+            HomeworkStudentAssignment.student_id,
+            func.count(HomeworkStudentAssignment.id),
+        )
+        .where(and_(
+            HomeworkStudentAssignment.student_id.in_(user_ids),
+            HomeworkStudentAssignment.status == "completed",
+            HomeworkStudentAssignment.assigned_at >= day_start,
+            HomeworkStudentAssignment.assigned_at < day_end,
+        ))
+        .group_by(HomeworkStudentAssignment.student_id)
+    )).all()
+    for uid, cnt in task_rows:
+        out[uid]["tasks_done"] = cnt
+
+    word_rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(func.distinct(func.lower(Word.word))),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
+            LearningRecord.user_id.in_(user_ids),
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+        .group_by(LearningRecord.user_id)
+    )).all()
+    for uid, cnt in word_rows:
+        out[uid]["words"] = cnt
+
+    return out
+
+
 async def _get_or_create_coin(db: AsyncSession, user_id: int, org_id: int) -> StudentCoin:
     row = (await db.execute(
         select(StudentCoin).where(StudentCoin.user_id == user_id)

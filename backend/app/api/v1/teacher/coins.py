@@ -3,7 +3,7 @@
 金币流水的增删改查 + 分页搜索 + 每日结算 + 班级余额。
 权限:仅本班老师 + 管理员(admin/org_admin)。教师只能操作自己班级里的学生。
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -82,6 +82,9 @@ class TxOut(BaseModel):
     reason: Optional[str]
     operator_id: Optional[int]
     created_at: datetime
+    # 系统发放(task/word_king)附带:该流水所在日期的当天完成任务数 + 学习单词数
+    day_tasks_done: Optional[int] = None
+    day_words: Optional[int] = None
 
 
 # ---------- 结算(打开页面时调,幂等补发系统币) ----------
@@ -199,15 +202,34 @@ async def list_transactions(
         .offset((page - 1) * page_size).limit(page_size)
     )).all()
 
-    items = [
-        TxOut(
+    # 给本页系统发放流水(task/word_king)附带「当天完成任务数+学习单词数」。
+    # 按 (学生, 流水日期) 去重批量查,翻历史时每条对应它自己那天。
+    from app.services.coin_service import day_activity_map
+    sys_keys: dict[tuple[int, date], dict] = {}
+    for tx, _f, _u in rows:
+        if tx.source in ("task", "word_king"):
+            # created_at 存 UTC,+8 得北京日历日
+            bj_day = (tx.created_at + timedelta(hours=8)).date()
+            sys_keys[(tx.user_id, bj_day)] = {}
+    for (uid, day) in list(sys_keys.keys()):
+        amap = await day_activity_map(db, [uid], day)
+        sys_keys[(uid, day)] = amap.get(uid, {"tasks_done": 0, "words": 0})
+
+    items = []
+    for tx, full, username in rows:
+        extra_tasks = extra_words = None
+        if tx.source in ("task", "word_king"):
+            bj_day = (tx.created_at + timedelta(hours=8)).date()
+            act = sys_keys.get((tx.user_id, bj_day), {})
+            extra_tasks = act.get("tasks_done", 0)
+            extra_words = act.get("words", 0)
+        items.append(TxOut(
             id=tx.id, student_id=tx.user_id, student_name=full or username,
             amount=tx.amount, balance_after=tx.balance_after,
             source=tx.source, source_label=SOURCE_LABELS.get(tx.source, tx.source),
             reason=tx.reason, operator_id=tx.operator_id, created_at=tx.created_at,
-        )
-        for tx, full, username in rows
-    ]
+            day_tasks_done=extra_tasks, day_words=extra_words,
+        ))
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 

@@ -29,6 +29,8 @@ export interface CoinTx {
   reason: string | null;
   operator_id: number | null;
   created_at: string;
+  day_tasks_done?: number | null;  // 系统流水: 当天完成任务数
+  day_words?: number | null;       // 系统流水: 当天学习单词数
 }
 
 export interface CoinTxPage {
@@ -81,6 +83,8 @@ export interface MyCoinTx {
   source_label: string;
   reason: string | null;
   created_at: string;
+  day_tasks_done?: number | null;
+  day_words?: number | null;
 }
 
 export interface MyCoinsResp {

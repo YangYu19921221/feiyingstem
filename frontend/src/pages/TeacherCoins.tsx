@@ -325,7 +325,14 @@ export default function TeacherCoins() {
                           <span className="text-xs px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-500">{t.source_label}</span>
                         )}
                       </td>
-                      <td className="py-2 pr-2 text-gray-500 text-xs max-w-[140px] truncate">{t.reason || '—'}</td>
+                      <td className="py-2 pr-2 text-gray-500 text-xs max-w-[180px]">
+                        <div className="truncate">{t.reason || '—'}</div>
+                        {isSystem(t.source) && (t.day_tasks_done != null || t.day_words != null) && (
+                          <div className="text-[10px] text-gray-400 mt-0.5">
+                            当天完成 {t.day_tasks_done ?? 0} 任务 · 学 {t.day_words ?? 0} 词
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2 pr-2 text-gray-400 text-xs">{t.created_at.slice(5, 16).replace('T', ' ')}</td>
                       <td className="py-2">
                         {isSystem(t.source) ? (
