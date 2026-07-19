@@ -6,8 +6,10 @@ import type { ReadingPassageDetail, AnswerSubmission, ReadingAttemptResult } fro
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 
 const StudentReadingPractice = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { passageId } = useParams<{ passageId: string }>();
   const navigate = useNavigate();
 

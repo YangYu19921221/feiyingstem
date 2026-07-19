@@ -4,6 +4,7 @@
  * 支持分组学习：小学每组10个，初中/高中每组20个
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
@@ -64,6 +65,7 @@ interface GroupResult {
 }
 
 const WordClassifyLearning = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
   const location = useLocation();

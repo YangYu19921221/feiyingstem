@@ -11,6 +11,7 @@ import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
 import { findBlankRange, canBlank } from '../../utils/blankSentence';
+import { noSuggestInputProps } from '../../utils/noSuggestInput';
 
 
 export interface FillBlankResult {
@@ -273,16 +274,13 @@ export default function SentenceFillPhase({
           <div className="mb-4 px-2">
             {!submitted ? (
               <input
+                {...noSuggestInputProps()}
                 ref={inputRef}
                 type="text"
                 value={userInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 maxLength={Math.max(wordLength + 4, Math.ceil(wordLength * 1.5))}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
                 placeholder="输入单词..."
                 className="w-full text-center text-2xl font-mono font-bold bg-transparent border-0 border-b-4 border-violet-300 focus:border-violet-500 outline-none transition-colors duration-200 py-3 text-gray-800 placeholder:text-gray-300"
                 autoFocus

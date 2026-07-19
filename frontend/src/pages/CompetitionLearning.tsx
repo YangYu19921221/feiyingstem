@@ -11,6 +11,8 @@ import RankBadge, { type RankInfo } from '../components/RankBadge';
 import { competitionWS } from '../services/websocket';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 
 // 题目选项接口
 interface QuestionOption {
@@ -41,6 +43,7 @@ interface QuestionState extends CompetitionQuestion {
 }
 
 const CompetitionLearning: React.FC = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const navigate = useNavigate();
   const [token] = useState(localStorage.getItem('access_token') || '');
   const [currentQuestion, setCurrentQuestion] = useState<QuestionState | null>(null);
@@ -343,6 +346,7 @@ const CompetitionLearning: React.FC = () => {
 
         <div className="max-w-md mx-auto">
           <input
+            {...noSuggestInputProps()}
             type="text"
             value={userAnswer}
             onChange={(e) => setUserAnswer(e.target.value)}
@@ -379,6 +383,7 @@ const CompetitionLearning: React.FC = () => {
 
         <div className="max-w-md mx-auto">
           <input
+            {...noSuggestInputProps()}
             type="text"
             value={userAnswer}
             onChange={(e) => setUserAnswer(e.target.value)}
@@ -445,6 +450,7 @@ const CompetitionLearning: React.FC = () => {
         ) : (
           <div className="max-w-md mx-auto">
             <textarea
+              {...noSuggestInputProps()}
               value={userAnswer}
               onChange={(e) => setUserAnswer(e.target.value)}
               className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

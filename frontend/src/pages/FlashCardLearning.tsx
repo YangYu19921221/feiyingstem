@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, X } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
@@ -24,8 +25,10 @@ import useIdleDetector from '../hooks/useIdleDetector';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 import { getErrorMessage } from '../utils/errorMessage';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
 
 const FlashCardLearning = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
 
@@ -1041,6 +1044,7 @@ const FlashCardLearning = () => {
                 <div className="relative">
                   {/* 隐藏的真实输入框 */}
                   <input
+                    {...noSuggestInputProps()}
                     ref={(el) => el && !answerSubmitted && el.focus()}
                     type="text"
                     value={userAnswer}

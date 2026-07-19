@@ -9,6 +9,7 @@ import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
 import ColoredWord from '../ColoredWord';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
+import { noSuggestInputProps } from '../../utils/noSuggestInput';
 
 
 export interface DictationResult {
@@ -288,17 +289,13 @@ export default function DictationPhase({
           {!submitted ? (
             <div className="mb-4 px-2">
               <input
+                {...noSuggestInputProps()}
                 ref={inputRef}
                 type="text"
                 value={userInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-
                 maxLength={wordLengthWithSpaces}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
                 placeholder="输入单词..."
                 className="w-full text-center text-3xl font-mono font-bold bg-transparent border-0 border-b-4 border-primary/40 focus:border-primary outline-none transition-colors duration-200 py-2 text-gray-800 placeholder:text-gray-300"
               />
@@ -372,15 +369,12 @@ export default function DictationPhase({
                         请重新输入正确拼写 <span className="font-numeric">({copyDoneCount} / {COPY_REQUIRED})</span>
                       </p>
                       <input
+                        {...noSuggestInputProps()}
                         type="text"
                         value={retryInput}
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                         maxLength={wordLengthWithSpaces}
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck={false}
                         className="w-full px-4 py-3 text-center text-xl font-mono border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition"
                         placeholder="输入正确的单词"
                         autoFocus

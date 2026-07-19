@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lightbulb } from 'lucide-react';
 import PracticeLayout from '../components/practice/PracticeLayout';
@@ -7,8 +8,10 @@ import AnswerFeedback from '../components/practice/AnswerFeedback';
 import { usePracticeState } from '../hooks/usePracticeState';
 import { usePracticeQuestions } from '../hooks/usePracticeQuestions';
 import { useAudio } from '../hooks/useAudio';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
 
 const SpellingPractice = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const { playAudio } = useAudio();
   const hiddenInputRef = useRef<HTMLInputElement>(null);
@@ -196,6 +199,7 @@ const SpellingPractice = () => {
 
           {/* 隐藏输入框 */}
           <input
+            {...noSuggestInputProps()}
             ref={hiddenInputRef}
             type="text"
             value={userInput}

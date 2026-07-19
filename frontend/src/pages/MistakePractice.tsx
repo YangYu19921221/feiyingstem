@@ -9,6 +9,8 @@ import AnswerFeedback from '../components/practice/AnswerFeedback';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 
 type QuestionType = 'quiz' | 'fillblank' | 'spelling';
 
@@ -97,6 +99,7 @@ async function loadQuestions(): Promise<MixedQuestion[]> {
 }
 
 const MistakePractice = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const navigate = useNavigate();
   const { playAudio } = useAudio();
   const hiddenInputRef = useRef<HTMLInputElement>(null);
@@ -349,6 +352,7 @@ const MistakePractice = () => {
         </div>
 
         <input
+          {...noSuggestInputProps()}
           ref={hiddenInputRef}
           value={userInput}
           onChange={e => {

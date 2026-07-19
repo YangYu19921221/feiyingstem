@@ -9,6 +9,7 @@ import type { WordData } from '../../api/progress';
 import VictoryScreen, { type WrongAnswer } from './VictoryScreen';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
 import { useAudio } from '../../hooks/useAudio';
+import { noSuggestInputProps } from '../../utils/noSuggestInput';
 
 
 interface ExamQuestion {
@@ -299,6 +300,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                   </motion.button>
                   <p className="text-xs text-gray-400 mb-4">可播放 {3 - playCount} 次</p>
                   <input
+                    {...noSuggestInputProps()}
                     ref={inputRef}
                     type="text"
                     value={inputValue}
@@ -306,7 +308,6 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="输入单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    autoComplete="off"
                   />
                 </div>
               )}
@@ -319,6 +320,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     提示: <span className="font-mono font-bold tracking-widest">{currentQ.hint}</span>
                   </p>
                   <input
+                    {...noSuggestInputProps()}
                     ref={inputRef}
                     type="text"
                     value={inputValue}
@@ -326,7 +328,6 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="输入完整单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    autoComplete="off"
                   />
                 </div>
               )}

@@ -10,10 +10,13 @@ import {
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import usePresence from '../hooks/usePresence';
+import { usePreventCopy } from '../hooks/usePreventCopy';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
 
 type ExamPhase = 'start' | 'testing' | 'submitting';
 
 const UnitExam = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
 
@@ -378,7 +381,7 @@ const UnitExam = () => {
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="输入你听到的单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    autoComplete="off"
+                    {...noSuggestInputProps()}
                   />
                 </div>
               )}
@@ -401,7 +404,7 @@ const UnitExam = () => {
                     placeholder="输入完整单词"
                     maxLength={(currentQuestion.word_length || 20) + 5}
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    autoComplete="off"
+                    {...noSuggestInputProps()}
                   />
                 </div>
               )}
@@ -422,7 +425,7 @@ const UnitExam = () => {
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="填入单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    autoComplete="off"
+                    {...noSuggestInputProps()}
                   />
                 </div>
               )}

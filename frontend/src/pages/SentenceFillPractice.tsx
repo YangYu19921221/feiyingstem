@@ -9,10 +9,12 @@ import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
 import { reportStudyTime } from '../api/learningRecords';
 import useIdleDetector from '../hooks/useIdleDetector';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import { useAudio } from '../hooks/useAudio';
 
 export default function SentenceFillPractice() {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
   const { playAudio } = useAudio();

@@ -9,8 +9,10 @@ import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import { useAudio } from '../hooks/useAudio';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 
 export default function DictationPractice() {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
   const { playAudio } = useAudio();

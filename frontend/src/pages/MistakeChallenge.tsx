@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import FullscreenVictory from '../components/challenge-fx/FullscreenVictory';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 import {
   getChallengeLevels,
   submitChallengeLevel,
@@ -28,6 +30,7 @@ interface WordFeedback {
 }
 
 const MistakeChallenge = () => {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const navigate = useNavigate();
   const [levels, setLevels] = useState<ChallengeLevel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -381,6 +384,7 @@ function PlayingPhase({
       {!showFeedback ? (
         <div className="flex gap-3">
           <input
+            {...noSuggestInputProps()}
             ref={inputRef}
             type="text"
             value={inputValue}
@@ -389,9 +393,6 @@ function PlayingPhase({
             placeholder="输入英文单词..."
             disabled={submitting}
             className="flex-1 px-6 py-4 text-lg rounded-2xl border-2 border-gray-200 focus:border-orange-400 focus:outline-none transition"
-            autoComplete="off"
-            autoCapitalize="off"
-            spellCheck={false}
           />
           <button
             onClick={onCheck}

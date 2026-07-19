@@ -9,6 +9,8 @@ import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
 import { parseError } from '../utils/errorMessage';
 import { normalizeAnswer } from '../utils/normalizeAnswer';
+import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { usePreventCopy } from '../hooks/usePreventCopy';
 
 type Mode = 'choice' | 'dictation';
 
@@ -18,6 +20,7 @@ type Mode = 'choice' | 'dictation';
  * - dictation: 听句子写英文，错答需照抄正确句子 3 遍才放行（与 SpellingPractice 一致）
  */
 export default function SentenceLearning() {
+  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const navigate = useNavigate();
   const { bookId, unitId } = useParams<{ bookId: string; unitId: string }>();
   const uid = parseInt(unitId || '0', 10);
@@ -339,12 +342,12 @@ function DictationCard({ sentence, onAnswer, onNext, playAudio }: {
       )}
 
       <input
+        {...noSuggestInputProps()}
         ref={inputRef}
         value={input}
         onChange={e => setInput(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') (passed ? handleNext() : copyMode ? handleCopySubmit() : handleCheck()); }}
         placeholder={copyMode ? '请抄写上面的句子' : '听到的英文…'}
-        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
         className="w-full px-4 py-3 rounded-xl border-2 border-black/10 focus:border-accent-warm outline-none text-base font-mono"
       />
 
