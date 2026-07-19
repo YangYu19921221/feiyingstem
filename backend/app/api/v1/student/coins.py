@@ -26,6 +26,7 @@ class MyTx(BaseModel):
     created_at: datetime
     day_tasks_done: Optional[int] = None
     day_words: Optional[int] = None
+    king_label: Optional[str] = None  # word_king 徽章文案(后端按北京时间算)
 
 
 @router.get("/word-king-status")
@@ -86,7 +87,7 @@ async def my_coins(
     )).scalars().all()
 
     # 系统发放流水附带「当天完成任务数+学习单词数」,按流水各自日期算
-    from app.services.coin_service import day_activity_map
+    from app.services.coin_service import day_activity_map, word_king_label
     day_cache: dict = {}
     for t in rows:
         if t.source in ("task", "word_king"):
@@ -108,6 +109,7 @@ async def my_coins(
             source_label=SOURCE_LABELS.get(t.source, t.source),
             reason=t.reason, created_at=t.created_at,
             day_tasks_done=dt, day_words=dw,
+            king_label=word_king_label(t.reason) if t.source == "word_king" else None,
         ))
 
     return {"balance": balance, "total": total, "page": page, "page_size": page_size, "items": items}

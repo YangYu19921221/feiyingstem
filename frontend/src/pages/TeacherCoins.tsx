@@ -8,7 +8,6 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
-import { beijingDate, beijingDayPrefix } from '../utils/beijingDate';
 import {
   settleCoins, getCoinBalances, getCoinTransactions, adjustCoins,
   updateCoinTx, deleteCoinTx,
@@ -75,11 +74,11 @@ export default function TeacherCoins() {
         setClasses(list);
         if (list.length) setClassId(list[0].id);
       } catch { toast.error('加载班级失败'); }
-      // 进入页面幂等结算:今天(补作业币)+ 昨天(单词王当天结束才发,次日补上)。
-      // 失败不影响浏览。
+      // 进入页面幂等结算今天(补作业币)。昨天的单词王由后端定时任务/传日期结算,
+      // 这里再显式补一次昨天(后端按自己北京日解释,前端不算日期)。失败不影响浏览。
       try {
         await settleCoins();
-        await settleCoins(beijingDate(-1));
+        await settleCoins('yesterday');
       } catch { /* 静默 */ }
     })();
   }, []);
@@ -373,7 +372,7 @@ export default function TeacherCoins() {
                       </td>
                       <td className="py-2 pr-2">
                         {t.source === 'word_king' ? (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {beijingDayPrefix(t.reason)}单词王</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {t.king_label || '单词王'}</span>
                         ) : (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-500">{t.source_label}</span>
                         )}

@@ -4,7 +4,6 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
-import { beijingDayPrefix } from '../utils/beijingDate';
 
 const PAGE_SIZE = 20;
 
@@ -76,7 +75,7 @@ export default function MyCoinsCard() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       {t.source === 'word_king'
-                        ? <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {beijingDayPrefix(t.reason)}单词王</span>
+                        ? <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {t.king_label || '单词王'}</span>
                         : <span className="text-xs text-gray-500">{t.source_label}</span>}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5 truncate">

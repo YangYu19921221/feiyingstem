@@ -6,7 +6,7 @@ CoinTransaction 流水,保证两者一致、且流水里的 balance_after 可对
 系统发放(task/word_king)用 dedup_key 幂等:同一学生同一天同一来源只发一次,
 靠 coin_transactions.dedup_key 唯一约束兜底,并发/重复结算都不会多发。
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import select, func, and_, case
@@ -69,6 +69,24 @@ async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> di
         out[uid]["words"] = cnt
 
     return out
+
+
+def word_king_label(reason: str | None) -> str:
+    """单词王徽章文案(按北京时间,后端算好前端只显示,避免用户设备时区出错)。
+    reason 形如 "2026-07-18 单词王";所属日=今天→"今日单词王"、昨天→"昨日单词王",
+    更早→"单词王"(方案A:最多显示到昨天,不细分更早日期)。解析不出→"单词王"。
+    """
+    import re
+    m = re.search(r"\d{4}-\d{2}-\d{2}", reason or "")
+    if not m:
+        return "单词王"
+    d = m.group(0)
+    today = local_today()
+    if d == today.isoformat():
+        return "今日单词王"
+    if d == (today - timedelta(days=1)).isoformat():
+        return "昨日单词王"
+    return "单词王"
 
 
 async def word_kings_for_class(db: AsyncSession, class_id: int, d: date) -> set[int]:

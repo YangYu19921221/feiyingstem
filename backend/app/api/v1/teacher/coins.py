@@ -87,6 +87,7 @@ class TxOut(BaseModel):
     # 系统发放(task/word_king)附带:该流水所在日期的当天完成任务数 + 学习单词数
     day_tasks_done: Optional[int] = None
     day_words: Optional[int] = None
+    king_label: Optional[str] = None  # word_king 徽章文案(后端按北京时间算:今日/昨日单词王)
 
 
 @router.get("/coins/word-kings")
@@ -277,7 +278,7 @@ async def list_transactions(
 
     # 给本页系统发放流水(task/word_king)附带「当天完成任务数+学习单词数」。
     # 按 (学生, 流水日期) 去重批量查,翻历史时每条对应它自己那天。
-    from app.services.coin_service import day_activity_map
+    from app.services.coin_service import day_activity_map, word_king_label
     sys_keys: dict[tuple[int, date], dict] = {}
     for tx, _f, _u in rows:
         if tx.source in ("task", "word_king"):
@@ -302,6 +303,7 @@ async def list_transactions(
             source=tx.source, source_label=SOURCE_LABELS.get(tx.source, tx.source),
             reason=tx.reason, operator_id=tx.operator_id, created_at=tx.created_at,
             day_tasks_done=extra_tasks, day_words=extra_words,
+            king_label=word_king_label(tx.reason) if tx.source == "word_king" else None,
         ))
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
@@ -522,8 +524,12 @@ async def redeem(
 
 
 def _parse_date(s: Optional[str]) -> date:
-    if not s:
+    """None/today→服务器北京今天;yesterday→昨天;否则按 YYYY-MM-DD。
+    前端不自己算日期,传相对词让后端(北京时区)解释,避免用户设备时区出错。"""
+    if not s or s == "today":
         return local_today()
+    if s == "yesterday":
+        return local_today() - timedelta(days=1)
     try:
         return date.fromisoformat(s)
     except ValueError:
