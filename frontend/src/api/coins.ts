@@ -110,6 +110,16 @@ export const getClassWordKings = (classId: number, targetDate?: string) =>
     params: { class_id: classId, ...(targetDate ? { target_date: targetDate } : {}) },
   });
 
+// 金币流水页顶部横幅:昨天单词王(已定)+ 今日实时单词王(含词数)
+export interface WordKingItem { student_id: number; name: string; words: number; }
+export interface WordKingBanner {
+  class_id: number;
+  yesterday: { date: string; kings: WordKingItem[] };
+  today: { date: string; kings: WordKingItem[] };
+}
+export const getWordKingBanner = (classId: number) =>
+  client.get<WordKingBanner>(`/teacher/coins/word-king-banner`, { params: { class_id: classId } });
+
 // ---------- 兑换商品(奖励) ----------
 export interface CoinReward {
   id: number;

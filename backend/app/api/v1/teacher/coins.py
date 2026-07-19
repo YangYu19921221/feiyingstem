@@ -15,6 +15,8 @@ from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User, Class, ClassStudent
 from app.models.coin import StudentCoin, CoinTransaction, CoinReward
+from app.models.learning import LearningRecord
+from app.models.word import Word
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
@@ -103,6 +105,59 @@ async def word_kings(
     d = _parse_date(target_date)
     kings = await coin_service.word_kings_for_class(db, class_id, d)
     return {"date": d.isoformat(), "class_id": class_id, "king_ids": sorted(kings)}
+
+
+@router.get("/coins/word-king-banner")
+async def word_king_banner(
+    class_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """金币流水页顶部横幅:昨天单词王(已定)+ 今日实时单词王(未结束,含词数)。
+    并列都返回。名字取 full_name,空则 username。"""
+    cls = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if cls is None:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    if current_user.role not in ("admin", "org_admin") and cls.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="不是你的班级")
+
+    today = local_today()
+    yesterday = today - timedelta(days=1)
+
+    async def _detail(d) -> list[dict]:
+        king_ids = await coin_service.word_kings_for_class(db, class_id, d)
+        if not king_ids:
+            return []
+        day_start, day_end = local_day_utc_range(d)
+        # 每王的当日词量
+        rows = (await db.execute(
+            select(
+                LearningRecord.user_id,
+                func.count(func.distinct(func.lower(Word.word))),
+            )
+            .join(Word, Word.id == LearningRecord.word_id)
+            .where(and_(
+                LearningRecord.user_id.in_(king_ids),
+                LearningRecord.created_at >= day_start,
+                LearningRecord.created_at < day_end,
+            ))
+            .group_by(LearningRecord.user_id)
+        )).all()
+        wc = {uid: v for uid, v in rows}
+        users = {u.id: u for u in (await db.execute(
+            select(User).where(User.id.in_(king_ids))
+        )).scalars().all()}
+        return [
+            {"student_id": uid, "name": (users[uid].full_name or users[uid].username) if uid in users else str(uid),
+             "words": wc.get(uid, 0)}
+            for uid in sorted(king_ids)
+        ]
+
+    return {
+        "class_id": class_id,
+        "yesterday": {"date": yesterday.isoformat(), "kings": await _detail(yesterday)},
+        "today": {"date": today.isoformat(), "kings": await _detail(today)},
+    }
 
 
 # ---------- 结算(打开页面时调,幂等补发系统币) ----------

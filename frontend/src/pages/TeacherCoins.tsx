@@ -12,7 +12,8 @@ import {
   settleCoins, getCoinBalances, getCoinTransactions, adjustCoins,
   updateCoinTx, deleteCoinTx,
   getRewards, createReward, updateReward, deleteReward, redeemReward,
-  type CoinBalance, type CoinTx, type CoinReward,
+  getWordKingBanner,
+  type CoinBalance, type CoinTx, type CoinReward, type WordKingBanner,
 } from '../api/coins';
 
 interface ClassItem { id: number; name: string; }
@@ -42,6 +43,7 @@ export default function TeacherCoins() {
   const [txDate, setTxDate] = useState('');  // YYYY-MM-DD,空=全部
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);  // 变更类操作(兑换/加减/改)进行中,防双击重复提交
+  const [kingBanner, setKingBanner] = useState<WordKingBanner | null>(null);  // 昨天+今日单词王横幅
 
   // 加/减金币弹窗
   const [adjustFor, setAdjustFor] = useState<CoinBalance | null>(null);
@@ -87,6 +89,13 @@ export default function TeacherCoins() {
   }, []);
   useEffect(() => { loadRewards(); }, [loadRewards]);
 
+  // 单词王横幅(昨天已定 + 今日实时),随班级切换加载
+  const loadKingBanner = useCallback(async () => {
+    if (classId == null) { setKingBanner(null); return; }
+    try { setKingBanner(await getWordKingBanner(classId)); } catch { setKingBanner(null); }
+  }, [classId]);
+  useEffect(() => { loadKingBanner(); }, [loadKingBanner]);
+
   const loadBalances = useCallback(async () => {
     if (classId == null) return;
     try {
@@ -129,9 +138,10 @@ export default function TeacherCoins() {
       if (adjustFor || editTx || redeemFor || showRewardMgr) return;
       loadBalances();
       loadTx();
+      loadKingBanner();  // 今日实时单词王也每分钟刷新
     }, 60_000);
     return () => clearInterval(t);
-  }, [loadBalances, loadTx, adjustFor, editTx, redeemFor, showRewardMgr]);
+  }, [loadBalances, loadTx, loadKingBanner, adjustFor, editTx, redeemFor, showRewardMgr]);
 
   const submitAdjust = async () => {
     if (!adjustFor || busy) return;  // busy 防双击重复扣/发
@@ -249,6 +259,36 @@ export default function TeacherCoins() {
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-700">
           💡 完成当天全部作业 +1 币,当日班级词量榜第一(单词王)+2 币,系统每日自动结算(打开本页即结算今天)。手动/兑换记录可增删改,系统发放的不可改。
         </div>
+
+        {/* 单词王横幅:昨天(已定)+ 今日(实时,还没截止) */}
+        {kingBanner && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+            <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-3">
+              <p className="text-xs text-amber-600 font-medium mb-1">👑 昨日单词王 <span className="text-amber-400 font-normal">({kingBanner.yesterday.date.slice(5)} 已定)</span></p>
+              {kingBanner.yesterday.kings.length ? (
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {kingBanner.yesterday.kings.map((k) => (
+                    <span key={k.student_id} className="text-sm text-amber-900 font-semibold">
+                      {k.name} <span className="text-amber-500 font-numeric">{k.words}词</span>
+                    </span>
+                  ))}
+                </div>
+              ) : <p className="text-xs text-gray-400">昨天无人学习</p>}
+            </div>
+            <div className="rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3">
+              <p className="text-xs text-orange-600 font-medium mb-1">🔥 今日实时领先 <span className="text-orange-400 font-normal">({kingBanner.today.date.slice(5)} 未截止,24点后定王)</span></p>
+              {kingBanner.today.kings.length ? (
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {kingBanner.today.kings.map((k) => (
+                    <span key={k.student_id} className="text-sm text-orange-900 font-semibold">
+                      {k.name} <span className="text-orange-500 font-numeric">{k.words}词</span>
+                    </span>
+                  ))}
+                </div>
+              ) : <p className="text-xs text-gray-400">今天还没人学习</p>}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           {/* 左:余额榜 */}
