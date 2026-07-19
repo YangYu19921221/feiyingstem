@@ -121,6 +121,7 @@ const TeacherClassManagement = () => {
   const [classStudents, setClassStudents] = useState<ClassStudent[]>([]);
   const [dailyStats, setDailyStats] = useState<DailyStudentData[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [wordKingIds, setWordKingIds] = useState<Set<number>>(new Set());  // 当日单词王(戴👑)
 
   // 学生详情弹窗
   const [studentDetail, setStudentDetail] = useState<StudentDetail | null>(null);
@@ -304,6 +305,12 @@ const TeacherClassManagement = () => {
     } catch (error) {
       console.error('加载每日数据失败:', error);
     }
+    // 当日单词王(戴👑),失败不影响主数据
+    try {
+      const { getClassWordKings } = await import('../api/coins');
+      const r = await getClassWordKings(classId, date);
+      setWordKingIds(new Set(r.king_ids));
+    } catch { setWordKingIds(new Set()); }
     // 学习时段(首次~末次答题)并行拉取,供表格/日报图展示;失败不影响主数据
     try {
       const r = await axios.get(`${API_BASE_URL}/teacher/analytics/classes/${classId}/day-activity-spans`, {
@@ -1202,6 +1209,9 @@ const TeacherClassManagement = () => {
                                     </span>
                                   </div>
                                   <span className="font-medium text-gray-800 text-sm">{s.full_name}</span>
+                                  {wordKingIds.has(s.user_id) && (
+                                    <span className="text-sm" title="当日单词王">👑</span>
+                                  )}
                                   {isLowScore && (
                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded font-bold" title="准确率偏低，需重点关注">
                                       需关注

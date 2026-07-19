@@ -87,6 +87,24 @@ class TxOut(BaseModel):
     day_words: Optional[int] = None
 
 
+@router.get("/coins/word-kings")
+async def word_kings(
+    class_id: int = Query(...),
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天(实时)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """某班某天的单词王 student_id 列表(戴 👑 用)。今天=实时最高,历史=当天结果。"""
+    cls = (await db.execute(select(Class).where(Class.id == class_id))).scalar_one_or_none()
+    if cls is None:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    if current_user.role not in ("admin", "org_admin") and cls.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="不是你的班级")
+    d = _parse_date(target_date)
+    kings = await coin_service.word_kings_for_class(db, class_id, d)
+    return {"date": d.isoformat(), "class_id": class_id, "king_ids": sorted(kings)}
+
+
 # ---------- 结算(打开页面时调,幂等补发系统币) ----------
 @router.post("/coins/settle")
 async def settle(

@@ -3,7 +3,7 @@
  * 显示总币数;点击展开弹窗看获得/消费明细(分页)。单词王来源带 👑 标识。
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getMyCoins, type MyCoinTx } from '../api/coins';
+import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
 
 const PAGE_SIZE = 20;
 
@@ -14,10 +14,12 @@ export default function MyCoinsCard() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState(false);
+  const [isKing, setIsKing] = useState(false);  // 今天(实时)是不是单词王
 
   // 只拉余额(轻量),明细等点开再拉
   useEffect(() => {
     getMyCoins(1, 1).then((r) => { setBalance(r.balance); setLoaded(true); }).catch(() => setLoaded(true));
+    getMyWordKingStatus().then((r) => setIsKing(r.is_word_king)).catch(() => {});
   }, []);
 
   const loadPage = useCallback((p: number) => {
@@ -41,9 +43,15 @@ export default function MyCoinsCard() {
         className="w-full card-soft rounded-2xl px-5 py-4 flex items-center justify-between hover:bg-black/[0.02] transition"
       >
         <div className="flex items-center gap-3">
-          <span className="text-2xl">🪙</span>
+          <span className="text-2xl relative">
+            🪙
+            {isKing && <span className="absolute -top-2 -right-1 text-base" title="今日单词王">👑</span>}
+          </span>
           <div className="text-left">
-            <p className="text-ink font-semibold text-sm">我的金币</p>
+            <p className="text-ink font-semibold text-sm flex items-center gap-1.5">
+              我的金币
+              {isKing && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">👑 今日单词王</span>}
+            </p>
             <p className="text-ink-mute text-xs">完成作业得 1 币 · 单词王得 2 币</p>
           </div>
         </div>

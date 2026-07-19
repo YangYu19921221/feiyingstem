@@ -2,9 +2,9 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -26,6 +26,40 @@ class MyTx(BaseModel):
     created_at: datetime
     day_tasks_done: Optional[int] = None
     day_words: Optional[int] = None
+
+
+@router.get("/word-king-status")
+async def word_king_status(
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天(实时)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """我是不是某天的单词王(戴 👑 用)。默认今天=实时最高;可查历史某天。
+    多班取任一班是王即算(学生通常只在一个班)。"""
+    from datetime import date as _date
+    from app.core.timeutil import local_today
+    from app.models.user import ClassStudent
+    from app.services.coin_service import word_kings_for_class
+
+    if target_date:
+        try:
+            d = _date.fromisoformat(target_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式错误")
+    else:
+        d = local_today()
+
+    class_ids = (await db.execute(
+        select(ClassStudent.class_id).where(and_(
+            ClassStudent.student_id == current_user.id, ClassStudent.is_active.is_(True)))
+    )).scalars().all()
+    is_king = False
+    for cid in class_ids:
+        kings = await word_kings_for_class(db, cid, d)
+        if current_user.id in kings:
+            is_king = True
+            break
+    return {"date": d.isoformat(), "is_word_king": is_king}
 
 
 @router.get("/coins/me")

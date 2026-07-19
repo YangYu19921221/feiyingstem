@@ -98,6 +98,18 @@ export interface MyCoinsResp {
 export const getMyCoins = (page = 1, pageSize = 20) =>
   client.get<MyCoinsResp>(`/student/coins/me`, { params: { page, page_size: pageSize } });
 
+// 我是不是单词王(戴 👑);默认今天实时,可传日期查历史
+export const getMyWordKingStatus = (targetDate?: string) =>
+  client.get<{ date: string; is_word_king: boolean }>(`/student/word-king-status`, {
+    params: targetDate ? { target_date: targetDate } : {},
+  });
+
+// 某班某天的单词王 id 列表(教师端班级/大屏戴 👑)
+export const getClassWordKings = (classId: number, targetDate?: string) =>
+  client.get<{ date: string; class_id: number; king_ids: number[] }>(`/teacher/coins/word-kings`, {
+    params: { class_id: classId, ...(targetDate ? { target_date: targetDate } : {}) },
+  });
+
 // ---------- 兑换商品(奖励) ----------
 export interface CoinReward {
   id: number;

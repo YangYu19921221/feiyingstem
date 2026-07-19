@@ -71,6 +71,40 @@ async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> di
     return out
 
 
+async def word_kings_for_class(db: AsyncSession, class_id: int, d: date) -> set[int]:
+    """某班在 d 这天的单词王 student_id 集合(词量最高;并列都算)。
+
+    与发币口径完全一致(distinct(lower(word)))。今天=实时最高(榜未定,仅展示用),
+    历史日=当天最终结果。0 词的班不产生王。供 👑 标识跨页面复用。
+    """
+    day_start, day_end = local_day_utc_range(d)
+    members = (await db.execute(
+        select(ClassStudent.student_id).where(and_(
+            ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True)))
+    )).scalars().all()
+    if not members:
+        return set()
+    rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(func.distinct(func.lower(Word.word))).label("v"),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
+            LearningRecord.user_id.in_(members),
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        ))
+        .group_by(LearningRecord.user_id)
+    )).all()
+    if not rows:
+        return set()
+    best = max(v for _, v in rows)
+    if best <= 0:
+        return set()
+    return {uid for uid, v in rows if v == best}
+
+
 async def _get_or_create_coin(db: AsyncSession, user_id: int, org_id: int) -> StudentCoin:
     row = (await db.execute(
         select(StudentCoin).where(StudentCoin.user_id == user_id)
