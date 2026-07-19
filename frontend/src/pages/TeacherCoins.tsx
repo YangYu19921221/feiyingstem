@@ -120,6 +120,19 @@ export default function TeacherCoins() {
 
   const refreshAll = () => { loadBalances(); loadTx(); };
 
+  // 每 60 秒自动刷新余额/流水(实时看到金币变动)。
+  // 有弹窗打开时(兑换/加减/改/商品管理)跳过本轮,避免打断正在进行的操作;
+  // 标签页切到后台也跳过,省请求。
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.hidden) return;
+      if (adjustFor || editTx || redeemFor || showRewardMgr) return;
+      loadBalances();
+      loadTx();
+    }, 60_000);
+    return () => clearInterval(t);
+  }, [loadBalances, loadTx, adjustFor, editTx, redeemFor, showRewardMgr]);
+
   const submitAdjust = async () => {
     if (!adjustFor || busy) return;  // busy 防双击重复扣/发
     const n = parseInt(adjustAmount, 10);
