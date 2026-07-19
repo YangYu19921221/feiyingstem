@@ -228,7 +228,7 @@ export default function TeacherCoins() {
         {/* 头部 */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/teacher')} className="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
+            <button onClick={() => navigate('/teacher/dashboard')} className="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
             <h1 className="text-xl font-bold text-gray-800">🪙 金币管理</h1>
           </div>
           <div className="flex items-center gap-2">
