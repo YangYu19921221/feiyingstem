@@ -28,6 +28,25 @@ class StudentCoin(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class CoinReward(Base):
+    """兑换奖励商品(机构自建自用,org_id 隔离,纳入 tenancy 安全网)
+
+    如「200 人民币 = 200 币」。stock=None 表示不限量;is_active=False 下架
+    (不删除,保留历史兑换记录的可读性)。
+    """
+    __tablename__ = "coin_rewards"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    org_id = Column(Integer, nullable=False, default=1, server_default="1")
+    name = Column(String(100), nullable=False)          # 商品名
+    cost = Column(Integer, nullable=False)              # 所需金币
+    stock = Column(Integer, nullable=True)              # 库存;NULL=不限量
+    is_active = Column(Integer, nullable=False, default=1, server_default="1")  # 1上架/0下架
+    note = Column(String(200), nullable=True)           # 备注说明
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class CoinTransaction(Base):
     """金币流水(增减都记一条;兑换=负数)
 

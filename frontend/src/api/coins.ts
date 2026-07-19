@@ -93,3 +93,31 @@ export interface MyCoinsResp {
 
 export const getMyCoins = (page = 1, pageSize = 20) =>
   client.get<MyCoinsResp>(`/student/coins/me`, { params: { page, page_size: pageSize } });
+
+// ---------- 兑换商品(奖励) ----------
+export interface CoinReward {
+  id: number;
+  name: string;
+  cost: number;
+  stock: number | null;   // null = 不限量
+  is_active: boolean;
+  note: string | null;
+  sort_order: number;
+}
+
+export const getRewards = (includeInactive = true) =>
+  client.get<CoinReward[]>(`/teacher/coins/rewards`, { params: { include_inactive: includeInactive } });
+
+export const createReward = (body: { name: string; cost: number; stock?: number | null; note?: string }) =>
+  client.post<CoinReward>(`/teacher/coins/rewards`, body);
+
+export const updateReward = (id: number, body: Partial<{ name: string; cost: number; stock: number | null; is_active: boolean; note: string }>) =>
+  client.patch<CoinReward>(`/teacher/coins/rewards/${id}`, body);
+
+export const deleteReward = (id: number) =>
+  client.delete<{ success: boolean }>(`/teacher/coins/rewards/${id}`);
+
+export const redeemReward = (studentId: number, rewardId: number) =>
+  client.post<{ success: boolean; tx_id: number | null; balance_after: number; stock: number | null }>(
+    `/teacher/coins/redeem`, { student_id: studentId, reward_id: rewardId },
+  );

@@ -11,7 +11,8 @@ import { toast } from '../components/Toast';
 import {
   settleCoins, getCoinBalances, getCoinTransactions, adjustCoins,
   updateCoinTx, deleteCoinTx,
-  type CoinBalance, type CoinTx,
+  getRewards, createReward, updateReward, deleteReward, redeemReward,
+  type CoinBalance, type CoinTx, type CoinReward,
 } from '../api/coins';
 
 interface ClassItem { id: number; name: string; }
@@ -52,6 +53,13 @@ export default function TeacherCoins() {
   const [editAmount, setEditAmount] = useState('');
   const [editReason, setEditReason] = useState('');
 
+  // 商品 + 兑换
+  const [rewards, setRewards] = useState<CoinReward[]>([]);
+  const [redeemFor, setRedeemFor] = useState<CoinBalance | null>(null);  // 给谁兑换
+  const [showRewardMgr, setShowRewardMgr] = useState(false);             // 商品管理弹窗
+  const [rewardForm, setRewardForm] = useState({ name: '', cost: '', stock: '', note: '' });
+  const [editReward, setEditReward] = useState<CoinReward | null>(null);
+
   const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` });
 
   // 初始化:班级列表 + 结算今天
@@ -72,6 +80,11 @@ export default function TeacherCoins() {
       } catch { /* 静默 */ }
     })();
   }, []);
+
+  const loadRewards = useCallback(async () => {
+    try { setRewards(await getRewards(true)); } catch { /* 静默 */ }
+  }, []);
+  useEffect(() => { loadRewards(); }, [loadRewards]);
 
   const loadBalances = useCallback(async () => {
     if (classId == null) return;
@@ -147,8 +160,48 @@ export default function TeacherCoins() {
     } catch (e: any) { toast.error(e?.response?.data?.detail || '删除失败'); }
   };
 
+  const doRedeem = async (reward: CoinReward) => {
+    if (!redeemFor) return;
+    if (redeemFor.balance < reward.cost) { toast.warning(`金币不足(当前 ${redeemFor.balance},需 ${reward.cost})`); return; }
+    try {
+      await redeemReward(redeemFor.student_id, reward.id);
+      toast.success(`已为 ${redeemFor.name} 兑换「${reward.name}」`);
+      setRedeemFor(null); refreshAll(); loadRewards();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || '兑换失败'); }
+  };
+
+  const submitReward = async () => {
+    const cost = parseInt(rewardForm.cost, 10);
+    if (!rewardForm.name.trim()) { toast.warning('请输入商品名'); return; }
+    if (!cost || cost <= 0) { toast.warning('所需金币需为正整数'); return; }
+    const stock = rewardForm.stock.trim() ? parseInt(rewardForm.stock, 10) : null;
+    try {
+      if (editReward) {
+        await updateReward(editReward.id, { name: rewardForm.name.trim(), cost, stock, note: rewardForm.note.trim() });
+        toast.success('已修改');
+      } else {
+        await createReward({ name: rewardForm.name.trim(), cost, stock: stock ?? undefined, note: rewardForm.note.trim() });
+        toast.success('已添加');
+      }
+      setRewardForm({ name: '', cost: '', stock: '', note: '' }); setEditReward(null);
+      loadRewards();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || '操作失败'); }
+  };
+
+  const toggleReward = async (r: CoinReward) => {
+    try { await updateReward(r.id, { is_active: !r.is_active }); loadRewards(); }
+    catch { toast.error('操作失败'); }
+  };
+
+  const removeReward = async (r: CoinReward) => {
+    if (!confirm(`删除商品「${r.name}」?已兑换记录不受影响`)) return;
+    try { await deleteReward(r.id); loadRewards(); toast.success('已删除'); }
+    catch { toast.error('删除失败'); }
+  };
+
   const isSystem = (s: string) => s === 'task' || s === 'word_king';
   const totalPages = Math.max(1, Math.ceil(txTotal / PAGE_SIZE));
+  const activeRewards = rewards.filter((r) => r.is_active);
 
   return (
     <div className="min-h-screen bg-[#FFF8F0] p-4 sm:p-6">
@@ -159,13 +212,19 @@ export default function TeacherCoins() {
             <button onClick={() => navigate('/teacher')} className="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
             <h1 className="text-xl font-bold text-gray-800">🪙 金币管理</h1>
           </div>
-          <select
-            value={classId ?? ''}
-            onChange={(e) => setClassId(Number(e.target.value))}
-            className="px-3 py-2 rounded-xl border border-black/10 bg-white text-sm"
-          >
-            {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowRewardMgr(true); setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }}
+              className="px-3 py-2 rounded-xl bg-amber-100 text-amber-700 text-sm hover:bg-amber-200"
+            >🎁 商品管理</button>
+            <select
+              value={classId ?? ''}
+              onChange={(e) => setClassId(Number(e.target.value))}
+              className="px-3 py-2 rounded-xl border border-black/10 bg-white text-sm"
+            >
+              {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-700">
@@ -190,6 +249,10 @@ export default function TeacherCoins() {
                   <span className="text-sm text-gray-700 truncate">{s.name}</span>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-numeric font-bold text-amber-600 text-sm">{s.balance} 🪙</span>
+                    <button
+                      onClick={() => setRedeemFor(s)}
+                      className="px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs hover:bg-green-200"
+                    >🎁 兑换</button>
                     <button
                       onClick={() => { setAdjustFor(s); setAdjustMode('grant'); setAdjustAmount(''); setAdjustReason(''); }}
                       className="px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-xs hover:bg-amber-200"
@@ -358,6 +421,103 @@ export default function TeacherCoins() {
             <div className="flex gap-2">
               <button onClick={() => setEditTx(null)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
               <button onClick={submitEdit} className="flex-1 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium">保存</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 给学生兑换商品弹窗 */}
+      {redeemFor && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setRedeemFor(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[80vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-800 mb-1">🎁 给 {redeemFor.name} 兑换</h3>
+            <p className="text-xs text-gray-400 mb-4">当前余额 {redeemFor.balance} 🪙</p>
+            {activeRewards.length === 0 ? (
+              <p className="text-center text-xs text-gray-400 py-6">还没有上架的商品,先去「商品管理」添加</p>
+            ) : (
+              <div className="space-y-2">
+                {activeRewards.map((r) => {
+                  const afford = redeemFor.balance >= r.cost;
+                  const outOfStock = r.stock !== null && r.stock <= 0;
+                  return (
+                    <div key={r.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-black/[0.06]">
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-800 truncate">{r.name}</p>
+                        <p className="text-[11px] text-gray-400">
+                          {r.cost} 🪙{r.stock !== null ? ` · 剩 ${r.stock}` : ' · 不限量'}{r.note ? ` · ${r.note}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        disabled={!afford || outOfStock}
+                        onClick={() => doRedeem(r)}
+                        className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium disabled:opacity-40 shrink-0 ml-2"
+                      >{outOfStock ? '缺货' : afford ? '兑换' : '币不足'}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button onClick={() => setRedeemFor(null)} className="w-full mt-4 py-2 rounded-lg border border-black/10 text-sm text-gray-500">关闭</button>
+          </div>
+        </div>
+      )}
+
+      {/* 商品管理弹窗 */}
+      {showRewardMgr && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowRewardMgr(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800">🎁 兑换商品管理</h3>
+              <button onClick={() => setShowRewardMgr(false)} className="text-gray-400 hover:text-gray-600 text-sm">关闭</button>
+            </div>
+
+            {/* 新增/编辑表单 */}
+            <div className="bg-black/[0.02] rounded-xl p-3 mb-4 space-y-2">
+              <p className="text-xs font-medium text-gray-500">{editReward ? '编辑商品' : '新增商品'}</p>
+              <div className="flex gap-2">
+                <input value={rewardForm.name} onChange={(e) => setRewardForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="商品名(如 200人民币)" className="flex-1 px-2.5 py-1.5 rounded-lg border border-black/10 text-sm" />
+                <input type="number" value={rewardForm.cost} onChange={(e) => setRewardForm((f) => ({ ...f, cost: e.target.value }))}
+                  placeholder="金币" className="w-20 px-2.5 py-1.5 rounded-lg border border-black/10 text-sm" />
+              </div>
+              <div className="flex gap-2">
+                <input type="number" value={rewardForm.stock} onChange={(e) => setRewardForm((f) => ({ ...f, stock: e.target.value }))}
+                  placeholder="库存(空=不限)" className="w-32 px-2.5 py-1.5 rounded-lg border border-black/10 text-sm" />
+                <input value={rewardForm.note} onChange={(e) => setRewardForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="备注(可选)" className="flex-1 px-2.5 py-1.5 rounded-lg border border-black/10 text-sm" />
+              </div>
+              <div className="flex gap-2">
+                {editReward && (
+                  <button onClick={() => { setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }}
+                    className="px-3 py-1.5 rounded-lg border border-black/10 text-sm text-gray-500">取消编辑</button>
+                )}
+                <button onClick={submitReward} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium">
+                  {editReward ? '保存修改' : '＋ 添加商品'}
+                </button>
+              </div>
+            </div>
+
+            {/* 商品列表 */}
+            <div className="space-y-1.5">
+              {rewards.map((r) => (
+                <div key={r.id} className={`flex items-center justify-between px-3 py-2 rounded-xl border ${r.is_active ? 'border-black/[0.06]' : 'border-black/[0.04] bg-black/[0.02] opacity-60'}`}>
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-800 truncate">
+                      {r.name} {!r.is_active && <span className="text-[10px] text-gray-400">(已下架)</span>}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {r.cost} 🪙{r.stock !== null ? ` · 剩 ${r.stock}` : ' · 不限量'}{r.note ? ` · ${r.note}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0 ml-2">
+                    <button onClick={() => { setEditReward(r); setRewardForm({ name: r.name, cost: String(r.cost), stock: r.stock === null ? '' : String(r.stock), note: r.note || '' }); }}
+                      className="text-xs text-blue-500 hover:text-blue-700">改</button>
+                    <button onClick={() => toggleReward(r)} className="text-xs text-amber-600 hover:text-amber-800">{r.is_active ? '下架' : '上架'}</button>
+                    <button onClick={() => removeReward(r)} className="text-xs text-red-400 hover:text-red-600">删</button>
+                  </div>
+                </div>
+              ))}
+              {rewards.length === 0 && <p className="text-center text-xs text-gray-400 py-6">还没有商品</p>}
             </div>
           </div>
         </div>

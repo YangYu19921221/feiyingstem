@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User, Class, ClassStudent
-from app.models.coin import StudentCoin, CoinTransaction
+from app.models.coin import StudentCoin, CoinTransaction, CoinReward
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
@@ -49,6 +49,26 @@ class AdjustRequest(BaseModel):
 class TxUpdateRequest(BaseModel):
     amount: Optional[int] = None
     reason: Optional[str] = Field(None, max_length=200)
+
+
+class RewardCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    cost: int = Field(..., gt=0, description="所需金币,正整数")
+    stock: Optional[int] = Field(None, ge=0, description="库存;不填=不限量")
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class RewardUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    cost: Optional[int] = Field(None, gt=0)
+    stock: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class RedeemRequest(BaseModel):
+    student_id: int
+    reward_id: int
 
 
 class TxOut(BaseModel):
@@ -281,6 +301,129 @@ async def delete_transaction(
     await db.delete(tx)
     await db.commit()
     return {"success": True}
+
+
+# ========================================
+# 兑换商品(奖励)管理 + 按商品兑换
+# ========================================
+
+def _reward_out(r: CoinReward) -> dict:
+    return {
+        "id": r.id, "name": r.name, "cost": r.cost, "stock": r.stock,
+        "is_active": bool(r.is_active), "note": r.note, "sort_order": r.sort_order,
+    }
+
+
+@router.get("/coins/rewards")
+async def list_rewards(
+    include_inactive: bool = Query(True, description="是否含已下架"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """本机构的兑换商品列表(tenancy 自动按 org 过滤)。"""
+    stmt = select(CoinReward).order_by(CoinReward.sort_order, CoinReward.id)
+    if not include_inactive:
+        stmt = stmt.where(CoinReward.is_active == 1)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [_reward_out(r) for r in rows]
+
+
+@router.post("/coins/rewards", status_code=status.HTTP_201_CREATED)
+async def create_reward(
+    body: RewardCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """新增兑换商品。org_id 由 tenancy 写侧自动打戳(admin 上下文落 NULL=平台级)。"""
+    max_sort = (await db.execute(select(func.max(CoinReward.sort_order)))).scalar() or 0
+    r = CoinReward(name=body.name.strip(), cost=body.cost, stock=body.stock,
+                   note=body.note, sort_order=max_sort + 1, is_active=1)
+    db.add(r)
+    await db.commit()
+    await db.refresh(r)
+    return _reward_out(r)
+
+
+@router.patch("/coins/rewards/{reward_id}")
+async def update_reward(
+    reward_id: int,
+    body: RewardUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """改商品(名称/金币/库存/上下架/备注)。tenancy 过滤保证只能改本机构的。"""
+    r = (await db.execute(select(CoinReward).where(CoinReward.id == reward_id))).scalar_one_or_none()
+    if r is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    if body.name is not None:
+        r.name = body.name.strip()
+    if body.cost is not None:
+        r.cost = body.cost
+    if body.stock is not None:
+        r.stock = body.stock
+    if body.is_active is not None:
+        r.is_active = 1 if body.is_active else 0
+    if body.note is not None:
+        r.note = body.note
+    await db.commit()
+    return _reward_out(r)
+
+
+@router.delete("/coins/rewards/{reward_id}")
+async def delete_reward(
+    reward_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """删商品(历史兑换流水已把商品名写进 reason,删商品不影响记录可读性)。"""
+    r = (await db.execute(select(CoinReward).where(CoinReward.id == reward_id))).scalar_one_or_none()
+    if r is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    await db.delete(r)
+    await db.commit()
+    return {"success": True}
+
+
+@router.post("/coins/redeem")
+async def redeem(
+    body: RedeemRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """给学生兑换某商品:扣 cost 金币 + 记兑换流水(reason=商品名)+ 扣库存。
+    金币不足或缺货则拒绝。"""
+    await _assert_can_touch(db, current_user, body.student_id)
+    reward = (await db.execute(
+        select(CoinReward).where(CoinReward.id == body.reward_id)
+    )).scalar_one_or_none()
+    if reward is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    if not reward.is_active:
+        raise HTTPException(status_code=400, detail="该商品已下架")
+    if reward.stock is not None and reward.stock <= 0:
+        raise HTTPException(status_code=400, detail="该商品库存不足")
+
+    student = (await db.execute(select(User).where(User.id == body.student_id))).scalar_one_or_none()
+    if student is None or student.role != "student":
+        raise HTTPException(status_code=404, detail="学生不存在")
+
+    coin = (await db.execute(
+        select(StudentCoin).where(StudentCoin.user_id == body.student_id)
+    )).scalar_one_or_none()
+    cur = coin.balance if coin else 0
+    if cur < reward.cost:
+        raise HTTPException(status_code=400, detail=f"金币不足(当前 {cur},需 {reward.cost})")
+
+    tx = await coin_service.apply_delta(
+        db, body.student_id, student.org_id or 1, -reward.cost, "redeem",
+        reason=f"兑换:{reward.name}", operator_id=current_user.id,
+    )
+    if reward.stock is not None:
+        reward.stock -= 1
+    await db.commit()
+    return {"success": True, "tx_id": tx.id if tx else None,
+            "balance_after": tx.balance_after if tx else cur,
+            "stock": reward.stock}
 
 
 def _parse_date(s: Optional[str]) -> date:
