@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
+import { beijingDayPrefix } from '../utils/beijingDate';
 
 const PAGE_SIZE = 20;
 
@@ -30,16 +31,6 @@ export default function MyCoinsCard() {
 
   const openDetail = () => { setOpen(true); loadPage(1); };
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  // 单词王日期前缀:从 reason 解析所属日期(created_at 是结算时刻,会偏一天)
-  const dayPrefix = (reason: string | null): string => {
-    const m = reason?.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (!m) return '';
-    const d = m[0];
-    const fmt = (x: Date) => x.toISOString().slice(0, 10);
-    if (d === fmt(new Date())) return '今日';
-    if (d === fmt(new Date(Date.now() - 86400000))) return '昨日';
-    return d.slice(5);
-  };
 
   // 从没有任何金币记录时不显示卡片(避免空占位)
   if (loaded && balance === 0 && total === 0) {
@@ -85,7 +76,7 @@ export default function MyCoinsCard() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       {t.source === 'word_king'
-                        ? <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {dayPrefix(t.reason)}单词王</span>
+                        ? <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {beijingDayPrefix(t.reason)}单词王</span>
                         : <span className="text-xs text-gray-500">{t.source_label}</span>}
                     </div>
                     <p className="text-[11px] text-gray-400 mt-0.5 truncate">
