@@ -229,6 +229,17 @@ export default function TeacherCoins() {
   };
 
   const isSystem = (s: string) => s === 'task' || s === 'word_king';
+  // 单词王徽章的日期前缀:reason 里含所属日期(如"2026-07-18 单词王"),用它而非
+  // created_at(那是结算时刻,次日结算会晚一天)。解析不出则不加前缀。
+  const dayPrefix = (reason: string | null): string => {
+    const m = reason?.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    const d = m[0];
+    const fmt = (x: Date) => x.toISOString().slice(0, 10);
+    if (d === fmt(new Date())) return '今日';
+    if (d === fmt(new Date(Date.now() - 86400000))) return '昨日';
+    return d.slice(5);
+  };
   const totalPages = Math.max(1, Math.ceil(txTotal / PAGE_SIZE));
   const activeRewards = rewards.filter((r) => r.is_active);
 
@@ -373,7 +384,7 @@ export default function TeacherCoins() {
                       </td>
                       <td className="py-2 pr-2">
                         {t.source === 'word_king' ? (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 单词王</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">👑 {dayPrefix(t.reason)}单词王</span>
                         ) : (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-500">{t.source_label}</span>
                         )}
