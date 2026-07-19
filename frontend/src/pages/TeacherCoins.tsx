@@ -328,8 +328,8 @@ export default function TeacherCoins() {
                       <td className="py-2 pr-2 text-gray-500 text-xs max-w-[180px]">
                         <div className="truncate">{t.reason || '—'}</div>
                         {isSystem(t.source) && (t.day_tasks_done != null || t.day_words != null) && (
-                          <div className="text-[10px] text-gray-400 mt-0.5">
-                            当天完成 {t.day_tasks_done ?? 0} 任务 · 学 {t.day_words ?? 0} 词
+                          <div className="text-[10px] mt-0.5 text-gray-400">
+                            当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 任务 · 学 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 词
                           </div>
                         )}
                       </td>

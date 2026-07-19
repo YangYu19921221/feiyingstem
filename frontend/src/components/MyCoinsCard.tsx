@@ -74,8 +74,8 @@ export default function MyCoinsCard() {
                       {t.reason || ''} · {t.created_at.slice(5, 16).replace('T', ' ')}
                     </p>
                     {(t.source === 'task' || t.source === 'word_king') && (t.day_tasks_done != null || t.day_words != null) && (
-                      <p className="text-[11px] text-emerald-600 mt-0.5">
-                        当天完成 {t.day_tasks_done ?? 0} 个任务 · 学了 {t.day_words ?? 0} 个单词
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 个任务 · 学了 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 个单词
                       </p>
                     )}
                   </div>
