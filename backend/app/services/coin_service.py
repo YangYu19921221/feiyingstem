@@ -71,6 +71,20 @@ async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> di
     return out
 
 
+def reason_date(reason: str | None) -> date | None:
+    """从流水 reason 解析所属北京日历日(如"2026-07-18 单词王"→date(2026,7,18))。
+    系统发放的 task/word_king reason 都带日期;附带的"当天完成/学词数"应按此日算,
+    而非 created_at(结算时刻,单词王次日结算会差一天)。"""
+    import re
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", reason or "")
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
 def word_king_label(reason: str | None) -> str:
     """单词王徽章文案(按北京时间,后端算好前端只显示,避免用户设备时区出错)。
     reason 形如 "2026-07-18 单词王";所属日=今天→"今日单词王"、昨天→"昨日单词王",

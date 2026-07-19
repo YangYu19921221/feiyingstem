@@ -87,11 +87,11 @@ async def my_coins(
     )).scalars().all()
 
     # 系统发放流水附带「当天完成任务数+学习单词数」,按流水各自日期算
-    from app.services.coin_service import day_activity_map, word_king_label
+    from app.services.coin_service import day_activity_map, word_king_label, reason_date
     day_cache: dict = {}
     for t in rows:
         if t.source in ("task", "word_king"):
-            bj_day = (t.created_at + timedelta(hours=8)).date()
+            bj_day = reason_date(t.reason) or (t.created_at + timedelta(hours=8)).date()
             if bj_day not in day_cache:
                 amap = await day_activity_map(db, [current_user.id], bj_day)
                 day_cache[bj_day] = amap.get(current_user.id, {"tasks_done": 0, "words": 0})
@@ -100,7 +100,7 @@ async def my_coins(
     for t in rows:
         dt = dw = None
         if t.source in ("task", "word_king"):
-            bj_day = (t.created_at + timedelta(hours=8)).date()
+            bj_day = reason_date(t.reason) or (t.created_at + timedelta(hours=8)).date()
             act = day_cache.get(bj_day, {})
             dt = act.get("tasks_done", 0)
             dw = act.get("words", 0)
