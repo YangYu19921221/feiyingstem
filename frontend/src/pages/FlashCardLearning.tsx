@@ -25,7 +25,7 @@ import useIdleDetector from '../hooks/useIdleDetector';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 import { getErrorMessage } from '../utils/errorMessage';
-import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { imeSafeInputProps } from '../utils/noSuggestInput';
 
 const FlashCardLearning = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
@@ -1044,9 +1044,8 @@ const FlashCardLearning = () => {
                 <div className="relative">
                   {/* 隐藏的真实输入框 */}
                   <input
-                    {...noSuggestInputProps()}
+                    {...imeSafeInputProps({ visible: false })}
                     ref={(el) => el && !answerSubmitted && el.focus()}
-                    type="text"
                     value={userAnswer}
                     onChange={(e) => setUserAnswer(e.target.value)}
                     onKeyPress={(e) => {

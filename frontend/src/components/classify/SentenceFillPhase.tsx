@@ -11,7 +11,7 @@ import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
 import { findBlankRange, canBlank } from '../../utils/blankSentence';
-import { noSuggestInputProps } from '../../utils/noSuggestInput';
+import { imeSafeInputProps } from '../../utils/noSuggestInput';
 
 
 export interface FillBlankResult {
@@ -274,9 +274,8 @@ export default function SentenceFillPhase({
           <div className="mb-4 px-2">
             {!submitted ? (
               <input
-                {...noSuggestInputProps()}
+                {...imeSafeInputProps()}
                 ref={inputRef}
-                type="text"
                 value={userInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}

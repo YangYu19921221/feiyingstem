@@ -9,7 +9,7 @@ import type { WordData } from '../../api/progress';
 import VictoryScreen, { type WrongAnswer } from './VictoryScreen';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
 import { useAudio } from '../../hooks/useAudio';
-import { noSuggestInputProps } from '../../utils/noSuggestInput';
+import { imeSafeInputProps } from '../../utils/noSuggestInput';
 
 
 interface ExamQuestion {
@@ -300,9 +300,8 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                   </motion.button>
                   <p className="text-xs text-gray-400 mb-4">可播放 {3 - playCount} 次</p>
                   <input
-                    {...noSuggestInputProps()}
+                    {...imeSafeInputProps()}
                     ref={inputRef}
-                    type="text"
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
@@ -320,9 +319,8 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     提示: <span className="font-mono font-bold tracking-widest">{currentQ.hint}</span>
                   </p>
                   <input
-                    {...noSuggestInputProps()}
+                    {...imeSafeInputProps()}
                     ref={inputRef}
-                    type="text"
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}

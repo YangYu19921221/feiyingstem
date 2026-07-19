@@ -8,7 +8,7 @@ import AnswerFeedback from '../components/practice/AnswerFeedback';
 import { usePracticeState } from '../hooks/usePracticeState';
 import { usePracticeQuestions } from '../hooks/usePracticeQuestions';
 import { useAudio } from '../hooks/useAudio';
-import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { imeSafeInputProps } from '../utils/noSuggestInput';
 
 const SpellingPractice = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
@@ -199,9 +199,8 @@ const SpellingPractice = () => {
 
           {/* 隐藏输入框 */}
           <input
-            {...noSuggestInputProps()}
+            {...imeSafeInputProps({ visible: false })}
             ref={hiddenInputRef}
-            type="text"
             value={userInput}
             onChange={(e) => {
               if (!isChecking) {

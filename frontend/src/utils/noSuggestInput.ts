@@ -24,3 +24,31 @@ export const noSuggestInputProps = () => ({
   'data-form-type': 'other',
   'data-1p-ignore': 'true',
 });
+
+/**
+ * 「防输入法联想」答题框属性集(比 noSuggestInputProps 更狠,专治搜狗等系统级 IME)
+ *
+ * 痛点:搜狗/微软拼音等系统输入法的候选栏在浏览器之外,HTML 的 autoComplete/
+ * spellCheck 等属性管不到——学生在中文态打英文字母,搜狗直接补全出整词(打
+ * app 联想出 apple),等于把答案递手上。
+ *
+ * 解法:DOM 层设 type="password" —— 所有输入法遇到密码框都自动关联想/切英文;
+ * 再用 CSS -webkit-text-security:none 把默认的小圆点还原成明文,学生照常看得见
+ * 自己拼的字母。输入法读 type(不联想),CSS 管显示(可见),两不误。
+ *
+ * 局限:-webkit-text-security 仅 Blink/WebKit(Chrome/Edge/Safari/360/QQ,覆盖
+ * K12 绝大多数)。Firefox 不认→会显示成圆点(占比极低);隐藏输入框(opacity-0
+ * + 格子展示)不受此限,任意浏览器都零影响。
+ *
+ * 用法:可见框 <input {...imeSafeInputProps()} />(勿再单独写 type=);
+ *       隐藏框(格子展示层)用 imeSafeInputProps({ visible:false }) 省掉明文样式。
+ */
+export const imeSafeInputProps = (opts: { visible?: boolean } = {}) => {
+  const { visible = true } = opts;
+  return {
+    ...noSuggestInputProps(),
+    type: 'password' as const,
+    // 明文显示(隐藏框本就不可见,不加样式避免多余覆盖)
+    ...(visible ? { style: { WebkitTextSecurity: 'none' } as Record<string, string> } : {}),
+  };
+};

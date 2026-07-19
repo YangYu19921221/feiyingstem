@@ -9,7 +9,7 @@ import AnswerFeedback from '../components/practice/AnswerFeedback';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
-import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { imeSafeInputProps } from '../utils/noSuggestInput';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 
 type QuestionType = 'quiz' | 'fillblank' | 'spelling';
@@ -352,7 +352,7 @@ const MistakePractice = () => {
         </div>
 
         <input
-          {...noSuggestInputProps()}
+          {...imeSafeInputProps({ visible: false })}
           ref={hiddenInputRef}
           value={userInput}
           onChange={e => {

@@ -11,7 +11,7 @@ import RankBadge, { type RankInfo } from '../components/RankBadge';
 import { competitionWS } from '../services/websocket';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
-import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { noSuggestInputProps, imeSafeInputProps } from '../utils/noSuggestInput';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 
 // 题目选项接口
@@ -346,8 +346,7 @@ const CompetitionLearning: React.FC = () => {
 
         <div className="max-w-md mx-auto">
           <input
-            {...noSuggestInputProps()}
-            type="text"
+            {...imeSafeInputProps()}
             value={userAnswer}
             onChange={(e) => setUserAnswer(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && userAnswer.trim() && handleSubmitAnswer(userAnswer)}
@@ -383,8 +382,7 @@ const CompetitionLearning: React.FC = () => {
 
         <div className="max-w-md mx-auto">
           <input
-            {...noSuggestInputProps()}
-            type="text"
+            {...imeSafeInputProps()}
             value={userAnswer}
             onChange={(e) => setUserAnswer(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && userAnswer.trim() && handleSubmitAnswer(userAnswer)}

@@ -9,7 +9,7 @@ import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
 import { parseError } from '../utils/errorMessage';
 import { normalizeAnswer } from '../utils/normalizeAnswer';
-import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { imeSafeInputProps } from '../utils/noSuggestInput';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 
 type Mode = 'choice' | 'dictation';
@@ -342,7 +342,7 @@ function DictationCard({ sentence, onAnswer, onNext, playAudio }: {
       )}
 
       <input
-        {...noSuggestInputProps()}
+        {...imeSafeInputProps()}
         ref={inputRef}
         value={input}
         onChange={e => setInput(e.target.value)}

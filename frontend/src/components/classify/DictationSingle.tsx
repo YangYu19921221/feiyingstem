@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { noSuggestInputProps } from '../../utils/noSuggestInput';
+import { imeSafeInputProps } from '../../utils/noSuggestInput';
 
 interface DictationSingleProps {
   word: { id: number; word: string; translation: string };
@@ -43,7 +43,7 @@ export default function DictationSingle({
       <p className="text-2xl font-semibold mb-1">{word.translation}</p>
       <p className="text-xs text-gray-400 mb-4">剩余 {Math.ceil(remaining / 1000)} 秒</p>
       <input
-        {...noSuggestInputProps()}
+        {...imeSafeInputProps()}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {

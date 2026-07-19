@@ -9,7 +9,7 @@ import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
 import ColoredWord from '../ColoredWord';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
-import { noSuggestInputProps } from '../../utils/noSuggestInput';
+import { imeSafeInputProps } from '../../utils/noSuggestInput';
 
 
 export interface DictationResult {
@@ -289,9 +289,8 @@ export default function DictationPhase({
           {!submitted ? (
             <div className="mb-4 px-2">
               <input
-                {...noSuggestInputProps()}
+                {...imeSafeInputProps()}
                 ref={inputRef}
-                type="text"
                 value={userInput}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
@@ -369,8 +368,7 @@ export default function DictationPhase({
                         请重新输入正确拼写 <span className="font-numeric">({copyDoneCount} / {COPY_REQUIRED})</span>
                       </p>
                       <input
-                        {...noSuggestInputProps()}
-                        type="text"
+                        {...imeSafeInputProps()}
                         value={retryInput}
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}

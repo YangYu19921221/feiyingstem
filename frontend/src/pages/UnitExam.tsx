@@ -11,7 +11,7 @@ import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import usePresence from '../hooks/usePresence';
 import { usePreventCopy } from '../hooks/usePreventCopy';
-import { noSuggestInputProps } from '../utils/noSuggestInput';
+import { imeSafeInputProps } from '../utils/noSuggestInput';
 
 type ExamPhase = 'start' | 'testing' | 'submitting';
 
@@ -375,13 +375,12 @@ const UnitExam = () => {
                   <p className="text-xs text-gray-400 mb-6">可播放 {3 - playCount} 次</p>
                   <input
                     ref={inputRef}
-                    type="text"
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="输入你听到的单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    {...noSuggestInputProps()}
+                    {...imeSafeInputProps()}
                   />
                 </div>
               )}
@@ -397,14 +396,13 @@ const UnitExam = () => {
                   </p>
                   <input
                     ref={inputRef}
-                    type="text"
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="输入完整单词"
                     maxLength={(currentQuestion.word_length || 20) + 5}
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    {...noSuggestInputProps()}
+                    {...imeSafeInputProps()}
                   />
                 </div>
               )}
@@ -419,13 +417,12 @@ const UnitExam = () => {
                   <p className="text-sm text-blue-500 mb-6">提示: {currentQuestion.hint}</p>
                   <input
                     ref={inputRef}
-                    type="text"
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleInputNext()}
                     placeholder="填入单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
-                    {...noSuggestInputProps()}
+                    {...imeSafeInputProps()}
                   />
                 </div>
               )}
