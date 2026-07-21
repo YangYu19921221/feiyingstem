@@ -66,6 +66,8 @@ export default function TeacherCoins() {
   const [showRewardMgr, setShowRewardMgr] = useState(false);             // 商品管理弹窗
   const [rewardForm, setRewardForm] = useState({ name: '', cost: '', stock: '', note: '' });
   const [editReward, setEditReward] = useState<CoinReward | null>(null);
+  const [formImageFile, setFormImageFile] = useState<File | null>(null);        // 新增商品时可选的图
+  const [formImagePreview, setFormImagePreview] = useState<string | null>(null); // 本地预览 URL
 
   const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` });
 
@@ -241,14 +243,29 @@ export default function TeacherCoins() {
     try {
       if (editReward) {
         await updateReward(editReward.id, { name: rewardForm.name.trim(), cost, stock, note: rewardForm.note.trim() });
+        // 编辑时若选了新图,一并上传
+        if (formImageFile) await uploadRewardImage(editReward.id, formImageFile);
         toast.success('已修改');
       } else {
-        await createReward({ name: rewardForm.name.trim(), cost, stock: stock ?? undefined, note: rewardForm.note.trim() });
+        const created = await createReward({ name: rewardForm.name.trim(), cost, stock: stock ?? undefined, note: rewardForm.note.trim() });
+        // 添加时选了图 → 拿到新 id 后上传(不选则跳过)
+        if (formImageFile && created?.id) await uploadRewardImage(created.id, formImageFile);
         toast.success('已添加');
       }
       setRewardForm({ name: '', cost: '', stock: '', note: '' }); setEditReward(null);
+      setFormImageFile(null);
+      setFormImagePreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
       loadRewards();
     } catch (e: any) { toast.error(e?.response?.data?.detail || '操作失败'); }
+  };
+
+  // 表单选图(本地预览,提交时才真正上传)
+  const pickFormImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { toast.warning('仅支持 png/jpg/webp'); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.warning('图片不能超过 2MB'); return; }
+    setFormImageFile(file);
+    setFormImagePreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
   };
 
   const onUploadImage = async (rewardId: number, file: File | undefined) => {
@@ -627,9 +644,20 @@ export default function TeacherCoins() {
                 <input value={rewardForm.note} onChange={(e) => setRewardForm((f) => ({ ...f, note: e.target.value }))}
                   placeholder="备注(可选)" className="flex-1 px-2.5 py-1.5 rounded-lg border border-black/10 text-sm" />
               </div>
+              {/* 商品图(可选):选了本地预览,提交时上传;编辑时显示已有图 */}
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                {formImagePreview
+                  ? <img src={formImagePreview} alt="预览" className="h-11 w-11 rounded-lg object-cover" />
+                  : editReward?.image_url
+                    ? <img src={editReward.image_url} alt="已有图" className="h-11 w-11 rounded-lg object-cover" />
+                    : <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-50 text-lg">🖼️</span>}
+                <span className="text-xs text-gray-500">{formImageFile ? '已选图片,提交后生效' : '点这里加商品图(可选,png/jpg/webp ≤2MB)'}</span>
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                  onChange={(e) => { pickFormImage(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+              </label>
               <div className="flex gap-2">
                 {editReward && (
-                  <button onClick={() => { setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }}
+                  <button onClick={() => { setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); setFormImageFile(null); setFormImagePreview((p) => { if (p) URL.revokeObjectURL(p); return null; }); }}
                     className="px-3 py-1.5 rounded-lg border border-black/10 text-sm text-gray-500">取消编辑</button>
                 )}
                 <button onClick={submitReward} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium">
