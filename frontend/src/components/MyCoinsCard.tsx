@@ -5,12 +5,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
+import RedeemShopModal from './RedeemShopModal';
 
 const PAGE_SIZE = 20;
 
 export default function MyCoinsCard() {
   const [balance, setBalance] = useState(0);
   const [open, setOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);  // 兑换商城弹窗
   const [items, setItems] = useState<MyCoinTx[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -80,15 +82,22 @@ export default function MyCoinsCard() {
             </div>
           </div>
 
-          {/* 右侧行动点:兑换奖励入口(shrink-0 + nowrap 防挤断) */}
+          {/* 右侧行动点:兑换奖励入口(点这里进商城,不触发明细;shrink-0 + nowrap 防挤断) */}
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="whitespace-nowrap rounded-full bg-white/90 px-3.5 py-2 text-sm font-bold text-amber-600 shadow-sm">
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); setShopOpen(true); }}
+              className="whitespace-nowrap rounded-full bg-white/90 px-3.5 py-2 text-sm font-bold text-amber-600 shadow-sm hover:bg-white active:scale-95 transition"
+            >
               🎁 兑换奖励
             </span>
             <span className="hidden sm:block whitespace-nowrap text-[11px] text-amber-900/60">完成作业+1 · 单词王+2</span>
           </div>
         </div>
       </motion.button>
+
+      {shopOpen && <RedeemShopModal onClose={() => setShopOpen(false)} />}
 
       {open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>

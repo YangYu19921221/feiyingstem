@@ -278,6 +278,8 @@ async def init_db():
             "ALTER TABLE assessment_leads ADD COLUMN source VARCHAR(30)",
             # 教材版本分类: 单词本归属的教材系列(人教版/苏教版/机构自定义),选项表 book_series 由 create_all 建
             "ALTER TABLE word_books ADD COLUMN series VARCHAR(30)",
+            # 金币兑换商品图(公开图,学生端可看);coin_redeem_requests 表由 create_all 建
+            "ALTER TABLE coin_rewards ADD COLUMN image_url VARCHAR(255)",
         ]:
             try:
                 await conn.execute(text(_sql))

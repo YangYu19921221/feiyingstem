@@ -43,8 +43,34 @@ class CoinReward(Base):
     stock = Column(Integer, nullable=True)              # 库存;NULL=不限量
     is_active = Column(Integer, nullable=False, default=1, server_default="1")  # 1上架/0下架
     note = Column(String(200), nullable=True)           # 备注说明
+    image_url = Column(String(255), nullable=True)      # 商品图(公开,学生端可看)
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
+
+
+class CoinRedeemRequest(Base):
+    """学生兑换申请(学生发起→教师审批)。org_id 隔离,纳入 tenancy 安全网。
+
+    审批通过才扣币+扣库存(见 coins.py approve)。商品名/所需币做快照,
+    即便之后商品改名/删除,历史申请仍可读。
+    """
+    __tablename__ = "coin_redeem_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    org_id = Column(Integer, nullable=False, default=1, server_default="1")
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reward_id = Column(Integer, ForeignKey("coin_rewards.id", ondelete="SET NULL"), nullable=True)
+    reward_name = Column(String(100), nullable=False)   # 快照:申请时的商品名
+    cost = Column(Integer, nullable=False)              # 快照:申请时的所需金币
+    status = Column(String(20), nullable=False, default="pending", server_default="pending")  # pending/approved/rejected
+    created_at = Column(DateTime, server_default=func.now())        # 申请时间
+    reviewed_at = Column(DateTime, nullable=True)                   # 审批时间
+    reviewer_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # 审批人
+
+    __table_args__ = (
+        Index("idx_redeem_req_status", "org_id", "status"),
+        Index("idx_redeem_req_student", "student_id"),
+    )
 
 
 class CoinTransaction(Base):

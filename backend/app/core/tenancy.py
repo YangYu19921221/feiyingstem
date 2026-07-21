@@ -38,7 +38,7 @@ def register_tenant_models():
     from app.models.competition import CompetitionQuestionSet, LeaderboardSnapshot
     from app.models.assessment import AssessmentLead
     from app.models.pk import PkRoom
-    from app.models.coin import StudentCoin, CoinTransaction, CoinReward
+    from app.models.coin import StudentCoin, CoinTransaction, CoinReward, CoinRedeemRequest
 
     TENANT_MODELS.clear()
     TENANT_MODELS.extend([
@@ -50,6 +50,7 @@ def register_tenant_models():
         (StudentCoin, False),
         (CoinTransaction, False),
         (CoinReward, False),
+        (CoinRedeemRequest, False),
         (WordBook, True),
         (BookSeries, True),
         (SentenceBook, True),

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.user import User
-from app.models.coin import StudentCoin, CoinTransaction
+from app.models.coin import StudentCoin, CoinTransaction, CoinReward, CoinRedeemRequest
 from app.api.v1.auth import get_current_student
 
 router = APIRouter()
@@ -113,3 +113,99 @@ async def my_coins(
         ))
 
     return {"balance": balance, "total": total, "page": page, "page_size": page_size, "items": items}
+
+
+# ========================================
+# 学生申请兑换商品
+# ========================================
+
+class RedeemApply(BaseModel):
+    reward_id: int
+
+
+@router.get("/rewards")
+async def list_available_rewards(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """学生可兑换的商品(仅上架,带图);附我的余额 + 各商品是否有待审批申请。"""
+    balance = (await db.execute(
+        select(StudentCoin.balance).where(StudentCoin.user_id == current_user.id)
+    )).scalar() or 0
+    rows = (await db.execute(
+        select(CoinReward).where(CoinReward.is_active == 1)
+        .order_by(CoinReward.sort_order, CoinReward.id)
+    )).scalars().all()
+    # 我已有待审批申请的商品(防重复申请提示)
+    pending_reward_ids = set((await db.execute(
+        select(CoinRedeemRequest.reward_id).where(and_(
+            CoinRedeemRequest.student_id == current_user.id,
+            CoinRedeemRequest.status == "pending",
+        ))
+    )).scalars().all())
+    return {
+        "balance": balance,
+        "rewards": [
+            {"id": r.id, "name": r.name, "cost": r.cost, "note": r.note,
+             "image_url": r.image_url,
+             "stock": r.stock, "sold_out": r.stock is not None and r.stock <= 0,
+             "pending": r.id in pending_reward_ids}
+            for r in rows
+        ],
+    }
+
+
+@router.get("/redeem-requests/mine")
+async def my_redeem_requests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """我的兑换申请记录(申请中/已通过/已拒绝)。"""
+    rows = (await db.execute(
+        select(CoinRedeemRequest).where(CoinRedeemRequest.student_id == current_user.id)
+        .order_by(CoinRedeemRequest.created_at.desc()).limit(50)
+    )).scalars().all()
+    return [
+        {"id": r.id, "reward_name": r.reward_name, "cost": r.cost, "status": r.status,
+         "created_at": r.created_at, "reviewed_at": r.reviewed_at}
+        for r in rows
+    ]
+
+
+@router.post("/redeem-requests")
+async def apply_redeem(
+    body: RedeemApply,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """发起兑换申请(不立即扣币,等老师审批)。校验上架/库存/余额软检查/防重复申请。"""
+    reward = (await db.execute(
+        select(CoinReward).where(CoinReward.id == body.reward_id)
+    )).scalar_one_or_none()
+    if reward is None or not reward.is_active:
+        raise HTTPException(status_code=404, detail="商品不存在或已下架")
+    if reward.stock is not None and reward.stock <= 0:
+        raise HTTPException(status_code=400, detail="该商品已兑完")
+    balance = (await db.execute(
+        select(StudentCoin.balance).where(StudentCoin.user_id == current_user.id)
+    )).scalar() or 0
+    if balance < reward.cost:
+        raise HTTPException(status_code=400, detail=f"金币不足(当前 {balance},需 {reward.cost})")
+    # 同一商品已有待审批申请 → 不重复提交
+    dup = (await db.execute(
+        select(CoinRedeemRequest.id).where(and_(
+            CoinRedeemRequest.student_id == current_user.id,
+            CoinRedeemRequest.reward_id == body.reward_id,
+            CoinRedeemRequest.status == "pending",
+        )).limit(1)
+    )).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status_code=400, detail="你已申请过该商品,等老师审批")
+
+    req = CoinRedeemRequest(
+        student_id=current_user.id, org_id=current_user.org_id or 1,
+        reward_id=reward.id, reward_name=reward.name, cost=reward.cost, status="pending",
+    )
+    db.add(req)
+    await db.commit()
+    return {"success": True, "request_id": req.id}

@@ -131,6 +131,7 @@ export interface CoinReward {
   is_active: boolean;
   note: string | null;
   sort_order: number;
+  image_url: string | null;
 }
 
 export const getRewards = (includeInactive = true) =>
@@ -149,3 +150,55 @@ export const redeemReward = (studentId: number, rewardId: number) =>
   client.post<{ success: boolean; tx_id: number | null; balance_after: number; stock: number | null }>(
     `/teacher/coins/redeem`, { student_id: studentId, reward_id: rewardId },
   );
+
+// 商品图上传(FormData)
+export const uploadRewardImage = (rewardId: number, file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return client.post<{ image_url: string }>(`/teacher/coins/rewards/${rewardId}/image`, fd);
+};
+
+// ---------- 教师端:兑换申请审批 ----------
+export interface RedeemRequestItem {
+  id: number;
+  student_id: number;
+  student_name: string | null;
+  reward_name: string;
+  cost: number;
+  status: string;         // pending/approved/rejected
+  created_at: string;
+  reviewed_at: string | null;
+}
+export const getRedeemRequests = (statusFilter = 'pending') =>
+  client.get<{ pending_count: number; items: RedeemRequestItem[] }>(
+    `/teacher/coins/redeem-requests`, { params: { status_filter: statusFilter } });
+export const approveRedeem = (reqId: number) =>
+  client.post<{ success: boolean }>(`/teacher/coins/redeem-requests/${reqId}/approve`);
+export const rejectRedeem = (reqId: number) =>
+  client.post<{ success: boolean }>(`/teacher/coins/redeem-requests/${reqId}/reject`);
+
+// ---------- 学生端:申请兑换 ----------
+export interface StudentReward {
+  id: number;
+  name: string;
+  cost: number;
+  note: string | null;
+  image_url: string | null;
+  stock: number | null;
+  sold_out: boolean;
+  pending: boolean;       // 我已有待审批申请
+}
+export interface MyRedeemRequest {
+  id: number;
+  reward_name: string;
+  cost: number;
+  status: string;
+  created_at: string;
+  reviewed_at: string | null;
+}
+export const getStudentRewards = () =>
+  client.get<{ balance: number; rewards: StudentReward[] }>(`/student/rewards`);
+export const getMyRedeemRequests = () =>
+  client.get<MyRedeemRequest[]>(`/student/redeem-requests/mine`);
+export const applyRedeem = (rewardId: number) =>
+  client.post<{ success: boolean; request_id: number }>(`/student/redeem-requests`, { reward_id: rewardId });

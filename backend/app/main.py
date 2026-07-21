@@ -50,6 +50,7 @@ class _ImmutableStatic(StaticFiles):
         return resp
 
 os.makedirs(os.path.join(settings.UPLOAD_DIR, "org-logos"), exist_ok=True)
+os.makedirs(os.path.join(settings.UPLOAD_DIR, "reward-images"), exist_ok=True)  # 金币兑换商品图(公开)
 app.mount("/api/v1/files", _ImmutableStatic(directory=settings.UPLOAD_DIR), name="files")
 
 # CORS配置

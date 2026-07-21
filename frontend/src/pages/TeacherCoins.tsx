@@ -12,8 +12,10 @@ import {
   settleCoins, getCoinBalances, getCoinTransactions, adjustCoins,
   updateCoinTx, deleteCoinTx,
   getRewards, createReward, updateReward, deleteReward, redeemReward,
-  getWordKingBanner,
+  getWordKingBanner, uploadRewardImage,
+  getRedeemRequests, approveRedeem, rejectRedeem,
   type CoinBalance, type CoinTx, type CoinReward, type WordKingBanner,
+  type RedeemRequestItem,
 } from '../api/coins';
 
 interface ClassItem { id: number; name: string; }
@@ -44,6 +46,8 @@ export default function TeacherCoins() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);  // 变更类操作(兑换/加减/改)进行中,防双击重复提交
   const [kingBanner, setKingBanner] = useState<WordKingBanner | null>(null);  // 昨天+今日单词王横幅
+  const [requests, setRequests] = useState<RedeemRequestItem[]>([]);  // 待审批兑换申请
+  const [pendingCount, setPendingCount] = useState(0);                // 待审批数(红点)
 
   // 加/减金币弹窗
   const [adjustFor, setAdjustFor] = useState<CoinBalance | null>(null);
@@ -95,6 +99,15 @@ export default function TeacherCoins() {
   }, [classId]);
   useEffect(() => { loadKingBanner(); }, [loadKingBanner]);
 
+  // 待审批兑换申请(红点 + 列表),不分班级(老师看本班全部)
+  const loadRequests = useCallback(async () => {
+    try {
+      const r = await getRedeemRequests('pending');
+      setRequests(r.items); setPendingCount(r.pending_count);
+    } catch { /* 静默 */ }
+  }, []);
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+
   const loadBalances = useCallback(async () => {
     if (classId == null) return;
     try {
@@ -126,9 +139,30 @@ export default function TeacherCoins() {
   // 切换班级/来源/日期时回到第一页
   useEffect(() => { setTxPage(1); }, [classId, txSource, txDate]);
 
-  const refreshAll = () => { loadBalances(); loadTx(); };
+  const refreshAll = () => { loadBalances(); loadTx(); loadRequests(); };
 
-  // 每 60 秒自动刷新余额/流水(实时看到金币变动)。
+  const doApprove = async (req: RedeemRequestItem) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await approveRedeem(req.id);
+      toast.success(`已通过 ${req.student_name} 兑换「${req.reward_name}」`);
+      refreshAll();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || '操作失败'); }
+    finally { setBusy(false); }
+  };
+  const doReject = async (req: RedeemRequestItem) => {
+    if (busy) return;
+    if (!confirm(`拒绝 ${req.student_name} 兑换「${req.reward_name}」?`)) return;
+    setBusy(true);
+    try {
+      await rejectRedeem(req.id);
+      toast.success('已拒绝'); refreshAll();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || '操作失败'); }
+    finally { setBusy(false); }
+  };
+
+  // 每 60 秒自动刷新余额/流水/申请(实时看到金币变动、新申请)。
   // 有弹窗打开时(兑换/加减/改/商品管理)跳过本轮,避免打断正在进行的操作;
   // 标签页切到后台也跳过,省请求。
   useEffect(() => {
@@ -138,9 +172,10 @@ export default function TeacherCoins() {
       loadBalances();
       loadTx();
       loadKingBanner();  // 今日实时单词王也每分钟刷新
+      loadRequests();    // 新的兑换申请红点
     }, 60_000);
     return () => clearInterval(t);
-  }, [loadBalances, loadTx, loadKingBanner, adjustFor, editTx, redeemFor, showRewardMgr]);
+  }, [loadBalances, loadTx, loadKingBanner, loadRequests, adjustFor, editTx, redeemFor, showRewardMgr]);
 
   const submitAdjust = async () => {
     if (!adjustFor || busy) return;  // busy 防双击重复扣/发
@@ -216,6 +251,14 @@ export default function TeacherCoins() {
     } catch (e: any) { toast.error(e?.response?.data?.detail || '操作失败'); }
   };
 
+  const onUploadImage = async (rewardId: number, file: File | undefined) => {
+    if (!file) return;
+    try {
+      await uploadRewardImage(rewardId, file);
+      toast.success('图片已上传'); loadRewards();
+    } catch (e: any) { toast.error(e?.response?.data?.detail || '上传失败'); }
+  };
+
   const toggleReward = async (r: CoinReward) => {
     try { await updateReward(r.id, { is_active: !r.is_active }); loadRewards(); }
     catch { toast.error('操作失败'); }
@@ -285,6 +328,39 @@ export default function TeacherCoins() {
                   ))}
                 </div>
               ) : <p className="text-xs text-gray-400">今天还没人学习</p>}
+            </div>
+          </div>
+        )}
+
+        {/* 待审批兑换申请:有申请时高亮显示,同意扣币/拒绝不扣 */}
+        {requests.length > 0 && (
+          <div className="mb-5 rounded-2xl border-2 border-red-200 bg-red-50/50 p-4">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-red-600">
+              🔔 学生兑换申请
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
+                {pendingCount}
+              </span>
+              <span className="text-xs font-normal text-gray-400">同意后按当前金币扣除</span>
+            </h2>
+            <div className="space-y-2">
+              {requests.map((req) => (
+                <div key={req.id} className="flex items-center justify-between rounded-xl bg-white px-3 py-2.5 shadow-sm">
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-800">
+                      <span className="font-medium">{req.student_name}</span>
+                      <span className="text-gray-400"> 申请兑换 </span>
+                      <span className="font-medium">{req.reward_name}</span>
+                    </p>
+                    <p className="text-[11px] text-gray-400">{req.cost} 🪙 · {req.created_at.slice(5, 16).replace('T', ' ')}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-2 ml-2">
+                    <button disabled={busy} onClick={() => doApprove(req)}
+                      className="px-3 py-1.5 rounded-lg bg-green-500 text-white text-xs font-medium disabled:opacity-40">同意</button>
+                    <button disabled={busy} onClick={() => doReject(req)}
+                      className="px-3 py-1.5 rounded-lg border border-black/10 text-gray-500 text-xs disabled:opacity-40">拒绝</button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -565,8 +641,16 @@ export default function TeacherCoins() {
             {/* 商品列表 */}
             <div className="space-y-1.5">
               {rewards.map((r) => (
-                <div key={r.id} className={`flex items-center justify-between px-3 py-2 rounded-xl border ${r.is_active ? 'border-black/[0.06]' : 'border-black/[0.04] bg-black/[0.02] opacity-60'}`}>
-                  <div className="min-w-0">
+                <div key={r.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border ${r.is_active ? 'border-black/[0.06]' : 'border-black/[0.04] bg-black/[0.02] opacity-60'}`}>
+                  {/* 商品图 + 点击换图 */}
+                  <label className="shrink-0 cursor-pointer" title="点击上传/更换图片">
+                    {r.image_url
+                      ? <img src={r.image_url} alt={r.name} className="h-11 w-11 rounded-lg object-cover bg-black/[0.03]" />
+                      : <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-50 text-lg">🖼️</span>}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                      onChange={(e) => { onUploadImage(r.id, e.target.files?.[0]); e.currentTarget.value = ''; }} />
+                  </label>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm text-gray-800 truncate">
                       {r.name} {!r.is_active && <span className="text-[10px] text-gray-400">(已下架)</span>}
                     </p>

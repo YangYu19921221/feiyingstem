@@ -3,18 +3,21 @@
 金币流水的增删改查 + 分页搜索 + 每日结算 + 班级余额。
 权限:仅本班老师 + 管理员(admin/org_admin)。教师只能操作自己班级里的学生。
 """
+import os
+import time
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User, Class, ClassStudent
-from app.models.coin import StudentCoin, CoinTransaction, CoinReward
+from app.models.coin import StudentCoin, CoinTransaction, CoinReward, CoinRedeemRequest
 from app.models.learning import LearningRecord
 from app.models.word import Word
 from app.api.v1.auth import get_current_teacher
@@ -408,6 +411,7 @@ def _reward_out(r: CoinReward) -> dict:
     return {
         "id": r.id, "name": r.name, "cost": r.cost, "stock": r.stock,
         "is_active": bool(r.is_active), "note": r.note, "sort_order": r.sort_order,
+        "image_url": r.image_url,
     }
 
 
@@ -521,6 +525,156 @@ async def redeem(
     return {"success": True, "tx_id": tx.id if tx else None,
             "balance_after": tx.balance_after if tx else cur,
             "stock": reward.stock}
+
+
+# ---------- 商品图片上传 ----------
+@router.post("/coins/rewards/{reward_id}/image")
+async def upload_reward_image(
+    reward_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """上传商品图(≤2MB,png/jpg/webp),写公开目录 reward-images,URL 带版本号防缓存。"""
+    r = (await db.execute(select(CoinReward).where(CoinReward.id == reward_id))).scalar_one_or_none()
+    if r is None:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    ext_map = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+    ext = ext_map.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(400, "仅支持 png/jpg/webp 图片")
+    if file.size and file.size > 2 * 1024 * 1024:
+        raise HTTPException(400, "图片不能超过 2MB")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(400, "图片不能超过 2MB")
+    img_dir = os.path.join(settings.UPLOAD_DIR, "reward-images")  # main.py 启动时创建
+    for old_ext in ext_map.values():
+        old = os.path.join(img_dir, f"reward_{reward_id}.{old_ext}")
+        if old_ext != ext and os.path.exists(old):
+            os.remove(old)
+    with open(os.path.join(img_dir, f"reward_{reward_id}.{ext}"), "wb") as f:
+        f.write(content)
+    r.image_url = f"/api/v1/files/reward-images/reward_{reward_id}.{ext}?v={int(time.time())}"
+    await db.commit()
+    return {"image_url": r.image_url}
+
+
+# ========================================
+# 学生兑换申请审批
+# ========================================
+
+def _req_out(req: CoinRedeemRequest, student_name: str | None) -> dict:
+    return {
+        "id": req.id, "student_id": req.student_id, "student_name": student_name,
+        "reward_name": req.reward_name, "cost": req.cost, "status": req.status,
+        "created_at": req.created_at, "reviewed_at": req.reviewed_at,
+    }
+
+
+@router.get("/coins/redeem-requests")
+async def list_redeem_requests(
+    status_filter: str = Query("pending", description="pending/approved/rejected/all"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """兑换申请列表(默认待审批)。老师只看本班学生的申请。"""
+    visible = await _visible_student_ids(db, current_user)
+    conds = []
+    if visible is not None:
+        if not visible:
+            return {"pending_count": 0, "items": []}
+        conds.append(CoinRedeemRequest.student_id.in_(visible))
+    if status_filter != "all":
+        conds.append(CoinRedeemRequest.status == status_filter)
+    where = and_(*conds) if conds else True
+    rows = (await db.execute(
+        select(CoinRedeemRequest, User.full_name, User.username)
+        .join(User, User.id == CoinRedeemRequest.student_id)
+        .where(where)
+        .order_by(CoinRedeemRequest.created_at.desc())
+        .limit(200)
+    )).all()
+    # 待审批数量(红点用),独立于当前筛选
+    pcond = [CoinRedeemRequest.status == "pending"]
+    if visible is not None:
+        pcond.append(CoinRedeemRequest.student_id.in_(visible))
+    pending_count = (await db.execute(
+        select(func.count(CoinRedeemRequest.id)).where(and_(*pcond))
+    )).scalar() or 0
+    return {
+        "pending_count": pending_count,
+        "items": [_req_out(r, full or username) for r, full, username in rows],
+    }
+
+
+@router.post("/coins/redeem-requests/{req_id}/approve")
+async def approve_redeem_request(
+    req_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """同意兑换申请:此刻校验余额,扣币(按快照 cost)+ 扣库存 + 记流水。"""
+    req = (await db.execute(
+        select(CoinRedeemRequest).where(CoinRedeemRequest.id == req_id)
+    )).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="申请不存在")
+    await _assert_can_touch(db, current_user, req.student_id)
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="该申请已处理过")
+
+    student = (await db.execute(select(User).where(User.id == req.student_id))).scalar_one_or_none()
+    if student is None:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    coin = (await db.execute(
+        select(StudentCoin).where(StudentCoin.user_id == req.student_id)
+    )).scalar_one_or_none()
+    cur = coin.balance if coin else 0
+    if cur < req.cost:
+        raise HTTPException(status_code=400, detail=f"金币不足(当前 {cur},需 {req.cost})")
+
+    # 扣库存(商品还在且限量时)
+    if req.reward_id is not None:
+        reward = (await db.execute(
+            select(CoinReward).where(CoinReward.id == req.reward_id)
+        )).scalar_one_or_none()
+        if reward and reward.stock is not None:
+            if reward.stock <= 0:
+                raise HTTPException(status_code=400, detail="该商品库存不足")
+            reward.stock -= 1
+
+    await coin_service.apply_delta(
+        db, req.student_id, student.org_id or 1, -req.cost, "redeem",
+        reason=f"兑换:{req.reward_name}", operator_id=current_user.id,
+    )
+    req.status = "approved"
+    req.reviewed_at = datetime.utcnow()
+    req.reviewer_id = current_user.id
+    await db.commit()
+    return {"success": True}
+
+
+@router.post("/coins/redeem-requests/{req_id}/reject")
+async def reject_redeem_request(
+    req_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """拒绝兑换申请(不扣币)。"""
+    req = (await db.execute(
+        select(CoinRedeemRequest).where(CoinRedeemRequest.id == req_id)
+    )).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=404, detail="申请不存在")
+    await _assert_can_touch(db, current_user, req.student_id)
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="该申请已处理过")
+    req.status = "rejected"
+    req.reviewed_at = datetime.utcnow()
+    req.reviewer_id = current_user.id
+    await db.commit()
+    return {"success": True}
 
 
 def _parse_date(s: Optional[str]) -> date:
