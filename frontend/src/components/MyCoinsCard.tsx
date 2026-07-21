@@ -1,8 +1,9 @@
 /**
- * 学生端-我的金币卡片
- * 显示总币数;点击展开弹窗看获得/消费明细(分页)。单词王来源带 👑 标识。
+ * 学生端-我的金币(金色横幅版,置于首页顶部醒目位置)
+ * 显示总币数 + 今日单词王皇冠;点击展开明细弹窗(分页)。
  */
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
 
 const PAGE_SIZE = 20;
@@ -13,12 +14,10 @@ export default function MyCoinsCard() {
   const [items, setItems] = useState<MyCoinTx[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loaded, setLoaded] = useState(false);
   const [isKing, setIsKing] = useState(false);  // 今天(实时)是不是单词王
 
-  // 只拉余额(轻量),明细等点开再拉
   useEffect(() => {
-    getMyCoins(1, 1).then((r) => { setBalance(r.balance); setLoaded(true); }).catch(() => setLoaded(true));
+    getMyCoins(1, 1).then((r) => setBalance(r.balance)).catch(() => {});
     getMyWordKingStatus().then((r) => setIsKing(r.is_word_king)).catch(() => {});
   }, []);
 
@@ -31,41 +30,73 @@ export default function MyCoinsCard() {
   const openDetail = () => { setOpen(true); loadPage(1); };
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // 从没有任何金币记录时不显示卡片(避免空占位)
-  if (loaded && balance === 0 && total === 0) {
-    // 仍显示一个 0 币卡,给孩子"去赚币"的目标感
-  }
-
   return (
     <>
-      <button
+      <motion.button
         onClick={openDetail}
-        className="w-full card-soft rounded-2xl px-5 py-4 flex items-center justify-between hover:bg-black/[0.02] transition"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileTap={{ scale: 0.98 }}
+        className="relative w-full rounded-3xl px-4 sm:px-6 py-5 text-left shadow-lg shadow-amber-500/20
+                   bg-gradient-to-br from-amber-400 via-amber-400 to-yellow-300 border border-amber-300/50"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-2xl relative">
-            🪙
-            {isKing && <span className="absolute -top-2 -right-1 text-base" title="今日单词王">👑</span>}
-          </span>
-          <div className="text-left">
-            <p className="text-ink font-semibold text-sm flex items-center gap-1.5">
-              我的金币
-              {isKing && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">👑 今日单词王</span>}
-            </p>
-            <p className="text-ink-mute text-xs">完成作业得 1 币 · 单词王得 2 币</p>
+        {/* 流光动效:单独裁剪层(不裁到探出的皇冠),斜向高光从左扫到右 */}
+        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+          <motion.span
+            className="absolute inset-y-0 w-1/3 skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/40 to-transparent"
+            animate={{ left: ['-33%', '133%'] }}
+            transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 3, ease: 'easeInOut' }}
+          />
+        </span>
+
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* 大金币 + 皇冠(shrink-0 不被压缩) */}
+            <motion.div
+              className="relative shrink-0 flex h-14 w-14 items-center justify-center rounded-full bg-white/30 backdrop-blur-sm text-3xl shadow-inner"
+              animate={{ rotate: [0, -6, 6, 0] }}
+              transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}
+            >
+              🪙
+              {isKing && (
+                <span className="absolute -top-2 -right-1 text-lg drop-shadow z-10" title="今日单词王">👑</span>
+              )}
+            </motion.div>
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-amber-900/80">
+                <span className="whitespace-nowrap">我的金币</span>
+                {isKing && (
+                  <span className="whitespace-nowrap rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                    👑 今日单词王
+                  </span>
+                )}
+              </p>
+              <div className="mt-0.5 flex items-baseline gap-1.5">
+                <span className="font-display font-numeric text-4xl font-bold leading-none text-white drop-shadow-sm">
+                  {balance}
+                </span>
+                <span className="text-sm font-medium text-amber-900/70">枚</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 右侧行动点:兑换奖励入口(shrink-0 + nowrap 防挤断) */}
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="whitespace-nowrap rounded-full bg-white/90 px-3.5 py-2 text-sm font-bold text-amber-600 shadow-sm">
+              🎁 兑换奖励
+            </span>
+            <span className="hidden sm:block whitespace-nowrap text-[11px] text-amber-900/60">完成作业+1 · 单词王+2</span>
           </div>
         </div>
-        <div className="flex items-baseline gap-1.5">
-          <span className="font-display font-bold text-3xl text-amber-500 font-numeric">{balance}</span>
-          <span className="text-xs text-ink-mute">明细 →</span>
-        </div>
-      </button>
+      </motion.button>
 
       {open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-800">🪙 我的金币:{balance}</h3>
+              <h3 className="font-bold text-gray-800 flex items-center gap-1.5">
+                🪙 我的金币:<span className="text-amber-500 font-numeric text-lg">{balance}</span> 枚
+              </h3>
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-sm">关闭</button>
             </div>
 

@@ -408,6 +408,12 @@ const StudentDashboard = () => {
             </span>
           </div>
         )}
+
+        {/* 我的金币 — 置顶金色横幅,一进首页就看到 */}
+        <section className="mb-8">
+          <MyCoinsCard />
+        </section>
+
         {/* Hero：今日核心任务 + 飞鹰陪伴 */}
         <section className="mb-12 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
           <div>
@@ -870,11 +876,6 @@ const StudentDashboard = () => {
               </button>
             ))}
           </div>
-        </section>
-
-        {/* 我的金币 */}
-        <section className="mb-6">
-          <MyCoinsCard />
         </section>
 
         {/* 学习概览 — 数据条带式，紧凑 */}
