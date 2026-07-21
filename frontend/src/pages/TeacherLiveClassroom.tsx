@@ -32,6 +32,17 @@ interface LiveSnapshot {
 
 interface ClassOption { id: number; name: string; student_count: number }
 
+/** 全部班级模式:每班一组(live-all 端点) */
+interface ClassLiveGroup {
+  class_id: number;
+  class_name: string;
+  total_students: number;
+  studying: number;
+  away: number;      // 含疑似走神
+  offline: number;
+  students: LiveStudent[];
+}
+
 /** 今日统计行(来自 daily-stats 端点,已是修复后的真实口径) */
 interface DailyStatRow {
   user_id: number;
@@ -64,6 +75,7 @@ interface CheckinData {
 const POLL_MS = 5_000;
 const THEME_KEY = 'live_classroom_theme';       // 'light' | 'dark'
 const CLASS_KEY = 'live_classroom_class_id';    // 上次选中的班级
+const ALL_CLASSES = -1;                         // 「全部班级」哨兵值
 
 /* ============ 双主题配色 ============ */
 const THEMES = {
@@ -386,6 +398,9 @@ const TeacherLiveClassroom = () => {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [classId, setClassId] = useState<number | null>(null);
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
+  // 全部班级模式:classId === ALL_CLASSES 时启用,轮询 live-all 按班分组展示
+  const [allGroups, setAllGroups] = useState<ClassLiveGroup[] | null>(null);
+  const isAllMode = classId === ALL_CLASSES;
   const [loading, setLoading] = useState(true);
   // 今日统计(60 秒一刷,与 5 秒实时轮询分频)
   const [daily, setDaily] = useState<DailyStatRow[]>([]);
@@ -436,9 +451,9 @@ const TeacherLiveClassroom = () => {
         const list: ClassOption[] = Array.isArray(r.data) ? r.data : (r.data?.items ?? []);
         setClasses(list);
         if (list.length > 0) {
-          // 恢复上次选中的班级(仍存在才用,否则回落第一个)
+          // 恢复上次选中的班级(仍存在或"全部班级"才用,否则回落第一个)
           const saved = Number(localStorage.getItem(CLASS_KEY));
-          setClassId(list.some(c => c.id === saved) ? saved : list[0].id);
+          setClassId(saved === ALL_CLASSES || list.some(c => c.id === saved) ? saved : list[0].id);
         } else setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -451,8 +466,13 @@ const TeacherLiveClassroom = () => {
 
   const poll = useCallback(async (cid: number) => {
     try {
-      const r = await axios.get(`${API_BASE_URL}/teacher/classes/${cid}/live`, { headers: authHeaders() });
-      setSnap(r.data);
+      if (cid === ALL_CLASSES) {
+        const r = await axios.get(`${API_BASE_URL}/teacher/classes/live-all`, { headers: authHeaders() });
+        setAllGroups(r.data?.classes ?? []);
+      } else {
+        const r = await axios.get(`${API_BASE_URL}/teacher/classes/${cid}/live`, { headers: authHeaders() });
+        setSnap(r.data);
+      }
     } catch (e) {
       console.error('实时状态获取失败:', e);
     } finally {
@@ -487,7 +507,7 @@ const TeacherLiveClassroom = () => {
   }, []);
 
   useEffect(() => {
-    if (!classId) return;
+    if (!classId || classId === ALL_CLASSES) return;  // 全部班级模式不拉单班统计/签到
     pollDaily(classId);
     // 30 秒一刷(学生端已改为分类轮末实时落正确记录,统计有中间数据可看);
     // 切回前台立即补拉,不用等下个周期
@@ -506,9 +526,16 @@ const TeacherLiveClassroom = () => {
 
   const counts = useMemo(() => {
     const c = { away: 0, distracted: 0, studying: 0, offline: 0 };
-    snap?.students.forEach(s => { c[s.status] += 1; });
+    if (isAllMode) {
+      // 全部班级:跨班聚合(EKG/警报/状态卡共用)
+      (allGroups ?? []).forEach(g => g.students.forEach(s => { c[s.status] += 1; }));
+      // 从未出现的学生 live-all 的 students 里没有,补进离线数
+      (allGroups ?? []).forEach(g => { c.offline += Math.max(0, g.offline - g.students.filter(s => s.status === 'offline').length); });
+    } else {
+      snap?.students.forEach(s => { c[s.status] += 1; });
+    }
     return c;
-  }, [snap]);
+  }, [snap, allGroups, isAllMode]);
 
   const onlineActive = counts.studying + counts.distracted + counts.away;
   const focusRatio = onlineActive > 0 ? counts.studying / onlineActive : 1;
@@ -563,7 +590,7 @@ const TeacherLiveClassroom = () => {
           </h1>
           {/* 投屏大屏入口:新窗口打开,不影响当前操作;把新窗口拖去电视/投影即可 */}
           <button
-            onClick={() => window.open(`/teacher/bigscreen${classId ? `?class=${classId}` : ''}`, '_blank', 'noopener')}
+            onClick={() => window.open(`/teacher/bigscreen${classId && classId !== ALL_CLASSES ? `?class=${classId}` : ''}`, '_blank', 'noopener')}
             title="教室大屏(新窗口打开,拖到电视屏幕全屏)"
             className="p-2 rounded-lg text-lg transition active:scale-90"
             style={{ background: t.selectBg, border: `1px solid ${t.selectBorder}` }}
@@ -586,6 +613,7 @@ const TeacherLiveClassroom = () => {
               className="rounded-lg px-3 py-1.5 text-sm [&>option]:text-gray-800"
               style={{ background: t.selectBg, border: `1px solid ${t.selectBorder}`, color: t.text }}
             >
+              <option value={ALL_CLASSES}>📡 全部班级</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
@@ -594,7 +622,7 @@ const TeacherLiveClassroom = () => {
 
       <div className="max-w-4xl mx-auto px-5 py-7 space-y-6">
         {/* EKG 波形 */}
-        {snap && <EKGWave focusRatio={focusRatio} awayCount={counts.away} t={t} />}
+        {(isAllMode ? !!allGroups : !!snap) && <EKGWave focusRatio={focusRatio} awayCount={counts.away} t={t} />}
 
         {/* 警报条 */}
         <AnimatePresence>
@@ -621,7 +649,7 @@ const TeacherLiveClassroom = () => {
         </AnimatePresence>
 
         {/* 状态计数大卡片 */}
-        {snap && (
+        {(snap || (isAllMode && allGroups)) && (
           <div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {summary.map(c => (
@@ -651,7 +679,9 @@ const TeacherLiveClassroom = () => {
               ))}
             </div>
             <div className="text-right mt-2 text-sm font-mono" style={{ color: t.dim }}>
-              在线 {snap.online_count}/{snap.total_students}
+              {isAllMode
+                ? `${(allGroups ?? []).length} 个班级 · 在线 ${counts.studying + counts.away + counts.distracted}`
+                : snap ? `在线 ${snap.online_count}/${snap.total_students}` : ''}
             </div>
           </div>
         )}
@@ -665,6 +695,69 @@ const TeacherLiveClassroom = () => {
               transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
             />
             <p className="text-sm" style={{ color: t.sub }}>连接教室中…</p>
+          </div>
+        ) : isAllMode ? (
+          /* ============ 全部班级模式:按班分组 ============ */
+          <div className="space-y-4">
+            {(allGroups ?? []).map(g => {
+              const hasOnline = g.studying + g.away > 0;
+              return (
+                <div key={g.class_id} className="rounded-2xl overflow-hidden"
+                  style={{ background: t.cardBg, border: `1px solid ${g.away > 0 ? t.awayBorder : t.cardBorder}` }}>
+                  {/* 班级头:名称 + 汇总徽章;点击跳到该班单班视图 */}
+                  <button
+                    onClick={() => pickClass(g.class_id)}
+                    title="点击进入该班详细视图"
+                    className="w-full flex items-center justify-between px-4 py-3 text-left"
+                    style={{ background: hasOnline ? t.statTint(t.cyan) : 'transparent' }}
+                  >
+                    <span className="font-semibold text-[15px]" style={{ color: t.text }}>
+                      {g.class_name}
+                      <span className="ml-2 text-xs font-normal font-mono" style={{ color: t.dim }}>
+                        {g.total_students} 人
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2.5 text-xs font-mono shrink-0">
+                      {g.studying > 0 && <span style={{ color: t.cyan }}>🟢 在学 {g.studying}</span>}
+                      {g.away > 0 && <span style={{ color: t.red }}>🔴 走神/切出 {g.away}</span>}
+                      <span style={{ color: t.dimmer }}>离线 {g.offline}</span>
+                    </span>
+                  </button>
+                  {/* 有人在线才展开学生行;全离线折叠为一行头 */}
+                  {hasOnline && (
+                    <div className="px-3 pb-3 space-y-1.5">
+                      {g.students.filter(s => s.status !== 'offline').map(s => {
+                        const color = s.status === 'away' ? t.red : s.status === 'distracted' ? t.yellow : t.cyan;
+                        return (
+                          <div key={s.user_id}
+                            onClick={() => openStudentDrawer(s.user_id, s.student_name)}
+                            className="rounded-lg px-3 py-2 flex items-center gap-3 cursor-pointer"
+                            style={{ background: s.status === 'away' ? t.awayBg : 'transparent', border: `1px solid ${s.status === 'away' ? t.awayBorder : t.cardBorder}` }}>
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                            <span className="text-sm font-medium truncate" style={{ color: t.text }}>{s.student_name}</span>
+                            <span className="text-xs shrink-0" style={{ color }}>
+                              {s.status === 'away' ? `切出 ${fmtAway(s.away_seconds)}` : s.status === 'distracted' ? '没操作' : '学习中'}
+                            </span>
+                            <span className="text-xs truncate ml-auto" style={{ color: t.dim }}>{s.unit_name || ''}</span>
+                            {s.switch_count_today > 0 && (
+                              <span className="text-[11px] font-mono shrink-0" style={{ color: s.switch_count_today > 5 ? t.red : t.dimmer }}>
+                                切{s.switch_count_today}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {(allGroups ?? []).length === 0 && (
+              <div className="text-center py-16 rounded-2xl" style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}` }}>
+                <div className="text-4xl mb-3">🏫</div>
+                <p style={{ color: t.sub }}>还没有班级</p>
+              </div>
+            )}
           </div>
         ) : !snap || (snap.students.length === 0 && snap.never_seen.length === 0) ? (
           <div className="text-center py-16 rounded-2xl" style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}` }}>

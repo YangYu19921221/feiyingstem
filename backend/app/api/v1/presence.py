@@ -140,29 +140,9 @@ async def bigscreen_daily_stats(
     return await get_class_daily_stats(class_id=class_id, target_date=None, db=db, current_user=owner)
 
 
-@router.get("/teacher/classes/{class_id}/live")
-async def class_live_status(
-    class_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_teacher_or_display),
-):
-    """班级实时状态快照(内存态 + 学习记录兜底)"""
-    cls_res = await db.execute(select(Class).where(Class.id == class_id))
-    cls = cls_res.scalar_one_or_none()
-    if not cls:
-        raise HTTPException(status_code=404, detail="班级不存在")
-    # display 大屏账号可看任意班(只读展示);教师只能看自己的班
-    if current_user.role == 'teacher' and cls.teacher_id != current_user.id:
-        raise HTTPException(status_code=403, detail="不是你的班级")
-
-    stu_res = await db.execute(
-        select(User.id, User.username, User.full_name)
-        .join(ClassStudent, ClassStudent.student_id == User.id)
-        .where(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
-    )
-    rows = stu_res.all()
-    name_map = {r.id: (r.full_name or r.username) for r in rows}
-
+async def _live_students_for(db: AsyncSession, name_map: dict[int, str]) -> list[dict]:
+    """给一批学生算实时状态(内存心跳 + 学习记录兜底 + 今日切屏/走神),已排序。
+    单班/全班级端点共用;查询按传入的整批学生一次完成,班多时不放大查询数。"""
     live = presence_service.snapshot(list(name_map.keys()))
     for item in live:
         item["student_name"] = name_map.get(item["user_id"], "?")
@@ -237,6 +217,33 @@ async def class_live_status(
     # 排序:切出置顶 > 疑似走神 > 学习中 > 离线;同状态按切屏次数降序
     order = {"away": 0, "distracted": 1, "studying": 2, "offline": 3}
     live.sort(key=lambda x: (order.get(x["status"], 9), -x["switch_count_today"]))
+    return live
+
+
+@router.get("/teacher/classes/{class_id}/live")
+async def class_live_status(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_teacher_or_display),
+):
+    """班级实时状态快照(内存态 + 学习记录兜底)"""
+    cls_res = await db.execute(select(Class).where(Class.id == class_id))
+    cls = cls_res.scalar_one_or_none()
+    if not cls:
+        raise HTTPException(status_code=404, detail="班级不存在")
+    # display 大屏账号可看任意班(只读展示);教师只能看自己的班
+    if current_user.role == 'teacher' and cls.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="不是你的班级")
+
+    stu_res = await db.execute(
+        select(User.id, User.username, User.full_name)
+        .join(ClassStudent, ClassStudent.student_id == User.id)
+        .where(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
+    )
+    rows = stu_res.all()
+    name_map = {r.id: (r.full_name or r.username) for r in rows}
+
+    live = await _live_students_for(db, name_map)
 
     online_ids = {x["user_id"] for x in live}
     return {
@@ -251,3 +258,60 @@ async def class_live_status(
             for uid, nm in name_map.items() if uid not in online_ids
         ],
     }
+
+
+@router.get("/teacher/classes/live-all")
+async def all_classes_live_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_teacher_or_display),
+):
+    """全部班级实时快照(按班分组)。教师=自己的班;admin/display=可见范围内全部班。
+    整批学生一次算(共享兜底/日历查询),不随班级数放大请求。"""
+    cls_stmt = select(Class.id, Class.name)
+    if current_user.role == "teacher":
+        cls_stmt = cls_stmt.where(Class.teacher_id == current_user.id)
+    cls_rows = (await db.execute(cls_stmt.order_by(Class.id))).all()
+    if not cls_rows:
+        return {"classes": []}
+
+    class_ids = [cid for cid, _ in cls_rows]
+    mem_rows = (await db.execute(
+        select(ClassStudent.class_id, User.id, User.username, User.full_name)
+        .join(User, User.id == ClassStudent.student_id)
+        .where(ClassStudent.class_id.in_(class_ids), ClassStudent.is_active.is_(True),
+               User.role == "student")
+    )).all()
+
+    # 整批学生一次算状态(学生可能在多个班,name_map 以 user_id 去重)
+    name_map: dict[int, str] = {}
+    members_by_class: dict[int, list[int]] = {cid: [] for cid in class_ids}
+    for cid, uid, username, full_name in mem_rows:
+        name_map[uid] = full_name or username
+        members_by_class[cid].append(uid)
+
+    live = await _live_students_for(db, name_map) if name_map else []
+    by_uid = {x["user_id"]: x for x in live}
+
+    out = []
+    for cid, cname in cls_rows:
+        students = [by_uid[uid] for uid in members_by_class[cid] if uid in by_uid]
+        # 组内保持与单班一致的排序(away>distracted>studying>offline)
+        order = {"away": 0, "distracted": 1, "studying": 2, "offline": 3}
+        students.sort(key=lambda x: (order.get(x["status"], 9), -x.get("switch_count_today", 0)))
+        counts = {"studying": 0, "away": 0, "distracted": 0, "offline": 0}
+        for s in students:
+            counts[s["status"]] = counts.get(s["status"], 0) + 1
+        online = counts["studying"] + counts["away"] + counts["distracted"]
+        out.append({
+            "class_id": cid,
+            "class_name": cname,
+            "total_students": len(members_by_class[cid]),
+            "studying": counts["studying"],
+            "away": counts["away"] + counts["distracted"],
+            # 离线 = 总人数 - 在线(含从未出现过、snapshot 里没有条目的学生)
+            "offline": len(members_by_class[cid]) - online,
+            "students": students,
+        })
+    # 有人在线的班排前面,按在学人数降序;全离线的班沉底
+    out.sort(key=lambda c: (-(c["studying"] + c["away"]), c["class_id"]))
+    return {"classes": out}
