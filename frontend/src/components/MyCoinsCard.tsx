@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
 import RedeemShopModal from './RedeemShopModal';
+import coinGold from '../assets/coin-gold.webp';
 
 const PAGE_SIZE = 20;
 
@@ -53,13 +54,17 @@ export default function MyCoinsCard() {
 
         <div className="relative flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            {/* 大金币 + 皇冠(shrink-0 不被压缩) */}
+            {/* 大金币(AI 生成金色星币图)+ 皇冠(shrink-0 不被压缩) */}
             <motion.div
-              className="relative shrink-0 flex h-14 w-14 items-center justify-center rounded-full bg-white/30 backdrop-blur-sm text-3xl shadow-inner"
+              className="relative shrink-0 h-14 w-14"
               animate={{ rotate: [0, -6, 6, 0] }}
               transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}
             >
-              🪙
+              <img
+                src={coinGold}
+                alt="金币"
+                className="h-14 w-14 object-contain drop-shadow-[0_2px_6px_rgba(180,120,0,0.45)]"
+              />
               {isKing && (
                 <span className="absolute -top-2 -right-1 text-lg drop-shadow z-10" title="今日单词王">👑</span>
               )}
@@ -92,7 +97,7 @@ export default function MyCoinsCard() {
             >
               🎁 兑换奖励
             </span>
-            <span className="hidden sm:block whitespace-nowrap text-[11px] text-amber-900/60">完成作业+1 · 单词王+2</span>
+            <span className="hidden sm:block whitespace-nowrap text-[11px] text-amber-900/60">完成作业/2单元+1 · 单词王+2</span>
           </div>
         </div>
       </motion.button>
@@ -121,9 +126,9 @@ export default function MyCoinsCard() {
                     <p className="text-[11px] text-gray-400 mt-0.5 truncate">
                       {t.reason || ''} · {t.created_at.slice(5, 16).replace('T', ' ')}
                     </p>
-                    {(t.source === 'task' || t.source === 'word_king') && (t.day_tasks_done != null || t.day_words != null) && (
+                    {(t.source === 'task' || t.source === 'unit' || t.source === 'word_king') && (t.day_tasks_done != null || t.day_words != null || t.day_units_done != null) && (
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 个任务 · 学了 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 个单词
+                        当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 个任务 · <span className="font-semibold text-sky-500">{t.day_units_done ?? 0}</span> 个单元 · 学了 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 个单词
                       </p>
                     )}
                   </div>

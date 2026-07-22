@@ -31,6 +31,7 @@ export interface CoinTx {
   created_at: string;
   day_tasks_done?: number | null;  // 系统流水: 当天完成任务数
   day_words?: number | null;       // 系统流水: 当天学习单词数
+  day_units_done?: number | null;  // 系统流水: 当天完成单元数
   king_label?: string | null;      // word_king 徽章文案(后端按北京时间算)
 }
 
@@ -86,6 +87,7 @@ export interface MyCoinTx {
   created_at: string;
   day_tasks_done?: number | null;
   day_words?: number | null;
+  day_units_done?: number | null;
   king_label?: string | null;
 }
 

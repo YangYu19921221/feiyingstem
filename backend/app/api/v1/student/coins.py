@@ -14,7 +14,7 @@ from app.api.v1.auth import get_current_student
 
 router = APIRouter()
 
-SOURCE_LABELS = {"task": "完成作业", "word_king": "单词王", "manual": "老师奖励", "redeem": "兑换消耗"}
+SOURCE_LABELS = {"task": "完成作业", "unit": "完成单元", "word_king": "单词王", "manual": "老师奖励", "redeem": "兑换消耗"}
 
 
 class MyTx(BaseModel):
@@ -26,6 +26,7 @@ class MyTx(BaseModel):
     created_at: datetime
     day_tasks_done: Optional[int] = None
     day_words: Optional[int] = None
+    day_units_done: Optional[int] = None
     king_label: Optional[str] = None  # word_king 徽章文案(后端按北京时间算)
 
 
@@ -90,25 +91,26 @@ async def my_coins(
     from app.services.coin_service import day_activity_map, word_king_label, reason_date
     day_cache: dict = {}
     for t in rows:
-        if t.source in ("task", "word_king"):
+        if t.source in ("task", "unit", "word_king"):
             bj_day = reason_date(t.reason) or (t.created_at + timedelta(hours=8)).date()
             if bj_day not in day_cache:
                 amap = await day_activity_map(db, [current_user.id], bj_day)
-                day_cache[bj_day] = amap.get(current_user.id, {"tasks_done": 0, "words": 0})
+                day_cache[bj_day] = amap.get(current_user.id, {"tasks_done": 0, "words": 0, "units_done": 0})
 
     items = []
     for t in rows:
-        dt = dw = None
-        if t.source in ("task", "word_king"):
+        dt = dw = du = None
+        if t.source in ("task", "unit", "word_king"):
             bj_day = reason_date(t.reason) or (t.created_at + timedelta(hours=8)).date()
             act = day_cache.get(bj_day, {})
             dt = act.get("tasks_done", 0)
             dw = act.get("words", 0)
+            du = act.get("units_done", 0)
         items.append(MyTx(
             id=t.id, amount=t.amount, source=t.source,
             source_label=SOURCE_LABELS.get(t.source, t.source),
             reason=t.reason, created_at=t.created_at,
-            day_tasks_done=dt, day_words=dw,
+            day_tasks_done=dt, day_words=dw, day_units_done=du,
             king_label=word_king_label(t.reason) if t.source == "word_king" else None,
         ))
 

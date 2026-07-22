@@ -23,6 +23,7 @@ interface ClassItem { id: number; name: string; }
 const SOURCE_FILTERS = [
   { key: '', label: '全部' },
   { key: 'task', label: '完成作业' },
+  { key: 'unit', label: '完成单元' },
   { key: 'word_king', label: '单词王' },
   { key: 'manual', label: '手动' },
   { key: 'redeem', label: '兑换' },
@@ -287,7 +288,7 @@ export default function TeacherCoins() {
     catch { toast.error('删除失败'); }
   };
 
-  const isSystem = (s: string) => s === 'task' || s === 'word_king';
+  const isSystem = (s: string) => s === 'task' || s === 'unit' || s === 'word_king';
   const totalPages = Math.max(1, Math.ceil(txTotal / PAGE_SIZE));
   const activeRewards = rewards.filter((r) => r.is_active);
 
@@ -316,7 +317,7 @@ export default function TeacherCoins() {
         </div>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-700">
-          💡 完成当天全部作业 +1 币,当日班级词量榜第一(单词王)+2 币,系统每日自动结算(打开本页即结算今天)。手动/兑换记录可增删改,系统发放的不可改。
+          💡 完成当天全部作业 或 完成 2 个单元(计分模式)+1 币(二者共享一天 1 个名额),当日班级词量榜第一(单词王)+2 币,系统每日自动结算(打开本页即结算今天)。手动/兑换记录可增删改,系统发放的不可改。
         </div>
 
         {/* 单词王横幅:昨天(已定)+ 今日(实时,还没截止) */}
@@ -472,9 +473,9 @@ export default function TeacherCoins() {
                       </td>
                       <td className="py-2 pr-2 text-gray-500 text-xs max-w-[180px]">
                         <div className="truncate">{t.reason || '—'}</div>
-                        {isSystem(t.source) && (t.day_tasks_done != null || t.day_words != null) && (
+                        {isSystem(t.source) && (t.day_tasks_done != null || t.day_words != null || t.day_units_done != null) && (
                           <div className="text-[10px] mt-0.5 text-gray-400">
-                            当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 任务 · 学 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 词
+                            当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 任务 · <span className="font-semibold text-sky-500">{t.day_units_done ?? 0}</span> 单元 · 学 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 词
                           </div>
                         )}
                       </td>

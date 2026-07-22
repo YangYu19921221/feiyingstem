@@ -18,23 +18,29 @@ from app.models.user import User, StudyCalendar, ClassStudent
 from app.models.word import Word
 from app.models.learning import (
     LearningRecord, HomeworkAssignment, HomeworkStudentAssignment,
+    LearningProgress,
 )
 
-TASK_REWARD = 1        # 完成当日全部作业
+TASK_REWARD = 1        # 完成当日全部作业(与单元币共享「一天 1 个活动币」名额)
+UNIT_REWARD = 1        # 完成当日 >=2 个单元(计分模式),与作业币互斥
 WORD_KING_REWARD = 2   # 当日班级词量榜第一
+UNIT_THRESHOLD = 2     # 完成几个单元发一个活动币
+# 计分模式:与 teacher/analytics.py 口径一致。翻卡片/分类不算,防刷单元币。
+SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank')
 
 
 async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> dict:
-    """一批学生在 d 这天的「完成任务数 + 学习单词数」,供金币流水附带展示。
+    """一批学生在 d 这天的「完成任务数 + 学习单词数 + 完成单元数」,供金币流水附带展示。
 
     - 完成任务数: 当天布置(assigned_at 落当天)且已完成(status=completed)的作业份数
     - 学习单词数: 当天 LearningRecord 里 distinct(lower(word)) —— 与单词王同口径
-    返回 {user_id: {"tasks_done": n, "words": m}}(缺省 0)。
+    - 完成单元数: 当天完成(completed_at 落当天)的计分模式单元 distinct(unit_id) —— 与发币同口径
+    返回 {user_id: {"tasks_done": n, "words": m, "units_done": k}}(缺省 0)。
     """
     if not user_ids:
         return {}
     day_start, day_end = local_day_utc_range(d)
-    out: dict = {uid: {"tasks_done": 0, "words": 0} for uid in user_ids}
+    out: dict = {uid: {"tasks_done": 0, "words": 0, "units_done": 0} for uid in user_ids}
 
     task_rows = (await db.execute(
         select(
@@ -67,6 +73,23 @@ async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> di
     )).all()
     for uid, cnt in word_rows:
         out[uid]["words"] = cnt
+
+    unit_rows = (await db.execute(
+        select(
+            LearningProgress.user_id,
+            func.count(func.distinct(LearningProgress.unit_id)),
+        )
+        .where(and_(
+            LearningProgress.user_id.in_(user_ids),
+            LearningProgress.is_completed.is_(True),
+            LearningProgress.learning_mode.in_(SCORING_MODES),
+            LearningProgress.completed_at >= day_start,
+            LearningProgress.completed_at < day_end,
+        ))
+        .group_by(LearningProgress.user_id)
+    )).all()
+    for uid, cnt in unit_rows:
+        out[uid]["units_done"] = cnt
 
     return out
 
@@ -185,24 +208,36 @@ async def apply_delta(
     return tx
 
 
-async def _refund_task_coin(db: AsyncSession, sid: int, key_date: str) -> None:
-    """撤销某生某天已发的作业币(单词王不与作业币叠加,一天封顶 2)。
+async def _refund_activity_coin(db: AsyncSession, sid: int, key_date: str) -> None:
+    """撤销某生某天已发的活动币(作业币或单元币,单词王不与其叠加,一天封顶 2)。
 
-    作业币是当天实时发的;次日结算单词王时,若该生已拿作业 1 币,先删掉并回滚
-    余额,再发单词王 2 币,最终恰好 2 而非 3。
+    活动币是当天实时发的;次日结算单词王时,若该生已拿活动 1 币,先删掉并回滚
+    余额,再发单词王 2 币,最终恰好 2 而非 3。作业/单元互斥,一天至多一条,
+    但这里遍历两个 key 都尝试撤销,兜底并发下万一两条都落库。
     """
-    tx = (await db.execute(
-        select(CoinTransaction).where(CoinTransaction.dedup_key == f"task:{sid}:{key_date}")
-    )).scalar_one_or_none()
-    if tx is None:
-        return
     coin = (await db.execute(
         select(StudentCoin).where(StudentCoin.user_id == sid)
     )).scalar_one_or_none()
-    if coin:
-        coin.balance = max(0, coin.balance - tx.amount)
-    await db.delete(tx)
+    for key in (f"task:{sid}:{key_date}", f"unit:{sid}:{key_date}"):
+        tx = (await db.execute(
+            select(CoinTransaction).where(CoinTransaction.dedup_key == key)
+        )).scalar_one_or_none()
+        if tx is None:
+            continue
+        if coin:
+            coin.balance = max(0, coin.balance - tx.amount)
+        await db.delete(tx)
     await db.flush()
+
+
+async def _has_activity_coin(db: AsyncSession, sid: int, key_date: str) -> bool:
+    """该生当天是否已发过活动币(作业或单元)。作业/单元共享一天 1 个名额,互斥。"""
+    row = (await db.execute(
+        select(CoinTransaction.id).where(CoinTransaction.dedup_key.in_(
+            [f"task:{sid}:{key_date}", f"unit:{sid}:{key_date}"]
+        )).limit(1)
+    )).scalar_one_or_none()
+    return row is not None
 
 
 async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
@@ -258,8 +293,8 @@ async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
         for sid, org_id in members:
             if word_count.get(sid, 0) == best:
                 king_ids.add(sid)
-                # 不叠加:先撤当天作业币(若有),再发单词王 2 币,最终=2
-                await _refund_task_coin(db, sid, key_date)
+                # 不叠加:先撤当天活动币(作业/单元,若有),再发单词王 2 币,最终=2
+                await _refund_activity_coin(db, sid, key_date)
                 tx = await apply_delta(
                     db, sid, org_id, WORD_KING_REWARD, "word_king",
                     reason=f"{d.isoformat()} 单词王", dedup_key=f"word_king:{sid}:{key_date}",
@@ -272,16 +307,19 @@ async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
 async def settle_day(db: AsyncSession, d: date) -> dict:
     """幂等结算 d 这天的系统金币。规则:一天最多 2 币,不叠加。
     - 单词王(当日班级词量榜第一)→ 2 币;
-    - 非单词王但完成当天全部作业 → 1 币。
-    单词王与作业币二选一:当了单词王就只给 2,不再另给作业的 1。
+    - 非单词王,完成当天全部作业 或 完成 >=2 个计分模式单元 → 1 币(活动币)。
+    单词王与活动币二选一:当了单词王就只给 2。作业币与单元币也互斥(共享一天
+    1 个活动币名额),谁先满足谁拿,后满足的不再补发。
 
     「完成全部作业」= 当天有布置给该生的作业(assigned_at 落在当天),且这些作业
     全部 status='completed'(达到老师设的目标分才算 completed)。当天无作业不发。
+    「完成单元」= 当天 completed_at 落当天、learning_mode 属计分模式、is_completed
+    的 distinct(unit_id) >= 2。翻卡片/分类不算,防刷。
 
     单词王只在「d 这天已经结束」(d < 今天)才结算——当天榜单未定,过早发放会把
-    2 币发给暂列第一者并写死 dedup_key,下午被反超也无法纠正。故当天先发 task,
-    单词王留到次日结算补发(补发时会撤掉当天已发的作业币,净为 2)。
-    返回 {"word_king": n, "task": m} 本次新发放人数。
+    2 币发给暂列第一者并写死 dedup_key,下午被反超也无法纠正。故当天先发活动币,
+    单词王留到次日结算补发(补发时会撤掉当天已发的活动币,净为 2)。
+    返回 {"word_king": n, "task": m, "unit": k} 本次新发放人数。
     """
     day_start, day_end = local_day_utc_range(d)
     key_date = d.strftime("%Y%m%d")
@@ -311,8 +349,11 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
     task_granted = 0
     for student_id, org_id, total, done in hw_rows:
         if student_id in king_ids:
-            continue  # 单词王不叠加作业币(已给 2)
+            continue  # 单词王不叠加活动币(已给 2)
         if total > 0 and total == done:
+            # 作业/单元互斥:该生当天若已拿单元币,不再发作业币
+            if await _has_activity_coin(db, student_id, key_date):
+                continue
             tx = await apply_delta(
                 db, student_id, org_id or 1, TASK_REWARD, "task",
                 reason=f"{d.isoformat()} 完成全部作业", dedup_key=f"task:{student_id}:{key_date}",
@@ -320,4 +361,38 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
             if tx is not None:
                 task_granted += 1
 
-    return {"word_king": king_granted, "task": task_granted}
+    # 完成 >=2 个计分模式单元 → 活动币(与作业币互斥,谁先满足谁拿)
+    unit_rows = (await db.execute(
+        select(
+            LearningProgress.user_id,
+            User.org_id,
+            func.count(func.distinct(LearningProgress.unit_id)).label("units"),
+        )
+        .join(User, User.id == LearningProgress.user_id)
+        .where(and_(
+            User.role == "student",
+            LearningProgress.is_completed.is_(True),
+            LearningProgress.learning_mode.in_(SCORING_MODES),
+            LearningProgress.completed_at >= day_start,
+            LearningProgress.completed_at < day_end,
+        ))
+        .group_by(LearningProgress.user_id, User.org_id)
+    )).all()
+
+    unit_granted = 0
+    for student_id, org_id, units in unit_rows:
+        if student_id in king_ids:
+            continue  # 单词王不叠加活动币(已给 2)
+        if units < UNIT_THRESHOLD:
+            continue
+        # 作业/单元互斥:该生当天若已拿作业币,不再发单元币
+        if await _has_activity_coin(db, student_id, key_date):
+            continue
+        tx = await apply_delta(
+            db, student_id, org_id or 1, UNIT_REWARD, "unit",
+            reason=f"{d.isoformat()} 完成{units}个单元", dedup_key=f"unit:{student_id}:{key_date}",
+        )
+        if tx is not None:
+            unit_granted += 1
+
+    return {"word_king": king_granted, "task": task_granted, "unit": unit_granted}

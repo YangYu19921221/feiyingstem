@@ -275,7 +275,9 @@ async def update_progress(
     progress.last_studied_at = datetime.utcnow()
 
     # 3. 更新完成状态
+    just_completed = False
     if request.is_completed:
+        just_completed = not progress.is_completed  # 本次是否首次标记完成
         progress.is_completed = True
         progress.completed_at = datetime.utcnow()
         progress.completed_words = progress.total_words
@@ -287,6 +289,18 @@ async def update_progress(
 
     await db.commit()
     await db.refresh(progress)
+
+    # 金币:完成计分模式单元可能满足「当日完成 >=2 单元」,尝试实时结算活动币
+    # (幂等,+1/天,与作业币互斥)。失败不影响学习进度主流程。
+    from app.services.coin_service import SCORING_MODES
+    if just_completed and progress.learning_mode in SCORING_MODES:
+        try:
+            from app.services.coin_service import settle_day
+            from app.core.timeutil import local_today
+            await settle_day(db, local_today())
+            await db.commit()
+        except Exception:
+            await db.rollback()
 
     # 4. 计算进度百分比
     progress_percentage = (progress.completed_words / progress.total_words * 100) if progress.total_words > 0 else 0.0
