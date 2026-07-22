@@ -23,6 +23,14 @@ export default function LiveRankBadge() {
   // 点标题 = 收成小圆点(不彻底消失,再点恢复)。手滑不会让排名彻底消失,家长也不误以为坏了
   const [collapsed, setCollapsed] = useState(false);
   const prevRankRef = useRef<number | null>(null);
+  // 当前登录学生的名字(不在前三时那行"我(名字)"用;从本地登录信息取)
+  const [myName, setMyName] = useState('');
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || 'null');
+      setMyName(u?.full_name || u?.username || '');
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +71,8 @@ export default function LiveRankBadge() {
     const name = e.full_name || e.username;
     return isLivePrivacyOn() ? maskName(name) : name;
   };
+  // 自己显示为「我(名字)」:只写"我"孩子分不清是谁的号(共用设备/投屏时尤其)
+  const myLabel = (e: LeaderboardEntry) => `我(${displayName(e)})`;
 
   // 收成小圆点
   if (collapsed) {
@@ -139,7 +149,7 @@ export default function LiveRankBadge() {
               >
                 <span className="text-base w-5 text-center shrink-0">{MEDALS[e.rank - 1]}</span>
                 <span className={`text-xs truncate flex-1 ${me ? 'font-bold text-accent-warm' : 'text-ink'}`}>
-                  {me ? '我' : displayName(e)}
+                  {me ? myLabel(e) : displayName(e)}
                 </span>
                 <span className={`text-xs font-numeric font-semibold shrink-0 ${me ? 'text-accent-warm' : 'text-ink-soft'}`}>
                   {e.value} 词
@@ -152,8 +162,8 @@ export default function LiveRankBadge() {
         {/* 我的名次(仅当不在前三):让中游/垫底的孩子也看到自己在哪 */}
         {!inTop3 && (
           <div className="border-t border-black/5 px-3 py-1.5 flex items-center justify-between">
-            <span className="text-xs text-ink">
-              第 <span className="font-numeric text-accent-warm font-bold text-sm">{rank}</span> 名 · 我
+            <span className="text-xs text-ink truncate">
+              第 <span className="font-numeric text-accent-warm font-bold text-sm">{rank}</span> 名 · 我{myName && `(${isLivePrivacyOn() ? maskName(myName) : myName})`}
             </span>
             <span className="text-xs font-numeric font-semibold text-ink-soft">{value} 词</span>
           </div>

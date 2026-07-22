@@ -140,6 +140,59 @@ async def bigscreen_daily_stats(
     return await get_class_daily_stats(class_id=class_id, target_date=None, db=db, current_user=owner)
 
 
+@router.get("/bigscreen/daily-stats-all")
+async def bigscreen_daily_stats_all(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_teacher_or_display),
+):
+    """大屏「全部班级」今日排行:可见范围内全部学生的今日词量(distinct lower word,
+    与单班/单词王同口径)。大屏排行只用 words_learned,其余字段置 0 保持结构兼容。"""
+    from datetime import datetime
+    from app.models.learning import LearningRecord
+    from app.models.word import Word
+    from app.core.timeutil import local_today_utc_range
+
+    cls_stmt = select(Class.id)
+    if current_user.role == "teacher":
+        cls_stmt = cls_stmt.where(Class.teacher_id == current_user.id)
+    class_ids = [r[0] for r in (await db.execute(cls_stmt)).all()]
+    if not class_ids:
+        return {"students": []}
+
+    mem_rows = (await db.execute(
+        select(User.id, User.username, User.full_name)
+        .join(ClassStudent, ClassStudent.student_id == User.id)
+        .where(ClassStudent.class_id.in_(class_ids), ClassStudent.is_active.is_(True),
+               User.role == "student")
+        .distinct()
+    )).all()
+    if not mem_rows:
+        return {"students": []}
+    name_map = {r.id: (r.full_name or r.username) for r in mem_rows}
+
+    day_start, day_end = local_today_utc_range()
+    word_rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(func.distinct(func.lower(Word.word))),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(
+            LearningRecord.user_id.in_(list(name_map.keys())),
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+        )
+        .group_by(LearningRecord.user_id)
+    )).all()
+    return {
+        "students": [
+            {"user_id": uid, "full_name": name_map.get(uid, "?"),
+             "words_learned": cnt, "study_duration": 0, "accuracy_rate": 0}
+            for uid, cnt in word_rows
+        ],
+    }
+
+
 async def _live_students_for(db: AsyncSession, name_map: dict[int, str]) -> list[dict]:
     """给一批学生算实时状态(内存心跳 + 学习记录兜底 + 今日切屏/走神),已排序。
     单班/全班级端点共用;查询按传入的整批学生一次完成,班多时不放大查询数。"""

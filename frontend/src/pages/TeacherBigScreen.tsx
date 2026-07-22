@@ -41,6 +41,7 @@ interface ClassOption { id: number; name: string }
 
 const LIVE_MS = 5_000;
 const DAILY_MS = 15_000;   // 排行刷新:热血播报要跟得上节奏
+const ALL_CLASSES = -1;    // 「全部班级」哨兵(URL 里 class=-1)
 
 const C = {
   cyan: '#6ff2dd', red: '#ff5c8a', yellow: '#ffe08a', gray: '#475569',
@@ -194,13 +195,31 @@ const TeacherBigScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 实时快照 5s
+  // 实时快照 5s(全部班级模式:live-all 拍平成同构快照,下游 counts/学生墙无感)
   useEffect(() => {
     if (!classId) return;
     const poll = async () => {
       try {
-        const r = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/live`, { headers: authHeaders() });
-        setSnap(r.data);
+        if (classId === ALL_CLASSES) {
+          const r = await axios.get(`${API_BASE_URL}/teacher/classes/live-all`, { headers: authHeaders() });
+          const groups: { class_name: string; total_students: number; students: LiveStudent[] }[] = r.data?.classes ?? [];
+          const students = groups.flatMap(g => g.students.map(s => ({
+            ...s,
+            // 学生名后缀班级,大屏跨班能分清是谁班的
+            student_name: `${s.student_name}·${g.class_name}`,
+          })));
+          const total = groups.reduce((n, g) => n + g.total_students, 0);
+          setSnap({
+            class_name: '全部班级',
+            total_students: total,
+            online_count: students.filter(s => s.status !== 'offline').length,
+            students,
+            never_seen: [],
+          });
+        } else {
+          const r = await axios.get(`${API_BASE_URL}/teacher/classes/${classId}/live`, { headers: authHeaders() });
+          setSnap(r.data);
+        }
       } catch { /* 静默重试 */ }
     };
     poll();
@@ -208,12 +227,15 @@ const TeacherBigScreen = () => {
     return () => clearInterval(t);
   }, [classId]);
 
-  // 排行 15s(大屏专用端点,display 账号可用)
+  // 排行 15s(大屏专用端点,display 账号可用;全部班级模式走跨班聚合端点)
   useEffect(() => {
     if (!classId) return;
     const poll = async () => {
       try {
-        const r = await axios.get(`${API_BASE_URL}/bigscreen/classes/${classId}/daily-stats`, { headers: authHeaders() });
+        const url = classId === ALL_CLASSES
+          ? `${API_BASE_URL}/bigscreen/daily-stats-all`
+          : `${API_BASE_URL}/bigscreen/classes/${classId}/daily-stats`;
+        const r = await axios.get(url, { headers: authHeaders() });
         setDaily(r.data?.students ?? []);
       } catch { /* 静默 */ }
     };
@@ -379,12 +401,13 @@ const TeacherBigScreen = () => {
           {snap?.class_name || '教室'} · 学习大屏
         </h1>
         <div className="ml-auto flex items-center gap-4">
-          {classes.length > 1 && (
+          {classes.length > 0 && (
             <select
               value={classId ?? ''}
               onChange={e => { const id = Number(e.target.value); setClassId(id); setSearchParams({ class: String(id) }, { replace: true }); }}
               className="bg-white/5 text-white/80 border border-white/15 rounded-lg px-3 py-1.5 text-sm [&>option]:text-gray-800"
             >
+              <option value={ALL_CLASSES}>📡 全部班级</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
