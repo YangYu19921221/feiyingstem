@@ -25,13 +25,11 @@ from app.api.v1 import checkin
 async def lifespan(app: FastAPI):
     # 启动时初始化数据库
     await init_db()
-    # 金币每日自动结算(北京 00:35 结算前一天单词王/作业币,不依赖老师打开页面)
-    import asyncio
-    from app.services.coin_scheduler import daily_settle_loop
-    settle_task = asyncio.create_task(daily_settle_loop())
+    # 金币结算已改为「教师手动结算」:关闭每日 00:35 自动结算循环,
+    # 老师在金币管理页点「结算」按钮才发前一天的单词王/作业币(POST /teacher/coins/settle,幂等)。
+    # (daily_settle_loop 保留在 coin_scheduler.py,需要恢复自动结算时在此重新起任务即可)
     yield
     # 关闭时清理资源
-    settle_task.cancel()
 
 app = FastAPI(
     title=settings.APP_NAME,
