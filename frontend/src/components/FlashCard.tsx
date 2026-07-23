@@ -28,7 +28,7 @@ const FlashCard = ({ word, onNext, onKnow, onDontKnow }: FlashCardProps) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#edf5fb] p-4">
       {/* 进度提示 */}
       <div className="mb-8 text-center">
         <p className="text-lg text-gray-600">

@@ -16,6 +16,7 @@ class PkRoom(Base):
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)  # 旧版按单元开房的遗留,现为空
     max_players = Column(Integer, nullable=False, default=4)
     status = Column(String(10), nullable=False, index=True)
+    mode = Column(String(12), nullable=False, default="individual", server_default="individual")  # individual/team
     word_ids = Column(String, nullable=False)  # JSON string
     created_at = Column(DateTime, server_default=func.current_timestamp())
     started_at = Column(DateTime, nullable=True)
@@ -32,6 +33,7 @@ class PkRoomPlayer(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     room_id = Column(Integer, ForeignKey("pk_rooms.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    team = Column(Integer, nullable=True)  # 分组 PK 队号;个人 PK 为 NULL
     rank = Column(Integer, nullable=True)
     accuracy = Column(Numeric(5, 2), nullable=True)
     total_time_ms = Column(Integer, nullable=True)

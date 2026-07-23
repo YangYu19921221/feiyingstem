@@ -120,7 +120,7 @@ const TeacherLeads = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -145,7 +145,7 @@ const TeacherLeads = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* 统计卡片 */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="bg-white rounded-xl p-4 shadow-sm text-center">
             <p className="text-3xl font-bold text-gray-800">{total}</p>
             <p className="text-sm text-gray-500">总测评数</p>
@@ -167,7 +167,7 @@ const TeacherLeads = () => {
         </div>
 
         {/* 分渠道战报: 直播下播直接看哪个平台成交强;点卡片过滤列表 */}
-        <div className="bg-white rounded-2xl shadow-md p-4 mb-6">
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
             <h3 className="text-sm font-bold text-gray-700">
               📊 渠道战报{todayOnly ? '(今天)' : '(累计)'}
@@ -217,7 +217,7 @@ const TeacherLeads = () => {
         </div>
 
         {/* 线索列表 */}
-        <div className="bg-white rounded-2xl shadow-md overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           {loading ? (
             <div className="text-center py-12 text-gray-400">加载中...</div>
           ) : leads.length === 0 ? (

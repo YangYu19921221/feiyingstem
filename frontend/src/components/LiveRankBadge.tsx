@@ -82,7 +82,7 @@ export default function LiveRankBadge() {
         animate={{ opacity: 1, scale: 1 }}
         onClick={() => setCollapsed(false)}
         title="展开今日班级排名"
-        className="fixed top-16 right-3 z-30 w-9 h-9 rounded-full bg-white/95 border-2 border-accent-warm/50 shadow-lg text-sm font-bold text-accent-warm flex items-center justify-center"
+        className="live-rank-badge fixed top-16 right-3 z-30 w-9 h-9 rounded-full bg-white/95 border-2 border-accent-warm/50 shadow-lg text-sm font-bold text-accent-warm flex items-center justify-center"
       >
         {isTop ? '👑' : `#${rank}`}
       </motion.button>
@@ -113,7 +113,7 @@ export default function LiveRankBadge() {
           ? { opacity: 1, y: 0, scale: 1, boxShadow: ['0 4px 14px rgba(0,0,0,0.1)', '0 0 22px rgba(255,180,0,0.5)', '0 4px 14px rgba(0,0,0,0.1)'] }
           : { opacity: 1, y: 0, scale: 1 }}
         transition={isTop ? { boxShadow: { duration: 2.4, repeat: Infinity } } : { type: 'spring', stiffness: 300, damping: 24 }}
-        className="fixed top-16 right-3 z-30 w-56 rounded-2xl bg-white/95 backdrop-blur border-2 border-accent-warm/40 shadow-lg overflow-hidden"
+        className="live-rank-badge fixed top-16 right-3 z-30 w-56 rounded-2xl bg-white/95 backdrop-blur border-2 border-accent-warm/40 shadow-lg overflow-hidden"
       >
         {/* 标题:点击收成小圆点 */}
         <button
@@ -195,7 +195,7 @@ export default function LiveRankBadge() {
             initial={{ opacity: 0, scale: 0.6, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
-            className="fixed top-3 right-3 z-40 pointer-events-none"
+            className="live-rank-climb fixed top-3 right-3 z-40 pointer-events-none"
           >
             <div className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-accent-warm to-amber-400 text-white font-bold text-sm shadow-lg">
               🚀 超越 {climb} 人!现在班级第 {rank}

@@ -19,7 +19,7 @@ export default function TeacherStudentMonitor() {
   });
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0] p-4 md:p-6">
+    <div className="min-h-screen bg-[#f5f8fc] p-4 text-slate-800 md:p-6">
       <div className="max-w-4xl mx-auto">
         <button
           onClick={() => navigate(-1)}

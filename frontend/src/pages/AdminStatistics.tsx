@@ -38,19 +38,20 @@ const AdminStatistics: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-teal-50 to-cyan-50 p-6">
+    <div className="min-h-screen bg-paper p-5 sm:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="staff-colorful-surface mb-7 flex items-center justify-between gap-5 rounded-xl border border-indigo-100 p-5 shadow-md sm:p-6">
           <div>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">📊 数据统计</h1>
-            <p className="text-gray-600">系统使用情况与数据分析</p>
+            <p className="mb-1 text-xs font-semibold text-indigo-700">管理端数据中心</p>
+            <h1 className="font-display text-3xl font-bold text-gray-800 mb-2">数据统计</h1>
+            <p className="text-sm text-gray-600">系统使用情况与学习活动概览</p>
           </div>
           <button
             onClick={() => navigate('/admin')}
-            className="px-6 py-2 bg-white rounded-xl shadow-md hover:shadow-lg transition-all"
+            className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:shadow-md"
           >
-            ← 返回管理中心
+            返回管理中心
           </button>
         </div>
 
@@ -68,7 +69,7 @@ const AdminStatistics: React.FC = () => {
           <>
             {/* 核心指标 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-2xl shadow-md p-6 border-l-4 border-blue-500">
+              <div className="card-soft rounded-xl p-5 border-l-4 border-blue-500">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-3xl">👥</div>
                   <div className="text-right">
@@ -81,7 +82,7 @@ const AdminStatistics: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-md p-6 border-l-4 border-purple-500">
+              <div className="card-soft rounded-xl p-5 border-l-4 border-purple-500">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-3xl">📚</div>
                   <div className="text-right">
@@ -94,7 +95,7 @@ const AdminStatistics: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-md p-6 border-l-4 border-orange-500">
+              <div className="card-soft rounded-xl p-5 border-l-4 border-orange-500">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-3xl">🔥</div>
                   <div className="text-right">
@@ -107,7 +108,7 @@ const AdminStatistics: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-md p-6 border-l-4 border-green-500">
+              <div className="card-soft rounded-xl p-5 border-l-4 border-green-500">
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-3xl">📈</div>
                   <div className="text-right">
@@ -124,7 +125,7 @@ const AdminStatistics: React.FC = () => {
             {/* 详细统计 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               {/* 用户统计 */}
-              <div className="bg-white rounded-2xl shadow-md p-6">
+              <div className="card-soft rounded-xl p-5">
                 <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
                   <span>👥</span> 用户统计
                 </h2>
@@ -144,14 +145,14 @@ const AdminStatistics: React.FC = () => {
                   <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
                     <span className="text-gray-700">活跃率</span>
                     <span className="text-xl font-bold text-purple-600">
-                      {((stats?.active_users_today! / stats?.total_users!) * 100).toFixed(1)}%
+                      {(stats.total_users > 0 ? (stats.active_users_today / stats.total_users) * 100 : 0).toFixed(1)}%
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* 内容统计 */}
-              <div className="bg-white rounded-2xl shadow-md p-6">
+              <div className="card-soft rounded-xl p-5">
                 <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
                   <span>📚</span> 内容统计
                 </h2>
@@ -171,7 +172,7 @@ const AdminStatistics: React.FC = () => {
                   <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
                     <span className="text-gray-700">平均每本单词数</span>
                     <span className="text-xl font-bold text-yellow-600">
-                      {Math.round(stats?.total_words! / stats?.total_books!)}
+                      {stats.total_books > 0 ? Math.round(stats.total_words / stats.total_books) : 0}
                     </span>
                   </div>
                 </div>
@@ -179,7 +180,7 @@ const AdminStatistics: React.FC = () => {
             </div>
 
             {/* 学习统计 */}
-            <div className="bg-white rounded-2xl shadow-md p-6">
+            <div className="card-soft rounded-xl p-5">
               <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <span>📈</span> 学习活动统计
               </h2>
@@ -195,13 +196,16 @@ const AdminStatistics: React.FC = () => {
                 <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl">
                   <div className="text-sm text-gray-600 mb-1">日均学习次数</div>
                   <div className="text-2xl font-bold text-blue-700">
-                    {Math.round(stats?.learning_records_week! / 7)}
+                    {Math.round(stats.learning_records_week / 7)}
                   </div>
                 </div>
                 <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl">
                   <div className="text-sm text-gray-600 mb-1">人均学习次数</div>
                   <div className="text-2xl font-bold text-purple-700">
-                    {(stats?.learning_records_week! / stats?.active_users_week!).toFixed(1)}
+                    {(stats.active_users_week > 0
+                      ? stats.learning_records_week / stats.active_users_week
+                      : 0
+                    ).toFixed(1)}
                   </div>
                 </div>
               </div>

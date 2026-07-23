@@ -68,10 +68,10 @@ const TeacherReadingList = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm mb-6">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <nav className="sticky top-0 z-10 mb-5 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/dashboard')}
@@ -79,7 +79,7 @@ const TeacherReadingList = () => {
             >
               ← 返回
             </button>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <h1 className="flex items-center gap-2 text-xl font-bold text-gray-800 sm:text-2xl">
               <span>📖</span> 阅读理解管理
             </h1>
           </div>
@@ -87,7 +87,7 @@ const TeacherReadingList = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => navigate('/teacher/reading/create')}
-            className="px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition"
+            className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 sm:px-6"
           >
             + 创建新文章
           </motion.button>
@@ -99,7 +99,7 @@ const TeacherReadingList = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-sm p-6 mb-6"
+          className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
         >
           <div className="flex flex-wrap gap-4 items-center">
             <div className="flex items-center gap-2">
@@ -149,7 +149,7 @@ const TeacherReadingList = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-white rounded-2xl p-12 text-center shadow-md"
+            className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm"
           >
             <span className="text-6xl mb-4 block">📭</span>
             <p className="text-gray-500 mb-4">还没有阅读文章</p>
@@ -157,20 +157,20 @@ const TeacherReadingList = () => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => navigate('/teacher/reading/create')}
-              className="px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-lg font-medium shadow-lg"
+              className="rounded-lg bg-slate-900 px-6 py-3 font-medium text-white shadow-sm"
             >
               + 创建第一篇文章
             </motion.button>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {passages.map((passage, index) => (
               <motion.div
                 key={passage.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group"
+                className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
               >
                 {/* 封面 */}
                 <div

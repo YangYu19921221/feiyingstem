@@ -93,7 +93,7 @@ const AdminClassDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-4 border-orange-500 border-t-transparent"></div>
       </div>
     );
@@ -111,8 +111,8 @@ const AdminClassDetail = () => {
   const maxVal = Math.max(...chartData.map((d) => d.value), 1);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-paper">
+      <nav className="bg-white border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-800">← 返回</button>
           <h1 className="text-xl font-bold text-gray-800">
@@ -125,19 +125,19 @@ const AdminClassDetail = () => {
         {/* 概览卡片 */}
         {overview && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
               <div className="text-2xl font-bold text-blue-600">{overview.student_count}</div>
               <div className="text-sm text-gray-500 mt-1">学生人数</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
               <div className="text-2xl font-bold text-green-600">{(overview.avg_accuracy * 100).toFixed(1)}%</div>
               <div className="text-sm text-gray-500 mt-1">平均正确率</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
               <div className="text-2xl font-bold text-orange-500">{overview.total_words_studied}</div>
               <div className="text-sm text-gray-500 mt-1">累计学习单词</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm text-center">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
               <div className="text-2xl font-bold text-purple-600">{overview.mastered_words}</div>
               <div className="text-sm text-gray-500 mt-1">已掌握单词</div>
             </div>
@@ -145,14 +145,14 @@ const AdminClassDetail = () => {
         )}
 
         {/* 班级学习统计 */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <h2 className="text-lg font-bold text-gray-800">📊 班级学习统计</h2>
             <div className="flex items-center gap-2">
               <select
                 value={metric}
                 onChange={(e) => setMetric(e.target.value as MetricKey)}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
               >
                 {METRICS.map((m) => (
                   <option key={m.key} value={m.key}>{m.label}</option>
@@ -161,7 +161,7 @@ const AdminClassDetail = () => {
               <select
                 value={range}
                 onChange={(e) => setRange(e.target.value as RangeKey)}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
               >
                 {RANGES.map((r) => (
                   <option key={r.key} value={r.key}>{r.label}</option>
@@ -209,15 +209,15 @@ const AdminClassDetail = () => {
         </div>
 
         {/* 学生列表 */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
           <div className="px-6 py-4 border-b">
             <h2 className="text-lg font-bold text-gray-800">学生名册 ({students.length})</h2>
           </div>
           {students.length === 0 ? (
             <div className="px-6 py-10 text-center text-gray-400">该班级暂无学生</div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+            <table className="w-full min-w-[760px] whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户名</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
@@ -227,7 +227,7 @@ const AdminClassDetail = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {students.map((s) => (
-                  <tr key={s.id} className="hover:bg-gray-50">
+                  <tr key={s.id} className="hover:bg-slate-50/70">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{s.username}</td>
                     <td className="px-6 py-4 text-sm text-gray-700">{s.full_name || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">
@@ -278,7 +278,7 @@ const AdminClassDetail = () => {
           onClick={() => { setDetail(null); }}
         >
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-y-auto"
+            className="bg-white border border-slate-200 rounded-xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {detailLoading ? (

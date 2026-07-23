@@ -200,7 +200,7 @@ export default function TeacherSentenceEditor() {
   };
 
   return (
-    <div className="min-h-screen bg-paper page-warm-glow">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-5 py-3.5 flex items-center justify-between">
           <button onClick={() => navigate('/teacher/sentences')} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
@@ -439,4 +439,3 @@ export default function TeacherSentenceEditor() {
     </div>
   );
 }
-

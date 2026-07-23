@@ -204,7 +204,7 @@ const MemoryCurve = () => {
   }
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
@@ -404,7 +404,7 @@ const MemoryCurve = () => {
               { label: '今日已复习', value: progress.review_done_today, tone: 'text-ink' },
               { label: '已毕业单词', value: progress.graduated_words, tone: 'text-green-600' },
             ].map((m) => (
-              <div key={m.label} className="bg-white rounded-2xl border border-black/[0.05] p-4 text-center">
+              <div key={m.label} className="card-soft rounded-2xl p-4 text-center">
                 <p className="text-ink-soft text-xs mb-1">{m.label}</p>
                 <p className={`font-numeric font-bold text-3xl ${m.tone}`}>{m.value}</p>
               </div>
@@ -415,7 +415,7 @@ const MemoryCurve = () => {
         {/* 总体统计 — 数据条带 */}
         {stats && (
           <section>
-            <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05]">
+            <div className="card-soft rounded-2xl divide-y divide-black/[0.05]">
               {[
                 { label: '已学单词', value: stats.total_learned, suffix: '' },
                 { label: '已掌握', value: stats.total_mastered, suffix: '' },
@@ -433,7 +433,7 @@ const MemoryCurve = () => {
             {/* 复习价值可视化: 复习过 vs 没复习 的保持率对比——让孩子看到复习的回报
                 (样本不足时后端返回 null,阈值只在后端一处) */}
             {stats.retention_compare && (
-              <div className="mt-4 bg-white rounded-2xl border border-black/[0.05] px-5 py-4">
+              <div className="card-soft mt-4 rounded-2xl px-5 py-4">
                 <div className="text-sm text-ink-soft mb-3">🧪 复习的魔力(一周前学的词,现在还记得多少)</div>
                 {[
                   { label: '✅ 复习过的', c: stats.retention_compare.reviewed, color: 'bg-green-500' },
@@ -465,7 +465,7 @@ const MemoryCurve = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl p-6 border border-black/[0.05]"
+            className="card-soft rounded-2xl p-6"
           >
             <button
               onClick={() => setShowWordList(!showWordList)}
@@ -550,7 +550,7 @@ const MemoryCurve = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white rounded-2xl p-8 shadow-lg text-center"
+            className="card-soft rounded-2xl p-8 text-center"
           >
             <span className="text-6xl">📚</span>
             <h3 className="text-xl font-bold text-gray-700 mt-4">还没有学习记录</h3>

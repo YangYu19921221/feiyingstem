@@ -287,30 +287,30 @@ const AI配置管理 = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-paper">
         <div className="text-xl">加载中...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FFF8F0] to-[#FFE8D6] p-8">
+    <div className="min-h-screen bg-paper p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
         {/* 标题和操作按钮 */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end mb-6 sm:mb-8">
+          <div className="flex items-center gap-3">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => navigate('/admin')}
-              className="px-4 py-2 bg-white/80 backdrop-blur-md text-gray-700 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all border border-gray-200 flex items-center gap-2"
+              className="px-3 py-2 bg-white text-gray-700 rounded-lg font-semibold shadow-sm hover:bg-slate-50 transition-colors border border-slate-200 flex items-center gap-2"
             >
               ← 返回管理后台
             </motion.button>
             <motion.h1
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-4xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent"
+              className="text-2xl sm:text-3xl font-bold text-slate-800"
             >
               🤖 AI配置管理
             </motion.h1>
@@ -319,7 +319,7 @@ const AI配置管理 = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleAdd}
-            className="px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+            className="px-4 py-2.5 bg-[#3976a9] text-white rounded-lg font-semibold shadow-sm hover:bg-[#2e628f] transition-colors"
           >
             ➕ 添加AI服务
           </motion.button>
@@ -333,12 +333,12 @@ const AI配置管理 = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white/90 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-white/50"
+              className="bg-white rounded-xl p-5 sm:p-6 shadow-sm border border-slate-200"
             >
-              <div className="flex justify-between items-start">
+              <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
                 <div className="flex-1">
-                  <div className="flex items-center gap-4 mb-4">
-                    <h3 className="text-2xl font-bold text-gray-800">
+                  <div className="flex flex-wrap items-center gap-3 mb-4">
+                    <h3 className="text-xl font-bold text-slate-800">
                       {provider.display_name}
                     </h3>
                     {provider.is_default && (
@@ -357,7 +357,7 @@ const AI配置管理 = () => {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-600">
                     <div>
                       <span className="font-semibold">🔧 服务商:</span> {provider.provider_name}
                     </div>
@@ -389,7 +389,7 @@ const AI配置管理 = () => {
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handleCardTest(provider)}
                     disabled={cardTesting === provider.id}
-                    className="px-4 py-2 bg-accent text-white rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+                    className="px-3 py-2 bg-[#3976a9] text-white rounded-lg font-semibold hover:bg-[#2e628f] transition-colors disabled:opacity-50"
                   >
                     {cardTesting === provider.id ? '🧪 测试中...' : '🧪 测试'}
                   </motion.button>
@@ -397,7 +397,7 @@ const AI配置管理 = () => {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handleEdit(provider)}
-                    className="px-4 py-2 bg-secondary text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                    className="px-3 py-2 bg-slate-700 text-white rounded-lg font-semibold hover:bg-slate-800 transition-colors"
                   >
                     ✏️ 编辑
                   </motion.button>
@@ -405,7 +405,7 @@ const AI配置管理 = () => {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handleDelete(provider.id)}
-                    className="px-4 py-2 bg-error text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                    className="px-3 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
                   >
                     🗑️
                   </motion.button>
@@ -449,9 +449,9 @@ const AI配置管理 = () => {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+            className="bg-white border border-slate-200 rounded-xl p-5 sm:p-7 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
             >
-              <h2 className="text-3xl font-bold mb-6 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              <h2 className="text-2xl font-bold mb-6 text-slate-800">
                 {editingProvider ? '✏️ 编辑AI服务' : '➕ 添加AI服务'}
               </h2>
 
@@ -465,7 +465,7 @@ const AI配置管理 = () => {
                     value={formData.provider_name}
                     onChange={(e) => setFormData({ ...formData, provider_name: e.target.value })}
                     disabled={!!editingProvider}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                   >
                     <option value="">请选择</option>
                     <option value="qwen">通义千问 (Qwen)</option>
@@ -485,7 +485,7 @@ const AI配置管理 = () => {
                     value={formData.display_name}
                     onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                     placeholder="如: 通义千问 Qwen-Max"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                   />
                 </div>
 
@@ -499,7 +499,7 @@ const AI配置管理 = () => {
                     value={formData.api_key}
                     onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                     placeholder={formData.provider_name === 'iflytek_ise' ? '讯飞APIKey' : 'sk-...'}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary font-mono"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] font-mono"
                   />
                 </div>
 
@@ -515,7 +515,7 @@ const AI配置管理 = () => {
                         value={formData.iflytek_app_id}
                         onChange={(e) => setFormData({ ...formData, iflytek_app_id: e.target.value })}
                         placeholder="如: 8ef38b6c"
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary font-mono"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] font-mono"
                       />
                     </div>
                     <div>
@@ -527,7 +527,7 @@ const AI配置管理 = () => {
                         value={formData.iflytek_api_secret}
                         onChange={(e) => setFormData({ ...formData, iflytek_api_secret: e.target.value })}
                         placeholder="讯飞APISecret"
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary font-mono"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] font-mono"
                       />
                     </div>
                   </>
@@ -544,7 +544,7 @@ const AI配置管理 = () => {
                     value={formData.base_url}
                     onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
                     placeholder="https://..."
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                   />
                 </div>
                 )}
@@ -560,7 +560,7 @@ const AI配置管理 = () => {
                     value={formData.model_name}
                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                     placeholder="qwen-max / gpt-4 / claude-3-sonnet"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                   />
                 </div>
                 )}
@@ -591,7 +591,7 @@ const AI配置管理 = () => {
                       <select
                         value={formData.tts_model}
                         onChange={(e) => setFormData({ ...formData, tts_model: e.target.value })}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                       >
                         <option value="cosyvoice-v1">CosyVoice V1 (基础版)</option>
                         <option value="cosyvoice-v2">CosyVoice V2 (增强版)</option>
@@ -604,7 +604,7 @@ const AI配置管理 = () => {
                       <select
                         value={formData.tts_voice}
                         onChange={(e) => setFormData({ ...formData, tts_voice: e.target.value })}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                       >
                         <optgroup label="🇬🇧 英语女声 (推荐)">
                           <option value="longwan_v2">Wan 婉 - 英语女声 (温柔)</option>
@@ -671,7 +671,7 @@ const AI配置管理 = () => {
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleTest()}
                     disabled={testing || !formData.api_key || !formData.model_name}
-                    className="flex-1 px-6 py-3 bg-accent text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-6 py-3 bg-[#3976a9] text-white rounded-lg font-semibold shadow-sm hover:bg-[#2e628f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {testing ? '🧪 测试中...' : '🧪 测试连接'}
                   </motion.button>
@@ -680,7 +680,7 @@ const AI配置管理 = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSave}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-primary to-secondary text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-lg font-semibold shadow-sm hover:bg-slate-800 transition-colors"
                   >
                     💾 保存配置
                   </motion.button>
@@ -689,7 +689,7 @@ const AI配置管理 = () => {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setShowAddModal(false)}
-                    className="px-6 py-3 bg-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-400 transition-all"
+                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200 transition-colors"
                   >
                     取消
                   </motion.button>

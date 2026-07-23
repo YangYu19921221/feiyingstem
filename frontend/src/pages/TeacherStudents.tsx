@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Users, UserPlus, X, Mail, Check, Eye, Search } from 'lucide-react';
+import { BookOpen, Users, UserPlus, X, Check, Eye, Search } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
@@ -158,13 +158,13 @@ const TeacherStudents = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <Users className="w-8 h-8 text-primary" />
-            <h1 className="text-xl font-bold text-gray-800">教师端 - 学生管理</h1>
+            <h1 className="font-display text-xl font-bold text-gray-800">教师端 · 学生管理</h1>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -191,20 +191,20 @@ const TeacherStudents = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 mb-8 text-white shadow-lg"
+          className="staff-colorful-surface rounded-xl border border-orange-100 p-6 mb-8 text-slate-800 shadow-md"
         >
           <h2 className="text-2xl font-bold mb-2">
-            👥 学生管理
+            学生与学习进度
           </h2>
-          <p className="opacity-90">管理学生账号,查看学习进度</p>
+          <p className="text-sm text-slate-600">管理学生账号，分配教材并查看最近学习情况。</p>
         </motion.div>
 
         {/* 统计卡片 */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl p-6 shadow-md"
+            className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-indigo-100 rounded-xl flex items-center justify-center">
@@ -221,7 +221,7 @@ const TeacherStudents = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white rounded-2xl p-6 shadow-md"
+            className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-green-100 rounded-xl flex items-center justify-center">
@@ -238,7 +238,7 @@ const TeacherStudents = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-white rounded-2xl p-6 shadow-md"
+            className="rounded-xl border border-violet-100 bg-white p-5 shadow-sm"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-purple-100 rounded-xl flex items-center justify-center">
@@ -260,7 +260,7 @@ const TeacherStudents = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-2xl p-6 shadow-md"
+          className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
         >
           <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -292,7 +292,7 @@ const TeacherStudents = () => {
               </div>
               <button
                 onClick={() => setShowCreateDialog(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-md whitespace-nowrap"
+                className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-slate-700 whitespace-nowrap"
               >
                 <UserPlus className="w-5 h-5" />
                 添加学生
@@ -377,7 +377,7 @@ const TeacherStudents = () => {
                             e.stopPropagation();
                             navigate(`/teacher/students/${student.id}`);
                           }}
-                          className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white text-sm rounded-lg transition shadow-md hover:shadow-lg mx-auto"
+                          className="mx-auto flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1 text-sm text-white transition hover:bg-blue-700"
                         >
                           <Eye className="w-4 h-4" />
                           查看详情
@@ -413,7 +413,7 @@ const TeacherStudents = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 mt-6 border border-blue-200"
+          className="mt-5 rounded-xl border border-blue-200 bg-blue-50/70 p-5"
         >
           <h3 className="text-lg font-bold text-blue-800 mb-3 flex items-center gap-2">
             💡 功能提示

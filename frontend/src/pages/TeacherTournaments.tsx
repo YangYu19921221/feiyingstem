@@ -56,7 +56,7 @@ export default function TeacherTournaments() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate('/teacher/dashboard')} className="p-2 -ml-2 hover:bg-gray-100 rounded-lg">
@@ -66,7 +66,7 @@ export default function TeacherTournaments() {
           </button>
           <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2 flex-1">⚔️ PK 晋级赛</h1>
           <button onClick={() => setShowCreate(true)}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-sm font-semibold shadow hover:shadow-md transition">
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700">
             + 创建赛事
           </button>
         </div>
@@ -148,7 +148,7 @@ function TournamentBoard({ detail, onRefresh }: { detail: TournamentDetail; onRe
       {/* 冠军横幅 */}
       {detail.status === 'finished' && detail.champion_name && (
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-          className="bg-gradient-to-r from-amber-400 to-yellow-300 rounded-2xl p-5 text-center shadow-lg">
+          className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-center shadow-sm">
           <div className="text-4xl mb-1">👑</div>
           <p className="text-amber-900 font-bold text-lg">冠军 · {detail.champion_name}</p>
           {detail.consolation_champion_name && (
@@ -395,7 +395,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-medium">取消</button>
           <button onClick={submit} disabled={submitting}
-            className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold disabled:opacity-50">
+            className="flex-1 rounded-lg bg-slate-900 py-2.5 font-semibold text-white disabled:opacity-50">
             {submitting ? '创建中…' : '创建并自动分组'}
           </button>
         </div>

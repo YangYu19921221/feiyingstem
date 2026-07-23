@@ -15,7 +15,9 @@ interface Props {
  * - 表单在灯亮时弹性淡入
  */
 export default function AuthShell({ children }: Props) {
-  const [on, setOn] = useState(false);
+  const [on, setOn] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  ));
   const [paletteIdx, setPaletteIdx] = useState(0);
   const palette = LAMP_PALETTES[paletteIdx];
 
@@ -117,9 +119,9 @@ export default function AuthShell({ children }: Props) {
       </motion.div>
 
       {/* 主体 */}
-      <div className="flex-1 w-full flex items-center justify-center">
+      <div className="flex-1 w-full flex items-start justify-center sm:items-center">
         <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 w-full max-w-5xl">
-          <div className="flex items-center justify-center">
+          <div className="hidden md:flex items-center justify-center">
             <DeskLamp on={on} palette={palette} onToggle={toggle} />
           </div>
 

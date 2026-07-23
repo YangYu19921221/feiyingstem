@@ -80,7 +80,7 @@ export default function PetHealingPage() {
 
   if (!healingStatus || !pet || !words.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-emerald-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center px-5">
         <div className="text-center">
           <div className="text-6xl mb-4 animate-pulse">💊</div>
           <div className="text-gray-600">加载中...</div>
@@ -91,14 +91,14 @@ export default function PetHealingPage() {
 
   if (!healingStatus.is_injured) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-emerald-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center px-5">
         <div className="text-center">
           <div className="text-8xl mb-4">✅</div>
           <div className="text-2xl font-bold text-gray-800 mb-2">宠物很健康！</div>
           <div className="text-gray-600 mb-6">不需要治疗</div>
           <button
             onClick={() => navigate('/student/pet')}
-            className="px-6 py-3 bg-gradient-to-r from-orange-400 to-yellow-400 text-white rounded-xl font-bold"
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors"
           >
             返回宠物页面
           </button>
@@ -150,9 +150,9 @@ export default function PetHealingPage() {
   const grayScale = Math.max(0, 1 - healingStatus.hp_percent / 80);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-emerald-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
+      <nav className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
@@ -160,7 +160,7 @@ export default function PetHealingPage() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-500">
+          <h1 className="text-lg font-bold text-emerald-700">
             💊 治疗宠物
           </h1>
           <div className="w-12" />
@@ -169,7 +169,7 @@ export default function PetHealingPage() {
 
       <div className="max-w-3xl mx-auto px-4 py-6">
         {/* HP进度 */}
-        <div className="bg-white rounded-3xl p-6 shadow-lg mb-6">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 mb-6">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-gray-600">💊 治疗中...</span>
             <span className="text-sm font-bold text-green-600">已恢复 {healedTotal} HP</span>
@@ -210,7 +210,7 @@ export default function PetHealingPage() {
         </div>
 
         {/* 题目卡片 */}
-        <div className="bg-white rounded-3xl p-6 shadow-lg">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
           <div className="text-center mb-6">
             <div className="text-sm text-gray-500 mb-2">
               第 {answeredCount + 1} 题

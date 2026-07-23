@@ -199,7 +199,7 @@ const UnitExam = () => {
   if (error || !examData) {
     return (
       <div className="min-h-screen bg-paper no-select flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 max-w-md text-center">
           <span className="text-5xl">😅</span>
           <h3 className="text-xl font-bold text-gray-800 mt-4 mb-2">出题失败</h3>
           <p className="text-gray-500 mb-4">{error || '请稍后重试'}</p>
@@ -216,7 +216,7 @@ const UnitExam = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl shadow-xl max-w-md w-full text-center overflow-hidden"
+          className="bg-white rounded-2xl border border-slate-200 max-w-md w-full text-center overflow-hidden"
         >
           {/* 考试封面图 */}
           <div className="relative h-40 overflow-hidden">
@@ -229,7 +229,7 @@ const UnitExam = () => {
           </div>
           <div className="p-8">
             <div className="grid grid-cols-3 gap-4 mb-8">
-              <div className="text-2xl font-bold text-blue-600">{examData.question_count}</div>
+              <div className="text-2xl font-bold text-sky-600">{examData.question_count}</div>
               <div className="text-xs text-gray-500">题目</div>
             </div>
             <div className="bg-green-50 rounded-xl p-3">
@@ -252,7 +252,7 @@ const UnitExam = () => {
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={handleStart}
-            className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-lg font-bold rounded-2xl shadow-lg hover:shadow-xl transition"
+            className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white text-lg font-bold rounded-xl transition-colors"
           >
             开始考试
           </motion.button>
@@ -269,7 +269,7 @@ const UnitExam = () => {
   return (
     <div className="min-h-screen bg-paper no-select">
       {/* 顶部栏 */}
-      <nav className="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-20">
+      <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-gray-500 hover:text-gray-700">
@@ -300,7 +300,7 @@ const UnitExam = () => {
           {/* 进度条 */}
           <div className="h-1 bg-gray-100 rounded-full mt-2">
             <motion.div
-              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+              className="h-full bg-sky-500 rounded-full"
               animate={{ width: `${(answeredCount / totalQuestions) * 100}%` }}
             />
           </div>
@@ -317,7 +317,7 @@ const UnitExam = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.2 }}
-              className="bg-white rounded-2xl shadow-lg p-6"
+              className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6"
             >
               {/* 题型标签 */}
               <div className="flex items-center justify-between mb-4">
@@ -367,7 +367,7 @@ const UnitExam = () => {
                     className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-lg transition ${
                       playCount >= 3
                         ? 'bg-gray-200 cursor-not-allowed'
-                        : 'bg-gradient-to-br from-blue-500 to-indigo-600 hover:shadow-xl'
+                        : 'bg-sky-600 hover:bg-sky-700'
                     }`}
                   >
                     🔊
@@ -434,7 +434,7 @@ const UnitExam = () => {
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={handleInputNext}
-                    className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium rounded-xl shadow-md"
+                    className="px-8 py-3 bg-sky-600 hover:bg-sky-700 text-white font-medium rounded-xl transition-colors"
                   >
                     {currentIndex < totalQuestions - 1 ? '下一题 →' : '完成'}
                   </motion.button>

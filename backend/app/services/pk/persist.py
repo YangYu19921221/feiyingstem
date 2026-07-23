@@ -19,6 +19,7 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
         unit_id=room.unit_id,
         max_players=room.max_players,
         status=room.status,
+        mode=room.mode,
         word_ids=json.dumps(room.word_ids),
         started_at=room.started_at,
         finished_at=room.finished_at,
@@ -34,6 +35,7 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
             "wrong": ps.wrong,
             "total_time_ms": ps.total_time_ms,
             "points": ps.points,
+            "team": ps.team,
             "is_disconnected": (ps.correct + ps.wrong) < total_questions,
         }
         for ps in room.players.values()
@@ -42,6 +44,7 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
         db.add(PkRoomPlayer(
             room_id=db_room.id,
             user_id=r["user_id"],
+            team=r.get("team"),
             rank=r["rank"],
             accuracy=r["accuracy"],
             total_time_ms=r["total_time_ms"],

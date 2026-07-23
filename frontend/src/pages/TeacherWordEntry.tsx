@@ -304,7 +304,7 @@ const TeacherWordEntry = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <datalist id="pos-options">
         <option value="n." />
         <option value="v." />
@@ -320,7 +320,7 @@ const TeacherWordEntry = () => {
       </datalist>
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <BookOpen className="w-8 h-8 text-primary" />
             <h1 className="text-xl font-bold text-gray-800">教师端 - 单词录入</h1>
@@ -350,7 +350,7 @@ const TeacherWordEntry = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-6 mb-8 text-white shadow-lg"
+          className="rounded-xl border border-slate-200 bg-white p-6 mb-8 text-slate-800 shadow-sm"
         >
           <h2 className="text-2xl font-bold mb-2">
             ✍️ 单词录入
@@ -362,7 +362,7 @@ const TeacherWordEntry = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-8 shadow-lg"
+          className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
         >
           <div className="space-y-6">
             {/* 基本信息 */}
@@ -468,7 +468,7 @@ const TeacherWordEntry = () => {
                         <button
                           onClick={() => handleGenerateComplete(index)}
                           disabled={generatingMeaning === index || !newWord.word.trim()}
-                          className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg transition font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Sparkles className="w-4 h-4" />
                           {generatingMeaning === index ? '生成中...' : 'AI一键生成'}
@@ -607,7 +607,7 @@ const TeacherWordEntry = () => {
             <div className="flex gap-4 pt-4">
               <button
                 onClick={handleSubmit}
-                className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg transition font-medium flex items-center justify-center gap-2"
+                className="flex-1 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition font-medium flex items-center justify-center gap-2"
               >
                 <Save className="w-5 h-5" />
                 保存单词

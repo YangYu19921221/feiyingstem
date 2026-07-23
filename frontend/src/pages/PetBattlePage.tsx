@@ -237,7 +237,7 @@ export default function PetBattlePage() {
 
   if (!battle) {
     return (
-      <div className="min-h-screen bg-[#FFF8F0] flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center px-5">
         <div className="text-center">
           <motion.div
             className="text-6xl mb-4"
@@ -269,7 +269,7 @@ export default function PetBattlePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-100 to-blue-100">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">

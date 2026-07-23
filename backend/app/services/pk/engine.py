@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 from app.services.pk.state import RoomState, AnswerRecord, PHASES_IN_ORDER, PhaseLiteral
 from app.services.pk.adapters import get_adapter
-from app.services.pk.score import rank_players, live_ranking, compute_question_points
+from app.services.pk.score import rank_players, live_ranking, team_ranking, compute_question_points
 
 
 PHASE_TIMEOUT_MS: dict[str, int] = {
@@ -28,6 +28,8 @@ def submit_answer(
     word_lookup: dict[int, Any],
 ) -> list[dict]:
     """记录答案;若全员到齐则触发结算,推进至下一题/阶段;返回待广播事件列表。"""
+    if not room.word_ids:
+        return []  # 未开局/无词表:current_word_id 会取模除零,直接丢弃
     if user_id not in room.players:
         return []
     if word_idx != room.current_word_idx:
@@ -77,7 +79,12 @@ def force_timeout(
     room: RoomState, word_idx: int, phase: str, word_lookup: dict[int, Any],
 ) -> list[dict]:
     """超时:对未提交者记错,触发结算。"""
+    if not room.word_ids:
+        return []  # 无词表:防 current_word_id 取模除零
     if word_idx != room.current_word_idx or phase != room.current_phase:
+        return []
+    # 房里已无在线玩家(全部离开/掉线):不再推进,避免空房自跑到假终局
+    if not any(ps.online for ps in room.players.values()):
         return []
     bucket = room.answers.setdefault(word_idx, {})
     word_id = room.current_word_id  # word_idx == room.current_word_idx by guard above
@@ -112,9 +119,12 @@ def _settle_and_advance(
         }
         for uid, ans in bucket.items()
     }
+    live_evt: dict = {"type": "live_ranking", "word_idx": word_idx, "ranking": live_ranking(room)}
+    if room.mode == "team":
+        live_evt["team_ranking"] = team_ranking(room)
     events: list[dict] = [
         {"type": "question_settled", "word_idx": word_idx, "phase": settled_phase, "results": settled},
-        {"type": "live_ranking", "word_idx": word_idx, "ranking": live_ranking(room)},
+        live_evt,
     ]
 
     new_global = word_idx + 1
@@ -130,10 +140,14 @@ def _settle_and_advance(
                 "correct": ps.correct, "wrong": ps.wrong,
                 "total_time_ms": ps.total_time_ms,
                 "points": ps.points, "best_streak": ps.best_streak,
+                "team": ps.team,
             }
             for ps in room.players.values()
         ])
-        events.append({"type": "game_finished", "ranking": ranking})
+        finish_evt: dict = {"type": "game_finished", "ranking": ranking}
+        if room.mode == "team":
+            finish_evt["team_ranking"] = team_ranking(room)
+        events.append(finish_evt)
         return events
 
     new_phase: PhaseLiteral = PHASES_IN_ORDER[new_global // n_words]
@@ -162,3 +176,30 @@ def _serialize_word(word: Any) -> dict:
         "word": getattr(word, "word", ""),
         "translation": getattr(word, "translation", ""),
     }
+
+
+def select_words_with_fallback(
+    per_user_learned: dict[int, set[int]],
+    word_count: int,
+    rng: Any,
+    min_common: int = 4,
+    fill_pool: set[int] | None = None,
+) -> tuple[list[int], int]:
+    """自由房选词:优先「所有参赛玩家都背过」的交集,不够 word_count 时用 fill_pool 里
+    其余词补齐(对齐晋级赛的"以赛促学"策略,避免共同词偏少时直接卡死开不了局)。
+
+    返回 (chosen_word_ids, common_count)。common_count 供调用方在完全无共同词
+    且无补充池时给出友好提示。fill_pool=None 表示不补(严格交集,老行为)。
+    """
+    sets = [s for s in per_user_learned.values()]
+    common = set.intersection(*sets) if sets else set()
+    common_count = len(common)
+    common_list = list(common)
+    rng.shuffle(common_list)
+    chosen = common_list[:word_count]
+    if len(chosen) < word_count and fill_pool:
+        rest = [w for w in fill_pool if w not in common]
+        rng.shuffle(rest)
+        chosen = (chosen + rest)[:word_count]
+    rng.shuffle(chosen)
+    return chosen, common_count

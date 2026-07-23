@@ -579,7 +579,7 @@ const TeacherUnitManagement = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <datalist id="pos-options">
         <option value="n." />
         <option value="v." />
@@ -594,16 +594,16 @@ const TeacherUnitManagement = () => {
         <option value="art." />
       </datalist>
       {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
+      <nav className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <button
               onClick={() => navigate('/teacher/books')}
               className="p-2 hover:bg-gray-100 rounded-lg transition"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
-            <div className="flex items-center gap-3 flex-1">
+            <div className="flex min-w-[180px] flex-1 items-center gap-3">
               <BookOpen className="w-6 h-6 text-primary" />
               <div>
                 <h1 className="text-xl font-bold text-gray-800">单元管理</h1>
@@ -613,7 +613,7 @@ const TeacherUnitManagement = () => {
             <button
               onClick={handleExportBook}
               disabled={exportingBook || units.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
               title="导出整本单词本(每个单元一个工作表,格式与导入模板一致)"
             >
               <Download className="w-5 h-5" />
@@ -621,7 +621,7 @@ const TeacherUnitManagement = () => {
             </button>
             <button
               onClick={() => setShowCreateDialog(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-md"
+              className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 sm:px-4"
             >
               <Plus className="w-5 h-5" />
               创建单元
@@ -630,7 +630,7 @@ const TeacherUnitManagement = () => {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -640,23 +640,23 @@ const TeacherUnitManagement = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-white rounded-2xl p-12 text-center shadow-md"
+            className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm"
           >
             <BookOpen className="w-16 h-16 mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500 mb-2">还没有创建单元</p>
             <p className="text-sm text-gray-400 mb-4">点击右上角"创建单元"按钮开始</p>
           </motion.div>
         ) : (
-          <div className="grid gap-6">
+          <div className="grid gap-4">
             {units.map((unit, index) => (
               <motion.div
                 key={unit.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 * index }}
-                className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition"
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition sm:p-5"
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-2xl">📌</span>
@@ -671,7 +671,7 @@ const TeacherUnitManagement = () => {
                       {unit.word_count} 个单词 · 每组 {unit.group_size || 10} 个
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 self-end sm:self-auto">
                     <button
                       onClick={() => handleViewUnitWords(unit.id)}
                       className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg transition"

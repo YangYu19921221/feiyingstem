@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, ClipboardCheck, ClipboardList, LogOut } from 'lucide-react';
 import {
   getMyHomework,
   startHomework,
@@ -174,37 +175,58 @@ const StudentHomework = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <nav className="border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/student/dashboard')}
-              className="text-gray-600 hover:text-gray-800 transition"
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
+              aria-label="返回学生首页"
             >
-              <span className="text-2xl">←</span>
+              <ArrowLeft className="h-5 w-5" />
             </button>
-            <span className="text-3xl">📝</span>
-            <h1 className="text-xl font-bold text-gray-800">我的作业</h1>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+              <ClipboardList className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-xl font-bold text-slate-800">我的作业</h1>
+              <p className="hidden text-xs text-slate-500 sm:block">按截止时间安排今天的任务</p>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              👤 {user?.full_name || user?.username || '同学'}
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden text-sm text-slate-500 sm:inline">
+              {user?.full_name || user?.username || '同学'}
             </span>
             <button
               onClick={handleLogout}
-              className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
+              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="退出登录"
+              title="退出登录"
             >
-              退出
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-7 sm:py-8">
+        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-orange-100 px-5 py-5 shadow-md sm:px-7">
+          <div className="flex items-center justify-between gap-5">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-orange-600">今日任务中心</p>
+              <h2 className="font-display text-2xl font-bold text-slate-800">先完成最紧急的一项</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                待开始 {statusCounts.pending} 项，进行中 {statusCounts.in_progress} 项
+              </p>
+            </div>
+            <img src="/eagle-homework.jpeg" alt="" className="hidden h-24 w-32 rounded-xl object-cover shadow-sm sm:block" />
+          </div>
+        </section>
+
         {/* 状态筛选标签 */}
-        <div className="mb-6 bg-white rounded-xl shadow-md p-2">
+        <div className="card-soft mb-6 rounded-xl p-2">
           <div className="flex gap-2 overflow-x-auto">
             {tabs.map((tab) => (
               <button
@@ -241,10 +263,12 @@ const StudentHomework = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl p-12 text-center shadow-md"
+            className="card-soft rounded-2xl p-12 text-center"
           >
-            <div className="text-8xl mb-4">📭</div>
-            <h3 className="text-xl font-bold text-gray-700 mb-2">暂无作业</h3>
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+              <ClipboardCheck className="h-8 w-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-700 mb-2">暂无作业</h3>
             <p className="text-gray-500">
               {activeTab === 'all' ? '老师还没有布置作业' : `暂无${tabs.find((t) => t.key === activeTab)?.label}的作业`}
             </p>
@@ -266,11 +290,11 @@ const StudentHomework = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ delay: index * 0.05 }}
-                    className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow"
+                    className="card-soft rounded-2xl overflow-hidden hover:shadow-lg transition-shadow"
                   >
-                    <div className="p-6">
+                    <div className="p-5 sm:p-6">
                       {/* 作业标题和状态 */}
-                      <div className="flex items-start justify-between mb-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="text-lg font-bold text-gray-800">
@@ -295,7 +319,7 @@ const StudentHomework = () => {
                         {/* 截止时间警告 */}
                         {deadlineInfo && (
                           <div
-                            className={`ml-4 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                            className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
                               deadlineInfo.isUrgent
                                 ? 'bg-red-100 text-red-700 border-2 border-red-300'
                                 : 'bg-blue-100 text-blue-700'

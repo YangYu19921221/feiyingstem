@@ -66,7 +66,7 @@ const TeacherActivities = () => {
   }, {});
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
       <nav className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -92,7 +92,7 @@ const TeacherActivities = () => {
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* 搜索 + 时间范围 */}
-        <div className="bg-white rounded-2xl p-4 shadow-md mb-6">
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
@@ -126,7 +126,7 @@ const TeacherActivities = () => {
         {loading ? (
           <div className="text-center text-gray-500 py-16">加载中...</div>
         ) : activities.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-md">
+          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center shadow-sm">
             <div className="text-5xl mb-3">🌱</div>
             <p className="text-gray-600">
               {query.trim() ? '没有匹配的动态,换个关键词试试' : '这段时间还没有学生完成作业或单元'}
@@ -141,7 +141,7 @@ const TeacherActivities = () => {
                   <span className="text-xs text-gray-400">{items.length} 条</span>
                   <div className="flex-1 h-px bg-gray-200" />
                 </div>
-                <div className="bg-white rounded-2xl shadow-md divide-y divide-gray-50 overflow-hidden">
+                <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                   {items.map((act, index) => (
                     <div key={index} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
                       <span className="text-lg shrink-0">{act.type === 'homework' ? '📘' : '✅'}</span>

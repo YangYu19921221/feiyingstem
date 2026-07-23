@@ -89,7 +89,7 @@ export default function DictationPractice() {
   return (
     <div className="min-h-screen bg-paper no-select">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
+      <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -110,7 +110,7 @@ export default function DictationPractice() {
           />
         ) : (
           <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
-            <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 w-full max-w-md text-center">
               <div className="text-5xl mb-4">{accuracy >= 80 ? '🎉' : accuracy >= 60 ? '👍' : '💪'}</div>
               <h3 className="text-2xl font-bold text-gray-800 mb-2">听写完成！</h3>
               <div className={`text-4xl font-bold mb-2 ${accuracy >= 80 ? 'text-green-500' : accuracy >= 60 ? 'text-blue-500' : 'text-orange-500'}`}>
@@ -145,7 +145,7 @@ export default function DictationPractice() {
                       .then(data => { setLearningData(data); setLoading(false); })
                       .catch(() => setLoading(false));
                   }}
-                  className="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl shadow-md"
+                  className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition-colors"
                 >
                   再来一次
                 </button>

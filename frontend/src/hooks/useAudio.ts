@@ -73,12 +73,16 @@ function ensureVoices(): Promise<SpeechSynthesisVoice[]> {
 }
 
 function pickEnglishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
-  // 优先英式，其次任意英语
-  return (
-    voices.find(v => v.lang === 'en-GB') ||
-    voices.find(v => v.lang?.startsWith('en-GB')) ||
-    voices.find(v => v.lang?.startsWith('en'))
-  );
+  // 优先英语女声。不同系统的 getVoices() 排序不固定，不能再简单取第一个 en-GB，否则刷新后可能回退到男声。
+  const english = voices.filter(v => v.lang?.toLowerCase().startsWith('en'));
+  if (english.length === 0) return undefined;
+
+  const femaleHint = /female|sonia|samantha|ava|aria|jenny|zira|karen|susan|emily|hazel|libby|kate|moira|tessa|allison|victoria|google uk english female/i;
+  const maleHint = /male|david|mark|guy|alex|daniel|george|fred|tom|google uk english male/i;
+  return english.find(v => femaleHint.test(`${v.name} ${v.voiceURI}`))
+    || english.find(v => !maleHint.test(`${v.name} ${v.voiceURI}`))
+    || english.find(v => v.lang.toLowerCase().startsWith('en-gb'))
+    || english[0];
 }
 
 /**

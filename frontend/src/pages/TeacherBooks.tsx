@@ -379,13 +379,13 @@ const TeacherBooks = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm">
+      <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <BookOpen className="w-8 h-8 text-primary" />
-            <h1 className="text-xl font-bold text-gray-800">教师端 - 单词本管理</h1>
+            <h1 className="font-display text-xl font-bold text-gray-800">教师端 · 单词本管理</h1>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -412,12 +412,12 @@ const TeacherBooks = () => {
         <motion.div
           initial={!hasLoadedOnce.current ? { opacity: 0, y: -20 } : false}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 mb-8 text-white shadow-lg"
+          className="staff-colorful-surface rounded-xl border border-orange-100 p-6 mb-8 text-slate-800 shadow-md"
         >
           <h2 className="text-2xl font-bold mb-2">
-            👋 欢迎, {user?.full_name}!
+            管理教材与学习内容
           </h2>
-          <p className="opacity-90">管理您的单词本和单元,为学生创建优质的学习内容</p>
+          <p className="text-sm text-slate-600">欢迎，{user?.full_name || '老师'}。统一管理单词本、单元和批量导入。</p>
         </motion.div>
 
         {/* 单词本列表 */}

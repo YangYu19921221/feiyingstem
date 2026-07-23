@@ -126,17 +126,17 @@ export default function AdminOrganizations() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0] p-6">
+    <div className="min-h-screen bg-paper p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
         {/* 顶栏 */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="text-2xl">←</button>
-            <h1 className="text-2xl font-bold text-gray-800">🏢 机构管理</h1>
+            <button onClick={() => navigate('/')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">← 返回</button>
+            <div><h1 className="text-2xl font-bold text-slate-800">🏢 机构管理</h1><p className="mt-1 text-sm text-slate-500">管理机构服务、账号与学生配额</p></div>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="px-4 py-2 rounded-xl text-white font-bold bg-gradient-to-r from-[#FF6B35] to-[#FFD23F] shadow hover:opacity-90"
+            className="px-4 py-2 rounded-lg text-white font-semibold bg-[#3976a9] hover:bg-[#2e628f] transition-colors"
           >
             ➕ 开通新机构
           </button>
@@ -156,7 +156,7 @@ export default function AdminOrganizations() {
         {/* 机构管理员面板(密码弹窗 z-50 天然盖在面板 z-40 之上,无需状态耦合) */}
         {managerPanel && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40" onClick={() => setManagerPanel(null)}>
-            <div className="bg-white rounded-2xl p-6 max-w-lg w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 max-w-lg w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
               <h3 className="text-lg font-bold mb-1">👤 「{managerPanel.org.name}」的管理员</h3>
               <p className="text-xs text-gray-400 mb-4">密码加密存储无法查看,可一键重置生成新密码(改用户名去"用户管理"页)</p>
               {managerPanel.managers.length === 0 ? (
@@ -194,32 +194,32 @@ export default function AdminOrganizations() {
 
         {/* 开通表单 */}
         {showCreate && (
-          <div className="bg-white rounded-2xl p-5 mb-6 shadow">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6 shadow-sm">
             <h3 className="font-bold mb-3">开通新机构</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <input className="border rounded-xl px-3 py-2" placeholder="机构名称 *" value={form.name}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="机构名称 *" value={form.name}
                      onChange={e => setForm({ ...form, name: e.target.value })} />
-              <input className="border rounded-xl px-3 py-2" placeholder="机构码(留空自动生成)" value={form.code}
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="机构码(留空自动生成)" value={form.code}
                      onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} />
-              <select className="border rounded-xl px-3 py-2" value={form.plan}
+              <select className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" value={form.plan}
                       onChange={e => setForm({ ...form, plan: e.target.value })}>
                 <option value="trial">体验档</option>
                 <option value="standard">标准档</option>
                 <option value="county">县级独家</option>
                 <option value="city">市级独家</option>
               </select>
-              <input className="border rounded-xl px-3 py-2" type="number" placeholder="学生配额" value={form.student_quota}
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" type="number" placeholder="学生配额" value={form.student_quota}
                      onChange={e => setForm({ ...form, student_quota: parseInt(e.target.value || '0', 10) })} />
-              <input className="border rounded-xl px-3 py-2" placeholder="联系人" value={form.contact_name}
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系人" value={form.contact_name}
                      onChange={e => setForm({ ...form, contact_name: e.target.value })} />
-              <input className="border rounded-xl px-3 py-2" placeholder="联系电话" value={form.contact_phone}
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系电话" value={form.contact_phone}
                      onChange={e => setForm({ ...form, contact_phone: e.target.value })} />
             </div>
             <div className="mt-3 flex gap-2">
               <button
                 disabled={!form.name || createMut.isPending}
                 onClick={() => createMut.mutate()}
-                className="px-4 py-2 rounded-xl bg-[#5FD35F] text-white font-bold disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50"
               >
                 {createMut.isPending ? '开通中…' : '确认开通'}
               </button>
@@ -232,10 +232,36 @@ export default function AdminOrganizations() {
         {isLoading ? (
           <div className="text-center py-12 text-gray-400">加载中…</div>
         ) : (
-          <div className="bg-white rounded-2xl shadow overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+            <div className="sm:hidden space-y-3 p-3">
+              {(orgs || []).map(org => (
+                <article key={org.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {org.logo_url ? <img src={org.logo_url} alt="" className="h-7 w-7 shrink-0 rounded object-cover" /> : <span className="text-lg">🏫</span>}
+                      <div className="min-w-0"><div className="truncate font-bold text-slate-800">{org.name}</div><div className="font-mono text-xs text-slate-500">{org.code}</div></div>
+                    </div>
+                    {org.status === 'active' ? <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">正常</span> : <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">已停用</span>}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                    <div>档位 <span className="font-medium text-slate-700">{PLAN_LABELS[org.plan] || org.plan}</span></div>
+                    <div>老师 <span className="font-medium text-slate-700">{org.teacher_count} 人</span></div>
+                    <div className="col-span-2 flex items-center gap-2">学生 <span className="font-medium text-slate-700">{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>{org.student_quota < 999999 && <QuotaBar active={org.active_students} quota={org.student_quota} className="w-20" />}</div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold">
+                    <button className="text-blue-600" onClick={() => issueAdmin(org)}>开管理员</button>
+                    <button className="text-teal-600" onClick={() => openManagerPanel(org)}>管理员</button>
+                    <button className="text-orange-600" onClick={() => changeQuota(org)}>改配额</button>
+                    {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
+                    {org.id !== 1 && <button className={org.status === 'active' ? 'text-red-600' : 'text-emerald-600'} onClick={() => { if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return; toggleStatus.mutate(org); }}>{org.status === 'active' ? '停用' : '恢复'}</button>}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[880px] whitespace-nowrap text-sm">
               <thead>
-                <tr className="bg-orange-50 text-left text-gray-600">
+                <tr className="bg-slate-50 text-left text-slate-600">
                   <th className="px-4 py-3">机构</th>
                   <th className="px-4 py-3">机构码</th>
                   <th className="px-4 py-3">档位</th>
@@ -247,7 +273,7 @@ export default function AdminOrganizations() {
               </thead>
               <tbody>
                 {(orgs || []).map(org => (
-                  <tr key={org.id} className="border-t">
+                  <tr key={org.id} className="border-t border-slate-100 hover:bg-slate-50/70">
                       <td className="px-4 py-3 font-bold">
                         <span className="inline-flex items-center gap-2">
                           {org.logo_url
@@ -299,6 +325,7 @@ export default function AdminOrganizations() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

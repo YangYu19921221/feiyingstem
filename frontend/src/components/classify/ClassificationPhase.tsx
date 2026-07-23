@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { AlertCircle, CheckCircle2, Clock3, HelpCircle, Lightbulb, Volume2 } from 'lucide-react';
 import type { WordData } from '../../api/progress';
 import client from '../../api/client';
 import ColoredWord from '../ColoredWord';
@@ -124,6 +125,8 @@ export default function ClassificationPhase({
 
   // 循环播放发音(走神/切屏暂停时停播,人回来自动续上;
   // 回顾/消化卡打开时也停——弹卡前 index 已+1,不停会循环播孩子还没见过的下一词)
+  // 进页即自动循环发第一个词(不再要求先交互)。纯刷新无用户手势时浏览器可能拦截
+  // audio.play(),useAudio 已 catch 该拒绝(不报错、不留坏状态),用户一交互即可正常出声。
   useEffect(() => {
     if (!currentWord || showRoundSummary || showTutorial || showFamiliarReview || paused) return;
 
@@ -309,7 +312,9 @@ export default function ClassificationPhase({
         case '3': classifyRef.current('unknown'); break;
         case ' ':
           e.preventDefault();
-          if (currentWord) playAudio(currentWord.word, 1, currentWord.id);
+          if (currentWord) {
+            playAudio(currentWord.word, 1, currentWord.id);
+          }
           break;
       }
     };
@@ -355,7 +360,7 @@ export default function ClassificationPhase({
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-lg p-6 w-full max-w-md"
+          className="classify-learning-card bg-white rounded-3xl shadow-lg p-6 w-full max-w-md"
         >
           <div className="text-center mb-4">
             <div className="text-4xl mb-2">{isStruggle ? '🍵' : '👀'}</div>
@@ -392,82 +397,87 @@ export default function ClassificationPhase({
   // 使用教程
   if (showTutorial) {
     return (
-      <div className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-center px-4">
+      <div className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-start px-4 py-8 pb-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md"
+          className="classify-learning-card bg-white rounded-3xl shadow-lg p-5 md:p-7 w-full max-w-3xl"
         >
-          <h3 className="text-2xl font-bold text-gray-800 text-center mb-6">
+          <h3 className="text-2xl font-bold text-gray-800 mb-5">
             🧠 分类记忆法
           </h3>
 
-          <div className="space-y-4 mb-6">
-            <div className="flex items-start gap-3 p-3 bg-green-50 rounded-xl">
-              <span className="text-2xl">😊</span>
-              <div>
-                <div className="font-bold text-green-700">熟悉
-                  <kbd className="ml-2 px-2 py-0.5 bg-green-100 text-green-600 rounded text-xs font-mono">1</kbd>
+          <div className="grid gap-5 md:grid-cols-[1.08fr_0.92fr]">
+            <div className="min-w-0">
+              <img
+                src="/classify-memory-v2.png"
+                alt="分类记忆法学习路径"
+                className="h-48 md:h-64 w-full rounded-2xl border border-orange-100 object-cover shadow-sm"
+              />
+
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mt-4">
+                <h4 className="font-bold text-gray-700 text-sm mb-2">学习流程</h4>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                  {['分类', '语音', '听写', '过关', '总结'].map((step, index) => (
+                    <span key={step} className="contents">
+                      <span className="px-2 py-1 bg-white border border-gray-100 rounded-lg">{step}</span>
+                      {index < 4 && <span className="text-gray-300">→</span>}
+                    </span>
+                  ))}
                 </div>
-                <p className="text-sm text-gray-500">看到就知道意思，直接过</p>
+                <p className="text-xs text-gray-500 mt-2">未标熟悉的词会反复出现，直到全部掌握</p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-orange-50 rounded-xl">
-              <span className="text-2xl">🤔</span>
-              <div>
-                <div className="font-bold text-orange-700">夹生
-                  <kbd className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-600 rounded text-xs font-mono">2</kbd>
+            <div className="flex min-w-0 flex-col">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-3 bg-green-50 rounded-xl">
+                  <span className="text-2xl">😊</span>
+                  <div>
+                    <div className="font-bold text-green-700">熟悉
+                      <kbd className="ml-2 px-2 py-0.5 bg-green-100 text-green-600 rounded text-xs font-mono">1</kbd>
+                    </div>
+                    <p className="text-sm text-gray-500">看到就知道意思，直接过</p>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-500">有点印象但不确定，需要再记一记</p>
-              </div>
-            </div>
 
-            <div className="flex items-start gap-3 p-3 bg-red-50 rounded-xl">
-              <span className="text-2xl">😰</span>
-              <div>
-                <div className="font-bold text-red-700">陌生
-                  <kbd className="ml-2 px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs font-mono">3</kbd>
+                <div className="flex items-start gap-3 p-3 bg-orange-50 rounded-xl">
+                  <span className="text-2xl">🤔</span>
+                  <div>
+                    <div className="font-bold text-orange-700">夹生
+                      <kbd className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-600 rounded text-xs font-mono">2</kbd>
+                    </div>
+                    <p className="text-sm text-gray-500">有点印象但不确定，需要再记一记</p>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-500">完全不认识，需要重点学习</p>
+
+                <div className="flex items-start gap-3 p-3 bg-red-50 rounded-xl">
+                  <span className="text-2xl">😰</span>
+                  <div>
+                    <div className="font-bold text-red-700">陌生
+                      <kbd className="ml-2 px-2 py-0.5 bg-red-100 text-red-600 rounded text-xs font-mono">3</kbd>
+                    </div>
+                    <p className="text-sm text-gray-500">完全不认识，需要重点学习</p>
+                  </div>
+                </div>
               </div>
+
+              <div className="mt-auto pt-4 text-xs text-gray-400">
+                <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">空格</kbd> 播放发音
+                <span className="mx-2">·</span>
+                <span>{CLASSIFY_TIME_SHORT}-{CLASSIFY_TIME_SENTENCE} 秒自动计时</span>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={dismissTutorial}
+                className="mt-4 w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-bold text-lg shadow-md transition"
+              >
+                开始学习
+              </motion.button>
             </div>
           </div>
-
-          <div className="bg-blue-50 rounded-xl p-4 mb-6">
-            <h4 className="font-bold text-blue-700 text-sm mb-2">学习流程</h4>
-            <div className="flex items-center gap-2 text-xs text-gray-600">
-              <span className="px-2 py-1 bg-white rounded-lg">分类</span>
-              <span>→</span>
-              <span className="px-2 py-1 bg-white rounded-lg">语音</span>
-              <span>→</span>
-              <span className="px-2 py-1 bg-white rounded-lg">听写</span>
-              <span>→</span>
-              <span className="px-2 py-1 bg-white rounded-lg">填空</span>
-              <span>→</span>
-              <span className="px-2 py-1 bg-white rounded-lg">总结</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              未标熟悉的词会反复出现，直到全部掌握
-            </p>
-          </div>
-
-          <div className="text-center text-xs text-gray-400 mb-4">
-            <span className="inline-flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">空格</kbd> 播放发音
-            </span>
-            <span className="mx-2">·</span>
-            <span>每词 {CLASSIFY_TIME_SHORT}-{CLASSIFY_TIME_SENTENCE} 秒倒计时（长句子自动延长）</span>
-          </div>
-
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={dismissTutorial}
-            className="w-full py-3 bg-primary text-white rounded-2xl font-bold text-lg shadow-lg"
-          >
-            开始学习
-          </motion.button>
         </motion.div>
       </div>
     );
@@ -481,7 +491,7 @@ export default function ClassificationPhase({
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+          className="classify-learning-card bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
         >
           <div className="text-5xl mb-4">🔄</div>
           <h3 className="text-xl font-bold text-gray-800 mb-2">
@@ -511,144 +521,167 @@ export default function ClassificationPhase({
   const progress = timeLeft / currentMaxTime;
   const timerColor = timeLeft > currentMaxTime * 0.7 ? '#5FD35F' : timeLeft > currentMaxTime * 0.3 ? '#FFD23F' : '#FF5757';
 
+  const classifyChoices = [
+    {
+      category: 'familiar' as WordCategory,
+      label: '熟悉',
+      hint: '看到就懂',
+      key: '1',
+      icon: CheckCircle2,
+      tone: 'classify-choice-familiar',
+    },
+    {
+      category: 'semi' as WordCategory,
+      label: '夹生',
+      hint: '有印象但不稳',
+      key: '2',
+      icon: HelpCircle,
+      tone: 'classify-choice-semi',
+    },
+    {
+      category: 'unknown' as WordCategory,
+      label: '陌生',
+      hint: '需要重点学习',
+      key: '3',
+      icon: AlertCircle,
+      tone: 'classify-choice-unknown',
+    },
+  ];
+
   return (
-    <div className="flex flex-col min-h-[calc(100vh-64px)]">
-      {/* 卡片区域 */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 pb-4">
-        {/* 第几遍 + 进度 */}
-        <div className="mb-4 text-center">
-          {round > 1 && (
-            <span className="text-xs text-orange-500 font-medium mr-2">
-              第{round - 1}次补遍
-            </span>
-          )}
-          <span className="text-sm text-gray-400 font-medium">
-            {currentIndex + 1} / {roundWords.length}
-          </span>
-          {/* 教程原来每台设备只显示一次,家长/老师想再看"分类记忆法"介绍时找不到入口 */}
-          <button
-            onClick={() => setShowTutorial(true)}
-            className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition"
-            title="重看分类记忆法玩法说明"
-          >
-            ❓玩法
-          </button>
+    <div className="classify-study-flow flex flex-col gap-3 px-3 pb-4 sm:px-4">
+      <div className="classify-study-grid">
+        {/* 单词卡片：将进度、词汇信息和操作收在同一个稳定工作区内 */}
+        <motion.section
+          key={`${round}-${currentWord.id}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="classify-word-card mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white"
+        >
+        <div className="h-1.5 w-full bg-slate-100">
+          <motion.div
+            className="h-full rounded-r-full"
+            style={{ backgroundColor: timerColor }}
+            animate={{ width: `${progress * 100}%` }}
+            transition={{ duration: 0.1 }}
+          />
         </div>
 
-        {/* 单词卡片 */}
-          <div
-            key={`${round}-${currentWord.id}`}
-            className="bg-white rounded-3xl shadow-lg w-full max-w-md overflow-hidden"
-          >
-            {/* 顶部倒计时条 */}
-            <div className="h-1.5 bg-gray-100 w-full">
-              <motion.div
-                className="h-full rounded-r-full"
-                style={{ backgroundColor: timerColor }}
-                animate={{ width: `${progress * 100}%` }}
-                transition={{ duration: 0.1 }}
-              />
-            </div>
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="classify-stage-label">分类识别</span>
+            <span className="text-xs text-slate-400">{currentIndex + 1}/{roundWords.length}</span>
+            {round > 1 && <span className="classify-round-badge">补遍 {round - 1}</span>}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="classify-timer-chip" style={{ color: timerColor }}>
+              <Clock3 className="h-3.5 w-3.5" />
+              {Math.ceil(timeLeft)}s
+            </span>
+            <button
+              onClick={() => setShowTutorial(true)}
+              className="classify-help-chip inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition"
+              title="重看分类记忆法玩法说明"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />玩法
+            </button>
+          </div>
+        </div>
 
-            {/* 倒计时秒数 */}
-            <div className="flex justify-end px-5 pt-2">
-              <span
-                className="text-sm font-bold tabular-nums"
-                style={{ color: timerColor }}
-              >
-                {Math.ceil(timeLeft)}s
-              </span>
-            </div>
+        <div className="flex flex-col items-center px-4 py-4 text-center sm:px-8 sm:py-5">
+          <p className="mb-2 text-[11px] font-semibold tracking-[0.12em] text-slate-400">先想意思，再看提示</p>
+          <AutoFitText maxPx={44} minPx={22} fitKey={currentWord.word} className="mb-2 w-full">
+            <ColoredWord
+              word={currentWord.word}
+              syllables={currentWord.syllables}
+              className="classify-word-title font-bold"
+            />
+          </AutoFitText>
 
-            {/* 卡片内容 */}
-            <div className="px-8 pb-8 pt-2 text-center">
-              <AutoFitText maxPx={48} minPx={22} fitKey={currentWord.word} className="mb-3">
-                <ColoredWord
-                  word={currentWord.word}
-                  syllables={currentWord.syllables}
-                  className="font-bold"
-                />
-              </AutoFitText>
-
-              {currentWord.phonetic && (
-                <div className="mb-3 flex justify-center">
-                  <ColoredPhonetic phonetic={currentWord.phonetic} size="sm" />
-                </div>
-              )}
-
-              {currentWord.meaning && (
-                <p className="text-lg text-gray-600 mb-3">
-                  {currentWord.part_of_speech && (
-                    <span className="text-sm text-gray-400 mr-1">
-                      {currentWord.part_of_speech}
-                    </span>
-                  )}
-                  {currentWord.meaning}
-                </p>
-              )}
-
-              {/* AI记忆妙招: 第1轮就可点——陌生词第一次见才最需要记忆法,
-                  原来要求 round>=2(错过一次才给)导致"分类记忆法不显示"的困惑。
-                  点了才调 AI(后端 ai_quota 限流 + words.memory_hook 全平台缓存),不点零成本 */}
-              {memoryHook?.wordId === currentWord.id ? (
-                <div className="mb-3 px-4 py-2 bg-purple-50 rounded-xl text-left text-sm text-purple-700">
-                  💡 {memoryHook.text}
-                </div>
-              ) : (
-                <button
-                  onClick={fetchMemoryHook}
-                  disabled={hookLoading}
-                  className="mb-3 text-xs px-3 py-1.5 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200 transition disabled:opacity-60"
-                >
-                  {hookLoading ? '妙招生成中…' : '💡 记忆妙招'}
-                </button>
-              )}
-
-              {currentWord.example_sentence && (
-                <div className="mt-2 px-4 py-3 bg-amber-50 rounded-xl text-left">
-                  <p className="text-sm text-gray-700 italic leading-relaxed">
-                    📖 {currentWord.example_sentence}
-                  </p>
-                  {currentWord.example_translation && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      {currentWord.example_translation}
-                    </p>
-                  )}
-                </div>
-              )}
-
+          {currentWord.phonetic && (
+            <div className="mb-3 flex items-center justify-center gap-2">
+              <ColoredPhonetic phonetic={currentWord.phonetic} size="sm" />
               <button
-                onClick={() => playAudio(currentWord.word, 1, currentWord.id)}
-                className="mt-4 p-3 rounded-full bg-blue-50 hover:bg-blue-100 transition active:scale-95"
+                onClick={() => {
+                  playAudio(currentWord.word, 1, currentWord.id);
+                }}
+                className="classify-audio-button inline-flex h-8 w-8 items-center justify-center rounded-md transition active:scale-95"
+                title="播放发音"
               >
-                <span className="text-2xl">🔊</span>
+                <Volume2 className="h-4 w-4" />
               </button>
             </div>
-          </div>
-      </div>
+          )}
 
-      {/* 底部分类按钮 */}
-      <div className="sticky bottom-0 bg-gradient-to-t from-orange-50 via-orange-50/90 to-transparent pt-6 pb-6 px-4">
-        <div className="flex gap-3 justify-center max-w-md mx-auto">
-          {[
-            { category: 'familiar' as WordCategory, emoji: '😊', label: '熟悉', key: '1', color: 'bg-green-500 hover:bg-green-600 shadow-green-200' },
-            { category: 'semi' as WordCategory, emoji: '🤔', label: '夹生', key: '2', color: 'bg-orange-500 hover:bg-orange-600 shadow-orange-200' },
-            { category: 'unknown' as WordCategory, emoji: '😰', label: '陌生', key: '3', color: 'bg-red-500 hover:bg-red-600 shadow-red-200' },
-          ].map(btn => (
-            <motion.button
-              key={btn.category}
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.92 }}
-              onClick={() => handleClassify(btn.category)}
-              disabled={isTransitioning}
-              className={`${btn.color} text-white rounded-2xl flex-1 py-4 flex flex-col items-center gap-1 shadow-lg transition disabled:opacity-60`}
-            >
-              <span className="text-3xl">{btn.emoji}</span>
-              <span className="text-sm font-medium">{btn.label}</span>
-              <kbd className="text-[10px] opacity-70 bg-white/20 px-1.5 py-0.5 rounded">{btn.key}</kbd>
-            </motion.button>
-          ))}
+          {currentWord.meaning && (
+            <div className="classify-meaning-panel mb-3 w-full max-w-lg px-3.5 py-2.5 text-left">
+              <p className="text-base font-semibold text-slate-700 sm:text-lg">
+                {currentWord.part_of_speech && <span className="mr-2 text-sm font-medium text-slate-400">{currentWord.part_of_speech}</span>}
+                {currentWord.meaning}
+              </p>
+            </div>
+          )}
+
+          <div className="flex min-h-8 items-center justify-center">
+            {memoryHook?.wordId === currentWord.id ? (
+              <div className="classify-memory-tip flex max-w-lg items-start gap-2 px-3 py-2 text-left text-xs sm:text-sm">
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{memoryHook.text}</span>
+              </div>
+            ) : (
+              <button
+                onClick={fetchMemoryHook}
+                disabled={hookLoading}
+                className="classify-memory-button inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition disabled:opacity-60"
+              >
+                <Lightbulb className="h-3.5 w-3.5" />
+                {hookLoading ? '妙招生成中…' : '记忆妙招'}
+              </button>
+            )}
+          </div>
+
+          {currentWord.example_sentence && (
+            <div className="classify-example-panel mt-3 w-full max-w-lg px-3.5 py-2.5 text-left">
+              <p className="text-sm leading-relaxed text-slate-600">{currentWord.example_sentence}</p>
+              {currentWord.example_translation && <p className="mt-1 text-xs text-slate-400">{currentWord.example_translation}</p>}
+            </div>
+          )}
         </div>
+        </motion.section>
+
+        {/* 三个分类卡：不再用大块高饱色，让学生依靠图标、文案和边框做快速判断 */}
+        <section className="classify-decision-panel mx-auto w-full max-w-2xl">
+        <div className="mb-2 flex items-end justify-between gap-3 px-1">
+          <div>
+            <h2 className="text-base font-bold text-slate-800">选择熟悉程度</h2>
+            <p className="mt-0.5 text-xs text-slate-400">凭第一反应判断</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+          {classifyChoices.map((choice) => {
+            const Icon = choice.icon;
+            return (
+              <motion.button
+                key={choice.category}
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleClassify(choice.category)}
+                disabled={isTransitioning}
+                className={`classify-decision-card ${choice.tone} group relative flex min-h-[4.5rem] flex-col items-start justify-between rounded-lg p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-55 sm:min-h-[4.5rem] sm:p-3`}
+              >
+                <span className="flex w-full items-center justify-between">
+                  <span className="classify-choice-icon inline-flex h-7 w-7 items-center justify-center rounded-md">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <kbd className="classify-choice-key rounded px-1.5 py-0.5 text-[10px] font-semibold">{choice.key}</kbd>
+                </span>
+                <span className="mt-1.5 block text-sm font-bold sm:text-base">{choice.label}</span>
+                <span className="mt-0.5 hidden truncate text-[11px] opacity-75 sm:block sm:text-xs">{choice.hint}</span>
+              </motion.button>
+            );
+          })}
+        </div>
+        </section>
       </div>
     </div>
   );

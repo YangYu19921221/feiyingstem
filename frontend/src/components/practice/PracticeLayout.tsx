@@ -50,7 +50,7 @@ const PracticeLayout: React.FC<PracticeLayoutProps> = ({
 }) => {
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-[#edf5fb]">
         <div className="text-center">
           <div className="text-4xl mb-4 animate-bounce">📝</div>
           <p className="text-gray-500">{loadingText}</p>
@@ -60,7 +60,7 @@ const PracticeLayout: React.FC<PracticeLayoutProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-amber-50">
+    <div className="min-h-screen bg-[#edf5fb]">
       <div className="max-w-2xl lg:max-w-6xl mx-auto px-4 py-6">
         <PracticeHeader
           unitName={unitName}

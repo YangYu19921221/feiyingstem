@@ -20,7 +20,7 @@ const AdminTeacherDetailPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-4 border-orange-500 border-t-transparent"></div>
       </div>
     );
@@ -28,24 +28,24 @@ const AdminTeacherDetailPage = () => {
 
   if (!teacher) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-gray-500">教师不存在或加载失败</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-paper">
+      <nav className="bg-white border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/admin/teachers')} className="text-gray-600 hover:text-gray-800">← 返回</button>
+          <button onClick={() => navigate('/admin/teachers')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-slate-50">← 返回</button>
           <h1 className="text-xl font-bold text-gray-800">教师详情</h1>
         </div>
       </nav>
 
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         {/* 教师信息卡片 */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">基本信息</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
@@ -70,15 +70,15 @@ const AdminTeacherDetailPage = () => {
         </div>
 
         {/* 班级列表 */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
           <div className="px-6 py-4 border-b">
             <h2 className="text-lg font-bold text-gray-800">管理的班级 ({teacher.classes.length})</h2>
           </div>
           {teacher.classes.length === 0 ? (
             <div className="px-6 py-10 text-center text-gray-400">该教师暂无班级</div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+            <table className="w-full min-w-[680px] whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">班级名称</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">描述</th>
@@ -88,7 +88,7 @@ const AdminTeacherDetailPage = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {teacher.classes.map((cls) => (
-                  <tr key={cls.id} className="hover:bg-gray-50">
+                  <tr key={cls.id} className="hover:bg-slate-50/70">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{cls.name}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{cls.description || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">

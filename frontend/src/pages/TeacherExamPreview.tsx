@@ -240,7 +240,7 @@ const TeacherExamPreview = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-gray-500 mt-4">加载试卷中...</p>
@@ -251,7 +251,7 @@ const TeacherExamPreview = () => {
 
   if (!exam) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
         <div className="text-center">
           <span className="text-6xl mb-4 block">😕</span>
           <p className="text-gray-500">未找到试卷</p>
@@ -267,11 +267,11 @@ const TeacherExamPreview = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部工具栏 */}
-      <div className="bg-white shadow-sm sticky top-0 z-10 print:hidden">
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur print:hidden">
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               onClick={() => navigate(-1)}
               className="flex items-center gap-2 text-gray-600 hover:text-primary transition"
@@ -280,7 +280,7 @@ const TeacherExamPreview = () => {
               <span>返回</span>
             </button>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setShowAnswers(!showAnswers)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
@@ -325,7 +325,7 @@ const TeacherExamPreview = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-8 shadow-lg mb-8 print:shadow-none print:rounded-none"
+          className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 print:rounded-none print:shadow-none"
         >
           {/* 试卷标题 */}
           <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
@@ -426,7 +426,7 @@ const TeacherExamPreview = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 * sectionIndex }}
-                  className="bg-white rounded-2xl p-8 shadow-lg print:shadow-none print:rounded-none print:break-inside-avoid"
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-none print:shadow-none print:break-inside-avoid sm:p-8"
                 >
                   {/* 题型标题 */}
                   <div className="flex items-center gap-3 mb-6 pb-4 border-b-2 border-gray-800">
@@ -516,7 +516,7 @@ const TeacherExamPreview = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 * sectionIndex }}
-                  className="bg-white rounded-2xl p-8 shadow-lg print:shadow-none print:rounded-none print:break-inside-avoid"
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-none print:shadow-none print:break-inside-avoid sm:p-8"
                 >
                   {/* 题型标题 */}
                   <div className="flex items-center gap-3 mb-6 pb-4 border-b-2 border-gray-800">
@@ -613,7 +613,7 @@ const TeacherExamPreview = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 * sectionIndex }}
-                className="bg-white rounded-2xl p-8 shadow-lg print:shadow-none print:rounded-none print:break-inside-avoid"
+                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm print:rounded-none print:shadow-none print:break-inside-avoid sm:p-8"
               >
                 {/* 题型标题 */}
                 <div className="flex items-center gap-3 mb-6 pb-4 border-b-2 border-gray-800">

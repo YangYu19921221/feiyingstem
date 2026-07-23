@@ -1,349 +1,89 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { ArrowRight, BarChart3, BookOpen, BookOpenText, CalendarCheck2, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, GraduationCap, LogOut, PencilLine, Radio, Settings2, Sparkles, Swords, Trophy, Users } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
 
-interface UserData {
-  id: number;
-  username: string;
-  full_name: string;
-  role: string;
-}
-
+interface UserData { username: string; full_name: string }
 interface DashboardStats {
-  total_words: number;
-  total_books: number;
-  total_students: number;
-  weekly_passages: number;
-  recent_words: Array<{
-    word: string;
-    status: string;
-    date: string;
-  }>;
-  today_active_students: number;
-  pending_assignments: number;
-  completion_rate: number;
-  weekly_new_assignments: number;
+  total_words: number; total_books: number; total_students: number; weekly_passages: number;
+  recent_words: Array<{ word: string; status: string; date: string }>;
+  today_active_students: number; pending_assignments: number; completion_rate: number; weekly_new_assignments: number;
 }
+interface RecentActivity { type: 'homework' | 'unit'; student_name: string; title: string; score: number | null; time: string }
+interface ActionItem { title: string; description: string; route: string; icon: LucideIcon; tone: string }
 
-interface RecentActivity {
-  type: 'homework' | 'unit';
-  student_name: string;
-  title: string;
-  score: number | null;
-  time: string; // 北京时间 MM-DD HH:MM,后端已格式化
-}
+const actions: ActionItem[] = [
+  { title: '单词本管理', description: '管理单元和词汇', route: '/teacher/books', icon: BookOpenText, tone: 'bg-orange-50 text-orange-600' },
+  { title: '班级管理', description: '班级分组和数据', route: '/teacher/classes', icon: Users, tone: 'bg-cyan-50 text-cyan-600' },
+  { title: '阅读理解', description: '文章和题目', route: '/teacher/reading', icon: BookOpen, tone: 'bg-blue-50 text-blue-600' },
+  { title: '句子背诵', description: '句子集和导入', route: '/teacher/sentences', icon: PencilLine, tone: 'bg-emerald-50 text-emerald-600' },
+  { title: '竞赛管理', description: '生成和管理题目', route: '/teacher/competition', icon: Trophy, tone: 'bg-amber-50 text-amber-600' },
+  { title: 'PK 晋级赛', description: '分组与淘汰赛', route: '/teacher/tournaments', icon: GraduationCap, tone: 'bg-violet-50 text-violet-600' },
+  { title: 'PK 对战房间', description: '建房组织个人/分组对战', route: '/pk/lobby', icon: Swords, tone: 'bg-rose-50 text-rose-600' },
+  { title: '实时课堂', description: '查看课堂状态', route: '/teacher/live', icon: Radio, tone: 'bg-rose-50 text-rose-600' },
+  { title: '签到记录', description: '每日签到与历史', route: '/teacher/checkins', icon: CalendarCheck2, tone: 'bg-sky-50 text-sky-600' },
+  { title: '分配单词本', description: '规划学生学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'bg-indigo-50 text-indigo-600' },
+  { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'bg-green-50 text-green-600' },
+  { title: '金币管理', description: '奖励与兑换记录', route: '/teacher/coins', icon: CircleDollarSign, tone: 'bg-yellow-50 text-yellow-600' },
+  { title: '学生监控', description: '查看学习数据', route: '/teacher/students', icon: BarChart3, tone: 'bg-teal-50 text-teal-600' },
+];
+const statItems: Array<{ label: string; key: keyof DashboardStats; icon: LucideIcon; tone: string }> = [
+  { label: '词汇总量', key: 'total_words', icon: BookOpenText, tone: 'bg-orange-50 text-orange-600' },
+  { label: '单词本', key: 'total_books', icon: BookOpen, tone: 'bg-cyan-50 text-cyan-600' },
+  { label: '学生人数', key: 'total_students', icon: Users, tone: 'bg-blue-50 text-blue-600' },
+  { label: '本周文章', key: 'weekly_passages', icon: ClipboardList, tone: 'bg-emerald-50 text-emerald-600' },
+];
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
-
-  // 直接从 localStorage 初始化用户数据,避免闪烁
-  const [user] = useState<UserData | null>(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        return JSON.parse(userStr);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
-
+  const [user] = useState<UserData | null>(() => { try { return JSON.parse(localStorage.getItem('user') || 'null') as UserData | null; } catch { return null; } });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activities, setActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const loadStats = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const headers = { Authorization: `Bearer ${token}` };
-      // 统计与动态并行加载,动态失败不影响统计展示
-      // 注意:必须用 /teacher/dashboard/stats——/teacher/stats 被"单词本分配统计"路由遮蔽
-      const [statsRes, actRes] = await Promise.allSettled([
-        axios.get(`${API_BASE_URL}/teacher/dashboard/stats`, { headers }),
-        axios.get(`${API_BASE_URL}/teacher/recent-activities`, { headers }),
-      ]);
-      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
-      if (actRes.status === 'fulfilled') setActivities(actRes.value.data.activities || []);
-    } catch (error) {
-      console.error('加载统计数据失败:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
-
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeUsername, setShowChangeUsername] = useState(false);
 
-  const quickActions = [
-    { icon: '📚', title: '单词本管理', desc: '管理单元和单词', color: 'from-blue-500 to-cyan-500', route: '/teacher/books' },
-    { icon: '🏫', title: '班级管理', desc: '班级分组和每日数据', color: 'from-indigo-500 to-purple-500', route: '/teacher/classes' },
-    { icon: '📝', title: '阅读理解', desc: '文章和题目', color: 'from-yellow-500 to-orange-500', route: '/teacher/reading' },
-    { icon: '💬', title: '句子背诵', desc: '句子集 · 单元 · CSV 导入', color: 'from-green-500 to-emerald-500', route: '/teacher/sentences' },
-    { icon: '🏆', title: '竞赛管理', desc: 'AI生成题目', color: 'from-red-500 to-pink-500', route: '/teacher/competition' },
-    { icon: '⚔️', title: 'PK 晋级赛', desc: '分组·淘汰·自动出冠军', color: 'from-violet-500 to-fuchsia-500', route: '/teacher/tournaments' },
-    { icon: '📡', title: '实时课堂', desc: '谁在学·谁切屏了', color: 'from-emerald-500 to-green-500', route: '/teacher/live' },
-    { icon: '📍', title: '签到记录', desc: '每日签到·历史可查', color: 'from-cyan-500 to-sky-500', route: '/teacher/checkins' },
-    { icon: '📤', title: '分配单词本', desc: '划学习范围:整本/单元/分组', color: 'from-orange-500 to-red-500', route: '/teacher/assignments' },
-    { icon: '📘', title: '作业管理', desc: '布置作业·目标分·截止', color: 'from-sky-500 to-blue-500', route: '/teacher/homework' },
-    { icon: '🪙', title: '金币管理', desc: '完成作业/单词王发币·兑换记录', color: 'from-amber-500 to-yellow-500', route: '/teacher/coins' },
-    { icon: '📊', title: '学生监控', desc: '查看学习数据', color: 'from-green-500 to-teal-500', route: '/teacher/students' },
-    { icon: '📋', title: '测评线索', desc: '地推扫码线索', color: 'from-pink-500 to-rose-500', route: '/teacher/leads' },
-  ];
+  useEffect(() => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
+    Promise.allSettled([
+      axios.get(`${API_BASE_URL}/teacher/dashboard/stats`, { headers }),
+      axios.get(`${API_BASE_URL}/teacher/recent-activities`, { headers }),
+    ]).then(([statsResult, activitiesResult]) => {
+      if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
+      if (activitiesResult.status === 'fulfilled') setActivities(activitiesResult.value.data?.activities || []);
+    }).catch((error) => console.error('加载教师工作台失败:', error)).finally(() => setLoading(false));
+  }, []);
 
-  const statsCards = [
-    { label: '总单词数', valueKey: 'total_words', icon: '📚', color: 'bg-blue-100 text-blue-600' },
-    { label: '单词本数', valueKey: 'total_books', icon: '📖', color: 'bg-purple-100 text-purple-600' },
-    { label: '学生人数', valueKey: 'total_students', icon: '👥', color: 'bg-green-100 text-green-600' },
-    { label: '本周文章', valueKey: 'weekly_passages', icon: '📝', color: 'bg-orange-100 text-orange-600' },
-  ];
+  const logout = () => { localStorage.removeItem('access_token'); localStorage.removeItem('user'); navigate('/login'); };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">👨‍🏫</span>
-            <h1 className="text-xl font-bold text-gray-800">教师工作台</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              👤 {user?.full_name || '教师'}
-            </span>
-            <button
-              onClick={() => setShowChangeUsername(true)}
-              className="text-sm px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition"
-            >
-              修改用户名
-            </button>
-            <button
-              onClick={() => setShowChangePassword(true)}
-              className="text-sm px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition"
-            >
-              修改密码
-            </button>
-            <button
-              onClick={handleLogout}
-              className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
-            >
-              退出
-            </button>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen text-slate-800">
+      <nav className="bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600"><GraduationCap className="h-5 w-5" /></div><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Teacher workspace</p><h1 className="truncate text-lg font-bold">教师工作台</h1></div></div>
+        <div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm sm:flex"><span className="h-2 w-2 rounded-full bg-emerald-500" /><span className="max-w-[10rem] truncate">{user?.full_name || '教师'}</span></div><button type="button" onClick={() => setShowChangeUsername(true)} className="hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 sm:block" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button><button type="button" onClick={logout} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="退出登录" aria-label="退出登录"><LogOut className="h-4 w-4" /></button></div>
+      </div></nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* 欢迎横幅 */}
-        <div
-          className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 mb-8 text-white shadow-lg"
-        >
-          <h2 className="text-2xl font-bold mb-2">
-            👋 欢迎回来, {user?.full_name}老师!
-          </h2>
-          <p className="opacity-90">今天有 {stats?.today_active_students || 0} 个学生完成了学习任务,继续加油!</p>
-        </div>
+      <main className="mx-auto max-w-7xl space-y-7 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <section className="staff-colorful-surface overflow-hidden rounded-2xl border border-orange-100 p-5 shadow-md sm:p-7"><div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1 text-xs font-semibold text-orange-700"><Sparkles className="h-3.5 w-3.5" /> 今日教学概览</div><h2 className="text-2xl font-bold tracking-tight sm:text-3xl">欢迎回来，{user?.full_name || '老师'}</h2><p className="mt-2 text-sm leading-6 text-slate-600">今天有 <span className="font-bold text-orange-600">{stats?.today_active_students || 0}</span> 位学生完成学习，继续保持课堂节奏。</p></div><button type="button" onClick={() => navigate('/teacher/analytics')} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700">查看教学数据 <ArrowRight className="h-4 w-4" /></button></div></section>
 
-        {/* 数据统计卡片 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {statsCards.map((card) => (
-            <div
-              key={card.label}
-              className="bg-white rounded-xl p-6 shadow-md"
-            >
-              <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg ${card.color} mb-3`}>
-                <span className="text-2xl">{card.icon}</span>
-              </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-1">
-                {loading ? '...' : String(stats?.[card.valueKey as keyof DashboardStats] || 0)}
-              </h3>
-              <p className="text-sm text-gray-500">{card.label}</p>
-            </div>
-          ))}
-        </div>
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">{statItems.map(({ label, key, icon: Icon, tone }) => <div key={label} className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5"><div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg ${tone}`}><Icon className="h-5 w-5" /></div><p className="text-2xl font-bold tracking-tight">{loading ? '—' : Number(stats?.[key] || 0).toLocaleString()}</p><p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">{label}</p></div>)}</section>
 
-        {/* 快速操作 */}
-        <div className="mb-8">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">快速操作</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {quickActions.map((action) => (
-              <button
-                key={action.title}
-                onClick={() => navigate(action.route)}
-                className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all text-center group"
-              >
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-r ${action.color} mb-3 group-hover:scale-110 transition`}>
-                  <span className="text-3xl">{action.icon}</span>
-                </div>
-                <h4 className="font-bold text-gray-800 mb-1">{action.title}</h4>
-                <p className="text-xs text-gray-500">{action.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <section><div className="mb-3 flex items-end justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Workspace tools</p><h3 className="mt-1 text-xl font-bold">常用工具</h3></div><span className="text-xs text-slate-400">{actions.length} 项教学工具</span></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">{actions.map(({ title, description, route, icon: Icon, tone }) => <button key={route} type="button" onClick={() => navigate(route)} className="group rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"><div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg ${tone}`}><Icon className="h-5 w-5" /></div><p className="text-sm font-bold">{title}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{description}</p><ArrowRight className="mt-3 h-4 w-4 text-slate-300 transition group-hover:translate-x-1 group-hover:text-slate-600" /></button>)}</div></section>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* 最近录入的单词 */}
-          <div
-            className="bg-white rounded-2xl p-6 shadow-md"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <span>📝</span> 最近录入的单词
-              </h3>
-              <button onClick={() => navigate('/teacher/books')} className="text-sm text-blue-600 hover:text-blue-700">
-                查看全部 →
-              </button>
-            </div>
-            <div className="space-y-3">
-              {loading ? (
-                <div className="text-center text-gray-500 py-4">加载中...</div>
-              ) : stats?.recent_words && stats.recent_words.length > 0 ? (
-                stats.recent_words.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-                  >
-                    <div>
-                      <h4 className="font-medium text-gray-800">{item.word}</h4>
-                      <p className="text-xs text-gray-500">{item.date}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      item.status === 'published'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {item.status === 'published' ? '已发布' : '草稿'}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center text-gray-500 py-4">暂无数据</div>
-              )}
-            </div>
-          </div>
+        <section className="grid gap-5 lg:grid-cols-[1fr_1.15fr]">
+          <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h3 className="font-bold">最近录入的单词</h3><p className="mt-1 text-xs text-slate-400">追踪内容库最近的变化</p></div><button type="button" onClick={() => navigate('/teacher/books')} className="inline-flex items-center gap-1 text-xs font-semibold text-orange-600">全部内容 <ChevronRight className="h-4 w-4" /></button></div><div className="space-y-2">{loading ? <div className="py-8 text-center text-sm text-slate-400">正在加载...</div> : stats?.recent_words?.length ? stats.recent_words.map((item, index) => <div key={`${item.word}-${index}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.word}</p><p className="mt-1 text-xs text-slate-400">{item.date}</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{item.status === 'published' ? '已发布' : '草稿'}</span></div>) : <div className="py-8 text-center text-sm text-slate-400">暂无单词记录</div>}</div></div>
+          <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h3 className="font-bold">最近学习动态</h3><p className="mt-1 text-xs text-slate-400">最近 3 天学生完成情况</p></div><button type="button" onClick={() => navigate('/teacher/activities')} className="inline-flex items-center gap-1 text-xs font-semibold text-orange-600">查看全部 <ChevronRight className="h-4 w-4" /></button></div><div className="max-h-72 space-y-2 overflow-y-auto">{loading ? <div className="py-8 text-center text-sm text-slate-400">正在加载...</div> : activities.length ? activities.map((activity, index) => <div key={`${activity.student_name}-${activity.time}-${index}`} className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3"><div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-orange-500"><CheckCircle2 className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-sm leading-5"><span className="font-semibold">{activity.student_name}</span>{activity.type === 'homework' ? ' 完成了作业 ' : ' 学完了 '}<span className="font-medium">{activity.title}</span></p><p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><Clock3 className="h-3 w-3" />{activity.time}</p></div>{activity.score !== null && <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${activity.score >= 80 ? 'bg-emerald-100 text-emerald-700' : activity.score >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{activity.score}分</span>}</div>) : <div className="py-8 text-center text-sm text-slate-400">最近还没有学习动态</div>}</div></div>
+        </section>
 
-          {/* 学生学习情况 */}
-          <div
-            className="bg-white rounded-2xl p-6 shadow-md hover:shadow-lg transition cursor-pointer"
-            onClick={() => navigate('/teacher/activities')}
-            title="点击查看全部动态并搜索"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <span>🔔</span> 今日动态
-              </h3>
-              <span className="text-sm text-blue-600 hover:text-blue-700">
-                查看全部 / 搜索 →
-              </span>
-            </div>
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {loading ? (
-                <div className="text-center text-gray-500 py-4">加载中...</div>
-              ) : activities.length > 0 ? (
-                activities.map((act, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-                  >
-                    <span className="text-lg shrink-0">{act.type === 'homework' ? '📘' : '✅'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-800">
-                        <span className="font-semibold">{act.student_name}</span>
-                        {act.type === 'homework' ? ' 完成了作业 ' : ' 学完了 '}
-                        <span className="font-medium">{act.title}</span>
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{act.time}</p>
-                    </div>
-                    {act.score !== null && (
-                      <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-full ${
-                        act.score >= 80
-                          ? 'bg-green-100 text-green-700'
-                          : act.score >= 60
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-red-100 text-red-600'
-                      }`}>
-                        {act.score}分
-                      </span>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-                  <div className="text-4xl mb-2">🌱</div>
-                  <p className="text-sm">最近 3 天还没有学生完成作业或单元</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 单词本分配统计 */}
-        <div
-          className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-200"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="text-5xl">📚</div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">
-                  单词本分配管理
-                </h3>
-                <p className="text-sm text-gray-600">
-                  学生通过AI系统会根据他们的薄弱单词自动生成个性化练习题
-                </p>
-                <div className="flex gap-6 mt-3">
-                  <div>
-                    <span className="text-xs text-gray-500">待分配单词本</span>
-                    <p className="text-2xl font-bold text-blue-600">{stats?.pending_assignments || 0}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500">学生完成率</span>
-                    <p className="text-2xl font-bold text-green-600">{stats?.completion_rate || 0}%</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500">本周新增</span>
-                    <p className="text-2xl font-bold text-purple-600">{stats?.weekly_new_assignments || 0}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => navigate('/teacher/assignments')}
-              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:shadow-lg transition font-medium whitespace-nowrap"
-            >
-              分配单词本 →
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <ChangePasswordModal
-        isOpen={showChangePassword}
-        onClose={() => setShowChangePassword(false)}
-      />
-
-      <ChangeUsernameModal
-        isOpen={showChangeUsername}
-        onClose={() => setShowChangeUsername(false)}
-        currentUsername={user?.username}
-      />
+        <section className="staff-colorful-surface flex flex-col gap-5 rounded-xl border border-cyan-100 p-5 sm:p-6 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-4"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-600 shadow-sm"><ClipboardList className="h-5 w-5" /></div><div><h3 className="font-bold">单词本分配管理</h3><p className="mt-1 text-sm text-slate-600">集中规划学生的学习范围，让个性化练习更有节奏。</p><div className="mt-4 flex flex-wrap gap-x-7 gap-y-2"><div><p className="text-xs text-slate-500">待分配</p><p className="text-xl font-bold text-indigo-600">{stats?.pending_assignments || 0}</p></div><div><p className="text-xs text-slate-500">完成率</p><p className="text-xl font-bold text-emerald-600">{stats?.completion_rate || 0}%</p></div><div><p className="text-xs text-slate-500">本周新增</p><p className="text-xl font-bold text-orange-600">{stats?.weekly_new_assignments || 0}</p></div></div></div></div><button type="button" onClick={() => navigate('/teacher/assignments')} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:shadow-md">开始分配 <ArrowRight className="h-4 w-4" /></button></section>
+      </main>
+      <ChangePasswordModal isOpen={showChangePassword} onClose={() => setShowChangePassword(false)} />
+      <ChangeUsernameModal isOpen={showChangeUsername} onClose={() => setShowChangeUsername(false)} currentUsername={user?.username} />
     </div>
   );
 };
-
 export default TeacherDashboard;

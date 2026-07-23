@@ -210,9 +210,9 @@ const AdminUserManagement = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm border-b">
+      <nav className="sticky top-0 z-20 bg-white/85 shadow-sm border-b border-slate-200/80 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <button
@@ -221,7 +221,10 @@ const AdminUserManagement = () => {
             >
               ← 返回
             </button>
-            <h1 className="text-xl font-bold text-gray-800">用户管理</h1>
+            <div>
+              <h1 className="font-display text-xl font-bold text-gray-800">用户管理</h1>
+              <p className="hidden text-xs text-slate-500 sm:block">查询账号、角色与启用状态</p>
+            </div>
           </div>
         </div>
       </nav>
@@ -230,23 +233,23 @@ const AdminUserManagement = () => {
         {/* 统计卡片 */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <div className="bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-xl border-t-2 border-slate-400 p-4 shadow-sm">
               <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
               <div className="text-sm text-gray-500">总用户数</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-xl border-t-2 border-emerald-400 p-4 shadow-sm">
               <div className="text-2xl font-bold text-green-600">{stats.active}</div>
               <div className="text-sm text-gray-500">活跃用户</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-xl border-t-2 border-blue-400 p-4 shadow-sm">
               <div className="text-2xl font-bold text-blue-600">{stats.by_role.student}</div>
               <div className="text-sm text-gray-500">学生</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-xl border-t-2 border-violet-400 p-4 shadow-sm">
               <div className="text-2xl font-bold text-purple-600">{stats.by_role.teacher}</div>
               <div className="text-sm text-gray-500">教师</div>
             </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm">
+            <div className="bg-white rounded-xl border-t-2 border-rose-400 p-4 shadow-sm">
               <div className="text-2xl font-bold text-red-600">{stats.by_role.admin}</div>
               <div className="text-sm text-gray-500">管理员</div>
             </div>
@@ -254,7 +257,7 @@ const AdminUserManagement = () => {
         )}
 
         {/* 搜索和筛选 */}
-        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-6">
           <div className="flex flex-wrap gap-4">
             <input
               type="text"
@@ -305,7 +308,7 @@ const AdminUserManagement = () => {
         </div>
 
         {/* 用户列表 */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent"></div>

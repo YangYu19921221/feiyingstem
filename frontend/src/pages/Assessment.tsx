@@ -214,7 +214,7 @@ const Assessment = () => {
                       key={g}
                       onClick={() => setGrade(g)}
                       className={`flex-1 py-3 rounded-xl font-medium transition ${
-                        grade === g ? 'bg-indigo-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        grade === g ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       {g}
@@ -246,7 +246,7 @@ const Assessment = () => {
                 whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                 onClick={handleStart}
                 disabled={loading}
-                className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl font-bold text-lg shadow-lg disabled:opacity-50"
+                className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-bold text-lg shadow-md disabled:opacity-50 transition-colors"
               >
                 {loading ? '准备中...' : '开始公益体检'}
               </motion.button>
@@ -263,7 +263,7 @@ const Assessment = () => {
                 {words.map((_, i) => (
                   <div key={i} className={`flex-1 h-2 rounded-full transition-all ${
                     i < currentIndex ? 'bg-green-400' :
-                    i === currentIndex ? 'bg-indigo-500' : 'bg-gray-200'
+                    i === currentIndex ? 'bg-orange-500' : 'bg-gray-200'
                   }`} />
                 ))}
               </div>
@@ -297,10 +297,10 @@ const Assessment = () => {
                     </div>
                   ) : isEvaluating ? (
                     <div className="flex flex-col items-center">
-                      <div className="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center mb-3">
+                      <div className="w-20 h-20 rounded-full bg-orange-100 flex items-center justify-center mb-3">
                         <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="text-3xl">⏳</motion.span>
                       </div>
-                      <p className="text-indigo-500 font-medium">正在评分...</p>
+                      <p className="text-orange-600 font-medium">正在评分...</p>
                     </div>
                   ) : currentScore ? (
                     <div className="flex flex-col items-center">
@@ -345,7 +345,7 @@ const Assessment = () => {
                     <motion.button
                       whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                       onClick={startRecording}
-                      className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg mx-auto"
+                      className="w-20 h-20 rounded-full bg-orange-500 flex items-center justify-center shadow-lg mx-auto"
                     >
                       <span className="text-3xl text-white">🎤</span>
                     </motion.button>
@@ -359,7 +359,7 @@ const Assessment = () => {
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   onClick={handleNext}
                   disabled={loading}
-                  className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl font-bold text-lg shadow-lg disabled:opacity-50"
+                  className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-bold text-lg shadow-md disabled:opacity-50 transition-colors"
                 >
                   {loading ? '生成报告中...' : currentIndex < words.length - 1 ? '下一个 →' : '查看报告'}
                 </motion.button>
@@ -436,12 +436,12 @@ const Assessment = () => {
               )}
 
               {/* CTA: 获取深度报告 */}
-              <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl p-6 text-white text-center shadow-lg">
+              <div className="bg-orange-500 rounded-2xl p-6 text-white text-center shadow-md">
                 <h3 className="text-lg font-bold mb-2">获取完整体检报告</h3>
                 <p className="text-white/80 text-sm mb-4">包含个性化学习路径 + 发音纠错建议 + 薄弱点详解</p>
                 <button
                   onClick={() => setPhase('phone')}
-                  className="w-full py-3 bg-white text-indigo-600 rounded-xl font-bold shadow-md hover:shadow-lg transition"
+                  className="w-full py-3 bg-white text-orange-600 rounded-xl font-bold shadow-md hover:shadow-lg transition"
                 >
                   免费获取完整报告 →
                 </button>
@@ -464,13 +464,13 @@ const Assessment = () => {
                   <input
                     type="tel" value={phone} onChange={e => setPhone(e.target.value)}
                     placeholder="请输入手机号" maxLength={11}
-                    className="flex-1 px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                    className="flex-1 px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                   />
                   <button
                     onClick={handleSendCode}
                     disabled={isActive || sendingCode}
                     className={`px-4 py-3 rounded-xl text-sm font-medium whitespace-nowrap ${
-                      isActive || sendingCode ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                      isActive || sendingCode ? 'bg-gray-100 text-gray-400' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
                     }`}
                   >
                     {sendingCode ? '...' : isActive ? `${remaining}s` : '发送验证码'}
@@ -481,7 +481,7 @@ const Assessment = () => {
                 <input
                   type="text" value={code} onChange={e => setCode(e.target.value)}
                   placeholder="请输入验证码" maxLength={6}
-                  className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                  className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-400 focus:border-transparent"
                 />
               </div>
 
@@ -490,7 +490,7 @@ const Assessment = () => {
               <button
                 onClick={handleVerify}
                 disabled={loading || !phone || !code}
-                className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl font-bold text-lg shadow-lg disabled:opacity-50"
+                className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-bold text-lg shadow-md disabled:opacity-50 transition-colors"
               >
                 {loading ? 'AI分析中...' : '获取完整报告'}
               </button>
@@ -510,7 +510,7 @@ const Assessment = () => {
               </div>
 
               {/* 总评 */}
-              <div className="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl p-6 text-white mb-4 shadow-lg">
+              <div className="bg-orange-500 rounded-2xl p-6 text-white mb-4 shadow-md">
                 <p className="text-lg font-medium">{deepReport.summary}</p>
                 <div className="flex gap-3 mt-3">
                   <span className="px-3 py-1 bg-white/20 rounded-full text-sm">{report?.grade_label}</span>
@@ -567,7 +567,7 @@ const Assessment = () => {
               )}
 
               {/* 教师联系 */}
-              <div className="bg-gradient-to-r from-green-400 to-teal-500 rounded-2xl p-6 text-white text-center shadow-lg mb-4">
+              <div className="bg-green-500 rounded-2xl p-6 text-white text-center shadow-md mb-4">
                 <h3 className="text-lg font-bold mb-2">想进一步提升？</h3>
                 <p className="text-white/80 text-sm mb-3">添加老师微信，获取专属学习方案</p>
                 <div className="bg-white/20 rounded-xl px-4 py-3 inline-block">

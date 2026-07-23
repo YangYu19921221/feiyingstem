@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_user, get_current_teacher
 from app.models.user import User
 from app.models.pk import PkRoom, PkRoomPlayer
 from app.schemas.pk import (
@@ -31,12 +31,16 @@ def _snapshot(room) -> RoomSnapshot:
         current_word_idx=room.current_word_idx,
         total_words=len(room.word_ids),
         word_count=room.word_count,
+        mode=room.mode,
+        team_count=room.team_count,
+        host_is_player=room.host_is_player,
         players=[
             PlayerSnapshot(
                 user_id=p.user_id, nickname=p.nickname, online=p.online,
                 current_word_idx=p.current_word_idx, correct=p.correct,
                 wrong=p.wrong, total_time_ms=p.total_time_ms,
                 points=p.points, streak=p.streak, finished=p.finished,
+                team=p.team,
             )
             for p in room.players.values()
         ],
@@ -103,10 +107,14 @@ async def load_word_points(db: AsyncSession, word_ids: list[int]) -> dict[int, i
 @router.post("/rooms", response_model=CreateRoomResponse)
 async def create_room(
     body: CreateRoomRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
-    """建房只定人数和题量;单词在开局时从「所有人都背过」的交集里随机抽取。"""
+    """建房:仅教师/管理员可创建 PK 对战房间,教师作为组织者不下场参赛。
+
+    建房只定人数、题量与模式(个人/分组);单词在开局时从「所有参赛学生都背过」
+    的交集里随机抽取(不够时用其余词补齐)。学生只能通过邀请码加入,不能建房。
+    """
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
         room = manager.create_room(
@@ -115,6 +123,9 @@ async def create_room(
             word_count=body.word_count,
             nickname=nickname,
             org_id=user.org_id,
+            mode=body.mode,
+            team_count=body.team_count,
+            host_is_player=False,  # 教师是组织者,不作为选手下场
         )
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")

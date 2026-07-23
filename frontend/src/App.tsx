@@ -4,6 +4,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import FloatingPetWidget from './components/FloatingPetWidget';
 import OldBrowserBanner from './components/OldBrowserBanner';
 import UpdateNudge from './components/UpdateNudge';
+import StudentMobileNav from './components/student/StudentMobileNav';
+import StaffMobileNav from './components/staff/StaffMobileNav';
 // 可靠提交队列:App 启动即注册补交时机(上次没送达的学习数据开机自动补交)
 import './api/submitQueue';
 
@@ -107,7 +109,7 @@ const PkArena = lazyWithRetry(() => import('./pages/PkArena'));
 
 // 路由级 loading 占位
 const PageLoading = () => (
-  <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center">
+  <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
     <div className="text-center">
       <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mx-auto mb-4"></div>
       <p className="text-gray-600">加载中...</p>
@@ -145,7 +147,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode;
   // 显示加载状态,避免闪烁
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mx-auto mb-4"></div>
           <p className="text-gray-600">加载中...</p>
@@ -206,6 +208,8 @@ function App() {
     <ErrorBoundary>
       <Router>
         <OldBrowserBanner />
+        <StudentMobileNav />
+        <StaffMobileNav />
         <Suspense fallback={<PageLoading />}>
           <Routes>
         {/* 登录页面 */}
@@ -951,21 +955,21 @@ function App() {
           }
         />
 
-        {/* 学生端 - PK 大厅 */}
+        {/* PK 大厅 - 教师建房(组织者),学生凭邀请码加入 */}
         <Route
           path="/pk/lobby"
           element={
-            <ProtectedRoute allowedRoles={['student']}>
+            <ProtectedRoute allowedRoles={['student', 'teacher', 'admin']}>
               <PkLobby />
             </ProtectedRoute>
           }
         />
 
-        {/* 学生端 - PK 竞技场 */}
+        {/* PK 竞技场 - 学生对战 / 教师监控 */}
         <Route
           path="/pk/arena/:roomId"
           element={
-            <ProtectedRoute allowedRoles={['student']}>
+            <ProtectedRoute allowedRoles={['student', 'teacher', 'admin']}>
               <PkArena />
             </ProtectedRoute>
           }

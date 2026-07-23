@@ -5,6 +5,7 @@ from typing import Literal, Optional, Any
 
 PhaseLiteral = Literal["classify", "speech", "dictation", "exam", "summary"]
 StatusLiteral = Literal["waiting", "playing", "finished", "abandoned"]
+ModeLiteral = Literal["individual", "team"]  # 个人 PK / 分组 PK
 PHASES_IN_ORDER: tuple[PhaseLiteral, ...] = ("classify", "speech", "dictation", "exam")
 
 
@@ -34,6 +35,7 @@ class PlayerState:
     best_streak: int = 0     # 本局最高连击
     current_word_idx: int = 0
     finished: bool = False
+    team: Optional[int] = None  # 分组 PK 里的队号(1..team_count);个人 PK 恒为 None
     last_heartbeat_at: datetime = field(default_factory=datetime.utcnow)
     disconnected_at: Optional[datetime] = None
 
@@ -62,6 +64,13 @@ class RoomState:
     base_points: int = 100               # 无学段信息单词的兜底基础分
     word_points: dict[int, int] = field(default_factory=dict)  # word_id → 每题基础分(按该词学段)
     word_lookup: dict[int, Any] = field(default_factory=dict)  # word_id → Word ORM(开局时装载,全房共享)
+    # PK 模式:individual=个人赛(默认,兼容学生自建房/晋级赛);team=分组赛(队伍聚合计分)
+    mode: ModeLiteral = "individual"
+    team_count: int = 2                  # 分组赛队伍数;个人赛忽略
+    # 房主是否作为选手下场。学生自建房/晋级赛=True;教师组织的房=False(只监控不答题)
+    host_is_player: bool = True
+    host_ws: Any = None                  # 非参赛房主(教师)的控制台 WS;host_is_player=True 时不用
+    host_online: bool = False            # 非参赛房主是否在线(教师控制台连接状态)
     current_phase: PhaseLiteral = "classify"
     current_word_idx: int = 0  # 全局题号(跨 phase 不重置)
     players: dict[int, PlayerState] = field(default_factory=dict)

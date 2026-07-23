@@ -16,6 +16,7 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import { BookGridSkeleton } from '../components/Skeleton';
 import { AchievementIcon } from '../components/AchievementIcon';
+import { BookOpenText, ChevronDown, LogOut, PencilLine, Settings2, Sparkles } from 'lucide-react';
 
 interface UserData {
   id: number;
@@ -69,6 +70,7 @@ const StudentDashboard = () => {
   // 每日签到:未签到时置顶大卡引导,签到后小徽章
   const [checkin, setCheckin] = useState<{ checked_in: boolean; checkin_time: string | null } | null>(null);
   const [checkinBusy, setCheckinBusy] = useState(false);
+  const [showMoreBooks, setShowMoreBooks] = useState(false);
 
   const loadCheckin = async () => {
     try {
@@ -321,6 +323,16 @@ const StudentDashboard = () => {
     navigate(`/student/books/${bookId}/units`);
   };
 
+  const handleBookCoverError = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const image = event.currentTarget;
+    const fallback = '/book-cover-1.jpeg';
+    if (image.src.endsWith(fallback)) {
+      image.classList.add('hidden');
+      return;
+    }
+    image.src = fallback;
+  };
+
   // 取首页展示的成就（已解锁优先 + 兜底未解锁，最多 6 个）
   const previewAchievements = useMemo(() => {
     const unlocked = achievements.filter(a => a.unlocked);
@@ -346,39 +358,19 @@ const StudentDashboard = () => {
 
 
   return (
-    <div className="min-h-screen bg-paper page-warm-glow">
+    <div className="min-h-screen bg-paper text-slate-800">
       {/* 顶部导航 */}
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-5 py-3.5 flex justify-between items-center">
-          <div className="flex items-baseline gap-2">
-            <span className="font-display text-xl font-semibold text-ink tracking-tight">飞鹰</span>
-            <span className="text-xs text-ink-mute">AI 英语</span>
+      <nav className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600"><BookOpenText className="h-5 w-5" /></div>
+            <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Student workspace</p><h1 className="truncate text-lg font-bold text-slate-800">飞鹰学习中心</h1></div>
           </div>
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-ink-soft mr-2">{user?.full_name || user?.username || '同学'}</span>
-            <button
-              onClick={() => setShowChangeUsername(true)}
-              className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
-            >
-              用户名
-            </button>
-            <button
-              onClick={() => setShowChangePassword(true)}
-              className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
-            >
-              密码
-            </button>
-            <button
-              onClick={handleLogout}
-              className="px-2.5 py-1 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
-            >
-              退出
-            </button>
-          </div>
+          <div className="flex items-center gap-1.5"><div className="hidden items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm sm:flex"><span className="h-2 w-2 rounded-full bg-emerald-500" /><span className="max-w-[10rem] truncate">{user?.full_name || user?.username || '同学'}</span></div><button type="button" onClick={() => setShowChangeUsername(true)} className="hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100 sm:block" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button><button type="button" onClick={handleLogout} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="退出登录" aria-label="退出登录"><LogOut className="h-4 w-4" /></button></div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-5 py-10">
+      <div className="mx-auto max-w-7xl space-y-7 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         {/* 每日签到:未签到时置顶引导(签到才能开始学习);已签到显示小徽章 */}
         {checkin && !checkin.checked_in && (
           <section className="mb-8">
@@ -415,9 +407,10 @@ const StudentDashboard = () => {
         </section>
 
         {/* Hero：今日核心任务 + 飞鹰陪伴 */}
-        <section className="mb-12 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
+        <section className="student-colorful-surface mb-4 overflow-hidden rounded-2xl border border-orange-100 p-5 shadow-md sm:p-7 md:grid md:grid-cols-[1fr_auto] md:items-center md:gap-10">
           <div>
-            <p className="text-ink-mute text-sm mb-2">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1 text-xs font-semibold text-orange-700"><Sparkles className="h-3.5 w-3.5" /> 今日学习概览</div>
+            <p className="text-sm text-slate-500 mb-2">
               👋 {user?.full_name || user?.username || '同学'}
               {stats && stats.streak_days > 0 && (
                 <> · 连续学习 <span className="font-numeric text-ink-soft">{stats.streak_days}</span> 天</>
@@ -425,7 +418,7 @@ const StudentDashboard = () => {
             </p>
             {reviewDueCount > 0 ? (
               <>
-                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                <h1 className="font-display text-3xl md:text-5xl font-semibold text-slate-800 leading-[1.05] tracking-tight mb-4">
                   今天，先复习<br />
                   <span className="font-numeric text-accent-warm text-glow-warm">{Math.min(20, reviewDueCount)}</span>{' '}
                   <span className="text-ink-soft">个该回顾的词</span>
@@ -452,7 +445,7 @@ const StudentDashboard = () => {
               <>
                 <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
                   全部完成。<br />
-                  <span className="text-ink-soft">了不起。</span>
+                  <span className="text-slate-600">了不起。</span>
                 </h1>
                 <p className="text-ink-soft text-base max-w-xl leading-relaxed">
                   今天的任务都做完了，明天再来。
@@ -460,9 +453,9 @@ const StudentDashboard = () => {
               </>
             ) : eagleState === 'studying' ? (
               <>
-                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                <h1 className="font-display text-3xl md:text-5xl font-semibold text-slate-800 leading-[1.05] tracking-tight mb-4">
                   继续上次的进度<br />
-                  <span className="text-ink-soft">从书架挑一本</span>
+                  <span className="text-slate-600">从书架挑一本</span>
                 </h1>
                 <p className="text-ink-soft text-base max-w-xl leading-relaxed">
                   你正在学习中。完成单元后，单词会自动进入复习计划。
@@ -470,9 +463,9 @@ const StudentDashboard = () => {
               </>
             ) : (
               <>
-                <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink leading-[1.05] tracking-tight mb-4">
+                <h1 className="font-display text-3xl md:text-5xl font-semibold text-slate-800 leading-[1.05] tracking-tight mb-4">
                   开始第一本<br />
-                  <span className="text-ink-soft">单词本吧</span>
+                  <span className="text-slate-600">单词本吧</span>
                 </h1>
                 <p className="text-ink-soft text-base max-w-xl leading-relaxed">
                   从书架挑一本，每天 20 分钟，三个月看到变化。
@@ -648,7 +641,7 @@ const StudentDashboard = () => {
                   >
                     <span className="text-ink-mute select-none">⋮⋮</span>
                     <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0 bg-black/5">
-                      <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
+                      <img onError={handleBookCoverError} src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-ink truncate">{book.name}</h3>
@@ -681,6 +674,7 @@ const StudentDashboard = () => {
                   >
                     <div className="relative h-36 overflow-hidden bg-black/5">
                       <img
+                        onError={handleBookCoverError}
                         src={book.cover_url || `/book-cover-${coverIndex}.jpeg`}
                         alt={book.name}
                         className="w-full h-full object-cover"
@@ -722,37 +716,51 @@ const StudentDashboard = () => {
             <>
               <header className="flex items-baseline justify-between mt-10 mb-5">
                 <h2 className="font-display text-xl font-semibold text-ink">更多书籍</h2>
-                <span className="text-xs text-ink-mute">需兑换码解锁</span>
+                <button
+                  type="button"
+                  onClick={() => setShowMoreBooks((visible) => !visible)}
+                  aria-expanded={showMoreBooks}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-ink-soft transition hover:bg-black/[0.05] hover:text-ink"
+                >
+                  <span>{showMoreBooks ? '收起书籍' : `展开更多 (${unownedBooks.length})`}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMoreBooks ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </button>
               </header>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {unownedBooks.map((book) => {
-                  const coverIndex = (book.id % 4) + 1;
-                  return (
-                    <article
-                      key={book.id}
-                      className="rounded-2xl overflow-hidden border border-black/[0.05] hover:border-black/15 transition cursor-pointer flex flex-col bg-white opacity-75 hover:opacity-100"
-                      onClick={() => navigate('/subscription/redeem')}
-                    >
-                      <div className="relative h-32 overflow-hidden bg-black/5">
-                        <img src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
-                        <div className="absolute inset-0 bg-black/30" />
-                      </div>
-                      <div className="p-4">
-                        <h3 className="font-display text-base font-semibold text-ink mb-1.5 line-clamp-1">{book.name}</h3>
-                        <p className="text-xs text-ink-mute font-numeric mb-3">
-                          {book.unit_count} 单元 · {book.word_count} 词
-                        </p>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); navigate('/subscription/redeem'); }}
-                          className="w-full py-2 border border-black/15 text-ink rounded-lg text-sm font-medium hover:bg-black/5 transition"
-                        >
-                          输入兑换码
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+              {showMoreBooks ? (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {unownedBooks.map((book) => {
+                    const coverIndex = (book.id % 4) + 1;
+                    return (
+                      <article
+                        key={book.id}
+                        className="rounded-2xl overflow-hidden border border-black/[0.05] hover:border-black/15 transition cursor-pointer flex flex-col bg-white opacity-75 hover:opacity-100"
+                        onClick={() => navigate('/subscription/redeem')}
+                      >
+                        <div className="relative h-32 overflow-hidden bg-black/5">
+                          <img onError={handleBookCoverError} src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
+                          <div className="absolute inset-0 bg-black/30" />
+                        </div>
+                        <div className="p-4">
+                          <h3 className="font-display text-base font-semibold text-ink mb-1.5 line-clamp-1">{book.name}</h3>
+                          <p className="text-xs text-ink-mute font-numeric mb-3">
+                            {book.unit_count} 单元 · {book.word_count} 词
+                          </p>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate('/subscription/redeem'); }}
+                            className="w-full py-2 border border-black/15 text-ink rounded-lg text-sm font-medium hover:bg-black/5 transition"
+                          >
+                            输入兑换码
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed border-black/[0.08] bg-white/60 px-4 py-3 text-center text-xs text-ink-mute">
+                  还有 {unownedBooks.length} 本书可解锁，点击右上角查看
+                </p>
+              )}
             </>
           )}
         </section>
@@ -847,23 +855,26 @@ const StudentDashboard = () => {
             ))}
           </div>
 
-          {/* 4 小磁贴：等权重，紧凑 */}
+          {/* 快捷工具：每个入口保留配图，便于快速识别 */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences' },
-              { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class' },
-              { title: '光荣榜', desc: '看看谁最厉害', route: '/student/leaderboard' },
-              { title: '阅读理解', desc: '提升能力', route: '/student/reading' },
-              { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', metric: onlineUsers, metricLabel: '在线' },
-              { title: '我的成就', desc: '徽章收藏', route: '/student/achievements' },
-              { title: '学习数据', desc: '统计分析', route: '/student/analytics' },
-              { title: 'PK 竞技场', desc: '和同班同学实时对战,5 阶段比成绩', route: '/pk/lobby' },
+              { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/hero-memory.jpeg' },
+              { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/dashboard-banner.jpeg' },
+              { title: '光荣榜', desc: '看看谁最厉害', route: '/student/leaderboard', image: '/result-champion.jpeg' },
+              { title: '阅读理解', desc: '提升能力', route: '/student/reading', image: '/hero-reading.jpeg' },
+              { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', image: '/hero-competition.jpeg', metric: onlineUsers, metricLabel: '在线' },
+              { title: '我的成就', desc: '徽章收藏', route: '/student/achievements', image: '/fx-achievement.jpeg' },
+              { title: '学习数据', desc: '统计分析', route: '/student/analytics', image: '/hero-exam-result.jpeg' },
+              { title: 'PK 竞技场', desc: '和同班同学实时对战,5 阶段比成绩', route: '/pk/lobby', image: '/hero-challenge.jpeg' },
             ].map((tile) => (
               <button
                 key={tile.title}
                 onClick={() => navigate(tile.route)}
-                className="text-left card-soft rounded-xl p-4"
+                className="group text-left card-soft rounded-xl p-3.5 transition hover:-translate-y-0.5 hover:shadow-md"
               >
+                <div className="mb-3 h-20 overflow-hidden rounded-lg bg-slate-100">
+                  <img src={tile.image} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" loading="lazy" />
+                </div>
                 <div className="flex items-baseline justify-between mb-1">
                   <h3 className="font-display text-base font-semibold text-ink">{tile.title}</h3>
                   {tile.metric != null && tile.metric > 0 && (

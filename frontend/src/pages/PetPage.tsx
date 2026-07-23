@@ -152,7 +152,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
   const previewImg = SPECIES_OPTIONS.find(s => s.id === previewSpecies)?.img;
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0]">
+    <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
@@ -320,7 +320,7 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
   };
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0]">
+    <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-2">
@@ -753,7 +753,7 @@ export default function PetPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#FFF8F0] flex items-center justify-center">
+      <div className="min-h-screen bg-paper flex items-center justify-center px-5">
         <motion.div
           className="text-6xl"
           animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.1, 1] }}

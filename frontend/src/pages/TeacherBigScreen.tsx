@@ -405,7 +405,7 @@ const TeacherBigScreen = () => {
             <select
               value={classId ?? ''}
               onChange={e => { const id = Number(e.target.value); setClassId(id); setSearchParams({ class: String(id) }, { replace: true }); }}
-              className="bg-white/5 text-white/80 border border-white/15 rounded-lg px-3 py-1.5 text-sm [&>option]:text-gray-800"
+              className="rounded-lg border border-cyan-200/30 bg-[#101b3d] px-3 py-1.5 text-sm text-white shadow-sm outline-none transition hover:border-cyan-200/55 focus:border-cyan-200/70 [&>option]:bg-[#101b3d] [&>option]:text-white"
             >
               <option value={ALL_CLASSES}>📡 全部班级</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

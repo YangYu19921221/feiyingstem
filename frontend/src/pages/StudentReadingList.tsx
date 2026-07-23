@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { ArrowLeft, BookOpenText, SlidersHorizontal } from 'lucide-react';
 import { getStudentPassages } from '../api/reading';
 import type { StudentPassageListItem } from '../api/reading';
 
@@ -78,31 +79,50 @@ const StudentReadingList = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm mb-6">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <nav className="sticky top-0 z-20 mb-6 border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
+        <div className="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/dashboard')}
-              className="text-gray-600 hover:text-gray-800 transition"
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
+              aria-label="返回学生首页"
             >
-              ← 返回
+              <ArrowLeft className="h-5 w-5" />
             </button>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <span>📖</span> 阅读理解
-            </h1>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
+              <BookOpenText className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-xl font-bold text-slate-800">阅读理解</h1>
+              <p className="hidden text-xs text-slate-500 sm:block">从短篇阅读开始积累语感</p>
+            </div>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 pb-12">
+      <div className="max-w-6xl mx-auto px-4 pb-12">
+        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-cyan-100 p-5 shadow-md sm:p-6">
+          <div className="flex items-center justify-between gap-6">
+            <div className="max-w-xl">
+              <p className="mb-1 text-xs font-semibold text-cyan-700">分级阅读</p>
+              <h2 className="font-display text-2xl font-bold text-slate-800">读懂一篇，比刷十道题更重要</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">按主题和难度选择文章，完成后查看得分与解析。</p>
+            </div>
+            <img src="/hero-reading.jpeg" alt="" className="hidden h-28 w-40 rounded-xl object-cover shadow-sm sm:block" />
+          </div>
+        </section>
+
         {/* 筛选栏 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-sm p-6 mb-6"
+          className="card-soft rounded-xl p-4 sm:p-5 mb-6"
         >
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <SlidersHorizontal className="h-4 w-4 text-orange-500" /> 筛选文章
+          </div>
           <div className="flex flex-wrap gap-4 items-center">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-700">📚 主题:</span>
@@ -166,21 +186,26 @@ const StudentReadingList = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
                 onClick={() => navigate(`/student/reading/${passage.id}`)}
-                className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden group"
+                className="card-soft rounded-2xl hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden group"
               >
                 {/* 封面图 */}
-                <div
-                  className={`h-32 bg-gradient-to-br ${getDifficultyColor(passage.difficulty)} relative overflow-hidden`}
-                >
-                  <div className="absolute inset-0 bg-black/10 group-hover:bg-black/5 transition"></div>
+                <div className="h-32 relative overflow-hidden bg-slate-100">
+                  <img
+                    src={['/hero-reading.jpeg', '/hero-memory.jpeg', '/hero-challenge.jpeg'][index % 3]}
+                    alt=""
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                  <div className={`absolute inset-0 bg-gradient-to-br ${getDifficultyColor(passage.difficulty)} opacity-30 group-hover:opacity-20 transition`} />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
                   <div className="absolute top-3 left-3">{getStatusBadge(passage)}</div>
                   {passage.deadline && (
                     <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium text-gray-700">
                       ⏰ {new Date(passage.deadline).toLocaleDateString()}
                     </div>
                   )}
-                  <div className="absolute bottom-3 left-3 text-white font-bold text-2xl drop-shadow-lg">
-                    📖
+                  <div className="absolute bottom-3 left-3 flex items-center gap-1.5 text-xs font-semibold text-white drop-shadow-lg">
+                    <BookOpenText className="h-4 w-4" /> 分级阅读
                   </div>
                 </div>
 

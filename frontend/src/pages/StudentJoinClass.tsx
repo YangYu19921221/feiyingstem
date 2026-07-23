@@ -84,6 +84,7 @@ const StudentJoinClass = () => {
           animate={{ opacity: 1, y: 0 }}
           className="card-soft rounded-2xl p-6"
         >
+          <img src="/dashboard-banner.jpeg" alt="" className="mb-5 h-24 w-full rounded-xl object-cover" />
           <div className="flex items-center gap-3 mb-2">
             <KeyRound className="w-6 h-6 text-accent-warm" />
             <h1 className="font-display text-2xl font-semibold text-ink">加入班级</h1>

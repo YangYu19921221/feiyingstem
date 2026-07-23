@@ -47,15 +47,15 @@ const RedeemSubscription = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+    <div className="min-h-screen bg-paper page-warm-glow flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md"
+        className="card-soft rounded-2xl p-7 sm:p-8 w-full max-w-md"
       >
+        <img src="/hero-memory.jpeg" alt="" className="mb-5 h-28 w-full rounded-xl object-cover" />
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">📖</div>
-          <h1 className="text-2xl font-bold text-gray-800">兑换单词本</h1>
+          <h1 className="font-display text-2xl font-bold text-gray-800">兑换单词本</h1>
           <p className="text-gray-500 mt-1">输入兑换码解锁单词本</p>
         </div>
 

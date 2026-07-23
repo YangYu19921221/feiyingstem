@@ -34,6 +34,16 @@ export default function StudentSentenceUnits() {
       </nav>
 
       <div className="max-w-3xl mx-auto px-5 py-8">
+        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-slate-200/80 p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-5">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-orange-700">学习单元</p>
+              <h2 className="font-display text-2xl font-bold text-slate-800">选一个单元，开始开口练习</h2>
+              <p className="mt-2 text-sm text-slate-600">完成每个单元后，你会看到自己的进度变化。</p>
+            </div>
+            <img src="/eagle-studying.jpeg" alt="" className="hidden h-24 w-32 rounded-xl object-cover shadow-sm sm:block" />
+          </div>
+        </section>
         {loading ? (
           <div className="py-16 text-center text-sm text-ink-mute">加载中…</div>
         ) : units.length === 0 ? (
@@ -41,7 +51,7 @@ export default function StudentSentenceUnits() {
             <p className="text-ink-soft">该句子集还没有单元</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05] overflow-hidden">
+          <div className="card-soft rounded-2xl divide-y divide-black/[0.05] overflow-hidden">
             {units.map(u => (
               <div
                 key={u.id}

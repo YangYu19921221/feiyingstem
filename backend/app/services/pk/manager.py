@@ -52,12 +52,27 @@ def _gen_invite_code() -> str:
             return code
 
 
+def _balance_team(room: RoomState) -> int:
+    """分组赛给新成员选人数最少的队(均衡分队),并列时取队号最小的。"""
+    counts = {t: 0 for t in range(1, room.team_count + 1)}
+    for ps in room.players.values():
+        if ps.team in counts:
+            counts[ps.team] += 1
+    return min(counts, key=lambda t: (counts[t], t))
+
+
 def create_room(host_id: int, max_players: int, org_id: int,
                 word_ids: list[int] | None = None,
                 unit_id: int | None = None, nickname: str | None = None,
-                word_count: int = 10) -> RoomState:
+                word_count: int = 10,
+                mode: str = "individual", team_count: int = 2,
+                host_is_player: bool = True) -> RoomState:
     """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。
-    org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。"""
+    org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。
+
+    host_is_player=False:房主(教师)只组织不下场,不进 players、不参与结算/计分。
+    mode="team":分组赛,入房自动均衡分队;个人赛(默认)沿用原逻辑。
+    """
     if host_id in USER_ACTIVE:
         raise UserAlreadyInRoom()
     room_id = next(_id_seq)
@@ -72,18 +87,26 @@ def create_room(host_id: int, max_players: int, org_id: int,
         status="waiting",
         word_ids=list(word_ids or []),
         word_count=word_count,
+        mode="team" if mode == "team" else "individual",
+        team_count=max(2, int(team_count)) if mode == "team" else 2,
+        host_is_player=host_is_player,
     )
-    room.players[host_id] = PlayerState(
-        user_id=host_id,
-        nickname=nickname or f"User{host_id}",
-    )
-    room.join_order.append(host_id)
+    if host_is_player:
+        # 房主下场:作为首个玩家入房(学生自建房 / 晋级赛)
+        hp = PlayerState(user_id=host_id, nickname=nickname or f"User{host_id}")
+        if room.mode == "team":
+            hp.team = _balance_team(room)
+        room.players[host_id] = hp
+        room.join_order.append(host_id)
+    # host_id 无论下不下场都占 USER_ACTIVE,防同一人重复建房
+    USER_ACTIVE[host_id] = room_id
     ROOMS[room_id] = room
     INVITE_INDEX[code] = room_id
-    USER_ACTIVE[host_id] = room_id
     logger.info(
-        "PK room created: room_id=%d host_id=%d max_players=%d word_count=%d",
-        room_id, host_id, max_players, word_count,
+        "PK room created: room_id=%d host_id=%d host_is_player=%s mode=%s "
+        "team_count=%d max_players=%d word_count=%d",
+        room_id, host_id, host_is_player, room.mode, room.team_count,
+        max_players, word_count,
     )
     return room
 
@@ -108,10 +131,43 @@ def join_room(invite_code: str, user_id: int, nickname: str, org_id: int) -> Roo
         raise RoomAlreadyStarted()
     if len(room.players) >= room.max_players:
         raise RoomFull()
-    room.players[user_id] = PlayerState(user_id=user_id, nickname=nickname)
+    ps = PlayerState(user_id=user_id, nickname=nickname)
+    if room.mode == "team":
+        ps.team = _balance_team(room)
+    room.players[user_id] = ps
     room.join_order.append(user_id)
     USER_ACTIVE[user_id] = room.room_id
-    logger.info("PK player joined: room_id=%d user_id=%d", room.room_id, user_id)
+    logger.info(
+        "PK player joined: room_id=%d user_id=%d team=%s",
+        room.room_id, user_id, ps.team,
+    )
+    return room
+
+
+def set_player_team(room_id: int, user_id: int, team: int) -> RoomState | None:
+    """教师在等待室手动调整某玩家所在队(仅分组赛、仅开局前)。"""
+    room = ROOMS.get(room_id)
+    if room is None or room.mode != "team" or room.status != "waiting":
+        return None
+    ps = room.players.get(user_id)
+    if ps is None:
+        return None
+    ps.team = max(1, min(int(team), room.team_count))
+    return room
+
+
+def close_room(room_id: int) -> RoomState | None:
+    """房主(教师)主动解散房间:释放所有玩家的 USER_ACTIVE 并清索引。返回被关闭的房间。"""
+    room = ROOMS.get(room_id)
+    if room is None:
+        return None
+    for uid in list(room.players.keys()):
+        USER_ACTIVE.pop(uid, None)
+    USER_ACTIVE.pop(room.host_id, None)
+    INVITE_INDEX.pop(room.invite_code, None)
+    ROOMS.pop(room_id, None)
+    room.status = "abandoned"
+    logger.info("PK room closed by host: room_id=%d", room_id)
     return room
 
 
@@ -151,13 +207,22 @@ def leave_room(room_id: int, user_id: int) -> None:
         room.join_order.remove(user_id)
     USER_ACTIVE.pop(user_id, None)
     if not room.players:
+        # 教师组织的房(房主不下场):最后一名学生退出不解散,教师仍掌控房间生命周期
+        # (由 close_room 或教师控制台断开时决定),否则空等待室会被自动清掉。
+        if not room.host_is_player:
+            logger.info(
+                "PK player left teacher room, kept alive empty: room_id=%d user_id=%d",
+                room_id, user_id,
+            )
+            return
         _abandon_room(room)
         logger.info(
             "PK player left: room_id=%d user_id=%d abandoned=True",
             room_id, user_id,
         )
         return
-    if room.host_id == user_id and room.join_order:
+    # 房主转移只在"房主下场"的房里发生;教师房 host 不在 players,永不触发
+    if room.host_is_player and room.host_id == user_id and room.join_order:
         old = room.host_id
         room.host_id = room.join_order[0]
         logger.info(
@@ -174,6 +239,9 @@ def _abandon_room(room: RoomState) -> None:
     room.status = "abandoned"
     INVITE_INDEX.pop(room.invite_code, None)
     ROOMS.pop(room.room_id, None)
+    # 房主不下场时,其 USER_ACTIVE 不在 players 清理链里,单独释放
+    if not room.host_is_player:
+        USER_ACTIVE.pop(room.host_id, None)
 
 
 def get_room(room_id: int) -> RoomState | None:

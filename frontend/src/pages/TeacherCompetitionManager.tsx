@@ -401,11 +401,11 @@ const TeacherCompetitionManager: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
-      <div className="bg-white shadow-sm mb-6">
+      <div className="mb-5 border-b border-slate-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => window.history.back()}
@@ -415,16 +415,16 @@ const TeacherCompetitionManager: React.FC = () => {
               </button>
               <h1 className="text-2xl font-bold text-gray-800">🏆 竞赛题库管理</h1>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setShowAIModal(true)}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition font-medium"
+                className="rounded-lg bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700"
               >
                 🤖 AI生成题目
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+              className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700"
               >
                 ➕ 创建题目
               </button>
@@ -436,7 +436,7 @@ const TeacherCompetitionManager: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4">
         {/* 统计卡片 */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="bg-white rounded-xl p-6 shadow-sm">
               <div className="text-3xl font-bold text-blue-600">{stats.total_questions}</div>
               <div className="text-sm text-gray-600 mt-1">总题目数</div>
@@ -461,7 +461,7 @@ const TeacherCompetitionManager: React.FC = () => {
         )}
 
         {/* 筛选条件 */}
-        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-lg font-bold mb-4">筛选条件</h3>
 
           {/* 题型筛选 */}
@@ -547,7 +547,7 @@ const TeacherCompetitionManager: React.FC = () => {
         </div>
 
         {/* 题目列表 */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="p-6 border-b">
             <div className="flex items-center justify-between">
               <div>

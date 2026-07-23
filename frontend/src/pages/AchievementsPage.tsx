@@ -55,26 +55,43 @@ const AchievementsPage = () => {
     : '0';
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 py-3">
+      <nav className="bg-white/85 backdrop-blur-md shadow-sm sticky top-0 z-20 border-b border-slate-200/80">
+        <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate(-1)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition"
+              className="p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-600 rounded-lg transition"
+              aria-label="返回"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div className="flex items-center gap-3">
-              <Trophy className="w-8 h-8 text-yellow-500" />
-              <h1 className="text-2xl font-bold text-gray-800">我的成就</h1>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                <Trophy className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="font-display text-xl font-bold text-slate-800">我的成就</h1>
+                <p className="hidden text-xs text-slate-500 sm:block">记录每一次学习突破</p>
+              </div>
             </div>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-7 sm:py-8">
+        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-amber-100 p-5 shadow-md sm:p-6">
+          <div className="flex items-center justify-between gap-6">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-amber-700">成长收藏册</p>
+              <h2 className="font-display text-2xl font-bold text-slate-800">你已经解锁 {totalUnlocked} 项成就</h2>
+              <p className="mt-2 text-sm text-slate-600">继续学习，新的徽章和积分会在这里点亮。</p>
+            </div>
+            <img src="/fx-achievement.jpeg" alt="" className="hidden h-28 w-40 rounded-xl object-cover shadow-sm sm:block" />
+          </div>
+        </section>
+
         {/* 学生身份：家长拍照时一眼知道是谁 */}
         <StudentIdentityBadge tone="paper" className="mb-6" />
 
@@ -83,7 +100,7 @@ const AchievementsPage = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <Trophy className="w-6 h-6 text-yellow-500" />
@@ -99,7 +116,7 @@ const AchievementsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <Award className="w-6 h-6 text-purple-500" />
@@ -115,7 +132,7 @@ const AchievementsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <span className="text-2xl">📚</span>
@@ -129,7 +146,7 @@ const AchievementsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <span className="text-2xl">🔥</span>
@@ -154,7 +171,7 @@ const AchievementsPage = () => {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.1 * index }}
-                  className="bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-2xl p-6 shadow-md hover:shadow-xl transition"
+                  className="card-soft bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200 rounded-2xl p-5 hover:shadow-xl transition"
                 >
                   <div className="flex items-start gap-4">
                     <motion.div
@@ -203,7 +220,7 @@ const AchievementsPage = () => {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.1 * index }}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 opacity-60 hover:opacity-80 transition"
+                  className="card-soft border border-gray-200 rounded-2xl p-5 opacity-65 hover:opacity-90 transition"
                 >
                   <div className="flex items-start gap-4">
                     <div className="grayscale opacity-70">

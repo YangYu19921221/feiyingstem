@@ -50,8 +50,11 @@ tmp/
 temp/
 .cache/
 *.png
+!frontend/public/classify-memory-v2.png
 backend/tts_cache/
 .playwright-mcp/
+# 销售 PPT(大二进制,不入库)
+docs/sales_deck/*.pptx
 
 # 构建产物
 *.pyc

@@ -11,14 +11,30 @@ interface RankItem {
   accuracy: number;
   final_score: number;
   best_streak?: number;
+  team?: number | null;
+}
+
+interface TeamRankItem {
+  team: number;
+  rank: number;
+  points: number;
+  avg_points: number;
+  correct: number;
+  wrong: number;
+  total_time_ms: number;
+  member_count: number;
+  online_count: number;
 }
 
 interface Props {
   ranking: RankItem[];
   meId: number;
+  teamRanking?: TeamRankItem[] | null;
   onExit: () => void;
   onAgain?: () => void;
 }
+
+const TEAM_TONE = ['from-blue-400 to-blue-500', 'from-rose-400 to-rose-500', 'from-emerald-400 to-emerald-500', 'from-amber-400 to-amber-500'];
 
 const RANK_EMOJI: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 // 领奖台顺序:亚军 冠军 季军
@@ -28,9 +44,11 @@ const PODIUM_LAYOUT = [
   { rank: 3, height: 52, delay: 0.3 },
 ];
 
-export default function PkResultBoard({ ranking, meId, onExit, onAgain }: Props) {
+export default function PkResultBoard({ ranking, meId, teamRanking, onExit, onAgain }: Props) {
   const me = ranking.find((r) => r.user_id === meId);
   const byRank = new Map(ranking.map((r) => [r.rank, r]));
+  const isTeam = !!teamRanking && teamRanking.length > 0;
+  const winningTeam = isTeam ? teamRanking!.find((t) => t.rank === 1) : null;
 
   return (
     <div className="min-h-screen bg-paper">
@@ -42,7 +60,47 @@ export default function PkResultBoard({ ranking, meId, onExit, onAgain }: Props)
         >
           🎉 PK 结束
         </motion.h1>
-        <p className="text-center text-xs text-ink-mute mb-5">看看谁是本局单词王</p>
+        <p className="text-center text-xs text-ink-mute mb-5">
+          {isTeam ? '先看哪个队笑到最后,再看个人表现' : '看看谁是本局单词王'}
+        </p>
+
+        {/* 分组赛:胜队横幅 + 队伍榜(放在个人榜之前) */}
+        {isTeam && (
+          <>
+            {winningTeam && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={`rounded-2xl bg-gradient-to-r ${TEAM_TONE[(winningTeam.team - 1) % TEAM_TONE.length]} p-5 text-center shadow-lg mb-4`}
+              >
+                <div className="text-4xl mb-1">🏆</div>
+                <p className="text-white font-bold text-lg">第 {winningTeam.team} 队获胜</p>
+                <p className="text-white/85 text-sm mt-0.5">人均 {winningTeam.avg_points} 分 · 全队共 {winningTeam.points} 分</p>
+              </motion.div>
+            )}
+            <div className="card-soft rounded-2xl p-3 mb-5">
+              <h3 className="font-display font-semibold text-ink mb-2 px-1 flex items-center gap-1.5">
+                <span>👥</span> 队伍榜
+              </h3>
+              <div className="space-y-1.5">
+                {teamRanking!.map((t) => (
+                  <div key={t.team} className="flex items-center gap-2 rounded-xl px-2.5 py-2 bg-gray-50">
+                    <span className="w-7 text-center shrink-0">
+                      {RANK_EMOJI[t.rank] ?? <span className="text-sm font-semibold text-ink-mute font-numeric">{t.rank}</span>}
+                    </span>
+                    <span className={`inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-br ${TEAM_TONE[(t.team - 1) % TEAM_TONE.length]}`} />
+                    <span className="flex-1 truncate text-sm font-medium text-ink">第 {t.team} 队</span>
+                    <span className="text-[11px] text-ink-mute">{t.member_count} 人</span>
+                    <span className="text-right w-16">
+                      <span className="text-base font-bold text-ink font-numeric block leading-none">人均{t.avg_points}</span>
+                      <span className="text-[10px] text-ink-mute font-numeric">总 {t.points}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* 前三名领奖台 */}
         <div className="flex items-end justify-center gap-3 mb-6 px-2">

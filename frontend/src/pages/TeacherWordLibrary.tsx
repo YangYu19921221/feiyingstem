@@ -312,10 +312,10 @@ const TeacherWordLibrary = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-teal-50 to-cyan-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <BookOpen className="w-8 h-8 text-primary" />
             <h1 className="text-xl font-bold text-gray-800">教师端 - 单词库管理</h1>
@@ -359,7 +359,7 @@ const TeacherWordLibrary = () => {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-6 mb-8 text-white shadow-lg"
+          className="mb-6 rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm sm:p-6"
         >
           <h2 className="text-2xl font-bold mb-2">
             📚 单词库管理
@@ -371,7 +371,7 @@ const TeacherWordLibrary = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 mb-6 shadow-md"
+          className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
         >
           <div className="grid md:grid-cols-4 gap-4">
             {/* 搜索框 */}
@@ -390,7 +390,7 @@ const TeacherWordLibrary = () => {
                 />
                 <button
                   onClick={handleSearch}
-                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-lg hover:shadow-lg transition flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-white transition hover:bg-slate-700"
                 >
                   <Search className="w-4 h-4" />
                   搜索
@@ -447,7 +447,7 @@ const TeacherWordLibrary = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-2xl p-6 shadow-md"
+          className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">

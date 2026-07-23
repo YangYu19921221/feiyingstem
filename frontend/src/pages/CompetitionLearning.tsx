@@ -356,7 +356,7 @@ const CompetitionLearning: React.FC = () => {
           <button
             onClick={() => userAnswer.trim() && handleSubmitAnswer(userAnswer)}
             disabled={!userAnswer.trim()}
-            className="w-full mt-4 py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold text-lg rounded-xl hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-4 py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             提交答案
           </button>
@@ -392,7 +392,7 @@ const CompetitionLearning: React.FC = () => {
           <button
             onClick={() => userAnswer.trim() && handleSubmitAnswer(userAnswer)}
             disabled={!userAnswer.trim()}
-            className="w-full mt-4 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold text-lg rounded-xl hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-4 py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold text-lg rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             🔤 提交拼写
           </button>
@@ -458,7 +458,7 @@ const CompetitionLearning: React.FC = () => {
             <button
               onClick={() => userAnswer.trim() && handleSubmitAnswer(userAnswer)}
               disabled={!userAnswer.trim()}
-              className="w-full mt-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold rounded-xl hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full mt-4 py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               提交答案
             </button>
@@ -558,7 +558,7 @@ const CompetitionLearning: React.FC = () => {
       <div className="max-w-7xl mx-auto p-4">
 
         {/* 主要内容区域 */}
-        <div className="flex gap-6">
+        <div className="flex flex-col lg:flex-row gap-6">
           {/* 左侧 - 学习区域 (2/3宽度) */}
           <div className="flex-1 space-y-6">
             {/* 段位卡片 */}
@@ -566,7 +566,7 @@ const CompetitionLearning: React.FC = () => {
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl shadow-lg p-6"
+                className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -589,7 +589,7 @@ const CompetitionLearning: React.FC = () => {
                   <div className="mt-3">
                     <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
                       <motion.div
-                        className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full"
+                        className="h-full bg-orange-500 rounded-full"
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(rankInfo.progress_to_next * 100, 100)}%` }}
                         transition={{ duration: 1, ease: 'easeOut' }}
@@ -602,24 +602,24 @@ const CompetitionLearning: React.FC = () => {
 
             {/* 个人统计卡片 */}
             {myStats?.today ? (
-              <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                   📊 我的战绩
                 </h2>
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-lg">
+                  <div className="text-center p-4 bg-orange-50 border border-orange-100 rounded-lg">
                     <div className="text-3xl font-bold text-orange-600">
                       #{myStats.today.rank || '-'}
                     </div>
                     <div className="text-sm text-gray-600 mt-1">今日排名</div>
                   </div>
-                  <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg">
+                  <div className="text-center p-4 bg-sky-50 border border-sky-100 rounded-lg">
                     <div className="text-3xl font-bold text-blue-600">
                       {myStats.today.score || 0}
                     </div>
                     <div className="text-sm text-gray-600 mt-1">今日积分</div>
                   </div>
-                  <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+                  <div className="text-center p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
                     <div className="text-3xl font-bold text-green-600">
                       {myStats.today.max_combo || 0}
                     </div>
@@ -641,7 +641,7 @@ const CompetitionLearning: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
                 <div className="text-4xl mb-2">🎯</div>
                 <p className="text-gray-600">开始答题即可参与排名竞赛!</p>
               </div>
@@ -649,7 +649,7 @@ const CompetitionLearning: React.FC = () => {
 
             {/* 题目卡片 */}
             {loading ? (
-              <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+              <div className="bg-white rounded-2xl border border-slate-200 p-10 sm:p-12 text-center">
                 <div className="text-6xl mb-4 animate-bounce">📚</div>
                 <p className="text-gray-600">正在加载题目...</p>
               </div>
@@ -659,7 +659,7 @@ const CompetitionLearning: React.FC = () => {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-white rounded-2xl shadow-lg p-8"
+                className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-8"
               >
                 {/* 题目头部信息 */}
                 <div className="flex items-center justify-between mb-6 pb-4 border-b">
@@ -693,7 +693,7 @@ const CompetitionLearning: React.FC = () => {
             <div className="flex gap-4">
               <button
                 onClick={loadQuestion}
-                className="flex-1 py-3 px-6 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:shadow-lg transition-shadow"
+                className="flex-1 py-3 px-6 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors"
               >
                 🔄 跳过这题
               </button>
@@ -707,7 +707,7 @@ const CompetitionLearning: React.FC = () => {
           </div>
 
           {/* 右侧 - 实时排行榜 (1/3宽度) */}
-          <div className="w-96">
+          <div className="w-full lg:w-96">
             <LiveLeaderboard
               token={token}
               seasonId={1}

@@ -819,6 +819,8 @@ const WordClassifyLearning = () => {
   };
 
   const currentSpeechWord = speechRoundWords[speechVerifyIndex];
+  const phaseSequence: Phase[] = ['classify', 'speechVerify', 'dictation', 'exam', 'unitRecap', 'summary'];
+  const phaseIndex = phaseSequence.indexOf(phase);
 
   // 导航栏副标题
   const navSubtitle = totalGroups > 1
@@ -826,7 +828,7 @@ const WordClassifyLearning = () => {
     : `${learningData.unit_info.name} · ${phaseLabels[phase]}`;
 
   return (
-    <div className="min-h-screen bg-paper no-select">
+    <div className="classify-learning-page min-h-screen bg-paper no-select">
       {/* 专注力提醒:30秒轻提醒 → 60秒全屏拦截(计时同步暂停);总结页不提醒 */}
       {phase !== 'summary' && <FocusReminder nudge={isNudge} block={isIdle} />}
       {/* 新解锁成就弹窗(后端随组末提交返回) */}
@@ -836,26 +838,33 @@ const WordClassifyLearning = () => {
       {/* 实时班级排名浮标(激励) */}
       <LiveRankBadge />
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
+      <nav className="classify-learning-nav bg-white sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
           <button onClick={handleBack} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-gray-800">
               🧠 分类记忆法
             </h1>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 truncate">
               {navSubtitle}
             </p>
           </div>
+          <div className="classify-module-status shrink-0" aria-live="polite">
+            <span className="classify-module-status-label">当前模块</span>
+            <strong>{phaseLabels[phase]}</strong>
+            {totalGroups > 1 && (
+              <span className="classify-module-status-meta">第{currentGroupIndex + 1}/{totalGroups}组</span>
+            )}
+          </div>
           {/* 阶段指示器 */}
-          <div className="flex gap-1">
-            {(['classify', 'dictation', 'exam', 'summary'] as Phase[]).map((p, i) => (
+          <div className="classify-stage-rail flex gap-1" aria-label="学习阶段进度">
+            {phaseSequence.map((p, i) => (
               <div
                 key={p}
                 className={`w-2 h-2 rounded-full transition ${
-                  p === phase ? 'bg-primary scale-125' : i < ['classify', 'dictation', 'exam', 'summary'].indexOf(phase) ? 'bg-green-400' : 'bg-gray-200'
+                  p === phase ? 'bg-primary scale-125' : i < phaseIndex ? 'bg-green-400' : 'bg-gray-200'
                 }`}
               />
             ))}
@@ -863,9 +872,9 @@ const WordClassifyLearning = () => {
         </div>
         {/* 分组进度条（多组时显示） */}
         {totalGroups > 1 && (
-          <div className="h-1 bg-gray-100">
+          <div className="classify-progress-track h-1 bg-gray-100">
             <motion.div
-              className="h-full bg-gradient-to-r from-primary to-yellow-400"
+              className="classify-progress-value h-full bg-gradient-to-r from-primary to-yellow-400"
               animate={{ width: `${((currentGroupIndex + (phase === 'summary' ? 1 : 0)) / totalGroups) * 100}%` }}
               transition={{ duration: 0.3 }}
             />
@@ -874,7 +883,7 @@ const WordClassifyLearning = () => {
       </nav>
 
       {/* 主内容 */}
-      <div className="max-w-3xl mx-auto py-6">
+      <div className="classify-learning-main max-w-4xl mx-auto py-6">
         {/* 本单元任务横幅:实时显示目标,达标后变绿打勾并淡出 */}
         <AnimatePresence>
           {unitTask && !taskDone && (

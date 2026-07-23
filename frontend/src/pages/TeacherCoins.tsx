@@ -293,7 +293,7 @@ export default function TeacherCoins() {
   const activeRewards = rewards.filter((r) => r.is_active);
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0] p-4 sm:p-6">
+    <div className="min-h-screen bg-[#f5f8fc] p-4 text-slate-800 sm:p-6">
       <div className="max-w-6xl mx-auto">
         {/* 头部 */}
         <div className="flex items-center justify-between mb-5">

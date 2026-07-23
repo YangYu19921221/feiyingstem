@@ -723,15 +723,8 @@ const FlashCardLearning = () => {
 
   return (
     <div className="min-h-screen bg-paper no-select relative overflow-hidden">
-      {/* 装饰性背景元素 */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 w-32 h-32 bg-yellow-200 rounded-full opacity-20 blur-3xl"></div>
-        <div className="absolute bottom-20 right-10 w-40 h-40 bg-blue-200 rounded-full opacity-20 blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-pink-200 rounded-full opacity-10 blur-3xl"></div>
-      </div>
-
       {/* 顶部导航栏 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
+      <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <button
@@ -769,7 +762,7 @@ const FlashCardLearning = () => {
               </div>
               <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden shadow-inner">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-green-400 via-blue-500 to-purple-500 rounded-full shadow-md"
+                  className="h-full bg-sky-500 rounded-full"
                   initial={{ width: `${(learningData.current_word_index / learningData.words.length) * 100}%` }}
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: 0.5, ease: 'easeOut' }}
@@ -777,7 +770,7 @@ const FlashCardLearning = () => {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-primary to-secondary text-white px-4 py-2 rounded-xl shadow-lg">
+            <div className="bg-sky-600 text-white px-4 py-2 rounded-xl">
               <p className="text-2xl font-bold">{progress.toFixed(0)}%</p>
             </div>
           </div>
@@ -889,7 +882,7 @@ const FlashCardLearning = () => {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-full shadow-lg"
+                className="inline-flex items-center gap-3 bg-sky-600 text-white px-5 py-2.5 rounded-full"
               >
                 <span className="text-lg font-medium">掌握度:</span>
                 <div className="flex gap-1">
@@ -914,7 +907,7 @@ const FlashCardLearning = () => {
           {/* 简洁卡片区域 */}
           <div className="flex items-center justify-center mb-10">
             <motion.div
-              className="w-full bg-white rounded-2xl shadow-lg p-12"
+              className="w-full bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 md:p-12"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
@@ -956,7 +949,7 @@ const FlashCardLearning = () => {
                         setShowPreview(false);
                         setWordStartTime(Date.now());
                       }}
-                      className="px-12 py-4 bg-gradient-to-r from-primary to-secondary text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all"
+                      className="px-8 sm:px-12 py-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-lg transition-colors"
                     >
                       我记住了，开始答题 →
                     </button>
@@ -1237,7 +1230,7 @@ const FlashCardLearning = () => {
           animate={{ scale: 1, rotate: 0 }}
           className="fixed top-24 right-4 z-30"
         >
-          <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2">
+          <div className="bg-amber-500 text-white px-5 py-3 rounded-2xl flex items-center gap-2">
             <span className="text-2xl">🔥</span>
             <span className="font-bold text-xl">{combo} 连击!</span>
           </div>
@@ -1255,13 +1248,13 @@ const FlashCardLearning = () => {
           >
             {showComboPopup.bonus === -1 ? (
               // 连击断裂
-              <div className="bg-gradient-to-r from-red-500 to-pink-500 text-white px-8 py-6 rounded-3xl shadow-2xl text-center">
+              <div className="bg-red-500 text-white px-8 py-6 rounded-2xl text-center">
                 <div className="text-5xl mb-2">💔</div>
                 <div className="text-2xl font-bold">连击中断!</div>
               </div>
             ) : (
               // 连击奖励
-              <div className="bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 text-white px-10 py-8 rounded-3xl shadow-2xl text-center">
+              <div className="bg-amber-500 text-white px-8 sm:px-10 py-8 rounded-2xl text-center">
                 <motion.div
                   animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.2, 1] }}
                   transition={{ duration: 0.5 }}
@@ -1352,7 +1345,7 @@ const FlashCardLearning = () => {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={handleRestart}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-medium transition hover:shadow-lg"
+                  className="w-full py-3 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors"
                 >
                   重新复习
                 </button>
@@ -1463,7 +1456,7 @@ const FlashCardLearning = () => {
                 </button>
                 <button
                   onClick={() => { setShowResetConfirm(false); handleRestart(); }}
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-medium transition hover:shadow-lg"
+                  className="flex-1 py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors"
                 >
                   确认重置
                 </button>

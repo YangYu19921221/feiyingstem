@@ -111,10 +111,48 @@ def live_ranking(room: Any) -> list[dict]:
             "total_time_ms": ps.total_time_ms,
             "current_word_idx": ps.current_word_idx,
             "online": ps.online,
+            "team": getattr(ps, "team", None),
         }
         for ps in room.players.values()
     ]
     items.sort(key=lambda x: (-x["points"], x["total_time_ms"]))
+    for idx, it in enumerate(items, start=1):
+        it["rank"] = idx
+    return items
+
+
+def team_ranking(room: Any) -> list[dict]:
+    """分组赛队伍榜:队内成员得分/正确/用时求和,按队伍总分倒序、同分总用时升序。
+
+    个人榜(live_ranking)照常返回,前端分组赛下用队伍榜做主视图、个人榜做队内明细。
+    空队(没人分到)也列出,让教师在等待室看到全部队号。
+    """
+    teams: dict[int, dict] = {}
+    for t in range(1, getattr(room, "team_count", 2) + 1):
+        teams[t] = {
+            "team": t, "points": 0, "correct": 0, "wrong": 0,
+            "total_time_ms": 0, "member_count": 0, "online_count": 0,
+        }
+    for ps in room.players.values():
+        t = ps.team
+        if t not in teams:  # 容错:队号越界的成员并入其原队号(理论上不会发生)
+            teams[t] = {"team": t, "points": 0, "correct": 0, "wrong": 0,
+                        "total_time_ms": 0, "member_count": 0, "online_count": 0}
+        agg = teams[t]
+        agg["points"] += ps.points
+        agg["correct"] += ps.correct
+        agg["wrong"] += ps.wrong
+        agg["total_time_ms"] += ps.total_time_ms
+        agg["member_count"] += 1
+        if ps.online:
+            agg["online_count"] += 1
+    # 排名按「人均分」而非总分:两队人数不等(如 3v2)时,人多的队总分天然占优,
+    # 用人均分才公平。榜单仍展示 points 总分,avg_points 供前端/排序用。
+    for agg in teams.values():
+        n = agg["member_count"]
+        agg["avg_points"] = round(agg["points"] / n, 1) if n else 0.0
+    items = list(teams.values())
+    items.sort(key=lambda x: (-x["avg_points"], x["total_time_ms"]))
     for idx, it in enumerate(items, start=1):
         it["rank"] = idx
     return items

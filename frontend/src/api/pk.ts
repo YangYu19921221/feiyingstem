@@ -3,6 +3,8 @@ import api from './client';
 export type PkPhase = 'classify' | 'speech' | 'dictation' | 'exam' | 'summary';
 export type PkStatus = 'waiting' | 'playing' | 'finished' | 'abandoned';
 
+export type PkMode = 'individual' | 'team';
+
 export interface PkPlayer {
   user_id: number;
   nickname: string;
@@ -14,6 +16,7 @@ export interface PkPlayer {
   points: number;
   streak: number;
   finished: boolean;
+  team?: number | null;
 }
 
 export interface PkSpectator {
@@ -33,8 +36,24 @@ export interface PkRoomSnapshot {
   current_word_idx: number;
   total_words: number;   // 开局前为 0,开局后 = 实际抽到的词数
   word_count: number;    // 房主设定的目标词数
+  mode: PkMode;          // individual=个人赛 / team=分组赛
+  team_count: number;    // 分组赛队伍数
+  host_is_player: boolean; // 房主是否下场(教师组织房为 false)
   players: PkPlayer[];
   spectators: PkSpectator[];
+}
+
+/** 队伍榜单一行(分组赛) */
+export interface PkTeamRankItem {
+  team: number;
+  rank: number;
+  points: number;       // 队伍总分(展示用)
+  avg_points: number;   // 人均分(排名依据,人多不占优)
+  correct: number;
+  wrong: number;
+  total_time_ms: number;
+  member_count: number;
+  online_count: number;
 }
 
 /** live_ranking 事件里的单行榜单数据 */
@@ -49,6 +68,7 @@ export interface PkLiveRankItem {
   current_word_idx: number;
   online: boolean;
   rank: number;
+  team?: number | null;
 }
 
 export interface PkHistoryItem {
@@ -67,10 +87,17 @@ export interface CreateRoomResponse {
 }
 
 export const pkApi = {
-  createRoom: (maxPlayers: number, wordCount: number) =>
+  createRoom: (
+    maxPlayers: number,
+    wordCount: number,
+    mode: PkMode = 'individual',
+    teamCount = 2,
+  ) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
       max_players: maxPlayers,
       word_count: wordCount,
+      mode,
+      team_count: teamCount,
     }),
 
   lookupByCode: (code: string) =>

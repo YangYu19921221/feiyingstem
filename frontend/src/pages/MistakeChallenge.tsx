@@ -156,7 +156,7 @@ const MistakeChallenge = () => {
 
   return (
     <div className="min-h-screen bg-paper no-select">
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
+      <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
           <button onClick={() => phase === 'map' ? navigate(-1) : backToMap()} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -263,7 +263,7 @@ function MapPhase({ levels, onStart }: { levels: ChallengeLevel[]; onStart: (l: 
               className={`w-full p-5 rounded-2xl text-left transition-all ${
                 isReview ? 'bg-red-50 border-2 border-red-400 shadow-lg shadow-red-100 animate-pulse'
                 : isCleared ? 'bg-green-50 border-2 border-green-300'
-                : isUnlocked ? 'bg-white border-2 border-orange-400 shadow-lg shadow-orange-100'
+                : isUnlocked ? 'bg-white border-2 border-orange-400'
                 : 'bg-gray-100 border-2 border-gray-200 opacity-60 cursor-not-allowed'
               }`}
             >
@@ -347,7 +347,7 @@ function PlayingPhase({
           key={`${word.word_id}-${showFeedback}`}
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-xl p-8 mb-8 text-center"
+          className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 mb-8 text-center"
         >
           {!showFeedback ? (
             <>
@@ -407,7 +407,7 @@ function PlayingPhase({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           onClick={onNext}
-          className="w-full py-4 bg-gradient-to-r from-orange-500 to-pink-500 text-white font-bold text-lg rounded-2xl hover:shadow-lg transition"
+          className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white font-bold text-lg rounded-xl transition-colors"
         >
           {currentIndex < total - 1 ? '下一题 →' : '查看成绩'}
         </motion.button>

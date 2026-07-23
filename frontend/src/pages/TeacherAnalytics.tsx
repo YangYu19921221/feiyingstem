@@ -145,7 +145,7 @@ const TeacherAnalytics = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-gray-500 mt-4">加载数据中...</p>
@@ -155,9 +155,9 @@ const TeacherAnalytics = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <button
             onClick={() => navigate('/teacher/dashboard')}
@@ -169,14 +169,14 @@ const TeacherAnalytics = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
         {/* 页面标题 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <h1 className="text-3xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+          <h1 className="mb-1 flex items-center gap-3 text-2xl font-bold text-gray-800 sm:text-3xl">
             <TrendingUp className="w-8 h-8 text-primary" />
             班级学习数据分析
           </h1>
@@ -198,17 +198,17 @@ const TeacherAnalytics = () => {
 
         {/* 班级概览统计 */}
         {classOverview && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg"
+              className="rounded-xl border border-blue-100 bg-blue-50 p-5 text-slate-800 shadow-sm"
             >
               <div className="flex items-center justify-between mb-4">
                 <Users className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">学生</span>
               </div>
-              <div className="text-4xl font-bold mb-1">{classOverview.student_count}</div>
+              <div className="mb-1 text-3xl font-bold">{classOverview.student_count}</div>
               <div className="text-blue-100">班级学生数</div>
             </motion.div>
 
@@ -216,13 +216,13 @@ const TeacherAnalytics = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.1 }}
-              className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg"
+              className="rounded-xl border border-violet-100 bg-violet-50 p-5 text-slate-800 shadow-sm"
             >
               <div className="flex items-center justify-between mb-4">
                 <BookOpen className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">单词</span>
               </div>
-              <div className="text-4xl font-bold mb-1">{classOverview.total_words_studied}</div>
+              <div className="mb-1 text-3xl font-bold">{classOverview.total_words_studied}</div>
               <div className="text-purple-100">累计学习单词</div>
               <div className="mt-2 text-sm">
                 平均每人{' '}
@@ -237,13 +237,13 @@ const TeacherAnalytics = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2 }}
-              className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg"
+              className="rounded-xl border border-emerald-100 bg-emerald-50 p-5 text-slate-800 shadow-sm"
             >
               <div className="flex items-center justify-between mb-4">
                 <Target className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">准确率</span>
               </div>
-              <div className="text-4xl font-bold mb-1">
+              <div className="mb-1 text-3xl font-bold">
                 {(classOverview.avg_accuracy * 100).toFixed(1)}%
               </div>
               <div className="text-green-100">班级平均准确率</div>
@@ -253,13 +253,13 @@ const TeacherAnalytics = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 }}
-              className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-lg"
+              className="rounded-xl border border-amber-100 bg-amber-50 p-5 text-slate-800 shadow-sm"
             >
               <div className="flex items-center justify-between mb-4">
                 <Star className="w-8 h-8" />
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">已掌握</span>
               </div>
-              <div className="text-4xl font-bold mb-1">{classOverview.mastered_words}</div>
+              <div className="mb-1 text-3xl font-bold">{classOverview.mastered_words}</div>
               <div className="text-orange-100">已掌握单词数</div>
             </motion.div>
           </div>
@@ -308,7 +308,7 @@ const TeacherAnalytics = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 shadow-lg mb-8"
+          className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm mb-8"
         >
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             📊 学习模式统计
@@ -338,7 +338,7 @@ const TeacherAnalytics = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 shadow-lg mb-8"
+          className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm mb-8"
         >
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             🏆 学生学习排名
@@ -416,7 +416,7 @@ const TeacherAnalytics = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl p-6 shadow-lg"
+          className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm"
         >
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             🔥 最具挑战的单词 (Top 10)

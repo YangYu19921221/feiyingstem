@@ -40,88 +40,74 @@
   }
 
   .bg-paper {
-    background-color: oklch(0.985 0.008 55);
+    background-color: #f5f8fc;
   }
   .text-ink {
-    color: oklch(0.22 0.015 55);
+    color: #293545;
   }
   .text-ink-soft {
-    color: oklch(0.52 0.012 55);
+    color: #687383;
   }
   .text-ink-mute {
-    color: oklch(0.72 0.008 55);
+    color: #98a1ad;
   }
   .bg-accent-warm {
-    background-color: oklch(0.68 0.185 40);
+    background-color: #e88952;
   }
   /* 渐变起点色:Tailwind 不会为 index.css 里的自定义色生成 from-*,需手写(签到横幅/实时排名徽章在用) */
   .from-accent-warm {
-    --tw-gradient-from: oklch(0.68 0.185 40) var(--tw-gradient-from-position);
-    --tw-gradient-to: oklch(0.68 0.185 40 / 0) var(--tw-gradient-to-position);
+    --tw-gradient-from: #e88952 var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(232 137 82 / 0) var(--tw-gradient-to-position);
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
   }
   .text-accent-warm {
-    color: oklch(0.62 0.19 40);
+    color: #d56f3c;
   }
   .border-accent-warm {
-    border-color: oklch(0.68 0.185 40);
+    border-color: #e88952;
   }
   .ring-accent-warm {
-    --tw-ring-color: oklch(0.68 0.185 40 / 0.25);
+    --tw-ring-color: rgb(232 137 82 / 0.25);
   }
   .font-display {
     font-family: 'Inter Display', Inter, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-    letter-spacing: -0.015em;
+    letter-spacing: 0;
   }
   .font-numeric {
     font-feature-settings: 'tnum';
     font-variant-numeric: tabular-nums;
   }
 
-  /* 暖色卡片：带极浅暖色描边 + 软阴影，让白卡在暖米底上"浮起来" */
+  /* Flat workspace card: cool border, almost no elevation. */
   .card-soft {
     background: white;
-    border: 1px solid oklch(0.68 0.185 40 / 0.08);
-    box-shadow:
-      0 1px 0 oklch(0.68 0.185 40 / 0.04),
-      0 4px 12px -2px oklch(0.55 0.18 40 / 0.06);
+    border: 1px solid #dfe8f1;
+    box-shadow: 0 1px 2px rgb(29 55 82 / 0.035);
     transition: box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1),
                 border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
                 transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   .card-soft:hover {
-    border-color: oklch(0.68 0.185 40 / 0.18);
-    box-shadow:
-      0 1px 0 oklch(0.68 0.185 40 / 0.06),
-      0 8px 24px -4px oklch(0.55 0.18 40 / 0.12);
-    transform: translateY(-2px);
+    border-color: #bfd3e4;
+    box-shadow: 0 2px 6px rgb(29 55 82 / 0.06);
+    transform: none;
   }
 
-  /* 主按钮：实色 → 双向暖色渐变 + 暖色光晕，按下时光晕收缩 */
+  /* Warm primary action with a restrained, flat treatment. */
   .btn-glow {
-    background-image: linear-gradient(135deg,
-      oklch(0.72 0.18 45) 0%,
-      oklch(0.66 0.195 35) 100%);
-    box-shadow:
-      0 1px 0 oklch(1 0 0 / 0.25) inset,
-      0 0 0 1px oklch(0.55 0.2 35 / 0.4),
-      0 8px 16px -4px oklch(0.55 0.2 35 / 0.35),
-      0 2px 4px -1px oklch(0.55 0.2 35 / 0.2);
+    background: #e88952;
+    border: 1px solid #d97843;
+    box-shadow: none;
     transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   .btn-glow:hover:not(:disabled) {
-    box-shadow:
-      0 1px 0 oklch(1 0 0 / 0.3) inset,
-      0 0 0 1px oklch(0.55 0.2 35 / 0.5),
-      0 12px 24px -6px oklch(0.55 0.2 35 / 0.45),
-      0 4px 8px -2px oklch(0.55 0.2 35 / 0.25);
-    transform: translateY(-1px);
+    background: #d97843;
+    box-shadow: none;
+    transform: none;
   }
   .btn-glow:active:not(:disabled) {
-    box-shadow:
-      0 1px 0 oklch(1 0 0 / 0.15) inset,
-      0 0 0 1px oklch(0.55 0.2 35 / 0.4),
-      0 4px 8px -2px oklch(0.55 0.2 35 / 0.3);
+    background: #c96838;
+    box-shadow: none;
     transform: translateY(0);
   }
   .btn-glow:disabled {
@@ -131,11 +117,9 @@
     box-shadow: none;
   }
 
-  /* 页面顶部柔和暖光：很弱，仅作为整页温度 */
+  /* Keep pages flat; section color carries hierarchy. */
   .page-warm-glow {
-    background-image:
-      radial-gradient(ellipse 80% 60% at 50% -10%, oklch(0.85 0.12 45 / 0.12), transparent 60%),
-      radial-gradient(ellipse 60% 40% at 90% 30%, oklch(0.85 0.12 45 / 0.06), transparent 70%);
+    background-image: none;
   }
 
   /* 大数字柔光：text-shadow 模拟光晕，不是 gradient text */
@@ -228,6 +212,351 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: #f5f8fc;
+}
+
+body.staff-interface,
+body.staff-interface #root { background-color: #f5f8fc; }
+body.student-interface,
+body.student-interface #root { background-color: #f5f8fc; }
+body.student-interface:not(.student-immersive) #root > .min-h-screen {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+body.staff-teacher,
+body.staff-teacher #root { background-image: none; }
+body.staff-admin,
+body.staff-admin #root { background-image: none; }
+body.staff-interface { --staff-accent: #5d94c4; --staff-surface: #eef6fc; }
+body.staff-admin { --staff-accent: #5b83b4; --staff-surface: #edf3fa; }
+body.staff-interface:not(.staff-immersive) #root > .min-h-screen {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+body.staff-interface nav:not(.staff-mobile-nav) { border-bottom: 1px solid #e2e8f0; box-shadow: none !important; }
+body.staff-interface .staff-colorful-surface {
+  background: var(--staff-surface);
+  border-color: #d4e4f1 !important;
+  box-shadow: none !important;
+}
+body.student-interface .student-colorful-surface {
+  background: #eef6fc;
+  border-color: #d4e4f1 !important;
+  box-shadow: none !important;
+}
+/* Every signed-in workspace page uses the same quiet canvas and elevated content rhythm. */
+body.student-interface:not(.student-immersive) .bg-paper,
+body.staff-interface:not(.staff-immersive) .bg-paper { background-color: transparent; }
+body.student-interface nav:not(.student-mobile-nav),
+body.staff-interface nav:not(.staff-mobile-nav) {
+  background-color: rgba(255, 255, 255, 0.86);
+  border-bottom-color: rgba(148, 163, 184, 0.28);
+  box-shadow: none !important;
+}
+body.student-interface .bg-white,
+body.staff-interface .bg-white { border-color: rgba(148, 163, 184, 0.18); }
+body.student-interface .shadow-md,
+body.student-interface .shadow-lg,
+body.staff-interface .shadow-md,
+body.staff-interface .shadow-lg {
+  box-shadow: 0 1px 3px rgba(30, 64, 96, 0.06);
+}
+body.student-interface input:not([type='checkbox']):not([type='radio']),
+body.student-interface select,
+body.student-interface textarea,
+body.staff-interface input:not([type='checkbox']):not([type='radio']),
+body.staff-interface select,
+body.staff-interface textarea {
+  border-color: rgba(148, 163, 184, 0.38);
+  background-color: rgba(255, 255, 255, 0.9);
+}
+body.student-interface input:focus,
+body.student-interface select:focus,
+body.student-interface textarea:focus,
+body.staff-interface input:focus,
+body.staff-interface select:focus,
+body.staff-interface textarea:focus {
+  outline: none;
+  border-color: rgba(93, 148, 196, 0.7);
+  box-shadow: 0 0 0 3px rgba(93, 148, 196, 0.12);
+}
+body.staff-admin input:focus,
+body.staff-admin select:focus,
+body.staff-admin textarea:focus {
+  border-color: rgba(91, 131, 180, 0.65);
+  box-shadow: 0 0 0 3px rgba(91, 131, 180, 0.12);
+}
+body.staff-interface .shadow-md,
+body.staff-interface .shadow-lg { box-shadow: 0 1px 3px rgba(30, 64, 96, 0.06); }
+body.staff-interface .rounded-2xl,
+body.staff-interface .rounded-3xl { border-radius: 0.75rem; }
+body.staff-interface table { min-width: 720px; }
+body.staff-interface div:has(> table) { overflow-x: auto; }
+@media (max-width: 767px) {
+  body.student-mobile-nav-visible #root,
+  body.staff-mobile-nav-visible #root { padding-bottom: 4.75rem; }
+  body.student-mobile-nav-visible [data-pet-widget] { bottom: 5rem; }
+}
+
+/* 分类学习：只调整页面底色与信息层级，保留每个答案状态的语义色。 */
+.classify-learning-page {
+  background: #edf5fb;
+  color: #293545;
+}
+.classify-learning-nav {
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #dce7f0;
+  box-shadow: 0 1px 3px rgba(38, 59, 78, 0.06);
+  backdrop-filter: blur(10px);
+}
+.classify-learning-main {
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+.classify-stage-rail {
+  align-items: center;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #dbe7f0;
+  border-radius: 999px;
+  background: #f7fafc;
+}
+.classify-stage-rail > div {
+  width: 0.42rem;
+  height: 0.42rem;
+}
+.classify-stage-rail > div.bg-primary {
+  background: #e88952 !important;
+}
+.classify-module-status {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #eadfd5;
+  border-radius: 0.7rem;
+  background: #fffaf6;
+  color: #6b7280;
+  white-space: nowrap;
+}
+.classify-module-status-label {
+  font-size: 0.68rem;
+  color: #9a8e85;
+}
+.classify-module-status strong {
+  color: #c96c3d;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.classify-module-status-meta {
+  color: #8b817b;
+  font-size: 0.68rem;
+}
+.classify-progress-track {
+  background: #e5edf4;
+}
+.classify-progress-value {
+  background: linear-gradient(90deg, #6ea3cf, #e5a65d);
+}
+.classify-learning-page .classify-learning-actions {
+  background: rgba(237, 245, 251, 0.96);
+  border-top: 1px solid #d9e6ef;
+  padding-top: 1rem;
+}
+.classify-learning-page .classify-learning-actions > div {
+  max-width: 34rem;
+}
+.classify-learning-page .classify-learning-actions button {
+  min-height: 5.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: 0 4px 12px rgba(38, 59, 78, 0.11);
+}
+.classify-learning-page .classify-learning-actions button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 16px rgba(38, 59, 78, 0.15);
+}
+.classify-learning-page .classify-learning-actions button:active:not(:disabled) {
+  transform: translateY(0);
+}
+.classify-learning-page .classify-word-card {
+  border: 1px solid #dce7f0;
+  box-shadow: 0 8px 22px rgba(38, 59, 78, 0.08);
+}
+.classify-learning-page .classify-learning-card {
+  border: 1px solid #dce7f0;
+  box-shadow: 0 6px 18px rgba(38, 59, 78, 0.07);
+}
+.classify-learning-page .classify-help-chip {
+  border: 1px solid #d7e3ec;
+  background: #f5f8fb;
+}
+.classify-learning-page .classify-help-chip:hover {
+  background: #eaf2f8;
+}
+.classify-study-flow {
+  padding-top: 0;
+}
+.classify-study-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.classify-stage-label {
+  color: #687383;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.classify-round-badge {
+  border: 1px solid #eadfd5;
+  border-radius: 0.35rem;
+  background: #fffaf6;
+  color: #c96c3d;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.2rem 0.4rem;
+}
+.classify-timer-chip {
+  align-items: center;
+  background: #f7fafc;
+  border: 1px solid #dce7f0;
+  border-radius: 0.4rem;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  gap: 0.25rem;
+  padding: 0.3rem 0.5rem;
+}
+.classify-word-title {
+  color: #293545;
+  letter-spacing: 0.01em;
+}
+.classify-audio-button {
+  background: #edf5fb;
+  border: 1px solid #cfe0ed;
+  color: #4d7da5;
+}
+.classify-audio-button:hover {
+  background: #e1eef7;
+  color: #356889;
+}
+.classify-meaning-panel {
+  background: #f7fafc;
+  border: 1px solid #e1eaf1;
+  border-radius: 0.5rem;
+}
+.classify-memory-button {
+  background: #f7f2ff;
+  border: 1px solid #e3d5f4;
+  color: #73539a;
+}
+.classify-memory-button:hover {
+  background: #f0e7fb;
+  border-color: #cfb8e9;
+}
+.classify-memory-tip {
+  background: #faf7ff;
+  border: 1px solid #e3d5f4;
+  border-radius: 0.5rem;
+  color: #73539a;
+}
+.classify-example-panel {
+  background: #fffaf4;
+  border: 1px solid #f1dfc8;
+  border-radius: 0.5rem;
+}
+.classify-decision-panel {
+  padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+}
+.classify-decision-card {
+  border-width: 1px;
+  box-shadow: 0 1px 2px rgba(38, 59, 78, 0.04);
+}
+.classify-decision-card:hover:not(:disabled) {
+  box-shadow: 0 5px 12px rgba(38, 59, 78, 0.1);
+}
+.classify-choice-icon,
+.classify-choice-key {
+  background: rgba(255, 255, 255, 0.72);
+}
+.classify-choice-familiar {
+  background: #f1faf5;
+  border-color: #b9dfc9;
+  color: #176b48;
+}
+.classify-choice-familiar:hover:not(:disabled) {
+  background: #e7f7ee;
+  border-color: #7fc79e;
+}
+.classify-choice-familiar .classify-choice-icon,
+.classify-choice-familiar .classify-choice-key {
+  color: #237d57;
+}
+.classify-choice-semi {
+  background: #fff9ee;
+  border-color: #f0d59f;
+  color: #9a5a16;
+}
+.classify-choice-semi:hover:not(:disabled) {
+  background: #fff3dd;
+  border-color: #e7b965;
+}
+.classify-choice-semi .classify-choice-icon,
+.classify-choice-semi .classify-choice-key {
+  color: #a8691c;
+}
+.classify-choice-unknown {
+  background: #fff4f3;
+  border-color: #efc1bd;
+  color: #a13d39;
+}
+.classify-choice-unknown:hover:not(:disabled) {
+  background: #ffebea;
+  border-color: #df8c86;
+}
+.classify-choice-unknown .classify-choice-icon,
+.classify-choice-unknown .classify-choice-key {
+  color: #b54e49;
+}
+@media (max-width: 640px) {
+  .classify-learning-main {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+  .classify-learning-page .classify-learning-actions {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .classify-learning-page .classify-learning-actions button {
+    min-height: 5rem;
+  }
+  .classify-module-status {
+    padding: 0.35rem 0.5rem;
+  }
+  .classify-module-status-label,
+  .classify-module-status-meta {
+    display: none;
+  }
+  .classify-module-status strong {
+    font-size: 0.72rem;
+  }
+  .classify-study-flow {
+    gap: 0.75rem;
+    padding-top: 0;
+  }
+  .classify-decision-card {
+    min-height: 4.75rem;
+    padding: 0.625rem;
+  }
+  /* 手机端模块牌已经承担顶部状态提示，排名浮标不再压住学习卡片。 */
+  .classify-learning-page .live-rank-badge,
+  .classify-learning-page .live-rank-climb {
+    display: none;
+  }
 }
 
 /* 隐藏滚动条但保持滚动功能 */

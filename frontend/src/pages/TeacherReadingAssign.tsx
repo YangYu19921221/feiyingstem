@@ -98,7 +98,7 @@ const TeacherReadingAssign = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="mt-4 text-gray-600">加载中...</p>
@@ -110,10 +110,10 @@ const TeacherReadingAssign = () => {
   if (!passage) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
       <nav className="bg-white shadow-sm mb-6">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/teacher/reading')}
@@ -134,7 +134,7 @@ const TeacherReadingAssign = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl shadow-md p-6 mb-6"
+              className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
             >
               <h2 className="text-xl font-bold text-gray-800 mb-4">📖 文章信息</h2>
               <div className="space-y-2 text-sm">
@@ -150,7 +150,7 @@ const TeacherReadingAssign = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-2xl shadow-md p-6"
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
             >
               <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ 作业设置</h2>
 
@@ -217,7 +217,7 @@ const TeacherReadingAssign = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-2xl shadow-md p-6 mb-6"
+              className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
             >
               <h2 className="text-xl font-bold text-gray-800 mb-4">👥 选择学生</h2>
 
@@ -261,7 +261,7 @@ const TeacherReadingAssign = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="bg-white rounded-2xl shadow-md p-6"
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
               >
                 <h2 className="text-xl font-bold text-gray-800 mb-4">📊 完成情况</h2>
 

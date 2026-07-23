@@ -58,7 +58,7 @@ const UnitExamResult = () => {
   return (
     <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
+      <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
           <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm">
             <ArrowLeft className="w-4 h-4" />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, Calendar, Target, Clock, BookOpen, Zap } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Calendar, Clock, BookOpen, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   getLearningOverview,
@@ -83,10 +83,10 @@ const LearningAnalytics = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 py-3">
+      <nav className="bg-white/85 backdrop-blur-md shadow-sm sticky top-0 z-20 border-b border-slate-200/80">
+        <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate(-1)}
@@ -96,13 +96,16 @@ const LearningAnalytics = () => {
             </button>
             <div className="flex items-center gap-3">
               <TrendingUp className="w-8 h-8 text-blue-500" />
-              <h1 className="text-2xl font-bold text-gray-800">学习数据分析</h1>
+              <div>
+                <h1 className="font-display text-xl font-bold text-gray-800">学习数据分析</h1>
+                <p className="hidden text-xs text-slate-500 sm:block">查看趋势、时长和掌握情况</p>
+              </div>
             </div>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-7 sm:py-8">
         {/* 今日实时数据 */}
         {overview && (
           <motion.div
@@ -174,7 +177,7 @@ const LearningAnalytics = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <BookOpen className="w-6 h-6 text-blue-500" />
@@ -188,7 +191,7 @@ const LearningAnalytics = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-6 h-6 text-green-500" />
@@ -202,7 +205,7 @@ const LearningAnalytics = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <Clock className="w-6 h-6 text-purple-500" />
@@ -216,7 +219,7 @@ const LearningAnalytics = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5"
           >
             <div className="flex items-center gap-3 mb-2">
               <Zap className="w-6 h-6 text-orange-500" />
@@ -232,7 +235,7 @@ const LearningAnalytics = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-2xl p-6 shadow-lg mb-8"
+          className="card-soft rounded-2xl p-5 sm:p-6 mb-8"
         >
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-gray-800">学习趋势</h2>
@@ -318,7 +321,7 @@ const LearningAnalytics = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5 sm:p-6"
           >
             <h2 className="text-xl font-bold text-gray-800 mb-6">学习模式统计</h2>
             <div className="space-y-4">
@@ -357,7 +360,7 @@ const LearningAnalytics = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className="card-soft rounded-2xl p-5 sm:p-6"
           >
             <h2 className="text-xl font-bold text-gray-800 mb-6">最近活动</h2>
             <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -406,7 +409,7 @@ const LearningAnalytics = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8 }}
-            className="bg-white rounded-2xl p-6 shadow-lg mt-8"
+            className="card-soft rounded-2xl p-5 sm:p-6 mt-8"
           >
             <h2 className="text-xl font-bold text-gray-800 mb-6">单词掌握度分布</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -507,7 +510,7 @@ const LearningAnalytics = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.0 }}
-          className="bg-white rounded-2xl p-6 shadow-lg mt-8"
+          className="card-soft rounded-2xl p-5 sm:p-6 mt-8"
         >
           <h2 className="text-xl font-bold text-gray-800 mb-2">📈 记忆曲线</h2>
           <p className="text-sm text-gray-500 mb-6">

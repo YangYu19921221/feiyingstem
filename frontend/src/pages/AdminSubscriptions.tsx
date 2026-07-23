@@ -159,17 +159,17 @@ const AdminSubscriptions = () => {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FFF8F0] to-[#FFE8D6] p-6">
+    <div className="min-h-screen bg-paper p-4 sm:p-6">
       <div className="max-w-6xl mx-auto">
         {/* 头部 */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">📖 书籍兑换码管理</h1>
             <p className="text-gray-500 text-sm mt-1">生成兑换码，学生兑换后解锁对应单词本</p>
           </div>
           <button
             onClick={() => navigate('/admin/dashboard')}
-            className="px-4 py-2 bg-white rounded-lg shadow text-gray-600 hover:bg-gray-50"
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-gray-600 hover:bg-gray-50"
           >
             返回
           </button>
@@ -184,7 +184,7 @@ const AdminSubscriptions = () => {
               { label: '已过期', value: stats.expired_codes, icon: '⏰', bg: 'bg-gray-50' },
               { label: '已禁用', value: stats.disabled_codes, icon: '🚫', bg: 'bg-red-50' },
             ].map((item) => (
-              <div key={item.label} className={`${item.bg} rounded-xl p-4 border`}>
+              <div key={item.label} className={`${item.bg} rounded-xl p-4 border border-slate-200`}>
                 <div className="text-2xl mb-1">{item.icon}</div>
                 <div className="text-2xl font-bold text-gray-800">{item.value}</div>
                 <div className="text-sm text-gray-500">{item.label}</div>
@@ -194,9 +194,9 @@ const AdminSubscriptions = () => {
         )}
 
         {/* 生成兑换码 */}
-        <div className="bg-white rounded-xl shadow p-6 mb-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-6">
           <h2 className="text-lg font-bold text-gray-800 mb-4">生成兑换码</h2>
-          <div className="flex flex-wrap gap-4 items-end">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-stretch sm:items-end">
             <div>
               <label className="block text-sm text-gray-600 mb-1">数量</label>
               <input
@@ -204,7 +204,7 @@ const AdminSubscriptions = () => {
                 min={1} max={100}
                 value={genCount}
                 onChange={(e) => setGenCount(Number(e.target.value))}
-                className="w-24 px-3 py-2 border rounded-lg"
+                className="w-full sm:w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               />
             </div>
             <div className="min-w-[200px]">
@@ -212,7 +212,7 @@ const AdminSubscriptions = () => {
               <select
                 value={genBookId}
                 onChange={(e) => setGenBookId(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               >
                 {books.length === 0 && <option value={0}>暂无单词本</option>}
                 {books.map((b) => (
@@ -227,7 +227,7 @@ const AdminSubscriptions = () => {
                 value={genNote}
                 onChange={(e) => setGenNote(e.target.value)}
                 placeholder="可选备注"
-                className="w-full px-3 py-2 border rounded-lg"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               />
             </div>
             <motion.button
@@ -236,7 +236,7 @@ const AdminSubscriptions = () => {
               onClick={handleGenerate}
               disabled={generating || !genBookId}
               className={`px-6 py-2 rounded-lg font-medium text-white ${
-                generating || !genBookId ? 'bg-gray-400' : 'bg-[#FF6B35] hover:bg-[#e55a2b]'
+                generating || !genBookId ? 'bg-gray-400' : 'bg-[#3976a9] hover:bg-[#2e628f]'
               }`}
             >
               {generating ? '生成中...' : '生成'}
@@ -267,21 +267,21 @@ const AdminSubscriptions = () => {
         </div>
 
         {/* 兑换码列表 */}
-        <div className="bg-white rounded-xl shadow p-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-gray-800">兑换码列表</h2>
             <div className="flex items-center gap-3">
               <button
                 onClick={exportCSV}
                 disabled={codes.length === 0}
-                className="px-3 py-1.5 bg-[#FF6B35] text-white rounded-lg text-sm hover:bg-[#e55a2b] disabled:opacity-40"
+                className="px-3 py-1.5 bg-[#3976a9] text-white rounded-lg text-sm hover:bg-[#2e628f] disabled:opacity-40"
               >
                 导出CSV
               </button>
               <select
                 value={filterStatus}
                 onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-                className="px-3 py-1.5 border rounded-lg text-sm"
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white"
               >
                 <option value="">全部状态</option>
                 <option value="unused">未使用</option>
@@ -293,7 +293,17 @@ const AdminSubscriptions = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <div className="sm:hidden space-y-2 pb-3">
+              {codes.length === 0 ? <div className="py-8 text-center text-sm text-slate-400">暂无兑换码</div> : codes.map((c) => (
+                <article key={c.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-3"><code className="font-mono text-xs font-semibold text-slate-800">{c.code}</code><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_MAP[c.status]?.color || ''}`}>{STATUS_MAP[c.status]?.label || c.status}</span></div>
+                  <div className="mt-2 text-xs text-slate-500">{getBookName(c.book_id, c.book_name)} · 创建于 {new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
+                  <div className="mt-3 flex gap-3 border-t border-slate-100 pt-2 text-xs font-semibold"><button onClick={() => copySingleCode(c.code, c.id)} className="text-[#3976a9]">{copiedId === c.id ? '已复制' : '复制'}</button>{c.status === 'unused' && <button onClick={() => handleDisable(c.id)} className="text-red-600">禁用</button>}</div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden sm:block">
+            <table className="w-full min-w-[760px] whitespace-nowrap text-sm">
               <thead>
                 <tr className="border-b text-left text-gray-500">
                   <th className="pb-2 pr-4">兑换码</th>
@@ -306,7 +316,7 @@ const AdminSubscriptions = () => {
               </thead>
               <tbody>
                 {codes.map((c) => (
-                  <tr key={c.id} className="border-b last:border-0 hover:bg-gray-50">
+                  <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                     <td className="py-2.5 pr-4 font-mono text-xs">{c.code}</td>
                     <td className="py-2.5 pr-4">
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
@@ -353,6 +363,7 @@ const AdminSubscriptions = () => {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* 分页 */}

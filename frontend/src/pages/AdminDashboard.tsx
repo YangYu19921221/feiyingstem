@@ -1,288 +1,79 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { Activity, ArrowRight, BarChart3, BookOpen, Building2, ChevronRight, CircleDollarSign, Cog, GraduationCap, LogOut, Megaphone, Settings, ShieldCheck, Sparkles, Ticket, Trophy, Users } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
 
-interface UserData {
-  id: number;
-  username: string;
-  full_name: string;
-  role: string;
-}
+interface UserData { full_name: string }
+interface Statistics { total_users: number; students?: number; total_words: number; total_books: number; active_users_today: number; active_users_week: number; learning_records_today: number; learning_records_week: number }
+interface RecentUser { id: number; username: string; full_name: string | null; role: string; is_active: boolean; created_at: string | null }
+interface ActionItem { title: string; description: string; path: string; icon: LucideIcon; tone: string }
 
-interface Statistics {
-  total_users: number;
-  total_words: number;
-  total_books: number;
-  total_units: number;
-  active_users_today: number;
-  active_users_week: number;
-  learning_records_today: number;
-  learning_records_week: number;
-  students: number;
-  teachers: number;
-  admins: number;
-}
-
-interface RecentUser {
-  id: number;
-  username: string;
-  full_name: string | null;
-  role: string;
-  is_active: boolean;
-  created_at: string | null;
-  last_login: string | null;
-}
+const actions: ActionItem[] = [
+  { title: '机构管理', description: '加盟商开户与配额', path: '/admin/organizations', icon: Building2, tone: 'bg-orange-50 text-orange-600' },
+  { title: '用户管理', description: '管理师生账号', path: '/admin/users', icon: Users, tone: 'bg-blue-50 text-blue-600' },
+  { title: '教师管理', description: '教师列表与班级', path: '/admin/teachers', icon: GraduationCap, tone: 'bg-cyan-50 text-cyan-600' },
+  { title: '班级数据', description: '学习统计与名册', path: '/admin/classes', icon: BarChart3, tone: 'bg-indigo-50 text-indigo-600' },
+  { title: '内容管理', description: '单词与单词本', path: '/admin/content', icon: BookOpen, tone: 'bg-emerald-50 text-emerald-600' },
+  { title: 'AI 配置', description: '模型与服务设置', path: '/admin/ai-config', icon: Sparkles, tone: 'bg-violet-50 text-violet-600' },
+  { title: '数据统计', description: '系统使用情况', path: '/admin/statistics', icon: Activity, tone: 'bg-sky-50 text-sky-600' },
+  { title: '系统设置', description: '配置与版本更新', path: '/admin/settings', icon: Settings, tone: 'bg-slate-100 text-slate-600' },
+  { title: '订阅管理', description: '兑换码与订阅', path: '/admin/subscriptions', icon: Ticket, tone: 'bg-amber-50 text-amber-600' },
+  { title: '单词比赛', description: '竞赛排行与概览', path: '/admin/competition', icon: Trophy, tone: 'bg-rose-50 text-rose-600' },
+];
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-
-  // 直接从 localStorage 初始化用户数据,避免闪烁
-  const [user] = useState<UserData | null>(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        return JSON.parse(userStr);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
-
+  const [user] = useState<UserData | null>(() => { try { return JSON.parse(localStorage.getItem('user') || 'null') as UserData | null; } catch { return null; } });
   const [stats, setStats] = useState<Statistics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [hasUpdate, setHasUpdate] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState('');
-  // 最近注册用户(真实数据，取自 /admin/users 按创建时间倒序)
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentVersion, setCurrentVersion] = useState('');
+  const [hasUpdate, setHasUpdate] = useState(false);
 
   useEffect(() => {
-    loadStatistics();
-    loadRecentUsers();
-    // 检查版本更新
-    axios.get(`${API_BASE_URL}/admin/system/version`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
-    }).then(res => {
-      setCurrentVersion(res.data.version || '');
-    }).catch(() => {});
-    axios.get(`${API_BASE_URL}/admin/system/check-update`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
-    }).then(res => {
-      setHasUpdate(res.data.has_update);
-    }).catch(() => {});
+    const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
+    Promise.allSettled([
+      axios.get(`${API_BASE_URL}/admin/stats`, { headers }),
+      axios.get(`${API_BASE_URL}/admin/users`, { params: { page: 1, page_size: 5 }, headers }),
+      axios.get(`${API_BASE_URL}/admin/system/version`, { headers }),
+      axios.get(`${API_BASE_URL}/admin/system/check-update`, { headers }),
+    ]).then(([statsResult, usersResult, versionResult, updateResult]) => {
+      if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
+      if (usersResult.status === 'fulfilled') setRecentUsers(usersResult.value.data?.users || []);
+      if (versionResult.status === 'fulfilled') setCurrentVersion(versionResult.value.data?.version || '');
+      if (updateResult.status === 'fulfilled') setHasUpdate(Boolean(updateResult.value.data?.has_update));
+    }).catch((error) => console.error('加载管理工作台失败:', error)).finally(() => setLoading(false));
   }, []);
 
-  const loadStatistics = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API_BASE_URL}/admin/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setStats(response.data);
-    } catch (error) {
-      console.error('加载统计数据失败:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 加载最近注册的 5 个用户(真实数据)
-  const loadRecentUsers = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API_BASE_URL}/admin/users`, {
-        params: { page: 1, page_size: 5 },
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setRecentUsers(response.data?.users || []);
-    } catch (error) {
-      console.error('加载最近用户失败:', error);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
-
-  const quickActions = [
-    { icon: '🏢', title: '机构管理', desc: '加盟商开户与配额', color: 'from-rose-500 to-orange-500', path: '/admin/organizations' },
-    { icon: '👥', title: '用户管理', desc: '管理师生账号', color: 'from-blue-500 to-cyan-500', path: '/admin/users' },
-    { icon: '👨‍🏫', title: '教师管理', desc: '教师列表与班级', color: 'from-teal-500 to-green-500', path: '/admin/teachers' },
-    { icon: '📊', title: '班级数据', desc: '学习统计与名册', color: 'from-sky-500 to-blue-500', path: '/admin/classes' },
-    { icon: '📚', title: '内容管理', desc: '单词/单词本', color: 'from-purple-500 to-pink-500', path: '/admin/content' },
-    { icon: '🤖', title: 'AI配置', desc: '通义千问等服务', color: 'from-indigo-500 to-purple-500', path: '/admin/ai-config' },
-    { icon: '📊', title: '数据统计', desc: '系统使用情况', color: 'from-green-500 to-teal-500', path: '/admin/statistics' },
-    { icon: '⚙️', title: '系统设置', desc: '配置管理', color: 'from-orange-500 to-red-500', path: '/admin/settings' },
-    { icon: '🎫', title: '订阅管理', desc: '兑换码管理', color: 'from-amber-500 to-orange-500', path: '/admin/subscriptions' },
-    { icon: '🏆', title: '单词比赛', desc: '竞赛排行与概览', color: 'from-yellow-500 to-amber-500', path: '/admin/competition' },
-  ];
-
-  const systemStats = loading ? [] : [
-    { label: '总用户数', value: stats?.total_users.toString() || '0', trend: '+' + (stats?.students || 0), icon: '👥', color: 'bg-blue-100 text-blue-600' },
-    { label: '总单词数', value: stats?.total_words.toLocaleString() || '0', trend: '+' + (stats?.total_books || 0) + '本', icon: '📚', color: 'bg-purple-100 text-purple-600' },
-    { label: '今日活跃', value: stats?.active_users_today.toString() || '0', trend: '本周' + (stats?.active_users_week || 0), icon: '🔥', color: 'bg-orange-100 text-orange-600' },
-    { label: '本周学习', value: stats?.learning_records_week.toLocaleString() || '0', trend: '今日' + (stats?.learning_records_today || 0), icon: '📈', color: 'bg-green-100 text-green-600' },
+  const logout = () => { localStorage.removeItem('access_token'); localStorage.removeItem('user'); navigate('/login'); };
+  const summary = [
+    { label: '总用户数', value: stats?.total_users || 0, note: `学生 ${stats?.students || 0}`, icon: Users, tone: 'bg-blue-50 text-blue-600' },
+    { label: '词汇总量', value: stats?.total_words || 0, note: `${stats?.total_books || 0} 本单词本`, icon: BookOpen, tone: 'bg-orange-50 text-orange-600' },
+    { label: '今日活跃', value: stats?.active_users_today || 0, note: `本周 ${stats?.active_users_week || 0}`, icon: Activity, tone: 'bg-emerald-50 text-emerald-600' },
+    { label: '本周学习', value: stats?.learning_records_week || 0, note: `今日 ${stats?.learning_records_today || 0}`, icon: BarChart3, tone: 'bg-violet-50 text-violet-600' },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-50">
-      {/* 顶部导航栏 */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">⚡</span>
-            <h1 className="text-xl font-bold text-gray-800">系统管理后台</h1>
-            {currentVersion && (
-              <span className={`text-xs px-2 py-0.5 rounded-full font-mono shadow-sm ${hasUpdate ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white animate-pulse' : 'bg-gray-100 text-gray-500'}`}>v{currentVersion}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            {hasUpdate && (
-              <button
-                onClick={() => navigate('/admin/settings')}
-                className="flex items-center gap-1 px-3 py-1 bg-red-500 text-white rounded-full text-sm font-medium animate-pulse hover:bg-red-600 transition"
-              >
-                🔔 有新版本可更新
-              </button>
-            )}
-            <div className="flex items-center gap-2 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm">
-              <span>👑</span>
-              <span className="font-medium">{user?.full_name || '管理员'}</span>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
-            >
-              退出
-            </button>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen text-slate-800">
+      <nav className="bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600"><ShieldCheck className="h-5 w-5" /></div><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-500">Operations console</p><h1 className="truncate text-lg font-bold">系统管理后台</h1></div>{currentVersion && <span className={`hidden rounded-full px-2 py-1 text-[11px] font-semibold sm:inline-flex ${hasUpdate ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-500'}`}>v{currentVersion}</span>}</div>
+        <div className="flex items-center gap-2">{hasUpdate && <button type="button" onClick={() => navigate('/admin/settings')} className="hidden items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600 sm:inline-flex"><Megaphone className="h-3.5 w-3.5" />有新版本</button>}<div className="hidden items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm sm:flex"><span className="h-2 w-2 rounded-full bg-indigo-500" /><span className="max-w-[10rem] truncate">{user?.full_name || '管理员'}</span></div><button type="button" onClick={() => navigate('/admin/settings')} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="系统设置" aria-label="系统设置"><Cog className="h-4 w-4" /></button><button type="button" onClick={logout} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="退出登录" aria-label="退出登录"><LogOut className="h-4 w-4" /></button></div>
+      </div></nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* 欢迎横幅 */}
-        <div
-          className="bg-gradient-to-r from-slate-700 to-gray-800 rounded-2xl p-6 mb-8 text-white shadow-lg"
-        >
-          <h2 className="text-2xl font-bold mb-2">
-            ⚡ 系统管理面板
-          </h2>
-          <p className="opacity-90">欢迎回来,{user?.full_name}。系统运行正常,所有服务在线。</p>
-        </div>
+      <main className="mx-auto max-w-7xl space-y-7 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <section className="staff-colorful-surface overflow-hidden rounded-2xl border border-indigo-100 p-5 shadow-md sm:p-7"><div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1 text-xs font-semibold text-indigo-700"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold tracking-tight sm:text-3xl">欢迎回来，{user?.full_name || '管理员'}</h2><p className="mt-2 text-sm leading-6 text-slate-600">平台服务运行正常。这里集中查看用户、内容、学习数据和系统配置。</p></div><button type="button" onClick={() => navigate('/admin/statistics')} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700">查看数据报告 <ArrowRight className="h-4 w-4" /></button></div></section>
 
-        {/* 系统统计卡片 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {loading ? (
-            <div className="col-span-4 text-center py-8 text-gray-600">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-300 border-t-blue-600 mx-auto mb-4"></div>
-              <p>加载统计数据中...</p>
-            </div>
-          ) : (
-            systemStats.map((stat) => (
-            <div
-              key={stat.label}
-              className="bg-white rounded-xl p-6 shadow-md border border-gray-100"
-            >
-              <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg ${stat.color} mb-3`}>
-                <span className="text-2xl">{stat.icon}</span>
-              </div>
-              <div className="flex items-end justify-between">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-800">{stat.value}</h3>
-                  <p className="text-sm text-gray-500">{stat.label}</p>
-                </div>
-                <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded">
-                  {stat.trend}
-                </span>
-              </div>
-            </div>
-            ))
-          )}
-        </div>
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">{summary.map(({ label, value, note, icon: Icon, tone }) => <div key={label} className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5"><div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg ${tone}`}><Icon className="h-5 w-5" /></div><p className="text-2xl font-bold tracking-tight">{loading ? '—' : value.toLocaleString()}</p><div className="mt-1 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-medium text-slate-500 sm:text-sm">{label}</p><span className="text-[11px] text-slate-400">{note}</span></div></div>)}</section>
 
-        {/* 快速操作 */}
-        <div className="mb-8">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">快速操作</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {quickActions.map((action) => (
-              <button
-                key={action.title}
-                onClick={() => action.path && navigate(action.path)}
-                disabled={!action.path}
-                className={`bg-white rounded-xl p-6 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all text-center group border border-gray-100 ${
-                  !action.path ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-r ${action.color} mb-3 group-hover:scale-110 transition`}>
-                  <span className="text-3xl">{action.icon}</span>
-                </div>
-                <h4 className="font-bold text-gray-800 mb-1">{action.title}</h4>
-                <p className="text-xs text-gray-500">{action.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <section><div className="mb-3 flex items-end justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Control center</p><h3 className="mt-1 text-xl font-bold">管理工具</h3></div><span className="text-xs text-slate-400">{actions.length} 项系统入口</span></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{actions.map(({ title, description, path, icon: Icon, tone }) => <button key={path} type="button" onClick={() => navigate(path)} className="group rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"><div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg ${tone}`}><Icon className="h-5 w-5" /></div><p className="text-sm font-bold">{title}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{description}</p><ArrowRight className="mt-3 h-4 w-4 text-slate-300 transition group-hover:translate-x-1 group-hover:text-slate-600" /></button>)}</div></section>
 
-        {/* 最近用户 — 真实数据(最近注册的 5 个账号) */}
-        <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <span>👥</span> 最近用户
-            </h3>
-            <button
-              onClick={() => navigate('/admin/users')}
-              className="text-sm text-blue-600 hover:text-blue-700"
-            >
-              查看全部 →
-            </button>
-          </div>
-          {recentUsers.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">暂无用户数据</p>
-          ) : (
-            <div className="space-y-3">
-              {recentUsers.map((item) => {
-                const roleLabel = item.role === 'teacher' ? '👨‍🏫' : item.role === 'admin' ? '👑' : '👨‍🎓';
-                const displayName = item.full_name || item.username;
-                const dateText = item.created_at
-                  ? new Date(item.created_at).toLocaleDateString('zh-CN')
-                  : '';
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        item.role === 'teacher' ? 'bg-purple-100 text-purple-600'
-                          : item.role === 'admin' ? 'bg-red-100 text-red-600'
-                          : 'bg-blue-100 text-blue-600'
-                      }`}>
-                        <span className="text-lg">{roleLabel}</span>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-gray-800">{displayName}</h4>
-                        <p className="text-xs text-gray-500">注册于 {dateText}</p>
-                      </div>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      item.is_active
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {item.is_active ? '已激活' : '已停用'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+        <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6"><div className="mb-5 flex items-center justify-between"><div><h3 className="font-bold">最近注册用户</h3><p className="mt-1 text-xs text-slate-400">平台最新加入的账号</p></div><button type="button" onClick={() => navigate('/admin/users')} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600">查看全部 <ChevronRight className="h-4 w-4" /></button></div>{recentUsers.length === 0 ? <div className="py-8 text-center text-sm text-slate-400">{loading ? '正在加载...' : '暂无用户数据'}</div> : <div className="grid gap-2 md:grid-cols-2">{recentUsers.map((item) => { const role = item.role === 'teacher' ? '教师' : item.role === 'admin' ? '管理员' : '学生'; const displayName = item.full_name || item.username; const date = item.created_at ? new Date(item.created_at).toLocaleDateString('zh-CN') : '—'; return <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-3"><div className="flex min-w-0 items-center gap-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${item.role === 'teacher' ? 'bg-cyan-100 text-cyan-700' : item.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}><Users className="h-4 w-4" /></div><div className="min-w-0"><p className="truncate text-sm font-semibold">{displayName}</p><p className="mt-1 text-xs text-slate-400">{role} · 注册于 {date}</p></div></div><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>{item.is_active ? '已激活' : '已停用'}</span></div>; })}</div>}</section>
+
+        <section className="staff-colorful-surface flex flex-col gap-5 rounded-xl border border-indigo-100 p-5 sm:p-6 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-4"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm"><CircleDollarSign className="h-5 w-5" /></div><div><h3 className="font-bold">平台运营提醒</h3><p className="mt-1 text-sm text-slate-600">定期检查系统更新、AI 配置和订阅兑换码，保持服务稳定。</p></div></div><button type="button" onClick={() => navigate('/admin/settings')} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:shadow-md">打开系统设置 <ArrowRight className="h-4 w-4" /></button></section>
+      </main>
     </div>
   );
 };
-
 export default AdminDashboard;

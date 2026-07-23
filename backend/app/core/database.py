@@ -280,6 +280,9 @@ async def init_db():
             "ALTER TABLE word_books ADD COLUMN series VARCHAR(30)",
             # 金币兑换商品图(公开图,学生端可看);coin_redeem_requests 表由 create_all 建
             "ALTER TABLE coin_rewards ADD COLUMN image_url VARCHAR(255)",
+            # PK 对战:个人赛/分组赛模式 + 玩家队号(教师组织的分组 PK)
+            "ALTER TABLE pk_rooms ADD COLUMN mode VARCHAR(12) NOT NULL DEFAULT 'individual'",
+            "ALTER TABLE pk_room_players ADD COLUMN team INTEGER",
         ]:
             try:
                 await conn.execute(text(_sql))

@@ -1,0 +1,556 @@
+[
+  {
+    "subsystem": "learning-modes",
+    "headline": "A 5-phase adaptive word-mastery pipeline (self-triage → local Whisper speech-verify → looping dictation → auto-generated gate exam → drag-to-sort recap) fused with a 9-stage Ebbinghaus SRS scheduler and AI-generated example/cloze/distractor content — a depth of pedagogy no mainstream Chinese K12 背单词 app ships.",
+    "features": [
+      {
+        "name": "5-phase adaptive mastery loop (classify → speech → dictation → gate-exam → recap)",
+        "what_it_does": "One 'learn a unit' session chains five distinct pedagogical phases in sequence, orchestrated per group of words: self-classification, pronunciation verification, dictation, a pass/fail checkpoint exam, then a unit recap. Progress is auto-saved to localStorage so a child can resume mid-phase within 24h.",
+        "evidence": "frontend/src/pages/WordClassifyLearning.tsx line 42: type Phase = 'classify'|'speechVerify'|'dictation'|'exam'|'unitRecap'|'summary'; phase state machine + saveLocalProgress/restore logic (lines 107-320)",
+        "sales_angle": "Students don't just flip cards — they're walked through recognize→pronounce→spell→test→consolidate every session. This is a full teaching method built into software, not a flashcard toy. A franchisee can pitch 'our system teaches the way a good tutor does.'",
+        "rarity": "rare — typical 背单词 apps are single-mode (flip card or MCQ). A staged recognize/produce/verify/test/consolidate pipeline is closer to classroom methodology."
+      },
+      {
+        "name": "Self-assessment triage with looping mastery (熟悉/夹生/陌生)",
+        "what_it_does": "Students tag each word familiar / half-known / unknown against a per-item countdown (10s word, 14s phrase, 20s sentence — auto-scaled by length). Any word not tagged 'familiar' loops into the next round until ALL are familiar. Timer auto-marks 'unknown' if time runs out, and pauses on tab-switch/idle so absent kids don't pollute data.",
+        "evidence": "frontend/src/components/classify/ClassificationPhase.tsx: getClassifyTime() lines 49-56, handleRoundEnd loops errorWords lines 167-204, paused-guarded countdown lines 320-342, keyboard shortcuts 1/2/3 lines 301-318",
+        "sales_angle": "Kids spend time only on words they don't know — the system never wastes a minute drilling words they've already mastered. Parents see efficiency; teachers see honest self-assessment data.",
+        "rarity": "rare — the 3-way self-triage + guaranteed-loop-until-mastered + length-adaptive timer combo is not seen in standard market apps."
+      },
+      {
+        "name": "Local Whisper speech verification with pronunciation scoring",
+        "what_it_does": "Shows a word, auto-records ~3s with browser-side Voice-Activity-Detection (auto-stops on 600ms silence), sends audio to a locally-hosted faster-whisper model, transcribes and scores 0-100 via Levenshtein similarity with length-penalty. ≥60 passes and auto-advances; below 60 plays the correct pronunciation and auto re-records. Runs fully on-server (no per-call cloud API cost).",
+        "evidence": "frontend/src/components/classify/SpeechVerifyCard.tsx: VAD lines 97-134, verifyWordPronunciation call line 162; backend/app/api/v1/pronunciation.py /verify-word lines 82-105; backend/app/services/whisper_service.py: WhisperModel('small') line 27, _compute_score lines 74-133, PASS_SCORE=60",
+        "sales_angle": "Speaking practice with instant AI scoring — the single biggest gap in cheap word apps. And because Whisper runs locally, there's no per-student cloud speech-API bill, so a franchise can offer 'AI oral practice' without margin-killing usage fees.",
+        "rarity": "rare — self-hosted Whisper + custom scoring in a K12 vocab flow is uncommon; most apps that do speech at all rely on paid iFlytek/cloud ISE per call."
+      },
+      {
+        "name": "Looping dictation with forced 3x rewrite remediation",
+        "what_it_does": "Listen → type the word. Only the FIRST attempt counts for scoring/mistake-book. On a wrong answer the correct spelling appears and the student must retype it correctly 3 times in a row before advancing; wrong words loop into another round until all pass. The first wrong input is captured as the data source for AI spelling-error diagnosis. Review mode drops the rewrite count to 1.",
+        "evidence": "frontend/src/components/classify/DictationPhase.tsx: copyRequired default 3 line 35, firstWrongInputsRef lines 53/102, handleRetrySubmit lines 161-179, handleRoundEnd loops roundErrorWords lines 116-144",
+        "sales_angle": "Wrong spellings get burned in through active rewriting, not just a red X. The '3-times-correct-to-pass' rule is exactly what a strict teacher enforces — and it produces real spelling-error data for diagnostics.",
+        "rarity": "uncommon — dictation exists elsewhere, but forced-repeat-until-correct remediation + first-attempt-only scoring is a thoughtful pedagogy layer."
+      },
+      {
+        "name": "Syllable-rhythm 'acceleration' card for hard words",
+        "what_it_does": "For words tagged unknown, first plays the full word 4 times (gated listen phase), then runs a syllable-by-syllable rhythm animation (each syllable scales/highlights in sequence) for 3 rounds; half-known words skip straight to 2 rounds. Syllables are color-coded consistently across the app.",
+        "evidence": "frontend/src/components/classify/SyllableRhythmCard.tsx: unknown_listen 4-play loop lines 69-92, useSyllableRhythm totalRounds 3 vs 2 lines 38-67, SYLLABLE_COLORS lines 13-21; ColoredWord.tsx syllable segmentation",
+        "sales_angle": "Breaks scary long words into rhythmic chunks the way phonics teachers do — turns 'I can't even read this' into a chantable pattern. Great demo moment for parents.",
+        "rarity": "rare — syllable-decomposition-with-rhythm-animation is a distinctive phonics feature, essentially absent from mainstream 背单词 apps."
+      },
+      {
+        "name": "In-flow 'consecutive-error digestion' and 'familiar-review' interrupt cards",
+        "what_it_does": "During classification, every 3 words tagged 'familiar' triggers a green confirmation card ('do you really know these?'); 3 consecutive 'unknown' tags trigger an orange 'slow down, look at these meanings first' digestion card — preventing pointless drilling when a kid is overwhelmed.",
+        "evidence": "frontend/src/components/classify/ClassificationPhase.tsx: FAMILIAR_REVIEW_EVERY=3 line 42, unknownStreakRef digestion lines 106/241-251, advanceWithReviewCard lines 229-258, reviewKind 'familiar'|'struggle' rendering lines 351-390",
+        "sales_angle": "The app reads the child's emotional/cognitive state — it pauses to reassure when they're struggling and double-checks when they're breezing through. Feels human, not robotic.",
+        "rarity": "rare — adaptive micro-pacing based on answer streaks is a sophisticated touch not found in commodity apps."
+      },
+      {
+        "name": "9-stage Ebbinghaus SRS scheduler with review tiers",
+        "what_it_does": "Every correct/incorrect answer reschedules the word on a 9-interval spaced-repetition curve (5min → 30min → 12h → 1d → 2d → 4d → 7d → 15d → 30d → graduate). Wrong answers regress 2 stages (not full reset). A separate front-end 'review tier' (weak→medium→fluent→graduate) governs the daily review climb; wrong drops back to weak.",
+        "evidence": "backend/app/api/v1/student/learning_records.py: SRS_INTERVALS lines 35-45, reschedule logic lines 369-391 (regress max(0,stage-2)); frontend/src/utils/reviewTier.ts promote/demote tiers",
+        "sales_angle": "This is the science of memory (Ebbinghaus forgetting curve) automated. 'The system knows exactly which word to resurface on which day' — a premium selling point that justifies subscription pricing.",
+        "rarity": "uncommon — SRS exists in premium apps (Anki-style), but a K12-tuned 9-stage curve with 2-stage regression + dual tier system is a strong, defensible implementation."
+      },
+      {
+        "name": "Auto-generated gate checkpoint exam (混合题型 ≥60% to pass)",
+        "what_it_does": "After dictation, a per-group exam auto-generates one question per word with mixed types by ratio (30% E→C MCQ, 30% C→E MCQ, 20% listening, 20% spelling), distractors drawn from the same unit's real meanings/words, 15s/question timer that pauses on tab-hide. ≥60% passes to recap; else offers retry or relearn.",
+        "evidence": "frontend/src/components/classify/GroupExamPhase.tsx: generateQuestions type ratios lines 32-94, distractors from allMeanings/allWords lines 68-76, timeLeft words*15 line 106, document.hidden pause line 121, VictoryScreen pass at score",
+        "sales_angle": "Every learning session ends with a real mini-test the child must pass — not just 'you looked at 20 cards.' Teachers and parents get a genuine mastery gate, not participation.",
+        "rarity": "uncommon — auto-assembled mixed-type checkpoint with same-unit distractors and a pass threshold is more rigorous than the single-format quizzes typical apps offer."
+      },
+      {
+        "name": "Drag-to-sort recap (快闪 → 分类池)",
+        "what_it_does": "Unit recap runs a cinematic flash-through of all words (auto-TTS, 1.5s hold each, skippable), then a physics-style 'card pool' where the student drags each word into a 'mastered' basket or 'need practice' basket; practice words feed a second targeted dictation. Auto-skipped for tiny units (≤2 words).",
+        "evidence": "frontend/src/components/classify/recap/UnitRecapPhase.tsx sub-states flash|pool|summary; FlashStage.tsx auto-advance TTS lines 35-60; CardPool.tsx drag-to-basket handleDrag/hitBasket lines 116-136, mastered vs practice verdict lines 74-89",
+        "sales_angle": "Turns review into a tactile game — kids physically sort what they know. High engagement, and it captures a final honest self-check that seeds the next practice set.",
+        "rarity": "rare — gesture-driven sort-into-baskets recap is a novel, kinesthetic interaction absent from standard apps."
+      },
+      {
+        "name": "AI-generated example sentences, cloze contexts & MCQ distractors",
+        "what_it_does": "AI service generates: age-appropriate 8-15 word example sentences with Chinese translation; grade-locked cloze sentences engineered so the target word is the ONLY valid fill (validated to actually contain the word, else fallback); and confusable-but-clearly-wrong Chinese distractors for MCQs. All double-cached (memory + DB) to cut API cost, and grade-scoped to 人教版 vocabulary.",
+        "evidence": "backend/app/services/ai_service.py: generate_example_sentence lines 47-101, generate_cloze_sentence lines 103-145 (validates word.lower() in sentence, unique-answer prompt), generate_distractors lines 147-186; _get_cache/_set_cache lines 23-36",
+        "sales_angle": "Fresh, curriculum-matched content without teachers hand-writing sentences — the AI produces exam-quality material scoped to the exact textbook grade. Content scales infinitely at near-zero marginal cost thanks to caching.",
+        "rarity": "uncommon — AI content generation exists, but grade-locked cloze with a uniqueness constraint + validation + dual-cache cost control is a mature engineering-for-pedagogy combo."
+      },
+      {
+        "name": "Word cloze fill (选词填空 word-bank)",
+        "what_it_does": "Presents ~6 AI-generated context sentences with blanks plus a shared word bank; each word usable once; tapping a bank word fills the active blank and auto-jumps to the next empty one. On submit, wrong items are written to the mistake book and scored.",
+        "evidence": "frontend/src/pages/FillBlankPractice.tsx: generateUnitCloze BLANK_COUNT=6 line 14/38, ClozeBank one-use usedIds line 57, wrong→mistake book weakWords lines 112-115",
+        "sales_angle": "Contextual recall in real sentences, not isolated words — bridges vocabulary to reading. The word-bank format mirrors actual exam question types students face.",
+        "rarity": "uncommon — bank-style contextual cloze with AI sentences is a step above the flat MCQ most apps stop at."
+      },
+      {
+        "name": "Sentence-level modes: 句子背诵 (choice/dictation) + 例句填空",
+        "what_it_does": "Sentence learning offers E→C 4-choice (distractors are other real sentences in the unit) and full-sentence listen-and-dictate with the same 3x-rewrite remediation on error. Separately, sentence-fill drills the unit's words back into their own example sentences (target word blanked, with translation + audio), tolerant of word-form variation, looping wrong words.",
+        "evidence": "frontend/src/pages/SentenceLearning.tsx ChoiceCard/DictationCard lines 178-385 (COPY_REQUIRED 3); frontend/src/components/classify/SentenceFillPhase.tsx findBlankRange/canBlank lines 36/74-104, looping roundErrorWords lines 138-156; backend/app/api/v1/sentences.py sentence CRUD",
+        "sales_angle": "Learning doesn't stop at words — students memorize and transcribe whole sentences, building the syntax/listening skills that word apps ignore. A distinct product tier teachers can assign.",
+        "rarity": "uncommon — dedicated sentence-memorization with listen-and-write and same-unit distractors is broader than word-only competitors."
+      },
+      {
+        "name": "3-gate flashcard learning (英译中 → 中译英 → 朗读发音)",
+        "what_it_does": "The classic flashcard mode requires clearing three sequential gates per word: recognize meaning (word→meaning), produce word (meaning→word), then pronounce it — with a visible 3-step progress tracker. Supports normal / mistake-practice / SRS-review sub-modes.",
+        "evidence": "frontend/src/pages/FlashCardLearning.tsx: currentGate 1|2|3 line 89, gateStatus translation/spelling/pronunciation lines 88/329-357, gate labels lines 876-878, practiceMode normal|mistake|review line 76",
+        "sales_angle": "Even the 'simple' flashcard mode forces both directions of recall plus speaking before a word counts as learned — three times the rigor of a one-tap flip card.",
+        "rarity": "uncommon — most flashcard apps pass a word on a single self-graded flip; a mandatory 3-gate recognize/produce/speak sequence is stricter."
+      },
+      {
+        "name": "Full unit exam with anti-cheat and AI mistake analysis",
+        "what_it_does": "A timed formal unit test (E→C×5, C→E×5, listening×4, spelling×4, sentence-fill×2), 15-min limit with urgent countdown, listening audio served by word_id (answer never sent to client), max 3 plays per listening item, presence/tab-switch monitoring during the exam, and post-exam AI analysis of mistakes by question type.",
+        "evidence": "frontend/src/pages/UnitExam.tsx: composition lines 245-249, playListeningAudio via word_id line 137, playCount<=3 line 132, usePresence during exam lines 34-39; backend/app/api/v1/student/unit_exam.py generate_exam lines 116-210, get_ai_analysis lines 445-522",
+        "sales_angle": "A real, cheat-resistant exam (answers never leak to the browser, screen-switching is tracked) plus AI that explains what the student got wrong and why — the kind of feedback that normally needs a human teacher.",
+        "rarity": "uncommon — answer-hiding via server-side audio + in-exam presence monitoring + AI error breakdown together exceed typical app quiz features."
+      },
+      {
+        "name": "Reading comprehension with mixed question types & auto-grading",
+        "what_it_does": "Passages with toggle-able Chinese translation and highlighted key vocabulary; four question types (MCQ, true/false, fill-blank, short-answer); server auto-grades — objective by correct option, subjective by case-insensitive match against a primary answer plus a list of accepted alternatives — returning per-question explanations. Supports assignment with attempt limits and pass thresholds.",
+        "evidence": "frontend/src/pages/StudentReadingPractice.tsx question types lines 86-94/331-369, translation toggle lines 262-287; backend/app/api/v1/student/reading.py grading lines 328-382 (accept_alternatives lines 367-369), answer never exposed to student lines 196-205",
+        "sales_angle": "A complete reading module — passages, vocab, auto-graded questions with explanations — extends the product from 'vocab app' to 'English learning platform,' opening reading-comprehension as a sellable feature to schools.",
+        "rarity": "uncommon — auto-graded reading with alternative-answer matching and hidden answer keys is beyond the scope of pure 背单词 apps."
+      },
+      {
+        "name": "Color-coded IPA phonetics & syllable coloring (shared across all modes)",
+        "what_it_does": "A phonetics component parses IPA into phonemes (diphthongs, long vowels, affricates), groups by syllable, and colors each syllable with vowel cores highlighted; a matching word component colors word letters by the same syllable segmentation. Used consistently in classify, dictation, speech, sentence and fill modes.",
+        "evidence": "frontend/src/components/ColoredPhonetic.tsx phoneme sets/diphthong-affricate parsing lines 9-40; frontend/src/components/ColoredWord.tsx syllable-to-color mapping lines 13-35",
+        "sales_angle": "Every word is visually broken into pronounceable, color-matched chunks — phonics made visible. Consistent across the whole app so kids build one mental model of sound-to-spelling.",
+        "rarity": "rare — programmatic IPA-to-syllable coloring with vowel-core emphasis is a distinctive phonics-teaching asset."
+      },
+      {
+        "name": "Anti-cheat / integrity layer woven into every practice mode",
+        "what_it_does": "Practice pages disable right-click/copy/text-selection (input boxes exempted) to stop answer-peeking; countdowns and audio loops pause on tab-switch/idle so absent students don't rack up phantom wrong answers or inflated time; IME-safe inputs prevent autocomplete from leaking answers; study time is reported as net-active seconds only.",
+        "evidence": "usePreventCopy() in Spelling/Dictation/SentenceFill/SentenceLearning/UnitExam/Reading pages; imeSafeInputProps across input modes; idle-aware time reporting in SentenceFillPractice.tsx lines 29-50 & SentenceLearning.tsx lines 39-62; document.hidden guards in GroupExamPhase line 121",
+        "sales_angle": "Data teachers can trust — kids can't copy-paste answers, and time-on-task reflects real engagement, not a tab left open. Protects the integrity of the leaderboards and reports the franchise sells.",
+        "rarity": "rare — a consistent copy-prevention + idle-pause + IME-safe integrity layer across all modes is a maturity signal most consumer apps lack."
+      }
+    ]
+  },
+  {
+    "subsystem": "Gamification & Motivation",
+    "headline": "A fully-automatic vocabulary tournament engine — snake-seeded groups → round-robin → cross-paired knockout → champion PLUS a \"dark horse\" consolation bracket so every kid keeps playing — running on a real-time, spectator-enabled multiplayer arena. This is esports-grade tournament infrastructure inside a K12 word app, a category where competitors ship at most a static leaderboard.",
+    "features": [
+      {
+        "name": "Auto-run vocabulary tournament (全自动晋级赛)",
+        "what_it_does": "Teacher clicks 'create tournament'; the system snake-seeds students by learned-word count into balanced groups, runs group round-robin (3pts/win, tiebreak by wins→correct→time), auto-qualifies top 2, cross-pairs them (A1 vs B2) into a single-elimination knockout with byes for odd counts, and crowns a champion — with a parallel consolation bracket for the eliminated so nobody sits out. Advancement is triggered automatically by each match's game_finished hook; it even self-heals a stalled bracket on page refresh (ensure_advanced) and uses per-tournament async locks to prevent double-advance race conditions.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/services/pk/tournament.py (snake_groups, _advance, _make_ko_round, _tournament_lock); /Users/apple/Desktop/英语助手/backend/app/models/pk_tournament.py; /Users/apple/Desktop/英语助手/backend/app/api/v1/pk_tournament_routes.py",
+        "sales_angle": "Turns a franchise classroom into a self-running esports league with zero teacher bracket-management. The consolation 'dark horse' bracket means weak students still get matches and a shot at a trophy — every parent sees their kid competing, which is exactly the emotional hook that drives re-enrollment.",
+        "rarity": "rare — no mainstream Chinese K12 背单词 app ships automated seeding + knockout + consolation brackets"
+      },
+      {
+        "name": "Real-time lock-step PK arena with spectators (实时PK竞技场)",
+        "what_it_does": "WebSocket multiplayer where up to 20 students battle live across a 4-phase gauntlet (分类→拼读→听写→过关), with up to 30 spectators per room, 6-char invite codes, host transfer on leave, a 90-second reconnect window, and a heartbeat watchdog. Matchmaking is fair by design: questions are drawn only from the intersection of words ALL players have actually studied. Server is authoritative — answer times are clamped to the phase window to kill speed-hack cheating.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/services/pk/manager.py; /Users/apple/Desktop/英语助手/backend/app/services/pk/engine.py; /Users/apple/Desktop/英语助手/backend/app/services/pk/score.py; /Users/apple/Desktop/英语助手/backend/app/api/v1/pk_websocket.py",
+        "sales_angle": "Live head-to-head competition is the single strongest 'come back tomorrow to beat your friend' hook. Spectator mode lets a teacher cast a match to the classroom big screen. Fair-word-intersection means the fast learner can't just crush beginners, so matches stay fun for everyone.",
+        "rarity": "rare — real-time lock-step multiplayer with spectators is well beyond the single-player quizzes typical apps offer"
+      },
+      {
+        "name": "Spectator answer-masking anti-cheat",
+        "what_it_does": "During the listening (听写) and pass (过关) phases, the English word is stripped out of the event sent to spectators, so sideline watchers physically cannot read the answer off their screen and shout it to a player.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/api/v1/pk_websocket.py (_mask_for_spectators)",
+        "sales_angle": "Shows the product was hardened by real classroom use — competitive integrity is protected so match results are trusted. A small detail that signals serious engineering to a discerning school buyer.",
+        "rarity": "rare — this level of anti-cheat nuance is essentially unheard of in the category"
+      },
+      {
+        "name": "Pet raising with evolution, decay & study-to-heal loop (宠物养成)",
+        "what_it_does": "Each student adopts one pet (pikachu/eevee/etc.) that levels up and evolves through 4 stages (蛋→基础形态→一阶进化→最终进化) by feeding. Feeding costs food earned from practice (bonus for accuracy, mode difficulty, and daily first-practice); daily feed cap is 3. Neglect it 2+ days and happiness/hunger decay — and a starving pet gets INJURED, which can only be healed by answering vocabulary questions correctly (10% max-HP per correct answer, drawn from words you've studied).",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/models/pet.py; /Users/apple/Desktop/英语助手/backend/app/core/pet_formulas.py; /Users/apple/Desktop/英语助手/backend/app/api/v1/student/pet.py; /Users/apple/Desktop/英语助手/backend/app/api/v1/student/pet_healing.py",
+        "sales_angle": "The injury→heal-by-studying loop is a masterful retention mechanic: skip a few days and your pet is hurt, and the ONLY cure is to come back and study. It converts guilt into study sessions — a Tamagotchi that literally requires vocabulary practice to survive.",
+        "rarity": "uncommon — mascots exist, but a decay+injury+study-to-cure loop tied to real vocabulary is genuinely clever and rare"
+      },
+      {
+        "name": "Pet battle with combos, ultimates & ELO rating (宠物对战)",
+        "what_it_does": "Turn-based PvP where correct answers deal damage scaled by level gap, evolution stage, combo streak, and answer speed; every 3-combo charges a species-specific ultimate (必杀技). Tracks HP, win/lose streaks, perfect wins, comeback wins, total damage, and an ELO-style rating starting at 1000 with peak-rating history.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/models/pet_battle.py (PetBattleStats: rating, max_win_streak, perfect_wins, comeback_wins); /Users/apple/Desktop/英语助手/backend/app/services/pet_battle_service.py (calculate_damage, calculate_ultimate_damage)",
+        "sales_angle": "Gives vocabulary drills the depth of a real battle game — combos and ultimates reward answering fast AND accurately, so kids self-motivate to get quicker and more precise.",
+        "rarity": "uncommon — RPG-style damage/ultimate mechanics layered on word quizzes go well beyond typical gamified drills"
+      },
+      {
+        "name": "AI sparring opponent with difficulty scaling",
+        "what_it_does": "Solves the cold-start 'no one to play with' problem: generates named AI trainers whose accuracy (0.55→0.85) and answer speed scale to the player's level, with gaussian-distributed answer times for natural pacing and a combo-aware ultimate-usage strategy.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/services/ai_opponent_service.py",
+        "sales_angle": "A student can battle any time, even alone at home at night, and always get a fair, beatable-but-challenging match. Removes the #1 killer of multiplayer features — an empty lobby.",
+        "rarity": "uncommon"
+      },
+      {
+        "name": "Coin economy with teacher-run physical redemption (金币系统)",
+        "what_it_does": "Students earn coins for completing all of a day's homework (+1) and for being the daily class 'Word King' (+2), hard-capped at 2/day and non-stacking. Every balance change is double-booked (balance + ledger with balance_after for reconciliation). Teachers manage a reward catalog (name/cost/stock) and redeem prizes for students, which writes a negative ledger entry and decrements stock. System grants are idempotent via a dedup_key unique constraint. Fully multi-tenant (org_id isolated).",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/models/coin.py; /Users/apple/Desktop/英语助手/backend/app/services/coin_service.py (apply_delta, settle_day); /Users/apple/Desktop/英语助手/backend/app/api/v1/teacher/coins.py (rewards CRUD + /coins/redeem); /Users/apple/Desktop/英语助手/backend/app/api/v1/student/coins.py",
+        "sales_angle": "This is a franchise operations tool disguised as a game: the owner stocks real prizes (pens, toys, tuition credit), sets coin prices, and the app runs the whole loyalty economy with audit-grade ledgers. A direct lever for daily attendance that competitors' point systems don't monetize into real-world reward runs.",
+        "rarity": "uncommon — reconciled ledgers + teacher-run physical reward catalog + idempotent grants is operations-grade, not a toy point counter"
+      },
+      {
+        "name": "Word King daily class champion (单词王) with timezone-correct auto-settlement",
+        "what_it_does": "Every day the student who learns the most distinct words in their class is crowned Word King (ties all win), earns +2 coins, and gets a 👑 badge that follows them across pages. A background loop auto-settles the PRIOR day at Beijing 00:35 (after the day truly closes) so a morning leader who gets overtaken by evening isn't wrongly paid; today's board shows a live provisional leader plus yesterday's finalized winner in a banner.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/services/coin_service.py (_award_word_king, word_king_label, word_kings_for_class); /Users/apple/Desktop/英语助手/backend/app/services/coin_scheduler.py (daily_settle_loop, Beijing 00:35); /Users/apple/Desktop/英语助手/backend/app/api/v1/teacher/coins.py (/coins/word-king-banner)",
+        "sales_angle": "A brand-new daily race every single morning — the crown resets at midnight so there's always something to win today. The careful timezone/settlement handling means the reward is always seen as fair, which keeps the competition credible.",
+        "rarity": "uncommon — per-class daily champion with correct timezone settlement and cross-page badging is a polished, distinctive touch"
+      },
+      {
+        "name": "Multi-dimension leaderboards with personal neighbor-zone (光荣榜)",
+        "what_it_does": "Students see Vocabulary King / Diligence King / Accuracy King boards across four periods (today/this week/last week/this month) and two scopes (class vs whole-org), each showing the top 10 PLUS the student's own 'neighbor zone' (±2 ranks around them) and a week-over-week delta. Accuracy board requires 20+ questions to qualify (anti-gaming). Separate pet, level, and competition-tier boards also exist.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/api/v1/student/leaderboard.py; /Users/apple/Desktop/英语助手/backend/app/api/v1/student/pet.py (get_pet_leaderboard); /Users/apple/Desktop/英语助手/backend/app/api/v1/achievements.py (level leaderboard)",
+        "sales_angle": "The neighbor-zone is the key: instead of demoralizing a mid-pack kid with an unreachable #1, it shows the 2 people just ahead — an achievable next target. Three different 'king' titles mean the diligent kid, the fast kid, and the accurate kid can each win something.",
+        "rarity": "uncommon — the neighbor-zone + multi-axis kings design is more sophisticated than the flat top-N lists typical apps use"
+      },
+      {
+        "name": "Ranked competition seasons with tiers & combo scoring (竞赛段位)",
+        "what_it_does": "Real-time competition seasons (daily/weekly/monthly) with a 6-tier ladder (青铜→白银→黄金→铂金→钻石→王者), promotion/demotion tracking, and rich per-answer scoring: base + difficulty + speed + combo + first-time bonuses, multiplied by combo tier (up to higher multipliers at 10+ combo). Daily/weekly/monthly leaderboard snapshots are persisted per org.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/services/competition_service.py (RANK_TIERS, calculate_answer_score, update_rank_points); /Users/apple/Desktop/英语助手/backend/app/models/competition.py (UserScore tiers, LeaderboardSnapshot)",
+        "sales_angle": "The League-of-Legends-style rank ladder taps the exact status drive that keeps teens grinding games — climbing from Bronze to King is a long-arc goal that spans a whole season, not just one session.",
+        "rarity": "uncommon — a full promotion/demotion tier ladder is a step above simple point totals"
+      },
+      {
+        "name": "Access-gating daily check-in (签到)",
+        "what_it_does": "Idempotent daily check-in that actually gates the learning entry — a student must check in (Beijing-day) before study modes open. Teachers get a per-class and all-classes check-in view with sign-in times, a ranked list (first 3 flagged), and a by-class summary that surfaces which class is lagging.",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/api/v1/checkin.py (has_checked_in_today gates units start; teacher /checkins with by_class)",
+        "sales_angle": "Makes 'open the app daily' a hard habit rather than a suggestion, and hands teachers a one-glance attendance dashboard to chase the students (and classes) who are slipping — a concrete churn-prevention tool.",
+        "rarity": "common as a concept, but access-gating + a teacher lagging-class dashboard is a more operational take than the usual streak counter"
+      },
+      {
+        "name": "Condition-based achievements + 20-level title ladder",
+        "what_it_does": "Achievements auto-unlock on conditions (total words mastered, consecutive study days, accuracy rate, perfect score) and award points; a parallel 20-level XP ladder grants escalating titles (初学者→学徒→进阶者→熟练者→专家→大师→传奇).",
+        "evidence": "/Users/apple/Desktop/英语助手/backend/app/api/v1/achievements.py (check_and_unlock_achievements, LEVEL_THRESHOLDS, LEVEL_TITLES)",
+        "sales_angle": "Milestone badges and a rising title give a steady drip of 'I earned something' moments that keep younger students engaged between the bigger competitive events.",
+        "rarity": "common — table stakes, but rounds out the motivation stack"
+      }
+    ]
+  },
+  {
+    "subsystem": "teaching-loop",
+    "headline": "教室大屏\"全息监控中心\":全班专注度实时画成流动心电波(EKG),有人切屏波形转红报警,右侧战力排行榜自动播报\"王座易主/超越/升段/全班破百\"——一台电视挂机即用,把背单词课变成有观赏性的直播现场。",
+    "features": [
+      {
+        "name": "实时课堂专注度监控(四态状态机 + 切屏/走神检测)",
+        "what_it_does": "学生学习页每15-30秒发心跳、切出/切回用 sendBeacon 即时上报,后端把每个学生实时判成 学习中🟢/走神🟡(页面在但无操作)/切出🔴/离线⚪ 四态;切屏与发呆次数用 UPSERT 原子累加落库(跨进程重启不丢),没心跳的老页面还用近3分钟答题记录兜底判'在学'。教师端5秒轮询,切出的人自动置顶。",
+        "evidence": "backend/app/services/presence_service.py(snapshot 四态机+away宽限);backend/app/api/v1/presence.py(heartbeat/switch/focus-event 三端点+学习记录兜底 L170-220);前端 TeacherLiveClassroom.tsx",
+        "sales_angle": "老师一眼看清'谁在偷偷切去玩游戏、谁在发呆',线上课/自习课的纪律黑洞被点名。这是家长最买单的卖点:'孩子学习时你能实时看着'。",
+        "rarity": "rare — 主流背单词App(百词斩/扇贝)和校园听说系统几乎都没有秒级在线状态+切屏检测,这是网课监考级能力下放到日常课堂"
+      },
+      {
+        "name": "教室大屏投屏模式(EKG专注波 + 段位战力榜 + 热血播报)",
+        "what_it_does": "独立 /teacher/bigscreen URL 全屏铺满教室电视,深空全息风:左侧 canvas 把全班专注比例实时画成流动心电波形(有人切屏整屏转红紊乱报警),右侧当日学词排行榜按'倔强青铜→荣耀王者'七段位定级,前三名领奖台高亮、4名后每8人10秒轮播全班露脸;检测到反超/王座易主/升段/全班破百自动弹热血播报横幅。专设只读 display 投屏账号可看任意班。",
+        "evidence": "frontend/src/pages/TeacherBigScreen.tsx(BigWave 心电canvas L63-155、TIERS段位 L51-59、王座/超越/里程碑播报 L261-340);presence.py bigscreen/* 端点 + display 只读代理 L105-140",
+        "sales_angle": "招生开放日、家长观摩课的'哇点'——把枯燥的背单词变成电竞级现场,孩子为上榜拼命、家长觉得高科技。加盟校拿它做门店招牌,竞品拿不出对标画面。",
+        "rarity": "rare — K12英语产品里几乎绝无仅有;这是自研的教室氛围引擎,不是通用报表投屏"
+      },
+      {
+        "name": "直播打码(未成年人隐私保护)",
+        "what_it_does": "大屏一键开启后,所有学生真名瞬间变'杨同学',并在数据派生点统一打码——连拼进热血播报字符串里的名字、已烘焙的王座横幅都会被立即清掉,防止最长9秒真名残留在镜头里。",
+        "evidence": "frontend/src/pages/TeacherBigScreen.tsx(togglePrivacy L170、maskName 在 ranking/gridStudents 统一处理 L235-244、开打码清残留 L325-327);utils/livePrivacy",
+        "sales_angle": "机构做直播/短视频引流时的合规红线兜底,家长不会因'孩子名字被公开挂网'投诉。体现产品对未成年人隐私的专业克制。",
+        "rarity": "uncommon — 想到并落实到'播报字符串里的名字也要清'这种细节的产品很少"
+      },
+      {
+        "name": "AI个性化组卷 + 打印级PDF试卷导出",
+        "what_it_does": "教师对某个学生一键组卷:后端先按 WordMastery 错题次数分析薄弱单词与薄弱题型,自动分配题型比例(选择/填空/拼写/完形填空/阅读理解,默认20+10+10+5+15的正规卷结构),调 AI 生成题目并存库;前端 TeacherExamPreview 用 html2pdf 生成 A4 标准试卷版式(可填学校/班级/姓名/考试时长),答案可隐藏,直接下载或打印。",
+        "evidence": "backend/app/api/v1/teacher/exam_generator.py(analyze-mistakes + generate-exam,recommended_distribution L72-80);frontend/src/pages/TeacherExamPreview.tsx(html2pdf/A4/window.print L7,70-118)",
+        "sales_angle": "老师最耗时的'出卷'变成一键,而且是针对这个学生的错题定制卷,不是通用题库。打印出来就能当纸质单元测,家长看得见输出物。",
+        "rarity": "uncommon — 组卷题库常见,但'按个人错题AI定制+一键出打印级PDF'的闭环少见"
+      },
+      {
+        "name": "学生单日行为时间线(问责/防划水取证)",
+        "what_it_does": "回答'这两小时他到底在干嘛':把签到→活跃学习段(答题时间戳按5分钟间隔聚簇,标出题数与题型)→空窗静默段(>5分钟才列)→作业布置/开始/完成事件,全部按北京时间排成一条时间线。汇总净时长与每日数据表同源(study_calendar),不虚高。",
+        "evidence": "backend/app/api/v1/teacher/analytics.py(get_student_day_timeline,GAP_SEC聚簇+空窗+作业事件)",
+        "sales_angle": "家长质疑'我娃学了俩小时怎么才背几个词'时,老师直接甩时间线:几点到几点在学、中间摸鱼多久一清二楚。把'学习时长'从数字变成可追溯的证据链。",
+        "rarity": "rare — 绝大多数App只给'今日学习XX分钟'的汇总数字,能重建单日行为轨迹的极少"
+      },
+      {
+        "name": "AI学情周报(家长/教师共享 + 缓存)",
+        "what_it_does": "按(学生,本周一)聚合本周时长/新词/正确率/学习天数并调 LLM 生成 summary+亮点+待改进+建议,缓存到 weekly_reports 表——同一周家长和老师反复看只烧一次 AI,force 可强制重刷。时间口径走北京自然周,与家长看板一致。",
+        "evidence": "backend/app/api/v1/_weekly_report.py(build_and_cache_weekly_report);analytics.py 挂 /student/{id}/weekly-report + regenerate",
+        "sales_angle": "老师不用手写周报,AI 自动出一份有温度的家长汇报,机构续费沟通的现成弹药。缓存设计还帮机构省 AI 成本。",
+        "rarity": "uncommon — AI 周报开始出现,但'家长端教师端共用同一份缓存'的省钱工程化少见"
+      },
+      {
+        "name": "作业布置与追踪(多单元批量 + 分组粒度 + 关闭保留)",
+        "what_it_does": "一次给多个学生、多个单元各建一份作业(标题自动带单元名),可指定学习模式(闪卡/拼写/填空/选择)、目标分、最多尝试次数、最短用时、截止时间、甚至精确到单元内'第几组';教师端一次聚合查全部作业完成/进行/待做人数(2000+作业不卡),支持'关闭作业'(学生端隐藏、记录全留,区别于删除)与手动级联删除。",
+        "evidence": "backend/app/api/v1/teacher/homework.py(CreateHomeworkRequest 多单元/group_index、聚合stats L224-238、toggle-closed L373、手动级联删 L399-443)",
+        "sales_angle": "老师批量派作业+一屏看全班进度,催交有的放矢;'关闭而非删除'保住历史数据,机构做学情复盘不丢档。",
+        "rarity": "common — 作业追踪是标配,但'分组粒度+多单元批量+2000作业不退化'的工程成熟度高于同类"
+      },
+      {
+        "name": "书/单元/组三级分配 + AI整本Excel一键导入",
+        "what_it_does": "教师可把单词本按'整本/单元/组'三种粒度分配给学生(单元可多选),分配即权限(学生只能学被分到的范围);建教材时整本 Excel 一次导入——书名取文件名、单元名取工作表名,单一事务建好 单词本→全部单元→全部单词,失败整体回滚不留半本书。",
+        "evidence": "backend/app/api/v1/teacher/book_assignments.py(AssignBookRequest scope_type book/unit/group + unit_ids);teacher/units.py(import-workbook 整本事务导入)",
+        "sales_angle": "机构上新教材从'一个单元一个单元敲'变成'拖一个Excel进去全建好',加盟校冷启动几分钟搞定;三级分配让分层教学(优等生多分、后进生少分)落地。",
+        "rarity": "uncommon — 整本工作簿一键建库 + 分配即权限的组合在K12词汇产品里不常见"
+      },
+      {
+        "name": "学生错题下钻(组→词级对错明细)",
+        "what_it_does": "教师从学生任一已学单元的每组聚合成绩(学了几个/掌握几个/正确率/最后学习时间)下钻到组内每个单词的对错次数、掌握等级、最近练习时间。",
+        "evidence": "backend/app/api/v1/teacher/student_monitor.py(student_group_scores + student_group_words 单词级明细)",
+        "sales_angle": "家长会上老师能精确说'他 abandon、rely 这几个词反复错',而不是笼统'还需努力',专业度拉满。",
+        "rarity": "uncommon — 能下钻到单词级对错的教师端在同类里偏少"
+      },
+      {
+        "name": "AI学习建议 + 分级预警",
+        "what_it_does": "聚合学生掌握度、总正确率、学习天数/时长、各题型错误率,自动生成 normal/warning/danger 分级预警与针对性建议(如某题型正确率异常低的提示)。",
+        "evidence": "backend/app/api/v1/teacher/classes.py(get_student_ai_advice,分题型 mode_stats + alerts/suggestions/level)",
+        "sales_angle": "老师带几十个学生也能被系统主动'点名'谁该重点关注,把经验依赖变成数据驱动的分层干预。",
+        "rarity": "uncommon"
+      },
+      {
+        "name": "班级签到榜 + 邀请码招生链接",
+        "what_it_does": "学生签到带当日排名(拼手速上榜),教师端可按班级/日期查历史签到、导出未签到红色名单;班级可生成24h有效邀请码/招生链接,学生扫码自助入班。",
+        "evidence": "backend/app/api/v1/checkin.py(rank L173/240 + teacher/checkins);teacher/classes.py(invite-code 生成刷新 + students-by-phones)",
+        "sales_angle": "签到排名做日常激活钩子;邀请码让加盟校招生/建班零手工录入,扫码即进。",
+        "rarity": "common"
+      }
+    ]
+  },
+  {
+    "subsystem": "ai-engine (AI 与语音引擎)",
+    "headline": "与中考听说同源的科大讯飞语音评测(讯飞ISE)给出「准确度/流利度/完整度」多维打分,并配一套完全本地、零调用成本的 Whisper 兜底口语校验——双引擎口语测评在加盟级 K12 产品里极少见。",
+    "features": [
+      {
+        "name": "讯飞ISE专业级发音评测(单词/句子多维打分)",
+        "what_it_does": "接收学生录音,用 ffmpeg 转 16kHz PCM,经 WebSocket+HMAC-SHA256 鉴权对接科大讯飞语音评测,返回 total_score/accuracy(准确度)/fluency(流利度)/integrity(完整度)四维分数,单词档自动把 0-5 分归一到 0-100;支持 read_word 与 read_sentence 两种粒度。",
+        "evidence": "backend/app/services/iflytek_ise_service.py(evaluate/_ws_evaluate/_parse_result);路由 backend/app/api/v1/pronunciation.py 的 POST /evaluate + /config-status",
+        "sales_angle": "用的是驱动全国中考英语听说考试同源的讯飞引擎,不是自研玩具算法——家长和校长一听'中考同款'就信任;四维打分让口语训练可量化、可对比,是招生时最硬的差异化卖点。",
+        "rarity": "rare(接入付费专业语音评测引擎、且拆出四维分数,在背单词/校园听说类小产品里罕见,多数只有云端一次性对错或干脆没有口语功能)"
+      },
+      {
+        "name": "Whisper 本地口语校验(零成本兜底)",
+        "what_it_does": "用 faster-whisper(CTranslate2)small 模型在服务器 CPU 上(int8 量化、线程池异步)本地把录音转文字,再用编辑距离+完整词匹配+长度惩罚算出 0-100 发音分,含静音检测与解码失败友好提示;完全离线、无按次调用费。",
+        "evidence": "backend/app/services/whisper_service.py(_get_model 懒加载 small/int8、_compute_score、verify_word);路由 POST /verify-word + /whisper-status",
+        "sales_angle": "讯飞按次计费,Whisper 本地跑不花一分钱——高频跟读练习走本地、正式测评走讯飞,既省钱又不断供。这套'贵引擎+免费引擎'的组合直接压低机构的口语功能运营成本。",
+        "rarity": "rare(在服务器本地部署 ASR 做发音校验,K12 加盟产品几乎没有;多数要么全云端、要么没有本地降级方案)"
+      },
+      {
+        "name": "三源英式发音(Edge神经女声→剑桥真人→讯飞TTS)",
+        "what_it_does": "单词/句子发音走优先级链:微软 Edge TTS en-GB-SoniaNeural 英式女声神经语音 → 剑桥词典抓取的英式真人 UK RP 录音 → 讯飞 TTS;全部本地文件缓存(md5 命名、临时文件原子替换防半成品、空文件自愈、连续重试),剑桥抓取还有 .miss 标记避免重复请求。",
+        "evidence": "backend/app/services/edge_tts_service.py(VOICE=en-GB-SoniaNeural、原子写缓存+3次重试)、cambridge_service.py(UK_PRON_RE 抓真人 MP3+缓存+miss标记)、iflytek_tts_service.py;路由 GET /edge-tts(带 X-Source 标识与 CDN 缓存头)",
+        "sales_angle": "坚持英式 RP 发音、还能给出剑桥词典真人原声,发音地道度碾压合成腔调的同类产品;三源自动降级保证'任何一个词都有声音',演示时不会尴尬静音;全缓存意味着同一个词全校只生成一次,长期近乎零成本。",
+        "rarity": "uncommon-to-rare(英式神经女声较常见,但叠加剑桥真人录音抓取+三级自动降级+原子缓存自愈,组合起来在同类里少见)"
+      },
+      {
+        "name": "AI记忆钩子(谐音/词根/联想,全平台一次缓存)",
+        "what_it_does": "为每个单词用大模型生成谐音/词根拆解/荒诞联想记忆法,结果写入 words.memory_hook 字段做全平台缓存——一个词全系统只生成一次,之后所有学生免费复用;缓存命中不计额度,仅真实生成计入每日限额。",
+        "evidence": "backend/app/services/ai_service.py generate_memory_hook();路由 backend/app/api/v1/ai.py POST /memory-hook/{word_id}(word.memory_hook 命中即零成本返回);字段见 backend/app/models/word.py memory_hook 列",
+        "sales_angle": "'联想记忆法'本是名师才会的东西,这里 AI 批量产出还带谐音;成本模型是关键——AI 花费上界等于词表大小而非学生人数,机构学生翻十倍 AI 账单几乎不涨,规模越大越赚。",
+        "rarity": "uncommon(AI 生成助记词有,但把成本锁死为'一词一次全平台复用'的架构级省钱设计很少有人做)"
+      },
+      {
+        "name": "拼写错误模式诊断(真实输入聚类)",
+        "what_it_does": "抓取学生答错时前端上报的真实拼写输入(learning_records.user_answer),用双指针 diff 算法定位每次错的具体字母块(如 believe→beleive 提取 ie/ei 混淆对),聚类出'该写X写成Y'的系统性错误模式,出现≥2次才算模式、孤例不报。",
+        "evidence": "backend/app/api/v1/student/learning_records.py GET /spelling-diagnosis + _first_diff_chunk()",
+        "sales_angle": "别的产品只会把错词再考一遍,这里能精准告诉孩子'你总栽在 ei/ie 这类字母组合上'——从'刷错题'升级到'诊断病根',是家长会上最能体现专业度、最像一对一名师的功能。",
+        "rarity": "rare(从真实键盘输入做错误块聚类、输出系统性混淆模式,在 K12 背单词产品里几乎没见过)"
+      },
+      {
+        "name": "艾宾浩斯间隔重复(9阶SRS记忆曲线)",
+        "what_it_does": "9 级复习间隔表(5分→30分→12时→1天→2天→4天→7天→15天→30天→毕业),答对进阶、答错回退2阶(不全清零)、走完全程永久毕业;叠加 0-5 级掌握度(按连对次数+准确率判级);/memory-curve-stats 出七日到期预测+阶段分布,/daily-plan 把'到期复习→错题闯关→新词'编成一条'开始今日任务'路径。",
+        "evidence": "backend/app/api/v1/student/learning_records.py SRS_INTERVALS/SRS_LABELS + update_word_mastery(掌握度0-5+复习排期);GET /memory-curve-stats;backend/app/api/v1/student/dashboard.py GET /daily-plan;模型 word_mastery.review_stage/next_review_at",
+        "sales_angle": "科学记忆曲线是背单词类产品的'专业感'门槛;这里更进一步替孩子排好每日路径(避免孩子永远只挑新词逃避复习),让'坚持复习'从自觉变成默认动作,直接拉高续费所依赖的学习效果。",
+        "rarity": "uncommon(SRS 在头部背单词 app 里有,但加盟/校园类多数没有;叠加'智能每日任务编排+防逃避复习'的产品化处理较少见)"
+      },
+      {
+        "name": "记忆保持率对比(复习 vs 没复习)",
+        "what_it_does": "把一周前学的词按'是否隔天以上真的回头练过'分两桶,分别算现在还记得多少(mastery≥3),用行为间隔而非 review_stage 分桶以避免与结果指标循环论证;两桶各满5词才展示。",
+        "evidence": "backend/app/api/v1/student/learning_records.py 记忆保持率对比逻辑(rt_reviewed/rt_unreviewed,GET /memory-curve-stats 返回 reviewed/unreviewed 对比)",
+        "sales_angle": "用学生自己的数据摆出'复习过的记住 X%、没复习的只剩 Y%',把'为什么要在我们平台坚持复习'讲成铁证——是防流失、促续费的说服利器。",
+        "rarity": "rare(用真实行为做对照组、还刻意规避统计循环论证,这种严谨的数据设计在 K12 产品里极少)"
+      },
+      {
+        "name": "AI个性化组卷(错题驱动·标准满分卷)",
+        "what_it_does": "先分析学生错题分布与薄弱题型(analyze_student_mistakes),再让大模型按标准 100 分格式生成整卷:选择/完形填空/填空/拼写/阅读理解,严格锁定题型数量与配分,优先用薄弱词出题,单次可生成约60题(max_tokens 高达 16000);另有按单元一键出测验/选词填空/竞赛题。",
+        "evidence": "backend/app/services/ai_service.py generate_personalized_exam()/analyze_student_mistakes()/generate_exam_questions();路由 backend/app/api/v1/teacher/exam_generator.py POST 分析+生成;ai.py 的 /generate-exam、/generate-unit-quiz、/generate-unit-cloze(14个AI端点)",
+        "sales_angle": "老师最耗时的组卷、且要'针对每个孩子的薄弱点出卷'——这里一键完成整张符合小学/初中规范的满分卷。是打动校长和一线老师、直接省人力的功能。",
+        "rarity": "uncommon(AI 组卷渐多,但做到按学生错题定制+严格标准卷型配分+完形/阅读整篇生成的深度较少)"
+      },
+      {
+        "name": "AI家长学情周报(数据翻译成人话+规则兜底)",
+        "what_it_does": "把学生一周的时长/天数/新词/正确率/分模式表现/易错词等聚合数据交给大模型,生成家长视角的温暖周报(整体评价+进步点+待加强+3条在家可做的建议);LLM 不可用或解析失败时自动走规则兜底文案,保证永不崩、永远有报告。",
+        "evidence": "backend/app/services/ai_service.py generate_weekly_report() + _fallback_weekly_report()",
+        "sales_angle": "每周自动推给家长一份像班主任写的贴心周报,是维系家长信任、体现'机构在认真看着我孩子'的高频触点;兜底机制保证 AI 抽风时家长也照收报告,体验不掉线。",
+        "rarity": "uncommon(自动生成家长可读周报有,但配规则降级'永不空报'的可靠性设计较少见)"
+      },
+      {
+        "name": "双层缓存+每日限额+多模型可切换(成本与合规底座)",
+        "what_it_does": "AI 内容走内存缓存+数据库 ai_cache 表双层缓存(md5 键、TTL);ai_quota 按'北京日+用户+功能'计数,超限返回 429;大模型供应商从数据库 AIProvider 表读取,支持 OpenAI/通义千问(qwen)/Claude 一键切换、API Key 加密存储(Fernet)、失败降级到环境变量。",
+        "evidence": "backend/app/services/ai_service.py(_get_cache/_set_cache 内存缓存、_get_ai_config 读库+解密+降级、_call_openai_compatible/_call_claude);ai_quota.py check_and_consume;database_schema.sql ai_cache 表;models/system_config.py AIProvider(provider_name/base_url/model_name/加密api_key)",
+        "sales_angle": "AI 是花钱的,这套双层缓存+每日限额把账单牢牢摁住;多模型可切换意味着哪家便宜/合规就用哪家(含国产通义千问,数据合规更稳),不被单一供应商绑死——对总部控成本、对合规审查都是加分项。",
+        "rarity": "uncommon(缓存+限额单点常见,但'内存+DB双缓存 + 逐用户逐功能日限额 + 多供应商含国产可热切+密钥加密'成体系的很少)"
+      },
+      {
+        "name": "学习质量分/防划水引擎",
+        "what_it_does": "对一次学习的答题时间做统计分析:平均用时过短扣分、时间标准差过小判'机械点击'、连续快速答题、高正确率+高速度判可疑、后半段明显加速判疲劳划水、首字母验证通过率,综合算 0-100 质量分并打异常标记,判定 excellent→suspicious 等级。",
+        "evidence": "backend/app/services/learning_quality.py LearningQualityService.calculate_quality_score()/get_quality_level()",
+        "sales_angle": "解决家长最担心的'孩子是不是在瞎点应付'——用行为统计识别划水并量化学习质量,让'认真学'看得见,是体现产品对学习效果负责的信任背书。",
+        "rarity": "rare(基于答题节奏统计做防划水/学习质量评分,在 K12 背单词类产品里极少见)"
+      },
+      {
+        "name": "AI对战陪练(自适应难度·拟真节奏)",
+        "what_it_does": "PK 对战无真人时生成 AI 对手:等级随玩家±2,按玩家段位调正确率(0.55→0.85)与答题速度区间,答题时间用高斯分布拟真'人味',还有连击越高越倾向放必杀技的策略;接入宠物对战 WebSocket 实时对局。",
+        "evidence": "backend/app/services/ai_opponent_service.py(generate_ai_opponent/ai_should_answer_correctly/generate_ai_answer_time/calculate_ai_ultimate_usage_chance);接入 backend/app/api/v1/student/pet_battle_ws.py 与 pet_battle.py",
+        "sales_angle": "冷启动或深夜没同学在线也能随时开战,保证游戏化体验不冷场;自适应难度让弱生赢得动、强生有挑战,提升留存与练习频次。",
+        "rarity": "uncommon(带自适应难度+高斯拟真答题节奏+必杀策略的 AI 陪练,做到这个精细度的不多)"
+      }
+    ]
+  },
+  {
+    "subsystem": "saas-infra (多租户加盟 SaaS 基础设施)",
+    "headline": "每个加盟商拿到的是一套数据库级隔离、自带品牌、到期自动停机的\"独立王国\"——租户隔离在 ORM 层做了读+写双安全网,13 张锚点模型自动打戳/自动过滤,新写的接口默认就漏不出去。",
+    "features": [
+      {
+        "name": "数据库级租户隔离 · 读写双安全网(13 张锚点表)",
+        "what_it_does": "SQLAlchemy 会话事件层做隔离:读侧 do_orm_execute 对每条 SELECT 自动注入 org_id 条件,写侧 before_flush 对新建对象自动打机构戳。共享内容表(词库/文章/句库/竞赛题库/教材系列)准入语义为『本机构 OR org_id IS NULL(平台共享库)』,机构私有严格表(用户/班级/PK房间/招生线索/排行快照/金币三表)只认本机构。逃生口 skip_tenant_filter 仅限 service 层具名函数。",
+        "evidence": "core/tenancy.py: _tenant_filter(do_orm_execute)+_stamp_tenant_writes(before_flush)+register_tenant_models() 注册 13 个模型;TENANCY_ENFORCE 开关;auth.py:52 认证时 current_org_id.set()",
+        "sales_angle": "加盟商的学生、班级、成绩、招生线索是物理隔离的私产,别的加盟商和隔壁竞对永远看不到一行。而且隔离是平台底座兜底,不靠程序员每个接口记得手写过滤——新功能上线默认安全,数据不串门这件事不用赌人品。",
+        "rarity": "rare — 绝大多数 K12 背单词/校园听说 App 是单库 B2C 或简单学校账号,没有真正的 ORM 层多租户隔离,更没有读写双安全网这种防漏设计"
+      },
+      {
+        "name": "三级管理体系(平台→机构老板→老师→学生)",
+        "what_it_does": "平台 admin 签约开机构并发机构管理员账号 → 机构管理员(加盟商老板)自建/停用老师账号 → 老师建学生。每一级只看得见管得着自己那一层,机构码/配额/档位/状态是平台资产,机构老板改不了。",
+        "evidence": "admin/organizations.py: create_organization + create_org_admin(/managers);org_admin.py: create_teacher/list_teachers/toggle_teacher_active;models/user.py role=admin/org_admin/teacher/student",
+        "sales_angle": "加盟商老板有自己的控制台,自己招老师、自己排班、自己看数据,不用事事求总部;总部只管开户和收费。一套系统同时服务总部直营和几十上百家加盟校,权责边界清清楚楚。",
+        "rarity": "uncommon — 同类产品多为两级(校/师或师/生),真正做到平台-加盟商-老师-学生四层且权责隔离的极少"
+      },
+      {
+        "name": "学生名额配额(按活跃学生计费)",
+        "what_it_does": "机构签约档位带 student_quota(标准档 100)。计费口径=有活跃班级关系的去重学生数;入班/建学生前校验,超额直接 403 提示联系扩容。直营机构 quota=999999 等于不限。",
+        "evidence": "models/organization.py: student_quota;org_service.py: count_active_students(distinct student_id)+check_student_quota(403);admin/organizations.py 列表回传 active_students 水位",
+        "sales_angle": "卖的是『座位数』,续费扩容一目了然。加盟商用满了系统自己会拦,总部不用人肉盯着谁超卖,配额水位在后台实时可见,续费扩容就是改一个数。",
+        "rarity": "uncommon — 席位制 SaaS 计费在 K12 单词类产品里少见,多数按学校一口价或按人头线下算"
+      },
+      {
+        "name": "服务有效期到期自动停机(无需定时任务)",
+        "what_it_does": "机构 expires_at 是『服务最后一天』,过了当天该机构第一个请求进来就判停,不靠 cron。停机后该机构师生全站被拦(HTTP 402 提示续费),但机构管理员放行以便登录看续费提示。续费改 expires_at + 缓存失效即刻恢复。机构状态带 5 分钟进程内缓存。",
+        "evidence": "core/tenancy.py: check_org_active(expires_at<local_today→停)+ 5min TTL 缓存 + invalidate_org_cache;auth.py:55-57 学生/老师/家长 402 拦截;admin/organizations.py: update_organization 改 expires_at 后 invalidate",
+        "sales_angle": "年费一到期系统自动断,不用总部记着去手工封号,也不会因为忘了关而白送服务。续费当场生效。这是把『收不到钱就停服』这件事变成了产品能力,而不是靠人管。",
+        "rarity": "rare — 事件驱动的到期自动停机(而非定时扫表)+ 缓存即时失效续费,是成熟 SaaS 计费设计,K12 单词品类几乎没有"
+      },
+      {
+        "name": "机构兑换码 · 发码量与席位对等",
+        "what_it_does": "机构管理员批量发单词本兑换码(XXXX-XXXX-XXXX-XXXX,去混淆字符集,默认 180 天有效)。关键风控:机构累计已发(未禁用)兑换码不得超过 student_quota,防止用发码绕过学生名额;禁用/删除的码归还额度。平台 admin 不限。机构只能给码绑定平台共享库或本机构自建库。",
+        "evidence": "admin/subscriptions.py: generate_codes(org_admin issued+count>quota→403)+list/stats/disable 全部按 created_by∈本机构用户过滤;subscription_service.py: batch_generate_codes/redeem_code;subscription.py 学生端 /redeem",
+        "sales_angle": "加盟商可以把兑换码当招生/续费的钩子自由发放,但系统卡死了『发码总量=你买的席位』,想靠印码超卖行不通。发多少、用了多少、废了多少后台有统计,财务清爽。",
+        "rarity": "uncommon — 兑换码本身常见,但『发码额度与付费席位强对等 + 禁用归还』的防绕过设计罕见"
+      },
+      {
+        "name": "机构招生链接(机构码归属)",
+        "what_it_does": "一处机构码解析语义贯穿注册页、AI 测评链接、后台:带 ?org=机构码 注册的学生直接归属该机构,测评线索也归该机构;大小写不敏感,无码/无效码/停用机构统一落直营。",
+        "evidence": "org_service.py: resolve_org_code(唯一入口);auth.py:195-207 注册按 org_code 落 org_id;assessment.py:111 招生线索按 org_code 归属;models/organization.py: code 唯一索引",
+        "sales_angle": "加盟商拿到自己的招生链接和测评二维码,家长扫码报名或做 AI 测评,线索和账号自动进自己机构池子,不会跑到总部或别家。招生漏斗天然按机构分账。",
+        "rarity": "uncommon — 带机构归属的自助招生链接 + AI 测评线索归属,在单词类产品里少见"
+      },
+      {
+        "name": "机构自定义品牌(名称/Logo/联系方式自助)",
+        "what_it_does": "机构管理员可自改机构名称、联系人、联系方式,自传 Logo(≤2MB,png/jpg/webp,覆盖旧图,URL 带版本号防缓存)。但机构码/配额/档位/状态是平台资产,机构端改不了。",
+        "evidence": "org_admin.py: update_org_info(/info PATCH)+upload_org_logo(/logo);models/organization.py: logo_url 列;OrgInfoUpdate 明确不含 code/quota/plan/status",
+        "sales_angle": "加盟校挂自己的招牌和 Logo,学生老师进来看到的是本地品牌而不是总部的,像开了家自己的分校;同时核心资产(席位/档位/开关)牢牢攥在总部手里,放权不失控。",
+        "rarity": "uncommon — 白标/自助换 Logo 在 K12 单词 App 里不常见"
+      },
+      {
+        "name": "分配即权限 · 三级粒度严格作用域",
+        "what_it_does": "学生只能学被分配的范围,按 书/单元/组 三级粒度授权,白名单模型:整本分配=None(全放),无分配=空集(全挡),单元/组分配=只放这些单元。老师布置过的作业单元自动并入授权,避免作业被 403 挡死。",
+        "evidence": "scope_service.py: get_allowed_unit_ids(book/unit/group 白名单 + 作业单元 union)+validate_scope+get_scope_words;整本学习按拼写去重",
+        "sales_angle": "老师精确控制每个学生该学哪几个单元、哪一组词,学生打开 App 看到的就是老师指定的范围,不会乱学、不会提前偷看。作业授权还能自动打通,不用两头配。",
+        "rarity": "uncommon — 三级粒度(书/单元/组)的严格白名单授权 + 作业自动授权,比市面上『整本解锁』式管理精细得多"
+      },
+      {
+        "name": "防提权统一裁决(guard_org_admin)",
+        "what_it_does": "单点函数裁决:机构管理员不能操作平台/机构管理员账号(自己除外),不能把任何人授予管理员角色。所有对 org_admin 放行的写端点(建/改/删用户、重置密码、启停账号)都必须调这一个函数,禁止各处手写副本(手写会漂移、依赖隐式顺序)。",
+        "evidence": "admin/users.py: guard_org_admin() + PRIVILEGED_ROLES,create/update/reset-password/toggle-status/delete 五个写端点全部调用",
+        "sales_angle": "把加盟商权限放开的同时,从架构上堵死了『机构管理员给自己或亲信提权成平台管理员』的路子。防提权逻辑收敛到一个函数,审计一处即可,不怕某个接口漏了防线。",
+        "rarity": "rare — 显式的防提权 choke-point 设计属于成熟 B2B SaaS 安全实践,K12 品类几乎不做"
+      },
+      {
+        "name": "路由级只读守卫(内容管理默认安全)",
+        "what_it_does": "平台词库/文章等共享内容对机构管理员『只读』,不靠逐端点换依赖(那样新端点会 fail-open 漏掉),而是在路由级挂 _org_admin_read_only 守卫,按 HTTP 方法裁决:org_admin 发非 GET/HEAD/OPTIONS 请求一律 403。新增任何写端点自动被拦。",
+        "evidence": "admin/content.py:20-30 router=APIRouter(dependencies=[Depends(_org_admin_read_only)]),方法白名单拦截",
+        "sales_angle": "总部的词库、阅读文章这些内容资产,加盟商只能用不能改,而且这个『只能看』是默认兜底的——以后加再多功能都自动守规矩,不会因为程序员忘设权限就把总部内容库开了口子。",
+        "rarity": "rare — fail-safe(默认拦)而非 fail-open(默认放)的路由级方法守卫,是防御式架构,同类产品罕见"
+      },
+      {
+        "name": "跨机构散户认领(扫码入班自动归属)",
+        "what_it_does": "未被认领的直营散户(org=1 且无任何活跃班级)扫加盟校老师的邀请码时,随班自动归属到该机构;已属其他机构的学生扫别家码则被拒。班级/老师归属判定走显式 skip_tenant_filter 逃生口。",
+        "evidence": "student/class_join.py:54-71 认领逻辑 + current_org_id.set(class_org) 同步上下文;place_students_in_class 转班",
+        "sales_angle": "总部投放引来的自然流量(直营散户),被哪家加盟校老师扫码收编就归哪家,自动完成生源分配;同时别家已签约的学生不会被撬走,机构之间井水不犯河水。",
+        "rarity": "uncommon — 跨租户生源认领 + 归属冲突拒绝的规则,是加盟体系特有的精细运营能力"
+      }
+    ]
+  },
+  {
+    "subsystem": "Reliability, Anti-Cheat & Growth Funnel",
+    "headline": "A free 3-minute AI speech test on any livestream link turns anonymous parents into phone-verified, channel-attributed sales leads for the exact franchise that shared the link — while an offline-first idempotent submit queue guarantees a child's just-finished work is never lost even if the server restarts mid-submit.",
+    "features": [
+      {
+        "name": "AI 口语体检获客漏斗 (anonymous speech assessment → lead)",
+        "what_it_does": "A no-login public page picks 6 graded diagnostic words (2 easy / 2 medium / 2 hard), records the child reading each aloud, scores pronunciation via iFlytek ISE (Whisper fallback capped at 50), shows an instant score report, then gates the full AI deep report behind an SMS-verified phone number. Verified phones become leads with an AI-generated diagnosis (strengths/weaknesses/study plan/focus words).",
+        "evidence": "backend/app/api/v1/assessment.py (/start, /evaluate, /report, /capture-phone, /verify-phone); model backend/app/models/assessment.py AssessmentLead; frontend/src/pages/Assessment.tsx (welcome→recording→report→phone→deep phases)",
+        "sales_angle": "This is a turnkey student-acquisition machine. A franchisee drops one link in a livestream or WeChat group; parents get a genuinely useful free pronunciation report, and the school walks away with a verified phone number and an AI talking point for the follow-up call. It converts 'free traffic' into a callable lead list automatically.",
+        "rarity": "rare — 背单词 apps (百词斩/不背单词) and 校园听说 products have speech scoring, but almost none package it as a phone-gated, no-login B2B2C recruitment funnel with an AI deep-report paywall"
+      },
+      {
+        "name": "渠道战报 + 机构归属 (channel tracking & multi-tenant lead attribution)",
+        "what_it_does": "Assessment links carry ?src= (douyin/shipinhao/referral) and ?org= (franchise code). Every lead is stamped with its channel and owning organization. The teacher console shows a per-channel battle report (assessments / phones captured / conversions) sortable by volume, a 'today only' post-livestream mode, and one-click buttons that copy the correct channel+org promo link.",
+        "evidence": "backend/app/api/v1/assessment.py get_leads (source_stats via GROUP BY source, today_only Beijing-time window, org_code resolution); AssessmentLead.source/org_id columns; frontend/src/pages/TeacherLeads.tsx (CHANNELS table, copyChannelLink, source battle-report cards)",
+        "sales_angle": "A franchise owner can see in real time which platform (抖音 vs 视频号 vs 老带新) actually produces paying students, and each franchise only sees and owns its own leads. It turns marketing spend into a measurable, per-channel ROI dashboard — the kind of accountability franchise HQ sells to prospective partners.",
+        "rarity": "rare — per-channel conversion battle reports tied to franchise-scoped lead ownership is a franchise-operations feature, essentially absent from consumer vocab apps"
+      },
+      {
+        "name": "可靠提交队列 (offline-first idempotent submit queue)",
+        "what_it_does": "Before any answer batch is sent, it is written to localStorage with an idempotency key (client_batch_id). It's only removed on success; network errors / timeouts / 5xx / even 401 (expired token) keep it queued and auto-retry on page load, network-recovery, tab-refocus, every 60s, and before the next submit. Items are scoped by uid (so a shared computer never credits child A's work to child B), and PUT absolute-value updates use a staleKey so a late retry can't overwrite newer progress.",
+        "evidence": "frontend/src/api/submitQueue.ts (submitReliably, flushQueue, isRetryable keeping 401, uid scoping, staleKey eviction, MAX_AGE 3d within 7d backend dedup window); backend dedup via claim_client_batch (referenced in CLAUDE.md reliable-submit architecture)",
+        "sales_angle": "The #1 trust killer for a learning app is 'I studied for 20 minutes and it didn't save.' This guarantees a child's work survives a deploy restart, campus-WiFi drop, or slamming the laptop shut — and the server dedupes retries so nothing is ever double-counted. 'Your child's effort is never lost' is a concrete promise to anxious parents.",
+        "rarity": "rare — most K12 apps fire-and-forget submits or just show an error toast; a persisted, uid-scoped, idempotent, order-safe retry queue is production-grade infrastructure"
+      },
+      {
+        "name": "学习质量分 / 防划水 (behavioral learning-quality score)",
+        "what_it_does": "Every study batch (≥5 records) is scored 0–100 by analyzing answer-time distribution (too-fast penalty, thoughtful-pace bonus), mechanical-rhythm detection (low std-dev = robotic clicking), accuracy-vs-speed cross-checks (98%+ correct in <2s = suspicious), consecutive fast-answer streaks, and fatigue detection (second half suddenly faster). Suspicious sessions are flagged and logged; the score is persisted per session.",
+        "evidence": "backend/app/services/learning_quality.py (calculate_quality_score, flags, get_quality_level); persisted column learning.py quality_score (default 50); computed on every submit in backend/app/api/v1/student/learning_records.py line ~237 and returned to client",
+        "sales_angle": "Parents pay for real learning, not a kid tapping through screens to farm coins. A per-session quality score lets teachers spot 'going through the motions' and prove the study time was genuine — turning class-time reports into evidence of real effort.",
+        "rarity": "rare — behavioral 'was this real studying?' scoring (rhythm/std-dev/fatigue heuristics) is essentially unheard of in consumer 背单词 apps"
+      },
+      {
+        "name": "竞技防作弊 (competition anti-cheat gate)",
+        "what_it_does": "Every PK/competition answer is validated before scoring: minimum answer time (500ms), max 60 answers/minute rate limit, 5-second same-word replay block, and a suspicious-pattern check (98%+ accuracy with <1s average). A separate risk-score endpoint grades users low/medium/high on abnormal accuracy, impossible combos, robotic timing std-dev, and score spikes.",
+        "evidence": "backend/app/services/anti_cheat.py (validate_answer_submission, check_suspicious_pattern, get_user_risk_score); wired into scoring at backend/app/services/competition_service.py line 174-184 (raises before points are awarded)",
+        "sales_angle": "Ranked PK and leaderboards only motivate kids if they're fair. Blocking script/replay/turbo-cheating protects the competitive integrity that drives daily engagement, so honest students stay motivated instead of quitting when a cheater tops the board.",
+        "rarity": "uncommon — some competition apps rate-limit, but a layered pre-scoring gate plus a per-user risk score is well above typical"
+      },
+      {
+        "name": "禁输入法联想答题框 (IME / autosuggest answer-block)",
+        "what_it_does": "Spelling/dictation/fill-in inputs strip autocomplete/autocorrect/autocapitalize/spellcheck with a randomized field name (defeats browser history + password-manager icons), and intercept onBeforeInput to preventDefault the 'insertReplacementText' inputType — i.e. when a phone keyboard's prediction bar tries to hand the child the whole word. Normal typing, Chinese composition, and paste still work; the doc honestly notes the technical ceiling for OS-level IMEs.",
+        "evidence": "frontend/src/utils/noSuggestInput.ts (noSuggestInputProps + imeSafeInputProps onBeforeInput guard); applied across 11 files incl. SpellingPractice.tsx, DictationPhase.tsx, UnitExam.tsx, CompetitionLearning.tsx, MistakePractice.tsx",
+        "sales_angle": "On a phone or tablet, the keyboard literally suggests the English word the child is spelling — silently gifting the answer. Suppressing that means a dictation score reflects what the child actually knows, so the practice is real and the data teachers/parents see is trustworthy.",
+        "rarity": "rare — the insertReplacementText interception trick is a sophisticated detail almost no competitor bothers to implement"
+      },
+      {
+        "name": "专注力提醒 + 走神落库 (focus / tab-switch monitor)",
+        "what_it_does": "During study: 30s idle shows a gentle bottom nudge; 60s idle triggers a full-screen 'come back' overlay that pauses the timer and logs a 'distracted' event; leaving the tab for ≥5s logs a 'switch' event and shows a return alert. Events are UPSERT-accumulated per Beijing day into study_calendar (switch_count/distracted_count) and surfaced on the teacher's live board and daily stats.",
+        "evidence": "frontend/src/components/FocusReminder.tsx (nudge/block/switch tiers, keepalive fetch to /student/presence/focus-event); backend/app/api/v1/presence.py report_focus_event (atomic SQLite UPSERT, cross-restart-safe) and class_live_status surfacing counts",
+        "sales_angle": "The overlay literally tells the child '老师和爸妈都能看到你切屏的次数,' which self-polices distraction, and gives teachers a real 'was he focused?' metric per day. Distracted/away time is excluded from study-minutes, so reported time is honest.",
+        "rarity": "uncommon — this is online-exam-proctoring behavior applied to daily self-study; consumer vocab apps rarely track or report focus"
+      },
+      {
+        "name": "直播打码模式 (privacy live-mask for streaming)",
+        "what_it_does": "A one-tap toggle (persisted per device) rewrites every student's real name to '杨同学' / 'W同学' across the classroom big-screen, leaderboards, PK banners, and even the auto-generated hype-feed strings — with compound-surname awareness ('欧阳同学'). Masking is applied at the data-derivation point so names baked into broadcast text can't leak.",
+        "evidence": "frontend/src/utils/livePrivacy.ts (maskName, COMPOUND_SURNAMES, isLivePrivacyOn/setLivePrivacy); used in TeacherBigScreen.tsx (line 168-171, 393-399 toggle), StudentLeaderboard.tsx, LiveRankBadge.tsx, classify/ChaseBanner.tsx",
+        "sales_angle": "Franchises live-stream class rankings to recruit, but showing minors' real names on camera is a legal/PR red line. One tap makes the whole screen broadcast-safe, so schools can market with real class energy without exposing children's identities.",
+        "rarity": "rare — a purpose-built minor-privacy masking mode for on-camera/livestream use is a franchise-marketing feature virtually no vocab app ships"
+      },
+      {
+        "name": "实时课堂大屏 + 只读投屏账号 (live classroom board + display role)",
+        "what_it_does": "A heartbeat + tab-switch presence system shows a live per-student status board (away / distracted / studying / offline, sorted with switch-outs on top), with a learning-record fallback so old SPA tabs that stopped sending heartbeats still register as 'studying.' A dedicated read-only 'display' account role can project any class's board and daily stats without teacher credentials.",
+        "evidence": "backend/app/api/v1/presence.py (heartbeat/switch/live snapshot, 3-min record fallback, get_teacher_or_display 'display' role, bigscreen endpoints); frontend/src/pages/TeacherBigScreen.tsx (rotating leaderboard, crown-change hype feed)",
+        "sales_angle": "A big screen showing the whole class studying in real time — with a milestone hype feed — makes the classroom feel alive for parents touring the center and drives peer motivation. The locked-down display account means the lobby TV can run it safely without exposing the teacher's login.",
+        "rarity": "uncommon — real-time classroom presence with a dedicated read-only projection role is a physical-classroom / franchise feature, not a consumer-app one"
+      },
+      {
+        "name": "家长端 (parent portal with bind-code + AI weekly report)",
+        "what_it_does": "A student generates a 6-digit, 5-minute bind code; the parent registers with it (or logs in and binds additional children for multi-kid families). The dashboard shows today/streak, Ebbinghaus review progress, this-week-vs-last-week deltas, the child's system-wide rank in vocabulary/diligence/accuracy, a 30-day heatmap, top-10 weak words, book progress, achievements, and a cached AI weekly report (regenerable). Every endpoint verifies the parent actually owns that child.",
+        "evidence": "backend/app/api/v1/parent.py (generate_parent_bind_code, parent_register/login/bind, child_dashboard with rank_info/heatmap/weak_words, _assert_my_child guard, weekly-report reuse of build_and_cache_weekly_report); frontend/src/pages/ParentDashboard.tsx",
+        "sales_angle": "Parents get a rich, AI-summarized weekly window into their child's real progress and class ranking — the single biggest driver of renewal in K12. The bind-code flow means onboarding a parent takes seconds, and multi-child support fits families with siblings enrolled.",
+        "rarity": "uncommon — many apps have a parent view, but the secure bind-code UX plus a cached AI weekly report and cross-system ranking is above the typical bar"
+      },
+      {
+        "name": "版本更新提示条 (stale-bundle update nudge)",
+        "what_it_does": "Every 5 minutes (and on tab-refocus) the SPA compares its embedded build timestamp against /version.json; if the server has a newer build it pops a non-intrusive 'tap to update' bar rather than force-reloading (which would lose in-progress study). It self-guards against deploy-mixup infinite loops by remembering it already reloaded for a given server version.",
+        "evidence": "frontend/src/components/UpdateNudge.tsx (__BUILD_TS__ vs version.json, no-store fetch, sessionStorage nudge_reloaded_for loop guard, manual reload only)",
+        "sales_angle": "Learning apps stay open all day; without this, kids keep hitting already-fixed bugs on a stale page and parents lose confidence. Gentle in-place updates keep everyone on the working version without ever interrupting a study session mid-group.",
+        "rarity": "uncommon — build-hash version detection with a mixed-deploy loop guard is a mature reliability touch few small apps get right"
+      }
+    ]
+  }
+]

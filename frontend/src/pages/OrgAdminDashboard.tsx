@@ -72,16 +72,16 @@ export default function OrgAdminDashboard() {
   const quotaPct = info ? quotaPercent(info.active_students, info.student_quota) : 0;
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0] p-6">
+    <div className="min-h-screen bg-paper p-4 sm:p-6">
       <div className="max-w-4xl mx-auto">
         {/* 顶栏: Logo + 机构名 + 编辑 */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <label className="cursor-pointer group relative" title="点击更换Logo">
               {info?.logo_url ? (
                 <img src={info.logo_url} alt="logo" className="w-12 h-12 rounded-xl object-cover shadow" />
               ) : (
-                <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-2xl shadow">🏫</div>
+                <div className="w-12 h-12 rounded-xl bg-[#e8f2f9] border border-[#cfe2f0] flex items-center justify-center text-2xl">🏫</div>
               )}
               <span className="absolute inset-0 rounded-xl bg-black/40 text-white text-[10px] hidden group-hover:flex items-center justify-center">换图</span>
               <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onLogoPick} />
@@ -97,16 +97,16 @@ export default function OrgAdminDashboard() {
 
         {/* 机构信息编辑表单 */}
         {infoForm && (
-          <div className="bg-white rounded-2xl p-4 mb-6 shadow grid grid-cols-1 md:grid-cols-4 gap-3">
-            <input className="border rounded-xl px-3 py-2" placeholder="机构名称" value={infoForm.name}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="机构名称" value={infoForm.name}
                    onChange={e => setInfoForm({ ...infoForm, name: e.target.value })} />
-            <input className="border rounded-xl px-3 py-2" placeholder="联系人" value={infoForm.contact_name}
+            <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系人" value={infoForm.contact_name}
                    onChange={e => setInfoForm({ ...infoForm, contact_name: e.target.value })} />
-            <input className="border rounded-xl px-3 py-2" placeholder="联系电话" value={infoForm.contact_phone}
+            <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系电话" value={infoForm.contact_phone}
                    onChange={e => setInfoForm({ ...infoForm, contact_phone: e.target.value })} />
             <div className="flex gap-2">
-              <button className="flex-1 py-2 rounded-xl bg-[#5FD35F] text-white font-bold" onClick={saveInfo}>保存</button>
-              <button className="flex-1 py-2 rounded-xl bg-gray-200" onClick={() => setInfoForm(null)}>取消</button>
+              <button className="flex-1 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700" onClick={saveInfo}>保存</button>
+              <button className="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200" onClick={() => setInfoForm(null)}>取消</button>
             </div>
           </div>
         )}
@@ -120,7 +120,7 @@ export default function OrgAdminDashboard() {
 
         {/* 概况卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-2xl p-5 shadow">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <div className="text-sm text-gray-400 mb-1">📇 机构码(招生/测评链接用)</div>
             <div className="text-2xl font-mono font-bold text-[#FF6B35]">{info?.code || '—'}</div>
             <div className="mt-2 flex flex-wrap gap-3 text-xs">
@@ -139,7 +139,7 @@ export default function OrgAdminDashboard() {
             </div>
             <div className="mt-1 text-[11px] text-gray-400">学生用注册链接注册即归属本机构;测评链接的线索进本机构线索池</div>
           </div>
-          <div className="bg-white rounded-2xl p-5 shadow">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <div className="text-sm text-gray-400 mb-1">👦 学生名额</div>
             <div className="text-2xl font-bold">{info?.active_students ?? '—'} <span className="text-base text-gray-400">/ {info?.student_quota ?? '—'}</span></div>
             <div className="mt-2">
@@ -147,7 +147,7 @@ export default function OrgAdminDashboard() {
             </div>
             {quotaPct >= 90 && <div className="mt-1 text-xs text-red-500">名额将满,联系平台扩容</div>}
           </div>
-          <div className="bg-white rounded-2xl p-5 shadow">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
             <div className="text-sm text-gray-400 mb-1">👨‍🏫 老师</div>
             <div className="text-2xl font-bold">{info?.teacher_count ?? '—'} 人</div>
             {info?.expires_at && <div className="mt-2 text-xs text-gray-400">服务到期: {String(info.expires_at).slice(0, 10)}</div>}
@@ -179,7 +179,7 @@ export default function OrgAdminDashboard() {
             <button
               key={card.path}
               onClick={() => navigate(card.path)}
-              className="bg-white rounded-2xl p-4 shadow text-left hover:shadow-md transition"
+              className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm text-left hover:border-[#b7d0e2] hover:shadow-md transition"
             >
               <div className="text-2xl">{card.icon}</div>
               <div className="font-bold mt-1">{card.title}</div>
@@ -189,34 +189,34 @@ export default function OrgAdminDashboard() {
         </div>
 
         {/* 老师管理 */}
-        <div className="bg-white rounded-2xl shadow p-5">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-lg">👨‍🏫 老师账号</h2>
             <button
               onClick={() => setShowCreate(!showCreate)}
-              className="px-4 py-2 rounded-xl text-white font-bold bg-gradient-to-r from-[#FF6B35] to-[#FFD23F] shadow hover:opacity-90"
+              className="px-4 py-2 rounded-lg text-white font-semibold bg-[#3976a9] hover:bg-[#2e628f] transition-colors"
             >➕ 新建老师</button>
           </div>
 
           {showCreate && (
-            <div className="bg-orange-50 rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-              <input className="border rounded-xl px-3 py-2" placeholder="登录用户名 *" value={form.username}
+            <div className="bg-[#f4f8fb] border border-[#dceaf3] rounded-lg p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="登录用户名 *" value={form.username}
                      onChange={e => setForm({ ...form, username: e.target.value })} />
-              <input className="border rounded-xl px-3 py-2" placeholder="姓名" value={form.full_name}
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="姓名" value={form.full_name}
                      onChange={e => setForm({ ...form, full_name: e.target.value })} />
-              <input className="border rounded-xl px-3 py-2" placeholder="手机号" value={form.phone}
+              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="手机号" value={form.phone}
                      onChange={e => setForm({ ...form, phone: e.target.value })} />
               <button
                 disabled={form.username.length < 3 || createMut.isPending}
                 onClick={() => createMut.mutate()}
-                className="px-4 py-2 rounded-xl bg-[#5FD35F] text-white font-bold disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50"
               >{createMut.isPending ? '创建中…' : '确认创建'}</button>
             </div>
           )}
 
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[620px] whitespace-nowrap text-sm">
             <thead>
-              <tr className="text-left text-gray-500 border-b">
+                <tr className="text-left text-slate-500 border-b border-slate-200">
                 <th className="py-2">用户名</th>
                 <th className="py-2">姓名</th>
                 <th className="py-2">最近登录</th>
@@ -226,7 +226,7 @@ export default function OrgAdminDashboard() {
             </thead>
             <tbody>
               {(teachers || []).map(t => (
-                <tr key={t.id} className="border-b last:border-0">
+                <tr key={t.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                   <td className="py-2 font-mono">{t.username}</td>
                   <td className="py-2">{t.full_name || '—'}</td>
                   <td className="py-2 text-gray-400">{t.last_login ? String(t.last_login).slice(0, 16).replace('T', ' ') : '从未登录'}</td>
@@ -243,7 +243,7 @@ export default function OrgAdminDashboard() {
                 <tr><td colSpan={5} className="py-8 text-center text-gray-400">还没有老师,点右上角「新建老师」开始</td></tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     </div>

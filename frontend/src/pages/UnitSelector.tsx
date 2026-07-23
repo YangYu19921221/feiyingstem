@@ -181,7 +181,7 @@ const UnitSelector = () => {
         />
       )}
       {/* 顶部导航 */}
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-10">
+      <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center gap-3">
           <button
             onClick={handleBack}

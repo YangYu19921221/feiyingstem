@@ -31,6 +31,16 @@ export default function StudentSentenceBooks() {
       </nav>
 
       <div className="max-w-3xl mx-auto px-5 py-8">
+        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-slate-200/80 p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-5">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-orange-700">句子背诵</p>
+              <h2 className="font-display text-2xl font-bold text-slate-800">把句子读熟，再把表达说出来</h2>
+              <p className="mt-2 text-sm text-slate-600">听写与选择两种模式，按句子集循序练习。</p>
+            </div>
+            <img src="/hero-memory.jpeg" alt="" className="hidden h-24 w-32 rounded-xl object-cover shadow-sm sm:block" />
+          </div>
+        </section>
         <section className="mb-6">
           <p className="text-ink-mute text-sm mb-1.5">背诵英文短句 · 听写 + 选择两种模式</p>
           <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink tracking-tight">
@@ -46,7 +56,7 @@ export default function StudentSentenceBooks() {
             <p className="text-xs text-ink-mute">等老师从后台上传后就能看到</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05] overflow-hidden">
+          <div className="card-soft rounded-2xl divide-y divide-black/[0.05] overflow-hidden">
             {books.map(b => (
               <div
                 key={b.id}

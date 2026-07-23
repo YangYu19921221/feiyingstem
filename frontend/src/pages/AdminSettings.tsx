@@ -55,17 +55,17 @@ const AdminSettings: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-6">
+    <div className="min-h-screen bg-paper p-4 sm:p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6 sm:mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">⚙️ 系统设置</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-2">⚙️ 系统设置</h1>
             <p className="text-gray-600">配置系统参数和功能选项</p>
           </div>
           <button
             onClick={() => navigate('/admin')}
-            className="px-6 py-2 bg-white rounded-xl shadow-md hover:shadow-lg transition-all"
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
           >
             ← 返回管理中心
           </button>
@@ -79,7 +79,7 @@ const AdminSettings: React.FC = () => {
         )}
 
         {/* 基本设置 */}
-        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>🏠</span> 基本设置
           </h2>
@@ -92,11 +92,11 @@ const AdminSettings: React.FC = () => {
                 type="text"
                 value={settings.siteName}
                 onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
               />
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">允许用户注册</div>
                 <div className="text-sm text-gray-500">新用户可以自行注册账号</div>
@@ -108,11 +108,11 @@ const AdminSettings: React.FC = () => {
                   onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF6B35]"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#3976a9]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3976a9]"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">邮箱验证</div>
                 <div className="text-sm text-gray-500">注册时需要验证邮箱</div>
@@ -124,19 +124,19 @@ const AdminSettings: React.FC = () => {
                   onChange={(e) => setSettings({ ...settings, requireEmailVerification: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF6B35]"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#3976a9]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3976a9]"></div>
               </label>
             </div>
           </div>
         </div>
 
         {/* AI设置 */}
-        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>🤖</span> AI功能设置
           </h2>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">启用AI功能</div>
                 <div className="text-sm text-gray-500">使用AI生成例句、干扰项等</div>
@@ -148,7 +148,7 @@ const AdminSettings: React.FC = () => {
                   onChange={(e) => setSettings({ ...settings, enableAI: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF6B35]"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#3976a9]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3976a9]"></div>
               </label>
             </div>
 
@@ -160,7 +160,7 @@ const AdminSettings: React.FC = () => {
                 value={settings.aiProvider}
                 onChange={(e) => setSettings({ ...settings, aiProvider: e.target.value })}
                 disabled={!settings.enableAI}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="openai">OpenAI (GPT-4)</option>
                 <option value="claude">Anthropic (Claude)</option>
@@ -170,7 +170,7 @@ const AdminSettings: React.FC = () => {
         </div>
 
         {/* 系统参数 */}
-        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>⚡</span> 系统参数
           </h2>
@@ -185,7 +185,7 @@ const AdminSettings: React.FC = () => {
                 onChange={(e) => setSettings({ ...settings, maxUploadSize: parseInt(e.target.value) })}
                 min="1"
                 max="100"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
               />
             </div>
 
@@ -199,19 +199,19 @@ const AdminSettings: React.FC = () => {
                 onChange={(e) => setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) })}
                 min="5"
                 max="1440"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
               />
             </div>
           </div>
         </div>
 
         {/* 通知和备份 */}
-        <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span>🔔</span> 通知和备份
           </h2>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">启用系统通知</div>
                 <div className="text-sm text-gray-500">向用户发送学习提醒等通知</div>
@@ -223,11 +223,11 @@ const AdminSettings: React.FC = () => {
                   onChange={(e) => setSettings({ ...settings, enableNotifications: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF6B35]"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#3976a9]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3976a9]"></div>
               </label>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">自动备份</div>
                 <div className="text-sm text-gray-500">定期自动备份数据库</div>
@@ -239,7 +239,7 @@ const AdminSettings: React.FC = () => {
                   onChange={(e) => setSettings({ ...settings, enableBackup: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#FF6B35]"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#3976a9]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3976a9]"></div>
               </label>
             </div>
 
@@ -254,7 +254,7 @@ const AdminSettings: React.FC = () => {
                 disabled={!settings.enableBackup}
                 min="1"
                 max="168"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -268,7 +268,7 @@ const AdminSettings: React.FC = () => {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 px-6 py-3 bg-gradient-to-r from-[#FF6B35] to-[#FFD23F] text-white rounded-xl hover:shadow-lg transition-all font-medium disabled:opacity-50"
+            className="flex-1 px-6 py-3 bg-[#3976a9] text-white rounded-lg hover:bg-[#2e628f] transition-colors font-semibold disabled:opacity-50"
           >
             {saving ? '保存中...' : '💾 保存设置'}
           </button>
@@ -335,13 +335,13 @@ const SystemUpdatePanel: React.FC = () => {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
       <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
         <span>🚀</span> 系统更新
       </h2>
 
       {/* 当前版本 */}
-      <div className="p-4 bg-gray-50 rounded-lg mb-4">
+      <div className="p-4 bg-slate-50 border border-slate-100 rounded-lg mb-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm text-gray-500">当前版本</div>
@@ -382,7 +382,7 @@ const SystemUpdatePanel: React.FC = () => {
                 <button
                   onClick={handleUpdate}
                   disabled={updating}
-                  className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-lg transition disabled:opacity-50 font-bold"
+                  className="px-6 py-2 bg-[#3976a9] hover:bg-[#2e628f] text-white rounded-lg transition disabled:opacity-50 font-semibold"
                 >
                   {updating ? '更新中...' : '立即更新'}
                 </button>

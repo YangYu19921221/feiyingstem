@@ -89,9 +89,9 @@ export default function PetBattleHallPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFF8F0]">
+    <div className="min-h-screen bg-paper">
       {/* 顶部导航 */}
-      <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
+      <nav className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => navigate('/student/pet')}
@@ -99,7 +99,7 @@ export default function PetBattleHallPage() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-yellow-500">
+          <h1 className="text-lg font-bold text-slate-800">
             ⚔️ 对战大厅
           </h1>
           <div className="w-12" />
@@ -107,8 +107,8 @@ export default function PetBattleHallPage() {
       </nav>
 
       {/* Hero横幅 */}
-      <div className="relative overflow-hidden" style={{ height: 140 }}>
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-500" />
+      <div className="relative overflow-hidden border-b border-slate-200" style={{ height: 140 }}>
+        <div className="absolute inset-0 bg-slate-800" />
         <div className="relative z-10 h-full flex items-center px-4 max-w-5xl mx-auto">
           <div className="text-white">
             <h2 className="text-3xl font-bold drop-shadow">⚔️ 对战大厅</h2>
@@ -130,8 +130,8 @@ export default function PetBattleHallPage() {
               onClick={() => setView(tab.key as any)}
               className={`flex-1 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
                 view === tab.key
-                  ? 'bg-gradient-to-r from-orange-400 to-yellow-400 text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-50'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white border border-slate-200 text-gray-600 hover:bg-gray-50'
               }`}
             >
               {tab.icon}
@@ -144,7 +144,7 @@ export default function PetBattleHallPage() {
         {view === 'hall' && (
           <div className="space-y-6">
             {/* 快速对战按钮 */}
-            <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-3xl p-6 text-white shadow-lg">
+            <div className="bg-violet-600 rounded-2xl p-5 sm:p-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-2xl font-bold mb-2">🎮 发起对战</h3>
@@ -163,7 +163,7 @@ export default function PetBattleHallPage() {
 
             {/* 待接受的邀请 */}
             {invites.length > 0 && (
-              <div className="bg-white rounded-3xl p-6 shadow-sm">
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">📬 待接受的挑战</h3>
                 <div className="space-y-3">
                   {invites.map((invite) => (
@@ -207,15 +207,15 @@ export default function PetBattleHallPage() {
             {/* 简要统计 */}
             {stats && (
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
                   <div className="text-3xl font-bold text-blue-500">{stats.total_battles}</div>
                   <div className="text-sm text-gray-600">总对战</div>
                 </div>
-                <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
                   <div className="text-3xl font-bold text-green-500">{stats.win_rate}%</div>
                   <div className="text-sm text-gray-600">胜率</div>
                 </div>
-                <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
                   <div className="text-3xl font-bold text-orange-500">{stats.current_win_streak}</div>
                   <div className="text-sm text-gray-600">连胜</div>
                 </div>
@@ -226,7 +226,7 @@ export default function PetBattleHallPage() {
 
         {/* 对战记录 */}
         {view === 'history' && (
-          <div className="bg-white rounded-3xl p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
             <h3 className="text-lg font-bold text-gray-800 mb-4">📜 最近对战</h3>
             {history.length === 0 ? (
               <div className="text-center py-12 text-gray-400">

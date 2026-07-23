@@ -111,8 +111,8 @@ const StudentReadingPractice = () => {
   // 显示结果页面
   if (result) {
     return (
-      <div className="min-h-screen bg-paper">
-        <nav className="bg-white shadow-sm">
+      <div className="min-h-screen bg-paper page-warm-glow">
+        <nav className="border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
           <div className="max-w-5xl mx-auto px-4 py-4">
             <h1 className="text-xl font-bold text-gray-800">答题结果</h1>
           </div>
@@ -135,7 +135,7 @@ const StudentReadingPractice = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-xl p-8 mb-6 text-center"
+            className="card-soft rounded-2xl p-8 mb-6 text-center"
           >
             <div className="text-6xl mb-4">
               {result.is_passed ? '🎉' : '💪'}
@@ -178,7 +178,7 @@ const StudentReadingPractice = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className={`bg-white rounded-xl p-6 shadow-md border-l-4 ${
+                className={`card-soft rounded-xl p-6 border-l-4 ${
                   qr.is_correct ? 'border-green-500' : 'border-red-500'
                 }`}
               >
@@ -224,9 +224,9 @@ const StudentReadingPractice = () => {
 
   // 答题页面
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm mb-6 sticky top-0 z-10">
+      <nav className="bg-white/85 shadow-sm mb-6 sticky top-0 z-10 border-b border-slate-200/80 backdrop-blur">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <button
@@ -254,7 +254,7 @@ const StudentReadingPractice = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-md p-8 mb-6"
+          className="card-soft rounded-2xl p-6 sm:p-8 mb-6"
         >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-gray-800">📖 阅读文章</h2>
@@ -292,7 +292,7 @@ const StudentReadingPractice = () => {
               <h3 className="text-lg font-bold text-gray-700 mb-3">📝 重点词汇</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {passage.vocabularies.map((vocab) => (
-                  <div key={vocab.id} className="bg-gray-50 rounded-lg p-3">
+                  <div key={vocab.id} className="rounded-lg border border-cyan-100 bg-cyan-50/60 p-3">
                     <div className="font-bold text-primary">{vocab.word}</div>
                     {vocab.phonetic && <ColoredPhonetic phonetic={vocab.phonetic} className="text-sm" />}
                     {vocab.meaning && <div className="text-sm text-gray-700">{vocab.meaning}</div>}
@@ -311,7 +311,7 @@ const StudentReadingPractice = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
-              className="bg-white rounded-xl shadow-md p-6"
+              className="card-soft rounded-xl p-5 sm:p-6"
             >
               <div className="flex items-start gap-3 mb-4">
                 <span className="flex-shrink-0 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center font-bold">

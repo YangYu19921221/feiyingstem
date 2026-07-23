@@ -140,8 +140,8 @@ const FillBlankPractice = () => {
   }
 
   return (
-    <div className="min-h-screen bg-paper page-warm-glow">
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
+    <div className="min-h-screen bg-paper">
+      <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center gap-3">
           <button onClick={() => navigate(-1)}
             className="p-1.5 -ml-1.5 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition">

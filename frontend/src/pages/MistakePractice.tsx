@@ -173,7 +173,7 @@ const MistakePractice = () => {
 
   const renderQuiz = (q: MixedQuestion) => (
     <>
-      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 mb-6">
         <h2 className="text-xl font-bold text-gray-800 mb-6">{q.question}</h2>
         <div className="space-y-3">
           {q.options?.map((option, idx) => {
@@ -242,8 +242,8 @@ const MistakePractice = () => {
   };
 
   const renderFillblank = (q: MixedQuestion) => (
-    <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-      <div className="bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl p-5 mb-6 border border-orange-200">
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 mb-6">
+      <div className="bg-amber-50 rounded-xl p-5 mb-6 border border-amber-200">
         <p className="text-xl text-gray-800 leading-relaxed">
           {q.question && renderSentence(q.question)}
         </p>
@@ -317,7 +317,7 @@ const MistakePractice = () => {
     const answer = q.correct_answer;
     const letters = answer.split('');
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 mb-6">
         <div className="text-center mb-6">
           <button
             onClick={() => playAudio(q.word, 1, q.word_id)}
@@ -408,7 +408,7 @@ const MistakePractice = () => {
     return (
       <div className="min-h-screen bg-paper no-select p-4">
         <div className="max-w-lg mx-auto pt-12">
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-3xl shadow-xl p-8 text-center">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 text-center">
             <div className="text-6xl mb-4">{correctCount / questions.length >= 0.8 ? '🎉' : '💪'}</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">练习完成！</h2>
             <p className="text-4xl font-bold text-primary mb-1">{correctCount}/{questions.length}</p>
@@ -449,7 +449,7 @@ const MistakePractice = () => {
 
   return (
     <div className="min-h-screen bg-paper no-select">
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
+      <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -461,7 +461,7 @@ const MistakePractice = () => {
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-primary to-yellow-400 rounded-full"
+                className="h-full bg-sky-500 rounded-full"
                 animate={{ width: `${pct}%` }}
                 transition={{ duration: 0.3 }}
               />

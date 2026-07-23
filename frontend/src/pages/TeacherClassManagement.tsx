@@ -827,9 +827,9 @@ const TeacherClassManagement = () => {
     rank === 3 ? 'from-orange-300 to-amber-200' : 'from-indigo-400 to-indigo-300';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm">
+      <nav className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Users className="w-7 h-7 text-indigo-600" />
@@ -847,7 +847,7 @@ const TeacherClassManagement = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* 使用说明 */}
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 text-sm">
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2 flex-1 min-w-0">
               <KeyRound className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -883,10 +883,10 @@ const TeacherClassManagement = () => {
           </div>
         </div>
 
-        <div className="flex gap-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
           {/* 左侧 - 班级列表 */}
-          <div className="w-72 flex-shrink-0">
-            <div className="bg-white rounded-2xl shadow-md p-4">
+          <div className="w-full flex-shrink-0 lg:w-72">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-bold text-gray-800">我的班级</h2>
                 <button
@@ -937,7 +937,7 @@ const TeacherClassManagement = () => {
                       return <p className="text-sm text-gray-400 text-center py-6">没有匹配的班级</p>;
                     }
                     return (
-                <div className="space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                   {visibleClasses.map(cls => (
                     <div
                       key={cls.id}
@@ -983,27 +983,27 @@ const TeacherClassManagement = () => {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   key={selectedClass.id}
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-lg"
+                  className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="text-2xl font-bold">{selectedClass.name}</h2>
                       {selectedClass.description && (
-                        <p className="text-white/70 mt-1">{selectedClass.description}</p>
+                        <p className="text-slate-500 mt-1">{selectedClass.description}</p>
                       )}
-                      <p className="text-white/60 text-sm mt-2">{selectedClass.student_count} 名学生</p>
+                      <p className="text-slate-400 text-sm mt-2">{selectedClass.student_count} 名学生</p>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                       <button
                         onClick={() => handleOpenInvite(selectedClass.id)}
-                        className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium text-sm"
+                        className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
                         title="生成班级邀请码，发给学生自助加入"
                       >
                         <KeyRound className="w-4 h-4" />
                         邀请码
                       </button>
                       <label
-                        className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium text-sm cursor-pointer"
+                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
                         title="按 Excel 中的手机号批量入班"
                       >
                         <FileSpreadsheet className="w-4 h-4" />
@@ -1017,7 +1017,7 @@ const TeacherClassManagement = () => {
                           setAvailablePage(1);
                           setShowAddStudents(true);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition font-medium text-sm"
+                        className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
                       >
                         <UserPlus className="w-4 h-4" />
                         添加学生
@@ -1027,13 +1027,13 @@ const TeacherClassManagement = () => {
                 </motion.div>
 
                 {/* 每日学习数据 */}
-                <div className="bg-white rounded-2xl shadow-md p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                  <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <h3 className="flex shrink-0 items-center gap-2 text-lg font-bold text-gray-800">
                       <Calendar className="w-5 h-5 text-indigo-600" />
                       每日学习数据
                     </h3>
-                    <div className="flex items-center gap-3">
+                    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
                       <button
                         onClick={() => setShowSecondaryCols(v => !v)}
                         className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
@@ -1084,14 +1084,14 @@ const TeacherClassManagement = () => {
                         <Copy className="w-4 h-4" />
                         复制图片
                       </button>
-                      <div className="relative">
+                      <div className="relative min-w-[8.5rem] flex-1 sm:flex-none">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                         <input
                           type="text"
                           value={dailySearch}
                           onChange={(e) => setDailySearch(e.target.value)}
                           placeholder="搜索学生"
-                          className="pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm w-36 focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                          className="w-full rounded-lg border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-indigo-400 sm:w-36"
                         />
                       </div>
                       <input
@@ -1099,7 +1099,7 @@ const TeacherClassManagement = () => {
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
                         max={new Date().toISOString().split('T')[0]}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                        className="min-w-0 max-w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-indigo-400"
                       />
                     </div>
                   </div>
@@ -1110,8 +1110,8 @@ const TeacherClassManagement = () => {
                       <p className="text-gray-400">该日期暂无学习数据</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
+                    <div className="max-w-full overflow-x-auto overscroll-x-contain">
+                      <table className="w-full min-w-[56rem]">
                         <thead>
                           <tr className="border-b-2 border-gray-200">
                             <th className="py-3 px-2 w-8">

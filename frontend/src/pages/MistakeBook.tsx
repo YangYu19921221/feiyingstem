@@ -149,7 +149,7 @@ const MistakeBook = () => {
   const unresolvedTotal = stats?.total_mistakes ? stats.total_mistakes - stats.resolved_mistakes : 0;
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
@@ -206,7 +206,7 @@ const MistakeBook = () => {
         {/* 统计 — 数据条带 */}
         {stats && (
           <section className="mb-10">
-            <div className="bg-white rounded-2xl border border-black/[0.05] divide-y divide-black/[0.05]">
+            <div className="card-soft rounded-2xl divide-y divide-black/[0.05]">
               {[
                 { label: '总错题数', value: stats.total_mistakes, suffix: '' },
                 { label: '待攻克', value: stats.classify_mistakes || 0, suffix: '', hint: '分类学习夹生 / 陌生词' },
@@ -268,7 +268,7 @@ const MistakeBook = () => {
         </section>
 
         {/* 错题列表 */}
-        <div className="bg-white rounded-2xl p-6 shadow-lg">
+        <div className="card-soft rounded-2xl p-5 sm:p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold">错题列表</h2>
             <div className="flex items-center gap-4">

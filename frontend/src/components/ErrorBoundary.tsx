@@ -28,8 +28,8 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-yellow-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
+        <div className="flex min-h-screen items-center justify-center bg-[#edf5fb] p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <div className="text-6xl mb-4">😵</div>
             <h2 className="text-xl font-bold text-gray-800 mb-2">页面出了点问题</h2>
             <p className="text-gray-500 mb-6 text-sm">

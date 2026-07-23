@@ -82,16 +82,16 @@ const AdminTeacherList = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-paper">
+      <nav className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/dashboard')} className="text-gray-600 hover:text-gray-800">← 返回</button>
+            <button onClick={() => navigate('/dashboard')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-slate-50">← 返回</button>
             <h1 className="text-xl font-bold text-gray-800">教师管理</h1>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-medium"
+            className="px-4 py-2 bg-[#3976a9] text-white rounded-lg hover:bg-[#2e628f] text-sm font-semibold"
           >
             + 新建教师
           </button>
@@ -99,14 +99,25 @@ const AdminTeacherList = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-orange-500 border-t-transparent"></div>
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+            <>
+            <div className="sm:hidden space-y-3 p-3">
+              {teachers.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">暂无教师数据</div> : teachers.map((t) => (
+                <article key={t.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="truncate font-semibold text-slate-800">{t.full_name || t.username}</div><div className="truncate text-xs text-slate-500">{t.username} · {t.email}</div></div><span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${t.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{t.is_active ? '正常' : '禁用'}</span></div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500"><div>班级 <span className="font-semibold text-slate-700">{t.class_count}</span></div><div>学生 <span className="font-semibold text-slate-700">{t.student_count}</span></div></div>
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => navigate(`/admin/teachers/${t.id}`)} className="text-blue-600">详情</button><button onClick={() => handleToggleActive(t)} className="text-orange-600">{t.is_active ? '禁用' : '启用'}</button><button onClick={() => handleResetPassword(t.id)} className="text-purple-600">重置密码</button><button onClick={() => handleDelete(t)} className="text-red-600">删除</button></div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[900px] whitespace-nowrap">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户名</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
@@ -123,7 +134,7 @@ const AdminTeacherList = () => {
                     <td colSpan={7} className="px-6 py-12 text-center text-gray-400">暂无教师数据</td>
                   </tr>
                 ) : teachers.map((t) => (
-                  <tr key={t.id} className="hover:bg-gray-50">
+                  <tr key={t.id} className="hover:bg-slate-50/70">
                     <td className="px-6 py-4 text-sm text-gray-900 font-medium">{t.username}</td>
                     <td className="px-6 py-4 text-sm text-gray-700">{t.full_name || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{t.email}</td>
@@ -148,13 +159,15 @@ const AdminTeacherList = () => {
                 ))}
               </tbody>
             </table>
+            </div>
+            </>
           )}
         </div>
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-slate-950/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 w-full max-w-md shadow-xl">
             <h2 className="text-xl font-bold mb-4">新建教师</h2>
             <div className="space-y-4">
               <input
@@ -186,7 +199,7 @@ const AdminTeacherList = () => {
               <button
                 onClick={handleCreate}
                 disabled={creating}
-                className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-[#3976a9] text-white rounded-lg hover:bg-[#2e628f] disabled:opacity-50"
               >
                 {creating ? '创建中...' : '创建'}
               </button>

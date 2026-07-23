@@ -15,7 +15,7 @@ from app.models.word import Word
 from app.services.pk import manager, engine
 from app.services.pk import tournament as tsvc
 from app.services.pk.persist import persist_finished_room
-from app.services.pk.engine import PHASE_TIMEOUT_MS
+from app.services.pk.engine import PHASE_TIMEOUT_MS, select_words_with_fallback
 from app.api.v1.pk_routes import load_learned_word_ids, load_word_points
 
 logger = logging.getLogger(__name__)
@@ -98,12 +98,16 @@ def _snapshot_dict(room) -> dict:
         "current_word_idx": room.current_word_idx,
         "total_words": len(room.word_ids),
         "word_count": room.word_count,
+        "mode": room.mode,
+        "team_count": room.team_count,
+        "host_is_player": room.host_is_player,
         "players": [
             {
                 "user_id": p.user_id, "nickname": p.nickname, "online": p.online,
                 "current_word_idx": p.current_word_idx, "correct": p.correct,
                 "wrong": p.wrong, "total_time_ms": p.total_time_ms,
                 "points": p.points, "streak": p.streak, "finished": p.finished,
+                "team": p.team,
             }
             for p in room.players.values()
         ],
@@ -136,6 +140,10 @@ def _schedule_disconnect_cleanup(room, user_id: int):
             return
         ps_after = cur.players.get(user_id)
         if ps_after and not ps_after.online:
+            # 对局中不驱逐:保留玩家(离线状态)与其已攒得分,否则分组赛队伍总分会凭空缩水,
+            # 且掉线玩家永远回不来。只在等待室阶段清退空出名额。
+            if cur.status == "playing":
+                return
             old_host = cur.host_id
             manager.leave_room(cur.room_id, user_id)
             cur_after = manager.get_room(room.room_id)
@@ -146,6 +154,34 @@ def _schedule_disconnect_cleanup(room, user_id: int):
                 if cur_after.host_id != old_host:
                     await _broadcast(cur_after, {"type": "host_changed", "new_host_id": cur_after.host_id})
                 await _broadcast_room_state(cur_after)
+
+    asyncio.create_task(_cleanup())
+
+
+def _schedule_host_console_cleanup(room, host_id: int):
+    """教师控制台断开后的重连宽限期:到点若教师仍未回来,回收孤儿房。
+
+    只有非参赛房主(host_is_player=False)才需要——参赛房主走玩家清退路径。
+    回收条件:教师仍离线,且房间还在等待(没开打)或已无在线玩家。这样既不会把
+    教师短暂掉线时正在进行的对局杀掉,又能防止「关标签页 → USER_ACTIVE 永久占用」。
+    """
+    async def _cleanup():
+        await asyncio.sleep(RECONNECT_WINDOW_S)
+        cur = manager.get_room(room.room_id)
+        if cur is None or cur.host_is_player:
+            return
+        if cur.host_online:  # 教师已重连,别动
+            return
+        any_online = any(ps.online for ps in cur.players.values())
+        if cur.status == "waiting" or not any_online:
+            _cancel_room_timers(cur.room_id)
+            try:
+                await _broadcast(cur, {"type": "room_closed", "message": "老师已离开,房间关闭"})
+            except Exception:
+                pass
+            await _notify_room_closed(cur)
+            manager.close_room(cur.room_id)
+            logger.info("PK teacher room reclaimed after host console gone: room_id=%d", cur.room_id)
 
     asyncio.create_task(_cleanup())
 
@@ -210,6 +246,18 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
                 room.room_id, uid, e,
             )
             failed_user_ids.append(uid)
+
+    # 教师控制台(非参赛房主):收全部广播,不脱敏(裁判视角)。发送失败标离线不影响对局。
+    if room.host_ws is not None:
+        try:
+            await room.host_ws.send_json(event)
+        except Exception as e:
+            logger.warning(
+                "PK host-console send failed: room_id=%d host_id=%d error=%s",
+                room.room_id, room.host_id, e,
+            )
+            room.host_ws = None
+            room.host_online = False
 
     # 观众:题目脱敏后发送;发送失败直接移除(观众无重连窗口)
     spec_event = _mask_for_spectators(event)
@@ -350,9 +398,195 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
                         )
             for uid in list(room.players.keys()):
                 manager.USER_ACTIVE.pop(uid, None)
+            # 教师房主不在 players 里,单独释放其 USER_ACTIVE,否则同一教师无法再建房
+            if not room.host_is_player:
+                manager.USER_ACTIVE.pop(room.host_id, None)
             manager.INVITE_INDEX.pop(room.invite_code, None)
             manager.ROOMS.pop(room.room_id, None)
             _cancel_room_timers(room.room_id)
+
+
+async def _push_first_question(room) -> None:
+    """开局:装载词表已就绪后,广播房间状态 + 第一题,并起首题计时器。"""
+    room.status = "playing"
+    room.started_at = datetime.utcnow()
+    first_id = room.word_ids[0]
+    first_word = room.word_lookup.get(first_id)
+    push_event = {
+        "type": "question_pushed", "word_idx": 0,
+        "phase": "classify",
+        "word": {
+            "id": getattr(first_word, "id", None),
+            "word": getattr(first_word, "word", ""),
+            "translation": getattr(first_word, "translation", ""),
+        },
+        "points": room.points_for_word(first_id),
+    }
+    await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+    await _broadcast(room, push_event)
+    _schedule_timer(room, 0, "classify", room.word_lookup)
+
+
+async def _try_start_game(room, requester_ws) -> None:
+    """开局逻辑(房主/教师控制台共用)。requester_ws 用于把校验失败的 error 回给发起者。
+
+    分组赛额外要求:每个队至少 1 名在线玩家,否则空队无意义。
+    自由房选词走「共同背过」交集,不足 word_count 时用其余学过的词补齐(不再直接卡死)。
+    """
+    if room.status != "waiting":
+        return
+    online_ids = [uid for uid, ps in room.players.items() if ps.online]
+    if len(online_ids) < 2:
+        await requester_ws.send_json({
+            "type": "error", "code": "NOT_ENOUGH_PLAYERS",
+            "message": "至少需要 2 名在线玩家",
+        })
+        return
+
+    if room.mode == "team":
+        online_teams = {room.players[uid].team for uid in online_ids}
+        needed = set(range(1, room.team_count + 1))
+        empty = sorted(needed - online_teams)
+        if empty:
+            await requester_ws.send_json({
+                "type": "error", "code": "EMPTY_TEAM",
+                "message": f"第 {'、'.join(str(t) for t in empty)} 队还没有在线玩家,先让每队都有人再开始",
+            })
+            return
+
+    if room.fixed_words and room.word_ids:
+        # 晋级赛房:词表建房时已按赛事单元预置,不走"共同背过"交集
+        room.word_lookup.clear()
+        room.word_lookup.update(await _load_word_lookup(room.word_ids))
+        logger.info(
+            "PK tournament game started: room_id=%d match=%s words=%d",
+            room.room_id, room.tournament_match_id, len(room.word_ids),
+        )
+        await _push_first_question(room)
+        return
+
+    # 全库取「所有在线玩家都背过」的交集;不够 word_count 时用其余学过的词补齐
+    learned = await _load_learned_for_room(online_ids)
+    fill_pool: set[int] = set()
+    for s in learned.values():
+        fill_pool |= s
+    chosen, common_count = select_words_with_fallback(
+        learned, room.word_count, random,
+        min_common=MIN_COMMON_WORDS, fill_pool=fill_pool,
+    )
+    if not chosen or len(chosen) < min(room.word_count, MIN_COMMON_WORDS):
+        # 连补充池都凑不够(所有在线玩家几乎没背过词):给出友好提示
+        await requester_ws.send_json({
+            "type": "error", "code": "NOT_ENOUGH_COMMON_WORDS",
+            "common_count": common_count,
+            "message": (
+                "在线玩家背过的单词太少,凑不齐一局。"
+                "先让学生去学习流程多背一些单词再来 PK 吧"
+            ),
+        })
+        return
+    room.word_ids = chosen
+    room.word_points = await _load_word_points_for_room(chosen)
+    room.word_lookup.clear()
+    room.word_lookup.update(await _load_word_lookup(chosen))
+    logger.info(
+        "PK game started: room_id=%d mode=%s players=%d common=%d chosen=%d",
+        room.room_id, room.mode, len(online_ids), common_count, len(chosen),
+    )
+    await _push_first_question(room)
+
+
+async def _handle_host_console(ws: WebSocket, room, user) -> None:
+    """教师控制台:组织者视角。收全场广播,能开局/踢人/调队/解散,但不作答不计分。
+
+    教师断开不解散房间(学生可能还在等待/对局中);教师主动 close_room 才解散。
+    """
+    if room.host_ws is not None and room.host_ws is not ws:
+        try:
+            await room.host_ws.close(code=1000, reason="REPLACED_BY_NEW_CONNECTION")
+        except Exception:
+            pass
+    room.host_ws = ws
+    room.host_online = True
+    logger.info("PK host console connected: room_id=%d host_id=%d", room.room_id, user.id)
+
+    # 首帧发全房快照;对局中补发当前题(教师中途接入也能看到进度)
+    await ws.send_json({"type": "room_state", "room": _snapshot_dict(room)})
+    if room.status == "playing" and room.word_ids:
+        if not room.word_lookup:
+            room.word_lookup.update(await _load_word_lookup(room.word_ids))
+        cur_id = room.current_word_id
+        cur_word = room.word_lookup.get(cur_id)
+        await ws.send_json({
+            "type": "question_pushed",
+            "word_idx": room.current_word_idx,
+            "phase": room.current_phase,
+            "word": {
+                "id": getattr(cur_word, "id", None),
+                "word": getattr(cur_word, "word", ""),
+                "translation": getattr(cur_word, "translation", ""),
+            },
+            "points": room.points_for_word(cur_id),
+        })
+
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if not isinstance(msg, dict):
+                continue
+            mtype = msg.get("type")
+            if mtype == "heartbeat":
+                room.host_online = True
+            elif mtype == "start_game":
+                await _try_start_game(room, ws)
+            elif mtype == "set_team":
+                # 等待室手动调队(分组赛):{type:set_team, user_id, team}
+                try:
+                    after = manager.set_player_team(
+                        room.room_id, int(msg.get("user_id")), int(msg.get("team")),
+                    )
+                except (TypeError, ValueError):
+                    after = None
+                if after is not None:
+                    await _broadcast_room_state(after)
+            elif mtype == "kick_player":
+                target = msg.get("user_id")
+                if target in room.players:
+                    target_ws = room.players[target].ws
+                    manager.leave_room(room.room_id, target)
+                    if target_ws:
+                        try:
+                            await target_ws.send_json({"type": "player_kicked", "user_id": target})
+                            await target_ws.close()
+                        except Exception:
+                            pass
+                    cur = manager.get_room(room.room_id)
+                    if cur is not None:
+                        await _broadcast(cur, {"type": "player_kicked", "user_id": target})
+                        await _broadcast_room_state(cur)
+            elif mtype == "close_room":
+                # 教师主动解散:通知玩家并断开,清理房间
+                _cancel_room_timers(room.room_id)
+                try:
+                    await _broadcast(room, {"type": "room_closed", "message": "老师已结束本场对战"})
+                except Exception:
+                    pass
+                await _notify_room_closed(room)
+                manager.close_room(room.room_id)
+                break
+            elif mtype == "leave_room":
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if room.host_ws is ws:  # 仅当仍是本连接时清理;已被新连接替换则不动
+            room.host_ws = None
+            room.host_online = False
+            # 教师直接关标签页(没点解散)会留下孤儿房 + 永久占用 USER_ACTIVE,导致再也建不了房。
+            # 给一个重连宽限期:到点若教师仍未回来且房间还没开打(或已无在线玩家),
+            # 就解散房间释放占用。对局进行中(有在线玩家)则保留,教师可重连回控制台。
+            _schedule_host_console_cleanup(room, user.id)
+        logger.info("PK host console disconnected: room_id=%d host_id=%d", room.room_id, user.id)
 
 
 @router.websocket("/ws")
@@ -366,7 +600,15 @@ async def pk_ws(
         await ws.close(code=1008, reason="AUTH_FAILED")
         return
     room = manager.get_room(room_id)
-    if room is None or (user.id not in room.players and user.id not in room.spectators):
+    # 非参赛房主(教师控制台)也放行握手:user.id==host_id 且房主不下场
+    is_host_console = (
+        room is not None and user.id == room.host_id and not room.host_is_player
+    )
+    if room is None or (
+        not is_host_console
+        and user.id not in room.players
+        and user.id not in room.spectators
+    ):
         await ws.accept()
         await ws.send_json({"type": "error", "code": "ROOM_NOT_FOUND", "message": "Room not found"})
         # 非 1000 关闭:让客户端保留自动重连能力(观众掉线被移除后,
@@ -375,6 +617,11 @@ async def pk_ws(
         return
 
     await ws.accept()
+
+    # ---------- 教师控制台连接:组织者视角,收全场广播,可开局/踢人/解散,但不答题不计分 ----------
+    if is_host_console:
+        await _handle_host_console(ws, room, user)
+        return
 
     # ---------- 观众连接:只收广播不作答 ----------
     if user.id not in room.players:
@@ -489,86 +736,9 @@ async def pk_ws(
                     p.online = True
                     await _broadcast(room, {"type": "player_reconnected", "user_id": user.id}, exclude=user.id)
                     await _broadcast_room_state(room)
-            elif mtype == "start_game" and user.id == room.host_id:
-                if room.status == "waiting":
-                    online_ids = [uid for uid, ps in room.players.items() if ps.online]
-                    if len(online_ids) < 2:
-                        await ws.send_json({
-                            "type": "error",
-                            "code": "NOT_ENOUGH_PLAYERS",
-                            "message": "至少需要 2 名在线玩家",
-                        })
-                    elif room.fixed_words and room.word_ids:
-                        # 晋级赛房:词表建房时已按赛事单元预置,不走"共同背过"交集
-                        room.word_lookup.clear()
-                        room.word_lookup.update(await _load_word_lookup(room.word_ids))
-                        room.status = "playing"
-                        room.started_at = datetime.utcnow()
-                        logger.info(
-                            "PK tournament game started: room_id=%d match=%s words=%d",
-                            room.room_id, room.tournament_match_id, len(room.word_ids),
-                        )
-                        first_id = room.word_ids[0]
-                        first_word = room.word_lookup.get(first_id)
-                        push_event = {
-                            "type": "question_pushed", "word_idx": 0,
-                            "phase": "classify",
-                            "word": {
-                                "id": getattr(first_word, "id", None),
-                                "word": getattr(first_word, "word", ""),
-                                "translation": getattr(first_word, "translation", ""),
-                            },
-                            "points": room.points_for_word(first_id),
-                        }
-                        await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
-                        await _broadcast(room, push_event)
-                        _schedule_timer(room, 0, "classify", room.word_lookup)
-                    else:
-                        # 全库取「所有在线玩家都背过」的交集,再随机抽 word_count 个
-                        learned = await _load_learned_for_room(online_ids)
-                        common = set.intersection(
-                            *(learned.get(uid, set()) for uid in online_ids)
-                        )
-                        if len(common) < MIN_COMMON_WORDS:
-                            await ws.send_json({
-                                "type": "error",
-                                "code": "NOT_ENOUGH_COMMON_WORDS",
-                                "common_count": len(common),
-                                "message": (
-                                    f"大家共同背过的单词只有 {len(common)} 个"
-                                    f"(至少需要 {MIN_COMMON_WORDS} 个),"
-                                    "先去学习流程多背一些单词再来 PK 吧"
-                                ),
-                            })
-                        else:
-                            chosen = random.sample(
-                                sorted(common), min(room.word_count, len(common))
-                            )
-                            room.word_ids = chosen
-                            room.word_points = await _load_word_points_for_room(chosen)
-                            room.word_lookup.clear()
-                            room.word_lookup.update(await _load_word_lookup(chosen))
-                            room.status = "playing"
-                            room.started_at = datetime.utcnow()
-                            logger.info(
-                                "PK game started: room_id=%d players=%d common_words=%d chosen=%d",
-                                room.room_id, len(online_ids), len(common), len(chosen),
-                            )
-                            first_id = room.word_ids[0]
-                            first_word = room.word_lookup.get(first_id)
-                            push_event = {
-                                "type": "question_pushed", "word_idx": 0,
-                                "phase": "classify",
-                                "word": {
-                                    "id": getattr(first_word, "id", None),
-                                    "word": getattr(first_word, "word", ""),
-                                    "translation": getattr(first_word, "translation", ""),
-                                },
-                                "points": room.points_for_word(first_id),
-                            }
-                            await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
-                            await _broadcast(room, push_event)
-                            _schedule_timer(room, 0, "classify", room.word_lookup)
+            elif mtype == "start_game" and user.id == room.host_id and room.host_is_player:
+                # 房主下场的房(学生自建/晋级赛):房主玩家亲自开局
+                await _try_start_game(room, ws)
             elif mtype == "submit_answer":
                 # 客户端消息不可信:类型不对直接丢弃,不让异常炸断连接
                 try:

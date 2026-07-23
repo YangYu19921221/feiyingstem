@@ -418,10 +418,10 @@ const TeacherBookAssignment = () => {
     : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-blue-50">
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm mb-6">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <nav className="sticky top-0 z-10 mb-5 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/teacher/dashboard')}
@@ -429,7 +429,7 @@ const TeacherBookAssignment = () => {
             >
               ← 返回
             </button>
-            <h1 className="text-2xl font-bold text-gray-800">📚 单词本分配管理</h1>
+            <h1 className="text-xl font-bold text-gray-800 sm:text-2xl">📚 单词本分配管理</h1>
           </div>
         </div>
       </nav>
@@ -461,7 +461,7 @@ const TeacherBookAssignment = () => {
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white rounded-2xl shadow-md p-6"
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
             >
               <h2 className="text-xl font-bold text-gray-800 mb-4">📖 选择范围</h2>
 
@@ -481,7 +481,7 @@ const TeacherBookAssignment = () => {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="bg-gradient-to-r from-orange-100 to-yellow-100 rounded-2xl shadow-md p-6"
+                  className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm sm:p-6"
                 >
                   <h2 className="text-xl font-bold text-gray-800 mb-3">
                     📖 {selectedBook.name}
@@ -518,7 +518,7 @@ const TeacherBookAssignment = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="bg-white rounded-2xl shadow-md p-6"
+                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
               >
                 <h2 className="text-xl font-bold text-gray-800 mb-4">
                   👥 选择学生
