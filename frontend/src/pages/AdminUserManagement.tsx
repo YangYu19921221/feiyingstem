@@ -41,6 +41,9 @@ const AdminUserManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  // 批量选择(用于清除复习数据):仅对学生生效
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [clearing, setClearing] = useState(false);
   const [newUser, setNewUser] = useState({
     username: '',
     email: '',
@@ -73,6 +76,55 @@ const AdminUserManagement = () => {
       console.error('加载用户失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 当前列表里的学生(只有学生能清复习数据)
+  const studentUsers = users.filter((u) => u.role === 'student');
+  const allStudentsSelected = studentUsers.length > 0 && studentUsers.every((u) => selectedIds.has(u.id));
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllStudents = () => {
+    setSelectedIds((prev) => {
+      if (allStudentsSelected) {
+        const next = new Set(prev);
+        studentUsers.forEach((u) => next.delete(u.id));
+        return next;
+      }
+      const next = new Set(prev);
+      studentUsers.forEach((u) => next.add(u.id));
+      return next;
+    });
+  };
+
+  const handleClearReviewData = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) { toast.error('请先勾选学生'); return; }
+    if (!window.confirm(
+      `确定清除选中的 ${ids.length} 名学生的「复习数据」吗?\n\n` +
+      `只会清空复习进度(不再被「今日复习」催促),不影响他们已经背过的单词和掌握度。此操作不可撤销。`
+    )) return;
+    setClearing(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await axios.post(
+        `${API_BASE_URL}/admin/users/clear-review-data`,
+        { student_ids: ids },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success(`已清除 ${res.data.cleared} 名学生的复习数据`);
+      setSelectedIds(new Set());
+    } catch (error) {
+      toast.error(getErrorMessage(error, '清除失败,请重试'));
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -304,6 +356,14 @@ const AdminUserManagement = () => {
             >
               导出 Excel
             </button>
+            <button
+              onClick={handleClearReviewData}
+              disabled={clearing || selectedIds.size === 0}
+              title="清除选中学生的复习进度(不影响已背单词)"
+              className="px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {clearing ? '清除中…' : `清除复习数据${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
+            </button>
           </div>
         </div>
 
@@ -318,6 +378,16 @@ const AdminUserManagement = () => {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
+                    <th className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={allStudentsSelected}
+                        onChange={toggleSelectAllStudents}
+                        disabled={studentUsers.length === 0}
+                        title="全选当前列表里的学生"
+                        className="w-4 h-4 accent-rose-600 cursor-pointer disabled:opacity-30"
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户名</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
@@ -328,7 +398,17 @@ const AdminUserManagement = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
+                    <tr key={user.id} className={`hover:bg-gray-50 ${selectedIds.has(user.id) ? 'bg-rose-50/50' : ''}`}>
+                      <td className="px-4 py-4">
+                        {user.role === 'student' ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(user.id)}
+                            onChange={() => toggleSelect(user.id)}
+                            className="w-4 h-4 accent-rose-600 cursor-pointer"
+                          />
+                        ) : null}
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-900">{user.username}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{user.full_name}</td>
                       <td className="px-6 py-4 text-sm">

@@ -3,9 +3,9 @@
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 
 from app.core.database import get_db
 from app.api.v1.auth import get_current_admin_or_org_admin
@@ -322,3 +322,52 @@ async def delete_user(
     await db.commit()
 
     return {"message": "用户已删除"}
+
+
+class ClearReviewRequest(BaseModel):
+    student_ids: list[int] = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/users/clear-review-data")
+async def clear_review_data(
+    body: ClearReviewRequest,
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动清除学生的「复习数据」,不影响其已背单词/掌握度。
+
+    只做两件事(均不碰 mastery_level / 各计数等掌握度证据):
+    - WordMastery: next_review_at=NULL, review_stage=0(停止 SRS 复习催促,保留掌握度)
+    - ChallengeReview: 删该学生的错题闯关复习行(纯复习表)
+
+    多租户: 只处理调用者(管理员/机构管理员)可见范围内、且角色为 student 的账号——
+    经 tenancy 过滤器的 select(User) 天然按 org 隔离,越权/跨机构 id 会被静默剔除。
+    """
+    from app.models.learning import WordMastery, ChallengeReview
+    from sqlalchemy import update as sa_update, delete as sa_delete
+
+    ids = list({int(i) for i in body.student_ids})
+    if not ids:
+        return {"cleared": 0, "student_ids": []}
+
+    # 仅保留调用者可见(tenancy 自动按 org 过滤)且是 student 的目标,防越权/误清老师账号
+    rows = (await db.execute(
+        select(User.id).where(and_(User.id.in_(ids), User.role == "student"))
+    )).all()
+    valid_ids = [r.id for r in rows]
+    if not valid_ids:
+        raise HTTPException(status_code=404, detail="没有可清除的学生(或不在你的管理范围内)")
+
+    # WordMastery: 只重置 SRS 两字段,掌握度证据一律不动
+    await db.execute(
+        sa_update(WordMastery)
+        .where(WordMastery.user_id.in_(valid_ids))
+        .values(next_review_at=None, review_stage=0)
+    )
+    # ChallengeReview: 纯复习表,整行删
+    await db.execute(
+        sa_delete(ChallengeReview).where(ChallengeReview.user_id.in_(valid_ids))
+    )
+    await db.commit()
+
+    return {"cleared": len(valid_ids), "student_ids": valid_ids}
