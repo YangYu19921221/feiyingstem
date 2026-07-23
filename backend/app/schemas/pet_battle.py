@@ -202,4 +202,4 @@ class WSError(BaseModel):
     """错误消息"""
     type: str = "error"
     message: str
-    code: Optional[str]
+    code: Optional[str] = None  # Pydantic v2 里 Optional 不带默认值仍是必填,给 None 才可省略
