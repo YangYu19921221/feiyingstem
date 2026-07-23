@@ -884,6 +884,111 @@ async def get_class_student_detail(
     }
 
 
+@router.get("/classes/{class_id}/students-export")
+async def export_class_students(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """导出用:一次算全班每个学生的累计学习数据(掌握度/薄弱词/总正确率/学习量),
+    供前端生成 Excel 并按掌握度分好/中/弱。复用 detail 端点的累计口径,但用 in_ 批量
+    group_by 一次算完全班,避免前端逐个学生请求(几十人=几十次重查询)。"""
+    await _get_class_or_404(db, class_id, current_user.id)
+
+    # 班级在册学生(启用)
+    stu_rows = (await db.execute(
+        select(ClassStudent.student_id).where(
+            and_(ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True))
+        )
+    )).all()
+    student_ids = [r.student_id for r in stu_rows]
+    if not student_ids:
+        return {"class_id": class_id, "students": []}
+
+    # 学生身份
+    users = (await db.execute(
+        select(User.id, User.username, User.full_name).where(User.id.in_(student_ids))
+    )).all()
+    name_map = {u.id: (u.full_name or u.username) for u in users}
+    uname_map = {u.id: u.username for u in users}
+
+    # 累计掌握度:WordMastery 按 lower(word) 去重,取每个拼写的最高掌握度。
+    # 一次拉全班(user_id, 拼写, 最高档),Python 侧聚合成每人 已学/已掌握/薄弱。
+    mastery_rows = (await db.execute(
+        select(
+            WordMastery.user_id.label('uid'),
+            func.lower(Word.word).label('sp'),
+            func.max(WordMastery.mastery_level).label('lvl'),
+        )
+        .join(Word, Word.id == WordMastery.word_id)
+        .where(WordMastery.user_id.in_(student_ids))
+        .group_by(WordMastery.user_id, func.lower(Word.word))
+    )).all()
+    learned: dict[int, int] = {uid: 0 for uid in student_ids}
+    mastered: dict[int, int] = {uid: 0 for uid in student_ids}
+    weak: dict[int, int] = {uid: 0 for uid in student_ids}
+    for r in mastery_rows:
+        learned[r.uid] = learned.get(r.uid, 0) + 1
+        if (r.lvl or 0) >= 3:
+            mastered[r.uid] = mastered.get(r.uid, 0) + 1
+        else:
+            weak[r.uid] = weak.get(r.uid, 0) + 1
+
+    # 累计正确率:LearningRecord 一次按 user_id group_by
+    acc_rows = (await db.execute(
+        select(
+            LearningRecord.user_id.label('uid'),
+            func.count(LearningRecord.id).label('total'),
+            func.sum(LearningRecord.is_correct.cast(Integer)).label('correct'),
+        ).where(LearningRecord.user_id.in_(student_ids))
+        .group_by(LearningRecord.user_id)
+    )).all()
+    acc_map: dict[int, float] = {}
+    for r in acc_rows:
+        acc_map[r.uid] = round((r.correct or 0) / r.total * 100, 1) if r.total else 0.0
+
+    # 累计学习天数/时长/最后活跃:StudyCalendar 一次 group_by
+    cal_rows = (await db.execute(
+        select(
+            StudyCalendar.user_id.label('uid'),
+            func.count(StudyCalendar.id).label('days'),
+            func.sum(StudyCalendar.duration).label('time'),
+            func.max(StudyCalendar.study_date).label('last_date'),
+        ).where(StudyCalendar.user_id.in_(student_ids))
+        .group_by(StudyCalendar.user_id)
+    )).all()
+    days_map: dict[int, int] = {}
+    time_map: dict[int, int] = {}
+    last_map: dict[int, str] = {}
+    for r in cal_rows:
+        days_map[r.uid] = r.days or 0
+        time_map[r.uid] = r.time or 0
+        last_map[r.uid] = r.last_date.isoformat() if r.last_date else ""
+
+    out = []
+    for uid in student_ids:
+        lw = learned.get(uid, 0)
+        ms = mastered.get(uid, 0)
+        # 掌握度 = 已掌握 / 已学(去重拼写);没学过记 0
+        mastery_rate = round(ms / lw * 100, 1) if lw > 0 else 0.0
+        out.append({
+            "user_id": uid,
+            "username": uname_map.get(uid, ""),
+            "full_name": name_map.get(uid, ""),
+            "total_words_learned": lw,
+            "total_mastered": ms,
+            "weak_words_count": weak.get(uid, 0),
+            "mastery_rate": mastery_rate,
+            "overall_accuracy": acc_map.get(uid, 0.0),
+            "total_study_days": days_map.get(uid, 0),
+            "total_study_time": time_map.get(uid, 0),
+            "last_active": last_map.get(uid, ""),
+        })
+    # 默认按掌握度降序,方便老师看分布
+    out.sort(key=lambda x: (-x["mastery_rate"], -x["total_mastered"]))
+    return {"class_id": class_id, "students": out}
+
+
 @router.get("/student/{student_id}/ai-advice")
 async def get_student_ai_advice(
     student_id: int,

@@ -548,6 +548,66 @@ const TeacherClassManagement = () => {
     XLSX.writeFile(wb, '入班手机号模板.xlsx');
   };
 
+  // 导出班级学情 Excel:拉全班累计数据,按掌握度分好/中/弱,含详细指标
+  const handleExportStudents = async () => {
+    if (!selectedClass) { toast.error('请先选择班级'); return; }
+    setExporting(true);
+    try {
+      const res = await axios.get(
+        `${API_BASE_URL}/teacher/classes/${selectedClass.id}/students-export`,
+        { headers: headers() }
+      );
+      const students: any[] = res.data?.students || [];
+      if (students.length === 0) { toast.error('该班级暂无学生数据'); return; }
+
+      // 掌握度分层:≥80% 好,≥50% 中,其余 弱(没学过的词量=0 记为「弱/未学」)
+      const tier = (s: any) => {
+        if (s.total_words_learned === 0) return '弱(未开始)';
+        if (s.mastery_rate >= 80) return '好';
+        if (s.mastery_rate >= 50) return '中';
+        return '弱';
+      };
+      const rows = students.map((s, i) => ({
+        '序号': i + 1,
+        '姓名': s.full_name,
+        '账号': s.username,
+        '层级': tier(s),
+        '掌握度%': s.mastery_rate,
+        '累计正确率%': s.overall_accuracy,
+        '已学单词数': s.total_words_learned,
+        '已掌握单词数': s.total_mastered,
+        '薄弱单词数': s.weak_words_count,
+        '累计学习天数': s.total_study_days,
+        '累计学习时长(分钟)': Math.round((s.total_study_time || 0) / 60),
+        '最后活跃日': s.last_active || '—',
+      }));
+
+      const wb = XLSX.utils.book_new();
+      // Sheet1 全部(已按掌握度降序);再按层级各出一个 sheet,方便老师直接看好/中/弱
+      const mkSheet = (data: any[]) => {
+        const ws = XLSX.utils.json_to_sheet(data);
+        ws['!cols'] = [
+          { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
+          { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 12 },
+        ];
+        return ws;
+      };
+      XLSX.utils.book_append_sheet(wb, mkSheet(rows), '全部学生');
+      for (const [label, sheetName] of [['好', '好-掌握好'], ['中', '中-一般'], ['弱', '弱-需关注']] as const) {
+        const sub = rows.filter(r => r['层级'].startsWith(label));
+        if (sub.length) XLSX.utils.book_append_sheet(wb, mkSheet(sub), sheetName);
+      }
+      const today = new Date();
+      const stamp = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+      XLSX.writeFile(wb, `${selectedClass.name}_学情分析_${stamp}.xlsx`);
+      toast.success(`已导出 ${rows.length} 名学生`);
+    } catch {
+      toast.error('导出失败,请重试');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedClass) return;
     const file = e.target.files?.[0];
@@ -1066,6 +1126,15 @@ const TeacherClassManagement = () => {
                           移除选中 ({selectedForRemove.size})
                         </button>
                       )}
+                      <button
+                        onClick={handleExportStudents}
+                        disabled={exporting}
+                        title="导出全班学情 Excel:按掌握度分好/中/弱,含正确率、薄弱词、学习量等详细数据"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <FileSpreadsheet className="w-4 h-4" />
+                        {exporting ? '导出中…' : '导出学情Excel'}
+                      </button>
                       <button
                         onClick={handleDownloadShareImage}
                         disabled={exporting || dailyStats.length === 0}
