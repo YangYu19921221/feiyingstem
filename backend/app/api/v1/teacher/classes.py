@@ -887,13 +887,30 @@ async def get_class_student_detail(
 @router.get("/classes/{class_id}/students-export")
 async def export_class_students(
     class_id: int,
+    start_date: Optional[str] = Query(None, description="区间起始日 YYYY-MM-DD,默认近7天"),
+    end_date: Optional[str] = Query(None, description="区间结束日 YYYY-MM-DD,默认今天"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """导出用:一次算全班每个学生的累计学习数据(掌握度/薄弱词/总正确率/学习量),
-    供前端生成 Excel 并按掌握度分好/中/弱。复用 detail 端点的累计口径,但用 in_ 批量
-    group_by 一次算完全班,避免前端逐个学生请求(几十人=几十次重查询)。"""
+    """导出用:算全班每个学生在【日历区间】内的学情(正确率/答题量/学习量),供前端
+    生成 Excel。分层依据=区间正确率,低于 80% 记「弱」。用 in_ 批量 group_by 一次算完
+    全班,避免逐个学生请求。额外附累计掌握度/薄弱词(全时段,供参考)。"""
     await _get_class_or_404(db, class_id, current_user.id)
+
+    # 解析区间(北京日);默认近 7 天(含今天)
+    today = _local_today()
+    try:
+        end_d = date.fromisoformat(end_date) if end_date else today
+    except ValueError:
+        end_d = today
+    try:
+        start_d = date.fromisoformat(start_date) if start_date else (end_d - timedelta(days=6))
+    except ValueError:
+        start_d = end_d - timedelta(days=6)
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    range_start = _local_day_utc_range(start_d)[0]
+    range_end = _local_day_utc_range(end_d)[1]
 
     # 班级在册学生(启用)
     stu_rows = (await db.execute(
@@ -903,7 +920,8 @@ async def export_class_students(
     )).all()
     student_ids = [r.student_id for r in stu_rows]
     if not student_ids:
-        return {"class_id": class_id, "students": []}
+        return {"class_id": class_id, "students": [],
+                "start_date": start_d.isoformat(), "end_date": end_d.isoformat()}
 
     # 学生身份
     users = (await db.execute(
@@ -912,8 +930,51 @@ async def export_class_students(
     name_map = {u.id: (u.full_name or u.username) for u in users}
     uname_map = {u.id: u.username for u in users}
 
-    # 累计掌握度:WordMastery 按 lower(word) 去重,取每个拼写的最高掌握度。
-    # 一次拉全班(user_id, 拼写, 最高档),Python 侧聚合成每人 已学/已掌握/薄弱。
+    # 区间正确率 + 答题量:LearningRecord 按 created_at 落在区间内,一次 group_by
+    acc_rows = (await db.execute(
+        select(
+            LearningRecord.user_id.label('uid'),
+            func.count(LearningRecord.id).label('total'),
+            func.sum(LearningRecord.is_correct.cast(Integer)).label('correct'),
+        ).where(and_(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.created_at >= range_start,
+            LearningRecord.created_at < range_end,
+        )).group_by(LearningRecord.user_id)
+    )).all()
+    acc_map: dict[int, float] = {}
+    answered_map: dict[int, int] = {}
+    correct_map: dict[int, int] = {}
+    for r in acc_rows:
+        answered_map[r.uid] = r.total or 0
+        correct_map[r.uid] = r.correct or 0
+        acc_map[r.uid] = round((r.correct or 0) / r.total * 100, 1) if r.total else 0.0
+
+    # 区间学习量:StudyCalendar 落在区间内,一次 group_by(学习天数/时长/学词数)
+    cal_rows = (await db.execute(
+        select(
+            StudyCalendar.user_id.label('uid'),
+            func.count(StudyCalendar.id).label('days'),
+            func.sum(StudyCalendar.duration).label('time'),
+            func.sum(StudyCalendar.words_learned).label('words'),
+            func.max(StudyCalendar.study_date).label('last_date'),
+        ).where(and_(
+            StudyCalendar.user_id.in_(student_ids),
+            StudyCalendar.study_date >= start_d,
+            StudyCalendar.study_date <= end_d,
+        )).group_by(StudyCalendar.user_id)
+    )).all()
+    days_map: dict[int, int] = {}
+    time_map: dict[int, int] = {}
+    words_map: dict[int, int] = {}
+    last_map: dict[int, str] = {}
+    for r in cal_rows:
+        days_map[r.uid] = r.days or 0
+        time_map[r.uid] = r.time or 0
+        words_map[r.uid] = r.words or 0
+        last_map[r.uid] = r.last_date.isoformat() if r.last_date else ""
+
+    # 累计掌握度/薄弱词(全时段,供参考列):WordMastery 按 lower(word) 去重取最高档
     mastery_rows = (await db.execute(
         select(
             WordMastery.user_id.label('uid'),
@@ -924,69 +985,39 @@ async def export_class_students(
         .where(WordMastery.user_id.in_(student_ids))
         .group_by(WordMastery.user_id, func.lower(Word.word))
     )).all()
-    learned: dict[int, int] = {uid: 0 for uid in student_ids}
-    mastered: dict[int, int] = {uid: 0 for uid in student_ids}
-    weak: dict[int, int] = {uid: 0 for uid in student_ids}
+    learned: dict[int, int] = {}
+    mastered: dict[int, int] = {}
+    weak_cum: dict[int, int] = {}
     for r in mastery_rows:
         learned[r.uid] = learned.get(r.uid, 0) + 1
         if (r.lvl or 0) >= 3:
             mastered[r.uid] = mastered.get(r.uid, 0) + 1
         else:
-            weak[r.uid] = weak.get(r.uid, 0) + 1
-
-    # 累计正确率:LearningRecord 一次按 user_id group_by
-    acc_rows = (await db.execute(
-        select(
-            LearningRecord.user_id.label('uid'),
-            func.count(LearningRecord.id).label('total'),
-            func.sum(LearningRecord.is_correct.cast(Integer)).label('correct'),
-        ).where(LearningRecord.user_id.in_(student_ids))
-        .group_by(LearningRecord.user_id)
-    )).all()
-    acc_map: dict[int, float] = {}
-    for r in acc_rows:
-        acc_map[r.uid] = round((r.correct or 0) / r.total * 100, 1) if r.total else 0.0
-
-    # 累计学习天数/时长/最后活跃:StudyCalendar 一次 group_by
-    cal_rows = (await db.execute(
-        select(
-            StudyCalendar.user_id.label('uid'),
-            func.count(StudyCalendar.id).label('days'),
-            func.sum(StudyCalendar.duration).label('time'),
-            func.max(StudyCalendar.study_date).label('last_date'),
-        ).where(StudyCalendar.user_id.in_(student_ids))
-        .group_by(StudyCalendar.user_id)
-    )).all()
-    days_map: dict[int, int] = {}
-    time_map: dict[int, int] = {}
-    last_map: dict[int, str] = {}
-    for r in cal_rows:
-        days_map[r.uid] = r.days or 0
-        time_map[r.uid] = r.time or 0
-        last_map[r.uid] = r.last_date.isoformat() if r.last_date else ""
+            weak_cum[r.uid] = weak_cum.get(r.uid, 0) + 1
 
     out = []
     for uid in student_ids:
         lw = learned.get(uid, 0)
         ms = mastered.get(uid, 0)
-        # 掌握度 = 已掌握 / 已学(去重拼写);没学过记 0
-        mastery_rate = round(ms / lw * 100, 1) if lw > 0 else 0.0
         out.append({
             "user_id": uid,
             "username": uname_map.get(uid, ""),
             "full_name": name_map.get(uid, ""),
-            "total_words_learned": lw,
-            "total_mastered": ms,
-            "weak_words_count": weak.get(uid, 0),
-            "mastery_rate": mastery_rate,
-            "overall_accuracy": acc_map.get(uid, 0.0),
-            "total_study_days": days_map.get(uid, 0),
-            "total_study_time": time_map.get(uid, 0),
+            "accuracy": acc_map.get(uid, 0.0),            # 区间正确率(分层依据)
+            "answered": answered_map.get(uid, 0),          # 区间答题数
+            "correct": correct_map.get(uid, 0),            # 区间答对数
+            "words_learned": words_map.get(uid, 0),        # 区间学词数
+            "study_days": days_map.get(uid, 0),            # 区间学习天数
+            "study_time": time_map.get(uid, 0),            # 区间学习时长(秒)
             "last_active": last_map.get(uid, ""),
+            "cum_words_learned": lw,                        # 累计已学(参考)
+            "cum_mastered": ms,                             # 累计已掌握(参考)
+            "cum_weak_words": weak_cum.get(uid, 0),         # 累计薄弱词(参考)
         })
-    # 默认按掌握度降序,方便老师看分布
-    out.sort(key=lambda x: (-x["mastery_rate"], -x["total_mastered"]))
-    return {"class_id": class_id, "students": out}
+    # 按区间正确率升序:弱的排前面,老师一眼看到需关注的学生
+    out.sort(key=lambda x: (x["accuracy"], -x["answered"]))
+    return {"class_id": class_id, "students": out,
+            "start_date": start_d.isoformat(), "end_date": end_d.isoformat()}
 
 
 @router.get("/student/{student_id}/ai-advice")

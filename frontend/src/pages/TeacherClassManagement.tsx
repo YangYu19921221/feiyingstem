@@ -197,6 +197,12 @@ const TeacherClassManagement = () => {
   const [showShareImage, setShowShareImage] = useState(false);
   const [exporting, setExporting] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
+  // 导出学情 Excel 的日历区间(默认近 7 天)
+  const [exportOpen, setExportOpen] = useState(false);
+  const _today = new Date();
+  const _weekAgo = new Date(Date.now() - 6 * 86400_000);
+  const [exportStart, setExportStart] = useState(_weekAgo.toISOString().split('T')[0]);
+  const [exportEnd, setExportEnd] = useState(_today.toISOString().split('T')[0]);
 
   // 每日数据 - 展开某学生查看当天具体背了哪本书/哪个单元/第几组
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
@@ -548,23 +554,24 @@ const TeacherClassManagement = () => {
     XLSX.writeFile(wb, '入班手机号模板.xlsx');
   };
 
-  // 导出班级学情 Excel:拉全班累计数据,按掌握度分好/中/弱,含详细指标
+  // 导出班级学情 Excel:按日历区间拉全班数据,按区间正确率分好/中/弱(<80% 为弱),含详细指标
   const handleExportStudents = async () => {
     if (!selectedClass) { toast.error('请先选择班级'); return; }
+    if (exportStart > exportEnd) { toast.error('起始日期不能晚于结束日期'); return; }
     setExporting(true);
     try {
       const res = await axios.get(
         `${API_BASE_URL}/teacher/classes/${selectedClass.id}/students-export`,
-        { headers: headers() }
+        { headers: headers(), params: { start_date: exportStart, end_date: exportEnd } }
       );
       const students: any[] = res.data?.students || [];
-      if (students.length === 0) { toast.error('该班级暂无学生数据'); return; }
+      if (students.length === 0) { toast.error('该区间班级暂无学生数据'); return; }
 
-      // 掌握度分层:≥80% 好,≥50% 中,其余 弱(没学过的词量=0 记为「弱/未学」)
+      // 分层依据 = 区间正确率:≥90 好,80~90 中,低于 80% 一律弱;区间内没答过题记「弱(未学习)」
       const tier = (s: any) => {
-        if (s.total_words_learned === 0) return '弱(未开始)';
-        if (s.mastery_rate >= 80) return '好';
-        if (s.mastery_rate >= 50) return '中';
+        if (s.answered === 0) return '弱(未学习)';
+        if (s.accuracy >= 90) return '好';
+        if (s.accuracy >= 80) return '中';
         return '弱';
       };
       const rows = students.map((s, i) => ({
@@ -572,35 +579,38 @@ const TeacherClassManagement = () => {
         '姓名': s.full_name,
         '账号': s.username,
         '层级': tier(s),
-        '掌握度%': s.mastery_rate,
-        '累计正确率%': s.overall_accuracy,
-        '已学单词数': s.total_words_learned,
-        '已掌握单词数': s.total_mastered,
-        '薄弱单词数': s.weak_words_count,
-        '累计学习天数': s.total_study_days,
-        '累计学习时长(分钟)': Math.round((s.total_study_time || 0) / 60),
+        '正确率%': s.accuracy,
+        '答题数': s.answered,
+        '答对数': s.correct,
+        '学习单词数': s.words_learned,
+        '学习天数': s.study_days,
+        '学习时长(分钟)': Math.round((s.study_time || 0) / 60),
         '最后活跃日': s.last_active || '—',
+        '累计已学词': s.cum_words_learned,
+        '累计已掌握': s.cum_mastered,
+        '累计薄弱词': s.cum_weak_words,
       }));
 
       const wb = XLSX.utils.book_new();
-      // Sheet1 全部(已按掌握度降序);再按层级各出一个 sheet,方便老师直接看好/中/弱
       const mkSheet = (data: any[]) => {
         const ws = XLSX.utils.json_to_sheet(data);
         ws['!cols'] = [
-          { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 10 },
-          { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 12 },
+          { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 8 }, { wch: 8 },
+          { wch: 8 }, { wch: 10 }, { wch: 9 }, { wch: 14 }, { wch: 12 },
+          { wch: 10 }, { wch: 10 }, { wch: 10 },
         ];
         return ws;
       };
       XLSX.utils.book_append_sheet(wb, mkSheet(rows), '全部学生');
-      for (const [label, sheetName] of [['好', '好-掌握好'], ['中', '中-一般'], ['弱', '弱-需关注']] as const) {
+      // 按层级各出一个 sheet,方便老师直接看好/中/弱
+      for (const [label, sheetName] of [['好', '好-90分以上'], ['中', '中-80到90'], ['弱', '弱-低于80需关注']] as const) {
         const sub = rows.filter(r => r['层级'].startsWith(label));
         if (sub.length) XLSX.utils.book_append_sheet(wb, mkSheet(sub), sheetName);
       }
-      const today = new Date();
-      const stamp = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-      XLSX.writeFile(wb, `${selectedClass.name}_学情分析_${stamp}.xlsx`);
-      toast.success(`已导出 ${rows.length} 名学生`);
+      const rng = `${exportStart}_${exportEnd}`;
+      XLSX.writeFile(wb, `${selectedClass.name}_学情分析_${rng}.xlsx`);
+      toast.success(`已导出 ${rows.length} 名学生(${exportStart} ~ ${exportEnd})`);
+      setExportOpen(false);
     } catch {
       toast.error('导出失败,请重试');
     } finally {
@@ -1126,15 +1136,49 @@ const TeacherClassManagement = () => {
                           移除选中 ({selectedForRemove.size})
                         </button>
                       )}
-                      <button
-                        onClick={handleExportStudents}
-                        disabled={exporting}
-                        title="导出全班学情 Excel:按掌握度分好/中/弱,含正确率、薄弱词、学习量等详细数据"
-                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <FileSpreadsheet className="w-4 h-4" />
-                        {exporting ? '导出中…' : '导出学情Excel'}
-                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={() => setExportOpen(v => !v)}
+                          disabled={exporting}
+                          title="导出全班学情 Excel:选日历区间,按正确率分好/中/弱(低于80%为弱),含答题量、学习量等"
+                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <FileSpreadsheet className="w-4 h-4" />
+                          {exporting ? '导出中…' : '导出学情Excel'}
+                        </button>
+                        {exportOpen && (
+                          <div className="absolute right-0 top-full mt-1 z-30 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+                            <p className="text-xs font-medium text-gray-700 mb-2">选择日历区间(按正确率分好/中/弱)</p>
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <input type="date" value={exportStart} max={exportEnd}
+                                onChange={e => setExportStart(e.target.value)}
+                                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-lg text-xs" />
+                              <span className="text-gray-400 text-xs">至</span>
+                              <input type="date" value={exportEnd} min={exportStart}
+                                onChange={e => setExportEnd(e.target.value)}
+                                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-lg text-xs" />
+                            </div>
+                            <div className="flex gap-1.5 mb-2">
+                              {([['近7天', 6], ['近30天', 29], ['今天', 0]] as const).map(([lbl, d]) => (
+                                <button key={lbl}
+                                  onClick={() => {
+                                    const end = new Date();
+                                    const start = new Date(Date.now() - d * 86400_000);
+                                    setExportEnd(end.toISOString().split('T')[0]);
+                                    setExportStart(start.toISOString().split('T')[0]);
+                                  }}
+                                  className="flex-1 py-1 rounded-md bg-gray-100 text-gray-600 text-xs hover:bg-emerald-50 hover:text-emerald-700">
+                                  {lbl}
+                                </button>
+                              ))}
+                            </div>
+                            <button onClick={handleExportStudents} disabled={exporting}
+                              className="w-full py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40">
+                              {exporting ? '导出中…' : '导出 Excel'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={handleDownloadShareImage}
                         disabled={exporting || dailyStats.length === 0}
