@@ -181,13 +181,41 @@ export function pendingCount(): number {
   return loadQueue().filter(it => it.uid === uid).length;
 }
 
-// ── 自动补交时机:模块加载(App 启动)、断网恢复、切回前台、每 60 秒 ──
+/** 页面即将关闭/隐藏时,用 fetch keepalive 把本机残留队列尽最大努力冲一次。
+ *  keepalive 请求能在页面卸载后继续送达(等效 sendBeacon,但能带 Authorization 头),
+ *  堵住"学完立刻关页/合盖 → 数据没发成功 → 换设备丢失"这个最常见的残留来源。
+ *  仅本人条目;不等响应、不改队列(成功与否下次启动 flushQueue 再对账,靠后端幂等去重)。 */
+function keepaliveFlush(): void {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const uid = currentUid();
+    if (uid === null) return;
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const q = loadQueue().filter(it => it.uid === uid && !inflight.has(it.id));
+    for (const item of q) {
+      try {
+        fetch(`${API_BASE_URL}${item.path}`, {
+          method: item.method.toUpperCase(),
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(item.payload),
+          keepalive: true,   // 页面卸载后仍继续发送(浏览器限制:总量约 64KB)
+        }).catch(() => { /* 卸载中,忽略;成功与否靠后端幂等 + 下次 flush 对账 */ });
+      } catch { /* 单条失败不影响其余 */ }
+    }
+  } catch { /* 卸载路径,任何异常都不该抛 */ }
+}
+
+// ── 自动补交时机:模块加载(App 启动)、断网恢复、切回前台、每 60 秒、关页前 keepalive ──
 if (typeof window !== 'undefined') {
   setTimeout(() => { void flushQueue(); }, 3000);   // 启动后稍等 token/路由就绪
   window.addEventListener('online', () => { void flushQueue(); });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) void flushQueue();
+    else keepaliveFlush();   // 切到后台/锁屏也兜底冲一次(移动端常直接切走不触发 pagehide)
   });
+  // 关页/刷新/切走:keepalive 兜底,尽量别让残留数据留在本机等到换设备
+  window.addEventListener('pagehide', keepaliveFlush);
   setInterval(() => {
     if (loadQueue().length > 0) void flushQueue();
   }, 60_000);

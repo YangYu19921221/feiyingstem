@@ -17,6 +17,7 @@ import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import { BookGridSkeleton } from '../components/Skeleton';
 import { AchievementIcon } from '../components/AchievementIcon';
 import { BookOpenText, ChevronDown, LogOut, PencilLine, Settings2, Sparkles } from 'lucide-react';
+import { pendingCount, flushQueue } from '../api/submitQueue';
 
 interface UserData {
   id: number;
@@ -65,6 +66,7 @@ const StudentDashboard = () => {
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [pendingHomeworkCount, setPendingHomeworkCount] = useState<number>(0);
+  const [pendingSync, setPendingSync] = useState<number>(0);  // 本机未上传的学习记录数
   // 老师布置的待办任务(待开始/进行中),显示在 Hero 下方
   const [pendingTasks, setPendingTasks] = useState<StudentHomeworkResponse[]>([]);
   // 每日签到:未签到时置顶大卡引导,签到后小徽章
@@ -115,12 +117,17 @@ const StudentDashboard = () => {
       if (!document.hidden) loadPendingHomework();
     }, 60000);
     const onVisible = () => {
-      if (!document.hidden) loadPendingHomework();
+      if (!document.hidden) { loadPendingHomework(); refreshPendingSync(); }
     };
     document.addEventListener('visibilitychange', onVisible);
+    // 未上传学习记录:进页刷一次 + 每 10 秒刷(补交成功后数字会自动降到 0)
+    const refreshPendingSync = () => { void flushQueue().finally(() => setPendingSync(pendingCount())); };
+    refreshPendingSync();
+    const syncInterval = setInterval(refreshPendingSync, 10000);
     return () => {
       clearInterval(interval);
       clearInterval(hwInterval);
+      clearInterval(syncInterval);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
@@ -371,6 +378,21 @@ const StudentDashboard = () => {
       </nav>
 
       <div className="mx-auto max-w-7xl space-y-7 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        {/* 未上传学习记录提醒:本机还有数据没传成功时,提醒别换设备/关页,保持联网等它传完 */}
+        {pendingSync > 0 && (
+          <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span className="text-lg shrink-0">📶</span>
+            <span className="flex-1">
+              还有 <b>{pendingSync}</b> 条学习记录正在上传中,请保持联网、暂时别换设备或关闭页面,以免这部分学习数据丢失。
+            </span>
+            <button
+              onClick={() => { void flushQueue().finally(() => setPendingSync(pendingCount())); }}
+              className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
+            >
+              立即上传
+            </button>
+          </div>
+        )}
         {/* 每日签到:未签到时置顶引导(签到才能开始学习);已签到显示小徽章 */}
         {checkin && !checkin.checked_in && (
           <section className="mb-8">
