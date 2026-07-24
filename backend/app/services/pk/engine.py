@@ -5,8 +5,9 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any
+import random
 from app.services.pk.state import RoomState, AnswerRecord, PHASES_IN_ORDER, PhaseLiteral
-from app.services.pk.adapters import get_adapter
+from app.services.pk.adapters import get_adapter, exam_type_for
 from app.services.pk.score import rank_players, live_ranking, team_ranking, compute_question_points
 
 
@@ -22,7 +23,7 @@ def _question_event(room: RoomState, p, word_lookup: dict[int, Any]) -> dict:
     """构造发给某玩家的「下一题」事件(定向,带 target_user_id)。"""
     wid = p.current_word_id
     word = word_lookup.get(wid) if wid is not None else None
-    return {
+    evt: dict = {
         "type": "question_pushed",
         "target_user_id": p.user_id,
         "word_idx": p.current_word_idx,       # 个人进度指针(累计,循环续刷不清零)
@@ -30,6 +31,39 @@ def _question_event(room: RoomState, p, word_lookup: dict[int, Any]) -> dict:
         "word": _serialize_word(word),
         "points": room.points_for_word(wid) if wid is not None else 0,
     }
+    # 过关阶段:题型由服务端权威决定(对齐分类记忆法的 en_to_cn/cn_to_en/listening/spelling)。
+    # 选择题额外带 3 个干扰项 + 正确答案(打乱),前端直接渲染,判分仍由服务端做。
+    if p.current_phase == "exam":
+        etype = exam_type_for(p.current_word_idx)
+        evt["exam_type"] = etype
+        if etype in ("en_to_cn", "cn_to_en"):
+            evt["options"] = _build_exam_options(room, word_lookup, wid, etype)
+    return evt
+
+
+def _build_exam_options(room: RoomState, word_lookup: dict[int, Any], wid, exam_type: str) -> list[str]:
+    """给过关选择题构造选项:正确答案 + 从房间其余词里取最多 3 个干扰项,打乱后返回。
+    en_to_cn 用中文释义,cn_to_en 用英文原词。"""
+    correct_word = word_lookup.get(wid) if wid is not None else None
+    if correct_word is None:
+        return []
+    field = "translation" if exam_type == "en_to_cn" else "word"
+    correct = (getattr(correct_word, field, "") or "").strip()
+    if not correct:
+        return []
+    pool = []
+    seen = {correct}
+    for owid, ow in word_lookup.items():
+        if owid == wid:
+            continue
+        val = (getattr(ow, field, "") or "").strip()
+        if val and val not in seen:
+            seen.add(val)
+            pool.append(val)
+    random.shuffle(pool)
+    options = pool[:3] + [correct]
+    random.shuffle(options)
+    return options
 
 
 def submit_answer(
@@ -64,6 +98,9 @@ def submit_answer(
 
     word_id = p.current_word_id
     word = word_lookup.get(word_id) if word_id is not None else None
+    # 过关阶段:题型由服务端按个人游标权威推出,注入 payload 供 adapter 判分(不信客户端自报题型)
+    if phase == "exam":
+        payload = {**payload, "_exam_type": exam_type_for(word_idx)}
     is_correct = bool(get_adapter(phase).judge(word, payload))
     points_gained = compute_question_points(
         room.points_for_word(word_id) if word_id is not None else 0,

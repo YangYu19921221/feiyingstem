@@ -66,6 +66,19 @@ class CreateRoomResponse(BaseModel):
     invite_code: str
 
 
+class MyRoomItem(BaseModel):
+    """教师大厅「我的房间」列表项:当前进行中的房间(内存态,含等待/对局中)。"""
+    room_id: int
+    invite_code: str
+    status: StatusLiteral
+    mode: ModeLiteral = "individual"
+    word_count: int = 10
+    player_count: int = 0        # 已加入玩家数
+    online_count: int = 0        # 在线玩家数
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+
+
 class PlayerHistoryItem(BaseModel):
     room_id: int
     invite_code: str
