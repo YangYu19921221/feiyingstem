@@ -28,7 +28,7 @@ async def get_healing_status(
 ):
     """获取宠物治疗状态"""
     result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )
     pet = result.scalar_one_or_none()
     if not pet:
@@ -71,7 +71,7 @@ async def heal_pet(
     每答对1题恢复5 HP
     """
     result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )
     pet = result.scalar_one_or_none()
     if not pet:
@@ -120,7 +120,7 @@ async def get_healing_words(
     获取用于治疗的单词题目（随机抽取）
     """
     result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )
     pet = result.scalar_one_or_none()
     if not pet:

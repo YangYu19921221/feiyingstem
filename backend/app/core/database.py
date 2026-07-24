@@ -20,6 +20,124 @@ AsyncSessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
+
+async def _migrate_user_pets_collection() -> None:
+    """Remove the legacy one-pet-per-user constraint without losing pet/battle history."""
+    dialect = engine.dialect.name
+    if dialect != "sqlite":
+        async with engine.begin() as conn:
+            try:
+                await conn.execute(text(
+                    "ALTER TABLE user_pets ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+            except Exception:
+                pass
+            try:
+                await conn.execute(text(
+                    "ALTER TABLE user_pets DROP CONSTRAINT IF EXISTS user_pets_user_id_key"
+                ))
+            except Exception:
+                pass
+            try:
+                await conn.execute(text(
+                    "UPDATE user_pets AS candidate SET is_active = TRUE "
+                    "WHERE candidate.id = ("
+                    "SELECT MIN(first_pet.id) FROM user_pets AS first_pet "
+                    "WHERE first_pet.user_id = candidate.user_id"
+                    ") AND NOT EXISTS ("
+                    "SELECT 1 FROM user_pets AS active_pet "
+                    "WHERE active_pet.user_id = candidate.user_id AND active_pet.is_active = TRUE"
+                    ")"
+                ))
+            except Exception:
+                pass
+        return
+
+    async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as conn:
+        row = (await conn.execute(text(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='user_pets'"
+        ))).fetchone()
+        if not row:
+            return
+
+        table_sql = row[0] or ""
+        columns = {
+            item[1] for item in (await conn.execute(text("PRAGMA table_info(user_pets)"))).fetchall()
+        }
+        has_unique_user = "UNIQUE (user_id)" in table_sql or "UNIQUE(user_id)" in table_sql
+
+        if not has_unique_user:
+            if "is_active" not in columns:
+                await conn.execute(text(
+                    "ALTER TABLE user_pets ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+                await conn.execute(text(
+                    "UPDATE user_pets SET is_active = TRUE WHERE id IN ("
+                    "SELECT MIN(id) FROM user_pets GROUP BY user_id)"
+                ))
+            return
+
+        include_element = "element" in columns
+        target_columns = [
+            "id", "user_id", "name", "species", "level", "experience", "happiness", "hunger",
+            "evolution_stage", "food_balance", "current_hp", "is_injured", "is_active",
+            "last_fed_at", "last_interaction_at", "created_at", "updated_at",
+        ]
+        defaults = {
+            "name": "'小伙伴'", "species": "'pikachu'", "level": "1", "experience": "0",
+            "happiness": "80", "hunger": "80", "evolution_stage": "0", "food_balance": "10",
+            "current_hp": "105", "is_injured": "FALSE", "is_active": "TRUE",
+            "last_fed_at": "NULL", "last_interaction_at": "CURRENT_TIMESTAMP",
+            "created_at": "CURRENT_TIMESTAMP", "updated_at": "CURRENT_TIMESTAMP",
+        }
+        if include_element:
+            target_columns.append("element")
+
+        select_columns = [name if name in columns else defaults.get(name, "NULL") for name in target_columns]
+        element_ddl = ", element VARCHAR(20)" if include_element else ""
+
+        await conn.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            await conn.execute(text("BEGIN IMMEDIATE"))
+            await conn.execute(text("DROP TABLE IF EXISTS user_pets_collection_new"))
+            await conn.execute(text(f"""
+                CREATE TABLE user_pets_collection_new (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name VARCHAR(50) NOT NULL DEFAULT '小伙伴',
+                    species VARCHAR(32) NOT NULL DEFAULT 'pikachu',
+                    level INTEGER DEFAULT 1,
+                    experience INTEGER DEFAULT 0,
+                    happiness INTEGER DEFAULT 80,
+                    hunger INTEGER DEFAULT 80,
+                    evolution_stage INTEGER DEFAULT 0,
+                    food_balance INTEGER DEFAULT 10,
+                    current_hp INTEGER DEFAULT 105,
+                    is_injured BOOLEAN DEFAULT FALSE,
+                    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+                    last_fed_at DATETIME,
+                    last_interaction_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP{element_ddl},
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """))
+            await conn.execute(text(
+                f"INSERT INTO user_pets_collection_new ({', '.join(target_columns)}) "
+                f"SELECT {', '.join(select_columns)} FROM user_pets"
+            ))
+            await conn.execute(text("DROP TABLE user_pets"))
+            await conn.execute(text("ALTER TABLE user_pets_collection_new RENAME TO user_pets"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_pets_user_id ON user_pets(user_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_pets_is_active ON user_pets(is_active)"))
+            await conn.execute(text("COMMIT"))
+        except Exception:
+            await conn.execute(text("ROLLBACK"))
+            raise
+        finally:
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+
+
 async def init_db():
     """初始化数据库"""
     from sqlalchemy import text
@@ -35,6 +153,9 @@ async def init_db():
         from app.models import sentence  # 句子背诵
     except Exception:
         pass
+
+    # 旧库 user_pets.user_id 带唯一约束，需在 create_all 前重建才能支持宠物队伍。
+    await _migrate_user_pets_collection()
 
     # 使用SQLAlchemy的create_all创建所有表
     async with engine.begin() as conn:
@@ -62,6 +183,14 @@ async def init_db():
         try:
             await conn.execute(text(
                 "ALTER TABLE user_pets ADD COLUMN food_balance INTEGER DEFAULT 10"
+            ))
+        except Exception:
+            pass
+        # 每个学生最多一个当前伙伴；部分唯一索引允许同时保存多只非当前宠物。
+        try:
+            await conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_pets_one_active "
+                "ON user_pets(user_id) WHERE is_active = TRUE"
             ))
         except Exception:
             pass
@@ -285,6 +414,14 @@ async def init_db():
             "ALTER TABLE pk_room_players ADD COLUMN team INTEGER",
             # 加币 PIN:教师手动加币需校验的独立密码哈希(bcrypt),防学生冒用账号自己加币
             "ALTER TABLE users ADD COLUMN coin_pin_hash VARCHAR(255)",
+            # 宠物被收服后的重新领养目标与共享粮食暂存。
+            "ALTER TABLE users ADD COLUMN pet_recovery_goal_words INTEGER",
+            "ALTER TABLE users ADD COLUMN pet_food_reserve INTEGER",
+            # 真人宠物对战的服务端收服结算。
+            "ALTER TABLE pet_battles ADD COLUMN capture_attempted BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE pet_battles ADD COLUMN capture_succeeded BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE pet_battles ADD COLUMN captured_pet_id INTEGER",
+            "ALTER TABLE pet_battles ADD COLUMN capture_data TEXT",
         ]:
             try:
                 await conn.execute(text(_sql))

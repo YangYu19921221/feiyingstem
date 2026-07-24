@@ -9,6 +9,11 @@ class PetCreate(BaseModel):
     species: str = Field(default="pikachu", min_length=1, max_length=32)
 
 
+class PetSwitchRequest(BaseModel):
+    """从已拥有的宠物中切换当前伙伴。"""
+    pet_id: int = Field(gt=0)
+
+
 class PetResponse(BaseModel):
     """宠物信息响应"""
     id: int
@@ -26,12 +31,27 @@ class PetResponse(BaseModel):
     food_balance: int = 0
     current_hp: int = 0
     is_injured: bool = False
+    is_active: bool = False
     last_fed_at: Optional[datetime] = None
     last_interaction_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class PetCollectionResponse(BaseModel):
+    """学生的宠物队伍与学习解锁进度。"""
+    pets: List[PetResponse]
+    active_pet_id: Optional[int] = None
+    learned_words: int = 0
+    unlocked_slots: int = 1
+    used_slots: int = 0
+    max_slots: int = 5
+    words_per_slot: int = 2000
+    next_slot_words: Optional[int] = None
+    recovery_goal_words: Optional[int] = None
+    recovery_words_remaining: int = 0
 
 
 class PetFeedResponse(BaseModel):

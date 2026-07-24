@@ -18,6 +18,7 @@ from app.schemas.pet_battle import (
 from app.services import pet_battle_service
 from app.services.ai_opponent_service import generate_ai_opponent
 from app.api.v1.auth import get_current_student
+from app.core.pet_formulas import evolution_stage_for_level
 import json
 
 router = APIRouter()
@@ -102,7 +103,7 @@ async def search_opponents(
     stmt = (
         select(User, UserPet)
         .join(UserPet, UserPet.user_id == User.id)
-        .where(and_(*conditions))
+        .where(and_(*conditions), UserPet.is_active.is_(True))
         .order_by(desc(User.last_login))
         .limit(limit)
     )
@@ -141,7 +142,7 @@ async def create_battle(
 
     # 检查自己的宠物
     my_pet_result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )
     my_pet = my_pet_result.scalar_one_or_none()
     if not my_pet:
@@ -151,7 +152,7 @@ async def create_battle(
 
     # 检查对手的宠物
     opponent_pet_result = await db.execute(
-        select(UserPet).where(UserPet.user_id == data.opponent_id)
+        select(UserPet).where(UserPet.user_id == data.opponent_id, UserPet.is_active.is_(True))
     )
     opponent_pet = opponent_pet_result.scalar_one_or_none()
     if not opponent_pet:
@@ -189,7 +190,7 @@ async def accept_battle(
 
     # 受伤门：受伤宠物不能应战
     accept_pet = (await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )).scalar_one_or_none()
     if accept_pet and accept_pet.is_injured:
         raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能应战哦！")
@@ -412,7 +413,7 @@ async def quick_match_battle(
     """
     # 检查自己的宠物
     my_pet_result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )
     my_pet = my_pet_result.scalar_one_or_none()
     if not my_pet:
@@ -449,7 +450,7 @@ async def quick_match_battle(
     
     # 创建或获取AI宠物
     ai_pet_result = await db.execute(
-        select(UserPet).where(UserPet.user_id == ai_user_id)
+        select(UserPet).where(UserPet.user_id == ai_user_id, UserPet.is_active.is_(True))
     )
     ai_pet = ai_pet_result.scalar_one_or_none()
     
@@ -463,10 +464,11 @@ async def quick_match_battle(
             species=ai_config['species'],
             level=ai_config['level'],
             experience=0,
-            evolution_stage=min(3, ai_config['level'] // 10),
+            evolution_stage=evolution_stage_for_level(ai_config['level']),
             happiness=100,
             hunger=100,
-            current_hp=calculate_initial_hp(ai_config['level'], min(3, ai_config['level'] // 10)),
+            current_hp=calculate_initial_hp(ai_config['level'], evolution_stage_for_level(ai_config['level'])),
+            is_active=True,
         )
         db.add(ai_pet)
         await db.commit()
@@ -478,8 +480,8 @@ async def quick_match_battle(
         ai_pet.name = ai_config['name']
         ai_pet.species = ai_config['species']
         ai_pet.level = ai_config['level']
-        ai_pet.evolution_stage = min(3, ai_config['level'] // 10)
-        ai_pet.current_hp = calculate_initial_hp(ai_config['level'], min(3, ai_config['level'] // 10))
+        ai_pet.evolution_stage = evolution_stage_for_level(ai_config['level'])
+        ai_pet.current_hp = calculate_initial_hp(ai_config['level'], ai_pet.evolution_stage)
         await db.commit()
         await db.refresh(ai_pet)
     

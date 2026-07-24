@@ -6,7 +6,9 @@ export type PetElement =
 export type PetStage = {
   name: string;
   image: string | null;
+  backImage?: string | null;
   unlockLevel: number;
+  isGem?: boolean;
 };
 
 export type PetSpeciesDefinition = {
@@ -16,11 +18,28 @@ export type PetSpeciesDefinition = {
   element: PetElement;
   emoji: string;
   ultimate: { name: string; emoji: string; image: string };
-  stages: readonly [PetStage, PetStage, PetStage, PetStage];
+  stages: readonly [PetStage, PetStage, PetStage, PetStage, PetStage];
 };
 
 const egg = (): PetStage => ({ name: '伙伴蛋', image: null, unlockLevel: 1 });
-const stage = (name: string, image: string, unlockLevel: number): PetStage => ({ name, image, unlockLevel });
+const getBackImagePath = (image: string): string | null => (
+  image.startsWith('/pets/') && image.endsWith('.png')
+    ? image.replace('/pets/', '/pets/back/')
+    : null
+);
+const stage = (name: string, image: string, unlockLevel: number): PetStage => ({
+  name,
+  image,
+  backImage: getBackImagePath(image),
+  unlockLevel,
+});
+const gemStage = (name: string, image: string): PetStage => ({
+  name: `晶耀${name}`,
+  image,
+  backImage: getBackImagePath(image),
+  unlockLevel: 45,
+  isGem: true,
+});
 
 const skillImages: Record<'electric' | 'fire' | 'leaf' | 'water' | 'star', string> = {
   electric: '/pet-skill-electric.webp',
@@ -51,6 +70,7 @@ const pet = (
     stage(forms[0][0], forms[0][1], 5),
     stage(forms[1][0], forms[1][1], 15),
     stage(forms[2][0], forms[2][1], 30),
+    gemStage(forms[2][0], forms[2][1]),
   ],
 });
 
@@ -121,6 +141,51 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
   pet('ralts', '拉鲁拉丝家族', '能感知情绪的超能力伙伴', 'psychic', '🔮', '精神冲击', 'star', [
     ['拉鲁拉丝', '/pets/ralts.png'], ['奇鲁莉安', '/pets/kirlia.png'], ['沙奈朵', '/pets/gardevoir.png'],
   ]),
+  pet('chikorita', '菊草叶家族', '温和坚定的草系伙伴', 'grass', '🍃', '日光束', 'leaf', [
+    ['菊草叶', '/pets/chikorita.png'], ['月桂叶', '/pets/bayleef.png'], ['大竺葵', '/pets/meganium.png'],
+  ]),
+  pet('cyndaquil', '火球鼠家族', '背上的火焰会随斗志燃烧', 'fire', '🔥', '喷火', 'fire', [
+    ['火球鼠', '/pets/cyndaquil.png'], ['火岩鼠', '/pets/quilava.png'], ['火暴兽', '/pets/typhlosion.png'],
+  ]),
+  pet('totodile', '小锯鳄家族', '精力充沛的水系伙伴', 'water', '💧', '水流尾', 'water', [
+    ['小锯鳄', '/pets/totodile.png'], ['蓝鳄', '/pets/croconaw.png'], ['大力鳄', '/pets/feraligatr.png'],
+  ]),
+  pet('treecko', '木守宫家族', '冷静敏捷的森林伙伴', 'grass', '🍃', '叶刃', 'leaf', [
+    ['木守宫', '/pets/treecko.png'], ['森林蜥蜴', '/pets/grovyle.png'], ['蜥蜴王', '/pets/sceptile.png'],
+  ]),
+  pet('torchic', '火稚鸡家族', '越训练越勇猛的火系伙伴', 'fire', '🔥', '爆炸烈焰', 'fire', [
+    ['火稚鸡', '/pets/torchic.png'], ['力壮鸡', '/pets/combusken.png'], ['火焰鸡', '/pets/blaziken.png'],
+  ]),
+  pet('mudkip', '水跃鱼家族', '能感知水流变化的可靠伙伴', 'water', '💧', '浊流', 'water', [
+    ['水跃鱼', '/pets/mudkip.png'], ['沼跃鱼', '/pets/marshtomp.png'], ['巨沼怪', '/pets/swampert.png'],
+  ]),
+  pet('bagon', '宝贝龙家族', '怀抱飞翔梦想的龙系伙伴', 'dragon', '🐉', '龙星群', 'star', [
+    ['宝贝龙', '/pets/bagon.png'], ['甲壳龙', '/pets/shelgon.png'], ['暴飞龙', '/pets/salamence.png'],
+  ]),
+  pet('beldum', '铁哑铃家族', '以磁力凝聚力量的钢系伙伴', 'steel', '⚙️', '彗星拳', 'star', [
+    ['铁哑铃', '/pets/beldum.png'], ['金属怪', '/pets/metang.png'], ['巨金怪', '/pets/metagross.png'],
+  ]),
+  pet('gible', '圆陆鲨家族', '拥有惊人成长潜力的龙系伙伴', 'dragon', '🐉', '龙神俯冲', 'star', [
+    ['圆陆鲨', '/pets/gible.png'], ['尖牙陆鲨', '/pets/gabite.png'], ['烈咬陆鲨', '/pets/garchomp.png'],
+  ]),
+  pet('snivy', '藤藤蛇家族', '从容优雅的草系伙伴', 'grass', '🍃', '疯狂植物', 'leaf', [
+    ['藤藤蛇', '/pets/snivy.png'], ['青藤蛇', '/pets/servine.png'], ['君主蛇', '/pets/serperior.png'],
+  ]),
+  pet('tepig', '暖暖猪家族', '食欲和斗志同样旺盛', 'fire', '🔥', '高温重压', 'fire', [
+    ['暖暖猪', '/pets/tepig.png'], ['炒炒猪', '/pets/pignite.png'], ['炎武王', '/pets/emboar.png'],
+  ]),
+  pet('oshawott', '水水獭家族', '认真磨炼贝壳刀法的伙伴', 'water', '💧', '贝壳刃', 'water', [
+    ['水水獭', '/pets/oshawott.png'], ['双刃丸', '/pets/dewott.png'], ['大剑鬼', '/pets/samurott.png'],
+  ]),
+  pet('rowlet', '木木枭家族', '安静专注的森林射手', 'grass', '🍃', '缝影', 'leaf', [
+    ['木木枭', '/pets/rowlet.png'], ['投羽枭', '/pets/dartrix.png'], ['狙射树枭', '/pets/decidueye.png'],
+  ]),
+  pet('litten', '火斑喵家族', '骄傲又可靠的火系伙伴', 'fire', '🔥', '极恶飞跃粉碎击', 'fire', [
+    ['火斑喵', '/pets/litten.png'], ['炎热喵', '/pets/torracat.png'], ['炽焰咆哮虎', '/pets/incineroar.png'],
+  ]),
+  pet('popplio', '球球海狮家族', '用水泡和歌声鼓舞伙伴', 'water', '💧', '海神庄严交响乐', 'water', [
+    ['球球海狮', '/pets/popplio.png'], ['花漾海狮', '/pets/brionne.png'], ['西狮海壬', '/pets/primarina.png'],
+  ]),
   pet('book_fox', '书狐', '爱读书的折纸小狐，最终成为贤者狐', 'normal', '📚', '知识星辉', 'star', [
     ['书页幼狐', '/pets/fox-1.jpeg'], ['博闻书狐', '/pets/fox-2.jpeg'], ['贤者书狐', '/pets/fox-3.jpeg'],
   ]),
@@ -155,7 +220,21 @@ export function getPetImage(species: string, evolutionStage: number): string {
   return getPetStage(species, evolutionStage).image || definition.stages[1].image!;
 }
 
+function getVisiblePetStage(species: string, evolutionStage: number): PetStage {
+  const definition = getPetDefinition(species);
+  const current = getPetStage(species, evolutionStage);
+  return current.image ? current : definition.stages[1];
+}
+
+export function getPetBackImage(species: string, evolutionStage: number): string {
+  const stage = getVisiblePetStage(species, evolutionStage);
+  return stage.backImage || stage.image!;
+}
+
+export function hasPetBackImage(species: string, evolutionStage: number): boolean {
+  return Boolean(getVisiblePetStage(species, evolutionStage).backImage);
+}
+
 export function getNextPetStage(species: string, evolutionStage: number): PetStage | null {
   return getPetDefinition(species).stages[evolutionStage + 1] || null;
 }
-

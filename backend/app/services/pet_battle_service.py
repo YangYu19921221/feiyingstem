@@ -4,17 +4,136 @@ import random
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, update
 
 from app.models.pet_battle import PetBattle, PetBattleRound, PetBattleStats
 from app.models.pet import UserPet, PetEventLog
 from app.models.user import User
+from app.models.learning import LearningRecord
 from app.models.word import Word, WordDefinition
 # 统一数值真源；calculate_initial_hp 是 calculate_max_hp 的别名，保留名字兼容既有 import
 from app.core.pet_formulas import (
-    calculate_initial_hp, calculate_max_hp, apply_xp_and_level,
+    MAX_PET_SLOTS, calculate_initial_hp, calculate_max_hp, apply_xp_and_level,
+    pet_recovery_goal, pet_slots_for_words, next_pet_slot_threshold,
 )
 from app.core.pet_species import get_pet_element, get_pet_stage_name
+
+
+PET_CAPTURE_CHANCE = 0.20
+
+
+def capture_roll_succeeds(roll: float) -> bool:
+    """精灵球收服判定，单独保留为纯函数便于验证边界。"""
+    return 0 <= roll < PET_CAPTURE_CHANCE
+
+
+async def _learned_word_count(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(
+        select(func.count(func.distinct(LearningRecord.word_id)))
+        .where(LearningRecord.user_id == user_id)
+    )
+    return int(result.scalar() or 0)
+
+
+async def _settle_pet_capture(
+    db: AsyncSession,
+    battle: PetBattle,
+    winner_id: Optional[int],
+) -> Optional[dict]:
+    """普通真人对战有 20% 概率收服败方出战宠物。"""
+    if battle.is_ai_battle or winner_id is None:
+        return None
+    if winner_id not in (battle.player1_id, battle.player2_id):
+        return None
+
+    loser_id = battle.player2_id if winner_id == battle.player1_id else battle.player1_id
+    loser_pet_id = battle.player2_pet_id if winner_id == battle.player1_id else battle.player1_pet_id
+    loser_pet = await db.get(UserPet, loser_pet_id)
+    if not loser_pet or loser_pet.user_id != loser_id:
+        return None
+
+    winner_result = await db.execute(
+        select(UserPet).where(UserPet.user_id == winner_id).order_by(UserPet.id)
+    )
+    winner_pets = list(winner_result.scalars().all())
+    learned_words = await _learned_word_count(db, winner_id)
+    unlocked_slots = pet_slots_for_words(learned_words)
+    result = {
+        "eligible": False,
+        "attempted": False,
+        "success": False,
+        "chance": int(PET_CAPTURE_CHANCE * 100),
+        "winner_id": winner_id,
+        "loser_id": loser_id,
+        "pet_id": loser_pet.id,
+        "pet_name": loser_pet.name,
+        "pet_species": loser_pet.species,
+        "loser_has_no_pets": False,
+        "recovery_goal_words": None,
+        "reason": "",
+    }
+
+    if len(winner_pets) >= MAX_PET_SLOTS:
+        result["reason"] = "roster_full"
+        return result
+    if len(winner_pets) >= unlocked_slots:
+        result["reason"] = "slot_locked"
+        result["required_words"] = next_pet_slot_threshold(learned_words)
+        return result
+    if any(pet.species == loser_pet.species for pet in winner_pets):
+        result["reason"] = "duplicate_species"
+        return result
+
+    result["eligible"] = True
+    result["attempted"] = True
+    battle.capture_attempted = True
+    if not capture_roll_succeeds(random.random()):
+        result["reason"] = "escaped"
+        battle.capture_data = json.dumps(result, ensure_ascii=False)
+        return result
+
+    winner_active = next((pet for pet in winner_pets if pet.is_active), winner_pets[0])
+    winner_food = winner_active.food_balance
+    loser_food = loser_pet.food_balance
+    remaining_result = await db.execute(
+        select(UserPet)
+        .where(UserPet.user_id == loser_id, UserPet.id != loser_pet.id)
+        .order_by(UserPet.level.desc(), UserPet.id)
+    )
+    remaining_pets = list(remaining_result.scalars().all())
+
+    loser_pet.is_active = False
+    loser_pet.user_id = winner_id
+    loser_pet.food_balance = winner_food
+    db.add(PetEventLog(
+        pet_id=loser_pet.id,
+        event_type="captured",
+        detail="在真人对战落败后被精灵球收服，培养等级与进化阶段已保留",
+    ))
+
+    loser_user = await db.get(User, loser_id)
+    if remaining_pets:
+        replacement = remaining_pets[0]
+        replacement.is_active = True
+        await db.execute(
+            update(UserPet)
+            .where(UserPet.user_id == loser_id, UserPet.id != loser_pet.id)
+            .values(food_balance=loser_food)
+        )
+    elif loser_user:
+        loser_learned_words = await _learned_word_count(db, loser_id)
+        recovery_goal = pet_recovery_goal(loser_learned_words)
+        loser_user.pet_food_reserve = loser_food
+        loser_user.pet_recovery_goal_words = recovery_goal
+        result["loser_has_no_pets"] = True
+        result["recovery_goal_words"] = recovery_goal
+
+    result["success"] = True
+    result["reason"] = "captured"
+    battle.capture_succeeded = True
+    battle.captured_pet_id = loser_pet.id
+    battle.capture_data = json.dumps(result, ensure_ascii=False)
+    return result
 
 
 def calculate_damage(
@@ -197,10 +316,16 @@ async def create_battle(
 ) -> PetBattle:
     """创建对战"""
     # 检查双方宠物
-    pet1_result = await db.execute(select(UserPet).where(UserPet.user_id == player1_id))
+    pet1_result = await db.execute(select(UserPet).where(
+        UserPet.user_id == player1_id,
+        UserPet.is_active.is_(True),
+    ))
     pet1 = pet1_result.scalar_one_or_none()
 
-    pet2_result = await db.execute(select(UserPet).where(UserPet.user_id == player2_id))
+    pet2_result = await db.execute(select(UserPet).where(
+        UserPet.user_id == player2_id,
+        UserPet.is_active.is_(True),
+    ))
     pet2 = pet2_result.scalar_one_or_none()
 
     if not pet1 or not pet2:
@@ -505,6 +630,11 @@ async def finish_battle(
         奖励数据
     """
     battle = await db.get(PetBattle, battle_id)
+    await db.refresh(battle)
+    if battle.status == "finished":
+        capture = json.loads(battle.capture_data) if battle.capture_data else None
+        return {"_capture": capture}
+
     battle.status = "finished"
     battle.winner_id = winner_id
     battle.finished_at = datetime.utcnow()
@@ -544,6 +674,11 @@ async def finish_battle(
         # 发放奖励
         pet.food_balance += food
         pet.experience += xp
+        await db.execute(
+            update(UserPet)
+            .where(UserPet.user_id == player_id, UserPet.id != pet.id)
+            .values(food_balance=pet.food_balance)
+        )
 
         # 对战后立即结算升级+进化（此前只加经验不结算，会攒到下次喂食才一次性连跳多级）
         leveled_up, evolved = apply_xp_and_level(pet)
@@ -611,6 +746,9 @@ async def finish_battle(
             stats.total_correct_answers += battle.player2_total_correct
 
         stats.updated_at = datetime.utcnow()
+
+    capture = await _settle_pet_capture(db, battle, winner_id)
+    rewards["_capture"] = capture
 
     await db.commit()
 

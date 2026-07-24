@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func as sa_func
+from sqlalchemy import select, desc, func as sa_func, update
 from datetime import datetime, timedelta
 import math
 
@@ -8,22 +8,49 @@ from app.core.database import get_db
 from app.core.timeutil import local_today_utc_range
 from app.models.user import User
 from app.models.pet import UserPet, PetEventLog
+from app.models.learning import LearningRecord
 from app.models.word import Word
 from app.schemas.pet import (
-    PetCreate, PetResponse, PetFeedResponse, PetEventResponse,
+    PetCreate, PetSwitchRequest, PetResponse, PetCollectionResponse, PetFeedResponse, PetEventResponse,
     EarnFoodRequest, EarnFoodResponse,
     PetLeaderboardEntry, PetLeaderboardResponse,
 )
 from app.api.v1.auth import get_current_student
 from app.core.pet_formulas import (
-    FEED_XP, EVOLUTION_THRESHOLDS,
+    FEED_XP, EVOLUTION_THRESHOLDS, MAX_PET_SLOTS, WORDS_PER_PET_SLOT,
     calculate_max_hp, calc_xp_to_next_level, apply_xp_and_level,
+    pet_slots_for_words, next_pet_slot_threshold,
 )
 from app.core.pet_species import (
     ALLOWED_PET_SPECIES, get_pet_label, get_pet_stage_name,
 )
 
 router = APIRouter()
+
+
+async def get_active_pet(db: AsyncSession, user_id: int) -> UserPet | None:
+    result = await db.execute(
+        select(UserPet)
+        .where(UserPet.user_id == user_id, UserPet.is_active.is_(True))
+        .order_by(UserPet.id)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_learned_word_count(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(
+        select(sa_func.count(sa_func.distinct(LearningRecord.word_id)))
+        .where(LearningRecord.user_id == user_id)
+    )
+    return int(result.scalar() or 0)
+
+
+async def sync_food_balance(db: AsyncSession, user_id: int, balance: int, *, except_pet_id: int | None = None) -> None:
+    stmt = update(UserPet).where(UserPet.user_id == user_id)
+    if except_pet_id is not None:
+        stmt = stmt.where(UserPet.id != except_pet_id)
+    await db.execute(stmt.values(food_balance=balance))
 
 
 def apply_decay(pet: UserPet) -> UserPet:
@@ -57,6 +84,7 @@ def build_pet_response(pet: UserPet) -> PetResponse:
         food_balance=pet.food_balance,
         current_hp=pet.current_hp,
         is_injured=pet.is_injured,
+        is_active=pet.is_active,
         last_fed_at=pet.last_fed_at,
         last_interaction_at=pet.last_interaction_at,
         created_at=pet.created_at,
@@ -69,10 +97,7 @@ async def get_my_pet(
     current_user: User = Depends(get_current_student),
 ):
     """获取我的宠物（含衰减计算）"""
-    result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
-    )
-    pet = result.scalar_one_or_none()
+    pet = await get_active_pet(db, current_user.id)
     if not pet:
         return None
     pet = apply_decay(pet)
@@ -96,34 +121,140 @@ async def get_my_pet(
     return build_pet_response(pet)
 
 
+@router.get("/pet/collection", response_model=PetCollectionResponse)
+async def get_pet_collection(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """获取全部已领养宠物，以及由累计去重学习单词数解锁的队伍容量。"""
+    result = await db.execute(
+        select(UserPet)
+        .where(UserPet.user_id == current_user.id)
+        .order_by(desc(UserPet.is_active), UserPet.created_at, UserPet.id)
+    )
+    pets = list(result.scalars().all())
+    learned_words = await get_learned_word_count(db, current_user.id)
+    unlocked_slots = pet_slots_for_words(learned_words)
+    active_pet = next((pet for pet in pets if pet.is_active), None)
+    recovery_goal = current_user.pet_recovery_goal_words
+    return PetCollectionResponse(
+        pets=[build_pet_response(pet) for pet in pets],
+        active_pet_id=active_pet.id if active_pet else None,
+        learned_words=learned_words,
+        unlocked_slots=unlocked_slots,
+        used_slots=len(pets),
+        max_slots=MAX_PET_SLOTS,
+        words_per_slot=WORDS_PER_PET_SLOT,
+        next_slot_words=next_pet_slot_threshold(learned_words),
+        recovery_goal_words=recovery_goal,
+        recovery_words_remaining=max(0, recovery_goal - learned_words) if recovery_goal else 0,
+    )
+
+
+@router.post("/pet/switch", response_model=PetResponse)
+async def switch_pet(
+    data: PetSwitchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """切换当前养成/出战伙伴，所有已拥有宠物保留各自培养进度。"""
+    target = await db.get(UserPet, data.pet_id)
+    if not target or target.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="没有找到这只宠物")
+    if target.is_active:
+        raise HTTPException(status_code=400, detail="这已经是你当前的伙伴")
+
+    current = await get_active_pet(db, current_user.id)
+    shared_food = current.food_balance if current else target.food_balance
+    await db.execute(
+        update(UserPet)
+        .where(UserPet.user_id == current_user.id)
+        .values(is_active=False, food_balance=shared_food)
+    )
+    target.is_active = True
+    target.food_balance = shared_food
+    target.last_interaction_at = datetime.utcnow()
+
+    db.add(PetEventLog(
+        pet_id=target.id,
+        event_type="switch",
+        detail=f"切换{get_pet_label(target.species)}「{target.name}」为当前伙伴，培养进度已保留",
+    ))
+    await db.commit()
+    await db.refresh(target)
+    return build_pet_response(target)
+
+
 @router.post("/pet", response_model=PetResponse)
 async def adopt_pet(
     data: PetCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """领养宠物（每人限一只）"""
-    result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=400, detail="你已经有一只宠物了！")
+    """领养新宠物；首只免费，此后按累计学习单词数解锁，最多 5 只。"""
     if data.species not in ALLOWED_PET_SPECIES:
         raise HTTPException(status_code=400, detail="暂不支持这种宠物")
+    pet_name = data.name.strip()
+    if not pet_name:
+        raise HTTPException(status_code=400, detail="请给新伙伴取一个名字")
+
+    result = await db.execute(
+        select(UserPet).where(UserPet.user_id == current_user.id).order_by(UserPet.id)
+    )
+    existing_pets = list(result.scalars().all())
+    if any(pet.species == data.species for pet in existing_pets):
+        raise HTTPException(status_code=400, detail="这个宝可梦家族已经领养过了")
+
+    learned_words = await get_learned_word_count(db, current_user.id)
+    recovery_goal = current_user.pet_recovery_goal_words
+    if not existing_pets and recovery_goal and learned_words < recovery_goal:
+        remaining = recovery_goal - learned_words
+        raise HTTPException(
+            status_code=400,
+            detail=f"最后一只伙伴被收服后需再学习2000个不同单词，还差{remaining}个",
+        )
+
+    unlocked_slots = pet_slots_for_words(learned_words)
+    if len(existing_pets) >= unlocked_slots:
+        next_threshold = next_pet_slot_threshold(learned_words)
+        if next_threshold is None:
+            detail = "宠物队伍已满，最多可以拥有5只宝可梦"
+        else:
+            remaining = max(0, next_threshold - learned_words)
+            detail = f"下一个领养名额需累计学习{next_threshold}个不同单词，还差{remaining}个"
+        raise HTTPException(status_code=400, detail=detail)
+
+    active_pet = next((pet for pet in existing_pets if pet.is_active), None)
+    shared_food = active_pet.food_balance if active_pet else (
+        existing_pets[0].food_balance if existing_pets
+        else (current_user.pet_food_reserve if current_user.pet_food_reserve is not None else 10)
+    )
+    if existing_pets:
+        await db.execute(
+            update(UserPet)
+            .where(UserPet.user_id == current_user.id)
+            .values(is_active=False, food_balance=shared_food)
+        )
 
     pet = UserPet(
         user_id=current_user.id,
-        name=data.name,
+        name=pet_name,
         species=data.species,
+        current_hp=calculate_max_hp(1, 0),
+        food_balance=shared_food,
+        is_active=True,
     )
     db.add(pet)
     await db.flush()
 
+    if not existing_pets and recovery_goal:
+        current_user.pet_recovery_goal_words = None
+        current_user.pet_food_reserve = None
+
     log = PetEventLog(
         pet_id=pet.id,
         event_type="adopt",
-        detail=f"领养了{get_pet_label(data.species)}，取名「{data.name}」",
+        detail=f"领养了{get_pet_label(data.species)}，取名「{pet_name}」，从伙伴蛋开始培养",
     )
     db.add(log)
     await db.commit()
@@ -136,11 +267,8 @@ async def feed_pet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """喂食宠物：花费5粮，hunger+25, happiness+10, xp+15，每日上限3次"""
-    result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
-    )
-    pet = result.scalar_one_or_none()
+    """喂食当前伙伴：花费5粮，hunger+25, happiness+10, xp+8，每日上限3次。"""
+    pet = await get_active_pet(db, current_user.id)
     if not pet:
         raise HTTPException(status_code=404, detail="还没有宠物")
 
@@ -171,6 +299,7 @@ async def feed_pet(
     pet.experience += FEED_XP
     pet.last_fed_at = now
     pet.last_interaction_at = now
+    await sync_food_balance(db, current_user.id, pet.food_balance, except_pet_id=pet.id)
 
     # 结算升级与进化（共享逻辑）
     leveled_up, evolved = apply_xp_and_level(pet)
@@ -207,10 +336,7 @@ async def earn_food(
     current_user: User = Depends(get_current_student),
 ):
     """完成练习后赚取宠物粮"""
-    result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
-    )
-    pet = result.scalar_one_or_none()
+    pet = await get_active_pet(db, current_user.id)
     if not pet:
         raise HTTPException(status_code=404, detail="还没有宠物")
 
@@ -219,8 +345,10 @@ async def earn_food(
 
     # 检查是否今日首练
     earn_count_result = await db.execute(
-        select(sa_func.count(PetEventLog.id)).where(
-            PetEventLog.pet_id == pet.id,
+        select(sa_func.count(PetEventLog.id))
+        .join(UserPet, UserPet.id == PetEventLog.pet_id)
+        .where(
+            UserPet.user_id == current_user.id,
             PetEventLog.event_type == "earn_food",
             PetEventLog.created_at >= today_start,
         )
@@ -238,6 +366,7 @@ async def earn_food(
     food_earned = base + accuracy_bonus + mode_bonus + daily_bonus
     pet.food_balance += food_earned
     pet.last_interaction_at = now
+    await sync_food_balance(db, current_user.id, pet.food_balance, except_pet_id=pet.id)
 
     db.add(PetEventLog(
         pet_id=pet.id,
@@ -267,10 +396,7 @@ async def get_pet_events(
     current_user: User = Depends(get_current_student),
 ):
     """获取宠物事件历史"""
-    result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id)
-    )
-    pet = result.scalar_one_or_none()
+    pet = await get_active_pet(db, current_user.id)
     if not pet:
         raise HTTPException(status_code=404, detail="还没有宠物")
 
@@ -294,6 +420,7 @@ async def get_pet_leaderboard(
     stmt = (
         select(UserPet, User.username)
         .join(User, User.id == UserPet.user_id)
+        .where(UserPet.is_active.is_(True))
         .order_by(
             desc(UserPet.evolution_stage),
             desc(UserPet.level),
