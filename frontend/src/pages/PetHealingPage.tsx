@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Sparkles } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import {
   getHealingStatus,
   getHealingWords,
@@ -11,20 +11,7 @@ import {
   type HealingWord,
 } from '../api/petHealing';
 import { getMyPet } from '../api/pet';
-
-// 宠物图片映射
-const PET_IMAGES: Record<string, string[]> = {
-  pikachu: ['/pets/pichu.png', '/pets/pichu.png', '/pets/pikachu.png', '/pets/raichu.png'],
-  eevee: ['/pets/eevee.png', '/pets/eevee.png', '/pets/eevee.png', '/pets/eevee.png'],
-  bulbasaur: ['/pets/bulbasaur.png', '/pets/bulbasaur.png', '/pets/ivysaur.png', '/pets/venusaur.png'],
-  charmander: ['/pets/charmander.png', '/pets/charmander.png', '/pets/charmeleon.png', '/pets/charizard.png'],
-  squirtle: ['/pets/squirtle.png', '/pets/squirtle.png', '/pets/wartortle.png', '/pets/blastoise.png'],
-};
-
-function getPetImage(species: string, stage: number): string {
-  const images = PET_IMAGES[species] || PET_IMAGES.pikachu;
-  return images[Math.min(stage, images.length - 1)];
-}
+import { getPetImage } from '../config/petSpecies';
 
 export default function PetHealingPage() {
   const navigate = useNavigate();

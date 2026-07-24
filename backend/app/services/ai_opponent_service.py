@@ -2,6 +2,7 @@
 """AI对手生成服务"""
 import random
 from typing import Dict, Any
+from app.core.pet_species import ALLOWED_PET_SPECIES
 
 # AI对手名称池
 AI_NAMES = [
@@ -18,7 +19,7 @@ AI_NAMES = [
 ]
 
 # AI宠物种类池（可以选择与玩家不同的）
-AI_PET_SPECIES = ['pikachu', 'eevee', 'bulbasaur', 'charmander', 'squirtle']
+AI_PET_SPECIES = sorted(ALLOWED_PET_SPECIES)
 
 
 def generate_ai_opponent(player_level: int, player_pet_species: str) -> Dict[str, Any]:

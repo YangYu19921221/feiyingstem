@@ -6,6 +6,7 @@
 
 from enum import Enum
 from typing import Dict, List
+from app.core.pet_species import PET_SPECIES
 
 class PokemonType(str, Enum):
     """宝可梦属性枚举"""
@@ -230,18 +231,7 @@ def get_type_advantages(attacker_type: str) -> Dict[str, List[str]]:
 
 # 项目中现有宠物的属性配置
 PET_TYPES: Dict[str, str] = {
-    "pikachu": "electric",      # 皮卡丘 - 电系
-    "raichu": "electric",        # 雷丘 - 电系
-    "eevee": "normal",           # 伊布 - 普通系
-    "bulbasaur": "grass",        # 妙蛙种子 - 草系
-    "ivysaur": "grass",          # 妙蛙草 - 草系
-    "venusaur": "grass",         # 妙蛙花 - 草系
-    "charmander": "fire",        # 小火龙 - 火系
-    "charmeleon": "fire",        # 火恐龙 - 火系
-    "charizard": "fire",         # 喷火龙 - 火系
-    "squirtle": "water",         # 杰尼龟 - 水系
-    "wartortle": "water",        # 卡咪龟 - 水系
-    "blastoise": "water",        # 水箭龟 - 水系
+    species: definition["element"] for species, definition in PET_SPECIES.items()
 }
 
 

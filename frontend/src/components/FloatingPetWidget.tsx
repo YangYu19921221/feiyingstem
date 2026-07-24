@@ -8,30 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { getMyPet, type Pet } from '../api/pet';
 import { onPetEvent, type PetEventType } from '../utils/petEventBus';
-
-const PET_IMAGES: Record<string, string> = {
-  pikachu: '/pets/pikachu.png', eevee: '/pets/eevee.png',
-  bulbasaur: '/pets/bulbasaur.png', charmander: '/pets/charmander.png',
-  squirtle: '/pets/squirtle.png', jigglypuff: '/pets/jigglypuff.png',
-  pikachu_adult: '/pets/pikachu_adult.png',
-  book_fox: '/pets/fox-2.jpeg',
-  paper_owl: '/pets/owl-2.jpeg',
-  word_turtle: '/pets/turtle-2.jpeg',
-};
-
-const PET_EMOJIS: Record<string, string[]> = {
-  pikachu: ['🥚', '⚡', '⚡', '⚡', '✨⚡✨'],
-  eevee: ['🥚', '🦊', '🦊', '🦊', '✨🦊✨'],
-  bulbasaur: ['🥚', '🌱', '🌿', '🌳', '✨🌳✨'],
-  charmander: ['🥚', '🔥', '🔥', '🔥', '✨🔥✨'],
-  squirtle: ['🥚', '💧', '💧', '💧', '✨💧✨'],
-  jigglypuff: ['🥚', '🎀', '🎀', '🎀', '✨🎀✨'],
-  cat: ['🥚', '🐱', '😺', '😸', '✨🐱✨'],
-  dog: ['🥚', '🐶', '🐕', '🦮', '✨🐶✨'],
-  book_fox:    ['🥚', '🦊', '🦊', '📚', '✨🦊📚✨'],
-  paper_owl:   ['🥚', '🦉', '🦉', '📜', '✨🦉🎓✨'],
-  word_turtle: ['🥚', '🐢', '🐢', '🐢', '✨🐢📖✨'],
-};
+import { getPetDefinition, getPetImage } from '../config/petSpecies';
 
 const MESSAGES: Record<PetEventType | 'idle' | 'hungry' | 'unhappy', string[]> = {
   correct:  ['答对了！🎉', '太棒了！⚡', '厉害！继续冲！', '我为你骄傲！✨', '对了对了！加油！'],
@@ -138,8 +115,8 @@ export default function FloatingPetWidget() {
   if (!location.pathname.startsWith('/student')) return null;
   if (!pet) return null;
 
-  const emoji = (PET_EMOJIS[pet.species] || PET_EMOJIS.pikachu)[Math.min(pet.evolution_stage, 4)];
-  const petImg = PET_IMAGES[pet.species];
+  const emoji = pet.evolution_stage === 0 ? '🥚' : getPetDefinition(pet.species).emoji;
+  const petImg = getPetImage(pet.species, pet.evolution_stage);
   const moodAvg = (pet.happiness + pet.hunger) / 2;
 
   // 宠物动画 by mood
@@ -162,7 +139,6 @@ export default function FloatingPetWidget() {
         // 保存位置（相对于初始定位的偏移）
         const el = document.querySelector('[data-pet-widget]') as HTMLElement;
         if (el) {
-          const rect = el.getBoundingClientRect();
           localStorage.setItem('pet_pos', JSON.stringify({
             x: info.offset.x + dragPos.x,
             y: info.offset.y + dragPos.y,

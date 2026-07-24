@@ -16,8 +16,11 @@ from app.schemas.pet import (
 )
 from app.api.v1.auth import get_current_student
 from app.core.pet_formulas import (
-    FEED_XP, EVOLUTION_THRESHOLDS, STAGE_NAMES,
+    FEED_XP, EVOLUTION_THRESHOLDS,
     calculate_max_hp, calc_xp_to_next_level, apply_xp_and_level,
+)
+from app.core.pet_species import (
+    ALLOWED_PET_SPECIES, get_pet_label, get_pet_stage_name,
 )
 
 router = APIRouter()
@@ -50,7 +53,7 @@ def build_pet_response(pet: UserPet) -> PetResponse:
         evolution_stage=pet.evolution_stage,
         xp_to_next_level=calc_xp_to_next_level(pet.level),
         xp_per_feed=FEED_XP,
-        evolution_stage_name=STAGE_NAMES.get(pet.evolution_stage, "未知"),
+        evolution_stage_name=get_pet_stage_name(pet.species, pet.evolution_stage),
         food_balance=pet.food_balance,
         current_hp=pet.current_hp,
         is_injured=pet.is_injured,
@@ -106,6 +109,8 @@ async def adopt_pet(
     existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="你已经有一只宠物了！")
+    if data.species not in ALLOWED_PET_SPECIES:
+        raise HTTPException(status_code=400, detail="暂不支持这种宠物")
 
     pet = UserPet(
         user_id=current_user.id,
@@ -118,7 +123,7 @@ async def adopt_pet(
     log = PetEventLog(
         pet_id=pet.id,
         event_type="adopt",
-        detail=f"领养了一只{data.species}，取名「{data.name}」",
+        detail=f"领养了{get_pet_label(data.species)}，取名「{data.name}」",
     )
     db.add(log)
     await db.commit()
@@ -173,7 +178,7 @@ async def feed_pet(
         db.add(PetEventLog(
             pet_id=pet.id,
             event_type="evolve",
-            detail=f"进化到{STAGE_NAMES.get(pet.evolution_stage, '未知')}阶段！(Lv{pet.level})",
+            detail=f"进化为{get_pet_stage_name(pet.species, pet.evolution_stage)}！(Lv{pet.level})",
         ))
 
     db.add(PetEventLog(
@@ -311,7 +316,7 @@ async def get_pet_leaderboard(
                 species=pet.species,
                 level=pet.level,
                 evolution_stage=pet.evolution_stage,
-                evolution_stage_name=STAGE_NAMES.get(pet.evolution_stage, "未知"),
+                evolution_stage_name=get_pet_stage_name(pet.species, pet.evolution_stage),
             ))
         if pet.user_id == current_user.id:
             my_rank = rank

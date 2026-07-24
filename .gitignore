@@ -51,6 +51,7 @@ temp/
 .cache/
 *.png
 !frontend/public/classify-memory-v2.png
+!frontend/public/pets/*.png
 backend/tts_cache/
 .playwright-mcp/
 # 销售 PPT(大二进制,不入库)

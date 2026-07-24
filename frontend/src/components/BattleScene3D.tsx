@@ -1,8 +1,47 @@
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, useTexture } from '@react-three/drei';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { useRef, useState, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getPetDefinition, type PetElement } from '../config/petSpecies';
+
+type BattleVisualEffect = {
+  id: string;
+  attacker: 1 | 2;
+  target: 1 | 2;
+  damage: number;
+  typeText?: string;
+  ultimate?: {
+    species: string;
+    name: string;
+  };
+};
+
+const ELEMENT_VFX: Record<PetElement, { color: string; mode: 'strike' | 'burst' | 'projectile' }> = {
+  normal: { color: '#f9a8d4', mode: 'burst' },
+  fire: { color: '#fb923c', mode: 'projectile' },
+  water: { color: '#22d3ee', mode: 'burst' },
+  grass: { color: '#84cc16', mode: 'burst' },
+  electric: { color: '#38bdf8', mode: 'strike' },
+  ice: { color: '#a5f3fc', mode: 'burst' },
+  fighting: { color: '#ef4444', mode: 'projectile' },
+  poison: { color: '#c084fc', mode: 'burst' },
+  ground: { color: '#d97706', mode: 'projectile' },
+  flying: { color: '#bae6fd', mode: 'burst' },
+  psychic: { color: '#e879f9', mode: 'burst' },
+  bug: { color: '#a3e635', mode: 'projectile' },
+  rock: { color: '#a16207', mode: 'projectile' },
+  ghost: { color: '#a78bfa', mode: 'burst' },
+  dragon: { color: '#818cf8', mode: 'projectile' },
+  dark: { color: '#64748b', mode: 'burst' },
+  steel: { color: '#cbd5e1', mode: 'strike' },
+  fairy: { color: '#f9a8d4', mode: 'burst' },
+};
+
+function getSkillVfx(species: string) {
+  const definition = getPetDefinition(species);
+  return { image: definition.ultimate.image, ...ELEMENT_VFX[definition.element] };
+}
 
 // ==============================
 // 3D 宠物 Sprite - PNG 立绘做成永远面向相机的广告牌(宝可梦经典风格)
@@ -12,7 +51,6 @@ function PetSprite({
   position,
   scale = 1,
   isHit = false,
-  label,
   hp,
   maxHp,
   facingLeft = false,
@@ -21,7 +59,6 @@ function PetSprite({
   position: [number, number, number];
   scale?: number;
   isHit?: boolean;
-  label?: string;
   hp: number;
   maxHp: number;
   facingLeft?: boolean;
@@ -85,22 +122,6 @@ function PetSprite({
         <circleGeometry args={[scale * 0.95, 32]} />
         <meshBasicMaterial color="#14532d" transparent opacity={0.35} />
       </mesh>
-
-      {/* 名字标签 */}
-      {label && (
-        <Text
-          position={[0, scale * 1.75 + 0.55, 0]}
-          fontSize={0.34}
-          color="#ffffff"
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.045}
-          outlineColor="#1e3a5f"
-          fontWeight={700}
-        >
-          {label}
-        </Text>
-      )}
 
       {/* 3D HP 条 */}
       <group position={[0, scale * 1.75 + 0.15, 0]}>
@@ -200,6 +221,173 @@ function BattleArena() {
   );
 }
 
+function AdaptiveCamera() {
+  const { camera, size } = useThree();
+
+  useEffect(() => {
+    const perspective = camera as THREE.PerspectiveCamera;
+    const compact = size.width < 640;
+    perspective.position.set(0, compact ? 2.25 : 2.6, compact ? 10.6 : 8.5);
+    perspective.fov = compact ? 50 : 46;
+    perspective.lookAt(0, 0.15, 0);
+    perspective.updateProjectionMatrix();
+  }, [camera, size.width]);
+
+  return null;
+}
+
+function BattleActors({
+  myPetImage,
+  opponentPetImage,
+  myHp,
+  myMaxHp,
+  opponentHp,
+  opponentMaxHp,
+  hitPlayers,
+}: {
+  myPetImage: string;
+  opponentPetImage: string;
+  myHp: number;
+  myMaxHp: number;
+  opponentHp: number;
+  opponentMaxHp: number;
+  hitPlayers: Set<1 | 2>;
+}) {
+  const compact = useThree((state) => state.size.width < 640);
+
+  return (
+    <Suspense fallback={null}>
+      <PetSprite
+        imageUrl={myPetImage}
+        position={compact ? [-2.05, -0.05, 1.7] : [-2.6, 0, 2.2]}
+        scale={compact ? 1.02 : 1.25}
+        isHit={hitPlayers.has(1)}
+        hp={myHp}
+        maxHp={myMaxHp}
+      />
+      <PetSprite
+        imageUrl={opponentPetImage}
+        position={compact ? [2.05, 0.05, -1.7] : [2.6, 0.1, -2.2]}
+        scale={compact ? 0.84 : 0.95}
+        isHit={hitPlayers.has(2)}
+        hp={opponentHp}
+        maxHp={opponentMaxHp}
+        facingLeft
+      />
+    </Suspense>
+  );
+}
+
+function SkillEffectOverlay({ effect }: { effect: BattleVisualEffect }) {
+  if (!effect.ultimate) return null;
+
+  const skill = getSkillVfx(effect.ultimate.species);
+  const targetLeft = effect.target === 1;
+  const travelX = effect.attacker === 1 ? -260 : 260;
+  const isProjectile = skill.mode === 'projectile';
+  const initial = skill.mode === 'strike'
+    ? { opacity: 1, scale: 0.45, y: -150 }
+    : { opacity: 1, scale: 0.22, x: isProjectile ? travelX : travelX * 0.28, rotate: targetLeft ? 18 : -18 };
+  const animate = skill.mode === 'strike'
+    ? {
+        opacity: [1, 1, 1, 0],
+        scale: [0.45, 0.95, 1.15, 1.3],
+        y: [-150, -10, 0, 16],
+      }
+    : {
+        opacity: [1, 1, 1, 0],
+        scale: [0.22, 0.72, 1.12, 1.34],
+        x: [isProjectile ? travelX : travelX * 0.28, travelX * 0.2, 0, 0],
+        rotate: [targetLeft ? 18 : -18, targetLeft ? -8 : 8, 0, targetLeft ? -6 : 6],
+      };
+
+  return (
+    <>
+      <motion.div
+        className="absolute inset-0 z-[5] bg-white pointer-events-none mix-blend-screen"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.34, 0.08, 0] }}
+        transition={{ duration: 1.05, times: [0, 0.38, 0.7, 1] }}
+      />
+
+      <div
+        className="absolute z-[7] pointer-events-none"
+        style={{ left: targetLeft ? '25%' : '75%', top: '52%', transform: 'translate(-50%, -50%)' }}
+      >
+        <motion.div
+          initial={initial}
+          animate={animate}
+          transition={{ duration: 2.25, times: [0, 0.18, 0.86, 1], ease: [0.16, 1, 0.3, 1] }}
+        >
+          <img
+            src={skill.image}
+            alt=""
+            aria-hidden="true"
+            className="h-auto w-[min(72vw,470px)] max-w-none select-none sm:w-[min(54vw,560px)]"
+            style={{
+              filter: `drop-shadow(0 0 24px ${skill.color})`,
+              transform: isProjectile && targetLeft ? 'scaleX(-1)' : undefined,
+            }}
+          />
+        </motion.div>
+
+        <motion.div
+          className="absolute left-1/2 top-1/2 aspect-square w-24 rounded-full border-4 sm:w-36"
+          style={{ borderColor: skill.color, boxShadow: `0 0 30px ${skill.color}` }}
+          initial={{ opacity: 0.9, scale: 0.2, x: '-50%', y: '-50%' }}
+          animate={{ opacity: 0, scale: 2.35, x: '-50%', y: '-50%' }}
+          transition={{ delay: 0.48, duration: 0.7, ease: 'easeOut' }}
+        />
+      </div>
+
+      <motion.div
+        className={`absolute bottom-2 z-[9] max-w-[45%] rounded-md border border-white/25 bg-slate-950/80 px-2.5 py-1 text-center text-xs font-black text-white shadow-lg backdrop-blur-sm sm:bottom-4 sm:px-4 sm:py-1.5 sm:text-base ${
+          targetLeft ? 'left-2 sm:left-5' : 'right-2 sm:right-5'
+        }`}
+        initial={{ opacity: 0, y: -12, scale: 0.8 }}
+        animate={{ opacity: [0, 1, 1, 0], y: [-12, 0, 0, -5], scale: [0.8, 1, 1, 0.95] }}
+        transition={{ duration: 2.2, times: [0, 0.12, 0.84, 1] }}
+      >
+        {effect.ultimate.name}
+      </motion.div>
+    </>
+  );
+}
+
+function PetHud({
+  name,
+  hp,
+  maxHp,
+  side,
+}: {
+  name: string;
+  hp: number;
+  maxHp: number;
+  side: 'left' | 'right';
+}) {
+  const percent = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+  const color = percent > 50 ? '#4ade80' : percent > 20 ? '#fbbf24' : '#ef4444';
+
+  return (
+    <div className={`absolute top-2 z-[4] w-[42%] max-w-64 rounded-md border border-white/30 bg-slate-950/70 px-2 py-1.5 text-white shadow-lg backdrop-blur-sm sm:top-4 sm:px-3 sm:py-2 ${
+      side === 'left' ? 'left-2 sm:left-4' : 'right-2 sm:right-4'
+    }`}>
+      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-bold sm:text-sm">
+        <span className="min-w-0 truncate">{name}</span>
+        <span className="shrink-0 tabular-nums">{hp}/{maxHp}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/25 sm:h-2">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ backgroundColor: color }}
+          animate={{ width: `${percent}%` }}
+          transition={{ duration: 0.55, ease: 'easeOut' }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ==============================
 // 主场景
 // ==============================
@@ -212,9 +400,7 @@ export default function BattleScene3D({
   myMaxHp,
   opponentHp,
   opponentMaxHp,
-  damagePlayer,
-  damageValue,
-  typeText,
+  effects,
 }: {
   myPetImage: string;
   opponentPetImage: string;
@@ -224,12 +410,12 @@ export default function BattleScene3D({
   myMaxHp: number;
   opponentHp: number;
   opponentMaxHp: number;
-  damagePlayer: 1 | 2 | null;
-  damageValue?: number | null;
-  typeText?: string;
+  effects: BattleVisualEffect[];
 }) {
+  const hitPlayers = new Set(effects.map((effect) => effect.target));
+
   return (
-    <div className="relative w-full h-[460px] rounded-3xl overflow-hidden shadow-2xl border-4 border-white/60">
+    <div className="relative h-[clamp(260px,72vw,460px)] w-full overflow-hidden rounded-xl border-2 border-white/60 shadow-lg sm:h-[360px] sm:rounded-2xl sm:border-4 lg:h-[460px] lg:rounded-3xl lg:shadow-2xl">
       <Canvas
         camera={{ position: [0, 2.6, 8.5], fov: 46 }}
         shadows
@@ -244,33 +430,20 @@ export default function BattleScene3D({
         <directionalLight position={[6, 10, 6]} intensity={1.4} castShadow />
         <hemisphereLight args={['#bfe3ff', '#3d8b3d', 0.5]} />
 
+        <AdaptiveCamera />
+
         {/* 战场 */}
         <BattleArena />
 
-        {/* 宠物(纹理挂 Suspense,加载期间场景其余部分先渲染) */}
-        <Suspense fallback={null}>
-          {/* 我方 - 左前近景 */}
-          <PetSprite
-            imageUrl={myPetImage}
-            position={[-2.6, 0, 2.2]}
-            scale={1.25}
-            isHit={damagePlayer === 1}
-            label={myPetName}
-            hp={myHp}
-            maxHp={myMaxHp}
-          />
-          {/* 对方 - 右后远景 */}
-          <PetSprite
-            imageUrl={opponentPetImage}
-            position={[2.6, 0.1, -2.2]}
-            scale={0.95}
-            isHit={damagePlayer === 2}
-            label={opponentPetName}
-            hp={opponentHp}
-            maxHp={opponentMaxHp}
-            facingLeft
-          />
-        </Suspense>
+        <BattleActors
+          myPetImage={myPetImage}
+          opponentPetImage={opponentPetImage}
+          myHp={myHp}
+          myMaxHp={myMaxHp}
+          opponentHp={opponentHp}
+          opponentMaxHp={opponentMaxHp}
+          hitPlayers={hitPlayers}
+        />
 
         {/* 视角:限制在小范围内可拖动,保持宝可梦式镜头 */}
         <OrbitControls
@@ -284,38 +457,46 @@ export default function BattleScene3D({
         />
       </Canvas>
 
-      {/* 伤害数字(2D overlay,信息更清晰) */}
+      <PetHud name={myPetName} hp={myHp} maxHp={myMaxHp} side="left" />
+      <PetHud name={opponentPetName} hp={opponentHp} maxHp={opponentMaxHp} side="right" />
+
       <AnimatePresence>
-        {damagePlayer && damageValue ? (
+        {effects.map((effect) => (
+          <SkillEffectOverlay key={`skill-${effect.id}`} effect={effect} />
+        ))}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {effects.map((effect) => (
           <motion.div
-            key={`dmg-${damagePlayer}-${damageValue}`}
+            key={`damage-${effect.id}`}
             className={`absolute pointer-events-none z-10 ${
-              damagePlayer === 1 ? 'left-[24%] bottom-[38%]' : 'right-[26%] top-[22%]'
+              effect.target === 1 ? 'left-[22%] bottom-[34%]' : 'right-[22%] top-[24%]'
             }`}
             initial={{ opacity: 1, scale: 0.4, y: 0 }}
-            animate={{ opacity: 0, scale: 1.9, y: -70 }}
+            animate={{ opacity: [0, 1, 1, 0], scale: [0.4, 1.1, 1.45, 1.8], y: [0, -8, -36, -66] }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ delay: effect.ultimate ? 0.46 : 0, duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
           >
             <div
-              className="text-6xl font-black text-red-600"
+              className="text-3xl font-black text-red-600 sm:text-6xl"
               style={{
                 textShadow: '0 3px 10px rgba(0,0,0,0.55), 0 0 26px rgba(255,60,60,0.95)',
-                WebkitTextStroke: '3px white',
+                WebkitTextStroke: '2px white',
               }}
             >
-              -{damageValue}
+              -{effect.damage}
             </div>
-            {typeText && (
+            {effect.typeText && (
               <div
-                className="text-lg font-bold text-yellow-300 text-center mt-0.5"
+                className="mt-0.5 whitespace-nowrap text-center text-xs font-bold text-yellow-300 sm:text-lg"
                 style={{ textShadow: '0 2px 6px rgba(0,0,0,0.8)' }}
               >
-                {typeText}
+                {effect.typeText}
               </div>
             )}
           </motion.div>
-        ) : null}
+        ))}
       </AnimatePresence>
     </div>
   );

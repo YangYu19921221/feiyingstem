@@ -1,11 +1,10 @@
+import { PET_SPECIES_BY_ID, type PetElement } from '../config/petSpecies';
+
 /**
  * 宝可梦属性克制系统 - 前端配置
  */
 
-export type PokemonType =
-  | 'normal' | 'fire' | 'water' | 'grass' | 'electric' | 'ice'
-  | 'fighting' | 'poison' | 'ground' | 'flying' | 'psychic' | 'bug'
-  | 'rock' | 'ghost' | 'dragon' | 'dark' | 'steel' | 'fairy';
+export type PokemonType = PetElement;
 
 // 属性中文名称
 export const TYPE_NAMES: Record<PokemonType, string> = {
@@ -220,20 +219,9 @@ export function getEffectivenessEmoji(multiplier: number): string {
 /**
  * 项目中宠物的属性配置
  */
-export const PET_TYPES: Record<string, PokemonType> = {
-  pikachu: 'electric',      // 皮卡丘 - 电系
-  raichu: 'electric',       // 雷丘 - 电系
-  eevee: 'normal',          // 伊布 - 普通系
-  bulbasaur: 'grass',       // 妙蛙种子 - 草系
-  ivysaur: 'grass',         // 妙蛙草 - 草系
-  venusaur: 'grass',        // 妙蛙花 - 草系
-  charmander: 'fire',       // 小火龙 - 火系
-  charmeleon: 'fire',       // 火恐龙 - 火系
-  charizard: 'fire',        // 喷火龙 - 火系
-  squirtle: 'water',        // 杰尼龟 - 水系
-  wartortle: 'water',       // 卡咪龟 - 水系
-  blastoise: 'water',       // 水箭龟 - 水系
-};
+export const PET_TYPES: Record<string, PokemonType> = Object.fromEntries(
+  Object.values(PET_SPECIES_BY_ID).map((definition) => [definition.id, definition.element]),
+);
 
 /**
  * 获取宠物的属性

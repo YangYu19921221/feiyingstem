@@ -3,34 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getMyPet, type Pet } from '../api/pet';
-
-const PET_IMAGES: Record<string, string> = {
-  pikachu: '/pets/pikachu.png',
-  eevee: '/pets/eevee.png',
-  bulbasaur: '/pets/bulbasaur.png',
-  charmander: '/pets/charmander.png',
-  squirtle: '/pets/squirtle.png',
-  jigglypuff: '/pets/jigglypuff.png',
-  book_fox: '/pets/fox-2.jpeg',
-  paper_owl: '/pets/owl-2.jpeg',
-  word_turtle: '/pets/turtle-2.jpeg',
-};
-
-const PET_EMOJIS: Record<string, string[]> = {
-  pikachu:    ['🥚', '⚡', '⚡', '⚡', '✨⚡✨'],
-  eevee:      ['🥚', '🦊', '🦊', '🦊', '✨🦊✨'],
-  bulbasaur:  ['🥚', '🌱', '🌿', '🌳', '✨🌳✨'],
-  charmander: ['🥚', '🔥', '🔥', '🔥', '✨🔥✨'],
-  squirtle:   ['🥚', '💧', '💧', '💧', '✨💧✨'],
-  jigglypuff: ['🥚', '🎀', '🎀', '🎀', '✨🎀✨'],
-  cat:    ['🥚', '🐱', '😺', '😸', '✨🐱✨'],
-  dog:    ['🥚', '🐶', '🐕', '🦮', '✨🐶✨'],
-  rabbit: ['🥚', '🐰', '🐇', '🐇', '✨🐰✨'],
-  dragon: ['🥚', '🐲', '🐉', '🔥', '✨🔥✨'],
-  book_fox:    ['🥚', '🦊', '🦊', '📚', '✨🦊📚✨'],
-  paper_owl:   ['🥚', '🦉', '🦉', '📜', '✨🦉🎓✨'],
-  word_turtle: ['🥚', '🐢', '🐢', '🐢', '✨🐢📖✨'],
-};
+import { getPetDefinition, getPetImage, getPetStage } from '../config/petSpecies';
 
 const PET_SAYINGS: Record<string, string[]> = {
   pikachu:    ['皮卡~ 快来学习吧！', '皮卡皮卡...想你了', '皮卡~ 今天也要加油！', '电击！学习充电中！'],
@@ -49,8 +22,7 @@ const PET_SAYINGS: Record<string, string[]> = {
 };
 
 function getPetEmoji(species: string, stage: number): string {
-  const emojis = PET_EMOJIS[species] || PET_EMOJIS.pikachu;
-  return emojis[Math.min(stage, emojis.length - 1)];
+  return stage === 0 ? '🥚' : getPetDefinition(species).emoji;
 }
 
 function getMoodColor(happiness: number, hunger: number): string {
@@ -91,7 +63,7 @@ export default function PetWidget() {
   const navigate = useNavigate();
   const [showBubble, setShowBubble] = useState(false);
   const [saying, setSaying] = useState('');
-  const [tapCount, setTapCount] = useState(0);
+  const [, setTapCount] = useState(0);
   const [showHeart, setShowHeart] = useState(false);
 
   const { data: pet, isLoading } = useQuery<Pet | null>({
@@ -149,7 +121,7 @@ export default function PetWidget() {
   }
 
   const emoji = getPetEmoji(pet!.species, pet!.evolution_stage);
-  const petImage = PET_IMAGES[pet!.species] || null;
+  const petImage = getPetImage(pet!.species, pet!.evolution_stage);
   const moodColor = getMoodColor(pet!.happiness, pet!.hunger);
   const moodText = getMoodText(pet!.happiness, pet!.hunger);
   const xpPct = Math.round((pet!.experience / pet!.xp_to_next_level) * 100);
@@ -201,7 +173,7 @@ export default function PetWidget() {
             <div className="flex items-center gap-2 mb-1">
               <span className="font-bold text-gray-800 truncate text-lg">{pet!.name}</span>
               <span className="px-2 py-0.5 bg-purple-100 text-purple-600 text-xs font-medium rounded-full">
-                {pet!.evolution_stage_name}
+                {getPetStage(pet!.species, pet!.evolution_stage).name}
               </span>
             </div>
 

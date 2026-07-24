@@ -12,8 +12,9 @@ from app.models.user import User
 from app.models.word import Word, WordDefinition
 # 统一数值真源；calculate_initial_hp 是 calculate_max_hp 的别名，保留名字兼容既有 import
 from app.core.pet_formulas import (
-    calculate_initial_hp, calculate_max_hp, STAGE_NAMES, apply_xp_and_level,
+    calculate_initial_hp, calculate_max_hp, apply_xp_and_level,
 )
+from app.core.pet_species import get_pet_element, get_pet_stage_name
 
 
 def calculate_damage(
@@ -70,15 +71,21 @@ def calculate_damage(
 
 def calculate_ultimate_damage(pet_species: str, pet_stage: int) -> int:
     """计算必杀技伤害"""
-    base_ultimate = {
-        "pikachu": 50,
-        "bulbasaur": 40,
-        "charmander": 45,
-        "squirtle": 35,
-        "eevee": 42,
-        # 其他宠物默认
+    base_ultimate_by_element = {
+        "electric": 50,
+        "fire": 45,
+        "water": 38,
+        "grass": 40,
+        "dragon": 48,
+        "fighting": 46,
+        "rock": 45,
+        "psychic": 44,
+        "ghost": 44,
+        "bug": 39,
+        "fairy": 42,
+        "normal": 42,
     }
-    damage = base_ultimate.get(pet_species, 40)
+    damage = base_ultimate_by_element.get(get_pet_element(pet_species), 40)
     stage_bonus = pet_stage * 10
     return damage + stage_bonus
 
@@ -550,7 +557,7 @@ async def finish_battle(
             db.add(PetEventLog(
                 pet_id=pet.id,
                 event_type="evolve",
-                detail=f"进化到{STAGE_NAMES.get(pet.evolution_stage, '未知')}阶段！(Lv{pet.level})",
+                detail=f"进化为{get_pet_stage_name(pet.species, pet.evolution_stage)}！(Lv{pet.level})",
             ))
 
         # 更新当前HP
