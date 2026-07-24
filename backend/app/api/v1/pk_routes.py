@@ -40,10 +40,12 @@ def _snapshot(room) -> RoomSnapshot:
         players=[
             PlayerSnapshot(
                 user_id=p.user_id, nickname=p.nickname, online=p.online,
-                current_word_idx=p.current_word_idx, correct=p.correct,
+                correct=p.correct,
                 wrong=p.wrong, total_time_ms=p.total_time_ms,
                 points=p.points, streak=p.streak, finished=p.finished,
                 team=p.team, n_words=p.n_words,
+                stage=p.stage, group_idx=p.gi, group_total=p.group_total,
+                progress=p.compute_progress(),
             )
             for p in room.players.values()
         ],

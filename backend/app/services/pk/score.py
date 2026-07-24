@@ -74,11 +74,26 @@ def compute_question_points(
     return base_points + round(base_points * SPEED_BONUS_RATIO * remaining_ratio)
 
 
-def rank_players(players: list[dict]) -> list[dict]:
-    """按累计 points 倒序排名,同分按 total_time_ms 升序。
+def _mastery_sort_key(x: dict):
+    """掌握赛排序键:①已完成者优先,按完成时刻升序(先掌握先赢);②未完成按进度降序;
+    ③同进度按用时升序;④再按正确数降序兜底。"""
+    finished = bool(x.get("finished"))
+    fa = x.get("finished_at_ms")
+    progress = x.get("progress", 0.0)
+    return (
+        0 if finished else 1,                       # 完成者排前
+        fa if fa is not None else float("inf"),     # 完成者按完成时刻升序
+        -progress,                                  # 未完成按进度降序
+        x.get("total_time_ms", 0),                  # 同进度用时少者先
+        -x.get("correct", 0),
+    )
 
-    输入 dict 至少含 points, correct, wrong, total_time_ms。
-    返回新 list,每个 dict 添加 final_score(=points), accuracy, rank 字段。
+
+def rank_players(players: list[dict]) -> list[dict]:
+    """掌握赛排名:率先完成(全部组过关)者赢;未完成按掌握进度。
+
+    输入 dict 含 finished, finished_at_ms, progress, correct, wrong, total_time_ms, points。
+    返回新 list,每个 dict 添加 final_score(=points 仅展示), accuracy, rank 字段。
     """
     enriched = []
     for p in players:
@@ -86,20 +101,16 @@ def rank_players(players: list[dict]) -> list[dict]:
         wrong = p.get("wrong", 0)
         total = correct + wrong
         accuracy = round(correct / total * 100, 2) if total > 0 else 0.0
-        enriched.append({**p, "final_score": p.get("points", 0), "accuracy": accuracy, "_answered": total})
+        enriched.append({**p, "final_score": p.get("points", 0), "accuracy": accuracy})
 
-    # 排名:得分高优先;同分再看用时少。但"一题没答"的人(缺席/全程掉线)一律垫底——
-    # 否则双方都 0 分时,没答题的人 total_time_ms=0 反而排到认真答完(全错)的人前面,
-    # 把胜利判给根本没参赛的一方。用时只在"确实答过题"的人之间比。
-    enriched.sort(key=lambda x: (-x["final_score"], x["_answered"] == 0, x["total_time_ms"]))
+    enriched.sort(key=_mastery_sort_key)
     for idx, p in enumerate(enriched, start=1):
         p["rank"] = idx
-        p.pop("_answered", None)
     return enriched
 
 
 def live_ranking(room: Any) -> list[dict]:
-    """对局中实时榜单:按 points 倒序、同分总用时升序,含进度/连击/在线状态。"""
+    """对局中实时榜单:按掌握进度/完成时刻排名,含 stage/进度/连击/在线状态。"""
     items = [
         {
             "user_id": ps.user_id,
@@ -109,13 +120,18 @@ def live_ranking(room: Any) -> list[dict]:
             "wrong": ps.wrong,
             "streak": ps.streak,
             "total_time_ms": ps.total_time_ms,
-            "current_word_idx": ps.current_word_idx,
+            "stage": getattr(ps, "stage", "classify"),
+            "group_idx": getattr(ps, "gi", 0),
+            "group_total": ps.group_total,
+            "progress": ps.compute_progress(),
+            "finished": ps.finished,
+            "finished_at_ms": int(ps.finished_at.timestamp() * 1000) if ps.finished_at else None,
             "online": ps.online,
             "team": getattr(ps, "team", None),
         }
         for ps in room.players.values()
     ]
-    items.sort(key=lambda x: (-x["points"], x["total_time_ms"]))
+    items.sort(key=_mastery_sort_key)
     for idx, it in enumerate(items, start=1):
         it["rank"] = idx
     return items
@@ -128,31 +144,35 @@ def team_ranking(room: Any) -> list[dict]:
     空队(没人分到)也列出,让教师在等待室看到全部队号。
     """
     teams: dict[int, dict] = {}
+    def _blank(t):
+        return {"team": t, "points": 0, "correct": 0, "wrong": 0, "total_time_ms": 0,
+                "member_count": 0, "online_count": 0, "done_count": 0, "_prog_sum": 0.0}
     for t in range(1, getattr(room, "team_count", 2) + 1):
-        teams[t] = {
-            "team": t, "points": 0, "correct": 0, "wrong": 0,
-            "total_time_ms": 0, "member_count": 0, "online_count": 0,
-        }
+        teams[t] = _blank(t)
     for ps in room.players.values():
         t = ps.team
-        if t not in teams:  # 容错:队号越界的成员并入其原队号(理论上不会发生)
-            teams[t] = {"team": t, "points": 0, "correct": 0, "wrong": 0,
-                        "total_time_ms": 0, "member_count": 0, "online_count": 0}
+        if t not in teams:  # 容错:队号越界的成员(理论上不会发生)
+            teams[t] = _blank(t)
         agg = teams[t]
         agg["points"] += ps.points
         agg["correct"] += ps.correct
         agg["wrong"] += ps.wrong
         agg["total_time_ms"] += ps.total_time_ms
         agg["member_count"] += 1
+        agg["_prog_sum"] += ps.compute_progress()
+        if ps.finished:
+            agg["done_count"] += 1
         if ps.online:
             agg["online_count"] += 1
-    # 排名按「人均分」而非总分:两队人数不等(如 3v2)时,人多的队总分天然占优,
-    # 用人均分才公平。榜单仍展示 points 总分,avg_points 供前端/排序用。
+    # 排名按「人均掌握进度」:率先整队掌握越多越靠前;人数不等也公平。
+    # 保留 avg_points(展示)与 points 总分。
     for agg in teams.values():
         n = agg["member_count"]
         agg["avg_points"] = round(agg["points"] / n, 1) if n else 0.0
+        agg["avg_progress"] = round(agg["_prog_sum"] / n, 4) if n else 0.0
+        agg.pop("_prog_sum", None)
     items = list(teams.values())
-    items.sort(key=lambda x: (-x["avg_points"], x["total_time_ms"]))
+    items.sort(key=lambda x: (-x["done_count"], -x["avg_progress"], x["total_time_ms"]))
     for idx, it in enumerate(items, start=1):
         it["rank"] = idx
     return items

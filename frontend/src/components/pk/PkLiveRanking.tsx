@@ -6,7 +6,6 @@ import type { PkLiveRankItem } from '../../api/pk';
 interface Props {
   items: PkLiveRankItem[];
   meId: number;
-  totalQuestions: number;
   /** 最近一次结算各玩家的得分增量(user_id → points_gained) */
   gains?: Record<string, number>;
   /** 结算序号,用于让每次 +分 浮动动画都有新 key */
@@ -14,6 +13,9 @@ interface Props {
 }
 
 const RANK_BADGE: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
+const STAGE_LABEL: Record<string, string> = {
+  classify: '🗂️ 分类', dictation: '✍️ 听写', exam: '🏁 过关', done: '✅ 完成',
+};
 
 /** 每个名次的赛道配色:冠军金、亚军银、季军铜,其余橙。 */
 const LANE_TONE: Record<number, string> = {
@@ -22,8 +24,8 @@ const LANE_TONE: Record<number, string> = {
   3: 'from-orange-400 via-amber-500 to-orange-600',
 };
 
-export default function PkLiveRanking({ items, meId, totalQuestions, gains, settleSeq = 0 }: Props) {
-  const leaderPoints = items.length ? Math.max(...items.map((i) => i.points)) : 0;
+export default function PkLiveRanking({ items, meId, gains, settleSeq = 0 }: Props) {
+  const leaderProgress = items.length ? Math.max(...items.map((i) => i.progress ?? 0)) : 0;
 
   return (
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-2xl ring-1 ring-white/10">
@@ -51,12 +53,12 @@ export default function PkLiveRanking({ items, meId, totalQuestions, gains, sett
       <div className="relative space-y-1.5 px-2.5 pb-3">
         {items.map((it) => {
           const isMe = it.user_id === meId;
-          const isLeader = it.rank === 1 && it.points > 0;
+          const prog = it.progress ?? 0;
+          const isLeader = it.rank === 1 && (it.finished || prog > 0);
           const gain = gains?.[String(it.user_id)] ?? 0;
-          const answered = it.correct + it.wrong;
-          const pct = totalQuestions > 0 ? Math.min(100, (answered / totalQuestions) * 100) : 0;
-          // 与领跑者的分差(展示"差多少分反超"的紧迫感)
-          const behind = leaderPoints - it.points;
+          const pct = Math.min(100, prog * 100);
+          // 与领跑者的进度差(展示"再追一点就反超"的紧迫感,百分点)
+          const behindPct = Math.max(0, Math.round((leaderProgress - prog) * 100));
           const lane = LANE_TONE[it.rank] ?? 'from-primary via-orange-400 to-primary';
 
           return (
@@ -116,6 +118,14 @@ export default function PkLiveRanking({ items, meId, totalQuestions, gains, sett
                     {!it.online && <span className="shrink-0 text-[10px] text-red-400">掉线</span>}
                   </div>
 
+                  {/* 阶段 / 第几组(掌握赛进度语义) */}
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400">
+                    <span>{STAGE_LABEL[it.stage ?? 'classify'] ?? '🗂️ 分类'}</span>
+                    {it.stage !== 'done' && (it.group_total ?? 0) > 1 && (
+                      <span>· 第 {(it.group_idx ?? 0) + 1}/{it.group_total} 组</span>
+                    )}
+                  </div>
+
                   {/* 赛道进度条 */}
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/40">
                     <motion.div
@@ -126,20 +136,24 @@ export default function PkLiveRanking({ items, meId, totalQuestions, gains, sett
                   </div>
                 </div>
 
-                {/* 得分 + 抢分浮动 */}
+                {/* 掌握进度 % + 完成标 + 抢分浮动 */}
                 <div className="relative w-16 shrink-0 text-right">
-                  <motion.div
-                    key={it.points}
-                    initial={{ scale: 1.35, color: '#5FD35F' }}
-                    animate={{ scale: 1, color: isLeader ? '#FCD34D' : '#FFFFFF' }}
-                    transition={{ duration: 0.35 }}
-                    className="font-numeric text-lg font-extrabold leading-none"
-                  >
-                    {it.points}
-                  </motion.div>
-                  {/* 落后领跑者多少分(非领跑且在线时显示) */}
-                  {!isLeader && it.online && behind > 0 && (
-                    <span className="font-numeric text-[10px] text-slate-500">-{behind}</span>
+                  {it.finished ? (
+                    <span className="font-numeric text-base font-extrabold leading-none text-amber-300">👑完成</span>
+                  ) : (
+                    <motion.div
+                      key={Math.round(pct)}
+                      initial={{ scale: 1.25 }}
+                      animate={{ scale: 1, color: isLeader ? '#FCD34D' : '#FFFFFF' }}
+                      transition={{ duration: 0.3 }}
+                      className="font-numeric text-lg font-extrabold leading-none"
+                    >
+                      {Math.round(pct)}%
+                    </motion.div>
+                  )}
+                  {/* 落后领跑者多少进度(非领跑、在线、未完成时显示) */}
+                  {!isLeader && it.online && !it.finished && behindPct > 0 && (
+                    <span className="font-numeric text-[10px] text-slate-500">-{behindPct}%</span>
                   )}
                   <AnimatePresence>
                     {gain > 0 && (

@@ -49,11 +49,16 @@ def test_dictation_adapter_lenient_punct_and_unicode():
     assert ad.judge(word2, {"text": "don’t"}) is True
 
 
-def test_exam_adapter_correct_option():
+def test_exam_adapter_choice_by_type():
+    """过关选择题:按注入的 _exam_type 比对选中文本与正确答案。"""
     ad = get_adapter("exam")
     word = FakeWord(1, "apple", "苹果")
-    assert ad.judge(word, {"selected": 2, "correct": 2}) is True
-    assert ad.judge(word, {"selected": 1, "correct": 2}) is False
+    # en_to_cn:选中的中文释义要等于 translation
+    assert ad.judge(word, {"_exam_type": "en_to_cn", "selected": "苹果"}) is True
+    assert ad.judge(word, {"_exam_type": "en_to_cn", "selected": "香蕉"}) is False
+    # cn_to_en:选中的英文词要等于 word
+    assert ad.judge(word, {"_exam_type": "cn_to_en", "selected": "Apple"}) is True
+    assert ad.judge(word, {"_exam_type": "cn_to_en", "selected": "banana"}) is False
 
 
 def test_unknown_phase_raises():
@@ -62,12 +67,13 @@ def test_unknown_phase_raises():
 
 
 def test_exam_adapter_text_mode_judges_spelling():
-    """过关阶段当前是「重新拼写」:payload 带 text 时按文本判(修复恒判对 bug)。"""
+    """过关 listening/spelling(或缺省):payload 带 text 按文本判(容错同听写)。"""
     ad = get_adapter("exam")
     word = FakeWord(1, "apple", "苹果")
-    assert ad.judge(word, {"text": "apple"}) is True
-    assert ad.judge(word, {"text": " Apple. "}) is True   # 容错同听写
-    assert ad.judge(word, {"text": "aple"}) is False
+    assert ad.judge(word, {"_exam_type": "spelling", "text": "apple"}) is True
+    assert ad.judge(word, {"_exam_type": "listening", "text": " Apple. "}) is True
+    assert ad.judge(word, {"text": "apple"}) is True          # 缺省按拼写
+    assert ad.judge(word, {"_exam_type": "spelling", "text": "aple"}) is False
     assert ad.judge(word, {"text": ""}) is False
 
 

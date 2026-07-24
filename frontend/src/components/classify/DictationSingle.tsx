@@ -9,6 +9,8 @@ interface DictationSingleProps {
   timeoutMs?: number;
   /** 左上角题型标签,如 听写 / 过关 */
   label?: string;
+  /** 抄写态:还需连续抄对几遍(>0 时显示"再抄N遍"并揭示正确词) */
+  copiesLeft?: number;
 }
 
 export default function DictationSingle({
@@ -17,6 +19,7 @@ export default function DictationSingle({
   disabled = false,
   timeoutMs = 60_000,
   label = '听写',
+  copiesLeft = 0,
 }: DictationSingleProps) {
   const [text, setText] = useState('');
   const [remaining, setRemaining] = useState(timeoutMs);
@@ -30,7 +33,7 @@ export default function DictationSingle({
       setRemaining(Math.max(0, timeoutMs - (Date.now() - startRef.current)));
     }, 200);
     return () => window.clearInterval(timer);
-  }, [word.id, timeoutMs]);
+  }, [word.id, timeoutMs, copiesLeft]);
 
   const submit = () => {
     if (disabled || !text.trim()) return;
@@ -39,8 +42,16 @@ export default function DictationSingle({
 
   return (
     <div className="flex flex-col p-6 bg-white rounded-2xl shadow-md">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-2xl font-semibold mb-1">{word.translation}</p>
+      <p className="text-sm text-gray-500">{copiesLeft > 0 ? '✍️ 抄写巩固' : label}</p>
+      {copiesLeft > 0 ? (
+        <>
+          {/* 抄写态:揭示正确词,要求连续抄对 N 遍 */}
+          <p className="text-3xl font-bold tracking-widest text-primary mb-1">{word.word}</p>
+          <p className="text-sm text-orange-500 mb-3">拼错啦，照着再抄对 <b>{copiesLeft}</b> 遍就过</p>
+        </>
+      ) : (
+        <p className="text-2xl font-semibold mb-1">{word.translation}</p>
+      )}
       <p className="text-xs text-gray-400 mb-4">剩余 {Math.ceil(remaining / 1000)} 秒</p>
       <input
         {...imeSafeInputProps()}

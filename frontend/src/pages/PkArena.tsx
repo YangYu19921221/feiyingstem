@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
-import { pkApi, type PkRoomSnapshot, type PkPhase, type PkLiveRankItem, type PkTeamRankItem } from '../api/pk';
+import { pkApi, type PkRoomSnapshot, type PkLiveRankItem, type PkTeamRankItem } from '../api/pk';
 import ClassificationPhase from '../components/classify/ClassificationPhase';
-import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationSingle from '../components/classify/DictationSingle';
 import PkExamCard, { type PkExamType } from '../components/pk/PkExamCard';
 import PkPhaseStepper from '../components/pk/PkPhaseStepper';
@@ -12,12 +11,15 @@ import PkLiveRanking from '../components/pk/PkLiveRanking';
 import PkResultBoard from '../components/pk/PkResultBoard';
 
 interface CurrentQuestion {
-  word_idx: number;
-  phase: PkPhase;
+  q_seq: number;           // 服务端下发的题号(提交时回显,幂等校验)
+  stage: string;           // classify / dictation / exam
   word: { id: number; word: string; translation: string };
-  points?: number; // 本题分值(按该词学段)
-  exam_type?: PkExamType;  // 过关阶段题型(服务端权威),仅 phase==='exam' 时有
+  points?: number;         // 本题分值(按该词学段)
+  group_idx?: number;
+  group_total?: number;
+  exam_type?: PkExamType;  // 过关阶段题型(服务端权威),仅 stage==='exam' 时有
   options?: string[];      // 过关选择题选项(en_to_cn/cn_to_en)
+  copies_left?: number;    // 听写抄写态:还需抄对几遍
 }
 
 interface RankItem {
@@ -67,11 +69,17 @@ function rankingFromSnapshot(snap: PkRoomSnapshot): PkLiveRankItem[] {
     wrong: p.wrong,
     streak: p.streak ?? 0,
     total_time_ms: p.total_time_ms,
-    current_word_idx: p.current_word_idx,
     online: p.online,
+    stage: p.stage ?? 'classify',
+    group_idx: p.group_idx ?? 0,
+    group_total: p.group_total ?? 0,
+    progress: p.progress ?? 0,
+    finished: p.finished,
+    team: p.team,
     rank: 0,
   }));
-  items.sort((a, b) => (b.points - a.points) || (a.total_time_ms - b.total_time_ms));
+  // 掌握赛:完成者优先(按进度),再按进度降序;开局无进度时保持稳定
+  items.sort((a, b) => (Number(b.finished) - Number(a.finished)) || ((b.progress ?? 0) - (a.progress ?? 0)) || (a.total_time_ms - b.total_time_ms));
   items.forEach((it, i) => { it.rank = i + 1; });
   return items;
 }
@@ -110,12 +118,15 @@ export default function PkArena() {
           // 每个学生的题,但教师不答题,忽略即可(靠 live_ranking 看多人进度)。
           if (event.target_user_id != null && event.target_user_id !== meId) break;
           setCurrentQ({
-            word_idx: event.word_idx,
-            phase: event.phase as PkPhase,
+            q_seq: event.q_seq,
+            stage: event.stage as string,
             word: event.word,
             points: event.points,
+            group_idx: event.group_idx,
+            group_total: event.group_total,
             exam_type: event.exam_type as PkExamType | undefined,
             options: event.options as string[] | undefined,
+            copies_left: event.copies_left as number | undefined,
           });
           questionStartedAtRef.current = Date.now();
           setSubmitting(false);   // 新题到,解禁答题
@@ -135,6 +146,13 @@ export default function PkArena() {
         case 'live_ranking':
           setLiveRanking(event.ranking as PkLiveRankItem[]);
           if (event.team_ranking) setTeamRanking(event.team_ranking as PkTeamRankItem[]);
+          break;
+        case 'player_finished':
+          // 我跑完整套流程:切到「完成」态卡片(等结算)
+          if (event.target_user_id == null || event.target_user_id === meId) {
+            setCurrentQ((q) => (q ? { ...q, stage: 'done' } : q));
+            setSubmitting(false);
+          }
           break;
         case 'game_finished':
           setRanking(event.ranking as RankItem[]);
@@ -177,11 +195,11 @@ export default function PkArena() {
   const submit = useCallback(
     (payload: object, timeSpentMs: number) => {
       if (!currentQ || submitting) return;
-      setSubmitting(true);   // 防重复提交;新题到达(question_pushed)时解禁
+      setSubmitting(true);   // 防重复提交;下一题(question_pushed)到达时解禁
       send({
         type: 'submit_answer',
-        word_idx: currentQ.word_idx,
-        phase: currentQ.phase,
+        word_idx: currentQ.q_seq,   // 后端 submit_answer 复用 word_idx 形参承载 q_seq
+        phase: currentQ.stage,      // 复用 phase 形参承载 stage
         payload,
         time_spent_ms: timeSpentMs,
       });
@@ -405,14 +423,12 @@ export default function PkArena() {
     );
   }
 
-  // 对局中(并行竞速):进度条反映「我自己」的进度。我的私有词表大小 = 我的 n_words。
+  // 对局中(掌握赛):进度反映「我自己」跑完整套分类记忆法流程的进度。
   const me = snapshot.players.find((p) => p.user_id === meId);
-  const myWordCount = me?.n_words || snapshot.word_count || 1;
-  const wordsPerPhase = myWordCount;
-  const totalQ = myWordCount * 4;
-  // 个人进度指针累计(答完循环续刷),对一轮题量取模映射到当前轮内位置
-  const globalIdx = (currentQ?.word_idx ?? 0) % (myWordCount * 4);
-  const phase = currentQ?.phase ?? 'classify';
+  const stage = currentQ?.stage ?? me?.stage ?? 'classify';
+  const groupIdx = currentQ?.group_idx ?? me?.group_idx ?? 0;
+  const groupTotal = currentQ?.group_total ?? me?.group_total ?? 1;
+  const myProgress = me?.progress ?? 0;
   // 教师控制台是监控视角(非玩家、非普通观众);普通观众才走脱敏只读题卡
   const isSpectator = !isHostConsole && !snapshot.players.some((p) => p.user_id === meId);
   // 只有真正的参赛玩家才渲染答题卡(教师控制台虽 isSpectator=false,但不下场答题)
@@ -429,9 +445,10 @@ export default function PkArena() {
   return (
     <div className="min-h-screen flex flex-col bg-paper">
       <PkPhaseStepper
-        phase={phase}
-        currentIdx={globalIdx}
-        wordsPerPhase={wordsPerPhase}
+        stage={stage}
+        groupIdx={groupIdx}
+        groupTotal={groupTotal}
+        progress={myProgress}
         currentPoints={currentQ?.points}
       />
       {snapshot.deadline_at && <CountdownBar deadlineIso={snapshot.deadline_at} />}
@@ -461,9 +478,10 @@ export default function PkArena() {
               👀 观战中 · 各人各答各的词,看右侧实时榜比拼
             </div>
           )}
-          {isPlayer && currentQ && wordDataStub && currentQ.phase === 'classify' && (
+          {/* 分类:标 熟悉/学过/陌生;夹生+陌生循环重来直到全熟(服务端状态机驱动) */}
+          {isPlayer && currentQ && wordDataStub && currentQ.stage === 'classify' && (
             <ClassificationPhase
-              key={`classify-${currentQ.word_idx}`}
+              key={`classify-${currentQ.q_seq}`}
               words={[]}
               onComplete={noOp}
               playAudio={noOpAudio}
@@ -473,30 +491,21 @@ export default function PkArena() {
               pkDisabled={submitting}
             />
           )}
-          {isPlayer && currentQ && wordDataStub && currentQ.phase === 'speech' && (
-            <SpeechVerifyCard
-              key={`speech-${currentQ.word_idx}`}
-              word={wordDataStub as any}
-              onNext={() => submit({ result: 'pass' }, Date.now() - questionStartedAtRef.current)}
-              onSkip={() => submit({ result: 'skip' }, Date.now() - questionStartedAtRef.current)}
-              playAudio={noOpAudio}
-              disabled={submitting}
-            />
-          )}
-          {isPlayer && currentQ && wordDataStub && currentQ.phase === 'dictation' && (
+          {/* 听写:听音拼写;拼错进入抄写态(copies_left),抄对 N 遍才过 */}
+          {isPlayer && currentQ && wordDataStub && currentQ.stage === 'dictation' && (
             <DictationSingle
-              key={`dictation-${currentQ.word_idx}`}
+              key={`dictation-${currentQ.q_seq}`}
               word={wordDataStub}
               onAnswer={(text, ms) => submit({ text }, ms)}
               disabled={submitting}
               timeoutMs={60_000}
+              copiesLeft={currentQ.copies_left ?? 0}
             />
           )}
-          {isPlayer && currentQ && wordDataStub && currentQ.phase === 'exam' && (
-            // 过关阶段:题型由服务端权威决定(英译中/中译英选择 + 听音/看义拼写),
-            // 与分类记忆法的过关检测一致。判分仍由服务端做(超时 30s)。
+          {/* 过关:4 题型(英译中/中译英/听音/拼写),服务端权威判分,≥60% 过关 */}
+          {isPlayer && currentQ && wordDataStub && currentQ.stage === 'exam' && (
             <PkExamCard
-              key={`exam-${currentQ.word_idx}`}
+              key={`exam-${currentQ.q_seq}`}
               word={wordDataStub}
               examType={currentQ.exam_type ?? 'spelling'}
               options={currentQ.options}
@@ -505,6 +514,14 @@ export default function PkArena() {
               disabled={submitting}
               timeoutMs={30_000}
             />
+          )}
+          {/* 完成:全部组过关,等其他人/结算 */}
+          {isPlayer && currentQ && currentQ.stage === 'done' && (
+            <div className="card-soft rounded-3xl p-8 text-center">
+              <div className="text-5xl mb-3">🎉</div>
+              <p className="text-lg font-bold text-ink mb-1">全部掌握完成!</p>
+              <p className="text-sm text-ink-soft">等其他同学完成 / 倒计时结束就出成绩,看看你是不是最快的 👑</p>
+            </div>
           )}
           {isPlayer && !currentQ && (
             <div className="p-6 text-center text-ink-mute">等待第一题…</div>
@@ -520,7 +537,6 @@ export default function PkArena() {
             <PkLiveRanking
               items={liveRanking}
               meId={meId}
-              totalQuestions={totalQ}
               gains={lastGains}
               settleSeq={settleSeq}
             />

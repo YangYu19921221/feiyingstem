@@ -9,7 +9,6 @@ export interface PkPlayer {
   user_id: number;
   nickname: string;
   online: boolean;
-  current_word_idx: number;
   correct: number;
   wrong: number;
   total_time_ms: number;
@@ -17,7 +16,12 @@ export interface PkPlayer {
   streak: number;
   finished: boolean;
   team?: number | null;
-  n_words?: number;   // 该玩家私有词表大小(算个人进度%)
+  n_words?: number;   // 该玩家私有词表大小
+  // 掌握赛(分类记忆法流程):阶段 + 第几组 + 掌握进度
+  stage?: string;
+  group_idx?: number;
+  group_total?: number;
+  progress?: number;
 }
 
 export interface PkSpectator {
@@ -68,10 +72,16 @@ export interface PkLiveRankItem {
   wrong: number;
   streak: number;
   total_time_ms: number;
-  current_word_idx: number;
   online: boolean;
   rank: number;
   team?: number | null;
+  // 掌握赛
+  stage?: string;
+  group_idx?: number;
+  group_total?: number;
+  progress?: number;
+  finished?: boolean;
+  finished_at_ms?: number | null;
 }
 
 export interface PkHistoryItem {
