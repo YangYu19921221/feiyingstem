@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ChevronRight, X } from 'lucide-react';
-import { getMyPet, createPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
+import { ArrowLeft, BookOpen, Check, ChevronRight, Gem, LockKeyhole, Plus, RefreshCw, Search, ShieldAlert, Users, X } from 'lucide-react';
+import { getMyPet, getPetCollection, createPet, switchPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetCollection, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
 import { quickMatchBattle } from '../api/petBattle';
+import PetArtwork from '../components/PetArtwork';
+import { TYPE_COLORS, TYPE_ICONS, TYPE_NAMES, type PokemonType } from '../utils/typeEffectiveness';
 import {
   PET_SPECIES,
   getPetDefinition,
@@ -74,6 +76,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
   const [selected, setSelected] = useState('pikachu');
   const [name, setName] = useState('');
   const [hoveredSpecies, setHoveredSpecies] = useState<string | null>(null);
+  const [speciesQuery, setSpeciesQuery] = useState('');
   const queryClient = useQueryClient();
 
   const adoptMutation = useMutation({
@@ -87,6 +90,11 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
   const previewSpecies = hoveredSpecies || selected;
   const previewDefinition = getPetDefinition(previewSpecies);
   const previewImg = previewDefinition.stages[1].image;
+  const availableSpecies = PET_SPECIES.filter((definition) => {
+    const keyword = speciesQuery.trim().toLowerCase();
+    return !keyword || [definition.label, ...definition.stages.map((form) => form.name)]
+      .some((value) => value.toLowerCase().includes(keyword));
+  });
 
   return (
     <div className="min-h-screen bg-paper">
@@ -134,12 +142,19 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
                   <React.Fragment key={form.name}>
                     <div className="w-20 shrink-0">
                       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-gray-100">
-                        <img src={form.image!} alt={form.name} className="h-12 w-12 object-contain" />
+                        <PetArtwork
+                          image={form.image}
+                          stage={form}
+                          alt={form.name}
+                          containerClassName="h-12 w-12"
+                          imageClassName="h-full w-full"
+                          eager
+                        />
                       </div>
                       <div className="mt-1 truncate text-xs font-medium text-gray-700">{form.name}</div>
                       <div className="text-[11px] text-gray-400">Lv.{form.unlockLevel}</div>
                     </div>
-                    {index < 2 && <ChevronRight className="h-4 w-4 shrink-0 text-orange-300" />}
+                    {index < 3 && <ChevronRight className="h-4 w-4 shrink-0 text-orange-300" />}
                   </React.Fragment>
                 ))}
               </div>
@@ -151,8 +166,19 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
             <h2 className="text-2xl font-bold text-gray-800 mb-2">选择你的伙伴</h2>
             <p className="text-gray-500 mb-6">认真学习就能让它成长进化哦！</p>
 
+            <label className="relative mb-3 block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="search"
+                value={speciesQuery}
+                onChange={(event) => setSpeciesQuery(event.target.value)}
+                placeholder={`搜索 ${PET_SPECIES.length} 个宝可梦家族`}
+                className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+              />
+            </label>
+
             <div className="mb-6 grid grid-cols-2 gap-2 pr-1 sm:grid-cols-3 sm:gap-3 md:max-h-[480px] md:overflow-y-auto">
-              {PET_SPECIES.map((s) => (
+              {availableSpecies.map((s) => (
                 <motion.div
                   key={s.id}
                   whileHover={{ scale: 1.05 }}
@@ -210,8 +236,492 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
   );
 }
 
+function PetRecoveryView({ collection }: { collection: PetCollection }) {
+  const navigate = useNavigate();
+  const goal = collection.recovery_goal_words || collection.learned_words + collection.recovery_words_remaining;
+  const recoveryStart = Math.max(0, goal - collection.words_per_slot);
+  const recoveredWords = Math.max(0, Math.min(
+    collection.words_per_slot,
+    collection.learned_words - recoveryStart,
+  ));
+  const progress = Math.round((recoveredWords / collection.words_per_slot) * 100);
+
+  return (
+    <div className="min-h-screen bg-paper px-4 py-8 sm:py-14">
+      <div className="mx-auto max-w-lg">
+        <button
+          onClick={() => navigate('/student/dashboard')}
+          className="mb-5 flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white"
+          aria-label="返回学习中心"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+
+        <div className="rounded-2xl border border-red-100 bg-white p-5 text-center shadow-lg sm:p-8">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
+            <ShieldAlert className="h-8 w-8" />
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-gray-900 sm:text-2xl">队伍正在重新集结</h1>
+          <p className="mt-2 text-sm leading-6 text-gray-600 sm:text-base">
+            最后一只伙伴已在对战中被收服。完成新的学习目标后，就能重新选择一只伙伴蛋。
+          </p>
+
+          <div className="mt-6 text-left">
+            <div className="mb-2 flex items-end justify-between gap-3">
+              <span className="text-sm font-semibold text-gray-700">重新领养进度</span>
+              <span className="shrink-0 text-sm font-bold text-orange-600">{recoveredWords} / {collection.words_per_slot}</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                className="h-full rounded-full bg-orange-500"
+              />
+            </div>
+            <p className="mt-3 text-center text-sm font-medium text-gray-700">
+              还需学习 <span className="font-bold text-orange-600">{collection.recovery_words_remaining}</span> 个不同单词
+            </p>
+          </div>
+
+          <button
+            onClick={() => navigate('/student/dashboard')}
+            className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 font-bold text-white shadow-sm transition-colors hover:bg-orange-600"
+          >
+            <BookOpen className="h-5 w-5" />
+            去学习单词
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CATALOG_FILTERS: { id: 'all' | PokemonType | 'other'; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'fire', label: '火' },
+  { id: 'water', label: '水' },
+  { id: 'grass', label: '草' },
+  { id: 'electric', label: '电' },
+  { id: 'psychic', label: '超能' },
+  { id: 'dragon', label: '龙' },
+  { id: 'other', label: '其他' },
+];
+
+const FEATURED_TYPES = new Set<PokemonType>(['fire', 'water', 'grass', 'electric', 'psychic', 'dragon']);
+
+function CatalogView({
+  pet,
+  collection,
+  onBack,
+  onSwitched,
+}: {
+  pet: Pet;
+  collection: PetCollection;
+  onBack: () => void;
+  onSwitched: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | PokemonType | 'other'>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const selected = selectedId ? getPetDefinition(selectedId) : null;
+  const ownedBySpecies = new Map(collection.pets.map((ownedPet) => [ownedPet.species, ownedPet]));
+  const canAdopt = collection.used_slots < collection.unlocked_slots && collection.used_slots < collection.max_slots;
+  const visibleSpecies = PET_SPECIES.filter((definition) => {
+    const matchesFilter = filter === 'all'
+      || definition.element === filter
+      || (filter === 'other' && !FEATURED_TYPES.has(definition.element));
+    const normalizedQuery = query.trim().toLowerCase();
+    const matchesQuery = !normalizedQuery || [
+      definition.label,
+      definition.description,
+      ...definition.stages.map((form) => form.name),
+    ].some((value) => value.toLowerCase().includes(normalizedQuery));
+    return matchesFilter && matchesQuery;
+  });
+
+  const switchMutation = useMutation({
+    mutationFn: (petId: number) => switchPet({ pet_id: petId }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['myPet'] }),
+        queryClient.invalidateQueries({ queryKey: ['petCollection'] }),
+        queryClient.invalidateQueries({ queryKey: ['petEvents'] }),
+      ]);
+      setSelectedId(null);
+      setConfirming(false);
+      onSwitched();
+    },
+  });
+
+  const adoptMutation = useMutation({
+    mutationFn: createPet,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['myPet'] }),
+        queryClient.invalidateQueries({ queryKey: ['petCollection'] }),
+        queryClient.invalidateQueries({ queryKey: ['petEvents'] }),
+      ]);
+      setSelectedId(null);
+      setConfirming(false);
+      onSwitched();
+    },
+  });
+
+  const openSpecies = (species: string) => {
+    const definition = getPetDefinition(species);
+    setSelectedId(species);
+    setNewName(definition.stages[1].name);
+    setConfirming(false);
+    switchMutation.reset();
+    adoptMutation.reset();
+  };
+
+  return (
+    <div className="min-h-screen bg-paper pb-28 md:pb-8">
+      <nav className="sticky top-0 z-30 border-b border-gray-100 bg-white/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
+          <button onClick={onBack} className="flex items-center gap-2 rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100">
+            <ArrowLeft className="h-5 w-5" />
+            <span className="hidden text-sm font-medium sm:inline">返回养成</span>
+          </button>
+          <div className="text-center">
+            <h1 className="font-bold text-gray-900">宝可梦图鉴</h1>
+            <p className="text-xs text-gray-400">{PET_SPECIES.length} 个家族</p>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg bg-cyan-50 px-2.5 py-1.5 text-xs font-bold text-cyan-700">
+            <Gem className="h-4 w-4" />
+            5 阶段
+          </div>
+        </div>
+      </nav>
+
+      <main className="mx-auto max-w-6xl px-4 py-5">
+        <section className="mb-5 border-b border-gray-200 pb-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 font-bold text-gray-900">
+                <Users className="h-5 w-5 text-orange-500" />
+                我的宝可梦队伍
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                已学习 {collection.learned_words.toLocaleString()} 个不同单词 · {collection.used_slots}/{collection.max_slots} 只
+              </p>
+            </div>
+            <span className="shrink-0 rounded-lg bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-600">
+              已解锁 {collection.unlocked_slots} 格
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-5 gap-1.5 sm:gap-3">
+            {Array.from({ length: collection.max_slots }, (_, index) => {
+              const ownedPet = collection.pets[index];
+              const unlocked = index < collection.unlocked_slots;
+              const ownedDefinition = ownedPet ? getPetDefinition(ownedPet.species) : null;
+              const ownedStage = ownedPet ? getPetStage(ownedPet.species, ownedPet.evolution_stage) : null;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  disabled={!ownedPet}
+                  onClick={() => ownedPet && openSpecies(ownedPet.species)}
+                  className={`relative flex aspect-square min-w-0 items-center justify-center rounded-xl border p-1 transition sm:p-2 ${
+                    ownedPet?.is_active
+                      ? 'border-orange-400 bg-orange-50 ring-2 ring-orange-100'
+                      : ownedPet
+                        ? 'border-gray-200 bg-white hover:border-orange-200'
+                        : unlocked
+                          ? 'border-dashed border-cyan-300 bg-cyan-50'
+                          : 'border-gray-200 bg-gray-100'
+                  }`}
+                >
+                  {ownedPet && ownedDefinition && ownedStage ? (
+                    <>
+                      <PetArtwork
+                        image={ownedStage.image}
+                        stage={ownedStage}
+                        alt={ownedPet.name}
+                        containerClassName="h-full w-full"
+                        imageClassName="h-full w-full"
+                      />
+                      <span className="absolute bottom-0.5 right-0.5 rounded bg-gray-900/75 px-1 text-[9px] font-bold text-white sm:text-[10px]">
+                        Lv.{ownedPet.level}
+                      </span>
+                      {ownedPet.is_active && <Check className="absolute left-1 top-1 h-3.5 w-3.5 rounded-full bg-orange-500 p-0.5 text-white" />}
+                    </>
+                  ) : unlocked ? (
+                    <Plus className="h-5 w-5 text-cyan-500 sm:h-6 sm:w-6" />
+                  ) : (
+                    <LockKeyhole className="h-4 w-4 text-gray-400 sm:h-5 sm:w-5" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {collection.next_slot_words ? (
+            <div className="mt-3">
+              <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                <span className="text-gray-500">每学习 2000 个不同单词解锁新名额</span>
+                <span className="shrink-0 font-bold text-cyan-700">
+                  距下一格还差 {Math.max(0, collection.next_slot_words - collection.learned_words).toLocaleString()} 词
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-cyan-500 transition-all"
+                  style={{
+                    width: `${Math.min(100, Math.max(0, ((collection.learned_words - (collection.next_slot_words - collection.words_per_slot)) / collection.words_per_slot) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-center text-xs font-bold text-green-700">
+              5 个队伍名额已全部解锁
+            </div>
+          )}
+        </section>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <label className="relative block flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索家族或形态"
+              className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+            />
+          </label>
+          <div className="flex max-w-full gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="按属性筛选">
+            {CATALOG_FILTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={filter === item.id}
+                onClick={() => setFilter(item.id)}
+                className={`h-11 shrink-0 rounded-lg px-3 text-sm font-medium transition-colors ${
+                  filter === item.id ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between text-sm">
+          <span className="text-gray-500">找到 {visibleSpecies.length} 个家族</span>
+          <span className="text-gray-400">当前伙伴：{getPetDefinition(pet.species).label}</span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+          {visibleSpecies.map((definition) => {
+            const isCurrent = definition.id === pet.species;
+            const ownedPet = ownedBySpecies.get(definition.id);
+            const type = definition.element;
+            return (
+              <motion.button
+                key={definition.id}
+                type="button"
+                whileTap={{ scale: 0.98 }}
+                onClick={() => openSpecies(definition.id)}
+                className={`relative min-w-0 overflow-hidden rounded-xl border bg-white p-3 text-left transition-shadow hover:shadow-md sm:p-4 ${
+                  isCurrent
+                    ? 'border-orange-300 ring-2 ring-orange-100'
+                    : ownedPet
+                      ? 'border-green-300 ring-1 ring-green-100'
+                      : 'border-gray-100'
+                }`}
+              >
+                {isCurrent && (
+                  <span className="absolute right-2 top-2 z-10 rounded-md bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">当前</span>
+                )}
+                {!isCurrent && ownedPet && (
+                  <span className="absolute right-2 top-2 z-10 rounded-md bg-green-500 px-1.5 py-0.5 text-[10px] font-bold text-white">已拥有</span>
+                )}
+                <PetArtwork
+                  image={definition.stages[1].image}
+                  stage={definition.stages[1]}
+                  alt={definition.label}
+                  containerClassName="mx-auto h-24 w-24 sm:h-28 sm:w-28"
+                  imageClassName="h-full w-full"
+                />
+                <div className="mt-2 truncate text-sm font-bold text-gray-900 sm:text-base">{definition.label}</div>
+                <div className="mt-1 flex items-center justify-between gap-1">
+                  <span
+                    className="truncate rounded-md px-1.5 py-0.5 text-[11px] font-bold"
+                    style={{ color: TYPE_COLORS[type], backgroundColor: `${TYPE_COLORS[type]}18` }}
+                  >
+                    {TYPE_ICONS[type]} {TYPE_NAMES[type]}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-gray-400">5 阶段</span>
+                </div>
+                <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-cyan-600">
+                  <Gem className="h-3.5 w-3.5" />
+                  {definition.stages[4].name}
+                </div>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {visibleSpecies.length === 0 && (
+          <div className="py-20 text-center text-sm text-gray-400">没有找到匹配的宝可梦</div>
+        )}
+      </main>
+
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-gray-950/65 px-3 py-5 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedId(null)}
+          >
+            <motion.div
+              className="relative my-auto w-full max-w-2xl rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
+              initial={{ y: 24, opacity: 0, scale: 0.96 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 16, opacity: 0, scale: 0.98 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                aria-label="关闭图鉴详情"
+                onClick={() => setSelectedId(null)}
+                className="absolute right-3 top-3 z-20 rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="pr-10">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-black text-gray-900">{selected.label}</h2>
+                  <span
+                    className="rounded-md px-2 py-0.5 text-xs font-bold"
+                    style={{ color: TYPE_COLORS[selected.element], backgroundColor: `${TYPE_COLORS[selected.element]}18` }}
+                  >
+                    {TYPE_ICONS[selected.element]} {TYPE_NAMES[selected.element]}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-gray-500">{selected.description}</p>
+              </div>
+
+              <div className="mt-5 grid grid-cols-5 gap-1 sm:gap-3">
+                {selected.stages.map((form, index) => (
+                  <div key={`${form.name}-${index}`} className="min-w-0 text-center">
+                    <div className={`mx-auto aspect-square w-full max-w-[96px] rounded-xl border p-1 ${form.isGem ? 'border-cyan-300 bg-cyan-50' : 'border-gray-100 bg-gray-50'}`}>
+                      <PetArtwork
+                        image={form.image}
+                        stage={form}
+                        alt={form.name}
+                        containerClassName="h-full w-full"
+                        imageClassName="h-full w-full"
+                      />
+                    </div>
+                    <div className={`mt-1 truncate text-[10px] font-bold sm:text-xs ${form.isGem ? 'text-cyan-600' : 'text-gray-700'}`}>{form.name}</div>
+                    <div className="text-[10px] text-gray-400">Lv.{form.unlockLevel}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-xs sm:text-sm">
+                <span className="text-gray-600">总计 5 个成长阶段</span>
+                <span className="text-right font-medium text-gray-600">必杀技：{selected.ultimate.emoji} {selected.ultimate.name}</span>
+                <span className="col-span-2 flex items-center justify-end gap-1 font-bold text-cyan-600"><Gem className="h-4 w-4" />Lv.45 晶耀进化</span>
+              </div>
+
+              {selected.id === pet.species ? (
+                <div className="mt-5 rounded-xl bg-orange-50 py-3 text-center text-sm font-bold text-orange-600">这是你当前的伙伴</div>
+              ) : ownedBySpecies.has(selected.id) ? (
+                <div className="mt-5">
+                  <div className="rounded-xl bg-green-50 px-3 py-2.5 text-sm text-green-700">
+                    已培养至 Lv.{ownedBySpecies.get(selected.id)!.level} · {ownedBySpecies.get(selected.id)!.evolution_stage_name}，切换不会丢失进度。
+                  </div>
+                  {switchMutation.isError && (
+                    <p className="mt-2 text-sm text-red-600">{(switchMutation.error as any)?.response?.data?.detail || '切换失败，请重试'}</p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={switchMutation.isPending}
+                    onClick={() => switchMutation.mutate(ownedBySpecies.get(selected.id)!.id)}
+                    className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 font-bold text-white transition-colors hover:bg-orange-600 disabled:opacity-50"
+                  >
+                    <RefreshCw className="h-5 w-5" />
+                    {switchMutation.isPending ? '切换中...' : '切换为当前伙伴'}
+                  </button>
+                </div>
+              ) : !canAdopt ? (
+                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-3 text-center text-sm text-gray-600">
+                  <LockKeyhole className="mx-auto mb-1.5 h-5 w-5 text-gray-400" />
+                  {collection.used_slots >= collection.max_slots
+                    ? '队伍已满，最多可以拥有 5 只宝可梦'
+                    : `下一个名额需累计学习 ${collection.next_slot_words?.toLocaleString()} 个不同单词`}
+                </div>
+              ) : confirming ? (
+                <div className="mt-5">
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
+                    新领养的伙伴从 Lv.1 伙伴蛋开始培养；其他宝可梦的等级、进化和属性都会保留。
+                  </div>
+                  <label className="mt-3 block text-sm font-medium text-gray-700">
+                    新伙伴名字
+                    <input
+                      value={newName}
+                      onChange={(event) => setNewName(event.target.value)}
+                      maxLength={50}
+                      className="mt-1.5 h-11 w-full rounded-xl border border-gray-200 px-3 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
+                    />
+                  </label>
+                  {adoptMutation.isError && (
+                    <p className="mt-2 text-sm text-red-600">{(adoptMutation.error as any)?.response?.data?.detail || '领养失败，请重试'}</p>
+                  )}
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setConfirming(false)} className="h-11 rounded-xl bg-gray-100 font-bold text-gray-600 hover:bg-gray-200">取消</button>
+                    <button
+                      type="button"
+                      disabled={!newName.trim() || adoptMutation.isPending}
+                      onClick={() => adoptMutation.mutate({ species: selected.id, name: newName.trim() })}
+                      className="h-11 rounded-xl bg-cyan-600 font-bold text-white hover:bg-cyan-700 disabled:opacity-50"
+                    >
+                      {adoptMutation.isPending ? '领养中...' : '确认领养'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(true)}
+                  className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 font-bold text-white transition-colors hover:bg-cyan-700"
+                >
+                  <Plus className="h-5 w-5" />
+                  领养到我的队伍
+                </button>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ========== 养成界面 ==========
-function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: () => void }) {
+function NurtureView({
+  pet,
+  onShowLeaderboard,
+  onShowCatalog,
+}: {
+  pet: Pet;
+  onShowLeaderboard: () => void;
+  onShowCatalog: () => void;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [feedMsg, setFeedMsg] = useState('');
@@ -265,7 +775,6 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
   });
 
   const definition = getPetDefinition(pet.species);
-  const emoji = getPetEmoji(pet.species, pet.evolution_stage);
   const petImage = getPetStageImage(pet.species, pet.evolution_stage);
   const currentStage = getPetStage(pet.species, pet.evolution_stage);
   const nextStage = getNextPetStage(pet.species, pet.evolution_stage);
@@ -316,8 +825,16 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
               👥 好友
             </button>
             <button
+              onClick={onShowCatalog}
+              className="flex items-center gap-1 whitespace-nowrap rounded-lg bg-cyan-50 px-2 py-1.5 text-xs font-bold text-cyan-700 transition-colors hover:bg-cyan-100 sm:px-3 sm:text-sm"
+              title="宝可梦队伍与图鉴"
+            >
+              <Users className="h-4 w-4" />
+              队伍
+            </button>
+            <button
               onClick={onShowLeaderboard}
-              className="hidden whitespace-nowrap rounded-lg bg-yellow-50 px-2 py-1.5 text-xs font-bold text-yellow-600 transition-colors hover:bg-yellow-100 min-[390px]:block sm:px-3 sm:text-sm"
+              className="hidden whitespace-nowrap rounded-lg bg-yellow-50 px-2 py-1.5 text-xs font-bold text-yellow-600 transition-colors hover:bg-yellow-100 sm:block sm:px-3 sm:text-sm"
             >
               🏆 排行榜
             </button>
@@ -392,11 +909,14 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
                 animate={{ y: [0, -8, 0], rotate: [0, 3, -3, 0] }}
                 transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
               >
-                {petImage ? (
-                  <img src={petImage} alt={pet.name} className="w-28 h-28 md:w-36 md:h-36 object-contain" />
-                ) : (
-                  <span className="text-7xl md:text-8xl">{emoji}</span>
-                )}
+                <PetArtwork
+                  image={petImage}
+                  stage={currentStage}
+                  alt={pet.name}
+                  containerClassName="h-28 w-28 md:h-36 md:w-36"
+                  imageClassName="h-full w-full"
+                  eager
+                />
                 <AnimatePresence>
                   {showHearts && (
                     <motion.span
@@ -489,10 +1009,10 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
                   <p className="mt-1 text-xs text-gray-400">升级达到节点后自动进化</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-600">
-                  {pet.evolution_stage + 1}/4
+                  {pet.evolution_stage + 1}/5
                 </span>
               </div>
-              <div className="grid grid-cols-4 gap-1 sm:gap-3">
+              <div className="grid grid-cols-5 gap-1 sm:gap-3">
                 {definition.stages.map((form, index) => {
                   const isCurrent = index === pet.evolution_stage;
                   const isUnlocked = index <= pet.evolution_stage;
@@ -510,11 +1030,13 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
                             ? 'border-green-200 bg-green-50'
                             : 'border-gray-100 bg-gray-50 grayscale'
                       }`}>
-                        {form.image ? (
-                          <img src={form.image} alt={form.name} className="h-full w-full object-contain" />
-                        ) : (
-                          <span className="text-3xl sm:text-4xl">🥚</span>
-                        )}
+                        <PetArtwork
+                          image={form.image}
+                          stage={form}
+                          alt={form.name}
+                          containerClassName="h-full w-full"
+                          imageClassName="h-full w-full"
+                        />
                         {isUnlocked && !isCurrent && (
                           <span className="absolute right-0.5 top-0.5 text-[10px] text-green-600">✓</span>
                         )}
@@ -632,18 +1154,26 @@ function NurtureView({ pet, onShowLeaderboard }: { pet: Pet; onShowLeaderboard: 
               <div className="mt-6 flex items-center justify-center gap-2 sm:gap-4">
                 <div className="w-28 min-w-0 sm:w-32">
                   <div className="flex aspect-square items-center justify-center rounded-xl bg-gray-50 p-3 grayscale">
-                    {evolutionReveal.from.image ? (
-                      <img src={evolutionReveal.from.image} alt={evolutionReveal.from.name} className="h-full w-full object-contain" />
-                    ) : (
-                      <span className="text-6xl">🥚</span>
-                    )}
+                    <PetArtwork
+                      image={evolutionReveal.from.image}
+                      stage={evolutionReveal.from}
+                      alt={evolutionReveal.from.name}
+                      containerClassName="h-full w-full"
+                      imageClassName="h-full w-full"
+                    />
                   </div>
                   <div className="mt-2 truncate text-xs text-gray-500">{evolutionReveal.from.name}</div>
                 </div>
                 <ChevronRight className="h-7 w-7 shrink-0 text-orange-400" />
                 <motion.div className="w-28 min-w-0 sm:w-32" animate={{ scale: [1, 1.06, 1] }} transition={{ repeat: Infinity, duration: 1.4 }}>
                   <div className="flex aspect-square items-center justify-center rounded-xl bg-orange-50 p-3 ring-2 ring-orange-300">
-                    <img src={evolutionReveal.to.image!} alt={evolutionReveal.to.name} className="h-full w-full object-contain" />
+                    <PetArtwork
+                      image={evolutionReveal.to.image}
+                      stage={evolutionReveal.to}
+                      alt={evolutionReveal.to.name}
+                      containerClassName="h-full w-full"
+                      imageClassName="h-full w-full"
+                    />
                   </div>
                   <div className="mt-2 truncate text-sm font-bold text-orange-600">{evolutionReveal.to.name}</div>
                 </motion.div>
@@ -814,16 +1344,21 @@ function LeaderboardView({ onBack }: { onBack: () => void }) {
 
 // ========== 主页面 ==========
 export default function PetPage() {
-  const [view, setView] = useState<'nurture' | 'leaderboard'>('nurture');
+  const [view, setView] = useState<'nurture' | 'catalog' | 'leaderboard'>('nurture');
   const { data: pet, isLoading, isError } = useQuery<Pet>({
     queryKey: ['myPet'],
     queryFn: getMyPet,
     retry: false,
   });
+  const { data: collection, isLoading: isCollectionLoading } = useQuery<PetCollection>({
+    queryKey: ['petCollection'],
+    queryFn: getPetCollection,
+    retry: false,
+  });
 
   const queryClient = useQueryClient();
 
-  if (isLoading) {
+  if (isLoading || isCollectionLoading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center px-5">
         <motion.div
@@ -837,13 +1372,30 @@ export default function PetPage() {
     );
   }
 
+  if (!pet && collection && collection.recovery_words_remaining > 0) {
+    return <PetRecoveryView collection={collection} />;
+  }
+
   if (isError || !pet) {
-    return <AdoptView onAdopted={() => queryClient.invalidateQueries({ queryKey: ['myPet'] })} />;
+    return <AdoptView onAdopted={() => {
+      queryClient.invalidateQueries({ queryKey: ['myPet'] });
+      queryClient.invalidateQueries({ queryKey: ['petCollection'] });
+    }} />;
   }
 
   if (view === 'leaderboard') {
     return <LeaderboardView onBack={() => setView('nurture')} />;
   }
 
-  return <NurtureView pet={pet} onShowLeaderboard={() => setView('leaderboard')} />;
+  if (view === 'catalog' && collection) {
+    return <CatalogView pet={pet} collection={collection} onBack={() => setView('nurture')} onSwitched={() => setView('nurture')} />;
+  }
+
+  return (
+    <NurtureView
+      pet={pet}
+      onShowLeaderboard={() => setView('leaderboard')}
+      onShowCatalog={() => setView('catalog')}
+    />
+  );
 }

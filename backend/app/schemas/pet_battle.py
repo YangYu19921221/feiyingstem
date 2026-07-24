@@ -192,6 +192,7 @@ class WSBattleEnd(BaseModel):
     # 奖惩明细（按玩家，含段位/积分升降/连胜全对等加成；前端按 isPlayer1 取自己那份）
     player1_reward: Optional[dict] = None
     player2_reward: Optional[dict] = None
+    capture: Optional[dict] = None
 
     # 统计
     player1_final_stats: dict

@@ -65,33 +65,53 @@ def test_zero_timeout_defensive():
 
 # ---------- 终局排名 ----------
 
-def test_rank_players_by_points_desc():
+def test_rank_players_finished_first_wins():
+    # 掌握赛:先完成(finished_at 早)者赢,与得分无关
     players = [
-        {"user_id": 1, "correct": 8, "wrong": 2, "total_time_ms": 25000, "points": 900},
-        {"user_id": 2, "correct": 9, "wrong": 1, "total_time_ms": 30000, "points": 1100},
-        {"user_id": 3, "correct": 9, "wrong": 1, "total_time_ms": 28000, "points": 1050},
+        {"user_id": 1, "correct": 8, "wrong": 2, "total_time_ms": 25000, "points": 900,
+         "finished": True, "finished_at_ms": 2000, "progress": 1.0},
+        {"user_id": 2, "correct": 9, "wrong": 1, "total_time_ms": 30000, "points": 1100,
+         "finished": True, "finished_at_ms": 1000, "progress": 1.0},
+        {"user_id": 3, "correct": 5, "wrong": 1, "total_time_ms": 28000, "points": 1050,
+         "finished": False, "finished_at_ms": None, "progress": 0.6},
     ]
     ranked = rank_players(players)
-    assert [p["user_id"] for p in ranked] == [2, 3, 1]
-    assert ranked[0]["rank"] == 1 and ranked[0]["final_score"] == 1100
-    assert ranked[2]["rank"] == 3 and ranked[2]["final_score"] == 900
+    # user2 先完成 → 第1;user1 后完成 → 第2;user3 未完成 → 垫底
+    assert [p["user_id"] for p in ranked] == [2, 1, 3]
+    assert ranked[0]["rank"] == 1
 
 
-def test_rank_players_tie_breaks_by_time():
+def test_rank_players_unfinished_by_progress():
     players = [
-        {"user_id": 1, "correct": 5, "wrong": 5, "total_time_ms": 20000, "points": 600},
-        {"user_id": 2, "correct": 5, "wrong": 5, "total_time_ms": 18000, "points": 600},
+        {"user_id": 1, "correct": 5, "wrong": 5, "total_time_ms": 20000, "points": 600,
+         "finished": False, "finished_at_ms": None, "progress": 0.4},
+        {"user_id": 2, "correct": 7, "wrong": 3, "total_time_ms": 22000, "points": 700,
+         "finished": False, "finished_at_ms": None, "progress": 0.75},
     ]
     ranked = rank_players(players)
-    # 同分,时短者胜:user 2 first
+    # 都没完成:进度高者先
     assert ranked[0]["user_id"] == 2 and ranked[0]["rank"] == 1
-    assert ranked[1]["user_id"] == 1 and ranked[1]["rank"] == 2
+    assert ranked[1]["user_id"] == 1
+
+
+def test_rank_players_same_progress_tie_by_time():
+    players = [
+        {"user_id": 1, "correct": 5, "wrong": 5, "total_time_ms": 20000, "points": 600,
+         "finished": False, "finished_at_ms": None, "progress": 0.5},
+        {"user_id": 2, "correct": 5, "wrong": 5, "total_time_ms": 18000, "points": 600,
+         "finished": False, "finished_at_ms": None, "progress": 0.5},
+    ]
+    ranked = rank_players(players)
+    # 同进度,用时少者先
+    assert ranked[0]["user_id"] == 2 and ranked[0]["rank"] == 1
 
 
 def test_rank_players_accuracy_computed():
     players = [
-        {"user_id": 1, "correct": 3, "wrong": 1, "total_time_ms": 1000, "points": 300},
-        {"user_id": 2, "correct": 0, "wrong": 0, "total_time_ms": 0, "points": 0},
+        {"user_id": 1, "correct": 3, "wrong": 1, "total_time_ms": 1000, "points": 300,
+         "finished": False, "finished_at_ms": None, "progress": 0.4},
+        {"user_id": 2, "correct": 0, "wrong": 0, "total_time_ms": 0, "points": 0,
+         "finished": False, "finished_at_ms": None, "progress": 0.0},
     ]
     ranked = rank_players(players)
     by_uid = {p["user_id"]: p for p in ranked}
@@ -103,7 +123,8 @@ def test_rank_players_accuracy_computed():
 
 class _PS:
     def __init__(self, user_id, nickname, points, total_time_ms, correct=0, wrong=0,
-                 streak=0, current_word_idx=0, online=True):
+                 streak=0, online=True, progress=0.0, finished=False, finished_at=None,
+                 stage="classify", gi=0, group_total=2, team=None):
         self.user_id = user_id
         self.nickname = nickname
         self.points = points
@@ -111,8 +132,17 @@ class _PS:
         self.correct = correct
         self.wrong = wrong
         self.streak = streak
-        self.current_word_idx = current_word_idx
         self.online = online
+        self._progress = progress
+        self.finished = finished
+        self.finished_at = finished_at
+        self.stage = stage
+        self.gi = gi
+        self.group_total = group_total
+        self.team = team
+
+    def compute_progress(self):
+        return self._progress
 
 
 class _Room:
@@ -120,17 +150,28 @@ class _Room:
         self.players = {p.user_id: p for p in players}
 
 
-def test_live_ranking_orders_and_ranks():
+def test_live_ranking_orders_by_progress():
     room = _Room([
-        _PS(1, "甲", points=200, total_time_ms=5000, streak=2),
-        _PS(2, "乙", points=350, total_time_ms=6000, streak=3),
-        _PS(3, "丙", points=200, total_time_ms=4000, online=False),
+        _PS(1, "甲", points=200, total_time_ms=5000, streak=2, progress=0.4),
+        _PS(2, "乙", points=350, total_time_ms=6000, streak=3, progress=0.8),
+        _PS(3, "丙", points=200, total_time_ms=4000, online=False, progress=0.4),
     ])
     items = live_ranking(room)
-    assert [it["user_id"] for it in items] == [2, 3, 1]  # 同分 3 比 1 时短
+    # 进度高者先(乙);甲丙同进度 0.4,丙用时短 → 丙在前
+    assert [it["user_id"] for it in items] == [2, 3, 1]
     assert [it["rank"] for it in items] == [1, 2, 3]
     assert items[0]["streak"] == 3
-    assert items[1]["online"] is False
+    assert items[2]["online"] is True and items[1]["online"] is False
+
+
+def test_live_ranking_finished_ranks_first():
+    room = _Room([
+        _PS(1, "甲", points=200, total_time_ms=5000, progress=0.9),
+        _PS(2, "乙", points=100, total_time_ms=6000, progress=1.0, finished=True,
+            finished_at=__import__("datetime").datetime(2026, 1, 1)),
+    ])
+    items = live_ranking(room)
+    assert items[0]["user_id"] == 2 and items[0]["finished"] is True
 
 
 def test_base_points_for_word_grades_takes_earliest_tier():

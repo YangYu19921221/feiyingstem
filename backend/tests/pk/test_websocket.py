@@ -798,6 +798,66 @@ def test_mask_for_spectators_only_hides_dictation_and_exam():
     assert _mask_for_spectators(other) is other
 
 
+@pytest.mark.asyncio
+async def test_teacher_finish_game_uses_final_ranking(monkeypatch):
+    """教师提前结束应产出 game_finished，而不是按解散房间处理。"""
+    from app.api.v1 import pk_websocket
+
+    room = manager.create_room(
+        host_id=100,
+        max_players=4,
+        word_count=10,
+        org_id=1,
+        host_is_player=False,
+    )
+    manager.join_room(room.invite_code, 1, "Alice", org_id=1)
+    manager.join_room(room.invite_code, 2, "Bob", org_id=1)
+    room.status = "playing"
+    room.players[1].points = 300
+    room.players[1].correct = 3
+    room.players[1].progress = 0.8
+    room.players[2].points = 100
+    room.players[2].correct = 1
+    room.players[2].progress = 0.4
+
+    captured = []
+
+    async def fake_process_events(current_room, events, word_lookup):
+        assert current_room is room
+        captured.extend(events)
+
+    monkeypatch.setattr(pk_websocket, "_process_events", fake_process_events)
+
+    assert await pk_websocket._finish_playing_room(room) is True
+    assert room.status == "finished"
+    assert captured[0]["type"] == "game_finished"
+    assert [item["user_id"] for item in captured[0]["ranking"]] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_teacher_cannot_finish_waiting_room(monkeypatch):
+    from app.api.v1 import pk_websocket
+
+    room = manager.create_room(
+        host_id=100,
+        max_players=4,
+        word_count=10,
+        org_id=1,
+        host_is_player=False,
+    )
+    processed = False
+
+    async def fake_process_events(current_room, events, word_lookup):
+        nonlocal processed
+        processed = True
+
+    monkeypatch.setattr(pk_websocket, "_process_events", fake_process_events)
+
+    assert await pk_websocket._finish_playing_room(room) is False
+    assert room.status == "waiting"
+    assert processed is False
+
+
 # ---------- 重连/心跳竞态修复回归 ----------
 
 @pytest.mark.asyncio

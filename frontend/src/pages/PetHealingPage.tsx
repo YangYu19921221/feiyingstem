@@ -11,7 +11,8 @@ import {
   type HealingWord,
 } from '../api/petHealing';
 import { getMyPet } from '../api/pet';
-import { getPetImage } from '../config/petSpecies';
+import { getPetImage, getPetStage } from '../config/petSpecies';
+import PetArtwork from '../components/PetArtwork';
 
 export default function PetHealingPage() {
   const navigate = useNavigate();
@@ -134,6 +135,7 @@ export default function PetHealingPage() {
   };
 
   const petImage = getPetImage(pet.species, pet.evolution_stage);
+  const petStage = getPetStage(pet.species, pet.evolution_stage);
   const grayScale = Math.max(0, 1 - healingStatus.hp_percent / 80);
 
   return (
@@ -181,16 +183,23 @@ export default function PetHealingPage() {
 
         {/* 宠物图片 */}
         <div className="text-center mb-6">
-          <motion.img
-            src={petImage}
-            alt={pet.name}
-            className="w-40 h-40 mx-auto"
+          <motion.div
+            className="mx-auto h-40 w-40"
             style={{
               filter: `grayscale(${grayScale}) brightness(${0.6 + grayScale * 0.4})`,
             }}
             animate={{ y: [0, -5, 0] }}
             transition={{ repeat: Infinity, duration: 2 }}
-          />
+          >
+            <PetArtwork
+              image={petImage}
+              stage={petStage}
+              alt={pet.name}
+              containerClassName="h-full w-full"
+              imageClassName="h-full w-full"
+              eager
+            />
+          </motion.div>
           <div className="text-gray-600 mt-2">
             {pet.name} {grayScale > 0.5 ? '很虚弱...' : '正在恢复中...'}
           </div>

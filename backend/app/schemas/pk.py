@@ -24,7 +24,6 @@ class PlayerSnapshot(BaseModel):
     user_id: int
     nickname: str
     online: bool
-    current_word_idx: int
     correct: int
     wrong: int
     total_time_ms: int
@@ -32,7 +31,12 @@ class PlayerSnapshot(BaseModel):
     streak: int = 0
     finished: bool
     team: Optional[int] = None  # 分组 PK 里的队号;个人 PK 为 None
-    n_words: int = 0            # 该玩家私有词表大小(算个人进度%)
+    n_words: int = 0            # 该玩家私有词表大小
+    # 掌握赛(分类记忆法流程):阶段 + 第几组 + 掌握进度
+    stage: str = "classify"
+    group_idx: int = 0
+    group_total: int = 0
+    progress: float = 0.0
 
 
 class SpectatorSnapshot(BaseModel):

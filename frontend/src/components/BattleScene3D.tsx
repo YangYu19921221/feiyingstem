@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { useRef, useState, useEffect, Suspense } from 'react';
+import { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getPetDefinition, type PetElement } from '../config/petSpecies';
 
@@ -53,7 +53,8 @@ function PetSprite({
   isHit = false,
   hp,
   maxHp,
-  facingLeft = false,
+  isGem = false,
+  isBackFacingFallback = false,
 }: {
   imageUrl: string;
   position: [number, number, number];
@@ -61,12 +62,38 @@ function PetSprite({
   isHit?: boolean;
   hp: number;
   maxHp: number;
-  facingLeft?: boolean;
+  isGem?: boolean;
+  isBackFacingFallback?: boolean;
 }) {
   const texture = useTexture(imageUrl);
+  const displayTexture = useMemo(() => {
+    if (!isBackFacingFallback) return texture;
+    const image = texture.image as HTMLImageElement;
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width || 256;
+    canvas.height = image.naturalHeight || image.height || 256;
+    const context = canvas.getContext('2d');
+    if (!context) return texture;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.globalCompositeOperation = 'source-in';
+    context.fillStyle = '#475569';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    return new THREE.CanvasTexture(canvas);
+  }, [isBackFacingFallback, texture]);
   const groupRef = useRef<THREE.Group>(null);
   const spriteRef = useRef<THREE.Sprite>(null);
+  const gemAuraRef = useRef<THREE.Mesh>(null);
   const [entranceDone, setEntranceDone] = useState(false);
+
+  useEffect(() => {
+    displayTexture.magFilter = THREE.NearestFilter;
+    displayTexture.minFilter = THREE.NearestFilter;
+    displayTexture.colorSpace = THREE.SRGBColorSpace;
+    displayTexture.needsUpdate = true;
+    return () => {
+      if (displayTexture !== texture) displayTexture.dispose();
+    };
+  }, [displayTexture, texture]);
 
   // 入场动画完成标记
   useEffect(() => {
@@ -79,6 +106,11 @@ function PetSprite({
     const g = groupRef.current;
     const s = spriteRef.current;
     if (!g || !s) return;
+    if (gemAuraRef.current) {
+      gemAuraRef.current.rotation.z = state.clock.elapsedTime * 0.7;
+      const pulse = 1 + Math.sin(state.clock.elapsedTime * 2.4) * 0.08;
+      gemAuraRef.current.scale.setScalar(pulse);
+    }
 
     // 入场:从 0 缩放弹出
     const targetScale = scale * 2.6;
@@ -110,12 +142,24 @@ function PetSprite({
       {/* 宠物立绘 Sprite(永远面向相机) */}
       <sprite ref={spriteRef} scale={[0.01, 0.01, 1]} position={[0, 0.3, 0]}>
         <spriteMaterial
-          map={texture}
+          map={displayTexture}
           transparent
           alphaTest={0.05}
-          color={isHit ? new THREE.Color(2.5, 0.6, 0.6) : new THREE.Color(1, 1, 1)}
+          color={isHit
+            ? new THREE.Color(2.5, 0.6, 0.6)
+            : new THREE.Color(1, 1, 1)}
         />
       </sprite>
+
+      {isGem && (
+        <>
+          <mesh ref={gemAuraRef} position={[0, 0.3, -0.08]}>
+            <torusGeometry args={[scale * 1.55, 0.07, 12, 6]} />
+            <meshBasicMaterial color="#67e8f9" transparent opacity={0.78} blending={THREE.AdditiveBlending} />
+          </mesh>
+          <pointLight position={[0, 0.5, 1]} color="#22d3ee" intensity={2.1} distance={5} />
+        </>
+      )}
 
       {/* 椭圆地面投影 */}
       <mesh position={[0, -1.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -244,6 +288,9 @@ function BattleActors({
   opponentHp,
   opponentMaxHp,
   hitPlayers,
+  myPetIsGem,
+  opponentPetIsGem,
+  myPetUsesBackFallback,
 }: {
   myPetImage: string;
   opponentPetImage: string;
@@ -252,6 +299,9 @@ function BattleActors({
   opponentHp: number;
   opponentMaxHp: number;
   hitPlayers: Set<1 | 2>;
+  myPetIsGem: boolean;
+  opponentPetIsGem: boolean;
+  myPetUsesBackFallback: boolean;
 }) {
   const compact = useThree((state) => state.size.width < 640);
 
@@ -264,6 +314,8 @@ function BattleActors({
         isHit={hitPlayers.has(1)}
         hp={myHp}
         maxHp={myMaxHp}
+        isGem={myPetIsGem}
+        isBackFacingFallback={myPetUsesBackFallback}
       />
       <PetSprite
         imageUrl={opponentPetImage}
@@ -272,7 +324,7 @@ function BattleActors({
         isHit={hitPlayers.has(2)}
         hp={opponentHp}
         maxHp={opponentMaxHp}
-        facingLeft
+        isGem={opponentPetIsGem}
       />
     </Suspense>
   );
@@ -400,6 +452,9 @@ export default function BattleScene3D({
   myMaxHp,
   opponentHp,
   opponentMaxHp,
+  myPetIsGem = false,
+  opponentPetIsGem = false,
+  myPetUsesBackFallback = false,
   effects,
 }: {
   myPetImage: string;
@@ -410,6 +465,9 @@ export default function BattleScene3D({
   myMaxHp: number;
   opponentHp: number;
   opponentMaxHp: number;
+  myPetIsGem?: boolean;
+  opponentPetIsGem?: boolean;
+  myPetUsesBackFallback?: boolean;
   effects: BattleVisualEffect[];
 }) {
   const hitPlayers = new Set(effects.map((effect) => effect.target));
@@ -443,6 +501,9 @@ export default function BattleScene3D({
           opponentHp={opponentHp}
           opponentMaxHp={opponentMaxHp}
           hitPlayers={hitPlayers}
+          myPetIsGem={myPetIsGem}
+          opponentPetIsGem={opponentPetIsGem}
+          myPetUsesBackFallback={myPetUsesBackFallback}
         />
 
         {/* 视角:限制在小范围内可拖动,保持宝可梦式镜头 */}

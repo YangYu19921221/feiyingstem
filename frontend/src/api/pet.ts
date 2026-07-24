@@ -20,6 +20,7 @@ export interface Pet {
   food_balance: number;
   current_hp: number;
   is_injured: boolean;
+  is_active: boolean;
   last_fed_at: string | null;
   last_interaction_at: string | null;
   created_at: string;
@@ -47,6 +48,23 @@ export interface CreatePetRequest {
   species: string;
 }
 
+export interface SwitchPetRequest {
+  pet_id: number;
+}
+
+export interface PetCollection {
+  pets: Pet[];
+  active_pet_id: number | null;
+  learned_words: number;
+  unlocked_slots: number;
+  used_slots: number;
+  max_slots: number;
+  words_per_slot: number;
+  next_slot_words: number | null;
+  recovery_goal_words: number | null;
+  recovery_words_remaining: number;
+}
+
 export interface EarnFoodRequest {
   score: number;
   total: number;
@@ -68,14 +86,23 @@ export interface EarnFoodResponse {
 export const getMyPet = async (): Promise<Pet | null> => {
   try {
     return await api.get('/student/pet');
-  } catch (err: any) {
-    if (err?.response?.status === 404) return null;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) return null;
     throw err;
   }
 };
 
 export const createPet = async (data: CreatePetRequest): Promise<Pet> => {
   return api.post('/student/pet', data);
+};
+
+export const getPetCollection = async (): Promise<PetCollection> => {
+  return api.get('/student/pet/collection');
+};
+
+export const switchPet = async (data: SwitchPetRequest): Promise<Pet> => {
+  return api.post('/student/pet/switch', data);
 };
 
 export const feedPet = async (): Promise<PetFeedResponse> => {

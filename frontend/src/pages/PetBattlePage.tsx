@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Zap } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { BattleWebSocket, AnswerWebSocket, Battle, QuestionData, RoundResult } from '../api/petBattle';
-import { getPetDefinition, getPetImage } from '../config/petSpecies';
+import { getPetBackImage, getPetDefinition, getPetImage, hasPetBackImage } from '../config/petSpecies';
 // three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
 const BattleScene3D = lazy(() => import('../components/BattleScene3D'));
 import {
@@ -28,10 +29,26 @@ type BattleVisualEffect = {
   };
 };
 
+type CaptureResult = {
+  eligible: boolean;
+  attempted: boolean;
+  success: boolean;
+  chance: number;
+  winner_id: number;
+  loser_id: number;
+  pet_name: string;
+  pet_species: string;
+  loser_has_no_pets: boolean;
+  recovery_goal_words: number | null;
+  reason: 'captured' | 'escaped' | 'roster_full' | 'slot_locked' | 'duplicate_species' | string;
+  required_words?: number | null;
+};
+
 type BattlePhase = 'waiting' | 'countdown' | 'question' | 'answering' | 'result' | 'end';
 
 export default function PetBattlePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { battleId } = useParams<{ battleId: string }>();
   const [phase, setPhase] = useState<BattlePhase>('waiting');
   const [battle, setBattle] = useState<Battle | null>(null);
@@ -230,6 +247,13 @@ export default function PetBattlePage() {
     ws.on('battle_end', (data) => {
       setPhase('end');
       setEndResult(data);
+      if (data.capture?.success) {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['myPet'] }),
+          queryClient.invalidateQueries({ queryKey: ['petCollection'] }),
+          queryClient.invalidateQueries({ queryKey: ['petEvents'] }),
+        ]);
+      }
     });
 
     ws.on('error', (data) => {
@@ -241,7 +265,7 @@ export default function PetBattlePage() {
       ws.close();
       ansWs.close();
     };
-  }, [battleId, token]);
+  }, [battleId, token, queryClient]);
 
   // 提交答案
   const submitAnswer = (answer: string, useUltimate = false) => {
@@ -370,7 +394,7 @@ export default function PetBattlePage() {
               </div>
             }>
               <BattleScene3D
-                myPetImage={getPetImage(myPet!.species, myPet!.evolution_stage)}
+                myPetImage={getPetBackImage(myPet!.species, myPet!.evolution_stage)}
                 opponentPetImage={getPetImage(opponentPet!.species, opponentPet!.evolution_stage)}
                 myPetName={`Lv.${myPet!.level} ${myPet!.name}`}
                 opponentPetName={`Lv.${opponentPet!.level} ${opponentPet!.name}`}
@@ -378,6 +402,9 @@ export default function PetBattlePage() {
                 myMaxHp={myPet!.max_hp}
                 opponentHp={opponentPet!.hp}
                 opponentMaxHp={opponentPet!.max_hp}
+                myPetIsGem={myPet!.evolution_stage >= 4}
+                opponentPetIsGem={opponentPet!.evolution_stage >= 4}
+                myPetUsesBackFallback={!hasPetBackImage(myPet!.species, myPet!.evolution_stage)}
                 effects={battleEffects}
               />
             </Suspense>
@@ -865,6 +892,23 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
   );
 }
 
+function CaptureBall({ success }: { success: boolean }) {
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="relative mx-auto h-16 w-16 overflow-hidden rounded-full border-[5px] border-gray-800 bg-white shadow-lg"
+      animate={success
+        ? { y: [0, -18, 0, -8, 0], rotate: [0, 180, 360, 520, 720] }
+        : { x: [0, -9, 9, -7, 7, 0], rotate: [0, -12, 12, -8, 8, 0] }}
+      transition={{ duration: success ? 1.25 : 0.8, ease: 'easeInOut' }}
+    >
+      <div className="h-1/2 bg-red-500" />
+      <div className="absolute left-0 top-1/2 h-[6px] w-full -translate-y-1/2 bg-gray-800" />
+      <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-gray-800 bg-white" />
+    </motion.div>
+  );
+}
+
 // 结束结果面板
 function EndResultPanel({
   result,
@@ -879,6 +923,39 @@ function EndResultPanel({
 }) {
   const isWinner = result.winner_id === (isPlayer1 ? battle.player1_id : battle.player2_id);
   const isDraw = !result.winner_id;
+  const myPlayerId = isPlayer1 ? battle.player1_id : battle.player2_id;
+  const capture = result.capture as CaptureResult | undefined;
+  const myStats = isPlayer1 ? result.player1_final_stats : result.player2_final_stats;
+  const opponentStats = isPlayer1 ? result.player2_final_stats : result.player1_final_stats;
+  const captureStatus = (() => {
+    if (!capture) return null;
+    if (capture.success && capture.winner_id === myPlayerId) {
+      return { tone: 'emerald', title: `收服成功！${capture.pet_name} 加入了你的队伍`, detail: '等级、进化阶段和培养状态全部保留。' };
+    }
+    if (capture.success && capture.loser_id === myPlayerId) {
+      return {
+        tone: 'red',
+        title: `你的 ${capture.pet_name} 被对方收服了`,
+        detail: capture.loser_has_no_pets
+          ? '当前已经没有伙伴，再学习 2000 个不同单词即可重新领养。'
+          : '系统已自动派出队伍中等级最高的伙伴。',
+      };
+    }
+    if (capture.winner_id !== myPlayerId) return null;
+    if (capture.reason === 'escaped') {
+      return { tone: 'amber', title: `${capture.pet_name} 挣脱了精灵球`, detail: `本次 ${capture.chance}% 收服判定未成功。` };
+    }
+    if (capture.reason === 'slot_locked') {
+      return { tone: 'gray', title: '精灵球暂时无法使用', detail: `先累计学习 ${capture.required_words || '更多'} 个不同单词，解锁新的队伍名额。` };
+    }
+    if (capture.reason === 'duplicate_species') {
+      return { tone: 'gray', title: '没有投出精灵球', detail: '你的队伍里已经有这个宝可梦家族。' };
+    }
+    if (capture.reason === 'roster_full') {
+      return { tone: 'gray', title: '队伍已满', detail: '最多同时拥有 5 只宝可梦，本次无法收服。' };
+    }
+    return null;
+  })();
 
   return (
     <motion.div
@@ -914,6 +991,24 @@ function EndResultPanel({
           )}
         </div>
 
+        {captureStatus && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className={`mb-4 rounded-xl border p-4 sm:mb-6 sm:rounded-2xl sm:p-5 ${
+              captureStatus.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50'
+                : captureStatus.tone === 'red' ? 'border-red-200 bg-red-50'
+                  : captureStatus.tone === 'amber' ? 'border-amber-200 bg-amber-50'
+                    : 'border-gray-200 bg-gray-50'
+            }`}
+          >
+            <CaptureBall success={Boolean(capture?.success)} />
+            <div className="mt-3 break-words text-base font-bold text-gray-900 sm:text-lg">{captureStatus.title}</div>
+            <div className="mt-1 break-words text-sm leading-6 text-gray-600">{captureStatus.detail}</div>
+          </motion.div>
+        )}
+
         {/* 奖励 */}
         <div className="mb-4 rounded-xl bg-orange-50 p-4 sm:mb-6 sm:rounded-2xl sm:p-6">
           <div className="text-lg font-bold text-gray-800 mb-4">对战奖励</div>
@@ -936,17 +1031,17 @@ function EndResultPanel({
           <div className="rounded-xl bg-blue-50 p-2.5 sm:p-4">
             <div className="font-bold text-gray-700 mb-2">你的数据</div>
             <div className="text-sm text-gray-600 space-y-1">
-              <div>正确: {result.player1_final_stats?.correct || 0}</div>
-              <div>伤害: {result.player1_final_stats?.damage || 0}</div>
-              <div>剩余HP: {result.player1_final_stats?.hp || 0}</div>
+              <div>正确: {myStats?.correct || 0}</div>
+              <div>伤害: {myStats?.damage || 0}</div>
+              <div>剩余HP: {myStats?.hp || 0}</div>
             </div>
           </div>
           <div className="rounded-xl bg-red-50 p-2.5 sm:p-4">
             <div className="font-bold text-gray-700 mb-2">对手数据</div>
             <div className="text-sm text-gray-600 space-y-1">
-              <div>正确: {result.player2_final_stats?.correct || 0}</div>
-              <div>伤害: {result.player2_final_stats?.damage || 0}</div>
-              <div>剩余HP: {result.player2_final_stats?.hp || 0}</div>
+              <div>正确: {opponentStats?.correct || 0}</div>
+              <div>伤害: {opponentStats?.damage || 0}</div>
+              <div>剩余HP: {opponentStats?.hp || 0}</div>
             </div>
           </div>
         </div>

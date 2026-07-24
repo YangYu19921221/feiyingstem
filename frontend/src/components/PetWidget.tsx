@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getMyPet, type Pet } from '../api/pet';
-import { getPetDefinition, getPetImage, getPetStage } from '../config/petSpecies';
+import { getPetImage, getPetStage } from '../config/petSpecies';
+import PetArtwork from './PetArtwork';
 
 const PET_SAYINGS: Record<string, string[]> = {
   pikachu:    ['皮卡~ 快来学习吧！', '皮卡皮卡...想你了', '皮卡~ 今天也要加油！', '电击！学习充电中！'],
@@ -20,10 +21,6 @@ const PET_SAYINGS: Record<string, string[]> = {
   paper_owl:   ['咕咕~学习时间到', '羽毛笔已备好', '博学越多越好', '一起做个小博士吧'],
   word_turtle: ['慢慢来，一步一个字', '壳上又多了一道纹', '稳扎稳打~', '厚积薄发！'],
 };
-
-function getPetEmoji(species: string, stage: number): string {
-  return stage === 0 ? '🥚' : getPetDefinition(species).emoji;
-}
 
 function getMoodColor(happiness: number, hunger: number): string {
   const avg = (happiness + hunger) / 2;
@@ -120,8 +117,8 @@ export default function PetWidget() {
     );
   }
 
-  const emoji = getPetEmoji(pet!.species, pet!.evolution_stage);
   const petImage = getPetImage(pet!.species, pet!.evolution_stage);
+  const petStage = getPetStage(pet!.species, pet!.evolution_stage);
   const moodColor = getMoodColor(pet!.happiness, pet!.hunger);
   const moodText = getMoodText(pet!.happiness, pet!.hunger);
   const xpPct = Math.round((pet!.experience / pet!.xp_to_next_level) * 100);
@@ -143,11 +140,14 @@ export default function PetWidget() {
               transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
               whileTap={{ scale: 0.9 }}
             >
-              {petImage ? (
-                <img src={petImage} alt={pet!.name} className="w-14 h-14 object-contain" />
-              ) : (
-                <span className="text-4xl">{emoji}</span>
-              )}
+              <PetArtwork
+                image={petImage}
+                stage={petStage}
+                alt={pet!.name}
+                containerClassName="h-14 w-14"
+                imageClassName="h-full w-full"
+                eager
+              />
               <AnimatePresence>
                 {showHeart && (
                   <motion.span

@@ -107,10 +107,13 @@ def _snapshot_dict(room) -> dict:
         "players": [
             {
                 "user_id": p.user_id, "nickname": p.nickname, "online": p.online,
-                "current_word_idx": p.current_word_idx, "correct": p.correct,
+                "correct": p.correct,
                 "wrong": p.wrong, "total_time_ms": p.total_time_ms,
                 "points": p.points, "streak": p.streak, "finished": p.finished,
-                "team": p.team, "n_words": p.n_words,  # 该玩家私有词表大小(算个人进度%)
+                "team": p.team, "n_words": p.n_words,
+                # 掌握赛进度:阶段 + 第几组 + 进度百分比(算实时榜/结算排名)
+                "stage": p.stage, "group_idx": p.gi, "group_total": p.group_total,
+                "progress": p.compute_progress(),
             }
             for p in room.players.values()
         ],
@@ -276,7 +279,7 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
         _schedule_disconnect_cleanup(room, uid)
 
 
-_TIMEOUT_TASKS: dict[tuple[int, int, int, str], asyncio.Task] = {}  # (room_id, user_id, word_idx, phase)
+_TIMEOUT_TASKS: dict[tuple[int, int, int], asyncio.Task] = {}  # (room_id, user_id, q_seq)
 _COUNTDOWN_TASKS: dict[int, asyncio.Task] = {}  # room_id → 全场倒计时任务
 
 
@@ -352,8 +355,8 @@ async def _notify_room_closed(room):
     room.spectators.clear()
 
 
-def _cancel_timer(room_id: int, user_id: int, word_idx: int, phase: str):
-    key = (room_id, user_id, word_idx, phase)
+def _cancel_timer(room_id: int, user_id: int, q_seq: int):
+    key = (room_id, user_id, q_seq)
     task = _TIMEOUT_TASKS.pop(key, None)
     if task and not task.done():
         task.cancel()
@@ -380,20 +383,24 @@ def _cancel_room_timers(room_id: int) -> None:
         cd.cancel()
 
 
-def _schedule_player_timer(room, user_id: int, word_idx: int, phase: str, word_lookup: dict):
-    """为某玩家的某道题起超时计时器;超时则该玩家该题记错、推进、推下一题。"""
-    _cancel_timer(room.room_id, user_id, word_idx, phase)
-    timeout_ms = PHASE_TIMEOUT_MS.get(phase, 30_000)
+def _schedule_player_timer(room, user_id: int, q_seq: int, stage: str, word_lookup: dict):
+    """为某玩家的某道题起超时计时器(key=q_seq);超时则该题按错推进、推下一题。
+    完成(done)不起计时器。超时时长按 stage(分类20s/听写60s/过关30s)。"""
+    _cancel_timer(room.room_id, user_id, q_seq)
+    if stage == "done":
+        return
+    from app.services.pk.engine import STAGE_TIMEOUT_MS
+    timeout_ms = STAGE_TIMEOUT_MS.get(stage, 30_000)
 
     async def _run():
         try:
             await asyncio.sleep(timeout_ms / 1000)
-            events = engine.force_timeout(room, user_id, word_idx, phase, word_lookup)
+            events = engine.force_timeout(room, user_id, q_seq, stage, word_lookup)
             await _process_events(room, events, word_lookup)
         except asyncio.CancelledError:
             pass
 
-    _TIMEOUT_TASKS[(room.room_id, user_id, word_idx, phase)] = asyncio.create_task(_run())
+    _TIMEOUT_TASKS[(room.room_id, user_id, q_seq)] = asyncio.create_task(_run())
 
 
 def _schedule_countdown(room, word_lookup: dict):
@@ -467,7 +474,13 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
         if etype == "question_pushed" and target is not None:
             # 为该玩家这道题起超时计时器(先取消他上一题的,避免重叠)
             _cancel_player_timers(room.room_id, target)
-            _schedule_player_timer(room, target, event["word_idx"], event["phase"], word_lookup)
+            _schedule_player_timer(room, target, event["q_seq"], event["stage"], word_lookup)
+        elif etype == "player_finished" and target is not None:
+            # 该玩家跑完整套流程:停其计时器;若全员完成则提前结算(不等全场倒计时)
+            _cancel_player_timers(room.room_id, target)
+            if engine.all_players_done(room):
+                fin_events = engine.finalize_room(room)
+                await _process_events(room, fin_events, word_lookup)
         elif etype == "game_finished":
             logger.info(
                 "PK game finished: room_id=%d players=%d",
@@ -497,19 +510,23 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
 async def _push_first_question(room) -> None:
     """开局(并行竞速):每人词表已就绪,广播房间状态 → 给每个在线玩家各推其第一题
     (定向)并起个人计时器 → 启动全场倒计时。"""
-    from app.services.pk.engine import _question_event
+    from app.services.pk.engine import _question_event, init_player_groups
     room.status = "playing"
     room.started_at = datetime.utcnow()
     room.deadline_at = room.started_at + timedelta(seconds=max(1, int(room.countdown_seconds)))
+    # 每个玩家:把私有词表切成组,初始化到「第一组·分类·第一词」的状态机
+    for ps in room.players.values():
+        if ps.word_ids:
+            init_player_groups(room, ps)
     await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
     for uid, ps in list(room.players.items()):
         # 必须真正连着 WS 才推题/起计时器:仅 online=True 但 ws=None 的是"join 了没连"的
         # 幽灵玩家,给他起计时器会 force_timeout 一路自动记错推进,污染对局。重连时会补发其当前题。
-        if ps.ws is None or not ps.online or not ps.word_ids:
+        if ps.ws is None or not ps.online or not ps.groups:
             continue
         evt = _question_event(room, ps, room.word_lookup)
         await _send_to_player(room, uid, evt)
-        _schedule_player_timer(room, uid, ps.current_word_idx, ps.current_phase, room.word_lookup)
+        _schedule_player_timer(room, uid, ps.q_seq, ps.stage, room.word_lookup)
     _schedule_countdown(room, room.word_lookup)
 
 
@@ -555,8 +572,7 @@ async def _try_start_game(room, requester_ws) -> None:
             return
         for uid in online_ids:
             ps = room.players[uid]
-            ps.word_ids = list(shared)   # 双方同一份词表
-            ps.current_word_idx = 0
+            ps.word_ids = list(shared)   # 双方同一份词表(分组/状态机在 _push_first_question 里初始化)
             ps.answers = []
             ps.finished = False
         room.word_ids = list(shared)
@@ -572,7 +588,6 @@ async def _try_start_game(room, requester_ws) -> None:
             if len(picked) < min(room.word_count, MIN_COMMON_WORDS):
                 too_few.append(uid)
             ps.word_ids = picked
-            ps.current_word_idx = 0
             ps.answers = []
             ps.finished = False
             all_word_ids |= set(picked)
@@ -596,8 +611,20 @@ async def _try_start_game(room, requester_ws) -> None:
     await _push_first_question(room)
 
 
+async def _finish_playing_room(room) -> bool:
+    """教师提前结束正在进行的对局，复用倒计时到点时的正式结算流程。"""
+    if room.status != "playing":
+        return False
+    _cancel_room_timers(room.room_id)
+    events = engine.finalize_room(room)
+    if not events:
+        return False
+    await _process_events(room, events, room.word_lookup)
+    return True
+
+
 async def _handle_host_console(ws: WebSocket, room, user) -> None:
-    """教师控制台:组织者视角。收全场广播,能开局/踢人/调队/解散,但不作答不计分。
+    """教师控制台:组织者视角。收全场广播,能开局/结算/踢人/调队/解散,但不作答不计分。
 
     教师断开不解散房间(学生可能还在等待/对局中);教师主动 close_room 才解散。
     """
@@ -652,6 +679,15 @@ async def _handle_host_console(ws: WebSocket, room, user) -> None:
                     if cur is not None:
                         await _broadcast(cur, {"type": "player_kicked", "user_id": target})
                         await _broadcast_room_state(cur)
+            elif mtype == "finish_game":
+                if not await _finish_playing_room(room):
+                    await ws.send_json({
+                        "type": "error",
+                        "code": "GAME_NOT_PLAYING",
+                        "message": "比赛尚未开始或已经结束",
+                    })
+                    continue
+                break
             elif mtype == "close_room":
                 # 教师主动解散:通知玩家并断开,清理房间
                 _cancel_room_timers(room.room_id)
@@ -772,11 +808,11 @@ async def pk_ws(
     if room.word_ids and not room.word_lookup:
         room.word_lookup.update(await _load_word_lookup(room.word_ids))
 
-    # 对局中重连(并行竞速):单发「我自己的当前题」(按个人游标),并重置我这题的计时器,
-    # 否则客户端卡在"等待下一题"。不能读 room.current_word_idx(那是全房聚合,已非个人进度)。
-    if room.status == "playing" and p.word_ids:
+    # 对局中重连:单发「我自己的当前题」(按状态机 q_seq/stage),并重置我这题的计时器,
+    # 否则客户端卡在"等待下一题"。已完成(done)不补题。
+    if room.status == "playing" and p.groups and p.stage != "done":
         await ws.send_json(_question_event(room, p, room.word_lookup))
-        _schedule_player_timer(room, user.id, p.current_word_idx, p.current_phase, room.word_lookup)
+        _schedule_player_timer(room, user.id, p.q_seq, p.stage, room.word_lookup)
 
     explicit_leave = False
     try:
@@ -796,9 +832,9 @@ async def pk_ws(
                     await _broadcast_room_state(room)
                     # watchdog 曾误标离线并取消了他的题目计时器;复活后要补发当前题并重挂计时器,
                     # 否则这道题永不超时、个人进度冻结到全场倒计时结束(与换新连接的重连路径保持一致)
-                    if room.status == "playing" and p.word_ids:
+                    if room.status == "playing" and p.groups and p.stage != "done":
                         await _send_to_player(room, user.id, _question_event(room, p, room.word_lookup))
-                        _schedule_player_timer(room, user.id, p.current_word_idx, p.current_phase, room.word_lookup)
+                        _schedule_player_timer(room, user.id, p.q_seq, p.stage, room.word_lookup)
             elif mtype == "start_game" and user.id == room.host_id and room.host_is_player:
                 # 房主下场的房(学生自建/晋级赛):房主玩家亲自开局
                 await _try_start_game(room, ws)

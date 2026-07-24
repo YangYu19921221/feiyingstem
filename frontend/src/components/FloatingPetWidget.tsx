@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { getMyPet, type Pet } from '../api/pet';
 import { onPetEvent, type PetEventType } from '../utils/petEventBus';
-import { getPetDefinition, getPetImage } from '../config/petSpecies';
+import { getPetImage, getPetStage } from '../config/petSpecies';
+import PetArtwork from './PetArtwork';
 
 const MESSAGES: Record<PetEventType | 'idle' | 'hungry' | 'unhappy', string[]> = {
   correct:  ['答对了！🎉', '太棒了！⚡', '厉害！继续冲！', '我为你骄傲！✨', '对了对了！加油！'],
@@ -115,8 +116,8 @@ export default function FloatingPetWidget() {
   if (!location.pathname.startsWith('/student')) return null;
   if (!pet) return null;
 
-  const emoji = pet.evolution_stage === 0 ? '🥚' : getPetDefinition(pet.species).emoji;
   const petImg = getPetImage(pet.species, pet.evolution_stage);
+  const petStage = getPetStage(pet.species, pet.evolution_stage);
   const moodAvg = (pet.happiness + pet.hunger) / 2;
 
   // 宠物动画 by mood
@@ -234,11 +235,14 @@ export default function FloatingPetWidget() {
           animate={petAnim[mood]}
           className="w-full h-full drop-shadow-md"
         >
-          {petImg ? (
-            <img src={petImg} alt={pet.name} className="w-full h-full object-contain" />
-          ) : (
-            <span className="text-4xl">{emoji}</span>
-          )}
+          <PetArtwork
+            image={petImg}
+            stage={petStage}
+            alt={pet.name}
+            containerClassName="h-full w-full"
+            imageClassName="h-full w-full"
+            eager
+          />
         </motion.div>
       </motion.button>
     </motion.div>

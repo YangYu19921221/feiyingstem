@@ -191,6 +191,15 @@ async def battle_websocket(
                     )
                     return
 
+            # 双方主 WebSocket 都会进入此处理器，只由玩家1推进回合和执行最终结算。
+            # 玩家2保持连接接收广播，避免奖励和精灵球收服被重复执行。
+            if current_user.id != battle.player1_id:
+                while True:
+                    await asyncio.sleep(0.25)
+                    await db.refresh(battle)
+                    if battle.status == "finished":
+                        return
+
         # 双方都连接了,开始倒计时
         await manager.broadcast(
             battle_id, {"type": "countdown", "seconds": 3}
@@ -396,6 +405,7 @@ async def battle_websocket(
                 rating_change=rewards.get(current_user.id, {}).get("rating_change", 0),
                 player1_reward=rewards.get(battle.player1_id),
                 player2_reward=rewards.get(battle.player2_id),
+                capture=rewards.get("_capture"),
                 player1_final_stats={
                     "correct": battle.player1_total_correct,
                     "damage": battle.player1_total_damage,

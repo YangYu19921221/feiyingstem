@@ -40,6 +40,10 @@ class User(Base):
     experience_points = Column(Integer, default=0)  # 经验值
     total_points = Column(Integer, default=0)  # 总积分
 
+    # 最后一只宠物被对手收服后，需在此绝对词数目标上重新解锁领养。
+    pet_recovery_goal_words = Column(Integer, nullable=True)
+    pet_food_reserve = Column(Integer, nullable=True)
+
     # 订阅到期时间（仅学生需要）
     subscription_expires_at = Column(DateTime, nullable=True)
 

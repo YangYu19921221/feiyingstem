@@ -8,17 +8,18 @@ class UserPet(Base):
     __tablename__ = "user_pets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     name = Column(String(50), nullable=False, default='小伙伴')
-    species = Column(String(20), nullable=False, default='pikachu')  # 支持的 species 在 schemas/pet.py 的 pattern 中维护
+    species = Column(String(32), nullable=False, default='pikachu')
     level = Column(Integer, default=1)
     experience = Column(Integer, default=0)
     happiness = Column(Integer, default=80)       # 0-100
     hunger = Column(Integer, default=80)           # 0-100
-    evolution_stage = Column(Integer, default=0)   # 0=egg,1=baby,2=teen,3=adult,4=legendary
+    evolution_stage = Column(Integer, default=0)   # 0=egg,1=base,2=middle,3=final,4=gem
     food_balance = Column(Integer, default=10)     # 宠物粮余额，新用户送10粮
     current_hp = Column(Integer, default=120)      # 当前HP（对战后会变化）
     is_injured = Column(Boolean, default=False)    # 是否受伤（HP<50%时为True）
+    is_active = Column(Boolean, default=False, nullable=False, index=True)  # 当前养成/出战伙伴
     last_fed_at = Column(DateTime, nullable=True)
     last_interaction_at = Column(DateTime, server_default=func.now())
     created_at = Column(DateTime, server_default=func.now())

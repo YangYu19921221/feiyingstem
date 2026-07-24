@@ -54,6 +54,12 @@ class PetBattle(Base):
     started_at = Column(TIMESTAMP)
     finished_at = Column(TIMESTAMP)
     expires_at = Column(TIMESTAMP)
+
+    # 普通真人对战结束后的精灵球收服结算（JSON 用于断线后复用同一结果）。
+    capture_attempted = Column(Boolean, default=False)
+    capture_succeeded = Column(Boolean, default=False)
+    captured_pet_id = Column(Integer, nullable=True)
+    capture_data = Column(Text, nullable=True)
     
     # AI对战相关
     is_ai_battle = Column(Boolean, default=False)
