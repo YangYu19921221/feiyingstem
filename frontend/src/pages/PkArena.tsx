@@ -557,42 +557,65 @@ function CountdownBar({ deadlineIso }: { deadlineIso: string }) {
   );
 }
 
-/** 分组赛队伍榜:队伍聚合得分,复用现有 card-soft 风格。 */
+/** 分组赛队伍榜(擂台版):与实时战况同款深色竞技场风格,领先队金色高亮。 */
 function TeamRankingPanel({ items }: { items: PkTeamRankItem[] }) {
   return (
-    <div className="card-soft rounded-2xl p-3">
-      <div className="flex items-center justify-between mb-2 px-1">
-        <h3 className="font-display font-semibold text-ink flex items-center gap-1.5">
-          <span>👥</span> 队伍榜
-        </h3>
-        <span className="text-[11px] text-ink-mute">按人均分排名</span>
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-2xl ring-1 ring-white/10">
+      <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 h-40 w-56 rounded-full bg-accent/20 blur-3xl" />
+      <div className="relative flex items-center justify-between px-4 pt-3.5 pb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🚩</span>
+          <h3 className="font-display font-extrabold tracking-wide text-white text-[15px]">队伍榜</h3>
+        </div>
+        <span className="text-[10px] font-medium text-slate-400">按人均分排名</span>
       </div>
-      <div className="space-y-1.5">
-        {items.map((it) => (
-          <motion.div
-            key={it.team}
-            layout
-            transition={{ type: 'spring', stiffness: 350, damping: 28 }}
-            className="flex items-center gap-2 rounded-xl px-2.5 py-2 bg-gray-50"
-          >
-            <span className="w-7 text-center shrink-0">
-              {TEAM_RANK_BADGE[it.rank] ?? (
-                <span className="text-sm font-semibold text-ink-mute font-numeric">{it.rank}</span>
+      <div className="relative space-y-1.5 px-2.5 pb-3">
+        {items.map((it) => {
+          const isLeader = it.rank === 1 && it.points > 0;
+          return (
+            <motion.div
+              key={it.team}
+              layout
+              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              className={`relative overflow-hidden rounded-2xl px-2.5 py-2.5 ${
+                isLeader
+                  ? 'bg-gradient-to-r from-amber-500/25 via-amber-400/10 to-transparent ring-1 ring-amber-300/50'
+                  : 'bg-white/[0.04] ring-1 ring-white/5'
+              }`}
+            >
+              {isLeader && (
+                <motion.div
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent"
+                  initial={{ x: '-120%' }}
+                  animate={{ x: '120%' }}
+                  transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}
+                />
               )}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className={`inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-br ${TEAM_TONE[(it.team - 1) % TEAM_TONE.length]}`} />
-                <span className="truncate text-sm font-medium text-ink">第 {it.team} 队</span>
-                <span className="text-[11px] text-ink-mute shrink-0">{it.online_count}/{it.member_count} 人</span>
+              <div className="relative flex items-center gap-2">
+                <span className={`flex w-8 shrink-0 justify-center ${isLeader ? 'text-2xl' : 'text-lg'}`}>
+                  {TEAM_RANK_BADGE[it.rank] ?? (
+                    <span className="font-numeric text-sm font-bold text-slate-400">{it.rank}</span>
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-block h-3 w-3 rounded-full bg-gradient-to-br ${TEAM_TONE[(it.team - 1) % TEAM_TONE.length]}`} />
+                    <span className={`truncate text-sm font-bold ${isLeader ? 'text-amber-200' : 'text-slate-100'}`}>
+                      第 {it.team} 队
+                    </span>
+                    <span className="shrink-0 text-[10px] text-slate-500">{it.online_count}/{it.member_count} 人</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className={`block font-numeric text-lg font-extrabold leading-none ${isLeader ? 'text-amber-300' : 'text-white'}`}>
+                    人均 {it.avg_points}
+                  </span>
+                  <span className="font-numeric text-[10px] text-slate-500">总 {it.points}</span>
+                </div>
               </div>
-            </div>
-            <div className="shrink-0 text-right">
-              <span className="text-base font-bold text-ink font-numeric block leading-none">人均 {it.avg_points}</span>
-              <span className="text-[10px] text-ink-mute font-numeric">总 {it.points}</span>
-            </div>
-          </motion.div>
-        ))}
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );
