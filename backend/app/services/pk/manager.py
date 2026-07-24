@@ -66,7 +66,8 @@ def create_room(host_id: int, max_players: int, org_id: int,
                 unit_id: int | None = None, nickname: str | None = None,
                 word_count: int = 10,
                 mode: str = "individual", team_count: int = 2,
-                host_is_player: bool = True) -> RoomState:
+                host_is_player: bool = True,
+                countdown_seconds: int = 300) -> RoomState:
     """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。
     org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。
 
@@ -90,6 +91,7 @@ def create_room(host_id: int, max_players: int, org_id: int,
         mode="team" if mode == "team" else "individual",
         team_count=max(2, int(team_count)) if mode == "team" else 2,
         host_is_player=host_is_player,
+        countdown_seconds=max(60, min(int(countdown_seconds), 1800)),
     )
     if host_is_player:
         # 房主下场:作为首个玩家入房(学生自建房 / 晋级赛)

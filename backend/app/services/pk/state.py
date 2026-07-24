@@ -33,11 +33,34 @@ class PlayerState:
     points: int = 0          # 累计得分(基础分+手速加成,服务端权威)
     streak: int = 0          # 当前连击(连续答对数)
     best_streak: int = 0     # 本局最高连击
-    current_word_idx: int = 0
-    finished: bool = False
+    # 并行竞速:每人一份私有词表 + 独立进度指针。current_word_idx = 已完成题数(0..∞,
+    # 答完循环续刷不清零);当前词/阶段由它对 word_ids 取模推出(见下方计算属性)。
+    word_ids: list[int] = field(default_factory=list)   # 该玩家私有词表(从自己背过的词抽)
+    current_word_idx: int = 0                            # 已完成题数(个人进度指针)
+    answers: list[AnswerRecord] = field(default_factory=list)  # 个人答题流水(按提交顺序)
+    finished: bool = False   # 保留字段;全场倒计时定胜负,答完循环续刷,通常不置 True
     team: Optional[int] = None  # 分组 PK 里的队号(1..team_count);个人 PK 恒为 None
     last_heartbeat_at: datetime = field(default_factory=datetime.utcnow)
     disconnected_at: Optional[datetime] = None
+
+    @property
+    def n_words(self) -> int:
+        return len(self.word_ids)
+
+    @property
+    def current_word_id(self) -> Optional[int]:
+        """个人当前词:按已完成题数对私有词表取模(答完循环续刷)。词表空返回 None。"""
+        if not self.word_ids:
+            return None
+        return self.word_ids[(self.current_word_idx % (self.n_words * len(PHASES_IN_ORDER))) % self.n_words]
+
+    @property
+    def current_phase(self) -> PhaseLiteral:
+        """个人当前阶段:一轮 = n_words*4 题,轮内前 n_words 题分类、次 n_words 语音…"""
+        if not self.word_ids:
+            return "classify"
+        idx_in_round = self.current_word_idx % (self.n_words * len(PHASES_IN_ORDER))
+        return PHASES_IN_ORDER[idx_in_round // self.n_words]
 
 
 @dataclass
@@ -78,6 +101,9 @@ class RoomState:
     answers: dict[int, dict[int, AnswerRecord]] = field(default_factory=dict)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    # 全场倒计时(并行竞速):教师建房设时长(秒),开局时算出 deadline;到点强制全场结算
+    countdown_seconds: int = 300
+    deadline_at: Optional[datetime] = None
     join_order: list[int] = field(default_factory=list)  # 用于房主转移
     # 晋级赛对局:非 None 时这间房属于某场锦标赛,结束后由 tournament service
     # 记结果并自动推进赛程(出线/下一轮对阵)
@@ -85,15 +111,8 @@ class RoomState:
     # 晋级赛房间的词表在建房时就按赛事单元预置,开局不再走"共同背过"交集
     fixed_words: bool = False
 
-    @property
-    def total_questions(self) -> int:
-        """5 阶段中 4 个真正出题(summary 不出题)。"""
-        return len(self.word_ids) * len(PHASES_IN_ORDER)
-
-    @property
-    def current_word_id(self) -> int:
-        idx_in_phase = self.current_word_idx % len(self.word_ids)
-        return self.word_ids[idx_in_phase]
+    # 注:并行竞速后"当前词/进度"下沉到 PlayerState(每人各跑各的),房间级
+    # current_word_id/total_questions 已废弃删除(旧同步引擎遗留,会对空词表除零)。
 
     def points_for_word(self, word_id: int) -> int:
         return self.word_points.get(word_id, self.base_points)

@@ -34,13 +34,15 @@ def _snapshot(room) -> RoomSnapshot:
         mode=room.mode,
         team_count=room.team_count,
         host_is_player=room.host_is_player,
+        countdown_seconds=room.countdown_seconds,
+        deadline_at=room.deadline_at.isoformat() + "Z" if room.deadline_at else None,
         players=[
             PlayerSnapshot(
                 user_id=p.user_id, nickname=p.nickname, online=p.online,
                 current_word_idx=p.current_word_idx, correct=p.correct,
                 wrong=p.wrong, total_time_ms=p.total_time_ms,
                 points=p.points, streak=p.streak, finished=p.finished,
-                team=p.team,
+                team=p.team, n_words=p.n_words,
             )
             for p in room.players.values()
         ],
@@ -112,8 +114,8 @@ async def create_room(
 ):
     """建房:仅教师/管理员可创建 PK 对战房间,教师作为组织者不下场参赛。
 
-    建房只定人数、题量与模式(个人/分组);单词在开局时从「所有参赛学生都背过」
-    的交集里随机抽取(不够时用其余词补齐)。学生只能通过邀请码加入,不能建房。
+    建房定人数、每人题量、模式(个人/分组)与全场倒计时;开局时给每个参赛学生各抽
+    「他自己背过的词」并行竞速,全场倒计时到点结算。学生只能凭邀请码加入,不能建房。
     """
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
@@ -126,6 +128,7 @@ async def create_room(
             mode=body.mode,
             team_count=body.team_count,
             host_is_player=False,  # 教师是组织者,不作为选手下场
+            countdown_seconds=body.countdown_seconds,
         )
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")

@@ -10,9 +10,10 @@ ModeLiteral = Literal["individual", "team"]
 
 class CreateRoomRequest(BaseModel):
     max_players: int = Field(4, ge=2, le=20)
-    word_count: int = Field(10, ge=4, le=30)  # 每局词数,每词 4 阶段
+    word_count: int = Field(10, ge=4, le=30)  # 每人每轮词数,每词 4 阶段;答完循环续刷
     mode: ModeLiteral = "individual"           # individual=个人 PK;team=分组 PK
     team_count: int = Field(2, ge=2, le=6)     # 分组 PK 队伍数;个人 PK 忽略
+    countdown_seconds: int = Field(300, ge=60, le=1800)  # 全场倒计时秒数(1-30分钟,默认5)
 
 
 class JoinRoomRequest(BaseModel):
@@ -31,6 +32,7 @@ class PlayerSnapshot(BaseModel):
     streak: int = 0
     finished: bool
     team: Optional[int] = None  # 分组 PK 里的队号;个人 PK 为 None
+    n_words: int = 0            # 该玩家私有词表大小(算个人进度%)
 
 
 class SpectatorSnapshot(BaseModel):
@@ -53,6 +55,8 @@ class RoomSnapshot(BaseModel):
     mode: ModeLiteral = "individual"
     team_count: int = 2
     host_is_player: bool = True   # 房主是否下场(教师组织的房为 False)
+    countdown_seconds: int = 300
+    deadline_at: Optional[str] = None
     players: list[PlayerSnapshot]
     spectators: list[SpectatorSnapshot] = []
 

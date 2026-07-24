@@ -27,7 +27,8 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
     db.add(db_room)
     await db.flush()
 
-    total_questions = len(room.word_ids) * 4
+    # 并行竞速:每人一份词表、答完循环续刷,答题数不定;掉线判定=中途离线(disconnected_at
+    # 有值且未在线)而非"答题数不足",因为限时+循环下答题数本就因人而异。
     ranked = rank_players([
         {
             "user_id": ps.user_id,
@@ -36,7 +37,7 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
             "total_time_ms": ps.total_time_ms,
             "points": ps.points,
             "team": ps.team,
-            "is_disconnected": (ps.correct + ps.wrong) < total_questions,
+            "is_disconnected": (not ps.online) and ps.disconnected_at is not None,
         }
         for ps in room.players.values()
     ])
@@ -54,11 +55,14 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
             is_disconnected=r.get("is_disconnected", False),
         ))
 
-    for word_idx, bucket in room.answers.items():
-        for uid, ans in bucket.items():
+    # 答题流水:并行模式每人自己的 answers 列表(取每题实际词,答完循环续刷会有重复词)
+    answer_total = 0
+    for ps in room.players.values():
+        for ans in ps.answers:
+            answer_total += 1
             db.add(PkAnswerRecord(
                 room_id=db_room.id,
-                user_id=uid,
+                user_id=ps.user_id,
                 word_id=ans.word_id,
                 phase=ans.phase,
                 is_correct=ans.is_correct,
@@ -68,7 +72,6 @@ async def persist_finished_room(room: RoomState, db: AsyncSession) -> int:
     await db.commit()
     logger.info(
         "PK room persisted: room_id=%d db_id=%d players=%d answers=%d",
-        room.room_id, db_room.id, len(room.players),
-        sum(len(b) for b in room.answers.values()),
+        room.room_id, db_room.id, len(room.players), answer_total,
     )
     return db_room.id

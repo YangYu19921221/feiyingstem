@@ -17,6 +17,7 @@ export interface PkPlayer {
   streak: number;
   finished: boolean;
   team?: number | null;
+  n_words?: number;   // 该玩家私有词表大小(算个人进度%)
 }
 
 export interface PkSpectator {
@@ -39,6 +40,8 @@ export interface PkRoomSnapshot {
   mode: PkMode;          // individual=个人赛 / team=分组赛
   team_count: number;    // 分组赛队伍数
   host_is_player: boolean; // 房主是否下场(教师组织房为 false)
+  countdown_seconds: number;      // 全场倒计时秒数
+  deadline_at: string | null;     // 倒计时截止(ISO,开局后有值)
   players: PkPlayer[];
   spectators: PkSpectator[];
 }
@@ -92,12 +95,14 @@ export const pkApi = {
     wordCount: number,
     mode: PkMode = 'individual',
     teamCount = 2,
+    countdownSeconds = 300,
   ) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
       max_players: maxPlayers,
       word_count: wordCount,
       mode,
       team_count: teamCount,
+      countdown_seconds: countdownSeconds,
     }),
 
   lookupByCode: (code: string) =>

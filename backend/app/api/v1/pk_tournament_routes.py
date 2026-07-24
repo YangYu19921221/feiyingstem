@@ -361,35 +361,25 @@ async def enter_match(
                     raise HTTPException(status_code=409, detail="ROOM_ALREADY_STARTED")
             return {"room_id": room.room_id, "invite_code": room.invite_code}
 
-        # 开新房:词表从赛事单元里选,优先「对阵双方都背过」的词(考已学的更公平),
-        # 学过的不够一场时,用单元里其余词补齐(晋级赛以赛促学,不因某人没学就缩水题量)
+        # 晋级赛也走并行竞速:开局时给每个选手各抽「他自己背过、且属于本赛事单元」的词。
+        # 这里 room.word_ids 存整个单元词池(fixed_words=True 让开局选词限定在此池内),
+        # 具体每人抽哪些由 _try_start_game 的 per-player 选词处理。
         word_ids = await _unit_word_ids(db, json.loads(t.unit_ids))
         if len(word_ids) < t.word_count:
             raise HTTPException(status_code=400, detail="赛事单元词量不足(单元可能被改动)")
-
-        both = [m.p1_id, m.p2_id] if m.p2_id else [m.p1_id]
-        learned = await load_learned_word_ids(db, both, word_ids)
-        common = set.intersection(*(learned.get(uid, set()) for uid in both)) if both else set()
-        common_list = [w for w in word_ids if w in common]  # 保持单元内顺序稳定
-        rest = [w for w in word_ids if w not in common]
-        random.shuffle(common_list)
-        random.shuffle(rest)
-        # 先填学过的,不够再拿其余词补
-        chosen = (common_list + rest)[:t.word_count]
-        random.shuffle(chosen)
 
         nickname = user.full_name or user.username or f"User{user.id}"
         try:
             room = manager.create_room(
                 host_id=user.id, max_players=2,
-                word_ids=chosen, nickname=nickname, word_count=t.word_count,
-                org_id=user.org_id,
+                word_ids=word_ids, nickname=nickname, word_count=t.word_count,
+                org_id=user.org_id, countdown_seconds=max(60, t.word_count * 30),
             )
         except manager.UserAlreadyInRoom:
             raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
         room.tournament_match_id = m.id
-        room.fixed_words = True
-        room.word_points = await load_word_points(db, chosen)
+        room.fixed_words = True   # 开局选词限定在单元池内(每人各抽自己背过的单元词)
+        room.word_points = await load_word_points(db, word_ids)
 
         m.invite_code = room.invite_code
         await db.commit()

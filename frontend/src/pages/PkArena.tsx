@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
@@ -82,8 +82,7 @@ export default function PkArena() {
   const [snapshot, setSnapshot] = useState<PkRoomSnapshot | null>(null);
   const [currentQ, setCurrentQ] = useState<CurrentQuestion | null>(null);
   const questionStartedAtRef = useRef<number>(0);
-  const [waitingForOthers, setWaitingForOthers] = useState(false);
-  const [answeredIds, setAnsweredIds] = useState<Set<number>>(new Set());
+  const [submitting, setSubmitting] = useState(false);  // 提交中防重复(并行竞速无"等其他人")
   const [liveRanking, setLiveRanking] = useState<PkLiveRankItem[] | null>(null);
   const [teamRanking, setTeamRanking] = useState<PkTeamRankItem[] | null>(null);
   const [lastGains, setLastGains] = useState<Record<string, number>>({});
@@ -104,6 +103,9 @@ export default function PkArena() {
           break;
         }
         case 'question_pushed':
+          // 并行竞速:服务端只推「我自己的下一题」(带 target_user_id)。教师控制台会镜像收到
+          // 每个学生的题,但教师不答题,忽略即可(靠 live_ranking 看多人进度)。
+          if (event.target_user_id != null && event.target_user_id !== meId) break;
           setCurrentQ({
             word_idx: event.word_idx,
             phase: event.phase as PkPhase,
@@ -111,19 +113,11 @@ export default function PkArena() {
             points: event.points,
           });
           questionStartedAtRef.current = Date.now();
-          setWaitingForOthers(false);
-          setAnsweredIds(new Set());
-          break;
-        case 'player_answered':
-          if (event.user_id === meId) setWaitingForOthers(true);
-          setAnsweredIds((prev) => {
-            const next = new Set(prev);
-            next.add(event.user_id);
-            return next;
-          });
+          setSubmitting(false);   // 新题到,解禁答题
           break;
         case 'question_settled': {
-          setWaitingForOthers(false);
+          // 「我这题」的即时回执(仅自己):驱动 +分浮动动画
+          if (event.target_user_id != null && event.target_user_id !== meId) break;
           const gains: Record<string, number> = {};
           const results = (event.results ?? {}) as Record<string, { points_gained?: number }>;
           for (const [uid, r] of Object.entries(results)) {
@@ -136,9 +130,6 @@ export default function PkArena() {
         case 'live_ranking':
           setLiveRanking(event.ranking as PkLiveRankItem[]);
           if (event.team_ranking) setTeamRanking(event.team_ranking as PkTeamRankItem[]);
-          break;
-        case 'phase_advanced':
-          setSnapshot((s) => (s ? { ...s, current_phase: event.new_phase } : s));
           break;
         case 'game_finished':
           setRanking(event.ranking as RankItem[]);
@@ -180,7 +171,8 @@ export default function PkArena() {
 
   const submit = useCallback(
     (payload: object, timeSpentMs: number) => {
-      if (!currentQ) return;
+      if (!currentQ || submitting) return;
+      setSubmitting(true);   // 防重复提交;新题到达(question_pushed)时解禁
       send({
         type: 'submit_answer',
         word_idx: currentQ.word_idx,
@@ -189,7 +181,7 @@ export default function PkArena() {
         time_spent_ms: timeSpentMs,
       });
     },
-    [send, currentQ]
+    [send, currentQ, submitting]
   );
 
   const copyInvite = async (code: string) => {
@@ -391,7 +383,7 @@ export default function PkArena() {
           <p className="text-xs text-ink-mute text-center mt-4">
             {isHostConsole
               ? '你是组织者,开局后监控战况,不下场答题'
-              : `开局时自动从「大家都背过的单词」里随机抽 ${snapshot.word_count} 个,公平比拼`}
+              : `每人各考自己背过的 ${snapshot.word_count} 个词,限时内答完循环续刷,比谁得分高`}
           </p>
 
           {errorBanner && (
@@ -408,12 +400,14 @@ export default function PkArena() {
     );
   }
 
-  // 对局中
-  const wordsPerPhase = snapshot.total_words;
-  const totalQ = wordsPerPhase * 4;
-  const globalIdx = currentQ?.word_idx ?? snapshot.current_word_idx;
-  const phase = currentQ?.phase ?? snapshot.current_phase;
-  const onlineTotal = snapshot.players.filter((p) => p.online).length;
+  // 对局中(并行竞速):进度条反映「我自己」的进度。我的私有词表大小 = 我的 n_words。
+  const me = snapshot.players.find((p) => p.user_id === meId);
+  const myWordCount = me?.n_words || snapshot.word_count || 1;
+  const wordsPerPhase = myWordCount;
+  const totalQ = myWordCount * 4;
+  // 个人进度指针累计(答完循环续刷),对一轮题量取模映射到当前轮内位置
+  const globalIdx = (currentQ?.word_idx ?? 0) % (myWordCount * 4);
+  const phase = currentQ?.phase ?? 'classify';
   // 教师控制台是监控视角(非玩家、非普通观众);普通观众才走脱敏只读题卡
   const isSpectator = !isHostConsole && !snapshot.players.some((p) => p.user_id === meId);
   // 只有真正的参赛玩家才渲染答题卡(教师控制台虽 isSpectator=false,但不下场答题)
@@ -435,59 +429,32 @@ export default function PkArena() {
         wordsPerPhase={wordsPerPhase}
         currentPoints={currentQ?.points}
       />
+      {snapshot.deadline_at && <CountdownBar deadlineIso={snapshot.deadline_at} />}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 flex-1 max-w-5xl mx-auto w-full">
         <div className="md:col-span-2 relative">
           {errorBanner && (
             <div className="mb-2 text-error text-sm bg-red-50 rounded-lg px-3 py-2">⚠️ {errorBanner}</div>
           )}
-          {/* 教师控制台:监控视角,看当前题 + 作答进度,不下场答题 */}
+          {/* 教师控制台:并行竞速无"全场当前题",改看多人进度面板(靠右侧实时榜);这里只放控制 */}
           {isHostConsole && (
             <div className="card-soft rounded-3xl p-8 text-center">
-              <p className="text-xs text-ink-mute mb-4">
-                🎛️ 组织者监控 · {currentQ ? (PHASE_LABEL[currentQ.phase] || currentQ.phase) : '等待题目'}
-                {currentQ?.points != null && ` · 本题 ${currentQ.points} 分`}
+              <p className="text-xs text-ink-mute mb-2">🎛️ 组织者监控 · 全场限时竞速中</p>
+              <p className="text-sm text-ink-soft mb-4">
+                每个学生各考自己背过的词,右侧实时榜可看每人进度与得分。
               </p>
-              {currentQ ? (
-                <>
-                  <p className="font-display text-4xl sm:text-5xl font-bold text-ink mb-2">
-                    {currentQ.word.word}
-                  </p>
-                  <p className="text-lg text-ink-soft mb-4">{currentQ.word.translation}</p>
-                  <p className="text-sm text-ink-soft font-numeric">
-                    已作答 {answeredIds.size}/{onlineTotal} 人
-                  </p>
-                </>
-              ) : (
-                <p className="text-ink-mute">等待第一题…</p>
-              )}
               <button
                 onClick={closeRoom}
-                className="mt-6 text-xs px-4 py-2 rounded-full bg-gray-100 hover:bg-red-50 hover:text-red-500 text-ink-soft transition"
+                className="text-xs px-4 py-2 rounded-full bg-gray-100 hover:bg-red-50 hover:text-red-500 text-ink-soft transition"
               >
                 结束本场对战
               </button>
             </div>
           )}
-          {/* 观众:只读题卡(听写/过关阶段答案已由服务端脱敏) */}
-          {isSpectator && currentQ && (
-            <div className="card-soft rounded-3xl p-8 text-center">
-              <p className="text-xs text-ink-mute mb-4">
-                👀 观战中 · {PHASE_LABEL[currentQ.phase] || currentQ.phase} · 本题 {currentQ.points ?? '-'} 分
-              </p>
-              <p className="font-display text-4xl sm:text-5xl font-bold text-ink mb-3">
-                {currentQ.word.word || '🔒'}
-              </p>
-              <p className="text-lg text-ink-soft mb-4">{currentQ.word.translation}</p>
-              {!currentQ.word.word && (
-                <p className="text-[11px] text-ink-mute">拼写阶段答案对观众隐藏,等玩家作答…</p>
-              )}
-              <p className="text-sm text-ink-soft mt-2 font-numeric">
-                已作答 {answeredIds.size}/{onlineTotal} 人
-              </p>
+          {/* 观众:并行竞速下无统一题目,看右侧实时榜 */}
+          {isSpectator && (
+            <div className="card-soft rounded-3xl p-8 text-center text-ink-mute">
+              👀 观战中 · 各人各答各的词,看右侧实时榜比拼
             </div>
-          )}
-          {isSpectator && !currentQ && (
-            <div className="p-6 text-center text-ink-mute">👀 观战中,等待题目…</div>
           )}
           {isPlayer && currentQ && wordDataStub && currentQ.phase === 'classify' && (
             <ClassificationPhase
@@ -498,7 +465,7 @@ export default function PkArena() {
               mode="pk"
               pkCurrentWord={wordDataStub}
               pkOnAnswer={(category, ms) => submit({ category }, ms)}
-              pkDisabled={waitingForOthers}
+              pkDisabled={submitting}
             />
           )}
           {isPlayer && currentQ && wordDataStub && currentQ.phase === 'speech' && (
@@ -508,7 +475,7 @@ export default function PkArena() {
               onNext={() => submit({ result: 'pass' }, Date.now() - questionStartedAtRef.current)}
               onSkip={() => submit({ result: 'skip' }, Date.now() - questionStartedAtRef.current)}
               playAudio={noOpAudio}
-              disabled={waitingForOthers}
+              disabled={submitting}
             />
           )}
           {isPlayer && currentQ && wordDataStub && currentQ.phase === 'dictation' && (
@@ -516,7 +483,7 @@ export default function PkArena() {
               key={`dictation-${currentQ.word_idx}`}
               word={wordDataStub}
               onAnswer={(text, ms) => submit({ text }, ms)}
-              disabled={waitingForOthers}
+              disabled={submitting}
               timeoutMs={60_000}
             />
           )}
@@ -526,7 +493,7 @@ export default function PkArena() {
               key={`exam-${currentQ.word_idx}`}
               word={wordDataStub}
               onAnswer={(text, ms) => submit({ text }, ms)}
-              disabled={waitingForOthers}
+              disabled={submitting}
               timeoutMs={30_000}
               label="过关 · 拼出这个词"
             />
@@ -534,27 +501,6 @@ export default function PkArena() {
           {isPlayer && !currentQ && (
             <div className="p-6 text-center text-ink-mute">等待第一题…</div>
           )}
-
-          {/* 已作答等待浮层 */}
-          <AnimatePresence>
-            {waitingForOthers && (
-              <motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white text-xs px-3.5 py-2 rounded-full flex items-center gap-2 backdrop-blur"
-                style={{ backgroundColor: 'rgba(40,35,30,0.82)' }}
-              >
-                <motion.span
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                >
-                  ⏳
-                </motion.span>
-                已作答,等待其他玩家({answeredIds.size}/{onlineTotal})
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
         <div className="space-y-3">
@@ -579,6 +525,29 @@ export default function PkArena() {
 
 const TEAM_TONE = ['from-blue-400 to-blue-500', 'from-rose-400 to-rose-500', 'from-emerald-400 to-emerald-500', 'from-amber-400 to-amber-500'];
 const TEAM_RANK_BADGE: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+/** 全场倒计时条:每秒刷新,剩余时间越少越红。到 0 显示"结算中"(服务端会推 game_finished)。 */
+function CountdownBar({ deadlineIso }: { deadlineIso: string }) {
+  const deadline = new Date(deadlineIso).getTime();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, Math.floor((deadline - now) / 1000));
+  const mm = String(Math.floor(left / 60)).padStart(2, '0');
+  const ss = String(left % 60).padStart(2, '0');
+  const urgent = left <= 30;
+  return (
+    <div className={`flex items-center justify-center gap-2 py-1.5 text-sm font-semibold ${
+      urgent ? 'text-red-500' : 'text-ink-soft'
+    }`}>
+      <span>⏱️</span>
+      <span className="font-numeric tabular-nums">{left > 0 ? `${mm}:${ss}` : '结算中…'}</span>
+      {left > 0 && <span className="text-xs font-normal text-ink-mute">全场倒计时</span>}
+    </div>
+  );
+}
 
 /** 分组赛队伍榜:队伍聚合得分,复用现有 card-soft 风格。 */
 function TeamRankingPanel({ items }: { items: PkTeamRankItem[] }) {

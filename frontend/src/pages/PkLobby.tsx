@@ -30,6 +30,7 @@ export default function PkLobby() {
   const [wordCount, setWordCount] = useState(10);
   const [mode, setMode] = useState<'individual' | 'team'>('individual');
   const [teamCount, setTeamCount] = useState(2);
+  const [countdownMin, setCountdownMin] = useState(5);  // 全场倒计时(分钟)
   const [inviteCode, setInviteCode] = useState('');
   const [showInvite, setShowInvite] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -78,7 +79,7 @@ export default function PkLobby() {
     setError('');
     setCreating(true);
     try {
-      const data = await pkApi.createRoom(maxPlayers, wordCount, mode, teamCount);
+      const data = await pkApi.createRoom(maxPlayers, wordCount, mode, teamCount, countdownMin * 60);
       setShowInvite(data.invite_code);
       navTimer.current = window.setTimeout(() => navigate(`/pk/arena/${data.room_id}`), 1500);
     } catch (e: any) {
@@ -173,8 +174,8 @@ export default function PkLobby() {
           {/* 规则条 */}
           <div className="flex flex-wrap gap-2 mt-4 sm:mt-6">
             {(isTeacher
-              ? ['🎛️ 老师建房不下场', '🧠 只考大家都背过的词', '👥 可个人赛 / 分组赛']
-              : ['🧠 只考大家都背过的词', '⚡ 答对越快分越高', '🎓 高中词一题 150 分']
+              ? ['🎛️ 老师建房不下场', '🧠 各考各背过的词', '⏱️ 全场限时竞速']
+              : ['🧠 各考各背过的词', '⚡ 答对越快分越高', '⏱️ 限时内比谁分高']
             ).map((t) => (
               <span key={t} className="text-[11px] sm:text-sm bg-white/20 backdrop-blur px-3 py-1.5 rounded-full">
                 {t}
@@ -344,6 +345,35 @@ export default function PkLobby() {
               ))}
             </div>
 
+            {/* 全场倒计时 */}
+            <label className="block text-sm font-medium text-ink-soft mb-2">
+              全场倒计时 <span className="text-ink-mute font-normal">(时间到比谁得分高)</span>
+            </label>
+            <div className="flex gap-2 mb-2">
+              {[1, 3, 5, 8, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setCountdownMin(n)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${
+                    countdownMin === n
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
+                  }`}
+                >
+                  {n} 分
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mb-6">
+              <span className="text-xs text-ink-mute">自定义</span>
+              <input
+                type="number" min={1} max={30} value={countdownMin}
+                onChange={(e) => setCountdownMin(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
+                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center"
+              />
+              <span className="text-xs text-ink-mute">分钟(1–30)</span>
+            </div>
+
             <button
               onClick={handleCreate}
               disabled={creating}
@@ -352,7 +382,7 @@ export default function PkLobby() {
               {creating ? '创建中…' : '🚀 创建并获取邀请码'}
             </button>
             <p className="text-[11px] text-ink-mute mt-3 text-center">
-              开局时自动从「所有参赛学生都背过的单词」里随机抽题,不够时用学过的其余词补齐
+              每个学生各考「自己背过的词」,{countdownMin} 分钟内答完循环续刷,比谁得分高
             </p>
           </motion.div>
           )}
@@ -415,8 +445,8 @@ export default function PkLobby() {
           {isTeacher ? (
             <div className="space-y-4 text-sm text-ink-soft leading-relaxed">
               <div>
-                <p className="font-semibold text-ink mb-1">① 建房(你是组织者,不下场答题)</p>
-                <p>选「个人赛 / 分组赛」、房间人数、每局词数,点创建拿到 6 位邀请码,发给学生。</p>
+                <p className="font-semibold text-ink mb-1">① 建房(你是组织者,全程不答题)</p>
+                <p>选「个人赛 / 分组赛」→ 定房间人数、每人词数、<span className="font-semibold text-ink">全场倒计时</span>(1–30 分钟)→ 点创建,拿到 6 位邀请码发给学生。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">② 学生加入</p>
@@ -424,15 +454,26 @@ export default function PkLobby() {
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">③ 你开局并监控</p>
-                <p>至少 2 名学生在线即可开局(分组赛要求每队都有人)。开局后你看到实时题目、作答进度和排行榜,但不答题。随时可「结束本场对战」。</p>
+                <p>至少 2 名学生进房即可开局(分组赛要求每队都有人)。开局后你在控制台看每个学生的实时进度和得分,但不答题。随时可「结束本场对战」。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">④ 出题与计分</p>
-                <p>系统自动从「所有参赛学生都背过的单词」里随机抽题(不够时用学过的其余词补齐)。每个词闯 4 关:🗂️分类 → 🎤语音 → ✍️听写 → 🏁过关。答对得分,答得越快加成越高;单词按学段定分:小学 100 / 初中 120 / 高中 150。</p>
+                <p className="font-semibold text-ink mb-1">④ 每人考自己背过的词,限时竞速</p>
+                <p>系统给<span className="font-semibold text-ink">每个学生各抽他自己背过的词</span>——所以小学、初中、高中的孩子放一起也公平,谁都不会被拉去考自己没学过的词。每人各答各的、答完立刻下一题、不用等别人;倒计时内把自己的词答完了会<span className="font-semibold text-ink">循环续刷继续拿分</span>。时间一到,谁分高谁赢。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">⑤ 分组赛怎么比</p>
-                <p>队伍榜按<span className="font-semibold text-ink">人均分</span>排名(人多的队不占便宜),终局展示胜队和每队人均/总分。</p>
+                <p className="font-semibold text-ink mb-1">⑤ 每个词要闯 4 关</p>
+                <p>🗂️分类 → 🎤语音 → ✍️听写 → 🏁过关。四关都算一道题的一部分,答对各得一份分。</p>
+              </div>
+              {/* 计分规则:大白话讲清楚 */}
+              <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
+                <p className="font-semibold text-ink mb-1.5">💯 分数怎么算(重点)</p>
+                <ul className="space-y-1 list-disc pl-4">
+                  <li><span className="font-medium text-ink">答对才有分,答错或超时得 0 分</span>,不倒扣。</li>
+                  <li>每道题的<span className="font-medium text-ink">基础分按单词难度</span>:小学词 <b>100</b> 分 / 初中词 <b>120</b> 分 / 高中词 <b>150</b> 分。</li>
+                  <li><span className="font-medium text-ink">答得越快,加分越多</span>:在基础分上再加最多 30%。比如一个初中词(120 分)秒答,最高能拿约 156 分;拖到快超时才答对,只拿接近 120 分。</li>
+                  <li>连续答对会有连击 🔥(只是展示,不额外加分)。</li>
+                  <li><span className="font-medium text-ink">分组赛按「人均分」排名</span>——队里人多也不占便宜,人少的队照样能赢。</li>
+                </ul>
               </div>
             </div>
           ) : (
@@ -442,19 +483,26 @@ export default function PkLobby() {
                 <p>输入老师发你的 6 位邀请码,点「加入对战」。房满或已开局也能点「观战」看比赛。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">② 每个词闯 4 关</p>
-                <p>🗂️ <span className="font-medium text-ink">分类</span>:判断词的类别 → 🎤 <span className="font-medium text-ink">语音</span>:跟读单词 → ✍️ <span className="font-medium text-ink">听写</span>:听发音拼出来 → 🏁 <span className="font-medium text-ink">过关</span>:看中文拼出单词。所有人一起同步过关,答完等其他人。</p>
+                <p className="font-semibold text-ink mb-1">② 每个词要闯 4 关</p>
+                <p>🗂️ <span className="font-medium text-ink">分类</span>:判断词属于哪类 → 🎤 <span className="font-medium text-ink">语音</span>:跟读单词 → ✍️ <span className="font-medium text-ink">听写</span>:听发音拼出来 → 🏁 <span className="font-medium text-ink">过关</span>:看中文拼出单词。你答完一题立刻进下一题,<span className="font-semibold text-ink">不用等别人</span>。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">③ 怎么得分</p>
-                <p>答对才有分,<span className="font-semibold text-ink">答得越快加成越高</span>;答错或超时得 0 分,不倒扣。单词越难分越高:小学 100 / 初中 120 / 高中 150 分。连对会有连击 🔥。</p>
+                <p className="font-semibold text-ink mb-1">③ 考的是你自己背过的词</p>
+                <p>题目从<span className="font-semibold text-ink">你自己背过的单词</span>里出,和同学考的不一样,所以不管你是几年级都公平。在<span className="font-semibold text-ink">倒计时结束前</span>比谁分高;把自己的词答完了会自动从头再来一轮继续拿分。想赢?平时多去学习页面背单词。</p>
+              </div>
+              {/* 计分规则:大白话讲清楚 */}
+              <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
+                <p className="font-semibold text-ink mb-1.5">💯 怎么才能拿高分</p>
+                <ul className="space-y-1 list-disc pl-4">
+                  <li><span className="font-medium text-ink">答对才有分</span>,答错或超时是 0 分(但不扣分,别怕)。</li>
+                  <li><span className="font-medium text-ink">越难的词分越高</span>:小学词 <b>100</b> 分、初中词 <b>120</b> 分、高中词 <b>150</b> 分。</li>
+                  <li><span className="font-medium text-ink">答得越快,加分越多</span>——又快又对最赚,最多能多拿 30%。</li>
+                  <li>连续答对会亮连击 🔥,越连越有气势。</li>
+                  <li>时间到的时候,谁总分高谁就是本场单词王 👑。</li>
+                </ul>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">④ 只考大家都背过的词</p>
-                <p>题目只从「房间里所有人都背过的单词」里出,谁也不吃亏。想拿高分,平时多去学习流程背单词。</p>
-              </div>
-              <div>
-                <p className="font-semibold text-ink mb-1">⑤ 分组赛</p>
+                <p className="font-semibold text-ink mb-1">④ 分组赛</p>
                 <p>老师开分组赛时你会被分到某个队,右侧「队伍榜」看哪个队领先——按<span className="font-semibold text-ink">人均分</span>算,和队友一起冲榜。</p>
               </div>
             </div>
