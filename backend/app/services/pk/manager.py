@@ -75,7 +75,13 @@ def create_room(host_id: int, max_players: int, org_id: int,
     mode="team":分组赛,入房自动均衡分队;个人赛(默认)沿用原逻辑。
     """
     if host_id in USER_ACTIVE:
-        raise UserAlreadyInRoom()
+        prev = ROOMS.get(USER_ACTIVE[host_id])
+        # 教师组织房(不下场):上一个房若还没开打(waiting),说明是关了标签页残留的孤儿房,
+        # 直接回收让教师能重新建房;正在进行(playing)的才拦着,避免误关正在打的对局。
+        if prev is not None and not prev.host_is_player and prev.status == "waiting":
+            close_room(prev.room_id)
+        else:
+            raise UserAlreadyInRoom()
     room_id = next(_id_seq)
     code = _gen_invite_code()
     room = RoomState(

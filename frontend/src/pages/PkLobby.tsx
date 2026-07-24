@@ -85,7 +85,7 @@ export default function PkLobby() {
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       const msg = detail === 'USER_ALREADY_IN_ROOM'
-        ? '你已开了一个 PK 房间,先结束它再开新的'
+        ? '你有一场对战正在进行中,请先进去点「结束本场对战」再创建新房'
         : e?.response?.status === 403
           ? '只有教师可以创建 PK 房间'
           : detail || e?.message || '创建失败';
