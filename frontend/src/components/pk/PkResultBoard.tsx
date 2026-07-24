@@ -1,35 +1,11 @@
 /** PK 终局结算:前三名领奖台 + 我的成绩卡 + 完整榜单。 */
 import { motion } from 'framer-motion';
-
-interface RankItem {
-  user_id: number;
-  nickname?: string;
-  rank: number;
-  correct: number;
-  wrong: number;
-  total_time_ms: number;
-  accuracy: number;
-  final_score: number;
-  best_streak?: number;
-  team?: number | null;
-}
-
-interface TeamRankItem {
-  team: number;
-  rank: number;
-  points: number;
-  avg_points: number;
-  correct: number;
-  wrong: number;
-  total_time_ms: number;
-  member_count: number;
-  online_count: number;
-}
+import type { PkFinalRankItem, PkTeamRankItem } from '../../api/pk';
 
 interface Props {
-  ranking: RankItem[];
+  ranking: PkFinalRankItem[];
   meId: number;
-  teamRanking?: TeamRankItem[] | null;
+  teamRanking?: PkTeamRankItem[] | null;
   onExit: () => void;
   onAgain?: () => void;
 }

@@ -611,8 +611,20 @@ async def _try_start_game(room, requester_ws) -> None:
     await _push_first_question(room)
 
 
+async def _finish_playing_room(room) -> bool:
+    """教师提前结束正在进行的对局，复用倒计时到点时的正式结算流程。"""
+    if room.status != "playing":
+        return False
+    _cancel_room_timers(room.room_id)
+    events = engine.finalize_room(room)
+    if not events:
+        return False
+    await _process_events(room, events, room.word_lookup)
+    return True
+
+
 async def _handle_host_console(ws: WebSocket, room, user) -> None:
-    """教师控制台:组织者视角。收全场广播,能开局/踢人/调队/解散,但不作答不计分。
+    """教师控制台:组织者视角。收全场广播,能开局/结算/踢人/调队/解散,但不作答不计分。
 
     教师断开不解散房间(学生可能还在等待/对局中);教师主动 close_room 才解散。
     """
@@ -667,6 +679,15 @@ async def _handle_host_console(ws: WebSocket, room, user) -> None:
                     if cur is not None:
                         await _broadcast(cur, {"type": "player_kicked", "user_id": target})
                         await _broadcast_room_state(cur)
+            elif mtype == "finish_game":
+                if not await _finish_playing_room(room):
+                    await ws.send_json({
+                        "type": "error",
+                        "code": "GAME_NOT_PLAYING",
+                        "message": "比赛尚未开始或已经结束",
+                    })
+                    continue
+                break
             elif mtype == "close_room":
                 # 教师主动解散:通知玩家并断开,清理房间
                 _cancel_room_timers(room.room_id)

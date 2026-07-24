@@ -84,6 +84,20 @@ export interface PkLiveRankItem {
   finished_at_ms?: number | null;
 }
 
+/** game_finished 事件里的个人最终排名 */
+export interface PkFinalRankItem {
+  user_id: number;
+  nickname?: string;
+  rank: number;
+  correct: number;
+  wrong: number;
+  total_time_ms: number;
+  accuracy: number;
+  final_score: number;
+  best_streak?: number;
+  team?: number | null;
+}
+
 export interface PkHistoryItem {
   room_id: number;
   invite_code: string;

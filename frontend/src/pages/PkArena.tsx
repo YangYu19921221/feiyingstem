@@ -2,13 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
-import { pkApi, type PkRoomSnapshot, type PkLiveRankItem, type PkTeamRankItem } from '../api/pk';
+import {
+  pkApi,
+  type PkFinalRankItem,
+  type PkRoomSnapshot,
+  type PkLiveRankItem,
+  type PkTeamRankItem,
+} from '../api/pk';
 import ClassificationPhase from '../components/classify/ClassificationPhase';
 import DictationSingle from '../components/classify/DictationSingle';
 import PkExamCard, { type PkExamType } from '../components/pk/PkExamCard';
 import PkPhaseStepper from '../components/pk/PkPhaseStepper';
 import PkLiveRanking from '../components/pk/PkLiveRanking';
 import PkResultBoard from '../components/pk/PkResultBoard';
+import PkTeacherLiveBoard from '../components/pk/PkTeacherLiveBoard';
+import PkTeacherResultBoard from '../components/pk/PkTeacherResultBoard';
 
 interface CurrentQuestion {
   q_seq: number;           // 服务端下发的题号(提交时回显,幂等校验)
@@ -20,19 +28,6 @@ interface CurrentQuestion {
   exam_type?: PkExamType;  // 过关阶段题型(服务端权威),仅 stage==='exam' 时有
   options?: string[];      // 过关选择题选项(en_to_cn/cn_to_en)
   copies_left?: number;    // 听写抄写态:还需抄对几遍
-}
-
-interface RankItem {
-  user_id: number;
-  nickname?: string;
-  rank: number;
-  correct: number;
-  wrong: number;
-  total_time_ms: number;
-  accuracy: number;
-  final_score: number;
-  best_streak?: number;
-  team?: number | null;
 }
 
 function getMeId(): number {
@@ -51,13 +46,6 @@ function getMeId(): number {
 
 const noOp = () => {};
 const noOpAudio: (w: string) => void = () => {};
-
-const PHASE_LABEL: Record<string, string> = {
-  classify: '🗂️ 分类',
-  speech: '🎤 语音',
-  dictation: '✍️ 听写',
-  exam: '🏁 过关',
-};
 
 /** 从房间快照推导初始榜单(开局/重连时 live_ranking 还没来) */
 function rankingFromSnapshot(snap: PkRoomSnapshot): PkLiveRankItem[] {
@@ -98,7 +86,7 @@ export default function PkArena() {
   const [teamRanking, setTeamRanking] = useState<PkTeamRankItem[] | null>(null);
   const [lastGains, setLastGains] = useState<Record<string, number>>({});
   const [settleSeq, setSettleSeq] = useState(0);
-  const [ranking, setRanking] = useState<RankItem[] | null>(null);
+  const [ranking, setRanking] = useState<PkFinalRankItem[] | null>(null);
   const [teamFinal, setTeamFinal] = useState<PkTeamRankItem[] | null>(null);
   const [errorBanner, setErrorBanner] = useState('');
   const [copied, setCopied] = useState(false);
@@ -155,7 +143,7 @@ export default function PkArena() {
           }
           break;
         case 'game_finished':
-          setRanking(event.ranking as RankItem[]);
+          setRanking(event.ranking as PkFinalRankItem[]);
           if (event.team_ranking) setTeamFinal(event.team_ranking as PkTeamRankItem[]);
           break;
         case 'room_closed':
@@ -234,15 +222,42 @@ export default function PkArena() {
     navigate('/teacher/dashboard');
   }, [send, navigate]);
 
+  const startGame = useCallback(() => {
+    if (isHostConsole && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    send({ type: 'start_game' });
+  }, [isHostConsole, send]);
+
+  const finishGame = useCallback(() => {
+    send({ type: 'finish_game' });
+  }, [send]);
+
+  const exitArena = useCallback(() => {
+    if (isHostConsole && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+    navigate(isHostConsole ? '/teacher/dashboard' : '/student/dashboard');
+  }, [isHostConsole, navigate]);
+
   // 终局 → 结算榜
   if (ranking) {
+    if (isHostConsole) {
+      return (
+        <PkTeacherResultBoard
+          ranking={ranking}
+          teamRanking={teamFinal}
+          onExit={exitArena}
+        />
+      );
+    }
     return (
       <PkResultBoard
         ranking={ranking}
         meId={meId}
         teamRanking={teamFinal}
-        onExit={() => navigate(isHostConsole ? '/teacher/dashboard' : '/student/dashboard')}
-        onAgain={isHostConsole ? undefined : () => navigate('/pk/lobby')}
+        onExit={exitArena}
+        onAgain={() => navigate('/pk/lobby')}
       />
     );
   }
@@ -382,7 +397,7 @@ export default function PkArena() {
           {canStart ? (
             <>
               <motion.button
-                onClick={() => send({ type: 'start_game' })}
+                onClick={startGame}
                 disabled={onlineCount < 2}
                 animate={onlineCount >= 2 ? { scale: [1, 1.02, 1] } : {}}
                 transition={{ repeat: Infinity, duration: 1.6 }}
@@ -442,6 +457,20 @@ export default function PkArena() {
       }
     : null;
 
+  if (isHostConsole) {
+    return (
+      <PkTeacherLiveBoard
+        items={liveRanking ?? rankingFromSnapshot(snapshot)}
+        teams={teamRanking}
+        mode={snapshot.mode}
+        deadlineAt={snapshot.deadline_at}
+        spectatorCount={specCount}
+        error={errorBanner}
+        onFinish={finishGame}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-paper">
       <PkPhaseStepper
@@ -456,21 +485,6 @@ export default function PkArena() {
         <div className="md:col-span-2 relative">
           {errorBanner && (
             <div className="mb-2 text-error text-sm bg-red-50 rounded-lg px-3 py-2">⚠️ {errorBanner}</div>
-          )}
-          {/* 教师控制台:并行竞速无"全场当前题",改看多人进度面板(靠右侧实时榜);这里只放控制 */}
-          {isHostConsole && (
-            <div className="card-soft rounded-3xl p-8 text-center">
-              <p className="text-xs text-ink-mute mb-2">🎛️ 组织者监控 · 全场限时竞速中</p>
-              <p className="text-sm text-ink-soft mb-4">
-                每个学生各考自己背过的词,右侧实时榜可看每人进度与得分。
-              </p>
-              <button
-                onClick={closeRoom}
-                className="text-xs px-4 py-2 rounded-full bg-gray-100 hover:bg-red-50 hover:text-red-500 text-ink-soft transition"
-              >
-                结束本场对战
-              </button>
-            </div>
           )}
           {/* 观众:并行竞速下无统一题目,看右侧实时榜 */}
           {isSpectator && (
@@ -553,12 +567,16 @@ const TEAM_RANK_BADGE: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉
 /** 全场倒计时条:每秒刷新,剩余时间越少越红。到 0 显示"结算中"(服务端会推 game_finished)。 */
 function CountdownBar({ deadlineIso }: { deadlineIso: string }) {
   const deadline = new Date(deadlineIso).getTime();
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setNow(Date.now()));
     const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      clearInterval(t);
+    };
   }, []);
-  const left = Math.max(0, Math.floor((deadline - now) / 1000));
+  const left = now === 0 ? 0 : Math.max(0, Math.floor((deadline - now) / 1000));
   const mm = String(Math.floor(left / 60)).padStart(2, '0');
   const ss = String(left % 60).padStart(2, '0');
   const urgent = left <= 30;
@@ -567,7 +585,7 @@ function CountdownBar({ deadlineIso }: { deadlineIso: string }) {
       urgent ? 'text-red-500' : 'text-ink-soft'
     }`}>
       <span>⏱️</span>
-      <span className="font-numeric tabular-nums">{left > 0 ? `${mm}:${ss}` : '结算中…'}</span>
+      <span className="font-numeric tabular-nums">{now === 0 ? '--:--' : left > 0 ? `${mm}:${ss}` : '结算中…'}</span>
       {left > 0 && <span className="text-xs font-normal text-ink-mute">全场倒计时</span>}
     </div>
   );
