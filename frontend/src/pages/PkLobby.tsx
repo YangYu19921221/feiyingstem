@@ -8,7 +8,10 @@ import { toast } from '../components/Toast';
 
 const QUICK_COUNTS = [2, 4, 6, 10, 20];
 const WORD_COUNTS = [5, 10, 15, 20];
-const TEAM_COUNTS = [2, 3, 4];
+const TEAM_COUNTS = [2, 3, 4, 5, 6];
+// 后端校验范围(与 schemas/pk.py 一致):队伍 2-6、词数 4-30
+const MIN_TEAMS = 2, MAX_TEAMS = 6;
+const MIN_WORDS = 4, MAX_WORDS = 30;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 20;
 
@@ -255,10 +258,12 @@ export default function PkLobby() {
               ))}
             </div>
 
-            {/* 分组赛:队伍数 */}
+            {/* 分组赛:队伍数(快捷档 + 自定义) */}
             {mode === 'team' && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-ink-soft mb-2">分几队</label>
+                <label className="block text-sm font-medium text-ink-soft mb-2">
+                  分几队 <span className="text-ink-mute font-normal">({MIN_TEAMS}~{MAX_TEAMS} 队)</span>
+                </label>
                 <div className="flex gap-2">
                   {TEAM_COUNTS.map((n) => (
                     <button
@@ -273,6 +278,15 @@ export default function PkLobby() {
                       {n} 队
                     </button>
                   ))}
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-ink-mute">自定义</span>
+                  <input
+                    type="number" min={MIN_TEAMS} max={MAX_TEAMS} value={teamCount}
+                    onChange={(e) => setTeamCount(Math.min(MAX_TEAMS, Math.max(MIN_TEAMS, Number(e.target.value) || MIN_TEAMS)))}
+                    className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center"
+                  />
+                  <span className="text-xs text-ink-mute">队</span>
                 </div>
                 <p className="text-[11px] text-ink-mute mt-2">学生进房自动均衡分队,开局前你可在竞技场调整</p>
               </div>
@@ -325,11 +339,11 @@ export default function PkLobby() {
               ))}
             </div>
 
-            {/* 题量 */}
+            {/* 题量(快捷档 + 自定义) */}
             <label className="block text-sm font-medium text-ink-soft mb-2">
-              单词数量 <span className="text-ink-mute font-normal">(每词过 4 关 ≈ {wordCount * 4} 题)</span>
+              单词数量 <span className="text-ink-mute font-normal">({MIN_WORDS}~{MAX_WORDS} 词 · 每词过 4 关 ≈ {wordCount * 4} 题)</span>
             </label>
-            <div className="flex gap-2 mb-6">
+            <div className="flex gap-2 mb-2">
               {WORD_COUNTS.map((n) => (
                 <button
                   key={n}
@@ -343,6 +357,15 @@ export default function PkLobby() {
                   {n} 词
                 </button>
               ))}
+            </div>
+            <div className="flex items-center gap-2 mb-6">
+              <span className="text-xs text-ink-mute">自定义</span>
+              <input
+                type="number" min={MIN_WORDS} max={MAX_WORDS} value={wordCount}
+                onChange={(e) => setWordCount(Math.min(MAX_WORDS, Math.max(MIN_WORDS, Number(e.target.value) || MIN_WORDS)))}
+                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center"
+              />
+              <span className="text-xs text-ink-mute">词({MIN_WORDS}–{MAX_WORDS})</span>
             </div>
 
             {/* 全场倒计时 */}
