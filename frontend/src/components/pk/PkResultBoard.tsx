@@ -102,6 +102,25 @@ export default function PkResultBoard({ ranking, meId, teamRanking, onExit, onAg
           </>
         )}
 
+        {/* 个人赛:冠军「单词王」横幅(与分组赛胜队横幅对称,一眼看到谁是冠军) */}
+        {!isTeam && byRank.get(1) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+            className="rounded-2xl bg-gradient-to-r from-secondary to-amber-300 p-5 text-center shadow-lg mb-5"
+          >
+            <div className="text-4xl mb-1">👑</div>
+            <p className="text-white font-bold text-lg">
+              本局单词王 · {byRank.get(1)!.nickname ?? `用户${byRank.get(1)!.user_id}`}
+              {byRank.get(1)!.user_id === meId ? '(我)' : ''}
+            </p>
+            <p className="text-white/85 text-sm mt-0.5">
+              {byRank.get(1)!.final_score} 分 · 正确率 {byRank.get(1)!.accuracy.toFixed(0)}%
+            </p>
+          </motion.div>
+        )}
+
         {/* 前三名领奖台 */}
         <div className="flex items-end justify-center gap-3 mb-6 px-2">
           {PODIUM_LAYOUT.map(({ rank, height, delay }) => {
