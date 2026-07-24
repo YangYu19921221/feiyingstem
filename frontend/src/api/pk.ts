@@ -89,6 +89,19 @@ export interface CreateRoomResponse {
   invite_code: string;
 }
 
+/** 教师大厅「我的房间」列表项(当前进行中的内存态房间) */
+export interface MyRoomItem {
+  room_id: number;
+  invite_code: string;
+  status: PkStatus;
+  mode: PkMode;
+  word_count: number;
+  player_count: number;
+  online_count: number;
+  created_at: string | null;
+  started_at: string | null;
+}
+
 export const pkApi = {
   createRoom: (
     maxPlayers: number,
@@ -115,4 +128,9 @@ export const pkApi = {
     api.post<PkRoomSnapshot>(`/pk/rooms/by-code/${code}/spectate`),
 
   myHistory: () => api.get<PkHistoryItem[]>('/pk/me/history'),
+
+  // 教师大厅:我当前还开着的房间(切网页不再自动回收,回来能看到并重进/删除)
+  myRooms: () => api.get<MyRoomItem[]>('/pk/rooms/mine'),
+
+  deleteRoom: (roomId: number) => api.delete<void>(`/pk/rooms/${roomId}`),
 };

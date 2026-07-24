@@ -10,6 +10,7 @@ from app.models.pk import PkRoom, PkRoomPlayer
 from app.schemas.pk import (
     CreateRoomRequest, CreateRoomResponse,
     RoomSnapshot, PlayerSnapshot, PlayerHistoryItem, SpectatorSnapshot,
+    MyRoomItem,
 )
 from app.services.pk import manager
 from app.services.pk.score import base_points_for_word_grades
@@ -133,6 +134,52 @@ async def create_room(
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
     return CreateRoomResponse(room_id=room.room_id, invite_code=room.invite_code)
+
+
+@router.get("/rooms/mine", response_model=list[MyRoomItem])
+async def my_rooms(user: User = Depends(get_current_teacher)):
+    """教师大厅「我的房间」:列出我当前还开着的房间(内存态,等待/对局中)。
+
+    切标签页/关网页后房间不再自动回收,教师回来能在这里看到并重新进入或删除。
+    只返回本人建的房(host_id==我),按创建时间倒序。
+    """
+    items = [
+        MyRoomItem(
+            room_id=r.room_id,
+            invite_code=r.invite_code,
+            status=r.status,
+            mode=r.mode,
+            word_count=r.word_count,
+            player_count=len(r.players),
+            online_count=sum(1 for p in r.players.values() if p.online),
+            created_at=r.created_at,
+            started_at=r.started_at,
+        )
+        for r in manager.ROOMS.values()
+        if r.host_id == user.id and r.status in ("waiting", "playing")
+    ]
+    items.sort(key=lambda x: x.created_at or _EPOCH, reverse=True)
+    return items
+
+
+@router.delete("/rooms/{room_id}", status_code=204)
+async def delete_room(room_id: int, user: User = Depends(get_current_teacher)):
+    """教师主动删除自己的房间(大厅「我的房间」里点删除)。
+
+    仅房主本人可删;删除会取消计时器、通知并踢出所有在场成员、释放 USER_ACTIVE。
+    """
+    room = manager.get_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
+    # 只能删自己的房(且同机构;跨机构直接按不存在处理,不泄露)
+    if room.host_id != user.id or room.org_id != user.org_id:
+        raise HTTPException(status_code=404, detail="ROOM_NOT_FOUND")
+    from app.api.v1.pk_websocket import teardown_room
+    await teardown_room(room_id)
+    return None
+
+
+_EPOCH = __import__("datetime").datetime(1970, 1, 1)
 
 
 @router.get("/rooms/by-code/{code}", response_model=RoomSnapshot)

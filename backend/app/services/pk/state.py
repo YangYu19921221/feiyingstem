@@ -99,6 +99,7 @@ class RoomState:
     players: dict[int, PlayerState] = field(default_factory=dict)
     spectators: dict[int, "SpectatorState"] = field(default_factory=dict)  # 观战者(不参与结算)
     answers: dict[int, dict[int, AnswerRecord]] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     # 全场倒计时(并行竞速):教师建房设时长(秒),开局时算出 deadline;到点强制全场结算

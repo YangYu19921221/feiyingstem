@@ -6,6 +6,7 @@ import { pkApi, type PkRoomSnapshot, type PkPhase, type PkLiveRankItem, type PkT
 import ClassificationPhase from '../components/classify/ClassificationPhase';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationSingle from '../components/classify/DictationSingle';
+import PkExamCard, { type PkExamType } from '../components/pk/PkExamCard';
 import PkPhaseStepper from '../components/pk/PkPhaseStepper';
 import PkLiveRanking from '../components/pk/PkLiveRanking';
 import PkResultBoard from '../components/pk/PkResultBoard';
@@ -15,6 +16,8 @@ interface CurrentQuestion {
   phase: PkPhase;
   word: { id: number; word: string; translation: string };
   points?: number; // 本题分值(按该词学段)
+  exam_type?: PkExamType;  // 过关阶段题型(服务端权威),仅 phase==='exam' 时有
+  options?: string[];      // 过关选择题选项(en_to_cn/cn_to_en)
 }
 
 interface RankItem {
@@ -111,6 +114,8 @@ export default function PkArena() {
             phase: event.phase as PkPhase,
             word: event.word,
             points: event.points,
+            exam_type: event.exam_type as PkExamType | undefined,
+            options: event.options as string[] | undefined,
           });
           questionStartedAtRef.current = Date.now();
           setSubmitting(false);   // 新题到,解禁答题
@@ -488,14 +493,17 @@ export default function PkArena() {
             />
           )}
           {isPlayer && currentQ && wordDataStub && currentQ.phase === 'exam' && (
-            // 过关阶段:看中文重新拼写单词,服务端按文本判对错(超时 30s,与后端一致)
-            <DictationSingle
+            // 过关阶段:题型由服务端权威决定(英译中/中译英选择 + 听音/看义拼写),
+            // 与分类记忆法的过关检测一致。判分仍由服务端做(超时 30s)。
+            <PkExamCard
               key={`exam-${currentQ.word_idx}`}
               word={wordDataStub}
-              onAnswer={(text, ms) => submit({ text }, ms)}
+              examType={currentQ.exam_type ?? 'spelling'}
+              options={currentQ.options}
+              onSelect={(selected, ms) => submit({ selected }, ms)}
+              onText={(text, ms) => submit({ text }, ms)}
               disabled={submitting}
               timeoutMs={30_000}
-              label="过关 · 拼出这个词"
             />
           )}
           {isPlayer && !currentQ && (

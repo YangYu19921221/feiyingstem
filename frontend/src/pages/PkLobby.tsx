@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { pkApi } from '../api/pk';
+import { pkApi, type MyRoomItem } from '../api/pk';
 import PkInviteModal from '../components/pk/PkInviteModal';
 import { tournamentApi, type MyMatch } from '../api/tournament';
 import { toast } from '../components/Toast';
@@ -40,11 +40,35 @@ export default function PkLobby() {
   const [creating, setCreating] = useState(false);
   const [myMatches, setMyMatches] = useState<MyMatch[]>([]);
   const [entering, setEntering] = useState<number | null>(null);
+  const [myRooms, setMyRooms] = useState<MyRoomItem[]>([]);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const navTimer = useRef<number | null>(null);
 
   useEffect(() => () => {
     if (navTimer.current !== null) window.clearTimeout(navTimer.current);
   }, []);
+
+  // 教师大厅:我还开着的房间(切网页不再自动回收)。进大厅拉一次 + 每 15 秒刷在线数
+  const loadMyRooms = () => pkApi.myRooms().then(setMyRooms).catch(() => {});
+  useEffect(() => {
+    if (!isTeacher) return;
+    loadMyRooms();
+    const t = setInterval(() => { if (!document.hidden) loadMyRooms(); }, 15000);
+    return () => clearInterval(t);
+  }, [isTeacher]);
+
+  const handleDeleteRoom = async (roomId: number) => {
+    if (!window.confirm('确定删除这个房间?房间里的学生会被请出。')) return;
+    setDeleting(roomId);
+    try {
+      await pkApi.deleteRoom(roomId);
+      setMyRooms((rs) => rs.filter((r) => r.room_id !== roomId));
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '删除失败');
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   // 晋级赛待打对局:仅学生需要(进大厅拉一次 + 每 20 秒刷,对手先开好房后能拿到 invite_code)
   useEffect(() => {
@@ -84,6 +108,7 @@ export default function PkLobby() {
     try {
       const data = await pkApi.createRoom(maxPlayers, wordCount, mode, teamCount, countdownMin * 60);
       setShowInvite(data.invite_code);
+      loadMyRooms();
       navTimer.current = window.setTimeout(() => navigate(`/pk/arena/${data.room_id}`), 1500);
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
@@ -214,6 +239,51 @@ export default function PkLobby() {
                     className="shrink-0 px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold shadow disabled:opacity-50"
                   >
                     {entering === m.match_id ? '进入中…' : m.invite_code ? '⚔️ 对手在等你!' : '⚔️ 开打'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 我的房间(教师):切网页/关标签页后房间保留,回来在这里重进或删除 */}
+        {isTeacher && myRooms.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border-2 border-primary/25 bg-orange-50/60 p-4 mb-6"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">🏠</span>
+              <h2 className="font-bold text-ink">我的房间 · {myRooms.length} 个进行中</h2>
+              <span className="text-[11px] text-ink-mute">切网页也不会消失,用完记得删除</span>
+            </div>
+            <div className="space-y-2">
+              {myRooms.map((r) => (
+                <div key={r.room_id} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 shadow-sm">
+                  <span className="font-mono text-lg font-bold tracking-widest text-primary shrink-0">{r.invite_code}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-ink-soft">
+                      {r.status === 'waiting' ? '⏳ 等待中' : '⚔️ 对战中'}
+                      {' · '}{r.mode === 'team' ? '分组赛' : '个人赛'}
+                      {' · '}{r.word_count} 词
+                    </p>
+                    <p className="text-[11px] text-ink-mute">
+                      {r.online_count}/{r.player_count} 人在线
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/pk/arena/${r.room_id}`)}
+                    className="shrink-0 px-3.5 py-2 rounded-lg bg-primary text-white text-sm font-semibold shadow active:scale-95 transition"
+                  >
+                    进入
+                  </button>
+                  <button
+                    onClick={() => handleDeleteRoom(r.room_id)}
+                    disabled={deleting === r.room_id}
+                    className="shrink-0 px-3 py-2 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 text-ink-soft text-sm font-medium transition disabled:opacity-50"
+                  >
+                    {deleting === r.room_id ? '删除中…' : '删除'}
                   </button>
                 </div>
               ))}

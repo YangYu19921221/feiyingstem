@@ -126,7 +126,10 @@ def _mask_for_spectators(event: dict) -> dict:
     if event.get("type") == "question_pushed" and event.get("phase") in ("dictation", "exam"):
         word = dict(event.get("word") or {})
         word["word"] = ""
-        return {**event, "word": word, "masked": True}
+        masked = {**event, "word": word, "masked": True}
+        # 过关选择题的选项里可能含正确英文词/释义,一并抹掉防止场边报答案
+        masked.pop("options", None)
+        return masked
     return event
 
 
@@ -162,31 +165,14 @@ def _schedule_disconnect_cleanup(room, user_id: int):
 
 
 def _schedule_host_console_cleanup(room, host_id: int):
-    """教师控制台断开后的重连宽限期:到点若教师仍未回来,回收孤儿房。
+    """教师控制台断开(切标签页/关网页)后:不再自动回收房间。
 
-    只有非参赛房主(host_is_player=False)才需要——参赛房主走玩家清退路径。
-    回收条件:教师仍离线,且房间还在等待(没开打)或已无在线玩家。这样既不会把
-    教师短暂掉线时正在进行的对局杀掉,又能防止「关标签页 → USER_ACTIVE 永久占用」。
+    产品决策(2026-07):房间只能由教师在大厅「我的房间」里主动删除,或对局倒计时结束
+    自然收场。教师切走网页回来还能在列表里看到并重新进入,不会"切个网页房间就没了"。
+    因此这里保留函数(调用点不变)但不做任何回收;USER_ACTIVE 的占用由教师手动删除
+    (DELETE /rooms/{id})或再次建房时的孤儿房回收(manager.create_room)释放。
     """
-    async def _cleanup():
-        await asyncio.sleep(RECONNECT_WINDOW_S)
-        cur = manager.get_room(room.room_id)
-        if cur is None or cur.host_is_player:
-            return
-        if cur.host_online:  # 教师已重连,别动
-            return
-        any_online = any(ps.online for ps in cur.players.values())
-        if cur.status == "waiting" or not any_online:
-            _cancel_room_timers(cur.room_id)
-            try:
-                await _broadcast(cur, {"type": "room_closed", "message": "老师已离开,房间关闭"})
-            except Exception:
-                pass
-            await _notify_room_closed(cur)
-            manager.close_room(cur.room_id)
-            logger.info("PK teacher room reclaimed after host console gone: room_id=%d", cur.room_id)
-
-    asyncio.create_task(_cleanup())
+    return  # no-op:见上,房间生命周期改为教师手动掌控
 
 
 HEARTBEAT_CHECK_INTERVAL_S = 5  # how often the watchdog scans rooms
@@ -319,6 +305,38 @@ async def _send_to_player(room, uid: int, event: dict):
 async def _broadcast_room_state(room):
     """成员/在线状态变化后同步全房快照——等待室的玩家列表靠它实时刷新。"""
     await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+
+
+async def teardown_room(room_id: int, message: str = "老师已删除本房间") -> bool:
+    """教师从大厅主动删除房间(REST 入口):取消计时器 → 通知并断开所有在场成员 → 清房。
+
+    返回是否真的删了(房间不存在返回 False,供路由回 404)。与教师控制台 close_room
+    同效,但不需要教师此刻连着该房的控制台 WS。
+    """
+    room = manager.get_room(room_id)
+    if room is None:
+        return False
+    _cancel_room_timers(room_id)
+    try:
+        await _broadcast(room, {"type": "room_closed", "message": message})
+    except Exception:
+        pass
+    # 断开仍连着的玩家 / 教师控制台 WS,避免其自动重连又把房间"复活"感知
+    for ps in list(room.players.values()):
+        if ps.ws is not None:
+            try:
+                await ps.ws.close(code=1000, reason="ROOM_DELETED")
+            except Exception:
+                pass
+    if room.host_ws is not None:
+        try:
+            await room.host_ws.close(code=1000, reason="ROOM_DELETED")
+        except Exception:
+            pass
+    await _notify_room_closed(room)
+    manager.close_room(room_id)
+    logger.info("PK room deleted by teacher via REST: room_id=%d", room_id)
+    return True
 
 
 async def _notify_room_closed(room):
