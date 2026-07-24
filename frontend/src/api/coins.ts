@@ -67,9 +67,17 @@ export const adjustCoins = (body: {
   amount: number;
   reason?: string;
   source?: 'manual' | 'redeem';
+  pin?: string;
 }) => client.post<{ success: boolean; tx_id: number | null; balance_after: number }>(
   `/teacher/coins/adjust`, body,
 );
+
+/** 加币 PIN:是否已设 / 设置或修改 */
+export const getCoinPinStatus = () =>
+  client.get<{ has_pin: boolean }>(`/teacher/coins/pin-status`);
+
+export const setCoinPin = (newPin: string, oldPin?: string) =>
+  client.post<{ success: boolean }>(`/teacher/coins/pin`, { new_pin: newPin, old_pin: oldPin });
 
 export const updateCoinTx = (txId: number, body: { amount?: number; reason?: string }) =>
   client.patch<{ success: boolean }>(`/teacher/coins/transactions/${txId}`, body);

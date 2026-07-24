@@ -32,6 +32,8 @@ class User(Base):
     org_id = Column(Integer, nullable=False, default=1, server_default="1")  # 所属机构(多租户),1=直营;索引由init_db迁移建
     is_active = Column(Boolean, default=True)
     avatar_url = Column(String(255))
+    # 加币 PIN(bcrypt 哈希,可空=未设)。教师手动加币需校验,防学生冒用老师账号自己加币
+    coin_pin_hash = Column(String(255), nullable=True)
 
     # 等级和经验值系统
     level = Column(Integer, default=1)  # 用户等级

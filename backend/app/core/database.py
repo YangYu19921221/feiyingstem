@@ -283,6 +283,8 @@ async def init_db():
             # PK 对战:个人赛/分组赛模式 + 玩家队号(教师组织的分组 PK)
             "ALTER TABLE pk_rooms ADD COLUMN mode VARCHAR(12) NOT NULL DEFAULT 'individual'",
             "ALTER TABLE pk_room_players ADD COLUMN team INTEGER",
+            # 加币 PIN:教师手动加币需校验的独立密码哈希(bcrypt),防学生冒用账号自己加币
+            "ALTER TABLE users ADD COLUMN coin_pin_hash VARCHAR(255)",
         ]:
             try:
                 await conn.execute(text(_sql))

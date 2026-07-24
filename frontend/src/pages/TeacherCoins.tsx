@@ -10,6 +10,7 @@ import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import {
   settleCoins, getCoinBalances, getCoinTransactions, adjustCoins,
+  getCoinPinStatus, setCoinPin,
   updateCoinTx, deleteCoinTx,
   getRewards, createReward, updateReward, deleteReward, redeemReward,
   getWordKingBanner, uploadRewardImage,
@@ -55,6 +56,11 @@ export default function TeacherCoins() {
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustMode, setAdjustMode] = useState<'grant' | 'redeem'>('grant');
+  const [adjustPin, setAdjustPin] = useState('');            // 加币时输入的 PIN
+  const [hasPin, setHasPin] = useState<boolean | null>(null); // 老师是否已设加币 PIN
+  const [showSetPin, setShowSetPin] = useState(false);        // 设置/修改 PIN 弹窗
+  const [pinOld, setPinOld] = useState('');
+  const [pinNew, setPinNew] = useState('');
 
   // 编辑流水弹窗
   const [editTx, setEditTx] = useState<CoinTx | null>(null);
@@ -105,6 +111,22 @@ export default function TeacherCoins() {
     try { setRewards(await getRewards(true)); } catch { /* 静默 */ }
   }, []);
   useEffect(() => { loadRewards(); }, [loadRewards]);
+
+  // 加币 PIN 是否已设(决定加币时弹「输 PIN」还是「先去设置」)
+  useEffect(() => {
+    getCoinPinStatus().then((r) => setHasPin(r.has_pin)).catch(() => setHasPin(null));
+  }, []);
+
+  const submitSetPin = async () => {
+    if (pinNew.trim().length < 4) { toast.warning('新密码至少 4 位'); return; }
+    try {
+      await setCoinPin(pinNew.trim(), pinOld.trim() || undefined);
+      toast.success(hasPin ? '加币密码已修改' : '加币密码已设置');
+      setHasPin(true); setShowSetPin(false); setPinOld(''); setPinNew('');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '设置失败');
+    }
+  };
 
   // 单词王横幅(昨天已定 + 今日实时),随班级切换加载
   const loadKingBanner = useCallback(async () => {
@@ -196,18 +218,35 @@ export default function TeacherCoins() {
     const n = parseInt(adjustAmount, 10);
     if (!n || n <= 0) { toast.warning('请输入正整数'); return; }
     const amount = adjustMode === 'redeem' ? -n : n;
+    // 发放金币必须输加币 PIN;还没设 PIN 的先引导去设置
+    if (adjustMode === 'grant') {
+      if (hasPin === false) {
+        toast.warning('请先设置加币密码');
+        setAdjustFor(null); setShowSetPin(true);
+        return;
+      }
+      if (!adjustPin.trim()) { toast.warning('请输入加币密码'); return; }
+    }
     setBusy(true);
     try {
       await adjustCoins({
         student_id: adjustFor.student_id, amount,
         reason: adjustReason.trim() || undefined,
         source: adjustMode === 'redeem' ? 'redeem' : 'manual',
+        pin: adjustMode === 'grant' ? adjustPin.trim() : undefined,
       });
       toast.success(adjustMode === 'redeem' ? '已记兑换' : '已发放');
-      setAdjustFor(null); setAdjustAmount(''); setAdjustReason('');
+      setAdjustFor(null); setAdjustAmount(''); setAdjustReason(''); setAdjustPin('');
       refreshAll();
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || '操作失败');
+      const detail = e?.response?.data?.detail;
+      if (detail === 'PIN_NOT_SET') {
+        toast.warning('请先设置加币密码');
+        setAdjustFor(null); setShowSetPin(true);
+        setHasPin(false);
+      } else {
+        toast.error(detail || '操作失败');
+      }
     } finally { setBusy(false); }
   };
 
@@ -323,6 +362,11 @@ export default function TeacherCoins() {
               onClick={() => { setShowRewardMgr(true); setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }}
               className="px-3 py-2 rounded-xl bg-amber-100 text-amber-700 text-sm hover:bg-amber-200"
             >🎁 商品管理</button>
+            <button
+              onClick={() => { setShowSetPin(true); setPinOld(''); setPinNew(''); }}
+              title="设置或修改加币密码,防学生冒用账号自己加币"
+              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm hover:bg-slate-200"
+            >🔒 {hasPin ? '修改加币密码' : '设置加币密码'}</button>
             <select
               value={classId ?? ''}
               onChange={(e) => setClassId(Number(e.target.value))}
@@ -566,11 +610,48 @@ export default function TeacherCoins() {
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
               placeholder={adjustMode === 'redeem' ? '兑换了什么(如:换铅笔)' : '事由(可选)'}
+              className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-3"
+            />
+            {/* 发放金币要输加币密码(防学生冒用老师账号自己加币);兑换扣减不需要 */}
+            {adjustMode === 'grant' && (
+              <input
+                type="password"
+                value={adjustPin}
+                onChange={(e) => setAdjustPin(e.target.value)}
+                placeholder="加币密码"
+                autoComplete="off"
+                className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-4"
+              />
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => { setAdjustFor(null); setAdjustPin(''); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
+              <button onClick={submitAdjust} disabled={busy} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '确定'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 设置/修改加币密码弹窗 */}
+      {showSetPin && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowSetPin(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">🔒 {hasPin ? '修改加币密码' : '设置加币密码'}</h3>
+            <p className="text-xs text-gray-500 mb-4">发放金币时需输入此密码,和登录密码分开。防止学生用你的账号自己加币。</p>
+            {hasPin && (
+              <input
+                type="password" value={pinOld} onChange={(e) => setPinOld(e.target.value)}
+                placeholder="当前加币密码" autoComplete="off"
+                className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-2"
+              />
+            )}
+            <input
+              type="password" value={pinNew} onChange={(e) => setPinNew(e.target.value)}
+              placeholder="新加币密码(至少 4 位)" autoComplete="off"
               className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-4"
             />
             <div className="flex gap-2">
-              <button onClick={() => setAdjustFor(null)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
-              <button onClick={submitAdjust} disabled={busy} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '确定'}</button>
+              <button onClick={() => setShowSetPin(false)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
+              <button onClick={submitSetPin} className="flex-1 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium">保存</button>
             </div>
           </div>
         </div>

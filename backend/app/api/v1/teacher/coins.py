@@ -23,6 +23,7 @@ from app.models.word import Word
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
+from app.services.auth_service import get_password_hash, verify_password
 
 router = APIRouter()
 
@@ -49,6 +50,12 @@ class AdjustRequest(BaseModel):
     amount: int = Field(..., description="正=发放,负=扣减/兑换")
     reason: Optional[str] = Field(None, max_length=200)
     source: str = Field("manual", description="manual 手动 / redeem 兑换")
+    pin: Optional[str] = Field(None, description="加币 PIN(手动加币必填,防冒用账号)")
+
+
+class SetPinRequest(BaseModel):
+    new_pin: str = Field(..., min_length=4, max_length=20, description="新加币 PIN")
+    old_pin: Optional[str] = Field(None, description="修改时传旧 PIN 校验;首次设置留空")
 
 
 class TxUpdateRequest(BaseModel):
@@ -314,16 +321,45 @@ async def list_transactions(
 
 
 # ---------- 增:手动增减 / 兑换 ----------
+@router.get("/coins/pin-status")
+async def coin_pin_status(current_user: User = Depends(get_current_teacher)):
+    """当前老师是否已设加币 PIN(前端据此决定加币时弹「输入 PIN」还是「先去设置」)。"""
+    return {"has_pin": bool(current_user.coin_pin_hash)}
+
+
+@router.post("/coins/pin")
+async def set_coin_pin(
+    body: SetPinRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """设置或修改加币 PIN。已设过的必须先验证旧 PIN 才能改,防他人篡改。"""
+    if current_user.coin_pin_hash:
+        if not body.old_pin or not verify_password(body.old_pin, current_user.coin_pin_hash):
+            raise HTTPException(status_code=403, detail="旧加币密码不正确")
+    if not body.new_pin.strip():
+        raise HTTPException(status_code=400, detail="新密码不能为空")
+    current_user.coin_pin_hash = get_password_hash(body.new_pin.strip())
+    await db.commit()
+    return {"success": True}
+
+
 @router.post("/coins/adjust")
 async def adjust(
     body: AdjustRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """老师手动给学生加/减金币,或记一笔兑换消耗(负数)。不足扣不允许扣成负数。"""
+    """老师手动给学生加/减金币,或记一笔兑换消耗(负数)。不足扣不允许扣成负数。
+    手动加币(source=manual)必须校验加币 PIN,防学生冒用老师账号自己加币。"""
     await _assert_can_touch(db, current_user, body.student_id)
     if body.amount == 0:
         raise HTTPException(status_code=400, detail="变动值不能为 0")
+    # 加币 PIN 校验:未设 PIN 的先引导设置(前端据 403 code 弹设置框),已设的校验
+    if not current_user.coin_pin_hash:
+        raise HTTPException(status_code=403, detail="PIN_NOT_SET")
+    if not body.pin or not verify_password(body.pin, current_user.coin_pin_hash):
+        raise HTTPException(status_code=403, detail="加币密码不正确")
     src = body.source if body.source in ("manual", "redeem") else "manual"
 
     student = (await db.execute(select(User).where(User.id == body.student_id))).scalar_one_or_none()
