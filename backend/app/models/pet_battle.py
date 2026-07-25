@@ -41,6 +41,7 @@ class PetBattle(Base):
 
     # 战斗数据
     questions_data = Column(Text)  # JSON
+    pet_hp_data = Column(Text)  # JSON: 本场实际出战过的宠物各自剩余HP
 
     # 胜负
     winner_id = Column(Integer, ForeignKey("users.id"))

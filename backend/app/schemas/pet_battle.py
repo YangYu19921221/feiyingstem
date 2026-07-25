@@ -40,6 +40,19 @@ class PetBattleInfo(BaseModel):
         from_attributes = True
 
 
+class BattlePetOption(BaseModel):
+    """可在回合间切换的宠物。hp 是该宠物自己的本场剩余生命值。"""
+    pet_id: int
+    name: str
+    species: str
+    level: int
+    evolution_stage: int
+    hp: int
+    max_hp: int
+    is_current: bool
+    can_switch: bool
+
+
 class QuestionData(BaseModel):
     """题目数据"""
     word_id: int
@@ -48,10 +61,15 @@ class QuestionData(BaseModel):
     options: List[str]  # ["A. 快乐的", "B. 悲伤的", "C. 生气的", "D. 害怕的"]
 
 
+class RoundQuestionData(QuestionData):
+    """结算时才返回正确答案，避免在新回合消息里提前泄题。"""
+    correct_answer: str
+
+
 class RoundResult(BaseModel):
     """回合结果"""
     round_number: int
-    question: QuestionData
+    question: RoundQuestionData
 
     # 玩家1
     player1_answer: Optional[str]
@@ -59,7 +77,11 @@ class RoundResult(BaseModel):
     player1_time_ms: Optional[int]
     player1_damage: int
     player1_used_ultimate: bool
+    player1_type_multiplier: float = 1.0
+    player1_type_text: Optional[str] = None
     player1_hp_after: int
+    player1_combo: int
+    player1_ultimate_charges: int
 
     # 玩家2
     player2_answer: Optional[str]
@@ -67,7 +89,11 @@ class RoundResult(BaseModel):
     player2_time_ms: Optional[int]
     player2_damage: int
     player2_used_ultimate: bool
+    player2_type_multiplier: float = 1.0
+    player2_type_text: Optional[str] = None
     player2_hp_after: int
+    player2_combo: int
+    player2_ultimate_charges: int
 
 
 class BattleResponse(BaseModel):
@@ -82,6 +108,7 @@ class BattleResponse(BaseModel):
     player1_id: int
     player1_username: str
     player1_pet: PetBattleInfo
+    player1_roster: List[BattlePetOption] = Field(default_factory=list)
     player1_total_correct: int
     player1_total_damage: int
 
@@ -89,6 +116,7 @@ class BattleResponse(BaseModel):
     player2_id: int
     player2_username: str
     player2_pet: PetBattleInfo
+    player2_roster: List[BattlePetOption] = Field(default_factory=list)
     player2_total_correct: int
     player2_total_damage: int
 

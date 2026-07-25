@@ -14,11 +14,12 @@ from app.schemas.pet_battle import (
     BattleListItem,
     BattleStatsResponse,
     PetBattleInfo,
+    BattlePetOption,
 )
 from app.services import pet_battle_service
 from app.services.ai_opponent_service import generate_ai_opponent
 from app.api.v1.auth import get_current_student
-from app.core.pet_formulas import evolution_stage_for_level
+from app.core.pet_formulas import calculate_max_hp
 import json
 
 router = APIRouter()
@@ -31,6 +32,47 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
     player2 = await db.get(User, battle.player2_id)
     pet1 = await db.get(UserPet, battle.player1_pet_id)
     pet2 = await db.get(UserPet, battle.player2_pet_id)
+
+    hp_data = pet_battle_service.get_battle_pet_hp_data(battle)
+
+    async def build_roster(player_id: int, current_pet_id: int, hp: int):
+        result = await db.execute(
+            select(UserPet)
+            .where(UserPet.user_id == player_id)
+            .order_by(UserPet.is_active.desc(), UserPet.level.desc(), UserPet.id)
+        )
+        roster = []
+        for pet in result.scalars().all():
+            pet_max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+            pet_hp = (
+                hp if pet.id == current_pet_id
+                else hp_data.get(str(pet.id), pet_battle_service.get_pet_current_hp(pet))
+            )
+            pet_hp = min(pet_max_hp, max(0, pet_hp))
+            roster.append(BattlePetOption(
+                pet_id=pet.id,
+                name=pet.name,
+                species=pet.species,
+                level=pet.level,
+                evolution_stage=pet.evolution_stage,
+                hp=pet_hp,
+                max_hp=pet_max_hp,
+                is_current=pet.id == current_pet_id,
+                can_switch=(
+                    pet.id != current_pet_id
+                    and not pet.is_injured
+                    and pet_hp > 0
+                    and hp > 0
+                ),
+            ))
+        return roster
+
+    player1_roster = await build_roster(
+        battle.player1_id, pet1.id, battle.player1_hp
+    )
+    player2_roster = await build_roster(
+        battle.player2_id, pet2.id, battle.player2_hp
+    )
 
     return BattleResponse(
         id=battle.id,
@@ -51,6 +93,7 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
             combo=battle.player1_combo,
             ultimate_charges=battle.player1_ultimate_charges,
         ),
+        player1_roster=player1_roster,
         player1_total_correct=battle.player1_total_correct,
         player1_total_damage=battle.player1_total_damage,
         player2_id=battle.player2_id,
@@ -66,6 +109,7 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
             combo=battle.player2_combo,
             ultimate_charges=battle.player2_ultimate_charges,
         ),
+        player2_roster=player2_roster,
         player2_total_correct=battle.player2_total_correct,
         player2_total_damage=battle.player2_total_damage,
         winner_id=battle.winner_id,

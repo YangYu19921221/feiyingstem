@@ -1,9 +1,16 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Zap } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Swords, Zap } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { BattleWebSocket, AnswerWebSocket, Battle, QuestionData, RoundResult } from '../api/petBattle';
+import {
+  BattleWebSocket,
+  AnswerWebSocket,
+  Battle,
+  BattlePetOption,
+  QuestionData,
+  RoundResult,
+} from '../api/petBattle';
 import useGoBack from '../hooks/useGoBack';
 import { getPetBackImage, getPetDefinition, getPetImage, hasPetBackImage } from '../config/petSpecies';
 // three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
@@ -23,6 +30,7 @@ type BattleVisualEffect = {
   attacker: 1 | 2;
   target: 1 | 2;
   damage: number;
+  species: string;
   typeText?: string;
   ultimate?: {
     species: string;
@@ -64,6 +72,8 @@ export default function PetBattlePage() {
   const [countdown, setCountdown] = useState(3);
   const [endResult, setEndResult] = useState<any>(null);
   const [battleEffects, setBattleEffects] = useState<BattleVisualEffect[]>([]);
+  const [switchingPetId, setSwitchingPetId] = useState<number | null>(null);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   const battleWs = useRef<BattleWebSocket | null>(null);
   const answerWs = useRef<AnswerWebSocket | null>(null);
@@ -89,6 +99,11 @@ export default function PetBattlePage() {
   const isPlayer1 = battle?.player1_id === currentUserId;
   const myPet = isPlayer1 ? battle?.player1_pet : battle?.player2_pet;
   const opponentPet = isPlayer1 ? battle?.player2_pet : battle?.player1_pet;
+  const myRoster = (isPlayer1 ? battle?.player1_roster : battle?.player2_roster) || [];
+  const mySkill = myPet ? getPetDefinition(myPet.species).ultimate : null;
+  const skillProgress = myPet
+    ? (myPet.ultimate_charges > 0 ? 3 : myPet.combo % 3)
+    : 0;
 
   // 计算属性克制关系
   const myType = myPet ? getPetType(myPet.species) : 'normal';
@@ -163,6 +178,8 @@ export default function PetBattlePage() {
       setOpponentAnswered(false);
       setRoundResult(null);
       setBattleEffects([]);
+      setSwitchingPetId(null);
+      setSwitchError(null);
       if (effectTimerRef.current) {
         window.clearTimeout(effectTimerRef.current);
         effectTimerRef.current = null;
@@ -197,13 +214,27 @@ export default function PetBattlePage() {
         player1_pet: {
           ...currentBattle.player1_pet,
           hp: result.player1_hp_after,
-          combo: result.player1_correct ? currentBattle.player1_pet.combo + 1 : 0,
+          combo: result.player1_combo,
+          ultimate_charges: result.player1_ultimate_charges,
         },
+        player1_roster: (currentBattle.player1_roster || []).map((pet) => ({
+          ...pet,
+          hp: pet.pet_id === currentBattle.player1_pet.pet_id
+            ? result.player1_hp_after
+            : pet.hp,
+        })),
         player2_pet: {
           ...currentBattle.player2_pet,
           hp: result.player2_hp_after,
-          combo: result.player2_correct ? currentBattle.player2_pet.combo + 1 : 0,
+          combo: result.player2_combo,
+          ultimate_charges: result.player2_ultimate_charges,
         },
+        player2_roster: (currentBattle.player2_roster || []).map((pet) => ({
+          ...pet,
+          hp: pet.pet_id === currentBattle.player2_pet.pet_id
+            ? result.player2_hp_after
+            : pet.hp,
+        })),
       };
       battleStateRef.current = newBattle;
       setBattle(newBattle);
@@ -221,6 +252,7 @@ export default function PetBattlePage() {
           attacker: displaySide(1),
           target: displaySide(2),
           damage: result.player1_damage,
+          species,
           typeText: result.player1_type_text,
           ultimate: result.player1_used_ultimate
             ? { species, name: getPetDefinition(species).ultimate.name }
@@ -234,6 +266,7 @@ export default function PetBattlePage() {
           attacker: displaySide(2),
           target: displaySide(1),
           damage: result.player2_damage,
+          species,
           typeText: result.player2_type_text,
           ultimate: result.player2_used_ultimate
             ? { species, name: getPetDefinition(species).ultimate.name }
@@ -244,6 +277,13 @@ export default function PetBattlePage() {
       setBattleEffects(effects);
       if (effectTimerRef.current) window.clearTimeout(effectTimerRef.current);
       effectTimerRef.current = window.setTimeout(() => setBattleEffects([]), 2600);
+    });
+
+    ws.on('pet_switched', (data) => {
+      battleStateRef.current = data.battle;
+      setBattle(data.battle);
+      setSwitchingPetId(null);
+      setSwitchError(null);
     });
 
     ws.on('battle_end', (data) => {
@@ -260,6 +300,15 @@ export default function PetBattlePage() {
 
     ws.on('error', (data) => {
       alert(data.message);
+    });
+
+    ansWs.on('switch_error', (data) => {
+      setSwitchingPetId(null);
+      setSwitchError(data.message || '换宠失败');
+    });
+
+    ansWs.on('switch_accepted', () => {
+      setSwitchingPetId(null);
     });
 
     return () => {
@@ -291,6 +340,13 @@ export default function PetBattlePage() {
       return;
     }
     submitAnswer(selectedAnswer, true);
+  };
+
+  const switchPet = (petId: number) => {
+    if (phase !== 'result' || switchingPetId !== null) return;
+    setSwitchError(null);
+    setSwitchingPetId(petId);
+    answerWs.current?.switchPet(petId);
   };
 
   if (!battle) {
@@ -453,28 +509,53 @@ export default function PetBattlePage() {
 
                 {/* 操作按钮 */}
                 {!myAnswer && (
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:gap-3">
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      disabled={!selectedAnswer}
-                      onClick={() => selectedAnswer && submitAnswer(selectedAnswer)}
-                      className="min-w-0 rounded-xl bg-gradient-to-r from-orange-400 to-yellow-400 px-3 py-3 text-sm font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:text-lg"
-                    >
-                      确认答案
-                    </motion.button>
+                  <div>
+                    <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-bold text-slate-700 sm:text-sm">
+                          {myPet && myPet.ultimate_charges > 0
+                            ? `${mySkill?.name || '技能攻击'}已就绪`
+                            : '连续答对 3 题解锁技能'}
+                        </div>
+                        <div className="mt-1 flex gap-1.5" aria-label={`技能进度 ${skillProgress}/3`}>
+                          {[1, 2, 3].map((step) => (
+                            <span
+                              key={step}
+                              className={`h-1.5 w-8 rounded-full transition-colors sm:w-10 ${
+                                step <= skillProgress ? 'bg-fuchsia-500' : 'bg-slate-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-xs font-black tabular-nums text-fuchsia-700 sm:text-sm">
+                        {myPet?.ultimate_charges || 0} 次
+                      </div>
+                    </div>
 
-                    {myPet && myPet.ultimate_charges > 0 && (
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                       <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={useUltimate}
-                        className="flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-3 text-sm font-bold text-white shadow-lg sm:gap-2 sm:px-6 sm:text-base"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        disabled={!selectedAnswer}
+                        onClick={() => selectedAnswer && submitAnswer(selectedAnswer)}
+                        className="flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-lg bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-45 sm:text-base"
                       >
-                        <Zap className="h-4 w-4 sm:h-5 sm:w-5" />
-                        必杀技 ({myPet.ultimate_charges})
+                        <Swords className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
+                        <span className="truncate">普通攻击</span>
                       </motion.button>
-                    )}
+
+                      <motion.button
+                        whileHover={{ scale: myPet && myPet.ultimate_charges > 0 ? 1.02 : 1 }}
+                        whileTap={{ scale: myPet && myPet.ultimate_charges > 0 ? 0.98 : 1 }}
+                        disabled={!selectedAnswer || !myPet || myPet.ultimate_charges < 1}
+                        onClick={useUltimate}
+                        className="flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-lg bg-fuchsia-600 px-3 py-3 text-sm font-bold text-white shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none sm:text-base"
+                      >
+                        <Zap className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
+                        <span className="truncate">{mySkill?.name || '技能攻击'}</span>
+                      </motion.button>
+                    </div>
                   </div>
                 )}
 
@@ -499,7 +580,18 @@ export default function PetBattlePage() {
 
             {/* 回合结果 */}
             {phase === 'result' && roundResult && (
-              <RoundResultPanel result={roundResult} isPlayer1={isPlayer1} />
+              <>
+                {myPet && myRoster.length > 1 && (
+                  <PetSwitchPanel
+                    roster={myRoster}
+                    currentPetId={myPet.pet_id}
+                    switchingPetId={switchingPetId}
+                    error={switchError}
+                    onSwitch={switchPet}
+                  />
+                )}
+                <RoundResultPanel result={roundResult} isPlayer1={isPlayer1} />
+              </>
             )}
           </div>
         )}
@@ -515,6 +607,102 @@ export default function PetBattlePage() {
         )}
       </div>
     </div>
+  );
+}
+
+function PetSwitchPanel({
+  roster,
+  currentPetId,
+  switchingPetId,
+  error,
+  onSwitch,
+}: {
+  roster: BattlePetOption[];
+  currentPetId: number;
+  switchingPetId: number | null;
+  error: string | null;
+  onSwitch: (petId: number) => void;
+}) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="border-y border-cyan-200 bg-white/90 px-3 py-3 shadow-sm sm:px-4 sm:py-4"
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-black text-slate-800 sm:text-base">回合间歇 · 更换宠物</div>
+          <div className="text-xs font-semibold text-cyan-700">生命 {roster.find((pet) => pet.pet_id === currentPetId)?.hp || 0} HP</div>
+        </div>
+        <RefreshCw className="h-5 w-5 text-cyan-600" aria-hidden="true" />
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-5 sm:overflow-visible">
+        {roster.map((pet) => {
+          const isCurrent = pet.pet_id === currentPetId;
+          const isSwitching = switchingPetId === pet.pet_id;
+          const hpPercent = Math.max(0, Math.min(100, (pet.hp / pet.max_hp) * 100));
+          const disabled = isCurrent || !pet.can_switch || switchingPetId !== null;
+          return (
+            <motion.button
+              key={pet.pet_id}
+              whileTap={{ scale: disabled ? 1 : 0.97 }}
+              disabled={disabled}
+              onClick={() => onSwitch(pet.pet_id)}
+              aria-label={isCurrent ? `${pet.name}正在出战` : `切换为${pet.name}`}
+              className={`relative min-w-[132px] rounded-lg border-2 p-2 text-left transition-colors sm:min-w-0 ${
+                isCurrent
+                  ? 'border-cyan-500 bg-cyan-50'
+                  : pet.can_switch
+                    ? 'border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50'
+                    : 'border-slate-200 bg-slate-100 opacity-55'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center">
+                  <img
+                    src={getPetImage(pet.species, pet.evolution_stage)}
+                    alt=""
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-black text-slate-800">{pet.name}</div>
+                  <div className="text-[10px] font-semibold text-slate-500">Lv.{pet.level}</div>
+                  <div className={`mt-1 text-[10px] font-bold ${
+                    isCurrent ? 'text-cyan-700' : pet.can_switch ? 'text-emerald-700' : 'text-slate-500'
+                  }`}>
+                    {isSwitching ? '切换中...' : isCurrent ? '出战中' : pet.can_switch ? '可切换' : '不可出战'}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={`h-full rounded-full ${hpPercent > 50 ? 'bg-emerald-500' : hpPercent > 20 ? 'bg-amber-500' : 'bg-red-500'}`}
+                    style={{ width: `${hpPercent}%` }}
+                  />
+                </div>
+                <span className="shrink-0 text-[9px] font-bold tabular-nums text-slate-500">{pet.hp}/{pet.max_hp}</span>
+              </div>
+            </motion.button>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-2 text-xs font-bold text-red-600"
+          >
+            {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.section>
   );
 }
 

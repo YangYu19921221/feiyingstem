@@ -1,17 +1,7 @@
-// WebSocket配置
-// 生产环境使用wss + 当前域名，开发环境使用ws://localhost:8000
-const getWsBaseUrl = () => {
-  if (typeof window === 'undefined') return 'ws://localhost:8000';
-
-  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  if (isDev) {
-    return 'ws://localhost:8000';
-  }
-
-  // 生产环境：使用wss + 当前域名
-  return `wss://${window.location.host}`;
-};
+import { WS_BASE_URL } from './env';
 
 export const getWebSocketUrl = (path: string) => {
-  return `${getWsBaseUrl()}${path}`;
+  // 调用方传入完整 /api/v1 路径；这里只取可由环境变量覆盖的 WS origin。
+  const wsOrigin = WS_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  return `${wsOrigin}${path}`;
 };

@@ -29,6 +29,7 @@ type MoodState = 'happy' | 'excited' | 'sad' | 'idle' | 'normal';
 export default function FloatingPetWidget() {
   const navigate = useNavigate();
   const location = useLocation();
+  const isPetBattlePage = location.pathname.startsWith('/student/pet/battle/');
   // 所有 Hook 必须在条件判断前声明
   const [bubble, setBubble] = useState('');
   const [showBubble, setShowBubble] = useState(false);
@@ -49,7 +50,7 @@ export default function FloatingPetWidget() {
     queryFn: getMyPet,
     retry: false,
     staleTime: 60_000,
-    enabled: location.pathname.startsWith('/student'), // 只在学生端请求
+    enabled: location.pathname.startsWith('/student') && !isPetBattlePage,
   });
 
   const say = useCallback((msg: string, newMood: MoodState = 'happy', duration = 3000) => {
@@ -113,7 +114,7 @@ export default function FloatingPetWidget() {
   }, [pet, say]);
 
   // 所有 Hook 执行完后再做条件渲染
-  if (!location.pathname.startsWith('/student')) return null;
+  if (!location.pathname.startsWith('/student') || isPetBattlePage) return null;
   if (!pet) return null;
 
   const petImg = getPetImage(pet.species, pet.evolution_stage);

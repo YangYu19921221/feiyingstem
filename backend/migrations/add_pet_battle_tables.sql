@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS pet_battles (
 
     -- 战斗数据
     questions_data TEXT,  -- JSON: 题目列表
+    pet_hp_data TEXT,  -- JSON: 本场实际出战过的宠物各自剩余HP
 
     -- 胜负
     winner_id INTEGER,

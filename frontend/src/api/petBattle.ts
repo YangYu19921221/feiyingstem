@@ -17,6 +17,18 @@ export interface PetBattleInfo {
   ultimate_charges: number;
 }
 
+export interface BattlePetOption {
+  pet_id: number;
+  name: string;
+  species: string;
+  level: number;
+  evolution_stage: number;
+  hp: number;
+  max_hp: number;
+  is_current: boolean;
+  can_switch: boolean;
+}
+
 export interface QuestionData {
   word_id: number;
   word: string;
@@ -26,7 +38,7 @@ export interface QuestionData {
 
 export interface RoundResult {
   round_number: number;
-  question: QuestionData;
+  question: QuestionData & { correct_answer: string };
   player1_answer: string | null;
   player1_correct: boolean;
   player1_time_ms: number | null;
@@ -35,6 +47,8 @@ export interface RoundResult {
   player1_type_multiplier?: number;
   player1_type_text?: string;
   player1_hp_after: number;
+  player1_combo: number;
+  player1_ultimate_charges: number;
   player2_answer: string | null;
   player2_correct: boolean;
   player2_time_ms: number | null;
@@ -43,6 +57,8 @@ export interface RoundResult {
   player2_type_multiplier?: number;
   player2_type_text?: string;
   player2_hp_after: number;
+  player2_combo: number;
+  player2_ultimate_charges: number;
 }
 
 export interface Battle {
@@ -54,11 +70,13 @@ export interface Battle {
   player1_id: number;
   player1_username: string;
   player1_pet: PetBattleInfo;
+  player1_roster: BattlePetOption[];
   player1_total_correct: number;
   player1_total_damage: number;
   player2_id: number;
   player2_username: string;
   player2_pet: PetBattleInfo;
+  player2_roster: BattlePetOption[];
   player2_total_correct: number;
   player2_total_damage: number;
   winner_id: number | null;
@@ -263,6 +281,7 @@ export class BattleWebSocket {
 
 export class AnswerWebSocket {
   private ws: WebSocket | null = null;
+  private listeners: Map<string, Set<(data: WSMessage) => void>> = new Map();
   private battleId: number;
   private token: string;
   private closedByUser = false;
@@ -283,6 +302,15 @@ export class AnswerWebSocket {
         resolve();
       };
 
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.listeners.get(data.type)?.forEach((callback) => callback(data));
+        } catch (error) {
+          console.error('Failed to parse answer WS message:', error);
+        }
+      };
+
       this.ws.onerror = (error) => {
         if (this.closedByUser) return;
         console.error('Answer WebSocket error:', error);
@@ -295,6 +323,7 @@ export class AnswerWebSocket {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(
         JSON.stringify({
+          type: 'submit_answer',
           round_number: roundNumber,
           answer,
           time_ms: timeMs,
@@ -302,6 +331,17 @@ export class AnswerWebSocket {
         })
       );
     }
+  }
+
+  switchPet(petId: number) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'switch_pet', pet_id: petId }));
+    }
+  }
+
+  on(event: string, callback: (data: WSMessage) => void) {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(callback);
   }
 
   close() {

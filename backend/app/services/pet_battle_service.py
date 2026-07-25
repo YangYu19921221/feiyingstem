@@ -27,6 +27,44 @@ def capture_roll_succeeds(roll: float) -> bool:
     return 0 <= roll < PET_CAPTURE_CHANCE
 
 
+def next_combo_state(combo: int, charges: int, is_correct: bool) -> Tuple[int, int]:
+    """计算答题后的连击与技能次数；每连续答对 3 题获得 1 次技能。"""
+    if not is_correct:
+        return 0, charges
+    next_combo = combo + 1
+    if next_combo % 3 == 0:
+        charges += 1
+    return next_combo, charges
+
+
+def get_battle_pet_hp_data(battle: PetBattle) -> Dict[str, int]:
+    """读取本场各宠物独立 HP；兼容尚未写入该字段的旧对战。"""
+    if not battle.pet_hp_data:
+        return {}
+    try:
+        data = json.loads(battle.pet_hp_data)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    hp_data = {}
+    for pet_id, hp in data.items():
+        if not str(pet_id).isdigit():
+            continue
+        try:
+            hp_data[str(pet_id)] = max(0, int(hp))
+        except (TypeError, ValueError):
+            continue
+    return hp_data
+
+
+def get_pet_current_hp(pet: UserPet) -> int:
+    """读取宠物自身 HP，并兼容旧记录中的空值或超出上限的数据。"""
+    max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+    current_hp = max_hp if pet.current_hp is None else pet.current_hp
+    return min(max_hp, max(0, current_hp))
+
+
 async def _learned_word_count(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(
         select(func.count(func.distinct(LearningRecord.word_id)))
@@ -331,9 +369,13 @@ async def create_battle(
     if not pet1 or not pet2:
         raise ValueError("双方必须都有宠物才能对战")
 
-    # 计算初始HP
-    hp1 = calculate_initial_hp(pet1.level, pet1.evolution_stage)
-    hp2 = calculate_initial_hp(pet2.level, pet2.evolution_stage)
+    # 每只宠物从自己的当前 HP 进入本场战斗。
+    max_hp1 = calculate_initial_hp(pet1.level, pet1.evolution_stage)
+    max_hp2 = calculate_initial_hp(pet2.level, pet2.evolution_stage)
+    hp1 = get_pet_current_hp(pet1)
+    hp2 = get_pet_current_hp(pet2)
+    if hp1 <= 0 or hp2 <= 0:
+        raise ValueError("双方宠物都需要有剩余生命值才能对战")
 
     # 生成题目
     questions = await generate_battle_questions(db, wordbook_id, max_rounds)
@@ -347,11 +389,12 @@ async def create_battle(
         wordbook_id=wordbook_id,
         mode=mode,
         max_rounds=max_rounds,
-        player1_initial_hp=hp1,
-        player2_initial_hp=hp2,
+        player1_initial_hp=max_hp1,
+        player2_initial_hp=max_hp2,
         player1_hp=hp1,
         player2_hp=hp2,
         questions_data=json.dumps(questions),
+        pet_hp_data=json.dumps({str(pet1.id): hp1, str(pet2.id): hp2}),
         expires_at=datetime.utcnow() + timedelta(seconds=60),  # 60秒后过期
     )
 
@@ -405,6 +448,8 @@ async def process_round_answer(
 
     if battle.status != "active":
         raise ValueError("对战未进行中")
+    if player_id not in (battle.player1_id, battle.player2_id):
+        raise ValueError("无权参与此对战")
 
     # 获取或创建回合记录
     round_result = await db.execute(
@@ -459,13 +504,14 @@ async def process_round_answer(
         defender_pet = await db.get(UserPet, battle.player1_pet_id)
         combo = battle.player2_combo
 
-    # 计算伤害
-    if use_ultimate:
-        # 使用必杀技
-        if (is_player1 and battle.player1_ultimate_charges < 1) or \
-           (not is_player1 and battle.player2_ultimate_charges < 1):
-            raise ValueError("必杀技充能不足")
+    available_charges = (
+        battle.player1_ultimate_charges if is_player1
+        else battle.player2_ultimate_charges
+    )
+    actual_used_ultimate = use_ultimate and is_correct and available_charges > 0
 
+    # 技能只在答案正确且已有充能时释放；答错仍按普通答错结算且不消耗技能。
+    if actual_used_ultimate:
         damage = calculate_ultimate_damage(attacker_pet.species, attacker_pet.evolution_stage)
 
         # 消耗充能
@@ -492,37 +538,96 @@ async def process_round_answer(
         round_obj.player1_submit_time = datetime.utcnow()
         round_obj.player1_time_ms = time_ms
         round_obj.player1_damage = damage
-        round_obj.player1_used_ultimate = use_ultimate
+        round_obj.player1_used_ultimate = actual_used_ultimate
     else:
         round_obj.player2_answer = answer
         round_obj.player2_correct = is_correct
         round_obj.player2_submit_time = datetime.utcnow()
         round_obj.player2_time_ms = time_ms
         round_obj.player2_damage = damage
-        round_obj.player2_used_ultimate = use_ultimate
+        round_obj.player2_used_ultimate = actual_used_ultimate
 
     # 更新连击
-    if is_correct:
-        if is_player1:
-            battle.player1_combo += 1
-            # 每3连击充能1次
-            if battle.player1_combo % 3 == 0:
-                battle.player1_ultimate_charges += 1
-        else:
-            battle.player2_combo += 1
-            if battle.player2_combo % 3 == 0:
-                battle.player2_ultimate_charges += 1
+    if is_player1:
+        battle.player1_combo, battle.player1_ultimate_charges = next_combo_state(
+            battle.player1_combo,
+            battle.player1_ultimate_charges,
+            is_correct,
+        )
     else:
-        if is_player1:
-            battle.player1_combo = 0
-        else:
-            battle.player2_combo = 0
+        battle.player2_combo, battle.player2_ultimate_charges = next_combo_state(
+            battle.player2_combo,
+            battle.player2_ultimate_charges,
+            is_correct,
+        )
 
     await db.commit()
     await db.refresh(battle)
     await db.refresh(round_obj)
 
     return battle, round_obj
+
+
+async def switch_battle_pet(
+    db: AsyncSession,
+    battle_id: int,
+    player_id: int,
+    pet_id: int,
+) -> PetBattle:
+    """在回合结算窗口切换宠物；每只宠物保留自己的本场 HP。"""
+    battle = await db.get(PetBattle, battle_id)
+    if not battle:
+        raise ValueError("对战不存在")
+    await db.refresh(battle)
+    if battle.status != "active":
+        raise ValueError("对战未进行中")
+    if player_id not in (battle.player1_id, battle.player2_id):
+        raise ValueError("无权切换此对战的宠物")
+
+    is_player1 = player_id == battle.player1_id
+    current_pet_id = battle.player1_pet_id if is_player1 else battle.player2_pet_id
+    if pet_id == current_pet_id:
+        raise ValueError("这只宠物已经在场上")
+
+    current_pet = await db.get(UserPet, current_pet_id)
+    target_pet = await db.get(UserPet, pet_id)
+    if not target_pet or target_pet.user_id != player_id:
+        raise ValueError("宠物不存在或不属于你")
+
+    old_hp = battle.player1_hp if is_player1 else battle.player2_hp
+    if old_hp <= 0:
+        raise ValueError("宠物失去战斗能力后不能切换")
+
+    hp_data = get_battle_pet_hp_data(battle)
+    hp_data[str(current_pet_id)] = old_hp
+    new_max_hp = calculate_max_hp(target_pet.level, target_pet.evolution_stage)
+    new_hp = min(
+        new_max_hp,
+        hp_data.get(str(target_pet.id), get_pet_current_hp(target_pet)),
+    )
+    if target_pet.is_injured or new_hp <= 0:
+        raise ValueError("受伤的宠物暂时不能出战")
+    hp_data[str(target_pet.id)] = new_hp
+    battle.pet_hp_data = json.dumps(hp_data, ensure_ascii=False)
+
+    # 及时保存离场宠物的真实血量，断线或中途结束也不会丢失伤害。
+    if current_pet:
+        current_pet.current_hp = min(
+            calculate_max_hp(current_pet.level, current_pet.evolution_stage),
+            old_hp,
+        )
+    if is_player1:
+        battle.player1_pet_id = target_pet.id
+        battle.player1_initial_hp = new_max_hp
+        battle.player1_hp = new_hp
+    else:
+        battle.player2_pet_id = target_pet.id
+        battle.player2_initial_hp = new_max_hp
+        battle.player2_hp = new_hp
+
+    await db.commit()
+    await db.refresh(battle)
+    return battle
 
 
 async def finalize_round(
@@ -568,6 +673,10 @@ async def finalize_round(
     # 记录回合后HP
     round_obj.player1_hp_after = battle.player1_hp
     round_obj.player2_hp_after = battle.player2_hp
+    hp_data = get_battle_pet_hp_data(battle)
+    hp_data[str(battle.player1_pet_id)] = battle.player1_hp
+    hp_data[str(battle.player2_pet_id)] = battle.player2_hp
+    battle.pet_hp_data = json.dumps(hp_data, ensure_ascii=False)
 
     # 更新当前回合
     battle.current_round = round_number
@@ -649,8 +758,6 @@ async def finish_battle(
         is_player1 = player_id == battle.player1_id
         correct_count = battle.player1_total_correct if is_player1 else battle.player2_total_correct
         combo_max = battle.player1_combo if is_player1 else battle.player2_combo
-        final_hp = battle.player1_hp if is_player1 else battle.player2_hp
-
         # 基础奖励（经验较原值下调约一半，避免对战刷等级过快）
         if is_winner:
             food = 15 + correct_count * 2
@@ -695,21 +802,6 @@ async def finish_battle(
                 detail=f"进化为{get_pet_stage_name(pet.species, pet.evolution_stage)}！(Lv{pet.level})",
             ))
 
-        # 更新当前HP
-        pet.current_hp = final_hp
-
-        # 计算最大HP（升级后重新计算，阈值随等级变化）
-        max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
-
-        # 如果HP < 50%，标记为受伤
-        if pet.current_hp < max_hp * 0.5:
-            pet.is_injured = True
-            db.add(PetEventLog(
-                pet_id=pet.id,
-                event_type="injured",
-                detail=f"对战后受伤，当前HP: {pet.current_hp}/{max_hp}"
-            ))
-
         # 更新统计
         stats_result = await db.execute(
             select(PetBattleStats).where(PetBattleStats.user_id == player_id)
@@ -746,6 +838,27 @@ async def finish_battle(
             stats.total_correct_answers += battle.player2_total_correct
 
         stats.updated_at = datetime.utcnow()
+
+    # 分别结算所有实际上过场的宠物，切换不会覆盖彼此的血量。
+    hp_data = get_battle_pet_hp_data(battle)
+    hp_data[str(battle.player1_pet_id)] = battle.player1_hp
+    hp_data[str(battle.player2_pet_id)] = battle.player2_hp
+    if hp_data:
+        pet_ids = [int(pet_id) for pet_id in hp_data]
+        fought_result = await db.execute(select(UserPet).where(UserPet.id.in_(pet_ids)))
+        battle_player_ids = {battle.player1_id, battle.player2_id}
+        for fought_pet in fought_result.scalars().all():
+            if fought_pet.user_id not in battle_player_ids:
+                continue
+            max_hp = calculate_max_hp(fought_pet.level, fought_pet.evolution_stage)
+            fought_pet.current_hp = min(max_hp, hp_data[str(fought_pet.id)])
+            if fought_pet.current_hp < max_hp * 0.5 and not fought_pet.is_injured:
+                fought_pet.is_injured = True
+                db.add(PetEventLog(
+                    pet_id=fought_pet.id,
+                    event_type="injured",
+                    detail=f"对战后受伤，当前HP: {fought_pet.current_hp}/{max_hp}",
+                ))
 
     capture = await _settle_pet_capture(db, battle, winner_id)
     rewards["_capture"] = capture

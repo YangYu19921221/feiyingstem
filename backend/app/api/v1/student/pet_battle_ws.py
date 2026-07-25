@@ -24,6 +24,7 @@ from app.schemas.pet_battle import (
     WSBattleEnd,
     WSError,
     QuestionData,
+    RoundQuestionData,
     RoundResult,
 )
 
@@ -40,6 +41,8 @@ class BattleConnectionManager:
         self.round_answers: Dict[int, Dict[int, dict]] = {}
         # battle_id -> asyncio.Lock
         self.battle_locks: Dict[int, asyncio.Lock] = {}
+        # 只允许在回合结果展示期间切换宠物
+        self.switch_windows: Set[int] = set()
 
     async def connect(self, battle_id: int, player_id: int, websocket: WebSocket):
         """玩家连接"""
@@ -62,6 +65,7 @@ class BattleConnectionManager:
                 self.active_connections.pop(battle_id, None)
                 self.round_answers.pop(battle_id, None)
                 self.battle_locks.pop(battle_id, None)
+                self.switch_windows.discard(battle_id)
 
     async def broadcast(self, battle_id: int, message: dict):
         """向对战双方广播消息"""
@@ -123,6 +127,15 @@ class BattleConnectionManager:
         """检查双方是否都已答题"""
         answers = self.get_answers(battle_id)
         return player1_id in answers and player2_id in answers
+
+    def open_switch_window(self, battle_id: int):
+        self.switch_windows.add(battle_id)
+
+    def close_switch_window(self, battle_id: int):
+        self.switch_windows.discard(battle_id)
+
+    def can_switch(self, battle_id: int) -> bool:
+        return battle_id in self.switch_windows
 
 
 manager = BattleConnectionManager()
@@ -241,6 +254,8 @@ async def battle_websocket(
 
         # 进行回合
         for round_num in range(1, battle.max_rounds + 1):
+            manager.close_switch_window(battle_id)
+            await db.refresh(battle)
             manager.clear_answers(battle_id)
 
             print(f"第{round_num}回合开始")
@@ -353,36 +368,51 @@ async def battle_websocket(
                 db, battle_id, round_num
             )
 
+            battle_has_ended = (
+                battle.player1_hp <= 0
+                or battle.player2_hp <= 0
+                or battle.current_round >= battle.max_rounds
+            )
+            if not battle_has_ended:
+                manager.open_switch_window(battle_id)
+
             # 广播回合结果
             await manager.broadcast(
                 battle_id,
                 WSRoundResult(
                     result=RoundResult(
                         round_number=round_num,
-                        question=QuestionData(**question),
+                        question=RoundQuestionData(**question),
                         player1_answer=round_obj.player1_answer,
                         player1_correct=round_obj.player1_correct,
                         player1_time_ms=round_obj.player1_time_ms,
                         player1_damage=round_obj.player1_damage,
                         player1_used_ultimate=round_obj.player1_used_ultimate,
+                        player1_type_multiplier=round_obj.player1_type_multiplier or 1.0,
+                        player1_type_text=round_obj.player1_type_text,
                         player1_hp_after=round_obj.player1_hp_after,
+                        player1_combo=battle.player1_combo,
+                        player1_ultimate_charges=battle.player1_ultimate_charges,
                         player2_answer=round_obj.player2_answer,
                         player2_correct=round_obj.player2_correct,
                         player2_time_ms=round_obj.player2_time_ms,
                         player2_damage=round_obj.player2_damage,
                         player2_used_ultimate=round_obj.player2_used_ultimate,
+                        player2_type_multiplier=round_obj.player2_type_multiplier or 1.0,
+                        player2_type_text=round_obj.player2_type_text,
                         player2_hp_after=round_obj.player2_hp_after,
+                        player2_combo=battle.player2_combo,
+                        player2_ultimate_charges=battle.player2_ultimate_charges,
                     )
                 ).dict(),
             )
 
             # 检查是否结束
-            winner_id = await pet_battle_service.check_battle_end(battle)
-            if winner_id is not None or battle.current_round >= battle.max_rounds:
+            if battle_has_ended:
                 break
 
-            # 回合间隔
-            await asyncio.sleep(2)
+            # 留出明确的换宠窗口；新题发出前会再次关闭。
+            await asyncio.sleep(8)
 
         # 结算奖励
         winner_id = await pet_battle_service.check_battle_end(battle)
@@ -434,6 +464,7 @@ async def battle_websocket(
         )
 
     finally:
+        manager.close_switch_window(battle_id)
         manager.disconnect(battle_id, current_user.id)
 
 
@@ -454,8 +485,53 @@ async def answer_websocket(
             current_user = await verify_token_ws(token, db)
             break
 
+        battle = await db.get(PetBattle, battle_id)
+        if not battle or current_user.id not in (battle.player1_id, battle.player2_id):
+            await websocket.close(code=4003, reason="无权加入此对战")
+            return
+
         while True:
             data = await websocket.receive_json()
+
+            message_type = data.get("type", "submit_answer")
+            if message_type == "switch_pet":
+                if not manager.can_switch(battle_id):
+                    await websocket.send_json({
+                        "type": "switch_error",
+                        "message": "只能在回合结算时更换宠物",
+                    })
+                    continue
+
+                try:
+                    lock = manager.battle_locks.setdefault(battle_id, asyncio.Lock())
+                    async with lock:
+                        switched_battle = await pet_battle_service.switch_battle_pet(
+                            db=db,
+                            battle_id=battle_id,
+                            player_id=current_user.id,
+                            pet_id=int(data["pet_id"]),
+                        )
+                        from app.api.v1.student.pet_battle import build_battle_response
+                        battle_response = await build_battle_response(switched_battle, db)
+                    await manager.broadcast(battle_id, {
+                        "type": "pet_switched",
+                        "player_id": current_user.id,
+                        "battle": battle_response.model_dump(mode="json"),
+                    })
+                    await websocket.send_json({
+                        "type": "switch_accepted",
+                        "pet_id": int(data["pet_id"]),
+                    })
+                except (KeyError, TypeError, ValueError) as exc:
+                    await websocket.send_json({
+                        "type": "switch_error",
+                        "message": str(exc) or "换宠失败",
+                    })
+                continue
+
+            if message_type != "submit_answer":
+                await websocket.send_json({"type": "answer_error", "message": "未知操作"})
+                continue
 
             # 存储答案
             manager.store_answer(battle_id, current_user.id, data)

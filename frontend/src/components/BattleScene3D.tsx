@@ -10,6 +10,7 @@ type BattleVisualEffect = {
   attacker: 1 | 2;
   target: 1 | 2;
   damage: number;
+  species: string;
   typeText?: string;
   ultimate?: {
     species: string;
@@ -41,6 +42,11 @@ const ELEMENT_VFX: Record<PetElement, { color: string; mode: 'strike' | 'burst' 
 function getSkillVfx(species: string) {
   const definition = getPetDefinition(species);
   return { image: definition.ultimate.image, ...ELEMENT_VFX[definition.element] };
+}
+
+function getAttackVfx(species: string) {
+  const definition = getPetDefinition(species);
+  return ELEMENT_VFX[definition.element];
 }
 
 // ==============================
@@ -406,6 +412,97 @@ function SkillEffectOverlay({ effect }: { effect: BattleVisualEffect }) {
   );
 }
 
+function NormalAttackEffectOverlay({ effect }: { effect: BattleVisualEffect }) {
+  if (effect.ultimate) return null;
+
+  const attack = getAttackVfx(effect.species);
+  const startsLeft = effect.attacker === 1;
+  const targetLeft = effect.target === 1;
+  const start = startsLeft ? '27%' : '73%';
+  const target = targetLeft ? '27%' : '73%';
+  const startTop = startsLeft ? '64%' : '36%';
+  const targetTop = targetLeft ? '64%' : '36%';
+  const isStrike = attack.mode === 'strike';
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[7] overflow-hidden">
+      <motion.div
+        className="absolute h-4 w-4 rounded-full sm:h-6 sm:w-6"
+        style={{
+          background: `radial-gradient(circle, #fff 0%, ${attack.color} 44%, transparent 72%)`,
+          boxShadow: `0 0 12px 5px ${attack.color}, 0 0 30px 8px ${attack.color}`,
+          transform: 'translate(-50%, -50%)',
+        }}
+        initial={{ left: start, top: startTop, opacity: 0, scale: 0.3 }}
+        animate={{
+          left: [start, start, target],
+          top: [startTop, startTop, targetTop],
+          opacity: [0, 1, 1, 0],
+          scale: [0.3, 1.25, 0.9, 0.2],
+        }}
+        transition={{ duration: 0.66, times: [0, 0.16, 0.78, 1], ease: [0.3, 0, 0.15, 1] }}
+      >
+        <motion.div
+          className="absolute left-1/2 top-1/2 h-2 w-20 rounded-full sm:w-28"
+          style={{
+            background: `linear-gradient(${startsLeft ? 90 : 270}deg, ${attack.color}, transparent)`,
+            transform: `translate(${startsLeft ? '-100%' : '0'}, -50%)`,
+            filter: 'blur(2px)',
+          }}
+          animate={{ opacity: [0, 0.9, 0] }}
+          transition={{ duration: 0.66 }}
+        />
+      </motion.div>
+
+      <div
+        className="absolute"
+        style={{ left: target, top: targetTop, transform: 'translate(-50%, -50%)' }}
+      >
+        {isStrike && (
+          <motion.div
+            className="absolute left-1/2 top-1/2 h-24 w-3 rounded-full sm:h-32 sm:w-4"
+            style={{
+              background: `linear-gradient(to bottom, transparent, #fff 35%, ${attack.color} 68%, transparent)`,
+              boxShadow: `0 0 18px ${attack.color}`,
+              rotate: targetLeft ? '-38deg' : '38deg',
+            }}
+            initial={{ opacity: 0, scaleY: 0.15, x: '-50%', y: '-50%' }}
+            animate={{ opacity: [0, 1, 0], scaleY: [0.15, 1, 1.2], x: '-50%', y: '-50%' }}
+            transition={{ delay: 0.38, duration: 0.48 }}
+          />
+        )}
+
+        <motion.div
+          className="absolute left-1/2 top-1/2 aspect-square w-12 rounded-full border-4 sm:w-20"
+          style={{ borderColor: attack.color, boxShadow: `0 0 24px ${attack.color}` }}
+          initial={{ opacity: 0, scale: 0.15, x: '-50%', y: '-50%' }}
+          animate={{ opacity: [0, 0.95, 0], scale: [0.15, 0.7, 2.1], x: '-50%', y: '-50%' }}
+          transition={{ delay: 0.39, duration: 0.65, ease: 'easeOut' }}
+        />
+
+        {Array.from({ length: 8 }).map((_, index) => {
+          const angle = (Math.PI * 2 * index) / 8;
+          return (
+            <motion.span
+              key={index}
+              className="absolute left-1/2 top-1/2 h-2 w-2 rounded-full sm:h-3 sm:w-3"
+              style={{ backgroundColor: attack.color, boxShadow: `0 0 10px ${attack.color}` }}
+              initial={{ opacity: 0, x: 0, y: 0, scale: 0.2 }}
+              animate={{
+                opacity: [0, 1, 0],
+                x: [0, Math.cos(angle) * (index % 2 ? 48 : 68)],
+                y: [0, Math.sin(angle) * (index % 2 ? 48 : 68)],
+                scale: [0.2, 1, 0.25],
+              }}
+              transition={{ delay: 0.4, duration: 0.62, ease: 'easeOut' }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PetHud({
   name,
   hp,
@@ -529,6 +626,12 @@ export default function BattleScene3D({
 
       <AnimatePresence>
         {effects.map((effect) => (
+          <NormalAttackEffectOverlay key={`normal-${effect.id}`} effect={effect} />
+        ))}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {effects.map((effect) => (
           <motion.div
             key={`damage-${effect.id}`}
             className={`absolute pointer-events-none z-10 ${
@@ -537,7 +640,7 @@ export default function BattleScene3D({
             initial={{ opacity: 1, scale: 0.4, y: 0 }}
             animate={{ opacity: [0, 1, 1, 0], scale: [0.4, 1.1, 1.45, 1.8], y: [0, -8, -36, -66] }}
             exit={{ opacity: 0 }}
-            transition={{ delay: effect.ultimate ? 0.46 : 0, duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ delay: effect.ultimate ? 0.46 : 0.38, duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
           >
             <div
               className="text-3xl font-black text-red-600 sm:text-6xl"

@@ -8,6 +8,7 @@ import { resolve } from 'node:path'
 // 前端定期比对两者,发现服务器已是新版就提示刷新——
 // 学生端 SPA 常年不刷新,旧 bundle 跑好几天是线上问题反复复发的根源。
 const buildTs = Date.now().toString(36)
+const devApiTarget = process.env.VITE_DEV_API_TARGET || 'http://localhost:8000'
 
 function versionJsonPlugin(): Plugin {
   return {
@@ -60,7 +61,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: devApiTarget,
         changeOrigin: true,
         ws: true,
       }

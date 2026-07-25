@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import datetime, date, timedelta
 
 from app.core.database import get_db
+from app.core.timeutil import local_today
 from app.models.user import User
 from app.api.v1.auth import get_current_user
 from pydantic import BaseModel
@@ -149,24 +150,39 @@ async def get_user_stats(db: AsyncSession, user_id: int):
     total_words = result.scalar() or 0
 
     # 连续打卡天数
+    # 三个坑都在这里踩过,改动请留意:
+    # 1) 必须用北京日期(local_today),date.today() 拿的是服务器 UTC 日期,
+    #    北京时间早 8 点前会算成前一天,早读时段打卡的连续天数会错一天。
+    # 2) 起算点允许「今天或昨天」:原来只从今天往前比,学生连学 3 天但今天还没开始学时
+    #    连续天数会算成 0(连续打卡成就只在当天学完后的几小时内才可能解锁)。
+    # 3) 不能只取最近 30 条:月之恒心需要连续 30 天,取 30 条会把上限卡死在 30,
+    #    且一旦中间有断档就更算不出来。这里放宽到 400 条,足够覆盖年度连续打卡。
     from app.models.user import StudyCalendar
     result = await db.execute(
         select(StudyCalendar.study_date)
         .where(StudyCalendar.user_id == user_id)
         .order_by(StudyCalendar.study_date.desc())
-        .limit(30)  # 只查最近30天
+        .limit(400)
     )
     study_dates = [row[0] for row in result.fetchall()]
 
     consecutive_days = 0
     if study_dates:
-        current_date = date.today()
-        for i, study_date in enumerate(study_dates):
-            expected_date = current_date - timedelta(days=i)
-            if study_date == expected_date:
-                consecutive_days += 1
-            else:
-                break
+        today = local_today()
+        newest = study_dates[0]
+        if isinstance(newest, datetime):
+            newest = newest.date()
+        # 最近一次打卡是今天或昨天才算「连续中」;更早说明已断档,连续天数为 0
+        if newest in (today, today - timedelta(days=1)):
+            expected = newest
+            for study_date in study_dates:
+                d = study_date.date() if isinstance(study_date, datetime) else study_date
+                if d == expected:
+                    consecutive_days += 1
+                    expected = expected - timedelta(days=1)
+                elif d < expected:
+                    break
+                # d > expected(同日重复行)跳过不计,继续看下一条
 
     return {
         'total_words': total_words,

@@ -136,10 +136,10 @@ const AchievementsPage = () => {
           >
             <div className="flex items-center gap-3 mb-2">
               <span className="text-2xl">📚</span>
-              <p className="text-gray-600">学习单词</p>
+              <p className="text-gray-600">掌握单词</p>
             </div>
             <p className="text-4xl font-bold text-gray-800">{stats?.total_words || 0}</p>
-            <p className="text-sm text-gray-500 mt-1">已掌握</p>
+            <p className="text-sm text-gray-500 mt-1">熟练度达标</p>
           </motion.div>
 
           <motion.div
@@ -275,7 +275,8 @@ const AchievementsPage = () => {
 const getConditionText = (type: string, value: number): string => {
   switch (type) {
     case 'total_words':
-      return `学习${value}个单词`;
+      // 后端判定口径是 word_mastery.mastery_level>=3(已掌握),不是"学过"
+      return `掌握${value}个单词`;
     case 'consecutive_days':
       return `连续打卡${value}天`;
     case 'accuracy_rate':

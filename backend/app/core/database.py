@@ -422,6 +422,8 @@ async def init_db():
             "ALTER TABLE pet_battles ADD COLUMN capture_succeeded BOOLEAN DEFAULT FALSE",
             "ALTER TABLE pet_battles ADD COLUMN captured_pet_id INTEGER",
             "ALTER TABLE pet_battles ADD COLUMN capture_data TEXT",
+            # 宠物对战换宠: 每只实际出战宠物独立保存本场剩余 HP。
+            "ALTER TABLE pet_battles ADD COLUMN pet_hp_data TEXT",
         ]:
             try:
                 await conn.execute(text(_sql))

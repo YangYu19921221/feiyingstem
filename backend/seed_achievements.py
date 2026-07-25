@@ -12,13 +12,16 @@ from sqlalchemy import select
 
 ACHIEVEMENTS = [
     # 单词累计
-    dict(name="初次启程", description="学完第一个单词，旅程开始",
+    # 注:condition_type=total_words 的判定口径是「已掌握」(word_mastery.mastery_level>=3),
+    # 不是「见过/学过」。描述必须如实写「掌握」,否则学生看到"累计学习1392词"却拿不到
+    # 千词大师会以为系统坏了(2026-07 修正过一次文案与实现不一致)。
+    dict(name="初次启程", description="掌握第一个单词，旅程开始",
          icon="/badges/badge-1.jpeg",
          condition_type="total_words", condition_value=1, reward_points=10),
-    dict(name="百词路上", description="累计学习 100 个单词",
+    dict(name="百词路上", description="累计掌握 100 个单词",
          icon="/badges/badge-2.jpeg",
          condition_type="total_words", condition_value=100, reward_points=30),
-    dict(name="千词大师", description="累计学习 1000 个单词",
+    dict(name="千词大师", description="累计掌握 1000 个单词",
          icon="/badges/badge-3.jpeg",
          condition_type="total_words", condition_value=1000, reward_points=100),
 
