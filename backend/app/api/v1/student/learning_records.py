@@ -129,13 +129,26 @@ def _spread_created_at(records: List[LearningRecord], session_seconds: Optional[
     做法:用本批净活动时长(session_seconds,前端已扣挂机)从提交时刻
     往回均匀铺开——末题=现在,首题=现在-时长。单题间隔封顶 240 秒
     (小于时间线 5 分钟断窗),避免超长时长把一批铺成多个 1 题碎段。
+
+    ⚠️ session_seconds 不可靠时必须兜底(2026-07-25 修):前端 takeSessionDelta()
+    返回的是「距上次提交的增量」,复习模式下错词已实时逐条提交、把增量吃掉了,
+    组末那批 20 条常常只剩几秒甚至 0 秒 → 全部挤在同一秒,教师端时间线显示
+    "16:41~16:41 学习 20 题",看着像瞬间刷完的假数据(实际学了几十分钟)。
+    兜底改用各题真实作答耗时 time_spent 之和来铺,至少还原相对节奏。
     """
     n = len(records)
     if n == 0:
         return
     now = datetime.utcnow()
     span = min(int(session_seconds or 0), STUDY_CALENDAR_SESSION_CAP_SEC)
-    if n == 1 or span <= 0:
+    # session_seconds 缺失/过小时,用逐题 time_spent(毫秒)之和兜底
+    if span < n:
+        by_answer = sum(int(getattr(r, "time_spent", 0) or 0) for r in records) // 1000
+        span = min(max(span, by_answer), STUDY_CALENDAR_SESSION_CAP_SEC)
+    # 仍然过小(如 time_spent 也异常)时,给每题保底 3 秒,避免整批同秒
+    if span < n:
+        span = n * 3
+    if n == 1:
         for r in records:
             r.created_at = now
         return
