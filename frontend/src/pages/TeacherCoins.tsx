@@ -1,7 +1,7 @@
 /**
  * 教师端-金币管理页
  * 左:班级学生余额;右:金币流水(增删改查 + 分页 + 搜索 + 来源筛选)。
- * 进入即对「今天」结算一次(幂等补发单词王/作业币)。仅本班老师+管理员可操作。
+ * 金币完全由老师手动加(不再有系统自动/批量发币)。仅本班老师+管理员可操作。
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +9,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import {
-  settleCoins, getCoinBalances, getCoinTransactions, adjustCoins,
+  getCoinBalances, getCoinTransactions, adjustCoins,
   getCoinPinStatus, setCoinPin,
   updateCoinTx, deleteCoinTx,
   getRewards, createReward, updateReward, deleteReward, redeemReward,
@@ -78,7 +78,6 @@ export default function TeacherCoins() {
 
   const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` });
 
-  const [settling, setSettling] = useState(false);
 
   // 初始化:只加载班级列表(结算已改为教师手动点按钮触发,不再进页面自动发币)
   useEffect(() => {
@@ -91,21 +90,6 @@ export default function TeacherCoins() {
       } catch { toast.error('加载班级失败'); }
     })();
   }, []);
-
-  // 手动结算:结算今天 + 昨天(幂等,重复点不会多发),完成后刷新余额/流水/榜单
-  const handleSettle = async () => {
-    setSettling(true);
-    try {
-      await settleCoins();
-      await settleCoins('yesterday');
-      toast.success('已结算今天与昨天的单词王/作业币');
-      await Promise.allSettled([loadBalances(), loadTx(), loadKingBanner()]);
-    } catch {
-      toast.error('结算失败,请重试');
-    } finally {
-      setSettling(false);
-    }
-  };
 
   const loadRewards = useCallback(async () => {
     try { setRewards(await getRewards(true)); } catch { /* 静默 */ }
@@ -353,12 +337,6 @@ export default function TeacherCoins() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleSettle}
-              disabled={settling}
-              title="结算今天与昨天的单词王/作业币(可重复点,不会多发)"
-              className="px-3 py-2 rounded-xl bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 disabled:opacity-50"
-            >{settling ? '结算中…' : '💰 结算金币'}</button>
-            <button
               onClick={() => { setShowRewardMgr(true); setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }}
               className="px-3 py-2 rounded-xl bg-amber-100 text-amber-700 text-sm hover:bg-amber-200"
             >🎁 商品管理</button>
@@ -378,7 +356,7 @@ export default function TeacherCoins() {
         </div>
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-700">
-          💡 完成当天全部作业 或 完成 2 个单元(计分模式)+1 币(二者共享一天 1 个名额),当日班级词量榜第一(单词王)+2 币。发币改为手动:点右上角「💰 结算金币」结算今天与昨天(可重复点,不会多发)。手动/兑换记录可增删改,系统发放的不可改。
+          💡 金币<b>不再由系统自动发放</b>,完全由老师核实学生实际完成情况后手动加币(点学生行的「加币」)。下方「单词王」榜单与学情数据可作为加币参考。历史上系统发放过的记录不可改,手动/兑换记录可增删改。
         </div>
 
         {/* 单词王横幅:昨天(已定)+ 今日(实时,还没截止) */}

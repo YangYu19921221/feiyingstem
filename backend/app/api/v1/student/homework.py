@@ -320,16 +320,9 @@ async def submit_homework_attempt(
 
     await db.commit()
 
-    # 金币:本次达标可能让"当日全部作业完成",尝试结算今日 task 币(幂等,+1/天)。
-    # 失败不影响作业提交主流程(金币是附赠激励,不能因它报错挡住交作业)。
-    if is_passed:
-        try:
-            from app.services.coin_service import settle_day
-            from app.core.timeutil import local_today
-            await settle_day(db, local_today())
-            await db.commit()
-        except Exception:
-            await db.rollback()
+    # 金币:不再由系统自动发放。产品决定(2026-07-25)——金币必须由老师核实学生
+    # 实际完成情况后在「金币管理」页手动加,避免刷任务白拿币。
+    # 原先这里会在作业达标时调 settle_day 自动发当日 task 币,已移除。
 
     return {
         "message": "提交成功",

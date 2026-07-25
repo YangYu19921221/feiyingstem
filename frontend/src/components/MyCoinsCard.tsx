@@ -137,7 +137,7 @@ export default function MyCoinsCard() {
                   </span>
                 </div>
               ))}
-              {items.length === 0 && <p className="text-center text-xs text-gray-400 py-8">还没有金币记录,快去完成作业赚金币吧!</p>}
+              {items.length === 0 && <p className="text-center text-xs text-gray-400 py-8">还没有金币记录。认真完成学习任务,老师核实后会给你加金币!</p>}
             </div>
 
             {totalPages > 1 && (

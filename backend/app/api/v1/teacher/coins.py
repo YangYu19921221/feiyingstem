@@ -172,18 +172,11 @@ async def word_king_banner(
     }
 
 
-# ---------- 结算(打开页面时调,幂等补发系统币) ----------
-@router.post("/coins/settle")
-async def settle(
-    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认今天"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_teacher),
-):
-    """幂等结算某日系统金币(单词王+2、完成全部作业+1)。重复调用不会多发。"""
-    d = _parse_date(target_date)
-    result = await coin_service.settle_day(db, d)
-    await db.commit()
-    return {"date": d.isoformat(), **result}
+# ---------- 已下线:系统批量结算 ----------
+# 产品决定(2026-07-25):金币完全改为「老师核实后手动加」,不再有任何系统自动/批量
+# 发币。原 POST /coins/settle 会按规则批量发单词王+2、全部作业完成+1,已移除。
+# 单词王榜单仍然保留(GET /coins/word-kings),供老师作为手动加币的参考依据。
+# coin_service.settle_day 与 coin_scheduler.daily_settle_loop 保留代码但不再被调用。
 
 
 # ---------- 班级余额 ----------

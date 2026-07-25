@@ -42,10 +42,8 @@ export interface CoinTxPage {
   items: CoinTx[];
 }
 
-export const settleCoins = (targetDate?: string) =>
-  client.post<{ date: string; word_king: number; task: number }>(
-    `/teacher/coins/settle`, null, { params: targetDate ? { target_date: targetDate } : {} },
-  );
+// settleCoins 已下线(2026-07-25):金币改为老师核实后手动加,不再有系统批量结算。
+// 后端 POST /teacher/coins/settle 已移除。单词王榜单仍可查,作为手动加币的参考。
 
 export const getCoinBalances = (classId: number, q?: string) =>
   client.get<CoinBalancesResp>(`/teacher/coins/balances`, {
