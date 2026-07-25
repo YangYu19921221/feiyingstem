@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -10,6 +10,8 @@ import {
   createBattle,
   acceptBattle,
   cancelBattle,
+  searchOpponents,
+  type OpponentOption,
   type BattleListItem,
   type Battle,
   type BattleStats,
@@ -20,7 +22,9 @@ export default function PetBattleHallPage() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<'hall' | 'history' | 'stats'>('hall');
   const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const [opponentId, setOpponentId] = useState('');
+  // 好友列表选人(替代原来手输用户ID):搜索关键词 + 选中的同学
+  const [oppQuery, setOppQuery] = useState('');
+  const [pickedOpp, setPickedOpp] = useState<OpponentOption | null>(null);
 
   // 查询数据
   const { data: invites = [] } = useQuery<Battle[]>({
@@ -39,6 +43,18 @@ export default function PetBattleHallPage() {
     queryFn: getBattleStats,
   });
 
+  // 可挑战的同学(同机构、已有出战宠物)。只在邀请弹窗打开时查,输入时防抖 300ms
+  const [oppQueryDebounced, setOppQueryDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setOppQueryDebounced(oppQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [oppQuery]);
+  const { data: opponents = [], isLoading: oppLoading } = useQuery<OpponentOption[]>({
+    queryKey: ['petBattleOpponents', oppQueryDebounced],
+    queryFn: () => searchOpponents(oppQueryDebounced, 30),
+    enabled: showInviteDialog,
+  });
+
   // 创建对战
   const createMutation = useMutation({
     mutationFn: createBattle,
@@ -46,7 +62,7 @@ export default function PetBattleHallPage() {
       queryClient.invalidateQueries({ queryKey: ['petBattleHistory'] });
       alert('对战邀请已发送！');
       setShowInviteDialog(false);
-      setOpponentId('');
+      setPickedOpp(null); setOppQuery('');
     },
     onError: (error: any) => {
       alert(error?.response?.data?.detail || '创建对战失败');
@@ -76,13 +92,12 @@ export default function PetBattleHallPage() {
   });
 
   const handleCreateBattle = () => {
-    if (!opponentId) {
-      alert('请输入对手ID');
+    if (!pickedOpp) {
+      alert('请先选择要挑战的同学');
       return;
     }
-
     createMutation.mutate({
-      opponent_id: Number(opponentId),
+      opponent_id: pickedOpp.user_id,
       mode: 'casual',
       max_rounds: 10,
     });
@@ -373,16 +388,53 @@ export default function PetBattleHallPage() {
           >
             <h3 className="text-2xl font-bold text-gray-800 mb-4">发起对战挑战</h3>
 
+            {/* 好友列表选人:原来要手输用户ID,学生根本不知道别人的ID */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">对手用户ID</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">选择要挑战的同学</label>
               <input
-                type="number"
-                value={opponentId}
-                onChange={(e) => setOpponentId(e.target.value)}
-                placeholder="输入对手的用户ID"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none"
+                type="text"
+                value={oppQuery}
+                onChange={(e) => setOppQuery(e.target.value)}
+                placeholder="搜索同学姓名…"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none mb-2"
               />
-              <div className="text-xs text-gray-500 mt-1">提示: 可以在学生列表或排行榜查看用户ID</div>
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-50">
+                {oppLoading && (
+                  <div className="py-6 text-center text-sm text-gray-400">加载中…</div>
+                )}
+                {!oppLoading && opponents.length === 0 && (
+                  <div className="py-6 text-center text-sm text-gray-400">
+                    {oppQuery ? '没找到这位同学' : '暂时没有可挑战的同学(对手需要先领养宠物)'}
+                  </div>
+                )}
+                {opponents.map((o) => {
+                  const picked = pickedOpp?.user_id === o.user_id;
+                  return (
+                    <button
+                      key={o.user_id}
+                      onClick={() => setPickedOpp(o)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition ${
+                        picked ? 'bg-orange-50 ring-2 ring-orange-300' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="text-2xl shrink-0">{picked ? '✅' : '🧑‍🎓'}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-gray-800 truncate">
+                          {o.full_name || o.username}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {o.pet_name} · Lv.{o.pet_level}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {pickedOpp && (
+                <div className="text-xs text-orange-600 mt-2">
+                  已选择:{pickedOpp.full_name || pickedOpp.username} 的 {pickedOpp.pet_name}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -400,7 +452,7 @@ export default function PetBattleHallPage() {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
                   setShowInviteDialog(false);
-                  setOpponentId('');
+                  setPickedOpp(null); setOppQuery('');
                 }}
                 className="px-6 py-3 rounded-xl bg-gray-200 text-gray-700 font-bold"
               >

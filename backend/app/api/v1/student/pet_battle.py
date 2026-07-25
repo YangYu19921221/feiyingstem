@@ -127,11 +127,17 @@ async def search_opponents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """可挑战对手列表(需已有宠物)。q 为空时按最近活跃排序返回默认列表,否则按用户名/昵称过滤"""
+    """可挑战对手列表(需已有宠物)。q 为空时按最近活跃排序返回默认列表,否则按用户名/昵称过滤。
+
+    范围:**同机构**内的学生。User 是租户锚点模型、全局过滤器已按 org 罩住,
+    这里再显式加一条 org_id 条件做双保险 —— 这个接口会把真实姓名返回给学生端,
+    一旦过滤器被 skip_tenant_filter 或配置误关,就是跨机构姓名泄露。
+    """
     conditions = [
         User.id != current_user.id,
         User.id > 0,  # 排除AI训练师等系统账号
         User.role == "student",
+        User.org_id == current_user.org_id,
     ]
 
     q = q.strip()

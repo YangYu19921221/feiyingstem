@@ -125,6 +125,23 @@ export interface CreateBattleRequest {
 
 // ========== HTTP API ==========
 
+/** 可挑战的同学(同机构、已有出战宠物) */
+export interface OpponentOption {
+  user_id: number;
+  username: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  pet_name: string;
+  pet_species: string;
+  pet_level: number;
+  pet_evolution_stage: number;
+}
+
+/** 查可挑战的同学列表(同机构、已有出战宠物);q 为空返回最近活跃的默认列表 */
+export const searchOpponents = async (q = '', limit = 30): Promise<OpponentOption[]> => {
+  return api.get('/student/battle/search-opponents', { params: { q, limit } });
+};
+
 export const createBattle = async (data: CreateBattleRequest): Promise<Battle> => {
   return api.post('/student/battle/create', data);
 };
