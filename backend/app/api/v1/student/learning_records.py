@@ -62,12 +62,19 @@ async def update_study_calendar(
 
     时长口径:优先用前端上报的「增量净活动秒数」session_seconds(已扣挂机),
     未提供时退回按逐题 time_spent 累加(兼容旧客户端)。单次封顶防刷。
+
+    注(2026-07-25):session_seconds 为 0 是**正常**情况而非异常——它是"距上次提交
+    的增量",复习模式下错词实时逐条提交已把增量取走,组末那批自然只剩 0。整场各次
+    增量之和 = 真实净活动时长,所以这里不能把 0 当缺失去回退 time_spent 累加,
+    否则会把同一段时间重复计入日历(历史上 duration 虚高就是这么来的)。
     """
     today = local_today()  # 北京日历日,与全站口径一致
 
     if session_seconds is not None:
         add_sec = session_seconds
     else:
+        # 兼容旧客户端:只能拿到已求和的 total_time_ms,无法逐题挡挂机脏值,
+        # 仅靠下面的整批封顶兜住(新客户端都走 session_seconds,不经这条路)
         add_sec = total_time_ms // 1000
     add_sec = max(0, min(add_sec, STUDY_CALENDAR_SESSION_CAP_SEC))
 
@@ -141,9 +148,13 @@ def _spread_created_at(records: List[LearningRecord], session_seconds: Optional[
         return
     now = datetime.utcnow()
     span = min(int(session_seconds or 0), STUDY_CALENDAR_SESSION_CAP_SEC)
-    # session_seconds 缺失/过小时,用逐题 time_spent(毫秒)之和兜底
+    # session_seconds 缺失/过小时,用逐题 time_spent(毫秒)之和兜底。
+    # 单题贡献封顶 120 秒:实测 time_spent 存在挂机脏值(见过单题 327 秒、90 秒),
+    # 不封顶时一两条脏值就能把整批铺到 30 分钟上限,时间线又会失真。
     if span < n:
-        by_answer = sum(int(getattr(r, "time_spent", 0) or 0) for r in records) // 1000
+        by_answer = sum(
+            min(int(getattr(r, "time_spent", 0) or 0), 120_000) for r in records
+        ) // 1000
         span = min(max(span, by_answer), STUDY_CALENDAR_SESSION_CAP_SEC)
     # 仍然过小(如 time_spent 也异常)时,给每题保底 3 秒,避免整批同秒
     if span < n:

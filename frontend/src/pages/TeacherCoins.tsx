@@ -202,22 +202,21 @@ export default function TeacherCoins() {
     const n = parseInt(adjustAmount, 10);
     if (!n || n <= 0) { toast.warning('请输入正整数'); return; }
     const amount = adjustMode === 'redeem' ? -n : n;
-    // 发放金币必须输加币 PIN;还没设 PIN 的先引导去设置
-    if (adjustMode === 'grant') {
-      if (hasPin === false) {
-        toast.warning('请先设置加币密码');
-        setAdjustFor(null); setShowSetPin(true);
-        return;
-      }
-      if (!adjustPin.trim()) { toast.warning('请输入加币密码'); return; }
+    // 加币和减币都必须输 PIN:后端 /coins/adjust 对两种都校验,
+    // 原先只在 grant 时要求并只传 grant 的 pin,减币必然 403「加币密码不正确」
+    if (hasPin === false) {
+      toast.warning('请先设置金币密码');
+      setAdjustFor(null); setShowSetPin(true);
+      return;
     }
+    if (!adjustPin.trim()) { toast.warning('请输入金币密码'); return; }
     setBusy(true);
     try {
       await adjustCoins({
         student_id: adjustFor.student_id, amount,
         reason: adjustReason.trim() || undefined,
         source: adjustMode === 'redeem' ? 'redeem' : 'manual',
-        pin: adjustMode === 'grant' ? adjustPin.trim() : undefined,
+        pin: adjustPin.trim(),
       });
       toast.success(adjustMode === 'redeem' ? '已记兑换' : '已发放');
       setAdjustFor(null); setAdjustAmount(''); setAdjustReason(''); setAdjustPin('');
@@ -590,17 +589,17 @@ export default function TeacherCoins() {
               placeholder={adjustMode === 'redeem' ? '兑换了什么(如:换铅笔)' : '事由(可选)'}
               className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-3"
             />
-            {/* 发放金币要输加币密码(防学生冒用老师账号自己加币);兑换扣减不需要 */}
-            {adjustMode === 'grant' && (
-              <input
-                type="password"
-                value={adjustPin}
-                onChange={(e) => setAdjustPin(e.target.value)}
-                placeholder="加币密码"
-                autoComplete="off"
-                className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-4"
-              />
-            )}
+            {/* 加币和减币都要输金币密码(防学生冒用老师账号自己加/改币)。
+                原先只在 grant 时渲染,减币没地方输密码 → 后端校验必然 403 */}
+            <input
+              type="password"
+              value={adjustPin}
+              onChange={(e) => setAdjustPin(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) submitAdjust(); }}
+              placeholder="金币密码"
+              autoComplete="off"
+              className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-4"
+            />
             <div className="flex gap-2">
               <button onClick={() => { setAdjustFor(null); setAdjustPin(''); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
               <button onClick={submitAdjust} disabled={busy} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '确定'}</button>
