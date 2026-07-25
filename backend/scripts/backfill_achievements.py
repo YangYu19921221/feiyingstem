@@ -32,6 +32,12 @@ from app.api.v1.achievements import get_user_stats, check_and_unlock_achievement
 BACKFILLABLE = ("total_words", "consecutive_days")
 
 
+class _Fake:
+    """dry-run 用的最小占位,只需要 .id 供统计/打印。"""
+    def __init__(self, aid: int):
+        self.id = aid
+
+
 async def main(dry_run: bool) -> None:
     async with AsyncSessionLocal() as db:
         # 只处理有学习痕迹的用户(有 word_mastery 记录),避免扫全表用户
@@ -53,15 +59,39 @@ async def main(dry_run: bool) -> None:
         per_achievement: dict[str, int] = {}
         touched_users = 0
 
+        # ⚠️ check_and_unlock_achievements 内部自己 commit(achievements.py),
+        # 所以 dry-run 绝不能调它 —— 外层 rollback() 拦不住已提交的写入。
+        # dry-run 走纯只读的自算逻辑,只打印将要补什么。
+        cond_rows = [
+            (a.id, a.name, a.condition_type, a.condition_value)
+            for a in (await db.execute(select(AchievementModel))).scalars().all()
+            if a.condition_type in BACKFILLABLE
+        ]
+
         for uid in user_ids:
             stats = await get_user_stats(db, uid)
-            # test_score/test_total 传 None → 只会判定 total_words / consecutive_days,
-            # accuracy_rate 与 perfect_score 分支自然跳过(它们要求这两个参数非 None)
-            unlocked = await check_and_unlock_achievements(
-                db=db, user_id=uid, stats=stats, test_score=None, test_total=None,
-            )
-            # 双保险:即使将来 check 函数放宽了,也只认可回补类型
-            kept = [u for u in unlocked if names.get(u.id, ("", ""))[1] in BACKFILLABLE]
+            if dry_run:
+                owned = {
+                    r[0] for r in (await db.execute(
+                        select(UserAchievement.achievement_id)
+                        .where(UserAchievement.user_id == uid)
+                    )).fetchall()
+                }
+                kept = [
+                    _Fake(aid)
+                    for aid, _nm, ctype, cval in cond_rows
+                    if aid not in owned and stats.get(
+                        "total_words" if ctype == "total_words" else "consecutive_days", 0
+                    ) >= cval
+                ]
+            else:
+                # test_score/test_total 传 None → 只会判定 total_words / consecutive_days,
+                # accuracy_rate 与 perfect_score 分支自然跳过(它们要求这两个参数非 None)
+                unlocked = await check_and_unlock_achievements(
+                    db=db, user_id=uid, stats=stats, test_score=None, test_total=None,
+                )
+                # 双保险:即使将来 check 函数放宽了,也只认可回补类型
+                kept = [u for u in unlocked if names.get(u.id, ("", ""))[1] in BACKFILLABLE]
             if kept:
                 touched_users += 1
                 total_new += len(kept)
@@ -81,7 +111,7 @@ async def main(dry_run: bool) -> None:
 
         if dry_run:
             await db.rollback()
-            print("\n[dry-run] 已回滚,未写入任何数据")
+            print("\n[dry-run] 纯只读预演,未写入任何数据")
         else:
             await db.commit()
             after = (await db.execute(
