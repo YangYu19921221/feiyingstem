@@ -77,6 +77,12 @@ export const getCoinPinStatus = () =>
 export const setCoinPin = (newPin: string, oldPin?: string) =>
   client.post<{ success: boolean }>(`/teacher/coins/pin`, { new_pin: newPin, old_pin: oldPin });
 
+/** 管理员帮老师重置金币密码(老师忘了旧密码时的唯一出路) */
+export const resetTeacherCoinPin = (teacherId: number, newPin: string) =>
+  client.post<{ success: boolean; teacher_id: number }>(
+    `/teacher/coins/pin/reset`, { teacher_id: teacherId, new_pin: newPin },
+  );
+
 export const updateCoinTx = (txId: number, body: { amount?: number; reason?: string }) =>
   client.patch<{ success: boolean }>(`/teacher/coins/transactions/${txId}`, body);
 

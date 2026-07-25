@@ -3,6 +3,7 @@
 金币流水的增删改查 + 分页搜索 + 每日结算 + 班级余额。
 权限:仅本班老师 + 管理员(admin/org_admin)。教师只能操作自己班级里的学生。
 """
+import logging
 import os
 import time
 from datetime import date, datetime, timedelta
@@ -23,6 +24,8 @@ from app.models.word import Word
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
+
+logger = logging.getLogger(__name__)
 from app.services.auth_service import get_password_hash, verify_password
 
 router = APIRouter()
@@ -326,15 +329,54 @@ async def set_coin_pin(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """设置或修改加币 PIN。已设过的必须先验证旧 PIN 才能改,防他人篡改。"""
+    """设置或修改金币密码。已设过的必须先验证旧密码才能改,防他人篡改。
+
+    忘记旧密码走 POST /coins/pin/reset(管理员/机构管理员代重置)——
+    否则老师忘了密码就永久锁死,加币/减币全部不可用。
+    """
     if current_user.coin_pin_hash:
         if not body.old_pin or not verify_password(body.old_pin, current_user.coin_pin_hash):
-            raise HTTPException(status_code=403, detail="旧加币密码不正确")
+            raise HTTPException(
+                status_code=403,
+                detail="当前金币密码不正确;忘记密码请让管理员在「教师管理」里帮你重置",
+            )
     if not body.new_pin.strip():
         raise HTTPException(status_code=400, detail="新密码不能为空")
     current_user.coin_pin_hash = get_password_hash(body.new_pin.strip())
     await db.commit()
     return {"success": True}
+
+
+class ResetPinRequest(BaseModel):
+    teacher_id: int
+    new_pin: str = Field(..., min_length=4, max_length=32)
+
+
+@router.post("/coins/pin/reset")
+async def reset_coin_pin(
+    body: ResetPinRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """管理员/机构管理员帮老师重置金币密码(忘记旧密码时的唯一出路)。
+
+    权限:仅 admin / org_admin;org_admin 只能重置本机构、且不能操作管理员账号
+    (走 guard_org_admin 统一防提权裁决)。普通老师不能重置别人的,也不能自助
+    重置自己的——否则密码就形同虚设。
+    """
+    if current_user.role not in ("admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="只有管理员可以重置金币密码")
+    target = (await db.execute(select(User).where(User.id == body.teacher_id))).scalar_one_or_none()
+    if target is None or target.role not in ("teacher", "admin", "org_admin"):
+        raise HTTPException(status_code=404, detail="教师不存在")
+    if current_user.role == "org_admin" and target.org_id != current_user.org_id:
+        raise HTTPException(status_code=404, detail="教师不存在")  # 不泄露跨机构存在性
+    from app.api.v1.admin.users import guard_org_admin
+    guard_org_admin(current_user, target)
+    target.coin_pin_hash = get_password_hash(body.new_pin.strip())
+    await db.commit()
+    logger.info("金币密码被重置: teacher_id=%s by=%s", target.id, current_user.id)
+    return {"success": True, "teacher_id": target.id}
 
 
 @router.post("/coins/adjust")

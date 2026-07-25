@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { admin } from '../api/admin';
+import { resetTeacherCoinPin } from '../api/coins';
 import type { AdminTeacherListItem } from '../api/admin';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -67,6 +68,19 @@ const AdminTeacherList = () => {
     }
   };
 
+  // 老师忘了金币密码就无法加币/减币,这里给管理员一个重置出路
+  const handleResetCoinPin = async (id: number) => {
+    const pin = prompt('给该教师设置新的金币密码(至少 4 位):');
+    if (pin === null) return;
+    if (pin.trim().length < 4) { toast.warning('金币密码至少 4 位'); return; }
+    try {
+      await resetTeacherCoinPin(id, pin.trim());
+      alert(`金币密码已重置为:${pin.trim()}\n\n请转告该教师,并提醒尽快自行修改。`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '重置金币密码失败');
+    }
+  };
+
   const handleDelete = async (t: AdminTeacherListItem) => {
     if (!confirm(
       `确认删除教师「${t.username}${t.full_name ? ' / ' + t.full_name : ''}」？\n\n` +
@@ -111,7 +125,7 @@ const AdminTeacherList = () => {
                 <article key={t.id} className="rounded-lg border border-slate-200 p-3">
                   <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="truncate font-semibold text-slate-800">{t.full_name || t.username}</div><div className="truncate text-xs text-slate-500">{t.username} · {t.email}</div></div><span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${t.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{t.is_active ? '正常' : '禁用'}</span></div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500"><div>班级 <span className="font-semibold text-slate-700">{t.class_count}</span></div><div>学生 <span className="font-semibold text-slate-700">{t.student_count}</span></div></div>
-                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => navigate(`/admin/teachers/${t.id}`)} className="text-blue-600">详情</button><button onClick={() => handleToggleActive(t)} className="text-orange-600">{t.is_active ? '禁用' : '启用'}</button><button onClick={() => handleResetPassword(t.id)} className="text-purple-600">重置密码</button><button onClick={() => handleDelete(t)} className="text-red-600">删除</button></div>
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => navigate(`/admin/teachers/${t.id}`)} className="text-blue-600">详情</button><button onClick={() => handleToggleActive(t)} className="text-orange-600">{t.is_active ? '禁用' : '启用'}</button><button onClick={() => handleResetPassword(t.id)} className="text-purple-600">重置密码</button><button onClick={() => handleResetCoinPin(t.id)} className="text-amber-600">重置金币密码</button><button onClick={() => handleDelete(t)} className="text-red-600">删除</button></div>
                 </article>
               ))}
             </div>
@@ -152,6 +166,7 @@ const AdminTeacherList = () => {
                           {t.is_active ? '禁用' : '启用'}
                         </button>
                         <button onClick={() => handleResetPassword(t.id)} className="text-purple-600 hover:text-purple-800">重置密码</button>
+                        <button onClick={() => handleResetCoinPin(t.id)} className="text-amber-600 hover:text-amber-800">重置金币密码</button>
                         <button onClick={() => handleDelete(t)} className="text-red-600 hover:text-red-800">删除</button>
                       </div>
                     </td>

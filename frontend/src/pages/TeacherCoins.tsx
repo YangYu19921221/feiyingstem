@@ -105,7 +105,7 @@ export default function TeacherCoins() {
     if (pinNew.trim().length < 4) { toast.warning('新密码至少 4 位'); return; }
     try {
       await setCoinPin(pinNew.trim(), pinOld.trim() || undefined);
-      toast.success(hasPin ? '加币密码已修改' : '加币密码已设置');
+      toast.success(hasPin ? '金币密码已修改' : '金币密码已设置');
       setHasPin(true); setShowSetPin(false); setPinOld(''); setPinNew('');
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || '设置失败');
@@ -224,7 +224,7 @@ export default function TeacherCoins() {
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       if (detail === 'PIN_NOT_SET') {
-        toast.warning('请先设置加币密码');
+        toast.warning('请先设置金币密码');
         setAdjustFor(null); setShowSetPin(true);
         setHasPin(false);
       } else {
@@ -341,9 +341,9 @@ export default function TeacherCoins() {
             >🎁 商品管理</button>
             <button
               onClick={() => { setShowSetPin(true); setPinOld(''); setPinNew(''); }}
-              title="设置或修改加币密码,防学生冒用账号自己加币"
+              title="设置或修改金币密码,防学生冒用账号自己改币"
               className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm hover:bg-slate-200"
-            >🔒 {hasPin ? '修改加币密码' : '设置加币密码'}</button>
+            >🔒 {hasPin ? '修改金币密码' : '设置金币密码'}</button>
             <select
               value={classId ?? ''}
               onChange={(e) => setClassId(Number(e.target.value))}
@@ -608,22 +608,25 @@ export default function TeacherCoins() {
         </div>
       )}
 
-      {/* 设置/修改加币密码弹窗 */}
+      {/* 设置/修改金币密码弹窗 */}
       {showSetPin && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowSetPin(false)}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-800 mb-1">🔒 {hasPin ? '修改加币密码' : '设置加币密码'}</h3>
-            <p className="text-xs text-gray-500 mb-4">发放金币时需输入此密码,和登录密码分开。防止学生用你的账号自己加币。</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">🔒 {hasPin ? '修改金币密码' : '设置金币密码'}</h3>
+            <p className="text-xs text-gray-500 mb-4">加币和减币时都需要输入此密码,和登录密码分开。防止学生用你的账号自己改币。</p>
             {hasPin && (
-              <input
-                type="password" value={pinOld} onChange={(e) => setPinOld(e.target.value)}
-                placeholder="当前加币密码" autoComplete="off"
-                className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-2"
-              />
+              <>
+                <input
+                  type="password" value={pinOld} onChange={(e) => setPinOld(e.target.value)}
+                  placeholder="当前金币密码" autoComplete="off"
+                  className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-1"
+                />
+                <p className="text-[11px] text-gray-400 mb-2">忘记了?请管理员在「教师管理」里点「重置金币密码」</p>
+              </>
             )}
             <input
               type="password" value={pinNew} onChange={(e) => setPinNew(e.target.value)}
-              placeholder="新加币密码(至少 4 位)" autoComplete="off"
+              placeholder="新金币密码(至少 4 位)" autoComplete="off"
               className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-4"
             />
             <div className="flex gap-2">
