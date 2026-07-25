@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import ColoredPhonetic from '../components/ColoredPhonetic';
@@ -31,7 +31,7 @@ interface WordFeedback {
 
 const MistakeChallenge = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [levels, setLevels] = useState<ChallengeLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>('map');
@@ -158,7 +158,7 @@ const MistakeChallenge = () => {
     <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => phase === 'map' ? navigate(-1) : backToMap()} className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button onClick={() => phase === 'map' ? goBack() : backToMap()} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex items-center gap-2">

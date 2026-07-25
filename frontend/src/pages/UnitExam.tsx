@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -19,6 +20,7 @@ const UnitExam = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
 
   const [phase, setPhase] = useState<ExamPhase>('start');
   const [examData, setExamData] = useState<ExamData | null>(null);
@@ -203,7 +205,7 @@ const UnitExam = () => {
           <span className="text-5xl">😅</span>
           <h3 className="text-xl font-bold text-gray-800 mt-4 mb-2">出题失败</h3>
           <p className="text-gray-500 mb-4">{error || '请稍后重试'}</p>
-          <button onClick={() => navigate(-1)} className="px-6 py-2 bg-primary text-white rounded-xl">返回</button>
+          <button onClick={() => goBack()} className="px-6 py-2 bg-primary text-white rounded-xl">返回</button>
         </div>
       </div>
     );
@@ -272,7 +274,7 @@ const UnitExam = () => {
       <nav className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-gray-500 hover:text-gray-700">
+            <button onClick={() => goBack()} className="flex items-center gap-1 text-gray-500 hover:text-gray-700">
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">退出</span>
             </button>

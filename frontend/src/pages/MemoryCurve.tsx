@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, HelpCircle } from 'lucide-react';
 import ReviewRulesModal from '../components/ReviewRulesModal';
@@ -59,6 +60,7 @@ const TIER_ORDER: ReviewTier[] = ['weak', 'medium', 'fluent'];
 
 const MemoryCurve = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [stats, setStats] = useState<MemoryCurveStats | null>(null);
   const [progress, setProgress] = useState<ReviewProgress | null>(null);
   const [reviewWords, setReviewWords] = useState<ReviewWord[]>([]);
@@ -209,7 +211,7 @@ const MemoryCurve = () => {
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => goBack()}
             className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
           >
             <ArrowLeft className="w-4 h-4" />

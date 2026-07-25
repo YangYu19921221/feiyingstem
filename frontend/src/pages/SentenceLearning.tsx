@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import {useParams} from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, Check, X as XIcon, RefreshCw } from 'lucide-react';
 import { listSentences, type Sentence } from '../api/sentences';
@@ -21,7 +22,10 @@ type Mode = 'choice' | 'dictation';
  */
 export default function SentenceLearning() {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
-  const navigate = useNavigate();
+  // 返回上一层(单元列表)必须走历史出栈,不要 navigate 到单元页 URL ——
+  // 那是 push,会和单元页自身的返回形成 学习页⇄单元页 无限来回。
+  // useGoBack 正常出栈,只在没有历史(直开/刷新)时才兜底跳首页。
+  const goBack = useGoBack('/student/dashboard');
   const { bookId, unitId } = useParams<{ bookId: string; unitId: string }>();
   const uid = parseInt(unitId || '0', 10);
   const { playAudio } = useAudio();
@@ -78,11 +82,6 @@ export default function SentenceLearning() {
   const restart = () => {
     setIdx(0); setDone(false); setCorrectCount(0); setWrongCount(0);
   };
-
-  // 统一返回上一层（单元列表）：用 navigate(-1) 出栈。
-  // 不要 navigate 到单元页 URL —— 那是 push，会和单元页自身的 navigate(-1)
-  // 形成 学习页⇄单元页 无限来回（点返回一直循环）。
-  const goBack = () => navigate(-1);
 
   const handleResult = (ok: boolean) => {
     if (ok) setCorrectCount(c => c + 1);

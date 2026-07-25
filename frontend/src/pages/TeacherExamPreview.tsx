@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import {useParams} from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Download, Printer, Share2, CheckCircle } from 'lucide-react';
 import { getExamDetail } from '../api/teacher';
@@ -9,7 +10,7 @@ import { toast } from '../components/Toast';
 
 const TeacherExamPreview = () => {
   const { examId } = useParams<{ examId: string }>();
-  const navigate = useNavigate();
+  const goBack = useGoBack('/teacher/dashboard');
   const [loading, setLoading] = useState(true);
   const [exam, setExam] = useState<ExamPaper | null>(null);
   const [showAnswers, setShowAnswers] = useState(true); // 是否显示答案
@@ -256,7 +257,7 @@ const TeacherExamPreview = () => {
           <span className="text-6xl mb-4 block">😕</span>
           <p className="text-gray-500">未找到试卷</p>
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => goBack()}
             className="mt-4 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
           >
             返回
@@ -273,7 +274,7 @@ const TeacherExamPreview = () => {
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => goBack()}
               className="flex items-center gap-2 text-gray-600 hover:text-primary transition"
             >
               <ArrowLeft className="w-5 h-5" />

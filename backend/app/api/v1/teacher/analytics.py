@@ -1136,6 +1136,32 @@ async def get_student_day_timeline(
     if cur:
         segments.append(cur)
 
+    # 补上「有会话时长但没落答题记录」的时段:复习/组末批量提交可能出现整批 0 条
+    # 记录(该组词都已实时提交过),只更新了日历时长。此时时间线若只看 learning_records,
+    # 会出现「汇总有学习时长、时间线却说无学习活动」的自相矛盾,老师会误判学生没学。
+    sess_rows = (await db.execute(
+        select(StudySession.started_at, StudySession.ended_at,
+               StudySession.learning_mode, StudySession.words_studied)
+        .where(and_(
+            StudySession.user_id == student_id,
+            StudySession.started_at >= day_start,
+            StudySession.started_at < day_end,
+        ))
+        .order_by(StudySession.started_at)
+    )).all()
+    for s_start, s_end, s_mode, s_words in sess_rows:
+        if s_start is None:
+            continue
+        s_end = s_end or s_start
+        # 已被答题记录覆盖的会话不重复画(有交叠即认为已覆盖)
+        if any(seg["start"] <= s_end and s_start <= seg["end"] for seg in segments):
+            continue
+        segments.append({
+            "start": s_start, "end": s_end,
+            "count": s_words or 0, "modes": {s_mode or "?"},
+        })
+    segments.sort(key=lambda x: x["start"])
+
     MODE_LABELS = {
         "classify": "分类", "spelling": "拼写", "dictation": "听写",
         "fillblank": "填空", "exam": "考试", "quiz": "选择",

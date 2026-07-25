@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -19,6 +20,7 @@ const PAGE_SIZE = 20;
 
 const MistakeBook = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
 
   const [stats, setStats] = useState<MistakeBookStats | null>(null);
@@ -51,7 +53,7 @@ const MistakeBook = () => {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refreshStats]);
 
-  // SPA 内从闯关页 navigate(-1) 回来时，location.key 会变 → 刷新词列表（也负责首次挂载加载）
+  // SPA 内从闯关页 goBack() 回来时，location.key 会变 → 刷新词列表（也负责首次挂载加载）
   useEffect(() => {
     loadWords(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,7 +156,7 @@ const MistakeBook = () => {
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => goBack()}
             className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
           >
             <ArrowLeft className="w-4 h-4" />

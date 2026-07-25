@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, TrendingUp, Calendar, Clock, BookOpen, Zap } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import {
   getLearningOverview,
   getDailyStats,
@@ -20,7 +20,7 @@ import SpellingDiagnosisCard from '../components/SpellingDiagnosisCard';
 import StudentIdentityBadge from '../components/StudentIdentityBadge';
 
 const LearningAnalytics = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [overview, setOverview] = useState<LearningOverview | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [modeStats, setModeStats] = useState<ModeStats[]>([]);
@@ -89,7 +89,7 @@ const LearningAnalytics = () => {
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => goBack()}
               className="p-2 hover:bg-gray-100 rounded-lg transition"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />

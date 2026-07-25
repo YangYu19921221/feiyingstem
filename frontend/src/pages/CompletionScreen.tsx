@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion } from 'framer-motion';
 import { CheckCircle, Star, ArrowLeft, Play } from 'lucide-react';
 import { checkAchievements, type UnlockedAchievement } from '../api/achievements';
@@ -25,6 +26,7 @@ interface CompletionData {
 
 const CompletionScreen = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
   const data = location.state as CompletionData;
 
@@ -80,7 +82,7 @@ const CompletionScreen = () => {
   };
 
   if (!data) {
-    navigate(-1);
+    goBack();
     return null;
   }
 
@@ -154,7 +156,7 @@ const CompletionScreen = () => {
       <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => goBack()}
             className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -371,7 +373,7 @@ const CompletionScreen = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8 }}
-            onClick={() => navigate(-1)}
+            onClick={() => goBack()}
             className={`flex items-center justify-center gap-2 py-3.5 bg-accent-warm hover:opacity-90 text-white rounded-xl text-base font-semibold transition ${
               !(data.weakWords && data.weakWords.length > 0) ? 'md:col-span-2' : ''
             }`}

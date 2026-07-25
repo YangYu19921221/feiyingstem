@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Award, Lock, Trophy, Target } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { getMyAchievements, getMyStats, type Achievement, type UserStats } from '../api/achievements';
 import { AchievementIcon } from '../components/AchievementIcon';
 import StudentIdentityBadge from '../components/StudentIdentityBadge';
 
 const AchievementsPage = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +61,7 @@ const AchievementsPage = () => {
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => goBack()}
               className="p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-600 rounded-lg transition"
               aria-label="返回"
             >

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Clock, BookOpen, Target, TrendingDown, Calendar, Sparkles, FileText, Loader2 } from 'lucide-react';
 import { toast } from '../components/Toast';
@@ -36,6 +37,9 @@ interface WeakPoint {
 const TeacherStudentDetail = () => {
   const { studentId } = useParams<{ studentId: string }>();
   const navigate = useNavigate();
+  // 从班级管理/数据分析等多个入口都能进本页,优先走浏览器历史回到来处;
+  // 无历史(直开链接/刷新)才兜底到数据分析
+  const goBack = useGoBack('/teacher/analytics');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<StudentStats | null>(null);
   const [weakPoints, setWeakPoints] = useState<WeakPoint[]>([]);
@@ -220,13 +224,6 @@ const TeacherStudentDetail = () => {
       </div>
     );
   }
-
-  // 返回按钮走浏览器历史:从班级管理/数据分析等多个入口都能进本页,
-  // 写死跳数据分析会把从班级管理来的老师带错地方。无历史(直开链接)才兜底
-  const goBack = () => {
-    if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
-    else navigate('/teacher/analytics');
-  };
 
   if (!stats) {
     return (

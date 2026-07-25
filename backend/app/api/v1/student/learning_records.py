@@ -984,6 +984,51 @@ async def get_review_progress(
     return await compute_review_progress(db, current_user.id)
 
 
+async def _record_review_session(
+    db: AsyncSession, user_id: int, *,
+    words: int, correct: int, wrong: int, session_seconds: int,
+) -> None:
+    """给复习流程补一条 study_sessions 记录。
+
+    复习没有 book/unit,但 study_sessions.book_id 是 NOT NULL,故取该生最近一次
+    学习会话的 book_id 兜底;实在没有(新生只做过复习)则跳过,不阻塞主流程。
+    时长按日历同样的封顶口径,避免挂机把会话时长刷爆。
+    """
+    try:
+        book_id = (await db.execute(
+            select(StudySession.book_id)
+            .where(StudySession.user_id == user_id)
+            .order_by(StudySession.id.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if book_id is None:
+            # 没有历史会话:退而取该生学过的任意一本书
+            book_id = (await db.execute(
+                select(LearningProgress.book_id)
+                .where(LearningProgress.user_id == user_id)
+                .limit(1)
+            )).scalar_one_or_none()
+        if book_id is None:
+            return
+        capped = min(int(session_seconds), STUDY_CALENDAR_SESSION_CAP_SEC)
+        now = datetime.utcnow()
+        db.add(StudySession(
+            user_id=user_id,
+            book_id=book_id,
+            unit_id=None,
+            learning_mode="review",
+            words_studied=words,
+            correct_count=correct,
+            wrong_count=wrong,
+            time_spent=capped,
+            started_at=now - timedelta(seconds=capped),
+            ended_at=now,
+        ))
+    except Exception:
+        # 统计补录失败不能影响学生提交复习成绩
+        logger.exception("补录复习 study_session 失败: user_id=%s", user_id)
+
+
 @router.post("/review-records")
 async def submit_review_records(
     data: ReviewRecordBatchCreate,
@@ -1040,6 +1085,16 @@ async def submit_review_records(
         db, user_id, len(data.records), total_time_ms,
         session_seconds=data.session_seconds,
     )
+
+    # 复习会话也要落 study_sessions:否则教师端「今日完成学习人数」(按 StudySession
+    # 去重)看不到只做复习的学生,班级会话数/时长也系统性为 0(只靠日历兜底)。
+    # 复习无书/无单元,book_id 取该生最近一次学习的书兜底(该列 NOT NULL)。
+    if data.session_seconds and data.session_seconds > 0:
+        await _record_review_session(
+            db, user_id,
+            words=len(data.records), correct=total_correct, wrong=total_wrong,
+            session_seconds=data.session_seconds,
+        )
 
     await db.commit()
 

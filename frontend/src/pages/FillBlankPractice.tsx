@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { generateUnitCloze, type UnitClozeResponse } from '../api/cloze';
@@ -17,6 +18,7 @@ type Phase = 'loading' | 'filling' | 'checked';
 const FillBlankPractice = () => {
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
 
   const [data, setData] = useState<UnitClozeResponse | null>(null);
   const [unitName, setUnitName] = useState<string | undefined>();
@@ -48,7 +50,7 @@ const FillBlankPractice = () => {
         setPhase('filling');
       } catch (e) {
         console.error('加载选词填空失败:', e);
-        if (!cancelled) { alert('加载题目失败，请重试'); navigate(-1); }
+        if (!cancelled) { alert('加载题目失败，请重试'); goBack(); }
       }
     })();
     return () => { cancelled = true; };
@@ -143,7 +145,7 @@ const FillBlankPractice = () => {
     <div className="min-h-screen bg-paper">
       <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center gap-3">
-          <button onClick={() => navigate(-1)}
+          <button onClick={() => goBack()}
             className="p-1.5 -ml-1.5 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition">
             <ArrowLeft className="w-4 h-4" />
           </button>

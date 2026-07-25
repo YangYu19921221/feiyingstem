@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { listSentenceBooks, type SentenceBook } from '../api/sentences';
 import { toast } from '../components/Toast';
@@ -7,6 +8,7 @@ import { parseError } from '../utils/errorMessage';
 
 export default function StudentSentenceBooks() {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [books, setBooks] = useState<SentenceBook[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +24,7 @@ export default function StudentSentenceBooks() {
     <div className="min-h-screen bg-paper page-warm-glow">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
+          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
             <ArrowLeft className="w-4 h-4" /> 返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">句子背诵</h1>

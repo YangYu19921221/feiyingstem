@@ -5,7 +5,8 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePreventCopy } from '../hooks/usePreventCopy';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import {useParams, useLocation} from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
@@ -67,7 +68,7 @@ interface GroupResult {
 const WordClassifyLearning = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
   // 从「老师布置的任务/我的作业」进来时带 assignmentId,学完整单元后回传成绩
   const homeworkAssignmentId: number | null =
@@ -695,7 +696,7 @@ const WordClassifyLearning = () => {
   const handleBack = () => {
     if (phase === 'summary' && isLastGroup) {
       clearLocalProgress();
-      navigate(-1);
+      goBack();
     } else {
       saveLocalProgress();
       setShowExitDialog(true);
@@ -787,7 +788,7 @@ const WordClassifyLearning = () => {
           >
             {checkinBusy ? '签到中…' : '📍 签到并开始学习'}
           </button>
-          <button onClick={() => navigate(-1)} className="mt-3 px-4 py-2 text-gray-400 text-sm hover:text-gray-600">
+          <button onClick={() => goBack()} className="mt-3 px-4 py-2 text-gray-400 text-sm hover:text-gray-600">
             返回
           </button>
         </div>
@@ -801,7 +802,7 @@ const WordClassifyLearning = () => {
         <div className="text-center">
           <span className="text-6xl mb-4 block">😞</span>
           <p className="text-gray-500">{error || '加载失败'}</p>
-          <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">
+          <button onClick={() => goBack()} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">
             返回
           </button>
         </div>
@@ -1080,7 +1081,7 @@ const WordClassifyLearning = () => {
                 fillBlankResults={[]}
                 totalWords={currentGroupWords.length}
                 startTime={startTime}
-                onBack={() => navigate(-1)}
+                onBack={() => goBack()}
                 mode="groupSummary"
                 groupIndex={currentGroupIndex}
                 totalGroups={totalGroups}
@@ -1096,7 +1097,7 @@ const WordClassifyLearning = () => {
                 fillBlankResults={[]}
                 totalWords={finalSummaryData.totalWords}
                 startTime={startTime}
-                onBack={() => navigate(-1)}
+                onBack={() => goBack()}
                 mode="finalSummary"
               />
             </motion.div>
@@ -1131,7 +1132,7 @@ const WordClassifyLearning = () => {
                   继续学习
                 </button>
                 <button
-                  onClick={() => navigate(-1)}
+                  onClick={() => goBack()}
                   className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium"
                 >
                   退出

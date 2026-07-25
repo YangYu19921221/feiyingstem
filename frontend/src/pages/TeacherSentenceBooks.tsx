@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, Trash2, Edit, FolderPlus, ChevronRight } from 'lucide-react';
 import {
@@ -12,6 +13,7 @@ import Field from '../components/Field';
 
 export default function TeacherSentenceBooks() {
   const navigate = useNavigate();
+  const goBack = useGoBack('/teacher/dashboard');
   const [books, setBooks] = useState<SentenceBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -88,7 +90,7 @@ export default function TeacherSentenceBooks() {
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-4xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
+          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
             <ArrowLeft className="w-4 h-4" /> 返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">句子背诵管理</h1>

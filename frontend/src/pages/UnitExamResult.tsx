@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { getExamAIAnalysis, type ExamResult, type AIAnalysis, EXAM_TYPE_LABELS } from '../api/unitExam';
@@ -14,6 +15,7 @@ const GRADE_CONFIG: Record<string, { image: string; text: string }> = {
 const UnitExamResult = () => {
   const { paperId } = useParams<{ paperId: string }>();
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
 
   const result = (location.state as any)?.result as ExamResult | undefined;
@@ -47,7 +49,7 @@ const UnitExamResult = () => {
       <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="text-center max-w-xs">
           <p className="text-ink-soft mb-4">未找到考试结果</p>
-          <button onClick={() => navigate(-1)} className="px-5 py-2 border border-black/15 text-ink rounded-lg text-sm font-medium hover:bg-black/5 transition">返回</button>
+          <button onClick={() => goBack()} className="px-5 py-2 border border-black/15 text-ink rounded-lg text-sm font-medium hover:bg-black/5 transition">返回</button>
         </div>
       </div>
     );
@@ -60,7 +62,7 @@ const UnitExamResult = () => {
       {/* 顶部导航 */}
       <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm">
+          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm">
             <ArrowLeft className="w-4 h-4" />
             返回
           </button>

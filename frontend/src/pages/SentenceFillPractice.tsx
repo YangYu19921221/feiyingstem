@@ -3,7 +3,8 @@
  * 加载单元全部单词，使用 SentenceFillPhase 组件
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import {useParams} from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
@@ -16,7 +17,7 @@ import { useAudio } from '../hooks/useAudio';
 export default function SentenceFillPractice() {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const { playAudio } = useAudio();
 
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
@@ -96,7 +97,7 @@ export default function SentenceFillPractice() {
         <div className="text-center">
           <span className="text-6xl mb-4 block">😞</span>
           <p className="text-gray-500">{error || '加载失败'}</p>
-          <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">返回</button>
+          <button onClick={() => goBack()} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">返回</button>
         </div>
       </div>
     );
@@ -110,7 +111,7 @@ export default function SentenceFillPractice() {
     <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button onClick={() => goBack()} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1">
@@ -167,7 +168,7 @@ export default function SentenceFillPractice() {
                   再来一次
                 </button>
                 <button
-                  onClick={() => navigate(-1)}
+                  onClick={() => goBack()}
                   className="w-full py-3 bg-gray-100 text-gray-600 font-medium rounded-xl"
                 >
                   返回

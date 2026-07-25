@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import { ArrowLeft, KeyRound, Check } from 'lucide-react';
@@ -15,7 +15,7 @@ interface MyClassItem {
 }
 
 const StudentJoinClass = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [my, setMy] = useState<MyClassItem[]>([]);
@@ -72,7 +72,7 @@ const StudentJoinClass = () => {
     <div className="min-h-screen bg-paper page-warm-glow">
       <div className="max-w-xl mx-auto px-4 py-8">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => goBack()}
           className="flex items-center gap-1 text-ink-soft hover:text-ink mb-6"
         >
           <ArrowLeft className="w-5 h-5" />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { listSentenceUnits, type SentenceUnit } from '../api/sentences';
 import { toast } from '../components/Toast';
@@ -7,6 +8,7 @@ import { parseError } from '../utils/errorMessage';
 
 export default function StudentSentenceUnits() {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const { bookId } = useParams<{ bookId: string }>();
   const bid = parseInt(bookId || '0', 10);
   const [units, setUnits] = useState<SentenceUnit[]>([]);
@@ -25,7 +27,7 @@ export default function StudentSentenceUnits() {
     <div className="min-h-screen bg-paper page-warm-glow">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
+          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
             <ArrowLeft className="w-4 h-4" /> 返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">选择单元</h1>

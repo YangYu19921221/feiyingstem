@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion } from 'framer-motion';
 import { ArrowLeft, BookOpenText, CalendarDays, ClipboardList, GraduationCap } from 'lucide-react';
 import { getMyAssignments } from '../api/assignments';
@@ -9,6 +10,7 @@ import { getErrorMessage } from '../utils/errorMessage';
 
 const StudentAssignments = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [assignments, setAssignments] = useState<StudentBookAssignmentResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -101,7 +103,7 @@ const StudentAssignments = () => {
       <div className="border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => goBack()}
             className="mr-3 rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
             aria-label="返回"
           >

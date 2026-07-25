@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import {useParams} from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
@@ -8,7 +9,7 @@ import type { GroupScore, GroupWord } from '../api/teacherMonitor';
 
 export default function TeacherStudentMonitor() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const goBack = useGoBack('/teacher/dashboard');
   const studentId = Number(id);
   const [openKey, setOpenKey] = useState<string | null>(null);
 
@@ -22,7 +23,7 @@ export default function TeacherStudentMonitor() {
     <div className="min-h-screen bg-[#f5f8fc] p-4 text-slate-800 md:p-6">
       <div className="max-w-4xl mx-auto">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => goBack()}
           className="flex items-center gap-1 text-gray-600 hover:text-orange-500 mb-4"
         >
           <ArrowLeft size={18} /> 返回

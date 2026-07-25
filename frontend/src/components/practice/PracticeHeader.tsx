@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import useGoBack from '../../hooks/useGoBack';
 
 interface PracticeHeaderProps {
   unitName?: string;
@@ -16,12 +16,12 @@ const PracticeHeader: React.FC<PracticeHeaderProps> = ({
   timeSpent,
   formatTime,
 }) => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
 
   return (
     <div className="flex items-center justify-between mb-4">
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => goBack()}
         className="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1"
       >
         ← 返回

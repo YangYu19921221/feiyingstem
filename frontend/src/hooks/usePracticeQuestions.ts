@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import useGoBack from './useGoBack';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { startLearning, type WordData } from '../api/progress';
@@ -42,7 +42,7 @@ export function usePracticeQuestions({
   questionType,
   questionCount = 10,
 }: UsePracticeQuestionsOptions): UsePracticeQuestionsResult {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [unitInfo, setUnitInfo] = useState<UnitInfo | null>(null);
   const [unitWords, setUnitWords] = useState<WordData[]>([]);
@@ -85,7 +85,7 @@ export function usePracticeQuestions({
         console.error('加载题目失败:', err);
         setError('加载题目失败,请重试');
         alert('加载题目失败,请重试');
-        navigate(-1);
+        goBack();
       } finally {
         setLoading(false);
       }

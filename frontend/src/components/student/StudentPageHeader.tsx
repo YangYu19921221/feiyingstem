@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import useGoBack from '../../hooks/useGoBack';
 
 interface StudentPageHeaderProps {
   title: string;
@@ -27,13 +28,14 @@ export default function StudentPageHeader({
   maxWidth = '6xl',
 }: StudentPageHeaderProps) {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
 
   return (
     <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className={`${widths[maxWidth]} mx-auto flex min-h-[64px] items-center gap-3 px-4 sm:px-5 py-2.5`}>
         <button
           type="button"
-          onClick={() => backTo ? navigate(backTo) : navigate(-1)}
+          onClick={() => backTo ? navigate(backTo) : goBack()}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
           aria-label="返回"
           title="返回"

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Volume2, X } from 'lucide-react';
@@ -22,6 +23,7 @@ import { submitReviewRecords } from '../api/memoryCurve';
 import { API_BASE_URL } from '../config/env';
 import { useAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
+import usePresence from '../hooks/usePresence';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -31,6 +33,7 @@ const FlashCardLearning = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
 
   // 从URL路径中推断学习模式,默认为flashcard
   const mode = window.location.pathname.includes('/spelling') ? 'spelling' :
@@ -65,6 +68,13 @@ const FlashCardLearning = () => {
       idleStartRef.current = 0;
     }
   }, [isIdle]);
+  // 实时课堂在线上报:卡片学习(含复习模式)原来不发心跳,老师在课堂监控里
+  // 看不到正在背卡片的学生,只能靠 3 分钟答题记录兜底,容易误判"没在学"
+  usePresence({
+    unitId: Number(unitId) || undefined,
+    unitName: learningData?.unit_info?.name,
+    idle: isIdle,
+  });
   const [currentWordMastery, setCurrentWordMastery] = useState<WordMasteryResponse | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
@@ -246,7 +256,7 @@ const FlashCardLearning = () => {
       }
 
       toast.error(errorMessage);
-      navigate(-1);
+      goBack();
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Lightbulb } from 'lucide-react';
 import api from '../api/client';
@@ -101,6 +102,7 @@ async function loadQuestions(): Promise<MixedQuestion[]> {
 const MistakePractice = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const { playAudio } = useAudio();
   const hiddenInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,7 +125,7 @@ const MistakePractice = () => {
   useEffect(() => {
     loadQuestions()
       .then(qs => { setQuestions(qs); setLoading(false); })
-      .catch(() => { toast.error('加载题目失败，请重试'); navigate(-1); });
+      .catch(() => { toast.error('加载题目失败，请重试'); goBack(); });
   }, [navigate]);
 
   const resetState = () => {
@@ -451,7 +453,7 @@ const MistakePractice = () => {
     <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button onClick={() => goBack()} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1">

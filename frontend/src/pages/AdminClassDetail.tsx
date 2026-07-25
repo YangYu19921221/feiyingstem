@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import {useParams} from 'react-router-dom';
+import useGoBack from '../hooks/useGoBack';
 import { admin } from '../api/admin';
 import type {
   AdminClassOverview,
@@ -32,7 +33,7 @@ const fmtValue = (metric: MetricKey, raw: number): number =>
   metric === 'time' ? Math.round(raw / 60) : raw;
 
 const AdminClassDetail = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/teacher/dashboard');
   const { id } = useParams<{ id: string }>();
   const classId = Number(id);
 
@@ -114,7 +115,7 @@ const AdminClassDetail = () => {
     <div className="min-h-screen bg-paper">
       <nav className="bg-white border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-800">← 返回</button>
+          <button onClick={() => goBack()} className="text-gray-600 hover:text-gray-800">← 返回</button>
           <h1 className="text-xl font-bold text-gray-800">
             班级详情{overview ? ` — ${overview.name}` : ''}
           </h1>
