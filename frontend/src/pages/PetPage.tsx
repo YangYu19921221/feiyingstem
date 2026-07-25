@@ -6,6 +6,7 @@ import { ArrowLeft, BookOpen, Check, ChevronRight, Gem, LockKeyhole, Plus, Refre
 import { getMyPet, getPetCollection, createPet, switchPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetCollection, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
 import { quickMatchBattle } from '../api/petBattle';
 import PetArtwork from '../components/PetArtwork';
+import useGoBack from '../hooks/useGoBack';
 import { TYPE_COLORS, TYPE_ICONS, TYPE_NAMES, type PokemonType } from '../utils/typeEffectiveness';
 import {
   PET_SPECIES,
@@ -72,7 +73,7 @@ function Bar({ value, max, color, label }: { value: number; max: number; color: 
 
 // ========== 领养界面 ==========
 function AdoptView({ onAdopted }: { onAdopted: () => void }) {
-  const navigate = useNavigate();
+  const goBack = useGoBack();
   const [selected, setSelected] = useState('pikachu');
   const [name, setName] = useState('');
   const [hoveredSpecies, setHoveredSpecies] = useState<string | null>(null);
@@ -100,7 +101,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
     <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+          <button onClick={goBack} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-bold text-gray-800">领养宠物</h1>
@@ -723,6 +724,7 @@ function NurtureView({
   onShowCatalog: () => void;
 }) {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const queryClient = useQueryClient();
   const [feedMsg, setFeedMsg] = useState('');
   const [showHearts, setShowHearts] = useState(false);
@@ -803,7 +805,7 @@ function NurtureView({
     <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-3 py-3 sm:px-4">
-          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-2">
+          <button onClick={goBack} className="p-2 hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-2">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
             <span className="text-gray-600 font-medium hidden sm:inline">返回</span>
           </button>

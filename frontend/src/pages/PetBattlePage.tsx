@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Zap } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { BattleWebSocket, AnswerWebSocket, Battle, QuestionData, RoundResult } from '../api/petBattle';
+import useGoBack from '../hooks/useGoBack';
 import { getPetBackImage, getPetDefinition, getPetImage, hasPetBackImage } from '../config/petSpecies';
 // three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
 const BattleScene3D = lazy(() => import('../components/BattleScene3D'));
@@ -48,6 +49,7 @@ type BattlePhase = 'waiting' | 'countdown' | 'question' | 'answering' | 'result'
 
 export default function PetBattlePage() {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/pet');
   const queryClient = useQueryClient();
   const { battleId } = useParams<{ battleId: string }>();
   const [phase, setPhase] = useState<BattlePhase>('waiting');
@@ -127,7 +129,7 @@ export default function PetBattlePage() {
     }).catch((error) => {
       console.error('❌ WebSocket连接失败:', error);
       alert('连接失败,请重试');
-      navigate(-1);
+      goBack();
     });
 
     // 监听事件

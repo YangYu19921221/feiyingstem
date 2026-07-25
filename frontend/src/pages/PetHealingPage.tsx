@@ -13,9 +13,11 @@ import {
 import { getMyPet } from '../api/pet';
 import { getPetImage, getPetStage } from '../config/petSpecies';
 import PetArtwork from '../components/PetArtwork';
+import useGoBack from '../hooks/useGoBack';
 
 export default function PetHealingPage() {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/pet');
   const queryClient = useQueryClient();
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -144,7 +146,7 @@ export default function PetHealingPage() {
       <nav className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={goBack}
             className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
