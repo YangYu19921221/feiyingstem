@@ -201,3 +201,79 @@ def test_timeout_classify_marks_unknown():
     p = room.players[1]
     engine.force_timeout(room, 1, p.q_seq, "classify", room.word_lookup)
     assert p.cls_results.get(10) == "unknown"
+
+
+# ---------- 公平性:题量必须全场统一(词汇量少的人不能因任务轻而稳赢) ----------
+
+@pytest.mark.asyncio
+async def test_start_game_uses_uniform_word_count(monkeypatch):
+    """A 背 30 词、B 背 8 词 → 两人都只考 8 个(各考自己的),组数一致。
+    否则「率先掌握者赢」会让背得少的人稳赢。"""
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    room = manager.create_room(host_id=100, max_players=4, org_id=1,
+                              host_is_player=False, word_count=30)
+    for uid in (1, 2):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    async def fake_learned(ids, wids=None):
+        return {1: set(range(1, 31)), 2: set(range(1, 9))}
+    async def fake_points(wids):
+        return {w: 100 for w in wids}
+    async def fake_lookup(wids):
+        return {w: FakeWord(w) for w in wids}
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+    monkeypatch.setattr(W, "_load_word_points_for_room", fake_points)
+    monkeypatch.setattr(W, "_load_word_lookup", fake_lookup)
+
+    await W._try_start_game(room, FakeWS())
+    a, b = room.players[1], room.players[2]
+    assert len(a.word_ids) == len(b.word_ids) == 8
+    assert a.group_total == b.group_total
+    # 各人仍只考自己背过的词
+    assert set(a.word_ids) <= set(range(1, 31))
+    assert set(b.word_ids) <= set(range(1, 9))
+
+
+@pytest.mark.asyncio
+async def test_start_game_blocked_when_someone_has_too_few_words(monkeypatch):
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    room = manager.create_room(host_id=101, max_players=4, org_id=1,
+                              host_is_player=False, word_count=10)
+    for uid in (1, 2):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    async def fake_learned(ids, wids=None):
+        return {1: set(range(1, 31)), 2: {1, 2}}   # B 只背 2 词 < MIN_COMMON_WORDS
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+
+    host = FakeWS()
+    await W._try_start_game(room, host)
+    assert host.sent and host.sent[0]["code"] == "NOT_ENOUGH_COMMON_WORDS"
+    assert room.status == "waiting"
+
+
+def test_exam_options_scoped_to_own_words():
+    """过关选择题干扰项只能来自该玩家自己的词表(不能拿别人背过、他没学的词)。"""
+    room = _race_room({1: [1, 2, 3, 4, 5, 6]})
+    # 往全房 lookup 里塞入该玩家没有的词,模拟多人并集
+    for extra in range(50, 60):
+        room.word_lookup[extra] = FakeWord(extra)
+    p = room.players[1]
+    opts = engine._build_exam_options(room, room.word_lookup, p.word_ids[0], "en_to_cn",
+                                      scope_ids=p.word_ids)
+    mine = {room.word_lookup[w].translation for w in p.word_ids}
+    assert all(o in mine for o in opts), opts

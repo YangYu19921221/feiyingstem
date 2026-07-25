@@ -325,7 +325,9 @@ export default function PkTeacherLiveBoard({
               <h2 id="student-live-title" className="flex items-center gap-2 text-base font-extrabold text-slate-800">
                 <Activity className="h-4 w-4 text-orange-600" /> 学生实时排名
               </h2>
-              <p className="mt-1 text-xs text-slate-400">共 {items.length} 名学生</p>
+              <p className="mt-1 text-xs text-slate-400">
+                共 {items.length} 名学生 · 题量全场统一,率先全部掌握者赢;时间到未完成则比掌握进度(得分仅展示)
+              </p>
             </div>
             <div className="hidden items-center gap-4 text-xs text-slate-500 sm:flex">
               <span className="inline-flex items-center gap-1.5"><Target className="h-3.5 w-3.5 text-sky-600" />掌握进度</span>

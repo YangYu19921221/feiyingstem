@@ -59,7 +59,11 @@ def _prepare_meta(room: RoomState, p, word_lookup: dict[int, Any]) -> None:
         etype = exam_type_for(p.q_seq)
         p.current_meta["exam_type"] = etype
         if etype in ("en_to_cn", "cn_to_en"):
-            p.current_meta["options"] = _build_exam_options(room, word_lookup, p.current_wid, etype)
+            # 干扰项只能取「该玩家自己背过的词」:room.word_lookup 是全房并集,
+            # 直接拿会把别人背过、他没学过的词当选项,难度失真
+            p.current_meta["options"] = _build_exam_options(
+                room, word_lookup, p.current_wid, etype, scope_ids=p.word_ids,
+            )
     elif p.stage == "dictation":
         # 抄写态:附带需抄遍数与正确词(前端提示"再抄N遍");dict_copies_left>0 表示在抄写
         if p.dict_copies_left > 0:
@@ -92,9 +96,16 @@ def _question_event(room: RoomState, p, word_lookup: dict[int, Any]) -> dict:
     return evt
 
 
-def _build_exam_options(room: RoomState, word_lookup: dict[int, Any], wid, exam_type: str) -> list[str]:
-    """给过关选择题构造选项:正确答案 + 从房间其余词里取最多 3 个干扰项,打乱后返回。
-    en_to_cn 用中文释义,cn_to_en 用英文原词。"""
+def _build_exam_options(
+    room: RoomState, word_lookup: dict[int, Any], wid, exam_type: str,
+    scope_ids: list[int] | None = None,
+) -> list[str]:
+    """给过关选择题构造选项:正确答案 + 最多 3 个干扰项,打乱后返回。
+    en_to_cn 用中文释义,cn_to_en 用英文原词。
+
+    scope_ids 限定干扰项的取材范围(传该玩家自己的词表),避免拿到他没背过的词;
+    自己的词不足凑干扰项时,才退回全房词表补齐,保证选项数够。
+    """
     correct_word = word_lookup.get(wid) if wid is not None else None
     if correct_word is None:
         return []
@@ -102,16 +113,28 @@ def _build_exam_options(room: RoomState, word_lookup: dict[int, Any], wid, exam_
     correct = (getattr(correct_word, field, "") or "").strip()
     if not correct:
         return []
-    pool = []
+
+    def _collect(ids) -> list[str]:
+        out = []
+        for owid in ids:
+            if owid == wid:
+                continue
+            ow = word_lookup.get(owid)
+            if ow is None:
+                continue
+            val = (getattr(ow, field, "") or "").strip()
+            if val and val not in seen:
+                seen.add(val)
+                out.append(val)
+        return out
+
     seen = {correct}
-    for owid, ow in word_lookup.items():
-        if owid == wid:
-            continue
-        val = (getattr(ow, field, "") or "").strip()
-        if val and val not in seen:
-            seen.add(val)
-            pool.append(val)
+    pool = _collect(scope_ids) if scope_ids else _collect(list(word_lookup))
     random.shuffle(pool)
+    if len(pool) < 3 and scope_ids:
+        extra = _collect(list(word_lookup))   # 自己的词不够,退回全房补齐
+        random.shuffle(extra)
+        pool += extra
     options = pool[:3] + [correct]
     random.shuffle(options)
     return options
@@ -452,8 +475,12 @@ def select_words_with_fallback(
 def select_words_for_player(
     learned: set[int], word_count: int, rng: Any, fill_pool: set[int] | None = None,
 ) -> list[int]:
-    """并行竞速:给单个玩家从他自己背过的词里抽 word_count 个;不足时用 fill_pool
-    (该玩家已学的其余词)补齐。返回抽到的 word_id 列表(可能不足 word_count,由调用方判断)。"""
+    """给单个玩家从他自己背过的词里随机抽 word_count 个。
+
+    调用方(_try_start_game)已按「全场最小词汇量」把 word_count 压到人人都够的数量,
+    所以这里正常都能抽满。fill_pool 保留仅为向后兼容旧调用(补入不在 learned 里的词);
+    注意别再传 fill_pool=learned —— 那样差集恒空、补齐是死代码。
+    """
     pool = list(learned)
     rng.shuffle(pool)
     chosen = pool[:word_count]

@@ -577,27 +577,33 @@ async def _try_start_game(room, requester_ws) -> None:
             ps.finished = False
         room.word_ids = list(shared)
     else:
-        # 自由房 / 分组赛:每人各抽「他自己背过的词」word_count 个(小初高混场也公平)
+        # 自由房 / 分组赛:每人各考「他自己背过的词」(小初高混场也公平),但
+        # ⚠️ 题量必须全场统一 —— 胜负是「率先掌握完成」,若各人词表长短不同,
+        # 背得少的人工作量小、必然先完成(背 5 词的稳赢背 30 词的),激励完全反向。
+        # 故取「所有在线玩家背过词数的最小值」并与房主设定 word_count 取小,作为统一题量。
         learned = await _load_learned_for_room(online_ids, None)
+        min_vocab = min(len(learned.get(uid, set())) for uid in online_ids)
+        per_player_count = min(room.word_count, min_vocab)
+        if per_player_count < MIN_COMMON_WORDS:
+            await requester_ws.send_json({
+                "type": "error", "code": "NOT_ENOUGH_COMMON_WORDS",
+                "message": (
+                    f"有学生背过的单词太少(最少的只有 {min_vocab} 个),凑不齐一局。"
+                    f"每人至少需要背过 {MIN_COMMON_WORDS} 个单词,先去学习流程多背一些再来 PK"
+                ),
+            })
+            return
         all_word_ids: set[int] = set()
-        too_few: list[int] = []
         for uid in online_ids:
             ps = room.players[uid]
             mine = learned.get(uid, set())
-            picked = select_words_for_player(mine, room.word_count, random, fill_pool=mine)
-            if len(picked) < min(room.word_count, MIN_COMMON_WORDS):
-                too_few.append(uid)
+            picked = select_words_for_player(mine, per_player_count, random)
             ps.word_ids = picked
             ps.answers = []
             ps.finished = False
             all_word_ids |= set(picked)
-
-        if not all_word_ids or len(too_few) == len(online_ids):
-            await requester_ws.send_json({
-                "type": "error", "code": "NOT_ENOUGH_COMMON_WORDS",
-                "message": "在线玩家背过的单词太少,凑不齐一局。先让学生去学习流程多背一些单词再来 PK 吧",
-            })
-            return
+        # 统一题量后每人 word_ids 长度一致 → 分组数一致 → 「谁先掌握完」才是公平比较
+        room.word_count = per_player_count    # 快照/前端展示实际生效题量
         room.word_ids = list(all_word_ids)   # 快照/落库/教师聚合用(全房并集)
 
     # 装载 word_lookup / word_points(word_id→Word / 基础分,全房共享一份)

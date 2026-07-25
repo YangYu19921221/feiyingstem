@@ -301,7 +301,7 @@ export default function PkArena() {
             </h2>
             <span className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-secondary/25 text-amber-700 font-medium">
               {isTeamMode ? `👥 ${snapshot.team_count} 队 · ` : '👤 个人 · '}
-              {snapshot.word_count} 词 ≈ {snapshot.word_count * 4} 题
+最多 {snapshot.word_count} 词 · 分类→听写→过关
             </span>
           </div>
 
@@ -420,8 +420,8 @@ export default function PkArena() {
 
           <p className="text-xs text-ink-mute text-center mt-4">
             {isHostConsole
-              ? '你是组织者,开局后监控战况,不下场答题'
-              : `每人各考自己背过的 ${snapshot.word_count} 个词,限时内答完循环续刷,比谁得分高`}
+              ? '你是组织者,开局后进大屏监控台看战况,不下场答题'
+              : '每人各考自己背过的词(题量全场统一),走分类→听写→过关全流程,谁先全部掌握谁赢'}
           </p>
 
           {errorBanner && (

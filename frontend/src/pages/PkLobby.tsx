@@ -196,14 +196,14 @@ export default function PkLobby() {
           <h1 className="font-display text-3xl sm:text-5xl font-bold">PK 竞技场</h1>
           <p className="text-sm sm:text-lg text-white/90 mt-2 max-w-md">
             {isTeacher
-              ? '你来组织,学生实时对战——四阶段闯关比拼单词功底'
-              : '和同学实时对战,四阶段闯关比拼单词功底'}
+              ? '你来组织,学生用分类记忆法同场竞速——谁先把单词全部掌握谁赢'
+              : '用分类记忆法和同学同场竞速——谁先把单词全部掌握谁赢'}
           </p>
           {/* 规则条 */}
           <div className="flex flex-wrap gap-2 mt-4 sm:mt-6">
             {(isTeacher
-              ? ['🎛️ 老师建房不下场', '🧠 各考各背过的词', '⏱️ 全场限时竞速']
-              : ['🧠 各考各背过的词', '⚡ 答对越快分越高', '⏱️ 限时内比谁分高']
+              ? ['🎛️ 老师建房不下场', '🧠 各考各背过的词', '⚖️ 题量全场统一', '🏁 率先掌握者赢']
+              : ['🧠 考你自己背过的词', '🔁 不会的词反复练到会', '🏁 谁先全掌握谁赢']
             ).map((t) => (
               <span key={t} className="text-[11px] sm:text-sm bg-white/20 backdrop-blur px-3 py-1.5 rounded-full">
                 {t}
@@ -411,7 +411,7 @@ export default function PkLobby() {
 
             {/* 题量(快捷档 + 自定义) */}
             <label className="block text-sm font-medium text-ink-soft mb-2">
-              单词数量 <span className="text-ink-mute font-normal">({MIN_WORDS}~{MAX_WORDS} 词 · 每词过 4 关 ≈ {wordCount * 4} 题)</span>
+              单词数量上限 <span className="text-ink-mute font-normal">({MIN_WORDS}~{MAX_WORDS} 词 · 实际按全场背得最少的学生统一)</span>
             </label>
             <div className="flex gap-2 mb-2">
               {WORD_COUNTS.map((n) => (
@@ -475,7 +475,8 @@ export default function PkLobby() {
               {creating ? '创建中…' : '🚀 创建并获取邀请码'}
             </button>
             <p className="text-[11px] text-ink-mute mt-3 text-center">
-              每个学生各考「自己背过的词」,{countdownMin} 分钟内答完循环续刷,比谁得分高
+              每个学生各考「自己背过的词」,题量按全场最少的学生统一(最多 {wordCount} 词),
+              走完分类→听写→过关全流程,谁先全部掌握谁赢;{countdownMin} 分钟到点未完成则比进度
             </p>
           </motion.div>
           )}
@@ -547,25 +548,27 @@ export default function PkLobby() {
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">③ 你开局并监控</p>
-                <p>至少 2 名学生进房即可开局(分组赛要求每队都有人)。开局后你在控制台看每个学生的实时进度和得分,但不答题。随时可「结束本场对战」。</p>
+                <p>至少 2 名学生进房即可开局(分组赛要求每队都有人)。开局后自动进<span className="font-semibold text-ink">全屏大屏监控台</span>,看每个学生的实时阶段与掌握进度,但不答题。随时可「提前结束」并出正式榜。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">④ 每人考自己背过的词,限时竞速</p>
-                <p>系统给<span className="font-semibold text-ink">每个学生各抽他自己背过的词</span>——所以小学、初中、高中的孩子放一起也公平,谁都不会被拉去考自己没学过的词。每人各答各的、答完立刻下一题、不用等别人;倒计时内把自己的词答完了会<span className="font-semibold text-ink">循环续刷继续拿分</span>。时间一到,谁分高谁赢。</p>
+                <p className="font-semibold text-ink mb-1">④ 每人考自己背过的词(题量全场统一)</p>
+                <p>系统给<span className="font-semibold text-ink">每个学生各抽他自己背过的词</span>——小学、初中、高中的孩子放一起也公平,谁都不会被考自己没学过的词。</p>
+                <p className="mt-1">但<span className="font-semibold text-ink">题量会按「全场背得最少的那个学生」统一</span>:比如 A 背过 300 词、B 只背过 8 词,则两人都只考 8 个(各考自己的)。这样大家工作量一样,「谁先掌握完」才是公平比较,不会出现背得少的人因为任务轻而稳赢。若有学生背过的词不足 4 个,则无法开局。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">⑤ 每个词要闯 4 关</p>
-                <p>🗂️分类 → 🎤语音 → ✍️听写 → 🏁过关。四关都算一道题的一部分,答对各得一份分。</p>
+                <p className="font-semibold text-ink mb-1">⑤ 每人走一遍分类记忆法全流程</p>
+                <p>词按 10 个一组,每组:🗂️<span className="font-medium text-ink">分类</span>(标熟悉/学过/陌生,<span className="font-semibold text-ink">夹生和陌生的词会反复出现直到全部标熟悉</span>)→ ✍️<span className="font-medium text-ink">听写</span>(拼错要照着抄对 3 遍,错词再复听一轮)→ 🏁<span className="font-medium text-ink">过关检测</span>(4 种题型随机:英译中/中译英/听音拼写/看义拼写,<span className="font-semibold text-ink">正确率≥60% 才过关</span>,不过则重考)。过关才进下一组。</p>
               </div>
-              {/* 计分规则:大白话讲清楚 */}
+              {/* 胜负规则 */}
               <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
-                <p className="font-semibold text-ink mb-1.5">💯 分数怎么算(重点)</p>
+                <p className="font-semibold text-ink mb-1.5">🏁 怎么定胜负(重点)</p>
                 <ul className="space-y-1 list-disc pl-4">
-                  <li><span className="font-medium text-ink">答对才有分,答错或超时得 0 分</span>,不倒扣。</li>
-                  <li>每道题的<span className="font-medium text-ink">基础分按单词难度</span>:小学词 <b>100</b> 分 / 初中词 <b>120</b> 分 / 高中词 <b>150</b> 分。</li>
-                  <li><span className="font-medium text-ink">答得越快,加分越多</span>:在基础分上再加最多 30%。比如一个初中词(120 分)秒答,最高能拿约 156 分;拖到快超时才答对,只拿接近 120 分。</li>
-                  <li>连续答对会有连击 🔥(只是展示,不额外加分)。</li>
-                  <li><span className="font-medium text-ink">分组赛按「人均分」排名</span>——队里人多也不占便宜,人少的队照样能赢。</li>
+                  <li><span className="font-medium text-ink">率先把全部组走完并过关的学生赢</span>,按完成时刻先后排名。</li>
+                  <li><span className="font-medium text-ink">全员完成即立刻结算</span>,不用等倒计时走完。</li>
+                  <li>倒计时到点仍有人没完成 → 按<span className="font-medium text-ink">掌握进度百分比</span>排名;同进度看用时。</li>
+                  <li>因为不会的词会反复练到会,<span className="font-medium text-ink">拖时间不会有额外好处</span>——认真一遍过才最快。</li>
+                  <li><span className="font-medium text-ink">分组赛按队内「人均掌握进度」排名</span>——队里人多不占便宜,人少的队照样能赢。</li>
+                  <li>答题也会累计得分(答对得分、越快越多),但<span className="font-medium text-ink">得分只作展示</span>,不决定胜负。</li>
                 </ul>
               </div>
             </div>
@@ -576,27 +579,34 @@ export default function PkLobby() {
                 <p>输入老师发你的 6 位邀请码,点「加入对战」。房满或已开局也能点「观战」看比赛。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">② 每个词要闯 4 关</p>
-                <p>🗂️ <span className="font-medium text-ink">分类</span>:判断词属于哪类 → 🎤 <span className="font-medium text-ink">语音</span>:跟读单词 → ✍️ <span className="font-medium text-ink">听写</span>:听发音拼出来 → 🏁 <span className="font-medium text-ink">过关</span>:看中文拼出单词。你答完一题立刻进下一题,<span className="font-semibold text-ink">不用等别人</span>。</p>
+                <p className="font-semibold text-ink mb-1">② 考的是你自己背过的词</p>
+                <p>题目从<span className="font-semibold text-ink">你自己背过的单词</span>里出,和同学考的不一样,所以不管你几年级都公平。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">题量大家一样多</span>——按全场背得最少的同学来定。所以<span className="font-medium text-ink">背得多不会被罚、背得少也占不到便宜</span>,大家做一样多的题,比谁先掌握。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">③ 考的是你自己背过的词</p>
-                <p>题目从<span className="font-semibold text-ink">你自己背过的单词</span>里出,和同学考的不一样,所以不管你是几年级都公平。在<span className="font-semibold text-ink">倒计时结束前</span>比谁分高;把自己的词答完了会自动从头再来一轮继续拿分。想赢?平时多去学习页面背单词。</p>
+                <p className="font-semibold text-ink mb-1">③ 单词分组,每组闯 3 关</p>
+                <p>词按 10 个一组。每组要过:</p>
+                <ul className="mt-1 space-y-1 list-disc pl-4">
+                  <li>🗂️ <span className="font-medium text-ink">分类</span>:每个词标「熟悉/学过/陌生」。标成夹生或陌生的词<span className="font-semibold text-ink">会再出现,直到你把它们都标成熟悉</span>。</li>
+                  <li>✍️ <span className="font-medium text-ink">听写</span>:听发音拼出来。拼错了要<span className="font-semibold text-ink">照着抄对 3 遍</span>,错过的词后面还会再听一遍。</li>
+                  <li>🏁 <span className="font-medium text-ink">过关检测</span>:4 种题型随机(英译中、中译英、听音拼写、看义拼写),<span className="font-semibold text-ink">对 60% 以上才算过关</span>,没过要重考。</li>
+                </ul>
+                <p className="mt-1">过关了才进下一组,你答完一题立刻进下一题,<span className="font-semibold text-ink">不用等别人</span>。</p>
               </div>
-              {/* 计分规则:大白话讲清楚 */}
+              {/* 胜负规则 */}
               <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
-                <p className="font-semibold text-ink mb-1.5">💯 怎么才能拿高分</p>
+                <p className="font-semibold text-ink mb-1.5">🏁 怎么赢(重点)</p>
                 <ul className="space-y-1 list-disc pl-4">
-                  <li><span className="font-medium text-ink">答对才有分</span>,答错或超时是 0 分(但不扣分,别怕)。</li>
-                  <li><span className="font-medium text-ink">越难的词分越高</span>:小学词 <b>100</b> 分、初中词 <b>120</b> 分、高中词 <b>150</b> 分。</li>
-                  <li><span className="font-medium text-ink">答得越快,加分越多</span>——又快又对最赚,最多能多拿 30%。</li>
-                  <li>连续答对会亮连击 🔥,越连越有气势。</li>
-                  <li>时间到的时候,谁总分高谁就是本场单词王 👑。</li>
+                  <li><span className="font-medium text-ink">谁先把所有组都过关,谁就赢</span>——最快完成的是本场单词王 👑。</li>
+                  <li>大家都完成了就<span className="font-medium text-ink">马上出成绩</span>,不用等倒计时。</li>
+                  <li>时间到了还没做完,就<span className="font-medium text-ink">比谁掌握的进度多</span>(右侧擂台榜上的百分比)。</li>
+                  <li>不会的词会一直反复出现直到你会,所以<span className="font-medium text-ink">乱按、拖时间都没用</span>,认认真真一遍过反而最快。</li>
+                  <li>答对也会涨分数(越快越多),但<span className="font-medium text-ink">分数只是好看</span>,不决定谁赢。</li>
                 </ul>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">④ 分组赛</p>
-                <p>老师开分组赛时你会被分到某个队,右侧「队伍榜」看哪个队领先——按<span className="font-semibold text-ink">人均分</span>算,和队友一起冲榜。</p>
+                <p>老师开分组赛时你会被分到某个队,右侧「队伍榜」看哪个队领先——按<span className="font-semibold text-ink">人均掌握进度</span>算,和队友一起冲榜。</p>
               </div>
             </div>
           )}
