@@ -178,19 +178,28 @@ async def start_learning(
         # 之前这里只看 is_completed 就把 current_word_index 归零 → 学完过一遍的单元
         # 再学时,分组续学永久失效:学生背完第1、2组退出,回来还是从第1组开始
         # (实测 classify 进度记录 666/857 都是 is_completed=1,几乎人人踩)。
-        # 正确判据是"本轮是否已经走到最后一个词":走到头才开新一轮从头复习,
-        # 否则接着上次的组继续背。
-        # 用"写下这个索引时的单元词数"(progress.total_words,第188行才会刷成最新)
+        # 正确判据是两个条件同时成立:曾经学完过 **且** 本轮游标已走到最后一个词。
+        # 走到头才开新一轮从头复习,否则接着上次的组继续背。
+        # 用"写下这个索引时的单元词数"(progress.total_words,下面才会刷成最新)
         # 与当前词数取小做基准:老师事后加词不会让"已学完"的单元跳到中间某组开始,
         # 老师删词也不会因索引越界卡在最后一组。
+        # 必须带 is_completed 这一半——各模式写 current_word_index 的语义不统一:
+        #   classify 写"最后一个已学完的词"下标(globalEndIndex - 1)
+        #   flashcard 写"下一个要学的词"下标(nextIndex = currentIndex + 1)
+        # 只看游标 >= total-1 会误伤 flashcard:学生剩最后一个词时退出,游标正好是
+        # total-1,会被当成学完而打回第1个词。加上 is_completed 后,没学完的单元
+        # 一律照常续学(与老逻辑一致),只有"学完过的单元再学"这一种才改行为。
         prev_total = progress.total_words or total_words
-        round_finished = current_word_index >= min(prev_total, total_words) - 1
+        round_finished = (
+            progress.is_completed
+            and current_word_index >= min(prev_total, total_words) - 1
+        )
         if round_finished:
             current_word_index = 0
             completed_words = progress.completed_words  # 保留已完成数
             progress.current_word_index = 0
             # 不重置 is_completed 和 completed_words,避免丢失进度
-            message = "该单元已学完,现在从头复习" if progress.is_completed else "从头开始学习"
+            message = "该单元已学完,现在从头复习"  # round_finished 已蕴含 is_completed
         else:
             message = f"继续上次的学习,从第 {current_word_index + 1} 个单词开始"
 

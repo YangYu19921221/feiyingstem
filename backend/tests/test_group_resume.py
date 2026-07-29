@@ -145,17 +145,54 @@ async def test_resume_after_two_groups_on_completed_unit(client, db_session, stu
     assert prog.completed_words == TOTAL_WORDS, "复习轮把单元进度条从100%打回去了"
 
 
-async def test_finished_round_restarts_from_first_group(client, student_with_unit):
-    """本轮走到最后一个词(未点完成)后重进:开新一轮,从第 1 组。"""
+async def test_completed_round_restarts_from_first_group(client, student_with_unit):
+    """整单元学完(is_completed=True)后重进:开新一轮,从第 1 组。"""
     token, _uid, unit = student_with_unit
     await client.post(f"/api/v1/student/units/{unit.id}/start",
                       json={"unit_id": unit.id, "learning_mode": "classify"}, headers=_headers(token))
     await client.put(
         "/api/v1/student/progress",
         json={"unit_id": unit.id, "learning_mode": "classify",
-              "current_word_index": TOTAL_WORDS - 1, "is_completed": False},
+              "current_word_index": TOTAL_WORDS - 1, "is_completed": True},
         headers=_headers(token),
     )
     r = await client.post(f"/api/v1/student/units/{unit.id}/start",
                           json={"unit_id": unit.id, "learning_mode": "classify"}, headers=_headers(token))
+    assert r.json()["current_word_index"] == 0
+
+
+async def test_flashcard_last_word_left_is_not_treated_as_finished(client, student_with_unit):
+    """flashcard 剩最后一个词时退出,不能被当成学完打回第 1 个词。
+
+    flashcard 写的是"下一个要学的词"下标(nextIndex),剩最后一个词时 nextIndex
+    正好 = total-1。若续学判据只看游标 >= total-1 就会误判学完 → 39 个词白学。
+    """
+    token, _uid, unit = student_with_unit
+    await client.post(f"/api/v1/student/units/{unit.id}/start",
+                      json={"unit_id": unit.id, "learning_mode": "flashcard"}, headers=_headers(token))
+    # 学到倒数第二个词:nextIndex = TOTAL_WORDS - 1,尚未 is_completed
+    await client.put(
+        "/api/v1/student/progress",
+        json={"unit_id": unit.id, "learning_mode": "flashcard",
+              "current_word_index": TOTAL_WORDS - 1, "is_completed": False},
+        headers=_headers(token),
+    )
+    r = await client.post(f"/api/v1/student/units/{unit.id}/start",
+                          json={"unit_id": unit.id, "learning_mode": "flashcard"}, headers=_headers(token))
+    assert r.json()["current_word_index"] == TOTAL_WORDS - 1, "剩最后一个词被误判学完,打回第1个"
+
+
+async def test_flashcard_fully_done_restarts(client, student_with_unit):
+    """flashcard 真学完(nextIndex 越过末尾 + is_completed):下次从头。"""
+    token, _uid, unit = student_with_unit
+    await client.post(f"/api/v1/student/units/{unit.id}/start",
+                      json={"unit_id": unit.id, "learning_mode": "flashcard"}, headers=_headers(token))
+    await client.put(
+        "/api/v1/student/progress",
+        json={"unit_id": unit.id, "learning_mode": "flashcard",
+              "current_word_index": TOTAL_WORDS, "is_completed": True},
+        headers=_headers(token),
+    )
+    r = await client.post(f"/api/v1/student/units/{unit.id}/start",
+                          json={"unit_id": unit.id, "learning_mode": "flashcard"}, headers=_headers(token))
     assert r.json()["current_word_index"] == 0
