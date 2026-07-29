@@ -43,6 +43,14 @@ import { dispatchPetEvent } from '../utils/petEventBus';
 type Phase = 'classify' | 'speechVerify' | 'dictation' | 'exam' | 'unitRecap' | 'summary';
 type DictationSource = 'normal' | 'recap';
 
+/** 存档 key 用的当前用户标识(取不到时用 anon,不影响单人设备) */
+function localProgressUid(): string {
+  try {
+    const u = JSON.parse(localStorage.getItem('user') || 'null');
+    return typeof u?.id === 'number' ? String(u.id) : 'anon';
+  } catch { return 'anon'; }
+}
+
 function getGroupSize(gradeLevel: string | null, customGroupSize?: number): number {
   if (customGroupSize && customGroupSize > 0) return customGroupSize;
   return gradeLevel?.includes('小学') ? 10 : 20;
@@ -163,8 +171,9 @@ const WordClassifyLearning = () => {
 
   const [showExitDialog, setShowExitDialog] = useState(false);
 
-  // 组内进度存档 key
-  const progressKey = unitId ? `classify_progress_${unitId}` : '';
+  // 组内进度存档 key。必须带用户 id:培训机构常见共用一台平板/电脑,
+  // 只按 unitId 存档会让后一个学生捡到前一个学生的组进度和分类结果(串档)。
+  const progressKey = unitId ? `classify_progress_${localProgressUid()}_${unitId}` : '';
 
   // 保存组内进度到 localStorage（仅数据加载后生效）
   // 连同 classifyResults / dictationResults 一起存，恢复时能精确回到上次的阶段
@@ -268,9 +277,11 @@ const WordClassifyLearning = () => {
 
       setLearningData(data);
 
-      // 检查 localStorage 是否有组内进度存档
-      const savedKey = `classify_progress_${id}`;
+      // 检查 localStorage 是否有组内进度存档(key 带用户 id,共用设备不串档)
+      const savedKey = `classify_progress_${localProgressUid()}_${id}`;
       const savedJson = localStorage.getItem(savedKey);
+      // 顺带清掉旧版无用户 id 的存档,避免共用设备上残留的别人进度被将来误用
+      localStorage.removeItem(`classify_progress_${id}`);
       let resumedFromLocal = false;
 
       if (savedJson) {
@@ -332,7 +343,13 @@ const WordClassifyLearning = () => {
           const groupSize = getGroupSize(data.unit_info.grade_level, data.unit_info.group_size);
           const resumeGroup = Math.floor((data.current_word_index + 1) / groupSize);
           const totalGroups = Math.ceil(data.words.length / groupSize);
-          setCurrentGroupIndex(Math.min(resumeGroup, totalGroups - 1));
+          const startGroup = Math.min(resumeGroup, totalGroups - 1);
+          setCurrentGroupIndex(startGroup);
+          // 明确告知续学位置:上次背到哪一组学生自己记不住,
+          // 直接跳到第3组又会让人怀疑"前两组白背了/系统串了"
+          if (startGroup > 0) {
+            toast.info(`接着上次继续:第 ${startGroup + 1}/${totalGroups} 组`);
+          }
         } else {
           setCurrentGroupIndex(0);
         }
@@ -904,8 +921,18 @@ const WordClassifyLearning = () => {
                 {unitTask.deadline && (
                   <span className="text-ink-mute"> · 截止 {new Date(unitTask.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</span>
                 )}
+                {/* 组进度:必须学完**整个单元的每一组**才会交卷。
+                    只写"学完自动交卷"学生会以为做完当前这组就算完成
+                    (实际发生过:单组过关拿了 80 分,以为达标了但任务还在) */}
+                {totalGroups > 1 && (
+                  <span className="text-ink-mute"> · 本单元共 {totalGroups} 组,当前第 {currentGroupIndex + 1} 组</span>
+                )}
               </p>
-              <span className="text-xs text-accent-warm font-medium shrink-0">学完自动交卷,达到 {unitTask.target_score} 分任务消除</span>
+              <span className="text-xs text-accent-warm font-medium shrink-0">
+                {totalGroups > 1
+                  ? `学完全部 ${totalGroups} 组才交卷`
+                  : `学完自动交卷,达到 ${unitTask.target_score} 分任务消除`}
+              </span>
             </motion.div>
           )}
           {unitTask && taskDone && (
@@ -1086,6 +1113,7 @@ const WordClassifyLearning = () => {
                 groupIndex={currentGroupIndex}
                 totalGroups={totalGroups}
                 onNextGroup={handleNextGroup}
+                taskTargetScore={unitTask?.target_score ?? null}
               />
             </motion.div>
           )}
@@ -1124,6 +1152,19 @@ const WordClassifyLearning = () => {
             >
               <h3 className="text-lg font-bold text-gray-800 mb-2">确认退出？</h3>
               <p className="text-gray-500 text-sm mb-4">进度已保存，下次进入将从当前位置继续</p>
+              {/* 中途退出是"任务没消除"的最常见原因:必须学完全部组才会交卷,
+                  这里是学生放弃前最后一次提醒 */}
+              {unitTask && !taskDone && (
+                <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">
+                  <p className="text-sm font-semibold text-amber-800">📣 现在退出,任务不会完成</p>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                    「{unitTask.title}」要
+                    <span className="font-semibold">学完本单元全部 {totalGroups} 组</span>
+                    才会自动交卷{totalGroups > 1 && `(当前第 ${currentGroupIndex + 1} 组,还剩 ${totalGroups - currentGroupIndex - 1} 组)`}。
+                    达到 {unitTask.target_score} 分,老师那边的任务才会消除。
+                  </p>
+                </div>
+              )}
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowExitDialog(false)}

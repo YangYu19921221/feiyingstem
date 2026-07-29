@@ -173,13 +173,24 @@ async def start_learning(
         completed_words = progress.completed_words
         has_existing_progress = True
 
-        # 如果已经完成,从头开始复习但保留完成状态
-        if progress.is_completed:
+        # is_completed 是"这个单元曾经学完过"的历史标记(一旦置 True 永不回退,
+        # 教师端/进度条都依赖它),不能当成"上一次坐下已经学到头了"。
+        # 之前这里只看 is_completed 就把 current_word_index 归零 → 学完过一遍的单元
+        # 再学时,分组续学永久失效:学生背完第1、2组退出,回来还是从第1组开始
+        # (实测 classify 进度记录 666/857 都是 is_completed=1,几乎人人踩)。
+        # 正确判据是"本轮是否已经走到最后一个词":走到头才开新一轮从头复习,
+        # 否则接着上次的组继续背。
+        # 用"写下这个索引时的单元词数"(progress.total_words,第188行才会刷成最新)
+        # 与当前词数取小做基准:老师事后加词不会让"已学完"的单元跳到中间某组开始,
+        # 老师删词也不会因索引越界卡在最后一组。
+        prev_total = progress.total_words or total_words
+        round_finished = current_word_index >= min(prev_total, total_words) - 1
+        if round_finished:
             current_word_index = 0
             completed_words = progress.completed_words  # 保留已完成数
             progress.current_word_index = 0
             # 不重置 is_completed 和 completed_words,避免丢失进度
-            message = "该单元已完成,现在从头复习"
+            message = "该单元已学完,现在从头复习" if progress.is_completed else "从头开始学习"
         else:
             message = f"继续上次的学习,从第 {current_word_index + 1} 个单词开始"
 
@@ -283,8 +294,13 @@ async def update_progress(
         progress.completed_words = progress.total_words
         message = "恭喜!您已完成该单元的学习"
     else:
-        # 根据当前索引计算已完成单词数
-        progress.completed_words = request.current_word_index
+        # 根据当前索引计算已完成单词数。
+        # 已学完过的单元再学(复习轮)时不能把 completed_words 往下写:
+        # 否则学生背到第1组结束,单元进度条会从 100% 掉回 15%,单元完成标记形同虚设。
+        if progress.is_completed:
+            progress.completed_words = max(progress.completed_words or 0, request.current_word_index)
+        else:
+            progress.completed_words = request.current_word_index
         message = "学习进度已更新"
 
     await db.commit()
