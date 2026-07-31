@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent
 from app.api.v1.auth import get_current_student, get_current_teacher, get_current_user
 from app.services import presence_service
+from app.services.weak_words import NON_LEARNED_MODES
 
 router = APIRouter()
 
@@ -179,6 +180,7 @@ async def bigscreen_daily_stats_all(
         .join(Word, Word.id == LearningRecord.word_id)
         .where(
             LearningRecord.user_id.in_(list(name_map.keys())),
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
         )

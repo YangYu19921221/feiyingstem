@@ -23,12 +23,23 @@ from app.api.v1.teacher._permissions import (
     assert_student_in_my_class,
 )
 from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
+from app.services.weak_words import (
+    SCORING_MODES,
+    NON_LEARNED_MODES,
+    mastery_buckets,
+)
+from app.services import daily_words
 
 router = APIRouter()
 
-# 正确率只统计「有对错」的答题模式,与学生端 analytics.py 保持一致;
-# classify(分类拖卡)/review(复习) 会写 is_correct=0 的记录,计入会把正确率结构性拉低
-SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank')
+# 正确率/薄弱判定只统计「有对错」的答题模式,与学生端 analytics.py 保持一致;
+# classify(分类拖卡)/review(复习) 会写 is_correct=0 的记录,计入会把正确率结构性拉低。
+# SCORING_MODES 已上移到 services/weak_words.py 做全站唯一真源,这里只做导入。
+
+# 时长封顶:单会话 2 小时(兜极端挂机)、单日 12 小时(兜日历脏值)。
+# 与 teacher/classes.py 的 get_class_daily_stats 同值,改一处要改两处。
+SESSION_CAP_SEC = 7200
+DAY_CAP_SEC = 12 * 3600
 
 
 # ========================================
@@ -213,34 +224,21 @@ async def _build_students_stats(
     # 用于子查询过滤的 user_id 集合
     uid_set = {student_id} if student_id is not None else set(student_map.keys())
 
-    # --- 聚合1: WordMastery 统计 (学习数/掌握数/平均掌握度/薄弱数) ---
+    # --- 聚合1: WordMastery 统计 (学习数/掌握数/平均掌握度/薄弱数/待巩固数) ---
     # 词数按 lower(word) 去重、掌握线 >=3,与学生端 analytics.py /overview 全站统一口径一致
     # (原先按行计数+掌握线>=4,学生自己页面和老师看到的对不上)
-    result = await db.execute(
-        select(
-            WordMastery.user_id,
-            func.count(func.distinct(func.lower(Word.word))).label("total_words"),
-            func.count(func.distinct(
-                case((WordMastery.mastery_level >= 3, func.lower(Word.word)))
-            )).label("mastered"),
-            func.avg(WordMastery.mastery_level).label("avg_mastery"),
-            func.count(func.distinct(
-                case((WordMastery.mastery_level < 3, func.lower(Word.word)))
-            )).label("weak"),
-        )
-        .select_from(WordMastery)
-        .join(Word, Word.id == WordMastery.word_id)
-        .where(WordMastery.user_id.in_(uid_set))
-        .group_by(WordMastery.user_id)
-    )
-    mastery_map = {}
-    for row in result.all():
-        mastery_map[row.user_id] = {
-            "total_words": row.total_words or 0,
-            "mastered": row.mastered or 0,
-            "avg_mastery": row.avg_mastery or 0.0,
-            "weak": row.weak or 0,
+    # 薄弱不再等于"掌握度<3":那样练习次数不够的全对词也算薄弱(实测某学生 575 词
+    # 报 571 薄弱)。三档互斥且之和=已学词数,口径见 services/weak_words.py
+    mastery_map = {
+        uid: {
+            "total_words": b["words"],
+            "mastered": b["mastered"],
+            "avg_mastery": b["avg_mastery"],
+            "weak": b["weak"],
+            "pending": b["pending"],
         }
+        for uid, b in (await mastery_buckets(db, uid_set)).items()
+    }
 
     # --- 聚合2: StudyCalendar 统计 (学习天数/总时长/最后学习日期) ---
     result = await db.execute(
@@ -295,6 +293,7 @@ async def _build_students_stats(
         mastered_words = m.get("mastered", 0)
         avg_mastery = m.get("avg_mastery", 0.0)
         weak_count = m.get("weak", 0)
+        pending_count = m.get("pending", 0)
 
         study_days = c.get("study_days", 0)
         total_time = c.get("total_duration", 0)
@@ -322,6 +321,7 @@ async def _build_students_stats(
             total_correct=total_correct,
             total_wrong=total_records - total_correct,
             accuracy_rate=round(accuracy, 2),
+            pending_words_count=pending_count,
         ))
 
     return stats_list
@@ -392,16 +392,68 @@ async def get_student_weak_points(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher)
 ):
-    """获取学生的薄弱单词"""
+    """
+    获取学生的薄弱单词。
+
+    口径(2026-07-25 重订,见 services/weak_words.py):薄弱 = 掌握度 < 3
+    **且在计分模式里真的答错过**。原来只看 mastery_level < 3,而 3 档门槛是
+    "答对 ≥3 次",于是"只练过一两次但全对"的词全被打成薄弱——榜上 57% 的行
+    错误次数为 0,教师端显示"❌ 错误 0 次 … 正确率 100%"自相矛盾。
+
+    对错口径也一并修:统计只认 learning_records 里 SCORING_MODES 的记录,
+    不再用 word_mastery.wrong_count(它把 classify 的"我不认识"自评也累加进去,
+    本地库 7672 条 classify 错误里没一条是真答错)。
+    """
     # 验证该学生是否属于当前教师的班级
     await assert_student_in_my_class(db, current_user.id, student_id)
 
-    # 查询掌握度低的单词。
-    # 排序按"最近练过的排前":原来的 mastery ASC + last_practiced ASC 会让
-    # 几个月前碰过一次就再没学的陈年词霸榜(实测前20全是仨月前的对0错1),
-    # 对老师毫无行动价值;近期还在错的词才是当下真正的薄弱点。
-    # 另:同拼写在多本书各有一行,取数多抓几倍后按拼写去重,保留最近练过的那行。
-    result = await db.execute(
+    # 按拼写聚合真实答题表现:只算有对错的模式,并取真正最后一次答错的时间
+    # (原来 last_error_at 是 last_practiced_at 的别名,零错误的词也显示"最后错误")
+    perf_result = await db.execute(
+        select(
+            func.lower(Word.word).label("sp"),
+            func.count(LearningRecord.id).label("attempts"),
+            func.sum(case((LearningRecord.is_correct == True, 1), else_=0)).label("correct"),  # noqa: E712
+            func.sum(case((LearningRecord.is_correct == False, 1), else_=0)).label("wrong"),  # noqa: E712
+            func.max(
+                case((LearningRecord.is_correct == False, LearningRecord.created_at))  # noqa: E712
+            ).label("last_error"),
+        )
+        .select_from(LearningRecord)
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(
+            and_(
+                LearningRecord.user_id == student_id,
+                LearningRecord.learning_mode.in_(SCORING_MODES),
+            )
+        )
+        .group_by(func.lower(Word.word))
+        .having(func.sum(case((LearningRecord.is_correct == False, 1), else_=0)) > 0)  # noqa: E712
+    )
+    perf = {r.sp: r for r in perf_result.all()}
+    if not perf:
+        return []
+
+    # 出过错的模式(按拼写聚合,只列有对错的模式)
+    mode_result = await db.execute(
+        select(func.lower(Word.word).label("sp"), LearningRecord.learning_mode)
+        .select_from(LearningRecord)
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(
+            and_(
+                LearningRecord.user_id == student_id,
+                LearningRecord.learning_mode.in_(SCORING_MODES),
+                LearningRecord.is_correct == False,  # noqa: E712
+            )
+        )
+        .group_by(func.lower(Word.word), LearningRecord.learning_mode)
+    )
+    modes_map: dict[str, list[str]] = {}
+    for sp, mode in mode_result.all():
+        modes_map.setdefault(sp, []).append(mode)
+
+    # 取该学生未达掌握线的词(同拼写多本书各有一行,按拼写留掌握度最低/最近练的那条)
+    mastery_result = await db.execute(
         select(WordMastery, Word, WordDefinition)
         .join(Word, WordMastery.word_id == Word.id)
         .outerjoin(WordDefinition, and_(
@@ -411,62 +463,63 @@ async def get_student_weak_points(
         .where(
             and_(
                 WordMastery.user_id == student_id,
-                WordMastery.mastery_level < 3
+                WordMastery.mastery_level < 3,
+                func.lower(Word.word).in_(list(perf.keys())),
             )
         )
         .order_by(func.coalesce(WordMastery.last_practiced_at, WordMastery.created_at).desc())
-        .limit(max(limit * 3, 60))
     )
-    rows = result.all()
 
     seen_spellings: set[str] = set()
     picked = []
-    for mastery, word, definition in rows:
+    for mastery, word, definition in mastery_result.all():
         key = (word.word or "").strip().lower()
         if key in seen_spellings:
             continue
         seen_spellings.add(key)
-        picked.append((mastery, word, definition))
-        if len(picked) >= limit:
-            break
+        picked.append((key, mastery, word, definition))
 
     weak_points = []
-    for mastery, word, definition in picked:
-        total_attempts = mastery.correct_count + mastery.wrong_count
-        error_rate = (mastery.wrong_count / total_attempts * 100) if total_attempts > 0 else 0
-        accuracy_rate = 100 - error_rate
+    for key, mastery, word, definition in picked:
+        p = perf[key]
+        total_attempts = int(p.attempts or 0)
+        wrong = int(p.wrong or 0)
+        correct = int(p.correct or 0)
+        error_rate = (wrong / total_attempts * 100) if total_attempts > 0 else 0
 
-        # 获取该单词在哪些学习模式中出现过错误
-        learning_modes = []
-        if mastery.flashcard_wrong > 0:
-            learning_modes.append('flashcard')
-        if mastery.quiz_wrong > 0:
-            learning_modes.append('quiz')
-        if mastery.spelling_wrong > 0:
-            learning_modes.append('spelling')
-        if mastery.fillblank_wrong > 0:
-            learning_modes.append('fillblank')
-
-        # 如果last_practiced_at为空，使用created_at作为备用
-        last_time = mastery.last_practiced_at or mastery.created_at
+        last_error = p.last_error
+        if isinstance(last_error, str):  # SQLite 聚合可能回字符串
+            try:
+                last_error = datetime.fromisoformat(last_error)
+            except ValueError:
+                last_error = None
 
         weak_points.append(StudentWeakPoint(
             word_id=word.id,
             word=word.word,
             meaning=definition.meaning if definition else "无释义",
             mastery_level=mastery.mastery_level,
-            correct_count=mastery.correct_count,
-            wrong_count=mastery.wrong_count,
-            error_count=mastery.wrong_count,  # 别名
+            correct_count=correct,
+            wrong_count=wrong,
+            error_count=wrong,  # 别名
             total_attempts=total_attempts,
             error_rate=round(error_rate, 2),
-            accuracy_rate=round(accuracy_rate, 2),
-            last_practiced_at=last_time,
-            last_error_at=last_time,  # 别名
-            learning_modes=learning_modes
+            accuracy_rate=round(100 - error_rate, 2),
+            last_practiced_at=mastery.last_practiced_at or mastery.created_at,
+            last_error_at=last_error,  # 真的最后一次答错,没错过就为空
+            learning_modes=sorted(modes_map.get(key, [])),
         ))
 
-    return weak_points
+    # 反复错的排最前(错误次数优先于错误率:错 6 次比"只做过 1 次全错"更该讲),
+    # 同错误次数再看错误率,最后按最近错过的优先——老师照着从上往下讲就行
+    weak_points.sort(
+        key=lambda w: (
+            -w.error_count,
+            -w.error_rate,
+            -(w.last_error_at.timestamp() if w.last_error_at else 0),
+        )
+    )
+    return weak_points[:limit]
 
 
 # ========================================
@@ -908,38 +961,85 @@ def _ranking_period_range(period: str):
     raise HTTPException(status_code=400, detail=f"不支持的时间维度: {period}")
 
 
-async def _period_ranking_scores(db, student_ids, metric, start, end) -> dict:
+def _ranking_period_days(period: str) -> tuple[date, date]:
+    """period 对应的北京日历日闭区间 [首日, 末日],供逐日去重学词口径用。"""
+    from app.core.timeutil import local_today
+    today = local_today()
+    if period == "today":
+        return today, today
+    if period == "this_week":
+        monday = today - timedelta(days=today.weekday())
+        return monday, monday + timedelta(days=6)
+    if period == "this_month":
+        first = today.replace(day=1)
+        if today.month == 12:
+            next_first = first.replace(year=today.year + 1, month=1)
+        else:
+            next_first = first.replace(month=today.month + 1)
+        return first, next_first - timedelta(days=1)
+    raise HTTPException(status_code=400, detail=f"不支持的时间维度: {period}")
+
+
+async def _period_ranking_scores(db, student_ids, metric, period, start, end) -> dict:
     """周期口径下每个学生的分值。
-    - mastered_words: 周期内答对的不重复 word_id 数（可回溯，替代累计快照）
+    - mastered_words: 周期内学词数 = 逐日去重再相加(与每日数据表/导出表同口径)
     - study_time: 周期内 StudySession 时长(小时)
     - accuracy: 周期内答题正确率(%)
     """
     if metric == "mastered_words":
-        res = await db.execute(
-            select(
-                LearningRecord.user_id,
-                func.count(func.distinct(LearningRecord.word_id)),
-            ).where(and_(
-                LearningRecord.user_id.in_(student_ids),
-                LearningRecord.is_correct.is_(True),
-                LearningRecord.created_at >= start,
-                LearningRecord.created_at < end,
-            )).group_by(LearningRecord.user_id)
-        )
-        return {uid: float(v or 0) for uid, v in res.all()}
+        # 学词数统一走 daily_words 区间口径:distinct lower(word)、排除 classify、
+        # 当天重复只算一次、跨天可再算。原先手写"周期内答对的整段去重词数",
+        # 一周复习同一批词全被抹掉,本周数字只有每日表逐日之和的 1/3,
+        # 老师对不上(2026-07-31 生产实测 2534 vs 7747)。
+        start_day, end_day = _ranking_period_days(period)
+        scores = await daily_words.words_sum_by_student(db, list(student_ids), start_day, end_day)
+        return {uid: float(v) for uid, v in scores.items()}
     if metric == "study_time":
-        res = await db.execute(
+        # 时长与每日数据表逐日同源:每天取 max(封顶会话和, 日历净活动时长),再跨天相加。
+        # 不能用裸 sum(StudySession.time_spent) —— 复习模式和中途退出的会话系统性低报
+        # (生产实测有学生排行榜 18 分钟、每日表逐日加总 13 小时);也不能只用日历,
+        # 07-09 之前的 duration 是逐题累加的虚高值。口径见 teacher/classes.py 的
+        # get_class_daily_stats,老师手动把每日表加一遍必须能对上排行榜。
+        start_day, end_day = _ranking_period_days(period)
+        uid_list = list(student_ids)
+        sess_day = func.date(StudySession.started_at, "+8 hours")
+        sess_rows = (await db.execute(
             select(
                 StudySession.user_id,
-                func.coalesce(func.sum(StudySession.time_spent), 0),
+                sess_day.label("d"),
+                func.sum(func.min(StudySession.time_spent, SESSION_CAP_SEC)).label("dur"),
             ).where(and_(
-                StudySession.user_id.in_(student_ids),
+                StudySession.user_id.in_(uid_list),
                 StudySession.started_at >= start,
                 StudySession.started_at < end,
-            )).group_by(StudySession.user_id)
-        )
-        return {uid: round(float(v or 0) / 3600, 2) for uid, v in res.all()}
-    # accuracy
+            )).group_by(StudySession.user_id, sess_day)
+        )).all()
+        per_day: dict[tuple[int, str], int] = {
+            (r.user_id, str(r.d)): int(r.dur or 0) for r in sess_rows
+        }
+        cal_rows = (await db.execute(
+            select(
+                StudyCalendar.user_id,
+                StudyCalendar.study_date,
+                StudyCalendar.duration,
+            ).where(and_(
+                StudyCalendar.user_id.in_(uid_list),
+                StudyCalendar.study_date >= start_day,
+                StudyCalendar.study_date <= end_day,
+            ))
+        )).all()
+        for r in cal_rows:
+            key = (r.user_id, r.study_date.isoformat())
+            cal_dur = min(int(r.duration or 0), DAY_CAP_SEC)
+            if cal_dur > per_day.get(key, 0):
+                per_day[key] = cal_dur
+        totals: dict[int, int] = {}
+        for (uid, _day), secs in per_day.items():
+            totals[uid] = totals.get(uid, 0) + secs
+        return {uid: round(v / 3600, 2) for uid, v in totals.items()}
+    # accuracy:只算计分模式(与本文件"累计"档、学生端 /overview 全站一致)。
+    # 原先不过滤,classify 自评和 review 复习记录(大量 is_correct=0)全被计入,
+    # 生产实测同一学生本周 1.9% vs 45.0%,且同控件切到"累计"档口径就变了。
     res = await db.execute(
         select(
             LearningRecord.user_id,
@@ -947,6 +1047,7 @@ async def _period_ranking_scores(db, student_ids, metric, start, end) -> dict:
             func.sum(LearningRecord.is_correct.cast(Integer)),
         ).where(and_(
             LearningRecord.user_id.in_(student_ids),
+            LearningRecord.learning_mode.in_(SCORING_MODES),
             LearningRecord.created_at >= start,
             LearningRecord.created_at < end,
         )).group_by(LearningRecord.user_id)
@@ -974,7 +1075,7 @@ async def get_class_id_ranking(
     - all: 累计（mastered_words 为掌握度≥4 快照，accuracy/study_time 为全期聚合）
 
     排行依据 metric:
-    - mastered_words: 掌握单词数（周期口径 = 周期内答对的不重复单词数）
+    - mastered_words: 单词数（周期口径 = 逐日去重学词数之和,与每日数据表同口径；累计 = 掌握度快照）
     - study_time: 学习时长（小时）
     - accuracy: 正确率（%）
     """
@@ -1019,7 +1120,7 @@ async def get_class_id_ranking(
         else:
             score_map = {s.user_id: round(s.total_study_time / 3600, 2) for s in all_stats}
     else:
-        score_map = await _period_ranking_scores(db, student_ids, metric, start, end)
+        score_map = await _period_ranking_scores(db, student_ids, metric, period, start, end)
 
     # 组装：所有在册学生都列出（无数据补 0），按分值降序
     rows = []
@@ -1221,18 +1322,21 @@ async def get_student_day_timeline(
 
     events.sort(key=lambda x: x[0])
 
-    # 汇总(与每日数据表格同源)
+    # 汇总:时长/切屏从 StudyCalendar 取,**词数实算**(daily_words)——
+    # 原来读 cal.words_learned 并注释"与每日数据表格同源",其实不同源:
+    # 每日数据表一直是 distinct(lower(word)) 实算的,而那个字段历史上跨批次累加。
     cal = (await db.execute(
         select(StudyCalendar).where(and_(
             StudyCalendar.user_id == student_id, StudyCalendar.study_date == dt))
     )).scalar_one_or_none()
+    words_today = await daily_words.words_on_day(db, student_id, dt)
 
     return {
         "student_id": student_id,
         "date": dt.isoformat(),
         "checkin_time": bjt(ck.checkin_at) if (ck and ck.checkin_at) else None,
         "net_duration": (cal.duration if cal else 0) or 0,
-        "words_learned": (cal.words_learned if cal else 0) or 0,
+        "words_learned": words_today,
         "distracted_count": int(getattr(cal, "distracted_count", 0) or 0) if cal else 0,
         "switch_count": int(getattr(cal, "switch_count", 0) or 0) if cal else 0,
         "timeline": [e for _, e in events],

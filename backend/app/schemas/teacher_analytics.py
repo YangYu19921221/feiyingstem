@@ -31,8 +31,9 @@ class StudentLearningStats(BaseModel):
     total_wrong: int = 0
     accuracy_rate: float = 0.0
 
-    # 薄弱点
-    weak_words_count: int = Field(0, description="薄弱单词数(掌握度<3)")  # 前端期望的字段名
+    # 薄弱点(三档互斥: mastered_words + weak_words_count + pending_words_count = words_learned)
+    weak_words_count: int = Field(0, description="薄弱单词数(未达掌握线且真的答错过)")
+    pending_words_count: int = Field(0, description="待巩固单词数(未达掌握线但没答错过,多是练习次数不够)")
 
 
 class ClassOverviewStats(BaseModel):
@@ -98,7 +99,13 @@ class StudentProgressDetail(BaseModel):
 
 
 class StudentWeakPoint(BaseModel):
-    """学生薄弱点分析"""
+    """
+    学生薄弱点分析
+
+    对错口径:只统计计分模式(exam/quiz/spelling/fillblank)的 learning_records,
+    分类自评的"我不认识"不算答错。故 wrong_count >= 1 恒成立,
+    准确率 = correct/attempts,不会再出现"错误0次+准确率100%"的矛盾行。
+    """
     word_id: int
     word: str
     meaning: str
@@ -110,7 +117,7 @@ class StudentWeakPoint(BaseModel):
     error_rate: float
     accuracy_rate: float  # 100 - error_rate
     last_practiced_at: Optional[datetime]
-    last_error_at: Optional[datetime]  # 别名,与last_practiced_at相同
+    last_error_at: Optional[datetime] = None  # 真的最后一次答错时间
     learning_modes: List[str] = []  # 该单词在哪些学习模式中出现过错误
 
 

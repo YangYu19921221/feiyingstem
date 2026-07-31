@@ -2,7 +2,7 @@
 周维度统计。展示前 10 名 + 当前学生「邻居区」（我的上下各 2 名）。
 支持 scope=班级榜 / 全平台榜（无班级时自动回退到全平台）。
 """
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -17,7 +17,7 @@ from app.core.timeutil import (
 )
 from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.user import User, Class, ClassStudent
-from app.models.word import Word
+from app.services import daily_words
 
 router = APIRouter()
 
@@ -37,6 +37,23 @@ def _period_range(period: PeriodKind) -> tuple[datetime, datetime]:
     if period == "last_week":
         return local_week_utc_range(today - timedelta(days=7))
     return local_month_utc_range(today)
+
+
+def _period_days(period: PeriodKind) -> tuple[date, date]:
+    """返回周期对应的北京日历日闭区间 [首日, 末日],供逐日去重学词口径用。"""
+    today = local_today()
+    if period == "today":
+        return today, today
+    if period in ("this_week", "last_week"):
+        base = today if period == "this_week" else today - timedelta(days=7)
+        monday = base - timedelta(days=base.weekday())
+        return monday, monday + timedelta(days=6)
+    first = today.replace(day=1)
+    if today.month == 12:
+        next_first = first.replace(year=today.year + 1, month=1)
+    else:
+        next_first = first.replace(month=today.month + 1)
+    return first, next_first - timedelta(days=1)
 
 
 class LeaderboardEntry(BaseModel):
@@ -100,26 +117,15 @@ async def _resolve_scope(
 
 
 async def _vocabulary_rows(db, period, allowed):
-    """词汇王：本周期内答对的不重复 word_id 数"""
-    start, end = _period_range(period)
-    conds = [
-        LearningRecord.created_at >= start,
-        LearningRecord.created_at < end,
-    ]
-    if allowed is not None:
-        conds.append(LearningRecord.user_id.in_(allowed))
-    # 口径与教师端每日数据一致:LOWER(word) 拼写去重,接触过即算(不要求答对)
-    stmt = (
-        select(
-            LearningRecord.user_id,
-            func.count(func.distinct(func.lower(Word.word))).label("v"),
-        )
-        .join(Word, Word.id == LearningRecord.word_id)
-        .where(and_(*conds))
-        .group_by(LearningRecord.user_id)
-        .order_by(func.count(func.distinct(func.lower(Word.word))).desc())
-    )
-    return [(r[0], r[1]) for r in (await db.execute(stmt)).all()]
+    """词汇王：本周期内的学词数(逐天去重再相加)。
+
+    口径与教师端每日数据表/班级排行榜完全一致,统一走 daily_words:
+    LOWER(word) 拼写去重、排除 classify(自评熟/生不算学词,否则刷分类就能冲榜)、
+    **当天重复只算一次但跨天可以再算**。原先是"整个周期去重",一周复习同一批词
+    会被抹成只学了一批,和教师端数字差 3 倍(生产实测 2536 vs 7795)。
+    """
+    start_day, end_day = _period_days(period)
+    return await daily_words.words_sum_rows(db, allowed, start_day, end_day)
 
 
 async def _diligence_rows(db, period, allowed):
@@ -225,17 +231,14 @@ async def _build_response(
 async def _get_my_period_value(db, kind, user_id, start, end) -> int:
     """当前学生在某周期的指标值（用于环比，全口径不分范围）"""
     if kind == "vocabulary":
-        r = await db.execute(
-            select(func.count(func.distinct(func.lower(Word.word))))
-            .select_from(LearningRecord)
-            .join(Word, Word.id == LearningRecord.word_id)
-            .where(and_(
-                LearningRecord.user_id == user_id,
-                LearningRecord.created_at >= start,
-                LearningRecord.created_at < end,
-            ))
-        )
-        return int(r.scalar() or 0)
+        # 与 _vocabulary_rows 同口径(逐天去重再相加),否则环比是拿两把尺子比:
+        # 本周新口径偏大、上周旧口径偏小,delta 会凭空多出一截。
+        # start/end 是 UTC 时间戳,+8 小时才是北京日历日(与 local_day_utc_range 互逆);
+        # 直接 .date() 会把周一算成周日,整个环比错一天。
+        first_day = (start + timedelta(hours=8)).date()
+        last_day = (end + timedelta(hours=8)).date() - timedelta(days=1)
+        scores = await daily_words.words_sum_by_student(db, [user_id], first_day, last_day)
+        return scores.get(user_id, 0)
     if kind == "diligence":
         r = await db.execute(
             select(func.coalesce(func.sum(StudySession.time_spent), 0)).where(and_(
