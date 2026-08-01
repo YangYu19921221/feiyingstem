@@ -33,6 +33,10 @@ interface ClassificationPhaseProps {
   pkCurrentWord?: { id: number; word: string; translation: string };
   pkOnAnswer?: (category: WordCategory, timeSpentMs: number) => void;
   pkDisabled?: boolean;
+  /** 组内轮次断点续学的 localStorage key(带用户+单元+组号)。
+   *  传了就把 轮次/本轮词表/已分类结果/当前词 实时存档,刷新原地恢复;
+   *  分类阶段完成时自动清档。不传(PK/无需续学场景)则不落盘 */
+  persistKey?: string;
 }
 
 const CLASSIFY_TIME_SHORT = 10;       // 单词
@@ -63,6 +67,33 @@ function isPhrase(text: string | undefined): boolean {
   return !!text && text.trim().split(/\s+/).length >= 2;
 }
 
+/** 轮次断点存档(刷新续学)。词表对不上(换组/换词/过期24h)即放弃,绝不半恢复 */
+function tryRestoreRound(persistKey: string | undefined, words: WordData[]): {
+  round: number; roundWords: WordData[]; results: Map<number, WordCategory>; currentIndex: number;
+} | null {
+  if (!persistKey) return null;
+  try {
+    const raw = localStorage.getItem(persistKey);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s?.savedAt || Date.now() - s.savedAt > 24 * 3600 * 1000) return null;
+    if (!Array.isArray(s.roundWordIds) || s.roundWordIds.length === 0) return null;
+    const byId = new Map(words.map(w => [w.id, w]));
+    const roundWords = (s.roundWordIds as number[]).map(id => byId.get(id)).filter((w): w is WordData => !!w);
+    if (roundWords.length !== s.roundWordIds.length) return null;
+    const currentIndex = Math.min(Math.max(0, Number(s.currentIndex) || 0), roundWords.length - 1);
+    const entries = (Array.isArray(s.results) ? s.results : []) as Array<[number, WordCategory]>;
+    return {
+      round: Math.max(1, Number(s.round) || 1),
+      roundWords,
+      results: new Map(entries.filter(([id]) => byId.has(id))),
+      currentIndex,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 分类附加语义:
  * - studied: 学生在"不限时学习态"里点了继续——记为陌生,但不再攒连错/弹消化卡
@@ -85,6 +116,7 @@ export default function ClassificationPhase({
   pkCurrentWord,
   pkOnAnswer,
   pkDisabled,
+  persistKey,
 }: ClassificationPhaseProps) {
   // PK mode: render a controlled single-word card; skip solo loop entirely.
   if (mode === 'pk' && pkCurrentWord && pkOnAnswer) {
@@ -98,14 +130,17 @@ export default function ClassificationPhase({
     );
   }
 
-  const [roundWords, setRoundWords] = useState<WordData[]>(words);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [round, setRound] = useState(1);
-  const [timeLeft, setTimeLeft] = useState(() => getClassifyTime(words[0]?.word));
+  // 挂载时读一次轮次断点(刷新续学):恢复 轮次/本轮词表/已分类/当前词
+  const [restored] = useState(() => tryRestoreRound(persistKey, words));
+  const [roundWords, setRoundWords] = useState<WordData[]>(restored ? restored.roundWords : words);
+  const [currentIndex, setCurrentIndex] = useState(restored ? restored.currentIndex : 0);
+  const [round, setRound] = useState(restored ? restored.round : 1);
+  const [timeLeft, setTimeLeft] = useState(() =>
+    getClassifyTime((restored ? restored.roundWords[restored.currentIndex] : words[0])?.word));
   // 倒计时的权威值放 ref(interval 里读写),state 仅驱动进度条渲染;
   // 外部 setTimeLeft 重置时由下方 effect 同步回 ref
   const timeLeftRef = useRef(timeLeft);
-  const [results, setResults] = useState<Map<number, WordCategory>>(new Map());
+  const [results, setResults] = useState<Map<number, WordCategory>>(() => restored ? new Map(restored.results) : new Map());
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [roundErrors, setRoundErrors] = useState(0);
@@ -207,7 +242,8 @@ export default function ClassificationPhase({
     }
 
     if (errorWords.length === 0) {
-      // 全部熟悉，分类结束
+      // 全部熟悉，分类结束;清掉轮次断点档(下次学这组从头开始是应该的)
+      if (persistKey) localStorage.removeItem(persistKey);
       onComplete(newResults);
     } else {
       // 实时通知错题
@@ -229,7 +265,7 @@ export default function ClassificationPhase({
         roundEndedRef.current = false; // 新一轮解锁
       }, 2000);
     }
-  }, [roundWords, onComplete, onRoundMistakes, onRoundFamiliar]);
+  }, [roundWords, onComplete, onRoundMistakes, onRoundFamiliar, persistKey]);
 
   const handleClassify = useCallback((category: WordCategory, opts?: ClassifyOpts) => {
     // lockRef 同步生效: 定时器归零瞬间的手点、渲染 commit 前的连点都会被拦,
@@ -331,6 +367,19 @@ export default function ClassificationPhase({
   useEffect(() => {
     timeLeftRef.current = timeLeft;
   }, [timeLeft]);
+
+  // 轮次断点实时落盘:每次分类/换轮后写入,刷新可原地恢复。
+  // 回顾卡开着时索引会越界(收轮前瞬态),跳过不写,免得存出一个恢复不了的档
+  useEffect(() => {
+    if (!persistKey || currentIndex >= roundWords.length) return;
+    localStorage.setItem(persistKey, JSON.stringify({
+      round,
+      roundWordIds: roundWords.map(w => w.id),
+      results: Array.from(results.entries()),
+      currentIndex,
+      savedAt: Date.now(),
+    }));
+  }, [persistKey, round, roundWords, results, currentIndex]);
 
   const fetchMemoryHook = useCallback(async () => {
     if (!currentWord || hookLoading) return;

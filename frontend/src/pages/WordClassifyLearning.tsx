@@ -177,6 +177,8 @@ const WordClassifyLearning = () => {
 
   // 保存组内进度到 localStorage（仅数据加载后生效）
   // 连同 classifyResults / dictationResults 一起存，恢复时能精确回到上次的阶段
+  // familiarSubmitted 也要存:各轮已实时上报过正确记录的词,刷新丢了这个集合
+  // 组末 saveGroupProgress 会把它们再报一遍(正确记录重复计)
   const saveLocalProgress = useCallback(() => {
     if (!progressKey || phase === 'summary' || !learningData) return;
     localStorage.setItem(progressKey, JSON.stringify({
@@ -186,6 +188,7 @@ const WordClassifyLearning = () => {
       dictationResults,
       dictationSource,
       recapRetryWords,
+      familiarSubmitted: Array.from(familiarSubmittedRef.current),
       timestamp: Date.now(),
     }));
   }, [progressKey, currentGroupIndex, phase, classifyResults, dictationResults, dictationSource, recapRetryWords, learningData]);
@@ -195,9 +198,14 @@ const WordClassifyLearning = () => {
     saveLocalProgress();
   }, [phase, currentGroupIndex, classifyResults, dictationResults, saveLocalProgress]);
 
-  // 清除存档（一组完成或全部完成时）
+  // 清除存档（一组完成或全部完成时);连同分类阶段的轮次断点档(_g*_round)一起扫掉
   const clearLocalProgress = useCallback(() => {
-    if (progressKey) localStorage.removeItem(progressKey);
+    if (!progressKey) return;
+    localStorage.removeItem(progressKey);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(`${progressKey}_g`)) localStorage.removeItem(k);
+    }
   }, [progressKey]);
 
   // 从 learningData 派生分组（不存储在 state 中）
@@ -302,6 +310,10 @@ const WordClassifyLearning = () => {
               }
               if (Array.isArray(saved.dictationResults) && saved.dictationResults.length > 0) {
                 setDictationResults(saved.dictationResults);
+              }
+              // 恢复"已实时上报正确记录"的词集,组末提交跳过它们防重复计
+              if (Array.isArray(saved.familiarSubmitted)) {
+                familiarSubmittedRef.current = new Set(saved.familiarSubmitted);
               }
 
               // 按存档阶段恢复；classify 阶段内部进度未持久化，所以回到 classify 从头
@@ -957,6 +969,7 @@ const WordClassifyLearning = () => {
             <motion.div key={`classify-${currentGroupIndex}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <ClassificationPhase
                 words={currentGroupWords}
+                persistKey={progressKey ? `${progressKey}_g${currentGroupIndex}_round` : undefined}
                 onComplete={handleClassifyComplete}
                 onRoundMistakes={(wordIds) => {
                   submitMistakesRealtime(
@@ -970,6 +983,8 @@ const WordClassifyLearning = () => {
                   const fresh = wordIds.filter(id => !familiarSubmittedRef.current.has(id));
                   if (fresh.length === 0) return;
                   fresh.forEach(id => familiarSubmittedRef.current.add(id));
+                  // ref 变化不触发存档 effect,这里手动存一次,刷新后集合不回退
+                  saveLocalProgress();
                   submitCorrectRealtime(
                     fresh.map(id => ({ word_id: id, is_correct: true, time_spent: 0, learning_mode: 'classify' }))
                   );
