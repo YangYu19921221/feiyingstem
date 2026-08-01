@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Activity, ArrowRight, BarChart3, BookOpen, Building2, ChevronRight, CircleDollarSign, Cog, GraduationCap, LogOut, Megaphone, Settings, ShieldCheck, Sparkles, Ticket, Trophy, Users } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, BookOpen, Building2, ChevronRight, CircleDollarSign, Cog, Gauge, GraduationCap, LogOut, Megaphone, Settings, ShieldCheck, Sparkles, Ticket, Trophy, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
 
@@ -18,6 +18,7 @@ const actions: ActionItem[] = [
   { title: '内容管理', description: '单词与单词本', path: '/admin/content', icon: BookOpen, tone: 'bg-emerald-50 text-emerald-600' },
   { title: 'AI 配置', description: '模型与服务设置', path: '/admin/ai-config', icon: Sparkles, tone: 'bg-violet-50 text-violet-600' },
   { title: '数据统计', description: '系统使用情况', path: '/admin/statistics', icon: Activity, tone: 'bg-sky-50 text-sky-600' },
+  { title: '服务器监控', description: 'CPU·内存·网络实时状态', path: '/admin/server-monitor', icon: Gauge, tone: 'bg-teal-50 text-teal-600' },
   { title: '系统设置', description: '配置与版本更新', path: '/admin/settings', icon: Settings, tone: 'bg-slate-100 text-slate-600' },
   { title: '订阅管理', description: '兑换码与订阅', path: '/admin/subscriptions', icon: Ticket, tone: 'bg-amber-50 text-amber-600' },
   { title: '单词比赛', description: '竞赛排行与概览', path: '/admin/competition', icon: Trophy, tone: 'bg-rose-50 text-rose-600' },

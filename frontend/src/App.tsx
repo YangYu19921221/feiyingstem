@@ -82,6 +82,7 @@ const AdminUserManagement = lazyWithRetry(() => import('./pages/AdminUserManagem
 const AdminContentManagement = lazyWithRetry(() => import('./pages/AdminContentManagement'));
 const AdminStatistics = lazyWithRetry(() => import('./pages/AdminStatistics'));
 const AdminSettings = lazyWithRetry(() => import('./pages/AdminSettings'));
+const AdminServerMonitor = lazyWithRetry(() => import('./pages/AdminServerMonitor'));
 const AIConfig = lazyWithRetry(() => import('./pages/Admin/AIConfig'));
 const TeacherExamPreview = lazyWithRetry(() => import('./pages/TeacherExamPreview'));
 const RedeemSubscription = lazyWithRetry(() => import('./pages/RedeemSubscription'));
@@ -829,6 +830,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminSettings />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 管理员 - 服务器监控 */}
+        <Route
+          path="/admin/server-monitor"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminServerMonitor />
             </ProtectedRoute>
           }
         />
