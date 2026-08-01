@@ -1,10 +1,16 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { API_BASE_URL } from '../config/env';
 
 /**
  * 共享发音 hook
  * 统一使用后端 Edge TTS 接口（en-GB-SoniaNeural 英式女声）
  * 支持预加载、缓存、重试、移动端兼容
+ *
+ * ⚠️ 发音只允许这一个声音(2026-08-01 拍板):任何失败都保持安静,
+ * 绝不退浏览器 speechSynthesis——系统音色和 Sonia 差异巨大,
+ * 刷新页面(无用户手势)时 audio.play() 被自动播放策略拦截,
+ * 旧的兜底会用系统音开口,学生听到"发音变了"。现在被拦就静默跳过,
+ * 循环播放隔 1s 重试,用户一交互下一遍自然恢复正常声音。
  */
 
 // 版本号：修改发音源时递增，使浏览器缓存失效
@@ -46,68 +52,53 @@ function interruptAllAudio(): number {
 }
 
 // 缓存浏览器 TTS 音色，首次 getVoices() 常为空，需等 voiceschanged
-let cachedVoices: SpeechSynthesisVoice[] = [];
-function ensureVoices(): Promise<SpeechSynthesisVoice[]> {
-  return new Promise((resolve) => {
-    if (!('speechSynthesis' in window)) {
-      resolve([]);
-      return;
-    }
-    const got = speechSynthesis.getVoices();
-    if (got && got.length) {
-      cachedVoices = got;
-      resolve(got);
-      return;
-    }
-    // 音色异步加载：监听一次 voiceschanged，最多等 1s 后兜底返回
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      cachedVoices = speechSynthesis.getVoices() || [];
-      resolve(cachedVoices);
+// （2026-08-01 起浏览器 TTS 兜底整体移除:只保留 interruptAllAudio 里的
+//  speechSynthesis.cancel(),用于掐掉历史版本页面可能残留的系统发音）
+
+// ---- 自动播放解锁:刷新后无用户手势,play() 会被浏览器拦(NotAllowedError) ----
+// 被拦时亮出全屏「点击继续学习」蒙层(AudioUnlockOverlay,订阅下面的状态),
+// 首次手势(点击/按键)在事件处理器里同步补读当前词——带用户激活,浏览器放行。
+// 否则学生刷新后干等,不知道为什么没声音(2026-08-01 实际反馈)
+let audioBlocked = false;
+let blockedListeners: Array<(blocked: boolean) => void> = [];
+function setAudioBlocked(b: boolean) {
+  if (audioBlocked === b) return;
+  audioBlocked = b;
+  blockedListeners.forEach((l) => l(b));
+}
+
+/** 全局蒙层订阅:发音是否正被自动播放策略拦着 */
+export function useAudioBlocked(): boolean {
+  const [blocked, setBlocked] = useState(audioBlocked);
+  useEffect(() => {
+    blockedListeners.push(setBlocked);
+    return () => {
+      blockedListeners = blockedListeners.filter((l) => l !== setBlocked);
     };
-    speechSynthesis.addEventListener('voiceschanged', finish, { once: true });
-    setTimeout(finish, 1000);
-  });
+  }, []);
+  return blocked;
 }
 
-function pickEnglishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
-  // 优先英语女声。不同系统的 getVoices() 排序不固定，不能再简单取第一个 en-GB，否则刷新后可能回退到男声。
-  const english = voices.filter(v => v.lang?.toLowerCase().startsWith('en'));
-  if (english.length === 0) return undefined;
+let pendingUnlockRetry: (() => void) | null = null;
+let unlockListenersOn = false;
 
-  const femaleHint = /female|sonia|samantha|ava|aria|jenny|zira|karen|susan|emily|hazel|libby|kate|moira|tessa|allison|victoria|google uk english female/i;
-  const maleHint = /male|david|mark|guy|alex|daniel|george|fred|tom|google uk english male/i;
-  return english.find(v => femaleHint.test(`${v.name} ${v.voiceURI}`))
-    || english.find(v => !maleHint.test(`${v.name} ${v.voiceURI}`))
-    || english.find(v => v.lang.toLowerCase().startsWith('en-gb'))
-    || english[0];
-}
-
-/**
- * 浏览器内置 TTS 兜底：Edge TTS 网络偶发失败时仍要发出声音。
- * 等音色加载完成并显式指定英语音色，避免首次 getVoices() 为空导致的静音。
- * 传入 token：等音色期间若已发起新播放（token 失配）则放弃，防止盖在新词上。
- */
-async function speakWithBrowserTTS(text: string, rate: number, token: number, onDone?: () => void) {
-  if (!('speechSynthesis' in window)) {
-    onDone?.();
-    return;
-  }
-  try { speechSynthesis.cancel(); } catch {}
-  const voices = await ensureVoices();
-  if (token !== globalPlayToken) { onDone?.(); return; }
-  const utterance = new SpeechSynthesisUtterance(text);
-  const voice = pickEnglishVoice(voices);
-  if (voice) utterance.voice = voice;
-  utterance.lang = voice?.lang || 'en-GB';
-  utterance.rate = rate;
-  if (onDone) {
-    utterance.onend = onDone;
-    utterance.onerror = onDone;
-  }
-  speechSynthesis.speak(utterance);
+function handleAutoplayBlocked(retry: () => void) {
+  pendingUnlockRetry = retry;
+  setAudioBlocked(true);
+  if (unlockListenersOn) return;
+  unlockListenersOn = true;
+  const onFirstGesture = () => {
+    unlockListenersOn = false;
+    window.removeEventListener('pointerdown', onFirstGesture, true);
+    window.removeEventListener('keydown', onFirstGesture, true);
+    const r = pendingUnlockRetry;
+    pendingUnlockRetry = null;
+    setAudioBlocked(false);
+    // 手势事件处理器内同步发起播放,天然带用户激活,浏览器放行
+    r?.();
+  };
+  window.addEventListener('pointerdown', onFirstGesture, true);
+  window.addEventListener('keydown', onFirstGesture, true);
 }
 
 async function fetchAudioBlob(word: string, wordId?: number): Promise<string> {
@@ -206,11 +197,20 @@ export function useAudio() {
       audio.currentTime = 0;
       await audio.play();
     } catch (e) {
-      // 本次播放已过期则不再兜底，避免对旧词朗读盖过当前词
+      // 本次播放已过期则不必提示
       if (globalPlayToken !== token) return;
-      // 最终 fallback：浏览器内置 TTS（已等音色加载，指定英语音色）
-      console.warn('Edge TTS 失败，回退浏览器发音:', e);
-      await speakWithBrowserTTS(text, rate, token);
+      // 只允许 Edge TTS 一个声音:失败保持安静,不用系统音色兜底。
+      // 自动播放被拦 → 提示点屏,首次手势立刻补读这个词(src 已就位)
+      if ((e as Error)?.name === 'NotAllowedError') {
+        handleAutoplayBlocked(() => {
+          if (globalPlayToken === token && audio) {
+            audio.currentTime = 0;
+            audio.play().catch(() => {});
+          }
+        });
+      } else {
+        console.warn('Edge TTS 播放失败,本次保持静默:', e);
+      }
     }
   }, []);
 
@@ -239,11 +239,24 @@ export function useAudio() {
         audio.currentTime = 0;
         await new Promise<void>((resolve) => {
           const onEnd = () => { audio.removeEventListener('ended', onEnd); resolve(); };
-          audio.addEventListener('ended', onEnd);
-          audio.play().catch(() => {
-            audio.removeEventListener('ended', onEnd);
-            speakWithBrowserTTS(text, rate, token, resolve);
-          });
+          const tryPlay = (isRetry: boolean) => {
+            audio.addEventListener('ended', onEnd);
+            audio.play().catch((err) => {
+              audio.removeEventListener('ended', onEnd);
+              if (!isRetry && (err as Error)?.name === 'NotAllowedError') {
+                // 自动播放被拦(刷新后无用户手势):本遍挂起,亮蒙层等首次手势,
+                // 在点击瞬间原地补读——绝不退浏览器系统音色
+                handleAutoplayBlocked(() => {
+                  if (globalPlayToken !== token) { resolve(); return; }
+                  audio.currentTime = 0;
+                  tryPlay(true);
+                });
+                return;
+              }
+              resolve(); // 其他播放失败:静默跳过本遍,循环隔 gapMs 自会再试
+            });
+          };
+          tryPlay(false);
         });
         if (globalPlayToken !== token) return;
         if (i < times - 1) {
@@ -251,10 +264,9 @@ export function useAudio() {
         }
       }
     } catch (e) {
-      // 音频拉取失败也要出声(与 playAudio 的兜底一致),但只兜一遍,不无限循环
+      // 音频拉取失败同样保持安静(fetch 自带3次重试),不用系统音色兜底
       if (globalPlayToken !== token) return;
-      console.warn('循环播放失败，回退浏览器发音:', e);
-      await speakWithBrowserTTS(text, rate, token);
+      console.warn('循环播放拉取音频失败,保持静默:', e);
     }
   }, []);
 

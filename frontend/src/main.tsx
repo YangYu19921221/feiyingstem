@@ -5,6 +5,7 @@ import './api/_axiosBootstrap'  // 副作用：装好全局 axios 的 Authorizat
 import './index.css'
 import App from './App.tsx'
 import ToastContainer from './components/Toast'
+import AudioUnlockOverlay from './components/AudioUnlockOverlay'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +49,7 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <App />
       <ToastContainer />
+      <AudioUnlockOverlay />
     </QueryClientProvider>
   </StrictMode>,
 )
