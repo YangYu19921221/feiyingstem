@@ -36,8 +36,7 @@ interface ClassificationPhaseProps {
 }
 
 const CLASSIFY_TIME_SHORT = 10;       // 单词
-const CLASSIFY_TIME_PHRASE = 14;      // 短语（2-3 个单词）
-const CLASSIFY_TIME_SENTENCE = 20;    // 句子（4+ 个单词或带标点）
+const CLASSIFY_TIME_MAX = 30;         // 上限:再长也不给发呆空间
 const PLAY_INTERVAL = 1800;
 const PLAY_GAP = 1000; // 循环播放模式:每遍播完(ended)后到下一遍的间隔
 const FAMILIAR_REVIEW_EVERY = 3; // 每N个熟悉词触发一次回顾
@@ -46,14 +45,31 @@ const FAMILIAR_REVIEW_EVERY = 3; // 每N个熟悉词触发一次回顾
  * 根据文本长度动态决定每项的倒计时时长。
  * 长句子 TTS 音频本身就可能 1.5-2s，学生需要至少听两遍再反应，
  * 写死 10s 会在句子场景下被自动判 unknown。
+ * 多词按词数线性给时间(9 + 3×词数,带句读至少 20s,封顶 30s)——
+ * 旧三档(10/14/20)对 3 词短语和 6+ 词长句都不够看。
+ * 注意:这只管"判断"节奏;标陌生后的记忆时刻走不限时消化卡,别再往这里加秒数。
  */
 function getClassifyTime(text: string | undefined): number {
   if (!text) return CLASSIFY_TIME_SHORT;
   const wordCount = text.trim().split(/\s+/).length;
+  if (wordCount <= 1) return CLASSIFY_TIME_SHORT;
   const hasSentencePunct = /[.!?,]/.test(text);
-  if (wordCount >= 4 || hasSentencePunct) return CLASSIFY_TIME_SENTENCE;
-  if (wordCount >= 2) return CLASSIFY_TIME_PHRASE;
-  return CLASSIFY_TIME_SHORT;
+  const t = 9 + wordCount * 3;
+  return Math.min(CLASSIFY_TIME_MAX, hasSentencePunct ? Math.max(t, 20) : t);
+}
+
+/** 多词条目(短语/句子):倒计时归零时自动进不限时消化卡,不白白烧一次曝光 */
+function isPhrase(text: string | undefined): boolean {
+  return !!text && text.trim().split(/\s+/).length >= 2;
+}
+
+/**
+ * 分类附加语义:
+ * - studied: 学生在"不限时学习态"里点了继续——记为陌生,但不再攒连错/弹消化卡
+ *   (刚刚已经不限时学过了,再弹卡是重复打断)
+ */
+interface ClassifyOpts {
+  studied?: boolean;
 }
 
 export default function ClassificationPhase({
@@ -110,9 +126,16 @@ export default function ClassificationPhase({
   const [memoryHook, setMemoryHook] = useState<{ wordId: number; text: string } | null>(null);
   const [hookLoading, setHookLoading] = useState(false);
 
+  // 不限时学习态("时间不够"按钮/长条目超时进入): 进度条停住,发音照常无限循环,
+  // 学生点"继续"才记陌生并切词。倒计时只负责催"判断",记忆时刻不设闹钟
+  const [studyMode, setStudyMode] = useState(false);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const classifyRef = useRef<(category: WordCategory) => void>(() => {});
+  const classifyRef = useRef<(category: WordCategory, opts?: ClassifyOpts) => void>(() => {});
+  // 倒计时 interval 里要拿"当下"的词和入口函数,闭包会过期,统一走 ref
+  const currentWordRef = useRef<WordData | undefined>(undefined);
+  const enterStudyRef = useRef<() => void>(() => {});
   // 同步重入锁: isTransitioning state 是渲染快照,定时器/事件在 commit 前读到旧值
   // 会绕过防抖(同词双分类)。ref 同步生效,state 只留给 UI 禁用态。
   const lockRef = useRef(false);
@@ -122,6 +145,7 @@ export default function ClassificationPhase({
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentWord = roundWords[currentIndex];
+  currentWordRef.current = currentWord;
 
   // 循环播放发音(走神/切屏暂停时停播,人回来自动续上;
   // 回顾/消化卡打开时也停——弹卡前 index 已+1,不停会循环播孩子还没见过的下一词)
@@ -198,6 +222,7 @@ export default function ClassificationPhase({
         setRoundWords(errorWords);
         setCurrentIndex(0);
         setTimeLeft(getClassifyTime(errorWords[0]?.word));
+        setStudyMode(false); // 新一轮从计时判断开始,不继承上一词的不限时态
         setShowRoundSummary(false);
         setFamiliarBuffer([]); // 新一轮清空熟悉词缓冲
         unknownStreakRef.current = []; // 连错计数不跨轮:残留会让下一轮首个陌生词就误弹消化卡
@@ -206,7 +231,7 @@ export default function ClassificationPhase({
     }
   }, [roundWords, onComplete, onRoundMistakes, onRoundFamiliar]);
 
-  const handleClassify = useCallback((category: WordCategory) => {
+  const handleClassify = useCallback((category: WordCategory, opts?: ClassifyOpts) => {
     // lockRef 同步生效: 定时器归零瞬间的手点、渲染 commit 前的连点都会被拦,
     // 不依赖 state 闭包快照(isTransitioning 仅驱动按钮禁用态 UI)
     if (lockRef.current || !currentWord) return;
@@ -234,23 +259,30 @@ export default function ClassificationPhase({
         setReviewKind(kind);
         setCurrentIndex(currentIndex + 1);
         setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
+        setStudyMode(false);
         setIsTransitioning(false);
         lockRef.current = false;
         setShowFamiliarReview(true);
       };
 
-      // 连错消化: 连续3个"陌生"先停一停,把这3个词摆出来记一记再继续
-      // (状态差时继续硬灌只是无效曝光)
+      // 不限时学习态收尾: 刚学完的词记陌生但不攒连错、不弹卡(避免二次打断)
       if (category === 'unknown') {
-        unknownStreakRef.current = [...unknownStreakRef.current, currentWord];
+        if (opts?.studied) {
+          unknownStreakRef.current = [];
+        } else {
+          unknownStreakRef.current = [...unknownStreakRef.current, currentWord];
+          // 连错消化: 连续3个"陌生"先停一停,把这3个词摆出来记一记再继续
+          // (状态差时继续硬灌只是无效曝光)
+          // 本轮最后一词也弹(索引会推到越界,收轮逻辑在 dismissReviewCard 里兜)
+          if (unknownStreakRef.current.length >= 3) {
+            const streak = [...unknownStreakRef.current];
+            unknownStreakRef.current = [];
+            advanceWithReviewCard('struggle', streak);
+            return;
+          }
+        }
       } else {
         unknownStreakRef.current = [];
-      }
-      if (category === 'unknown' && unknownStreakRef.current.length >= 3 && !isLastInRound) {
-        const streak = [...unknownStreakRef.current];
-        unknownStreakRef.current = [];
-        advanceWithReviewCard('struggle', streak);
-        return;
       }
 
       // 只有当前词标为熟悉才检查是否触发回顾
@@ -268,6 +300,7 @@ export default function ClassificationPhase({
         setCurrentIndex(currentIndex + 1);
         setTimeLeft(getClassifyTime(roundWords[currentIndex + 1]?.word));
       }
+      setStudyMode(false);
       setIsTransitioning(false);
       lockRef.current = false;
     }, 200);
@@ -281,6 +314,18 @@ export default function ClassificationPhase({
   useEffect(() => {
     classifyRef.current = handleClassify;
   }, [handleClassify]);
+
+  // 进入不限时学习态: 停表(进度条冻结),发音循环不动,词先不判——点"继续"才记陌生。
+  // 入口: "时间不够"按钮 / 按键4 / 长条目(短语句子)倒计时归零
+  const enterStudyMode = useCallback(() => {
+    if (lockRef.current || !currentWord || studyMode) return;
+    if (timerRef.current) clearInterval(timerRef.current);
+    setStudyMode(true);
+  }, [currentWord, studyMode]);
+
+  useEffect(() => {
+    enterStudyRef.current = enterStudyMode;
+  }, [enterStudyMode]);
 
   // setTimeLeft 重置(切词/新一轮)时同步权威 ref
   useEffect(() => {
@@ -306,10 +351,21 @@ export default function ClassificationPhase({
     if (showTutorial || showRoundSummary || showFamiliarReview) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
+      if (studyMode) {
+        // 不限时学习态: 只留 空格=再听一遍 / 回车=记住了继续
+        if (e.key === ' ') {
+          e.preventDefault();
+          if (currentWord) playAudio(currentWord.word, 1, currentWord.id);
+        } else if (e.key === 'Enter') {
+          classifyRef.current('unknown', { studied: true });
+        }
+        return;
+      }
       switch (e.key) {
         case '1': classifyRef.current('familiar'); break;
         case '2': classifyRef.current('semi'); break;
         case '3': classifyRef.current('unknown'); break;
+        case '4': enterStudyRef.current(); break;
         case ' ':
           e.preventDefault();
           if (currentWord) {
@@ -320,11 +376,11 @@ export default function ClassificationPhase({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTutorial, showRoundSummary, showFamiliarReview, currentWord, playAudio]);
+  }, [showTutorial, showRoundSummary, showFamiliarReview, currentWord, playAudio, studyMode]);
 
-  // 倒计时（回顾时暂停;走神/切屏 paused 时也暂停,人不在不烧词）
+  // 倒计时（回顾时暂停;走神/切屏 paused 时也暂停,人不在不烧词;不限时学习态整段停表）
   useEffect(() => {
-    if (isTransitioning || showRoundSummary || showTutorial || showFamiliarReview || paused) return;
+    if (isTransitioning || showRoundSummary || showTutorial || showFamiliarReview || paused || studyMode) return;
 
     timerRef.current = setInterval(() => {
       // 副作用(自动判陌生)必须在 interval 回调顶层做,不能写进 setTimeLeft 的
@@ -332,7 +388,13 @@ export default function ClassificationPhase({
       // 曾导致同词双分类、下一词被"幽灵判陌生"(快速点击压测的跳词/状态错乱)。
       if (timeLeftRef.current <= 0.1) {
         if (timerRef.current) clearInterval(timerRef.current);
-        classifyRef.current('unknown');
+        // 短语/句子超时说明时间确实不够:自动转不限时学习态,别白烧一次曝光;
+        // 单词超时维持原样自动判陌生(防划水节奏不变)
+        if (isPhrase(currentWordRef.current?.word)) {
+          enterStudyRef.current();
+        } else {
+          classifyRef.current('unknown');
+        }
         return;
       }
       timeLeftRef.current -= 0.1;
@@ -344,7 +406,7 @@ export default function ClassificationPhase({
     };
     // 依赖必须含所有 guard 条件:否则回顾卡/教程关闭(showFamiliarReview/showTutorial
     // 变 false)后 effect 不重跑,倒计时不会恢复,当前词卡死不再自动判定
-  }, [currentIndex, isTransitioning, showRoundSummary, showFamiliarReview, showTutorial, paused]);
+  }, [currentIndex, isTransitioning, showRoundSummary, showFamiliarReview, showTutorial, paused, studyMode]);
 
   // 关闭教程
   const dismissTutorial = () => {
@@ -353,8 +415,18 @@ export default function ClassificationPhase({
   };
 
   // ── 熟悉词快速回顾卡 ──────────────────────────────────────
+  // 关卡恢复主流程;若弹卡的是本轮最后一词(索引已越界),这里负责收轮——
+  // results 此时已 commit(弹卡到手点之间隔了渲染),handleRoundEnd 自带防重入
+  const dismissReviewCard = () => {
+    setShowFamiliarReview(false);
+    if (currentIndex >= roundWords.length && !roundEndedRef.current) {
+      handleRoundEnd(results);
+    }
+  };
+
   if (showFamiliarReview) {
     const isStruggle = reviewKind === 'struggle';
+    const single = reviewWords.length === 1 ? reviewWords[0] : null;
     return (
       <div className="flex flex-col min-h-[calc(100vh-64px)] items-center justify-center px-4">
         <motion.div
@@ -367,24 +439,49 @@ export default function ClassificationPhase({
             <h3 className="text-lg font-bold text-gray-800">{isStruggle ? '别急,先记一记' : '快速回顾一下'}</h3>
             <p className="text-sm text-gray-400 mt-1">
               {isStruggle
-                ? `这 ${reviewWords.length} 个词有点难,看一眼意思再继续`
+                ? single
+                  ? `这个${isPhrase(single.word) ? '词组' : '词'}有点难,这里不限时,记牢了再继续`
+                  : `这 ${reviewWords.length} 个词有点难,看一眼意思再继续`
                 : `你标记了 ${reviewWords.length} 个熟悉的词，确认都认识吗？`}
             </p>
           </div>
 
           <div className="space-y-3 mb-6">
             {reviewWords.map(w => (
-              <div key={w.id} className={`flex items-center justify-between rounded-xl px-4 py-3 ${isStruggle ? 'bg-orange-50' : 'bg-green-50'}`}>
-                <span className="font-bold text-gray-800 text-lg">{w.word}</span>
-                <span className="text-gray-500 text-sm">{w.meaning}</span>
+              <div key={w.id} className={`rounded-xl px-4 py-3 ${isStruggle ? 'bg-orange-50' : 'bg-green-50'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-gray-800 text-lg break-words min-w-0">{w.word}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-gray-500 text-sm">{w.meaning}</span>
+                    <button
+                      onClick={() => playAudio(w.word, 1, w.id)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/70 text-gray-500 transition hover:text-gray-700 active:scale-95"
+                      title="播放发音"
+                    >
+                      <Volume2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                {memoryHook?.wordId === w.id && (
+                  <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700">
+                    <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{memoryHook.text}</span>
+                  </p>
+                )}
               </div>
             ))}
+            {isStruggle && single?.example_sentence && (
+              <div className="rounded-xl bg-slate-50 px-4 py-3">
+                <p className="text-sm leading-relaxed text-slate-600">{single.example_sentence}</p>
+                {single.example_translation && <p className="mt-1 text-xs text-slate-400">{single.example_translation}</p>}
+              </div>
+            )}
           </div>
 
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
-            onClick={() => setShowFamiliarReview(false)}
+            onClick={dismissReviewCard}
             className="w-full py-3 bg-primary text-white rounded-2xl font-bold text-lg shadow-lg"
           >
             {isStruggle ? '记住了,继续 →' : '认识，继续 →'}
@@ -465,7 +562,9 @@ export default function ClassificationPhase({
               <div className="mt-auto pt-4 text-xs text-gray-400">
                 <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">空格</kbd> 播放发音
                 <span className="mx-2">·</span>
-                <span>{CLASSIFY_TIME_SHORT}-{CLASSIFY_TIME_SENTENCE} 秒自动计时</span>
+                <span>{CLASSIFY_TIME_SHORT}-{CLASSIFY_TIME_MAX} 秒自动计时</span>
+                <span className="mx-2">·</span>
+                <span>时间不够按 <kbd className="px-1.5 py-0.5 bg-gray-100 rounded font-mono">4</kbd> 不限时慢慢记</span>
               </div>
 
               <motion.button
@@ -561,8 +660,8 @@ export default function ClassificationPhase({
         <div className="h-1.5 w-full bg-slate-100">
           <motion.div
             className="h-full rounded-r-full"
-            style={{ backgroundColor: timerColor }}
-            animate={{ width: `${progress * 100}%` }}
+            style={{ backgroundColor: studyMode ? '#5FD35F' : timerColor }}
+            animate={{ width: studyMode ? '100%' : `${progress * 100}%` }}
             transition={{ duration: 0.1 }}
           />
         </div>
@@ -574,9 +673,9 @@ export default function ClassificationPhase({
             {round > 1 && <span className="classify-round-badge">补遍 {round - 1}</span>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="classify-timer-chip" style={{ color: timerColor }}>
+            <span className="classify-timer-chip" style={{ color: studyMode ? '#5FD35F' : timerColor }}>
               <Clock3 className="h-3.5 w-3.5" />
-              {Math.ceil(timeLeft)}s
+              {studyMode ? '不限时' : `${Math.ceil(timeLeft)}s`}
             </span>
             <button
               onClick={() => setShowTutorial(true)}
@@ -651,6 +750,28 @@ export default function ClassificationPhase({
 
         {/* 三个分类卡：不再用大块高饱色，让学生依靠图标、文案和边框做快速判断 */}
         <section className="classify-decision-panel mx-auto w-full max-w-2xl">
+        {studyMode ? (
+          <>
+            <div className="mb-2 flex items-end justify-between gap-3 px-1">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">不限时慢慢记</h2>
+                <p className="mt-0.5 text-xs text-slate-400">跟着发音多读几遍,记牢为止(空格再听一遍)</p>
+              </div>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleClassify('unknown', { studied: true })}
+              disabled={isTransitioning}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3.5 text-base font-bold text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              记住了,继续 →
+              <kbd className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">回车</kbd>
+            </motion.button>
+            <p className="mt-2 px-1 text-center text-[11px] text-slate-400">这个词会进补遍再考一次,记牢再走不吃亏</p>
+          </>
+        ) : (
+        <>
         <div className="mb-2 flex items-end justify-between gap-3 px-1">
           <div>
             <h2 className="text-base font-bold text-slate-800">选择熟悉程度</h2>
@@ -681,6 +802,19 @@ export default function ClassificationPhase({
             );
           })}
         </div>
+        {/* 时间不够:停表进不限时学习态,点"继续"记陌生并切词(补遍照常再考,统计口径不变) */}
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          onClick={enterStudyMode}
+          disabled={isTransitioning}
+          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-500 transition hover:border-slate-400 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          <Clock3 className="h-4 w-4" />
+          时间不够?点这里不限时慢慢记
+          <kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">4</kbd>
+        </motion.button>
+        </>
+        )}
         </section>
       </div>
     </div>
