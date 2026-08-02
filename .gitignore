@@ -85,3 +85,12 @@ Thumbs.db
 docs/*机密*
 docs/加盟成本测算*.docx
 docs/直播运营方案.*
+
+# 设计工具(impeccable)工作目录:草稿/评审/mock,不是源码
+.impeccable/
+frontend/.impeccable/
+
+# 仓库根目录的设计参考截图(素材不入库,正式资源放 frontend/public/)
+/back1.jpeg
+/lf-mobile.jpeg
+/real-teacher.jpeg
