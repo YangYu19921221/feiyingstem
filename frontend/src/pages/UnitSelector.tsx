@@ -379,7 +379,7 @@ const UnitSelector = () => {
                         <div className="flex-1 h-1 bg-black/[0.05] rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${
-                              unit.is_completed ? 'bg-ink-soft' : 'bg-accent-warm'
+                              unit.progress_percentage >= 100 ? 'bg-success' : 'bg-accent-warm'
                             }`}
                             style={{ width: `${Math.max(unit.progress_percentage, 0)}%` }}
                           />
