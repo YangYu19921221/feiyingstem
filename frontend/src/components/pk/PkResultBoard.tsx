@@ -1,6 +1,7 @@
 /** PK 终局结算:前三名领奖台 + 我的成绩卡 + 完整榜单。 */
 import { motion } from 'framer-motion';
 import type { PkFinalRankItem, PkTeamRankItem } from '../../api/pk';
+import { teamLabel } from '../../utils/pkTeam';
 
 interface Props {
   ranking: PkFinalRankItem[];
@@ -50,7 +51,7 @@ export default function PkResultBoard({ ranking, meId, teamRanking, onExit, onAg
                 className={`rounded-2xl bg-gradient-to-r ${TEAM_TONE[(winningTeam.team - 1) % TEAM_TONE.length]} p-5 text-center shadow-lg mb-4`}
               >
                 <div className="text-4xl mb-1">🏆</div>
-                <p className="text-white font-bold text-lg">第 {winningTeam.team} 队获胜</p>
+                <p className="text-white font-bold text-lg">{teamLabel(winningTeam.team, undefined, winningTeam.team_name)}获胜</p>
                 <p className="text-white/85 text-sm mt-0.5">人均 {winningTeam.avg_points} 分 · 全队共 {winningTeam.points} 分</p>
               </motion.div>
             )}
@@ -65,7 +66,7 @@ export default function PkResultBoard({ ranking, meId, teamRanking, onExit, onAg
                       {RANK_EMOJI[t.rank] ?? <span className="text-sm font-semibold text-ink-mute font-numeric">{t.rank}</span>}
                     </span>
                     <span className={`inline-block w-2.5 h-2.5 rounded-full bg-gradient-to-br ${TEAM_TONE[(t.team - 1) % TEAM_TONE.length]}`} />
-                    <span className="flex-1 truncate text-sm font-medium text-ink">第 {t.team} 队</span>
+                    <span className="flex-1 truncate text-sm font-medium text-ink">{teamLabel(t.team, undefined, t.team_name)}</span>
                     <span className="text-[11px] text-ink-mute">{t.member_count} 人</span>
                     <span className="text-right w-16">
                       <span className="text-base font-bold text-ink font-numeric block leading-none">人均{t.avg_points}</span>

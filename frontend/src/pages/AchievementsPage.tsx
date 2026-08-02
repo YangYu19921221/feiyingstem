@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Award, Lock, Trophy, Target } from 'lucide-react';
+import { ArrowLeft, Award, BookOpenText, Flame, Lock, RefreshCw, Trophy, Target } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { getMyAchievements, getMyStats, type Achievement, type UserStats } from '../api/achievements';
 import { AchievementIcon } from '../components/AchievementIcon';
 import StudentIdentityBadge from '../components/StudentIdentityBadge';
+import { getErrorMessage } from '../utils/errorMessage';
 
 const AchievementsPage = () => {
   const goBack = useGoBack('/student/dashboard');
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [totalUnlocked, setTotalUnlocked] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
 
@@ -21,6 +23,7 @@ const AchievementsPage = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError('');
       const [achievementsData, statsData] = await Promise.all([
         getMyAchievements(),
         getMyStats()
@@ -32,6 +35,7 @@ const AchievementsPage = () => {
       setStats(statsData);
     } catch (error) {
       console.error('加载成就数据失败:', error);
+      setError(getErrorMessage(error, '成就数据暂时没有加载出来'));
     } finally {
       setLoading(false);
     }
@@ -39,10 +43,34 @@ const AchievementsPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-          <p className="text-gray-500 mt-4">加载中...</p>
+      <div className="min-h-screen bg-paper px-4 py-10" aria-busy="true" aria-label="正在加载成就">
+        <div className="mx-auto max-w-6xl space-y-5">
+          <div className="h-32 animate-pulse rounded-2xl bg-white" />
+          <div className="h-28 animate-pulse rounded-2xl bg-white" />
+          <div className="grid gap-4 md:grid-cols-3">
+            {[0, 1, 2].map((item) => <div key={item} className="h-36 animate-pulse rounded-2xl bg-white" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper p-4">
+        <div className="card-soft w-full max-w-md rounded-2xl p-7 text-center sm:p-9" role="alert">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+            <RefreshCw className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <h1 className="font-display text-xl font-semibold text-ink">成就册暂时没打开</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="mt-6 min-h-11 rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            重新加载
+          </button>
         </div>
       </div>
     );
@@ -62,7 +90,7 @@ const AchievementsPage = () => {
           <div className="flex items-center gap-4">
             <button
               onClick={() => goBack()}
-              className="p-2 text-slate-500 hover:bg-orange-50 hover:text-orange-600 rounded-lg transition"
+              className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
               aria-label="返回"
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -84,78 +112,45 @@ const AchievementsPage = () => {
         <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-amber-100 p-5 shadow-md sm:p-6">
           <div className="flex items-center justify-between gap-6">
             <div>
-              <p className="mb-1 text-xs font-semibold text-amber-700">成长收藏册</p>
               <h2 className="font-display text-2xl font-bold text-slate-800">你已经解锁 {totalUnlocked} 项成就</h2>
               <p className="mt-2 text-sm text-slate-600">继续学习，新的徽章和积分会在这里点亮。</p>
             </div>
-            <img src="/fx-achievement.jpeg" alt="" className="hidden h-28 w-40 rounded-xl object-cover shadow-sm sm:block" />
+            <div className="hidden h-28 w-40 items-center justify-center rounded-xl bg-orange-50 text-accent-warm sm:flex" aria-hidden="true">
+              <Trophy className="h-12 w-12" />
+            </div>
           </div>
         </section>
 
         {/* 学生身份：家长拍照时一眼知道是谁 */}
         <StudentIdentityBadge tone="paper" className="mb-6" />
 
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="card-soft rounded-2xl p-5"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <Trophy className="w-6 h-6 text-yellow-500" />
-              <p className="text-gray-600">已解锁</p>
+        {/* 成长概览：合并为一个表面，手机端不会被四张大卡占满首屏。 */}
+        <motion.section
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-8 grid grid-cols-2 overflow-hidden rounded-2xl bg-white md:grid-cols-4 md:divide-x md:divide-black/[0.06]"
+          aria-label="成就概览"
+        >
+          {[
+            { label: '已解锁', value: `${totalUnlocked}/${achievements.length}`, note: `${progressPercentage}% 完成`, icon: Trophy },
+            { label: '总积分', value: totalPoints, note: '持续增长', icon: Award },
+            { label: '掌握单词', value: stats?.total_words || 0, note: '熟练度达标', icon: BookOpenText },
+            { label: '连续打卡', value: stats?.consecutive_days || 0, note: '天', icon: Flame },
+          ].map((item, index) => (
+            <div
+              key={item.label}
+              className={`p-4 sm:p-5 ${index < 2 ? 'border-b border-black/[0.06] md:border-b-0' : ''} ${index % 2 === 0 ? 'border-r border-black/[0.06] md:border-r-0' : ''}`}
+            >
+              <div className="flex items-center gap-2 text-xs text-ink-soft">
+                <item.icon className="h-4 w-4 text-accent-warm" aria-hidden="true" />
+                {item.label}
+              </div>
+              <p className="mt-2 font-numeric text-2xl font-semibold text-ink sm:text-3xl">{item.value}</p>
+              <p className="mt-1 text-xs text-ink-mute">{item.note}</p>
             </div>
-            <p className="text-4xl font-bold text-gray-800">
-              {totalUnlocked}<span className="text-2xl text-gray-500">/{achievements.length}</span>
-            </p>
-            <p className="text-sm text-gray-500 mt-1">{progressPercentage}% 完成</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="card-soft rounded-2xl p-5"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <Award className="w-6 h-6 text-purple-500" />
-              <p className="text-gray-600">总积分</p>
-            </div>
-            <p className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              {totalPoints}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">持续增长</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="card-soft rounded-2xl p-5"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl">📚</span>
-              <p className="text-gray-600">掌握单词</p>
-            </div>
-            <p className="text-4xl font-bold text-gray-800">{stats?.total_words || 0}</p>
-            <p className="text-sm text-gray-500 mt-1">熟练度达标</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="card-soft rounded-2xl p-5"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl">🔥</span>
-              <p className="text-gray-600">连续打卡</p>
-            </div>
-            <p className="text-4xl font-bold text-orange-500">{stats?.consecutive_days || 0}</p>
-            <p className="text-sm text-gray-500 mt-1">天</p>
-          </motion.div>
-        </div>
+          ))}
+        </motion.section>
 
         {/* 已解锁成就 */}
         {unlockedAchievements.length > 0 && (
@@ -171,13 +166,13 @@ const AchievementsPage = () => {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.1 * index }}
-                  className="card-soft bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200 rounded-2xl p-5 hover:shadow-xl transition"
+                  className="card-soft rounded-2xl bg-orange-50/50 p-5 transition hover:bg-orange-50"
                 >
                   <div className="flex items-start gap-4">
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      transition={{ delay: 0.2 + 0.1 * index, type: 'spring' }}
+                      transition={{ delay: 0.12 + 0.05 * index, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                     >
                       <AchievementIcon icon={achievement.icon} size={72} />
                     </motion.div>

@@ -1,10 +1,19 @@
 import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowRight,
+  Building2,
+  LockKeyhole,
+  Phone,
+  ShieldCheck,
+  UserRound,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
+import AuthInput from '../components/auth/AuthInput';
 import FormError from '../components/auth/FormError';
 import { parseError } from '../utils/errorMessage';
 
@@ -22,11 +31,19 @@ interface RegisterResponse {
   };
 }
 
-const INPUT_BASE = 'w-full px-4 py-3 rounded-xl outline-none transition text-white placeholder-gray-500';
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(15, 23, 34, 0.85)',
-  border: '1px solid #2a3442',
-};
+interface RegisterField {
+  id: string;
+  label: string;
+  type: string;
+  value: string;
+  setter: (value: string) => void;
+  placeholder: string;
+  icon: LucideIcon;
+  autoComplete?: string;
+  inputMode?: 'text' | 'tel' | 'numeric';
+  maxLength?: number;
+  minLength?: number;
+}
 
 const Register = () => {
   const navigate = useNavigate();
@@ -36,7 +53,6 @@ const Register = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  // 机构码: 加盟机构招生链接带 ?org=机构码 自动填入,注册即归属该机构;手动填也行
   const hasOrgParam = !!searchParams.get('org');
   const [orgCode, setOrgCode] = useState(() => (searchParams.get('org') || '').toUpperCase());
   const [error, setError] = useState('');
@@ -54,13 +70,15 @@ const Register = () => {
     setLoading(true);
     try {
       const response = await axios.post<RegisterResponse>(`${API_BASE_URL}/auth/register`, {
-        phone, username: username.trim(), password,
+        phone,
+        username: username.trim(),
+        password,
         org_code: orgCode.trim() || undefined,
       });
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       const e = parseError(err, '注册失败，请稍后重试');
       setError(e.message);
       setErrorCode(e.code);
@@ -69,97 +87,129 @@ const Register = () => {
     }
   };
 
-  const onFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.borderColor = 'var(--glow)';
-    e.currentTarget.style.boxShadow = '0 0 0 3px var(--glow-ring)';
-  };
-  const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.borderColor = '#2a3442';
-    e.currentTarget.style.boxShadow = 'none';
-  };
-
-  const fields: Array<{ label: string; type: string; value: string; setter: (v:string)=>void; placeholder: string; maxLength?: number; minLength?: number; }> = [
-    { label: '手机号', type: 'tel', value: phone, setter: setPhone, placeholder: '请输入手机号', maxLength: 11 },
-    { label: '用户名', type: 'text', value: username, setter: setUsername, placeholder: '请输入用户名（支持中文，不限字数）', minLength: 1 },
-    { label: '密码', type: 'password', value: password, setter: setPassword, placeholder: '请输入密码（至少6位）', minLength: 6 },
-    { label: '确认密码', type: 'password', value: confirmPassword, setter: setConfirmPassword, placeholder: '请再次输入密码', minLength: 6 },
-    // 机构码字段只在招生链接(?org=机构码)进来时显示——散户手动注册看不到,不困惑;
-    // 没带码的正常注册归直营,之后班级邀请码入班时仍会自动转入对应机构。
-    // 用 hasOrgParam(URL参数)而非 orgCode(当前值)判断,避免用户清空输入时字段消失
-    ...(hasOrgParam ? [{ label: '机构码（来自邀请链接）', type: 'text', value: orgCode, setter: (v: string) => setOrgCode(v.toUpperCase()), placeholder: '机构提供的邀请码', maxLength: 16 }] : []),
+  const fields: RegisterField[] = [
+    {
+      id: 'register-phone',
+      label: '手机号',
+      type: 'tel',
+      value: phone,
+      setter: setPhone,
+      placeholder: '请输入手机号',
+      icon: Phone,
+      autoComplete: 'tel',
+      inputMode: 'numeric',
+      maxLength: 11,
+    },
+    {
+      id: 'register-username',
+      label: '用户名',
+      type: 'text',
+      value: username,
+      setter: setUsername,
+      placeholder: '支持中文用户名',
+      icon: UserRound,
+      autoComplete: 'username',
+      minLength: 1,
+    },
+    {
+      id: 'register-password',
+      label: '密码',
+      type: 'password',
+      value: password,
+      setter: setPassword,
+      placeholder: '至少 6 位',
+      icon: LockKeyhole,
+      autoComplete: 'new-password',
+      minLength: 6,
+    },
+    {
+      id: 'register-confirm-password',
+      label: '确认密码',
+      type: 'password',
+      value: confirmPassword,
+      setter: setConfirmPassword,
+      placeholder: '请再次输入密码',
+      icon: ShieldCheck,
+      autoComplete: 'new-password',
+      minLength: 6,
+    },
+    ...(hasOrgParam ? [{
+      id: 'register-org-code',
+      label: '机构码（来自邀请链接）',
+      type: 'text',
+      value: orgCode,
+      setter: (value: string) => setOrgCode(value.toUpperCase()),
+      placeholder: '机构提供的邀请码',
+      icon: Building2,
+      autoComplete: 'off',
+      inputMode: 'text' as const,
+      maxLength: 16,
+    }] : []),
   ];
 
   return (
-    <AuthShell>
-      {() => (
-        <>
-          <div className="mb-6">
-            <h2 className="text-3xl font-bold" style={{ color: '#fff' }}>创建账号</h2>
-            <p className="mt-1 text-sm" style={{ color: '#8a95a5' }}>填写信息，开启学习之旅</p>
-          </div>
+    <AuthShell mode="register">
+      <header data-auth-reveal className="mb-6">
+        <h2 className="font-display text-3xl font-black tracking-[-0.03em] text-[#293545] sm:text-[2.25rem]">
+          创建账号
+        </h2>
+        <p className="mt-2 text-[15px] leading-6 text-[#5f6b7a]">填写信息，开启学习之旅。</p>
+      </header>
 
-          <form onSubmit={handleRegister} className="space-y-4">
-            <FormError
-              message={error}
-              code={errorCode}
-              context="register"
-              onDismiss={() => { setError(''); setErrorCode(null); }}
-            />
+      <form onSubmit={handleRegister} className="space-y-4" data-auth-reveal>
+        <FormError
+          message={error}
+          code={errorCode}
+          context="register"
+          onDismiss={() => { setError(''); setErrorCode(null); }}
+        />
 
-            {fields.map((f) => (
-              <div key={f.label}>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>{f.label}</label>
-                <input
-                  type={f.type}
-                  value={f.value}
-                  onChange={(e) => f.setter(e.target.value)}
-                  className={INPUT_BASE}
-                  style={inputStyle}
-                  onFocus={onFocus}
-                  onBlur={onBlur}
-                  placeholder={f.placeholder}
-                  required
-                  disabled={loading}
-                  maxLength={f.maxLength}
-                  minLength={f.minLength}
-                />
-              </div>
-            ))}
+        {fields.map((field) => (
+          <AuthInput
+            key={field.id}
+            id={field.id}
+            label={field.label}
+            icon={field.icon}
+            type={field.type}
+            value={field.value}
+            onChange={(e) => field.setter(e.target.value)}
+            placeholder={field.placeholder}
+            autoComplete={field.autoComplete}
+            inputMode={field.inputMode}
+            required
+            disabled={loading}
+            maxLength={field.maxLength}
+            minLength={field.minLength}
+          />
+        ))}
 
-            <div className="pt-1">
-              <motion.button
-                type="submit"
-                disabled={loading}
-                whileHover={{ scale: loading ? 1 : 1.01 }}
-                whileTap={{ scale: loading ? 1 : 0.99 }}
-                className="w-full py-3.5 rounded-xl font-bold text-lg transition-all"
-                style={{
-                  background: loading ? '#23303f' : 'var(--glow)',
-                  color: loading ? '#8a95a5' : '#0b1320',
-                  boxShadow: loading ? 'none' : '0 8px 24px var(--glow-soft)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Spinner />
-                    注册中...
-                  </span>
-                ) : '创建账号'}
-              </motion.button>
-            </div>
-          </form>
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] border border-[#a9441c] bg-[#bd5227] px-5 text-base font-bold text-white transition duration-200 hover:bg-[#a9441c] active:scale-[0.985] disabled:cursor-not-allowed disabled:border-[#cbd3db] disabled:bg-[#dfe5ea] disabled:text-[#687383]"
+        >
+          {loading ? (
+            <>
+              <Spinner />
+              注册中...
+            </>
+          ) : (
+            <>
+              创建账号
+              <ArrowRight className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+            </>
+          )}
+        </button>
+      </form>
 
-          <div className="mt-6 text-center text-sm" style={{ color: '#8a95a5' }}>
-            已有账号？
-            <Link to="/login" className="font-semibold hover:underline ml-1" style={{ color: 'var(--glow)' }}>去登录</Link>
-          </div>
+      <div data-auth-reveal className="mt-5 text-center text-sm text-[#5f6b7a]">
+        已有账号？
+        <Link to="/login" className="ml-1 font-bold text-[#a9441c] underline-offset-4 hover:underline">去登录</Link>
+      </div>
 
-          <div className="mt-8 text-center text-xs" style={{ color: '#5a6778' }}>
-            AI 智能学习平台 · 让英语成为你的翅膀
-          </div>
-        </>
-      )}
+      <p data-auth-reveal className="mt-7 border-t border-[#dfe5ea] pt-4 text-center text-xs leading-5 text-[#687383]">
+        注册后会自动进入学习中心，已有学习数据不会受影响。
+      </p>
     </AuthShell>
   );
 };

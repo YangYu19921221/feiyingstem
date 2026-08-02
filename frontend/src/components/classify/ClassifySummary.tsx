@@ -18,6 +18,8 @@ interface ClassifySummaryProps {
   groupIndex?: number;
   totalGroups?: number;
   onNextGroup?: () => void;
+  /** 本单元有老师布置的任务时传入,用于在组小结页说清"还没交卷" */
+  taskTargetScore?: number | null;
 }
 
 interface Rank {
@@ -155,6 +157,7 @@ export default function ClassifySummary({
   groupIndex = 0,
   totalGroups = 1,
   onNextGroup,
+  taskTargetScore,
 }: ClassifySummaryProps) {
   const totalSeconds = Math.round((Date.now() - startTime) / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -214,6 +217,20 @@ export default function ClassifySummary({
               </div>
             </div>
           </div>
+          {/* 有任务时明确告知"还没交卷":学生看到这一组 80% 的正确率
+              很容易以为已经达标(实际发生过),必须点明要学完全部组才交卷 */}
+          {taskTargetScore != null && totalGroups! > 1 && (
+            <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-800">
+                📣 任务还没完成
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                这只是第 {groupIndex! + 1}/{totalGroups} 组的成绩。
+                <span className="font-semibold">要把剩下 {totalGroups! - groupIndex! - 1} 组也学完</span>,
+                系统才会自动交卷;整单元达到 {taskTargetScore} 分,老师那边的任务才会消除。
+              </p>
+            </div>
+          )}
           {onNextGroup && (
             <div className="space-y-3">
               <motion.button
@@ -386,7 +403,7 @@ export default function ClassifySummary({
             style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)' }}
           >
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-violet-300">📝 句子填空</h3>
+              <h3 className="text-sm font-medium text-orange-300">📝 句子填空</h3>
               <span className={`text-xl font-black ${rateColor(fillRate)}`}>{fillRate}%</span>
             </div>
             <p className="text-xs text-slate-400">

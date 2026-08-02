@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 
+
 export interface PkServerEvent {
   type: string;
   [key: string]: any;
@@ -12,6 +13,8 @@ export interface UsePkSocketOptions {
   onClose?: (code: number, reason: string) => void;
 }
 
+const MAX_RECONNECT_ATTEMPTS = 5;
+
 export function usePkSocket({ roomId, token, onEvent, onClose }: UsePkSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const heartbeatRef = useRef<number | null>(null);
@@ -19,6 +22,18 @@ export function usePkSocket({ roomId, token, onEvent, onClose }: UsePkSocketOpti
   const onEventRef = useRef(onEvent);
   const onCloseRef = useRef(onClose);
   const [connected, setConnected] = useState(false);
+  // 重连预算耗尽:此时既没连上也不会再试,必须让界面说出来。
+  // 曾经缺这个信号 —— 握手被网关拦掉(WS 请求被当普通 GET 转发,后端 404)时,
+  // 页面只能永远转圈,学生以为"卡住了",老师以为"进不去",没有任何可操作提示。
+  const [failed, setFailed] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+
+  /** 手动重试:清零重连预算并重新建连(界面上的「重试」按钮用)。 */
+  const retry = useCallback(() => {
+    reconnectAttemptRef.current = 0;
+    setFailed(false);
+    setRetryNonce((n) => n + 1);
+  }, []);
 
   // Keep refs up-to-date so the WS callback closure always sees the latest version
   useEffect(() => {
@@ -48,6 +63,7 @@ export function usePkSocket({ roomId, token, onEvent, onClose }: UsePkSocketOpti
 
       ws.onopen = () => {
         setConnected(true);
+        setFailed(false);
         reconnectAttemptRef.current = 0;
         heartbeatRef.current = window.setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -77,10 +93,12 @@ export function usePkSocket({ roomId, token, onEvent, onClose }: UsePkSocketOpti
         }
         if (onCloseRef.current) onCloseRef.current(ev.code, ev.reason);
         // Exponential backoff reconnect, max 5 attempts, only on unexpected close
-        if (!cancelled && reconnectAttemptRef.current < 5 && ev.code !== 1000) {
+        if (!cancelled && reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS && ev.code !== 1000) {
           const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, 8000);
           reconnectAttemptRef.current += 1;
           window.setTimeout(connect, delay);
+        } else if (!cancelled && ev.code !== 1000) {
+          setFailed(true);   // 预算用尽,界面据此换成可操作的错误态
         }
       };
     };
@@ -92,7 +110,7 @@ export function usePkSocket({ roomId, token, onEvent, onClose }: UsePkSocketOpti
       if (wsRef.current) wsRef.current.close(1000, 'unmount');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, token]);
+  }, [roomId, token, retryNonce]);
 
-  return { send, connected };
+  return { send, connected, failed, retry };
 }

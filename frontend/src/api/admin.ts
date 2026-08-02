@@ -62,7 +62,10 @@ export interface AdminStudentDetail {
   total_study_days: number;
   total_study_time: number;
   overall_accuracy: number;
+  /** 薄弱=未达掌握线且真答错过 */
   weak_words_count: number;
+  /** 待巩固=未达掌握线但没答错过(练习次数不够);掌握+薄弱+待巩固=已学 */
+  pending_words_count: number;
   last_active: string | null;
   recent_daily_words: number[];
   recent_daily_dates: string[];

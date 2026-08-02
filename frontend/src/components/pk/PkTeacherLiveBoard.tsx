@@ -16,10 +16,37 @@ import {
   X,
 } from 'lucide-react';
 import type { PkLiveRankItem, PkMode, PkTeamRankItem } from '../../api/pk';
+import PkTeacherColumnChart, { TEAM_SERIES, type ColumnDatum } from './PkTeacherColumnChart';
+import { teamLabel } from '../../utils/pkTeam';
+
+/**
+ * 学生行 → 柱状图数据。
+ * 柱高画**得分**(规则:总分高者赢),掌握进度作辅助小字 ——
+ * 画进度会让大屏第一名和最终赢家不是同一人。
+ * needsAttention 走状态色,永远配图标+文字,不靠颜色单独表意。
+ */
+function toColumnDatum(item: PkLiveRankItem): ColumnDatum {
+  const answered = item.correct + item.wrong;
+  const accuracy = answered > 0 ? (item.correct / answered) * 100 : 100;
+  return {
+    key: item.user_id,
+    label: item.nickname,
+    value: item.points,
+    progress: item.progress ?? 0,
+    sublabel: `${Math.round((item.progress ?? 0) * 100)}% · ${STAGE_LABEL[item.stage ?? 'classify'] ?? '分类'}`,
+    rank: item.rank,
+    offline: !item.online,
+    // 答过一定量且正确率偏低才提示,避免开局零星几题就报警
+    needsAttention: answered >= 4 && accuracy < 50,
+    done: item.finished,
+  };
+}
 
 interface Props {
   items: PkLiveRankItem[];
   teams?: PkTeamRankItem[] | null;
+  /** 组号 → 组名(房间快照下发);实时榜每行只带组号,组名在这里查 */
+  teamNames?: Record<string, string>;
   mode: PkMode;
   deadlineAt: string | null;
   spectatorCount: number;
@@ -34,23 +61,20 @@ const STAGE_LABEL: Record<string, string> = {
   done: '完成',
 };
 
-const TEAM_TONE = [
-  'bg-sky-500',
-  'bg-rose-500',
-  'bg-emerald-500',
-  'bg-amber-500',
-  'bg-violet-500',
-  'bg-cyan-500',
-];
-
-const TEAM_SURFACE = [
-  'border-sky-200 bg-sky-50',
-  'border-rose-200 bg-rose-50',
-  'border-emerald-200 bg-emerald-50',
-  'border-amber-200 bg-amber-50',
-  'border-violet-200 bg-violet-50',
-  'border-cyan-200 bg-cyan-50',
-];
+/**
+ * 队伍身份色:与柱状图共用 TEAM_SERIES(校验过 CVD 的那一组)。
+ *
+ * 原来这里是 tailwind 的 sky/rose/emerald/amber/violet/cyan-500,实测
+ * emerald↔rose 在红绿色盲下 ΔE 只有 5.6(校验 FAIL)—— 第 2、3 队分不出来。
+ * 而且同屏两套队伍色会让"第 3 队"在柱状图和名册里是两个颜色,
+ * 违反「颜色跟实体」。统一到一处后,换色只改 TEAM_SERIES。
+ */
+const teamColor = (team: number) => TEAM_SERIES[(team - 1) % TEAM_SERIES.length];
+/** 卡片底色:同色 8% 淡染 + 20% 描边,避免再引一套 tailwind 色阶 */
+const teamSurfaceStyle = (team: number) => {
+  const c = teamColor(team);
+  return { borderColor: `${c}33`, background: `${c}14` };
+};
 
 function useCountdown(deadlineAt: string | null) {
   const [now, setNow] = useState(0);
@@ -94,7 +118,7 @@ function RankMark({ rank }: { rank: number }) {
   );
 }
 
-function StudentRankRow({ item }: { item: PkLiveRankItem }) {
+function StudentRankRow({ item, teamName }: { item: PkLiveRankItem; teamName?: string }) {
   const answered = item.correct + item.wrong;
   const accuracy = answered > 0 ? Math.round((item.correct / answered) * 100) : 0;
   const progress = Math.min(100, Math.round((item.progress ?? 0) * 100));
@@ -121,12 +145,17 @@ function StudentRankRow({ item }: { item: PkLiveRankItem }) {
         <div className="min-w-0 w-36 sm:w-48 lg:w-56">
           <div className="flex min-w-0 items-center gap-2">
             {item.team && (
-              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${TEAM_TONE[(item.team - 1) % TEAM_TONE.length]}`} />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: teamColor(item.team) }} aria-hidden="true" />
             )}
             <p className="truncate text-base font-bold text-slate-900 sm:text-lg">{item.nickname}</p>
             {!item.online && <WifiOff className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+            {/* 分组赛:名字下面直接标组名,老师不用靠颜色点反查是哪一组 */}
+            {teamName && (
+              <span className="max-w-[7rem] truncate" title={teamName}>{teamName}</span>
+            )}
             <span className={item.finished ? 'font-semibold text-emerald-600' : ''}>
               {STAGE_LABEL[item.stage ?? 'classify'] ?? '分类'}
             </span>
@@ -191,12 +220,16 @@ function TeamStandings({ teams }: { teams: PkTeamRankItem[] }) {
           <motion.div
             key={team.team}
             layout
-            className={`flex items-center gap-3 rounded-lg border px-3.5 py-3 ${TEAM_SURFACE[(team.team - 1) % TEAM_SURFACE.length]}`}
+            className="flex items-center gap-3 rounded-lg border px-3.5 py-3"
+            style={teamSurfaceStyle(team.team)}
           >
             <span className="font-numeric text-xl font-black text-slate-700">{team.rank}</span>
-            <span className={`h-9 w-1 rounded-full ${TEAM_TONE[(team.team - 1) % TEAM_TONE.length]}`} />
+            <span className="h-9 w-1 rounded-full"
+                  style={{ background: teamColor(team.team) }} aria-hidden="true" />
             <div className="min-w-0 flex-1">
-              <p className="font-bold text-slate-800">第 {team.team} 队</p>
+              <p className="truncate font-bold text-slate-800" title={team.team_name || undefined}>
+                {teamLabel(team.team, undefined, team.team_name)}
+              </p>
               <p className="text-xs text-slate-500">{team.online_count}/{team.member_count} 人在线</p>
             </div>
             <div className="text-right">
@@ -213,6 +246,7 @@ function TeamStandings({ teams }: { teams: PkTeamRankItem[] }) {
 export default function PkTeacherLiveBoard({
   items,
   teams,
+  teamNames,
   mode,
   deadlineAt,
   spectatorCount,
@@ -271,7 +305,7 @@ export default function PkTeacherLiveBoard({
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-slate-500">
-                {mode === 'team' ? '分组赛' : '个人赛'} · {onlineCount}/{items.length} 人在线
+                {mode === 'team' ? '分组赛 · 学生自选组' : '个人赛'} · {onlineCount}/{items.length} 人在线
                 {spectatorCount > 0 ? ` · ${spectatorCount} 人观战` : ''}
               </p>
             </div>
@@ -317,6 +351,34 @@ export default function PkTeacherLiveBoard({
           </div>
         )}
 
+        {/* 大屏主视图:立式柱状图。投影时最先被看到的应该是"谁在前面、谁掉队",
+            柱高比一行行读数字快得多;明细榜单留在下方给老师逐个看。
+            分组赛比队伍(一队一色,颜色跟队号不跟名次),个人赛比学生(单序列蓝+强调) */}
+        {mode === 'team' ? (
+          <PkTeacherColumnChart
+            variant="team"
+            title="队伍得分"
+            caption="柱高 = 队内人均得分(人数不等也公平);答对得分、答得快加成、提前完成有奖励"
+            items={(teams ?? []).map((t) => ({
+              key: `team-${t.team}`,
+              label: teamLabel(t.team, undefined, t.team_name),
+              value: t.avg_points,
+              progress: t.avg_progress ?? 0,
+              sublabel: `${Math.round((t.avg_progress ?? 0) * 100)}% · ${t.online_count}/${t.member_count}人`,
+              seriesIndex: t.team,
+              rank: t.rank,
+              done: (t.done_count ?? 0) > 0 && (t.done_count ?? 0) >= t.member_count,
+            }))}
+          />
+        ) : (
+          <PkTeacherColumnChart
+            variant="solo"
+            title="学生得分"
+            caption="柱高 = 累计得分(总分高者赢);答对得分、答得快有加成、提前完成按剩余时间加奖励"
+            items={items.map(toColumnDatum)}
+          />
+        )}
+
         {mode === 'team' && <TeamStandings teams={teams ?? []} />}
 
         <section className="min-h-0 flex-1" aria-labelledby="student-live-title">
@@ -338,7 +400,13 @@ export default function PkTeacherLiveBoard({
           <div className={`grid gap-3 ${columns.length > 1 ? 'xl:grid-cols-2' : ''}`}>
             {columns.map((column, columnIndex) => (
               <div key={columnIndex} className="space-y-2.5">
-                {column.map((item) => <StudentRankRow key={item.user_id} item={item} />)}
+                {column.map((item) => (
+                  <StudentRankRow
+                    key={item.user_id}
+                    item={item}
+                    teamName={mode === 'team' ? teamLabel(item.team, teamNames) : undefined}
+                  />
+                ))}
               </div>
             ))}
           </div>

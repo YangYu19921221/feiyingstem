@@ -3,9 +3,9 @@
  * 加载单元全部单词，使用 SentenceFillPhase 组件
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {useParams} from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, FilePenLine, RefreshCw } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
 import { reportStudyTime } from '../api/learningRecords';
@@ -13,6 +13,7 @@ import useIdleDetector from '../hooks/useIdleDetector';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import { useAudio } from '../hooks/useAudio';
+import { getErrorMessage } from '../utils/errorMessage';
 
 export default function SentenceFillPractice() {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
@@ -50,19 +51,23 @@ export default function SentenceFillPractice() {
   useEffect(() => { if (completed) reportDelta(); }, [completed, reportDelta]);
   useEffect(() => () => reportDelta(), [reportDelta]);
 
-  useEffect(() => {
+  const loadLearningData = useCallback(async () => {
     if (!unitId) return;
-    (async () => {
-      try {
-        const data = await startLearning({ unit_id: parseInt(unitId), learning_mode: 'sentencefill' });
-        setLearningData(data);
-      } catch (e: any) {
-        setError(e?.response?.data?.detail || '加载失败');
-      } finally {
-        setLoading(false);
-      }
-    })();
+    try {
+      setLoading(true);
+      setError('');
+      const data = await startLearning({ unit_id: parseInt(unitId), learning_mode: 'sentencefill' });
+      setLearningData(data);
+    } catch (requestError: unknown) {
+      setError(getErrorMessage(requestError, '句子填空暂时没有加载出来'));
+    } finally {
+      setLoading(false);
+    }
   }, [unitId]);
+
+  useEffect(() => {
+    void loadLearningData();
+  }, [loadLearningData]);
 
   const handleComplete = async (fillResults: FillBlankResult[]) => {
     setResults(fillResults);
@@ -76,16 +81,19 @@ export default function SentenceFillPractice() {
           current_word_index: (learningData?.words.length || 1) - 1,
           is_completed: true,
         });
-      } catch {}
+      } catch (updateError) {
+        console.error('句子填空进度保存失败:', updateError);
+      }
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500" />
-          <p className="text-gray-500 mt-4">加载句子填空...</p>
+      <div className="min-h-screen bg-paper p-4 no-select" aria-busy="true" aria-label="正在加载句子填空">
+        <div className="mx-auto mt-20 max-w-lg rounded-2xl bg-white p-6 sm:p-8">
+          <div className="mx-auto mb-6 h-5 w-32 animate-pulse rounded bg-slate-100" />
+          <div className="mb-7 h-1.5 animate-pulse rounded-full bg-slate-100" />
+          <div className="h-72 animate-pulse rounded-2xl bg-slate-100" />
         </div>
       </div>
     );
@@ -93,11 +101,29 @@ export default function SentenceFillPractice() {
 
   if (error || !learningData) {
     return (
-      <div className="min-h-screen bg-paper no-select flex items-center justify-center">
-        <div className="text-center">
-          <span className="text-6xl mb-4 block">😞</span>
-          <p className="text-gray-500">{error || '加载失败'}</p>
-          <button onClick={() => goBack()} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">返回</button>
+      <div className="flex min-h-screen items-center justify-center bg-paper p-4 no-select">
+        <div className="card-soft w-full max-w-md rounded-2xl p-7 text-center sm:p-9" role="alert">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+            <RefreshCw className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <h1 className="font-display text-xl font-semibold text-ink">这组句子暂时没打开</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">{error || '请稍后重试'}</p>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={() => goBack()}
+              className="min-h-11 rounded-xl border border-black/10 px-5 text-sm font-semibold text-ink transition hover:bg-black/[0.04]"
+            >
+              返回单元
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadLearningData()}
+              className="min-h-11 rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              重新加载
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -111,11 +137,19 @@ export default function SentenceFillPractice() {
     <div className="min-h-screen bg-paper no-select">
       <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => goBack()} className="p-2 hover:bg-gray-100 rounded-lg transition">
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          <button
+            type="button"
+            onClick={() => goBack()}
+            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-xl text-ink-soft transition hover:bg-orange-50 hover:text-accent-warm"
+            aria-label="返回"
+          >
+            <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-gray-800">📝 句子填空</h1>
+            <h1 className="flex items-center gap-2 font-display text-lg font-semibold text-ink">
+              <FilePenLine className="h-4 w-4 text-accent-warm" aria-hidden="true" />
+              句子填空
+            </h1>
             <p className="text-xs text-gray-500">{learningData.unit_info.name} · {learningData.words.length} 个单词</p>
           </div>
         </div>
@@ -130,10 +164,12 @@ export default function SentenceFillPractice() {
           />
         ) : (
           <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 w-full max-w-md text-center">
-              <div className="text-5xl mb-4">{accuracy >= 80 ? '🎉' : accuracy >= 60 ? '👍' : '💪'}</div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">句子填空完成！</h3>
-              <div className={`text-4xl font-bold mb-2 ${accuracy >= 80 ? 'text-green-500' : accuracy >= 60 ? 'text-blue-500' : 'text-orange-500'}`}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center sm:p-8">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+                <CheckCircle2 className="h-8 w-8" aria-hidden="true" />
+              </div>
+              <h3 className="font-display text-2xl font-semibold text-ink">句子填空完成</h3>
+              <div className={`mb-2 mt-3 font-numeric text-4xl font-bold ${accuracy >= 80 ? 'text-green-600' : 'text-accent-warm'}`}>
                 {accuracy}%
               </div>
               <p className="text-gray-500 mb-6">答对 {correctCount}/{totalCount} 个单词</p>
@@ -158,18 +194,15 @@ export default function SentenceFillPractice() {
                   onClick={() => {
                     setCompleted(false);
                     setResults([]);
-                    setLoading(true);
-                    startLearning({ unit_id: parseInt(unitId!), learning_mode: 'sentencefill' })
-                      .then(data => { setLearningData(data); setLoading(false); })
-                      .catch(() => setLoading(false));
+                    void loadLearningData();
                   }}
-                  className="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-colors"
+                  className="min-h-12 w-full rounded-xl bg-accent-warm font-bold text-white transition hover:opacity-90"
                 >
                   再来一次
                 </button>
                 <button
                   onClick={() => goBack()}
-                  className="w-full py-3 bg-gray-100 text-gray-600 font-medium rounded-xl"
+                  className="min-h-12 w-full rounded-xl bg-gray-100 font-medium text-gray-600 transition hover:bg-gray-200"
                 >
                   返回
                 </button>

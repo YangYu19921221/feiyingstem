@@ -147,7 +147,7 @@ const MistakeChallenge = () => {
     return (
       <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
-          <div className="text-5xl animate-bounce mb-4">🏰</div>
+          <div className="text-5xl animate-pulse mb-4">🏰</div>
           <p className="text-gray-500">加载关卡中...</p>
         </div>
       </div>

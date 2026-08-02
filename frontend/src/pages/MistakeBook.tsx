@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import {
   getMistakeBookStats,
   getMistakeWords,
@@ -15,17 +14,18 @@ import StudentIdentityBadge from '../components/StudentIdentityBadge';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 import { toast } from '../components/Toast';
+import StudentPageHeader from '../components/student/StudentPageHeader';
 
 const PAGE_SIZE = 20;
 
 const MistakeBook = () => {
   const navigate = useNavigate();
-  const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
 
   const [stats, setStats] = useState<MistakeBookStats | null>(null);
   const [mistakeWords, setMistakeWords] = useState<MistakeWordDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [showResolved, setShowResolved] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -73,6 +73,7 @@ const MistakeBook = () => {
   const loadWords = async (page: number) => {
     try {
       setLoading(true);
+      setLoadError('');
       // 词列表改为展示分类学习中的夹生/陌生词
       const data = await getMistakeWords(!showResolved, undefined, page, PAGE_SIZE, 'classify');
       setMistakeWords(data.items || []);
@@ -81,6 +82,7 @@ const MistakeBook = () => {
       setCurrentPage(data.page);
     } catch (error) {
       console.error('加载错题集失败:', error);
+      setLoadError('错题列表暂时没有加载出来，请检查网络后重试。');
     } finally {
       setLoading(false);
     }
@@ -140,32 +142,17 @@ const MistakeBook = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
-        <p className="text-ink-mute text-sm">加载中…</p>
-      </div>
-    );
-  }
-
   const unresolvedTotal = stats?.total_mistakes ? stats.total_mistakes - stats.resolved_mistakes : 0;
 
   return (
     <div className="min-h-screen bg-paper page-warm-glow">
-      {/* 顶部导航 */}
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button
-            onClick={() => goBack()}
-            className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            返回
-          </button>
-          <h1 className="font-display text-base font-semibold text-ink">错题集</h1>
-          <div className="w-12" />
-        </div>
-      </nav>
+      <StudentPageHeader
+        title="错题集"
+        subtitle="把夹生词和陌生词逐个攻克"
+        icon={RotateCcw}
+        backTo="/student/dashboard"
+        maxWidth="5xl"
+      />
 
       <div className="max-w-5xl mx-auto px-5 py-10">
         {/* 学生身份：家长拍照时一眼知道是谁 */}
@@ -175,7 +162,16 @@ const MistakeBook = () => {
         <section className="mb-10 grid md:grid-cols-[1fr_auto] gap-6 md:gap-10 items-center">
           <div>
             <p className="text-ink-mute text-sm mb-2">错题是进步的台阶</p>
-            {unresolvedTotal > 0 ? (
+            {!stats ? (
+              <>
+                <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-3">
+                  正在整理你的错题
+                </h2>
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed">
+                  数据较多时会需要几秒钟，你可以先看看今天最值得复习的内容。
+                </p>
+              </>
+            ) : unresolvedTotal > 0 ? (
               <>
                 <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink leading-[1.1] tracking-tight mb-3">
                   一起攻克这 <span className="font-numeric text-accent-warm">{unresolvedTotal}</span> 个词
@@ -234,8 +230,9 @@ const MistakeBook = () => {
           {/* 到期复习优先 */}
           {reviewDueCount > 0 && (
             <button
+              type="button"
               onClick={() => navigate('/student/mistake-challenge')}
-              className="w-full mb-3 px-5 py-4 border-l-2 border-accent-warm bg-white hover:bg-black/[0.02] transition flex items-center justify-between text-left rounded-r-md"
+              className="mb-3 flex min-h-14 w-full items-center justify-between rounded-xl border border-orange-100 bg-orange-50/50 px-5 py-4 text-left transition hover:border-orange-200 hover:bg-orange-50"
             >
               <div>
                 <p className="font-medium text-ink">
@@ -270,7 +267,7 @@ const MistakeBook = () => {
         </section>
 
         {/* 错题列表 */}
-        <div className="card-soft rounded-2xl p-5 sm:p-6">
+        <div className="card-soft rounded-2xl p-5 sm:p-6" aria-busy={loading}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold">错题列表</h2>
             <div className="flex items-center gap-4">
@@ -286,7 +283,34 @@ const MistakeBook = () => {
             </div>
           </div>
 
-          {mistakeWords.length === 0 ? (
+          {loading ? (
+            <div className="space-y-3" role="status" aria-label="正在加载错题列表">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="animate-pulse rounded-xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="h-5 w-36 rounded bg-slate-200" />
+                  <div className="mt-3 h-3 w-2/3 rounded bg-slate-200" />
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="h-8 rounded bg-white" />
+                    <div className="h-8 rounded bg-white" />
+                    <div className="h-8 rounded bg-white" />
+                  </div>
+                </div>
+              ))}
+              <p className="pt-1 text-center text-xs text-ink-mute">错题较多时，整理可能需要十几秒…</p>
+            </div>
+          ) : loadError ? (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 px-5 py-8 text-center">
+              <p className="font-medium text-ink">错题列表加载失败</p>
+              <p className="mt-1 text-sm text-ink-soft">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => loadWords(currentPage)}
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white"
+              >
+                重新加载
+              </button>
+            </div>
+          ) : mistakeWords.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🎉</div>
               <p className="text-gray-500 text-lg">

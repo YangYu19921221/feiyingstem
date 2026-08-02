@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect, Suspense, lazy, type ComponentType } from 'react';
+import { MotionConfig } from 'framer-motion';
 import ErrorBoundary from './components/ErrorBoundary';
 import FloatingPetWidget from './components/FloatingPetWidget';
 import OldBrowserBanner from './components/OldBrowserBanner';
@@ -32,13 +33,14 @@ const Assessment = lazyWithRetry(() => import('./pages/Assessment'));
 const StudentDashboard = lazyWithRetry(() => import('./pages/StudentDashboard_New'));
 const TeacherDashboard = lazyWithRetry(() => import('./pages/TeacherDashboard'));
 const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
-const Learn = lazyWithRetry(() => import('./pages/Learn'));
 const UnitSelector = lazyWithRetry(() => import('./pages/UnitSelector'));
 const TeacherBooks = lazyWithRetry(() => import('./pages/TeacherBooks'));
 const TeacherUnitManagement = lazyWithRetry(() => import('./pages/TeacherUnitManagement'));
 const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
 const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
 const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
+const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
+const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
 const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
 const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
 const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
@@ -107,6 +109,7 @@ const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPra
 const PkLobby = lazyWithRetry(() => import('./pages/PkLobby'));
 const TeacherTournaments = lazyWithRetry(() => import('./pages/TeacherTournaments'));
 const PkArena = lazyWithRetry(() => import('./pages/PkArena'));
+const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'));
 
 // 路由级 loading 占位
 const PageLoading = () => (
@@ -207,7 +210,8 @@ const DashboardRedirect = () => {
 function App() {
   return (
     <ErrorBoundary>
-      <Router>
+      <MotionConfig reducedMotion="user">
+        <Router>
         <OldBrowserBanner />
         <StudentMobileNav />
         <StaffMobileNav />
@@ -278,7 +282,7 @@ function App() {
           path="/learn"
           element={
             <ProtectedRoute>
-              <Learn />
+              <Navigate to="/student/dashboard" replace />
             </ProtectedRoute>
           }
         />
@@ -409,6 +413,26 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <AchievementsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 音标学习(英语基础,首页有独立入口) */}
+        <Route
+          path="/student/phonetics"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PhoneticsHub />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 音标视频管理 */}
+        <Route
+          path="/teacher/phonetics"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherPhonetics />
             </ProtectedRoute>
           }
         />
@@ -988,11 +1012,13 @@ function App() {
 
         {/* 默认路由 */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
       </Suspense>
       <FloatingPetWidget />
       <UpdateNudge />
-    </Router>
+        </Router>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }

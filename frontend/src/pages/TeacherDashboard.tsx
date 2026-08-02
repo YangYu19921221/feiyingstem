@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowRight, BarChart3, BookOpen, BookOpenText, CalendarCheck2, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, GraduationCap, LogOut, PencilLine, Radio, Settings2, Sparkles, Swords, Trophy, Users } from 'lucide-react';
+import { ArrowRight, BarChart3, BookOpen, BookOpenText, CalendarCheck2, CheckCircle2, ChevronRight, CircleDollarSign, ClipboardList, Clock3, GraduationCap, LogOut, PencilLine, Radio, Settings2, Sparkles, Swords, Trophy, Users, Volume2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
 import ChangePasswordModal from '../components/ChangePasswordModal';
@@ -18,6 +18,7 @@ interface ActionItem { title: string; description: string; route: string; icon: 
 
 const actions: ActionItem[] = [
   { title: '单词本管理', description: '管理单元和词汇', route: '/teacher/books', icon: BookOpenText, tone: 'bg-orange-50 text-orange-600' },
+  { title: '音标视频', description: '上传与管理音标课', route: '/teacher/phonetics', icon: Volume2, tone: 'bg-orange-50 text-orange-600' },
   { title: '班级管理', description: '班级分组和数据', route: '/teacher/classes', icon: Users, tone: 'bg-cyan-50 text-cyan-600' },
   { title: '阅读理解', description: '文章和题目', route: '/teacher/reading', icon: BookOpen, tone: 'bg-blue-50 text-blue-600' },
   { title: '句子背诵', description: '句子集和导入', route: '/teacher/sentences', icon: PencilLine, tone: 'bg-emerald-50 text-emerald-600' },

@@ -211,16 +211,18 @@ const MemoryCurve = () => {
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-5 py-3.5 flex items-center justify-between">
           <button
+            type="button"
             onClick={() => goBack()}
-            className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm text-ink-soft transition hover:bg-orange-50 hover:text-ink"
           >
             <ArrowLeft className="w-4 h-4" />
             返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">今日复习</h1>
           <button
+            type="button"
             onClick={() => setShowRules(true)}
-            className="flex items-center gap-1 text-ink-soft hover:text-accent-warm transition text-xs"
+            className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-xs text-ink-soft transition hover:bg-orange-50 hover:text-accent-warm"
             title="复习规则"
           >
             <HelpCircle className="w-4 h-4" />
@@ -470,8 +472,10 @@ const MemoryCurve = () => {
             className="card-soft rounded-2xl p-6"
           >
             <button
+              type="button"
               onClick={() => setShowWordList(!showWordList)}
-              className="w-full flex items-center justify-between"
+              aria-expanded={showWordList}
+              className="flex min-h-11 w-full items-center justify-between rounded-xl text-left"
             >
               <h2 className="text-lg font-bold text-gray-800">
                 📋 待复习单词 ({totalReviewCount})

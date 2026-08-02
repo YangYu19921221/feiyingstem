@@ -95,7 +95,9 @@ export const getMistakeWords = async (
   if (unitId) {
     url += `&unit_id=${unitId}`;
   }
-  return api.get(url);
+  // 分类错题需要聚合多张学习记录表；数据量大时可能略超全局 10 秒超时。
+  // 仅放宽这条重查询，避免把正常返回误报成网络错误，同时不影响其他接口的快速失败策略。
+  return api.get(url, { timeout: 20_000 });
 };
 
 /**
@@ -156,7 +158,8 @@ export interface ChallengeSubmitResult {
  * 获取闯关关卡列表
  */
 export const getChallengeLevels = async (): Promise<ChallengeLevelsResponse> => {
-  return api.get('/student/mistake-book/challenge-levels');
+  // 与错题词列表并发加载时，这条聚合查询也可能超过全局 10 秒。
+  return api.get('/student/mistake-book/challenge-levels', { timeout: 20_000 });
 };
 
 /**

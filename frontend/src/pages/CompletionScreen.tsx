@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { CheckCircle, Star, ArrowLeft, Play } from 'lucide-react';
 import { checkAchievements, type UnlockedAchievement } from '../api/achievements';
 import { earnFood, feedPet, type EarnFoodResponse } from '../api/pet';
@@ -29,6 +29,7 @@ const CompletionScreen = () => {
   const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
   const data = location.state as CompletionData;
+  const reduceMotion = useReducedMotion();
 
   const { playAudio } = useAudio();
   const [showConfetti, setShowConfetti] = useState(true);
@@ -125,7 +126,7 @@ const CompletionScreen = () => {
   return (
     <div className="min-h-screen bg-paper relative">
       {/* 彩带 — 暖橙色，不再六色乱炖 */}
-      {showConfetti && (
+      {showConfetti && !reduceMotion && (
         <div className="fixed inset-0 pointer-events-none z-50">
           {Array.from({ length: 40 }).map((_, i) => (
             <motion.div
@@ -176,7 +177,7 @@ const CompletionScreen = () => {
               : '/result-retry.jpeg'
             }
             alt=""
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
             className="w-44 h-44 md:w-56 md:h-56 mx-auto mb-6 rounded-2xl object-cover"
@@ -220,9 +221,9 @@ const CompletionScreen = () => {
               {Array.from({ length: 3 }).map((_, i) => (
                 <motion.div
                   key={i}
-                  initial={{ scale: 0, rotate: -180 }}
+                  initial={reduceMotion ? false : { opacity: 0, scale: 0.84, rotate: -18 }}
                   animate={{ scale: 1, rotate: 0 }}
-                  transition={{ delay: 0.3 + i * 0.1, type: 'spring', stiffness: 200 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : 0.22 + i * 0.08, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <Star
                     className={`w-6 h-6 ${
@@ -240,9 +241,9 @@ const CompletionScreen = () => {
         {/* 宠物粮 */}
         {foodResult && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ duration: reduceMotion ? 0 : 0.38, delay: reduceMotion ? 0 : 0.32, ease: [0.16, 1, 0.3, 1] }}
             className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
           >
             <div className="flex items-baseline justify-between mb-3">
@@ -295,18 +296,20 @@ const CompletionScreen = () => {
               {data.weakWords.map((word, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, x: -10 }}
+                  initial={reduceMotion ? false : { opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.6 + index * 0.05 }}
-                  className="flex items-center justify-between gap-3 p-3 border-l-2 border-accent-warm bg-black/[0.015] rounded-r-md"
+                  transition={{ duration: reduceMotion ? 0 : 0.3, delay: reduceMotion ? 0 : 0.48 + index * 0.04, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-orange-50/50 p-3"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <p className="font-display font-semibold text-ink truncate">{word.word}</p>
                       <button
+                        type="button"
                         onClick={() => playAudio(word.word)}
-                        className="text-ink-mute hover:text-accent-warm transition shrink-0"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink-mute transition hover:bg-orange-100 hover:text-accent-warm"
                         title="播放发音"
+                        aria-label={`播放 ${word.word} 的发音`}
                       >
                         🔊
                       </button>

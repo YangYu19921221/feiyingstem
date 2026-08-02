@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, FileQuestion, RefreshCw } from 'lucide-react';
 import { getExamAIAnalysis, type ExamResult, type AIAnalysis, EXAM_TYPE_LABELS } from '../api/unitExam';
 
 const GRADE_CONFIG: Record<string, { image: string; text: string }> = {
@@ -17,12 +17,14 @@ const UnitExamResult = () => {
   const navigate = useNavigate();
   const goBack = useGoBack('/student/dashboard');
   const location = useLocation();
+  const reduceMotion = useReducedMotion();
 
   const result = (location.state as any)?.result as ExamResult | undefined;
   const unitId = (location.state as any)?.unitId;
 
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [aiError, setAIError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [showAI, setShowAI] = useState(false);
 
@@ -35,10 +37,12 @@ const UnitExamResult = () => {
   const loadAIAnalysis = async (id: number) => {
     try {
       setLoadingAI(true);
+      setAIError('');
       const data = await getExamAIAnalysis(id);
       setAiAnalysis(data);
     } catch (err) {
       console.error('AI分析加载失败:', err);
+      setAIError('学习建议暂时没有加载出来，请稍后重试。');
     } finally {
       setLoadingAI(false);
     }
@@ -46,23 +50,30 @@ const UnitExamResult = () => {
 
   if (!result) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center p-4">
-        <div className="text-center max-w-xs">
-          <p className="text-ink-soft mb-4">未找到考试结果</p>
-          <button onClick={() => goBack()} className="px-5 py-2 border border-black/15 text-ink rounded-lg text-sm font-medium hover:bg-black/5 transition">返回</button>
-        </div>
-      </div>
+      <main className="page-warm-glow flex min-h-screen items-center justify-center bg-paper p-4">
+        <section className="card-soft w-full max-w-md rounded-2xl p-6 text-center sm:p-8" role="alert">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+            <FileQuestion className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <h1 className="font-display text-xl font-semibold text-ink">没有找到这次考试成绩</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">可能是结果地址已经过期。返回单元列表后，可以重新进入考试。</p>
+          <button type="button" onClick={() => goBack()} className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            返回学习中心
+          </button>
+        </section>
+      </main>
     );
   }
 
   const gradeInfo = GRADE_CONFIG[result.grade] || GRADE_CONFIG.D;
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-paper page-warm-glow">
       {/* 顶部导航 */}
       <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink transition text-sm">
+          <button type="button" onClick={() => goBack()} className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-ink-soft transition hover:bg-orange-50 hover:text-ink">
             <ArrowLeft className="w-4 h-4" />
             返回
           </button>
@@ -77,7 +88,7 @@ const UnitExamResult = () => {
           <motion.img
             src={gradeInfo.image}
             alt=""
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
             className="w-44 h-44 md:w-56 md:h-56 mx-auto mb-6 rounded-2xl object-cover"
@@ -107,9 +118,9 @@ const UnitExamResult = () => {
 
         {/* 题型表现 */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : 0.14, ease: [0.16, 1, 0.3, 1] }}
           className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
         >
           <h3 className="font-display text-base font-semibold text-ink mb-4">各题型表现</h3>
@@ -121,9 +132,9 @@ const UnitExamResult = () => {
                   <span className="text-sm text-ink-soft w-16 shrink-0">{EXAM_TYPE_LABELS[type] || type}</span>
                   <div className="flex-1 h-1.5 bg-black/[0.05] rounded-full overflow-hidden">
                     <motion.div
-                      initial={{ width: 0 }}
+                      initial={reduceMotion ? false : { width: 0 }}
                       animate={{ width: `${pct}%` }}
-                      transition={{ delay: 0.5, duration: 0.5 }}
+                      transition={{ delay: reduceMotion ? 0 : 0.32, duration: reduceMotion ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
                       className={`h-full rounded-full ${
                         pct >= 80 ? 'bg-accent-warm' : 'bg-ink-mute'
                       }`}
@@ -140,14 +151,16 @@ const UnitExamResult = () => {
 
         {/* 逐题回顾 */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
         >
           <button
+            type="button"
             onClick={() => setShowDetails(!showDetails)}
-            className="w-full flex items-center justify-between"
+            className="flex min-h-11 w-full items-center justify-between rounded-lg px-2 transition hover:bg-orange-50"
+            aria-expanded={showDetails}
           >
             <h3 className="font-display text-base font-semibold text-ink">逐题回顾</h3>
             <span className={`text-ink-mute transition-transform ${showDetails ? 'rotate-180' : ''}`}>▼</span>
@@ -165,8 +178,8 @@ const UnitExamResult = () => {
                   {result.details.map((d, i) => (
                     <div
                       key={d.question_id}
-                      className={`p-3 rounded-md border-l-2 ${
-                        d.is_correct ? 'border-ink-mute bg-black/[0.015]' : 'border-accent-warm bg-black/[0.015]'
+                      className={`rounded-xl border p-3 ${
+                        d.is_correct ? 'border-emerald-100 bg-emerald-50/50' : 'border-orange-100 bg-orange-50/60'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-0.5">
@@ -197,16 +210,18 @@ const UnitExamResult = () => {
 
         {/* AI 分析 */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ duration: reduceMotion ? 0 : 0.36, delay: reduceMotion ? 0 : 0.26, ease: [0.16, 1, 0.3, 1] }}
           className="bg-white rounded-2xl border border-black/[0.05] p-5 mb-8"
         >
           <button
+            type="button"
             onClick={() => setShowAI(!showAI)}
-            className="w-full flex items-center justify-between"
+            className="flex min-h-11 w-full items-center justify-between rounded-lg px-2 transition hover:bg-orange-50"
+            aria-expanded={showAI}
           >
-            <h3 className="font-display text-base font-semibold text-ink">AI 学习建议</h3>
+            <h3 className="font-display text-base font-semibold text-ink">学习建议</h3>
             <span className={`text-ink-mute transition-transform ${showAI ? 'rotate-180' : ''}`}>▼</span>
           </button>
 
@@ -219,7 +234,15 @@ const UnitExamResult = () => {
                 className="overflow-hidden"
               >
                 {loadingAI ? (
-                  <p className="mt-4 text-center py-6 text-ink-mute text-sm">AI 正在分析…</p>
+                  <p className="mt-4 py-6 text-center text-sm text-ink-mute">正在整理学习建议…</p>
+                ) : aiError ? (
+                  <div className="mt-4 rounded-xl bg-orange-50 p-4 text-center" role="alert">
+                    <p className="text-sm leading-6 text-orange-800">{aiError}</p>
+                    <button type="button" onClick={() => paperId && void loadAIAnalysis(Number(paperId))} className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-accent-warm transition hover:bg-orange-100">
+                      <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                      再试一次
+                    </button>
+                  </div>
                 ) : aiAnalysis ? (
                   <div className="mt-4 space-y-4">
                     {Object.keys(aiAnalysis.error_patterns).length > 0 && (
@@ -273,14 +296,17 @@ const UnitExamResult = () => {
         {/* 操作按钮 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
+            type="button"
             onClick={() => navigate('/student/mistake-book')}
-            className="py-3.5 border border-black/15 text-ink rounded-xl text-base font-medium hover:bg-black/5 transition"
+            className="min-h-12 rounded-xl border border-black/15 px-5 text-base font-medium text-ink transition hover:bg-black/5"
           >
             复习错词
           </button>
           <button
-            onClick={() => navigate(`/student/units/${unitId}/exam`, { replace: true })}
-            className="py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition"
+            type="button"
+            onClick={() => unitId && navigate(`/student/units/${unitId}/exam`, { replace: true })}
+            disabled={!unitId}
+            className="min-h-12 rounded-xl bg-accent-warm px-5 text-base font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-black/[0.08] disabled:text-ink-mute"
           >
             重新考试
           </button>

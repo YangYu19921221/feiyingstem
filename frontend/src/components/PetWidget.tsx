@@ -7,31 +7,31 @@ import { getPetImage, getPetStage } from '../config/petSpecies';
 import PetArtwork from './PetArtwork';
 
 const PET_SAYINGS: Record<string, string[]> = {
-  pikachu:    ['皮卡~ 快来学习吧！', '皮卡皮卡...想你了', '皮卡~ 今天也要加油！', '电击！学习充电中！'],
-  eevee:      ['布咿~ 一起学习！', '布咿布咿...等你好久了', '今天也要努力哦~', '想进化呢~'],
+  pikachu:    ['皮卡~ 准备好就出发！', '皮卡皮卡...正在充电', '皮卡~ 今天也慢慢来！', '电击！学习充电中！'],
+  eevee:      ['布咿~ 一起学习！', '布咿布咿...正在休息', '今天也按自己的节奏来~', '想进化呢~'],
   bulbasaur:  ['种子~ 学习时间到！', '种子种子...晒太阳中', '一起加油吧~', '藤鞭！学习出击！'],
   charmander: ['小火~ 来修炼吧！', '火焰在燃烧...', '今天要变更强！', '喷火！学习之火！'],
   squirtle:   ['杰尼~ 一起学习！', '水枪准备中...', '今天也要加油！', '水之力量！'],
   jigglypuff: ['胖丁~ 来唱歌学习！', '要唱歌给你听~', '今天也要开心哦！', '唱歌中...zzz'],
-  cat:    ['喵~ 快来学习吧！', '呼噜呼噜...想你了', '喵呜~ 今天也要加油哦！', '摸摸我嘛~'],
-  dog:    ['汪汪！一起学习！', '尾巴摇摇~ 等你好久了', '汪！今天也要努力！', '来玩来玩！'],
+  cat:    ['喵~ 准备好就学习吧！', '呼噜呼噜...正在晒太阳', '喵呜~ 今天也慢慢来！', '喵~状态不错'],
+  dog:    ['汪汪！一起学习！', '尾巴摇摇~ 状态不错', '汪！今天也按节奏来！', '来玩来玩！'],
   rabbit: ['蹦蹦~ 学习时间到！', '嘿嘿，想吃胡萝卜', '一起加油吧~', '蹦蹦跳跳好开心！'],
   dragon: ['吼~ 来修炼吧！', '火焰在燃烧...', '今天要变更强！', '龙之力量觉醒中...'],
-  book_fox:    ['小狐在等你来读书~', '翻翻翻…看到你啦', '今天学什么呢？', '知识就是力量！'],
+  book_fox:    ['小狐准备好书本了~', '翻翻翻…看到新知识啦', '今天学什么呢？', '知识就是力量！'],
   paper_owl:   ['咕咕~学习时间到', '羽毛笔已备好', '博学越多越好', '一起做个小博士吧'],
   word_turtle: ['慢慢来，一步一个字', '壳上又多了一道纹', '稳扎稳打~', '厚积薄发！'],
 };
 
 function getMoodColor(happiness: number, hunger: number): string {
   const avg = (happiness + hunger) / 2;
-  if (avg < 30) return 'from-red-400 to-orange-400';
-  if (avg < 70) return 'from-orange-400 to-yellow-400';
-  return 'from-green-400 to-emerald-400';
+  if (avg < 30) return 'bg-orange-100 text-orange-800';
+  if (avg < 70) return 'bg-amber-100 text-amber-800';
+  return 'bg-emerald-100 text-emerald-800';
 }
 
 function getMoodText(happiness: number, hunger: number): string {
   const avg = (happiness + hunger) / 2;
-  if (avg < 30) return '😢 需要关爱';
+  if (avg < 30) return '⚡ 正在充电';
   if (avg < 70) return '😊 状态不错';
   return '🤩 超级开心';
 }
@@ -83,13 +83,12 @@ export default function PetWidget() {
 
   if (!isLoading && !pet) {
     return (
-      <motion.div
+      <motion.button
+        type="button"
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={() => navigate('/student/pet')}
-        className="relative overflow-hidden rounded-2xl p-5 cursor-pointer
-                   bg-gradient-to-br from-orange-50 to-yellow-50 border-2 border-dashed border-orange-200
-                   hover:border-orange-400 transition-all group"
+        className="card-soft group relative w-full cursor-pointer overflow-hidden rounded-2xl border-dashed p-5 text-left hover:border-orange-300"
       >
         <div className="flex items-center gap-4">
           <motion.div
@@ -101,19 +100,19 @@ export default function PetWidget() {
           </motion.div>
           <div>
             <p className="font-bold text-orange-600 group-hover:text-orange-700">领养一只宠物吧！</p>
-            <p className="text-xs text-orange-400 mt-1">学习越多，宠物成长越快 ✨</p>
+            <p className="mt-1 text-xs text-orange-600">完成学习任务，宠物也会一起成长 ✨</p>
           </div>
         </div>
         <div className="absolute -bottom-2 -right-2 text-6xl opacity-10 group-hover:opacity-20 transition-opacity">
           🐾
         </div>
-      </motion.div>
+      </motion.button>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="rounded-2xl p-5 bg-gradient-to-br from-orange-50 to-yellow-50 animate-pulse h-32" />
+      <div className="card-soft h-32 animate-pulse rounded-2xl p-5" role="status" aria-label="正在加载宠物信息" />
     );
   }
 
@@ -124,11 +123,12 @@ export default function PetWidget() {
   const xpPct = Math.round((pet!.experience / pet!.xp_to_next_level) * 100);
 
   return (
-    <motion.div
+    <motion.button
+      type="button"
       whileHover={{ scale: 1.01 }}
-      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-50 via-white to-yellow-50
-                 border border-orange-100 shadow-sm hover:shadow-lg transition-all cursor-pointer"
+      className="card-soft relative w-full cursor-pointer overflow-hidden rounded-2xl text-left"
       onClick={() => navigate('/student/pet')}
+      aria-label={`查看宠物 ${pet!.name} 的状态`}
     >
       <div className="p-5">
         <div className="flex items-start gap-4">
@@ -163,7 +163,7 @@ export default function PetWidget() {
               </AnimatePresence>
             </motion.div>
             {/* 等级徽章 */}
-            <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-orange-400 to-yellow-400 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow">
+            <div className="absolute -bottom-1 -right-1 rounded-full bg-accent-warm px-2 py-0.5 text-xs font-bold text-white shadow">
               Lv.{pet!.level}
             </div>
           </div>
@@ -172,14 +172,14 @@ export default function PetWidget() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="font-bold text-gray-800 truncate text-lg">{pet!.name}</span>
-              <span className="px-2 py-0.5 bg-purple-100 text-purple-600 text-xs font-medium rounded-full">
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
                 {getPetStage(pet!.species, pet!.evolution_stage).name}
               </span>
             </div>
 
             {/* 心情指示 */}
             <div className="flex items-center gap-2 mb-2">
-              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white bg-gradient-to-r ${moodColor}`}>
+              <div className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${moodColor}`}>
                 {moodText}
               </div>
               <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold text-orange-600 bg-orange-50">
@@ -221,6 +221,8 @@ export default function PetWidget() {
               initial={{ opacity: 0, y: 10, scale: 0.8 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -5, scale: 0.9 }}
+              role="status"
+              aria-live="polite"
               className="mt-3 bg-white rounded-xl px-4 py-2 text-sm text-gray-600 shadow-inner border border-orange-100 text-center"
             >
               💬 {saying}
@@ -231,6 +233,6 @@ export default function PetWidget() {
 
       {/* 底部装饰 */}
       <div className="absolute -bottom-3 -right-3 text-7xl opacity-5 pointer-events-none">🐾</div>
-    </motion.div>
+    </motion.button>
   );
 }

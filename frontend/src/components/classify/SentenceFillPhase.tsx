@@ -84,8 +84,6 @@ export default function SentenceFillPhase({
 
     const before = sentence.slice(0, range.start);
     const after = sentence.slice(range.end);
-    const matchedLen = range.end - range.start;
-
     return (
       <p className="text-gray-700 text-lg leading-relaxed break-words whitespace-normal">
         {before}
@@ -193,7 +191,7 @@ export default function SentenceFillPhase({
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-lg text-center"
+          className="w-full max-w-lg rounded-2xl bg-white p-6 text-center sm:p-8"
         >
           <div className="text-5xl mb-4">🔄</div>
           <h3 className="text-xl font-bold text-gray-800 mb-2">填空第 {round} 轮完成</h3>
@@ -229,7 +227,7 @@ export default function SentenceFillPhase({
         </span>
         <div className="w-48 h-1.5 bg-gray-200 rounded-full mt-2 mx-auto overflow-hidden">
           <motion.div
-            className="h-full bg-violet-500 rounded-full"
+            className="h-full rounded-full bg-accent-warm"
             animate={{ width: `${((currentIndex + 1) / roundWords.length) * 100}%` }}
           />
         </div>
@@ -241,11 +239,11 @@ export default function SentenceFillPhase({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-lg text-center"
+          className="w-full max-w-lg rounded-2xl bg-white p-6 text-center sm:p-8"
         >
           {/* 标签 */}
           <div className="mb-4">
-            <span className="inline-flex items-center gap-1 px-3 py-1 bg-violet-100 text-violet-700 rounded-full text-sm font-medium">
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-sm font-medium text-accent-warm">
               📝 句子填空
             </span>
           </div>
@@ -256,7 +254,7 @@ export default function SentenceFillPhase({
             {currentWord.example_sentence && (
               <button
                 onClick={() => playAudio(currentWord.example_sentence!)}
-                className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-violet-100 text-violet-700 rounded-full text-sm hover:bg-violet-200 transition"
+                className="mt-2 inline-flex min-h-11 items-center gap-1 rounded-full bg-orange-50 px-4 text-sm font-medium text-accent-warm transition hover:bg-orange-100"
               >
                 🔊 朗读句子
               </button>
@@ -281,7 +279,7 @@ export default function SentenceFillPhase({
                 onKeyDown={handleKeyDown}
                 maxLength={Math.max(wordLength + 4, Math.ceil(wordLength * 1.5))}
                 placeholder="输入单词..."
-                className="w-full text-center text-2xl font-mono font-bold bg-transparent border-0 border-b-4 border-violet-300 focus:border-violet-500 outline-none transition-colors duration-200 py-3 text-gray-800 placeholder:text-gray-300"
+                className="w-full border-0 border-b-4 border-orange-200 bg-transparent py-3 text-center font-mono text-2xl font-bold text-gray-800 outline-none transition-colors duration-200 placeholder:text-gray-400 focus:border-accent-warm"
                 autoFocus
               />
             ) : (
@@ -328,7 +326,7 @@ export default function SentenceFillPhase({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleNext}
-                className="mt-4 px-8 py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90 cursor-pointer"
+                className="mt-4 min-h-12 cursor-pointer rounded-xl bg-accent-warm px-8 text-lg font-medium text-white hover:opacity-90"
               >
                 下一个
               </motion.button>
@@ -343,9 +341,9 @@ export default function SentenceFillPhase({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleSubmit}
-              className={`mt-4 px-8 py-3 rounded-2xl text-lg font-medium shadow-lg cursor-pointer transition ${
+              className={`mt-4 min-h-12 cursor-pointer rounded-xl px-8 text-lg font-medium transition ${
                 userInput.length === wordLength
-                  ? 'bg-violet-500 text-white hover:bg-violet-600'
+                  ? 'bg-accent-warm text-white hover:opacity-90'
                   : 'bg-gray-200 text-gray-500'
               }`}
             >

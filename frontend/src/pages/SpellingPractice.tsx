@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { usePreventCopy } from '../hooks/usePreventCopy';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Lightbulb } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Check, Lightbulb, PencilLine, Volume2 } from 'lucide-react';
 import PracticeLayout from '../components/practice/PracticeLayout';
+import PracticeLoadError from '../components/practice/PracticeLoadError';
 import AnswerFeedback from '../components/practice/AnswerFeedback';
 import { usePracticeState } from '../hooks/usePracticeState';
 import { usePracticeQuestions } from '../hooks/usePracticeQuestions';
@@ -14,10 +15,11 @@ const SpellingPractice = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const { unitId } = useParams<{ unitId: string }>();
   const { playAudio } = useAudio();
+  const reduceMotion = useReducedMotion();
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const firstWrongInputRef = useRef<string>('');  // 本题首次错误输入(抄写3遍后随记录上报)
 
-  const { questions, unitInfo, unitWords, loading } = usePracticeQuestions({
+  const { questions, unitInfo, unitWords, loading, error, retry } = usePracticeQuestions({
     unitId,
     questionType: 'spelling',
     questionCount: 10,
@@ -140,6 +142,16 @@ const SpellingPractice = () => {
   const answerLength = currentQuestion?.correct_answer.length || 0;
   const questionWords = questions.map(q => q.word);
 
+  if (error) {
+    return (
+      <PracticeLoadError
+        title="拼写题暂时没准备好"
+        message={error}
+        onRetry={retry}
+      />
+    );
+  }
+
   return (
     <PracticeLayout
       loading={loading || questions.length === 0}
@@ -163,32 +175,35 @@ const SpellingPractice = () => {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentIndex}
-          initial={{ opacity: 0, x: 50 }}
+          initial={reduceMotion ? false : { opacity: 0, x: 24 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -50 }}
-          className="bg-white rounded-2xl shadow-lg p-6 mb-6"
+          exit={reduceMotion ? undefined : { opacity: 0, x: -24 }}
+          transition={{ duration: reduceMotion ? 0 : 0.32, ease: [0.16, 1, 0.3, 1] }}
+          className="card-soft mb-6 rounded-2xl p-4 sm:p-6"
         >
-          <div className="text-sm text-gray-400 mb-2">
+          <div className="mb-2 font-numeric text-sm text-ink-mute">
             第 {currentIndex + 1} / {questions.length} 题
           </div>
 
           {/* 题目文字 + 发音 */}
           <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-3">
+            <h2 className="mb-3 text-balance text-xl font-bold leading-8 text-ink">
               {currentQuestion?.question}
             </h2>
             <button
+              type="button"
               onClick={() => currentQuestion && playAudio(currentQuestion.word)}
-              className="inline-flex items-center gap-2 px-5 py-2 bg-orange-100 text-orange-700 rounded-full hover:bg-orange-200 transition"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-orange-50 px-5 text-sm font-semibold text-accent-warm transition hover:bg-orange-100"
             >
-              🔊 播放发音
+              <Volume2 className="h-4 w-4" aria-hidden="true" />
+              播放发音
             </button>
-            <p className="text-sm text-gray-400 mt-2">
+            <p id="spelling-length-help" className="mt-2 text-sm text-ink-mute">
               共 {answerLength} 个字符{currentQuestion?.correct_answer.includes(' ') ? '（含空格）' : ''}
             </p>
             {/* 抄写模式：显示正确答案让学生照着抄 */}
             {copyMode && currentQuestion && (
-              <div className="mt-4 inline-block bg-amber-50 border-2 border-amber-300 rounded-xl px-5 py-3">
+              <div className="mt-4 inline-block rounded-xl border border-amber-300 bg-amber-50 px-5 py-3">
                 <p className="text-xs text-amber-700 mb-1">正确拼写</p>
                 <p className="text-3xl font-bold text-amber-700 tracking-wider font-mono">
                   {currentQuestion.correct_answer}
@@ -213,12 +228,29 @@ const SpellingPractice = () => {
               if (e.key === 'Enter' && !isChecking && userInput.trim()) handleCheck();
             }}
             className="opacity-0 absolute -z-10"
+            aria-label="输入拼写答案"
+            aria-describedby="spelling-length-help"
+            autoComplete="off"
+            spellCheck={false}
             autoFocus
             disabled={isChecking}
           />
 
           {/* Wordle 风格字母格子 */}
-          <div className="flex justify-center gap-2 mb-6 overflow-x-auto pb-1" style={{ flexWrap: 'nowrap' }} onClick={focusInput}>
+          <div
+            className="custom-scrollbar mb-6 flex justify-start gap-1 overflow-x-auto pb-2 min-[360px]:gap-2 sm:justify-center"
+            style={{ flexWrap: 'nowrap' }}
+            onClick={focusInput}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                focusInput();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="点击或按回车开始输入拼写答案"
+          >
             {currentQuestion && Array.from({ length: answerLength }).map((_, i) => {
               const answer = currentQuestion.correct_answer;
               const isSpace = answer[i] === ' ';
@@ -230,7 +262,7 @@ const SpellingPractice = () => {
                     key={i}
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
-                    className="w-6 h-14 flex items-center justify-center text-gray-300 text-sm"
+                    className="flex h-11 w-3 shrink-0 items-center justify-center text-xs text-gray-300 min-[360px]:h-12 min-[360px]:w-5 min-[360px]:text-sm sm:h-14 sm:w-6"
                   >
                     ␣
                   </motion.div>
@@ -262,8 +294,8 @@ const SpellingPractice = () => {
                 bgColor = 'bg-orange-50 border-orange-400';
               } else if (i === 0 && !userInput) {
                 letter = answer[0];
-                bgColor = 'bg-blue-50 border-blue-300';
-                textColor = 'text-blue-400';
+                bgColor = 'bg-orange-50 border-orange-200';
+                textColor = 'text-orange-300';
               }
 
               const isCurrent = i === userInput.length && !isChecking;
@@ -273,7 +305,7 @@ const SpellingPractice = () => {
                   key={i}
                   initial={{ scale: 0.8 }}
                   animate={{ scale: 1 }}
-                  className={`w-12 h-14 flex items-center justify-center border-2 rounded-xl text-2xl font-bold ${bgColor} ${textColor} ${
+                  className={`flex h-11 w-8 shrink-0 items-center justify-center rounded-lg border-2 text-lg font-bold min-[360px]:h-12 min-[360px]:w-10 min-[360px]:rounded-xl min-[360px]:text-xl sm:h-14 sm:w-12 sm:text-2xl ${bgColor} ${textColor} ${
                     isCurrent ? 'ring-2 ring-orange-400 animate-pulse' : ''
                   }`}
                 >
@@ -282,14 +314,20 @@ const SpellingPractice = () => {
               );
             })}
           </div>
+          {answerLength > 7 && (
+            <p className="-mt-4 mb-5 text-center text-xs text-ink-mute">
+              字母较多，可左右滑动查看全部
+            </p>
+          )}
 
           {/* 提示按钮（抄写模式下隐藏：答案已经亮在上面） */}
           {!isChecking && !copyMode && (
             <div className="text-center mb-6">
               <button
+                type="button"
                 onClick={handleHint}
                 disabled={revealedLetters.size >= answerLength - 1}
-                className="inline-flex items-center gap-1 px-4 py-2 text-sm bg-yellow-100 text-yellow-700 rounded-full hover:bg-yellow-200 transition disabled:opacity-40"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-yellow-100 px-4 text-sm font-medium text-yellow-800 transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Lightbulb size={16} />
                 提示一个字母 ({revealedLetters.size}/{answerLength - 1})
@@ -300,8 +338,9 @@ const SpellingPractice = () => {
           {/* 抄写模式提示 */}
           {copyMode && !isChecking && (
             <div className="text-center mb-4">
-              <p className="text-amber-700 text-sm font-medium">
-                ✏️ 拼错了，请照着上方正确拼写抄写 {COPY_REQUIRED} 遍（已完成 {copyDoneCount} / {COPY_REQUIRED}）
+              <p className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-amber-800">
+                <PencilLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+                拼错了，请照着上方答案抄写 {COPY_REQUIRED} 遍（已完成 {copyDoneCount} / {COPY_REQUIRED}）
               </p>
             </div>
           )}
@@ -309,13 +348,15 @@ const SpellingPractice = () => {
           {/* 检查按钮 */}
           {!isChecking && (
             <button
+              type="button"
               onClick={handleCheck}
               disabled={!userInput.trim()}
-              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
+              className="btn-glow inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-45"
             >
+              <Check className="h-5 w-5" aria-hidden="true" />
               {copyMode
                 ? `提交本遍（${copyDoneCount + 1} / ${COPY_REQUIRED}）`
-                : '检查拼写 ✏️'}
+                : '检查拼写'}
             </button>
           )}
         </motion.div>
@@ -325,9 +366,10 @@ const SpellingPractice = () => {
       <AnimatePresence>
         {isChecking && currentQuestion && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -14 }}
+            transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
             <AnswerFeedback
               isCorrect={isCorrect!}

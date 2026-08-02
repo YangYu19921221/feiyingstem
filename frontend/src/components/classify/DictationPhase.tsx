@@ -452,7 +452,7 @@ export default function DictationPhase({
                 });
                 setTimeout(() => inputRef.current?.focus(), 100);
               }}
-              className="mt-3 px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm font-medium transition cursor-pointer"
+              className="mt-3 min-h-11 rounded-xl bg-gray-100 px-6 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
             >
               跳过（标记为未掌握）
             </motion.button>

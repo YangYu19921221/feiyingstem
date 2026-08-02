@@ -36,7 +36,7 @@ export default function StudentPageHeader({
         <button
           type="button"
           onClick={() => backTo ? navigate(backTo) : goBack()}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
           aria-label="返回"
           title="返回"
         >

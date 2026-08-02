@@ -65,6 +65,9 @@ export default function ToastContainer() {
       {items.map((t) => (
         <div
           key={t.id}
+          role={t.type === 'error' ? 'alert' : 'status'}
+          aria-live={t.type === 'error' ? 'assertive' : 'polite'}
+          aria-atomic="true"
           className={`${typeStyles[t.type]} text-white px-4 py-3 rounded-lg shadow-lg
             text-sm animate-slide-in flex items-start gap-2 leading-relaxed`}
         >

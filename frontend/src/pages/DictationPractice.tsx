@@ -77,7 +77,7 @@ export default function DictationPractice() {
         <div className="text-center">
           <span className="text-6xl mb-4 block">😞</span>
           <p className="text-gray-500">{error || '加载失败'}</p>
-          <button onClick={() => goBack()} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">返回</button>
+          <button onClick={() => goBack()} className="mt-4 min-h-11 rounded-xl bg-primary px-5 font-semibold text-white">返回单元</button>
         </div>
       </div>
     );
@@ -92,7 +92,7 @@ export default function DictationPractice() {
       {/* 顶部导航 */}
       <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => goBack()} className="p-2 hover:bg-gray-100 rounded-lg transition">
+          <button onClick={() => goBack()} className="flex h-11 w-11 items-center justify-center rounded-xl transition hover:bg-orange-50" aria-label="返回单元">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1">
@@ -152,7 +152,7 @@ export default function DictationPractice() {
                 </button>
                 <button
                   onClick={() => goBack()}
-                  className="w-full py-3 bg-gray-100 text-gray-600 font-medium rounded-xl"
+                  className="min-h-12 w-full rounded-xl bg-gray-100 font-medium text-gray-600"
                 >
                   返回
                 </button>

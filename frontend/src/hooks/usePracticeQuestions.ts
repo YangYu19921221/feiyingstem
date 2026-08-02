@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import useGoBack from './useGoBack';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { startLearning, type WordData } from '../api/progress';
@@ -35,6 +34,7 @@ interface UsePracticeQuestionsResult {
   unitWords: WordData[];
   loading: boolean;
   error: string | null;
+  retry: () => void;
 }
 
 export function usePracticeQuestions({
@@ -42,21 +42,35 @@ export function usePracticeQuestions({
   questionType,
   questionCount = 10,
 }: UsePracticeQuestionsOptions): UsePracticeQuestionsResult {
-  const goBack = useGoBack('/student/dashboard');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [unitInfo, setUnitInfo] = useState<UnitInfo | null>(null);
   const [unitWords, setUnitWords] = useState<WordData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const retry = useCallback(() => setRetryCount((count) => count + 1), []);
 
   useEffect(() => {
-    if (!unitId) return;
-    const id = parseInt(unitId);
+    if (!unitId) {
+      setLoading(false);
+      setError('没有找到这个单元，请返回单元列表重新进入。');
+      return;
+    }
+
+    const id = Number.parseInt(unitId, 10);
+    if (!Number.isFinite(id)) {
+      setLoading(false);
+      setError('这个单元地址不正确，请返回单元列表重新进入。');
+      return;
+    }
+
+    let cancelled = false;
 
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
+        setQuestions([]);
 
         const isMistakePractice = sessionStorage.getItem('is_mistake_practice') === 'true';
 
@@ -72,6 +86,11 @@ export function usePracticeQuestions({
 
         const [qs, unitData] = await Promise.all([questionsPromise, unitInfoPromise]);
 
+        if (!Array.isArray(qs) || qs.length === 0) {
+          throw new Error('empty practice questions');
+        }
+        if (cancelled) return;
+
         setQuestions(qs);
         if (unitData) {
           setUnitInfo(unitData.unit_info);
@@ -83,18 +102,21 @@ export function usePracticeQuestions({
         }
       } catch (err) {
         console.error('加载题目失败:', err);
-        setError('加载题目失败,请重试');
-        alert('加载题目失败,请重试');
-        goBack();
+        if (!cancelled) {
+          setError('题目暂时没有生成出来，请检查网络后重试。');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    load();
-  }, [unitId, questionType, questionCount, navigate]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [unitId, questionType, questionCount, retryCount]);
 
-  return { questions, unitInfo, unitWords, loading, error };
+  return { questions, unitInfo, unitWords, loading, error, retry };
 }
 
 async function loadMistakeQuestions(

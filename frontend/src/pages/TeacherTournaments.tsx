@@ -10,6 +10,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { tournamentApi, type TournamentListItem, type TournamentDetail, type TournamentMatch } from '../api/tournament';
 import { toast } from '../components/Toast';
+import { useClampedNumber } from '../hooks/useClampedNumber';
 
 interface ClassOption { id: number; name: string; student_count: number }
 interface BookOption { id: number; name: string; unit_count: number }
@@ -18,6 +19,18 @@ interface UnitOption { id: number; name: string; unit_number: number }
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` });
 
 const STAGE_LABEL: Record<string, string> = { group: '小组赛', ko: '淘汰赛', consolation: '安慰赛(黑马组)' };
+
+// 每组人数边界:必须与后端 CreateTournamentRequest.group_size (ge=3, le=20) 一致
+const MIN_GROUP_SIZE = 3;
+const MAX_GROUP_SIZE = 20;
+// 快捷档只是常用值,任意 3~20 都能填(原来是固定下拉,7人/9人这种就没法选)
+const GROUP_SIZE_PRESETS = [3, 4, 5, 6, 8] as const;
+
+// 每场词数边界:与后端 CreateTournamentRequest.word_count (ge=5, le=200) 一致。
+// 晋级赛双方考同一批词,词源是所选单元池;填超过单元词量时后端会明确报错。
+const MIN_WORD_COUNT = 5;
+const MAX_WORD_COUNT = 200;
+const WORD_COUNT_PRESETS = [5, 8, 10, 20, 50] as const;
 
 export default function TeacherTournaments() {
   const navigate = useNavigate();
@@ -277,8 +290,12 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [selClasses, setSelClasses] = useState<number[]>([]);
   const [selBook, setSelBook] = useState<number | null>(null);
   const [selUnits, setSelUnits] = useState<number[]>([]);
-  const [groupSize, setGroupSize] = useState(4);
-  const [wordCount, setWordCount] = useState(8);
+  // 每组人数/每场词数:输入中不 clamp、失焦才收敛,统一走 useClampedNumber
+  // (边界与后端 CreateTournamentRequest 一致,否则填超范围会吃 422)
+  const group = useClampedNumber(MIN_GROUP_SIZE, MAX_GROUP_SIZE, 4);
+  const wordCountInput = useClampedNumber(MIN_WORD_COUNT, MAX_WORD_COUNT, 8);
+  const groupSize = group.value;
+  const wordCount = wordCountInput.value;
   const [hasConsolation, setHasConsolation] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -303,11 +320,16 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
     if (!name.trim()) return toast.error('给赛事起个名字');
     if (selClasses.length === 0) return toast.error('至少选一个班级');
     if (selUnits.length === 0) return toast.error('至少选一个单元作为词库范围');
+    // 人数取输入框当前文本再 clamp:老师打完数字直接点"创建"不会触发 onBlur,
+    // 只读 groupSize 会漏掉最后一次输入(填 7 却按 4 建赛,分组全错还不报错)
+    // commit():打完数字直接点"创建"不会触发 onBlur,必须以输入框文本为准取值
+    const finalGroupSize = group.commit();
+    const finalWordCount = wordCountInput.commit();
     setSubmitting(true);
     try {
       const r = await tournamentApi.create({
         name: name.trim(), class_ids: selClasses, unit_ids: selUnits,
-        group_size: groupSize, word_count: wordCount, has_consolation: hasConsolation,
+        group_size: finalGroupSize, word_count: finalWordCount, has_consolation: hasConsolation,
       });
       toast.success(`赛事已创建 · ${r.player_count} 人参赛,已自动分组`);
       onCreated();
@@ -367,11 +389,58 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm text-gray-600 font-medium">每组人数</label>
-            <select value={groupSize} onChange={e => setGroupSize(Number(e.target.value))}
-              className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              {[3, 4, 5, 6, 8, 10, 12, 16, 20].map(n => <option key={n} value={n}>{n} 人/组</option>)}
-            </select>
+            <label className="text-sm text-gray-600 font-medium">
+              每组人数 <span className="font-normal text-gray-400">({MIN_GROUP_SIZE}~{MAX_GROUP_SIZE} 人,可自定义)</span>
+            </label>
+            {/* 步进器 + 直接输入:原来是固定下拉,7人/9人这类分组填不进去 */}
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => group.set(groupSize - 1)}
+                disabled={groupSize <= MIN_GROUP_SIZE}
+                aria-label="减少每组人数"
+                className="h-9 w-9 shrink-0 rounded-lg bg-orange-100 text-lg font-bold text-orange-600 transition active:scale-95 disabled:opacity-40"
+              >
+                −
+              </button>
+              <div className="flex flex-1 items-baseline justify-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={group.raw}
+                  aria-label="每组人数"
+                  onChange={e => group.onChangeText(e.target.value)}
+                  onBlur={group.onBlur}
+                  className="w-10 bg-transparent text-center text-lg font-bold text-orange-600 focus:outline-none"
+                />
+                <span className="text-xs text-gray-400">人/组</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => group.set(groupSize + 1)}
+                disabled={groupSize >= MAX_GROUP_SIZE}
+                aria-label="增加每组人数"
+                className="h-9 w-9 shrink-0 rounded-lg bg-orange-100 text-lg font-bold text-orange-600 transition active:scale-95 disabled:opacity-40"
+              >
+                +
+              </button>
+            </div>
+            <div className="mt-2 flex gap-1.5">
+              {GROUP_SIZE_PRESETS.map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => group.set(n)}
+                  className={`flex-1 rounded-lg py-1 text-xs font-medium transition ${
+                    groupSize === n
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-orange-100'
+                  }`}
+                >
+                  {n}人
+                </button>
+              ))}
+            </div>
             {groupSize >= 8 && (
               <p className="mt-1 text-xs text-orange-500">
                 ⚠️ 每组 {groupSize} 人 → 组内单循环 {groupSize * (groupSize - 1) / 2} 场,场次较多,酌情选择
@@ -379,11 +448,39 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             )}
           </div>
           <div>
-            <label className="text-sm text-gray-600 font-medium">每场词数</label>
-            <select value={wordCount} onChange={e => setWordCount(Number(e.target.value))}
-              className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
-              {[5, 8, 10, 15, 20].map(n => <option key={n} value={n}>{n} 词</option>)}
-            </select>
+            <label className="text-sm text-gray-600 font-medium">
+              每场词数 <span className="font-normal text-gray-400">({MIN_WORD_COUNT}~{MAX_WORD_COUNT},可自定义)</span>
+            </label>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="flex flex-1 items-baseline justify-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={wordCountInput.raw}
+                  aria-label="每场词数"
+                  onChange={e => wordCountInput.onChangeText(e.target.value)}
+                  onBlur={wordCountInput.onBlur}
+                  className="w-12 bg-transparent text-center text-lg font-bold text-orange-600 focus:outline-none"
+                />
+                <span className="text-xs text-gray-400">词/场</span>
+              </div>
+            </div>
+            <div className="mt-2 flex gap-1.5">
+              {WORD_COUNT_PRESETS.map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => wordCountInput.set(n)}
+                  className={`flex-1 rounded-lg py-1 text-xs font-medium transition ${
+                    wordCount === n
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-orange-100'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

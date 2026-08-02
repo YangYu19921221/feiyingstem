@@ -1,302 +1,350 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import useGoBack from '../hooks/useGoBack';
 import { motion } from 'framer-motion';
-import { ArrowLeft, BookOpenText, CalendarDays, ClipboardList, GraduationCap } from 'lucide-react';
+import {
+  ArrowLeft,
+  BookOpenText,
+  CalendarDays,
+  ChevronDown,
+  ClipboardCheck,
+  ClipboardList,
+  GraduationCap,
+} from 'lucide-react';
+import useGoBack from '../hooks/useGoBack';
 import { getMyAssignments } from '../api/assignments';
 import type { StudentBookAssignmentResponse } from '../api/assignments';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
-const StudentAssignments = () => {
+const getDaysUntilDeadline = (deadline?: string): number | null => {
+  if (!deadline) return null;
+  const diffTime = new Date(deadline).getTime() - Date.now();
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+const formatDate = (dateString: string): string => new Date(dateString).toLocaleDateString('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+const getStatusConfig = (assignment: StudentBookAssignmentResponse) => {
+  if (assignment.is_completed) {
+    return { label: '已完成', className: 'bg-emerald-50 text-emerald-700' };
+  }
+  if (assignment.progress_percentage > 0) {
+    return { label: '进行中', className: 'bg-orange-50 text-accent-warm' };
+  }
+  return { label: '未开始', className: 'bg-slate-100 text-slate-600' };
+};
+
+export default function StudentAssignments() {
   const navigate = useNavigate();
   const goBack = useGoBack('/student/dashboard');
   const [assignments, setAssignments] = useState<StudentBookAssignmentResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAllPriority, setShowAllPriority] = useState(false);
+  const [showAllOther, setShowAllOther] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
-    loadAssignments();
+    const loadAssignments = async () => {
+      try {
+        setLoading(true);
+        setAssignments(await getMyAssignments());
+      } catch (error: unknown) {
+        console.error('加载作业失败:', error);
+        toast.error(getErrorMessage(error, '教材任务加载失败'));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadAssignments();
   }, []);
 
-  const loadAssignments = async () => {
-    try {
-      setLoading(true);
-      const data = await getMyAssignments();
-      setAssignments(data);
-    } catch (error: any) {
-      console.error('加载作业失败:', error);
-      toast.error(getErrorMessage(error, '加载失败'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 计算截止日期剩余天数
-  const getDaysUntilDeadline = (deadline?: string): number | null => {
-    if (!deadline) return null;
-    const now = new Date();
-    const deadlineDate = new Date(deadline);
-    const diffTime = deadlineDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  // 格式化日期显示
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+  const groupedAssignments = useMemo(() => {
+    const ordered = [...assignments].sort((a, b) => {
+      if (a.is_completed !== b.is_completed) return a.is_completed ? 1 : -1;
+      if ((a.progress_percentage > 0) !== (b.progress_percentage > 0)) {
+        return a.progress_percentage > 0 ? -1 : 1;
+      }
+      const aDeadline = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
+      const bDeadline = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY;
+      return aDeadline - bDeadline;
     });
+
+    const active = ordered.filter((assignment) => !assignment.is_completed);
+    const priority = active.filter((assignment) => {
+      const days = getDaysUntilDeadline(assignment.deadline);
+      return assignment.progress_percentage > 0 || (days !== null && days <= 3);
+    });
+    const priorityIds = new Set(priority.map((assignment) => assignment.id));
+
+    return {
+      priority,
+      other: active.filter((assignment) => !priorityIds.has(assignment.id)),
+      completed: ordered.filter((assignment) => assignment.is_completed),
+    };
+  }, [assignments]);
+
+  const openAssignment = (assignment: StudentBookAssignmentResponse) => {
+    navigate(
+      assignment.unit_id
+        ? `/student/books/${assignment.book_id}/units?focus=${assignment.unit_id}`
+        : `/student/books/${assignment.book_id}/units`,
+    );
   };
 
-  // 获取完成状态配置
-  const getStatusConfig = (assignment: StudentBookAssignmentResponse) => {
-    if (assignment.is_completed) {
-      return {
-        label: '已完成',
-        className: 'bg-emerald-500 text-white',
-        emoji: '✅',
-      };
-    } else if (assignment.progress_percentage > 0) {
-      return {
-        label: '进行中',
-        className: 'bg-cyan-500 text-white',
-        emoji: '📚',
-      };
-    } else {
-      return {
-        label: '未开始',
-        className: 'bg-amber-100 text-amber-800',
-        emoji: '🆕',
-      };
-    }
-  };
+  const renderAssignment = (assignment: StudentBookAssignmentResponse, index: number) => {
+    const status = getStatusConfig(assignment);
+    const days = getDaysUntilDeadline(assignment.deadline);
+    const isOverdue = days !== null && days < 0;
+    const isUrgent = days !== null && days >= 0 && days <= 3;
+    const scope = assignment.scope_type === 'unit' || assignment.scope_type === 'group'
+      ? `Unit ${assignment.unit_number ?? '?'}${assignment.unit_name ? ` · ${assignment.unit_name}` : ''}${
+        assignment.scope_type === 'group' && assignment.group_index ? ` · 第 ${assignment.group_index} 组` : ''
+      }`
+      : '整本教材';
 
-  // 根据难度获取卡片渐变色
-  const getCardGradient = (index: number): string => {
-    const gradients = [
-      'from-orange-100 via-orange-50 to-yellow-50',
-      'from-blue-100 via-blue-50 to-cyan-50',
-      'from-pink-100 via-pink-50 to-purple-50',
-      'from-green-100 via-green-50 to-teal-50',
-      'from-yellow-100 via-yellow-50 to-orange-50',
-    ];
-    return gradients[index % gradients.length];
+    return (
+      <motion.article
+        key={assignment.id}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: Math.min(index * 0.035, 0.2), ease: [0.16, 1, 0.3, 1] }}
+        className="card-soft rounded-2xl p-4 sm:p-5"
+      >
+        <div className="flex items-start gap-4">
+          <img
+            src={`/book-cover-${(assignment.book_id % 4) + 1}.jpeg`}
+            alt=""
+            className="h-20 w-16 shrink-0 rounded-xl object-cover sm:h-24 sm:w-20"
+            loading="lazy"
+          />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-display text-base font-semibold text-ink sm:text-lg">{assignment.book_name}</h3>
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-soft sm:text-sm">
+                  <BookOpenText className="h-3.5 w-3.5 shrink-0 text-accent-warm" aria-hidden="true" />
+                  <span className="line-clamp-1">{scope}</span>
+                </p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${status.className}`}>
+                {status.label}
+              </span>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-ink-soft">
+              <span className="inline-flex items-center gap-1.5">
+                <GraduationCap className="h-3.5 w-3.5 text-accent-warm" aria-hidden="true" />
+                {assignment.teacher_name}
+              </span>
+              {assignment.deadline ? (
+                <span className={`inline-flex items-center gap-1.5 ${isOverdue || isUrgent ? 'font-semibold text-accent-warm' : ''}`}>
+                  <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                  {isOverdue ? '已到截止时间' : isUrgent ? `还剩 ${days} 天` : `截止 ${formatDate(assignment.deadline)}`}
+                </span>
+              ) : (
+                <span>分配于 {formatDate(assignment.assigned_at)}</span>
+              )}
+            </div>
+
+            {assignment.book_description && (
+              <p className="mt-2 line-clamp-1 text-xs text-ink-mute">{assignment.book_description}</p>
+            )}
+
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-baseline justify-between text-xs">
+                <span className="text-ink-soft">
+                  {assignment.scope_type === 'unit' || assignment.scope_type === 'group'
+                    ? `${assignment.word_count} 个单词`
+                    : `${assignment.unit_count} 个单元 · ${assignment.word_count} 个单词`}
+                </span>
+                <span className="font-numeric font-semibold text-ink">{assignment.progress_percentage}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.06]">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${assignment.progress_percentage}%` }}
+                  transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                  className={`h-full rounded-full ${assignment.is_completed ? 'bg-emerald-500' : 'bg-accent-warm'}`}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => openAssignment(assignment)}
+                disabled={assignment.is_completed}
+                className={`inline-flex min-h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold transition ${
+                  assignment.is_completed
+                    ? 'cursor-not-allowed bg-black/[0.06] text-ink-mute'
+                    : 'bg-accent-warm text-white hover:opacity-90'
+                }`}
+              >
+                {assignment.is_completed ? '已完成' : assignment.progress_percentage > 0 ? '继续学习' : '开始学习'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.article>
+    );
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-paper">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
+          <div className="inline-block h-12 w-12 animate-spin rounded-full border-b-2 border-accent-warm" />
+          <p className="mt-4 text-ink-soft">正在加载教材任务...</p>
         </div>
       </div>
     );
   }
 
+  const visiblePriority = showAllPriority ? groupedAssignments.priority : groupedAssignments.priority.slice(0, 3);
+  const visibleOther = showAllOther ? groupedAssignments.other : groupedAssignments.other.slice(0, 6);
+
   return (
     <div className="min-h-screen bg-paper">
-      {/* 顶部导航 */}
-      <div className="border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center">
-          <button
-            onClick={() => goBack()}
-            className="mr-3 rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
-            aria-label="返回"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-              <ClipboardList className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="font-display text-xl font-bold text-slate-800">我的作业</h1>
-              <p className="text-xs text-slate-500">按老师布置的范围完成学习</p>
+      <div className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3.5">
+          <div className="flex min-w-0 items-center">
+            <button
+              type="button"
+              onClick={() => goBack()}
+              className="mr-3 rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
+              aria-label="返回"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 sm:flex">
+                <ClipboardList className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate font-display text-lg font-bold text-slate-800 sm:text-xl">教材任务</h1>
+                <p className="hidden text-xs text-slate-500 sm:block">按重要程度完成老师指定的教材范围</p>
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate('/student/homework')}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-700 transition hover:bg-orange-100"
+            aria-label="查看练习作业"
+          >
+            <ClipboardCheck className="h-4 w-4" />
+            <span className="sm:hidden">作业</span>
+            <span className="hidden sm:inline">练习作业</span>
+          </button>
         </div>
       </div>
 
-      {/* 主内容区 */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-7 sm:py-9">
         {assignments.length === 0 ? (
-          // 空状态
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card-soft rounded-2xl border-dashed py-16"
+            className="card-soft rounded-2xl border-dashed py-16 text-center"
           >
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
               <ClipboardList className="h-8 w-8" />
             </div>
-            <h2 className="text-xl font-bold text-slate-700 mb-2">还没有分配的作业</h2>
-            <p className="text-sm text-slate-500">老师分配作业后会显示在这里</p>
+            <h2 className="text-xl font-bold text-slate-700">还没有教材任务</h2>
+            <p className="mt-2 text-sm text-slate-500">老师指定教材或单元后会显示在这里</p>
           </motion.div>
         ) : (
-          // 作业卡片网格
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {assignments.map((assignment, index) => {
-              const statusConfig = getStatusConfig(assignment);
-              const daysUntilDeadline = getDaysUntilDeadline(assignment.deadline);
-              const isUrgent = daysUntilDeadline !== null && daysUntilDeadline <= 3 && daysUntilDeadline >= 0;
-              const isOverdue = daysUntilDeadline !== null && daysUntilDeadline < 0;
+          <div className="space-y-9">
+            <header>
+              <h2 className="font-display text-2xl font-semibold text-ink">先完成最重要的一项</h2>
+              <p className="mt-2 text-sm text-ink-soft">
+                {groupedAssignments.priority.length > 0
+                  ? `有 ${groupedAssignments.priority.length} 项正在进行或临近截止。`
+                  : '目前没有临近截止的任务，可以按顺序开始。'}
+              </p>
+            </header>
 
-              return (
-                <motion.div
-                  key={assignment.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`group card-soft bg-gradient-to-br ${getCardGradient(index)} rounded-2xl overflow-hidden hover:shadow-xl transition-shadow`}
-                >
-                  <div className="relative h-24 overflow-hidden bg-orange-100/60">
-                    <img
-                      src={`/book-cover-${(assignment.book_id % 4) + 1}.jpeg`}
-                      alt=""
-                      className="h-full w-full object-cover opacity-85 transition duration-300 group-hover:scale-105"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
-                    <span className="absolute bottom-3 left-5 inline-flex items-center gap-1.5 text-xs font-semibold text-white">
-                      <BookOpenText className="h-3.5 w-3.5" /> 学习任务
-                    </span>
+            {groupedAssignments.priority.length > 0 && (
+              <section aria-labelledby="priority-assignment-title">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 id="priority-assignment-title" className="font-display text-lg font-semibold text-ink">优先完成</h3>
+                    <p className="mt-1 text-xs text-ink-mute">先处理前 3 项，完成后再继续。</p>
                   </div>
-                  {/* 卡片头部 */}
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-xl font-bold text-gray-800 flex-1">
-                        {assignment.book_name}
-                      </h3>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusConfig.className}`}>
-                        {statusConfig.emoji} {statusConfig.label}
-                      </span>
-                    </div>
-
-                    {/* 分配范围徽章:整本 / 单元 / 分组 */}
-                    <div className="mb-3">
-                      {assignment.scope_type === 'unit' || assignment.scope_type === 'group' ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white/70 text-sm font-semibold text-orange-600 border border-orange-200">
-                          📖 Unit {assignment.unit_number ?? '?'}
-                          {assignment.unit_name ? ` · ${assignment.unit_name}` : ''}
-                          {assignment.scope_type === 'group' && assignment.group_index
-                            ? ` · 第 ${assignment.group_index} 组`
-                            : ''}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-white/70 text-sm font-semibold text-gray-600 border border-gray-200">
-                          📕 整本书
-                        </span>
-                      )}
-                    </div>
-
-                    {assignment.book_description && (
-                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                        {assignment.book_description}
-                      </p>
-                    )}
-
-                    {/* 教师信息 */}
-                    <div className="flex items-center mb-4 text-sm text-gray-700">
-                      <GraduationCap className="mr-2 h-4 w-4 text-orange-500" />
-                      <span>{assignment.teacher_name}</span>
-                    </div>
-
-                    {/* 日期信息 */}
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center text-sm text-gray-600">
-                        <CalendarDays className="mr-2 h-4 w-4 text-slate-400" />
-                        <span>分配于: {formatDate(assignment.assigned_at)}</span>
-                      </div>
-                      {assignment.deadline && (
-                        <div className={`flex items-center text-sm ${isOverdue ? 'text-error' : isUrgent ? 'text-orange-600 font-semibold' : 'text-gray-600'}`}>
-                          <span className="mr-2">{isOverdue ? '⚠️' : isUrgent ? '⏰' : '🗓️'}</span>
-                          <span>
-                            截止于: {formatDate(assignment.deadline)}
-                            {daysUntilDeadline !== null && (
-                              <>
-                                {isOverdue ? (
-                                  <span className="ml-2 text-error font-bold">已逾期</span>
-                                ) : isUrgent ? (
-                                  <span className="ml-2 text-error font-bold">
-                                    (还剩 {daysUntilDeadline} 天!)
-                                  </span>
-                                ) : (
-                                  <span className="ml-2 text-gray-500">
-                                    (还剩 {daysUntilDeadline} 天)
-                                  </span>
-                                )}
-                              </>
-                            )}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 进度条 */}
-                    <div className="mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-semibold text-gray-700">学习进度</span>
-                        <span className="text-sm font-bold text-primary">
-                          {assignment.progress_percentage}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${assignment.progress_percentage}%` }}
-                          transition={{ duration: 0.8, delay: index * 0.1 + 0.3 }}
-                          className="bg-gradient-to-r from-primary to-secondary h-full rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 单元和单词统计(按分配范围口径) */}
-                    <div className="flex items-center justify-between mb-4 text-sm">
-                      <div className="flex items-center text-gray-700">
-                        <span className="mr-1">📚</span>
-                        <span>
-                          {assignment.scope_type === 'unit' || assignment.scope_type === 'group'
-                            ? '指定范围'
-                            : `${assignment.unit_count} 个单元`}
-                        </span>
-                      </div>
-                      <div className="flex items-center text-gray-700">
-                        <span className="mr-1">📝</span>
-                        <span>{assignment.word_count} 个单词</span>
-                      </div>
-                    </div>
-
-                    {/* 开始学习按钮 */}
+                  {groupedAssignments.priority.length > 3 && (
                     <button
-                      onClick={() => navigate(
-                        assignment.unit_id
-                          ? `/student/books/${assignment.book_id}/units?focus=${assignment.unit_id}`
-                          : `/student/books/${assignment.book_id}/units`
-                      )}
-                      disabled={assignment.is_completed}
-                      className={`w-full py-3 rounded-xl font-semibold transition-all transform hover:scale-105 ${
-                        assignment.is_completed
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : isUrgent || isOverdue
-                          ? 'bg-gradient-to-r from-error to-orange-500 text-white shadow-md hover:shadow-lg'
-                          : 'bg-gradient-to-r from-primary to-secondary text-white shadow-md hover:shadow-lg'
-                      }`}
+                      type="button"
+                      onClick={() => setShowAllPriority((visible) => !visible)}
+                      aria-expanded={showAllPriority}
+                      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-accent-warm transition hover:bg-orange-50"
                     >
-                      {assignment.is_completed ? '✅ 已完成' : isUrgent || isOverdue ? '⚡ 紧急!开始学习' : '🚀 开始学习'}
+                      {showAllPriority ? '收起' : `查看全部 ${groupedAssignments.priority.length} 项`}
+                      <ChevronDown className={`h-4 w-4 transition-transform ${showAllPriority ? 'rotate-180' : ''}`} aria-hidden="true" />
                     </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {visiblePriority.map(renderAssignment)}
+                </div>
+              </section>
+            )}
+
+            {groupedAssignments.other.length > 0 && (
+              <section aria-labelledby="other-assignment-title">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 id="other-assignment-title" className="font-display text-lg font-semibold text-ink">
+                      {groupedAssignments.priority.length > 0 ? '稍后完成' : '待开始'}
+                    </h3>
+                    <p className="mt-1 text-xs text-ink-mute">默认先显示 6 项，避免任务列表过长。</p>
                   </div>
-                </motion.div>
-              );
-            })}
+                  {groupedAssignments.other.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllOther((visible) => !visible)}
+                      aria-expanded={showAllOther}
+                      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-accent-warm transition hover:bg-orange-50"
+                    >
+                      {showAllOther ? '收起' : `查看全部 ${groupedAssignments.other.length} 项`}
+                      <ChevronDown className={`h-4 w-4 transition-transform ${showAllOther ? 'rotate-180' : ''}`} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {visibleOther.map(renderAssignment)}
+                </div>
+              </section>
+            )}
+
+            {groupedAssignments.completed.length > 0 && (
+              <section aria-labelledby="completed-assignment-title">
+                <button
+                  type="button"
+                  onClick={() => setShowCompleted((visible) => !visible)}
+                  aria-expanded={showCompleted}
+                  className="flex min-h-11 w-full items-center justify-between border-t border-black/[0.06] pt-5 text-left"
+                >
+                  <span>
+                    <span id="completed-assignment-title" className="font-display text-lg font-semibold text-ink">已完成</span>
+                    <span className="ml-2 text-xs text-ink-mute">{groupedAssignments.completed.length} 项</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-ink-soft transition-transform ${showCompleted ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </button>
+                {showCompleted && (
+                  <div className="mt-3 space-y-3">
+                    {groupedAssignments.completed.map(renderAssignment)}
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
-};
-
-export default StudentAssignments;
+}

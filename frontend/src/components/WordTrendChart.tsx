@@ -1,23 +1,35 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+import {
+  BarChart3,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react';
 import type { WordTrendResponse, TrendDataItem } from '../api/analytics';
 
 type Period = 'daily' | 'monthly' | 'yearly';
 
 interface WordTrendChartProps {
   fetchData: (period: Period, year?: number, month?: number) => Promise<WordTrendResponse>;
+  tone?: 'student' | 'staff';
 }
 
 const PERIOD_LABELS: Record<Period, string> = { daily: '日', monthly: '月', yearly: '年' };
 
 // 趋势分析：根据数据生成文字总结
-function analyzeTrend(data: WordTrendResponse): { icon: string; color: string; messages: string[]; changePercent: number | null } {
+type TrendIcon = 'empty' | 'down' | 'up' | 'steady';
+
+function analyzeTrend(data: WordTrendResponse): { icon: TrendIcon; color: string; messages: string[]; changePercent: number | null } {
   const items = data.data.filter(d => d.words_learned > 0);
   const summary = data.summary;
   const messages: string[] = [];
 
   if (items.length === 0) {
-    return { icon: '📭', color: 'text-gray-400', messages: ['本时段暂无学习记录'], changePercent: null };
+    return { icon: 'empty', color: 'text-gray-400', messages: ['本时段暂无学习记录'], changePercent: null };
   }
 
   // 环比/同比变化
@@ -76,12 +88,14 @@ function analyzeTrend(data: WordTrendResponse): { icon: string; color: string; m
   const isUp = prevW !== undefined && prevW > 0 && summary.total_words > prevW;
   const isDown = prevW !== undefined && prevW > 0 && summary.total_words < prevW * 0.8;
 
-  if (isDown) return { icon: '📉', color: 'text-orange-500', messages, changePercent: computedChangePercent };
-  if (isUp) return { icon: '📈', color: 'text-green-500', messages, changePercent: computedChangePercent };
-  return { icon: '📊', color: 'text-blue-500', messages, changePercent: computedChangePercent };
+  if (isDown) return { icon: 'down', color: 'text-orange-600', messages, changePercent: computedChangePercent };
+  if (isUp) return { icon: 'up', color: 'text-emerald-600', messages, changePercent: computedChangePercent };
+  return { icon: 'steady', color: 'text-slate-600', messages, changePercent: computedChangePercent };
 }
 
-const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
+const WordTrendChart = ({ fetchData, tone = 'staff' }: WordTrendChartProps) => {
+  const reduceMotion = useReducedMotion();
+  const isStudent = tone === 'student';
   const today = new Date();
   const [period, setPeriod] = useState<Period>('daily');
   const [year, setYear] = useState(today.getFullYear());
@@ -131,6 +145,16 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
   };
 
   const changePercent = trend?.changePercent ?? null;
+  const TrendSummaryIcon = trend?.icon === 'down'
+    ? TrendingDown
+    : trend?.icon === 'up'
+      ? TrendingUp
+      : trend?.icon === 'empty'
+        ? Inbox
+        : BarChart3;
+  const barColors = isStudent
+    ? { strong: '#EA580C', medium: '#FB923C', soft: '#FDBA74' }
+    : { strong: '#3B82F6', medium: '#60A5FA', soft: '#93C5FD' };
 
   // 图表参数
   const W = 600, H = 220;
@@ -143,21 +167,29 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl shadow-lg overflow-hidden"
+      transition={{ duration: reduceMotion ? 0 : 0.38, ease: [0.16, 1, 0.3, 1] }}
+      className={`${isStudent ? 'card-soft' : 'bg-white shadow-lg'} overflow-hidden rounded-2xl`}
     >
       {/* 头部 */}
       <div className="px-6 pt-5 pb-3">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-gray-800">📊 单词学习趋势</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+            <BarChart3 className={`h-5 w-5 ${isStudent ? 'text-accent-warm' : 'text-blue-600'}`} aria-hidden="true" />
+            单词学习趋势
+          </h2>
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             {(['daily', 'monthly', 'yearly'] as Period[]).map(p => (
               <button
                 key={p}
+                type="button"
                 onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                  period === p ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                aria-pressed={period === p}
+                className={`flex h-11 min-w-11 items-center justify-center rounded-md px-3 text-sm font-medium transition ${
+                  period === p
+                    ? `bg-white shadow-sm ${isStudent ? 'text-accent-warm' : 'text-blue-600'}`
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {PERIOD_LABELS[p]}
@@ -169,17 +201,31 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
         {/* 日期导航 + 变化指标 */}
         <div className="flex items-center justify-between">
           {period !== 'yearly' ? (
-            <div className="flex items-center gap-3">
-              <button onClick={handlePrev} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 text-sm transition">◀</button>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition hover:bg-gray-200"
+                aria-label="上一个时间段"
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
               <span className="text-sm font-medium text-gray-700 min-w-[90px] text-center">{navLabel}</span>
-              <button onClick={handleNext} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 text-sm transition">▶</button>
+              <button
+                type="button"
+                onClick={handleNext}
+                className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition hover:bg-gray-200"
+                aria-label="下一个时间段"
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
           ) : <div />}
 
           {/* 环比变化标签 */}
           {changePercent !== null && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, scale: 1 }}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
                 changePercent > 0
@@ -191,7 +237,7 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
             >
               <span>{changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : '→'}</span>
               <span>{changePercent > 0 ? '+' : ''}{changePercent}%</span>
-              <span className="text-gray-400">vs {period === 'daily' ? '上月' : '去年'}</span>
+              <span className="text-gray-400">相比{period === 'daily' ? '上月' : '去年'}</span>
             </motion.div>
           )}
         </div>
@@ -204,10 +250,10 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
           </div>
         ) : !hasData ? (
-          <div className="h-52 flex items-center justify-center text-gray-400">
+          <div className={`flex items-center justify-center text-gray-400 ${isStudent ? 'min-h-32 py-7' : 'h-52'}`}>
             <div className="text-center">
-              <span className="text-4xl block mb-2">📚</span>
-              <p>暂无学习数据</p>
+              <BookOpen className={`mx-auto mb-3 h-8 w-8 ${isStudent ? 'text-accent-warm' : 'text-blue-500'}`} aria-hidden="true" />
+              <p className="text-sm">{isStudent ? '这个时间段还没有学习记录' : '暂无学习数据'}</p>
             </div>
           </div>
         ) : (
@@ -235,7 +281,7 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
 
                 // 渐变色根据数值
                 const intensity = item.words_learned / maxWords;
-                const fill = intensity > 0.7 ? '#3B82F6' : intensity > 0.3 ? '#60A5FA' : '#93C5FD';
+                const fill = intensity > 0.7 ? barColors.strong : intensity > 0.3 ? barColors.medium : barColors.soft;
 
                 return (
                   <g key={i}>
@@ -244,9 +290,9 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
                       width={barW}
                       rx={barW > 8 ? 4 : 2}
                       fill={fill}
-                      initial={{ height: 0, y: padT + innerH }}
+                      initial={reduceMotion ? false : { height: 0, y: padT + innerH }}
                       animate={{ height: Math.max(h, 1), y: padT + innerH - Math.max(h, 1) }}
-                      transition={{ delay: i * 0.015, duration: 0.4, ease: 'easeOut' }}
+                      transition={{ delay: reduceMotion ? 0 : i * 0.015, duration: reduceMotion ? 0 : 0.4, ease: 'easeOut' }}
                     />
 
                     {/* 柱顶数值（只在柱子够高时显示） */}
@@ -256,9 +302,9 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
                         y={padT + innerH - h - 4}
                         textAnchor="middle"
                         className="text-[8px]"
-                        fill="#3B82F6"
+                        fill={barColors.strong}
                         fontWeight="600"
-                        initial={{ opacity: 0 }}
+                        initial={reduceMotion ? false : { opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: i * 0.015 + 0.3 }}
                       >
@@ -291,7 +337,7 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    initial={{ pathLength: 0 }}
+                    initial={reduceMotion ? false : { pathLength: 0 }}
                     animate={{ pathLength: 1 }}
                     transition={{ duration: 0.8, delay: 0.4 }}
                   />
@@ -312,7 +358,7 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
       {hasData && (
         <div className="flex items-center justify-center gap-5 px-6 py-2">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-blue-500" />
+            <div className={`h-3 w-3 rounded-sm ${isStudent ? 'bg-orange-600' : 'bg-blue-500'}`} />
             <span className="text-xs text-gray-500">学习单词</span>
           </div>
           {items.some(d => d.words_mastered && d.words_mastered > 0) && (
@@ -328,39 +374,37 @@ const WordTrendChart = ({ fetchData }: WordTrendChartProps) => {
       {hasData && summary && (
         <div className="px-6 pb-5">
           {/* 数据卡片 */}
-          <div className="grid grid-cols-4 gap-2 mb-4">
-            <div className="bg-blue-50 rounded-xl p-2.5 text-center">
-              <div className="text-lg font-bold text-blue-600">{summary.total_words}</div>
-              <div className="text-[10px] text-gray-500">学习单词</div>
-            </div>
-            <div className="bg-green-50 rounded-xl p-2.5 text-center">
-              <div className="text-lg font-bold text-green-600">{summary.total_mastered ?? '-'}</div>
-              <div className="text-[10px] text-gray-500">已掌握</div>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-2.5 text-center">
-              <div className="text-lg font-bold text-orange-600">{formatDuration(summary.total_duration_minutes)}</div>
-              <div className="text-[10px] text-gray-500">学习时长</div>
-            </div>
-            <div className="bg-purple-50 rounded-xl p-2.5 text-center">
-              <div className="text-lg font-bold text-purple-600">{summary.avg_daily_words ?? summary.study_days}</div>
-              <div className="text-[10px] text-gray-500">{summary.avg_daily_words !== undefined ? '日均单词' : '学习天数'}</div>
-            </div>
+          <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-xl bg-black/[0.025] sm:grid-cols-4 sm:divide-x sm:divide-black/[0.06]">
+            {[
+              { label: '学习单词', value: summary.total_words },
+              { label: '已掌握', value: summary.total_mastered ?? '-' },
+              { label: '学习时长', value: formatDuration(summary.total_duration_minutes) },
+              { label: summary.avg_daily_words !== undefined ? '日均单词' : '学习天数', value: summary.avg_daily_words ?? summary.study_days },
+            ].map((item, index) => (
+              <div
+                key={item.label}
+                className={`p-2.5 text-center ${index < 2 ? 'border-b border-black/[0.06] sm:border-b-0' : ''} ${index % 2 === 0 ? 'border-r border-black/[0.06] sm:border-r-0' : ''}`}
+              >
+                <div className="font-numeric text-lg font-semibold text-ink">{item.value}</div>
+                <div className="mt-0.5 text-xs text-gray-500">{item.label}</div>
+              </div>
+            ))}
           </div>
 
           {/* AI 趋势总结 */}
           {trend && trend.messages.length > 0 && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="bg-gradient-to-r from-gray-50 to-blue-50/50 rounded-xl p-4"
+              transition={{ duration: reduceMotion ? 0 : 0.32, delay: reduceMotion ? 0 : 0.2 }}
+              className={`rounded-xl p-4 ${isStudent ? 'bg-orange-50/70' : 'bg-slate-50'}`}
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl flex-shrink-0">{trend.icon}</span>
+                <TrendSummaryIcon className={`mt-0.5 h-5 w-5 shrink-0 ${trend.color}`} aria-hidden="true" />
                 <div className="space-y-1.5">
                   {trend.messages.map((msg, i) => (
                     <p key={i} className={`text-sm ${i === 0 ? `font-medium ${trend.color}` : 'text-gray-500'}`}>
-                      {i === 0 ? msg : `· ${msg}`}
+                      {msg}
                     </p>
                   ))}
                 </div>

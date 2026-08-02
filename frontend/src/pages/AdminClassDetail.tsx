@@ -324,6 +324,10 @@ const AdminClassDetail = () => {
                     <span className="font-semibold text-gray-800">{detail.weak_words_count}</span>
                   </div>
                   <div className="flex justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                    <span className="text-gray-500">待巩固</span>
+                    <span className="font-semibold text-gray-800">{detail.pending_words_count}</span>
+                  </div>
+                  <div className="flex justify-between px-3 py-2 bg-gray-50 rounded-lg">
                     <span className="text-gray-500">累计正确率</span>
                     <span className="font-semibold text-gray-800">{detail.overall_accuracy}%</span>
                   </div>

@@ -35,35 +35,39 @@ export default function MyCoinsCard() {
 
   return (
     <>
-      <motion.button
-        onClick={openDetail}
+      <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        whileTap={{ scale: 0.98 }}
-        className="relative w-full rounded-3xl px-4 sm:px-6 py-5 text-left shadow-lg shadow-amber-500/20
-                   bg-gradient-to-br from-amber-400 via-amber-400 to-yellow-300 border border-amber-300/50"
+        transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+        className="relative w-full overflow-hidden rounded-2xl border border-amber-300/50 bg-gradient-to-br from-amber-400 via-amber-400 to-yellow-300 px-3.5 py-3.5 text-left shadow-lg shadow-amber-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
       >
-        {/* 流光动效:单独裁剪层(不裁到探出的皇冠),斜向高光从左扫到右 */}
-        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
+        {/* 入场时只扫过一次，避免首页长期存在无意义的循环动效。 */}
+        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
           <motion.span
             className="absolute inset-y-0 w-1/3 skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/40 to-transparent"
-            animate={{ left: ['-33%', '133%'] }}
-            transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 3, ease: 'easeInOut' }}
+            initial={{ left: '-33%' }}
+            animate={{ left: '133%' }}
+            transition={{ duration: 1.35, delay: 0.3, ease: 'easeOut' }}
           />
         </span>
 
         <div className="relative flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={openDetail}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left"
+            aria-label={`查看金币明细，当前 ${balance} 枚`}
+          >
             {/* 大金币(AI 生成金色星币图)+ 皇冠(shrink-0 不被压缩) */}
             <motion.div
-              className="relative shrink-0 h-14 w-14"
-              animate={{ rotate: [0, -6, 6, 0] }}
-              transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}
+              className="relative h-12 w-12 shrink-0 sm:h-14 sm:w-14"
+              whileHover={{ rotate: -4, scale: 1.04 }}
+              transition={{ duration: 0.2 }}
             >
               <img
                 src={coinGold}
                 alt="金币"
-                className="h-14 w-14 object-contain drop-shadow-[0_2px_6px_rgba(180,120,0,0.45)]"
+                className="h-12 w-12 object-contain drop-shadow-[0_2px_6px_rgba(180,120,0,0.45)] sm:h-14 sm:w-14"
               />
               {isKing && (
                 <span className="absolute -top-2 -right-1 text-lg drop-shadow z-10" title="今日单词王">👑</span>
@@ -79,28 +83,27 @@ export default function MyCoinsCard() {
                 )}
               </p>
               <div className="mt-0.5 flex items-baseline gap-1.5">
-                <span className="font-display font-numeric text-4xl font-bold leading-none text-white drop-shadow-sm">
+                <span className="font-display font-numeric text-3xl font-bold leading-none text-white drop-shadow-sm sm:text-4xl">
                   {balance}
                 </span>
                 <span className="text-sm font-medium text-amber-900/70">枚</span>
               </div>
             </div>
-          </div>
+          </button>
 
-          {/* 右侧行动点:兑换奖励入口(点这里进商城,不触发明细;shrink-0 + nowrap 防挤断) */}
+          {/* 右侧行动点使用独立 button，避免 button 内嵌 role=button。 */}
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); setShopOpen(true); }}
-              className="whitespace-nowrap rounded-full bg-white/90 px-3.5 py-2 text-sm font-bold text-amber-600 shadow-sm hover:bg-white active:scale-95 transition"
+            <button
+              type="button"
+              onClick={() => setShopOpen(true)}
+              className="min-h-11 whitespace-nowrap rounded-full bg-white/90 px-3 text-xs font-bold text-amber-700 shadow-sm transition hover:bg-white active:scale-95 sm:px-3.5 sm:text-sm"
             >
               🎁 兑换奖励
-            </span>
+            </button>
             <span className="hidden sm:block whitespace-nowrap text-[11px] text-amber-900/60">完成作业/2单元+1 · 单词王+2</span>
           </div>
         </div>
-      </motion.button>
+      </motion.div>
 
       {shopOpen && <RedeemShopModal onClose={() => setShopOpen(false)} />}
 
@@ -111,7 +114,7 @@ export default function MyCoinsCard() {
               <h3 className="font-bold text-gray-800 flex items-center gap-1.5">
                 🪙 我的金币:<span className="text-amber-500 font-numeric text-lg">{balance}</span> 枚
               </h3>
-              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-sm">关闭</button>
+              <button onClick={() => setOpen(false)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700">关闭</button>
             </div>
 
             <div className="space-y-1.5">
@@ -143,10 +146,10 @@ export default function MyCoinsCard() {
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-3 mt-4 text-sm">
                 <button disabled={page <= 1} onClick={() => loadPage(page - 1)}
-                  className="px-3 py-1 rounded-lg border border-black/10 disabled:opacity-40">上一页</button>
+                  className="min-h-11 rounded-lg border border-black/10 px-3 disabled:opacity-40">上一页</button>
                 <span className="text-xs text-gray-500">{page} / {totalPages}</span>
                 <button disabled={page >= totalPages} onClick={() => loadPage(page + 1)}
-                  className="px-3 py-1 rounded-lg border border-black/10 disabled:opacity-40">下一页</button>
+                  className="min-h-11 rounded-lg border border-black/10 px-3 disabled:opacity-40">下一页</button>
               </div>
             )}
           </div>

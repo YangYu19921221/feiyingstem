@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+import {
+  ArrowRight,
+  CircleAlert,
+  Clock3,
+  Headphones,
+  Languages,
+  LoaderCircle,
+  PencilLine,
+  Volume2,
+  type LucideIcon,
+} from 'lucide-react';
 import { imeSafeInputProps } from '../../utils/noSuggestInput';
 import { useAudio } from '../../hooks/useAudio';
 
@@ -19,11 +30,17 @@ interface PkExamCardProps {
   timeoutMs?: number;
 }
 
-const TYPE_LABEL: Record<PkExamType, string> = {
-  en_to_cn: '🏁 过关 · 选中文意思',
-  cn_to_en: '🏁 过关 · 选对应单词',
-  listening: '🏁 过关 · 听音拼写',
-  spelling: '🏁 过关 · 看义拼写',
+interface TypeConfig {
+  label: string;
+  instruction: string;
+  icon: LucideIcon;
+}
+
+const TYPE_CONFIG: Record<PkExamType, TypeConfig> = {
+  en_to_cn: { label: '英译中', instruction: '选择正确的中文意思', icon: Languages },
+  cn_to_en: { label: '中译英', instruction: '选择对应的英文单词', icon: Languages },
+  listening: { label: '听音拼写', instruction: '听清发音，拼出完整单词', icon: Headphones },
+  spelling: { label: '看义拼写', instruction: '根据中文意思拼出英文单词', icon: PencilLine },
 };
 
 export default function PkExamCard({
@@ -38,133 +55,234 @@ export default function PkExamCard({
   const [text, setText] = useState('');
   const [remaining, setRemaining] = useState(timeoutMs);
   const [playCount, setPlayCount] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [hasSubmittedText, setHasSubmittedText] = useState(false);
   const startRef = useRef<number>(Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
+  const reduceMotion = useReducedMotion();
   const { playAudio } = useAudio();
 
   const isChoice = examType === 'en_to_cn' || examType === 'cn_to_en';
   const isInput = examType === 'listening' || examType === 'spelling';
+  const config = TYPE_CONFIG[examType];
+  const TypeIcon = config.icon;
 
-  // 切题重置(word.id 或题型变化都重置);听写题自动播一次发音
+  // 切题重置(word.id 或题型变化都重置);听写题自动播一次发音。
   useEffect(() => {
+    let cancelled = false;
+    let actionTimer: number | undefined;
+
     setText('');
     setPlayCount(0);
+    setIsPlaying(false);
+    setSelectedOption(null);
+    setHasSubmittedText(false);
     startRef.current = Date.now();
     setRemaining(timeoutMs);
-    const timer = window.setInterval(() => {
-      setRemaining(Math.max(0, timeoutMs - (Date.now() - startRef.current)));
-    }, 200);
-    if (examType === 'listening') {
-      const t = setTimeout(() => {
-        playAudio(word.word, 1, word.id).then(() => setPlayCount(1)).catch(() => {});
-      }, 300);
-      return () => { window.clearInterval(timer); clearTimeout(t); };
-    }
-    if (isInput) setTimeout(() => inputRef.current?.focus(), 100);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [word.id, examType, timeoutMs]);
 
-  const replay = () => {
-    if (playCount >= 3) return;
-    playAudio(word.word, 1, word.id).then(() => setPlayCount((p) => p + 1)).catch(() => {});
+    const tick = () => {
+      const next = Math.max(0, timeoutMs - (Date.now() - startRef.current));
+      setRemaining(next);
+      if (next === 0) window.clearInterval(timer);
+    };
+    const timer = window.setInterval(tick, 1000);
+
+    if (examType === 'listening') {
+      actionTimer = window.setTimeout(async () => {
+        if (cancelled) return;
+        setIsPlaying(true);
+        try {
+          await playAudio(word.word, 1, word.id);
+          if (!cancelled) setPlayCount(1);
+        } finally {
+          if (!cancelled) setIsPlaying(false);
+        }
+      }, 300);
+    } else if (isInput) {
+      actionTimer = window.setTimeout(() => inputRef.current?.focus(), 100);
+    }
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      if (actionTimer !== undefined) window.clearTimeout(actionTimer);
+    };
+  }, [examType, isInput, playAudio, timeoutMs, word.id, word.word]);
+
+  const replay = async () => {
+    if (playCount >= 3 || isPlaying || disabled) return;
+    setIsPlaying(true);
+    try {
+      await playAudio(word.word, 1, word.id);
+      setPlayCount((count) => Math.min(3, count + 1));
+    } finally {
+      setIsPlaying(false);
+    }
   };
 
   const submitText = () => {
-    if (disabled || !text.trim()) return;
+    if (disabled || hasSubmittedText || !text.trim()) return;
+    setHasSubmittedText(true);
     onText(text.trim(), Date.now() - startRef.current);
   };
 
-  const pick = (opt: string) => {
-    if (disabled) return;
-    onSelect(opt, Date.now() - startRef.current);
+  const pick = (option: string) => {
+    if (disabled || selectedOption !== null) return;
+    setSelectedOption(option);
+    onSelect(option, Date.now() - startRef.current);
   };
 
-  // 拼写题:首字母提示(与分类记忆法过关一致)
-  const spellingHint = word.word ? word.word[0] + '_'.repeat(Math.max(0, word.word.length - 1)) : '';
+  const spellingHint = word.word
+    ? `${word.word[0]}${' ·'.repeat(Math.max(0, word.word.length - 1))}`
+    : '';
+  const secondsLeft = Math.max(0, Math.ceil(remaining / 1000));
+  const timeIsLow = secondsLeft <= 10;
+  const inputLocked = disabled || hasSubmittedText;
+  const choiceLocked = disabled || selectedOption !== null;
 
   return (
-    <div className="flex flex-col p-6 bg-white rounded-2xl shadow-md">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs px-3 py-1 rounded-full bg-orange-100 text-primary font-medium">
-          {TYPE_LABEL[examType]}
+    <section className="card-soft rounded-2xl p-4 sm:p-6" aria-busy={disabled} aria-labelledby="pk-exam-prompt">
+      <header className="mb-5 flex items-center justify-between gap-3 border-b border-black/[0.06] pb-4">
+        <span className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-orange-50 px-2.5 text-xs font-semibold text-accent-warm sm:text-sm">
+          <TypeIcon className="h-4 w-4" aria-hidden="true" />
+          {config.label}
         </span>
-        <span className="text-xs text-gray-400">剩余 {Math.ceil(remaining / 1000)} 秒</span>
-      </div>
+        <span
+          className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium sm:text-sm ${
+            timeIsLow ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-ink-soft'
+          }`}
+          role="timer"
+          aria-label={`剩余 ${secondsLeft} 秒`}
+        >
+          <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="font-numeric">{secondsLeft}</span> 秒
+        </span>
+      </header>
 
-      {/* 英译中 / 中译英:选择题 */}
-      {isChoice && (
-        <div>
-          <h3 className={`${examType === 'en_to_cn' ? 'text-3xl' : 'text-xl'} font-bold text-ink text-center mb-5`}>
-            {examType === 'en_to_cn' ? word.word : word.translation}
-          </h3>
-          <div className="space-y-2.5">
-            {options.map((opt, i) => (
-              <motion.button
-                key={`${opt}-${i}`}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => pick(opt)}
-                disabled={disabled}
-                className="w-full text-left p-3.5 rounded-xl border-2 border-gray-200 hover:border-primary/50 transition font-medium disabled:opacity-50"
-              >
-                <span className="text-gray-400 mr-2">{String.fromCharCode(65 + i)}.</span>
-                {opt}
-              </motion.button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="mb-5 text-center">
+        <p className="text-sm text-ink-mute">{config.instruction}</p>
 
-      {/* 听音拼写 */}
-      {examType === 'listening' && (
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">听发音,拼出单词</p>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={replay}
-            disabled={playCount >= 3}
-            className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-2 shadow-lg ${
-              playCount >= 3 ? 'bg-gray-200' : 'bg-gradient-to-br from-primary to-orange-500 text-white'
+        {isChoice && (
+          <h2
+            id="pk-exam-prompt"
+            className={`font-display mt-3 break-words font-semibold leading-tight text-ink ${
+              examType === 'en_to_cn' ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'
             }`}
           >
-            🔊
-          </motion.button>
-          <p className="text-xs text-gray-400 mb-4">可播放 {3 - playCount} 次</p>
-        </div>
+            {examType === 'en_to_cn' ? word.word : word.translation}
+          </h2>
+        )}
+
+        {examType === 'listening' && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => void replay()}
+              disabled={playCount >= 3 || isPlaying || disabled}
+              className="mx-auto inline-flex min-h-14 min-w-44 items-center justify-center gap-3 rounded-xl bg-accent-warm px-5 font-semibold text-white transition-colors hover:opacity-90 disabled:bg-slate-100 disabled:text-ink-mute"
+              aria-describedby="pk-listening-count"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15">
+                {isPlaying
+                  ? <LoaderCircle className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  : <Volume2 className="h-5 w-5" aria-hidden="true" />}
+              </span>
+              {isPlaying ? '正在加载发音' : playCount >= 3 ? '播放次数已用完' : '播放发音'}
+            </button>
+            <p id="pk-listening-count" className="mt-2 text-xs text-ink-mute">
+              还可以播放 <span className="font-numeric font-semibold text-ink-soft">{Math.max(0, 3 - playCount)}</span> 次
+            </p>
+          </div>
+        )}
+
+        {examType === 'spelling' && (
+          <div className="mt-3">
+            <h2 id="pk-exam-prompt" className="font-display break-words text-2xl font-semibold text-ink sm:text-3xl">
+              {word.translation}
+            </h2>
+            <p className="mt-2 text-sm text-ink-mute">
+              首字母提示：
+              <span className="ml-1 font-display font-semibold tracking-[0.12em] text-accent-warm">{spellingHint}</span>
+            </p>
+          </div>
+        )}
+      </div>
+
+      {isChoice && (
+        <fieldset disabled={choiceLocked}>
+          <legend className="sr-only">{config.instruction}</legend>
+          {options.length > 0 ? (
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {options.map((option, index) => {
+                const selected = selectedOption === option;
+                return (
+                  <motion.button
+                    key={`${option}-${index}`}
+                    type="button"
+                    whileTap={reduceMotion || choiceLocked ? undefined : { scale: 0.985 }}
+                    onClick={() => pick(option)}
+                    disabled={choiceLocked}
+                    aria-pressed={selected}
+                    className={`flex min-h-14 w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-semibold transition-colors sm:text-base ${
+                      selected
+                        ? 'border-accent-warm bg-orange-50 text-accent-warm'
+                        : 'border-slate-200 bg-white text-ink hover:border-orange-300 hover:bg-orange-50/50'
+                    } disabled:cursor-default disabled:opacity-70`}
+                  >
+                    <span className={`font-numeric flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                      selected ? 'bg-accent-warm text-white' : 'bg-slate-100 text-ink-soft'
+                    }`}>
+                      {String.fromCharCode(65 + index)}
+                    </span>
+                    <span className="min-w-0 flex-1 break-words">{option}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              题目选项正在准备，请稍候。
+            </div>
+          )}
+        </fieldset>
       )}
 
-      {/* 看义拼写 */}
-      {examType === 'spelling' && (
-        <div className="text-center">
-          <h3 className="text-xl font-bold text-ink mb-2">{word.translation}</h3>
-          <p className="text-sm text-primary mb-4">
-            提示: <span className="font-mono font-bold tracking-widest">{spellingHint}</span>
-          </p>
-        </div>
-      )}
-
-      {/* 输入题:统一输入框 + 提交 */}
       {isInput && (
-        <>
+        <div>
+          <label htmlFor={`pk-exam-answer-${word.id}`} className="sr-only">输入英文答案</label>
           <input
             {...imeSafeInputProps()}
+            id={`pk-exam-answer-${word.id}`}
             ref={inputRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitText()}
-            disabled={disabled}
-            className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-primary outline-none py-3 bg-transparent disabled:opacity-50"
-            placeholder="输入英文"
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && submitText()}
+            disabled={inputLocked}
+            className="allow-select h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-center font-display text-xl font-semibold tracking-[0.06em] text-ink outline-none transition focus:border-accent-warm focus:ring-4 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-ink-mute sm:text-2xl"
+            placeholder="输入英文单词"
           />
           <button
+            type="button"
             onClick={submitText}
-            disabled={disabled || !text.trim()}
-            className="mt-4 px-4 py-2 bg-primary text-white rounded-lg font-medium disabled:opacity-50"
+            disabled={inputLocked || !text.trim()}
+            className="btn-glow mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 font-semibold text-white disabled:border-transparent"
           >
-            提交
+            {inputLocked ? (
+              <>
+                <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                提交中…
+              </>
+            ) : (
+              <>
+                提交答案
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </>
+            )}
           </button>
-        </>
+        </div>
       )}
-    </div>
+    </section>
   );
 }

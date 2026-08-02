@@ -517,7 +517,7 @@ export default function SpeechVerifyCard({
           whileTap={{ scale: disabled ? 1 : 0.95 }}
           onClick={() => { if (disabled) return; cleanup(); onSkip(); }}
           disabled={disabled}
-          className="mt-4 px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-4 min-h-11 rounded-xl bg-gray-100 px-6 text-sm font-medium text-gray-500 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
           跳过（标记为未掌握）
         </motion.button>

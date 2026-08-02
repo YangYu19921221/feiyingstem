@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, BookOpen, Check, ChevronRight, Gem, LockKeyhole, Plus, RefreshCw, Search, ShieldAlert, Users, X } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, Bone, BookOpen, Check, ChevronRight, Gem, HeartPulse, LockKeyhole, Plus, RefreshCw, Search, ShieldAlert, Swords, Trophy, Users, X } from 'lucide-react';
 import { getMyPet, getPetCollection, createPet, switchPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetCollection, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
 import { quickMatchBattle } from '../api/petBattle';
 import PetArtwork from '../components/PetArtwork';
@@ -19,23 +19,34 @@ import {
 } from '../config/petSpecies';
 
 const PET_MOODS: Record<string, { emoji: string; text: string }[]> = {
-  pikachu:    [{ emoji: '😢', text: '皮卡...好饿...' }, { emoji: '⚡', text: '皮卡~还不错' }, { emoji: '⚡', text: '皮卡皮卡！超开心！' }],
-  eevee:      [{ emoji: '😢', text: '布...肚子好饿' }, { emoji: '🦊', text: '布咿~心情不错' }, { emoji: '🦊', text: '布咿布咿！太开心了！' }],
-  bulbasaur:  [{ emoji: '😢', text: '种子...没力气了' }, { emoji: '🌱', text: '种子~状态还行' }, { emoji: '🌿', text: '种子种子！活力满满！' }],
-  charmander: [{ emoji: '😢', text: '火焰...快灭了...' }, { emoji: '🔥', text: '嗯，火焰还旺' }, { emoji: '🔥', text: '火焰全开！超级棒！' }],
-  squirtle:   [{ emoji: '😢', text: '杰尼...好渴...' }, { emoji: '💧', text: '杰尼~还可以' }, { emoji: '💧', text: '杰尼杰尼！水力全开！' }],
-  jigglypuff: [{ emoji: '😢', text: '胖...唱不动了...' }, { emoji: '🎀', text: '丁~心情还行' }, { emoji: '🎀', text: '胖丁胖丁~要唱歌！' }],
-  cat:    [{ emoji: '😿', text: '喵呜...好饿...' }, { emoji: '😺', text: '喵~还不错' }, { emoji: '😸', text: '呼噜呼噜~超开心！' }],
-  dog:    [{ emoji: '🐕', text: '汪...肚子咕咕叫' }, { emoji: '🐶', text: '汪汪！心情不错' }, { emoji: '🦮', text: '汪汪汪！超级开心！' }],
-  rabbit: [{ emoji: '🐇', text: '...好饿想吃胡萝卜' }, { emoji: '🐰', text: '蹦蹦~还可以' }, { emoji: '🐰', text: '蹦蹦跳跳~太开心了！' }],
-  dragon: [{ emoji: '🐲', text: '...力量在消退...' }, { emoji: '🐉', text: '嗯，状态还行' }, { emoji: '🔥', text: '火焰全开！状态极佳！' }],
-  book_fox:    [{ emoji: '😢', text: '小狐饿了，书都翻不动…' }, { emoji: '🦊', text: '嗯，今天状态不错' }, { emoji: '📚', text: '知识满满，一起看书吧！' }],
-  paper_owl:   [{ emoji: '😢', text: '咕…羽毛有点蔫了' }, { emoji: '🦉', text: '咕咕，继续用功' }, { emoji: '🎓', text: '满腹经纶，带你一起学！' }],
-  word_turtle: [{ emoji: '😢', text: '慢吞吞…有点饿了' }, { emoji: '🐢', text: '稳稳前行，状态可以' }, { emoji: '📖', text: '一步一字，厚积薄发' }],
+  pikachu:    [{ emoji: '⚡', text: '皮卡需要补充一点能量' }, { emoji: '⚡', text: '皮卡~还不错' }, { emoji: '⚡', text: '皮卡皮卡！超开心！' }],
+  eevee:      [{ emoji: '🦊', text: '布咿正在休息，补充能量再出发' }, { emoji: '🦊', text: '布咿~心情不错' }, { emoji: '🦊', text: '布咿布咿！太开心了！' }],
+  bulbasaur:  [{ emoji: '🌱', text: '种子正在积蓄能量' }, { emoji: '🌱', text: '种子~状态还行' }, { emoji: '🌿', text: '种子种子！活力满满！' }],
+  charmander: [{ emoji: '🔥', text: '小火龙正在休息' }, { emoji: '🔥', text: '嗯，火焰还旺' }, { emoji: '🔥', text: '火焰全开！超级棒！' }],
+  squirtle:   [{ emoji: '💧', text: '杰尼龟需要补充一点能量' }, { emoji: '💧', text: '杰尼~还可以' }, { emoji: '💧', text: '杰尼杰尼！水力全开！' }],
+  jigglypuff: [{ emoji: '🎀', text: '胖丁正在休息嗓子' }, { emoji: '🎀', text: '丁~心情还行' }, { emoji: '🎀', text: '胖丁胖丁~要唱歌！' }],
+  cat:    [{ emoji: '😺', text: '小猫正在休息，稍后再玩' }, { emoji: '😺', text: '喵~还不错' }, { emoji: '😸', text: '呼噜呼噜~超开心！' }],
+  dog:    [{ emoji: '🐶', text: '小狗正在补充能量' }, { emoji: '🐶', text: '汪汪！心情不错' }, { emoji: '🦮', text: '汪汪汪！超级开心！' }],
+  rabbit: [{ emoji: '🐰', text: '小兔正在休息' }, { emoji: '🐰', text: '蹦蹦~还可以' }, { emoji: '🐰', text: '蹦蹦跳跳~太开心了！' }],
+  dragon: [{ emoji: '🐉', text: '小龙正在积蓄力量' }, { emoji: '🐉', text: '嗯，状态还行' }, { emoji: '🔥', text: '火焰全开！状态极佳！' }],
+  book_fox:    [{ emoji: '🦊', text: '小狐正在休息，稍后再读' }, { emoji: '🦊', text: '嗯，今天状态不错' }, { emoji: '📚', text: '知识满满，一起看书吧！' }],
+  paper_owl:   [{ emoji: '🦉', text: '咕咕正在整理羽毛' }, { emoji: '🦉', text: '咕咕，继续用功' }, { emoji: '🎓', text: '满腹经纶，带你一起学！' }],
+  word_turtle: [{ emoji: '🐢', text: '小龟正在慢慢恢复能量' }, { emoji: '🐢', text: '稳稳前行，状态可以' }, { emoji: '📖', text: '一步一字，厚积薄发' }],
 };
 
 function getPetEmoji(species: string, stage: number): string {
   return stage === 0 ? '🥚' : getPetDefinition(species).emoji;
+}
+
+function friendlyPetEvent(detail: string | null, eventType: string): string {
+  const original = detail || eventType;
+  if (/太久没喂食|挨饿受伤|好久没喂|饿.*受伤/.test(original)) {
+    return '伙伴进入休息状态，可通过练习逐步恢复';
+  }
+  if (/背单词可以治疗/.test(original)) {
+    return original.replace('背单词可以治疗它', '练习可以帮助伙伴恢复');
+  }
+  return original;
 }
 
 function getPetMood(species: string, happiness: number, hunger: number) {
@@ -101,7 +112,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
     <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={goBack} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+          <button onClick={goBack} className="flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-gray-100" aria-label="返回学习中心">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-bold text-gray-800">领养宠物</h1>
@@ -111,7 +122,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
       {/* Hero 横幅 */}
       <div className="relative overflow-hidden" style={{ height: 140 }}>
         <img src="/hero-pet.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/60 via-purple-800/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/70 via-slate-900/35 to-transparent" />
         <div className="relative z-10 h-full flex items-center px-4 max-w-5xl mx-auto">
           <div className="text-white">
             <h2 className="text-3xl font-bold drop-shadow">🐾 领养宠物</h2>
@@ -222,7 +233,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
               whileTap={{ scale: 0.98 }}
               disabled={adoptMutation.isPending}
               onClick={() => adoptMutation.mutate({ name: name || '小伙伴', species: selected })}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-400 to-yellow-400 text-white font-semibold text-lg shadow-md disabled:opacity-50"
+              className="btn-glow w-full rounded-xl py-3 text-lg font-semibold text-white disabled:opacity-50"
             >
               {adoptMutation.isPending ? '领养中...' : '🎉 领养它！'}
             </motion.button>
@@ -252,7 +263,7 @@ function PetRecoveryView({ collection }: { collection: PetCollection }) {
       <div className="mx-auto max-w-lg">
         <button
           onClick={() => navigate('/student/dashboard')}
-          className="mb-5 flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white"
+          className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl text-gray-600 transition-colors hover:bg-white"
           aria-label="返回学习中心"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -385,7 +396,7 @@ function CatalogView({
     <div className="min-h-screen bg-paper pb-28 md:pb-8">
       <nav className="sticky top-0 z-30 border-b border-gray-100 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
-          <button onClick={onBack} className="flex items-center gap-2 rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100">
+          <button onClick={onBack} className="flex h-11 min-w-11 items-center gap-2 rounded-xl px-3 text-gray-600 transition-colors hover:bg-gray-100" aria-label="返回宠物养成">
             <ArrowLeft className="h-5 w-5" />
             <span className="hidden text-sm font-medium sm:inline">返回养成</span>
           </button>
@@ -726,6 +737,7 @@ function NurtureView({
   const navigate = useNavigate();
   const goBack = useGoBack();
   const queryClient = useQueryClient();
+  const reduceMotion = useReducedMotion();
   const [feedMsg, setFeedMsg] = useState('');
   const [showHearts, setShowHearts] = useState(false);
   const [petTaps, setPetTaps] = useState(0);
@@ -754,8 +766,6 @@ function NurtureView({
   const quickMatchMutation = useMutation({
     mutationFn: quickMatchBattle,
     onSuccess: (battle) => {
-      console.log('快速对战成功，battle:', battle);
-      console.log('准备跳转到:', `/student/pet/battle/${battle.id}`);
       // 使用window.location直接跳转，确保刷新
       window.location.href = `/student/pet/battle/${battle.id}`;
     },
@@ -805,30 +815,40 @@ function NurtureView({
     <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-3 py-3 sm:px-4">
-          <button onClick={goBack} className="p-2 hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-2">
+          {/* 直接回首页,不用 goBack(navigate(-1)):本页会跳去「对战大厅」「治疗」,
+              从那些子页回来后历史栈里多了条目,退一步只会退回子页而不是首页 ——
+              这个按钮的语义是"回首页",就该明确跳首页,不依赖历史栈深度 */}
+          <button
+            type="button"
+            onClick={() => navigate('/student/dashboard')}
+            className="flex min-h-11 min-w-11 items-center gap-2 rounded-xl px-2 transition-colors hover:bg-gray-100"
+            aria-label="返回学习中心"
+          >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
-            <span className="text-gray-600 font-medium hidden sm:inline">返回</span>
+            <span className="text-gray-600 font-medium hidden sm:inline">返回首页</span>
           </button>
-          <h1 className="hidden text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-yellow-500 min-[480px]:block">
+          <h1 className="hidden text-lg font-bold text-orange-700 min-[480px]:block">
             🐾 我的宠物
           </h1>
-          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <div className="hidden min-w-0 items-center gap-2 sm:flex">
             <button
               onClick={handleQuickBattle}
               disabled={quickMatchMutation.isPending}
-              className="whitespace-nowrap rounded-lg bg-purple-50 px-2 py-1.5 text-xs font-bold text-purple-600 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-sm"
+              className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {quickMatchMutation.isPending ? '匹配中...' : '⚔️ 对战'}
+              <Swords className="h-4 w-4" aria-hidden="true" />
+              {quickMatchMutation.isPending ? '匹配中...' : '对战'}
             </button>
             <button
               onClick={() => navigate('/student/pet/battle-hall')}
-              className="whitespace-nowrap rounded-lg bg-blue-50 px-2 py-1.5 text-xs font-bold text-blue-600 transition-colors hover:bg-blue-100 sm:px-3 sm:text-sm"
+              className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-700 transition-colors hover:bg-orange-100"
             >
-              👥 好友
+              <Users className="h-4 w-4" aria-hidden="true" />
+              好友
             </button>
             <button
               onClick={onShowCatalog}
-              className="flex items-center gap-1 whitespace-nowrap rounded-lg bg-cyan-50 px-2 py-1.5 text-xs font-bold text-cyan-700 transition-colors hover:bg-cyan-100 sm:px-3 sm:text-sm"
+              className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-100"
               title="宝可梦队伍与图鉴"
             >
               <Users className="h-4 w-4" />
@@ -836,26 +856,58 @@ function NurtureView({
             </button>
             <button
               onClick={onShowLeaderboard}
-              className="hidden whitespace-nowrap rounded-lg bg-yellow-50 px-2 py-1.5 text-xs font-bold text-yellow-600 transition-colors hover:bg-yellow-100 sm:block sm:px-3 sm:text-sm"
+              className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-50 px-3 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
             >
-              🏆 排行榜
+              <Trophy className="h-4 w-4" aria-hidden="true" />
+              排行榜
             </button>
-            <div className="flex items-center gap-1 whitespace-nowrap rounded-lg bg-orange-50 px-2 py-1.5 text-xs font-bold text-orange-500 sm:px-3 sm:text-sm">
-              🦴 {pet.food_balance}
+            <div className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-600">
+              <Bone className="h-4 w-4" aria-hidden="true" />
+              {pet.food_balance}
             </div>
+          </div>
+          <div className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-600 sm:hidden">
+            <Bone className="h-4 w-4" aria-hidden="true" />
+            {pet.food_balance}
           </div>
         </div>
       </nav>
 
       {/* Hero 横幅 */}
-      <div className="relative overflow-hidden" style={{ height: 140 }}>
+      <div className="relative h-28 overflow-hidden sm:h-36">
         <img src="/hero-pet.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/60 via-purple-800/30 to-transparent" />
+        <div className="absolute inset-0 bg-[#3a241c]/60" />
         <div className="relative z-10 h-full flex items-center px-4 max-w-5xl mx-auto">
           <div className="text-white">
-            <h2 className="text-3xl font-bold drop-shadow">🐾 我的宠物</h2>
-            <p className="text-sm opacity-80 mt-1 drop-shadow">学习越多，宠物成长越快✨</p>
+            <h2 className="font-display text-2xl font-semibold drop-shadow sm:text-3xl">我的宠物</h2>
+            <p className="mt-1 text-sm text-white/90 drop-shadow">完成学习任务，伙伴会和你一起成长</p>
           </div>
+        </div>
+      </div>
+
+      <div className="border-b border-orange-100 bg-white px-4 py-3 sm:hidden" aria-label="宠物快捷操作">
+        <div className="mx-auto grid max-w-md grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={handleQuickBattle}
+            disabled={quickMatchMutation.isPending}
+            className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700 disabled:opacity-50"
+          >
+            <Swords className="h-4 w-4" aria-hidden="true" />
+            {quickMatchMutation.isPending ? '匹配中' : '对战'}
+          </button>
+          <button type="button" onClick={() => navigate('/student/pet/battle-hall')} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700">
+            <Users className="h-4 w-4" aria-hidden="true" />
+            好友
+          </button>
+          <button type="button" onClick={onShowCatalog} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700">
+            <Users className="h-4 w-4" aria-hidden="true" />
+            队伍
+          </button>
+          <button type="button" onClick={onShowLeaderboard} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-amber-50 px-2 text-[11px] font-semibold text-amber-700">
+            <Trophy className="h-4 w-4" aria-hidden="true" />
+            排行
+          </button>
         </div>
       </div>
 
@@ -863,36 +915,31 @@ function NurtureView({
         {/* 受伤状态提示 */}
         {pet.is_injured && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={reduceMotion ? false : { opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-red-50 border-2 border-red-200 rounded-3xl p-6 mb-6 shadow-lg"
+            transition={{ duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="mb-5 rounded-2xl border border-orange-200 bg-orange-50 p-4 sm:p-5"
           >
-            <div className="text-center">
-              <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className="text-6xl mb-3"
-              >
-                💔
-              </motion.div>
-              <h3 className="text-2xl font-bold text-red-600 mb-2">宠物受伤了！</h3>
-              <p className="text-gray-700 mb-1">
-                当前HP: <span className="font-bold text-red-500">{pet.current_hp || 0}</span> / {100 + pet.level * 5 + pet.evolution_stage * 20}
-              </p>
-              <p className="text-gray-600 mb-4">
-                学习单词可以治疗它，每答对1题恢复 {healPerQuestion} HP
-              </p>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-accent-warm">
+                <HeartPulse className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display text-lg font-semibold text-orange-900 sm:text-xl">伙伴正在恢复</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  当前 HP <span className="font-numeric font-semibold text-orange-700">{pet.current_hp || 0}</span> / {100 + pet.level * 5 + pet.evolution_stage * 20}
+                  <span className="text-gray-500"> · 每答对 1 题恢复 {healPerQuestion} HP</span>
+                </p>
+              </div>
+              <button
                 onClick={() => navigate('/student/pet/heal')}
-                className="px-8 py-3 bg-gradient-to-r from-green-400 to-emerald-500 text-white font-bold text-lg rounded-xl shadow-lg inline-flex items-center gap-2"
+                className="btn-glow inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold text-white sm:text-base"
               >
-                💊 立即治疗
+                开始恢复训练
                 <span className="text-sm opacity-90">
-                  (需答对约 {Math.max(0, Math.ceil((maxHp * 0.8 - (pet.current_hp ?? 0)) / healPerQuestion))} 题)
+                  约 {Math.max(0, Math.ceil((maxHp * 0.8 - (pet.current_hp ?? 0)) / healPerQuestion))} 题
                 </span>
-              </motion.button>
+              </button>
             </div>
           </motion.div>
         )}
@@ -901,15 +948,24 @@ function NurtureView({
           {/* 左列: 宠物展示 + 互动 */}
           <div className="lg:col-span-1 space-y-4">
             <motion.div
-              className="bg-white rounded-3xl p-6 shadow-sm border border-orange-100 text-center relative overflow-hidden cursor-pointer"
+              className="relative cursor-pointer overflow-hidden rounded-2xl border border-orange-100 bg-white p-4 text-center shadow-sm sm:p-5"
               onClick={handlePetTap}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handlePetTap();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={`和${pet.name}互动`}
               whileTap={{ scale: 0.98 }}
             >
               <div className="absolute inset-0 bg-gradient-to-b from-orange-50/50 to-transparent pointer-events-none" />
               <motion.div
                 className="mb-3 inline-block relative"
-                animate={{ y: [0, -8, 0], rotate: [0, 3, -3, 0] }}
-                transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                animate={reduceMotion ? undefined : { y: [0, -6, 0], rotate: [0, 2, -2, 0] }}
+                transition={{ repeat: Infinity, duration: 3.2, ease: 'easeInOut' }}
               >
                 <PetArtwork
                   image={petImage}
@@ -936,7 +992,7 @@ function NurtureView({
               <h2 className="text-xl font-bold text-gray-800">{pet.name}</h2>
               <div className="flex items-center justify-center gap-2 mt-1">
                 <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-xs font-medium rounded-full">Lv.{pet.level}</span>
-                <span className="px-2 py-0.5 bg-purple-100 text-purple-600 text-xs font-medium rounded-full">{currentStage.name}</span>
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{currentStage.name}</span>
               </div>
               <motion.div
                 className="mt-3 inline-block px-3 py-1.5 bg-gray-50 rounded-full text-sm text-gray-600"
@@ -950,21 +1006,22 @@ function NurtureView({
             </motion.div>
 
             <motion.button
-              whileHover={{ scale: pet.food_balance >= 5 ? 1.02 : 1 }}
-              whileTap={{ scale: pet.food_balance >= 5 ? 0.95 : 1 }}
+              whileHover={reduceMotion ? undefined : { scale: pet.food_balance >= 5 ? 1.01 : 1 }}
+              whileTap={reduceMotion ? undefined : { scale: pet.food_balance >= 5 ? 0.98 : 1 }}
               disabled={feedMutation.isPending || pet.food_balance < 5}
               onClick={() => feedMutation.mutate()}
-              className={`w-full py-3 rounded-xl font-semibold text-lg shadow-md transition-all ${
+              className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold transition-colors ${
                 pet.food_balance >= 5
-                  ? 'bg-gradient-to-r from-orange-400 to-yellow-400 text-white'
+                  ? 'bg-accent-warm text-white'
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >
+              <Bone className="h-5 w-5" aria-hidden="true" />
               {feedMutation.isPending
                 ? '喂食中...'
                 : pet.food_balance >= 5
-                  ? '🍖 喂食宠物 (🦴 5)'
-                  : '🦴 粮食不足，去练习赚粮食吧'}
+                  ? '补充能量（消耗 5 粮食）'
+                  : '粮食不足，完成练习可获得'}
             </motion.button>
 
             <AnimatePresence>
@@ -993,12 +1050,12 @@ function NurtureView({
                 <Bar value={pet.experience} max={pet.xp_to_next_level} color="bg-blue-400" label="⭐ 经验值" />
               </div>
               {/* 距下一级还需喂食 */}
-              <div className="mt-4 flex items-center justify-between bg-blue-50 rounded-xl px-4 py-2.5">
+              <div className="mt-4 flex flex-col gap-1 rounded-xl bg-orange-50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm text-gray-600">
-                  距 <span className="font-bold text-blue-600">Lv.{pet.level + 1}</span> 还差 {xpRemaining} 经验
+                  距 <span className="font-bold text-orange-700">Lv.{pet.level + 1}</span> 还差 {xpRemaining} 经验
                 </span>
-                <span className="text-sm font-bold text-blue-600">
-                  🍖 约需喂食 {feedsToNextLevel} 次
+                <span className="text-sm font-medium text-orange-700">
+                  {feedsToNextLevel <= 1 ? '再补充一点能量即可升级' : '能量可以慢慢补充，不用一次完成'}
                 </span>
               </div>
             </div>
@@ -1043,10 +1100,10 @@ function NurtureView({
                           <span className="absolute right-0.5 top-0.5 text-[10px] text-green-600">✓</span>
                         )}
                       </div>
-                      <div className={`mt-1 truncate text-[11px] font-bold sm:text-xs ${isUnlocked ? 'text-gray-700' : 'text-gray-400'}`}>
+                      <div className={`mt-1 truncate text-xs font-bold ${isUnlocked ? 'text-gray-700' : 'text-gray-400'}`}>
                         {form.name}
                       </div>
-                      <div className="text-[10px] text-gray-400 sm:text-[11px]">Lv.{form.unlockLevel}</div>
+                      <div className="text-[11px] text-gray-400 sm:text-xs">Lv.{form.unlockLevel}</div>
                     </motion.div>
                   );
                 })}
@@ -1072,7 +1129,7 @@ function NurtureView({
             </div>
 
             {/* 成长小贴士 */}
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-5 border border-blue-100">
+            <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">💡 成长小贴士</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 <div className="flex items-start gap-2">
@@ -1109,7 +1166,7 @@ function NurtureView({
                       <span className="text-gray-400 text-xs mt-0.5 shrink-0 w-16">
                         {new Date(ev.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
                       </span>
-                      <span className="text-gray-600">{ev.detail || ev.event_type}</span>
+                      <span className="text-gray-600">{friendlyPetEvent(ev.detail, ev.event_type)}</span>
                     </div>
                   ))}
                 </div>
@@ -1133,7 +1190,7 @@ function NurtureView({
               initial={{ opacity: 0, scale: 0.75, y: 30 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+              transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
               onClick={(event) => event.stopPropagation()}
             >
               <button
@@ -1218,11 +1275,11 @@ function LeaderboardView({ onBack }: { onBack: () => void }) {
     <div className="min-h-screen bg-paper">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-2">
+          <button onClick={onBack} className="flex h-11 min-w-11 items-center gap-2 rounded-xl px-3 transition-colors hover:bg-gray-100" aria-label="返回宠物养成">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
             <span className="text-gray-600 font-medium hidden sm:inline">返回</span>
           </button>
-          <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 via-yellow-500 to-orange-500">
+          <h1 className="text-xl font-extrabold text-orange-700">
             🏆 宠物排行榜
           </h1>
           <div className="w-20" />
@@ -1237,7 +1294,7 @@ function LeaderboardView({ onBack }: { onBack: () => void }) {
             className="mb-6 text-center py-3 px-6 bg-white rounded-2xl shadow-sm border border-orange-100 inline-flex items-center gap-2 mx-auto w-full justify-center"
           >
             <span className="text-gray-500">你的排名</span>
-            <span className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-yellow-500">
+            <span className="text-2xl font-extrabold text-orange-700">
               第 {data.my_rank} 名
             </span>
           </motion.div>
@@ -1281,7 +1338,7 @@ function LeaderboardView({ onBack }: { onBack: () => void }) {
                         </div>
                         <div className="flex flex-col items-center gap-1">
                           <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded-full">Lv.{entry.level}</span>
-                          <span className="px-2 py-0.5 bg-purple-100 text-purple-600 text-[10px] font-bold rounded-full">{entry.evolution_stage_name}</span>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">{entry.evolution_stage_name}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -1324,7 +1381,7 @@ function LeaderboardView({ onBack }: { onBack: () => void }) {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="px-2 py-0.5 bg-orange-50 text-orange-500 text-xs font-semibold rounded-full border border-orange-100">Lv.{entry.level}</span>
-                      <span className="px-2 py-0.5 bg-purple-50 text-purple-500 text-xs font-semibold rounded-full border border-purple-100">{entry.evolution_stage_name}</span>
+                      <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">{entry.evolution_stage_name}</span>
                     </div>
                   </motion.div>
                 );

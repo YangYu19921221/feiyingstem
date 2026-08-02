@@ -17,7 +17,9 @@ interface StudentLearningStats {
   accuracy_rate: number;
   study_sessions: number;
   last_active: string | null;
+  /** 薄弱=未达掌握线且真答错过(不含只是练得少的全对词) */
   weak_words_count: number;
+  pending_words_count: number;
 }
 
 interface WordDifficultyStats {
@@ -353,7 +355,10 @@ const TeacherAnalytics = () => {
                   <th className="text-center py-3 px-4">已学单词</th>
                   <th className="text-center py-3 px-4">准确率</th>
                   <th className="text-center py-3 px-4">练习次数</th>
-                  <th className="text-center py-3 px-4">薄弱单词</th>
+                  <th className="text-center py-3 px-4">
+                    薄弱单词
+                    <span className="block text-xs font-normal text-gray-400">做题错过的</span>
+                  </th>
                   <th className="text-center py-3 px-4">操作</th>
                 </tr>
               </thead>

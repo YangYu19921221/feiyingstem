@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { getBookProgress } from '../api/progress';
 import type { BookProgress } from '../api/progress';
 import { getMyHomework, startHomework } from '../api/homework';
 import type { StudentHomeworkResponse } from '../api/homework';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { ArrowLeft, BookOpenText, ChevronDown, ClipboardCheck, LockKeyhole, Medal } from 'lucide-react';
 import { toast } from '../components/Toast';
-import AnimatedProgress from '../components/student/AnimatedProgress';
 import { getErrorMessage } from '../utils/errorMessage';
 import FullscreenBookComplete from '../components/challenge-fx/FullscreenBookComplete';
+import AnimatedProgress from '../components/student/AnimatedProgress';
 
 const DAILY_GOAL = 10;
 
@@ -21,6 +21,7 @@ const MODE_LABELS: Record<string, string> = {
 const UnitSelector = () => {
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
   const [searchParams] = useSearchParams();
   // 「我的作业」单元级分配跳转过来时定位到指定单元
   const focusUnitId = searchParams.get('focus') ? parseInt(searchParams.get('focus')!) : null;
@@ -60,7 +61,7 @@ const UnitSelector = () => {
       navigate(`/student/units/${result.unit_id}/${result.learning_mode}`, {
         state: { fromHomework: true, assignmentId: task.id },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error(getErrorMessage(error, '开始作业失败'));
     }
   };
@@ -165,6 +166,8 @@ const UnitSelector = () => {
     { key: 'fillblank', name: '选词', badge: 'AI', requiresPrevious: 'spelling' },
     { key: 'exam', name: '考试', badge: '测验', requiresPrevious: 'classify' },
   ];
+  const foundationModes = learningModes.filter((mode) => ['dictation', 'sentencefill', 'quiz'].includes(mode.key));
+  const challengeModes = learningModes.filter((mode) => ['spelling', 'fillblank', 'exam'].includes(mode.key));
 
   const sortedUnits = bookProgress
     ? [...bookProgress.units].sort((a, b) => (a.unit_number || 0) - (b.unit_number || 0))
@@ -186,7 +189,8 @@ const UnitSelector = () => {
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center gap-3">
           <button
             onClick={handleBack}
-            className="p-1.5 -ml-1.5 text-ink-soft hover:text-ink hover:bg-black/5 rounded-md transition"
+            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-lg text-ink-soft transition hover:bg-black/5 hover:text-ink"
+            aria-label="返回"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -221,11 +225,11 @@ const UnitSelector = () => {
         {/* 老师布置的任务:常驻显示,完成后自动消失 */}
         {bookTasks.length > 0 && (
           <section className="mb-8">
-            <div className="rounded-2xl border-2 border-accent-warm/40 bg-accent-warm/[0.06] overflow-hidden">
+            <div className="overflow-hidden rounded-2xl border border-accent-warm/30 bg-accent-warm/[0.06]">
               <div className="px-5 py-3 flex items-center gap-2 border-b border-accent-warm/20">
-                <span className="text-lg">📣</span>
+                <ClipboardCheck className="h-4 w-4 text-accent-warm" aria-hidden="true" />
                 <h3 className="font-semibold text-ink text-sm">老师布置的任务</h3>
-                <span className="px-1.5 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold">
+                <span className="rounded-full bg-accent-warm px-2 py-0.5 font-numeric text-xs font-semibold text-white">
                   {bookTasks.length}
                 </span>
                 <span className="ml-auto text-xs text-ink-mute">完成后自动消失</span>
@@ -234,34 +238,38 @@ const UnitSelector = () => {
                 {bookTasks.map((task) => {
                   const overdue = task.deadline && new Date(task.deadline) < new Date();
                   return (
-                    <div key={task.id} className="px-5 py-3.5 flex items-center gap-3">
-                      <span className="text-xl shrink-0">📘</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-ink text-sm truncate">
-                          {task.title}
-                          <span className="ml-2 px-1.5 py-0.5 rounded bg-black/[0.05] text-ink-soft text-[11px]">
-                            {MODE_LABELS[task.learning_mode] || task.learning_mode}
-                          </span>
-                        </p>
-                        <p className="text-xs text-ink-mute mt-0.5">
-                          {task.unit_name} · 目标 {task.target_score} 分
+                    <div key={task.id} className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <BookOpenText className="mt-0.5 h-5 w-5 shrink-0 text-accent-warm" aria-hidden="true" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-ink">
+                            {task.title}
+                            <span className="ml-2 rounded bg-black/[0.05] px-2 py-0.5 text-xs text-ink-soft">
+                              {MODE_LABELS[task.learning_mode] || task.learning_mode}
+                            </span>
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-mute">
+                            <span>{task.unit_name}</span>
+                            <span>目标 {task.target_score} 分</span>
                           {task.deadline && (
                             <span className={overdue ? 'text-red-500 font-semibold' : ''}>
-                              {' '}· {overdue ? '已逾期!' : `截止 ${new Date(task.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`}
+                                {overdue ? '已逾期' : `截止 ${new Date(task.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`}
                             </span>
                           )}
-                          {task.attempts_count > 0 && ` · 已试 ${task.attempts_count}/${task.max_attempts} 次`}
-                        </p>
+                            {task.attempts_count > 0 && <span>已试 {task.attempts_count}/{task.max_attempts} 次</span>}
+                          </div>
+                        </div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => handleStartTask(task)}
-                        className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition active:scale-95 ${
+                        className={`min-h-11 w-full shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition active:scale-95 sm:w-auto ${
                           overdue
                             ? 'bg-red-500 text-white hover:opacity-90'
                             : 'bg-accent-warm text-white hover:opacity-90'
                         }`}
                       >
-                        {task.status === 'in_progress' ? '继续 →' : '去完成 →'}
+                        {task.status === 'in_progress' ? '继续完成' : '去完成'}
                       </button>
                     </div>
                   );
@@ -292,18 +300,22 @@ const UnitSelector = () => {
                 <motion.div
                   key={unit.unit_id}
                   id={`unit-row-${unit.unit_id}`}
-                  initial={!hasLoadedOnce.current ? { opacity: 0 } : false}
+                  initial={!hasLoadedOnce.current && !reduceMotion ? { opacity: 0 } : false}
                   animate={{ opacity: 1 }}
-                  transition={{ duration: 0.2, delay: !hasLoadedOnce.current ? Math.min(0.03 * index, 0.3) : 0 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.2, delay: !hasLoadedOnce.current && !reduceMotion ? Math.min(0.03 * index, 0.3) : 0 }}
                   className={isNotAllowed ? 'opacity-55' : ''}
                 >
                   {/* 单元行 */}
-                  <div
-                    className={`flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-black/[0.02] transition ${isCurrent ? 'bg-accent-warm/[0.04]' : ''}`}
-                    onClick={() => setExpandedUnitId(isExpanded ? null : unit.unit_id)}
-                  >
+                  <div className={`flex items-stretch gap-2 px-3 py-2 sm:px-5 sm:py-3 ${isCurrent ? 'bg-accent-warm/[0.04]' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedUnitId(isExpanded ? null : unit.unit_id)}
+                      aria-expanded={isExpanded}
+                      aria-controls={`unit-detail-${unit.unit_id}`}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-black/[0.025]"
+                    >
                     {/* 序号 */}
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold font-numeric shrink-0 ${
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-numeric text-xs font-semibold ${
                       unit.is_completed
                         ? 'bg-black/[0.06] text-ink-soft'
                         : isCurrent
@@ -320,27 +332,30 @@ const UnitSelector = () => {
                           {unit.unit_name}
                         </h3>
                         {isCurrent && (
-                          <span className="px-1.5 py-0.5 bg-accent-warm text-white text-[10px] rounded font-medium">
+                          <span className="rounded bg-accent-warm px-2 py-0.5 text-xs font-medium text-white">
                             当前
                           </span>
                         )}
                         {isNotAllowed && (
-                          <span className="px-1.5 py-0.5 bg-black/[0.06] text-ink-mute text-[10px] rounded font-medium">
-                            🔒 待老师分配
+                          <span className="inline-flex items-center gap-1 rounded bg-black/[0.06] px-2 py-0.5 text-xs font-medium text-ink-mute">
+                            <LockKeyhole className="h-3 w-3" aria-hidden="true" />
+                            待老师分配
                           </span>
                         )}
                         {hasTask && (
-                          <span className="px-1.5 py-0.5 bg-accent-warm/15 text-accent-warm text-[10px] rounded font-medium">
-                            📣 有作业
+                          <span className="inline-flex items-center gap-1 rounded bg-accent-warm/15 px-2 py-0.5 text-xs font-medium text-accent-warm">
+                            <ClipboardCheck className="h-3 w-3" aria-hidden="true" />
+                            有作业
                           </span>
                         )}
                         {unit.is_perfect && (
-                          <span className="px-1.5 py-0.5 bg-black/[0.06] text-ink-soft text-[10px] rounded font-medium">
-                            ⭐ 满分
+                          <span className="inline-flex items-center gap-1 rounded bg-black/[0.06] px-2 py-0.5 text-xs font-medium text-ink-soft">
+                            <Medal className="h-3 w-3" aria-hidden="true" />
+                            满分
                           </span>
                         )}
                         {!unit.is_perfect && unit.best_accuracy !== null && unit.best_accuracy !== undefined && (
-                          <span className="px-1.5 py-0.5 text-ink-mute text-[10px] font-numeric">
+                          <span className="px-1.5 py-0.5 text-xs font-numeric text-ink-mute">
                             最佳 {unit.best_accuracy.toFixed(0)}%
                           </span>
                         )}
@@ -350,23 +365,23 @@ const UnitSelector = () => {
                             if (n >= 5) {
                               // 高手：金色流光胶囊
                               return (
-                                <span className="px-2 py-0.5 rounded-full text-[11px] font-numeric font-semibold text-white progress-gold shrink-0 inline-flex items-center gap-0.5">
-                                  ⟳ {n} 轮
+                                <span className="progress-gold inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-numeric text-xs font-semibold text-white">
+                                  {n} 轮
                                 </span>
                               );
                             }
                             if (n >= 2) {
                               // 多次完成：实色橙
                               return (
-                                <span className="px-2 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold shrink-0 inline-flex items-center gap-0.5">
-                                  ⟳ {n} 轮
+                                <span className="inline-flex shrink-0 items-center rounded-full bg-accent-warm px-2 py-0.5 font-numeric text-xs font-semibold text-white">
+                                  {n} 轮
                                 </span>
                               );
                             }
                             // 第一次：浅橙底
                             return (
-                              <span className="px-2 py-0.5 rounded-full bg-accent-warm/15 text-accent-warm text-[11px] font-numeric font-semibold shrink-0 inline-flex items-center gap-0.5">
-                                ✓ 1 轮
+                              <span className="inline-flex shrink-0 items-center rounded-full bg-accent-warm/15 px-2 py-0.5 font-numeric text-xs font-semibold text-accent-warm">
+                                1 轮
                               </span>
                             );
                           })()
@@ -383,14 +398,15 @@ const UnitSelector = () => {
                       </div>
                     </div>
 
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-ink-mute transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                    </button>
+
                     {/* 右侧按钮 */}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartLearning(unit.unit_id, 'classify', index);
-                      }}
+                      type="button"
+                      onClick={() => handleStartLearning(unit.unit_id, 'classify', index)}
                       disabled={isLocked}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition shrink-0 active:scale-95 ${
+                      className={`min-h-11 shrink-0 self-center rounded-lg px-3 py-2 text-sm font-medium transition active:scale-95 sm:px-4 ${
                         isLocked
                           ? 'text-ink-mute cursor-not-allowed'
                           : isCurrent
@@ -398,20 +414,25 @@ const UnitSelector = () => {
                           : 'border border-black/15 text-ink hover:bg-black/5'
                       }`}
                     >
-                      {isNotAllowed ? '🔒 待分配' : isLocked ? '🔒' : '学习'}
+                      {isNotAllowed ? (
+                        <span className="inline-flex items-center gap-1"><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />待分配</span>
+                      ) : isLocked ? (
+                        <LockKeyhole className="h-4 w-4" aria-label="已锁定" />
+                      ) : (
+                        <><span className="sm:hidden">分类</span><span className="hidden sm:inline">分类学习</span></>
+                      )}
                     </button>
-
-                    <ChevronDown className={`w-4 h-4 text-ink-mute transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                   </div>
 
                   {/* 展开详情 */}
                   <AnimatePresence>
                     {isExpanded && (
                       <motion.div
-                        initial={{ height: 0, opacity: 0 }}
+                        id={`unit-detail-${unit.unit_id}`}
+                        initial={reduceMotion ? false : { height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                        transition={{ duration: reduceMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}
                         className="overflow-hidden"
                       >
                         <div className="px-5 pb-5 pt-1 bg-black/[0.015]">
@@ -444,7 +465,7 @@ const UnitSelector = () => {
                               <div className="p-3 bg-white rounded-lg border border-black/[0.05]">
                                 <p className="text-xs text-ink-mute mb-1">最佳成绩</p>
                                 <p className="font-display text-lg font-semibold text-ink font-numeric">
-                                  {unit.best_accuracy !== null && unit.best_accuracy !== undefined ? `${unit.best_accuracy.toFixed(0)}%` : '—'}
+                                  {unit.best_accuracy !== null && unit.best_accuracy !== undefined ? `${unit.best_accuracy.toFixed(0)}%` : '暂无'}
                                 </p>
                               </div>
                               <div className="p-3 bg-white rounded-lg border border-black/[0.05]">
@@ -458,7 +479,7 @@ const UnitSelector = () => {
 
                           {/* 断点续学 */}
                           {unit.has_progress && !unit.is_completed && (
-                            <div className="mb-4 px-3 py-2.5 border-l-2 border-accent-warm bg-white rounded-r-md text-sm">
+                            <div className="mb-4 rounded-xl bg-white px-3 py-2.5 text-sm ring-1 ring-black/[0.05]">
                               从第 <span className="font-numeric font-semibold text-ink">{unit.current_word_index + 1}</span> 个单词继续
                               {unit.last_studied_at && (
                                 <span className="text-xs text-ink-mute ml-2">
@@ -474,34 +495,45 @@ const UnitSelector = () => {
                           )}
 
                           {unit.is_completed && (
-                            <div className="mb-4 px-3 py-2.5 border-l-2 border-black/15 bg-white rounded-r-md text-sm text-ink-soft">
+                            <div className="mb-4 rounded-xl bg-white px-3 py-2.5 text-sm text-ink-soft ring-1 ring-black/[0.05]">
                               已完成，可重新复习巩固
                             </div>
                           )}
 
-                          {/* 其他学习模式 */}
-                          <p className="text-xs text-ink-mute mb-2">其他学习模式</p>
-                          <div className="grid grid-cols-3 gap-2">
-                            {learningModes.filter(m => m.key !== 'classify').map((mode) => (
-                              <button
-                                key={mode.key}
-                                onClick={() => handleStartLearning(unit.unit_id, mode.key, index)}
-                                disabled={isLocked}
-                                className={`relative py-2.5 px-2 rounded-lg text-sm font-medium transition active:scale-95 ${
-                                  isLocked
-                                    ? 'text-ink-mute cursor-not-allowed'
-                                    : 'bg-white border border-black/[0.08] text-ink hover:border-black/20 hover:bg-black/[0.02]'
-                                }`}
-                              >
-                                {mode.name}
-                                {mode.badge && (
-                                  <span className="ml-1 text-[10px] text-ink-mute font-normal">
-                                    {mode.badge}
-                                  </span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
+                          {/* 其他模式分组，每组最多 3 个决策。 */}
+                          {[
+                            { title: '基础巩固', hint: '建议完成分类后再做', modes: foundationModes },
+                            { title: '进阶挑战', hint: '想提高准确率时使用', modes: challengeModes },
+                          ].map((group) => (
+                            <section key={group.title} className="mb-4 last:mb-0" aria-label={group.title}>
+                              <div className="mb-2">
+                                <p className="text-sm font-semibold text-ink">{group.title}</p>
+                                <p className="mt-0.5 text-xs text-ink-mute">{group.hint}</p>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {group.modes.map((mode) => (
+                                  <button
+                                    key={mode.key}
+                                    type="button"
+                                    onClick={() => handleStartLearning(unit.unit_id, mode.key, index)}
+                                    disabled={isLocked}
+                                    className={`relative min-h-11 rounded-lg px-2 py-2.5 text-sm font-medium transition active:scale-95 ${
+                                      isLocked
+                                        ? 'cursor-not-allowed text-ink-mute'
+                                        : 'border border-black/[0.08] bg-white text-ink hover:border-black/20 hover:bg-black/[0.02]'
+                                    }`}
+                                  >
+                                    {mode.name}
+                                    {mode.badge && (
+                                      <span className="ml-1 text-xs font-normal text-ink-mute">
+                                        {mode.badge}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </section>
+                          ))}
                         </div>
                       </motion.div>
                     )}

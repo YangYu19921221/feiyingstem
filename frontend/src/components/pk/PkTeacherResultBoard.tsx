@@ -10,6 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { PkFinalRankItem, PkTeamRankItem } from '../../api/pk';
+import { teamLabel } from '../../utils/pkTeam';
 
 interface Props {
   ranking: PkFinalRankItem[];
@@ -102,7 +103,7 @@ export default function PkTeacherResultBoard({ ranking, teamRanking, onExit }: P
               <div className="mt-5 flex items-center gap-4">
                 <span className={`h-14 w-2 rounded-full ${TEAM_TONE[(winningTeam.team - 1) % TEAM_TONE.length]}`} />
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-2xl font-black text-slate-900">第 {winningTeam.team} 队</h2>
+                  <h2 className="text-2xl font-black text-slate-900">{teamLabel(winningTeam.team, undefined, winningTeam.team_name)}</h2>
                   <p className="mt-1 text-sm text-slate-500">{winningTeam.member_count} 名队员 · 总分 {winningTeam.points}</p>
                 </div>
                 <div className="text-right">
@@ -141,7 +142,9 @@ export default function PkTeacherResultBoard({ ranking, teamRanking, onExit }: P
                   <div key={team.team} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
                     <span className="font-numeric text-lg font-black text-slate-500">{team.rank}</span>
                     <span className={`h-8 w-1 rounded-full ${TEAM_TONE[(team.team - 1) % TEAM_TONE.length]}`} />
-                    <span className="flex-1 font-bold text-slate-800">第 {team.team} 队</span>
+                    <span className="flex-1 truncate font-bold text-slate-800" title={team.team_name || undefined}>
+                      {teamLabel(team.team, undefined, team.team_name)}
+                    </span>
                     <span className="text-xs text-slate-400">{team.member_count} 人</span>
                     <span className="font-numeric font-black text-slate-900">{team.avg_points} 分</span>
                   </div>

@@ -17,9 +17,9 @@ const MESSAGES: Record<PetEventType | 'idle' | 'hungry' | 'unhappy', string[]> =
   combo:    ['连击！🔥🔥', '你太厉害了！', '势如破竹！⚡', '停不下来了！'],
   complete: ['完成啦！你最棒！🎊', '今天学了好多！✨', '我也跟着成长了！', '收工！辛苦了！🌟'],
   start:    ['开始学习啦！我陪着你~', '冲冲冲！🔥', '今天也要加油哦！'],
-  idle:     ['还在吗？想你了~', '来学习吧！', '陪我玩一会儿嘛', '出来出来~👋', '你去哪了？'],
-  hungry:   ['咕噜噜...我饿了...', '快来喂我！>_<', '好饿...能给点吃的吗？'],
-  unhappy:  ['多陪陪我嘛~', '我有点难过...', '和我互动一下嘛！'],
+  idle:     ['我先休息一会儿，想学时叫我~', '准备好了，我就陪你出发！', '今天也可以慢慢来~'],
+  hungry:   ['补充一点能量，就能继续成长啦~', '有空时来看看我的能量吧！'],
+  unhappy:  ['我在这里等你，一起慢慢进步~', '做一道题，我们都会更有精神！'],
 };
 
 function pick(arr: string[]) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -29,7 +29,23 @@ type MoodState = 'happy' | 'excited' | 'sad' | 'idle' | 'normal';
 export default function FloatingPetWidget() {
   const navigate = useNavigate();
   const location = useLocation();
-  const isPetBattlePage = location.pathname.startsWith('/student/pet/battle/');
+  const isPetSurface = location.pathname.startsWith('/student/pet');
+  const isFocusedSurface = isPetSurface
+    || location.pathname.startsWith('/student/units/')
+    || location.pathname.startsWith('/student/books/')
+    || location.pathname.startsWith('/student/exam/')
+    || location.pathname.startsWith('/student/reading')
+    || location.pathname.startsWith('/pk/')
+    || [
+      '/student/assignments',
+      '/student/homework',
+      '/student/analytics',
+      '/student/competition',
+      '/student/completion',
+      '/student/mistake-practice',
+      '/student/mistake-challenge',
+      '/subscription/redeem',
+    ].includes(location.pathname);
   // 所有 Hook 必须在条件判断前声明
   const [bubble, setBubble] = useState('');
   const [showBubble, setShowBubble] = useState(false);
@@ -50,7 +66,7 @@ export default function FloatingPetWidget() {
     queryFn: getMyPet,
     retry: false,
     staleTime: 60_000,
-    enabled: location.pathname.startsWith('/student') && !isPetBattlePage,
+    enabled: location.pathname.startsWith('/student') && !isFocusedSurface,
   });
 
   const say = useCallback((msg: string, newMood: MoodState = 'happy', duration = 3000) => {
@@ -114,7 +130,7 @@ export default function FloatingPetWidget() {
   }, [pet, say]);
 
   // 所有 Hook 执行完后再做条件渲染
-  if (!location.pathname.startsWith('/student') || isPetBattlePage) return null;
+  if (!location.pathname.startsWith('/student') || isFocusedSurface) return null;
   if (!pet) return null;
 
   const petImg = getPetImage(pet.species, pet.evolution_stage);
@@ -149,7 +165,7 @@ export default function FloatingPetWidget() {
       }}
       data-pet-widget
       id="floating-pet-anchor"
-      className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 cursor-grab active:cursor-grabbing"
+      className="fixed bottom-4 right-3 z-50 flex flex-col items-end gap-2 cursor-grab active:cursor-grabbing sm:right-4"
       style={{ touchAction: 'none' }}
     >
       {/* 气泡 */}
@@ -159,6 +175,8 @@ export default function FloatingPetWidget() {
             initial={{ opacity: 0, y: 8, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.9 }}
+            role="status"
+            aria-live="polite"
             className="pointer-events-none bg-white rounded-2xl rounded-br-sm px-3 py-2 shadow-lg border border-gray-100 max-w-[180px] text-sm text-gray-700 font-medium"
           >
             {bubble}
@@ -205,7 +223,7 @@ export default function FloatingPetWidget() {
             </div>
             <button
               onClick={() => navigate('/student/pet')}
-              className="mt-3 w-full text-xs text-center py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition"
+              className="mt-3 min-h-10 w-full rounded-lg bg-orange-50 px-3 text-center text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
             >
               查看宠物 →
             </button>
@@ -215,7 +233,7 @@ export default function FloatingPetWidget() {
 
       {/* 宠物主体 */}
       <motion.button
-        className="pointer-events-auto relative w-16 h-16 flex items-center justify-center"
+        className="pointer-events-auto relative flex h-14 w-14 items-center justify-center sm:h-16 sm:w-16"
         onClick={() => {
           if (isDragging.current) return; // 拖拽结束不触发点击
           setExpanded(e => !e);
@@ -224,6 +242,8 @@ export default function FloatingPetWidget() {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         title={`${pet.name}（点击查看状态）`}
+        aria-label={`${pet.name}，点击${expanded ? '收起' : '查看'}宠物状态`}
+        aria-expanded={expanded}
       >
         {/* 状态圆点 */}
         <span

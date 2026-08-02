@@ -46,25 +46,25 @@
     color: #293545;
   }
   .text-ink-soft {
-    color: #687383;
+    color: #5f6b7a;
   }
   .text-ink-mute {
-    color: #98a1ad;
+    color: #687383;
   }
   .bg-accent-warm {
-    background-color: #e88952;
+    background-color: #bd5227;
   }
   /* 渐变起点色:Tailwind 不会为 index.css 里的自定义色生成 from-*,需手写(签到横幅/实时排名徽章在用) */
   .from-accent-warm {
-    --tw-gradient-from: #e88952 var(--tw-gradient-from-position);
-    --tw-gradient-to: rgb(232 137 82 / 0) var(--tw-gradient-to-position);
+    --tw-gradient-from: #bd5227 var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(189 82 39 / 0) var(--tw-gradient-to-position);
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
   }
   .text-accent-warm {
-    color: #d56f3c;
+    color: #b94d22;
   }
   .border-accent-warm {
-    border-color: #e88952;
+    border-color: #bd5227;
   }
   .ring-accent-warm {
     --tw-ring-color: rgb(232 137 82 / 0.25);
@@ -95,18 +95,18 @@
 
   /* Warm primary action with a restrained, flat treatment. */
   .btn-glow {
-    background: #e88952;
-    border: 1px solid #d97843;
+    background: #bd5227;
+    border: 1px solid #a9441c;
     box-shadow: none;
     transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   .btn-glow:hover:not(:disabled) {
-    background: #d97843;
+    background: #a9441c;
     box-shadow: none;
     transform: none;
   }
   .btn-glow:active:not(:disabled) {
-    background: #c96838;
+    background: #913815;
     box-shadow: none;
     transform: translateY(0);
   }
@@ -215,10 +215,18 @@ body {
   background: #f5f8fc;
 }
 
+:where(button, a, [role='button']):focus-visible {
+  outline: 3px solid rgb(93 148 196 / 0.34);
+  outline-offset: 2px;
+}
+body.student-interface :where(button, a, [role='button']):focus-visible {
+  outline-color: rgb(232 137 82 / 0.44);
+}
+
 body.staff-interface,
 body.staff-interface #root { background-color: #f5f8fc; }
 body.student-interface,
-body.student-interface #root { background-color: #f5f8fc; }
+body.student-interface #root { background-color: #fbf8f3; }
 body.student-interface:not(.student-immersive) #root > .min-h-screen {
   background-color: transparent !important;
   background-image: none !important;
@@ -240,23 +248,29 @@ body.staff-interface .staff-colorful-surface {
   box-shadow: none !important;
 }
 body.student-interface .student-colorful-surface {
-  background: #eef6fc;
-  border-color: #d4e4f1 !important;
+  background: #fff4e8;
+  border-color: #f1d2b9 !important;
   box-shadow: none !important;
 }
 /* Every signed-in workspace page uses the same quiet canvas and elevated content rhythm. */
 body.student-interface:not(.student-immersive) .bg-paper,
 body.staff-interface:not(.staff-immersive) .bg-paper { background-color: transparent; }
+body.student-immersive .bg-paper { background-color: #f7f5f1; }
 body.student-interface nav:not(.student-mobile-nav),
 body.staff-interface nav:not(.staff-mobile-nav) {
   background-color: rgba(255, 255, 255, 0.86);
   border-bottom-color: rgba(148, 163, 184, 0.28);
   box-shadow: none !important;
 }
-body.student-interface .bg-white,
+body.student-interface nav:not(.student-mobile-nav) {
+  border-bottom-color: rgba(197, 151, 116, 0.25);
+}
+body.student-interface .bg-white { border-color: rgba(197, 151, 116, 0.18); }
 body.staff-interface .bg-white { border-color: rgba(148, 163, 184, 0.18); }
 body.student-interface .shadow-md,
-body.student-interface .shadow-lg,
+body.student-interface .shadow-lg {
+  box-shadow: 0 1px 3px rgba(111, 72, 43, 0.06);
+}
 body.staff-interface .shadow-md,
 body.staff-interface .shadow-lg {
   box-shadow: 0 1px 3px rgba(30, 64, 96, 0.06);
@@ -272,7 +286,11 @@ body.staff-interface textarea {
 }
 body.student-interface input:focus,
 body.student-interface select:focus,
-body.student-interface textarea:focus,
+body.student-interface textarea:focus {
+  outline: none;
+  border-color: rgba(189, 82, 39, 0.62);
+  box-shadow: 0 0 0 3px rgba(232, 137, 82, 0.14);
+}
 body.staff-interface input:focus,
 body.staff-interface select:focus,
 body.staff-interface textarea:focus {
@@ -295,18 +313,19 @@ body.staff-interface div:has(> table) { overflow-x: auto; }
 @media (max-width: 767px) {
   body.student-mobile-nav-visible #root,
   body.staff-mobile-nav-visible #root { padding-bottom: 4.75rem; }
-  body.student-mobile-nav-visible [data-pet-widget] { bottom: 5rem; }
+  body.student-mobile-nav-visible [data-pet-widget] { display: none; }
+  body.student-immersive [data-pet-widget] { display: none; }
 }
 
 /* 分类学习：只调整页面底色与信息层级，保留每个答案状态的语义色。 */
 .classify-learning-page {
-  background: #edf5fb;
+  background: #f7f5f1;
   color: #293545;
 }
 .classify-learning-nav {
   background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid #dce7f0;
-  box-shadow: 0 1px 3px rgba(38, 59, 78, 0.06);
+  border-bottom: 1px solid #ead9ca;
+  box-shadow: 0 1px 3px rgba(111, 72, 43, 0.05);
   backdrop-filter: blur(10px);
 }
 .classify-learning-main {
@@ -318,7 +337,7 @@ body.staff-interface div:has(> table) { overflow-x: auto; }
 .classify-stage-rail {
   align-items: center;
   padding: 0.35rem 0.55rem;
-  border: 1px solid #dbe7f0;
+  border: 1px solid #ead9ca;
   border-radius: 999px;
   background: #f7fafc;
 }
@@ -574,6 +593,39 @@ body.staff-interface div:has(> table) { overflow-x: auto; }
   width: 0;
   height: 0;
   background: transparent;
+}
+
+/* 学生端页面通常较长，保留位置线索；明确使用 hide-scrollbar 的横向控件仍可隐藏。 */
+body.student-interface::-webkit-scrollbar,
+body.student-interface *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body.student-interface::-webkit-scrollbar-thumb,
+body.student-interface *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: #aab5c2;
+}
+
+body.student-interface::-webkit-scrollbar-track,
+body.student-interface *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.student-interface .animate-bounce,
+  body.student-interface .animate-ping,
+  body.student-interface .animate-pulse {
+    animation: none !important;
+  }
+
+  /* 加载状态仍保留可见反馈，但旋转速度降低。 */
+  body.student-interface .animate-spin {
+    animation-duration: 2s !important;
+  }
 }
 
 /* 可选: 自定义滚动条样式(如果需要显示) */

@@ -1,11 +1,21 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowRight,
+  ChevronDown,
+  KeyRound,
+  LockKeyhole,
+  Phone,
+  Stethoscope,
+  UserRound,
+  UsersRound,
+} from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { useCountdown } from '../hooks/useCountdown';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
+import AuthInput from '../components/auth/AuthInput';
 import FormError from '../components/auth/FormError';
 import { parseError } from '../utils/errorMessage';
 
@@ -22,13 +32,6 @@ interface LoginResponse {
     subscription_expires_at?: string | null;
   };
 }
-
-const INPUT_BASE =
-  'w-full px-4 py-3.5 rounded-xl outline-none transition text-white placeholder-gray-500';
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(15, 23, 34, 0.85)',
-  border: '1px solid #2a3442',
-};
 
 const Login = () => {
   const navigate = useNavigate();
@@ -56,7 +59,7 @@ const Login = () => {
     try {
       await axios.post(`${API_BASE_URL}/auth/send-code`, { phone, purpose: 'login' });
       start();
-    } catch (err: any) {
+    } catch (err: unknown) {
       const e = parseError(err, '发送验证码失败');
       setError(e.message);
       setErrorCode(e.code);
@@ -72,7 +75,10 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const payload: any = { username: username.trim(), password };
+      const payload: { username: string; password: string; phone?: string; code?: string } = {
+        username: username.trim(),
+        password,
+      };
       if (phone && code) {
         payload.phone = phone;
         payload.code = code;
@@ -81,7 +87,7 @@ const Login = () => {
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       const e = parseError(err, '登录失败，请稍后重试');
       setError(e.message);
       setErrorCode(e.code);
@@ -90,204 +96,163 @@ const Login = () => {
     }
   };
 
-  const onFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.borderColor = 'var(--glow)';
-    e.currentTarget.style.boxShadow = '0 0 0 3px var(--glow-ring)';
-  };
-  const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.borderColor = '#2a3442';
-    e.currentTarget.style.boxShadow = 'none';
-  };
-
   return (
-    <AuthShell>
-      {() => (
-        <>
-          <div className="mb-6">
-            <h2 className="text-3xl font-bold" style={{ color: '#fff' }}>欢迎回来</h2>
-            <p className="mt-1 text-sm" style={{ color: '#8a95a5' }}>登录账号，继续你的学习计划</p>
-          </div>
+    <AuthShell mode="login">
+      <header data-auth-reveal className="mb-7">
+        <h2 className="font-display text-3xl font-black tracking-[-0.03em] text-[#293545] sm:text-[2.25rem]">
+          欢迎回来
+        </h2>
+        <p className="mt-2 text-[15px] leading-6 text-[#5f6b7a]">登录账号，继续今天的学习。</p>
+      </header>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            <FormError
-              message={error}
-              code={errorCode}
-              context="login"
-              onDismiss={() => { setError(''); setErrorCode(null); }}
-            />
+      <form onSubmit={handleLogin} className="space-y-5" data-auth-reveal>
+        <FormError
+          message={error}
+          code={errorCode}
+          context="login"
+          onDismiss={() => { setError(''); setErrorCode(null); }}
+        />
 
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>
-                用户名或邮箱
-              </label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={INPUT_BASE}
-                style={inputStyle}
-                onFocus={onFocus}
-                onBlur={onBlur}
-                placeholder="请输入用户名或邮箱"
-                required
-                disabled={loading}
-              />
-            </div>
+        <AuthInput
+          id="username"
+          label="用户名或邮箱"
+          icon={UserRound}
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="请输入用户名或邮箱"
+          autoComplete="username"
+          required
+          disabled={loading}
+        />
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: '#c7d0dc' }}>
-                密码
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={INPUT_BASE}
-                style={inputStyle}
-                onFocus={onFocus}
-                onBlur={onBlur}
-                placeholder="请输入密码"
-                required
-                disabled={loading}
-              />
-            </div>
+        <AuthInput
+          id="password"
+          label="密码"
+          icon={LockKeyhole}
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="请输入密码"
+          autoComplete="current-password"
+          required
+          disabled={loading}
+        />
 
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowPhoneVerify(!showPhoneVerify)}
-                className="text-sm transition flex items-center gap-1"
-                style={{ color: '#8a95a5' }}
-              >
-                <span className={`transition-transform text-xs ${showPhoneVerify ? 'rotate-90' : ''}`}>▸</span>
-                手机验证码（可选）
-              </button>
-              <AnimatePresence>
-                {showPhoneVerify && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-3 space-y-2">
-                      <div className="flex gap-2">
-                        <input
-                          type="tel"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          className={`flex-1 px-4 py-3 rounded-xl outline-none transition text-white placeholder-gray-500`}
-                          style={inputStyle}
-                          onFocus={onFocus}
-                          onBlur={onBlur}
-                          placeholder="手机号"
-                          disabled={loading}
-                          maxLength={11}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSendCode}
-                          disabled={isActive || sendingCode || loading}
-                          className={`px-4 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition`}
-                          style={{
-                            background: isActive || sendingCode ? '#23303f' : 'var(--glow)',
-                            color: isActive || sendingCode ? '#8a95a5' : '#0b1320',
-                            cursor: isActive || sendingCode ? 'not-allowed' : 'pointer',
-                          }}
-                        >
-                          {sendingCode ? '...' : isActive ? `${remaining}s` : '发送'}
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        className={`w-full px-4 py-3 rounded-xl outline-none transition text-white placeholder-gray-500`}
-                        style={inputStyle}
-                        onFocus={onFocus}
-                        onBlur={onBlur}
-                        placeholder="请输入验证码"
-                        disabled={loading}
-                        maxLength={6}
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <div className="pt-1">
-              <motion.button
-                type="submit"
-                disabled={loading}
-                whileHover={{ scale: loading ? 1 : 1.01 }}
-                whileTap={{ scale: loading ? 1 : 0.99 }}
-                className="w-full py-4 rounded-xl font-bold text-lg transition-all"
-                style={{
-                  background: loading ? '#23303f' : 'var(--glow)',
-                  color: loading ? '#8a95a5' : '#0b1320',
-                  boxShadow: loading ? 'none' : '0 8px 24px var(--glow-soft)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Spinner />
-                    登录中...
-                  </span>
-                ) : '登录'}
-              </motion.button>
-            </div>
-          </form>
-
-          <div className="mt-8 text-center text-sm" style={{ color: '#8a95a5' }}>
-            还没有账号？
-            <Link to="/register" className="font-semibold hover:underline ml-1" style={{ color: 'var(--glow)' }}>立即注册</Link>
-            <span className="mx-2">·</span>
-            <Link to="/forgot-password" className="font-semibold hover:underline" style={{ color: 'var(--glow)' }}>忘记密码</Link>
-          </div>
-
-          <Link
-            to="/assessment"
-            className="mt-6 block w-full py-3 text-center rounded-xl font-bold transition"
-            style={{
-              background: 'rgba(168, 85, 247, 0.15)',
-              border: '1px solid rgba(168, 85, 247, 0.4)',
-              color: '#d8b4fe',
-            }}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowPhoneVerify((value) => !value)}
+            aria-expanded={showPhoneVerify}
+            aria-controls="phone-verification-fields"
+            className="flex min-h-10 items-center gap-2 rounded-lg px-1 text-sm font-semibold text-[#5f6b7a] transition hover:text-[#293545]"
           >
-            🏥 公益英语口语体检（无需注册）
-          </Link>
+            <Phone className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+            手机验证码（可选）
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-200 ${showPhoneVerify ? 'rotate-180' : ''}`}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />
+          </button>
 
-          {/* 家长入口 — 视觉低优先级，但显眼到不会被错过 */}
-          <div className="mt-4 pt-4 border-t border-white/[0.06] text-center text-sm" style={{ color: '#8a95a5' }}>
-            <span className="mr-1">👨‍👩‍👧</span>
-            您是家长？
-            <Link
-              to="/parent/login"
-              className="font-semibold hover:underline ml-1"
-              style={{ color: 'var(--glow)' }}
-            >
-              家长登录
-            </Link>
-            <span className="mx-2">·</span>
-            <Link
-              to="/parent/register"
-              className="font-semibold hover:underline"
-              style={{ color: 'var(--glow)' }}
-            >
-              首次注册
-            </Link>
-          </div>
+          {showPhoneVerify && (
+            <div id="phone-verification-fields" className="space-y-4 pt-3" aria-label="手机验证码登录">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <AuthInput
+                  id="phone"
+                  label="手机号"
+                  icon={Phone}
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="请输入手机号"
+                  autoComplete="tel"
+                  inputMode="numeric"
+                  disabled={loading}
+                  maxLength={11}
+                />
+                <div className="space-y-2">
+                  <span className="block select-none text-sm font-semibold text-transparent" aria-hidden="true">验证码</span>
+                  <button
+                    type="button"
+                    onClick={handleSendCode}
+                    disabled={isActive || sendingCode || loading}
+                    className="h-12 min-w-[5.5rem] rounded-[14px] border border-[#bd5227]/25 bg-[#fff3eb] px-4 text-sm font-bold text-[#a9441c] transition hover:bg-[#ffe7d8] active:scale-[0.98] disabled:cursor-not-allowed disabled:border-[#d7dee5] disabled:bg-[#eef2f5] disabled:text-[#687383]"
+                  >
+                    {sendingCode ? '发送中' : isActive ? `${remaining}s` : '发送'}
+                  </button>
+                </div>
+              </div>
+              <AuthInput
+                id="verification-code"
+                label="验证码"
+                icon={KeyRound}
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="请输入 6 位验证码"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                disabled={loading}
+                maxLength={6}
+              />
+            </div>
+          )}
+        </div>
 
-          <div className="mt-8 text-center text-xs" style={{ color: '#5a6778' }}>
-            AI 智能学习平台 · 展翅高飞，征服英语
-          </div>
-        </>
-      )}
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] border border-[#a9441c] bg-[#bd5227] px-5 text-base font-bold text-white transition duration-200 hover:bg-[#a9441c] active:scale-[0.985] disabled:cursor-not-allowed disabled:border-[#cbd3db] disabled:bg-[#dfe5ea] disabled:text-[#687383]"
+        >
+          {loading ? (
+            <>
+              <Spinner />
+              登录中...
+            </>
+          ) : (
+            <>
+              登录
+              <ArrowRight className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+            </>
+          )}
+        </button>
+      </form>
+
+      <div data-auth-reveal className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-[#5f6b7a]">
+        <span>
+          还没有账号？
+          <Link to="/register" className="ml-1 font-bold text-[#a9441c] underline-offset-4 hover:underline">立即注册</Link>
+        </span>
+        <span className="hidden h-4 w-px bg-[#d6dee5] sm:block" aria-hidden="true" />
+        <Link to="/forgot-password" className="font-bold text-[#a9441c] underline-offset-4 hover:underline">忘记密码</Link>
+      </div>
+
+      <Link
+        data-auth-reveal
+        to="/assessment"
+        className="group mt-7 flex items-center gap-3 rounded-[14px] bg-[#eef6fc] px-4 py-3.5 text-left transition hover:bg-[#e3f0f8] active:scale-[0.99]"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#3976a9] shadow-[0_4px_14px_rgb(35_83_119/0.08)]">
+          <Stethoscope className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-[#293545]">公益英语口语体检</span>
+          <span className="mt-0.5 block text-xs text-[#5f6b7a]">无需注册，直接测评</span>
+        </span>
+        <ArrowRight className="h-[18px] w-[18px] text-[#5d94c4] transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} aria-hidden="true" />
+      </Link>
+
+      <div data-auth-reveal className="mt-4 flex items-start gap-3 border-t border-[#dfe5ea] pt-4 text-sm text-[#5f6b7a]">
+        <UsersRound className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#687383]" strokeWidth={1.8} aria-hidden="true" />
+        <p className="leading-6">
+          您是家长？
+          <Link to="/parent/login" className="ml-1 font-bold text-[#a9441c] underline-offset-4 hover:underline">家长登录</Link>
+          <span className="mx-2 text-[#aeb8c2]">/</span>
+          <Link to="/parent/register" className="font-bold text-[#a9441c] underline-offset-4 hover:underline">首次注册</Link>
+        </p>
+      </div>
     </AuthShell>
   );
 };

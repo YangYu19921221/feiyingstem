@@ -1,0 +1,187 @@
+.auth-shell {
+  min-height: 100dvh;
+  background: #fbfaf7;
+  color: #293545;
+}
+
+.auth-scene {
+  isolation: isolate;
+  min-height: 15rem;
+  overflow: hidden;
+  background: linear-gradient(145deg, #284a68 0%, #375c79 48%, #d7834a 100%);
+}
+
+.auth-scene-media {
+  position: absolute;
+  inset: -4%;
+  transform-origin: 35% 55%;
+  will-change: transform;
+}
+
+.auth-scene-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 52%;
+  filter: saturate(0.92) contrast(1.03);
+}
+
+.auth-scene-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(17 36 54 / 0.2) 0%, transparent 38%, rgb(17 36 54 / 0.62) 100%),
+    linear-gradient(90deg, rgb(17 36 54 / 0.1), transparent 55%, rgb(17 36 54 / 0.28));
+}
+
+.auth-sun-glow {
+  position: absolute;
+  left: -8%;
+  bottom: -16%;
+  width: 58%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(255 210 63 / 0.34), rgb(255 107 53 / 0.08) 42%, transparent 72%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.auth-cloud {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.18);
+  filter: blur(28px);
+  will-change: transform, opacity;
+}
+
+.auth-cloud-one {
+  width: 44%;
+  height: 11%;
+  left: -8%;
+  top: 21%;
+}
+
+.auth-cloud-two {
+  width: 36%;
+  height: 9%;
+  right: -4%;
+  bottom: 22%;
+  opacity: 0.7;
+}
+
+.auth-flight-trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.auth-flight-trail path {
+  fill: none;
+  stroke: rgb(255 210 63 / 0.78);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 9 11;
+  filter: drop-shadow(0 2px 5px rgb(91 42 15 / 0.18));
+}
+
+.auth-flight-settle {
+  position: absolute;
+  left: 44%;
+  top: 51%;
+  z-index: 1;
+  width: clamp(5rem, 10vw, 9rem);
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 210 63 / 0.72);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(255 210 63 / 0.22), transparent 68%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 0 40px rgb(255 174 64 / 0.18);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+
+.auth-flight-settle::before,
+.auth-flight-settle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42%;
+  height: 1px;
+  background: rgb(255 210 63 / 0.6);
+  transform: translate(-50%, -50%);
+}
+
+.auth-flight-settle::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.auth-flight-settle-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #ffd23f;
+  box-shadow: 0 0 18px rgb(255 210 63 / 0.86);
+  transform: translate(-50%, -50%);
+}
+
+.auth-form-plane {
+  min-width: 0;
+  background: #fbfaf7;
+  border-left: 1px solid rgb(38 66 92 / 0.11);
+}
+
+@media (min-width: 768px) {
+  .auth-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.28fr) minmax(420px, 0.92fr);
+  }
+
+  .auth-scene {
+    min-height: 100dvh;
+  }
+}
+
+@media (max-width: 767px) {
+  .auth-scene-media {
+    inset: -8% -4%;
+    transform-origin: 32% 52%;
+  }
+
+  .auth-scene-image {
+    object-position: 36% 51%;
+  }
+
+  .auth-form-plane {
+    border-left: 0;
+    border-top: 1px solid rgb(38 66 92 / 0.11);
+  }
+
+  .auth-flight-trail path {
+    stroke-width: 1.25;
+  }
+
+  .auth-flight-settle {
+    left: 43%;
+    top: 53%;
+    width: 5.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-scene-media,
+  .auth-sun-glow,
+  .auth-cloud,
+  .auth-flight-settle {
+    will-change: auto;
+  }
+}

@@ -16,6 +16,7 @@ import {
   type Battle,
   type BattleStats,
 } from '../api/petBattle';
+import { toast } from '../components/Toast';
 
 export default function PetBattleHallPage() {
   const navigate = useNavigate();
@@ -58,14 +59,14 @@ export default function PetBattleHallPage() {
   // 创建对战
   const createMutation = useMutation({
     mutationFn: createBattle,
-    onSuccess: (battle) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['petBattleHistory'] });
-      alert('对战邀请已发送！');
+      toast.success('对战邀请已发送');
       setShowInviteDialog(false);
       setPickedOpp(null); setOppQuery('');
     },
     onError: (error: any) => {
-      alert(error?.response?.data?.detail || '创建对战失败');
+      toast.error(error?.response?.data?.detail || '创建对战失败');
     },
   });
 
@@ -78,7 +79,7 @@ export default function PetBattleHallPage() {
       navigate(`/student/pet/battle/${battle.id}`);
     },
     onError: (error: any) => {
-      alert(error?.response?.data?.detail || '接受对战失败');
+      toast.error(error?.response?.data?.detail || '接受对战失败');
     },
   });
 
@@ -87,13 +88,13 @@ export default function PetBattleHallPage() {
     mutationFn: cancelBattle,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['petBattleHistory'] });
-      alert('已取消对战');
+      toast.success('已取消对战');
     },
   });
 
   const handleCreateBattle = () => {
     if (!pickedOpp) {
-      alert('请先选择要挑战的同学');
+      toast.info('请先选择要挑战的同学');
       return;
     }
     createMutation.mutate({
@@ -109,8 +110,10 @@ export default function PetBattleHallPage() {
       <nav className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
+            type="button"
             onClick={() => navigate('/student/pet')}
-            className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-orange-50"
+            aria-label="返回我的宠物"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
@@ -122,12 +125,12 @@ export default function PetBattleHallPage() {
       </nav>
 
       {/* Hero横幅 */}
-      <div className="relative overflow-hidden border-b border-slate-200" style={{ height: 140 }}>
-        <div className="absolute inset-0 bg-slate-800" />
+      <div className="relative overflow-hidden border-b border-orange-100" style={{ height: 132 }}>
+        <div className="absolute inset-0 bg-[#4a2d22]" />
         <div className="relative z-10 h-full flex items-center px-4 max-w-5xl mx-auto">
           <div className="text-white">
             <h2 className="text-3xl font-bold drop-shadow">⚔️ 对战大厅</h2>
-            <p className="text-sm opacity-90 mt-1 drop-shadow">挑战好友，证明你的实力！</p>
+            <p className="mt-1 text-sm text-white/85 drop-shadow">和同学切磋，在答题中一起进步</p>
           </div>
         </div>
       </div>
@@ -143,10 +146,10 @@ export default function PetBattleHallPage() {
             <button
               key={tab.key}
               onClick={() => setView(tab.key as any)}
-              className={`flex-1 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl px-1 text-sm font-semibold transition-all sm:text-base ${
                 view === tab.key
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white border border-slate-200 text-gray-600 hover:bg-gray-50'
+                  ? 'bg-accent-warm text-white'
+                  : 'border border-orange-100 bg-white text-gray-600 hover:bg-orange-50'
               }`}
             >
               {tab.icon}
@@ -159,7 +162,7 @@ export default function PetBattleHallPage() {
         {view === 'hall' && (
           <div className="space-y-6">
             {/* 快速对战按钮 */}
-            <div className="bg-violet-600 rounded-2xl p-5 sm:p-6 text-white">
+            <div className="rounded-2xl bg-[#4a2d22] p-5 text-white sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-2xl font-bold mb-2">🎮 发起对战</h3>
@@ -169,7 +172,7 @@ export default function PetBattleHallPage() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setShowInviteDialog(true)}
-                  className="px-6 py-3 bg-white text-purple-600 rounded-xl font-bold shadow-lg"
+                  className="min-h-12 rounded-xl bg-white px-5 font-bold text-[#6d351f] shadow-lg"
                 >
                   发起挑战
                 </motion.button>
@@ -223,7 +226,7 @@ export default function PetBattleHallPage() {
             {stats && (
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
-                  <div className="text-3xl font-bold text-blue-500">{stats.total_battles}</div>
+                  <div className="text-3xl font-bold text-ink">{stats.total_battles}</div>
                   <div className="text-sm text-gray-600">总对战</div>
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center">
@@ -335,8 +338,8 @@ export default function PetBattleHallPage() {
                     <div className="text-2xl font-bold text-orange-500">{stats.total_damage_dealt}</div>
                     <div className="text-sm text-gray-600">总伤害</div>
                   </div>
-                  <div className="text-center p-3 bg-purple-50 rounded-xl">
-                    <div className="text-2xl font-bold text-purple-500">{stats.ultimates_used}</div>
+                  <div className="rounded-xl bg-orange-50 p-3 text-center">
+                    <div className="text-2xl font-bold text-accent-warm">{stats.ultimates_used}</div>
                     <div className="text-sm text-gray-600">必杀技</div>
                   </div>
                 </div>
@@ -443,7 +446,7 @@ export default function PetBattleHallPage() {
                 whileTap={{ scale: 0.98 }}
                 onClick={handleCreateBattle}
                 disabled={createMutation.isPending}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-400 to-yellow-400 text-white font-bold shadow-md disabled:opacity-50"
+                className="btn-glow min-h-12 flex-1 rounded-xl font-bold text-white disabled:opacity-50"
               >
                 {createMutation.isPending ? '发送中...' : '发送挑战'}
               </motion.button>
@@ -454,7 +457,7 @@ export default function PetBattleHallPage() {
                   setShowInviteDialog(false);
                   setPickedOpp(null); setOppQuery('');
                 }}
-                className="px-6 py-3 rounded-xl bg-gray-200 text-gray-700 font-bold"
+                className="min-h-12 rounded-xl bg-gray-100 px-6 font-bold text-gray-700"
               >
                 取消
               </motion.button>

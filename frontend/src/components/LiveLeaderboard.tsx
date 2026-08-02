@@ -3,7 +3,13 @@
  */
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Radio, Trophy } from 'lucide-react';
 import { competitionWS, type LeaderboardData } from '../services/websocket';
+
+interface LeaderboardMessage {
+  leaderboard?: LeaderboardData;
+  data?: LeaderboardData;
+}
 
 interface LiveLeaderboardProps {
   token: string;
@@ -26,7 +32,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
     competitionWS.connect(token, seasonId);
 
     // 监听连接成功消息
-    const handleConnected = (message: any) => {
+    const handleConnected = (message: LeaderboardMessage) => {
       setIsConnected(true);
       if (message.leaderboard) {
         setLeaderboard(message.leaderboard);
@@ -35,7 +41,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
     };
 
     // 监听排行榜更新
-    const handleLeaderboardUpdate = (message: any) => {
+    const handleLeaderboardUpdate = (message: LeaderboardMessage) => {
       if (message.data) {
         setLeaderboard(message.data);
         setLastUpdate(new Date());
@@ -70,10 +76,17 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
 
   // 获取排名颜色
   const getRankColor = (rank: number) => {
-    if (rank === 1) return 'from-yellow-400 to-yellow-600';
-    if (rank === 2) return 'from-gray-300 to-gray-500';
-    if (rank === 3) return 'from-orange-400 to-orange-600';
-    return 'from-blue-400 to-blue-600';
+    if (rank === 1) return 'bg-amber-100 text-amber-700';
+    if (rank === 2) return 'bg-slate-200 text-slate-700';
+    if (rank === 3) return 'bg-orange-100 text-orange-700';
+    return 'bg-slate-100 text-slate-600';
+  };
+
+  const getScoreColor = (rank: number) => {
+    if (rank === 1) return 'bg-amber-500';
+    if (rank === 2) return 'bg-slate-500';
+    if (rank === 3) return 'bg-orange-500';
+    return 'bg-accent-warm';
   };
 
   // 计算分数条宽度
@@ -84,11 +97,15 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
 
   if (!leaderboard) {
     return (
-      <div className={`bg-white rounded-lg shadow-lg p-6 ${className}`}>
-        <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">⚡</div>
-          <p className="text-gray-600">正在加载排行榜...</p>
+      <div className={`rounded-2xl bg-white p-5 ${className}`} role="status">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 animate-pulse rounded-xl bg-slate-100" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
+            <div className="h-3 w-40 animate-pulse rounded bg-slate-100" />
+          </div>
         </div>
+        <p className="mt-4 text-sm text-ink-mute">正在加载排行榜...</p>
       </div>
     );
   }
@@ -96,32 +113,36 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
   const maxScore = leaderboard.rankings[0]?.score || 1;
 
   return (
-    <div className={`bg-white rounded-lg shadow-lg overflow-hidden ${className}`}>
+    <div className={`overflow-hidden rounded-2xl bg-white ${className}`}>
       {/* 头部 */}
-      <div className="bg-gradient-to-r from-orange-500 to-red-500 p-4 text-white">
+      <div className="border-b border-black/[0.06] p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-bold">🏆 实时排行榜</h2>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-            <span className="text-sm">{isConnected ? '在线' : '离线'}</span>
+          <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-ink">
+            <Trophy className="h-4 w-4 text-accent-warm" aria-hidden="true" />
+            实时排行榜
+          </h2>
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${isConnected ? 'text-emerald-700' : 'text-ink-mute'}`}>
+            <Radio className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{isConnected ? '在线' : '连接中'}</span>
           </div>
         </div>
 
         {/* 标签切换 */}
-        <div className="flex gap-2">
+        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
           {(['daily', 'weekly', 'overall'] as const).map((tab) => (
             <button
+              type="button"
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              className={`min-h-11 rounded-lg px-2 text-xs font-semibold transition ${
                 activeTab === tab
-                  ? 'bg-white text-orange-500'
-                  : 'bg-orange-400 bg-opacity-30 text-white hover:bg-opacity-50'
+                  ? 'bg-white text-accent-warm shadow-sm'
+                  : 'text-ink-soft hover:text-ink'
               }`}
             >
-              {tab === 'daily' && '今日榜 🔥'}
-              {tab === 'weekly' && '本周榜 📊'}
-              {tab === 'overall' && '总榜 👑'}
+              {tab === 'daily' && '今日'}
+              {tab === 'weekly' && '本周'}
+              {tab === 'overall' && '总榜'}
             </button>
           ))}
         </div>
@@ -132,19 +153,19 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 border-b-2 border-blue-200"
+          className="border-b border-orange-100 bg-orange-50 p-4"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="text-3xl">{getRankBadge(leaderboard.my_rank)}</div>
               <div>
                 <p className="text-sm text-gray-600">我的排名</p>
-                <p className="text-2xl font-bold text-gray-800">#{leaderboard.my_rank}</p>
+                <p className="font-numeric text-2xl font-semibold text-ink">#{leaderboard.my_rank}</p>
               </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">积分</p>
-              <p className="text-2xl font-bold text-orange-500">{leaderboard.my_score}</p>
+              <p className="font-numeric text-2xl font-semibold text-accent-warm">{leaderboard.my_score}</p>
             </div>
           </div>
         </motion.div>
@@ -160,13 +181,13 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.3 }}
-              className={`p-4 border-b hover:bg-gray-50 transition-colors ${
-                item.is_me ? 'bg-blue-50 border-blue-200' : ''
+              className={`border-b border-black/[0.05] p-4 transition-colors hover:bg-slate-50 ${
+                item.is_me ? 'bg-orange-50/70' : ''
               }`}
             >
               <div className="flex items-center gap-3">
                 {/* 排名 */}
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold bg-gradient-to-br ${getRankColor(item.rank)}`}>
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl font-bold ${getRankColor(item.rank)}`}>
                   {item.rank <= 3 ? getRankBadge(item.rank) : `#${item.rank}`}
                 </div>
 
@@ -180,7 +201,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
                       {item.nickname}
                     </span>
                     {item.is_me && (
-                      <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
+                      <span className="rounded-full bg-accent-warm px-2 py-0.5 text-xs text-white">
                         我
                       </span>
                     )}
@@ -197,7 +218,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
                         initial={{ width: 0 }}
                         animate={{ width: `${getScoreBarWidth(item.score, maxScore)}%` }}
                         transition={{ duration: 0.5, delay: 0.1 }}
-                        className={`h-full bg-gradient-to-r ${getRankColor(item.rank)}`}
+                        className={`h-full ${getScoreColor(item.rank)}`}
                       />
                     </div>
                   </div>
@@ -216,10 +237,10 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
       </div>
 
       {/* 底部信息 */}
-      <div className="bg-gray-50 p-3 text-xs text-gray-600 flex items-center justify-between">
-        <span>👥 共{leaderboard.total_participants}人参与</span>
-        <span>🟢 {leaderboard.online_users}人在线</span>
-        <span>🕐 {Math.floor((new Date().getTime() - lastUpdate.getTime()) / 1000)}秒前更新</span>
+      <div className="grid grid-cols-3 divide-x divide-black/[0.06] bg-slate-50 py-3 text-center text-xs text-ink-mute">
+        <span>{leaderboard.total_participants} 人参与</span>
+        <span>{leaderboard.online_users} 人在线</span>
+        <span>{Math.floor((new Date().getTime() - lastUpdate.getTime()) / 1000)} 秒前更新</span>
       </div>
     </div>
   );

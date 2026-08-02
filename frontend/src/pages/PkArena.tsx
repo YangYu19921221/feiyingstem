@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Check, CircleAlert, Clipboard, Clock3, Eye, LoaderCircle, MonitorCog, PlugZap, RotateCcw, Swords, UserRound, Users } from 'lucide-react';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
 import {
   pkApi,
@@ -14,9 +15,12 @@ import DictationSingle from '../components/classify/DictationSingle';
 import PkExamCard, { type PkExamType } from '../components/pk/PkExamCard';
 import PkPhaseStepper from '../components/pk/PkPhaseStepper';
 import PkLiveRanking from '../components/pk/PkLiveRanking';
+import PkPlayerColumnChart from '../components/pk/PkPlayerColumnChart';
+import PkTeamColumnChart from '../components/pk/PkTeamColumnChart';
 import PkResultBoard from '../components/pk/PkResultBoard';
 import PkTeacherLiveBoard from '../components/pk/PkTeacherLiveBoard';
 import PkTeacherResultBoard from '../components/pk/PkTeacherResultBoard';
+import { teamLabel } from '../utils/pkTeam';
 
 interface CurrentQuestion {
   q_seq: number;           // 服务端下发的题号(提交时回显,幂等校验)
@@ -75,6 +79,7 @@ function rankingFromSnapshot(snap: PkRoomSnapshot): PkLiveRankItem[] {
 export default function PkArena() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
+  const reduceMotion = useReducedMotion();
   const meId = getMeId();
   const token = localStorage.getItem('access_token') || '';
 
@@ -83,6 +88,7 @@ export default function PkArena() {
   const questionStartedAtRef = useRef<number>(0);
   const [submitting, setSubmitting] = useState(false);  // 提交中防重复(并行竞速无"等其他人")
   const [liveRanking, setLiveRanking] = useState<PkLiveRankItem[] | null>(null);
+  const [totalPlayers, setTotalPlayers] = useState<number | null>(null);
   const [teamRanking, setTeamRanking] = useState<PkTeamRankItem[] | null>(null);
   const [lastGains, setLastGains] = useState<Record<string, number>>({});
   const [settleSeq, setSettleSeq] = useState(0);
@@ -133,6 +139,8 @@ export default function PkArena() {
         }
         case 'live_ranking':
           setLiveRanking(event.ranking as PkLiveRankItem[]);
+          // 大房间时服务端把榜单裁成「前10名+自己」,带上全场人数供柱状图显示"另有N人"
+          setTotalPlayers((event.total_players as number | undefined) ?? null);
           if (event.team_ranking) setTeamRanking(event.team_ranking as PkTeamRankItem[]);
           break;
         case 'player_finished':
@@ -173,7 +181,7 @@ export default function PkArena() {
     [meId, navigate]
   );
 
-  const { send, connected } = usePkSocket({
+  const { send, connected, failed, retry } = usePkSocket({
     roomId: Number(roomId),
     token,
     onEvent: handleEvent,
@@ -208,6 +216,29 @@ export default function PkArena() {
   // 教师控制台(组织者):我是房主且房主不下场
   const isHostConsole = !!snapshot && snapshot.host_id === meId && snapshot.host_is_player === false;
   const isTeamMode = snapshot?.mode === 'team';
+  // 我在哪队(分组赛柱状图高亮自己那根柱)
+  const myTeam = snapshot?.players?.find((p) => p.user_id === meId)?.team ?? null;
+  // 队号 → 队名(= 班级名)。分组赛按班级自动分队,界面一律显示班级名
+  const teamNames = snapshot?.team_names;
+  // 教师建的全部组(含还没人选的空组),学生选组/教师改组都从这里列
+  const allTeams = useMemo(() => {
+    return Object.entries(teamNames ?? {})
+      .map(([t, name]) => [Number(t), name] as [number, string])
+      .sort((a, b) => a[0] - b[0]);
+  }, [teamNames]);
+  // 每组当前人数:学生选组前想知道哪组人少
+  const teamSizes = useMemo(() => {
+    const n = new Map<number, number>();
+    for (const p of snapshot?.players ?? []) {
+      if (p.team) n.set(p.team, (n.get(p.team) ?? 0) + 1);
+    }
+    return n;
+  }, [snapshot?.players]);
+
+  // 学生自己选组:只能给自己选,所以不带 user_id
+  const pickTeam = useCallback((team: number) => {
+    send({ type: 'pick_team', team });
+  }, [send]);
 
   const setTeam = useCallback((userId: number, team: number) => {
     send({ type: 'set_team', user_id: userId, team });
@@ -262,18 +293,44 @@ export default function PkArena() {
     );
   }
 
-  // 连接/加载中
+  // 连接/加载中。⚠️ 连不上时必须给出口:重连预算耗尽后转成错误态,
+  // 不能继续转圈 —— 转圈对学生等于"卡死",对老师等于"这几个人进不来"。
   if (!snapshot) {
+    if (failed) {
+      return (
+        <div className="min-h-screen bg-paper flex items-center justify-center p-5">
+          <div className="card-soft rounded-3xl p-7 max-w-sm w-full text-center">
+            <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+              <PlugZap className="h-7 w-7" aria-hidden="true" />
+            </span>
+            <p className="text-lg font-bold text-ink mb-1.5">连不上比赛房间</p>
+            <p className="text-sm text-ink-soft mb-1">
+              网络或浏览器挡住了实时连接。请确认用的是
+              <span className="font-semibold text-ink"> https 域名 </span>
+              打开的网址,再点重试。
+            </p>
+            <p className="text-[11px] text-ink-mute mb-5">若仍进不去,把手机/电脑连的网络换一个再试</p>
+            <button
+              onClick={retry}
+              className="btn-glow inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl font-semibold text-white"
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              重试连接
+            </button>
+            <button
+              onClick={() => navigate('/pk/lobby')}
+              className="w-full py-2.5 mt-2 rounded-2xl font-medium bg-gray-100 text-ink-soft"
+            >
+              返回大厅
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center">
         <div className="text-center">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
-            className="text-4xl mb-3"
-          >
-            ⚔️
-          </motion.div>
+          <LoaderCircle className="mx-auto mb-3 h-9 w-9 animate-spin text-accent-warm motion-reduce:animate-none" aria-hidden="true" />
           <p className="text-ink-soft">{connected ? '加载中…' : '连接中…'}</p>
         </div>
       </div>
@@ -291,46 +348,80 @@ export default function PkArena() {
     const specCount = snapshot.spectators?.length ?? 0;
     const teamColors = ['bg-blue-50 ring-blue-200', 'bg-rose-50 ring-rose-200', 'bg-emerald-50 ring-emerald-200', 'bg-amber-50 ring-amber-200'];
     return (
-      <div className="min-h-screen bg-paper relative overflow-hidden">
-        <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-secondary/20 blur-3xl" />
-        <div className="pointer-events-none absolute top-1/2 -left-32 w-80 h-80 rounded-full bg-primary/10 blur-3xl" />
-        <div className="relative max-w-2xl mx-auto p-5 sm:py-10">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">
-              {isHostConsole ? '🎛️ 组织者控制台' : isSpectator ? '👀 观战 · 等待开始' : '⚔️ 等待开始'}
+      <div className="min-h-screen bg-paper">
+        <div className="mx-auto max-w-2xl p-4 sm:py-8">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="flex items-center gap-2 font-display text-2xl font-semibold text-ink sm:text-3xl">
+              {isHostConsole ? <MonitorCog className="h-6 w-6 text-accent-warm" aria-hidden="true" /> : isSpectator ? <Eye className="h-6 w-6 text-accent-warm" aria-hidden="true" /> : <Swords className="h-6 w-6 text-accent-warm" aria-hidden="true" />}
+              {isHostConsole ? '组织者控制台' : isSpectator ? '观战 · 等待开始' : '等待开始'}
             </h2>
-            <span className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-secondary/25 text-amber-700 font-medium">
-              {isTeamMode ? `👥 ${snapshot.team_count} 队 · ` : '👤 个人 · '}
-最多 {snapshot.word_count} 词 · 分类→听写→过关
+            <span className="inline-flex min-h-9 w-fit items-center gap-1.5 rounded-lg bg-orange-50 px-3 text-xs font-medium text-accent-warm sm:text-sm">
+              {isTeamMode ? <Users className="h-4 w-4" aria-hidden="true" /> : <UserRound className="h-4 w-4" aria-hidden="true" />}
+              {isTeamMode ? `${allTeams.length} 组` : '个人赛'} · 最多 {snapshot.word_count} 词
             </span>
           </div>
 
           {/* 邀请码大卡 */}
-          <div className="rounded-3xl bg-gradient-to-br from-primary via-orange-400 to-secondary p-[2px] shadow-xl mb-5">
-            <div className="rounded-3xl bg-white px-6 py-6 sm:py-8 text-center">
-              <p className="text-sm text-ink-mute mb-2">邀请码 · 发给同学一起 PK</p>
-              <p className="font-mono text-5xl sm:text-6xl font-bold tracking-[0.3em] text-primary select-all">
+          <div className="card-soft mb-5 rounded-2xl px-5 py-5 text-center sm:px-6 sm:py-7">
+              <p className="mb-2 text-sm text-ink-mute">邀请码 · 发给同学一起 PK</p>
+              <p className="select-all font-numeric text-4xl font-semibold tracking-[0.22em] text-accent-warm sm:text-6xl sm:tracking-[0.28em]">
                 {snapshot.invite_code}
               </p>
               <button
                 onClick={() => copyInvite(snapshot.invite_code)}
-                className="mt-4 text-sm px-5 py-2 rounded-full bg-orange-100 text-primary font-medium active:scale-95 transition"
+                className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-orange-50 px-4 text-sm font-medium text-accent-warm transition hover:bg-orange-100"
               >
-                {copied ? '✅ 已复制' : '📋 复制邀请码'}
+                {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Clipboard className="h-4 w-4" aria-hidden="true" />}
+                {copied ? '已复制' : '复制邀请码'}
               </button>
-            </div>
           </div>
 
+          {/* 学生选组(分组赛):教师建好组,学生自己点一个加入 */}
+          {isTeamMode && !isHostConsole && !isSpectator && allTeams.length > 0 && (
+            <div className={`card-soft mb-5 rounded-2xl p-5 sm:p-6 ${myTeam ? '' : 'ring-2 ring-primary/35'}`}>
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-ink">选择你的小组</h3>
+                {myTeam ? (
+                  <span className="text-xs text-green-600 font-medium">✅ 已加入</span>
+                ) : (
+                  <span className="text-xs text-primary font-medium">请先选组</span>
+                )}
+              </div>
+              <p className="text-[11px] text-ink-mute mb-3">
+                {myTeam ? '想换组直接点别的组名' : '开局前必须选一个组,不然老师开不了赛'}
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {allTeams.map(([t, name]) => {
+                  const mine = myTeam === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => pickTeam(t)}
+                      aria-pressed={mine}
+                      className={`rounded-2xl px-3 py-3 text-sm font-semibold transition active:scale-95 ${
+                        mine
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
+                      }`}
+                    >
+                      <span className="block truncate">{name}</span>
+                      <span className={`block text-[10px] font-normal ${mine ? 'text-white/80' : 'text-ink-mute'}`}>
+                        {teamSizes.get(t) ?? 0} 人{mine ? ' · 我在这组' : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* 玩家网格 */}
-          <div className="card-soft rounded-3xl p-5 sm:p-6 mb-5">
+            <div className="card-soft mb-5 rounded-2xl p-5 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-ink">玩家</h3>
               <div className="flex items-center gap-3">
-                {specCount > 0 && (
-                  <span className="text-xs text-ink-mute">👀 {specCount} 人观战</span>
-                )}
                 <span className="font-numeric text-ink-soft">
-                  {snapshot.players.length}/{snapshot.max_players} 人
+                  {onlineCount}/{snapshot.players.length} 人在线
                 </span>
               </div>
             </div>
@@ -339,20 +430,24 @@ export default function PkArena() {
                 {snapshot.players.map((p) => (
                   <motion.div
                     key={p.user_id}
-                    initial={{ scale: 0.6, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.6, opacity: 0 }}
-                    transition={{ type: 'spring', stiffness: 350, damping: 22 }}
-                    className={`flex items-center gap-2.5 rounded-2xl px-3.5 py-3 ${
+                    initial={reduceMotion ? false : { y: 8, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={reduceMotion ? undefined : { opacity: 0 }}
+                    transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    className={`flex min-w-0 items-center gap-2.5 rounded-xl px-3 py-3 ${
                       p.user_id === meId ? 'bg-orange-50 ring-2 ring-primary/40'
                         : isTeamMode && p.team ? `${teamColors[(p.team - 1) % teamColors.length]} ring-2` : 'bg-gray-50'
                     } ${!p.online ? 'opacity-50' : ''}`}
                   >
-                    <span className="text-2xl">🧑‍🎓</span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-ink-mute">
+                      <UserRound className="h-4 w-4" aria-hidden="true" />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-ink truncate">{p.nickname}</p>
-                      <p className="text-[11px] text-ink-mute">
-                        {isTeamMode && p.team ? `第 ${p.team} 队` : '玩家'}
+                      <p className="text-[11px] text-ink-mute truncate">
+                        {isTeamMode
+                          ? (p.team ? teamLabel(p.team, teamNames) : '⚠️ 未选组')
+                          : '玩家'}
                         {p.user_id === meId ? ' · 我' : ''}
                         {!p.online ? ' · 掉线' : ''}
                       </p>
@@ -360,14 +455,17 @@ export default function PkArena() {
                     {/* 教师控制台:调队 / 踢人 */}
                     {isHostConsole && (
                       <div className="flex flex-col gap-1 shrink-0">
-                        {isTeamMode && (
+                        {/* 学生自己选组;老师也能代选(有人没带手机/点不明白时) */}
+                        {isTeamMode && allTeams.length > 0 && (
                           <select
-                            value={p.team ?? 1}
+                            value={p.team ?? ''}
                             onChange={(e) => setTeam(p.user_id, Number(e.target.value))}
-                            className="text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white text-ink-soft"
+                            aria-label={`为 ${p.nickname} 指定小组`}
+                            className="max-w-[7rem] text-[11px] border border-gray-200 rounded px-1 py-0.5 bg-white text-ink-soft"
                           >
-                            {Array.from({ length: snapshot.team_count }).map((_, i) => (
-                              <option key={i + 1} value={i + 1}>{i + 1} 队</option>
+                            <option value="" disabled>未选组</option>
+                            {allTeams.map(([t, name]) => (
+                              <option key={t} value={t}>{name}</option>
                             ))}
                           </select>
                         )}
@@ -386,25 +484,48 @@ export default function PkArena() {
               {Array.from({ length: Math.max(0, Math.min(snapshot.max_players - snapshot.players.length, 6)) }).map((_, i) => (
                 <div
                   key={`empty-${i}`}
-                  className="flex items-center justify-center rounded-2xl px-3.5 py-3 border-2 border-dashed border-orange-200 text-ink-mute text-xs min-h-[3.5rem]"
+                  className="flex min-h-14 items-center justify-center rounded-xl border border-dashed border-orange-200 px-3 py-3 text-xs text-ink-mute"
                 >
                   等待加入…
                 </div>
               ))}
             </div>
+
+            {/* 观战名单:点名字,不只报人数。
+                房满/迟到/开局后进来的学生都落在这里 —— 老师得知道「进不去的是谁」,
+                光显示「👀 4 人观战」等于让老师自己去猜是哪四个孩子。 */}
+            {specCount > 0 && (
+              <div className="mt-4 pt-4 border-t border-dashed border-orange-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-ink">👀 观战</h4>
+                  <span className="text-xs text-ink-mute">{specCount} 人 · 没进场比赛</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(snapshot.spectators ?? []).map((s) => (
+                    <span
+                      key={s.user_id}
+                      className={`text-xs px-2.5 py-1 rounded-full bg-gray-100 text-ink-soft ${
+                        s.user_id === meId ? 'ring-1 ring-primary/40 text-primary' : ''
+                      }`}
+                    >
+                      {s.nickname}{s.user_id === meId ? ' · 我' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {canStart ? (
             <>
-              <motion.button
+              <button
                 onClick={startGame}
                 disabled={onlineCount < 2}
-                animate={onlineCount >= 2 ? { scale: [1, 1.02, 1] } : {}}
-                transition={{ repeat: Infinity, duration: 1.6 }}
-                className="btn-glow w-full py-4 text-white rounded-2xl font-semibold text-lg"
+                className="btn-glow inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl text-lg font-semibold text-white"
               >
-                {onlineCount < 2 ? '至少需要 2 名在线玩家' : `🚀 开始 PK(${onlineCount} 人在线)`}
-              </motion.button>
+                <Swords className="h-5 w-5" aria-hidden="true" />
+                {onlineCount < 2 ? '至少需要 2 名在线玩家' : `开始 PK（${onlineCount} 人在线）`}
+              </button>
               {isHostConsole && (
                 <button
                   onClick={closeRoom}
@@ -415,22 +536,27 @@ export default function PkArena() {
               )}
             </>
           ) : (
-            <p className="text-center text-ink-soft py-4">⏳ 等待老师开始…</p>
+            <p className="flex items-center justify-center gap-2 py-4 text-center text-ink-soft">
+              <Clock3 className="h-4 w-4" aria-hidden="true" />
+              等待老师开始…
+            </p>
           )}
 
           <p className="text-xs text-ink-mute text-center mt-4">
             {isHostConsole
               ? '你是组织者,开局后进大屏监控台看战况,不下场答题'
-              : '每人各考自己背过的词(题量全场统一),走分类→听写→过关全流程,谁先全部掌握谁赢'}
+              : '每人各考自己背过的词(题量全场统一),走分类→听写→过关全流程,掌握得越多越快分越高'}
           </p>
 
           {errorBanner && (
             <motion.p
-              initial={{ opacity: 0, y: -4 }}
+              initial={reduceMotion ? false : { opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-4 text-sm text-error bg-red-50 rounded-2xl px-4 py-3"
+              role="alert"
+              className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-error"
             >
-              ⚠️ {errorBanner}
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{errorBanner}</span>
             </motion.p>
           )}
         </div>
@@ -462,6 +588,7 @@ export default function PkArena() {
       <PkTeacherLiveBoard
         items={liveRanking ?? rankingFromSnapshot(snapshot)}
         teams={teamRanking}
+        teamNames={teamNames}
         mode={snapshot.mode}
         deadlineAt={snapshot.deadline_at}
         spectatorCount={specCount}
@@ -484,12 +611,16 @@ export default function PkArena() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 flex-1 max-w-5xl mx-auto w-full">
         <div className="md:col-span-2 relative">
           {errorBanner && (
-            <div className="mb-2 text-error text-sm bg-red-50 rounded-lg px-3 py-2">⚠️ {errorBanner}</div>
+            <div className="mb-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-error" role="alert">
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{errorBanner}</span>
+            </div>
           )}
           {/* 观众:并行竞速下无统一题目,看右侧实时榜 */}
           {isSpectator && (
-            <div className="card-soft rounded-3xl p-8 text-center text-ink-mute">
-              👀 观战中 · 各人各答各的词,看右侧实时榜比拼
+            <div className="card-soft flex items-center justify-center gap-2 rounded-2xl p-8 text-center text-ink-mute">
+              <Eye className="h-5 w-5 shrink-0" aria-hidden="true" />
+              观战中 · 各人各答各的词，请看实时榜
             </div>
           )}
           {/* 分类:标 熟悉/学过/陌生;夹生+陌生循环重来直到全熟(服务端状态机驱动) */}
@@ -546,6 +677,23 @@ export default function PkArena() {
           {specCount > 0 && (
             <p className="text-xs text-ink-mute mb-2 text-right">👀 {specCount} 人观战</p>
           )}
+          {/* 立式柱状图:柱子从底往上长。
+              分组赛一队一根柱(比的是队伍);个人赛一人一根柱。
+              人多时柱子自动变窄 + 只取前几名,不左右滚动。 */}
+          {isTeamMode && teamRanking ? (
+            <PkTeamColumnChart items={teamRanking} myTeam={myTeam} />
+          ) : (
+            liveRanking && (
+              <PkPlayerColumnChart
+                items={liveRanking}
+                meId={meId}
+                totalPlayers={totalPlayers ?? undefined}
+                gains={lastGains}
+                settleSeq={settleSeq}
+              />
+            )
+          )}
+          {/* 分组赛保留原队伍榜(含总分/正确率等明细),柱状图只给"谁在领先"的直觉 */}
           {isTeamMode && teamRanking && <TeamRankingPanel items={teamRanking} />}
           {liveRanking && (
             <PkLiveRanking
@@ -584,7 +732,7 @@ function CountdownBar({ deadlineIso }: { deadlineIso: string }) {
     <div className={`flex items-center justify-center gap-2 py-1.5 text-sm font-semibold ${
       urgent ? 'text-red-500' : 'text-ink-soft'
     }`}>
-      <span>⏱️</span>
+      <Clock3 className="h-4 w-4" aria-hidden="true" />
       <span className="font-numeric tabular-nums">{now === 0 ? '--:--' : left > 0 ? `${mm}:${ss}` : '结算中…'}</span>
       {left > 0 && <span className="text-xs font-normal text-ink-mute">全场倒计时</span>}
     </div>
@@ -635,7 +783,7 @@ function TeamRankingPanel({ items }: { items: PkTeamRankItem[] }) {
                   <div className="flex items-center gap-1.5">
                     <span className={`inline-block h-3 w-3 rounded-full bg-gradient-to-br ${TEAM_TONE[(it.team - 1) % TEAM_TONE.length]}`} />
                     <span className={`truncate text-sm font-bold ${isLeader ? 'text-amber-200' : 'text-slate-100'}`}>
-                      第 {it.team} 队
+                      {teamLabel(it.team, undefined, it.team_name)}
                     </span>
                     <span className="shrink-0 text-[10px] text-slate-500">{it.online_count}/{it.member_count} 人</span>
                   </div>

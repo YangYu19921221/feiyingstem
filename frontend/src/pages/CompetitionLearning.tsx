@@ -4,6 +4,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, BarChart3, BookOpenText, Flame, RefreshCw, Trophy } from 'lucide-react';
+import axios from 'axios';
 import api from '../api/client';
 import LiveLeaderboard from '../components/LiveLeaderboard';
 import RankNotification from '../components/RankNotification';
@@ -13,6 +15,7 @@ import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import { noSuggestInputProps, imeSafeInputProps } from '../utils/noSuggestInput';
 import { usePreventCopy } from '../hooks/usePreventCopy';
+import useGoBack from '../hooks/useGoBack';
 
 // 题目选项接口
 interface QuestionOption {
@@ -42,15 +45,50 @@ interface QuestionState extends CompetitionQuestion {
   userAnswer?: string;
 }
 
+interface CompetitionTodayStats {
+  score: number;
+  questions_answered: number;
+  accuracy_rate: number;
+  rank: number | null;
+  max_combo: number;
+}
+
+interface CompetitionStats {
+  today?: CompetitionTodayStats;
+}
+
+interface CompetitionFeedback {
+  result: {
+    is_correct: boolean;
+    total_score: number;
+    base_score: number;
+    difficulty_bonus: number;
+    speed_bonus: number;
+    combo_bonus: number;
+    multiplier: number;
+    rank_change: number;
+  };
+  correct_answer?: string | { key: string; text: string };
+  answer_explanation?: string;
+  rank_tier?: {
+    tier_emoji: string;
+    tier_label: string;
+    points_delta: number;
+    promoted: boolean;
+  };
+}
+
 const CompetitionLearning: React.FC = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [token] = useState(localStorage.getItem('access_token') || '');
   const [currentQuestion, setCurrentQuestion] = useState<QuestionState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
-  const [feedbackData, setFeedbackData] = useState<any>(null);
-  const [myStats, setMyStats] = useState<any>(null);
+  const [feedbackData, setFeedbackData] = useState<CompetitionFeedback | null>(null);
+  const [myStats, setMyStats] = useState<CompetitionStats | null>(null);
   const [, setWsConnected] = useState(false);
   const [userAnswer, setUserAnswer] = useState('');
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -106,6 +144,7 @@ const CompetitionLearning: React.FC = () => {
   const loadQuestion = async () => {
     console.log('📖 开始加载题目...');
     setLoading(true);
+    setLoadError('');
     setUserAnswer('');
 
     try {
@@ -124,11 +163,11 @@ const CompetitionLearning: React.FC = () => {
 
       console.log('💾 设置题目到state:', questionWithTime);
       setCurrentQuestion(questionWithTime);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ 加载题目失败:', error);
 
       // 如果是404错误,说明没有更多题目了
-      if (error.response?.status === 404) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
         setIsCompleted(true);
         setLoading(false);
         return;
@@ -136,6 +175,7 @@ const CompetitionLearning: React.FC = () => {
 
       const errorMsg = getErrorMessage(error, '加载题目失败,请稍后重试');
       toast.error(errorMsg);
+      setLoadError(errorMsg);
     } finally {
       setLoading(false);
       console.log('✔️ 加载完成');
@@ -176,7 +216,7 @@ const CompetitionLearning: React.FC = () => {
       // 更新统计
       fetchMyStats();
       fetchRankInfo();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('提交答案失败:', error);
       toast.error(getErrorMessage(error, '提交失败'));
       setIsSubmitting(false);
@@ -272,31 +312,33 @@ const CompetitionLearning: React.FC = () => {
         </div>
 
         {/* 选项 */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
           {currentQuestion.options.map((option) => {
             const isSelected = selectedOption === option.option_key;
-            const isCorrect = feedbackData?.correct_answer &&
-              feedbackData.correct_answer.key === option.option_key;
+            const correctAnswerKey = typeof feedbackData?.correct_answer === 'object'
+              ? feedbackData.correct_answer.key
+              : null;
+            const isCorrect = correctAnswerKey === option.option_key;
             const isWrong = isSelected && feedbackData && !feedbackData.result.is_correct;
 
             // 动态设置样式
-            let buttonStyle = "p-6 text-lg font-medium rounded-xl transition-all border-2 ";
+            let buttonStyle = "min-h-20 p-4 sm:p-5 text-base sm:text-lg font-medium rounded-xl transition-all border ";
             let iconStyle = "w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ";
 
             if (isSubmitting || feedbackData) {
               // 提交后或显示反馈时
               if (isCorrect) {
                 // 正确答案 - 绿色
-                buttonStyle += "bg-gradient-to-br from-green-100 to-green-200 border-green-500 text-gray-800";
+                buttonStyle += "bg-green-50 border-green-400 text-gray-800";
                 iconStyle += "bg-green-500 text-white";
               } else if (isWrong) {
                 // 选错的答案 - 红色
-                buttonStyle += "bg-gradient-to-br from-red-100 to-red-200 border-red-500 text-gray-800";
+                buttonStyle += "bg-red-50 border-red-400 text-gray-800";
                 iconStyle += "bg-red-500 text-white";
               } else if (isSelected) {
                 // 选中但还未判断 - 蓝色
-                buttonStyle += "bg-gradient-to-br from-blue-100 to-blue-200 border-blue-500 text-gray-800";
-                iconStyle += "bg-blue-500 text-white";
+                buttonStyle += "bg-orange-50 border-orange-400 text-gray-800";
+                iconStyle += "bg-accent-warm text-white";
               } else {
                 // 未选中的选项 - 灰色禁用
                 buttonStyle += "bg-gray-50 border-gray-200 text-gray-400 opacity-60";
@@ -305,7 +347,7 @@ const CompetitionLearning: React.FC = () => {
               buttonStyle += " cursor-not-allowed";
             } else {
               // 未提交时 - 可选择状态
-              buttonStyle += "text-gray-700 bg-gradient-to-br from-gray-50 to-gray-100 hover:from-orange-50 hover:to-red-50 border-gray-200 hover:border-orange-400 cursor-pointer";
+              buttonStyle += "text-gray-700 bg-white hover:bg-orange-50 border-gray-200 hover:border-orange-300 cursor-pointer";
               iconStyle += "bg-white text-orange-600";
             }
 
@@ -392,7 +434,7 @@ const CompetitionLearning: React.FC = () => {
           <button
             onClick={() => userAnswer.trim() && handleSubmitAnswer(userAnswer)}
             disabled={!userAnswer.trim()}
-            className="w-full mt-4 py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold text-lg rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-4 w-full rounded-xl bg-accent-warm py-4 text-lg font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             🔤 提交拼写
           </button>
@@ -409,10 +451,10 @@ const CompetitionLearning: React.FC = () => {
       <div className="space-y-6">
         {/* 阅读文章 */}
         {currentQuestion.passage && (
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 mb-6">
+          <div className="mb-6 rounded-xl border border-orange-100 bg-orange-50/70 p-5 sm:p-6">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-2xl">📖</span>
-              <h3 className="text-lg font-bold text-blue-900">阅读文章</h3>
+              <BookOpenText className="h-5 w-5 text-accent-warm" aria-hidden="true" />
+              <h3 className="text-lg font-bold text-ink">阅读文章</h3>
             </div>
             <div className="text-gray-800 leading-relaxed whitespace-pre-wrap">
               {currentQuestion.passage}
@@ -434,10 +476,10 @@ const CompetitionLearning: React.FC = () => {
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => handleSubmitAnswer(option.option_key)}
-                className="p-4 text-left text-gray-700 bg-white hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-400 rounded-lg transition-all"
+                className="rounded-xl border border-gray-200 bg-white p-4 text-left text-gray-700 transition-all hover:border-orange-300 hover:bg-orange-50"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-600 flex-shrink-0">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-orange-50 font-bold text-accent-warm">
                     {option.option_key}
                   </div>
                   <span className="flex-1 pt-1">{option.option_text}</span>
@@ -451,14 +493,14 @@ const CompetitionLearning: React.FC = () => {
               {...noSuggestInputProps()}
               value={userAnswer}
               onChange={(e) => setUserAnswer(e.target.value)}
-              className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-200"
               rows={3}
               placeholder="请输入答案..."
             />
             <button
               onClick={() => userAnswer.trim() && handleSubmitAnswer(userAnswer)}
               disabled={!userAnswer.trim()}
-              className="w-full mt-4 py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-4 w-full rounded-xl bg-accent-warm py-3 font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               提交答案
             </button>
@@ -543,123 +585,93 @@ const CompetitionLearning: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-paper">
-      {/* Hero 横幅 */}
-      <div className="relative overflow-hidden" style={{ height: 160 }}>
-        <img src="/hero-competition.jpeg" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/35 to-transparent" />
-        <div className="relative z-10 h-full flex items-center px-6 max-w-7xl mx-auto">
-          <div className="text-white">
-            <h1 className="text-3xl font-bold drop-shadow">🏆 竞赛模式</h1>
-            <p className="text-sm opacity-80 mt-1 drop-shadow">边学边PK，冲击排行榜！</p>
+      <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur" aria-label="竞赛学习导航">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3.5">
+          <button
+            type="button"
+            onClick={() => goBack()}
+            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-xl text-ink-soft transition hover:bg-orange-50 hover:text-accent-warm"
+            aria-label="返回"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="font-display text-lg font-semibold text-ink sm:text-xl">竞赛练习</h1>
+            <p className="hidden text-xs text-ink-mute sm:block">答题得分，和同学一起进步</p>
           </div>
         </div>
-      </div>
+      </nav>
 
-      <div className="max-w-7xl mx-auto p-4">
-
-        {/* 主要内容区域 */}
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* 左侧 - 学习区域 (2/3宽度) */}
-          <div className="flex-1 space-y-6">
-            {/* 段位卡片 */}
-            {rankInfo && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <RankBadge rank={rankInfo} size="lg" />
-                    <div>
-                      <div className="text-sm text-gray-500">段位积分</div>
-                      <div className="text-2xl font-bold text-gray-800">{rankInfo.rank_points}</div>
-                    </div>
-                  </div>
-                  {rankInfo.next_tier && (
-                    <div className="text-right">
-                      <div className="text-xs text-gray-400">距离 {rankInfo.next_tier.label}</div>
-                      <div className="text-sm font-semibold text-gray-600">
-                        还需 {rankInfo.next_tier.min_points - rankInfo.rank_points} 分
-                      </div>
-                    </div>
-                  )}
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:py-8">
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+          className="student-colorful-surface mb-6 grid gap-5 rounded-2xl border border-orange-100 p-5 sm:p-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+        >
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+              <Trophy className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="font-display text-2xl font-semibold text-ink">专心答好当前这一题</h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-ink-soft">答对、速度和连击都会加分。先保证正确，再慢慢提速。</p>
+            </div>
+          </div>
+          {myStats?.today && (
+            <div className="grid grid-cols-3 divide-x divide-black/[0.06] rounded-xl bg-white/80 py-3">
+              {[
+                { label: '今日积分', value: myStats.today.score || 0 },
+                { label: '正确率', value: `${(myStats.today.accuracy_rate || 0).toFixed(0)}%` },
+                { label: '最高连击', value: myStats.today.max_combo || 0 },
+              ].map((item) => (
+                <div key={item.label} className="min-w-20 px-3 text-center sm:px-5">
+                  <p className="font-numeric text-xl font-semibold text-ink">{item.value}</p>
+                  <p className="mt-0.5 text-[11px] text-ink-mute">{item.label}</p>
                 </div>
-                {rankInfo.next_tier && (
-                  <div className="mt-3">
-                    <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-orange-500 rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(rankInfo.progress_to_next * 100, 100)}%` }}
-                        transition={{ duration: 1, ease: 'easeOut' }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
+              ))}
+            </div>
+          )}
+        </motion.section>
 
-            {/* 个人统计卡片 */}
-            {myStats?.today ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  📊 我的战绩
-                </h2>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-orange-50 border border-orange-100 rounded-lg">
-                    <div className="text-3xl font-bold text-orange-600">
-                      #{myStats.today.rank || '-'}
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1">今日排名</div>
-                  </div>
-                  <div className="text-center p-4 bg-sky-50 border border-sky-100 rounded-lg">
-                    <div className="text-3xl font-bold text-blue-600">
-                      {myStats.today.score || 0}
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1">今日积分</div>
-                  </div>
-                  <div className="text-center p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
-                    <div className="text-3xl font-bold text-green-600">
-                      {myStats.today.max_combo || 0}
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1">最高连击</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">答题数</span>
-                    <span className="font-semibold">{myStats.today.questions_answered || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">正确率</span>
-                    <span className="font-semibold text-green-600">
-                      {(myStats.today.accuracy_rate || 0).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
-                <div className="text-4xl mb-2">🎯</div>
-                <p className="text-gray-600">开始答题即可参与排名竞赛!</p>
-              </div>
-            )}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <section className="space-y-4" aria-label="竞赛题目">
 
             {/* 题目卡片 */}
             {loading ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-10 sm:p-12 text-center">
-                <div className="text-6xl mb-4 animate-bounce">📚</div>
-                <p className="text-gray-600">正在加载题目...</p>
+              <div className="rounded-2xl bg-white p-5 sm:p-8" aria-busy="true">
+                <div className="mb-6 flex items-center gap-3 border-b border-black/[0.06] pb-5">
+                  <div className="h-10 w-10 animate-pulse rounded-xl bg-slate-100" />
+                  <div className="h-5 w-28 animate-pulse rounded bg-slate-100" />
+                </div>
+                <div className="mx-auto mb-8 h-8 max-w-lg animate-pulse rounded bg-slate-100" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[0, 1, 2, 3].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-slate-100" />)}
+                </div>
               </div>
             ) : isCompleted ? (
               renderCompletionScreen()
+            ) : loadError ? (
+              <div className="rounded-2xl bg-white px-5 py-12 text-center" role="alert">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+                  <RefreshCw className="h-7 w-7" aria-hidden="true" />
+                </div>
+                <h2 className="font-display text-xl font-semibold text-ink">题目暂时没加载出来</h2>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-soft">{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadQuestion()}
+                  className="mt-5 min-h-11 rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90"
+                >
+                  重新加载
+                </button>
+              </div>
             ) : currentQuestion ? (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-8"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+                className="rounded-2xl bg-white p-5 sm:p-8"
               >
                 {/* 题目头部信息 */}
                 <div className="flex items-center justify-between mb-6 pb-4 border-b">
@@ -683,39 +695,82 @@ const CompetitionLearning: React.FC = () => {
                 {renderQuestionContent()}
 
                 {/* 提示 */}
-                <div className="mt-6 text-center text-sm text-gray-500">
-                  💡 答题越快,得分越高!保持连击可获得倍数加成!
+                <div className="mt-6 flex items-center justify-center gap-2 text-center text-sm text-ink-mute">
+                  <Flame className="h-4 w-4 text-accent-warm" aria-hidden="true" />
+                  连续答对会获得连击加成
                 </div>
               </motion.div>
             ) : null}
 
             {/* 操作按钮 */}
-            <div className="flex gap-4">
+            {!loading && !isCompleted && currentQuestion && (
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
               <button
-                onClick={loadQuestion}
-                className="flex-1 py-3 px-6 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors"
+                type="button"
+                onClick={() => goBack()}
+                className="min-h-11 rounded-xl border border-black/10 bg-white px-6 font-semibold text-ink transition hover:bg-black/[0.04]"
               >
-                🔄 跳过这题
+                结束竞赛
               </button>
               <button
-                onClick={() => window.history.back()}
-                className="py-3 px-6 bg-white text-gray-700 font-semibold rounded-xl border-2 border-gray-300 hover:border-gray-400 transition-colors"
+                type="button"
+                onClick={() => void loadQuestion()}
+                className="btn-glow inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-6 font-semibold text-white"
               >
-                返回
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                换一道题
               </button>
             </div>
-          </div>
+            )}
+          </section>
 
-          {/* 右侧 - 实时排行榜 (1/3宽度) */}
-          <div className="w-full lg:w-96">
+          <aside className="space-y-4 lg:sticky lg:top-24" aria-label="竞赛排名">
+            {rankInfo && (
+              <div className="rounded-2xl bg-white p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <RankBadge rank={rankInfo} size="lg" />
+                    <div>
+                      <p className="text-xs text-ink-mute">段位积分</p>
+                      <p className="font-numeric text-2xl font-semibold text-ink">{rankInfo.rank_points}</p>
+                    </div>
+                  </div>
+                  {myStats?.today && (
+                    <div className="text-right">
+                      <p className="text-xs text-ink-mute">今日排名</p>
+                      <p className="font-numeric text-xl font-semibold text-accent-warm">#{myStats.today.rank || '—'}</p>
+                    </div>
+                  )}
+                </div>
+                {rankInfo.next_tier && (
+                  <div className="mt-4">
+                    <div className="mb-1.5 flex justify-between text-xs text-ink-mute">
+                      <span>距离 {rankInfo.next_tier.label}</span>
+                      <span>还需 {Math.max(rankInfo.next_tier.min_points - rankInfo.rank_points, 0)} 分</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.06]">
+                      <motion.div
+                        className="h-full rounded-full bg-accent-warm"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(rankInfo.progress_to_next * 100, 100)}%` }}
+                        transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex items-center gap-2 px-1 text-sm font-semibold text-ink">
+              <BarChart3 className="h-4 w-4 text-accent-warm" aria-hidden="true" />
+              实时排行榜
+            </div>
             <LiveLeaderboard
               token={token}
               seasonId={1}
-              className="sticky top-4"
             />
-          </div>
+          </aside>
         </div>
-      </div>
+      </main>
 
       {/* 答题反馈弹窗 */}
       <AnimatePresence>
@@ -724,22 +779,26 @@ const CompetitionLearning: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
             onClick={handleCloseFeedback}
+            role="presentation"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8"
+              className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl sm:p-8"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="competition-feedback-title"
             >
               {/* 结果图标 */}
               <div className="text-center mb-6">
                 <div className="text-8xl mb-4">
                   {feedbackData.result.is_correct ? '🎉' : '💪'}
                 </div>
-                <h2 className={`text-3xl font-bold ${feedbackData.result.is_correct ? 'text-green-600' : 'text-orange-600'}`}>
+                <h2 id="competition-feedback-title" className={`text-3xl font-bold ${feedbackData.result.is_correct ? 'text-green-600' : 'text-orange-600'}`}>
                   {feedbackData.result.is_correct ? '回答正确!' : '继续加油!'}
                 </h2>
               </div>
@@ -747,7 +806,7 @@ const CompetitionLearning: React.FC = () => {
               {/* 得分详情 */}
               <div className="bg-gray-50 rounded-xl p-6 mb-6">
                 <div className="text-center mb-4">
-                  <div className="text-4xl font-bold text-blue-600">
+                  <div className="text-4xl font-bold text-accent-warm">
                     {feedbackData.result.is_correct ? '+' : ''}{feedbackData.result.total_score}
                   </div>
                   <div className="text-sm text-gray-600">本题得分</div>
@@ -793,9 +852,9 @@ const CompetitionLearning: React.FC = () => {
 
               {/* 答案解析 */}
               {feedbackData.answer_explanation && (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-6">
-                  <div className="font-semibold text-blue-900 mb-2">💡 答案解析:</div>
-                  <div className="text-blue-800">{feedbackData.answer_explanation}</div>
+                <div className="mb-6 rounded-xl border border-orange-100 bg-orange-50 p-4">
+                  <div className="mb-2 font-semibold text-ink">答案解析</div>
+                  <div className="text-ink-soft">{feedbackData.answer_explanation}</div>
                 </div>
               )}
 
@@ -835,7 +894,7 @@ const CompetitionLearning: React.FC = () => {
               {/* 下一题按钮 */}
               <button
                 onClick={handleCloseFeedback}
-                className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold text-lg rounded-xl hover:shadow-lg transition"
+                className="w-full rounded-xl bg-accent-warm py-4 text-lg font-bold text-white transition hover:opacity-90"
               >
                 下一题 →
               </button>

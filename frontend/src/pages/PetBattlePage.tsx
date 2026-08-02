@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, RefreshCw, Swords, Zap } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, RefreshCw, Swords, WifiOff, Zap } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   BattleWebSocket,
@@ -11,7 +11,6 @@ import {
   QuestionData,
   RoundResult,
 } from '../api/petBattle';
-import useGoBack from '../hooks/useGoBack';
 import { getPetBackImage, getPetDefinition, getPetImage, hasPetBackImage } from '../config/petSpecies';
 // three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
 const BattleScene3D = lazy(() => import('../components/BattleScene3D'));
@@ -57,8 +56,8 @@ type BattlePhase = 'waiting' | 'countdown' | 'question' | 'answering' | 'result'
 
 export default function PetBattlePage() {
   const navigate = useNavigate();
-  const goBack = useGoBack('/student/pet');
   const queryClient = useQueryClient();
+  const reduceMotion = useReducedMotion();
   const { battleId } = useParams<{ battleId: string }>();
   const [phase, setPhase] = useState<BattlePhase>('waiting');
   const [battle, setBattle] = useState<Battle | null>(null);
@@ -74,6 +73,7 @@ export default function PetBattlePage() {
   const [battleEffects, setBattleEffects] = useState<BattleVisualEffect[]>([]);
   const [switchingPetId, setSwitchingPetId] = useState<number | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState('');
 
   const battleWs = useRef<BattleWebSocket | null>(null);
   const answerWs = useRef<AnswerWebSocket | null>(null);
@@ -127,8 +127,11 @@ export default function PetBattlePage() {
 
     if (!battleId || !token) {
       console.error('缺少battleId或token');
+      setConnectionError('没有找到这场对战，请返回宠物页面重新进入。');
       return;
     }
+
+    setConnectionError('');
 
     // 连接WebSocket
     console.log('正在连接WebSocket...');
@@ -143,8 +146,7 @@ export default function PetBattlePage() {
       console.log('✅ WebSocket连接成功');
     }).catch((error) => {
       console.error('❌ WebSocket连接失败:', error);
-      alert('连接失败,请重试');
-      goBack();
+      setConnectionError('暂时没有连上对战服务器，请检查网络后重试。');
     });
 
     // 监听事件
@@ -299,7 +301,7 @@ export default function PetBattlePage() {
     });
 
     ws.on('error', (data) => {
-      alert(data.message);
+      setConnectionError(data.message || '对战连接出现问题，请重试。');
     });
 
     ansWs.on('switch_error', (data) => {
@@ -350,12 +352,36 @@ export default function PetBattlePage() {
   };
 
   if (!battle) {
+    if (connectionError) {
+      return (
+        <main className="page-warm-glow flex min-h-screen items-center justify-center bg-paper px-4 py-10">
+          <section className="card-soft w-full max-w-md rounded-2xl p-6 text-center sm:p-8" role="alert">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+              <WifiOff className="h-8 w-8" aria-hidden="true" />
+            </div>
+            <h1 className="font-display text-xl font-semibold text-ink">对战暂时没连上</h1>
+            <p className="mt-2 text-sm leading-6 text-ink-soft">{connectionError} 宠物状态不会受影响。</p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <button type="button" onClick={() => window.location.reload()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90">
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                再试一次
+              </button>
+              <button type="button" onClick={() => navigate('/student/pet')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-black/[0.05] px-5 text-sm font-semibold text-ink transition hover:bg-black/[0.08]">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                返回宠物页面
+              </button>
+            </div>
+          </section>
+        </main>
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center px-5">
+      <div className="page-warm-glow flex min-h-screen items-center justify-center bg-paper px-5">
         <div className="text-center">
           <motion.div
-            className="text-6xl mb-4"
-            animate={{
+            className="mb-4 text-6xl"
+            animate={reduceMotion ? undefined : {
               rotate: [0, 10, -10, 0],
               scale: [1, 1.1, 1]
             }}
@@ -366,17 +392,20 @@ export default function PetBattlePage() {
           >
             ⚔️
           </motion.div>
-          <div className="text-gray-800 font-bold text-xl mb-2">准备战斗中...</div>
-          <div className="text-gray-600 text-sm">
+          <div className="mb-2 font-display text-xl font-bold text-ink">准备战斗中...</div>
+          <div className="text-sm text-ink-soft">
             {phase === 'waiting' ? '等待对手连接...' : '加载战斗数据...'}
           </div>
-          <div className="mt-4 w-48 mx-auto bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="mx-auto mt-4 h-2 w-48 overflow-hidden rounded-full bg-orange-100">
             <motion.div
-              className="h-full bg-purple-500"
-              animate={{ width: ['0%', '100%'] }}
-              transition={{ duration: 2, repeat: Infinity }}
+              className="h-full w-1/2 rounded-full bg-accent-warm"
+              animate={reduceMotion ? undefined : { xPercent: [-100, 200] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
             />
           </div>
+          <button type="button" onClick={() => navigate('/student/pet')} className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold text-accent-warm transition hover:bg-orange-50">
+            返回宠物页面
+          </button>
         </div>
       </div>
     );
@@ -388,8 +417,10 @@ export default function PetBattlePage() {
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-4 sm:py-3 flex items-center justify-between">
           <button
+            type="button"
             onClick={() => navigate('/student/pet')}
-            className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-orange-50"
+            aria-label="返回宠物页面"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
@@ -447,8 +478,8 @@ export default function PetBattlePage() {
 
             {/* 宠物对战区域 - 真 3D 场景(懒加载,加载中先显示占位) */}
             <Suspense fallback={
-              <div className="flex h-[clamp(260px,72vw,460px)] w-full items-center justify-center rounded-xl bg-gradient-to-b from-blue-400 to-green-400 shadow-lg sm:h-[360px] sm:rounded-2xl lg:h-[460px] lg:rounded-3xl">
-                <div className="text-base font-bold text-white animate-pulse sm:text-xl">⚔️ 3D战场加载中...</div>
+              <div className="flex h-[clamp(260px,72vw,460px)] w-full items-center justify-center rounded-xl bg-[#dce8cf] shadow-sm sm:h-[360px] sm:rounded-2xl lg:h-[460px] lg:rounded-3xl">
+                <div className="text-base font-bold text-emerald-900 sm:text-xl">⚔️ 3D 战场加载中...</div>
               </div>
             }>
               <BattleScene3D
@@ -469,7 +500,7 @@ export default function PetBattlePage() {
 
             {/* 题目区域 */}
             {currentQuestion && phase !== 'result' && (
-              <div className="rounded-xl border-2 border-orange-200 bg-white p-3 shadow-lg sm:rounded-3xl sm:p-6">
+              <div className="card-soft rounded-xl p-3 sm:rounded-3xl sm:p-6">
                 <div className="mb-3 text-center sm:mb-6">
                   <div className="mb-1 break-words text-lg font-bold text-gray-800 sm:mb-2 sm:text-2xl">
                     {currentQuestion.question_text}
@@ -522,13 +553,13 @@ export default function PetBattlePage() {
                             <span
                               key={step}
                               className={`h-1.5 w-8 rounded-full transition-colors sm:w-10 ${
-                                step <= skillProgress ? 'bg-fuchsia-500' : 'bg-slate-200'
+                                step <= skillProgress ? 'bg-amber-500' : 'bg-slate-200'
                               }`}
                             />
                           ))}
                         </div>
                       </div>
-                      <div className="shrink-0 text-xs font-black tabular-nums text-fuchsia-700 sm:text-sm">
+                      <div className="shrink-0 text-xs font-black tabular-nums text-amber-700 sm:text-sm">
                         {myPet?.ultimate_charges || 0} 次
                       </div>
                     </div>
@@ -550,7 +581,7 @@ export default function PetBattlePage() {
                         whileTap={{ scale: myPet && myPet.ultimate_charges > 0 ? 0.98 : 1 }}
                         disabled={!selectedAnswer || !myPet || myPet.ultimate_charges < 1}
                         onClick={useUltimate}
-                        className="flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-lg bg-fuchsia-600 px-3 py-3 text-sm font-bold text-white shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none sm:text-base"
+                        className="flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-lg bg-amber-500 px-3 py-3 text-sm font-bold text-white shadow-md disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none sm:text-base"
                       >
                         <Zap className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
                         <span className="truncate">{mySkill?.name || '技能攻击'}</span>
@@ -569,7 +600,7 @@ export default function PetBattlePage() {
                       </div>
                     )}
                     {opponentAnswered && (
-                      <div className="text-blue-600 font-semibold">
+                      <div className="font-semibold text-orange-700">
                         对手已答题，计算结果中...
                       </div>
                     )}
@@ -627,14 +658,14 @@ function PetSwitchPanel({
     <motion.section
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="border-y border-cyan-200 bg-white/90 px-3 py-3 shadow-sm sm:px-4 sm:py-4"
+      className="rounded-xl border border-orange-100 bg-white/90 px-3 py-3 shadow-sm sm:px-4 sm:py-4"
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-black text-slate-800 sm:text-base">回合间歇 · 更换宠物</div>
-          <div className="text-xs font-semibold text-cyan-700">生命 {roster.find((pet) => pet.pet_id === currentPetId)?.hp || 0} HP</div>
+          <div className="text-xs font-semibold text-orange-700">生命 {roster.find((pet) => pet.pet_id === currentPetId)?.hp || 0} HP</div>
         </div>
-        <RefreshCw className="h-5 w-5 text-cyan-600" aria-hidden="true" />
+        <RefreshCw className="h-5 w-5 text-accent-warm" aria-hidden="true" />
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-5 sm:overflow-visible">
@@ -652,7 +683,7 @@ function PetSwitchPanel({
               aria-label={isCurrent ? `${pet.name}正在出战` : `切换为${pet.name}`}
               className={`relative min-w-[132px] rounded-lg border-2 p-2 text-left transition-colors sm:min-w-0 ${
                 isCurrent
-                  ? 'border-cyan-500 bg-cyan-50'
+                  ? 'border-orange-400 bg-orange-50'
                   : pet.can_switch
                     ? 'border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50'
                     : 'border-slate-200 bg-slate-100 opacity-55'
@@ -670,7 +701,7 @@ function PetSwitchPanel({
                   <div className="truncate text-xs font-black text-slate-800">{pet.name}</div>
                   <div className="text-[10px] font-semibold text-slate-500">Lv.{pet.level}</div>
                   <div className={`mt-1 text-[10px] font-bold ${
-                    isCurrent ? 'text-cyan-700' : pet.can_switch ? 'text-emerald-700' : 'text-slate-500'
+                    isCurrent ? 'text-orange-700' : pet.can_switch ? 'text-emerald-700' : 'text-slate-500'
                   }`}>
                     {isSwitching ? '切换中...' : isCurrent ? '出战中' : pet.can_switch ? '可切换' : '不可出战'}
                   </div>
@@ -738,7 +769,7 @@ function TypeMatchupBanner({
     } else if (myEffectiveness === 0.5) {
       return { text: '你的攻击效果不好...', color: 'text-yellow-600', emoji: '🛡️' };
     } else if (opponentEffectiveness === 0.5) {
-      return { text: '对手攻击效果不好', color: 'text-blue-600', emoji: '💪' };
+      return { text: '对手攻击效果不好', color: 'text-emerald-700', emoji: '💪' };
     }
     return { text: '势均力敌', color: 'text-gray-600', emoji: '⚖️' };
   };
@@ -914,7 +945,7 @@ function PetCard({
             <div className="text-xs text-gray-500 font-medium">Lv.{pet.level} {pet.name}</div>
           </div>
           {pet.ultimate_charges > 0 && (
-            <div className="flex items-center gap-0.5 text-purple-500">
+            <div className="flex items-center gap-0.5 text-amber-500">
               {Array.from({ length: pet.ultimate_charges }).map((_, i) => (
                 <Zap key={i} className="w-4 h-4 fill-current drop-shadow-md" />
               ))}
@@ -954,7 +985,7 @@ function PetCard({
               }`}
               initial={{ width: '100%' }}
               animate={{ width: `${hpPercent}%` }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
               style={{
                 boxShadow: hpPercent < 30 ? '0 0 10px rgba(239, 68, 68, 0.7)' : 'none'
               }}
@@ -1032,7 +1063,7 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
           <div className="text-center">
             <div className="mb-1 text-2xl sm:mb-2 sm:text-4xl">{myResult.correct ? '✅' : '❌'}</div>
             <div className="break-words text-xs font-bold text-gray-700 sm:text-base">你的答案: {myResult.answer}</div>
-            {myResult.ultimate && <div className="mt-1 text-xs font-bold text-purple-600 sm:text-base">⚡ 使用了必杀技!</div>}
+            {myResult.ultimate && <div className="mt-1 text-xs font-bold text-amber-700 sm:text-base">⚡ 使用了技能攻击</div>}
             {myResult.damage > 0 && (
               <div className="mt-1 sm:mt-2">
                 <div className="text-sm font-bold text-red-600 sm:text-2xl">
@@ -1058,7 +1089,7 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
           <div className="text-center">
             <div className="mb-1 text-2xl sm:mb-2 sm:text-4xl">{opponentResult.correct ? '✅' : '❌'}</div>
             <div className="break-words text-xs font-bold text-gray-700 sm:text-base">对手答案: {opponentResult.answer}</div>
-            {opponentResult.ultimate && <div className="mt-1 text-xs font-bold text-purple-600 sm:text-base">⚡ 使用了必杀技!</div>}
+            {opponentResult.ultimate && <div className="mt-1 text-xs font-bold text-amber-700 sm:text-base">⚡ 使用了技能攻击</div>}
             {opponentResult.damage > 0 && (
               <div className="mt-1 sm:mt-2">
                 <div className="text-sm font-bold text-red-600 sm:text-2xl">
@@ -1164,14 +1195,14 @@ function EndResultPanel({
           )}
           {!isWinner && !isDraw && (
             <>
-              <div className="mb-2 text-6xl sm:mb-4 sm:text-8xl">💔</div>
-              <div className="mb-2 text-3xl font-bold text-gray-600 sm:text-4xl">失败</div>
+              <div className="mb-2 text-6xl sm:mb-4 sm:text-8xl">🌱</div>
+              <div className="mb-2 text-3xl font-bold text-gray-700 sm:text-4xl">本局未胜</div>
             </>
           )}
           {isDraw && (
             <>
               <div className="mb-2 text-6xl sm:mb-4 sm:text-8xl">🤝</div>
-              <div className="mb-2 text-3xl font-bold text-blue-600 sm:text-4xl">平局</div>
+              <div className="mb-2 text-3xl font-bold text-orange-700 sm:text-4xl">平局</div>
             </>
           )}
           {result.winner_name && (
@@ -1210,7 +1241,7 @@ function EndResultPanel({
             </div>
             <div>
               <div className="text-3xl mb-1">⭐</div>
-              <div className="text-2xl font-bold text-blue-500">+{result.xp_earned}</div>
+              <div className="text-2xl font-bold text-accent-warm">+{result.xp_earned}</div>
               <div className="text-sm text-gray-600">经验值</div>
             </div>
           </div>
@@ -1218,7 +1249,7 @@ function EndResultPanel({
 
         {/* 对战数据 */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:gap-4">
-          <div className="rounded-xl bg-blue-50 p-2.5 sm:p-4">
+          <div className="rounded-xl bg-orange-50 p-2.5 sm:p-4">
             <div className="font-bold text-gray-700 mb-2">你的数据</div>
             <div className="text-sm text-gray-600 space-y-1">
               <div>正确: {myStats?.correct || 0}</div>
@@ -1237,14 +1268,13 @@ function EndResultPanel({
         </div>
 
         {/* 返回按钮 */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <button
+          type="button"
           onClick={onBack}
-          className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-400 to-yellow-400 text-white font-bold text-lg shadow-md"
+          className="btn-glow min-h-12 w-full rounded-xl px-5 text-lg font-bold text-white"
         >
           返回宠物页面
-        </motion.button>
+        </button>
       </div>
     </motion.div>
   );

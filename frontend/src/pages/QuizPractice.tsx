@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import ColoredPhonetic from '../components/ColoredPhonetic';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Check, Flame, X } from 'lucide-react';
 import PracticeLayout from '../components/practice/PracticeLayout';
+import PracticeLoadError from '../components/practice/PracticeLoadError';
 import AnswerFeedback from '../components/practice/AnswerFeedback';
 import { usePracticeState } from '../hooks/usePracticeState';
 import { usePracticeQuestions } from '../hooks/usePracticeQuestions';
-import { useAudio } from '../hooks/useAudio';
 
 const QuizPractice = () => {
   const { unitId } = useParams<{ unitId: string }>();
-  const { playAudio } = useAudio();
+  const reduceMotion = useReducedMotion();
 
-  const { questions, unitInfo, unitWords, loading } = usePracticeQuestions({
+  const { questions, unitInfo, unitWords, loading, error, retry } = usePracticeQuestions({
     unitId,
     questionType: 'choice',
     questionCount: 10,
@@ -61,6 +61,16 @@ const QuizPractice = () => {
   const currentQuestion = questions[currentIndex];
   const questionWords = questions.map(q => q.word);
 
+  if (error) {
+    return (
+      <PracticeLoadError
+        title="测试题暂时没准备好"
+        message={error}
+        onRetry={retry}
+      />
+    );
+  }
+
   return (
     <PracticeLayout
       loading={loading || questions.length === 0}
@@ -84,13 +94,14 @@ const QuizPractice = () => {
       <AnimatePresence>
         {showCombo && combo >= 2 && (
           <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
             className="text-center mb-4"
           >
-            <span className="text-2xl font-bold text-orange-500">
-              🔥 ×{combo} 连击!
+            <span className="inline-flex items-center gap-2 rounded-xl bg-orange-50 px-4 py-2 text-lg font-bold text-accent-warm">
+              <Flame className="h-5 w-5" aria-hidden="true" />
+              ×{combo} 连击
             </span>
           </motion.div>
         )}
@@ -100,15 +111,16 @@ const QuizPractice = () => {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentIndex}
-          initial={{ opacity: 0, x: 50 }}
+          initial={reduceMotion ? false : { opacity: 0, x: 24 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -50 }}
-          className="bg-white rounded-2xl shadow-lg p-6 mb-6"
+          exit={reduceMotion ? undefined : { opacity: 0, x: -24 }}
+          transition={{ duration: reduceMotion ? 0 : 0.32, ease: [0.16, 1, 0.3, 1] }}
+          className="card-soft mb-6 rounded-2xl p-4 sm:p-6"
         >
-          <div className="text-sm text-gray-400 mb-2">
+          <div className="mb-2 font-numeric text-sm text-ink-mute">
             第 {currentIndex + 1} / {questions.length} 题
           </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-6">
+          <h2 className="mb-6 text-balance text-xl font-bold leading-8 text-ink">
             {currentQuestion?.question}
           </h2>
 
@@ -133,20 +145,21 @@ const QuizPractice = () => {
               return (
                 <motion.button
                   key={idx}
+                  type="button"
                   onClick={() => handleSelectAnswer(option)}
                   disabled={isChecking}
-                  animate={isChecking && isSelected && !isCorrect ? { x: [0, -8, 8, -8, 8, 0] } : {}}
+                  animate={!reduceMotion && isChecking && isSelected && !isCorrect ? { x: [0, -6, 6, -4, 4, 0] } : {}}
                   transition={{ duration: 0.4 }}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-colors ${optionStyle}`}
+                  className={`flex min-h-14 w-full items-center gap-3 rounded-xl border-2 p-4 text-left transition-colors ${optionStyle}`}
                 >
-                  <span className="font-medium">
+                  <span className="min-w-0 flex-1 font-medium">
                     {String.fromCharCode(65 + idx)}. {option}
                   </span>
                   {isChecking && isCorrectOption && (
-                    <span className="float-right text-green-500">✓</span>
+                    <Check className="h-5 w-5 shrink-0 text-green-600" aria-label="正确答案" />
                   )}
                   {isChecking && isSelected && !isCorrect && !isCorrectOption && (
-                    <span className="float-right text-red-500">✗</span>
+                    <X className="h-5 w-5 shrink-0 text-red-600" aria-label="你的选择" />
                   )}
                 </motion.button>
               );
@@ -159,9 +172,10 @@ const QuizPractice = () => {
       <AnimatePresence>
         {isChecking && currentQuestion && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -14 }}
+            transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
             <AnswerFeedback
               isCorrect={isCorrect!}

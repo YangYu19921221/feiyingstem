@@ -1,4 +1,5 @@
 import React from 'react';
+import { LoaderCircle } from 'lucide-react';
 import PracticeHeader from './PracticeHeader';
 import ProgressDots from './ProgressDots';
 import PracticeSidePanel from './PracticeSidePanel';
@@ -50,18 +51,18 @@ const PracticeLayout: React.FC<PracticeLayoutProps> = ({
 }) => {
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#edf5fb]">
-        <div className="text-center">
-          <div className="text-4xl mb-4 animate-bounce">📝</div>
-          <p className="text-gray-500">{loadingText}</p>
+      <main className="page-warm-glow flex min-h-screen items-center justify-center bg-paper px-4" aria-busy="true">
+        <div className="text-center" role="status">
+          <LoaderCircle className="mx-auto mb-4 h-9 w-9 animate-spin text-accent-warm" aria-hidden="true" />
+          <p className="text-sm font-medium text-ink-soft">{loadingText}</p>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#edf5fb]">
-      <div className="max-w-2xl lg:max-w-6xl mx-auto px-4 py-6">
+    <main className="page-warm-glow min-h-screen bg-paper">
+      <div className="mx-auto max-w-2xl px-4 py-4 sm:py-6 lg:max-w-6xl">
         <PracticeHeader
           unitName={unitName}
           totalWords={totalWords}
@@ -91,12 +92,13 @@ const PracticeLayout: React.FC<PracticeLayoutProps> = ({
               unitWords={unitWords}
               results={results}
               questionWords={questionWords}
+              currentIndex={currentIndex}
               hideAnswer={hideAnswer}
             />
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

@@ -30,7 +30,7 @@ function Row({
         isMe ? 'text-accent-warm' : 'text-ink-mute'}`}>
         {entry.rank}
       </span>
-      <p className={`flex-1 min-w-0 truncate text-sm ${
+      <p title={entry.full_name || entry.username} className={`flex-1 min-w-0 truncate text-sm ${
         isMe ? 'font-semibold text-ink' : 'font-medium text-ink'}`}>
         {entry.full_name || entry.username}
         {isMe && <span className="ml-2 text-[11px] font-semibold text-accent-warm">· 你</span>}

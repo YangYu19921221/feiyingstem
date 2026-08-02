@@ -10,11 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "@react-three/drei": "file:../../../../../tmp/drei10.tgz",
     "@react-three/fiber": "file:../../../../../tmp/fiber9.tgz",
     "@tanstack/react-query": "^5.90.10",
     "axios": "^1.13.2",
     "framer-motion": "^12.23.24",
+    "gsap": "^3.15.0",
     "howler": "^2.2.4",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.12.1",

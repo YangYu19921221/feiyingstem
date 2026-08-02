@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+import { ArrowLeft, Brain, ChevronDown, CircleAlert, DoorOpen, Eye, Flag, Gauge, House, Swords, Trophy, Users } from 'lucide-react';
+import axios from 'axios';
 import { pkApi, type MyRoomItem } from '../api/pk';
 import PkInviteModal from '../components/pk/PkInviteModal';
 import { tournamentApi, type MyMatch } from '../api/tournament';
 import { toast } from '../components/Toast';
+import { useClampedNumber } from '../hooks/useClampedNumber';
 
-const QUICK_COUNTS = [2, 4, 6, 10, 20];
-const WORD_COUNTS = [5, 10, 15, 20];
-const TEAM_COUNTS = [2, 3, 4, 5, 6];
-// 后端校验范围(与 schemas/pk.py 一致):队伍 2-6、词数 4-30
-const MIN_TEAMS = 2, MAX_TEAMS = 6;
-const MIN_WORDS = 4, MAX_WORDS = 30;
+const QUICK_COUNTS = [2, 10, 30, 50, 100];
+const WORD_COUNTS = [5, 10, 20, 50];
+// 分组赛的组由教师建房时自己建并命名(学生进房后自选);与后端 manager.MAX_TEAMS 一致
+const MIN_TEAMS = 2, MAX_TEAMS = 8;
+// 词数上限与后端 PkRoomCreate.word_count (ge=4, le=200) 一致。
+// 实际生效题量 = min(这里设定值, 全场背得最少的学生的词汇量),开局时后端统一压,
+// 所以填大只等于"用满该学生会的全部词",不会出超纲题。
+const MIN_WORDS = 4, MAX_WORDS = 200;
 const MIN_PLAYERS = 2;
-const MAX_PLAYERS = 20;
+// 与后端 CreateRoomRequest.max_players (le=200) 及库里 CHECK 一致。
+// 实时榜已改为合并推送 + 按人裁剪,带宽不再随人数²暴涨,大房间可放心开
+const MAX_PLAYERS = 200;
 
 /** 从 localStorage 读当前角色(教师=组织者建房;学生=凭码加入)。 */
 function getRole(): string {
@@ -28,11 +35,14 @@ export default function PkLobby() {
   const navigate = useNavigate();
   const role = getRole();
   const isTeacher = role === 'teacher' || role === 'admin';
-  const [maxPlayers, setMaxPlayers] = useState(4);
-  const [playersRaw, setPlayersRaw] = useState('4'); // 输入框原始文本,失焦时才 clamp
-  const [wordCount, setWordCount] = useState(10);
+  // 人数/词数都是「输入中不 clamp、失焦才收敛」,统一走 useClampedNumber
+  const players = useClampedNumber(MIN_PLAYERS, MAX_PLAYERS, 4);
+  const words = useClampedNumber(MIN_WORDS, MAX_WORDS, 10);
+  const maxPlayers = players.value;
+  const wordCount = words.value;
   const [mode, setMode] = useState<'individual' | 'team'>('individual');
-  const [teamCount, setTeamCount] = useState(2);
+  // 分组赛的组名(教师自己填);默认给两组占位,想多分就点「添加一组」
+  const [teamNames, setTeamNames] = useState<string[]>(['', '']);
   const [countdownMin, setCountdownMin] = useState(5);  // 全场倒计时(分钟)
   const [inviteCode, setInviteCode] = useState('');
   const [showInvite, setShowInvite] = useState<string | null>(null);
@@ -42,7 +52,9 @@ export default function PkLobby() {
   const [entering, setEntering] = useState<number | null>(null);
   const [myRooms, setMyRooms] = useState<MyRoomItem[]>([]);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [showRules, setShowRules] = useState(false);
   const navTimer = useRef<number | null>(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => () => {
     if (navTimer.current !== null) window.clearTimeout(navTimer.current);
@@ -63,8 +75,9 @@ export default function PkLobby() {
     try {
       await pkApi.deleteRoom(roomId);
       setMyRooms((rs) => rs.filter((r) => r.room_id !== roomId));
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || '删除失败');
+    } catch (e: unknown) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : undefined;
+      toast.error(detail || '删除失败');
     } finally {
       setDeleting(null);
     }
@@ -84,39 +97,39 @@ export default function PkLobby() {
     try {
       const r = await tournamentApi.enterMatch(m.match_id);
       navigate(`/pk/arena/${r.room_id}`);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail;
+    } catch (e: unknown) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : undefined;
       toast.error(detail === 'MATCH_ALREADY_FINISHED' ? '这场对局已结束' : detail || '进入对局失败');
       setEntering(null);
       tournamentApi.myMatches().then(setMyMatches).catch(() => {});
     }
   };
 
-  const clampPlayers = (n: number) =>
-    Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.floor(n) || MIN_PLAYERS));
-
-  /** 统一设置人数(步进器/快捷档/输入框失焦共用),同步输入框显示 */
-  const setPlayers = (n: number) => {
-    const v = clampPlayers(n);
-    setMaxPlayers(v);
-    setPlayersRaw(String(v));
-  };
-
   const handleCreate = async () => {
     setError('');
     setCreating(true);
     try {
-      const data = await pkApi.createRoom(maxPlayers, wordCount, mode, teamCount, countdownMin * 60);
+      // 取输入框当前文本再 clamp:打完数字直接点"创建"不会触发 onBlur,
+      // 只读 state 会漏掉最后一次输入
+      // commit():以输入框当前文本为准取最终值 —— 打完数字直接点创建不会触发 onBlur
+      const finalWords = words.commit();
+      const finalPlayers = players.commit();
+      const data = await pkApi.createRoom(
+        finalPlayers, finalWords, mode, countdownMin * 60,
+        mode === 'team' ? teamNames : [],
+      );
       setShowInvite(data.invite_code);
       loadMyRooms();
       navTimer.current = window.setTimeout(() => navigate(`/pk/arena/${data.room_id}`), 1500);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail;
+    } catch (e: unknown) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : undefined;
+      const status = axios.isAxiosError(e) ? e.response?.status : undefined;
+      const fallbackMessage = e instanceof Error ? e.message : '创建失败';
       const msg = detail === 'USER_ALREADY_IN_ROOM'
         ? '你有一场对战正在进行中,请先进去点「结束本场对战」再创建新房'
-        : e?.response?.status === 403
+        : status === 403
           ? '只有教师可以创建 PK 房间'
-          : detail || e?.message || '创建失败';
+          : detail || fallbackMessage;
       setError(msg);
       setCreating(false);
     }
@@ -132,16 +145,17 @@ export default function PkLobby() {
     try {
       const data = await pkApi.joinRoomByCode(code);
       navigate(`/pk/arena/${data.room_id}`);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail;
+    } catch (e: unknown) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : undefined;
+      const fallbackMessage = e instanceof Error ? e.message : '加入失败';
       const errorMap: Record<string, string> = {
         ROOM_NOT_FOUND: '邀请码无效',
         ROOM_FINISHED: '该房间的 PK 已结束',
-        ROOM_FULL: '房间已满——可以点「👀 观战」进去看比赛',
-        ROOM_ALREADY_STARTED: '房间已开始——可以点「👀 观战」进去看比赛',
+        ROOM_FULL: '房间已满，可以点“观战”进入比赛',
+        ROOM_ALREADY_STARTED: '房间已开始，可以点“观战”进入比赛',
         USER_ALREADY_IN_ROOM: '你已在另一个 PK 房间中',
       };
-      setError(errorMap[detail] || detail || e?.message || '加入失败');
+      setError(errorMap[detail] || detail || fallbackMessage);
     }
   };
 
@@ -155,58 +169,76 @@ export default function PkLobby() {
     try {
       const data = await pkApi.spectateByCode(code);
       navigate(`/pk/arena/${data.room_id}`);
-    } catch (e: any) {
-      const detail = e?.response?.data?.detail;
+    } catch (e: unknown) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : undefined;
+      const fallbackMessage = e instanceof Error ? e.message : '观战失败';
       const errorMap: Record<string, string> = {
         ROOM_NOT_FOUND: '邀请码无效',
         ROOM_FINISHED: '该房间的 PK 已结束',
         SPECTATORS_FULL: '观众席满啦(30 人)',
       };
-      setError(errorMap[detail] || detail || e?.message || '观战失败');
+      setError(errorMap[detail] || detail || fallbackMessage);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-paper relative overflow-hidden">
-      {/* 装饰光晕 */}
-      <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-secondary/20 blur-3xl" />
-      <div className="pointer-events-none absolute top-1/2 -left-32 w-80 h-80 rounded-full bg-primary/10 blur-3xl" />
+  const highlights = isTeacher
+    ? [
+        { label: '老师组织，不下场答题', icon: Gauge },
+        { label: '每人练自己学过的词', icon: Brain },
+        { label: '全场题量统一', icon: Users },
+        { label: '总分高者获胜', icon: Trophy },
+      ]
+    : [
+        { label: '只考自己学过的词', icon: Brain },
+        { label: '不会的词继续巩固', icon: Gauge },
+        { label: '掌握更多，得分更高', icon: Flag },
+      ];
 
-      <div className="relative max-w-4xl mx-auto px-5 py-6 sm:py-10">
+  const steps = isTeacher
+    ? [
+        ['1', '创建房间', '设置人数、题量和时间'],
+        ['2', '发送邀请码', '学生进入后准备或选组'],
+        ['3', '开始比赛', '查看实时进度，结束后出榜'],
+      ]
+    : [
+        ['1', '输入邀请码', '加入老师创建的房间'],
+        ['2', '完成三关', '分类、听写、过关检测'],
+        ['3', '争取高分', '掌握更多，完成更快'],
+      ];
+
+  return (
+    <div className="min-h-screen bg-paper">
+      <div className="mx-auto max-w-4xl px-4 py-5 sm:px-5 sm:py-8">
         <button
+          type="button"
           onClick={() => navigate(isTeacher ? '/teacher/dashboard' : '/student/dashboard')}
-          className="text-sm text-ink-mute hover:text-ink mb-4"
+          className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-medium text-ink-mute transition hover:bg-orange-50 hover:text-ink"
         >
-          ← 返回主页
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          返回主页
         </button>
 
-        {/* 大头图 */}
+        {/* 竞技场简介 */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-3xl bg-gradient-to-br from-primary via-orange-400 to-secondary p-6 sm:p-10 text-white shadow-xl mb-6 relative overflow-hidden"
+          transition={{ duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="student-colorful-surface relative mb-5 overflow-hidden rounded-2xl border border-orange-200 p-5 sm:p-8"
         >
-          <motion.span
-            className="absolute right-6 top-4 text-6xl sm:text-8xl opacity-25 select-none"
-            animate={{ rotate: [0, -8, 8, 0] }}
-            transition={{ repeat: Infinity, duration: 4 }}
-          >
-            ⚔️
-          </motion.span>
-          <h1 className="font-display text-3xl sm:text-5xl font-bold">PK 竞技场</h1>
-          <p className="text-sm sm:text-lg text-white/90 mt-2 max-w-md">
+          <span className="absolute right-5 top-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-accent-warm sm:right-7 sm:top-7 sm:h-14 sm:w-14" aria-hidden="true">
+            <Swords className="h-6 w-6 sm:h-7 sm:w-7" />
+          </span>
+          <h1 className="font-display pr-16 text-2xl font-semibold text-ink sm:text-4xl">PK 竞技场</h1>
+          <p className="mt-2 max-w-xl pr-8 text-sm leading-6 text-ink-soft sm:pr-16 sm:text-base">
             {isTeacher
-              ? '你来组织,学生用分类记忆法同场竞速——谁先把单词全部掌握谁赢'
-              : '用分类记忆法和同学同场竞速——谁先把单词全部掌握谁赢'}
+              ? '你来组织,学生用分类记忆法同场竞速——掌握得最多、完成得最快的学生得分最高'
+              : '用分类记忆法和同学同场竞速——掌握得越多、完成得越快,分数越高'}
           </p>
-          {/* 规则条 */}
-          <div className="flex flex-wrap gap-2 mt-4 sm:mt-6">
-            {(isTeacher
-              ? ['🎛️ 老师建房不下场', '🧠 各考各背过的词', '⚖️ 题量全场统一', '🏁 率先掌握者赢']
-              : ['🧠 考你自己背过的词', '🔁 不会的词反复练到会', '🏁 谁先全掌握谁赢']
-            ).map((t) => (
-              <span key={t} className="text-[11px] sm:text-sm bg-white/20 backdrop-blur px-3 py-1.5 rounded-full">
-                {t}
+          <div className="mt-5 flex flex-wrap gap-2">
+            {highlights.map(({ label, icon: Icon }) => (
+              <span key={label} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-white px-2.5 text-xs font-medium text-ink-soft sm:text-sm">
+                <Icon className="h-3.5 w-3.5 text-accent-warm" aria-hidden="true" />
+                {label}
               </span>
             ))}
           </div>
@@ -215,12 +247,13 @@ export default function PkLobby() {
         {/* 晋级赛待打对局:老师办的正式赛事,置顶醒目 */}
         {myMatches.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 mb-6"
+            transition={{ duration: reduceMotion ? 0 : 0.36, ease: [0.16, 1, 0.3, 1] }}
+            className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4"
           >
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">🏆</span>
+              <Trophy className="h-5 w-5 text-amber-700" aria-hidden="true" />
               <h2 className="font-bold text-amber-900">晋级赛 · 你有 {myMatches.length} 场对局要打</h2>
             </div>
             <div className="space-y-2">
@@ -236,9 +269,10 @@ export default function PkLobby() {
                   <button
                     onClick={() => enterMatch(m)}
                     disabled={entering === m.match_id}
-                    className="shrink-0 px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold shadow disabled:opacity-50"
+                    className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg bg-accent-warm px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                   >
-                    {entering === m.match_id ? '进入中…' : m.invite_code ? '⚔️ 对手在等你!' : '⚔️ 开打'}
+                    <Swords className="h-4 w-4" aria-hidden="true" />
+                    {entering === m.match_id ? '进入中…' : m.invite_code ? '对手在等你' : '开始对局'}
                   </button>
                 </div>
               ))}
@@ -249,12 +283,13 @@ export default function PkLobby() {
         {/* 我的房间(教师):切网页/关标签页后房间保留,回来在这里重进或删除 */}
         {isTeacher && myRooms.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border-2 border-primary/25 bg-orange-50/60 p-4 mb-6"
+            transition={{ duration: reduceMotion ? 0 : 0.36, ease: [0.16, 1, 0.3, 1] }}
+            className="mb-5 rounded-2xl border border-orange-200 bg-orange-50/60 p-4"
           >
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">🏠</span>
+              <House className="h-5 w-5 text-accent-warm" aria-hidden="true" />
               <h2 className="font-bold text-ink">我的房间 · {myRooms.length} 个进行中</h2>
               <span className="text-[11px] text-ink-mute">切网页也不会消失,用完记得删除</span>
             </div>
@@ -264,7 +299,7 @@ export default function PkLobby() {
                   <span className="font-mono text-lg font-bold tracking-widest text-primary shrink-0">{r.invite_code}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-ink-soft">
-                      {r.status === 'waiting' ? '⏳ 等待中' : '⚔️ 对战中'}
+                      {r.status === 'waiting' ? '等待中' : '对战中'}
                       {' · '}{r.mode === 'team' ? '分组赛' : '个人赛'}
                       {' · '}{r.word_count} 词
                     </p>
@@ -296,13 +331,14 @@ export default function PkLobby() {
           {/* 创建房间:仅教师(组织者)可见 */}
           {isTeacher && (
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="card-soft rounded-3xl p-6 sm:p-7"
+            transition={{ delay: reduceMotion ? 0 : 0.08, duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="card-soft rounded-2xl p-5 sm:p-6"
           >
             <h2 className="font-display text-xl font-bold text-ink flex items-center gap-2 mb-1">
-              🏠 创建房间
+              <House className="h-5 w-5 text-accent-warm" aria-hidden="true" />
+              创建房间
             </h2>
             <p className="text-xs text-ink-mute mb-4">你作为组织者建房、发码给学生,开局后监控战况(不下场答题)</p>
 
@@ -310,8 +346,8 @@ export default function PkLobby() {
             <label className="block text-sm font-medium text-ink-soft mb-2">对战模式</label>
             <div className="flex gap-2 mb-4">
               {([
-                { k: 'individual', label: '👤 个人赛', desc: '各自排名' },
-                { k: 'team', label: '👥 分组赛', desc: '按队伍比拼' },
+                { k: 'individual', label: '个人赛', desc: '各自排名' },
+                { k: 'team', label: '分组赛', desc: '按小组比拼' },
               ] as const).map((m) => (
                 <button
                   key={m.k}
@@ -328,47 +364,57 @@ export default function PkLobby() {
               ))}
             </div>
 
-            {/* 分组赛:队伍数(快捷档 + 自定义) */}
+            {/* 分组赛:教师自己建组命名,学生进房后自己选组 */}
             {mode === 'team' && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-ink-soft mb-2">
-                  分几队 <span className="text-ink-mute font-normal">({MIN_TEAMS}~{MAX_TEAMS} 队)</span>
+                  分组设置 <span className="text-ink-mute font-normal">(2~{MAX_TEAMS} 组,学生进房后自己选组)</span>
                 </label>
-                <div className="flex gap-2">
-                  {TEAM_COUNTS.map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setTeamCount(n)}
-                      className={`flex-1 py-2 rounded-xl text-sm font-semibold transition ${
-                        teamCount === n
-                          ? 'bg-primary text-white shadow-sm'
-                          : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
-                      }`}
-                    >
-                      {n} 队
-                    </button>
+                <div className="space-y-2">
+                  {teamNames.map((name, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-6 text-center text-xs font-bold text-ink-mute">{i + 1}</span>
+                      <input
+                        type="text"
+                        value={name}
+                        maxLength={12}
+                        placeholder={`第 ${i + 1} 组`}
+                        aria-label={`第 ${i + 1} 组组名`}
+                        onChange={(e) => setTeamNames(teamNames.map((n, j) => (j === i ? e.target.value : n)))}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:border-primary focus:outline-none"
+                      />
+                      <button
+                        onClick={() => setTeamNames(teamNames.filter((_, j) => j !== i))}
+                        disabled={teamNames.length <= MIN_TEAMS}
+                        aria-label={`删除第 ${i + 1} 组`}
+                        className="h-11 w-11 rounded-xl bg-gray-100 text-lg text-ink-mute transition hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                      >
+                        ×
+                      </button>
+                    </div>
                   ))}
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs text-ink-mute">自定义</span>
-                  <input
-                    type="number" min={MIN_TEAMS} max={MAX_TEAMS} value={teamCount}
-                    onChange={(e) => setTeamCount(Math.min(MAX_TEAMS, Math.max(MIN_TEAMS, Number(e.target.value) || MIN_TEAMS)))}
-                    className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center"
-                  />
-                  <span className="text-xs text-ink-mute">队</span>
-                </div>
-                <p className="text-[11px] text-ink-mute mt-2">学生进房自动均衡分队,开局前你可在竞技场调整</p>
+                {teamNames.length < MAX_TEAMS && (
+                  <button
+                    onClick={() => setTeamNames([...teamNames, ''])}
+                    className="mt-2 min-h-11 w-full rounded-xl border border-dashed border-orange-200 text-sm font-medium text-primary transition hover:bg-orange-50"
+                  >
+                    ＋ 添加一组
+                  </button>
+                )}
+                <p className="text-[11px] text-ink-mute mt-2">
+                  组名留空会自动叫「第N组」。学生在等待室点组名加入,你也能在那里帮他们改。
+                </p>
               </div>
             )}
 
             {/* 人数步进器 */}
             <label className="block text-sm font-medium text-ink-soft mb-2">
-              房间人数 <span className="text-ink-mute font-normal">({MIN_PLAYERS}~{MAX_PLAYERS} 人)</span>
+              房间人数 <span className="text-ink-mute font-normal">({MIN_PLAYERS}~{MAX_PLAYERS} 人,可自定义)</span>
             </label>
             <div className="flex items-center gap-4 mb-2">
               <button
-                onClick={() => setPlayers(maxPlayers - 1)}
+                onClick={() => players.set(maxPlayers - 1)}
                 disabled={maxPlayers <= MIN_PLAYERS}
                 className="w-12 h-12 rounded-2xl bg-orange-100 text-primary text-2xl font-bold disabled:opacity-40 active:scale-95 transition"
               >
@@ -378,15 +424,15 @@ export default function PkLobby() {
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={playersRaw}
-                  onChange={(e) => setPlayersRaw(e.target.value.replace(/\D/g, '').slice(0, 2))}
-                  onBlur={() => setPlayers(Number(playersRaw))}
+                  value={players.raw}
+                  onChange={(e) => players.onChangeText(e.target.value)}
+                  onBlur={players.onBlur}
                   className="w-24 text-center text-4xl font-bold text-primary font-numeric bg-transparent focus:outline-none"
                 />
                 <span className="text-base text-ink-mute">人</span>
               </div>
               <button
-                onClick={() => setPlayers(maxPlayers + 1)}
+                onClick={() => players.set(maxPlayers + 1)}
                 disabled={maxPlayers >= MAX_PLAYERS}
                 className="w-12 h-12 rounded-2xl bg-orange-100 text-primary text-2xl font-bold disabled:opacity-40 active:scale-95 transition"
               >
@@ -397,8 +443,8 @@ export default function PkLobby() {
               {QUICK_COUNTS.map((n) => (
                 <button
                   key={n}
-                  onClick={() => setPlayers(n)}
-                  className={`flex-1 py-1.5 rounded-xl text-sm font-medium transition ${
+                  onClick={() => players.set(n)}
+                  className={`min-h-11 flex-1 rounded-xl text-sm font-medium transition ${
                     maxPlayers === n
                       ? 'bg-primary text-white shadow-sm'
                       : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
@@ -417,8 +463,8 @@ export default function PkLobby() {
               {WORD_COUNTS.map((n) => (
                 <button
                   key={n}
-                  onClick={() => setWordCount(n)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${
+                  onClick={() => words.set(n)}
+                  className={`min-h-11 flex-1 rounded-xl text-sm font-semibold transition ${
                     wordCount === n
                       ? 'bg-primary text-white shadow-sm'
                       : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
@@ -430,10 +476,16 @@ export default function PkLobby() {
             </div>
             <div className="flex items-center gap-2 mb-6">
               <span className="text-xs text-ink-mute">自定义</span>
+              {/* 失焦才 clamp:原来每敲一键就 clamp,想输 100 时打到 "1" 会被顶成 4,
+                  三位数根本打不进去(上限从 30 放开到 200 后这个坑才显形) */}
               <input
-                type="number" min={MIN_WORDS} max={MAX_WORDS} value={wordCount}
-                onChange={(e) => setWordCount(Math.min(MAX_WORDS, Math.max(MIN_WORDS, Number(e.target.value) || MIN_WORDS)))}
-                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center"
+                type="text"
+                inputMode="numeric"
+                value={words.raw}
+                aria-label="自定义单词数量上限"
+                onChange={(e) => words.onChangeText(e.target.value)}
+                onBlur={words.onBlur}
+                className="h-11 w-20 rounded-lg border border-gray-200 px-2 text-center text-sm"
               />
               <span className="text-xs text-ink-mute">词({MIN_WORDS}–{MAX_WORDS})</span>
             </div>
@@ -447,7 +499,7 @@ export default function PkLobby() {
                 <button
                   key={n}
                   onClick={() => setCountdownMin(n)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${
+                  className={`min-h-11 flex-1 rounded-xl text-sm font-semibold transition ${
                     countdownMin === n
                       ? 'bg-primary text-white shadow-sm'
                       : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
@@ -462,7 +514,7 @@ export default function PkLobby() {
               <input
                 type="number" min={1} max={30} value={countdownMin}
                 onChange={(e) => setCountdownMin(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
-                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center"
+                className="h-11 w-20 rounded-lg border border-gray-200 px-2 text-center text-sm"
               />
               <span className="text-xs text-ink-mute">分钟(1–30)</span>
             </div>
@@ -472,24 +524,25 @@ export default function PkLobby() {
               disabled={creating}
               className="btn-glow w-full py-3.5 text-white rounded-2xl font-semibold text-base"
             >
-              {creating ? '创建中…' : '🚀 创建并获取邀请码'}
+              {creating ? '创建中…' : '创建并获取邀请码'}
             </button>
             <p className="text-[11px] text-ink-mute mt-3 text-center">
               每个学生各考「自己背过的词」,题量按全场最少的学生统一(最多 {wordCount} 词),
-              走完分类→听写→过关全流程,谁先全部掌握谁赢;{countdownMin} 分钟到点未完成则比进度
+              走完分类→听写→过关全流程;总分(掌握分+速度分)最高者赢,{countdownMin} 分钟到点按当时总分排名
             </p>
           </motion.div>
           )}
 
           {/* 加入房间:学生凭老师发的邀请码进场 */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16 }}
-            className="card-soft rounded-3xl p-6 sm:p-7 flex flex-col"
+            transition={{ delay: reduceMotion ? 0 : 0.1, duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="card-soft flex flex-col rounded-2xl p-5 sm:p-6"
           >
             <h2 className="font-display text-xl font-bold text-ink flex items-center gap-2 mb-1">
-              🎟️ 加入房间
+              <DoorOpen className="h-5 w-5 text-accent-warm" aria-hidden="true" />
+              加入房间
             </h2>
             <p className="text-xs text-ink-mute mb-5">
               {isTeacher ? '也可以用邀请码进入别的老师开的房观战' : '输入老师发你的 6 位邀请码'}
@@ -500,23 +553,28 @@ export default function PkLobby() {
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-                className="w-full px-4 py-4 border-2 border-orange-200 rounded-2xl font-mono tracking-[0.45em] text-center text-3xl uppercase text-ink focus:outline-none focus:border-primary bg-white"
+                aria-label="6 位房间邀请码"
+                autoCapitalize="characters"
+                autoComplete="one-time-code"
+                className="w-full rounded-xl border border-orange-200 bg-white px-4 py-4 text-center font-numeric text-3xl font-semibold uppercase tracking-[0.32em] text-ink focus:border-primary focus:outline-none sm:text-4xl"
                 maxLength={6}
                 placeholder="ABC123"
               />
               {!isTeacher && (
                 <button
                   onClick={handleJoin}
-                  className="btn-glow w-full py-3.5 mt-5 text-white rounded-2xl font-semibold text-base"
+                  className="btn-glow mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-semibold text-white"
                 >
-                  ⚔️ 加入对战
+                  <Swords className="h-5 w-5" aria-hidden="true" />
+                  加入对战
                 </button>
               )}
               <button
                 onClick={handleSpectate}
-                className={`w-full py-3 ${isTeacher ? 'mt-5' : 'mt-2.5'} rounded-2xl font-semibold text-base bg-gray-100 hover:bg-orange-100 text-ink-soft transition`}
+                className={`inline-flex min-h-12 w-full items-center justify-center gap-2 ${isTeacher ? 'mt-5' : 'mt-2.5'} rounded-xl bg-gray-100 text-base font-semibold text-ink-soft transition hover:bg-orange-100`}
               >
-                👀 观战(满员/已开局也能看)
+                <Eye className="h-5 w-5" aria-hidden="true" />
+                观战（满员或已开局也能看）
               </button>
             </div>
             <p className="text-[11px] text-ink-mute mt-3 text-center">
@@ -527,33 +585,58 @@ export default function PkLobby() {
 
         {/* 玩法说明:教师看「怎么组织」,学生看「怎么打」 */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.24 }}
-          className="card-soft rounded-3xl p-6 sm:p-7 mt-5"
+          transition={{ delay: reduceMotion ? 0 : 0.14, duration: reduceMotion ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="card-soft mt-5 rounded-2xl p-5 sm:p-6"
         >
-          <h2 className="font-display text-lg font-bold text-ink flex items-center gap-2 mb-4">
-            📖 玩法说明
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-bold text-ink">玩法说明</h2>
+              <p className="mt-1 text-xs text-ink-mute">先记住 3 步，详细规则需要时再看。</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRules((visible) => !visible)}
+              aria-expanded={showRules}
+              className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-accent-warm transition hover:bg-orange-50"
+            >
+              {showRules ? '收起规则' : '查看详细规则'}
+              <ChevronDown className={`h-4 w-4 transition-transform ${showRules ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+          </div>
 
-          {isTeacher ? (
+          <ol className="mt-5 grid border-y border-black/[0.06] sm:grid-cols-3 sm:divide-x sm:divide-black/[0.06]">
+            {steps.map(([step, title, description]) => (
+              <li key={step} className="flex gap-3 border-b border-black/[0.06] py-3.5 last:border-b-0 sm:border-b-0 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-50 font-numeric text-xs font-bold text-accent-warm">{step}</span>
+                <div>
+                  <p className="font-semibold text-ink">{title}</p>
+                  <p className="mt-1 text-xs leading-5 text-ink-mute">{description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          {showRules && (isTeacher ? (
             <div className="space-y-4 text-sm text-ink-soft leading-relaxed">
               <div>
                 <p className="font-semibold text-ink mb-1">① 建房(你是组织者,全程不答题)</p>
                 <p>选「个人赛 / 分组赛」→ 定房间人数、每人词数、<span className="font-semibold text-ink">全场倒计时</span>(1–30 分钟)→ 点创建,拿到 6 位邀请码发给学生。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">② 学生加入</p>
-                <p>学生在自己的 PK 大厅输入邀请码进房。分组赛会自动把学生均衡分到各队,开局前你可在竞技场里手动调队、移出学生。</p>
+                <p className="font-semibold text-ink mb-1">② 学生加入并自己选组</p>
+                <p>学生在自己的 PK 大厅输入邀请码进房。分组赛里<span className="font-semibold text-ink">组由你建房时创建并命名</span>,学生进等待室后<span className="font-semibold text-ink">自己点组名加入</span>;个别学生没选或选错,你可以在竞技场里帮他指定,也能把人移出房间。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">③ 你开局并监控</p>
-                <p>至少 2 名学生进房即可开局(分组赛要求每队都有人)。开局后自动进<span className="font-semibold text-ink">全屏大屏监控台</span>,看每个学生的实时阶段与掌握进度,但不答题。随时可「提前结束」并出正式榜。</p>
+                <p>至少 2 名学生进房即可开局。分组赛还要求<span className="font-semibold text-ink">人人都选了组、且至少两组有人</span>(全挤在一组就没有对手了),没选组的学生名字会标「⚠️ 未选组」。开局后自动进<span className="font-semibold text-ink">全屏大屏监控台</span>,看每个学生的实时阶段与掌握进度,但不答题。随时可「提前结束」并出正式榜。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">④ 每人考自己背过的词(题量全场统一)</p>
-                <p>系统给<span className="font-semibold text-ink">每个学生各抽他自己背过的词</span>——小学、初中、高中的孩子放一起也公平,谁都不会被考自己没学过的词。</p>
-                <p className="mt-1">但<span className="font-semibold text-ink">题量会按「全场背得最少的那个学生」统一</span>:比如 A 背过 300 词、B 只背过 8 词,则两人都只考 8 个(各考自己的)。这样大家工作量一样,「谁先掌握完」才是公平比较,不会出现背得少的人因为任务轻而稳赢。若有学生背过的词不足 4 个,则无法开局。</p>
+                <p>系统给<span className="font-semibold text-ink">每个学生各抽他自己背过的词</span>(在学习流程里练过、留下掌握记录的词)——小学、初中、高中的孩子放一起也公平,谁都不会被考自己没学过的词。</p>
+                <p className="mt-1">但<span className="font-semibold text-ink">题量会按「全场背得最少的那个学生」统一</span>:比如 A 背过 300 词、B 只背过 8 词,则两人都只考 8 个(各考自己的)。这样大家工作量一样,比的才是掌握程度,不会出现背得少的人因为任务轻而占便宜。若有学生背过的词不足 4 个,则无法开局。</p>
+                <p className="mt-1 text-ink-mute">词的难易会体现在满分上:小学词每词 100 分、初中 120、高中 150,所以高年级学生的满分更高——同样全部掌握,考高中词拿的分更多。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">⑤ 每人走一遍分类记忆法全流程</p>
@@ -563,12 +646,12 @@ export default function PkLobby() {
               <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
                 <p className="font-semibold text-ink mb-1.5">🏁 怎么定胜负(重点)</p>
                 <ul className="space-y-1 list-disc pl-4">
-                  <li><span className="font-medium text-ink">率先把全部组走完并过关的学生赢</span>,按完成时刻先后排名。</li>
-                  <li><span className="font-medium text-ink">全员完成即立刻结算</span>,不用等倒计时走完。</li>
-                  <li>倒计时到点仍有人没完成 → 按<span className="font-medium text-ink">掌握进度百分比</span>排名;同进度看用时。</li>
-                  <li>因为不会的词会反复练到会,<span className="font-medium text-ink">拖时间不会有额外好处</span>——认真一遍过才最快。</li>
-                  <li><span className="font-medium text-ink">分组赛按队内「人均掌握进度」排名</span>——队里人多不占便宜,人少的队照样能赢。</li>
-                  <li>答题也会累计得分(答对得分、越快越多),但<span className="font-medium text-ink">得分只作展示</span>,不决定胜负。</li>
+                  <li><span className="font-medium text-ink">总分最高的学生赢</span>。总分 = 掌握分 + 速度分,大屏柱子的高度就是总分,所以<span className="font-medium text-ink">柱子最高的就是第一名</span>,不用另外解释名次。</li>
+                  <li><span className="font-medium text-ink">掌握分 = 掌握进度 × 满分</span>(满分 = 词表里每词难度分之和)。进度封顶,所以<span className="font-medium text-ink">反复刷题刷不出分</span>,只有真把词掌握了才涨分。</li>
+                  <li><span className="font-medium text-ink">速度分只有全部完成才拿</span>,完成越早拿得越多(最多为满分的 30%)。这样全班都做完时,快慢在柱高上直接看得见,而不是几根等高柱标着 1~6 名。</li>
+                  <li><span className="font-medium text-ink">全员完成即立刻结算</span>,不用等倒计时走完;倒计时到点仍有人没做完,就按当时的总分排名。</li>
+                  <li>同分时依次看:先完成者优先 → 总用时更短 → 答对更多。</li>
+                  <li><span className="font-medium text-ink">分组赛按队内「人均得分」排名</span>——队里人多不占便宜,人少的队照样能赢。</li>
                 </ul>
               </div>
             </div>
@@ -580,8 +663,9 @@ export default function PkLobby() {
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">② 考的是你自己背过的词</p>
-                <p>题目从<span className="font-semibold text-ink">你自己背过的单词</span>里出,和同学考的不一样,所以不管你几年级都公平。</p>
-                <p className="mt-1"><span className="font-semibold text-ink">题量大家一样多</span>——按全场背得最少的同学来定。所以<span className="font-medium text-ink">背得多不会被罚、背得少也占不到便宜</span>,大家做一样多的题,比谁先掌握。</p>
+                <p>题目从<span className="font-semibold text-ink">你自己背过的单词</span>里出(你在学习模式里练过的词),和同学考的不一样,所以不管你几年级都公平,也不会考到你没学过的词。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">题量大家一样多</span>——按全场背得最少的同学来定。所以<span className="font-medium text-ink">背得多不会被罚、背得少也占不到便宜</span>,大家做一样多的题,比谁掌握得更好更快。</p>
+                <p className="mt-1 text-ink-mute">如果你背过的词还不到 4 个,老师就开不了局——先去学习模式多背一些再来。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">③ 单词分组,每组闯 3 关</p>
@@ -597,28 +681,32 @@ export default function PkLobby() {
               <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
                 <p className="font-semibold text-ink mb-1.5">🏁 怎么赢(重点)</p>
                 <ul className="space-y-1 list-disc pl-4">
-                  <li><span className="font-medium text-ink">谁先把所有组都过关,谁就赢</span>——最快完成的是本场单词王 👑。</li>
-                  <li>大家都完成了就<span className="font-medium text-ink">马上出成绩</span>,不用等倒计时。</li>
-                  <li>时间到了还没做完,就<span className="font-medium text-ink">比谁掌握的进度多</span>(右侧擂台榜上的百分比)。</li>
-                  <li>不会的词会一直反复出现直到你会,所以<span className="font-medium text-ink">乱按、拖时间都没用</span>,认认真真一遍过反而最快。</li>
-                  <li>答对也会涨分数(越快越多),但<span className="font-medium text-ink">分数只是好看</span>,不决定谁赢。</li>
+                  <li><span className="font-medium text-ink">分数最高的人赢</span>,榜上柱子最高的就是第一名。分数 = 掌握分 + 速度分。</li>
+                  <li><span className="font-medium text-ink">掌握分看你把词掌握了多少</span>:掌握得越多分越高,全部掌握就拿满分。<span className="font-medium text-ink">反复刷同一题刷不出分</span>,真会了才涨。</li>
+                  <li><span className="font-medium text-ink">全部做完还能拿速度分</span>,越早做完拿得越多。所以做完了别磨蹭,快就是分。</li>
+                  <li>大家都完成了就<span className="font-medium text-ink">马上出成绩</span>;时间到了还没做完,就按当时的分数排名。</li>
+                  <li>不会的词会一直反复出现直到你会,所以<span className="font-medium text-ink">乱按、拖时间都没用</span>,认认真真一遍过反而最快、分最高。</li>
+                  <li>分数一样时,看谁先完成、谁用时更短。</li>
                 </ul>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">④ 分组赛</p>
-                <p>老师开分组赛时你会被分到某个队,右侧「队伍榜」看哪个队领先——按<span className="font-semibold text-ink">人均掌握进度</span>算,和队友一起冲榜。</p>
+                <p className="font-semibold text-ink mb-1">④ 分组赛:进房后自己选组</p>
+                <p>老师开分组赛时,他会先建好几个组。你进等待室后<span className="font-semibold text-ink">点一下组名就加入了</span>,想换组再点别的组名;<span className="font-medium text-ink">不选组老师开不了赛</span>,所以进去先选。</p>
+                <p className="mt-1">比赛时看「队伍榜」哪个组领先——按<span className="font-semibold text-ink">组内人均得分</span>算,组里人多不占便宜,和组员一起冲榜。</p>
               </div>
             </div>
-          )}
+          ))}
         </motion.div>
 
         {error && (
           <motion.p
-            initial={{ opacity: 0, y: -4 }}
+            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 text-sm text-error bg-red-50 rounded-2xl px-4 py-3"
+            role="alert"
+            className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-error"
           >
-            ⚠️ {error}
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{error}</span>
           </motion.p>
         )}
 

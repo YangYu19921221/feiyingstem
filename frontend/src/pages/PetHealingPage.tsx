@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,22 +29,34 @@ export default function PetHealingPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // 查询治疗状态
-  const { data: healingStatus } = useQuery<HealingStatus>({
+  const healingStatusQuery = useQuery<HealingStatus>({
     queryKey: ['healingStatus'],
     queryFn: getHealingStatus,
   });
+  const healingStatus = healingStatusQuery.data;
 
   // 查询宠物信息
-  const { data: pet } = useQuery({
+  const petQuery = useQuery({
     queryKey: ['myPet'],
     queryFn: getMyPet,
   });
+  const pet = petQuery.data;
 
   // 获取治疗单词
-  const { data: words = [] } = useQuery<HealingWord[]>({
+  const wordsQuery = useQuery<HealingWord[]>({
     queryKey: ['healingWords'],
     queryFn: () => getHealingWords(20),
   });
+  const words = wordsQuery.data ?? [];
+
+  const currentWord = words[currentQuestionIndex];
+  const options = useMemo(() => {
+    if (!currentWord) return [];
+    const meanings = Array.from(new Set(words.map((word) => word.meaning).filter((meaning) => meaning !== currentWord.meaning)));
+    const distractors = [...meanings].sort(() => Math.random() - 0.5).slice(0, 3);
+    return [currentWord.meaning, ...distractors].sort(() => Math.random() - 0.5);
+  }, [currentWord, words]);
+  const correctIndex = currentWord ? options.indexOf(currentWord.meaning) : -1;
 
   // 治疗mutation
   const healMutation = useMutation({
@@ -64,16 +76,53 @@ export default function PetHealingPage() {
         setTimeout(() => {
           navigate('/student/pet');
         }, 3000);
+        return;
       }
+
+      setTimeout(() => {
+        if (currentQuestionIndex < words.length - 1) {
+          setCurrentQuestionIndex((prev) => prev + 1);
+          setSelectedAnswer(null);
+          setShowResult(false);
+          healMutation.reset();
+        }
+      }, 1600);
     },
   });
 
-  if (!healingStatus || !pet || !words.length) {
+  const pageLoading = healingStatusQuery.isLoading || petQuery.isLoading || wordsQuery.isLoading;
+  const pageError = healingStatusQuery.isError || petQuery.isError || wordsQuery.isError;
+
+  if (pageLoading) {
     return (
       <div className="min-h-screen bg-paper flex items-center justify-center px-5">
-        <div className="text-center">
-          <div className="text-6xl mb-4 animate-pulse">💊</div>
-          <div className="text-gray-600">加载中...</div>
+        <div className="text-center" role="status">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-orange-200 border-t-accent-warm" />
+          <div className="text-gray-600">正在准备恢复训练...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pageError || !healingStatus || !pet) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper px-5">
+        <div className="card-soft w-full max-w-md rounded-2xl p-7 text-center" role="alert">
+          <div className="text-4xl">🛠️</div>
+          <h1 className="mt-3 text-xl font-bold text-ink">恢复训练暂时没准备好</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">请检查网络后再试一次，也可以先返回宠物页面。</p>
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={() => void Promise.all([healingStatusQuery.refetch(), petQuery.refetch(), wordsQuery.refetch()])}
+              className="btn-glow min-h-11 rounded-xl px-5 text-sm font-semibold text-white"
+            >
+              再试一次
+            </button>
+            <button type="button" onClick={() => navigate('/student/pet')} className="min-h-11 rounded-xl bg-black/[0.05] px-5 text-sm font-semibold text-ink-soft">
+              返回宠物页面
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -84,11 +133,11 @@ export default function PetHealingPage() {
       <div className="min-h-screen bg-paper flex items-center justify-center px-5">
         <div className="text-center">
           <div className="text-8xl mb-4">✅</div>
-          <div className="text-2xl font-bold text-gray-800 mb-2">宠物很健康！</div>
-          <div className="text-gray-600 mb-6">不需要治疗</div>
+          <div className="text-2xl font-bold text-gray-800 mb-2">伙伴状态很好</div>
+          <div className="text-gray-600 mb-6">今天不需要恢复训练</div>
           <button
             onClick={() => navigate('/student/pet')}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors"
+            className="btn-glow min-h-11 rounded-xl px-6 font-bold text-white"
           >
             返回宠物页面
           </button>
@@ -97,22 +146,24 @@ export default function PetHealingPage() {
     );
   }
 
-  const currentWord = words[currentQuestionIndex];
+  if (words.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper px-5">
+        <div className="card-soft w-full max-w-md rounded-2xl p-7 text-center">
+          <div className="text-5xl">📚</div>
+          <h1 className="mt-3 text-xl font-bold text-ink">暂时没有恢复题目</h1>
+          <p className="mt-2 text-sm text-ink-soft">稍后再来试试，宠物状态不会因此变差。</p>
+          <button type="button" onClick={() => navigate('/student/pet')} className="btn-glow mt-5 min-h-11 rounded-xl px-6 font-bold text-white">
+            返回宠物页面
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentWord) {
     return null;
   }
-
-  // 生成干扰项
-  const generateOptions = (correctMeaning: string) => {
-    const allMeanings = words.map((w) => w.meaning).filter((m) => m !== correctMeaning);
-    const shuffled = allMeanings.sort(() => Math.random() - 0.5);
-    const distractors = shuffled.slice(0, 3);
-    const options = [correctMeaning, ...distractors].sort(() => Math.random() - 0.5);
-    return options;
-  };
-
-  const options = generateOptions(currentWord.meaning);
-  const correctIndex = options.indexOf(currentWord.meaning);
 
   const handleAnswer = (answer: string, index: number) => {
     if (showResult) return;
@@ -126,14 +177,6 @@ export default function PetHealingPage() {
     // 提交治疗
     healMutation.mutate({ wordId: currentWord.id, isCorrect: correct });
 
-    // 2秒后下一题
-    setTimeout(() => {
-      if (currentQuestionIndex < words.length - 1) {
-        setCurrentQuestionIndex((prev) => prev + 1);
-        setSelectedAnswer(null);
-        setShowResult(false);
-      }
-    }, 2000);
   };
 
   const petImage = getPetImage(pet.species, pet.evolution_stage);
@@ -151,8 +194,8 @@ export default function PetHealingPage() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-lg font-bold text-emerald-700">
-            💊 治疗宠物
+          <h1 className="text-lg font-bold text-orange-700">
+            ❤️‍🩹 恢复训练
           </h1>
           <div className="w-12" />
         </div>
@@ -162,13 +205,13 @@ export default function PetHealingPage() {
         {/* HP进度 */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 mb-6">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-gray-600">💊 治疗中...</span>
+            <span className="text-sm text-gray-600">恢复进度</span>
             <span className="text-sm font-bold text-green-600">已恢复 {healedTotal} HP</span>
           </div>
 
           <div className="relative h-6 bg-gray-200 rounded-full overflow-hidden mb-2">
             <motion.div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-400 to-emerald-500"
+              className="absolute inset-y-0 left-0 bg-emerald-500"
               initial={{ width: `${healingStatus.hp_percent}%` }}
               animate={{ width: `${Math.min(100, healingStatus.hp_percent + (healedTotal / healingStatus.max_hp) * 100)}%` }}
               transition={{ duration: 0.5 }}
@@ -203,7 +246,7 @@ export default function PetHealingPage() {
             />
           </motion.div>
           <div className="text-gray-600 mt-2">
-            {pet.name} {grayScale > 0.5 ? '很虚弱...' : '正在恢复中...'}
+            {pet.name} {grayScale > 0.5 ? '正在休息...' : '状态越来越好了'}
           </div>
         </div>
 
@@ -231,7 +274,7 @@ export default function PetHealingPage() {
                   key={index}
                   whileHover={{ scale: showResult ? 1 : 1.02 }}
                   whileTap={{ scale: showResult ? 1 : 0.98 }}
-                  disabled={showResult}
+                  disabled={showResult || healMutation.isPending}
                   onClick={() => handleAnswer(option, index)}
                   className={`p-4 rounded-xl text-left font-medium transition-all ${
                     showCorrect
@@ -261,17 +304,29 @@ export default function PetHealingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 className={`mt-4 p-4 rounded-xl text-center ${
-                  isCorrect ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                  healMutation.isError ? 'bg-orange-50 text-orange-800' : isCorrect ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                 }`}
               >
-                {isCorrect ? (
+                {healMutation.isError ? (
+                  <>
+                    <div className="font-bold">这次记录还没保存</div>
+                    <p className="mt-1 text-sm">检查网络后重试，当前题目不会跳过。</p>
+                    <button
+                      type="button"
+                      onClick={() => healMutation.mutate({ wordId: currentWord.id, isCorrect })}
+                      className="mt-3 min-h-11 rounded-xl bg-orange-600 px-5 text-sm font-semibold text-white"
+                    >
+                      重新保存
+                    </button>
+                  </>
+                ) : isCorrect ? (
                   <>
                     <div className="text-3xl mb-2">✨</div>
                     <div className="font-bold">答对了！宠物恢复了 {healingStatus.heal_per_question} HP</div>
                   </>
                 ) : (
                   <>
-                    <div className="text-3xl mb-2">💔</div>
+                    <div className="text-3xl mb-2">💡</div>
                     <div className="font-bold">答错了，继续加油！</div>
                     <div className="text-sm mt-1">正确答案：{currentWord.meaning}</div>
                   </>
@@ -283,10 +338,10 @@ export default function PetHealingPage() {
 
         {/* 鼓励文案 */}
         <div className="text-center mt-6 text-gray-600 text-sm">
-          {healedTotal === 0 && '你的宠物需要你！答对题目可以治疗它'}
-          {healedTotal > 0 && healedTotal < 25 && '继续加油，宠物感受到了你的关心！'}
-          {healedTotal >= 25 && healedTotal < 50 && '做得很好，宠物快要好了！'}
-          {healedTotal >= 50 && '太棒了，宠物马上就要恢复健康了！'}
+          {healedTotal === 0 && '每答对一题都会增加恢复进度，按自己的节奏来。'}
+          {healedTotal > 0 && healedTotal < 25 && '已经有进展了，继续保持自己的节奏。'}
+          {healedTotal >= 25 && healedTotal < 50 && '做得很好，恢复进度正在增加。'}
+          {healedTotal >= 50 && '太棒了，马上就能完成恢复训练。'}
         </div>
       </div>
 
@@ -311,7 +366,7 @@ export default function PetHealingPage() {
               >
                 ✨
               </motion.div>
-              <h3 className="text-3xl font-bold text-green-600 mb-2">满血复活！</h3>
+              <h3 className="text-3xl font-bold text-green-600 mb-2">恢复完成！</h3>
               <p className="text-gray-600 mb-4">
                 你的 {pet.name} 恢复健康了！<br />
                 现在可以继续对战了！

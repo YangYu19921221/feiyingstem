@@ -1,9 +1,13 @@
 import client from './client';
 
 export interface LearningOverview {
+  /** 已学词数(按拼写去重;只做过「分类识别」自评的词不算学过) */
   total_words: number;
+  /** 已掌握:掌握度 >= 3 */
   mastered_words: number;
+  /** 待巩固:未达掌握线、但在计分模式里没真答错过(练习次数还不够) */
   learning_words: number;
+  /** 薄弱:未达掌握线且真的答错过 */
   weak_words: number;
   total_study_days: number;
   total_duration: number;

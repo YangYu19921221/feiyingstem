@@ -72,7 +72,10 @@ interface StudentDetail {
   total_study_days: number;
   total_study_time: number;
   overall_accuracy: number;
+  /** 薄弱=未达掌握线且真答错过 */
   weak_words_count: number;
+  /** 待巩固=未达掌握线但没答错过;掌握+薄弱+待巩固=累计学词 */
+  pending_words_count: number;
   last_active: string | null;
   recent_daily_words: number[];
   recent_daily_dates: string[];
@@ -589,6 +592,7 @@ const TeacherClassManagement = () => {
         '累计已学词': s.cum_words_learned,
         '累计已掌握': s.cum_mastered,
         '累计薄弱词': s.cum_weak_words,
+        '累计待巩固': s.cum_pending_words,
       }));
 
       const wb = XLSX.utils.book_new();
@@ -597,7 +601,7 @@ const TeacherClassManagement = () => {
         ws['!cols'] = [
           { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 8 }, { wch: 8 },
           { wch: 8 }, { wch: 10 }, { wch: 9 }, { wch: 14 }, { wch: 12 },
-          { wch: 10 }, { wch: 10 }, { wch: 10 },
+          { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
         ];
         return ws;
       };
@@ -786,6 +790,20 @@ const TeacherClassManagement = () => {
     )).sort((a, b) => b - a);
     return new Set(distinct.slice(0, 3));
   })();
+
+  // ============ 💪最努力(当日学习时长最长) ============
+  // 只认当日时长第一,不分档:老师要的是"today 谁最努力"这一个明确的标志。
+  // 用"最大时长值"而非某个 user_id —— 并列第一的孩子都戴上,不然同为 42 分钟
+  // 只表扬先返回的那个,老师当场就会被问为什么。
+  // 与👑单词王(词量)、⚡高效(效率)三者互不冲突:分别奖励肯投入时间、
+  // 学得多、学得快,同一个孩子全占也正常。
+  const HARDWORKING_MIN_SECONDS = 300;  // 不足5分钟不评,防"点开就退"占榜
+  const topDurationValue = (() => {
+    const max = Math.max(0, ...dailyStats.map(s => s.study_duration || 0));
+    return max >= HARDWORKING_MIN_SECONDS ? max : null;
+  })();
+  const isHardworking = (s: DailyStudentData) =>
+    topDurationValue != null && s.study_duration === topDurationValue;
 
   // 屏幕表格用的过滤+排序列表(纯前端)。日报图仍用全班 dailyStats。
   const filteredDailyStats = (() => {
@@ -1325,6 +1343,14 @@ const TeacherClassManagement = () => {
                                   {wordKingIds.has(s.user_id) && (
                                     <span className="text-sm" title="当日单词王">👑</span>
                                   )}
+                                  {isHardworking(s) && (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700"
+                                      title={`今日学习时长最长(${formatDuration(s.study_duration)}),全班最努力`}
+                                    >
+                                      💪 最努力
+                                    </span>
+                                  )}
                                   {isLowScore && (
                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded font-bold" title="准确率偏低，需重点关注">
                                       需关注
@@ -1359,8 +1385,11 @@ const TeacherClassManagement = () => {
                                   </span>
                                 )}
                               </td>
-                              <td className="py-3 px-3 text-center text-sm text-gray-600">
+                              <td className={`py-3 px-3 text-center text-sm ${
+                                isHardworking(s) ? 'font-bold text-amber-600' : 'text-gray-600'
+                              }`}>
                                 {s.study_duration > 0 ? formatDuration(s.study_duration) : '-'}
+                                {isHardworking(s) && <span className="ml-1" title="全班最长">💪</span>}
                               </td>
                               <td className="py-3 px-3 text-center text-sm">
                                 {(() => {
@@ -1613,10 +1642,12 @@ const TeacherClassManagement = () => {
                               const eff = efficiencyOf(s);
                               // ⚡效率之星与🌟词量之星并列:让"短时间高效"的孩子在家长群里也被表扬
                               const isEffTop = eff != null && shareEffStarThreshold.has(Math.round(eff * 10) / 10);
+                              // 💪最努力:当日时长第一。学得慢但肯坐下来的孩子也该在群里被看见
+                              const isHard = isHardworking(s);
                               return (
                                 <tr key={s.user_id} style={{ background: i % 2 === 0 ? '#ffffff' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
                                   <td style={{ padding: '9px 12px', color: '#1f2937', fontWeight: 500 }}>
-                                    {isTop && '🌟 '}{isEffTop && '⚡ '}{s.full_name || s.username}
+                                    {isTop && '🌟 '}{isEffTop && '⚡ '}{isHard && '💪 '}{s.full_name || s.username}
                                   </td>
                                   <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151', fontSize: '13px', whiteSpace: 'nowrap' }}>
                                     {(() => {
@@ -1632,7 +1663,7 @@ const TeacherClassManagement = () => {
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: '#374151' }}>
+                                  <td style={{ textAlign: 'center', padding: '9px 8px', color: isHard ? '#b45309' : '#374151', fontWeight: isHard ? 700 : 400 }}>
                                     {s.study_duration > 0 ? formatDuration(s.study_duration) : '-'}
                                   </td>
                                   <td style={{ textAlign: 'center', padding: '9px 8px', color: eff != null && isEffTop ? '#c2410c' : '#374151', fontWeight: eff != null && isEffTop ? 700 : 400 }}>
@@ -1661,7 +1692,7 @@ const TeacherClassManagement = () => {
 
                         {/* 图例:两种星并列表扬,词量多和效率高是两种同样值得肯定的努力 */}
                         <div style={{ marginTop: '14px', fontSize: '12.5px', color: '#6b7280' }}>
-                          🌟 词量之星:今日学词最多　·　⚡ 效率之星:每10分钟学得多　·　（新N）=第一次学的新词数,复习巩固日为 0 属正常
+                          🌟 词量之星:今日学词最多　·　⚡ 效率之星:每10分钟学得多　·　💪 最努力:今日学习时长最长　·　（新N）=第一次学的新词数,复习巩固日为 0 属正常
                         </div>
 
                         {/* 落款 */}
@@ -2318,7 +2349,12 @@ const TeacherClassManagement = () => {
                 </div>
                 <div className="p-3 bg-gray-50 rounded-xl">
                   <p className="text-lg font-bold text-red-500">{studentDetail.weak_words_count}</p>
-                  <p className="text-xs text-gray-500">薄弱单词</p>
+                  <p className="text-xs text-gray-500">
+                    薄弱单词
+                    {typeof studentDetail.pending_words_count === 'number' && (
+                      <span className="text-gray-400"> · 待巩固 {studentDetail.pending_words_count}</span>
+                    )}
+                  </p>
                 </div>
               </div>
 

@@ -87,8 +87,10 @@ function PodiumColumn({
       </motion.div>
 
       {/* 姓名 */}
-      <p className={`mt-1 font-display font-semibold text-center truncate max-w-full px-1
-                     ${isGold ? 'text-base md:text-lg' : 'text-sm'}`}
+      <p
+         title={name || '虚位以待'}
+         className={`mt-1 w-full max-w-[6.5rem] truncate px-1 text-center font-display font-semibold leading-9 sm:max-w-[9rem] md:max-w-[10rem]
+                     ${isGold ? 'text-sm sm:text-base md:text-lg' : 'text-xs sm:text-sm'}`}
          style={{ color: entry ? 'oklch(0.22 0.015 55)' : 'oklch(0.72 0.008 55)' }}>
         {name || '虚位以待'}
       </p>
@@ -141,7 +143,7 @@ export default function Podium({
   const byRank = (r: number) => top.find(e => e.rank === r);
   return (
     <div
-      className="relative rounded-3xl overflow-hidden px-4 pt-6 pb-0"
+      className="relative overflow-hidden rounded-2xl px-2 pb-0 pt-5 sm:rounded-3xl sm:px-4 sm:pt-6"
       style={{
         // 冠军舞台:暖米白 → 顶部聚光的深一点底,营造"舞台灯下"氛围
         background: 'linear-gradient(180deg, oklch(0.99 0.012 70), oklch(0.965 0.02 65))',
@@ -155,7 +157,7 @@ export default function Podium({
       {/* 顶部庆祝暖光 */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40"
            style={{ background: 'radial-gradient(ellipse 70% 100% at 50% 0%, oklch(0.9 0.13 78 / 0.35), transparent 70%)' }} />
-      <div className="relative flex items-end gap-2 md:gap-4">
+      <div className="relative flex items-end gap-1 sm:gap-2 md:gap-4">
         <PodiumColumn entry={byRank(2)} tier="silver" kind={kind} isMe={byRank(2)?.user_id === myUserId} />
         <PodiumColumn entry={byRank(1)} tier="gold"   kind={kind} isMe={byRank(1)?.user_id === myUserId} />
         <PodiumColumn entry={byRank(3)} tier="bronze" kind={kind} isMe={byRank(3)?.user_id === myUserId} />

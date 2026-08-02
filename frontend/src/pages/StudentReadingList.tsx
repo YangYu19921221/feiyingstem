@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, BookOpenText, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, BookOpenText, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { getStudentPassages } from '../api/reading';
 import type { StudentPassageListItem } from '../api/reading';
+import useGoBack from '../hooks/useGoBack';
 
 const StudentReadingList = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/student/dashboard');
   const [passages, setPassages] = useState<StudentPassageListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [filter, setFilter] = useState({
     topic: '',
     difficulty: 0,
@@ -22,7 +25,8 @@ const StudentReadingList = () => {
   const loadPassages = async () => {
     try {
       setLoading(true);
-      const params: any = {};
+      setError('');
+      const params: { topic?: string; difficulty?: number; only_assigned?: boolean } = {};
       if (filter.topic) params.topic = filter.topic;
       if (filter.difficulty) params.difficulty = filter.difficulty;
       if (filter.only_assigned) params.only_assigned = true;
@@ -31,6 +35,7 @@ const StudentReadingList = () => {
       setPassages(data);
     } catch (error) {
       console.error('加载阅读文章失败:', error);
+      setError('阅读文章暂时没有加载出来，请检查网络后重试。');
     } finally {
       setLoading(false);
     }
@@ -45,10 +50,10 @@ const StudentReadingList = () => {
     const colors = [
       '',
       'from-green-400 to-emerald-500',
-      'from-blue-400 to-cyan-500',
+      'from-lime-400 to-green-500',
       'from-yellow-400 to-orange-500',
       'from-orange-500 to-red-500',
-      'from-red-500 to-pink-600',
+      'from-red-500 to-rose-600',
     ];
     return colors[difficulty] || colors[3];
   };
@@ -63,7 +68,7 @@ const StudentReadingList = () => {
     }
     if (passage.is_started) {
       return (
-        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+        <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
           📝 进行中
         </span>
       );
@@ -85,13 +90,13 @@ const StudentReadingList = () => {
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/dashboard')}
-              className="rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
+              onClick={() => goBack()}
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
               aria-label="返回学生首页"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-100 text-accent-warm">
               <BookOpenText className="h-5 w-5" />
             </div>
             <div>
@@ -103,10 +108,9 @@ const StudentReadingList = () => {
       </nav>
 
       <div className="max-w-6xl mx-auto px-4 pb-12">
-        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-cyan-100 p-5 shadow-md sm:p-6">
+        <section className="student-colorful-surface mb-6 overflow-hidden rounded-2xl border border-orange-100 p-5 shadow-md sm:p-6">
           <div className="flex items-center justify-between gap-6">
             <div className="max-w-xl">
-              <p className="mb-1 text-xs font-semibold text-cyan-700">分级阅读</p>
               <h2 className="font-display text-2xl font-bold text-slate-800">读懂一篇，比刷十道题更重要</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">按主题和难度选择文章，完成后查看得分与解析。</p>
             </div>
@@ -129,7 +133,7 @@ const StudentReadingList = () => {
               <select
                 value={filter.topic}
                 onChange={(e) => setFilter({ ...filter, topic: e.target.value })}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 outline-none focus:ring-2 focus:ring-accent-warm/30"
               >
                 <option value="">全部</option>
                 <option value="故事">故事</option>
@@ -144,7 +148,7 @@ const StudentReadingList = () => {
               <select
                 value={filter.difficulty}
                 onChange={(e) => setFilter({ ...filter, difficulty: Number(e.target.value) })}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 outline-none focus:ring-2 focus:ring-accent-warm/30"
               >
                 <option value={0}>全部</option>
                 <option value={1}>简单</option>
@@ -155,7 +159,7 @@ const StudentReadingList = () => {
               </select>
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 transition hover:bg-orange-50">
               <input
                 type="checkbox"
                 checked={filter.only_assigned}
@@ -173,21 +177,53 @@ const StudentReadingList = () => {
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
             <p className="mt-4 text-gray-600">加载中...</p>
           </div>
+        ) : error ? (
+          <div className="card-soft rounded-2xl px-5 py-12 text-center" role="alert">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+              <RefreshCw className="h-7 w-7" aria-hidden="true" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-700">阅读列表暂时没打开</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{error}</p>
+            <button
+              type="button"
+              onClick={() => void loadPassages()}
+              className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              重新加载
+            </button>
+          </div>
         ) : passages.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">暂无阅读文章</p>
+          <div className="card-soft rounded-2xl px-5 py-12 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+              <BookOpenText className="h-7 w-7" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-700">老师还没有发布阅读文章</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              新文章发布后会显示在这里。现在可以先回书架继续单词学习。
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/student/dashboard')}
+              className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              返回我的书架
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {passages.map((passage, index) => (
-              <motion.div
+              <motion.article
                 key={passage.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                onClick={() => navigate(`/student/reading/${passage.id}`)}
-                className="card-soft rounded-2xl hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden group"
+                className="card-soft group overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-xl"
               >
+                <Link
+                  to={`/student/reading/${passage.id}`}
+                  className="block h-full rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-warm focus-visible:ring-offset-2"
+                  aria-label={`${passage.title}，${passage.is_completed ? '查看成绩' : passage.is_started ? '继续答题' : '开始阅读'}`}
+                >
                 {/* 封面图 */}
                 <div className="h-32 relative overflow-hidden bg-slate-100">
                   <img
@@ -217,11 +253,11 @@ const StudentReadingList = () => {
 
                   <div className="flex items-center gap-2 mb-3">
                     {passage.topic && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">
+                      <span className="rounded bg-orange-50 px-2 py-1 text-xs text-orange-700">
                         {passage.topic}
                       </span>
                     )}
-                    <span className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-xs">
+                    <span className="rounded bg-orange-50 px-2 py-1 text-xs text-orange-700">
                       {getDifficultyLabel(passage.difficulty)}
                     </span>
                   </div>
@@ -245,13 +281,11 @@ const StudentReadingList = () => {
                   )}
 
                   {/* 开始/继续按钮 */}
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className={`w-full mt-4 py-2.5 rounded-lg font-medium text-white transition ${
+                  <span
+                    className={`mt-4 block w-full rounded-lg py-2.5 text-center font-medium text-white transition ${
                       passage.is_completed
                         ? 'bg-green-500 hover:bg-green-600'
-                        : 'bg-gradient-to-r from-primary to-secondary hover:shadow-lg'
+                        : 'bg-accent-warm hover:opacity-90'
                     }`}
                   >
                     {passage.is_completed
@@ -259,9 +293,10 @@ const StudentReadingList = () => {
                       : passage.is_started
                       ? '📝 继续答题'
                       : '🚀 开始阅读'}
-                  </motion.button>
+                  </span>
                 </div>
-              </motion.div>
+                </Link>
+              </motion.article>
             ))}
           </div>
         )}

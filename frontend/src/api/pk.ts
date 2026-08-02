@@ -15,6 +15,7 @@ export interface PkPlayer {
   points: number;
   streak: number;
   finished: boolean;
+  /** 学生自选的组号,null=还没选组;组名用 team_names 映射(见 utils/pkTeam) */
   team?: number | null;
   n_words?: number;   // 该玩家私有词表大小
   // 掌握赛(分类记忆法流程):阶段 + 第几组 + 掌握进度
@@ -42,7 +43,9 @@ export interface PkRoomSnapshot {
   total_words: number;   // 开局前为 0,开局后 = 实际抽到的词数
   word_count: number;    // 房主设定的目标词数
   mode: PkMode;          // individual=个人赛 / team=分组赛
-  team_count: number;    // 分组赛队伍数
+  team_count: number;    // 分组赛组数 = 教师建房时建的组数
+  /** 组号 → 组名(教师建房时起的);学生在等待室据此选组 */
+  team_names?: Record<string, string>;
   host_is_player: boolean; // 房主是否下场(教师组织房为 false)
   countdown_seconds: number;      // 全场倒计时秒数
   deadline_at: string | null;     // 倒计时截止(ISO,开局后有值)
@@ -53,27 +56,38 @@ export interface PkRoomSnapshot {
 /** 队伍榜单一行(分组赛) */
 export interface PkTeamRankItem {
   team: number;
+  /** 队名 = 班级名(分组赛按班级自动分队);老房间可能缺,回退「第N队」 */
+  team_name?: string | null;
   rank: number;
   points: number;       // 队伍总分(展示用)
-  avg_points: number;   // 人均分(排名依据,人多不占优)
+  avg_points: number;   // 人均得分(排名依据)
+  avg_potential?: number;  // 人均满分(展示 "人均 x / 满分")
   correct: number;
   wrong: number;
   total_time_ms: number;
   member_count: number;
   online_count: number;
+  /** 队内人均掌握进度 0~1(仅展示;排名与柱高都按 avg_points) */
+  avg_progress?: number;
+  /** 队里已跑完全流程的人数(排名第一依据) */
+  done_count?: number;
 }
 
 /** live_ranking 事件里的单行榜单数据 */
 export interface PkLiveRankItem {
   user_id: number;
   nickname: string;
+  /** 得分 = 掌握进度 × 满分(决定胜负) */
   points: number;
+  /** 满分:该玩家词表的难度分之和(小学100/初中120/高中150 每词) */
+  potential_points?: number;
   correct: number;
   wrong: number;
   streak: number;
   total_time_ms: number;
   online: boolean;
   rank: number;
+  /** 队号;队名用房间快照的 team_names 映射(实时榜每行不带班名,省广播带宽) */
   team?: number | null;
   // 掌握赛
   stage?: string;
@@ -82,6 +96,14 @@ export interface PkLiveRankItem {
   progress?: number;
   finished?: boolean;
   finished_at_ms?: number | null;
+}
+
+/** live_ranking 事件:大房间时 ranking 已被服务端裁成「前10名 + 自己」,
+ *  total_players 给出全场真实人数(裁剪后才有此字段) */
+export interface PkLiveRankingEvent {
+  ranking: PkLiveRankItem[];
+  total_players?: number;
+  team_ranking?: PkTeamRankItem[];
 }
 
 /** game_finished 事件里的个人最终排名 */
@@ -95,6 +117,7 @@ export interface PkFinalRankItem {
   accuracy: number;
   final_score: number;
   best_streak?: number;
+  /** 队号;队名见同一事件的 team_ranking */
   team?: number | null;
 }
 
@@ -127,19 +150,20 @@ export interface MyRoomItem {
 }
 
 export const pkApi = {
+  // 分组赛:teamNames = 教师自己建的组名,学生进房后各自选组
   createRoom: (
     maxPlayers: number,
     wordCount: number,
     mode: PkMode = 'individual',
-    teamCount = 2,
     countdownSeconds = 300,
+    teamNames: string[] = [],
   ) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
       max_players: maxPlayers,
       word_count: wordCount,
       mode,
-      team_count: teamCount,
       countdown_seconds: countdownSeconds,
+      team_names: teamNames,
     }),
 
   lookupByCode: (code: string) =>

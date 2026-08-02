@@ -21,17 +21,25 @@ interface StudentStats {
   accuracy_rate: number;
   study_sessions: number;
   last_active: string | null;
+  mastered_words: number;
   weak_words_count: number;
+  /** 未达掌握线但没答错过(多是练习次数不够);已掌握+薄弱+待巩固 = 已学 */
+  pending_words_count: number;
 }
 
 interface WeakPoint {
   word_id: number;
   word: string;
+  meaning: string;
+  mastery_level: number;
+  correct_count: number;
   error_count: number;
   total_attempts: number;
+  error_rate: number;
   accuracy_rate: number;
   learning_modes: string[];
-  last_error_at: string;
+  /** 真的最后一次答错的时间;没错过则为 null */
+  last_error_at: string | null;
 }
 
 const TeacherStudentDetail = () => {
@@ -123,6 +131,7 @@ const TeacherStudentDetail = () => {
       case 'quiz': return '📝';
       case 'spelling': return '✍️';
       case 'fillblank': return '📋';
+      case 'exam': return '📄';
       default: return '📚';
     }
   };
@@ -133,9 +142,13 @@ const TeacherStudentDetail = () => {
       case 'quiz': return '选择题';
       case 'spelling': return '拼写';
       case 'fillblank': return '填空';
+      case 'exam': return '单元考试';
       default: return mode;
     }
   };
+
+  const formatDate = (raw: string | null) =>
+    raw ? new Date(raw).toLocaleDateString('zh-CN') : '—';
 
   // 分析学生错题
   const handleAnalyzeMistakes = async () => {
@@ -310,6 +323,9 @@ const TeacherStudentDetail = () => {
               <div className="text-sm text-gray-600">已学单词</div>
             </div>
             <div className="text-3xl font-bold text-gray-800">{stats.words_learned}</div>
+            <div className="mt-1 text-xs text-gray-500">
+              已掌握 {stats.mastered_words}
+            </div>
           </motion.div>
 
           <motion.div
@@ -340,8 +356,62 @@ const TeacherStudentDetail = () => {
               <div className="text-sm text-gray-600">薄弱单词</div>
             </div>
             <div className="text-3xl font-bold text-gray-800">{stats.weak_words_count}</div>
+            <div className="mt-1 text-xs text-gray-500">
+              练过但答错过 · 另有 {stats.pending_words_count} 个待巩固
+            </div>
           </motion.div>
         </div>
+
+        {/* 三档口径说明:已掌握 + 薄弱 + 待巩固 = 已学单词,老师能自己对上账 */}
+        {stats.words_learned > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+          >
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-sm font-bold text-slate-700">单词掌握分布</h3>
+              <p className="text-xs text-slate-500">
+                已掌握 {stats.mastered_words} + 薄弱 {stats.weak_words_count} + 待巩固{' '}
+                {stats.pending_words_count} = 已学 {stats.words_learned}
+              </p>
+            </div>
+
+            <div
+              className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100"
+              role="img"
+              aria-label={`已掌握 ${stats.mastered_words} 个，薄弱 ${stats.weak_words_count} 个，待巩固 ${stats.pending_words_count} 个，共已学 ${stats.words_learned} 个单词`}
+            >
+              <div
+                className="bg-emerald-500"
+                style={{ width: `${(stats.mastered_words / stats.words_learned) * 100}%` }}
+              />
+              <div
+                className="bg-red-500"
+                style={{ width: `${(stats.weak_words_count / stats.words_learned) * 100}%` }}
+              />
+              <div
+                className="bg-amber-400"
+                style={{ width: `${(stats.pending_words_count / stats.words_learned) * 100}%` }}
+              />
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                已掌握 · 答对 3 次以上
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
+                薄弱 · 做题错过,需要讲
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+                待巩固 · 没错过,但练得还少
+              </span>
+            </div>
+          </motion.div>
+        )}
 
         {/* AI 学情周报 */}
         <WeeklyReportCard
@@ -365,14 +435,24 @@ const TeacherStudentDetail = () => {
           animate={{ opacity: 1, y: 0 }}
           className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
         >
-          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            📌 学习薄弱点分析
-          </h2>
+          <div className="mb-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              📌 学习薄弱点分析
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              做题真答错过、且还没达到掌握线的词,错得最狠的排最前。分类环节自评"不认识"不计入错误。
+            </p>
+          </div>
 
           {weakPoints.length === 0 ? (
             <div className="text-center py-12">
               <span className="text-6xl mb-4 block">🎉</span>
               <p className="text-gray-500">该学生暂无明显薄弱点,继续保持!</p>
+              {stats.pending_words_count > 0 && (
+                <p className="mt-2 text-sm text-slate-400">
+                  还有 {stats.pending_words_count} 个词练得较少,可以安排一轮巩固
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -388,32 +468,42 @@ const TeacherStudentDetail = () => {
                     {index + 1}
                   </div>
 
-                  <div className="flex-1">
-                    <div className="font-bold text-lg text-gray-800 mb-1">{weak.word}</div>
-                    <div className="flex flex-wrap gap-2 text-sm text-gray-600">
-                      <span>❌ 错误 {weak.error_count} 次</span>
-                      <span>📊 总尝试 {weak.total_attempts} 次</span>
-                      <span>📅 最后错误: {new Date(weak.last_error_at).toLocaleDateString('zh-CN')}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex flex-wrap items-baseline gap-2">
+                      <span className="text-lg font-bold text-gray-800">{weak.word}</span>
+                      {weak.meaning && weak.meaning !== '无释义' && (
+                        <span className="text-sm text-gray-500">{weak.meaning}</span>
+                      )}
                     </div>
-                    <div className="flex gap-2 mt-2">
-                      {weak.learning_modes && weak.learning_modes.map(mode => (
-                        <span
-                          key={mode}
-                          className="px-2 py-1 bg-white rounded-full text-xs font-medium"
-                        >
-                          {getModeIcon(mode)} {getModeName(mode)}
-                        </span>
-                      ))}
+                    {/* 对错口径:错 N 次 / 共答 M 次,两个数与右侧正确率同源,自己就能除出来 */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-600">
+                      <span>
+                        ❌ 答错 <strong className="text-red-600">{weak.error_count}</strong> 次
+                        <span className="text-gray-400"> / 共答 {weak.total_attempts} 次</span>
+                      </span>
+                      {weak.last_error_at && <span>📅 最后答错 {formatDate(weak.last_error_at)}</span>}
                     </div>
+                    {weak.learning_modes.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {weak.learning_modes.map(mode => (
+                          <span
+                            key={mode}
+                            className="rounded-full bg-white px-2 py-1 text-xs font-medium text-gray-600"
+                          >
+                            {getModeIcon(mode)} {getModeName(mode)}错过
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <div className={`text-2xl font-bold ${
                       weak.accuracy_rate >= 50 ? 'text-orange-600' : 'text-red-600'
                     }`}>
                       {weak.accuracy_rate.toFixed(0)}%
                     </div>
-                    <div className="text-xs text-gray-500">准确率</div>
+                    <div className="text-xs text-gray-500">正确率</div>
                   </div>
                 </motion.div>
               ))}

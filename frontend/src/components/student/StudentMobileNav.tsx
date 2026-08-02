@@ -10,6 +10,7 @@ const visiblePaths = new Set([
   '/student/reading',
   '/student/leaderboard',
   '/student/achievements',
+  '/student/phonetics',
   '/student/analytics',
   '/student/memory-curve',
   '/student/mistake-book',
@@ -50,7 +51,7 @@ export default function StudentMobileNav() {
     || location.pathname === '/student/mistake-practice'
     || location.pathname === '/student/mistake-challenge'
     || location.pathname.startsWith('/student/pet/battle')
-    || location.pathname === '/student/pet/healing'
+    || location.pathname === '/student/pet/heal'
     || location.pathname.startsWith('/pk/arena');
   const visible = studentSurfaceVisible && visiblePaths.has(location.pathname);
 
@@ -81,12 +82,12 @@ export default function StudentMobileNav() {
               type="button"
               onClick={() => navigate(item.path)}
               className={`flex h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg transition ${
-                active ? 'text-primary' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                active ? 'text-accent-warm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
               }`}
               aria-current={active ? 'page' : undefined}
             >
               <item.icon className="h-5 w-5" strokeWidth={active ? 2.4 : 2} />
-              <span className="text-[10px] font-semibold leading-none">{item.label}</span>
+              <span className="text-xs font-semibold leading-none">{item.label}</span>
             </button>
           );
         })}
