@@ -1,23 +1,44 @@
 """PK 评分与排名(纯函数,无副作用)。
 
-计分规则(2026-07 版):
-- 每题基础分按学段:小学 100 / 初中 120 / 高中 150(取自单词本 grade_level)
-- 答对得 基础分 + 手速加成(剩余时间比例 × 30% 基础分,答得越快加越多)
-- 答错/超时 0 分,不倒扣;连击(streak)只做展示,不影响得分
-- 排名按累计 points 倒序,同分按总用时升序
+计分规则(2026-07-26 版:按掌握进度 × 词难度给分,得分定胜负):
+
+    得分 = 掌握进度(0~1) × 潜在总分
+    潜在总分 = 该玩家词表里每个词的难度分之和
+    每词难度分按学段:小学 100 / 初中 120 / 高中 150(取自单词本 grade_level)
+
+即「背完就是满分,词越难满分越高」。混学段同场时高中生词难、上限高,
+小学生词简单、上限低,各自比各自的完成度,同时难度差异如实反映在分数上。
+
+为什么这样设计(别改回"每题累加"):
+- **进度天然封顶 100%,分数刷不出来。** 累加制下,背得快的人跑完就锁分,
+  背得慢的人却能一直刷题累加 → "慢慢刷"反而赢,激励完全反向。
+  之前为此打过一个"提前完成奖励"的补丁;改成进度制后那个补丁不再需要,已删。
+- **正确率不用单独计分。** 答错会强制抄写/重考,进度自然变慢,
+  时间成本已经惩罚了错误 —— 再扣一次分是双重惩罚,小学生会挫败。
+- **手速也不用单独加成。** 同分时按总用时排序,快的人自然靠前。
+
+排名:总分降序 → 同分先完成者优先 → 再比总用时升序 → 正确数兜底。
 """
 from __future__ import annotations
 from typing import Any
 
-# 学段 → 每题基础分
+# 速度分的参照节奏:每个词算多少秒"正常速度"。
+# 一个词要走 分类→听写→过关 三阶段,实测一个词约 8~15 秒;取 12 秒作中间值。
+# 这是速度分的尺子,与教师设的倒计时解耦(见 speed_reference_seconds)。
+REFERENCE_SECONDS_PER_WORD = 12.0
+
+# 速度分占满分的最大比例:一开局就全掌握完拿满这个比例,时间耗尽则为 0。
+# 0.3 = "又快又准"最多比"慢慢做完"多 30% 分。
+# 调大 → 更奖励手速;调小 → 更接近纯掌握度比拼。
+SPEED_SCORE_RATIO = 0.3
+
+# 学段 → 每词难度分(背完该词的满分贡献)。
+# 改这三个数就等于调难度权重:差距越大,高学段越吃香。
 GRADE_BASE_POINTS: dict[str, int] = {
     "primary": 100,
     "junior": 120,
     "senior": 150,
 }
-
-# 手速加成占基础分的最大比例
-SPEED_BONUS_RATIO = 0.3
 
 _JUNIOR_GRADES = {"七年级", "八年级", "九年级"}
 _SENIOR_PREFIXES = ("高一", "高二", "高三", "高中")
@@ -62,31 +83,89 @@ def base_points_for_word_grades(grade_levels: list[str | None]) -> int:
     return GRADE_BASE_POINTS[tier]
 
 
-def compute_question_points(
-    base_points: int, is_correct: bool, time_spent_ms: int, timeout_ms: int,
+def potential_points(word_points: dict[int, int], word_ids: list[int],
+                     fallback: int = 100) -> int:
+    """
+    该玩家的「满分」= 词表里每词难度分之和。全部掌握即拿到这个分。
+
+    word_points 是全房共享的 word_id → 难度分(开局时按各词学段装载);
+    查不到的词按 fallback(小学分)兜底,宁可少给也不要凭空造分。
+    """
+    return sum(word_points.get(wid, fallback) for wid in word_ids)
+
+
+def speed_reference_seconds(word_count: int, countdown_seconds: float) -> float:
+    """
+    速度分的参照用时 = min(倒计时, 词数 × REFERENCE_SECONDS_PER_WORD)。
+
+    为什么不直接用倒计时(2026-07-26 实测暴露):倒计时是教师随手设的。
+    6 个词的房配了 5 分钟,全班 30 秒做完 —— 在 300 秒的尺子上 9 秒差距只有 3%,
+    柱高看不出快慢,速度分等于白给。教师不该为了让分数有意义去调倒计时。
+    改用「按词量推算的合理用时」当尺子,倒计时只作上限(设得很紧时仍以它为准)。
+    """
+    if word_count <= 0:
+        return max(1.0, countdown_seconds)
+    paced = word_count * REFERENCE_SECONDS_PER_WORD
+    if countdown_seconds <= 0:
+        return paced
+    return max(1.0, min(countdown_seconds, paced))
+
+
+def speed_score(
+    potential: int, used_seconds: float, countdown_seconds: float, word_count: int,
 ) -> int:
-    """单题得分:答错 0;答对 = 基础分 + 手速加成(剩余时间比例 × 30% 基础分)。"""
-    if not is_correct:
+    """
+    速度分:只有「全部掌握完成」才拿,= 满分 × SPEED_SCORE_RATIO × 提前比例。
+
+    为什么必须有(2026-07-26 实测暴露):6 人同场全部完成 → 全部 600 分,
+    名次只能靠看不见的完成时刻裁决,大屏上是 6 根等高柱标着 1~6 名,学生当场质疑。
+    把"快"折算成分数后,快慢在柱高上直接看得见。
+
+    提前比例按 speed_reference_seconds 的尺子算,不看教师设的倒计时(见上)。
+    按满分比例而非固定值:高中生满分高、速度分也高,与难度权重口径一致。
+    """
+    if potential <= 0 or used_seconds < 0:
         return 0
-    if timeout_ms <= 0:
-        return base_points
-    remaining_ratio = max(0.0, 1.0 - time_spent_ms / timeout_ms)
-    return base_points + round(base_points * SPEED_BONUS_RATIO * remaining_ratio)
+    ref = speed_reference_seconds(word_count, countdown_seconds)
+    ratio = max(0.0, min(1.0, (ref - used_seconds) / ref))
+    return round(potential * SPEED_SCORE_RATIO * ratio)
+
+
+def score_for_progress(progress: float, potential: int) -> int:
+    """
+    得分 = 掌握进度 × 满分。
+
+    进度封顶 1.0 → 分数封顶 potential,所以"多刷题"刷不出分数,
+    只有真的把词掌握了才涨分(见模块 docstring)。
+    """
+    p = max(0.0, min(1.0, progress))
+    return round(p * max(0, potential))
+
+
+def _score_sort_key(x: dict):
+    """
+    排序键(得分定胜负):①总分降序;②同分先完成者优先;③再按总用时升序;
+    ④正确数降序兜底。
+
+    同分才看完成时刻 —— 分数是主判据,时间只是平局裁决。
+    """
+    fa = x.get("finished_at_ms")
+    return (
+        -x.get("points", 0),                        # 总分高者赢
+        0 if x.get("finished") else 1,              # 同分:完成者优先
+        fa if fa is not None else float("inf"),     # 同分同完成:先完成者优先
+        x.get("total_time_ms", 0),                  # 再比总用时
+        -x.get("correct", 0),
+    )
 
 
 def _mastery_sort_key(x: dict):
-    """掌握赛排序键:①已完成者优先,按完成时刻升序(先掌握先赢);②未完成按进度降序;
-    ③同进度按用时升序;④再按正确数降序兜底。"""
-    finished = bool(x.get("finished"))
-    fa = x.get("finished_at_ms")
-    progress = x.get("progress", 0.0)
-    return (
-        0 if finished else 1,                       # 完成者排前
-        fa if fa is not None else float("inf"),     # 完成者按完成时刻升序
-        -progress,                                  # 未完成按进度降序
-        x.get("total_time_ms", 0),                  # 同进度用时少者先
-        -x.get("correct", 0),
-    )
+    """实时榜排序键:与结算同源,走 _score_sort_key(得分定胜负)。
+
+    保留此名是因为 live_ranking 等处已在引用;实现只有一份,避免"大屏第一名
+    和最终赢家不是同一人"——那是学生当场质疑的地方。
+    """
+    return _score_sort_key(x)
 
 
 def rank_players(players: list[dict]) -> list[dict]:
@@ -116,6 +195,7 @@ def live_ranking(room: Any) -> list[dict]:
             "user_id": ps.user_id,
             "nickname": ps.nickname,
             "points": ps.points,
+            "potential_points": getattr(ps, "potential_points", 0),
             "correct": ps.correct,
             "wrong": ps.wrong,
             "streak": ps.streak,
@@ -127,6 +207,9 @@ def live_ranking(room: Any) -> list[dict]:
             "finished": ps.finished,
             "finished_at_ms": int(ps.finished_at.timestamp() * 1000) if ps.finished_at else None,
             "online": ps.online,
+            # 只带队号不带队名:队名靠快照里的 team_names 映射,前端自己查。
+            # 实时榜每答一题就全房广播(教师大屏收全量 200 行),每行塞一个班名
+            # 白占约 28 字节 × 人数,而 12M 上行是这套系统的既有瓶颈。
             "team": getattr(ps, "team", None),
         }
         for ps in room.players.values()
@@ -141,20 +224,30 @@ def team_ranking(room: Any) -> list[dict]:
     """分组赛队伍榜:队内成员得分/正确/用时求和,按队伍总分倒序、同分总用时升序。
 
     个人榜(live_ranking)照常返回,前端分组赛下用队伍榜做主视图、个人榜做队内明细。
-    空队(没人分到)也列出,让教师在等待室看到全部队号。
+    队伍 = 班级(队名即班级名),这里是队名唯一逐行下发的地方。
     """
     teams: dict[int, dict] = {}
+    names: dict[int, str] = getattr(room, "team_names", None) or {}
+    # 开局后只统计真正有人的组(active_teams);等待室(未开局)列出教师建的全部组,
+    # 让学生看到每组当前几人好决定进哪组。
+    listed = getattr(room, "active_teams", None) or sorted(names)
+
     def _blank(t):
-        return {"team": t, "points": 0, "correct": 0, "wrong": 0, "total_time_ms": 0,
+        # 队名只在队伍榜逐行下发(几行而已);学生行只带队号,由前端查映射
+        return {"team": t, "team_name": names.get(t) or f"第 {t} 队",
+                "points": 0, "potential": 0, "correct": 0, "wrong": 0, "total_time_ms": 0,
                 "member_count": 0, "online_count": 0, "done_count": 0, "_prog_sum": 0.0}
-    for t in range(1, getattr(room, "team_count", 2) + 1):
+    for t in listed:
         teams[t] = _blank(t)
     for ps in room.players.values():
         t = ps.team
-        if t not in teams:  # 容错:队号越界的成员(理论上不会发生)
+        if t is None:      # 还没选组的学生不计入任何组(等待室阶段常见)
+            continue
+        if t not in teams:  # 容错:组号越界的成员(理论上不会发生)
             teams[t] = _blank(t)
         agg = teams[t]
         agg["points"] += ps.points
+        agg["potential"] += getattr(ps, "potential_points", 0)
         agg["correct"] += ps.correct
         agg["wrong"] += ps.wrong
         agg["total_time_ms"] += ps.total_time_ms
@@ -164,15 +257,17 @@ def team_ranking(room: Any) -> list[dict]:
             agg["done_count"] += 1
         if ps.online:
             agg["online_count"] += 1
-    # 排名按「人均掌握进度」:率先整队掌握越多越靠前;人数不等也公平。
-    # 保留 avg_points(展示)与 points 总分。
+    # 排名按「人均得分」:与个人榜同源(得分定胜负),用人均而非总分,
+    # 否则人多的队自动赢。同分再比完成人数、总用时。
+    # ⚠️ 别改回按 avg_progress 排:那会让大屏队伍第一名与最终冠军不是同一队。
     for agg in teams.values():
         n = agg["member_count"]
         agg["avg_points"] = round(agg["points"] / n, 1) if n else 0.0
+        agg["avg_potential"] = round(agg["potential"] / n, 1) if n else 0.0
         agg["avg_progress"] = round(agg["_prog_sum"] / n, 4) if n else 0.0
         agg.pop("_prog_sum", None)
     items = list(teams.values())
-    items.sort(key=lambda x: (-x["done_count"], -x["avg_progress"], x["total_time_ms"]))
+    items.sort(key=lambda x: (-x["avg_points"], -x["done_count"], x["total_time_ms"]))
     for idx, it in enumerate(items, start=1):
         it["rank"] = idx
     return items

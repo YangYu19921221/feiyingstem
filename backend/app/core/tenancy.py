@@ -35,6 +35,7 @@ def register_tenant_models():
     from app.models.word import WordBook, BookSeries
     from app.models.sentence import SentenceBook
     from app.models.reading import ReadingPassage
+    from app.models.phonetic import PhoneticVideo
     from app.models.competition import CompetitionQuestionSet, LeaderboardSnapshot
     from app.models.assessment import AssessmentLead
     from app.models.pk import PkRoom
@@ -55,6 +56,7 @@ def register_tenant_models():
         (BookSeries, True),
         (SentenceBook, True),
         (ReadingPassage, True),
+        (PhoneticVideo, True),   # 音标视频:NULL=平台共享,机构可自建
         (CompetitionQuestionSet, True),
     ])
 

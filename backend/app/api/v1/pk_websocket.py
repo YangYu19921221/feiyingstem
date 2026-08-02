@@ -1,8 +1,10 @@
 """PK 竞技场 WebSocket 端点。"""
 from __future__ import annotations
 import asyncio
+import json
 import logging
 import random
+from typing import Callable
 from datetime import datetime, timedelta
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
@@ -100,6 +102,8 @@ def _snapshot_dict(room) -> dict:
         "word_count": room.word_count,
         "mode": room.mode,
         "team_count": room.team_count,
+        # 队号 → 队名(班级名);分组赛按班级自动建队,前端一律显示队名而非"第N队"
+        "team_names": {str(t): n for t, n in room.team_names.items()},
         "host_is_player": room.host_is_player,
         # 全场倒计时(并行竞速):前端据 deadline_at 显示倒数
         "countdown_seconds": room.countdown_seconds,
@@ -223,16 +227,43 @@ def _ensure_heartbeat_watchdog():
         _heartbeat_watchdog_task = asyncio.create_task(_heartbeat_watchdog_loop())
 
 
-async def _broadcast(room, event: dict, exclude: int | None = None):
-    """Broadcast an event to all players except `exclude`. If a send fails,
+def _dumps(payload: dict) -> str:
+    """与 Starlette send_json 同款序列化。预先转成文本,好在多收件人间复用同一份字节。"""
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+
+async def _broadcast(
+    room,
+    event: dict,
+    exclude: int | None = None,
+    *,
+    per_player: Callable[[int], str] | None = None,
+):
+    """
+    Broadcast an event to all players except `exclude`. If a send fails,
     mark the player as disconnected and schedule cleanup. Notifications about
-    the failure are deferred until iteration completes (avoid recursive sends)."""
+    the failure are deferred until iteration completes (avoid recursive sends).
+
+    per_player(uid) -> 已序列化的 JSON 文本:可选的「按收件人定制载荷」钩子
+    (实时榜用它把全量榜单裁成该玩家看得到的那部分)。不传就所有玩家收同一份。
+    定制只是载荷层的事,失联检测/清理、教师镜像、观众脱敏全部共用这一条路径 ——
+    曾经为了裁剪另写一个并行的 fan-out,结果漏掉了失联清理,
+    `live_ranking` 成了唯一不会把死连接标离线的广播。
+    钩子返回文本而不是 dict,是为了让调用方能自己复用序列化结果
+    (榜单只有"前N名"和"前N名+我"两种形状,不该按人 dumps 200 次)。
+
+    另:send_json 内部每次都会 json.dumps 一遍,200 人房就是同一份数据序列化 200 次。
+    这里先 dumps 成文本再 send_text,同载荷只序列化一次。
+    """
     failed_user_ids: list[int] = []
+    common_text = _dumps(event) if per_player is None else None
+
     for uid, ps in list(room.players.items()):
         if uid == exclude or ps.ws is None:
             continue
+        payload_text = common_text if common_text is not None else per_player(uid)
         try:
-            await ps.ws.send_json(event)
+            await ps.ws.send_text(payload_text)
         except Exception as e:
             logger.warning(
                 "PK broadcast send failed: room_id=%d user_id=%d error=%s",
@@ -243,7 +274,7 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
     # 教师控制台(非参赛房主):收全部广播,不脱敏(裁判视角)。发送失败标离线不影响对局。
     if room.host_ws is not None:
         try:
-            await room.host_ws.send_json(event)
+            await room.host_ws.send_text(_dumps(event))
         except Exception as e:
             logger.warning(
                 "PK host-console send failed: room_id=%d host_id=%d error=%s",
@@ -253,18 +284,19 @@ async def _broadcast(room, event: dict, exclude: int | None = None):
             room.host_online = False
 
     # 观众:题目脱敏后发送;发送失败直接移除(观众无重连窗口)
-    spec_event = _mask_for_spectators(event)
-    for uid, ss in list(room.spectators.items()):
-        if uid == exclude or ss.ws is None:
-            continue
-        try:
-            await ss.ws.send_json(spec_event)
-        except Exception as e:
-            logger.warning(
-                "PK spectator send failed: room_id=%d user_id=%d error=%s",
-                room.room_id, uid, e,
-            )
-            room.spectators.pop(uid, None)
+    if room.spectators:
+        spec_text = _dumps(_mask_for_spectators(event))
+        for uid, ss in list(room.spectators.items()):
+            if uid == exclude or ss.ws is None:
+                continue
+            try:
+                await ss.ws.send_text(spec_text)
+            except Exception as e:
+                logger.warning(
+                    "PK spectator send failed: room_id=%d user_id=%d error=%s",
+                    room.room_id, uid, e,
+                )
+                room.spectators.pop(uid, None)
 
     for uid in failed_user_ids:
         ps = room.players.get(uid)
@@ -305,9 +337,66 @@ async def _send_to_player(room, uid: int, event: dict):
             room.host_online = False
 
 
-async def _broadcast_room_state(room):
-    """成员/在线状态变化后同步全房快照——等待室的玩家列表靠它实时刷新。"""
-    await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+async def _broadcast_room_state(room, *, immediate: bool = False):
+    """
+    成员/在线状态变化后同步全房快照——等待室的玩家列表靠它实时刷新。
+
+    ⚠️ 这是大房间的头号流量源(2026-07-26 实测):100 人陆续进房 → 每次 join 都
+    向全房广播一份含全部玩家的快照 → 100 次 × 100 人 × 随人数变大的 payload,
+    实测 100 人房 60 秒里 room_state 占 328MB(全部流量的 97%),
+    远超实时榜。和实时榜一样合并推送:窗口内多次成员变动只发最后一份。
+    快照是"当前状态"不是"增量",合并不丢信息。
+
+    immediate=True 用于必须立刻同步的场合(开局、单人首次连上要拿到初始快照)。
+    """
+    if immediate:
+        _clear_state_throttle(room.room_id)
+        await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+        return
+    # 节流路径不在这里建快照:窗口内可能被调用几十次,建了也会被丢掉,
+    # 而 _snapshot_dict 要遍历全部玩家(200 人房约 5.5KB),白算几十遍
+    _schedule_state_flush(room)
+
+
+# 成员变动合并推送:与榜单同一套思路,窗口随人数放宽
+STATE_THROTTLE_MS = 300
+STATE_THROTTLE_PER_PLAYER_MS = 15
+STATE_THROTTLE_MAX_MS = 2000
+_STATE_TASKS: dict[int, asyncio.Task] = {}
+
+
+def _state_throttle_ms(room) -> int:
+    n = len(room.players) + len(room.spectators)
+    return min(STATE_THROTTLE_MAX_MS,
+               max(STATE_THROTTLE_MS, n * STATE_THROTTLE_PER_PLAYER_MS))
+
+
+def _schedule_state_flush(room) -> None:
+    """窗口内多次成员变动只发一份最新快照;已有任务在等就直接复用它。"""
+    task = _STATE_TASKS.get(room.room_id)
+    if task is not None and not task.done():
+        return
+    _STATE_TASKS[room.room_id] = asyncio.create_task(_flush_state_later(room))
+
+
+async def _flush_state_later(room) -> None:
+    try:
+        await asyncio.sleep(_state_throttle_ms(room) / 1000)
+        # 发送时才生成快照 —— 窗口期内又有人进出,要发最新的那份。
+        # (所以这里不需要 pending 缓存,和榜单节流不同)
+        await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning("PK room_state flush failed: room_id=%d error=%s", room.room_id, e)
+    finally:
+        _STATE_TASKS.pop(room.room_id, None)
+
+
+def _clear_state_throttle(room_id: int) -> None:
+    task = _STATE_TASKS.pop(room_id, None)
+    if task is not None and not task.done():
+        task.cancel()
 
 
 async def teardown_room(room_id: int, message: str = "老师已删除本房间") -> bool:
@@ -355,6 +444,118 @@ async def _notify_room_closed(room):
     room.spectators.clear()
 
 
+# ---------- 实时榜合并推送 + 按人裁剪(解 O(人数²) 流量) ----------
+# 原实现:每人每答一题 → 立即把「全量榜单」广播给全房。出站流量 = 榜单大小 × 人数 × 提交频率,
+# 三个因子里两个随人数涨 → O(人数²)。实测 30 人房 580KB/s、50 人房就打满 12M 上行。
+#
+# 两处优化,合起来把流量压成近似 O(人数):
+# 1. 合并推送:同一房间 throttle 窗口内的多次更新只发最后一条(榜单是"当前状态"不是
+#    "增量事件",丢中间态无损)。让流量与答题速度解耦。
+# 2. 按人裁剪:学生只需要"前几名 + 我自己在第几",不需要全班每一行。裁成
+#    前 RANKING_TOP_N + 自己 → 单条榜单大小不再随人数涨。
+#    教师控制台/大屏要看全班,仍发全量(每房只有 1 个教师连接,不构成规模问题)。
+RANKING_TOP_N = 10
+RANKING_THROTTLE_MS = 250
+# 人多时再放宽窗口:窗口 ∝ 人数,保证「每秒总出站」有上界,不会因人数翻倍而翻倍
+RANKING_THROTTLE_PER_PLAYER_MS = 12
+RANKING_THROTTLE_MAX_MS = 2000
+_RANKING_PENDING: dict[int, dict] = {}      # room_id → 最新一条待发榜单
+_RANKING_TASKS: dict[int, asyncio.Task] = {}  # room_id → 正在等待的 flush 任务
+
+
+def _ranking_throttle_ms(room) -> int:
+    n = len(room.players)
+    return min(RANKING_THROTTLE_MAX_MS,
+               max(RANKING_THROTTLE_MS, n * RANKING_THROTTLE_PER_PLAYER_MS))
+
+
+def _trim_ranking_for(event: dict, user_id: int | None) -> dict:
+    """
+    把全量榜单裁成「名次连续的前 N 名 + 自己(若在 N 名之外,追加在末尾)」。
+    user_id=None 表示要全量(教师控制台 / 大屏观众)。
+
+    前 N 名保持名次连续、顺序不变 —— 前端柱状图靠这个把"柱子的位置"等同于"名次",
+    可视区只在有人真的追进前 N 时才换人。自己排在 N 名外时作为额外一条附在最后,
+    前端单独渲染成"我的位置"那一行,不插进柱子序列里。
+    """
+    full = event.get("ranking") or []
+    if user_id is None or len(full) <= RANKING_TOP_N:
+        return event
+    top = full[:RANKING_TOP_N]
+    if not any(r.get("user_id") == user_id for r in top):
+        mine = next((r for r in full if r.get("user_id") == user_id), None)
+        if mine is not None:
+            top = top + [mine]
+    return {**event, "ranking": top, "total_players": len(full)}
+
+
+def _schedule_ranking_flush(room, event: dict) -> None:
+    """把最新榜单存下;若没有在等的 flush 任务,起一个。"""
+    _RANKING_PENDING[room.room_id] = event
+    task = _RANKING_TASKS.get(room.room_id)
+    if task is not None and not task.done():
+        return   # 已有任务在等,它会带上最新快照
+    _RANKING_TASKS[room.room_id] = asyncio.create_task(_flush_ranking_later(room))
+
+
+async def _flush_ranking_later(room) -> None:
+    try:
+        await asyncio.sleep(_ranking_throttle_ms(room) / 1000)
+        event = _RANKING_PENDING.pop(room.room_id, None)
+        if event is not None:
+            await _broadcast_ranking(room, event)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning("PK ranking flush failed: room_id=%d error=%s", room.room_id, e)
+    finally:
+        _RANKING_TASKS.pop(room.room_id, None)
+
+
+async def _broadcast_ranking(room, event: dict) -> None:
+    """
+    实时榜分发:学生只收「前 N 名 + 自己」,教师控制台/观众(大屏)收全量。
+
+    走 _broadcast 的 per_player 钩子,而不是自己再写一遍 fan-out ——
+    失联检测与清理、教师镜像、观众脱敏都由 _broadcast 统一负责。
+    """
+    full = event.get("ranking") or []
+    if len(full) <= RANKING_TOP_N:
+        await _broadcast(room, event)   # 人少时人人都能看全,无需裁剪
+        return
+
+    # 前 N 名对所有学生都一样,只序列化这一次;进了前 N 的人直接复用这份文本。
+    # 排在 N 名外的人 = 同一份前缀 + 自己那行,用字符串拼接补上尾巴,
+    # 避免为每个人整体 dumps 一遍(200 人房那是 200 次序列化)。
+    trimmed_common = {**event, "ranking": full[:RANKING_TOP_N], "total_players": len(full)}
+    common_text = _dumps(trimmed_common)
+    top_ids = {r.get("user_id") for r in trimmed_common["ranking"]}
+    row_by_uid = {r.get("user_id"): r for r in full}
+    # 形如 ...,"ranking":[...]  → 在最后一个 ] 前插入 ,{我这行}
+    split_at = common_text.rindex("]")
+    prefix, suffix = common_text[:split_at], common_text[split_at:]
+    text_cache: dict[int, str] = {}
+
+    def payload_for(uid: int) -> str:
+        if uid in top_ids or uid not in row_by_uid:
+            return common_text
+        cached = text_cache.get(uid)
+        if cached is None:
+            cached = f"{prefix},{_dumps(row_by_uid[uid])}{suffix}"
+            text_cache[uid] = cached
+        return cached
+
+    await _broadcast(room, event, per_player=payload_for)
+
+
+def _clear_ranking_throttle(room_id: int) -> None:
+    """房间结束/解散时清理,避免任务泄漏。"""
+    task = _RANKING_TASKS.pop(room_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+    _RANKING_PENDING.pop(room_id, None)
+
+
 def _cancel_timer(room_id: int, user_id: int, q_seq: int):
     key = (room_id, user_id, q_seq)
     task = _TIMEOUT_TASKS.pop(key, None)
@@ -378,6 +579,10 @@ def _cancel_room_timers(room_id: int) -> None:
         task = _TIMEOUT_TASKS.pop(key, None)
         if task and not task.done():
             task.cancel()
+    # 榜单/成员快照的节流任务挂在同一个房上,一并清掉
+    # (否则房都没了还有 task 在等着广播)
+    _clear_ranking_throttle(room_id)
+    _clear_state_throttle(room_id)
     cd = _COUNTDOWN_TASKS.pop(room_id, None)
     if cd and not cd.done():
         cd.cancel()
@@ -468,6 +673,12 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
         # 定向事件(某玩家的题/结算)只发本人 + 镜像教师;全房事件(榜单/终局/状态)照旧广播
         if target is not None:
             await _send_to_player(room, target, event)
+        elif etype == "live_ranking":
+            # 实时榜合并推送:每人每答一题都会产生一条全量榜单,原来直接广播
+            # → 出站流量按「房间人数²」涨(30人房实测 580KB/s,50人房就打满 12M)。
+            # 改为最多每 RANKING_THROTTLE_MS 推一次,期间的更新合并成一条最新快照。
+            # 榜单是「当前状态」而非「增量事件」,丢掉中间态不损失信息。
+            _schedule_ranking_flush(room, event)
         else:
             await _broadcast(room, event)
 
@@ -482,6 +693,9 @@ async def _process_events(room, events: list[dict], word_lookup: dict):
                 fin_events = engine.finalize_room(room)
                 await _process_events(room, fin_events, word_lookup)
         elif etype == "game_finished":
+            # 终局已经带了最终榜(finish_evt.ranking),此时还压着的节流榜单必须丢掉:
+            # 否则它会在 game_finished 之后才送达,前端把结算页刷回"比赛中"的旧榜
+            _clear_ranking_throttle(room.room_id)
             logger.info(
                 "PK game finished: room_id=%d players=%d",
                 room.room_id, len(room.players),
@@ -518,7 +732,8 @@ async def _push_first_question(room) -> None:
     for ps in room.players.values():
         if ps.word_ids:
             init_player_groups(room, ps)
-    await _broadcast(room, {"type": "room_state", "room": _snapshot_dict(room)})
+    # 开局快照必须立刻到位(前端据此从等待室切到比赛界面),且要丢掉排队中的旧快照
+    await _broadcast_room_state(room, immediate=True)
     for uid, ps in list(room.players.items()):
         # 必须真正连着 WS 才推题/起计时器:仅 online=True 但 ws=None 的是"join 了没连"的
         # 幽灵玩家,给他起计时器会 force_timeout 一路自动记错推进,污染对局。重连时会补发其当前题。
@@ -548,15 +763,24 @@ async def _try_start_game(room, requester_ws) -> None:
         return
 
     if room.mode == "team":
-        online_teams = {room.players[uid].team for uid in online_ids}
-        needed = set(range(1, room.team_count + 1))
-        empty = sorted(needed - online_teams)
-        if empty:
+        # 学生自己选组,所以开局前要拦两种情况:有人还没选、以及只有一组有人。
+        unpicked = [room.players[uid].nickname for uid in online_ids if not room.players[uid].team]
+        if unpicked:
+            shown = "、".join(unpicked[:5]) + ("…" if len(unpicked) > 5 else "")
             await requester_ws.send_json({
-                "type": "error", "code": "EMPTY_TEAM",
-                "message": f"第 {'、'.join(str(t) for t in empty)} 队还没有在线玩家,先让每队都有人再开始",
+                "type": "error", "code": "TEAM_NOT_PICKED",
+                "message": f"还有 {len(unpicked)} 人没选组({shown}),让他们在等待室点一下组名;也可以你直接帮他们指定",
             })
             return
+        online_teams = {room.players[uid].team for uid in online_ids}
+        if len(online_teams) < 2:
+            await requester_ws.send_json({
+                "type": "error", "code": "SINGLE_TEAM",
+                "message": "在线学生都挤在同一组了,分组赛至少要两组有人。让部分学生换到别的组,或改用个人赛",
+            })
+            return
+        # 没人选的空组不进队伍榜(教师可能建了 4 组只用了 2 组),但组本身留着不删
+        room.active_teams = sorted(online_teams)
 
     if room.fixed_words and room.word_ids:
         # 晋级赛(1v1 淘汰赛):公平第一 → 双方考「同一批词」(从赛事单元池随机抽 word_count 个),
@@ -806,7 +1030,12 @@ async def pk_ws(
 
     _ensure_heartbeat_watchdog()
 
-    # 广播给全房(含自己):新玩家加入/重连上线,等待室所有人的玩家列表都要刷新
+    # 自己必须立刻拿到快照(否则等待室空白),别人的列表刷新走合并推送:
+    # 100 人陆续进房时,「每人 join 都全房广播」是 O(人数²) 流量的元凶
+    try:
+        await ws.send_json({"type": "room_state", "room": _snapshot_dict(room)})
+    except Exception:
+        pass
     await _broadcast_room_state(room)
     await _broadcast(room, {"type": "player_reconnected", "user_id": user.id}, exclude=user.id)
 
@@ -862,6 +1091,22 @@ async def pk_ws(
                     word_lookup=room.word_lookup,
                 )
                 await _process_events(room, events, room.word_lookup)
+            elif mtype == "pick_team":
+                # 学生自己选组(等待室点组名):{type:pick_team, team}
+                # 只能给自己选——不带 user_id,免得学生互相改组
+                try:
+                    after = manager.set_player_team(room.room_id, user.id, int(msg.get("team")))
+                except (TypeError, ValueError):
+                    after = None
+                if after is not None:
+                    # 走节流广播:100 人房里人人点组名,immediate 会把 room_state
+                    # 打成流量风暴(它本就是头号流量源)
+                    await _broadcast_room_state(after)
+                else:
+                    await ws.send_json({
+                        "type": "error", "code": "PICK_TEAM_FAILED",
+                        "message": "选组没成功,可能已经开局或这个组不存在了",
+                    })
             elif mtype == "kick_player" and user.id == room.host_id:
                 target = msg.get("user_id")
                 if target in room.players and target != user.id:

@@ -34,6 +34,7 @@ def _snapshot(room) -> RoomSnapshot:
         word_count=room.word_count,
         mode=room.mode,
         team_count=room.team_count,
+        team_names={str(t): n for t, n in room.team_names.items()},
         host_is_player=room.host_is_player,
         countdown_seconds=room.countdown_seconds,
         deadline_at=room.deadline_at.isoformat() + "Z" if room.deadline_at else None,
@@ -119,6 +120,7 @@ async def create_room(
 
     建房定人数、每人题量、模式(个人/分组)与全场倒计时;开局时给每个参赛学生各抽
     「他自己背过的词」并行竞速,全场倒计时到点结算。学生只能凭邀请码加入,不能建房。
+    分组赛(mode=team)用 team_names 自己建组命名,学生进等待室后各自选组。
     """
     nickname = user.full_name or user.username or f"User{user.id}"
     try:
@@ -129,7 +131,7 @@ async def create_room(
             nickname=nickname,
             org_id=user.org_id,
             mode=body.mode,
-            team_count=body.team_count,
+            team_names=body.team_names,
             host_is_player=False,  # 教师是组织者,不作为选手下场
             countdown_seconds=body.countdown_seconds,
         )
@@ -211,10 +213,15 @@ async def join_room_by_code(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """非房主玩家通过邀请码加入房间。将玩家加入 manager.ROOMS,后续 WS 连接才能通过 player 校验。"""
-    nickname = user.full_name or user.username or f"User{user.id}"
+    """非房主玩家通过邀请码加入房间。将玩家加入 manager.ROOMS,后续 WS 连接才能通过 player 校验。
+
+    分组赛(mode=team)按学生所在班级自动归队:同班同队、班级名即队名,教师不用手动分。
+    """
     try:
-        room = manager.join_room(invite_code=code, user_id=user.id, nickname=nickname, org_id=user.org_id)
+        nickname = user.full_name or user.username or f"User{user.id}"
+        room = manager.join_room(
+            invite_code=code, user_id=user.id, nickname=nickname, org_id=user.org_id,
+        )
     except manager.RoomNotFound:
         # Distinguish never-existed from finished
         result = await db.execute(

@@ -8,7 +8,10 @@ from typing import Any, Optional
 import random
 from app.services.pk.state import RoomState, AnswerRecord, PHASES_IN_ORDER, PhaseLiteral
 from app.services.pk.adapters import get_adapter, exam_type_for
-from app.services.pk.score import rank_players, live_ranking, team_ranking, compute_question_points
+from app.services.pk.score import (
+    rank_players, live_ranking, team_ranking, potential_points, score_for_progress,
+    speed_score,
+)
 
 
 PHASE_TIMEOUT_MS: dict[str, int] = {
@@ -50,6 +53,34 @@ def init_player_groups(room: RoomState, p, group_size: Optional[int] = None) -> 
     p.current_meta = {}
     _prepare_meta(room, p, room.word_lookup)
     p.progress = p.compute_progress()
+    # 开局就算一次:满分(词难度之和)要在大屏上显示"0 / 满分",不能等第一次答题
+    _sync_points(room, p)
+
+
+def _sync_points(room: RoomState, p) -> None:
+    """
+    重算该玩家得分 = 掌握分 + 速度分。
+
+    - 掌握分 = 进度 × 满分(词表难度分之和)
+    - 速度分 = 只有全部完成才拿,按剩余时间比例 × 满分 × SPEED_SCORE_RATIO
+
+    每次答题后调用(在 _advance 之后,进度已更新)。这是 points 的唯一写入口 ——
+    别再往 p.points 上累加,累加制会让"慢慢刷题"反而得分更高(见 score.py)。
+
+    速度分一旦结算就锁住(存 p.speed_points):否则每次重算时"剩余时间"都变少,
+    已完成玩家的分数会随时间倒流,大屏上柱子往下掉。
+    """
+    p.potential_points = potential_points(room.word_points, p.word_ids, room.base_points)
+    mastery = score_for_progress(p.compute_progress(), p.potential_points)
+
+    if p.finished and p.speed_points == 0 and room.started_at is not None:
+        # 用「实际用时」而不是「剩余倒计时」:速度分的尺子是按词量推算的合理用时,
+        # 与教师随手设的倒计时解耦(倒计时设太松会让速度分失效,见 score.py)
+        used = ((p.finished_at or datetime.utcnow()) - room.started_at).total_seconds()
+        p.speed_points = speed_score(
+            p.potential_points, used, float(room.countdown_seconds), len(p.word_ids),
+        )
+    p.points = mastery + p.speed_points
 
 
 def _prepare_meta(room: RoomState, p, word_lookup: dict[int, Any]) -> None:
@@ -204,7 +235,7 @@ def _advance(room: RoomState, p, is_correct: bool, payload: dict, word_lookup: d
             from app.services.pk.state import EXAM_PASS_RATIO
             ratio = (p.exam_correct / p.exam_total) if p.exam_total else 0.0
             if ratio >= EXAM_PASS_RATIO:
-                _advance_group(p)
+                _advance_group(p, room)
             else:
                 # 重考:重灌本组词,重置计数
                 p.exam_attempt += 1
@@ -260,8 +291,8 @@ def _enter_exam(p) -> None:
     p.current_wid = p.exam_pending[0] if p.exam_pending else None
 
 
-def _advance_group(p) -> None:
-    """本组过关:进入下一组的分类;没有下一组则完成。"""
+def _advance_group(p, room: RoomState | None = None) -> None:
+    """本组过关:进入下一组的分类;没有下一组则完成(并结算提前完成奖励)。"""
     p.gi += 1
     if p.gi < len(p.groups):
         p.stage = "classify"
@@ -273,6 +304,10 @@ def _advance_group(p) -> None:
         p.finished = True
         p.finished_at = datetime.utcnow()
         p.current_wid = None
+        # 进度到 1.0 → 得分即满分。不需要"提前完成奖励"那种补丁:
+        # 进度封顶就是分数封顶,慢慢刷刷不出更多分(见 score.py)
+        if room is not None:
+            _sync_points(room, p)
 
 
 def submit_answer(
@@ -309,10 +344,7 @@ def submit_answer(
     if stage == "exam":
         payload = {**payload, "_exam_type": exam_type_for(q_seq)}
     is_correct = bool(get_adapter(stage).judge(word, payload))
-    points_gained = compute_question_points(
-        room.points_for_word(word_id) if word_id is not None else 0,
-        is_correct, time_spent_ms, stage_timeout,
-    )
+    points_before = p.points
 
     p.answers.append(AnswerRecord(
         user_id=user_id, word_id=word_id or 0, phase=stage,  # type: ignore[arg-type]
@@ -325,11 +357,16 @@ def submit_answer(
     else:
         p.wrong += 1
         p.streak = 0
-    p.points += points_gained
     p.total_time_ms += time_spent_ms
     p.q_seq += 1
 
     _advance(room, p, is_correct, payload, word_lookup)
+
+    # 得分 = 掌握进度 × 满分(词难度之和)。必须放在 _advance 之后 ——
+    # 进度是在那里推进的,先算就会永远少记一题。
+    # 答错不直接扣分:抄写/重考会拖慢进度,时间成本已经是惩罚(见 score.py)
+    _sync_points(room, p)
+    points_gained = p.points - points_before
 
     live_evt: dict = {"type": "live_ranking", "ranking": live_ranking(room)}
     if room.mode == "team":
@@ -384,6 +421,8 @@ def force_timeout(
     p.total_time_ms += stage_timeout
     p.q_seq += 1
     _advance(room, p, False, payload, word_lookup)
+    # 超时也要重算分:进度可能因这次"判错"回退(听写转抄写等),分数得跟着动
+    _sync_points(room, p)
 
     live_evt: dict = {"type": "live_ranking", "ranking": live_ranking(room)}
     if room.mode == "team":
@@ -422,7 +461,7 @@ def finalize_room(room: RoomState) -> list[dict]:
             "correct": ps.correct, "wrong": ps.wrong,
             "total_time_ms": ps.total_time_ms,
             "points": ps.points, "best_streak": ps.best_streak,
-            "team": ps.team,
+            "team": ps.team,   # 队名见同一事件里的 team_ranking,不逐行重复
             "finished": ps.finished,
             "finished_at_ms": int(ps.finished_at.timestamp() * 1000) if ps.finished_at else None,
             "progress": ps.compute_progress(),

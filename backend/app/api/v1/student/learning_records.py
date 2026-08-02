@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range, local_today_utc_range
+from app.services import daily_words
 from app.models.user import User, StudyCalendar
 from app.models.word import Unit, Word, WordDefinition
 from app.models.learning import (
@@ -27,24 +28,19 @@ from app.schemas.learning_record import (
 )
 from app.api.v1.auth import get_current_student
 from app.services.learning_quality import learning_quality_service
+from app.services.mastery import (
+    apply_answer,
+    SRS_INTERVALS as _SRS_INTERVALS,
+    SRS_LABELS as _SRS_LABELS,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# 艾宾浩斯间隔重复时间表（小时）
-SRS_INTERVALS = [
-    0.083,   # Stage 0→1: 5分钟
-    0.5,     # Stage 1→2: 30分钟
-    12,      # Stage 2→3: 12小时
-    24,      # Stage 3→4: 1天
-    48,      # Stage 4→5: 2天
-    96,      # Stage 5→6: 4天
-    168,     # Stage 6→7: 7天
-    360,     # Stage 7→8: 15天
-    720,     # Stage 8→毕业: 30天
-]
-
-SRS_LABELS = ["5分钟", "30分钟", "12小时", "1天", "2天", "4天", "7天", "15天", "30天", "已毕业"]
+# 艾宾浩斯间隔重复时间表/标签:真源在 services/mastery.py,这里保留同名常量供本模块与
+# 既有 import 使用(复习曲线接口大量引用 SRS_INTERVALS/SRS_LABELS)
+SRS_INTERVALS = _SRS_INTERVALS
+SRS_LABELS = _SRS_LABELS
 
 
 # 单次提交时长封顶(秒),防刷/防异常大值。正常一组学习几分钟,30 分钟足够宽松。
@@ -54,14 +50,18 @@ STUDY_CALENDAR_SESSION_CAP_SEC = 1800
 async def update_study_calendar(
     db: AsyncSession,
     user_id: int,
-    record_count: int,
     total_time_ms: int,
     session_seconds: Optional[int] = None,
 ):
     """更新学习日历（共用辅助函数）
 
-    时长口径:优先用前端上报的「增量净活动秒数」session_seconds(已扣挂机),
-    未提供时退回按逐题 time_spent 累加(兼容旧客户端)。单次封顶防刷。
+    ⚠️ 词数与时长的写法**刻意不同**,别改成一样的:
+    - `duration` 是**增量累加**:session_seconds 是"距上次提交的净活动秒数",
+      各次增量之和才是全天时长。
+    - `words_learned` 是**按当天实测值覆盖**:它是"今天学了几个不同的词",
+      跨批次累加会让一天练三轮的同一批词加三遍(2026-07-27 修的就是这个 ——
+      教师端班级表实算去重,学生详情页读这个字段,同一天同一人两个数字打架)。
+      所以这里直接用 services/daily_words 重算当天去重值再覆盖。
 
     注(2026-07-25):session_seconds 为 0 是**正常**情况而非异常——它是"距上次提交
     的增量",复习模式下错词实时逐条提交已把增量取走,组末那批自然只剩 0。整场各次
@@ -78,18 +78,26 @@ async def update_study_calendar(
         add_sec = total_time_ms // 1000
     add_sec = max(0, min(add_sec, STUDY_CALENDAR_SESSION_CAP_SEC))
 
-    # UPSERT 原子累加。之前是"先查后插",学生当天第一次提交时若两个请求并发
+    # 本批 LearningRecord 此时只在 session 里(db.add 过但没 flush),
+    # 先 flush 让它们对下面的 SELECT 可见,否则算出的当天词数会漏掉这一批。
+    # 仍在同一事务内:整体失败会一起回滚。
+    await db.flush()
+    day_start, day_end = local_day_utc_range(today)
+    words_today = await daily_words.words_total(db, [user_id], day_start, day_end)
+
+    # UPSERT。之前是"先查后插",学生当天第一次提交时若两个请求并发
     # (听写错词实时上报 与 组结束存档几乎同时发),都查不到当日行 → 都走 INSERT,
     # 后到的撞 (user_id, study_date) 唯一约束 → 整批学习记录 500 回滚丢失。
+    # words_learned 用覆盖(实测当天去重值),duration 用累加(增量语义),见 docstring。
     stmt = sqlite_insert(StudyCalendar).values(
         user_id=user_id,
         study_date=today,
-        words_learned=record_count,
+        words_learned=words_today,
         duration=add_sec,
     ).on_conflict_do_update(
         index_elements=["user_id", "study_date"],
         set_={
-            "words_learned": StudyCalendar.words_learned + record_count,
+            "words_learned": words_today,
             "duration": StudyCalendar.duration + add_sec,
         },
     )
@@ -240,10 +248,10 @@ async def create_learning_records(
     # 逐题时间戳按净时长回铺,教师端时间线才能还原真实学习时段
     _spread_created_at(created_records, data.session_seconds)
 
-    # 3. 更新学习日历
+    # 3. 更新学习日历(词数由 update_study_calendar 按当天去重实算,见其 docstring)
     total_time_ms = sum(r.time_spent for r in data.records)
     await update_study_calendar(
-        db, user_id, len(data.records), total_time_ms,
+        db, user_id, total_time_ms,
         session_seconds=data.session_seconds,
     )
 
@@ -311,108 +319,13 @@ async def update_word_mastery(
     learning_mode: str,
     is_correct: bool
 ):
-    """更新单词掌握度"""
-    # 先原子占位(ON CONFLICT DO NOTHING):并发首插同一 (user_id, word_id) 时
-    # select-then-insert 会撞唯一约束整批500,或在无约束的库里插出重复行
-    # (之后 scalar_one_or_none 抛 MultipleResultsFound → 该词提交永久500)
-    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-    await db.execute(
-        sqlite_insert(WordMastery.__table__).values(
-            user_id=user_id, word_id=word_id,
-            total_encounters=0, correct_count=0, wrong_count=0, mastery_level=0,
-            flashcard_correct=0, flashcard_wrong=0, quiz_correct=0, quiz_wrong=0,
-            spelling_correct=0, spelling_wrong=0, fillblank_correct=0, fillblank_wrong=0,
-        ).on_conflict_do_nothing(index_elements=["user_id", "word_id"])
-    )
-    # 行已确保存在,读出来更新
-    result = await db.execute(
-        select(WordMastery).where(
-            and_(
-                WordMastery.user_id == user_id,
-                WordMastery.word_id == word_id
-            )
-        ).limit(1)  # 容忍历史重复行(迁移会清,双保险)
-    )
-    mastery = result.scalars().first()
+    """
+    更新单词掌握度。
 
-    # 更新统计数据
-    mastery.total_encounters += 1
-    if is_correct:
-        mastery.correct_count += 1
-    else:
-        mastery.wrong_count += 1
-
-    # 更新各模式统计
-    mode_mapping = {
-        'flashcard': ('flashcard_correct', 'flashcard_wrong'),
-        'quiz': ('quiz_correct', 'quiz_wrong'),
-        'spelling': ('spelling_correct', 'spelling_wrong'),
-        'fillblank': ('fillblank_correct', 'fillblank_wrong')
-    }
-
-    if learning_mode in mode_mapping:
-        correct_field, wrong_field = mode_mapping[learning_mode]
-        if is_correct:
-            current_value = getattr(mastery, correct_field, 0) or 0
-            setattr(mastery, correct_field, current_value + 1)
-        else:
-            current_value = getattr(mastery, wrong_field, 0) or 0
-            setattr(mastery, wrong_field, current_value + 1)
-
-    # 🆕 优化掌握度等级计算 (0-5级) - 基于艾宾浩斯遗忘曲线
-    if mastery.total_encounters > 0:
-        accuracy = mastery.correct_count / mastery.total_encounters
-
-        # 等级5 - 完全掌握: 连续5次正确,准确率>=90%
-        if mastery.correct_count >= 5 and accuracy >= 0.90:
-            mastery.mastery_level = 5
-
-        # 等级4 - 熟练掌握: 至少答对4次,准确率>=80%
-        elif mastery.correct_count >= 4 and accuracy >= 0.80:
-            mastery.mastery_level = 4
-
-        # 等级3 - 基本掌握: 至少答对3次,准确率>=70%
-        elif mastery.correct_count >= 3 and accuracy >= 0.70:
-            mastery.mastery_level = 3
-
-        # 等级2 - 初步认识: 至少答对2次,或答对1次且准确率>=60%
-        elif mastery.correct_count >= 2 or (mastery.correct_count >= 1 and accuracy >= 0.60):
-            mastery.mastery_level = 2
-
-        # 等级1 - 刚接触: 答对过1次
-        elif mastery.correct_count >= 1:
-            mastery.mastery_level = 1
-
-        # 等级0 - 未掌握: 从未答对
-        else:
-            mastery.mastery_level = 0
-
-    # 更新时间戳
-    mastery.last_practiced_at = datetime.utcnow()
-
-    # 计算下次复习时间(艾宾浩斯间隔重复算法)
-    graduated = False
-    if is_correct:
-        current_stage = mastery.review_stage or 0
-        if current_stage < len(SRS_INTERVALS):
-            interval_hours = SRS_INTERVALS[current_stage]
-            mastery.review_stage = current_stage + 1
-        else:
-            # 已走完所有 SRS 阶段、再次答对 → 永久毕业:不再排下次复习,
-            # next_review_at=None 使复习查询(next_review_at<=now)永远查不到它。
-            # 若以后别的模块重新学这个词(走普通学习路径)会重写 next_review_at 复活。
-            mastery.review_stage = len(SRS_INTERVALS)
-            graduated = True
-    else:
-        # 答错回退2个阶段（不完全重置，避免因一次失误惩罚过重）
-        current_stage = mastery.review_stage or 0
-        mastery.review_stage = max(0, current_stage - 2)
-        interval_hours = SRS_INTERVALS[mastery.review_stage]
-
-    if graduated:
-        mastery.next_review_at = None
-    else:
-        mastery.next_review_at = datetime.utcnow() + timedelta(hours=interval_hours)
+    实现已收到 services/mastery.py —— 单元考试/错题闯关原先各自手写计数器,
+    漏掉 total_encounters 把等级算歪(见该模块 docstring),现在三条路径共用一份。
+    """
+    await apply_answer(db, user_id, word_id, learning_mode, is_correct)
 
 
 # ========================================
@@ -1103,10 +1016,10 @@ async def submit_review_records(
     # 逐题时间戳按净时长回铺,教师端时间线才能还原真实学习时段
     _spread_created_at(created_records, data.session_seconds)
 
-    # 更新学习日历
+    # 更新学习日历(同上:按词去重、不计分类识别)
     total_time_ms = sum(r.time_spent for r in data.records)
     await update_study_calendar(
-        db, user_id, len(data.records), total_time_ms,
+        db, user_id, total_time_ms,
         session_seconds=data.session_seconds,
     )
 
@@ -1155,7 +1068,7 @@ async def report_study_time(
     if not await claim_client_batch(db, data.client_batch_id, current_user.id):
         return {"success": True, "message": "该批次已记录过(重试补交,自动忽略)"}
     await update_study_calendar(
-        db, current_user.id, record_count=0, total_time_ms=0,
+        db, current_user.id, total_time_ms=0,
         session_seconds=data.session_seconds,
     )
     await db.commit()

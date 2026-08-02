@@ -18,8 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User
 from app.models.learning import LearningRecord, StudySession, WordMastery, WeeklyReport
-from app.models.word import Word, WordDefinition
+from app.models.word import Word
 from app.services.ai_service import ai_service
+from app.services.weak_words import top_wrong_words, NON_LEARNED_MODES
 
 
 # ================== 响应模型 (家长端 / 教师端共用) ==================
@@ -74,10 +75,15 @@ async def _period_stats(db: AsyncSession, student_id: int, start: datetime, end:
     )
     minutes = int((r.scalar() or 0) / 60)
 
-    # 新学单词 (答对去重)
+    # 新学单词 (答对去重):按拼写去重 + 排除 classify(全站口径,见 services/daily_words);
+    # 原来 distinct(word_id) 且不排除 classify,同一拼写多 word_id 会虚高。
+    # 这个数会进周报发给家长,也会喂给 AI 生成评语,虚高会误导。
     r = await db.execute(
-        select(func.count(func.distinct(LearningRecord.word_id)))
+        select(func.count(func.distinct(func.lower(Word.word))))
+        .select_from(LearningRecord)
+        .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(LearningRecord.user_id == student_id,
+                    LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
                     LearningRecord.created_at >= start, LearningRecord.created_at < end,
                     LearningRecord.is_correct.is_(True)))
     )
@@ -130,20 +136,14 @@ async def _mode_accuracy(db: AsyncSession, student_id: int, start: datetime, end
 
 
 async def _weak_words(db: AsyncSession, student_id: int, limit: int = 10) -> list[dict]:
-    """错得最多的单词 TOP N (英文 + 中文释义 + 错误次数)。"""
-    r = await db.execute(
-        select(WordMastery, Word, WordDefinition)
-        .join(Word, Word.id == WordMastery.word_id)
-        .outerjoin(WordDefinition, and_(WordDefinition.word_id == Word.id,
-                                        WordDefinition.is_primary.is_(True)))
-        .where(and_(WordMastery.user_id == student_id, WordMastery.wrong_count > 0))
-        .order_by(WordMastery.wrong_count.desc(), WordMastery.mastery_level.asc())
-        .limit(limit)
-    )
-    return [
-        {"word": w.word, "meaning": d.meaning if d else None, "wrong_count": m.wrong_count or 0}
-        for m, w, d in r.all()
-    ]
+    """
+    错得最多的单词 TOP N (英文 + 中文释义 + 错误次数)。
+
+    走 services/weak_words.top_wrong_words:只算计分模式的真实错误、按拼写去重。
+    原来直接读 word_mastery.wrong_count,把分类自评的"我不认识"也当错误,
+    周报里会给家长报一堆孩子其实没答错过的词。
+    """
+    return await top_wrong_words(db, student_id, limit=limit)
 
 
 async def _new_mastered_this_week(db: AsyncSession, student_id: int, start: datetime, end: datetime) -> int:

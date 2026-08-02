@@ -21,6 +21,7 @@ from app.models.user import User
 from app.models.word import Word, WordDefinition
 from app.models.learning import LearningRecord, WordMastery, ChallengeReview
 from app.api.v1.auth import get_current_student
+from app.services.mastery import apply_answer, get_or_create
 from app.schemas.mistake_book import (
     MistakeWordDetail,
     MistakeWordPage,
@@ -632,35 +633,15 @@ async def submit_challenge_level(
         )
         db.add(record)
 
-        # 获取或创建掌握度记录
-        mastery_result = await db.execute(
-            select(WordMastery).where(
-                and_(
-                    WordMastery.user_id == user_id,
-                    WordMastery.word_id == answer.word_id,
-                )
-            )
-        )
-        mastery = mastery_result.scalar_one_or_none()
-        if not mastery:
-            mastery = WordMastery(
-                user_id=user_id,
-                word_id=answer.word_id,
-                mastery_level=0,
-                correct_count=0,
-                wrong_count=0,
-                created_at=now,
-            )
-            db.add(mastery)
-            await db.flush()
+        # 掌握度统一走 services/mastery.apply_answer:原先手写
+        # correct_count/wrong_count += 1 却不加 total_encounters,而等级算的是
+        # correct/total_encounters → accuracy 可 >1,掌握度被抬高。
+        # 记录写的是 spelling,这里模式也传 spelling,分模式计数才对得上。
+        await apply_answer(db, user_id, answer.word_id, 'spelling', is_correct)
 
         if is_correct:
             correct_count += 1
-            mastery.correct_count = (mastery.correct_count or 0) + 1
-            mastery.last_practiced_at = now
         else:
-            mastery.wrong_count = (mastery.wrong_count or 0) + 1
-            mastery.last_practiced_at = now
             # 获取释义用于返回
             def_result = await db.execute(
                 select(WordDefinition).where(
@@ -679,33 +660,15 @@ async def submit_challenge_level(
     total_count = len(request.answers)
     passed = correct_count == total_count
 
-    # 全部答对: 提升掌握度到4
+    # 全部答对: 该关单词直接认定"已解决"(错题集判定线 >=4)。
+    # 这是业务上的额外奖励(闯关全对即出错题集),不是再记一次答题,
+    # 所以只抬等级不动计数器 —— 计数已在上面的 apply_answer 里记过。
     if passed:
         for answer in request.answers:
-            mastery_result = await db.execute(
-                select(WordMastery).where(
-                    and_(
-                        WordMastery.user_id == user_id,
-                        WordMastery.word_id == answer.word_id,
-                    )
-                )
-            )
-            mastery = mastery_result.scalar_one_or_none()
-            if mastery:
-                if mastery.mastery_level < 4:
-                    mastery.mastery_level = 4
-                    mastery.last_practiced_at = now
-            else:
-                mastery = WordMastery(
-                    user_id=user_id,
-                    word_id=answer.word_id,
-                    mastery_level=4,
-                    correct_count=1,
-                    wrong_count=0,
-                    created_at=now,
-                    last_practiced_at=now,
-                )
-                db.add(mastery)
+            mastery = await get_or_create(db, user_id, answer.word_id)
+            if (mastery.mastery_level or 0) < 4:
+                mastery.mastery_level = 4
+                mastery.last_practiced_at = now
             # 写入闯关复习记录
             await _upsert_challenge_review(db, user_id, answer.word_id)
 

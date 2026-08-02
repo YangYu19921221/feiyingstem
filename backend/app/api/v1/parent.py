@@ -18,8 +18,10 @@ from app.api.v1.auth import get_current_student, get_current_parent
 from app.services.auth_service import get_password_hash, verify_password, create_access_token
 from app.models.user import User, ParentStudentLink, ParentBindCode
 from app.models.learning import LearningRecord, StudySession, WordMastery
-from app.models.word import Word, WordDefinition
+from app.models.word import Word
 from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
+from app.services.weak_words import top_wrong_words, mastery_buckets, NON_LEARNED_MODES
+from app.services import daily_words
 
 router = APIRouter()
 
@@ -227,16 +229,9 @@ async def _build_child_summary(db: AsyncSession, student_id: int) -> ChildSummar
     )
     today_minutes = int((res.scalar() or 0) / 60)
 
-    # 今日新学单词数（不重复）
-    res = await db.execute(
-        select(func.count(func.distinct(LearningRecord.word_id)))
-        .where(and_(
-            LearningRecord.user_id == student_id,
-            LearningRecord.created_at >= today,
-            LearningRecord.created_at < tomorrow,
-        ))
-    )
-    today_words = int(res.scalar() or 0)
+    # 今日学习单词数:走全站统一口径(distinct lower(word) + 排除 classify)。
+    # 原来是 distinct(word_id) 且不排除 classify —— 家长看到的数会比老师看到的大。
+    today_words = await daily_words.words_total(db, [student_id], today, tomorrow)
 
     # 连续打卡：复用 dashboard 简化版
     streak_days = 0
@@ -370,11 +365,8 @@ async def parent_child_dashboard(
     )
     today_minutes = int((res.scalar() or 0) / 60)
 
-    res = await db.execute(
-        select(func.count(func.distinct(LearningRecord.word_id)))
-        .where(and_(LearningRecord.user_id == student_id, LearningRecord.created_at >= today, LearningRecord.created_at < tomorrow))
-    )
-    today_words = int(res.scalar() or 0)
+    # 同上:统一口径,与教师端「今日学词」一致
+    today_words = await daily_words.words_total(db, [student_id], today, tomorrow)
 
     res = await db.execute(
         select(func.coalesce(func.sum(StudySession.time_spent), 0))
@@ -382,17 +374,12 @@ async def parent_child_dashboard(
     )
     total_minutes = int((res.scalar() or 0) / 60)
 
-    res = await db.execute(
-        select(func.count(WordMastery.id)).where(WordMastery.user_id == student_id)
-    )
-    total_words_learned = int(res.scalar() or 0)
-
-    res = await db.execute(
-        select(func.count(func.distinct(func.lower(Word.word))))
-        .select_from(WordMastery).join(Word, Word.id == WordMastery.word_id)
-        .where(and_(WordMastery.user_id == student_id, WordMastery.mastery_level >= 3))
-    )
-    total_words_mastered = int(res.scalar() or 0)
+    # 已学/已掌握走全站唯一口径(按拼写去重、排除只做过分类识别的词);
+    # 原先已学用 count(WordMastery.id) 数原始行,单元隔离下同拼写多 word_id 会虚高,
+    # 和家长在教师端看到的数对不上
+    _pb = (await mastery_buckets(db, [student_id])).get(student_id, {})
+    total_words_learned = _pb.get("words", 0)
+    total_words_mastered = _pb.get("mastered", 0)
 
     # streak
     streak_days = 0
@@ -416,9 +403,19 @@ async def parent_child_dashboard(
             .where(and_(StudySession.user_id == student_id, StudySession.started_at >= start, StudySession.started_at < end))
         )
         minutes = int((r1.scalar() or 0) / 60)
+        # 按拼写去重 + 排除 classify(全站口径)。保留 is_correct:这里的语义是
+        # "答对过的词",与下面词汇王排名必须完全同口径,否则会出现
+        # "我的词数比第一名多却排第二"
         r2 = await db.execute(
-            select(func.count(func.distinct(LearningRecord.word_id)))
-            .where(and_(LearningRecord.user_id == student_id, LearningRecord.created_at >= start, LearningRecord.created_at < end, LearningRecord.is_correct.is_(True)))
+            select(func.count(func.distinct(func.lower(Word.word))))
+            .select_from(LearningRecord)
+            .join(Word, Word.id == LearningRecord.word_id)
+            .where(and_(
+                LearningRecord.user_id == student_id,
+                LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
+                LearningRecord.created_at >= start, LearningRecord.created_at < end,
+                LearningRecord.is_correct.is_(True),
+            ))
         )
         words = int(r2.scalar() or 0)
         r3 = await db.execute(
@@ -445,15 +442,20 @@ async def parent_child_dashboard(
                 break
         return RankInfo(rank=my_rank, total=len(rows), value=my_value)
 
-    # 词汇王（本周）
+    # 词汇王（本周）—— 口径必须与上面 period_stats 的 words 完全一致
     vocab_query = (
         select(
             LearningRecord.user_id,
-            func.count(func.distinct(LearningRecord.word_id)).label("v"),
+            func.count(func.distinct(func.lower(Word.word))).label("v"),
         )
-        .where(and_(LearningRecord.created_at >= week_start, LearningRecord.created_at < week_end, LearningRecord.is_correct.is_(True)))
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
+            LearningRecord.created_at >= week_start, LearningRecord.created_at < week_end,
+            LearningRecord.is_correct.is_(True),
+        ))
         .group_by(LearningRecord.user_id)
-        .order_by(func.count(func.distinct(LearningRecord.word_id)).desc())
+        .order_by(func.count(func.distinct(func.lower(Word.word))).desc())
     )
     rank_vocabulary = await rank_info(vocab_query, this_week_words)
 
@@ -499,22 +501,15 @@ async def parent_child_dashboard(
         d = (heatmap_start + timedelta(days=i)).date()
         heatmap.append(HeatmapDay(date=str(d), minutes=heatmap_map.get(str(d), 0)))
 
-    # 薄弱词 TOP 10
-    res = await db.execute(
-        select(WordMastery, Word, WordDefinition)
-        .join(Word, Word.id == WordMastery.word_id)
-        .outerjoin(WordDefinition, and_(WordDefinition.word_id == Word.id, WordDefinition.is_primary.is_(True)))
-        .where(and_(WordMastery.user_id == student_id, WordMastery.wrong_count > 0))
-        .order_by(WordMastery.wrong_count.desc(), WordMastery.mastery_level.asc())
-        .limit(10)
-    )
+    # 薄弱词 TOP 10:只算计分模式的真实错误、按拼写去重,与教师端/周报同源
+    # (原来读 word_mastery.wrong_count,分类自评的"我不认识"也算错,给家长报假错题)
     weak_words = [
         WeakWordItem(
-            word=w.word,
-            meaning=d.meaning if d else None,
-            wrong_count=m.wrong_count or 0,
+            word=item["word"],
+            meaning=item["meaning"],
+            wrong_count=item["wrong_count"],
         )
-        for m, w, d in res.all()
+        for item in await top_wrong_words(db, student_id, limit=10)
     ]
 
     # 单词本进度（复用 student/progress 的 logic 简化）

@@ -19,7 +19,7 @@ from app.schemas.pet_battle import (
 from app.services import pet_battle_service
 from app.services.ai_opponent_service import generate_ai_opponent
 from app.api.v1.auth import get_current_student
-from app.core.pet_formulas import calculate_max_hp
+from app.core.pet_formulas import calculate_max_hp, evolution_stage_for_level
 import json
 
 router = APIRouter()

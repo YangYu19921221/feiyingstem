@@ -1,6 +1,15 @@
 from pydantic_settings import BaseSettings
 from typing import List
 
+# PK 房间人数上限(Python 侧唯一真源)。
+# schemas/pk.py 的 Field(le=)、models/pk.py 的 CheckConstraint、core/database.py 的
+# 建表 CHECK 全部引用这里,改一处即可 —— 三处各写字面量必然漂,而漂的后果是
+# 对局打完才在落库时被 CHECK 拦下,整场成绩丢失。
+# database_schema.sql / 前端 MAX_PLAYERS 跨语言无法共享,只能靠注释互相注明。
+# 天花板不是 CPU 而是带宽:实时榜已改合并推送+按人裁剪,200 人单房约占 12M 的 30%。
+PK_MAX_PLAYERS = 200
+
+
 class Settings(BaseSettings):
     # 应用配置
     APP_NAME: str = "英语学习助手"
@@ -42,6 +51,14 @@ class Settings(BaseSettings):
     # 文件上传
     MAX_UPLOAD_SIZE: int = 5242880  # 5MB
     UPLOAD_DIR: str = "./uploads"
+
+    # 音标教学视频目录。**刻意与 UPLOAD_DIR 分开**:UPLOAD_DIR 整体经
+    # /api/v1/files 公开无鉴权(见 main.py),只准放公开图片;视频要求登录才能看,
+    # 所以落在这个私有目录,只经 /phonetics/videos/{id}/stream 鉴权后串流。
+    PHONETIC_VIDEO_DIR: str = "./private_media/phonetics"
+    # 单个视频上限(字节)。注意还受 nginx client_max_body_size 限制,
+    # 两边要一起放开,否则大文件在 nginx 层就被拒(413),压根到不了应用
+    MAX_VIDEO_SIZE: int = 200 * 1024 * 1024  # 200MB
 
     @property
     def cors_origins_list(self) -> List[str]:

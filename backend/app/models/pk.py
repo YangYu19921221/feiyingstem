@@ -3,6 +3,7 @@ from sqlalchemy import (
     UniqueConstraint, CheckConstraint,
 )
 from sqlalchemy.sql import func
+from app.core.config import PK_MAX_PLAYERS
 from app.core.database import Base
 
 
@@ -14,6 +15,8 @@ class PkRoom(Base):
     host_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     org_id = Column(Integer, nullable=False, default=1, server_default="1")  # 房间归属机构(多租户);索引由init_db迁移建
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)  # 旧版按单元开房的遗留,现为空
+    # 上限见 config.PK_MAX_PLAYERS(唯一真源)。
+    # 别再收窄——落库发生在对局结束时,CHECK 拦下会让整场成绩丢失
     max_players = Column(Integer, nullable=False, default=4)
     status = Column(String(10), nullable=False, index=True)
     mode = Column(String(12), nullable=False, default="individual", server_default="individual")  # individual/team
@@ -23,7 +26,8 @@ class PkRoom(Base):
     finished_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
-        CheckConstraint("max_players BETWEEN 2 AND 20", name="ck_pk_rooms_max_players"),
+        CheckConstraint(
+            f"max_players BETWEEN 2 AND {PK_MAX_PLAYERS}", name="ck_pk_rooms_max_players"),
     )
 
 

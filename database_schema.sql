@@ -442,7 +442,10 @@ CREATE TABLE IF NOT EXISTS pk_rooms (
     invite_code VARCHAR(6) UNIQUE NOT NULL,
     host_id INTEGER NOT NULL,
     unit_id INTEGER,  -- 旧版按单元开房的遗留字段,现为空
-    max_players INTEGER NOT NULL DEFAULT 4 CHECK(max_players BETWEEN 2 AND 20),
+    -- 上限 200:实时榜/房间快照已改合并推送+按人裁剪,大房间带宽不再随人数²暴涨。
+    -- 与 app/models/pk.py 的 CheckConstraint、schemas/pk.py 的 le=200 必须一致;
+    -- 落库发生在对局结束时,这里卡小了会让整场成绩丢失(见 migrations/migrate_pk_rooms_max_players.py)
+    max_players INTEGER NOT NULL DEFAULT 4 CHECK(max_players BETWEEN 2 AND 200),
     status VARCHAR(10) NOT NULL,  -- waiting/playing/finished/abandoned
     word_ids TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

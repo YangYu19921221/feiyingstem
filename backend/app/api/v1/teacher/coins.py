@@ -24,6 +24,7 @@ from app.models.word import Word
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
+from app.services import daily_words
 
 logger = logging.getLogger(__name__)
 from app.services.auth_service import get_password_hash, verify_password
@@ -144,21 +145,9 @@ async def word_king_banner(
         if not king_ids:
             return []
         day_start, day_end = local_day_utc_range(d)
-        # 每王的当日词量
-        rows = (await db.execute(
-            select(
-                LearningRecord.user_id,
-                func.count(func.distinct(func.lower(Word.word))),
-            )
-            .join(Word, Word.id == LearningRecord.word_id)
-            .where(and_(
-                LearningRecord.user_id.in_(king_ids),
-                LearningRecord.created_at >= day_start,
-                LearningRecord.created_at < day_end,
-            ))
-            .group_by(LearningRecord.user_id)
-        )).all()
-        wc = {uid: v for uid, v in rows}
+        # 每王的当日词量:必须与 coin_service.word_kings_for_class 评选时同口径
+        # (含排除 classify),否则横幅上显示的词数会大于让他当上单词王的那个数
+        wc = await daily_words.words_by_student(db, king_ids, day_start, day_end)
         users = {u.id: u for u in (await db.execute(
             select(User).where(User.id.in_(king_ids))
         )).scalars().all()}

@@ -1,14 +1,31 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import text
-from app.core.config import settings
+from app.core.config import PK_MAX_PLAYERS, settings
 import os
+
+def _sqlite_connect_args() -> dict:
+    """
+    SQLite 连接参数。
+
+    ⚠️ busy_timeout 必须设(2026-07-25 压测暴露):默认是 0 —— 一旦有并发写冲突,
+    第二个写者立刻抛 `database is locked` 500,而不是稍等一下。WAL 只解决"读不阻塞写",
+    并发写仍需排队等锁。实测本机 40 个学生同时登录,13 个直接 500
+    (登录会 UPDATE users.last_login);生产日志 7 天内也有 9 次同样报错 ——
+    一个班同时上课点登录就会撞上。
+    设 15s:写事务都是毫秒级,15s 足够排队,又不至于卡死请求。
+    """
+    if not settings.DATABASE_URL.startswith("sqlite"):
+        return {}
+    return {"timeout": 15}
+
 
 # 创建异步引擎
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    future=True
+    future=True,
+    connect_args=_sqlite_connect_args(),
 )
 
 # 创建会话工厂
@@ -145,6 +162,7 @@ async def init_db():
     from app.models import user, word, learning, pet, assessment
     from app.models import organization  # 多租户: 机构(租户)表
     from app.models import coin  # 金币系统: 余额 + 流水
+    from app.models import phonetic  # 音标教学视频
     try:
         from app.models import competition
     except Exception:
@@ -395,6 +413,8 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_word_books_org ON word_books(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_sentence_books_org ON sentence_books(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_reading_passages_org ON reading_passages(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_org ON phonetic_videos(org_id)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_active ON phonetic_videos(is_active, category)",
             "CREATE INDEX IF NOT EXISTS idx_assessment_leads_org ON assessment_leads(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_pk_rooms_org ON pk_rooms(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_leaderboard_snapshots_org ON leaderboard_snapshots(org_id)",
@@ -455,6 +475,58 @@ async def init_db():
             except Exception:
                 pass
 
+        # ===== pk_rooms.max_players 上限放开(幂等) =====
+        # 与上面 exam_questions / learning_records 同一套做法:查 sqlite_master 里的
+        # 旧 CHECK,发现就重建表。放进 init_db 是因为这个约束漏改的后果特别隐蔽 ——
+        # 落库发生在**对局结束时**,30 人房能建、能打完整场,最后写库才被 CHECK 拦下,
+        # 整场成绩(pk_room_players + pk_answer_records)全丢。只靠手跑迁移脚本,
+        # 换台机器部署忘了跑就会踩。独立脚本 migrations/migrate_pk_rooms_max_players.py
+        # 仍保留(带备份/自检/更详细的报告),这里是兜底。
+        try:
+            row = (await conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='pk_rooms'"
+            ))).fetchone()
+            table_sql = (row[0] or "") if row else ""
+            import re as _re
+            m = _re.search(r"max_players\s+INTEGER[^,]*?BETWEEN\s+\d+\s+AND\s+(\d+)", table_sql, _re.I)
+            if m and int(m.group(1)) < PK_MAX_PLAYERS:
+                cols = ("id, invite_code, host_id, unit_id, max_players, status, word_ids, "
+                        "created_at, started_at, finished_at, org_id, mode")
+                await conn.execute(text("DROP TABLE IF EXISTS pk_rooms_new"))
+                await conn.execute(text(f"""
+                    CREATE TABLE pk_rooms_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        invite_code VARCHAR(6) UNIQUE NOT NULL,
+                        host_id INTEGER NOT NULL,
+                        unit_id INTEGER,
+                        max_players INTEGER NOT NULL DEFAULT 4
+                            CHECK(max_players BETWEEN 2 AND {PK_MAX_PLAYERS}),
+                        status VARCHAR(10) NOT NULL,
+                        word_ids TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        started_at TIMESTAMP,
+                        finished_at TIMESTAMP,
+                        org_id INTEGER NOT NULL DEFAULT 1,
+                        mode VARCHAR(12) NOT NULL DEFAULT 'individual',
+                        FOREIGN KEY (host_id) REFERENCES users(id),
+                        FOREIGN KEY (unit_id) REFERENCES units(id)
+                    )
+                """))
+                await conn.execute(text(
+                    f"INSERT INTO pk_rooms_new ({cols}) SELECT {cols} FROM pk_rooms"))
+                await conn.execute(text("DROP TABLE pk_rooms"))
+                await conn.execute(text("ALTER TABLE pk_rooms_new RENAME TO pk_rooms"))
+                # 索引随旧表被删,必须重建(否则邀请码查询退化成全表扫)
+                for _idx in (
+                    "CREATE INDEX IF NOT EXISTS idx_pk_rooms_invite ON pk_rooms(invite_code)",
+                    "CREATE INDEX IF NOT EXISTS idx_pk_rooms_status ON pk_rooms(status)",
+                    "CREATE INDEX IF NOT EXISTS idx_pk_rooms_org ON pk_rooms(org_id)",
+                ):
+                    await conn.execute(text(_idx))
+                print(f"✅ pk_rooms.max_players 上限已放开至 {PK_MAX_PLAYERS}")
+        except Exception as e:
+            print(f"⚠️  pk_rooms 上限迁移跳过: {e}")
+
         # ===== word_mastery 唯一约束修复(幂等) =====
         # create_all 建的库缺 UNIQUE(user_id, word_id),并发首插会产生重复行。
         # 先清历史重复(保留每组最早一行,计数合并),再补唯一索引。
@@ -484,6 +556,12 @@ async def init_db():
     try:
         async with engine.execution_options(isolation_level="AUTOCOMMIT").connect() as wal_conn:
             await wal_conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+            # 每连接的 busy_timeout 由 connect_args(timeout=15) 保证;这里再显式设一次,
+            # 覆盖"库文件里存过 busy_timeout=0"的历史值,双保险
+            await wal_conn.exec_driver_sql("PRAGMA busy_timeout=15000")
+            # NORMAL:WAL 下不必每次 commit 都 fsync,写吞吐提升明显,
+            # 断电最坏丢最近几条(学习记录可容忍),崩溃不会坏库
+            await wal_conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
     except Exception:
         pass
 

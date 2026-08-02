@@ -52,27 +52,52 @@ def _gen_invite_code() -> str:
             return code
 
 
-def _balance_team(room: RoomState) -> int:
-    """分组赛给新成员选人数最少的队(均衡分队),并列时取队号最小的。"""
-    counts = {t: 0 for t in range(1, room.team_count + 1)}
-    for ps in room.players.values():
-        if ps.team in counts:
-            counts[ps.team] += 1
-    return min(counts, key=lambda t: (counts[t], t))
+MAX_TEAMS = 8          # 每房最多分几组(再多队伍榜/柱状图就挤不下了)
+MAX_TEAM_NAME_LEN = 12  # 组名长度上限(榜单一行放得下;过长会把名次和分数挤出屏幕)
+
+
+def normalize_team_names(names: list[str] | None) -> dict[int, str]:
+    """建房时把教师填的组名整理成 {组号: 组名}。组号从 1 连续编号。
+
+    空名按「第N组」兜底(教师只想快速开两组、不想起名的常见情形);
+    去掉纯空白项;超过 MAX_TEAMS 截断。分组赛至少两组,不足则补齐到两组。
+    """
+    cleaned: list[str] = []
+    for raw in (names or []):
+        name = (raw or "").strip()[:MAX_TEAM_NAME_LEN]
+        cleaned.append(name)
+    cleaned = [n for n in cleaned if n] or []
+    if len(cleaned) < 2:
+        # 教师没填够:补足两组,用「第N组」占位
+        cleaned += [f"第 {i} 组" for i in range(len(cleaned) + 1, 3)]
+    cleaned = cleaned[:MAX_TEAMS]
+    # 同名会让学生选组时分不清谁是谁,后缀去重
+    out: dict[int, str] = {}
+    seen: dict[str, int] = {}
+    for idx, name in enumerate(cleaned, start=1):
+        if name in seen:
+            seen[name] += 1
+            name = f"{name}({seen[name]})"[:MAX_TEAM_NAME_LEN + 4]
+        else:
+            seen[name] = 1
+        out[idx] = name
+    return out
 
 
 def create_room(host_id: int, max_players: int, org_id: int,
                 word_ids: list[int] | None = None,
                 unit_id: int | None = None, nickname: str | None = None,
                 word_count: int = 10,
-                mode: str = "individual", team_count: int = 2,
+                mode: str = "individual",
+                team_names: list[str] | None = None,
                 host_is_player: bool = True,
                 countdown_seconds: int = 300) -> RoomState:
     """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。
     org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。
 
     host_is_player=False:房主(教师)只组织不下场,不进 players、不参与结算/计分。
-    mode="team":分组赛,入房自动均衡分队;个人赛(默认)沿用原逻辑。
+    mode="team":分组赛,教师建房时用 team_names 自己创建并命名分组,
+    学生进房后在等待室自己选组(见 set_player_team)。
     """
     if host_id in USER_ACTIVE:
         prev = ROOMS.get(USER_ACTIVE[host_id])
@@ -95,15 +120,15 @@ def create_room(host_id: int, max_players: int, org_id: int,
         word_ids=list(word_ids or []),
         word_count=word_count,
         mode="team" if mode == "team" else "individual",
-        team_count=max(2, int(team_count)) if mode == "team" else 2,
+        # 分组由教师建房时定好;个人赛不建组
+        team_names=normalize_team_names(team_names) if mode == "team" else {},
         host_is_player=host_is_player,
         countdown_seconds=max(60, min(int(countdown_seconds), 1800)),
     )
     if host_is_player:
-        # 房主下场:作为首个玩家入房(学生自建房 / 晋级赛)
+        # 房主下场:作为首个玩家入房(学生自建房 / 晋级赛)。
+        # 分组赛里房主也得自己选组,不预分(team 留 None)。
         hp = PlayerState(user_id=host_id, nickname=nickname or f"User{host_id}")
-        if room.mode == "team":
-            hp.team = _balance_team(room)
         room.players[host_id] = hp
         room.join_order.append(host_id)
     # host_id 无论下不下场都占 USER_ACTIVE,防同一人重复建房
@@ -112,8 +137,8 @@ def create_room(host_id: int, max_players: int, org_id: int,
     INVITE_INDEX[code] = room_id
     logger.info(
         "PK room created: room_id=%d host_id=%d host_is_player=%s mode=%s "
-        "team_count=%d max_players=%d word_count=%d",
-        room_id, host_id, host_is_player, room.mode, room.team_count,
+        "max_players=%d word_count=%d",
+        room_id, host_id, host_is_player, room.mode,
         max_players, word_count,
     )
     return room
@@ -132,6 +157,7 @@ def get_room_by_code(invite_code: str, org_id: int) -> RoomState:
 
 
 def join_room(invite_code: str, user_id: int, nickname: str, org_id: int) -> RoomState:
+    """学生凭邀请码进房。分组赛下 team 留 None(未选组),学生进等待室后自己选。"""
     if user_id in USER_ACTIVE:
         raise UserAlreadyInRoom()
     room = get_room_by_code(invite_code, org_id)
@@ -140,27 +166,30 @@ def join_room(invite_code: str, user_id: int, nickname: str, org_id: int) -> Roo
     if len(room.players) >= room.max_players:
         raise RoomFull()
     ps = PlayerState(user_id=user_id, nickname=nickname)
-    if room.mode == "team":
-        ps.team = _balance_team(room)
     room.players[user_id] = ps
     room.join_order.append(user_id)
     USER_ACTIVE[user_id] = room.room_id
-    logger.info(
-        "PK player joined: room_id=%d user_id=%d team=%s",
-        room.room_id, user_id, ps.team,
-    )
+    logger.info("PK player joined: room_id=%d user_id=%d", room.room_id, user_id)
     return room
 
 
 def set_player_team(room_id: int, user_id: int, team: int) -> RoomState | None:
-    """教师在等待室手动调整某玩家所在队(仅分组赛、仅开局前)。"""
+    """选组:学生自己选(在等待室点组名),教师也可代为调整。仅分组赛、仅开局前。
+
+    只能选教师建好的组(team 必须在 team_names 里),不能凭空造组。
+    返回 None 表示这次选组无效(房间/玩家不存在、已开局、组号不存在),调用方据此不广播。
+    """
     room = ROOMS.get(room_id)
     if room is None or room.mode != "team" or room.status != "waiting":
         return None
     ps = room.players.get(user_id)
     if ps is None:
         return None
-    ps.team = max(1, min(int(team), room.team_count))
+    t = int(team)
+    if t not in room.team_names:
+        return None
+    ps.team = t
+    logger.info("PK player picked team: room_id=%d user_id=%d team=%d", room_id, user_id, t)
     return room
 
 
@@ -214,6 +243,7 @@ def leave_room(room_id: int, user_id: int) -> None:
     if user_id in room.join_order:
         room.join_order.remove(user_id)
     USER_ACTIVE.pop(user_id, None)
+    # 组是教师建的,人走了组还留着(别人还能选进来);空组不删
     if not room.players:
         # 教师组织的房(房主不下场):最后一名学生退出不解散,教师仍掌控房间生命周期
         # (由 close_room 或教师控制台断开时决定),否则空等待室会被自动清掉。

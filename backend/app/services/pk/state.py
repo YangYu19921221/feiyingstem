@@ -39,15 +39,18 @@ class PlayerState:
     correct: int = 0
     wrong: int = 0
     total_time_ms: int = 0
-    points: int = 0          # 累计得分(答对/过关的即时鼓励,仅展示,不再决定排名)
+    points: int = 0          # 得分 = 掌握进度 × 满分(**决定胜负**;唯一写入口 engine._sync_points)
     streak: int = 0          # 当前连击(连续答对数,展示用)
     best_streak: int = 0     # 本局最高连击
     # 分类记忆法流程(PK 照搬):每人私有词表切成 groups,逐组走 分类→听写→过关。
     word_ids: list[int] = field(default_factory=list)   # 该玩家私有词表(从自己背过的词抽)
     answers: list[AnswerRecord] = field(default_factory=list)  # 个人答题流水(按提交顺序)
-    finished: bool = False   # 全部组过关 = True(率先完成者赢);置 True 时同时写 finished_at
-    finished_at: Optional[datetime] = None  # 完成时刻(排名主键:先完成先赢)
-    team: Optional[int] = None  # 分组 PK 里的队号(1..team_count);个人 PK 恒为 None
+    potential_points: int = 0  # 掌握分满分(词表难度分之和);展示 "x/满分" 用
+    speed_points: int = 0      # 速度分:完成那刻按剩余时间结算一次后锁住(否则分数会随时间倒流)
+    finished: bool = False   # 全部组过关 = True;置 True 时同时写 finished_at
+    finished_at: Optional[datetime] = None  # 完成时刻(同分时的平局裁决)
+    # 分组 PK 里学生自选的组号;None = 还没选组(开局前必须选,否则拦着不让开)
+    team: Optional[int] = None
     last_heartbeat_at: datetime = field(default_factory=datetime.utcnow)
     disconnected_at: Optional[datetime] = None
 
@@ -134,7 +137,11 @@ class RoomState:
     word_lookup: dict[int, Any] = field(default_factory=dict)  # word_id → Word ORM(开局时装载,全房共享)
     # PK 模式:individual=个人赛(默认,兼容学生自建房/晋级赛);team=分组赛(队伍聚合计分)
     mode: ModeLiteral = "individual"
-    team_count: int = 2                  # 分组赛队伍数;个人赛忽略
+    # 分组赛:教师建房时自己创建分组并命名,学生进房后自己选组(team=None 即未选)
+    team_names: dict[int, str] = field(default_factory=dict)  # 组号 → 教师起的组名
+    # 开局时定下「真正有人参赛的组」:教师可能建了 4 组只用了 2 组,
+    # 空组不该出现在队伍榜里。空 list = 还没开局(等待室按 team_names 全列)。
+    active_teams: list[int] = field(default_factory=list)
     # 房主是否作为选手下场。学生自建房/晋级赛=True;教师组织的房=False(只监控不答题)
     host_is_player: bool = True
     host_ws: Any = None                  # 非参赛房主(教师)的控制台 WS;host_is_player=True 时不用
@@ -159,6 +166,12 @@ class RoomState:
 
     # 注:并行竞速后"当前词/进度"下沉到 PlayerState(每人各跑各的),房间级
     # current_word_id/total_questions 已废弃删除(旧同步引擎遗留,会对空词表除零)。
+
+    @property
+    def team_count(self) -> int:
+        """队数 = 教师建的组数(派生,不落字段)。存一份计数就得在每个增删点手动
+        同步,漂移过一次就再也对不上。个人赛恒为 0(前端只在 mode=team 时看这个数)。"""
+        return len(self.team_names)
 
     def points_for_word(self, word_id: int) -> int:
         return self.word_points.get(word_id, self.base_points)

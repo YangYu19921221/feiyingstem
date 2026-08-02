@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1 import auth, words, learning, exams, ai, competition, achievements, analytics, parent
-from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes, student_monitor as teacher_student_monitor, coins as teacher_coins
+from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes, student_monitor as teacher_student_monitor, coins as teacher_coins, phonetics as teacher_phonetics
 from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam, leaderboard as student_leaderboard, class_join as student_class_join, pet_battle as student_pet_battle, pet_battle_ws as student_pet_battle_ws, pet_healing as student_pet_healing, coins as student_coins
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
 from app.api.v1.admin import teachers as admin_teachers, classes as admin_classes, settings as admin_settings
@@ -17,7 +17,7 @@ from app.api.v1.admin import student_books as admin_student_books
 from app.api.v1.admin import organizations as admin_organizations  # 多租户: 平台管理端-机构管理
 from app.api.v1.admin import server_monitor as admin_server_monitor  # 服务器实时监控
 from app.api.v1 import org_admin  # 多租户: 机构管理端(加盟商)
-from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket
+from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_routes, pk_websocket, phonetics
 from app.api.v1 import pk_tournament_routes
 from app.api.v1 import presence
 from app.api.v1 import checkin
@@ -81,6 +81,8 @@ app.include_router(teacher_dashboard.router, prefix="/api/v1/teacher", tags=["�
 app.include_router(teacher_exam_generator.router, prefix="/api/v1/teacher", tags=["教师端-AI试卷生成"])
 app.include_router(teacher_classes.router, prefix="/api/v1/teacher", tags=["教师端-班级管理"])
 app.include_router(teacher_student_monitor.router, prefix="/api/v1/teacher", tags=["教师-学生监控"])
+app.include_router(teacher_phonetics.router, prefix="/api/v1/teacher/phonetics", tags=["教师端-音标视频"])
+app.include_router(phonetics.router, prefix="/api/v1/phonetics", tags=["音标学习"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])
 app.include_router(student_progress.router, prefix="/api/v1/student", tags=["学生端-学习进度"])

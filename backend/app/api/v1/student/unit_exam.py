@@ -17,10 +17,11 @@ from app.core.database import get_db
 from app.models.word import Word, Unit, UnitWord, WordDefinition
 from app.models.user import User
 from app.models.learning import (
-    ExamPaper, ExamQuestion, ExamSubmission, ExamAnswer, WordMastery,
+    ExamPaper, ExamQuestion, ExamSubmission, ExamAnswer,
     LearningRecord,
 )
 from app.api.v1.auth import get_current_student
+from app.services.mastery import apply_answer
 
 router = APIRouter()
 
@@ -383,30 +384,27 @@ async def submit_exam(
         )
         db.add(ea)
 
-    # 写入 LearningRecord，使考试错题出现在错题集
+    # 写入 LearningRecord(使考试错题出现在错题集)并同步掌握度。
+    # 两件事必须同一循环、同一份数据:原先记录写全部题目、掌握度只更新错题,
+    # 且只 wrong_count += 1 不加 total_encounters —— 等级算的是
+    # correct/total_encounters,于是 accuracy 能算出 >1,掌握度被系统性抬高
+    # (本地库 1975 行 correct+wrong > total_encounters)。没有掌握度行的词
+    # 还会被整个跳过,考试错了却不留痕。
+    # advance_srs=False:考试是检测,不重排该词的复习节奏。
     for d in details:
-        if d.get("word_id"):
-            db.add(LearningRecord(
-                user_id=current_user.id,
-                word_id=d["word_id"],
-                learning_mode="exam",
-                is_correct=d["is_correct"],
-                time_spent=0,
-            ))
-
-    # 更新错题的掌握度
-    for word_id in set(wrong_word_ids):
-        result = await db.execute(
-            select(WordMastery).where(and_(
-                WordMastery.user_id == current_user.id,
-                WordMastery.word_id == word_id
-            ))
+        if not d.get("word_id"):
+            continue
+        db.add(LearningRecord(
+            user_id=current_user.id,
+            word_id=d["word_id"],
+            learning_mode="exam",
+            is_correct=d["is_correct"],
+            time_spent=0,
+        ))
+        await apply_answer(
+            db, current_user.id, d["word_id"], "exam", d["is_correct"],
+            advance_srs=False,
         )
-        mastery = result.scalar_one_or_none()
-        if mastery:
-            mastery.wrong_count += 1
-            if mastery.mastery_level > 0:
-                mastery.mastery_level = max(0, mastery.mastery_level - 1)
 
     await db.commit()
 

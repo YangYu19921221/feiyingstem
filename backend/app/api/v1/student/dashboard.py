@@ -4,11 +4,13 @@ from sqlalchemy import select, func, and_, desc, Integer
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
-from app.core.timeutil import local_today_utc_range
+from app.core.timeutil import local_today, local_today_utc_range
 from app.models.user import User, StudyCalendar
 from app.models.learning import LearningProgress, StudySession, LearningRecord
 from app.models.word import WordBook, Unit
 from app.api.v1.auth import get_current_student
+from app.services.weak_words import NON_LEARNED_MODES
+from app.services import daily_words
 
 router = APIRouter()
 
@@ -56,6 +58,7 @@ async def get_daily_plan(
         .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(
             LearningRecord.user_id == current_user.id,
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
         ))
@@ -111,17 +114,11 @@ async def get_student_dashboard_stats(
     )
     total_words_studied = result.scalar() or 0
 
-    # 2. 今日学习单词数
-    result = await db.execute(
-        select(func.count()).select_from(StudySession)
-        .where(
-            and_(
-                StudySession.user_id == user_id,
-                StudySession.started_at >= today_start
-            )
-        )
-    )
-    today_words = result.scalar() or 0
+    # 2. 今日学习单词数。
+    # ⚠️ 原来这里数的是 StudySession 的**条数**,不是词数 —— 首页「今日 +N」里
+    # 一个 10 词单元练三轮会显示"+3",练一轮显示"+1",完全不是单词数。
+    # 改为与全站统一口径:distinct(lower(word)) 且排除 classify(见 daily_words)。
+    today_words = await daily_words.words_on_day(db, user_id, local_today())
 
     # 3. 已掌握单词数 (completed_words总和)
     result = await db.execute(
@@ -282,12 +279,15 @@ async def get_today_words_split(
 
     day_start, day_end = local_today_utc_range()
 
+    # 排除 classify:这个横幅就显示在分类流程里,不排除的话学生看到的"今天学了N个词"
+    # 会把分类自评算进去,比老师看到的同一个数字大一截
     total = (await db.execute(
         select(func.count(func.distinct(func.lower(Word.word))))
         .select_from(LearningRecord)
         .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(
             LearningRecord.user_id == current_user.id,
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
         ))

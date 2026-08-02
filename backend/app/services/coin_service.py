@@ -25,8 +25,9 @@ TASK_REWARD = 1        # 完成当日全部作业(与单元币共享「一天 1 
 UNIT_REWARD = 1        # 完成当日 >=2 个单元(计分模式),与作业币互斥
 WORD_KING_REWARD = 2   # 当日班级词量榜第一
 UNIT_THRESHOLD = 2     # 完成几个单元发一个活动币
-# 计分模式:与 teacher/analytics.py 口径一致。翻卡片/分类不算,防刷单元币。
-SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank')
+# 计分模式:真源在 services/weak_words.py,全站共用一份。
+# 翻卡片/分类不算,防刷单元币。
+from app.services.weak_words import SCORING_MODES, NON_LEARNED_MODES  # noqa: E402  (放在常量区便于阅读)
 
 
 async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> dict:
@@ -66,6 +67,7 @@ async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> di
         .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(
             LearningRecord.user_id.in_(user_ids),
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
         ))
@@ -147,6 +149,7 @@ async def word_kings_for_class(db: AsyncSession, class_id: int, d: date) -> set[
         .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(
             LearningRecord.user_id.in_(members),
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
         ))
@@ -275,6 +278,7 @@ async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
         .join(Word, Word.id == LearningRecord.word_id)
         .where(and_(
             LearningRecord.user_id.in_(all_student_ids),
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
         ))

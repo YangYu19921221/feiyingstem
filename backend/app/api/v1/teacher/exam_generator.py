@@ -7,7 +7,6 @@ from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.models.user import User
 from app.models.word import Word, WordDefinition
-from app.models.learning import WordMastery
 from app.api.v1.auth import get_current_user, require_role
 from app.schemas.exam import (
     GenerateExamRequest,
@@ -18,6 +17,7 @@ from app.schemas.exam import (
     ExamQuestionBase
 )
 from app.services.ai_service import ai_service
+from app.services.weak_words import per_word_scoring_stats
 from datetime import datetime
 import json
 
@@ -46,22 +46,20 @@ async def analyze_student_mistakes(
     if not student:
         raise HTTPException(status_code=404, detail="学生不存在")
 
-    # 获取学生的单词掌握度记录
-    result = await db.execute(
-        select(WordMastery, Word, WordDefinition)
-        .join(Word, WordMastery.word_id == Word.id)
-        .join(WordDefinition, Word.id == WordDefinition.word_id)
-        .where(
-            and_(
-                WordMastery.user_id == student_id,
-                WordMastery.wrong_count > 0,  # 只看有错误的单词
-                WordDefinition.is_primary == True
-            )
-        )
-        .order_by(WordMastery.wrong_count.desc())
-    )
+    # 真实答错过的词(只算计分模式;word_mastery.wrong_count 掺了分类自评,不能用)
+    stats = await per_word_scoring_stats(db, student_id)
+    wrong_ids = [wid for wid, s in stats.items() if s["wrong"] > 0]
 
-    records = result.all()
+    records = []
+    if wrong_ids:
+        result = await db.execute(
+            select(Word, WordDefinition)
+            .join(WordDefinition, Word.id == WordDefinition.word_id)
+            .where(and_(Word.id.in_(wrong_ids), WordDefinition.is_primary == True))
+        )
+        records = result.all()
+        # 错得最多的排前面
+        records.sort(key=lambda r: -stats[r[0].id]["wrong"])
 
     if not records:
         # 如果没有错题记录,返回默认分析(参考正规试卷标准)
@@ -80,20 +78,21 @@ async def analyze_student_mistakes(
             accuracy_rate=0
         )
 
-    # 构建单词掌握度数据
+    # 构建单词掌握度数据(对错一律取自 learning_records 的计分模式)
     word_mastery_records = []
-    for mastery, word, definition in records:
+    for word, definition in records:
+        s = stats[word.id]
         word_mastery_records.append({
             "word": word.word,
             "meaning": definition.meaning,
-            "wrong_count": mastery.wrong_count,
-            "correct_count": mastery.correct_count,
-            "quiz_correct": mastery.quiz_correct,
-            "quiz_wrong": mastery.quiz_wrong,
-            "spelling_correct": mastery.spelling_correct,
-            "spelling_wrong": mastery.spelling_wrong,
-            "fillblank_correct": mastery.fillblank_correct,
-            "fillblank_wrong": mastery.fillblank_wrong,
+            "wrong_count": s["wrong"],
+            "correct_count": s["correct"],
+            "quiz_correct": s["quiz_correct"],
+            "quiz_wrong": s["quiz_wrong"],
+            "spelling_correct": s["spelling_correct"],
+            "spelling_wrong": s["spelling_wrong"],
+            "fillblank_correct": s["fillblank_correct"],
+            "fillblank_wrong": s["fillblank_wrong"],
         })
 
     # 调用AI服务进行分析
@@ -136,40 +135,38 @@ async def generate_personalized_exam(
     if not student:
         raise HTTPException(status_code=404, detail="学生不存在")
 
-    # 1. 分析学生错题情况
-    result = await db.execute(
-        select(WordMastery, Word, WordDefinition)
-        .join(Word, WordMastery.word_id == Word.id)
-        .join(WordDefinition, Word.id == WordDefinition.word_id)
-        .where(
-            and_(
-                WordMastery.user_id == request.student_id,
-                WordDefinition.is_primary == True
-            )
-        )
-        .order_by(WordMastery.wrong_count.desc())
-        .limit(30)  # 取最近的30个单词
-    )
+    # 1. 分析学生错题情况(对错取自 learning_records 计分模式,错多的优先)
+    stats = await per_word_scoring_stats(db, request.student_id)
+    if not stats:
+        raise HTTPException(status_code=400, detail="该学生还没有学习记录,无法生成个性化试卷")
 
+    ranked_ids = sorted(stats.keys(), key=lambda wid: -stats[wid]["wrong"])[:30]
+    result = await db.execute(
+        select(Word, WordDefinition)
+        .join(WordDefinition, Word.id == WordDefinition.word_id)
+        .where(and_(Word.id.in_(ranked_ids), WordDefinition.is_primary == True))
+    )
     records = result.all()
+    records.sort(key=lambda r: -stats[r[0].id]["wrong"])
 
     if not records:
         raise HTTPException(status_code=400, detail="该学生还没有学习记录,无法生成个性化试卷")
 
     # 构建单词数据
     word_mastery_records = []
-    for mastery, word, definition in records:
+    for word, definition in records:
+        s = stats[word.id]
         word_mastery_records.append({
             "word": word.word,
             "meaning": definition.meaning,
-            "wrong_count": mastery.wrong_count,
-            "correct_count": mastery.correct_count,
-            "quiz_correct": mastery.quiz_correct,
-            "quiz_wrong": mastery.quiz_wrong,
-            "spelling_correct": mastery.spelling_correct,
-            "spelling_wrong": mastery.spelling_wrong,
-            "fillblank_correct": mastery.fillblank_correct,
-            "fillblank_wrong": mastery.fillblank_wrong,
+            "wrong_count": s["wrong"],
+            "correct_count": s["correct"],
+            "quiz_correct": s["quiz_correct"],
+            "quiz_wrong": s["quiz_wrong"],
+            "spelling_correct": s["spelling_correct"],
+            "spelling_wrong": s["spelling_wrong"],
+            "fillblank_correct": s["fillblank_correct"],
+            "fillblank_wrong": s["fillblank_wrong"],
         })
 
     # 进行错题分析

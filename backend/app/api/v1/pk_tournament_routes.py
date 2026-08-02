@@ -48,7 +48,9 @@ class CreateTournamentRequest(BaseModel):
     class_ids: list[int] = Field(min_length=1)
     unit_ids: list[int] = Field(min_length=1)
     group_size: int = Field(default=4, ge=3, le=20)
-    word_count: int = Field(default=8, ge=5, le=20)
+    # 上限与自由房一致放开到 200(见 schemas/pk.py 注释)。晋级赛是「双方同一批词」,
+    # 词源是所选单元池,建赛时下面会校验单元词量够不够,填太大会被明确拒绝而非静默截断。
+    word_count: int = Field(default=8, ge=5, le=200)
     has_consolation: bool = True
 
 
@@ -354,7 +356,10 @@ async def enter_match(
             if user.id not in room.players:
                 nickname = user.full_name or user.username or f"User{user.id}"
                 try:
-                    room = manager.join_room(invite_code=m.invite_code, user_id=user.id, nickname=nickname, org_id=user.org_id)
+                    room = manager.join_room(
+                        invite_code=m.invite_code, user_id=user.id,
+                        nickname=nickname, org_id=user.org_id,
+                    )
                 except manager.UserAlreadyInRoom:
                     raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
                 except (manager.RoomFull, manager.RoomAlreadyStarted):
