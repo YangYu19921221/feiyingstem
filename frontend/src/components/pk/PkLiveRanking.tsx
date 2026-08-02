@@ -1,184 +1,138 @@
-/** PK 实时排行榜(擂台版):深色竞技场底 + 冠军金色聚光 + 赛道进度 + 抢分浮动。
- *  名次变化用 layout 弹簧动画滑动交换,营造你追我赶的紧迫感。 */
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { Crown, Flame, Medal, Radio, WifiOff } from 'lucide-react';
 import type { PkLiveRankItem } from '../../api/pk';
 
 interface Props {
   items: PkLiveRankItem[];
   meId: number;
-  /** 最近一次结算各玩家的得分增量(user_id → points_gained) */
+  totalPlayers?: number;
   gains?: Record<string, number>;
-  /** 结算序号,用于让每次 +分 浮动动画都有新 key */
   settleSeq?: number;
 }
 
-const RANK_BADGE: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const STAGE_LABEL: Record<string, string> = {
-  classify: '🗂️ 分类', dictation: '✍️ 听写', exam: '🏁 过关', done: '✅ 完成',
+  classify: '分类',
+  dictation: '听写',
+  exam: '过关',
+  done: '已完成',
 };
 
-/** 每个名次的赛道配色:冠军金、亚军银、季军铜,其余橙。 */
-const LANE_TONE: Record<number, string> = {
-  1: 'from-amber-400 via-yellow-300 to-amber-500',
-  2: 'from-slate-300 via-slate-200 to-slate-400',
-  3: 'from-orange-400 via-amber-500 to-orange-600',
-};
+function rankTone(rank: number, isMe: boolean) {
+  if (rank === 1) return 'bg-amber-100 text-amber-800';
+  if (rank === 2) return 'bg-slate-200 text-slate-700';
+  if (rank === 3) return 'bg-orange-100 text-orange-800';
+  if (isMe) return 'bg-orange-50 text-accent-warm';
+  return 'bg-slate-100 text-ink-soft';
+}
 
-export default function PkLiveRanking({ items, meId, gains, settleSeq = 0 }: Props) {
-  const leaderProgress = items.length ? Math.max(...items.map((i) => i.progress ?? 0)) : 0;
+export default function PkLiveRanking({ items, meId, totalPlayers, gains, settleSeq = 0 }: Props) {
+  const reduceMotion = useReducedMotion();
+  const resolvedTotal = Math.max(items.length, totalPlayers ?? items.length);
+  const isTrimmed = resolvedTotal > items.length;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 shadow-2xl ring-1 ring-white/10">
-      {/* 顶部光晕 + 竞技场氛围 */}
-      <div className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 h-40 w-56 rounded-full bg-primary/25 blur-3xl" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(255,107,53,0.18),transparent_60%)]" />
-
-      {/* 标题栏:LIVE 脉冲 */}
-      <div className="relative flex items-center justify-between px-4 pt-3.5 pb-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🏟️</span>
-          <h3 className="font-display font-extrabold tracking-wide text-white text-[15px]">实时战况</h3>
+    <section className="card-soft overflow-hidden rounded-2xl" aria-labelledby="pk-live-ranking-title">
+      <div className="flex items-center justify-between border-b border-black/[0.06] px-4 py-3.5">
+        <div>
+          <h2 id="pk-live-ranking-title" className="font-display text-base font-semibold text-ink">实时排名</h2>
+          <p className="mt-0.5 text-xs text-ink-mute">
+            {isTrimmed ? `共 ${resolvedTotal} 人，显示领先选手和我的排名` : `${resolvedTotal} 人参赛 · 按当前总分更新`}
+          </p>
         </div>
-        <div className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-1">
-          <motion.span
-            className="h-2 w-2 rounded-full bg-red-500"
-            animate={{ opacity: [1, 0.3, 1], scale: [1, 0.8, 1] }}
-            transition={{ repeat: Infinity, duration: 1.2 }}
-          />
-          <span className="text-[10px] font-bold tracking-widest text-red-300">LIVE</span>
-        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+          <Radio className="h-3.5 w-3.5" aria-hidden="true" />
+          实时
+        </span>
       </div>
 
-      {/* 榜单 */}
-      <div className="relative space-y-1.5 px-2.5 pb-3">
-        {items.map((it) => {
-          const isMe = it.user_id === meId;
-          const prog = it.progress ?? 0;
-          const isLeader = it.rank === 1 && (it.finished || prog > 0);
-          const gain = gains?.[String(it.user_id)] ?? 0;
-          const pct = Math.min(100, prog * 100);
-          // 与领跑者的进度差(展示"再追一点就反超"的紧迫感,百分点)
-          const behindPct = Math.max(0, Math.round((leaderProgress - prog) * 100));
-          const lane = LANE_TONE[it.rank] ?? 'from-primary via-orange-400 to-primary';
+      <div className="divide-y divide-black/[0.05]">
+        <AnimatePresence initial={false}>
+          {items.map((item) => {
+            const isMe = item.user_id === meId;
+            const progress = Math.min(100, Math.max(0, Math.round((item.progress ?? 0) * 100)));
+            const gain = gains?.[String(item.user_id)] ?? 0;
+            const stageLabel = STAGE_LABEL[item.stage ?? 'classify'] ?? '分类';
 
-          return (
-            <motion.div
-              key={it.user_id}
-              layout
-              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-              className={`relative overflow-hidden rounded-2xl px-2.5 py-2 ${
-                isLeader
-                  ? 'bg-gradient-to-r from-amber-500/25 via-amber-400/10 to-transparent ring-1 ring-amber-300/50'
-                  : isMe
-                    ? 'bg-primary/15 ring-1 ring-primary/50'
-                    : 'bg-white/[0.04] ring-1 ring-white/5'
-              } ${!it.online ? 'opacity-45 grayscale' : ''}`}
-            >
-              {/* 冠军流光 */}
-              {isLeader && it.online && (
-                <motion.div
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent"
-                  initial={{ x: '-120%' }}
-                  animate={{ x: '120%' }}
-                  transition={{ repeat: Infinity, duration: 2.4, ease: 'easeInOut' }}
-                />
-              )}
+            return (
+              <motion.div
+                key={item.user_id}
+                layout
+                initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+                animate={{ opacity: item.online ? 1 : 0.58, y: 0 }}
+                exit={reduceMotion ? undefined : { opacity: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.26, ease: [0.16, 1, 0.3, 1] }}
+                className={`relative px-3 py-3 ${isMe ? 'bg-orange-50/70' : 'bg-white'}`}
+                aria-label={`第 ${item.rank} 名，${item.nickname}，${item.points ?? 0} 分，完成 ${progress}%`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${rankTone(item.rank, isMe)}`}>
+                    {item.rank === 1
+                      ? <Crown className="h-5 w-5" aria-label="第 1 名" />
+                      : item.rank <= 3
+                        ? <Medal className="h-5 w-5" aria-label={`第 ${item.rank} 名`} />
+                        : <span className="font-numeric text-sm font-bold">#{item.rank}</span>}
+                  </span>
 
-              <div className="relative flex items-center gap-2">
-                {/* 名次徽章 */}
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center ${isLeader ? 'text-2xl' : 'text-lg'}`}>
-                  {RANK_BADGE[it.rank] ?? (
-                    <span className="font-numeric text-sm font-bold text-slate-400">{it.rank}</span>
-                  )}
-                </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-semibold text-ink">{item.nickname}</span>
+                      {isMe && <span className="shrink-0 rounded bg-accent-warm px-1.5 py-0.5 text-[10px] font-semibold text-white">我</span>}
+                      {!item.online && <WifiOff className="h-3.5 w-3.5 shrink-0 text-ink-mute" aria-label="暂时离线" />}
+                      {item.streak >= 2 && item.online && (
+                        <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-semibold text-accent-warm">
+                          <Flame className="h-3 w-3" aria-hidden="true" />×{item.streak}
+                        </span>
+                      )}
+                    </div>
 
-                <div className="min-w-0 flex-1">
-                  {/* 昵称行 */}
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`truncate text-sm font-bold ${
-                        isLeader ? 'text-amber-200' : isMe ? 'text-orange-200' : 'text-slate-100'
-                      }`}
-                    >
-                      {it.nickname}
-                    </span>
-                    {isMe && (
-                      <span className="shrink-0 rounded bg-primary px-1 py-px text-[9px] font-bold text-white">我</span>
-                    )}
-                    {it.streak >= 2 && it.online && (
-                      <motion.span
-                        key={`streak-${it.streak}`}
-                        initial={{ scale: 1.4 }}
-                        animate={{ scale: 1 }}
-                        className="shrink-0 font-numeric text-[11px] font-extrabold text-orange-400"
-                      >
-                        🔥×{it.streak}
-                      </motion.span>
-                    )}
-                    {!it.online && <span className="shrink-0 text-[10px] text-red-400">掉线</span>}
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-ink-mute">
+                      <span>
+                        {stageLabel}
+                        {item.stage !== 'done' && (item.group_total ?? 0) > 1
+                          ? ` · 第 ${(item.group_idx ?? 0) + 1}/${item.group_total} 组`
+                          : ''}
+                      </span>
+                      <span className="font-numeric shrink-0">{progress}%</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <motion.div
+                        className={`h-full w-full rounded-full ${item.finished ? 'bg-emerald-500' : 'bg-accent-warm'}`}
+                        style={{ transformOrigin: 'left center' }}
+                        initial={false}
+                        animate={{ scaleX: progress / 100 }}
+                        transition={{ duration: reduceMotion ? 0 : 0.38, ease: [0.16, 1, 0.3, 1] }}
+                      />
+                    </div>
                   </div>
 
-                  {/* 阶段 / 第几组(掌握赛进度语义) */}
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400">
-                    <span>{STAGE_LABEL[it.stage ?? 'classify'] ?? '🗂️ 分类'}</span>
-                    {it.stage !== 'done' && (it.group_total ?? 0) > 1 && (
-                      <span>· 第 {(it.group_idx ?? 0) + 1}/{it.group_total} 组</span>
-                    )}
-                  </div>
-
-                  {/* 赛道进度条 */}
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/40">
-                    <motion.div
-                      className={`h-full rounded-full bg-gradient-to-r ${lane}`}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                    />
+                  <div className="relative w-16 shrink-0 text-right">
+                    <p className="font-numeric text-lg font-semibold leading-none text-ink">{(item.points ?? 0).toLocaleString('zh-CN')}</p>
+                    <p className="mt-1 text-[10px] text-ink-mute">总分</p>
+                    <AnimatePresence>
+                      {gain > 0 && (
+                        <motion.span
+                          key={`gain-${settleSeq}`}
+                          initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                          animate={reduceMotion ? { opacity: 1 } : { opacity: [0, 1, 1, 0], y: [4, -4, -8, -14] }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: reduceMotion ? 0 : 1.2, times: [0, 0.15, 0.72, 1], ease: [0.16, 1, 0.3, 1] }}
+                          className="pointer-events-none absolute -top-4 right-0 font-numeric text-sm font-semibold text-emerald-600"
+                        >
+                          +{gain}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
-
-                {/* 掌握进度 % + 完成标 + 抢分浮动 */}
-                <div className="relative w-16 shrink-0 text-right">
-                  {it.finished ? (
-                    <span className="font-numeric text-base font-extrabold leading-none text-amber-300">👑完成</span>
-                  ) : (
-                    <motion.div
-                      key={Math.round(pct)}
-                      initial={{ scale: 1.25 }}
-                      animate={{ scale: 1, color: isLeader ? '#FCD34D' : '#FFFFFF' }}
-                      transition={{ duration: 0.3 }}
-                      className="font-numeric text-lg font-extrabold leading-none"
-                    >
-                      {Math.round(pct)}%
-                    </motion.div>
-                  )}
-                  {/* 落后领跑者多少进度(非领跑、在线、未完成时显示) */}
-                  {!isLeader && it.online && !it.finished && behindPct > 0 && (
-                    <span className="font-numeric text-[10px] text-slate-500">-{behindPct}%</span>
-                  )}
-                  <AnimatePresence>
-                    {gain > 0 && (
-                      <motion.span
-                        key={`gain-${settleSeq}`}
-                        initial={{ opacity: 0, y: 6, scale: 0.8 }}
-                        animate={{ opacity: [0, 1, 1, 0], y: [6, -10, -16, -24], scale: [0.8, 1.2, 1.1, 1] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.5, times: [0, 0.15, 0.7, 1], ease: 'easeOut' }}
-                        className="pointer-events-none absolute -top-2 right-0 font-numeric text-sm font-extrabold text-success drop-shadow-[0_0_6px_rgba(95,211,95,0.7)]"
-                      >
-                        +{gain}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </motion.div>
-          );
-        })}
-
-        {items.length === 0 && (
-          <p className="py-6 text-center text-sm text-slate-500">等待选手上场…</p>
-        )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
-    </div>
+
+      {items.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-ink-mute">比赛开始后，这里会显示实时排名。</p>
+      )}
+    </section>
   );
 }

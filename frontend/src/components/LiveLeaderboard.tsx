@@ -2,8 +2,8 @@
  * 实时排行榜组件
  */
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Radio, Trophy } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Crown, Flame, Medal, Radio, Trophy } from 'lucide-react';
 import { competitionWS, type LeaderboardData } from '../services/websocket';
 
 interface LeaderboardMessage {
@@ -26,6 +26,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'overall'>('daily');
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     // 连接WebSocket
@@ -64,22 +65,12 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
     competitionWS.requestLeaderboard(tab);
   };
 
-  // 获取排名徽章
-  const getRankBadge = (rank: number) => {
-    if (rank === 1) return '👑';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    if (rank <= 10) return '🏅';
-    if (rank <= 50) return '⭐';
-    return '🌟';
-  };
-
   // 获取排名颜色
   const getRankColor = (rank: number) => {
-    if (rank === 1) return 'bg-amber-100 text-amber-700';
+    if (rank === 1) return 'bg-amber-100 text-amber-800';
     if (rank === 2) return 'bg-slate-200 text-slate-700';
-    if (rank === 3) return 'bg-orange-100 text-orange-700';
-    return 'bg-slate-100 text-slate-600';
+    if (rank === 3) return 'bg-orange-100 text-orange-800';
+    return 'bg-slate-100 text-ink-soft';
   };
 
   const getScoreColor = (rank: number) => {
@@ -113,7 +104,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
   const maxScore = leaderboard.rankings[0]?.score || 1;
 
   return (
-    <div className={`overflow-hidden rounded-2xl bg-white ${className}`}>
+    <div className={`card-soft overflow-hidden rounded-2xl ${className}`}>
       {/* 头部 */}
       <div className="border-b border-black/[0.06] p-4">
         <div className="flex items-center justify-between mb-3">
@@ -121,7 +112,7 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
             <Trophy className="h-4 w-4 text-accent-warm" aria-hidden="true" />
             实时排行榜
           </h2>
-          <div className={`flex items-center gap-1.5 text-xs font-medium ${isConnected ? 'text-emerald-700' : 'text-ink-mute'}`}>
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${isConnected ? 'text-emerald-700' : 'text-ink-mute'}`} role="status">
             <Radio className="h-3.5 w-3.5" aria-hidden="true" />
             <span>{isConnected ? '在线' : '连接中'}</span>
           </div>
@@ -151,20 +142,27 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
       {/* 我的排名 */}
       {leaderboard.my_rank && (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={reduceMotion ? false : { opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="border-b border-orange-100 bg-orange-50 p-4"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="text-3xl">{getRankBadge(leaderboard.my_rank)}</div>
+              <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${getRankColor(leaderboard.my_rank)}`}>
+                {leaderboard.my_rank === 1
+                  ? <Crown className="h-5 w-5" aria-hidden="true" />
+                  : leaderboard.my_rank <= 3
+                    ? <Medal className="h-5 w-5" aria-hidden="true" />
+                    : <span className="font-numeric text-sm font-bold">#{leaderboard.my_rank}</span>}
+              </div>
               <div>
-                <p className="text-sm text-gray-600">我的排名</p>
+                <p className="text-sm text-ink-mute">我的排名</p>
                 <p className="font-numeric text-2xl font-semibold text-ink">#{leaderboard.my_rank}</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-600">积分</p>
+              <p className="text-sm text-ink-mute">积分</p>
               <p className="font-numeric text-2xl font-semibold text-accent-warm">{leaderboard.my_score}</p>
             </div>
           </div>
@@ -177,10 +175,11 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
           {leaderboard.rankings.map((item) => (
             <motion.div
               key={item.user_id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.3 }}
+              layout
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
               className={`border-b border-black/[0.05] p-4 transition-colors hover:bg-slate-50 ${
                 item.is_me ? 'bg-orange-50/70' : ''
               }`}
@@ -188,16 +187,17 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
               <div className="flex items-center gap-3">
                 {/* 排名 */}
                 <div className={`flex h-11 w-11 items-center justify-center rounded-xl font-bold ${getRankColor(item.rank)}`}>
-                  {item.rank <= 3 ? getRankBadge(item.rank) : `#${item.rank}`}
+                  {item.rank === 1
+                    ? <Crown className="h-5 w-5" aria-hidden="true" />
+                    : item.rank <= 3
+                      ? <Medal className="h-5 w-5" aria-hidden="true" />
+                      : <span className="font-numeric text-sm">#{item.rank}</span>}
                 </div>
 
                 {/* 用户信息 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    {item.rank_tier_emoji && (
-                      <span className="text-sm">{item.rank_tier_emoji}</span>
-                    )}
-                    <span className="font-semibold text-gray-800 truncate">
+                    <span className="truncate font-semibold text-ink">
                       {item.nickname}
                     </span>
                     {item.is_me && (
@@ -209,24 +209,26 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
 
                   {/* 分数条 */}
                   <div className="mt-2">
-                    <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                    <div className="mb-1 flex items-center justify-between text-xs text-ink-mute">
                       <span>{item.score}分</span>
                       <span>正确率 {item.accuracy_rate.toFixed(1)}%</span>
                     </div>
-                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
                       <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${getScoreBarWidth(item.score, maxScore)}%` }}
-                        transition={{ duration: 0.5, delay: 0.1 }}
-                        className={`h-full ${getScoreColor(item.rank)}`}
+                        initial={reduceMotion ? false : { scaleX: 0 }}
+                        animate={{ scaleX: getScoreBarWidth(item.score, maxScore) / 100 }}
+                        transition={{ duration: reduceMotion ? 0 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+                        style={{ transformOrigin: 'left center' }}
+                        className={`h-full w-full rounded-full ${getScoreColor(item.rank)}`}
                       />
                     </div>
                   </div>
 
                   {/* 连击数 */}
                   {item.max_combo > 0 && (
-                    <div className="mt-1 text-xs text-gray-500">
-                      🔥 最高连击: {item.max_combo}
+                    <div className="mt-1 flex items-center gap-1 text-xs text-ink-mute">
+                      <Flame className="h-3 w-3 text-accent-warm" aria-hidden="true" />
+                      最高连击 <span className="font-numeric">{item.max_combo}</span>
                     </div>
                   )}
                 </div>
@@ -235,6 +237,13 @@ const LiveLeaderboard: React.FC<LiveLeaderboardProps> = ({
           ))}
         </AnimatePresence>
       </div>
+
+      {leaderboard.rankings.length === 0 && (
+        <div className="px-5 py-10 text-center">
+          <Trophy className="mx-auto h-6 w-6 text-ink-mute" aria-hidden="true" />
+          <p className="mt-2 text-sm text-ink-soft">还没有同学上榜，答对第一题就会出现排名。</p>
+        </div>
+      )}
 
       {/* 底部信息 */}
       <div className="grid grid-cols-3 divide-x divide-black/[0.06] bg-slate-50 py-3 text-center text-xs text-ink-mute">

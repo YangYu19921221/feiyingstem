@@ -46,8 +46,10 @@ export default function PkLobby() {
   const [countdownMin, setCountdownMin] = useState(5);  // 全场倒计时(分钟)
   const [inviteCode, setInviteCode] = useState('');
   const [showInvite, setShowInvite] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [joinError, setJoinError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [roomAction, setRoomAction] = useState<'join' | 'spectate' | null>(null);
   const [myMatches, setMyMatches] = useState<MyMatch[]>([]);
   const [entering, setEntering] = useState<number | null>(null);
   const [myRooms, setMyRooms] = useState<MyRoomItem[]>([]);
@@ -106,7 +108,7 @@ export default function PkLobby() {
   };
 
   const handleCreate = async () => {
-    setError('');
+    setCreateError('');
     setCreating(true);
     try {
       // 取输入框当前文本再 clamp:打完数字直接点"创建"不会触发 onBlur,
@@ -130,18 +132,20 @@ export default function PkLobby() {
         : status === 403
           ? '只有教师可以创建 PK 房间'
           : detail || fallbackMessage;
-      setError(msg);
+      setCreateError(msg);
       setCreating(false);
     }
   };
 
   const handleJoin = async () => {
-    setError('');
+    if (roomAction) return;
+    setJoinError('');
     const code = inviteCode.trim().toUpperCase();
     if (code.length !== 6) {
-      setError('邀请码必须是 6 位');
+      setJoinError('请输入完整的 6 位邀请码');
       return;
     }
+    setRoomAction('join');
     try {
       const data = await pkApi.joinRoomByCode(code);
       navigate(`/pk/arena/${data.room_id}`);
@@ -155,17 +159,20 @@ export default function PkLobby() {
         ROOM_ALREADY_STARTED: '房间已开始，可以点“观战”进入比赛',
         USER_ALREADY_IN_ROOM: '你已在另一个 PK 房间中',
       };
-      setError(errorMap[detail] || detail || fallbackMessage);
+      setJoinError(errorMap[detail] || detail || fallbackMessage);
+      setRoomAction(null);
     }
   };
 
   const handleSpectate = async () => {
-    setError('');
+    if (roomAction) return;
+    setJoinError('');
     const code = inviteCode.trim().toUpperCase();
     if (code.length !== 6) {
-      setError('邀请码必须是 6 位');
+      setJoinError('请输入完整的 6 位邀请码');
       return;
     }
+    setRoomAction('spectate');
     try {
       const data = await pkApi.spectateByCode(code);
       navigate(`/pk/arena/${data.room_id}`);
@@ -177,7 +184,8 @@ export default function PkLobby() {
         ROOM_FINISHED: '该房间的 PK 已结束',
         SPECTATORS_FULL: '观众席满啦(30 人)',
       };
-      setError(errorMap[detail] || detail || fallbackMessage);
+      setJoinError(errorMap[detail] || detail || fallbackMessage);
+      setRoomAction(null);
     }
   };
 
@@ -252,7 +260,7 @@ export default function PkLobby() {
             transition={{ duration: reduceMotion ? 0 : 0.36, ease: [0.16, 1, 0.3, 1] }}
             className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4"
           >
-            <div className="flex items-center gap-2 mb-3">
+            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
               <Trophy className="h-5 w-5 text-amber-700" aria-hidden="true" />
               <h2 className="font-bold text-amber-900">晋级赛 · 你有 {myMatches.length} 场对局要打</h2>
             </div>
@@ -295,8 +303,8 @@ export default function PkLobby() {
             </div>
             <div className="space-y-2">
               {myRooms.map((r) => (
-                <div key={r.room_id} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 shadow-sm">
-                  <span className="font-mono text-lg font-bold tracking-widest text-primary shrink-0">{r.invite_code}</span>
+                <div key={r.room_id} className="flex flex-col gap-3 rounded-xl bg-white px-3 py-3 sm:flex-row sm:items-center">
+                  <span className="font-numeric shrink-0 text-lg font-semibold tracking-[0.18em] text-accent-warm">{r.invite_code}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-ink-soft">
                       {r.status === 'waiting' ? '等待中' : '对战中'}
@@ -307,19 +315,21 @@ export default function PkLobby() {
                       {r.online_count}/{r.player_count} 人在线
                     </p>
                   </div>
-                  <button
-                    onClick={() => navigate(`/pk/arena/${r.room_id}`)}
-                    className="shrink-0 px-3.5 py-2 rounded-lg bg-primary text-white text-sm font-semibold shadow active:scale-95 transition"
-                  >
-                    进入
-                  </button>
-                  <button
-                    onClick={() => handleDeleteRoom(r.room_id)}
-                    disabled={deleting === r.room_id}
-                    className="shrink-0 px-3 py-2 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 text-ink-soft text-sm font-medium transition disabled:opacity-50"
-                  >
-                    {deleting === r.room_id ? '删除中…' : '删除'}
-                  </button>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+                    <button
+                      onClick={() => navigate(`/pk/arena/${r.room_id}`)}
+                      className="min-h-11 rounded-lg bg-accent-warm px-3.5 text-sm font-semibold text-white transition hover:opacity-90"
+                    >
+                      进入
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRoom(r.room_id)}
+                      disabled={deleting === r.room_id}
+                      className="min-h-11 rounded-lg bg-gray-100 px-3 text-sm font-medium text-ink-soft transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                    >
+                      {deleting === r.room_id ? '删除中…' : '删除'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -327,7 +337,7 @@ export default function PkLobby() {
         )}
 
         {/* 创建(教师) / 加入(学生) */}
-        <div className={`grid grid-cols-1 ${isTeacher ? 'md:grid-cols-2' : ''} gap-5`}>
+        <div className={`grid grid-cols-1 gap-5 ${isTeacher ? 'md:grid-cols-2' : 'mx-auto max-w-2xl'}`}>
           {/* 创建房间:仅教师(组织者)可见 */}
           {isTeacher && (
           <motion.div
@@ -522,10 +532,16 @@ export default function PkLobby() {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="btn-glow w-full py-3.5 text-white rounded-2xl font-semibold text-base"
+              className="btn-glow min-h-12 w-full rounded-xl text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating ? '创建中…' : '创建并获取邀请码'}
             </button>
+            {createError && (
+              <p className="mt-3 flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-error" role="alert">
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{createError}</span>
+              </p>
+            )}
             <p className="text-[11px] text-ink-mute mt-3 text-center">
               每个学生各考「自己背过的词」,题量按全场最少的学生统一(最多 {wordCount} 词),
               走完分类→听写→过关全流程;总分(掌握分+速度分)最高者赢,{countdownMin} 分钟到点按当时总分排名
@@ -551,9 +567,14 @@ export default function PkLobby() {
             <div className="flex-1 flex flex-col justify-center">
               <input
                 value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                onChange={(e) => {
+                  setInviteCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase());
+                  if (joinError) setJoinError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && void handleJoin()}
                 aria-label="6 位房间邀请码"
+                aria-invalid={!!joinError}
+                aria-describedby={joinError ? 'pk-join-error' : 'pk-join-help'}
                 autoCapitalize="characters"
                 autoComplete="one-time-code"
                 className="w-full rounded-xl border border-orange-200 bg-white px-4 py-4 text-center font-numeric text-3xl font-semibold uppercase tracking-[0.32em] text-ink focus:border-primary focus:outline-none sm:text-4xl"
@@ -563,21 +584,29 @@ export default function PkLobby() {
               {!isTeacher && (
                 <button
                   onClick={handleJoin}
-                  className="btn-glow mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-semibold text-white"
+                  disabled={roomAction !== null}
+                  className="btn-glow mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Swords className="h-5 w-5" aria-hidden="true" />
-                  加入对战
+                  {roomAction === 'join' ? '正在加入…' : '加入对战'}
                 </button>
               )}
               <button
                 onClick={handleSpectate}
-                className={`inline-flex min-h-12 w-full items-center justify-center gap-2 ${isTeacher ? 'mt-5' : 'mt-2.5'} rounded-xl bg-gray-100 text-base font-semibold text-ink-soft transition hover:bg-orange-100`}
+                disabled={roomAction !== null}
+                className={`inline-flex min-h-12 w-full items-center justify-center gap-2 ${isTeacher ? 'mt-5' : 'mt-2.5'} rounded-xl bg-gray-100 text-base font-semibold text-ink-soft transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 <Eye className="h-5 w-5" aria-hidden="true" />
-                观战（满员或已开局也能看）
+                {roomAction === 'spectate' ? '正在进入观战…' : '观战（满员或已开局也能看）'}
               </button>
             </div>
-            <p className="text-[11px] text-ink-mute mt-3 text-center">
+            {joinError && (
+              <p id="pk-join-error" className="mt-3 flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-error" role="alert">
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{joinError}</span>
+              </p>
+            )}
+            <p id="pk-join-help" className="mt-3 text-center text-[11px] text-ink-mute">
               {isTeacher ? '学生在自己的 PK 大厅输入邀请码即可加入你的房间' : '没有邀请码?等老师创建房间后发给你'}
             </p>
           </motion.div>
@@ -697,18 +726,6 @@ export default function PkLobby() {
             </div>
           ))}
         </motion.div>
-
-        {error && (
-          <motion.p
-            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            role="alert"
-            className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-error"
-          >
-            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
-          </motion.p>
-        )}
 
         {showInvite && (
           <PkInviteModal inviteCode={showInvite} onClose={() => setShowInvite(null)} />

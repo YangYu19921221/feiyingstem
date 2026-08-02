@@ -26,6 +26,8 @@ interface PkExamCardProps {
   onSelect: (selected: string, ms: number) => void;
   onText: (text: string, ms: number) => void;
   disabled?: boolean;
+  /** 实时连接断开时锁定作答，但保留当前输入，恢复后可继续。 */
+  offline?: boolean;
   /** 服务端超时(ms),仅用于本地倒计时显示,判分以服务端为准 */
   timeoutMs?: number;
 }
@@ -50,6 +52,7 @@ export default function PkExamCard({
   onSelect,
   onText,
   disabled = false,
+  offline = false,
   timeoutMs = 30_000,
 }: PkExamCardProps) {
   const [text, setText] = useState('');
@@ -96,7 +99,10 @@ export default function PkExamCard({
           await playAudio(word.word, 1, word.id);
           if (!cancelled) setPlayCount(1);
         } finally {
-          if (!cancelled) setIsPlaying(false);
+          if (!cancelled) {
+            setIsPlaying(false);
+            inputRef.current?.focus();
+          }
         }
       }, 300);
     } else if (isInput) {
@@ -111,7 +117,7 @@ export default function PkExamCard({
   }, [examType, isInput, playAudio, timeoutMs, word.id, word.word]);
 
   const replay = async () => {
-    if (playCount >= 3 || isPlaying || disabled) return;
+    if (playCount >= 3 || isPlaying || disabled || offline) return;
     setIsPlaying(true);
     try {
       await playAudio(word.word, 1, word.id);
@@ -122,13 +128,13 @@ export default function PkExamCard({
   };
 
   const submitText = () => {
-    if (disabled || hasSubmittedText || !text.trim()) return;
+    if (disabled || offline || hasSubmittedText || remaining <= 0 || !text.trim()) return;
     setHasSubmittedText(true);
     onText(text.trim(), Date.now() - startRef.current);
   };
 
   const pick = (option: string) => {
-    if (disabled || selectedOption !== null) return;
+    if (disabled || offline || remaining <= 0 || selectedOption !== null) return;
     setSelectedOption(option);
     onSelect(option, Date.now() - startRef.current);
   };
@@ -137,35 +143,55 @@ export default function PkExamCard({
     ? `${word.word[0]}${' ·'.repeat(Math.max(0, word.word.length - 1))}`
     : '';
   const secondsLeft = Math.max(0, Math.ceil(remaining / 1000));
+  const timeExpired = remaining <= 0;
+  const timeIsUrgent = secondsLeft <= 5;
   const timeIsLow = secondsLeft <= 10;
-  const inputLocked = disabled || hasSubmittedText;
-  const choiceLocked = disabled || selectedOption !== null;
+  const timeProgress = timeoutMs > 0 ? Math.min(100, Math.max(0, (remaining / timeoutMs) * 100)) : 0;
+  const inputLocked = disabled || offline || timeExpired || hasSubmittedText;
+  const choiceLocked = disabled || offline || timeExpired || selectedOption !== null;
+  const answerSubmitted = selectedOption !== null || hasSubmittedText;
 
   return (
-    <section className="card-soft rounded-2xl p-4 sm:p-6" aria-busy={disabled} aria-labelledby="pk-exam-prompt">
-      <header className="mb-5 flex items-center justify-between gap-3 border-b border-black/[0.06] pb-4">
-        <span className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-orange-50 px-2.5 text-xs font-semibold text-accent-warm sm:text-sm">
-          <TypeIcon className="h-4 w-4" aria-hidden="true" />
-          {config.label}
-        </span>
-        <span
-          className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium sm:text-sm ${
-            timeIsLow ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-ink-soft'
-          }`}
-          role="timer"
-          aria-label={`剩余 ${secondsLeft} 秒`}
-        >
-          <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="font-numeric">{secondsLeft}</span> 秒
-        </span>
+    <section className="card-soft overflow-hidden rounded-2xl" aria-busy={disabled} aria-labelledby="pk-exam-heading">
+      <h2 id="pk-exam-heading" className="sr-only">{config.label}：{config.instruction}</h2>
+      <header className="px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-orange-50 px-2.5 text-xs font-semibold text-accent-warm sm:text-sm">
+            <TypeIcon className="h-4 w-4" aria-hidden="true" />
+            {config.label}
+          </span>
+          <span
+            className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium sm:text-sm ${
+              timeIsUrgent
+                ? 'bg-red-50 text-red-700'
+                : timeIsLow
+                  ? 'bg-amber-50 text-amber-800'
+                  : 'bg-slate-100 text-ink-soft'
+            }`}
+            role="timer"
+            aria-label={timeExpired ? '本题时间到' : `剩余 ${secondsLeft} 秒`}
+          >
+            <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="font-numeric">{secondsLeft}</span> 秒
+          </span>
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+          <motion.div
+            className={`h-full w-full rounded-full ${timeIsUrgent ? 'bg-red-500' : timeIsLow ? 'bg-amber-500' : 'bg-accent-warm'}`}
+            style={{ transformOrigin: 'left center' }}
+            initial={false}
+            animate={{ scaleX: timeProgress / 100 }}
+            transition={{ duration: reduceMotion ? 0 : 0.25, ease: 'linear' }}
+          />
+        </div>
       </header>
 
+      <div className="px-4 pb-5 pt-5 sm:px-6 sm:pb-6">
       <div className="mb-5 text-center">
         <p className="text-sm text-ink-mute">{config.instruction}</p>
 
         {isChoice && (
           <h2
-            id="pk-exam-prompt"
             className={`font-display mt-3 break-words font-semibold leading-tight text-ink ${
               examType === 'en_to_cn' ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'
             }`}
@@ -179,7 +205,7 @@ export default function PkExamCard({
             <button
               type="button"
               onClick={() => void replay()}
-              disabled={playCount >= 3 || isPlaying || disabled}
+              disabled={playCount >= 3 || isPlaying || disabled || offline || timeExpired}
               className="mx-auto inline-flex min-h-14 min-w-44 items-center justify-center gap-3 rounded-xl bg-accent-warm px-5 font-semibold text-white transition-colors hover:opacity-90 disabled:bg-slate-100 disabled:text-ink-mute"
               aria-describedby="pk-listening-count"
             >
@@ -198,7 +224,7 @@ export default function PkExamCard({
 
         {examType === 'spelling' && (
           <div className="mt-3">
-            <h2 id="pk-exam-prompt" className="font-display break-words text-2xl font-semibold text-ink sm:text-3xl">
+            <h2 className="font-display break-words text-2xl font-semibold text-ink sm:text-3xl">
               {word.translation}
             </h2>
             <p className="mt-2 text-sm text-ink-mute">
@@ -208,6 +234,13 @@ export default function PkExamCard({
           </div>
         )}
       </div>
+
+      {(offline || timeExpired) && !answerSubmitted && (
+        <div className={`mb-4 flex items-start gap-2 rounded-xl px-3.5 py-3 text-sm ${offline ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-ink-soft'}`} role="status">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{offline ? '实时连接暂时中断，恢复后可以继续作答。' : '本题时间到，正在等待下一题。'}</span>
+        </div>
+      )}
 
       {isChoice && (
         <fieldset disabled={choiceLocked}>
@@ -228,7 +261,7 @@ export default function PkExamCard({
                       selected
                         ? 'border-accent-warm bg-orange-50 text-accent-warm'
                         : 'border-slate-200 bg-white text-ink hover:border-orange-300 hover:bg-orange-50/50'
-                    } disabled:cursor-default disabled:opacity-70`}
+                    } disabled:cursor-default ${choiceLocked && !selected ? 'disabled:opacity-60' : ''}`}
                   >
                     <span className={`font-numeric flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
                       selected ? 'bg-accent-warm text-white' : 'bg-slate-100 text-ink-soft'
@@ -258,22 +291,28 @@ export default function PkExamCard({
             ref={inputRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && submitText()}
+            onKeyDown={(event) => event.key === 'Enter' && !event.nativeEvent.isComposing && submitText()}
             disabled={inputLocked}
+            aria-describedby="pk-exam-input-help"
             className="allow-select h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-center font-display text-xl font-semibold tracking-[0.06em] text-ink outline-none transition focus:border-accent-warm focus:ring-4 focus:ring-orange-100 disabled:bg-slate-50 disabled:text-ink-mute sm:text-2xl"
             placeholder="输入英文单词"
           />
+          <p id="pk-exam-input-help" className="mt-2 text-center text-xs text-ink-mute">输入完成后按回车或点击下方按钮提交</p>
           <button
             type="button"
             onClick={submitText}
             disabled={inputLocked || !text.trim()}
             className="btn-glow mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 font-semibold text-white disabled:border-transparent"
           >
-            {inputLocked ? (
+            {hasSubmittedText || disabled ? (
               <>
                 <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 提交中…
               </>
+            ) : timeExpired ? (
+              '本题时间到'
+            ) : offline ? (
+              '等待连接恢复'
             ) : (
               <>
                 提交答案
@@ -283,6 +322,14 @@ export default function PkExamCard({
           </button>
         </div>
       )}
+
+      {answerSubmitted && (
+        <div className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-3 text-sm font-medium text-emerald-700" role="status" aria-live="polite">
+          <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          答案已提交，正在准备下一题…
+        </div>
+      )}
+      </div>
     </section>
   );
 }
