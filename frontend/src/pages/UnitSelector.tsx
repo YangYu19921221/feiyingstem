@@ -7,6 +7,7 @@ import { getMyHomework, startHomework } from '../api/homework';
 import type { StudentHomeworkResponse } from '../api/homework';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from '../components/Toast';
+import AnimatedProgress from '../components/student/AnimatedProgress';
 import { getErrorMessage } from '../utils/errorMessage';
 import FullscreenBookComplete from '../components/challenge-fx/FullscreenBookComplete';
 
@@ -208,11 +209,8 @@ const UnitSelector = () => {
             {bookProgress.book_name}
           </h2>
           <div className="flex items-baseline gap-3">
-            <div className="flex-1 max-w-xs h-1 bg-black/[0.06] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent-warm rounded-full transition-all"
-                style={{ width: `${bookProgress.progress_percentage}%` }}
-              />
+            <div className="flex-1 max-w-xs">
+              <AnimatedProgress percent={bookProgress.progress_percentage} trackClassName="bg-black/[0.06]" />
             </div>
             <span className="text-sm font-numeric text-ink-soft">
               <span className="font-semibold text-ink">{bookProgress.progress_percentage.toFixed(0)}%</span> 完成
@@ -376,13 +374,8 @@ const UnitSelector = () => {
                       </div>
                       {/* 进度条 */}
                       <div className="flex items-center gap-2 mt-1.5">
-                        <div className="flex-1 h-1 bg-black/[0.05] rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              unit.progress_percentage >= 100 ? 'bg-success' : 'bg-accent-warm'
-                            }`}
-                            style={{ width: `${Math.max(unit.progress_percentage, 0)}%` }}
-                          />
+                        <div className="flex-1">
+                          <AnimatedProgress percent={unit.progress_percentage} />
                         </div>
                         <span className="text-xs text-ink-mute w-8 text-right font-numeric shrink-0">
                           {unit.progress_percentage.toFixed(0)}%
@@ -433,11 +426,8 @@ const UnitSelector = () => {
                                   <span className="text-ink-soft">已掌握 <span className="font-numeric font-semibold text-ink">{unit.completed_words}/{unit.word_count}</span></span>
                                   <span className="text-ink-mute font-numeric">{pct}%</span>
                                 </div>
-                                <div className="h-1.5 bg-black/[0.05] rounded-full overflow-hidden mb-2">
-                                  <div
-                                    className="h-full bg-accent-warm rounded-full transition-all"
-                                    style={{ width: `${pct}%` }}
-                                  />
+                                <div className="mb-2">
+                                  <AnimatedProgress percent={pct} heightClassName="h-1.5" />
                                 </div>
                                 {remaining > 0 && (
                                   <p className="text-xs text-ink-mute">
