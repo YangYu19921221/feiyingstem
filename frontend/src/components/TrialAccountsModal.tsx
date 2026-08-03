@@ -35,6 +35,8 @@ export default function TrialAccountsModal({
     ]),
     `体验期：${result.days} 天（至 ${result.expires_on}，到期自动停用）`,
     `已开通 ${result.books_assigned} 本词书，学生名额 ${result.org.student_quota} 个`,
+    '',
+    '温馨提示：为保护账号安全，同一账号同时只能一台设备在线，换设备登录后原设备会自动退出，重新登录即可。',
   ].join('\n');
 
   const copy = async () => {
