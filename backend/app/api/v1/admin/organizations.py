@@ -177,6 +177,127 @@ async def update_organization(
     return _org_out(org, active)
 
 
+# ---------- 删除机构(硬删,连带其全部账号与数据) ----------
+
+# 机构"拥有"的顶层表(org_id 列直查);users/classes 等的子孙数据靠 FK 扫描逐层清
+_ORG_OWNED_TABLES = [
+    "users", "classes", "pk_rooms", "assessment_leads", "leaderboard_snapshots",
+    "word_books", "sentence_books", "reading_passages", "competition_question_sets",
+    "phonetic_videos", "book_series", "student_coins", "coin_transactions",
+    "coin_rewards", "coin_redeem_requests",
+]
+
+
+@router.delete("/organizations/{org_id}")
+async def delete_organization(
+    org_id: int,
+    code: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """硬删机构:机构本体 + 名下全部账号/班级/内容/学习数据,不可恢复。
+
+    防呆三道闸:
+    1. 直营(id=1)永远不可删
+    2. 必须传机构码 code 且与库中一致(前端要求管理员手输,防止点错行)
+    3. 正式机构(plan!=trial)必须先停用才能删;体验机构可直接删
+       (删机构的主场景就是清理过期体验/测试机构)
+
+    实现: 不逐表硬编码删除顺序——用 sqlite_master + PRAGMA foreign_key_list
+    通用扫描"谁引用了机构拥有的行",多轮删除直到收敛(处理孙子表链),
+    最后删顶层行和机构本体。漏网行会被 FK 约束拦下整体回滚,宁可失败不留脏。
+    """
+    from sqlalchemy import text
+
+    org = (await db.execute(
+        select(Organization).where(Organization.id == org_id)
+    )).scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "机构不存在")
+    if org_id == 1:
+        raise HTTPException(400, "直营机构不可删除")
+    if code.strip().upper() != org.code:
+        raise HTTPException(400, "机构码不匹配,已阻止删除")
+    if org.plan != "trial" and org.status == "active":
+        raise HTTPException(400, "正式机构请先停用再删除(体验机构可直接删)")
+
+    # 统计口径给前端确认过的数字一个对账
+    user_count = (await db.execute(
+        select(func.count(User.id)).where(User.org_id == org_id)
+    )).scalar() or 0
+
+    # 顶层受害行: {表名: 主键集合}
+    victims: dict[str, set[int]] = {}
+    for t in _ORG_OWNED_TABLES:
+        try:
+            ids = (await db.execute(
+                text(f"SELECT id FROM {t} WHERE org_id = :o"), {"o": org_id}
+            )).scalars().all()
+        except Exception:
+            continue  # 环境缺表(旧库)跳过
+        if ids:
+            victims[t] = set(ids)
+
+    all_tables = (await db.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    )).scalars().all()
+
+    # FK 引用图: 表 -> [(引用列, 被引表)](只关心指向受害表的边)
+    fk_edges: dict[str, list[tuple[str, str]]] = {}
+    for t in all_tables:
+        rows = (await db.execute(text(f"PRAGMA foreign_key_list({t})"))).all()
+        edges = [(r[3], r[2]) for r in rows if r[2] in _ORG_OWNED_TABLES]  # (from_col, ref_table)
+        if edges:
+            fk_edges[t] = edges
+
+    deleted_rows = 0
+    # 多轮清扫: 每轮删掉所有"引用受害行"的行;有孙子链时前几轮部分失败,收敛为止
+    for _ in range(6):
+        progressed = False
+        for t, edges in fk_edges.items():
+            for col, ref in edges:
+                ids = victims.get(ref)
+                if not ids:
+                    continue
+                id_list = ",".join(str(i) for i in ids)
+                try:
+                    res = await db.execute(
+                        text(f"DELETE FROM {t} WHERE {col} IN ({id_list})")
+                    )
+                    if res.rowcount:
+                        deleted_rows += res.rowcount
+                        progressed = True
+                except Exception:
+                    pass  # 本轮被更深层引用挡住,下一轮再试
+        if not progressed:
+            break
+
+    # 顶层行本身(同样多轮:classes 引用 users 等交叉链)
+    for _ in range(6):
+        progressed = False
+        for t in list(victims.keys()):
+            if not victims.get(t):
+                continue
+            try:
+                res = await db.execute(text(f"DELETE FROM {t} WHERE org_id = :o"), {"o": org_id})
+                deleted_rows += res.rowcount or 0
+                victims.pop(t, None)
+                progressed = True
+            except Exception:
+                pass
+        if not victims:
+            break
+        if not progressed:
+            await db.rollback()
+            raise HTTPException(409, f"仍有数据引用未清干净({'、'.join(victims)}),已整体回滚")
+
+    await db.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org_id})
+    await db.commit()
+    invalidate_org_cache(org_id)
+    return {"deleted": True, "org_name": org.name, "users_removed": user_count,
+            "rows_removed": deleted_rows}
+
+
 # ---------- 机构管理员账号 ----------
 # 路径用 /managers 而非 /admins: 实测 Safari 内容拦截器会按 URL 关键词
 # 掐掉 */admins 结尾的 XHR(请求根本不出浏览器,报 Network Error)

@@ -56,6 +56,9 @@ export const adminOrgApi = {
   /** 一键开体验账号: 建机构+三端账号+默认班+全部平台词书 */
   provisionTrial: (data: { name?: string; days?: number; student_quota?: number; prefix?: string; password?: string; contact_name?: string; contact_phone?: string }) =>
     client.post<TrialProvisionResult>('/admin/trial-provision', data),
+  /** 硬删机构(不可恢复): 需回传机构码二次确认;正式机构须先停用,体验机构可直接删 */
+  deleteOrg: (orgId: number, code: string) =>
+    client.delete<{ deleted: boolean; org_name: string; users_removed: number }>(`/admin/organizations/${orgId}`, { params: { code } }),
   listOrgAdmins: (orgId: number) =>
     client.get<OrgManager[]>(`/admin/organizations/${orgId}/managers`),
   // 复用通用用户接口: 重置密码(不传密码=服务端生成防混淆字符的新密码,响应返回一次)与停用/恢复

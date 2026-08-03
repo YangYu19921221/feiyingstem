@@ -107,6 +107,25 @@ export default function AdminOrganizations() {
     qc.invalidateQueries({ queryKey: ['admin-orgs'] });
   };
 
+  /** 硬删机构: 输机构码确认(防点错行);正式机构须先停用,后端还有同样的闸 */
+  const deleteOrg = async (org: Organization) => {
+    if (org.status === 'active' && org.plan !== 'trial') {
+      return alert('正式机构请先「停用」再删除;体验机构可直接删');
+    }
+    const typed = window.prompt(
+      `⚠️ 永久删除「${org.name}」!\n将连带删除该机构全部账号、班级和学习数据,不可恢复。\n\n确认请输入机构码: ${org.code}`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toUpperCase() !== org.code) return alert('机构码不一致,已取消');
+    try {
+      const r = await adminOrgApi.deleteOrg(org.id, org.code);
+      alert(`已删除「${r.org_name}」(含 ${r.users_removed} 个账号)`);
+      qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || '删除失败');
+    }
+  };
+
   const changeExpiry = async (org: Organization) => {
     const cur = org.expires_at ? String(org.expires_at).slice(0, 10) : '';
     const v = window.prompt(
@@ -359,6 +378,7 @@ export default function AdminOrganizations() {
                     <button className="text-orange-600" onClick={() => changeQuota(org)}>改配额</button>
                     {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
                     {org.id !== 1 && <button className={org.status === 'active' ? 'text-red-600' : 'text-emerald-600'} onClick={() => { if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return; toggleStatus.mutate(org); }}>{org.status === 'active' ? '停用' : '恢复'}</button>}
+                    {org.id !== 1 && <button className="text-red-700" onClick={() => deleteOrg(org)}>删除</button>}
                   </div>
                 </article>
               ))}
@@ -424,6 +444,9 @@ export default function AdminOrganizations() {
                           >
                             {org.status === 'active' ? '停用' : '恢复'}
                           </button>
+                        )}
+                        {org.id !== 1 && (
+                          <button className="text-red-700 hover:underline" onClick={() => deleteOrg(org)}>删除</button>
                         )}
                       </td>
                     </tr>
