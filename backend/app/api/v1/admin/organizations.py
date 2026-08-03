@@ -4,7 +4,7 @@
 """
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,9 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.tenancy import invalidate_org_cache
+from app.core.timeutil import local_today
 from app.api.v1.auth import get_current_admin
+from app.models.learning import BookAssignment
 from app.models.organization import Organization
 from app.models.user import User, Class, ClassStudent
+from app.models.word import WordBook
 from app.services import auth_service
 from app.services.org_service import count_active_students
 
@@ -53,6 +56,22 @@ class OrgAdminCreate(BaseModel):
     password: Optional[str] = Field(None, description="不传则随机生成,仅返回一次")
     full_name: Optional[str] = None
     phone: Optional[str] = None
+
+
+class TrialProvision(BaseModel):
+    """一键开体验账号:建机构 + 三端账号 + 默认班 + 授权全部平台词书"""
+    name: Optional[str] = Field(None, max_length=100, description="机构名,不传自动生成")
+    days: int = Field(14, ge=1, le=365, description="体验天数(到期当天仍可用,次日停服)")
+    student_quota: int = Field(20, ge=1, le=500)
+    prefix: Optional[str] = Field(
+        None, min_length=2, max_length=20, pattern=r"^[a-zA-Z][a-zA-Z0-9_]*$",
+        description="账号前缀(如 hangzhou → hangzhou_admin/_teacher/_student),不传自动生成",
+    )
+    password: Optional[str] = Field(None, min_length=6, max_length=50,
+                                   description="三个账号共用一个密码,不传自动生成")
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    assign_all_books: bool = Field(True, description="给体验学生授权全部平台词书")
 
 
 def _gen_org_code() -> str:
@@ -207,3 +226,117 @@ async def create_org_admin(
     )
     return {"id": user.id, "username": user.username, "org_id": org_id,
             "initial_password": pwd, "org_code": org.code}
+
+
+# ---------- 一键开体验账号 ----------
+
+@router.post("/trial-provision")
+async def provision_trial(
+    data: TrialProvision,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """一键给加盟商开一整套体验环境:独立机构 + 三端账号 + 默认班 + 全部平台词书。
+
+    每谈一家开一套(账号前缀区分),到期自动停服。三个账号共用一个密码,
+    只在响应里返回这一次——方便直接整段复制发给对方。
+    """
+    prefix = (data.prefix or "demo" + "".join(secrets.choice(string.digits) for _ in range(4))).lower()
+    accounts = {role: f"{prefix}_{role}" for role in ("admin", "teacher", "student")}
+
+    # 三个用户名先全查一遍再动手:避免建到一半撞名,留下半套垃圾账号
+    taken = (await db.execute(
+        select(User.username).where(User.username.in_(list(accounts.values())))
+    )).scalars().all()
+    if taken:
+        raise HTTPException(400, f"账号已存在: {'、'.join(taken)},换个前缀")
+
+    code = _gen_org_code()
+    while (await db.execute(select(Organization.id).where(Organization.code == code))).scalar_one_or_none():
+        code = _gen_org_code()
+
+    # days 含当天: days=14 → 今天起共 14 个自然日可用,第 15 天停服
+    # (check_org_active 的语义是 expires_at 当天仍可用)
+    expires = datetime.combine(
+        local_today() + timedelta(days=data.days - 1),
+        datetime.max.time(),
+    ).replace(microsecond=0)
+
+    org = Organization(
+        name=data.name or f"体验机构-{prefix}",
+        code=code,
+        plan="trial",
+        student_quota=data.student_quota,
+        contact_name=data.contact_name,
+        contact_phone=data.contact_phone,
+        expires_at=expires,
+        status="active",
+    )
+    db.add(org)
+    await db.flush()
+
+    pwd = data.password or auth_service.generate_random_password(10)
+
+    created = {}
+    for role, db_role, name in (
+        ("admin", "org_admin", "体验-机构管理员"),
+        ("teacher", "teacher", "体验-老师"),
+        ("student", "student", "体验-学生"),
+    ):
+        u = User(
+            username=accounts[role],
+            email=f"{accounts[role]}@org{org.id}.local",
+            hashed_password=auth_service.get_password_hash(pwd),
+            full_name=name,
+            role=db_role,
+            org_id=org.id,
+            is_active=True,
+        )
+        db.add(u)
+        await db.flush()
+        created[role] = u
+
+    # ⚠️ org_id 必须显式给: tenancy 写侧打戳只在机构上下文生效,
+    # 这里是平台 admin 上下文(current_org_id=None),不给会落到默认的直营(org_id=1),
+    # 导致体验班级不算进本机构、配额与学情统计都对不上
+    cls = Class(
+        name="体验班",
+        description=f"{org.name}的体验班级",
+        teacher_id=created["teacher"].id,
+        org_id=org.id,
+    )
+    db.add(cls)
+    await db.flush()
+    db.add(ClassStudent(class_id=cls.id, student_id=created["student"].id, is_active=True))
+
+    # 全部平台共享词书整本授权给体验学生(org_id IS NULL = 平台库;
+    # admin 上下文读侧不过滤,拿到的就是全部平台书)
+    books = 0
+    if data.assign_all_books:
+        book_ids = (await db.execute(
+            select(WordBook.id).where(WordBook.org_id.is_(None)).order_by(WordBook.id)
+        )).scalars().all()
+        for bid in book_ids:
+            db.add(BookAssignment(
+                book_id=bid,
+                student_id=created["student"].id,
+                teacher_id=created["teacher"].id,
+                scope_type="book",
+            ))
+        books = len(book_ids)
+
+    await db.commit()
+    invalidate_org_cache(org.id)
+
+    return {
+        "org": _org_out(org, active_students=1, teacher_count=2),
+        "password": pwd,
+        "days": data.days,
+        "expires_on": expires.date().isoformat(),
+        "books_assigned": books,
+        "accounts": [
+            {"role": "org_admin", "label": "机构管理端", "username": accounts["admin"]},
+            {"role": "teacher", "label": "教师端", "username": accounts["teacher"]},
+            {"role": "student", "label": "学生端", "username": accounts["student"]},
+        ],
+    }

@@ -33,6 +33,16 @@ export interface OrgTeacher {
 /** 机构管理员账号(与 OrgTeacher 同构,少一个 created_at) */
 export type OrgManager = Omit<OrgTeacher, 'created_at'>;
 
+/** 一键开体验账号的结果:三端账号共用一个密码,仅返回这一次 */
+export interface TrialProvisionResult {
+  org: Organization;
+  password: string;
+  days: number;
+  expires_on: string;
+  books_assigned: number;
+  accounts: { role: string; label: string; username: string }[];
+}
+
 // ---------- 平台管理端(admin) ----------
 export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
@@ -43,6 +53,9 @@ export const adminOrgApi = {
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     // 路径避开 */admins: Safari 内容拦截器会按关键词掐掉该 XHR
     client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data),
+  /** 一键开体验账号: 建机构+三端账号+默认班+全部平台词书 */
+  provisionTrial: (data: { name?: string; days?: number; student_quota?: number; prefix?: string; password?: string; contact_name?: string; contact_phone?: string }) =>
+    client.post<TrialProvisionResult>('/admin/trial-provision', data),
   listOrgAdmins: (orgId: number) =>
     client.get<OrgManager[]>(`/admin/organizations/${orgId}/managers`),
   // 复用通用用户接口: 重置密码(不传密码=服务端生成防混淆字符的新密码,响应返回一次)与停用/恢复

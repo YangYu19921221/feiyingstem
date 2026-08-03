@@ -2,8 +2,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminOrgApi, Organization, OrgManager } from '../api/organizations';
+import { adminOrgApi, Organization, OrgManager, TrialProvisionResult } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
+import TrialAccountsModal from '../components/TrialAccountsModal';
 
 const PLAN_LABELS: Record<string, string> = {
   trial: '体验', standard: '标准', county: '县级独家', city: '市级独家', headquarters: '总部直营',
@@ -18,6 +19,27 @@ export default function AdminOrganizations() {
   const [issued, setIssued] = useState<{ username: string; password: string; orgName: string } | null>(null);
   // 管理员面板: 查看某机构的管理员账号列表
   const [managerPanel, setManagerPanel] = useState<{ org: Organization; managers: OrgManager[] } | null>(null);
+  // 一键开体验账号
+  const [showTrial, setShowTrial] = useState(false);
+  const [trialForm, setTrialForm] = useState({ name: '', prefix: '', days: 14, student_quota: 20, contact_name: '' });
+  const [trialResult, setTrialResult] = useState<TrialProvisionResult | null>(null);
+
+  const trialMut = useMutation({
+    mutationFn: () => adminOrgApi.provisionTrial({
+      name: trialForm.name || undefined,
+      prefix: trialForm.prefix || undefined,
+      days: trialForm.days,
+      student_quota: trialForm.student_quota,
+      contact_name: trialForm.contact_name || undefined,
+    }),
+    onSuccess: (r) => {
+      setTrialResult(r);
+      setShowTrial(false);
+      setTrialForm({ name: '', prefix: '', days: 14, student_quota: 20, contact_name: '' });
+      qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+    },
+    onError: (e: any) => alert(e?.response?.data?.detail || '开通失败'),
+  });
 
   const openManagerPanel = async (org: Organization) => {
     try {
@@ -134,12 +156,20 @@ export default function AdminOrganizations() {
             <button onClick={() => navigate('/')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">← 返回</button>
             <div><h1 className="text-2xl font-bold text-slate-800">🏢 机构管理</h1><p className="mt-1 text-sm text-slate-500">管理机构服务、账号与学生配额</p></div>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="px-4 py-2 rounded-lg text-white font-semibold bg-[#3976a9] hover:bg-[#2e628f] transition-colors"
-          >
-            ➕ 开通新机构
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => { setShowTrial(true); setShowCreate(false); }}
+              className="rounded-lg bg-[#FF6B35] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#e95d2c]"
+            >
+              🎁 一键开体验账号
+            </button>
+            <button
+              onClick={() => { setShowCreate(true); setShowTrial(false); }}
+              className="px-4 py-2 rounded-lg text-white font-semibold bg-[#3976a9] hover:bg-[#2e628f] transition-colors"
+            >
+              ➕ 开通新机构
+            </button>
+          </div>
         </div>
 
         {/* 初始密码弹窗(仅展示一次) */}
@@ -188,6 +218,81 @@ export default function AdminOrganizations() {
                 </table>
               )}
               <button className="mt-4 w-full py-2 rounded-xl bg-gray-100" onClick={() => setManagerPanel(null)}>关闭</button>
+            </div>
+          </div>
+        )}
+
+        {/* 体验账号结果(纯文本,可整段复制转发) */}
+        {trialResult && (
+          <TrialAccountsModal
+            result={trialResult}
+            siteUrl={window.location.origin}
+            onClose={() => setTrialResult(null)}
+          />
+        )}
+
+        {/* 一键开体验账号 */}
+        {showTrial && (
+          <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50/40 p-5 shadow-sm">
+            <h3 className="font-bold text-slate-800">🎁 一键开体验账号</h3>
+            <p className="mt-1 mb-3 text-xs text-slate-500">
+              自动建独立体验机构 + 机构管理端/教师端/学生端三个账号 + 体验班级，
+              学生默认开通全部平台词书。到期自动停服，三个账号共用一个密码（仅显示一次）。
+              <b className="text-orange-600">每谈一家开一套</b>，账号前缀区分，谁在用一查就知道。
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+              <label className="text-xs font-medium text-slate-500">
+                机构名称
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30"
+                  placeholder="留空自动生成" value={trialForm.name}
+                  onChange={e => setTrialForm({ ...trialForm, name: e.target.value })}
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-500">
+                账号前缀（英文）
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30"
+                  placeholder="如 hangzhou → hangzhou_admin" value={trialForm.prefix}
+                  onChange={e => setTrialForm({ ...trialForm, prefix: e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() })}
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-500">
+                体验天数
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30"
+                  value={trialForm.days}
+                  onChange={e => setTrialForm({ ...trialForm, days: parseInt(e.target.value, 10) })}
+                >
+                  {[3, 7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} 天</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-medium text-slate-500">
+                学生名额
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30"
+                  type="number" min={1} max={500} value={trialForm.student_quota}
+                  onChange={e => setTrialForm({ ...trialForm, student_quota: parseInt(e.target.value || '0', 10) })}
+                />
+              </label>
+              <label className="text-xs font-medium text-slate-500">
+                对接人（备注用）
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30"
+                  placeholder="如 杭州张老板" value={trialForm.contact_name}
+                  onChange={e => setTrialForm({ ...trialForm, contact_name: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button
+                disabled={trialMut.isPending || trialForm.student_quota < 1}
+                onClick={() => trialMut.mutate()}
+                className="rounded-lg bg-[#FF6B35] px-4 py-2 font-semibold text-white transition hover:bg-[#e95d2c] disabled:opacity-50"
+              >
+                {trialMut.isPending ? '开通中…' : '确认开通'}
+              </button>
+              <button onClick={() => setShowTrial(false)} className="rounded-lg bg-gray-200 px-4 py-2 font-semibold text-slate-600">取消</button>
             </div>
           </div>
         )}
