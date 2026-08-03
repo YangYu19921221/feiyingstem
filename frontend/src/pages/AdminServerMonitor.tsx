@@ -305,7 +305,7 @@ const BOTTLENECK_LABELS: Record<CapacityInfo['estimate']['bottleneck'], string> 
   bandwidth: '公网带宽', cpu: 'CPU(单核)', memory: '内存',
 };
 
-function CapacitySection({ cap }: { cap: CapacityInfo }) {
+function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogical: number }) {
   const [editing, setEditing] = useState(false);
   const [mbpsInput, setMbpsInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -410,7 +410,7 @@ function CapacitySection({ cap }: { cap: CapacityInfo }) {
           <Meter
             label={`CPU 单核${est.bottleneck === 'cpu' ? ' · 瓶颈' : ''}`}
             percent={Math.min(100, u.proc_cpu_percent)}
-            detail={`≈可撑 ${est.by_resource.cpu} 人 · 后端单进程,上限1核`}
+            detail={`≈可撑 ${est.by_resource.cpu} 人 · 后端单进程,只能用满 1 核(全机 ${coresLogical} 核)`}
           />
           <Meter
             label={`容量水位${est.bottleneck === 'memory' ? '(内存瓶颈)' : ''}`}
@@ -420,12 +420,19 @@ function CapacitySection({ cap }: { cap: CapacityInfo }) {
         </div>
       </div>
 
-      <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] text-slate-400">
-        PK 对战是消耗最陡的场景(实时榜广播随房间人数平方增长):按 {cap.pk_reference.tested_at_mbps}M 带宽压测折算,
-        当前带宽约支持 <b className="text-slate-600">8人房 ≈{cap.pk_reference.room8_users} 人</b> 或
-        <b className="text-slate-600"> 20人房 ≈{cap.pk_reference.room20_users} 人</b> 同时对战。
-        估算已预留 15% 余量;在线口径=5分钟内有请求的账号(含PK的WebSocket心跳);今日峰值重启后重新统计。
-      </p>
+      <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3 text-[11px] text-slate-400">
+        <p>
+          PK 对战是消耗最陡的场景(实时榜广播随房间人数平方增长):按 {cap.pk_reference.tested_at_mbps}M 带宽压测折算,
+          当前带宽约支持 <b className="text-slate-600">8人房 ≈{cap.pk_reference.room8_users} 人</b> 或
+          <b className="text-slate-600"> 20人房 ≈{cap.pk_reference.room20_users} 人</b> 同时对战。
+        </p>
+        <p>
+          扩容优先级:<b className="text-slate-600">升带宽</b>见效最直接(改上限即可看到新估算);
+          后端是单进程部署,只能用满 1 核,加 worker 用多核需先把 PK 房间/限流等进程内状态迁到共享存储,
+          且当前瓶颈多为带宽时提升有限。
+        </p>
+        <p>估算已预留 15% 余量;在线口径=5分钟内有请求的账号(含PK的WebSocket心跳);今日峰值重启后重新统计。</p>
+      </div>
     </section>
   );
 }
@@ -517,7 +524,7 @@ const AdminServerMonitor = () => {
         {data && now && (
           <>
             {/* 并发容量评估(核心结论区;后端未更新时跳过渲染) */}
-            {data.capacity && <CapacitySection cap={data.capacity} />}
+            {data.capacity && <CapacitySection cap={data.capacity} coresLogical={data.static.cores_logical} />}
 
             {data.capacity && (
               <ChartCard
