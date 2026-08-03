@@ -12,11 +12,41 @@ export interface MonitorSample {
   net_down: number;   // B/s
   disk_read: number;  // B/s
   disk_write: number; // B/s
+  online?: number;    // 5分钟窗活跃账号数(旧样本无此字段)
+}
+
+// 并发容量评估(带宽/CPU/内存三路外推,取最小为整体容量)
+export interface CapacityInfo {
+  config: { bandwidth_mbps: number };
+  online: {
+    active_1m: number;
+    active_5m: number;
+    peak_today: number;
+    roles: Record<string, number>;
+  };
+  estimate: {
+    max_users: number;
+    bottleneck: 'bandwidth' | 'cpu' | 'memory';
+    confidence: 'measured' | 'reference';
+    by_resource: { bandwidth: number; cpu: number; memory: number };
+  };
+  usage: {
+    bw_limit_bps: number;
+    bw_machine_up: number;
+    bw_app_up: number;
+    bw_percent: number;
+    proc_cpu_percent: number;
+    req_per_s: number;
+    per_user_bw: number;
+    per_user_cpu: number;
+  };
+  pk_reference: { room8_users: number; room20_users: number; tested_at_mbps: number };
 }
 
 export interface ServerMetrics {
   interval: number;
   collecting: boolean;
+  capacity: CapacityInfo;
   static: {
     hostname: string;
     os: string;
@@ -57,4 +87,8 @@ export interface ServerMetrics {
 export const fetchServerMetrics = async (): Promise<ServerMetrics> => {
   const r = await axios.get(`${API_BASE_URL}/admin/server/metrics`);
   return r.data;
+};
+
+export const updateCapacityConfig = async (bandwidthMbps: number): Promise<void> => {
+  await axios.put(`${API_BASE_URL}/admin/server/capacity-config`, { bandwidth_mbps: bandwidthMbps });
 };

@@ -9,6 +9,7 @@
 - psutil 用 try 导入:生产先更新代码后装依赖的窗口期内,不能让 main.py 崩启动
 """
 import asyncio
+import json
 import os
 import platform
 import socket
@@ -17,10 +18,15 @@ from collections import deque
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import bindparam, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_admin
 from app.core.config import settings
+from app.core.database import get_db
 from app.models.user import User
+from app.services import online_tracker
 
 try:
     import psutil
@@ -82,6 +88,7 @@ async def _sampler_loop():
                 "net_down": round(rate(net, last_net, "bytes_recv")),
                 "disk_read": round(rate(disk, last_disk, "read_bytes")),
                 "disk_write": round(rate(disk, last_disk, "write_bytes")),
+                "online": online_tracker.active_count(300),
             }
             _latest = {
                 **sample,
@@ -145,8 +152,147 @@ def _connections() -> dict | None:
     }
 
 
+# ===================== 并发容量评估 =====================
+#
+# 目标:回答"当前配置最多支撑多少人同时在线使用"。
+# 方法:三种资源分别外推,取最小值为整体容量,标出瓶颈项。
+#   带宽  = 公网带宽上限(可配置,默认12Mbps) / 人均出网速率
+#   CPU   = 单核100%(uvicorn 单worker事件循环,GIL 上限≈1核,压测实证"4核只用1核")
+#           / 人均后端CPU占用;若改多worker部署需同步调整此上限
+#   内存  = 可用内存 / 人均增量(弱相关,基本不会是瓶颈,仅作 sanity 展示)
+# 人均消耗优先用实测(≥5个活跃用户才有统计意义),样本不足时退回参考基准。
+# 参考基准来自 2026-07 压测:12M带宽下 PK 8人房≈180人、20人房≈37人同时对战,
+# 常规学习(REST提交)人均远低于PK,参考值取保守偏高的 6KB/s、0.5%CPU。
+
+_CAPACITY_KEY = "capacity_config"
+_DEFAULT_CAPACITY_CONFIG = {"bandwidth_mbps": 12.0}
+_SAFETY = 0.85               # 预留15%余量,不按跑满100%估
+_MIN_MEASURE_USERS = 5       # 实测人均消耗所需的最少活跃用户数
+_PROTO_OVERHEAD = 1.35       # 应用层content-length → 线上字节的协议放大(TLS/HTTP头/重传)
+_REF_BW_PER_USER = 6 * 1024  # 参考人均出网 B/s(常规学习,保守)
+_REF_CPU_PER_USER = 0.5      # 参考人均后端CPU %(压测PK≈0.55,常规学习更低)
+_MEM_PER_USER = 512 * 1024   # 人均内存增量估计(WS连接/会话开销,保守)
+_PK_REF = {"room8": 180, "room20": 37, "at_mbps": 12.0}  # 压测原始数据
+
+
+async def _read_capacity_config(db: AsyncSession) -> dict:
+    row = (await db.execute(
+        text("SELECT value FROM system_settings WHERE key = :k"),
+        {"k": _CAPACITY_KEY},
+    )).fetchone()
+    cfg = dict(_DEFAULT_CAPACITY_CONFIG)
+    if row and row[0]:
+        try:
+            stored = json.loads(row[0])
+            if isinstance(stored, dict) and stored.get("bandwidth_mbps"):
+                cfg["bandwidth_mbps"] = float(stored["bandwidth_mbps"])
+        except (ValueError, TypeError):
+            pass
+    return cfg
+
+
+async def _role_breakdown(db: AsyncSession, ids: list[int]) -> dict:
+    """活跃用户按角色分布;超过900个id截断(SQLite变量上限),分布仅供参考"""
+    if not ids:
+        return {}
+    stmt = text(
+        "SELECT role, COUNT(*) FROM users WHERE id IN :ids GROUP BY role"
+    ).bindparams(bindparam("ids", expanding=True))
+    rows = (await db.execute(stmt, {"ids": ids[:900]})).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+async def _capacity_block(db: AsyncSession) -> dict:
+    cfg = await _read_capacity_config(db)
+    bw_limit = cfg["bandwidth_mbps"] * 1_000_000 / 8  # B/s
+
+    active_5m = online_tracker.active_count(300)
+    active_1m = online_tracker.active_count(60)
+    app_up_bps, req_per_s = online_tracker.app_rates(300)
+    app_up_wire = app_up_bps * _PROTO_OVERHEAD
+    proc_cpu = float(_latest.get("proc_cpu") or 0.0)
+    machine_up = float(_latest.get("net_up") or 0.0)
+    mem_available = int(psutil.virtual_memory().available) if psutil else 0
+
+    measured = active_5m >= _MIN_MEASURE_USERS and app_up_wire > 0
+    if measured:
+        per_user_bw = max(app_up_wire / active_5m, 2 * 1024)   # 下限2KB/s防除穿
+        per_user_cpu = max(proc_cpu / active_5m, 0.15)
+    else:
+        per_user_bw = float(_REF_BW_PER_USER)
+        per_user_cpu = _REF_CPU_PER_USER
+
+    est_bw = int(bw_limit * _SAFETY / per_user_bw)
+    # 单worker事件循环:上限1核=100%,不乘全机核数(见块首注释)
+    est_cpu = int(100.0 * _SAFETY / per_user_cpu)
+    est_mem = int(mem_available * 0.8 / _MEM_PER_USER) + active_5m
+
+    estimates = {"bandwidth": est_bw, "cpu": est_cpu, "memory": est_mem}
+    bottleneck = min(estimates, key=lambda k: estimates[k])
+    scale = cfg["bandwidth_mbps"] / _PK_REF["at_mbps"]
+
+    return {
+        "config": cfg,
+        "online": {
+            "active_1m": active_1m,
+            "active_5m": active_5m,
+            "peak_today": online_tracker.peak_today(),
+            "roles": await _role_breakdown(db, online_tracker.active_user_ids(300)),
+        },
+        "estimate": {
+            "max_users": estimates[bottleneck],
+            "bottleneck": bottleneck,
+            "confidence": "measured" if measured else "reference",
+            "by_resource": estimates,
+        },
+        "usage": {
+            # 带宽水位用全机上行(含nginx/其他服务,反映真实占用);人均成本用应用层实测
+            "bw_limit_bps": int(bw_limit),
+            "bw_machine_up": int(machine_up),
+            "bw_app_up": int(app_up_wire),
+            "bw_percent": round(min(machine_up / bw_limit * 100, 100), 1) if bw_limit else 0,
+            "proc_cpu_percent": round(proc_cpu, 1),   # 相对1核,可>100前端截断
+            "req_per_s": round(req_per_s, 2),
+            "per_user_bw": round(per_user_bw),
+            "per_user_cpu": round(per_user_cpu, 2),
+        },
+        # PK对战是资源消耗最陡的场景(live_ranking广播O(n²)),单独给压测参考
+        "pk_reference": {
+            "room8_users": int(_PK_REF["room8"] * scale),
+            "room20_users": int(_PK_REF["room20"] * scale),
+            "tested_at_mbps": _PK_REF["at_mbps"],
+        },
+    }
+
+
+class CapacityConfigPayload(BaseModel):
+    bandwidth_mbps: float = Field(gt=0, le=10000, description="公网带宽上限(Mbps)")
+
+
+@router.put("/capacity-config")
+async def update_capacity_config(
+    payload: CapacityConfigPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """设置公网带宽上限(腾讯云按购买值填,psutil看不到云厂商限速)"""
+    value = json.dumps({"bandwidth_mbps": payload.bandwidth_mbps})
+    await db.execute(
+        text(
+            "INSERT INTO system_settings (key, value) VALUES (:k, :v) "
+            "ON CONFLICT(key) DO UPDATE SET value = :v"
+        ),
+        {"k": _CAPACITY_KEY, "v": value},
+    )
+    await db.commit()
+    return {"ok": True, "bandwidth_mbps": payload.bandwidth_mbps}
+
+
 @router.get("/metrics")
-async def get_server_metrics(current_user: User = Depends(get_current_admin)):
+async def get_server_metrics(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
     """当前快照 + 最近 10 分钟历史(前端 3s 轮询)"""
     if psutil is None:
         raise HTTPException(503, "服务器未安装 psutil,请先 pip install -r requirements.txt")
@@ -167,6 +313,7 @@ async def get_server_metrics(current_user: User = Depends(get_current_admin)):
     return {
         "interval": _SAMPLE_INTERVAL,
         "collecting": len(_history) < 2,  # 采样器刚启动,曲线还没长出来
+        "capacity": await _capacity_block(db),
         "static": {
             "hostname": socket.gethostname(),
             "os": f"{platform.system()} {platform.release()}",

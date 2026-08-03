@@ -21,6 +21,7 @@ from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_ro
 from app.api.v1 import pk_tournament_routes
 from app.api.v1 import presence
 from app.api.v1 import checkin
+from app.services import online_tracker  # 在线用户追踪(容量监测)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,6 +61,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# 在线用户追踪(容量监测数据源):只读 header,失败静默,绝不影响业务请求
+@app.middleware("http")
+async def _online_tracking_middleware(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        try:
+            online_tracker.record_http(
+                request.url.path,
+                request.headers.get("authorization"),
+                response.headers.get("content-length"),
+            )
+        except Exception:
+            pass
+    return response
 
 # 注册路由
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Clock, Cpu,
-  Gauge, HardDrive, MemoryStick, Pause, Play, Server, Table2,
+  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Cpu,
+  Gauge, HardDrive, MemoryStick, Pause, Pencil, Play, Server, Table2, Users, Wifi,
 } from 'lucide-react';
-import { fetchServerMetrics, type MonitorSample, type ServerMetrics } from '../api/serverMonitor';
+import {
+  fetchServerMetrics, updateCapacityConfig,
+  type CapacityInfo, type MonitorSample, type ServerMetrics,
+} from '../api/serverMonitor';
 
 // 数据色经 dataviz 校验(白底):蓝橙 CVD ΔE 24.7 / 普通视觉 33.6,均通过
 const PAL = {
@@ -42,6 +45,16 @@ function niceByteMax(v: number): number {
   while (v >= 1024 * unit) unit *= 1024;
   const m = v / unit;
   const step = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1024].find((s) => s >= m) ?? 1024;
+  return step * unit;
+}
+
+// 整数计数轴的"整洁"上限(1-2-5 步进),至少 10 避免小样本时坐标轴抖动
+function niceCountMax(v: number): number {
+  v = Math.max(v, 10);
+  let unit = 1;
+  while (v >= 10 * unit) unit *= 10;
+  const m = v / unit;
+  const step = [1, 2, 5, 10].find((s) => s >= m) ?? 10;
   return step * unit;
 }
 
@@ -110,19 +123,22 @@ function Sparkline({ values, color = PAL.s1 }: { values: number[]; color?: strin
 // ===== 时间序列图(1-2 系列;单系列画面积洗版,双系列画双线;十字线 + 全系列 tooltip) =====
 interface ChartSeries { name: string; color: string; values: number[] }
 function TimeChart({ times, series, unit, height = 156 }: {
-  times: number[]; series: ChartSeries[]; unit: 'percent' | 'rate'; height?: number;
+  times: number[]; series: ChartSeries[]; unit: 'percent' | 'rate' | 'count'; height?: number;
 }) {
   const [ref, width] = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const M = { top: 10, right: 14, bottom: 22, left: unit === 'percent' ? 38 : 56 };
+  const M = { top: 10, right: 14, bottom: 22, left: unit === 'rate' ? 56 : 38 };
   const iw = Math.max(10, width - M.left - M.right);
   const ih = height - M.top - M.bottom;
   const n = times.length;
 
-  const yMax = unit === 'percent' ? 100 : niceByteMax(Math.max(...series.map((s) => Math.max(0, ...s.values))));
+  const dataMax = Math.max(...series.map((s) => Math.max(0, ...s.values)));
+  const yMax = unit === 'percent' ? 100 : unit === 'count' ? niceCountMax(dataMax) : niceByteMax(dataMax);
   const ticks = unit === 'percent' ? [0, 25, 50, 75, 100] : [0, yMax / 2, yMax];
-  const fmtTick = (v: number) => (unit === 'percent' ? `${v}` : fmtRate(v));
-  const fmtVal = (v: number) => (unit === 'percent' ? `${v.toFixed(1)}%` : fmtRate(v));
+  const fmtTick = (v: number) => (unit === 'rate' ? fmtRate(v) : `${v}`);
+  const fmtVal = (v: number) => (
+    unit === 'percent' ? `${v.toFixed(1)}%` : unit === 'count' ? `${Math.round(v)} 人` : fmtRate(v)
+  );
 
   if (n < 2 || width === 0) {
     return (
@@ -198,7 +214,7 @@ function TimeChart({ times, series, unit, height = 156 }: {
 
 // 图表卡:标题 + 图例(带实时值,即选择性直接标注) + 图
 function ChartCard({ title, sub, series, times, unit, live }: {
-  title: string; sub: string; series: ChartSeries[]; times: number[]; unit: 'percent' | 'rate';
+  title: string; sub: string; series: ChartSeries[]; times: number[]; unit: 'percent' | 'rate' | 'count';
   live: { name: string; color: string; value: string }[];
 }) {
   return (
@@ -278,6 +294,139 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="shrink-0 text-xs text-slate-400">{label}</span>
       <span className="truncate text-xs font-semibold text-slate-700" title={value}>{value}</span>
     </div>
+  );
+}
+
+// ===== 并发容量评估 =====
+const ROLE_LABELS: Record<string, string> = {
+  student: '学生', teacher: '教师', admin: '管理员', org_admin: '机构管理', parent: '家长', display: '大屏',
+};
+const BOTTLENECK_LABELS: Record<CapacityInfo['estimate']['bottleneck'], string> = {
+  bandwidth: '公网带宽', cpu: 'CPU(单核)', memory: '内存',
+};
+
+function CapacitySection({ cap }: { cap: CapacityInfo }) {
+  const [editing, setEditing] = useState(false);
+  const [mbpsInput, setMbpsInput] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const { estimate: est, usage: u, online: on } = cap;
+  const levelPct = est.max_users > 0 ? Math.min(100, (on.active_5m / est.max_users) * 100) : 0;
+  const roleText = Object.entries(on.roles)
+    .sort((a, b) => b[1] - a[1])
+    .map(([r, n]) => `${ROLE_LABELS[r] ?? r} ${n}`)
+    .join(' · ');
+
+  const saveMbps = async () => {
+    const v = parseFloat(mbpsInput);
+    if (!Number.isFinite(v) || v <= 0 || v > 10000) return;
+    setSaving(true);
+    try {
+      await updateCapacityConfig(v);
+      setEditing(false); // 下一轮 3s 轮询自然带回新估算,不做本地乐观更新
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+            <Users className="h-4 w-4 text-slate-400" />并发容量评估
+          </h3>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            {est.confidence === 'measured'
+              ? `按最近 5 分钟实测外推:人均出网 ${fmtRate(u.per_user_bw)} · 人均 CPU ${u.per_user_cpu}%`
+              : '当前活跃用户不足 5 人,按压测参考基准估算;人多起来后自动切换为实测外推'}
+          </p>
+        </div>
+        {/* 带宽上限:云厂商限速 psutil 看不到,按购买值手填 */}
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <Wifi className="h-3.5 w-3.5 text-slate-400" />
+          {editing ? (
+            <>
+              <input
+                type="number" min={1} max={10000} value={mbpsInput}
+                onChange={(e) => setMbpsInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveMbps()}
+                className="w-20 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 focus:border-slate-500 focus:outline-none"
+                autoFocus
+              />
+              <span>Mbps</span>
+              <button type="button" onClick={saveMbps} disabled={saving} aria-label="保存带宽上限"
+                className="rounded-md bg-slate-800 p-1.5 text-white transition hover:bg-slate-700 disabled:opacity-50">
+                <Check className="h-3 w-3" />
+              </button>
+            </>
+          ) : (
+            <>
+              <span>公网带宽上限 <b className="text-slate-700">{cap.config.bandwidth_mbps} Mbps</b></span>
+              <button
+                type="button" aria-label="修改带宽上限"
+                onClick={() => { setMbpsInput(String(cap.config.bandwidth_mbps)); setEditing(true); }}
+                className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[auto_1fr] lg:gap-8">
+        {/* 主结论:最大可支撑人数 + 当前水位 */}
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+          <div>
+            <p className="text-4xl font-bold tracking-tight text-slate-800">
+              ≈{est.max_users}<span className="ml-1 text-base font-semibold text-slate-400">人</span>
+            </p>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              预计最大同时在线 · 瓶颈:<b className="text-slate-700">{BOTTLENECK_LABELS[est.bottleneck]}</b>
+            </p>
+          </div>
+          <div className="flex gap-6">
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{on.active_5m}</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">当前在线(5分钟窗)</p>
+              {roleText && <p className="mt-0.5 max-w-44 text-[11px] text-slate-400">{roleText}</p>}
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{on.peak_today}</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">今日峰值</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">{u.req_per_s} 请求/秒</p>
+            </div>
+          </div>
+        </div>
+
+        {/* 分路资源:各自能撑多少人,谁最小谁是瓶颈 */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Meter
+            label={`带宽${est.bottleneck === 'bandwidth' ? ' · 瓶颈' : ''}`}
+            percent={u.bw_percent}
+            detail={`≈可撑 ${est.by_resource.bandwidth} 人 · 全机上行 ${fmtRate(u.bw_machine_up)}`}
+          />
+          <Meter
+            label={`CPU 单核${est.bottleneck === 'cpu' ? ' · 瓶颈' : ''}`}
+            percent={Math.min(100, u.proc_cpu_percent)}
+            detail={`≈可撑 ${est.by_resource.cpu} 人 · 后端单进程,上限1核`}
+          />
+          <Meter
+            label={`容量水位${est.bottleneck === 'memory' ? '(内存瓶颈)' : ''}`}
+            percent={levelPct}
+            detail={`在线 ${on.active_5m} / 容量 ${est.max_users} · 内存路≈${est.by_resource.memory} 人`}
+          />
+        </div>
+      </div>
+
+      <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] text-slate-400">
+        PK 对战是消耗最陡的场景(实时榜广播随房间人数平方增长):按 {cap.pk_reference.tested_at_mbps}M 带宽压测折算,
+        当前带宽约支持 <b className="text-slate-600">8人房 ≈{cap.pk_reference.room8_users} 人</b> 或
+        <b className="text-slate-600"> 20人房 ≈{cap.pk_reference.room20_users} 人</b> 同时对战。
+        估算已预留 15% 余量;在线口径=5分钟内有请求的账号(含PK的WebSocket心跳);今日峰值重启后重新统计。
+      </p>
+    </section>
   );
 }
 
@@ -367,6 +516,17 @@ const AdminServerMonitor = () => {
 
         {data && now && (
           <>
+            {/* 并发容量评估(核心结论区;后端未更新时跳过渲染) */}
+            {data.capacity && <CapacitySection cap={data.capacity} />}
+
+            {data.capacity && (
+              <ChartCard
+                title="在线人数" sub="5 分钟窗内有请求的账号数(含 PK WebSocket 心跳)" unit="count" times={view.times}
+                series={[{ name: '在线', color: PAL.s1, values: view.sliced.map((s) => s.online ?? 0) }]}
+                live={[{ name: '当前', color: PAL.s1, value: `${data.capacity.online.active_5m} 人` }]}
+              />
+            )}
+
             {/* KPI 行 */}
             <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               <StatTile icon={Cpu} tone="bg-blue-50 text-blue-600" label="CPU 使用率" value={`${now.cpu.toFixed(1)}%`}
@@ -464,7 +624,7 @@ const AdminServerMonitor = () => {
                   <table className="w-full text-xs tabular-nums">
                     <thead>
                       <tr className="border-b border-slate-100 text-left text-slate-400">
-                        {['时间', 'CPU', '内存', '下行', '上行', '磁盘读', '磁盘写'].map((h) => (
+                        {['时间', '在线', 'CPU', '内存', '下行', '上行', '磁盘读', '磁盘写'].map((h) => (
                           <th key={h} className="px-4 py-2 font-medium sm:px-5">{h}</th>
                         ))}
                       </tr>
@@ -473,6 +633,7 @@ const AdminServerMonitor = () => {
                       {[...view.sliced].reverse().slice(0, 30).map((s) => (
                         <tr key={s.t} className="border-b border-slate-50 text-slate-600">
                           <td className="px-4 py-1.5 sm:px-5">{fmtClock(s.t)}</td>
+                          <td className="px-4 py-1.5 sm:px-5">{s.online ?? '—'}</td>
                           <td className="px-4 py-1.5 sm:px-5">{s.cpu.toFixed(1)}%</td>
                           <td className="px-4 py-1.5 sm:px-5">{s.mem.toFixed(1)}%</td>
                           <td className="px-4 py-1.5 sm:px-5">{fmtRate(s.net_down)}</td>

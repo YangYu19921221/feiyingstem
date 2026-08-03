@@ -19,6 +19,7 @@ from app.services.pk import tournament as tsvc
 from app.services.pk.persist import persist_finished_room
 from app.services.pk.engine import PHASE_TIMEOUT_MS, select_words_with_fallback, select_words_for_player, _question_event
 from app.api.v1.pk_routes import load_learned_word_ids, load_word_points
+from app.services import online_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -876,6 +877,7 @@ async def _handle_host_console(ws: WebSocket, room, user) -> None:
     try:
         while True:
             msg = await ws.receive_json()
+            online_tracker.touch_ws(user.id)  # 对战期间几乎只走WS,不在此记活跃会漏统计
             if not isinstance(msg, dict):
                 continue
             mtype = msg.get("type")
@@ -953,6 +955,7 @@ async def pk_ws(
     if user is None:
         await ws.close(code=1008, reason="AUTH_FAILED")
         return
+    online_tracker.touch_ws(user.id)  # 握手即在线,不等首个心跳
     room = manager.get_room(room_id)
     # 非参赛房主(教师控制台)也放行握手:user.id==host_id 且房主不下场
     is_host_console = (
@@ -993,6 +996,7 @@ async def pk_ws(
         try:
             while True:
                 msg = await ws.receive_json()
+                online_tracker.touch_ws(user.id)  # 观战也占带宽,计入在线
                 if not isinstance(msg, dict):
                     continue
                 mtype = msg.get("type")
@@ -1053,6 +1057,7 @@ async def pk_ws(
     try:
         while True:
             msg = await ws.receive_json()
+            online_tracker.touch_ws(user.id)  # 对战期间几乎只走WS,不在此记活跃会漏统计
             if not isinstance(msg, dict):
                 continue
             mtype = msg.get("type")
