@@ -31,6 +31,9 @@ class User(Base):
     role = Column(String(20), default=UserRole.STUDENT)
     org_id = Column(Integer, nullable=False, default=1, server_default="1")  # 所属机构(多租户),1=直营;索引由init_db迁移建
     is_active = Column(Boolean, default=True)
+    # 顶号机制: 会话版本号。范围内账号(学生/体验机构全角色)每次登录 +1 并写进
+    # JWT 的 sv,认证时不符=被顶下线(后登录踢先登录)。范围外角色恒 0 且 token 不带 sv
+    session_ver = Column(Integer, nullable=False, default=0, server_default="0")
     avatar_url = Column(String(255))
     # 加币 PIN(bcrypt 哈希,可空=未设)。教师手动加币需校验,防学生冒用老师账号自己加币
     coin_pin_hash = Column(String(255), nullable=True)

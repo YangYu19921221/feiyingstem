@@ -14,6 +14,7 @@ CREATE TABLE users (
     grade VARCHAR(20), -- 如: "小学3年级", "初中1年级"
     avatar_url VARCHAR(255),
     subscription_expires_at TIMESTAMP, -- 学生订阅到期时间
+    session_ver INTEGER NOT NULL DEFAULT 0, -- 顶号机制:会话版本号(学生/体验机构登录+1,JWT sv不符=被顶下线)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP
 );

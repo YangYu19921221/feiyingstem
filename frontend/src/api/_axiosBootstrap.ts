@@ -27,7 +27,7 @@ export function ensureAxiosAuthInstalled() {
   axios.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (isUnauthorizedError(error)) onUnauthorized();
+      if (isUnauthorizedError(error)) onUnauthorized(error);
       return Promise.reject(error);
     },
   );

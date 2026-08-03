@@ -33,7 +33,7 @@ instance.interceptors.response.use(
   },
   (error) => {
     if (isUnauthorizedError(error)) {
-      onUnauthorized();
+      onUnauthorized(error);
       return Promise.reject(error);
     }
     // 统一错误处理

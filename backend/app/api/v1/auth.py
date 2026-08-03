@@ -48,6 +48,19 @@ async def _authenticate_token(
     if not user.is_active:
         raise HTTPException(status_code=400, detail="用户已被禁用")
 
+    # 顶号校验: token 带 sv(登录时属于顶号范围)则必须与库中版本一致,
+    # 不符=账号已在别处重新登录,本会话被顶下线。
+    # 旧版无 sv 的学生 token 视作 sv=0:该账号一旦在新版登录过(ver>0)即作废,
+    # 否则(ver还是0)放行——避免上线瞬间全体学生被强制登出
+    sv = payload.get("sv")
+    cur_ver = user.session_ver or 0
+    if (sv is not None and sv != cur_ver) or (sv is None and user.role == "student" and cur_ver > 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "SESSION_KICKED", "message": "账号已在其他设备登录，你已被下线"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # 多租户: 设置请求级机构上下文(平台admin设None=跨租户不过滤)
     current_org_id.set(None if user.role == "admin" else user.org_id)
 
@@ -207,10 +220,8 @@ async def register(
         org_id=reg_org_id,
     )
 
-    # 自动登录，生成 token
-    access_token = auth_service.create_access_token(
-        data={"sub": str(user.id), "username": user.username}
-    )
+    # 自动登录，生成 token(注册即学生,走顶号发号)
+    access_token = await auth_service.issue_session_token(db, user)
 
     return {
         "access_token": access_token,
@@ -241,11 +252,8 @@ async def login(
         )
 
     user.last_login = datetime.utcnow()
-    await db.commit()
-
-    access_token = auth_service.create_access_token(
-        data={"sub": str(user.id), "username": user.username}
-    )
+    # 顶号发号: 范围内(学生/体验机构)登录会 bump session_ver 并连同 last_login 一起提交
+    access_token = await auth_service.issue_session_token(db, user)
 
     return {
         "access_token": access_token,
@@ -280,14 +288,9 @@ async def login_json(
         if not ok:
             raise HTTPException(status_code=400, detail={"code": "invalid_code", "message": msg})
 
-    # 更新最后登录时间
+    # 更新最后登录时间 + 顶号发号(一起提交)
     user.last_login = datetime.utcnow()
-    await db.commit()
-
-    # 生成token
-    access_token = auth_service.create_access_token(
-        data={"sub": str(user.id), "username": user.username}
-    )
+    access_token = await auth_service.issue_session_token(db, user)
 
     return {
         "access_token": access_token,

@@ -444,6 +444,8 @@ async def init_db():
             "ALTER TABLE pet_battles ADD COLUMN capture_data TEXT",
             # 宠物对战换宠: 每只实际出战宠物独立保存本场剩余 HP。
             "ALTER TABLE pet_battles ADD COLUMN pet_hp_data TEXT",
+            # 顶号机制: 会话版本号(学生/体验机构登录+1,JWT sv 不符=被顶下线)
+            "ALTER TABLE users ADD COLUMN session_ver INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 await conn.execute(text(_sql))

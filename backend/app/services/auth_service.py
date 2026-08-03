@@ -40,6 +40,37 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt
 
+
+async def issue_session_token(db: AsyncSession, user: User) -> str:
+    """
+    登录发 token 的统一入口(顶号机制)。
+
+    范围: 学生一律顶号;体验机构(plan=trial)老师/机构管理员也顶号——
+    体验账号发出去就是明文流传,一号多人同时在线是白嫖主通道。
+    正式机构老师/管理员/平台admin/家长不顶(手机电脑双开是正常用法),
+    token 不带 sv,认证侧自然跳过校验。
+
+    机制: 范围内每次登录 session_ver+1 写库,并把新值放进 JWT 的 sv;
+    认证时 sv != 库值 → 401 SESSION_KICKED(后登录踢先登录)。
+    调用方无需再 commit(这里连同 last_login 等未提交改动一起落库)。
+    """
+    in_scope = user.role == "student"
+    if not in_scope and user.role in ("teacher", "org_admin"):
+        from sqlalchemy import text
+        plan = (await db.execute(
+            text("SELECT plan FROM organizations WHERE id = :i"), {"i": user.org_id}
+        )).scalar()
+        in_scope = plan == "trial"
+
+    if in_scope:
+        user.session_ver = (user.session_ver or 0) + 1
+        await db.commit()
+        return create_access_token(
+            {"sub": str(user.id), "username": user.username, "sv": user.session_ver}
+        )
+    await db.commit()
+    return create_access_token({"sub": str(user.id), "username": user.username})
+
 class AuthFailure(Exception):
     """登录失败的细分原因（前端按 code 显示对应文案与跳转链接）"""
     def __init__(self, code: str, detail: str):

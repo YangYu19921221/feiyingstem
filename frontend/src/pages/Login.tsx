@@ -13,6 +13,7 @@ import {
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { useCountdown } from '../hooks/useCountdown';
+import { KICKED_FLAG } from '../api/_authInterceptors';
 import Spinner from '../components/Spinner';
 import AuthShell from '../components/auth/AuthShell';
 import AuthInput from '../components/auth/AuthInput';
@@ -46,6 +47,16 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [showPhoneVerify, setShowPhoneVerify] = useState(false);
+  // 被顶下线跳回登录页时的提示(懒初始化读一次即清,刷新不复现旧提示)
+  const [kicked, setKicked] = useState(() => {
+    try {
+      const v = sessionStorage.getItem(KICKED_FLAG) === '1';
+      sessionStorage.removeItem(KICKED_FLAG);
+      return v;
+    } catch {
+      return false;
+    }
+  });
 
   const handleSendCode = async () => {
     if (!/^1[3-9]\d{9}$/.test(phone)) {
@@ -106,6 +117,16 @@ const Login = () => {
       </header>
 
       <form onSubmit={handleLogin} className="space-y-5" data-auth-reveal>
+        {kicked && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span className="mt-0.5">⚠️</span>
+            <div>
+              <p className="font-semibold">你的账号在其他设备登录了</p>
+              <p className="mt-0.5 text-xs text-amber-700">同一账号同时只能一台设备在线。若不是本人操作，建议登录后尽快修改密码。</p>
+            </div>
+            <button type="button" onClick={() => setKicked(false)} className="ml-auto shrink-0 text-amber-400 hover:text-amber-600" aria-label="关闭提示">✕</button>
+          </div>
+        )}
         <FormError
           message={error}
           code={errorCode}
