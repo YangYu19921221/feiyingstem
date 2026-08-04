@@ -556,8 +556,8 @@ export default function PkLobby() {
             </div>
             <p className="text-[11px] text-ink-mute mb-6">
               {sameWords
-                ? '从所有人共同背过的词里抽同一批,先背完的分数一定最高 —— 发奖品选这个。共同背过的词太少会开不了局'
-                : '每人从自己背过的词里抽(词汇量差异大凑不出共同词时用),题量仍全场统一'}
+                ? '从所有人共同背过的词里出同一张卷子:词、顺序、题型、选项逐字相同,先背完的分数一定最高 —— 发奖品选这个。共同背过的词太少会开不了局'
+                : '每人从自己背过的词里抽(词汇量差异大凑不出共同词时用),题量与满分仍全场统一'}
             </p>
 
             <button
@@ -684,36 +684,55 @@ export default function PkLobby() {
             <div className="space-y-4 text-sm text-ink-soft leading-relaxed">
               <div>
                 <p className="font-semibold text-ink mb-1">① 建房(你是组织者,全程不答题)</p>
-                <p>选「个人赛 / 分组赛」→ 定房间人数、每人词数、<span className="font-semibold text-ink">全场倒计时</span>(1–30 分钟)→ 点创建,拿到 6 位邀请码发给学生。</p>
+                <p>建房时定 5 件事:<span className="font-semibold text-ink">模式</span>(个人赛 / 分组赛)、<span className="font-semibold text-ink">人数</span>(2–200)、<span className="font-semibold text-ink">词数上限</span>(4–200)、<span className="font-semibold text-ink">全场倒计时</span>(1–30 分钟)、<span className="font-semibold text-ink">选词方式</span>(同题公平赛 / 各考各的)。点创建拿到 6 位邀请码发给学生。</p>
+                <p className="mt-1 text-ink-mute">倒计时怎么设:一个词走完全流程正常约 12–20 秒,10 个词建议 5 分钟左右。设长了不影响公平(速度分有自己的尺子),设太短会有很多人做不完。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">② 学生加入并自己选组</p>
-                <p>学生在自己的 PK 大厅输入邀请码进房。分组赛里<span className="font-semibold text-ink">组由你建房时创建并命名</span>,学生进等待室后<span className="font-semibold text-ink">自己点组名加入</span>;个别学生没选或选错,你可以在竞技场里帮他指定,也能把人移出房间。</p>
-              </div>
-              <div>
-                <p className="font-semibold text-ink mb-1">③ 你开局并监控</p>
-                <p>至少 2 名学生进房即可开局。分组赛还要求<span className="font-semibold text-ink">人人都选了组、且至少两组有人</span>(全挤在一组就没有对手了),没选组的学生名字会标「⚠️ 未选组」。开局后自动进<span className="font-semibold text-ink">全屏大屏监控台</span>,看每个学生的实时阶段与掌握进度,但不答题。随时可「提前结束」并出正式榜。</p>
-              </div>
-              <div>
-                <p className="font-semibold text-ink mb-1">④ 选词:同题公平赛(默认)或各考各的</p>
-                <p><span className="font-semibold text-ink">同题公平赛</span>:系统从「所有参赛学生都背过的词」里抽<span className="font-semibold text-ink">同一批词、同一顺序</span>发给每个人——同词同量同满分,先背完的分数一定最高,<span className="font-semibold text-ink">要发奖品就用这个</span>。共同背过的词不足 4 个会开不了局(让学生先把相同单元背齐)。</p>
-                <p className="mt-1"><span className="font-semibold text-ink">各考各的</span>:每个学生各抽他自己背过的词,适合词汇量差异太大、凑不出共同词的场次。题量仍按全场背得最少的学生统一,大家工作量一样。</p>
+                <p className="font-semibold text-ink mb-1">② 选词方式(重点,发奖品先看这条)</p>
+                <p><span className="font-semibold text-ink">同题公平赛(默认)</span>:系统从「所有参赛学生都背过的词」里抽题,全员拿到<span className="font-semibold text-ink">同一批词、同一顺序、同一题型、同一组选项</span>——相当于发同一张试卷,唯一的差别是每个人答得对不对、快不快。<span className="font-semibold text-ink">要发奖品就用这个。</span>共同背过的词不足 4 个会开不了局,先让学生把相同单元背齐。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">各考各的</span>:每人各抽他自己背过的词,适合小学初中混场、词汇量差异太大凑不出共同词的场次。题量仍按全场背得最少的学生统一,工作量一样,但每人的词不同,不适合发奖品的正式比赛。</p>
                 <p className="mt-1 text-ink-mute">两种方式下满分都 = 词数 × 100,全场统一——分数天花板人人相同,不因抽到什么词而变。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">⑤ 每人走一遍分类记忆法全流程</p>
-                <p>词按 10 个一组,每组:🗂️<span className="font-medium text-ink">分类</span>(标熟悉/学过/陌生,<span className="font-semibold text-ink">夹生和陌生的词会反复出现直到全部标熟悉</span>)→ ✍️<span className="font-medium text-ink">听写</span>(拼错要照着抄对 3 遍,错词再复听一轮)→ 🏁<span className="font-medium text-ink">过关检测</span>(4 种题型随机:英译中/中译英/听音拼写/看义拼写,<span className="font-semibold text-ink">正确率≥60% 才过关</span>,不过则重考)。过关才进下一组。</p>
+                <p className="font-semibold text-ink mb-1">③ 学生加入;分组赛先选组</p>
+                <p>学生在自己的 PK 大厅输入邀请码进房。分组赛里<span className="font-semibold text-ink">组由你建房时创建并命名</span>(2–8 组),学生进等待室后<span className="font-semibold text-ink">自己点组名加入</span>;个别学生没选或选错,你可以在竞技场里帮他指定,也能把人移出房间。旁观的同学可以点「观战」(不答题、不占名额,最多 30 人)。</p>
               </div>
-              {/* 胜负规则 */}
+              <div>
+                <p className="font-semibold text-ink mb-1">④ 你开局并监控</p>
+                <p>至少 2 名学生<span className="font-semibold text-ink">真正进入房间</span>即可开局(只输了码没进等待室的不算)。分组赛还要求人人都选了组、且至少两组有人。开局后自动进<span className="font-semibold text-ink">全屏大屏监控台</span>:看每个学生实时的阶段、进度、得分柱。随时可「提前结束」按当前分数出正式榜。</p>
+              </div>
+              <div>
+                <p className="font-semibold text-ink mb-1">⑤ 学生比什么:每组词闯 3 关</p>
+                <p>词按 10 个一组,每组依次过:</p>
+                <ul className="mt-1 space-y-1 list-disc pl-4">
+                  <li>🗂️ <span className="font-medium text-ink">分类</span>(每题 20 秒):学生给每个词标「熟悉 / 夹生 / 陌生」。标夹生和陌生的词会反复出现,<span className="font-semibold text-ink">全部标成熟悉才能进听写</span>。超时按「陌生」处理。</li>
+                  <li>✍️ <span className="font-medium text-ink">听写</span>(每题 60 秒):听发音拼单词。<span className="font-semibold text-ink">拼错要照着连续抄对 3 遍</span>(抄错重来),首次拼错的词最后还会再听写一遍确认。</li>
+                  <li>🏁 <span className="font-medium text-ink">过关检测</span>(每题 30 秒):本组词换序重考,4 种题型按固定顺序轮流(英译中选择 → 中译英选择 → 听音拼写 → 看义拼写)。<span className="font-semibold text-ink">正确率 ≥60% 过关进下一组,不够就整组重考</span>,不限次数。</li>
+                </ul>
+                <p className="mt-1">每人各答各的、答完一题立刻下一题,不互相等。全部组过关 = 完成。所有单题超时都按答错处理,流程照常往下走,不会卡住。</p>
+              </div>
+              {/* 计分与名次 */}
               <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
-                <p className="font-semibold text-ink mb-1.5">🏁 怎么定胜负(重点)</p>
+                <p className="font-semibold text-ink mb-1.5">🏁 计分与名次(可以照这个跟学生和家长解释)</p>
                 <ul className="space-y-1 list-disc pl-4">
-                  <li><span className="font-medium text-ink">总分最高的学生赢</span>。总分 = 掌握分 + 速度分,大屏柱子的高度就是总分,所以<span className="font-medium text-ink">柱子最高的就是第一名</span>,不用另外解释名次。</li>
-                  <li><span className="font-medium text-ink">掌握分 = 掌握进度 × 满分</span>(满分 = 词数 × 100,全场统一)。进度封顶,所以<span className="font-medium text-ink">反复刷题刷不出分</span>,只有真把词掌握了才涨分。</li>
-                  <li><span className="font-medium text-ink">速度分只有全部完成才拿</span>,完成越早拿得越多(最多为满分的 30%),<span className="font-medium text-ink">只要在倒计时内完成就一定是正分、且比后完成的人高</span>——所以先背完的人总分必然最高,柱子高低和名次永远对得上。</li>
-                  <li><span className="font-medium text-ink">全员完成即立刻结算</span>,不用等倒计时走完;倒计时到点仍有人没做完,就按当时的总分排名。</li>
-                  <li>同分时依次看:先完成者优先 → 总用时更短 → 答对更多。</li>
-                  <li><span className="font-medium text-ink">分组赛按队内「人均得分」排名</span>——队里人多不占便宜,人少的队照样能赢。</li>
+                  <li><span className="font-medium text-ink">满分 = 词数 × 100,人人相同</span>。10 个词就是 1000 分,和词的难易、年级无关。</li>
+                  <li><span className="font-medium text-ink">掌握分 = 掌握进度 × 满分</span>:每过一关、每过一组,分数实时往上走;全部背完拿满 1000。进度封顶,<span className="font-medium text-ink">反复刷题刷不出分</span>。</li>
+                  <li><span className="font-medium text-ink">速度分 = 只有全部完成才有的奖励</span>,最多再加满分的 30%(10 词即最多 +300)。完成越早加得越多,哪怕压着倒计时最后一秒完成也至少 +1 分,拖到倒计时结束才归零。</li>
+                  <li><span className="font-medium text-ink">答错不扣分</span>——但错词要抄 3 遍、过关不到 60% 要重考,时间自然就慢了,这就是代价。</li>
+                  <li>所以:<span className="font-medium text-ink">先背完的学生总分必然最高</span>,大屏上柱子最高的就是第一名,柱高和名次永远对得上。</li>
+                  <li><span className="font-medium text-ink">全员完成即立刻结算</span>;倒计时到点还有人没完成,按当时总分排名。极少数同分(相差不到 1 分被取整抹平)按完成先后 → 总用时 → 答对数裁决。</li>
+                  <li><span className="font-medium text-ink">分组赛按队内「人均得分」排名</span>——人多的组不占便宜,人少的组照样能赢。个人榜照常显示,做队内明细。</li>
+                </ul>
+              </div>
+              {/* 公平保证 */}
+              <div className="rounded-2xl bg-green-50/70 border border-green-100 p-3">
+                <p className="font-semibold text-ink mb-1.5">✅ 公平保证(奖品赛可直接公示)</p>
+                <ul className="space-y-1 list-disc pl-4">
+                  <li>同题模式下,每个学生的<span className="font-medium text-ink">词、出题顺序、题型、选择题选项逐字相同</span>——分类多想几轮、听写多抄几遍,都不会改变过关的卷面。</li>
+                  <li>判分、计时、题型全部由<span className="font-medium text-ink">服务器统一裁决</span>,客户端说了不算;拼写判定统一忽略大小写和首尾标点,对所有人一个标准。</li>
+                  <li>掉线有 <span className="font-medium text-ink">90 秒重连窗口</span>,回来接着答当前那道题;但比赛时钟照走,掉线不占便宜也不吃额外亏。</li>
+                  <li>乱按不行(错词循环到会为止)、拖时间不行(速度分变少)、刷题不行(分数封顶)——<span className="font-medium text-ink">认真一遍过就是最优打法</span>。</li>
+                  <li>设备和网速的差异软件消不掉,正式奖品赛建议用同一批设备、同一个教室的网络。</li>
                 </ul>
               </div>
             </div>
@@ -721,40 +740,50 @@ export default function PkLobby() {
             <div className="space-y-4 text-sm text-ink-soft leading-relaxed">
               <div>
                 <p className="font-semibold text-ink mb-1">① 加入老师的房间</p>
-                <p>输入老师发你的 6 位邀请码,点「加入对战」。房满或已开局也能点「观战」看比赛。</p>
+                <p>输入老师发你的 6 位邀请码,点「加入对战」。房满或已开局也能点「观战」看比赛。分组赛进去后<span className="font-semibold text-ink">先点一个组名加入</span>,不选组老师开不了赛;想换组再点别的组名。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">② 考的都是你们背过的词</p>
-                <p>一般比赛里<span className="font-semibold text-ink">全场考同一批词</span>——从你们所有人都背过的单词里抽,题目、顺序、满分完全一样,<span className="font-medium text-ink">谁先背完谁分最高</span>,绝对公平。老师也可以设成「各考各的」:每人考自己背过的词。</p>
-                <p className="mt-1"><span className="font-semibold text-ink">题量大家一样多</span>,满分也一样(词数 × 100)。所以<span className="font-medium text-ink">背得多不会被罚、背得少也占不到便宜</span>,比的就是谁掌握得更好更快。</p>
-                <p className="mt-1 text-ink-mute">如果你背过的词还不到 4 个,老师就开不了局——先去学习模式多背一些再来。</p>
+                <p className="font-semibold text-ink mb-1">② 大家做的是同一张卷子</p>
+                <p>一般比赛(同题模式)里,题目从<span className="font-semibold text-ink">你们所有人都背过的单词</span>里出,而且每个人拿到的<span className="font-semibold text-ink">词、顺序、题型、选项都一模一样</span>——就像考试发同一张试卷。你多想了几轮、多抄了几遍,后面的题也不会变。<span className="font-medium text-ink">不会考你没学过的词。</span></p>
+                <p className="mt-1"><span className="font-semibold text-ink">满分人人一样:词数 × 100</span>(考 10 个词满分就是 1000)。所以比的只有一件事:<span className="font-medium text-ink">谁掌握得好、谁完成得快</span>。</p>
+                <p className="mt-1 text-ink-mute">老师也可能设成「各考各的」:每人考自己背过的词,题量和满分还是一样。如果你背过的词不到 4 个,老师开不了局——先去学习模式多背一些。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">③ 单词分组,每组闯 3 关</p>
-                <p>词按 10 个一组。每组要过:</p>
+                <p className="font-semibold text-ink mb-1">③ 单词 10 个一组,每组闯 3 关</p>
                 <ul className="mt-1 space-y-1 list-disc pl-4">
-                  <li>🗂️ <span className="font-medium text-ink">分类</span>:每个词标「熟悉/学过/陌生」。标成夹生或陌生的词<span className="font-semibold text-ink">会再出现,直到你把它们都标成熟悉</span>。</li>
-                  <li>✍️ <span className="font-medium text-ink">听写</span>:听发音拼出来。拼错了要<span className="font-semibold text-ink">照着抄对 3 遍</span>,错过的词后面还会再听一遍。</li>
-                  <li>🏁 <span className="font-medium text-ink">过关检测</span>:4 种题型随机(英译中、中译英、听音拼写、看义拼写),<span className="font-semibold text-ink">对 60% 以上才算过关</span>,没过要重考。</li>
+                  <li>🗂️ <span className="font-medium text-ink">分类</span>(每题 20 秒):给每个词标「熟悉 / 夹生 / 陌生」。标夹生或陌生的词<span className="font-semibold text-ink">会再出现,直到你把它们都标成熟悉</span>。到时间没标算陌生。</li>
+                  <li>✍️ <span className="font-medium text-ink">听写</span>(每题 60 秒):听发音拼出来。拼错了要<span className="font-semibold text-ink">照着连续抄对 3 遍</span>(抄错重来),第一次拼错的词最后还会再考你一遍。</li>
+                  <li>🏁 <span className="font-medium text-ink">过关检测</span>(每题 30 秒):这组词换个顺序再考一遍,四种题型轮着来:英译中、中译英、听音拼写、看义拼写。<span className="font-semibold text-ink">答对 60% 以上过关</span>,进下一组;不够就整组重考。</li>
                 </ul>
-                <p className="mt-1">过关了才进下一组,你答完一题立刻进下一题,<span className="font-semibold text-ink">不用等别人</span>。</p>
+                <p className="mt-1">每道题超时都算答错,比赛不会停下来等你。你答完一题立刻进下一题,<span className="font-semibold text-ink">不用等别人</span>。全部组过关就是完成!</p>
               </div>
               {/* 胜负规则 */}
               <div className="rounded-2xl bg-orange-50/70 border border-orange-100 p-3">
                 <p className="font-semibold text-ink mb-1.5">🏁 怎么赢(重点)</p>
                 <ul className="space-y-1 list-disc pl-4">
                   <li><span className="font-medium text-ink">分数最高的人赢</span>,榜上柱子最高的就是第一名。分数 = 掌握分 + 速度分。</li>
-                  <li><span className="font-medium text-ink">掌握分看你把词掌握了多少</span>:掌握得越多分越高,全部掌握就拿满分。<span className="font-medium text-ink">反复刷同一题刷不出分</span>,真会了才涨。</li>
-                  <li><span className="font-medium text-ink">全部做完还能拿速度分</span>,越早做完拿得越多——<span className="font-medium text-ink">先做完的人分数一定比后做完的高</span>,所以做完了别磨蹭,快就是分。</li>
-                  <li>大家都完成了就<span className="font-medium text-ink">马上出成绩</span>;时间到了还没做完,就按当时的分数排名。</li>
-                  <li>不会的词会一直反复出现直到你会,所以<span className="font-medium text-ink">乱按、拖时间都没用</span>,认认真真一遍过反而最快、分最高。</li>
-                  <li>分数一样时,看谁先完成、谁用时更短。</li>
+                  <li><span className="font-medium text-ink">掌握分</span>:背到哪儿分到哪儿,每过一关分数就涨;全部背完拿满分(词数 × 100)。</li>
+                  <li><span className="font-medium text-ink">速度分</span>:全部做完才有的奖励,最多再加满分的 30%。<span className="font-medium text-ink">做完越早加得越多</span>,拖到最后一秒完成也有分,但只有一点点。</li>
+                  <li>所以:<span className="font-medium text-ink">先做完的人分数一定比后做完的高</span>——第一个背完的就是第一名,没有例外。</li>
+                  <li><span className="font-medium text-ink">答错不扣分</span>,但错词要抄 3 遍、过关不到 60% 要重考,时间就没了。<span className="font-medium text-ink">认真答对一遍过,就是最快的打法。</span></li>
+                  <li>大家都完成了就马上出成绩;时间到了还没做完,按当时的分数排名。万一分数一样,谁先完成谁在前。</li>
                 </ul>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">④ 分组赛:进房后自己选组</p>
-                <p>老师开分组赛时,他会先建好几个组。你进等待室后<span className="font-semibold text-ink">点一下组名就加入了</span>,想换组再点别的组名;<span className="font-medium text-ink">不选组老师开不了赛</span>,所以进去先选。</p>
-                <p className="mt-1">比赛时看「队伍榜」哪个组领先——按<span className="font-semibold text-ink">组内人均得分</span>算,组里人多不占便宜,和组员一起冲榜。</p>
+                <p className="font-semibold text-ink mb-1">④ 这些小聪明都没用</p>
+                <ul className="mt-1 space-y-1 list-disc pl-4">
+                  <li>乱按瞎选?错的词会<span className="font-medium text-ink">一直回来找你</span>,还要抄 3 遍,比认真答慢得多。</li>
+                  <li>反复刷题攒分?分数<span className="font-medium text-ink">封顶就是满分</span>,刷不出来。</li>
+                  <li>偷看同学的?同题比赛里他的题和你的<span className="font-medium text-ink">一模一样</span>,但你们进度不同步,他答他的、你答你的,看他的屏幕只会浪费你的时间。</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-ink mb-1">⑤ 掉线了怎么办</p>
+                <p>别慌,<span className="font-semibold text-ink">90 秒内回到页面就能接着答</span>刚才那道题,已经答的分都在。但比赛时间照走,断线越久越吃亏——网不稳就别中途刷新页面。</p>
+              </div>
+              <div>
+                <p className="font-semibold text-ink mb-1">⑥ 分组赛:和组员一起冲</p>
+                <p>比赛时看「队伍榜」哪个组领先——按<span className="font-semibold text-ink">组内人均得分</span>算,组里人多不占便宜。你的每一分都直接抬高全组的平均分,别摸鱼。</p>
               </div>
             </div>
           ))}

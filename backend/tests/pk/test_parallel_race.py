@@ -3,7 +3,7 @@
 import random
 import pytest
 from app.services.pk import manager, engine
-from app.services.pk.engine import select_words_for_player, init_player_groups, exam_type_for
+from app.services.pk.engine import select_words_for_player, init_player_groups
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +47,8 @@ def _answer_current(room, uid, correct=True):
     if stage == "classify":
         payload = {"category": "familiar" if correct else "unknown"}
     elif stage == "exam":
-        et = exam_type_for(p.q_seq)
+        # 客户端视角:题型以服务端推送(current_meta)为准
+        et = p.current_meta.get("exam_type", "spelling")
         if et in ("en_to_cn", "cn_to_en"):
             field = "translation" if et == "en_to_cn" else "word"
             val = getattr(room.word_lookup[wid], field) if correct else "错"
@@ -358,6 +359,76 @@ async def test_start_game_per_player_mode_when_same_words_off(monkeypatch):
     assert set(a.word_ids) <= set(range(1, 31))
     assert set(b.word_ids) <= set(range(101, 109))
     assert a.potential_points == b.potential_points == 800  # 满分仍统一(词数×100)
+
+
+def test_exam_paper_identical_regardless_of_personal_path():
+    """同题赛核心不变量:两人词表相同,即使分类/听写路径完全不同(答题数不同、
+    q_seq 错开),过关卷面也逐题相同 —— 同顺序、同题型、同选项。"""
+    wids = list(range(1, 11))
+    room = _race_room({1: list(wids), 2: list(wids)})
+
+    # 玩家1 一路全对;玩家2 在分类阶段全标「陌生」几轮再全对(q_seq 大幅错开)
+    p1, p2 = room.players[1], room.players[2]
+    for _ in range(10):
+        _answer_current(room, 1, correct=True)   # p1 分类全 familiar
+    for _ in range(20):                          # p2 先陌生两轮
+        p = room.players[2]
+        if p.stage != "classify":
+            break
+        engine.submit_answer(room, 2, p.q_seq, "classify", {"category": "unknown"}, 500, room.word_lookup)
+    while room.players[2].stage == "classify":
+        _answer_current(room, 2, correct=True)
+
+    # 两人都推进到过关阶段(听写全对)
+    for uid in (1, 2):
+        while room.players[uid].stage == "dictation":
+            _answer_current(room, uid, correct=True)
+    assert p1.stage == p2.stage == "exam"
+    assert p1.q_seq != p2.q_seq              # 路径确实不同
+
+    # 逐题对比卷面:词、题型、选项(选择题)全部一致
+    paper1, paper2 = [], []
+    for uid, paper in ((1, paper1), (2, paper2)):
+        p = room.players[uid]
+        while p.stage == "exam":
+            paper.append((
+                p.current_wid,
+                p.current_meta.get("exam_type"),
+                tuple(p.current_meta.get("options") or ()),
+            ))
+            _answer_current(room, uid, correct=True)
+    assert paper1 == paper2, f"卷面不一致:\n{paper1}\n{paper2}"
+    assert len(paper1) == 10
+
+
+def test_exam_options_deterministic_per_word():
+    """选择题干扰项由 (房间种子, 词, 题型) 决定:同房同词多次构造完全一致。"""
+    room = _race_room({1: [1, 2, 3, 4, 5, 6]})
+    a = engine._build_exam_options(room, room.word_lookup, 3, "en_to_cn", scope_ids=[1, 2, 3, 4, 5, 6])
+    b = engine._build_exam_options(room, room.word_lookup, 3, "en_to_cn", scope_ids=[1, 2, 3, 4, 5, 6])
+    assert a == b and len(a) == 4
+
+
+def test_exam_retake_reorders_but_stays_deterministic():
+    """重考换顺序(防背题序),但同一 attempt 的顺序仍确定(全员一致的根基)。"""
+    wids = list(range(1, 11))
+    room = _race_room({1: list(wids), 2: list(wids)})
+    for uid in (1, 2):
+        p = room.players[uid]
+        while p.stage in ("classify", "dictation"):
+            _answer_current(room, uid, correct=True)
+        # 全部答错 → 重考
+        first_order = list(p.exam_pending)
+        while p.stage == "exam" and p.exam_attempt == 0:
+            _answer_current(room, uid, correct=False)
+        assert p.exam_attempt == 1
+        retake_order = list(p.exam_pending)
+        assert set(retake_order) == set(first_order)
+        if uid == 1:
+            saved = (first_order, retake_order)
+    # 两人首考与重考顺序都一致
+    p2 = room.players[2]
+    assert saved[1] == list(p2.exam_pending)
 
 
 def test_exam_options_scoped_to_own_words():

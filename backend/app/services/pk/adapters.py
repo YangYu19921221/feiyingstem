@@ -64,8 +64,9 @@ EXAM_TYPES: tuple[str, ...] = ("en_to_cn", "cn_to_en", "listening", "spelling")
 
 
 def exam_type_for(word_idx: int) -> str:
-    """按个人进度指针确定性地推出该题的过关题型。
-    push(出题)与 judge(判分)都用同一函数,保证前后端题型一致、无需存状态。"""
+    """按「本轮过关中的题目位置」(engine._exam_pos,0 起)确定性地推出题型。
+    push(出题)与 judge(判分)都用同一函数,保证前后端题型一致、无需存状态。
+    绑位置而非个人题号:全员同序时同一题必然同题型(同题公平赛硬要求)。"""
     return EXAM_TYPES[word_idx % len(EXAM_TYPES)]
 
 

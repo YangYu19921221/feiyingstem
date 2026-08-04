@@ -83,11 +83,18 @@ def _sync_points(room: RoomState, p) -> None:
     p.points = mastery + p.speed_points
 
 
+def _exam_pos(p) -> int:
+    """当前过关题在本轮里的位置(0 起)。题型绑定这个位置而非个人题号(q_seq):
+    q_seq 含分类/听写的答题历史,每人不同 —— 绑它会让同一个词你是选择题、
+    他是拼写题,同题公平赛就名不副实。全员同序 + 按位置定题型 = 同题同考法。"""
+    return max(0, p.exam_total - len(p.exam_pending))
+
+
 def _prepare_meta(room: RoomState, p, word_lookup: dict[int, Any]) -> None:
     """按当前 stage/词 预备 current_meta(过关题型+选项、听写抄写剩余遍数)。"""
     p.current_meta = {}
     if p.stage == "exam" and p.current_wid is not None:
-        etype = exam_type_for(p.q_seq)
+        etype = exam_type_for(_exam_pos(p))
         p.current_meta["exam_type"] = etype
         if etype in ("en_to_cn", "cn_to_en"):
             # 干扰项只能取「该玩家自己背过的词」:room.word_lookup 是全房并集,
@@ -136,6 +143,9 @@ def _build_exam_options(
 
     scope_ids 限定干扰项的取材范围(传该玩家自己的词表),避免拿到他没背过的词;
     自己的词不足凑干扰项时,才退回全房词表补齐,保证选项数够。
+
+    随机数用 (房间种子, 词, 题型) 播种:同题赛里词表相同 → 每个学生看到的
+    干扰项、选项顺序逐字相同,不给"他的选项恰好好排除"留任何空间。
     """
     correct_word = word_lookup.get(wid) if wid is not None else None
     if correct_word is None:
@@ -144,6 +154,7 @@ def _build_exam_options(
     correct = (getattr(correct_word, field, "") or "").strip()
     if not correct:
         return []
+    rng = random.Random(f"{room.match_seed}:{wid}:{exam_type}")
 
     def _collect(ids) -> list[str]:
         out = []
@@ -161,13 +172,13 @@ def _build_exam_options(
 
     seen = {correct}
     pool = _collect(scope_ids) if scope_ids else _collect(list(word_lookup))
-    random.shuffle(pool)
+    rng.shuffle(pool)
     if len(pool) < 3 and scope_ids:
         extra = _collect(list(word_lookup))   # 自己的词不够,退回全房补齐
-        random.shuffle(extra)
+        rng.shuffle(extra)
         pool += extra
     options = pool[:3] + [correct]
-    random.shuffle(options)
+    rng.shuffle(options)
     return options
 
 
@@ -208,7 +219,7 @@ def _advance(room: RoomState, p, is_correct: bool, payload: dict, word_lookup: d
                 p.dict_copies_left -= 1
                 if p.dict_copies_left <= 0:
                     _pop_current(p.dict_pending)
-                    _after_dict_pop(p)
+                    _after_dict_pop(room, p)
             # 抄错:停在原词继续抄(current_wid 不变)
         else:
             # 首次听写
@@ -217,7 +228,7 @@ def _advance(room: RoomState, p, is_correct: bool, payload: dict, word_lookup: d
                 p.dict_first[wid] = is_correct
             if is_correct:
                 _pop_current(p.dict_pending)
-                _after_dict_pop(p)
+                _after_dict_pop(room, p)
             else:
                 # 错:进入抄写(需连续抄对 DICT_COPY_REQUIRED 遍)
                 from app.services.pk.state import DICT_COPY_REQUIRED
@@ -237,10 +248,9 @@ def _advance(room: RoomState, p, is_correct: bool, payload: dict, word_lookup: d
             if ratio >= EXAM_PASS_RATIO:
                 _advance_group(p, room)
             else:
-                # 重考:重灌本组词,重置计数
+                # 重考:重灌本组词(换一个确定性顺序,免得背题序),重置计数
                 p.exam_attempt += 1
-                p.exam_pending = list(p.cur_group)
-                random.shuffle(p.exam_pending)
+                p.exam_pending = _exam_order(room, p)
                 p.exam_correct = 0
                 p.exam_total = len(p.exam_pending)
         _set_current_from_pending(p, p.exam_pending if p.stage == "exam" else _stage_pending(p))
@@ -266,7 +276,7 @@ def _enter_dictation(p) -> None:
     p.current_wid = p.dict_pending[0] if p.dict_pending else None
 
 
-def _after_dict_pop(p) -> None:
+def _after_dict_pop(room: RoomState, p) -> None:
     """听写某词出队后:队列空了则本轮结束。首次错的词循环再听写一遍(错词已抄过,
     这轮只再确认一次,不再要求第二轮抄写,避免无限拖);再过后进过关检测。"""
     p.dict_copies_left = 0
@@ -277,17 +287,29 @@ def _after_dict_pop(p) -> None:
             p.dict_pending = list(wrong_again)
             p.current_wid = p.dict_pending[0]
         else:
-            _enter_exam(p)
+            _enter_exam(room, p)
 
 
-def _enter_exam(p) -> None:
+def _exam_order(room: RoomState, p) -> list[int]:
+    """本轮过关的出题顺序:按 (房间种子, 组号, 第几次考) 确定性打乱。
+
+    同题赛里各玩家 cur_group 相同 → 全员同序:谁先遇到哪个词、哪个词配哪种
+    题型(按位置轮转,见 _exam_pos)完全一致,这是「每一题都相同」的根基。
+    刻意不用个人状态播种 —— 分类多循环几轮、听写多抄几遍都不改变过关卷面。
+    重考(attempt+1)换一个顺序防背题序,但同一次重考仍全员一致。"""
+    rng = random.Random(f"{room.match_seed}:{p.gi}:{p.exam_attempt}")
+    order = list(p.cur_group)
+    rng.shuffle(order)
+    return order
+
+
+def _enter_exam(room: RoomState, p) -> None:
     p.stage = "exam"
     p._dict_relooped = False
-    p.exam_pending = list(p.cur_group)
-    random.shuffle(p.exam_pending)
+    p.exam_attempt = 0
+    p.exam_pending = _exam_order(room, p)
     p.exam_correct = 0
     p.exam_total = len(p.exam_pending)
-    p.exam_attempt = 0
     p.current_wid = p.exam_pending[0] if p.exam_pending else None
 
 
@@ -340,9 +362,10 @@ def submit_answer(
 
     word_id = p.current_wid
     word = word_lookup.get(word_id) if word_id is not None else None
-    # 过关阶段:题型服务端权威(按 q_seq 推出),注入 payload 供 adapter 判分
+    # 过关阶段:题型服务端权威(按本轮题目位置推出,与 _prepare_meta 出题同源),
+    # 注入 payload 供 adapter 判分。此刻当前词还没出队,位置与出题时一致。
     if stage == "exam":
-        payload = {**payload, "_exam_type": exam_type_for(q_seq)}
+        payload = {**payload, "_exam_type": exam_type_for(_exam_pos(p))}
     is_correct = bool(get_adapter(stage).judge(word, payload))
     points_before = p.points
 

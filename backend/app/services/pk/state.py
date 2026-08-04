@@ -1,4 +1,5 @@
 from __future__ import annotations
+import random
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Optional, Any
@@ -141,6 +142,9 @@ class RoomState:
     # 同词表/同分组/同满分,先背完者分数必然最高(发奖品的硬要求)。
     # 关掉则各考各背过的词(小初高混场词汇量差异大时用;题量仍全场统一)
     same_words: bool = True
+    # 全房共享的随机种子:过关出题顺序、选择题干扰项都由它确定性生成 →
+    # 同题赛里每个学生看到的每一题、每个选项逐字相同,唯一变量是答得对不对、快不快
+    match_seed: int = field(default_factory=lambda: random.randint(0, 2**31 - 1))
     # PK 模式:individual=个人赛(默认,兼容学生自建房/晋级赛);team=分组赛(队伍聚合计分)
     mode: ModeLiteral = "individual"
     # 分组赛:教师建房时自己创建分组并命名,学生进房后自己选组(team=None 即未选)
