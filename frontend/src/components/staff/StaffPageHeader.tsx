@@ -31,9 +31,9 @@ export default function StaffPageHeader({
   const goBack = useGoBack('/teacher/dashboard');
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className={`${widths[maxWidth]} mx-auto flex min-h-[64px] items-center gap-3 px-4 py-2.5 sm:px-6`}>
-        <button type="button" onClick={() => backTo ? navigate(backTo) : goBack()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="返回" title="返回">
+    <header className="staff-page-header sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className={`${widths[maxWidth]} mx-auto flex min-h-[64px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6`}>
+        <button type="button" onClick={() => backTo ? navigate(backTo) : goBack()} className="staff-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="返回" title="返回">
           <ArrowLeft className="h-5 w-5" />
         </button>
         {Icon && (
@@ -45,7 +45,7 @@ export default function StaffPageHeader({
           <h1 className="truncate text-base font-bold leading-tight text-slate-900 sm:text-lg">{title}</h1>
           {subtitle && <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>}
         </div>
-        {action && <div className="shrink-0">{action}</div>}
+        {action && <div className="basis-full pl-[52px] [&>*]:w-full sm:basis-auto sm:pl-0 sm:[&>*]:w-auto">{action}</div>}
       </div>
     </header>
   );

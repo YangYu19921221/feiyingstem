@@ -224,63 +224,36 @@ body.student-interface :where(button, a, [role='button']):focus-visible {
 }
 
 body.staff-interface,
-body.staff-interface #root { background-color: #f5f8fc; }
+body.staff-interface #root { background-color: #f6f7f9; }
 body.student-interface,
 body.student-interface #root { background-color: #fbf8f3; }
 body.student-interface:not(.student-immersive) #root > .min-h-screen {
   background-color: transparent !important;
   background-image: none !important;
 }
-body.staff-teacher,
-body.staff-teacher #root { background-image: none; }
-body.staff-admin,
-body.staff-admin #root { background-image: none; }
-body.staff-interface { --staff-accent: #5d94c4; --staff-surface: #eef6fc; }
-body.staff-admin { --staff-accent: #5b83b4; --staff-surface: #edf3fa; }
-body.staff-interface:not(.staff-immersive) #root > .min-h-screen {
-  background-color: transparent !important;
-  background-image: none !important;
-}
-body.staff-interface nav:not(.staff-mobile-nav) { border-bottom: 1px solid #e2e8f0; box-shadow: none !important; }
-body.staff-interface .staff-colorful-surface {
-  background: var(--staff-surface);
-  border-color: #d4e4f1 !important;
-  box-shadow: none !important;
-}
+body.staff-interface { --staff-accent: #5d94c4; --staff-surface: #eef6fc; --staff-ink: #172f47; --staff-muted: #688095; --staff-line: #d7e4ed; }
+body.staff-teacher { --staff-accent: #5d94c4; --staff-surface: #eaf5fa; --staff-ink: #172f47; --staff-muted: #688095; --staff-line: #d7e4ed; }
+body.staff-admin { --staff-accent: #5b83b4; --staff-surface: #edf3fa; --staff-ink: #1d3550; --staff-muted: #6d8195; --staff-line: #d9e4ee; }
 body.student-interface .student-colorful-surface {
   background: #fff4e8;
   border-color: #f1d2b9 !important;
   box-shadow: none !important;
 }
-/* Every signed-in workspace page uses the same quiet canvas and elevated content rhythm. */
-body.student-interface:not(.student-immersive) .bg-paper,
-body.staff-interface:not(.staff-immersive) .bg-paper { background-color: transparent; }
+body.student-interface:not(.student-immersive) .bg-paper { background-color: transparent; }
 body.student-immersive .bg-paper { background-color: #f7f5f1; }
-body.student-interface nav:not(.student-mobile-nav),
-body.staff-interface nav:not(.staff-mobile-nav) {
+body.student-interface nav:not(.student-mobile-nav) {
   background-color: rgba(255, 255, 255, 0.86);
-  border-bottom-color: rgba(148, 163, 184, 0.28);
+  border-bottom-color: rgba(197, 151, 116, 0.25);
   box-shadow: none !important;
 }
-body.student-interface nav:not(.student-mobile-nav) {
-  border-bottom-color: rgba(197, 151, 116, 0.25);
-}
 body.student-interface .bg-white { border-color: rgba(197, 151, 116, 0.18); }
-body.staff-interface .bg-white { border-color: rgba(148, 163, 184, 0.18); }
 body.student-interface .shadow-md,
 body.student-interface .shadow-lg {
   box-shadow: 0 1px 3px rgba(111, 72, 43, 0.06);
 }
-body.staff-interface .shadow-md,
-body.staff-interface .shadow-lg {
-  box-shadow: 0 1px 3px rgba(30, 64, 96, 0.06);
-}
 body.student-interface input:not([type='checkbox']):not([type='radio']),
 body.student-interface select,
-body.student-interface textarea,
-body.staff-interface input:not([type='checkbox']):not([type='radio']),
-body.staff-interface select,
-body.staff-interface textarea {
+body.student-interface textarea {
   border-color: rgba(148, 163, 184, 0.38);
   background-color: rgba(255, 255, 255, 0.9);
 }
@@ -304,18 +277,392 @@ body.staff-admin textarea:focus {
   border-color: rgba(91, 131, 180, 0.65);
   box-shadow: 0 0 0 3px rgba(91, 131, 180, 0.12);
 }
-body.staff-interface .shadow-md,
-body.staff-interface .shadow-lg { box-shadow: 0 1px 3px rgba(30, 64, 96, 0.06); }
-body.staff-interface .rounded-2xl,
-body.staff-interface .rounded-3xl { border-radius: 0.75rem; }
-body.staff-interface table { min-width: 720px; }
-body.staff-interface div:has(> table) { overflow-x: auto; }
+
+/* Teacher workspace: one calm, legible operating surface shared by legacy pages. */
+body.staff-teacher {
+  background: #f6f7f9;
+  color: var(--staff-ink);
+}
+body.staff-teacher #root {
+  background: #f6f7f9;
+}
+body.staff-teacher .teacher-topbar {
+  border-color: rgba(142, 170, 188, 0.38);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 1px 0 rgba(23, 47, 71, 0.03);
+}
+body.staff-teacher .teacher-hero {
+  background: #fff3e7;
+  border-color: #f0d5c0;
+  box-shadow: 0 12px 32px rgba(111, 72, 43, 0.08);
+}
+body.staff-teacher .teacher-hero::after {
+  content: none;
+}
+body.staff-teacher .teacher-stat-strip,
+body.staff-teacher .teacher-panel,
+body.staff-teacher .teacher-tool-list {
+  border: 1px solid var(--staff-line);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 28px rgba(38, 74, 99, 0.06);
+}
+body.staff-teacher .teacher-stat-strip:hover,
+body.staff-teacher .teacher-panel:hover { border-color: #b9cfdd; }
+body.staff-teacher .teacher-tool-row { border-top: 1px solid rgba(145, 169, 185, 0.22); }
+body.staff-teacher .teacher-tool-row:first-child { border-top: 0; }
+body.staff-teacher .teacher-tool-row:hover { background: #f3f8fb; }
+body.staff-teacher .teacher-tool-icon-orange { background: #fce9dc; color: #c76333; }
+body.staff-teacher .teacher-tool-icon-blue { background: #e8edf8; color: #4f6ea7; }
+body.staff-teacher .teacher-tool-icon-green { background: #e8f6ef; color: #32815f; }
+body.staff-teacher .teacher-tool-icon-teal { background: #e4f3f5; color: #2f8791; }
+body.staff-teacher .teacher-tool-icon-amber { background: #fff3d9; color: #9a6a1f; }
+body.staff-teacher .teacher-tool-icon-violet { background: #eeeafa; color: #7259a6; }
+body.staff-teacher .teacher-pill { background: #fff; color: #b55b30; border: 1px solid #efd7c5; }
+body.staff-teacher .teacher-primary {
+  background: #dc7542;
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(244, 162, 97, 0.2);
+}
+body.staff-teacher .teacher-primary:hover { background: #c96637; box-shadow: 0 12px 24px rgba(201, 102, 55, 0.22); transform: translateY(-1px); }
+body.staff-teacher .teacher-primary:active { transform: translateY(0); }
+body.staff-teacher .teacher-secondary { border: 1px solid #e6c7ae; background: #fff; color: #6f4a36; }
+body.staff-teacher .teacher-secondary:hover { background: #fffaf6; border-color: #dbaa87; }
+body.staff-teacher .teacher-focus-ring:focus-visible { outline: 3px solid rgba(244, 162, 97, 0.6); outline-offset: 3px; }
+body.staff-teacher .teacher-skeleton { background: linear-gradient(90deg, #edf3f7 0%, #f8fbfc 45%, #edf3f7 100%); background-size: 200% 100%; animation: teacherSkeleton 1.3s ease-in-out infinite; }
+@keyframes teacherSkeleton { 0%, 100% { background-position: 0 0; } 50% { background-position: 100% 0; } }
+
+/* Teacher routes, including every destination under “更多”, use the same
+   wide working gutter as the teacher dashboard. */
+body.staff-teacher .teacher-workspace-main {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding: 1.25rem 1rem 2rem;
+}
+
+@media (min-width: 640px) {
+  body.staff-teacher .teacher-workspace-main { padding: 2rem 1.5rem; }
+}
+
+@media (min-width: 1024px) {
+  body.staff-teacher .teacher-workspace-main { padding-inline: 2.5rem; }
+}
+
+body.staff-teacher .teacher-workspace-main .bg-white.rounded-xl,
+body.staff-teacher .teacher-workspace-main .bg-white.rounded-2xl,
+body.staff-teacher .teacher-workspace-main .bg-white.rounded-3xl {
+  border-color: #d9e4ee;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 12px 30px rgb(38 74 99 / 0.055);
+}
+
+body.staff-teacher .teacher-workspace-main .bg-white.rounded-xl:hover,
+body.staff-teacher .teacher-workspace-main .bg-white.rounded-2xl:hover,
+body.staff-teacher .teacher-workspace-main .bg-white.rounded-3xl:hover {
+  border-color: #bfd2df;
+}
+
+body.staff-teacher .teacher-workspace-main table thead { background: #edf3f7; }
+body.staff-teacher .teacher-workspace-main table tbody tr { transition: background-color 160ms ease; }
+body.staff-teacher .teacher-workspace-main table tbody tr:hover { background: #f6fafc; }
+
+body.staff-teacher .teacher-workspace-main input:not([type='checkbox']):not([type='radio']),
+body.staff-teacher .teacher-workspace-main select,
+body.staff-teacher .teacher-workspace-main textarea {
+  min-height: 2.75rem;
+  border-color: #cbdbe6;
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #173047;
+}
+
+/* Admin workspace: same operating grammar, with a quieter indigo signal vocabulary. */
+body.staff-admin {
+  background: #f6f7f9;
+  color: var(--staff-ink);
+}
+body.staff-admin #root {
+  background: #f6f7f9;
+}
+body.staff-admin .admin-topbar {
+  border-color: rgba(142, 170, 188, 0.38);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 1px 0 rgba(23, 47, 71, 0.03);
+}
+body.staff-admin .admin-hero {
+  background: #edf4f9;
+  border-color: #d5e3ed;
+  box-shadow: 0 12px 32px rgba(38, 74, 99, 0.08);
+}
+body.staff-admin .admin-hero::after {
+  content: none;
+}
+body.staff-admin .admin-pill { background: #fff; color: #355d82; border: 1px solid #d4e1ea; }
+body.staff-admin .admin-primary { background: #35658d; color: #fff; box-shadow: 0 10px 20px rgba(53, 101, 141, 0.18); }
+body.staff-admin .admin-primary:hover { background: #2c5679; box-shadow: 0 12px 24px rgba(53, 101, 141, 0.24); transform: translateY(-1px); }
+body.staff-admin .admin-primary:active { transform: translateY(0); }
+body.staff-admin .admin-secondary { border: 1px solid #c8d9e5; background: #fff; color: #315b73; }
+body.staff-admin .admin-secondary:hover { background: #f7fafc; border-color: #a9cbd8; }
+body.staff-admin .admin-secondary-light { border: 1px solid #c8d9e5; background: #f4f8fa; color: #315b73; }
+body.staff-admin .admin-secondary-light:hover { background: #eaf5fa; border-color: #a9cbd8; }
+body.staff-admin .admin-update { background: #fff1dc; color: #9a5f2a; }
+body.staff-admin .admin-panel,
+body.staff-admin .admin-stat-strip,
+body.staff-admin .admin-tool-list {
+  border: 1px solid var(--staff-line);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 28px rgba(38, 74, 99, 0.06);
+}
+body.staff-admin .admin-panel:hover,
+body.staff-admin .admin-stat-strip:hover { border-color: #b9cfdd; }
+body.staff-admin .admin-stat-icon-blue { background: #e8edf8; color: #4f6ea7; }
+body.staff-admin .admin-stat-icon-orange { background: #fce9dc; color: #c76333; }
+body.staff-admin .admin-stat-icon-green { background: #e8f6ef; color: #32815f; }
+body.staff-admin .admin-stat-icon-violet { background: #eeeafa; color: #7259a6; }
+body.staff-admin .admin-user-icon-teacher { background: #e4f3f5; color: #2f8791; }
+body.staff-admin .admin-user-icon-admin { background: #eeeafa; color: #7259a6; }
+body.staff-admin .admin-user-icon-student { background: #fce9dc; color: #c76333; }
+body.staff-admin .admin-tool-row { border-top: 1px solid rgba(145, 169, 185, 0.22); }
+body.staff-admin .admin-tool-row:first-child { border-top: 0; }
+body.staff-admin .admin-tool-row:hover { background: #f3f8fb; }
+body.staff-admin .admin-tool-icon-orange { background: #fce9dc; color: #c76333; }
+body.staff-admin .admin-tool-icon-blue { background: #e8edf8; color: #4f6ea7; }
+body.staff-admin .admin-tool-icon-teal { background: #e4f3f5; color: #2f8791; }
+body.staff-admin .admin-tool-icon-green { background: #e8f6ef; color: #32815f; }
+body.staff-admin .admin-tool-icon-indigo { background: #e8edf8; color: #4f6ea7; }
+body.staff-admin .admin-tool-icon-amber { background: #fff3d9; color: #9a6a1f; }
+body.staff-admin .admin-tool-icon-violet { background: #eeeafa; color: #7259a6; }
+body.staff-admin .admin-focus-ring:focus-visible { outline: 3px solid rgba(147, 168, 244, 0.58); outline-offset: 3px; }
+body.staff-admin .admin-skeleton { background: linear-gradient(90deg, #edf3f7 0%, #f8fbfc 45%, #edf3f7 100%); background-size: 200% 100%; animation: adminSkeleton 1.3s ease-in-out infinite; }
+@keyframes adminSkeleton { 0%, 100% { background-position: 0 0; } 50% { background-position: 100% 0; } }
+body.staff-admin .admin-page-header {
+  border-color: var(--staff-line);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 28px rgba(38, 74, 99, 0.05);
+}
+body.staff-admin .admin-metric-row { border: 1px solid transparent; }
+body.staff-admin .admin-metric-row-blue { background: #edf3fa; border-color: #dce7f2; }
+body.staff-admin .admin-metric-row-green { background: #eaf6f0; border-color: #d8eee2; }
+body.staff-admin .admin-metric-row-teal { background: #e8f5f6; border-color: #d3eaec; }
+body.staff-admin .admin-metric-row-violet { background: #f0edfa; border-color: #e4def5; }
+body.staff-admin .admin-metric-row-orange { background: #fff1e8; border-color: #f6dfcf; }
+body.staff-admin .admin-activity-card { border: 1px solid transparent; }
+body.staff-admin .admin-activity-card-green { background: #eaf6f0; border-color: #d8eee2; }
+body.staff-admin .admin-activity-card-teal { background: #e8f5f6; border-color: #d3eaec; }
+body.staff-admin .admin-activity-card-blue { background: #edf3fa; border-color: #dce7f2; }
+body.staff-admin .admin-activity-card-violet { background: #f0edfa; border-color: #e4def5; }
+body.staff-admin .admin-org-header,
+body.staff-admin .admin-org-card {
+  border-color: var(--staff-line);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 28px rgba(38, 74, 99, 0.05);
+}
+body.staff-admin .admin-org-card:hover { border-color: #b9cfdd; }
+
+/* Staff workspace header: navigation is part of the page chrome, not a floating overlay. */
+.staff-workspace-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid var(--staff-line, #d7e4ed);
+  background: rgb(255 255 255 / 0.94);
+  color: var(--staff-ink, #172f47);
+  backdrop-filter: blur(14px);
+}
+.staff-workspace-header-inner {
+  display: flex;
+  min-height: 4.25rem;
+  align-items: center;
+  gap: 1.25rem;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0.65rem 1rem;
+}
+.staff-workspace-brand { display: flex; min-width: 11.5rem; align-items: center; gap: 0.75rem; }
+.staff-workspace-brand-mark { position: relative; display: grid; width: 2.65rem; height: 2.65rem; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid rgb(255 255 255 / 0.75); border-radius: 0.9rem; background: #fff0e3; color: #c76333; box-shadow: 0 8px 18px rgb(38 74 99 / 0.1); }
+.staff-workspace-brand-mark::before { position: absolute; inset: 0.28rem; border: 1px solid currentColor; border-radius: 0.65rem; content: ''; opacity: 0.16; }
+.staff-workspace-brand-status { position: absolute; right: 0.28rem; bottom: 0.28rem; width: 0.42rem; height: 0.42rem; border: 2px solid #fff; border-radius: 999px; background: #53c99b; }
+.staff-workspace-header-admin .staff-workspace-brand-mark,
+.staff-workspace-header-org .staff-workspace-brand-mark { border-color: #d6e3ef; background: #e8edf8; color: #4f6ea7; box-shadow: 0 8px 18px rgb(64 101 142 / 0.14); }
+.staff-workspace-header-admin .staff-workspace-brand-mark { border-color: #d1e0ec; background: #234e6d; color: #fff; box-shadow: 0 10px 22px rgb(35 78 109 / 0.22); }
+.staff-workspace-brand-copy { display: flex; min-width: 0; flex-direction: column; line-height: 1.05; }
+.staff-workspace-brand-copy span { color: #8291a0; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.11em; text-transform: uppercase; }
+.staff-workspace-brand-copy strong { margin-top: 0.32rem; color: var(--staff-ink, #172f47); font-size: 0.98rem; font-weight: 820; letter-spacing: -0.015em; }
+.staff-workspace-header-admin .staff-workspace-brand-copy span { color: #5b83b4; }
+.staff-workspace-page-label { min-width: 7rem; border-left: 1px solid var(--staff-line, #d7e4ed); padding-left: 1.1rem; }
+.staff-workspace-page-label h1 { margin: 0; overflow: hidden; color: var(--staff-ink, #172f47); font-size: 0.96rem; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+.staff-workspace-page-label p { margin: 0.2rem 0 0; overflow: hidden; color: var(--staff-muted, #688095); font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
+.staff-workspace-primary { display: flex; min-width: 0; flex: 1; align-items: center; gap: 0.35rem; }
+.staff-workspace-primary > button,
+.staff-workspace-more > button { display: inline-flex; min-height: 2.8rem; align-items: center; gap: 0.45rem; border: 0; border-radius: 0.85rem; background: transparent; padding: 0.62rem 0.95rem; color: #738596; font-size: 0.92rem; font-weight: 740; letter-spacing: -0.01em; transition: background 180ms ease, color 180ms ease; white-space: nowrap; }
+.staff-workspace-primary > button:hover,
+.staff-workspace-more > button:hover,
+.staff-workspace-primary > button.is-active,
+.staff-workspace-more > button.is-active { background: var(--staff-surface, #eef6fc); color: var(--staff-accent, #5d94c4); }
+.staff-workspace-more { position: relative; }
+.staff-workspace-more-menu { position: absolute; top: calc(100% + 0.45rem); right: 0; z-index: 60; display: grid; min-width: 12rem; gap: 0.25rem; padding: 0.45rem; border: 1px solid var(--staff-line, #d7e4ed); border-radius: 0.95rem; background: rgb(255 255 255 / 0.98); box-shadow: 0 18px 42px rgb(31 55 75 / 0.16); }
+.staff-workspace-more-menu button { min-height: 2.65rem; border: 0; border-radius: 0.72rem; background: transparent; padding: 0.68rem 0.85rem; color: #536b7e; font-size: 0.84rem; font-weight: 700; text-align: left; transition: background 180ms ease, color 180ms ease; }
+.staff-workspace-more-menu button:hover, .staff-workspace-more-menu button.is-active { background: var(--staff-surface, #eef6fc); color: var(--staff-accent, #5d94c4); }
+.staff-workspace-header-right { display: flex; flex: 0 0 auto; align-items: center; gap: 0.3rem; }
+.staff-workspace-action { margin-right: 0.35rem; }
+.staff-workspace-user { display: inline-flex; max-width: 9rem; align-items: center; gap: 0.45rem; overflow: hidden; border: 1px solid var(--staff-line, #d7e4ed); border-radius: 999px; background: #fff; padding: 0.45rem 0.7rem; color: #536b7e; font-size: 0.74rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.staff-workspace-status { width: 0.42rem; height: 0.42rem; flex: 0 0 auto; border-radius: 999px; background: #53c99b; }
+.staff-workspace-icon { display: grid; width: 2.2rem; height: 2.2rem; place-items: center; border: 0; border-radius: 0.7rem; background: transparent; color: #718596; transition: background 180ms ease, color 180ms ease; }
+.staff-workspace-icon:hover { background: var(--staff-surface, #eef6fc); color: var(--staff-ink, #172f47); }
+.staff-workspace-mobile-title { display: none; }
+.staff-workspace-mobile-action { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; }
+.staff-org-logo-pick { position: relative; display: grid; width: 2.3rem; height: 2.3rem; place-items: center; overflow: hidden; border: 1px solid #cfe2f0; border-radius: 0.7rem; background: #e8f2f9; color: #397b9b; cursor: pointer; }
+.staff-org-logo-pick img { width: 100%; height: 100%; object-fit: cover; }
+.staff-org-logo-pick input { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; opacity: 0; }
+body.staff-interface .admin-subpage-nav,
+body.staff-interface .staff-page-header { box-shadow: none; }
+body.staff-admin .admin-legacy-page,
+body.staff-admin .admin-org-page { background: transparent; }
+
+/* All admin routes, including the secondary “更多” destinations, share the
+   same reading gutter as the overview page. */
+body.staff-admin .admin-workspace-main {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding: 1.25rem 1rem 2rem;
+}
+
+@media (min-width: 640px) {
+  body.staff-admin .admin-workspace-main { padding: 2rem 1.5rem; }
+}
+
+@media (min-width: 1024px) {
+  body.staff-admin .admin-workspace-main { padding-inline: 2.5rem; }
+}
+
+@media (max-width: 1100px) {
+  .staff-workspace-page-label { display: none; }
+  .staff-workspace-brand { min-width: 8.5rem; }
+  .staff-workspace-primary > button, .staff-workspace-more > button { padding-inline: 0.55rem; }
+}
+@media (max-width: 960px) and (min-width: 768px) {
+  .staff-workspace-header-inner { gap: 0.55rem; }
+  .staff-workspace-primary { overflow: visible; }
+  .staff-workspace-header-right .staff-workspace-user { display: none; }
+  .staff-workspace-action { max-width: 13rem; overflow: hidden; }
+}
+@media (max-width: 900px) and (min-width: 768px) {
+  .staff-workspace-brand { min-width: 2.65rem; }
+  .staff-workspace-brand-copy { display: none; }
+}
+@media (max-width: 767px) {
+  .staff-workspace-header { position: relative; }
+  .staff-workspace-header-inner { display: none; }
+  .staff-workspace-mobile-title { display: flex; min-height: 3.8rem; align-items: center; gap: 0.65rem; padding: 0.55rem 1rem; }
+  .staff-workspace-mobile-title h1 { margin: 0; color: var(--staff-ink, #172f47); font-size: 0.98rem; font-weight: 760; }
+  .staff-workspace-mobile-title p { margin: 0.18rem 0 0; color: var(--staff-muted, #688095); font-size: 0.68rem; }
+  .staff-workspace-back { display: grid; width: 2.15rem; height: 2.15rem; flex: 0 0 auto; place-items: center; border: 0; border-radius: 0.65rem; background: var(--staff-surface, #eef6fc); color: var(--staff-ink, #172f47); }
+  .staff-workspace-mobile-action > * { max-width: min(45vw, 11rem); overflow-x: auto; scrollbar-width: none; }
+  .staff-workspace-mobile-action > *::-webkit-scrollbar { display: none; }
+  .staff-workspace-mobile-action .staff-org-logo-pick { width: 2.15rem; }
+}
 @media (max-width: 767px) {
   body.student-mobile-nav-visible #root,
   body.staff-mobile-nav-visible #root { padding-bottom: 4.75rem; }
   body.student-mobile-nav-visible [data-pet-widget] { display: none; }
   body.student-immersive [data-pet-widget] { display: none; }
 }
+
+/* Shared route loading: calm, compact feedback that does not interrupt the task. */
+.app-loading-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 1rem;
+  background: #f5f8fc;
+  color: #173047;
+}
+.app-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: min(18rem, 100%);
+  padding: 0.9rem 1rem;
+  border: 1px solid #dbe6ee;
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 0.92);
+  box-shadow: 0 10px 28px rgb(38 74 99 / 0.08);
+}
+.app-loading-icon {
+  display: grid;
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.7rem;
+  background: #fce9dc;
+  color: #c76333;
+}
+.app-loading-title { font-size: 0.875rem; font-weight: 700; }
+.app-loading-copy { margin-top: 0.15rem; font-size: 0.75rem; color: #718394; }
+
+/* Student daily surfaces: preserve the warm, encouraging brand while bringing older routes into the same rhythm. */
+body.student-interface:not(.student-immersive) {
+  background: #f8f5f0;
+  color: #293545;
+}
+body.student-interface:not(.student-immersive) #root {
+  background: radial-gradient(circle at 82% -12%, rgb(255 196 131 / 0.15), transparent 28rem), #f8f5f0;
+}
+body.student-interface:not(.student-immersive) #root > .min-h-screen {
+  min-height: 100vh;
+  background-color: transparent !important;
+  background-image: none;
+}
+body.student-interface:not(.student-immersive) nav:not(.student-mobile-nav) {
+  border-bottom-color: rgb(197 151 116 / 0.24);
+  background: rgb(255 255 255 / 0.88);
+  box-shadow: 0 1px 0 rgb(111 72 43 / 0.03) !important;
+}
+body.student-interface:not(.student-immersive) .card-soft,
+body.student-interface:not(.student-immersive) .bg-white.rounded-xl,
+body.student-interface:not(.student-immersive) .bg-white.rounded-2xl,
+body.student-interface:not(.student-immersive) .bg-white.rounded-3xl {
+  border-color: #eadfd5;
+  background-color: rgb(255 255 255 / 0.92);
+  box-shadow: 0 8px 24px rgb(111 72 43 / 0.055);
+}
+body.student-interface:not(.student-immersive) .card-soft:hover {
+  border-color: #e1c7b5;
+  box-shadow: 0 12px 28px rgb(111 72 43 / 0.09);
+}
+body.student-interface:not(.student-immersive) .text-gray-700,
+body.student-interface:not(.student-immersive) .text-slate-700 { color: #34404d; }
+body.student-interface:not(.student-immersive) .text-gray-500,
+body.student-interface:not(.student-immersive) .text-slate-500 { color: #687383; }
+body.student-interface:not(.student-immersive) .text-gray-400,
+body.student-interface:not(.student-immersive) .text-slate-400 { color: #7c8792; }
+body.student-interface:not(.student-immersive) table thead tr { color: #607181; }
+body.student-interface:not(.student-immersive) table tbody tr { border-color: #eee4dc; }
+body.student-interface:not(.student-immersive) table tbody tr:hover { background: #fffaf6; }
+body.student-interface:not(.student-immersive) input:not([type='checkbox']):not([type='radio']),
+body.student-interface:not(.student-immersive) select,
+body.student-interface:not(.student-immersive) textarea { min-height: 2.75rem; border-radius: 0.7rem; }
+body.student-interface:not(.student-immersive) .border-gray-200,
+body.student-interface:not(.student-immersive) .border-slate-200 { border-color: #eadfd5; }
+body.student-interface:not(.student-immersive) .bg-gray-50,
+body.student-interface:not(.student-immersive) .bg-slate-50 { background-color: #fffaf6; }
+body.student-interface:not(.student-immersive) .bg-orange-50 { background-color: #fff1e6; }
+body.student-interface:not(.student-immersive) :where(button, a, [role='button']):focus-visible { outline-color: rgb(189 82 39 / 0.52); }
+body.student-interface .student-page-header {
+  border-bottom-color: rgb(197 151 116 / 0.24);
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 1px 0 rgb(111 72 43 / 0.03);
+}
+body.student-interface .student-focus-ring:focus-visible { outline: 3px solid rgb(189 82 39 / 0.42); outline-offset: 3px; }
+
+body.staff-interface .staff-page-header {
+  border-bottom-color: rgba(142, 170, 188, 0.38);
+  background: rgb(255 255 255 / 0.88);
+  box-shadow: 0 1px 0 rgb(23 47 71 / 0.03);
+}
+body.staff-interface .staff-focus-ring:focus-visible { outline: 3px solid rgb(93 148 196 / 0.42); outline-offset: 3px; }
 
 /* 分类学习：只调整页面底色与信息层级，保留每个答案状态的语义色。 */
 .classify-learning-page {
@@ -645,4 +992,664 @@ body.student-interface *::-webkit-scrollbar-track {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(156, 163, 175, 0.8);
+}
+
+/* Admin consistency pass: legacy management pages now share the same visual
+   surface as the redesigned control center instead of falling back to a
+   generic white/gray Tailwind page. The page remains light and mobile-first;
+   the stronger hierarchy comes from spacing, contrast, and one restrained
+   blue signal color. */
+body.staff-admin {
+  background:
+    radial-gradient(circle at 92% -8%, rgb(103 157 193 / 0.12), transparent 30rem),
+    radial-gradient(circle at 4% 24%, rgb(238 153 93 / 0.07), transparent 24rem),
+    #f4f7fa;
+}
+
+body.staff-admin #root { background: transparent; }
+
+body.staff-admin .admin-legacy-page {
+  min-height: 100vh;
+  background: transparent;
+  color: #1d3550;
+}
+
+body.staff-admin .admin-legacy-page h1,
+body.staff-admin .admin-legacy-page h2,
+body.staff-admin .admin-legacy-page h3 {
+  color: #173047;
+  letter-spacing: -0.018em;
+}
+
+/* Old pages used literal bg-white cards. Keep their semantics, but give them
+   the admin surface treatment so a route change never feels like a product
+   switch. */
+body.staff-admin .admin-legacy-page .bg-white.rounded-xl,
+body.staff-admin .admin-legacy-page .bg-white.rounded-2xl,
+body.staff-admin .admin-legacy-page .bg-white.rounded-3xl {
+  border-color: #d9e4ee;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 12px 30px rgb(38 74 99 / 0.055);
+}
+
+body.staff-admin .admin-legacy-page .bg-white.rounded-xl:hover,
+body.staff-admin .admin-legacy-page .bg-white.rounded-2xl:hover,
+body.staff-admin .admin-legacy-page .bg-white.rounded-3xl:hover {
+  border-color: #bfd2df;
+}
+
+body.staff-admin .admin-legacy-page .bg-gray-50,
+body.staff-admin .admin-legacy-page .bg-slate-50 {
+  background-color: #f5f8fb;
+}
+
+body.staff-admin .admin-legacy-page .border-gray-200,
+body.staff-admin .admin-legacy-page .border-slate-200,
+body.staff-admin .admin-legacy-page .border-slate-100 {
+  border-color: #dfe8ef;
+}
+
+body.staff-admin .admin-legacy-page table thead {
+  background: #edf3f7;
+}
+
+body.staff-admin .admin-legacy-page table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+body.staff-admin .admin-legacy-page table tbody tr:hover {
+  background: #f6fafc;
+}
+
+body.staff-admin .admin-legacy-page input:not([type='checkbox']):not([type='radio']),
+body.staff-admin .admin-legacy-page select,
+body.staff-admin .admin-legacy-page textarea {
+  min-height: 2.75rem;
+  border-color: #cbdbe6;
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #173047;
+}
+
+body.staff-admin .admin-legacy-page button[class*='bg-blue-600'],
+body.staff-admin .admin-legacy-page button[class*='bg-purple-600'],
+body.staff-admin .admin-legacy-page button[class*='bg-green-600'],
+body.staff-admin .admin-legacy-page button[class*='bg-orange-600'] {
+  border-radius: 0.75rem;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgb(38 74 99 / 0.11);
+}
+
+body.staff-admin .admin-legacy-page button[class*='bg-blue-600'] {
+  background-color: #35658d;
+}
+
+body.staff-admin .admin-legacy-page button[class*='bg-blue-600']:hover {
+  background-color: #2c5679;
+}
+
+body.staff-admin .admin-legacy-page button[class*='bg-purple-600'] {
+  background-color: #7259a6;
+}
+
+body.staff-admin .admin-legacy-page button[class*='bg-green-600'] {
+  background-color: #32815f;
+}
+
+body.staff-admin .admin-legacy-page button[class*='bg-orange-600'] {
+  background-color: #c76333;
+}
+
+body.staff-admin .admin-legacy-page .admin-stat-strip,
+body.staff-admin .admin-legacy-page .admin-panel {
+  background: rgb(255 255 255 / 0.94);
+}
+
+@media (max-width: 767px) {
+  body.staff-admin .admin-legacy-page {
+    padding-bottom: 1.5rem;
+  }
+
+  body.staff-admin .admin-legacy-page .bg-white.rounded-xl,
+  body.staff-admin .admin-legacy-page .bg-white.rounded-2xl,
+  body.staff-admin .admin-legacy-page .bg-white.rounded-3xl {
+    box-shadow: 0 8px 22px rgb(38 74 99 / 0.05);
+  }
+}
+
+/* At laptop widths the workspace chrome stays a single, stable row. Brand
+   copy yields before the navigation does; the active module never drops to
+   a second line. */
+@media (max-width: 1500px) and (min-width: 768px) {
+  .staff-workspace-header-inner { flex-wrap: nowrap; }
+
+  .staff-workspace-page-label {
+    display: none;
+  }
+
+  .staff-workspace-header-right {
+    margin-left: auto;
+    min-width: 0;
+  }
+
+  .staff-workspace-primary {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .staff-workspace-primary > button,
+  .staff-workspace-more > button {
+    min-height: 2.7rem;
+    padding-inline: 0.78rem;
+    font-size: 0.88rem;
+  }
+}
+
+@media (max-width: 1100px) and (min-width: 768px) {
+  .staff-workspace-primary { gap: 0.25rem; }
+
+  .staff-workspace-primary > button,
+  .staff-workspace-more > button {
+    min-height: 2.65rem;
+    padding-inline: 0.78rem;
+    font-size: 0.86rem;
+  }
+}
+
+/* Organization workspace: the directory deserves its own scale and rhythm.
+   The header is intentionally roomy, so the content below it follows the
+   same visual weight instead of collapsing into a tiny legacy table. */
+body.staff-admin .admin-org-page {
+  color: #24425a;
+}
+
+body.staff-admin .admin-org-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding: 0.9rem 1.15rem;
+  border: 1px solid #d5e3ed;
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 0.78);
+  box-shadow: 0 8px 20px rgb(38 74 99 / 0.045);
+}
+
+body.staff-admin .admin-org-toolbar-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+body.staff-admin .admin-org-toolbar-copy strong {
+  color: #234e6d;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+body.staff-admin .admin-org-toolbar-copy span {
+  overflow: hidden;
+  color: #718596;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.staff-admin .admin-org-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+body.staff-admin .admin-org-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.5rem;
+  margin: 1.25rem 0;
+  padding: 1.35rem 1.5rem;
+  border: 1px solid #d5e3ed;
+  border-radius: 1.25rem;
+  background: radial-gradient(circle at 96% 0%, rgb(111 158 191 / 0.12), transparent 18rem), #edf4f9;
+  box-shadow: 0 14px 32px rgb(38 74 99 / 0.08);
+}
+
+body.staff-admin .admin-org-overview-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1rem;
+}
+
+body.staff-admin .admin-org-overview-icon {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.7);
+  border-radius: 1rem;
+  background: #234e6d;
+  color: #fff;
+  box-shadow: 0 10px 22px rgb(35 78 109 / 0.2);
+}
+
+body.staff-admin .admin-org-overview h2,
+body.staff-admin .admin-org-list-heading h2 {
+  margin: 0;
+  color: #173047;
+  font-size: 1.25rem;
+  font-weight: 820;
+  letter-spacing: -0.02em;
+}
+
+body.staff-admin .admin-org-overview p,
+body.staff-admin .admin-org-list-heading p {
+  margin: 0.35rem 0 0;
+  color: #5f7486;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+body.staff-admin .admin-org-overview-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(5.2rem, 1fr));
+  gap: 0.55rem;
+  min-width: 25rem;
+}
+
+body.staff-admin .admin-org-overview-stats > div {
+  display: flex;
+  min-height: 4rem;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid #d5e3ed;
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 0.72);
+  padding: 0.7rem 0.85rem;
+}
+
+body.staff-admin .admin-org-overview-stats strong {
+  color: #234e6d;
+  font-size: 1.35rem;
+  font-weight: 820;
+  line-height: 1.1;
+}
+
+body.staff-admin .admin-org-overview-stats span {
+  margin-top: 0.3rem;
+  color: #6b8091;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+body.staff-admin .admin-org-list-shell {
+  overflow: hidden;
+  border: 1px solid #d5e3ed;
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 14px 32px rgb(38 74 99 / 0.07);
+}
+
+body.staff-admin .admin-org-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e1eaf0;
+  background: #fbfdfe;
+  padding: 1.25rem 1.4rem;
+}
+
+body.staff-admin .admin-org-list-heading > span {
+  flex: 0 0 auto;
+  border: 1px solid #d5e3ed;
+  border-radius: 999px;
+  background: #edf3fa;
+  padding: 0.45rem 0.75rem;
+  color: #4f6ea7;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+body.staff-admin .admin-org-list-loading {
+  padding: 4rem 1rem;
+  color: #718596;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+body.staff-admin .admin-org-empty {
+  display: flex;
+  min-height: 14rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 2rem 1rem;
+  color: #8aa0b0;
+  text-align: center;
+}
+
+body.staff-admin .admin-org-empty svg { color: #6f9dbb; }
+body.staff-admin .admin-org-empty strong { color: #345872; font-size: 1rem; }
+body.staff-admin .admin-org-empty span { max-width: 24rem; font-size: 0.82rem; line-height: 1.5; }
+
+body.staff-admin .admin-org-mobile-list {
+  padding: 1rem;
+}
+
+body.staff-admin .admin-org-mobile-card {
+  border: 1px solid #d9e4ee;
+  border-radius: 1rem;
+  background: #fbfdfe;
+  padding: 1rem;
+  box-shadow: 0 6px 16px rgb(38 74 99 / 0.04);
+}
+
+body.staff-admin .admin-org-mobile-card + .admin-org-mobile-card {
+  margin-top: 0.75rem;
+}
+
+body.staff-admin .admin-org-table-scroll {
+  padding: 0 0.35rem 0.35rem;
+}
+
+body.staff-admin .admin-org-table {
+  font-size: 0.9rem;
+}
+
+body.staff-admin .admin-org-table th {
+  color: #5e7689;
+  font-size: 0.78rem;
+  font-weight: 780;
+  letter-spacing: 0.01em;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+body.staff-admin .admin-org-table td {
+  color: #28445a;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+@media (max-width: 1050px) and (min-width: 768px) {
+  body.staff-admin .admin-org-overview {
+    grid-template-columns: 1fr;
+  }
+
+  body.staff-admin .admin-org-overview-stats {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  body.staff-admin .admin-org-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    margin-top: 1rem;
+    padding: 0.9rem;
+  }
+
+  body.staff-admin .admin-org-toolbar-copy span {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  body.staff-admin .admin-org-toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.staff-admin .admin-org-toolbar-actions button {
+    min-width: 0;
+    padding-inline: 0.7rem;
+  }
+
+  body.staff-admin .admin-org-overview {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  body.staff-admin .admin-org-overview-main {
+    align-items: flex-start;
+    gap: 0.8rem;
+  }
+
+  body.staff-admin .admin-org-overview-icon {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 0.85rem;
+  }
+
+  body.staff-admin .admin-org-overview h2,
+  body.staff-admin .admin-org-list-heading h2 {
+    font-size: 1.1rem;
+  }
+
+  body.staff-admin .admin-org-overview p,
+  body.staff-admin .admin-org-list-heading p {
+    font-size: 0.8rem;
+  }
+
+  body.staff-admin .admin-org-overview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+  }
+
+  body.staff-admin .admin-org-list-shell {
+    border-radius: 1rem;
+  }
+
+  body.staff-admin .admin-org-list-heading {
+    align-items: flex-start;
+    padding: 1rem;
+  }
+}
+
+/* Teacher directory: identity, teaching load, account state, then actions. */
+body.staff-admin .admin-teacher-directory {
+  overflow: hidden;
+  border: 1px solid #d5e3ed;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+body.staff-admin .admin-teacher-directory-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #e1eaf0;
+  background: #fbfdfe;
+  padding: 1.25rem 1.4rem;
+}
+
+body.staff-admin .admin-teacher-directory-heading h2 {
+  margin: 0;
+  color: #173047;
+  font-size: 1.25rem;
+  font-weight: 820;
+  letter-spacing: -0.02em;
+}
+
+body.staff-admin .admin-teacher-directory-heading p {
+  margin: 0.35rem 0 0;
+  color: #5f7486;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+body.staff-admin .admin-teacher-directory-heading > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #edf3fa;
+  padding: 0.45rem 0.75rem;
+  color: #4f6ea7;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+body.staff-admin .admin-teacher-loading {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.25rem;
+}
+
+body.staff-admin .admin-teacher-loading span {
+  height: 4.6rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, #edf3f7 0%, #f8fbfc 45%, #edf3f7 100%);
+  background-size: 200% 100%;
+  animation: adminSkeleton 1.3s ease-in-out infinite;
+}
+
+body.staff-admin .admin-teacher-empty {
+  display: flex;
+  min-height: 17rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  color: #7d94a5;
+  text-align: center;
+}
+
+body.staff-admin .admin-teacher-empty svg { color: #6f9dbb; }
+body.staff-admin .admin-teacher-empty strong { color: #345872; font-size: 1rem; }
+body.staff-admin .admin-teacher-empty span { max-width: 27rem; font-size: 0.82rem; line-height: 1.6; }
+
+body.staff-admin .admin-teacher-avatar {
+  display: grid;
+  width: 2.65rem;
+  height: 2.65rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.8rem;
+  background: #e8edf8;
+  color: #4f6ea7;
+}
+
+body.staff-admin .admin-teacher-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+body.staff-admin .admin-teacher-status.is-active { background: #e8f6ef; color: #287354; }
+body.staff-admin .admin-teacher-status.is-disabled { background: #edf1f4; color: #5f7181; }
+
+body.staff-admin .admin-teacher-mobile-card {
+  padding: 1rem;
+  border-bottom: 1px solid #e1eaf0;
+}
+
+body.staff-admin .admin-teacher-mobile-card:last-child { border-bottom: 0; }
+
+body.staff-admin .admin-teacher-mobile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  margin-top: 0.85rem;
+  color: #526b7f;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+body.staff-admin .admin-teacher-mobile-meta span,
+body.staff-admin .admin-teacher-scale span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+body.staff-admin .admin-teacher-mobile-meta svg,
+body.staff-admin .admin-teacher-scale svg { color: #6f9dbb; }
+
+body.staff-admin .admin-teacher-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+body.staff-admin .admin-teacher-action {
+  display: inline-flex;
+  min-height: 2.15rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.65rem;
+  background: #f1f5f8;
+  padding: 0.42rem 0.65rem;
+  color: #526b7f;
+  font-size: 0.75rem;
+  font-weight: 720;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+body.staff-admin .admin-teacher-action:hover { background: #e5edf3; color: #244c68; }
+body.staff-admin .admin-teacher-action:active { transform: translateY(1px); }
+body.staff-admin .admin-teacher-action:focus-visible { outline: 3px solid rgb(91 131 180 / 0.3); outline-offset: 2px; }
+body.staff-admin .admin-teacher-action.is-primary { background: #e5eff7; color: #2c6188; }
+body.staff-admin .admin-teacher-action.is-primary:hover { background: #d8e7f2; }
+body.staff-admin .admin-teacher-action.is-state { background: #fff1e3; color: #9a5f2a; }
+body.staff-admin .admin-teacher-action.is-success { background: #e8f6ef; color: #287354; }
+body.staff-admin .admin-teacher-action.is-danger { background: #fff0ef; color: #aa4b47; }
+body.staff-admin .admin-teacher-action.is-danger:hover { background: #fbe2e0; color: #963d3a; }
+
+body.staff-admin .admin-teacher-table-scroll { padding-bottom: 0.25rem; }
+body.staff-admin .admin-teacher-table thead { background: #f3f7fa; }
+
+body.staff-admin .admin-teacher-table th {
+  padding: 0.9rem 1.25rem;
+  color: #5e7689;
+  font-size: 0.76rem;
+  font-weight: 760;
+  text-align: left;
+}
+
+body.staff-admin .admin-teacher-table th:last-child { text-align: right; }
+
+body.staff-admin .admin-teacher-table td {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #e7eef3;
+  color: #28445a;
+  vertical-align: middle;
+}
+
+body.staff-admin .admin-teacher-table tbody tr { transition: background-color 160ms ease; }
+body.staff-admin .admin-teacher-table tbody tr:hover { background: #f7fafc; }
+
+body.staff-admin .admin-teacher-scale {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: #526b7f;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+@media (max-width: 767px) {
+  body.staff-admin .admin-teacher-directory-heading {
+    align-items: flex-start;
+    padding: 1rem;
+  }
+
+  body.staff-admin .admin-teacher-directory-heading h2 { font-size: 1.1rem; }
+  body.staff-admin .admin-teacher-directory-heading p { font-size: 0.78rem; }
+  body.staff-admin .admin-teacher-action { min-height: 2.5rem; padding-inline: 0.75rem; }
 }

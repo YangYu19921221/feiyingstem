@@ -3,10 +3,11 @@
  * 独立列表页:按班级/日期查(含历史),已签到表格分页展示,未签到红色名单
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface CheckedRow { user_id: number; student_name: string; class_name?: string; checkin_time: string | null; rank: number }
 interface ClassSummary { class_id: number; class_name: string; total: number; checked: number }
@@ -29,7 +30,6 @@ const ALL_CLASSES = 0;
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 const TeacherCheckins = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   // 返回目标:从实时课堂来的回实时课堂,否则回工作台
   const backTo = (location.state as any)?.from === 'live' ? '/teacher/live' : '/teacher/dashboard';
@@ -112,30 +112,9 @@ const TeacherCheckins = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      <nav className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(backTo)} className="p-2 -ml-2 hover:bg-gray-100 rounded-lg transition">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2 flex-1">
-            <span>📍</span> 签到记录
-          </h1>
-          {classes.length > 0 && (
-            <select
-              value={classId ?? ALL_CLASSES}
-              onChange={e => setClassId(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-            >
-              <option value={ALL_CLASSES}>📋 全部班级</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
-        </div>
-      </nav>
+      <StaffWorkspaceHeader role="teacher" title="签到记录" subtitle="按班级和日期查看签到情况" action={classes.length > 0 ? <select value={classId ?? ALL_CLASSES} onChange={e => setClassId(Number(e.target.value))} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value={ALL_CLASSES}>全部班级</option>{classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select> : undefined} backTo={backTo} />
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+      <main className="teacher-workspace-main space-y-5">
         {/* 日期 + 搜索工具栏 */}
         <div className="flex flex-col items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
           <div className="flex items-center gap-1.5">
@@ -333,7 +312,7 @@ const TeacherCheckins = () => {
             )}
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 };

@@ -5,6 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from '../components/Toast';
 import axios from 'axios';
+import { Bot, Plus, Trophy } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface QuestionOption {
   id: number;
@@ -401,39 +403,16 @@ const TeacherCompetitionManager: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <div className="mb-5 border-b border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => window.history.back()}
-                className="text-gray-600 hover:text-gray-800"
-              >
-                ← 返回
-              </button>
-              <h1 className="text-2xl font-bold text-gray-800">🏆 竞赛题库管理</h1>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setShowAIModal(true)}
-                className="rounded-lg bg-slate-900 px-4 py-2 font-medium text-white transition hover:bg-slate-700"
-              >
-                🤖 AI生成题目
-              </button>
-              <button
-                onClick={() => setShowCreateModal(true)}
-              className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-700"
-              >
-                ➕ 创建题目
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="staff-legacy-page min-h-screen text-slate-800">
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="竞赛题库管理"
+        subtitle="维护题库并用 AI 快速生成题目"
+        icon={Trophy}
+        action={<div className="flex flex-wrap gap-2"><button onClick={() => setShowAIModal(true)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"><Bot className="h-4 w-4" />AI 生成</button><button onClick={() => setShowCreateModal(true)} className="teacher-primary teacher-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition"><Plus className="h-4 w-4" />创建题目</button></div>}
+      />
 
-      <div className="max-w-7xl mx-auto px-4">
+      <main className="teacher-workspace-main">
         {/* 统计卡片 */}
         {stats && (
           <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -452,7 +431,7 @@ const TeacherCompetitionManager: React.FC = () => {
               <div className="text-sm text-gray-600 mt-1">平均正确率</div>
             </div>
             <div className="bg-white rounded-xl p-6 shadow-sm">
-              <div className="text-3xl font-bold text-purple-600">
+                <div className="text-3xl font-bold text-[#7259a6]">
                 {Object.keys(stats.by_type || {}).length}
               </div>
               <div className="text-sm text-gray-600 mt-1">题型种类</div>
@@ -582,7 +561,7 @@ const TeacherCompetitionManager: React.FC = () => {
                     >
                       {deleting ? (
                         <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                           <span>删除中...</span>
                         </>
                       ) : (
@@ -600,7 +579,7 @@ const TeacherCompetitionManager: React.FC = () => {
 
           {loading ? (
             <div className="p-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-[#d9e4ee] border-t-[#5b83b4]"></div>
               <p className="text-gray-500 mt-4">加载中...</p>
             </div>
           ) : (
@@ -716,7 +695,7 @@ const TeacherCompetitionManager: React.FC = () => {
             <li>• 建议定期检查题目质量,确保准确性</li>
           </ul>
         </div>
-      </div>
+      </main>
 
       {/* 创建题目表单 */}
       {showCreateModal && (
@@ -914,7 +893,7 @@ const TeacherCompetitionManager: React.FC = () => {
             className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
           >
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-800">🤖 AI生成竞赛题目</h2>
+              <h2 className="text-2xl font-bold text-[#173047]">AI 生成竞赛题目</h2>
               <p className="text-sm text-gray-600 mt-1">使用AI自动生成高质量竞赛题目</p>
             </div>
 
@@ -1038,14 +1017,14 @@ const TeacherCompetitionManager: React.FC = () => {
             {/* 生成进度 */}
             {generating && (
               <div className="px-6 pb-4">
-                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+                <div className="rounded-xl border border-[#d3eaec] bg-[#e8f5f6] p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-purple-900">{generatingMessage}</span>
-                    <span className="text-sm font-bold text-purple-600">{Math.round(generatingProgress)}%</span>
+                    <span className="text-sm font-medium text-[#285f69]">{generatingMessage}</span>
+                    <span className="text-sm font-bold text-[#2f8791]">{Math.round(generatingProgress)}%</span>
                   </div>
-                  <div className="w-full bg-purple-200 rounded-full h-3 overflow-hidden">
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-[#cfe7e9]">
                     <motion.div
-                      className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 rounded-full"
+                      className="h-full rounded-full bg-[#4aa9ae]"
                       initial={{ width: 0 }}
                       animate={{ width: `${generatingProgress}%` }}
                       transition={{ duration: 0.3 }}
@@ -1086,11 +1065,11 @@ const TeacherCompetitionManager: React.FC = () => {
               <button
                 onClick={handleAIGenerate}
                 disabled={generating || aiFormData.question_types.length === 0}
-                className="px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="teacher-primary teacher-focus-ring inline-flex items-center gap-2 rounded-xl px-6 py-2 font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {generating ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                     <span>生成中...</span>
                   </>
                 ) : (

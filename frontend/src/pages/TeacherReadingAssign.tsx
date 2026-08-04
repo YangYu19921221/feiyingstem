@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from '../components/Toast';
 import { getTeacherPassageDetail, assignReading, getPassageAssignments } from '../api/reading';
@@ -7,6 +7,8 @@ import type { ReadingPassageDetail } from '../api/reading';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { ClipboardList } from 'lucide-react';
 
 interface Student {
   id: number;
@@ -17,8 +19,6 @@ interface Student {
 
 const TeacherReadingAssign = () => {
   const { passageId } = useParams<{ passageId: string }>();
-  const navigate = useNavigate();
-
   const [passage, setPassage] = useState<ReadingPassageDetail | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<number[]>([]);
@@ -98,11 +98,8 @@ const TeacherReadingAssign = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="mt-4 text-gray-600">加载中...</p>
-        </div>
+      <div className="app-loading-screen" role="status">
+        <div className="app-loading-card"><span className="app-loading-icon"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#c76333]/30 border-t-[#c76333]" /></span><span className="app-loading-title">正在准备阅读作业</span></div>
       </div>
     );
   }
@@ -111,22 +108,9 @@ const TeacherReadingAssign = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm mb-6">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/teacher/reading')}
-              className="text-gray-600 hover:text-gray-800 transition"
-            >
-              ← 返回
-            </button>
-            <h1 className="text-2xl font-bold text-gray-800">布置阅读作业</h1>
-          </div>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader role="teacher" title="布置阅读作业" subtitle="选择学生并设置完成要求" icon={ClipboardList} backTo="/teacher/reading" />
 
-      <div className="max-w-6xl mx-auto px-4 pb-12">
+      <main className="teacher-workspace-main">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 左侧:文章信息和设置 */}
           <div>
@@ -152,7 +136,7 @@ const TeacherReadingAssign = () => {
               transition={{ delay: 0.1 }}
               className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
             >
-              <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ 作业设置</h2>
+              <h2 className="text-xl font-bold text-[#173047] mb-4">作业设置</h2>
 
               <div className="space-y-4">
                 <div>
@@ -296,7 +280,7 @@ const TeacherReadingAssign = () => {
             )}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

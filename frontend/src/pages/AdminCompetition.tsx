@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { admin } from '../api/admin';
 import type { AdminCompetitionOverview, AdminLeaderboardItem } from '../api/admin';
 import { toast } from '../components/Toast';
+import { Trophy } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 type Board = 'overall' | 'daily' | 'weekly' | 'monthly';
 const BOARDS: { key: Board; label: string }[] = [
@@ -13,7 +14,6 @@ const BOARDS: { key: Board; label: string }[] = [
 ];
 
 const AdminCompetition = () => {
-  const navigate = useNavigate();
   const [overview, setOverview] = useState<AdminCompetitionOverview | null>(null);
   const [board, setBoard] = useState<Board>('overall');
   const [items, setItems] = useState<AdminLeaderboardItem[]>([]);
@@ -36,15 +36,10 @@ const AdminCompetition = () => {
   const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`);
 
   return (
-    <div className="min-h-screen bg-paper">
-      <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/admin')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-slate-50">← 返回管理中心</button>
-          <h1 className="text-xl font-bold text-gray-800">🏆 单词比赛</h1>
-        </div>
-      </nav>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="单词比赛" subtitle="赛事概览与排行榜" icon={Trophy} />
 
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <main className="admin-workspace-main space-y-6">
         {/* 概览卡片 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
@@ -60,14 +55,14 @@ const AdminCompetition = () => {
             <div className="text-sm text-gray-500 mt-1">平均正确率</div>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
-            <div className="text-2xl font-bold text-purple-600">{overview?.active_seasons ?? '—'}</div>
+            <div className="text-2xl font-bold text-[#7259a6]">{overview?.active_seasons ?? '—'}</div>
             <div className="text-sm text-gray-500 mt-1">活跃赛季</div>
           </div>
         </div>
 
         {/* 排行榜 */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b flex items-center justify-between">
+          <div className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <h2 className="text-lg font-bold text-gray-800">排行榜</h2>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               {BOARDS.map((b) => (
@@ -89,7 +84,16 @@ const AdminCompetition = () => {
           ) : items.length === 0 ? (
             <div className="px-6 py-10 text-center text-gray-400">暂无排行数据</div>
           ) : (
-            <div className="overflow-x-auto"><table className="w-full min-w-[700px] whitespace-nowrap">
+            <>
+            <div className="space-y-2 p-3 sm:hidden">
+              {items.map((it) => (
+                <article key={it.user_id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold text-slate-800">{medal(it.rank)} {it.full_name}</p><p className="truncate text-xs text-slate-400">{it.username}</p></div><span className="shrink-0 font-bold text-orange-600">{it.score} 分</span></div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center text-xs text-slate-500"><div><span className="block font-semibold text-slate-700">{it.questions_answered}</span>答题</div><div><span className="block font-semibold text-slate-700">{it.accuracy}%</span>正确率</div><div><span className="block font-semibold text-slate-700">{it.max_combo}</span>最高连击</div></div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block"><table className="w-full min-w-[700px] whitespace-nowrap">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">排名</th>
@@ -116,9 +120,10 @@ const AdminCompetition = () => {
                 ))}
               </tbody>
             </table></div>
+            </>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 };

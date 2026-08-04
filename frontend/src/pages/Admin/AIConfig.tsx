@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/env';
 import { toast } from '../../components/Toast';
+import { Plus, Sparkles } from 'lucide-react';
+import StaffWorkspaceHeader from '../../components/staff/StaffWorkspaceHeader';
 
 interface AIProvider {
   id: number;
@@ -287,43 +289,17 @@ const AI配置管理 = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-paper">
-        <div className="text-xl">加载中...</div>
+      <div className="app-loading-screen" role="status">
+        <div className="app-loading-card"><span className="app-loading-icon"><Sparkles className="h-5 w-5" /></span><span className="app-loading-title">正在加载 AI 服务配置</span></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-paper p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* 标题和操作按钮 */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end mb-6 sm:mb-8">
-          <div className="flex items-center gap-3">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => navigate('/admin')}
-              className="px-3 py-2 bg-white text-gray-700 rounded-lg font-semibold shadow-sm hover:bg-slate-50 transition-colors border border-slate-200 flex items-center gap-2"
-            >
-              ← 返回管理后台
-            </motion.button>
-            <motion.h1
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="text-2xl sm:text-3xl font-bold text-slate-800"
-            >
-              🤖 AI配置管理
-            </motion.h1>
-          </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleAdd}
-            className="px-4 py-2.5 bg-[#3976a9] text-white rounded-lg font-semibold shadow-sm hover:bg-[#2e628f] transition-colors"
-          >
-            ➕ 添加AI服务
-          </motion.button>
-        </div>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="AI 配置管理" subtitle="管理模型、密钥与智能服务" icon={Sparkles} action={<motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleAdd} className="admin-primary admin-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"><Plus className="h-4 w-4" />添加 AI 服务</motion.button>} />
+
+      <main className="admin-workspace-main">
 
         {/* 配置卡片列表 */}
         <div className="grid gap-6">
@@ -432,7 +408,7 @@ const AI配置管理 = () => {
             </div>
           )}
         </div>
-      </div>
+      </main>
 
       {/* 添加/编辑对话框 */}
       <AnimatePresence>

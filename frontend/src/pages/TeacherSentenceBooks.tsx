@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Trash2, Edit, FolderPlus, ChevronRight } from 'lucide-react';
+import { Trash2, Edit, FolderPlus, ChevronRight, MessageSquareText } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import {
   listSentenceBooks, createSentenceBook, deleteSentenceBook, updateSentenceBook,
   type SentenceBook,
@@ -13,7 +13,6 @@ import Field from '../components/Field';
 
 export default function TeacherSentenceBooks() {
   const navigate = useNavigate();
-  const goBack = useGoBack('/teacher/dashboard');
   const [books, setBooks] = useState<SentenceBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -88,22 +87,15 @@ export default function TeacherSentenceBooks() {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-4xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
-            <ArrowLeft className="w-4 h-4" /> 返回
-          </button>
-          <h1 className="font-display text-base font-semibold text-ink">句子背诵管理</h1>
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent-warm text-white text-sm font-medium hover:opacity-90"
-          >
-            <FolderPlus className="w-4 h-4" /> 新建
-          </button>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="句子背诵管理"
+        subtitle="组织句子集、单元与背诵内容"
+        icon={MessageSquareText}
+        action={<button onClick={openCreate} className="teacher-primary teacher-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold"><FolderPlus className="w-4 h-4" />新建句子集</button>}
+      />
 
-      <div className="max-w-4xl mx-auto px-5 py-8">
+      <main className="teacher-workspace-main">
         <section className="mb-6">
           <p className="text-ink-mute text-sm mb-1.5">用句子集组织学生背诵的英文短句</p>
           <h2 className="font-display text-3xl font-semibold text-ink tracking-tight">
@@ -166,7 +158,7 @@ export default function TeacherSentenceBooks() {
             ))}
           </div>
         )}
-      </div>
+      </main>
 
       <AnimatePresence>
         {showCreate && (

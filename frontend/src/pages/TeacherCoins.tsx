@@ -4,7 +4,6 @@
  * 金币完全由老师手动加(不再有系统自动/批量发币)。仅本班老师+管理员可操作。
  */
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
@@ -18,6 +17,8 @@ import {
   type CoinBalance, type CoinTx, type CoinReward, type WordKingBanner,
   type RedeemRequestItem,
 } from '../api/coins';
+import { CircleDollarSign } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface ClassItem { id: number; name: string; }
 
@@ -32,7 +33,6 @@ const SOURCE_FILTERS = [
 const PAGE_SIZE = 20;
 
 export default function TeacherCoins() {
-  const navigate = useNavigate();
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [classId, setClassId] = useState<number | null>(null);
 
@@ -326,33 +326,16 @@ export default function TeacherCoins() {
   const activeRewards = rewards.filter((r) => r.is_active);
 
   return (
-    <div className="min-h-screen bg-[#f5f8fc] p-4 text-slate-800 sm:p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* 头部 */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/teacher/dashboard')} className="text-gray-400 hover:text-gray-600 text-sm">← 返回</button>
-            <h1 className="text-xl font-bold text-gray-800">🪙 金币管理</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowRewardMgr(true); setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }}
-              className="px-3 py-2 rounded-xl bg-amber-100 text-amber-700 text-sm hover:bg-amber-200"
-            >🎁 商品管理</button>
-            <button
-              onClick={() => { setShowSetPin(true); setPinOld(''); setPinNew(''); }}
-              title="设置或修改金币密码,防学生冒用账号自己改币"
-              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm hover:bg-slate-200"
-            >🔒 {hasPin ? '修改金币密码' : '设置金币密码'}</button>
-            <select
-              value={classId ?? ''}
-              onChange={(e) => setClassId(Number(e.target.value))}
-              className="px-3 py-2 rounded-xl border border-black/10 bg-white text-sm"
-            >
-              {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="金币管理"
+        subtitle="管理班级金币、商品与兑换申请"
+        icon={CircleDollarSign}
+        action={<div className="flex items-center gap-2"><button onClick={() => { setShowRewardMgr(true); setEditReward(null); setRewardForm({ name: '', cost: '', stock: '', note: '' }); }} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-200">🎁 商品管理</button><button onClick={() => { setShowSetPin(true); setPinOld(''); setPinNew(''); }} title="设置或修改金币密码" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">🔒 {hasPin ? '修改密码' : '设置密码'}</button><select aria-label="选择班级" value={classId ?? ''} onChange={(e) => setClassId(Number(e.target.value))} className="min-h-10 max-w-32 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm">{classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+      />
+
+      <main className="teacher-workspace-main">
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-700">
           💡 金币<b>不再由系统自动发放</b>,完全由老师核实学生实际完成情况后手动加币(点学生行的「加币」)。下方「单词王」榜单与学情数据可作为加币参考。历史上系统发放过的记录不可改,手动/兑换记录可增删改。
@@ -384,8 +367,8 @@ export default function TeacherCoins() {
                   ))}
                 </div>
               ) : <p className="text-xs text-gray-400">今天还没人学习</p>}
+              </div>
             </div>
-          </div>
         )}
 
         {/* 待审批兑换申请:有申请时高亮显示,同意扣币/拒绝不扣 */}
@@ -558,7 +541,7 @@ export default function TeacherCoins() {
             )}
           </div>
         </div>
-      </div>
+      </main>
 
       {/* 加/减金币弹窗 */}
       {adjustFor && (
@@ -569,11 +552,11 @@ export default function TeacherCoins() {
             <div className="flex gap-2 mb-3">
               <button
                 onClick={() => setAdjustMode('grant')}
-                className={`flex-1 py-2 rounded-lg text-sm ${adjustMode === 'grant' ? 'bg-green-100 text-green-700 font-semibold' : 'bg-black/[0.03] text-gray-500'}`}
+                className={`flex-1 py-2 rounded-lg text-sm ${adjustMode === 'grant' ? 'bg-green-100 text-green-700 font-semibold' : 'bg-black/[0.03] text-slate-600'}`}
               >➕ 发放</button>
               <button
                 onClick={() => setAdjustMode('redeem')}
-                className={`flex-1 py-2 rounded-lg text-sm ${adjustMode === 'redeem' ? 'bg-red-100 text-red-600 font-semibold' : 'bg-black/[0.03] text-gray-500'}`}
+                className={`flex-1 py-2 rounded-lg text-sm ${adjustMode === 'redeem' ? 'bg-red-100 text-red-600 font-semibold' : 'bg-black/[0.03] text-slate-600'}`}
               >➖ 兑换/扣减</button>
             </div>
             <input

@@ -567,7 +567,7 @@ const TeacherLiveClassroom = () => {
     <div className="min-h-screen" style={{ background: t.pageBg }}>
       {/* 顶栏 */}
       <nav className="sticky top-0 z-10 backdrop-blur-md" style={{ background: t.navBg, borderBottom: t.navBorder }}>
-        <div className="max-w-4xl mx-auto px-5 py-3.5 flex items-center gap-3">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3.5 sm:px-6 lg:px-10">
           <button onClick={() => navigate('/teacher/dashboard')} className="p-2 -ml-2 rounded-lg transition" style={{ color: t.dim }}
             onMouseEnter={e => (e.currentTarget.style.background = t.hoverBg)}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -620,7 +620,7 @@ const TeacherLiveClassroom = () => {
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-5 py-7 space-y-6">
+      <main className="mx-auto max-w-[1440px] space-y-6 px-4 py-7 sm:px-6 lg:px-10">
         {/* EKG 波形 */}
         {(isAllMode ? !!allGroups : !!snap) && <EKGWave focusRatio={focusRatio} awayCount={counts.away} t={t} />}
 
@@ -1051,7 +1051,7 @@ const TeacherLiveClassroom = () => {
             )}
           </>
         )}
-      </div>
+      </main>
 
       {/* 学生最近任务抽屉 */}
       <AnimatePresence>

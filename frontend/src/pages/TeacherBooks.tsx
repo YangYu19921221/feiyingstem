@@ -9,6 +9,7 @@ import { toast } from '../components/Toast';
 import * as XLSX from 'xlsx';
 import { parseWordRows, type ParsedWord } from '../utils/excelWords';
 import { getErrorMessage } from '../utils/errorMessage';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 type PreviewUnit = { name: string; words: ParsedWord[] };
 
@@ -124,12 +125,6 @@ const TeacherBooks = () => {
       setLoading(false);
       hasLoadedOnce.current = true; // 标记已加载,不触发渲染
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    navigate('/login');
   };
 
   const handleManageUnits = (bookId: number) => {
@@ -380,41 +375,16 @@ const TeacherBooks = () => {
 
   return (
     <div className="min-h-screen bg-paper">
-      {/* 顶部导航栏 */}
-      <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <BookOpen className="w-8 h-8 text-primary" />
-            <h1 className="font-display text-xl font-bold text-gray-800">教师端 · 单词本管理</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/teacher/dashboard')}
-              className="text-sm px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition font-medium"
-            >
-              返回首页
-            </button>
-            <span className="text-sm text-gray-600">
-              👨‍🏫 {user?.full_name || '教师'}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
-            >
-              退出
-            </button>
-          </div>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader role="teacher" title="单词本管理" subtitle="管理单元、词汇与批量导入" icon={BookOpen} />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <main className="teacher-workspace-main">
         {/* 欢迎横幅 */}
         <motion.div
           initial={!hasLoadedOnce.current ? { opacity: 0, y: -20 } : false}
           animate={{ opacity: 1, y: 0 }}
-          className="staff-colorful-surface rounded-xl border border-orange-100 p-6 mb-8 text-slate-800 shadow-md"
+          className="staff-colorful-surface mb-6 rounded-xl border border-orange-100 p-4 text-slate-800 shadow-md sm:p-6"
         >
-          <h2 className="text-2xl font-bold mb-2">
+          <h2 className="mb-2 text-xl font-bold sm:text-2xl">
             管理教材与学习内容
           </h2>
           <p className="text-sm text-slate-600">欢迎，{user?.full_name || '老师'}。统一管理单词本、单元和批量导入。</p>
@@ -422,8 +392,8 @@ const TeacherBooks = () => {
 
         {/* 单词本列表 */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center justify-between gap-3 lg:justify-start lg:gap-4">
               <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <BookOpen className="w-5 h-5" />
                 我的单词本
@@ -437,20 +407,20 @@ const TeacherBooks = () => {
                 </button>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap lg:justify-end">
               {isSelectionMode ? (
                 <>
                   <button
                     onClick={handleBatchDelete}
                     disabled={selectedBooks.length === 0}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 font-medium text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
                   >
                     <Trash2 className="w-5 h-5" />
                     删除选中 ({selectedBooks.length})
                   </button>
                   <button
                     onClick={cancelSelection}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition font-medium"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 font-medium text-gray-700 transition hover:bg-gray-200 sm:px-4"
                   >
                     取消
                   </button>
@@ -460,7 +430,7 @@ const TeacherBooks = () => {
                   {books.length > 0 && (
                     <button
                       onClick={() => setIsSelectionMode(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition font-medium"
+                      className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-gray-100 px-3 py-2 font-medium text-gray-700 transition hover:bg-gray-200 sm:col-auto sm:px-4"
                     >
                       <Trash2 className="w-5 h-5" />
                       批量管理
@@ -469,10 +439,10 @@ const TeacherBooks = () => {
                   <button
                     onClick={() => importInputRef.current?.click()}
                     title="书名=Excel文件名,单元=各工作表名,一次建好整本"
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-medium shadow-md"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-green-700 sm:px-4 sm:text-base"
                   >
                     <FileSpreadsheet className="w-5 h-5" />
-                    Excel 整本导入
+                    <span className="sm:hidden">Excel 导入</span><span className="hidden sm:inline">Excel 整本导入</span>
                   </button>
                   <input
                     ref={importInputRef} type="file" accept=".xlsx,.xls"
@@ -480,7 +450,7 @@ const TeacherBooks = () => {
                   />
                   <button
                     onClick={() => setShowCreateModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium shadow-md"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 sm:px-4 sm:text-base"
                   >
                     + 新建单词本
                   </button>
@@ -491,8 +461,8 @@ const TeacherBooks = () => {
 
           {/* 搜索 + 视图切换 — 即使加载中也显示，不闪烁 */}
           {books.length > 0 && (
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="flex-1 min-w-[200px] relative">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
@@ -680,18 +650,20 @@ const TeacherBooks = () => {
                                     <div className="flex items-center gap-2 shrink-0">
                                       <button
                                         onClick={e => { e.stopPropagation(); openRename(book); }}
-                                        className="px-2.5 py-1.5 border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 rounded-md text-xs font-medium flex items-center gap-1"
+                                        className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 text-xs font-medium text-gray-600 hover:border-blue-300 hover:text-blue-600 sm:w-auto sm:gap-1 sm:px-2.5"
                                         title="重命名"
+                                        aria-label={`重命名 ${book.name}`}
                                       >
                                         <Pencil className="w-3 h-3" />
-                                        重命名
+                                        <span className="hidden sm:inline">重命名</span>
                                       </button>
                                       <button
                                         onClick={e => { e.stopPropagation(); handleManageUnits(book.id); }}
-                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium flex items-center gap-1"
+                                        className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-600 text-xs font-medium text-white hover:bg-blue-700 sm:w-auto sm:gap-1 sm:px-3"
+                                        aria-label={`管理 ${book.name}`}
                                       >
                                         <Settings className="w-3 h-3" />
-                                        管理
+                                        <span className="hidden sm:inline">管理</span>
                                       </button>
                                     </div>
                                   )}
@@ -827,7 +799,7 @@ const TeacherBooks = () => {
             ))}
           </div>
         </motion.div>
-      </div>
+      </main>
 
       {/* 重命名单词本弹窗 */}
       {renameTarget && (

@@ -9,6 +9,8 @@ import type { ScopeValue } from '../components/teacher/ScopeSelector';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
+import { BookOpenText, Settings } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface Student {
   id: number;
@@ -412,27 +414,14 @@ const TeacherBookAssignment = () => {
       .map((a) => a.student_id);
   };
 
-  // 过滤当前选中单词本的分配记录
-  const currentBookAssignments = selectedBook
-    ? assignments.filter((a) => a.book_id === selectedBook.id)
-    : [];
-
   return (
-    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <nav className="sticky top-0 z-10 mb-5 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/teacher/dashboard')}
-              className="text-gray-600 hover:text-gray-800 transition"
-            >
-              ← 返回
-            </button>
-            <h1 className="text-xl font-bold text-gray-800 sm:text-2xl">📚 单词本分配管理</h1>
-          </div>
-        </div>
-      </nav>
+    <div className="staff-legacy-page min-h-screen text-slate-800">
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="单词本分配管理"
+        subtitle="规划学生学习范围"
+        icon={BookOpenText}
+      />
 
       {/* 消息提示 */}
       {message && (
@@ -440,7 +429,7 @@ const TeacherBookAssignment = () => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          className={`max-w-7xl mx-auto px-4 mb-4`}
+          className="teacher-workspace-main mb-4"
         >
           <div
             className={`px-4 py-3 rounded-lg ${
@@ -454,7 +443,7 @@ const TeacherBookAssignment = () => {
         </motion.div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 pb-12">
+      <main className="teacher-workspace-main">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 左侧: 单词本 + 范围选择 */}
           <div className="lg:col-span-1">
@@ -540,9 +529,9 @@ const TeacherBookAssignment = () => {
                         type="button"
                         onClick={() => handleClassChange('all')}
                         className={`px-3 py-1.5 rounded-lg text-sm border transition ${
-                          selectedClassId === 'all'
+                            selectedClassId === 'all'
                             ? 'bg-orange-500 text-white border-orange-500'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50'
+                            : 'bg-white text-[#536170] border-gray-300 hover:bg-orange-50'
                         }`}
                       >
                         全部学生
@@ -555,12 +544,12 @@ const TeacherBookAssignment = () => {
                           className={`px-3 py-1.5 rounded-lg text-sm border transition ${
                             selectedClassId === c.id
                               ? 'bg-orange-500 text-white border-orange-500'
-                              : 'bg-white text-gray-700 border-gray-300 hover:bg-orange-50'
+                              : 'bg-white text-[#536170] border-gray-300 hover:bg-orange-50'
                           }`}
                         >
                           {c.name}
                           <span className={`ml-1.5 text-xs ${
-                            selectedClassId === c.id ? 'text-orange-100' : 'text-gray-400'
+                            selectedClassId === c.id ? 'text-white/90' : 'text-[#718394]'
                           }`}>
                             {c.student_count}人
                           </span>
@@ -723,7 +712,7 @@ const TeacherBookAssignment = () => {
                 transition={{ delay: 0.2 }}
                 className="bg-white rounded-2xl shadow-md p-6"
               >
-                <h2 className="text-xl font-bold text-gray-800 mb-4">⚙️ 分配设置</h2>
+                <h2 className="flex items-center gap-2 text-xl font-bold text-[#173047] mb-4"><Settings className="h-5 w-5 text-[#5d94c4]" />分配设置</h2>
 
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -786,7 +775,7 @@ const TeacherBookAssignment = () => {
                   <button
                     onClick={() => setViewMode('flat')}
                     className={`px-3 py-1.5 transition ${
-                      viewMode === 'flat' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                      viewMode === 'flat' ? 'bg-orange-500 text-white' : 'bg-white text-[#536170] hover:bg-gray-50'
                     }`}
                   >
                     📋 平铺
@@ -794,7 +783,7 @@ const TeacherBookAssignment = () => {
                   <button
                     onClick={() => setViewMode('byStudent')}
                     className={`px-3 py-1.5 transition border-l border-gray-200 ${
-                      viewMode === 'byStudent' ? 'bg-orange-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                      viewMode === 'byStudent' ? 'bg-orange-500 text-white' : 'bg-white text-[#536170] hover:bg-gray-50'
                     }`}
                   >
                     👥 按学生
@@ -1005,7 +994,7 @@ const TeacherBookAssignment = () => {
             </div>
           )}
         </motion.div>
-      </div>
+      </main>
 
       {/* 撤销提示（删除后 10 秒内可点击恢复） */}
       <AnimatePresence>
@@ -1021,7 +1010,7 @@ const TeacherBookAssignment = () => {
             </span>
             <button
               onClick={handleUndo}
-              className="px-3 py-1.5 rounded-lg bg-yellow-400 text-gray-900 font-bold text-sm hover:bg-yellow-300 transition"
+              className="px-3 py-1.5 rounded-lg bg-yellow-400 text-[#173047] font-bold text-sm hover:bg-yellow-300 transition"
             >
               ↺ 撤回
             </button>

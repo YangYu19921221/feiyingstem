@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import {useParams} from 'react-router-dom';
-import useGoBack from '../hooks/useGoBack';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { teacherMonitor } from '../api/teacherMonitor';
 import type { GroupScore, GroupWord } from '../api/teacherMonitor';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 export default function TeacherStudentMonitor() {
   const { id } = useParams<{ id: string }>();
-  const goBack = useGoBack('/teacher/dashboard');
   const studentId = Number(id);
   const [openKey, setOpenKey] = useState<string | null>(null);
 
@@ -20,16 +19,10 @@ export default function TeacherStudentMonitor() {
   });
 
   return (
-    <div className="min-h-screen bg-[#f5f8fc] p-4 text-slate-800 md:p-6">
-      <div className="max-w-4xl mx-auto">
-        <button
-          onClick={() => goBack()}
-          className="flex items-center gap-1 text-gray-600 hover:text-orange-500 mb-4"
-        >
-          <ArrowLeft size={18} /> 返回
-        </button>
-
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">学生学习监控</h1>
+    <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
+      <StaffWorkspaceHeader role="teacher" title="学生学习监控" subtitle="按单元查看学生掌握与练习情况" icon={Activity} />
+      <main className="teacher-workspace-main">
+        <div className="px-4 py-5 md:px-6 md:py-8">
 
         {isLoading && (
           <div className="text-center py-12 text-gray-500">加载中...</div>
@@ -86,7 +79,8 @@ export default function TeacherStudentMonitor() {
             );
           })}
         </div>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

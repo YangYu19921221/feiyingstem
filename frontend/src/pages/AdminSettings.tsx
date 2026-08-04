@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { toast } from '../components/Toast';
+import { BellRing, RotateCcw, Rocket, Save, Settings, Sparkles } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 const DEFAULT_SETTINGS = {
   siteName: '英语学习助手',
@@ -17,25 +18,34 @@ const DEFAULT_SETTINGS = {
 };
 
 const AdminSettings: React.FC = () => {
-  const navigate = useNavigate();
-
   // 系统设置状态(从后端加载)
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [settingsState, setSettingsState] = useState<'loading' | 'ready' | 'error'>('loading');
 
   // 加载已保存的设置
+  const loadSettings = async () => {
+    setSettingsState('loading');
+    try {
+      const data = await api.get('/admin/settings');
+      if (data && typeof data === 'object') setSettings({ ...DEFAULT_SETTINGS, ...data });
+      setSettingsState('ready');
+    } catch {
+      setSettingsState('error');
+      toast.error('设置加载失败，请重试，当前未允许保存默认值');
+    }
+  };
+
   useEffect(() => {
-    api.get('/admin/settings')
-      .then((data: any) => {
-        if (data && typeof data === 'object') {
-          setSettings({ ...DEFAULT_SETTINGS, ...data });
-        }
-      })
-      .catch(() => {});
+    void loadSettings();
   }, []);
 
   const handleSave = async () => {
+    if (settingsState !== 'ready') {
+      toast.warning('设置尚未成功加载，暂不能保存');
+      return;
+    }
     setSaving(true);
     try {
       await api.put('/admin/settings', settings);
@@ -55,20 +65,21 @@ const AdminSettings: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper p-4 sm:p-6">
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6 sm:mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-2">⚙️ 系统设置</h1>
-            <p className="text-gray-600">配置系统参数和功能选项</p>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="系统设置" subtitle="配置系统参数和功能选项" />
+
+      <main className="admin-workspace-main">
+
+        {settingsState === 'error' && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+            <span>无法读取当前设置，修复连接后再保存，避免覆盖线上配置。</span>
+            <button type="button" onClick={() => void loadSettings()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-100">重新加载</button>
           </div>
-          <button
-            onClick={() => navigate('/admin')}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            ← 返回管理中心
-          </button>
+        )}
+
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900" role="note">
+          <span className="mt-0.5 shrink-0 font-bold">提示</span>
+          <p className="leading-6">这些选项当前由系统保存，部分开关（邮箱验证、会话超时、通知、自动备份）还没有接入运行逻辑；保存后会作为后续版本配置，不会立即改变线上行为。</p>
         </div>
 
         {saved && (
@@ -78,10 +89,11 @@ const AdminSettings: React.FC = () => {
           </div>
         )}
 
+        <fieldset disabled={settingsState !== 'ready'} className="contents">
         {/* 基本设置 */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
+        <div className="admin-panel mb-5 rounded-2xl p-5 sm:p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>🏠</span> 基本设置
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e8edf8] text-[#4f6ea7]"><Settings className="h-4 w-4" /></span> 基本设置
           </h2>
           <div className="space-y-4">
             <div>
@@ -92,6 +104,7 @@ const AdminSettings: React.FC = () => {
                 type="text"
                 value={settings.siteName}
                 onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
+                disabled={settingsState !== 'ready'}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
               />
             </div>
@@ -99,13 +112,14 @@ const AdminSettings: React.FC = () => {
             <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">允许用户注册</div>
-                <div className="text-sm text-gray-500">新用户可以自行注册账号</div>
+                <div className="text-sm text-gray-500">保存为后续版本的注册策略配置</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   checked={settings.allowRegistration}
                   onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })}
+                  disabled={settingsState !== 'ready'}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#3976a9]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3976a9]"></div>
@@ -115,7 +129,7 @@ const AdminSettings: React.FC = () => {
             <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">邮箱验证</div>
-                <div className="text-sm text-gray-500">注册时需要验证邮箱</div>
+                <div className="text-sm text-gray-500">当前版本暂未接入，保存为后续配置</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -131,15 +145,15 @@ const AdminSettings: React.FC = () => {
         </div>
 
         {/* AI设置 */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
+        <div className="admin-panel mb-5 rounded-2xl p-5 sm:p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>🤖</span> AI功能设置
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eeeafa] text-[#7259a6]"><Sparkles className="h-4 w-4" /></span> AI功能设置
           </h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">启用AI功能</div>
-                <div className="text-sm text-gray-500">使用AI生成例句、干扰项等</div>
+                <div className="text-sm text-gray-500">保存 AI 功能开关，具体服务由 AI 配置页控制</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -182,7 +196,7 @@ const AdminSettings: React.FC = () => {
               <input
                 type="number"
                 value={settings.maxUploadSize}
-                onChange={(e) => setSettings({ ...settings, maxUploadSize: parseInt(e.target.value) })}
+                onChange={(e) => setSettings({ ...settings, maxUploadSize: Number.parseInt(e.target.value, 10) || 1 })}
                 min="1"
                 max="100"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
@@ -196,7 +210,7 @@ const AdminSettings: React.FC = () => {
               <input
                 type="number"
                 value={settings.sessionTimeout}
-                onChange={(e) => setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) })}
+                onChange={(e) => setSettings({ ...settings, sessionTimeout: Number.parseInt(e.target.value, 10) || 5 })}
                 min="5"
                 max="1440"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
@@ -206,15 +220,15 @@ const AdminSettings: React.FC = () => {
         </div>
 
         {/* 通知和备份 */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
+        <div className="admin-panel mb-5 rounded-2xl p-5 sm:p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>🔔</span> 通知和备份
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e4f3f5] text-[#2f8791]"><BellRing className="h-4 w-4" /></span> 通知和备份
           </h2>
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">启用系统通知</div>
-                <div className="text-sm text-gray-500">向用户发送学习提醒等通知</div>
+                <div className="text-sm text-gray-500">当前版本暂未接入通知调度</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -230,7 +244,7 @@ const AdminSettings: React.FC = () => {
             <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-lg">
               <div>
                 <div className="font-medium text-gray-800">自动备份</div>
-                <div className="text-sm text-gray-500">定期自动备份数据库</div>
+                <div className="text-sm text-gray-500">当前版本暂未接入自动备份调度</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -250,7 +264,7 @@ const AdminSettings: React.FC = () => {
               <input
                 type="number"
                 value={settings.backupInterval}
-                onChange={(e) => setSettings({ ...settings, backupInterval: parseInt(e.target.value) })}
+                onChange={(e) => setSettings({ ...settings, backupInterval: Number.parseInt(e.target.value, 10) || 1 })}
                 disabled={!settings.enableBackup}
                 min="1"
                 max="168"
@@ -260,26 +274,29 @@ const AdminSettings: React.FC = () => {
           </div>
         </div>
 
+        </fieldset>
+
         {/* 系统更新 */}
         <SystemUpdatePanel />
 
         {/* 操作按钮 */}
-        <div className="flex gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="flex-1 px-6 py-3 bg-[#3976a9] text-white rounded-lg hover:bg-[#2e628f] transition-colors font-semibold disabled:opacity-50"
+            disabled={saving || settingsState !== 'ready'}
+            className="admin-primary admin-focus-ring inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-6 py-3 font-semibold transition disabled:opacity-50"
           >
-            {saving ? '保存中...' : '💾 保存设置'}
+            <Save className="h-4 w-4" />{saving ? '保存中...' : '保存设置'}
           </button>
           <button
             onClick={handleReset}
-            className="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-all"
+            disabled={settingsState !== 'ready'}
+            className="admin-secondary-light admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-6 py-3 font-semibold transition"
           >
-            🔄 重置为默认
+            <RotateCcw className="h-4 w-4" />重置为默认
           </button>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
@@ -335,22 +352,22 @@ const SystemUpdatePanel: React.FC = () => {
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-5">
+    <div className="admin-panel mb-5 rounded-2xl p-5 sm:p-6">
       <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <span>🚀</span> 系统更新
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fff3d9] text-[#9a6a1f]"><Rocket className="h-4 w-4" /></span> 系统更新
       </h2>
 
       {/* 当前版本 */}
       <div className="p-4 bg-slate-50 border border-slate-100 rounded-lg mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-sm text-gray-500">当前版本</div>
             <div className="flex items-center gap-3">
-              <span className={`text-2xl font-bold ${updateInfo?.has_update ? 'text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500 animate-pulse' : 'text-gray-800'}`}>v{version?.version || '...'}</span>
+              <span className={`text-2xl font-bold ${updateInfo?.has_update ? 'text-[#b4532f] animate-pulse' : 'text-gray-800'}`}>v{version?.version || '...'}</span>
               <span className="text-xs text-gray-400 font-mono">{version?.commit?.slice(0, 7) || ''}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {updateInfo?.has_update && !checking && (
               <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-sm font-medium animate-pulse">
                 有新版本 v{updateInfo.remote_version}
@@ -372,7 +389,7 @@ const SystemUpdatePanel: React.FC = () => {
         <div className={`p-4 rounded-lg mb-4 ${updateInfo.has_update ? 'bg-orange-50 border border-orange-200' : 'bg-green-50 border border-green-200'}`}>
           {updateInfo.has_update ? (
             <>
-              <div className="flex items-center justify-between mb-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="font-bold text-orange-700">发现新版本!</div>
                   <div className="text-sm text-orange-600">

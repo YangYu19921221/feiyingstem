@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect, Suspense, lazy, type ComponentType } from 'react';
 import { MotionConfig } from 'framer-motion';
+import { LoaderCircle } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';
 import FloatingPetWidget from './components/FloatingPetWidget';
 import OldBrowserBanner from './components/OldBrowserBanner';
@@ -113,10 +114,10 @@ const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'));
 
 // 路由级 loading 占位
 const PageLoading = () => (
-  <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mx-auto mb-4"></div>
-      <p className="text-gray-600">加载中...</p>
+  <div className="app-loading-screen" role="status" aria-live="polite">
+    <div className="app-loading-card">
+      <span className="app-loading-icon"><LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" /></span>
+      <div><p className="app-loading-title">正在打开页面</p><p className="app-loading-copy">内容很快就准备好</p></div>
     </div>
   </div>
 );
@@ -150,14 +151,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode;
 
   // 显示加载状态,避免闪烁
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#f5f8fc] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600">加载中...</p>
-        </div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   if (!isAuthenticated) {
@@ -272,7 +266,7 @@ function App() {
           path="/admin/dashboard"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
+              <Navigate to="/admin" replace />
             </ProtectedRoute>
           }
         />

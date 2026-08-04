@@ -31,24 +31,24 @@ export default function StudentPageHeader({
   const goBack = useGoBack('/student/dashboard');
 
   return (
-    <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
+    <header className="student-page-header sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className={`${widths[maxWidth]} mx-auto flex min-h-[64px] items-center gap-3 px-4 sm:px-5 py-2.5`}>
         <button
           type="button"
           onClick={() => backTo ? navigate(backTo) : goBack()}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-600 transition hover:bg-gray-100 hover:text-gray-900"
+          className="student-focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[#536170] transition hover:bg-orange-50 hover:text-accent-warm"
           aria-label="返回"
           title="返回"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
         {Icon && (
-          <div className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-primary">
+          <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-primary sm:flex">
             <Icon className="h-5 w-5" />
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate font-display text-base sm:text-lg font-bold leading-tight text-gray-900">{title}</h1>
+          <h1 className="truncate font-display text-base font-bold leading-tight text-gray-900 sm:text-lg">{title}</h1>
           {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</p>}
         </div>
         {action && <div className="shrink-0">{action}</div>}

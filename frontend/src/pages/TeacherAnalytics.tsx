@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, Users, BookOpen, Target, Star } from 'lucide-react';
+import { TrendingUp, Users, BookOpen, Target, Star } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import api from '../api/client';
 import { teacherMonitor } from '../api/teacherMonitor';
 import type { ClassOverview, WordCompletionItem } from '../api/teacherMonitor';
@@ -158,33 +159,14 @@ const TeacherAnalytics = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <button
-            onClick={() => navigate('/teacher/dashboard')}
-            className="flex items-center gap-2 text-gray-600 hover:text-primary transition"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>返回仪表盘</span>
-          </button>
-        </div>
-      </div>
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="班级学习数据分析"
+        subtitle="全面了解学生学习情况和教学效果"
+        icon={TrendingUp}
+      />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
-        {/* 页面标题 */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <h1 className="mb-1 flex items-center gap-3 text-2xl font-bold text-gray-800 sm:text-3xl">
-            <TrendingUp className="w-8 h-8 text-primary" />
-            班级学习数据分析
-          </h1>
-          <p className="text-gray-600">全面了解学生学习情况和教学效果</p>
-        </motion.div>
-
+      <main className="teacher-workspace-main">
         {/* 班级选择器 */}
         <div className="mb-6">
           <select
@@ -211,7 +193,7 @@ const TeacherAnalytics = () => {
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">学生</span>
               </div>
               <div className="mb-1 text-3xl font-bold">{classOverview.student_count}</div>
-              <div className="text-blue-100">班级学生数</div>
+              <div className="text-blue-700">班级学生数</div>
             </motion.div>
 
             <motion.div
@@ -225,7 +207,7 @@ const TeacherAnalytics = () => {
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">单词</span>
               </div>
               <div className="mb-1 text-3xl font-bold">{classOverview.total_words_studied}</div>
-              <div className="text-purple-100">累计学习单词</div>
+              <div className="text-violet-700">累计学习单词</div>
               <div className="mt-2 text-sm">
                 平均每人{' '}
                 {classOverview.student_count > 0
@@ -248,7 +230,7 @@ const TeacherAnalytics = () => {
               <div className="mb-1 text-3xl font-bold">
                 {(classOverview.avg_accuracy * 100).toFixed(1)}%
               </div>
-              <div className="text-green-100">班级平均准确率</div>
+              <div className="text-emerald-700">班级平均准确率</div>
             </motion.div>
 
             <motion.div
@@ -262,7 +244,7 @@ const TeacherAnalytics = () => {
                 <span className="text-sm bg-white/20 px-3 py-1 rounded-full">已掌握</span>
               </div>
               <div className="mb-1 text-3xl font-bold">{classOverview.mastered_words}</div>
-              <div className="text-orange-100">已掌握单词数</div>
+              <div className="text-amber-700">已掌握单词数</div>
             </motion.div>
           </div>
         )}
@@ -322,7 +304,7 @@ const TeacherAnalytics = () => {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 * index }}
-                className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4"
+                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
               >
                 <div className="text-3xl mb-2">{getModeIcon(mode.learning_mode)}</div>
                 <div className="font-bold text-gray-800">{getModeName(mode.learning_mode)}</div>
@@ -454,7 +436,7 @@ const TeacherAnalytics = () => {
             ))}
           </div>
         </motion.div>
-      </div>
+      </main>
     </div>
   );
 };

@@ -1,17 +1,18 @@
 /** 平台管理端 - 机构(加盟商)管理 */
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminOrgApi, Organization, OrgManager, TrialProvisionResult } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
 import TrialAccountsModal from '../components/TrialAccountsModal';
+import { Building2, Gift, Plus, X, Check } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { toast } from '../components/Toast';
 
 const PLAN_LABELS: Record<string, string> = {
   trial: '体验', standard: '标准', county: '县级独家', city: '市级独家', headquarters: '总部直营',
 };
 
 export default function AdminOrganizations() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', plan: 'standard', student_quota: 100, contact_name: '', contact_phone: '' });
@@ -23,6 +24,15 @@ export default function AdminOrganizations() {
   const [showTrial, setShowTrial] = useState(false);
   const [trialForm, setTrialForm] = useState({ name: '', prefix: '', days: 14, student_quota: 20, contact_name: '' });
   const [trialResult, setTrialResult] = useState<TrialProvisionResult | null>(null);
+  const [orgDialog, setOrgDialog] = useState<
+    | { kind: 'quota' | 'expiry' | 'admin'; org: Organization; value: string }
+    | null
+  >(null);
+
+  const errorText = (e: unknown, fallback: string) => {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    return typeof detail === 'string' ? detail : fallback;
+  };
 
   const trialMut = useMutation({
     mutationFn: () => adminOrgApi.provisionTrial({
@@ -38,15 +48,15 @@ export default function AdminOrganizations() {
       setTrialForm({ name: '', prefix: '', days: 14, student_quota: 20, contact_name: '' });
       qc.invalidateQueries({ queryKey: ['admin-orgs'] });
     },
-    onError: (e: any) => alert(e?.response?.data?.detail || '开通失败'),
+    onError: (e: unknown) => toast.error(errorText(e, '开通失败')),
   });
 
   const openManagerPanel = async (org: Organization) => {
     try {
       const managers = await adminOrgApi.listOrgAdmins(org.id);
       setManagerPanel({ org, managers });
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || '获取管理员列表失败');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '获取管理员列表失败'));
     }
   };
 
@@ -56,12 +66,12 @@ export default function AdminOrganizations() {
       // 不传密码=服务端生成(密码策略单点在后端,防混淆字符)
       const r = await adminOrgApi.resetUserPassword(m.id);
       if (r.new_password) setIssued({ username: m.username, password: r.new_password, orgName });
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || '重置失败');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '重置失败'));
     }
   };
 
-  const toggleManager = async (m: OrgManager, org: Organization) => {
+  const toggleManager = async (m: OrgManager) => {
     try {
       const r = await adminOrgApi.toggleUserStatus(m.id);
       // 响应已带新状态,本地更新即可,不必整表重拉
@@ -69,12 +79,23 @@ export default function AdminOrganizations() {
         ...p,
         managers: p.managers.map(x => x.id === m.id ? { ...x, is_active: r.is_active } : x),
       });
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || '操作失败');
+      toast.success(r.is_active ? '管理员已恢复' : '管理员已停用');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '操作失败'));
     }
   };
 
   const { data: orgs, isLoading } = useQuery({ queryKey: ['admin-orgs'], queryFn: adminOrgApi.list });
+
+  const orgSummary = useMemo(() => {
+    const items = orgs || [];
+    return {
+      total: items.length,
+      active: items.filter((org) => org.status === 'active').length,
+      teachers: items.reduce((sum, org) => sum + (org.teacher_count || 0), 0),
+      students: items.reduce((sum, org) => sum + (org.active_students || 0), 0),
+    };
+  }, [orgs]);
 
   const createMut = useMutation({
     mutationFn: () => adminOrgApi.create({
@@ -87,7 +108,7 @@ export default function AdminOrganizations() {
       setShowCreate(false);
       setForm({ name: '', code: '', plan: 'standard', student_quota: 100, contact_name: '', contact_phone: '' });
     },
-    onError: (e: any) => alert(e?.response?.data?.detail || '创建失败'),
+    onError: (e: unknown) => toast.error(errorText(e, '创建失败')),
   });
 
   const toggleStatus = useMutation({
@@ -95,55 +116,85 @@ export default function AdminOrganizations() {
       status: org.status === 'active' ? 'suspended' : 'active',
     }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orgs'] }),
-    onError: (e: any) => alert(e?.response?.data?.detail || '操作失败'),
+    onError: (e: unknown) => toast.error(errorText(e, '操作失败')),
   });
 
   const changeQuota = async (org: Organization) => {
-    const v = window.prompt(`「${org.name}」学生配额(当前 ${org.student_quota}):`, String(org.student_quota));
-    if (!v) return;
-    const n = parseInt(v, 10);
-    if (!n || n < 1) return alert('请输入正整数');
-    await adminOrgApi.update(org.id, { student_quota: n });
-    qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+    setOrgDialog({ kind: 'quota', org, value: String(org.student_quota) });
+  };
+
+  const submitOrgDialog = async () => {
+    if (!orgDialog) return;
+    const { kind, org, value } = orgDialog;
+    const trimmed = value.trim();
+    if (kind === 'quota') {
+      const n = Number(trimmed);
+      if (!Number.isInteger(n) || n < 1) {
+        toast.warning('请输入大于 0 的整数配额');
+        return;
+      }
+      try {
+        await adminOrgApi.update(org.id, { student_quota: n });
+        await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+        toast.success('学生配额已更新');
+        setOrgDialog(null);
+      } catch (e: unknown) {
+        toast.error(errorText(e, '配额更新失败'));
+      }
+      return;
+    }
+    if (kind === 'expiry') {
+      if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        toast.warning('日期格式应为 YYYY-MM-DD');
+        return;
+      }
+      try {
+        await adminOrgApi.update(org.id, trimmed ? { expires_at: `${trimmed}T23:59:59` } : { clear_expires: true });
+        await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+        toast.success(trimmed ? '有效期已更新' : '已设为永不过期');
+        setOrgDialog(null);
+      } catch (e: unknown) {
+        toast.error(errorText(e, '设置有效期失败'));
+      }
+      return;
+    }
+    if (!trimmed || !/^[a-zA-Z0-9_]{3,32}$/.test(trimmed)) {
+      toast.warning('用户名需为 3-32 位英文、数字或下划线');
+      return;
+    }
+    try {
+      const r = await adminOrgApi.createOrgAdmin(org.id, { username: trimmed });
+      setIssued({ username: r.username, password: r.initial_password, orgName: org.name });
+      setOrgDialog(null);
+      toast.success('机构管理员账号已创建');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '开户失败'));
+    }
   };
 
   /** 硬删机构: 输机构码确认(防点错行);正式机构须先停用,后端还有同样的闸 */
   const deleteOrg = async (org: Organization) => {
     if (org.status === 'active' && org.plan !== 'trial') {
-      return alert('正式机构请先「停用」再删除;体验机构可直接删');
+      toast.warning('正式机构请先“停用”再删除；体验机构可直接删除');
+      return;
     }
     const typed = window.prompt(
       `⚠️ 永久删除「${org.name}」!\n将连带删除该机构全部账号、班级和学习数据,不可恢复。\n\n确认请输入机构码: ${org.code}`,
     );
     if (typed === null) return;
-    if (typed.trim().toUpperCase() !== org.code) return alert('机构码不一致,已取消');
+    if (typed.trim().toUpperCase() !== org.code) return toast.warning('机构码不一致，已取消');
     try {
       const r = await adminOrgApi.deleteOrg(org.id, org.code);
-      alert(`已删除「${r.org_name}」(含 ${r.users_removed} 个账号)`);
+      toast.success(`已删除「${r.org_name}」（含 ${r.users_removed} 个账号）`);
       qc.invalidateQueries({ queryKey: ['admin-orgs'] });
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || '删除失败');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '删除失败'));
     }
   };
 
   const changeExpiry = async (org: Organization) => {
     const cur = org.expires_at ? String(org.expires_at).slice(0, 10) : '';
-    const v = window.prompt(
-      `「${org.name}」服务有效期至(YYYY-MM-DD,当天仍可用,次日起自动停服;清空=永不过期):`,
-      cur,
-    );
-    if (v === null) return;
-    const trimmed = v.trim();
-    if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return alert('日期格式应为 YYYY-MM-DD');
-    try {
-      // 后端 datetime 字段: 传当天末尾时刻;清空走 clear_expires(datetime的null=未传不动)
-      await adminOrgApi.update(org.id, trimmed
-        ? { expires_at: `${trimmed}T23:59:59` }
-        : { clear_expires: true });
-      qc.invalidateQueries({ queryKey: ['admin-orgs'] });
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || '设置失败');
-    }
+    setOrgDialog({ kind: 'expiry', org, value: cur });
   };
 
   /** 到期状态: null=有效 */
@@ -156,40 +207,70 @@ export default function AdminOrganizations() {
   };
 
   const issueAdmin = async (org: Organization) => {
-    const username = window.prompt(`给「${org.name}」开机构管理员账号,输入用户名:`);
-    if (!username) return;
-    try {
-      const r = await adminOrgApi.createOrgAdmin(org.id, { username });
-      setIssued({ username: r.username, password: r.initial_password, orgName: org.name });
-    } catch (e: any) {
-      alert(e?.response?.data?.detail || '开户失败');
-    }
+    setOrgDialog({ kind: 'admin', org, value: '' });
   };
 
   return (
-    <div className="min-h-screen bg-paper p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* 顶栏 */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">← 返回</button>
-            <div><h1 className="text-2xl font-bold text-slate-800">🏢 机构管理</h1><p className="mt-1 text-sm text-slate-500">管理机构服务、账号与学生配额</p></div>
+    <div className="admin-legacy-page admin-org-page min-h-screen">
+      <StaffWorkspaceHeader
+        role="admin"
+        title="机构管理"
+        subtitle="管理机构服务、账号与学生配额"
+        icon={Building2}
+      />
+
+      <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
+
+        <section className="admin-org-toolbar" aria-label="机构操作">
+          <div className="admin-org-toolbar-copy">
+            <strong>机构工作区</strong>
+            <span>新增机构或快速生成一套体验账号，其他运营动作在机构目录中完成。</span>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => { setShowTrial(true); setShowCreate(false); }}
-              className="rounded-lg bg-[#FF6B35] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#e95d2c]"
-            >
-              🎁 一键开体验账号
-            </button>
-            <button
-              onClick={() => { setShowCreate(true); setShowTrial(false); }}
-              className="px-4 py-2 rounded-lg text-white font-semibold bg-[#3976a9] hover:bg-[#2e628f] transition-colors"
-            >
-              ➕ 开通新机构
-            </button>
+          <div className="admin-org-toolbar-actions">
+            <button type="button" onClick={() => { setShowTrial(true); setShowCreate(false); }} className="admin-primary admin-focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition"><Gift className="h-4 w-4" />一键开体验账号</button>
+            <button type="button" onClick={() => { setShowCreate(true); setShowTrial(false); }} className="admin-secondary-light admin-focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition"><Plus className="h-4 w-4" />开通新机构</button>
           </div>
-        </div>
+        </section>
+
+        <section className="admin-org-overview" aria-labelledby="admin-org-overview-title">
+          <div className="admin-org-overview-main">
+            <span className="admin-org-overview-icon" aria-hidden="true"><Building2 className="h-6 w-6" /></span>
+            <div>
+              <h2 id="admin-org-overview-title">机构运营</h2>
+              <p>集中查看机构状态、师生规模与服务配额，优先处理需要跟进的机构。</p>
+            </div>
+          </div>
+          <div className="admin-org-overview-stats" aria-label="机构概览">
+            <div><strong>{orgSummary.total}</strong><span>机构</span></div>
+            <div><strong>{orgSummary.active}</strong><span>正常运行</span></div>
+            <div><strong>{orgSummary.teachers}</strong><span>教师</span></div>
+            <div><strong>{orgSummary.students}</strong><span>活跃学生</span></div>
+          </div>
+        </section>
+
+        {orgDialog && (
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setOrgDialog(null); }}>
+            <form className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6" onSubmit={(e) => { e.preventDefault(); void submitOrgDialog(); }}>
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">机构操作</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">{orgDialog.kind === 'quota' ? '调整学生配额' : orgDialog.kind === 'expiry' ? '设置服务有效期' : '开通机构管理员'}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{orgDialog.org.name}</p>
+                </div>
+                <button type="button" className="grid h-9 w-9 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setOrgDialog(null)} aria-label="关闭"><X className="h-4 w-4" /></button>
+              </div>
+              <label className="block text-sm font-medium text-slate-700">
+                {orgDialog.kind === 'quota' ? '学生名额' : orgDialog.kind === 'expiry' ? '有效期（留空表示永不过期）' : '登录用户名'}
+                <input autoFocus type={orgDialog.kind === 'quota' ? 'number' : orgDialog.kind === 'expiry' ? 'date' : 'text'} min={orgDialog.kind === 'quota' ? 1 : undefined} value={orgDialog.value} onChange={(e) => setOrgDialog({ ...orgDialog, value: e.target.value })} placeholder={orgDialog.kind === 'admin' ? '例如：hangzhou_admin' : undefined} className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-900 outline-none transition focus:border-[#3976a9] focus:ring-4 focus:ring-[#3976a9]/10" />
+              </label>
+              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">{orgDialog.kind === 'quota' ? '配额立即影响该机构可用的学生账号数量。' : orgDialog.kind === 'expiry' ? '到期后机构会自动停用，账号无法继续登录。' : '初始密码只展示一次，请在弹窗中复制并安全转交。'}</p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200" onClick={() => setOrgDialog(null)}>取消</button>
+                <button type="submit" className="admin-primary admin-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold"><Check className="h-4 w-4" />确认</button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* 初始密码弹窗(仅展示一次) */}
         {issued && (
@@ -211,7 +292,8 @@ export default function AdminOrganizations() {
               {managerPanel.managers.length === 0 ? (
                 <div className="py-6 text-center text-gray-400 text-sm">还没有管理员,先在机构列表点「开管理员」</div>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead>
                     <tr className="text-left text-gray-500 border-b">
                       <th className="py-2">账号</th><th className="py-2">姓名</th>
@@ -227,7 +309,7 @@ export default function AdminOrganizations() {
                         <td className="py-2">{m.is_active ? '✅' : '⛔'}</td>
                         <td className="py-2 space-x-2 whitespace-nowrap">
                           <button className="text-orange-500 hover:underline" onClick={() => resetManagerPwd(m, managerPanel.org.name)}>重置密码</button>
-                          <button className={m.is_active ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'} onClick={() => toggleManager(m, managerPanel.org)}>
+                          <button className={m.is_active ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'} onClick={() => toggleManager(m)}>
                             {m.is_active ? '停用' : '恢复'}
                           </button>
                         </td>
@@ -235,6 +317,7 @@ export default function AdminOrganizations() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
               <button className="mt-4 w-full py-2 rounded-xl bg-gray-100" onClick={() => setManagerPanel(null)}>关闭</button>
             </div>
@@ -353,13 +436,28 @@ export default function AdminOrganizations() {
         )}
 
         {/* 机构列表 */}
-        {isLoading ? (
-          <div className="text-center py-12 text-gray-400">加载中…</div>
-        ) : (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-            <div className="sm:hidden space-y-3 p-3">
+        <section className="admin-org-list-shell" aria-labelledby="admin-org-list-title">
+          <div className="admin-org-list-heading">
+            <div>
+              <h2 id="admin-org-list-title">机构目录</h2>
+              <p>每家机构的服务档位、师生用量和可执行操作</p>
+            </div>
+            <span>{orgSummary.total} 家机构</span>
+          </div>
+          {isLoading ? (
+            <div className="admin-org-list-loading" role="status">加载机构目录…</div>
+          ) : (
+            <div className="admin-org-list-content">
+            {(orgs || []).length === 0 ? (
+              <div className="admin-org-empty">
+                <Building2 className="h-8 w-8" aria-hidden="true" />
+                <strong>还没有机构</strong>
+                <span>先开通一家机构，机构账号和配额会在这里集中管理。</span>
+              </div>
+            ) : <>
+            <div className="admin-org-mobile-list sm:hidden">
               {(orgs || []).map(org => (
-                <article key={org.id} className="rounded-lg border border-slate-200 p-3">
+                <article key={org.id} className="admin-org-mobile-card">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
                       {org.logo_url ? <img src={org.logo_url} alt="" className="h-7 w-7 shrink-0 rounded object-cover" /> : <span className="text-lg">🏫</span>}
@@ -383,8 +481,8 @@ export default function AdminOrganizations() {
                 </article>
               ))}
             </div>
-            <div className="hidden overflow-x-auto sm:block">
-            <table className="w-full min-w-[880px] whitespace-nowrap text-sm">
+            <div className="admin-org-table-scroll hidden overflow-x-auto sm:block">
+            <table className="admin-org-table w-full min-w-[920px] whitespace-nowrap text-sm">
               <thead>
                 <tr className="bg-slate-50 text-left text-slate-600">
                   <th className="px-4 py-3">机构</th>
@@ -427,35 +525,39 @@ export default function AdminOrganizations() {
                           <div className="text-[10px] text-gray-400">至 {String(org.expires_at).slice(0, 10)}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                        <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
-                        <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
-                        <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
-                        {org.id !== 1 && (
-                          <button className="text-purple-500 hover:underline" onClick={() => changeExpiry(org)}>有效期</button>
-                        )}
-                        {org.id !== 1 && (
-                          <button
-                            className={org.status === 'active' ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}
-                            onClick={() => {
-                              if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return;
-                              toggleStatus.mutate(org);
-                            }}
-                          >
-                            {org.status === 'active' ? '停用' : '恢复'}
-                          </button>
-                        )}
-                        {org.id !== 1 && (
-                          <button className="text-red-700 hover:underline" onClick={() => deleteOrg(org)}>删除</button>
-                        )}
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex min-w-[18rem] flex-wrap items-center gap-x-3 gap-y-1.5 text-sm font-medium">
+                          <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
+                          <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
+                          <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
+                          {org.id !== 1 && (
+                            <button className="text-purple-500 hover:underline" onClick={() => changeExpiry(org)}>有效期</button>
+                          )}
+                          {org.id !== 1 && (
+                            <button
+                              className={org.status === 'active' ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}
+                              onClick={() => {
+                                if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return;
+                                toggleStatus.mutate(org);
+                              }}
+                            >
+                              {org.status === 'active' ? '停用' : '恢复'}
+                            </button>
+                          )}
+                          {org.id !== 1 && (
+                            <button className="text-red-700 hover:underline" onClick={() => deleteOrg(org)}>删除</button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                 ))}
               </tbody>
             </table>
             </div>
-          </div>
-        )}
+            </>}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { admin } from '../api/admin';
 import type { AdminClassListItem } from '../api/admin';
 import { toast } from '../components/Toast';
+import { BarChart3 } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 const AdminClassList = () => {
   const navigate = useNavigate();
@@ -31,15 +33,10 @@ const AdminClassList = () => {
     : classes;
 
   return (
-    <div className="min-h-screen bg-paper">
-      <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => navigate('/admin')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-slate-50">← 返回管理中心</button>
-          <h1 className="text-xl font-bold text-gray-800">📊 班级数据</h1>
-        </div>
-      </nav>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="班级数据" subtitle="查看学习统计、训练量和学生名册" icon={BarChart3} />
 
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-4">
+      <main className="admin-workspace-main space-y-4">
         <p className="text-sm text-gray-500">选择班级查看学习统计（训练量/词汇量/学习时间）和学生名册。</p>
 
         <input
@@ -59,7 +56,16 @@ const AdminClassList = () => {
             {q.trim() ? '没有匹配的班级' : '暂无班级'}
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="space-y-3 p-3 sm:hidden">
+              {filtered.map((c) => (
+                <button key={c.id} type="button" onClick={() => navigate(`/admin/classes/${c.id}`)} className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 text-left">
+                  <span className="min-w-0"><span className="block truncate font-semibold text-slate-800">{c.name}</span><span className="mt-1 block truncate text-xs text-slate-500">教师：{c.teacher_username || '未分配'} · {c.student_count} 名学生</span></span>
+                  <span className="shrink-0 text-sm font-semibold text-[#3976a9]">查看</span>
+                </button>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[680px] whitespace-nowrap">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -89,9 +95,10 @@ const AdminClassList = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };

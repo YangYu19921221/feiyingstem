@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -26,17 +26,28 @@ const adminItems = [
   { label: '设置', path: '/admin/settings', icon: Settings },
 ];
 
+const orgItems = [
+  { label: '总览', path: '/org', icon: Home },
+  { label: '用户', path: '/admin/users', icon: Users },
+  { label: '教师', path: '/admin/teachers', icon: GraduationCap },
+  { label: '班级', path: '/admin/classes', icon: Users },
+  { label: '统计', path: '/admin/statistics', icon: BarChart3 },
+];
+
 export default function StaffMobileNav() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isTeacher = location.pathname.startsWith('/teacher');
-  const isAdmin = location.pathname.startsWith('/admin') || location.pathname === '/org';
+  const userRole = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null')?.role as string | undefined; } catch { return undefined; } })();
+  const genericDashboard = location.pathname === '/dashboard';
+  const isTeacher = location.pathname.startsWith('/teacher') || (genericDashboard && userRole === 'teacher');
+  const isAdmin = location.pathname.startsWith('/admin') || location.pathname === '/org' || (genericDashboard && (userRole === 'admin' || userRole === 'org_admin'));
+  const isOrgAdmin = userRole === 'org_admin';
   const visible = isTeacher || isAdmin;
   const immersive = location.pathname.startsWith('/teacher/bigscreen') || location.pathname.startsWith('/teacher/live');
   const navVisible = visible && !immersive;
-  const items = isTeacher ? teacherItems : adminItems;
+  const items = isTeacher ? teacherItems : isOrgAdmin ? orgItems : adminItems;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.body.classList.toggle('staff-interface', visible);
     document.body.classList.toggle('staff-teacher', visible && isTeacher);
     document.body.classList.toggle('staff-admin', visible && isAdmin && !isTeacher);
@@ -49,16 +60,16 @@ export default function StaffMobileNav() {
       document.body.classList.remove('staff-immersive');
       document.body.classList.remove('staff-mobile-nav-visible');
     };
-  }, [visible, isTeacher, isAdmin, immersive, navVisible]);
+  }, [visible, isTeacher, isAdmin, isOrgAdmin, immersive, navVisible]);
 
   if (!navVisible) return null;
 
   return (
-    <nav className="staff-mobile-nav fixed inset-x-0 bottom-0 z-[70] border-t border-slate-200 bg-white/95 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur md:hidden" aria-label={isTeacher ? '教师端主导航' : '管理端主导航'}>
+    <nav className="staff-mobile-nav fixed inset-x-0 bottom-0 z-[70] border-t border-slate-200 bg-white/95 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur md:hidden" aria-label={isTeacher ? '教师端主导航' : isOrgAdmin ? '机构端主导航' : '管理端主导航'}>
       <div className="mx-auto grid max-w-md grid-cols-5">
         {items.map((item) => {
-          const active = item.path === '/admin'
-            ? location.pathname === '/admin' || location.pathname === '/admin/dashboard'
+          const active = item.path === '/admin' || item.path === '/org'
+            ? (item.path === '/org' ? location.pathname === '/org' : location.pathname === '/admin' || location.pathname === '/admin/dashboard')
             : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <button

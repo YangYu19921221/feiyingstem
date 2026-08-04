@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
+import { BookOpen, FileText, LibraryBig, PackageOpen } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface ContentStats {
   word_books: {
@@ -54,7 +56,6 @@ interface ReadingPassage {
 }
 
 const AdminContentManagement: React.FC = () => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'wordbooks' | 'words' | 'passages'>('wordbooks');
   const [stats, setStats] = useState<ContentStats | null>(null);
 
@@ -265,116 +266,81 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
 
     setUploading(true);
     try {
-      // 使用 FileReader 读取文件
-      const reader = new FileReader();
+      // xlsx.read 同时支持真正的 Excel 二进制和 CSV，避免把 xlsx 当文本拆分导致乱码。
+      const workbook = XLSX.read(await uploadFile.arrayBuffer(), { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, defval: '' });
+      if (rows.length <= 1) {
+        toast.warning('文件内容为空，请按模板填写后再上传');
+        return;
+      }
 
-      reader.onload = async (e) => {
-        try {
-          const text = e.target?.result as string;
-          const lines = text.split('\n').filter(line => line.trim());
+      const words = rows.slice(1).flatMap((row) => {
+        const parts = row.map((cell) => String(cell ?? '').trim());
+        if (!parts[0] || !parts[2]) return [];
+        return [{
+          word: parts[0],
+          phonetic: parts[1] || null,
+          definitions: [{
+            meaning: parts[2],
+            part_of_speech: parts[3] || 'n.',
+            example_sentence: parts[4] || null,
+            example_translation: parts[5] || null,
+            is_primary: true,
+          }],
+          difficulty: Number.parseInt(parts[6], 10) || 3,
+          grade_level: parts[7] || null,
+        }];
+      });
 
-          if (lines.length === 0) {
-            toast.warning('文件内容为空');
-            setUploading(false);
-            return;
-          }
+      if (words.length === 0) {
+        toast.warning('未能解析到有效的单词数据，请检查“单词”和“释义”列');
+        return;
+      }
 
-          // 解析CSV/Excel (假设格式: word, phonetic, meaning, part_of_speech)
-          const words = [];
-          for (let i = 1; i < lines.length; i++) { // 跳过第一行标题
-            const parts = lines[i].split(/[,\t]/).map(p => p.trim().replace(/^"|"$/g, ''));
-            if (parts.length >= 3) {
-              words.push({
-                word: parts[0],
-                phonetic: parts[1] || null,
-                definitions: [{
-                  meaning: parts[2],
-                  part_of_speech: parts[3] || 'n.',
-                  example_sentence: parts[4] || null,
-                  example_translation: parts[5] || null,
-                  is_primary: true
-                }],
-                difficulty: parseInt(parts[6]) || 3,
-                grade_level: parts[7] || null
-              });
-            }
-          }
-
-          if (words.length === 0) {
-            toast.warning('未能解析到有效的单词数据');
-            setUploading(false);
-            return;
-          }
-
-          // 调用后端API
-          const token = localStorage.getItem('access_token');
-          const response = await axios.post(
-            `${API_BASE_URL}/words/batch-import`,
-            { words },
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-
-          toast.success(`批量导入完成!\n成功: ${response.data.success_count} 个\n失败: ${response.data.failed_count} 个`);
-          setShowUploadModal(false);
-          setUploadFile(null);
-          loadStats();
-          loadContent();
-        } catch (error: any) {
-          console.error('批量导入失败:', error);
-          toast.error('批量导入失败: ' + (error.response?.data?.detail || error.message));
-        } finally {
-          setUploading(false);
-        }
-      };
-
-      reader.readAsText(uploadFile);
-    } catch (error) {
-      console.error('读取文件失败:', error);
-      toast.error('读取文件失败');
+      const token = localStorage.getItem('access_token');
+      const response = await axios.post(`${API_BASE_URL}/words/batch-import`, { words }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success(`批量导入完成：成功 ${response.data.success_count} 个，失败 ${response.data.failed_count} 个`);
+      setShowUploadModal(false);
+      setUploadFile(null);
+      await Promise.all([loadStats(), loadContent()]);
+    } catch (error: any) {
+      console.error('批量导入失败:', error);
+      toast.error('批量导入失败：' + (error.response?.data?.detail || error.message || '请检查文件格式'));
+    } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-paper p-4 sm:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6 sm:mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 mb-2">📚 内容管理</h1>
-            <p className="text-gray-600">管理系统中的所有学习内容</p>
-          </div>
-          <button
-            onClick={() => navigate('/admin')}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            ← 返回管理中心
-          </button>
-        </div>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="内容管理" subtitle="管理系统中的所有学习内容" />
+
+      <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
 
         {/* Statistics */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-              <div className="text-3xl mb-2">📖</div>
+            <div className="admin-stat-strip rounded-2xl p-5">
+              <BookOpen className="mb-3 h-6 w-6 text-[#397b9b]" />
               <div className="text-2xl font-bold text-gray-800">{stats.word_books.total}</div>
               <div className="text-sm text-gray-600">单词本总数</div>
               <div className="text-xs text-gray-500 mt-2">
                 公开:{stats.word_books.public} | 私有:{stats.word_books.private}
               </div>
             </div>
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-              <div className="text-3xl mb-2">📝</div>
+            <div className="admin-stat-strip rounded-2xl p-5">
+              <FileText className="mb-3 h-6 w-6 text-[#4f6ea7]" />
               <div className="text-2xl font-bold text-gray-800">{stats.words}</div>
               <div className="text-sm text-gray-600">单词总数</div>
             </div>
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-              <div className="text-3xl mb-2">📦</div>
+            <div className="admin-stat-strip rounded-2xl p-5">
+              <PackageOpen className="mb-3 h-6 w-6 text-[#c76333]" />
               <div className="text-2xl font-bold text-gray-800">{stats.units}</div>
               <div className="text-sm text-gray-600">单元总数</div>
             </div>
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-              <div className="text-3xl mb-2">📰</div>
+            <div className="admin-stat-strip rounded-2xl p-5">
+              <LibraryBig className="mb-3 h-6 w-6 text-[#7259a6]" />
               <div className="text-2xl font-bold text-gray-800">{stats.reading_passages}</div>
               <div className="text-sm text-gray-600">阅读文章</div>
             </div>
@@ -392,7 +358,7 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              📖 单词本
+              单词本
             </button>
             <button
               onClick={() => setActiveTab('words')}
@@ -402,7 +368,7 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              📝 单词
+              单词
             </button>
             <button
               onClick={() => setActiveTab('passages')}
@@ -412,7 +378,7 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
-              📰 阅读文章
+              阅读文章
             </button>
           </div>
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {useParams} from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, Printer, Share2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Download, Printer, CheckCircle } from 'lucide-react';
 import { getExamDetail } from '../api/teacher';
 import type { ExamPaper, ExamQuestion } from '../types/exam';
 import html2pdf from 'html2pdf.js';
@@ -16,14 +16,6 @@ const TeacherExamPreview = () => {
   const [showAnswers, setShowAnswers] = useState(true); // 是否显示答案
   const [generating, setGenerating] = useState(false); // PDF生成中
   const pdfContentRef = useRef<HTMLDivElement>(null);
-  const [examInfo, setExamInfo] = useState({
-    school: '',
-    grade: '',
-    className: '',
-    studentName: '',
-    examTime: '60分钟'
-  });
-
   useEffect(() => {
     if (examId) {
       fetchExamDetail(parseInt(examId));
@@ -271,7 +263,7 @@ const TeacherExamPreview = () => {
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       {/* 顶部工具栏 */}
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur print:hidden">
-        <div className="max-w-5xl mx-auto px-4 py-4">
+        <div className="mx-auto max-w-5xl px-4 py-3 sm:py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               onClick={() => goBack()}
@@ -281,10 +273,10 @@ const TeacherExamPreview = () => {
               <span>返回</span>
             </button>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
               <button
                 onClick={() => setShowAnswers(!showAnswers)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
+                className={`flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition sm:px-4 ${
                   showAnswers
                     ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
                     : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
@@ -296,21 +288,21 @@ const TeacherExamPreview = () => {
               <button
                 onClick={handleDownloadPDF}
                 disabled={generating}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2 text-sm text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
               >
                 <Download className="w-4 h-4" />
                 {generating ? '生成中...' : '下载PDF'}
               </button>
               <button
                 onClick={handleDownloadTXT}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition"
+                className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-purple-500 px-3 py-2 text-sm text-white transition hover:bg-purple-600 sm:px-4"
               >
                 <Download className="w-4 h-4" />
                 下载TXT
               </button>
               <button
                 onClick={handlePrint}
-                className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition"
+                className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-500 px-3 py-2 text-sm text-white transition hover:bg-green-600 sm:px-4"
               >
                 <Printer className="w-4 h-4" />
                 打印
@@ -321,7 +313,7 @@ const TeacherExamPreview = () => {
       </div>
 
       {/* PDF内容容器 */}
-      <div ref={pdfContentRef} className="max-w-5xl mx-auto px-4 py-8">
+      <div ref={pdfContentRef} className="mx-auto max-w-5xl px-4 py-5 sm:py-8">
         {/* 标准试卷头部 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -330,14 +322,14 @@ const TeacherExamPreview = () => {
         >
           {/* 试卷标题 */}
           <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">{exam.title}</h1>
+            <h1 className="mb-2 break-words text-2xl font-bold text-gray-900 sm:text-4xl">{exam.title}</h1>
             {exam.description && (
               <p className="text-gray-600 text-sm">{exam.description}</p>
             )}
           </div>
 
           {/* 考试信息栏 */}
-          <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+          <div className="mb-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-700">学校:</span>
@@ -370,7 +362,7 @@ const TeacherExamPreview = () => {
 
           {/* 考试说明 */}
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3 sm:gap-4">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-700">考试时间:</span>
                 <span className="text-gray-900">60分钟</span>
@@ -397,11 +389,11 @@ const TeacherExamPreview = () => {
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {Object.entries(groupQuestionsByType()).map(([type, questions]) => {
                 const totalScore = questions.reduce((sum, q) => sum + q.score, 0);
                 return (
-                  <div key={type} className="text-center p-3 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border border-blue-100">
+                  <div key={type} className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-center">
                     <div className="text-2xl mb-1">{getQuestionTypeIcon(type)}</div>
                     <div className="text-xs text-gray-600 mb-1">{getQuestionTypeName(type)}</div>
                     <div className="text-sm font-bold text-gray-800">{questions.length}题 · {totalScore}分</div>
@@ -533,7 +525,7 @@ const TeacherExamPreview = () => {
 
                   {/* 按文章分组显示 */}
                   <div className="space-y-8">
-                    {Object.entries(passageGroups).map(([passageId, passageQuestions], pIndex) => {
+                    {Object.entries(passageGroups).map(([passageId, passageQuestions]) => {
                       const firstQuestion = passageQuestions[0];
                       return (
                         <div key={passageId} className="print:break-inside-avoid">

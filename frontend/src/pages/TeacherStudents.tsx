@@ -6,13 +6,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
-
-interface UserData {
-  id: number;
-  username: string;
-  full_name: string;
-  role: string;
-}
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface Student {
   id: number;
@@ -39,7 +33,6 @@ const PAGE_SIZE = 50;
 
 const TeacherStudents = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<UserData | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -55,13 +48,6 @@ const TeacherStudents = () => {
     full_name: '',
     email: ''
   });
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      setUser(JSON.parse(userStr));
-    }
-  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -112,12 +98,6 @@ const TeacherStudents = () => {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
-
   const handleCreateStudent = async () => {
     if (!newStudent.username.trim()) {
       toast.warning('请输入用户名');
@@ -159,34 +139,9 @@ const TeacherStudents = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航栏 */}
-      <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/85 shadow-sm backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Users className="w-8 h-8 text-primary" />
-            <h1 className="font-display text-xl font-bold text-gray-800">教师端 · 学生管理</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/teacher/dashboard')}
-              className="text-sm px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition font-medium"
-            >
-              返回首页
-            </button>
-            <span className="text-sm text-gray-600">
-              👨‍🏫 {user?.full_name || '教师'}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md transition"
-            >
-              退出
-            </button>
-          </div>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader role="teacher" title="学生管理" subtitle="管理学生账号、教材与学习进度" icon={Users} />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <main className="teacher-workspace-main">
         {/* 欢迎横幅 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -437,7 +392,7 @@ const TeacherStudents = () => {
             </div>
           </div>
         </motion.div>
-      </div>
+      </main>
 
       {/* 创建学生对话框 */}
       <AnimatePresence>

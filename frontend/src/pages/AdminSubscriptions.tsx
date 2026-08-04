@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   getSubscriptionStats,
@@ -8,6 +7,9 @@ import {
   disableCode,
 } from '../api/subscription';
 import { getTeacherWordBooks } from '../api/teacher';
+import { Ban, Check, Clock3, Ticket } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { toast } from '../components/Toast';
 
 interface Stats {
   total_codes: number;
@@ -43,7 +45,6 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 };
 
 const AdminSubscriptions = () => {
-  const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
   const [codes, setCodes] = useState<CodeItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -66,14 +67,14 @@ const AdminSubscriptions = () => {
       if (bookList.length > 0) {
         setGenBookId(prev => prev === 0 ? bookList[0].id : prev);
       }
-    } catch { /* ignore */ }
+    } catch { toast.error('单词本加载失败，请刷新重试'); }
   }, []);
 
   const fetchStats = useCallback(async () => {
     try {
       const res: any = await getSubscriptionStats();
       setStats(res);
-    } catch { /* ignore */ }
+    } catch { toast.error('兑换码统计加载失败'); }
   }, []);
 
   const fetchCodes = useCallback(async () => {
@@ -83,14 +84,15 @@ const AdminSubscriptions = () => {
       const res: any = await listCodes(params);
       setCodes(res.codes);
       setTotal(res.total);
-    } catch { /* ignore */ }
+    } catch { toast.error('兑换码列表加载失败，请刷新重试'); }
   }, [page, filterStatus]);
 
   useEffect(() => { fetchBooks(); fetchStats(); }, [fetchBooks, fetchStats]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
   const handleGenerate = async () => {
-    if (!genBookId) return;
+    if (!genBookId) { toast.warning('请先选择要绑定的单词本'); return; }
+    if (genCount < 1 || genCount > 100) { toast.warning('生成数量需在 1～100 之间'); return; }
     setGenerating(true);
     setGenResult([]);
     try {
@@ -100,10 +102,10 @@ const AdminSubscriptions = () => {
         batch_note: genNote || undefined,
       });
       setGenResult(res);
-      fetchStats();
-      fetchCodes();
-    } catch { /* ignore */ }
-    setGenerating(false);
+      await Promise.all([fetchStats(), fetchCodes()]);
+      toast.success(`已生成 ${res.length} 个兑换码`);
+    } catch { toast.error('生成兑换码失败，请检查参数后重试'); }
+    finally { setGenerating(false); }
   };
 
   const handleDisable = async (codeId: number) => {
@@ -112,20 +114,18 @@ const AdminSubscriptions = () => {
       await disableCode(codeId);
       fetchCodes();
       fetchStats();
-    } catch { /* ignore */ }
+    } catch { toast.error('禁用兑换码失败，请重试'); }
   };
 
-  const copyAllCodes = () => {
+  const copyAllCodes = async () => {
     const text = genResult.map((c) => c.code).join('\n');
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { toast.warning('当前浏览器不允许复制，请手动选择兑换码'); }
   };
 
-  const copySingleCode = (code: string, id: number) => {
-    navigator.clipboard.writeText(code);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 1500);
+  const copySingleCode = async (code: string, id: number) => {
+    try { await navigator.clipboard.writeText(code); setCopiedId(id); setTimeout(() => setCopiedId(null), 1500); }
+    catch { toast.warning('当前浏览器不允许复制，请手动选择兑换码'); }
   };
 
   const getBookName = (bookId: number, bookName?: string) => {
@@ -159,33 +159,22 @@ const AdminSubscriptions = () => {
   const totalPages = Math.ceil(total / 20);
 
   return (
-    <div className="min-h-screen bg-paper p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* 头部 */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">📖 书籍兑换码管理</h1>
-            <p className="text-gray-500 text-sm mt-1">生成兑换码，学生兑换后解锁对应单词本</p>
-          </div>
-          <button
-            onClick={() => navigate('/admin/dashboard')}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-gray-600 hover:bg-gray-50"
-          >
-            返回
-          </button>
-        </div>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="书籍兑换码管理" subtitle="生成兑换码，学生兑换后解锁对应单词本" icon={Ticket} />
+
+      <main className="admin-workspace-main">
 
         {/* 统计卡片 */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[
-              { label: '未使用', value: stats.unused_codes, icon: '🎟️', bg: 'bg-green-50' },
-              { label: '已使用', value: stats.used_codes, icon: '✅', bg: 'bg-blue-50' },
-              { label: '已过期', value: stats.expired_codes, icon: '⏰', bg: 'bg-gray-50' },
-              { label: '已禁用', value: stats.disabled_codes, icon: '🚫', bg: 'bg-red-50' },
+              { label: '未使用', value: stats.unused_codes, icon: Ticket, tone: 'green' },
+              { label: '已使用', value: stats.used_codes, icon: Check, tone: 'blue' },
+              { label: '已过期', value: stats.expired_codes, icon: Clock3, tone: 'orange' },
+              { label: '已禁用', value: stats.disabled_codes, icon: Ban, tone: 'violet' },
             ].map((item) => (
-              <div key={item.label} className={`${item.bg} rounded-xl p-4 border border-slate-200`}>
-                <div className="text-2xl mb-1">{item.icon}</div>
+              <div key={item.label} className="admin-stat-strip rounded-2xl p-4">
+                <item.icon className={`mb-3 h-5 w-5 admin-tool-icon admin-tool-icon-${item.tone} rounded-lg p-1`} />
                 <div className="text-2xl font-bold text-gray-800">{item.value}</div>
                 <div className="text-sm text-gray-500">{item.label}</div>
               </div>
@@ -203,7 +192,7 @@ const AdminSubscriptions = () => {
                 type="number"
                 min={1} max={100}
                 value={genCount}
-                onChange={(e) => setGenCount(Number(e.target.value))}
+                onChange={(e) => setGenCount(Math.min(100, Math.max(1, Number(e.target.value) || 1)))}
                 className="w-full sm:w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               />
             </div>
@@ -387,7 +376,7 @@ const AdminSubscriptions = () => {
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 };

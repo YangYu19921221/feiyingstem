@@ -6,7 +6,6 @@
  * 大文件必须有进度条,否则老师以为页面卡死会反复点。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   phoneticsApi, CATEGORY_LABELS, formatSize,
@@ -14,6 +13,8 @@ import {
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
+import { Upload, Volume2 } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 const PAGE_SIZE = 10;
 const CATEGORIES = Object.entries(CATEGORY_LABELS) as [PhoneticCategory, string][];
@@ -27,7 +28,6 @@ const CATEGORY_COVER: Record<string, string> = {
 };
 
 export default function TeacherPhonetics() {
-  const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<PhoneticVideo[]>([]);
@@ -50,7 +50,8 @@ export default function TeacherPhonetics() {
   const allChecked = items.length > 0 && items.every((v) => selected.has(v.id));
   const toggleOne = (id: number) => setSelected((s) => {
     const n = new Set(s);
-    n.has(id) ? n.delete(id) : n.add(id);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
     return n;
   });
   const toggleAll = () => setSelected((s) => {
@@ -196,15 +197,17 @@ export default function TeacherPhonetics() {
   };
 
   return (
-    <div className="min-h-screen bg-paper">
-      <div className="mx-auto max-w-6xl px-5 py-6">
-        <button onClick={() => navigate('/teacher/dashboard')} className="mb-3 text-sm text-ink-mute hover:text-ink">
-          ← 返回工作台
-        </button>
-
+    <div className="staff-legacy-page min-h-screen bg-paper">
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="音标视频管理"
+        subtitle="上传、整理并发布音标视频"
+        icon={Volume2}
+      />
+      <main className="teacher-workspace-main">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="font-display text-2xl font-bold text-ink">🔊 音标视频管理</h1>
+            <h1 className="flex items-center gap-2 font-display text-2xl font-bold text-[#173047]"><Volume2 className="h-5 w-5 text-[#2f8791]" />音标视频管理</h1>
             <p className="mt-1 text-xs text-ink-mute">
               音标是英语的基础,学生首页有独立入口。上传的视频只有登录的学生能看。
               可一次选多个视频批量上传,标题自动取文件名。
@@ -220,7 +223,7 @@ export default function TeacherPhonetics() {
                 ? (batch && batch.total > 1
                     ? `上传中 ${batch.done + 1}/${batch.total} · ${progress}%`
                     : `上传中 ${progress}%`)
-                : '⬆️ 上传视频'}
+                : <><Upload className="mr-1 inline h-4 w-4" />上传视频</>}
             </button>
             <input
               ref={fileRef} type="file" accept="video/mp4,video/webm,video/quicktime"
@@ -354,7 +357,7 @@ export default function TeacherPhonetics() {
             <span className="text-xs text-ink-mute">共 {total} 个</span>
           </div>
         )}
-      </div>
+      </main>
 
       {/* 编辑弹层 */}
       {editing && (

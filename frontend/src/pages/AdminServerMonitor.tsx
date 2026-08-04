@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Cpu,
+  AlertTriangle, ArrowDown, ArrowUp, Check, Clock, Cpu,
   Gauge, HardDrive, MemoryStick, Pause, Pencil, Play, Server, Table2, Users, Wifi,
 } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import {
   fetchServerMetrics, updateCapacityConfig,
   type CapacityInfo, type MonitorSample, type ServerMetrics,
@@ -439,7 +439,6 @@ function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogica
 
 // ===== 页面 =====
 const AdminServerMonitor = () => {
-  const navigate = useNavigate();
   const [paused, setPaused] = useState(false);
   const [windowSec, setWindowSec] = useState(300);
   const [showTable, setShowTable] = useState(false);
@@ -460,32 +459,10 @@ const AdminServerMonitor = () => {
   const spark = (key: keyof MonitorSample) => view.sliced.slice(-30).map((s) => s[key] as number);
 
   return (
-    <div className="min-h-screen text-slate-800">
-      <nav className="bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => navigate('/admin')} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="返回工作台">
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600"><Gauge className="h-5 w-5" /></div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-teal-600">Server monitor</p>
-              <h1 className="truncate text-lg font-bold">服务器监控</h1>
-            </div>
-            {data && (
-              <span className="hidden rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500 md:inline-flex">
-                {data.static.hostname}
-              </span>
-            )}
-          </div>
-          <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${paused ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'}`}>
-            <span className={`h-2 w-2 rounded-full ${paused ? 'bg-slate-400' : 'animate-pulse bg-emerald-500'}`} />
-            {paused ? '已暂停' : '实时 · 3s'}
-          </div>
-        </div>
-      </nav>
+    <div className="admin-legacy-page min-h-screen text-slate-800">
+      <StaffWorkspaceHeader role="admin" title="服务器监控" subtitle={data?.static.hostname || '实时服务状态'} icon={Gauge} action={<div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${paused ? 'bg-slate-100 text-[#536170]' : 'bg-emerald-50 text-emerald-700'}`}><span className={`h-2 w-2 rounded-full ${paused ? 'bg-slate-400' : 'animate-pulse bg-emerald-500'}`} />{paused ? '已暂停' : '实时 · 3s'}</div>} />
 
-      <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="admin-workspace-main space-y-5">
         {/* 控制行:窗口 + 暂停 + 表格视图 */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white text-xs font-semibold shadow-sm">

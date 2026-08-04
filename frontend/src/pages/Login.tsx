@@ -97,7 +97,18 @@ const Login = () => {
       const response = await axios.post<LoginResponse>(`${API_BASE_URL}/auth/login/json`, payload);
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
-      navigate('/dashboard');
+      // 登录后直接进入角色的规范入口，避免所有角色先落到通用 /dashboard
+      // 再由组件分发，导致地址、导航高亮和旧页面缓存看起来不一致。
+      const destination = response.data.user.role === 'admin'
+        ? '/admin'
+        : response.data.user.role === 'org_admin'
+          ? '/org'
+          : response.data.user.role === 'teacher'
+            ? '/teacher/dashboard'
+            : response.data.user.role === 'display'
+              ? '/teacher/bigscreen'
+              : '/student/dashboard';
+      navigate(destination, { replace: true });
     } catch (err: unknown) {
       const e = parseError(err, '登录失败，请稍后重试');
       setError(e.message);

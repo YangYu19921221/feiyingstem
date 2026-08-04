@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
+import { Users } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { getErrorMessage } from '../utils/errorMessage';
 
 interface User {
@@ -29,7 +30,6 @@ interface UserStats {
 }
 
 const AdminUserManagement = () => {
-  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +41,9 @@ const AdminUserManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetting, setResetting] = useState(false);
   // 批量选择(用于清除复习数据):仅对学生生效
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [clearing, setClearing] = useState(false);
@@ -73,7 +76,7 @@ const AdminUserManagement = () => {
       setUsers(response.data.users);
       setTotalPages(response.data.total_pages);
     } catch (error) {
-      console.error('加载用户失败:', error);
+      toast.error(getErrorMessage(error, '加载用户失败，请重试'));
     } finally {
       setLoading(false);
     }
@@ -86,7 +89,8 @@ const AdminUserManagement = () => {
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -136,7 +140,7 @@ const AdminUserManagement = () => {
       });
       setStats(response.data);
     } catch (error) {
-      console.error('加载统计失败:', error);
+      toast.error(getErrorMessage(error, '加载统计失败，请重试'));
     }
   };
 
@@ -205,22 +209,28 @@ const AdminUserManagement = () => {
     }
   };
 
-  const handleResetPassword = async (userId: number) => {
-    const newPassword = prompt('请输入新密码（至少6位）:');
-    if (!newPassword || newPassword.length < 6) {
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+    const newPassword = resetPassword.trim();
+    if (newPassword.length < 6) {
       toast.warning('密码长度至少6位');
       return;
     }
+    setResetting(true);
     try {
       const token = localStorage.getItem('access_token');
       await axios.post(
-        `${API_BASE_URL}/admin/users/${userId}/reset-password`,
+        `${API_BASE_URL}/admin/users/${resetTarget.id}/reset-password`,
         { new_password: newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast.success('密码重置成功');
+      setResetTarget(null);
+      setResetPassword('');
     } catch (error: any) {
       toast.error(getErrorMessage(error, '重置失败'));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -262,46 +272,30 @@ const AdminUserManagement = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper">
-      {/* 顶部导航 */}
-      <nav className="sticky top-0 z-20 bg-white/85 shadow-sm border-b border-slate-200/80 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="text-gray-600 hover:text-gray-800"
-            >
-              ← 返回
-            </button>
-            <div>
-              <h1 className="font-display text-xl font-bold text-gray-800">用户管理</h1>
-              <p className="hidden text-xs text-slate-500 sm:block">查询账号、角色与启用状态</p>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="用户管理" subtitle="查询账号、角色与启用状态" icon={Users} />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 sm:py-8 lg:px-10 lg:py-8">
         {/* 统计卡片 */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <div className="bg-white rounded-xl border-t-2 border-slate-400 p-4 shadow-sm">
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5">
+            <div className="admin-stat-strip rounded-2xl p-4">
               <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
               <div className="text-sm text-gray-500">总用户数</div>
             </div>
-            <div className="bg-white rounded-xl border-t-2 border-emerald-400 p-4 shadow-sm">
+            <div className="admin-stat-strip rounded-2xl p-4">
               <div className="text-2xl font-bold text-green-600">{stats.active}</div>
               <div className="text-sm text-gray-500">活跃用户</div>
             </div>
-            <div className="bg-white rounded-xl border-t-2 border-blue-400 p-4 shadow-sm">
+            <div className="admin-stat-strip rounded-2xl p-4">
               <div className="text-2xl font-bold text-blue-600">{stats.by_role.student}</div>
               <div className="text-sm text-gray-500">学生</div>
             </div>
-            <div className="bg-white rounded-xl border-t-2 border-violet-400 p-4 shadow-sm">
-              <div className="text-2xl font-bold text-purple-600">{stats.by_role.teacher}</div>
+            <div className="admin-stat-strip rounded-2xl p-4">
+              <div className="text-2xl font-bold text-[#7259a6]">{stats.by_role.teacher}</div>
               <div className="text-sm text-gray-500">教师</div>
             </div>
-            <div className="bg-white rounded-xl border-t-2 border-rose-400 p-4 shadow-sm">
+            <div className="admin-stat-strip rounded-2xl p-4">
               <div className="text-2xl font-bold text-red-600">{stats.by_role.admin}</div>
               <div className="text-sm text-gray-500">管理员</div>
             </div>
@@ -310,19 +304,19 @@ const AdminUserManagement = () => {
 
         {/* 搜索和筛选 */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-6">
-          <div className="flex flex-wrap gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:gap-4">
             <input
               type="text"
               placeholder="搜索用户名/姓名/邮箱"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              className="flex-1 min-w-[200px] px-4 py-2 border rounded-lg"
+              className="col-span-2 min-w-0 px-4 py-2 border rounded-lg sm:flex-1 sm:basis-64"
             />
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 border rounded-lg"
+              className="min-w-0 px-3 py-2 border rounded-lg sm:px-4"
             >
               <option value="">所有角色</option>
               <option value="student">学生</option>
@@ -332,7 +326,7 @@ const AdminUserManagement = () => {
             <select
               value={activeFilter === null ? '' : activeFilter.toString()}
               onChange={(e) => setActiveFilter(e.target.value === '' ? null : e.target.value === 'true')}
-              className="px-4 py-2 border rounded-lg"
+              className="min-w-0 px-3 py-2 border rounded-lg sm:px-4"
             >
               <option value="">所有状态</option>
               <option value="true">已激活</option>
@@ -340,19 +334,19 @@ const AdminUserManagement = () => {
             </select>
             <button
               onClick={handleSearch}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 sm:px-6"
             >
               搜索
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="min-h-10 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 sm:px-6"
             >
               + 创建用户
             </button>
             <button
               onClick={handleExportExcel}
-              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              className="min-h-10 rounded-lg bg-purple-600 px-4 py-2 text-white hover:bg-purple-700 sm:px-6"
             >
               导出 Excel
             </button>
@@ -360,7 +354,7 @@ const AdminUserManagement = () => {
               onClick={handleClearReviewData}
               disabled={clearing || selectedIds.size === 0}
               title="清除选中学生的复习进度(不影响已背单词)"
-              className="px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="min-h-10 rounded-lg bg-rose-600 px-4 py-2 text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40 sm:px-6"
             >
               {clearing ? '清除中…' : `清除复习数据${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
             </button>
@@ -375,7 +369,25 @@ const AdminUserManagement = () => {
             </div>
           ) : (
             <>
-              <table className="w-full">
+              <div className="space-y-3 p-3 sm:hidden">
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={allStudentsSelected} onChange={toggleSelectAllStudents} disabled={studentUsers.length === 0} className="h-4 w-4 accent-rose-600" />选择本页学生</label>
+                  <span>{users.length} 个账号</span>
+                </div>
+                {users.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">暂无用户数据</div> : users.map((user) => (
+                  <article key={user.id} className={`rounded-lg border p-3 ${selectedIds.has(user.id) ? 'border-rose-200 bg-rose-50/50' : 'border-slate-200'}`}>
+                    <div className="flex items-start gap-3">
+                      {user.role === 'student' ? <input type="checkbox" checked={selectedIds.has(user.id)} onChange={() => toggleSelect(user.id)} className="mt-1 h-4 w-4 shrink-0 accent-rose-600" aria-label={`选择 ${user.full_name || user.username}`} /> : <span className="mt-1 h-4 w-4 shrink-0" />}
+                      <div className="min-w-0 flex-1"><div className="truncate font-semibold text-slate-800">{user.full_name || user.username}</div><div className="truncate text-xs text-slate-500">{user.username}</div></div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${user.role === 'admin' ? 'bg-red-100 text-red-700' : user.role === 'teacher' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{getRoleName(user.role)}</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-xs"><span className={user.is_active ? 'text-green-700' : 'text-slate-600'}>{user.is_active ? '活跃' : '禁用'}</span><span className="truncate text-slate-400">{user.last_login ? new Date(user.last_login).toLocaleString('zh-CN') : '从未登录'}</span></div>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => { setEditingUser(user); setShowEditModal(true); }} className="text-blue-600">编辑</button><button onClick={() => handleToggleStatus(user.id)} className="text-orange-600">{user.is_active ? '禁用' : '启用'}</button><button onClick={() => { setResetTarget(user); setResetPassword(''); }} className="text-purple-600">重置密码</button><button onClick={() => handleDeleteUser(user.id)} className="text-red-600">删除</button></div>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full min-w-[860px]">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-4 py-3 text-left">
@@ -422,7 +434,7 @@ const AdminUserManagement = () => {
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <span className={`px-2 py-1 rounded text-xs ${
-                          user.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                          user.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-[#536170]'
                         }`}>
                           {user.is_active ? '活跃' : '禁用'}
                         </span>
@@ -448,7 +460,7 @@ const AdminUserManagement = () => {
                             {user.is_active ? '禁用' : '启用'}
                           </button>
                           <button
-                            onClick={() => handleResetPassword(user.id)}
+                            onClick={() => { setResetTarget(user); setResetPassword(''); }}
                             className="text-purple-600 hover:text-purple-800"
                           >
                             重置密码
@@ -465,9 +477,10 @@ const AdminUserManagement = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
 
               {/* 分页 */}
-              <div className="px-6 py-4 border-t flex justify-between items-center">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-4 sm:px-6">
                 <div className="text-sm text-gray-500">
                   第 {page} 页 / 共 {totalPages} 页
                 </div>
@@ -631,6 +644,27 @@ const AdminUserManagement = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) setResetTarget(null); }}>
+          <form className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6" onSubmit={(e) => { e.preventDefault(); void handleResetPassword(); }}>
+            <div className="mb-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">账号安全</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">重置登录密码</h2>
+              <p className="mt-1 text-sm text-slate-500">账号：{resetTarget.username} · 旧密码会立即失效</p>
+            </div>
+            <label className="block text-sm font-medium text-slate-700">
+              新密码
+              <input autoFocus type="password" minLength={6} value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="至少 6 位" className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm text-slate-900 outline-none focus:border-[#3976a9] focus:ring-4 focus:ring-[#3976a9]/10" />
+            </label>
+            <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">请通过安全渠道转交新密码，不要在公共群聊中明文发送。</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200" onClick={() => setResetTarget(null)}>取消</button>
+              <button type="submit" disabled={resetting || resetPassword.trim().length < 6} className="admin-primary admin-focus-ring min-h-10 rounded-xl px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">{resetting ? '重置中…' : '确认重置'}</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

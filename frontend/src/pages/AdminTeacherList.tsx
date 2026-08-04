@@ -5,6 +5,8 @@ import { resetTeacherCoinPin } from '../api/coins';
 import type { AdminTeacherListItem } from '../api/admin';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
+import { GraduationCap, Plus, School, Users } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 const AdminTeacherList = () => {
   const navigate = useNavigate();
@@ -96,78 +98,79 @@ const AdminTeacherList = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper">
-      <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/dashboard')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-gray-600 hover:bg-slate-50">← 返回</button>
-            <h1 className="text-xl font-bold text-gray-800">教师管理</h1>
-          </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-[#3976a9] text-white rounded-lg hover:bg-[#2e628f] text-sm font-semibold"
-          >
-            + 新建教师
-          </button>
-        </div>
-      </nav>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title="教师管理" subtitle="教师账号、班级与教学权限" icon={GraduationCap} action={<button type="button" onClick={() => setShowCreateModal(true)} className="admin-primary admin-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"><Plus className="h-4 w-4" />新建教师</button>} />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+      <main className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 sm:py-8 lg:px-10 lg:py-8">
+        <section className="admin-teacher-directory" aria-labelledby="admin-teacher-directory-title">
+          <div className="admin-teacher-directory-heading">
+            <div>
+              <h2 id="admin-teacher-directory-title">教师目录</h2>
+              <p>查看教师负责的班级与学生，并集中处理账号权限。</p>
+            </div>
+            <span>{loading ? '正在同步' : `${teachers.length} 位教师`}</span>
+          </div>
           {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-orange-500 border-t-transparent"></div>
+            <div className="admin-teacher-loading" role="status" aria-label="正在加载教师目录">
+              <span /><span /><span />
+            </div>
+          ) : teachers.length === 0 ? (
+            <div className="admin-teacher-empty">
+              <GraduationCap className="h-8 w-8" aria-hidden="true" />
+              <strong>还没有教师账号</strong>
+              <span>点击“新建教师”创建账号，随后可以为教师分配班级和学生。</span>
             </div>
           ) : (
             <>
-            <div className="sm:hidden space-y-3 p-3">
-              {teachers.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">暂无教师数据</div> : teachers.map((t) => (
-                <article key={t.id} className="rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="truncate font-semibold text-slate-800">{t.full_name || t.username}</div><div className="truncate text-xs text-slate-500">{t.username} · {t.email}</div></div><span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${t.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{t.is_active ? '正常' : '禁用'}</span></div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500"><div>班级 <span className="font-semibold text-slate-700">{t.class_count}</span></div><div>学生 <span className="font-semibold text-slate-700">{t.student_count}</span></div></div>
-                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => navigate(`/admin/teachers/${t.id}`)} className="text-blue-600">详情</button><button onClick={() => handleToggleActive(t)} className="text-orange-600">{t.is_active ? '禁用' : '启用'}</button><button onClick={() => handleResetPassword(t.id)} className="text-purple-600">重置密码</button><button onClick={() => handleResetCoinPin(t.id)} className="text-amber-600">重置金币密码</button><button onClick={() => handleDelete(t)} className="text-red-600">删除</button></div>
+            <div className="admin-teacher-mobile-list sm:hidden">
+              {teachers.map((t) => (
+                <article key={t.id} className="admin-teacher-mobile-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="admin-teacher-avatar" aria-hidden="true"><GraduationCap className="h-5 w-5" /></span>
+                      <div className="min-w-0"><div className="truncate font-bold text-[#173047]">{t.full_name || t.username}</div><div className="truncate text-xs text-[#6d8195]">{t.username}</div></div>
+                    </div>
+                    <span className={`admin-teacher-status ${t.is_active ? 'is-active' : 'is-disabled'}`}>{t.is_active ? '正常' : '已禁用'}</span>
+                  </div>
+                  <p className="mt-3 truncate text-xs text-[#5f7486]">{t.email}</p>
+                  <div className="admin-teacher-mobile-meta"><span><School className="h-4 w-4" />{t.class_count} 个班级</span><span><Users className="h-4 w-4" />{t.student_count} 名学生</span></div>
+                  <div className="admin-teacher-actions mt-4">
+                    <button type="button" onClick={() => navigate(`/admin/teachers/${t.id}`)} className="admin-teacher-action is-primary">查看详情</button>
+                    <button type="button" onClick={() => handleToggleActive(t)} className={`admin-teacher-action ${t.is_active ? 'is-state' : 'is-success'}`}>{t.is_active ? '禁用账号' : '恢复账号'}</button>
+                    <button type="button" onClick={() => handleResetPassword(t.id)} className="admin-teacher-action">重置密码</button>
+                    <button type="button" onClick={() => handleResetCoinPin(t.id)} className="admin-teacher-action">金币密码</button>
+                    <button type="button" onClick={() => handleDelete(t)} className="admin-teacher-action is-danger">删除</button>
+                  </div>
                 </article>
               ))}
             </div>
-            <div className="hidden overflow-x-auto sm:block">
-            <table className="w-full min-w-[900px] whitespace-nowrap">
-              <thead className="bg-slate-50 border-b border-slate-200">
+            <div className="admin-teacher-table-scroll hidden overflow-x-auto sm:block">
+            <table className="admin-teacher-table w-full min-w-[1080px] whitespace-nowrap">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户名</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">邮箱</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">班级数</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">学生数</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+                  <th>教师</th>
+                  <th>联系方式</th>
+                  <th>教学规模</th>
+                  <th>账号状态</th>
+                  <th className="text-right">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
-                {teachers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">暂无教师数据</td>
-                  </tr>
-                ) : teachers.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/70">
-                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">{t.username}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{t.full_name || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{t.email}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{t.class_count}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{t.student_count}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs ${t.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {t.is_active ? '正常' : '禁用'}
-                      </span>
+              <tbody>
+                {teachers.map((t) => (
+                  <tr key={t.id}>
+                    <td>
+                      <div className="flex items-center gap-3"><span className="admin-teacher-avatar" aria-hidden="true"><GraduationCap className="h-5 w-5" /></span><div className="min-w-0"><div className="max-w-[15rem] truncate font-bold text-[#173047]">{t.full_name || t.username}</div><div className="mt-0.5 max-w-[15rem] truncate text-xs text-[#6d8195]">{t.username}</div></div></div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-right">
-                      <div className="flex justify-end gap-3">
-                        <button onClick={() => navigate(`/admin/teachers/${t.id}`)} className="text-blue-600 hover:text-blue-800">详情</button>
-                        <button onClick={() => handleToggleActive(t)} className="text-orange-600 hover:text-orange-800">
-                          {t.is_active ? '禁用' : '启用'}
-                        </button>
-                        <button onClick={() => handleResetPassword(t.id)} className="text-purple-600 hover:text-purple-800">重置密码</button>
-                        <button onClick={() => handleResetCoinPin(t.id)} className="text-amber-600 hover:text-amber-800">重置金币密码</button>
-                        <button onClick={() => handleDelete(t)} className="text-red-600 hover:text-red-800">删除</button>
+                    <td><span className="block max-w-[17rem] truncate text-sm text-[#526b7f]">{t.email}</span></td>
+                    <td><div className="admin-teacher-scale"><span><School className="h-4 w-4" />{t.class_count} 个班级</span><span><Users className="h-4 w-4" />{t.student_count} 名学生</span></div></td>
+                    <td><span className={`admin-teacher-status ${t.is_active ? 'is-active' : 'is-disabled'}`}>{t.is_active ? '正常' : '已禁用'}</span></td>
+                    <td>
+                      <div className="admin-teacher-actions justify-end">
+                        <button type="button" onClick={() => navigate(`/admin/teachers/${t.id}`)} className="admin-teacher-action is-primary">详情</button>
+                        <button type="button" onClick={() => handleToggleActive(t)} className={`admin-teacher-action ${t.is_active ? 'is-state' : 'is-success'}`}>{t.is_active ? '禁用' : '恢复'}</button>
+                        <button type="button" onClick={() => handleResetPassword(t.id)} className="admin-teacher-action">重置密码</button>
+                        <button type="button" onClick={() => handleResetCoinPin(t.id)} className="admin-teacher-action">金币密码</button>
+                        <button type="button" onClick={() => handleDelete(t)} className="admin-teacher-action is-danger">删除</button>
                       </div>
                     </td>
                   </tr>
@@ -177,8 +180,8 @@ const AdminTeacherList = () => {
             </div>
             </>
           )}
-        </div>
-      </div>
+        </section>
+      </main>
 
       {showCreateModal && (
         <div className="fixed inset-0 bg-slate-950/40 flex items-center justify-center z-50 p-4">

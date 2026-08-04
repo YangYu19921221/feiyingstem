@@ -16,6 +16,9 @@ import { getTeacherWordBooks, getStudentsList, type TeacherWordBook, type Studen
 import { ScopeSelector } from '../components/teacher/ScopeSelector';
 import type { ScopeValue } from '../components/teacher/ScopeSelector';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { ClipboardList, Plus, Search } from 'lucide-react';
 
 // 学习模式映射
 const LEARNING_MODE_MAP: Record<string, string> = {
@@ -316,30 +319,15 @@ const TeacherHomework: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f8fc] p-4 text-slate-800 sm:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* 头部 */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="mb-1 text-2xl font-bold text-gray-800 sm:text-3xl">📚 作业管理</h1>
-            <p className="text-gray-600">创建和管理学生作业</p>
-          </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowCreateModal(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-slate-700 sm:w-auto"
-          >
-            <span className="text-xl">➕</span>
-            <span>创建新作业</span>
-          </motion.button>
-        </div>
+    <div className="staff-legacy-page min-h-screen text-slate-800">
+      <StaffWorkspaceHeader role="teacher" title="作业管理" subtitle="创建和管理学生作业" icon={ClipboardList} action={<motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowCreateModal(true)} className="teacher-primary teacher-focus-ring flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"><Plus className="h-4 w-4" />创建新作业</motion.button>} />
+      <main className="teacher-workspace-main text-slate-800">
 
         {/* 工具栏:搜索 + 批量删除 */}
         {homeworkList.length > 0 && (
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <div className="relative flex-1 max-w-md">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
               <input
                 type="text"
                 value={listQuery}
@@ -1051,7 +1039,7 @@ const TeacherHomework: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </main>
     </div>
   );
 };

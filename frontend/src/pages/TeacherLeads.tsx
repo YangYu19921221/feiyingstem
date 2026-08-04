@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Phone, CheckCircle, Clock } from 'lucide-react';
+import { Phone, CheckCircle, Clock } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
@@ -38,7 +38,6 @@ const SOURCE_LABELS: Record<string, string> = Object.fromEntries(CHANNELS.map(c 
 const sourceLabel = (s: string | null) => (s ? SOURCE_LABELS[s] || `🔗 ${s}` : '🌱 自然流量');
 
 const TeacherLeads = () => {
-  const navigate = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [phoneCount, setPhoneCount] = useState(0);
@@ -98,7 +97,7 @@ const TeacherLeads = () => {
       await axios.put(`${API_BASE_URL}/assessment/leads/${id}/notes`, { notes: editNotes }, { headers });
       setEditingId(null);
       loadLeads();
-    } catch (error) {
+    } catch {
       toast.error('保存失败');
     }
   };
@@ -107,7 +106,7 @@ const TeacherLeads = () => {
     try {
       await axios.put(`${API_BASE_URL}/assessment/leads/${lead.id}/notes`, { converted: !lead.converted }, { headers });
       loadLeads();
-    } catch (error) {
+    } catch {
       toast.error('操作失败');
     }
   };
@@ -121,29 +120,20 @@ const TeacherLeads = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/teacher/dashboard')} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <h1 className="text-xl font-bold text-gray-800">测评线索管理</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-orange-600">
-              <input type="checkbox" checked={todayOnly} onChange={e => { setTodayOnly(e.target.checked); setPage(1); }} className="rounded" />
-              只看今天(下播战报)
-            </label>
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input type="checkbox" checked={phoneOnly} onChange={e => { setPhoneOnly(e.target.checked); setPage(1); }} className="rounded" />
-              只看留号
-            </label>
-            <span className="text-sm text-gray-500">共 {total} 条</span>
-          </div>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader role="teacher" title="测评线索管理" subtitle="跟进测评用户与转化状态" icon={Phone} />
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <main className="teacher-workspace-main">
+        <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <label className="flex items-center gap-2 text-xs font-medium text-orange-600 sm:text-sm">
+            <input type="checkbox" checked={todayOnly} onChange={e => { setTodayOnly(e.target.checked); setPage(1); }} className="rounded" />
+            只看今天（下播战报）
+          </label>
+          <label className="flex items-center gap-2 text-xs text-gray-600 sm:text-sm">
+            <input type="checkbox" checked={phoneOnly} onChange={e => { setPhoneOnly(e.target.checked); setPage(1); }} className="rounded" />
+            只看留号
+          </label>
+          <span className="text-xs text-gray-500 sm:text-sm">共 {total} 条</span>
+        </div>
         {/* 统计卡片 */}
         <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="bg-white rounded-xl p-4 shadow-sm text-center">
@@ -183,7 +173,7 @@ const TeacherLeads = () => {
             </div>
           </div>
           {sourceStats.length === 0 ? (
-            <p className="text-sm text-gray-300 text-center py-2">暂无数据——把渠道链接挂到直播间小风车,线索会自动分渠道</p>
+            <p className="py-2 text-center text-sm text-slate-500">暂无数据——把渠道链接挂到直播间小风车,线索会自动分渠道</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               <button
@@ -217,7 +207,7 @@ const TeacherLeads = () => {
         </div>
 
         {/* 线索列表 */}
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           {loading ? (
             <div className="text-center py-12 text-gray-400">加载中...</div>
           ) : leads.length === 0 ? (
@@ -227,7 +217,7 @@ const TeacherLeads = () => {
               <p className="text-sm text-gray-300 mt-1">家长扫码测评后，线索将自动出现在这里</p>
             </div>
           ) : (
-            <table className="w-full">
+            <table className="w-full min-w-[960px]">
               <thead>
                 <tr className="border-b-2 border-gray-200 bg-gray-50">
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">时间</th>
@@ -308,7 +298,7 @@ const TeacherLeads = () => {
                         <button
                           onClick={() => handleToggleConverted(lead)}
                           className={`px-3 py-1 rounded text-xs font-medium ${
-                            lead.converted ? 'bg-gray-200 text-gray-600' : 'bg-green-500 text-white'
+                            lead.converted ? 'border border-slate-300 bg-slate-100 text-slate-700' : 'bg-green-600 text-white'
                           }`}
                         >
                           {lead.converted ? '取消转化' : '标记转化'}
@@ -330,7 +320,7 @@ const TeacherLeads = () => {
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 };

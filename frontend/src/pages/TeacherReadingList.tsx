@@ -5,6 +5,8 @@ import { toast } from '../components/Toast';
 import { getTeacherPassages, deletePassage } from '../api/reading';
 import type { ReadingPassage } from '../api/reading';
 import { getErrorMessage } from '../utils/errorMessage';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { BookOpenText } from 'lucide-react';
 
 const TeacherReadingList = () => {
   const navigate = useNavigate();
@@ -69,32 +71,15 @@ const TeacherReadingList = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <nav className="sticky top-0 z-10 mb-5 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="text-gray-600 hover:text-gray-800 transition"
-            >
-              ← 返回
-            </button>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-gray-800 sm:text-2xl">
-              <span>📖</span> 阅读理解管理
-            </h1>
-          </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => navigate('/teacher/reading/create')}
-            className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 sm:px-6"
-          >
-            + 创建新文章
-          </motion.button>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="阅读理解管理"
+        subtitle="创建、编辑并布置阅读文章"
+        icon={BookOpenText}
+        action={<button onClick={() => navigate('/teacher/reading/create')} className="teacher-primary teacher-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold">+ 创建新文章</button>}
+      />
 
-      <div className="max-w-7xl mx-auto px-4 pb-12">
+      <main className="teacher-workspace-main">
         {/* 筛选栏 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -263,7 +248,7 @@ const TeacherReadingList = () => {
             ))}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Trash2, Edit, Upload, FileSpreadsheet, Save } from 'lucide-react';
+import { Plus, Trash2, Edit, Upload, FileSpreadsheet, Save, MessageSquareText } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import * as XLSX from 'xlsx';
 import {
   listSentenceUnits, createSentenceUnit, updateSentenceUnit, deleteSentenceUnit,
@@ -19,7 +20,6 @@ import Field from '../components/Field';
  * - 句子支持单条录入 + Excel/CSV 批量导入
  */
 export default function TeacherSentenceEditor() {
-  const navigate = useNavigate();
   const { bookId } = useParams<{ bookId: string }>();
   const bid = parseInt(bookId || '0', 10);
 
@@ -201,17 +201,15 @@ export default function TeacherSentenceEditor() {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => navigate('/teacher/sentences')} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
-            <ArrowLeft className="w-4 h-4" /> 返回
-          </button>
-          <h1 className="font-display text-base font-semibold text-ink">句子集详情</h1>
-          <div className="w-12" />
-        </div>
-      </nav>
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="句子集详情"
+        subtitle="维护单元与句子内容"
+        icon={MessageSquareText}
+        backTo="/teacher/sentences"
+      />
 
-      <div className="max-w-6xl mx-auto px-5 py-6">
+      <main className="teacher-workspace-main">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* 左：单元 */}
           <aside className="lg:col-span-3">
@@ -262,11 +260,11 @@ export default function TeacherSentenceEditor() {
               <>
                 {/* 录入栏 */}
                 <section className="bg-white rounded-2xl border border-black/[0.05] p-5">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="font-display text-base font-semibold text-ink">
                       {sentForm.id ? '编辑句子' : '录入新句子'} · 当前单元「{activeUnit.name}」
                     </h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <label className="text-xs text-accent-warm hover:underline cursor-pointer inline-flex items-center gap-1">
                         <Upload className="w-3.5 h-3.5" />
                         批量导入（CSV / Excel）
@@ -386,7 +384,7 @@ export default function TeacherSentenceEditor() {
             )}
           </main>
         </div>
-      </div>
+      </main>
 
       {/* 单元弹窗 */}
       <AnimatePresence>

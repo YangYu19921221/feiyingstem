@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import {useParams} from 'react-router-dom';
-import useGoBack from '../hooks/useGoBack';
 import { admin } from '../api/admin';
 import type {
   AdminClassOverview,
@@ -12,6 +11,8 @@ import type {
 import { toast } from '../components/Toast';
 import TransferStudentDialog from '../components/admin/TransferStudentDialog';
 import StudentBooksDialog from '../components/admin/StudentBooksDialog';
+import { BarChart3 } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 // 三个指标 × 三个时间维度
 type MetricKey = 'training' | 'vocab' | 'time';
@@ -33,7 +34,6 @@ const fmtValue = (metric: MetricKey, raw: number): number =>
   metric === 'time' ? Math.round(raw / 60) : raw;
 
 const AdminClassDetail = () => {
-  const goBack = useGoBack('/teacher/dashboard');
   const { id } = useParams<{ id: string }>();
   const classId = Number(id);
 
@@ -112,15 +112,8 @@ const AdminClassDetail = () => {
   const maxVal = Math.max(...chartData.map((d) => d.value), 1);
 
   return (
-    <div className="min-h-screen bg-paper">
-      <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
-          <button onClick={() => goBack()} className="text-gray-600 hover:text-gray-800">← 返回</button>
-          <h1 className="text-xl font-bold text-gray-800">
-            班级详情{overview ? ` — ${overview.name}` : ''}
-          </h1>
-        </div>
-      </nav>
+    <div className="admin-legacy-page min-h-screen">
+      <StaffWorkspaceHeader role="admin" title={`班级详情${overview ? ` · ${overview.name}` : ''}`} subtitle="学习统计与学生名册" icon={BarChart3} backTo="/admin/classes" />
 
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         {/* 概览卡片 */}
@@ -139,7 +132,7 @@ const AdminClassDetail = () => {
               <div className="text-sm text-gray-500 mt-1">累计学习单词</div>
             </div>
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-center">
-              <div className="text-2xl font-bold text-purple-600">{overview.mastered_words}</div>
+              <div className="text-2xl font-bold text-[#7259a6]">{overview.mastered_words}</div>
               <div className="text-sm text-gray-500 mt-1">已掌握单词</div>
             </div>
           </div>
@@ -210,13 +203,23 @@ const AdminClassDetail = () => {
         </div>
 
         {/* 学生列表 */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="px-6 py-4 border-b">
             <h2 className="text-lg font-bold text-gray-800">学生名册 ({students.length})</h2>
           </div>
           {students.length === 0 ? (
             <div className="px-6 py-10 text-center text-gray-400">该班级暂无学生</div>
           ) : (
+            <>
+            <div className="space-y-3 p-3 sm:hidden">
+              {students.map((s) => (
+                <article key={s.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="min-w-0"><p className="truncate font-semibold text-slate-800">{s.full_name || s.username}</p><p className="truncate text-xs text-slate-500">{s.username} · {s.joined_at ? new Date(s.joined_at).toLocaleDateString('zh-CN') : '加入时间未知'}</p></div>
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => openStudent(s.id)} className="text-blue-600">学习详情</button><button onClick={() => setBooksTarget(s)} className="text-green-600">管理书本</button><button onClick={() => setTransferTarget(s)} className="text-orange-600">转班</button></div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[760px] whitespace-nowrap">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -258,6 +261,8 @@ const AdminClassDetail = () => {
                 ))}
               </tbody>
             </table>
+            </div>
+            </>
           )}
         </div>
       </div>

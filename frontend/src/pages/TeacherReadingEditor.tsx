@@ -13,6 +13,8 @@ import {
 } from '../api/reading';
 import type { ReadingPassageDetail, CreateQuestionRequest } from '../api/reading';
 import { getErrorMessage } from '../utils/errorMessage';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { FileText } from 'lucide-react';
 
 const TeacherReadingEditor = () => {
   const { passageId } = useParams<{ passageId?: string }>();
@@ -191,37 +193,16 @@ const TeacherReadingEditor = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <nav className="sticky top-0 z-20 mb-5 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/teacher/reading')}
-              className="text-gray-600 hover:text-gray-800 transition"
-            >
-              ← 返回
-            </button>
-            <h1 className="text-xl font-bold text-gray-800 sm:text-2xl">
-              {isEdit ? '编辑文章' : '创建新文章'}
-            </h1>
-          </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleSavePassage}
-            disabled={saving}
-            className={`rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition sm:px-6 ${
-              saving
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-slate-900 hover:bg-slate-700'
-            }`}
-          >
-            {saving ? '保存中...' : '💾 保存文章'}
-          </motion.button>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader
+        role="teacher"
+        title={isEdit ? '编辑文章' : '创建新文章'}
+        subtitle="完善文章、题目和词汇后发布"
+        icon={FileText}
+        backTo="/teacher/reading"
+        action={<button onClick={handleSavePassage} disabled={saving} className="teacher-primary teacher-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">{saving ? '保存中…' : '保存文章'}</button>}
+      />
 
-      <div className="max-w-6xl mx-auto px-4 pb-12">
+      <main className="teacher-workspace-main">
         {/* 基本信息 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -560,7 +541,7 @@ const TeacherReadingEditor = () => {
             💡 提示：请先保存文章基本信息,然后再添加题目
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };

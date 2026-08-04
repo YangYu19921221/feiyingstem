@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, X, Trash2, ChevronRight, ChevronDown, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeft, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search, HelpCircle, Trophy, Image as ImageIcon, Download } from 'lucide-react';
+import { Users, Plus, X, Trash2, ChevronRight, ChevronDown, Calendar, BookOpen, Target, Clock, TrendingUp, UserPlus, ArrowLeftRight, KeyRound, FileSpreadsheet, Copy, RefreshCw, Search, HelpCircle, Trophy, Image as ImageIcon, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import ReviewRulesModal from '../components/ReviewRulesModal';
 import StatsRulesModal from '../components/StatsRulesModal';
 import { toast } from '../components/Toast';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
 import { teacherMonitor } from '../api/teacherMonitor';
@@ -916,24 +917,9 @@ const TeacherClassManagement = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <nav className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Users className="w-7 h-7 text-indigo-600" />
-            <h1 className="text-xl font-bold text-gray-800">班级管理</h1>
-          </div>
-          <button
-            onClick={() => navigate('/teacher/dashboard')}
-            className="flex items-center gap-1 text-sm px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            返回首页
-          </button>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader role="teacher" title="班级管理" subtitle="班级、邀请码与学生名册" icon={Users} />
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <main className="teacher-workspace-main">
         {/* 使用说明 */}
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
           <div className="flex items-start justify-between gap-3">
@@ -1885,7 +1871,7 @@ const TeacherClassManagement = () => {
             )}
           </div>
         </div>
-      </div>
+      </main>
 
       {/* 创建班级弹窗 */}
       <AnimatePresence>

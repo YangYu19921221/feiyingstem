@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getUnitsByBook,
@@ -13,7 +13,8 @@ import {
   cacheUnitPronunciations
 } from '../api/teacher';
 import type { UnitResponse, UnitDetailResponse, WordInUnit, CachePronunciationsResponse } from '../api/teacher';
-import { ArrowLeft, Plus, Trash2, Edit, BookOpen, X, Sparkles, Download, Save } from 'lucide-react';
+import { Plus, Trash2, Edit, BookOpen, X, Sparkles, Download, Save } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import * as XLSX from 'xlsx';
@@ -25,8 +26,6 @@ import { getErrorMessage } from '../utils/errorMessage';
 
 const TeacherUnitManagement = () => {
   const { bookId } = useParams<{ bookId: string }>();
-  const navigate = useNavigate();
-
   const [units, setUnits] = useState<UnitResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -593,44 +592,16 @@ const TeacherUnitManagement = () => {
         <option value="num." />
         <option value="art." />
       </datalist>
-      {/* 顶部导航栏 */}
-      <nav className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-            <button
-              onClick={() => navigate('/teacher/books')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div className="flex min-w-[180px] flex-1 items-center gap-3">
-              <BookOpen className="w-6 h-6 text-primary" />
-              <div>
-                <h1 className="text-xl font-bold text-gray-800">单元管理</h1>
-                <p className="text-sm text-gray-500">管理单元和单词</p>
-              </div>
-            </div>
-            <button
-              onClick={handleExportBook}
-              disabled={exportingBook || units.length === 0}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
-              title="导出整本单词本(每个单元一个工作表,格式与导入模板一致)"
-            >
-              <Download className="w-5 h-5" />
-              {exportingBook ? '导出中...' : '导出整本'}
-            </button>
-            <button
-              onClick={() => setShowCreateDialog(true)}
-              className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700 sm:px-4"
-            >
-              <Plus className="w-5 h-5" />
-              创建单元
-            </button>
-          </div>
-        </div>
-      </nav>
+      <StaffWorkspaceHeader
+        role="teacher"
+        title="单元管理"
+        subtitle="整理教材单元与词汇"
+        icon={BookOpen}
+        backTo="/teacher/books"
+        action={<div className="flex flex-wrap gap-2"><button onClick={handleExportBook} disabled={exportingBook || units.length === 0} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" title="导出整本单词本"><Download className="h-4 w-4" />{exportingBook ? '导出中…' : '导出整本'}</button><button onClick={() => setShowCreateDialog(true)} className="teacher-primary teacher-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold"><Plus className="h-4 w-4" />创建单元</button></div>}
+      />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+      <main className="teacher-workspace-main">
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -706,7 +677,7 @@ const TeacherUnitManagement = () => {
             ))}
           </div>
         )}
-      </div>
+      </main>
 
       {/* 创建单元对话框 */}
       <AnimatePresence>

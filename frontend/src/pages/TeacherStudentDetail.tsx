@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Clock, BookOpen, Target, TrendingDown, Calendar, Sparkles, FileText, Loader2 } from 'lucide-react';
+import { Clock, BookOpen, Target, TrendingDown, Calendar, Sparkles, FileText, Loader2, UserRound } from 'lucide-react';
+import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
 import api from '../api/client';
 import { analyzeStudentMistakes, generatePersonalizedExam, getStudentWeeklyReport, regenerateStudentWeeklyReport, type WeeklyReport } from '../api/teacher';
@@ -257,20 +258,9 @@ const TeacherStudentDetail = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
-      {/* 顶部导航 */}
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <button
-            onClick={goBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-primary transition"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>返回</span>
-          </button>
-        </div>
-      </div>
+      <StaffWorkspaceHeader role="teacher" title={`${stats.full_name}的学习档案`} subtitle="查看学习表现、薄弱点与个性化建议" icon={UserRound} />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <main className="teacher-workspace-main">
         {/* 学生信息卡片 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -750,7 +740,7 @@ const TeacherStudentDetail = () => {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </main>
     </div>
   );
 };

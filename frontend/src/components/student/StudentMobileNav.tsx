@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CircleAlert, ClipboardList, Home, RotateCcw, Trophy } from 'lucide-react';
 
@@ -39,6 +39,8 @@ export default function StudentMobileNav() {
     }
   })();
   const studentSurfaceVisible = user?.role === 'student' && (
+    location.pathname === '/dashboard'
+    ||
     location.pathname.startsWith('/student')
     || location.pathname.startsWith('/learn')
     || location.pathname.startsWith('/pk')
@@ -55,7 +57,7 @@ export default function StudentMobileNav() {
     || location.pathname.startsWith('/pk/arena');
   const visible = studentSurfaceVisible && visiblePaths.has(location.pathname);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.body.classList.toggle('student-interface', Boolean(studentSurfaceVisible));
     document.body.classList.toggle('student-immersive', Boolean(studentSurfaceVisible && immersive));
     document.body.classList.toggle('student-mobile-nav-visible', visible);
