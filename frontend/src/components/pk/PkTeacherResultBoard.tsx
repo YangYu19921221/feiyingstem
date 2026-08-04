@@ -10,7 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { PkFinalRankItem, PkTeamRankItem } from '../../api/pk';
-import { teamLabel } from '../../utils/pkTeam';
+import { teamLabel, topMembersByTeam } from '../../utils/pkTeam';
 
 interface Props {
   ranking: PkFinalRankItem[];
@@ -66,6 +66,7 @@ export default function PkTeacherResultBoard({ ranking, teamRanking, onExit }: P
   const champion = ranking.find((item) => item.rank === 1);
   const winningTeam = teamRanking?.find((team) => team.rank === 1);
   const isTeam = Boolean(teamRanking?.length);
+  const topByTeam = topMembersByTeam(ranking);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f3f6fa] text-slate-900">
@@ -135,20 +136,43 @@ export default function PkTeacherResultBoard({ ranking, teamRanking, onExit }: P
           {isTeam && teamRanking && (
             <div>
               <h2 className="mb-2.5 flex items-center gap-2 text-sm font-extrabold text-slate-700">
-                <Users className="h-4 w-4 text-sky-600" /> 队伍最终排名
+                <Users className="h-4 w-4 text-sky-600" /> 队伍最终排名 · 含各队前三
               </h2>
               <div className="space-y-2">
-                {teamRanking.map((team) => (
-                  <div key={team.team} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                    <span className="font-numeric text-lg font-black text-slate-500">{team.rank}</span>
-                    <span className={`h-8 w-1 rounded-full ${TEAM_TONE[(team.team - 1) % TEAM_TONE.length]}`} />
-                    <span className="flex-1 truncate font-bold text-slate-800" title={team.team_name || undefined}>
-                      {teamLabel(team.team, undefined, team.team_name)}
-                    </span>
-                    <span className="text-xs text-slate-400">{team.member_count} 人</span>
-                    <span className="font-numeric font-black text-slate-900">{team.avg_points} 分</span>
-                  </div>
-                ))}
+                {teamRanking.map((team) => {
+                  const top = topByTeam.get(team.team) ?? [];
+                  return (
+                    <div key={team.team} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="font-numeric text-lg font-black text-slate-500">{team.rank}</span>
+                        <span className={`h-8 w-1 rounded-full ${TEAM_TONE[(team.team - 1) % TEAM_TONE.length]}`} />
+                        <span className="flex-1 truncate font-bold text-slate-800" title={team.team_name || undefined}>
+                          {teamLabel(team.team, undefined, team.team_name)}
+                        </span>
+                        <span className="text-xs text-slate-400">{team.member_count} 人</span>
+                        <span className="font-numeric font-black text-slate-900">{team.avg_points} 分</span>
+                      </div>
+                      {top.length > 0 && (
+                        <ol
+                          className="mt-2 space-y-1 border-t border-slate-100 pt-2"
+                          aria-label={`${teamLabel(team.team, undefined, team.team_name)}前三名`}
+                        >
+                          {top.map((m, i) => (
+                            <li key={m.user_id} className="flex items-center gap-2 text-xs">
+                              <span className={`font-numeric w-4 shrink-0 text-center font-extrabold ${i === 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                {i + 1}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">
+                                {m.nickname ?? `学生${m.user_id}`}
+                              </span>
+                              <span className="font-numeric shrink-0 font-bold text-slate-800">{m.final_score} 分</span>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { Crown, Flame, Home, Medal, RotateCcw, Trophy, Users } from 'lucide-react';
 import type { PkFinalRankItem, PkTeamRankItem } from '../../api/pk';
-import { teamLabel } from '../../utils/pkTeam';
+import { teamLabel, topMembersByTeam } from '../../utils/pkTeam';
 
 interface Props {
   ranking: PkFinalRankItem[];
@@ -32,6 +32,7 @@ export default function PkResultBoard({ ranking, meId, teamRanking, onExit, onAg
   const champion = ranking.find((item) => item.rank === 1);
   const isTeam = !!teamRanking?.length;
   const winningTeam = teamRanking?.find((team) => team.rank === 1);
+  const topByTeam = topMembersByTeam(ranking);
 
   return (
     <div className="min-h-screen bg-paper page-warm-glow">
@@ -80,22 +81,48 @@ export default function PkResultBoard({ ranking, meId, teamRanking, onExit, onAg
               <h2 id="pk-team-result-title" className="font-display text-base font-semibold text-ink">队伍成绩</h2>
             </div>
             <div className="divide-y divide-black/[0.05]">
-              {teamRanking.map((team) => (
-                <div key={team.team} className="flex items-center gap-3 px-4 py-3">
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rankTone(team.rank)}`}>
-                    <RankMark rank={team.rank} />
-                  </span>
-                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${TEAM_DOT[(team.team - 1) % TEAM_DOT.length]}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-ink">{teamLabel(team.team, undefined, team.team_name)}</p>
-                    <p className="mt-0.5 text-xs text-ink-mute">{team.member_count} 人 · 总分 {team.points}</p>
+              {teamRanking.map((team) => {
+                const top = topByTeam.get(team.team) ?? [];
+                return (
+                  <div key={team.team} className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${rankTone(team.rank)}`}>
+                        <RankMark rank={team.rank} />
+                      </span>
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${TEAM_DOT[(team.team - 1) % TEAM_DOT.length]}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">{teamLabel(team.team, undefined, team.team_name)}</p>
+                        <p className="mt-0.5 text-xs text-ink-mute">{team.member_count} 人 · 总分 {team.points}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-numeric text-base font-semibold text-ink">{team.avg_points}</p>
+                        <p className="text-[10px] text-ink-mute">人均分</p>
+                      </div>
+                    </div>
+                    {top.length > 0 && (
+                      <ol
+                        className="mt-2 space-y-1 pl-12"
+                        aria-label={`${teamLabel(team.team, undefined, team.team_name)}前三名`}
+                      >
+                        {top.map((m, i) => (
+                          <li key={m.user_id} className="flex items-center gap-2 text-xs">
+                            <span className={`font-numeric w-4 shrink-0 text-center font-bold ${i === 0 ? 'text-amber-700' : 'text-ink-mute'}`}>
+                              {i + 1}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-ink-soft">
+                              {m.nickname ?? `用户${m.user_id}`}
+                              {m.user_id === meId && (
+                                <span className="ml-1.5 rounded bg-accent-warm px-1 py-px text-[10px] font-semibold text-white">我</span>
+                              )}
+                            </span>
+                            <span className="font-numeric shrink-0 font-semibold text-ink">{m.final_score} 分</span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="font-numeric text-base font-semibold text-ink">{team.avg_points}</p>
-                    <p className="text-[10px] text-ink-mute">人均分</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}

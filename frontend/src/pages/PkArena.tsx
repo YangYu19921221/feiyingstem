@@ -18,7 +18,7 @@ import PkLiveRanking from '../components/pk/PkLiveRanking';
 import PkResultBoard from '../components/pk/PkResultBoard';
 import PkTeacherLiveBoard from '../components/pk/PkTeacherLiveBoard';
 import PkTeacherResultBoard from '../components/pk/PkTeacherResultBoard';
-import { teamLabel } from '../utils/pkTeam';
+import { teamLabel, topMembersByTeam } from '../utils/pkTeam';
 
 interface CurrentQuestion {
   q_seq: number;           // 服务端下发的题号(提交时回显,幂等校验)
@@ -758,7 +758,7 @@ export default function PkArena() {
           {specCount > 0 && (
             <p className="flex items-center justify-end gap-1.5 text-xs text-ink-mute"><Eye className="h-3.5 w-3.5" aria-hidden="true" />{specCount} 人观战</p>
           )}
-          {isTeamMode && teamRanking && <TeamRankingPanel items={teamRanking} />}
+          {isTeamMode && teamRanking && <TeamRankingPanel items={teamRanking} members={liveRanking} meId={meId} />}
           {liveRanking && (
             <PkLiveRanking
               items={liveRanking}
@@ -803,8 +803,13 @@ function CountdownBar({ deadlineIso }: { deadlineIso: string }) {
   );
 }
 
-/** 分组赛队伍榜：按人均分排名，和学生端暖色学习界面保持一致。 */
-function TeamRankingPanel({ items }: { items: PkTeamRankItem[] }) {
+/** 分组赛队伍榜：按人均分排名，每队展开队内前三，和学生端暖色学习界面保持一致。 */
+function TeamRankingPanel({ items, members, meId }: {
+  items: PkTeamRankItem[];
+  members: PkLiveRankItem[] | null;
+  meId: number;
+}) {
+  const topByTeam = topMembersByTeam(members);
   return (
     <section className="card-soft overflow-hidden rounded-2xl" aria-labelledby="pk-team-ranking-title">
       <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] px-4 py-3.5">
@@ -818,6 +823,7 @@ function TeamRankingPanel({ items }: { items: PkTeamRankItem[] }) {
         {items.map((it) => {
           const isLeader = it.rank === 1 && it.points > 0;
           const progress = Math.min(100, Math.max(0, Math.round((it.avg_progress ?? 0) * 100)));
+          const top = topByTeam.get(it.team) ?? [];
           return (
             <div
               key={it.team}
@@ -844,6 +850,27 @@ function TeamRankingPanel({ items }: { items: PkTeamRankItem[] }) {
                   <span className="mt-1 block text-[10px] text-ink-mute">人均分</span>
                 </div>
               </div>
+              {top.length > 0 && (
+                <ol
+                  className="mt-2 space-y-1 pl-[46px]"
+                  aria-label={`${teamLabel(it.team, undefined, it.team_name)}前三名`}
+                >
+                  {top.map((m, i) => (
+                    <li key={m.user_id} className="flex items-center gap-2 text-xs">
+                      <span className={`font-numeric w-4 shrink-0 text-center font-bold ${i === 0 ? 'text-amber-700' : 'text-ink-mute'}`}>
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-ink-soft">
+                        {m.nickname}
+                        {m.user_id === meId && (
+                          <span className="ml-1.5 rounded bg-accent-warm px-1 py-px text-[10px] font-semibold text-white">我</span>
+                        )}
+                      </span>
+                      <span className="font-numeric shrink-0 font-semibold text-ink">{m.points}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
           );
         })}

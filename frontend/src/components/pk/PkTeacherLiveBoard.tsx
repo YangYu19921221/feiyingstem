@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import type { PkLiveRankItem, PkMode, PkTeamRankItem } from '../../api/pk';
 import PkTeacherColumnChart, { TEAM_SERIES, type ColumnDatum } from './PkTeacherColumnChart';
-import { teamLabel } from '../../utils/pkTeam';
+import { teamLabel, topMembersByTeam } from '../../utils/pkTeam';
 
 /**
  * 学生行 → 柱状图数据。
@@ -205,39 +205,61 @@ function StudentRankRow({ item, teamName }: { item: PkLiveRankItem; teamName?: s
   );
 }
 
-function TeamStandings({ teams }: { teams: PkTeamRankItem[] }) {
+function TeamStandings({ teams, members }: { teams: PkTeamRankItem[]; members: PkLiveRankItem[] }) {
   if (teams.length === 0) return null;
+  const topByTeam = topMembersByTeam(members);
   return (
     <section aria-labelledby="team-live-title">
       <div className="mb-2.5 flex items-center justify-between">
         <h2 id="team-live-title" className="flex items-center gap-2 text-sm font-bold text-slate-700">
           <Users className="h-4 w-4 text-sky-600" /> 队伍排名
         </h2>
-        <span className="text-xs text-slate-400">按人均分</span>
+        <span className="text-xs text-slate-400">按人均分 · 含各队前三</span>
       </div>
       <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-        {teams.map((team) => (
-          <motion.div
-            key={team.team}
-            layout
-            className="flex items-center gap-3 rounded-lg border px-3.5 py-3"
-            style={teamSurfaceStyle(team.team)}
-          >
-            <span className="font-numeric text-xl font-black text-slate-700">{team.rank}</span>
-            <span className="h-9 w-1 rounded-full"
-                  style={{ background: teamColor(team.team) }} aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-bold text-slate-800" title={team.team_name || undefined}>
-                {teamLabel(team.team, undefined, team.team_name)}
-              </p>
-              <p className="text-xs text-slate-500">{team.online_count}/{team.member_count} 人在线</p>
-            </div>
-            <div className="text-right">
-              <p className="font-numeric text-lg font-black text-slate-900">{team.avg_points}</p>
-              <p className="text-[11px] text-slate-500">人均分</p>
-            </div>
-          </motion.div>
-        ))}
+        {teams.map((team) => {
+          const top = topByTeam.get(team.team) ?? [];
+          return (
+            <motion.div
+              key={team.team}
+              layout
+              className="rounded-lg border px-3.5 py-3"
+              style={teamSurfaceStyle(team.team)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="font-numeric text-xl font-black text-slate-700">{team.rank}</span>
+                <span className="h-9 w-1 rounded-full"
+                      style={{ background: teamColor(team.team) }} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold text-slate-800" title={team.team_name || undefined}>
+                    {teamLabel(team.team, undefined, team.team_name)}
+                  </p>
+                  <p className="text-xs text-slate-500">{team.online_count}/{team.member_count} 人在线</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-numeric text-lg font-black text-slate-900">{team.avg_points}</p>
+                  <p className="text-[11px] text-slate-500">人均分</p>
+                </div>
+              </div>
+              {top.length > 0 && (
+                <ol
+                  className="mt-2.5 space-y-1 border-t border-black/[0.08] pt-2"
+                  aria-label={`${teamLabel(team.team, undefined, team.team_name)}前三名`}
+                >
+                  {top.map((m, i) => (
+                    <li key={m.user_id} className="flex items-center gap-2 text-xs">
+                      <span className={`font-numeric w-4 shrink-0 text-center font-extrabold ${i === 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{m.nickname}</span>
+                      <span className="font-numeric shrink-0 font-bold text-slate-800">{m.points}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </motion.div>
+          );
+        })}
       </div>
     </section>
   );
@@ -379,7 +401,7 @@ export default function PkTeacherLiveBoard({
           />
         )}
 
-        {mode === 'team' && <TeamStandings teams={teams ?? []} />}
+        {mode === 'team' && <TeamStandings teams={teams ?? []} members={items} />}
 
         <section className="min-h-0 flex-1" aria-labelledby="student-live-title">
           <div className="mb-2.5 flex items-end justify-between gap-3">

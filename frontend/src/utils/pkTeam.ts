@@ -28,3 +28,23 @@ export function teamLabel(
   if (!team) return '';
   return inlineName || names?.[String(team)] || teamFallback(team);
 }
+
+/**
+ * 每队前 N 名。items 必须已按名次升序(实时榜/结算榜服务端下发即有序),
+ * 组内按原序截取,口径天然与总榜一致;无队号的行(个人赛/未选组)跳过。
+ */
+export function topMembersByTeam<T extends { team?: number | null }>(
+  items: T[] | null | undefined,
+  limit = 3,
+): Map<number, T[]> {
+  const byTeam = new Map<number, T[]>();
+  for (const it of items ?? []) {
+    if (!it.team) continue;
+    const list = byTeam.get(it.team) ?? [];
+    if (list.length < limit) {
+      list.push(it);
+      byTeam.set(it.team, list);
+    }
+  }
+  return byTeam;
+}
