@@ -235,6 +235,10 @@ const StudentDashboard = () => {
 
   const ownedBooks = useMemo(() => books.filter(b => b.owned), [books]);
   const unownedBooks = useMemo(() => books.filter(b => !b.owned), [books]);
+  const resumeBook = useMemo(
+    () => ownedBooks.find((book) => book.progress_percentage > 0 && book.progress_percentage < 100),
+    [ownedBooks],
+  );
 
   const BOOKSHELF_ORDER_KEY = 'bookshelf_order';
   // useState 而非 useMemo：拖拽事件也需要直接写入排序结果
@@ -416,7 +420,7 @@ const StudentDashboard = () => {
     <div ref={pageRef} className="min-h-screen bg-paper text-slate-800">
       {/* 顶部导航 */}
       <nav className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8 2xl:max-w-[1440px]">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600"><BookOpenText className="h-5 w-5" /></div>
             <div className="min-w-0">
@@ -436,7 +440,7 @@ const StudentDashboard = () => {
         </div>
       </nav>
 
-      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8 2xl:max-w-[1440px]">
         {/* 未上传学习记录提醒:本机还有数据没传成功时,提醒别换设备/关页,保持联网等它传完 */}
         {pendingSync > 0 && (
           <div className="flex flex-col items-stretch gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center">
@@ -488,11 +492,6 @@ const StudentDashboard = () => {
             </span>
           </div>
         )}
-
-        {/* 我的金币 — 置顶金色横幅,一进首页就看到 */}
-        <section data-dashboard-reveal className="mb-5 sm:mb-8">
-          <MyCoinsCard />
-        </section>
 
         {/* Hero：今日核心任务 + 飞鹰陪伴 */}
         <section data-dashboard-reveal className="student-colorful-surface mb-6 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 overflow-hidden rounded-2xl border border-orange-100 p-4 shadow-md sm:mb-8 sm:gap-8 sm:p-7 md:gap-10">
@@ -547,6 +546,15 @@ const StudentDashboard = () => {
                 <p className="text-ink-soft max-w-xl text-sm leading-relaxed sm:text-base">
                   你正在学习中。完成单元后，单词会自动进入复习计划。
                 </p>
+                {resumeBook && (
+                  <button
+                    type="button"
+                    onClick={() => handleStartLearning(resumeBook.id)}
+                    className="btn-glow mt-5 inline-flex min-h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white"
+                  >
+                    继续学习「{resumeBook.name}」→
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -576,6 +584,11 @@ const StudentDashboard = () => {
             style={{ animation: 'fadeIn 0.4s ease-out' }}
             loading="lazy"
           />
+        </section>
+
+        {/* 我的金币 — 放在今日任务之后，保留奖励感但不抢先学习任务的注意力 */}
+        <section data-dashboard-reveal className="mb-5 sm:mb-8">
+          <MyCoinsCard />
         </section>
 
         {/* 老师布置的任务:一登录就看到今天要做什么(最多3条,更多去「我的作业」) */}

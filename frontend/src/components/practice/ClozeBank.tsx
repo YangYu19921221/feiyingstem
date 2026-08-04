@@ -38,7 +38,7 @@ export default function ClozeBank({
               disabled={used || disabled}
               whileTap={!used && !disabled ? { scale: 0.94 } : {}}
               transition={{ duration: 0.18, ease: EASE }}
-              className="px-4 py-2 rounded-xl font-semibold text-base transition-colors"
+              className="min-h-11 px-4 py-2 rounded-xl font-semibold text-base transition-colors"
               style={used ? {
                 background: 'oklch(0.96 0.006 55)',
                 color: 'oklch(0.78 0.008 55)',

@@ -34,6 +34,7 @@ const MistakeChallenge = () => {
   const goBack = useGoBack('/student/dashboard');
   const [levels, setLevels] = useState<ChallengeLevel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [slowLoading, setSlowLoading] = useState(false);
   const [phase, setPhase] = useState<Phase>('map');
   const [currentLevel, setCurrentLevel] = useState<ChallengeLevel | null>(null);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -51,6 +52,15 @@ const MistakeChallenge = () => {
   useEffect(() => {
     loadLevels();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setSlowLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSlowLoading(true), 4500);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   // 从答题页返回关卡地图时刷新（页面可见时触发）
   useEffect(() => {
@@ -148,7 +158,8 @@ const MistakeChallenge = () => {
       <div className="min-h-screen bg-paper no-select flex items-center justify-center">
         <div className="text-center">
           <div className="text-5xl animate-pulse mb-4">🏰</div>
-          <p className="text-gray-500">加载关卡中...</p>
+          <p className="text-gray-600">{slowLoading ? '错题较多，正在整理关卡…' : '加载关卡中...'}</p>
+          {slowLoading && <p className="mt-2 text-xs text-gray-400">不用重复点击，准备好后会自动显示。</p>}
         </div>
       </div>
     );
@@ -269,7 +280,7 @@ function MapPhase({ levels, onStart }: { levels: ChallengeLevel[]; onStart: (l: 
             >
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${
-                  isReview ? 'bg-red-500 text-white' : isCleared ? 'bg-green-500 text-white' : isUnlocked ? 'bg-orange-500 text-white' : 'bg-gray-300 text-gray-500'
+                  isReview ? 'bg-red-500 text-white' : isCleared ? 'bg-green-500 text-white' : isUnlocked ? 'bg-orange-500 text-white' : 'bg-black/[0.08] text-ink-soft'
                 }`}>
                   {isReview ? '🔄' : isCleared ? '✓' : isLocked ? '🔒' : level.level}
                 </div>
@@ -284,7 +295,7 @@ function MapPhase({ levels, onStart }: { levels: ChallengeLevel[]; onStart: (l: 
               <div className="mt-3 flex flex-wrap gap-2">
                 {level.words.map(w => (
                   <span key={w.word_id} className={`px-2 py-1 rounded text-xs ${
-                    isCleared ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                    isCleared ? 'bg-green-100 text-green-700' : 'bg-black/[0.05] text-ink-soft'
                   }`}>
                     {w.meaning}
                   </span>

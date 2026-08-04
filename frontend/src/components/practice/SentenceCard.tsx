@@ -63,7 +63,7 @@ export default function SentenceCard({
                     type="button"
                     onClick={onClick}
                     disabled={checked}
-                    className="inline-flex items-center justify-center mx-1 min-w-[68px] px-2 py-0.5 rounded-lg font-semibold align-middle transition-colors"
+                    className="inline-flex min-h-11 items-center justify-center mx-1 min-w-[68px] px-3 py-1 rounded-lg font-semibold align-middle transition-colors"
                     style={{ border: `1.5px solid`, ...blankStyle() }}
                   >
                     {fillWord || <span className="text-ink-mute font-normal opacity-60">？</span>}

@@ -217,7 +217,7 @@ export default function StudentAssignments() {
             <button
               type="button"
               onClick={() => goBack()}
-              className="mr-3 rounded-lg p-2 text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
+              className="mr-3 flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition hover:bg-orange-50 hover:text-orange-600"
               aria-label="返回"
             >
               <ArrowLeft className="h-5 w-5" />

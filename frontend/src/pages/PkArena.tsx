@@ -94,6 +94,7 @@ export default function PkArena() {
   const [teamFinal, setTeamFinal] = useState<PkTeamRankItem[] | null>(null);
   const [playerFinished, setPlayerFinished] = useState(false);
   const [errorBanner, setErrorBanner] = useState('');
+  const [roomMissing, setRoomMissing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const handleEvent = useCallback(
@@ -101,6 +102,7 @@ export default function PkArena() {
       switch (event.type) {
         case 'room_state': {
           const room = event.room as PkRoomSnapshot;
+          setRoomMissing(false);
           setSnapshot(room);
           setLiveRanking((cur) => cur ?? rankingFromSnapshot(room));
           setTotalPlayers(room.players.length);
@@ -167,6 +169,10 @@ export default function PkArena() {
           break;
         case 'error':
           setErrorBanner(event.message || event.code || 'Error');
+          if (event.code === 'ROOM_NOT_FOUND') {
+            setRoomMissing(true);
+            setErrorBanner('比赛房间不存在或已结束');
+          }
           // 观众断线后服务端会立即移除:收到 ROOM_NOT_FOUND 时自动重新登记观战,
           // 配合 socket 的自动重连即可无感恢复
           if (event.code === 'ROOM_NOT_FOUND') {
@@ -312,6 +318,26 @@ export default function PkArena() {
   // 连接/加载中。⚠️ 连不上时必须给出口:重连预算耗尽后转成错误态,
   // 不能继续转圈 —— 转圈对学生等于"卡死",对老师等于"这几个人进不来"。
   if (!snapshot) {
+    if (roomMissing) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-paper p-5">
+          <div className="card-soft w-full max-w-sm rounded-3xl p-7 text-center">
+            <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+              <CircleAlert className="h-7 w-7" aria-hidden="true" />
+            </span>
+            <p className="text-lg font-bold text-ink">比赛房间不存在</p>
+            <p className="mt-2 text-sm leading-6 text-ink-soft">这个房间可能已经结束，或者邀请链接已经失效。</p>
+            <button
+              type="button"
+              onClick={() => navigate('/pk/lobby')}
+              className="btn-glow mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl font-semibold text-white"
+            >
+              返回 PK 大厅
+            </button>
+          </div>
+        </div>
+      );
+    }
     if (failed) {
       return (
         <div className="min-h-screen bg-paper flex items-center justify-center p-5">

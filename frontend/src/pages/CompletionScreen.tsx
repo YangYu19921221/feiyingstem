@@ -83,8 +83,22 @@ const CompletionScreen = () => {
   };
 
   if (!data) {
-    goBack();
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper px-5">
+        <div className="card-soft w-full max-w-md rounded-3xl p-7 text-center sm:p-9" role="status">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-3xl">📝</div>
+          <h1 className="mt-5 text-2xl font-bold text-ink">还没有练习成绩</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">完成一次练习后，这里会展示你的得分和需要复习的单词。</p>
+          <button
+            type="button"
+            onClick={() => goBack()}
+            className="btn-glow mt-6 inline-flex min-h-11 items-center justify-center rounded-xl px-6 font-semibold text-white"
+          >
+            返回学习中心
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const percentage = (data.score / data.total * 100).toFixed(0);

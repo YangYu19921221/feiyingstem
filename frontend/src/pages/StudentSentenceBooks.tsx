@@ -24,7 +24,7 @@ export default function StudentSentenceBooks() {
     <div className="min-h-screen bg-paper page-warm-glow">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
+          <button type="button" onClick={() => goBack()} className="flex min-h-11 items-center gap-2 text-ink-soft hover:text-ink text-sm">
             <ArrowLeft className="w-4 h-4" /> 返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">句子背诵</h1>
@@ -60,9 +60,10 @@ export default function StudentSentenceBooks() {
         ) : (
           <div className="card-soft rounded-2xl divide-y divide-black/[0.05] overflow-hidden">
             {books.map(b => (
-              <div
+              <button
+                type="button"
                 key={b.id}
-                className="flex items-center gap-3 px-5 py-4 hover:bg-black/[0.02] cursor-pointer"
+                className="flex min-h-20 w-full items-center gap-3 border-0 bg-transparent px-5 py-4 text-left transition hover:bg-black/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-warm/50"
                 onClick={() => navigate(`/student/sentences/${b.id}`)}
               >
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-lg font-semibold"
@@ -83,7 +84,7 @@ export default function StudentSentenceBooks() {
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-ink-mute" />
-              </div>
+              </button>
             ))}
           </div>
         )}

@@ -27,7 +27,7 @@ export default function StudentSentenceUnits() {
     <div className="min-h-screen bg-paper page-warm-glow">
       <nav className="border-b border-black/[0.06] bg-paper/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button onClick={() => goBack()} className="flex items-center gap-2 text-ink-soft hover:text-ink text-sm">
+          <button type="button" onClick={() => goBack()} className="flex min-h-11 items-center gap-2 text-ink-soft hover:text-ink text-sm">
             <ArrowLeft className="w-4 h-4" /> 返回
           </button>
           <h1 className="font-display text-base font-semibold text-ink">选择单元</h1>
@@ -55,11 +55,13 @@ export default function StudentSentenceUnits() {
         ) : (
           <div className="card-soft rounded-2xl divide-y divide-black/[0.05] overflow-hidden">
             {units.map(u => (
-              <div
+              <button
+                type="button"
                 key={u.id}
+                disabled={u.sentence_count === 0}
                 onClick={() => u.sentence_count > 0 && navigate(`/student/sentences/${bid}/${u.id}/learn`)}
-                className={`flex items-center gap-3 px-5 py-4 ${
-                  u.sentence_count > 0 ? 'hover:bg-black/[0.02] cursor-pointer' : 'opacity-60'
+                className={`flex min-h-20 w-full items-center gap-3 border-0 bg-transparent px-5 py-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-warm/50 ${
+                  u.sentence_count > 0 ? 'hover:bg-black/[0.02]' : 'cursor-not-allowed opacity-60'
                 }`}
               >
                 <div className="w-7 h-7 rounded-full bg-black/[0.04] flex items-center justify-center text-xs font-semibold font-numeric text-ink-soft">
@@ -72,7 +74,7 @@ export default function StudentSentenceUnits() {
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-ink-mute" />
-              </div>
+              </button>
             ))}
           </div>
         )}

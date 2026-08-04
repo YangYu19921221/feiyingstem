@@ -46,6 +46,8 @@ export default function PetHealingPage() {
   const wordsQuery = useQuery<HealingWord[]>({
     queryKey: ['healingWords'],
     queryFn: () => getHealingWords(20),
+    // 健康状态下后端会返回 400「宠物不需要治疗」；不要把这个正常状态当成网络错误。
+    enabled: healingStatus?.is_injured === true,
   });
   const words = wordsQuery.data ?? [];
 
@@ -91,7 +93,8 @@ export default function PetHealingPage() {
   });
 
   const pageLoading = healingStatusQuery.isLoading || petQuery.isLoading || wordsQuery.isLoading;
-  const pageError = healingStatusQuery.isError || petQuery.isError || wordsQuery.isError;
+  const pageError = healingStatusQuery.isError || petQuery.isError
+    || (healingStatus?.is_injured === true && wordsQuery.isError);
 
   if (pageLoading) {
     return (
@@ -130,14 +133,15 @@ export default function PetHealingPage() {
 
   if (!healingStatus.is_injured) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center px-5">
-        <div className="text-center">
-          <div className="text-8xl mb-4">✅</div>
-          <div className="text-2xl font-bold text-gray-800 mb-2">伙伴状态很好</div>
-          <div className="text-gray-600 mb-6">今天不需要恢复训练</div>
+      <div className="flex min-h-screen items-center justify-center bg-paper px-5">
+        <div className="card-soft w-full max-w-md rounded-3xl p-7 text-center sm:p-9">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-4xl">✅</div>
+          <h1 className="mt-5 text-2xl font-bold text-ink">伙伴状态很好</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">今天不需要恢复训练，继续完成学习任务就好。</p>
           <button
+            type="button"
             onClick={() => navigate('/student/pet')}
-            className="btn-glow min-h-11 rounded-xl px-6 font-bold text-white"
+            className="btn-glow mt-6 min-h-11 rounded-xl px-6 font-bold text-white"
           >
             返回宠物页面
           </button>
@@ -190,7 +194,8 @@ export default function PetHealingPage() {
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <button
             onClick={goBack}
-            className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-gray-100"
+            aria-label="返回宠物页面"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
