@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { motion, type PanInfo } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
+import { cardWidthFor, wordFontSizeFor } from './cardSize'
 
 export type Verdict = 'unknown' | 'mastered' | 'practice'
 
@@ -63,7 +64,7 @@ export default function RecapCard({
       playAudio(card.word.word, 1, card.word.id)
       window.setTimeout(() => setIsLongPressing(false), 600)
     }, LONG_PRESS_MS)
-  }, [card.word.word, playAudio, cancelLongPress])
+  }, [card.word.word, card.word.id, playAudio, cancelLongPress])
 
   const handleDragStart = useCallback(() => {
     dragMoved.current = true
@@ -114,8 +115,9 @@ export default function RecapCard({
         WebkitTouchCallout: 'none',
         userSelect: 'none',
         touchAction: 'none',
+        width: cardWidthFor(card.word.word),
       }}
-      className="w-[120px] h-[160px] cursor-grab active:cursor-grabbing"
+      className="h-[160px] cursor-grab active:cursor-grabbing"
     >
       <div
         className="relative w-full h-full"
@@ -135,11 +137,14 @@ export default function RecapCard({
             boxShadow: '0 6px 16px -6px oklch(0.6 0.12 55 / 0.35), 0 2px 4px oklch(0.6 0.12 55 / 0.16)',
           }}
         >
-          <div className="text-center font-display text-xl font-bold text-ink leading-tight">
+          <div
+            className="text-center font-display text-xl font-bold text-ink leading-tight whitespace-nowrap"
+            style={{ fontSize: wordFontSizeFor(card.word.word) }}
+          >
             {card.word.word}
           </div>
           {card.word.phonetic && (
-            <div className="mt-2 text-xs font-medium" style={{ color: 'oklch(0.62 0.19 40)' }}>
+            <div className="mt-2 text-xs font-medium whitespace-nowrap" style={{ color: 'oklch(0.62 0.19 40)' }}>
               {card.word.phonetic}
             </div>
           )}

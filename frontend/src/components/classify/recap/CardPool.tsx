@@ -110,7 +110,7 @@ export default function CardPool({ words, playAudio, onComplete, initialCards }:
     ))
   }
 
-  // 命中判定放大:篮子 80px、卡片 120×160,按半卡 + 余量膨胀;两篮都命中按最近中心
+  // 命中判定放大:篮子 80px、卡片高 160 宽随词长(见 cardSize.ts),按半卡 + 余量膨胀;两篮都命中按最近中心
   const MARGIN_X = 72
   const MARGIN_Y = 92
   function hitBasket(px: number, py: number): 'mastered' | 'practice' | null {

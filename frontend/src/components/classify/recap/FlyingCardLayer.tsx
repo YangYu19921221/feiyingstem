@@ -1,8 +1,6 @@
 import { motion } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
-
-const CARD_W = 120
-const CARD_H = 160
+import { CARD_H, cardWidthFor, wordFontSizeFor } from './cardSize'
 
 export interface FlyingCard {
   id: number              // 自增 key
@@ -40,9 +38,10 @@ export default function FlyingCardLayer({ fly, onDone }: Props) {
     : 'oklch(0.78 0.13 22)'
 
   // 卡片左上角定位到松手点(减去半卡尺寸即居中)，之后用 transform 位移到篮子
+  const cardW = cardWidthFor(fly.word.word)
   const baseStyle: React.CSSProperties = {
     position: 'fixed',
-    left: fly.from.x - CARD_W / 2,
+    left: fly.from.x - cardW / 2,
     top: fly.from.y - CARD_H / 2,
     zIndex: 1000,
     pointerEvents: 'none',
@@ -89,13 +88,16 @@ function Card({ word, tint, edge }: { word: WordData; tint: string; edge: string
   return (
     <div
       className="rounded-lg shadow-lg flex flex-col items-center justify-center p-3"
-      style={{ width: CARD_W, height: CARD_H, background: tint, border: `1.5px solid ${edge}` }}
+      style={{ width: cardWidthFor(word.word), height: CARD_H, background: tint, border: `1.5px solid ${edge}` }}
     >
-      <div className="text-center font-display text-xl font-bold text-ink leading-tight">
+      <div
+        className="text-center font-display text-xl font-bold text-ink leading-tight whitespace-nowrap"
+        style={{ fontSize: wordFontSizeFor(word.word) }}
+      >
         {word.word}
       </div>
       {word.phonetic && (
-        <div className="mt-2 text-xs text-ink-soft">{word.phonetic}</div>
+        <div className="mt-2 text-xs text-ink-soft whitespace-nowrap">{word.phonetic}</div>
       )}
     </div>
   )
