@@ -24,7 +24,7 @@ interface CurrentQuestion {
   q_seq: number;           // 服务端下发的题号(提交时回显,幂等校验)
   stage: string;           // classify / dictation / exam
   word: { id: number; word: string; translation: string };
-  points?: number;         // 本题分值(按该词学段)
+  points?: number;         // 本题分值(统一 100;满分 = 词数 × 100,见后端 score.py)
   group_idx?: number;
   group_total?: number;
   exam_type?: PkExamType;  // 过关阶段题型(服务端权威),仅 stage==='exam' 时有

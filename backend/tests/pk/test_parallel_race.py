@@ -266,6 +266,100 @@ async def test_start_game_blocked_when_someone_has_too_few_words(monkeypatch):
     assert room.status == "waiting"
 
 
+@pytest.mark.asyncio
+async def test_start_game_same_words_identical_list_and_order(monkeypatch):
+    """同题公平赛(默认):全员拿到同一批词、同一顺序 → 同分组同满分,
+    先背完者分数必然最高(发奖品的硬要求)。"""
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    room = manager.create_room(host_id=102, max_players=4, org_id=1,
+                              host_is_player=False, word_count=10)
+    assert room.same_words is True  # 默认就是同题
+    for uid in (1, 2, 3):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    async def fake_learned(ids, wids=None):
+        # 三人共同背过 1..15,各自还有别人没背的词
+        return {1: set(range(1, 16)) | {91}, 2: set(range(1, 16)) | {92},
+                3: set(range(1, 16)) | {93}}
+    async def fake_lookup(wids):
+        return {w: FakeWord(w) for w in wids}
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+    monkeypatch.setattr(W, "_load_word_lookup", fake_lookup)
+
+    await W._try_start_game(room, FakeWS())
+    a, b, c = (room.players[u] for u in (1, 2, 3))
+    assert a.word_ids == b.word_ids == c.word_ids        # 同词、同序
+    assert len(a.word_ids) == 10
+    assert set(a.word_ids) <= set(range(1, 16))          # 只出交集里的词
+    assert a.potential_points == b.potential_points == c.potential_points == 1000
+    assert a.groups == b.groups                          # 分组切法也一致
+
+
+@pytest.mark.asyncio
+async def test_start_game_same_words_rejects_tiny_intersection(monkeypatch):
+    """同题模式下共同背过的词 < 4 → 拒绝开局并提示,绝不用没背过的词补齐。"""
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    room = manager.create_room(host_id=103, max_players=4, org_id=1,
+                              host_is_player=False, word_count=10)
+    for uid in (1, 2):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    async def fake_learned(ids, wids=None):
+        return {1: set(range(1, 31)), 2: {1, 2, 100, 101, 102}}  # 交集只有 {1,2}
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+
+    host = FakeWS()
+    await W._try_start_game(room, host)
+    assert host.sent and host.sent[0]["code"] == "NOT_ENOUGH_COMMON_WORDS"
+    assert room.status == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_start_game_per_player_mode_when_same_words_off(monkeypatch):
+    """same_words 关掉:各考各背过的词(旧行为),题量仍按最小词汇量统一。"""
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    room = manager.create_room(host_id=104, max_players=4, org_id=1,
+                              host_is_player=False, word_count=30, same_words=False)
+    for uid in (1, 2):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    async def fake_learned(ids, wids=None):
+        # 完全不相交的词表:同题模式开不了,各考各的必须能开
+        return {1: set(range(1, 31)), 2: set(range(101, 109))}
+    async def fake_lookup(wids):
+        return {w: FakeWord(w) for w in wids}
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+    monkeypatch.setattr(W, "_load_word_lookup", fake_lookup)
+
+    await W._try_start_game(room, FakeWS())
+    a, b = room.players[1], room.players[2]
+    assert len(a.word_ids) == len(b.word_ids) == 8       # 题量取最小词汇量
+    assert set(a.word_ids) <= set(range(1, 31))
+    assert set(b.word_ids) <= set(range(101, 109))
+    assert a.potential_points == b.potential_points == 800  # 满分仍统一(词数×100)
+
+
 def test_exam_options_scoped_to_own_words():
     """过关选择题干扰项只能来自该玩家自己的词表(不能拿别人背过、他没学的词)。"""
     room = _race_room({1: [1, 2, 3, 4, 5, 6]})

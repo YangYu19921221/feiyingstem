@@ -37,6 +37,7 @@ def _snapshot(room) -> RoomSnapshot:
         team_names={str(t): n for t, n in room.team_names.items()},
         host_is_player=room.host_is_player,
         countdown_seconds=room.countdown_seconds,
+        same_words=room.same_words,
         deadline_at=room.deadline_at.isoformat() + "Z" if room.deadline_at else None,
         players=[
             PlayerSnapshot(
@@ -88,9 +89,10 @@ async def load_learned_word_ids(
 
 
 async def load_word_points(db: AsyncSession, word_ids: list[int]) -> dict[int, int]:
-    """按词定每题基础分:取该词出现过的所有单词本年级里最早的学段。
+    """按词查学段难度分(小学 100/初中 120/高中 150)。
 
-    小学 100 / 初中 120 / 高中 150;没有书籍信息的词按小学。
+    ⚠️ 2026-08-04 起已退出 PK 计分链路(满分统一 词数×100,见 score.py),
+    live 路径不再调用;保留仅供测试与将来可能的展示用途,勿再接回胜负计算。
     """
     if not word_ids:
         return {}
@@ -134,6 +136,7 @@ async def create_room(
             team_names=body.team_names,
             host_is_player=False,  # 教师是组织者,不作为选手下场
             countdown_seconds=body.countdown_seconds,
+            same_words=body.same_words,
         )
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")

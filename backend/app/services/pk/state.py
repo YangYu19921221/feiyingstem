@@ -132,9 +132,15 @@ class RoomState:
     org_id: int = 1                      # 房间归属机构(多租户): 随房主,跨机构不可见/不可加入
     unit_id: Optional[int] = None        # 旧版按单元开房的遗留字段,现不再使用
     word_count: int = 10                 # 房主选的每局词数(每词 4 阶段)
-    base_points: int = 100               # 无学段信息单词的兜底基础分
-    word_points: dict[int, int] = field(default_factory=dict)  # word_id → 每题基础分(按该词学段)
+    base_points: int = 100               # 每词分值(满分 = 词数 × 这个数;全场统一,见 score.py)
+    # word_id → 每题展示分。2026-08-04 起胜负计算不再用它(满分统一 词数×100),
+    # live 路径已不装载(恒空 → points_for_word 恒 base_points);字段保留兼容测试注入
+    word_points: dict[int, int] = field(default_factory=dict)
     word_lookup: dict[int, Any] = field(default_factory=dict)  # word_id → Word ORM(开局时装载,全房共享)
+    # 同题公平赛(默认开):开局全员考「所有人都背过」交集里的同一批词、同一顺序 →
+    # 同词表/同分组/同满分,先背完者分数必然最高(发奖品的硬要求)。
+    # 关掉则各考各背过的词(小初高混场词汇量差异大时用;题量仍全场统一)
+    same_words: bool = True
     # PK 模式:individual=个人赛(默认,兼容学生自建房/晋级赛);team=分组赛(队伍聚合计分)
     mode: ModeLiteral = "individual"
     # 分组赛:教师建房时自己创建分组并命名,学生进房后自己选组(team=None 即未选)

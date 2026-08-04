@@ -29,6 +29,10 @@ class CreateRoomRequest(BaseModel):
     # 旧客户端仍会发 team_count(过去的"分几队"),服务端忽略:队数由 team_names 决定
     team_count: int = Field(2, ge=2, le=8, deprecated=True)
     countdown_seconds: int = Field(300, ge=60, le=1800)  # 全场倒计时秒数(1-30分钟,默认5)
+    # 同题公平赛(默认开):全员考「所有人都背过」的同一批词、同一顺序,
+    # 同满分 → 先背完者分数必然最高(发奖品用这个)。关掉则各考各背过的词
+    # (共同背过的词太少开不了同题局时用;题量仍全场统一)
+    same_words: bool = True
 
 
 class JoinRoomRequest(BaseModel):
@@ -80,6 +84,7 @@ class RoomSnapshot(BaseModel):
     team_names: dict[str, str] = {}
     host_is_player: bool = True   # 房主是否下场(教师组织的房为 False)
     countdown_seconds: int = 300
+    same_words: bool = True       # 同题公平赛(全员同一批词)/ 关=各考各背过的词
     deadline_at: Optional[str] = None
     players: list[PlayerSnapshot]
     spectators: list[SpectatorSnapshot] = []

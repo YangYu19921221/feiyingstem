@@ -47,6 +47,8 @@ export interface PkRoomSnapshot {
   /** 组号 → 组名(教师建房时起的);学生在等待室据此选组 */
   team_names?: Record<string, string>;
   host_is_player: boolean; // 房主是否下场(教师组织房为 false)
+  /** 同题公平赛:全员考同一批词(默认 true);false=各考各背过的词 */
+  same_words?: boolean;
   countdown_seconds: number;      // 全场倒计时秒数
   deadline_at: string | null;     // 倒计时截止(ISO,开局后有值)
   players: PkPlayer[];
@@ -77,9 +79,9 @@ export interface PkTeamRankItem {
 export interface PkLiveRankItem {
   user_id: number;
   nickname: string;
-  /** 得分 = 掌握进度 × 满分(决定胜负) */
+  /** 得分 = 掌握进度 × 满分 + 速度分(决定胜负) */
   points: number;
-  /** 满分:该玩家词表的难度分之和(小学100/初中120/高中150 每词) */
+  /** 满分 = 词数 × 100,全场统一(2026-08-04 起与词难度无关,先背完者分必最高) */
   potential_points?: number;
   correct: number;
   wrong: number;
@@ -151,12 +153,14 @@ export interface MyRoomItem {
 
 export const pkApi = {
   // 分组赛:teamNames = 教师自己建的组名,学生进房后各自选组
+  // sameWords=true(默认)同题公平赛:全员同一批词,先背完者分数必然最高(发奖品用)
   createRoom: (
     maxPlayers: number,
     wordCount: number,
     mode: PkMode = 'individual',
     countdownSeconds = 300,
     teamNames: string[] = [],
+    sameWords = true,
   ) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
       max_players: maxPlayers,
@@ -164,6 +168,7 @@ export const pkApi = {
       mode,
       countdown_seconds: countdownSeconds,
       team_names: teamNames,
+      same_words: sameWords,
     }),
 
   lookupByCode: (code: string) =>

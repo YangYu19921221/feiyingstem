@@ -1,13 +1,16 @@
 """PK 评分与排名(纯函数,无副作用)。
 
-计分规则(2026-07-26 版:按掌握进度 × 词难度给分,得分定胜负):
+计分规则(2026-08-04 公平版:发奖品的硬要求 —— 先背完者分数必然最高):
 
-    得分 = 掌握进度(0~1) × 潜在总分
-    潜在总分 = 该玩家词表里每个词的难度分之和
-    每词难度分按学段:小学 100 / 初中 120 / 高中 150(取自单词本 grade_level)
+    得分 = 掌握进度(0~1) × 满分 + 速度分
+    满分 = 词数 × 100(全场统一,与词难度无关)
+    速度分 = 只有全部完成才拿,按用时严格递减,完成必为正、到截止才归零
 
-即「背完就是满分,词越难满分越高」。混学段同场时高中生词难、上限高,
-小学生词简单、上限低,各自比各自的完成度,同时难度差异如实反映在分数上。
+为什么满分必须统一(2026-08-04 实测暴露):以前满分 = 词表难度分之和
+(小学 100/初中 120/高中 150,按词所在书的最早学段)。但每人开局随机抽词,
+抽到几个"纯初中词"全凭运气 —— 同班同题量,A 满分 1000、B 满分 1100,
+B 慢 40 秒反而赢。奖品赛里分数天花板不能靠抽签。学段难度分已整体退出
+胜负计算(下方 grade 系函数仅余测试引用,勿再接回计分链路)。
 
 为什么这样设计(别改回"每题累加"):
 - **进度天然封顶 100%,分数刷不出来。** 累加制下,背得快的人跑完就锁分,
@@ -15,9 +18,12 @@
   之前为此打过一个"提前完成奖励"的补丁;改成进度制后那个补丁不再需要,已删。
 - **正确率不用单独计分。** 答错会强制抄写/重考,进度自然变慢,
   时间成本已经惩罚了错误 —— 再扣一次分是双重惩罚,小学生会挫败。
-- **手速也不用单独加成。** 同分时按总用时排序,快的人自然靠前。
+- **速度分全程严格递减且完成必为正**(见 speed_score):满分统一后,
+  这保证了「先完成者总分严格最高」,大屏柱高与名次永远一致。
 
 排名:总分降序 → 同分先完成者优先 → 再比总用时升序 → 正确数兜底。
+(同分只剩两种情形:都没到该组阶段边界,或速度分四舍五入撞到同一整数 ——
+后者相差不到 1 分,按完成时刻裁决仍是公平的。)
 """
 from __future__ import annotations
 from typing import Any
@@ -27,13 +33,22 @@ from typing import Any
 # 这是速度分的尺子,与教师设的倒计时解耦(见 speed_reference_seconds)。
 REFERENCE_SECONDS_PER_WORD = 12.0
 
-# 速度分占满分的最大比例:一开局就全掌握完拿满这个比例,时间耗尽则为 0。
-# 0.3 = "又快又准"最多比"慢慢做完"多 30% 分。
+# 速度分占满分的最大比例:一开局就全掌握完拿满这个比例,拖到截止才为 0。
+# 0.3 = "又快又准"最多比"压线做完"多 30% 分。
 # 调大 → 更奖励手速;调小 → 更接近纯掌握度比拼。
 SPEED_SCORE_RATIO = 0.3
 
-# 学段 → 每词难度分(背完该词的满分贡献)。
-# 改这三个数就等于调难度权重:差距越大,高学段越吃香。
+# 参照用时点(词数×12s)仍保留的速度分份额。速度分两段递减:
+#   [0, 参照用时] 从 100% 降到 25%;(参照用时, 全场截止] 从 25% 降到 0。
+# 为什么不能在参照用时处直接归零(2026-08-04 发现):抄写 3 遍 + 重考的正常
+# 消耗远超 12s/词,大量完赛者会落在参照用时之后 —— 若那里就归零,他们全部
+# 同分(=满分),名次只能靠看不见的完成时刻裁决,又回到"6 根等高柱"的老问题。
+# 保留一段缓降的尾巴,先完成者的分数就严格更高、柱高肉眼可辨。
+SPEED_FLOOR_RATIO = 0.25
+
+# 学段 → 每词难度分。⚠️ 2026-08-04 起已退出胜负计算(满分统一 100/词,见模块
+# docstring),整组 grade 系函数仅余 pk_routes.load_word_points 与测试引用,
+# 别再接回计分链路 —— 抽词是随机的,按词难度给分等于按运气定分数天花板。
 GRADE_BASE_POINTS: dict[str, int] = {
     "primary": 100,
     "junior": 120,
@@ -83,15 +98,14 @@ def base_points_for_word_grades(grade_levels: list[str | None]) -> int:
     return GRADE_BASE_POINTS[tier]
 
 
-def potential_points(word_points: dict[int, int], word_ids: list[int],
-                     fallback: int = 100) -> int:
+def potential_points(word_count: int, per_word: int = 100) -> int:
     """
-    该玩家的「满分」= 词表里每词难度分之和。全部掌握即拿到这个分。
+    该玩家的「满分」= 词数 × 100,全场统一。全部掌握即拿到这个分。
 
-    word_points 是全房共享的 word_id → 难度分(开局时按各词学段装载);
-    查不到的词按 fallback(小学分)兜底,宁可少给也不要凭空造分。
+    满分刻意与词难度脱钩:题量开局已强制全场一致,所以满分也人人相同 ——
+    这是「先完成者分数必然最高」成立的前提(否则天花板高的人可以更慢却更高分)。
     """
-    return sum(word_points.get(wid, fallback) for wid in word_ids)
+    return max(0, word_count) * per_word
 
 
 def speed_reference_seconds(word_count: int, countdown_seconds: float) -> float:
@@ -115,20 +129,35 @@ def speed_score(
     potential: int, used_seconds: float, countdown_seconds: float, word_count: int,
 ) -> int:
     """
-    速度分:只有「全部掌握完成」才拿,= 满分 × SPEED_SCORE_RATIO × 提前比例。
+    速度分:只有「全部掌握完成」才拿,在 [0, 全场截止] 上严格递减:
 
-    为什么必须有(2026-07-26 实测暴露):6 人同场全部完成 → 全部 600 分,
-    名次只能靠看不见的完成时刻裁决,大屏上是 6 根等高柱标着 1~6 名,学生当场质疑。
-    把"快"折算成分数后,快慢在柱高上直接看得见。
+        用时 ≤ 参照用时:满速段,从 满分×0.3 线性降到 满分×0.3×0.25
+        参照用时 < 用时 < 截止:缓降尾巴,从 满分×0.3×0.25 线性降到 0
 
-    提前比例按 speed_reference_seconds 的尺子算,不看教师设的倒计时(见上)。
-    按满分比例而非固定值:高中生满分高、速度分也高,与难度权重口径一致。
+    两段连续拼接,完成必为正分 → 满分统一后「先完成者总分严格最高」是数学
+    保证,不再依赖看不见的完成时刻裁决(奖品赛的硬要求)。
+
+    为什么必须有速度分(2026-07-26 实测暴露):6 人同场全部完成 → 全部同分,
+    名次只能靠完成时刻裁决,大屏上是 6 根等高柱标着 1~6 名,学生当场质疑。
+
+    参照用时按 speed_reference_seconds 的尺子算(词数×12s 与倒计时取小),
+    不直接用教师随手设的倒计时当满速尺(见该函数)。
     """
     if potential <= 0 or used_seconds < 0:
         return 0
+    band = potential * SPEED_SCORE_RATIO
     ref = speed_reference_seconds(word_count, countdown_seconds)
-    ratio = max(0.0, min(1.0, (ref - used_seconds) / ref))
-    return round(potential * SPEED_SCORE_RATIO * ratio)
+    if used_seconds <= ref:
+        ratio = SPEED_FLOOR_RATIO + (1.0 - SPEED_FLOOR_RATIO) * (ref - used_seconds) / ref
+    elif countdown_seconds > ref:
+        ratio = SPEED_FLOOR_RATIO * max(0.0, (countdown_seconds - used_seconds) / (countdown_seconds - ref))
+    else:
+        ratio = 0.0
+    if ratio <= 0.0:
+        return 0
+    # 压线完成也至少 1 分:否则取整会把贴着截止完成的人归零,
+    # "完成者总分 > 任何未完成者" 就少了最后一块保证(round(0.4)=0)
+    return max(1, round(band * ratio))
 
 
 def score_for_progress(progress: float, potential: int) -> int:

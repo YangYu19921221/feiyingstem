@@ -24,7 +24,7 @@ from app.models.user import User, Class, ClassStudent
 from app.models.pk_tournament import PkTournament, PkTournamentPlayer, PkTournamentMatch
 from app.services.pk import manager
 from app.services.pk import tournament as tsvc
-from app.api.v1.pk_routes import load_word_points, load_learned_word_ids
+from app.api.v1.pk_routes import load_learned_word_ids
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -383,8 +383,8 @@ async def enter_match(
         except manager.UserAlreadyInRoom:
             raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
         room.tournament_match_id = m.id
-        room.fixed_words = True   # 开局选词限定在单元池内(每人各抽自己背过的单元词)
-        room.word_points = await load_word_points(db, word_ids)
+        room.fixed_words = True   # 开局选词限定在单元池内(双方同一批词、同一顺序)
+        # word_points 不装载:满分统一 词数×100(见 score.py),学段难度分已退出计分
 
         m.invite_code = room.invite_code
         await db.commit()

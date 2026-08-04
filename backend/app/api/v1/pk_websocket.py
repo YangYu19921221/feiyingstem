@@ -78,7 +78,8 @@ async def _load_learned_for_room(user_ids: list[int], word_ids: list[int] | None
 
 
 async def _load_word_points_for_room(word_ids: list[int]) -> dict[int, int]:
-    """按词定基础分(独立会话;模块级方便测试打桩)。"""
+    """按词查学段难度分。⚠️ 已退出 live 计分链路(满分统一 词数×100,见 score.py),
+    保留仅因多个测试以打桩本函数为基建;勿在业务代码里重新调用。"""
     async with AsyncSessionLocal() as db:
         return await load_word_points(db, word_ids)
 
@@ -106,6 +107,8 @@ def _snapshot_dict(room) -> dict:
         # 队号 → 队名(班级名);分组赛按班级自动建队,前端一律显示队名而非"第N队"
         "team_names": {str(t): n for t, n in room.team_names.items()},
         "host_is_player": room.host_is_player,
+        # 同题公平赛:全员同一批词(等待室/结算页展示用)
+        "same_words": room.same_words,
         # 全场倒计时(并行竞速):前端据 deadline_at 显示倒数
         "countdown_seconds": room.countdown_seconds,
         "deadline_at": room.deadline_at.isoformat() + "Z" if room.deadline_at else None,
@@ -750,7 +753,8 @@ async def _try_start_game(room, requester_ws) -> None:
     """开局逻辑(房主/教师控制台共用)。requester_ws 用于把校验失败的 error 回给发起者。
 
     分组赛额外要求:每个队至少 1 名在线玩家,否则空队无意义。
-    自由房选词走「共同背过」交集,不足 word_count 时用其余学过的词补齐(不再直接卡死)。
+    选词按 room.same_words:默认同题公平赛(严格交集、全员同词同序,不补词);
+    关掉则各考各背过的词(题量取全场最小词汇量,保持工作量一致)。
     """
     if room.status != "waiting":
         return
@@ -801,10 +805,35 @@ async def _try_start_game(room, requester_ws) -> None:
             ps.answers = []
             ps.finished = False
         room.word_ids = list(shared)
+    elif room.same_words:
+        # 同题公平赛(默认):全员考「所有人都背过」交集里的同一批词、同一顺序。
+        # 同词表 → 同分组 → 同满分(词数×100),先背完者分数必然最高 ——
+        # 发奖品的硬要求:任何因抽词不同带来的难度/长度差异都不允许存在。
+        learned = await _load_learned_for_room(online_ids, None)
+        chosen, common_count = select_words_with_fallback(
+            {uid: learned.get(uid, set()) for uid in online_ids},
+            room.word_count, random, fill_pool=None,   # 严格交集,绝不补没背过的词
+        )
+        if len(chosen) < MIN_COMMON_WORDS:
+            await requester_ws.send_json({
+                "type": "error", "code": "NOT_ENOUGH_COMMON_WORDS",
+                "message": (
+                    f"全场共同背过的词只有 {common_count} 个,凑不齐同题对局。"
+                    "让学生先把相同单元背齐,或建房时关掉「同题公平赛」改为各考各的"
+                ),
+            })
+            return
+        for uid in online_ids:
+            ps = room.players[uid]
+            ps.word_ids = list(chosen)   # 同一份、同一顺序 → 分组切法也完全一致
+            ps.answers = []
+            ps.finished = False
+        room.word_count = len(chosen)    # 交集不足设定值时压到实际题量(快照展示)
+        room.word_ids = list(chosen)
     else:
-        # 自由房 / 分组赛:每人各考「他自己背过的词」(小初高混场也公平),但
-        # ⚠️ 题量必须全场统一 —— 胜负是「率先掌握完成」,若各人词表长短不同,
-        # 背得少的人工作量小、必然先完成(背 5 词的稳赢背 30 词的),激励完全反向。
+        # 各考各的(same_words 关):每人考「他自己背过的词」(小初高混场词汇量
+        # 差异大、凑不出交集时用),但 ⚠️ 题量必须全场统一 —— 胜负是「率先掌握
+        # 完成」,若各人词表长短不同,背得少的人工作量小、必然先完成,激励完全反向。
         # 故取「所有在线玩家背过词数的最小值」并与房主设定 word_count 取小,作为统一题量。
         learned = await _load_learned_for_room(online_ids, None)
         min_vocab = min(len(learned.get(uid, set())) for uid in online_ids)
@@ -831,8 +860,9 @@ async def _try_start_game(room, requester_ws) -> None:
         room.word_count = per_player_count    # 快照/前端展示实际生效题量
         room.word_ids = list(all_word_ids)   # 快照/落库/教师聚合用(全房并集)
 
-    # 装载 word_lookup / word_points(word_id→Word / 基础分,全房共享一份)
-    room.word_points = await _load_word_points_for_room(room.word_ids)
+    # 装载 word_lookup(word_id→Word,全房共享一份)。
+    # word_points 不再装载:满分统一 词数×100(见 score.py),按学段给词加权
+    # 已退出计分链路,留空让 points_for_word 恒返 base_points,展示口径一致。
     room.word_lookup.clear()
     room.word_lookup.update(await _load_word_lookup(room.word_ids))
     logger.info(

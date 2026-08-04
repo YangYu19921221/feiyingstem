@@ -91,10 +91,13 @@ def create_room(host_id: int, max_players: int, org_id: int,
                 mode: str = "individual",
                 team_names: list[str] | None = None,
                 host_is_player: bool = True,
-                countdown_seconds: int = 300) -> RoomState:
-    """建房。word_ids 通常留空——开局时才从「所有人都背过」的交集里随机抽 word_count 个。
+                countdown_seconds: int = 300,
+                same_words: bool = True) -> RoomState:
+    """建房。word_ids 通常留空——开局时才按 same_words 选词(见 _try_start_game)。
     org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。
 
+    same_words=True(默认):同题公平赛,全员考「所有人都背过」的同一批词;
+    False 则各考各背过的词(题量仍全场统一)。
     host_is_player=False:房主(教师)只组织不下场,不进 players、不参与结算/计分。
     mode="team":分组赛,教师建房时用 team_names 自己创建并命名分组,
     学生进房后在等待室自己选组(见 set_player_team)。
@@ -124,6 +127,7 @@ def create_room(host_id: int, max_players: int, org_id: int,
         team_names=normalize_team_names(team_names) if mode == "team" else {},
         host_is_player=host_is_player,
         countdown_seconds=max(60, min(int(countdown_seconds), 1800)),
+        same_words=same_words,
     )
     if host_is_player:
         # 房主下场:作为首个玩家入房(学生自建房 / 晋级赛)。

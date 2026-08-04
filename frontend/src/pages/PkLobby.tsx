@@ -44,6 +44,9 @@ export default function PkLobby() {
   // 分组赛的组名(教师自己填);默认给两组占位,想多分就点「添加一组」
   const [teamNames, setTeamNames] = useState<string[]>(['', '']);
   const [countdownMin, setCountdownMin] = useState(5);  // 全场倒计时(分钟)
+  // 同题公平赛(默认开):全员考「所有人都背过」的同一批词,先背完者分数必然最高。
+  // 关掉则各考各背过的词(共同背过的词太少开不了同题局时的退路)
+  const [sameWords, setSameWords] = useState(true);
   const [inviteCode, setInviteCode] = useState('');
   const [showInvite, setShowInvite] = useState<string | null>(null);
   const [createError, setCreateError] = useState('');
@@ -119,6 +122,7 @@ export default function PkLobby() {
       const data = await pkApi.createRoom(
         finalPlayers, finalWords, mode, countdownMin * 60,
         mode === 'team' ? teamNames : [],
+        sameWords,
       );
       setShowInvite(data.invite_code);
       loadMyRooms();
@@ -529,6 +533,33 @@ export default function PkLobby() {
               <span className="text-xs text-ink-mute">分钟(1–30)</span>
             </div>
 
+            {/* 选词方式:同题公平赛(默认) / 各考各的 */}
+            <label className="block text-sm font-medium text-ink-soft mb-2">选词方式</label>
+            <div className="flex gap-2 mb-2">
+              {([
+                { k: true, label: '同题公平赛', desc: '全员同一批词' },
+                { k: false, label: '各考各的', desc: '各抽自己背过的词' },
+              ] as const).map((m) => (
+                <button
+                  key={String(m.k)}
+                  onClick={() => setSameWords(m.k)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${
+                    sameWords === m.k
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
+                  }`}
+                >
+                  {m.label}
+                  <span className={`block text-[10px] font-normal ${sameWords === m.k ? 'text-white/80' : 'text-ink-mute'}`}>{m.desc}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-mute mb-6">
+              {sameWords
+                ? '从所有人共同背过的词里抽同一批,先背完的分数一定最高 —— 发奖品选这个。共同背过的词太少会开不了局'
+                : '每人从自己背过的词里抽(词汇量差异大凑不出共同词时用),题量仍全场统一'}
+            </p>
+
             <button
               onClick={handleCreate}
               disabled={creating}
@@ -543,7 +574,9 @@ export default function PkLobby() {
               </p>
             )}
             <p className="text-[11px] text-ink-mute mt-3 text-center">
-              每个学生各考「自己背过的词」,题量按全场最少的学生统一(最多 {wordCount} 词),
+              {sameWords
+                ? `全员考同一批共同背过的词(最多 ${wordCount} 词),`
+                : `每个学生各考「自己背过的词」,题量按全场最少的学生统一(最多 ${wordCount} 词),`}
               走完分类→听写→过关全流程;总分(掌握分+速度分)最高者赢,{countdownMin} 分钟到点按当时总分排名
             </p>
           </motion.div>
@@ -662,10 +695,10 @@ export default function PkLobby() {
                 <p>至少 2 名学生进房即可开局。分组赛还要求<span className="font-semibold text-ink">人人都选了组、且至少两组有人</span>(全挤在一组就没有对手了),没选组的学生名字会标「⚠️ 未选组」。开局后自动进<span className="font-semibold text-ink">全屏大屏监控台</span>,看每个学生的实时阶段与掌握进度,但不答题。随时可「提前结束」并出正式榜。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">④ 每人考自己背过的词(题量全场统一)</p>
-                <p>系统给<span className="font-semibold text-ink">每个学生各抽他自己背过的词</span>(在学习流程里练过、留下掌握记录的词)——小学、初中、高中的孩子放一起也公平,谁都不会被考自己没学过的词。</p>
-                <p className="mt-1">但<span className="font-semibold text-ink">题量会按「全场背得最少的那个学生」统一</span>:比如 A 背过 300 词、B 只背过 8 词,则两人都只考 8 个(各考自己的)。这样大家工作量一样,比的才是掌握程度,不会出现背得少的人因为任务轻而占便宜。若有学生背过的词不足 4 个,则无法开局。</p>
-                <p className="mt-1 text-ink-mute">词的难易会体现在满分上:小学词每词 100 分、初中 120、高中 150,所以高年级学生的满分更高——同样全部掌握,考高中词拿的分更多。</p>
+                <p className="font-semibold text-ink mb-1">④ 选词:同题公平赛(默认)或各考各的</p>
+                <p><span className="font-semibold text-ink">同题公平赛</span>:系统从「所有参赛学生都背过的词」里抽<span className="font-semibold text-ink">同一批词、同一顺序</span>发给每个人——同词同量同满分,先背完的分数一定最高,<span className="font-semibold text-ink">要发奖品就用这个</span>。共同背过的词不足 4 个会开不了局(让学生先把相同单元背齐)。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">各考各的</span>:每个学生各抽他自己背过的词,适合词汇量差异太大、凑不出共同词的场次。题量仍按全场背得最少的学生统一,大家工作量一样。</p>
+                <p className="mt-1 text-ink-mute">两种方式下满分都 = 词数 × 100,全场统一——分数天花板人人相同,不因抽到什么词而变。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">⑤ 每人走一遍分类记忆法全流程</p>
@@ -676,8 +709,8 @@ export default function PkLobby() {
                 <p className="font-semibold text-ink mb-1.5">🏁 怎么定胜负(重点)</p>
                 <ul className="space-y-1 list-disc pl-4">
                   <li><span className="font-medium text-ink">总分最高的学生赢</span>。总分 = 掌握分 + 速度分,大屏柱子的高度就是总分,所以<span className="font-medium text-ink">柱子最高的就是第一名</span>,不用另外解释名次。</li>
-                  <li><span className="font-medium text-ink">掌握分 = 掌握进度 × 满分</span>(满分 = 词表里每词难度分之和)。进度封顶,所以<span className="font-medium text-ink">反复刷题刷不出分</span>,只有真把词掌握了才涨分。</li>
-                  <li><span className="font-medium text-ink">速度分只有全部完成才拿</span>,完成越早拿得越多(最多为满分的 30%)。这样全班都做完时,快慢在柱高上直接看得见,而不是几根等高柱标着 1~6 名。</li>
+                  <li><span className="font-medium text-ink">掌握分 = 掌握进度 × 满分</span>(满分 = 词数 × 100,全场统一)。进度封顶,所以<span className="font-medium text-ink">反复刷题刷不出分</span>,只有真把词掌握了才涨分。</li>
+                  <li><span className="font-medium text-ink">速度分只有全部完成才拿</span>,完成越早拿得越多(最多为满分的 30%),<span className="font-medium text-ink">只要在倒计时内完成就一定是正分、且比后完成的人高</span>——所以先背完的人总分必然最高,柱子高低和名次永远对得上。</li>
                   <li><span className="font-medium text-ink">全员完成即立刻结算</span>,不用等倒计时走完;倒计时到点仍有人没做完,就按当时的总分排名。</li>
                   <li>同分时依次看:先完成者优先 → 总用时更短 → 答对更多。</li>
                   <li><span className="font-medium text-ink">分组赛按队内「人均得分」排名</span>——队里人多不占便宜,人少的队照样能赢。</li>
@@ -691,9 +724,9 @@ export default function PkLobby() {
                 <p>输入老师发你的 6 位邀请码,点「加入对战」。房满或已开局也能点「观战」看比赛。</p>
               </div>
               <div>
-                <p className="font-semibold text-ink mb-1">② 考的是你自己背过的词</p>
-                <p>题目从<span className="font-semibold text-ink">你自己背过的单词</span>里出(你在学习模式里练过的词),和同学考的不一样,所以不管你几年级都公平,也不会考到你没学过的词。</p>
-                <p className="mt-1"><span className="font-semibold text-ink">题量大家一样多</span>——按全场背得最少的同学来定。所以<span className="font-medium text-ink">背得多不会被罚、背得少也占不到便宜</span>,大家做一样多的题,比谁掌握得更好更快。</p>
+                <p className="font-semibold text-ink mb-1">② 考的都是你们背过的词</p>
+                <p>一般比赛里<span className="font-semibold text-ink">全场考同一批词</span>——从你们所有人都背过的单词里抽,题目、顺序、满分完全一样,<span className="font-medium text-ink">谁先背完谁分最高</span>,绝对公平。老师也可以设成「各考各的」:每人考自己背过的词。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">题量大家一样多</span>,满分也一样(词数 × 100)。所以<span className="font-medium text-ink">背得多不会被罚、背得少也占不到便宜</span>,比的就是谁掌握得更好更快。</p>
                 <p className="mt-1 text-ink-mute">如果你背过的词还不到 4 个,老师就开不了局——先去学习模式多背一些再来。</p>
               </div>
               <div>
@@ -712,7 +745,7 @@ export default function PkLobby() {
                 <ul className="space-y-1 list-disc pl-4">
                   <li><span className="font-medium text-ink">分数最高的人赢</span>,榜上柱子最高的就是第一名。分数 = 掌握分 + 速度分。</li>
                   <li><span className="font-medium text-ink">掌握分看你把词掌握了多少</span>:掌握得越多分越高,全部掌握就拿满分。<span className="font-medium text-ink">反复刷同一题刷不出分</span>,真会了才涨。</li>
-                  <li><span className="font-medium text-ink">全部做完还能拿速度分</span>,越早做完拿得越多。所以做完了别磨蹭,快就是分。</li>
+                  <li><span className="font-medium text-ink">全部做完还能拿速度分</span>,越早做完拿得越多——<span className="font-medium text-ink">先做完的人分数一定比后做完的高</span>,所以做完了别磨蹭,快就是分。</li>
                   <li>大家都完成了就<span className="font-medium text-ink">马上出成绩</span>;时间到了还没做完,就按当时的分数排名。</li>
                   <li>不会的词会一直反复出现直到你会,所以<span className="font-medium text-ink">乱按、拖时间都没用</span>,认认真真一遍过反而最快、分最高。</li>
                   <li>分数一样时,看谁先完成、谁用时更短。</li>

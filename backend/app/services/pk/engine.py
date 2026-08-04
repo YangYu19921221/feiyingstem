@@ -53,7 +53,7 @@ def init_player_groups(room: RoomState, p, group_size: Optional[int] = None) -> 
     p.current_meta = {}
     _prepare_meta(room, p, room.word_lookup)
     p.progress = p.compute_progress()
-    # 开局就算一次:满分(词难度之和)要在大屏上显示"0 / 满分",不能等第一次答题
+    # 开局就算一次:满分(词数×100)要在大屏上显示"0 / 满分",不能等第一次答题
     _sync_points(room, p)
 
 
@@ -61,8 +61,8 @@ def _sync_points(room: RoomState, p) -> None:
     """
     重算该玩家得分 = 掌握分 + 速度分。
 
-    - 掌握分 = 进度 × 满分(词表难度分之和)
-    - 速度分 = 只有全部完成才拿,按剩余时间比例 × 满分 × SPEED_SCORE_RATIO
+    - 掌握分 = 进度 × 满分(满分 = 词数 × 100,全场统一,与词难度无关)
+    - 速度分 = 只有全部完成才拿,全程严格递减、完成必为正(见 score.speed_score)
 
     每次答题后调用(在 _advance 之后,进度已更新)。这是 points 的唯一写入口 ——
     别再往 p.points 上累加,累加制会让"慢慢刷题"反而得分更高(见 score.py)。
@@ -70,7 +70,7 @@ def _sync_points(room: RoomState, p) -> None:
     速度分一旦结算就锁住(存 p.speed_points):否则每次重算时"剩余时间"都变少,
     已完成玩家的分数会随时间倒流,大屏上柱子往下掉。
     """
-    p.potential_points = potential_points(room.word_points, p.word_ids, room.base_points)
+    p.potential_points = potential_points(len(p.word_ids), room.base_points)
     mastery = score_for_progress(p.compute_progress(), p.potential_points)
 
     if p.finished and p.speed_points == 0 and room.started_at is not None:
@@ -362,7 +362,7 @@ def submit_answer(
 
     _advance(room, p, is_correct, payload, word_lookup)
 
-    # 得分 = 掌握进度 × 满分(词难度之和)。必须放在 _advance 之后 ——
+    # 得分 = 掌握进度 × 满分(词数×100,全场统一)。必须放在 _advance 之后 ——
     # 进度是在那里推进的,先算就会永远少记一题。
     # 答错不直接扣分:抄写/重考会拖慢进度,时间成本已经是惩罚(见 score.py)
     _sync_points(room, p)
