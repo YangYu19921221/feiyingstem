@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   ShieldCheck,
   Sparkles,
+  UserRound,
 } from 'lucide-react';
 import useGoBack from '../../hooks/useGoBack';
 
@@ -95,7 +96,11 @@ export default function StaffWorkspaceHeader({ role, title, subtitle, icon: Icon
   const location = useLocation();
   const goBack = useGoBack(role === 'admin' ? '/admin' : role === 'org' ? '/org' : '/teacher/dashboard');
   const [moreOpen, setMoreOpen] = useState(false);
+  // 移动端账号菜单(设置/退出):桌面右上角那排按钮在 ≤767px 整行隐藏,
+  // 没有这个菜单,手机上就无处退出登录(2026-08-05 用户反馈)
+  const [accountOpen, setAccountOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
   const nav = navByRole[role];
   const BrandIcon = role === 'teacher' ? Sparkles : role === 'org' ? Building2 : ShieldCheck;
   const hasMore = nav.more.length > 0;
@@ -104,9 +109,10 @@ export default function StaffWorkspaceHeader({ role, title, subtitle, icon: Icon
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMoreOpen(false);
+      if (accountRef.current && !accountRef.current.contains(event.target as Node)) setAccountOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMoreOpen(false);
+      if (event.key === 'Escape') { setMoreOpen(false); setAccountOpen(false); }
     };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -116,15 +122,31 @@ export default function StaffWorkspaceHeader({ role, title, subtitle, icon: Icon
     };
   }, []);
 
-  useEffect(() => {
+  // 路由变化时收起菜单(浏览器前进/后退也覆盖)。用 render 期调整而非 effect:
+  // 见 react.dev "adjusting state when a prop changes",避免级联渲染
+  const [prevPath, setPrevPath] = useState(location.pathname);
+  if (prevPath !== location.pathname) {
+    setPrevPath(location.pathname);
     setMoreOpen(false);
-  }, [location.pathname]);
+    setAccountOpen(false);
+  }
 
   const logout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
     navigate('/login');
   };
+
+  const roleFallback = role === 'admin' ? '管理员' : role === 'org' ? '机构管理员' : '教师';
+  const userName = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || 'null')?.full_name || roleFallback;
+    } catch {
+      return roleFallback;
+    }
+  })();
+  const settingsPath = role === 'admin' ? '/admin/settings' : role === 'org' ? '/org' : '/teacher/dashboard';
+  const settingsLabel = role === 'admin' ? '系统设置' : role === 'org' ? '机构设置' : '工作台';
 
   return (
     <header className={`staff-workspace-header staff-workspace-header-${role}${action ? ' staff-workspace-header-has-action' : ''}`}>
@@ -148,8 +170,8 @@ export default function StaffWorkspaceHeader({ role, title, subtitle, icon: Icon
 
         <div className="staff-workspace-header-right">
           {action && <div className="staff-workspace-action">{action}</div>}
-          <span className="staff-workspace-user"><span className="staff-workspace-status" />{(() => { try { return JSON.parse(localStorage.getItem('user') || 'null')?.full_name || (role === 'admin' ? '管理员' : role === 'org' ? '机构管理员' : '教师'); } catch { return role === 'admin' ? '管理员' : role === 'org' ? '机构管理员' : '教师'; } })()}</span>
-          <button type="button" onClick={() => navigate(role === 'admin' ? '/admin/settings' : role === 'org' ? '/org' : '/teacher/dashboard')} className="staff-workspace-icon" aria-label={role === 'admin' ? '系统设置' : role === 'org' ? '机构设置' : '工作台'} title={role === 'admin' ? '系统设置' : role === 'org' ? '机构设置' : '工作台'}><Cog className="h-4 w-4" /></button>
+          <span className="staff-workspace-user"><span className="staff-workspace-status" />{userName}</span>
+          <button type="button" onClick={() => navigate(settingsPath)} className="staff-workspace-icon" aria-label={settingsLabel} title={settingsLabel}><Cog className="h-4 w-4" /></button>
           <button type="button" onClick={logout} className="staff-workspace-icon" aria-label="退出登录" title="退出登录"><LogOut className="h-4 w-4" /></button>
         </div>
       </div>
@@ -159,6 +181,30 @@ export default function StaffWorkspaceHeader({ role, title, subtitle, icon: Icon
         {Icon && <Icon className="h-5 w-5 shrink-0 text-[color:var(--staff-accent)]" aria-hidden="true" />}
         <div className="min-w-0 flex-1"><h1 className="truncate">{title}</h1>{subtitle && <p className="truncate">{subtitle}</p>}</div>
         {action && <div className="staff-workspace-mobile-action">{action}</div>}
+        {/* 账号菜单:桌面右上角(用户名/设置/退出)在移动端整行隐藏,这里补一个入口 */}
+        <div className="staff-workspace-mobile-account" ref={accountRef}>
+          <button
+            type="button"
+            onClick={() => setAccountOpen((open) => !open)}
+            aria-label="账号菜单"
+            aria-expanded={accountOpen}
+            aria-haspopup="menu"
+            aria-controls={`staff-workspace-account-${role}`}
+          >
+            <UserRound className="h-5 w-5" />
+          </button>
+          {accountOpen && (
+            <div id={`staff-workspace-account-${role}`} className="staff-workspace-mobile-account-menu" role="menu">
+              <p className="staff-workspace-mobile-account-name"><span className="staff-workspace-status" />{userName}</p>
+              <button type="button" role="menuitem" onClick={() => { setAccountOpen(false); navigate(settingsPath); }}>
+                <Cog className="h-4 w-4" />{settingsLabel}
+              </button>
+              <button type="button" role="menuitem" className="is-danger" onClick={logout}>
+                <LogOut className="h-4 w-4" />退出登录
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
