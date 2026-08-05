@@ -49,6 +49,8 @@ export interface PkRoomSnapshot {
   host_is_player: boolean; // 房主是否下场(教师组织房为 false)
   /** 同题公平赛:全员考同一批词(默认 true);false=各考各背过的词 */
   same_words?: boolean;
+  /** 考试范围描述(建房时指定了书/单元才有,如「三上人教版·整本」);等待室展示 */
+  scope_desc?: string | null;
   countdown_seconds: number;      // 全场倒计时秒数
   deadline_at: string | null;     // 倒计时截止(ISO,开局后有值)
   players: PkPlayer[];
@@ -145,15 +147,31 @@ export interface MyRoomItem {
   status: PkStatus;
   mode: PkMode;
   word_count: number;
+  /** 考试范围描述(指定了书/单元才有) */
+  scope_desc?: string | null;
   player_count: number;
   online_count: number;
   created_at: string | null;
   started_at: string | null;
 }
 
+/** 建房「考试范围」选择器用:教师可见的单词本 / 某本书下的单元 */
+export interface PkBookOption {
+  id: number;
+  name: string;
+  unit_count?: number;
+}
+
+export interface PkUnitOption {
+  id: number;
+  name: string;
+  word_count?: number;
+}
+
 export const pkApi = {
   // 分组赛:teamNames = 教师自己建的组名,学生进房后各自选组
   // sameWords=true(默认)同题公平赛:全员同一批词,先背完者分数必然最高(发奖品用)
+  // scopeBookIds/scopeUnitIds:考试范围(整本书/单元,取并集);都空 = 不限范围
   createRoom: (
     maxPlayers: number,
     wordCount: number,
@@ -161,6 +179,8 @@ export const pkApi = {
     countdownSeconds = 300,
     teamNames: string[] = [],
     sameWords = true,
+    scopeBookIds: number[] = [],
+    scopeUnitIds: number[] = [],
   ) =>
     api.post<CreateRoomResponse>('/pk/rooms', {
       max_players: maxPlayers,
@@ -169,7 +189,13 @@ export const pkApi = {
       countdown_seconds: countdownSeconds,
       team_names: teamNames,
       same_words: sameWords,
+      scope_book_ids: scopeBookIds,
+      scope_unit_ids: scopeUnitIds,
     }),
+
+  // 建房「考试范围」选择器的数据源(复用教师端书/单元接口)
+  listBooks: () => api.get<PkBookOption[]>('/teacher/books'),
+  listBookUnits: (bookId: number) => api.get<PkUnitOption[]>(`/teacher/books/${bookId}/units`),
 
   lookupByCode: (code: string) =>
     api.get<PkRoomSnapshot>(`/pk/rooms/by-code/${code}`),

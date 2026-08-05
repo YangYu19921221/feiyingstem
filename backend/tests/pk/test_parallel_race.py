@@ -208,8 +208,9 @@ def test_timeout_classify_marks_unknown():
 
 @pytest.mark.asyncio
 async def test_start_game_uses_uniform_word_count(monkeypatch):
-    """A 背 30 词、B 背 8 词 → 两人都只考 8 个(各考自己的),组数一致。
-    否则「率先掌握者赢」会让背得少的人稳赢。"""
+    """A 背 30 词、B 背 8 词,设定 30 词 → 两人都考 30 题,组数一致。
+    B 背的词不够,用他自己的 8 个词随机重复补足(2026-08-05 起不再把
+    全场题量压到最小词汇量 —— 弱生不再拖低所有人的题量)。"""
     from app.api.v1 import pk_websocket as W
 
     class FakeWS:
@@ -235,11 +236,11 @@ async def test_start_game_uses_uniform_word_count(monkeypatch):
 
     await W._try_start_game(room, FakeWS())
     a, b = room.players[1], room.players[2]
-    assert len(a.word_ids) == len(b.word_ids) == 8
+    assert len(a.word_ids) == len(b.word_ids) == 30
     assert a.group_total == b.group_total
-    # 各人仍只考自己背过的词
+    # 各人仍只考自己背过的词;B 的 8 个词全部用上、靠重复凑满题量
     assert set(a.word_ids) <= set(range(1, 31))
-    assert set(b.word_ids) <= set(range(1, 9))
+    assert set(b.word_ids) == set(range(1, 9))
 
 
 @pytest.mark.asyncio
@@ -331,7 +332,8 @@ async def test_start_game_same_words_rejects_tiny_intersection(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_game_per_player_mode_when_same_words_off(monkeypatch):
-    """same_words 关掉:各考各背过的词(旧行为),题量仍按最小词汇量统一。"""
+    """same_words 关掉:各考各背过的词,题量统一取设定值;
+    背的词不够的玩家用自己的词随机重复补足(不再压到最小词汇量)。"""
     from app.api.v1 import pk_websocket as W
 
     class FakeWS:
@@ -355,10 +357,80 @@ async def test_start_game_per_player_mode_when_same_words_off(monkeypatch):
 
     await W._try_start_game(room, FakeWS())
     a, b = room.players[1], room.players[2]
-    assert len(a.word_ids) == len(b.word_ids) == 8       # 题量取最小词汇量
+    assert len(a.word_ids) == len(b.word_ids) == 30      # 题量统一取设定值
     assert set(a.word_ids) <= set(range(1, 31))
-    assert set(b.word_ids) <= set(range(101, 109))
-    assert a.potential_points == b.potential_points == 800  # 满分仍统一(词数×100)
+    assert set(b.word_ids) == set(range(101, 109))       # B 的词全部用上、重复补足
+    assert a.potential_points == b.potential_points == 3000  # 满分仍统一(词数×100)
+
+
+@pytest.mark.asyncio
+async def test_start_game_same_words_repeats_fill_when_pool_short(monkeypatch):
+    """同题赛共同词(6 个)不够设定词数(10) → 随机重复补足到 10,
+    全员同一份含重复的卷面(同词同序),满分仍 = 设定词数 × 100。"""
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    room = manager.create_room(host_id=105, max_players=4, org_id=1,
+                              host_is_player=False, word_count=10)
+    for uid in (1, 2):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    async def fake_learned(ids, wids=None):
+        return {1: set(range(1, 7)) | {91}, 2: set(range(1, 7)) | {92}}  # 交集 6 个
+    async def fake_lookup(wids):
+        return {w: FakeWord(w) for w in wids}
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+    monkeypatch.setattr(W, "_load_word_lookup", fake_lookup)
+
+    await W._try_start_game(room, FakeWS())
+    a, b = room.players[1], room.players[2]
+    assert a.word_ids == b.word_ids                    # 含重复也逐题相同
+    assert len(a.word_ids) == 10 and room.word_count == 10
+    assert set(a.word_ids) == set(range(1, 7))         # 只出交集词,6 个全用上
+    assert a.potential_points == b.potential_points == 1000
+
+
+@pytest.mark.asyncio
+async def test_start_game_scope_limits_word_pool(monkeypatch):
+    """指定考试范围:开局查「背过的词」时把范围词池传给查询,
+    选出的词只落在范围内。"""
+    from app.api.v1 import pk_websocket as W
+
+    class FakeWS:
+        def __init__(self): self.sent = []
+        async def send_json(self, d): self.sent.append(d)
+
+    scope = list(range(1, 9))   # 范围只有词 1..8
+    room = manager.create_room(host_id=106, max_players=4, org_id=1,
+                              host_is_player=False, word_count=10,
+                              scope_word_ids=scope, scope_desc="测试书 Unit 1")
+    for uid in (1, 2):
+        manager.join_room(invite_code=room.invite_code, user_id=uid, nickname=f"U{uid}", org_id=1)
+        room.players[uid].ws = FakeWS()
+        room.players[uid].online = True
+
+    seen_scope = []
+
+    async def fake_learned(ids, wids=None):
+        seen_scope.append(wids)
+        pool = set(wids) if wids is not None else set(range(1, 100))
+        # 两人都背过 1..20,但查询按范围过滤后只剩 1..8
+        return {uid: set(range(1, 21)) & pool for uid in ids}
+    async def fake_lookup(wids):
+        return {w: FakeWord(w) for w in wids}
+    monkeypatch.setattr(W, "_load_learned_for_room", fake_learned)
+    monkeypatch.setattr(W, "_load_word_lookup", fake_lookup)
+
+    await W._try_start_game(room, FakeWS())
+    assert seen_scope == [scope]                        # 范围词池确实传给了查询
+    a = room.players[1]
+    assert set(a.word_ids) == set(scope)                # 只考范围内的词(不够则重复)
+    assert len(a.word_ids) == 10
 
 
 def test_exam_paper_identical_regardless_of_personal_path():

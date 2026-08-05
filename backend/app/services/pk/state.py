@@ -142,6 +142,10 @@ class RoomState:
     # 同词表/同分组/同满分,先背完者分数必然最高(发奖品的硬要求)。
     # 关掉则各考各背过的词(小初高混场词汇量差异大时用;题量仍全场统一)
     same_words: bool = True
+    # 考试范围(教师建房时指定书/单元解析出的词池):开局选词只在此池内取
+    # 「背过的词」;None = 不限范围(全库,老行为)。词池不够设定词数时随机重复补足
+    scope_word_ids: Optional[list[int]] = None
+    scope_desc: str = ""                 # 范围描述(如「三上人教版·整本、三下 Unit 1」,等待室展示)
     # 全房共享的随机种子:过关出题顺序、选择题干扰项都由它确定性生成 →
     # 同题赛里每个学生看到的每一题、每个选项逐字相同,唯一变量是答得对不对、快不快
     match_seed: int = field(default_factory=lambda: random.randint(0, 2**31 - 1))

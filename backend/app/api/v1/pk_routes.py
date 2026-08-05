@@ -38,6 +38,7 @@ def _snapshot(room) -> RoomSnapshot:
         host_is_player=room.host_is_player,
         countdown_seconds=room.countdown_seconds,
         same_words=room.same_words,
+        scope_desc=room.scope_desc or None,
         deadline_at=room.deadline_at.isoformat() + "Z" if room.deadline_at else None,
         players=[
             PlayerSnapshot(
@@ -88,6 +89,82 @@ async def load_learned_word_ids(
     return per_user
 
 
+async def resolve_scope_words(
+    db: AsyncSession, book_ids: list[int], unit_ids: list[int], org_id: int,
+) -> tuple[list[int], str]:
+    """把教师建房时指定的「哪些书(整本)/哪些单元」解析成范围词池。
+
+    返回 (word_ids, 范围描述)。书与单元取并集、去重;归属校验按机构:
+    只认平台共享书(org_id IS NULL)或本机构自建书,别家机构的 id 静默丢弃
+    (raw SQL 不走 tenancy 自动过滤,必须在这里显式拦)。
+    整本已选中的书,其下单元不再单列(词已包含,描述也更干净)。
+    """
+    book_rows: list = []
+    if book_ids:
+        marks = ",".join(f":b{i}" for i in range(len(book_ids)))
+        params: dict = {f"b{i}": v for i, v in enumerate(book_ids)}
+        params["org"] = org_id
+        book_rows = (await db.execute(
+            text(
+                f"SELECT id, name FROM word_books "
+                f"WHERE id IN ({marks}) AND (org_id IS NULL OR org_id = :org)"
+            ),
+            params,
+        )).fetchall()
+    valid_book_ids = [r[0] for r in book_rows]
+
+    unit_rows: list = []
+    if unit_ids:
+        marks = ",".join(f":u{i}" for i in range(len(unit_ids)))
+        params = {f"u{i}": v for i, v in enumerate(unit_ids)}
+        params["org"] = org_id
+        unit_rows = (await db.execute(
+            text(
+                f"SELECT u.id, u.name, wb.id, wb.name FROM units u "
+                f"JOIN word_books wb ON wb.id = u.book_id "
+                f"WHERE u.id IN ({marks}) AND (wb.org_id IS NULL OR wb.org_id = :org)"
+            ),
+            params,
+        )).fetchall()
+    # 整本在选的书,其单元不再单算
+    unit_rows = [r for r in unit_rows if r[2] not in set(valid_book_ids)]
+    valid_unit_ids = [r[0] for r in unit_rows]
+
+    word_ids: set[int] = set()
+    if valid_book_ids:
+        # 整本书的词经 units→unit_words 取:book_words 表实际是空的(导入只写
+        # unit_words),直接查它整本永远 0 词
+        marks = ",".join(f":b{i}" for i in range(len(valid_book_ids)))
+        params = {f"b{i}": v for i, v in enumerate(valid_book_ids)}
+        rows = await db.execute(
+            text(
+                f"SELECT DISTINCT uw.word_id FROM unit_words uw "
+                f"JOIN units u ON u.id = uw.unit_id WHERE u.book_id IN ({marks})"
+            ),
+            params,
+        )
+        word_ids.update(r[0] for r in rows.fetchall())
+    if valid_unit_ids:
+        marks = ",".join(f":u{i}" for i in range(len(valid_unit_ids)))
+        params = {f"u{i}": v for i, v in enumerate(valid_unit_ids)}
+        rows = await db.execute(
+            text(f"SELECT DISTINCT word_id FROM unit_words WHERE unit_id IN ({marks})"),
+            params,
+        )
+        word_ids.update(r[0] for r in rows.fetchall())
+
+    # 范围描述:整本书直接书名,单元按书聚合成「书名 Unit 1/Unit 2」;太长截断
+    parts = [f"{name}(整本)" for _, name in book_rows]
+    by_book: dict[str, list[str]] = {}
+    for _, uname, _, bname in unit_rows:
+        by_book.setdefault(bname, []).append(uname)
+    for bname, unames in by_book.items():
+        shown = "/".join(unames[:4]) + (f" 等{len(unames)}个单元" if len(unames) > 4 else "")
+        parts.append(f"{bname} {shown}")
+    desc = "、".join(parts[:3]) + (f" 等{len(parts)}项" if len(parts) > 3 else "")
+    return sorted(word_ids), desc
+
+
 async def load_word_points(db: AsyncSession, word_ids: list[int]) -> dict[int, int]:
     """按词查学段难度分(小学 100/初中 120/高中 150)。
 
@@ -125,6 +202,19 @@ async def create_room(
     分组赛(mode=team)用 team_names 自己建组命名,学生进等待室后各自选组。
     """
     nickname = user.full_name or user.username or f"User{user.id}"
+    # 考试范围(可选):建房时就把书/单元解析成词池并校验,空范围直接拒绝,
+    # 不要等开局才发现——那时学生都已经进房了
+    scope_word_ids: list[int] | None = None
+    scope_desc = ""
+    if body.scope_book_ids or body.scope_unit_ids:
+        scope_word_ids, scope_desc = await resolve_scope_words(
+            db, body.scope_book_ids, body.scope_unit_ids, user.org_id,
+        )
+        if not scope_word_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="所选范围内没有单词,检查选中的书/单元是否为空",
+            )
     try:
         room = manager.create_room(
             host_id=user.id,
@@ -137,6 +227,8 @@ async def create_room(
             host_is_player=False,  # 教师是组织者,不作为选手下场
             countdown_seconds=body.countdown_seconds,
             same_words=body.same_words,
+            scope_word_ids=scope_word_ids,
+            scope_desc=scope_desc,
         )
     except manager.UserAlreadyInRoom:
         raise HTTPException(status_code=409, detail="USER_ALREADY_IN_ROOM")
@@ -157,6 +249,7 @@ async def my_rooms(user: User = Depends(get_current_teacher)):
             status=r.status,
             mode=r.mode,
             word_count=r.word_count,
+            scope_desc=r.scope_desc or None,
             player_count=len(r.players),
             online_count=sum(1 for p in r.players.values() if p.online),
             created_at=r.created_at,

@@ -17,11 +17,14 @@ class CreateRoomRequest(BaseModel):
     # + 按人裁剪(学生只收前10名+自己)→ 流量与人数近似无关。
     max_players: int = Field(4, ge=2, le=PK_MAX_PLAYERS)
     # 每人每轮词数,每词 4 阶段;答完循环续刷。
-    # 上限放开到 200:真正的天花板是"全场背得最少的学生的词汇量"——开局时
-    # _try_start_game 会把 word_count 压到 min(设定值, 全场最小词汇量),
-    # 所以填大不会出题超纲,只是等于"用满这个学生会的所有词"。
-    # 留 200 这个宽松硬顶而非彻底无上限:防手滑填 99999 造出超长对局/大 payload。
-    word_count: int = Field(10, ge=4, le=200)
+    # 上限 2000(2026-08-05 从 200 放开):词池不够设定词数时不再压缩题量,
+    # 改为随机重复池内词补足(见 engine.fill_with_repeats),同题赛全员同一份
+    # 含重复的卷面,公平性不破。留 2000 硬顶防手滑填 99999 造出超长对局/大 payload。
+    word_count: int = Field(10, ge=4, le=2000)
+    # 考试范围(可选):指定这局考哪些书(整本)/哪些单元,两者取并集;
+    # 都空 = 不限范围(考全库里背过的词,老行为)。范围内仍只考「背过的词」。
+    scope_book_ids: list[int] = Field(default_factory=list, max_length=50)
+    scope_unit_ids: list[int] = Field(default_factory=list, max_length=500)
     mode: ModeLiteral = "individual"           # individual=个人 PK;team=分组 PK
     # 分组 PK:教师建房时自己创建分组并起名,学生进房后自己选组。
     # 少于 2 组会自动补足到 2 组(空名按「第N组」兜底),见 manager.normalize_team_names
@@ -85,6 +88,7 @@ class RoomSnapshot(BaseModel):
     host_is_player: bool = True   # 房主是否下场(教师组织的房为 False)
     countdown_seconds: int = 300
     same_words: bool = True       # 同题公平赛(全员同一批词)/ 关=各考各背过的词
+    scope_desc: Optional[str] = None  # 考试范围描述(建房时指定书/单元才有;等待室展示)
     deadline_at: Optional[str] = None
     players: list[PlayerSnapshot]
     spectators: list[SpectatorSnapshot] = []
@@ -102,6 +106,7 @@ class MyRoomItem(BaseModel):
     status: StatusLiteral
     mode: ModeLiteral = "individual"
     word_count: int = 10
+    scope_desc: Optional[str] = None  # 考试范围描述(指定了书/单元才有)
     player_count: int = 0        # 已加入玩家数
     online_count: int = 0        # 在线玩家数
     created_at: Optional[datetime] = None

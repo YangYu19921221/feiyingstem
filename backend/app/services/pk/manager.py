@@ -92,7 +92,9 @@ def create_room(host_id: int, max_players: int, org_id: int,
                 team_names: list[str] | None = None,
                 host_is_player: bool = True,
                 countdown_seconds: int = 300,
-                same_words: bool = True) -> RoomState:
+                same_words: bool = True,
+                scope_word_ids: list[int] | None = None,
+                scope_desc: str = "") -> RoomState:
     """建房。word_ids 通常留空——开局时才按 same_words 选词(见 _try_start_game)。
     org_id 必填(房主机构):不给默认值,忘传直接报错,防止房间静默归错机构。
 
@@ -128,6 +130,9 @@ def create_room(host_id: int, max_players: int, org_id: int,
         host_is_player=host_is_player,
         countdown_seconds=max(60, min(int(countdown_seconds), 1800)),
         same_words=same_words,
+        # 考试范围词池(教师指定书/单元时才有):开局选词只在此池内取「背过的词」
+        scope_word_ids=list(scope_word_ids) if scope_word_ids else None,
+        scope_desc=scope_desc or "",
     )
     if host_is_player:
         # 房主下场:作为首个玩家入房(学生自建房 / 晋级赛)。

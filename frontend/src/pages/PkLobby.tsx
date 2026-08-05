@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, Brain, ChevronDown, CircleAlert, DoorOpen, Eye, Flag, Gauge, House, Swords, Trophy, Users } from 'lucide-react';
 import axios from 'axios';
-import { pkApi, type MyRoomItem } from '../api/pk';
+import { pkApi, type MyRoomItem, type PkBookOption, type PkUnitOption } from '../api/pk';
 import PkInviteModal from '../components/pk/PkInviteModal';
 import { tournamentApi, type MyMatch } from '../api/tournament';
 import { toast } from '../components/Toast';
@@ -13,10 +13,10 @@ const QUICK_COUNTS = [2, 10, 30, 50, 100];
 const WORD_COUNTS = [5, 10, 20, 50];
 // 分组赛的组由教师建房时自己建并命名(学生进房后自选);与后端 manager.MAX_TEAMS 一致
 const MIN_TEAMS = 2, MAX_TEAMS = 8;
-// 词数上限与后端 PkRoomCreate.word_count (ge=4, le=200) 一致。
-// 实际生效题量 = min(这里设定值, 全场背得最少的学生的词汇量),开局时后端统一压,
-// 所以填大只等于"用满该学生会的全部词",不会出超纲题。
-const MIN_WORDS = 4, MAX_WORDS = 200;
+// 词数上限与后端 CreateRoomRequest.word_count (ge=4, le=2000) 一致。
+// 词池(共同背过的词/各自背过的词)不够设定词数时,后端随机重复池内词补足,
+// 不再压缩题量;同题赛全员共用同一份含重复的卷面,公平不破。
+const MIN_WORDS = 4, MAX_WORDS = 2000;
 const MIN_PLAYERS = 2;
 // 与后端 CreateRoomRequest.max_players (le=200) 及库里 CHECK 一致。
 // 实时榜已改为合并推送 + 按人裁剪,带宽不再随人数²暴涨,大房间可放心开
@@ -47,6 +47,15 @@ export default function PkLobby() {
   // 同题公平赛(默认开):全员考「所有人都背过」的同一批词,先背完者分数必然最高。
   // 关掉则各考各背过的词(共同背过的词太少开不了同题局时的退路)
   const [sameWords, setSameWords] = useState(true);
+  // 考试范围(可选):指定这局考哪些书(整本)/哪些单元;不开 = 不限范围(全部背过的词)
+  const [scopeOn, setScopeOn] = useState(false);
+  const [books, setBooks] = useState<PkBookOption[]>([]);
+  const [selBook, setSelBook] = useState<number | null>(null);   // 当前浏览的书
+  const [bookUnits, setBookUnits] = useState<PkUnitOption[]>([]);
+  const [scopeBookIds, setScopeBookIds] = useState<number[]>([]); // 整本加入范围的书
+  const [scopeUnitIds, setScopeUnitIds] = useState<number[]>([]); // 单独加入范围的单元
+  // 单元 id → 「书名·单元名」:汇总 chips 要能标注别的书下的单元
+  const [unitLabels, setUnitLabels] = useState<Record<number, string>>({});
   const [inviteCode, setInviteCode] = useState('');
   const [showInvite, setShowInvite] = useState<string | null>(null);
   const [createError, setCreateError] = useState('');
@@ -97,6 +106,39 @@ export default function PkLobby() {
     return () => clearInterval(t);
   }, [isTeacher]);
 
+  // 首次打开「指定范围」才拉书目;切书时拉该书单元
+  useEffect(() => {
+    if (!isTeacher || !scopeOn || books.length > 0) return;
+    pkApi.listBooks().then(setBooks).catch(() => {});
+  }, [isTeacher, scopeOn, books.length]);
+  useEffect(() => {
+    if (!selBook) { setBookUnits([]); return; }
+    pkApi.listBookUnits(selBook).then(setBookUnits).catch(() => setBookUnits([]));
+  }, [selBook]);
+
+  /** 整本加入/移出范围;加入整本时该书已单独选中的单元一并收编(避免重复计) */
+  const toggleWholeBook = (bookId: number) => {
+    if (scopeBookIds.includes(bookId)) {
+      setScopeBookIds(scopeBookIds.filter((id) => id !== bookId));
+    } else {
+      setScopeBookIds([...scopeBookIds, bookId]);
+      const unitIdsOfBook = new Set(bookUnits.map((u) => u.id));
+      setScopeUnitIds(scopeUnitIds.filter((id) => !unitIdsOfBook.has(id)));
+    }
+  };
+
+  const toggleUnit = (u: PkUnitOption) => {
+    if (scopeUnitIds.includes(u.id)) {
+      setScopeUnitIds(scopeUnitIds.filter((id) => id !== u.id));
+    } else {
+      setScopeUnitIds([...scopeUnitIds, u.id]);
+      const bookName = books.find((b) => b.id === selBook)?.name ?? '';
+      setUnitLabels((m) => ({ ...m, [u.id]: bookName ? `${bookName}·${u.name}` : u.name }));
+    }
+  };
+
+  const scopeCount = scopeBookIds.length + scopeUnitIds.length;
+
   const enterMatch = async (m: MyMatch) => {
     setEntering(m.match_id);
     try {
@@ -112,6 +154,11 @@ export default function PkLobby() {
 
   const handleCreate = async () => {
     setCreateError('');
+    // 开了「指定范围」却什么都没选:大概率是忘了,拦下来让老师明确二选一
+    if (scopeOn && scopeCount === 0) {
+      setCreateError('你选了「指定书/单元」但还没勾选任何范围;选好范围,或切回「不限范围」');
+      return;
+    }
     setCreating(true);
     try {
       // 取输入框当前文本再 clamp:打完数字直接点"创建"不会触发 onBlur,
@@ -123,6 +170,8 @@ export default function PkLobby() {
         finalPlayers, finalWords, mode, countdownMin * 60,
         mode === 'team' ? teamNames : [],
         sameWords,
+        scopeOn ? scopeBookIds : [],
+        scopeOn ? scopeUnitIds : [],
       );
       setShowInvite(data.invite_code);
       loadMyRooms();
@@ -314,6 +363,7 @@ export default function PkLobby() {
                       {r.status === 'waiting' ? '等待中' : '对战中'}
                       {' · '}{r.mode === 'team' ? '分组赛' : '个人赛'}
                       {' · '}{r.word_count} 词
+                      {r.scope_desc && ` · 范围:${r.scope_desc}`}
                     </p>
                     <p className="text-[11px] text-ink-mute">
                       {r.online_count}/{r.player_count} 人在线
@@ -471,7 +521,7 @@ export default function PkLobby() {
 
             {/* 题量(快捷档 + 自定义) */}
             <label className="block text-sm font-medium text-ink-soft mb-2">
-              单词数量上限 <span className="text-ink-mute font-normal">({MIN_WORDS}~{MAX_WORDS} 词 · 实际按全场背得最少的学生统一)</span>
+              单词数量 <span className="text-ink-mute font-normal">({MIN_WORDS}~{MAX_WORDS} 词 · 背过的词不够时随机重复补足)</span>
             </label>
             <div className="flex gap-2 mb-2">
               {WORD_COUNTS.map((n) => (
@@ -556,8 +606,102 @@ export default function PkLobby() {
             </div>
             <p className="text-[11px] text-ink-mute mb-6">
               {sameWords
-                ? '从所有人共同背过的词里出同一张卷子:词、顺序、题型、选项逐字相同,先背完的分数一定最高 —— 发奖品选这个。共同背过的词太少会开不了局'
-                : '每人从自己背过的词里抽(词汇量差异大凑不出共同词时用),题量与满分仍全场统一'}
+                ? '从所有人共同背过的词里出同一张卷子:词、顺序、题型、选项逐字相同,先背完的分数一定最高 —— 发奖品选这个。共同的词不够设定词数时随机重复补足(卷面仍全员相同);不足 4 个会开不了局'
+                : '每人从自己背过的词里抽(词汇量差异大凑不出共同词时用),题量与满分仍全场统一;背的词不够的学生用自己的词随机重复补足'}
+            </p>
+
+            {/* 考试范围:默认不限;指定后只考所选书/单元里「背过的词」 */}
+            <label className="block text-sm font-medium text-ink-soft mb-2">考试范围</label>
+            <div className="flex gap-2 mb-2">
+              {([
+                { k: false, label: '不限范围', desc: '全部背过的词' },
+                { k: true, label: '指定书/单元', desc: '只考所选范围' },
+              ] as const).map((m) => (
+                <button
+                  key={String(m.k)}
+                  onClick={() => setScopeOn(m.k)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${
+                    scopeOn === m.k
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-gray-100 text-ink-soft hover:bg-orange-100'
+                  }`}
+                >
+                  {m.label}
+                  <span className={`block text-[10px] font-normal ${scopeOn === m.k ? 'text-white/80' : 'text-ink-mute'}`}>{m.desc}</span>
+                </button>
+              ))}
+            </div>
+            {scopeOn && (
+              <div className="mb-2 rounded-xl border border-orange-100 bg-orange-50/40 p-3">
+                <select
+                  value={selBook ?? ''}
+                  onChange={(e) => setSelBook(Number(e.target.value) || null)}
+                  aria-label="选择要浏览的单词本"
+                  className="w-full h-11 rounded-lg border border-gray-200 bg-white px-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  <option value="">📚 选一本书,再挑整本或单元…</option>
+                  {books.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                {selBook != null && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => toggleWholeBook(selBook)}
+                      className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${
+                        scopeBookIds.includes(selBook)
+                          ? 'bg-primary text-white'
+                          : 'bg-white border border-orange-200 text-accent-warm hover:bg-orange-50'
+                      }`}
+                    >
+                      {scopeBookIds.includes(selBook) ? '✓ 整本已选' : '＋ 整本'}
+                    </button>
+                    {/* 整本已选就不再列单元(词已全包含) */}
+                    {!scopeBookIds.includes(selBook) && bookUnits.map((u) => (
+                      <button
+                        key={u.id}
+                        onClick={() => toggleUnit(u)}
+                        className={`min-h-9 rounded-lg px-2.5 text-xs font-medium transition ${
+                          scopeUnitIds.includes(u.id)
+                            ? 'bg-primary text-white'
+                            : 'bg-white border border-gray-200 text-ink-soft hover:bg-orange-50'
+                        }`}
+                      >
+                        {scopeUnitIds.includes(u.id) && '✓ '}
+                        {u.name}
+                        {u.word_count != null && <span className="opacity-70">·{u.word_count}词</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* 已选范围汇总(可跨多本书累加),点 × 移除 */}
+                {scopeCount > 0 ? (
+                  <div className="mt-2.5 border-t border-orange-100 pt-2">
+                    <p className="mb-1.5 text-[11px] font-medium text-ink-soft">已选范围({scopeCount} 项):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {scopeBookIds.map((id) => (
+                        <span key={`b${id}`} className="inline-flex items-center gap-1 rounded-lg bg-orange-100 px-2 py-1 text-[11px] font-medium text-accent-warm">
+                          {books.find((b) => b.id === id)?.name ?? `书 #${id}`}·整本
+                          <button onClick={() => setScopeBookIds(scopeBookIds.filter((x) => x !== id))} aria-label="移除这本书" className="px-0.5 text-sm leading-none hover:text-red-500">×</button>
+                        </span>
+                      ))}
+                      {scopeUnitIds.map((id) => (
+                        <span key={`u${id}`} className="inline-flex items-center gap-1 rounded-lg bg-sky-100 px-2 py-1 text-[11px] font-medium text-sky-700">
+                          {unitLabels[id] ?? `单元 #${id}`}
+                          <button onClick={() => setScopeUnitIds(scopeUnitIds.filter((x) => x !== id))} aria-label="移除这个单元" className="px-0.5 text-sm leading-none hover:text-red-500">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-ink-mute">还没选:上面挑一本书,点「整本」或勾单元;可以跨书多选</p>
+                )}
+              </div>
+            )}
+            <p className="text-[11px] text-ink-mute mb-6">
+              {scopeOn
+                ? '只从所选书/单元里出「学生背过的词」,超出范围的词一律不考'
+                : '不指定范围:从学生背过的全部单词里出题'}
             </p>
 
             <button
@@ -575,8 +719,8 @@ export default function PkLobby() {
             )}
             <p className="text-[11px] text-ink-mute mt-3 text-center">
               {sameWords
-                ? `全员考同一批共同背过的词(最多 ${wordCount} 词),`
-                : `每个学生各考「自己背过的词」,题量按全场最少的学生统一(最多 ${wordCount} 词),`}
+                ? `全员考同一批共同背过的词(${wordCount} 词,不够随机重复补足),`
+                : `每个学生各考「自己背过的词」(${wordCount} 词,不够用自己的词重复补足),`}
               走完分类→听写→过关全流程;总分(掌握分+速度分)最高者赢,{countdownMin} 分钟到点按当时总分排名
             </p>
           </motion.div>
@@ -684,13 +828,14 @@ export default function PkLobby() {
             <div className="space-y-4 text-sm text-ink-soft leading-relaxed">
               <div>
                 <p className="font-semibold text-ink mb-1">① 建房(你是组织者,全程不答题)</p>
-                <p>建房时定 5 件事:<span className="font-semibold text-ink">模式</span>(个人赛 / 分组赛)、<span className="font-semibold text-ink">人数</span>(2–200)、<span className="font-semibold text-ink">词数上限</span>(4–200)、<span className="font-semibold text-ink">全场倒计时</span>(1–30 分钟)、<span className="font-semibold text-ink">选词方式</span>(同题公平赛 / 各考各的)。点创建拿到 6 位邀请码发给学生。</p>
+                <p>建房时定 6 件事:<span className="font-semibold text-ink">模式</span>(个人赛 / 分组赛)、<span className="font-semibold text-ink">人数</span>(2–200)、<span className="font-semibold text-ink">词数</span>(4–2000)、<span className="font-semibold text-ink">全场倒计时</span>(1–30 分钟)、<span className="font-semibold text-ink">选词方式</span>(同题公平赛 / 各考各的)、<span className="font-semibold text-ink">考试范围</span>(不限 / 指定哪些书哪些单元)。点创建拿到 6 位邀请码发给学生。</p>
                 <p className="mt-1 text-ink-mute">倒计时怎么设:一个词走完全流程正常约 12–20 秒,10 个词建议 5 分钟左右。设长了不影响公平(速度分有自己的尺子),设太短会有很多人做不完。</p>
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">② 选词方式(重点,发奖品先看这条)</p>
-                <p><span className="font-semibold text-ink">同题公平赛(默认)</span>:系统从「所有参赛学生都背过的词」里抽题,全员拿到<span className="font-semibold text-ink">同一批词、同一顺序、同一题型、同一组选项</span>——相当于发同一张试卷,唯一的差别是每个人答得对不对、快不快。<span className="font-semibold text-ink">要发奖品就用这个。</span>共同背过的词不足 4 个会开不了局,先让学生把相同单元背齐。</p>
-                <p className="mt-1"><span className="font-semibold text-ink">各考各的</span>:每人各抽他自己背过的词,适合小学初中混场、词汇量差异太大凑不出共同词的场次。题量仍按全场背得最少的学生统一,工作量一样,但每人的词不同,不适合发奖品的正式比赛。</p>
+                <p><span className="font-semibold text-ink">同题公平赛(默认)</span>:系统从「所有参赛学生都背过的词」里抽题,全员拿到<span className="font-semibold text-ink">同一批词、同一顺序、同一题型、同一组选项</span>——相当于发同一张试卷,唯一的差别是每个人答得对不对、快不快。<span className="font-semibold text-ink">要发奖品就用这个。</span>共同的词不够设定词数时随机重复补足(卷面仍全员相同);不足 4 个会开不了局,先让学生把相同单元背齐。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">各考各的</span>:每人各抽他自己背过的词,适合小学初中混场、词汇量差异太大凑不出共同词的场次。题量全场统一取设定词数,背的词不够的学生用自己的词随机重复补足,工作量一样,但每人的词不同,不适合发奖品的正式比赛。</p>
+                <p className="mt-1"><span className="font-semibold text-ink">考试范围</span>:默认不限(全部背过的词);也可以指定这局考哪些书(整本)、哪些单元,可跨书多选。指定后只考范围内背过的词,超纲的词一律不出。</p>
                 <p className="mt-1 text-ink-mute">两种方式下满分都 = 词数 × 100,全场统一——分数天花板人人相同,不因抽到什么词而变。</p>
               </div>
               <div>
@@ -744,7 +889,7 @@ export default function PkLobby() {
               </div>
               <div>
                 <p className="font-semibold text-ink mb-1">② 大家做的是同一张卷子</p>
-                <p>一般比赛(同题模式)里,题目从<span className="font-semibold text-ink">你们所有人都背过的单词</span>里出,而且每个人拿到的<span className="font-semibold text-ink">词、顺序、题型、选项都一模一样</span>——就像考试发同一张试卷。你多想了几轮、多抄了几遍,后面的题也不会变。<span className="font-medium text-ink">不会考你没学过的词。</span></p>
+                <p>一般比赛(同题模式)里,题目从<span className="font-semibold text-ink">你们所有人都背过的单词</span>里出(老师可能划定了范围,比如只考某几个单元),而且每个人拿到的<span className="font-semibold text-ink">词、顺序、题型、选项都一模一样</span>——就像考试发同一张试卷。你多想了几轮、多抄了几遍,后面的题也不会变。<span className="font-medium text-ink">不会考你没学过的词</span>;词不够多时同一个词可能考不止一次,认真答就好。</p>
                 <p className="mt-1"><span className="font-semibold text-ink">满分人人一样:词数 × 100</span>(考 10 个词满分就是 1000)。所以比的只有一件事:<span className="font-medium text-ink">谁掌握得好、谁完成得快</span>。</p>
                 <p className="mt-1 text-ink-mute">老师也可能设成「各考各的」:每人考自己背过的词,题量和满分还是一样。如果你背过的词不到 4 个,老师开不了局——先去学习模式多背一些。</p>
               </div>

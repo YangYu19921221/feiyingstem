@@ -534,6 +534,27 @@ def select_words_with_fallback(
     return chosen, common_count
 
 
+def fill_with_repeats(pool: list[int], word_count: int, rng: Any) -> list[int]:
+    """词池不够设定词数时,随机重复池内词补足到 word_count(池空返回空)。
+
+    按「整池打乱后逐块拼接」:每一块内不重复 → 重复词尽量分散到不同组,
+    且块与块的接缝处避免同一个词背靠背连出两题。
+    同题赛调用方只调一次、全员共用同一份结果,含重复的卷面依然逐题相同。
+    """
+    if not pool:
+        return []
+    out = list(pool)
+    rng.shuffle(out)
+    out = out[:word_count]
+    while len(out) < word_count:
+        block = list(pool)
+        rng.shuffle(block)
+        if len(block) > 1 and block[0] == out[-1]:
+            block[0], block[1] = block[1], block[0]
+        out.extend(block[: word_count - len(out)])
+    return out
+
+
 def select_words_for_player(
     learned: set[int], word_count: int, rng: Any, fill_pool: set[int] | None = None,
 ) -> list[int]:

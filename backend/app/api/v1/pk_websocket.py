@@ -17,7 +17,7 @@ from app.models.word import Word
 from app.services.pk import manager, engine
 from app.services.pk import tournament as tsvc
 from app.services.pk.persist import persist_finished_room
-from app.services.pk.engine import PHASE_TIMEOUT_MS, select_words_with_fallback, select_words_for_player, _question_event
+from app.services.pk.engine import PHASE_TIMEOUT_MS, select_words_with_fallback, select_words_for_player, fill_with_repeats, _question_event
 from app.api.v1.pk_routes import load_learned_word_ids, load_word_points
 from app.services import online_tracker
 
@@ -109,6 +109,8 @@ def _snapshot_dict(room) -> dict:
         "host_is_player": room.host_is_player,
         # 同题公平赛:全员同一批词(等待室/结算页展示用)
         "same_words": room.same_words,
+        # 考试范围描述(教师建房指定书/单元才有;等待室展示)
+        "scope_desc": room.scope_desc or None,
         # 全场倒计时(并行竞速):前端据 deadline_at 显示倒数
         "countdown_seconds": room.countdown_seconds,
         "deadline_at": room.deadline_at.isoformat() + "Z" if room.deadline_at else None,
@@ -809,56 +811,67 @@ async def _try_start_game(room, requester_ws) -> None:
         # 同题公平赛(默认):全员考「所有人都背过」交集里的同一批词、同一顺序。
         # 同词表 → 同分组 → 同满分(词数×100),先背完者分数必然最高 ——
         # 发奖品的硬要求:任何因抽词不同带来的难度/长度差异都不允许存在。
-        learned = await _load_learned_for_room(online_ids, None)
+        # 指定了考试范围(scope_word_ids)则只在范围词池内取「背过的词」。
+        learned = await _load_learned_for_room(online_ids, room.scope_word_ids)
         chosen, common_count = select_words_with_fallback(
             {uid: learned.get(uid, set()) for uid in online_ids},
             room.word_count, random, fill_pool=None,   # 严格交集,绝不补没背过的词
         )
         if len(chosen) < MIN_COMMON_WORDS:
+            scope_hint = f"(范围:{room.scope_desc})" if room.scope_desc else ""
             await requester_ws.send_json({
                 "type": "error", "code": "NOT_ENOUGH_COMMON_WORDS",
                 "message": (
-                    f"全场共同背过的词只有 {common_count} 个,凑不齐同题对局。"
+                    f"全场共同背过的词只有 {common_count} 个{scope_hint},凑不齐同题对局。"
                     "让学生先把相同单元背齐,或建房时关掉「同题公平赛」改为各考各的"
                 ),
             })
             return
+        # 共同词不够设定题量:随机重复池内词补足(不再压缩题量)。
+        # 全员共用同一份含重复的卷面,同词同序 → 公平性不破
+        if len(chosen) < room.word_count:
+            chosen = fill_with_repeats(chosen, room.word_count, random)
         for uid in online_ids:
             ps = room.players[uid]
             ps.word_ids = list(chosen)   # 同一份、同一顺序 → 分组切法也完全一致
             ps.answers = []
             ps.finished = False
-        room.word_count = len(chosen)    # 交集不足设定值时压到实际题量(快照展示)
+        room.word_count = len(chosen)    # 与设定值一致(重复补足后恒等;快照展示)
         room.word_ids = list(chosen)
     else:
         # 各考各的(same_words 关):每人考「他自己背过的词」(小初高混场词汇量
         # 差异大、凑不出交集时用),但 ⚠️ 题量必须全场统一 —— 胜负是「率先掌握
         # 完成」,若各人词表长短不同,背得少的人工作量小、必然先完成,激励完全反向。
-        # 故取「所有在线玩家背过词数的最小值」并与房主设定 word_count 取小,作为统一题量。
-        learned = await _load_learned_for_room(online_ids, None)
+        # 题量统一取设定值:背过的词不够的学生,随机重复他自己的词补足,
+        # 不再按「全场最小词汇量」把所有人的题量压低。
+        learned = await _load_learned_for_room(online_ids, room.scope_word_ids)
         min_vocab = min(len(learned.get(uid, set())) for uid in online_ids)
-        per_player_count = min(room.word_count, min_vocab)
-        if per_player_count < MIN_COMMON_WORDS:
+        if min_vocab < MIN_COMMON_WORDS:
+            scope_hint = f"在指定范围({room.scope_desc})内" if room.scope_desc else ""
             await requester_ws.send_json({
                 "type": "error", "code": "NOT_ENOUGH_COMMON_WORDS",
                 "message": (
-                    f"有学生背过的单词太少(最少的只有 {min_vocab} 个),凑不齐一局。"
+                    f"有学生{scope_hint}背过的单词太少(最少的只有 {min_vocab} 个),凑不齐一局。"
                     f"每人至少需要背过 {MIN_COMMON_WORDS} 个单词,先去学习流程多背一些再来 PK"
                 ),
             })
             return
+        per_player_count = room.word_count
         all_word_ids: set[int] = set()
         for uid in online_ids:
             ps = room.players[uid]
             mine = learned.get(uid, set())
             picked = select_words_for_player(mine, per_player_count, random)
+            if len(picked) < per_player_count:
+                # 他背过的词不够题量:随机重复自己的词补足到统一题量
+                picked = fill_with_repeats(picked, per_player_count, random)
             ps.word_ids = picked
             ps.answers = []
             ps.finished = False
             all_word_ids |= set(picked)
         # 统一题量后每人 word_ids 长度一致 → 分组数一致 → 「谁先掌握完」才是公平比较
         room.word_count = per_player_count    # 快照/前端展示实际生效题量
-        room.word_ids = list(all_word_ids)   # 快照/落库/教师聚合用(全房并集)
+        room.word_ids = list(all_word_ids)   # 快照/落库/教师聚合用(全房并集,去重)
 
     # 装载 word_lookup(word_id→Word,全房共享一份)。
     # word_points 不再装载:满分统一 词数×100(见 score.py),按学段给词加权

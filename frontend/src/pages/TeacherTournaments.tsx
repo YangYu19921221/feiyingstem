@@ -27,10 +27,10 @@ const MAX_GROUP_SIZE = 20;
 // 快捷档只是常用值,任意 3~20 都能填(原来是固定下拉,7人/9人这种就没法选)
 const GROUP_SIZE_PRESETS = [3, 4, 5, 6, 8] as const;
 
-// 每场词数边界:与后端 CreateTournamentRequest.word_count (ge=5, le=200) 一致。
+// 每场词数边界:与后端 CreateTournamentRequest.word_count (ge=5, le=2000) 一致。
 // 晋级赛双方考同一批词,词源是所选单元池;填超过单元词量时后端会明确报错。
 const MIN_WORD_COUNT = 5;
-const MAX_WORD_COUNT = 200;
+const MAX_WORD_COUNT = 2000;
 const WORD_COUNT_PRESETS = [5, 8, 10, 20, 50] as const;
 
 export default function TeacherTournaments() {

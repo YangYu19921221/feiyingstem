@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { Check, CheckCircle2, CircleAlert, Clipboard, Clock3, Eye, Flag, LoaderCircle, MonitorCog, PlugZap, RotateCcw, Swords, Trophy, UserRound, Users } from 'lucide-react';
+import { BookOpen, Check, CheckCircle2, CircleAlert, Clipboard, Clock3, Eye, Flag, LoaderCircle, MonitorCog, PlugZap, RotateCcw, Swords, Trophy, UserRound, Users } from 'lucide-react';
 import { usePkSocket, type PkServerEvent } from '../hooks/usePkSocket';
 import {
   pkApi,
@@ -403,6 +403,14 @@ export default function PkArena() {
               {isTeamMode ? `${allTeams.length} 组` : '个人赛'} · 最多 {snapshot.word_count} 词
             </span>
           </div>
+
+          {/* 考试范围(教师建房时指定书/单元才显示) */}
+          {snapshot.scope_desc && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl bg-sky-50 px-4 py-2.5 text-sm text-sky-800">
+              <BookOpen className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>本局考试范围:<span className="font-semibold">{snapshot.scope_desc}</span>(只考范围内背过的词)</span>
+            </div>
+          )}
 
           {/* 邀请码大卡 */}
           <div className="card-soft mb-5 rounded-2xl px-5 py-5 text-center sm:px-6 sm:py-7">
