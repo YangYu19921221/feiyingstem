@@ -3,7 +3,13 @@ import { OrbitControls, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { useRef, useState, useEffect, useMemo, Suspense, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getPetDefinition, getSkillVfxRecipe, type PetElement, type SkillVfxRecipe } from '../config/petSpecies';
+import {
+  getPetDefinition,
+  getSkillVfxRecipe,
+  PARTICLE_IMAGE,
+  type PetElement,
+  type SkillVfxRecipe,
+} from '../config/petSpecies';
 
 type BattleVisualEffect = {
   id: string;
@@ -353,9 +359,12 @@ const anchorOf = (side: 1 | 2) => (side === 1 ? ANCHOR_LEFT : ANCHOR_RIGHT);
 type SkeletonProps = { attacker: 1 | 2; target: 1 | 2; recipe: SkillVfxRecipe };
 
 // 命中爆点:中心闪光 + 双扩散环 + 12 向粒子,所有骨架共用
-function ImpactBurst({ x, y, color, core, delay, big = false }: {
+// particle 有配就迸散实物贴图(火舌/水滴/电花…,黑底走 screen 混合),否则纯色圆点
+function ImpactBurst({ x, y, color, core, delay, big = false, particle }: {
   x: number; y: number; color: string; core: string; delay: number; big?: boolean;
+  particle?: keyof typeof PARTICLE_IMAGE;
 }) {
+  const particleSrc = particle ? PARTICLE_IMAGE[particle] : null;
   return (
     <div className="pointer-events-none absolute z-[8]" style={{ left: `${x}%`, top: `${y}%` }}>
       <motion.div
@@ -381,7 +390,27 @@ function ImpactBurst({ x, y, color, core, delay, big = false }: {
       {Array.from({ length: 12 }).map((_, index) => {
         const angle = (Math.PI * 2 * index) / 12;
         const dist = (index % 2 ? 62 : 92) * (big ? 1.25 : 1);
-        return (
+        const spin = (index % 2 ? 1 : -1) * (110 + index * 24);
+        return particleSrc ? (
+          <motion.img
+            key={index}
+            src={particleSrc}
+            alt=""
+            aria-hidden="true"
+            className={`absolute left-1/2 top-1/2 select-none mix-blend-screen ${
+              big ? 'w-14 sm:w-20' : 'w-10 sm:w-14'
+            }`}
+            initial={{ opacity: 0, x: '-50%', y: '-50%', scale: 0.25, rotate: 0 }}
+            animate={{
+              opacity: [0, 1, 0],
+              x: ['-50%', `calc(-50% + ${Math.cos(angle) * dist}px)`],
+              y: ['-50%', `calc(-50% + ${Math.sin(angle) * dist}px)`],
+              scale: [0.25, 1, 0.55],
+              rotate: [0, spin],
+            }}
+            transition={{ delay, duration: 0.72, ease: 'easeOut' }}
+          />
+        ) : (
           <motion.span
             key={index}
             className="absolute left-1/2 top-1/2 h-2 w-2 rounded-full sm:h-3 sm:w-3"
@@ -451,7 +480,24 @@ function BeamFx({ attacker, target, recipe }: SkeletonProps) {
           />
         ))}
       </svg>
-      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+      {/* 束流沿途的粒子:让光柱里跑着实物元素(火舌/水花/电花) */}
+      {recipe.particle && Array.from({ length: 5 }).map((_, i) => {
+        const p = 0.24 + i * 0.19;
+        return (
+          <motion.img
+            key={i}
+            src={PARTICLE_IMAGE[recipe.particle!]}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute z-[8] w-9 select-none mix-blend-screen sm:w-14"
+            style={{ left: `${a.x + (t.x - a.x) * p}%`, top: `${(a.y - 6) + (t.y - (a.y - 6)) * p}%` }}
+            initial={{ opacity: 0, scale: 0.3, x: '-50%', y: '-50%', rotate: i * 40 }}
+            animate={{ opacity: [0, 1, 0], scale: [0.3, 1.05, 0.6], x: '-50%', y: '-50%', rotate: i * 40 + 120 }}
+            transition={{ delay: SKELETON_AT + 0.2 + i * 0.05, duration: 0.55, ease: 'easeOut' }}
+          />
+        );
+      })}
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big particle={recipe.particle} />
     </>
   );
 }
@@ -493,7 +539,7 @@ function PillarFx({ target, recipe }: SkeletonProps) {
           transition={{ delay: SKELETON_AT + 0.36, duration: 0.5 }}
         />
       ))}
-      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big particle={recipe.particle} />
     </>
   );
 }
@@ -525,7 +571,7 @@ function SlashFx({ target, recipe }: SkeletonProps) {
           />
         ))}
       </div>
-      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} />
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} particle={recipe.particle} />
     </>
   );
 }
@@ -570,7 +616,7 @@ function AuraFx({ attacker, target, recipe }: SkeletonProps) {
           transition={{ delay: IMPACT_AT + index * 0.03, duration: 0.7, ease: 'easeOut' }}
         />
       ))}
-      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big particle={recipe.particle} />
     </>
   );
 }
@@ -604,7 +650,33 @@ function ProjectileFx({ attacker, target, recipe }: SkeletonProps) {
           ease: [0.5, 0, 0.85, 0.5],
         }}
       />
-      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+
+      {/* 弹头贴图:让飞行中的弹体也有实物质感(黑底走 screen) */}
+      {recipe.particle && (
+        <motion.img
+          src={PARTICLE_IMAGE[recipe.particle]}
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute z-[8] w-12 select-none mix-blend-screen sm:w-20"
+          initial={{ left: `${a.x}%`, top: `${a.y - 5}%`, opacity: 0, scale: 0.4, rotate: 0, x: '-50%', y: '-50%' }}
+          animate={{
+            left: [`${a.x}%`, `${a.x}%`, `${t.x}%`],
+            top: [`${a.y - 5}%`, `${a.y - 10}%`, `${t.y}%`],
+            opacity: [0, 1, 1],
+            scale: [0.4, 1.1, 0.95],
+            rotate: [0, 190],
+            x: '-50%',
+            y: '-50%',
+          }}
+          transition={{
+            delay: SKELETON_AT + 0.08,
+            duration: IMPACT_AT - SKELETON_AT - 0.08,
+            times: [0, 0.4, 1],
+            ease: [0.5, 0, 0.85, 0.5],
+          }}
+        />
+      )}
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big particle={recipe.particle} />
     </>
   );
 }
@@ -622,7 +694,7 @@ function BurstFx({ target, recipe }: SkeletonProps) {
         animate={{ opacity: [0, 0.9, 0.9], scale: [1.7, 0.5, 0.3], x: '-50%', y: '-50%' }}
         transition={{ delay: SKELETON_AT + 0.12, duration: IMPACT_AT - SKELETON_AT - 0.15, ease: 'easeIn' }}
       />
-      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT - 0.05} big />
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT - 0.05} big particle={recipe.particle} />
     </>
   );
 }

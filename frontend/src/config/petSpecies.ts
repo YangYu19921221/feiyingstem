@@ -208,55 +208,75 @@ export const PET_SPECIES_BY_ID: Record<string, PetSpeciesDefinition> = Object.fr
 // ==============================
 export type SkillSkeleton = 'beam' | 'pillar' | 'slash' | 'aura' | 'projectile' | 'burst';
 
+// 粒子贴图:黑底 PNG/WebP,前端走 mix-blend-mode:screen 叠加(黑色自动消失,
+// 不需要透明通道)。素材由 backend/scripts/gen_skill_particles.py 生成。
+export type SkillParticle =
+  | 'spark' | 'ember' | 'bubble' | 'leaf' | 'wisp'
+  | 'star' | 'shard' | 'ice' | 'petal' | 'metal';
+
+export const PARTICLE_IMAGE: Record<SkillParticle, string> = {
+  spark: '/vfx/particle-spark.webp',
+  ember: '/vfx/particle-ember.webp',
+  bubble: '/vfx/particle-bubble.webp',
+  leaf: '/vfx/particle-leaf.webp',
+  wisp: '/vfx/particle-wisp.webp',
+  star: '/vfx/particle-star.webp',
+  shard: '/vfx/particle-shard.webp',
+  ice: '/vfx/particle-ice.webp',
+  petal: '/vfx/particle-petal.webp',
+  metal: '/vfx/particle-metal.webp',
+};
+
 export type SkillVfxRecipe = {
   skeleton: SkillSkeleton;
   color: string;                    // 光效主色(外层辉光)
   core?: string;                    // 内芯色,默认近白
   from?: 'sky' | 'ground';          // pillar 专用:天降(默认) or 地涌
   shake?: 'light' | 'medium' | 'heavy'; // 命中震屏强度,默认 medium
+  particle?: SkillParticle;         // 命中迸散的实物粒子,缺省用纯色圆点
 };
 
 const SKILL_VFX: Record<string, SkillVfxRecipe> = {
-  pikachu:    { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy' },  // 十万伏特:天雷
-  eevee:      { skeleton: 'projectile', color: '#fbbf24', core: '#fff7ed' },              // 高速星星
-  bulbasaur:  { skeleton: 'slash', color: '#84cc16' },                                     // 飞叶快刀
-  charmander: { skeleton: 'beam', color: '#fb923c', core: '#fef08a', shake: 'heavy' },     // 火焰喷射
-  squirtle:   { skeleton: 'beam', color: '#22d3ee', core: '#e0f2fe', shake: 'heavy' },     // 水炮
-  jigglypuff: { skeleton: 'aura', color: '#f9a8d4' },                                      // 魔法闪耀
-  gastly:     { skeleton: 'projectile', color: '#a78bfa', core: '#4c1d95' },               // 暗影球
-  dratini:    { skeleton: 'beam', color: '#818cf8', core: '#e0e7ff' },                     // 龙之波动
-  machop:     { skeleton: 'slash', color: '#ef4444', shake: 'heavy' },                     // 爆裂拳
-  abra:       { skeleton: 'aura', color: '#e879f9' },                                      // 精神强念
-  geodude:    { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy' },   // 岩崩:落石
-  vulpix:     { skeleton: 'burst', color: '#fb923c', core: '#fef08a' },                    // 大字爆炎
-  growlithe:  { skeleton: 'slash', color: '#fb923c', shake: 'medium' },                    // 神速烈焰
-  magikarp:   { skeleton: 'slash', color: '#22d3ee' },                                     // 水流尾
-  oddish:     { skeleton: 'aura', color: '#f472b6' },                                      // 花瓣舞
-  poliwag:    { skeleton: 'burst', color: '#22d3ee' },                                     // 水流裂破
-  caterpie:   { skeleton: 'aura', color: '#cbd5e1' },                                      // 银色旋风
-  weedle:     { skeleton: 'projectile', color: '#a3e635' },                                // 飞弹针
-  bellsprout: { skeleton: 'slash', color: '#84cc16' },                                     // 强力鞭打
-  horsea:     { skeleton: 'beam', color: '#22d3ee', core: '#cffafe' },                     // 龙卷水炮
-  larvitar:   { skeleton: 'projectile', color: '#a16207', shake: 'heavy' },                // 尖石攻击
-  ralts:      { skeleton: 'aura', color: '#e879f9' },                                      // 精神冲击
-  chikorita:  { skeleton: 'beam', color: '#facc15', core: '#fefce8' },                     // 日光束
-  cyndaquil:  { skeleton: 'beam', color: '#fb923c', core: '#fef08a' },                     // 喷火
-  totodile:   { skeleton: 'slash', color: '#22d3ee' },                                     // 水流尾
-  treecko:    { skeleton: 'slash', color: '#84cc16' },                                     // 叶刃
-  torchic:    { skeleton: 'burst', color: '#fb923c', core: '#fde047', shake: 'heavy' },    // 爆炸烈焰
-  mudkip:     { skeleton: 'burst', color: '#b45309', core: '#67e8f9' },                    // 浊流
-  bagon:      { skeleton: 'pillar', color: '#818cf8', core: '#fbcfe8', shake: 'heavy' },   // 龙星群:天降流星
-  beldum:     { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy' }, // 彗星拳
-  gible:      { skeleton: 'slash', color: '#818cf8', shake: 'heavy' },                     // 龙神俯冲
-  snivy:      { skeleton: 'pillar', color: '#84cc16', from: 'ground', shake: 'heavy' },    // 疯狂植物:藤蔓地涌
-  tepig:      { skeleton: 'burst', color: '#fb923c', shake: 'heavy' },                     // 高温重压
-  oshawott:   { skeleton: 'slash', color: '#22d3ee', core: '#f0fdfa' },                    // 贝壳刃
-  rowlet:     { skeleton: 'projectile', color: '#84cc16', core: '#fef9c3' },               // 缝影:羽箭
-  litten:     { skeleton: 'slash', color: '#ef4444', core: '#fde047', shake: 'heavy' },    // 极恶飞跃粉碎击
-  popplio:    { skeleton: 'aura', color: '#22d3ee', core: '#fce7f3', shake: 'medium' },    // 海神庄严交响乐
-  book_fox:   { skeleton: 'aura', color: '#fbbf24' },                                      // 知识星辉
-  paper_owl:  { skeleton: 'beam', color: '#e879f9', core: '#fdf4ff' },                     // 智慧光束
-  word_turtle: { skeleton: 'beam', color: '#22d3ee', core: '#dbeafe' },                    // 词海奔流
+  pikachu:    { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy', particle: 'spark' },  // 十万伏特:天雷
+  eevee:      { skeleton: 'projectile', color: '#fbbf24', core: '#fff7ed', particle: 'star' },              // 高速星星
+  bulbasaur:  { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 飞叶快刀
+  charmander: { skeleton: 'beam', color: '#fb923c', core: '#fef08a', shake: 'heavy', particle: 'ember' },     // 火焰喷射
+  squirtle:   { skeleton: 'beam', color: '#22d3ee', core: '#e0f2fe', shake: 'heavy', particle: 'bubble' },     // 水炮
+  jigglypuff: { skeleton: 'aura', color: '#f9a8d4', particle: 'star' },                                      // 魔法闪耀
+  gastly:     { skeleton: 'projectile', color: '#a78bfa', core: '#4c1d95', particle: 'wisp' },               // 暗影球
+  dratini:    { skeleton: 'beam', color: '#818cf8', core: '#e0e7ff', particle: 'star' },                     // 龙之波动
+  machop:     { skeleton: 'slash', color: '#ef4444', shake: 'heavy', particle: 'shard' },                     // 爆裂拳
+  abra:       { skeleton: 'aura', color: '#e879f9', particle: 'star' },                                      // 精神强念
+  geodude:    { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy', particle: 'shard' },   // 岩崩:落石
+  vulpix:     { skeleton: 'burst', color: '#fb923c', core: '#fef08a', particle: 'ember' },                    // 大字爆炎
+  growlithe:  { skeleton: 'slash', color: '#fb923c', shake: 'medium', particle: 'ember' },                    // 神速烈焰
+  magikarp:   { skeleton: 'slash', color: '#22d3ee', particle: 'bubble' },                                     // 水流尾
+  oddish:     { skeleton: 'aura', color: '#f472b6', particle: 'petal' },                                      // 花瓣舞
+  poliwag:    { skeleton: 'burst', color: '#22d3ee', particle: 'bubble' },                                     // 水流裂破
+  caterpie:   { skeleton: 'aura', color: '#cbd5e1', particle: 'metal' },                                      // 银色旋风
+  weedle:     { skeleton: 'projectile', color: '#a3e635', particle: 'leaf' },                                // 飞弹针
+  bellsprout: { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 强力鞭打
+  horsea:     { skeleton: 'beam', color: '#22d3ee', core: '#cffafe', particle: 'bubble' },                     // 龙卷水炮
+  larvitar:   { skeleton: 'projectile', color: '#a16207', shake: 'heavy', particle: 'shard' },                // 尖石攻击
+  ralts:      { skeleton: 'aura', color: '#e879f9', particle: 'star' },                                      // 精神冲击
+  chikorita:  { skeleton: 'beam', color: '#facc15', core: '#fefce8', particle: 'leaf' },                     // 日光束
+  cyndaquil:  { skeleton: 'beam', color: '#fb923c', core: '#fef08a', particle: 'ember' },                     // 喷火
+  totodile:   { skeleton: 'slash', color: '#22d3ee', particle: 'bubble' },                                     // 水流尾
+  treecko:    { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 叶刃
+  torchic:    { skeleton: 'burst', color: '#fb923c', core: '#fde047', shake: 'heavy', particle: 'ember' },    // 爆炸烈焰
+  mudkip:     { skeleton: 'burst', color: '#b45309', core: '#67e8f9', particle: 'bubble' },                    // 浊流
+  bagon:      { skeleton: 'pillar', color: '#818cf8', core: '#fbcfe8', shake: 'heavy', particle: 'star' },   // 龙星群:天降流星
+  beldum:     { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 彗星拳
+  gible:      { skeleton: 'slash', color: '#818cf8', shake: 'heavy', particle: 'shard' },                     // 龙神俯冲
+  snivy:      { skeleton: 'pillar', color: '#84cc16', from: 'ground', shake: 'heavy', particle: 'leaf' },    // 疯狂植物:藤蔓地涌
+  tepig:      { skeleton: 'burst', color: '#fb923c', shake: 'heavy', particle: 'ember' },                     // 高温重压
+  oshawott:   { skeleton: 'slash', color: '#22d3ee', core: '#f0fdfa', particle: 'bubble' },                    // 贝壳刃
+  rowlet:     { skeleton: 'projectile', color: '#84cc16', core: '#fef9c3', particle: 'leaf' },               // 缝影:羽箭
+  litten:     { skeleton: 'slash', color: '#ef4444', core: '#fde047', shake: 'heavy', particle: 'ember' },    // 极恶飞跃粉碎击
+  popplio:    { skeleton: 'aura', color: '#22d3ee', core: '#fce7f3', shake: 'medium', particle: 'bubble' },    // 海神庄严交响乐
+  book_fox:   { skeleton: 'aura', color: '#fbbf24', particle: 'star' },                                      // 知识星辉
+  paper_owl:  { skeleton: 'beam', color: '#e879f9', core: '#fdf4ff', particle: 'star' },                     // 智慧光束
+  word_turtle: { skeleton: 'beam', color: '#22d3ee', core: '#dbeafe', particle: 'bubble' },                    // 词海奔流
 };
 
 // 没写配方的种族按元素兜底,保证新增宠物漏配也有像样的大招
