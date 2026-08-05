@@ -263,18 +263,21 @@ async def _pick_battle_words(
     """
     选取对战词池,优先级:
     1. 指定单词本 → 该书的词(走 units→unit_words;book_words 是空表,别用)
-    2. 参战学生背过的词(LearningRecord 并集)——对战考自己学过的内容
+    2. 参战学生的薄弱词优先(最多占6成),不足从背过的词补齐——
+       对战顺带消化弱项,又不至于整场全是难词打击积极性
     3. 兜底:全库随机(仅当学生一条学习记录都没有时)
     只选带释义的词,避免出题时被跳过导致题数缩水。
     """
     from app.models.word import Unit, UnitWord
+    from app.models.learning import WordMastery
+    from app.services.weak_words import real_error_subquery, MASTERY_LINE
 
-    def _with_definition(stmt):
+    def _with_definition(stmt, limit: int):
         return (
             stmt.join(WordDefinition, WordDefinition.word_id == Word.id)
             .group_by(Word.id)
             .order_by(func.random())
-            .limit(count)
+            .limit(limit)
         )
 
     if wordbook_id:
@@ -282,7 +285,8 @@ async def _pick_battle_words(
             select(Word)
             .join(UnitWord, UnitWord.word_id == Word.id)
             .join(Unit, Unit.id == UnitWord.unit_id)
-            .where(Unit.book_id == wordbook_id)
+            .where(Unit.book_id == wordbook_id),
+            count,
         )
         words = list((await db.execute(stmt)).scalars().all())
         if words:
@@ -290,16 +294,47 @@ async def _pick_battle_words(
 
     real_player_ids = [pid for pid in (player_ids or []) if pid and pid > 0]
     if real_player_ids:
-        stmt = _with_definition(
-            select(Word)
-            .join(LearningRecord, LearningRecord.word_id == Word.id)
-            .where(LearningRecord.user_id.in_(real_player_ids))
-        )
-        words = list((await db.execute(stmt)).scalars().all())
-        if words:
-            return words
+        picked: List[Word] = []
+        picked_ids: set = set()
 
-    stmt = _with_definition(select(Word))
+        # 薄弱词:口径同 services/weak_words.py 三档——掌握度<3 且计分模式真实答错过。
+        # 别直接用 mastery_level<3(会把练得少的全对词打成薄弱)。
+        err = real_error_subquery(real_player_ids)
+        weak_stmt = _with_definition(
+            select(Word)
+            .join(err, err.c.wid == Word.id)
+            .join(
+                WordMastery,
+                and_(
+                    WordMastery.user_id == err.c.uid,
+                    WordMastery.word_id == err.c.wid,
+                ),
+            )
+            .where(WordMastery.mastery_level < MASTERY_LINE),
+            max(1, count * 6 // 10),
+        )
+        for word in (await db.execute(weak_stmt)).scalars().all():
+            picked.append(word)
+            picked_ids.add(word.id)
+
+        remaining = count - len(picked)
+        if remaining > 0:
+            learned_stmt = (
+                select(Word)
+                .join(LearningRecord, LearningRecord.word_id == Word.id)
+                .where(LearningRecord.user_id.in_(real_player_ids))
+            )
+            if picked_ids:
+                learned_stmt = learned_stmt.where(Word.id.notin_(picked_ids))
+            for word in (
+                await db.execute(_with_definition(learned_stmt, remaining))
+            ).scalars().all():
+                picked.append(word)
+
+        if picked:
+            return picked
+
+    stmt = _with_definition(select(Word), count)
     return list((await db.execute(stmt)).scalars().all())
 
 

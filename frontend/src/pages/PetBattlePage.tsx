@@ -281,6 +281,29 @@ export default function PetBattlePage() {
         });
       }
 
+      // 答错扣自己血(damage<0)此前毫无画面表现,血条悄悄掉,孩子看不懂。
+      // 表现成"对手趁机反击":对方宠物一记攻击打向答错的一方。
+      if (result.player1_damage < 0) {
+        effects.push({
+          id: `${effectId}-p1-counter`,
+          attacker: displaySide(2),
+          target: displaySide(1),
+          damage: -result.player1_damage,
+          species: currentBattle.player2_pet.species,
+          typeText: '答错被反击！',
+        });
+      }
+      if (result.player2_damage < 0) {
+        effects.push({
+          id: `${effectId}-p2-counter`,
+          attacker: displaySide(1),
+          target: displaySide(2),
+          damage: -result.player2_damage,
+          species: currentBattle.player1_pet.species,
+          typeText: '答错被反击！',
+        });
+      }
+
       setBattleEffects(effects);
       if (effectTimerRef.current) window.clearTimeout(effectTimerRef.current);
       effectTimerRef.current = window.setTimeout(() => setBattleEffects([]), 2600);

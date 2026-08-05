@@ -292,3 +292,46 @@ async def test_forfeit_battle_zeroes_quitter(db_session):
     assert battle.player1_hp == 0
     await db_session.refresh(pet1)
     assert pet1.current_hp == 0
+
+
+@pytest.mark.asyncio
+async def test_battle_questions_prioritize_weak_words(db_session):
+    """薄弱词(掌握度<3且计分模式真实答错过)优先进词池;练得少的全对词不算薄弱。"""
+    from app.models.learning import LearningRecord, WordMastery
+    from app.models.word import WordDefinition
+    from app.services.pet_battle_service import _pick_battle_words
+
+    user = User(
+        username="battle_weak_stu",
+        email="battle_weak_stu@example.com",
+        hashed_password="x",
+        role="student",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    async def _add_word(text, is_correct, mode, mastery):
+        word = Word(word=text, difficulty=1)
+        db_session.add(word)
+        await db_session.flush()
+        db_session.add(WordDefinition(word_id=word.id, meaning=f"{text}释义", part_of_speech="n.", is_primary=True))
+        db_session.add(LearningRecord(user_id=user.id, word_id=word.id, learning_mode=mode, is_correct=is_correct))
+        db_session.add(WordMastery(user_id=user.id, word_id=word.id, mastery_level=mastery))
+        return word
+
+    weak = await _add_word("weak_word", False, "spelling", 1)   # 真实答错 + 掌握度低 → 薄弱
+    await _add_word("classify_word", False, "classify", 0)       # 分类自评"不认识",不算答错
+    for i in range(3):
+        await _add_word(f"ok_word_{i}", True, "quiz", 1)         # 全对但掌握度低 → 待巩固,非薄弱
+    await db_session.commit()
+
+    # count=1 时薄弱池上限=1,唯一的薄弱词必然被选中
+    words = await _pick_battle_words(db_session, None, count=1, player_ids=[user.id])
+    assert [w.id for w in words] == [weak.id]
+
+    # 池子放大也只有1个薄弱词,其余从背过的词里补足,不重复
+    words = await _pick_battle_words(db_session, None, count=5, player_ids=[user.id])
+    ids = [w.id for w in words]
+    assert weak.id in ids
+    assert len(ids) == len(set(ids)) == 5
