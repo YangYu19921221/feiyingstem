@@ -201,6 +201,91 @@ export const PET_SPECIES_BY_ID: Record<string, PetSpeciesDefinition> = Object.fr
   PET_SPECIES.map((definition) => [definition.id, definition]),
 );
 
+// ==============================
+// 技能特效配方:骨架 × 颜色 × 演出参数
+// 骨架是 BattleScene3D 里的程序化特效组件(纯代码,零素材);
+// 一行配方 = 一只宠物的专属大招观感。新增宠物只需在这里加一行。
+// ==============================
+export type SkillSkeleton = 'beam' | 'pillar' | 'slash' | 'aura' | 'projectile' | 'burst';
+
+export type SkillVfxRecipe = {
+  skeleton: SkillSkeleton;
+  color: string;                    // 光效主色(外层辉光)
+  core?: string;                    // 内芯色,默认近白
+  from?: 'sky' | 'ground';          // pillar 专用:天降(默认) or 地涌
+  shake?: 'light' | 'medium' | 'heavy'; // 命中震屏强度,默认 medium
+};
+
+const SKILL_VFX: Record<string, SkillVfxRecipe> = {
+  pikachu:    { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy' },  // 十万伏特:天雷
+  eevee:      { skeleton: 'projectile', color: '#fbbf24', core: '#fff7ed' },              // 高速星星
+  bulbasaur:  { skeleton: 'slash', color: '#84cc16' },                                     // 飞叶快刀
+  charmander: { skeleton: 'beam', color: '#fb923c', core: '#fef08a', shake: 'heavy' },     // 火焰喷射
+  squirtle:   { skeleton: 'beam', color: '#22d3ee', core: '#e0f2fe', shake: 'heavy' },     // 水炮
+  jigglypuff: { skeleton: 'aura', color: '#f9a8d4' },                                      // 魔法闪耀
+  gastly:     { skeleton: 'projectile', color: '#a78bfa', core: '#4c1d95' },               // 暗影球
+  dratini:    { skeleton: 'beam', color: '#818cf8', core: '#e0e7ff' },                     // 龙之波动
+  machop:     { skeleton: 'slash', color: '#ef4444', shake: 'heavy' },                     // 爆裂拳
+  abra:       { skeleton: 'aura', color: '#e879f9' },                                      // 精神强念
+  geodude:    { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy' },   // 岩崩:落石
+  vulpix:     { skeleton: 'burst', color: '#fb923c', core: '#fef08a' },                    // 大字爆炎
+  growlithe:  { skeleton: 'slash', color: '#fb923c', shake: 'medium' },                    // 神速烈焰
+  magikarp:   { skeleton: 'slash', color: '#22d3ee' },                                     // 水流尾
+  oddish:     { skeleton: 'aura', color: '#f472b6' },                                      // 花瓣舞
+  poliwag:    { skeleton: 'burst', color: '#22d3ee' },                                     // 水流裂破
+  caterpie:   { skeleton: 'aura', color: '#cbd5e1' },                                      // 银色旋风
+  weedle:     { skeleton: 'projectile', color: '#a3e635' },                                // 飞弹针
+  bellsprout: { skeleton: 'slash', color: '#84cc16' },                                     // 强力鞭打
+  horsea:     { skeleton: 'beam', color: '#22d3ee', core: '#cffafe' },                     // 龙卷水炮
+  larvitar:   { skeleton: 'projectile', color: '#a16207', shake: 'heavy' },                // 尖石攻击
+  ralts:      { skeleton: 'aura', color: '#e879f9' },                                      // 精神冲击
+  chikorita:  { skeleton: 'beam', color: '#facc15', core: '#fefce8' },                     // 日光束
+  cyndaquil:  { skeleton: 'beam', color: '#fb923c', core: '#fef08a' },                     // 喷火
+  totodile:   { skeleton: 'slash', color: '#22d3ee' },                                     // 水流尾
+  treecko:    { skeleton: 'slash', color: '#84cc16' },                                     // 叶刃
+  torchic:    { skeleton: 'burst', color: '#fb923c', core: '#fde047', shake: 'heavy' },    // 爆炸烈焰
+  mudkip:     { skeleton: 'burst', color: '#b45309', core: '#67e8f9' },                    // 浊流
+  bagon:      { skeleton: 'pillar', color: '#818cf8', core: '#fbcfe8', shake: 'heavy' },   // 龙星群:天降流星
+  beldum:     { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy' }, // 彗星拳
+  gible:      { skeleton: 'slash', color: '#818cf8', shake: 'heavy' },                     // 龙神俯冲
+  snivy:      { skeleton: 'pillar', color: '#84cc16', from: 'ground', shake: 'heavy' },    // 疯狂植物:藤蔓地涌
+  tepig:      { skeleton: 'burst', color: '#fb923c', shake: 'heavy' },                     // 高温重压
+  oshawott:   { skeleton: 'slash', color: '#22d3ee', core: '#f0fdfa' },                    // 贝壳刃
+  rowlet:     { skeleton: 'projectile', color: '#84cc16', core: '#fef9c3' },               // 缝影:羽箭
+  litten:     { skeleton: 'slash', color: '#ef4444', core: '#fde047', shake: 'heavy' },    // 极恶飞跃粉碎击
+  popplio:    { skeleton: 'aura', color: '#22d3ee', core: '#fce7f3', shake: 'medium' },    // 海神庄严交响乐
+  book_fox:   { skeleton: 'aura', color: '#fbbf24' },                                      // 知识星辉
+  paper_owl:  { skeleton: 'beam', color: '#e879f9', core: '#fdf4ff' },                     // 智慧光束
+  word_turtle: { skeleton: 'beam', color: '#22d3ee', core: '#dbeafe' },                    // 词海奔流
+};
+
+// 没写配方的种族按元素兜底,保证新增宠物漏配也有像样的大招
+const ELEMENT_VFX_FALLBACK: Record<PetElement, SkillVfxRecipe> = {
+  normal: { skeleton: 'burst', color: '#f9a8d4' },
+  fire: { skeleton: 'beam', color: '#fb923c', core: '#fef08a' },
+  water: { skeleton: 'beam', color: '#22d3ee' },
+  grass: { skeleton: 'slash', color: '#84cc16' },
+  electric: { skeleton: 'pillar', color: '#38bdf8', shake: 'heavy' },
+  ice: { skeleton: 'burst', color: '#a5f3fc' },
+  fighting: { skeleton: 'slash', color: '#ef4444', shake: 'heavy' },
+  poison: { skeleton: 'burst', color: '#c084fc' },
+  ground: { skeleton: 'pillar', color: '#d97706', from: 'ground' },
+  flying: { skeleton: 'slash', color: '#bae6fd' },
+  psychic: { skeleton: 'aura', color: '#e879f9' },
+  bug: { skeleton: 'projectile', color: '#a3e635' },
+  rock: { skeleton: 'pillar', color: '#a16207', shake: 'heavy' },
+  ghost: { skeleton: 'projectile', color: '#a78bfa' },
+  dragon: { skeleton: 'beam', color: '#818cf8', shake: 'heavy' },
+  dark: { skeleton: 'burst', color: '#64748b' },
+  steel: { skeleton: 'projectile', color: '#cbd5e1' },
+  fairy: { skeleton: 'aura', color: '#f9a8d4' },
+};
+
+export function getSkillVfxRecipe(species: string): SkillVfxRecipe {
+  const definition = getPetDefinition(species);
+  return SKILL_VFX[definition.id] || ELEMENT_VFX_FALLBACK[definition.element];
+}
+
 export function getPetDefinition(species: string): PetSpeciesDefinition {
   return PET_SPECIES_BY_ID[species] || PET_SPECIES_BY_ID.pikachu;
 }

@@ -1,9 +1,9 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { useRef, useState, useEffect, useMemo, Suspense } from 'react';
+import { useRef, useState, useEffect, useMemo, Suspense, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getPetDefinition, type PetElement } from '../config/petSpecies';
+import { getPetDefinition, getSkillVfxRecipe, type PetElement, type SkillVfxRecipe } from '../config/petSpecies';
 
 type BattleVisualEffect = {
   id: string;
@@ -15,8 +15,17 @@ type BattleVisualEffect = {
   ultimate?: {
     species: string;
     name: string;
+    cutInImage?: string;
   };
 };
+
+// ==============================
+// 大招演出时间轴(秒)——cut-in → 骨架特效 → 命中
+// 伤害数字/白闪/震屏都对齐 IMPACT_AT,改节奏只动这里
+// ==============================
+const CUTIN_DURATION = 0.85;
+const SKELETON_AT = 0.8;
+const IMPACT_AT = 1.35;
 
 const ELEMENT_VFX: Record<PetElement, { color: string; mode: 'strike' | 'burst' | 'projectile' }> = {
   normal: { color: '#f9a8d4', mode: 'burst' },
@@ -38,11 +47,6 @@ const ELEMENT_VFX: Record<PetElement, { color: string; mode: 'strike' | 'burst' 
   steel: { color: '#cbd5e1', mode: 'strike' },
   fairy: { color: '#f9a8d4', mode: 'burst' },
 };
-
-function getSkillVfx(species: string) {
-  const definition = getPetDefinition(species);
-  return { image: definition.ultimate.image, ...ELEMENT_VFX[definition.element] };
-}
 
 function getAttackVfx(species: string) {
   const definition = getPetDefinition(species);
@@ -336,78 +340,374 @@ function BattleActors({
   );
 }
 
-function SkillEffectOverlay({ effect }: { effect: BattleVisualEffect }) {
-  if (!effect.ultimate) return null;
+// ==============================
+// 大招演出:cut-in(暗转+立绘切入+技能名横幅)→ 属性骨架特效 → 命中(白闪+震屏)
+// 骨架全部纯代码绘制,配方在 petSpecies.getSkillVfxRecipe,一只宠物一行
+// ==============================
 
-  const skill = getSkillVfx(effect.ultimate.species);
-  const targetLeft = effect.target === 1;
-  const travelX = effect.attacker === 1 ? -260 : 260;
-  const isProjectile = skill.mode === 'projectile';
-  const initial = skill.mode === 'strike'
-    ? { opacity: 1, scale: 0.45, y: -150 }
-    : { opacity: 1, scale: 0.22, x: isProjectile ? travelX : travelX * 0.28, rotate: targetLeft ? 18 : -18 };
-  const animate = skill.mode === 'strike'
-    ? {
-        opacity: [1, 1, 1, 0],
-        scale: [0.45, 0.95, 1.15, 1.3],
-        y: [-150, -10, 0, 16],
-      }
-    : {
-        opacity: [1, 1, 1, 0],
-        scale: [0.22, 0.72, 1.12, 1.34],
-        x: [isProjectile ? travelX : travelX * 0.28, travelX * 0.2, 0, 0],
-        rotate: [targetLeft ? 18 : -18, targetLeft ? -8 : 8, 0, targetLeft ? -6 : 6],
-      };
+// 战场锚点(容器百分比坐标,与 3D 场景宠物站位对齐)
+const ANCHOR_LEFT = { x: 27, y: 62 };
+const ANCHOR_RIGHT = { x: 73, y: 37 };
+const anchorOf = (side: 1 | 2) => (side === 1 ? ANCHOR_LEFT : ANCHOR_RIGHT);
 
+type SkeletonProps = { attacker: 1 | 2; target: 1 | 2; recipe: SkillVfxRecipe };
+
+// 命中爆点:中心闪光 + 双扩散环 + 12 向粒子,所有骨架共用
+function ImpactBurst({ x, y, color, core, delay, big = false }: {
+  x: number; y: number; color: string; core: string; delay: number; big?: boolean;
+}) {
+  return (
+    <div className="pointer-events-none absolute z-[8]" style={{ left: `${x}%`, top: `${y}%` }}>
+      <motion.div
+        className={`absolute left-1/2 top-1/2 aspect-square rounded-full ${big ? 'w-24 sm:w-40' : 'w-14 sm:w-24'}`}
+        style={{
+          background: `radial-gradient(circle, ${core} 0%, ${color} 45%, transparent 72%)`,
+          boxShadow: `0 0 42px 14px ${color}`,
+        }}
+        initial={{ opacity: 0, scale: 0.15, x: '-50%', y: '-50%' }}
+        animate={{ opacity: [0, 1, 0], scale: [0.15, 1.25, 1.75], x: '-50%', y: '-50%' }}
+        transition={{ delay, duration: 0.5, ease: 'easeOut' }}
+      />
+      {[0, 0.09].map((extra, i) => (
+        <motion.div
+          key={i}
+          className="absolute left-1/2 top-1/2 aspect-square w-20 rounded-full border-4 sm:w-32"
+          style={{ borderColor: i === 0 ? core : color, boxShadow: `0 0 26px ${color}` }}
+          initial={{ opacity: 0, scale: 0.15, x: '-50%', y: '-50%' }}
+          animate={{ opacity: [0, 0.95, 0], scale: [0.15, 1.6 + i * 0.7, 2.4 + i * 0.9], x: '-50%', y: '-50%' }}
+          transition={{ delay: delay + extra, duration: 0.62, ease: 'easeOut' }}
+        />
+      ))}
+      {Array.from({ length: 12 }).map((_, index) => {
+        const angle = (Math.PI * 2 * index) / 12;
+        const dist = (index % 2 ? 62 : 92) * (big ? 1.25 : 1);
+        return (
+          <motion.span
+            key={index}
+            className="absolute left-1/2 top-1/2 h-2 w-2 rounded-full sm:h-3 sm:w-3"
+            style={{ backgroundColor: index % 3 ? color : core, boxShadow: `0 0 10px ${color}` }}
+            initial={{ opacity: 0, x: 0, y: 0, scale: 0.2 }}
+            animate={{
+              opacity: [0, 1, 0],
+              x: [0, Math.cos(angle) * dist],
+              y: [0, Math.sin(angle) * dist],
+              scale: [0.2, 1, 0.2],
+            }}
+            transition={{ delay, duration: 0.66, ease: 'easeOut' }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// beam 光束:嘴边聚气 → 三层光柱(外辉/中层/白芯)射向目标
+function BeamFx({ attacker, target, recipe }: SkeletonProps) {
+  const a = anchorOf(attacker);
+  const t = anchorOf(target);
+  const core = recipe.core || '#ffffff';
   return (
     <>
       <motion.div
-        className="absolute inset-0 z-[5] bg-white pointer-events-none mix-blend-screen"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 0.34, 0.08, 0] }}
-        transition={{ duration: 1.05, times: [0, 0.38, 0.7, 1] }}
+        className="pointer-events-none absolute z-[7] aspect-square w-10 rounded-full sm:w-16"
+        style={{
+          left: `${a.x}%`,
+          top: `${a.y - 6}%`,
+          background: `radial-gradient(circle, ${core} 0%, ${recipe.color} 55%, transparent 78%)`,
+          boxShadow: `0 0 24px ${recipe.color}`,
+        }}
+        initial={{ opacity: 0, scale: 0.2, x: '-50%', y: '-50%' }}
+        animate={{ opacity: [0, 1, 1, 0], scale: [0.2, 1.15, 0.9, 1.4], x: '-50%', y: '-50%' }}
+        transition={{ delay: SKELETON_AT, duration: IMPACT_AT - SKELETON_AT + 0.3, times: [0, 0.35, 0.75, 1] }}
       />
-
-      <div
-        className="absolute z-[7] pointer-events-none"
-        style={{ left: targetLeft ? '25%' : '75%', top: '52%', transform: 'translate(-50%, -50%)' }}
+      <svg
+        className="pointer-events-none absolute inset-0 z-[7] h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
       >
-        <motion.div
-          initial={initial}
-          animate={animate}
-          transition={{ duration: 2.25, times: [0, 0.18, 0.86, 1], ease: [0.16, 1, 0.3, 1] }}
-        >
-          <img
-            src={skill.image}
-            alt=""
-            aria-hidden="true"
-            className="h-auto w-[min(72vw,470px)] max-w-none select-none sm:w-[min(54vw,560px)]"
-            style={{
-              filter: `drop-shadow(0 0 24px ${skill.color})`,
-              transform: isProjectile && targetLeft ? 'scaleX(-1)' : undefined,
+        {[
+          { w: 22, c: recipe.color, o: 0.4 },
+          { w: 12, c: recipe.color, o: 0.85 },
+          { w: 5, c: core, o: 1 },
+        ].map((layer, i) => (
+          <motion.line
+            key={i}
+            x1={a.x}
+            y1={a.y - 6}
+            x2={t.x}
+            y2={t.y}
+            stroke={layer.c}
+            strokeOpacity={layer.o}
+            strokeWidth={layer.w}
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: [0, 1, 1, 1], opacity: [0, 1, 1, 0] }}
+            transition={{
+              delay: SKELETON_AT + 0.16,
+              duration: IMPACT_AT - SKELETON_AT + 0.15,
+              times: [0, 0.22, 0.8, 1],
             }}
           />
-        </motion.div>
+        ))}
+      </svg>
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+    </>
+  );
+}
 
-        <motion.div
-          className="absolute left-1/2 top-1/2 aspect-square w-24 rounded-full border-4 sm:w-36"
-          style={{ borderColor: skill.color, boxShadow: `0 0 30px ${skill.color}` }}
-          initial={{ opacity: 0.9, scale: 0.2, x: '-50%', y: '-50%' }}
-          animate={{ opacity: 0, scale: 2.35, x: '-50%', y: '-50%' }}
-          transition={{ delay: 0.48, duration: 0.7, ease: 'easeOut' }}
-        />
-      </div>
-
+// pillar 天雷/地涌:垂直光柱两段闪烁 + 两道错位副柱
+function PillarFx({ target, recipe }: SkeletonProps) {
+  const t = anchorOf(target);
+  const core = recipe.core || '#ffffff';
+  const fromGround = recipe.from === 'ground';
+  const columnStyle: CSSProperties = fromGround
+    ? { top: `${t.y}%`, height: `${100 - t.y}%`, transformOrigin: 'bottom' }
+    : { top: 0, height: `${t.y + 3}%`, transformOrigin: 'top' };
+  return (
+    <>
       <motion.div
-        className={`absolute bottom-2 z-[9] max-w-[45%] rounded-md border border-white/25 bg-slate-950/80 px-2.5 py-1 text-center text-xs font-black text-white shadow-lg backdrop-blur-sm sm:bottom-4 sm:px-4 sm:py-1.5 sm:text-base ${
-          targetLeft ? 'left-2 sm:left-5' : 'right-2 sm:right-5'
+        className="pointer-events-none absolute z-[7] w-7 sm:w-12"
+        style={{
+          left: `${t.x}%`,
+          ...columnStyle,
+          background: `linear-gradient(to right, transparent, ${recipe.color} 22%, ${core} 50%, ${recipe.color} 78%, transparent)`,
+          boxShadow: `0 0 34px 6px ${recipe.color}`,
+        }}
+        initial={{ opacity: 0, scaleY: 0, x: '-50%' }}
+        animate={{ opacity: [0, 1, 0.35, 1, 0.9, 0], scaleY: [0, 1, 1, 1, 1, 1], x: '-50%' }}
+        transition={{ delay: SKELETON_AT + 0.25, duration: 0.75, times: [0, 0.14, 0.3, 0.45, 0.8, 1] }}
+      />
+      {[-1, 1].map((dir) => (
+        <motion.div
+          key={dir}
+          className="pointer-events-none absolute z-[6] w-2.5 sm:w-4"
+          style={{
+            left: `${t.x + dir * 4}%`,
+            ...columnStyle,
+            background: `linear-gradient(to right, transparent, ${recipe.color}, transparent)`,
+            filter: 'blur(1px)',
+          }}
+          initial={{ opacity: 0, scaleY: 0, x: '-50%' }}
+          animate={{ opacity: [0, 0.9, 0], scaleY: [0, 1, 1], x: '-50%' }}
+          transition={{ delay: SKELETON_AT + 0.36, duration: 0.5 }}
+        />
+      ))}
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+    </>
+  );
+}
+
+// slash 斩击:三道交错刀光 + 残光
+function SlashFx({ target, recipe }: SkeletonProps) {
+  const t = anchorOf(target);
+  const core = recipe.core || '#ffffff';
+  const slashes = [
+    { angle: -36, stagger: 0 },
+    { angle: 28, stagger: 0.12 },
+    { angle: -78, stagger: 0.24 },
+  ];
+  return (
+    <>
+      <div className="pointer-events-none absolute z-[7]" style={{ left: `${t.x}%`, top: `${t.y}%` }}>
+        {slashes.map((slash, i) => (
+          <motion.div
+            key={i}
+            className="absolute left-1/2 top-1/2 h-2 w-44 rounded-full sm:h-3 sm:w-72"
+            style={{
+              rotate: `${slash.angle}deg`,
+              background: `linear-gradient(90deg, transparent, ${core} 35%, ${recipe.color} 65%, transparent)`,
+              boxShadow: `0 0 18px ${recipe.color}`,
+            }}
+            initial={{ opacity: 0, scaleX: 0.1, x: '-50%', y: '-50%' }}
+            animate={{ opacity: [0, 1, 1, 0], scaleX: [0.1, 1.15, 1, 1.05], x: '-50%', y: '-50%' }}
+            transition={{ delay: SKELETON_AT + 0.18 + slash.stagger, duration: 0.4, times: [0, 0.3, 0.75, 1] }}
+          />
+        ))}
+      </div>
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} />
+    </>
+  );
+}
+
+// aura 蓄力爆发:施法者聚气 → 全屏色浪压向目标
+function AuraFx({ attacker, target, recipe }: SkeletonProps) {
+  const a = anchorOf(attacker);
+  const t = anchorOf(target);
+  const core = recipe.core || '#ffffff';
+  return (
+    <>
+      <motion.div
+        className="pointer-events-none absolute z-[7] aspect-square w-28 rounded-full sm:w-44"
+        style={{
+          left: `${a.x}%`,
+          top: `${a.y}%`,
+          background: `radial-gradient(circle, ${core} 0%, ${recipe.color} 40%, transparent 70%)`,
+        }}
+        initial={{ opacity: 0, scale: 0.3, x: '-50%', y: '-50%' }}
+        animate={{ opacity: [0, 0.9, 0.7, 0], scale: [0.3, 1.1, 1.35, 1.7], x: '-50%', y: '-50%' }}
+        transition={{ delay: SKELETON_AT, duration: 0.55 }}
+      />
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-[6]"
+        style={{ background: `radial-gradient(circle at ${t.x}% ${t.y}%, ${recipe.color} 0%, transparent 55%)` }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.5, 0] }}
+        transition={{ delay: IMPACT_AT - 0.12, duration: 0.5 }}
+      />
+      {Array.from({ length: 8 }).map((_, index) => (
+        <motion.span
+          key={index}
+          className="pointer-events-none absolute z-[8] h-2 w-2 rounded-full sm:h-3 sm:w-3"
+          style={{
+            left: `${t.x + (index - 3.5) * 3.2}%`,
+            top: `${t.y + 8}%`,
+            backgroundColor: index % 3 ? recipe.color : core,
+            boxShadow: `0 0 12px ${recipe.color}`,
+          }}
+          initial={{ opacity: 0, y: 0, scale: 0.3 }}
+          animate={{ opacity: [0, 1, 0], y: [0, -(46 + (index % 3) * 26)], scale: [0.3, 1, 0.3] }}
+          transition={{ delay: IMPACT_AT + index * 0.03, duration: 0.7, ease: 'easeOut' }}
+        />
+      ))}
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+    </>
+  );
+}
+
+// projectile 弹道:能量球抛物线飞向目标
+function ProjectileFx({ attacker, target, recipe }: SkeletonProps) {
+  const a = anchorOf(attacker);
+  const t = anchorOf(target);
+  const core = recipe.core || '#ffffff';
+  return (
+    <>
+      <motion.div
+        className="pointer-events-none absolute z-[7] aspect-square w-8 rounded-full sm:w-14"
+        style={{
+          background: `radial-gradient(circle, ${core} 0%, ${recipe.color} 50%, transparent 76%)`,
+          boxShadow: `0 0 24px 9px ${recipe.color}`,
+        }}
+        initial={{ left: `${a.x}%`, top: `${a.y - 5}%`, opacity: 0, scale: 0.3, x: '-50%', y: '-50%' }}
+        animate={{
+          left: [`${a.x}%`, `${a.x}%`, `${t.x}%`],
+          top: [`${a.y - 5}%`, `${a.y - 10}%`, `${t.y}%`],
+          opacity: [0, 1, 1],
+          scale: [0.3, 1.35, 1],
+          x: '-50%',
+          y: '-50%',
+        }}
+        transition={{
+          delay: SKELETON_AT + 0.08,
+          duration: IMPACT_AT - SKELETON_AT - 0.08,
+          times: [0, 0.4, 1],
+          ease: [0.5, 0, 0.85, 0.5],
+        }}
+      />
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT} big />
+    </>
+  );
+}
+
+// burst 爆发:目标脚下预兆光圈收缩 → 大爆炸
+function BurstFx({ target, recipe }: SkeletonProps) {
+  const t = anchorOf(target);
+  const core = recipe.core || '#ffffff';
+  return (
+    <>
+      <motion.div
+        className="pointer-events-none absolute z-[6] aspect-square w-24 rounded-full border-4 sm:w-40"
+        style={{ left: `${t.x}%`, top: `${t.y}%`, borderColor: recipe.color, boxShadow: `0 0 22px ${recipe.color}` }}
+        initial={{ opacity: 0, scale: 1.7, x: '-50%', y: '-50%' }}
+        animate={{ opacity: [0, 0.9, 0.9], scale: [1.7, 0.5, 0.3], x: '-50%', y: '-50%' }}
+        transition={{ delay: SKELETON_AT + 0.12, duration: IMPACT_AT - SKELETON_AT - 0.15, ease: 'easeIn' }}
+      />
+      <ImpactBurst x={t.x} y={t.y} color={recipe.color} core={core} delay={IMPACT_AT - 0.05} big />
+    </>
+  );
+}
+
+// cut-in:暗转 + 速度线 + 施法宠物立绘切入 + 技能名横幅
+function CutIn({ effect, recipe }: { effect: BattleVisualEffect; recipe: SkillVfxRecipe }) {
+  const attackerLeft = effect.attacker === 1;
+  const ultimate = effect.ultimate!;
+  const image = ultimate.cutInImage || getPetDefinition(ultimate.species).ultimate.image;
+  return (
+    <>
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-[10] bg-slate-950"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.74, 0.74, 0] }}
+        transition={{ duration: CUTIN_DURATION + 0.2, times: [0, 0.16, 0.82, 1] }}
+      />
+      <motion.div
+        className="pointer-events-none absolute inset-[-20%] z-[10]"
+        style={{
+          background: `repeating-linear-gradient(${attackerLeft ? -14 : 194}deg, transparent 0px, transparent 26px, rgba(255,255,255,0.35) 28px, transparent 32px)`,
+        }}
+        initial={{ opacity: 0, x: attackerLeft ? -80 : 80 }}
+        animate={{ opacity: [0, 0.55, 0.55, 0], x: attackerLeft ? [-80, 130] : [80, -130] }}
+        transition={{ duration: CUTIN_DURATION, ease: 'linear' }}
+      />
+      <motion.img
+        src={image}
+        alt=""
+        aria-hidden="true"
+        className={`pointer-events-none absolute bottom-[12%] z-[11] h-[64%] w-auto max-w-none select-none ${
+          attackerLeft ? 'left-[4%]' : 'right-[4%]'
         }`}
-        initial={{ opacity: 0, y: -12, scale: 0.8 }}
-        animate={{ opacity: [0, 1, 1, 0], y: [-12, 0, 0, -5], scale: [0.8, 1, 1, 0.95] }}
-        transition={{ duration: 2.2, times: [0, 0.12, 0.84, 1] }}
-      >
-        {effect.ultimate.name}
-      </motion.div>
+        style={{ filter: `drop-shadow(0 0 28px ${recipe.color}) drop-shadow(0 6px 14px rgba(0,0,0,0.5))` }}
+        initial={{ opacity: 0, scale: 0.7, x: attackerLeft ? -90 : 90 }}
+        animate={{ opacity: [0, 1, 1, 0], scale: [0.7, 1.06, 1, 0.96], x: [attackerLeft ? -90 : 90, 0, 0, attackerLeft ? -30 : 30] }}
+        transition={{ duration: CUTIN_DURATION + 0.15, times: [0, 0.25, 0.8, 1], ease: [0.16, 1, 0.3, 1] }}
+      />
+      <div className="pointer-events-none absolute inset-x-0 top-[34%] z-[12]" style={{ transform: 'rotate(-5deg)' }}>
+        <motion.div
+          className="w-full overflow-hidden py-1.5 text-center sm:py-2.5"
+          style={{
+            background: 'linear-gradient(90deg, transparent, rgba(2,6,23,0.88) 18%, rgba(2,6,23,0.88) 82%, transparent)',
+            borderTop: `2px solid ${recipe.color}`,
+            borderBottom: `2px solid ${recipe.color}`,
+          }}
+          initial={{ x: attackerLeft ? '-110%' : '110%' }}
+          animate={{ x: [attackerLeft ? '-110%' : '110%', '0%', '0%', attackerLeft ? '110%' : '-110%'] }}
+          transition={{ duration: CUTIN_DURATION + 0.15, times: [0, 0.22, 0.8, 1], ease: [0.16, 1, 0.3, 1] }}
+        >
+          <span
+            className="font-display text-2xl font-black italic tracking-widest text-white sm:text-4xl"
+            style={{ textShadow: `0 0 18px ${recipe.color}, 0 0 36px ${recipe.color}, 0 3px 6px rgba(0,0,0,0.8)` }}
+          >
+            {ultimate.name}
+          </span>
+        </motion.div>
+      </div>
+    </>
+  );
+}
+
+function UltimateOverlay({ effect }: { effect: BattleVisualEffect }) {
+  if (!effect.ultimate) return null;
+
+  const recipe = getSkillVfxRecipe(effect.ultimate.species);
+  const skeletonProps: SkeletonProps = { attacker: effect.attacker, target: effect.target, recipe };
+
+  return (
+    <>
+      <CutIn effect={effect} recipe={recipe} />
+      {recipe.skeleton === 'beam' && <BeamFx {...skeletonProps} />}
+      {recipe.skeleton === 'pillar' && <PillarFx {...skeletonProps} />}
+      {recipe.skeleton === 'slash' && <SlashFx {...skeletonProps} />}
+      {recipe.skeleton === 'aura' && <AuraFx {...skeletonProps} />}
+      {recipe.skeleton === 'projectile' && <ProjectileFx {...skeletonProps} />}
+      {recipe.skeleton === 'burst' && <BurstFx {...skeletonProps} />}
+
+      {/* 命中白闪:短促强闪,配合震屏做出顿帧打击感 */}
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-[9] bg-white mix-blend-screen"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.9, 0] }}
+        transition={{ delay: IMPACT_AT, duration: 0.26, times: [0, 0.25, 1] }}
+      />
     </>
   );
 }
@@ -568,9 +868,32 @@ export default function BattleScene3D({
   effects: BattleVisualEffect[];
 }) {
   const hitPlayers = new Set(effects.map((effect) => effect.target));
+  const ultimateEffect = effects.find((effect) => effect.ultimate);
+  const shakeLevel = ultimateEffect
+    ? getSkillVfxRecipe(ultimateEffect.ultimate!.species).shake || 'medium'
+    : null;
+  const shakeAmp = shakeLevel === 'heavy' ? 13 : shakeLevel === 'light' ? 4 : 8;
 
   return (
     <div className="relative h-[clamp(260px,72vw,460px)] w-full overflow-hidden rounded-xl border-2 border-white/60 shadow-lg sm:h-[360px] sm:rounded-2xl sm:border-4 lg:h-[460px] lg:rounded-3xl lg:shadow-2xl">
+      {/* 震屏层:大招命中时整个战场(含3D画面)一起抖 */}
+      <motion.div
+        key={ultimateEffect?.id || 'battle-steady'}
+        className="absolute inset-0"
+        animate={
+          ultimateEffect
+            ? {
+                x: [0, -shakeAmp, shakeAmp, -shakeAmp * 0.6, shakeAmp * 0.5, 0],
+                y: [0, shakeAmp * 0.5, -shakeAmp * 0.5, shakeAmp * 0.3, 0, 0],
+              }
+            : { x: 0, y: 0 }
+        }
+        transition={
+          ultimateEffect
+            ? { delay: IMPACT_AT, duration: 0.42, ease: 'easeOut' }
+            : { duration: 0 }
+        }
+      >
       <Canvas
         camera={{ position: [0, 2.6, 8.5], fov: 46 }}
         shadows
@@ -620,7 +943,7 @@ export default function BattleScene3D({
 
       <AnimatePresence>
         {effects.map((effect) => (
-          <SkillEffectOverlay key={`skill-${effect.id}`} effect={effect} />
+          <UltimateOverlay key={`skill-${effect.id}`} effect={effect} />
         ))}
       </AnimatePresence>
 
@@ -640,7 +963,7 @@ export default function BattleScene3D({
             initial={{ opacity: 1, scale: 0.4, y: 0 }}
             animate={{ opacity: [0, 1, 1, 0], scale: [0.4, 1.1, 1.45, 1.8], y: [0, -8, -36, -66] }}
             exit={{ opacity: 0 }}
-            transition={{ delay: effect.ultimate ? 0.46 : 0.38, duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ delay: effect.ultimate ? IMPACT_AT + 0.06 : 0.38, duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
           >
             <div
               className="text-3xl font-black text-red-600 sm:text-6xl"
@@ -662,6 +985,7 @@ export default function BattleScene3D({
           </motion.div>
         ))}
       </AnimatePresence>
+      </motion.div>
     </div>
   );
 }

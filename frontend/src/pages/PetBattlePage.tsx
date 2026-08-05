@@ -34,6 +34,7 @@ type BattleVisualEffect = {
   ultimate?: {
     species: string;
     name: string;
+    cutInImage?: string;
   };
 };
 
@@ -262,7 +263,11 @@ export default function PetBattlePage() {
           species,
           typeText: result.player1_type_text,
           ultimate: result.player1_used_ultimate
-            ? { species, name: getPetDefinition(species).ultimate.name }
+            ? {
+                species,
+                name: getPetDefinition(species).ultimate.name,
+                cutInImage: getPetImage(species, currentBattle.player1_pet.evolution_stage),
+              }
             : undefined,
         });
       }
@@ -276,7 +281,11 @@ export default function PetBattlePage() {
           species,
           typeText: result.player2_type_text,
           ultimate: result.player2_used_ultimate
-            ? { species, name: getPetDefinition(species).ultimate.name }
+            ? {
+                species,
+                name: getPetDefinition(species).ultimate.name,
+                cutInImage: getPetImage(species, currentBattle.player2_pet.evolution_stage),
+              }
             : undefined,
         });
       }
@@ -306,7 +315,12 @@ export default function PetBattlePage() {
 
       setBattleEffects(effects);
       if (effectTimerRef.current) window.clearTimeout(effectTimerRef.current);
-      effectTimerRef.current = window.setTimeout(() => setBattleEffects([]), 2600);
+      // 大招演出(cut-in→骨架→命中)时间轴更长,给足播放时间再清场
+      const hasUltimate = effects.some((item) => item.ultimate);
+      effectTimerRef.current = window.setTimeout(
+        () => setBattleEffects([]),
+        hasUltimate ? 3800 : 2600,
+      );
     });
 
     ws.on('pet_switched', (data) => {
