@@ -96,6 +96,7 @@ const AdminClassDetail = lazyWithRetry(() => import('./pages/AdminClassDetail'))
 const AdminClassList = lazyWithRetry(() => import('./pages/AdminClassList'));
 const AdminCompetition = lazyWithRetry(() => import('./pages/AdminCompetition'));
 const AdminOrganizations = lazyWithRetry(() => import('./pages/AdminOrganizations'));
+const AdminFranchiseLeads = lazyWithRetry(() => import('./pages/AdminFranchiseLeads'));
 const OrgAdminDashboard = lazyWithRetry(() => import('./pages/OrgAdminDashboard'));
 const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
 const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
@@ -810,6 +811,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminOrganizations />
+            </ProtectedRoute>
+          }
+        />
+        {/* 管理员 - 加盟意向线索(平台级业务,org_admin 不可见) */}
+        <Route
+          path="/admin/franchise-leads"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminFranchiseLeads />
             </ProtectedRoute>
           }
         />

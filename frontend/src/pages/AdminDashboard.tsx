@@ -11,6 +11,7 @@ import {
   CircleDollarSign,
   Gauge,
   GraduationCap,
+  Handshake,
   Megaphone,
   Server,
   Settings,
@@ -35,6 +36,7 @@ const toolGroups: Array<{ title: string; description: string; items: ToolItem[] 
     description: '掌握机构、教师和班级的运行状态',
     items: [
       { title: '机构管理', description: '加盟商开户与配额', path: '/admin/organizations', icon: Building2, tone: 'orange' },
+      { title: '加盟线索', description: '意向客户跟进与导出', path: '/admin/franchise-leads', icon: Handshake, tone: 'amber' },
       { title: '用户管理', description: '管理师生账号', path: '/admin/users', icon: Users, tone: 'blue' },
       { title: '教师管理', description: '教师列表与班级', path: '/admin/teachers', icon: GraduationCap, tone: 'teal' },
       { title: '班级监控', description: '学习统计与名册', path: '/admin/classes', icon: BarChart3, tone: 'indigo' },
