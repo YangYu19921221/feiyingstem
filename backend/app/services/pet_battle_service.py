@@ -16,7 +16,12 @@ from app.core.pet_formulas import (
     MAX_PET_SLOTS, calculate_initial_hp, calculate_max_hp, apply_xp_and_level,
     pet_recovery_goal, pet_slots_for_words, next_pet_slot_threshold,
 )
-from app.core.pet_species import get_pet_element, get_pet_stage_name
+from app.core.pet_species import (
+    get_pet_element,
+    get_pet_stage_name,
+    get_type_multiplier,
+    get_type_text,
+)
 
 
 PET_CAPTURE_CHANCE = 0.20
@@ -249,42 +254,74 @@ def calculate_ultimate_damage(pet_species: str, pet_stage: int) -> int:
 
 # ========== 题目生成 ==========
 
+async def _pick_battle_words(
+    db: AsyncSession,
+    wordbook_id: Optional[int],
+    count: int,
+    player_ids: Optional[List[int]] = None,
+) -> List[Word]:
+    """
+    选取对战词池,优先级:
+    1. 指定单词本 → 该书的词(走 units→unit_words;book_words 是空表,别用)
+    2. 参战学生背过的词(LearningRecord 并集)——对战考自己学过的内容
+    3. 兜底:全库随机(仅当学生一条学习记录都没有时)
+    只选带释义的词,避免出题时被跳过导致题数缩水。
+    """
+    from app.models.word import Unit, UnitWord
+
+    def _with_definition(stmt):
+        return (
+            stmt.join(WordDefinition, WordDefinition.word_id == Word.id)
+            .group_by(Word.id)
+            .order_by(func.random())
+            .limit(count)
+        )
+
+    if wordbook_id:
+        stmt = _with_definition(
+            select(Word)
+            .join(UnitWord, UnitWord.word_id == Word.id)
+            .join(Unit, Unit.id == UnitWord.unit_id)
+            .where(Unit.book_id == wordbook_id)
+        )
+        words = list((await db.execute(stmt)).scalars().all())
+        if words:
+            return words
+
+    real_player_ids = [pid for pid in (player_ids or []) if pid and pid > 0]
+    if real_player_ids:
+        stmt = _with_definition(
+            select(Word)
+            .join(LearningRecord, LearningRecord.word_id == Word.id)
+            .where(LearningRecord.user_id.in_(real_player_ids))
+        )
+        words = list((await db.execute(stmt)).scalars().all())
+        if words:
+            return words
+
+    stmt = _with_definition(select(Word))
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def generate_battle_questions(
     db: AsyncSession,
     wordbook_id: Optional[int],
     count: int = 10,
+    player_ids: Optional[List[int]] = None,
 ) -> List[Dict]:
     """
     生成对战题目
 
     Args:
         db: 数据库会话
-        wordbook_id: 单词本ID(为空则随机)
+        wordbook_id: 单词本ID(为空则从学生背过的词里抽)
         count: 题目数量
+        player_ids: 参战玩家ID(AI 等负数ID自动忽略)
 
     Returns:
         题目列表
     """
-    # 查询单词
-    if wordbook_id:
-        # 从指定单词本抽取
-        from app.models.word import BookWord
-        stmt = (
-            select(Word)
-            .join(BookWord, BookWord.word_id == Word.id)
-            .where(BookWord.book_id == wordbook_id)
-            .order_by(func.random())
-            .limit(count)
-        )
-    else:
-        # 随机抽取
-        stmt = select(Word).order_by(func.random()).limit(count)
-
-    result = await db.execute(stmt)
-    words = result.scalars().all()
-
-    if len(words) < count:
-        raise ValueError(f"单词不足,需要{count}个,只找到{len(words)}个")
+    words = await _pick_battle_words(db, wordbook_id, count, player_ids)
 
     # 为每个单词生成选择题
     questions = []
@@ -339,6 +376,15 @@ async def generate_battle_questions(
             "correct_answer": correct_answer,
         })
 
+    if not questions:
+        raise ValueError("没有可用的单词出题,先去学几个单词再来对战吧")
+
+    # 词池不够时随机重复补足(同 PK 的 fill_with_repeats 策略),
+    # 保证题目数 == 回合数,否则回合数越界会让整场对战中途崩掉。
+    originals = list(questions)
+    while len(questions) < count:
+        questions.append(random.choice(originals))
+
     return questions
 
 
@@ -377,8 +423,10 @@ async def create_battle(
     if hp1 <= 0 or hp2 <= 0:
         raise ValueError("双方宠物都需要有剩余生命值才能对战")
 
-    # 生成题目
-    questions = await generate_battle_questions(db, wordbook_id, max_rounds)
+    # 生成题目(从参战学生背过的词里抽)
+    questions = await generate_battle_questions(
+        db, wordbook_id, max_rounds, player_ids=[player1_id, player2_id]
+    )
 
     # 创建对战记录
     battle = PetBattle(
@@ -639,6 +687,12 @@ async def finalize_round(
     结算回合结果(双方都答题后调用)
     """
     battle = await db.get(PetBattle, battle_id)
+    if not battle:
+        raise ValueError("对战不存在")
+    # 已结束/被判负的对战禁止再结算——防止断线重连的僵尸回合循环
+    # 在血量归零后继续扣血、继续推进回合(此前"没血了游戏还在继续"的根因之一)
+    if battle.status != "active":
+        raise ValueError("对战未进行中")
     round_result = await db.execute(
         select(PetBattleRound).where(
             and_(
@@ -649,18 +703,32 @@ async def finalize_round(
     )
     round_obj = round_result.scalar_one()
 
+    # 属性克制倍率(与前端克制表一致),只作用于攻击伤害,答错的自损不受影响
+    pet1 = await db.get(UserPet, battle.player1_pet_id)
+    pet2 = await db.get(UserPet, battle.player2_pet_id)
+
     # 应用伤害
     if round_obj.player1_damage > 0:
         # 玩家1攻击玩家2
-        battle.player2_hp = max(0, battle.player2_hp - round_obj.player1_damage)
-        battle.player1_total_damage += round_obj.player1_damage
+        mult = get_type_multiplier(pet1.species, pet2.species) if pet1 and pet2 else 1.0
+        dealt = max(1, int(round_obj.player1_damage * mult))
+        round_obj.player1_damage = dealt
+        round_obj.player1_type_multiplier = mult
+        round_obj.player1_type_text = get_type_text(mult) or None
+        battle.player2_hp = max(0, battle.player2_hp - dealt)
+        battle.player1_total_damage += dealt
     elif round_obj.player1_damage < 0:
         # 玩家1答错,扣自己血
         battle.player1_hp = max(0, battle.player1_hp + round_obj.player1_damage)
 
     if round_obj.player2_damage > 0:
-        battle.player1_hp = max(0, battle.player1_hp - round_obj.player2_damage)
-        battle.player2_total_damage += round_obj.player2_damage
+        mult = get_type_multiplier(pet2.species, pet1.species) if pet1 and pet2 else 1.0
+        dealt = max(1, int(round_obj.player2_damage * mult))
+        round_obj.player2_damage = dealt
+        round_obj.player2_type_multiplier = mult
+        round_obj.player2_type_text = get_type_text(mult) or None
+        battle.player1_hp = max(0, battle.player1_hp - dealt)
+        battle.player2_total_damage += dealt
     elif round_obj.player2_damage < 0:
         battle.player2_hp = max(0, battle.player2_hp + round_obj.player2_damage)
 
@@ -731,9 +799,13 @@ async def finish_battle(
     db: AsyncSession,
     battle_id: int,
     winner_id: Optional[int],
+    forfeiter_id: Optional[int] = None,
 ) -> Dict:
     """
     结束对战,结算奖励
+
+    Args:
+        forfeiter_id: 逃跑判负的玩家,奖励归零
 
     Returns:
         奖励数据
@@ -759,7 +831,11 @@ async def finish_battle(
         correct_count = battle.player1_total_correct if is_player1 else battle.player2_total_correct
         combo_max = battle.player1_combo if is_player1 else battle.player2_combo
         # 基础奖励（经验较原值下调约一半，避免对战刷等级过快）
-        if is_winner:
+        if player_id == forfeiter_id:
+            # 逃跑判负:什么都拿不到
+            food = 0
+            xp = 0
+        elif is_winner:
             food = 15 + correct_count * 2
             xp = 50 + combo_max * 5
         elif is_draw:
@@ -774,6 +850,10 @@ async def finish_battle(
             "xp": xp,
             "rating_change": 0,  # 排位赛才有
         }
+
+        # AI 训练师(负数ID)不发经验、不升级、不记统计,避免共享AI宠物越打越强
+        if player_id <= 0:
+            continue
 
         # 更新宠物
         pet = await db.get(UserPet, battle.player1_pet_id if is_player1 else battle.player2_pet_id)
@@ -811,6 +891,8 @@ async def finish_battle(
         if not stats:
             stats = PetBattleStats(user_id=player_id)
             db.add(stats)
+            # 必须先 flush 让列默认值落到属性上,否则新玩家首战 total_battles 是 None,+=1 直接 500
+            await db.flush()
 
         stats.total_battles += 1
 
@@ -846,7 +928,8 @@ async def finish_battle(
     if hp_data:
         pet_ids = [int(pet_id) for pet_id in hp_data]
         fought_result = await db.execute(select(UserPet).where(UserPet.id.in_(pet_ids)))
-        battle_player_ids = {battle.player1_id, battle.player2_id}
+        # AI 训练师的宠物不落血量/受伤标记,它每次匹配都会重置
+        battle_player_ids = {pid for pid in (battle.player1_id, battle.player2_id) if pid > 0}
         for fought_pet in fought_result.scalars().all():
             if fought_pet.user_id not in battle_player_ids:
                 continue
@@ -866,3 +949,26 @@ async def finish_battle(
     await db.commit()
 
     return rewards
+
+
+async def forfeit_battle(
+    db: AsyncSession,
+    battle_id: int,
+    quitter_id: int,
+) -> Optional[Dict]:
+    """逃跑判负:对手判胜,逃跑方奖励归零、出战宠物本场血量清零(战后需治疗)。"""
+    battle = await db.get(PetBattle, battle_id)
+    if not battle or battle.status != "active":
+        return None
+    if quitter_id not in (battle.player1_id, battle.player2_id):
+        return None
+
+    winner_id = battle.player2_id if quitter_id == battle.player1_id else battle.player1_id
+    if quitter_id == battle.player1_id:
+        battle.player1_hp = 0
+    else:
+        battle.player2_hp = 0
+    await db.commit()
+
+    rewards = await finish_battle(db, battle_id, winner_id, forfeiter_id=quitter_id)
+    return {"winner_id": winner_id, "rewards": rewards.get(winner_id)}

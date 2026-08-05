@@ -68,3 +68,49 @@ def get_pet_label(species: str) -> str:
 def get_pet_element(species: str) -> str:
     return PET_SPECIES.get(species, PET_SPECIES["pikachu"])["element"]
 
+
+# 属性克制表,须与前端 utils/typeEffectiveness.ts 保持一致。
+# 免疫(宝可梦原版×0)统一按×0.5 结算:答对题却打出 0 伤害对孩子太挫败,
+# 且 normal↔ghost 互免会造成谁也打不倒谁的死局(前端同步调整)。
+TYPE_CHART = {
+    "normal": {"super": (), "weak": ("rock", "steel", "ghost")},
+    "fire": {"super": ("grass", "ice", "bug", "steel"), "weak": ("fire", "water", "rock", "dragon")},
+    "water": {"super": ("fire", "ground", "rock"), "weak": ("water", "grass", "dragon")},
+    "grass": {"super": ("water", "ground", "rock"), "weak": ("fire", "grass", "poison", "flying", "bug", "dragon", "steel")},
+    "electric": {"super": ("water", "flying"), "weak": ("electric", "grass", "dragon", "ground")},
+    "ice": {"super": ("grass", "ground", "flying", "dragon"), "weak": ("fire", "water", "ice", "steel")},
+    "fighting": {"super": ("normal", "ice", "rock", "dark", "steel"), "weak": ("poison", "flying", "psychic", "bug", "fairy", "ghost")},
+    "poison": {"super": ("grass", "fairy"), "weak": ("poison", "ground", "rock", "ghost", "steel")},
+    "ground": {"super": ("fire", "electric", "poison", "rock", "steel"), "weak": ("grass", "bug", "flying")},
+    "flying": {"super": ("grass", "fighting", "bug"), "weak": ("electric", "rock", "steel")},
+    "psychic": {"super": ("fighting", "poison"), "weak": ("psychic", "steel", "dark")},
+    "bug": {"super": ("grass", "psychic", "dark"), "weak": ("fire", "fighting", "poison", "flying", "ghost", "steel", "fairy")},
+    "rock": {"super": ("fire", "ice", "flying", "bug"), "weak": ("fighting", "ground", "steel")},
+    "ghost": {"super": ("psychic", "ghost"), "weak": ("dark", "normal")},
+    "dragon": {"super": ("dragon",), "weak": ("steel", "fairy")},
+    "dark": {"super": ("psychic", "ghost"), "weak": ("fighting", "dark", "fairy")},
+    "steel": {"super": ("ice", "rock", "fairy"), "weak": ("fire", "water", "electric", "steel")},
+    "fairy": {"super": ("fighting", "dragon", "dark"), "weak": ("fire", "poison", "steel")},
+}
+
+
+def get_type_multiplier(attacker_species: str, defender_species: str) -> float:
+    """按双方种族元素计算克制倍率:2.0 / 1.0 / 0.5。"""
+    chart = TYPE_CHART.get(get_pet_element(attacker_species))
+    if not chart:
+        return 1.0
+    defender_element = get_pet_element(defender_species)
+    if defender_element in chart["super"]:
+        return 2.0
+    if defender_element in chart["weak"]:
+        return 0.5
+    return 1.0
+
+
+def get_type_text(multiplier: float) -> str:
+    if multiplier >= 2.0:
+        return "效果拔群！"
+    if multiplier <= 0.5:
+        return "效果不好..."
+    return ""
+

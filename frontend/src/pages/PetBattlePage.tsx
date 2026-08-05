@@ -80,6 +80,8 @@ export default function PetBattlePage() {
   const battleStateRef = useRef<Battle | null>(null);
   const effectTimerRef = useRef<number | null>(null);
   const questionStartTime = useRef<number>(0);
+  // 战斗结束后忽略一切残留的回合消息,防止结算页被拉回答题界面
+  const battleEndedRef = useRef(false);
 
   // 获取Token
   // 注意：全项目登录时存的是 access_token 和 user(对象)，
@@ -132,6 +134,7 @@ export default function PetBattlePage() {
     }
 
     setConnectionError('');
+    battleEndedRef.current = false;
 
     // 连接WebSocket
     console.log('正在连接WebSocket...');
@@ -171,6 +174,7 @@ export default function PetBattlePage() {
     });
 
     ws.on('new_round', (data) => {
+      if (battleEndedRef.current) return;
       setPhase('question');
       setCurrentRound(data.round_number);
       setCurrentQuestion(data.question);
@@ -204,6 +208,7 @@ export default function PetBattlePage() {
     });
 
     ws.on('round_result', (data) => {
+      if (battleEndedRef.current) return;
       const result: RoundResult = data.result;
       setPhase('result');
       setRoundResult(result);
@@ -289,6 +294,7 @@ export default function PetBattlePage() {
     });
 
     ws.on('battle_end', (data) => {
+      battleEndedRef.current = true;
       setPhase('end');
       setEndResult(data);
       if (data.capture?.success) {

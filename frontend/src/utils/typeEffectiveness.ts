@@ -183,8 +183,9 @@ export function getEffectiveness(attackerType: PokemonType, defenderType: Pokemo
 
   if (!effectiveness) return 1;
 
-  // 无效 (0倍)
-  if (effectiveness.immune.includes(defenderType)) return 0;
+  // 免疫(原版×0)按×0.5结算,与后端 pet_species.TYPE_CHART 一致:
+  // 答对题打出0伤害太挫败,且 normal↔ghost 互免会出现谁也打不倒谁的死局
+  if (effectiveness.immune.includes(defenderType)) return 0.5;
 
   // 效果拔群 (2倍)
   if (effectiveness.super.includes(defenderType)) return 2;

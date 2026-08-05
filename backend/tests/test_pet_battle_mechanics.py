@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.word import Word
 from app.schemas.pet_battle import QuestionData, RoundQuestionData
 from app.services.pet_battle_service import (
+    finalize_round,
     get_battle_pet_hp_data,
     next_combo_state,
     process_round_answer,
@@ -187,3 +188,107 @@ async def test_wrong_answer_does_not_fire_or_consume_skill(db_session):
     assert second_round.player1_damage > 0
     assert second_round.player1_used_ultimate is True
     assert battle.player1_ultimate_charges == 0
+
+
+@pytest.mark.asyncio
+async def test_finalize_round_applies_type_multiplier(db_session):
+    """皮卡丘(电)打杰尼龟(水)效果拔群×2;水打电普通×1。"""
+    player1, player2, _, _, _, battle = await _battle_fixture(db_session)
+    p1_hp_before = battle.player1_hp
+    p2_hp_before = battle.player2_hp
+
+    await process_round_answer(
+        db_session, battle.id, player1.id, round_number=1, answer="A", time_ms=6000
+    )
+    battle, round_obj = await process_round_answer(
+        db_session, battle.id, player2.id, round_number=1, answer="A", time_ms=6000
+    )
+    base_p1 = round_obj.player1_damage
+    base_p2 = round_obj.player2_damage
+    assert base_p1 > 0 and base_p2 > 0
+
+    battle, round_obj = await finalize_round(db_session, battle.id, 1)
+
+    assert round_obj.player1_type_multiplier == 2.0
+    assert round_obj.player1_type_text == "效果拔群！"
+    assert round_obj.player1_damage == base_p1 * 2
+    assert battle.player2_hp == max(0, p2_hp_before - base_p1 * 2)
+
+    assert round_obj.player2_type_multiplier == 1.0
+    assert round_obj.player2_type_text is None
+    assert round_obj.player2_damage == base_p2
+    assert battle.player1_hp == max(0, p1_hp_before - base_p2)
+
+
+@pytest.mark.asyncio
+async def test_finalize_round_rejects_non_active_battle(db_session):
+    """已结束的对战禁止再结算——僵尸回合循环不能在血量归零后继续扣血。"""
+    player1, _, _, _, _, battle = await _battle_fixture(db_session)
+    await process_round_answer(
+        db_session, battle.id, player1.id, round_number=1, answer="A", time_ms=6000
+    )
+    battle.status = "finished"
+    await db_session.commit()
+
+    with pytest.raises(ValueError):
+        await finalize_round(db_session, battle.id, 1)
+
+
+@pytest.mark.asyncio
+async def test_battle_questions_come_from_learned_words(db_session):
+    """出题必须落在参战学生背过的词里;词池不够时重复补足到指定题数。"""
+    from app.models.learning import LearningRecord
+    from app.models.word import WordDefinition
+    from app.services.pet_battle_service import generate_battle_questions
+
+    user = User(
+        username="battle_words_stu",
+        email="battle_words_stu@example.com",
+        hashed_password="x",
+        role="student",
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    learned_ids = set()
+    for i in range(3):
+        word = Word(word=f"learned_{i}", difficulty=1)
+        db_session.add(word)
+        await db_session.flush()
+        db_session.add(WordDefinition(word_id=word.id, meaning=f"释义{i}", part_of_speech="n.", is_primary=True))
+        db_session.add(LearningRecord(user_id=user.id, word_id=word.id, learning_mode="spelling", is_correct=True))
+        learned_ids.add(word.id)
+    # 没背过的词:不该被抽中
+    for i in range(5):
+        word = Word(word=f"unlearned_{i}", difficulty=1)
+        db_session.add(word)
+        await db_session.flush()
+        db_session.add(WordDefinition(word_id=word.id, meaning=f"陌生释义{i}", part_of_speech="n.", is_primary=True))
+    await db_session.commit()
+
+    questions = await generate_battle_questions(
+        db_session, None, count=10, player_ids=[user.id, -1]
+    )
+
+    assert len(questions) == 10  # 只背过3个词也能凑满10题(重复补足)
+    assert {q["word_id"] for q in questions} <= learned_ids
+
+
+@pytest.mark.asyncio
+async def test_forfeit_battle_zeroes_quitter(db_session):
+    """逃跑判负:对手判胜,逃跑方奖励归零、出战宠物血量清零。"""
+    from app.services.pet_battle_service import forfeit_battle
+
+    player1, player2, pet1, _, _, battle = await _battle_fixture(db_session)
+
+    result = await forfeit_battle(db_session, battle.id, player1.id)
+
+    assert result is not None
+    assert result["winner_id"] == player2.id
+    await db_session.refresh(battle)
+    assert battle.status == "finished"
+    assert battle.winner_id == player2.id
+    assert battle.player1_hp == 0
+    await db_session.refresh(pet1)
+    assert pet1.current_hp == 0

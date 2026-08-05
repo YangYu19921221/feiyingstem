@@ -43,6 +43,9 @@ class BattleConnectionManager:
         self.battle_locks: Dict[int, asyncio.Lock] = {}
         # 只允许在回合结果展示期间切换宠物
         self.switch_windows: Set[int] = set()
+        # 正在被回合循环驱动的对战:同一场只允许一条驱动循环。
+        # 否则玩家刷新页面会再起一条循环,血量归零结束后旧题目还在继续推送。
+        self.driver_battles: Set[int] = set()
 
     async def connect(self, battle_id: int, player_id: int, websocket: WebSocket):
         """玩家连接"""
@@ -137,6 +140,16 @@ class BattleConnectionManager:
     def can_switch(self, battle_id: int) -> bool:
         return battle_id in self.switch_windows
 
+    def try_claim_driver(self, battle_id: int) -> bool:
+        """尝试成为该对战的回合驱动者;已有驱动循环在跑则失败。"""
+        if battle_id in self.driver_battles:
+            return False
+        self.driver_battles.add(battle_id)
+        return True
+
+    def release_driver(self, battle_id: int):
+        self.driver_battles.discard(battle_id)
+
 
 manager = BattleConnectionManager()
 
@@ -181,9 +194,15 @@ async def battle_websocket(
         await websocket.close(code=4003, reason="无权加入此对战")
         return
 
+    # 已结束的对战不允许重新开打(此前重连会从第1回合重放,血量0也继续)
+    if battle.status in ("finished", "cancelled"):
+        await websocket.close(code=4005, reason="对战已结束")
+        return
+
     # 连接
     await manager.connect(battle_id, current_user.id, websocket)
 
+    is_driver = False
     try:
         # AI对战直接开始，不等待对手连接
         if not battle.is_ai_battle:
@@ -204,14 +223,29 @@ async def battle_websocket(
                     )
                     return
 
-            # 双方主 WebSocket 都会进入此处理器，只由玩家1推进回合和执行最终结算。
-            # 玩家2保持连接接收广播，避免奖励和精灵球收服被重复执行。
-            if current_user.id != battle.player1_id:
-                while True:
-                    await asyncio.sleep(0.25)
-                    await db.refresh(battle)
-                    if battle.status == "finished":
-                        return
+        # 同一场对战只允许一条回合驱动循环:玩家1首连时认领;
+        # 玩家2、以及任何一方断线重连,都只做被动接收(广播照收,不重开回合)。
+        if current_user.id == battle.player1_id:
+            is_driver = manager.try_claim_driver(battle_id)
+
+        if not is_driver:
+            # 先补发一份当前战局快照,断线重连的页面才能立刻恢复血量/回合显示
+            if battle.status == "active":
+                from app.api.v1.student.pet_battle import build_battle_response
+
+                snapshot = await build_battle_response(battle, db)
+                await manager.send_to_player(
+                    battle_id,
+                    current_user.id,
+                    WSBattleStart(battle=snapshot).model_dump(mode="json"),
+                )
+            # 被动接收广播;对战结束或超时(兜底 30 分钟)退出
+            for _ in range(7200):
+                await asyncio.sleep(0.25)
+                await db.refresh(battle)
+                if battle.status != "active" and battle.status != "pending":
+                    return
+            return
 
         # 双方都连接了,开始倒计时
         await manager.broadcast(
@@ -252,11 +286,21 @@ async def battle_websocket(
             traceback.print_exc()
             raise
 
-        # 进行回合
-        for round_num in range(1, battle.max_rounds + 1):
+        # 进行回合(从 current_round+1 起:驱动循环意外中断后重连续打,不重放已结算回合)
+        for round_num in range(battle.current_round + 1, battle.max_rounds + 1):
             manager.close_switch_window(battle_id)
             await db.refresh(battle)
             manager.clear_answers(battle_id)
+
+            # 每回合开局兜底:对战被判负/结束、任一方血量已归零、或题目用尽
+            # (存量旧对战题目数可能少于回合数),立刻停止发题
+            if (
+                battle.status != "active"
+                or battle.player1_hp <= 0
+                or battle.player2_hp <= 0
+                or round_num > len(questions_data)
+            ):
+                break
 
             print(f"第{round_num}回合开始")
             # 发送新回合题目
@@ -363,10 +407,13 @@ async def battle_websocket(
                 except Exception:
                     pass
 
-            # 结算回合
-            battle, round_obj = await pet_battle_service.finalize_round(
-                db, battle_id, round_num
-            )
+            # 结算回合(对战中途被判负/结束时会拒绝结算,直接收尾)
+            try:
+                battle, round_obj = await pet_battle_service.finalize_round(
+                    db, battle_id, round_num
+                )
+            except ValueError:
+                break
 
             battle_has_ended = (
                 battle.player1_hp <= 0
@@ -464,6 +511,8 @@ async def battle_websocket(
         )
 
     finally:
+        if is_driver:
+            manager.release_driver(battle_id)
         manager.close_switch_window(battle_id)
         manager.disconnect(battle_id, current_user.id)
 
