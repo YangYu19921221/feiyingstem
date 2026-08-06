@@ -14,6 +14,9 @@ import { ArrowLeft, Printer } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { startLearning } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
+import { getMyPet } from '../api/pet';
+import type { Pet } from '../api/pet';
+import { getPetImage } from '../config/petSpecies';
 import { getErrorMessage } from '../utils/errorMessage';
 import { getGroupSize, splitIntoGroups } from '../utils/groupSize';
 
@@ -40,6 +43,13 @@ export default function HandwritingSheet() {
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // 学生自己的宠物印在页眉右上角(像作业本上的奖励贴纸)。
+  // 拉取失败(未领养/401/网络)一律静默不渲染——宠物是点缀,绝不能挡打印
+  const [pet, setPet] = useState<Pet | null>(null);
+
+  useEffect(() => {
+    getMyPet().then(setPet).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!unitId) return;
@@ -174,14 +184,33 @@ export default function HandwritingSheet() {
       <div className="max-w-3xl mx-auto px-4 pb-10 print:max-w-none print:px-0 print:pb-0">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 print:border-0 print:rounded-none print:p-0">
           {/* 页眉 */}
-          <div className="mb-6">
-            <h2 className="text-center text-xl font-bold text-gray-900 mb-1">英语听写默写纸</h2>
-            <p className="text-center text-sm text-gray-500 mb-4">
+          <div className="relative mb-6">
+            {/* 宠物 = 学生的身份贴纸,放页眉右上角:与姓名/日期同属"这张纸是谁的"区,
+                不占书写区。样式只靠 border 和图片本身——打印机默认不打背景色,
+                依赖 bg-* 的设计在纸上会消失 */}
+            {pet && (
+              <div className="absolute right-0 top-0 w-20 text-center">
+                <div className="mx-auto h-16 w-16 overflow-hidden rounded-full border border-slate-300 bg-white p-1">
+                  <img
+                    src={getPetImage(pet.species, pet.evolution_stage)}
+                    alt=""
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] leading-tight text-gray-500">
+                  {pet.name} 陪你听写
+                </p>
+              </div>
+            )}
+            {/* 两侧留出宠物宽度,标题保持视觉居中不被压到 */}
+            <h2 className="px-20 text-center text-xl font-bold text-gray-900 mb-1">英语听写默写纸</h2>
+            <p className="px-20 text-center text-sm text-gray-500 mb-4">
               {learningData.unit_info.name}
               {groups.length > 1 && ` · 第 ${groupIndex + 1} 组(第 ${startNo + 1}~${startNo + words.length} 题)`}
             </p>
-            {/* whitespace-nowrap + gap:390px 屏上「姓名:____」曾被折成两行("姓/名:____") */}
-            <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-b-2 border-gray-800 pb-2 text-sm text-gray-600">
+            {/* whitespace-nowrap + gap:390px 屏上「姓名:____」曾被折成两行("姓/名:____")。
+                有宠物时右侧让位,避免"得分"钻到宠物名字底下 */}
+            <div className={`flex flex-wrap justify-between gap-x-6 gap-y-1 border-b-2 border-gray-800 pb-2 text-sm text-gray-600 ${pet ? 'pr-24' : ''}`}>
               <span className="whitespace-nowrap">姓名:____________</span>
               <span className="whitespace-nowrap">日期:____________</span>
               <span className="whitespace-nowrap">得分:__________</span>
