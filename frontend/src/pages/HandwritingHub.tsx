@@ -13,9 +13,10 @@ import type { StudentBook, BookProgress } from '../api/progress';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
-// 单元超过这个数就先折叠(生产有 98 单元的书,一次全铺开要滚很久);
-// 书列表不折叠——每个学生最多分配 4 本书,搜索反而碍事
+// 单元超过这个数就先折叠(生产有 98 单元的书,一次全铺开要滚很久)
 const UNIT_COLLAPSE_LIMIT = 12;
+// 书超过这个数折叠 + 出搜索:生产实测有学生被分配 40 本书
+const BOOK_COLLAPSE_LIMIT = 6;
 
 export default function HandwritingHub() {
   const navigate = useNavigate();
@@ -27,6 +28,8 @@ export default function HandwritingHub() {
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitSearch, setUnitSearch] = useState('');
   const [showAllUnits, setShowAllUnits] = useState(false);
+  const [bookSearch, setBookSearch] = useState('');
+  const [showAllBooks, setShowAllBooks] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -60,6 +63,19 @@ export default function HandwritingHub() {
       setUnitsLoading(false);
     }
   };
+
+  // ⚠️ /student/books 返回的是全部单词本(owned 只是标记,生产 50 本全回来),
+  // 这里只显示分配给我的——没分配的书点进去单元全是锁,列出来纯噪音。
+  // 口径与学生首页书架一致(StudentDashboard 同样 filter(owned))。
+  const ownedBooks = useMemo(() => books.filter((b) => b.owned), [books]);
+
+  const bookTerm = bookSearch.trim().toLowerCase();
+  const matchedBooks = useMemo(
+    () => (bookTerm ? ownedBooks.filter((b) => b.name.toLowerCase().includes(bookTerm)) : ownedBooks),
+    [ownedBooks, bookTerm],
+  );
+  const booksCollapsed = !bookTerm && !showAllBooks && matchedBooks.length > BOOK_COLLAPSE_LIMIT;
+  const visibleBooks = booksCollapsed ? matchedBooks.slice(0, BOOK_COLLAPSE_LIMIT) : matchedBooks;
 
   const units = useMemo(
     () => (bookProgress
@@ -116,14 +132,46 @@ export default function HandwritingHub() {
 
         {loading ? (
           <div className="py-16 text-center text-sm text-ink-mute">加载中…</div>
-        ) : books.length === 0 ? (
+        ) : ownedBooks.length === 0 ? (
           <div className="py-16 text-center border border-dashed border-black/10 rounded-2xl">
             <p className="text-ink-soft mb-1">还没有分配单词本</p>
             <p className="text-xs text-ink-mute">等老师分配后就能看到</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-black/[0.05] overflow-hidden divide-y divide-black/[0.05]">
-            {books.map((book) => (
+          <>
+            {/* 书多才给搜索(生产有学生被分配 40 本);几本书还要搜索反而添乱 */}
+            {ownedBooks.length > BOOK_COLLAPSE_LIMIT && (
+              <div className="relative mb-3">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
+                <input
+                  type="text"
+                  inputMode="search"
+                  value={bookSearch}
+                  onChange={(e) => setBookSearch(e.target.value)}
+                  placeholder={`搜索单词本(共 ${ownedBooks.length} 本)`}
+                  aria-label="搜索单词本"
+                  className="w-full min-h-11 rounded-xl border border-black/[0.08] bg-white pl-9 pr-10 text-base text-ink placeholder:text-ink-mute focus:border-accent-warm focus:outline-none focus:ring-2 focus:ring-accent-warm/20"
+                />
+                {bookSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setBookSearch('')}
+                    aria-label="清除搜索"
+                    className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-ink-mute transition hover:bg-black/5 hover:text-ink"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {matchedBooks.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-black/10 py-10 text-center text-sm text-ink-mute">
+                没有找到「{bookSearch.trim()}」,换个词试试
+              </p>
+            ) : (
+            <div className="bg-white rounded-2xl border border-black/[0.05] overflow-hidden divide-y divide-black/[0.05]">
+            {visibleBooks.map((book) => (
               <div key={book.id}>
                 <button
                   type="button"
@@ -242,7 +290,19 @@ export default function HandwritingHub() {
                 )}
               </div>
             ))}
-          </div>
+            </div>
+            )}
+
+            {booksCollapsed && (
+              <button
+                type="button"
+                onClick={() => setShowAllBooks(true)}
+                className="mt-3 min-h-11 w-full rounded-xl border border-dashed border-black/[0.12] text-sm font-medium text-ink-soft transition hover:border-black/25 hover:bg-black/[0.02]"
+              >
+                显示全部 {matchedBooks.length} 本(还有 {matchedBooks.length - BOOK_COLLAPSE_LIMIT} 本)
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
