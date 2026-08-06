@@ -186,16 +186,20 @@ async def update_ai_provider(
     # 更新字段
     update_data = provider_data.model_dump(exclude_unset=True)
 
-    # 如果更新API密钥,需要加密
-    # 注意:如果api_key包含***或...,说明是脱敏后的值,不应该更新
-    if "api_key" in update_data and update_data["api_key"]:
-        api_key = update_data["api_key"]
-        # 检查是否为脱敏值(包含***或...)
-        if "***" in api_key or "..." in api_key or api_key == "sk-****":
-            # 不更新API key,移除这个字段
+    # API 密钥:只有传了「真实的新密钥」才更新,其余情况一律保留原值。
+    #
+    # ⚠️ 2026-08-06 生产事故:原判断是 `if "api_key" in update_data and update_data["api_key"]`,
+    # 空字符串会让整个 if 不成立 → 跳过「删除该字段」的分支 → api_key="" 被原样写进库,
+    # 把密钥清空。而前端编辑时刻意把密钥框留空(表单标签就写着「留空表示不修改」),
+    # 于是**每次改模型名而不重填密钥,密钥就被抹掉**,之后所有 LLM 调用 401。
+    # 生产 qwen 密钥就是这样变成长度 0 的。空值必须走「不更新」,不能落库。
+    if "api_key" in update_data:
+        api_key = (update_data["api_key"] or "").strip()
+        masked = "***" in api_key or "..." in api_key or api_key == "sk-****"
+        if not api_key or masked:
+            # 留空 = 不修改;脱敏值 = 前端回显的占位,同样不能覆盖真实密钥
             del update_data["api_key"]
         else:
-            # 真实的新API key,需要加密
             update_data["api_key"] = encrypt_api_key(api_key)
 
     # 如果设置为默认,取消其他默认配置
