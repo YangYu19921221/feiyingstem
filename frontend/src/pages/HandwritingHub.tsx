@@ -4,14 +4,18 @@
  * 首页卡片直达这里。单元列表里也有同名分组,两个入口通向同一批页面。
  * 未分配的单元按严格模式锁定(与 UnitSelector 同口径:is_allowed === false)。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, ChevronRight, LockKeyhole, Printer } from 'lucide-react';
+import { ArrowLeft, Camera, ChevronRight, LockKeyhole, Printer, Search, X } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { getStudentBooks, getBookProgress } from '../api/progress';
 import type { StudentBook, BookProgress } from '../api/progress';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
+
+// 单元超过这个数就先折叠(生产有 98 单元的书,一次全铺开要滚很久);
+// 书列表不折叠——每个学生最多分配 4 本书,搜索反而碍事
+const UNIT_COLLAPSE_LIMIT = 12;
 
 export default function HandwritingHub() {
   const navigate = useNavigate();
@@ -21,6 +25,8 @@ export default function HandwritingHub() {
   const [openBookId, setOpenBookId] = useState<number | null>(null);
   const [bookProgress, setBookProgress] = useState<BookProgress | null>(null);
   const [unitsLoading, setUnitsLoading] = useState(false);
+  const [unitSearch, setUnitSearch] = useState('');
+  const [showAllUnits, setShowAllUnits] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -42,6 +48,9 @@ export default function HandwritingHub() {
     setOpenBookId(bookId);
     setUnitsLoading(true);
     setBookProgress(null);
+    // 换书时清掉上一本的搜索词和展开态,否则搜索残留会让新书"看起来没单元"
+    setUnitSearch('');
+    setShowAllUnits(false);
     try {
       setBookProgress(await getBookProgress(bookId));
     } catch (err: unknown) {
@@ -52,9 +61,21 @@ export default function HandwritingHub() {
     }
   };
 
-  const units = bookProgress
-    ? [...bookProgress.units].sort((a, b) => (a.unit_number || 0) - (b.unit_number || 0))
-    : [];
+  const units = useMemo(
+    () => (bookProgress
+      ? [...bookProgress.units].sort((a, b) => (a.unit_number || 0) - (b.unit_number || 0))
+      : []),
+    [bookProgress],
+  );
+
+  // 搜索按单元名匹配;有搜索词时不折叠(搜出来的就该全给看)
+  const term = unitSearch.trim().toLowerCase();
+  const matchedUnits = useMemo(
+    () => (term ? units.filter((u) => u.unit_name.toLowerCase().includes(term)) : units),
+    [units, term],
+  );
+  const collapsed = !term && !showAllUnits && matchedUnits.length > UNIT_COLLAPSE_LIMIT;
+  const visibleUnits = collapsed ? matchedUnits.slice(0, UNIT_COLLAPSE_LIMIT) : matchedUnits;
 
   return (
     <div className="min-h-screen bg-paper page-warm-glow">
@@ -129,8 +150,40 @@ export default function HandwritingHub() {
                     ) : units.length === 0 ? (
                       <p className="py-6 text-center text-sm text-ink-mute">该单词本还没有单元</p>
                     ) : (
-                      <div className="space-y-2">
-                        {units.map((unit) => {
+                      <>
+                        {/* 单元多才给搜索框,几个单元还要搜索反而添乱 */}
+                        {units.length > UNIT_COLLAPSE_LIMIT && (
+                          <div className="relative mb-3">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
+                            <input
+                              type="text"
+                              inputMode="search"
+                              value={unitSearch}
+                              onChange={(e) => setUnitSearch(e.target.value)}
+                              placeholder={`搜索单元(共 ${units.length} 个)`}
+                              aria-label="搜索单元"
+                              className="w-full min-h-11 rounded-xl border border-black/[0.08] bg-white pl-9 pr-10 text-base text-ink placeholder:text-ink-mute focus:border-accent-warm focus:outline-none focus:ring-2 focus:ring-accent-warm/20"
+                            />
+                            {unitSearch && (
+                              <button
+                                type="button"
+                                onClick={() => setUnitSearch('')}
+                                aria-label="清除搜索"
+                                className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-ink-mute transition hover:bg-black/5 hover:text-ink"
+                              >
+                                <X className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {matchedUnits.length === 0 ? (
+                          <p className="py-6 text-center text-sm text-ink-mute">
+                            没有找到「{unitSearch.trim()}」,换个词试试
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {visibleUnits.map((unit) => {
                           const locked = unit.is_allowed === false;
                           return (
                             <div
@@ -171,7 +224,19 @@ export default function HandwritingHub() {
                             </div>
                           );
                         })}
-                      </div>
+                          </div>
+                        )}
+
+                        {collapsed && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllUnits(true)}
+                            className="mt-3 min-h-11 w-full rounded-xl border border-dashed border-black/[0.12] text-sm font-medium text-ink-soft transition hover:border-black/25 hover:bg-black/[0.02]"
+                          >
+                            显示全部 {matchedUnits.length} 个单元(还有 {matchedUnits.length - UNIT_COLLAPSE_LIMIT} 个)
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
