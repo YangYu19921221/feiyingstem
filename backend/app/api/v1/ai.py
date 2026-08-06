@@ -253,11 +253,16 @@ async def generate_complete(
     - 例句翻译
     - 支持传入已有释义,避免重复生成
     """
-    result = await ai_service.generate_complete_word_info(
-        word=request.word,
-        part_of_speech=request.part_of_speech,
-        existing_meanings=request.existing_meanings
-    )
+    try:
+        result = await ai_service.generate_complete_word_info(
+            word=request.word,
+            part_of_speech=request.part_of_speech,
+            existing_meanings=request.existing_meanings
+        )
+    except Exception as e:
+        # 此前 AI 失败会静默返回空字段的 200,老师点"AI填充"后各栏空白无提示;
+        # 现在如实报错,前端 toast 能看到原因
+        raise HTTPException(status_code=502, detail=f"AI 生成失败: {e}")
 
     return GenerateCompleteResponse(
         word=request.word,

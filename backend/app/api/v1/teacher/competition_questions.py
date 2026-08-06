@@ -7,6 +7,9 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.models.user import User
@@ -412,6 +415,7 @@ async def ai_generate_questions(
 
     generated_questions = []
     generated_count = 0
+    failed_count = 0
 
     for word in words:
         # 获取单词释义
@@ -479,14 +483,27 @@ async def ai_generate_questions(
                 generated_count += 1
 
             except Exception as e:
-                print(f"生成题目失败: {e}")
+                # AI 生成失败的题跳过(假题兜底已删,失败会真的抛上来),
+                # 计数如实上报——此前老师要 50 题拿到 12 题也显示"成功"
+                logger.warning("生成竞赛题失败: word=%s type=%s, %s", word.word, question_type, e)
+                failed_count += 1
                 continue
 
     await db.commit()
 
+    if generated_count == 0:
+        raise HTTPException(
+            status_code=502,
+            detail="AI 生成全部失败,请检查 AI 配置/账号余额后重试",
+        )
+
+    message = f"成功生成 {generated_count} 道题目"
+    if failed_count:
+        message += f",另有 {failed_count} 道生成失败已跳过"
     return {
         "success": True,
         "generated_count": generated_count,
+        "failed_count": failed_count,
         "questions": generated_questions,
-        "message": f"成功生成 {generated_count} 道题目"
+        "message": message
     }

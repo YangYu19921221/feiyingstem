@@ -6,7 +6,10 @@ from typing import List, Dict, Optional
 from app.core.config import settings
 import json
 import hashlib
+import logging
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 class AIService:
     """AI服务基类"""
@@ -86,15 +89,16 @@ class AIService:
 {{"sentence": "英文例句", "translation": "中文翻译"}}
 """
 
-        result = await self._call_llm(prompt)
-
-        # 解析JSON
+        # 学生练习路径:AI 失败/返回不合法时降级为模板句,宁可平淡不可中断答题。
+        # _call_llm 失败现在会抛异常,这里是唯一降级点,必须留日志(此前完全静默,
+        # 欠费期间全站例句变模板句却无迹可查)。
         try:
+            result = await self._call_llm(prompt)
             data = json.loads(result)
             self._set_cache(cache_key, result)
             return data
-        except json.JSONDecodeError:
-            # 如果解析失败,返回默认值
+        except Exception as e:
+            logger.warning("例句生成降级为模板句: word=%s, %s", word, e)
             return {
                 "sentence": f"I like to use {word}.",
                 "translation": f"我喜欢使用{word}。"
@@ -131,14 +135,16 @@ class AIService:
 只返回JSON,不要其他文字:
 {{"sentence": "英文例句", "translation": "中文翻译"}}
 """
-        result = await self._call_llm(prompt)
+        # 学生练习路径:同 generate_example_sentence,降级不中断,但必须留日志
         try:
+            result = await self._call_llm(prompt)
             data = json.loads(result)
             if word.lower() not in data.get("sentence", "").lower():
                 raise ValueError("生成句不含目标词")
             self._set_cache(cache_key, json.dumps(data, ensure_ascii=False))
             return data
-        except (json.JSONDecodeError, ValueError):
+        except Exception as e:
+            logger.warning("选词填空语境句降级为模板句: word=%s, %s", word, e)
             return {
                 "sentence": f"I can see a {word} here.",
                 "translation": f"我在这里能看到一个{meaning}。",
@@ -155,6 +161,7 @@ class AIService:
         返回: ["错误选项1", "错误选项2", "错误选项3"]
         """
         cache_key = self._generate_cache_key(
+            "distractors",  # 存量bug:漏传必填的 prefix 位置参数,此方法此前每调必 TypeError
             word=word,
             correct_meaning=correct_meaning,
             count=count
@@ -175,14 +182,15 @@ class AIService:
 ["干扰项1", "干扰项2", "干扰项3"]
 """
 
-        result = await self._call_llm(prompt)
-
+        # 学生练习路径:降级不中断,留日志(模板干扰项对学生几乎无迷惑性,
+        # 频繁出现说明 AI 挂了,靠这条日志发现)
         try:
+            result = await self._call_llm(prompt)
             data = json.loads(result)
             self._set_cache(cache_key, result)
             return data
-        except json.JSONDecodeError:
-            # 返回默认干扰项
+        except Exception as e:
+            logger.warning("干扰项生成降级为模板: word=%s, %s", word, e)
             return ["选项A", "选项B", "选项C"][:count]
 
     async def explain_mistake(
@@ -498,14 +506,11 @@ class AIService:
             self._set_cache(cache_key, json.dumps(data, ensure_ascii=False))
             return data
 
-        except json.JSONDecodeError:
-            # 如果解析失败,返回空数据
-            return {
-                "phonetic": "",
-                "meaning": "",
-                "example_sentence": "",
-                "example_translation": ""
-            }
+        except json.JSONDecodeError as e:
+            # 教师内容生产路径:不许静默返回空字段(老师点"AI填充"后各栏空白
+            # 且无任何提示,就是这里吞出来的)。抛出去让端点报错。
+            logger.warning("单词信息生成结果无法解析: word=%s, %s", word, e)
+            raise ValueError(f"AI 返回的单词信息无法解析,请重试") from e
 
     async def analyze_weak_points(
         self,
@@ -631,9 +636,11 @@ class AIService:
 3. suggestions 必须是 3 条家长在家能陪孩子做的具体动作
 4. 全部用中文,面向家长口吻"""
 
-        result = await self._call_llm(prompt, max_tokens=800)
-
+        # 家长/教师端周报:AI 失败一律走规则兜底(设计如此:没有 AI 也要有报告),
+        # 但必须留日志。_call_llm 挪进 try:它失败现在抛异常,不进 try 的话
+        # 家长端会直接 500,破坏"永远有报告"的约定。
         try:
+            result = await self._call_llm(prompt, max_tokens=800)
             data = json.loads(result)
             # 基本结构校验
             if not isinstance(data.get("summary"), str) or not data["summary"].strip():
@@ -647,8 +654,8 @@ class AIService:
                 "focus_areas": [str(x) for x in data.get("focus_areas", [])][:5],
                 "suggestions": [str(x) for x in data.get("suggestions", [])][:5],
             }
-        except (json.JSONDecodeError, ValueError, TypeError):
-            # 规则兜底:AI 不可用/解析失败时也能给出有意义的报告
+        except Exception as e:
+            logger.warning("周报 AI 生成失败,走规则兜底: %s", e)
             return self._fallback_weekly_report(name, tw, lw, mode_acc, weak, new_mastered, mode_cn)
 
     def _fallback_weekly_report(self, name, tw, lw, mode_acc, weak, new_mastered, mode_cn) -> Dict:
@@ -1007,9 +1014,10 @@ class AIService:
             return exam_data
 
         except json.JSONDecodeError as e:
-            print(f"AI生成试卷JSON解析失败: {e}, response: {result[:500]}")
-            # 返回一个基础试卷模板
-            return self._generate_fallback_exam(student_name, weak_words, question_distribution)
+            # 不许发假卷:此前这里返回 _generate_fallback_exam 的模板卷,
+            # 老师以为是 AI 个性化组卷,实际是千篇一律的占位题。失败就报错重试。
+            logger.warning("AI生成试卷JSON解析失败: %s, response=%s", e, result[:300])
+            raise ValueError("AI 返回的试卷无法解析,请重试") from e
 
     def _generate_fallback_exam(
         self,
@@ -1310,10 +1318,11 @@ class AIService:
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            print(f"❌ AI API调用失败: {e}")
-            import traceback
-            traceback.print_exc()
-            return ""
+            # ⚠️ 不许吞成空串:曾经 return "" 让欠费(Arrearage)期间所有 AI 功能
+            # 表现为"没反应",还让竞赛出题拿空串造假题入库。失败就抛,
+            # 要不要降级由各业务方法自己决定(学生练习降级,内容生产必须失败)。
+            logger.exception("AI API调用失败: model=%s", model)
+            raise
 
     async def _call_openai(self, prompt: str, max_tokens: int) -> str:
         """调用OpenAI API (向后兼容)"""
@@ -1359,9 +1368,10 @@ class AIService:
 
             return message.content[0].text.strip()
 
-        except Exception as e:
-            print(f"Claude API调用失败: {e}")
-            return ""
+        except Exception:
+            # 同 _call_openai_compatible:失败必须抛,不许吞成空串
+            logger.exception("Claude API调用失败: model=%s", model)
+            raise
 
     async def _get_ocr_config(self):
         """手写批改用的视觉模型配置(管理端 AI 配置页可配)。
@@ -1716,38 +1726,11 @@ class AIService:
                 "options": shuffled_options
             }
         except Exception as e:
-            print(f"AI生成选择题失败: {e}, response: {response}")
-            # 返回一个默认题目,同样随机化选项位置
-            import random
-            options_pool = [
-                {"text": meaning, "is_correct": True},
-                {"text": "其他选项1", "is_correct": False},
-                {"text": "其他选项2", "is_correct": False},
-                {"text": "其他选项3", "is_correct": False}
-            ]
-            random.shuffle(options_pool)
-            keys = ["A", "B", "C", "D"]
-            options = []
-            correct_key = None
-            for i, opt in enumerate(options_pool):
-                key = keys[i]
-                if opt["is_correct"]:
-                    correct_key = key
-                options.append({
-                    "key": key,
-                    "text": opt["text"],
-                    "is_correct": opt["is_correct"],
-                    "display_order": i + 1
-                })
-
-            return {
-                "question_type": "choice",
-                "content": f"The word '{word}' means ___",
-                "correct_answer": json.dumps({"answer": correct_key}),
-                "answer_explanation": f"'{word}' 的释义是 {meaning}",
-                "difficulty": difficulty,
-                "options": options
-            }
+            # ⚠️ 不许造假题:此前这里返回选项字面是"其他选项1/2/3"的硬编码题,
+            # 调用方(competition_questions.py)会把它当真题入库、进真实竞赛。
+            # 宁可这道题生成失败被跳过,也不能污染题库。
+            logger.warning("AI生成选择题失败: word=%s, %s", word, e)
+            raise
 
     async def _generate_fill_blank_question(
         self,
@@ -1801,15 +1784,10 @@ class AIService:
                 "options": None
             }
         except Exception as e:
-            print(f"AI生成填空题失败: {e}")
-            return {
-                "question_type": "fill_blank",
-                "content": f"I am very ___ today. (我今天很{meaning})",
-                "correct_answer": json.dumps([word]),
-                "answer_explanation": f"根据语境,这里应填入 {word}",
-                "difficulty": difficulty,
-                "options": None
-            }
+            # 不许造假题(同 _generate_choice_question):此前返回
+            # "I am very ___ today" 硬编码句,不分词性人人一样,还会入库
+            logger.warning("AI生成填空题失败: word=%s, %s", word, e)
+            raise
 
     async def _generate_spelling_question(
         self,
@@ -1896,23 +1874,10 @@ class AIService:
                 "options": data["options"]
             }
         except Exception as e:
-            print(f"AI生成阅读理解题失败: {e}")
-            # 返回默认题目
-            return {
-                "question_type": "reading",
-                "title": "Short Story",
-                "passage": f"The story uses the word {word}.",
-                "content": f"What does '{word}' mean?",
-                "correct_answer": json.dumps({"answer": "A"}),
-                "answer_explanation": f"'{word}' means {meaning}",
-                "difficulty": difficulty,
-                "options": [
-                    {"key": "A", "text": meaning, "is_correct": True, "display_order": 1},
-                    {"key": "B", "text": "Other meaning 1", "is_correct": False, "display_order": 2},
-                    {"key": "C", "text": "Other meaning 2", "is_correct": False, "display_order": 3},
-                    {"key": "D", "text": "Other meaning 3", "is_correct": False, "display_order": 4}
-                ]
-            }
+            # 不许造假题(同 _generate_choice_question):此前返回一句话的
+            # 假"短文" The story uses the word X,不成阅读理解还会入库
+            logger.warning("AI生成阅读理解题失败: word=%s, %s", word, e)
+            raise
 
 
 # 单例模式
