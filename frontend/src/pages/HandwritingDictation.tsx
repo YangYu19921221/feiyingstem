@@ -5,7 +5,7 @@
  * 保存走 submitReliably 的 /student/records(mode='handwriting'),
  * 掌握度/日历/成就与其他模式同源。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Printer, Volume2 } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
@@ -18,6 +18,7 @@ import type { HandwritingGradeResponse } from '../api/handwriting';
 import { useAudio } from '../hooks/useAudio';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
+import { getGroupSize, splitIntoGroups } from '../utils/groupSize';
 
 type Phase = 'intro' | 'dictate' | 'photo' | 'grading' | 'result' | 'saved';
 
@@ -59,6 +60,7 @@ export default function HandwritingDictation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [phase, setPhase] = useState<Phase>('intro');
+  const [groupIndex, setGroupIndex] = useState(0);
   const [index, setIndex] = useState(0);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -95,8 +97,22 @@ export default function HandwritingDictation() {
     };
   }, [photoUrl]);
 
-  const words = learningData?.words ?? [];
+  // 必须分组:生产单元词数中位数 51-100、最大 147,一次听写整单元没有孩子做得完,
+  // 而且后端单次批改上限 100 题(>100 词的单元会直接 422)。分组规则与分类学习同源。
+  const groups = useMemo(() => {
+    const all = learningData?.words ?? [];
+    if (!all.length) return [];
+    const size = getGroupSize(learningData?.unit_info.grade_level, learningData?.unit_info.group_size);
+    return splitIntoGroups(all, size);
+  }, [learningData]);
+
+  const words = groups[groupIndex] ?? [];
   const current = words[index];
+  // 本组第一题在整单元里的序号(打印纸与报词页共用同一套题号)
+  const groupStartNo = useMemo(
+    () => groups.slice(0, groupIndex).reduce((n, g) => n + g.length, 0),
+    [groups, groupIndex],
+  );
 
   const playCurrent = (rate = 1.0) => {
     if (current) playAudio(current.word, rate, current.id);
@@ -164,8 +180,9 @@ export default function HandwritingDictation() {
         learning_mode: 'handwriting',
         user_answer: r.is_correct ? undefined : (r.written.slice(0, 80) || undefined),
       }));
+      // 只累计本组耗时:timesRef 跨组累积,直接求和会把前几组的时间重复计入日历
       const sessionSeconds = Math.round(
-        Object.values(timesRef.current).reduce((a, b) => a + b, 0) / 1000
+        words.reduce((sum, w) => sum + (timesRef.current[w.id] ?? 0), 0) / 1000
       );
       await createLearningRecords({
         unit_id: parseInt(unitId),
@@ -173,11 +190,14 @@ export default function HandwritingDictation() {
         records,
         session_seconds: sessionSeconds,
       });
+      // 游标必须是整单元的全局下标(不是组内下标),否则断点续学永远回到第一组。
+      // is_completed 只在最后一组交卷时才置 true。
+      const isLastGroup = groupIndex >= groups.length - 1;
       updateProgress({
         unit_id: parseInt(unitId),
         learning_mode: 'handwriting',
-        current_word_index: words.length - 1,
-        is_completed: true,
+        current_word_index: groupStartNo + words.length - 1,
+        is_completed: isLastGroup,
       }).catch(() => {});
       setPhase('saved');
     } catch (e: unknown) {
@@ -189,14 +209,27 @@ export default function HandwritingDictation() {
     }
   };
 
-  const restart = () => {
-    timesRef.current = {};
-    setIndex(0);
-    setGradeResp(null);
+  const clearPhoto = () => {
     setPhotoBlob(null);
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     setPhotoUrl(null);
+  };
+
+  /** 重听本组 */
+  const restart = () => {
+    setIndex(0);
+    setGradeResp(null);
+    clearPhoto();
     setPhase('dictate');
+  };
+
+  /** 进入下一组(交完卷才可用) */
+  const nextGroup = () => {
+    setGroupIndex((g) => Math.min(g + 1, groups.length - 1));
+    setIndex(0);
+    setGradeResp(null);
+    clearPhoto();
+    setPhase('intro');
   };
 
   if (loading) {
@@ -243,7 +276,9 @@ export default function HandwritingDictation() {
           <div className="flex-1">
             <h1 className="text-lg font-bold text-gray-800">📝 纸笔听写</h1>
             <p className="text-xs text-gray-500">
-              {learningData.unit_info.name} · {words.length} 个单词 · 手写拍照 AI 批改
+              {learningData.unit_info.name}
+              {groups.length > 1 && ` · 第 ${groupIndex + 1}/${groups.length} 组`}
+              {' · '}{words.length} 个单词
             </p>
           </div>
         </div>
@@ -254,9 +289,15 @@ export default function HandwritingDictation() {
         {phase === 'intro' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 max-w-md mx-auto">
             <div className="text-5xl mb-4 text-center">✍️</div>
-            <h2 className="text-xl font-bold text-gray-800 text-center mb-4">准备好纸和笔</h2>
+            <h2 className="text-xl font-bold text-gray-800 text-center mb-2">准备好纸和笔</h2>
+            {groups.length > 1 && (
+              <p className="mb-4 text-center text-sm text-gray-500">
+                这个单元共 {learningData.words.length} 个词，分 {groups.length} 组听写。
+                本组是第 <span className="font-semibold text-gray-700">{groupStartNo + 1}~{groupStartNo + words.length}</span> 题。
+              </p>
+            )}
             <ol className="text-sm text-gray-600 space-y-2 mb-6 list-decimal list-inside">
-              <li>在纸上写好序号 1~{words.length}(或打印答题纸)</li>
+              <li>在纸上写好序号 {groupStartNo + 1}~{groupStartNo + words.length}(或打印答题纸)</li>
               <li>听发音,把单词写在对应序号后面</li>
               <li>写完把整页拍一张照,AI 自动批改</li>
             </ol>
@@ -278,7 +319,11 @@ export default function HandwritingDictation() {
         {/* 报词阶段:不显示单词,只出声音 */}
         {phase === 'dictate' && current && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 max-w-md mx-auto text-center">
-            <p className="text-sm text-gray-400 mb-1">第 {index + 1} 题 / 共 {words.length} 题</p>
+            {/* 题号用整单元全局序号,与打印纸一致 —— 分组后若显示组内序号,
+                第 2 组会又从「第 1 题」开始,和纸上的 21、22… 对不上 */}
+            <p className="text-sm text-gray-400 mb-1">
+              第 {groupStartNo + index + 1} 题 · 本组 {index + 1}/{words.length}
+            </p>
             <div className="h-1.5 bg-gray-100 rounded-full mb-8 overflow-hidden">
               <div
                 className="h-full bg-primary rounded-full transition-all duration-300"
@@ -293,7 +338,7 @@ export default function HandwritingDictation() {
               <Volume2 className="w-10 h-10" />
             </button>
             <p className="text-gray-500 text-sm mt-4 mb-8">
-              把听到的单词写在纸上第 <span className="font-bold text-gray-800">{index + 1}</span> 题
+              把听到的单词写在纸上第 <span className="font-bold text-gray-800">{groupStartNo + index + 1}</span> 题
               <br />
               <span className="text-xs text-gray-400">点喇叭可以再听一遍</span>
             </p>
@@ -388,7 +433,7 @@ export default function HandwritingDictation() {
             <div className="max-h-72 overflow-y-auto mb-5 divide-y divide-gray-100">
               {gradeResp.results.map((r, i) => (
                 <div key={r.word_id} className="flex items-center gap-3 py-2 text-sm">
-                  <span className="w-6 text-right text-gray-400 font-mono shrink-0">{i + 1}.</span>
+                  <span className="w-7 shrink-0 text-right font-mono text-gray-400">{groupStartNo + i + 1}.</span>
                   <span className={r.is_correct ? 'text-green-500' : 'text-red-400'}>
                     {r.is_correct ? '✓' : '✗'}
                   </span>
@@ -444,11 +489,19 @@ export default function HandwritingDictation() {
               </div>
             )}
             <div className="flex flex-col gap-3">
+              {groupIndex < groups.length - 1 && (
+                <button
+                  onClick={nextGroup}
+                  className="w-full py-3 bg-primary text-white font-bold rounded-xl transition hover:opacity-90"
+                >
+                  继续下一组(第 {groupIndex + 2}/{groups.length} 组)
+                </button>
+              )}
               <button
                 onClick={restart}
-                className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl transition"
+                className="min-h-12 w-full rounded-xl bg-sky-600 font-bold text-white transition hover:bg-sky-700"
               >
-                再听写一次
+                重听本组
               </button>
               <button
                 onClick={() => goBack()}

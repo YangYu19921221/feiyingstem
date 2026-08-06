@@ -144,6 +144,7 @@ const TeacherStudentDetail = () => {
       case 'spelling': return '拼写';
       case 'fillblank': return '填空';
       case 'exam': return '单元考试';
+      case 'handwriting': return '纸笔听写';
       default: return mode;
     }
   };

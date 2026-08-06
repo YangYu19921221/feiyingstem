@@ -47,6 +47,7 @@ const modeNames: Record<string, string> = {
   dictation: '听写练习',
   sentencefill: '句子填空',
   exam: '单元测试',
+  handwriting: '纸笔听写',
 };
 
 const formatStudyTime = (value: string) => new Date(value).toLocaleDateString('zh-CN', {

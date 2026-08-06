@@ -8,13 +8,14 @@
  * 纯前端 window.print(),不产生任何服务端文件。
  * 词序与「纸笔听写」页同源(startLearning 按 order_index),写完拍照即可回 App 批改。
  */
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Printer } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { startLearning } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
 import { getErrorMessage } from '../utils/errorMessage';
+import { getGroupSize, splitIntoGroups } from '../utils/groupSize';
 
 type Template = 'blank' | 'cn';
 
@@ -30,10 +31,11 @@ const FourLineGrid = () => (
 
 export default function HandwritingSheet() {
   const { unitId } = useParams<{ unitId: string }>();
-  const navigate = useNavigate();
   const goBack = useGoBack('/student/dashboard');
   const [searchParams, setSearchParams] = useSearchParams();
   const template: Template = searchParams.get('t') === 'cn' ? 'cn' : 'blank';
+  // 打印哪一组(?g=1 起);与听写页的分组、题号完全同源
+  const groupParam = Math.max(1, parseInt(searchParams.get('g') || '1') || 1);
 
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +78,13 @@ export default function HandwritingSheet() {
     );
   }
 
-  const words = learningData.words;
+  // 与听写页同源分组:生产单元最大 147 词,整单元打一张纸没人写得完,
+  // 且题号必须与报词页一致(第 2 组从 21 起,不是又从 1 起)
+  const size = getGroupSize(learningData.unit_info.grade_level, learningData.unit_info.group_size);
+  const groups = splitIntoGroups(learningData.words, size);
+  const groupIndex = Math.min(groupParam - 1, groups.length - 1);
+  const words = groups[groupIndex] ?? [];
+  const startNo = groups.slice(0, groupIndex).reduce((n, g) => n + g.length, 0);
 
   return (
     <div className="min-h-screen bg-paper print:bg-white">
@@ -92,18 +100,23 @@ export default function HandwritingSheet() {
           </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-gray-800 truncate">🖨️ 打印默写纸</h1>
-            <p className="text-xs text-gray-500 truncate">{learningData.unit_info.name} · {words.length} 个单词</p>
+            <p className="text-xs text-gray-500 truncate">
+              {learningData.unit_info.name}
+              {groups.length > 1 && ` · 第 ${groupIndex + 1}/${groups.length} 组`}
+              {' · '}{words.length} 个单词
+            </p>
           </div>
+          {/* 切模板时必须带上 g,否则会跳回第 1 组 */}
           <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm shrink-0">
             <button
-              onClick={() => setSearchParams({ t: 'blank' }, { replace: true })}
-              className={`px-3 py-2 font-medium transition ${template === 'blank' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-slate-50'}`}
+              onClick={() => setSearchParams({ t: 'blank', g: String(groupIndex + 1) }, { replace: true })}
+              className={`min-h-11 px-3 font-medium transition ${template === 'blank' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-slate-50'}`}
             >
               听写版
             </button>
             <button
-              onClick={() => setSearchParams({ t: 'cn' }, { replace: true })}
-              className={`px-3 py-2 font-medium transition ${template === 'cn' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-slate-50'}`}
+              onClick={() => setSearchParams({ t: 'cn', g: String(groupIndex + 1) }, { replace: true })}
+              className={`min-h-11 px-3 font-medium transition ${template === 'cn' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-slate-50'}`}
             >
               自默版
             </button>
@@ -120,10 +133,41 @@ export default function HandwritingSheet() {
 
       <div className="max-w-3xl mx-auto px-4 py-4 print:hidden">
         <p className="text-xs text-gray-500 bg-white rounded-xl border border-slate-200 px-4 py-3">
-          💡 {template === 'blank'
+          {template === 'blank'
             ? '听写版:打印后回到「纸笔听写」,App 按同样顺序报词,写完拍照 AI 批改。'
-            : '自默版:看中文默写英文,写完在「纸笔听写」里拍照批改(App 报词顺序与本纸一致,可直接跳到拍照)。'}
+            : '自默版:看中文默写英文,写完在「纸笔听写」里拍照批改(App 报词顺序与本纸一致)。'}
         </p>
+
+        {/* 组切换:单元词多时分组打印,题号与听写页一一对应 */}
+        {groups.length > 1 && (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <p className="mb-2 text-xs text-gray-500">
+              这个单元共 {learningData.words.length} 个词，分 {groups.length} 组。选择要打印的一组:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {groups.map((g, i) => {
+                const from = groups.slice(0, i).reduce((n, x) => n + x.length, 0) + 1;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSearchParams({ t: template, g: String(i + 1) }, { replace: true })}
+                    className={`min-h-11 rounded-lg px-3 text-sm font-medium transition ${
+                      i === groupIndex
+                        ? 'bg-primary text-white'
+                        : 'border border-slate-200 text-gray-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    第 {i + 1} 组
+                    <span className={`ml-1 text-xs ${i === groupIndex ? 'text-white/80' : 'text-gray-400'}`}>
+                      {from}~{from + g.length - 1}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 打印区 */}
@@ -132,11 +176,15 @@ export default function HandwritingSheet() {
           {/* 页眉 */}
           <div className="mb-6">
             <h2 className="text-center text-xl font-bold text-gray-900 mb-1">英语听写默写纸</h2>
-            <p className="text-center text-sm text-gray-500 mb-4">{learningData.unit_info.name}</p>
-            <div className="flex justify-between text-sm text-gray-600 border-b-2 border-gray-800 pb-2">
-              <span>姓名:____________</span>
-              <span>日期:____________</span>
-              <span>得分:____________</span>
+            <p className="text-center text-sm text-gray-500 mb-4">
+              {learningData.unit_info.name}
+              {groups.length > 1 && ` · 第 ${groupIndex + 1} 组(第 ${startNo + 1}~${startNo + words.length} 题)`}
+            </p>
+            {/* whitespace-nowrap + gap:390px 屏上「姓名:____」曾被折成两行("姓/名:____") */}
+            <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-b-2 border-gray-800 pb-2 text-sm text-gray-600">
+              <span className="whitespace-nowrap">姓名:____________</span>
+              <span className="whitespace-nowrap">日期:____________</span>
+              <span className="whitespace-nowrap">得分:__________</span>
             </div>
           </div>
 
@@ -144,7 +192,7 @@ export default function HandwritingSheet() {
           <div className="space-y-4">
             {words.map((w, i) => (
               <div key={w.id} className="flex items-end gap-3" style={{ breakInside: 'avoid' }}>
-                <span className="w-7 shrink-0 text-right font-mono text-sm text-gray-500 pb-2">{i + 1}.</span>
+                <span className="w-8 shrink-0 text-right font-mono text-sm text-gray-500 pb-2">{startNo + i + 1}.</span>
                 {template === 'cn' && (
                   <span className="w-36 shrink-0 text-sm text-gray-700 pb-2 leading-tight">
                     {w.part_of_speech && <span className="text-gray-400 mr-1">{w.part_of_speech}</span>}

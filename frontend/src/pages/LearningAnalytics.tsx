@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Clock,
   ListChecks,
+  PenLine,
   RefreshCw,
   SpellCheck2,
   TrendingUp,
@@ -147,6 +148,7 @@ const LearningAnalytics = () => {
     flashcard: { name: '分类记忆', icon: Brain },
     sentencefill: { name: '句子填空', icon: ListChecks },
     sentence_fill: { name: '句子填空', icon: ListChecks },
+    handwriting: { name: '纸笔听写', icon: PenLine },
     competition: { name: '竞赛练习', icon: Zap },
   };
 
