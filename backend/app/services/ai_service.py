@@ -1363,6 +1363,113 @@ class AIService:
             print(f"Claude API调用失败: {e}")
             return ""
 
+    async def _get_ocr_config(self):
+        """手写批改用的视觉模型配置(管理端 AI 配置页可配)。
+
+        选取规则:启用的 provider 里 extra_config.ocr_model 有值的优先
+        (默认 provider 排最前);都没填则回退到启用的 qwen provider +
+        内置默认模型 qwen3.5-ocr(百炼 OpenAI 兼容接口)。
+        """
+        default_qwen_ocr = "qwen3.5-ocr"
+        try:
+            from sqlalchemy import select
+            from app.core.database import get_db
+            from app.models.system_config import AIProvider
+
+            async for db in get_db():
+                result = await db.execute(
+                    select(AIProvider)
+                    .where(AIProvider.enabled == 1)
+                    .order_by(AIProvider.is_default.desc(), AIProvider.id)
+                )
+                providers = result.scalars().all()
+                chosen, model = None, None
+                for p in providers:
+                    m = ((p.extra_config or {}).get("ocr_model") or "").strip()
+                    if m:
+                        chosen, model = p, m
+                        break
+                if not chosen:
+                    for p in providers:
+                        if p.provider_name == "qwen":
+                            chosen, model = p, default_qwen_ocr
+                            break
+                if not chosen:
+                    return None
+
+                api_key = chosen.api_key
+                try:
+                    from app.api.v1.admin.ai_config import decrypt_api_key
+                    decrypted = decrypt_api_key(chosen.api_key)
+                    if decrypted != "DECRYPTION_FAILED":
+                        api_key = decrypted
+                except Exception:
+                    pass
+                return {
+                    "api_key": api_key,
+                    "base_url": chosen.base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    "model_name": model,
+                }
+        except Exception as e:
+            print(f"获取手写批改模型配置失败: {e}")
+        return None
+
+    async def transcribe_handwriting(
+        self, image_b64: str, mime_type: str, expected_count: int
+    ) -> list:
+        """盲转写学生听写纸上的手写英文(逐题)。
+
+        刻意不把标准答案传给模型 —— 带着答案识别,模型会把写错的
+        "脑补"成正确拼写,判分虚高;对错判定由调用方在代码里比对。
+        返回 [{"n": 1, "text": "..."}, ...];配置缺失/输出不可解析抛 ValueError。
+        """
+        config = await self._get_ocr_config()
+        if not config:
+            raise ValueError("未配置手写批改模型,请在管理端 AI 配置里启用通义千问或填写手写批改模型")
+
+        prompt = f"""这是一张学生的英语听写答题纸,上面有按序号排列的手写英文单词,共约 {expected_count} 题。
+请按序号逐题转写学生实际写下的内容,规则:
+1. 学生写什么就转写什么,哪怕明显拼错也原样保留,禁止纠正或猜测
+2. 没写、空白或完全无法辨认的题,text 输出空字符串 ""
+3. 有划掉重写的,以最终保留的内容为准
+4. 只转写英文作答内容,忽略序号、中文提示和格线
+
+严格输出 JSON 数组(不要 markdown 代码块、不要任何解释):
+[{{"n": 1, "text": "apple"}}, {{"n": 2, "text": ""}}]"""
+
+        import httpx
+        from openai import AsyncOpenAI
+
+        # 同 _call_openai_compatible:忽略本地代理环境变量,直连国内 API
+        client = AsyncOpenAI(
+            api_key=config["api_key"],
+            base_url=config["base_url"],
+            http_client=httpx.AsyncClient(trust_env=False, timeout=90.0),
+        )
+        response = await client.chat.completions.create(
+            model=config["model_name"],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+            max_tokens=3000,
+            temperature=0,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        # 容错:个别模型无视要求包 ```json 代码块或带前后缀说明
+        if not raw.startswith("["):
+            start, end = raw.find("["), raw.rfind("]")
+            if start == -1 or end <= start:
+                raise ValueError(f"识别结果不是JSON数组: {raw[:200]}")
+            raw = raw[start:end + 1]
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            raise ValueError("识别结果格式异常")
+        return data
+
     async def _get_tts_config(self):
         """从数据库获取TTS配置"""
         try:

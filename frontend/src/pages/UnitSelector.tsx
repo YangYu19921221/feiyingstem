@@ -15,7 +15,7 @@ const DAILY_GOAL = 10;
 
 const MODE_LABELS: Record<string, string> = {
   flashcard: '闪卡', classify: '分类', dictation: '听写', sentencefill: '填句',
-  quiz: '测试', spelling: '拼写', fillblank: '选词',
+  quiz: '测试', spelling: '拼写', fillblank: '选词', handwriting: '纸笔听写',
 };
 
 const UnitSelector = () => {
@@ -165,9 +165,12 @@ const UnitSelector = () => {
     { key: 'spelling', name: '拼写', badge: 'AI', requiresPrevious: 'quiz' },
     { key: 'fillblank', name: '选词', badge: 'AI', requiresPrevious: 'spelling' },
     { key: 'exam', name: '考试', badge: '测验', requiresPrevious: 'classify' },
+    { key: 'handwriting', name: '手写听写', badge: 'AI', requiresPrevious: 'classify' },
+    { key: 'handwriting-sheet', name: '打印默写纸', requiresPrevious: 'classify' },
   ];
   const foundationModes = learningModes.filter((mode) => ['dictation', 'sentencefill', 'quiz'].includes(mode.key));
   const challengeModes = learningModes.filter((mode) => ['spelling', 'fillblank', 'exam'].includes(mode.key));
+  const paperModes = learningModes.filter((mode) => ['handwriting', 'handwriting-sheet'].includes(mode.key));
 
   const sortedUnits = bookProgress
     ? [...bookProgress.units].sort((a, b) => (a.unit_number || 0) - (b.unit_number || 0))
@@ -504,6 +507,7 @@ const UnitSelector = () => {
                           {[
                             { title: '基础巩固', hint: '建议完成分类后再做', modes: foundationModes },
                             { title: '进阶挑战', hint: '想提高准确率时使用', modes: challengeModes },
+                            { title: '纸笔听写', hint: '在纸上手写,拍照 AI 批改', modes: paperModes },
                           ].map((group) => (
                             <section key={group.title} className="mb-4 last:mb-0" aria-label={group.title}>
                               <div className="mb-2">

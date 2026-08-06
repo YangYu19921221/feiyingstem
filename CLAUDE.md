@@ -244,6 +244,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 **已完成(截至 2026-07)**:
 - ✅ 全部学习模式(分类/听写/拼写/填空/选择/例句/句子背诵/单元考试)+ 阅读理解
+- ✅ 纸笔听写(2026-08): App报词→纸上手写→拍照→视觉模型盲转写+服务端比对判分
+  (student/handwriting.py, mode='handwriting'计入SCORING_MODES);打印默写纸(四线三格,
+  听写版/自默版);OCR模型走 ai_providers.extra_config.ocr_model(管理端可配,
+  qwen默认qwen3.5-ocr);照片只过内存不落盘
 - ✅ 多租户 SaaS(加盟): organizations 表 + org_id 隔离(core/tenancy.py 读写双安全网)、
   三层管理(admin→org_admin→teacher)、学生配额、服务有效期(到期自动停)、
   机构兑换码(上限=配额)、机构码招生链接、机构自定义名称/Logo

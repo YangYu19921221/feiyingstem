@@ -61,6 +61,7 @@ const AI配置管理 = () => {
     tts_voice: '',
     enabled: true,
     is_default: false,
+    ocr_model: '',
     iflytek_app_id: '',
     iflytek_api_secret: '',
   });
@@ -190,7 +191,16 @@ const AI配置管理 = () => {
         };
       }
 
+      // 手写批改模型存 extra_config.ocr_model(合并已有键,避免覆盖 iflytek 等配置)
+      if (formData.provider_name !== 'iflytek_ise') {
+        const mergedExtra: Record<string, any> = { ...(editingProvider?.extra_config || {}) };
+        if (formData.ocr_model.trim()) mergedExtra.ocr_model = formData.ocr_model.trim();
+        else delete mergedExtra.ocr_model;
+        saveData.extra_config = Object.keys(mergedExtra).length > 0 ? mergedExtra : null;
+      }
+
       // 移除前端专用字段
+      delete saveData.ocr_model;
       delete saveData.iflytek_app_id;
       delete saveData.iflytek_api_secret;
 
@@ -260,6 +270,7 @@ const AI配置管理 = () => {
       tts_voice: provider.tts_voice || '',
       enabled: provider.enabled,
       is_default: provider.is_default,
+      ocr_model: provider.extra_config?.ocr_model || '',
       iflytek_app_id: provider.extra_config?.app_id || '',
       iflytek_api_secret: provider.extra_config?.api_secret || '',
     });
@@ -280,6 +291,7 @@ const AI配置管理 = () => {
       tts_voice: 'longwan_v2', // 默认英语女声
       enabled: true,
       is_default: false,
+      ocr_model: 'qwen3.5-ocr',
       iflytek_app_id: '',
       iflytek_api_secret: '',
     });
@@ -355,6 +367,11 @@ const AI配置管理 = () => {
                           <span className="font-semibold">🔊 音色:</span> {provider.tts_voice}
                         </div>
                       </>
+                    )}
+                    {provider.extra_config?.ocr_model && (
+                      <div>
+                        <span className="font-semibold">✍️ 手写批改:</span> {provider.extra_config.ocr_model}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -538,6 +555,25 @@ const AI配置管理 = () => {
                     placeholder="qwen-max / gpt-4 / claude-3-sonnet"
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
                   />
+                </div>
+                )}
+
+                {/* 手写批改模型 - 讯飞ISE不显示 */}
+                {formData.provider_name !== 'iflytek_ise' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    手写批改模型 (视觉 OCR)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.ocr_model}
+                    onChange={(e) => setFormData({ ...formData, ocr_model: e.target.value })}
+                    placeholder="qwen3.5-ocr"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    💡 用于「纸笔听写」拍照批改。留空时:通义千问自动用 qwen3.5-ocr,其他服务商不参与批改
+                  </p>
                 </div>
                 )}
 
