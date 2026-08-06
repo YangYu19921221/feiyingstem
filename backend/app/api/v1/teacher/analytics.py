@@ -1168,6 +1168,10 @@ async def regenerate_student_weekly_report(
 ):
     """教师强制重新生成本周周报。"""
     await assert_student_in_my_class(db, current_user.id, student_id)
+    # force=True 绕过缓存,每次都是真实 LLM 调用;老师一个班几十个学生,
+    # 不限流的话连点就能把额度打空(家长端同一入口限 5 次,老师放宽到 20)
+    from app.services.ai_quota import check_and_consume
+    check_and_consume(current_user.id, "weekly_report_regen", daily_limit=20)
     return await build_and_cache_weekly_report(db, student_id, force=True)
 
 

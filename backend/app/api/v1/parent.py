@@ -625,4 +625,8 @@ async def parent_regenerate_weekly_report(
 ):
     """家长强制重新生成本周周报。"""
     await _assert_my_child(db, current_parent.id, student_id)
+    # force=True 绕过缓存,每点一次都是一次真实 LLM 调用 —— 这是唯一对非员工角色
+    # 开放的无限量 LLM 入口,必须限额(家长连点刷新就能烧钱)
+    from app.services.ai_quota import check_and_consume
+    check_and_consume(current_parent.id, "weekly_report_regen", daily_limit=5)
     return await build_and_cache_weekly_report(db, student_id, force=True)
