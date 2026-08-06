@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import FloatingPetWidget from './components/FloatingPetWidget';
 import OldBrowserBanner from './components/OldBrowserBanner';
 import UpdateNudge from './components/UpdateNudge';
+import WhatsNewNudge from './components/WhatsNewNudge';
 import StudentMobileNav from './components/student/StudentMobileNav';
 import StaffMobileNav from './components/staff/StaffMobileNav';
 // 可靠提交队列:App 启动即注册补交时机(上次没送达的学习数据开机自动补交)
@@ -1052,6 +1053,7 @@ function App() {
       </Suspense>
       <FloatingPetWidget />
       <UpdateNudge />
+      <WhatsNewNudge />
         </Router>
       </MotionConfig>
     </ErrorBoundary>
