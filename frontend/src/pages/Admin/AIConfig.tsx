@@ -4,8 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/env';
 import { toast } from '../../components/Toast';
-import { Plus, Sparkles } from 'lucide-react';
+import {
+  AlertCircle, Bot, CheckCircle2, Cpu, Globe, KeyRound, Loader2, Mic2,
+  Pencil, PenLine, Plus, Sparkles, Trash2, Volume2, X,
+} from 'lucide-react';
 import StaffWorkspaceHeader from '../../components/staff/StaffWorkspaceHeader';
+
+type TestState = { status: 'testing' | 'ok' | 'error'; message: string };
 
 interface AIProvider {
   id: number;
@@ -31,9 +36,9 @@ const AI配置管理 = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestState | null>(null);
   const [cardTesting, setCardTesting] = useState<number | null>(null);
-  const [cardTestResult, setCardTestResult] = useState<Record<number, string>>({});
+  const [cardTestState, setCardTestState] = useState<Record<number, TestState>>({});
 
   // 获取token的辅助函数
   const getToken = () => {
@@ -95,7 +100,10 @@ const AI配置管理 = () => {
   // 测试已保存的配置（用数据库真实密钥）
   const handleCardTest = async (provider: AIProvider) => {
     setCardTesting(provider.id);
-    setCardTestResult((prev) => ({ ...prev, [provider.id]: '🧪 测试中...' }));
+    setCardTestState((prev) => ({
+      ...prev,
+      [provider.id]: { status: 'testing', message: '正在连接模型…' },
+    }));
     try {
       const token = getToken();
       if (!token) { handle401(); return; }
@@ -105,22 +113,28 @@ const AI配置管理 = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (response.data.success) {
-        setCardTestResult((prev) => ({
+        setCardTestState((prev) => ({
           ...prev,
-          [provider.id]: `✅ 连接成功! 响应时间: ${response.data.response_time}秒\n回复: ${response.data.test_output}`,
+          [provider.id]: {
+            status: 'ok',
+            message: `连接成功，响应 ${response.data.response_time} 秒\n模型回复：${response.data.test_output}`,
+          },
         }));
       } else {
-        setCardTestResult((prev) => ({
+        setCardTestState((prev) => ({
           ...prev,
-          [provider.id]: `❌ ${response.data.message}`,
+          [provider.id]: { status: 'error', message: response.data.message },
         }));
       }
     } catch (error: any) {
       if (error.response?.status === 401) { handle401(); }
       else {
-        setCardTestResult((prev) => ({
+        setCardTestState((prev) => ({
           ...prev,
-          [provider.id]: `❌ 测试失败: ${error.response?.data?.detail || error.message}`,
+          [provider.id]: {
+            status: 'error',
+            message: `测试失败：${error.response?.data?.detail || error.message}`,
+          },
         }));
       }
     } finally {
@@ -153,15 +167,21 @@ const AI配置管理 = () => {
       );
 
       if (response.data.success) {
-        setTestResult(`✅ 连接成功! 响应时间: ${response.data.response_time}秒\n回复: ${response.data.test_output}`);
+        setTestResult({
+          status: 'ok',
+          message: `连接成功，响应 ${response.data.response_time} 秒\n模型回复：${response.data.test_output}`,
+        });
       } else {
-        setTestResult(`❌ ${response.data.message}`);
+        setTestResult({ status: 'error', message: response.data.message });
       }
     } catch (error: any) {
       if (error.response?.status === 401) {
         handle401();
       } else {
-        setTestResult(`❌ 测试失败: ${error.response?.data?.detail || error.message}`);
+        setTestResult({
+          status: 'error',
+          message: `测试失败：${error.response?.data?.detail || error.message}`,
+        });
       }
     } finally {
       setTesting(false);
@@ -321,107 +341,125 @@ const AI配置管理 = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white rounded-xl p-5 sm:p-6 shadow-sm border border-slate-200"
+              className="admin-panel rounded-2xl p-4 sm:p-6"
             >
-              <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center gap-3 mb-4">
-                    <h3 className="text-xl font-bold text-slate-800">
+              {/* 头部:标题 + 状态徽章 + 操作。窄屏纵向堆叠,操作按钮独占一行不挤压信息 */}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-800 sm:text-xl">
                       {provider.display_name}
                     </h3>
                     {provider.is_default && (
-                      <span className="px-3 py-1 bg-accent text-white rounded-full text-sm font-bold">
+                      <span className="rounded-full bg-[#35658d] px-2.5 py-0.5 text-xs font-semibold text-white">
                         默认
                       </span>
                     )}
-                    {provider.enabled ? (
-                      <span className="px-3 py-1 bg-success text-white rounded-full text-sm">
-                        ✓ 已启用
-                      </span>
-                    ) : (
-                      <span className="px-3 py-1 bg-gray-400 text-white rounded-full text-sm">
-                        ✗ 已禁用
-                      </span>
-                    )}
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      provider.enabled
+                        ? 'bg-[#e8f6ef] text-[#256b4c]'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {provider.enabled
+                        ? <><CheckCircle2 className="h-3 w-3" aria-hidden="true" />已启用</>
+                        : <><AlertCircle className="h-3 w-3" aria-hidden="true" />已禁用</>}
+                    </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-600">
-                    <div>
-                      <span className="font-semibold">🔧 服务商:</span> {provider.provider_name}
-                    </div>
-                    <div>
-                      <span className="font-semibold">🤖 模型:</span> {provider.model_name}
-                    </div>
-                    <div>
-                      <span className="font-semibold">🔑 API Key:</span> {provider.api_key}
-                    </div>
-                    <div>
-                      <span className="font-semibold">🌐 BaseURL:</span> {provider.base_url}
-                    </div>
-                    {provider.tts_enabled && (
-                      <>
-                        <div>
-                          <span className="font-semibold">🎤 TTS模型:</span> {provider.tts_model}
-                        </div>
-                        <div>
-                          <span className="font-semibold">🔊 音色:</span> {provider.tts_voice}
-                        </div>
-                      </>
-                    )}
-                    {provider.extra_config?.ocr_model && (
-                      <div>
-                        <span className="font-semibold">✍️ 手写批改:</span> {provider.extra_config.ocr_model}
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                    {[
+                      { icon: Cpu, label: '服务商', value: provider.provider_name },
+                      { icon: Bot, label: '模型', value: provider.model_name },
+                      { icon: KeyRound, label: 'API Key', value: provider.api_key, mono: true },
+                      { icon: Globe, label: 'Base URL', value: provider.base_url, mono: true },
+                      ...(provider.tts_enabled ? [
+                        { icon: Mic2, label: 'TTS 模型', value: provider.tts_model },
+                        { icon: Volume2, label: '音色', value: provider.tts_voice },
+                      ] : []),
+                      ...(provider.extra_config?.ocr_model ? [
+                        { icon: PenLine, label: '手写批改', value: provider.extra_config.ocr_model },
+                      ] : []),
+                    ].map(({ icon: Icon, label, value, mono }) => (
+                      <div key={label} className="flex min-w-0 items-baseline gap-2">
+                        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 self-start text-slate-400" aria-hidden="true" />
+                        <dt className="shrink-0 text-slate-500">{label}</dt>
+                        {/* break-all: 密钥/URL 是长串无空格文本,不断行会把卡片撑出屏幕 */}
+                        <dd className={`min-w-0 flex-1 break-all text-slate-700 ${mono ? 'font-mono text-xs' : ''}`}>
+                          {value || <span className="text-slate-400">未设置</span>}
+                        </dd>
                       </div>
-                    )}
-                  </div>
+                    ))}
+                  </dl>
                 </div>
 
-                <div className="flex gap-2">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                {/* 手机上三等分铺满(44px 触控高度),桌面回到右上角一排 */}
+                <div className="grid grid-cols-3 gap-2 sm:flex sm:shrink-0">
+                  <button
+                    type="button"
                     onClick={() => handleCardTest(provider)}
                     disabled={cardTesting === provider.id}
-                    className="px-3 py-2 bg-[#3976a9] text-white rounded-lg font-semibold hover:bg-[#2e628f] transition-colors disabled:opacity-50"
+                    className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition disabled:opacity-50"
                   >
-                    {cardTesting === provider.id ? '🧪 测试中...' : '🧪 测试'}
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    {cardTesting === provider.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      : <Sparkles className="h-4 w-4" aria-hidden="true" />}
+                    {cardTesting === provider.id ? '测试中' : '测试'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleEdit(provider)}
-                    className="px-3 py-2 bg-slate-700 text-white rounded-lg font-semibold hover:bg-slate-800 transition-colors"
+                    className="admin-secondary-light admin-focus-ring inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition"
                   >
-                    ✏️ 编辑
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    编辑
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDelete(provider.id)}
-                    className="px-3 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
+                    aria-label={`删除 ${provider.display_name}`}
+                    className="admin-focus-ring inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
                   >
-                    🗑️
-                  </motion.button>
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    <span className="sm:hidden">删除</span>
+                  </button>
                 </div>
-                {cardTestResult[provider.id] && (
-                  <div className={`mt-3 p-3 rounded-lg text-sm whitespace-pre-wrap ${
-                    cardTestResult[provider.id].startsWith('✅')
-                      ? 'bg-green-50 text-green-700 border border-green-200'
-                      : cardTestResult[provider.id].startsWith('🧪')
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-red-50 text-red-700 border border-red-200'
-                  }`}>
-                    {cardTestResult[provider.id]}
-                  </div>
-                )}
               </div>
+
+              {/* 测试结果:整卡通栏。此前它是上面 flex 行的第三个子项,
+                  桌面端被挤成按钮旁的窄条,长回复完全读不了 */}
+              {cardTestState[provider.id] && (
+                <div
+                  role="status"
+                  className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-sm ${
+                    cardTestState[provider.id].status === 'ok'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : cardTestState[provider.id].status === 'testing'
+                      ? 'border-sky-200 bg-sky-50 text-sky-800'
+                      : 'border-rose-200 bg-rose-50 text-rose-800'
+                  }`}
+                >
+                  {cardTestState[provider.id].status === 'ok' ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  ) : cardTestState[provider.id].status === 'testing' ? (
+                    <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  )}
+                  <p className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-relaxed">
+                    {cardTestState[provider.id].message}
+                  </p>
+                </div>
+              )}
             </motion.div>
           ))}
 
           {providers.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              <p className="text-xl">还没有配置AI服务</p>
-              <p className="mt-2">点击"添加AI服务"开始配置</p>
+            <div className="rounded-2xl border border-dashed border-slate-300 py-14 text-center">
+              <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#eeeafa] text-[#7259a6]">
+                <Sparkles className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <p className="font-semibold text-slate-700">还没有配置 AI 服务</p>
+              <p className="mt-1 text-sm text-slate-500">点击右上角「添加 AI 服务」开始配置</p>
             </div>
           )}
         </div>
@@ -434,21 +472,38 @@ const AI配置管理 = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
             onClick={() => setShowAddModal(false)}
           >
+            {/* 手机上贴底当 bottom sheet(拇指可达),桌面回到居中卡片。
+                用 dvh 而非 vh:iOS Safari 地址栏收起时 vh 会让底部动作条被顶出视口 */}
             <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
+              initial={{ y: '4%', opacity: 0.6 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '3%', opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               onClick={(e) => e.stopPropagation()}
-            className="bg-white border border-slate-200 rounded-xl p-5 sm:p-7 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ai-provider-modal-title"
+              className="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-xl sm:max-h-[88dvh] sm:rounded-2xl"
             >
-              <h2 className="text-2xl font-bold mb-6 text-slate-800">
-                {editingProvider ? '✏️ 编辑AI服务' : '➕ 添加AI服务'}
-              </h2>
+              {/* 标题栏固定:表单很长,滚动时仍知道自己在编辑什么 */}
+              <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 sm:px-7">
+                <h2 id="ai-provider-modal-title" className="flex-1 text-lg font-bold text-slate-800 sm:text-xl">
+                  {editingProvider ? '编辑 AI 服务' : '添加 AI 服务'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  aria-label="关闭"
+                  className="admin-focus-ring -mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
 
-              <div className="space-y-4">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-7">
                 {/* 服务商选择 */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -458,7 +513,7 @@ const AI配置管理 = () => {
                     value={formData.provider_name}
                     onChange={(e) => setFormData({ ...formData, provider_name: e.target.value })}
                     disabled={!!editingProvider}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                    className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                   >
                     <option value="">请选择</option>
                     <option value="qwen">通义千问 (Qwen)</option>
@@ -478,7 +533,7 @@ const AI配置管理 = () => {
                     value={formData.display_name}
                     onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                     placeholder="如: 通义千问 Qwen-Max"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                    className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                   />
                 </div>
 
@@ -492,7 +547,7 @@ const AI配置管理 = () => {
                     value={formData.api_key}
                     onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                     placeholder={formData.provider_name === 'iflytek_ise' ? '讯飞APIKey' : 'sk-...'}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] font-mono"
+                    className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 font-mono text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                   />
                 </div>
 
@@ -508,7 +563,7 @@ const AI配置管理 = () => {
                         value={formData.iflytek_app_id}
                         onChange={(e) => setFormData({ ...formData, iflytek_app_id: e.target.value })}
                         placeholder="如: 8ef38b6c"
-                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] font-mono"
+                        className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 font-mono text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                       />
                     </div>
                     <div>
@@ -520,7 +575,7 @@ const AI配置管理 = () => {
                         value={formData.iflytek_api_secret}
                         onChange={(e) => setFormData({ ...formData, iflytek_api_secret: e.target.value })}
                         placeholder="讯飞APISecret"
-                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9] font-mono"
+                        className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 font-mono text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                       />
                     </div>
                   </>
@@ -537,7 +592,7 @@ const AI配置管理 = () => {
                     value={formData.base_url}
                     onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
                     placeholder="https://..."
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                    className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                   />
                 </div>
                 )}
@@ -553,7 +608,7 @@ const AI配置管理 = () => {
                     value={formData.model_name}
                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                     placeholder="qwen-max / gpt-4 / claude-3-sonnet"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                    className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                   />
                 </div>
                 )}
@@ -569,10 +624,10 @@ const AI配置管理 = () => {
                     value={formData.ocr_model}
                     onChange={(e) => setFormData({ ...formData, ocr_model: e.target.value })}
                     placeholder="qwen3.5-ocr"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                    className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    💡 用于「纸笔听写」拍照批改。留空时:通义千问自动用 qwen3.5-ocr,其他服务商不参与批改
+                  <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                    用于「纸笔听写」拍照批改。留空时通义千问自动用 qwen3.5-ocr，其他服务商不参与批改。
                   </p>
                 </div>
                 )}
@@ -580,18 +635,20 @@ const AI配置管理 = () => {
                 {/* TTS开关 - 讯飞ISE不显示 */}
                 {formData.provider_name !== 'iflytek_ise' && (
                 <>
-                <div className="flex items-center gap-3">
+                {/* 整行可点(min-h-12):20px 的复选框本身远低于 44px 触控下限 */}
+                <label
+                  htmlFor="tts_enabled"
+                  className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 transition hover:bg-slate-100"
+                >
                   <input
                     type="checkbox"
                     id="tts_enabled"
                     checked={formData.tts_enabled}
                     onChange={(e) => setFormData({ ...formData, tts_enabled: e.target.checked })}
-                    className="w-5 h-5"
+                    className="h-5 w-5 shrink-0 accent-[#35658d]"
                   />
-                  <label htmlFor="tts_enabled" className="font-semibold text-gray-700">
-                    启用语音合成 (TTS)
-                  </label>
-                </div>
+                  <span className="text-sm font-semibold text-slate-700">启用语音合成 (TTS)</span>
+                </label>
 
                 {/* TTS配置 */}
                 {formData.tts_enabled && (
@@ -603,7 +660,7 @@ const AI配置管理 = () => {
                       <select
                         value={formData.tts_model}
                         onChange={(e) => setFormData({ ...formData, tts_model: e.target.value })}
-                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                        className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                       >
                         <option value="cosyvoice-v1">CosyVoice V1 (基础版)</option>
                         <option value="cosyvoice-v2">CosyVoice V2 (增强版)</option>
@@ -616,7 +673,7 @@ const AI配置管理 = () => {
                       <select
                         value={formData.tts_voice}
                         onChange={(e) => setFormData({ ...formData, tts_voice: e.target.value })}
-                        className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30 focus:border-[#3976a9]"
+                        className="w-full min-h-12 rounded-lg border border-slate-300 px-4 py-3 text-base focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                       >
                         <optgroup label="🇬🇧 英语女声 (推荐)">
                           <option value="longwan_v2">Wan 婉 - 英语女声 (温柔)</option>
@@ -640,72 +697,77 @@ const AI配置管理 = () => {
                 </>
                 )}
 
-                {/* 功能开关 */}
-                <div className="flex gap-6 items-center">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      id="enabled"
-                      checked={formData.enabled}
-                      onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                      className="w-5 h-5"
-                    />
-                    <label htmlFor="enabled" className="font-semibold text-gray-700">
-                      启用此服务
+                {/* 功能开关:窄屏纵向堆叠。此前 flex gap-6 两个开关并排,
+                    320px 下「设为默认服务」会挤出容器 */}
+                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                  {[
+                    { id: 'enabled', label: '启用此服务', checked: formData.enabled,
+                      onChange: (v: boolean) => setFormData({ ...formData, enabled: v }) },
+                    { id: 'is_default', label: '设为默认服务', checked: formData.is_default,
+                      onChange: (v: boolean) => setFormData({ ...formData, is_default: v }) },
+                  ].map((sw) => (
+                    <label
+                      key={sw.id}
+                      htmlFor={sw.id}
+                      className="flex min-h-12 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 transition hover:bg-slate-100"
+                    >
+                      <input
+                        type="checkbox"
+                        id={sw.id}
+                        checked={sw.checked}
+                        onChange={(e) => sw.onChange(e.target.checked)}
+                        className="h-5 w-5 shrink-0 accent-[#35658d]"
+                      />
+                      <span className="text-sm font-semibold text-slate-700">{sw.label}</span>
                     </label>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      id="is_default"
-                      checked={formData.is_default}
-                      onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                      className="w-5 h-5"
-                    />
-                    <label htmlFor="is_default" className="font-semibold text-gray-700">
-                      设为默认服务
-                    </label>
-                  </div>
+                  ))}
                 </div>
 
                 {/* 测试结果 */}
                 {testResult && (
-                  <div className={`p-4 rounded-xl ${testResult.startsWith('✅') ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}>
-                    <pre className="whitespace-pre-wrap text-sm">{testResult}</pre>
+                  <div
+                    role="status"
+                    className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
+                      testResult.status === 'ok'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-rose-200 bg-rose-50 text-rose-800'
+                    }`}
+                  >
+                    {testResult.status === 'ok'
+                      ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
+                    <p className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-relaxed">
+                      {testResult.message}
+                    </p>
                   </div>
                 )}
+              </div>
 
-                {/* 操作按钮 */}
-                <div className="flex gap-4 mt-6">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleTest()}
-                    disabled={testing || !formData.api_key || !formData.model_name}
-                    className="flex-1 px-6 py-3 bg-[#3976a9] text-white rounded-lg font-semibold shadow-sm hover:bg-[#2e628f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {testing ? '🧪 测试中...' : '🧪 测试连接'}
-                  </motion.button>
+              {/* 动作条固定在底部:表单一屏装不下,此前「保存」跟在表单末尾,
+                  手机上必须滚到底才能提交。取消移到标题栏的 ✕,底部只留两个正向动作 */}
+              <div
+                className="flex gap-3 border-t border-slate-200 bg-white px-5 py-3 sm:px-7 sm:py-4"
+                style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleTest()}
+                  disabled={testing || !formData.api_key || !formData.model_name}
+                  className="admin-secondary-light admin-focus-ring inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {testing
+                    ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    : <Sparkles className="h-4 w-4" aria-hidden="true" />}
+                  {testing ? '测试中…' : '测试连接'}
+                </button>
 
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleSave}
-                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-lg font-semibold shadow-sm hover:bg-slate-800 transition-colors"
-                  >
-                    💾 保存配置
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowAddModal(false)}
-                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200 transition-colors"
-                  >
-                    取消
-                  </motion.button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="admin-primary admin-focus-ring inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition"
+                >
+                  保存配置
+                </button>
               </div>
             </motion.div>
           </motion.div>
