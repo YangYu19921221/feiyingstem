@@ -204,14 +204,16 @@ export default function HandwritingHub() {
                       type="button"
                       onClick={() => handleOpenBook(book.id)}
                       aria-pressed={selected}
-                      className={`group relative overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 ${
+                      className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white text-left transition hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 ${
                         selected
                           ? 'border-accent-warm ring-2 ring-accent-warm/30'
                           : 'border-black/[0.06] hover:border-black/[0.14]'
                       }`}
                     >
-                      {/* 封面色带:让 40 本书不是一片白,孩子按颜色认书 */}
-                      <div className="h-1.5" style={{ background: book.cover_color || '#FF6B35' }} />
+                      {/* 封面色带:让 40 本书不是一片白,孩子按颜色认书。
+                          外层必须 flex-col:button 默认把内容垂直居中,同行卡片被
+                          grid 拉成等高后,矮内容会浮到中间、色带脱离顶部(实测参差) */}
+                      <div className="h-1.5 w-full shrink-0" style={{ background: book.cover_color || '#FF6B35' }} />
                       <div className="flex items-start gap-3 p-4">
                         <span
                           className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
