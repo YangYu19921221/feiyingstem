@@ -380,6 +380,7 @@ const StudentDashboard = () => {
   }, [reviewDueCount, ownedBooks]);
 
   const quickTools = [
+    { title: '纸笔听写', desc: '纸上手写，拍照 AI 批改', route: '/student/handwriting', image: '/hero-memory.jpeg' },
     { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/hero-memory.jpeg' },
     { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/dashboard-banner.jpeg' },
     { title: '光荣榜', desc: '看看本周学习进展', route: '/student/leaderboard', image: '/result-champion.jpeg' },

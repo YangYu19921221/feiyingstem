@@ -5,7 +5,7 @@ import { getBookProgress } from '../api/progress';
 import type { BookProgress } from '../api/progress';
 import { getMyHomework, startHomework } from '../api/homework';
 import type { StudentHomeworkResponse } from '../api/homework';
-import { ArrowLeft, BookOpenText, ChevronDown, ClipboardCheck, LockKeyhole, Medal } from 'lucide-react';
+import { ArrowLeft, BookOpenText, ChevronDown, ClipboardCheck, LockKeyhole, Medal, PenLine } from 'lucide-react';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import FullscreenBookComplete from '../components/challenge-fx/FullscreenBookComplete';
@@ -403,6 +403,19 @@ const UnitSelector = () => {
 
                     <ChevronDown className={`h-4 w-4 shrink-0 text-ink-mute transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
                     </button>
+
+                    {/* 纸笔听写直达:手机上藏起来(靠展开里的分组),避免行内按钮挤成一团 */}
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartLearning(unit.unit_id, 'handwriting', index)}
+                        title="纸笔听写(手写拍照批改)"
+                        aria-label="纸笔听写"
+                        className="hidden sm:flex h-11 w-11 shrink-0 self-center items-center justify-center rounded-lg border border-black/[0.08] text-ink-soft transition hover:border-black/20 hover:bg-black/[0.02] active:scale-95"
+                      >
+                        <PenLine className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
 
                     {/* 右侧按钮 */}
                     <button
