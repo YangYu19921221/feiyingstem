@@ -109,23 +109,19 @@ def _stamp_tenant_writes(session, flush_context, instances):
             obj.org_id = org_id
 
 
-# 机构状态进程内缓存: {org_id: (过期时间戳, is_active)},5分钟TTL
+# 机构状态进程内缓存: {org_id: (过期时间戳, is_active, all_books)},5分钟TTL
 _org_cache: dict = {}
 _ORG_CACHE_TTL = 300
 
 
-async def check_org_active(db, org_id: int) -> bool:
-    """机构是否可用(status=active 且未过服务期),带进程内缓存。
-
-    到期自动停: expires_at < 今天即视为停用——不需要定时任务,到期后该机构
-    第一个请求进来就生效;续费(admin 改 expires_at)+缓存失效后立即恢复。
-    """
+async def _org_state(db, org_id: int) -> tuple[bool, bool]:
+    """(is_active, all_books) 一次查询同缓存:两个判定几乎总是同请求内先后要用"""
     now = time.time()
     hit = _org_cache.get(org_id)
     if hit and hit[0] > now:
-        return hit[1]
+        return hit[1], hit[2]
     row = (await db.execute(
-        text("SELECT status, expires_at FROM organizations WHERE id = :i"), {"i": org_id}
+        text("SELECT status, expires_at, access_mode FROM organizations WHERE id = :i"), {"i": org_id}
     )).first()
     active = bool(row and row[0] == "active")
     if active and row[1]:
@@ -138,8 +134,26 @@ async def check_org_active(db, org_id: int) -> bool:
                 active = False
         except (ValueError, TypeError):
             pass  # 脏数据不拦服务
-    _org_cache[org_id] = (now + _ORG_CACHE_TTL, active)
+    all_books = bool(row and row[2] == "all_books")
+    _org_cache[org_id] = (now + _ORG_CACHE_TTL, active, all_books)
+    return active, all_books
+
+
+async def check_org_active(db, org_id: int) -> bool:
+    """机构是否可用(status=active 且未过服务期),带进程内缓存。
+
+    到期自动停: expires_at < 今天即视为停用——不需要定时任务,到期后该机构
+    第一个请求进来就生效;续费(admin 改 expires_at)+缓存失效后立即恢复。
+    """
+    active, _ = await _org_state(db, org_id)
     return active
+
+
+async def check_org_all_books(db, org_id: int) -> bool:
+    """机构是否为全托模式(时间+人数付费,书本全开放)。已停用/过期的机构不算——
+    全托的'不限书本'是付费权益,服务停了权益跟着停,学生自然回到无分配可学状态。"""
+    active, all_books = await _org_state(db, org_id)
+    return active and all_books
 
 
 def invalidate_org_cache(org_id: int | None = None):

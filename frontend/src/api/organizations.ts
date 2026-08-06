@@ -15,6 +15,8 @@ export interface Organization {
   contact_phone?: string | null;
   status: 'active' | 'suspended' | 'expired';
   expires_at?: string | null;
+  // 内容授权模式: assigned=逐本分配(默认) | all_books=全托(时间+人数付费,书本全开放)
+  access_mode?: 'assigned' | 'all_books';
   created_at?: string;
 }
 
@@ -48,7 +50,7 @@ export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
   create: (data: { name: string; code?: string; plan?: string; student_quota?: number; contact_name?: string; contact_phone?: string }) =>
     client.post<Organization>('/admin/organizations', data),
-  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean }>) =>
+  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books' }>) =>
     client.patch<Organization>(`/admin/organizations/${orgId}`, data),
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     // 路径避开 */admins: Safari 内容拦截器会按关键词掐掉该 XHR

@@ -22,4 +22,7 @@ class Organization(Base):
     logo_url = Column(String(500), nullable=True)             # 机构Logo(机构管理端可自传)
     status = Column(String(20), default="active", nullable=False) # active/suspended/expired
     expires_at = Column(DateTime, nullable=True)                  # 年费到期,过期→suspended
+    # 内容授权模式: assigned=逐本分配(默认,老师分配/兑换码开书) |
+    # all_books=全托(按 expires_at+student_quota 收费,书本全开放不再逐本限制)
+    access_mode = Column(String(20), default="assigned", nullable=False)
     created_at = Column(DateTime, server_default=func.now())

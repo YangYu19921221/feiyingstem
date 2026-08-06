@@ -20,6 +20,11 @@ async def get_allowed_unit_ids(
 
     作业自带授权:老师通过「作业管理」布置过的单元,学生必须能进,
     即使该单元不在单词本分配范围内——否则作业流程会被 403 挡死。
+
+    全托机构(access_mode='all_books')补充语义:没有任何分配的书也整本可学
+    (返回 None 而不是 set())——该模式按时间+人数付费,不逐本限制。
+    但老师**主动做过**单元/分组分配的书仍按白名单走:全托放开的是付费墙,
+    不是老师的教学管控(分配即权限的严格模式是刻意保留的收紧工具)。
     """
     from app.models.learning import (  # 局部导入,避免模型/服务层循环依赖
         BookAssignment, HomeworkAssignment, HomeworkStudentAssignment,
@@ -31,13 +36,24 @@ async def get_allowed_unit_ids(
             BookAssignment.book_id == book_id,
         )
     )
+    rows = res.all()
     allowed: set[int] = set()
-    for scope_type, unit_id in res.all():
+    for scope_type, unit_id in rows:
         # 历史数据 scope_type 可能为 NULL,按整本处理(与旧行为一致)
         if scope_type in (None, "book"):
             return None
         if unit_id is not None:
             allowed.add(unit_id)
+
+    # 全托机构 + 这本书老师没做过任何分配 → 整本可学
+    if not rows:
+        from app.core.tenancy import check_org_all_books
+        from app.models.user import User
+        org_id = (await db.execute(
+            select(User.org_id).where(User.id == student_id)
+        )).scalar_one_or_none()
+        if org_id and await check_org_all_books(db, org_id):
+            return None
 
     # 并入该书下布置给该学生的作业单元
     hw_res = await db.execute(

@@ -624,6 +624,13 @@ async def get_student_books(
     )
     owned_book_ids = set(row for row in owned_result.scalars())
 
+    # 全托机构(access_mode='all_books'):按时间+人数付费,书本全开放——
+    # 不再逐本分配/兑换,列表里的书(tenancy 已过滤可见范围)一律可学
+    from app.core.tenancy import check_org_all_books
+    org_all_books = bool(
+        current_user.org_id and await check_org_all_books(db, current_user.org_id)
+    )
+
     # 1.5 老师布置了作业 → 默认开书:作业单元所在的书也算「已拥有」,
     # 否则只发作业没分配单词本时,学生书架上这本书是锁的,进不去做作业。
     # (get_allowed_unit_ids 已把作业单元并入白名单,这里补书级入口)
@@ -711,7 +718,7 @@ async def get_student_books(
             unit_count=unit_count,
             word_count=word_count,
             progress_percentage=round(progress_percentage, 2),
-            owned=book.id in owned_book_ids,
+            owned=org_all_books or book.id in owned_book_ids,
             created_at=book.created_at,
         ))
 

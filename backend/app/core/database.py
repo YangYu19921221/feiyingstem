@@ -420,6 +420,8 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_leaderboard_snapshots_org ON leaderboard_snapshots(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_competition_question_sets_org ON competition_question_sets(org_id)",
             "ALTER TABLE organizations ADD COLUMN logo_url VARCHAR(500)",
+            # 机构内容授权模式: assigned=逐本分配(默认) | all_books=全托(时间+人数付费,书本全开放)
+            "ALTER TABLE organizations ADD COLUMN access_mode VARCHAR(20) NOT NULL DEFAULT 'assigned'",
             # 学习效率功能: AI记忆钩子缓存列 + 学生实际输入(拼写诊断数据地基)
             "ALTER TABLE words ADD COLUMN memory_hook TEXT",
             "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",

@@ -197,6 +197,22 @@ export default function AdminOrganizations() {
     setOrgDialog({ kind: 'expiry', org, value: cur });
   };
 
+  /** 内容授权模式切换: assigned(逐本分配) ⇄ all_books(全托,书本全开放) */
+  const toggleAccessMode = async (org: Organization) => {
+    const next = org.access_mode === 'all_books' ? 'assigned' : 'all_books';
+    const msg = next === 'all_books'
+      ? `切换「${org.name}」为全托模式?\n\n按服务有效期 + 学生名额计费,该机构学生无需逐本分配,全部单词本立即开放。\n老师已做的单元级分配仍然生效(可作教学管控)。`
+      : `切换「${org.name}」回逐本分配模式?\n\n学生将只能学老师分配过/兑换过的单词本,未分配的书立即锁定。`;
+    if (!window.confirm(msg)) return;
+    try {
+      await adminOrgApi.update(org.id, { access_mode: next });
+      await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+      toast.success(next === 'all_books' ? '已切换为全托模式(书本全开放)' : '已切换回逐本分配模式');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '切换授权模式失败'));
+    }
+  };
+
   /** 到期状态: null=有效 */
   const expiryBadge = (org: Organization) => {
     if (!org.expires_at) return null;
@@ -468,12 +484,14 @@ export default function AdminOrganizations() {
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                     <div>档位 <span className="font-medium text-slate-700">{PLAN_LABELS[org.plan] || org.plan}</span></div>
                     <div>老师 <span className="font-medium text-slate-700">{org.teacher_count} 人</span></div>
+                    <div>授权 <span className={`font-medium ${org.access_mode === 'all_books' ? 'text-amber-600' : 'text-slate-700'}`}>{org.access_mode === 'all_books' ? '全托·书本全开放' : '逐本分配'}</span></div>
                     <div className="col-span-2 flex items-center gap-2">学生 <span className="font-medium text-slate-700">{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>{org.student_quota < 999999 && <QuotaBar active={org.active_students} quota={org.student_quota} className="w-20" />}</div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold">
                     <button className="text-blue-600" onClick={() => issueAdmin(org)}>开管理员</button>
                     <button className="text-teal-600" onClick={() => openManagerPanel(org)}>管理员</button>
                     <button className="text-orange-600" onClick={() => changeQuota(org)}>改配额</button>
+                    <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
                     {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
                     {org.id !== 1 && <button className={org.status === 'active' ? 'text-red-600' : 'text-emerald-600'} onClick={() => { if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return; toggleStatus.mutate(org); }}>{org.status === 'active' ? '停用' : '恢复'}</button>}
                     {org.id !== 1 && <button className="text-red-700" onClick={() => deleteOrg(org)}>删除</button>}
@@ -506,7 +524,12 @@ export default function AdminOrganizations() {
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono">{org.code}</td>
-                      <td className="px-4 py-3">{PLAN_LABELS[org.plan] || org.plan}</td>
+                      <td className="px-4 py-3">
+                        {PLAN_LABELS[org.plan] || org.plan}
+                        {org.access_mode === 'all_books' && (
+                          <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">全托</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span>{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>
@@ -530,6 +553,7 @@ export default function AdminOrganizations() {
                           <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
                           <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
                           <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
+                          <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
                           {org.id !== 1 && (
                             <button className="text-purple-500 hover:underline" onClick={() => changeExpiry(org)}>有效期</button>
                           )}
