@@ -22,13 +22,13 @@ import { getGroupSize, splitIntoGroups } from '../utils/groupSize';
 
 type Template = 'blank' | 'cn';
 
-/** 英语四线三格:一、四线虚,二、三线实(书写主区) */
+/** 英语四线三格(标准版):四条实线、三格等高,与市售英语默写本一致 */
 const FourLineGrid = () => (
-  <div className="relative h-11 flex-1 min-w-0">
-    <div className="absolute inset-x-0 top-0 border-t border-dashed border-slate-300" />
+  <div className="relative h-12 flex-1 min-w-0">
+    <div className="absolute inset-x-0 top-0 border-t border-slate-400" />
     <div className="absolute inset-x-0 top-1/3 border-t border-slate-400" />
     <div className="absolute inset-x-0 top-2/3 border-t border-slate-400" />
-    <div className="absolute inset-x-0 bottom-0 border-t border-dashed border-slate-300" />
+    <div className="absolute inset-x-0 bottom-0 border-t border-slate-400" />
   </div>
 );
 
@@ -100,7 +100,7 @@ export default function HandwritingSheet() {
     <div className="min-h-screen bg-paper print:bg-white">
       {/* 屏幕控制条,打印时隐藏 */}
       <nav className="bg-white/95 border-b border-slate-200/80 sticky top-0 z-10 print:hidden">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
             onClick={() => goBack()}
             className="flex h-11 w-11 items-center justify-center rounded-xl transition hover:bg-orange-50"
@@ -141,7 +141,7 @@ export default function HandwritingSheet() {
         </div>
       </nav>
 
-      <div className="max-w-3xl mx-auto px-4 py-4 print:hidden">
+      <div className="max-w-4xl mx-auto px-4 py-4 print:hidden">
         <p className="text-xs text-gray-500 bg-white rounded-xl border border-slate-200 px-4 py-3">
           {template === 'blank'
             ? '听写版:打印后回到「纸笔听写」,App 按同样顺序报词,写完拍照 AI 批改。'
@@ -180,8 +180,8 @@ export default function HandwritingSheet() {
         )}
       </div>
 
-      {/* 打印区 */}
-      <div className="max-w-3xl mx-auto px-4 pb-10 print:max-w-none print:px-0 print:pb-0">
+      {/* 打印区。屏上 max-w-4xl≈A4 宽,PC 预览所见即打印所得 */}
+      <div className="max-w-4xl mx-auto px-4 pb-10 print:max-w-none print:px-0 print:pb-0">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 print:border-0 print:rounded-none print:p-0">
           {/* 页眉 */}
           <div className="relative mb-6">
@@ -217,21 +217,33 @@ export default function HandwritingSheet() {
             </div>
           </div>
 
-          {/* 题目行 */}
-          <div className="space-y-4">
-            {words.map((w, i) => (
-              <div key={w.id} className="flex items-end gap-3" style={{ breakInside: 'avoid' }}>
-                <span className="w-8 shrink-0 text-right font-mono text-sm text-gray-500 pb-2">{startNo + i + 1}.</span>
-                {template === 'cn' && (
-                  <span className="w-36 shrink-0 text-sm text-gray-700 pb-2 leading-tight">
+          {/* 题目行。听写版两列:PC/打印上单列一条线拉满全宽既不像默写本、20 词
+              还要打两页;两列按行流动(1,2 换行 3,4),与报词顺序、拍照的自然阅读
+              顺序一致 —— 即使视觉模型无视序号按阅读顺序转写,题号映射也不会错
+              (竖排分列就没这个保险)。自默版有中文释义列,保持单列留足书写长度 */}
+          {template === 'blank' ? (
+            <div className="grid grid-cols-1 gap-y-5 sm:grid-cols-2 sm:gap-x-10 print:grid-cols-2 print:gap-x-10">
+              {words.map((w, i) => (
+                <div key={w.id} className="flex items-end gap-3" style={{ breakInside: 'avoid' }}>
+                  <span className="w-8 shrink-0 text-right font-mono text-sm text-gray-500 pb-3">{startNo + i + 1}.</span>
+                  <FourLineGrid />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {words.map((w, i) => (
+                <div key={w.id} className="flex items-end gap-3" style={{ breakInside: 'avoid' }}>
+                  <span className="w-8 shrink-0 text-right font-mono text-sm text-gray-500 pb-3">{startNo + i + 1}.</span>
+                  <span className="w-36 shrink-0 text-sm text-gray-700 pb-3 leading-tight">
                     {w.part_of_speech && <span className="text-gray-400 mr-1">{w.part_of_speech}</span>}
                     {w.meaning || ''}
                   </span>
-                )}
-                <FourLineGrid />
-              </div>
-            ))}
-          </div>
+                  <FourLineGrid />
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* 页脚提示 */}
           <p className="mt-8 text-center text-xs text-gray-400">
