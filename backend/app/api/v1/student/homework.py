@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from app.core.database import get_db
@@ -42,6 +42,26 @@ class StudentHomeworkResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ========================================
+# 当日任务(按日期布置)的时间窗口
+# ========================================
+
+def day_task_expiry(homework) -> Optional[datetime]:
+    """当日任务的过期时刻(UTC naive)。
+
+    available_from 存的是北京日 0 点对应的 UTC,+1 天正好是当天 24 点——
+    学生只能在开放当天完成,过点不能再开始/交卷。普通作业(无 available_from)返回 None。
+    """
+    if not homework.available_from:
+        return None
+    return homework.available_from + timedelta(days=1)
+
+
+def day_task_expired(homework, now: Optional[datetime] = None) -> bool:
+    expiry = day_task_expiry(homework)
+    return bool(expiry and (now or datetime.utcnow()) >= expiry)
 
 
 class SubmitHomeworkAttemptRequest(BaseModel):
@@ -117,12 +137,18 @@ async def get_my_homework(
 
     homework_list = []
     for assignment, homework, unit, book, teacher_name in result.all():
-        # 自动更新过期状态
-        if (homework.deadline and
-            datetime.utcnow() > homework.deadline and
-            assignment.status not in ['completed']):
+        # 自动更新过期状态(普通作业按自设截止时间;当日任务过了当天24点即过期)
+        now = datetime.utcnow()
+        if (assignment.status not in ['completed', 'failed'] and
+            ((homework.deadline and now > homework.deadline) or day_task_expired(homework, now))):
             assignment.status = 'overdue'
             await db.commit()
+
+        # 当日任务给学生端合成截止时间(北京当天24点),倒计时/「剩余X小时」直接可用。
+        # 口径跟历史 deadline 一致:按北京墙上时间的 naive 字符串(前端 new Date 当本地解析)
+        display_deadline = homework.deadline
+        if homework.available_from and not display_deadline:
+            display_deadline = homework.available_from + timedelta(hours=32)  # UTC+8 → 次日0点
 
         homework_list.append(StudentHomeworkResponse(
             id=assignment.id,
@@ -136,7 +162,7 @@ async def get_my_homework(
             target_score=homework.target_score,
             min_completion_time=homework.min_completion_time,
             max_attempts=homework.max_attempts,
-            deadline=homework.deadline.isoformat() if homework.deadline else None,
+            deadline=display_deadline.isoformat() if display_deadline else None,
             assigned_at=assignment.assigned_at.isoformat(),
             status=assignment.status,
             started_at=assignment.started_at.isoformat() if assignment.started_at else None,
@@ -183,9 +209,13 @@ async def start_homework(
     if getattr(homework, 'is_closed', False):
         raise HTTPException(status_code=400, detail="这份作业已被老师关闭")
 
-    # 定时布置,还没到开放时间
+    # 按日期布置的当日任务:没到开放日不能做,过了当天也不能再做
     if homework.available_from and datetime.utcnow() < homework.available_from:
-        raise HTTPException(status_code=400, detail="这份作业还没开始,到开始日期当天才能做")
+        raise HTTPException(status_code=400, detail="这份任务还没开始,到开始日期当天才能做")
+    if day_task_expired(homework):
+        assignment.status = 'overdue'
+        await db.commit()
+        raise HTTPException(status_code=400, detail="这份任务只能在当天完成,已经过期了")
 
     # 检查是否超过最大尝试次数
     if assignment.attempts_count >= homework.max_attempts:
@@ -248,6 +278,14 @@ async def submit_homework_attempt(
     if homework.available_from and datetime.utcnow() < homework.available_from:
         raise HTTPException(status_code=400, detail="这份作业还没开始")
 
+    # 当日任务过期拒收,但留 30 分钟缓冲:23:59 交卷经断网重试队列补交
+    # 可能落到 0 点后,不能把孩子做完的成绩拒掉
+    expiry = day_task_expiry(homework)
+    if expiry and datetime.utcnow() >= expiry + timedelta(minutes=30):
+        assignment.status = 'overdue' if assignment.status not in ('completed', 'failed') else assignment.status
+        await db.commit()
+        raise HTTPException(status_code=400, detail="这份任务只能在当天完成,已经过期了")
+
     # 幂等去重:响应丢失后前端重发同一 client_batch_id,直接返回当前状态,
     # 不再新增尝试记录(否则一次成绩烧掉两次机会)。
     # 注意:claim 失败内部会 rollback,之后 ORM 对象过期不可再访问(MissingGreenlet),
@@ -305,11 +343,14 @@ async def submit_homework_attempt(
                 HomeworkAssignment.group_index.is_(None) if homework.group_index is None
                 else HomeworkAssignment.group_index == homework.group_index,
                 HomeworkAssignment.is_closed.is_(False),
-                # 定时布置还没开放的同内容作业不连带完成:那是老师特意排到后面日子的任务,
-                # 到期学生该重新做一遍,不能今天一次达标把下周的也划掉
+                # 当日任务只在自己的开放窗口内可被连带完成:未开放的是老师特意排到
+                # 后面日子的任务(到期要重新做),已过期的也不能靠今天的成绩起死回生
                 or_(
                     HomeworkAssignment.available_from.is_(None),
-                    HomeworkAssignment.available_from <= datetime.utcnow(),
+                    and_(
+                        HomeworkAssignment.available_from <= datetime.utcnow(),
+                        HomeworkAssignment.available_from > datetime.utcnow() - timedelta(days=1),
+                    ),
                 ),
             ))
         )).all()

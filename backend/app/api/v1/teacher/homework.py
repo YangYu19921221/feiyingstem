@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.core.timeutil import local_day_utc_range, local_today, utc_now
+from app.core.timeutil import local_day_utc_range, local_today
 from app.models.user import User
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, HomeworkAttemptRecord
 from app.models.word import Unit, WordBook
@@ -33,7 +33,8 @@ class CreateHomeworkRequest(BaseModel):
     group_index: Optional[int] = None  # null=整单元, 有值=指定分组
     # 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略 group_index)
     unit_ids: Optional[List[int]] = None
-    # 定时布置:开始日期(YYYY-MM-DD,北京日期),当天0点开放;空/今天/过去=立即开放
+    # 按日期布置(当日任务):开始日期(YYYY-MM-DD,北京日期)。当天0点开放、当天24点
+    # 自动截止,学生只能在当天完成;空=普通作业(立即布置,可自设截止时间)
     available_date: Optional[str] = None
     # 多单元 + 开始日期时:每个单元比前一个顺延一天(一次布置未来一周的任务)
     daily_sequence: bool = False
@@ -161,24 +162,23 @@ async def create_homework(
         except:
             raise HTTPException(status_code=400, detail="截止时间格式错误")
 
-    # 解析定时布置日期:北京日期 → 当天0点的 UTC naive(与 DB 时间口径一致)。
-    # 今天/过去的日期视为立即开放(available_from=None),只有未来日期才定时。
+    # 解析按日期布置(当日任务):北京日期 → 当天0点的 UTC naive(与 DB 时间口径一致)。
+    # 今天也照存(开放时刻已过=立即可见),这样"当天24点截止"的当日任务语义不丢;
+    # 当日任务忽略自设截止时间——过期时刻恒为 available_from + 1天。
     open_times: list = [None] * len(unit_targets)
     if request.available_date:
         try:
             base_date = datetime.strptime(request.available_date, "%Y-%m-%d").date()
         except ValueError:
             raise HTTPException(status_code=400, detail="开始日期格式错误,应为 YYYY-MM-DD")
+        if base_date < local_today():
+            raise HTTPException(status_code=400, detail="开始日期不能早于今天")
         if base_date > local_today() + timedelta(days=60):
             raise HTTPException(status_code=400, detail="开始日期最多提前 60 天")
         for i in range(len(unit_targets)):
             d = base_date + timedelta(days=i) if (request.daily_sequence and multi) else base_date
-            open_at, _ = local_day_utc_range(d)
-            open_times[i] = open_at if open_at > utc_now() else None
-        # 截止时间必须晚于最后一个单元的开放时间,否则那份作业一开放就已过期
-        last_open = max((t for t in open_times if t), default=None)
-        if deadline and last_open and deadline <= last_open:
-            raise HTTPException(status_code=400, detail="截止时间早于作业开始时间,请调整")
+            open_times[i], _ = local_day_utc_range(d)
+        deadline = None  # 当日任务不接受自设截止时间,统一当天24点
 
     # 逐单元创建作业(多选时标题带单元名区分,各自独立追踪完成情况)
     homework_ids = []
@@ -219,10 +219,9 @@ async def create_homework(
 
     await db.commit()
 
-    scheduled = sum(1 for t in open_times if t)
-    if scheduled:
-        msg = f"作业创建成功({len(homework_ids)} 份,其中 {scheduled} 份定时开放)" if multi \
-            else "作业创建成功(将于开始日期当天开放)"
+    if any(open_times):
+        msg = f"已创建 {len(homework_ids)} 份当日任务(按日期开放,学生只能当天完成)" if multi \
+            else "当日任务创建成功(学生只能在开放当天完成)"
     else:
         msg = f"作业创建成功({len(homework_ids)} 份)" if multi else "作业创建成功"
     return {

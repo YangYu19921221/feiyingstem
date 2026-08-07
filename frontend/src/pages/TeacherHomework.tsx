@@ -278,6 +278,24 @@ const TeacherHomework: React.FC = () => {
     setStudentQuery('');
   };
 
+  // 取消还没开放的当日任务:学生尚未看到、没有任何做题记录,轻确认后直接删除
+  const handleCancelScheduled = async (homework: HomeworkResponse) => {
+    if (!confirm(`取消「${homework.title}」?\n这份任务 ${homework.available_from} 才开放,学生还没看到,取消后不会留下任何痕迹。`)) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await deleteHomework(homework.id);
+      toast.success('已取消该任务');
+      loadHomework();
+      if (selectedHomework?.id === homework.id) setSelectedHomework(null);
+    } catch (error: any) {
+      toast.error(getErrorMessage(error, '取消失败'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 处理删除作业
   const handleDeleteHomework = async (homeworkId: number) => {
     if (!confirm('确定要彻底删除这个作业吗?学生的做题记录会一起删除且无法恢复!\n(只是发错了或想提前结束,建议用 ⏸ 关闭——学生端隐藏但记录保留)')) {
@@ -456,7 +474,17 @@ const TeacherHomework: React.FC = () => {
                           </td>
                           <td className="py-3 px-3 text-sm text-gray-700 text-center font-mono">{homework.target_score}</td>
                           <td className="py-3 px-3 text-sm whitespace-nowrap">
-                            {homework.deadline ? (
+                            {homework.available_from ? (
+                              // 当日任务:开放当天 24 点截止
+                              <span className={
+                                homework.available_from < localDateStr(new Date())
+                                  ? 'text-red-500 font-medium'
+                                  : 'text-amber-700'
+                              }>
+                                {fmtMD(homework.available_from)} 当天
+                                {homework.available_from < localDateStr(new Date()) && ' · 已截止'}
+                              </span>
+                            ) : homework.deadline ? (
                               <span className={overdue ? 'text-red-500 font-medium' : 'text-gray-600'}>
                                 {formatDate(homework.deadline)}
                                 {overdue && ' · 已截止'}
@@ -486,30 +514,46 @@ const TeacherHomework: React.FC = () => {
                             </div>
                           </td>
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleClosed(homework.id);
-                              }}
-                              className={`p-1.5 rounded-lg transition ${
-                                homework.is_closed
-                                  ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
-                                  : 'text-orange-400 hover:text-orange-600 hover:bg-orange-50'
-                              }`}
-                              title={homework.is_closed ? '重新开放(学生端恢复显示)' : '关闭作业(学生端隐藏,做题记录保留)'}
-                            >
-                              {homework.is_closed ? '▶️' : '⏸'}
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteHomework(homework.id);
-                              }}
-                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                              title="彻底删除(连做题记录一起删,建议优先用关闭)"
-                            >
-                              🗑️
-                            </button>
+                            {isScheduledFuture(homework) ? (
+                              // 还没开放的当日任务:学生看不到、没有任何做题记录,直接「取消」即可
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelScheduled(homework);
+                                }}
+                                className="px-2 py-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition text-sm font-medium"
+                                title="取消任务(还没开放,学生看不到,取消不留痕)"
+                              >
+                                ✖ 取消
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleClosed(homework.id);
+                                  }}
+                                  className={`p-1.5 rounded-lg transition ${
+                                    homework.is_closed
+                                      ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                                      : 'text-orange-400 hover:text-orange-600 hover:bg-orange-50'
+                                  }`}
+                                  title={homework.is_closed ? '重新开放(学生端恢复显示)' : '关闭作业(学生端隐藏,做题记录保留)'}
+                                >
+                                  {homework.is_closed ? '▶️' : '⏸'}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteHomework(homework.id);
+                                  }}
+                                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                  title="彻底删除(连做题记录一起删,建议优先用关闭)"
+                                >
+                                  🗑️
+                                </button>
+                              </>
+                            )}
                           </td>
                         </tr>
                       );
@@ -708,33 +752,39 @@ const TeacherHomework: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 开始日期(定时布置)+ 截止时间 */}
+                  {/* 开始日期(当日任务)+ 截止时间 */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        📅 开始日期(定时布置)
+                        📅 开始日期(当日任务)
                       </label>
                       <input
                         type="date"
                         value={formData.available_date || ''}
                         min={localDateStr(new Date())}
-                        onChange={(e) => setFormData({ ...formData, available_date: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, available_date: e.target.value, deadline: '' })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                       />
                       <p className="mt-1 text-xs text-gray-400">
-                        留空立即布置;选未来日期,学生到当天 0 点才能看到这份任务
+                        选日期=当日任务:学生当天 0 点才看到、当天 24 点截止,只能当天完成;留空=普通作业,立即布置
                       </p>
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         ⏰ 截止时间
                       </label>
-                      <input
-                        type="datetime-local"
-                        value={formData.deadline}
-                        onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      />
+                      {formData.available_date ? (
+                        <div className="w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                          当日任务自动在开放当天 24:00 截止,过期学生不能再做
+                        </div>
+                      ) : (
+                        <input
+                          type="datetime-local"
+                          value={formData.deadline}
+                          onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -754,8 +804,8 @@ const TeacherHomework: React.FC = () => {
                           </div>
                           <p className="mt-1 text-xs text-gray-600">
                             {formData.daily_sequence
-                              ? `已选 ${scope.unit_ids!.length} 个单元:第 1 个 ${fmtMD(formData.available_date)} 开放,以后每天开放下一个,最后一个 ${fmtMD(addDays(formData.available_date, scope.unit_ids!.length - 1))} 开放——一次把后面 ${scope.unit_ids!.length} 天的任务都布置好`
-                              : `不勾选则 ${scope.unit_ids!.length} 个单元的作业都在 ${fmtMD(formData.available_date)} 同一天开放`}
+                              ? `已选 ${scope.unit_ids!.length} 个单元:第 1 个 ${fmtMD(formData.available_date)} 开放,以后每天开放下一个,最后一个 ${fmtMD(addDays(formData.available_date, scope.unit_ids!.length - 1))} 开放。每份任务只能在自己开放的当天完成——一次把后面 ${scope.unit_ids!.length} 天的任务都排好`
+                              : `不勾选则 ${scope.unit_ids!.length} 个单元的任务都在 ${fmtMD(formData.available_date)} 同一天开放、同一天截止`}
                           </p>
                         </div>
                       </label>
@@ -947,11 +997,12 @@ const TeacherHomework: React.FC = () => {
                       </div>
                       {selectedHomework.available_from && (
                         <div>
-                          <span className="text-gray-600">📅 开始日期:</span>
+                          <span className="text-gray-600">📅 当日任务:</span>
                           <span className="ml-2 font-semibold">
                             {selectedHomework.available_from}
+                            <span className="ml-1 text-xs text-gray-500">(当天 24:00 截止)</span>
                             {isScheduledFuture(selectedHomework) && (
-                              <span className="ml-1 text-amber-600 text-xs">(未开放,学生还看不到)</span>
+                              <span className="ml-1 text-amber-600 text-xs">还未开放,学生看不到</span>
                             )}
                           </span>
                         </div>
