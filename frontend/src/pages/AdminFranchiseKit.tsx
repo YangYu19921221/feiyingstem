@@ -10,9 +10,10 @@
  * 即完成下载,文档不经服务器、不落盘(UPLOAD_DIR 公开无鉴权,敏感资料禁止走那条路)。
  * 协议里的空栏是 contentEditable,可先在页面上填好乙方信息再打印。
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileSignature, Printer, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, FileSignature, LoaderCircle, Printer, Sparkles } from 'lucide-react';
+import { downloadElementAsPdf } from '../utils/downloadPdf';
 
 type DocKey = 'contract' | 'pitch';
 
@@ -27,9 +28,14 @@ const Blank = ({ w = '8rem' }: { w?: string }) => (
   />
 );
 
+/**
+ * 协议条款。刻意不给整条加 break-inside: avoid —— 长条款(如费用条含表格)
+ * 整块躲开分页会在页底留下半页空白。改为只保证「标题不与正文分离」
+ * (breakAfter: avoid),条款正文允许跨页,表格自己带 avoid 不被劈开。
+ */
 const Clause = ({ no, title, children }: { no: string; title: string; children: React.ReactNode }) => (
-  <section className="mt-5" style={{ breakInside: 'avoid' }}>
-    <h3 className="text-[15px] font-bold">第{no}条 {title}</h3>
+  <section className="mt-5">
+    <h3 className="text-[15px] font-bold" style={{ breakAfter: 'avoid' }}>第{no}条 {title}</h3>
     <div className="mt-1.5 space-y-1.5 text-justify leading-7">{children}</div>
   </section>
 );
@@ -478,6 +484,24 @@ const FeatureList = ({ items }: { items: Array<{ name: string; desc: string }> }
 export default function AdminFranchiseKit() {
   const navigate = useNavigate();
   const [doc, setDoc] = useState<DocKey>('pitch');
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  // 导出 PDF:加盟商要的是一个能微信发出去的文件,不是打印对话框。
+  // 文件名带文档类型,发出去对方一眼知道是什么
+  const handleDownload = async () => {
+    if (!sheetRef.current) return;
+    setDownloading(true);
+    try {
+      await downloadElementAsPdf(sheetRef.current, {
+        filename: doc === 'contract' ? '飞鹰AI英语-合作协议' : '飞鹰AI英语-功能详解与提分方案',
+      });
+    } catch {
+      // downloadElementAsPdf 已 toast 提示
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -521,20 +545,29 @@ export default function AdminFranchiseKit() {
           </div>
           <button
             type="button"
-            onClick={() => window.print()}
-            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="ml-auto inline-flex items-center gap-2 rounded-lg bg-[#FF6B35] px-4 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
           >
-            <Printer className="h-4 w-4" /> 打印 / 保存 PDF
+            {downloading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {downloading ? '生成中…' : '下载 PDF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            <Printer className="h-4 w-4" /> 打印
           </button>
         </div>
         <div className="mx-auto max-w-[880px] px-4 pb-2.5 text-xs text-slate-500">
-          带下划线的空栏可以直接点击填写;打印对话框里选「另存为 PDF」即可下载,记得勾选「背景图形」保留配色。
+          带下划线的空栏可以直接点击填写,填完再下载,PDF 里会带上填好的内容。「下载 PDF」直接存成文件(可微信发给加盟商);「打印」走浏览器打印对话框。
         </div>
       </div>
 
       {/* A4 文档区 */}
       <div className="fk-wrap px-3 py-6">
-        <div className="fk-sheet mx-auto max-w-[820px] rounded-xl border border-slate-200 bg-white p-10 shadow-sm sm:p-12">
+        <div ref={sheetRef} className="fk-sheet mx-auto max-w-[820px] rounded-xl border border-slate-200 bg-white p-10 shadow-sm sm:p-12">
           {doc === 'contract' ? <ContractDoc /> : <PitchDoc />}
         </div>
       </div>

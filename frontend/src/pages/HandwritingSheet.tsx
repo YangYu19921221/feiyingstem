@@ -8,9 +8,10 @@
  * 纯前端 window.print(),不产生任何服务端文件。
  * 词序与「纸笔听写」页同源(startLearning 按 order_index),写完拍照即可回 App 批改。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Download, LoaderCircle, Printer } from 'lucide-react';
+import { downloadElementAsPdf } from '../utils/downloadPdf';
 import useGoBack from '../hooks/useGoBack';
 import { startLearning } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
@@ -46,6 +47,9 @@ export default function HandwritingSheet() {
   // 学生自己的宠物印在页眉右上角(像作业本上的奖励贴纸)。
   // 拉取失败(未领养/401/网络)一律静默不渲染——宠物是点缀,绝不能挡打印
   const [pet, setPet] = useState<Pet | null>(null);
+  // 导出 PDF:手机浏览器普遍没有"打印→另存为PDF",存下来才能发给家长打印
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     getMyPet().then(setPet).catch(() => {});
@@ -96,6 +100,21 @@ export default function HandwritingSheet() {
   const words = groups[groupIndex] ?? [];
   const startNo = groups.slice(0, groupIndex).reduce((n, g) => n + g.length, 0);
 
+  const handleDownload = async () => {
+    if (!sheetRef.current) return;
+    setDownloading(true);
+    try {
+      const groupTag = groups.length > 1 ? `-第${groupIndex + 1}组` : '';
+      await downloadElementAsPdf(sheetRef.current, {
+        filename: `默写纸-${learningData.unit_info.name}${groupTag}`,
+      });
+    } catch {
+      // downloadElementAsPdf 已 toast 提示
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-paper print:bg-white">
       {/* 屏幕控制条,打印时隐藏 */}
@@ -109,7 +128,7 @@ export default function HandwritingSheet() {
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-gray-800 truncate">🖨️ 打印默写纸</h1>
+            <h1 className="text-lg font-bold text-gray-800 truncate">🖨️ 默写纸</h1>
             <p className="text-xs text-gray-500 truncate">
               {learningData.unit_info.name}
               {groups.length > 1 && ` · 第 ${groupIndex + 1}/${groups.length} 组`}
@@ -131,9 +150,20 @@ export default function HandwritingSheet() {
               自默版
             </button>
           </div>
+          {/* 下载 PDF 放主位:手机上没有"打印→另存为PDF",存成文件才能发给家长 */}
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            aria-label={downloading ? '正在生成 PDF' : '下载 PDF'}
+            className="shrink-0 min-h-11 rounded-xl bg-primary px-4 font-semibold text-white flex items-center gap-2 hover:opacity-90 transition disabled:opacity-60"
+          >
+            {downloading ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span className="hidden sm:inline">{downloading ? '生成中' : '下载 PDF'}</span>
+          </button>
           <button
             onClick={() => window.print()}
-            className="shrink-0 min-h-11 rounded-xl bg-primary px-4 font-semibold text-white flex items-center gap-2 hover:opacity-90 transition"
+            className="shrink-0 min-h-11 rounded-xl border border-slate-200 px-3 font-semibold text-gray-600 flex items-center gap-2 hover:bg-slate-50 transition"
+            aria-label="打印"
           >
             <Printer className="w-4 h-4" />
             <span className="hidden sm:inline">打印</span>
@@ -142,10 +172,12 @@ export default function HandwritingSheet() {
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 py-4 print:hidden">
-        <p className="text-xs text-gray-500 bg-white rounded-xl border border-slate-200 px-4 py-3">
+        <p className="text-xs text-gray-500 bg-white rounded-xl border border-slate-200 px-4 py-3 leading-6">
           {template === 'blank'
             ? '听写版:打印后回到「纸笔听写」,App 按同样顺序报词,写完拍照 AI 批改。'
             : '自默版:看中文默写英文,写完在「纸笔听写」里拍照批改(App 报词顺序与本纸一致)。'}
+          <br />
+          <span className="text-gray-400">手机上点「下载 PDF」存成文件,发给家长或去打印店都方便。</span>
         </p>
 
         {/* 组切换:单元词多时分组打印,题号与听写页一一对应 */}
@@ -182,7 +214,7 @@ export default function HandwritingSheet() {
 
       {/* 打印区。屏上 max-w-4xl≈A4 宽,PC 预览所见即打印所得 */}
       <div className="max-w-4xl mx-auto px-4 pb-10 print:max-w-none print:px-0 print:pb-0">
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 print:border-0 print:rounded-none print:p-0">
+        <div ref={sheetRef} className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 print:border-0 print:rounded-none print:p-0">
           {/* 页眉 */}
           <div className="relative mb-6">
             {/* 宠物 = 学生的身份贴纸,放页眉右上角:与姓名/日期同属"这张纸是谁的"区,
@@ -220,15 +252,31 @@ export default function HandwritingSheet() {
           {/* 题目行。听写版两列:PC/打印上单列一条线拉满全宽既不像默写本、20 词
               还要打两页;两列按行流动(1,2 换行 3,4),与报词顺序、拍照的自然阅读
               顺序一致 —— 即使视觉模型无视序号按阅读顺序转写,题号映射也不会错
-              (竖排分列就没这个保险)。自默版有中文释义列,保持单列留足书写长度 */}
+              (竖排分列就没这个保险)。自默版有中文释义列,保持单列留足书写长度。
+
+              两列刻意用「每行一个 flex 容器装两题」而不是 CSS grid:
+              导出 PDF 时 html2pdf 会往内容里插入分页占位元素,grid 会把它当成
+              一个格子吃掉,后面的题号错行(实测第 13 题起左右串位)。
+              一行一个 flex 行,分页只会落在行与行之间,版式不会乱。 */}
           {template === 'blank' ? (
-            <div className="grid grid-cols-1 gap-y-5 sm:grid-cols-2 sm:gap-x-10 print:grid-cols-2 print:gap-x-10">
-              {words.map((w, i) => (
-                <div key={w.id} className="flex items-end gap-3" style={{ breakInside: 'avoid' }}>
-                  <span className="w-8 shrink-0 text-right font-mono text-sm text-gray-500 pb-3">{startNo + i + 1}.</span>
-                  <FourLineGrid />
-                </div>
-              ))}
+            <div className="space-y-5">
+              {Array.from({ length: Math.ceil(words.length / 2) }, (_, row) => {
+                const pair = words.slice(row * 2, row * 2 + 2);
+                return (
+                  <div key={pair[0].id} className="flex items-end gap-6 sm:gap-10" style={{ breakInside: 'avoid' }}>
+                    {pair.map((w, col) => (
+                      <div key={w.id} className="flex flex-1 min-w-0 items-end gap-3">
+                        <span className="w-8 shrink-0 text-right font-mono text-sm text-gray-500 pb-3">
+                          {startNo + row * 2 + col + 1}.
+                        </span>
+                        <FourLineGrid />
+                      </div>
+                    ))}
+                    {/* 词数为奇数时补一个空位,末行左半边不会被拉成整行宽 */}
+                    {pair.length === 1 && <div className="flex-1" aria-hidden="true" />}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="space-y-5">

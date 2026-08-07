@@ -274,8 +274,14 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   机构兑换码(上限=配额)、机构码招生链接、机构自定义名称/Logo
 - ✅ 加盟资料中心(2026-08): /admin/franchise-kit(仅平台admin)两份A4文档——合作协议
   (定价口径: 1.2万/年含100生、超额100元/生/年、全托书本全开放)+ 功能详解与提分方案;
-  空栏 contentEditable 页面内填写,window.print 导出PDF,不经服务器不落盘;
+  空栏 contentEditable 页面内填写,可「下载PDF」或打印,不经服务器不落盘;
   入口在管理端首页运营工具箱「加盟资料」
+- ✅ 网页导出PDF通用能力(2026-08): utils/downloadPdf.ts(默写纸/加盟资料共用),
+  html2pdf.js 动态import不进首屏;三个坑已处理:①截图对象是屏幕外固定794px宽的
+  DOM克隆(只给原元素设宽会被窄屏父容器切边,且不闪屏)②oklch/lab等新色彩函数
+  html2canvas解析不了会直接抛错,截图前降级成rgb ③pagebreak只用css模式,
+  avoid-all会让页底留成片空白。**两列布局别用CSS grid**:html2pdf插入的分页占位
+  元素会占掉一个格子导致题号错行(实测第13题起串位),改「一行一flex装两题」
 - ✅ 学习效率引擎: 今日智能任务(/student/daily-plan)、记忆曲线SRS、AI记忆钩子
   (words.memory_hook 全平台缓存)、拼写错误诊断(learning_records.user_answer)、
   连错消化卡、保持率对比
