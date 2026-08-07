@@ -272,6 +272,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 - ✅ 多租户 SaaS(加盟): organizations 表 + org_id 隔离(core/tenancy.py 读写双安全网)、
   三层管理(admin→org_admin→teacher)、学生配额、服务有效期(到期自动停)、
   机构兑换码(上限=配额)、机构码招生链接、机构自定义名称/Logo
+- ✅ 加盟资料中心(2026-08): /admin/franchise-kit(仅平台admin)两份A4文档——合作协议
+  (定价口径: 1.2万/年含100生、超额100元/生/年、全托书本全开放)+ 功能详解与提分方案;
+  空栏 contentEditable 页面内填写,window.print 导出PDF,不经服务器不落盘;
+  入口在管理端首页运营工具箱「加盟资料」
 - ✅ 学习效率引擎: 今日智能任务(/student/daily-plan)、记忆曲线SRS、AI记忆钩子
   (words.memory_hook 全平台缓存)、拼写错误诊断(learning_records.user_answer)、
   连错消化卡、保持率对比

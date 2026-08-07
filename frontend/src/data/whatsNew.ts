@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'franchise-kit-2026-08',
+    date: '2026-08-07',
+    title: '加盟资料:合作协议 + 提分方案,一键导出 PDF',
+    desc: '两份排好版的对外文档:合作协议(1.2万/年含100名学生,超出100元/生/年,书本全开放)和系统功能提分方案。空栏可在页面上直接填写,打印时选「另存为 PDF」即可下载发给意向加盟商。',
+    where: '管理端首页「运营工具箱 → 组织与人员 → 加盟资料」',
+    roles: ['admin'],
+    route: '/admin/franchise-kit',
+  },
+  {
     id: 'handwriting-dictation-2026-08',
     date: '2026-08-06',
     title: '纸笔听写:在纸上手写，拍照自动批改',
