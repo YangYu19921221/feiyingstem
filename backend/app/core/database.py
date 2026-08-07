@@ -281,6 +281,14 @@ async def init_db():
         except Exception:
             pass
 
+        # 迁移: 为 homework_assignments 表添加 available_from 字段(定时发布,NULL=立即开放)
+        try:
+            await conn.execute(text(
+                "ALTER TABLE homework_assignments ADD COLUMN available_from DATETIME"
+            ))
+        except Exception:
+            pass
+
         # 迁移: 重建 learning_records 表去掉 learning_mode 的 CHECK 约束
         try:
             check_result = await conn.execute(text(

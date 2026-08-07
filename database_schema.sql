@@ -312,6 +312,7 @@ CREATE TABLE homework_assignments (
     max_attempts INTEGER DEFAULT 3,      -- 最多尝试次数
     deadline DATETIME,
     group_index INTEGER,                 -- 指定分组索引(NULL=整个单元)
+    available_from DATETIME,             -- 定时发布:到点前学生不可见(NULL=立即开放)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,

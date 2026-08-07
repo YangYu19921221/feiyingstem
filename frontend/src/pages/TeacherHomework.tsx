@@ -37,6 +37,22 @@ const STATUS_MAP: Record<string, { label: string; color: string; emoji: string }
   failed: { label: '未达标(次数用完)', color: 'bg-red-100 text-red-600 font-bold', emoji: '❗' },
 };
 
+// 本地日历日 YYYY-MM-DD(不能用 toISOString——那是 UTC 日期,凌晨会差一天)
+const localDateStr = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const addDays = (dateStr: string, n: number) => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return localDateStr(d);
+};
+const fmtMD = (dateStr: string) => {
+  const [, m, day] = dateStr.split('-');
+  return `${Number(m)}/${Number(day)}`;
+};
+// 定时布置且还没到开放日(YYYY-MM-DD 字典序即日期序)
+const isScheduledFuture = (h: HomeworkResponse) =>
+  !!h.available_from && h.available_from > localDateStr(new Date());
+
 const TeacherHomework: React.FC = () => {
   // 状态管理
   const [homeworkList, setHomeworkList] = useState<HomeworkResponse[]>([]);
@@ -63,6 +79,8 @@ const TeacherHomework: React.FC = () => {
     target_score: 80,
     max_attempts: 3,
     deadline: '',
+    available_date: '',
+    daily_sequence: false,
   });
   // ScopeSelector state: allowBook=false means book_id is used for cascading but not submitted.
   // Only unit_id and group_index are included in the homework create payload.
@@ -225,8 +243,11 @@ const TeacherHomework: React.FC = () => {
         group_index: multi ? null : (scope.group_index ?? null),
         // 多选:一次为每个单元建一份作业
         unit_ids: multi ? unitIds : undefined,
+        available_date: formData.available_date || undefined,
+        daily_sequence: multi ? formData.daily_sequence : false,
       });
-      toast.success(multi ? `已创建 ${result.homework_ids?.length ?? unitIds.length} 份作业!` : '作业创建成功!');
+      // 后端 message 会说明定时开放情况(如"其中 N 份定时开放")
+      toast.success(result.message || (multi ? `已创建 ${result.homework_ids?.length ?? unitIds.length} 份作业!` : '作业创建成功!'));
       setShowCreateModal(false);
       resetForm();
       loadHomework();
@@ -250,6 +271,8 @@ const TeacherHomework: React.FC = () => {
       target_score: 80,
       max_attempts: 3,
       deadline: '',
+      available_date: '',
+      daily_sequence: false,
     });
     setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
     setStudentQuery('');
@@ -412,6 +435,11 @@ const TeacherHomework: React.FC = () => {
                           <td className="py-3 px-4">
                             <div className="font-semibold text-gray-800">
                               {homework.title}
+                              {isScheduledFuture(homework) && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-normal whitespace-nowrap">
+                                  ⏳ {fmtMD(homework.available_from!)} 开放
+                                </span>
+                              )}
                               {homework.is_closed && (
                                 <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-normal">
                                   ⏸ 已关闭
@@ -680,18 +708,59 @@ const TeacherHomework: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 截止时间 */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      ⏰ 截止时间
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={formData.deadline}
-                      onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                    />
+                  {/* 开始日期(定时布置)+ 截止时间 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        📅 开始日期(定时布置)
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.available_date || ''}
+                        min={localDateStr(new Date())}
+                        onChange={(e) => setFormData({ ...formData, available_date: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">
+                        留空立即布置;选未来日期,学生到当天 0 点才能看到这份任务
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        ⏰ 截止时间
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={formData.deadline}
+                        onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      />
+                    </div>
                   </div>
+
+                  {/* 多单元 + 开始日期:按天依次排期,一次布置未来一周 */}
+                  {(scope.unit_ids?.length || 0) > 1 && formData.available_date && (
+                    <div className="rounded-xl border-2 border-dashed border-orange-200 bg-orange-50/60 p-4">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!formData.daily_sequence}
+                          onChange={(e) => setFormData({ ...formData, daily_sequence: e.target.checked })}
+                          className="mt-0.5 w-5 h-5 accent-orange-500"
+                        />
+                        <div>
+                          <div className="font-semibold text-gray-800 text-sm">
+                            📆 按天依次排期(每个单元顺延一天)
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600">
+                            {formData.daily_sequence
+                              ? `已选 ${scope.unit_ids!.length} 个单元:第 1 个 ${fmtMD(formData.available_date)} 开放,以后每天开放下一个,最后一个 ${fmtMD(addDays(formData.available_date, scope.unit_ids!.length - 1))} 开放——一次把后面 ${scope.unit_ids!.length} 天的任务都布置好`
+                              : `不勾选则 ${scope.unit_ids!.length} 个单元的作业都在 ${fmtMD(formData.available_date)} 同一天开放`}
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
 
                   {/* 选择学生 */}
                   <div>
@@ -876,6 +945,17 @@ const TeacherHomework: React.FC = () => {
                         <span className="text-gray-600">🔄 最大尝试:</span>
                         <span className="ml-2 font-semibold">{selectedHomework.max_attempts}次</span>
                       </div>
+                      {selectedHomework.available_from && (
+                        <div>
+                          <span className="text-gray-600">📅 开始日期:</span>
+                          <span className="ml-2 font-semibold">
+                            {selectedHomework.available_from}
+                            {isScheduledFuture(selectedHomework) && (
+                              <span className="ml-1 text-amber-600 text-xs">(未开放,学生还看不到)</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                       {selectedHomework.deadline && (
                         <div>
                           <span className="text-gray-600">⏰ 截止时间:</span>

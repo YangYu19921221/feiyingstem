@@ -55,7 +55,10 @@ async def get_allowed_unit_ids(
         if org_id and await check_org_all_books(db, org_id):
             return None
 
-    # 并入该书下布置给该学生的作业单元
+    # 并入该书下布置给该学生的作业单元(定时布置未开放的不算——
+    # 到开放日之前单元不解锁,否则学生能提前进去把下周的任务学掉)
+    from datetime import datetime as _dt
+    from sqlalchemy import or_ as _or
     hw_res = await db.execute(
         select(HomeworkAssignment.unit_id)
         .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
@@ -63,6 +66,10 @@ async def get_allowed_unit_ids(
         .where(
             HomeworkStudentAssignment.student_id == student_id,
             Unit.book_id == book_id,
+            _or(
+                HomeworkAssignment.available_from.is_(None),
+                HomeworkAssignment.available_from <= _dt.utcnow(),
+            ),
         )
     )
     allowed.update(uid for (uid,) in hw_res.all() if uid is not None)

@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'homework-schedule-2026-08',
+    date: '2026-08-07',
+    title: '作业可以按日期定时布置了(一次排好一周)',
+    desc: '创建作业时选一个「开始日期」,学生到当天 0 点才会看到任务,提前看不到也进不去。多选几个单元再勾「按天依次排期」,每个单元顺延一天开放——今天一次就能把后面一周每天的任务都布置好。',
+    where: '作业管理 → 创建新作业 → 「📅 开始日期(定时布置)」;多选单元后出现「按天依次排期」勾选项',
+    roles: ['teacher'],
+    route: '/teacher/homework',
+  },
+  {
     id: 'franchise-kit-2026-08',
     date: '2026-08-07',
     title: '加盟资料:合作协议 + 提分方案,一键下载 PDF',

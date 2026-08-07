@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_, case
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from app.core.database import get_db
+from app.core.timeutil import local_day_utc_range, local_today, utc_now
 from app.models.user import User
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, HomeworkAttemptRecord
 from app.models.word import Unit, WordBook
@@ -32,6 +33,10 @@ class CreateHomeworkRequest(BaseModel):
     group_index: Optional[int] = None  # null=整单元, 有值=指定分组
     # 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略 group_index)
     unit_ids: Optional[List[int]] = None
+    # 定时布置:开始日期(YYYY-MM-DD,北京日期),当天0点开放;空/今天/过去=立即开放
+    available_date: Optional[str] = None
+    # 多单元 + 开始日期时:每个单元比前一个顺延一天(一次布置未来一周的任务)
+    daily_sequence: bool = False
 
 
 class HomeworkResponse(BaseModel):
@@ -46,6 +51,7 @@ class HomeworkResponse(BaseModel):
     min_completion_time: Optional[int]
     max_attempts: int
     deadline: Optional[str]
+    available_from: Optional[str]
     created_at: str
     total_assigned: int
     completed_count: int
@@ -155,12 +161,31 @@ async def create_homework(
         except:
             raise HTTPException(status_code=400, detail="截止时间格式错误")
 
+    # 解析定时布置日期:北京日期 → 当天0点的 UTC naive(与 DB 时间口径一致)。
+    # 今天/过去的日期视为立即开放(available_from=None),只有未来日期才定时。
+    open_times: list = [None] * len(unit_targets)
+    if request.available_date:
+        try:
+            base_date = datetime.strptime(request.available_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="开始日期格式错误,应为 YYYY-MM-DD")
+        if base_date > local_today() + timedelta(days=60):
+            raise HTTPException(status_code=400, detail="开始日期最多提前 60 天")
+        for i in range(len(unit_targets)):
+            d = base_date + timedelta(days=i) if (request.daily_sequence and multi) else base_date
+            open_at, _ = local_day_utc_range(d)
+            open_times[i] = open_at if open_at > utc_now() else None
+        # 截止时间必须晚于最后一个单元的开放时间,否则那份作业一开放就已过期
+        last_open = max((t for t in open_times if t), default=None)
+        if deadline and last_open and deadline <= last_open:
+            raise HTTPException(status_code=400, detail="截止时间早于作业开始时间,请调整")
+
     # 逐单元创建作业(多选时标题带单元名区分,各自独立追踪完成情况)
     homework_ids = []
     assigned_count = 0
     skipped_count = 0
 
-    for uid in unit_targets:
+    for idx, uid in enumerate(unit_targets):
         unit, _book = unit_map[uid]
         homework = HomeworkAssignment(
             title=f"{request.title} · {unit.name}" if multi else request.title,
@@ -173,6 +198,7 @@ async def create_homework(
             max_attempts=request.max_attempts,
             deadline=deadline,
             group_index=group_index,
+            available_from=open_times[idx],
         )
         db.add(homework)
         await db.flush()  # 获取homework.id
@@ -180,18 +206,27 @@ async def create_homework(
 
         for student_id in request.student_ids:
             # 新建的 homework 不会有旧分配,直接创建即可(homework_id 唯一约束兜底)
+            # 定时作业把 assigned_at 对齐到开放时间:金币"当天布置且全部完成"、
+            # 学生端排序等按开放日计,而不是老师点创建的那天
             student_assignment = HomeworkStudentAssignment(
                 homework_id=homework.id,
                 student_id=student_id,
-                status='pending'
+                status='pending',
+                **({"assigned_at": open_times[idx]} if open_times[idx] else {}),
             )
             db.add(student_assignment)
             assigned_count += 1
 
     await db.commit()
 
+    scheduled = sum(1 for t in open_times if t)
+    if scheduled:
+        msg = f"作业创建成功({len(homework_ids)} 份,其中 {scheduled} 份定时开放)" if multi \
+            else "作业创建成功(将于开始日期当天开放)"
+    else:
+        msg = f"作业创建成功({len(homework_ids)} 份)" if multi else "作业创建成功"
     return {
-        "message": f"作业创建成功({len(homework_ids)} 份)" if multi else "作业创建成功",
+        "message": msg,
         "homework_id": homework_ids[0],
         "homework_ids": homework_ids,
         "assigned_count": assigned_count,
@@ -256,6 +291,10 @@ async def get_teacher_homework(
             min_completion_time=homework.min_completion_time,
             max_attempts=homework.max_attempts,
             deadline=homework.deadline.isoformat() if homework.deadline else None,
+            # 返回北京日历日(YYYY-MM-DD)而非原始UTC时刻:UTC 存的是北京0点=前一天16:00,
+            # 原样给前端 new Date() 会显示成前一天
+            available_from=(homework.available_from + timedelta(hours=8)).date().isoformat()
+            if homework.available_from else None,
             created_at=homework.created_at.isoformat(),
             total_assigned=stats.total or 0,
             completed_count=stats.completed or 0,

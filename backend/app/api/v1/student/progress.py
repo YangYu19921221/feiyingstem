@@ -634,12 +634,18 @@ async def get_student_books(
     # 1.5 老师布置了作业 → 默认开书:作业单元所在的书也算「已拥有」,
     # 否则只发作业没分配单词本时,学生书架上这本书是锁的,进不去做作业。
     # (get_allowed_unit_ids 已把作业单元并入白名单,这里补书级入口)
+    # 定时布置未开放的作业不开书:与单元白名单同口径,到开放日自动解锁
     from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
+    from sqlalchemy import or_
     hw_books_result = await db.execute(
         select(Unit.book_id)
         .join(HomeworkAssignment, HomeworkAssignment.unit_id == Unit.id)
         .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
         .where(HomeworkStudentAssignment.student_id == user_id)
+        .where(or_(
+            HomeworkAssignment.available_from.is_(None),
+            HomeworkAssignment.available_from <= datetime.utcnow(),
+        ))
         .distinct()
     )
     owned_book_ids |= set(row for row in hw_books_result.scalars())

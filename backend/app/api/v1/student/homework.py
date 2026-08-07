@@ -100,6 +100,11 @@ async def get_my_homework(
         .where(HomeworkStudentAssignment.student_id == current_user.id)
         # 已关闭的作业学生端不显示(老师发错/提前结束,做题记录保留在教师端)
         .where(HomeworkAssignment.is_closed.is_(False))
+        # 定时布置且未到开放时间的作业不显示(到点自动出现)
+        .where(or_(
+            HomeworkAssignment.available_from.is_(None),
+            HomeworkAssignment.available_from <= datetime.utcnow(),
+        ))
     )
 
     # 状态过滤
@@ -178,6 +183,10 @@ async def start_homework(
     if getattr(homework, 'is_closed', False):
         raise HTTPException(status_code=400, detail="这份作业已被老师关闭")
 
+    # 定时布置,还没到开放时间
+    if homework.available_from and datetime.utcnow() < homework.available_from:
+        raise HTTPException(status_code=400, detail="这份作业还没开始,到开始日期当天才能做")
+
     # 检查是否超过最大尝试次数
     if assignment.attempts_count >= homework.max_attempts:
         raise HTTPException(status_code=400, detail="已达到最大尝试次数")
@@ -234,6 +243,10 @@ async def submit_homework_attempt(
     # 作业已被老师关闭:不再接受交卷(已有记录保留)
     if getattr(homework, 'is_closed', False):
         raise HTTPException(status_code=400, detail="这份作业已被老师关闭")
+
+    # 定时布置,还没到开放时间(正常入口进不来,防直接调接口)
+    if homework.available_from and datetime.utcnow() < homework.available_from:
+        raise HTTPException(status_code=400, detail="这份作业还没开始")
 
     # 幂等去重:响应丢失后前端重发同一 client_batch_id,直接返回当前状态,
     # 不再新增尝试记录(否则一次成绩烧掉两次机会)。
@@ -292,6 +305,12 @@ async def submit_homework_attempt(
                 HomeworkAssignment.group_index.is_(None) if homework.group_index is None
                 else HomeworkAssignment.group_index == homework.group_index,
                 HomeworkAssignment.is_closed.is_(False),
+                # 定时布置还没开放的同内容作业不连带完成:那是老师特意排到后面日子的任务,
+                # 到期学生该重新做一遍,不能今天一次达标把下周的也划掉
+                or_(
+                    HomeworkAssignment.available_from.is_(None),
+                    HomeworkAssignment.available_from <= datetime.utcnow(),
+                ),
             ))
         )).all()
         for dup_sa, dup_hw in dup_rows:
