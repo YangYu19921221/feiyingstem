@@ -22,12 +22,12 @@ import { getGroupSize, splitIntoGroups } from '../utils/groupSize';
 
 type Template = 'blank' | 'cn';
 
-/** 英语四线三格(标准版):四条实线、三格等高,与市售英语默写本一致 */
+/** 英语四线三格:上下实线、中间两线虚线(2026-08-07 用户定稿样式) */
 const FourLineGrid = () => (
   <div className="relative h-12 flex-1 min-w-0">
     <div className="absolute inset-x-0 top-0 border-t border-slate-400" />
-    <div className="absolute inset-x-0 top-1/3 border-t border-slate-400" />
-    <div className="absolute inset-x-0 top-2/3 border-t border-slate-400" />
+    <div className="absolute inset-x-0 top-1/3 border-t border-dashed border-slate-400" />
+    <div className="absolute inset-x-0 top-2/3 border-t border-dashed border-slate-400" />
     <div className="absolute inset-x-0 bottom-0 border-t border-slate-400" />
   </div>
 );
