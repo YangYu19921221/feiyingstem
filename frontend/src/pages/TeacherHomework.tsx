@@ -246,7 +246,7 @@ const TeacherHomework: React.FC = () => {
         available_date: formData.available_date || undefined,
         daily_sequence: multi ? formData.daily_sequence : false,
       });
-      // 后端 message 会说明定时开放情况(如"其中 N 份定时开放")
+      // 后端 message 会区分普通作业/当日任务(按日期开放,只能当天完成)
       toast.success(result.message || (multi ? `已创建 ${result.homework_ids?.length ?? unitIds.length} 份作业!` : '作业创建成功!'));
       setShowCreateModal(false);
       resetForm();

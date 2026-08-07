@@ -20,7 +20,8 @@ export interface CreateHomeworkRequest {
   deadline?: string;
   // 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略 group_index)
   unit_ids?: number[];
-  // 定时布置:开始日期(YYYY-MM-DD),当天0点开放;空/今天=立即开放
+  // 当日任务:开始日期(YYYY-MM-DD),当天0点开放、当天24点截止,只能当天完成;
+  // 空=普通作业(立即布置,可自设截止时间)。设了日期后 deadline 会被后端忽略
   available_date?: string;
   // 多单元 + 开始日期时:每个单元比前一个顺延一天(一次布置未来一周)
   daily_sequence?: boolean;
@@ -38,7 +39,7 @@ export interface HomeworkResponse {
   min_completion_time?: number;
   max_attempts: number;
   deadline?: string;
-  /** 定时布置的开始日期(YYYY-MM-DD,北京日);空=立即开放 */
+  /** 当日任务的开放日期(YYYY-MM-DD,北京日,当天24点截止);空=普通作业 */
   available_from?: string;
   created_at: string;
   total_assigned: number;
