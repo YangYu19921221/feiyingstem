@@ -5,11 +5,13 @@ import {
   generateCodes,
   listCodes,
   disableCode,
+  deleteCode,
 } from '../api/subscription';
 import { getTeacherWordBooks } from '../api/teacher';
-import { Ban, Check, Clock3, Ticket } from 'lucide-react';
+import { Ban, Check, Clock3, Search, Ticket, Trash2, X } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface Stats {
   total_codes: number;
@@ -50,6 +52,9 @@ const AdminSubscriptions = () => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState('');
+  // 搜索:输入框即时回显 search,防抖后的 debouncedSearch 才触发请求
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [genCount, setGenCount] = useState(10);
   const [genBookId, setGenBookId] = useState<number>(0);
   const [genNote, setGenNote] = useState('');
@@ -81,11 +86,21 @@ const AdminSubscriptions = () => {
     try {
       const params: any = { page, page_size: 20 };
       if (filterStatus) params.status = filterStatus;
+      if (debouncedSearch) params.search = debouncedSearch;
       const res: any = await listCodes(params);
       setCodes(res.codes);
       setTotal(res.total);
     } catch { toast.error('兑换码列表加载失败，请刷新重试'); }
-  }, [page, filterStatus]);
+  }, [page, filterStatus, debouncedSearch]);
+
+  // 输入防抖 300ms,别每敲一个字符打一次接口
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // 换关键词/换筛选后回到第 1 页,否则停在第 3 页会显示空列表让人以为没搜到
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus]);
 
   useEffect(() => { fetchBooks(); fetchStats(); }, [fetchBooks, fetchStats]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
@@ -115,6 +130,17 @@ const AdminSubscriptions = () => {
       fetchCodes();
       fetchStats();
     } catch { toast.error('禁用兑换码失败，请重试'); }
+  };
+
+  const handleDelete = async (item: CodeItem) => {
+    // 删除不可恢复,确认文案里带上码本身,避免点错行删掉别的码
+    if (!confirm(`确定删除兑换码 ${item.code} 吗？\n\n删除后该码从列表彻底消失，不可恢复。\n如果只是想让它失效并留个记录，请用「禁用」。`)) return;
+    try {
+      await deleteCode(item.id);
+      toast.success('兑换码已删除');
+      fetchCodes();
+      fetchStats();
+    } catch (error) { toast.error(getErrorMessage(error, '删除兑换码失败，请重试')); }
   };
 
   const copyAllCodes = async () => {
@@ -267,6 +293,27 @@ const AdminSubscriptions = () => {
               >
                 导出CSV
               </button>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="搜兑换码或批次备注"
+                  aria-label="搜索兑换码或批次备注"
+                  className="w-52 rounded-lg border border-slate-300 py-1.5 pl-8 pr-8 text-sm focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/15"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    aria-label="清空搜索"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <select
                 value={filterStatus}
                 onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
@@ -281,13 +328,19 @@ const AdminSubscriptions = () => {
             </div>
           </div>
 
+          {debouncedSearch && (
+            <p className="mb-3 text-xs text-slate-500">
+              搜索「{debouncedSearch}」匹配 {total} 个兑换码
+            </p>
+          )}
+
           <div className="overflow-x-auto">
             <div className="sm:hidden space-y-2 pb-3">
               {codes.length === 0 ? <div className="py-8 text-center text-sm text-slate-400">暂无兑换码</div> : codes.map((c) => (
                 <article key={c.id} className="rounded-lg border border-slate-200 p-3">
                   <div className="flex items-center justify-between gap-3"><code className="font-mono text-xs font-semibold text-slate-800">{c.code}</code><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_MAP[c.status]?.color || ''}`}>{STATUS_MAP[c.status]?.label || c.status}</span></div>
                   <div className="mt-2 text-xs text-slate-500">{getBookName(c.book_id, c.book_name)} · 创建于 {new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
-                  <div className="mt-3 flex gap-3 border-t border-slate-100 pt-2 text-xs font-semibold"><button onClick={() => copySingleCode(c.code, c.id)} className="text-[#3976a9]">{copiedId === c.id ? '已复制' : '复制'}</button>{c.status === 'unused' && <button onClick={() => handleDisable(c.id)} className="text-red-600">禁用</button>}</div>
+                  <div className="mt-3 flex gap-3 border-t border-slate-100 pt-2 text-xs font-semibold"><button onClick={() => copySingleCode(c.code, c.id)} className="text-[#3976a9]">{copiedId === c.id ? '已复制' : '复制'}</button>{c.status === 'unused' && <button onClick={() => handleDisable(c.id)} className="text-orange-600">禁用</button>}{c.status !== 'used' && <button onClick={() => handleDelete(c)} className="text-red-600">删除</button>}</div>
                 </article>
               ))}
             </div>
@@ -334,9 +387,21 @@ const AdminSubscriptions = () => {
                         {c.status === 'unused' && (
                           <button
                             onClick={() => handleDisable(c.id)}
-                            className="text-red-500 hover:text-red-700 text-xs"
+                            className="text-orange-600 hover:text-orange-700 text-xs"
+                            title="禁用后码失效但仍留在列表里"
                           >
                             禁用
+                          </button>
+                        )}
+                        {/* 已使用的码不给删按钮:它是学生兑换记录的凭证(后端也会拒) */}
+                        {c.status !== 'used' && (
+                          <button
+                            onClick={() => handleDelete(c)}
+                            className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                            title="彻底删除,不可恢复"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            删除
                           </button>
                         )}
                       </div>

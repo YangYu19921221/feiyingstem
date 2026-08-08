@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -88,12 +88,13 @@ async def generate_codes(
 @router.get("/codes", response_model=RedemptionCodeListResponse)
 async def list_codes(
     status: Optional[str] = Query(None, description="按状态筛选"),
+    search: Optional[str] = Query(None, description="搜索兑换码或批次备注"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """兑换码列表（分页+筛选;机构管理员只见本机构发的码）"""
+    """兑换码列表（分页+筛选+搜索;机构管理员只见本机构发的码）"""
     query = select(RedemptionCode)
     count_query = select(func.count(RedemptionCode.id))
 
@@ -105,6 +106,20 @@ async def list_codes(
     if status:
         query = query.where(RedemptionCode.status == status)
         count_query = count_query.where(RedemptionCode.status == status)
+
+    if search and search.strip():
+        # 码是 XXXX-XXXX-XXXX-XXXX,老师手里常是抄下来的片段,所以按片段模糊匹配;
+        # 顺带搜批次备注,便于按"某某班春季"整批捞出来。
+        # LIKE 的 _ 和 % 是通配符,必须转义——否则搜 "_" 会命中全部
+        # (曾用 like('__t_%') 误删过两个真实学生账号)
+        kw = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{kw}%"
+        cond = or_(
+            RedemptionCode.code.ilike(pattern, escape="\\"),
+            RedemptionCode.batch_note.ilike(pattern, escape="\\"),
+        )
+        query = query.where(cond)
+        count_query = count_query.where(cond)
 
     query = query.order_by(RedemptionCode.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -214,3 +229,41 @@ async def disable_code(
     code.status = RedemptionCodeStatus.DISABLED
     await db.commit()
     return {"message": "兑换码已禁用"}
+
+
+@router.delete("/codes/{code_id}")
+async def delete_code(
+    code_id: int,
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除兑换码(彻底删行,不可恢复)。
+
+    与"禁用"的区别:禁用留痕、码还在列表里;删除是清理生成错的批次,列表里不再出现。
+    **已使用的码一律不许删**——它是学生兑换过某本书的凭证,删了就查不到这本书是怎么来的,
+    出纠纷时无据可依。要停用已使用的码没有意义(书已发出),只能走禁用。
+    """
+    result = await db.execute(
+        select(RedemptionCode).where(RedemptionCode.id == code_id)
+    )
+    code = result.scalar_one_or_none()
+    if not code:
+        raise HTTPException(status_code=404, detail="兑换码不存在")
+
+    # 机构管理员只能操作本机构发的码(按不存在处理,不泄露别家数据)
+    if current_user.role == "org_admin":
+        creator_org = (await db.execute(
+            select(User.org_id).where(User.id == code.created_by)
+        )).scalar()
+        if creator_org != current_user.org_id:
+            raise HTTPException(status_code=404, detail="兑换码不存在")
+
+    if code.status == RedemptionCodeStatus.USED:
+        raise HTTPException(
+            status_code=400,
+            detail="已使用的兑换码不能删除(需保留兑换记录),如需停用请改为禁用",
+        )
+
+    await db.delete(code)
+    await db.commit()
+    return {"message": "兑换码已删除"}
