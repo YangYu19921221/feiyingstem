@@ -214,20 +214,25 @@ export default function PetHealingPage() {
             <span className="text-sm font-bold text-green-600">已恢复 {healedTotal} HP</span>
           </div>
 
+          {/* HP/进度一律直接用后端值:每次答题后 invalidateQueries 会重新拉到
+              **已经包含本次回血**的 current_hp/hp_percent/questions_needed。
+              再叠加 healedTotal 就翻倍了(实测 max_hp=100、每题+10、初始30:
+              答对1题真实40却显示50,答对3题真实60显示90)。
+              上限截断和 80% 解除受伤都在后端算好,前端别自己推。 */}
           <div className="relative h-6 bg-gray-200 rounded-full overflow-hidden mb-2">
             <motion.div
               className="absolute inset-y-0 left-0 bg-emerald-500"
               initial={{ width: `${healingStatus.hp_percent}%` }}
-              animate={{ width: `${Math.min(100, healingStatus.hp_percent + (healedTotal / healingStatus.max_hp) * 100)}%` }}
+              animate={{ width: `${Math.min(100, healingStatus.hp_percent)}%` }}
               transition={{ duration: 0.5 }}
             />
             <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white drop-shadow">
-              {healingStatus.current_hp + healedTotal} / {healingStatus.max_hp}
+              {healingStatus.current_hp} / {healingStatus.max_hp}
             </div>
           </div>
 
           <div className="text-center text-sm text-gray-600">
-            还需答对约 {Math.max(0, healingStatus.questions_needed - Math.floor(healedTotal / healingStatus.heal_per_question))} 题恢复健康
+            还需答对约 {Math.max(0, healingStatus.questions_needed)} 题恢复健康
           </div>
         </div>
 

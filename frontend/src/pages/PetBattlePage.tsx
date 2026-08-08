@@ -11,7 +11,15 @@ import {
   QuestionData,
   RoundResult,
 } from '../api/petBattle';
-import { getPetBackImage, getPetDefinition, getPetImage, hasPetBackImage } from '../config/petSpecies';
+import {
+  EFFECT_STAGGER,
+  FX_DURATION_NORMAL,
+  FX_DURATION_ULTIMATE,
+  getPetBackImage,
+  getPetDefinition,
+  getPetImage,
+  hasPetBackImage,
+} from '../config/petSpecies';
 // three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
 const BattleScene3D = lazy(() => import('../components/BattleScene3D'));
 import {
@@ -315,12 +323,14 @@ export default function PetBattlePage() {
 
       setBattleEffects(effects);
       if (effectTimerRef.current) window.clearTimeout(effectTimerRef.current);
-      // 大招演出(cut-in→骨架→命中)时间轴更长,给足播放时间再清场
-      const hasUltimate = effects.some((item) => item.ultimate);
-      effectTimerRef.current = window.setTimeout(
-        () => setBattleEffects([]),
-        hasUltimate ? 3800 : 2600,
-      );
+      // 特效一条一条依次播(BattleScene3D 里按 index * EFFECT_STAGGER 错开),
+      // 清场时间 = 最后一条的起播时刻 + 它自己的时长,否则最后一记打不完就被清掉。
+      // 时长常量与时间轴同源放在 config/petSpecies,别在这里写魔数。
+      const lastIsUltimate = !!effects[effects.length - 1]?.ultimate;
+      const lastStart = Math.max(0, effects.length - 1) * EFFECT_STAGGER;
+      const clearAfterMs =
+        (lastStart + (lastIsUltimate ? FX_DURATION_ULTIMATE : FX_DURATION_NORMAL)) * 1000;
+      effectTimerRef.current = window.setTimeout(() => setBattleEffects([]), clearAfterMs);
     });
 
     ws.on('pet_switched', (data) => {

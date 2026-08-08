@@ -68,7 +68,8 @@ async def heal_pet(
     """
     通过答对单词题来治疗宠物
 
-    每答对1题恢复5 HP
+    每答对 1 题恢复最大 HP 的 10%(见 heal_amount_for);恢复到 80% 解除受伤。
+    返回的 current_hp/hp_percent 已包含本次回血,前端直接用,不要再叠加增量。
     """
     result = await db.execute(
         select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))

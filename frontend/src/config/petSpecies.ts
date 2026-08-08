@@ -1,3 +1,21 @@
+/** 一回合内多条战斗特效的错开间隔(秒)。
+ *
+ *  一回合最多 4 条(双方攻击 + 双方答错反击)。过去全部同时播,糊成一团闪一下,
+ *  孩子看不清谁打了谁,所以按顺序一记一记打出来。
+ *  放在这里(纯数据模块)而不是 BattleScene3D:后者会把 three.js 拖进主包,
+ *  PetBattlePage 只为拿个常量就 import 会毁掉 lazy 分包。
+ *  BattleScene3D 用它错开挂载,PetBattlePage 用它算清场时间,两边必须同源。 */
+//  为什么是 1.3 而不是更大:最坏情况(4 条特效、末条是大招)总长 = 3*1.3 + 3.6 = 7.5s,
+//  必须小于服务端回合间隔 8s(pet_battle_ws.py 的 asyncio.sleep(8)),
+//  否则最后一记会被下一题的 new_round 清空、孩子看不到自己的大招。
+export const EFFECT_STAGGER = 1.3;
+
+/** 单条特效从挂载到演完的时长(秒),用于算清场时间。
+ *  大招 = cut-in(1.7) + 命中(2.55) + 冲击波余韵(约0.9);普攻约 1.7。
+ *  改 BattleScene3D 顶部那三个时间轴常量时,这里要跟着调,否则最后一记会被掐断。 */
+export const FX_DURATION_ULTIMATE = 3.6;
+export const FX_DURATION_NORMAL = 2.0;
+
 export type PetElement =
   | 'normal' | 'fire' | 'water' | 'grass' | 'electric' | 'ice'
   | 'fighting' | 'poison' | 'ground' | 'flying' | 'psychic' | 'bug'

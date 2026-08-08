@@ -1,9 +1,10 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { useRef, useState, useEffect, useMemo, Suspense, type CSSProperties } from 'react';
+import { useRef, useState, useEffect, useMemo, Suspense, type CSSProperties, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  EFFECT_STAGGER,
   getPetDefinition,
   getSkillVfxRecipe,
   PARTICLE_IMAGE,
@@ -28,10 +29,15 @@ type BattleVisualEffect = {
 // ==============================
 // 大招演出时间轴(秒)——cut-in → 骨架特效 → 命中
 // 伤害数字/白闪/震屏都对齐 IMPACT_AT,改节奏只动这里
+// 2026-08-08 整体放慢约 45%:原来 0.85/0.8/1.35 一回合演完孩子看不清谁打了谁
 // ==============================
-const CUTIN_DURATION = 0.85;
-const SKELETON_AT = 0.8;
-const IMPACT_AT = 1.35;
+// 大招要"炫":cut-in 停久一点看清宠物 → 蓄力 → 命中。总长约 2.9s
+const CUTIN_DURATION = 1.7;
+const SKELETON_AT = 1.6;
+const IMPACT_AT = 2.55;
+
+// 特效错开间隔 EFFECT_STAGGER 定义在 config/petSpecies(与 PetBattlePage 的清场
+// 定时器同源;改那一处即可,别在这里再定义一份)
 
 const ELEMENT_VFX: Record<PetElement, { color: string; mode: 'strike' | 'burst' | 'projectile' }> = {
   normal: { color: '#f9a8d4', mode: 'burst' },
@@ -729,9 +735,27 @@ function CutIn({ effect, recipe }: { effect: BattleVisualEffect; recipe: SkillVf
           attackerLeft ? 'left-[4%]' : 'right-[4%]'
         }`}
         style={{ filter: `drop-shadow(0 0 28px ${recipe.color}) drop-shadow(0 6px 14px rgba(0,0,0,0.5))` }}
+        // 冲进来 → 顿一下(0.28~0.62 停住让孩子看清是谁) → 逼近镜头蓄力 → 退场
         initial={{ opacity: 0, scale: 0.7, x: attackerLeft ? -90 : 90 }}
-        animate={{ opacity: [0, 1, 1, 0], scale: [0.7, 1.06, 1, 0.96], x: [attackerLeft ? -90 : 90, 0, 0, attackerLeft ? -30 : 30] }}
-        transition={{ duration: CUTIN_DURATION + 0.15, times: [0, 0.25, 0.8, 1], ease: [0.16, 1, 0.3, 1] }}
+        animate={{
+          opacity: [0, 1, 1, 1, 0],
+          scale: [0.7, 1.08, 1.02, 1.16, 1.0],
+          x: [attackerLeft ? -90 : 90, 0, 0, attackerLeft ? 10 : -10, attackerLeft ? -30 : 30],
+          rotate: [attackerLeft ? -6 : 6, 0, 0, attackerLeft ? 2 : -2, 0],
+        }}
+        transition={{ duration: CUTIN_DURATION + 0.15, times: [0, 0.22, 0.62, 0.85, 1], ease: [0.16, 1, 0.3, 1] }}
+      />
+
+      {/* 蓄力光环:cut-in 后半段从宠物身上涨起来,把"要放大招了"讲明白 */}
+      <motion.div
+        className="pointer-events-none absolute bottom-[10%] z-[10] h-[46%] w-[46%] rounded-full blur-2xl"
+        style={{
+          background: `radial-gradient(circle, ${recipe.color} 0%, transparent 70%)`,
+          [attackerLeft ? 'left' : 'right']: '2%',
+        }}
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: [0, 0.5, 0.85, 0], scale: [0.5, 1.05, 1.5, 1.8] }}
+        transition={{ delay: CUTIN_DURATION * 0.45, duration: CUTIN_DURATION * 0.72, ease: 'easeOut' }}
       />
       <div className="pointer-events-none absolute inset-x-0 top-[34%] z-[12]" style={{ transform: 'rotate(-5deg)' }}>
         <motion.div
@@ -757,6 +781,22 @@ function CutIn({ effect, recipe }: { effect: BattleVisualEffect; recipe: SkillVf
   );
 }
 
+/** 延迟挂载:等 delaySec 后才渲染 children。
+ *
+ *  用它而不是给每个子动画的 delay 加偏移——一条大招演出里有近二十处写死的 delay
+ *  (骨架/粒子/白闪/震屏/伤害数字),逐个加偏移极易漏一处导致特效错位。
+ *  推迟整棵子树的挂载时刻,等价于整条时间轴平移,且只有一处逻辑。 */
+function DelayedMount({ delaySec, children }: { delaySec: number; children: ReactNode }) {
+  const [ready, setReady] = useState(delaySec <= 0);
+  useEffect(() => {
+    if (delaySec <= 0) return;
+    setReady(false);
+    const timer = window.setTimeout(() => setReady(true), delaySec * 1000);
+    return () => window.clearTimeout(timer);
+  }, [delaySec]);
+  return ready ? <>{children}</> : null;
+}
+
 function UltimateOverlay({ effect }: { effect: BattleVisualEffect }) {
   if (!effect.ultimate) return null;
 
@@ -777,8 +817,32 @@ function UltimateOverlay({ effect }: { effect: BattleVisualEffect }) {
       <motion.div
         className="pointer-events-none absolute inset-0 z-[9] bg-white mix-blend-screen"
         initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 0.9, 0] }}
-        transition={{ delay: IMPACT_AT, duration: 0.26, times: [0, 0.25, 1] }}
+        animate={{ opacity: [0, 1, 0.35, 0] }}
+        transition={{ delay: IMPACT_AT, duration: 0.42, times: [0, 0.12, 0.4, 1] }}
+      />
+
+      {/* 命中冲击波:一圈快速扩散的光环,替代"只有白闪"的单薄感 */}
+      <motion.div
+        className="pointer-events-none absolute left-1/2 top-1/2 z-[10] rounded-full"
+        style={{
+          width: '18%',
+          aspectRatio: '1',
+          marginLeft: '-9%',
+          marginTop: '-9%',
+          border: `4px solid ${recipe.color}`,
+          boxShadow: `0 0 30px ${recipe.color}, inset 0 0 24px ${recipe.color}`,
+        }}
+        initial={{ opacity: 0, scale: 0.2 }}
+        animate={{ opacity: [0, 0.95, 0], scale: [0.2, 2.6, 4.2] }}
+        transition={{ delay: IMPACT_AT, duration: 0.72, ease: 'easeOut' }}
+      />
+
+      {/* 命中后短暂暗场:让伤害数字在暗底上跳出来,收尾更有重量 */}
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-[8] bg-slate-950"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.42, 0] }}
+        transition={{ delay: IMPACT_AT + 0.08, duration: 0.85, times: [0, 0.2, 1] }}
       />
     </>
   );
@@ -940,11 +1004,15 @@ export default function BattleScene3D({
   effects: BattleVisualEffect[];
 }) {
   const hitPlayers = new Set(effects.map((effect) => effect.target));
-  const ultimateEffect = effects.find((effect) => effect.ultimate);
+  const ultimateIndex = effects.findIndex((effect) => effect.ultimate);
+  const ultimateEffect = ultimateIndex >= 0 ? effects[ultimateIndex] : undefined;
   const shakeLevel = ultimateEffect
     ? getSkillVfxRecipe(ultimateEffect.ultimate!.species).shake || 'medium'
     : null;
   const shakeAmp = shakeLevel === 'heavy' ? 13 : shakeLevel === 'light' ? 4 : 8;
+  // 震屏在特效数组外只播一次,必须跟着大招那条的错开量一起延后,
+  // 否则大招排第二时会"先抖屏、1 秒后才看到大招命中"
+  const shakeDelay = IMPACT_AT + Math.max(0, ultimateIndex) * EFFECT_STAGGER;
 
   return (
     <div className="relative h-[clamp(260px,72vw,460px)] w-full overflow-hidden rounded-xl border-2 border-white/60 shadow-lg sm:h-[360px] sm:rounded-2xl sm:border-4 lg:h-[460px] lg:rounded-3xl lg:shadow-2xl">
@@ -962,7 +1030,7 @@ export default function BattleScene3D({
         }
         transition={
           ultimateEffect
-            ? { delay: IMPACT_AT, duration: 0.42, ease: 'easeOut' }
+            ? { delay: shakeDelay, duration: 0.42, ease: 'easeOut' }
             : { duration: 0 }
         }
       >
@@ -1013,22 +1081,27 @@ export default function BattleScene3D({
       <PetHud name={myPetName} hp={myHp} maxHp={myMaxHp} side="left" />
       <PetHud name={opponentPetName} hp={opponentHp} maxHp={opponentMaxHp} side="right" />
 
+      {/* 一条一条依次播:第 N 条整体延后 N * EFFECT_STAGGER 秒挂载 */}
       <AnimatePresence>
-        {effects.map((effect) => (
-          <UltimateOverlay key={`skill-${effect.id}`} effect={effect} />
+        {effects.map((effect, index) => (
+          <DelayedMount key={`skill-${effect.id}`} delaySec={index * EFFECT_STAGGER}>
+            <UltimateOverlay effect={effect} />
+          </DelayedMount>
         ))}
       </AnimatePresence>
 
       <AnimatePresence>
-        {effects.map((effect) => (
-          <NormalAttackEffectOverlay key={`normal-${effect.id}`} effect={effect} />
+        {effects.map((effect, index) => (
+          <DelayedMount key={`normal-${effect.id}`} delaySec={index * EFFECT_STAGGER}>
+            <NormalAttackEffectOverlay effect={effect} />
+          </DelayedMount>
         ))}
       </AnimatePresence>
 
       <AnimatePresence>
-        {effects.map((effect) => (
+        {effects.map((effect, index) => (
+          <DelayedMount key={`damage-${effect.id}`} delaySec={index * EFFECT_STAGGER}>
           <motion.div
-            key={`damage-${effect.id}`}
             className={`absolute pointer-events-none z-10 ${
               effect.target === 1 ? 'left-[22%] bottom-[34%]' : 'right-[22%] top-[24%]'
             }`}
@@ -1055,6 +1128,7 @@ export default function BattleScene3D({
               </div>
             )}
           </motion.div>
+          </DelayedMount>
         ))}
       </AnimatePresence>
       </motion.div>
