@@ -78,6 +78,12 @@ export const getTeacherAssignments = async (): Promise<BookAssignmentResponse[]>
   return response.data;
 };
 
+/** 某学生已开通的全部书本(不限分配教师,查"他能学什么"的全量口径) */
+export const getStudentAssignments = async (studentId: number): Promise<BookAssignmentResponse[]> => {
+  const response = await axios.get(`${API_BASE_URL}/teacher/students/${studentId}/assignments`);
+  return response.data;
+};
+
 export const getAssignmentStats = async (): Promise<AssignmentStatsResponse[]> => {
   const response = await axios.get(`${API_BASE_URL}/teacher/stats`);
   return response.data;

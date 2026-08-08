@@ -8,6 +8,7 @@ import { toast } from '../components/Toast';
 import api from '../api/client';
 import { analyzeStudentMistakes, generatePersonalizedExam, getStudentWeeklyReport, regenerateStudentWeeklyReport, type WeeklyReport } from '../api/teacher';
 import { getStudentWordTrends } from '../api/analytics';
+import { getStudentAssignments, type BookAssignmentResponse } from '../api/assignments';
 import WordTrendChart from '../components/WordTrendChart';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import type { StudentMistakeAnalysis } from '../types/exam';
@@ -62,10 +63,23 @@ const TeacherStudentDetail = () => {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportRegenerating, setReportRegenerating] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  // 已开通书本(全量口径:含其他老师分配的)
+  const [myBooks, setMyBooks] = useState<BookAssignmentResponse[]>([]);
+  const [booksLoading, setBooksLoading] = useState(true);
+  const [booksError, setBooksError] = useState<string | null>(null);
+  // 用来区分"我分配的"和"其他老师分配的";取不到就当自己的,只影响一行小字
+  const myTeacherId = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || 'null')?.id ?? null;
+    } catch {
+      return null;
+    }
+  })();
 
   useEffect(() => {
     if (studentId) {
       fetchStudentData(parseInt(studentId));
+      fetchStudentBooks(parseInt(studentId));
     }
   }, [studentId]);
 
@@ -117,6 +131,19 @@ const TeacherStudentDetail = () => {
       console.error('获取学生数据失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** 书本单独拉:失败不影响主页面其他区块 */
+  const fetchStudentBooks = async (id: number) => {
+    setBooksLoading(true);
+    setBooksError(null);
+    try {
+      setMyBooks(await getStudentAssignments(id));
+    } catch (error) {
+      setBooksError(getErrorMessage(error, '书本列表加载失败'));
+    } finally {
+      setBooksLoading(false);
     }
   };
 
@@ -403,6 +430,74 @@ const TeacherStudentDetail = () => {
             </div>
           </motion.div>
         )}
+
+        {/* 已开通书本(只读;含其他老师分配的,即学生实际可学范围) */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+        >
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-xl font-bold text-gray-800">
+              <BookOpen className="h-5 w-5 text-orange-500" />
+              已开通书本
+            </h2>
+            <p className="text-xs text-slate-500">
+              {booksLoading ? '加载中…' : `共 ${myBooks.length} 条 · 这就是学生能学的全部范围`}
+            </p>
+          </div>
+
+          {booksLoading ? (
+            <div className="py-6 text-center text-sm text-slate-400">加载中…</div>
+          ) : booksError ? (
+            <div className="py-6 text-center text-sm text-slate-500">{booksError}</div>
+          ) : myBooks.length === 0 ? (
+            <div className="rounded-lg bg-slate-50 py-6 text-center text-sm text-slate-500">
+              还没有分配任何书本，学生登录后看不到可学内容。
+              <button
+                onClick={() => navigate('/teacher/assignments')}
+                className="ml-2 font-semibold text-orange-600 hover:text-orange-700"
+              >
+                去分配 →
+              </button>
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {myBooks.map((a) => (
+                <li key={a.id} className="flex items-center gap-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-slate-800">
+                      {a.book_name}
+                      <span
+                        className={`ml-2 rounded px-1.5 py-0.5 text-xs font-normal ${
+                          a.scope_type === 'book'
+                            ? 'bg-slate-100 text-slate-500'
+                            : 'bg-orange-100 text-orange-700'
+                        }`}
+                      >
+                        {a.scope_type === 'book'
+                          ? '整本'
+                          : a.scope_type === 'unit'
+                            ? a.unit_name || `单元 ${a.unit_number ?? ''}`
+                            : `第 ${(a.group_index ?? 0) + 1} 组`}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {new Date(a.assigned_at).toLocaleDateString('zh-CN')}
+                      {a.deadline && ` · 截止 ${new Date(a.deadline).toLocaleDateString('zh-CN')}`}
+                      {myTeacherId !== null && a.teacher_id !== myTeacherId && (
+                        <span className="ml-2 text-slate-400">· 其他老师分配</span>
+                      )}
+                    </div>
+                  </div>
+                  {a.is_completed
+                    ? <span className="shrink-0 text-xs text-green-600">✅ 已完成</span>
+                    : <span className="shrink-0 text-xs text-yellow-600">⏳ 进行中</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </motion.div>
 
         {/* AI 学情周报 */}
         <WeeklyReportCard

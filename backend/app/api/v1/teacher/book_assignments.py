@@ -377,6 +377,61 @@ async def get_assignment_stats(
     return stats
 
 
+@router.get("/students/{student_id}/assignments", response_model=List[BookAssignmentResponse])
+async def get_student_assignments(
+    student_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """某个学生已开通的全部书本(只读)。
+
+    与 /assignments 的区别: 这里不按 teacher_id 过滤——学生的学习范围是所有老师
+    分配的并集,查"他能学什么"必须看全量,否则换个老师分配的书就查不到。
+    权限只放行本人班上的学生(admin 不限)。
+    """
+    if current_user.role not in ['teacher', 'admin']:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    if current_user.role == 'teacher':
+        my_students = await get_my_class_student_ids(db, current_user.id)
+        if student_id not in my_students:
+            raise HTTPException(status_code=403, detail="无权查看该学生")
+
+    result = await db.execute(
+        select(
+            BookAssignment,
+            User.full_name.label('student_name'),
+            WordBook.name.label('book_name'),
+            Unit,
+        )
+        .join(User, BookAssignment.student_id == User.id)
+        .join(WordBook, BookAssignment.book_id == WordBook.id)
+        .outerjoin(Unit, BookAssignment.unit_id == Unit.id)
+        .where(BookAssignment.student_id == student_id)
+        .order_by(BookAssignment.assigned_at.desc())
+    )
+
+    return [
+        BookAssignmentResponse(
+            id=a.id,
+            book_id=a.book_id,
+            book_name=book_name,
+            student_id=a.student_id,
+            student_name=student_name,
+            teacher_id=a.teacher_id,
+            assigned_at=a.assigned_at.isoformat(),
+            deadline=a.deadline.isoformat() if a.deadline else None,
+            is_completed=a.is_completed,
+            scope_type=a.scope_type,
+            unit_id=a.unit_id,
+            group_index=a.group_index,
+            unit_name=unit.name if unit else None,
+            unit_number=unit.unit_number if unit else None,
+        )
+        for a, student_name, book_name, unit in result.all()
+    ]
+
+
 @router.delete("/assignments/{assignment_id}")
 async def delete_assignment(
     assignment_id: int,

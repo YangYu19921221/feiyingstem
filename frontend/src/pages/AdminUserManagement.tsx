@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import { Users } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import StudentBooksDialog from '../components/admin/StudentBooksDialog';
 import { getErrorMessage } from '../utils/errorMessage';
 
 interface User {
@@ -42,6 +43,8 @@ const AdminUserManagement = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
+  // 「书本」弹窗目标学生(搜用户名后直接查看/管理其已开通书本)
+  const [booksTarget, setBooksTarget] = useState<User | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetting, setResetting] = useState(false);
   // 批量选择(用于清除复习数据):仅对学生生效
@@ -382,7 +385,7 @@ const AdminUserManagement = () => {
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${user.role === 'admin' ? 'bg-red-100 text-red-700' : user.role === 'teacher' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{getRoleName(user.role)}</span>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 text-xs"><span className={user.is_active ? 'text-green-700' : 'text-slate-600'}>{user.is_active ? '活跃' : '禁用'}</span><span className="truncate text-slate-400">{user.last_login ? new Date(user.last_login).toLocaleString('zh-CN') : '从未登录'}</span></div>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold"><button onClick={() => { setEditingUser(user); setShowEditModal(true); }} className="text-blue-600">编辑</button><button onClick={() => handleToggleStatus(user.id)} className="text-orange-600">{user.is_active ? '禁用' : '启用'}</button><button onClick={() => { setResetTarget(user); setResetPassword(''); }} className="text-purple-600">重置密码</button><button onClick={() => handleDeleteUser(user.id)} className="text-red-600">删除</button></div>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold">{user.role === 'student' && <button onClick={() => setBooksTarget(user)} className="text-green-600">📚 书本</button>}<button onClick={() => { setEditingUser(user); setShowEditModal(true); }} className="text-blue-600">编辑</button><button onClick={() => handleToggleStatus(user.id)} className="text-orange-600">{user.is_active ? '禁用' : '启用'}</button><button onClick={() => { setResetTarget(user); setResetPassword(''); }} className="text-purple-600">重置密码</button><button onClick={() => handleDeleteUser(user.id)} className="text-red-600">删除</button></div>
                   </article>
                 ))}
               </div>
@@ -444,6 +447,15 @@ const AdminUserManagement = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-right">
                         <div className="flex justify-end gap-2">
+                          {user.role === 'student' && (
+                            <button
+                              onClick={() => setBooksTarget(user)}
+                              className="text-green-600 hover:text-green-800"
+                              title="查看/管理该学生已开通的书本"
+                            >
+                              书本
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setEditingUser(user);
@@ -666,6 +678,15 @@ const AdminUserManagement = () => {
             </div>
           </form>
         </div>
+      )}
+
+      {booksTarget && (
+        <StudentBooksDialog
+          studentId={booksTarget.id}
+          studentName={booksTarget.full_name || booksTarget.username}
+          open={true}
+          onClose={() => setBooksTarget(null)}
+        />
       )}
     </div>
   );
