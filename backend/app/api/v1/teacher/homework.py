@@ -408,6 +408,27 @@ async def get_student_homework_attempts(
     return attempts
 
 
+async def _settle_coins_for_homework(db: AsyncSession, homework_id: int) -> int:
+    """老师关闭/删除一份任务后,给「剩下的任务已全做完」的学生补发当天金币。
+
+    关闭或取消会让当天的「应完成数」变小 —— 学生做不了的任务不该挡住金币。
+    返回本次新发放的人数。幂等(一天一次),失败不抛(不能因金币挡住关闭/删除)。
+    传 homework_id 而不是 ORM 对象;发放走独立会话,失败不会污染本请求的 session。
+    """
+    from app.services.coin_service import award_task_coins_isolated
+    rows = (await db.execute(
+        select(HomeworkStudentAssignment.student_id, HomeworkStudentAssignment.assigned_at)
+        .where(HomeworkStudentAssignment.homework_id == homework_id)
+    )).all()
+    if not rows:
+        return 0
+    days = {
+        (student_id, (assigned_at + timedelta(hours=8)).date())
+        for student_id, assigned_at in rows if assigned_at
+    }
+    return await award_task_coins_isolated(days)
+
+
 @router.post("/homework/{homework_id}/toggle-closed")
 async def toggle_homework_closed(
     homework_id: int,
@@ -430,8 +451,18 @@ async def toggle_homework_closed(
         raise HTTPException(status_code=404, detail="作业不存在")
     homework.is_closed = not bool(homework.is_closed)
     await db.commit()
-    return {"homework_id": homework_id, "is_closed": homework.is_closed,
-            "message": "作业已关闭(学生做题记录已保留)" if homework.is_closed else "作业已重新开放"}
+    # 先取出响应要用的值:补发金币内部失败会 rollback,之后 ORM 对象过期,
+    # 再读 homework.is_closed 会懒加载 → MissingGreenlet 500(实测过的坑)
+    now_closed = bool(homework.is_closed)
+
+    # 关闭让「应完成数」变小:剩下的任务学生已全部做完时,当天的金币现在就该发。
+    # (取消/关闭的任务不进分母 —— 学生做不了的不能挡住金币)
+    coins = 0
+    if now_closed:
+        coins = await _settle_coins_for_homework(db, homework_id)
+    return {"homework_id": homework_id, "is_closed": now_closed,
+            "coins_awarded": coins,
+            "message": "作业已关闭(学生做题记录已保留)" if now_closed else "作业已重新开放"}
 
 
 @router.delete("/homework/{homework_id}")
@@ -463,6 +494,16 @@ async def delete_homework(
     if not homework:
         raise HTTPException(status_code=404, detail="作业不存在")
 
+    # 删之前先记下受影响的学生与布置日:删完记录就查不到了,
+    # 而「取消部分任务后剩下的做完也给币」正需要这批人重新结算
+    affected = [
+        (sid, assigned_at)
+        for sid, assigned_at in (await db.execute(
+            select(HomeworkStudentAssignment.student_id, HomeworkStudentAssignment.assigned_at)
+            .where(HomeworkStudentAssignment.homework_id == homework_id)
+        )).all()
+    ]
+
     # 手动级联:先删尝试记录,再删学生分配,最后删作业本体
     from sqlalchemy import delete as sa_delete
     assign_ids = (await db.execute(
@@ -478,4 +519,11 @@ async def delete_homework(
     await db.delete(homework)
     await db.commit()
 
-    return {"message": "删除成功"}
+    # 取消让分母变小 → 给剩下任务已全部完成的学生补发当天金币(幂等,独立会话)
+    from app.services.coin_service import award_task_coins_isolated
+    coins = await award_task_coins_isolated({
+        (sid, (assigned_at + timedelta(hours=8)).date())
+        for sid, assigned_at in affected if assigned_at
+    })
+
+    return {"message": "删除成功", "coins_awarded": coins}

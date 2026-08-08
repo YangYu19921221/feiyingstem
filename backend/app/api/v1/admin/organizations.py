@@ -48,6 +48,8 @@ class OrgUpdate(BaseModel):
     expires_at: Optional[datetime] = None
     # 内容授权模式: assigned=逐本分配 | all_books=全托(时间+人数付费,书本全开放)
     access_mode: Optional[str] = Field(None, pattern="^(assigned|all_books)$")
+    # 金币发放: auto=系统自动按规则发(默认) | manual=只能老师核实后手动加
+    coin_mode: Optional[str] = Field(None, pattern="^(auto|manual)$")
     # 显式清空有效期(改回永不过期): expires_at 的 None 语义是"未传不动",
     # 无法表达"传了要清",用独立布尔区分
     clear_expires: Optional[bool] = None
@@ -88,6 +90,7 @@ def _org_out(org: Organization, active_students: int = 0, teacher_count: int = 0
         "contact_name": org.contact_name, "contact_phone": org.contact_phone,
         "status": org.status, "expires_at": org.expires_at, "created_at": org.created_at,
         "access_mode": getattr(org, "access_mode", None) or "assigned",
+        "coin_mode": getattr(org, "coin_mode", None) or "auto",
     }
 
 
@@ -168,7 +171,7 @@ async def update_organization(
         raise HTTPException(400, "直营机构不可停用")
 
     for field in ["name", "plan", "student_quota", "contact_name",
-                  "contact_phone", "status", "expires_at", "access_mode"]:
+                  "contact_phone", "status", "expires_at", "access_mode", "coin_mode"]:
         v = getattr(data, field)
         if v is not None:
             setattr(org, field, v)

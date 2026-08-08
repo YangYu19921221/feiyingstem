@@ -165,6 +165,10 @@ export function usePracticeState({
             toast.success(r.is_passed
               ? `🎉 作业达标!得分 ${r.score}`
               : `作业已提交,得分 ${r.score}(目标未达,还可再试 ${r.remaining_attempts} 次)`);
+            // 这次达标刚好把当天任务全部做完 → 系统已自动发金币
+            if (r.coin_awarded) {
+              setTimeout(() => toast.success('🪙 今天的任务全部完成,金币 +1!'), 900);
+            }
           })
           .catch(err => console.error('提交作业成绩失败:', err));
       }

@@ -176,6 +176,8 @@ export const submitHomeworkAttempt = async (
   best_score: number;
   attempts_count: number;
   remaining_attempts: number;
+  /** 本次达标刚好把当天任务全做完,系统自动发了金币(手动模式恒为 false) */
+  coin_awarded?: boolean;
 }> => {
   return submitReliably(`/student/homework/${assignmentId}/submit`, request);
 };

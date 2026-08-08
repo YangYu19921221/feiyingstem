@@ -430,6 +430,8 @@ async def init_db():
             "ALTER TABLE organizations ADD COLUMN logo_url VARCHAR(500)",
             # 机构内容授权模式: assigned=逐本分配(默认) | all_books=全托(时间+人数付费,书本全开放)
             "ALTER TABLE organizations ADD COLUMN access_mode VARCHAR(20) NOT NULL DEFAULT 'assigned'",
+            # 金币发放模式: auto=系统自动按规则发(默认) | manual=只能老师核实后手动加
+            "ALTER TABLE organizations ADD COLUMN coin_mode VARCHAR(10) NOT NULL DEFAULT 'auto'",
             # 学习效率功能: AI记忆钩子缓存列 + 学生实际输入(拼写诊断数据地基)
             "ALTER TABLE words ADD COLUMN memory_hook TEXT",
             "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",

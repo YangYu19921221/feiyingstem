@@ -8,6 +8,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.timeutil import local_day_utc_range
 from app.models.user import User
 from app.models.coin import StudentCoin, CoinTransaction, CoinReward, CoinRedeemRequest
 from app.api.v1.auth import get_current_student
@@ -25,6 +26,7 @@ class MyTx(BaseModel):
     reason: Optional[str]
     created_at: datetime
     day_tasks_done: Optional[int] = None
+    day_tasks_total: Optional[int] = None
     day_words: Optional[int] = None
     day_units_done: Optional[int] = None
     king_label: Optional[str] = None  # word_king 徽章文案(后端按北京时间算)
@@ -64,6 +66,99 @@ async def word_king_status(
     return {"date": d.isoformat(), "is_word_king": is_king}
 
 
+@router.get("/coins/today")
+async def my_coins_today(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """今天的金币进度(学生端规则卡):任务完成几/几、任务币是否到手、单词王战况。
+
+    口径与发币完全一致(走 coin_service 同一批函数),不在前端另算一套。
+    """
+    from app.core.timeutil import local_today
+    from app.models.coin import CoinTransaction as CT
+    from app.services import coin_service as cs
+
+    d = local_today()
+    key_date = d.strftime("%Y%m%d")
+    total, done = (await cs.task_progress_on_day(db, [current_user.id], d)).get(
+        current_user.id, (0, 0))
+    got_task = (await db.execute(
+        select(CT.id).where(CT.dedup_key == f"task:{current_user.id}:{key_date}").limit(1)
+    )).scalar_one_or_none() is not None
+    got_king = (await db.execute(
+        select(CT.id).where(CT.dedup_key == f"word_king:{current_user.id}:{key_date}").limit(1)
+    )).scalar_one_or_none() is not None
+    earned_today = (await db.execute(
+        select(func.coalesce(func.sum(CT.amount), 0)).where(and_(
+            CT.user_id == current_user.id,
+            CT.amount > 0,
+            CT.created_at >= local_day_utc_range(d)[0],
+            CT.created_at < local_day_utc_range(d)[1],
+        ))
+    )).scalar() or 0
+
+    return {
+        "date": d.isoformat(),
+        "auto_coin": await cs.is_auto_coin_org(db, current_user.org_id),
+        "tasks_total": total,
+        "tasks_done": done,
+        "tasks_all_done": total > 0 and total == done,
+        "task_coin_earned": got_task,       # 任务币已到手(+1)
+        "word_king_coin_earned": got_king,  # 单词王币已到手(次日 0 点后才可能为真)
+        "earned_today": int(earned_today),   # 今天已进账(含老师手动奖励)
+        "daily_cap": cs.DAILY_CAP,
+        "task_reward": cs.TASK_REWARD,
+        "word_king_reward": cs.WORD_KING_REWARD,
+    }
+
+
+@router.get("/word-king-race")
+async def word_king_race_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """今日单词王争夺战况 + 一句提示语(学生端「可能有人超越你」用)。
+
+    今天的榜单要到 24 点才结算,所以领先只是"暂列第一"。提示语由后端算好
+    (含北京时区判断),前端直接显示,避免各页面各写一套口径不同的文案。
+    """
+    from app.core.timeutil import local_today
+    from app.services.coin_service import word_king_race, is_auto_coin_org
+
+    d = local_today()
+    race = await word_king_race(db, current_user.id, d)
+    auto = await is_auto_coin_org(db, current_user.org_id)
+
+    if not race["in_class"]:
+        tip, level = "", "none"
+    elif race["my_words"] <= 0:
+        tip, level = "今天还没开始学词。学得最多的同学 24 点会被评为单词王!", "idle"
+    elif race["is_leading"] and race["tied"]:
+        tip, level = (
+            f"你和别人并列第一({race['my_words']} 词)!24 点结算,再多学几个才稳。", "tied")
+    elif race["is_leading"] and race["chasers"] > 0:
+        tip, level = (
+            f"你暂列第一({race['my_words']} 词),但有 {race['chasers']} 人紧追不舍,"
+            "随时可能被超越!24 点结算。", "chased")
+    elif race["is_leading"]:
+        tip, level = (
+            f"你暂列第一({race['my_words']} 词)!别人随时可能反超,24 点结算才算数。", "leading")
+    else:
+        tip, level = (
+            f"第一名 {race['top_words']} 词,你 {race['my_words']} 词,"
+            f"还差 {race['gap']} 个就能追上!24 点结算。", "behind")
+
+    return {
+        "date": d.isoformat(),
+        **race,
+        "tip": tip,
+        "level": level,
+        "reward": 1,          # 当上单词王额外加几颗金币
+        "auto_coin": auto,    # 手动模式下不自动发币,文案要改口
+    }
+
+
 @router.get("/coins/me")
 async def my_coins(
     page: int = Query(1, ge=1),
@@ -95,22 +190,25 @@ async def my_coins(
             bj_day = reason_date(t.reason) or (t.created_at + timedelta(hours=8)).date()
             if bj_day not in day_cache:
                 amap = await day_activity_map(db, [current_user.id], bj_day)
-                day_cache[bj_day] = amap.get(current_user.id, {"tasks_done": 0, "words": 0, "units_done": 0})
+                day_cache[bj_day] = amap.get(
+                    current_user.id,
+                    {"tasks_done": 0, "tasks_total": 0, "words": 0, "units_done": 0})
 
     items = []
     for t in rows:
-        dt = dw = du = None
+        dt = dtt = dw = du = None
         if t.source in ("task", "unit", "word_king"):
             bj_day = reason_date(t.reason) or (t.created_at + timedelta(hours=8)).date()
             act = day_cache.get(bj_day, {})
             dt = act.get("tasks_done", 0)
+            dtt = act.get("tasks_total", 0)
             dw = act.get("words", 0)
             du = act.get("units_done", 0)
         items.append(MyTx(
             id=t.id, amount=t.amount, source=t.source,
             source_label=SOURCE_LABELS.get(t.source, t.source),
             reason=t.reason, created_at=t.created_at,
-            day_tasks_done=dt, day_words=dw, day_units_done=du,
+            day_tasks_done=dt, day_tasks_total=dtt, day_words=dw, day_units_done=du,
             king_label=word_king_label(t.reason) if t.source == "word_king" else None,
         ))
 

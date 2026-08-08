@@ -28,11 +28,15 @@ from app.services import online_tracker  # 在线用户追踪(容量监测)
 async def lifespan(app: FastAPI):
     # 启动时初始化数据库
     await init_db()
-    # 金币结算已改为「教师手动结算」:关闭每日 00:35 自动结算循环,
-    # 老师在金币管理页点「结算」按钮才发前一天的单词王/作业币(POST /teacher/coins/settle,幂等)。
-    # (daily_settle_loop 保留在 coin_scheduler.py,需要恢复自动结算时在此重新起任务即可)
+    # 金币每日自动结算(2026-08-08 恢复):北京 00:35 结算前一天的单词王(+1)与
+    # 任务币兜底。任务币平时在学生交卷时实时发,这里兜住漏发;单词王必须等 24 点
+    # 榜单定了才能评,只能在这里发。coin_mode='manual' 的机构自动跳过。
+    import asyncio as _asyncio
+    from app.services.coin_scheduler import daily_settle_loop
+    _settle_task = _asyncio.create_task(daily_settle_loop())
     yield
     # 关闭时清理资源
+    _settle_task.cancel()
 
 app = FastAPI(
     title=settings.APP_NAME,

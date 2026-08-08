@@ -1,7 +1,8 @@
 /**
  * 教师端-金币管理页
  * 左:班级学生余额;右:金币流水(增删改查 + 分页 + 搜索 + 来源筛选)。
- * 金币完全由老师手动加(不再有系统自动/批量发币)。仅本班老师+管理员可操作。
+ * 发放方式有开关(机构级): auto=系统按规则自动发(默认) | manual=只能老师手动加。
+ * 仅本班老师+管理员可操作;切换开关仅管理员/机构管理员。
  */
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
@@ -14,17 +15,19 @@ import {
   getRewards, createReward, updateReward, deleteReward, redeemReward,
   getWordKingBanner, uploadRewardImage,
   getRedeemRequests, approveRedeem, rejectRedeem,
+  getCoinMode, setCoinMode, settleCoins,
   type CoinBalance, type CoinTx, type CoinReward, type WordKingBanner,
-  type RedeemRequestItem,
+  type RedeemRequestItem, type CoinModeResp,
 } from '../api/coins';
 import { CircleDollarSign } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import CoinRulesModal from '../components/CoinRulesModal';
 
 interface ClassItem { id: number; name: string; }
 
 const SOURCE_FILTERS = [
   { key: '', label: '全部' },
-  { key: 'task', label: '完成作业' },
+  { key: 'task', label: '完成任务' },
   { key: 'unit', label: '完成单元' },
   { key: 'word_king', label: '单词王' },
   { key: 'manual', label: '手动' },
@@ -35,6 +38,11 @@ const PAGE_SIZE = 20;
 export default function TeacherCoins() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [classId, setClassId] = useState<number | null>(null);
+  // 金币发放模式(自动/手动)+ 规则常量
+  const [coinMode, setCoinModeState] = useState<CoinModeResp | null>(null);
+  const [modeSaving, setModeSaving] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [settling, setSettling] = useState(false);
 
   const [balances, setBalances] = useState<CoinBalance[]>([]);
   const [balanceQ, setBalanceQ] = useState('');
@@ -100,6 +108,46 @@ export default function TeacherCoins() {
   useEffect(() => {
     getCoinPinStatus().then((r) => setHasPin(r.has_pin)).catch(() => setHasPin(null));
   }, []);
+
+  // 金币发放模式(自动/手动)
+  useEffect(() => {
+    getCoinMode().then(setCoinModeState).catch(() => setCoinModeState(null));
+  }, []);
+
+  const handleToggleCoinMode = async () => {
+    if (!coinMode) return;
+    const next = coinMode.mode === 'manual' ? 'auto' : 'manual';
+    const msg = next === 'manual'
+      ? '改为「教师手动加币」?\n\n此后系统不再自动发币,需要您核实后逐个加。已经发出去的金币不会收回。'
+      : '改为「系统自动发币」?\n\n此后学生完成当天全部任务自动 +1,当日单词王额外 +1(次日 0 点后到账)。';
+    if (!confirm(msg)) return;
+    setModeSaving(true);
+    try {
+      await setCoinMode(next);
+      setCoinModeState({ ...coinMode, mode: next });
+      toast.success(next === 'manual' ? '已改为教师手动加币' : '已改为系统自动发币');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '切换失败');
+    } finally {
+      setModeSaving(false);
+    }
+  };
+
+  const handleSettle = async () => {
+    setSettling(true);
+    try {
+      const r = await settleCoins();
+      const n = (r.task || 0) + (r.word_king || 0) + (r.unit || 0);
+      toast.success(n > 0
+        ? `已补算 ${r.date}:单词王 ${r.word_king} 人、任务币 ${r.task} 人`
+        : `${r.date} 没有需要补发的(已全部结算过)`);
+      loadTx(); loadBalances();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '结算失败');
+    } finally {
+      setSettling(false);
+    }
+  };
 
   const submitSetPin = async () => {
     if (pinNew.trim().length < 4) { toast.warning('新密码至少 4 位'); return; }
@@ -337,8 +385,58 @@ export default function TeacherCoins() {
 
       <main className="teacher-workspace-main">
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-700">
-          💡 金币<b>不再由系统自动发放</b>,完全由老师核实学生实际完成情况后手动加币(点学生行的「加币」)。下方「单词王」榜单与学情数据可作为加币参考。历史上系统发放过的记录不可改,手动/兑换记录可增删改。
+        {/* 发放模式开关 + 规则速览 */}
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 text-xs text-amber-800">
+              {coinMode?.mode === 'manual' ? (
+                <>
+                  ⚙️ 当前:<b>教师手动加币</b> —— 系统不自动发,请核实学生完成情况后点学生行的「加币」。
+                </>
+              ) : (
+                <>
+                  ⚙️ 当前:<b>系统自动发币</b> —— 学生完成当天全部任务自动 +{coinMode?.rules.task_reward ?? 1}
+                  (当天追加的任务不再多给;被取消/关闭的任务不算);
+                  当日单词王额外 +{coinMode?.rules.word_king_reward ?? 1}(次日 0 点后到账),一天最多 {coinMode?.rules.daily_cap ?? 2} 枚。
+                </>
+              )}
+              <button
+                onClick={() => setRulesOpen(true)}
+                className="ml-1.5 font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700"
+              >
+                完整规则
+              </button>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {coinMode?.can_edit ? (
+                <button
+                  onClick={handleToggleCoinMode}
+                  disabled={modeSaving}
+                  className="min-h-9 whitespace-nowrap rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 disabled:opacity-50"
+                  title="切换金币发放方式"
+                >
+                  {modeSaving ? '切换中…' : coinMode.mode === 'manual' ? '↻ 改为系统自动发' : '↻ 改为教师手动加'}
+                </button>
+              ) : coinMode ? (
+                <span className="whitespace-nowrap text-[11px] text-amber-600">
+                  (仅管理员可切换发放方式)
+                </span>
+              ) : null}
+              {coinMode?.can_edit && coinMode.mode === 'auto' && (
+                <button
+                  onClick={handleSettle}
+                  disabled={settling}
+                  className="min-h-9 whitespace-nowrap rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-100 disabled:opacity-50"
+                  title="每晚 00:35 自动结算;服务器当晚重启错过时用这个补发(幂等,重复点不会多发)"
+                >
+                  {settling ? '结算中…' : '🔄 补算昨天'}
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="mt-1.5 text-[11px] text-amber-600">
+            系统发放的记录不可改;手动/兑换记录可增删改。老师额外奖励不受每日上限限制。
+          </p>
         </div>
 
         {/* 单词王横幅:昨天(已定)+ 今日(实时,还没截止) */}
@@ -496,7 +594,9 @@ export default function TeacherCoins() {
                         <div className="truncate">{t.reason || '—'}</div>
                         {isSystem(t.source) && (t.day_tasks_done != null || t.day_words != null || t.day_units_done != null) && (
                           <div className="text-[10px] mt-0.5 text-gray-400">
-                            当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 任务 · <span className="font-semibold text-sky-500">{t.day_units_done ?? 0}</span> 单元 · 学 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 词
+                            当天完成 <span className="font-semibold text-orange-500">
+                              {t.day_tasks_done ?? 0}{t.day_tasks_total ? `/${t.day_tasks_total}` : ''}
+                            </span> 任务 · <span className="font-semibold text-sky-500">{t.day_units_done ?? 0}</span> 单元 · 学 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 词
                           </div>
                         )}
                       </td>
@@ -761,6 +861,14 @@ export default function TeacherCoins() {
           </div>
         </div>
       )}
+
+      <CoinRulesModal
+        open={rulesOpen}
+        onClose={() => setRulesOpen(false)}
+        audience="teacher"
+        autoCoin={coinMode?.mode !== 'manual'}
+        rules={coinMode?.rules}
+      />
     </div>
   );
 }

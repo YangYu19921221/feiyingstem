@@ -100,6 +100,7 @@ class TxOut(BaseModel):
     created_at: datetime
     # 系统发放(task/word_king)附带:该流水所在日期的当天完成任务数 + 学习单词数
     day_tasks_done: Optional[int] = None
+    day_tasks_total: Optional[int] = None
     day_words: Optional[int] = None
     day_units_done: Optional[int] = None
     king_label: Optional[str] = None  # word_king 徽章文案(后端按北京时间算:今日/昨日单词王)
@@ -164,11 +165,80 @@ async def word_king_banner(
     }
 
 
-# ---------- 已下线:系统批量结算 ----------
-# 产品决定(2026-07-25):金币完全改为「老师核实后手动加」,不再有任何系统自动/批量
-# 发币。原 POST /coins/settle 会按规则批量发单词王+2、全部作业完成+1,已移除。
-# 单词王榜单仍然保留(GET /coins/word-kings),供老师作为手动加币的参考依据。
-# coin_service.settle_day 与 coin_scheduler.daily_settle_loop 保留代码但不再被调用。
+# ---------- 金币发放模式开关(自动 / 教师手动) ----------
+class CoinModeUpdate(BaseModel):
+    mode: str = Field(..., pattern="^(auto|manual)$", description="auto=系统自动发 | manual=只能老师手动加")
+
+
+@router.get("/coins/mode")
+async def get_coin_mode(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """本机构金币发放模式 + 规则常量(前端据此显示规则文案与开关状态)。"""
+    from app.models.organization import Organization
+    from app.services import coin_service as cs
+    mode = (await db.execute(
+        select(Organization.coin_mode).where(Organization.id == (current_user.org_id or 1))
+    )).scalar_one_or_none() or "auto"
+    return {
+        "mode": mode,
+        "can_edit": current_user.role in ("admin", "org_admin"),
+        "rules": {
+            "task_reward": cs.TASK_REWARD,
+            "word_king_reward": cs.WORD_KING_REWARD,
+            "daily_cap": cs.DAILY_CAP,
+            "unit_coin_enabled": cs.ENABLE_UNIT_COIN,
+        },
+    }
+
+
+@router.patch("/coins/mode")
+async def set_coin_mode(
+    body: CoinModeUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """切换本机构金币发放模式。仅管理员/机构管理员可改(普通老师只读)。
+
+    切到 manual:此后不再自动发,已发的币不回收(避免学生余额莫名变少)。
+    切回 auto:只影响之后的结算;历史缺发的当天若仍满足条件,当晚 00:35 会补上。
+    """
+    if current_user.role not in ("admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="只有管理员可以修改金币发放模式")
+    from app.models.organization import Organization
+    org = (await db.execute(
+        select(Organization).where(Organization.id == (current_user.org_id or 1))
+    )).scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=404, detail="机构不存在")
+    org.coin_mode = body.mode
+    await db.commit()
+    logger.info("金币发放模式改为 %s: org_id=%s by=%s", body.mode, org.id, current_user.id)
+    return {"success": True, "mode": org.coin_mode}
+
+
+# ---------- 系统结算(补发昨天漏发的;平时由 00:35 定时任务自动跑) ----------
+@router.post("/coins/settle")
+async def settle_coins(
+    target_date: Optional[str] = Query(None, description="YYYY-MM-DD,默认昨天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """手动补一次某天的系统结算(幂等,重复点不会多发)。
+
+    正常无需点:任务币在学生交卷时实时发,单词王当晚 00:35 自动结算。
+    这个按钮是兜底——服务器当晚重启/停机错过定时任务时补发。
+    manual 模式的机构点了也不会发(settle_day 内部跳过)。
+    """
+    if current_user.role not in ("admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="只有管理员可以执行结算")
+    d = _parse_date(target_date) if target_date else (local_today() - timedelta(days=1))
+    if d >= local_today():
+        raise HTTPException(status_code=400, detail="今天还没结束,单词王要等 24 点后才能结算")
+    result = await coin_service.settle_day(db, d)
+    await db.commit()
+    return {"date": d.isoformat(), **result}
 
 
 # ---------- 班级余额 ----------
@@ -283,15 +353,17 @@ async def list_transactions(
             sys_keys[(tx.user_id, bj_day)] = {}
     for (uid, day) in list(sys_keys.keys()):
         amap = await day_activity_map(db, [uid], day)
-        sys_keys[(uid, day)] = amap.get(uid, {"tasks_done": 0, "words": 0, "units_done": 0})
+        sys_keys[(uid, day)] = amap.get(
+            uid, {"tasks_done": 0, "tasks_total": 0, "words": 0, "units_done": 0})
 
     items = []
     for tx, full, username in rows:
-        extra_tasks = extra_words = extra_units = None
+        extra_tasks = extra_total = extra_words = extra_units = None
         if tx.source in ("task", "unit", "word_king"):
             bj_day = reason_date(tx.reason) or (tx.created_at + timedelta(hours=8)).date()
             act = sys_keys.get((tx.user_id, bj_day), {})
             extra_tasks = act.get("tasks_done", 0)
+            extra_total = act.get("tasks_total", 0)
             extra_words = act.get("words", 0)
             extra_units = act.get("units_done", 0)
         items.append(TxOut(
@@ -299,7 +371,8 @@ async def list_transactions(
             amount=tx.amount, balance_after=tx.balance_after,
             source=tx.source, source_label=SOURCE_LABELS.get(tx.source, tx.source),
             reason=tx.reason, operator_id=tx.operator_id, created_at=tx.created_at,
-            day_tasks_done=extra_tasks, day_words=extra_words, day_units_done=extra_units,
+            day_tasks_done=extra_tasks, day_tasks_total=extra_total,
+            day_words=extra_words, day_units_done=extra_units,
             king_label=word_king_label(tx.reason) if tx.source == "word_king" else None,
         ))
     return {"total": total, "page": page, "page_size": page_size, "items": items}

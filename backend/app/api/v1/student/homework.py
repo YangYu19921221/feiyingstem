@@ -312,6 +312,11 @@ async def submit_homework_attempt(
     if assignment.attempts_count >= homework.max_attempts:
         raise HTTPException(status_code=400, detail="已达到最大尝试次数")
 
+    # 本次提交影响到的「布置日」集合(金币按布置日结算;连带完成会牵动别的日子)
+    affected_days: set = set()
+    if assignment.assigned_at:
+        affected_days.add((assignment.assigned_at + timedelta(hours=8)).date())
+
     # 增加尝试次数
     assignment.attempts_count += 1
 
@@ -360,6 +365,9 @@ async def submit_homework_attempt(
                 dup_sa.completed_at = datetime.utcnow()
                 if request.score > (dup_sa.best_score or 0):
                     dup_sa.best_score = request.score
+                # 连带完成的那份可能属于另一个布置日,那天也要参与结算
+                if dup_sa.assigned_at:
+                    affected_days.add((dup_sa.assigned_at + timedelta(hours=8)).date())
     elif assignment.attempts_count >= homework.max_attempts:
         # 次数用完仍未达标:标记为"未达标结束",从学生待办消失(否则永远挂着成死局),
         # 教师端学生状态里标红,老师知道该找孩子单独辅导
@@ -380,17 +388,34 @@ async def submit_homework_attempt(
 
     await db.commit()
 
-    # 金币:不再由系统自动发放。产品决定(2026-07-25)——金币必须由老师核实学生
-    # 实际完成情况后在「金币管理」页手动加,避免刷任务白拿币。
-    # 原先这里会在作业达标时调 settle_day 自动发当日 task 币,已移除。
+    # 先把响应要用的值抓成局部变量:下面发金币若失败会 rollback,
+    # 而 rollback 会让 ORM 对象过期,再访问 assignment/homework 属性会触发
+    # 懒加载 → 异步上下文里抛 MissingGreenlet,把已经提交成功的成绩变成 500。
+    resp_best_score = assignment.best_score
+    resp_attempts = assignment.attempts_count
+    resp_remaining = homework.max_attempts - assignment.attempts_count
+
+    # 金币:本次达标可能让「当天布置的任务全部完成」,实时尝试发 1 币(幂等,一天一次)。
+    # 只在自动模式的机构发;manual 模式由老师核实后手动加。
+    # 走独立会话:发币失败绝不能影响已经提交成功的成绩(共用会话时 rollback 会让
+    # current_user 等 ORM 对象过期,后续属性访问抛 MissingGreenlet → 500)。
+    coin_awarded = False
+    if is_passed:
+        from app.services.coin_service import award_task_coins_isolated
+        from app.core.timeutil import local_today
+        days = affected_days or {local_today()}
+        coin_awarded = await award_task_coins_isolated(
+            {(current_user.id, d) for d in days}
+        ) > 0
 
     return {
         "message": "提交成功",
+        "coin_awarded": coin_awarded,
         "is_passed": is_passed,
         "score": request.score,
-        "best_score": assignment.best_score,
-        "attempts_count": assignment.attempts_count,
-        "remaining_attempts": homework.max_attempts - assignment.attempts_count
+        "best_score": resp_best_score,
+        "attempts_count": resp_attempts,
+        "remaining_attempts": resp_remaining,
     }
 
 

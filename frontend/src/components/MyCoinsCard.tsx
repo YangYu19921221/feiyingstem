@@ -4,8 +4,12 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { getMyCoins, getMyWordKingStatus, type MyCoinTx } from '../api/coins';
+import {
+  getMyCoins, getMyWordKingStatus, getMyCoinsToday, getWordKingRace,
+  type MyCoinTx, type MyCoinsToday, type WordKingRace,
+} from '../api/coins';
 import RedeemShopModal from './RedeemShopModal';
+import CoinRulesModal from './CoinRulesModal';
 import coinGold from '../assets/coin-gold.webp';
 
 const PAGE_SIZE = 20;
@@ -14,14 +18,19 @@ export default function MyCoinsCard() {
   const [balance, setBalance] = useState(0);
   const [open, setOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);  // 兑换商城弹窗
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [items, setItems] = useState<MyCoinTx[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [isKing, setIsKing] = useState(false);  // 今天(实时)是不是单词王
+  const [today, setToday] = useState<MyCoinsToday | null>(null);
+  const [race, setRace] = useState<WordKingRace | null>(null);
 
   useEffect(() => {
     getMyCoins(1, 1).then((r) => setBalance(r.balance)).catch(() => {});
     getMyWordKingStatus().then((r) => setIsKing(r.is_word_king)).catch(() => {});
+    getMyCoinsToday().then(setToday).catch(() => {});
+    getWordKingRace().then(setRace).catch(() => {});
   }, []);
 
   const loadPage = useCallback((p: number) => {
@@ -100,12 +109,68 @@ export default function MyCoinsCard() {
             >
               🎁 兑换奖励
             </button>
-            <span className="hidden sm:block whitespace-nowrap text-[11px] text-amber-900/60">完成作业/2单元+1 · 单词王+2</span>
+            <button
+              type="button"
+              onClick={() => setRulesOpen(true)}
+              className="whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium text-amber-900/70 underline-offset-2 transition hover:bg-white/40 hover:underline"
+            >
+              {today?.auto_coin === false
+                ? '老师手动加币 · 看规则'
+                : `完成任务+${today?.task_reward ?? 1} · 单词王+${today?.word_king_reward ?? 1} · 规则`}
+            </button>
           </div>
         </div>
+
+        {/* 今日进度条:任务几/几 + 单词王战况(一眼看到还差什么) */}
+        {(today || race) && (
+          <div className="relative mt-3 space-y-1.5 border-t border-white/30 pt-2.5">
+            {today && today.tasks_total > 0 && (
+              <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] font-medium text-amber-900/85">
+                <span>
+                  今日任务 <b className="font-numeric">{today.tasks_done}/{today.tasks_total}</b>
+                </span>
+                {today.task_coin_earned ? (
+                  <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                    ✓ 金币已到手 +{today.task_reward}
+                  </span>
+                ) : today.tasks_all_done ? (
+                  <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                    全部完成{today.auto_coin ? '' : ',等老师加币'}
+                  </span>
+                ) : (
+                  <span className="text-amber-900/65">
+                    · 还差 {today.tasks_total - today.tasks_done} 个就能拿 +{today.task_reward}
+                  </span>
+                )}
+              </p>
+            )}
+            {race?.tip && (
+              <p className={`flex items-start gap-1 text-[12px] leading-snug ${
+                race.level === 'chased' || race.level === 'tied'
+                  ? 'font-semibold text-rose-800'
+                  : 'text-amber-900/80'
+              }`}>
+                <span aria-hidden>{race.level === 'behind' || race.level === 'idle' ? '📖' : '👑'}</span>
+                <span>{race.tip}</span>
+              </p>
+            )}
+          </div>
+        )}
       </motion.div>
 
       {shopOpen && <RedeemShopModal onClose={() => setShopOpen(false)} />}
+
+      <CoinRulesModal
+        open={rulesOpen}
+        onClose={() => setRulesOpen(false)}
+        audience="student"
+        autoCoin={today?.auto_coin ?? true}
+        rules={today ? {
+          task_reward: today.task_reward,
+          word_king_reward: today.word_king_reward,
+          daily_cap: today.daily_cap,
+        } : undefined}
+      />
 
       {open && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
@@ -131,7 +196,9 @@ export default function MyCoinsCard() {
                     </p>
                     {(t.source === 'task' || t.source === 'unit' || t.source === 'word_king') && (t.day_tasks_done != null || t.day_words != null || t.day_units_done != null) && (
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        当天完成 <span className="font-semibold text-orange-500">{t.day_tasks_done ?? 0}</span> 个任务 · <span className="font-semibold text-sky-500">{t.day_units_done ?? 0}</span> 个单元 · 学了 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 个单词
+                        当天完成 <span className="font-semibold text-orange-500">
+                          {t.day_tasks_done ?? 0}{t.day_tasks_total ? `/${t.day_tasks_total}` : ''}
+                        </span> 个任务 · <span className="font-semibold text-sky-500">{t.day_units_done ?? 0}</span> 个单元 · 学了 <span className="font-semibold text-emerald-600">{t.day_words ?? 0}</span> 个单词
                       </p>
                     )}
                   </div>
@@ -140,7 +207,13 @@ export default function MyCoinsCard() {
                   </span>
                 </div>
               ))}
-              {items.length === 0 && <p className="text-center text-xs text-gray-400 py-8">还没有金币记录。认真完成学习任务,老师核实后会给你加金币!</p>}
+              {items.length === 0 && (
+                <p className="text-center text-xs text-gray-400 py-8">
+                  {today?.auto_coin === false
+                    ? '还没有金币记录。认真完成学习任务,老师核实后会给你加金币!'
+                    : '还没有金币记录。把老师布置的任务全部做完就能拿到第一枚金币!'}
+                </p>
+              )}
             </div>
 
             {totalPages > 1 && (

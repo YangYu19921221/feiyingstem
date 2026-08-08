@@ -25,4 +25,7 @@ class Organization(Base):
     # 内容授权模式: assigned=逐本分配(默认,老师分配/兑换码开书) |
     # all_books=全托(按 expires_at+student_quota 收费,书本全开放不再逐本限制)
     access_mode = Column(String(20), default="assigned", nullable=False)
+    # 金币发放模式: auto=系统按规则自动发(默认) | manual=只能老师核实后手动加。
+    # 关成 manual 后自动结算跳过该机构,已发的币不回收(见 services/coin_service.py)
+    coin_mode = Column(String(10), default="auto", server_default="auto", nullable=False)
     created_at = Column(DateTime, server_default=func.now())

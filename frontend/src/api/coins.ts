@@ -30,6 +30,7 @@ export interface CoinTx {
   operator_id: number | null;
   created_at: string;
   day_tasks_done?: number | null;  // 系统流水: 当天完成任务数
+  day_tasks_total?: number | null; // 系统流水: 当天应完成任务数(不含被取消/关闭的)
   day_words?: number | null;       // 系统流水: 当天学习单词数
   day_units_done?: number | null;  // 系统流水: 当天完成单元数
   king_label?: string | null;      // word_king 徽章文案(后端按北京时间算)
@@ -42,8 +43,27 @@ export interface CoinTxPage {
   items: CoinTx[];
 }
 
-// settleCoins 已下线(2026-07-25):金币改为老师核实后手动加,不再有系统批量结算。
-// 后端 POST /teacher/coins/settle 已移除。单词王榜单仍可查,作为手动加币的参考。
+// ---------- 金币发放模式(自动 / 教师手动)----------
+export interface CoinModeResp {
+  mode: 'auto' | 'manual';
+  can_edit: boolean;          // 仅管理员/机构管理员可改
+  rules: {
+    task_reward: number;
+    word_king_reward: number;
+    daily_cap: number;
+    unit_coin_enabled: boolean;
+  };
+}
+export const getCoinMode = () => client.get<CoinModeResp>(`/teacher/coins/mode`);
+export const setCoinMode = (mode: 'auto' | 'manual') =>
+  client.patch<{ success: boolean; mode: string }>(`/teacher/coins/mode`, { mode });
+
+/** 手动补一次某天的系统结算(幂等);平时由每晚 00:35 自动跑,这是兜底按钮 */
+export const settleCoins = (targetDate?: string) =>
+  client.post<{ date: string; word_king: number; task: number; unit: number }>(
+    `/teacher/coins/settle`, undefined,
+    { params: targetDate ? { target_date: targetDate } : {} },
+  );
 
 export const getCoinBalances = (classId: number, q?: string) =>
   client.get<CoinBalancesResp>(`/teacher/coins/balances`, {
@@ -98,10 +118,45 @@ export interface MyCoinTx {
   reason: string | null;
   created_at: string;
   day_tasks_done?: number | null;
+  day_tasks_total?: number | null;
   day_words?: number | null;
   day_units_done?: number | null;
   king_label?: string | null;
 }
+
+/** 今天的金币进度(学生端规则卡用) */
+export interface MyCoinsToday {
+  date: string;
+  auto_coin: boolean;          // false=本机构由老师手动加币
+  tasks_total: number;         // 今天应完成的任务数(已排除被取消/关闭的)
+  tasks_done: number;
+  tasks_all_done: boolean;
+  task_coin_earned: boolean;   // 任务币已到手
+  word_king_coin_earned: boolean;
+  earned_today: number;        // 今天已进账(含老师手动奖励)
+  daily_cap: number;
+  task_reward: number;
+  word_king_reward: number;
+}
+export const getMyCoinsToday = () => client.get<MyCoinsToday>(`/student/coins/today`);
+
+/** 今日单词王争夺战况(「可能有人超越你」提示) */
+export interface WordKingRace {
+  date: string;
+  in_class: boolean;
+  settled: boolean;      // 这天是否已结算(今天=false,24点后才定)
+  my_words: number;
+  top_words: number;
+  is_leading: boolean;
+  tied: boolean;
+  chasers: number;       // 紧追者人数(差距<=3词)
+  gap: number;           // 落后第一多少词
+  tip: string;           // 后端算好的提示语
+  level: 'none' | 'idle' | 'tied' | 'chased' | 'leading' | 'behind';
+  reward: number;
+  auto_coin: boolean;
+}
+export const getWordKingRace = () => client.get<WordKingRace>(`/student/word-king-race`);
 
 export interface MyCoinsResp {
   balance: number;
