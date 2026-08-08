@@ -5,10 +5,12 @@ import {
   AlarmClock,
   ArrowLeft,
   BookOpenText,
+  CalendarClock,
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Clock3,
+  Lock,
   LogOut,
   RotateCcw,
   Target,
@@ -150,6 +152,21 @@ const StudentHomework = () => {
     return { text, isUrgent, days };
   };
 
+  /** 未开放任务的开放日文案:今天/明天/X月X日(周X) */
+  const formatOpenDay = (availableFrom?: string | null) => {
+    if (!availableFrom) return '';
+    const open = new Date(availableFrom);
+    if (Number.isNaN(open.getTime())) return '';
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dayDiff = Math.round(
+      (startOfDay(open).getTime() - startOfDay(new Date()).getTime()) / 86400000
+    );
+    if (dayDiff <= 0) return '今天';
+    if (dayDiff === 1) return '明天';
+    const week = ['日', '一', '二', '三', '四', '五', '六'][open.getDay()];
+    return `${open.getMonth() + 1}月${open.getDate()}日(周${week})`;
+  };
+
   // 格式化耗时
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -174,10 +191,11 @@ const StudentHomework = () => {
     return hw.status === activeTab;
   });
 
-  // 统计各状态数量
+  // 统计各状态数量。「待开始」只算现在真能做的:未开放任务的 status 也是 pending,
+  // 计进去会让"待开始 5 项"里混着今天根本做不了的,孩子会以为自己漏做了
   const statusCounts = {
     all: homeworks.length,
-    pending: homeworks.filter((hw) => hw.status === 'pending').length,
+    pending: homeworks.filter((hw) => hw.status === 'pending' && !hw.is_locked).length,
     in_progress: homeworks.filter((hw) => hw.status === 'in_progress').length,
     completed: homeworks.filter((hw) => hw.status === 'completed').length,
     overdue: homeworks.filter((hw) => hw.status === 'overdue').length,
@@ -326,6 +344,9 @@ const StudentHomework = () => {
                 const statusColor = STATUS_COLORS[homework.status];
                 const isPassed = homework.best_score >= homework.target_score;
                 const isExpanded = expandedHomework === homework.id;
+                // 明天(或更晚)才开放的任务:能看见但做不了
+                const isLocked = !!homework.is_locked;
+                const openDayText = formatOpenDay(homework.available_from);
 
                 return (
                   <motion.div
@@ -350,6 +371,12 @@ const StudentHomework = () => {
                             >
                               {STATUS_MAP[homework.status]}
                             </span>
+                            {isLocked && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                <Lock className="h-3 w-3" aria-hidden="true" />
+                                {openDayText}开放
+                              </span>
+                            )}
                             {isPassed && homework.status === 'completed' && (
                               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                                 已达标
@@ -361,24 +388,32 @@ const StudentHomework = () => {
                           )}
                         </div>
 
-                        {/* 截止时间警告 */}
-                        {deadlineInfo && (
-                          <div
-                            className={`inline-flex items-center gap-2 self-start rounded-xl px-3 py-2 text-sm font-semibold whitespace-nowrap ${
-                              deadlineInfo.isUrgent
-                                ? 'bg-rose-50 text-rose-700'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            <AlarmClock className="h-4 w-4" aria-hidden="true" />
-                            <span>
-                              {homework.status === 'overdue' || deadlineInfo.text === '已过期'
-                                ? '已过期'
-                                : deadlineInfo.days === 0
-                                  ? '即将到期'
-                                  : `剩余 ${deadlineInfo.text}`}
-                            </span>
+                        {/* 未开放:显示"哪天能做",不显示倒计时(否则"剩余1天X小时"
+                            看着像现在就能做) */}
+                        {isLocked ? (
+                          <div className="inline-flex items-center gap-2 self-start whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
+                            <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                            <span>{openDayText}才能做</span>
                           </div>
+                        ) : (
+                          deadlineInfo && (
+                            <div
+                              className={`inline-flex items-center gap-2 self-start rounded-xl px-3 py-2 text-sm font-semibold whitespace-nowrap ${
+                                deadlineInfo.isUrgent
+                                  ? 'bg-rose-50 text-rose-700'
+                                  : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              <AlarmClock className="h-4 w-4" aria-hidden="true" />
+                              <span>
+                                {homework.status === 'overdue' || deadlineInfo.text === '已过期'
+                                  ? '已过期'
+                                  : deadlineInfo.days === 0
+                                    ? '即将到期'
+                                    : `剩余 ${deadlineInfo.text}`}
+                              </span>
+                            </div>
+                          )
                         )}
                       </div>
 
@@ -421,12 +456,27 @@ const StudentHomework = () => {
                         {homework.status !== 'completed' &&
                           homework.status !== 'overdue' &&
                           homework.attempts_count < homework.max_attempts && (
-                            <button
-                              onClick={() => handleStartHomework(homework.id)}
-                              className="min-h-11 flex-1 rounded-xl bg-accent-warm px-6 py-3 font-semibold text-white transition hover:opacity-90"
-                            >
-                              {homework.status === 'pending' ? '开始作业' : '继续作业'}
-                            </button>
+                            isLocked ? (
+                              // 故意保持可点击(不用 disabled):点了要给提示,
+                              // 死按钮会让孩子反复戳以为卡了
+                              <button
+                                onClick={() =>
+                                  toast.info(`这是${openDayText}的任务，${openDayText}才能开始做哦`)
+                                }
+                                aria-label={`${homework.title}，${openDayText}才能开始`}
+                                className="inline-flex min-h-11 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-black/[0.05] px-6 py-3 font-semibold text-ink-mute transition hover:bg-black/[0.08]"
+                              >
+                                <Lock className="h-4 w-4" aria-hidden="true" />
+                                {openDayText}才能开始
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleStartHomework(homework.id)}
+                                className="min-h-11 flex-1 rounded-xl bg-accent-warm px-6 py-3 font-semibold text-white transition hover:opacity-90"
+                              >
+                                {homework.status === 'pending' ? '开始作业' : '继续作业'}
+                              </button>
+                            )
                           )}
 
                         {homework.attempts_count > 0 && (

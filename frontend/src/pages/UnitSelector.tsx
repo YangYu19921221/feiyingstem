@@ -47,8 +47,11 @@ const UnitSelector = () => {
       .then((all) => {
         if (cancelled || !bookProgress) return;
         const unitIds = new Set(bookProgress.units.map(u => u.unit_id));
+        // 排掉未开放的当日任务:接口现在会返回它们(作业页要展示"明天做什么"),
+        // 但这里是「今日任务」入口,点了也做不了,不能混进来
         setBookTasks(
-          all.filter(h => unitIds.has(h.unit_id) && (h.status === 'pending' || h.status === 'in_progress'))
+          all.filter(h => unitIds.has(h.unit_id) && !h.is_locked &&
+            (h.status === 'pending' || h.status === 'in_progress'))
         );
       })
       .catch(() => {});

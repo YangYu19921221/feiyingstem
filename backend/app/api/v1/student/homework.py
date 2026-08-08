@@ -39,6 +39,10 @@ class StudentHomeworkResponse(BaseModel):
     best_score: int
     total_time_spent: int
     teacher_name: str
+    # 未开放的当日任务:列表里能看见(让学生知道明天要做什么),但点了只给提示不能做。
+    # 前端靠 is_locked 置灰 + 用 available_from 显示"X月X日开放"。
+    is_locked: bool = False
+    available_from: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -125,11 +129,11 @@ async def get_my_homework(
         .where(HomeworkStudentAssignment.student_id == current_user.id)
         # 已关闭的作业学生端不显示(老师发错/提前结束,做题记录保留在教师端)
         .where(HomeworkAssignment.is_closed.is_(False))
-        # 定时布置且未到开放时间的作业不显示(到点自动出现)
-        .where(or_(
-            HomeworkAssignment.available_from.is_(None),
-            HomeworkAssignment.available_from <= datetime.utcnow(),
-        ))
+        # 注意:这里**不过滤** available_from——未开放的当日任务也要显示出来,
+        # 让学生提前知道明天要做什么;能不能做由下面的 is_locked 和 start/submit
+        # 端点的时间校验把关。别在这里加回时间过滤。
+        # 单元解锁/金币分母那两处过滤(scope_service.py、student/progress.py)
+        # 是另一套口径,必须保持"未开放不算",不要跟着这里改。
     )
 
     # 状态过滤
@@ -142,9 +146,13 @@ async def get_my_homework(
 
     homework_list = []
     for assignment, homework, unit, book, teacher_name in result.all():
-        # 自动更新过期状态(普通作业按自设截止时间;当日任务过了当天24点即过期)
         now = datetime.utcnow()
-        if (assignment.status not in ['completed', 'failed'] and
+        # 还没到开放日的当日任务:可见但锁着,且不能被判过期
+        # (它的 deadline 在未来,day_task_expired 也为 False,这里只是显式表达意图)
+        is_locked = bool(homework.available_from and now < homework.available_from)
+
+        # 自动更新过期状态(普通作业按自设截止时间;当日任务过了当天24点即过期)
+        if (not is_locked and assignment.status not in ['completed', 'failed'] and
             ((homework.deadline and now > homework.deadline) or day_task_expired(homework, now))):
             assignment.status = 'overdue'
             await db.commit()
@@ -175,7 +183,12 @@ async def get_my_homework(
             attempts_count=assignment.attempts_count,
             best_score=assignment.best_score,
             total_time_spent=assignment.total_time_spent,
-            teacher_name=teacher_name
+            teacher_name=teacher_name,
+            is_locked=is_locked,
+            # 开放时刻转成北京墙上时间的 naive 字符串,与 deadline 口径一致
+            # (前端 new Date 按本地解析),否则会差 8 小时显示成前一天
+            available_from=(homework.available_from + timedelta(hours=8)).isoformat()
+            if homework.available_from else None,
         ))
 
     return homework_list

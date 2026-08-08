@@ -84,6 +84,10 @@ export interface StudentHomeworkResponse {
   best_score: number;
   total_time_spent: number;
   teacher_name: string;
+  /** 未到开放日的当日任务:列表可见但不能做,点了只提示 */
+  is_locked?: boolean;
+  /** 当日任务的开放时刻(北京墙上时间);普通作业为 null */
+  available_from?: string | null;
 }
 
 export interface SubmitHomeworkAttemptRequest {

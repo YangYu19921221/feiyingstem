@@ -206,7 +206,10 @@ const StudentDashboard = () => {
   const loadPendingHomework = async () => {
     try {
       const data = await getMyHomework();
-      const pending = data.filter((h: { status: string }) =>
+      // 排掉未开放的当日任务:接口会返回它们供作业页展示"明天做什么",
+      // 但首页红点和任务卡只算现在能做的,否则数字里混着做不了的任务
+      const pending = data.filter((h) =>
+        !h.is_locked &&
         h.status !== 'completed' && h.status !== 'graded' && h.status !== 'failed',
       );
       setPendingHomeworkCount(pending.length);

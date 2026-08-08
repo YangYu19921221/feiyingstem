@@ -91,7 +91,9 @@ const WordClassifyLearning = () => {
     if (!uid) return;
     getMyHomework()
       .then(all => {
-        const t = all.find(h => h.unit_id === uid && (h.status === 'pending' || h.status === 'in_progress'));
+        // 未开放的当日任务不绑横幅/不交卷(后端也会拒),否则学生提前学了却交不上
+        const t = all.find(h => h.unit_id === uid && !h.is_locked &&
+          (h.status === 'pending' || h.status === 'in_progress'));
         setUnitTask(t ?? null);
       })
       .catch(() => {});
