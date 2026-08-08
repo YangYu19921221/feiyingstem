@@ -470,10 +470,15 @@ async def adjust(
     if cur + body.amount < 0:
         raise HTTPException(status_code=400, detail=f"金币不足(当前 {cur},无法扣 {-body.amount})")
 
-    tx = await coin_service.apply_delta(
-        db, body.student_id, student.org_id or 1, body.amount, src,
-        reason=body.reason, operator_id=current_user.id,
-    )
+    try:
+        tx = await coin_service.apply_delta(
+            db, body.student_id, student.org_id or 1, body.amount, src,
+            reason=body.reason, operator_id=current_user.id,
+        )
+    except coin_service.InsufficientCoins as e:
+        # 上面的前置检查是读后再扣,并发下可能都通过;真正的判定在数据库条件扣减
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     await db.commit()
     return {"success": True, "tx_id": tx.id if tx else None, "balance_after": tx.balance_after if tx else cur}
 
@@ -650,10 +655,14 @@ async def redeem(
     if cur < reward.cost:
         raise HTTPException(status_code=400, detail=f"金币不足(当前 {cur},需 {reward.cost})")
 
-    tx = await coin_service.apply_delta(
-        db, body.student_id, student.org_id or 1, -reward.cost, "redeem",
-        reason=f"兑换:{reward.name}", operator_id=current_user.id,
-    )
+    try:
+        tx = await coin_service.apply_delta(
+            db, body.student_id, student.org_id or 1, -reward.cost, "redeem",
+            reason=f"兑换:{reward.name}", operator_id=current_user.id,
+        )
+    except coin_service.InsufficientCoins as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     if reward.stock is not None:
         reward.stock -= 1
     await db.commit()
@@ -779,10 +788,16 @@ async def approve_redeem_request(
                 raise HTTPException(status_code=400, detail="该商品库存不足")
             reward.stock -= 1
 
-    await coin_service.apply_delta(
-        db, req.student_id, student.org_id or 1, -req.cost, "redeem",
-        reason=f"兑换:{req.reward_name}", operator_id=current_user.id,
-    )
+    try:
+        await coin_service.apply_delta(
+            db, req.student_id, student.org_id or 1, -req.cost, "redeem",
+            reason=f"兑换:{req.reward_name}", operator_id=current_user.id,
+        )
+    except coin_service.InsufficientCoins as e:
+        # 审批时才真正扣币:学生可能同时申请多个、各自够但合计不够,
+        # 这里拒掉并保留申请为 pending,老师看到提示即可
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     req.status = "approved"
     req.reviewed_at = datetime.utcnow()
     req.reviewer_id = current_user.id

@@ -39,6 +39,13 @@ from app.services.weak_words import SCORING_MODES, NON_LEARNED_MODES  # noqa: E4
 from app.services.daily_words import words_by_student as daily_words_by_student  # noqa: E402
 
 
+class InsufficientCoins(Exception):
+    """扣币时余额不足(由数据库条件扣减判定,防并发扣成负数)。
+
+    API 层捕获它转成 400,不要让它冒成 500 —— 这是正常业务拒绝,不是故障。
+    """
+
+
 async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> dict:
     """一批学生在 d 这天的「完成任务数 + 学习单词数 + 完成单元数」,供金币流水附带展示。
 
@@ -214,6 +221,7 @@ async def apply_delta(
     """给学生金币加/减 amount,写余额+流水。调用方负责 commit。
 
     dedup_key 非空时若已存在(重复发放)→ 回滚这条 INSERT、返回 None,余额不动。
+    扣币(amount<0)时余额不足 → 抛 InsufficientCoins,余额与流水都不动。
     返回创建的流水行(去重命中返回 None)。
     """
     # 幂等:系统发放先查 dedup_key 是否已存在(命中即跳过,不重复发)。
@@ -230,11 +238,23 @@ async def apply_delta(
     # 发币现在跑在多个独立会话里(交卷实时发 / 00:35 结算 / 老师手动加),两个
     # 事务读到同一个初始余额再各自写绝对值,后提交的会覆盖前一个 → 丢币。
     # dedup_key 拦不住这种情况:两笔的 key 本来就不同(task 与 word_king)。
-    await db.execute(
+    stmt = (
         update(StudentCoin)
         .where(StudentCoin.user_id == user_id)
         .values(balance=StudentCoin.balance + amount)
     )
+    if amount < 0:
+        # 扣币把「余额够不够」也做进 WHERE:调用方的前置检查是读后再扣,
+        # 并发下两笔都能通过检查,相对累加会把余额扣成负数(改成相对更新后
+        # 新引入的风险 —— 之前是丢更新,反而不会负)。
+        # 这里由数据库一次性判定+扣减,扣不动就是余额不足。
+        stmt = stmt.where(StudentCoin.balance >= -amount)
+    result = await db.execute(stmt)
+    if amount < 0 and result.rowcount == 0:
+        cur = (await db.execute(
+            select(StudentCoin.balance).where(StudentCoin.user_id == user_id)
+        )).scalar() or 0
+        raise InsufficientCoins(f"金币不足(当前 {cur},需 {-amount})")
     # 回读权威余额给流水留档(balance_after 供对账)
     new_balance = (await db.execute(
         select(StudentCoin.balance).where(StudentCoin.user_id == user_id)
