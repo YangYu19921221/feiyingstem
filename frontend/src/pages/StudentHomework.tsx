@@ -24,6 +24,7 @@ import {
   type HomeworkAttemptResponse,
 } from '../api/homework';
 import { toast } from '../components/Toast';
+import { formatOpenDay } from '../utils/openDay';
 import { getErrorMessage } from '../utils/errorMessage';
 
 // 学习模式中文映射
@@ -150,21 +151,6 @@ const StudentHomework = () => {
     }
 
     return { text, isUrgent, days };
-  };
-
-  /** 未开放任务的开放日文案:今天/明天/X月X日(周X) */
-  const formatOpenDay = (availableFrom?: string | null) => {
-    if (!availableFrom) return '';
-    const open = new Date(availableFrom);
-    if (Number.isNaN(open.getTime())) return '';
-    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const dayDiff = Math.round(
-      (startOfDay(open).getTime() - startOfDay(new Date()).getTime()) / 86400000
-    );
-    if (dayDiff <= 0) return '今天';
-    if (dayDiff === 1) return '明天';
-    const week = ['日', '一', '二', '三', '四', '五', '六'][open.getDay()];
-    return `${open.getMonth() + 1}月${open.getDate()}日(周${week})`;
   };
 
   // 格式化耗时

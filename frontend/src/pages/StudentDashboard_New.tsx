@@ -11,6 +11,8 @@ import { getMistakeBookStats } from '../api/mistakeBook';
 import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
+import { formatOpenDay } from '../utils/openDay';
+import { toast } from '../components/Toast';
 import PetWidget from '../components/PetWidget';
 import MyCoinsCard from '../components/MyCoinsCard';
 import RankingBanner from '../components/leaderboard/RankingBanner';
@@ -206,15 +208,21 @@ const StudentDashboard = () => {
   const loadPendingHomework = async () => {
     try {
       const data = await getMyHomework();
-      // 排掉未开放的当日任务:接口会返回它们供作业页展示"明天做什么",
-      // 但首页红点和任务卡只算现在能做的,否则数字里混着做不了的任务
-      const pending = data.filter((h) =>
-        !h.is_locked &&
+      const undone = data.filter((h) =>
         h.status !== 'completed' && h.status !== 'graded' && h.status !== 'failed',
       );
-      setPendingHomeworkCount(pending.length);
-      // 仪表盘任务卡:逾期/截止近的在前,没截止的最后
-      const sorted = [...pending].sort((a, b) => {
+      // 红点/「去完成」数字只算**现在能做的**,否则显示 2 却一个都点不动。
+      // 但任务卡要把未开放的也列出来(带🔒标明哪天开放)—— 老师排好了后面几天,
+      // 首页藏起来学生就完全不知道有这回事(全是未开放任务时首页会空成一片)。
+      setPendingHomeworkCount(undone.filter((h) => !h.is_locked).length);
+      // 排序:能做的在前(逾期/快到期优先),未开放的按开放日排在后面
+      const sorted = [...undone].sort((a, b) => {
+        if (!!a.is_locked !== !!b.is_locked) return a.is_locked ? 1 : -1;
+        if (a.is_locked && b.is_locked) {
+          const oa = a.available_from ? new Date(a.available_from).getTime() : Infinity;
+          const ob = b.available_from ? new Date(b.available_from).getTime() : Infinity;
+          return oa - ob;
+        }
         const da = a.deadline ? new Date(a.deadline).getTime() : Infinity;
         const db_ = b.deadline ? new Date(b.deadline).getTime() : Infinity;
         return da - db_;
@@ -602,9 +610,18 @@ const StudentDashboard = () => {
               <div className="px-5 py-3 flex items-center gap-2 border-b border-accent-warm/20">
                 <span className="text-lg">📣</span>
                 <h3 className="font-semibold text-ink text-sm">老师布置的任务</h3>
-                <span className="px-1.5 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold">
-                  {pendingTasks.length}
-                </span>
+                {/* 徽章只数今天能做的(= pendingHomeworkCount);未开放的另标,
+                    否则"3"里混着做不了的,孩子会以为自己漏做 */}
+                {pendingHomeworkCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold">
+                    {pendingHomeworkCount}
+                  </span>
+                )}
+                {pendingTasks.length > pendingHomeworkCount && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[11px] font-numeric font-semibold">
+                    🔒{pendingTasks.length - pendingHomeworkCount}
+                  </span>
+                )}
                 {pendingTasks.length > 3 && (
                   <button
                     onClick={() => navigate('/student/homework')}
@@ -617,9 +634,12 @@ const StudentDashboard = () => {
               <div className="divide-y divide-accent-warm/10">
                 {pendingTasks.slice(0, 3).map((task) => {
                   const overdue = task.deadline && new Date(task.deadline) < new Date();
+                  // 未开放的任务:列出来让学生知道后面几天要练什么,但点不动
+                  const locked = !!task.is_locked;
+                  const openDay = formatOpenDay(task.available_from);
                   return (
-                    <div key={task.id} className="px-5 py-3.5 flex items-center gap-3">
-                      <span className="text-xl shrink-0">📘</span>
+                    <div key={task.id} className={`px-5 py-3.5 flex items-center gap-3 ${locked ? 'opacity-70' : ''}`}>
+                      <span className="text-xl shrink-0">{locked ? '🔒' : '📘'}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-ink text-sm truncate">{task.title}</p>
                         <p className="text-xs text-ink-mute mt-0.5 truncate">
@@ -629,7 +649,9 @@ const StudentDashboard = () => {
                               {' '}· 最好 {task.best_score} 分,差 {Math.max(0, task.target_score - task.best_score)} 分达标(剩 {Math.max(0, task.max_attempts - task.attempts_count)} 次)
                             </span>
                           )}
-                          {task.deadline && (
+                          {locked ? (
+                            <span className="font-semibold text-slate-500">{' '}· {openDay}开放</span>
+                          ) : task.deadline && (
                             <span className={overdue ? 'text-red-500 font-semibold' : ''}>
                               {' '}· {overdue ? '已逾期!' : `截止 ${new Date(task.deadline).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`}
                             </span>
@@ -637,12 +659,18 @@ const StudentDashboard = () => {
                         </p>
                       </div>
                       <button
-                        onClick={() => handleStartTask(task)}
-                        className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition active:scale-95 text-white ${
-                          overdue ? 'bg-red-500 hover:opacity-90' : 'btn-glow'
+                        onClick={() => locked
+                          ? toast.info(`这是${openDay}的任务，${openDay}才能开始做哦`)
+                          : handleStartTask(task)}
+                        className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition active:scale-95 ${
+                          locked
+                            ? 'cursor-not-allowed bg-black/[0.06] text-ink-mute'
+                            : overdue ? 'bg-red-500 text-white hover:opacity-90' : 'btn-glow text-white'
                         }`}
                       >
-                        {task.attempts_count > 0 ? '再战一次 →' : task.status === 'in_progress' ? '继续 →' : '去完成 →'}
+                        {locked
+                          ? `${openDay}开放`
+                          : task.attempts_count > 0 ? '再战一次 →' : task.status === 'in_progress' ? '继续 →' : '去完成 →'}
                       </button>
                     </div>
                   );

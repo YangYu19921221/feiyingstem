@@ -49,6 +49,30 @@ const fmtMD = (dateStr: string) => {
   const [, m, day] = dateStr.split('-');
   return `${Number(m)}/${Number(day)}`;
 };
+// 标题里的日期意图检测:老师常把「8月9日」写进标题却忘了选「开始日期」,
+// 结果任务立即生效、学生当天就能做(实案:两份"8月9日任务"当晚就被做了)。
+// 识别出来就主动提示 + 一键代填,不靠老师自己悟。
+const detectTitleDate = (title: string): { label: string; dateStr: string } | null => {
+  const t = title.trim();
+  if (!t) return null;
+  const today = localDateStr(new Date());
+  if (t.includes('明天')) return { label: '明天', dateStr: addDays(today, 1) };
+  if (t.includes('后天')) return { label: '后天', dateStr: addDays(today, 2) };
+  const m = t.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/);
+  if (!m) return null;
+  const mon = Number(m[1]);
+  const day = Number(m[2]);
+  let year = new Date().getFullYear();
+  let candidate = new Date(year, mon - 1, day);
+  // 2月30日这类不存在的日期会被 JS Date 滚到下月,识别为无效
+  if (candidate.getMonth() !== mon - 1) return null;
+  // 写的日期已过去(如 12 月布置「1月5日」)→ 当成明年
+  if (localDateStr(candidate) < today) {
+    year += 1;
+    candidate = new Date(year, mon - 1, day);
+  }
+  return { label: `${mon}月${day}日`, dateStr: localDateStr(candidate) };
+};
 // 定时布置且还没到开放日(YYYY-MM-DD 字典序即日期序)
 const isScheduledFuture = (h: HomeworkResponse) =>
   !!h.available_from && h.available_from > localDateStr(new Date());
@@ -231,6 +255,19 @@ const TeacherHomework: React.FC = () => {
       toast.warning('请至少选择一个学生');
       return;
     }
+    // 最后一道闸:标题写了日期却没选开始日期,大概率是想布置当日任务但漏了选。
+    // 内联提示可能没被注意到(表单长,提交按钮在底部),交卷前再确认一次。
+    const td = detectTitleDate(formData.title);
+    if (td && !formData.available_date) {
+      if (!confirm(
+        `标题里写了「${td.label}」,但没有选「开始日期」。\n\n` +
+        `直接布置的话,学生现在就能看到并完成,不会等到${td.label}才开放。\n\n` +
+        `确定要立即布置吗?\n` +
+        `(想让它${td.label}才开放,请点「取消」,再点标题下方的「设为${td.label}开放」)`
+      )) {
+        return;
+      }
+    }
 
     const unitIds = scope.unit_ids ?? [];
     const multi = unitIds.length > 1;
@@ -280,7 +317,7 @@ const TeacherHomework: React.FC = () => {
 
   // 取消还没开放的当日任务:学生尚未看到、没有任何做题记录,轻确认后直接删除
   const handleCancelScheduled = async (homework: HomeworkResponse) => {
-    if (!confirm(`取消「${homework.title}」?\n这份任务 ${homework.available_from} 才开放,学生还没看到,取消后不会留下任何痕迹。`)) {
+    if (!confirm(`取消「${homework.title}」?\n这份任务 ${homework.available_from} 才开放,学生现在能看到但还做不了;取消后学生端将不再显示,不留痕迹。`)) {
       return;
     }
     try {
@@ -661,6 +698,35 @@ const TeacherHomework: React.FC = () => {
                       placeholder="例如: Unit 1 单词练习"
                       required
                     />
+                    {/* 标题写了日期却没选开始日期:立即警示 + 一键代填,防"写了日期就以为会按日期生效" */}
+                    {(() => {
+                      const td = detectTitleDate(formData.title);
+                      if (!td) return null;
+                      if (!formData.available_date) {
+                        return (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+                            <p className="min-w-[200px] flex-1 text-xs leading-5 text-amber-800">
+                              ⚠️ 标题里写了「{td.label}」,但还没选「开始日期」——这样布置学生<b>现在就能做</b>,不会等到{td.label}才开放。
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, available_date: td.dateStr, deadline: '' })}
+                              className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
+                            >
+                              设为 {td.label} 开放
+                            </button>
+                          </div>
+                        );
+                      }
+                      if (formData.available_date !== td.dateStr) {
+                        return (
+                          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+                            💡 标题写的是「{td.label}」,选的开始日期是 {fmtMD(formData.available_date)},两者不一致——实际按选的日期 {fmtMD(formData.available_date)} 开放。
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   {/* 作业描述 */}
@@ -766,7 +832,7 @@ const TeacherHomework: React.FC = () => {
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                       />
                       <p className="mt-1 text-xs text-gray-400">
-                        选日期=当日任务:学生当天 0 点才看到、当天 24 点截止,只能当天完成;留空=普通作业,立即布置
+                        选日期=当日任务:学生提前就能看到(带🔒标注哪天开放),但要到当天才能做,当天 24:00 截止;留空=普通作业,立即开始
                       </p>
                     </div>
                     <div>
