@@ -21,7 +21,7 @@ from app.models.user import User, Class, ClassStudent
 from app.models.coin import StudentCoin, CoinTransaction, CoinReward, CoinRedeemRequest
 from app.models.learning import LearningRecord
 from app.models.word import Word
-from app.api.v1.auth import get_current_teacher
+from app.api.v1.auth import get_current_user
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
 from app.services import daily_words
@@ -31,7 +31,23 @@ from app.services.auth_service import get_password_hash, verify_password
 
 router = APIRouter()
 
-SOURCE_LABELS = {"task": "完成作业", "unit": "完成单元", "word_king": "单词王", "manual": "手动调整", "redeem": "兑换消耗"}
+SOURCE_LABELS = {"task": "完成任务", "unit": "完成单元", "word_king": "单词王", "manual": "手动调整", "redeem": "兑换消耗"}
+
+
+async def get_current_teacher(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """金币模块的身份依赖:teacher / admin / **org_admin** 都放行。
+
+    不复用全局 app.api.v1.auth.get_current_teacher —— 那个只认 teacher/admin,
+    而机构管理员(加盟校负责人)恰恰是最需要管金币、切发放模式的人;全局改动
+    会牵动 16 个模块 117 个端点,风险太大,所以在本模块内单独放行。
+    本文件内的每个端点仍各自做数据范围裁决(_visible_student_ids / 班级归属),
+    org_admin 只能看到本机构数据(靠 tenancy 过滤器 + 班级校验)。
+    """
+    if current_user.role not in ("teacher", "admin", "org_admin"):
+        raise HTTPException(status_code=403, detail="需要教师或管理员权限")
+    return current_user
 
 
 # ---------- 权限:算出当前老师可见的学生 id 集合 ----------

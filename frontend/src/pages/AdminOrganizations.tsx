@@ -213,6 +213,22 @@ export default function AdminOrganizations() {
     }
   };
 
+  /** 金币发放模式切换: auto(系统自动发) ⇄ manual(只能老师手动加) */
+  const toggleCoinMode = async (org: Organization) => {
+    const next = org.coin_mode === 'manual' ? 'auto' : 'manual';
+    const msg = next === 'manual'
+      ? `「${org.name}」改为教师手动加币?\n\n该机构此后系统不再自动发币,需老师核实学生完成情况后在金币管理页逐个加。\n已经发出去的金币不会收回。`
+      : `「${org.name}」改为系统自动发币?\n\n学生完成当天布置的全部任务自动 +1(当天追加的任务不再多给,老师取消/关闭的任务不计入);\n当日单词王额外 +1,次日 0 点后到账。一天最多 2 枚。`;
+    if (!window.confirm(msg)) return;
+    try {
+      await adminOrgApi.update(org.id, { coin_mode: next });
+      await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+      toast.success(next === 'manual' ? '已改为教师手动加币' : '已改为系统自动发币');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '切换金币发放模式失败'));
+    }
+  };
+
   /** 到期状态: null=有效 */
   const expiryBadge = (org: Organization) => {
     if (!org.expires_at) return null;
@@ -485,6 +501,7 @@ export default function AdminOrganizations() {
                     <div>档位 <span className="font-medium text-slate-700">{PLAN_LABELS[org.plan] || org.plan}</span></div>
                     <div>老师 <span className="font-medium text-slate-700">{org.teacher_count} 人</span></div>
                     <div>授权 <span className={`font-medium ${org.access_mode === 'all_books' ? 'text-amber-600' : 'text-slate-700'}`}>{org.access_mode === 'all_books' ? '全托·书本全开放' : '逐本分配'}</span></div>
+                    <div>金币 <span className={`font-medium ${org.coin_mode === 'manual' ? 'text-orange-600' : 'text-slate-700'}`}>{org.coin_mode === 'manual' ? '教师手动加' : '系统自动发'}</span></div>
                     <div className="col-span-2 flex items-center gap-2">学生 <span className="font-medium text-slate-700">{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>{org.student_quota < 999999 && <QuotaBar active={org.active_students} quota={org.student_quota} className="w-20" />}</div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold">
@@ -492,6 +509,7 @@ export default function AdminOrganizations() {
                     <button className="text-teal-600" onClick={() => openManagerPanel(org)}>管理员</button>
                     <button className="text-orange-600" onClick={() => changeQuota(org)}>改配额</button>
                     <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
+                    <button className="text-orange-600" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                     {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
                     {org.id !== 1 && <button className={org.status === 'active' ? 'text-red-600' : 'text-emerald-600'} onClick={() => { if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return; toggleStatus.mutate(org); }}>{org.status === 'active' ? '停用' : '恢复'}</button>}
                     {org.id !== 1 && <button className="text-red-700" onClick={() => deleteOrg(org)}>删除</button>}
@@ -529,6 +547,9 @@ export default function AdminOrganizations() {
                         {org.access_mode === 'all_books' && (
                           <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">全托</span>
                         )}
+                        {org.coin_mode === 'manual' && (
+                          <span className="ml-1.5 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">金币手动</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -554,6 +575,7 @@ export default function AdminOrganizations() {
                           <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
                           <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
                           <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
+                          <button className="text-orange-600 hover:underline" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                           {org.id !== 1 && (
                             <button className="text-purple-500 hover:underline" onClick={() => changeExpiry(org)}>有效期</button>
                           )}
