@@ -48,6 +48,11 @@ class StudentHomeworkResponse(BaseModel):
 # 当日任务(按日期布置)的时间窗口
 # ========================================
 
+# 当日任务过期后仍接受交卷的缓冲期。必须 > 夜间结算时刻(北京 00:35),
+# 否则 00:30~00:35 之间由离线队列送达的成绩会被拒、且赶不上当晚结算 → 分数与金币双丢。
+LATE_SUBMIT_GRACE = timedelta(minutes=45)
+
+
 def day_task_expiry(homework) -> Optional[datetime]:
     """当日任务的过期时刻(UTC naive)。
 
@@ -278,10 +283,12 @@ async def submit_homework_attempt(
     if homework.available_from and datetime.utcnow() < homework.available_from:
         raise HTTPException(status_code=400, detail="这份作业还没开始")
 
-    # 当日任务过期拒收,但留 30 分钟缓冲:23:59 交卷经断网重试队列补交
-    # 可能落到 0 点后,不能把孩子做完的成绩拒掉
+    # 当日任务过期拒收,但留一段缓冲:23:59 交卷经断网重试队列补交可能落到 0 点后,
+    # 不能把孩子做完的成绩拒掉。缓冲必须**长于**夜间结算时刻(北京 00:35,见
+    # coin_scheduler.SETTLE_MINUTE)——否则 00:30~00:35 送达的成绩既被拒、
+    # 又赶不上结算,分数和金币两头都丢。取 45 分钟留 10 分钟余量。
     expiry = day_task_expiry(homework)
-    if expiry and datetime.utcnow() >= expiry + timedelta(minutes=30):
+    if expiry and datetime.utcnow() >= expiry + LATE_SUBMIT_GRACE:
         assignment.status = 'overdue' if assignment.status not in ('completed', 'failed') else assignment.status
         await db.commit()
         raise HTTPException(status_code=400, detail="这份任务只能在当天完成,已经过期了")

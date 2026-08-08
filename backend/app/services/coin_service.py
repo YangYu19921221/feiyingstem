@@ -6,13 +6,13 @@ CoinTransaction 流水,保证两者一致、且流水里的 balance_after 可对
 系统发放(task/word_king)用 dedup_key 幂等:同一学生同一天同一来源只发一次,
 靠 coin_transactions.dedup_key 唯一约束兜底,并发/重复结算都不会多发。
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import select, func, and_, case
+from sqlalchemy import select, func, and_, case, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.timeutil import local_day_utc_range, local_today
+from app.core.timeutil import local_day_utc_range, local_today, LOCAL_TZ
 from app.models.coin import StudentCoin, CoinTransaction
 from app.models.organization import Organization
 from app.models.user import User, ClassStudent
@@ -226,15 +226,28 @@ async def apply_delta(
             return None
 
     coin = await _get_or_create_coin(db, user_id, org_id)
-    new_balance = (coin.balance or 0) + amount
+    # 余额用**相对更新**(balance = balance + amount),不能读出来加完再整体写回:
+    # 发币现在跑在多个独立会话里(交卷实时发 / 00:35 结算 / 老师手动加),两个
+    # 事务读到同一个初始余额再各自写绝对值,后提交的会覆盖前一个 → 丢币。
+    # dedup_key 拦不住这种情况:两笔的 key 本来就不同(task 与 word_king)。
+    await db.execute(
+        update(StudentCoin)
+        .where(StudentCoin.user_id == user_id)
+        .values(balance=StudentCoin.balance + amount)
+    )
+    # 回读权威余额给流水留档(balance_after 供对账)
+    new_balance = (await db.execute(
+        select(StudentCoin.balance).where(StudentCoin.user_id == user_id)
+    )).scalar() or 0
     tx = CoinTransaction(
         user_id=user_id, org_id=org_id, amount=amount,
         balance_after=new_balance, source=source, reason=reason,
         dedup_key=dedup_key, operator_id=operator_id,
     )
     db.add(tx)
-    coin.balance = new_balance
     await db.flush()
+    # 让 ORM 里的余额对象与库里一致(调用方可能接着读 coin.balance)
+    await db.refresh(coin)
     return tx
 
 
@@ -335,8 +348,29 @@ async def try_award_task_coin(
     幂等:同一天同一学生只发一次(dedup_key)。调用方负责 commit。
     在两个时机调用:①学生交卷达标后 ②老师关闭/取消任务后(分母变小可能刚好凑齐)。
     """
+    # 只发「今天」的币。否则学生把上周欠的任务一次补完,会按每个布置日各发一枚,
+    # 一次领到一周的币,直接击穿「一天最多 DAILY_CAP 枚」(dedup_key 是按天的,
+    # 拦不住跨天累加)。历史某天真的全做完了,由当晚 00:35 的 settle_day 兜底发。
+    # 例外:刚跨午夜(北京 0 点那一小时)允许补发昨天——离线重试队列在 23:59
+    # 交卷、0 点后才送达时,币不能丢(与交卷 30 分钟缓冲同源)。
+    today = local_today()
+    if d != today:
+        just_past_midnight = (
+            d == today - timedelta(days=1)
+            and datetime.now(LOCAL_TZ).hour == 0
+        )
+        if not just_past_midnight:
+            return False
+
+    # org_id 必须是**该学生**的:开关是机构级的,拿错机构会按别人的设置发币
+    # (曾因此让 manual 机构照样自动发,且烧掉 dedup_key 让老师无法再手动补这一天)
+    if org_id is None:
+        org_id = (await db.execute(
+            select(User.org_id).where(User.id == student_id)
+        )).scalar_one_or_none()
     if not await is_auto_coin_org(db, org_id):
         return False
+
     key_date = d.strftime("%Y%m%d")
     if await _has_activity_coin(db, student_id, key_date):
         return False
@@ -344,10 +378,6 @@ async def try_award_task_coin(
     total, done = progress.get(student_id, (0, 0))
     if total <= 0 or total != done:
         return False
-    if org_id is None:
-        org_id = (await db.execute(
-            select(User.org_id).where(User.id == student_id)
-        )).scalar_one_or_none()
     tx = await apply_delta(
         db, student_id, org_id or 1, TASK_REWARD, "task",
         reason=f"{d.isoformat()} 完成全部任务",
