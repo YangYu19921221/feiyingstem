@@ -300,7 +300,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   切manual后不自动发但已发的不回收);「完成>=2单元+1」永久关闭(ENABLE_UNIT_COIN=False);
   每日00:35自动结算已恢复(main.py lifespan)+教师端「🔄补算昨天」兜底;
   发币日期取 assigned_at+8h 而非 local_today(连带完成/跨午夜补交会牵动别的日子,
-  submit 用 affected_days 集合逐日结算);规则文案单一真源 components/CoinRulesModal.tsx
+  submit 用 affected_days 集合逐日结算)但**只发当天**(否则补做上周7天任务会各发一枚击穿封顶);
+  发币走独立会话(共用请求session时失败rollback会让current_user过期→MissingGreenlet 500);
+  扣币走数据库条件扣减(balance>=-amount)防并发扣成负数,不足抛InsufficientCoins→400;
+  规则文案单一真源 components/CoinRulesModal.tsx;08-08已部署生产(构建msjwfss2)
 - ✅ 可靠性: 提交队列幂等(claim_client_batch)、防划水/切屏监控、学习质量分
 - ✅ 新功能公告(2026-08): data/whatsNew.ts + WhatsNewNudge 按角色弹一次说清"在哪儿用",
   见上文「新功能必须同步公告」——加功能必须同步加公告条目
