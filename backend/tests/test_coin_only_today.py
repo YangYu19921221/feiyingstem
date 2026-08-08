@@ -58,10 +58,13 @@ async def student_with_day_tasks(db_session):
         )
         db_session.add(hw)
         await db_session.flush()
+        # completed_at 必须设:发币判定「当天完成」要看它(真实交卷路径一定会写),
+        # 这里当天布置当天做完 —— 迟做的场景另有专门用例
         sa = HomeworkStudentAssignment(
             homework_id=hw.id, student_id=stu.id, status="completed",
             attempts_count=1, best_score=100, total_time_spent=60,
             assigned_at=_utc_for_beijing_day(day),
+            completed_at=_utc_for_beijing_day(day, hour=20),
         )
         db_session.add(sa)
         await db_session.flush()
@@ -149,3 +152,61 @@ async def test_settle_records_the_owning_day(db_session, student_with_day_tasks)
     assert len(tx) == 1
     assert yesterday.strftime("%Y%m%d") in tx[0].dedup_key
     assert yesterday.isoformat() in (tx[0].reason or "")
+
+
+# ─────────────────────────────────────────────────────────────
+# 「补算昨天」不能追认迟做的任务(2026-08-08 堵的缺口)
+# ─────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_settle_does_not_award_task_completed_late(db_session, student_with_day_tasks):
+    """昨天的任务今天才做完 → 点「🔄补算昨天」也不该发币。
+
+    这是之前的缺口:settle_day 只看 status='completed' 不看完成时间,
+    于是"今天补做 + 管理员点补算"能绕过实时那条「只发当天」的限制。
+    要给迟做的学生补币走教师端手动加币(有 PIN、有流水、有操作人)。
+    """
+    stu, _, today, yesterday = student_with_day_tasks
+    # 把昨天那份的完成时间改成今天(模拟今天才补做完)
+    sa_yesterday = (await db_session.execute(
+        _select_assignment_for(stu.id, yesterday)
+    )).scalars().first()
+    sa_yesterday.completed_at = _utc_for_beijing_day(today, hour=9)
+    await db_session.commit()
+
+    result = await settle_day(db_session, yesterday)
+    await db_session.commit()
+    assert result["task"] == 0, "迟做的任务被补算追认了"
+    assert await _balance(db_session, stu.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_settle_still_awards_submit_just_past_midnight(db_session, student_with_day_tasks):
+    """23:59 交卷、离线队列 0 点后才落库的,属按时完成,补算要照发。
+
+    这是「当天完成」判定放宽 45 分钟缓冲的理由 —— 不能因为时间戳跨了午夜
+    就把孩子做完的成绩判成迟做(与交卷端点的 LATE_SUBMIT_GRACE 同源)。
+    """
+    stu, _, today, yesterday = student_with_day_tasks
+    sa_yesterday = (await db_session.execute(
+        _select_assignment_for(stu.id, yesterday)
+    )).scalars().first()
+    # 北京今天 00:20 落库 = 昨天 24 点后 20 分钟,在 45 分钟缓冲内
+    sa_yesterday.completed_at = _utc_for_beijing_day(today, hour=0) + timedelta(minutes=20)
+    await db_session.commit()
+
+    result = await settle_day(db_session, yesterday)
+    await db_session.commit()
+    assert result["task"] == 1, "缓冲期内送达的成绩被误判成迟做"
+    assert await _balance(db_session, stu.id) == 1
+
+
+def _select_assignment_for(student_id: int, day: date):
+    """取该生 assigned_at 落在 day 的那份作业分配。"""
+    from sqlalchemy import select as _sel
+    start = _utc_for_beijing_day(day, hour=0)
+    return _sel(HomeworkStudentAssignment).where(
+        HomeworkStudentAssignment.student_id == student_id,
+        HomeworkStudentAssignment.assigned_at >= start,
+        HomeworkStudentAssignment.assigned_at < start + timedelta(days=1),
+    )

@@ -46,6 +46,14 @@ class InsufficientCoins(Exception):
     """
 
 
+# 判定「当天完成」时对 completed_at 上界的宽容度。必须与 student/homework.py 的
+# LATE_SUBMIT_GRACE 一致(那边是交卷拒收缓冲):23:59 交卷经离线重试队列 0 点后
+# 才落库的,属按时完成,不能因时间戳跨午夜被判成迟做。
+# 这里不 import 那个常量 —— service 层反向依赖 API 层会有循环 import 风险;
+# 改动任一处都要同步另一处。
+LATE_SUBMIT_GRACE = timedelta(minutes=45)
+
+
 async def day_activity_map(db: AsyncSession, user_ids: list[int], d: date) -> dict:
     """一批学生在 d 这天的「完成任务数 + 学习单词数 + 完成单元数」,供金币流水附带展示。
 
@@ -338,6 +346,12 @@ async def task_progress_on_day(
     「应完成数」= assigned_at 落在当天、且作业未被老师关闭的份数。
     老师关闭(⏸)或删除(取消)的任务不进分母 —— 学生做不了的任务不能挡住金币,
     这正是「老师取消了部分任务,剩下的做完也给币」的实现。
+
+    「已完成数」只数**当天完成**的(completed_at 落当天,上界放宽 LATE_SUBMIT_GRACE),
+    不是所有 status='completed'。差别只在查历史某天时显现:今天补做昨天的任务,
+    昨天的进度不会因此变成"全完成" —— 否则「🔄补算昨天」会追认迟做的任务发币,
+    绕过 try_award_task_coin 的「只发当天」限制。查今天时两种写法等价
+    (今天完成的 completed_at 自然落今天),所以学生端进度显示不受影响。
     """
     if not student_ids:
         return {}
@@ -346,7 +360,12 @@ async def task_progress_on_day(
         select(
             HomeworkStudentAssignment.student_id,
             func.count(HomeworkStudentAssignment.id).label("total"),
-            func.sum(case((HomeworkStudentAssignment.status == "completed", 1), else_=0)).label("done"),
+            func.sum(case((and_(
+                HomeworkStudentAssignment.status == "completed",
+                HomeworkStudentAssignment.completed_at.is_not(None),
+                HomeworkStudentAssignment.completed_at >= day_start,
+                HomeworkStudentAssignment.completed_at < day_end + LATE_SUBMIT_GRACE,
+            ), 1), else_=0)).label("done"),
         )
         .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
         .where(and_(
@@ -491,8 +510,19 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
     if d < local_today():  # 那天已结束,榜单已定,才发单词王
         king_granted, _king_ids = await _award_word_king(db, d)
 
-    # 完成全部任务:按学生聚合当天布置且未关闭的任务,total==completed 且 total>0
-    done_expr = func.sum(case((HomeworkStudentAssignment.status == "completed", 1), else_=0))
+    # 完成全部任务:按学生聚合当天布置且未关闭的任务,total==done 且 total>0
+    #
+    # 「done」的判定与 task_progress_on_day 必须完全一致(那里有完整说明):
+    # 只数**当天完成**的,不是所有 status='completed'。否则今天补做昨天的任务,
+    # 管理员一点「🔄补算昨天」就会追认发币,绕过「只发当天」的规则。
+    # 这里没直接复用那个 helper,是因为要在同一查询里带出 org_id 判 manual 机构;
+    # **改判定条件时两处必须同步改**。
+    done_expr = func.sum(case((and_(
+        HomeworkStudentAssignment.status == "completed",
+        HomeworkStudentAssignment.completed_at.is_not(None),
+        HomeworkStudentAssignment.completed_at >= day_start,
+        HomeworkStudentAssignment.completed_at < day_end + LATE_SUBMIT_GRACE,
+    ), 1), else_=0))
     hw_rows = (await db.execute(
         select(
             HomeworkStudentAssignment.student_id,
