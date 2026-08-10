@@ -361,3 +361,10 @@ export function hasPetBackImage(species: string, evolutionStage: number): boolea
 export function getNextPetStage(species: string, evolutionStage: number): PetStage | null {
   return getPetDefinition(species).stages[evolutionStage + 1] || null;
 }
+
+/** 最终进化形态（用于通关庆祝这类"高光展示"场合：哪怕现在还是幼体，也show最帅的样子）。
+ *  已练到晶耀（stage 4）的返回晶耀档，好让光环特效生效；否则返回第三段进化。 */
+export function getPetFinalStage(species: string, evolutionStage: number): PetStage {
+  const stages = getPetDefinition(species).stages;
+  return evolutionStage >= 4 ? stages[4] : stages[3];
+}

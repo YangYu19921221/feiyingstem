@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'victory-pet-stage-2026-08',
+    date: '2026-08-10',
+    title: '过关庆祝页换成你的宠物登场了',
+    desc: '分组过关后的成绩页整个重画了:你自己的宠物会站在冠军舞台的中央,聚光灯打下来、光环在背后亮起。而且show的是它的最终进化形态——哪怕现在还是幼体,满分这一刻也先让你看看它长大后有多帅。分数越高舞台越有排面:满分是金色的加冕殿堂,80分以上是天空竞技场,没过就是山间道场,每档还有三套场景每天换,不会看腻。手机竖屏和电脑宽屏各配了一套画面,不会再被裁掉半张图。',
+    where: '学生端首页 → 选单元 → 分类学习,每组学完的「过关检测」交卷后自动出现',
+    roles: ['student'],
+    route: '/student/dashboard',
+  },
+  {
     id: 'redeem-code-search-delete-2026-08',
     date: '2026-08-08',
     title: '兑换码可以搜索和删除了',

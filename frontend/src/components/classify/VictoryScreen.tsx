@@ -1,16 +1,26 @@
 /**
- * 通关结果页（全屏沉浸式）— 立绘版 + 变化层
+ * 通关结果页（全屏沉浸式）— 宠物主角版 + 变化层
+ *
+ * 舞台 = AI 生成的空舞台背景（不含任何角色）+ 学生自己宠物的立绘合成在舞台上。
+ * 展示的是**最终进化形态**（getPetFinalStage）：哪怕孩子的宠物现在还是幼体，
+ * 满分这一刻也让他看见最帅的样子——这是庆祝画面，不是养成状态页。
+ *
+ * 背景每档 3 套场景 × 竖版(-m，手机) / 横版(-w，PC)，按视口方向实时切换：
+ *   横图铺在手机上会被裁掉大半构图，反之亦然，所以必须两套。
  *
  * 反审美疲劳的 4 条变量：
- *   1) 每档 3 张立绘按 dayOfYear 轮换，一周内同档不重复
+ *   1) 每档 3 套场景按 dayOfYear 轮换，一周内同档不重复
  *   2) 标题入场 4 种风格随机选（upward / shutter / typewriter / stamp）
  *   3) 数据带顺序随机置换
  *   4) 学生称号按 localStorage 累计本档通关次数选档
  */
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import ColoredWord from '../ColoredWord';
 import { resolveImage } from '../../utils/webp';
+import { getMyPet } from '../../api/pet';
+import { getPetDefinition, getPetFinalStage } from '../../config/petSpecies';
 
 export interface WrongAnswer {
   id: number;
@@ -37,7 +47,10 @@ interface Theme {
   key: TierKey;
   title: string;
   subtitle: string;
-  images: string[];
+  /** 场景 basename（不含 -m/-w 后缀与扩展名），运行时按视口方向补全 */
+  scenes: string[];
+  /** 舞台聚光/光环的主色，跟背景配色对齐 */
+  spotlight: string;
   topVeil: string;
   bottomVeil: string;
   titleColor: string;
@@ -53,7 +66,8 @@ const THEMES: Record<TierKey, Theme> = {
     key: 'perfect',
     title: 'PERFECT VICTORY',
     subtitle: '满分通关 · 完美无瑕',
-    images: ['/victory/perfect-1.webp', '/victory/perfect-2.webp', '/victory/perfect-3.webp'],
+    scenes: ['perfect-1', 'perfect-2', 'perfect-3'],
+    spotlight: 'oklch(0.85 0.16 85)',
     topVeil: 'linear-gradient(to bottom, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.15) 35%, transparent 60%)',
     bottomVeil: 'linear-gradient(to top, rgba(40,15,0,0.55) 0%, rgba(40,15,0,0.2) 40%, transparent 70%)',
     titleColor: 'oklch(0.98 0.02 80)',
@@ -67,7 +81,8 @@ const THEMES: Record<TierKey, Theme> = {
     key: 'great',
     title: 'GREAT WORK',
     subtitle: '表现出色 · 继续加油',
-    images: ['/victory/great-1.webp', '/victory/great-2.webp', '/victory/great-3.webp'],
+    scenes: ['great-1', 'great-2', 'great-3'],
+    spotlight: 'oklch(0.82 0.14 220)',
     topVeil: 'linear-gradient(to bottom, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.10) 35%, transparent 60%)',
     bottomVeil: 'linear-gradient(to top, rgba(20,30,55,0.5) 0%, rgba(20,30,55,0.18) 40%, transparent 70%)',
     titleColor: 'oklch(0.98 0.02 80)',
@@ -81,7 +96,8 @@ const THEMES: Record<TierKey, Theme> = {
     key: 'retry',
     title: 'KEEP GOING',
     subtitle: '再来一次 · 你能行',
-    images: ['/victory/retry-1.webp', '/victory/retry-2.webp', '/victory/retry-3.webp'],
+    scenes: ['retry-1', 'retry-2', 'retry-3'],
+    spotlight: 'oklch(0.78 0.10 250)',
     topVeil: 'linear-gradient(to bottom, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.10) 35%, transparent 60%)',
     bottomVeil: 'linear-gradient(to top, rgba(25,30,45,0.55) 0%, rgba(25,30,45,0.22) 40%, transparent 70%)',
     titleColor: 'oklch(0.98 0.02 80)',
@@ -99,13 +115,38 @@ function pickTheme(score: number): Theme {
   return THEMES.retry;
 }
 
-function pickImage(theme: Theme): string {
+/** 今天该用本档的哪套场景（按 dayOfYear 轮换，各档错开，一周内同档不重复） */
+function pickScene(theme: Theme): string {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 1);
   const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86400000);
   const tierHash = theme.key === 'perfect' ? 0 : theme.key === 'great' ? 1 : 2;
-  const idx = (dayOfYear + tierHash * 2) % theme.images.length;
-  return theme.images[idx];
+  return theme.scenes[(dayOfYear + tierHash * 2) % theme.scenes.length];
+}
+
+/** 竖屏（手机）用 -m，横屏（PC/平板横放）用 -w */
+function isLandscape(): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.innerWidth >= window.innerHeight;
+}
+
+function sceneUrl(scene: string, landscape: boolean): string {
+  return resolveImage(`/victory/${scene}-${landscape ? 'w' : 'm'}.webp`);
+}
+
+/** 监听视口方向：手机横竖屏翻转 / PC 拖窗口都要换图，否则构图被裁 */
+function useLandscape(): boolean {
+  const [landscape, setLandscape] = useState(isLandscape);
+  useEffect(() => {
+    const onResize = () => setLandscape(isLandscape());
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+  return landscape;
 }
 
 type Intro = 'upward' | 'shutter' | 'typewriter' | 'stamp';
@@ -229,6 +270,76 @@ function IntroTitle({ text, intro, color, stroke }: {
   );
 }
 
+/** 舞台上的宠物：立绘 + 聚光 + 光环 + 地面投影，登场带一个落地的重量感 */
+function PetHero({ image, name, spotlight, isGem }: {
+  image: string; name: string; spotlight: string; isGem: boolean;
+}) {
+  return (
+    <div
+      className="relative flex items-end justify-center pointer-events-none select-none
+                 w-[min(72vw,44vh)] aspect-square max-w-[380px]"
+    >
+      {/* 舞台聚光柱：从宠物脚下往上散 */}
+      <motion.div
+        initial={{ opacity: 0, scaleY: 0.6 }}
+        animate={{ opacity: 0.5, scaleY: 1 }}
+        transition={{ delay: 0.45, duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+        className="absolute bottom-0 w-[95%] h-[145%] origin-bottom blur-2xl"
+        style={{
+          background: `radial-gradient(55% 60% at 50% 100%, ${spotlight} 0%, transparent 70%)`,
+          mixBlendMode: 'screen',
+        }}
+      />
+      {/* 背后光环：缓慢呼吸，让立绘从背景里"浮"出来 */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.7 }}
+        animate={{ opacity: [0.55, 0.85, 0.55], scale: 1 }}
+        transition={{
+          opacity: { delay: 0.6, duration: 3.2, repeat: Infinity, ease: 'easeInOut' },
+          scale: { delay: 0.5, duration: 0.8, ease: [0.16, 1, 0.3, 1] },
+        }}
+        className="absolute bottom-[10%] w-[78%] aspect-square rounded-full blur-3xl"
+        style={{
+          background: `radial-gradient(circle, ${spotlight} 0%, transparent 68%)`,
+          mixBlendMode: 'screen',
+        }}
+      />
+      {/* 地面投影：给立绘一个落点，不然像飘在空中 */}
+      <motion.div
+        initial={{ opacity: 0, scaleX: 0.4 }}
+        animate={{ opacity: 0.45, scaleX: 1 }}
+        transition={{ delay: 0.7, duration: 0.5 }}
+        className="absolute bottom-[3%] w-[52%] h-[5%] rounded-[50%] blur-md bg-black/70"
+      />
+      <motion.img
+        src={image}
+        alt={name}
+        decoding="async"
+        initial={{ opacity: 0, y: -34, scale: 1.12 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ delay: 0.35, duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
+        className={`relative z-[1] w-full h-full object-contain ${
+          isGem ? 'saturate-125 contrast-110' : ''
+        }`}
+        style={{
+          filter: `drop-shadow(0 10px 26px rgba(0,0,0,0.55)) drop-shadow(0 0 22px ${spotlight})`,
+        }}
+      />
+      {/* 宠物名牌：绝对定位贴在立绘底部，不占布局流（占流会把立绘顶离舞台） */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.05, duration: 0.5 }}
+        className="absolute -bottom-1 z-[2] px-3 py-1 rounded-full whitespace-nowrap
+                   text-[11px] md:text-xs text-white/95 tracking-[0.12em]
+                   bg-black/45 border border-white/20 backdrop-blur-sm"
+      >
+        {name}
+      </motion.div>
+    </div>
+  );
+}
+
 export default function VictoryScreen({
   score, correctCount, totalQuestions, elapsedSeconds, wrongAnswers,
   onPass, onRetry, onRelearn,
@@ -239,7 +350,22 @@ export default function VictoryScreen({
   const [animatedScore, setAnimatedScore] = useState(0);
 
   // theme 在组件生命周期内不变（score 是 props 一次性传入），直接派生
-  const heroImage = resolveImage(pickImage(theme));
+  const [scene] = useState(() => pickScene(theme));
+  const landscape = useLandscape();
+  const heroImage = sceneUrl(scene, landscape);
+
+  // 学生自己的宠物：拿不到（没养宠物 / 请求失败）就只显示舞台，不阻塞结算页
+  const { data: pet } = useQuery({
+    queryKey: ['myPet'],
+    queryFn: getMyPet,
+    staleTime: 60_000,
+    retry: 0,
+  });
+  const petFinal = pet ? getPetFinalStage(pet.species, pet.evolution_stage) : null;
+  const petImage = petFinal?.image || null;
+  const petLabel = pet
+    ? `${pet.name} · ${petFinal?.name || getPetDefinition(pet.species).label}`
+    : '';
 
   // 入场风格 / 数据顺序：组件挂载时一次性随机；用 useState 初始化避免 StrictMode 双调
   const [intro] = useState<Intro>(randomIntro);
@@ -325,7 +451,9 @@ export default function VictoryScreen({
         style={{
           backgroundImage: `url(${heroImage})`,
           backgroundSize: 'cover',
-          backgroundPosition: 'center',
+          // 底部对齐：背景图里画出来的舞台圆盘都在下缘，贴底才能让宠物真的站在台上。
+          // 用 center 会把圆盘推到画面外或半截，宠物看着像飘在空中。
+          backgroundPosition: 'center bottom',
         }}
       />
       <div className="absolute inset-x-0 top-0 h-1/2 pointer-events-none" style={{ background: theme.topVeil }} />
@@ -340,7 +468,7 @@ export default function VictoryScreen({
       </button>
 
       <div className="relative z-10 min-h-full flex flex-col px-5 py-8 md:py-12 max-w-4xl mx-auto w-full">
-        <div className="text-center mt-2 mb-auto">
+        <div className="text-center mt-2">
           <motion.p
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -375,12 +503,27 @@ export default function VictoryScreen({
           </motion.div>
         </div>
 
-        <div className="mt-8">
+        {/* 舞台上的主角：学生自己的宠物（最终进化形态）。
+            flex-1 吃掉标题与数据带之间的余量，屏幕越高宠物越大；
+            宠物名做成绝对定位的浮层（不占流），否则会把立绘从舞台上顶起来；
+            没养宠物时这块塌成弹性空白，版面照旧成立。 */}
+        <div className="flex-1 min-h-0 flex items-end justify-center">
+          {petImage && (
+            <PetHero
+              image={petImage}
+              name={petLabel}
+              spotlight={theme.spotlight}
+              isGem={Boolean(petFinal?.isGem)}
+            />
+          )}
+        </div>
+
+        <div>
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.15, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="grid grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 md:gap-4 items-end mb-5"
+            className="grid grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 md:gap-4 items-end mt-3 mb-4"
           >
             {renderChip(dataOrder[0])}
             <div className="w-px h-10 md:h-14 bg-white/25 self-center" />
@@ -393,7 +536,7 @@ export default function VictoryScreen({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.4, duration: 0.5 }}
-            className="text-center text-white/80 text-xs md:text-sm mb-5"
+            className="text-center text-white/80 text-xs md:text-sm mb-4"
           >
             正确率 <span className="font-numeric font-semibold text-white">{accuracy}%</span>
           </motion.div>

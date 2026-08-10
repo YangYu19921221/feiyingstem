@@ -6,7 +6,7 @@
  *
  * 用法：
  *   import { resolveImage } from '../utils/webp';
- *   <div style={{ backgroundImage: `url(${resolveImage('/victory/perfect-1.webp')})` }} />
+ *   <div style={{ backgroundImage: `url(${resolveImage('/victory/perfect-1-m.webp')})` }} />
  *
  * 老 iOS 12 Safari 同步返回 false（探测异步完成前，sessionStorage 命中即用）。
  * 探测期间默认按支持（不阻塞主流）；若不支持，下次访问起就走 jpg。
