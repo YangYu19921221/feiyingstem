@@ -109,9 +109,30 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   const inputRef = useRef<HTMLInputElement>(null);
   const { playAudio: sharedPlayAudio, stopAudio } = useAudio();
   const handleSubmitRef = useRef<() => void>(() => {});
-  // 本题亮相时刻:换题瞬间落下的点击(上一题选完 300ms 自动切题后孩子习惯性的第二下、
-  // 键盘弹出/收起导致布局位移时的误触)会落在新题的按钮上,350ms 内的推进一律忽略
+  // 防误触:两类"落点不是用户本意"的点击要忽略——
+  // ① 换题瞬间(上一题选完 300ms 自动切题后孩子习惯性的第二下,会落在新题的按钮上)
+  // ② 软键盘弹出/收起时视口变矮/复原,居中的题卡整体位移,点击会落在
+  //    移动到手指下方的「下一题/选项/题号/交卷」上(用户实报"点文本框/别处就跳题")
   const questionShownAt = useRef(Date.now());
+  const lastViewportShiftAt = useRef(0);
+
+  // 键盘弹出/收起 → visualViewport(新浏览器)或 window(老 WebView)发 resize
+  useEffect(() => {
+    const onShift = () => { lastViewportShiftAt.current = Date.now(); };
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', onShift);
+    window.addEventListener('resize', onShift);
+    return () => {
+      vv?.removeEventListener('resize', onShift);
+      window.removeEventListener('resize', onShift);
+    };
+  }, []);
+
+  // 该点击是否发生在换题余点/布局位移窗口内(位移中被吃掉的点击再点一下即可,
+  // 比空答案跳题/误交卷伤害小得多)
+  const isAccidentalTap = () =>
+    Date.now() - questionShownAt.current < 350 ||
+    Date.now() - lastViewportShiftAt.current < 350;
 
   const currentQ = questions[currentIndex];
   const totalQuestions = questions.length;
@@ -136,12 +157,8 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
     const existing = currentQ ? answers.get(currentQ.id) : '';
     setInputValue(existing || '');
     if (currentQ && (currentQ.type === 'listening' || currentQ.type === 'spelling')) {
-      // 只在鼠标设备自动聚焦。触屏上 programmatic focus 会直接弹出软键盘,
-      // 视口变矮、居中的题卡整体上移,孩子此刻伸手去点输入框,落点处已经变成
-      // 紧挨其下方的「下一题」按钮 → 空答案跳题(用户实报"点文本框就跳下一题")
-      if (!window.matchMedia('(pointer: coarse)').matches) {
-        setTimeout(() => inputRef.current?.focus(), 100);
-      }
+      // 自动聚焦弹键盘(产品要求保留);由此引发的布局位移误触交给 isAccidentalTap 挡
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [currentIndex]);
 
@@ -154,7 +171,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   const handleSelect = (option: string) => {
     if (!currentQ) return;
-    if (Date.now() - questionShownAt.current < 350) return; // 换题瞬间的余点/误触
+    if (isAccidentalTap()) return;
     setAnswers(prev => new Map(prev).set(currentQ.id, option));
     setTimeout(() => {
       if (currentIndex < totalQuestions - 1) setCurrentIndex(currentIndex + 1);
@@ -162,7 +179,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   };
 
   const handleInputNext = () => {
-    if (Date.now() - questionShownAt.current < 350) return; // 换题瞬间的余点/误触
+    if (isAccidentalTap()) return;
     saveInput();
     if (currentIndex < totalQuestions - 1) setCurrentIndex(currentIndex + 1);
   };
@@ -365,7 +382,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
             {questions.map((q, i) => (
               <button
                 key={q.id}
-                onClick={() => { saveInput(); setCurrentIndex(i); }}
+                onClick={() => { if (isAccidentalTap()) return; saveInput(); setCurrentIndex(i); }}
                 className={`w-7 h-7 rounded-md text-xs font-medium transition ${
                   i === currentIndex ? 'bg-blue-500 text-white' :
                   answers.has(q.id) ? 'bg-green-100 text-green-700 border border-green-300' :
@@ -378,7 +395,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
           </div>
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={handleSubmit}
+            onClick={() => { if (isAccidentalTap()) return; handleSubmit(); }}
             className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg"
           >
             交卷
