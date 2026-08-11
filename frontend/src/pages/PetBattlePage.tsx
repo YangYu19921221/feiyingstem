@@ -57,7 +57,8 @@ type CaptureResult = {
   pet_species: string;
   loser_has_no_pets: boolean;
   recovery_goal_words: number | null;
-  reason: 'captured' | 'escaped' | 'roster_full' | 'slot_locked' | 'duplicate_species' | string;
+  reason: 'captured' | 'escaped' | 'roster_full' | 'slot_locked' | 'duplicate_species'
+    | 'legend_words_locked' | 'legend_slot_locked' | 'legend_roster_full' | string;
   required_words?: number | null;
 };
 
@@ -1226,7 +1227,25 @@ function EndResultPanel({
       return { tone: 'gray', title: '没有投出精灵球', detail: '你的队伍里已经有这个宝可梦家族。' };
     }
     if (capture.reason === 'roster_full') {
-      return { tone: 'gray', title: '队伍已满', detail: '最多同时拥有 5 只宝可梦，本次无法收服。' };
+      return { tone: 'gray', title: '队伍已满', detail: '最多同时拥有 5 只普通宝可梦，本次无法收服。' };
+    }
+    // 传说三种拒绝：没到学词门槛 / 传说格没开 / 传说格已满。分开说，孩子才知道差在哪。
+    if (capture.reason === 'legend_words_locked') {
+      return {
+        tone: 'gray',
+        title: `${capture.pet_name} 是传说宝可梦`,
+        detail: `需要累计学会 ${capture.required_words?.toLocaleString() || '更多'} 个不同单词才能收服它。`,
+      };
+    }
+    if (capture.reason === 'legend_slot_locked') {
+      return {
+        tone: 'gray',
+        title: '传说专属格还没开启',
+        detail: `先累计学习 ${capture.required_words?.toLocaleString() || '更多'} 个不同单词，解锁下一个传说名额。`,
+      };
+    }
+    if (capture.reason === 'legend_roster_full') {
+      return { tone: 'gray', title: '传说队伍已满', detail: '最多同时拥有 2 只传说宝可梦，本次无法收服。' };
     }
     return null;
   })();

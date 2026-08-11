@@ -13,14 +13,17 @@ from app.models.learning import LearningRecord
 from app.models.word import Word, WordDefinition
 # 统一数值真源；calculate_initial_hp 是 calculate_max_hp 的别名，保留名字兼容既有 import
 from app.core.pet_formulas import (
-    MAX_PET_SLOTS, calculate_initial_hp, calculate_max_hp, apply_xp_and_level,
+    MAX_PET_SLOTS, MAX_LEGEND_SLOTS, calculate_initial_hp, calculate_max_hp, apply_xp_and_level,
     pet_recovery_goal, pet_slots_for_words, next_pet_slot_threshold,
+    legend_slots_for_words, next_legend_slot_threshold,
 )
 from app.core.pet_species import (
     get_pet_element,
     get_pet_stage_name,
     get_type_multiplier,
     get_type_text,
+    is_legendary,
+    words_required_for,
 )
 
 
@@ -116,13 +119,31 @@ async def _settle_pet_capture(
         "reason": "",
     }
 
-    if len(winner_pets) >= MAX_PET_SLOTS:
-        result["reason"] = "roster_full"
-        return result
-    if len(winner_pets) >= unlocked_slots:
-        result["reason"] = "slot_locked"
-        result["required_words"] = next_pet_slot_threshold(learned_words)
-        return result
+    # 收服是领养之外的第二条入队路径,门槛必须与 adopt_pet 同口径。
+    # 否则只学了 300 词的孩子打赢一场就能把别人的梦幻抱走 —— 学词门槛等于形同虚设。
+    if is_legendary(loser_pet.species):
+        required = words_required_for(loser_pet.species)
+        legend_used = sum(1 for pet in winner_pets if is_legendary(pet.species))
+        if learned_words < required:
+            result["reason"] = "legend_words_locked"
+            result["required_words"] = required
+            return result
+        if legend_used >= MAX_LEGEND_SLOTS:
+            result["reason"] = "legend_roster_full"
+            return result
+        if legend_used >= legend_slots_for_words(learned_words):
+            result["reason"] = "legend_slot_locked"
+            result["required_words"] = next_legend_slot_threshold(learned_words)
+            return result
+    else:
+        normal_used = sum(1 for pet in winner_pets if not is_legendary(pet.species))
+        if normal_used >= MAX_PET_SLOTS:
+            result["reason"] = "roster_full"
+            return result
+        if normal_used >= unlocked_slots:
+            result["reason"] = "slot_locked"
+            result["required_words"] = next_pet_slot_threshold(learned_words)
+            return result
     if any(pet.species == loser_pet.species for pet in winner_pets):
         result["reason"] = "duplicate_species"
         return result

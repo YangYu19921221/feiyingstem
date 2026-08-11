@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, Bone, BookOpen, Check, ChevronRight, Gem, HeartPulse, LockKeyhole, Plus, RefreshCw, Search, ShieldAlert, Swords, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Bone, BookOpen, Check, ChevronRight, Gem, HeartPulse, LockKeyhole, Plus, RefreshCw, Search, ShieldAlert, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
 import { getMyPet, getPetCollection, createPet, switchPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetCollection, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
 import { quickMatchBattle } from '../api/petBattle';
 import PetArtwork from '../components/PetArtwork';
@@ -10,12 +10,20 @@ import useGoBack from '../hooks/useGoBack';
 import { TYPE_COLORS, TYPE_ICONS, TYPE_NAMES, type PokemonType } from '../utils/typeEffectiveness';
 import {
   PET_SPECIES,
+  NORMAL_SPECIES,
+  LEGENDARY_SPECIES,
+  SEMI_LEGEND_WORDS,
+  LEGEND_WORDS,
+  TIER_LABEL,
   getPetDefinition,
   getPetImage,
   getPetStage,
   getPetStageImage,
   getNextPetStage,
+  isLegendary,
+  wordsRequiredFor,
   type PetStage,
+  type PetSpeciesDefinition,
 } from '../config/petSpecies';
 
 const PET_MOODS: Record<string, { emoji: string; text: string }[]> = {
@@ -36,6 +44,21 @@ const PET_MOODS: Record<string, { emoji: string; text: string }[]> = {
 
 function getPetEmoji(species: string, stage: number): string {
   return stage === 0 ? '🥚' : getPetDefinition(species).emoji;
+}
+
+/** 传说徽章。准传说金色、顶级传说紫色，一眼能分出两档。 */
+function TierBadge({ definition, className = '' }: { definition: PetSpeciesDefinition; className?: string }) {
+  if (definition.tier === 'normal') return null;
+  const isTop = definition.tier === 'legend';
+  return (
+    <span
+      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold text-white ${
+        isTop ? 'bg-gradient-to-r from-fuchsia-600 to-violet-600' : 'bg-gradient-to-r from-amber-500 to-orange-500'
+      } ${className}`}
+    >
+      {isTop ? '★ ' : '☆ '}{TIER_LABEL[definition.tier]}
+    </span>
+  );
 }
 
 function friendlyPetEvent(detail: string | null, eventType: string): string {
@@ -102,7 +125,10 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
   const previewSpecies = hoveredSpecies || selected;
   const previewDefinition = getPetDefinition(previewSpecies);
   const previewImg = previewDefinition.stages[1].image;
-  const availableSpecies = PET_SPECIES.filter((definition) => {
+  // 领养页只列普通家族：这是"第一只伙伴"的免费入口,不该让传说当白送的开局
+  // (后端在够词且零宠物时其实会放行,这里是产品上故意收窄)。
+  // 传说改用下面的横幅告诉孩子它们存在、以及怎么才能得到。
+  const availableSpecies = NORMAL_SPECIES.filter((definition) => {
     const keyword = speciesQuery.trim().toLowerCase();
     return !keyword || [definition.label, ...definition.stages.map((form) => form.name)]
       .some((value) => value.toLowerCase().includes(keyword));
@@ -184,10 +210,37 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
                 type="search"
                 value={speciesQuery}
                 onChange={(event) => setSpeciesQuery(event.target.value)}
-                placeholder={`搜索 ${PET_SPECIES.length} 个宝可梦家族`}
+                placeholder={`搜索 ${NORMAL_SPECIES.length} 个宝可梦家族`}
                 className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               />
             </label>
+
+            {/* 传说预告：领养页不能领传说，但必须让孩子第一天就知道它们存在、以及门槛是什么 */}
+            <div className="mb-4 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-3">
+              <div className="flex items-center gap-1.5 text-sm font-bold text-violet-900">
+                <Sparkles className="h-4 w-4 text-violet-500" />
+                还有 {LEGENDARY_SPECIES.length} 只传说宝可梦在等你
+              </div>
+              <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                {LEGENDARY_SPECIES.map((definition) => (
+                  <div key={definition.id} className="w-14 shrink-0 text-center">
+                    <img
+                      src={definition.stages[1].image!}
+                      alt={definition.label}
+                      loading="lazy"
+                      decoding="async"
+                      className="mx-auto h-12 w-12 object-contain opacity-45 grayscale"
+                    />
+                    <div className="truncate text-[10px] text-violet-800/70">{definition.label}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-violet-800/85">
+                累计学会 <span className="font-bold">{SEMI_LEGEND_WORDS.toLocaleString()}</span> 个不同单词，
+                急冻鸟、闪电鸟、火焰鸟、水君会现身；累计 <span className="font-bold">{LEGEND_WORDS.toLocaleString()}</span> 个，
+                梦幻、超梦、烈空坐、阿尔宙斯才会认你当训练家。它们有专属队伍格，不占普通名额。
+              </p>
+            </div>
 
             <div className="mb-6 grid grid-cols-2 gap-2 pr-1 sm:grid-cols-3 sm:gap-3 md:max-h-[480px] md:overflow-y-auto">
               {availableSpecies.map((s) => (
@@ -341,7 +394,25 @@ function CatalogView({
 
   const selected = selectedId ? getPetDefinition(selectedId) : null;
   const ownedBySpecies = new Map(collection.pets.map((ownedPet) => [ownedPet.species, ownedPet]));
-  const canAdopt = collection.used_slots < collection.unlocked_slots && collection.used_slots < collection.max_slots;
+  // 两个格子区分别只画自己那一池,和后端 used_slots / legend_used_slots 的口径对齐
+  const normalPets = collection.pets.filter((ownedPet) => !isLegendary(ownedPet.species));
+  const legendPets = collection.pets.filter((ownedPet) => isLegendary(ownedPet.species));
+  // 传说与普通两套名额分开算，口径必须与后端 adopt_pet 一致，否则前端放行、后端 400。
+  const canAdoptNormal = collection.used_slots < collection.unlocked_slots && collection.used_slots < collection.max_slots;
+  const canAdoptLegend = collection.legend_used_slots < collection.legend_unlocked_slots
+    && collection.legend_used_slots < collection.legend_max_slots;
+  const legendWordsFor = (definition: PetSpeciesDefinition) => (
+    definition.tier === 'legend' ? collection.legend_words : collection.semi_legend_words
+  );
+  /** 该传说是否已达学词门槛（够门槛但没格子是另一回事，分开提示才说得清） */
+  const meetsLegendWords = (definition: PetSpeciesDefinition) => (
+    collection.learned_words >= legendWordsFor(definition)
+  );
+  const canAdoptSpecies = (definition: PetSpeciesDefinition) => (
+    isLegendary(definition.id)
+      ? meetsLegendWords(definition) && canAdoptLegend
+      : canAdoptNormal
+  );
   const visibleSpecies = PET_SPECIES.filter((definition) => {
     const matchesFilter = filter === 'all'
       || definition.element === filter
@@ -354,6 +425,9 @@ function CatalogView({
     ].some((value) => value.toLowerCase().includes(normalizedQuery));
     return matchesFilter && matchesQuery;
   });
+  // 传说单独成区（放在普通家族之前）：它是"努力学词才能得到"的目标，藏在 60 张卡里没人看见
+  const visibleLegends = visibleSpecies.filter((definition) => definition.tier !== 'normal');
+  const visibleNormals = visibleSpecies.filter((definition) => definition.tier === 'normal');
 
   const switchMutation = useMutation({
     mutationFn: (petId: number) => switchPet({ pet_id: petId }),
@@ -430,7 +504,9 @@ function CatalogView({
 
           <div className="mt-3 grid grid-cols-5 gap-1.5 sm:gap-3">
             {Array.from({ length: collection.max_slots }, (_, index) => {
-              const ownedPet = collection.pets[index];
+              // 只能取普通宠物:collection.pets 是混装的,直接按下标取会把传说画进普通格
+              // (传说排在中间时还会顶掉后面的普通宠物,最后一只永远不显示)
+              const ownedPet = normalPets[index];
               const unlocked = index < collection.unlocked_slots;
               const ownedDefinition = ownedPet ? getPetDefinition(ownedPet.species) : null;
               const ownedStage = ownedPet ? getPetStage(ownedPet.species, ownedPet.evolution_stage) : null;
@@ -493,9 +569,96 @@ function CatalogView({
             </div>
           ) : (
             <div className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-center text-xs font-bold text-green-700">
-              5 个队伍名额已全部解锁
+              {collection.max_slots} 个普通名额已全部解锁
             </div>
           )}
+
+          {/* 传说专属格：与上面 5 格完全分开，学词到门槛才开 */}
+          <div className="mt-4 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-1.5 text-sm font-bold text-violet-800">
+                  <Sparkles className="h-4 w-4 text-violet-500" />
+                  传说专属格
+                </div>
+                <p className="mt-0.5 text-[11px] leading-4 text-violet-700/80">
+                  不占用上面的 {collection.max_slots} 个普通名额 · 累计学 {collection.semi_legend_words.toLocaleString()} 词开第 1 格，{collection.legend_words.toLocaleString()} 词开第 2 格
+                </p>
+              </div>
+              <span className="shrink-0 rounded-lg bg-white/80 px-2.5 py-1 text-xs font-bold text-violet-700">
+                {collection.legend_used_slots}/{collection.legend_max_slots}
+              </span>
+            </div>
+
+            <div className="mt-2.5 flex gap-2">
+              {Array.from({ length: collection.legend_max_slots }, (_, index) => {
+                const ownedPet = legendPets[index];
+                const unlocked = index < collection.legend_unlocked_slots;
+                const ownedStage = ownedPet ? getPetStage(ownedPet.species, ownedPet.evolution_stage) : null;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    disabled={!ownedPet}
+                    onClick={() => ownedPet && openSpecies(ownedPet.species)}
+                    className={`relative flex h-16 w-16 items-center justify-center rounded-xl border p-1 transition ${
+                      ownedPet
+                        ? 'border-violet-400 bg-white'
+                        : unlocked
+                          ? 'border-dashed border-violet-400 bg-white/70'
+                          : 'border-violet-200 bg-violet-100/60'
+                    }`}
+                  >
+                    {ownedPet && ownedStage ? (
+                      <>
+                        <PetArtwork
+                          image={ownedStage.image}
+                          stage={ownedStage}
+                          alt={ownedPet.name}
+                          containerClassName="h-full w-full"
+                          imageClassName="h-full w-full"
+                        />
+                        <span className="absolute bottom-0.5 right-0.5 rounded bg-gray-900/75 px-1 text-[9px] font-bold text-white">
+                          Lv.{ownedPet.level}
+                        </span>
+                      </>
+                    ) : unlocked ? (
+                      <Plus className="h-5 w-5 text-violet-500" />
+                    ) : (
+                      <LockKeyhole className="h-4 w-4 text-violet-400" />
+                    )}
+                  </button>
+                );
+              })}
+              <div className="flex-1 self-center">
+                {collection.next_legend_slot_words ? (
+                  <>
+                    <div className="text-[11px] font-bold text-violet-700">
+                      还差 {Math.max(0, collection.next_legend_slot_words - collection.learned_words).toLocaleString()} 词开启
+                      {/* 按下一档阈值判断档位名。用已开格数判断会错:刚好 2500 词时
+                          已开 1 格、下一档是 5000,却会写成"还差 2500 词开启准传说" */}
+                      {collection.next_legend_slot_words <= collection.semi_legend_words ? '准传说' : '顶级传说'}
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/70">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all"
+                        // 进度要从"本档起点"算起,不能拿 learned_words 直除阈值:
+                        // 刚满 2500 时第 2 格才刚开始攒,直除会显示已走一半
+                        style={{ width: `${(() => {
+                          const goal = collection.next_legend_slot_words;
+                          const base = goal <= collection.semi_legend_words ? 0 : collection.semi_legend_words;
+                          const span = Math.max(1, goal - base);
+                          return Math.min(100, Math.max(0, ((collection.learned_words - base) / span) * 100));
+                        })()}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[11px] font-bold text-violet-700">传说名额已全部解锁，去图鉴挑一只吧</div>
+                )}
+              </div>
+            </div>
+          </div>
         </section>
 
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -532,8 +695,107 @@ function CatalogView({
           <span className="text-gray-400">当前伙伴：{getPetDefinition(pet.species).label}</span>
         </div>
 
+        {visibleLegends.length > 0 && (
+          <section className="mt-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50/70 to-fuchsia-50/70 p-3 sm:p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="flex items-center gap-1.5 font-bold text-violet-900">
+                <Sparkles className="h-5 w-5 text-violet-500" />
+                传说宝可梦
+              </h2>
+              <span className="rounded-md bg-white/80 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                {visibleLegends.length} 只
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-violet-800/80">
+              传说宝可梦不是喂食就能得到的，只认一件事：<span className="font-bold">你一共学会了多少个单词。</span>
+              累计 {collection.semi_legend_words.toLocaleString()} 个不同单词，三神鸟和圣兽会现身；
+              累计 {collection.legend_words.toLocaleString()} 个，梦幻、超梦、烈空坐、阿尔宙斯才会认你当训练家。
+              它们走专属队伍格，不占普通名额。你已学 <span className="font-bold">{collection.learned_words.toLocaleString()}</span> 词。
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+              {visibleLegends.map((definition) => {
+                const isCurrent = definition.id === pet.species;
+                const ownedPet = ownedBySpecies.get(definition.id);
+                const type = definition.element;
+                const required = legendWordsFor(definition);
+                const reached = meetsLegendWords(definition);
+                const remaining = Math.max(0, required - collection.learned_words);
+                return (
+                  <motion.button
+                    key={definition.id}
+                    type="button"
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => openSpecies(definition.id)}
+                    className={`relative min-w-0 overflow-hidden rounded-xl border bg-white p-3 text-left transition-shadow hover:shadow-md sm:p-4 ${
+                      isCurrent
+                        ? 'border-orange-300 ring-2 ring-orange-100'
+                        : ownedPet
+                          ? 'border-green-300 ring-1 ring-green-100'
+                          : reached
+                            ? 'border-violet-300 ring-1 ring-violet-100'
+                            : 'border-gray-200'
+                    }`}
+                  >
+                    {isCurrent && (
+                      <span className="absolute right-2 top-2 z-10 rounded-md bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">当前</span>
+                    )}
+                    {!isCurrent && ownedPet && (
+                      <span className="absolute right-2 top-2 z-10 rounded-md bg-green-500 px-1.5 py-0.5 text-[10px] font-bold text-white">已拥有</span>
+                    )}
+                    <div className={reached || ownedPet ? '' : 'opacity-45 grayscale'}>
+                      <PetArtwork
+                        image={definition.stages[1].image}
+                        stage={definition.stages[1]}
+                        alt={definition.label}
+                        containerClassName="mx-auto h-24 w-24 sm:h-28 sm:w-28"
+                        imageClassName="h-full w-full"
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="truncate text-sm font-bold text-gray-900 sm:text-base">{definition.label}</span>
+                      <TierBadge definition={definition} className="shrink-0" />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-1">
+                      <span
+                        className="truncate rounded-md px-1.5 py-0.5 text-[11px] font-bold"
+                        style={{ color: TYPE_COLORS[type], backgroundColor: `${TYPE_COLORS[type]}18` }}
+                      >
+                        {TYPE_ICONS[type]} {TYPE_NAMES[type]}
+                      </span>
+                    </div>
+                    {ownedPet ? (
+                      <div className="mt-2 text-[11px] font-bold text-green-600">已收服 · Lv.{ownedPet.level}</div>
+                    ) : reached ? (
+                      // 够词 ≠ 领得到:传说格可能已被占满(学 2500 词只有 1 格)。
+                      // 都写"可以收服"会让孩子点进去吃一个 400。
+                      canAdoptLegend ? (
+                        <div className="mt-2 text-[11px] font-bold text-violet-600">✨ 门槛已达成，可以收服</div>
+                      ) : (
+                        <div className="mt-2 text-[11px] font-bold text-amber-600">门槛已达成，但传说格已占满</div>
+                      )
+                    ) : (
+                      <>
+                        <div className="mt-2 text-[11px] font-bold text-gray-500">
+                          还差 {remaining.toLocaleString()} 词（需 {required.toLocaleString()}）
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
+                            style={{ width: `${Math.min(100, (collection.learned_words / required) * 100)}%` }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-          {visibleSpecies.map((definition) => {
+          {visibleNormals.map((definition) => {
             const isCurrent = definition.id === pet.species;
             const ownedPet = ownedBySpecies.get(definition.id);
             const type = definition.element;
@@ -614,8 +876,9 @@ function CatalogView({
               </button>
 
               <div className="pr-10">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-black text-gray-900">{selected.label}</h2>
+                  <TierBadge definition={selected} />
                   <span
                     className="rounded-md px-2 py-0.5 text-xs font-bold"
                     style={{ color: TYPE_COLORS[selected.element], backgroundColor: `${TYPE_COLORS[selected.element]}18` }}
@@ -625,6 +888,15 @@ function CatalogView({
                 </div>
                 <p className="mt-1 text-sm text-gray-500">{selected.description}</p>
               </div>
+
+              {selected.tier !== 'normal' && (
+                <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs leading-5 text-violet-800">
+                  <span className="font-bold">收服条件：累计学会 {legendWordsFor(selected).toLocaleString()} 个不同单词。</span>
+                  {meetsLegendWords(selected)
+                    ? ' 你已经达成门槛，它占传说专属格，不挤占普通名额。'
+                    : ` 你已学 ${collection.learned_words.toLocaleString()} 词，还差 ${(legendWordsFor(selected) - collection.learned_words).toLocaleString()} 词。传说宝可梦只认真正背下来的单词量。`}
+                </div>
+              )}
 
               <div className="mt-5 grid grid-cols-5 gap-1 sm:gap-3">
                 {selected.stages.map((form, index) => (
@@ -647,7 +919,9 @@ function CatalogView({
               <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-xs sm:text-sm">
                 <span className="text-gray-600">总计 5 个成长阶段</span>
                 <span className="text-right font-medium text-gray-600">必杀技：{selected.ultimate.emoji} {selected.ultimate.name}</span>
-                <span className="col-span-2 flex items-center justify-end gap-1 font-bold text-cyan-600"><Gem className="h-4 w-4" />Lv.45 晶耀进化</span>
+                <span className="col-span-2 flex items-center justify-end gap-1 font-bold text-cyan-600">
+                  <Gem className="h-4 w-4" />Lv.45 {selected.tier === 'normal' ? '晶耀进化' : '神话形态'}
+                </span>
               </div>
 
               {selected.id === pet.species ? (
@@ -670,17 +944,23 @@ function CatalogView({
                     {switchMutation.isPending ? '切换中...' : '切换为当前伙伴'}
                   </button>
                 </div>
-              ) : !canAdopt ? (
+              ) : !canAdoptSpecies(selected) ? (
                 <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-3 text-center text-sm text-gray-600">
                   <LockKeyhole className="mx-auto mb-1.5 h-5 w-5 text-gray-400" />
-                  {collection.used_slots >= collection.max_slots
-                    ? '队伍已满，最多可以拥有 5 只宝可梦'
-                    : `下一个名额需累计学习 ${collection.next_slot_words?.toLocaleString()} 个不同单词`}
+                  {selected.tier !== 'normal'
+                    ? (!meetsLegendWords(selected)
+                        ? `再学 ${(legendWordsFor(selected) - collection.learned_words).toLocaleString()} 个不同单词，它就会现身`
+                        : collection.legend_used_slots >= collection.legend_max_slots
+                          ? `传说队伍已满，最多可以拥有 ${collection.legend_max_slots} 只传说宝可梦`
+                          : `下一个传说名额需累计学习 ${collection.next_legend_slot_words?.toLocaleString()} 个不同单词`)
+                    : collection.used_slots >= collection.max_slots
+                      ? `普通队伍已满，最多可以拥有 ${collection.max_slots} 只`
+                      : `下一个名额需累计学习 ${collection.next_slot_words?.toLocaleString()} 个不同单词`}
                 </div>
               ) : confirming ? (
                 <div className="mt-5">
                   <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
-                    新领养的伙伴从 Lv.1 伙伴蛋开始培养；其他宝可梦的等级、进化和属性都会保留。
+                    新领养的伙伴从 Lv.1 {selected.stages[0].name}开始培养；其他宝可梦的等级、进化和属性都会保留。
                   </div>
                   <label className="mt-3 block text-sm font-medium text-gray-700">
                     新伙伴名字
@@ -727,10 +1007,12 @@ function CatalogView({
 // ========== 养成界面 ==========
 function NurtureView({
   pet,
+  collection,
   onShowLeaderboard,
   onShowCatalog,
 }: {
   pet: Pet;
+  collection?: PetCollection;
   onShowLeaderboard: () => void;
   onShowCatalog: () => void;
 }) {
@@ -943,6 +1225,43 @@ function NurtureView({
             </div>
           </motion.div>
         )}
+
+        {/* 传说宝可梦入口。放在养成页首屏而不是只留在图鉴里：
+            孩子得先知道"有梦幻超梦这回事、门槛是学词"，这个门槛才会变成学习动力。 */}
+        <button
+          type="button"
+          onClick={onShowCatalog}
+          className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 via-fuchsia-50 to-violet-50 p-3 text-left transition hover:shadow-md sm:p-4"
+        >
+          <div className="flex shrink-0 -space-x-3">
+            {LEGENDARY_SPECIES.slice(0, 3).map((definition) => (
+              <img
+                key={definition.id}
+                src={definition.stages[1].image!}
+                alt={definition.label}
+                loading="lazy"
+                decoding="async"
+                className="h-12 w-12 rounded-full bg-white/80 object-contain ring-2 ring-white sm:h-14 sm:w-14"
+              />
+            ))}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 font-bold text-violet-900">
+              <Sparkles className="h-4 w-4 shrink-0 text-violet-500" />
+              <span className="truncate">传说宝可梦 · 梦幻 / 超梦等 {LEGENDARY_SPECIES.length} 只</span>
+            </div>
+            <p className="mt-0.5 text-xs leading-5 text-violet-800/85">
+              {collection ? (
+                collection.learned_words >= collection.legend_words
+                  ? '你已达成 5000 词门槛，顶级传说都可以收服了'
+                  : collection.learned_words >= collection.semi_legend_words
+                    ? `已学 ${collection.learned_words.toLocaleString()} 词 · 准传说已解锁，再学 ${(collection.legend_words - collection.learned_words).toLocaleString()} 词可收服梦幻和超梦`
+                    : `已学 ${collection.learned_words.toLocaleString()} 词 · 还差 ${(collection.semi_legend_words - collection.learned_words).toLocaleString()} 词现身第一只传说`
+              ) : '累计学 2500 个单词现身三神鸟，5000 个才能收服梦幻和超梦'}
+            </p>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-violet-400" />
+        </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 左列: 宠物展示 + 互动 */}
@@ -1453,6 +1772,7 @@ export default function PetPage() {
   return (
     <NurtureView
       pet={pet}
+      collection={collection}
       onShowLeaderboard={() => setView('leaderboard')}
       onShowCatalog={() => setView('catalog')}
     />

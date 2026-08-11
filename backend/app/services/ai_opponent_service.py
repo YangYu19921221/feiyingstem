@@ -2,7 +2,7 @@
 """AI对手生成服务"""
 import random
 from typing import Dict, Any
-from app.core.pet_species import ALLOWED_PET_SPECIES
+from app.core.pet_species import ALLOWED_PET_SPECIES, LEGENDARY_SPECIES
 
 # AI对手名称池
 AI_NAMES = [
@@ -19,7 +19,9 @@ AI_NAMES = [
 ]
 
 # AI宠物种类池（可以选择与玩家不同的）
-AI_PET_SPECIES = sorted(ALLOWED_PET_SPECIES)
+# 排除传说：孩子要学 2500/5000 词才能拥有一只，若随手一场练习赛就撞见 AI 牵着超梦出场,
+# 稀有感当场归零 —— 门槛激励的全部效力来自"平时见不到"。
+AI_PET_SPECIES = sorted(ALLOWED_PET_SPECIES - LEGENDARY_SPECIES)
 
 
 def generate_ai_opponent(player_level: int, player_pet_species: str) -> Dict[str, Any]:

@@ -10,6 +10,11 @@ WORDS_PER_PET_SLOT = 2000
 MAX_PET_SLOTS = 5
 PET_RECOVERY_WORDS = 2000
 
+# 传说宝可梦的独立队伍格:与普通 5 格完全分开计数。
+# 为什么分开:普通格早被占满,若共用池子,孩子攒够 5000 词也领不了传说 —— 解锁等于白给。
+# 达到准传说门槛(2500)开第 1 格,达到顶级门槛(5000)开第 2 格,最多 2 只传说。
+MAX_LEGEND_SLOTS = 2
+
 # 进化阈值: 蛋 → 基础 → 一阶 → 最终 → 晶耀形态
 EVOLUTION_THRESHOLDS = {0: 5, 1: 15, 2: 30, 3: 45}
 STAGE_NAMES = {0: "蛋", 1: "基础形态", 2: "一阶进化", 3: "最终进化", 4: "晶耀进化"}
@@ -30,6 +35,35 @@ def next_pet_slot_threshold(learned_words: int) -> int | None:
 def pet_recovery_goal(learned_words: int) -> int:
     """失去最后一只伙伴后，必须再学习 2000 个不同单词才能重新领养。"""
     return max(0, learned_words) + PET_RECOVERY_WORDS
+
+
+def legend_slots_for_words(learned_words: int) -> int:
+    """传说专属格数量:达到准传说门槛开 1 格,达到顶级门槛再开 1 格。
+
+    门槛真源在 core/pet_species(SEMI_LEGEND_WORDS / LEGEND_WORDS),这里只做换算,
+    免得两处数字漂移。
+    """
+    from app.core.pet_species import SEMI_LEGEND_WORDS, LEGEND_WORDS
+
+    words = max(0, learned_words)
+    slots = 0
+    if words >= SEMI_LEGEND_WORDS:
+        slots += 1
+    if words >= LEGEND_WORDS:
+        slots += 1
+    return min(MAX_LEGEND_SLOTS, slots)
+
+
+def next_legend_slot_threshold(learned_words: int) -> int | None:
+    """下一个传说格所需的累计学词数;已开满返回 None。"""
+    from app.core.pet_species import SEMI_LEGEND_WORDS, LEGEND_WORDS
+
+    words = max(0, learned_words)
+    if words < SEMI_LEGEND_WORDS:
+        return SEMI_LEGEND_WORDS
+    if words < LEGEND_WORDS:
+        return LEGEND_WORDS
+    return None
 
 
 def evolution_stage_for_level(level: int) -> int:

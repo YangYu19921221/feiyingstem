@@ -29,17 +29,40 @@ export type PetStage = {
   isGem?: boolean;
 };
 
+/** 种族档位。真源在后端 core/pet_species(TIER_*),这里必须保持同名同值。
+ *  普通种族只受队伍格约束;准传说/传说另有累计学词门槛,且走独立队伍格。 */
+export type PetTier = 'normal' | 'semi_legend' | 'legend';
+
+/** 传说门槛(累计学习的不同单词数)。真源在后端 core/pet_species,
+ *  /pet/collection 也会把实际值带回来(semi_legend_words / legend_words);
+ *  这两个常量只做接口没返回时的兜底与静态文案。 */
+export const SEMI_LEGEND_WORDS = 2500;
+export const LEGEND_WORDS = 5000;
+
+export const TIER_LABEL: Record<PetTier, string> = {
+  normal: '普通',
+  semi_legend: '准传说',
+  legend: '传说',
+};
+
+export const TIER_WORDS: Record<PetTier, number> = {
+  normal: 0,
+  semi_legend: SEMI_LEGEND_WORDS,
+  legend: LEGEND_WORDS,
+};
+
 export type PetSpeciesDefinition = {
   id: string;
   label: string;
   description: string;
   element: PetElement;
   emoji: string;
+  tier: PetTier;
   ultimate: { name: string; emoji: string; image: string };
   stages: readonly [PetStage, PetStage, PetStage, PetStage, PetStage];
 };
 
-const egg = (): PetStage => ({ name: '伙伴蛋', image: null, unlockLevel: 1 });
+const egg = (name = '伙伴蛋'): PetStage => ({ name, image: null, unlockLevel: 1 });
 const getBackImagePath = (image: string): string | null => (
   image.startsWith('/pets/') && image.endsWith('.png')
     ? image.replace('/pets/', '/pets/back/')
@@ -53,6 +76,15 @@ const stage = (name: string, image: string, unlockLevel: number): PetStage => ({
 });
 const gemStage = (name: string, image: string): PetStage => ({
   name: `晶耀${name}`,
+  image,
+  backImage: getBackImagePath(image),
+  unlockLevel: 45,
+  isGem: true,
+});
+/** 传说的第五档叫「神话」而不是「晶耀」:传说三档是同一只的气场升级(本体→觉醒→究极),
+ *  不是进化链,再叠「晶耀究极XX」既拗口也说不通。等级门槛与普通种族一致(45)。 */
+const mythicStage = (name: string, image: string): PetStage => ({
+  name: `神话${name}`,
   image,
   backImage: getBackImagePath(image),
   unlockLevel: 45,
@@ -82,6 +114,7 @@ const pet = (
   description,
   element,
   emoji,
+  tier: 'normal',
   ultimate: { name: ultimateName, emoji, image: skillImages[skill] },
   stages: [
     egg(),
@@ -89,6 +122,36 @@ const pet = (
     stage(forms[1][0], forms[1][1], 15),
     stage(forms[2][0], forms[2][1], 30),
     gemStage(forms[2][0], forms[2][1]),
+  ],
+});
+
+/** 传说种族。三档 = 本体 / 觉醒 / 究极(同一只的气场升级),第五档为神话。
+ *  与 pet() 分开而不是加参数:传说的阶段命名、蛋名、第五档规则都不同,
+ *  塞进 pet() 会让那个已被 40 个普通种族依赖的工厂长出一堆分支。 */
+const legendPet = (
+  id: string,
+  label: string,
+  description: string,
+  element: PetElement,
+  emoji: string,
+  ultimateName: string,
+  skill: keyof typeof skillImages,
+  tier: Exclude<PetTier, 'normal'>,
+  forms: readonly [[string, string], [string, string], [string, string]],
+): PetSpeciesDefinition => ({
+  id,
+  label,
+  description,
+  element,
+  emoji,
+  tier,
+  ultimate: { name: ultimateName, emoji, image: skillImages[skill] },
+  stages: [
+    egg('传说之卵'),
+    stage(forms[0][0], forms[0][1], 5),
+    stage(forms[1][0], forms[1][1], 15),
+    stage(forms[2][0], forms[2][1], 30),
+    mythicStage(forms[0][0], forms[2][1]),
   ],
 });
 
@@ -213,6 +276,70 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
   pet('word_turtle', '词龟', '沉稳的折纸小龟，龟壳刻着智慧纹路', 'water', '📖', '词海奔流', 'water', [
     ['字芽小龟', '/pets/turtle-1.jpeg'], ['词纹灵龟', '/pets/turtle-2.jpeg'], ['典藏圣龟', '/pets/turtle-3.jpeg'],
   ]),
+  // ===== 2026-08 新增 12 个普通家族。优先补 TYPE_CHART 里此前一只都没有的属性
+  // (冰/恶/地面/毒/飞行),让属性克制在对战里真正转得起来。=====
+  pet('mareep', '咩利羊家族', '毛茸茸的电气伙伴，最终进化为电龙', 'electric', '⚡', '放电', 'electric', [
+    ['咩利羊', '/pets/mareep.png'], ['茸茸羊', '/pets/flaaffy.png'], ['电龙', '/pets/ampharos.png'],
+  ]),
+  pet('swinub', '小山猪家族', '雪原里长大的冰系伙伴', 'ice', '❄️', '暴风雪', 'star', [
+    ['小山猪', '/pets/swinub.png'], ['长毛猪', '/pets/piloswine.png'], ['象牙猪', '/pets/mamoswine.png'],
+  ]),
+  pet('deino', '单首龙家族', '从看不见路到三头齐吼的恶系伙伴', 'dark', '🌑', '恶之波动', 'star', [
+    ['单首龙', '/pets/deino.png'], ['双首暴龙', '/pets/zweilous.png'], ['三首恶龙', '/pets/hydreigon.png'],
+  ]),
+  pet('nidoran', '尼多朗家族', '有毒尖角的坚韧伙伴', 'poison', '☠️', '剧毒突袭', 'star', [
+    ['尼多朗', '/pets/nidoran.png'], ['尼多利诺', '/pets/nidorino.png'], ['尼多王', '/pets/nidoking.png'],
+  ]),
+  pet('trapinch', '大颚蚁家族', '沙漠里潜伏，长成天空的舞者', 'ground', '🏜️', '地震', 'star', [
+    ['大颚蚁', '/pets/trapinch.png'], ['超音波幼虫', '/pets/vibrava.png'], ['沙漠蜻蜓', '/pets/flygon.png'],
+  ]),
+  pet('sandile', '黑眼鳄家族', '沙中前行的地面系伙伴', 'ground', '🏜️', '大地之力', 'star', [
+    ['黑眼鳄', '/pets/sandile.png'], ['混混鳄', '/pets/krokorok.png'], ['流氓鳄', '/pets/krookodile.png'],
+  ]),
+  pet('zubat', '超音蝠家族', '用声波认路的飞行系伙伴', 'flying', '🦇', '空气斩', 'star', [
+    ['超音蝠', '/pets/zubat.png'], ['大嘴蝠', '/pets/golbat.png'], ['叉字蝠', '/pets/crobat.png'],
+  ]),
+  pet('starly', '姆克儿家族', '从小麻雀长成天空猛禽', 'flying', '🕊️', '勇鸟猛攻', 'star', [
+    ['姆克儿', '/pets/starly.png'], ['姆克鸟', '/pets/staravia.png'], ['姆克鹰', '/pets/staraptor.png'],
+  ]),
+  pet('rookidee', '稚山雀家族', '披上钢铁羽甲的空中骑士', 'steel', '⚙️', '铁头功', 'star', [
+    ['稚山雀', '/pets/rookidee.png'], ['蓝鸦', '/pets/corvisquire.png'], ['钢铠鸦', '/pets/corviknight.png'],
+  ]),
+  pet('froakie', '呱呱泡蛙家族', '悄无声息的水系忍者', 'water', '💧', '水手里剑', 'water', [
+    ['呱呱泡蛙', '/pets/froakie.png'], ['呱头蛙', '/pets/frogadier.png'], ['甲贺忍蛙', '/pets/greninja.png'],
+  ]),
+  pet('fennekin', '火狐狸家族', '会用树枝施展火焰魔法', 'fire', '🔥', '魔法火焰', 'fire', [
+    ['火狐狸', '/pets/fennekin.png'], ['长尾火狐', '/pets/braixen.png'], ['妖火红狐', '/pets/delphox.png'],
+  ]),
+  pet('chespin', '哈力栗家族', '带刺硬壳的可靠草系伙伴', 'grass', '🌰', '木锤', 'leaf', [
+    ['哈力栗', '/pets/chespin.png'], ['胖胖哈力', '/pets/quilladin.png'], ['布里卡隆', '/pets/chesnaught.png'],
+  ]),
+  // ===== 传说宝可梦。准传说需累计学 2500 个不同单词，顶级传说需 5000，
+  // 且走独立于普通 5 格的专属队伍格(后端 pet_formulas.MAX_LEGEND_SLOTS)。=====
+  legendPet('articuno', '急冻鸟', '准传说 · 掠过雪原的冰之神鸟', 'ice', '❄️', '绝对零度', 'star', 'semi_legend', [
+    ['急冻鸟', '/pets/articuno.png'], ['觉醒急冻鸟', '/pets/articuno_awake.png'], ['究极急冻鸟', '/pets/articuno_ultra.png'],
+  ]),
+  legendPet('zapdos', '闪电鸟', '准传说 · 乘着雷云现身的雷之神鸟', 'electric', '⚡', '雷神之怒', 'electric', 'semi_legend', [
+    ['闪电鸟', '/pets/zapdos.png'], ['觉醒闪电鸟', '/pets/zapdos_awake.png'], ['究极闪电鸟', '/pets/zapdos_ultra.png'],
+  ]),
+  legendPet('moltres', '火焰鸟', '准传说 · 双翼即烈焰的炎之神鸟', 'fire', '🔥', '神圣之火', 'fire', 'semi_legend', [
+    ['火焰鸟', '/pets/moltres.png'], ['觉醒火焰鸟', '/pets/moltres_awake.png'], ['究极火焰鸟', '/pets/moltres_ultra.png'],
+  ]),
+  legendPet('suicune', '水君', '准传说 · 奔跑时净化流水的圣兽', 'water', '💧', '极巨水流', 'water', 'semi_legend', [
+    ['水君', '/pets/suicune.png'], ['觉醒水君', '/pets/suicune_awake.png'], ['究极水君', '/pets/suicune_ultra.png'],
+  ]),
+  legendPet('mew', '梦幻', '顶级传说 · 传说中只有极少数人见过', 'psychic', '🌸', '超能预知', 'star', 'legend', [
+    ['梦幻', '/pets/mew.png'], ['觉醒梦幻', '/pets/mew_awake.png'], ['究极梦幻', '/pets/mew_ultra.png'],
+  ]),
+  legendPet('mewtwo', '超梦', '顶级传说 · 最强超能力宝可梦', 'psychic', '🔮', '精神强念', 'star', 'legend', [
+    ['超梦', '/pets/mewtwo.png'], ['觉醒超梦', '/pets/mewtwo_awake.png'], ['究极超梦', '/pets/mewtwo_ultra.png'],
+  ]),
+  legendPet('rayquaza', '烈空坐', '顶级传说 · 遨游臭氧层的天空之王', 'dragon', '🐉', '画龙点睛', 'star', 'legend', [
+    ['烈空坐', '/pets/rayquaza.png'], ['觉醒烈空坐', '/pets/rayquaza_awake.png'], ['究极烈空坐', '/pets/rayquaza_ultra.png'],
+  ]),
+  legendPet('arceus', '阿尔宙斯', '顶级传说 · 被称为创造万物的存在', 'normal', '✨', '裁决之光', 'star', 'legend', [
+    ['阿尔宙斯', '/pets/arceus.png'], ['觉醒阿尔宙斯', '/pets/arceus_awake.png'], ['究极阿尔宙斯', '/pets/arceus_ultra.png'],
+  ]),
 ];
 
 export const PET_SPECIES_BY_ID: Record<string, PetSpeciesDefinition> = Object.fromEntries(
@@ -295,6 +422,28 @@ const SKILL_VFX: Record<string, SkillVfxRecipe> = {
   book_fox:   { skeleton: 'aura', color: '#fbbf24', particle: 'star' },                                      // 知识星辉
   paper_owl:  { skeleton: 'beam', color: '#e879f9', core: '#fdf4ff', particle: 'star' },                     // 智慧光束
   word_turtle: { skeleton: 'beam', color: '#22d3ee', core: '#dbeafe', particle: 'bubble' },                    // 词海奔流
+  // ---- 2026-08 新增普通家族 ----
+  mareep:     { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy', particle: 'spark' },   // 放电
+  swinub:     { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' },      // 暴风雪
+  deino:      { skeleton: 'beam', color: '#64748b', core: '#c084fc', shake: 'heavy', particle: 'wisp' },      // 恶之波动
+  nidoran:    { skeleton: 'projectile', color: '#c084fc', core: '#f5d0fe', particle: 'shard' },              // 剧毒突袭
+  trapinch:   { skeleton: 'pillar', color: '#d97706', from: 'ground', shake: 'heavy', particle: 'shard' },    // 地震
+  sandile:    { skeleton: 'pillar', color: '#a16207', from: 'ground', shake: 'heavy', particle: 'shard' },    // 大地之力
+  zubat:      { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', particle: 'wisp' },                     // 空气斩
+  starly:     { skeleton: 'projectile', color: '#bae6fd', core: '#fff7ed', shake: 'medium', particle: 'star' }, // 勇鸟猛攻
+  rookidee:   { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 铁头功
+  froakie:    { skeleton: 'slash', color: '#22d3ee', core: '#ecfeff', particle: 'bubble' },                    // 水手里剑
+  fennekin:   { skeleton: 'burst', color: '#fb923c', core: '#fde047', particle: 'ember' },                     // 魔法火焰
+  chespin:    { skeleton: 'slash', color: '#84cc16', shake: 'heavy', particle: 'leaf' },                      // 木锤
+  // ---- 传说:统一给最重的震屏与双色内芯,大招观感必须压过普通宠物 ----
+  articuno:   { skeleton: 'burst', color: '#a5f3fc', core: '#ffffff', shake: 'heavy', particle: 'ice' },      // 绝对零度
+  zapdos:     { skeleton: 'pillar', color: '#facc15', core: '#ffffff', shake: 'heavy', particle: 'spark' },   // 雷神之怒
+  moltres:    { skeleton: 'beam', color: '#f97316', core: '#fef9c3', shake: 'heavy', particle: 'ember' },     // 神圣之火
+  suicune:    { skeleton: 'pillar', color: '#22d3ee', from: 'ground', shake: 'heavy', particle: 'bubble' },   // 极巨水流
+  mew:        { skeleton: 'aura', color: '#f9a8d4', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 超能预知
+  mewtwo:     { skeleton: 'beam', color: '#e879f9', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 精神强念
+  rayquaza:   { skeleton: 'beam', color: '#22c55e', core: '#fef9c3', shake: 'heavy', particle: 'shard' },     // 画龙点睛
+  arceus:     { skeleton: 'pillar', color: '#fbbf24', core: '#ffffff', shake: 'heavy', particle: 'star' },    // 裁决之光
 };
 
 // 没写配方的种族按元素兜底,保证新增宠物漏配也有像样的大招
@@ -368,3 +517,22 @@ export function getPetFinalStage(species: string, evolutionStage: number): PetSt
   const stages = getPetDefinition(species).stages;
   return evolutionStage >= 4 ? stages[4] : stages[3];
 }
+
+export function getPetTier(species: string): PetTier {
+  return getPetDefinition(species).tier;
+}
+
+/** 是否传说(含准传说)。传说走独立队伍格、有累计学词门槛。 */
+export function isLegendary(species: string): boolean {
+  return getPetTier(species) !== 'normal';
+}
+
+/** 领养该种族所需的累计学词数;普通种族返回 0(只受队伍格约束)。 */
+export function wordsRequiredFor(species: string): number {
+  return TIER_WORDS[getPetTier(species)];
+}
+
+export const LEGENDARY_SPECIES: readonly PetSpeciesDefinition[] =
+  PET_SPECIES.filter((definition) => definition.tier !== 'normal');
+export const NORMAL_SPECIES: readonly PetSpeciesDefinition[] =
+  PET_SPECIES.filter((definition) => definition.tier === 'normal');

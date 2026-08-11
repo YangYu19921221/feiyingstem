@@ -17,12 +17,15 @@ from app.schemas.pet import (
 )
 from app.api.v1.auth import get_current_student
 from app.core.pet_formulas import (
-    FEED_XP, EVOLUTION_THRESHOLDS, MAX_PET_SLOTS, WORDS_PER_PET_SLOT,
+    FEED_XP, EVOLUTION_THRESHOLDS, MAX_PET_SLOTS, WORDS_PER_PET_SLOT, MAX_LEGEND_SLOTS,
     calculate_max_hp, calc_xp_to_next_level, apply_xp_and_level,
     pet_slots_for_words, next_pet_slot_threshold,
+    legend_slots_for_words, next_legend_slot_threshold,
 )
 from app.core.pet_species import (
     ALLOWED_PET_SPECIES, get_pet_label, get_pet_stage_name,
+    SEMI_LEGEND_WORDS, LEGEND_WORDS, TIER_LABELS,
+    get_pet_tier, is_legendary, words_required_for,
 )
 
 router = APIRouter()
@@ -137,17 +140,25 @@ async def get_pet_collection(
     unlocked_slots = pet_slots_for_words(learned_words)
     active_pet = next((pet for pet in pets if pet.is_active), None)
     recovery_goal = current_user.pet_recovery_goal_words
+    legend_used = sum(1 for pet in pets if is_legendary(pet.species))
     return PetCollectionResponse(
         pets=[build_pet_response(pet) for pet in pets],
         active_pet_id=active_pet.id if active_pet else None,
         learned_words=learned_words,
         unlocked_slots=unlocked_slots,
-        used_slots=len(pets),
+        # 普通格只统计普通宝可梦,传说不占普通格
+        used_slots=len(pets) - legend_used,
         max_slots=MAX_PET_SLOTS,
         words_per_slot=WORDS_PER_PET_SLOT,
         next_slot_words=next_pet_slot_threshold(learned_words),
         recovery_goal_words=recovery_goal,
         recovery_words_remaining=max(0, recovery_goal - learned_words) if recovery_goal else 0,
+        legend_unlocked_slots=legend_slots_for_words(learned_words),
+        legend_used_slots=legend_used,
+        legend_max_slots=MAX_LEGEND_SLOTS,
+        next_legend_slot_words=next_legend_slot_threshold(learned_words),
+        semi_legend_words=SEMI_LEGEND_WORDS,
+        legend_words=LEGEND_WORDS,
     )
 
 
@@ -214,15 +225,39 @@ async def adopt_pet(
             detail=f"最后一只伙伴被收服后需再学习2000个不同单词，还差{remaining}个",
         )
 
-    unlocked_slots = pet_slots_for_words(learned_words)
-    if len(existing_pets) >= unlocked_slots:
-        next_threshold = next_pet_slot_threshold(learned_words)
-        if next_threshold is None:
-            detail = "宠物队伍已满，最多可以拥有5只宝可梦"
-        else:
-            remaining = max(0, next_threshold - learned_words)
-            detail = f"下一个领养名额需累计学习{next_threshold}个不同单词，还差{remaining}个"
-        raise HTTPException(status_code=400, detail=detail)
+    # 传说与普通两套名额分开算:传说不挤占普通 5 格,普通也不能拿传说格。
+    if is_legendary(data.species):
+        required = words_required_for(data.species)
+        if learned_words < required:
+            tier_label = TIER_LABELS[get_pet_tier(data.species)]
+            remaining = required - learned_words
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{get_pet_label(data.species)}是{tier_label}宝可梦，"
+                    f"需累计学习{required}个不同单词才会现身，还差{remaining}个"
+                ),
+            )
+        legend_used = sum(1 for pet in existing_pets if is_legendary(pet.species))
+        if legend_used >= legend_slots_for_words(learned_words):
+            next_threshold = next_legend_slot_threshold(learned_words)
+            if next_threshold is None:
+                detail = f"传说队伍已满，最多可以拥有{MAX_LEGEND_SLOTS}只传说宝可梦"
+            else:
+                remaining = max(0, next_threshold - learned_words)
+                detail = f"下一个传说名额需累计学习{next_threshold}个不同单词，还差{remaining}个"
+            raise HTTPException(status_code=400, detail=detail)
+    else:
+        normal_used = sum(1 for pet in existing_pets if not is_legendary(pet.species))
+        unlocked_slots = pet_slots_for_words(learned_words)
+        if normal_used >= unlocked_slots:
+            next_threshold = next_pet_slot_threshold(learned_words)
+            if next_threshold is None:
+                detail = f"宠物队伍已满，最多可以拥有{MAX_PET_SLOTS}只普通宝可梦"
+            else:
+                remaining = max(0, next_threshold - learned_words)
+                detail = f"下一个领养名额需累计学习{next_threshold}个不同单词，还差{remaining}个"
+            raise HTTPException(status_code=400, detail=detail)
 
     active_pet = next((pet for pet in existing_pets if pet.is_active), None)
     shared_food = active_pet.food_balance if active_pet else (
@@ -254,7 +289,10 @@ async def adopt_pet(
     log = PetEventLog(
         pet_id=pet.id,
         event_type="adopt",
-        detail=f"领养了{get_pet_label(data.species)}，取名「{pet_name}」，从伙伴蛋开始培养",
+        detail=(
+            f"领养了{get_pet_label(data.species)}，取名「{pet_name}」，"
+            f"从{get_pet_stage_name(data.species, 0)}开始培养"
+        ),
     )
     db.add(log)
     await db.commit()

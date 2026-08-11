@@ -52,6 +52,14 @@ class PetCollectionResponse(BaseModel):
     next_slot_words: Optional[int] = None
     recovery_goal_words: Optional[int] = None
     recovery_words_remaining: int = 0
+    # 传说队伍格与普通格完全分开计数(见 core/pet_formulas.MAX_LEGEND_SLOTS 注释),
+    # 所以上面那组 slots 字段不含传说,前端要分别显示两条进度。
+    legend_unlocked_slots: int = 0
+    legend_used_slots: int = 0
+    legend_max_slots: int = 2
+    next_legend_slot_words: Optional[int] = None
+    semi_legend_words: int = 2500
+    legend_words: int = 5000
 
 
 class PetFeedResponse(BaseModel):

@@ -1,14 +1,22 @@
 from app.core.pet_species import (
     ALLOWED_PET_SPECIES,
+    LEGENDARY_SPECIES,
+    LEGEND_WORDS,
     PET_SPECIES,
+    SEMI_LEGEND_WORDS,
     get_pet_element,
     get_pet_stage_name,
+    is_legendary,
+    words_required_for,
 )
 from app.core.type_effectiveness import get_pet_type
 from app.core.pet_formulas import (
     EVOLUTION_THRESHOLDS,
+    MAX_LEGEND_SLOTS,
     apply_xp_and_level,
     evolution_stage_for_level,
+    legend_slots_for_words,
+    next_legend_slot_threshold,
     next_pet_slot_threshold,
     pet_recovery_goal,
     pet_slots_for_words,
@@ -23,16 +31,60 @@ from types import SimpleNamespace
 
 
 def test_all_pet_families_have_complete_evolution_metadata():
-    assert len(PET_SPECIES) == 40
+    assert len(PET_SPECIES) == 60
     assert ALLOWED_PET_SPECIES == frozenset(PET_SPECIES)
 
     for species, definition in PET_SPECIES.items():
         assert definition["label"]
         assert len(definition["stages"]) == 5
-        assert definition["stages"][0] == "伙伴蛋"
-        assert definition["stages"][4].startswith("晶耀")
+        # 传说的蛋叫「传说之卵」、第五档叫「神话XX」；普通种族仍是「伙伴蛋」+「晶耀XX」
+        if is_legendary(species):
+            assert definition["stages"][0] == "传说之卵"
+            assert definition["stages"][4].startswith("神话")
+        else:
+            assert definition["stages"][0] == "伙伴蛋"
+            assert definition["stages"][4].startswith("晶耀")
         assert get_pet_stage_name(species, 4) == definition["stages"][4]
         assert get_pet_type(species) == get_pet_element(species)
+
+
+def test_legendary_tiers_and_word_requirements():
+    assert {"articuno", "zapdos", "moltres", "suicune"} <= LEGENDARY_SPECIES
+    assert {"mew", "mewtwo", "rayquaza", "arceus"} <= LEGENDARY_SPECIES
+    assert len(LEGENDARY_SPECIES) == 8
+
+    assert words_required_for("articuno") == SEMI_LEGEND_WORDS == 2500
+    assert words_required_for("mew") == LEGEND_WORDS == 5000
+    # 普通种族没有学词门槛，只受队伍格约束
+    assert words_required_for("pikachu") == 0
+    assert not is_legendary("pikachu")
+
+    # 传说不进 AI 对手池：随手一场练习赛就撞见超梦会让门槛失去意义
+    assert not (LEGENDARY_SPECIES & set(AI_PET_SPECIES))
+    assert len(AI_PET_SPECIES) == len(PET_SPECIES) - len(LEGENDARY_SPECIES)
+
+
+def test_legend_slots_are_separate_from_normal_slots():
+    assert legend_slots_for_words(0) == 0
+    assert legend_slots_for_words(2499) == 0
+    assert legend_slots_for_words(2500) == 1
+    assert legend_slots_for_words(4999) == 1
+    assert legend_slots_for_words(5000) == 2
+    assert legend_slots_for_words(99999) == MAX_LEGEND_SLOTS == 2
+
+    assert next_legend_slot_threshold(0) == 2500
+    assert next_legend_slot_threshold(2500) == 5000
+    assert next_legend_slot_threshold(5000) is None
+
+    # 关键性质：普通 5 格开满时传说格照样独立可开，反之亦然（否则解锁等于白给）
+    assert pet_slots_for_words(8000) == 5 and legend_slots_for_words(8000) == 2
+    assert pet_slots_for_words(2500) == 2 and legend_slots_for_words(2500) == 1
+
+
+def test_new_normal_families_cover_previously_empty_types():
+    # 冰/恶/地面/毒/飞行 此前一只宝可梦都没有，TYPE_CHART 里那几行等于摆设
+    elements = {get_pet_element(species) for species in PET_SPECIES if not is_legendary(species)}
+    assert {"ice", "dark", "ground", "poison", "flying"} <= elements
 
 
 def test_new_families_are_available_to_ai_and_battle():

@@ -63,6 +63,13 @@ export interface PetCollection {
   next_slot_words: number | null;
   recovery_goal_words: number | null;
   recovery_words_remaining: number;
+  // 传说队伍格与上面那组普通格完全分开计数（传说不占普通 5 格），要分别显示两条进度
+  legend_unlocked_slots: number;
+  legend_used_slots: number;
+  legend_max_slots: number;
+  next_legend_slot_words: number | null;
+  semi_legend_words: number;
+  legend_words: number;
 }
 
 export interface EarnFoodRequest {
