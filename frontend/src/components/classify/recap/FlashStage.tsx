@@ -104,7 +104,7 @@ export default function FlashStage({ words, playAudio, onDone }: Props) {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.1 }}
               transition={{ duration: ENTER_MS / 1000, ease: [0.16, 1, 0.3, 1] }}
-              className="bg-paper rounded-2xl shadow-2xl px-12 py-10 text-center min-w-[280px] max-w-md"
+              className="bg-paper rounded-2xl shadow-2xl px-12 py-10 text-center min-w-[280px] max-w-md md:max-w-lg"
             >
               <div className="font-display text-4xl md:text-5xl font-bold text-ink mb-3">
                 {current.word}

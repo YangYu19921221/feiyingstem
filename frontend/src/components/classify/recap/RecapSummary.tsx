@@ -21,7 +21,7 @@ export default function RecapSummary({
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="max-w-md w-full bg-paper rounded-3xl shadow-xl p-8 text-center relative overflow-hidden"
+        className="max-w-md md:max-w-lg w-full bg-paper rounded-3xl shadow-xl p-8 md:p-10 text-center relative overflow-hidden"
       >
         {isPerfect && (
           <motion.div

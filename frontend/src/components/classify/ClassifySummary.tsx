@@ -184,18 +184,18 @@ export default function ClassifySummary({
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md"
+          className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-xl"
         >
           <div className="text-center mb-6">
-            <span className="text-5xl block mb-2">👏</span>
-            <h2 className="text-2xl font-bold text-gray-800">第{groupIndex + 1}组完成</h2>
-            <p className="text-gray-500 text-sm mt-1">
+            <span className="text-5xl md:text-6xl block mb-2">👏</span>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800">第{groupIndex + 1}组完成</h2>
+            <p className="text-gray-500 text-sm md:text-base mt-1">
               第{groupIndex + 1}/{totalGroups}组 · {totalWords} 个单词
             </p>
           </div>
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <svg width="160" height="160" viewBox="0 0 100 100">
+              <svg className="w-40 h-40 md:w-52 md:h-52" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="42" fill="none" stroke="#e5e7eb" strokeWidth="6" />
                 <motion.circle
                   cx="50" cy="50" r="42" fill="none"
@@ -210,10 +210,10 @@ export default function ClassifySummary({
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`text-4xl font-black ${rateColor(overallRate)}`}>
+                <span className={`text-4xl md:text-5xl font-black ${rateColor(overallRate)}`}>
                   {overallRate}<span className="text-lg align-top">%</span>
                 </span>
-                <span className="text-xs text-gray-400 mt-0.5">总正确率</span>
+                <span className="text-xs md:text-sm text-gray-400 mt-0.5">总正确率</span>
               </div>
             </div>
           </div>
@@ -237,11 +237,11 @@ export default function ClassifySummary({
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={onNextGroup}
-                className="w-full py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90"
+                className="w-full py-3 md:py-4 rounded-2xl text-lg md:text-xl font-medium bg-primary text-white shadow-lg hover:opacity-90"
               >
                 继续第{groupIndex + 2}组
               </motion.button>
-              <p className="text-center text-xs text-gray-400">
+              <p className="text-center text-xs md:text-sm text-gray-400">
                 还剩 {totalGroups - groupIndex - 1} 组未学
               </p>
             </div>
@@ -269,7 +269,7 @@ export default function ClassifySummary({
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="relative z-10 w-full max-w-md"
+        className="relative z-10 w-full max-w-md md:max-w-lg"
       >
         <motion.div
           initial={{ scale: 0, rotate: -30 }}

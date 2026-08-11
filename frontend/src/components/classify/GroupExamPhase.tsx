@@ -184,6 +184,29 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
     if (currentIndex < totalQuestions - 1) setCurrentIndex(currentIndex + 1);
   };
 
+  // PC 物理键盘作答:选择题按 1-4 或 A-D 直接选中(输入题里回车已另行处理)。
+  // 走 ref 拿最新 handleSelect,避免 effect 每渲染重挂监听
+  const handleSelectRef = useRef(handleSelect);
+  handleSelectRef.current = handleSelect;
+  useEffect(() => {
+    if (phase !== 'testing') return;
+    const q = questions[currentIndex];
+    if (!q || (q.type !== 'en_to_cn' && q.type !== 'cn_to_en')) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+      let idx = -1;
+      if (/^[1-4]$/.test(e.key)) idx = parseInt(e.key, 10) - 1;
+      else if (/^[a-dA-D]$/.test(e.key)) idx = e.key.toLowerCase().charCodeAt(0) - 97;
+      if (idx >= 0 && q.options && idx < q.options.length) {
+        handleSelectRef.current(q.options[idx]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [currentIndex, phase, questions]);
+
   const playAudio = () => {
     if (!currentQ || playCount >= 3) return;
     sharedPlayAudio(currentQ.word.word).then(() => setPlayCount(p => p + 1)).catch(() => {});
@@ -247,23 +270,25 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-64px)]">
-      {/* 顶部信息栏 */}
+      {/* 顶部信息栏(PC 上与答题卡同宽对齐) */}
       <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-gray-500">
-            过关检测 · {currentIndex + 1}/{totalQuestions}
-          </span>
-          <span className={`text-sm font-mono font-bold px-3 py-1 rounded-full ${
-            timeLeft <= 30 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-blue-100 text-blue-600'
-          }`}>
-            {formatTime(timeLeft)}
-          </span>
-        </div>
-        <div className="h-1.5 bg-gray-100 rounded-full">
-          <motion.div
-            className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
-            animate={{ width: `${(answers.size / totalQuestions) * 100}%` }}
-          />
+        <div className="md:max-w-2xl md:mx-auto">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm md:text-base text-gray-500">
+              过关检测 · {currentIndex + 1}/{totalQuestions}
+            </span>
+            <span className={`text-sm md:text-base font-mono font-bold px-3 py-1 rounded-full ${
+              timeLeft <= 30 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-blue-100 text-blue-600'
+            }`}>
+              {formatTime(timeLeft)}
+            </span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full">
+            <motion.div
+              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+              animate={{ width: `${(answers.size / totalQuestions) * 100}%` }}
+            />
+          </div>
         </div>
       </div>
 
@@ -277,10 +302,10 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.2 }}
-              className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-md"
+              className="bg-white rounded-2xl shadow-lg p-6 md:p-10 w-full max-w-md md:max-w-2xl"
             >
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-600 font-medium">
+              <div className="flex items-center justify-between mb-4 md:mb-6">
+                <span className="text-xs md:text-sm px-3 py-1 rounded-full bg-blue-100 text-blue-600 font-medium">
                   {TYPE_LABELS[currentQ.type]}
                 </span>
               </div>
@@ -288,10 +313,10 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
               {/* 选择题 */}
               {(currentQ.type === 'en_to_cn' || currentQ.type === 'cn_to_en') && (
                 <div>
-                  <h3 className={`${currentQ.type === 'en_to_cn' ? 'text-3xl' : 'text-xl'} font-bold text-gray-800 text-center mb-6`}>
+                  <h3 className={`${currentQ.type === 'en_to_cn' ? 'text-3xl md:text-5xl' : 'text-xl md:text-3xl'} font-bold text-gray-800 text-center mb-6 md:mb-10`}>
                     {currentQ.prompt}
                   </h3>
-                  <div className="space-y-2.5">
+                  <div className="space-y-2.5 md:space-y-0 md:grid md:grid-cols-2 md:gap-3.5">
                     {currentQ.options?.map((opt, i) => {
                       const isSelected = answers.get(currentQ.id) === opt;
                       return (
@@ -299,8 +324,8 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                           key={i}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => handleSelect(opt)}
-                          className={`w-full text-left p-3.5 rounded-xl border-2 transition font-medium ${
-                            isSelected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'
+                          className={`w-full text-left p-3.5 md:p-5 rounded-xl md:rounded-2xl border-2 transition font-medium md:text-lg ${
+                            isSelected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/40'
                           }`}
                         >
                           <span className="text-gray-400 mr-2">{String.fromCharCode(65 + i)}.</span>
@@ -309,24 +334,27 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                       );
                     })}
                   </div>
+                  <p className="hidden md:block text-center text-xs text-gray-400 mt-6">
+                    键盘按 1-4 或 A-D 可直接作答
+                  </p>
                 </div>
               )}
 
               {/* 听写 */}
               {currentQ.type === 'listening' && (
                 <div className="text-center">
-                  <p className="text-gray-500 mb-4">听发音，写出单词</p>
+                  <p className="text-gray-500 md:text-lg mb-4 md:mb-6">听发音，写出单词</p>
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={playAudio}
                     disabled={playCount >= 3}
-                    className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-2 shadow-lg ${
+                    className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-3xl md:text-4xl mx-auto mb-2 shadow-lg ${
                       playCount >= 3 ? 'bg-gray-200' : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                     }`}
                   >
                     🔊
                   </motion.button>
-                  <p className="text-xs text-gray-400 mb-4">可播放 {3 - playCount} 次</p>
+                  <p className="text-xs md:text-sm text-gray-400 mb-4 md:mb-6">可播放 {3 - playCount} 次</p>
                   <input
                     {...imeSafeInputProps()}
                     ref={inputRef}
@@ -334,7 +362,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleInputNext()}
                     placeholder="输入单词"
-                    className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
+                    className="w-full md:max-w-md md:mx-auto block text-center text-2xl md:text-3xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
                   />
                 </div>
               )}
@@ -342,8 +370,8 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
               {/* 拼写 */}
               {currentQ.type === 'spelling' && (
                 <div className="text-center">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">{currentQ.prompt}</h3>
-                  <p className="text-sm text-blue-500 mb-4">
+                  <h3 className="text-xl md:text-3xl font-bold text-gray-800 mb-2 md:mb-3">{currentQ.prompt}</h3>
+                  <p className="text-sm md:text-base text-blue-500 mb-4 md:mb-6">
                     提示: <span className="font-mono font-bold tracking-widest">{currentQ.hint}</span>
                   </p>
                   <input
@@ -353,21 +381,22 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     onChange={e => setInputValue(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleInputNext()}
                     placeholder="输入完整单词"
-                    className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
+                    className="w-full md:max-w-md md:mx-auto block text-center text-2xl md:text-3xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
                   />
                 </div>
               )}
 
               {/* 输入题确认按钮 */}
               {(currentQ.type === 'listening' || currentQ.type === 'spelling') && (
-                <div className="mt-5 flex justify-center">
+                <div className="mt-5 md:mt-8 flex flex-col items-center gap-2">
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={handleInputNext}
-                    className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium rounded-xl shadow-md"
+                    className="px-8 py-3 md:px-12 md:py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium md:text-lg rounded-xl shadow-md hover:shadow-lg transition"
                   >
                     {currentIndex < totalQuestions - 1 ? '下一题 →' : '提交'}
                   </motion.button>
+                  <p className="hidden md:block text-xs text-gray-400">按回车键也可以</p>
                 </div>
               )}
             </motion.div>
@@ -375,18 +404,18 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
         </AnimatePresence>
       </div>
 
-      {/* 底部题号 + 交卷按钮 */}
+      {/* 底部题号 + 交卷按钮(PC 上与答题卡同宽对齐) */}
       <div className="px-4 pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-wrap gap-1.5">
+        <div className="md:max-w-2xl md:mx-auto flex items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-1.5 md:gap-2">
             {questions.map((q, i) => (
               <button
                 key={q.id}
                 onClick={() => { if (isAccidentalTap()) return; saveInput(); setCurrentIndex(i); }}
-                className={`w-7 h-7 rounded-md text-xs font-medium transition ${
+                className={`w-7 h-7 md:w-9 md:h-9 rounded-md md:rounded-lg text-xs md:text-sm font-medium transition ${
                   i === currentIndex ? 'bg-blue-500 text-white' :
                   answers.has(q.id) ? 'bg-green-100 text-green-700 border border-green-300' :
-                  'bg-gray-100 text-gray-400'
+                  'bg-gray-100 text-gray-400 hover:bg-gray-200'
                 }`}
               >
                 {i + 1}
@@ -396,7 +425,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => { if (isAccidentalTap()) return; handleSubmit(); }}
-            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg"
+            className="shrink-0 px-4 py-2 md:px-6 md:py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm md:text-base font-medium rounded-lg md:rounded-xl"
           >
             交卷
           </motion.button>

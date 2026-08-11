@@ -1010,21 +1010,21 @@ const WordClassifyLearning = () => {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+                className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-lg text-center"
               >
-                <div className="text-5xl mb-4">🔄</div>
-                <h3 className="text-xl font-bold text-gray-800 mb-2">语音第 {speechRound} 轮完成</h3>
-                <div className="flex justify-center gap-6 mb-4">
+                <div className="text-5xl md:text-6xl mb-4">🔄</div>
+                <h3 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">语音第 {speechRound} 轮完成</h3>
+                <div className="flex justify-center gap-6 md:gap-10 mb-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-500">{speechRoundWords.length - speechSkippedWords.length}</div>
-                    <div className="text-xs text-gray-400">✅ 已通过</div>
+                    <div className="text-2xl md:text-3xl font-bold text-green-500">{speechRoundWords.length - speechSkippedWords.length}</div>
+                    <div className="text-xs md:text-sm text-gray-400">✅ 已通过</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-red-500">{speechSkippedWords.length}</div>
-                    <div className="text-xs text-gray-400">需重读</div>
+                    <div className="text-2xl md:text-3xl font-bold text-red-500">{speechSkippedWords.length}</div>
+                    <div className="text-xs md:text-sm text-gray-400">需重读</div>
                   </div>
                 </div>
-                <p className="text-gray-500 text-sm mb-6">
+                <p className="text-gray-500 text-sm md:text-base mb-6">
                   还有 <span className="font-bold text-red-500">{speechSkippedWords.length}</span> 个词未通过语音校验
                 </p>
                 <div className="flex flex-col gap-3">
@@ -1057,7 +1057,7 @@ const WordClassifyLearning = () => {
                   {speechRound > 1 && (
                     <span className="text-xs text-orange-500 font-medium mr-2">第{speechRound}轮</span>
                   )}
-                  <span className="text-sm text-gray-400 font-medium">
+                  <span className="text-sm md:text-base text-gray-400 font-medium">
                     🎙️ {speechVerifyIndex + 1} / {speechRoundWords.length}
                   </span>
                 </div>

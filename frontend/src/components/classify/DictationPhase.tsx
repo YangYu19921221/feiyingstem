@@ -220,21 +220,21 @@ export default function DictationPhase({
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+          className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-lg text-center"
         >
-          <div className="text-5xl mb-4">🔄</div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">听写第 {round} 轮完成</h3>
-          <div className="flex justify-center gap-6 mb-4">
+          <div className="text-5xl md:text-6xl mb-4">🔄</div>
+          <h3 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">听写第 {round} 轮完成</h3>
+          <div className="flex justify-center gap-6 md:gap-10 mb-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-500">{roundCorrectCount}</div>
-              <div className="text-xs text-gray-400">✅ 拼对</div>
+              <div className="text-2xl md:text-3xl font-bold text-green-500">{roundCorrectCount}</div>
+              <div className="text-xs md:text-sm text-gray-400">✅ 拼对</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-red-500">{roundErrorWords.length}</div>
-              <div className="text-xs text-gray-400">❌ 拼错</div>
+              <div className="text-2xl md:text-3xl font-bold text-red-500">{roundErrorWords.length}</div>
+              <div className="text-xs md:text-sm text-gray-400">❌ 拼错</div>
             </div>
           </div>
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-500 text-sm md:text-base">
             还有 <span className="font-bold text-red-500">{roundErrorWords.length}</span> 个词需要重新听写...
           </p>
         </motion.div>
@@ -249,12 +249,12 @@ export default function DictationPhase({
       {/* 进度 */}
       <div className="mb-6 text-center">
         {round > 1 && (
-          <span className="text-xs text-orange-500 font-medium mr-2">第{round}轮</span>
+          <span className="text-xs md:text-sm text-orange-500 font-medium mr-2">第{round}轮</span>
         )}
-        <span className="text-sm text-gray-500">
+        <span className="text-sm md:text-base text-gray-500">
           听写 {currentIndex + 1} / {roundWords.length}
         </span>
-        <div className="w-48 h-1.5 bg-gray-200 rounded-full mt-2 mx-auto overflow-hidden">
+        <div className="w-48 md:w-72 h-1.5 bg-gray-200 rounded-full mt-2 mx-auto overflow-hidden">
           <motion.div
             className="h-full bg-accent rounded-full"
             animate={{ width: `${((currentIndex + 1) / roundWords.length) * 100}%` }}
@@ -268,7 +268,7 @@ export default function DictationPhase({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+          className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-xl text-center"
         >
           <div className="mb-4">
             <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
@@ -276,18 +276,18 @@ export default function DictationPhase({
             </span>
           </div>
 
-          <p className="text-lg text-gray-600 mb-4">{currentWord.meaning}</p>
+          <p className="text-lg md:text-2xl text-gray-600 mb-4 md:mb-6">{currentWord.meaning}</p>
 
           <button
             onClick={() => playAudioSlow(currentWord.word, currentWord.id)}
-            className="mb-6 p-4 rounded-full bg-blue-50 hover:bg-blue-100 transition"
+            className="mb-6 p-4 md:p-5 rounded-full bg-blue-50 hover:bg-blue-100 transition"
           >
-            <span className="text-3xl">🔊</span>
+            <span className="text-3xl md:text-4xl">🔊</span>
           </button>
-          <p className="text-xs text-gray-400 mb-6">点击重新播放</p>
+          <p className="text-xs md:text-sm text-gray-400 mb-6">点击重新播放</p>
 
           {!submitted ? (
-            <div className="mb-4 px-2">
+            <div className="mb-4 px-2 md:px-6">
               <input
                 {...imeSafeInputProps()}
                 ref={inputRef}
@@ -296,7 +296,7 @@ export default function DictationPhase({
                 onKeyDown={handleKeyDown}
                 maxLength={wordLengthWithSpaces}
                 placeholder="输入单词..."
-                className="w-full text-center text-3xl font-mono font-bold bg-transparent border-0 border-b-4 border-primary/40 focus:border-primary outline-none transition-colors duration-200 py-2 text-gray-800 placeholder:text-gray-300"
+                className="w-full text-center text-3xl md:text-4xl font-mono font-bold bg-transparent border-0 border-b-4 border-primary/40 focus:border-primary outline-none transition-colors duration-200 py-2 text-gray-800 placeholder:text-gray-300"
               />
             </div>
           ) : (
@@ -311,7 +311,7 @@ export default function DictationPhase({
                   result === 'wrong'   ? 'text-red-500 line-through decoration-2' :
                                          'text-red-300';
                 return (
-                  <span key={i} className={`text-3xl font-mono font-bold ${colorClass}`}>
+                  <span key={i} className={`text-3xl md:text-4xl font-mono font-bold ${colorClass}`}>
                     {displayChar}
                   </span>
                 );
@@ -352,7 +352,7 @@ export default function DictationPhase({
                     <ColoredWord
                       word={currentWord.word}
                       syllables={currentWord.syllables}
-                      className="text-2xl font-bold"
+                      className="text-2xl md:text-3xl font-bold"
                     />
                   </div>
                   {currentWord.phonetic && (
@@ -373,7 +373,7 @@ export default function DictationPhase({
                         onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                         maxLength={wordLengthWithSpaces}
-                        className="w-full px-4 py-3 text-center text-xl font-mono border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition"
+                        className="w-full md:max-w-md md:mx-auto block px-4 py-3 text-center text-xl md:text-2xl font-mono border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition"
                         placeholder="输入正确的单词"
                         autoFocus
                       />

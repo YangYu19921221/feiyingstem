@@ -237,7 +237,7 @@ export default function SpeechVerifyCard({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+        className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-xl text-center"
       >
         <AutoFitText maxPx={48} minPx={22} fitKey={word.word} className="mb-3">
           <ColoredWord word={word.word} syllables={word.syllables} className="font-bold" />
@@ -266,7 +266,7 @@ export default function SpeechVerifyCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center"
+      className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-xl text-center"
     >
       {/* 单词（彩色音节） */}
       <AutoFitText maxPx={48} minPx={22} fitKey={word.word} className="mb-3">
@@ -282,7 +282,7 @@ export default function SpeechVerifyCard({
 
       {/* 释义 */}
       {word.meaning && (
-        <p className="text-gray-500 mb-6">
+        <p className="text-gray-500 md:text-lg mb-6">
           {word.part_of_speech && (
             <span className="text-sm text-gray-400 mr-1">{word.part_of_speech}</span>
           )}
@@ -301,7 +301,7 @@ export default function SpeechVerifyCard({
             className="mb-6"
           >
             {/* 麦克风 + 脉冲波纹 + 倒计时环 */}
-            <div className="relative w-28 h-28 mx-auto mb-4">
+            <div className="relative w-28 h-28 md:w-36 md:h-36 mx-auto mb-4">
               {/* 扩散脉冲波纹 */}
               {[0, 1, 2].map(i => (
                 <motion.div
@@ -367,7 +367,7 @@ export default function SpeechVerifyCard({
               })}
             </div>
 
-            <p className="text-gray-700 font-semibold">请朗读这个单词</p>
+            <p className="text-gray-700 font-semibold md:text-lg">请朗读这个单词</p>
             <p className="text-xs text-gray-400 mt-1">录音将自动完成</p>
           </motion.div>
         )}
