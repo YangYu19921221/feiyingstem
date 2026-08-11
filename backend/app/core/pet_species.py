@@ -2,7 +2,7 @@
 
 种族分三档(tier),决定领养门槛与占用哪种队伍格:
 - normal      普通家族。免费领第一只,之后每累计学 2000 个不同单词开一格,最多 5 格。
-- semi_legend 准传说(三神鸟/三圣兽)。需累计 2500 个不同单词。
+- semi_legend 准传说(三神鸟/三圣兽)。需累计 5000 个不同单词。
 - legend      顶级传说(梦幻/超梦/烈空坐/创世神)。需累计 5000 个不同单词。
 
 ⚠️ 传说**不占普通 5 格**,走独立的传说格(见 pet_formulas.legend_slots_for_words)。
@@ -14,8 +14,8 @@
 """
 
 # 传说门槛(累计学习的不同单词数)。真源在此,前端 petSpecies.ts 与文案都引用这两个数。
-SEMI_LEGEND_WORDS = 2500
-LEGEND_WORDS = 5000
+SEMI_LEGEND_WORDS = 5000
+LEGEND_WORDS = 8000
 
 TIER_NORMAL = "normal"
 TIER_SEMI_LEGEND = "semi_legend"
@@ -109,8 +109,22 @@ PET_SPECIES = {
     "froakie": _species("呱呱泡蛙家族", "water", "呱呱泡蛙", "呱头蛙", "甲贺忍蛙"),
     "fennekin": _species("火狐狸家族", "fire", "火狐狸", "长尾火狐", "妖火红狐"),
     "chespin": _species("哈力栗家族", "grass", "哈力栗", "胖胖哈力", "布里卡隆"),
+    # ===== 2026-08-11 小智主力阵容(动画里跟过他的伙伴) =====
+    # 图鉴此前已覆盖他大半阵容(皮卡丘/妙蛙/小火龙/杰尼龟/卡蒂狗/甲贺忍蛙/沙奈朵…),
+    # 这 10 族是缺口。三形态里带 _mid/_prime 后缀的是本系统补的过渡/强化档 ——
+    # 原作 onix/scyther 只有两阶,而本系统固定 5 档,缺档会让孩子进化后立绘不变。
+    "pidgey": _species("波波家族", "flying", "波波", "比比鸟", "大比鸟"),
+    "onix": _species("大岩蛇家族", "rock", "大岩蛇", "钢岩蛇", "大钢蛇"),
+    "scyther": _species("飞天螳螂家族", "bug", "飞天螳螂", "钢化螳螂", "巨钳螳螂"),
+    "riolu": _species("利欧路家族", "fighting", "利欧路", "波导利欧", "路卡利欧"),
+    "munchlax": _species("小卡比兽家族", "normal", "小卡比兽", "贪吃卡比", "卡比兽"),
+    "magnemite": _species("小磁怪家族", "steel", "小磁怪", "三合一磁怪", "自爆磁怪"),
+    "tauros": _species("肯泰罗家族", "normal", "肯泰罗", "冲锋肯泰罗", "狂怒肯泰罗"),
+    "doduo": _species("嘟嘟家族", "flying", "嘟嘟", "嘟嘟利", "王者嘟嘟利"),
+    "pinsir": _species("凯罗斯家族", "bug", "凯罗斯", "重钳凯罗斯", "霸钳凯罗斯"),
+    "tropius": _species("热带龙家族", "grass", "幼热带龙", "热带龙", "丰实热带龙"),
     # ===== 传说宝可梦(靠累计学词解锁,独立专属格) =====
-    # 准传说 2500 词
+    # 准传说 5000 词
     "articuno": _legend("急冻鸟", "ice", "急冻鸟", "觉醒急冻鸟", "究极急冻鸟", TIER_SEMI_LEGEND),
     "zapdos": _legend("闪电鸟", "electric", "闪电鸟", "觉醒闪电鸟", "究极闪电鸟", TIER_SEMI_LEGEND),
     "moltres": _legend("火焰鸟", "fire", "火焰鸟", "觉醒火焰鸟", "究极火焰鸟", TIER_SEMI_LEGEND),
@@ -152,6 +166,23 @@ def is_legendary(species: str) -> bool:
 def words_required_for(species: str) -> int:
     """领养该种族所需的累计学词数;普通种族返回 0(只受队伍格约束)。"""
     return TIER_WORD_REQUIREMENT.get(get_pet_tier(species), 0)
+
+
+# ============ 稀有度战力加成 ============
+# 攢 5000/8000 词换来的传说,战力必须真的比普通强,否则孩子会觉得"白攢那么久"。
+# 但也不能强到一边倒:对战胜负的主导权要留给答题(答对/连击/速度),
+# 传说只是让同等付出下更占优。所以加成走**固定加值**而非乘算 ——
+# 乘算会随等级放大成压倒性差距,固定值在高等级会被答题表现稀释,正是想要的手感。
+TIER_POWER_BONUS = {
+    TIER_NORMAL: {"damage": 0, "ultimate": 0, "hp": 0},
+    TIER_SEMI_LEGEND: {"damage": 4, "ultimate": 12, "hp": 30},
+    TIER_LEGEND: {"damage": 8, "ultimate": 25, "hp": 60},
+}
+
+
+def tier_power_bonus(species: str) -> dict:
+    """该种族的稀有度加成(普通全 0)。"""
+    return TIER_POWER_BONUS.get(get_pet_tier(species), TIER_POWER_BONUS[TIER_NORMAL])
 
 
 LEGENDARY_SPECIES = frozenset(

@@ -36,8 +36,8 @@ export type PetTier = 'normal' | 'semi_legend' | 'legend';
 /** 传说门槛(累计学习的不同单词数)。真源在后端 core/pet_species,
  *  /pet/collection 也会把实际值带回来(semi_legend_words / legend_words);
  *  这两个常量只做接口没返回时的兜底与静态文案。 */
-export const SEMI_LEGEND_WORDS = 2500;
-export const LEGEND_WORDS = 5000;
+export const SEMI_LEGEND_WORDS = 5000;
+export const LEGEND_WORDS = 8000;
 
 export const TIER_LABEL: Record<PetTier, string> = {
   normal: '普通',
@@ -160,7 +160,7 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
     ['皮丘', '/pets/pichu.png'], ['皮卡丘', '/pets/pikachu.png'], ['雷丘', '/pets/raichu.png'],
   ]),
   pet('eevee', '伊布', '进化潜力丰富，成长后建立最强羁绊', 'normal', '✨', '高速星星', 'star', [
-    ['伊布', '/pets/eevee.png'], ['成长伊布', '/pets/eevee.png'], ['羁绊伊布', '/pets/eevee.png'],
+    ['伊布', '/pets/eevee.png'], ['成长伊布', '/pets/eevee_grown.png'], ['羁绊伊布', '/pets/eevee_bond.png'],
   ]),
   pet('bulbasaur', '妙蛙种子家族', '草系伙伴，温柔而可靠', 'grass', '🍃', '飞叶快刀', 'leaf', [
     ['妙蛙种子', '/pets/bulbasaur.png'], ['妙蛙草', '/pets/ivysaur.png'], ['妙蛙花', '/pets/venusaur.png'],
@@ -172,7 +172,7 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
     ['杰尼龟', '/pets/squirtle.png'], ['卡咪龟', '/pets/wartortle.png'], ['水箭龟', '/pets/blastoise.png'],
   ]),
   pet('jigglypuff', '胖丁家族', '爱唱歌的妖精系伙伴', 'fairy', '🎵', '魔法闪耀', 'star', [
-    ['胖丁', '/pets/jigglypuff.png'], ['成长胖丁', '/pets/jigglypuff.png'], ['胖可丁', '/pets/wigglytuff.png'],
+    ['胖丁', '/pets/jigglypuff.png'], ['成长胖丁', '/pets/jigglypuff_grown.png'], ['胖可丁', '/pets/wigglytuff.png'],
   ]),
   pet('gastly', '鬼斯家族', '神出鬼没的幽灵系伙伴', 'ghost', '👻', '暗影球', 'star', [
     ['鬼斯', '/pets/gastly.png'], ['鬼斯通', '/pets/haunter.png'], ['耿鬼', '/pets/gengar.png'],
@@ -190,13 +190,13 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
     ['小拳石', '/pets/geodude.png'], ['隆隆石', '/pets/graveler.png'], ['隆隆岩', '/pets/golem.png'],
   ]),
   pet('vulpix', '六尾家族', '美丽优雅的火系伙伴', 'fire', '🔥', '大字爆炎', 'fire', [
-    ['六尾', '/pets/vulpix.png'], ['成长六尾', '/pets/vulpix.png'], ['九尾', '/pets/ninetales.png'],
+    ['六尾', '/pets/vulpix.png'], ['成长六尾', '/pets/vulpix_grown.png'], ['九尾', '/pets/ninetales.png'],
   ]),
   pet('growlithe', '卡蒂狗家族', '忠诚勇敢的火系伙伴', 'fire', '🔥', '神速烈焰', 'fire', [
-    ['卡蒂狗', '/pets/growlithe.png'], ['成长卡蒂狗', '/pets/growlithe.png'], ['风速狗', '/pets/arcanine.png'],
+    ['卡蒂狗', '/pets/growlithe.png'], ['成长卡蒂狗', '/pets/growlithe_grown.png'], ['风速狗', '/pets/arcanine.png'],
   ]),
   pet('magikarp', '鲤鱼王家族', '坚持成长，终会一飞冲天', 'water', '💧', '水流尾', 'water', [
-    ['鲤鱼王', '/pets/magikarp.png'], ['跃动鲤鱼王', '/pets/magikarp.png'], ['暴鲤龙', '/pets/gyarados.png'],
+    ['鲤鱼王', '/pets/magikarp.png'], ['跃动鲤鱼王', '/pets/magikarp_leaping.png'], ['暴鲤龙', '/pets/gyarados.png'],
   ]),
   pet('oddish', '走路草家族', '安静可爱的草系伙伴', 'grass', '🍃', '花瓣舞', 'leaf', [
     ['走路草', '/pets/oddish.png'], ['臭臭花', '/pets/gloom.png'], ['霸王花', '/pets/vileplume.png'],
@@ -314,7 +314,38 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
   pet('chespin', '哈力栗家族', '带刺硬壳的可靠草系伙伴', 'grass', '🌰', '木锤', 'leaf', [
     ['哈力栗', '/pets/chespin.png'], ['胖胖哈力', '/pets/quilladin.png'], ['布里卡隆', '/pets/chesnaught.png'],
   ]),
-  // ===== 传说宝可梦。准传说需累计学 2500 个不同单词，顶级传说需 5000，
+  // ===== 小智主力阵容(2026-08-11)。与后端 core/pet_species 同一批 key。=====
+  pet('pidgey', '波波家族', '小智最早的空中伙伴，最终成为大比鸟', 'flying', '🕊️', '暴风', 'star', [
+    ['波波', '/pets/pidgey.png'], ['比比鸟', '/pets/pidgeotto.png'], ['大比鸟', '/pets/pidgeot.png'],
+  ]),
+  pet('onix', '大岩蛇家族', '岩石巨蛇，练到最后浑身钢铁', 'rock', '🪨', '岩石炮', 'star', [
+    ['大岩蛇', '/pets/onix.png'], ['钢岩蛇', '/pets/steelix_mid.png'], ['大钢蛇', '/pets/steelix.png'],
+  ]),
+  pet('scyther', '飞天螳螂家族', '双刀高速斩击，进化后化为红色钢钳', 'bug', '🗡️', '十字剪', 'star', [
+    ['飞天螳螂', '/pets/scyther.png'], ['钢化螳螂', '/pets/scizor_mid.png'], ['巨钳螳螂', '/pets/scizor.png'],
+  ]),
+  pet('riolu', '利欧路家族', '波导之力的格斗伙伴', 'fighting', '🥊', '波导弹', 'star', [
+    ['利欧路', '/pets/riolu.png'], ['波导利欧', '/pets/lucario_mid.png'], ['路卡利欧', '/pets/lucario.png'],
+  ]),
+  pet('munchlax', '小卡比兽家族', '吃饱睡足，力气大得惊人', 'normal', '🍙', '舍身冲撞', 'star', [
+    ['小卡比兽', '/pets/munchlax.png'], ['贪吃卡比', '/pets/snorlax_mid.png'], ['卡比兽', '/pets/snorlax.png'],
+  ]),
+  pet('magnemite', '小磁怪家族', '磁力钢铁伙伴，越合体越强', 'steel', '🧲', '电磁炮', 'electric', [
+    ['小磁怪', '/pets/magnemite.png'], ['三合一磁怪', '/pets/magneton.png'], ['自爆磁怪', '/pets/magnezone.png'],
+  ]),
+  pet('tauros', '肯泰罗家族', '三条尾巴的猛牛，冲起来挡不住', 'normal', '🐂', '狂牛冲撞', 'star', [
+    ['肯泰罗', '/pets/tauros.png'], ['冲锋肯泰罗', '/pets/tauros_charge.png'], ['狂怒肯泰罗', '/pets/tauros_rage.png'],
+  ]),
+  pet('doduo', '嘟嘟家族', '两个头跑得快，三个头更快', 'flying', '🐦', '三连啄', 'star', [
+    ['嘟嘟', '/pets/doduo.png'], ['嘟嘟利', '/pets/dodrio.png'], ['王者嘟嘟利', '/pets/dodrio_prime.png'],
+  ]),
+  pet('pinsir', '凯罗斯家族', '巨大钢钳一夹就赢', 'bug', '🦬', '巨钳夹击', 'star', [
+    ['凯罗斯', '/pets/pinsir.png'], ['重钳凯罗斯', '/pets/pinsir_mid.png'], ['霸钳凯罗斯', '/pets/pinsir_prime.png'],
+  ]),
+  pet('tropius', '热带龙家族', '背着棕榈叶翅膀的果实恐龙', 'grass', '🍌', '飞叶风暴', 'leaf', [
+    ['幼热带龙', '/pets/tropius_young.png'], ['热带龙', '/pets/tropius.png'], ['丰实热带龙', '/pets/tropius_prime.png'],
+  ]),
+  // ===== 传说宝可梦。准传说需累计学 5000 个不同单词，顶级传说需 8000，
   // 且走独立于普通 5 格的专属队伍格(后端 pet_formulas.MAX_LEGEND_SLOTS)。=====
   legendPet('articuno', '急冻鸟', '准传说 · 掠过雪原的冰之神鸟', 'ice', '❄️', '绝对零度', 'star', 'semi_legend', [
     ['急冻鸟', '/pets/articuno.png'], ['觉醒急冻鸟', '/pets/articuno_awake.png'], ['究极急冻鸟', '/pets/articuno_ultra.png'],
@@ -435,6 +466,17 @@ const SKILL_VFX: Record<string, SkillVfxRecipe> = {
   froakie:    { skeleton: 'slash', color: '#22d3ee', core: '#ecfeff', particle: 'bubble' },                    // 水手里剑
   fennekin:   { skeleton: 'burst', color: '#fb923c', core: '#fde047', particle: 'ember' },                     // 魔法火焰
   chespin:    { skeleton: 'slash', color: '#84cc16', shake: 'heavy', particle: 'leaf' },                      // 木锤
+  // ---- 小智主力阵容 ----
+  pidgey:     { skeleton: 'burst', color: '#bae6fd', core: '#fff7ed', shake: 'heavy', particle: 'wisp' },      // 暴风
+  onix:       { skeleton: 'projectile', color: '#a8a29e', core: '#e7e5e4', shake: 'heavy', particle: 'shard' }, // 岩石炮
+  scyther:    { skeleton: 'slash', color: '#4ade80', core: '#f0fdf4', shake: 'medium', particle: 'shard' },     // 十字剪
+  riolu:      { skeleton: 'projectile', color: '#38bdf8', core: '#e0f2fe', shake: 'heavy', particle: 'spark' }, // 波导弹
+  munchlax:   { skeleton: 'slash', color: '#14b8a6', core: '#fef3c7', shake: 'heavy', particle: 'shard' },      // 舍身冲撞
+  magnemite:  { skeleton: 'beam', color: '#cbd5e1', core: '#fef9c3', shake: 'heavy', particle: 'spark' },       // 电磁炮
+  tauros:     { skeleton: 'slash', color: '#a16207', core: '#fed7aa', shake: 'heavy', particle: 'shard' },      // 狂牛冲撞
+  doduo:      { skeleton: 'projectile', color: '#d6d3d1', core: '#fff7ed', shake: 'medium', particle: 'wisp' }, // 三连啄
+  pinsir:     { skeleton: 'slash', color: '#92400e', core: '#fde68a', shake: 'heavy', particle: 'shard' },      // 巨钳夹击
+  tropius:    { skeleton: 'burst', color: '#65a30d', core: '#ecfccb', shake: 'medium', particle: 'leaf' },      // 飞叶风暴
   // ---- 传说:统一给最重的震屏与双色内芯,大招观感必须压过普通宠物 ----
   articuno:   { skeleton: 'burst', color: '#a5f3fc', core: '#ffffff', shake: 'heavy', particle: 'ice' },      // 绝对零度
   zapdos:     { skeleton: 'pillar', color: '#facc15', core: '#ffffff', shake: 'heavy', particle: 'spark' },   // 雷神之怒
@@ -530,6 +572,25 @@ export function isLegendary(species: string): boolean {
 /** 领养该种族所需的累计学词数;普通种族返回 0(只受队伍格约束)。 */
 export function wordsRequiredFor(species: string): number {
   return TIER_WORDS[getPetTier(species)];
+}
+
+/** 稀有度战力加成,必须与后端 core/pet_species.TIER_POWER_BONUS 同值。 */
+export const TIER_POWER_BONUS: Record<PetTier, { damage: number; ultimate: number; hp: number }> = {
+  normal: { damage: 0, ultimate: 0, hp: 0 },
+  semi_legend: { damage: 4, ultimate: 12, hp: 30 },
+  legend: { damage: 8, ultimate: 25, hp: 60 },
+};
+
+export function tierPowerBonus(species: string) {
+  return TIER_POWER_BONUS[getPetTier(species)];
+}
+
+/**
+ * 宠物最大 HP,与后端 pet_formulas.calculate_max_hp 同公式(含稀有度加成)。
+ * 别再就地手写 `100 + level*5 + stage*20`:传说有 +hp 加成,漏算会让血条超过 100%。
+ */
+export function getPetMaxHp(level: number, evolutionStage: number, species: string): number {
+  return 100 + level * 5 + evolutionStage * 20 + tierPowerBonus(species).hp;
 }
 
 export const LEGENDARY_SPECIES: readonly PetSpeciesDefinition[] =
