@@ -109,6 +109,9 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   const inputRef = useRef<HTMLInputElement>(null);
   const { playAudio: sharedPlayAudio, stopAudio } = useAudio();
   const handleSubmitRef = useRef<() => void>(() => {});
+  // 本题亮相时刻:换题瞬间落下的点击(上一题选完 300ms 自动切题后孩子习惯性的第二下、
+  // 键盘弹出/收起导致布局位移时的误触)会落在新题的按钮上,350ms 内的推进一律忽略
+  const questionShownAt = useRef(Date.now());
 
   const currentQ = questions[currentIndex];
   const totalQuestions = questions.length;
@@ -128,11 +131,17 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   // 切题时重置
   useEffect(() => {
+    questionShownAt.current = Date.now();
     setPlayCount(0);
     const existing = currentQ ? answers.get(currentQ.id) : '';
     setInputValue(existing || '');
     if (currentQ && (currentQ.type === 'listening' || currentQ.type === 'spelling')) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      // 只在鼠标设备自动聚焦。触屏上 programmatic focus 会直接弹出软键盘,
+      // 视口变矮、居中的题卡整体上移,孩子此刻伸手去点输入框,落点处已经变成
+      // 紧挨其下方的「下一题」按钮 → 空答案跳题(用户实报"点文本框就跳下一题")
+      if (!window.matchMedia('(pointer: coarse)').matches) {
+        setTimeout(() => inputRef.current?.focus(), 100);
+      }
     }
   }, [currentIndex]);
 
@@ -145,6 +154,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   const handleSelect = (option: string) => {
     if (!currentQ) return;
+    if (Date.now() - questionShownAt.current < 350) return; // 换题瞬间的余点/误触
     setAnswers(prev => new Map(prev).set(currentQ.id, option));
     setTimeout(() => {
       if (currentIndex < totalQuestions - 1) setCurrentIndex(currentIndex + 1);
@@ -152,6 +162,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   };
 
   const handleInputNext = () => {
+    if (Date.now() - questionShownAt.current < 350) return; // 换题瞬间的余点/误触
     saveInput();
     if (currentIndex < totalQuestions - 1) setCurrentIndex(currentIndex + 1);
   };
@@ -304,7 +315,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     ref={inputRef}
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleInputNext()}
+                    onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleInputNext()}
                     placeholder="输入单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
                   />
@@ -323,7 +334,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                     ref={inputRef}
                     value={inputValue}
                     onChange={e => setInputValue(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleInputNext()}
+                    onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleInputNext()}
                     placeholder="输入完整单词"
                     className="w-full text-center text-2xl font-bold border-b-2 border-gray-300 focus:border-blue-500 outline-none py-3 bg-transparent"
                   />
