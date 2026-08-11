@@ -22,6 +22,8 @@ import {
   getNextPetStage,
   isLegendary,
   wordsRequiredFor,
+  getPetMaxHp,
+  tierPowerBonus,
   type PetStage,
   type PetSpeciesDefinition,
 } from '../config/petSpecies';
@@ -635,15 +637,15 @@ function CatalogView({
                   <>
                     <div className="text-[11px] font-bold text-violet-700">
                       还差 {Math.max(0, collection.next_legend_slot_words - collection.learned_words).toLocaleString()} 词开启
-                      {/* 按下一档阈值判断档位名。用已开格数判断会错:刚好 2500 词时
-                          已开 1 格、下一档是 5000,却会写成"还差 2500 词开启准传说" */}
+                      {/* 按下一档阈值判断档位名。用已开格数判断会错:刚好 5000 词时
+                          已开 1 格、下一档是 8000,却会写成"还差 3000 词开启准传说" */}
                       {collection.next_legend_slot_words <= collection.semi_legend_words ? '准传说' : '顶级传说'}
                     </div>
                     <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/70">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all"
                         // 进度要从"本档起点"算起,不能拿 learned_words 直除阈值:
-                        // 刚满 2500 时第 2 格才刚开始攒,直除会显示已走一半
+                        // 刚满 5000 时第 2 格才刚开始攒,直除会显示已走六成
                         style={{ width: `${(() => {
                           const goal = collection.next_legend_slot_words;
                           const base = goal <= collection.semi_legend_words ? 0 : collection.semi_legend_words;
@@ -710,7 +712,8 @@ function CatalogView({
               传说宝可梦不是喂食就能得到的，只认一件事：<span className="font-bold">你一共学会了多少个单词。</span>
               累计 {collection.semi_legend_words.toLocaleString()} 个不同单词，三神鸟和圣兽会现身；
               累计 {collection.legend_words.toLocaleString()} 个，梦幻、超梦、烈空坐、阿尔宙斯才会认你当训练家。
-              它们走专属队伍格，不占普通名额。你已学 <span className="font-bold">{collection.learned_words.toLocaleString()}</span> 词。
+              它们走专属队伍格，不占普通名额，<span className="font-bold">战力也比普通宝可梦更强，越稀有越强。</span>
+              你已学 <span className="font-bold">{collection.learned_words.toLocaleString()}</span> 词。
             </p>
 
             <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
@@ -756,6 +759,10 @@ function CatalogView({
                       <span className="truncate text-sm font-bold text-gray-900 sm:text-base">{definition.label}</span>
                       <TierBadge definition={definition} className="shrink-0" />
                     </div>
+                    {/* 战力优势要写出来:攢 5000/8000 词换来的东西,得看得见它凭什么值这个价 */}
+                    <div className="mt-1 text-[10px] font-bold text-violet-500">
+                      战力 +{tierPowerBonus(definition.id).damage} · 大招 +{tierPowerBonus(definition.id).ultimate} · 体力 +{tierPowerBonus(definition.id).hp}
+                    </div>
                     <div className="mt-1 flex items-center justify-between gap-1">
                       <span
                         className="truncate rounded-md px-1.5 py-0.5 text-[11px] font-bold"
@@ -767,7 +774,7 @@ function CatalogView({
                     {ownedPet ? (
                       <div className="mt-2 text-[11px] font-bold text-green-600">已收服 · Lv.{ownedPet.level}</div>
                     ) : reached ? (
-                      // 够词 ≠ 领得到:传说格可能已被占满(学 2500 词只有 1 格)。
+                      // 够词 ≠ 领得到:传说格可能已被占满(学 5000 词只有 1 格)。
                       // 都写"可以收服"会让孩子点进去吃一个 400。
                       canAdoptLegend ? (
                         <div className="mt-2 text-[11px] font-bold text-violet-600">✨ 门槛已达成，可以收服</div>
@@ -1082,8 +1089,8 @@ function NurtureView({
   const xpPerFeed = pet.xp_per_feed || 8;
   const xpRemaining = Math.max(0, pet.xp_to_next_level - pet.experience);
   const feedsToNextLevel = Math.ceil(xpRemaining / xpPerFeed);
-  // 宠物最大HP（与后端 calculate_max_hp 一致）
-  const maxHp = 100 + pet.level * 5 + pet.evolution_stage * 20;
+  // 宠物最大HP（与后端 calculate_max_hp 一致，含传说的稀有度加成）
+  const maxHp = getPetMaxHp(pet.level, pet.evolution_stage, pet.species);
   // 每题回血 = 最大HP的10%（至少5），与后端 heal_amount_for 一致
   const healPerQuestion = Math.max(5, Math.round(maxHp * 0.1));
 
@@ -1209,7 +1216,7 @@ function NurtureView({
               <div className="min-w-0 flex-1">
                 <h3 className="font-display text-lg font-semibold text-orange-900 sm:text-xl">伙伴正在恢复</h3>
                 <p className="mt-1 text-sm text-gray-700">
-                  当前 HP <span className="font-numeric font-semibold text-orange-700">{pet.current_hp || 0}</span> / {100 + pet.level * 5 + pet.evolution_stage * 20}
+                  当前 HP <span className="font-numeric font-semibold text-orange-700">{pet.current_hp || 0}</span> / {maxHp}
                   <span className="text-gray-500"> · 每答对 1 题恢复 {healPerQuestion} HP</span>
                 </p>
               </div>
@@ -1253,11 +1260,11 @@ function NurtureView({
             <p className="mt-0.5 text-xs leading-5 text-violet-800/85">
               {collection ? (
                 collection.learned_words >= collection.legend_words
-                  ? '你已达成 5000 词门槛，顶级传说都可以收服了'
+                  ? `你已达成 ${collection.legend_words.toLocaleString()} 词门槛，顶级传说都可以收服了`
                   : collection.learned_words >= collection.semi_legend_words
                     ? `已学 ${collection.learned_words.toLocaleString()} 词 · 准传说已解锁，再学 ${(collection.legend_words - collection.learned_words).toLocaleString()} 词可收服梦幻和超梦`
                     : `已学 ${collection.learned_words.toLocaleString()} 词 · 还差 ${(collection.semi_legend_words - collection.learned_words).toLocaleString()} 词现身第一只传说`
-              ) : '累计学 2500 个单词现身三神鸟，5000 个才能收服梦幻和超梦'}
+              ) : `累计学 ${SEMI_LEGEND_WORDS.toLocaleString()} 个单词现身三神鸟，${LEGEND_WORDS.toLocaleString()} 个才能收服梦幻和超梦`}
             </p>
           </div>
           <ChevronRight className="h-5 w-5 shrink-0 text-violet-400" />

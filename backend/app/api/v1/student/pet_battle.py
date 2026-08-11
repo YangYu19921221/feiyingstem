@@ -43,7 +43,7 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
         )
         roster = []
         for pet in result.scalars().all():
-            pet_max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+            pet_max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
             pet_hp = (
                 hp if pet.id == current_pet_id
                 else hp_data.get(str(pet.id), pet_battle_service.get_pet_current_hp(pet))
@@ -517,7 +517,9 @@ async def quick_match_battle(
             evolution_stage=evolution_stage_for_level(ai_config['level']),
             happiness=100,
             hunger=100,
-            current_hp=calculate_initial_hp(ai_config['level'], evolution_stage_for_level(ai_config['level'])),
+            current_hp=calculate_initial_hp(
+                ai_config['level'], evolution_stage_for_level(ai_config['level']), ai_config['species'],
+            ),
             is_active=True,
         )
         db.add(ai_pet)
@@ -531,7 +533,7 @@ async def quick_match_battle(
         ai_pet.species = ai_config['species']
         ai_pet.level = ai_config['level']
         ai_pet.evolution_stage = evolution_stage_for_level(ai_config['level'])
-        ai_pet.current_hp = calculate_initial_hp(ai_config['level'], ai_pet.evolution_stage)
+        ai_pet.current_hp = calculate_initial_hp(ai_config['level'], ai_pet.evolution_stage, ai_pet.species)
         await db.commit()
         await db.refresh(ai_pet)
     

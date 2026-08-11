@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from datetime import datetime
 
+from app.core.pet_species import LEGEND_WORDS, SEMI_LEGEND_WORDS
+
 
 class PetCreate(BaseModel):
     """领养宠物请求"""
@@ -58,8 +60,9 @@ class PetCollectionResponse(BaseModel):
     legend_used_slots: int = 0
     legend_max_slots: int = 2
     next_legend_slot_words: Optional[int] = None
-    semi_legend_words: int = 2500
-    legend_words: int = 5000
+    # 默认值直接引常量,别抄数字:端点虽然总会显式填,但抄下来的字面量会在改门槛时静默过期
+    semi_legend_words: int = SEMI_LEGEND_WORDS
+    legend_words: int = LEGEND_WORDS
 
 
 class PetFeedResponse(BaseModel):

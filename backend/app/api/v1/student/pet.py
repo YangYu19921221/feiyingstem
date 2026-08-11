@@ -111,7 +111,7 @@ async def get_my_pet(
     if not pet.is_injured and pet.last_interaction_at:
         days_inactive = (datetime.utcnow() - pet.last_interaction_at).days
         if days_inactive >= 2 and pet.hunger <= 15:
-            max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+            max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
             pet.is_injured = True
             pet.current_hp = min(pet.current_hp, int(max_hp * 0.4))
             db.add(PetEventLog(
@@ -275,7 +275,7 @@ async def adopt_pet(
         user_id=current_user.id,
         name=pet_name,
         species=data.species,
-        current_hp=calculate_max_hp(1, 0),
+        current_hp=calculate_max_hp(1, 0, data.species),
         food_balance=shared_food,
         is_active=True,
     )

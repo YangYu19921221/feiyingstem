@@ -12,7 +12,7 @@ PET_RECOVERY_WORDS = 2000
 
 # 传说宝可梦的独立队伍格:与普通 5 格完全分开计数。
 # 为什么分开:普通格早被占满,若共用池子,孩子攒够 5000 词也领不了传说 —— 解锁等于白给。
-# 达到准传说门槛(2500)开第 1 格,达到顶级门槛(5000)开第 2 格,最多 2 只传说。
+# 达到准传说门槛(5000)开第 1 格,达到顶级门槛(8000)开第 2 格,最多 2 只传说。
 MAX_LEGEND_SLOTS = 2
 
 # 进化阈值: 蛋 → 基础 → 一阶 → 最终 → 晶耀形态
@@ -74,9 +74,19 @@ def evolution_stage_for_level(level: int) -> int:
     return stage
 
 
-def calculate_max_hp(level: int, evolution_stage: int) -> int:
-    """计算宠物最大HP = 100 + 等级×5 + 进化阶段×20"""
-    return 100 + level * 5 + evolution_stage * 20
+def calculate_max_hp(level: int, evolution_stage: int, species: str | None = None) -> int:
+    """计算宠物最大HP = 100 + 等级×5 + 进化阶段×20 + 稀有度加成。
+
+    species 可选:传了才吃稀有度加成(准传说 +30 / 传说 +60)。
+    做成可选是为了让 10 处既有调用点不传也不出错,但**血量必须处处同口径** ——
+    算最大值时给了加成、别处没给,就会出现"治疗治不满"或"血条超过 100%"。
+    新增调用点请一律传 species。
+    """
+    bonus = 0
+    if species:
+        from app.core.pet_species import tier_power_bonus
+        bonus = tier_power_bonus(species)["hp"]
+    return 100 + level * 5 + evolution_stage * 20 + bonus
 
 
 # 对战里叫「初始HP」，与最大HP同一公式，保留别名以兼容既有 import

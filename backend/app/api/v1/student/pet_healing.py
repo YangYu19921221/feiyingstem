@@ -34,7 +34,7 @@ async def get_healing_status(
     if not pet:
         raise HTTPException(status_code=404, detail="还没有宠物")
 
-    max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+    max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
     hp_percent = (pet.current_hp / max_hp) * 100
     heal_per_question = heal_amount_for(max_hp)
 
@@ -81,7 +81,7 @@ async def heal_pet(
     if not pet.is_injured:
         raise HTTPException(status_code=400, detail="宠物不需要治疗")
 
-    max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+    max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
 
     # 答对才恢复HP（每题回血 = 最大HP的10%）
     healed = 0

@@ -23,6 +23,7 @@ from app.core.pet_species import (
     get_type_multiplier,
     get_type_text,
     is_legendary,
+    tier_power_bonus,
     words_required_for,
 )
 
@@ -68,7 +69,7 @@ def get_battle_pet_hp_data(battle: PetBattle) -> Dict[str, int]:
 
 def get_pet_current_hp(pet: UserPet) -> int:
     """读取宠物自身 HP，并兼容旧记录中的空值或超出上限的数据。"""
-    max_hp = calculate_max_hp(pet.level, pet.evolution_stage)
+    max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
     current_hp = max_hp if pet.current_hp is None else pet.current_hp
     return min(max_hp, max(0, current_hp))
 
@@ -208,6 +209,7 @@ def calculate_damage(
     is_correct: bool,
     combo: int,
     time_ms: int,
+    attacker_species: str | None = None,
 ) -> int:
     """
     计算攻击伤害
@@ -247,7 +249,11 @@ def calculate_damage(
     elif time_ms < 5000:
         speed_bonus = 5
 
-    total_damage = base_damage + level_bonus + stage_bonus + combo_bonus + speed_bonus
+    # 稀有度加成:准传说 +4 / 传说 +8。刻意做小 ——
+    # 单次伤害 20~50 区间里 +8 约等于多一层连击,能感觉到强但不至于让答题失去意义。
+    tier_bonus = tier_power_bonus(attacker_species)["damage"] if attacker_species else 0
+
+    total_damage = base_damage + level_bonus + stage_bonus + combo_bonus + speed_bonus + tier_bonus
 
     return max(10, total_damage)  # 最低10伤害
 
@@ -267,10 +273,21 @@ def calculate_ultimate_damage(pet_species: str, pet_stage: int) -> int:
         "bug": 39,
         "fairy": 42,
         "normal": 42,
+        # 新增家族的五个属性此前不在表里,全部走 40 兜底 —— 冰/恶/地面/毒/飞行/钢
+        # 六个属性的大招伤害完全一样,补齐才有区分度
+        "ice": 43,
+        "dark": 45,
+        "ground": 44,
+        "poison": 41,
+        "flying": 43,
+        "steel": 46,
     }
     damage = base_ultimate_by_element.get(get_pet_element(pet_species), 40)
     stage_bonus = pet_stage * 10
-    return damage + stage_bonus
+    # 稀有度加成:大招是"高光时刻",这里给得比平A明显(准传说 +12 / 传说 +25),
+    # 孩子放大招时能直观看到"我的传说就是不一样"
+    tier_bonus = tier_power_bonus(pet_species)["ultimate"]
+    return damage + stage_bonus + tier_bonus
 
 
 # ========== 题目生成 ==========
@@ -472,8 +489,8 @@ async def create_battle(
         raise ValueError("双方必须都有宠物才能对战")
 
     # 每只宠物从自己的当前 HP 进入本场战斗。
-    max_hp1 = calculate_initial_hp(pet1.level, pet1.evolution_stage)
-    max_hp2 = calculate_initial_hp(pet2.level, pet2.evolution_stage)
+    max_hp1 = calculate_initial_hp(pet1.level, pet1.evolution_stage, pet1.species)
+    max_hp2 = calculate_initial_hp(pet2.level, pet2.evolution_stage, pet2.species)
     hp1 = get_pet_current_hp(pet1)
     hp2 = get_pet_current_hp(pet2)
     if hp1 <= 0 or hp2 <= 0:
@@ -633,6 +650,7 @@ async def process_round_answer(
             is_correct,
             combo,
             time_ms,
+            attacker_pet.species,
         )
 
     # 记录答题
@@ -704,7 +722,7 @@ async def switch_battle_pet(
 
     hp_data = get_battle_pet_hp_data(battle)
     hp_data[str(current_pet_id)] = old_hp
-    new_max_hp = calculate_max_hp(target_pet.level, target_pet.evolution_stage)
+    new_max_hp = calculate_max_hp(target_pet.level, target_pet.evolution_stage, target_pet.species)
     new_hp = min(
         new_max_hp,
         hp_data.get(str(target_pet.id), get_pet_current_hp(target_pet)),
@@ -717,7 +735,7 @@ async def switch_battle_pet(
     # 及时保存离场宠物的真实血量，断线或中途结束也不会丢失伤害。
     if current_pet:
         current_pet.current_hp = min(
-            calculate_max_hp(current_pet.level, current_pet.evolution_stage),
+            calculate_max_hp(current_pet.level, current_pet.evolution_stage, current_pet.species),
             old_hp,
         )
     if is_player1:
@@ -989,7 +1007,7 @@ async def finish_battle(
         for fought_pet in fought_result.scalars().all():
             if fought_pet.user_id not in battle_player_ids:
                 continue
-            max_hp = calculate_max_hp(fought_pet.level, fought_pet.evolution_stage)
+            max_hp = calculate_max_hp(fought_pet.level, fought_pet.evolution_stage, fought_pet.species)
             fought_pet.current_hp = min(max_hp, hp_data[str(fought_pet.id)])
             if fought_pet.current_hp < max_hp * 0.5 and not fought_pet.is_injured:
                 fought_pet.is_injured = True

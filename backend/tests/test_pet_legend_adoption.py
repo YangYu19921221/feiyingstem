@@ -82,11 +82,11 @@ async def test_legend_adoption_rejected_below_threshold(client, legend_student, 
     assert response.status_code == 400
     detail = response.json()["detail"]
     # 报错必须带上门槛与差额，孩子才知道要努力到哪
-    assert "5000" in detail and "还差" in detail
+    assert "8000" in detail and "还差" in detail
 
 
 @pytest.mark.asyncio
-async def test_semi_legend_unlocks_at_2500_and_does_not_consume_normal_slots(
+async def test_semi_legend_unlocks_at_threshold_and_does_not_consume_normal_slots(
     client, legend_student, db_session
 ):
     token, user_id = legend_student
@@ -102,9 +102,9 @@ async def test_semi_legend_unlocks_at_2500_and_does_not_consume_normal_slots(
     )
     assert blocked.status_code == 400  # 普通格已满
 
-    await _give_learned_words(db_session, user_id, 2500)
+    await _give_learned_words(db_session, user_id, 5000)
 
-    # 顶级传说仍差 2500 词
+    # 顶级传说仍差 3000 词
     top = await client.post(
         "/api/v1/student/pet", json={"species": "mewtwo", "name": "超超"}, headers=headers
     )
@@ -120,17 +120,17 @@ async def test_semi_legend_unlocks_at_2500_and_does_not_consume_normal_slots(
     collection = (await client.get("/api/v1/student/pet/collection", headers=headers)).json()
     assert collection["legend_used_slots"] == 1
     assert collection["legend_unlocked_slots"] == 1
-    assert collection["next_legend_slot_words"] == 5000
-    # 普通格计数不含传说：2500 词开 2 格普通，皮卡丘占 1 格
+    assert collection["next_legend_slot_words"] == 8000
+    # 普通格计数不含传说：5000 词开 3 格普通，皮卡丘占 1 格
     assert collection["used_slots"] == 1
-    assert collection["unlocked_slots"] == 2
+    assert collection["unlocked_slots"] == 3
 
-    # 第二只传说需要 5000 词，此时传说格只开了 1 个
+    # 第二只传说需要 8000 词，此时传说格只开了 1 个
     second_legend = await client.post(
         "/api/v1/student/pet", json={"species": "zapdos", "name": "电电"}, headers=headers
     )
     assert second_legend.status_code == 400
-    assert "5000" in second_legend.json()["detail"]
+    assert "8000" in second_legend.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -146,7 +146,7 @@ async def test_collection_counts_stay_separate_when_legend_sits_mid_roster(
     token, user_id = legend_student
     headers = {"Authorization": f"Bearer {token}"}
 
-    await _give_learned_words(db_session, user_id, 2500)
+    await _give_learned_words(db_session, user_id, 5000)
 
     # 领养顺序:普通 → 传说 → 普通,让传说落在中间
     for species, name in (("pikachu", "皮皮"), ("articuno", "冰冰"), ("eevee", "布布")):
@@ -160,8 +160,8 @@ async def test_collection_counts_stay_separate_when_legend_sits_mid_roster(
     assert collection["used_slots"] == 2          # 皮卡丘 + 伊布
     assert collection["legend_used_slots"] == 1   # 急冻鸟
     assert collection["used_slots"] + collection["legend_used_slots"] == len(collection["pets"])
-    # 2500 词只开 2 格普通,已被两只普通占满 —— 但传说格照旧独立
-    assert collection["unlocked_slots"] == 2
+    # 5000 词开 3 格普通,两只普通占 2 格 —— 传说格照旧独立
+    assert collection["unlocked_slots"] == 3
     assert collection["legend_unlocked_slots"] == 1
 
 
@@ -198,7 +198,7 @@ async def test_capture_applies_the_same_legend_gate(db_session):
 
     result = await _settle_pet_capture(db_session, battle, winner.id)
     assert result["reason"] == "legend_words_locked"
-    assert result["required_words"] == 5000
+    assert result["required_words"] == 8000
     assert result["success"] is False
     # 宠物没易主
     await db_session.refresh(loser_pet)
