@@ -83,6 +83,11 @@ async def my_coins_today(
     key_date = d.strftime("%Y%m%d")
     total, done = (await cs.task_progress_on_day(db, [current_user.id], d)).get(
         current_user.id, (0, 0))
+    # 昨日任务币状态:回答「我昨天做完了怎么没币」——补做的不算当天完成,这里
+    # 与发币口径同源(task_coin_day_status),前端只显示不另算
+    y = d - timedelta(days=1)
+    y_status = (await cs.task_coin_day_status(db, [current_user.id], y)).get(
+        current_user.id, {"total": 0, "done": 0, "coined": False})
     got_task = (await db.execute(
         select(CT.id).where(CT.dedup_key == f"task:{current_user.id}:{key_date}").limit(1)
     )).scalar_one_or_none() is not None
@@ -110,6 +115,8 @@ async def my_coins_today(
         "daily_cap": cs.DAILY_CAP,
         "task_reward": cs.TASK_REWARD,
         "word_king_reward": cs.WORD_KING_REWARD,
+        # 昨日任务币状态(total=0 表示昨天没布置;done 只数当天完成的,补做不算)
+        "yesterday": {"date": y.isoformat(), **y_status},
     }
 
 

@@ -311,6 +311,16 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   改 scope_service.py / student/progress.py 那两处(它们管单元解锁与书本归属,必须
   保持"未开放不算");另有三处消费 my-homework 的地方(首页红点/单元选择器今日任务/
   分类学习页交卷横幅)必须过滤 is_locked,否则"可见"会漏成"可做"
+- ✅ 金币「为什么没发」自解释(2026-08-12): 目标是老师学生不再来问规则。三个触点:
+  ①交卷达标没发币时返回 coin_hint{code,message}(coin_service.task_coin_hint,四码:
+  late_makeup 补做/manual 手动机构/already 今日已发/pending 还差 N 份),两个交卷路径
+  (usePracticeState/WordClassifyLearning)toast 显示;②学生金币卡:今天没布置任务写明
+  「不是漏发」、昨日没做完显示「昨日 x/y 金币未发(补做不算)」(/student/coins/today 加
+  yesterday 字段);③教师金币页余额列表每生「今/昨」小标签(绿✓已发/红没做完/灰无任务/
+  琥珀全完成但手动模式),/teacher/coins/balances 加 today/yesterday(批量走
+  task_coin_day_status,与发币口径同源)。测试 tests/test_coin_hint.py(6 例);
+  规则弹窗同日已补「当天做完才发币」条款。排查起因见「SQLite 日期时间禁止混用微秒格式」
+  (19 行旧格式数据害 4 生漏币,已修+补发)
 - ✅ 金币规则(2026-08-08 重定义,以此为准): 完成当天布置的全部任务+1(当天追加任务不再多发;
   老师取消/关闭的任务不进分母——布置5份做不完、取消2份、剩3份做完照样+1,关闭和删除两条路径
   都会补发)、单词王额外+1 且与任务币**叠加**(旧规则是+2且互斥),一天封顶2;单词王24点后

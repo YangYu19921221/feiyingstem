@@ -287,11 +287,19 @@ async def balances(
         .order_by(func.coalesce(StudentCoin.balance, 0).desc(), User.id)
     )).all()
 
+    # 今日/昨日任务币状态(批量,两天各两条查询):让老师一眼看到「他昨天为什么没币」
+    # ——done 只数当天完成的,隔天补做不算,与发币口径同源,不必再来问规则
+    ids = [uid for uid, *_ in rows]
+    today = local_today()
+    today_map = await coin_service.task_coin_day_status(db, ids, today)
+    yest_map = await coin_service.task_coin_day_status(db, ids, today - timedelta(days=1))
+
     return {
         "class_id": class_id,
         "class_name": cls.name,
         "students": [
-            {"student_id": uid, "name": full or username, "username": username, "balance": bal}
+            {"student_id": uid, "name": full or username, "username": username, "balance": bal,
+             "today": today_map.get(uid), "yesterday": yest_map.get(uid)}
             for uid, full, username, bal in rows
         ],
     }

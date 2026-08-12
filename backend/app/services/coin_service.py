@@ -425,6 +425,77 @@ async def try_award_task_coin(
     return tx is not None
 
 
+async def task_coin_hint(
+    db: AsyncSession, student_id: int, assignment_day: date
+) -> Optional[dict]:
+    """交卷达标却没拿到任务币时,给前端一句「为什么」(减少学生/老师来问规则)。
+
+    assignment_day = 这份作业的布置日(北京日,调用方按 assigned_at+8h 算好传入)。
+    返回 {code, message} 或 None(不需要提示,如已发币/异常)。
+    只做只读查询;任何失败都吞掉返回 None —— 提示是附赠品,绝不能影响交卷。
+    """
+    try:
+        today = local_today()
+        if assignment_day != today:
+            return {
+                "code": "late_makeup",
+                "message": (
+                    f"这份是补做 {assignment_day.month}月{assignment_day.day}日 的任务,"
+                    "成绩照常记录;金币只发当天完成的,这次不发"
+                ),
+            }
+        org_id = (await db.execute(
+            select(User.org_id).where(User.id == student_id)
+        )).scalar_one_or_none()
+        if not await is_auto_coin_org(db, org_id):
+            return {
+                "code": "manual",
+                "message": "本校由老师核实后手动加金币,系统不自动发",
+            }
+        key_date = today.strftime("%Y%m%d")
+        if await _has_activity_coin(db, student_id, key_date):
+            return {
+                "code": "already",
+                "message": "今天的任务金币已经拿过啦(一天 1 枚,追加任务不再多发)",
+            }
+        total, done = (await task_progress_on_day(db, [student_id], today)).get(
+            student_id, (0, 0))
+        if total > 0 and done < total:
+            return {
+                "code": "pending",
+                "message": f"今天的任务还差 {total - done} 份,全部完成金币 +1",
+            }
+        return None
+    except Exception:
+        return None
+
+
+async def task_coin_day_status(
+    db: AsyncSession, student_ids: list[int], d: date
+) -> dict[int, dict]:
+    """一批学生在 d 这天的任务币状态 → {sid: {total, done, coined}}。
+
+    教师端余额列表「今日/昨日」小标签用:total/done 与发币口径完全一致
+    (done 只数当天完成的,隔天补做不算),coined = 任务币是否已发。
+    两条批量查询,不逐生循环。
+    """
+    if not student_ids:
+        return {}
+    ids = list(student_ids)
+    key_date = d.strftime("%Y%m%d")
+    progress = await task_progress_on_day(db, ids, d)
+    coined_rows = (await db.execute(
+        select(CoinTransaction.dedup_key).where(
+            CoinTransaction.dedup_key.in_([f"task:{sid}:{key_date}" for sid in ids]))
+    )).scalars().all()
+    coined_ids = {int(k.split(":")[1]) for k in coined_rows}
+    out = {}
+    for sid in ids:
+        total, done = progress.get(sid, (0, 0))
+        out[sid] = {"total": total, "done": done, "coined": sid in coined_ids}
+    return out
+
+
 async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
     """给 d 这天每个班的词量榜第一发 word_king 币(幂等)。
     返回 (本次实际发放人数, 本日全部单词王的 student_id 集合)。

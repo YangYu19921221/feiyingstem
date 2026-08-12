@@ -144,6 +144,21 @@ export default function MyCoinsCard() {
                 )}
               </p>
             )}
+            {/* 今天没布置任务:明说"没有任务币不是漏发",这是最常见的疑问之一 */}
+            {today && today.tasks_total === 0 && (
+              <p className="text-[12px] text-amber-900/65">
+                今天老师还没布置任务,没有任务金币(不是漏发)
+              </p>
+            )}
+            {/* 昨日没拿到任务币:说清是没做完(补做不算当天),孩子不用再来问 */}
+            {today?.yesterday && today.yesterday.total > 0 && !today.yesterday.coined && (
+              <p className="text-[12px] text-amber-900/65">
+                昨日任务 <b className="font-numeric">{today.yesterday.done}/{today.yesterday.total}</b>
+                {today.auto_coin
+                  ? ' · 当天没做完,金币未发(隔天补做不算哦)'
+                  : ' · 老师手动加币模式'}
+              </p>
+            )}
             {race?.tip && (
               <p className={`flex items-start gap-1 text-[12px] leading-snug ${
                 race.level === 'chased' || race.level === 'tied'

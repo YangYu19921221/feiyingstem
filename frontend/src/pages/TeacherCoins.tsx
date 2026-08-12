@@ -17,7 +17,7 @@ import {
   getRedeemRequests, approveRedeem, rejectRedeem,
   getCoinMode, setCoinMode, settleCoins,
   type CoinBalance, type CoinTx, type CoinReward, type WordKingBanner,
-  type RedeemRequestItem, type CoinModeResp,
+  type RedeemRequestItem, type CoinModeResp, type TaskCoinDayStatus,
 } from '../api/coins';
 import { CircleDollarSign } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
@@ -34,6 +34,44 @@ const SOURCE_FILTERS = [
   { key: 'redeem', label: '兑换' },
 ];
 const PAGE_SIZE = 20;
+
+/** 余额行的「今/昨」任务币状态小标签:一眼回答「他为什么没币」。
+ *  绿✓=已发币;红=当天没做完(含隔天补做,发币口径不算);灰=没布置任务。
+ *  pendingOk: 今天还在进行中,没做完显示中性琥珀色而不是红(还没到结算盖棺)。 */
+function DayStatusChip({ label, st, pendingOk }: {
+  label: string; st?: TaskCoinDayStatus | null; pendingOk?: boolean;
+}) {
+  if (!st) return null;
+  if (st.total === 0) {
+    return (
+      <span className="rounded bg-gray-100 px-1 py-0.5 text-gray-400" title={`${label}日未布置任务,无任务币(不是漏发)`}>
+        {label} 无任务
+      </span>
+    );
+  }
+  if (st.coined) {
+    return (
+      <span className="rounded bg-emerald-50 px-1 py-0.5 font-semibold text-emerald-600" title={`${label}日任务全部当天完成,任务币已发`}>
+        {label} {st.done}/{st.total} ✓
+      </span>
+    );
+  }
+  if (st.done === st.total) {
+    // 全做完但没发币:手动加币模式(auto 模式下全做完必然已发)
+    return (
+      <span className="rounded bg-amber-50 px-1 py-0.5 text-amber-600" title={`${label}日任务全部当天完成;本校为手动加币模式,由老师核实后加`}>
+        {label} {st.done}/{st.total} 全完成
+      </span>
+    );
+  }
+  const cls = pendingOk
+    ? 'rounded bg-amber-50 px-1 py-0.5 text-amber-600'
+    : 'rounded bg-rose-50 px-1 py-0.5 font-semibold text-rose-500';
+  const tip = pendingOk
+    ? `今天完成 ${st.done}/${st.total},全部完成自动发任务币`
+    : `${label}日完成 ${st.done}/${st.total}(只数当天完成的,隔天补做不计),没做完所以金币未发`;
+  return <span className={cls} title={tip}>{label} {st.done}/{st.total}</span>;
+}
 
 export default function TeacherCoins() {
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -514,10 +552,23 @@ export default function TeacherCoins() {
                 className="w-28 px-2.5 py-1.5 rounded-lg border border-black/10 text-xs"
               />
             </div>
+            {/* 任务币状态图例:老师看一眼就知道谁为什么没币,不用再翻规则 */}
+            <p className="mb-2 text-[11px] leading-relaxed text-gray-400">
+              今/昨 = 当天完成任务数/布置数(隔天补做不计)。✓ 已发任务币,
+              <span className="text-rose-500">红色</span> = 当天没做完,金币未发。
+            </p>
             <div className="space-y-1 max-h-[560px] overflow-y-auto">
               {balances.map((s) => (
                 <div key={s.student_id} className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-black/[0.02]">
-                  <span className="text-sm text-gray-700 truncate">{s.name}</span>
+                  <div className="min-w-0">
+                    <span className="text-sm text-gray-700 truncate">{s.name}</span>
+                    {(s.today || s.yesterday) && (
+                      <p className="mt-0.5 flex flex-wrap gap-1 text-[10px] leading-none">
+                        <DayStatusChip label="今" st={s.today} pendingOk />
+                        <DayStatusChip label="昨" st={s.yesterday} />
+                      </p>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-numeric font-bold text-amber-600 text-sm">{s.balance} 🪙</span>
                     <button

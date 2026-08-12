@@ -5,11 +5,20 @@
  */
 import client from './client';
 
+/** 某天的任务币状态(done 只数当天完成的,隔天补做不算;与后端发币口径同源) */
+export interface TaskCoinDayStatus {
+  total: number;
+  done: number;
+  coined: boolean;
+}
+
 export interface CoinBalance {
   student_id: number;
   name: string;
   username: string;
   balance: number;
+  today?: TaskCoinDayStatus | null;      // 今日任务进度(老师一眼看还差几份)
+  yesterday?: TaskCoinDayStatus | null;  // 昨日任务进度(回答"他昨天为什么没币")
 }
 
 export interface CoinBalancesResp {
@@ -137,6 +146,8 @@ export interface MyCoinsToday {
   daily_cap: number;
   task_reward: number;
   word_king_reward: number;
+  /** 昨日任务币状态(total=0 表示昨天没布置;done 只数当天完成的,补做不算) */
+  yesterday?: (TaskCoinDayStatus & { date: string }) | null;
 }
 export const getMyCoinsToday = () => client.get<MyCoinsToday>(`/student/coins/today`);
 

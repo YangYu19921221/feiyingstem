@@ -785,6 +785,10 @@ const WordClassifyLearning = () => {
             : `作业已提交,得分 ${r.score}(目标未达,还可再试 ${r.remaining_attempts} 次)`);
           if (r.coin_awarded) {
             setTimeout(() => toast.success('🪙 今天的任务全部完成,金币 +1!'), 900);
+          } else if (r.is_passed && r.coin_hint?.message) {
+            // 达标但没发币:主动说清为什么,免得又变成一次"是不是漏发了"的询问
+            const msg = r.coin_hint.message;
+            setTimeout(() => toast(`🪙 ${msg}`, 'info'), 900);
           }
         })
         .catch(err => {

@@ -334,8 +334,10 @@ async def submit_homework_attempt(
 
     # 本次提交影响到的「布置日」集合(金币按布置日结算;连带完成会牵动别的日子)
     affected_days: set = set()
+    primary_day = None  # 本份作业自己的布置日(coin_hint 用;commit 后 ORM 过期读不到)
     if assignment.assigned_at:
-        affected_days.add((assignment.assigned_at + timedelta(hours=8)).date())
+        primary_day = (assignment.assigned_at + timedelta(hours=8)).date()
+        affected_days.add(primary_day)
 
     # 增加尝试次数
     assignment.attempts_count += 1
@@ -420,17 +422,24 @@ async def submit_homework_attempt(
     # 走独立会话:发币失败绝不能影响已经提交成功的成绩(共用会话时 rollback 会让
     # current_user 等 ORM 对象过期,后续属性访问抛 MissingGreenlet → 500)。
     coin_awarded = False
+    coin_hint = None
     if is_passed:
-        from app.services.coin_service import award_task_coins_isolated
+        from app.services.coin_service import award_task_coins_isolated, task_coin_hint
         from app.core.timeutil import local_today
         days = affected_days or {local_today()}
         coin_awarded = await award_task_coins_isolated(
             {(current_user.id, d) for d in days}
         ) > 0
+        # 没发币时告诉学生为什么(补做/已发过/还差几份/手动模式),
+        # 免得每个"完成了没加币"都变成一次找老师问规则。只读查询,失败返回 None。
+        if not coin_awarded:
+            coin_hint = await task_coin_hint(
+                db, current_user.id, primary_day or local_today())
 
     return {
         "message": "提交成功",
         "coin_awarded": coin_awarded,
+        "coin_hint": coin_hint,
         "is_passed": is_passed,
         "score": request.score,
         "best_score": resp_best_score,

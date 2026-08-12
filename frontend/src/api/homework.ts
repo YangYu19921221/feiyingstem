@@ -182,6 +182,8 @@ export const submitHomeworkAttempt = async (
   remaining_attempts: number;
   /** 本次达标刚好把当天任务全做完,系统自动发了金币(手动模式恒为 false) */
   coin_awarded?: boolean;
+  /** 达标却没发币时的原因(补做/已发过/还差几份/手动模式),没有疑问场景时为 null */
+  coin_hint?: { code: string; message: string } | null;
 }> => {
   return submitReliably(`/student/homework/${assignmentId}/submit`, request);
 };

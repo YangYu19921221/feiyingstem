@@ -168,6 +168,11 @@ export function usePracticeState({
             // 这次达标刚好把当天任务全部做完 → 系统已自动发金币
             if (r.coin_awarded) {
               setTimeout(() => toast.success('🪙 今天的任务全部完成,金币 +1!'), 900);
+            } else if (r.is_passed && r.coin_hint?.message) {
+              // 达标但没发币:主动说清为什么(补做/已发过/还差几份/手动模式),
+              // 不然每个"完成了没加币"都会变成一次找老师问规则
+              const msg = r.coin_hint.message;
+              setTimeout(() => toast(`🪙 ${msg}`, 'info'), 900);
             }
           })
           .catch(err => console.error('提交作业成绩失败:', err));
