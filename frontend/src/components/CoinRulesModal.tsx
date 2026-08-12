@@ -92,6 +92,10 @@ export default function CoinRulesModal({ open, onClose, audience, autoCoin, rule
                 · 老师<b>取消或关闭</b>的任务不算在内。比如布置了 5 份、{you}做不完,老师取消 2 份,
                 {you}把剩下 3 份做完<b>照样得 {n.task_reward} 枚</b>。
               </p>
+              <p>
+                · 必须<b>当天做完</b>:当天布置的任务拖到第二天才补做,成绩照样记录,
+                但这枚金币不发(补做的那天也不会发,发币只看{isStudent ? '你' : '学生'}当天的任务)。
+              </p>
               <p>· 当天一份任务都没布置,就没有这枚金币(不是漏发)。</p>
             </Row>
 
