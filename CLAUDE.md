@@ -235,6 +235,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   - **多租户防提权**:对 org_admin 放行的写端点必须调用 `admin/users.py` 的 `guard_org_admin()`,不要手写角色判断
   - **「留空=不修改」的字段判空必须走显式分支**:`if "x" in data and data["x"]` 这种写法,
     空串会让整个 if 不成立 → 跳过处理 → 空值原样落库。AI 配置的 api_key 就这么被清空过
+  - **SQLite 日期时间是字符串比较,禁止混用微秒格式**:SQLAlchemy 写入恒带 `.000000`,
+    而 sqlite 的 `datetime()` / `CURRENT_TIMESTAMP` 输出不带微秒。两种格式在**整点边界**
+    比较会翻车:`'... 16:00:00' >= '... 16:00:00.000000'` 为假 → 对齐北京 0 点的当日任务
+    assigned_at 落不进自己那天的查询窗口、反而漏进前一天。实案(2026-08-12 排查):
+    19 行旧格式当日任务让 4 个学生「完成全部任务」金币没发(数据已修+币已补,备份在
+    生产机 /root/coin_fix_backup_20260812_hsa.sql)。手写 SQL 回填 datetime 列时
+    必须补 `|| '.000000'`;普通行的 CURRENT_TIMESTAMP 落在日中,无碍
     (改一次模型名就抹掉密钥,全部 LLM 调用 401)。写完自问:空串会走到哪一支?
 
 ### 新功能必须同步公告(硬性要求)
