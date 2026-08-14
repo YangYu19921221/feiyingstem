@@ -271,20 +271,24 @@ const TeacherHomework: React.FC = () => {
 
     const unitIds = scope.unit_ids ?? [];
     const multi = unitIds.length > 1;
+    // 组多选(仅单单元时有意义):每组各建一份作业
+    const groupIndexes = scope.group_indexes ?? (scope.group_index != null ? [scope.group_index] : []);
+    const multiGroup = !multi && groupIndexes.length > 1;
 
     try {
       setLoading(true);
       const result = await createHomework({
         ...formData,
         unit_id: scope.unit_id ?? unitIds[0],
-        group_index: multi ? null : (scope.group_index ?? null),
+        group_index: multi ? null : (groupIndexes[0] ?? null),
+        group_indexes: multiGroup ? groupIndexes : undefined,
         // 多选:一次为每个单元建一份作业
         unit_ids: multi ? unitIds : undefined,
         available_date: formData.available_date || undefined,
-        daily_sequence: multi ? formData.daily_sequence : false,
+        daily_sequence: (multi || multiGroup) ? formData.daily_sequence : false,
       });
       // 后端 message 会区分普通作业/当日任务(按日期开放,只能当天完成)
-      toast.success(result.message || (multi ? `已创建 ${result.homework_ids?.length ?? unitIds.length} 份作业!` : '作业创建成功!'));
+      toast.success(result.message || ((multi || multiGroup) ? `已创建 ${result.homework_ids?.length ?? unitIds.length} 份作业!` : '作业创建成功!'));
       setShowCreateModal(false);
       resetForm();
       loadHomework();
@@ -754,10 +758,16 @@ const TeacherHomework: React.FC = () => {
                       onChange={setScope}
                       allowBook={false}
                       multiUnit
+                      multiGroup
                     />
                     {(scope.unit_ids?.length || 0) > 1 && (
                       <p className="mt-1.5 text-xs text-blue-600">
                         已选 {scope.unit_ids!.length} 个单元,将创建 {scope.unit_ids!.length} 份独立作业(标题自动加单元名),各自追踪完成情况
+                      </p>
+                    )}
+                    {(scope.unit_ids?.length || 0) <= 1 && (scope.group_indexes?.length || 0) > 1 && (
+                      <p className="mt-1.5 text-xs text-blue-600">
+                        已选 {scope.group_indexes!.length} 个组,将创建 {scope.group_indexes!.length} 份独立作业(标题自动加组号),各自追踪完成情况
                       </p>
                     )}
                   </div>
@@ -854,29 +864,36 @@ const TeacherHomework: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 多单元 + 开始日期:按天依次排期,一次布置未来一周 */}
-                  {(scope.unit_ids?.length || 0) > 1 && formData.available_date && (
-                    <div className="rounded-xl border-2 border-dashed border-orange-200 bg-orange-50/60 p-4">
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!formData.daily_sequence}
-                          onChange={(e) => setFormData({ ...formData, daily_sequence: e.target.checked })}
-                          className="mt-0.5 w-5 h-5 accent-orange-500"
-                        />
-                        <div>
-                          <div className="font-semibold text-gray-800 text-sm">
-                            📆 按天依次排期(每个单元顺延一天)
+                  {/* 多单元/多组 + 开始日期:按天依次排期,一次布置未来一周 */}
+                  {(() => {
+                    const multiUnitCount = scope.unit_ids?.length || 0;
+                    const multiGroupCount = multiUnitCount > 1 ? 0 : (scope.group_indexes?.length || 0);
+                    const seqCount = multiUnitCount > 1 ? multiUnitCount : multiGroupCount;
+                    const seqNoun = multiUnitCount > 1 ? '单元' : '组';
+                    if (seqCount <= 1 || !formData.available_date) return null;
+                    return (
+                      <div className="rounded-xl border-2 border-dashed border-orange-200 bg-orange-50/60 p-4">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!formData.daily_sequence}
+                            onChange={(e) => setFormData({ ...formData, daily_sequence: e.target.checked })}
+                            className="mt-0.5 w-5 h-5 accent-orange-500"
+                          />
+                          <div>
+                            <div className="font-semibold text-gray-800 text-sm">
+                              📆 按天依次排期(每个{seqNoun}顺延一天)
+                            </div>
+                            <p className="mt-1 text-xs text-gray-600">
+                              {formData.daily_sequence
+                                ? `已选 ${seqCount} 个${seqNoun}:第 1 个 ${fmtMD(formData.available_date)} 开放,以后每天开放下一个,最后一个 ${fmtMD(addDays(formData.available_date, seqCount - 1))} 开放。每份任务只能在自己开放的当天完成——一次把后面 ${seqCount} 天的任务都排好`
+                                : `不勾选则 ${seqCount} 个${seqNoun}的任务都在 ${fmtMD(formData.available_date)} 同一天开放、同一天截止`}
+                            </p>
                           </div>
-                          <p className="mt-1 text-xs text-gray-600">
-                            {formData.daily_sequence
-                              ? `已选 ${scope.unit_ids!.length} 个单元:第 1 个 ${fmtMD(formData.available_date)} 开放,以后每天开放下一个,最后一个 ${fmtMD(addDays(formData.available_date, scope.unit_ids!.length - 1))} 开放。每份任务只能在自己开放的当天完成——一次把后面 ${scope.unit_ids!.length} 天的任务都排好`
-                              : `不勾选则 ${scope.unit_ids!.length} 个单元的任务都在 ${fmtMD(formData.available_date)} 同一天开放、同一天截止`}
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  )}
+                        </label>
+                      </div>
+                    );
+                  })()}
 
                   {/* 选择学生 */}
                   <div>

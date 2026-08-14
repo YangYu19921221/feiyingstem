@@ -10,6 +10,8 @@ export interface ScopeValue {
   group_index?: number | null;
   // 单元粒度多选(multiUnit 模式):选中的全部单元;unit_id 保持为第一个以兼容旧逻辑
   unit_ids?: number[];
+  // 分组多选(multiGroup 模式):选中的全部组;group_index 保持为第一个以兼容旧逻辑
+  group_indexes?: number[];
 }
 
 interface BookOption {
@@ -26,9 +28,12 @@ interface Props {
   allowBook?: boolean;
   /** 单元粒度支持多选(分配页用);作业等单单元场景不传,保持单选 */
   multiUnit?: boolean;
+  /** 分组粒度支持多选(作业页用,每组各建一份作业);
+   *  分配页等只支持单个 group_index 的调用方别开,多选了也只有第一个生效 */
+  multiGroup?: boolean;
 }
 
-export function ScopeSelector({ books, value, onChange, allowBook = true, multiUnit = false }: Props) {
+export function ScopeSelector({ books, value, onChange, allowBook = true, multiUnit = false, multiGroup = false }: Props) {
   const bookId = value.book_id;
 
   // 单词本 combobox:书多了下拉难翻(机构自建+平台共享几十本),输入即时过滤浮出候选
@@ -78,13 +83,13 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
   }, [bookOpen]);
 
   const selectBook = (b: BookOption) => {
-    onChange({ scope_type: 'book', book_id: b.id, unit_id: null, group_index: null, unit_ids: [] });
+    onChange({ scope_type: 'book', book_id: b.id, unit_id: null, group_index: null, unit_ids: [], group_indexes: [] });
     setBookSearch(b.name);
     setBookOpen(false);
   };
 
   const clearBook = () => {
-    onChange({ scope_type: 'book', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
+    onChange({ scope_type: 'book', book_id: null, unit_id: null, group_index: null, unit_ids: [], group_indexes: [] });
     setBookSearch('');
     setBookOpen(false);
   };
@@ -119,6 +124,25 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
   // 分组细化仅在恰好选中 1 个单元时可用(多选多个单元时按整单元分配)
   const soloUnitId = selectedUnitIds.length === 1 ? selectedUnitIds[0] : null;
 
+  // 当前选中的组集合(多选模式);单选模式退化为 0/1 个
+  const selectedGroupIndexes: number[] =
+    value.group_indexes ?? (value.group_index != null ? [value.group_index] : []);
+
+  /** 多选模式:切换某个组的选中状态;全取消则回落为整单元 */
+  const toggleGroup = (uid: number, gi: number) => {
+    const next = selectedGroupIndexes.includes(gi)
+      ? selectedGroupIndexes.filter((g) => g !== gi)
+      : [...selectedGroupIndexes, gi].sort((a, b) => a - b);
+    onChange({
+      scope_type: next.length > 0 ? 'group' : 'unit',
+      book_id: bookId,
+      unit_id: uid,
+      unit_ids: [uid],
+      group_index: next[0] ?? null,
+      group_indexes: next,
+    });
+  };
+
   const { data: groups = [] } = useQuery({
     queryKey: ['unit-groups', soloUnitId],
     queryFn: () => teacherAssignments.listUnitGroups(soloUnitId!),
@@ -133,7 +157,7 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
       units.length > 0 &&
       selectedUnitIds.some((uid) => !units.find((u) => u.id === uid))
     ) {
-      onChange({ scope_type: 'book', book_id: bookId, unit_id: null, group_index: null, unit_ids: [] });
+      onChange({ scope_type: 'book', book_id: bookId, unit_id: null, group_index: null, unit_ids: [], group_indexes: [] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, units]);
@@ -149,6 +173,7 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
       unit_id: next[0] ?? null,
       unit_ids: next,
       group_index: null,
+      group_indexes: [],
     });
   };
 
@@ -160,6 +185,7 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
       unit_id: uid,
       unit_ids: [uid],
       group_index: null,
+      group_indexes: [],
     });
   };
 
@@ -171,11 +197,12 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
       unit_id: all[0] ?? null,
       unit_ids: all,
       group_index: null,
+      group_indexes: [],
     });
   };
 
   const clearUnits = () => {
-    onChange({ scope_type: 'book', book_id: bookId, unit_id: null, group_index: null, unit_ids: [] });
+    onChange({ scope_type: 'book', book_id: bookId, unit_id: null, group_index: null, unit_ids: [], group_indexes: [] });
   };
 
   return (
@@ -313,7 +340,7 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
                     {multiUnit && isSelected && '✓ '}
                     {u.name}（{u.group_count}组）
                   </button>
-                  {/* 分组细化:仅当恰好选中这 1 个单元时显示 */}
+                  {/* 分组细化:仅当恰好选中这 1 个单元时显示;multiGroup 模式下组可多选 */}
                   {isSelected && soloUnitId === u.id && (
                     <div className="ml-3 mt-1 flex gap-1 flex-wrap">
                       <button
@@ -325,6 +352,7 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
                             unit_id: u.id,
                             unit_ids: [u.id],
                             group_index: null,
+                            group_indexes: [],
                           })
                         }
                         className={`px-2 py-0.5 text-xs rounded border ${
@@ -335,28 +363,44 @@ export function ScopeSelector({ books, value, onChange, allowBook = true, multiU
                       >
                         整单元
                       </button>
-                      {groups.map((g) => (
-                        <button
-                          type="button"
-                          key={g.index}
-                          onClick={() =>
-                            onChange({
-                              scope_type: 'group',
-                              book_id: bookId,
-                              unit_id: u.id,
-                              unit_ids: [u.id],
-                              group_index: g.index,
-                            })
-                          }
-                          className={`px-2 py-0.5 text-xs rounded border ${
-                            value.scope_type === 'group' && value.group_index === g.index
-                              ? 'bg-amber-400 border-amber-500'
-                              : 'bg-white hover:bg-amber-50'
-                          }`}
-                        >
-                          第{g.index}组（{g.word_count}词）
-                        </button>
-                      ))}
+                      {groups.map((g) => {
+                        const groupSelected =
+                          value.scope_type === 'group' &&
+                          (multiGroup
+                            ? selectedGroupIndexes.includes(g.index)
+                            : value.group_index === g.index);
+                        return (
+                          <button
+                            type="button"
+                            key={g.index}
+                            onClick={() =>
+                              multiGroup
+                                ? toggleGroup(u.id, g.index)
+                                : onChange({
+                                    scope_type: 'group',
+                                    book_id: bookId,
+                                    unit_id: u.id,
+                                    unit_ids: [u.id],
+                                    group_index: g.index,
+                                    group_indexes: [g.index],
+                                  })
+                            }
+                            className={`px-2 py-0.5 text-xs rounded border ${
+                              groupSelected
+                                ? 'bg-amber-400 border-amber-500'
+                                : 'bg-white hover:bg-amber-50'
+                            }`}
+                          >
+                            {multiGroup && groupSelected && '✓ '}
+                            第{g.index}组（{g.word_count}词）
+                          </button>
+                        );
+                      })}
+                      {multiGroup && selectedGroupIndexes.length > 1 && (
+                        <span className="self-center text-xs text-gray-500">
+                          已选 {selectedGroupIndexes.length} 个组
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

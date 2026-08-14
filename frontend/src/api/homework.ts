@@ -12,18 +12,20 @@ export interface CreateHomeworkRequest {
   description?: string;
   unit_id: number;
   group_index?: number | null;
+  // 分组多选(仅单单元时有效):一次为每个组各建一份作业(优先于 group_index,标题自动带组号)
+  group_indexes?: number[];
   learning_mode: string; // flashcard, spelling, fillblank, quiz
   student_ids: number[];
   target_score: number;
   min_completion_time?: number;
   max_attempts: number;
   deadline?: string;
-  // 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略 group_index)
+  // 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略分组)
   unit_ids?: number[];
   // 当日任务:开始日期(YYYY-MM-DD),当天0点开放、当天24点截止,只能当天完成;
   // 空=普通作业(立即布置,可自设截止时间)。设了日期后 deadline 会被后端忽略
   available_date?: string;
-  // 多单元 + 开始日期时:每个单元比前一个顺延一天(一次布置未来一周)
+  // 多单元/多组 + 开始日期时:每份作业比前一份顺延一天(一次布置未来一周)
   daily_sequence?: boolean;
 }
 

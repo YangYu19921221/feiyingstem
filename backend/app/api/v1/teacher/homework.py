@@ -31,12 +31,14 @@ class CreateHomeworkRequest(BaseModel):
     max_attempts: int = 3
     deadline: Optional[str] = None
     group_index: Optional[int] = None  # null=整单元, 有值=指定分组
-    # 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略 group_index)
+    # 分组多选(仅单单元时有效):一次为每个组各建一份作业(优先于 group_index)
+    group_indexes: Optional[List[int]] = None
+    # 单元多选:一次为多个单元各建一份作业(优先于 unit_id;多选时忽略分组)
     unit_ids: Optional[List[int]] = None
     # 按日期布置(当日任务):开始日期(YYYY-MM-DD,北京日期)。当天0点开放、当天24点
     # 自动截止,学生只能在当天完成;空=普通作业(立即布置,可自设截止时间)
     available_date: Optional[str] = None
-    # 多单元 + 开始日期时:每个单元比前一个顺延一天(一次布置未来一周的任务)
+    # 多单元/多组 + 开始日期时:每份作业比前一份顺延一天(一次布置未来一周的任务)
     daily_sequence: bool = False
 
 
@@ -105,7 +107,8 @@ async def create_homework(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """创建作业并分配给学生。unit_ids 多选时为每个单元各建一份作业(标题自动带单元名)"""
+    """创建作业并分配给学生。unit_ids 多选时为每个单元各建一份作业(标题自动带单元名);
+    单单元 + group_indexes 多选时为每个组各建一份作业(标题自动带组号)"""
 
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="只有教师可以创建作业")
@@ -115,7 +118,7 @@ async def create_homework(
         unit_targets = list(dict.fromkeys(request.unit_ids))
     else:
         unit_targets = [request.unit_id]
-    multi = len(unit_targets) > 1
+    multi_unit = len(unit_targets) > 1
 
     # 验证所有单元存在
     result = await db.execute(
@@ -128,18 +131,34 @@ async def create_homework(
     if missing:
         raise HTTPException(status_code=404, detail=f"单元不存在: {missing}")
 
-    # 验证 group_index 在合法范围(仅单单元时有意义;多选时忽略)
-    group_index = None if multi else request.group_index
-    if group_index is not None:
+    # 归一化分组目标(仅单单元时有意义;多单元时按整单元):
+    # group_indexes 多选优先于 group_index;None 表示整单元
+    if multi_unit:
+        group_targets: List[Optional[int]] = [None]
+    elif request.group_indexes:
+        group_targets = list(dict.fromkeys(request.group_indexes))
+    elif request.group_index is not None:
+        group_targets = [request.group_index]
+    else:
+        group_targets = [None]
+
+    # 验证所有组序号在合法范围
+    if any(gi is not None for gi in group_targets):
         try:
             groups = await get_unit_groups(db, unit_targets[0])
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        if group_index < 1 or group_index > len(groups):
-            raise HTTPException(
-                status_code=422,
-                detail=f"组序号超出范围（单元共 {len(groups)} 组）"
-            )
+        for gi in group_targets:
+            if gi is not None and (gi < 1 or gi > len(groups)):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"组序号 {gi} 超出范围（单元共 {len(groups)} 组）"
+                )
+
+    # 扁平目标列表:多单元时是 N 个整单元,单单元多组时是 M 个组,普通情况就 1 份
+    targets: List[tuple] = [(uid, gi) for uid in unit_targets for gi in group_targets]
+    multi = len(targets) > 1
+    multi_group = len(group_targets) > 1
 
     # 验证学生存在
     result = await db.execute(
@@ -165,7 +184,7 @@ async def create_homework(
     # 解析按日期布置(当日任务):北京日期 → 当天0点的 UTC naive(与 DB 时间口径一致)。
     # 今天也照存(开放时刻已过=立即可见),这样"当天24点截止"的当日任务语义不丢;
     # 当日任务忽略自设截止时间——过期时刻恒为 available_from + 1天。
-    open_times: list = [None] * len(unit_targets)
+    open_times: list = [None] * len(targets)
     if request.available_date:
         try:
             base_date = datetime.strptime(request.available_date, "%Y-%m-%d").date()
@@ -175,20 +194,25 @@ async def create_homework(
             raise HTTPException(status_code=400, detail="开始日期不能早于今天")
         if base_date > local_today() + timedelta(days=60):
             raise HTTPException(status_code=400, detail="开始日期最多提前 60 天")
-        for i in range(len(unit_targets)):
+        for i in range(len(targets)):
             d = base_date + timedelta(days=i) if (request.daily_sequence and multi) else base_date
             open_times[i], _ = local_day_utc_range(d)
         deadline = None  # 当日任务不接受自设截止时间,统一当天24点
 
-    # 逐单元创建作业(多选时标题带单元名区分,各自独立追踪完成情况)
+    # 逐份创建作业(多选时标题带单元名/组号区分,各自独立追踪完成情况)
     homework_ids = []
     assigned_count = 0
     skipped_count = 0
 
-    for idx, uid in enumerate(unit_targets):
+    for idx, (uid, gi) in enumerate(targets):
         unit, _book = unit_map[uid]
+        title = request.title
+        if multi_unit:
+            title = f"{title} · {unit.name}"
+        elif multi_group:
+            title = f"{title} · 第{gi}组"
         homework = HomeworkAssignment(
-            title=f"{request.title} · {unit.name}" if multi else request.title,
+            title=title,
             description=request.description,
             teacher_id=current_user.id,
             unit_id=uid,
@@ -197,7 +221,7 @@ async def create_homework(
             min_completion_time=request.min_completion_time,
             max_attempts=request.max_attempts,
             deadline=deadline,
-            group_index=group_index,
+            group_index=gi,
             available_from=open_times[idx],
         )
         db.add(homework)
@@ -230,7 +254,7 @@ async def create_homework(
         "homework_ids": homework_ids,
         "assigned_count": assigned_count,
         "skipped_count": skipped_count,
-        "total": len(request.student_ids) * len(unit_targets)
+        "total": len(request.student_ids) * len(targets)
     }
 
 
