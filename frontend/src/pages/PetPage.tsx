@@ -1028,6 +1028,7 @@ function NurtureView({
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const [feedMsg, setFeedMsg] = useState('');
+  const [battleMsg, setBattleMsg] = useState('');
   const [showHearts, setShowHearts] = useState(false);
   const [petTaps, setPetTaps] = useState(0);
   const [evolutionReveal, setEvolutionReveal] = useState<{ from: PetStage; to: PetStage } | null>(null);
@@ -1060,13 +1061,22 @@ function NurtureView({
     },
     onError: (err: any) => {
       console.error('快速对战失败:', err);
-      const msg = err?.response?.data?.detail || '匹配失败';
-      setFeedMsg(msg);
-      setTimeout(() => setFeedMsg(''), 3000);
+      const msg = err?.response?.data?.detail || '匹配失败，请稍后再试';
+      // 提示必须出现在按钮附近（顶部 toast），不能落在页面中部的喂食卡片里——
+      // 受伤/无宠物被 400 拒绝时，用户点的是顶栏按钮，喂食区的提示根本看不见
+      setBattleMsg(msg);
+      // 页面缓存的宠物状态可能已过期（比如刚在别处输了对战被标记受伤），刷新让受伤横幅出现
+      queryClient.invalidateQueries({ queryKey: ['myPet'] });
+      setTimeout(() => setBattleMsg(''), 4000);
     },
   });
 
   const handleQuickBattle = () => {
+    // 受伤时后端必拒（400），不发注定失败的请求，直接带去恢复训练
+    if (pet.is_injured) {
+      navigate('/student/pet/heal');
+      return;
+    }
     quickMatchMutation.mutate();
   };
 
@@ -1102,6 +1112,21 @@ function NurtureView({
 
   return (
     <div className="min-h-screen bg-paper">
+      {/* 对战相关提示：固定在顶部按钮附近，两个对战入口（顶栏/移动端快捷区）都看得见 */}
+      <AnimatePresence>
+        {battleMsg && (
+          <div className="pointer-events-none fixed inset-x-0 top-20 z-50 flex justify-center px-4">
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-medium text-orange-800 shadow-lg"
+            >
+              {battleMsg}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-20">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-3 py-3 sm:px-4">
           {/* 直接回首页,不用 goBack(navigate(-1)):本页会跳去「对战大厅」「治疗」,
@@ -1125,8 +1150,10 @@ function NurtureView({
               disabled={quickMatchMutation.isPending}
               className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Swords className="h-4 w-4" aria-hidden="true" />
-              {quickMatchMutation.isPending ? '匹配中...' : '对战'}
+              {pet.is_injured
+                ? <HeartPulse className="h-4 w-4" aria-hidden="true" />
+                : <Swords className="h-4 w-4" aria-hidden="true" />}
+              {pet.is_injured ? '去治疗' : quickMatchMutation.isPending ? '匹配中...' : '对战'}
             </button>
             <button
               onClick={() => navigate('/student/pet/battle-hall')}
@@ -1182,8 +1209,10 @@ function NurtureView({
             disabled={quickMatchMutation.isPending}
             className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700 disabled:opacity-50"
           >
-            <Swords className="h-4 w-4" aria-hidden="true" />
-            {quickMatchMutation.isPending ? '匹配中' : '对战'}
+            {pet.is_injured
+              ? <HeartPulse className="h-4 w-4" aria-hidden="true" />
+              : <Swords className="h-4 w-4" aria-hidden="true" />}
+            {pet.is_injured ? '去治疗' : quickMatchMutation.isPending ? '匹配中' : '对战'}
           </button>
           <button type="button" onClick={() => navigate('/student/pet/battle-hall')} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700">
             <Users className="h-4 w-4" aria-hidden="true" />
