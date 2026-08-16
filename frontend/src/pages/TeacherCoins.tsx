@@ -756,25 +756,56 @@ export default function TeacherCoins() {
       {dupWarn && adjustFor && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { setDupWarn(null); setDupAck(false); }}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-red-600 mb-2">⚠️ 系统今天已经自动发过了</h3>
+            <h3 className="font-bold text-red-600 mb-2">
+              ⚠️ 这些金币系统{dupWarn.granted.length ? '已经发了' : '马上就会发'}
+            </h3>
             <div className="rounded-lg bg-red-50 border border-red-100 p-3 mb-3 text-sm text-gray-700">
-              <p className="mb-1">{adjustFor.name} 今天已从系统拿到:</p>
-              <ul className="mb-2">
-                {dupWarn.granted.map((g, i) => (
-                  <li key={i} className="flex justify-between">
-                    <span>{g.source === 'task' ? '✅ 完成任务币' : g.source === 'word_king' ? '👑 单词王币' : '📚 单元币'}</span>
-                    <span className="font-semibold text-amber-600">+{g.amount}</span>
-                  </li>
-                ))}
-              </ul>
+              {dupWarn.granted.length > 0 && (
+                <>
+                  <p className="mb-1">{adjustFor.name} 已从系统拿到:</p>
+                  <ul className="mb-2">
+                    {dupWarn.granted.map((g, i) => (
+                      <li key={`g${i}`} className="flex justify-between gap-2">
+                        {/* 名目按 source 判,未知来源老实说"未知"——兜底成"单元币"会误导:
+                            单元币早已永久关闭(ENABLE_UNIT_COIN=False),它出现只可能是脏数据 */}
+                        <span>
+                          <span className="text-gray-400">{g.day.slice(5)}</span>{' '}
+                          {g.source === 'task' ? '✅ 完成任务币'
+                            : g.source === 'word_king' ? '👑 单词王币'
+                              : g.source === 'unit' ? '📚 单元币'
+                                : `❔ 其他(${g.source})`}
+                        </span>
+                        <span className="font-semibold text-amber-600 whitespace-nowrap">+{g.amount}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {dupWarn.pending.length > 0 && (
+                <>
+                  <p className="mb-1 font-medium text-red-600">系统即将自动发放(还没到账,别手动补):</p>
+                  <ul className="mb-2">
+                    {dupWarn.pending.map((p, i) => (
+                      <li key={`p${i}`} className="leading-snug">
+                        <span className="text-gray-400">{p.day.slice(5)}</span>{' '}
+                        {p.kind === 'word_king' ? '👑' : '✅'} {p.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               {/* 措辞按机构实际模式走:manual 机构也可能在 auto→manual 切换当天撞上这条
-                  (切换前系统已发、切换后不回收),此时说"本校是自动发币"就说错了 */}
+                  (切换前系统已发、切换后不回收);coinMode 没加载出来时给中性说法,
+                  不能落进"本校是自动发币"那支 —— 那正是要避免的错话 */}
               <p className="text-xs text-red-500">
                 {coinMode?.mode === 'manual'
-                  ? <>本校现在是「教师手动加币」,但这几枚是系统在切换成手动之前发的,已经到账。</>
-                  : <>本校是<b>系统自动发币</b>模式,任务币和单词王都会自动到账,不需要老师再补。</>}
+                  ? <>本校现在是「教师手动加币」,但上面这些是系统在切换成手动之前发的,已经到账。</>
+                  : coinMode?.mode === 'auto'
+                    ? <>本校是<b>系统自动发币</b>模式,任务币和单词王都会自动到账,不需要老师再补。</>
+                    : <>任务币和单词王在自动发币模式下会自己到账,不需要老师再补。</>}
                 {' '}现在再手动加 {parseInt(adjustAmount, 10) || 0} 枚,就是<b>同一名目发两遍</b>,
-                学生当天会超过封顶 {dupWarn.daily_cap} 枚 —— 之前就有学生因此多拿了十几枚去兑了奖。
+                学生这天拿到的会多于规则上限({dupWarn.daily_cap} 枚)——
+                之前就有学生因此多拿了十几枚去兑了奖。
               </p>
             </div>
             <label className="flex items-start gap-2 mb-4 text-sm text-gray-700 cursor-pointer select-none">

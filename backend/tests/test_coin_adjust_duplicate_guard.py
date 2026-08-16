@@ -45,6 +45,16 @@ async def coin_teacher_student(db_session):
     return teacher, stu
 
 
+def _utc_now_for_today():
+    """落在"北京今天"内的 UTC naive 时间戳(与 DB 存储口径一致)。
+
+    不能直接用 utcnow():北京 0~8 点时 utcnow 还在昨天,记录会落到昨天的窗口里。
+    """
+    from app.core.timeutil import local_day_utc_range
+    start, end = local_day_utc_range(local_today())
+    return start + (end - start) / 2
+
+
 async def _grant_system(db, stu: User, source: str, d: date):
     """模拟系统自动发放(带当天 dedup_key)。"""
     key = d.strftime("%Y%m%d")
@@ -117,6 +127,47 @@ async def test_deduct_and_redeem_not_blocked(client, db_session, coin_teacher_st
 
 
 @pytest.mark.asyncio
+async def test_redeem_source_with_positive_amount_still_blocked(
+    client, db_session, coin_teacher_student
+):
+    """source='redeem' 配**正数**同样是发币,不能绕过门。
+
+    判据必须按 amount>0,不能按 src=='manual' —— 前端不会这么发,但 API 收得下,
+    按 src 判就留了个后门:POST {amount:+5, source:'redeem'} 直接白发 5 枚。
+    """
+    teacher, stu = coin_teacher_student
+    await _grant_system(db_session, stu, "task", local_today())
+
+    resp = await client.post(
+        "/api/v1/teacher/coins/adjust",
+        json=_adjust_body(stu, amount=5, source="redeem"),
+        headers={"Authorization": f"Bearer {_make_token(teacher.id)}"},
+    )
+    assert resp.status_code == 409, "redeem+正数绕过了防重复门"
+    assert await _balance(db_session, stu.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_force_marks_reason_for_audit(client, db_session, coin_teacher_student):
+    """force 放行的那笔必须在账面留标记,否则事后无法用 SQL 筛出来对账。"""
+    from app.models.coin import CoinTransaction
+    teacher, stu = coin_teacher_student
+    await _grant_system(db_session, stu, "task", local_today())
+
+    resp = await client.post(
+        "/api/v1/teacher/coins/adjust",
+        json=_adjust_body(stu, force=True, reason="上课表现好"),
+        headers={"Authorization": f"Bearer {_make_token(teacher.id)}"},
+    )
+    assert resp.status_code == 200
+    row = (await db_session.execute(
+        select(CoinTransaction).where(CoinTransaction.source == "manual")
+    )).scalars().first()
+    assert row is not None and row.reason.startswith("[已确认重复]"), row.reason if row else None
+    assert "上课表现好" in row.reason
+
+
+@pytest.mark.asyncio
 async def test_guard_survives_tenant_filter(db_session, coin_teacher_student):
     """开着机构过滤、且流水 org_id 与学生错位时,门仍要查得到(不能静默放行)。
 
@@ -137,27 +188,126 @@ async def test_guard_survives_tenant_filter(db_session, coin_teacher_student):
     await db_session.commit()
 
     old = settings.TENANCY_ENFORCE
+    old_models = list(tenancy.TENANT_MODELS)
     settings.TENANCY_ENFORCE = True
     tenancy.register_tenant_models()
     token = tenancy.current_org_id.set(stu.org_id or 1)
     try:
         granted = await coin_service.system_coins_on_day(db_session, stu.id, today)
     finally:
+        # 必须把 TENANT_MODELS 还原:_stamp_tenant_writes(写侧打戳)**不看**
+        # TENANCY_ENFORCE,只看 current_org_id 和这个清单。留着不清会让后面
+        # 任何设了 current_org_id 的测试凭空多出 org_id 打戳 → 顺序相关的假红假绿。
         tenancy.current_org_id.reset(token)
+        tenancy.TENANT_MODELS.clear()
+        tenancy.TENANT_MODELS.extend(old_models)
         settings.TENANCY_ENFORCE = old
+        tenancy._org_cache.clear()
     assert [g["source"] for g in granted] == ["task"], "机构过滤把系统流水滤掉了 → 门会静默放行"
 
 
 @pytest.mark.asyncio
-async def test_ok_when_no_system_coin_today(client, db_session, coin_teacher_student):
-    """今天没有系统流水(昨天发过不算)→ 手动加不需要 force。"""
-    from datetime import timedelta
+async def test_blocked_when_word_king_pending(client, db_session, coin_teacher_student):
+    """老师比系统先动手:白天看到"暂列第一"就手动补单词王 → 必须拦。
+
+    这是事故的真实时序(2026-08-08 08:57 老师补发「单词王8.7」,系统的
+    word_king dedup_key 要到 12:58 才写)。只查"已发的行"在这里全程放行,
+    所以门必须能判「即将发」。单词王按设计次日 00:35 才结算。
+    """
+    from app.models.learning import LearningRecord
+    from app.models.word import Word
     teacher, stu = coin_teacher_student
-    await _grant_system(db_session, stu, "task", local_today() - timedelta(days=1))
+    # 造今天的学词记录 → 该生成为班内词量第一(班里只有他,>0 即领先)
+    w = Word(word="pendingking")
+    db_session.add(w)
+    await db_session.flush()
+    db_session.add(LearningRecord(
+        user_id=stu.id, word_id=w.id, learning_mode="spelling", is_correct=True,
+        created_at=_utc_now_for_today(),
+    ))
+    await db_session.commit()
 
     resp = await client.post(
         "/api/v1/teacher/coins/adjust", json=_adjust_body(stu),
         headers={"Authorization": f"Bearer {_make_token(teacher.id)}"},
     )
+    assert resp.status_code == 409, "单词王待发时手动补币没被拦住"
+    detail = resp.json()["detail"]
+    assert detail["granted"] == []          # 系统还没发
+    assert [p["kind"] for p in detail["pending"]] == ["word_king"]
+    assert await _balance(db_session, stu.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_manual_mode_org_not_blocked_by_pending(db_session):
+    """manual 机构不报「即将发」—— 系统永远不发,手动加币是唯一途径,
+    在那里拦会天天误挡老师唯一的正常操作。已发的历史行仍要报。"""
+    from app.models.learning import LearningRecord
+    from app.models.word import Word
+    tenancy._org_cache.clear()
+    org = Organization(name="手动机构", code="DUPG_M", status="active", coin_mode="manual")
+    db_session.add(org)
+    await db_session.flush()
+    stu = User(username="dupg_m_s", email="dupg_m_s@e.com", hashed_password="x",
+               role="student", full_name="学生丁", is_active=True, org_id=org.id)
+    db_session.add(stu)
+    await db_session.flush()
+    t2 = User(username="dupg_m_t", email="dupg_m_t@e.com", hashed_password="x",
+              role="teacher", full_name="手动老师", is_active=True, org_id=org.id)
+    db_session.add(t2)
+    await db_session.flush()
+    cls = Class(name="手动班", teacher_id=t2.id, org_id=org.id)
+    db_session.add(cls)
+    await db_session.flush()
+    db_session.add(ClassStudent(class_id=cls.id, student_id=stu.id, is_active=True))
+    w = Word(word="manualking")
+    db_session.add(w)
+    await db_session.flush()
+    db_session.add(LearningRecord(
+        user_id=stu.id, word_id=w.id, learning_mode="spelling", is_correct=True,
+        created_at=_utc_now_for_today(),
+    ))
+    await db_session.commit()
+
+    conflict = await coin_service.manual_grant_conflicts(db_session, stu.id, org.id)
+    assert conflict["pending"] == [], "manual 机构报了「即将发」,会误拦老师唯一的加币途径"
+    assert conflict["granted"] == []
+
+
+@pytest.mark.asyncio
+async def test_yesterday_grant_also_blocks_with_day_label(
+    client, db_session, coin_teacher_student
+):
+    """昨天发过**也要拦**,并标出是哪天的币。
+
+    跨天补发正是原先漏掉的那类:老师第二天早上补「昨天的单词王」,查今天查不到
+    → 放行 → 与「补算昨天」/凌晨结算撞车。所以窗口是今天+昨天,且必须带 day
+    让老师看出"这是昨天那枚,已经发过了"。
+    """
+    from datetime import timedelta
+    teacher, stu = coin_teacher_student
+    yesterday = local_today() - timedelta(days=1)
+    await _grant_system(db_session, stu, "word_king", yesterday)
+
+    resp = await client.post(
+        "/api/v1/teacher/coins/adjust", json=_adjust_body(stu),
+        headers={"Authorization": f"Bearer {_make_token(teacher.id)}"},
+    )
+    assert resp.status_code == 409
+    granted = resp.json()["detail"]["granted"]
+    assert [g["day"] for g in granted] == [yesterday.isoformat()]
+    assert await _balance(db_session, stu.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_ok_when_nothing_granted_or_pending(
+    client, db_session, coin_teacher_student
+):
+    """两天都没有系统币、也没有待发的 → 手动加不需要 force(不能天天误拦)。"""
+    teacher, stu = coin_teacher_student
+    resp = await client.post(
+        "/api/v1/teacher/coins/adjust", json=_adjust_body(stu),
+        headers={"Authorization": f"Bearer {_make_token(teacher.id)}"},
+    )
     assert resp.status_code == 200
-    assert await _balance(db_session, stu.id) == 2
+    assert await _balance(db_session, stu.id) == 1

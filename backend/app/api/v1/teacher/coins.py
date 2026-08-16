@@ -488,20 +488,26 @@ async def adjust(
     if student is None or student.role != "student":
         raise HTTPException(status_code=404, detail="学生不存在")
 
-    # 防双轨重复发放:系统今天已自动发过(任务币/单词王),老师再手动加就是发两遍
+    # 防双轨重复发放:系统「已发」或「即将发」的币,老师再手动加就是发两遍
     # (2026-08 实案根因:自动结算上线后老师沿用手动补发习惯,一个学生 8 天多发 ~11 枚)。
     # 先拒 409 让前端弹「后果确认」,老师勾选知晓后带 force=true 重发才放行。
-    # 只拦手动**加**币;扣减/兑换、以及 force 重发不拦。
-    if src == "manual" and body.amount > 0 and not body.force:
-        granted = await coin_service.system_coins_on_day(db, body.student_id, local_today())
-        if granted:
+    # 判据按 amount>0 而不是 src=='manual':source='redeem' 配正数同样是发币
+    # (前端不会这么发,但 API 收得下),按 src 判会留一个绕过口。
+    reason = body.reason
+    if body.amount > 0 and not body.force:
+        conflict = await coin_service.manual_grant_conflicts(
+            db, body.student_id, student.org_id)
+        if conflict["granted"] or conflict["pending"]:
             raise HTTPException(status_code=409, detail={
                 "code": "SYSTEM_ALREADY_GRANTED",
-                "message": "系统今天已自动发过金币,再手动加会重复发放",
-                "granted": granted,
+                "message": "系统已经发过或即将发这些金币,再手动加会重复发放",
+                **conflict,
                 "daily_cap": coin_service.DAILY_CAP,
             })
     if body.force and body.amount > 0:
+        # 账面留痕:只写应用日志不够(日志会轮转),下次查超发时必须能用 SQL
+        # 把「老师确认过的重复发放」筛出来,所以在 reason 里打标记。
+        reason = f"[已确认重复] {reason or '手动加币'}"
         logger.info("手动加币(老师确认重复发放): student=%s amount=%s by=%s",
                     body.student_id, body.amount, current_user.id)
 
@@ -515,7 +521,7 @@ async def adjust(
     try:
         tx = await coin_service.apply_delta(
             db, body.student_id, student.org_id or 1, body.amount, src,
-            reason=body.reason, operator_id=current_user.id,
+            reason=reason, operator_id=current_user.id,
         )
     except coin_service.InsufficientCoins as e:
         # 上面的前置检查是读后再扣,并发下可能都通过;真正的判定在数据库条件扣减

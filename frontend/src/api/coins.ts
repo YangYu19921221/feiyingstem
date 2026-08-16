@@ -89,11 +89,17 @@ export const getCoinTransactions = (params: {
   page_size?: number;
 }) => client.get<CoinTxPage>(`/teacher/coins/transactions`, { params });
 
-/** 手动加币撞上系统已发时,后端 409 detail 的形状(code=SYSTEM_ALREADY_GRANTED) */
+/** 手动加币撞上系统发币时,后端 409 detail 的形状(code=SYSTEM_ALREADY_GRANTED)
+ *
+ * granted = 系统**已发**的;pending = 系统**即将发**的(单词王次日 0 点后才结算,
+ * 老师白天看到"暂列第一"就手动补 → 与凌晨的自动结算撞车,这是事故的真实时序)。
+ * 窗口是今天+昨天,每项带 day 让老师看出是不是在补别的日子。
+ */
 export interface SystemAlreadyGranted {
   code: 'SYSTEM_ALREADY_GRANTED';
   message: string;
-  granted: { source: string; amount: number; reason: string | null }[];
+  granted: { day: string; source: string; amount: number; reason: string | null }[];
+  pending: { day: string; kind: 'task' | 'word_king'; detail: string }[];
   daily_cap: number;
 }
 

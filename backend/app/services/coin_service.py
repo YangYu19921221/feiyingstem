@@ -235,8 +235,14 @@ async def apply_delta(
     # 幂等:系统发放先查 dedup_key 是否已存在(命中即跳过,不重复发)。
     # 唯一约束仍在,作为并发竞态的最终兜底。
     if dedup_key is not None:
+        # skip_tenant_filter:CoinTransaction 是 tenancy 锚点表,带机构上下文的查询
+        # 会被注入 org_id 过滤(取列也会)。这里被滤掉的后果不是"多发一笔"而是
+        # **整批 500**:预检查看不见 → 照样 INSERT → 撞 uq_coin_tx_dedup 唯一约束 →
+        # IntegrityError 冒出 settle_day 的循环 → 该学生之后的人全都发不到币,
+        # 且重试必然复现(那天再也结算不了)。dedup_key 全局唯一,按机构过滤无意义。
         exists = (await db.execute(
-            select(CoinTransaction.id).where(CoinTransaction.dedup_key == dedup_key).limit(1)
+            select(CoinTransaction.id).where(CoinTransaction.dedup_key == dedup_key)
+            .limit(1).execution_options(skip_tenant_filter=True)
         )).scalar_one_or_none()
         if exists is not None:
             return None
@@ -311,10 +317,11 @@ async def _has_activity_coin(db: AsyncSession, sid: int, key_date: str) -> bool:
     ⚠️ 这也是「老师当天追加布置任务不再多发币」的实现:活动币按
     dedup_key=task:{sid}:{日期} 一天一条,已发过就跳过,不管后来又布置了几份。
     """
+    # skip_tenant_filter 同 apply_delta:被机构过滤掉会让"已发"误判成"没发"
     row = (await db.execute(
         select(CoinTransaction.id).where(CoinTransaction.dedup_key.in_(
             [f"task:{sid}:{key_date}", f"unit:{sid}:{key_date}"]
-        )).limit(1)
+        )).limit(1).execution_options(skip_tenant_filter=True)
     )).scalar_one_or_none()
     return row is not None
 
@@ -332,13 +339,66 @@ async def system_coins_on_day(db: AsyncSession, sid: int, d: date) -> list[dict]
     # 全局唯一,按机构再滤一次只会带来「流水 org_id 与学生错位 → 查不到 → 门静默放行」。
     # 自动发币那条路有 dedup_key 唯一约束在插入时兜底,这道门没有,所以必须查全。
     # 调用方(/coins/adjust)已先跑 _assert_can_touch 鉴权,不存在越权读。
+    # 取列不取实体:避免把跨机构的行喂进本请求的 identity map(后续代码可能从
+    # 缓存里读到过滤器本该挡住的对象)。
     rows = (await db.execute(
-        select(CoinTransaction).where(CoinTransaction.dedup_key.in_([
+        select(CoinTransaction.source, CoinTransaction.amount, CoinTransaction.reason)
+        .where(CoinTransaction.dedup_key.in_([
             f"task:{sid}:{key_date}", f"unit:{sid}:{key_date}",
             f"word_king:{sid}:{key_date}",
         ])).execution_options(skip_tenant_filter=True)
-    )).scalars().all()
+    )).all()
     return [{"source": r.source, "amount": r.amount, "reason": r.reason} for r in rows]
+
+
+async def manual_grant_conflicts(db: AsyncSession, sid: int, org_id: Optional[int]) -> dict:
+    """老师手动加币前的冲突体检:系统「已发」和「即将发」的都要报出来。
+
+    ⚠️ 只查「已发的流水行」是拦不住事故的 —— 真实事故(2026-08-16 复盘)里老师
+    **比系统先动手**:08-08 08:57 补发「单词王8.7」,而系统的 word_king:...:20260807
+    要到 12:58 才写;08-07 一整天老师发了两次「完成任务」,当天系统一枚都还没发。
+    查已发的行在这两种时序下全程放行,门等于白设。所以必须同时判断「即将发」。
+
+    窗口取**今天 + 昨天**两天:单词王币按设计在次日 00:35 才结算(见 coin_scheduler),
+    老师白天看到「暂列第一」就手动补,与次日凌晨的自动结算必然撞车;补发昨天的
+    任务币同理(「🔄补算昨天」会把昨天该发的补上)。
+
+    「即将发」只在 auto 机构判定 —— manual 机构系统永远不发,手动加币是唯一途径,
+    在那里报「即将发」会天天误拦老师唯一的正常操作。已发的历史行两种模式都报
+    (auto→manual 切换当天,切换前发的币不回收)。
+
+    返回 {"granted": [...], "pending": [...]},两者都空表示没有冲突。
+    每项都带 day 字段(哪一天的币),让老师一眼看出是不是在补别的日子。
+    """
+    today = local_today()
+    yesterday = today - timedelta(days=1)
+    auto = await is_auto_coin_org(db, org_id)
+
+    granted: list[dict] = []
+    pending: list[dict] = []
+    for d in (today, yesterday):
+        day_s = d.isoformat()
+        rows = await system_coins_on_day(db, sid, d)
+        got_sources = {r["source"] for r in rows}
+        for r in rows:
+            granted.append({"day": day_s, "source": r["source"],
+                            "amount": r["amount"], "reason": r["reason"]})
+        if not auto:
+            continue
+        # 待发之一:当天任务全部完成但任务币还没发 → 系统会发(交卷实时发或结算补发)
+        if "task" not in got_sources and "unit" not in got_sources:
+            total, done = (await task_progress_on_day(db, [sid], d)).get(sid, (0, 0))
+            if total > 0 and done >= total:
+                pending.append({"day": day_s, "kind": "task",
+                                "detail": f"{done}/{total} 份任务已全部完成,任务币会自动到账"})
+        # 待发之二:词量暂列第一但单词王币还没发 → 系统会在次日 00:35 结算时发
+        if "word_king" not in got_sources:
+            race = await word_king_race(db, sid, d)
+            if race.get("is_leading"):
+                when = "今晚 24 点后自动结算" if d == today else "由每日结算/「补算昨天」补上"
+                pending.append({"day": day_s, "kind": "word_king",
+                                "detail": f"词量暂列第一({race.get('my_words', 0)} 词),单词王币{when}"})
+    return {"granted": granted, "pending": pending}
 
 
 async def manual_coin_org_ids(db: AsyncSession) -> set[int]:
@@ -506,9 +566,12 @@ async def task_coin_day_status(
     ids = list(student_ids)
     key_date = d.strftime("%Y%m%d")
     progress = await task_progress_on_day(db, ids, d)
+    # skip_tenant_filter:被机构过滤掉会让「为什么没发币」说反话 —— 明明发了却
+    # 在余额列表标红「没做完」、task_coin_hint 也漏掉 already 码给出错误原因。
     coined_rows = (await db.execute(
         select(CoinTransaction.dedup_key).where(
             CoinTransaction.dedup_key.in_([f"task:{sid}:{key_date}" for sid in ids]))
+        .execution_options(skip_tenant_filter=True)
     )).scalars().all()
     coined_ids = {int(k.split(":")[1]) for k in coined_rows}
     out = {}

@@ -277,9 +277,21 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   dedup_key,coin_service.system_coins_on_day),先拒 409(code=SYSTEM_ALREADY_GRANTED
   附已发明细),前端 TeacherCoins 弹红色后果确认框(列明细+勾选「我已核对」才能点
   「仍要发放」),确认后带 force=true 重发放行并记日志;扣减/兑换(负数)不拦。
+  **只查「已发的流水行」拦不住事故**(08-16 复审发现):真实时序是老师**比系统先动手**
+  ——08-08 08:57 补发「单词王8.7」时系统的 word_king key 要 12:58 才写;08-07 老师发了
+  两次「完成任务」而当天系统一枚未发。所以 manual_grant_conflicts 同时判「已发 + 即将发」
+  (待发=当天任务全完成未发币 / 词量暂列第一未结算),窗口取**今天+昨天**(单词王次日
+  00:35 才结算,跨天补发是主要漏法),每项带 day 让老师看出在补哪天。**「即将发」只在
+  auto 机构判**——manual 机构系统永不发、手动加币是唯一途径,在那报待发会天天误拦。
+  判据按 amount>0 而非 src=='manual'(source='redeem' 配正数同样是发币,按 src 判留后门);
+  force 放行的那笔 reason 前缀打 `[已确认重复]` 供事后 SQL 对账。
+  同类缺陷一并修:apply_delta 的 dedup 预检查/\_has_activity_coin/task_coin_day_status
+  也缺 skip_tenant_filter,其中**预检查被滤会让「补算昨天」整批 500**(预检查看不见→
+  照样 INSERT→撞唯一约束→异常冒出 settle_day 循环→该生之后的人全发不到、重试必复现)。
   注意: submitAdjust(force) 的按钮 onClick 必须包箭头,直接传引用会把点击事件当
-  force=true 绕过确认;dupWarn 状态在开/关加币弹窗处都要清,否则换学生会弹旧数据。
-  测试 tests/test_coin_adjust_duplicate_guard.py(4 例)
+  force=true 绕过确认;dupWarn 状态在开/关加币弹窗处都要清,否则换学生会弹旧数据;
+  弹窗文案 coinMode 为 null 时必须走中性说法(落进 auto 那支就是说错话)。
+  测试 tests/test_coin_adjust_duplicate_guard.py(10 例)
 - ✅ 分类学习 PC 大屏适配(2026-08-11): 分类之后各阶段(语音校验/听写/过关检测/组末小结/
   单元复习)加 md: 响应式层,移动端样式零改动;过关检测答题卡 max-w-2xl、选择题双列、
   顶栏/底部题号条与卡片同宽;**新增物理键盘作答**(选择题 1-4 或 A-D 直选,监听挂 window,
