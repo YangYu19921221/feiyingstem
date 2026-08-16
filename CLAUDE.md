@@ -271,6 +271,15 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 手动加币防双轨重复(2026-08-16): 排查关羽鹤金币超速,根因是自动结算上线后老师
+  沿用手动补发习惯,「系统自动+老师手动」同一名目发两遍(8 天多发 ~11 枚,已兑掉)。
+  修法: /coins/adjust 手动**加**币时若该生当天已有系统流水(task/unit/word_king 三种
+  dedup_key,coin_service.system_coins_on_day),先拒 409(code=SYSTEM_ALREADY_GRANTED
+  附已发明细),前端 TeacherCoins 弹红色后果确认框(列明细+勾选「我已核对」才能点
+  「仍要发放」),确认后带 force=true 重发放行并记日志;扣减/兑换(负数)不拦。
+  注意: submitAdjust(force) 的按钮 onClick 必须包箭头,直接传引用会把点击事件当
+  force=true 绕过确认;dupWarn 状态在开/关加币弹窗处都要清,否则换学生会弹旧数据。
+  测试 tests/test_coin_adjust_duplicate_guard.py(4 例)
 - ✅ 分类学习 PC 大屏适配(2026-08-11): 分类之后各阶段(语音校验/听写/过关检测/组末小结/
   单元复习)加 md: 响应式层,移动端样式零改动;过关检测答题卡 max-w-2xl、选择题双列、
   顶栏/底部题号条与卡片同宽;**新增物理键盘作答**(选择题 1-4 或 A-D 直选,监听挂 window,

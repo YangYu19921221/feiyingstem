@@ -319,6 +319,23 @@ async def _has_activity_coin(db: AsyncSession, sid: int, key_date: str) -> bool:
     return row is not None
 
 
+async def system_coins_on_day(db: AsyncSession, sid: int, d: date) -> list[dict]:
+    """d 这天系统自动发给该生的金币流水(task/unit/word_king),按 dedup_key 查。
+
+    给「手动加币防重复」用:自动模式下系统已发过、老师又手动加同一名目就是
+    重复发放(2026-08 实案:一个学生 8 天里被双轨多发了约 11 枚)。
+    /coins/adjust 用它拦一道,让老师看清后果、确认后才放行。
+    """
+    key_date = d.strftime("%Y%m%d")
+    rows = (await db.execute(
+        select(CoinTransaction).where(CoinTransaction.dedup_key.in_([
+            f"task:{sid}:{key_date}", f"unit:{sid}:{key_date}",
+            f"word_king:{sid}:{key_date}",
+        ]))
+    )).scalars().all()
+    return [{"source": r.source, "amount": r.amount, "reason": r.reason} for r in rows]
+
+
 async def manual_coin_org_ids(db: AsyncSession) -> set[int]:
     """金币开关关成「教师手动加币」的机构 id 集合(这些机构跳过全部自动发放)。
 

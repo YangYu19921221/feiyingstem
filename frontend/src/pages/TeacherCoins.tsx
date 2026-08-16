@@ -18,6 +18,7 @@ import {
   getCoinMode, setCoinMode, settleCoins,
   type CoinBalance, type CoinTx, type CoinReward, type WordKingBanner,
   type RedeemRequestItem, type CoinModeResp, type TaskCoinDayStatus,
+  type SystemAlreadyGranted,
 } from '../api/coins';
 import { CircleDollarSign } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
@@ -103,6 +104,9 @@ export default function TeacherCoins() {
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustMode, setAdjustMode] = useState<'grant' | 'redeem'>('grant');
   const [adjustPin, setAdjustPin] = useState('');            // 加币时输入的 PIN
+  // 系统今天已自动发过、老师还要手动加 → 后端 409,这里存后果详情弹二次确认
+  const [dupWarn, setDupWarn] = useState<SystemAlreadyGranted | null>(null);
+  const [dupAck, setDupAck] = useState(false);               // 勾「我已知晓会重复发放」才能点最终发放
   const [hasPin, setHasPin] = useState<boolean | null>(null); // 老师是否已设加币 PIN
   const [showSetPin, setShowSetPin] = useState(false);        // 设置/修改 PIN 弹窗
   const [pinOld, setPinOld] = useState('');
@@ -283,7 +287,7 @@ export default function TeacherCoins() {
     return () => clearInterval(t);
   }, [loadBalances, loadTx, loadKingBanner, loadRequests, adjustFor, editTx, redeemFor, showRewardMgr]);
 
-  const submitAdjust = async () => {
+  const submitAdjust = async (force = false) => {
     if (!adjustFor || busy) return;  // busy 防双击重复扣/发
     const n = parseInt(adjustAmount, 10);
     if (!n || n <= 0) { toast.warning('请输入正整数'); return; }
@@ -303,8 +307,10 @@ export default function TeacherCoins() {
         reason: adjustReason.trim() || undefined,
         source: adjustMode === 'redeem' ? 'redeem' : 'manual',
         pin: adjustPin.trim(),
+        ...(force ? { force: true } : {}),
       });
       toast.success(adjustMode === 'redeem' ? '已记兑换' : '已发放');
+      setDupWarn(null); setDupAck(false);
       setAdjustFor(null); setAdjustAmount(''); setAdjustReason(''); setAdjustPin('');
       refreshAll();
     } catch (e: any) {
@@ -313,8 +319,11 @@ export default function TeacherCoins() {
         toast.warning('请先设置金币密码');
         setAdjustFor(null); setShowSetPin(true);
         setHasPin(false);
+      } else if (detail?.code === 'SYSTEM_ALREADY_GRANTED') {
+        // 系统今天已自动发过 → 不直接发,弹后果确认(勾选知晓后带 force 重发)
+        setDupWarn(detail as SystemAlreadyGranted); setDupAck(false);
       } else {
-        toast.error(detail || '操作失败');
+        toast.error(typeof detail === 'string' ? detail : '操作失败');
       }
     } finally { setBusy(false); }
   };
@@ -576,7 +585,7 @@ export default function TeacherCoins() {
                       className="px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs hover:bg-green-200"
                     >🎁 兑换</button>
                     <button
-                      onClick={() => { setAdjustFor(s); setAdjustMode('grant'); setAdjustAmount(''); setAdjustReason(''); }}
+                      onClick={() => { setAdjustFor(s); setAdjustMode('grant'); setAdjustAmount(''); setAdjustReason(''); setDupWarn(null); setDupAck(false); }}
                       className="px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-xs hover:bg-amber-200"
                     >加/减</button>
                   </div>
@@ -696,7 +705,7 @@ export default function TeacherCoins() {
 
       {/* 加/减金币弹窗 */}
       {adjustFor && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAdjustFor(null)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setAdjustFor(null); setDupWarn(null); setDupAck(false); }}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-gray-800 mb-1">{adjustFor.name}</h3>
             <p className="text-xs text-gray-400 mb-4">当前余额 {adjustFor.balance} 🪙</p>
@@ -735,8 +744,46 @@ export default function TeacherCoins() {
               className="w-full px-3 py-2 rounded-lg border border-black/10 text-sm mb-4"
             />
             <div className="flex gap-2">
-              <button onClick={() => { setAdjustFor(null); setAdjustPin(''); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
-              <button onClick={submitAdjust} disabled={busy} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '确定'}</button>
+              <button onClick={() => { setAdjustFor(null); setAdjustPin(''); setDupWarn(null); setDupAck(false); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm text-gray-500">取消</button>
+              {/* onClick 必须包箭头:submitAdjust 第一个参数是 force,直接传引用会把点击事件当 force=true,绕过确认 */}
+              <button onClick={() => submitAdjust()} disabled={busy} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50">{busy ? '处理中…' : '确定'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 系统已自动发过 → 重复发放后果确认(盖在加币弹窗之上;勾选知晓才能发) */}
+      {dupWarn && adjustFor && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { setDupWarn(null); setDupAck(false); }}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-red-600 mb-2">⚠️ 系统今天已经自动发过了</h3>
+            <div className="rounded-lg bg-red-50 border border-red-100 p-3 mb-3 text-sm text-gray-700">
+              <p className="mb-1">{adjustFor.name} 今天已从系统拿到:</p>
+              <ul className="mb-2">
+                {dupWarn.granted.map((g, i) => (
+                  <li key={i} className="flex justify-between">
+                    <span>{g.source === 'task' ? '✅ 完成任务币' : g.source === 'word_king' ? '👑 单词王币' : '📚 单元币'}</span>
+                    <span className="font-semibold text-amber-600">+{g.amount}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-red-500">
+                本校是<b>系统自动发币</b>模式,任务币和单词王都会自动到账,不需要老师再补。
+                现在再手动加 {parseInt(adjustAmount, 10) || 0} 枚,就是<b>同一名目发两遍</b>,
+                学生当天会超过封顶 {dupWarn.daily_cap} 枚 —— 之前就有学生因此多拿了十几枚去兑了奖。
+              </p>
+            </div>
+            <label className="flex items-start gap-2 mb-4 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" checked={dupAck} onChange={(e) => setDupAck(e.target.checked)} className="mt-0.5" />
+              <span>我已核对流水,确认这不是重复发放(比如额外奖励),仍要加 {parseInt(adjustAmount, 10) || 0} 枚</span>
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => { setDupWarn(null); setDupAck(false); }} className="flex-1 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium">不加了(推荐)</button>
+              <button
+                onClick={() => submitAdjust(true)}
+                disabled={!dupAck || busy}
+                className="flex-1 py-2 rounded-lg border border-red-200 text-red-500 text-sm disabled:opacity-40"
+              >{busy ? '处理中…' : '仍要发放'}</button>
             </div>
           </div>
         </div>

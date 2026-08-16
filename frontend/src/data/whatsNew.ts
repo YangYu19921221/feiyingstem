@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'coin-manual-dup-guard-2026-08',
+    date: '2026-08-16',
+    title: '手动加币会提醒你:系统今天已经自动发过了',
+    desc: '本校开着「系统自动发币」时,任务币和单词王币每天都会自动到账,老师不需要再手动补。以前手动补发系统不拦,结果就是同一名目发两遍——有学生 8 天被多发了十几枚。现在给学生手动加币时,如果系统当天已经自动发过,会先弹出提醒,列明他今天已经拿到了哪几枚、再加就会超过每日封顶;确实要额外奖励的,勾选"我已核对"后仍然可以发。扣币和记兑换不受影响。',
+    where: '教师端 → 金币管理 → 学生行「加币」→ 输入数量确定后,若系统当天已发过会弹红色确认框',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/coins',
+  },
+  {
     id: 'homework-multi-group-2026-08',
     date: '2026-08-14',
     title: '布置作业:一个单元里的组可以多选了',

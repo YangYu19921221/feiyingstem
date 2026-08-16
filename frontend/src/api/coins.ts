@@ -89,12 +89,22 @@ export const getCoinTransactions = (params: {
   page_size?: number;
 }) => client.get<CoinTxPage>(`/teacher/coins/transactions`, { params });
 
+/** 手动加币撞上系统已发时,后端 409 detail 的形状(code=SYSTEM_ALREADY_GRANTED) */
+export interface SystemAlreadyGranted {
+  code: 'SYSTEM_ALREADY_GRANTED';
+  message: string;
+  granted: { source: string; amount: number; reason: string | null }[];
+  daily_cap: number;
+}
+
 export const adjustCoins = (body: {
   student_id: number;
   amount: number;
   reason?: string;
   source?: 'manual' | 'redeem';
   pin?: string;
+  /** 系统当天已自动发过、老师看过后果确认弹窗后仍坚持加 → true */
+  force?: boolean;
 }) => client.post<{ success: boolean; tx_id: number | null; balance_after: number }>(
   `/teacher/coins/adjust`, body,
 );

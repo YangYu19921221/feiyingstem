@@ -71,6 +71,7 @@ class AdjustRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=200)
     source: str = Field("manual", description="manual 手动 / redeem 兑换")
     pin: Optional[str] = Field(None, description="加币 PIN(手动加币必填,防冒用账号)")
+    force: bool = Field(False, description="系统当天已自动发过、老师看过后果仍坚持加(前端确认弹窗后带上)")
 
 
 class SetPinRequest(BaseModel):
@@ -486,6 +487,23 @@ async def adjust(
     student = (await db.execute(select(User).where(User.id == body.student_id))).scalar_one_or_none()
     if student is None or student.role != "student":
         raise HTTPException(status_code=404, detail="学生不存在")
+
+    # 防双轨重复发放:系统今天已自动发过(任务币/单词王),老师再手动加就是发两遍
+    # (2026-08 实案根因:自动结算上线后老师沿用手动补发习惯,一个学生 8 天多发 ~11 枚)。
+    # 先拒 409 让前端弹「后果确认」,老师勾选知晓后带 force=true 重发才放行。
+    # 只拦手动**加**币;扣减/兑换、以及 force 重发不拦。
+    if src == "manual" and body.amount > 0 and not body.force:
+        granted = await coin_service.system_coins_on_day(db, body.student_id, local_today())
+        if granted:
+            raise HTTPException(status_code=409, detail={
+                "code": "SYSTEM_ALREADY_GRANTED",
+                "message": "系统今天已自动发过金币,再手动加会重复发放",
+                "granted": granted,
+                "daily_cap": coin_service.DAILY_CAP,
+            })
+    if body.force and body.amount > 0:
+        logger.info("手动加币(老师确认重复发放): student=%s amount=%s by=%s",
+                    body.student_id, body.amount, current_user.id)
 
     coin = (await db.execute(
         select(StudentCoin).where(StudentCoin.user_id == body.student_id)
