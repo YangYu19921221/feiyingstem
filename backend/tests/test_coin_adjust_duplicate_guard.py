@@ -117,6 +117,38 @@ async def test_deduct_and_redeem_not_blocked(client, db_session, coin_teacher_st
 
 
 @pytest.mark.asyncio
+async def test_guard_survives_tenant_filter(db_session, coin_teacher_student):
+    """开着机构过滤、且流水 org_id 与学生错位时,门仍要查得到(不能静默放行)。
+
+    CoinTransaction 是 tenancy 锚点表,带机构上下文的查询会被注入 org_id 过滤
+    (实测取实体和取列都会)。自动发币靠 dedup_key 唯一约束兜底,这道门没有兜底,
+    所以 system_coins_on_day 必须走 skip_tenant_filter 查全。
+    """
+    from app.core.config import settings
+    _, stu = coin_teacher_student
+    today = local_today()
+    key = today.strftime("%Y%m%d")
+    # 手工造一条 org_id 与学生不一致的系统流水(模拟转机构等历史错位)
+    from app.models.coin import CoinTransaction
+    db_session.add(CoinTransaction(
+        user_id=stu.id, org_id=(stu.org_id or 1) + 999, amount=1, balance_after=1,
+        source="task", reason="错位机构的系统发放", dedup_key=f"task:{stu.id}:{key}",
+    ))
+    await db_session.commit()
+
+    old = settings.TENANCY_ENFORCE
+    settings.TENANCY_ENFORCE = True
+    tenancy.register_tenant_models()
+    token = tenancy.current_org_id.set(stu.org_id or 1)
+    try:
+        granted = await coin_service.system_coins_on_day(db_session, stu.id, today)
+    finally:
+        tenancy.current_org_id.reset(token)
+        settings.TENANCY_ENFORCE = old
+    assert [g["source"] for g in granted] == ["task"], "机构过滤把系统流水滤掉了 → 门会静默放行"
+
+
+@pytest.mark.asyncio
 async def test_ok_when_no_system_coin_today(client, db_session, coin_teacher_student):
     """今天没有系统流水(昨天发过不算)→ 手动加不需要 force。"""
     from datetime import timedelta

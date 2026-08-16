@@ -327,11 +327,16 @@ async def system_coins_on_day(db: AsyncSession, sid: int, d: date) -> list[dict]
     /coins/adjust 用它拦一道,让老师看清后果、确认后才放行。
     """
     key_date = d.strftime("%Y%m%d")
+    # skip_tenant_filter:CoinTransaction 是 tenancy 锚点表,带机构上下文时
+    # 这条查询会被注入 org_id 过滤(实测取实体/取列都会)。dedup_key 已含学生 id、
+    # 全局唯一,按机构再滤一次只会带来「流水 org_id 与学生错位 → 查不到 → 门静默放行」。
+    # 自动发币那条路有 dedup_key 唯一约束在插入时兜底,这道门没有,所以必须查全。
+    # 调用方(/coins/adjust)已先跑 _assert_can_touch 鉴权,不存在越权读。
     rows = (await db.execute(
         select(CoinTransaction).where(CoinTransaction.dedup_key.in_([
             f"task:{sid}:{key_date}", f"unit:{sid}:{key_date}",
             f"word_king:{sid}:{key_date}",
-        ]))
+        ])).execution_options(skip_tenant_filter=True)
     )).scalars().all()
     return [{"source": r.source, "amount": r.amount, "reason": r.reason} for r in rows]
 
