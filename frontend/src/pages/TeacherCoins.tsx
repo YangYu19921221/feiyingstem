@@ -767,9 +767,13 @@ export default function TeacherCoins() {
                   </li>
                 ))}
               </ul>
+              {/* 措辞按机构实际模式走:manual 机构也可能在 auto→manual 切换当天撞上这条
+                  (切换前系统已发、切换后不回收),此时说"本校是自动发币"就说错了 */}
               <p className="text-xs text-red-500">
-                本校是<b>系统自动发币</b>模式,任务币和单词王都会自动到账,不需要老师再补。
-                现在再手动加 {parseInt(adjustAmount, 10) || 0} 枚,就是<b>同一名目发两遍</b>,
+                {coinMode?.mode === 'manual'
+                  ? <>本校现在是「教师手动加币」,但这几枚是系统在切换成手动之前发的,已经到账。</>
+                  : <>本校是<b>系统自动发币</b>模式,任务币和单词王都会自动到账,不需要老师再补。</>}
+                {' '}现在再手动加 {parseInt(adjustAmount, 10) || 0} 枚,就是<b>同一名目发两遍</b>,
                 学生当天会超过封顶 {dupWarn.daily_cap} 枚 —— 之前就有学生因此多拿了十几枚去兑了奖。
               </p>
             </div>
