@@ -150,6 +150,21 @@ export default function StudentAssignments() {
               ) : (
                 <span>分配于 {formatDate(assignment.assigned_at)}</span>
               )}
+              {/* 兑换卡状态标签 */}
+              {assignment.grant_type === 'period' && assignment.days_left !== undefined && (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
+                  assignment.days_left <= 3 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
+                }`}>
+                  📅 剩余 {assignment.days_left} 天
+                </span>
+              )}
+              {assignment.grant_type === 'times' && assignment.times_left !== undefined && (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
+                  assignment.times_left <= 3 ? 'bg-red-50 text-red-600' : 'bg-purple-50 text-purple-600'
+                }`}>
+                  🎫 剩余 {assignment.times_left} 次{assignment.used_today ? ' (今日已用)' : ''}
+                </span>
+              )}
             </div>
 
             {assignment.book_description && (

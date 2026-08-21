@@ -37,6 +37,13 @@ class StudentBookAssignmentResponse(BaseModel):
     unit_name: Optional[str] = None
     unit_number: Optional[int] = None
     group_index: Optional[int] = None
+    # 兑换卡状态(2026-08-21):老师直接分配的显示 permanent,兑换的显示剩余量
+    grant_type: str = 'permanent'
+    active: bool = True
+    expires_at: Optional[str] = None    # period: 到期时间
+    times_left: Optional[int] = None    # times: 剩余天数
+    days_left: Optional[int] = None     # period: 剩余天数(前端便利)
+    used_today: Optional[bool] = None   # times: 今天是否已消费
 
     class Config:
         from_attributes = True
@@ -162,6 +169,10 @@ async def get_my_assignments(
             is_completed = assignment.is_completed
             unit_name, unit_number = None, None
 
+        # 卡片状态(兑换卡授权)
+        from app.services.subscription_service import describe_grant
+        grant_info = describe_grant(assignment)
+
         assignments.append(StudentBookAssignmentResponse(
             id=assignment.id,
             book_id=book.id,
@@ -179,6 +190,12 @@ async def get_my_assignments(
             unit_name=unit_name,
             unit_number=unit_number,
             group_index=assignment.group_index,
+            grant_type=grant_info.get('grant_type', 'permanent'),
+            active=grant_info.get('active', True),
+            expires_at=grant_info.get('expires_at').isoformat() if grant_info.get('expires_at') else None,
+            times_left=grant_info.get('times_left'),
+            days_left=grant_info.get('days_left'),
+            used_today=grant_info.get('used_today'),
         ))
 
     return assignments

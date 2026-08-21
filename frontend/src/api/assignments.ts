@@ -55,6 +55,13 @@ export interface StudentBookAssignmentResponse {
   unit_name?: string | null;
   unit_number?: number | null;
   group_index?: number | null;
+  // 兑换卡状态
+  grant_type?: 'permanent' | 'period' | 'times';
+  active?: boolean;
+  expires_at?: string | null;
+  times_left?: number | null;
+  days_left?: number | null;
+  used_today?: boolean | null;
 }
 
 // ========================================
