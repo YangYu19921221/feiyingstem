@@ -1,7 +1,7 @@
 """
 单词本兑换码相关Schema
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -11,6 +11,18 @@ class RedemptionCodeGenerate(BaseModel):
     count: int = Field(..., ge=1, le=100, description="生成数量(1-100)")
     book_id: int = Field(..., description="绑定的单词本ID")
     batch_note: Optional[str] = Field(None, max_length=200, description="批次备注")
+    # 卡种: permanent=永久(默认,兼容旧调用) / period=包月 / times=次卡
+    grant_type: str = Field("permanent", pattern="^(permanent|period|times)$", description="卡种")
+    grant_days: Optional[int] = Field(None, ge=1, le=3650, description="包月卡有效天数")
+    grant_times: Optional[int] = Field(None, ge=1, le=1000, description="次卡可用天数")
+
+    @model_validator(mode="after")
+    def _check_grant(self):
+        if self.grant_type == "period" and not self.grant_days:
+            raise ValueError("包月卡必须填写有效天数")
+        if self.grant_type == "times" and not self.grant_times:
+            raise ValueError("次卡必须填写可用天数")
+        return self
 
 
 class RedeemRequest(BaseModel):
@@ -38,6 +50,9 @@ class RedemptionCodeResponse(BaseModel):
     used_by: Optional[int] = None
     used_at: Optional[datetime] = None
     batch_note: Optional[str] = None
+    grant_type: str = "permanent"
+    grant_days: Optional[int] = None
+    grant_times: Optional[int] = None
 
     class Config:
         from_attributes = True

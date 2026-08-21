@@ -215,14 +215,33 @@ const StudentDashboard = () => {
       // 但任务卡要把未开放的也列出来(带🔒标明哪天开放)—— 老师排好了后面几天,
       // 首页藏起来学生就完全不知道有这回事(全是未开放任务时首页会空成一片)。
       setPendingHomeworkCount(undone.filter((h) => !h.is_locked).length);
-      // 排序:能做的在前(逾期/快到期优先),未开放的按开放日排在后面
+      // 排序:1.当天任务优先 2.能做的在前 3.按deadline排序
       const sorted = [...undone].sort((a, b) => {
+        // 先按能否做排序(未开放的排在最后)
         if (!!a.is_locked !== !!b.is_locked) return a.is_locked ? 1 : -1;
+
+        // 未开放的任务按开放日期排序
         if (a.is_locked && b.is_locked) {
           const oa = a.available_from ? new Date(a.available_from).getTime() : Infinity;
           const ob = b.available_from ? new Date(b.available_from).getTime() : Infinity;
           return oa - ob;
         }
+
+        // 能做的任务:当天布置的优先
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const aDate = a.available_from ? new Date(a.available_from) : new Date(a.created_at);
+        const bDate = b.available_from ? new Date(b.available_from) : new Date(b.created_at);
+        aDate.setHours(0, 0, 0, 0);
+        bDate.setHours(0, 0, 0, 0);
+
+        const aIsToday = aDate.getTime() === today.getTime();
+        const bIsToday = bDate.getTime() === today.getTime();
+
+        if (aIsToday && !bIsToday) return -1;
+        if (!aIsToday && bIsToday) return 1;
+
+        // 同级别按deadline排序
         const da = a.deadline ? new Date(a.deadline).getTime() : Infinity;
         const db_ = b.deadline ? new Date(b.deadline).getTime() : Infinity;
         return da - db_;
@@ -391,6 +410,8 @@ const StudentDashboard = () => {
   }, [reviewDueCount, ownedBooks]);
 
   const quickTools = [
+    // 前 4 个默认可见(见下面 slice(0,4)),线上课要让孩子一眼看到,放第一个
+    { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/dashboard-banner.jpeg' },
     { title: '纸笔听写', desc: '纸上手写，拍照 AI 批改', route: '/student/handwriting', image: '/hero-memory.jpeg' },
     { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/hero-memory.jpeg' },
     { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/dashboard-banner.jpeg' },
@@ -609,7 +630,23 @@ const StudentDashboard = () => {
             <div className="rounded-2xl border-2 border-accent-warm/40 bg-accent-warm/[0.06] overflow-hidden">
               <div className="px-5 py-3 flex items-center gap-2 border-b border-accent-warm/20">
                 <span className="text-lg">📣</span>
-                <h3 className="font-semibold text-ink text-sm">老师布置的任务</h3>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-ink text-sm">老师布置的任务</h3>
+                  {(() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const oldTasksCount = pendingTasks.filter((t) => {
+                      const assignDate = t.available_from ? new Date(t.available_from) : new Date(t.created_at);
+                      assignDate.setHours(0, 0, 0, 0);
+                      return assignDate.getTime() < today.getTime() && !t.is_locked;
+                    }).length;
+                    return oldTasksCount > 0 ? (
+                      <p className="text-[10px] text-amber-700 font-medium mt-0.5">
+                        ⚠️ 有 {oldTasksCount} 项之前布置的任务还没完成
+                      </p>
+                    ) : null;
+                  })()}
+                </div>
                 {/* 徽章只数今天能做的(= pendingHomeworkCount);未开放的另标,
                     否则"3"里混着做不了的,孩子会以为自己漏做 */}
                 {pendingHomeworkCount > 0 && (
@@ -637,12 +674,27 @@ const StudentDashboard = () => {
                   // 未开放的任务:列出来让学生知道后面几天要练什么,但点不动
                   const locked = !!task.is_locked;
                   const openDay = formatOpenDay(task.available_from);
+
+                  // 判断是否是之前布置的未完成任务
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const assignDate = task.available_from ? new Date(task.available_from) : new Date(task.created_at);
+                  assignDate.setHours(0, 0, 0, 0);
+                  const isOldTask = assignDate.getTime() < today.getTime() && !locked;
+
                   return (
                     <div key={task.id} className={`px-5 py-3.5 flex items-center gap-3 ${locked ? 'opacity-70' : ''}`}>
-                      <span className="text-xl shrink-0">{locked ? '🔒' : '📘'}</span>
+                      <span className="text-xl shrink-0">{locked ? '🔒' : isOldTask ? '⚠️' : '📘'}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-ink text-sm truncate">{task.title}</p>
-                        <p className="text-xs text-ink-mute mt-0.5 truncate">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-medium text-ink text-sm truncate">{task.title}</p>
+                          {isOldTask && (
+                            <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold ring-1 ring-amber-200">
+                              之前布置的
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-ink-mute truncate">
                           {task.book_name} · {task.unit_name} · 目标 {task.target_score} 分
                           {task.attempts_count > 0 && (
                             <span className="text-accent-warm font-medium">

@@ -171,11 +171,52 @@ const StudentHomework = () => {
     });
   };
 
-  // 根据tab过滤作业
-  const filteredHomeworks = homeworks.filter((hw) => {
-    if (activeTab === 'all') return true;
-    return hw.status === activeTab;
-  });
+  // 根据tab过滤作业，并按优先级排序
+  const filteredHomeworks = homeworks
+    .filter((hw) => {
+      if (activeTab === 'all') return true;
+      return hw.status === activeTab;
+    })
+    .sort((a, b) => {
+      // 1. 当天布置的任务优先（available_from 是今天或更晚）
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const aDate = a.available_from ? new Date(a.available_from) : new Date(a.created_at);
+      const bDate = b.available_from ? new Date(b.available_from) : new Date(b.created_at);
+      aDate.setHours(0, 0, 0, 0);
+      bDate.setHours(0, 0, 0, 0);
+
+      const aIsToday = aDate.getTime() === today.getTime();
+      const bIsToday = bDate.getTime() === today.getTime();
+
+      if (aIsToday && !bIsToday) return -1;
+      if (!aIsToday && bIsToday) return 1;
+
+      // 2. 待开始和进行中的任务优先于已完成/过期
+      const statusPriority: Record<string, number> = {
+        in_progress: 1,
+        pending: 2,
+        overdue: 3,
+        completed: 4,
+        failed: 5,
+      };
+      const aPriority = statusPriority[a.status] || 999;
+      const bPriority = statusPriority[b.status] || 999;
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+
+      // 3. 按截止时间排序（有截止时间的优先，越紧急越靠前）
+      if (a.deadline && b.deadline) {
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      }
+      if (a.deadline && !b.deadline) return -1;
+      if (!a.deadline && b.deadline) return 1;
+
+      // 4. 最后按创建时间倒序（新的在前）
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   // 统计各状态数量。「待开始」只算现在真能做的:未开放任务的 status 也是 pending,
   // 计进去会让"待开始 5 项"里混着今天根本做不了的,孩子会以为自己漏做了
@@ -186,6 +227,17 @@ const StudentHomework = () => {
     completed: homeworks.filter((hw) => hw.status === 'completed').length,
     overdue: homeworks.filter((hw) => hw.status === 'overdue').length,
   };
+
+  // 统计之前布置的未完成任务
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const oldUnfinishedCount = homeworks.filter((hw) => {
+    const assignDate = hw.available_from ? new Date(hw.available_from) : new Date(hw.created_at);
+    assignDate.setHours(0, 0, 0, 0);
+    return assignDate.getTime() < today.getTime() &&
+           (hw.status === 'pending' || hw.status === 'in_progress') &&
+           !hw.is_locked;
+  }).length;
 
   const tabs = [
     { key: 'all', label: '全部' },
@@ -251,6 +303,14 @@ const StudentHomework = () => {
               <p className="mt-2 text-sm text-slate-600">
                 待开始 {statusCounts.pending} 项，进行中 {statusCounts.in_progress} 项
               </p>
+              {oldUnfinishedCount > 0 && (
+                <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 ring-1 ring-amber-200">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  有 {oldUnfinishedCount} 项之前布置的任务还没完成
+                </div>
+              )}
             </div>
             <img src="/eagle-homework.jpeg" alt="" className="hidden h-24 w-32 rounded-xl object-cover shadow-sm sm:block" />
           </div>
@@ -334,6 +394,15 @@ const StudentHomework = () => {
                 const isLocked = !!homework.is_locked;
                 const openDayText = formatOpenDay(homework.available_from);
 
+                // 判断是否是之前布置的未完成任务
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const assignDate = homework.available_from ? new Date(homework.available_from) : new Date(homework.created_at);
+                assignDate.setHours(0, 0, 0, 0);
+                const isOldUnfinished = assignDate.getTime() < today.getTime() &&
+                                       (homework.status === 'pending' || homework.status === 'in_progress') &&
+                                       !isLocked;
+
                 return (
                   <motion.div
                     key={homework.id}
@@ -352,6 +421,14 @@ const StudentHomework = () => {
                             <h3 className="font-display text-lg font-semibold text-ink">
                               {homework.title}
                             </h3>
+                            {isOldUnfinished && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                之前布置的未完成任务
+                              </span>
+                            )}
                             <span
                               className={`px-3 py-1 rounded-full text-xs font-medium ${statusColor.bg} ${statusColor.text}`}
                             >

@@ -51,10 +51,12 @@ async def my_purchased_books(
 
     books = []
     for assignment, book in rows:
+        grant_info = subscription_service.describe_grant(assignment)
         books.append({
             "book_id": book.id,
             "book_name": book.name,
             "assigned_at": assignment.assigned_at,
+            **grant_info,
         })
 
     return {"books": books}

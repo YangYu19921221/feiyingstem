@@ -9,6 +9,9 @@ export const generateCodes = (data: {
   count: number;
   book_id: number;
   batch_note?: string;
+  grant_type?: string;     // permanent/period/times
+  grant_days?: number;     // 包月:有效天数
+  grant_times?: number;    // 次卡:可用天数
 }) => api.post('/admin/subscriptions/generate', data);
 
 // 管理员：兑换码列表(search 支持码片段/批次备注模糊搜)
@@ -30,3 +33,7 @@ export const disableCode = (codeId: number) =>
 // 管理员：删除兑换码(彻底删行,不可恢复;已使用的码后端拒绝删除)
 export const deleteCode = (codeId: number) =>
   api.delete(`/admin/subscriptions/codes/${codeId}`);
+
+// 学生端:我兑换的书本(含剩余量/到期时间)
+export const getMyPurchasedBooks = () =>
+  api.get('/subscription/my-books');

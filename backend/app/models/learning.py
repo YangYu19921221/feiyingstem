@@ -64,6 +64,15 @@ class BookAssignment(Base):
     deadline = Column(DateTime, nullable=True)  # 学习截止日期
     is_completed = Column(Boolean, default=False)
 
+    # ===== 兑换卡授权(2026-08-21) =====
+    # 老师直接分配的行三列全 NULL = 永久授权(旧行为不变);
+    # 只有兑换码发出来的行才带值,由 subscription_service 判活/扣减。
+    # grant_type: NULL/permanent=永久 | period=包月 | times=次卡(按学习天计)
+    grant_type = Column(String(10), nullable=True)
+    expires_at = Column(DateTime, nullable=True)        # period: 到期时间(UTC)
+    times_left = Column(Integer, nullable=True)         # times: 剩余可用天数
+    last_consumed_date = Column(String(10), nullable=True)  # times: 最近扣减的北京日 YYYY-MM-DD
+
 class AIQuizRecord(Base):
     """AI出题记录表 - 记录AI生成的题目"""
     __tablename__ = "ai_quiz_records"

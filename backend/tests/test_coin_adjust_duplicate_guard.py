@@ -55,6 +55,34 @@ def _utc_now_for_today():
     return start + (end - start) / 2
 
 
+async def _assign_completed_task(db, teacher: User, students: list[User]):
+    """给一批学生布置今天的任务并标记已完成 —— 单词王参评的前提条件之一
+    (2026-08-20 起没做完当天作业不参评,见 test_word_king_eligibility.py)。"""
+    from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
+    from app.models.word import WordBook, Unit
+
+    book = WordBook(name="测试书", is_public=True)
+    db.add(book)
+    await db.flush()
+    unit = Unit(book_id=book.id, unit_number=1, name="Unit 1")
+    db.add(unit)
+    await db.flush()
+    hw = HomeworkAssignment(
+        title="今日任务", unit_id=unit.id, teacher_id=teacher.id,
+        learning_mode="spelling", target_score=80, max_attempts=3, is_closed=False,
+    )
+    db.add(hw)
+    await db.flush()
+    ts = _utc_now_for_today()
+    for s in students:
+        db.add(HomeworkStudentAssignment(
+            homework_id=hw.id, student_id=s.id, status="completed",
+            attempts_count=1, best_score=100, total_time_spent=60,
+            assigned_at=ts, completed_at=ts,
+        ))
+    await db.flush()
+
+
 async def _grant_system(db, stu: User, source: str, d: date):
     """模拟系统自动发放(带当天 dedup_key)。"""
     key = d.strftime("%Y%m%d")
@@ -213,18 +241,40 @@ async def test_blocked_when_word_king_pending(client, db_session, coin_teacher_s
     这是事故的真实时序(2026-08-08 08:57 老师补发「单词王8.7」,系统的
     word_king dedup_key 要到 12:58 才写)。只查"已发的行"在这里全程放行,
     所以门必须能判「即将发」。单词王按设计次日 00:35 才结算。
+
+    ⚠️ 2026-08-20 起「暂列第一」本身有参评门(见 test_word_king_eligibility.py):
+    要有对手、且当天任务全做完。所以这里必须造出一个真实的争夺局面 ——
+    原来那句"班里只有他,>0 即领先"已经不成立了。
     """
     from app.models.learning import LearningRecord
     from app.models.word import Word
     teacher, stu = coin_teacher_student
-    # 造今天的学词记录 → 该生成为班内词量第一(班里只有他,>0 即领先)
     w = Word(word="pendingking")
-    db_session.add(w)
+    w2 = Word(word="rivalword")
+    db_session.add_all([w, w2])
     await db_session.flush()
-    db_session.add(LearningRecord(
-        user_id=stu.id, word_id=w.id, learning_mode="spelling", is_correct=True,
-        created_at=_utc_now_for_today(),
-    ))
+
+    # 对手:同班、当天也学了词(词量比他少),让"争夺"成立
+    rival = User(username="dupg_rival", email="dupg_rival@e.com", hashed_password="x",
+                 role="student", full_name="对手生", is_active=True, org_id=stu.org_id)
+    db_session.add(rival)
+    await db_session.flush()
+    cls_id = (await db_session.execute(
+        select(ClassStudent.class_id).where(ClassStudent.student_id == stu.id)
+    )).scalar_one()
+    db_session.add(ClassStudent(class_id=cls_id, student_id=rival.id, is_active=True))
+
+    ts = _utc_now_for_today()
+    db_session.add_all([
+        LearningRecord(user_id=stu.id, word_id=w.id, learning_mode="spelling",
+                       is_correct=True, created_at=ts),
+        LearningRecord(user_id=stu.id, word_id=w2.id, learning_mode="spelling",
+                       is_correct=True, created_at=ts),   # 他 2 词
+        LearningRecord(user_id=rival.id, word_id=w.id, learning_mode="spelling",
+                       is_correct=True, created_at=ts),   # 对手 1 词
+    ])
+    # 两人当天都有任务且都已完成(参评前提)
+    await _assign_completed_task(db_session, teacher, [stu, rival])
     await db_session.commit()
 
     resp = await client.post(
@@ -234,7 +284,9 @@ async def test_blocked_when_word_king_pending(client, db_session, coin_teacher_s
     assert resp.status_code == 409, "单词王待发时手动补币没被拦住"
     detail = resp.json()["detail"]
     assert detail["granted"] == []          # 系统还没发
-    assert [p["kind"] for p in detail["pending"]] == ["word_king"]
+    # 任务币也在待发里 —— 参评单词王本来就要求当天任务全做完(2026-08-20 起),
+    # 两者必然同时待发,这是新规则下的正常形态,不是多报
+    assert [p["kind"] for p in detail["pending"]] == ["task", "word_king"]
     assert await _balance(db_session, stu.id) == 0
 
 

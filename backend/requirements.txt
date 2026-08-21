@@ -40,3 +40,9 @@ redis>=5.0.1
 
 # 服务器监控
 psutil>=5.9.8
+
+# 课件水印与渲染(线上授课「能看不能下」)
+# PyMuPDF 把 PDF 逐页渲染成底图,Pillow 按人烧水印。缺 PyMuPDF 时只影响 PDF 课件,
+# 图片课件和直播本身照常
+PyMuPDF>=1.26.0
+Pillow>=10.0.0

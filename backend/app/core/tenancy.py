@@ -40,6 +40,7 @@ def register_tenant_models():
     from app.models.assessment import AssessmentLead
     from app.models.pk import PkRoom
     from app.models.coin import StudentCoin, CoinTransaction, CoinReward, CoinRedeemRequest
+    from app.models.live import LiveSession, LiveMaterial
 
     TENANT_MODELS.clear()
     TENANT_MODELS.extend([
@@ -52,6 +53,9 @@ def register_tenant_models():
         (CoinTransaction, False),
         (CoinReward, False),
         (CoinRedeemRequest, False),
+        # 直播课与课件:严格按机构隔离,不存在"平台共享的课"
+        (LiveSession, False),
+        (LiveMaterial, False),
         (WordBook, True),
         (BookSeries, True),
         (SentenceBook, True),

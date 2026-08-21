@@ -40,6 +40,12 @@ from app.models.competition import (
     QuestionSetItem
 )
 from app.models.pk import PkRoom, PkRoomPlayer, PkAnswerRecord
+from app.models.live import (
+    LiveSession,
+    LiveMaterial,
+    LiveAttendance,
+    MaterialViewLog,
+)
 
 __all__ = [
     # User models
@@ -93,4 +99,9 @@ __all__ = [
     "PkRoom",
     "PkRoomPlayer",
     "PkAnswerRecord",
+    # 线上授课(直播)与课件
+    "LiveSession",
+    "LiveMaterial",
+    "LiveAttendance",
+    "MaterialViewLog",
 ]

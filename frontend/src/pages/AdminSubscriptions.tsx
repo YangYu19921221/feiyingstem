@@ -32,6 +32,9 @@ interface CodeItem {
   used_by: number | null;
   used_at: string | null;
   batch_note: string | null;
+  grant_type: string;
+  grant_days?: number | null;
+  grant_times?: number | null;
 }
 
 interface BookOption {
@@ -58,6 +61,9 @@ const AdminSubscriptions = () => {
   const [genCount, setGenCount] = useState(10);
   const [genBookId, setGenBookId] = useState<number>(0);
   const [genNote, setGenNote] = useState('');
+  const [genGrantType, setGenGrantType] = useState('permanent'); // 卡种: permanent/period/times
+  const [genGrantDays, setGenGrantDays] = useState(30);  // 包月默认 30 天
+  const [genGrantTimes, setGenGrantTimes] = useState(7); // 次卡默认 7 天
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<CodeItem[]>([]);
   const [copied, setCopied] = useState(false);
@@ -111,11 +117,15 @@ const AdminSubscriptions = () => {
     setGenerating(true);
     setGenResult([]);
     try {
-      const res: any = await generateCodes({
+      const payload: any = {
         count: genCount,
         book_id: genBookId,
         batch_note: genNote || undefined,
-      });
+        grant_type: genGrantType,
+      };
+      if (genGrantType === 'period') payload.grant_days = genGrantDays;
+      if (genGrantType === 'times') payload.grant_times = genGrantTimes;
+      const res: any = await generateCodes(payload);
       setGenResult(res);
       await Promise.all([fetchStats(), fetchCodes()]);
       toast.success(`已生成 ${res.length} 个兑换码`);
@@ -158,6 +168,13 @@ const AdminSubscriptions = () => {
     if (bookName) return bookName;
     const b = books.find((b) => b.id === bookId);
     return b?.name || `书#${bookId}`;
+  };
+
+  const formatGrantType = (c: CodeItem) => {
+    if (!c.grant_type || c.grant_type === 'permanent') return '永久';
+    if (c.grant_type === 'period') return `包月 ${c.grant_days || 0} 天`;
+    if (c.grant_type === 'times') return `次卡 ${c.grant_times || 0} 天`;
+    return c.grant_type;
   };
 
   const exportCSV = () => {
@@ -245,6 +262,42 @@ const AdminSubscriptions = () => {
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               />
             </div>
+            <div className="min-w-[140px]">
+              <label className="block text-sm text-gray-600 mb-1">卡种</label>
+              <select
+                value={genGrantType}
+                onChange={(e) => setGenGrantType(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+              >
+                <option value="permanent">永久</option>
+                <option value="period">包月</option>
+                <option value="times">次卡</option>
+              </select>
+            </div>
+            {genGrantType === 'period' && (
+              <div className="min-w-[110px]">
+                <label className="block text-sm text-gray-600 mb-1">有效天数</label>
+                <input
+                  type="number"
+                  min={1} max={3650}
+                  value={genGrantDays}
+                  onChange={(e) => setGenGrantDays(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                />
+              </div>
+            )}
+            {genGrantType === 'times' && (
+              <div className="min-w-[110px]">
+                <label className="block text-sm text-gray-600 mb-1">可用天数</label>
+                <input
+                  type="number"
+                  min={1} max={1000}
+                  value={genGrantTimes}
+                  onChange={(e) => setGenGrantTimes(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                />
+              </div>
+            )}
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -350,6 +403,7 @@ const AdminSubscriptions = () => {
                 <tr className="border-b text-left text-gray-500">
                   <th className="pb-2 pr-4">兑换码</th>
                   <th className="pb-2 pr-4">绑定书籍</th>
+                  <th className="pb-2 pr-4">卡种</th>
                   <th className="pb-2 pr-4">状态</th>
                   <th className="pb-2 pr-4">创建时间</th>
                   <th className="pb-2 pr-4">使用时间</th>
@@ -364,6 +418,9 @@ const AdminSubscriptions = () => {
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
                         {getBookName(c.book_id, c.book_name)}
                       </span>
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-xs">
+                      {formatGrantType(c)}
                     </td>
                     <td className="py-2.5 pr-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_MAP[c.status]?.color || ''}`}>

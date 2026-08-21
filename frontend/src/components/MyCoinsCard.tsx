@@ -165,7 +165,13 @@ export default function MyCoinsCard() {
                   ? 'font-semibold text-rose-800'
                   : 'text-amber-900/80'
               }`}>
-                <span aria-hidden>{race.level === 'behind' || race.level === 'idle' ? '📖' : '👑'}</span>
+                {/* 没资格参评的三种情况别挂 👑,不然文案说"不评单词王"却顶着王冠 */}
+                <span aria-hidden>{
+                  race.level === 'task_pending' ? '📝'
+                    : race.level === 'no_task' || race.level === 'no_contest' ? 'ℹ️'
+                    : race.level === 'behind' || race.level === 'idle' ? '📖'
+                    : '👑'
+                }</span>
                 <span>{race.tip}</span>
               </p>
             )}

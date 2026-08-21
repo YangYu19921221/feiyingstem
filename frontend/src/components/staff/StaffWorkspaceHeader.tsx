@@ -47,6 +47,9 @@ const navByRole: Record<WorkspaceRole, { primary: NavItem[]; more: NavItem[] }> 
       { label: '单词分配', path: '/teacher/assignments' },
       { label: '测评线索', path: '/teacher/leads' },
       { label: '实时课堂', path: '/teacher/live' },
+      // 线上授课(直播)。与上面的「实时课堂」是两件事:那个看学生在线状态,这个是开课直播
+      { label: '线上授课', path: '/teacher/livestream' },
+      { label: '课件资料', path: '/teacher/materials' },
       { label: '签到记录', path: '/teacher/checkins' },
       { label: '竞赛管理', path: '/teacher/competition' },
       { label: 'PK 晋级赛', path: '/teacher/tournaments' },

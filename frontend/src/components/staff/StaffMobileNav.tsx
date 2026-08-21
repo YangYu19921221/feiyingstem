@@ -43,7 +43,11 @@ export default function StaffMobileNav() {
   const isAdmin = location.pathname.startsWith('/admin') || location.pathname === '/org' || (genericDashboard && (userRole === 'admin' || userRole === 'org_admin'));
   const isOrgAdmin = userRole === 'org_admin';
   const visible = isTeacher || isAdmin;
-  const immersive = location.pathname.startsWith('/teacher/bigscreen') || location.pathname.startsWith('/teacher/live');
+  // 沉浸页隐藏底部导航。**用精确匹配而非 startsWith('/teacher/live')** ——
+  // 后者会连带吞掉 /teacher/livestream 下的课件管理页,那页需要导航
+  const immersive = location.pathname.startsWith('/teacher/bigscreen')
+    || location.pathname === '/teacher/live'
+    || location.pathname === '/teacher/livestream';
   const navVisible = visible && !immersive;
   const items = isTeacher ? teacherItems : isOrgAdmin ? orgItems : adminItems;
 

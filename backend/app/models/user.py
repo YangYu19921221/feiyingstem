@@ -154,6 +154,12 @@ class RedemptionCode(Base):
     used_at = Column(DateTime, nullable=True)
     batch_note = Column(String(200), nullable=True)  # 批次备注
 
+    # ===== 卡种(2026-08-21) =====
+    # permanent=永久(旧行为,默认) / period=包月按天数计时 / times=次卡按「学习天」计次
+    grant_type = Column(String(10), nullable=False, default="permanent", server_default="permanent")
+    grant_days = Column(Integer, nullable=True)    # period: 有效天数(如 30/90)
+    grant_times = Column(Integer, nullable=True)   # times: 可用天数(次数)
+
 
 class ParentStudentLink(Base):
     """家长-学生绑定表（一对多：一个家长可绑多个孩子，一个孩子可被多家长绑）"""

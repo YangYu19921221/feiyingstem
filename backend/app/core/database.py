@@ -458,6 +458,15 @@ async def init_db():
             "ALTER TABLE pet_battles ADD COLUMN pet_hp_data TEXT",
             # 顶号机制: 会话版本号(学生/体验机构登录+1,JWT sv 不符=被顶下线)
             "ALTER TABLE users ADD COLUMN session_ver INTEGER NOT NULL DEFAULT 0",
+            # 兑换卡种(次卡/包月): 码上记卡种规格,授权行上记剩余量。
+            # 存量行 grant_type 留 NULL = 永久,旧行为不变
+            "ALTER TABLE redemption_codes ADD COLUMN grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent'",
+            "ALTER TABLE redemption_codes ADD COLUMN grant_days INTEGER",
+            "ALTER TABLE redemption_codes ADD COLUMN grant_times INTEGER",
+            "ALTER TABLE book_assignments ADD COLUMN grant_type VARCHAR(10)",
+            "ALTER TABLE book_assignments ADD COLUMN expires_at DATETIME",
+            "ALTER TABLE book_assignments ADD COLUMN times_left INTEGER",
+            "ALTER TABLE book_assignments ADD COLUMN last_consumed_date VARCHAR(10)",
         ]:
             try:
                 await conn.execute(text(_sql))

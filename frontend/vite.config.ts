@@ -66,5 +66,17 @@ export default defineConfig({
         ws: true,
       }
     }
+  },
+  // preview(跑构建产物,不热更新不打断)必须**自带一份同样的代理**:
+  // API_BASE_URL 走同源(见 config/env.ts),没有代理时请求会打到 preview 自己的端口 → 全部 404。
+  // preview 不继承 server.proxy,这里不能省。
+  preview: {
+    proxy: {
+      '/api': {
+        target: devApiTarget,
+        changeOrigin: true,
+        ws: true,
+      }
+    }
   }
 })

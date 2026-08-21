@@ -178,8 +178,15 @@ export interface WordKingRace {
   tied: boolean;
   chasers: number;       // 紧追者人数(差距<=3词)
   gap: number;           // 落后第一多少词
+  /** 今天班里没有别人参与争夺 → 不评单词王(2026-08-20 起) */
+  no_contest: boolean;
+  /** 今天没布置任务 → 不评单词王,做什么都没用 */
+  no_task: boolean;
+  /** 当天任务没做完 → 暂不参评,做完即恢复 */
+  task_pending: boolean;
   tip: string;           // 后端算好的提示语
-  level: 'none' | 'idle' | 'tied' | 'chased' | 'leading' | 'behind';
+  level: 'none' | 'idle' | 'tied' | 'chased' | 'leading' | 'behind'
+       | 'no_task' | 'task_pending' | 'no_contest';
   reward: number;
   auto_coin: boolean;
 }

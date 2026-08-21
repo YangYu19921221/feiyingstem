@@ -24,6 +24,16 @@ TASK_REWARD = 1        # 完成当天布置的全部任务 → 1 币(一天封�
 WORD_KING_REWARD = 1   # 当日班级词量榜第一,额外叠加(2026-08-08 起从 2 改 1 且不再互斥)
 DAILY_CAP = 2          # 一天封顶 2:任务币 1 + 单词王 1
 
+# 单词王成立所需的**当天实际有学词的同班人数**下限(含王自己)。
+# 2026-08-20 修:单词王按班评,一个班当天只有 1 个人学过词时,他不是"赢了",
+# 而是"没有对手"。生产实案:陈沐华1(635)08-18 被加进测试班 ce1(class 50,
+# 另两名成员是演示账号 0 词 + 加进来 23 秒就移出的学生),连着两天在那个班
+# 独自学词自动当王,各拿 1 枚 word_king 币;而他在真实班「暑假晚上班」的
+# 排名并不靠前。测试班/新建空班/转班后只剩一人的班都会天天产出这种王。
+# 判据用「当天学过词的人数」而不是「班级花名册人数」—— 20 人的班只有他一个人
+# 打开 App,同样不构成争夺;花名册口径拦不住这种。
+MIN_KING_CONTENDERS = 2
+
 # 「完成 >=2 个计分单元 → 1 币」这条老规则**保持关闭**:
 # 2026-07-25 因「刷单元白拿币」下线全部自动发币,2026-08-08 恢复自动发币时用户
 # 只指定了「完成当天全部任务 +1」与「单词王 +1」两条,自学单元不再自动给币
@@ -128,20 +138,69 @@ def word_king_label(reason: str | None) -> str:
     return "单词王"
 
 
+async def king_eligible_counts(
+    db: AsyncSession, member_ids: list[int], d: date,
+) -> dict[int, int]:
+    """把一批同班学生筛成「有资格参评单词王的人 → 当天词数」。
+
+    2026-08-20 加的参评资格。**词量口径一点没动** —— 返回的词数仍是
+    daily_words_by_student 的 distinct(lower(word)),教师端日报/大屏/战况提示
+    看到的数字与这里完全一致;这里只决定"谁进候选",不决定"数字是多少"。
+
+    资格两条:
+    1. 当天真的学过词(>0)。
+    2. **当天布置了任务、且全部完成**(口径与任务币的 task_progress_on_day 完全一致:
+       关闭/删除的任务不进分母、只数当天完成的)。**没布置任务的日子不产生王** ——
+       2026-08-20 用户拍板:单词王不是保底奖励,哪天没人满足就哪天没有王。
+       所以老师那天不布置作业,全班都没有王(自学班的日子会没有单词王币,已确认接受)。
+       目的是不让单词王变成绕过作业的旁路:作业不做、光刷词量当王,拿的是同一枚币。
+
+    调用方还要另外判「对手数 >= MIN_KING_CONTENDERS」(见 has_king_contest)——
+    那是班级层面的判断,与个人资格是两件事。
+    """
+    if not member_ids:
+        return {}
+    day_start, day_end = local_day_utc_range(d)
+    counts = await daily_words_by_student(db, member_ids, day_start, day_end)
+    learned = {uid: v for uid, v in counts.items() if v > 0}
+    if not learned:
+        return {}
+    progress = await task_progress_on_day(db, list(learned.keys()), d)
+    out = {}
+    for uid, v in learned.items():
+        total, done = progress.get(uid, (0, 0))
+        if total <= 0 or done < total:
+            continue  # 没布置任务 / 布置了没做完 → 都不参评
+        out[uid] = v
+    return out
+
+
+def has_king_contest(eligible: dict[int, int]) -> bool:
+    """这个班当天是否构成「争夺」:有资格参评的人数够不够 MIN_KING_CONTENDERS。
+
+    不够就整班不产生王 —— 一个人独自学不叫赢。见 MIN_KING_CONTENDERS 的注释。
+    """
+    return len(eligible) >= MIN_KING_CONTENDERS
+
+
 async def word_kings_for_class(db: AsyncSession, class_id: int, d: date) -> set[int]:
     """某班在 d 这天的单词王 student_id 集合(词量最高;并列都算)。
 
     与发币口径完全一致(distinct(lower(word)))。今天=实时最高(榜未定,仅展示用),
     历史日=当天最终结果。0 词的班不产生王。供 👑 标识跨页面复用。
+
+    参评资格与「是否构成争夺」走 king_eligible_counts / has_king_contest,
+    与 _award_word_king 同口径 —— 徽章和发币必须一致,否则会显示"王"却没币。
     """
-    day_start, day_end = local_day_utc_range(d)
     members = (await db.execute(
         select(ClassStudent.student_id).where(and_(
             ClassStudent.class_id == class_id, ClassStudent.is_active.is_(True)))
     )).scalars().all()
     if not members:
         return set()
-    counts = await daily_words_by_student(db, members, day_start, day_end)
+    counts = await king_eligible_counts(db, list(members), d)
+    if not has_king_contest(counts):
+        return set()
     best = max(counts.values(), default=0)
     if best <= 0:
         return set()
@@ -163,6 +222,16 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
       chasers      距我 <=3 个词的追赶者人数(仅我领先时有意义)
       gap          我落后第一多少个词(领先时为 0)
       settled      这天是否已结算完毕(d < 今天 → 榜单已定)
+      no_contest   班里当天参评人数不足(没有对手,今天不产生王)
+      no_task      今天没给我布置任务 → 今天不产生王(不是漏发)
+      task_pending 我当天的任务还没做完 → 暂不参评(做完即恢复)
+
+    no_task 与 task_pending 是两回事,文案必须分开:前者学生做什么都没用(今天就是
+    没有王),后者是"去把作业做完就有机会"。混成一句会让孩子白刷一晚上词。
+
+    ⚠️ my_words / top_words 用的是**真实词量**(不筛资格),学生看到的数字必须与
+    教师端日报/大屏一致;资格只影响 is_leading / no_contest / no_task / task_pending。
+    否则孩子会看到"我今天 0 词"却明明学了一上午。
     """
     class_ids = (await db.execute(
         select(ClassStudent.class_id).where(and_(
@@ -171,11 +240,13 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
     settled = d < local_today()
     if not class_ids:
         return {"in_class": False, "my_words": 0, "top_words": 0, "is_leading": False,
-                "tied": False, "chasers": 0, "gap": 0, "settled": settled}
+                "tied": False, "chasers": 0, "gap": 0, "settled": settled,
+                "no_contest": False, "no_task": False, "task_pending": False}
 
     day_start, day_end = local_day_utc_range(d)
     best: dict = {"my_words": 0, "top_words": 0, "is_leading": False,
-                  "tied": False, "chasers": 0, "gap": 0}
+                  "tied": False, "chasers": 0, "gap": 0,
+                  "no_contest": False, "no_task": False, "task_pending": False}
     for cid in class_ids:
         members = (await db.execute(
             select(ClassStudent.student_id).where(and_(
@@ -183,10 +254,20 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
         )).scalars().all()
         if not members:
             continue
-        counts = await daily_words_by_student(db, members, day_start, day_end)
+        # 展示用的真实词量 + 评选用的参评名单,两套分开(见 docstring)
+        counts = await daily_words_by_student(db, list(members), day_start, day_end)
+        eligible = await king_eligible_counts(db, list(members), d)
         mine = counts.get(student_id, 0)
         top = max(counts.values(), default=0)
-        leading = mine > 0 and mine >= top
+        no_contest = not has_king_contest(eligible)
+        # 没资格的两种原因要分开报(见 docstring):今天没布置任务 vs 布置了没做完
+        my_total, my_done = (await task_progress_on_day(db, [student_id], d)).get(
+            student_id, (0, 0))
+        no_task = my_total <= 0
+        task_pending = my_total > 0 and my_done < my_total
+        # 领先 = 词量第一 且 自己有资格 且 这个班构成争夺
+        leading = (mine > 0 and mine >= top
+                   and student_id in eligible and not no_contest)
         tied = leading and sum(1 for v in counts.values() if v == top) > 1
         # 追赶者:除我之外,词量在 [mine-3, mine] 区间的人(咬得很紧)
         chasers = sum(
@@ -194,7 +275,9 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
             if uid != student_id and mine - 3 <= v <= mine
         ) if leading else 0
         cand = {"my_words": mine, "top_words": top, "is_leading": leading,
-                "tied": tied, "chasers": chasers, "gap": max(0, top - mine)}
+                "tied": tied, "chasers": chasers, "gap": max(0, top - mine),
+                "no_contest": no_contest, "no_task": no_task,
+                "task_pending": task_pending}
         # 多班取名次最好的:先看是否领先,再看差距小
         if cand["is_leading"] and not best["is_leading"]:
             best = cand
@@ -588,11 +671,13 @@ async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
     单词王口径与教师端每日榜一致:LearningRecord 里 distinct(lower(word)) 最多者。
     并列第一都发(不搞随机裁决)。0 词不算王。
 
+    2026-08-20 起加两道参评门(见 king_eligible_counts / MIN_KING_CONTENDERS):
+    班里当天有资格参评的人不足 2 → 整班不出王;个人当天布置了任务却没做完 → 不参评。
+
     2026-08-08 起单词王 +1 且**与活动币叠加**:当了王又完成全部任务 = 2 币。
     (旧规则是 +2 且撤掉活动币,净 2;现在改成 1+1=2,总额一样但语义更清楚,
     学生看得懂"任务币 1 + 单词王 1"。)手动模式的机构整机构跳过。
     """
-    day_start, day_end = local_day_utc_range(d)
     key_date = d.strftime("%Y%m%d")
     manual_orgs = await manual_coin_org_ids(db)
 
@@ -611,14 +696,18 @@ async def _award_word_king(db: AsyncSession, d: date) -> tuple[int, set[int]]:
         class_members.setdefault(class_id, []).append((student_id, org_id or 1))
         all_student_ids.add(student_id)
 
-    # 当天每个学生的词量(走全站唯一口径,与展示/战况一致)
-    word_count = await daily_words_by_student(db, all_student_ids, day_start, day_end)
+    # 当天每个学生的词量 + 参评资格(词量口径仍是全站唯一那个,只是筛掉没资格的人)
+    word_count = await king_eligible_counts(db, list(all_student_ids), d)
 
     granted = 0
     king_ids: set[int] = set()
     for class_id, members in class_members.items():
+        # 本班有资格参评的人;不足 MIN_KING_CONTENDERS 说明没有对手,整班不出王
+        in_class = {sid: word_count[sid] for sid, _ in members if sid in word_count}
+        if not has_king_contest(in_class):
+            continue
         # 本班最高词量(>0)
-        best = max((word_count.get(sid, 0) for sid, _ in members), default=0)
+        best = max(in_class.values(), default=0)
         if best <= 0:
             continue
         # 词量并列第一时,都算单词王、都发币(用户确认:词数一样可以并列)

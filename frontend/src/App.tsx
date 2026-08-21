@@ -81,6 +81,12 @@ const TeacherActivities = lazyWithRetry(() => import('./pages/TeacherActivities'
 const TeacherLiveClassroom = lazyWithRetry(() => import('./pages/TeacherLiveClassroom'));
 const TeacherCheckins = lazyWithRetry(() => import('./pages/TeacherCheckins'));
 const TeacherBigScreen = lazyWithRetry(() => import('./pages/TeacherBigScreen'));
+// 线上授课(直播)+ 课件资料 —— 媒体流量走独立 SRS 源站,不碰本服务
+const TeacherLive = lazyWithRetry(() => import('./pages/TeacherLive'));
+const TeacherLiveMaterials = lazyWithRetry(() => import('./pages/TeacherLiveMaterials'));
+const StudentLiveHome = lazyWithRetry(() => import('./pages/StudentLiveHome'));
+const StudentLiveWatch = lazyWithRetry(() => import('./pages/StudentLiveWatch'));
+const StudentMaterialViewer = lazyWithRetry(() => import('./pages/StudentMaterialViewer'));
 const StudentHomework = lazyWithRetry(() => import('./pages/StudentHomework'));
 const AdminUserManagement = lazyWithRetry(() => import('./pages/AdminUserManagement'));
 const AdminContentManagement = lazyWithRetry(() => import('./pages/AdminContentManagement'));
@@ -670,6 +676,36 @@ function App() {
           }
         />
 
+        {/* 教师端 - 线上授课(直播)+ 课件资料
+            ⚠️ 路径是 /teacher/livestream 不是 /teacher/live ——
+            后者已被既有的「实时课堂监控」(TeacherLiveClassroom)占用,
+            重名会让先定义的那条覆盖掉另一个功能 */}
+        <Route
+          path="/teacher/livestream"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherLive />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/livestream/:sessionId/materials"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherLiveMaterials />
+            </ProtectedRoute>
+          }
+        />
+        {/* 不挂在具体课堂下的资料库(机构公共课件) */}
+        <Route
+          path="/teacher/materials"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherLiveMaterials />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 教师端 - 数据分析 */}
         <Route
           path="/teacher/analytics"
@@ -826,6 +862,33 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <StudentHomework />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 线上课堂入口(直播列表 + 课件列表)。
+            必须排在 /student/live/:sessionId 之前 */}
+        <Route
+          path="/student/live"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentLiveHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/live/:sessionId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentLiveWatch />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/materials/:materialId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentMaterialViewer />
             </ProtectedRoute>
           }
         />

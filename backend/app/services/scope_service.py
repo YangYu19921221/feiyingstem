@@ -31,12 +31,33 @@ async def get_allowed_unit_ids(
     )
 
     res = await db.execute(
-        select(BookAssignment.scope_type, BookAssignment.unit_id).where(
+        select(
+            BookAssignment.scope_type, BookAssignment.unit_id,
+            BookAssignment.grant_type, BookAssignment.expires_at,
+            BookAssignment.times_left, BookAssignment.last_consumed_date,
+        ).where(
             BookAssignment.student_id == student_id,
             BookAssignment.book_id == book_id,
         )
     )
-    rows = res.all()
+    # 兑换卡授权(次卡/包月)过期或用尽后不再算授权。这里是「学生能学什么」的唯一
+    # 闸门,过滤收在这一处,单元解锁/作业/任务分母全都跟着生效。
+    # 老师直接分配的行 grant_type 为 NULL,恒判活,旧行为零影响。
+    from app.services.subscription_service import is_assignment_active
+    from app.core.timeutil import local_today
+    _today = local_today().isoformat()
+
+    class _A:  # 轻量壳:只为复用 is_assignment_active 的口径,避免两处判活漂移
+        __slots__ = ("grant_type", "expires_at", "times_left", "last_consumed_date")
+
+        def __init__(self, gt, ea, tl, lcd):
+            self.grant_type, self.expires_at, self.times_left, self.last_consumed_date = gt, ea, tl, lcd
+
+    rows = [
+        (scope_type, unit_id)
+        for scope_type, unit_id, gt, ea, tl, lcd in res.all()
+        if is_assignment_active(_A(gt, ea, tl, lcd), _today)
+    ]
     allowed: set[int] = set()
     for scope_type, unit_id in rows:
         # 历史数据 scope_type 可能为 NULL,按整本处理(与旧行为一致)

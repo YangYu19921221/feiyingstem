@@ -137,10 +137,24 @@ async def word_king_race_status(
     race = await word_king_race(db, current_user.id, d)
     auto = await is_auto_coin_org(db, current_user.org_id)
 
+    # 2026-08-20 起单词王有参评门(要有对手 + 当天任务全做完),下面三支专管
+    # "为什么今天没有王 / 我为什么不在候选里"。必须排在领先判断**之前** ——
+    # 不然没资格的人会先落进 behind 那支,看到"还差 N 词就能追上"白刷一晚上。
     if not race["in_class"]:
         tip, level = "", "none"
     elif race["my_words"] <= 0:
         tip, level = "今天还没开始学词。学得最多的同学 24 点会被评为单词王!", "idle"
+    elif race.get("no_task"):
+        tip, level = (
+            "今天老师没布置任务,不评单词王(不是漏发)。明天做完任务再来争!", "no_task")
+    elif race.get("task_pending"):
+        tip, level = (
+            f"你今天学了 {race['my_words']} 词,但作业还没做完 —— "
+            "单词王要先完成当天的任务才参评。做完就有机会!", "task_pending")
+    elif race.get("no_contest"):
+        tip, level = (
+            f"你今天学了 {race['my_words']} 词。今天班里没有别人参与争夺,"
+            "不评单词王。", "no_contest")
     elif race["is_leading"] and race["tied"]:
         tip, level = (
             f"你和别人并列第一({race['my_words']} 词)!24 点结算,再多学几个才稳。", "tied")

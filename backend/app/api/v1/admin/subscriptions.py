@@ -63,6 +63,9 @@ async def generate_codes(
         count=req.count,
         book_id=req.book_id,
         batch_note=req.batch_note,
+        grant_type=req.grant_type,
+        grant_days=req.grant_days,
+        grant_times=req.grant_times,
     )
 
     # 为响应添加 book_name
@@ -80,6 +83,9 @@ async def generate_codes(
             "used_by": code.used_by,
             "used_at": code.used_at,
             "batch_note": code.batch_note,
+            "grant_type": code.grant_type or "permanent",
+            "grant_days": code.grant_days,
+            "grant_times": code.grant_times,
         }
         result.append(code_dict)
     return result

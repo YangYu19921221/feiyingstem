@@ -60,6 +60,39 @@ class Settings(BaseSettings):
     # 两边要一起放开,否则大文件在 nginx 层就被拒(413),压根到不了应用
     MAX_VIDEO_SIZE: int = 200 * 1024 * 1024  # 200MB
 
+    # ---- 线上授课(直播)课件资料 ----
+    # 同 PHONETIC_VIDEO_DIR 的理由:**必须与 UPLOAD_DIR 分开**。课件是"能看不能下"的
+    # 受保护资料,原文件永不下发,学生只拿逐页渲染+烧水印的图。
+    MATERIAL_DIR: str = "./private_media/materials"
+    MAX_MATERIAL_SIZE: int = 100 * 1024 * 1024  # 100MB(nginx client_max_body_size 要同步放开)
+    # 水印主文案。学生姓名/学号/时间由服务端按人拼在后面,不走配置
+    WATERMARK_TEXT: str = "飞鹰教育"
+    # 渲染页 DPI。144 够清晰又不至于让 100 页 PDF 撑爆磁盘
+    MATERIAL_RENDER_DPI: int = 144
+
+    # ---- 直播媒体平面 ----
+    # SRS 源站。**媒体流量绝不走本服务**(本机出口带宽只有 12Mbps,是既有容量瓶颈),
+    # 老师推到源站、学生从 CDN 拉,本服务只签发凭据。
+    # 扩容路径:并行课变多→加源站节点按 live_sessions.origin_node 派发;
+    # 要换云直播 SaaS 只改本组配置和签发逻辑,不动表结构。
+    LIVE_ENABLED: bool = False           # 未配置源站时为 False,前端隐藏直播入口
+    LIVE_ORIGIN_HOST: str = ""           # SRS 源站域名,如 live.feiyingsteam.com
+    LIVE_PUSH_PATH: str = "/live"        # RTMP/WHIP 应用名
+    # 协议。**生产必须 https**(浏览器只在安全上下文给 getUserMedia,WHIP 推流否则直接失败);
+    # 本地 localhost 是特许安全上下文,可用 http 免证书调试
+    LIVE_SCHEME: str = "https"
+    # WHIP 端点所在的 host:port。生产留空 → 用 LIVE_ORIGIN_HOST(Nginx 443 反代到 1985);
+    # 本地无 Nginx 要直连 SRS 的 HTTP-API 端口,填 localhost:1985
+    LIVE_API_HOST: str = ""
+    # RTMP 推流端口。**不能复用 LIVE_ORIGIN_HOST 里的 HTTP 端口** ——
+    # RTMP 是独立协议独立端口,混用会给出连不上的地址(给 OBS 老师用)
+    LIVE_RTMP_PORT: int = 1935
+    LIVE_CDN_HOST: str = ""              # 播放走的 CDN 域名(留空则回退直连源站)
+    # CDN 鉴权密钥(腾讯云/阿里云 TypeA 防盗链)。播放地址按人签发、几分钟过期,
+    # 不设的话链接被转发到校外挡不住
+    LIVE_CDN_AUTH_KEY: str = ""
+    LIVE_PLAY_TOKEN_TTL: int = 300       # 播放票据有效期(秒)
+
     @property
     def cors_origins_list(self) -> List[str]:
         """将CORS字符串转换为列表"""

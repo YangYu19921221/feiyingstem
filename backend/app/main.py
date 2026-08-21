@@ -22,6 +22,9 @@ from app.api.v1 import subscription, pronunciation, assessment, sentences, pk_ro
 from app.api.v1 import pk_tournament_routes
 from app.api.v1 import presence
 from app.api.v1 import checkin
+# 线上授课(直播)+ 课件资料。媒体流量走独立 SRS 源站/CDN,本服务只签凭据管考勤
+from app.api.v1.teacher import live as teacher_live
+from app.api.v1.student import live as student_live
 from app.services import online_tracker  # 在线用户追踪(容量监测)
 
 @asynccontextmanager
@@ -105,6 +108,8 @@ app.include_router(teacher_classes.router, prefix="/api/v1/teacher", tags=["教�
 app.include_router(teacher_student_monitor.router, prefix="/api/v1/teacher", tags=["教师-学生监控"])
 app.include_router(teacher_phonetics.router, prefix="/api/v1/teacher/phonetics", tags=["教师端-音标视频"])
 app.include_router(phonetics.router, prefix="/api/v1/phonetics", tags=["音标学习"])
+app.include_router(teacher_live.router, prefix="/api/v1/teacher", tags=["教师端-线上授课"])
+app.include_router(student_live.router, prefix="/api/v1/student", tags=["学生端-线上授课"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])
 app.include_router(student_progress.router, prefix="/api/v1/student", tags=["学生端-学习进度"])

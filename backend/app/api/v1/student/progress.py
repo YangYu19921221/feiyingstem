@@ -85,6 +85,12 @@ async def start_learning(
             detail="这个单元还没有分配给你,请联系老师"
         )
 
+    # 1.6 次卡计次:这是「真正开始学」的唯一入口(取词表),当天首次进入扣 1 天。
+    # 幂等按北京日,同一天反复进/切模式/队列重放都不多扣。放在权限校验之后——
+    # 被 403 挡住的请求不该扣学生的卡。
+    from app.services.subscription_service import consume_times_if_needed
+    await consume_times_if_needed(db, user_id, unit.book_id)
+
     # 2. 获取该单元的所有单词(按order_index排序)
     result = await db.execute(
         select(Word, WordDefinition, UnitWord.order_index)

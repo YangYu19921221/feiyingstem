@@ -443,6 +443,24 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   回合间隔 8s(pet_battle_ws sleep(8)),否则最后一记被 new_round 清空;调时间轴常量
   要连带验这笔账。时长常量放 config/petSpecies(放 BattleScene3D 会把 three 拖进主包)。
   恢复伤势血量翻倍已修(后端 current_hp 已含本次回血,前端别再叠加增量)
+- ✅ 兑换卡次卡/包月(2026-08-21): 原先兑换码只能发永久授权,现在管理端生成码时可选卡种——
+  永久(默认,兼容旧调用)/包月(填有效天数,如 30/90)/次卡(填可用天数,学习当天才计次、
+  没进不扣)。**判活闸门收在 scope_service.get_allowed_unit_ids** 一处,单元解锁/作业/
+  任务分母全都跟着生效,不必逐端点改;次卡扣减挂在 student/progress 取单元词表的权限检查
+  后(被拒不该扣),按北京日幂等(同天反复进/切模式/队列重放都不多扣)。次卡的最后一天
+  判活口径是「有余量 **或** 今天已扣过」——只看 times_left>0 会让扣到 0 后当天立刻判死,
+  学生学一半被踢(这是最容易漏的边界)。**同书重复兑换改成续期/充值**,包月从现有到期日
+  往后接(未过期)或从现在算(已过期),次卡加天数;永久卡覆盖次卡/包月是升级(兑换码购买
+  常规做法,两个月卡接不上很怪)。存量行 grant_type 为 NULL = 永久(旧行为零影响);
+  老师直接分配的行也都是永久(没有卡种概念,字段全 NULL,判活恒 True)。
+  模型字段: redemption_codes 加 grant_type/grant_days/grant_times,book_assignments 加
+  grant_type/expires_at/times_left/last_consumed_date;迁移在 database.py 末尾 8 条 ALTER。
+  服务层 subscription_service: is_assignment_active 判活、consume_times_if_needed 扣减、
+  describe_grant 给前端的状态,redeem_code 里续期逻辑;API 层 admin/subscriptions 发码时
+  传三新参、student/subscription/my-books 返回卡片状态。前端管理端生成码页面加卡种选择器
+  (条件显示天数输入框),码列表加「卡种」列;学生端 my-books API 已接但前端未画独立页
+  (学生首页书本列表走的是分配接口不是兑换接口,暂不改动,待需求明确再补)。
+  测试见 tests/test_subscription_card_types.py (永久/包月/次卡判活、重复续期、消费幂等)
 
 **待做**:
 - 🚧 AI 限流覆盖全部 LLM 端点(错因讲解/组卷/周报接入 ai_quota)
