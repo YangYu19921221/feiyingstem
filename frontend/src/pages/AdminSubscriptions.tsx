@@ -27,6 +27,7 @@ interface CodeItem {
   book_id: number;
   book_name?: string;
   status: string;
+  created_by: number;
   created_at: string;
   code_expires_at: string;
   used_by: number | null;

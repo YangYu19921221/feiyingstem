@@ -94,3 +94,8 @@ frontend/.impeccable/
 /back1.jpeg
 /lf-mobile.jpeg
 /real-teacher.jpeg
+
+# 课件原文件与渲染页(用户上传内容,不入库)。
+# private_media 是私有目录:里面是老师上传的教学课件与逐页底图,
+# 既可能有版权material也会随机构增长,和 uploads/ 同理不该进仓库
+backend/private_media/
