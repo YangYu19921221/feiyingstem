@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   GraduationCap,
+  ShieldCheck,
 } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { getMyAssignments } from '../api/assignments';
@@ -139,7 +140,12 @@ export default function StudentAssignments() {
 
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-ink-soft">
               <span className="inline-flex items-center gap-1.5">
-                <GraduationCap className="h-3.5 w-3.5 text-accent-warm" aria-hidden="true" />
+                {/* 管理员开的书用盾牌图标,学位帽会让孩子以为是任课老师布置的 */}
+                {assignment.assigner_role === 'admin' || assignment.assigner_role === 'org_admin' ? (
+                  <ShieldCheck className="h-3.5 w-3.5 text-accent-warm" aria-hidden="true" />
+                ) : (
+                  <GraduationCap className="h-3.5 w-3.5 text-accent-warm" aria-hidden="true" />
+                )}
                 {assignment.teacher_name}
               </span>
               {assignment.deadline ? (

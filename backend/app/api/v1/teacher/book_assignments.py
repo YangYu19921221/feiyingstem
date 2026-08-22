@@ -40,6 +40,10 @@ class BookAssignmentResponse(BaseModel):
     student_id: int
     student_name: Optional[str]
     teacher_id: int
+    # 开书人(teacher_id 指向的人)。字段名叫 teacher_id 是历史包袱——管理员开的书
+    # 存的是管理员 id,所以另给 assigner_* 表达"谁开的",查账时不用猜。
+    assigner_name: Optional[str] = None
+    assigner_role: Optional[str] = None
     assigned_at: str
     deadline: Optional[str]
     is_completed: bool
@@ -411,6 +415,22 @@ async def get_student_assignments(
         .order_by(BookAssignment.assigned_at.desc())
     )
 
+    rows = result.all()
+
+    # 批量查开书人姓名。单独查而不是 join 进主查询——主查询要保留 student 那侧的
+    # 租户过滤,而开书人可能是平台 admin(跨机构),得单独 skip_tenant_filter 才看得见,
+    # 两者混在一条语句里会把安全网一起关掉。
+    assigner_ids = {a.teacher_id for a, _, _, _ in rows}
+    assigner_map: dict[int, tuple[str, str]] = {}
+    if assigner_ids:
+        arows = await db.execute(
+            select(User.id, User.full_name, User.username, User.role)
+            .where(User.id.in_(assigner_ids))
+            .execution_options(skip_tenant_filter=True)
+        )
+        for uid, full_name, username, role in arows.all():
+            assigner_map[uid] = (full_name or username, role)
+
     return [
         BookAssignmentResponse(
             id=a.id,
@@ -419,6 +439,8 @@ async def get_student_assignments(
             student_id=a.student_id,
             student_name=student_name,
             teacher_id=a.teacher_id,
+            assigner_name=assigner_map.get(a.teacher_id, (None, None))[0],
+            assigner_role=assigner_map.get(a.teacher_id, (None, None))[1],
             assigned_at=a.assigned_at.isoformat(),
             deadline=a.deadline.isoformat() if a.deadline else None,
             is_completed=a.is_completed,
@@ -428,7 +450,7 @@ async def get_student_assignments(
             unit_name=unit.name if unit else None,
             unit_number=unit.unit_number if unit else None,
         )
-        for a, student_name, book_name, unit in result.all()
+        for a, student_name, book_name, unit in rows
     ]
 
 

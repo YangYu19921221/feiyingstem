@@ -25,6 +25,9 @@ class StudentBookAssignmentResponse(BaseModel):
     book_name: str
     book_description: str | None
     teacher_name: str
+    # 开书人角色(teacher/admin/org_admin)。管理员开的书 teacher_name 就是管理员姓名,
+    # 前端据此换文案与图标,不然学位帽图标会让管理员看着像"老师"。
+    assigner_role: Optional[str] = None
     assigned_at: str
     deadline: str | None
     is_completed: bool
@@ -111,22 +114,43 @@ async def get_my_assignments(
         raise HTTPException(status_code=403, detail="只有学生可以查看分配")
 
     # 查询分配记录(LEFT JOIN 单元,unit/group scope 时带出单元信息)
+    # 开书人用 outerjoin 而非 join: 平台 admin 给加盟机构学生开的书,admin 那行会被
+    # 租户过滤挡掉,inner join 会连带整条授权一起消失——学生就看不到这本书了。
     result = await db.execute(
         select(
             BookAssignment,
             WordBook,
             User.full_name.label('teacher_name'),
+            User.role.label('assigner_role'),
             Unit,
         )
         .join(WordBook, BookAssignment.book_id == WordBook.id)
-        .join(User, BookAssignment.teacher_id == User.id)
+        .outerjoin(User, BookAssignment.teacher_id == User.id)
         .outerjoin(Unit, BookAssignment.unit_id == Unit.id)
         .where(BookAssignment.student_id == current_user.id)
         .order_by(BookAssignment.assigned_at.desc())
     )
 
+    rows = result.all()
+
+    # 开书人姓名单独补一次(上面 outerjoin 拿不到被租户过滤挡掉的平台 admin)。
+    missing_ids = {a.teacher_id for a, _, tname, _, _ in rows if tname is None}
+    fallback_map: dict[int, tuple[str, str]] = {}
+    if missing_ids:
+        frows = await db.execute(
+            select(User.id, User.full_name, User.username, User.role)
+            .where(User.id.in_(missing_ids))
+            .execution_options(skip_tenant_filter=True)
+        )
+        for uid, full_name, username, role in frows.all():
+            fallback_map[uid] = (full_name or username, role)
+
     assignments = []
-    for assignment, book, teacher_name, unit in result.all():
+    for assignment, book, teacher_name, assigner_role, unit in rows:
+        if teacher_name is None:
+            teacher_name, assigner_role = fallback_map.get(
+                assignment.teacher_id, ("老师", None)
+            )
         scope_type = assignment.scope_type or 'book'
 
         if scope_type in ('unit', 'group') and unit is not None:
@@ -179,6 +203,7 @@ async def get_my_assignments(
             book_name=book.name,
             book_description=book.description,
             teacher_name=teacher_name,
+            assigner_role=assigner_role,
             assigned_at=assignment.assigned_at.isoformat(),
             deadline=assignment.deadline.isoformat() if assignment.deadline else None,
             is_completed=is_completed,

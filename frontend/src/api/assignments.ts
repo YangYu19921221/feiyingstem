@@ -19,6 +19,9 @@ export interface BookAssignmentResponse {
   student_id: number;
   student_name: string | null;
   teacher_id: number;
+  /** 开书人姓名与角色。teacher_id 存的是操作人,管理员开的书就是管理员 */
+  assigner_name?: string | null;
+  assigner_role?: string | null;
   scope_type: string;
   unit_id: number | null;
   group_index: number | null;
@@ -43,6 +46,8 @@ export interface StudentBookAssignmentResponse {
   book_name: string;
   book_description?: string;
   teacher_name: string;
+  /** 开书人角色:管理员开的书 teacher_name 是管理员姓名,前端据此换文案 */
+  assigner_role?: string | null;
   assigned_at: string;
   deadline?: string;
   is_completed: boolean;

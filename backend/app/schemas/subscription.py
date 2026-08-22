@@ -45,6 +45,7 @@ class RedemptionCodeResponse(BaseModel):
     book_name: Optional[str] = None
     status: str
     created_by: int
+    created_by_name: Optional[str] = None  # 发码人姓名(查"这批码谁发的")
     created_at: datetime
     code_expires_at: datetime
     used_by: Optional[int] = None

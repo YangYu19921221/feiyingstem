@@ -485,8 +485,14 @@ const TeacherStudentDetail = () => {
                     <div className="mt-0.5 text-xs text-slate-500">
                       {new Date(a.assigned_at).toLocaleDateString('zh-CN')}
                       {a.deadline && ` · 截止 ${new Date(a.deadline).toLocaleDateString('zh-CN')}`}
+                      {/* 开书人:自己开的不啰嗦,别人开的写清是谁、什么身份
+                          (管理员开的书此前只显示「其他老师分配」,查账时对不上人) */}
                       {myTeacherId !== null && a.teacher_id !== myTeacherId && (
-                        <span className="ml-2 text-slate-400">· 其他老师分配</span>
+                        <span className="ml-2 text-slate-400">
+                          · {a.assigner_role === 'admin' || a.assigner_role === 'org_admin'
+                            ? `管理员 ${a.assigner_name ?? ''} 开通`.trim()
+                            : `${a.assigner_name ?? '其他老师'} 分配`}
+                        </span>
                       )}
                     </div>
                   </div>

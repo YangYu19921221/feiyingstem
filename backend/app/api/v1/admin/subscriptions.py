@@ -78,6 +78,7 @@ async def generate_codes(
             "book_name": book.name,
             "status": code.status,
             "created_by": code.created_by,
+            "created_by_name": current_user.full_name or current_user.username,
             "created_at": code.created_at,
             "code_expires_at": code.code_expires_at,
             "used_by": code.used_by,
@@ -146,6 +147,20 @@ async def list_codes(
         for book in books_result.scalars().all():
             book_name_map[book.id] = book.name
 
+    # 批量查发码人姓名(N+1 会让每页多打 20 次库)。
+    # 跨机构读取: org_admin 的租户过滤会把平台 admin 的行滤掉,导致平台发的码
+    # 显示不出创建人,所以这里显式跳过过滤——只读姓名,不涉及越权写。
+    creator_ids = set(c.created_by for c in codes)
+    creator_name_map = {}
+    if creator_ids:
+        creators = await db.execute(
+            select(User.id, User.full_name, User.username)
+            .where(User.id.in_(creator_ids))
+            .execution_options(skip_tenant_filter=True)
+        )
+        for uid, full_name, username in creators.all():
+            creator_name_map[uid] = full_name or username
+
     # 构造响应，添加 book_name
     code_responses = []
     for code in codes:
@@ -156,11 +171,15 @@ async def list_codes(
             book_name=book_name_map.get(code.book_id, "未知"),
             status=code.status,
             created_by=code.created_by,
+            created_by_name=creator_name_map.get(code.created_by),
             created_at=code.created_at,
             code_expires_at=code.code_expires_at,
             used_by=code.used_by,
             used_at=code.used_at,
             batch_note=code.batch_note,
+            grant_type=code.grant_type or "permanent",
+            grant_days=code.grant_days,
+            grant_times=code.grant_times,
         ))
 
     return RedemptionCodeListResponse(total=total, codes=code_responses)

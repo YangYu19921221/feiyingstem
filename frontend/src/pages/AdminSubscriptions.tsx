@@ -32,6 +32,7 @@ interface CodeItem {
   used_by: number | null;
   used_at: string | null;
   batch_note: string | null;
+  created_by_name?: string | null;
   grant_type: string;
   grant_days?: number | null;
   grant_times?: number | null;
@@ -178,11 +179,13 @@ const AdminSubscriptions = () => {
   };
 
   const exportCSV = () => {
-    const header = '兑换码,绑定书籍,状态,创建时间,使用时间,备注';
+    const header = '兑换码,绑定书籍,卡种,创建人,状态,创建时间,使用时间,备注';
     const rows = codes.map((c) =>
       [
         c.code,
         getBookName(c.book_id, c.book_name),
+        formatGrantType(c),
+        c.created_by_name || `#${c.created_by}`,
         STATUS_MAP[c.status]?.label || c.status,
         new Date(c.created_at).toLocaleDateString('zh-CN'),
         c.used_at ? new Date(c.used_at).toLocaleDateString('zh-CN') : '',
@@ -392,7 +395,7 @@ const AdminSubscriptions = () => {
               {codes.length === 0 ? <div className="py-8 text-center text-sm text-slate-400">暂无兑换码</div> : codes.map((c) => (
                 <article key={c.id} className="rounded-lg border border-slate-200 p-3">
                   <div className="flex items-center justify-between gap-3"><code className="font-mono text-xs font-semibold text-slate-800">{c.code}</code><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_MAP[c.status]?.color || ''}`}>{STATUS_MAP[c.status]?.label || c.status}</span></div>
-                  <div className="mt-2 text-xs text-slate-500">{getBookName(c.book_id, c.book_name)} · 创建于 {new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
+                  <div className="mt-2 text-xs text-slate-500">{getBookName(c.book_id, c.book_name)} · {formatGrantType(c)} · {c.created_by_name || `#${c.created_by}`} · 创建于 {new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
                   <div className="mt-3 flex gap-3 border-t border-slate-100 pt-2 text-xs font-semibold"><button onClick={() => copySingleCode(c.code, c.id)} className="text-[#3976a9]">{copiedId === c.id ? '已复制' : '复制'}</button>{c.status === 'unused' && <button onClick={() => handleDisable(c.id)} className="text-orange-600">禁用</button>}{c.status !== 'used' && <button onClick={() => handleDelete(c)} className="text-red-600">删除</button>}</div>
                 </article>
               ))}
@@ -404,6 +407,7 @@ const AdminSubscriptions = () => {
                   <th className="pb-2 pr-4">兑换码</th>
                   <th className="pb-2 pr-4">绑定书籍</th>
                   <th className="pb-2 pr-4">卡种</th>
+                  <th className="pb-2 pr-4">创建人</th>
                   <th className="pb-2 pr-4">状态</th>
                   <th className="pb-2 pr-4">创建时间</th>
                   <th className="pb-2 pr-4">使用时间</th>
@@ -421,6 +425,9 @@ const AdminSubscriptions = () => {
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600 text-xs">
                       {formatGrantType(c)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-xs">
+                      {c.created_by_name || `#${c.created_by}`}
                     </td>
                     <td className="py-2.5 pr-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_MAP[c.status]?.color || ''}`}>
