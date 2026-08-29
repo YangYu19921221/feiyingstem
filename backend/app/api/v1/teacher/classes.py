@@ -235,7 +235,22 @@ async def add_students_to_class(
             409,
             f"以下学生已在其他教师的班级，无法直接添加：{res.blocked_student_ids}",
         )
-    await db.commit()
+    # 并发重复提交:老师连点或前端并发发多份时,两个请求都查不到活跃关系 → 都走 INSERT,
+    # 后到的撞偏索引 uq_active_student(student_id) WHERE is_active=1 → 原先直接 500。
+    # (2026-08-29 生产:18:38:36-37 一秒内 6 次 500 与 3 次 200 交错,数据没坏——
+    #  约束挡住了重复行,但老师看到的是"服务器错误")。
+    # 先到的那次已经把学生放进班,这里按"已在班"返回成功即可,与幂等语义一致。
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        return {
+            "added": 0,
+            "transferred": 0,
+            "blocked": [],
+            "already_in": sorted(set(data.student_ids)),
+            "note": "这些学生已在班级中（重复提交已自动忽略）",
+        }
     return {
         "added": res.added,
         "transferred": res.transferred,
