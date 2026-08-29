@@ -24,7 +24,7 @@ from app.models.learning import WordMastery, LearningRecord, StudySession
 from app.models.word import Word
 from app.api.v1.auth import get_current_admin_or_org_admin
 from app.services.weak_words import mastery_buckets, NON_LEARNED_MODES
-from app.services import daily_words
+from app.services import daily_words, study_time
 
 router = APIRouter()
 
@@ -149,17 +149,17 @@ async def admin_student_detail(
     weak_words_count = buckets.get("weak", 0)
     pending_words_count = buckets.get("pending", 0)
 
-    # 累计: StudyCalendar 聚合
+    # 累计: StudyCalendar 聚合(天数/最后活跃日);
+    # 时长走 services/study_time 统一口径,裸 sum(duration) 会带进 07-09 前的旧脏数据
     cal_agg_result = await db.execute(
         select(
             func.count(StudyCalendar.id).label("days"),
-            func.sum(StudyCalendar.duration).label("time"),
             func.max(StudyCalendar.study_date).label("last_date"),
         ).where(StudyCalendar.user_id == student_id)
     )
     cal_agg = cal_agg_result.first()
     total_study_days = cal_agg.days or 0
-    total_study_time = cal_agg.time or 0
+    total_study_time = await study_time.seconds_total(db, student_id)
     last_active = datetime.combine(cal_agg.last_date, datetime.min.time()) if cal_agg.last_date else None
 
     # 累计: LearningRecord 聚合
@@ -189,7 +189,8 @@ async def admin_student_detail(
         "username": student.username,
         "full_name": student.full_name or student.username,
         "today_words": trend_map.get(today, 0),
-        "today_duration": cal.duration if cal else 0,
+        # 今日时长走统一口径(与累计、教师端每日表同源),不裸读日历行
+        "today_duration": await study_time.seconds_on_day(db, student_id, today),
         "today_accuracy": round(today_accuracy, 1),
         "today_sessions": today_sessions,
         "total_words_learned": total_words_learned,
@@ -266,15 +267,10 @@ async def admin_class_stats_summary(
     )
     lr_map = {r.d: r for r in lr_rows.all()}  # key: 'YYYY-MM-DD'
 
-    # 查询2: StudyCalendar 按 study_date 分组拿每天时长(study_date 本就是北京日)
-    cal_rows = await db.execute(
-        select(StudyCalendar.study_date, func.sum(StudyCalendar.duration).label("time"))
-        .where(and_(
-            StudyCalendar.user_id.in_(ids),
-            StudyCalendar.study_date >= days[0],
-        )).group_by(StudyCalendar.study_date)
-    )
-    cal_map = {r.study_date: (r.time or 0) for r in cal_rows.all()}
+    # 查询2: 每天时长走 services/study_time 统一口径(逐生逐日封顶后再按天汇总)。
+    # 原先是 sum(StudyCalendar.duration) 不封顶,一个学生的旧脏数据就能把
+    # 整条班级曲线顶到几千小时
+    cal_map = await study_time.group_seconds_by_day(db, ids, days)
 
     def metric_of(d: date) -> dict:
         lr = lr_map.get(d.isoformat())

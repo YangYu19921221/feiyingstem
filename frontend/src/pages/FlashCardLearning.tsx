@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
 import { usePreventCopy } from '../hooks/usePreventCopy';
@@ -22,7 +22,7 @@ import {
 import { submitReviewRecords } from '../api/memoryCurve';
 import { API_BASE_URL } from '../config/env';
 import { useAudio } from '../hooks/useAudio';
-import useIdleDetector from '../hooks/useIdleDetector';
+import useNetActiveTime from '../hooks/useNetActiveTime';
 import usePresence from '../hooks/usePresence';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
@@ -55,19 +55,13 @@ const FlashCardLearning = () => {
   const sessionRef = useRef<StudySessionResponse | null>(null);
   const sessionCreatingRef = useRef(false);
   const [wordAnswers, setWordAnswers] = useState<WordAnswerCreate[]>([]);
-  const [wordStartTime, setWordStartTime] = useState<number>(0);
-  // 空闲检测：无操作60秒 或 标签页隐藏 → 补偿 wordStartTime
-  const isIdle = useIdleDetector();
-  const idleStartRef = useRef(0);
-  useEffect(() => {
-    if (isIdle) {
-      idleStartRef.current = Date.now();
-    } else if (idleStartRef.current > 0) {
-      const idleTime = Date.now() - idleStartRef.current;
-      setWordStartTime(prev => prev > 0 ? prev + idleTime : prev);
-      idleStartRef.current = 0;
-    }
-  }, [isIdle]);
+  // 净活动计时(全站唯一口径):发呆/切屏整段不计,含判定前的 60 秒。
+  const { idle: isIdle, netSeconds, takeDelta } = useNetActiveTime();
+  // 本词开始时的净活动秒数基线,相减即本词净用时(不含发呆)
+  const wordStartNetRef = useRef(0);
+  const markWordStart = useCallback(() => {
+    wordStartNetRef.current = netSeconds();
+  }, [netSeconds]);
   // 实时课堂在线上报:卡片学习(含复习模式)原来不发心跳,老师在课堂监控里
   // 看不到正在背卡片的学生,只能靠 3 分钟答题记录兜底,容易误判"没在学"
   usePresence({
@@ -233,7 +227,7 @@ const FlashCardLearning = () => {
       // 教师端每日学习内容会出现幽灵单元。
 
       // 开始计时
-      setWordStartTime(Date.now());
+      markWordStart();
 
       // 加载第一个单词的掌握度
       if (data.words.length > 0) {
@@ -377,7 +371,8 @@ const FlashCardLearning = () => {
       ? reviewQueue[0]
       : learningData.words[currentIndex];
 
-    const timeSpent = Date.now() - wordStartTime;
+    // 本词净用时(毫秒):净活动秒数之差,发呆/切屏不计入
+    const timeSpent = Math.max(0, netSeconds() - wordStartNetRef.current) * 1000;
 
     // 🆕 使用默写验证结果，而不是首字母验证
     const actualIsCorrect = wordResult === 'know' && isAnswerCorrect === true;
@@ -533,13 +528,14 @@ const FlashCardLearning = () => {
       // 实时提交单词记录,立即更新掌握度
       if (isReviewPracticeMode) {
         // 记忆曲线复习模式:使用专用的复习记录接口
-        // 本词净用时(wordStartTime 已扣挂机)即本次提交的时长增量,用于日历统计
-        await submitReviewRecords([answer], Math.round(timeSpent / 1000));
+        // 日历时长用净活动增量(takeDelta),各次增量之和 = 整场真实活动时长
+        await submitReviewRecords([answer], takeDelta());
       } else if (!isMistakePracticeMode) {
         await createLearningRecords({
           unit_id: learningData.unit_info.id,
           learning_mode: mode || 'flashcard',
           records: [answer],
+          session_seconds: takeDelta(),  // 此前不传,日历时长只能退回按逐题累加
         });
 
         // 更新进度（仅当不是复习单词时）
@@ -558,7 +554,9 @@ const FlashCardLearning = () => {
       if (isLastWord) {
         // 完成学习 - 更新会话
         if (!isSpecialMode && sessionRef.current) {
-          const totalTime = Math.floor((Date.now() - new Date(sessionRef.current.started_at).getTime()) / 1000);
+          // 会话时长用净活动秒数,不用「现在 − started_at」墙上时钟
+          // (后者把发呆/切屏全算进去,教师端会话时长因此虚高)
+          const totalTime = netSeconds();
           await updateStudySession(sessionRef.current.id, {
             completed_words: updatedWordAnswers.length,
             correct_count: correctCount + (actualIsCorrect ? 1 : 0),
@@ -594,7 +592,7 @@ const FlashCardLearning = () => {
         setCurrentGate(1);
         setPronunciationScore(null);
         setShowPreview(true);  // 新词先预览
-        setWordStartTime(Date.now());
+        markWordStart();
       }
     } catch (error) {
       console.error('提交学习记录失败:', error);
@@ -611,11 +609,13 @@ const FlashCardLearning = () => {
         unit_id: learningData.unit_info.id,
         learning_mode: mode || 'flashcard',
         records: allAnswers,
+        session_seconds: takeDelta(),
       });
 
       // 更新学习会话(会话可能因延迟创建尚不存在,跳过即可)
       if (sessionRef.current) {
-        const totalTime = Math.floor((Date.now() - new Date(sessionRef.current.started_at).getTime()) / 1000);
+        // 净活动秒数,不用墙上时钟(见上面 isLastWord 分支的说明)
+        const totalTime = netSeconds();
         await updateStudySession(sessionRef.current.id, {
           completed_words: allAnswers.length,
           correct_count: correctCount + (allAnswers[allAnswers.length - 1]?.is_correct ? 1 : 0),
@@ -653,7 +653,7 @@ const FlashCardLearning = () => {
     setPendingReview(new Map());
     setIsReviewWord(false);
     setUserAnswer('');
-    setWordStartTime(Date.now());
+    markWordStart();
     if (learningData && learningData.words.length > 0) {
       loadWordMastery(learningData.words[0].id);
     }
@@ -957,7 +957,7 @@ const FlashCardLearning = () => {
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowPreview(false);
-                        setWordStartTime(Date.now());
+                        markWordStart();
                       }}
                       className="px-8 sm:px-12 py-4 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-lg transition-colors"
                     >
@@ -1174,7 +1174,7 @@ const FlashCardLearning = () => {
                             setUserAnswer('');
                             setAnswerSubmitted(false);
                             setIsAnswerCorrect(null);
-                            setWordStartTime(Date.now());
+                            markWordStart();
                           }}
                           className="w-full py-4 bg-blue-500 text-white rounded-xl font-semibold text-lg hover:bg-blue-600 transition-all"
                         >

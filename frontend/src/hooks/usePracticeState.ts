@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { createLearningRecords } from '../api/learningRecords';
+import { createLearningRecords, reportStudyTime } from '../api/learningRecords';
 import { submitHomeworkAttempt, getMyHomework } from '../api/homework';
 import { toast } from '../components/Toast';
-import useIdleDetector from './useIdleDetector';
+import useNetActiveTime from './useNetActiveTime';
 import usePresence from './usePresence';
 
 export interface PracticeResult {
@@ -76,7 +76,8 @@ export function usePracticeState({
   const [wrongAnswers, setWrongAnswers] = useState<Set<number>>(new Set());
   const [results, setResults] = useState<(boolean | null)[]>([]);
 
-  const isIdle = useIdleDetector();
+  // 计时口径统一走 useNetActiveTime:发呆/切屏整段不计(含判定前的 60 秒)
+  const { idle: isIdle, netSeconds, takeDelta } = useNetActiveTime();
 
   // 实时课堂:练习页(拼写/填空/选择题)也上报在线状态,否则老师端显示离线
   usePresence({
@@ -93,12 +94,20 @@ export function usePracticeState({
     }
   }, [questions.length]);
 
-  // 计时器：空闲时暂停（无键盘/鼠标操作60秒 或 标签页隐藏）
+  // 计时器：每秒把净活动时长同步进 state 供界面显示(发呆/切屏时 netSeconds 自然不涨)
   useEffect(() => {
-    if (isIdle) return;
-    const timer = setInterval(() => setTimeSpent(t => t + 1), 1000);
+    const timer = setInterval(() => setTimeSpent(netSeconds()), 1000);
     return () => clearInterval(timer);
-  }, [isIdle]);
+  }, [netSeconds]);
+
+  // 退出补尾巴:最后一题提交之后到离开页面这段净活动时长,原先整段丢失
+  // (做了几题就退出很常见)。走纯时长端点,不产生学习记录。
+  const takeDeltaRef = useRef(takeDelta);
+  takeDeltaRef.current = takeDelta;
+  useEffect(() => () => {
+    const tail = takeDeltaRef.current();
+    if (tail > 0) reportStudyTime(tail).catch(() => {});
+  }, []);
 
   const answered = results.filter(r => r !== null).length;
   const accuracy = answered > 0 ? Math.round((score / answered) * 100) : 0;
@@ -125,8 +134,9 @@ export function usePracticeState({
     const q = questions[currentIndex];
     if (q?.word_id && unitId) {
       // 只上报本题增量耗时（本次累计 − 上次已记录），所有增量之和 = 整场实际时长
-      const deltaSec = Math.max(0, timeSpent - lastRecordedSecRef.current);
-      lastRecordedSecRef.current = timeSpent;
+      const net = netSeconds();
+      const deltaSec = Math.max(0, net - lastRecordedSecRef.current);
+      lastRecordedSecRef.current = net;
       createLearningRecords({
         unit_id: parseInt(unitId),
         learning_mode: mode,
@@ -138,9 +148,12 @@ export function usePracticeState({
           // 答错时的真实输入(拼写模式携带),拼写错误诊断的数据源
           user_answer: !correct && userAnswer ? userAnswer : undefined,
         }],
+        // 日历时长走净活动增量。此前拼写/选择/填空三个模式**从不传这个字段**,
+        // 后端只能退回按逐题 time_spent 累加(旧客户端兼容路径),日历时长因此偏差。
+        session_seconds: deltaSec,
       }).catch(() => {}); // 静默失败，不影响答题体验
     }
-  }, [currentIndex, questions, unitId, mode, timeSpent]);
+  }, [currentIndex, questions, unitId, mode, netSeconds]);
 
   const goToNext = useCallback((resetExtra?: () => void) => {
     if (currentIndex < questions.length - 1) {

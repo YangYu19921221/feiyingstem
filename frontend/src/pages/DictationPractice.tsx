@@ -11,6 +11,7 @@ import type { StartLearningResponse } from '../api/progress';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import { useAudio } from '../hooks/useAudio';
 import { usePreventCopy } from '../hooks/usePreventCopy';
+import useStudyTimeReporter from '../hooks/useStudyTimeReporter';
 
 export default function DictationPractice() {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
@@ -23,6 +24,9 @@ export default function DictationPractice() {
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [results, setResults] = useState<DictationResult[]>([]);
+  // 独立听写页此前既不落学习记录也不计时:听写一整单元 = 0 分钟 0 词。
+  // 时长在此补上;词数仍缺(DictationPhase 不产出逐词记录),另行处理。
+  useStudyTimeReporter(completed);
 
   useEffect(() => {
     if (!unitId) return;

@@ -8,6 +8,7 @@ import ColoredPhonetic from '../components/ColoredPhonetic';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import { usePreventCopy } from '../hooks/usePreventCopy';
+import useStudyTimeReporter from '../hooks/useStudyTimeReporter';
 
 const StudentReadingPractice = () => {
   usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
@@ -23,6 +24,8 @@ const StudentReadingPractice = () => {
   const [startTime] = useState(Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ReadingAttemptResult | null>(null);
+  // 阅读理解此前一秒都不进学习日历(读+答十几分钟,教师端显示 0 分钟)
+  useStudyTimeReporter(!!result);
 
   useEffect(() => {
     if (passageId) {

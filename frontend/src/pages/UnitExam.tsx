@@ -20,6 +20,7 @@ import {
 import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import usePresence from '../hooks/usePresence';
+import useStudyTimeReporter from '../hooks/useStudyTimeReporter';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 import { imeSafeInputProps } from '../utils/noSuggestInput';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -46,6 +47,10 @@ const UnitExam = () => {
   const [timeLeft, setTimeLeft] = useState(900);
   const [startTime, setStartTime] = useState(0);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+
+  // 单元考试此前一秒都不进学习日历(考 15 分钟教师端显示 0 分钟)。
+  // 交卷后跳走,靠卸载补尾巴结算即可。
+  useStudyTimeReporter();
 
   // 实时课堂:考试中也上报在线状态(考试切屏更要盯)
   usePresence({

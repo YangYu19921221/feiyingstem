@@ -10,7 +10,7 @@ from app.models.learning import LearningProgress, StudySession, LearningRecord
 from app.models.word import WordBook, Unit
 from app.api.v1.auth import get_current_student
 from app.services.weak_words import NON_LEARNED_MODES
-from app.services import daily_words
+from app.services import daily_words, study_time
 
 router = APIRouter()
 
@@ -154,21 +154,10 @@ async def get_student_dashboard_stats(
         if streak_days >= 30:
             break
 
-    # 6. 学习总时长(分钟) - 优先从study_calendar汇总，兜底从StudySession计算
-    result = await db.execute(
-        select(func.sum(StudyCalendar.duration))
-        .where(StudyCalendar.user_id == user_id)
-    )
-    calendar_seconds = result.scalar() or 0
-
-    # 也从session的time_spent取
-    result = await db.execute(
-        select(func.sum(StudySession.time_spent))
-        .where(StudySession.user_id == user_id)
-    )
-    session_seconds = result.scalar() or 0
-
-    total_minutes = max(calendar_seconds, session_seconds) // 60
+    # 6. 学习总时长(分钟) - 走全站唯一口径(逐日 max(会话和封顶2h, min(日历,12h)) 再相加)
+    # 原先是 max(日历裸和, 会话裸和):日历侧不封顶,07-09 前的旧脏数据会原样显示
+    # (生产实测有学生首页显示 717738 分钟)
+    total_minutes = await study_time.seconds_total(db, user_id) // 60
 
     # 7. 排名百分比 (根据经验值)
     # 获取所有学生的经验值排名

@@ -17,7 +17,7 @@ from app.core.timeutil import (
 )
 from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.user import User, Class, ClassStudent
-from app.services import daily_words
+from app.services import daily_words, study_time
 
 router = APIRouter()
 
@@ -129,21 +129,15 @@ async def _vocabulary_rows(db, period, allowed):
 
 
 async def _diligence_rows(db, period, allowed):
-    """勤奋王：本周期内学习总分钟数"""
-    start, end = _period_range(period)
-    conds = [StudySession.started_at >= start, StudySession.started_at < end]
-    if allowed is not None:
-        conds.append(StudySession.user_id.in_(allowed))
-    stmt = (
-        select(
-            StudySession.user_id,
-            (func.coalesce(func.sum(StudySession.time_spent), 0) / 60).label("v"),
-        )
-        .where(and_(*conds))
-        .group_by(StudySession.user_id)
-        .order_by(func.coalesce(func.sum(StudySession.time_spent), 0).desc())
-    )
-    return [(r[0], r[1]) for r in (await db.execute(stmt)).all()]
+    """勤奋王：本周期内学习总分钟数。
+
+    走 study_time 全站唯一口径(逐日 max(会话和封顶2h, min(日历,12h)) 再相加),
+    与教师端排行榜/班级每日表同源。原先是裸 sum(StudySession.time_spent) ——
+    复习模式和中途退出的会话系统性低报,学生端榜和教师端榜对不上。
+    """
+    start_day, end_day = _period_days(period)
+    rows = await study_time.seconds_rows(db, allowed, start_day, end_day)
+    return [(uid, secs // 60) for uid, secs in rows]
 
 
 async def _accuracy_rows(db, period, allowed):
@@ -240,14 +234,11 @@ async def _get_my_period_value(db, kind, user_id, start, end) -> int:
         scores = await daily_words.words_sum_by_student(db, [user_id], first_day, last_day)
         return scores.get(user_id, 0)
     if kind == "diligence":
-        r = await db.execute(
-            select(func.coalesce(func.sum(StudySession.time_spent), 0)).where(and_(
-                StudySession.user_id == user_id,
-                StudySession.started_at >= start,
-                StudySession.started_at < end,
-            ))
-        )
-        return int((r.scalar() or 0) / 60)
+        # 与 _diligence_rows 同口径(study_time 统一口径),否则环比拿两把尺子比。
+        # start/end 是 UTC 时间戳,+8 小时才是北京日历日(同上 vocabulary 的说明)
+        first_day = (start + timedelta(hours=8)).date()
+        last_day = (end + timedelta(hours=8)).date() - timedelta(days=1)
+        return await study_time.seconds_total(db, user_id, first_day, last_day) // 60
     r = await db.execute(
         select(
             func.count(LearningRecord.id),

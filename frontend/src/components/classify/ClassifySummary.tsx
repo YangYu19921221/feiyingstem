@@ -12,7 +12,8 @@ interface ClassifySummaryProps {
   dictationResults: DictationResult[];
   fillBlankResults: FillBlankResult[];
   totalWords: number;
-  startTime: number;
+  /** 本次学习的净活动秒数(已扣发呆/切屏,口径见 hooks/useNetActiveTime) */
+  elapsedSeconds: number;
   onBack: () => void;
   mode?: 'groupSummary' | 'finalSummary';
   groupIndex?: number;
@@ -151,7 +152,7 @@ export default function ClassifySummary({
   dictationResults,
   fillBlankResults,
   totalWords,
-  startTime,
+  elapsedSeconds,
   onBack,
   mode = 'finalSummary',
   groupIndex = 0,
@@ -159,7 +160,7 @@ export default function ClassifySummary({
   onNextGroup,
   taskTargetScore,
 }: ClassifySummaryProps) {
-  const totalSeconds = Math.round((Date.now() - startTime) / 1000);
+  const totalSeconds = Math.max(0, Math.round(elapsedSeconds));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 

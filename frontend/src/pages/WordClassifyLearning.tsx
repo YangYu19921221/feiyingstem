@@ -16,6 +16,7 @@ import {
   createStudySession,
   updateStudySession,
   submitGroupExamRecord,
+  reportStudyTime,
   type WordAnswerCreate,
   type StudySessionResponse,
 } from '../api/learningRecords';
@@ -36,6 +37,7 @@ import ClassifySummary from '../components/classify/ClassifySummary';
 import ChaseBanner from '../components/classify/ChaseBanner';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
+import useNetActiveTime from '../hooks/useNetActiveTime';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
 import UnitRecapPhase from '../components/classify/recap/UnitRecapPhase';
 import { dispatchPetEvent } from '../utils/petEventBus';
@@ -137,24 +139,12 @@ const WordClassifyLearning = () => {
   const sessionWordsRef = useRef(0);
   const sessionCorrectRef = useRef(0);
   const sessionWrongRef = useRef(0);
-  const [startTime, setStartTime] = useState(Date.now());
-  // 空闲检测：无操作60秒 或 标签页隐藏 → 暂停计时
-  const isIdle = useIdleDetector();
+  // 净活动计时(全站唯一口径):发呆/切屏整段不计,含判定前的 60 秒。
+  // isIdle 同时驱动专注力提醒与在线状态,与计时同源不会打架。
+  const { idle: isIdle, netSeconds, takeDelta: takeSessionDelta } = useNetActiveTime();
   // 专注力提醒:30秒无操作先轻提醒(底部胶囊),60秒(isIdle)升级全屏拦截+提示音
   const isNudge = useIdleDetector(30_000);
-  const idleStartRef = useRef(0);
-  useEffect(() => {
-    if (isIdle) {
-      idleStartRef.current = Date.now();
-    } else if (idleStartRef.current > 0) {
-      const idleTime = Date.now() - idleStartRef.current;
-      setStartTime(prev => prev + idleTime);
-      idleStartRef.current = 0;
-    }
-  }, [isIdle]);
 
-  // 已上报给日历的净活动秒数,用于计算每次提交的增量(见 takeSessionDelta)
-  const lastReportedSecRef = useRef(0);
   // 实时课堂:心跳 + 切屏即时上报,老师端可看到在学/切出/走神状态
   usePresence({
     unitId: learningData?.unit_info.id,
@@ -162,14 +152,6 @@ const WordClassifyLearning = () => {
     idle: isIdle,
     enabled: !!learningData,
   });
-  // 取本次提交对应的增量净活动秒数:当前净时长(startTime 已扣挂机) − 上次已报。
-  // 所有增量之和 = 整场真实活动时长,不依赖逐题 time_spent。
-  const takeSessionDelta = useCallback(() => {
-    const net = Math.round((Date.now() - startTime) / 1000);
-    const delta = Math.max(0, net - lastReportedSecRef.current);
-    lastReportedSecRef.current = net;
-    return delta;
-  }, [startTime]);
 
   const [showExitDialog, setShowExitDialog] = useState(false);
 
@@ -219,6 +201,15 @@ const WordClassifyLearning = () => {
   const totalGroups = groups.length;
   const isLastGroup = currentGroupIndex >= totalGroups - 1;
   const initRef = useRef(false);
+
+  // 退出补尾巴:最后一次提交之后到离开页面这段净活动时长,原先整段丢失
+  // (学生学到半组退出很常见)。走纯时长端点,不产生学习记录。
+  const takeDeltaRef = useRef(takeSessionDelta);
+  takeDeltaRef.current = takeSessionDelta;
+  useEffect(() => () => {
+    const tail = takeDeltaRef.current();
+    if (tail > 0) reportStudyTime(tail).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (unitId && !initRef.current) {
@@ -432,8 +423,9 @@ const WordClassifyLearning = () => {
     if (isReviewRef.current) {
       demoteReviewWords(wrongRecords.map(r => r.word_id));
     }
-    // 填入实际用时
-    const elapsed = Math.round((Date.now() - startTime) / wrongRecords.length);
+    // 填入实际用时(净活动时长均摊,不含发呆/切屏;逐题 time_spent 只用于
+    // 教师端时间线回铺与质量分,日历时长走 session_seconds)
+    const elapsed = Math.round((netSeconds() * 1000) / wrongRecords.length);
     const withTime = wrongRecords.map(r => ({ ...r, time_spent: elapsed }));
     // 复习/错题模式(unit 0):/student/records 会因"单元ID 0 不存在"404,记录全丢。
     // 走专用 review-records 接口(不需要 unit_id,mastery/日历照常更新)。
@@ -447,13 +439,13 @@ const WordClassifyLearning = () => {
       records: withTime,
       session_seconds: takeSessionDelta(),  // 日历时长用净活动增量,不受逐题 time_spent 影响
     }).catch(() => {});
-  }, [unitId, startTime, takeSessionDelta]);
+  }, [unitId, netSeconds, takeSessionDelta]);
 
   // 分类各轮标"熟悉"的正确记录实时提交(教师端实时课堂词数用);
   // 复习分档升级仍在组末 saveGroupProgress 统一做,这里只落记录
   const submitCorrectRealtime = useCallback((records: WordAnswerCreate[]) => {
     if (records.length === 0 || !unitId) return;
-    const elapsed = Math.round((Date.now() - startTime) / Math.max(records.length, 1));
+    const elapsed = Math.round((netSeconds() * 1000) / Math.max(records.length, 1));
     const withTime = records.map(r => ({ ...r, time_spent: elapsed }));
     if (parseInt(unitId) === 0) {
       submitReviewRecords(withTime, takeSessionDelta()).catch(() => {});
@@ -465,7 +457,7 @@ const WordClassifyLearning = () => {
       records: withTime,
       session_seconds: takeSessionDelta(),
     }).catch(() => {});
-  }, [unitId, startTime, takeSessionDelta]);
+  }, [unitId, netSeconds, takeSessionDelta]);
 
   // 阶段1完成：分类结束 → 跳过语音校验，直接进入听写
   const handleClassifyComplete = (results: Map<number, WordCategory>) => {
@@ -591,7 +583,8 @@ const WordClassifyLearning = () => {
   const saveGroupProgress = async (dictResults: DictationResult[]) => {
     if (!learningData || !unitId) return;
 
-    const totalTime = Math.round((Date.now() - startTime) / 1000);
+    // 净活动时长(已扣发呆/切屏),同时用于会话回写与逐题均摊
+    const totalTime = netSeconds();
     const avgTime = Math.round(totalTime * 1000 / learningData.words.length);
 
     // 只提交正确记录（错题已在各阶段实时提交过，避免重复）
@@ -773,7 +766,8 @@ const WordClassifyLearning = () => {
     if (submitId) {
       submitHomeworkAttempt(submitId, {
         score: Math.round((correct / total) * 100),
-        time_spent: Math.max(1, Math.round((Date.now() - startTime) / 1000)),
+        // 作业耗时同样用净活动时长:此前是墙上时钟,发呆两小时也照记
+        time_spent: Math.max(1, netSeconds()),
         correct_count: correct,
         wrong_count: total - correct,
         total_words: total,
@@ -1131,7 +1125,7 @@ const WordClassifyLearning = () => {
                 dictationResults={dictationResults}
                 fillBlankResults={[]}
                 totalWords={currentGroupWords.length}
-                startTime={startTime}
+                elapsedSeconds={netSeconds()}
                 onBack={() => goBack()}
                 mode="groupSummary"
                 groupIndex={currentGroupIndex}
@@ -1148,7 +1142,7 @@ const WordClassifyLearning = () => {
                 dictationResults={finalSummaryData.allDictation}
                 fillBlankResults={[]}
                 totalWords={finalSummaryData.totalWords}
-                startTime={startTime}
+                elapsedSeconds={netSeconds()}
                 onBack={() => goBack()}
                 mode="finalSummary"
               />

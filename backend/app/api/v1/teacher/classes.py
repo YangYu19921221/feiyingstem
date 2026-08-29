@@ -24,7 +24,7 @@ from app.api.v1.teacher._permissions import (
 from app.services.auth_service import get_password_hash, generate_random_password
 from app.services.org_service import check_student_quota
 from app.services.weak_words import mastery_buckets, NON_LEARNED_MODES, SCORING_MODES
-from app.services import daily_words
+from app.services import daily_words, study_time
 
 router = APIRouter()
 
@@ -523,31 +523,10 @@ async def get_class_daily_stats(
     )
     sess_map = {r.user_id: r.cnt for r in sess_result.all()}
 
-    # 批量查询「当天真实学习时长」= 各学习会话 time_spent 之和。
-    # 不用 StudyCalendar.duration:它由前端每题上报的 time_spent 累加,classify 模式
-    # 一个词多条记录会把时长乘以词数,严重虚高(实测有学生显示成 14 小时)。
-    # 会话时长按单次时段记,不受多记录放大;再对单会话封顶 2 小时,兜底极端挂机。
-    SESSION_CAP_SEC = 7200
-    dur_result = await db.execute(
-        select(
-            StudySession.user_id,
-            func.sum(func.min(StudySession.time_spent, SESSION_CAP_SEC)).label('dur'),
-        )
-        .where(and_(
-            StudySession.user_id.in_(student_ids),
-            StudySession.started_at >= day_start,
-            StudySession.started_at < day_end,
-        ))
-        .group_by(StudySession.user_id)
-    )
-    sess_duration_map = {r.user_id: int(r.dur or 0) for r in dur_result.all()}
-    # 时长口径升级:优先用 StudyCalendar.duration(07-09起为前端净活动时长,
-    # 已扣挂机、覆盖复习/错题;会话口径在复习模式和中途退出时系统性低估)。
-    # 取两者较大值,单日封顶12小时防异常。
-    for uid_, cal_ in cal_map.items():
-        cal_dur = int(cal_.duration or 0)
-        if cal_dur > sess_duration_map.get(uid_, 0):
-            sess_duration_map[uid_] = min(cal_dur, 12 * 3600)
+    # 「当天真实学习时长」走 services/study_time 全站唯一口径:
+    # 逐日 max(会话和封顶2h, min(日历,12h))。此前这里是同一算法的本地手写副本
+    # (还有一份在 teacher/analytics.py),三份副本已经漂过一轮,现在收敛到一处。
+    sess_duration_map = await study_time.seconds_by_student(db, student_ids, dt, dt)
 
     # 复习进度（批量）—— 按拼写 lower(word) 去重,与学生端记忆曲线口径一致
     # (单元隔离后同拼写多条 mastery,若按 word_id 全算会虚高且和学生端对不上)
@@ -783,14 +762,6 @@ async def get_class_student_detail(
     today = _local_today()
     day_start, day_end = _local_day_utc_range(today)
 
-    # 当日: 日历
-    cal_result = await db.execute(
-        select(StudyCalendar).where(
-            and_(StudyCalendar.user_id == student_id, StudyCalendar.study_date == today)
-        )
-    )
-    cal = cal_result.scalar_one_or_none()
-
     # 当日: 学习记录
     rec_result = await db.execute(
         select(
@@ -826,17 +797,18 @@ async def get_class_student_detail(
     weak_words_count = buckets.get("weak", 0)
     pending_words_count = buckets.get("pending", 0)
 
-    # 累计: StudyCalendar 聚合 (1 query)
+    # 累计: StudyCalendar 聚合 (1 query)。天数/最后活跃日取日历,
+    # 时长走 study_time 统一口径 —— 裸 sum(duration) 会把 07-09 前的旧脏数据
+    # 原样显示(生产实测有学生累计 11962 小时)
     cal_agg_result = await db.execute(
         select(
             func.count(StudyCalendar.id).label('days'),
-            func.sum(StudyCalendar.duration).label('time'),
             func.max(StudyCalendar.study_date).label('last_date'),
         ).where(StudyCalendar.user_id == student_id)
     )
     cal_agg = cal_agg_result.first()
     total_study_days = cal_agg.days or 0
-    total_study_time = cal_agg.time or 0
+    total_study_time = await study_time.seconds_total(db, student_id)
     last_active = datetime.combine(cal_agg.last_date, datetime.min.time()) if cal_agg.last_date else None
 
     # 累计: LearningRecord 聚合 (1 query)
@@ -869,7 +841,8 @@ async def get_class_student_detail(
         "username": student.username,
         "full_name": student.full_name or student.username,
         "today_words": trend_map.get(today, 0),
-        "today_duration": cal.duration if cal else 0,
+        # 今日时长走统一口径(与累计、班级每日表同源),不裸读日历行
+        "today_duration": await study_time.seconds_on_day(db, student_id, today),
         "today_accuracy": round(today_accuracy, 1),
         "today_sessions": today_sessions,
         "total_words_learned": total_words_learned,
@@ -954,15 +927,15 @@ async def export_class_students(
         correct_map[r.uid] = r.correct or 0
         acc_map[r.uid] = round((r.correct or 0) / r.total * 100, 1) if r.total else 0.0
 
-    # 区间学习量:天数/时长仍从 StudyCalendar 取(那两列可信),
-    # 但**学词数不用 sum(words_learned)** —— 那个字段历史上是跨批次累加的,
+    # 区间学习量:天数/最后活跃日从 StudyCalendar 取,
+    # **学词数不用 sum(words_learned)** —— 那个字段历史上是跨批次累加的,
     # 再跨天求和会双重虚高;这张表要发给家长,不能虚高。改走 daily_words 实算:
     # 逐天去重再相加(当天重复不算,跨天可算)。
+    # **时长也不用 sum(duration)** —— 同理会带进 07-09 前的旧脏数据,走 study_time。
     cal_rows = (await db.execute(
         select(
             StudyCalendar.user_id.label('uid'),
             func.count(StudyCalendar.id).label('days'),
-            func.sum(StudyCalendar.duration).label('time'),
             func.max(StudyCalendar.study_date).label('last_date'),
         ).where(and_(
             StudyCalendar.user_id.in_(student_ids),
@@ -971,12 +944,11 @@ async def export_class_students(
         )).group_by(StudyCalendar.user_id)
     )).all()
     days_map: dict[int, int] = {}
-    time_map: dict[int, int] = {}
     last_map: dict[int, str] = {}
     for r in cal_rows:
         days_map[r.uid] = r.days or 0
-        time_map[r.uid] = r.time or 0
         last_map[r.uid] = r.last_date.isoformat() if r.last_date else ""
+    time_map = await study_time.seconds_by_student(db, student_ids, start_d, end_d)
     words_map = await daily_words.words_sum_by_student(db, student_ids, start_d, end_d)
 
     # 累计掌握度/薄弱词(全时段,供参考列):按 lower(word) 去重取最高档,
@@ -1049,13 +1021,13 @@ async def get_student_ai_advice(
     cal_result = await db.execute(
         select(
             func.count(StudyCalendar.id).label('days'),
-            func.sum(StudyCalendar.duration).label('time'),
             func.max(StudyCalendar.study_date).label('last'),
         ).where(StudyCalendar.user_id == student_id)
     )
     c = cal_result.first()
     study_days = c.days or 0
-    study_time = c.time or 0
+    # 变量名不能叫 study_time:会遮蔽同名的 services.study_time 模块
+    study_secs = await study_time.seconds_total(db, student_id)
     last_date = c.last
 
     # 各题型错误率
@@ -1125,7 +1097,7 @@ async def get_student_ai_advice(
     elif days_since_last > 3:
         suggestions.append(f"已 {days_since_last} 天未学习，建议保持每日学习习惯")
 
-    avg_daily_time = (study_time / study_days) if study_days > 0 else 0
+    avg_daily_time = (study_secs / study_days) if study_days > 0 else 0
     if avg_daily_time < 300 and study_days > 0:  # 少于5分钟
         suggestions.append(f"平均每天学习仅 {avg_daily_time // 60} 分钟，建议每天至少学习15-20分钟")
 

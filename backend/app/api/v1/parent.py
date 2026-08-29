@@ -4,7 +4,7 @@
 - 家长看自己孩子的完整学习数据看板
 """
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,7 +21,7 @@ from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.word import Word
 from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
 from app.services.weak_words import top_wrong_words, mastery_buckets, NON_LEARNED_MODES
-from app.services import daily_words
+from app.services import daily_words, study_time
 
 router = APIRouter()
 
@@ -218,16 +218,10 @@ async def _build_child_summary(db: AsyncSession, student_id: int) -> ChildSummar
 
     today, tomorrow = local_today_utc_range()  # 北京今天的 UTC 区间
 
-    # 今日学习分钟
-    res = await db.execute(
-        select(func.coalesce(func.sum(StudySession.time_spent), 0))
-        .where(and_(
-            StudySession.user_id == student_id,
-            StudySession.started_at >= today,
-            StudySession.started_at < tomorrow,
-        ))
-    )
-    today_minutes = int((res.scalar() or 0) / 60)
+    # 今日学习分钟:走全站统一口径(日历与会话逐日取较大值,各自封顶)。
+    # 原来是裸 sum(StudySession.time_spent) —— 复习模式和中途退出的会话系统性低报,
+    # 家长看到的时长比老师端小一截
+    today_minutes = await study_time.seconds_on_day(db, student_id, local_today()) // 60
 
     # 今日学习单词数:走全站统一口径(distinct lower(word) + 排除 classify)。
     # 原来是 distinct(word_id) 且不排除 classify —— 家长看到的数会比老师看到的大。
@@ -358,21 +352,13 @@ async def parent_child_dashboard(
     week_end, _ = local_day_utc_range(_monday + timedelta(days=7))
     last_week_start, _ = local_day_utc_range(_monday - timedelta(days=7))
 
-    # 今日 / 累计
-    res = await db.execute(
-        select(func.coalesce(func.sum(StudySession.time_spent), 0))
-        .where(and_(StudySession.user_id == student_id, StudySession.started_at >= today, StudySession.started_at < tomorrow))
-    )
-    today_minutes = int((res.scalar() or 0) / 60)
+    # 今日 / 累计:时长走全站统一口径(逐日取较大值再相加,各自封顶)
+    today_minutes = await study_time.seconds_on_day(db, student_id, _today_d) // 60
 
     # 同上:统一口径,与教师端「今日学词」一致
     today_words = await daily_words.words_total(db, [student_id], today, tomorrow)
 
-    res = await db.execute(
-        select(func.coalesce(func.sum(StudySession.time_spent), 0))
-        .where(StudySession.user_id == student_id)
-    )
-    total_minutes = int((res.scalar() or 0) / 60)
+    total_minutes = await study_time.seconds_total(db, student_id) // 60
 
     # 已学/已掌握走全站唯一口径(按拼写去重、排除只做过分类识别的词);
     # 原先已学用 count(WordMastery.id) 数原始行,单元隔离下同拼写多 word_id 会虚高,
@@ -397,12 +383,9 @@ async def parent_child_dashboard(
             break
 
     # 本周/上周对比
-    async def period_stats(start: datetime, end: datetime) -> tuple[int, int, int]:
-        r1 = await db.execute(
-            select(func.coalesce(func.sum(StudySession.time_spent), 0))
-            .where(and_(StudySession.user_id == student_id, StudySession.started_at >= start, StudySession.started_at < end))
-        )
-        minutes = int((r1.scalar() or 0) / 60)
+    async def period_stats(start: datetime, end: datetime, start_day: date, end_day: date) -> tuple[int, int, int]:
+        # 时长走全站统一口径(逐日取较大值);end_day 是闭区间的最后一天
+        minutes = await study_time.seconds_total(db, student_id, start_day, end_day) // 60
         # 按拼写去重 + 排除 classify(全站口径)。保留 is_correct:这里的语义是
         # "答对过的词",与下面词汇王排名必须完全同口径,否则会出现
         # "我的词数比第一名多却排第二"
@@ -428,8 +411,10 @@ async def parent_child_dashboard(
         accuracy = int((row[1] or 0) * 100 / row[0]) if row and row[0] else 0
         return minutes, words, accuracy
 
-    this_week_minutes, this_week_words, this_week_accuracy = await period_stats(week_start, week_end)
-    last_week_minutes, last_week_words, last_week_accuracy = await period_stats(last_week_start, week_start)
+    this_week_minutes, this_week_words, this_week_accuracy = await period_stats(
+        week_start, week_end, _monday, _monday + timedelta(days=6))
+    last_week_minutes, last_week_words, last_week_accuracy = await period_stats(
+        last_week_start, week_start, _monday - timedelta(days=7), _monday - timedelta(days=1))
 
     # 系统全部学生中的排名
     async def rank_info(metric_query, my_value: int) -> RankInfo:
@@ -438,6 +423,15 @@ async def parent_child_dashboard(
         my_rank = None
         for rank, row in enumerate(rows, start=1):
             if row[0] == student_id:
+                my_rank = rank
+                break
+        return RankInfo(rank=my_rank, total=len(rows), value=my_value)
+
+    def rank_from_rows(rows: list[tuple[int, int]], my_value: int) -> RankInfo:
+        """已在 Python 侧排好序的 [(uid, 值)] 直接定名次(口径与显示值同源)。"""
+        my_rank = None
+        for rank, (uid, _v) in enumerate(rows, start=1):
+            if uid == student_id:
                 my_rank = rank
                 break
         return RankInfo(rank=my_rank, total=len(rows), value=my_value)
@@ -459,14 +453,11 @@ async def parent_child_dashboard(
     )
     rank_vocabulary = await rank_info(vocab_query, this_week_words)
 
-    # 勤奋王（本周）
-    diligence_query = (
-        select(StudySession.user_id, func.coalesce(func.sum(StudySession.time_spent), 0).label("v"))
-        .where(and_(StudySession.started_at >= week_start, StudySession.started_at < week_end))
-        .group_by(StudySession.user_id)
-        .order_by(func.coalesce(func.sum(StudySession.time_spent), 0).desc())
-    )
-    rank_diligence = await rank_info(diligence_query, this_week_minutes)
+    # 勤奋王（本周）—— 名次与上面 this_week_minutes 同源(study_time 统一口径),
+    # 原先名次按裸 sum(StudySession.time_spent) 排、数值按另一套显示,会自相矛盾
+    diligence_rows = await study_time.seconds_rows(
+        db, None, _monday, _monday + timedelta(days=6))
+    rank_diligence = rank_from_rows(diligence_rows, this_week_minutes)
 
     # 精准王（本周，>=20 题）
     accuracy_query = (
@@ -481,25 +472,13 @@ async def parent_child_dashboard(
     )
     rank_accuracy = await rank_info(accuracy_query, this_week_accuracy)
 
-    # 30 天热力图
-    heatmap_start = today - timedelta(days=29)
-    res = await db.execute(
-        select(
-            func.date(StudySession.started_at),
-            func.coalesce(func.sum(StudySession.time_spent), 0),
-        )
-        .where(and_(
-            StudySession.user_id == student_id,
-            StudySession.started_at >= heatmap_start,
-            StudySession.started_at < tomorrow,
-        ))
-        .group_by(func.date(StudySession.started_at))
-    )
-    heatmap_map = {str(r[0]): int((r[1] or 0) / 60) for r in res.all()}
-    heatmap = []
-    for i in range(30):
-        d = (heatmap_start + timedelta(days=i)).date()
-        heatmap.append(HeatmapDay(date=str(d), minutes=heatmap_map.get(str(d), 0)))
+    # 30 天热力图(时长走统一口径,与上方今日/本周同源)
+    heatmap_days = [_today_d - timedelta(days=29 - i) for i in range(30)]
+    heat_secs = await study_time.seconds_by_day(db, student_id, heatmap_days)
+    heatmap = [
+        HeatmapDay(date=str(d), minutes=heat_secs.get(d, 0) // 60)
+        for d in heatmap_days
+    ]
 
     # 薄弱词 TOP 10:只算计分模式的真实错误、按拼写去重,与教师端/周报同源
     # (原来读 word_mastery.wrong_count,分类自评的"我不认识"也算错,给家长报假错题)

@@ -9,7 +9,7 @@ import { ArrowLeft, CheckCircle2, FilePenLine, RefreshCw } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
 import { reportStudyTime } from '../api/learningRecords';
-import useIdleDetector from '../hooks/useIdleDetector';
+import useNetActiveTime from '../hooks/useNetActiveTime';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
 import { useAudio } from '../hooks/useAudio';
@@ -27,29 +27,17 @@ export default function SentenceFillPractice() {
   const [completed, setCompleted] = useState(false);
   const [results, setResults] = useState<FillBlankResult[]>([]);
 
-  // ── 学习时长上报:独立句子填空页此前不计时,按净活动时长计入学习日历 ──
-  const isIdle = useIdleDetector();
-  const startTimeRef = useRef(Date.now());
-  const idleStartRef = useRef(0);
-  useEffect(() => {
-    if (isIdle) {
-      idleStartRef.current = Date.now();
-    } else if (idleStartRef.current > 0) {
-      startTimeRef.current += Date.now() - idleStartRef.current; // 挂机时段不计入
-      idleStartRef.current = 0;
-    }
-  }, [isIdle]);
-  const lastReportedSecRef = useRef(0);
+  // ── 学习时长上报:独立句子填空页按净活动时长计入学习日历 ──
+  // 计时口径统一在 useNetActiveTime(发呆/切屏整段不计,含判定前的 60 秒)
+  const { takeDelta } = useNetActiveTime();
   const reportDelta = useCallback(() => {
-    let start = startTimeRef.current;
-    if (idleStartRef.current > 0) start += Date.now() - idleStartRef.current;
-    const net = Math.round((Date.now() - start) / 1000);
-    const delta = net - lastReportedSecRef.current;
-    lastReportedSecRef.current = net;
+    const delta = takeDelta();
     if (delta > 0) reportStudyTime(delta).catch(() => {});
-  }, []);
+  }, [takeDelta]);
   useEffect(() => { if (completed) reportDelta(); }, [completed, reportDelta]);
-  useEffect(() => () => reportDelta(), [reportDelta]);
+  const reportRef = useRef(reportDelta);
+  reportRef.current = reportDelta;
+  useEffect(() => () => reportRef.current(), []);
 
   const loadLearningData = useCallback(async () => {
     if (!unitId) return;

@@ -16,7 +16,7 @@ from app.models.word import Word
 from app.core.timeutil import local_today, local_day_utc_range
 from app.api.v1.auth import get_current_user
 from app.services.weak_words import SCORING_MODES, NON_LEARNED_MODES, mastery_buckets
-from app.services import daily_words
+from app.services import daily_words, study_time
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -120,12 +120,10 @@ async def get_learning_overview(
     )
     total_study_days = result.scalar() or 0
 
-    # 总学习时长
-    result = await db.execute(
-        select(func.sum(StudyCalendar.duration))
-        .where(StudyCalendar.user_id == current_user.id)
-    )
-    total_duration = result.scalar() or 0
+    # 总学习时长:走全站唯一口径(逐日 max(会话和封顶2h, min(日历,12h)) 再相加)。
+    # 原先是 sum(StudyCalendar.duration) 裸和不封顶 —— 2026-07-09 前的旧脏数据
+    # (逐题累加 × 词数)会原样显示,生产实测有学生被显示成 11962 小时。
+    total_duration = await study_time.seconds_total(db, current_user.id)
 
     # 平均每天学习单词数
     avg_daily_words = total_words / total_study_days if total_study_days > 0 else 0
@@ -153,14 +151,8 @@ async def get_learning_overview(
     today_d = local_today()
     today_start, tomorrow_start = local_day_utc_range(today_d)
 
-    cal_today_res = await db.execute(
-        select(StudyCalendar).where(
-            StudyCalendar.user_id == current_user.id,
-            StudyCalendar.study_date == today_d,
-        )
-    )
-    cal_today = cal_today_res.scalar_one_or_none()
-    today_duration = cal_today.duration if cal_today else 0
+    # 今日时长同样走统一口径(日历与会话逐日取较大值),不再手写"没日历行就退回会话累加"
+    today_duration = await study_time.seconds_on_day(db, current_user.id, today_d)
 
     # 今日词数按 distinct(lower(word)) 从 LearningRecord 实算,与 daily-plan/教师端统一口径;
     # StudyCalendar.words_learned 历史上被 classify 多记录放大过,不再直接展示。
@@ -177,17 +169,6 @@ async def get_learning_overview(
         )
     )
     today_words = int(words_today_res.scalar() or 0)
-
-    # 没打卡日历的话时长退化到 StudySession 累加（兼容旧数据 / 学习中尚未结算的情况）
-    if not cal_today:
-        sess_sum_res = await db.execute(
-            select(func.coalesce(func.sum(StudySession.time_spent), 0)).where(
-                StudySession.user_id == current_user.id,
-                StudySession.started_at >= today_start,
-                StudySession.started_at < tomorrow_start,
-            )
-        )
-        today_duration = int(sess_sum_res.scalar() or 0)
 
     sess_cnt_res = await db.execute(
         select(func.count(StudySession.id)).where(
@@ -241,39 +222,29 @@ async def get_daily_stats(
 ):
     """获取每日学习统计(最近N天)"""
 
-    start_date = date.today() - timedelta(days=days-1)
-
-    result = await db.execute(
-        select(StudyCalendar)
-        .where(and_(
-            StudyCalendar.user_id == current_user.id,
-            StudyCalendar.study_date >= start_date
-        ))
-        .order_by(StudyCalendar.study_date)
-    )
-    records = result.scalars().all()
+    start_date = local_today() - timedelta(days=days-1)
 
     # 填充所有日期(包括没有学习的日期)。
     # 词数走 daily_words 实算(与本文件 /overview 的今日词数、教师端班级表同源),
     # 不读 StudyCalendar.words_learned —— 那个字段 2026-07-27 前跨批次累加,
-    # 会让"今日"这根柱子和上方"今日学词"卡片对不上。时长仍用日历(可信)。
+    # 会让"今日"这根柱子和上方"今日学词"卡片对不上。
+    # 时长走 study_time 实算(逐日封顶),不裸读日历 —— 07-09 前的旧脏数据会把
+    # 柱子拉到几千小时,整张图的纵轴就废了。
     daily_stats = []
-    current_date = start_date
-    records_dict = {r.study_date: r for r in records}
 
     all_days = []
     d = start_date
-    while d <= date.today():
+    while d <= local_today():
         all_days.append(d)
         d += timedelta(days=1)
     words_map = await daily_words.words_by_day(db, current_user.id, all_days)
+    dur_map = await study_time.seconds_by_day(db, current_user.id, all_days)
 
     for current_date in all_days:
-        record = records_dict.get(current_date)
         daily_stats.append(DailyStats(
             date=current_date.isoformat(),
             words_learned=words_map.get(current_date, 0),
-            duration=record.duration if record else 0,
+            duration=dur_map.get(current_date, 0),
             accuracy=0.0  # 暂时为0,可以从learning_records计算
         ))
 
@@ -519,16 +490,6 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
         days_in_month = cal.monthrange(year, month)[1]
         last_day = date(year, month, days_in_month)
 
-        result = await db.execute(
-            select(StudyCalendar)
-            .where(and_(
-                StudyCalendar.user_id == user_id,
-                StudyCalendar.study_date >= first_day,
-                StudyCalendar.study_date <= last_day,
-            ))
-        )
-        records = {r.study_date: r for r in result.scalars().all()}
-
         # 查当月新掌握的单词数（mastery_level >= 3 且 updated_at 在当月）
         mastered_result = await db.execute(
             select(func.count(WordMastery.id))
@@ -542,9 +503,10 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
         total_mastered = mastered_result.scalar() or 0
 
         # 词数实算(daily_words),不读 words_learned:该字段历史上跨批次累加,
-        # 趋势图会整体抬高。时长仍取日历。
+        # 趋势图会整体抬高。时长走 study_time 逐日封顶,不裸读日历(同理会抬高)。
         month_days = [date(year, month, day) for day in range(1, days_in_month + 1)]
         wmap = await daily_words.words_by_day(db, user_id, month_days)
+        dmap = await study_time.seconds_by_day(db, user_id, month_days)
 
         data = []
         total_words = 0
@@ -552,9 +514,8 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
         study_days = 0
         for d in month_days:
             day = d.day
-            rec = records.get(d)
             words = wmap.get(d, 0)
-            dur = rec.duration if rec else 0
+            dur = dmap.get(d, 0)
             total_words += words
             total_duration += dur
             if words > 0:
@@ -570,23 +531,15 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
         prev_month = month - 1 if month > 1 else 12
         prev_year = year if month > 1 else year - 1
         prev_days = cal.monthrange(prev_year, prev_month)[1]
-        # 环比:时长仍从日历求和,词数走 daily_words「逐天去重再相加」
-        # (与本期 total_words 同口径,否则环比是拿两套尺子比)
-        prev_result = await db.execute(
-            select(func.sum(StudyCalendar.duration))
-            .where(and_(
-                StudyCalendar.user_id == user_id,
-                StudyCalendar.study_date >= date(prev_year, prev_month, 1),
-                StudyCalendar.study_date <= date(prev_year, prev_month, prev_days),
-            ))
-        )
-        prev_duration_sum = prev_result.scalar()
+        # 环比两项都与本期同口径(时长 study_time、词数 daily_words 逐天去重再相加),
+        # 否则环比是拿两套尺子比
+        prev_start = date(prev_year, prev_month, 1)
+        prev_end = date(prev_year, prev_month, prev_days)
+        prev_duration = await study_time.seconds_total(db, user_id, prev_start, prev_end)
         prev_words_map = await daily_words.words_sum_by_student(
-            db, [user_id], date(prev_year, prev_month, 1), date(prev_year, prev_month, prev_days)
+            db, [user_id], prev_start, prev_end
         )
-        prev_row = (prev_words_map.get(user_id, 0), prev_duration_sum)
-        prev_words = prev_row[0] or 0
-        prev_duration = prev_row[1] or 0
+        prev_words = prev_words_map.get(user_id, 0)
 
         return {
             "period": "daily",
@@ -616,16 +569,17 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
         )
         all_records = result.scalars().all()
 
-        # 按月份分组。词数实算(逐天去重再按月累加),不用 words_learned 字段
-        year_words = await daily_words.words_by_day(
-            db, user_id, [r.study_date for r in all_records]
-        )
+        # 按月份分组。词数实算(逐天去重再按月累加),不用 words_learned 字段;
+        # 时长走 study_time 逐日封顶,不裸读 rec.duration(07-09 前旧脏数据会抬高整月)
+        year_days = [r.study_date for r in all_records]
+        year_words = await daily_words.words_by_day(db, user_id, year_days)
+        year_durs = await study_time.seconds_by_day(db, user_id, year_days)
         monthly_data = defaultdict(lambda: {"words": 0, "duration": 0, "days": 0})
         for rec in all_records:
             m = rec.study_date.month
             w = year_words.get(rec.study_date, 0)
             monthly_data[m]["words"] += w
-            monthly_data[m]["duration"] += rec.duration
+            monthly_data[m]["duration"] += year_durs.get(rec.study_date, 0)
             if w > 0:
                 monthly_data[m]["days"] += 1
 
@@ -664,16 +618,10 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
                 "duration_minutes": round(md["duration"] / 60, 1),
             })
 
-        # 查上一年数据做同比(词数走 daily_words,与本期同口径)
-        prev_result = await db.execute(
-            select(func.sum(StudyCalendar.duration))
-            .where(and_(
-                StudyCalendar.user_id == user_id,
-                StudyCalendar.study_date >= date(year - 1, 1, 1),
-                StudyCalendar.study_date <= date(year - 1, 12, 31),
-            ))
+        # 查上一年数据做同比(时长/词数都与本期同口径)
+        prev_duration = await study_time.seconds_total(
+            db, user_id, date(year - 1, 1, 1), date(year - 1, 12, 31)
         )
-        prev_duration = prev_result.scalar() or 0
         prev_words = (await daily_words.words_sum_by_student(
             db, [user_id], date(year - 1, 1, 1), date(year - 1, 12, 31)
         )).get(user_id, 0)
@@ -702,21 +650,22 @@ async def fetch_word_trends(db: AsyncSession, user_id: int, period: str, year: i
         )
         all_records = result.scalars().all()
 
-        # 词数实算(逐天去重再按年累加),不用 words_learned 字段
-        all_words = await daily_words.words_by_day(
-            db, user_id, [r.study_date for r in all_records]
-        )
+        # 词数实算(逐天去重再按年累加),不用 words_learned 字段;
+        # 时长走 study_time 逐日封顶,不裸读 rec.duration
+        all_days = [r.study_date for r in all_records]
+        all_words = await daily_words.words_by_day(db, user_id, all_days)
+        all_durs = await study_time.seconds_by_day(db, user_id, all_days)
         yearly_data = defaultdict(lambda: {"words": 0, "duration": 0, "days": 0})
         for rec in all_records:
             y = rec.study_date.year
             w = all_words.get(rec.study_date, 0)
             yearly_data[y]["words"] += w
-            yearly_data[y]["duration"] += rec.duration
+            yearly_data[y]["duration"] += all_durs.get(rec.study_date, 0)
             if w > 0:
                 yearly_data[y]["days"] += 1
 
         if not yearly_data:
-            current_year = date.today().year
+            current_year = local_today().year
             yearly_data[current_year] = {"words": 0, "duration": 0, "days": 0}
 
         data = []

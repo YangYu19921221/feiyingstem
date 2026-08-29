@@ -6,6 +6,7 @@ import { ArrowLeft, LoaderCircle } from 'lucide-react';
 import { generateUnitCloze, type UnitClozeResponse } from '../api/cloze';
 import { startLearning } from '../api/progress';
 import { createLearningRecords } from '../api/learningRecords';
+import useNetActiveTime from '../hooks/useNetActiveTime';
 import type { CompletionNavState } from '../hooks/usePracticeState';
 import ClozeBank from '../components/practice/ClozeBank';
 import SentenceCard from '../components/practice/SentenceCard';
@@ -25,7 +26,8 @@ const FillBlankPractice = () => {
   const [unitName, setUnitName] = useState<string | undefined>();
   const [totalUnitWords, setTotalUnitWords] = useState<number | undefined>();
   const [phase, setPhase] = useState<Phase>('loading');
-  const [startTs, setStartTs] = useState(0);
+  // 净活动计时(发呆/切屏整段不计),口径见 hooks/useNetActiveTime
+  const { takeDelta } = useNetActiveTime();
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
@@ -58,7 +60,6 @@ const FillBlankPractice = () => {
           setUnitName(unitData.unit_info?.name);
           setTotalUnitWords(unitData.words?.length);
         }
-        setStartTs(Date.now());
         setPhase('filling');
       } catch (e) {
         console.error('加载选词填空失败:', e);
@@ -111,7 +112,8 @@ const FillBlankPractice = () => {
   const handleCheck = async () => {
     if (!data || !unitId) return;
     setPhase('checked');
-    const timeSpent = Math.round((Date.now() - startTs) / 1000);
+    // 净活动时长(已扣发呆/切屏),口径见 hooks/useNetActiveTime
+    const timeSpent = takeDelta();
     createLearningRecords({
       unit_id: parseInt(unitId),
       learning_mode: 'fillblank',
@@ -121,6 +123,7 @@ const FillBlankPractice = () => {
         time_spent: Math.round((timeSpent * 1000) / data.items.length),
         learning_mode: 'fillblank',
       })),
+      session_seconds: timeSpent,  // 此前不传,日历时长只能退回按逐题累加
     }).catch(() => {});
 
     const weakWords = data.items

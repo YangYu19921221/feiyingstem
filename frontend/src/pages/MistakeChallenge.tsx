@@ -6,6 +6,7 @@ import ColoredPhonetic from '../components/ColoredPhonetic';
 import FullscreenVictory from '../components/challenge-fx/FullscreenVictory';
 import { noSuggestInputProps } from '../utils/noSuggestInput';
 import { usePreventCopy } from '../hooks/usePreventCopy';
+import useStudyTimeReporter from '../hooks/useStudyTimeReporter';
 import {
   getChallengeLevels,
   submitChallengeLevel,
@@ -42,6 +43,8 @@ const MistakeChallenge = () => {
   const [inputValue, setInputValue] = useState('');
   const [resultData, setResultData] = useState<ResultData | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // 错题闯关此前一秒都不进学习日历
+  useStudyTimeReporter(phase === 'result');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 即时反馈

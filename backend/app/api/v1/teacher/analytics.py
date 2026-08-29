@@ -28,7 +28,7 @@ from app.services.weak_words import (
     NON_LEARNED_MODES,
     mastery_buckets,
 )
-from app.services import daily_words
+from app.services import daily_words, study_time
 
 router = APIRouter()
 
@@ -37,9 +37,10 @@ router = APIRouter()
 # SCORING_MODES 已上移到 services/weak_words.py 做全站唯一真源,这里只做导入。
 
 # 时长封顶:单会话 2 小时(兜极端挂机)、单日 12 小时(兜日历脏值)。
-# 与 teacher/classes.py 的 get_class_daily_stats 同值,改一处要改两处。
-SESSION_CAP_SEC = 7200
-DAY_CAP_SEC = 12 * 3600
+# 真源在 services/study_time.py,这里只做别名导入供既有引用使用 ——
+# 原先是两份手写副本(本文件与 teacher/classes.py),注释还写着"改一处要改两处"。
+SESSION_CAP_SEC = study_time.SESSION_CAP_SEC
+DAY_CAP_SEC = study_time.DAY_CAP_SEC
 
 
 # ========================================
@@ -150,12 +151,9 @@ async def get_class_overview(
     total_records = row.total_records or 0
     average_accuracy = (total_correct / total_records * 100) if total_records > 0 else 0
 
-    # 6. 统计总学习时长
-    result = await db.execute(
-        select(func.sum(StudyCalendar.duration))
-        .where(StudyCalendar.user_id.in_(my_student_ids))
-    )
-    total_study_seconds = result.scalar() or 0
+    # 6. 统计总学习时长(走统一口径,裸 sum(duration) 会带进 07-09 前的旧脏数据)
+    per_student = await study_time.seconds_by_student(db, my_student_ids)
+    total_study_seconds = sum(per_student.values())
     total_study_hours = total_study_seconds / 3600
 
     average_study_time_per_student = total_study_hours / total_students if total_students > 0 else 0
@@ -240,23 +238,25 @@ async def _build_students_stats(
         for uid, b in (await mastery_buckets(db, uid_set)).items()
     }
 
-    # --- 聚合2: StudyCalendar 统计 (学习天数/总时长/最后学习日期) ---
+    # --- 聚合2: StudyCalendar 统计 (学习天数/最后学习日期) ---
+    # 时长不在这里聚合:裸 sum(duration) 会带进 07-09 前的旧脏数据,
+    # 走 services/study_time 统一口径单独算(见下)
     result = await db.execute(
         select(
             StudyCalendar.user_id,
             func.count(StudyCalendar.id).label("study_days"),
-            func.sum(StudyCalendar.duration).label("total_duration"),
             func.max(StudyCalendar.study_date).label("last_date"),
         )
         .where(StudyCalendar.user_id.in_(uid_set))
         .group_by(StudyCalendar.user_id)
     )
+    duration_map = await study_time.seconds_by_student(db, uid_set)
     calendar_map = {}
     for row in result.all():
         last_dt = datetime.combine(row.last_date, datetime.min.time()) if row.last_date else None
         calendar_map[row.user_id] = {
             "study_days": row.study_days or 0,
-            "total_duration": row.total_duration or 0,
+            "total_duration": duration_map.get(row.user_id, 0),
             "last_date": last_dt,
         }
 
@@ -995,47 +995,12 @@ async def _period_ranking_scores(db, student_ids, metric, period, start, end) ->
         scores = await daily_words.words_sum_by_student(db, list(student_ids), start_day, end_day)
         return {uid: float(v) for uid, v in scores.items()}
     if metric == "study_time":
-        # 时长与每日数据表逐日同源:每天取 max(封顶会话和, 日历净活动时长),再跨天相加。
-        # 不能用裸 sum(StudySession.time_spent) —— 复习模式和中途退出的会话系统性低报
-        # (生产实测有学生排行榜 18 分钟、每日表逐日加总 13 小时);也不能只用日历,
-        # 07-09 之前的 duration 是逐题累加的虚高值。口径见 teacher/classes.py 的
-        # get_class_daily_stats,老师手动把每日表加一遍必须能对上排行榜。
+        # 时长走 services/study_time 全站唯一口径(逐日 max(封顶会话和, min(日历,12h))
+        # 再相加)。此前这里是该算法的本地手写副本,与 teacher/classes.py 里另一份
+        # 并存;老师手动把每日表加一遍必须能对上排行榜,所以两处必须同源。
         start_day, end_day = _ranking_period_days(period)
-        uid_list = list(student_ids)
-        sess_day = func.date(StudySession.started_at, "+8 hours")
-        sess_rows = (await db.execute(
-            select(
-                StudySession.user_id,
-                sess_day.label("d"),
-                func.sum(func.min(StudySession.time_spent, SESSION_CAP_SEC)).label("dur"),
-            ).where(and_(
-                StudySession.user_id.in_(uid_list),
-                StudySession.started_at >= start,
-                StudySession.started_at < end,
-            )).group_by(StudySession.user_id, sess_day)
-        )).all()
-        per_day: dict[tuple[int, str], int] = {
-            (r.user_id, str(r.d)): int(r.dur or 0) for r in sess_rows
-        }
-        cal_rows = (await db.execute(
-            select(
-                StudyCalendar.user_id,
-                StudyCalendar.study_date,
-                StudyCalendar.duration,
-            ).where(and_(
-                StudyCalendar.user_id.in_(uid_list),
-                StudyCalendar.study_date >= start_day,
-                StudyCalendar.study_date <= end_day,
-            ))
-        )).all()
-        for r in cal_rows:
-            key = (r.user_id, r.study_date.isoformat())
-            cal_dur = min(int(r.duration or 0), DAY_CAP_SEC)
-            if cal_dur > per_day.get(key, 0):
-                per_day[key] = cal_dur
-        totals: dict[int, int] = {}
-        for (uid, _day), secs in per_day.items():
-            totals[uid] = totals.get(uid, 0) + secs
+        totals = await study_time.seconds_by_student(
+            db, list(student_ids), start_day, end_day)
         return {uid: round(v / 3600, 2) for uid, v in totals.items()}
     # accuracy:只算计分模式(与本文件"累计"档、学生端 /overview 全站一致)。
     # 原先不过滤,classify 自评和 review 复习记录(大量 is_correct=0)全被计入,
