@@ -6,8 +6,10 @@ import {
   listCodes,
   disableCode,
   deleteCode,
+  getBookGroups,
+  type BookGroup,
+  type BookStage,
 } from '../api/subscription';
-import { getTeacherWordBooks } from '../api/teacher';
 import { Ban, Check, Clock3, Search, Ticket, Trash2, X } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
@@ -37,11 +39,12 @@ interface CodeItem {
   grant_type: string;
   grant_days?: number | null;
   grant_times?: number | null;
-}
-
-interface BookOption {
-  id: number;
-  name: string;
+  // 一码多书
+  scope_kind?: string;
+  scope_series?: string | null;
+  scope_stage?: BookStage | null;
+  book_count?: number;
+  books?: { id: number; name: string }[];
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -49,6 +52,14 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   used: { label: '已使用', color: 'bg-blue-100 text-blue-700' },
   expired: { label: '已过期', color: 'bg-gray-100 text-gray-500' },
   disabled: { label: '已禁用', color: 'bg-red-100 text-red-600' },
+};
+
+// 包月常用档:运营 90% 的场景是这几个,免得每次手敲
+const DAYS_PRESETS = [30, 90, 180, 365];
+
+// 学段中文名(与后端 services/book_stage.STAGE_LABELS 对应)
+const STAGE_LABELS: Record<string, string> = {
+  primary: '小学', junior: '初中', senior: '高中', other: '其他',
 };
 
 const AdminSubscriptions = () => {
@@ -61,7 +72,6 @@ const AdminSubscriptions = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [genCount, setGenCount] = useState(10);
-  const [genBookId, setGenBookId] = useState<number>(0);
   const [genNote, setGenNote] = useState('');
   const [genGrantType, setGenGrantType] = useState('permanent'); // 卡种: permanent/period/times
   const [genGrantDays, setGenGrantDays] = useState(30);  // 包月默认 30 天
@@ -70,18 +80,46 @@ const AdminSubscriptions = () => {
   const [genResult, setGenResult] = useState<CodeItem[]>([]);
   const [copied, setCopied] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [books, setBooks] = useState<BookOption[]>([]);
+  // 选书:分组 → 学段 → 勾书(勾选是最终真源,分组/学段只是筛选器)
+  const [groups, setGroups] = useState<BookGroup[]>([]);
+  const [genSeries, setGenSeries] = useState<string>('');
+  const [genStage, setGenStage] = useState<BookStage | ''>('');
+  const [pickedIds, setPickedIds] = useState<number[]>([]);
+  // 列表里展开看某张码开了哪些书
+  const [expandedCode, setExpandedCode] = useState<number | null>(null);
 
-  const fetchBooks = useCallback(async () => {
+  const fetchGroups = useCallback(async () => {
     try {
-      const data = await getTeacherWordBooks();
-      const bookList = data.map(b => ({ id: b.id, name: b.name }));
-      setBooks(bookList);
-      if (bookList.length > 0) {
-        setGenBookId(prev => prev === 0 ? bookList[0].id : prev);
-      }
-    } catch { toast.error('单词本加载失败，请刷新重试'); }
+      const res: any = await getBookGroups();
+      const gs: BookGroup[] = res.groups || [];
+      setGroups(gs);
+      // 默认落在第一个有书的分组,省一次点击
+      if (gs.length > 0) setGenSeries(prev => (prev === '' ? gs[0].series : prev));
+    } catch { toast.error('单词本分组加载失败，请刷新重试'); }
   }, []);
+
+  // 当前分组下的学段档位
+  const currentGroup = groups.find(g => g.series === genSeries);
+  const stageList = currentGroup?.stages || [];
+  // 当前「分组+学段」筛出来的候选书(学段留空=该分组全部)
+  const candidateBooks = genStage
+    ? (stageList.find(s => s.stage === genStage)?.books || [])
+    : stageList.flatMap(s => s.books);
+
+  // 切分组/学段时,把已勾选里不在候选中的剔掉 —— 否则会悄悄发出别的分组的书
+  useEffect(() => {
+    const allowed = new Set(candidateBooks.map(b => b.id));
+    setPickedIds(prev => {
+      const next = prev.filter(id => allowed.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genSeries, genStage, groups]);
+
+  const togglePick = (id: number) =>
+    setPickedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const pickAll = () => setPickedIds(candidateBooks.map(b => b.id));
+  const pickNone = () => setPickedIds([]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -110,28 +148,35 @@ const AdminSubscriptions = () => {
   // 换关键词/换筛选后回到第 1 页,否则停在第 3 页会显示空列表让人以为没搜到
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus]);
 
-  useEffect(() => { fetchBooks(); fetchStats(); }, [fetchBooks, fetchStats]);
+  useEffect(() => { fetchGroups(); fetchStats(); }, [fetchGroups, fetchStats]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
   const handleGenerate = async () => {
-    if (!genBookId) { toast.warning('请先选择要绑定的单词本'); return; }
+    if (pickedIds.length === 0) { toast.warning('请先勾选要开通的单词本'); return; }
     if (genCount < 1 || genCount > 100) { toast.warning('生成数量需在 1～100 之间'); return; }
     setGenerating(true);
     setGenResult([]);
     try {
       const payload: any = {
         count: genCount,
-        book_id: genBookId,
+        book_ids: pickedIds,
         batch_note: genNote || undefined,
         grant_type: genGrantType,
       };
       if (genGrantType === 'period') payload.grant_days = genGrantDays;
       if (genGrantType === 'times') payload.grant_times = genGrantTimes;
+      // 发码条件留痕(仅展示/追溯):只在按整档勾选时记,免得写个误导的条件
+      if (genSeries) payload.scope_series = genSeries;
+      if (genStage && pickedIds.length === candidateBooks.length) payload.scope_stage = genStage;
       const res: any = await generateCodes(payload);
       setGenResult(res);
       await Promise.all([fetchStats(), fetchCodes()]);
-      toast.success(`已生成 ${res.length} 个兑换码`);
-    } catch { toast.error('生成兑换码失败，请检查参数后重试'); }
+      toast.success(
+        pickedIds.length > 1
+          ? `已生成 ${res.length} 个兑换码，每个可开通 ${pickedIds.length} 本单词本`
+          : `已生成 ${res.length} 个兑换码`
+      );
+    } catch (error) { toast.error(getErrorMessage(error, '生成兑换码失败，请检查参数后重试')); }
     finally { setGenerating(false); }
   };
 
@@ -166,10 +211,15 @@ const AdminSubscriptions = () => {
     catch { toast.warning('当前浏览器不允许复制，请手动选择兑换码'); }
   };
 
-  const getBookName = (bookId: number, bookName?: string) => {
-    if (bookName) return bookName;
-    const b = books.find((b) => b.id === bookId);
-    return b?.name || `书#${bookId}`;
+  /** 一张码开了什么:单书显示书名,多书显示「人教版·小学 14 本」 */
+  const describeScope = (c: CodeItem) => {
+    const n = c.book_count ?? 1;
+    if (n <= 1) return c.book_name || c.books?.[0]?.name || `书#${c.book_id}`;
+    const parts: string[] = [];
+    if (c.scope_series) parts.push(c.scope_series);
+    if (c.scope_stage) parts.push(STAGE_LABELS[c.scope_stage] || c.scope_stage);
+    const prefix = parts.join('·');
+    return prefix ? `${prefix} ${n} 本` : `${n} 本单词本`;
   };
 
   const formatGrantType = (c: CodeItem) => {
@@ -180,11 +230,13 @@ const AdminSubscriptions = () => {
   };
 
   const exportCSV = () => {
-    const header = '兑换码,绑定书籍,卡种,创建人,状态,创建时间,使用时间,备注';
+    const header = '兑换码,绑定书籍,本数,卡种,创建人,状态,创建时间,使用时间,备注';
     const rows = codes.map((c) =>
       [
         c.code,
-        getBookName(c.book_id, c.book_name),
+        // CSV 里书名可能含逗号,整列加引号包住,否则列会错位
+        `"${describeScope(c).replace(/"/g, '""')}"`,
+        c.book_count ?? 1,
         formatGrantType(c),
         c.created_by_name || `#${c.created_by}`,
         STATUS_MAP[c.status]?.label || c.status,
@@ -231,7 +283,192 @@ const AdminSubscriptions = () => {
 
         {/* 生成兑换码 */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">生成兑换码</h2>
+          <h2 className="text-lg font-bold text-gray-800 mb-1">生成兑换码</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            一张卡可以开一批书：先选单词本分组，再选学段，然后勾选要开通的书。
+          </p>
+
+          {/* ① 选书:分组 → 学段 → 勾书 */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 mb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="min-w-[180px]">
+                <label className="block text-sm text-gray-600 mb-1">单词本分组</label>
+                <select
+                  value={genSeries}
+                  onChange={(e) => { setGenSeries(e.target.value); setGenStage(''); }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                >
+                  {groups.length === 0 && <option value="">暂无单词本</option>}
+                  {groups.map((g) => (
+                    <option key={g.series || '__none__'} value={g.series}>
+                      {g.series_label}（{g.total} 本）
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm text-gray-600 mb-1">学段</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGenStage('')}
+                    className={`min-h-9 rounded-lg border px-3 text-sm ${
+                      genStage === ''
+                        ? 'border-[#3976a9] bg-[#3976a9] text-white'
+                        : 'border-slate-300 bg-white text-slate-600 hover:border-[#3976a9]'
+                    }`}
+                  >
+                    全部（{stageList.reduce((n, s) => n + s.count, 0)} 本）
+                  </button>
+                  {stageList.map((s) => (
+                    <button
+                      key={s.stage}
+                      type="button"
+                      onClick={() => setGenStage(s.stage)}
+                      className={`min-h-9 rounded-lg border px-3 text-sm ${
+                        genStage === s.stage
+                          ? 'border-[#3976a9] bg-[#3976a9] text-white'
+                          : 'border-slate-300 bg-white text-slate-600 hover:border-[#3976a9]'
+                      }`}
+                      title={s.stage === 'other' ? '校本教材/大学/未填学段的书都在这里' : undefined}
+                    >
+                      {s.label}（{s.count} 本）
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 勾书 */}
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm text-gray-600">
+                  勾选要开通的书
+                  <span className="ml-2 font-semibold text-[#3976a9]">
+                    已选 {pickedIds.length} / {candidateBooks.length} 本
+                  </span>
+                </span>
+                <span className="flex gap-2">
+                  <button type="button" onClick={pickAll}
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:border-[#3976a9]">
+                    全选
+                  </button>
+                  <button type="button" onClick={pickNone}
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:border-[#3976a9]">
+                    清空
+                  </button>
+                </span>
+              </div>
+              {candidateBooks.length === 0 ? (
+                <p className="rounded-lg bg-white px-3 py-4 text-center text-sm text-slate-400">
+                  这个分组/学段下暂无单词本
+                </p>
+              ) : (
+                <div className="grid max-h-52 grid-cols-1 gap-1.5 overflow-y-auto rounded-lg bg-white p-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {candidateBooks.map((b) => {
+                    const on = pickedIds.includes(b.id);
+                    return (
+                      <label
+                        key={b.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm ${
+                          on ? 'border-[#3976a9] bg-[#3976a9]/[0.06]' : 'border-transparent hover:bg-slate-50'
+                        }`}
+                      >
+                        <input type="checkbox" checked={on} onChange={() => togglePick(b.id)}
+                          className="h-4 w-4 accent-[#3976a9]" />
+                        <span className="truncate text-slate-700" title={b.name}>{b.name}</span>
+                        {b.grade_level && (
+                          <span className="ml-auto shrink-0 text-[11px] text-slate-400">{b.grade_level}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ② 卡种与时长 */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 mb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="min-w-[150px]">
+                <label className="block text-sm text-gray-600 mb-1">卡种</label>
+                <select
+                  value={genGrantType}
+                  onChange={(e) => setGenGrantType(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                >
+                  <option value="permanent">永久（一直可学）</option>
+                  <option value="period">包月（按天计时）</option>
+                  <option value="times">次卡（按学习天计次）</option>
+                </select>
+              </div>
+              {genGrantType === 'period' && (
+                <div className="flex-1">
+                  <label className="block text-sm text-gray-600 mb-1">
+                    使用时长（天）—— 从学生兑换那天开始算
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {DAYS_PRESETS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setGenGrantDays(d)}
+                        className={`min-h-9 rounded-lg border px-3 text-sm ${
+                          genGrantDays === d
+                            ? 'border-[#3976a9] bg-[#3976a9] text-white'
+                            : 'border-slate-300 bg-white text-slate-600 hover:border-[#3976a9]'
+                        }`}
+                      >
+                        {d === 30 ? '1个月' : d === 90 ? '3个月' : d === 180 ? '半年' : '1年'}
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1} max={3650}
+                      value={genGrantDays}
+                      onChange={(e) => setGenGrantDays(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-24 px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                    />
+                    <span className="text-sm text-slate-500">天</span>
+                  </div>
+                </div>
+              )}
+              {genGrantType === 'times' && (
+                <div className="flex-1">
+                  <label className="block text-sm text-gray-600 mb-1">
+                    可用天数 —— 只在学习的那天扣 1 天，没进不扣
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[7, 15, 30, 60].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setGenGrantTimes(d)}
+                        className={`min-h-9 rounded-lg border px-3 text-sm ${
+                          genGrantTimes === d
+                            ? 'border-[#3976a9] bg-[#3976a9] text-white'
+                            : 'border-slate-300 bg-white text-slate-600 hover:border-[#3976a9]'
+                        }`}
+                      >
+                        {d} 天
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1} max={1000}
+                      value={genGrantTimes}
+                      onChange={(e) => setGenGrantTimes(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-24 px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                    />
+                    <span className="text-sm text-slate-500">天</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ③ 数量/备注/生成 */}
           <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-stretch sm:items-end">
             <div>
               <label className="block text-sm text-gray-600 mb-1">数量</label>
@@ -243,75 +480,28 @@ const AdminSubscriptions = () => {
                 className="w-full sm:w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               />
             </div>
-            <div className="min-w-[200px]">
-              <label className="block text-sm text-gray-600 mb-1">绑定单词本</label>
-              <select
-                value={genBookId}
-                onChange={(e) => setGenBookId(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
-              >
-                {books.length === 0 && <option value={0}>暂无单词本</option>}
-                {books.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
             <div className="flex-1 min-w-[200px]">
               <label className="block text-sm text-gray-600 mb-1">备注</label>
               <input
                 type="text"
                 value={genNote}
                 onChange={(e) => setGenNote(e.target.value)}
-                placeholder="可选备注"
+                placeholder="可选备注，如「秋季班·人教小学」"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
               />
             </div>
-            <div className="min-w-[140px]">
-              <label className="block text-sm text-gray-600 mb-1">卡种</label>
-              <select
-                value={genGrantType}
-                onChange={(e) => setGenGrantType(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
-              >
-                <option value="permanent">永久</option>
-                <option value="period">包月</option>
-                <option value="times">次卡</option>
-              </select>
-            </div>
-            {genGrantType === 'period' && (
-              <div className="min-w-[110px]">
-                <label className="block text-sm text-gray-600 mb-1">有效天数</label>
-                <input
-                  type="number"
-                  min={1} max={3650}
-                  value={genGrantDays}
-                  onChange={(e) => setGenGrantDays(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
-                />
-              </div>
-            )}
-            {genGrantType === 'times' && (
-              <div className="min-w-[110px]">
-                <label className="block text-sm text-gray-600 mb-1">可用天数</label>
-                <input
-                  type="number"
-                  min={1} max={1000}
-                  value={genGrantTimes}
-                  onChange={(e) => setGenGrantTimes(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
-                />
-              </div>
-            )}
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleGenerate}
-              disabled={generating || !genBookId}
+              disabled={generating || pickedIds.length === 0}
               className={`px-6 py-2 rounded-lg font-medium text-white ${
-                generating || !genBookId ? 'bg-gray-400' : 'bg-[#3976a9] hover:bg-[#2e628f]'
+                generating || pickedIds.length === 0 ? 'bg-gray-400' : 'bg-[#3976a9] hover:bg-[#2e628f]'
               }`}
             >
-              {generating ? '生成中...' : '生成'}
+              {generating ? '生成中...'
+                : pickedIds.length > 1 ? `生成（每张开 ${pickedIds.length} 本）`
+                : '生成'}
             </motion.button>
           </div>
 
@@ -396,7 +586,7 @@ const AdminSubscriptions = () => {
               {codes.length === 0 ? <div className="py-8 text-center text-sm text-slate-400">暂无兑换码</div> : codes.map((c) => (
                 <article key={c.id} className="rounded-lg border border-slate-200 p-3">
                   <div className="flex items-center justify-between gap-3"><code className="font-mono text-xs font-semibold text-slate-800">{c.code}</code><span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_MAP[c.status]?.color || ''}`}>{STATUS_MAP[c.status]?.label || c.status}</span></div>
-                  <div className="mt-2 text-xs text-slate-500">{getBookName(c.book_id, c.book_name)} · {formatGrantType(c)} · {c.created_by_name || `#${c.created_by}`} · 创建于 {new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
+                  <div className="mt-2 text-xs text-slate-500">{describeScope(c)} · {formatGrantType(c)} · {c.created_by_name || `#${c.created_by}`} · 创建于 {new Date(c.created_at).toLocaleDateString('zh-CN')}</div>
                   <div className="mt-3 flex gap-3 border-t border-slate-100 pt-2 text-xs font-semibold"><button onClick={() => copySingleCode(c.code, c.id)} className="text-[#3976a9]">{copiedId === c.id ? '已复制' : '复制'}</button>{c.status === 'unused' && <button onClick={() => handleDisable(c.id)} className="text-orange-600">禁用</button>}{c.status !== 'used' && <button onClick={() => handleDelete(c)} className="text-red-600">删除</button>}</div>
                 </article>
               ))}
@@ -420,9 +610,27 @@ const AdminSubscriptions = () => {
                   <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                     <td className="py-2.5 pr-4 font-mono text-xs">{c.code}</td>
                     <td className="py-2.5 pr-4">
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                        {getBookName(c.book_id, c.book_name)}
-                      </span>
+                      {(c.book_count ?? 1) > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCode(expandedCode === c.id ? null : c.id)}
+                          className="rounded bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 hover:bg-indigo-100"
+                          title="点击查看这张卡开了哪些书"
+                        >
+                          {describeScope(c)} {expandedCode === c.id ? '▴' : '▾'}
+                        </button>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
+                          {describeScope(c)}
+                        </span>
+                      )}
+                      {expandedCode === c.id && c.books && (
+                        <div className="mt-1 whitespace-normal text-[11px] leading-relaxed text-slate-500">
+                          {c.books.map(b => b.name).join('、')}
+                          {(c.book_count ?? 0) > c.books.length &&
+                            `… 等 ${c.book_count} 本`}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600 text-xs">
                       {formatGrantType(c)}
@@ -475,7 +683,8 @@ const AdminSubscriptions = () => {
                 ))}
                 {codes.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-gray-400">
+                    {/* 表头是 8 列,colSpan 必须跟着,否则空态文字不居中、右侧留白 */}
+                    <td colSpan={8} className="py-8 text-center text-gray-400">
                       暂无兑换码
                     </td>
                   </tr>

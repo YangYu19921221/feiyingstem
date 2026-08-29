@@ -285,6 +285,11 @@ CREATE TABLE book_assignments (
     assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     deadline DATETIME,
     is_completed BOOLEAN DEFAULT 0,
+    -- 卡种(2026-08-21): NULL/permanent=永久(老师直接分配的行都是 NULL,判活恒 True)
+    grant_type VARCHAR(10),
+    expires_at DATETIME,             -- period: 到期时间(UTC)
+    times_left INTEGER,              -- times: 剩余可用天数
+    last_consumed_date VARCHAR(10),  -- times: 最近扣减的北京日 YYYY-MM-DD
     FOREIGN KEY (book_id) REFERENCES word_books(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -373,18 +378,39 @@ CREATE INDEX idx_exam_papers_user ON exam_papers(user_id);
 CREATE TABLE redemption_codes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code VARCHAR(19) UNIQUE NOT NULL, -- XXXX-XXXX-XXXX-XXXX
-    book_id INTEGER NOT NULL REFERENCES word_books(id), -- 绑定的单词本ID
+    book_id INTEGER NOT NULL REFERENCES word_books(id), -- 主书(一码多书时=第一本,展示用)
     status VARCHAR(20) DEFAULT 'unused' CHECK(status IN ('unused', 'used', 'expired', 'disabled')),
     created_by INTEGER NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     code_expires_at TIMESTAMP NOT NULL, -- 兑换码本身过期时间
     used_by INTEGER REFERENCES users(id),
     used_at TIMESTAMP,
-    batch_note VARCHAR(200)
+    batch_note VARCHAR(200),
+    -- 卡种(2026-08-21): permanent=永久 / period=包月按天 / times=次卡按学习天
+    grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent',
+    grant_days INTEGER,   -- period: 有效天数
+    grant_times INTEGER,  -- times: 可用天数
+    -- 一码多书(2026-08-29): 真实范围在 redemption_code_books;
+    -- 下面三列只用于展示与追溯(列表显示「人教版·小学 14 本」)
+    scope_kind VARCHAR(10) NOT NULL DEFAULT 'book',  -- book | group
+    scope_series VARCHAR(30),   -- 发码时选的单词本分组
+    scope_stage VARCHAR(10)     -- 发码时选的学段 primary/junior/senior/other
 );
 
 CREATE INDEX idx_redemption_codes_code ON redemption_codes(code);
 CREATE INDEX idx_redemption_codes_status ON redemption_codes(status);
+
+-- 一张兑换码覆盖的单词本明细(一码多书)。单书码在这里也有 1 行,读取侧同构。
+-- 学生兑换时按这张表的**当时内容**逐本发授权(兑换时快照):之后往分组新加的书,
+-- 已兑换的学生拿不到 —— 避免权益边界随运营上架而无声膨胀。
+CREATE TABLE redemption_code_books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code_id INTEGER NOT NULL REFERENCES redemption_codes(id) ON DELETE CASCADE,
+    book_id INTEGER NOT NULL REFERENCES word_books(id)
+);
+
+CREATE UNIQUE INDEX uq_code_book ON redemption_code_books(code_id, book_id);
+CREATE INDEX idx_code_books_code ON redemption_code_books(code_id);
 
 -- ========================================
 -- 初始数据 (示例成就)

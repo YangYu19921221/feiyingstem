@@ -467,11 +467,51 @@ async def init_db():
             "ALTER TABLE book_assignments ADD COLUMN expires_at DATETIME",
             "ALTER TABLE book_assignments ADD COLUMN times_left INTEGER",
             "ALTER TABLE book_assignments ADD COLUMN last_consumed_date VARCHAR(10)",
+            # 一码多书(2026-08-29): 一张码可按「分组×学段」批量开一批书。
+            # 这三列只用于展示与追溯(列表显示「人教版·小学 14 本」、事后查发码条件),
+            # 真实范围在 redemption_code_books 明细表;book_id 保留写主书,存量行不动。
+            "ALTER TABLE redemption_codes ADD COLUMN scope_kind VARCHAR(10) NOT NULL DEFAULT 'book'",
+            "ALTER TABLE redemption_codes ADD COLUMN scope_series VARCHAR(30)",
+            "ALTER TABLE redemption_codes ADD COLUMN scope_stage VARCHAR(10)",
         ]:
             try:
                 await conn.execute(text(_sql))
             except Exception:
                 pass
+
+        # ===== 一码多书明细表(2026-08-29) =====
+        # 建表 + 唯一约束 + 索引。CREATE TABLE IF NOT EXISTS 本身幂等,
+        # 但仍包 try:老库若因权限/锁失败不能挡住启动(其余功能不依赖它)。
+        for _sql in [
+            """CREATE TABLE IF NOT EXISTS redemption_code_books (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   code_id INTEGER NOT NULL,
+                   book_id INTEGER NOT NULL,
+                   FOREIGN KEY (code_id) REFERENCES redemption_codes(id) ON DELETE CASCADE,
+                   FOREIGN KEY (book_id) REFERENCES word_books(id)
+               )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_code_book ON redemption_code_books(code_id, book_id)",
+            "CREATE INDEX IF NOT EXISTS idx_code_books_code ON redemption_code_books(code_id)",
+        ]:
+            try:
+                await conn.execute(text(_sql))
+            except Exception:
+                pass
+
+        # 存量 1133 张单书码回填明细表:让新旧码在读取侧完全同构,
+        # 兑换逻辑不必写「明细表为空则退回 book_id」的分叉。幂等(NOT EXISTS 去重)。
+        try:
+            await conn.execute(text("""
+                INSERT INTO redemption_code_books (code_id, book_id)
+                SELECT rc.id, rc.book_id FROM redemption_codes rc
+                WHERE rc.book_id IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM redemption_code_books b WHERE b.code_id = rc.id
+                  )
+            """))
+        except Exception:
+            pass
+
 
         # ===== 教材版本分类: 预置选项 + 存量回填(均幂等) =====
         # 预置仅当表空时插入(机构后续自定义/排序不被启动覆盖)

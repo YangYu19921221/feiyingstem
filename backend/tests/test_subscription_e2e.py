@@ -16,9 +16,9 @@ from app.services import subscription_service
 async def test_times_card_full_flow(db_session: AsyncSession):
     """次卡完整流程:生成码 → 兑换 → 显示剩余 → 学习扣减 → 再次显示"""
     # 1. 管理员生成 7 天次卡
-    admin = User(id=1, username='admin', role='admin', full_name='管理员')
+    admin = User(id=1, username='admin', email='admin@e.com', hashed_password='x', role='admin', full_name='管理员')
     db_session.add(admin)
-    student = User(id=2, username='stu', role='student', full_name='学生A')
+    student = User(id=2, username='stu', email='stu@e.com', hashed_password='x', role='student', full_name='学生A')
     db_session.add(student)
     book = WordBook(id=1, name='测试书', is_public=True)
     db_session.add(book)
@@ -73,9 +73,9 @@ async def test_times_card_full_flow(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_period_card_full_flow(db_session: AsyncSession):
     """包月卡完整流程:生成 30 天码 → 兑换 → 显示到期日 → 续期"""
-    admin = User(id=3, username='admin2', role='admin', full_name='管理员2')
+    admin = User(id=3, username='admin2', email='admin2@e.com', hashed_password='x', role='admin', full_name='管理员2')
     db_session.add(admin)
-    student = User(id=4, username='stu2', role='student', full_name='学生B')
+    student = User(id=4, username='stu2', email='stu2@e.com', hashed_password='x', role='student', full_name='学生B')
     db_session.add(student)
     book = WordBook(id=2, name='测试书2', is_public=True)
     db_session.add(book)
@@ -124,9 +124,9 @@ async def test_period_card_full_flow(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_times_card_last_day_boundary(db_session: AsyncSession):
     """次卡最后一天边界:扣到 0 后当天仍判活"""
-    admin = User(id=5, username='admin3', role='admin', full_name='管理员3')
+    admin = User(id=5, username='admin3', email='admin3@e.com', hashed_password='x', role='admin', full_name='管理员3')
     db_session.add(admin)
-    student = User(id=6, username='stu3', role='student', full_name='学生C')
+    student = User(id=6, username='stu3', email='stu3@e.com', hashed_password='x', role='student', full_name='学生C')
     db_session.add(student)
     book = WordBook(id=3, name='测试书3', is_public=True)
     db_session.add(book)

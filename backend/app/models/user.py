@@ -160,6 +160,42 @@ class RedemptionCode(Base):
     grant_days = Column(Integer, nullable=True)    # period: 有效天数(如 30/90)
     grant_times = Column(Integer, nullable=True)   # times: 可用天数(次数)
 
+    # ===== 一码多书(2026-08-29) =====
+    # 真实覆盖范围在 redemption_code_books 明细表,这三列只用于**展示与追溯**
+    # (列表里显示「人教版·小学 14 本」、事后查这批码当初是按什么条件发的),
+    # 不参与判活、不参与兑换逻辑 —— 判活一律逐本走 book_assignments。
+    # book_id 保留且继续写主书,存量 1133 行不动、旧代码路径不炸。
+    scope_kind = Column(String(10), nullable=False, default="book", server_default="book")  # book | group
+    scope_series = Column(String(30), nullable=True)   # 发码时选的单词本分组
+    scope_stage = Column(String(10), nullable=True)    # 发码时选的学段(见 services/book_stage)
+
+    books = relationship(
+        "RedemptionCodeBook", back_populates="code",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+
+
+class RedemptionCodeBook(Base):
+    """一张兑换码覆盖的单词本明细(一码多书)。
+
+    单书码 = 这里 1 行,与多书码同构,兑换逻辑不必分叉。
+    学生兑换时按**这张表的当时内容**逐本发授权(= 兑换时快照):
+    之后往该分组新加的书,已兑换的学生拿不到 —— 2026-08-29 用户明确选的语义,
+    避免权益边界随运营上架而无声膨胀。
+    """
+    __tablename__ = "redemption_code_books"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code_id = Column(Integer, ForeignKey('redemption_codes.id', ondelete='CASCADE'),
+                     nullable=False, index=True)
+    book_id = Column(Integer, ForeignKey('word_books.id'), nullable=False)
+
+    code = relationship("RedemptionCode", back_populates="books")
+
+    __table_args__ = (
+        UniqueConstraint('code_id', 'book_id', name='uq_code_book'),
+    )
+
 
 class ParentStudentLink(Base):
     """家长-学生绑定表（一对多：一个家长可绑多个孩子，一个孩子可被多家长绑）"""

@@ -9,7 +9,9 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.user import User, RedemptionCode, RedemptionCodeStatus
+from app.models.user import (
+    User, RedemptionCode, RedemptionCodeBook, RedemptionCodeStatus,
+)
 from app.models.word import WordBook
 from app.api.v1.auth import get_current_admin_or_org_admin
 from app.schemas.subscription import (
@@ -18,9 +20,56 @@ from app.schemas.subscription import (
     RedemptionCodeListResponse,
     SubscriptionStatsResponse,
 )
-from app.services import subscription_service
+from app.services import subscription_service, book_stage
 
 router = APIRouter()
+
+
+@router.get("/book-groups")
+async def list_book_groups(
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """发码表单用的「分组 → 学段 → 书」三级目录。
+
+    多租户由 tenancy 过滤器自动罩住(WordBook 是 shared_nullable 锚点:
+    机构看到平台共享 + 自建,平台 admin 看全部),这里不手写 org 条件。
+
+    学段是从 grade_level 推导的(真源 services/book_stage),生产数据里有 27 本
+    归不进小学/初中/高中(校本教材/大学/空),它们落在「其他」档且**可以正常发码**。
+    """
+    rows = (await db.execute(
+        select(WordBook.id, WordBook.name, WordBook.series, WordBook.grade_level)
+        .order_by(WordBook.series, WordBook.grade_level, WordBook.name)
+    )).all()
+
+    # series → stage → books
+    by_series: dict[str, dict[str, list]] = {}
+    for r in rows:
+        series = r.series or ""      # 空串代表「未分组」,前端显示成"未分组"
+        stage = book_stage.stage_of(r.grade_level)
+        by_series.setdefault(series, {}).setdefault(stage, []).append({
+            "id": r.id, "name": r.name, "grade_level": r.grade_level,
+        })
+
+    out = []
+    for series in sorted(by_series, key=lambda s: (s == "", s)):
+        stages = by_series[series]
+        out.append({
+            "series": series,
+            "series_label": series or "未分组",
+            "total": sum(len(v) for v in stages.values()),
+            "stages": [
+                {
+                    "stage": st,
+                    "label": book_stage.stage_label(st),
+                    "count": len(stages[st]),
+                    "books": stages[st],
+                }
+                for st in book_stage.STAGE_ORDER if st in stages
+            ],
+        })
+    return {"groups": out}
 
 
 @router.post("/generate", response_model=list[RedemptionCodeResponse])
@@ -29,15 +78,29 @@ async def generate_codes(
     current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """批量生成兑换码。
+    """批量生成兑换码(支持一码多书)。
 
     机构管理员: 发码总量与学生配额对等——累计已发(未禁用)不得超过 student_quota,
     防止用兑换码绕过名额;删除/禁用的码归还额度。平台 admin 不限。
+    配额按**码张数**计,不按 码×书数 —— 一张卡开几本书是权益厚度,不是名额。
     """
-    # 检查单词本是否存在(org_admin 受租户过滤: 只能选平台共享库或本机构自建)
-    book = await db.get(WordBook, req.book_id)
-    if not book:
-        raise HTTPException(status_code=400, detail="指定的单词本不存在")
+    # 目标书集合:book_ids 优先,单 book_id 是旧调用形态
+    want_ids = list(dict.fromkeys(req.book_ids or ([req.book_id] if req.book_id else [])))
+    if not want_ids:
+        raise HTTPException(status_code=400, detail="请至少选择一本单词本")
+
+    # 逐本校验存在且**当前身份可见**(经 tenancy 过滤,org_admin 拿不到别家的书);
+    # 用一条 IN 查询,不要按 id 循环 db.get —— 200 本会发 200 条 SQL
+    found = (await db.execute(
+        select(WordBook.id, WordBook.name).where(WordBook.id.in_(want_ids))
+    )).all()
+    name_by_id = {r.id: r.name for r in found}
+    missing = [i for i in want_ids if i not in name_by_id]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"以下单词本不存在或无权使用: {missing}",
+        )
 
     if current_user.role == "org_admin":
         from app.services.org_service import get_org
@@ -61,21 +124,23 @@ async def generate_codes(
         db=db,
         admin_id=current_user.id,
         count=req.count,
-        book_id=req.book_id,
+        book_ids=want_ids,
         batch_note=req.batch_note,
         grant_type=req.grant_type,
         grant_days=req.grant_days,
         grant_times=req.grant_times,
+        scope_series=req.scope_series,
+        scope_stage=req.scope_stage,
     )
 
-    # 为响应添加 book_name
+    books_payload = [{"id": i, "name": name_by_id[i]} for i in want_ids]
     result = []
     for code in codes:
         code_dict = {
             "id": code.id,
             "code": code.code,
             "book_id": code.book_id,
-            "book_name": book.name,
+            "book_name": name_by_id.get(code.book_id),
             "status": code.status,
             "created_by": code.created_by,
             "created_by_name": current_user.full_name or current_user.username,
@@ -87,6 +152,11 @@ async def generate_codes(
             "grant_type": code.grant_type or "permanent",
             "grant_days": code.grant_days,
             "grant_times": code.grant_times,
+            "scope_kind": code.scope_kind or "book",
+            "scope_series": code.scope_series,
+            "scope_stage": code.scope_stage,
+            "book_count": len(want_ids),
+            "books": books_payload,
         }
         result.append(code_dict)
     return result
@@ -161,9 +231,33 @@ async def list_codes(
         for uid, full_name, username in creators.all():
             creator_name_map[uid] = full_name or username
 
+    # 一码多书: 一次查出本页所有码的书明细(按 code_id 分组),不要按码循环发 SQL。
+    # 存量单书码已由启动迁移回填明细表,所以这里对新旧码同构;
+    # 万一某行没回填成(老库迁移失败),下面用 book_id 兜底。
+    detail_rows = []
+    if codes:
+        detail_rows = (await db.execute(
+            select(RedemptionCodeBook.code_id, RedemptionCodeBook.book_id)
+            .where(RedemptionCodeBook.code_id.in_([c.id for c in codes]))
+        )).all()
+    books_by_code: dict[int, list[int]] = {}
+    for cid, bid in detail_rows:
+        books_by_code.setdefault(cid, []).append(bid)
+
+    # 明细里的书名也要一并解析(多书码的书不止 code.book_id 那一本)
+    all_book_ids = set(book_ids) | {b for v in books_by_code.values() for b in v}
+    if all_book_ids - set(book_name_map):
+        more = await db.execute(
+            select(WordBook.id, WordBook.name)
+            .where(WordBook.id.in_(all_book_ids - set(book_name_map)))
+        )
+        for bid, bname in more.all():
+            book_name_map[bid] = bname
+
     # 构造响应，添加 book_name
     code_responses = []
     for code in codes:
+        bids = books_by_code.get(code.id) or ([code.book_id] if code.book_id else [])
         code_responses.append(RedemptionCodeResponse(
             id=code.id,
             code=code.code,
@@ -180,6 +274,13 @@ async def list_codes(
             grant_type=code.grant_type or "permanent",
             grant_days=code.grant_days,
             grant_times=code.grant_times,
+            scope_kind=code.scope_kind or "book",
+            scope_series=code.scope_series,
+            scope_stage=code.scope_stage,
+            book_count=len(bids),
+            # 只回前 8 本:一张卡可能开 200 本,整列表全塞会把响应撑大;
+            # 前端显示"共 N 本"+展开看前几本足够核对
+            books=[{"id": b, "name": book_name_map.get(b, "未知")} for b in bids[:8]],
         ))
 
     return RedemptionCodeListResponse(total=total, codes=code_responses)

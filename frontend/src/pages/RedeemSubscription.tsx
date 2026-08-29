@@ -17,6 +17,9 @@ const RedeemSubscription = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  // 一码多书:兑换成功后把拿到的书与"已拥有未重复开通"的部分显示出来
+  const [gotBooks, setGotBooks] = useState<{ id: number; name: string }[]>([]);
+  const [skippedNotes, setSkippedNotes] = useState<string[]>([]);
 
   // 自动格式化兑换码输入
   const handleCodeChange = (value: string) => {
@@ -42,7 +45,11 @@ const RedeemSubscription = () => {
       const res: any = await redeemCode(code);
       if (res.success) {
         setSuccess(res.message);
-        setTimeout(() => navigate('/student/dashboard'), 2000);
+        setGotBooks(res.books || []);
+        setSkippedNotes(res.skipped || []);
+        // 多书卡要多留一会儿让学生看清开了哪些书
+        const delay = (res.books?.length || 1) > 1 ? 3200 : 2000;
+        setTimeout(() => navigate('/student/dashboard'), delay);
       } else {
         setError(res.message);
       }
@@ -155,7 +162,20 @@ const RedeemSubscription = () => {
                   role="status"
                   className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm leading-5 text-green-700"
                 >
-                  {success}，正在返回书架…
+                  <p>{success}，正在返回书架…</p>
+                  {/* 一码多书:把拿到的书列出来,学生能当场核对开了几本、是哪几本 */}
+                  {gotBooks.length > 1 && (
+                    <ul className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs text-green-800/80 sm:grid-cols-2">
+                      {gotBooks.map((b) => (
+                        <li key={b.id} className="truncate">· {b.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {skippedNotes.length > 0 && (
+                    <p className="mt-2 text-xs text-amber-700">
+                      其中 {skippedNotes.length} 本你已经拥有，没有重复开通
+                    </p>
+                  )}
                 </motion.div>
               )}
 

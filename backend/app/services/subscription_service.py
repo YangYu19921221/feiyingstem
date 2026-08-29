@@ -10,7 +10,9 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import local_today, utc_now
-from app.models.user import User, RedemptionCode, RedemptionCodeStatus
+from app.models.user import (
+    User, RedemptionCode, RedemptionCodeBook, RedemptionCodeStatus,
+)
 from app.models.learning import BookAssignment
 from app.models.word import WordBook
 
@@ -120,19 +122,33 @@ async def batch_generate_codes(
     db: AsyncSession,
     admin_id: int,
     count: int,
-    book_id: int,
+    book_id: Optional[int] = None,
     batch_note: Optional[str] = None,
     code_valid_days: int = 180,
     grant_type: str = GRANT_PERMANENT,
     grant_days: Optional[int] = None,
     grant_times: Optional[int] = None,
+    book_ids: Optional[List[int]] = None,
+    scope_series: Optional[str] = None,
+    scope_stage: Optional[str] = None,
 ) -> List[RedemptionCode]:
     """批量生成兑换码。
 
     grant_type: permanent=永久 / period=包月(grant_days 必填) / times=次卡(grant_times 必填)。
     注意 code_valid_days 是「码本身多久内必须兑换」,与卡的时长/次数是两件事。
     Pydantic schema 已校验必填字段,这里不重复检查。
+
+    一码多书(2026-08-29): `book_ids` 传一批书 → 每张码覆盖这一批;
+    `book_id` 单书是旧调用形态,等价于 book_ids=[book_id]。
+    `redemption_codes.book_id` 仍写主书(第一本)——存量语义与旧查询不炸;
+    真实范围写进 `redemption_code_books` 明细表,兑换时按明细逐本发授权。
+    scope_series/scope_stage 只是发码条件的留痕,供列表展示与事后追溯。
     """
+    ids = list(dict.fromkeys(book_ids or ([book_id] if book_id else [])))
+    if not ids:
+        raise ValueError("必须指定至少一本单词本")
+    primary_book_id = ids[0]
+
     codes = []
     code_expires_at = datetime.utcnow() + timedelta(days=code_valid_days)
 
@@ -154,7 +170,7 @@ async def batch_generate_codes(
     for code_str in generated:
         code = RedemptionCode(
             code=code_str,
-            book_id=book_id,
+            book_id=primary_book_id,
             status=RedemptionCodeStatus.UNUSED,
             created_by=admin_id,
             code_expires_at=code_expires_at,
@@ -162,7 +178,12 @@ async def batch_generate_codes(
             grant_type=grant_type,
             grant_days=grant_days if grant_type == GRANT_PERIOD else None,
             grant_times=grant_times if grant_type == GRANT_TIMES else None,
+            scope_kind="group" if len(ids) > 1 else "book",
+            scope_series=scope_series,
+            scope_stage=scope_stage,
         )
+        # 明细表随码一起 flush(relationship cascade),单书码也走这条路 → 读取侧同构
+        code.books = [RedemptionCodeBook(book_id=bid) for bid in ids]
         db.add(code)
         codes.append(code)
 
@@ -172,13 +193,93 @@ async def batch_generate_codes(
     return codes
 
 
+async def _apply_one_book(
+    db: AsyncSession,
+    user: User,
+    code: RedemptionCode,
+    book: WordBook,
+    now: datetime,
+) -> tuple[str, str]:
+    """把一张码的权益施加到**一本书**上 → (结果, 文案)。
+
+    结果取值: 'granted'(新开) | 'renewed'(续期/升级) | 'skipped'(本本跳过,文案说明原因)。
+    这是原先 redeem_code 里的单书续期矩阵,原样搬出来供逐本调用 —— 语义与**文案**都
+    一字未改(单书码的提示语必须和改造前完全一致,学生和客服都习惯了那几句):
+    已永久→跳过 / 永久卡覆盖→升级 / 跨类型→跳过 / 包月→接期 / 次卡→累加。
+
+    ⚠️ 不在这里 commit。多书码要整批一致地落库(见 redeem_code)。
+    """
+    grant_type = code.grant_type or GRANT_PERMANENT
+    book_name = book.name
+
+    existing = (await db.execute(
+        select(BookAssignment).where(
+            BookAssignment.book_id == book.id,
+            BookAssignment.student_id == user.id,
+            BookAssignment.scope_type == 'book',
+        )
+    )).scalars().first()
+
+    if existing is not None:
+        existing_type = existing.grant_type or GRANT_PERMANENT
+        # 已经是永久的,任何卡都没有意义;拿永久卡去覆盖次卡/月卡则是升级,放行
+        if existing_type == GRANT_PERMANENT:
+            return "skipped", f"你已拥有单词本《{book_name}》，无需重复兑换"
+        if grant_type == GRANT_PERMANENT:
+            existing.grant_type = GRANT_PERMANENT
+            existing.expires_at = None
+            existing.times_left = None
+            return "renewed", f"兑换成功！《{book_name}》已升级为永久可学"
+        if grant_type != existing_type:
+            return "skipped", (f"《{book_name}》当前是{_grant_label(existing_type)}，"
+                               f"不能直接用{_grant_label(grant_type)}续期，请等当前的用完")
+        if grant_type == GRANT_PERIOD:
+            # 未过期从原到期日往后接,已过期从现在算(别把过期的空窗期白送)
+            base = existing.expires_at
+            if base is None or base < now:
+                base = now
+            existing.expires_at = base + timedelta(days=code.grant_days or 0)
+            return "renewed", (f"续期成功！《{book_name}》有效期延长 {code.grant_days} 天，"
+                               f"到 {existing.expires_at.strftime('%Y-%m-%d')}")
+        existing.times_left = (existing.times_left or 0) + (code.grant_times or 0)
+        return "renewed", (f"续期成功！《{book_name}》增加 {code.grant_times} 天，"
+                           f"剩余 {existing.times_left} 天")
+
+    assignment = BookAssignment(
+        book_id=book.id,
+        student_id=user.id,
+        teacher_id=code.created_by,
+        scope_type='book',
+        grant_type=grant_type,
+    )
+    if grant_type == GRANT_PERIOD:
+        assignment.expires_at = now + timedelta(days=code.grant_days or 0)
+        msg = (f"兑换成功！已获得《{book_name}》{code.grant_days} 天，"
+               f"到 {assignment.expires_at.strftime('%Y-%m-%d')}")
+    elif grant_type == GRANT_TIMES:
+        assignment.times_left = code.grant_times or 0
+        msg = f"兑换成功！已获得《{book_name}》次卡 {code.grant_times} 天（学习当天才计次）"
+    else:
+        msg = f"兑换成功！已获得单词本《{book_name}》"
+    db.add(assignment)
+    return "granted", msg
+
+
 async def redeem_code(
     db: AsyncSession,
     user: User,
     code_str: str,
 ) -> dict:
-    """兑换码激活单词本"""
-    # 查找兑换码
+    """兑换码激活单词本(支持一码多书)。
+
+    返回 {success, message, book_name, books:[...], granted/renewed/skipped}。
+    `book_name` 保留为**主书名**,老前端只读这个字段仍然工作。
+
+    一码多书的两条关键规则(2026-08-29):
+    1. **逐本独立判定**:14 本里有 1 本已拥有,其余 13 本照发,不整码作废。
+    2. **只要有 ≥1 本成功就把码标 USED**;全部失败(如整批都已拥有)则**不**标 USED,
+       让学生还能把这张卡用在别处/申诉。这是"一码作废"与"权益白送"之间的取舍点。
+    """
     result = await db.execute(
         select(RedemptionCode).where(RedemptionCode.code == code_str)
     )
@@ -200,81 +301,93 @@ async def redeem_code(
         await db.commit()
         return {"success": False, "message": "兑换码已过期"}
 
-    # 查询绑定的单词本是否还存在
-    book = await db.get(WordBook, code.book_id)
-    if not book:
+    # 该码覆盖的书:明细表是真源(存量单书码已由启动迁移回填,读取侧同构);
+    # 明细表意外为空时退回 book_id,避免老库迁移没跑成就无法兑换
+    detail_ids = list((await db.execute(
+        select(RedemptionCodeBook.book_id).where(RedemptionCodeBook.code_id == code.id)
+    )).scalars())
+    if not detail_ids and code.book_id:
+        detail_ids = [code.book_id]
+
+    books: list[WordBook] = []
+    for bid in detail_ids:
+        b = await db.get(WordBook, bid)
+        if b is not None:
+            books.append(b)
+
+    if not books:
+        # 绑定的书全被删了
         code.status = RedemptionCodeStatus.DISABLED
         await db.commit()
         return {"success": False, "message": "兑换码绑定的单词本已不存在，请联系管理员"}
-    book_name = book.name
 
-    grant_type = code.grant_type or GRANT_PERMANENT
+    # 主书名:优先 code.book_id 对应那本,否则第一本(老前端只读 book_name)
+    primary = next((b for b in books if b.id == code.book_id), books[0])
+    # ⚠️ 书名/ID 必须**在任何 commit/rollback 之前**取成普通值。
+    # rollback 会把 ORM 对象标记为过期,之后读 b.name 会触发懒加载 →
+    # 在 async 会话里就是 MissingGreenlet 500(CLAUDE.md 记过同类事故:
+    # 发币走共用 session 时 rollback 让 current_user 过期)。
+    primary_name = primary.name
+    book_pairs = [(b.id, b.name) for b in books]
 
-    # 已有的书级授权。次卡/包月是**续期**而不是拒绝——月卡到期前续下一个月是
-    # 正常动作,按"已拥有"拒掉会让学生的卡断在中间接不上。
-    existing_assignment = (await db.execute(
-        select(BookAssignment).where(
-            BookAssignment.book_id == code.book_id,
-            BookAssignment.student_id == user.id,
-            BookAssignment.scope_type == 'book',
-        )
-    )).scalars().first()
-
-    if existing_assignment is not None:
-        existing_type = existing_assignment.grant_type or GRANT_PERMANENT
-        # 已经是永久的,任何卡都没有意义;拿永久卡去覆盖次卡/月卡则是升级,放行
-        if existing_type == GRANT_PERMANENT:
-            return {"success": False, "message": f"你已拥有单词本《{book_name}》，无需重复兑换"}
-        if grant_type == GRANT_PERMANENT:
-            existing_assignment.grant_type = GRANT_PERMANENT
-            existing_assignment.expires_at = None
-            existing_assignment.times_left = None
-            msg = f"兑换成功！《{book_name}》已升级为永久可学"
-        elif grant_type != existing_type:
-            return {
-                "success": False,
-                "message": f"《{book_name}》当前是{_grant_label(existing_type)}，"
-                           f"不能直接用{_grant_label(grant_type)}续期，请等当前的用完",
-            }
-        elif grant_type == GRANT_PERIOD:
-            # 未过期从原到期日往后接,已过期从现在算(别把过期的空窗期白送)
-            base = existing_assignment.expires_at
-            if base is None or base < now:
-                base = now
-            existing_assignment.expires_at = base + timedelta(days=code.grant_days or 0)
-            msg = (f"续期成功！《{book_name}》有效期延长 {code.grant_days} 天，"
-                   f"到 {existing_assignment.expires_at.strftime('%Y-%m-%d')}")
+    granted: list[str] = []
+    renewed: list[str] = []
+    skipped: list[str] = []
+    ok_names: list[str] = []   # 真正开通/续期成功的书名,用于多书汇总文案
+    for b in books:
+        outcome, text_ = await _apply_one_book(db, user, code, b, now)
+        if outcome == "granted":
+            granted.append(text_)
+            ok_names.append(b.name)
+        elif outcome == "renewed":
+            renewed.append(text_)
+            ok_names.append(b.name)
         else:
-            existing_assignment.times_left = (existing_assignment.times_left or 0) + (code.grant_times or 0)
-            msg = (f"续期成功！《{book_name}》增加 {code.grant_times} 天，"
-                   f"剩余 {existing_assignment.times_left} 天")
-    else:
-        assignment = BookAssignment(
-            book_id=code.book_id,
-            student_id=user.id,
-            teacher_id=code.created_by,
-            scope_type='book',
-            grant_type=grant_type,
-        )
-        if grant_type == GRANT_PERIOD:
-            assignment.expires_at = now + timedelta(days=code.grant_days or 0)
-            msg = (f"兑换成功！已获得《{book_name}》{code.grant_days} 天，"
-                   f"到 {assignment.expires_at.strftime('%Y-%m-%d')}")
-        elif grant_type == GRANT_TIMES:
-            assignment.times_left = code.grant_times or 0
-            msg = f"兑换成功！已获得《{book_name}》次卡 {code.grant_times} 天（学习当天才计次）"
-        else:
-            msg = f"兑换成功！已获得单词本《{book_name}》"
-        db.add(assignment)
+            skipped.append(text_)
 
-    # 更新兑换码状态
+    ok_count = len(ok_names)
+    if ok_count == 0:
+        # 一本都没成 → 不消耗这张码,原因如实回给学生。
+        # **刻意不 rollback**:走到这里意味着每一本都是 skipped,而 _apply_one_book
+        # 的所有 skipped 分支都在任何写操作之前 return,所以此刻没有待回滚的改动
+        # (这条不变量别破坏:将来若在判定前加写操作,要改成 SAVEPOINT 而不是 rollback)。
+        # 而 rollback 会让**共用 session 里所有 ORM 对象过期** —— 调用方随后读
+        # current_user.xxx 就触发懒加载,async 会话下即 MissingGreenlet 500;
+        # 它还会连带丢掉调用方本请求内其它未提交的改动。
+        return {
+            "success": False,
+            "message": skipped[0] if len(skipped) == 1 else
+                       f"这张卡里的 {len(skipped)} 本单词本你都已拥有或无法续期",
+            "book_name": primary_name,
+            "skipped": skipped,
+        }
+
     code.status = RedemptionCodeStatus.USED
     code.used_by = user.id
     code.used_at = now
-
     await db.commit()
 
-    return {"success": True, "message": msg, "book_name": book_name}
+    # 文案:单书**原样**沿用改造前那几句(学生/客服都习惯了,别动);
+    # 多书给汇总,附前几本书名让学生确认拿到了什么
+    if len(book_pairs) == 1:
+        msg = (granted + renewed)[0]
+    else:
+        head = "、".join(ok_names[:3])
+        msg = f"兑换成功！共开通 {ok_count} 本单词本"
+        if head:
+            msg += f"（{head}{'…' if ok_count > 3 else ''}）"
+        if skipped:
+            msg += f"，另有 {len(skipped)} 本已拥有未重复开通"
+
+    return {
+        "success": True,
+        "message": msg,
+        "book_name": primary_name,
+        "books": [{"id": i, "name": n} for i, n in book_pairs],
+        "granted": granted,
+        "renewed": renewed,
+        "skipped": skipped,
+    }
 
 
 def _grant_label(grant_type: str) -> str:
