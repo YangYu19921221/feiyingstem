@@ -363,17 +363,21 @@ export default function TeacherPhoneticBooks() {
                       onClick={() => void openLessons(b.id)}
                       className="flex-1 text-left"
                     >
-                      <p className="font-medium text-slate-800">
-                        {b.name}
-                        {b.volume && (
-                          <span className="ml-1 text-xs text-slate-400">{b.volume}</span>
+                      {/* 册次只在书名里**没有**它的时候才另外显示 ——
+                          不判的话「飞鹰英语专用教材第1册」+ volume「第1册」
+                          会连着渲染成「…第1册第1册」(实测) */}
+                      <p className="flex flex-wrap items-center gap-1.5
+                                    font-medium text-slate-800">
+                        <span>{b.name}</span>
+                        {b.volume && !b.name.includes(b.volume) && (
+                          <span className="text-xs text-slate-400">{b.volume}</span>
                         )}
                         {b.is_preset && (
-                          <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5
                                            text-xs text-slate-500">平台预置</span>
                         )}
                         {!b.is_active && (
-                          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5
                                            text-xs text-amber-700">已下架</span>
                         )}
                       </p>
