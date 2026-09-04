@@ -55,6 +55,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '阅读理解', description: '文章和题目', route: '/teacher/reading', icon: LibraryBig, tone: 'blue' },
       { title: '句子背诵', description: '句子集和导入', route: '/teacher/sentences', icon: PencilLine, tone: 'green' },
       { title: '音标视频', description: '上传与管理音标课', route: '/teacher/phonetics', icon: Volume2, tone: 'teal' },
+      { title: '音标教材', description: 'Excel 上传拼读题', route: '/teacher/phonetic-books', icon: Volume2, tone: 'teal' },
     ],
   },
   {

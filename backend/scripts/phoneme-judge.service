@@ -1,0 +1,34 @@
+[Unit]
+# 音标跟读闭集判定服务(独立进程,只监听 127.0.0.1)
+#
+# 为什么独立于 english-helper.service:模型常驻约 2.6GB,而主应用是
+# 单 worker(PK 房间/限流是进程内状态,加 worker 会崩)。同进程会抢 CPU
+# 拖慢登录/交卷,模型崩了还会连带整站挂。独立后最坏只是判定不可用,
+# 前端退回「判不准一律放过」,课照上。
+Description=音标跟读判定服务 (wav2vec2 闭集打分)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/www/wwwroot/english-helper/backend
+Environment=PHONEME_MODEL_DIR=/root/wav2vec2-phoneme
+# 判定进程限 2 并发(脚本内的 _SEM),这里再压 torch 线程数:
+# 不压的话单次推理会抢满 4 核,同机的主应用跟着卡
+Environment=OMP_NUM_THREADS=2
+Environment=MKL_NUM_THREADS=2
+ExecStart=/www/wwwroot/english-helper/backend/venv_judge/bin/python \
+    scripts/phoneme_judge_server.py --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=5
+# 模型加载慢(1.2G 权重),给足启动时间
+TimeoutStartSec=180
+# 内存墙:超了让 systemd 杀掉重启,而不是把整机拖进 OOM。
+# fp32 实测稳态 1605MB 且无启动尖峰,2500M 留了 55% 余量。
+# ⚠️ 若把 PHONEME_QUANTIZE 设成 1,这个值必须提到 3500M 以上 ——
+#    量化过程启动尖峰实测 3155MB,卡在 2500M 会被直接打掉起不来。
+MemoryMax=2500M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

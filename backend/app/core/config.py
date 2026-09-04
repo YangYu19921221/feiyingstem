@@ -70,6 +70,22 @@ class Settings(BaseSettings):
     # 渲染页 DPI。144 够清晰又不至于让 100 页 PDF 撑爆磁盘
     MATERIAL_RENDER_DPI: int = 144
 
+    # ---- 音标跟读录音 ----
+    # 同 PHONETIC_VIDEO_DIR 的理由:**必须与 UPLOAD_DIR 分开**。
+    # 这是**孩子的声音**,属于未成年人个人信息,绝不能落进公开无鉴权的目录;
+    # 只经鉴权端点串流给本人和本班老师听。
+    PHONETIC_AUDIO_DIR: str = "./private_media/phonetic_audio"
+    # 单条跟读上限。一个单词最多录 5 秒,1MB 足够(webm/opus 约 20KB/秒)
+    MAX_PHONETIC_AUDIO_SIZE: int = 1024 * 1024  # 1MB
+    # 每个学生每节课最多留多少条录音:只留最近的,老的自动删。
+    # 不设上限的话一个班一学期能堆出几十万条小文件
+    PHONETIC_AUDIO_KEEP_PER_LESSON: int = 40
+
+    # 跟读判定服务(独立进程)。空字符串 = 不启用,跟读退回纯对比回放模式。
+    # 模型推理常驻约 2.6GB,而生产机可用内存只剩 4.6GB 且 uvicorn 单 worker
+    # (PK 房间/限流是进程内状态),所以刻意跑在独立进程里,主应用只做 HTTP 调用。
+    PHONEME_JUDGE_URL: str = ""
+
     # ---- 直播媒体平面 ----
     # SRS 源站。**媒体流量绝不走本服务**(本机出口带宽只有 12Mbps,是既有容量瓶颈),
     # 老师推到源站、学生从 CDN 拉,本服务只签发凭据。
@@ -92,6 +108,12 @@ class Settings(BaseSettings):
     # 不设的话链接被转发到校外挡不住
     LIVE_CDN_AUTH_KEY: str = ""
     LIVE_PLAY_TOKEN_TTL: int = 300       # 播放票据有效期(秒)
+    # 开播前踢残留推流者的开关。老师上次没干净停(关页面/断网,DTLS 没挥手)时,
+    # SRS 那路 publish 要靠超时才回收,期间重开同一节课(stream_key 不变)会撞
+    # RtcStreamBusy → 502。开播前先调 SRS API 踢掉同 stream 的残留 publisher 即可根治。
+    # 留空 → 用 LIVE_API_HOST 或 LIVE_ORIGIN_HOST(经 Nginx 443 反代到 SRS 1985)。
+    LIVE_SRS_API_HOST: str = ""
+    LIVE_KICK_BEFORE_PUBLISH: bool = True
 
     @property
     def cors_origins_list(self) -> List[str]:

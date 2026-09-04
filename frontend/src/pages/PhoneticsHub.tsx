@@ -128,6 +128,24 @@ export default function PhoneticsHub() {
       </div>
 
       <div className="mx-auto max-w-5xl px-5 py-6">
+        {/* 教材练习入口:放在搜索之上、视频列表之前 —— 练习比看视频更该被看见。
+            CLAUDE.md 硬性要求「至少一个一眼能看到的入口,不能只藏在二级页面」 */}
+        <button
+          onClick={() => navigate('/student/phonetics/textbook')}
+          className="mb-5 flex w-full items-center gap-4 rounded-2xl bg-gradient-to-r
+                     from-orange-500 to-amber-500 p-4 text-left text-white shadow-lg
+                     transition active:scale-[0.99]"
+        >
+          <span className="text-3xl">📖</span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-lg font-bold">音标练习 · 专用教材第1册</span>
+            <span className="mt-0.5 block text-sm text-white/90">
+              48 节 · 看音标读出来 + 看单词写音标
+            </span>
+          </span>
+          <span className="shrink-0 text-xl">→</span>
+        </button>
+
         {/* 搜索 */}
         {videos.length > 0 && (
           <div className="mb-5">

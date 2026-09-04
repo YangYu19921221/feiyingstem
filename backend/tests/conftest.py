@@ -68,6 +68,36 @@ async def auth_student_token(db_session):
 
 
 @pytest_asyncio.fixture
+async def teacher_token(db_session):
+    """教师账号的 token。音标教材上传等教师端写操作要用
+
+    注意用**纯字母**的用户名前缀:CLAUDE.md 记过 LIKE 里的下划线是通配符,
+    带下划线的测试前缀曾误删两个真实学生账号。
+    """
+    # ⚠️ 教师**必须挂在一个 active 机构下**,否则 get_current_user 里的
+    # check_org_active(None) 查不到行 → active=False → 全站 402。
+    # org_id 为 None 只有平台 admin 能用。
+    from sqlalchemy import text as _text
+    await db_session.execute(_text(
+        "INSERT INTO organizations (id, name, code, status, access_mode) "
+        "VALUES (9901, '测试机构', 'testorg', 'active', 'assigned')"
+    ))
+    user = User(
+        username="tchphonetic",
+        email="tchphonetic@example.com",
+        hashed_password="x",
+        role="teacher",
+        full_name="Teacher Phonetic",
+        is_active=True,
+        org_id=9901,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return _make_token(user.id)
+
+
+@pytest_asyncio.fixture
 async def sample_unit_with_words(db_session):
     book = WordBook(name="PK Test Book", is_public=True)
     db_session.add(book)

@@ -42,7 +42,11 @@ const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
 const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
 const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
+const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
 const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
+const PhoneticFillBlank = lazyWithRetry(() => import('./pages/PhoneticFillBlank'));
+const PhoneticLessons = lazyWithRetry(() => import('./pages/PhoneticLessons'));
+const PhoneticReading = lazyWithRetry(() => import('./pages/PhoneticReading'));
 const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
 const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
 const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
@@ -461,12 +465,52 @@ function App() {
           }
         />
 
+        {/* 学生端 - 音标教材目录(48 节) */}
+        <Route
+          path="/student/phonetics/textbook"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PhoneticLessons />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 看音标读出来(跟读,第一期不打分) */}
+        <Route
+          path="/student/phonetics/textbook/:lessonId/read"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PhoneticReading />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 看单词写音标(填空)。与音标视频同属音标模块,不挂在单词本单元下 */}
+        <Route
+          path="/student/phonetics/textbook/:lessonId/fill"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PhoneticFillBlank />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 教师端 - 音标视频管理 */}
         <Route
           path="/teacher/phonetics"
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherPhonetics />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 音标教材管理(Excel 上传;与上面的音标视频是两件事) */}
+        <Route
+          path="/teacher/phonetic-books"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherPhoneticBooks />
             </ProtectedRoute>
           }
         />
