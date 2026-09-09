@@ -48,6 +48,12 @@ function interruptAllAudio(): number {
   if ('speechSynthesis' in window) {
     try { speechSynthesis.cancel(); } catch {}
   }
+  // 新播放一旦发起,上一次「等手势补读」的挂单就过期了:它记的是旧词、
+  // 旧 <audio>。不清掉的话,学生在听写题里敲答案的第一个键会命中
+  // handleAutoplayBlocked 挂在 window 上的 keydown,让那个词自己再响一遍
+  // (听着就是"自动发音了两次");考完切到成绩页再点一下同样会突然出声。
+  pendingUnlockRetry = null;
+  setAudioBlocked(false);
   return globalPlayToken;
 }
 
@@ -181,7 +187,14 @@ export function useAudio() {
     };
   }, []);
 
-  const playAudio = useCallback(async (text: string, rate: number = 1, wordId?: number) => {
+  /**
+   * 播放一次发音。
+   * 返回值 = **这次到底出没出声**(true 才是真响了)。
+   * 调用方若按"可播放 N 次"计数,必须按它计——本函数在任何失败路径上都
+   * 正常 resolve(被新播放顶掉/被自动播放策略拦/拉音频失败),
+   * 早先按"调用成功"计数会把没出声的尝试也扣掉次数,把喇叭按钮扣成灰的。
+   */
+  const playAudio = useCallback(async (text: string, rate: number = 1, wordId?: number): Promise<boolean> => {
     const audio = audioRef.current;
     // 全局打断：掐断所有 <audio> 与浏览器 TTS，拿到本次播放的全局令牌
     const token = interruptAllAudio();
@@ -190,15 +203,16 @@ export function useAudio() {
       const blobUrl = await fetchAudioBlob(text, wordId);
       // fetch 期间若已发起新的播放（快速切词/循环重播），本次已过期，直接放弃，
       // 否则慢请求 resolve 后会把 audio.src 改回旧词并打断当前播放，造成静音/串音
-      if (!audio || globalPlayToken !== token) return;
+      if (!audio || globalPlayToken !== token) return false;
       audio.pause();
       audio.src = blobUrl;
       audio.playbackRate = rate;
       audio.currentTime = 0;
       await audio.play();
+      return true;
     } catch (e) {
       // 本次播放已过期则不必提示
-      if (globalPlayToken !== token) return;
+      if (globalPlayToken !== token) return false;
       // 只允许 Edge TTS 一个声音:失败保持安静,不用系统音色兜底。
       // 自动播放被拦 → 提示点屏,首次手势立刻补读这个词(src 已就位)
       if ((e as Error)?.name === 'NotAllowedError') {
@@ -211,6 +225,7 @@ export function useAudio() {
       } else {
         console.warn('Edge TTS 播放失败,本次保持静默:', e);
       }
+      return false;
     }
   }, []);
 

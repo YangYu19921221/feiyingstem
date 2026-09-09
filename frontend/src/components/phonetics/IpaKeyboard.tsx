@@ -8,6 +8,7 @@
  *
  * 全书只用到 38 个音素,这里放全 48 个:与视频课程对齐,以后第 2 册用到剩下的不用改。
  */
+import type { ReactNode } from 'react';
 import { PHONEME_GROUPS } from '../../utils/ipaPhonemes';
 
 interface Props {
@@ -19,10 +20,15 @@ interface Props {
   disabled?: boolean;
   /** 高亮这一节在教的音素,做视觉引导 */
   highlight?: string[];
+  /** 清空键文案。整页版清的是"本行",卡片版只有一个词,说"本行"会让人找不到行在哪 */
+  clearLabel?: string;
+  /** 键盘右下角的额外按钮(卡片版放"看看对不对",手指不用离开键盘区) */
+  action?: ReactNode;
 }
 
 export default function IpaKeyboard({
   onKey, onBackspace, onClear, full = false, disabled = false, highlight = [],
+  clearLabel = '清空本行', action,
 }: Props) {
   const hi = new Set(highlight);
 
@@ -78,8 +84,9 @@ export default function IpaKeyboard({
                      ring-slate-200 transition active:scale-95 hover:bg-slate-100
                      disabled:opacity-40"
         >
-          清空本行
+          {clearLabel}
         </button>
+        {action && <div className="ml-auto">{action}</div>}
       </div>
     </div>
   );

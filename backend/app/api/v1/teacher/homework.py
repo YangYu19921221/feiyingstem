@@ -184,10 +184,14 @@ async def create_homework(
     # 解析按日期布置(当日任务):北京日期 → 当天0点的 UTC naive(与 DB 时间口径一致)。
     # 今天也照存(开放时刻已过=立即可见),这样"当天24点截止"的当日任务语义不丢;
     # 当日任务忽略自设截止时间——过期时刻恒为 available_from + 1天。
+    # 开始日期现为必填:每份作业都绑定开放日,金币按开放日结算。缺省(旧客户端/直连
+    # API 未传)兜底成今天,避免再走成「布置日=创建时刻、次日做被判补做不发币」的旧
+    # 普通作业(2026-08-23 老师昨天布置、学生今早做而漏发金币的根因)。
     open_times: list = [None] * len(targets)
-    if request.available_date:
+    available_date = request.available_date or local_today().strftime("%Y-%m-%d")
+    if available_date:
         try:
-            base_date = datetime.strptime(request.available_date, "%Y-%m-%d").date()
+            base_date = datetime.strptime(available_date, "%Y-%m-%d").date()
         except ValueError:
             raise HTTPException(status_code=400, detail="开始日期格式错误,应为 YYYY-MM-DD")
         if base_date < local_today():

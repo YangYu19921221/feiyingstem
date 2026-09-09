@@ -20,7 +20,8 @@ from app.core.database import get_db
 from app.core.tenancy import current_org_id, check_org_active
 from app.api.v1.auth import get_current_user
 from app.models.user import User
-from app.models.phonetic import PhoneticVideo
+from app.models.phonetic import PhoneticVideo, PhoneticMaterial
+from app.services import phonetic_material_service
 from app.services import auth_service
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,121 @@ async def get_video(
     v.view_count = (v.view_count or 0) + 1
     await db.commit()
     return to_out(v)
+
+
+def _scope_org(q, model):
+    """显式加 org 可见性(自己机构的 + 平台共享的)。
+
+    ⚠️ **不要只依赖 tenancy 的自动过滤器**。它会为注册过的模型注入同样的条件,
+    但那是最后一道网、不是边界本身:它依赖认证时设置的 ContextVar,任何没走那条路的
+    调用(后台任务、脚本、测试)就是裸查询。本项目既有规矩就是显式过滤
+    (见 phonetic_practice.py 的 _visible_book,CLAUDE.md 记明此类泄漏「已踩过两次」)。
+    admin 的 current_org_id 是 None(看全部),与既有口径一致。
+    """
+    org_id = current_org_id.get()
+    if org_id is not None:
+        q = q.where(or_(model.org_id == org_id, model.org_id.is_(None)))
+    return q
+
+
+class MaterialBrief(BaseModel):
+    """配套课件(讲义 PPT/PDF)。**只给页数,不给文件名/原文件地址**"""
+    id: int
+    title: str
+    page_count: int
+
+
+@router.get("/videos/{video_id}/materials", response_model=list[MaterialBrief])
+async def list_video_materials(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """某个视频的配套讲义列表。
+
+    只列**渲染好且上架**的:渲染没成的课件如果列出来,学生点进去只会看到
+    一片空白页,不如当它不存在(老师那边能看到 render_error 并重传)。
+    """
+    v = (await db.execute(
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+            ),
+            PhoneticVideo,
+        )
+    )).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="视频不存在或已下架")
+
+    rows = (await db.execute(
+        select(PhoneticMaterial)
+        .where(
+            PhoneticMaterial.video_id == video_id,
+            PhoneticMaterial.is_active.is_(True),
+            PhoneticMaterial.render_ready.is_(True),
+            PhoneticMaterial.page_count > 0,
+        )
+        .order_by(PhoneticMaterial.sort_order.asc(), PhoneticMaterial.id.asc())
+    )).scalars().all()
+    return [
+        MaterialBrief(id=m.id, title=m.title, page_count=m.page_count or 0)
+        for m in rows
+    ]
+
+
+@router.get("/materials/{material_id}/page/{page_no}")
+async def material_page(
+    material_id: int,
+    page_no: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """取课件第 N 页的渲染图。**原文件永不下发**,学生只能拿到图。
+
+    ⚠️ 必须 join 回 phonetic_videos:PhoneticMaterial 虽然注册了租户过滤,
+    但按 id 直查时过滤器只看它自己的 org_id,罩不住"这份课件挂的视频是否已下架"
+    (音标教材那边踩过同样的坑:lessons 按 ID 直查必须 join 回 books)。
+
+    与直播课件不同,这里**不烧水印**,所以每个学生拿到的图完全一样 ——
+    可以让浏览器缓存(直播课件那边按人烧水印才必须 no-store)。
+    课件几十页来回翻,不缓存的话每翻一页都要重新走一次网络。
+    """
+    row = (await db.execute(
+        _scope_org(
+            select(PhoneticMaterial)
+            .join(PhoneticVideo, PhoneticVideo.id == PhoneticMaterial.video_id)
+            .where(
+                PhoneticMaterial.id == material_id,
+                PhoneticMaterial.is_active.is_(True),
+                PhoneticMaterial.render_ready.is_(True),
+                PhoneticVideo.is_active.is_(True),   # 视频下架,配套讲义也跟着不给看
+            ),
+            PhoneticVideo,      # 按**父视频**的归属判
+        )
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="课件不存在或已下架")
+
+    # 页码必须落在已渲染范围内:传 0 / 负数 / 超页数都按 404,
+    # 不要拿它去拼路径(page_path 只接整数,这里再兜一层)
+    if page_no < 1 or page_no > (row.page_count or 0):
+        raise HTTPException(status_code=404, detail="页码超出范围")
+
+    path = phonetic_material_service.page_path(row.id, page_no)
+    if not os.path.isfile(path):
+        logger.warning("音标课件渲染页缺失: id=%s page=%s path=%s",
+                       row.id, page_no, path)
+        raise HTTPException(status_code=404, detail="这一页丢了,请联系老师重新上传课件")
+
+    return FileResponse(
+        path,
+        media_type="image/png",
+        headers={
+            # private:内容仍需登录才能拿,不许共享代理缓存;
+            # 但同一个学生自己的浏览器可以缓存(图对所有人相同,不含个人信息)
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
 
 
 async def _user_from_query_token(token: str, db: AsyncSession) -> User:

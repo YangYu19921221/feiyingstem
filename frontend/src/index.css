@@ -1662,3 +1662,7 @@ body.staff-admin .admin-teacher-scale {
   body.staff-admin .admin-teacher-directory-heading p { font-size: 0.78rem; }
   body.staff-admin .admin-teacher-action { min-height: 2.5rem; padding-inline: 0.75rem; }
 }
+
+/* 直播弹幕:右侧半透明聊天列表(见 DanmakuOverlay)。滚动条隐藏复用 .hide-scrollbar。 */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

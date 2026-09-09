@@ -192,6 +192,11 @@ async def start_session(
         row.started_at = datetime.utcnow()
     await db.commit()
 
+    # 开播前踢掉该 stream 上的残留推流者:老师上次没干净停(关页面/断网)时,
+    # SRS 那路 publish 靠超时才回收,期间重开同一节课会撞 RtcStreamBusy → 502。
+    # 幂等,首播无副作用;失败不阻断开播(见 kick_stream_publisher 注释)。
+    await live_service.kick_stream_publisher(row.stream_key, row.origin_node)
+
     cred = live_service.build_push_credentials(row.stream_key, row.origin_node)
     return {
         "session_id": row.id,

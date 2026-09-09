@@ -47,3 +47,52 @@ class PhoneticVideo(Base):
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PhoneticMaterial(Base):
+    """音标视频的配套课件(PDF / PPT)
+
+    老师讲音标时手上那份 PPT,学生看完视频想回看讲义 —— 视频与讲义本来是配套的,
+    此前只能传视频,讲义只能靠老师课上口述。一个视频可配多份(讲义 + 练习页)。
+
+    **只存渲染后的图给学生看,原文件永不下发**:课件是老师的劳动成果,
+    给了原文件就等于给了可二次分发的母版。与直播课件「能看不能下」同一个口径,
+    但**不烧水印、不留痕** —— 那套是防付费内容泄露的,音标讲义是教学辅助,
+    按人烧水印的代价(每次翻页重新合成、no-store 禁缓存)在这里不值得。
+
+    ⚠️ 渲染页目录**不能**用 watermark_service.material_dir():它只按整数 id 分目录
+    (MATERIAL_DIR/rendered/{id}),而 live_materials 与本表的 id 各自从 1 开始,
+    id=3 的音标课件会读到 id=3 的直播课件的页 —— 跨功能串号。本表走独立子目录。
+    """
+
+    __tablename__ = "phonetic_materials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # 挂在视频上。删视频时课件一起删(见 teacher/phonetics.py 的删除路径:
+    # 库里删行 + 磁盘删原文件与渲染页,SQLite 的外键级联默认不开,靠代码删)
+    video_id = Column(Integer, ForeignKey("phonetic_videos.id"), nullable=False, index=True)
+
+    title = Column(String(200), nullable=False)      # 默认取文件名(去扩展名),老师可改
+    # pdf = 直接渲染;ppt/pptx = 先经 soffice 转 PDF 再渲染(存原始类型便于排查)
+    kind = Column(String(10), nullable=False, default="pdf")
+
+    file_path = Column(String(500), nullable=False)  # 私有目录下的随机化文件名,永不下发
+    file_size = Column(Integer, nullable=True)
+
+    page_count = Column(Integer, nullable=False, default=0)
+    # 渲染没成的课件学生端直接看不到(而不是看到空白页),错因留给老师看并可重传
+    render_ready = Column(Boolean, nullable=False, default=False)
+    render_error = Column(String(400), nullable=True)
+
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)  # 下架不删,学生端不再列出
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # 多租户:与 PhoneticVideo 同口径(NULL = 平台共享)。
+    # ⚠️ 但本表**不能只靠**租户过滤器 —— 它按 id 直查时罩不住"这份课件属于哪个视频",
+    # 取页必须 join 回 phonetic_videos 再判可见性(音标教材那边踩过同样的坑)
+    org_id = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -197,6 +197,100 @@ async def test_stress_mark_is_lenient(client: AsyncClient, db_session,
     assert r.json()["all_correct"] is True, "漏点重音符被判错了"
 
 
+# ── 卡片模式:背面揭示答案的下发闸门 ────────────────────────────────────
+
+async def test_lesson_list_carries_progress_and_highlight(
+        client: AsyncClient, two_orgs_with_books):
+    """目录页要能看出「这节练什么音」和「学到哪」—— 否则 48 张卡长得一模一样
+
+    写对数按 item_id **去重**:同一个词第二遍才对、或反复练,都只算一个词写对过。
+    不去重的话反复练一个词就能把进度刷满,进度条会骗人。
+    """
+    d = two_orgs_with_books
+    h = {"Authorization": f"Bearer {d['s1']}"}
+
+    def shared(body):
+        book = next(b for b in body if b["name"] == "平台共享教材")
+        return book["lessons"][0]
+
+    # 没练过:0 且没有时间戳,前端据此不显示进度条/继续条
+    ls0 = shared((await client.get("/api/v1/phonetic-practice/books", headers=h)).json())
+    assert ls0["mastered_count"] == 0
+    assert ls0["last_practiced_at"] is None
+    assert ls0["highlight"] == ["æ", "eɪ"], "目录页没下发这节在教的音素"
+
+    # 同一个词写对两次 + 另一个词写错 → 只算 1 个词写对过
+    for _ in range(2):
+        await client.post("/api/v1/phonetic-practice/check", headers=h, json={
+            "item_id": d["item_bad"], "pass_number": 1, "submitted": ["b", "æ", "d"]})
+    ls1 = shared((await client.get("/api/v1/phonetic-practice/books", headers=h)).json())
+    assert ls1["mastered_count"] == 1, "同一个词练两遍被算成两个词,进度条会骗人"
+    assert ls1["last_practiced_at"], "缺时间戳,「继续上次」定位不到这一节"
+
+    # 别人的作答不能算进我的进度
+    h2 = {"Authorization": f"Bearer {d['s2']}"}
+    other = next(b for b in (await client.get(
+        "/api/v1/phonetic-practice/books", headers=h2)).json() if b["name"] == "平台共享教材")
+    assert other["lessons"][0]["mastered_count"] == 0, "读到了别人的学情"
+
+
+async def test_answer_tokens_only_when_card_is_over(
+        client: AsyncClient, two_orgs_with_books):
+    """卡片背面要揭示答案,但闸门必须是「这张卡已结束」
+
+    第一遍做错**不能**给 —— 否则学生随手填三个格、按一下就白拿答案,
+    第二遍(只填元音)那一步的教学意义直接归零。
+    """
+    d = two_orgs_with_books
+    h = {"Authorization": f"Bearer {d['s1']}"}
+
+    # 第一遍错:只给回填的辅音格,不给完整答案
+    r = await client.post("/api/v1/phonetic-practice/check", headers=h, json={
+        "item_id": d["item_bad"], "pass_number": 1, "submitted": ["b", "e", "d"],
+    })
+    b = r.json()
+    assert b["answer_tokens"] is None, "第一遍做错就把答案发下去了 = 白拿答案"
+    assert b["answer_display"] is None
+
+    # 第一遍对:这张卡结束了,给完整答案供背面揭示
+    r = await client.post("/api/v1/phonetic-practice/check", headers=h, json={
+        "item_id": d["item_bad"], "pass_number": 1, "submitted": ["b", "æ", "d"],
+    })
+    b = r.json()
+    assert b["all_correct"] is True
+    assert b["answer_tokens"] == ["b", "æ", "d"]
+    assert b["answer_display"] == "[bæd]"
+
+    # 第二遍不论对错都结束,都给
+    for sub in (["b", "æ", "d"], ["b", "ɪ", "d"]):
+        b = (await client.post("/api/v1/phonetic-practice/check", headers=h, json={
+            "item_id": d["item_bad"], "pass_number": 2, "submitted": sub,
+        })).json()
+        assert b["answer_tokens"] == ["b", "æ", "d"], f"第二遍交 {sub} 后没拿到答案"
+
+
+async def test_answer_tokens_carry_stress_mark_student_skipped(
+        client: AsyncClient, db_session, two_orgs_with_books):
+    """答案必须由服务端给,不能拿学生填的格子当答案显示
+
+    重音符判分是宽松的(没点 ˈ 也算对),用学生的作答画背面会漏掉重音符,
+    跟纸书对不上 —— 孩子会以为纸书印错了。
+    """
+    d = two_orgs_with_books
+    ls = await _mk_lesson(db_session, d["shared"], "9—2", [
+        ("handle", ["ˈ", "h", "æ", "n", "d", "l"], "手柄"),
+    ])
+    await db_session.commit()
+    it = await _first_item(db_session, ls.id)
+
+    b = (await client.post("/api/v1/phonetic-practice/check",
+                           headers={"Authorization": f"Bearer {d['s1']}"},
+                           json={"item_id": it.id, "pass_number": 1,
+                                 "submitted": [None, "h", "æ", "n", "d", "l"]})).json()
+    assert b["all_correct"] is True
+    assert b["answer_tokens"] == ["ˈ", "h", "æ", "n", "d", "l"], "揭示的答案漏了重音符"
+
+
 async def test_page_submit_is_idempotent(client: AsyncClient, db_session,
                                          two_orgs_with_books):
     """整页交卷带 attempt_id:弱网连点两次,判分照常返回但不重复记账

@@ -103,7 +103,9 @@ const TeacherHomework: React.FC = () => {
     target_score: 80,
     max_attempts: 3,
     deadline: '',
-    available_date: '',
+    // 默认今天:每份作业都必须绑定开放日,金币按开放日发。留空会被判「补做」不发币,
+    // 曾因老师不选日期、次日才做而漏发(2026-08-23),现强制必选、默认今天。
+    available_date: localDateStr(new Date()),
     daily_sequence: false,
   });
   // ScopeSelector state: allowBook=false means book_id is used for cascading but not submitted.
@@ -255,15 +257,19 @@ const TeacherHomework: React.FC = () => {
       toast.warning('请至少选择一个学生');
       return;
     }
-    // 最后一道闸:标题写了日期却没选开始日期,大概率是想布置当日任务但漏了选。
-    // 内联提示可能没被注意到(表单长,提交按钮在底部),交卷前再确认一次。
+    // 开始日期强制必选:每份作业都要绑定开放日,金币按开放日发。留空会走成
+    // 「立即可做但布置日=今天」的旧普通作业,次日再做被判补做不发币(2026-08-23 事故)。
+    if (!formData.available_date) {
+      toast.warning('请选择开始日期(想让孩子哪天做就选哪天,金币按这天结算)');
+      return;
+    }
+    // 标题写的日期与所选开始日期不一致时提醒一次(如标题写 8月9日、却选了别的天)。
     const td = detectTitleDate(formData.title);
-    if (td && !formData.available_date) {
+    if (td && formData.available_date !== td.dateStr) {
       if (!confirm(
-        `标题里写了「${td.label}」,但没有选「开始日期」。\n\n` +
-        `直接布置的话,学生现在就能看到并完成,不会等到${td.label}才开放。\n\n` +
-        `确定要立即布置吗?\n` +
-        `(想让它${td.label}才开放,请点「取消」,再点标题下方的「设为${td.label}开放」)`
+        `标题里写了「${td.label}」,但选的开始日期是 ${fmtMD(formData.available_date)}。\n\n` +
+        `实际会按 ${fmtMD(formData.available_date)} 开放,标题只是文字。\n\n` +
+        `确定按 ${fmtMD(formData.available_date)} 布置吗?`
       )) {
         return;
       }
@@ -312,7 +318,7 @@ const TeacherHomework: React.FC = () => {
       target_score: 80,
       max_attempts: 3,
       deadline: '',
-      available_date: '',
+      available_date: localDateStr(new Date()),
       daily_sequence: false,
     });
     setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
@@ -702,34 +708,24 @@ const TeacherHomework: React.FC = () => {
                       placeholder="例如: Unit 1 单词练习"
                       required
                     />
-                    {/* 标题写了日期却没选开始日期:立即警示 + 一键代填,防"写了日期就以为会按日期生效" */}
+                    {/* 标题写的日期与所选开始日期不一致时提醒(开始日期已恒有默认值,不再有"未选"分支)+ 一键对齐 */}
                     {(() => {
                       const td = detectTitleDate(formData.title);
-                      if (!td) return null;
-                      if (!formData.available_date) {
-                        return (
-                          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
-                            <p className="min-w-[200px] flex-1 text-xs leading-5 text-amber-800">
-                              ⚠️ 标题里写了「{td.label}」,但还没选「开始日期」——这样布置学生<b>现在就能做</b>,不会等到{td.label}才开放。
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setFormData({ ...formData, available_date: td.dateStr, deadline: '' })}
-                              className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
-                            >
-                              设为 {td.label} 开放
-                            </button>
-                          </div>
-                        );
-                      }
-                      if (formData.available_date !== td.dateStr) {
-                        return (
-                          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
-                            💡 标题写的是「{td.label}」,选的开始日期是 {fmtMD(formData.available_date)},两者不一致——实际按选的日期 {fmtMD(formData.available_date)} 开放。
+                      if (!td || formData.available_date === td.dateStr) return null;
+                      return (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+                          <p className="min-w-[200px] flex-1 text-xs leading-5 text-amber-800">
+                            💡 标题写的是「{td.label}」,但开始日期选的是 {fmtMD(formData.available_date)}——实际按 {fmtMD(formData.available_date)} 开放。
                           </p>
-                        );
-                      }
-                      return null;
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, available_date: td.dateStr, deadline: '' })}
+                            className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600"
+                          >
+                            改为 {td.label} 开放
+                          </button>
+                        </div>
+                      );
                     })()}
                   </div>
 
@@ -828,11 +824,11 @@ const TeacherHomework: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 开始日期(当日任务)+ 截止时间 */}
+                  {/* 开始日期(必选)+ 截止时间 */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        📅 开始日期(当日任务)
+                        📅 开始日期 <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="date"
@@ -840,27 +836,21 @@ const TeacherHomework: React.FC = () => {
                         min={localDateStr(new Date())}
                         onChange={(e) => setFormData({ ...formData, available_date: e.target.value, deadline: '' })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        required
                       />
-                      <p className="mt-1 text-xs text-gray-400">
-                        选日期=当日任务:学生提前就能看到(带🔒标注哪天开放),但要到当天才能做,当天 24:00 截止;留空=普通作业,立即开始
+                      <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                        💰 <b>想让孩子哪天做就选哪天,金币按这天结算。</b>
+                        学生提前能看到(带🔒标注哪天开放),到当天才能做、当天 24:00 截止。
+                        默认今天;要布置给明天,把日期改成明天。
                       </p>
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         ⏰ 截止时间
                       </label>
-                      {formData.available_date ? (
-                        <div className="w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
-                          当日任务自动在开放当天 24:00 截止,过期学生不能再做
-                        </div>
-                      ) : (
-                        <input
-                          type="datetime-local"
-                          value={formData.deadline}
-                          onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                        />
-                      )}
+                      <div className="w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                        自动在开放当天 24:00 截止,过期学生不能再做
+                      </div>
                     </div>
                   </div>
 

@@ -2,8 +2,9 @@
  * 加盟资料中心(平台 admin 专用,org_admin 不可见)
  *
  * 两份对外标准文档,页面内直接排好版:
- *  1. 合作协议 —— 参照行业同类协议改写为本系统计费口径:
- *     年度服务费 ¥12,000 含 100 个学生名额,超出按 ¥100/生/年,全托授权书本全开放
+ *  1. 合作协议 —— 参照行业同类协议改写为本系统计费口径(2026-08-27 起执行):
+ *     基础合作费 ¥12,000(原价 ¥20,000,6 折)含 100 张学生学习卡(每张半年 / 180 天),
+ *     超出按 ¥130/张;飞鹰英语专属内容 +¥40,000;教材 ¥50/本;含飞鹰带教培训 2 位老师
  *  2. 功能详解与提分方案 —— 给加盟商看的系统能力说明,围绕"怎么帮学生提分"展开
  *
  * 导出方式与打印默写纸同一套路:纯前端 window.print(),打印对话框里选"另存为 PDF"
@@ -75,34 +76,51 @@ function ContractDoc() {
 
       <Clause no="二" title="授权内容(全托模式)">
         <p>
-          1. 服务期内,甲方向乙方<strong>全量开放系统内全部单词本、句型本、阅读理解及配套学习内容</strong>
+          1. 服务期内,甲方向乙方<strong>全量开放系统内教材同步单词本、句型本、阅读理解及配套学习内容</strong>
           (覆盖小学、初中、高中各年级主流教材同步内容),乙方无需按册另行付费;
-          服务期内甲方新增的内容与功能升级,乙方免费同步享有。
+          服务期内甲方新增的内容与功能升级,乙方免费同步享有。飞鹰英语专属内容除外,见本条第 3 款。
         </p>
         <p>
-          2. 本协议基础服务含 <strong>100 个学生账号名额</strong>;教师账号与机构管理账号不另行收费,
-          数量以乙方正常教学使用为限。
+          2. 本协议基础服务含 <strong>100 张学生学习卡</strong>(每张卡有效期 <strong>半年(180 天)</strong>,
+          自该卡兑换激活之日起算);教师账号与机构管理账号不另行收费,数量以乙方正常教学使用为限。
+        </p>
+        <p>
+          3. <strong>飞鹰英语专属内容</strong>(飞鹰自研教材配套单词本、句型本及配套教学内容)
+          为选配项,乙方选配后一并开放,费用见第三条。
         </p>
       </Clause>
 
       <Clause no="三" title="合作费用与结算">
         <p>
-          1. 年度服务费:人民币 <strong>12,000 元 / 年</strong>(大写:<strong>壹万贰仟元整</strong>),
-          包含第二条约定的全部授权内容及 100 个学生账号名额。
+          1. 基础合作费:人民币 <strong>12,000 元</strong>(大写:<strong>壹万贰仟元整</strong>),
+          为标准价 20,000 元的 <strong>6 折优惠价</strong>(自 2026 年 8 月 27 日起执行),
+          包含第二条约定的授权内容及 <strong>100 张学生学习卡(每张半年)</strong>。
         </p>
         <p>
-          2. 超额名额:学生账号超过 100 个的部分,按<strong>每生每年人民币 100 元</strong>(壹佰元整)计费,
-          按实际开通数量结算,与本协议服务期同步计算。
+          2. 超额学习卡:超出 100 张的部分,按<strong>每张人民币 130 元</strong>(壹佰叁拾元整)计费,
+          规格同上(半年 / 180 天),按乙方实际增购数量结算。
         </p>
         <p>
-          3. 付款方式:本协议签订后<Blank w="3rem" />日内,乙方一次性向甲方支付当年度服务费;
+          3. 飞鹰英语专属内容:乙方选配的,另行支付人民币 <strong>40,000 元</strong>
+          (大写:<strong>肆万元整</strong>)。
+        </p>
+        <p>
+          4. 配套教材:纸质教材按<strong>每本人民币 50 元</strong>(伍拾元整)供货,
+          乙方按需订购,运费另计。
+        </p>
+        <p>
+          5. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训 2 位老师</strong>(不另收培训费),
+          培训期间乙方人员的交通、食宿费用自理。
+        </p>
+        <p>
+          6. 付款方式:本协议签订后<Blank w="3rem" />日内,乙方一次性向甲方支付上述应付款项;
           甲方收到款项后<Blank w="3rem" />个工作日内完成系统开通与账号交付。
         </p>
         <p>
-          4. 系统开通后,当年度服务费不予退还。因不可抗力(如疫情停课等)导致乙方连续停课三十日以上的,
+          7. 系统开通后,已付费用不予退还。因不可抗力(如疫情停课等)导致乙方连续停课三十日以上的,
           乙方可书面申请服务期相应顺延。
         </p>
-        <p>5. 甲方对乙方向其学员的终端收费价格与招生政策不予干涉。</p>
+        <p>8. 甲方对乙方向其学员的终端收费价格与招生政策不予干涉。</p>
         <table className="mt-3 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
           <thead>
             <tr>
@@ -113,14 +131,24 @@ function ContractDoc() {
           </thead>
           <tbody>
             <tr>
-              <td className="border border-slate-500 px-2 py-1.5 text-center">年度服务费</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥12,000 / 年</td>
-              <td className="border border-slate-500 px-2 py-1.5">含 100 个学生账号名额;系统内全部书本内容开放;教师、管理账号不另收费</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">基础合作费</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥12,000</td>
+              <td className="border border-slate-500 px-2 py-1.5">原价 ¥20,000 的 6 折;含 100 张学生学习卡(每张半年);系统内书本内容开放;教师、管理账号不另收费</td>
             </tr>
             <tr>
-              <td className="border border-slate-500 px-2 py-1.5 text-center">超额学生账号</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥100 / 生 / 年</td>
-              <td className="border border-slate-500 px-2 py-1.5">自第 101 名起,按实际开通数量计费</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">超额学习卡</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥130 / 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">自第 101 张起,每张半年(180 天),按实际增购数量计费</td>
+            </tr>
+            <tr>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥40,000</td>
+              <td className="border border-slate-500 px-2 py-1.5">选配项;开放飞鹰自研教材配套单词本、句型本及教学内容</td>
+            </tr>
+            <tr>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">配套教材</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥50 / 本</td>
+              <td className="border border-slate-500 px-2 py-1.5">纸质教材按需订购,运费另计</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">系统升级</td>
@@ -128,9 +156,9 @@ function ContractDoc() {
               <td className="border border-slate-500 px-2 py-1.5">服务期内新功能、新内容自动同步</td>
             </tr>
             <tr>
-              <td className="border border-slate-500 px-2 py-1.5 text-center">使用培训</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">免费</td>
-              <td className="border border-slate-500 px-2 py-1.5">教师全员使用方法培训(差旅费用自理)</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">带教培训</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">2 位老师</td>
+              <td className="border border-slate-500 px-2 py-1.5">飞鹰英语带教培训,不另收培训费(交通食宿自理)</td>
             </tr>
           </tbody>
         </table>
@@ -138,7 +166,11 @@ function ContractDoc() {
 
       <Clause no="四" title="区域保护">
         <p>
-          自本协议生效之日起,甲方在乙方上述经营场所导航距离<strong>三公里</strong>范围内,不再发展其他合作点。
+          1. 自本协议生效之日起,甲方在乙方上述经营场所<strong>直线距离三公里</strong>范围内,不再发展其他合作点。
+        </p>
+        <p>
+          2. 前款距离以双方在本协议中确认的经营场所地址所对应的地图坐标为准,由甲方在系统内登记并据此核验;
+          乙方变更经营场所的,应提前书面告知甲方并重新确认保护范围。
         </p>
       </Clause>
 
@@ -161,8 +193,8 @@ function ContractDoc() {
       <Clause no="六" title="甲方服务与支持">
         <p>1. 甲方负责本系统的日常维护、故障处理与持续升级,保障系统正常可用。</p>
         <p>
-          2. 甲方对乙方教师进行免费使用方法培训(差旅自理);寒暑假等招生旺季,甲方提供相关运营方法指导,
-          乙方开展的招生活动及其收费由乙方全权负责。
+          2. 甲方为乙方提供<strong>飞鹰英语带教培训 2 位老师</strong>(不另收培训费,乙方人员差旅食宿自理);
+          寒暑假等招生旺季,甲方提供相关运营方法指导,乙方开展的招生活动及其收费由乙方全权负责。
         </p>
         <p>
           3. 系统为每位学员提供家长端监督入口,乙方应确保学员及其家长知悉,便于家长监督学习进度与学习效果。
@@ -402,27 +434,37 @@ function PitchDoc() {
           </thead>
           <tbody>
             <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">年度服务费</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥12,000 / 年</td>
-              <td className="border border-orange-200 px-2 py-1.5">含 100 个学生账号,<strong>系统内全部书本内容开放</strong>,教师 / 管理账号不限</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">基础合作费</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥12,000</td>
+              <td className="border border-orange-200 px-2 py-1.5"><strong>原价 ¥20,000,现 6 折</strong>;含 <strong>100 张学生学习卡(每张半年)</strong>,教材同步内容全开放,教师 / 管理账号不限</td>
             </tr>
             <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">超出 100 名</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥100 / 生 / 年</td>
-              <td className="border border-orange-200 px-2 py-1.5">按实际开通数量计费,招得越多,均摊越低</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">超出 100 张</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥130 / 张</td>
+              <td className="border border-orange-200 px-2 py-1.5">同为半年卡(180 天),按实际增购数量计费</td>
             </tr>
             <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">升级与培训</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">+¥40,000</td>
+              <td className="border border-orange-200 px-2 py-1.5">选配:飞鹰自研教材配套单词本、句型本与教学内容</td>
+            </tr>
+            <tr>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">配套教材</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥50 / 本</td>
+              <td className="border border-orange-200 px-2 py-1.5">纸质教材按需订购,运费另计</td>
+            </tr>
+            <tr>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">升级与带教培训</td>
               <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">免费</td>
-              <td className="border border-orange-200 px-2 py-1.5">新功能自动同步;教师全员使用培训</td>
+              <td className="border border-orange-200 px-2 py-1.5">新功能自动同步;<strong>飞鹰英语带教培训 2 位老师</strong>(差旅食宿自理)</td>
             </tr>
           </tbody>
         </table>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           {[
-            ['¥120', '每生每年(100 人满员时)'],
-            ['¥10', '折合每生每月'],
-            ['不到 4 毛', '折合每生每天'],
+            ['6 折', '12,000 元(原价 20,000)'],
+            ['¥120', '每张半年学习卡(100 张满配时)'],
+            ['约 0.7 元', '折合每个学生每天'],
           ].map(([big, small]) => (
             <div key={small} className="rounded-lg border border-orange-200 bg-[#FFF8F0] px-2 py-2.5">
               <p className="text-[18px] font-black text-[#FF6B35]">{big}</p>
@@ -433,7 +475,7 @@ function PitchDoc() {
         <p className="mt-3">
           <strong>投入产出参考</strong>(仅供测算,终端定价由机构完全自主,平台不干涉,亦不构成收益承诺):
           机构若将系统打包进课程、或按 200–300 元 / 本向学员收取智能学习服务费,100 名学生学一本书即对应
-          2–3 万元流水,一年多本滚动开课、按本数叠加;系统成本 1.2 万元 / 年,摊到每个学生约 120 元,
+          2–3 万元流水;基础合作费 1.2 万元摊到 100 张卡为每张约 120 元(半年),
           不到一本书服务费的一半。
         </p>
       </PitchSection>
@@ -441,7 +483,7 @@ function PitchDoc() {
       {/* 九、合作保障 */}
       <PitchSection no="九" title="为什么可以放心合作">
         <ul className="list-disc space-y-1 pl-5">
-          <li><strong>区域保护</strong>:经营场所导航三公里内不再发展第二家合作点,写进协议。</li>
+          <li><strong>区域保护</strong>:经营场所直线三公里内不再发展第二家合作点,写进协议,系统按坐标核验。</li>
           <li><strong>一年一签</strong>:先跑通再续签,机构风险可控;正常履约享同等条件优先续签权。</li>
           <li><strong>数据隔离</strong>:机构学员数据独立隔离,平台不用于向机构学员直接招生。</li>
           <li><strong>品牌归你</strong>:系统内展示机构自己的名称与 Logo,口碑沉淀在机构自己身上。</li>

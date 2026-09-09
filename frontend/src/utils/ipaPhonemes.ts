@@ -69,6 +69,54 @@ export function tokenizeIpa(raw: string): { tokens: string[]; unknown: string[] 
   return { tokens, unknown };
 }
 
+/**
+ * 按位置切段,给**展示上色**用(音标视频卡的角标等)。
+ *
+ * 与 tokenizeIpa 的区别,别混用:
+ * - tokenizeIpa 先 normalizeIpa 再切,认不出的字符单独扔进 unknown(丢了位置)——
+ *   它是**导入判分**用的,归一是必须的。
+ * - segmentIpa **不归一、不丢字符**,原样保留老师填的写法并保住顺序。
+ *   角标里归一是错的:老师写 g,归一后显示成 ɡ,标签就跟他填的不一样了;
+ *   而空格/斜杠被 normalizeIpa 抹掉会把「æ / e」并成一段。
+ */
+export function segmentIpa(raw: string): { text: string; kind: 'vowel' | 'consonant' | 'other' }[] {
+  // 只脱掉最外层的定界符,中间的原样留着
+  const s = (raw || '').trim().replace(/^[/[]|[/\]]$/g, '');
+  const out: { text: string; kind: 'vowel' | 'consonant' | 'other' }[] = [];
+  let i = 0;
+  while (i < s.length) {
+    // 先长后短:否则 tʃ 会被切成 t + ʃ、iː 会被切成 i + ː
+    const hit = BY_LEN_DESC.find(p => s.startsWith(p, i));
+    if (hit) {
+      out.push({ text: hit, kind: isVowel(hit) ? 'vowel' : 'consonant' });
+      i += hit.length;
+      continue;
+    }
+    const ch = s[i];
+    // 显示不归一,但**判类可以**:老师在角标里打的是键盘上的拉丁 g(表里是 IPA ɡ U+0261)、
+    // 半角冒号(表里是长音符 ː)—— 不认的话这些字符会灰掉,而它们恰恰是最常被打出来的。
+    // 只拿单字符去归一:多字符归一会改长度(ə: → ɜː),位置就对不上了
+    const norm = normalizeIpa(ch);
+    if (norm && norm !== ch && ALL_PHONEMES.includes(norm)) {
+      out.push({ text: ch, kind: isVowel(norm) ? 'vowel' : 'consonant' });
+      i += 1;
+      continue;
+    }
+    // 长音符/半角冒号跟着前一个元音走:单独灰掉会把 [i:] 显示成「彩色 i + 灰冒号」
+    const prev = out[out.length - 1];
+    if ((ch === ':' || ch === 'ː') && prev && prev.kind === 'vowel') {
+      prev.text += ch;
+      i += 1;
+      continue;
+    }
+    // 其余表里没有的字符(空格、斜杠、连字符…)原样过,不吞掉
+    if (prev && prev.kind === 'other') prev.text += ch;
+    else out.push({ text: ch, kind: 'other' });
+    i += 1;
+  }
+  return out;
+}
+
 /** token 数组 → 展示串。纸书用方括号,跟教材保持一致 */
 export const tokensToDisplay = (t: string[]): string => `[${t.join('')}]`;
 

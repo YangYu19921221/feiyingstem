@@ -147,6 +147,11 @@ interface ColoredPhoneticProps {
   className?: string;
   showLegend?: boolean;
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * 外层定界符。默认 `/` 跟词库一致;音标教材要传 'bracket' ——
+   * 纸书印的是 [bæd],那本教材全链路逐字符核对过纸书,这里跟着走
+   */
+  delimiter?: 'slash' | 'bracket' | 'none';
 }
 
 const SIZE_CFG = {
@@ -160,17 +165,19 @@ export default function ColoredPhonetic({
   className = '',
   showLegend = false,
   size = 'md',
+  delimiter = 'slash',
 }: ColoredPhoneticProps) {
   if (!phonetic) return null;
 
   const phonemes = parsePhonemes(phonetic);
   const syllables = groupSyllables(phonemes);
   const cfg = SIZE_CFG[size];
+  const [open, close] = delimiter === 'bracket' ? ['[', ']'] : ['/', '/'];
 
   return (
     <span className={`inline-flex flex-col items-start ${className}`}>
       <span className={`inline-flex items-center flex-wrap font-mono ${cfg.outer}`}>
-        <span className="text-gray-300 font-light">/</span>
+        {delimiter !== 'none' && <span className="text-gray-300 font-light">{open}</span>}
         {syllables.map((syl, si) => {
           const color = SYLLABLE_COLORS[si % SYLLABLE_COLORS.length];
           const bg = syl.stress !== 'none' ? color.stressBg : color.bg;
@@ -201,7 +208,7 @@ export default function ColoredPhonetic({
             </span>
           );
         })}
-        <span className="text-gray-300 font-light">/</span>
+        {delimiter !== 'none' && <span className="text-gray-300 font-light">{close}</span>}
       </span>
       {showLegend && (
         <span className="flex items-center gap-4 mt-2 text-xs text-gray-500">

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>飞鹰英语｜B端C端销售团队实战手册</title>
+<style>
+  :root{--navy:#0d1828;--navy2:#17263a;--ink:#172033;--gray:#667085;--paper:#f6f2ea;--white:#fff;--orange:#e95d2a;--yellow:#f3bf38;--teal:#278d8d;--green:#2e8b57;--line:#ded8ce;--soft:#fff8ed}
+  *{box-sizing:border-box}html,body{margin:0;padding:0;background:#ddd;color:var(--ink);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}
+  @page{size:A4;margin:0}.page{position:relative;width:210mm;height:297mm;margin:0 auto 8mm;background:var(--paper);padding:17mm 16mm 15mm;overflow:hidden;page-break-after:always}.page:last-child{page-break-after:auto}
+  @media print{html,body{background:#fff}.page{margin:0}}
+  h1,h2,h3,p{margin:0}h1,h2,h3{font-family:"Songti SC","STSong","Noto Serif CJK SC",serif}h1{font-size:34pt;line-height:1.18}h2{font-size:24pt;line-height:1.25}h3{font-size:13pt;line-height:1.45}p,li,td,th{font-size:10pt;line-height:1.7}
+  .dark{background:var(--navy);color:#fff}.eyebrow{font-size:8.5pt;font-weight:900;letter-spacing:1.4px;color:var(--orange);margin-bottom:5mm}.dark .eyebrow{color:var(--yellow)}.sub{font-size:11.5pt;line-height:1.75;color:var(--gray);max-width:160mm;margin-top:4mm}.dark .sub{color:#c6d0dc}
+  .brand{position:absolute;left:16mm;bottom:7mm;font-size:8pt;color:#8d8b86}.page-no{position:absolute;right:16mm;bottom:7mm;font-size:8pt;color:#8d8b86}.dark .brand,.dark .page-no{color:#9aa8b8}
+  .tag{display:inline-block;padding:2mm 4mm;border-radius:99px;background:var(--orange);color:#fff;font-size:8pt;font-weight:900;letter-spacing:.4px}.rule{height:1px;background:var(--line);margin:6mm 0}.dark .rule{background:#344156}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5mm}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}.card{background:#fff;border:1px solid var(--line);border-radius:4mm;padding:5mm;break-inside:avoid}.dark .card{background:var(--navy2);border-color:#344156}.card h3{margin-bottom:2mm}.card p,.card li{color:var(--gray)}.dark .card p,.dark .card li{color:#c5ceda}
+  .num{font-family:Georgia,serif;font-size:25pt;font-weight:800;color:var(--orange);line-height:1}.callout{background:var(--navy);color:#fff;border-radius:4mm;padding:5mm 6mm}.dark .callout{background:#22354e}.callout strong{color:var(--yellow)}.quote{font-family:"Songti SC","STSong",serif;font-size:13pt;line-height:1.75;font-weight:700}
+  .script{background:#fff;border-left:4px solid var(--orange);border-radius:0 4mm 4mm 0;padding:5mm 6mm;margin-top:4mm}.script.teal{border-color:var(--teal)}.script.green{border-color:var(--green)}.script .label{font-size:8pt;font-weight:900;color:var(--orange);letter-spacing:.5px;margin-bottom:2mm}.script.teal .label{color:var(--teal)}.script.green .label{color:var(--green)}.script p{font-family:"Songti SC","STSong",serif;font-size:11.5pt;line-height:1.75;font-weight:700}
+  table{border-collapse:collapse;width:100%;margin-top:5mm}th{text-align:left;color:#6f6b64;font-size:8.5pt;padding:2.7mm 2.5mm;border-bottom:1.5px solid #aaa39a}td{padding:3mm 2.5mm;border-bottom:1px solid var(--line);vertical-align:top}.dark th{color:#aeb9c7;border-color:#4a5668}.dark td{border-color:#344156;color:#e4e9ef}
+  .timeline{margin-top:6mm;border-top:1px solid var(--line)}.row{display:grid;grid-template-columns:22mm 41mm 1fr;gap:4mm;padding:3.6mm 0;border-bottom:1px solid var(--line)}.row .when{font-weight:900;color:var(--orange)}.row .action{font-weight:800}.row p{font-size:9.2pt;color:var(--gray);line-height:1.55}.dark .timeline,.dark .row{border-color:#344156}.dark .row p{color:#c5ceda}
+  .funnel{display:grid;grid-template-columns:repeat(5,1fr);gap:2.5mm;margin-top:8mm}.funnel div{background:#fff;border-top:3px solid var(--orange);border-radius:3mm;padding:4mm 3mm;min-height:46mm}.funnel div:nth-child(2){border-color:var(--teal)}.funnel div:nth-child(3){border-color:var(--green)}.funnel div:nth-child(4){border-color:var(--yellow)}.funnel div:nth-child(5){border-color:#836fc9}.funnel b{display:block;font-size:8pt;color:var(--gray);margin-bottom:2mm}.funnel h3{font-size:11.5pt;margin-bottom:2mm}.funnel p{font-size:8.5pt;color:var(--gray);line-height:1.5}
+  .hero-img{position:absolute;right:-10mm;bottom:-2mm;width:128mm;height:197mm;object-fit:cover;border-radius:50mm 0 0 0}.cover{position:relative;z-index:2;width:100mm;padding-top:23mm}.cover h1{color:#fff}.cover .lead{margin-top:8mm;color:#dce4ee;font-size:13pt;line-height:1.8}.cover .line{margin-top:13mm;border-top:2px solid var(--yellow);padding-top:5mm;font-size:12pt;font-weight:800;color:#fff}
+  .img{width:100%;height:66mm;object-fit:contain;background:#fff;border-radius:5mm;padding:3mm}.checks{list-style:none;padding:0;margin:6mm 0 0}.checks li{padding:3mm 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:8mm 1fr;gap:3mm}.checks b{color:var(--orange)}.kpi{display:grid;grid-template-columns:1.1fr .7fr 1.7fr;gap:0;border-bottom:1px solid var(--line);padding:3mm 0}.kpi.head{font-size:8.5pt;font-weight:900;color:#77736d;border-bottom:1.5px solid #aaa39a}.kpi span{font-size:9.5pt}.kpi span:nth-child(2){text-align:center;font-variant-numeric:tabular-nums}.small{font-size:8.5pt;line-height:1.6;color:var(--gray)}
+</style>
+</head>
+<body>
+
+<section class="page dark">
+  <div class="cover"><span class="tag">销售内训 · 现场执行</span><div style="height:13mm"></div><h1>B 端讲经营，<br>C 端讲孩子</h1><p class="lead">飞鹰英语销售团队实战手册：用真实数据完成首次搭话、体验、7 天复盘、成交、续费和转介绍。</p><p class="line">销售不背功能表。只讲客户正在损失什么、7 天能验证什么、下一步由谁完成。</p></div>
+  <img class="hero-img" src="sales_deck/images/redesign_hero.png" alt="销售、老师与孩子">
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">01</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">01 · 销售总路线</div><h2>两类客户，两种讲法，一条数据链</h2><p class="sub">B 端在意经营结果和交付风险；C 端在意孩子问题和真实变化。销售必须换语言，不能把同一套产品介绍念给所有人。</p>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card"><span class="tag">B 端</span><h3 style="margin-top:4mm">对校长、机构老板、代理</h3><p>先问招生、老师效率、续费证据；再演示一个班如何在 7 天内跑完测评、训练、周报和复盘。</p><div class="rule"></div><p class="quote">“您买的不是功能，而是招生、交付、续费三笔账放进一个看板。”</p></div>
+    <div class="card"><span class="tag" style="background:var(--green)">C 端</span><h3 style="margin-top:4mm">对家长和孩子</h3><p>先让孩子读一个词；再用读对数、近音数和听写结果说明问题，邀请完成 7 天训练。</p><div class="rule"></div><p class="quote">“我们不说孩子英语差，只说哪里没学牢、下一步怎么练。”</p></div>
+  </div>
+  <div class="funnel">
+    <div><b>01</b><h3>首次接触</h3><p>不讲全套，只邀请完成一个小体验。</p></div>
+    <div><b>02</b><h3>留下基线</h3><p>发音、听写、小测记录同口径数据。</p></div>
+    <div><b>03</b><h3>7 天训练</h3><p>老师带练，销售只跟进完成情况。</p></div>
+    <div><b>04</b><h3>数据复盘</h3><p>前后对比，解释变化和未变化。</p></div>
+    <div><b>05</b><h3>成交扩张</h3><p>C 端报名，B 端扩班、加盟或区域合作。</p></div>
+  </div>
+  <div class="callout" style="margin-top:9mm"><p class="quote">统一收口：<strong>“先选一个孩子或一个班，7 天看到第一份同口径对比，再决定是否扩大。”</strong></p></div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">02</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">02 · B 端首次接触</div><h2>先问五个问题，再决定讲哪一页</h2><p class="sub">校长没有时间听产品宣讲。先找到他正在损失的钱和时间。</p>
+  <div class="grid2" style="margin-top:8mm;grid-template-columns:1.05fr .95fr">
+    <div>
+      <div class="script"><div class="label">电话 / 微信开场</div><p>您好，我是飞鹰英语的【姓名】。我们主要帮英语机构把招生测评、老师训练和家长周报连起来。想先问一句：您现在更想解决招生线索，还是续费和老师交付？</p></div>
+      <ul class="checks">
+        <li><b>1</b><span>目前几个校区、几个班、多少学生？</span></li>
+        <li><b>2</b><span>新线索来自哪里，现在能不能按渠道统计？</span></li>
+        <li><b>3</b><span>家长问效果时，老师拿什么数据回答？</span></li>
+        <li><b>4</b><span>老师每周花多少时间备课、批改和写反馈？</span></li>
+        <li><b>5</b><span>如果试点，谁能在 7 天内安排一个班上线？</span></li>
+      </ul>
+    </div>
+    <div>
+      <img class="img" src="sales_deck/images/feat_classroom.png" alt="校长和老师查看班级数据">
+      <div class="card" style="margin-top:5mm"><h3>需求复述</h3><p>“我理解您现在不是缺一个软件，而是三件事没连起来：线索不知道从哪来，教学依赖个人经验，续费时没有连续证据。我们就按这三个问题演示。”</p></div>
+      <div class="card" style="margin-top:4mm"><h3>合格商机</h3><p>有明确痛点、有决策人、有可试点班级、有下一次会议时间。只有“感觉不错”不算商机。</p></div>
+    </div>
+  </div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">03</div>
+</section>
+
+<section class="page dark">
+  <div class="eyebrow">03 · B 端 20 分钟演示</div><h2>只走一条完整链路，不翻功能菜单</h2><p class="sub">每一段演示都要落到“校长得到了什么”。演示结束必须确定试点班级、负责人和日期。</p>
+  <div class="timeline">
+    <div class="row"><div class="when">0–2 分钟</div><div class="action">定目标</div><p>“今天只走一个家长怎么进来、一个孩子怎么练、老师怎么跟进、家长最后看到什么。”</p></div>
+    <div class="row"><div class="when">2–6 分钟</div><div class="action">招生入口</div><p>展示渠道专属测评链接。结论：每条线索能归因，销售知道下一步联系谁。</p></div>
+    <div class="row"><div class="when">6–10 分钟</div><div class="action">发音判断</div><p>展示目标词、近音词和重读结果。结论：不是报一个分数，而是知道下一次练什么。</p></div>
+    <div class="row"><div class="when">10–14 分钟</div><div class="action">老师交付</div><p>展示错词、完成记录、班级情况和纸笔听写。结论：新老师也有明确动作。</p></div>
+    <div class="row"><div class="when">14–17 分钟</div><div class="action">家长证据</div><p>展示第 0 天与第 7 天对比。结论：续费时不是老师靠嘴解释。</p></div>
+    <div class="row"><div class="when">17–20 分钟</div><div class="action">确定试点</div><p>“选哪个班？谁负责？哪天开始？7 天后达到什么条件就扩班？”</p></div>
+  </div>
+  <div class="callout" style="margin-top:9mm"><p class="quote">演示过程中不说“我们功能很多”。只说：<strong>“这一步替您减少哪种损失，留下哪条数据。”</strong></p></div>
+  <div class="grid3" style="margin-top:7mm">
+    <div class="card"><h3>招生</h3><p>点击、测评、留资、到店、报名逐层统计。</p></div>
+    <div class="card"><h3>交付</h3><p>任务是否完成、老师是否跟进、家长是否收到。</p></div>
+    <div class="card"><h3>续费</h3><p>前后对比、薄弱点、下一期训练建议。</p></div>
+  </div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">04</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">04 · B 端用数据算账</div><h2>不说“能赚钱”，把漏斗和责任摆出来</h2><p class="sub">销售不替客户编收入。先用客户自己的客单价和现有转化率算，所有数字都能回到系统记录或财务流水。</p>
+  <table style="margin-top:8mm">
+    <thead><tr><th>经营环节</th><th>现状数据</th><th>7 天 / 30 天试点看什么</th><th>销售怎么问</th></tr></thead>
+    <tbody>
+      <tr><td><b>招生</b></td><td>曝光、点击、测评、留资</td><td>测评完成率、有效线索率</td><td>“哪个渠道来的家长最愿意测完？”</td></tr>
+      <tr><td><b>体验</b></td><td>预约、到店、体验完成</td><td>7 天任务激活与完成</td><td>“测完的家长有多少愿意继续 7 天？”</td></tr>
+      <tr><td><b>交付</b></td><td>老师时间、作业完成</td><td>老师跟进人数、周报送达</td><td>“老师每周能少做哪些重复工作？”</td></tr>
+      <tr><td><b>续费</b></td><td>到期人数、续费人数</td><td>有前后报告的人群续费情况</td><td>“有数据面谈和没数据面谈差多少？”</td></tr>
+    </tbody>
+  </table>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card"><h3>收入试算公式</h3><p style="margin-top:3mm">新增收入 = 有效线索 × 到店率 × 成交率 × 客单价</p><p>续费收入 = 到期学生 × 续费率 × 续费客单价</p><p>先填写客户自己的数字，不使用“行业平均”替代。</p></div>
+    <div class="card"><h3>试点成功条件</h3><p style="margin-top:3mm">至少跑出：一条可归因线索、一个完整体验、一个连续训练学生、一份家长对比报告。</p><p>没有跑完闭环，不急着谈大规模采购。</p></div>
+  </div>
+  <div class="script" style="margin-top:8mm"><div class="label">关单问题</div><p>如果 7 天后能看到真实练习记录、老师能发出第一份对比报告，您愿意先扩一个班，还是直接扩整个校区？</p></div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">05</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">05 · B 端异议处理</div><h2>不反驳客户，把疑问变成试点条件</h2>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card"><h3>“我们已经有教务系统”</h3><p>“教务系统管排课收费，我们补的是孩子学了什么、老师怎么跟、家长为什么续。不替换原系统，先补这段。”</p></div>
+    <div class="card"><h3>“发音判断准吗”</h3><p>“先用真实学生做同口径复测，让老师检查近音判断是否能指导训练。有材料的部分公开，没有材料的不夸大。”</p></div>
+    <div class="card"><h3>“老师不会用”</h3><p>“首周只要求建班、发任务、看报告三个动作。总部陪跑到第一份周报，不让老师自己摸索。”</p></div>
+    <div class="card"><h3>“价格太高”</h3><p>“先算一个校区每月线索、老师时间和续费的损失。也可以先跑一个班，数据成立再选档位。”</p></div>
+    <div class="card"><h3>“怕开通后没人用”</h3><p>“验收不是账号开通，而是首班基线、连续训练、第一封周报和第一次家长面谈全部完成。”</p></div>
+    <div class="card"><h3>“我再考虑”</h3><p>“可以。今天留下试点目标、演示账号和结算口径，我们约具体日期只复盘三个问题。”</p></div>
+  </div>
+  <div class="callout" style="margin-top:9mm"><p class="quote"><strong>禁止争辩：</strong>客户提出异议，先说“这个担心合理”，再把它改成可验证的数据或试点条件。</p></div>
+  <div class="script" style="margin-top:7mm"><div class="label">最后收口</div><p>我们今天不要求您买一个想象中的结果，只确定一个 7 天能验证的动作：选一个班、定一个老师、完成一次前后复测。</p></div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">06</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">06 · C 端路边搭话</div><h2>让家长停 60 秒，不让他听 10 分钟</h2><p class="sub">站在侧前方，保持一步距离，不追、不拦、不碰孩子。目标只是让孩子愿意读第一个词。</p>
+  <div class="script" style="margin-top:8mm"><div class="label">10 秒开场</div><p>家长您好，打扰 10 秒。我们做一个免费的英语发音小测试，不卖课，孩子只读 6 个词，大约 1 分钟。先看结果，不用留电话，您愿意让他试一个词吗？</p></div>
+  <div class="script teal"><div class="label">孩子读完后</div><p>刚才 6 个词里，孩子读对了【X】个，有【A】个更接近【近音词】，还有【B】个没有听清。这不是说孩子英语差，而是告诉我们先练哪一个音。</p></div>
+  <div class="script green"><div class="label">邀请 7 天训练</div><p>今天不用报名长期课程。我们先安排 7 天任务，每天 5–10 分钟；第 7 天用同难度词复测，把读对数、近音数和听写结果放在一起给您看，再决定要不要继续。</p></div>
+  <div class="grid3" style="margin-top:8mm">
+    <div class="card"><h3>家长赶时间</h3><p>“您扫一下码带走，回家安静时再测；不方便就不留信息。”</p></div>
+    <div class="card"><h3>担心推销</h3><p>“现在不讲价格，结果没价值就结束；想看完整建议再联系。”</p></div>
+    <div class="card"><h3>孩子不愿读</h3><p>“让他自己挑最简单的词，不露脸，读完一个就停也可以。”</p></div>
+  </div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">07</div>
+</section>
+
+<section class="page dark">
+  <div class="eyebrow">07 · C 端 7 天成交</div><h2>家长不是第 7 天才被成交，信任每天都在累积</h2><p class="sub">销售不每天催报名。每次联系只带一条新数据、一句老师判断和一个下一步。</p>
+  <div class="timeline">
+    <div class="row"><div class="when">第 0 天</div><div class="action">留下基线</div><p>“6 个词读对 2 个、近音 3 个、没听清 1 个；10 词听写对 4 个。”</p></div>
+    <div class="row"><div class="when">第 1 天</div><div class="action">发训练安排</div><p>“这周只练 /æ/ 和 4 个相关词，每天 5–10 分钟，不追求满分。”</p></div>
+    <div class="row"><div class="when">第 3 天</div><div class="action">发过程反馈</div><p>“完成 3 天中的 2 天，有效重读 8 次；bad 已稳定，bed 仍混淆。”</p></div>
+    <div class="row"><div class="when">第 7 天</div><div class="action">同难度复测</div><p>“读对从 2 / 6 到 5 / 6，近音从 3 个到 1 个；听写从 4 / 10 到 8 / 10。”</p></div>
+    <div class="row"><div class="when">复盘面谈</div><div class="action">给下一步</div><p>“下一阶段先不加很多新词，继续把剩下的近音和音形对应练牢。”</p></div>
+  </div>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="callout"><h3 style="color:var(--yellow);margin-bottom:3mm">有变化时</h3><p>先读数，再解释变化来自哪些训练，最后给下一阶段安排。</p></div>
+    <div class="callout"><h3 style="color:var(--yellow);margin-bottom:3mm">没有变化时</h3><p>如实说明练习天数、任务难度或环境问题，先调整再测，不把责任推给孩子。</p></div>
+  </div>
+  <p class="small" style="margin-top:7mm;color:#aeb9c7">上述数字只用于话术演示。销售必须替换成孩子本人真实记录，并标明测试日期、题量和词表范围。</p>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">08</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">08 · 推广与活动</div><h2>所有渠道都导向同一个动作：读 6 个词</h2><p class="sub">不要一个渠道讲加盟、一个渠道讲课程、一个渠道讲功能。入口统一，链接分开，才能知道钱和人力花在哪里有效。</p>
+  <table style="margin-top:8mm">
+    <thead><tr><th>渠道</th><th>一句话标题</th><th>现场内容</th><th>只看哪个数</th></tr></thead>
+    <tbody>
+      <tr><td><b>路边地推</b></td><td>读 6 个词，1 分钟看懂发音问题</td><td>现场测评，不先留资</td><td>测评完成率</td></tr>
+      <tr><td><b>朋友圈</b></td><td>孩子把 bad 读成 bed，问题到底在哪</td><td>脱敏前后录音与老师解释</td><td>报告打开率</td></tr>
+      <tr><td><b>短视频</b></td><td>同一个词，老师只纠一个位置</td><td>示范、重读、前后对比</td><td>测评点击率</td></tr>
+      <tr><td><b>家长会</b></td><td>不猜哪里差，现场测出来</td><td>两个孩子演示 + 二维码</td><td>有效线索率</td></tr>
+      <tr><td><b>公开课</b></td><td>一小时拿到三份结果</td><td>测评、纸笔听写、小测</td><td>7 天体验率</td></tr>
+      <tr><td><b>老带新</b></td><td>带同学来组队挑战</td><td>测评 + 比赛，奖励给孩子</td><td>转介绍到店率</td></tr>
+    </tbody>
+  </table>
+  <div class="grid2" style="margin-top:8mm">
+    <img class="img" src="sales_deck/images/divider_franchise.png" alt="校区推广与合作">
+    <div class="card"><h3>每条渠道单独归因</h3><p style="margin-top:3mm">朋友圈、短视频、地推、家长会、转介绍分别使用不同链接。每周只加大有真实完成和留资的渠道。</p><div class="rule"></div><p><b>不要看：</b>发了多少海报、加了多少群。<br><b>只看：</b>多少人测完、多少人完成 7 天、多少人进入面谈。</p></div>
+  </div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">09</div>
+</section>
+
+<section class="page">
+  <div class="eyebrow">09 · 跟进与 KPI</div><h2>销售每天必须知道客户停在哪一步</h2><p class="sub">没有下一步日期的客户，不算有效商机；没有真实数据的“感觉不错”，不算销售进展。</p>
+  <div class="callout" style="margin-top:7mm"><p class="quote">新线索 → 已联系 → 已测评 → 已演示 → 试点中 → 商务确认 → 已签约 → 已上线 → 续费 / 转介绍</p></div>
+  <div style="margin-top:8mm">
+    <div class="kpi head"><span>指标</span><span>计算</span><span>看见问题后做什么</span></div>
+    <div class="kpi"><span>测评完成率</span><span>完成 ÷ 点击</span><span>低：缩短流程、检查录音权限和现场引导</span></div>
+    <div class="kpi"><span>有效线索率</span><span>同意联系 ÷ 完成</span><span>低：报告价值不够，别急着强要手机号</span></div>
+    <div class="kpi"><span>7 天体验率</span><span>激活 ÷ 有效线索</span><span>低：首次任务太重或老师没有及时开口</span></div>
+    <div class="kpi"><span>7 天完成率</span><span>复测 ÷ 激活</span><span>低：第 3 天必须人工回访和调整任务</span></div>
+    <div class="kpi"><span>面谈率</span><span>到场 ÷ 复测</span><span>低：复测后没有给出明确的下一步建议</span></div>
+    <div class="kpi"><span>成交率</span><span>成交 ÷ 面谈</span><span>低：检查方案是否对应孩子或机构真实问题</span></div>
+    <div class="kpi"><span>续费率</span><span>续费 ÷ 到期</span><span>低：前 11 周证据是否连续，不能到期才谈</span></div>
+  </div>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card"><h3>每天上午</h3><p>处理新增测评、未联系线索、即将到期客户；确认当天演示和复盘。</p></div>
+    <div class="card"><h3>每天结束前</h3><p>记录客户原话、当前阶段、下一步动作和具体日期；没有日期就继续追问。</p></div>
+  </div>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">10</div>
+</section>
+
+<section class="page dark">
+  <div class="eyebrow">10 · 50% 销售分成</div><h2>高分成要靠清楚的归因与结算落地</h2><p class="sub">销售能放心投入的前提，不只是比例高，而是每一单怎么算、什么时候结、退款怎么办都写清楚。</p>
+  <div class="grid2" style="margin-top:8mm;grid-template-columns:.85fr 1.15fr">
+    <div class="callout" style="padding:9mm">
+      <span class="tag" style="background:var(--teal)">销售端成交奖励</span>
+      <div style="font-family:Georgia,serif;font-size:57pt;color:var(--yellow);font-weight:900;line-height:1;margin-top:9mm">50%</div>
+      <p style="font-size:14pt;font-weight:800;margin-top:5mm">按加盟实收净额核算</p>
+      <p style="margin-top:3mm;color:#c5ceda">签约 · 回款 · 可追踪</p>
+      <div class="rule"></div>
+      <p style="color:var(--yellow)">示例：县级独家 ¥98,000<br>销售端 ¥49,000</p>
+    </div>
+    <div class="card">
+      <h3>签合作前写清 7 件事</h3>
+      <ul style="margin:4mm 0 0;padding-left:5mm">
+        <li>客户使用渠道码、机构码或首次登记确认归因。</li>
+        <li>“实收净额”是否扣除折扣、税费和支付费用。</li>
+        <li>客户回款到哪个节点触发分成。</li>
+        <li>单笔结算还是月结，具体结算日。</li>
+        <li>退款后已结分成如何冲回。</li>
+        <li>销售不得擅自承诺提分、准确率和额外权益。</li>
+        <li>销售、总部、校区分别负责哪些交付动作。</li>
+      </ul>
+    </div>
+  </div>
+  <div class="script" style="margin-top:9mm;background:#fff;color:var(--ink)"><div class="label">对销售合作人的话术</div><p>您负责找到真正需要这套系统的机构，我们负责演示、开通和交付。客户完成约定回款后，销售端按加盟实收净额享 50% 分成；归因、退款和结算日期全部写进协议。</p></div>
+  <p class="small" style="margin-top:7mm;color:#aeb9c7">示例金额须以最终商务政策和合同为准。</p>
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">11</div>
+</section>
+
+<section class="page dark">
+  <div class="cover" style="padding-top:32mm"><span class="tag">今天就能执行</span><div style="height:13mm"></div><h1>不卖想象，<br>只约下一步</h1><p class="lead">B 端：选一个班、定一个老师、7 天跑出第一份报告。<br><br>C 端：读 6 个词、完成 7 天训练、同难度复测后再决定。</p><div class="callout" style="margin-top:12mm"><p class="quote"><strong>销售最后一句：</strong><br>“我们今天不要求您相信全部，只确定一个 7 天能验证的动作。”</p></div><p style="margin-top:12mm;color:#fff">销售姓名：__________________</p><p style="margin-top:4mm;color:#fff">联系电话：__________________</p></div>
+  <img class="hero-img" src="sales_deck/images/closing.png" alt="共同完成学习成果">
+  <div class="brand">飞鹰英语 · 销售团队实战手册</div><div class="page-no">12</div>
+</section>
+
+</body>
+</html>

@@ -70,6 +70,16 @@ class Settings(BaseSettings):
     # 渲染页 DPI。144 够清晰又不至于让 100 页 PDF 撑爆磁盘
     MATERIAL_RENDER_DPI: int = 144
 
+    # ---- 音标视频的配套课件(PDF / PPT) ----
+    # 同 PHONETIC_VIDEO_DIR 的理由:**必须与 UPLOAD_DIR 分开**,原文件永不下发。
+    # ⚠️ 与 MATERIAL_DIR **必须是两个目录**:渲染页按整数 id 分子目录,而
+    # live_materials 与 phonetic_materials 的 id 各自从 1 开始 —— 共用一个根目录时
+    # id=3 的音标课件会读到 id=3 的直播课件的页,跨功能串号
+    PHONETIC_MATERIAL_DIR: str = "./private_media/phonetic_materials"
+    # 课件比视频小得多,50MB 足够一份几十页的 PPT;
+    # 也是拦住"老师把整学期资料打包传上来"的闸门(转换耗时随页数涨)
+    MAX_PHONETIC_MATERIAL_SIZE: int = 50 * 1024 * 1024
+
     # ---- 音标跟读录音 ----
     # 同 PHONETIC_VIDEO_DIR 的理由:**必须与 UPLOAD_DIR 分开**。
     # 这是**孩子的声音**,属于未成年人个人信息,绝不能落进公开无鉴权的目录;

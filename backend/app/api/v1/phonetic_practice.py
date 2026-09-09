@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -57,6 +57,13 @@ class LessonBrief(BaseModel):
     item_count: int
     removed_count: int
     has_video: bool
+    # 这一节在教的音素。详情接口一直有,目录接口此前没下发 ——
+    # 48 张卡片长得一模一样(只有编号和词数),学生看不出这节练什么音
+    highlight: List[str] = []
+    # 学情:写对过几个词(去重,以"曾经写对"为准) + 最后练的时间。
+    # ⚠️ 只是"这节练到哪"的信号,不是掌握度评估
+    mastered_count: int = 0
+    last_practiced_at: Optional[str] = None
 
 
 class BookWithLessons(BaseModel):
@@ -107,14 +114,38 @@ async def list_books(
         .order_by(PhoneticLesson.book_id, PhoneticLesson.lesson_number)
     )).scalars().all()
 
+    # 学情一次聚合出来,不要按节 N 次查询(48 节就是 48 个来回)。
+    # 写对数按 item_id 去重: 同一个词第二遍才对、或反复练,都只算一个词写对过。
+    # ⚠️ 这张表不是租户锚点,但按 user_id 过滤天然只落到本人,不存在跨机构读。
+    lesson_ids = [ls.id for ls in lessons]
+    progress: dict[int, tuple[int, Optional[str]]] = {}
+    if lesson_ids:
+        rows = (await db.execute(
+            select(
+                PhoneticAttempt.lesson_id,
+                func.count(func.distinct(
+                    case((PhoneticAttempt.is_correct.is_(True), PhoneticAttempt.item_id))
+                )),
+                func.max(PhoneticAttempt.created_at),
+            )
+            .where(PhoneticAttempt.user_id == current_user.id,
+                   PhoneticAttempt.lesson_id.in_(lesson_ids))
+            .group_by(PhoneticAttempt.lesson_id)
+        )).all()
+        progress = {lid: (right or 0, str(last) if last else None) for lid, right, last in rows}
+
     by_book: dict[int, List[LessonBrief]] = {}
     for ls in lessons:
+        right, last = progress.get(ls.id, (0, None))
         by_book.setdefault(ls.book_id, []).append(LessonBrief(
             id=ls.id, code=ls.code, title=ls.title,
             lesson_number=ls.lesson_number,
             item_count=counts.get(ls.id, 0),
             removed_count=ls.removed_count or 0,
             has_video=ls.video_id is not None,
+            highlight=_loads(ls.highlight_json, []),
+            mastered_count=right,
+            last_practiced_at=last,
         ))
 
     return [
@@ -176,6 +207,9 @@ class CheckOut(BaseModel):
     # 只在第二遍仍错时给出答案,避免第一遍就泄题
     answer_display: Optional[str] = None
     prefill: Optional[List[Optional[str]]] = None
+    # 这张卡已经结束(做对了 / 第二遍判完)时才给完整答案,供卡片背面揭示。
+    # ⚠️ 第一遍做错**不给** —— 那等于按一下就能白拿答案。
+    answer_tokens: Optional[List[str]] = None
 
 
 # 元音音素(含双元音)。第二遍只挖元音格:元音是拼读教学点,辅音是送分的
@@ -268,6 +302,14 @@ async def check_answer(
         out.prefill = [None if i in b else a for i, a in enumerate(answer)]
     elif wrong:
         # 第二遍还错才给答案
+        out.answer_display = it.answer_display or f"[{''.join(answer)}]"
+
+    # 卡片模式要在背面揭示完整答案。给的条件是「这张卡已经结束」:
+    # 做对了(哪一遍都算),或者第二遍判完(不再给重试机会)。
+    # 做对时也必须由服务端给 —— 重音符判分是宽松的(学生没点 ˈ 也算对),
+    # 拿学生填的格子当答案显示会漏掉重音符,跟纸书对不上。
+    if not wrong or payload.pass_number >= 2:
+        out.answer_tokens = answer
         out.answer_display = it.answer_display or f"[{''.join(answer)}]"
     return out
 

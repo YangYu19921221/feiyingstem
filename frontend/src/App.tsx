@@ -45,6 +45,7 @@ const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'))
 const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
 const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
 const PhoneticFillBlank = lazyWithRetry(() => import('./pages/PhoneticFillBlank'));
+const PhoneticFlashCards = lazyWithRetry(() => import('./pages/PhoneticFlashCards'));
 const PhoneticLessons = lazyWithRetry(() => import('./pages/PhoneticLessons'));
 const PhoneticReading = lazyWithRetry(() => import('./pages/PhoneticReading'));
 const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
@@ -485,7 +486,17 @@ function App() {
           }
         />
 
-        {/* 学生端 - 看单词写音标(填空)。与音标视频同属音标模块,不挂在单词本单元下 */}
+        {/* 学生端 - 看单词写音标(卡片版):一次一个词,当场判、当场揭示答案+发音 */}
+        <Route
+          path="/student/phonetics/textbook/:lessonId/cards"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PhoneticFlashCards />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 看单词写音标(整页版,纸书那一页)。与音标视频同属音标模块 */}
         <Route
           path="/student/phonetics/textbook/:lessonId/fill"
           element={

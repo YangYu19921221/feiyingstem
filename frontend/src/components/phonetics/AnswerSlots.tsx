@@ -17,29 +17,54 @@ interface Props {
   onSlotClick?: (i: number) => void;
   /** 整页布局用的紧凑尺寸:一页 20 行要放得下 */
   compact?: boolean;
+  /**
+   * 显式指定尺寸(卡片模式用)。不传则按 compact 回落到原来两档,老调用点零改动。
+   * 卡片上要按音素个数选档 —— 8 个音素用 lg 会在手机上撑出横向滚动
+   */
+  size?: 'compact' | 'md' | 'lg';
 }
 
+const BOX: Record<'compact' | 'md' | 'lg', { box: string; wrap: string }> = {
+  compact: { box: 'h-9 min-w-[2.1rem] text-lg', wrap: 'text-lg' },
+  md: { box: 'h-12 min-w-[2.5rem] text-2xl', wrap: 'text-2xl' },
+  lg: { box: 'h-14 min-w-[3rem] text-3xl', wrap: 'text-3xl' },
+};
+
+import { isVowel } from '../../utils/ipaPhonemes';
+
 export default function AnswerSlots({
-  slots, editable, cursor, correct, onSlotClick, compact = false,
+  slots, editable, cursor, correct, onSlotClick, compact = false, size,
 }: Props) {
   const canEdit = new Set(editable);
-  const box = compact
-    ? 'h-9 min-w-[2.1rem] text-lg'
-    : 'h-14 min-w-[3rem] text-3xl';
+  const { box, wrap } = BOX[size ?? (compact ? 'compact' : 'lg')];
 
   return (
-    <div className={`flex items-center gap-1 font-mono ${compact ? 'text-lg' : 'text-3xl'}`}>
+    <div className={`flex items-center gap-1 font-mono ${wrap}`}>
       <span className="text-slate-300">[</span>
       {slots.map((v, i) => {
         const editing = canEdit.has(i);
         const judged = correct?.[i];
         const isCursor = i === cursor && editing && judged == null;
 
-        let tone = 'border-slate-200 text-slate-800';
-        if (judged === true) tone = 'border-emerald-300 bg-emerald-50 text-emerald-700';
-        else if (judged === false) tone = 'border-rose-300 bg-rose-50 text-rose-600';
-        else if (!editing) tone = 'border-transparent bg-slate-50 text-slate-400';
-        else if (isCursor) tone = 'border-orange-400 bg-orange-50 text-slate-800';
+        // 元音格标出来:与 ColoredPhonetic「元音深、辅音浅」同一套口径。
+        // 第二遍只挖元音,颜色让"要填的就是元音"这件事在第一遍就看得见
+        const vowel = v != null && isVowel(v);
+
+        let tone = vowel
+          ? 'border-orange-200 text-orange-600 font-bold'
+          : 'border-slate-200 text-slate-800';
+        if (judged === true) {
+          tone = vowel
+            ? 'border-emerald-400 bg-emerald-50 text-emerald-700 font-bold'
+            : 'border-emerald-300 bg-emerald-50 text-emerald-600';
+        } else if (judged === false) {
+          tone = 'border-rose-300 bg-rose-50 text-rose-600 font-bold';
+        } else if (!editing) {
+          // 第二遍回填的辅音:置灰不抢注意力,该被看见的是待填的元音格
+          tone = 'border-transparent bg-slate-50 text-slate-400';
+        } else if (isCursor) {
+          tone = 'border-orange-400 bg-orange-50 text-slate-800';
+        }
 
         return (
           <button

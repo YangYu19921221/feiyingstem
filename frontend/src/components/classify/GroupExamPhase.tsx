@@ -97,6 +97,9 @@ const TYPE_LABELS: Record<string, string> = {
   en_to_cn: '英译中', cn_to_en: '中译英', listening: '听写', spelling: '拼写',
 };
 
+/** 听写题每题可播放次数(含自动播放的那一次) */
+const MAX_PLAYS = 3;
+
 export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: GroupExamPhaseProps) {
   const [questions] = useState(() => generateQuestions(words));
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -108,6 +111,22 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   const inputRef = useRef<HTMLInputElement>(null);
   const { playAudio: sharedPlayAudio, stopAudio } = useAudio();
+  // 次数的唯一真源放 ref:闸门要在"点击的那一刻"读到最新值(state 闭包是渲染时的旧值,
+  // 连点两下会双双放行)。state 只用于渲染「可播放 N 次」,两者必须一起改。
+  const playCountRef = useRef(0);
+  const autoPlayTimerRef = useRef<number | null>(null);
+  const setPlays = useCallback((n: number) => { playCountRef.current = n; setPlayCount(n); }, []);
+  // 只有真出声了才扣次数
+  const countAudiblePlay = useCallback(
+    () => setPlays(Math.min(playCountRef.current + 1, MAX_PLAYS)),
+    [setPlays],
+  );
+  const cancelPendingAutoPlay = () => {
+    if (autoPlayTimerRef.current !== null) {
+      clearTimeout(autoPlayTimerRef.current);
+      autoPlayTimerRef.current = null;
+    }
+  };
   const handleSubmitRef = useRef<() => void>(() => {});
   // 防误触:两类"落点不是用户本意"的点击要忽略——
   // ① 换题瞬间(上一题选完 300ms 自动切题后孩子习惯性的第二下,会落在新题的按钮上)
@@ -153,7 +172,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   // 切题时重置
   useEffect(() => {
     questionShownAt.current = Date.now();
-    setPlayCount(0);
+    setPlays(0);
     const existing = currentQ ? answers.get(currentQ.id) : '';
     setInputValue(existing || '');
     if (currentQ && (currentQ.type === 'listening' || currentQ.type === 'spelling')) {
@@ -208,20 +227,33 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
   }, [currentIndex, phase, questions]);
 
   const playAudio = () => {
-    if (!currentQ || playCount >= 3) return;
-    sharedPlayAudio(currentQ.word.word).then(() => setPlayCount(p => p + 1)).catch(() => {});
+    if (!currentQ || playCountRef.current >= MAX_PLAYS) return;
+    // 手点了就把待发的自动播放撤掉,否则 400ms 的定时器随后又响一遍(听着是两遍)
+    cancelPendingAutoPlay();
+    // 必须带 word_id: 父页是按 {word,id} 预热的,不传 id 缓存键对不上 → 每题都真走
+    // 一次网络,慢到把上面的竞态窗口拉到几百毫秒;一词多音也会取错读音
+    sharedPlayAudio(currentQ.word.word, 1, currentQ.word.id)
+      .then(ok => { if (ok) countAudiblePlay(); })
+      .catch(() => {});
   };
 
   // 自动播放听写题
   useEffect(() => {
     const q = questions[currentIndex];
     if (q?.type === 'listening' && phase === 'testing') {
-      const t = setTimeout(() => {
-        sharedPlayAudio(q.word.word).then(() => setPlayCount(1)).catch(() => {});
+      const t = window.setTimeout(() => {
+        autoPlayTimerRef.current = null;
+        sharedPlayAudio(q.word.word, 1, q.word.id)
+          .then(ok => { if (ok) countAudiblePlay(); })
+          .catch(() => {});
       }, 400);
-      return () => clearTimeout(t);
+      autoPlayTimerRef.current = t;
+      return () => {
+        clearTimeout(t);
+        if (autoPlayTimerRef.current === t) autoPlayTimerRef.current = null;
+      };
     }
-  }, [currentIndex, phase, questions, sharedPlayAudio]);
+  }, [currentIndex, phase, questions, sharedPlayAudio, countAudiblePlay]);
 
   handleSubmitRef.current = handleSubmit;
 
@@ -347,14 +379,14 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={playAudio}
-                    disabled={playCount >= 3}
+                    disabled={playCount >= MAX_PLAYS}
                     className={`w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-3xl md:text-4xl mx-auto mb-2 shadow-lg ${
-                      playCount >= 3 ? 'bg-gray-200' : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                      playCount >= MAX_PLAYS ? 'bg-gray-200' : 'bg-gradient-to-br from-blue-500 to-indigo-600'
                     }`}
                   >
                     🔊
                   </motion.button>
-                  <p className="text-xs md:text-sm text-gray-400 mb-4 md:mb-6">可播放 {3 - playCount} 次</p>
+                  <p className="text-xs md:text-sm text-gray-400 mb-4 md:mb-6">可播放 {Math.max(MAX_PLAYS - playCount, 0)} 次</p>
                   <input
                     {...imeSafeInputProps()}
                     ref={inputRef}

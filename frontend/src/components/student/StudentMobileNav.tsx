@@ -11,6 +11,7 @@ const visiblePaths = new Set([
   '/student/leaderboard',
   '/student/achievements',
   '/student/phonetics',
+  '/student/phonetics/textbook',
   '/student/analytics',
   '/student/memory-curve',
   '/student/mistake-book',

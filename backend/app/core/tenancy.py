@@ -35,7 +35,8 @@ def register_tenant_models():
     from app.models.word import WordBook, BookSeries
     from app.models.sentence import SentenceBook
     from app.models.reading import ReadingPassage
-    from app.models.phonetic import PhoneticVideo
+    from app.models.phonetic import PhoneticVideo, PhoneticMaterial
+    from app.models.phonetic_practice import PhoneticBook
     from app.models.competition import CompetitionQuestionSet, LeaderboardSnapshot
     from app.models.assessment import AssessmentLead
     from app.models.pk import PkRoom
@@ -61,6 +62,11 @@ def register_tenant_models():
         (SentenceBook, True),
         (ReadingPassage, True),
         (PhoneticVideo, True),   # 音标视频:NULL=平台共享,机构可自建
+        (PhoneticBook, True),    # 音标教材:同上口径
+        # 音标课件:同视频口径。⚠️ 注册进来只挡住"跨机构列出",
+        # 按 id 直查时它罩不住"这份课件属于哪个视频" —— 取页仍须 join 回
+        # phonetic_videos 判可见性(音标教材那边踩过同样的坑)
+        (PhoneticMaterial, True),
         (CompetitionQuestionSet, True),
     ])
 

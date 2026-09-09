@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小班课营销作战手册</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FFF8F0;
+    --paper-2:#FFFDFA;
+    --ink:#1F1712;
+    --ink-2:#5F4C3E;
+    --ink-3:#7C6654;
+    --rule:#E7D9C8;
+    --rule-2:#D8C4AE;
+    /* 正文用的强调色必须过 4.5:1(手机+打印都要看得清);
+       原来的 #E2551E 只有 3.60:1,降级为纯图形色 --accent-graphic */
+    --accent:#C4460F;
+    --accent-graphic:#E2551E;
+    --accent-soft:#FFEDE3;
+    --sun:#C98A05;
+    --grass:#2F7D46;
+    --sky:#00708C;
+    --serif:'Noto Serif SC','Songti SC','SimSun',serif;
+    --sans:'Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:16px;line-height:1.85;
+    -webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 0;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:0 28px 120px}
+  @media (max-width:640px){.wrap{padding:0 18px 80px}}
+
+  h1,h2,h3{font-family:var(--serif);font-weight:900;letter-spacing:-.01em;line-height:1.22;margin:0}
+  h1{font-size:clamp(2.4rem,7vw,4.1rem)}
+  h2{font-size:clamp(1.6rem,3.6vw,2.3rem)}
+  h3{font-size:1.14rem;font-weight:700;letter-spacing:0}
+  p{margin:0 0 1.05em;max-width:66ch}
+  strong{font-weight:700;color:var(--ink)}
+  em{font-style:normal;color:var(--accent);font-weight:700}
+  a{color:var(--accent)}
+
+  .lede{font-size:1.16rem;color:var(--ink-2);max-width:62ch}
+  .muted{color:var(--ink-2)}
+  .tiny{font-size:.86rem;line-height:1.7;color:var(--ink-3)}
+  code,.mono{font-family:var(--sans);font-variant-numeric:tabular-nums}
+  .path{background:var(--paper-2);border:1px solid var(--rule);border-radius:6px;
+    padding:.12em .45em;font-size:.9em;color:var(--sky);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  /* ── hero ─────────────────────────────────────── */
+  header.hero{padding:clamp(64px,11vh,124px) 0 0}
+  .claim{margin-top:1.6rem;font-size:clamp(1.12rem,2.3vw,1.34rem);line-height:1.75;
+    color:var(--ink-2);max-width:60ch}
+  .claim b{color:var(--ink)}
+
+  .weapons{margin:3.2rem 0 0;padding:0;list-style:none;border-top:1px solid var(--rule)}
+  .weapons li{display:grid;grid-template-columns:1.05fr 1.55fr;gap:clamp(14px,4vw,44px);
+    padding:20px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+  .weapons .w-name{font-family:var(--serif);font-weight:700;font-size:1.06rem}
+  .weapons .w-name span{display:block;font-family:var(--sans);font-weight:500;
+    font-size:.82rem;color:var(--ink-3);letter-spacing:.02em;margin-top:.1em}
+  .weapons .w-body{color:var(--ink-2);font-size:.98rem;line-height:1.8}
+  @media (max-width:600px){.weapons li{grid-template-columns:1fr;gap:6px}}
+
+  /* ── 90天节奏轴 ───────────────────────────────── */
+  .rhythm{margin-top:clamp(56px,9vw,92px)}
+  .axis{position:relative;margin:2.6rem 0 0;padding-top:30px}
+  .axis-line{position:absolute;top:30px;left:0;right:0;height:2px;background:var(--rule-2);
+    transform:scaleX(0);transform-origin:left center;animation:draw 1.15s cubic-bezier(.16,1,.3,1) .15s forwards}
+  @keyframes draw{to{transform:scaleX(1)}}
+  .nodes{position:relative;display:grid;grid-template-columns:repeat(3,1fr)}
+  .node{position:relative;padding:26px 16px 0 0}
+  .node::before{content:"";position:absolute;top:-30px;left:0;width:13px;height:13px;border-radius:50%;
+    background:var(--paper);border:2px solid var(--accent-graphic);transform:translateY(-5.5px) scale(.5);opacity:0;
+    animation:pop .5s cubic-bezier(.16,1,.3,1) forwards}
+  .node:nth-child(1)::before{animation-delay:.34s}
+  .node:nth-child(2)::before{animation-delay:.72s}
+  .node:nth-child(3)::before{animation-delay:1.06s}
+  @keyframes pop{to{transform:translateY(-5.5px) scale(1);opacity:1}}
+  .node .when{font-variant-numeric:tabular-nums;font-weight:700;font-size:.82rem;
+    color:var(--accent);letter-spacing:.04em}
+  .node h3{margin:.3rem 0 .45rem}
+  .node p{font-size:.94rem;color:var(--ink-2);margin:0;max-width:30ch}
+  @media (max-width:700px){
+    .nodes{grid-template-columns:1fr;gap:8px}
+    .axis-line{display:none}
+    .node{padding:14px 0 14px 20px;border-left:1px solid var(--rule-2)}
+    .node::before{top:22px;left:-7px;animation-delay:0s!important;opacity:1;transform:none!important}
+  }
+
+  /* ── 章节 ─────────────────────────────────────── */
+  section.blk{margin-top:clamp(72px,12vw,120px)}
+  .blk-head{border-top:2px solid var(--ink);padding-top:18px;margin-bottom:2.2rem}
+  .blk-head .goal{font-size:.86rem;font-weight:700;color:var(--accent);letter-spacing:.06em;margin-bottom:.5rem}
+  .blk-head p{margin:.9rem 0 0;color:var(--ink-2)}
+
+  /* 动作条目 */
+  .act{padding:26px 0;border-bottom:1px solid var(--rule)}
+  .act:first-of-type{border-top:1px solid var(--rule)}
+  .act h3{margin-bottom:.15rem}
+  .act .why{color:var(--accent);font-size:.94rem;font-weight:500;margin:0 0 .9rem;max-width:60ch}
+  .steps{margin:0;padding-left:1.35em;color:var(--ink-2);font-size:.96rem}
+  .steps li{margin-bottom:.42em}
+  .steps li::marker{color:var(--ink-3)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:14px}
+  .chip{font-size:.82rem;line-height:1.5;padding:.28em .7em;border-radius:999px;
+    background:var(--paper-2);border:1px solid var(--rule);color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .chip b{color:var(--ink);font-weight:700}
+  .chip.cost{background:var(--accent-soft);border-color:#F6C9AF;color:#8C3A11}
+  .chip.cost b{color:#8C3A11}
+
+  /* ── 60分钟脚本 ───────────────────────────────── */
+  .script{margin-top:2rem;border-top:1px solid var(--rule)}
+  .beat{display:grid;grid-template-columns:88px 1fr;gap:clamp(14px,3vw,32px);
+    padding:22px 0;border-bottom:1px solid var(--rule)}
+  .beat .clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:.94rem;color:var(--accent);
+    padding-top:.1em;letter-spacing:.01em}
+  .beat .clock span{display:block;font-weight:500;font-size:.78rem;color:var(--ink-3);letter-spacing:.02em}
+  .beat h3{margin-bottom:.35rem}
+  .beat p{margin:0;color:var(--ink-2);font-size:.96rem;max-width:58ch}
+  .beat.peak{background:linear-gradient(90deg,var(--accent-soft),transparent 78%);
+    margin-left:-16px;padding-left:16px;border-radius:4px}
+  .beat.peak h3{color:#8C3A11}
+  @media (max-width:600px){.beat{grid-template-columns:1fr;gap:4px}}
+
+  /* ── 表格 ─────────────────────────────────────── */
+  table{width:100%;border-collapse:collapse;margin:1.6rem 0 .6rem;font-size:.94rem}
+  caption{text-align:left;font-family:var(--serif);font-weight:700;font-size:1.06rem;
+    padding-bottom:.7rem;color:var(--ink)}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{font-size:.83rem;font-weight:700;color:var(--ink-3);letter-spacing:.04em;
+    border-bottom:1.5px solid var(--rule-2);background:transparent}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tfoot td{font-weight:700;border-bottom:none;border-top:1.5px solid var(--ink)}
+  tbody tr:hover{background:var(--paper-2)}
+
+  /* ── 话术卡 ───────────────────────────────────── */
+  .lines{margin-top:2rem;display:grid;gap:20px}
+  .line{background:var(--paper-2);border:1px solid var(--rule);border-radius:12px;
+    padding:22px 24px;box-shadow:0 1px 2px rgba(95,76,62,.04),0 14px 30px -22px rgba(95,76,62,.4)}
+  .line .who{font-size:.82rem;font-weight:700;color:var(--accent);letter-spacing:.05em;margin-bottom:.6rem}
+  .line q{display:block;font-family:var(--serif);font-weight:600;font-size:1.06rem;line-height:1.85;
+    quotes:"「" "」";color:var(--ink)}
+  .line .note{margin:.85rem 0 0;font-size:.88rem;color:var(--ink-3);line-height:1.7}
+
+  /* ── 清单 ─────────────────────────────────────── */
+  .checks{list-style:none;margin:1.6rem 0 0;padding:0}
+  .checks li{display:grid;grid-template-columns:22px 1fr;gap:12px;padding:13px 0;
+    border-bottom:1px solid var(--rule);color:var(--ink-2);font-size:.97rem;align-items:start}
+  .checks svg{width:18px;height:18px;margin-top:.28em;flex:none}
+  .checks b{color:var(--ink)}
+  .ic-warn{color:#B3450F}
+  .ic-ok{color:var(--grass)}
+
+  /* 日历 */
+  .cal{margin-top:1.8rem;border-top:1px solid var(--rule)}
+  .cal-row{display:grid;grid-template-columns:150px 1fr;gap:clamp(12px,3vw,28px);
+    padding:16px 0;border-bottom:1px solid var(--rule)}
+  .cal-row .k{font-weight:700;font-size:.94rem;font-variant-numeric:tabular-nums}
+  .cal-row .v{color:var(--ink-2);font-size:.95rem}
+  @media (max-width:600px){.cal-row{grid-template-columns:1fr;gap:3px}}
+
+  footer{margin-top:clamp(72px,12vw,110px);border-top:1px solid var(--rule);
+    padding-top:20px;color:var(--ink-3);font-size:.86rem}
+
+  @media (prefers-reduced-motion:reduce){
+    .axis-line{animation:none;transform:none}
+    .node::before{animation:none;opacity:1;transform:translateY(-5.5px)}
+  }
+  @media print{
+    body{background:#fff;font-size:11.5pt;line-height:1.6}
+    .wrap{max-width:none;padding:0}
+    header.hero{padding-top:0}
+    .axis-line{animation:none;transform:none}
+    .node::before{animation:none;opacity:1;transform:translateY(-5.5px)}
+    section.blk,.act,.beat,.line,.cal-row{break-inside:avoid}
+    h2,h3{break-after:avoid}
+    .line{box-shadow:none}
+    .beat.peak{background:#FFEDE3}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="hero">
+  <h1>不打折，<br>让家长自己看见</h1>
+  <p class="claim">小班课的招生难点从来不是价格，而是<b>家长看不见变化</b>。所以这套方案一个折扣都不给，
+  全部押在三件竞品交不出来的东西上：<b>一份当场生成的测评报告</b>、<b>一张被 AI 批改过的手写默写纸</b>、
+  <b>一周一封带数据的学情周报</b>。家长不需要听你讲课，他只需要看见自己孩子的那三样东西。</p>
+
+  <ul class="weapons">
+    <li>
+      <div class="w-name">测评报告<span>负责「让他进店」</span></div>
+      <div class="w-body">孩子对着手机读 6 个词，AI 打出发音准确度、流利度与薄弱点，当场出报告、留手机号进线索池。
+      地推摊位不用讲一句产品，分数自己会说话。</div>
+    </li>
+    <li>
+      <div class="w-name">纸笔听写<span>负责「让他掏钱」</span></div>
+      <div class="w-body">默写纸手写 → 拍照 → AI 逐词批改。这一步直接回答家长心里那句
+      「在手机上点对了，考试卷子上写得出来吗」。这是别家演示不出来的。</div>
+    </li>
+    <li>
+      <div class="w-name">学情周报<span>负责「让他续费」</span></div>
+      <div class="w-body">每周一封 AI 学情周报进家长端，含掌握词数、薄弱词、学习质量分。
+      到了续报那天，你手里有 12 周的凭据，不靠嘴说。</div>
+    </li>
+  </ul>
+
+  <section class="rhythm">
+    <h2>一期 90 天，节奏跟着学习卡走</h2>
+    <p class="muted" style="margin-top:1rem">学生学习卡是 90 天一张，正好把一年切成四期。每期开头定基线、中段做运营、
+    结尾办典礼谈续报——招生、转化、留存、转介绍全部挂在这条线上，不用另想日历。</p>
+    <div class="axis">
+      <div class="axis-line"></div>
+      <div class="nodes">
+        <div class="node">
+          <div class="when">第 1 周</div>
+          <h3>定基线</h3>
+          <p>入学测评 + 第一次纸笔听写留档。这两份东西是 90 天后做对比的原始凭据，必须存下来。</p>
+        </div>
+        <div class="node">
+          <div class="when">第 2–11 周</div>
+          <h3>过程运营</h3>
+          <p>周报固定周日发、月度兑奖日请家长到店、单词王月榜上墙。孩子有奔头，家长有感知。</p>
+        </div>
+        <div class="node">
+          <div class="when">第 12 周</div>
+          <h3>结课续报</h3>
+          <p>结课赛 + 成果对比 + 一对一面谈。续报和转介绍在同一场活动里一次谈完。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</header>
+
+<!-- ══ 招生获客 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">招生获客</div>
+    <h2>用一次免费测评换一个手机号</h2>
+    <p>不要拿"免费试听"当钩子——家长知道试听就是被推销。改拿"免费测一测"，
+    门槛低到不像销售，而系统会把每个测过的孩子自动变成线索。</p>
+  </div>
+
+  <div class="act">
+    <h3>「张嘴测一测」摊位</h3>
+    <p class="why">家长掏手机扫码那一刻，销售动作就已经完成了。</p>
+    <ol class="steps">
+      <li>机构后台复制测评链接生成二维码：<span class="path">/assessment?org=机构码&amp;src=ditui</span>，印在一块 KT 板上。</li>
+      <li>摊位只放一句话：<strong>「让孩子读 6 个单词，一分钟出一份英语发音报告」</strong>。不摆课程表、不摆价格。</li>
+      <li>孩子读完，报告页当场出分数和薄弱点；留手机号解锁完整版——这一步是线索入口，别跳过。</li>
+      <li>回店后进教师端「招生线索」，按分数分三档跟进：薄弱的当天打、良好的隔天打、优秀的约测评复盘。</li>
+    </ol>
+    <div class="meta">
+      <span class="chip">物料 <b>KT 板 ×1</b></span>
+      <span class="chip">人手 <b>1 名老师</b></span>
+      <span class="chip">时段 <b>放学 / 周末商圈</b></span>
+      <span class="chip cost">成本 <b>约 ¥260</b>（板 160 + 糖果贴纸 100，板可用一年）</span>
+    </div>
+  </div>
+
+  <div class="act">
+    <h3>渠道链接分开挂</h3>
+    <p class="why">同一份测评，四个渠道各挂一条链接，一个月后你就知道该往哪儿使劲。</p>
+    <ol class="steps">
+      <li>教师端「招生线索」页可直接复制各渠道专属链接，末尾 <span class="path">src=</span> 参数不同：
+      朋友圈、视频号、抖音、老学员转介绍各一条。</li>
+      <li>线索列表会按渠道分组统计。哪条来人多就加投，哪条一个月不出线索就撤掉。</li>
+      <li>机构老师复制时必须带 <span class="path">&amp;org=机构码</span>，否则线索不归你的机构，你在后台看不到。</li>
+    </ol>
+    <div class="meta">
+      <span class="chip cost">成本 <b>¥0</b></span>
+      <span class="chip">见效 <b>累积型，一个月起看</b></span>
+    </div>
+  </div>
+
+  <div class="act">
+    <h3>「英语体检周」到店专场</h3>
+    <p class="why">把测评做成一件正经事，家长才会当正经事对待。</p>
+    <ol class="steps">
+      <li>选一周，每天下午留 6 个免费名额，到店测评，一个孩子占 20 分钟。</li>
+      <li>流程写死：测评 → 打印一张该孩子的专属默写纸（自默版，中文提示）→ 老师手写三行诊断结论。</li>
+      <li><strong>全程不报价、不推课</strong>，只送报告和默写纸。家长问价格就说"先回去用一周，有问题随时问我"。</li>
+      <li>三天后回访，聊的是默写纸做得怎么样，不是要不要报名。</li>
+    </ol>
+    <div class="meta">
+      <span class="chip">容量 <b>30 人 / 周</b></span>
+      <span class="chip cost">成本 <b>约 ¥40</b>（打印）</span>
+      <span class="chip">目标 <b>到店转试听 ≥ 60%</b></span>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 试听转化 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">试听转化</div>
+    <h2>60 分钟试听课，让家长带三张纸回家</h2>
+    <p>试听课最常见的死法，是老师把课讲得很好、家长却说"回去商量一下"。
+    原因是家长没拿到任何可以复述给另一半的东西。这套脚本的唯一目标：
+    下课时家长手里有<em>测评报告、被批改的默写纸、单元小测成绩</em>三张纸。</p>
+  </div>
+
+  <div class="script">
+    <div class="beat">
+      <div class="clock">00–05<span>分类认知</span></div>
+      <div>
+        <h3>先让孩子自己数出生词</h3>
+        <p>拿 20 个本单元的词做分类认知，孩子自己分"认识 / 不认识"。屏幕上会出现一个真实数字：
+        这单元他有 13 个词不会。家长第一次看到具体数量，而不是"英语不太好"。</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="clock">05–25<span>只学生词</span></div>
+      <div>
+        <h3>时间全花在那 13 个词上</h3>
+        <p>卡片认词 → 选择辨义 → 拼写键入。当着家长说明一句：已经会的 7 个词今天一秒都不练。
+        这是"效率"这件事最直观的证明。</p>
+      </div>
+    </div>
+    <div class="beat peak">
+      <div class="clock">25–38<span>纸笔听写</span></div>
+      <div>
+        <h3>把手机上的对，变成纸上的对</h3>
+        <p>打印四线三格默写纸，App 报词，孩子<strong>手写</strong>；写完拍一张照，AI 逐词批改，当场判对错。
+        请家长站到孩子旁边看这一步——他会自己得出结论：原来点选会了不等于写得出。
+        这 13 分钟是整节课的转化引爆点，不要压缩。</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="clock">38–46<span>宠物 / PK 对战</span></div>
+      <div>
+        <h3>让孩子当场喊"我还要打一局"</h3>
+        <p>开一局宠物对战或真人 PK（出题优先从他刚写错的词里来）。家长要看的不是画面好看，
+        而是孩子主动要求再来一次——这是续得下去的前提。</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="clock">46–54<span>单元小测</span></div>
+      <div>
+        <h3>当堂闭环，出一张成绩</h3>
+        <p>多题型混合小测，成绩自动进学情档案。一小时前不会的 13 个词，现在对了几个，卷面说话。</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="clock">54–60<span>家长面谈</span></div>
+      <div>
+        <h3>三张纸摊在桌上，只说数字</h3>
+        <p>测评报告（入学水平）、默写纸（手写实况）、小测成绩（一小时的变化）。
+        不讲功能、不讲系统、不讲价格优势——照后面的话术模板念就行。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="act" style="border-top:none;margin-top:8px">
+    <h3>加一个动作：让他带作业走</h3>
+    <p class="why">带走一张纸，家里就有你的存在感；一周后你有理由再联系他。</p>
+    <ol class="steps">
+      <li>下课前打印一张自默版默写纸（有中文提示，家长在家也能报词），写上孩子名字。</li>
+      <li>告诉家长：这周做完拍给我，我帮孩子看一遍——<strong>这一句就是下一次接触的钩子</strong>。</li>
+    </ol>
+    <div class="meta"><span class="chip cost">成本 <b>不到 ¥1 / 人</b></span></div>
+  </div>
+</section>
+
+<!-- ══ 续费留存 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">续费留存</div>
+    <h2>续费不是第 12 周谈的，是前 11 周攒的</h2>
+    <p>家长到期不续，几乎从不是因为效果差，而是因为这三个月里他不知道发生了什么。
+    所以留存的核心动作不是搞活动，而是<em>每周稳定地让他收到东西</em>。</p>
+  </div>
+
+  <div class="act">
+    <h3>周日晚八点，学情周报</h3>
+    <p class="why">规定动作，比任何活动都值钱。缺一周，信任就断一次。</p>
+    <ol class="steps">
+      <li>确保每个学员家长都绑定了家长端——报名当天就绑，别拖。</li>
+      <li>周日固定推送 AI 学情周报：本周掌握词数、薄弱词、学习质量分、有没有划水。</li>
+      <li><strong>好消息坏消息都发。</strong>只发好消息的周报家长会当广告；写一句"这周有两天没练，我周三提醒他"，
+      可信度立刻不一样。</li>
+    </ol>
+    <div class="meta"><span class="chip cost">成本 <b>¥0</b></span><span class="chip">频次 <b>每周 1 次，不许断</b></span></div>
+  </div>
+
+  <div class="act">
+    <h3>月度兑奖日：把线上金币变成到店机会</h3>
+    <p class="why">这是每月一次的、家长必须走进你店里的正当理由。</p>
+    <ol class="steps">
+      <li>在教师端配好兑换商品（文具、水杯、书包挂件之类），标好金币价。</li>
+      <li>金币来源就是日常：完成当天全部任务 +1，当上单词王再 +1，一天最多 2 枚。</li>
+      <li>兑奖统一放在每月最后一个周六下午，<strong>要求家长陪同来领</strong>。</li>
+      <li>家长在店里那 20 分钟，是你聊学情、聊续报、聊转介绍的黄金时段——奖品只是入场券。</li>
+    </ol>
+    <div class="meta">
+      <span class="chip">奖品档位 <b>20 / 50 / 100 金币三档</b></span>
+      <span class="chip cost">成本 <b>约 ¥300 / 月</b>（15 人班，约 20 份）</span>
+    </div>
+  </div>
+
+  <div class="act">
+    <h3>第 12 周结课典礼 + 成果对比</h3>
+    <p class="why">对比是唯一能让家长自己算出"这钱花得值"的手段。</p>
+    <ol class="steps">
+      <li>提前一周办一场结课赛（用晋级赛一键开：选班级和单元范围，系统自动分组、自动推进到冠军）。</li>
+      <li>典礼当天每个孩子一张成绩单：<strong>入学测评 vs 结课测评</strong>、90 天累计掌握词数、出勤与学习质量分。</li>
+      <li>人人有奖状（第一名、进步最大、最勤奋、最佳队友……名头按孩子特点定，别只奖第一）。</li>
+      <li>典礼结束当场排一对一面谈，直接谈下一期 90 天。<strong>续报和转介绍在同一场谈完</strong>，别分两次约家长。</li>
+    </ol>
+    <div class="meta">
+      <span class="chip">时长 <b>90 分钟</b></span>
+      <span class="chip cost">成本 <b>约 ¥450</b>（奖状 + 前三名奖品 + 横幅）</span>
+      <span class="chip">目标 <b>续报率 ≥ 75%</b></span>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 老带新 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">老带新转介绍</div>
+    <h2>让孩子去邀请，而不是让家长去推销</h2>
+    <p>家长替你介绍会觉得欠人情，孩子叫同学一起打比赛没有任何心理成本。
+    所有转介绍动作都设计成<em>孩子发起</em>。</p>
+  </div>
+
+  <div class="act">
+    <h3>「带同学来 PK」组队赛</h3>
+    <p class="why">孩子拉来的是同班同学——最精准的目标客户，还自带社交压力。</p>
+    <ol class="steps">
+      <li>每期第 6 周办一场组队赛：老学员可以带 <strong>1 名校外同学</strong>组队参赛。</li>
+      <li>校外同学参赛前先做一次免费测评（顺手进了线索池），比赛当天到店。</li>
+      <li>用晋级赛承载：蛇形分组、小组循环、淘汰赛，系统自动跑完，老师只当组织者不下场。</li>
+      <li>成功带来同学的老学员，给一份机构自定的奖励（金币、称号、奖品都行）——奖励给孩子，不给家长返现。</li>
+    </ol>
+    <div class="meta">
+      <span class="chip">场次 <b>每期 1 场</b></span>
+      <span class="chip cost">成本 <b>约 ¥200</b>（奖品 + 打印）</span>
+      <span class="chip">目标 <b>新增到店 ≥ 8 人</b></span>
+    </div>
+  </div>
+
+  <div class="act">
+    <h3>家长专属注册码</h3>
+    <p class="why">愿意帮你说话的家长本来就有，只是你没给他一个方便的动作。</p>
+    <ol class="steps">
+      <li>发给家长的链接是 <span class="path">/register?org=机构码</span>，扫码注册自动归到你机构名下。</li>
+      <li>只发给两类人：周报回复过的、兑奖日到过店的。<strong>群发等于浪费。</strong></li>
+    </ol>
+    <div class="meta"><span class="chip cost">成本 <b>¥0</b></span></div>
+  </div>
+
+  <div class="act">
+    <h3>家长会「借一次大屏」</h3>
+    <p class="why">别人家孩子的数据摆在屏幕上，是最有效的招生素材，而且不用你开口。</p>
+    <ol class="steps">
+      <li>家长会开课堂大屏，现场投出实时学习看板：谁在学、学到哪、谁的正确率在涨。</li>
+      <li>请两个进步明显的孩子上去当场做一轮纸笔听写，家长看 AI 批改。</li>
+      <li>结束前放一句：<strong>"想让孩子也测一次的，扫这个码"</strong>——同一张测评二维码，用 <span class="path">src=referral</span> 那条。</li>
+    </ol>
+    <div class="meta"><span class="chip cost">成本 <b>¥0</b></span><span class="chip">前置 <b>投屏设备 / 电视</b></span></div>
+  </div>
+</section>
+
+<!-- ══ 预算 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">预算</div>
+    <h2>一期 90 天，两千块怎么花</h2>
+    <p>按 15 人小班、一期 90 天测算。物料类只在第一期花，后面几期成本会降到一千出头。</p>
+  </div>
+
+  <table>
+    <caption>标准版 · 一期 ¥2,000</caption>
+    <thead>
+      <tr><th>科目</th><th>用途</th><th class="num">金额</th><th>备注</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>地推物料</td><td>测评二维码 KT 板、桌牌</td><td class="num">¥260</td><td>可复用一整年</td></tr>
+      <tr><td>打印</td><td>默写纸、测评报告、成绩单</td><td class="num">¥190</td><td>约 500 张</td></tr>
+      <tr><td>月度兑奖</td><td>文具类奖品 ×3 个月</td><td class="num">¥900</td><td>每月约 20 份</td></tr>
+      <tr><td>结课典礼</td><td>奖状、前三名奖品、横幅</td><td class="num">¥450</td><td>横幅可复用</td></tr>
+      <tr><td>组队赛</td><td>参赛奖励小物</td><td class="num">¥200</td><td>每期 1 场</td></tr>
+    </tbody>
+    <tfoot><tr><td>合计</td><td></td><td class="num">¥2,000</td><td>第二期起约 ¥1,300</td></tr></tfoot>
+  </table>
+
+  <table>
+    <caption>零预算版 · 一期 ¥0–200</caption>
+    <thead>
+      <tr><th>换掉什么</th><th>用什么替代</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>兑奖实物</td><td>称号 + 排行榜上墙 + 免作业券 + 挑选下节课 PK 对手的权利</td></tr>
+      <tr><td>奖状印刷</td><td>A4 自打奖状，老师手写签名（家长其实更留得住手写的）</td></tr>
+      <tr><td>KT 板</td><td>A4 二维码塑封 + 立牌，或直接举手机</td></tr>
+      <tr><td>横幅</td><td>大屏投一张标题页当背景</td></tr>
+    </tbody>
+  </table>
+  <p class="tiny" style="margin-top:.8rem">荣誉类奖励在小学段的效果常常不输实物，尤其是"当众被念到名字"。
+  预算紧的时候先砍实物，别砍典礼。</p>
+</section>
+
+<!-- ══ 话术 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">话术</div>
+    <h2>四段可以直接念的话</h2>
+    <p>照着念就行。共同点是<em>只说孩子的具体情况，不说系统有多好</em>。</p>
+  </div>
+
+  <div class="lines">
+    <div class="line">
+      <div class="who">地推 · 开场 30 秒</div>
+      <q>您好，我们在做小学生英语发音的免费检测，孩子读六个单词，一分钟出一份报告，
+      能看出他哪个音发不准。不用留任何信息就能测，您让孩子试一下？</q>
+      <p class="note">先说"不用留信息"能显著提高开口率——手机号是在孩子测完、家长想看完整报告时才留的。</p>
+    </div>
+    <div class="line">
+      <div class="who">试听后 · 家长面谈</div>
+      <q>您看这三张纸。第一张是他刚来时的测评，发音准确度 62 分。第二张是他今天手写的默写，
+      十三个新词写对了九个，错的这四个都是双写字母的问题，这是他的规律性错误。
+      第三张是当堂小测。一节课的变化您能看见，剩下的就是能不能每天坚持——这件事我们系统帮您管。</q>
+      <p class="note">全程只念数字和现象。家长问"多少钱"再报价，不要主动往价格上引。</p>
+    </div>
+    <div class="line">
+      <div class="who">结课 · 续报面谈</div>
+      <q>九十天前他的测评是 62 分，现在 81 分；累计掌握 340 个词，其中 47 个是反复错过又拿回来的。
+      出勤 34 次，学习质量分平均 88——这说明他不是在挂机刷时长。下一期我建议重点补听力，
+      因为他薄弱词里有一半是听不出来、但看得懂的。</q>
+      <p class="note">一定要给出"下一期该补什么"的具体判断。家长续的是下一步方案，不是再来三个月。</p>
+    </div>
+    <div class="line">
+      <div class="who">转介绍 · 邀约孩子</div>
+      <q>下个月我们办组队赛，你可以带一个班上的同学来跟你组队。你俩要是配合得好，
+      有机会拿到最佳队友奖。想带谁来，回去问问他？</q>
+      <p class="note">对孩子说，别对家长说。孩子答应了，家长那边基本就通了。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 避坑 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">避坑</div>
+    <h2>这几条踩了会直接把活动做废</h2>
+  </div>
+  <ul class="checks">
+    <li>
+      <svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span><b>不要承诺提多少分。</b>协议里写明虚假宣传的责任在机构自己。说"看得见变化"、说具体数据，
+      别说"保证提 20 分"——这是合规红线，也是纠纷来源。</span>
+    </li>
+    <li>
+      <svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span><b>试听课别讲功能。</b>"我们有八种学习模式"家长记不住也不关心。
+      只讲他孩子的那 13 个生词和 4 个拼写错误。</span>
+    </li>
+    <li>
+      <svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span><b>兑奖日别让孩子空手走。</b>金币不够的也要有 5 金币档的小东西（贴纸、铅笔）。
+      当众没领到东西的孩子，第二个月就不攒了。</span>
+    </li>
+    <li>
+      <svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span><b>周报断一周，等于前面白发。</b>家长对"稳定"的感知是二元的：连续 11 周叫靠谱，
+      断了一周叫敷衍。老师休假也得有人代发。</span>
+    </li>
+    <li>
+      <svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span><b>转介绍别给家长返现。</b>返现会让家长的推荐在朋友眼里变成推销，反而降低成功率。
+      奖励发给孩子，形式做成荣誉。</span>
+    </li>
+    <li>
+      <svg class="ic-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      <span><b>入学那份测评和第一张默写纸，一定要存下来。</b>90 天后没有对比物，
+      整个结课典礼的说服力会掉一半。存手机相册也行，但必须存。</span>
+    </li>
+  </ul>
+</section>
+
+<!-- ══ 执行日历 ══ -->
+<section class="blk">
+  <div class="blk-head">
+    <div class="goal">执行</div>
+    <h2>一期 90 天，谁在什么时候做什么</h2>
+  </div>
+  <div class="cal">
+    <div class="cal-row"><div class="k">开课前 1 周</div><div class="v">摆一场测评摊 + 开一周英语体检周，把线索池填满；确认四条渠道链接都已挂出去。</div></div>
+    <div class="cal-row"><div class="k">第 1 周</div><div class="v">新生入学测评 + 第一次纸笔听写留档；<strong>当天完成家长端绑定</strong>；配好本期兑换商品。</div></div>
+    <div class="cal-row"><div class="k">每周日 20:00</div><div class="v">推送学情周报，附一句老师手写点评。雷打不动。</div></div>
+    <div class="cal-row"><div class="k">每月最后一个周六</div><div class="v">兑奖日，要求家长陪同到店；顺势聊学情，物色可转介绍的家庭。</div></div>
+    <div class="cal-row"><div class="k">第 6 周</div><div class="v">「带同学来 PK」组队赛；校外孩子当天先测评，赛后当天约试听。</div></div>
+    <div class="cal-row"><div class="k">第 11 周</div><div class="v">结课测评（与入学测评同口径）；打印每人的成绩单和奖状；预约面谈时间。</div></div>
+    <div class="cal-row"><div class="k">第 12 周</div><div class="v">结课典礼 + 一对一面谈，当场谈下一期续报与转介绍邀约。</div></div>
+    <div class="cal-row"><div class="k">每期结束</div><div class="v">复盘三个数字：线索转到店率、试听转报名率、续报率。只调最差的那一个。</div></div>
+  </div>
+</section>
+
+<footer>
+  <p style="margin:0">飞鹰 AI 英语 · 小班课营销作战手册　|　按 15 人小班、一期 90 天设计　|
+  所述功能以系统实际版本为准，收益测算不构成承诺</p>
+</footer>
+
+</div>
+</body>
+</html>

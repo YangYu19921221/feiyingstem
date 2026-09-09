@@ -169,6 +169,31 @@ def f_infra(prs, P):
          ("防超卖 · 防提权", "发码上限 = 配额,机构管理员从架构上无法给自己提权 —— 总部核心资产攥牢")],
         "feat_saas", P(), label="加盟专线")
 
+def f_commission(prs, P):
+    """销售端激励页：把 50% 分成讲成可核算、可执行的合作机制。"""
+    s = B.slide_title_only(prs, "⑤ 销售激励", "销售端 50% 分成：让每一次成交都值得")
+    D.round_rect(s, D.Inches(0.7), D.Inches(1.95), D.Inches(5.6), D.Inches(4.75), D.DARK, radius=0.08)
+    D.text(s, D.Inches(1.05), D.Inches(2.35), D.Inches(4.8), D.Inches(0.45), [[("销售端成交奖励", 17, D.SKY, True)]])
+    D.text(s, D.Inches(1.0), D.Inches(2.85), D.Inches(5.0), D.Inches(1.35), [[("50%", 58, D.YELLOW, True)]])
+    D.text(s, D.Inches(1.05), D.Inches(4.25), D.Inches(4.8), D.Inches(1.0), [[("按加盟实收净额核算", 19, D.WHITE, True)], [("签约 · 回款 · 可追踪", 13, D.RGBColor(0xC8,0xCE,0xDA), False)]], line_spacing=1.2)
+    D.pill(s, D.Inches(1.05), D.Inches(5.75), D.Inches(2.0), D.Inches(0.42), "规则清晰", D.ORANGE, D.WHITE, size=12)
+    D.pill(s, D.Inches(3.2), D.Inches(5.75), D.Inches(2.0), D.Inches(0.42), "多劳多得", D.GREEN, D.WHITE, size=12)
+    D.round_rect(s, D.Inches(6.65), D.Inches(1.95), D.Inches(5.95), D.Inches(4.75), D.WHITE, radius=0.08)
+    steps = [("01", "你带来客户", "总部提供统一物料、演示和签约支持"),
+             ("02", "系统完成交付", "机构开通、培训、招生工具一套落地"),
+             ("03", "成交即有回报", "回款后按约定周期结算销售分成")]
+    y = D.Inches(2.28)
+    for no, head, body in steps:
+        D.pill(s, D.Inches(7.0), y, D.Inches(0.62), D.Inches(0.38), no, D.ORANGE, D.WHITE, size=11)
+        D.text(s, D.Inches(7.82), y - D.Inches(0.01), D.Inches(4.35), D.Inches(0.36), [[(head, 15, D.INK, True)]])
+        D.text(s, D.Inches(7.82), y + D.Inches(0.34), D.Inches(4.35), D.Inches(0.46), [[(body, 11.5, D.GRAY, False)]])
+        y += D.Inches(1.0)
+    D.rect(s, D.Inches(7.0), D.Inches(5.34), D.Inches(5.0), D.Inches(0.02), D.RGBColor(0xEA,0xE2,0xD8))
+    D.text(s, D.Inches(7.0), D.Inches(5.55), D.Inches(5.0), D.Inches(0.72), [[("示例：县级独家 ¥98,000", 13, D.INK, True)], [("销售端可得 ¥49,000（50%）", 17, D.GREEN, True)]], line_spacing=1.15)
+    D.text(s, D.Inches(7.0), D.Inches(6.33), D.Inches(5.0), D.Inches(0.25), [[("* 最终以合作协议与结算口径为准", 9.5, D.GRAY, False)]])
+    B._footer(s, P(), "加盟专线")
+
+
 def school_divider(prs, P):
     B.slide_section(prs, "SCHOOL TRACK · 学校专线", "学校要的不是招生,是合规 · 减负 · 稳定",
                     "决策链长(采购/信息中心/教务/校长),买的是过验收、不出事、老师少加班", "divider_school")
@@ -323,7 +348,7 @@ FULL_STEPS = [
                          "一套系统 · 四层角色 · 全教学闭环",
                          "给中小英语教培机构与学校的智能学习运营平台\n加盟商开箱即用,总部一键管控。"),
     market, product_divider, pillars, teach_depth, speaking, memory, compare, diff_anchor,
-    franchise_divider, f_enroll, f_renew, f_teacher, f_infra,
+    franchise_divider, f_enroll, f_renew, f_teacher, f_infra, f_commission,
     school_divider, s_relief, s_screen, s_trust, s_adapt,
     trust, appendix,
     lambda prs, P: closing(prs, P, *CTA_FULL),
@@ -356,8 +381,6 @@ if __name__ == "__main__":
     build("英语学习系统_加盟与学校版.pptx", FULL_STEPS)
     build("英语学习系统_加盟版.pptx", FRAN_STEPS)
     build("英语学习系统_学校版.pptx", SCH_STEPS)
-
-
 
 
 

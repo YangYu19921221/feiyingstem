@@ -148,3 +148,50 @@ class MaterialViewLog(Base):
     __table_args__ = (
         Index("idx_material_view_user_time", "user_id", "viewed_at"),
     )
+
+
+class LiveDanmaku(Base):
+    """直播弹幕。**全量留痕**(儿童产品出纠纷要有据可查),老师删除只置
+    is_deleted 不物理删行。归属经 live_session_id 推导(session 在建连时已过
+    机构+班级校验),不单独带 org_id——与本文件 LiveAttendance/MaterialViewLog 同惯例。
+
+    content 已是**过滤后的文本**(敏感词替换成 * / 超长截断),原始输入不落库。
+    """
+    __tablename__ = "live_danmaku"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    live_session_id = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    # student / teacher —— 教师弹幕前端高亮,且不受禁言约束
+    user_role = Column(String(20), nullable=False, default="student", server_default="student")
+    # 发送当时的显示名(用户改名后历史弹幕仍显示当时的名字,也省一次 join)
+    display_name = Column(String(50), nullable=True)
+    content = Column(String(200), nullable=False)
+    is_deleted = Column(Boolean, default=False, server_default="0", nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        # 拉历史 / 分页恒按 (session, id),这条索引直接覆盖
+        Index("idx_live_danmaku_session", "live_session_id", "id"),
+    )
+
+
+class LiveDanmakuMute(Base):
+    """弹幕禁言。持久化——学生断线重连后仍禁言,直到老师解禁或课结束。
+
+    一节课一个学生最多一行(UNIQUE),重复禁言不新增。
+    """
+    __tablename__ = "live_danmaku_mute"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    live_session_id = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_live_danmaku_mute", "live_session_id", "student_id", unique=True),
+    )

@@ -20,7 +20,7 @@ from app.models.learning import BookAssignment
 from app.models.organization import Organization
 from app.models.user import User, Class, ClassStudent
 from app.models.word import WordBook
-from app.services import auth_service
+from app.services import auth_service, geo_service
 from app.services.org_service import count_active_students
 
 router = APIRouter()
@@ -36,6 +36,15 @@ class OrgCreate(BaseModel):
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
     expires_at: Optional[datetime] = None
+    # 区域保护(协议第四条): 登记经营场所,开通时按直线距离查冲突
+    address: Optional[str] = Field(None, max_length=255, description="经营场所详细地址")
+    # 范围校验不写在 Field 上: lat=120(填反了的典型值)会被 Pydantic 拦成 422,
+    # 盖掉"你把经纬度填反了"这句更有用的提示。统一交给 geo_service.coord_error
+    lat: Optional[float] = Field(None, description="纬度(GCJ02,从高德复制)")
+    lng: Optional[float] = Field(None, description="经度")
+    protect_radius_km: Optional[float] = Field(
+        None, gt=0, le=500, description="独家半径(公里),不传=默认 3")
+    force: bool = Field(False, description="已核对区域冲突,仍要开通(违约由管理员承担)")
 
 
 class OrgUpdate(BaseModel):
@@ -53,6 +62,12 @@ class OrgUpdate(BaseModel):
     # 显式清空有效期(改回永不过期): expires_at 的 None 语义是"未传不动",
     # 无法表达"传了要清",用独立布尔区分
     clear_expires: Optional[bool] = None
+    # 区域保护: 改地址/坐标同样要查冲突(搬迁到别家 3 公里内和新开一家一样违约)
+    address: Optional[str] = Field(None, max_length=255)
+    lat: Optional[float] = None  # 范围校验同 OrgCreate,走 geo_service.coord_error
+    lng: Optional[float] = None
+    protect_radius_km: Optional[float] = Field(None, gt=0, le=500)
+    force: bool = Field(False, description="已核对区域冲突,仍要保存")
 
 
 class OrgAdminCreate(BaseModel):
@@ -82,6 +97,41 @@ def _gen_org_code() -> str:
     return "ORG" + "".join(secrets.choice(string.digits) for _ in range(5))
 
 
+async def _guard_territory(
+    db: AsyncSession,
+    lat: Optional[float],
+    lng: Optional[float],
+    radius_km: Optional[float],
+    force: bool,
+    exclude_org_id: Optional[int] = None,
+) -> list[dict]:
+    """区域保护闸门(协议第四条)。返回冲突清单(force 放行时用于记日志)。
+
+    没给坐标 → 直接放过:坐标是选填的,不能因为新增了这个功能就让不填坐标的老流程失败。
+    给了坐标 → 校验合法性 → 查冲突 → 有冲突且未 force 时抛 409 带明细,
+    前端弹确认框列明细,勾选「我已核对」后带 force=true 重试。
+
+    坐标只给一半是**必拦**的错误: 只填纬度会静默存成半条数据,
+    既判不出冲突、又让这家机构看着"已登记"却不受保护 —— 比不填更危险。
+    """
+    if lat is None and lng is None:
+        return []
+    if lat is None or lng is None:
+        raise HTTPException(400, "经纬度必须同时填写(只填一个无法判定区域冲突)")
+    bad = geo_service.coord_error(lat, lng)
+    if bad:
+        raise HTTPException(400, bad)
+
+    radius = radius_km or geo_service.DEFAULT_PROTECT_RADIUS_KM
+    others = (await db.execute(select(Organization))).scalars().all()
+    conflicts = geo_service.find_territory_conflicts(
+        lat, lng, radius, others, exclude_org_id=exclude_org_id
+    )
+    if conflicts and not force:
+        raise HTTPException(409, geo_service.conflict_payload(conflicts, radius))
+    return conflicts
+
+
 def _org_out(org: Organization, active_students: int = 0, teacher_count: int = 0) -> dict:
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
@@ -91,6 +141,11 @@ def _org_out(org: Organization, active_students: int = 0, teacher_count: int = 0
         "status": org.status, "expires_at": org.expires_at, "created_at": org.created_at,
         "access_mode": getattr(org, "access_mode", None) or "assigned",
         "coin_mode": getattr(org, "coin_mode", None) or "auto",
+        # 区域保护(协议第四条);坐标为 NULL = 未登记,前端提示"未登记不受保护"
+        "address": getattr(org, "address", None),
+        "lat": getattr(org, "lat", None),
+        "lng": getattr(org, "lng", None),
+        "protect_radius_km": getattr(org, "protect_radius_km", None),
     }
 
 
@@ -142,16 +197,28 @@ async def create_organization(
     if exists:
         raise HTTPException(400, "机构码已存在，换一个")
 
+    # 区域保护闸门: 登记了坐标就查 3 公里内有没有已签约的合作点(体验机构不算)。
+    # 放在建行之前 —— 抛 409 时库里不能留下半家机构
+    conflicts = await _guard_territory(
+        db, data.lat, data.lng, data.protect_radius_km, data.force
+    )
+
     org = Organization(
         name=data.name, code=code, plan=data.plan,
         student_quota=data.student_quota,
         contact_name=data.contact_name, contact_phone=data.contact_phone,
         expires_at=data.expires_at, status="active",
+        address=data.address, lat=data.lat, lng=data.lng,
+        protect_radius_km=data.protect_radius_km,
     )
     db.add(org)
     await db.commit()
     await db.refresh(org)
-    return _org_out(org)
+    out = _org_out(org)
+    # force 放行的记在响应里,前端 toast 提示「已跳过区域冲突」留个印象
+    if conflicts:
+        out["territory_overridden"] = conflicts
+    return out
 
 
 @router.patch("/organizations/{org_id}")
@@ -170,8 +237,28 @@ async def update_organization(
     if org_id == 1 and data.status and data.status != "active":
         raise HTTPException(400, "直营机构不可停用")
 
+    # 区域保护: 改坐标 = 搬迁,搬到别家保护圈里和新开一家一样违约,同样要过闸。
+    # PATCH 语义是"未传不动",所以取「传了用新的、没传用库里的」的有效坐标一起判
+    # (只改半径不改坐标时,新半径也可能把原本合规的位置变成冲突)
+    touches_territory = any(
+        v is not None for v in (data.lat, data.lng, data.protect_radius_km)
+    )
+    conflicts: list[dict] = []
+    if touches_territory:
+        eff_lat = data.lat if data.lat is not None else org.lat
+        eff_lng = data.lng if data.lng is not None else org.lng
+        eff_radius = (
+            data.protect_radius_km
+            if data.protect_radius_km is not None
+            else org.protect_radius_km
+        )
+        conflicts = await _guard_territory(
+            db, eff_lat, eff_lng, eff_radius, data.force, exclude_org_id=org_id
+        )
+
     for field in ["name", "plan", "student_quota", "contact_name",
-                  "contact_phone", "status", "expires_at", "access_mode", "coin_mode"]:
+                  "contact_phone", "status", "expires_at", "access_mode", "coin_mode",
+                  "address", "lat", "lng", "protect_radius_km"]:
         v = getattr(data, field)
         if v is not None:
             setattr(org, field, v)
@@ -180,7 +267,63 @@ async def update_organization(
     await db.commit()
     invalidate_org_cache(org_id)  # 停用/恢复/续费立即生效
     active = await count_active_students(db, org_id)
-    return _org_out(org, active)
+    out = _org_out(org, active)
+    if conflicts:
+        out["territory_overridden"] = conflicts
+    return out
+
+
+# ---------- 区域保护预检(协议第四条) ----------
+
+@router.get("/organizations/territory-check")
+async def check_territory(
+    lat: float,
+    lng: float,
+    radius_km: Optional[float] = None,
+    exclude_org_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """填完坐标先看一眼周边:有没有冲突、最近几家分别多远。
+
+    只读不写,谈单时就能查(客户报个地址,当场答"这个位置能不能签")。
+    与写端点共用 geo_service 一份判定,不会出现"预检说行、开通被拦"。
+    """
+    bad = geo_service.coord_error(lat, lng)
+    if bad:
+        raise HTTPException(400, bad)
+
+    radius = radius_km or geo_service.DEFAULT_PROTECT_RADIUS_KM
+    orgs = (await db.execute(select(Organization))).scalars().all()
+    conflicts = geo_service.find_territory_conflicts(
+        lat, lng, radius, orgs, exclude_org_id=exclude_org_id
+    )
+
+    # 顺带给出最近 5 家(含不冲突的),让管理员对"这一带有多密"有直觉
+    nearby = []
+    for org in orgs:
+        if org.id == exclude_org_id or org.lat is None or org.lng is None:
+            continue
+        nearby.append({
+            "org_id": org.id, "org_name": org.name, "org_code": org.code,
+            "plan": org.plan, "status": org.status,
+            "distance_km": round(geo_service.haversine_km(lat, lng, org.lat, org.lng), 2),
+        })
+    nearby.sort(key=lambda x: x["distance_km"])
+
+    # 没登记坐标的机构判不了,数量要报出来 —— 否则"零冲突"会被误读成"这一带没人",
+    # 而实际可能是隔壁那家根本没录坐标
+    unmapped = sum(
+        1 for o in orgs
+        if o.lat is None and (o.plan or "") != "trial" and o.id != exclude_org_id
+    )
+    return {
+        "ok": not conflicts,
+        "radius_km": radius,
+        "conflicts": conflicts,
+        "nearby": nearby[:5],
+        "unmapped_orgs": unmapped,
+    }
 
 
 # ---------- 删除机构(硬删,连带其全部账号与数据) ----------

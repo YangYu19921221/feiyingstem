@@ -423,6 +423,9 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_reading_passages_org ON reading_passages(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_org ON phonetic_videos(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_active ON phonetic_videos(is_active, category)",
+            # 音标课件(表由 create_all 建):按视频取课件列表是唯一的高频查询
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_materials_video ON phonetic_materials(video_id, is_active, sort_order)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_materials_org ON phonetic_materials(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_assessment_leads_org ON assessment_leads(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_pk_rooms_org ON pk_rooms(org_id)",
             "CREATE INDEX IF NOT EXISTS idx_leaderboard_snapshots_org ON leaderboard_snapshots(org_id)",
@@ -473,6 +476,13 @@ async def init_db():
             "ALTER TABLE redemption_codes ADD COLUMN scope_kind VARCHAR(10) NOT NULL DEFAULT 'book'",
             "ALTER TABLE redemption_codes ADD COLUMN scope_series VARCHAR(30)",
             "ALTER TABLE redemption_codes ADD COLUMN scope_stage VARCHAR(10)",
+            # 区域保护(2026-09-09): 机构经营场所坐标 + 独家半径,开新机构时按直线距离拦违约。
+            # 全部可空: 存量机构坐标为 NULL = 未登记,既不参与判定也不受保护,旧行为零影响。
+            # 判定口径见 services/geo_service.py(直线距离,与协议第四条逐字一致)
+            "ALTER TABLE organizations ADD COLUMN address VARCHAR(255)",
+            "ALTER TABLE organizations ADD COLUMN lat FLOAT",
+            "ALTER TABLE organizations ADD COLUMN lng FLOAT",
+            "ALTER TABLE organizations ADD COLUMN protect_radius_km FLOAT",
         ]:
             try:
                 await conn.execute(text(_sql))

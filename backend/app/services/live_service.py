@@ -20,12 +20,18 @@
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import secrets
 import time
 from dataclasses import dataclass
 
+import httpx
+
 from app.core.config import settings
+
+logger = logging.getLogger("live")
 
 
 def new_stream_key() -> str:
@@ -76,6 +82,70 @@ def build_push_credentials(stream_key: str, origin_node: str | None = None) -> P
         stream_key=stream_key,
         expires_at=int(time.time()) + 6 * 3600,  # 一节课不会超过 6 小时
     )
+
+
+def _srs_api_base(origin_node: str | None = None) -> str | None:
+    """SRS HTTP-API 的基址。生产走 Nginx 443 反代(/api/ → 1985),
+    所以默认复用 LIVE_API_HOST / LIVE_ORIGIN_HOST。返回形如 https://live.feiyingsteam.com。"""
+    host = settings.LIVE_SRS_API_HOST or settings.LIVE_API_HOST or _origin_host(origin_node)
+    if not host:
+        return None
+    # 已带 scheme 就原样用(本地可能填 http://localhost:1985)
+    if host.startswith("http://") or host.startswith("https://"):
+        return host.rstrip("/")
+    return f"{settings.LIVE_SCHEME}://{host}".rstrip("/")
+
+
+async def kick_stream_publisher(stream_key: str, origin_node: str | None = None) -> int:
+    """开播前踢掉该 stream 上的**残留推流者**,根治 RtcStreamBusy(502)。
+
+    幂等:正常首播时查不到匹配 client → 不踢、返回 0,对首播零副作用。
+    只匹配 url 结尾 == /{app}/{stream_key} 且 publish==True 的 client,
+    绝不误伤别的课或拉流者(WHEP)。任何异常都吞掉(踢流是优化不是开播前置条件),
+    宁可让老师端 WHIP 自己撞一次 busy,也不能因 SRS API 抖动阻断开播。
+
+    返回踢掉的 publisher 数量(用于日志/测试)。
+    """
+    if not settings.LIVE_KICK_BEFORE_PUBLISH:
+        return 0
+    base = _srs_api_base(origin_node)
+    if not base:
+        return 0
+    app_path = settings.LIVE_PUSH_PATH.strip("/")
+    want_suffix = f"/{app_path}/{stream_key}"
+    kicked = 0
+    try:
+        async with httpx.AsyncClient(timeout=5.0, verify=True) as client:
+            resp = await client.get(f"{base}/api/v1/clients/")
+            resp.raise_for_status()
+            clients = (resp.json() or {}).get("clients", []) or []
+            targets = [
+                c for c in clients
+                if c.get("publish") is True
+                and str(c.get("url") or "").rstrip("/").endswith(want_suffix)
+                and c.get("id")
+            ]
+            for c in targets:
+                cid = c["id"]
+                try:
+                    r = await client.delete(f"{base}/api/v1/clients/{cid}")
+                    # SRS kick 成功回 code=0;非 200 也不抛,记日志继续
+                    if r.status_code == 200:
+                        kicked += 1
+                    else:
+                        logger.warning("[live] kick client %s 返回 %s", cid, r.status_code)
+                except Exception as e:  # 单个踢失败不影响其余
+                    logger.warning("[live] kick client %s 异常: %s", cid, e)
+    except Exception as e:
+        # SRS API 不可达/超时/返回异常:不阻断开播
+        logger.warning("[live] kick_stream_publisher 跳过(SRS API 异常): %s", e)
+        return kicked
+    if kicked:
+        # SRS 回收 RTC session 需要一小段时间,等一下再让老师端发起 WHIP,
+        # 否则新推流可能抢在回收完成前又撞 busy
+        logger.info("[live] 开播前踢掉 %d 个残留推流者 stream=%s", kicked, stream_key)
+        await asyncio.sleep(0.4)
+    return kicked
 
 
 def _cdn_auth_suffix(path: str, expire_ts: int, uid: str) -> str:

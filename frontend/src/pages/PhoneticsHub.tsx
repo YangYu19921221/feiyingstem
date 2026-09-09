@@ -7,14 +7,17 @@
  * 播放走鉴权串流端点(见 api/phonetics.playableUrl):<video> 带不了请求头,
  * 所以 token 放 query 上。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FileText } from 'lucide-react';
 import {
-  phoneticsApi, playableUrl, CATEGORY_LABELS,
-  type PhoneticVideo, type PhoneticCategory,
+  phoneticsApi, playableUrl, CATEGORY_LABELS, listVideoMaterials,
+  type PhoneticVideo, type PhoneticCategory, type StudentMaterial,
 } from '../api/phonetics';
 import { getErrorMessage } from '../utils/errorMessage';
+import { segmentIpa } from '../utils/ipaPhonemes';
+import MaterialViewer from '../components/phonetics/MaterialViewer';
 
 const GROUP_ORDER: PhoneticCategory[] = ['basic', 'vowel', 'consonant', 'other'];
 const GROUP_ICON: Record<PhoneticCategory, string> = {
@@ -51,6 +54,11 @@ export default function PhoneticsHub() {
   const [keyword, setKeyword] = useState('');
   const [playing, setPlaying] = useState<PhoneticVideo | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  /** 当前视频的配套讲义(老师上传的 PPT/PDF,渲染成图给学生看) */
+  const [materials, setMaterials] = useState<StudentMaterial[]>([]);
+  /** 正在看的那份讲义。null = 没打开阅览器 */
+  const [viewing, setViewing] = useState<StudentMaterial | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -88,8 +96,12 @@ export default function PhoneticsHub() {
 
   const openVideo = async (v: PhoneticVideo) => {
     setPlaying(v);
+    setMaterials([]);           // 先清空:否则会短暂显示上一个视频的讲义
+    setViewing(null);
     // 记一次观看(失败不影响播放)
     try { await phoneticsApi.detail(v.id); } catch { /* 计数失败无所谓 */ }
+    // 配套讲义:取不到就当没有,**不能因此打断看视频**
+    try { setMaterials(await listVideoMaterials(v.id)); } catch { setMaterials([]); }
   };
 
   return (
@@ -140,7 +152,7 @@ export default function PhoneticsHub() {
           <span className="min-w-0 flex-1">
             <span className="block font-display text-lg font-bold">音标练习 · 专用教材第1册</span>
             <span className="mt-0.5 block text-sm text-white/90">
-              48 节 · 看音标读出来 + 看单词写音标
+              48 节 · 看音标读出来 + 卡片写音标
             </span>
           </span>
           <span className="shrink-0 text-xl">→</span>
@@ -236,8 +248,25 @@ export default function PhoneticsHub() {
                         ▶
                       </span>
                       {v.phonetic_symbol && (
-                        <span className="absolute left-2 top-2 rounded-lg bg-white/90 px-2 py-0.5 font-mono text-sm font-bold text-primary shadow-sm">
-                          {v.phonetic_symbol}
+                        <span className="absolute left-2 top-2 rounded-lg bg-white/90 px-2 py-0.5 font-mono text-sm shadow-sm">
+                          {/* 元音橙色加粗、辅音蓝色 —— 与 ColoredPhonetic(单词卡/分类各阶段)
+                              和答题格同一套口径:元音是拼读的教学点,一眼要能挑出来。
+                              这里不用 ColoredPhonetic:它按音节铺底色气泡,而角标通常只有
+                              一两个音素,气泡壳子比音标本身还大 */}
+                          {segmentIpa(v.phonetic_symbol).map((seg, i) => (
+                            <span
+                              key={i}
+                              className={
+                                seg.kind === 'vowel'
+                                  ? 'font-extrabold text-orange-600'
+                                  : seg.kind === 'consonant'
+                                    ? 'font-semibold text-sky-600'
+                                    : 'text-gray-400'
+                              }
+                            >
+                              {seg.text}
+                            </span>
+                          ))}
                         </span>
                       )}
                       {formatDuration(v.duration_seconds) && (
@@ -284,6 +313,7 @@ export default function PhoneticsHub() {
                 </button>
               </div>
               <video
+                ref={videoRef}
                 key={playing.id}
                 src={playableUrl(playing)}
                 controls
@@ -296,10 +326,43 @@ export default function PhoneticsHub() {
               {playing.description && (
                 <p className="px-4 py-3 text-sm leading-relaxed text-slate-300">{playing.description}</p>
               )}
+
+              {/* 配套讲义:老师上传的 PPT/PDF,渲染成图。没有讲义时整块不出现,
+                  不摆一个"暂无讲义"的空状态占地方 */}
+              {materials.length > 0 && (
+                <div className="border-t border-white/10 px-4 py-3">
+                  <p className="mb-2 text-xs text-slate-400">老师的讲义</p>
+                  <div className="flex flex-wrap gap-2">
+                    {materials.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          // 阅览器是全屏不透明的,视频控件会被完全盖住 ——
+                          // 不暂停的话学生会听着讲解音继续响却按不到暂停键
+                          videoRef.current?.pause();
+                          setViewing(m);
+                        }}
+                        className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-left
+                                   text-sm text-white transition hover:bg-white/20 active:scale-[0.98]"
+                      >
+                        <FileText className="h-4 w-4 shrink-0 text-orange-300" />
+                        <span className="min-w-0 truncate">{m.title}</span>
+                        <span className="shrink-0 text-xs text-slate-400">{m.page_count} 页</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 讲义阅览器。z-[60] 盖在视频弹层(z-50)之上,关掉后回到视频继续看 ——
+          视频不卸载,进度不丢 */}
+      {viewing && (
+        <MaterialViewer material={viewing} onClose={() => setViewing(null)} />
+      )}
     </div>
   );
 }

@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>飞鹰英语｜系统化提分训练方案</title>
+<style>
+  :root{
+    --navy:#0d1828;--navy2:#17263a;--ink:#172033;--muted:#667085;
+    --paper:#f6f2ea;--white:#fff;--orange:#e95d2a;--yellow:#f3bf38;
+    --teal:#278d8d;--green:#2e8b57;--line:#ded8ce;--soft:#fff8ed;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#ddd;color:var(--ink);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}
+  @page{size:A4;margin:0}
+  .page{position:relative;width:210mm;height:297mm;margin:0 auto 8mm;background:var(--paper);overflow:hidden;page-break-after:always;padding:17mm 16mm 15mm}
+  .page:last-child{page-break-after:auto}
+  @media print{html,body{background:#fff}.page{margin:0;box-shadow:none}}
+  h1,h2,h3,p{margin:0}
+  h1,h2,h3{font-family:"Songti SC","STSong","Noto Serif CJK SC",serif}
+  h1{font-size:34pt;line-height:1.2;letter-spacing:-1px}
+  h2{font-size:24pt;line-height:1.25;letter-spacing:-.5px}
+  h3{font-size:14pt;line-height:1.4}
+  p,li,td,th{font-size:10.5pt;line-height:1.72}
+  .eyebrow{font-size:8.5pt;font-weight:800;letter-spacing:1.5px;color:var(--orange);text-transform:uppercase;margin-bottom:5mm}
+  .sub{font-size:12pt;line-height:1.75;color:var(--muted);max-width:158mm;margin-top:4mm}
+  .rule{height:1px;background:var(--line);margin:7mm 0}
+  .page-no{position:absolute;right:16mm;bottom:7mm;font-size:8pt;color:#8d8b86;font-variant-numeric:tabular-nums}
+  .brand{position:absolute;left:16mm;bottom:7mm;font-size:8pt;color:#8d8b86}
+  .tag{display:inline-flex;align-items:center;padding:2mm 4mm;border-radius:99px;background:var(--orange);color:#fff;font-size:8pt;font-weight:800;letter-spacing:.4px}
+  .note{font-size:8.5pt;line-height:1.6;color:#77736d}
+  .callout{padding:5mm 6mm;background:var(--navy);color:#fff;border-radius:4mm}
+  .callout strong{color:var(--yellow)}
+  .quote{font-family:"Songti SC","STSong",serif;font-weight:700;font-size:14pt;line-height:1.75;color:var(--ink)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5mm}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}
+  .card{background:#fff;border:1px solid var(--line);border-radius:4mm;padding:5mm;break-inside:avoid}
+  .card h3{margin-bottom:2mm}
+  .card p{color:var(--muted)}
+  .num{font-family:Georgia,serif;font-size:25pt;font-weight:800;color:var(--orange);line-height:1}
+  .mini{font-size:8.5pt;color:var(--muted);line-height:1.6}
+  .accent{color:var(--orange);font-weight:800}
+  .teal{color:var(--teal);font-weight:800}
+  .green{color:var(--green);font-weight:800}
+  .list{margin:3mm 0 0;padding-left:5mm}
+  .list li{margin:1.8mm 0;color:#4c5565}
+  .hero-img{position:absolute;right:-12mm;bottom:-3mm;width:132mm;height:198mm;object-fit:cover;object-position:center;border-radius:48mm 0 0 0}
+  .image-card{width:100%;height:66mm;object-fit:contain;background:#fff;border-radius:5mm;padding:3mm}
+  .portrait{width:100%;height:92mm;object-fit:contain;background:#fff;border-radius:5mm;padding:3mm}
+  table{border-collapse:collapse;width:100%;margin-top:5mm}
+  th{text-align:left;color:#6f6b64;font-size:8.5pt;letter-spacing:.4px;padding:2.7mm 2.5mm;border-bottom:1.5px solid #aaa39a}
+  td{padding:3mm 2.5mm;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .data td:nth-child(n+2),.data th:nth-child(n+2){text-align:center;font-variant-numeric:tabular-nums}
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-top:7mm}
+  .flow .step{position:relative;background:#fff;border-top:3px solid var(--orange);padding:5mm 4mm;border-radius:3mm;min-height:49mm}
+  .flow .step:nth-child(2){border-color:var(--teal)}
+  .flow .step:nth-child(3){border-color:var(--green)}
+  .flow .step:nth-child(4){border-color:var(--yellow)}
+  .flow .step b{display:block;font-size:9pt;color:var(--muted);margin-bottom:2mm}
+  .flow .step h3{font-size:13pt;margin-bottom:2mm}
+  .timeline{margin-top:6mm;border-top:1px solid var(--line)}
+  .day{display:grid;grid-template-columns:22mm 38mm 1fr;gap:4mm;padding:3.7mm 0;border-bottom:1px solid var(--line);align-items:start}
+  .day .d{font-weight:900;color:var(--orange);font-size:10pt}
+  .day .who{font-weight:800;font-size:9pt;color:var(--ink)}
+  .day p{font-size:9pt;color:var(--muted);line-height:1.55}
+  .metric{display:grid;grid-template-columns:1.2fr .75fr .75fr .8fr;align-items:center;padding:3mm 0;border-bottom:1px solid var(--line)}
+  .metric.head{font-size:8.5pt;color:#77736d;font-weight:800;border-bottom:1.5px solid #aaa39a}
+  .metric span{font-size:10pt;text-align:center}
+  .metric span:first-child{text-align:left}
+  .metric .after{font-weight:900;color:var(--green)}
+  .bar{height:4mm;background:#e8e2d9;border-radius:99px;overflow:hidden;margin-top:1.5mm}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--orange),var(--yellow));border-radius:99px}
+  .human{display:grid;grid-template-columns:34mm 1fr;gap:5mm;padding:4mm 0;border-bottom:1px solid var(--line)}
+  .human .icon{width:30mm;height:30mm;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);font-family:Georgia,serif;font-size:18pt;color:var(--orange);font-weight:800}
+  .human h3{font-size:12pt;margin-bottom:1mm}
+  .human p{font-size:9.3pt;color:var(--muted);line-height:1.65}
+  .script{background:#fff;border-left:4px solid var(--orange);border-radius:0 4mm 4mm 0;padding:5mm 6mm;margin-top:4mm}
+  .script .label{font-size:8pt;font-weight:900;color:var(--orange);letter-spacing:.5px;margin-bottom:2mm}
+  .script p{font-family:"Songti SC","STSong",serif;font-size:12pt;line-height:1.75;font-weight:700}
+  .dark{background:var(--navy);color:#fff}
+  .dark .eyebrow{color:var(--yellow)}
+  .dark .sub,.dark .note{color:#c5ceda}
+  .dark .brand,.dark .page-no{color:#9aa8b8}
+  .dark .rule{background:#344156}
+  .dark .card{background:var(--navy2);border-color:#344156}
+  .dark .card p{color:#c5ceda}
+  .dark .card h3{color:#fff}
+  .dark .timeline,.dark .day{border-color:#344156}
+  .dark .day .who{color:#fff}.dark .day p{color:#c5ceda}
+  .cover-copy{position:relative;z-index:2;width:100mm;padding-top:23mm}
+  .cover-copy h1{color:#fff}
+  .cover-copy .lead{margin-top:8mm;color:#dce4ee;font-size:13pt;line-height:1.8;width:95mm}
+  .cover-copy .promise{margin-top:13mm;border-top:2px solid var(--yellow);padding-top:5mm;color:#fff;font-weight:800;font-size:12pt;width:88mm}
+</style>
+</head>
+<body>
+
+<!-- 01 封面 -->
+<section class="page dark">
+  <div class="cover-copy">
+    <span class="tag">家长说明版 · 校区执行版</span>
+    <div style="height:13mm"></div>
+    <h1>先找准丢分点，<br>再把训练做扎实</h1>
+    <p class="lead">飞鹰英语系统化提分训练方案：老师真人带练，系统记录过程，训练前后使用同口径数据进行对比。</p>
+    <p class="promise">我们不先承诺提高多少分。我们先告诉您：孩子缺在哪、每天怎么练、7 天后拿什么数据复盘。</p>
+  </div>
+  <img class="hero-img" src="sales_deck/images/redesign_hero.png" alt="老师、家长与孩子共同关注英语学习">
+  <div class="brand">飞鹰英语 · 智能学习系统</div><div class="page-no">01</div>
+</section>
+
+<!-- 02 丢分地图 -->
+<section class="page">
+  <div class="eyebrow">01 · 先诊断</div>
+  <h2>英语丢分，通常不是一个原因</h2>
+  <p class="sub">同样是“单词不会”，背后可能是没听清、读不准、记不牢，或者手机上会选但试卷上写不出来。老师先分清原因，再安排训练。</p>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card"><div class="num">01</div><h3>听音辨音</h3><p>容易把相近的元音、辅音听成同一个音，直接影响听力辨词和课堂跟读。</p></div>
+    <div class="card"><div class="num">02</div><h3>发音输出</h3><p>知道单词，但口型、舌位或重音不到位；开口时含糊，口语与听力互相拖累。</p></div>
+    <div class="card"><div class="num">03</div><h3>拼写书写</h3><p>看选项会认，离开提示不会写；常见于元音、双写字母和词尾遗漏。</p></div>
+    <div class="card"><div class="num">04</div><h3>记忆保持</h3><p>当天会、过几天忘，说明复习间隔和错词回炉没有安排好。</p></div>
+    <div class="card"><div class="num">05</div><h3>理解运用</h3><p>单词单独认识，放进句子不会判断词义，影响阅读、完形和选词填空。</p></div>
+    <div class="card"><div class="num">06</div><h3>学习执行</h3><p>任务时长看着不少，但反复跳过难题、机械点击或练习不连续，数据会失真。</p></div>
+  </div>
+  <div class="callout" style="margin-top:7mm"><p class="quote" style="color:#fff">老师第一件事不是告诉孩子“你基础差”，而是把问题说具体：<strong>哪个音容易混、哪些词写不出、忘在第几天。</strong></p></div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">02</div>
+</section>
+
+<!-- 03 训练与分数 -->
+<section class="page">
+  <div class="eyebrow">02 · 对准考试</div>
+  <h2>每一个训练动作，都要对应一种得分能力</h2>
+  <p class="sub">孩子不是为了“刷软件”而练。每个动作都要回答：它最终帮助哪类题目？</p>
+  <table style="margin-top:9mm">
+    <thead><tr><th style="width:28mm">训练动作</th><th style="width:48mm">老师怎么带</th><th style="width:47mm">孩子练什么</th><th>对应得分能力</th></tr></thead>
+    <tbody>
+      <tr><td><b>近音辨别</b></td><td>老师先示范口型与舌位，再做最小对立词对比</td><td>听后选择、跟读、再听自己的录音</td><td>听力辨词、口语发音</td></tr>
+      <tr><td><b>音形对应</b></td><td>把听到的音拆到字母和字母组合</td><td>从音到拼写，不靠死记字母顺序</td><td>单词拼写、听写</td></tr>
+      <tr><td><b>纸笔输出</b></td><td>先不给选项，要求在纸上写出来</td><td>听写、默写、拍照留档</td><td>卷面输出、单元测验</td></tr>
+      <tr><td><b>错词回炉</b></td><td>只抓反复错的词，不让已会词占时间</td><td>间隔复习、再次默写</td><td>词汇保持、减少重复丢分</td></tr>
+      <tr><td><b>句中运用</b></td><td>把单词放回教材句子和短文</td><td>选词、填空、句义判断</td><td>阅读、完形、语境理解</td></tr>
+      <tr><td><b>限时混合测</b></td><td>按考试节奏安排题型和时间</td><td>独立完成，不边学边看答案</td><td>速度、稳定性、综合小测</td></tr>
+    </tbody>
+  </table>
+  <div class="grid2" style="margin-top:8mm">
+    <img class="image-card" src="sales_deck/images/feat_pronunciation.png" alt="孩子进行发音训练">
+    <div class="callout">
+      <h3 style="color:var(--yellow);margin-bottom:4mm">我们重点改善什么</h3>
+      <p>发音辨音、词汇拼写、记忆保持、练习稳定性，以及这些能力对应的听力、单词和基础阅读得分。</p>
+      <div class="rule"></div>
+      <p class="note">综合英语成绩还受语法、阅读量、写作和学校教学进度影响。报告会如实说明本阶段覆盖到哪里，不把局部训练夸成全部成绩。</p>
+    </div>
+  </div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">03</div>
+</section>
+
+<!-- 04 真人诊断 -->
+<section class="page dark">
+  <div class="eyebrow">03 · 真人诊断</div>
+  <h2>老师先听、先看、先问，再下结论</h2>
+  <p class="sub">系统负责把录音、错词、练习次数和测验结果整理出来；最后由老师把这些数据翻译成家长和孩子能听懂的训练安排。</p>
+  <div class="flow">
+    <div class="step"><b>第一步</b><h3>听一遍</h3><p>老师听孩子真实录音，确认是读错、近音混淆，还是环境没录清。</p></div>
+    <div class="step"><b>第二步</b><h3>写一遍</h3><p>让孩子离开选项，把词写到纸上，区分“认识”和“真正会写”。</p></div>
+    <div class="step"><b>第三步</b><h3>测一遍</h3><p>用同一组范围做小测，留下准确率、用时和具体错题。</p></div>
+    <div class="step"><b>第四步</b><h3>问一句</h3><p>问孩子最难的地方和每天可投入时间，训练才真正能执行。</p></div>
+  </div>
+  <div class="grid2" style="margin-top:9mm">
+    <div class="card">
+      <h3>老师给家长的三行诊断</h3>
+      <p style="margin-top:3mm">1. 现在最影响得分的是：__________</p>
+      <p>2. 这 7 天先练：__________</p>
+      <p>3. 第 7 天用什么复测：__________</p>
+    </div>
+    <img class="image-card" src="sales_deck/images/feat_classroom.png" alt="老师查看班级训练情况">
+  </div>
+  <div class="callout" style="margin-top:7mm;background:#22354e"><p class="quote" style="color:#fff">孩子读错时，老师不说“怎么又错了”，而是说：<strong>“这次听起来更像 bed，我们把中间这个音单独练两遍。”</strong></p></div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">04</div>
+</section>
+
+<!-- 05 7天训练 -->
+<section class="page">
+  <div class="eyebrow">04 · 7 天训练</div>
+  <h2>每天 5–15 分钟，老师带着完成一个小目标</h2>
+  <p class="sub">时间不用很长，但必须连续、必须只练当前问题。每一天都有老师要看的记录，不是把账号发给孩子自己刷。</p>
+  <div class="timeline">
+    <div class="day"><div class="d">第 0 天</div><div class="who">老师定基线</div><p>读 6 个目标词，做 10 词听写和一份小测。记录读对、近音、没听清、拼写错误和用时。</p></div>
+    <div class="day"><div class="d">第 1 天</div><div class="who">老师示范</div><p>只讲 1–2 个薄弱音位，示范口型和舌位。孩子录两遍，老师选一遍最清楚的。</p></div>
+    <div class="day"><div class="d">第 2 天</div><div class="who">听音辨别</div><p>做近音词对比；先听再选，再把听到的音说出来，避免只会模仿不会分辨。</p></div>
+    <div class="day"><div class="d">第 3 天</div><div class="who">老师中检</div><p>老师听过程录音，告诉孩子哪个词已稳定、哪个词仍混淆；任务太长就当场减量。</p></div>
+    <div class="day"><div class="d">第 4 天</div><div class="who">拼写落纸</div><p>把音和字母对应起来，完成一次无选项听写；错词只重练关键字母，不整页罚抄。</p></div>
+    <div class="day"><div class="d">第 5 天</div><div class="who">句中运用</div><p>把已练词放进教材句子、选词或填空，确认孩子不只会单独读词。</p></div>
+    <div class="day"><div class="d">第 6 天</div><div class="who">独立小测</div><p>不提示、不看答案，按固定时间完成混合题；老师只记录，不在测试中临时教答案。</p></div>
+    <div class="day"><div class="d">第 7 天</div><div class="who">复测与面谈</div><p>用同难度、同数量题目复测。老师把前后数据摆在一起，说明变化、没变的原因和下一步。</p></div>
+  </div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">05</div>
+</section>
+
+<!-- 06 前后对比 -->
+<section class="page">
+  <div class="eyebrow">05 · 前后对比</div>
+  <h2>第 7 天，家长一定拿到一份同口径对比</h2>
+  <p class="sub">相同题量、相近难度、相同记录方式。我们保证把前后变化讲清楚，但不会把示例数字当成每个孩子的承诺。</p>
+  <div class="card" style="margin-top:8mm;padding:7mm">
+    <div class="metric head"><span>观察指标</span><span>第 0 天</span><span>第 7 天</span><span>变化</span></div>
+    <div class="metric"><span>目标词读对</span><span>2 / 6</span><span class="after">5 / 6</span><span class="green">+3</span></div>
+    <div class="metric"><span>读成近音</span><span>3 个</span><span class="after">1 个</span><span class="green">-2</span></div>
+    <div class="metric"><span>没听清 / 不确定</span><span>1 个</span><span class="after">0 个</span><span class="green">-1</span></div>
+    <div class="metric"><span>10 词纸笔听写</span><span>4 / 10</span><span class="after">8 / 10</span><span class="green">+4</span></div>
+    <div class="metric"><span>同难度小测</span><span>42 / 60</span><span class="after">52 / 60</span><span class="green">+10</span></div>
+    <div class="metric"><span>完成训练天数</span><span>—</span><span class="after">6 / 7</span><span>可核对</span></div>
+  </div>
+  <div class="grid2" style="margin-top:7mm">
+    <div class="callout">
+      <h3 style="color:var(--yellow);margin-bottom:3mm">老师怎么解释这组数据</h3>
+      <p>读对词从 2 个到 5 个，说明近音训练开始起作用；听写仍错 2 个，说明音形对应还不稳，下一周不急着加新词，先把这两个词写牢。</p>
+    </div>
+    <div class="card">
+      <h3>如果数字没有提高</h3>
+      <p style="margin-top:3mm">老师会检查练习天数、任务难度、录音环境和孩子是否真正完成，再调整任务。不用一句“孩子不努力”把问题推回给家长。</p>
+    </div>
+  </div>
+  <p class="note" style="margin-top:7mm">以上数字仅用于展示报告结构。正式报告只使用孩子本人真实记录，并注明测试日期、题量、词表范围和有效尝试数。</p>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">06</div>
+</section>
+
+<!-- 07 真人老师 -->
+<section class="page">
+  <div class="eyebrow">06 · 真人老师怎么带</div>
+  <h2>系统记录问题，老师负责让孩子改得过来</h2>
+  <p class="sub">真正有效的培训不是不停报分，而是老师听一次、纠一个点、让孩子再做一次，然后决定下一步。</p>
+  <div style="margin-top:7mm">
+    <div class="human"><div class="icon">听</div><div><h3>先听孩子完整读完</h3><p>不抢着打断。读完后只挑最影响理解的一个音，不一次纠五个问题。</p></div></div>
+    <div class="human"><div class="icon">示</div><div><h3>老师本人示范口型和位置</h3><p>告诉孩子嘴巴、舌头和气流怎么放，再给一个对比词，让他听出差别。</p></div></div>
+    <div class="human"><div class="icon">练</div><div><h3>两到三次有效重读</h3><p>每次重读前换一个明确提示。不是无限重复，更不是读不过就一直卡住。</p></div></div>
+    <div class="human"><div class="icon">写</div><div><h3>把声音落到字母和纸上</h3><p>发音训练后接一次拼写或听写，确认孩子能从“读出来”走到“考试写出来”。</p></div></div>
+    <div class="human"><div class="icon">说</div><div><h3>老师用一句话告诉家长</h3><p>“今天 /æ/ 已经能读清，bad 不再读成 bed；但纸笔听写仍漏 a，下周继续补音形对应。”</p></div></div>
+  </div>
+  <div class="callout" style="margin-top:7mm"><p class="quote" style="color:#fff">老师不是站在旁边监督孩子刷题，而是负责<strong>判断、示范、调整和解释</strong>。</p></div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">07</div>
+</section>
+
+<!-- 08 家长配合 -->
+<section class="page">
+  <div class="eyebrow">07 · 家长怎么配合</div>
+  <h2>每天只做三件事，不在家里再当一遍老师</h2>
+  <div class="grid2" style="margin-top:8mm;grid-template-columns:.92fr 1.08fr">
+    <img class="portrait" src="sales_deck/images/feat_parent.png" alt="家长陪伴孩子查看学习报告">
+    <div>
+      <div class="card" style="margin-bottom:4mm"><h3>一看：今天有没有完成</h3><p>看完成记录，不盯着分数逼孩子重复做到满分。</p></div>
+      <div class="card" style="margin-bottom:4mm"><h3>二问：哪个词今天更容易</h3><p>让孩子说出自己的变化，比家长直接评价“你怎么又错”更有效。</p></div>
+      <div class="card"><h3>三回：把真实情况告诉老师</h3><p>孩子抗拒、环境太吵、任务太长都可以反馈，老师据此调整。</p></div>
+    </div>
+  </div>
+  <div class="script" style="margin-top:9mm">
+    <div class="label">家长可以这样问</div>
+    <p>“今天哪一个词比昨天读得更清楚？”<br>“老师让你注意的是嘴形、舌头，还是重音？”<br>“做完以后，你最想把哪一句录音给老师听？”</p>
+  </div>
+  <div class="script" style="border-color:var(--teal)">
+    <div class="label" style="color:var(--teal)">不要这样说</div>
+    <p>“才六个词怎么还错？” “你同学都会了。” “今天不满分不许睡。”</p>
+  </div>
+  <div class="callout" style="margin-top:8mm"><p>家长只需要提供安静环境和固定的 5–15 分钟。<strong>教学判断交给老师，过程记录交给系统。</strong></p></div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">08</div>
+</section>
+
+<!-- 09 机构交付 -->
+<section class="page dark">
+  <div class="eyebrow">08 · 机构怎么交付</div>
+  <h2>不是开一个账号，而是跑完一条训练闭环</h2>
+  <p class="sub">机构合作后，总部与校区共同把第一份结果做出来。是否交付完成，看动作与数据，不看“系统有没有开通”。</p>
+  <div class="grid2" style="margin-top:8mm">
+    <div class="card"><span class="tag">第 1 周</span><h3 style="margin-top:4mm">首班建立基线</h3><p>老师培训、词表导入、学生测评、第一份纸笔听写和家长绑定。</p></div>
+    <div class="card"><span class="tag" style="background:var(--teal)">第 2 周</span><h3 style="margin-top:4mm">任务连续运行</h3><p>老师每天看异常学生，中途调整任务，避免孩子拿到账号后无人跟进。</p></div>
+    <div class="card"><span class="tag" style="background:var(--green)">第 3 周</span><h3 style="margin-top:4mm">家长收到证据</h3><p>固定发送周报，既写变化，也写未完成和下一步，不只报喜。</p></div>
+    <div class="card"><span class="tag" style="background:#a57816">第 4 周</span><h3 style="margin-top:4mm">复测与面谈</h3><p>完成前后对比、家长面谈和下一阶段训练建议，再讨论续费与扩班。</p></div>
+  </div>
+  <table style="margin-top:10mm;color:#fff">
+    <thead><tr><th style="color:#aeb9c7">验收项目</th><th style="color:#aeb9c7">必须看见的结果</th><th style="color:#aeb9c7">责任人</th></tr></thead>
+    <tbody>
+      <tr><td>第一份诊断</td><td>有录音、有听写、有老师三行结论</td><td>授课老师</td></tr>
+      <tr><td>连续训练</td><td>至少能核对每天是否完成与具体错题</td><td>老师 + 班主任</td></tr>
+      <tr><td>第一次周报</td><td>家长收到并能说出孩子下一步练什么</td><td>班主任</td></tr>
+      <tr><td>第一次复测</td><td>同口径前后数据 + 老师解释</td><td>老师 + 校区负责人</td></tr>
+    </tbody>
+  </table>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">09</div>
+</section>
+
+<!-- 10 路边话术 -->
+<section class="page">
+  <div class="eyebrow">09 · 第一次遇见家长</div>
+  <h2>路边只做一件事：让孩子愿意读第一个词</h2>
+  <p class="sub">不追、不拦、不先要电话。先给家长一个低压力、能马上看到结果的小体验。</p>
+  <div class="script" style="margin-top:8mm">
+    <div class="label">10 秒开场</div>
+    <p>家长您好，打扰 10 秒。我们做一个免费的英语发音小测试，不卖课，孩子只读 6 个词，大约 1 分钟。先看结果，不用留电话，您愿意让他试一个词吗？</p>
+  </div>
+  <div class="script" style="border-color:var(--teal)">
+    <div class="label" style="color:var(--teal)">测完以后先报事实</div>
+    <p>刚才 6 个词里，孩子读对了【X】个，有【A】个更接近【近音词】，还有【B】个没有听清。这个结果不是说孩子英语差，而是告诉我们先练哪一个音。</p>
+  </div>
+  <div class="script" style="border-color:var(--green)">
+    <div class="label" style="color:var(--green)">邀请参加 7 天训练</div>
+    <p>今天不用报名长期课程。我们先给孩子安排 7 天任务，每天 5–10 分钟；第 7 天用同难度的词复测，把读对数、近音数和听写结果放在一起给您看，再决定要不要继续。</p>
+  </div>
+  <div class="grid3" style="margin-top:8mm">
+    <div class="card"><h3>家长赶时间</h3><p>“可以，您扫一下码带走，回家安静时再测；不方便就不留信息。”</p></div>
+    <div class="card"><h3>担心推销</h3><p>“现在不介绍价格，结果没价值就结束；想看完整建议时再联系。”</p></div>
+    <div class="card"><h3>孩子不愿读</h3><p>“让他自己挑一个最简单的词，不露脸，读完就停也可以。”</p></div>
+  </div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">10</div>
+</section>
+
+<!-- 11 90天路径 -->
+<section class="page">
+  <div class="eyebrow">10 · 不是只练 7 天</div>
+  <h2>7 天看方向，90 天把能力练稳定</h2>
+  <p class="sub">7 天用于确认问题和训练方式是否合适；稳定提分来自一个完整周期里的重复诊断、练习、复测和调整。</p>
+  <div class="flow" style="margin-top:10mm">
+    <div class="step"><b>第 0 天</b><h3>建立基线</h3><p>发音、听写、小测、学习习惯四项记录。</p></div>
+    <div class="step"><b>第 7 天</b><h3>第一次复测</h3><p>验证训练方向，决定增量、减量或换方法。</p></div>
+    <div class="step"><b>第 30–60 天</b><h3>巩固与迁移</h3><p>从单词走到句子、教材和混合题型。</p></div>
+    <div class="step"><b>第 90 天</b><h3>成果面谈</h3><p>前后对比、薄弱项复盘、下一期计划。</p></div>
+  </div>
+  <div class="grid2" style="margin-top:10mm">
+    <img class="image-card" src="sales_deck/images/feat_memory.png" alt="按间隔安排复习训练">
+    <div class="card" style="padding:7mm">
+      <h3>家长最终会拿到</h3>
+      <ul class="list">
+        <li>训练前与训练后的同口径数据</li>
+        <li>孩子反复出现的具体问题</li>
+        <li>老师对变化或未变化的解释</li>
+        <li>下一阶段训练重点与频次</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:9mm">
+    <p class="quote" style="color:#fff">我们承诺的不是一张漂亮的成绩单，而是每个阶段都能回答：<strong>孩子现在会什么、还缺什么、接下来怎么练。</strong></p>
+  </div>
+  <div class="brand">飞鹰英语 · 系统化提分训练方案</div><div class="page-no">11</div>
+</section>
+
+<!-- 12 结束页 -->
+<section class="page dark">
+  <div class="cover-copy" style="padding-top:31mm">
+    <span class="tag">先体验，再决定</span>
+    <div style="height:13mm"></div>
+    <h1>先跑 7 天，<br>看见第一次变化</h1>
+    <p class="lead">选一个孩子、一个薄弱点、一组同难度测试。老师真人带练，第 7 天把前后数据摆在一起说明。</p>
+    <div class="callout" style="margin-top:13mm;background:#22354e">
+      <p><strong>预约流程</strong><br>首次诊断 → 7 天训练 → 同口径复测 → 老师面谈</p>
+    </div>
+    <p style="margin-top:12mm;color:#fff;font-size:12pt">校区 / 联系人：____________________</p>
+    <p style="margin-top:4mm;color:#fff;font-size:12pt">电话 / 微信：______________________</p>
+  </div>
+  <img class="hero-img" src="sales_deck/images/closing.png" alt="孩子完成学习训练" style="object-position:center">
+  <div class="brand">飞鹰英语 · 智能学习系统</div><div class="page-no">12</div>
+</section>
+
+</body>
+</html>

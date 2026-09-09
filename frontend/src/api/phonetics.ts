@@ -27,6 +27,11 @@ export interface PhoneticVideo {
   // 教师端列表额外带的字段
   is_active?: boolean;
   created_at?: string | null;
+  /** 配了几份课件。列表上不显示的话,老师看不出哪个视频已经配过讲义 */
+  material_count?: number;
+  /** 平台预置(org_id 为空):机构只能看不能改,按钮要置灰 */
+  is_preset?: boolean;
+  can_edit?: boolean;
 }
 
 export interface PhoneticVideoPage {
@@ -34,6 +39,34 @@ export interface PhoneticVideoPage {
   page: number;
   page_size: number;
   items: PhoneticVideo[];
+}
+
+/** 配套课件 — 教师端(带渲染状态,老师要能看出「传上去了但没渲染成」) */
+export interface TeacherMaterial {
+  id: number;
+  video_id: number;
+  title: string;
+  /** pdf / ppt / pptx —— 存原始类型便于排查,PPT 在服务端已转成 PDF 渲染 */
+  kind: string;
+  page_count: number;
+  render_ready: boolean;
+  render_error?: string | null;
+  file_size?: number | null;
+  sort_order: number;
+  is_active: boolean;
+  /** 平台预置(org_id 为空):机构只能看不能改,按钮要置灰 */
+  is_preset: boolean;
+  can_edit: boolean;
+}
+
+/**
+ * 配套课件 — 学生端。只给标题和页数,**拿不到原文件地址**。
+ * (title 默认取上传文件名去掉后缀,老师可改 —— 它是给学生看的标题,不是文件路径)
+ */
+export interface StudentMaterial {
+  id: number;
+  title: string;
+  page_count: number;
 }
 
 /**
@@ -105,4 +138,60 @@ export const phoneticsApi = {
   /** 批量删除(勾选多条)。走 POST:DELETE 带 body 会被某些代理丢掉 */
   batchRemove: (ids: number[]) =>
     api.post<{ deleted: number; requested: number }>('/teacher/phonetics/videos/batch-delete', { ids }),
+
+  // ---- 配套课件(讲义 PDF / PPT)----
+
+  listMaterials: (videoId: number) =>
+    api.get<TeacherMaterial[]>(`/teacher/phonetics/videos/${videoId}/materials`),
+
+  uploadMaterial: (
+    videoId: number,
+    file: File,
+    title?: string,
+    onProgress?: (percent: number) => void,
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (title) fd.append('title', title);
+    return api.post<TeacherMaterial>(
+      `/teacher/phonetics/videos/${videoId}/materials`, fd,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+        },
+        // 上传完服务端还要转 PPT + 逐页渲染(几十页要几十秒),不能设超时
+        timeout: 0,
+      },
+    );
+  },
+
+  updateMaterial: (id: number, body: Partial<{
+    title: string; sort_order: number; is_active: boolean;
+  }>) => api.put<TeacherMaterial>(`/teacher/phonetics/materials/${id}`, body),
+
+  removeMaterial: (id: number) =>
+    api.delete<void>(`/teacher/phonetics/materials/${id}`),
 };
+
+/** 学生端:某个视频的配套讲义(只列渲染好且上架的) */
+export const listVideoMaterials = (videoId: number) =>
+  api.get<StudentMaterial[]>(`/phonetics/videos/${videoId}/materials`);
+
+/**
+ * 取课件某一页的图,返回 object URL。
+ *
+ * 走 blob 而不是直接 <img src>:①能带 Authorization 头 ②不产生可分享的直链。
+ * **用完必须 URL.revokeObjectURL** —— 翻几十页不释放会吃掉几百 MB。
+ */
+export async function fetchPhoneticMaterialPage(
+  materialId: number,
+  pageNo: number,
+): Promise<string> {
+  // 要拿原始 Blob,不能走被拦截器解包的默认路径,所以显式声明 responseType
+  const blob = await api.get<Blob>(
+    `/phonetics/materials/${materialId}/page/${pageNo}`,
+    { responseType: 'blob', timeout: 30000 },
+  );
+  return URL.createObjectURL(blob);
+}

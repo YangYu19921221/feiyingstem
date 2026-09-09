@@ -45,6 +45,8 @@ from app.models.live import (
     LiveMaterial,
     LiveAttendance,
     MaterialViewLog,
+    LiveDanmaku,
+    LiveDanmakuMute,
 )
 
 __all__ = [
@@ -104,4 +106,6 @@ __all__ = [
     "LiveMaterial",
     "LiveAttendance",
     "MaterialViewLog",
+    "LiveDanmaku",
+    "LiveDanmakuMute",
 ]

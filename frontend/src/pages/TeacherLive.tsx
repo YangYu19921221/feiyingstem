@@ -13,8 +13,67 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { liveApi, type TeacherLiveSession, type PushCredentials } from '../api/live';
+import TeacherDanmakuPanel from '../components/TeacherDanmakuPanel';
 
 type SourceKind = 'camera' | 'screen';
+
+/**
+ * 采集一路视频源。屏幕共享故意压到 15fps 并标 contentHint='detail':
+ * 课件/文字不需要高帧率,把码率预算让给"把每帧刷清楚刷满",否则画面大变时
+ * 编码器只能分帧补宏块 → 老师看到的"一层一层从上往下刷"。摄像头按 720p/25fps。
+ *
+ * **屏幕共享的声音一律用麦克风**(不是系统/标签页声音):这是讲课直播,老师讲解声必须传出去。
+ * getDisplayMedia 默认给的是系统音,老师的话反而收不到 —— 而 WHIP 只协商一次 SDP,
+ * 开播时没有音轨后面就补不进来,所以开播这一刻就得把麦克风音轨带上(同 Zoom/Meet 的共享)。
+ * 麦克风拿不到时降级为无声屏幕流(不阻断开播)。
+ */
+async function captureSource(source: SourceKind): Promise<MediaStream> {
+  if (source === 'camera') {
+    return navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 25 } },
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+  }
+  // 屏幕:只取屏幕视频(丢弃系统音),再单独抓麦克风音,合成一路推
+  const disp = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 15 } }, audio: false });
+  const videoTrack = disp.getVideoTracks()[0];
+  // contentHint 必须在轨道加入 PeerConnection 之前设,协商后再改不生效
+  try { videoTrack.contentHint = 'detail'; } catch { /* 老浏览器无此属性 */ }
+  const out = new MediaStream([videoTrack]);
+  try {
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    mic.getAudioTracks().forEach((t) => out.addTrack(t));
+  } catch { /* 麦克风被拒/无设备:无声共享,总比整场开播失败强 */ }
+  return out;
+}
+
+/**
+ * 读屏幕轨的画面类型:'monitor'(整屏)/ 'browser'(标签页)/ 'window'(应用窗口)/ ''(拿不到)。
+ * 整屏和标签页会把直播预览也照进去 → 套娃,靠这个判断要不要藏预览。
+ */
+function getDisplaySurface(track: MediaStreamTrack | undefined): string {
+  if (!track) return '';
+  try {
+    return (track.getSettings() as any).displaySurface || '';
+  } catch { return ''; }
+}
+
+/**
+ * 在 video sender 上按源类型设编码参数:码率上限 + 降级策略。
+ * 屏幕优先保分辨率(掉帧也别糊文字)、码率 3Mbps;摄像头 balanced、1.5Mbps。
+ * maxBitrate 太高反而在弱网下加重"分帧刷新",故贴着上行带宽给。不支持就退回默认,不影响推流。
+ */
+async function applyVideoSenderParams(pc: RTCPeerConnection, source: SourceKind) {
+  try {
+    const vsender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (!vsender) return;
+    const p = vsender.getParameters();
+    if (!p.encodings || p.encodings.length === 0) p.encodings = [{}];
+    p.encodings[0].maxBitrate = source === 'screen' ? 3_000_000 : 1_500_000;
+    (p as any).degradationPreference = source === 'screen' ? 'maintain-resolution' : 'balanced';
+    await vsender.setParameters(p);
+  } catch { /* setParameters 不支持/被拒:退回默认编码 */ }
+}
 
 export default function TeacherLive() {
   const navigate = useNavigate();
@@ -30,6 +89,12 @@ export default function TeacherLive() {
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [publishing, setPublishing] = useState<number | null>(null);
+  // 当前推的是摄像头还是屏幕。开播后可中途切换(replaceTrack,不重开推流),
+  // 用来决定按钮显示「共享屏幕」还是「退出共享屏幕」。
+  const [liveSource, setLiveSource] = useState<SourceKind | null>(null);
+  // 共享屏幕时的画面类型:'monitor'=整屏 / 'browser'=标签页 / 'window'=应用窗口 / ''=未知。
+  // 整屏和标签页会把直播预览也照进去 → 无限套娃,所以那两种藏预览;窗口共享安全,显示预览让老师看到学生看到啥。
+  const [screenSurface, setScreenSurface] = useState<string>('');
   const [cred, setCred] = useState<PushCredentials | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -109,12 +174,7 @@ export default function TeacherLive() {
       const c = await liveApi.startSession(session.id);
       setCred(c);
 
-      const stream = source === 'screen'
-        ? await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 25 }, audio: true })
-        : await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 25 } },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
+      const stream = await captureSource(source);
       streamRef.current = stream;
       // 这里**不能直接绑 previewRef** —— 那个 <video> 在 {liveOne && ...} 块内,
       // 而 liveOne 要等下面 setPublishing 之后才成立,此刻元素还没进 DOM,
@@ -133,6 +193,11 @@ export default function TeacherLive() {
       };
 
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      await applyVideoSenderParams(pc, source);
+      // 老师从浏览器自带的「停止共享」小条退出屏幕共享时,轨道会 ended —— 此时不能傻站着推死画面,
+      // 自动切回摄像头保持直播不断(见 switchSource)。摄像头轨道被系统停不挂此逻辑。
+      if (source === 'screen') attachScreenEndedGuard(stream.getVideoTracks()[0]);
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
@@ -146,6 +211,8 @@ export default function TeacherLive() {
       await pc.setRemoteDescription({ type: 'answer', sdp: answer });
 
       setPublishing(session.id);
+      setLiveSource(source);
+      setScreenSurface(source === 'screen' ? getDisplaySurface(stream.getVideoTracks()[0]) : '');
       setConnState(pc.connectionState);
 
       // 码率/帧率轮询:让老师看得见自己推出去的画质。
@@ -190,10 +257,76 @@ export default function TeacherLive() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (previewRef.current) previewRef.current.srcObject = null;
-    if (!silent) setPublishing(null);
+    if (!silent) { setPublishing(null); setLiveSource(null); }
     setCred(null);
     setConnState(null);
     setLiveStats(null);
+  };
+
+  /**
+   * 直播中切换视频源(摄像头↔屏幕),**不重开推流**。
+   * WHIP 是一次性 SDP 协商,不能重新协商,所以走 replaceTrack:在既有 sender 上
+   * 换掉视频轨,音频轨和连接都不动 → 学生端画面无缝切、不掉线、弹幕不断。
+   * 「退出共享屏幕」= 切回摄像头(source='camera')。
+   */
+  const switchSource = async (source: SourceKind) => {
+    const pc = pcRef.current;
+    const old = streamRef.current;
+    if (!pc || !old || busy) return;
+    setBusy(true);
+    setErr('');
+    let next: MediaStream | null = null;
+    try {
+      next = await captureSource(source);
+      const newVideo = next.getVideoTracks()[0];
+      if (!newVideo) throw new Error('没拿到视频轨');
+
+      const vsender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+      if (!vsender) throw new Error('推流通道异常,请下课后重新开播');
+      await vsender.replaceTrack(newVideo);
+      await applyVideoSenderParams(pc, source);
+      if (source === 'screen') attachScreenEndedGuard(newVideo);
+
+      // 只替换视频轨:旧视频轨停掉,音频轨继续用旧的(切屏不该打断麦克风)。
+      // 预览流也换成新视频轨 + 旧音频轨,保证本地预览跟着变。
+      old.getVideoTracks().forEach((t) => { t.stop(); old.removeTrack(t); });
+      old.addTrack(newVideo);
+      // 屏幕采集带的系统音轨用不上(避免和麦克风串音),丢弃
+      next.getAudioTracks().forEach((t) => t.stop());
+
+      if (previewRef.current) {
+        previewRef.current.srcObject = old;
+        previewRef.current.play().catch(() => {});
+      }
+      setLiveSource(source);
+      setScreenSurface(source === 'screen' ? getDisplaySurface(newVideo) : '');
+    } catch (e: any) {
+      // 切换失败:清理新抓的流,保持原来的推流不动(不能因为切失败把直播也搞断)
+      next?.getTracks().forEach((t) => t.stop());
+      const msg = e?.name === 'NotAllowedError' ? '已取消,继续用当前画面' : (e?.message || '切换失败,继续用当前画面');
+      setErr(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * 监听屏幕轨道 ended:老师点浏览器自带「停止共享」小条时触发。
+   * 不处理的话会推死画面(冻帧)还显示「直播中」—— 自动切回摄像头保持直播不断。
+   * 判据用「这条轨道是否还是 sender 当前在推的那条」:切走/下课后 sender 已换轨,
+   * 旧轨的 ended 就不该再触发切回(否则会把新画面又抢回摄像头)。
+   */
+  const attachScreenEndedGuard = (track: MediaStreamTrack | undefined) => {
+    if (!track) return;
+    track.addEventListener('ended', () => {
+      const pc = pcRef.current;
+      if (!pc) return;  // 已下课
+      const vsender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+      // 仍在推、且推的正是这条刚结束的屏幕轨 → 切回摄像头
+      if (vsender && vsender.track === track) {
+        void switchSource('camera');
+      }
+    }, { once: true });
   };
 
   const endClass = async (session: TeacherLiveSession) => {
@@ -333,13 +466,47 @@ export default function TeacherLive() {
                 </span>
               )}
             </div>
-            <video
-              ref={previewRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full aspect-video bg-black rounded-xl"
-            />
+            {/* 预览显示策略(治"隧道套娃"又不让老师瞎):
+                - 摄像头:正常显示预览。
+                - 共享「应用窗口」(window):安全,显示预览 —— 老师能确认学生看到哪块。
+                - 共享「整屏 / 标签页」(monitor/browser/未知):预览会照到自己 → 无限套娃,
+                  藏预览、提示改成"共享某个窗口",避免隧道效果又让老师有据可依。 */}
+            {(() => {
+              const risky = liveSource === 'screen' && screenSurface !== 'window';
+              return (
+                <div className="relative">
+                  <video
+                    ref={previewRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className={`w-full aspect-video bg-black rounded-xl ${risky ? 'hidden' : ''}`}
+                  />
+                  {liveSource === 'screen' && screenSurface === 'window' && (
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/60 text-white text-xs">
+                      👁 这就是学生看到的画面
+                    </span>
+                  )}
+                  {risky && (
+                    <div className="w-full aspect-video bg-gray-900 rounded-xl flex flex-col items-center justify-center text-center px-4">
+                      <div className="text-4xl mb-2">🖥</div>
+                      <div className="text-white font-bold">正在共享{screenSurface === 'browser' ? '浏览器标签页' : '整个屏幕'}</div>
+                      <div className="text-gray-400 text-sm mt-1 max-w-xs">
+                        这里不显示预览,否则会照到本页画面无限套娃。
+                        <br />想看到学生看的画面?点「重选共享」改成<b className="text-amber-300">共享某个应用窗口</b>。
+                      </div>
+                      <button
+                        onClick={() => switchSource('screen')}
+                        disabled={busy || connState !== 'connected'}
+                        className="mt-3 px-4 py-1.5 rounded-lg bg-[#FFD23F] text-gray-800 text-sm font-bold disabled:opacity-40"
+                      >
+                        🔄 重选共享
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => endClass(liveOne)}
@@ -347,6 +514,25 @@ export default function TeacherLive() {
               >
                 ⏹ 下课
               </button>
+              {/* 直播中切换画面源:不重开推流(replaceTrack),学生端无缝切、不掉线。
+                  连接中/切换中禁用,防重复点。 */}
+              {liveSource === 'screen' ? (
+                <button
+                  onClick={() => switchSource('camera')}
+                  disabled={busy || connState !== 'connected'}
+                  className="px-4 py-2 rounded-xl bg-gray-700 text-white font-bold disabled:opacity-40"
+                >
+                  📷 退出共享屏幕
+                </button>
+              ) : (
+                <button
+                  onClick={() => switchSource('screen')}
+                  disabled={busy || connState !== 'connected'}
+                  className="px-4 py-2 rounded-xl bg-[#FFD23F] text-gray-800 font-bold disabled:opacity-40"
+                >
+                  🖥 共享屏幕
+                </button>
+              )}
               <button
                 onClick={() => navigate(`/teacher/livestream/${liveOne.id}/materials`)}
                 className="px-4 py-2 rounded-xl bg-orange-100 text-[#FF6B35] font-bold"
@@ -374,6 +560,9 @@ export default function TeacherLive() {
                 </p>
               </details>
             )}
+
+            {/* 弹幕互动面板:开播即连、下课卸载即断 */}
+            <TeacherDanmakuPanel sessionId={liveOne.id} />
           </div>
         )}
 

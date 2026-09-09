@@ -148,3 +148,36 @@ async def test_single_group_index_still_works(
     hw = await db_session.get(HomeworkAssignment, data["homework_id"])
     assert hw.group_index == 2
     assert hw.title == "分组练习"
+
+
+@pytest.mark.asyncio
+async def test_missing_available_date_defaults_to_today(
+    client: AsyncClient, teacher_with_grouped_unit, db_session
+):
+    """不传 available_date 时兜底成今天开放:作业绑定今天、assigned_at 落今天。
+
+    2026-08-23 事故防回归:此前不选开始日期会走成「布置日=创建时刻」的普通作业,
+    次日再做被判补做不发币。现强制/兜底成今天,available_from 与 assigned_at 都落今天。
+    """
+    from app.core.timeutil import local_day_utc_range
+    from app.models.learning import HomeworkStudentAssignment
+    from sqlalchemy import select
+
+    teacher, stu, unit = teacher_with_grouped_unit
+    r = await client.post(
+        "/api/v1/teacher/homework",
+        json=_payload(unit.id, stu.id),  # 不传 available_date
+        headers={"Authorization": f"Bearer {_make_token(teacher.id)}"},
+    )
+    assert r.status_code == 200, r.text
+    hw = await db_session.get(HomeworkAssignment, r.json()["homework_id"])
+    day_start, day_end = local_day_utc_range(local_today())
+    assert hw.available_from is not None, "兜底后应有开放日,不能是立即可做的普通作业"
+    assert day_start <= hw.available_from < day_end
+
+    sa = (await db_session.execute(
+        select(HomeworkStudentAssignment).where(
+            HomeworkStudentAssignment.homework_id == hw.id)
+    )).scalar_one()
+    assert sa.assigned_at is not None
+    assert day_start <= sa.assigned_at < day_end, "布置日必须落今天,否则次日做会被判补做漏发金币"

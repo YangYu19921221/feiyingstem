@@ -17,8 +17,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { studentLiveApi, type StudentJoinResponse } from '../api/live';
+import { useLiveSocket, type LiveWsEvent } from '../hooks/useLiveSocket';
+import DanmakuOverlay, { type DanmakuItem } from '../components/DanmakuOverlay';
 
 const HEARTBEAT_SEC = 30;
+const MAX_DANMAKU_KEPT = 200;   // 内存里最多留这么多条,防长课堆爆
 
 export default function StudentLiveWatch() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -128,6 +131,64 @@ export default function StudentLiveWatch() {
     };
   }, [status, sid]);
 
+  // ---- 弹幕 ----
+  const token = localStorage.getItem('access_token') || '';
+  const [danmakuList, setDanmakuList] = useState<DanmakuItem[]>([]);
+  const [danmakuOn, setDanmakuOn] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [sendError, setSendError] = useState('');
+
+  const appendDanmaku = useCallback((items: DanmakuItem[]) => {
+    setDanmakuList((prev) => {
+      const merged = [...prev, ...items];
+      return merged.length > MAX_DANMAKU_KEPT ? merged.slice(-MAX_DANMAKU_KEPT) : merged;
+    });
+  }, []);
+
+  const onWsEvent = useCallback((e: LiveWsEvent) => {
+    switch (e.type) {
+      case 'history':
+        setDanmakuList((e.items || []) as DanmakuItem[]);
+        break;
+      case 'danmaku_batch':
+        appendDanmaku((e.items || []) as DanmakuItem[]);
+        break;
+      case 'deleted':
+        setDanmakuList((prev) => prev.filter((d) => d.id !== e.id));
+        break;
+      case 'cleared':
+        setDanmakuList([]);
+        break;
+      case 'you_are_muted':
+        setMuted(true);
+        break;
+      case 'you_are_unmuted':
+        setMuted(false);
+        break;
+      case 'error':
+        if (e.code === 'muted') setMuted(true);
+        setSendError(e.message || '发送失败');
+        window.setTimeout(() => setSendError(''), 2500);
+        break;
+    }
+  }, [appendDanmaku]);
+
+  // 只在真正进入直播间(拿到播放凭据)后才连弹幕 WS
+  const { send, connected, failed, retry } = useLiveSocket({
+    sessionId: sid,
+    token,
+    onEvent: onWsEvent,
+    enabled: status === 'playing' && !!token,
+  });
+
+  const sendDanmaku = useCallback(() => {
+    const text = draft.trim();
+    if (!text || muted) return;
+    send({ type: 'danmaku', content: text });
+    setDraft('');
+  }, [draft, muted, send]);
+
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="sticky top-0 z-20 bg-gray-900/95 backdrop-blur border-b border-gray-800">
@@ -167,6 +228,11 @@ export default function StudentLiveWatch() {
             </div>
           )}
 
+          {/* 弹幕层 */}
+          {status === 'playing' && danmakuOn && (
+            <DanmakuOverlay items={danmakuList} scroll />
+          )}
+
           {status !== 'playing' && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
               <div className="text-center px-6">
@@ -186,6 +252,49 @@ export default function StudentLiveWatch() {
             </div>
           )}
         </div>
+
+        {/* 弹幕发送区 —— 只在直播中显示 */}
+        {status === 'playing' && (
+          <div className="px-4 py-3 border-t border-gray-800">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDanmakuOn((v) => !v)}
+                className={`shrink-0 px-3 py-2 rounded-lg text-sm font-bold ${
+                  danmakuOn ? 'bg-[#00D9FF]/20 text-[#00D9FF]' : 'bg-gray-800 text-gray-400'
+                }`}
+                aria-label={danmakuOn ? '关闭弹幕' : '打开弹幕'}
+              >
+                {danmakuOn ? '💬 弹幕开' : '💬 弹幕关'}
+              </button>
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) sendDanmaku(); }}
+                maxLength={200}
+                disabled={muted}
+                placeholder={muted ? '老师已暂停你发言' : '说点什么…（回车发送）'}
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-gray-800 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-[#FF6B35] disabled:opacity-50"
+              />
+              <button
+                onClick={sendDanmaku}
+                disabled={muted || !draft.trim()}
+                className="shrink-0 px-4 py-2 rounded-lg bg-[#FF6B35] text-white font-bold disabled:opacity-40"
+              >
+                发送
+              </button>
+            </div>
+            {sendError && <p className="mt-1.5 text-xs text-red-400">{sendError}</p>}
+            {failed && (
+              <p className="mt-1.5 text-xs text-amber-400">
+                弹幕连接断开
+                <button onClick={retry} className="ml-2 underline">重试</button>
+              </p>
+            )}
+            {!connected && !failed && (
+              <p className="mt-1.5 text-xs text-gray-500">弹幕连接中…</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

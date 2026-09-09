@@ -15,6 +15,7 @@ import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import { Upload, Volume2 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
 
 const PAGE_SIZE = 10;
 const CATEGORIES = Object.entries(CATEGORY_LABELS) as [PhoneticCategory, string][];
@@ -44,6 +45,9 @@ export default function TeacherPhonetics() {
   // 编辑中的行
   const [editing, setEditing] = useState<PhoneticVideo | null>(null);
   const [editForm, setEditForm] = useState({ title: '', phonetic_symbol: '', category: 'basic', description: '' });
+
+  // 正在管理课件的视频。关弹层时刷新列表,让「讲义 N」跟着变
+  const [materialFor, setMaterialFor] = useState<PhoneticVideo | null>(null);
 
   // 批量删除:勾选的 id。翻页/搜索后清空,避免删掉看不见的条目
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -323,14 +327,44 @@ export default function TeacherPhonetics() {
                       {v.file_size ? ` · ${formatSize(v.file_size)}` : ''}
                       {` · 观看 ${v.view_count}`}
                       {!v.is_active && ' · 已下架'}
+                      {/* 配过讲义的要看得出来,否则老师分不清哪个视频还缺课件 */}
+                      {!!v.material_count && (
+                        <span className="text-orange-500">{` · 讲义 ${v.material_count}`}</span>
+                      )}
+                      {v.is_preset && ' · 平台预置'}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <button onClick={() => startEdit(v)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100">编辑</button>
-                    <button onClick={() => toggleActive(v)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100">
+                    <button
+                      onClick={() => setMaterialFor(v)}
+                      className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100"
+                    >
+                      课件{v.material_count ? ` ${v.material_count}` : ''}
+                    </button>
+                    {/* 平台预置对机构只读:置灰而不是隐藏 —— 隐藏了老师会以为功能坏了 */}
+                    <button
+                      onClick={() => startEdit(v)}
+                      disabled={v.can_edit === false}
+                      title={v.can_edit === false ? '平台预置视频,机构不可修改' : undefined}
+                      className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100
+                                 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-100"
+                    >编辑</button>
+                    <button
+                      onClick={() => toggleActive(v)}
+                      disabled={v.can_edit === false}
+                      title={v.can_edit === false ? '平台预置视频,机构不可修改' : undefined}
+                      className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100
+                                 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-100"
+                    >
                       {v.is_active ? '下架' : '上架'}
                     </button>
-                    <button onClick={() => remove(v)} className="rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50">删除</button>
+                    <button
+                      onClick={() => remove(v)}
+                      disabled={v.can_edit === false}
+                      title={v.can_edit === false ? '平台预置视频,机构不可删除' : undefined}
+                      className="rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50
+                                 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                    >删除</button>
                   </div>
                 </div>
               ))}
@@ -406,6 +440,16 @@ export default function TeacherPhonetics() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 配套课件弹层。关掉时刷新列表,让行上的「讲义 N」跟着变 */}
+      {materialFor && (
+        <MaterialManagerDialog
+          videoId={materialFor.id}
+          videoTitle={materialFor.title}
+          readOnly={materialFor.can_edit === false}
+          onClose={() => { setMaterialFor(null); void load(); }}
+        />
       )}
     </div>
   );

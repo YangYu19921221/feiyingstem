@@ -19,10 +19,55 @@ export interface Organization {
   access_mode?: 'assigned' | 'all_books';
   // 金币发放: auto=系统按规则自动发(默认) | manual=只能老师核实后手动加
   coin_mode?: 'auto' | 'manual';
+  // 区域保护(协议第四条): 经营场所与独家半径。lat/lng 为空=未登记,不参与判定也不受保护
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  protect_radius_km?: number | null;
+  /** force 放行时回传被跳过的冲突(仅创建/更新响应带) */
+  territory_overridden?: TerritoryConflict[];
   created_at?: string;
 }
 
-export type OrgInfo = Omit<Organization, 'created_at'>;
+/** 区域冲突明细(3 公里内已有合作点) */
+export interface TerritoryConflict {
+  org_id: number;
+  org_name: string;
+  org_code: string;
+  status: string;
+  plan: string;
+  address?: string | null;
+  distance_km: number;
+  threshold_km: number;
+}
+
+/** 409 区域冲突响应体(detail 字段) */
+export interface TerritoryConflictDetail {
+  code: 'TERRITORY_CONFLICT';
+  message: string;
+  radius_km: number;
+  conflicts: TerritoryConflict[];
+}
+
+export interface TerritoryCheckResult {
+  ok: boolean;
+  radius_km: number;
+  conflicts: TerritoryConflict[];
+  nearby: { org_id: number; org_name: string; org_code: string; plan: string; status: string; distance_km: number }[];
+  /** 没登记坐标因而判不了的机构数——「零冲突」要连它一起读 */
+  unmapped_orgs: number;
+}
+
+/** 从 axios 错误里取出区域冲突明细;不是这种错误则返回 null */
+export function territoryConflictOf(e: unknown): TerritoryConflictDetail | null {
+  const detail = (e as { response?: { status?: number; data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (detail && typeof detail === 'object' && (detail as TerritoryConflictDetail).code === 'TERRITORY_CONFLICT') {
+    return detail as TerritoryConflictDetail;
+  }
+  return null;
+}
+
+export type OrgInfo = Omit<Organization, 'created_at' | 'territory_overridden'>;
 
 export interface OrgTeacher {
   id: number;
@@ -50,10 +95,13 @@ export interface TrialProvisionResult {
 // ---------- 平台管理端(admin) ----------
 export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
-  create: (data: { name: string; code?: string; plan?: string; student_quota?: number; contact_name?: string; contact_phone?: string }) =>
+  create: (data: { name: string; code?: string; plan?: string; student_quota?: number; contact_name?: string; contact_phone?: string; address?: string; lat?: number; lng?: number; protect_radius_km?: number; force?: boolean }) =>
     client.post<Organization>('/admin/organizations', data),
-  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual' }>) =>
+  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
     client.patch<Organization>(`/admin/organizations/${orgId}`, data),
+  /** 区域保护预检: 填完坐标先看周边有没有冲突(只读,谈单时也能查) */
+  territoryCheck: (params: { lat: number; lng: number; radius_km?: number; exclude_org_id?: number }) =>
+    client.get<TerritoryCheckResult>('/admin/organizations/territory-check', { params }),
   createOrgAdmin: (orgId: number, data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     // 路径避开 */admins: Safari 内容拦截器会按关键词掐掉该 XHR
     client.post<{ id: number; username: string; initial_password: string; org_code: string }>(`/admin/organizations/${orgId}/managers`, data),

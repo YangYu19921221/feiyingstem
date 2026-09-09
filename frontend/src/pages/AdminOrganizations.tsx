@@ -1,10 +1,13 @@
 /** 平台管理端 - 机构(加盟商)管理 */
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminOrgApi, Organization, OrgManager, TrialProvisionResult } from '../api/organizations';
+import {
+  adminOrgApi, Organization, OrgManager, TrialProvisionResult,
+  TerritoryCheckResult, TerritoryConflictDetail, territoryConflictOf,
+} from '../api/organizations';
 import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
 import TrialAccountsModal from '../components/TrialAccountsModal';
-import { Building2, Gift, Plus, X, Check } from 'lucide-react';
+import { Building2, Gift, MapPin, Plus, Search, TriangleAlert, X, Check } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
 
@@ -12,10 +15,259 @@ const PLAN_LABELS: Record<string, string> = {
   trial: '体验', standard: '标准', county: '县级独家', city: '市级独家', headquarters: '总部直营',
 };
 
+/** 区域保护默认半径(公里),与协议第四条及后端 geo_service 一致 */
+const DEFAULT_RADIUS_KM = 3;
+
+/** 区域保护表单的四个字段。经纬度用字符串存: 输入中途的 '30.' 转 number 会变 30,光标一跳就没法接着打小数 */
+type TerritoryForm = { address: string; lat: string; lng: string; radius: string };
+
+const EMPTY_TERRITORY: TerritoryForm = { address: '', lat: '', lng: '', radius: '' };
+
+const territoryFrom = (org: Organization): TerritoryForm => ({
+  address: org.address || '',
+  lat: org.lat == null ? '' : String(org.lat),
+  lng: org.lng == null ? '' : String(org.lng),
+  radius: org.protect_radius_km == null ? '' : String(org.protect_radius_km),
+});
+
+/** 表单值 → 请求参数。空串一律成 undefined(PATCH 语义是"未传不动") */
+const territoryPayload = (t: TerritoryForm) => ({
+  address: t.address.trim() || undefined,
+  lat: t.lat.trim() ? Number(t.lat) : undefined,
+  lng: t.lng.trim() ? Number(t.lng) : undefined,
+  protect_radius_km: t.radius.trim() ? Number(t.radius) : undefined,
+});
+
+/** 提交前的本地校验。返回错误文案,null=通过 */
+function validateTerritory(t: TerritoryForm): string | null {
+  const hasLat = !!t.lat.trim();
+  const hasLng = !!t.lng.trim();
+  // 只填一半会静默存成半条数据:判不出冲突,却让这家机构看着"已登记"实则不受保护
+  if (hasLat !== hasLng) return '纬度和经度要一起填(只填一个无法判定区域冲突)';
+  if (hasLat) {
+    const lat = Number(t.lat);
+    const lng = Number(t.lng);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) return '纬度应在 -90 ~ 90 之间';
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) return '经度应在 -180 ~ 180 之间';
+  }
+  if (t.radius.trim()) {
+    const r = Number(t.radius);
+    if (!Number.isFinite(r) || r <= 0 || r > 500) return '保护半径应在 0 ~ 500 公里之间';
+  }
+  return null;
+}
+
+/**
+ * 区域保护录入(开通表单与「改地址」弹窗共用)。
+ *
+ * 经纬度刻意分成两个带示例的输入框,不做「粘贴一串自动拆」——
+ * 各家地图复制出来的顺序不一样(高德是「经度,纬度」,而人读写习惯是「纬度,经度」),
+ * 猜错顺序算出的距离完全无意义却不会报错。填反了后端也会拦,这里再给个「对调」按钮兜。
+ */
+function TerritoryFields({
+  value, onChange, onCheck, checking, result,
+}: {
+  value: TerritoryForm;
+  onChange: (t: TerritoryForm) => void;
+  onCheck: () => void;
+  checking: boolean;
+  result: TerritoryCheckResult | null;
+}) {
+  const canCheck = !!value.lat.trim() && !!value.lng.trim() && !validateTerritory(value);
+  const inputCls = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30';
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+        <MapPin className="h-4 w-4 text-[#3976a9]" aria-hidden="true" />
+        区域保护(协议第四条)
+      </div>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        登记经营场所坐标后，开通 / 搬迁时系统会按<b>直线距离</b>查这一带有没有已签约的合作点，
+        {DEFAULT_RADIUS_KM} 公里内会拦下来。留空则不登记：既不参与判定，<b>也不受保护</b>。
+        坐标从高德地图复制（GCJ02），别一半用 GPS 一半用地图。
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="text-xs font-medium text-slate-500 sm:col-span-2">
+          经营场所地址
+          <input
+            className={inputCls} placeholder="如 浙江省杭州市西湖区文三路 100 号 3 楼"
+            value={value.address}
+            onChange={e => onChange({ ...value, address: e.target.value })}
+          />
+        </label>
+        <label className="text-xs font-medium text-slate-500">
+          纬度 lat（3 ~ 54）
+          <input
+            className={inputCls} inputMode="decimal" placeholder="如 30.2741"
+            value={value.lat}
+            onChange={e => onChange({ ...value, lat: e.target.value.trim() })}
+          />
+        </label>
+        <label className="text-xs font-medium text-slate-500">
+          经度 lng（73 ~ 136）
+          <input
+            className={inputCls} inputMode="decimal" placeholder="如 120.1551"
+            value={value.lng}
+            onChange={e => onChange({ ...value, lng: e.target.value.trim() })}
+          />
+        </label>
+        <label className="text-xs font-medium text-slate-500">
+          保护半径（公里，留空 = {DEFAULT_RADIUS_KM}）
+          <input
+            className={inputCls} inputMode="decimal" placeholder={`默认 ${DEFAULT_RADIUS_KM}，县级/市级独家可放宽`}
+            value={value.radius}
+            onChange={e => onChange({ ...value, radius: e.target.value.trim() })}
+          />
+        </label>
+        <div className="flex items-end gap-2">
+          <button
+            type="button" disabled={!canCheck || checking} onClick={onCheck}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-[#3976a9] px-3 text-sm font-semibold text-white transition hover:bg-[#32678f] disabled:opacity-40"
+          >
+            <Search className="h-4 w-4" />{checking ? '查询中…' : '查周边'}
+          </button>
+          <button
+            type="button"
+            disabled={!value.lat.trim() && !value.lng.trim()}
+            onClick={() => onChange({ ...value, lat: value.lng, lng: value.lat })}
+            className="min-h-10 rounded-lg bg-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-300 disabled:opacity-40"
+            title="高德复制出来是「经度,纬度」,顺序反了点这里"
+          >
+            对调
+          </button>
+        </div>
+      </div>
+
+      {result && (
+        <div className={`mt-3 rounded-lg border px-3 py-2.5 text-xs leading-5 ${result.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+          <p className="font-semibold">
+            {result.ok
+              ? `✅ ${result.radius_km} 公里内没有已签约的合作点`
+              : `⚠️ ${result.radius_km} 公里内有 ${result.conflicts.length} 家合作点`}
+          </p>
+          {result.conflicts.length > 0 && (
+            <ul className="mt-1 space-y-0.5">
+              {result.conflicts.map(c => (
+                <li key={c.org_id}>
+                  · <b>{c.org_name}</b>（{c.org_code}）相距 <b>{c.distance_km} 公里</b>
+                  {c.status !== 'active' && '，当前已停用'}
+                </li>
+              ))}
+            </ul>
+          )}
+          {result.conflicts.length === 0 && result.nearby.length > 0 && (
+            <p className="mt-1 text-slate-600">
+              最近的是 <b>{result.nearby[0].org_name}</b>，{result.nearby[0].distance_km} 公里。
+            </p>
+          )}
+          {/* 「零冲突」必须连未登记坐标的机构数一起读,否则会被误当成"这一带没人" */}
+          {result.unmapped_orgs > 0 && (
+            <p className="mt-1 text-slate-500">
+              另有 {result.unmapped_orgs} 家机构没登记坐标，判不了距离，需人工核对。
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 区域冲突后果确认框(照金币手动加币防重复那套: 列明细 + 勾选「我已核对」才能强行放行)。
+ *
+ * 不做成 window.confirm —— 一行字的 confirm 点得太随手,而这一下是违约。
+ * 明细必须指名道姓写清是哪家、多远,让管理员真能去核。
+ */
+function TerritoryConflictModal({
+  detail, orgName, pending, onCancel, onForce,
+}: {
+  detail: TerritoryConflictDetail;
+  orgName: string;
+  pending: boolean;
+  onCancel: () => void;
+  onForce: () => void;
+}) {
+  const [acked, setAcked] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true">
+      <div className="w-full max-w-lg rounded-2xl border-2 border-red-300 bg-white p-5 shadow-2xl sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600">
+            <TriangleAlert className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-red-700">区域保护冲突</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              「{orgName}」的位置落在已有合作点的 {detail.radius_km} 公里保护范围内。
+            </p>
+          </div>
+        </div>
+
+        <ul className="mt-4 space-y-2">
+          {detail.conflicts.map(c => (
+            <li key={c.org_id} className="rounded-xl border border-red-200 bg-red-50/70 px-3 py-2 text-sm">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-bold text-slate-800">{c.org_name}</span>
+                <span className="shrink-0 font-mono text-xs text-slate-500">{c.org_code}</span>
+              </div>
+              <div className="mt-0.5 text-xs text-slate-600">
+                相距 <b className="text-red-700">{c.distance_km} 公里</b>
+                <span className="text-slate-400">（保护半径 {c.threshold_km} 公里）</span>
+                {c.status !== 'active' && <span className="ml-1 text-amber-700">· 该机构当前已停用</span>}
+                {c.plan && <span className="ml-1">· {PLAN_LABELS[c.plan] || c.plan}</span>}
+              </div>
+              {c.address && <div className="mt-0.5 text-xs text-slate-500">{c.address}</div>}
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+          继续开通将违反与上述机构签订的<b>协议第四条区域保护条款</b>，对方可据此追责。
+          若确认对方已终止合作、或双方已另行书面同意，才可强行继续。
+        </p>
+
+        <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox" checked={acked} onChange={e => setAcked(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>我已核对上述机构的协议状态，确认可以开通</span>
+        </label>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200">
+            取消，换个位置
+          </button>
+          <button
+            type="button" disabled={!acked || pending} onClick={() => onForce()}
+            className="min-h-10 rounded-xl bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+          >
+            {pending ? '处理中…' : '仍要继续'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminOrganizations() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', plan: 'standard', student_quota: 100, contact_name: '', contact_phone: '' });
+  // 区域保护: 开通表单里的坐标录入 + 预检结果
+  const [territory, setTerritory] = useState<TerritoryForm>(EMPTY_TERRITORY);
+  const [territoryCheck, setTerritoryCheck] = useState<TerritoryCheckResult | null>(null);
+  const [checkingTerritory, setCheckingTerritory] = useState(false);
+  // 已有机构改地址(搬迁)
+  const [territoryEdit, setTerritoryEdit] = useState<{ org: Organization; value: TerritoryForm } | null>(null);
+  const [editCheck, setEditCheck] = useState<TerritoryCheckResult | null>(null);
+  const [checkingEdit, setCheckingEdit] = useState(false);
+  // 冲突确认框: which 决定勾选后重放哪一条提交路径
+  const [conflict, setConflict] = useState<
+    { detail: TerritoryConflictDetail; orgName: string; which: 'create' | 'edit' } | null
+  >(null);
+  const [forcing, setForcing] = useState(false);
   // 新开管理员账号的初始密码(仅展示一次)
   const [issued, setIssued] = useState<{ username: string; password: string; orgName: string } | null>(null);
   // 管理员面板: 查看某机构的管理员账号列表
@@ -97,19 +349,123 @@ export default function AdminOrganizations() {
     };
   }, [orgs]);
 
+  const resetCreateForm = () => {
+    setShowCreate(false);
+    setForm({ name: '', code: '', plan: 'standard', student_quota: 100, contact_name: '', contact_phone: '' });
+    setTerritory(EMPTY_TERRITORY);
+    setTerritoryCheck(null);
+  };
+
   const createMut = useMutation({
-    mutationFn: () => adminOrgApi.create({
+    // ⚠️ force 必须由参数传进来: 直接读 conflict 状态会拿到重放那一刻的旧闭包
+    mutationFn: (force: boolean) => adminOrgApi.create({
       name: form.name, code: form.code || undefined, plan: form.plan,
       student_quota: form.student_quota,
       contact_name: form.contact_name || undefined, contact_phone: form.contact_phone || undefined,
+      ...territoryPayload(territory),
+      ...(force ? { force: true } : {}),
     }),
-    onSuccess: () => {
+    onSuccess: (org) => {
       qc.invalidateQueries({ queryKey: ['admin-orgs'] });
-      setShowCreate(false);
-      setForm({ name: '', code: '', plan: 'standard', student_quota: 100, contact_name: '', contact_phone: '' });
+      setConflict(null);
+      if (org.territory_overridden?.length) {
+        toast.warning(`已开通「${org.name}」，但跳过了 ${org.territory_overridden.length} 处区域冲突`);
+      }
+      resetCreateForm();
     },
-    onError: (e: unknown) => toast.error(errorText(e, '创建失败')),
+    onError: (e: unknown) => {
+      const detail = territoryConflictOf(e);
+      if (detail) {
+        setConflict({ detail, orgName: form.name, which: 'create' });
+        return;  // 交给确认框,不弹 toast(两个一起出会互相盖)
+      }
+      toast.error(errorText(e, '创建失败'));
+    },
   });
+
+  /** 开通前的本地校验 + 提交(force=false;撞冲突由 onError 转确认框) */
+  const submitCreate = () => {
+    const bad = validateTerritory(territory);
+    if (bad) return toast.warning(bad);
+    createMut.mutate(false);
+  };
+
+  /** 区域预检: 开通表单与改地址弹窗共用一个请求,只是写回不同的 state */
+  const runTerritoryCheck = async (t: TerritoryForm, excludeOrgId?: number) => {
+    const bad = validateTerritory(t);
+    if (bad) {
+      toast.warning(bad);
+      return null;
+    }
+    try {
+      return await adminOrgApi.territoryCheck({
+        lat: Number(t.lat), lng: Number(t.lng),
+        radius_km: t.radius.trim() ? Number(t.radius) : undefined,
+        exclude_org_id: excludeOrgId,
+      });
+    } catch (e: unknown) {
+      toast.error(errorText(e, '周边查询失败'));
+      return null;
+    }
+  };
+
+  const checkCreateTerritory = async () => {
+    setCheckingTerritory(true);
+    const r = await runTerritoryCheck(territory);
+    setCheckingTerritory(false);
+    if (r) setTerritoryCheck(r);
+  };
+
+  const checkEditTerritory = async () => {
+    if (!territoryEdit) return;
+    setCheckingEdit(true);
+    // 排除自己: 不然改半径/微调地址时,机构永远和自己相距 0 公里
+    const r = await runTerritoryCheck(territoryEdit.value, territoryEdit.org.id);
+    setCheckingEdit(false);
+    if (r) setEditCheck(r);
+  };
+
+  /** 保存已有机构的经营场所(搬迁);force 由调用方传,同 createMut 的理由 */
+  const saveTerritory = async (force: boolean) => {
+    if (!territoryEdit) return;
+    const { org, value } = territoryEdit;
+    const bad = validateTerritory(value);
+    if (bad) return toast.warning(bad);
+    setForcing(force);
+    try {
+      const r = await adminOrgApi.update(org.id, {
+        ...territoryPayload(value),
+        ...(force ? { force: true } : {}),
+      });
+      await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+      setConflict(null);
+      setTerritoryEdit(null);
+      setEditCheck(null);
+      if (r.territory_overridden?.length) {
+        toast.warning(`已保存，但跳过了 ${r.territory_overridden.length} 处区域冲突`);
+      } else {
+        toast.success('经营场所已更新');
+      }
+    } catch (e: unknown) {
+      const detail = territoryConflictOf(e);
+      if (detail) setConflict({ detail, orgName: org.name, which: 'edit' });
+      else toast.error(errorText(e, '保存失败'));
+    } finally {
+      setForcing(false);
+    }
+  };
+
+  /** 确认框勾选后重放:两条提交路径共用一个入口 */
+  const forceThrough = () => {
+    if (!conflict) return;
+    if (conflict.which === 'create') createMut.mutate(true);
+    else void saveTerritory(true);
+  };
+
+  const openTerritoryEdit = (org: Organization) => {
+    setTerritoryEdit({ org, value: territoryFrom(org) });
+    setEditCheck(null);
+  };
 
   const toggleStatus = useMutation({
     mutationFn: (org: Organization) => adminOrgApi.update(org.id, {
@@ -304,6 +660,44 @@ export default function AdminOrganizations() {
           </div>
         )}
 
+        {/* 经营场所 / 区域保护(已有机构) */}
+        {territoryEdit && (
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) { setTerritoryEdit(null); setEditCheck(null); } }}>
+            <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">机构操作</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">经营场所与区域保护</h2>
+                  <p className="mt-1 text-sm text-slate-500">{territoryEdit.org.name}</p>
+                </div>
+                <button type="button" className="grid h-9 w-9 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => { setTerritoryEdit(null); setEditCheck(null); }} aria-label="关闭"><X className="h-4 w-4" /></button>
+              </div>
+              <TerritoryFields
+                value={territoryEdit.value}
+                onChange={t => { setTerritoryEdit({ ...territoryEdit, value: t }); setEditCheck(null); }}
+                onCheck={() => void checkEditTerritory()}
+                checking={checkingEdit}
+                result={editCheck}
+              />
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200" onClick={() => { setTerritoryEdit(null); setEditCheck(null); }}>取消</button>
+                <button type="button" className="admin-primary admin-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold" onClick={() => void saveTerritory(false)}><Check className="h-4 w-4" />保存</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 区域冲突后果确认(勾选「我已核对」才能强行放行) */}
+        {conflict && (
+          <TerritoryConflictModal
+            detail={conflict.detail}
+            orgName={conflict.orgName}
+            pending={createMut.isPending || forcing}
+            onCancel={() => setConflict(null)}
+            onForce={() => forceThrough()}
+          />
+        )}
+
         {/* 初始密码弹窗(仅展示一次) */}
         {issued && (
           <InitialPasswordModal
@@ -454,15 +848,24 @@ export default function AdminOrganizations() {
               <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系电话" value={form.contact_phone}
                      onChange={e => setForm({ ...form, contact_phone: e.target.value })} />
             </div>
+            <div className="mt-3">
+              <TerritoryFields
+                value={territory}
+                onChange={t => { setTerritory(t); setTerritoryCheck(null); }}
+                onCheck={() => void checkCreateTerritory()}
+                checking={checkingTerritory}
+                result={territoryCheck}
+              />
+            </div>
             <div className="mt-3 flex gap-2">
               <button
                 disabled={!form.name || createMut.isPending}
-                onClick={() => createMut.mutate()}
+                onClick={() => submitCreate()}
                 className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50"
               >
                 {createMut.isPending ? '开通中…' : '确认开通'}
               </button>
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-xl bg-gray-200">取消</button>
+              <button onClick={() => resetCreateForm()} className="px-4 py-2 rounded-xl bg-gray-200">取消</button>
             </div>
           </div>
         )}
@@ -503,11 +906,19 @@ export default function AdminOrganizations() {
                     <div>授权 <span className={`font-medium ${org.access_mode === 'all_books' ? 'text-amber-600' : 'text-slate-700'}`}>{org.access_mode === 'all_books' ? '全托·书本全开放' : '逐本分配'}</span></div>
                     <div>金币 <span className={`font-medium ${org.coin_mode === 'manual' ? 'text-orange-600' : 'text-slate-700'}`}>{org.coin_mode === 'manual' ? '教师手动加' : '系统自动发'}</span></div>
                     <div className="col-span-2 flex items-center gap-2">学生 <span className="font-medium text-slate-700">{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>{org.student_quota < 999999 && <QuotaBar active={org.active_students} quota={org.student_quota} className="w-20" />}</div>
+                    {org.plan !== 'trial' && (
+                      <div className="col-span-2 truncate">
+                        场所 {org.lat != null && org.lng != null
+                          ? <span className="font-medium text-slate-700">{org.address || `${org.lat}, ${org.lng}`}</span>
+                          : <span className="font-medium text-amber-600">未登记 · 不受区域保护</span>}
+                      </div>
+                    )}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 border-t border-slate-100 pt-3 text-xs font-semibold">
                     <button className="text-blue-600" onClick={() => issueAdmin(org)}>开管理员</button>
                     <button className="text-teal-600" onClick={() => openManagerPanel(org)}>管理员</button>
                     <button className="text-orange-600" onClick={() => changeQuota(org)}>改配额</button>
+                    <button className="text-[#3976a9]" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                     <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
                     <button className="text-orange-600" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                     {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
@@ -540,6 +951,22 @@ export default function AdminOrganizations() {
                             : <span>🏫</span>}
                           {org.name}{org.id === 1 && <span className="ml-1 text-xs text-orange-400">(直营)</span>}
                         </span>
+                        {/* 坐标登记状态: 没登记的判不了冲突也不受保护,列表上要看得见,
+                            否则预检的「零冲突」会被误当成"这一带没人"。体验机构不参与判定,不提示 */}
+                        {org.plan !== 'trial' && (
+                          <div className="mt-0.5 max-w-[16rem] truncate text-[10px] font-normal">
+                            {org.lat != null && org.lng != null ? (
+                              <span className="text-slate-400" title={org.address || undefined}>
+                                📍 {org.address || `${org.lat}, ${org.lng}`}
+                                {org.protect_radius_km && org.protect_radius_km !== DEFAULT_RADIUS_KM
+                                  ? ` · ${org.protect_radius_km}km 独家`
+                                  : ''}
+                              </span>
+                            ) : (
+                              <span className="text-amber-500">未登记坐标 · 不受区域保护</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-mono">{org.code}</td>
                       <td className="px-4 py-3">
@@ -574,6 +1001,7 @@ export default function AdminOrganizations() {
                           <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
                           <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
                           <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
+                          <button className="text-[#3976a9] hover:underline" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                           <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
                           <button className="text-orange-600 hover:underline" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                           {org.id !== 1 && (
