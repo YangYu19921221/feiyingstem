@@ -104,23 +104,19 @@ def render_material(src_path: str, material_id: int, kind: str) -> int:
     return total
 
 
-def stamp_page(
-    material_id: int,
-    page_no: int,
-    *,
-    viewer_label: str,
-    fmt: str = "WEBP",
-) -> bytes:
-    """取底图 + 烧水印,返回图片 bytes(不落盘)。
+def stamp_image(src_path: str, *, viewer_label: str, fmt: str = "WEBP") -> bytes:
+    """任意底图 + 烧水印,返回图片 bytes(不落盘)。
 
-    viewer_label 例:"张小明 · 学号1024"。函数自己再拼上日期和主文案。
+    viewer_label 例:"张小明 · ID1024"。函数自己再拼上日期和主文案。
     WEBP 体积比 PNG 小很多 —— 课件页是要过公网的,这直接省带宽。
-    """
-    src = page_path(material_id, page_no)
-    if not os.path.exists(src):
-        raise FileNotFoundError(src)
 
-    with Image.open(src) as base:
+    抽成按路径的原语,是为了让直播课件之外的功能(音标讲义)也能烧同一套水印
+    而不必把渲染页放进 MATERIAL_DIR(那会和直播课件的 id 串号)。
+    """
+    if not os.path.exists(src_path):
+        raise FileNotFoundError(src_path)
+
+    with Image.open(src_path) as base:
         img = base.convert("RGB")
         _draw_watermark(img, viewer_label)
         buf = io.BytesIO()
@@ -129,6 +125,17 @@ def stamp_page(
         else:
             img.save(buf, format="JPEG", quality=85)
         return buf.getvalue()
+
+
+def stamp_page(
+    material_id: int,
+    page_no: int,
+    *,
+    viewer_label: str,
+    fmt: str = "WEBP",
+) -> bytes:
+    """直播课件第 page_no 页 + 水印。就是 stamp_image 套上 MATERIAL_DIR 的路径规则"""
+    return stamp_image(page_path(material_id, page_no), viewer_label=viewer_label, fmt=fmt)
 
 
 def _draw_watermark(img: Image.Image, viewer_label: str) -> None:

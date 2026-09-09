@@ -114,15 +114,15 @@ async def test_pdf_upload_renders_and_student_reads_pages(
     # ⚠️ 不能把文件名/路径下发给学生(原文件永不给)
     assert "file_path" not in lst.json()[0]
 
-    # 每一页都拿得到,且是图
+    # 每一页都拿得到,且是图(烧过水印后转 webp)
     for p in (1, 2, 3):
         pg = await client.get(f"/api/v1/phonetics/materials/{m['id']}/page/{p}",
                               headers=_h(env["tok"]["stu"]))
         assert pg.status_code == 200, f"page {p}"
-        assert pg.headers["content-type"] == "image/png"
+        assert pg.headers["content-type"] == "image/webp"
         assert len(pg.content) > 500
-    # 不烧水印 → 允许浏览器缓存(直播课件那边按人烧水印才必须 no-store)
-    assert "private" in pg.headers.get("cache-control", "")
+    # 图上烧了本人身份,不允许任何层缓存
+    assert "no-store" in pg.headers.get("cache-control", "")
 
 
 async def test_page_out_of_range_is_404(client: AsyncClient, material_env):

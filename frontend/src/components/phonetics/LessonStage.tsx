@@ -21,8 +21,16 @@ import {
   ArrowLeftRight, ChevronLeft, ChevronRight, Expand, GripHorizontal, LoaderCircle,
   Maximize2, Minimize2, RotateCw, Shrink, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
-import { playableUrl, type PhoneticVideo, type StudentMaterial } from '../../api/phonetics';
+import { fetchVideoTicket, mediaUrl, type PhoneticVideo, type StudentMaterial } from '../../api/phonetics';
 import { useMaterialPages } from './useMaterialPages';
+
+/**
+ * 挡顺手另存:禁右键、禁拖出、禁长按菜单(iOS 长按存图)。
+ * 先把话说清楚:截屏和抓包在用户自己设备上**防不住**,这些只是零成本挡掉最顺手的那几下;
+ * 真正的抓手是服务端烧进图里的姓名+ID —— 传出去一眼看得出是谁传的。
+ */
+const NO_COPY: React.CSSProperties = { WebkitTouchCallout: 'none', userSelect: 'none' };
+const block = (e: React.SyntheticEvent) => e.preventDefault();
 
 interface Props {
   video: PhoneticVideo;
@@ -73,6 +81,43 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
   const [fs, setFs] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const pages = useMaterialPages(viewing);
+
+  // ---- 播放票据:URL 里放的不再是整站会话 token,而是只能播这一个视频的两小时票 ----
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [src, setSrc] = useState('');
+  const [srcError, setSrcError] = useState('');
+  const ticketExp = useRef(0);
+  /** 票据过期重取时要从原进度接着播:记下时间与播放态 */
+  const resumeRef = useRef<{ t: number; playing: boolean } | null>(null);
+  const wasPlaying = useRef(false);
+
+  const loadTicket = useCallback(async () => {
+    const tk = await fetchVideoTicket(video.id);
+    ticketExp.current = tk.expires_at;
+    setSrc(mediaUrl(tk.url));
+    setSrcError('');
+  }, [video.id]);
+
+  useEffect(() => {
+    setSrc('');
+    loadTicket().catch(() => setSrcError('视频地址获取失败,请刷新页面重试'));
+  }, [loadTicket]);
+
+  // 票据两小时过期:学生暂停放着超过两小时再点播,后续 Range 请求 401 → 元素报错。
+  // 只在票据确实到期时换票(不是到期的错误不重试,免得死循环),并从原进度继续
+  const onVideoError = () => {
+    const v = videoRef.current;
+    if (!v || Date.now() / 1000 < ticketExp.current - 30) return;
+    resumeRef.current = { t: v.currentTime, playing: wasPlaying.current };
+    loadTicket().catch(() => setSrcError('视频地址已过期且刷新失败,请刷新页面'));
+  };
+  const onLoadedMetadata = () => {
+    const v = videoRef.current, r = resumeRef.current;
+    if (!v || !r) return;
+    resumeRef.current = null;
+    v.currentTime = r.t;
+    if (r.playing) v.play().catch(() => {});
+  };
 
   // 换讲义 / 关讲义:回到「讲义大」,不缩放
   const viewingId = viewing?.id ?? null;
@@ -209,17 +254,27 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
       >
         {videoSmall && chrome(vidDrag, video.title)}
         <video
+          ref={videoRef}
           key={video.id}
-          src={playableUrl(video)}
+          src={src || undefined}
           controls
           autoPlay
-          controlsList="nodownload"
+          controlsList="nodownload noremoteplayback"
+          disablePictureInPicture
+          onContextMenu={block}
+          onPlay={() => { wasPlaying.current = true; }}
+          onPause={() => { wasPlaying.current = false; }}
+          onError={onVideoError}
+          onLoadedMetadata={onLoadedMetadata}
           className={viewing
             ? (videoSmall ? 'aspect-video w-full object-contain' : 'h-full w-full object-contain portrait:aspect-video')
             : 'max-h-[70vh] w-full'}
         >
           你的浏览器不支持视频播放,请换用 Chrome 或 Safari
         </video>
+        {srcError && (
+          <p className="px-3 py-2 text-center text-xs text-rose-300">{srcError}</p>
+        )}
       </motion.div>
 
       {/* ===== 讲义块 ===== */}
@@ -244,7 +299,8 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
               <div className="relative aspect-video w-full bg-black/40">
                 {pages.url && !pages.loading && (
                   <img src={pages.url} alt={`${viewing.title} 第 ${pages.page} 页`}
-                       className="h-full w-full object-contain" draggable={false} />
+                       className="h-full w-full select-none object-contain" draggable={false}
+                       onContextMenu={block} onDragStart={block} style={NO_COPY} />
                 )}
                 {pages.loading && (
                   <div className="flex h-full items-center justify-center">
@@ -309,8 +365,11 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
 
               {/* 页面区。放大时允许滚动看局部 */}
               <div
-                className={`min-h-0 flex-1 bg-black/40 ${
+                className={`min-h-0 flex-1 select-none bg-black/40 ${
                   zoomed ? 'overflow-auto' : 'flex items-center justify-center overflow-hidden px-2'}`}
+                style={NO_COPY}
+                onContextMenu={block}
+                onDragStart={block}
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
               >
@@ -338,6 +397,9 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
                       ? 'w-[200%] max-w-none cursor-zoom-out'
                       : 'max-h-full w-full cursor-zoom-in object-contain'}
                     draggable={false}
+                    onContextMenu={block}
+                    onDragStart={block}
+                    style={NO_COPY}
                   />
                 )}
               </div>

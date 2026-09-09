@@ -313,6 +313,22 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   键盘箭头翻页要判焦点在 <video> 上时不接管(那时箭头是快退/快进);Esc 先收讲义再关
   播放器。数据层抽在 useMaterialPages(缓存上限 40 张淘汰最早、卸载全 revoke)。
   已知小坑:PiP 拖到上方两角会盖住讲义顶栏,默认右下不压控件,暂不为它加约束
+  ⑤**防爬防泄露(2026-09-09,用户提「防止别人下载资料爬取抓包」)**: 先说实话,HTTPS 抓包
+  在用户自己设备上**防不住**,能守的是「抓到的东西用处小、时限短、追得到人、爬不快」。
+  修了三个真洞: (a)视频 URL 里此前放的是**整站 7 天会话 token**(`?token=`),抄走地址栏
+  = 拿走账号能调所有 API。改成 `/videos/{id}/ticket` 换**独立密钥**(SECRET_KEY 派生的
+  HMAC)签的两小时票据 `?t=`,绑定 vid+sub+session_ver: 当 Bearer 用签名过不去、只能播
+  这一个视频、顶号即作废;`?token=` 已不再接受。前端 LessonStage 在票据到期导致 video
+  error 时自动换票并从原进度续播(onError 判 exp 才重试,别的错不重试免死循环)
+  (b)讲义页此前不烧水印+允许缓存,改成**每张现烧取图人姓名+ID**(复用直播那套
+  watermark_service,抽了按路径的 stamp_image 原语),响应 no-store —— 前端 useMaterialPages
+  自己内存缓存 blob,服务端缓存本来用不上 (c)翻页/换票加 services/rate_limit.py 滑动窗口
+  限速(90/min、30/min,429 带 Retry-After):学生手翻一秒一两页,爬虫一秒几十页当场露馅。
+  顺带补了 `_user_from_query_token` 漏掉的 sv 顶号校验(phonetic_reading 回放也复用它)。
+  前端禁右键/禁拖出/禁长按只是零成本挡顺手另存,别当成防线。
+  **仍有的同类洞**: phonetic_reading.py 的录音回放 `?token=` 仍是整站 token(孩子自己的
+  声音,面小,未改);直播回放 flv/hls 走 SRS 侧防盗链不在此范围。
+  测试 tests/test_phonetic_media_guard.py(10 例:票据/水印/限速/顶号)
   ④横版幻灯片 + 竖屏手机: 按**宽度**铺满,塞进屏高会让 16:9 的页字小到看不清
   (点一下放大 2 倍可拖动)。
   **blob URL 用完必须 revoke** —— 翻几十页不释放吃掉几百 MB(内存泄漏,不是优化)。

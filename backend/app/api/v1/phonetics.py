@@ -3,9 +3,13 @@
 音标是英语的基础,这里只负责「列出来 + 能播」。视频文件存私有目录,
 必须登录才能播:串流端点自己校验 token,不走 UPLOAD_DIR 的公开静态服务。
 """
+import asyncio
+import hashlib
+import hmac
 import logging
 import os
 import re
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -21,7 +25,7 @@ from app.core.tenancy import current_org_id, check_org_active
 from app.api.v1.auth import get_current_user
 from app.models.user import User
 from app.models.phonetic import PhoneticVideo, PhoneticMaterial
-from app.services import phonetic_material_service
+from app.services import phonetic_material_service, rate_limit, watermark_service
 from app.services import auth_service
 
 logger = logging.getLogger(__name__)
@@ -197,10 +201,14 @@ async def material_page(
     但按 id 直查时过滤器只看它自己的 org_id,罩不住"这份课件挂的视频是否已下架"
     (音标教材那边踩过同样的坑:lessons 按 ID 直查必须 join 回 books)。
 
-    与直播课件不同,这里**不烧水印**,所以每个学生拿到的图完全一样 ——
-    可以让浏览器缓存(直播课件那边按人烧水印才必须 no-store)。
-    课件几十页来回翻,不缓存的话每翻一页都要重新走一次网络。
+    **每张图现烧取图人的姓名 + ID**(与直播课件同一套水印):抓包/截图/录屏在用户
+    自己的设备上拦不住,能做的是让流出去的每一张都写着是谁拿的。
+    代价是不能让浏览器缓存(no-store)—— 但前端 useMaterialPages 自己在内存里
+    缓存了 blob,来回翻页不重复走网络,服务端缓存本来就用不上。
+    再加速率上限:学生手翻一秒一两页,爬虫一秒几十页,速率一卡就露馅。
     """
+    rate_limit.check(("phonetic-page", user.id), PAGE_RATE_LIMIT, 60,
+                     "翻得太快了,歇一下再看")
     row = (await db.execute(
         _scope_org(
             select(PhoneticMaterial)
@@ -228,13 +236,24 @@ async def material_page(
                        row.id, page_no, path)
         raise HTTPException(status_code=404, detail="这一页丢了,请联系老师重新上传课件")
 
-    return FileResponse(
-        path,
-        media_type="image/png",
+    # 烧水印是 CPU 活(Pillow),丢线程池 —— 单 worker 下在事件循环里做,
+    # 一个学生翻页会卡住所有人的请求
+    try:
+        data = await asyncio.to_thread(
+            watermark_service.stamp_image, path, viewer_label=_viewer_label(user))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="这一页丢了,请联系老师重新上传课件")
+
+    return Response(
+        content=data,
+        media_type="image/webp",
         headers={
-            # private:内容仍需登录才能拿,不许共享代理缓存;
-            # 但同一个学生自己的浏览器可以缓存(图对所有人相同,不含个人信息)
-            "Cache-Control": "private, max-age=86400",
+            # 水印含本人身份和时间,不允许任何层缓存
+            "Cache-Control": "no-store, no-cache, must-revalidate, private",
+            "Pragma": "no-cache",
+            # 明确告知不是可下载附件(挡不住手动保存,但挡住浏览器下载器识别)
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
         },
     )
 
@@ -257,12 +276,112 @@ async def _user_from_query_token(token: str, db: AsyncSession) -> User:
     u = await auth_service.get_user_by_id(db, user_id=int(uid))
     if u is None or not u.is_active:
         raise cred_exc
+    # 顶号校验与主认证链(auth._authenticate_token)同口径:被顶下线的会话,
+    # 它的 token 拿来串流/回放也不该再好使 —— 此前这里漏了这一步
+    sv = payload.get("sv")
+    cur_ver = u.session_ver or 0
+    if (sv is not None and sv != cur_ver) or (sv is None and u.role == "student" and cur_ver > 0):
+        raise cred_exc
     # 多租户上下文与机构有效期:与主认证链保持一致,别让串流成为绕过口
     current_org_id.set(None if u.role == "admin" else u.org_id)
     if u.role in ("student", "teacher", "parent"):
         if not await check_org_active(db, u.org_id):
             raise HTTPException(status_code=402, detail="机构服务已到期")
     return u
+
+
+# ==================== 播放票据(替代 URL 里的整站会话 token)====================
+#
+# <video src> 是浏览器原生请求,带不上 Authorization 头,凭证只能放 URL 上。
+# 此前放的是**整站 7 天会话 token** —— 抓包/复制地址栏就等于拿走整个账号,
+# 拿它能调所有 API。现在换成票据:
+#   - 用**独立密钥**签(SECRET_KEY 派生),拿它当 Bearer 用会直接签名失败;
+#   - 绑定单个视频 + 用户 + 会话版本:泄了只能播这一个视频,账号一顶号就作废;
+#   - 两小时过期。
+# 抓包本身在用户自己的设备上拦不住,能做的是让抓到的东西**用处小、时限短、追得到人**。
+
+TICKET_TTL_SEC = 2 * 3600
+# 换票 / 翻页的速率上限。学生手翻讲义一秒一两页,爬虫一秒几十页 —— 速率一卡就露馅。
+# 模块级常量便于测试 monkeypatch 成很小的数
+TICKET_RATE_LIMIT = 30      # 每分钟
+PAGE_RATE_LIMIT = 90        # 每分钟(含前端预取下一页,正常翻页 ~2 请求/页)
+
+
+def _ticket_key() -> str:
+    """票据签名密钥:从 SECRET_KEY 派生,与会话 JWT 的密钥**不同**。
+    同一把钥匙签两种令牌,就防不住把一种冒充另一种"""
+    return hmac.new(settings.SECRET_KEY.encode(), b"phonetic-media-ticket",
+                    hashlib.sha256).hexdigest()
+
+
+def _mint_ticket(user: User, video_id: int) -> tuple[str, int]:
+    exp = int(time.time()) + TICKET_TTL_SEC
+    payload = {
+        "typ": "media",
+        "sub": str(user.id),
+        "vid": video_id,
+        "sv": user.session_ver or 0,
+        "exp": exp,
+    }
+    return jwt.encode(payload, _ticket_key(), algorithm="HS256"), exp
+
+
+async def _user_from_ticket(ticket: str, video_id: int, db: AsyncSession) -> User:
+    """校验播放票据。任何一项不符都是同一个 401,不给探测方向"""
+    bad = HTTPException(status_code=401, detail="播放凭证无效或已过期,请刷新页面")
+    try:
+        payload = jwt.decode(ticket, _ticket_key(), algorithms=["HS256"])
+    except JWTError:
+        raise bad
+    if payload.get("typ") != "media" or payload.get("vid") != video_id:
+        raise bad
+    uid = payload.get("sub")
+    if uid is None:
+        raise bad
+    u = await auth_service.get_user_by_id(db, user_id=int(uid))
+    if u is None or not u.is_active:
+        raise bad
+    # 顶号即作废:别处重新登录后,旧设备上抓到的票据也跟着死
+    if payload.get("sv") != (u.session_ver or 0):
+        raise bad
+    current_org_id.set(None if u.role == "admin" else u.org_id)
+    if u.role in ("student", "teacher", "parent"):
+        if not await check_org_active(db, u.org_id):
+            raise HTTPException(status_code=402, detail="机构服务已到期")
+    return u
+
+
+def _viewer_label(user: User) -> str:
+    """水印上的身份串。**必须能定位到人** —— 泄露时靠这个溯源(与直播课件同口径)"""
+    name = (user.full_name or user.username or "").strip()
+    return f"{name} · ID{user.id}"
+
+
+class MediaTicketOut(BaseModel):
+    url: str
+    expires_at: int
+
+
+@router.get("/videos/{video_id}/ticket", response_model=MediaTicketOut)
+async def video_ticket(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """换一张播放票据。走正常 Bearer 鉴权(axios 请求),再签一张只能播这个视频的票"""
+    rate_limit.check(("phonetic-ticket", user.id), TICKET_RATE_LIMIT, 60,
+                     "切换太频繁,稍等一下")
+    v = (await db.execute(
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)),
+            PhoneticVideo,
+        )
+    )).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="视频不存在或已下架")
+    tok, exp = _mint_ticket(user, v.id)
+    return MediaTicketOut(url=f"/api/v1/phonetics/videos/{v.id}/stream?t={tok}", expires_at=exp)
 
 
 _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
@@ -272,24 +391,28 @@ _RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
 async def stream_video(
     video_id: int,
     request: Request,
-    token: Optional[str] = Query(None, description="<video> 标签带不了请求头,故支持 query token"),
+    t: Optional[str] = Query(None, description="播放票据(见 /videos/{id}/ticket),<video> 标签带不了请求头"),
     db: AsyncSession = Depends(get_db),
 ):
     """鉴权串流。支持 Range 请求 —— 不支持的话移动端拖不动进度条、Safari 可能整个不播。
 
-    鉴权双通道:Authorization 头(fetch/axios)或 ?token=(<video> 标签)。
+    鉴权双通道:Authorization 头(fetch/axios)或 ?t= 播放票据(<video> 标签)。
+    ⚠️ **不再接受 ?token= 整站会话 token**:那等于把账号写在视频地址里,
+    抓包/复制地址栏就能拿去调所有 API。旧前端刷新后自动换成票据。
     """
     auth_header = request.headers.get("authorization") or ""
     if auth_header.lower().startswith("bearer "):
         await _user_from_query_token(auth_header[7:].strip(), db)
-    elif token:
-        await _user_from_query_token(token, db)
+    elif t:
+        await _user_from_ticket(t, video_id, db)
     else:
         raise HTTPException(status_code=401, detail="需要登录后观看")
 
     v = (await db.execute(
-        select(PhoneticVideo).where(
-            PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)),
+            PhoneticVideo,
         )
     )).scalar_one_or_none()
     if v is None:

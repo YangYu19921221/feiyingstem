@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchPhoneticMaterialPage, type StudentMaterial } from '../../api/phonetics';
+import { getErrorMessage } from '../../utils/errorMessage';
 
 const CACHE_MAX = 40;
 
@@ -61,10 +62,11 @@ export function useMaterialPages(material: StudentMaterial | null) {
         setUrl(u);
         setLoading(false);
         if (page < total) void getPage(materialId, page + 1).catch(() => {});   // 预取失败不报错
-      } catch {
+      } catch (e) {
         if (!alive) return;
         setLoading(false);
-        setError('这一页加载失败,请重试或告诉老师');
+        // 429(翻太快被限速)后端给的是能照着做的话,原样显示;别的错才用兜底文案
+        setError(getErrorMessage(e, '这一页加载失败,请重试或告诉老师'));
       }
     })();
     return () => { alive = false; };

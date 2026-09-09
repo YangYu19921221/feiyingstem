@@ -4,8 +4,8 @@
  * 音标是英语的基础(拼读、听写、背单词全建立在它上面),所以这个页面的定位是
  * 「先把音标看明白」:顶部一句话说清为什么重要,下面按 入门→元音→辅音 分组列视频。
  *
- * 播放走鉴权串流端点(见 api/phonetics.playableUrl):<video> 带不了请求头,
- * 所以 token 放 query 上。
+ * 播放走鉴权串流端点:<video> 带不了请求头,凭证只能放 URL 上 —— 但放的是
+ * 只能播这一个视频的两小时票据(api/phonetics.fetchVideoTicket),不是整站会话 token。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';

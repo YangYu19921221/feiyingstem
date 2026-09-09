@@ -22,7 +22,7 @@ export interface PhoneticVideo {
   duration_seconds?: number | null;
   file_size?: number | null;
   view_count: number;
-  /** 播放地址:鉴权串流端点(需带 token,见 playableUrl) */
+  /** 串流端点的相对路径。前端不直接用它:播放要先 fetchVideoTicket 换票,再用票据里的 url */
   play_url: string;
   // 教师端列表额外带的字段
   is_active?: boolean;
@@ -69,22 +69,31 @@ export interface StudentMaterial {
   page_count: number;
 }
 
+/** 短期播放票据:只对一个视频有效、两小时过期、拿它调任何 API 都是 401 */
+export interface MediaTicket {
+  /** `/api/v1/phonetics/videos/{id}/stream?t=...`,相对路径,用 mediaUrl() 拼绝对地址 */
+  url: string;
+  expires_at: number;
+}
+
 /**
- * 拼出 <video> 能用的播放地址。
- *
- * 两个要点:
- * 1. token 放 query 上 —— <video src> 是浏览器原生请求,**带不上 Authorization 头**
- *    (也不过 axios 拦截器),鉴权串流只能这样取。
- * 2. 必须拼成**绝对地址**(API_BASE_URL):后端给的 play_url 是 `/api/v1/...` 相对路径,
- *    生产同源没问题,但开发时前端 5173、后端另一个端口,相对路径会打到 dev server 上 500。
+ * 换一张播放票据。<video src> 是浏览器原生请求,**带不上 Authorization 头**,
+ * 只能把凭证放 URL 上 —— 但放整站会话 token 等于谁抄走 URL 谁就拿走账号
+ * (以前就是这么干的)。现在换成独立密钥签的短期票据:泄了也只能播这一个视频、
+ * 两小时后作废、当 Bearer 用会直接签名失败。
  */
-export function playableUrl(v: PhoneticVideo): string {
-  const token = localStorage.getItem('access_token') || '';
-  // API_BASE_URL 形如 http://host:port/api/v1;play_url 形如 /api/v1/phonetics/...
+export const fetchVideoTicket = (videoId: number) =>
+  api.get<MediaTicket>(`/phonetics/videos/${videoId}/ticket`);
+
+/**
+ * 相对媒体地址 → 绝对地址。后端给的是 `/api/v1/...`,生产同源没问题,
+ * 但开发时前端 5173、后端另一个端口,相对路径会打到 dev server 上 500。
+ */
+export function mediaUrl(rel: string): string {
+  if (rel.startsWith('http')) return rel;
+  // API_BASE_URL 形如 http://host:port/api/v1
   const origin = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
-  const abs = v.play_url.startsWith('http') ? v.play_url : `${origin}${v.play_url}`;
-  const sep = abs.includes('?') ? '&' : '?';
-  return `${abs}${sep}token=${encodeURIComponent(token)}`;
+  return `${origin}${rel}`;
 }
 
 /** 人类可读的文件大小 */
