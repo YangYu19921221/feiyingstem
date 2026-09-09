@@ -7,7 +7,7 @@
  * 播放走鉴权串流端点(见 api/phonetics.playableUrl):<video> 带不了请求头,
  * 所以 token 放 query 上。
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText } from 'lucide-react';
@@ -56,9 +56,22 @@ export default function PhoneticsHub() {
   const [reloadKey, setReloadKey] = useState(0);
   /** 当前视频的配套讲义(老师上传的 PPT/PDF,渲染成图给学生看) */
   const [materials, setMaterials] = useState<StudentMaterial[]>([]);
-  /** 正在看的那份讲义。null = 没打开阅览器 */
+  /** 正在看的那份讲义。null = 只看视频 */
   const [viewing, setViewing] = useState<StudentMaterial | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  /** 横屏/桌面:讲义占大半、视频让位(看小字时用) */
+  const [enlarged, setEnlarged] = useState(false);
+
+  // Esc:先收讲义,再关播放器 —— 两层各退一步,不要一下全关
+  useEffect(() => {
+    if (!playing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (viewing) setViewing(null);
+      else setPlaying(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [playing, viewing]);
 
   useEffect(() => {
     let alive = true;
@@ -98,6 +111,7 @@ export default function PhoneticsHub() {
     setPlaying(v);
     setMaterials([]);           // 先清空:否则会短暂显示上一个视频的讲义
     setViewing(null);
+    setEnlarged(false);
     // 记一次观看(失败不影响播放)
     try { await phoneticsApi.detail(v.id); } catch { /* 计数失败无所谓 */ }
     // 配套讲义:取不到就当没有,**不能因此打断看视频**
@@ -289,20 +303,27 @@ export default function PhoneticsHub() {
         </div>
       </div>
 
-      {/* 播放弹层 */}
+      {/* 播放弹层。
+          z-[70]:要盖过学生端底部导航(z-60)和宠物浮标(z-50),否则竖屏手机上
+          讲义的翻页条会被底部导航压住。
+          讲义打开时视频**不暂停、不被盖住** —— 老师讲到哪页、学生手边翻到哪页,
+          两样是一起看的;横屏/桌面左右分栏,竖屏手机视频钉顶、讲义占下方 */}
       <AnimatePresence>
         {playing && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-2 sm:p-4"
             onClick={() => setPlaying(null)}
           >
             <motion.div
               initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, opacity: 0 }}
-              className="w-full max-w-3xl overflow-hidden rounded-2xl bg-slate-900 shadow-2xl"
+              className={viewing
+                // 讲义打开:面板撑到近全屏、固定高度,里面才能 flex-1 分栏
+                ? 'flex h-[min(94vh,calc(100dvh-1rem))] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-slate-900 shadow-2xl'
+                : 'w-full max-w-3xl overflow-hidden rounded-2xl bg-slate-900 shadow-2xl'}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
                 <p className="min-w-0 truncate font-semibold text-white">{playing.title}</p>
                 <button
                   onClick={() => setPlaying(null)}
@@ -312,57 +333,75 @@ export default function PhoneticsHub() {
                   ✕ 关闭
                 </button>
               </div>
-              <video
-                ref={videoRef}
-                key={playing.id}
-                src={playableUrl(playing)}
-                controls
-                autoPlay
-                controlsList="nodownload"
-                className="max-h-[70vh] w-full bg-black"
-              >
-                你的浏览器不支持视频播放,请换用 Chrome 或 Safari
-              </video>
-              {playing.description && (
-                <p className="px-4 py-3 text-sm leading-relaxed text-slate-300">{playing.description}</p>
-              )}
 
-              {/* 配套讲义:老师上传的 PPT/PDF,渲染成图。没有讲义时整块不出现,
-                  不摆一个"暂无讲义"的空状态占地方 */}
-              {materials.length > 0 && (
-                <div className="border-t border-white/10 px-4 py-3">
-                  <p className="mb-2 text-xs text-slate-400">老师的讲义</p>
-                  <div className="flex flex-wrap gap-2">
-                    {materials.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => {
-                          // 阅览器是全屏不透明的,视频控件会被完全盖住 ——
-                          // 不暂停的话学生会听着讲解音继续响却按不到暂停键
-                          videoRef.current?.pause();
-                          setViewing(m);
-                        }}
-                        className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-left
-                                   text-sm text-white transition hover:bg-white/20 active:scale-[0.98]"
-                      >
-                        <FileText className="h-4 w-4 shrink-0 text-orange-300" />
-                        <span className="min-w-0 truncate">{m.title}</span>
-                        <span className="shrink-0 text-xs text-slate-400">{m.page_count} 页</span>
-                      </button>
-                    ))}
-                  </div>
+              {/* ⚠️ <video> 必须在两种布局下都留在树里的同一个位置(始终是这个 div 的
+                  第一个孩子),切换只换 className。写成两个分支各放一个 <video>,
+                  展开讲义那一下就会重挂,播放进度归零 */}
+              <div className={viewing
+                ? 'flex min-h-0 flex-1 flex-col landscape:flex-row'
+                : 'flex flex-col'}>
+                <div className={viewing
+                  ? `flex shrink-0 items-center justify-center bg-black
+                     portrait:aspect-video portrait:w-full
+                     landscape:h-full ${enlarged ? 'landscape:w-[36%]' : 'landscape:w-[58%]'}`
+                  : 'w-full bg-black'}>
+                  <video
+                    key={playing.id}
+                    src={playableUrl(playing)}
+                    controls
+                    autoPlay
+                    controlsList="nodownload"
+                    className={viewing ? 'h-full w-full object-contain' : 'max-h-[70vh] w-full'}
+                  >
+                    你的浏览器不支持视频播放,请换用 Chrome 或 Safari
+                  </video>
                 </div>
-              )}
+
+                {viewing ? (
+                  <div className="min-h-0 flex-1 border-t border-white/10 landscape:border-l landscape:border-t-0">
+                    <MaterialViewer
+                      material={viewing}
+                      materials={materials}
+                      onSwitch={setViewing}
+                      enlarged={enlarged}
+                      onToggleEnlarge={() => setEnlarged((e) => !e)}
+                      onClose={() => setViewing(null)}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {playing.description && (
+                      <p className="px-4 py-3 text-sm leading-relaxed text-slate-300">{playing.description}</p>
+                    )}
+
+                    {/* 配套讲义:老师上传的 PPT/PDF,渲染成图。没有讲义时整块不出现,
+                        不摆一个"暂无讲义"的空状态占地方 */}
+                    {materials.length > 0 && (
+                      <div className="border-t border-white/10 px-4 py-3">
+                        <p className="mb-2 text-xs text-slate-400">老师的讲义 · 点开后和视频一起看</p>
+                        <div className="flex flex-wrap gap-2">
+                          {materials.map((m) => (
+                            <button
+                              key={m.id}
+                              onClick={() => setViewing(m)}
+                              className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-left
+                                         text-sm text-white transition hover:bg-white/20 active:scale-[0.98]"
+                            >
+                              <FileText className="h-4 w-4 shrink-0 text-orange-300" />
+                              <span className="min-w-0 truncate">{m.title}</span>
+                              <span className="shrink-0 text-xs text-slate-400">{m.page_count} 页</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* 讲义阅览器。z-[60] 盖在视频弹层(z-50)之上,关掉后回到视频继续看 ——
-          视频不卸载,进度不丢 */}
-      {viewing && (
-        <MaterialViewer material={viewing} onClose={() => setViewing(null)} />
-      )}
     </div>
   );
 }
