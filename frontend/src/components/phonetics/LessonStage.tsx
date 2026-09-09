@@ -43,11 +43,14 @@ interface Props {
 }
 
 type Corner = 'tl' | 'tr' | 'bl' | 'br';
+// 底部两角抬到翻页条上方(bottom-14 ≈ 56px > 翻页条约 48px):小窗一拖大就会压住
+// 「上一页 / 1 / 3 / 下一页」,而它默认就落在右下角 —— 不是用户拖歪的,得躲开。
+// 顶部两角仍会盖住讲义顶栏的下拉/按钮,那是用户自己拖上去的,不额外处理。
 const CORNER_CLS: Record<Corner, string> = {
   tl: 'landscape:left-3 landscape:top-3',
   tr: 'landscape:right-3 landscape:top-3',
-  bl: 'landscape:left-3 landscape:bottom-3',
-  br: 'landscape:right-3 landscape:bottom-3',
+  bl: 'landscape:left-3 landscape:bottom-14',
+  br: 'landscape:right-3 landscape:bottom-14',
 };
 
 /** 横屏/桌面为 true。竖屏手机走上下堆叠,不做小窗 */
@@ -69,6 +72,14 @@ function useLandscape(): boolean {
 
 const BTN = 'rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20 disabled:opacity-30';
 const BTN_SM = 'rounded-md p-1 text-slate-200 hover:bg-white/15';
+
+/** 小窗最小宽度:再窄播放控件就点不动了 */
+const MIN_PIP_W = 200;
+/** 抓手条高度(px)。拖宽边从它下方开始,免得和拖动位置抢同一片区域。
+ *  改抓手条的 padding/图标尺寸就要跟着改这个数(浏览器里量过 30px) */
+const CHROME_H = 30;
+/** 拖过的尺寸记住,不然每次打开都要重新调 */
+const PIP_W_KEY = 'phonetic-pip-w';
 
 export default function LessonStage({ video, materials, viewing, onViewing, panelRef }: Props) {
   const landscape = useLandscape();
@@ -190,13 +201,140 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
   const videoSmall = !!viewing && landscape && !swapped;
   const materialSmall = !!viewing && landscape && swapped;
 
+  // ---- 小窗大小可鼠标拖拉:内侧竖边只改宽,内侧斜角同时斜着拖 ----
+  //
+  // ⚠️ 分成「偏好值」和「显示值」两层。之前只有一个 state,舞台一变小就把它**改写**了 ——
+  // 实测:拖到 634 存住,刷新后讲义还没展开(舞台只有视频那么高)→ 夹取成 200 并写回
+  // 状态,等讲义展开、舞台变大,它也回不去 634 了。偏好值只有用户拖动才改。
+  const [prefW, setPrefW] = useState<number | null>(() => {
+    const raw = Number(localStorage.getItem(PIP_W_KEY));
+    return raw >= MIN_PIP_W ? raw : null;
+  });
+  const rightAnchored = corner === 'tr' || corner === 'br';
+  const bottomAnchored = corner === 'bl' || corner === 'br';
+
+  /** 允许的宽度区间。上限同时受舞台**宽和高**约束 —— 只卡宽度的话,
+   *  在矮而宽的窗口(笔记本横屏)上拖到七成宽,16:9 的高度早就超出舞台了 */
+  const pipBounds = useCallback(() => {
+    const r = stageRef.current?.getBoundingClientRect();
+    if (!r || !r.width) return { min: MIN_PIP_W, max: 480 };
+    const byW = r.width * 0.7;
+    const byH = (r.height * 0.7 - CHROME_H) * (16 / 9);
+    return { min: MIN_PIP_W, max: Math.max(MIN_PIP_W, Math.min(byW, byH)) };
+  }, []);
+
+  /** 夹取用的上下限。舞台尺寸变了要重算(缩窗/转屏/讲义展开都会变) */
+  const [bounds, setBounds] = useState(() => ({ min: MIN_PIP_W, max: 480 }));
+  useEffect(() => {
+    const recalc = () => setBounds(pipBounds());
+    recalc();
+    window.addEventListener('resize', recalc);
+    return () => window.removeEventListener('resize', recalc);
+  }, [pipBounds, viewing, landscape, swapped, mini]);
+
+  /**
+   * @param axis 'x' 只改宽(竖边) | 'corner' 斜角,横竖都吃、按主导方向算
+   */
+  const startResize = (e: React.PointerEvent, axis: 'x' | 'corner') => {
+    // 别让 framer 的拖动(抓手条)和这里抢同一次按下
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const box = el.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    // 指针捕获:拖过视频区域时事件仍回到这个把手上,不会被 <video> 的控件吃掉
+    el.setPointerCapture(e.pointerId);
+    const startX = e.clientX, startY = e.clientY;
+    const startW = box.width;
+    const { min, max } = pipBounds();
+    let latest = startW;
+    const onMove = (ev: PointerEvent) => {
+      // 贴右边时往左拖才是变大、贴下边时往上拖才是变大,方向跟着吸附角翻
+      const dx = (rightAnchored ? -1 : 1) * (ev.clientX - startX);
+      let delta = dx;
+      if (axis === 'corner') {
+        // 16:9 锁着,竖向位移换算成宽度增量;取**主导方向**(位移大的那个轴),
+        // 斜着拖时手感跟手,而不是两轴相加冲过头
+        const dy = (bottomAnchored ? -1 : 1) * (ev.clientY - startY) * (16 / 9);
+        delta = Math.abs(dy) > Math.abs(dx) ? dy : dx;
+      }
+      latest = Math.round(Math.min(max, Math.max(min, startW + delta)));
+      setPrefW(latest);
+    };
+    const onUp = () => {
+      el.releasePointerCapture?.(e.pointerId);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+      try { localStorage.setItem(PIP_W_KEY, String(latest)); } catch { /* 隐私模式写不了,不影响本次 */ }
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+  };
+
+  const resetSize = () => {
+    setPrefW(null);
+    try { localStorage.removeItem(PIP_W_KEY); } catch { /* 同上 */ }
+  };
+
+  /** 实际用的宽度:偏好值夹进当前舞台的上下限。只在**横屏且没缩到最小档**时给,
+   *  竖屏是上下堆叠,给了宽度会把布局压坏 */
+  const pipW = landscape && !mini && prefW
+    ? Math.min(bounds.max, Math.max(bounds.min, prefW))
+    : undefined;
+
   const smallCls = [
     'landscape:absolute landscape:z-10 landscape:overflow-hidden landscape:rounded-xl',
     'landscape:bg-slate-900 landscape:shadow-2xl landscape:ring-1 landscape:ring-white/15',
     CORNER_CLS[corner],
-    mini ? 'landscape:w-[180px]' : 'landscape:w-[34%] landscape:min-w-[240px] landscape:max-w-[480px]',
+    mini
+      ? 'landscape:w-[180px]'
+      // 自己拖过尺寸:宽度走内联 style,这里**不能再挂 min-w/max-w 类** ——
+      // 它们是独立属性,会把内联宽度夹回 240~480
+      : pipW ? '' : 'landscape:w-[34%] landscape:min-w-[240px] landscape:max-w-[480px]',
   ].join(' ');
   const bigCls = 'landscape:absolute landscape:inset-0';
+
+  /**
+   * 两个改大小的把手,都长在小窗**朝着舞台里侧**的那两边(朝外没地方拖):
+   *   - 竖边:只改宽,鼠标 ew-resize
+   *   - 斜角:横竖都能拖,按主导方向算,鼠标 nesw/nwse-resize
+   * 双击任一还原默认。都放在抓手条下方,不和拖动位置抢。
+   */
+  const resizeEdge = () => {
+    const cornerCls = rightAnchored
+      ? (bottomAnchored ? 'left-0 top-0 cursor-nesw-resize' : 'left-0 bottom-0 cursor-nwse-resize')
+      : (bottomAnchored ? 'right-0 top-0 cursor-nwse-resize' : 'right-0 bottom-0 cursor-nesw-resize');
+    return (
+      <>
+        <div
+          onPointerDown={(e) => startResize(e, 'x')}
+          onDoubleClick={resetSize}
+          role="separator"
+          aria-label="拖动改变小窗大小,双击还原"
+          title="拖动改变小窗宽度,双击还原"
+          className={`absolute bottom-0 z-20 hidden w-3 cursor-ew-resize touch-none items-center
+                      justify-center landscape:flex ${rightAnchored ? 'left-0' : 'right-0'}`}
+          style={{ top: CHROME_H }}
+        >
+          <span className="h-8 w-1 rounded-full bg-white/40" />
+        </div>
+        {/* 斜角:压在竖边上层(z-30),角上那一小块归它 */}
+        <div
+          onPointerDown={(e) => startResize(e, 'corner')}
+          onDoubleClick={resetSize}
+          role="separator"
+          aria-label="斜向拖动改变小窗大小,双击还原"
+          title="斜着拖也能改大小,双击还原"
+          className={`absolute z-30 hidden h-5 w-5 touch-none items-center justify-center
+                      landscape:flex ${cornerCls}`}
+        >
+          <span className="h-2.5 w-2.5 rounded-sm border-b-2 border-l-2 border-white/50" />
+        </div>
+      </>
+    );
+  };
 
   /** 小窗顶上的抓手条:拖动 + 对调 + 缩放。只在横屏、且这块是小窗时出现。
    *  写成普通函数而不是组件:定义在组件体内的组件每次渲染都是新类型,React 会把它
@@ -245,7 +383,7 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
         dragMomentum={false}
         dragConstraints={stageRef}
         onDragEnd={(_, info) => snap(info, vx, vy)}
-        style={{ x: vx, y: vy }}
+        style={{ x: vx, y: vy, width: videoSmall ? pipW : undefined }}
         className={[
           'flex flex-col bg-black',
           viewing ? 'portrait:w-full portrait:shrink-0' : 'w-full',
@@ -253,6 +391,7 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
         ].join(' ')}
       >
         {videoSmall && chrome(vidDrag, video.title)}
+        {videoSmall && resizeEdge()}
         <video
           ref={videoRef}
           key={video.id}
@@ -286,7 +425,7 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
           dragMomentum={false}
           dragConstraints={stageRef}
           onDragEnd={(_, info) => snap(info, mx, my)}
-          style={{ x: mx, y: my }}
+          style={{ x: mx, y: my, width: materialSmall ? pipW : undefined }}
           className={[
             'flex flex-col bg-slate-900',
             'portrait:min-h-0 portrait:flex-1 portrait:border-t portrait:border-white/10',
@@ -296,6 +435,7 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
           {materialSmall ? (
             <>
               {chrome(matDrag, viewing.title)}
+              {resizeEdge()}
               <div className="relative aspect-video w-full bg-black/40">
                 {pages.url && !pages.loading && (
                   <img src={pages.url} alt={`${viewing.title} 第 ${pages.page} 页`}
