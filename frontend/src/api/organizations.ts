@@ -8,6 +8,13 @@ export interface Organization {
   code: string;
   plan: string;
   student_quota: number;
+  /** 学习卡额度(按张卖的半年卡)。与 student_quota 是两笔账:
+   *  student_quota = 同时在读人数(学生离班可复用),card_quota = 买过多少张卡(一次性消耗)。
+   *  card_quota_explicit=false 表示机构没单独设过、当前跟随学生名额 */
+  card_quota: number;
+  card_quota_explicit?: boolean;
+  cards_used: number;
+  cards_left: number;
   active_students: number;
   teacher_count: number;
   logo_url?: string | null;
@@ -95,9 +102,9 @@ export interface TrialProvisionResult {
 // ---------- 平台管理端(admin) ----------
 export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
-  create: (data: { name: string; code?: string; plan?: string; student_quota?: number; contact_name?: string; contact_phone?: string; address?: string; lat?: number; lng?: number; protect_radius_km?: number; force?: boolean }) =>
+  create: (data: { name: string; code?: string; plan?: string; student_quota?: number; card_quota?: number; contact_name?: string; contact_phone?: string; address?: string; lat?: number; lng?: number; protect_radius_km?: number; force?: boolean }) =>
     client.post<Organization>('/admin/organizations', data),
-  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
+  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; card_quota: number; add_cards: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
     client.patch<Organization>(`/admin/organizations/${orgId}`, data),
   /** 区域保护预检: 填完坐标先看周边有没有冲突(只读,谈单时也能查) */
   territoryCheck: (params: { lat: number; lng: number; radius_km?: number; exclude_org_id?: number }) =>

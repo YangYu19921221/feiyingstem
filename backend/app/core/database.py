@@ -483,6 +483,10 @@ async def init_db():
             "ALTER TABLE organizations ADD COLUMN lat FLOAT",
             "ALTER TABLE organizations ADD COLUMN lng FLOAT",
             "ALTER TABLE organizations ADD COLUMN protect_radius_km FLOAT",
+            # 学习卡额度(2026-09-11): 与 student_quota 分账 —— 后者是「同时在读人数」
+            # (可复用),这里是「买过多少张半年卡」(一次性消耗)。NULL = 回退 student_quota,
+            # 存量机构零影响。不分开的话半年卡的续卡会被发码上限锁死(已实测)
+            "ALTER TABLE organizations ADD COLUMN card_quota INTEGER",
         ]:
             try:
                 await conn.execute(text(_sql))

@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select, func, distinct, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -33,6 +33,9 @@ class OrgCreate(BaseModel):
     code: Optional[str] = Field(None, max_length=16, description="机构码,不传自动生成")
     plan: str = Field("standard", description="trial/standard/county/city")
     student_quota: int = Field(100, ge=1)
+    # 学习卡额度(协议第三条: 基础合作费含 100 张半年卡)。不传 = 跟随 student_quota
+    card_quota: Optional[int] = Field(
+        None, ge=0, description="已购学习卡张数(不传=跟随学生名额)")
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
     expires_at: Optional[datetime] = None
@@ -51,6 +54,12 @@ class OrgUpdate(BaseModel):
     name: Optional[str] = None
     plan: Optional[str] = None
     student_quota: Optional[int] = Field(None, ge=1)
+    # 学习卡额度: 直接设成某个总数
+    card_quota: Optional[int] = Field(None, ge=0, description="学习卡总额度(设为绝对值)")
+    # 续卡: 在现有额度上**增加** N 张。与 card_quota 的区别是并发安全 ——
+    # 「读出 100、写回 150」中间若有另一笔续卡就会被覆盖掉,增量走 SQL 原子加。
+    # 协议第三条: 续卡 50 张起,但这里不硬拦(平台可能补发/赠送零头)
+    add_cards: Optional[int] = Field(None, ge=1, le=100000, description="续卡: 增加 N 张")
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
     status: Optional[str] = Field(None, description="active/suspended/expired")
@@ -132,10 +141,22 @@ async def _guard_territory(
     return conflicts
 
 
-def _org_out(org: Organization, active_students: int = 0, teacher_count: int = 0) -> dict:
+def _org_out(
+    org: Organization,
+    active_students: int = 0,
+    teacher_count: int = 0,
+    cards_used: int = 0,
+) -> dict:
+    from app.services.org_service import card_quota_of
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
         "student_quota": org.student_quota, "active_students": active_students,
+        # 学习卡额度: card_quota 为 NULL 时按 student_quota 生效(存量零影响),
+        # 但仍把原始值一起下发,让平台端能区分「显式设过」和「跟随学生名额」
+        "card_quota": card_quota_of(org),
+        "card_quota_explicit": getattr(org, "card_quota", None) is not None,
+        "cards_used": cards_used,
+        "cards_left": max(0, card_quota_of(org) - cards_used),
         "teacher_count": teacher_count, "logo_url": getattr(org, "logo_url", None),
         "contact_name": org.contact_name, "contact_phone": org.contact_phone,
         "status": org.status, "expires_at": org.expires_at, "created_at": org.created_at,
@@ -177,8 +198,20 @@ async def list_organizations(
     )).all()
     students_by_org = {r[0]: r[1] for r in student_rows}
 
+    # 每机构已发卡张数: 一次 GROUP BY 聚合,别按机构 N 次查(几十家就是几十条 SQL)。
+    # 口径与 org_service.count_issued_cards 一致(禁用的不算),两处必须同步改
+    from app.models.user import RedemptionCode, RedemptionCodeStatus
+    card_rows = (await db.execute(
+        select(User.org_id, func.count(RedemptionCode.id))
+        .join(RedemptionCode, RedemptionCode.created_by == User.id)
+        .where(RedemptionCode.status != RedemptionCodeStatus.DISABLED)
+        .group_by(User.org_id)
+    )).all()
+    cards_by_org = {r[0]: r[1] for r in card_rows}
+
     return [
-        _org_out(org, students_by_org.get(org.id, 0), teachers_by_org.get(org.id, 0))
+        _org_out(org, students_by_org.get(org.id, 0), teachers_by_org.get(org.id, 0),
+                 cards_by_org.get(org.id, 0))
         for org in orgs
     ]
 
@@ -206,6 +239,7 @@ async def create_organization(
     org = Organization(
         name=data.name, code=code, plan=data.plan,
         student_quota=data.student_quota,
+        card_quota=data.card_quota,
         contact_name=data.contact_name, contact_phone=data.contact_phone,
         expires_at=data.expires_at, status="active",
         address=data.address, lat=data.lat, lng=data.lng,
@@ -256,7 +290,7 @@ async def update_organization(
             db, eff_lat, eff_lng, eff_radius, data.force, exclude_org_id=org_id
         )
 
-    for field in ["name", "plan", "student_quota", "contact_name",
+    for field in ["name", "plan", "student_quota", "card_quota", "contact_name",
                   "contact_phone", "status", "expires_at", "access_mode", "coin_mode",
                   "address", "lat", "lng", "protect_radius_km"]:
         v = getattr(data, field)
@@ -264,10 +298,29 @@ async def update_organization(
             setattr(org, field, v)
     if data.clear_expires:
         org.expires_at = None  # 改回永不过期
+    if data.add_cards:
+        # 续卡走原子加,别读出来再写回去(两笔续卡并发时后写的会吞掉前一笔)。
+        # card_quota 仍为 NULL 的存量机构: 先落成"当前生效值"(= student_quota)再加,
+        # 否则 NULL + 50 = NULL,这笔续卡静默丢失
+        from app.services.org_service import card_quota_of
+        base = card_quota_of(org)
+        await db.execute(
+            update(Organization)
+            .where(Organization.id == org_id)
+            .values(card_quota=(
+                Organization.card_quota + data.add_cards
+                if org.card_quota is not None else base + data.add_cards
+            ))
+        )
     await db.commit()
+    if data.add_cards:
+        await db.refresh(org)
     invalidate_org_cache(org_id)  # 停用/恢复/续费立即生效
     active = await count_active_students(db, org_id)
-    out = _org_out(org, active)
+    # 已发卡数要真查:默认 0 会让续卡后的响应显示成"额度全新未用",
+    # 前端拿它回填列表就成了错数
+    from app.services.org_service import count_issued_cards
+    out = _org_out(org, active, cards_used=await count_issued_cards(db, org_id))
     if conflicts:
         out["territory_overridden"] = conflicts
     return out

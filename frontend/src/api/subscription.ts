@@ -31,6 +31,23 @@ export const redeemCode = (code: string) =>
 export const getBookGroups = () =>
   api.get<{ groups: BookGroup[] }>('/admin/subscriptions/book-groups');
 
+/** 卡种/时长政策 —— 谁能发什么卡。真源在后端 subscription_service.card_policy_for
+ *
+ * ⚠️ 前端**不要自己写死上限**(机构半年 = 180 天):写死了改上限时两处必然漂移,
+ * 结果是界面让你选、后端 403。表单一律照这份结果画。 */
+export interface CardPolicy {
+  role: string;
+  allowed_grant_types: string[];   // 机构只有 ['period']
+  max_grant_days: number;
+  default_grant_days: number;
+  max_grant_times: number | null;
+  note: string;
+  grant_type_labels: Record<string, string>;
+}
+
+export const getCardPolicy = () =>
+  api.get<CardPolicy>('/admin/subscriptions/card-policy');
+
 // 管理员：批量生成兑换码
 // book_ids 传一批书 = 一码多书(按分组/学段批量开);book_id 是旧的单书字段
 export const generateCodes = (data: {

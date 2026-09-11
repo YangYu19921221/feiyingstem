@@ -7,8 +7,10 @@ import {
   disableCode,
   deleteCode,
   getBookGroups,
+  getCardPolicy,
   type BookGroup,
   type BookStage,
+  type CardPolicy,
 } from '../api/subscription';
 import { Ban, Check, Clock3, Search, Ticket, Trash2, X } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
@@ -21,6 +23,12 @@ interface Stats {
   used_codes: number;
   expired_codes: number;
   disabled_codes: number;
+  // 学习卡额度(仅机构下发;平台 admin 全为 null → 整块不显示)
+  card_quota?: number | null;
+  cards_used?: number | null;
+  cards_left?: number | null;
+  card_quota_explicit?: boolean | null;
+  renewal_min?: number | null;
 }
 
 interface CodeItem {
@@ -54,8 +62,19 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   disabled: { label: '已禁用', color: 'bg-red-100 text-red-600' },
 };
 
-// 包月常用档:运营 90% 的场景是这几个,免得每次手敲
+// 包月常用档:运营 90% 的场景是这几个,免得每次手敲。
+// 超过当前身份上限的档位会被过滤掉(机构只剩 30/90/180),别在这里写死两份。
 const DAYS_PRESETS = [30, 90, 180, 365];
+
+const DAYS_PRESET_LABELS: Record<number, string> = {
+  30: '1个月', 90: '3个月', 180: '半年', 365: '1年',
+};
+
+const GRANT_TYPE_FALLBACK_LABELS: Record<string, string> = {
+  permanent: '永久（一直可学）',
+  period: '包月（按天计时）',
+  times: '次卡（按学习天计次）',
+};
 
 // 学段中文名(与后端 services/book_stage.STAGE_LABELS 对应)
 const STAGE_LABELS: Record<string, string> = {
@@ -76,6 +95,9 @@ const AdminSubscriptions = () => {
   const [genGrantType, setGenGrantType] = useState('permanent'); // 卡种: permanent/period/times
   const [genGrantDays, setGenGrantDays] = useState(30);  // 包月默认 30 天
   const [genGrantTimes, setGenGrantTimes] = useState(7); // 次卡默认 7 天
+  // 能发什么卡由后端说(机构=只能包月、最长半年);policy 到达前先按最紧的假设
+  // 渲染,免得机构管理员看到永久卡一闪而过
+  const [policy, setPolicy] = useState<CardPolicy | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<CodeItem[]>([]);
   const [copied, setCopied] = useState(false);
@@ -120,6 +142,29 @@ const AdminSubscriptions = () => {
     setPickedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const pickAll = () => setPickedIds(candidateBooks.map(b => b.id));
   const pickNone = () => setPickedIds([]);
+  // 「整段都勾上了」—— 用来把整段开卡的按钮切成已完成态。
+  // 比长度相等更严:候选变了但数量恰好相同时(切学段)不能误判成已选
+  const wholeStagePicked = candidateBooks.length > 0 &&
+    candidateBooks.every(b => pickedIds.includes(b.id));
+
+  const fetchPolicy = useCallback(async () => {
+    try {
+      const res = (await getCardPolicy()) as unknown as CardPolicy;
+      setPolicy(res);
+      // 当前选中的卡种若不在白名单里(机构默认落在永久卡上),换成第一个可用的,
+      // 并把时长夹到上限内 —— 否则表单一打开就是个必被 403 的组合
+      const allowed: string[] = res.allowed_grant_types || [];
+      setGenGrantType(prev => (allowed.includes(prev) ? prev : allowed[0] || prev));
+      setGenGrantDays(prev => Math.min(prev, res.max_grant_days ?? prev));
+      if (res.max_grant_times != null) {
+        setGenGrantTimes(prev => Math.min(prev, res.max_grant_times));
+      }
+      // 机构只有一种卡种时,默认落在协议口径的半年上(最常用的那一档)
+      if (allowed.length === 1 && allowed[0] === 'period' && res.default_grant_days) {
+        setGenGrantDays(res.default_grant_days);
+      }
+    } catch { /* 政策拿不到就沿用默认表单,发码时后端仍会拦 */ }
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -148,12 +193,21 @@ const AdminSubscriptions = () => {
   // 换关键词/换筛选后回到第 1 页,否则停在第 3 页会显示空列表让人以为没搜到
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus]);
 
-  useEffect(() => { fetchGroups(); fetchStats(); }, [fetchGroups, fetchStats]);
+  useEffect(() => { fetchGroups(); fetchStats(); fetchPolicy(); }, [fetchGroups, fetchStats, fetchPolicy]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
   const handleGenerate = async () => {
     if (pickedIds.length === 0) { toast.warning('请先勾选要开通的单词本'); return; }
     if (genCount < 1 || genCount > 100) { toast.warning('生成数量需在 1～100 之间'); return; }
+    // 额度不够就当场说清差多少,别等后端 403 —— 后端仍然是权威(并发下额度可能刚被用掉)
+    if (hasCardQuota && genCount > cardsLeft) {
+      toast.warning(
+        cardsLeft === 0
+          ? `学习卡额度已用完（${cardsUsed}/${cardQuota} 张），请联系平台续卡`
+          : `学习卡额度只剩 ${cardsLeft} 张，本次要发 ${genCount} 张。请减少数量或联系平台续卡`
+      );
+      return;
+    }
     setGenerating(true);
     setGenResult([]);
     try {
@@ -222,6 +276,24 @@ const AdminSubscriptions = () => {
     return prefix ? `${prefix} ${n} 本` : `${n} 本单词本`;
   };
 
+  // 卡额度: 只有机构才有(平台 admin 不限额,后端给 null → 整块不渲染)。
+  // 判空用 != null 而不是真值判断 —— cards_left 为 0 是"用完了"这个最该显示的状态,
+  // 用 `stats?.cards_left &&` 会把它当成假值整块藏起来
+  const hasCardQuota = stats?.card_quota != null;
+  const cardQuota = stats?.card_quota ?? 0;
+  const cardsUsed = stats?.cards_used ?? 0;
+  const cardsLeft = stats?.cards_left ?? 0;
+
+  // 表单可选项一律从 policy 推导。policy 未到达时按「后端默认放行的全集」画,
+  // 但机构会在 fetchPolicy 回来后立刻收窄(它拿到的 allowed 只有 period)
+  const grantTypeOptions = policy?.allowed_grant_types?.length
+    ? policy.allowed_grant_types
+    : ['permanent', 'period', 'times'];
+  const maxGrantDays = policy?.max_grant_days ?? 3650;
+  const isOrgLimited = policy?.role === 'org_admin';
+  const grantTypeLabel = (t: string) =>
+    policy?.grant_type_labels?.[t] || GRANT_TYPE_FALLBACK_LABELS[t] || t;
+
   const formatGrantType = (c: CodeItem) => {
     if (!c.grant_type || c.grant_type === 'permanent') return '永久';
     if (c.grant_type === 'period') return `包月 ${c.grant_days || 0} 天`;
@@ -262,6 +334,53 @@ const AdminSubscriptions = () => {
       <StaffWorkspaceHeader role="admin" title="书籍兑换码管理" subtitle="生成兑换码，学生兑换后解锁对应单词本" icon={Ticket} />
 
       <main className="admin-workspace-main">
+
+        {/* 学习卡额度(机构专属) —— 放在最上面:发码前先知道还剩几张。
+            学习卡与学生名额是两笔账,这里只讲卡,免得机构把「发不出卡」当成「学生满了」 */}
+        {hasCardQuota && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold text-amber-900">学习卡额度</h2>
+                <p className="mt-1 text-2xl font-bold text-amber-900">
+                  已发 {cardsUsed} / {cardQuota} 张
+                  <span className="ml-2 text-sm font-semibold text-amber-700">
+                    还剩 {cardsLeft} 张
+                  </span>
+                </p>
+              </div>
+              <p className="max-w-md text-xs leading-relaxed text-amber-800">
+                每张 = 一个学生的一份半年卡（{maxGrantDays} 天，从兑换那天算起）。
+                同一个学生学满一年要两张：到期前再发一张给他兑换即可，有效期从原到期日往后接。
+                {stats?.renewal_min
+                  ? `额度用完请联系平台续卡（${stats.renewal_min} 张起，无需另签合同）。`
+                  : '额度用完请联系平台续卡。'}
+                生成错的批次删掉后额度会退回来。
+              </p>
+            </div>
+            {/* 水位条:数字之外给个一眼可见的余量,快见底时变红 */}
+            <div
+              className="mt-3 h-2 w-full overflow-hidden rounded-full bg-amber-200/70"
+              role="progressbar"
+              aria-valuenow={cardsUsed}
+              aria-valuemin={0}
+              aria-valuemax={cardQuota}
+              aria-label={`学习卡额度已发 ${cardsUsed} 张，共 ${cardQuota} 张`}
+            >
+              <div
+                className={`h-full rounded-full transition-all ${
+                  cardsLeft === 0 ? 'bg-red-500' : cardsLeft <= 10 ? 'bg-orange-500' : 'bg-amber-500'
+                }`}
+                style={{ width: `${cardQuota > 0 ? Math.min(100, (cardsUsed / cardQuota) * 100) : 0}%` }}
+              />
+            </div>
+            {cardsLeft === 0 && (
+              <p className="mt-2 text-xs font-semibold text-red-700">
+                额度已用完，现在发不出新卡。已经发出去的卡不受影响，学生照常使用。
+              </p>
+            )}
+          </div>
+        )}
 
         {/* 统计卡片 */}
         {stats && (
@@ -339,6 +458,35 @@ const AdminSubscriptions = () => {
               </div>
             </div>
 
+            {/* 整段开卡:选了学段直接「开这一整段」,不必一本本勾。
+                一张卡开一整段仍然只算 1 张额度(权益厚度不是名额,与一码多书同口径) */}
+            {genStage && candidateBooks.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#3976a9]/25 bg-white px-3 py-2">
+                <span className="text-sm text-slate-600">
+                  要开整个<strong className="text-[#3976a9]">
+                    {STAGE_LABELS[genStage] || genStage}
+                  </strong>段？
+                </span>
+                <button
+                  type="button"
+                  onClick={pickAll}
+                  disabled={wholeStagePicked}
+                  className={`min-h-8 rounded-lg px-3 text-xs font-semibold ${
+                    wholeStagePicked
+                      ? 'cursor-default bg-green-50 text-green-700'
+                      : 'bg-[#3976a9] text-white hover:bg-[#2e628f]'
+                  }`}
+                >
+                  {wholeStagePicked
+                    ? `✓ 已选整段 ${candidateBooks.length} 本`
+                    : `开这一整段（${candidateBooks.length} 本）`}
+                </button>
+                <span className="text-xs text-slate-500">
+                  一张卡开一整段，仍然只占 1 张学习卡额度
+                </span>
+              </div>
+            )}
+
             {/* 勾书 */}
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between">
@@ -388,28 +536,44 @@ const AdminSubscriptions = () => {
             </div>
           </div>
 
-          {/* ② 卡种与时长 */}
+          {/* ② 卡种与时长(可选项由后端政策决定,机构只有「包月·最长半年」) */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 mb-4">
+            {isOrgLimited && (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+                {policy?.note}
+                <br />
+                半年到了以后不用重新签合同：再发一张卡给同一个学生兑换即可，
+                有效期<strong>从原来的到期日往后接</strong>，中间不断档。
+              </p>
+            )}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="min-w-[150px]">
                 <label className="block text-sm text-gray-600 mb-1">卡种</label>
-                <select
-                  value={genGrantType}
-                  onChange={(e) => setGenGrantType(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
-                >
-                  <option value="permanent">永久（一直可学）</option>
-                  <option value="period">包月（按天计时）</option>
-                  <option value="times">次卡（按学习天计次）</option>
-                </select>
+                {grantTypeOptions.length === 1 ? (
+                  // 只有一种可选时不画下拉:下拉里只有一项会让人以为还有别的没加载出来
+                  <p className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+                    {grantTypeLabel(grantTypeOptions[0])}
+                  </p>
+                ) : (
+                  <select
+                    value={genGrantType}
+                    onChange={(e) => setGenGrantType(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
+                  >
+                    {grantTypeOptions.map((t) => (
+                      <option key={t} value={t}>{grantTypeLabel(t)}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               {genGrantType === 'period' && (
                 <div className="flex-1">
                   <label className="block text-sm text-gray-600 mb-1">
                     使用时长（天）—— 从学生兑换那天开始算
+                    {isOrgLimited && <span className="text-amber-700">，最长 {maxGrantDays} 天</span>}
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
-                    {DAYS_PRESETS.map((d) => (
+                    {DAYS_PRESETS.filter((d) => d <= maxGrantDays).map((d) => (
                       <button
                         key={d}
                         type="button"
@@ -420,14 +584,17 @@ const AdminSubscriptions = () => {
                             : 'border-slate-300 bg-white text-slate-600 hover:border-[#3976a9]'
                         }`}
                       >
-                        {d === 30 ? '1个月' : d === 90 ? '3个月' : d === 180 ? '半年' : '1年'}
+                        {DAYS_PRESET_LABELS[d] || `${d} 天`}
                       </button>
                     ))}
                     <input
                       type="number"
-                      min={1} max={3650}
+                      min={1} max={maxGrantDays}
                       value={genGrantDays}
-                      onChange={(e) => setGenGrantDays(Math.max(1, Number(e.target.value) || 1))}
+                      onChange={(e) => setGenGrantDays(
+                        // 上限就地夹住,别让人填了 365 点生成才吃 403
+                        Math.min(maxGrantDays, Math.max(1, Number(e.target.value) || 1))
+                      )}
                       className="w-24 px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30"
                     />
                     <span className="text-sm text-slate-500">天</span>

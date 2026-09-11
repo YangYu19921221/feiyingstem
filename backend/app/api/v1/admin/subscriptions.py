@@ -72,6 +72,19 @@ async def list_book_groups(
     return {"groups": out}
 
 
+@router.get("/card-policy")
+async def card_policy(
+    current_user: User = Depends(get_current_admin_or_org_admin),
+):
+    """当前身份能发什么卡(卡种白名单 + 时长上限)。
+
+    前端发码表单照这份结果画选项,**别在前端写死 180** —— 两处各写一份,
+    改上限时必然漂移成"界面让你选、后端 403"。判定真源在
+    services/subscription_service.card_policy_for。
+    """
+    return subscription_service.card_policy_for(current_user.role)
+
+
 @router.post("/generate", response_model=list[RedemptionCodeResponse])
 async def generate_codes(
     req: RedemptionCodeGenerate,
@@ -80,10 +93,18 @@ async def generate_codes(
 ):
     """批量生成兑换码(支持一码多书)。
 
-    机构管理员: 发码总量与学生配额对等——累计已发(未禁用)不得超过 student_quota,
-    防止用兑换码绕过名额;删除/禁用的码归还额度。平台 admin 不限。
-    配额按**码张数**计,不按 码×书数 —— 一张卡开几本书是权益厚度,不是名额。
+    机构管理员两道闸门:
+    1. **发码总量**与学生配额对等——累计已发(未禁用)不得超过 student_quota,
+       防止用兑换码绕过名额;删除/禁用的码归还额度。平台 admin 不限。
+       配额按**码张数**计,不按 码×书数 —— 一张卡开几本书是权益厚度,不是名额。
+    2. **卡种与时长**(2026-09-11):只能发包月卡、最长半年(180 天),从学生兑换
+       那天算起;永久卡/次卡一律拒(它们都能绕开这个上限,见 guard_card_policy)。
     """
+    # 卡种/时长闸门:纯判断不查库,放最前面(选错卡种时不必先等书本校验)
+    subscription_service.guard_card_policy(
+        current_user.role, req.grant_type, req.grant_days, req.grant_times,
+    )
+
     # 目标书集合:book_ids 优先,单 book_id 是旧调用形态
     want_ids = list(dict.fromkeys(req.book_ids or ([req.book_id] if req.book_id else [])))
     if not want_ids:
@@ -103,21 +124,17 @@ async def generate_codes(
         )
 
     if current_user.role == "org_admin":
-        from app.services.org_service import get_org
-        org = await get_org(db, current_user.org_id)
-        quota = org.student_quota if org else 0
-        issued = (await db.execute(
-            select(func.count(RedemptionCode.id)).where(
-                RedemptionCode.created_by.in_(
-                    select(User.id).where(User.org_id == current_user.org_id)
-                ),
-                RedemptionCode.status != RedemptionCodeStatus.DISABLED,
-            )
-        )).scalar() or 0
-        if issued + req.count > quota:
+        from app.services import org_service
+        st = await org_service.card_quota_status(db, current_user.org_id)
+        if st["cards_used"] + req.count > st["card_quota"]:
             raise HTTPException(
                 status_code=403,
-                detail=f"兑换码额度不足: 已发 {issued}/{quota}(与学生名额对等),本次申请 {req.count} 个超出上限",
+                detail=(
+                    f"学习卡额度不足: 已发 {st['cards_used']}/{st['card_quota']} 张，"
+                    f"剩 {st['cards_left']} 张，本次申请 {req.count} 张。"
+                    f"请联系平台续卡（{st['renewal_min']} 张起，无需另签合同）；"
+                    "生成错的批次可以删掉，额度会退回来。"
+                ),
             )
 
     codes = await subscription_service.batch_generate_codes(
@@ -318,12 +335,20 @@ async def subscription_stats(
     disabled_q = await db.execute(_q(RedemptionCode.status == RedemptionCodeStatus.DISABLED))
     disabled = disabled_q.scalar() or 0
 
+    # 卡额度水位:与发码闸门同源(org_service),否则会出现
+    # 「界面说还剩 5 张、点生成说额度不足」。平台 admin 不限额,不下发这组字段。
+    cards = None
+    if current_user.role == "org_admin":
+        from app.services import org_service
+        cards = await org_service.card_quota_status(db, current_user.org_id)
+
     return SubscriptionStatsResponse(
         total_codes=total,
         unused_codes=unused,
         used_codes=used,
         expired_codes=expired_codes,
         disabled_codes=disabled,
+        **(cards or {}),
     )
 
 

@@ -69,6 +69,9 @@ export default function OrgAdminDashboard() {
   });
 
   const quotaPct = info ? quotaPercent(info.active_students, info.student_quota) : 0;
+  // 学习卡余量: 后端已算好 cards_left(与发码闸门同源),这里不要自己减 ——
+  // 两处各算一遍就会漂移成「首页说还剩 3 张、发码页说 0 张」
+  const cardsLeft = info?.cards_left ?? 0;
 
   const managementLinks = [
     { icon: Users, title: '用户管理', desc: '本机构师生账号', path: '/admin/users', tone: 'blue' },
@@ -76,7 +79,8 @@ export default function OrgAdminDashboard() {
     { icon: BarChart3, title: '班级数据', desc: '学习统计与名册', path: '/admin/classes', tone: 'indigo' },
     { icon: TrendingUp, title: '数据统计', desc: '本机构使用情况', path: '/admin/statistics', tone: 'green' },
     { icon: Trophy, title: '单词比赛', desc: '赛事排行与概览', path: '/admin/competition', tone: 'orange' },
-    { icon: Ticket, title: '兑换码', desc: '发码上限=学生名额', path: '/admin/subscriptions', tone: 'amber' },
+    // 「发码上限=学生名额」已不成立(2026-09-11 卡额度与学生名额分账),别改回去
+    { icon: Ticket, title: '兑换码', desc: '按学习卡额度发卡', path: '/admin/subscriptions', tone: 'amber' },
     { icon: BookOpen, title: '词库浏览', desc: '平台词库（只读）', path: '/admin/content', tone: 'violet' },
   ];
 
@@ -108,8 +112,9 @@ export default function OrgAdminDashboard() {
           </div>
         )}
 
-        {/* 概况卡片 */}
-        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
+        {/* 概况卡片。四张: md 两列(2+2)、lg 四列 —— 保持 md:grid-cols-3 会让
+            第四张卡单独掉到第二行占满整宽,比学生名额那张还显眼 */}
+        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
           <div className="admin-org-card rounded-2xl border p-5">
             <div className="mb-1 flex items-center gap-2 text-sm text-slate-500"><Building2 className="h-4 w-4 text-[#397b9b]" />机构码（招生/测评链接用）</div>
             <div className="text-2xl font-mono font-bold text-[#FF6B35]">{info?.code || '—'}</div>
@@ -136,6 +141,40 @@ export default function OrgAdminDashboard() {
               <QuotaBar active={info?.active_students ?? 0} quota={info?.student_quota ?? 1} />
             </div>
             {quotaPct >= 90 && <div className="mt-1 text-xs text-red-500">名额将满,联系平台扩容</div>}
+            {/* 与学习卡分列两张卡还不够 —— 必须点明「名额不等于卡」,
+                否则机构看到这里没满、发卡却被拦,只会以为系统坏了 */}
+            <div className="mt-1 text-[11px] text-gray-400">同时在读人数;学生离班可腾出名额</div>
+          </div>
+          {/* 学习卡额度: 与学生名额是两笔账,所以单独一张卡而不是塞进上面那张。
+              card_quota 恒有值(后端 NULL 时回退成 student_quota),判空只为首屏加载态 */}
+          <div className="admin-org-card rounded-2xl border p-5">
+            <div className="mb-1 flex items-center gap-2 text-sm text-slate-500">
+              <Ticket className="h-4 w-4 text-[#397b9b]" />学习卡额度
+            </div>
+            <div className="text-2xl font-bold">
+              {info?.cards_used ?? '—'}
+              <span className="text-base text-gray-400"> / {info?.card_quota ?? '—'} 张</span>
+            </div>
+            <div className="mt-2">
+              <QuotaBar active={info?.cards_used ?? 0} quota={info?.card_quota || 1} />
+            </div>
+            {info && (
+              cardsLeft === 0 ? (
+                <div className="mt-1 text-xs font-semibold text-red-500">
+                  额度已用完,发不出新卡;已发出的不受影响
+                </div>
+              ) : cardsLeft <= 10 ? (
+                <div className="mt-1 text-xs text-orange-500">
+                  只剩 {cardsLeft} 张,建议联系平台续卡
+                </div>
+              ) : (
+                <div className="mt-1 text-xs text-gray-400">还剩 {cardsLeft} 张</div>
+              )
+            )}
+            <button
+              className="mt-1 text-[11px] text-blue-500 hover:underline"
+              onClick={() => navigate('/admin/subscriptions')}
+            >去发卡 / 看明细</button>
           </div>
           <div className="admin-org-card rounded-2xl border p-5">
             <div className="mb-1 flex items-center gap-2 text-sm text-slate-500"><GraduationCap className="h-4 w-4 text-[#397b9b]" />老师</div>

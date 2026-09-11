@@ -16,6 +16,16 @@ class Organization(Base):
     code = Column(String(16), unique=True, nullable=False, index=True)  # 机构码(注册/测评链接用,如 KM001)
     plan = Column(String(20), default="standard")                 # trial/standard/county/city(加盟档位)
     student_quota = Column(Integer, default=100)                  # 学生账号配额(标准档100)
+    # 学习卡额度(2026-09-11): 已购学习卡**张数**,与 student_quota 是两笔账 ——
+    # student_quota 管「同时在读多少人」(可复用: 学生毕业离班就腾出名额),
+    # card_quota 管「买过多少张半年卡」(一次性消耗: 同一学生学一年要两张)。
+    #
+    # ⚠️ 为什么必须分开: 机构改成只能发半年卡之后,发码上限若仍与学生名额对等,
+    # 配额 100 的机构发到第 100 张就再也发不出**续卡** —— 学生半年到期即断档,
+    # 而协议明确允许续卡(50 张起)。实测确认过这个锁死(发 2/2 后续卡 403)。
+    #
+    # NULL = 未单独设置,回退成 student_quota(存量机构零影响,见 org_service.card_quota_of)。
+    card_quota = Column(Integer, nullable=True)
     ai_quota_json = Column(Text, nullable=True)                   # AI限额覆盖配置(NULL=全局默认)
     contact_name = Column(String(50))
     contact_phone = Column(String(20))

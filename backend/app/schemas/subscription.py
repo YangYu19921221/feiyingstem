@@ -98,3 +98,10 @@ class SubscriptionStatsResponse(BaseModel):
     used_codes: int
     expired_codes: int
     disabled_codes: int
+    # 学习卡额度水位(仅机构下发;平台 admin 不限额 → 全为 None,前端据此隐藏整块)。
+    # 与学生名额是两笔账,真源 services/org_service.card_quota_status
+    card_quota: Optional[int] = None
+    cards_used: Optional[int] = None
+    cards_left: Optional[int] = None
+    card_quota_explicit: Optional[bool] = None
+    renewal_min: Optional[int] = None

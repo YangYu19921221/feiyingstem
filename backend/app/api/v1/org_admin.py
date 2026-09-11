@@ -53,12 +53,17 @@ async def org_info(
         select(func.count(User.id)).where(
             User.org_id == org.id, User.role == "teacher", User.is_active.is_(True))
     )).scalar() or 0
+    # 学习卡额度与学生名额是两笔账,机构首页要同时看得见 —— 只显示学生名额时,
+    # 机构会把「发不出卡」误当成「学生满了」(其实要续卡)
+    from app.services.org_service import card_quota_status
+    cards = await card_quota_status(db, org.id)
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
         "student_quota": org.student_quota, "active_students": active,
         "teacher_count": teacher_count, "logo_url": org.logo_url,
         "contact_name": org.contact_name, "contact_phone": org.contact_phone,
         "status": org.status, "expires_at": org.expires_at,
+        **cards,
     }
 
 

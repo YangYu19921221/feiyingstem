@@ -6,6 +6,7 @@ import string
 from datetime import datetime, timedelta
 from typing import List, Optional
 
+from fastapi import HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +29,104 @@ GRANT_TIMES = "times"           # 次卡:按「学习天」计次,当天首次�
 def _normalize_grant_type(gt: Optional[str]) -> str:
     """归一化卡种:NULL/空串/permanent 统一返回 GRANT_PERMANENT"""
     return gt if gt in (GRANT_PERIOD, GRANT_TIMES) else GRANT_PERMANENT
+
+
+# ===== 谁能发什么卡(2026-09-11) =====
+# 机构(org_admin)只能发**包月卡且最长半年**,有效期从「学生兑换那天」起算
+# (expires_at = 兑换时刻 + grant_days,见 _apply_one_book)。
+#
+# 依据加盟协议第三条: 平台卖给机构的计费单位就是「每张半年(180 天)的学生学习卡」。
+# 另两种卡都能绕开这个上限,所以对机构一律不放行:
+#   - 永久卡: 无到期日,等于把按期续费的权益一次性送掉;
+#   - 次卡: 按「学习天」计次,一周学两天的孩子拿 30 天次卡能横跨三四个月,
+#     日历时长不封顶(和"最多半年"是两个量纲,不是"改小一点"能对齐的)。
+# 机构要给学生更长的期限就走续卡(协议允许,50 张起) —— 每张仍是半年,
+# 续期从原到期日往后接(_apply_one_book),权益连续但每一张都在上限内。
+#
+# 平台 admin 不受限: 它是定价方,永久卡/长期卡/次卡都要能发(存量 838 张全是永久卡)。
+ORG_MAX_CARD_DAYS = 180
+ORG_ALLOWED_GRANT_TYPES: tuple[str, ...] = (GRANT_PERIOD,)
+
+_GRANT_TYPE_HINTS = {
+    GRANT_PERMANENT: "永久（一直可学）",
+    GRANT_PERIOD: "包月（按天计时，从学生兑换那天算起）",
+    GRANT_TIMES: "次卡（按学习天计次，没进不扣）",
+}
+
+
+def card_policy_for(role: str) -> dict:
+    """该身份能发什么卡 —— 发码端点与前端表单共用的**唯一**口径。
+
+    前端照这份结果画表单(而不是自己写死 180),避免"界面让你选、后端不收"。
+    """
+    if role == "org_admin":
+        return {
+            "role": role,
+            "allowed_grant_types": list(ORG_ALLOWED_GRANT_TYPES),
+            "max_grant_days": ORG_MAX_CARD_DAYS,
+            "default_grant_days": ORG_MAX_CARD_DAYS,
+            "max_grant_times": None,
+            "note": (
+                f"机构发的学生学习卡最长半年（{ORG_MAX_CARD_DAYS} 天），"
+                "有效期从学生兑换那天开始算。需要更长时间请续卡（到期日往后接）。"
+            ),
+            "grant_type_labels": {
+                t: _GRANT_TYPE_HINTS[t] for t in ORG_ALLOWED_GRANT_TYPES
+            },
+        }
+    return {
+        "role": role,
+        "allowed_grant_types": [GRANT_PERMANENT, GRANT_PERIOD, GRANT_TIMES],
+        "max_grant_days": 3650,
+        "default_grant_days": 30,
+        "max_grant_times": 1000,
+        "note": "平台发码不限卡种与时长。",
+        "grant_type_labels": dict(_GRANT_TYPE_HINTS),
+    }
+
+
+def guard_card_policy(
+    role: str,
+    grant_type: str,
+    grant_days: Optional[int] = None,
+    grant_times: Optional[int] = None,
+) -> None:
+    """发码前的卡种/时长闸门。越界抛 403(带能照着改的说明)。
+
+    ⚠️ 收在这一个函数里,别在端点里手写角色判断 —— 手写副本会漂移
+    (CLAUDE.md 记过 guard_org_admin 的同类教训)。
+    """
+    policy = card_policy_for(role)
+    gt = _normalize_grant_type(grant_type)
+
+    if gt not in policy["allowed_grant_types"]:
+        allowed = "、".join(_grant_label(t) for t in policy["allowed_grant_types"])
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"机构不能发{_grant_label(gt)}，只能发{allowed}"
+                f"（最长 {policy['max_grant_days']} 天，从学生兑换那天算起）。"
+                "要让学生学更久请续卡，有效期会从原到期日往后接。"
+            ),
+        )
+
+    max_days = policy["max_grant_days"]
+    if gt == GRANT_PERIOD and grant_days is not None and grant_days > max_days:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"机构发的学习卡最长 {max_days} 天（半年），本次填了 {grant_days} 天。"
+                "需要更长时间请分次续卡（到期日往后接，权益不断档）。"
+            ),
+        )
+
+    max_times = policy["max_grant_times"]
+    if gt == GRANT_TIMES and max_times is not None and grant_times is not None \
+            and grant_times > max_times:
+        raise HTTPException(
+            status_code=403,
+            detail=f"次卡可用天数最多 {max_times} 天，本次填了 {grant_times} 天。",
+        )
 
 
 def is_assignment_active(a: BookAssignment, today: Optional[str] = None) -> bool:
