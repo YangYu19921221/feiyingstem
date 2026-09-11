@@ -40,6 +40,9 @@ export default function OrgAdminDashboard() {
     { id: number; label: string; deletable: boolean;
       dependents: { classes: number; students: number; book_assignments: number; homework: number } } | null>(null);
   const [showMyPassword, setShowMyPassword] = useState(false);
+  // 离职交接: 选一位接手老师。to=0 表示还没选
+  const [handover, setHandover] = useState<
+    { id: number; label: string; to: number } | null>(null);
 
   // 机构信息编辑: null=未在编辑,非null=表单内容(一个状态表达一个概念)
   const [infoForm, setInfoForm] = useState<{ name: string; contact_name: string; contact_phone: string } | null>(null);
@@ -128,6 +131,30 @@ export default function OrgAdminDashboard() {
       alert(errorDetail(e, '读取老师信息失败'));
     }
   };
+
+  const handoverMut = useMutation({
+    mutationFn: () => orgAdminApi.handoverTeacher(handover!.id, handover!.to),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['org-teachers'] });
+      setHandover(null);
+      const m = r.moved;
+      // 逐项报清转了什么 —— 交接是不可逆的批量改动,只说"成功"没法核对
+      const parts = [
+        m.classes ? `${m.classes} 个班级` : '',
+        m.book_assignments ? `${m.book_assignments} 条书本授权` : '',
+        m.homework ? `${m.homework} 份作业` : '',
+        m.invite_codes ? `${m.invite_codes} 个入班码` : '',
+      ].filter(Boolean);
+      let msg = `已交接给${r.to.name}：${parts.join('、') || '没有需要转交的内容'}`;
+      if (m.dropped_duplicate_assignments) {
+        msg += `\n\n其中 ${m.dropped_duplicate_assignments} 条书本授权因为${r.to.name}已经给同一个学生开过同一本书，`
+          + '已合并为一条（学生能学的书没有变化）。';
+      }
+      msg += `\n\n现在可以删除「${r.from.name}」这个账号了。`;
+      alert(msg);
+    },
+    onError: (e: unknown) => alert(errorDetail(e, '交接失败')),
+  });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => orgAdminApi.deleteTeacher(id),
@@ -376,6 +403,16 @@ export default function OrgAdminDashboard() {
                         title={t.is_active ? '停用后他立刻登录不了,班级与学生不受影响' : undefined}
                         onClick={() => toggleMut.mutate(t.id)}
                       >{t.is_active ? '停用' : '恢复'}</button>
+                      {/* 有班级的才给「转交」入口:零依赖的账号转交没有意义 */}
+                      {((t.class_count ?? 0) > 0 || (t.student_count ?? 0) > 0) && (
+                        <button
+                          className="text-teal-600 hover:underline"
+                          title="老师离职:把名下班级、授权、作业转交给另一位老师"
+                          onClick={() => setHandover({
+                            id: t.id, label: t.full_name || t.username, to: 0,
+                          })}
+                        >转交</button>
+                      )}
                       <button
                         className="text-red-600 hover:underline"
                         title="仅能删除名下没有班级/学生/授权的账号"
@@ -458,13 +495,14 @@ export default function OrgAdminDashboard() {
                     {delTarget.dependents.homework > 0 && <li>· {delTarget.dependents.homework} 份作业</li>}
                   </ul>
                   <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-                    <strong>建议改用「停用」</strong>：停用后他立刻登录不了，但班级、学生和已开通的书本都完整保留。
-                    如果确实要删，先把班级转交给别的老师。
+                    <strong>多数情况用「停用」</strong>：他立刻登录不了，但班级、学生和已开通的书本都完整保留（老师离职、临时停权都够用）。
+                    <br />
+                    确实要删掉这个账号，就先<strong>转交</strong>给另一位老师，交接完再回来删。
                   </p>
                 </>
               )}
 
-              <div className="mt-5 flex justify-end gap-2">
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
                 <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200"
                         onClick={() => setDelTarget(null)}>取消</button>
                 {delTarget.deletable ? (
@@ -474,12 +512,79 @@ export default function OrgAdminDashboard() {
                     {deleteMut.isPending ? '删除中…' : '确认删除'}
                   </button>
                 ) : (
-                  <button type="button"
-                          className="min-h-10 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"
-                          onClick={() => { toggleMut.mutate(delTarget.id); setDelTarget(null); }}>
-                    改为停用
-                  </button>
+                  <>
+                    <button type="button"
+                            className="min-h-10 rounded-xl bg-[#3976a9] px-4 text-sm font-semibold text-white hover:bg-[#2e628f]"
+                            onClick={() => { setHandover({ id: delTarget.id, label: delTarget.label, to: 0 }); setDelTarget(null); }}>
+                      先转交
+                    </button>
+                    <button type="button"
+                            className="min-h-10 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"
+                            onClick={() => { toggleMut.mutate(delTarget.id); setDelTarget(null); }}>
+                      改为停用
+                    </button>
+                  </>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 离职交接: 选接手人。候选只列**本机构在职的其他**老师 —— 交给停用的账号
+            等于换个地方悬挂,后端也会拒 */}
+        {handover && (
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true"
+               onMouseDown={e => { if (e.target === e.currentTarget) setHandover(null); }}>
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+              <h3 className="text-lg font-bold text-slate-900">转交给其他老师</h3>
+              <p className="mt-1 text-sm text-slate-500">交出方：{handover.label}</p>
+
+              {(() => {
+                const candidates = (teachers || []).filter(x => x.id !== handover.id && x.is_active);
+                if (candidates.length === 0) {
+                  return (
+                    <p className="mt-4 rounded-xl bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900">
+                      本机构没有其他在职老师可以接手。请先新建一位老师（或恢复一个被停用的账号），再来转交。
+                    </p>
+                  );
+                }
+                return (
+                  <>
+                    <label className="mt-4 block text-sm font-medium text-slate-700">
+                      接手老师
+                      <select value={handover.to || ''}
+                              onChange={e => setHandover({ ...handover, to: Number(e.target.value) })}
+                              className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#3976a9] focus:ring-4 focus:ring-[#3976a9]/10">
+                        <option value="">请选择…</option>
+                        {candidates.map(x => (
+                          <option key={x.id} value={x.id}>
+                            {x.full_name || x.username}（现有 {x.class_count ?? 0} 班 · {x.student_count ?? 0} 生）
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                      会转交：<strong>班级</strong>（学生跟着班一起过去，学习记录和进度都不变）、
+                      <strong>书本授权</strong>、<strong>作业</strong>、<strong>入班码</strong>。
+                      <br />
+                      不转交历史直播记录（那是一次性的，改归属会让回放对不上人）。
+                      <br />
+                      如果接手老师已经给同一个学生开过同一本书，两条授权会合并成一条，学生能学的书不变。
+                      <br />
+                      <strong>交接不可撤销</strong>，做完之后交出方就能删除了。
+                    </div>
+                  </>
+                );
+              })()}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+                        onClick={() => setHandover(null)}>取消</button>
+                <button type="button" disabled={!handover.to || handoverMut.isPending}
+                        className="min-h-10 rounded-xl bg-[#3976a9] px-4 text-sm font-semibold text-white hover:bg-[#2e628f] disabled:opacity-50"
+                        onClick={() => handoverMut.mutate()}>
+                  {handoverMut.isPending ? '交接中…' : '确认交接'}
+                </button>
               </div>
             </div>
           </div>

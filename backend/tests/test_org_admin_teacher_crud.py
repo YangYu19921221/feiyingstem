@@ -479,3 +479,147 @@ async def test_fk_enforcement_is_off_assumption(db_session):
         "FK 变成开启了: 此时删老师会级联删掉 book_assignments(学生付费授权)。"
         "删除闸门必须继续拦住有依赖的账号,不能放宽"
     )
+
+
+# ============ 九、转交(离职交接,删除的前置步骤) ============
+
+@pytest.mark.asyncio
+async def test_handover_moves_classes_and_keeps_students(client: AsyncClient, org_fixture, db_session):
+    """班级转交后学生跟着班走 —— class_students 一行都不该动"""
+    src, dst, stu = org_fixture["t_a1"], org_fixture["t_a2"], org_fixture["stu"]
+    src_id, dst_id, stu_id = src.id, dst.id, stu.id
+    c = Class(name="交接班", teacher_id=src_id, org_id=org_fixture["org_a"].id)
+    db_session.add(c)
+    await db_session.flush()
+    db_session.add(ClassStudent(class_id=c.id, student_id=stu_id, is_active=True))
+    await db_session.commit()
+    cid = c.id
+
+    r = await client.post(f"/api/v1/org/teachers/{src_id}/handover",
+                          headers=_hdr(org_fixture["oa_a"]),
+                          json={"to_teacher_id": dst_id})
+    assert r.status_code == 200, r.text
+    assert r.json()["moved"]["classes"] == 1, r.json()
+
+    db_session.expire_all()
+    owner = (await db_session.execute(
+        select(Class.teacher_id).where(Class.id == cid))).scalar()
+    assert owner == dst_id, "班级应归接手人"
+    # 学生还在这个班里(没被动过)
+    n = (await db_session.execute(
+        select(ClassStudent).where(ClassStudent.class_id == cid,
+                                   ClassStudent.student_id == stu_id))).scalars().all()
+    assert len(n) == 1, "转交不该动学生与班级的关系"
+
+
+@pytest.mark.asyncio
+async def test_handover_then_delete_works(client: AsyncClient, org_fixture, db_session):
+    """交接完就能删了 —— 这正是这个功能存在的理由"""
+    src, dst = org_fixture["t_a1"], org_fixture["t_a2"]
+    src_id, dst_id = src.id, dst.id
+    hdr = _hdr(org_fixture["oa_a"])
+    db_session.add(Class(name="班", teacher_id=src_id, org_id=org_fixture["org_a"].id))
+    await db_session.commit()
+
+    # 交接前删不掉
+    assert (await client.delete(f"/api/v1/org/teachers/{src_id}", headers=hdr)).status_code == 409
+    # 交接
+    assert (await client.post(f"/api/v1/org/teachers/{src_id}/handover", headers=hdr,
+                              json={"to_teacher_id": dst_id})).status_code == 200
+    # 交接后删得掉
+    assert (await client.delete(f"/api/v1/org/teachers/{src_id}", headers=hdr)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_handover_duplicate_assignment_dropped_not_crashed(client: AsyncClient, org_fixture, db_session):
+    """两位老师给同一学生开过同一本书时,交接要合并而不是撞唯一约束炸掉。
+
+    ⚠️ 关于这条测试的真实性,必须说清(2026-09-11 实测):
+    生产 `book_assignments` 上有三个**部分唯一索引**(uq_assign_book/unit/group),
+    键里不含 teacher_id,例如 `(book_id, student_id) WHERE scope_type='book'`。
+    它们由 `init_db()` 的裸 SQL 建,而 conftest 走 `create_all` **不建这些索引**
+    (实测测试库上 book_assignments 索引为空)。所以:
+      - 在**生产**上,下面这种"两位老师各有一行同 (book,student)"的状态
+        **根本插不进去** —— 第二行会被唯一索引拒掉。合并分支是**防御性**的。
+      - 在**测试**里能造出这个状态,恰恰因为测试库缺那些索引。
+
+    那为什么保留这条测试和那段合并逻辑? 三个理由:
+      ① scope_type='unit'/'group' 的键更宽((.., unit_id[, group_index])),
+         同一 (book,student) 在不同 unit 上可以有多行,交接时仍要逐行判重;
+      ② 索引是"部分"的 —— 历史数据里 scope_type 为 NULL 的行不受任何索引约束;
+      ③ 若哪天有人改动索引定义,盲目 UPDATE 会让整个交接 500 回滚,
+         而这段逻辑让它退化成"合并",代价只是多一次判重。
+    这条测试锁住的是**合并语义本身**(学生权益不能因交接而丢),不是索引行为。
+    """
+    src, dst, stu = org_fixture["t_a1"], org_fixture["t_a2"], org_fixture["stu"]
+    src_id, dst_id, stu_id = src.id, dst.id, stu.id
+    book = WordBook(name="两人都开过的书", is_public=True)
+    other = WordBook(name="只有他开过的书", is_public=True)
+    db_session.add_all([book, other])
+    await db_session.flush()
+    db_session.add_all([
+        BookAssignment(book_id=book.id, student_id=stu_id, teacher_id=src_id, scope_type="book"),
+        BookAssignment(book_id=book.id, student_id=stu_id, teacher_id=dst_id, scope_type="book"),
+        BookAssignment(book_id=other.id, student_id=stu_id, teacher_id=src_id, scope_type="book"),
+    ])
+    await db_session.commit()
+    bid, oid = book.id, other.id
+
+    r = await client.post(f"/api/v1/org/teachers/{src_id}/handover",
+                          headers=_hdr(org_fixture["oa_a"]),
+                          json={"to_teacher_id": dst_id})
+    assert r.status_code == 200, r.text
+    m = r.json()["moved"]
+    assert m["dropped_duplicate_assignments"] == 1, m
+    assert m["book_assignments"] == 1, m
+
+    db_session.expire_all()
+    # 重复的那本: 只剩一行,归接手人
+    rows = (await db_session.execute(select(BookAssignment).where(
+        BookAssignment.book_id == bid, BookAssignment.student_id == stu_id))).scalars().all()
+    assert len(rows) == 1 and rows[0].teacher_id == dst_id, rows
+    # 不重复的那本: 转给接手人,**学生仍然有这本书**(权益没丢)
+    rows2 = (await db_session.execute(select(BookAssignment).where(
+        BookAssignment.book_id == oid, BookAssignment.student_id == stu_id))).scalars().all()
+    assert len(rows2) == 1 and rows2[0].teacher_id == dst_id, rows2
+
+
+@pytest.mark.asyncio
+async def test_handover_rejects_cross_org_target(client: AsyncClient, org_fixture):
+    """接手人必须是本机构老师 —— 否则能把班级塞给别家机构(跨租户污染)"""
+    r = await client.post(f"/api/v1/org/teachers/{org_fixture['t_a1'].id}/handover",
+                          headers=_hdr(org_fixture["oa_a"]),
+                          json={"to_teacher_id": org_fixture["t_b1"].id})
+    assert r.status_code == 404, r.text
+
+
+@pytest.mark.asyncio
+async def test_handover_rejects_self_and_inactive(client: AsyncClient, org_fixture, db_session):
+    src_id, dst_id = org_fixture["t_a1"].id, org_fixture["t_a2"].id
+    hdr = _hdr(org_fixture["oa_a"])
+
+    r = await client.post(f"/api/v1/org/teachers/{src_id}/handover", headers=hdr,
+                          json={"to_teacher_id": src_id})
+    assert r.status_code == 400 and "自己" in r.json()["detail"], r.text
+
+    # 交给停用的账号 = 这些班级立刻没人管,等于换个地方悬挂
+    await client.patch(f"/api/v1/org/teachers/{dst_id}/toggle-active", headers=hdr)
+    r = await client.post(f"/api/v1/org/teachers/{src_id}/handover", headers=hdr,
+                          json={"to_teacher_id": dst_id})
+    assert r.status_code == 400 and "停用" in r.json()["detail"], r.text
+
+
+@pytest.mark.asyncio
+async def test_handover_is_idempotent(client: AsyncClient, org_fixture, db_session):
+    """重复交接安全: 第二次没有属于原老师的行可转,全 0"""
+    src_id, dst_id = org_fixture["t_a1"].id, org_fixture["t_a2"].id
+    hdr = _hdr(org_fixture["oa_a"])
+    db_session.add(Class(name="班", teacher_id=src_id, org_id=org_fixture["org_a"].id))
+    await db_session.commit()
+
+    r1 = await client.post(f"/api/v1/org/teachers/{src_id}/handover", headers=hdr,
+                           json={"to_teacher_id": dst_id})
+    assert r1.json()["moved"]["classes"] == 1
+    r2 = await client.post(f"/api/v1/org/teachers/{src_id}/handover", headers=hdr,
+                           json={"to_teacher_id": dst_id})
+    assert r2.status_code == 200 and r2.json()["moved"]["classes"] == 0, r2.text

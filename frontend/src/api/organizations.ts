@@ -163,6 +163,18 @@ export const orgAdminApi = {
     }>(`/org/teachers/${teacherId}/dependents`),
   deleteTeacher: (teacherId: number) =>
     client.delete<{ deleted: boolean; id: number }>(`/org/teachers/${teacherId}`),
+  /** 离职交接: 把老师名下的班级/授权/作业/入班码转交给另一位在职老师。
+   *  学生跟着班走(不动 class_students);接手人已有同一本书授权的重复行会被删掉
+   *  (dropped_duplicate_assignments),学生权益不变。交接完这个账号才删得掉。 */
+  handoverTeacher: (teacherId: number, toTeacherId: number) =>
+    client.post<{
+      from: { id: number; name: string };
+      to: { id: number; name: string };
+      moved: {
+        classes: number; book_assignments: number; homework: number;
+        invite_codes: number; dropped_duplicate_assignments: number;
+      };
+    }>(`/org/teachers/${teacherId}/handover`, { to_teacher_id: toTeacherId }),
   // 机构管理员改自己的密码(需旧密码)
   changeMyPassword: (data: { old_password: string; new_password: string }) =>
     client.put<{ updated: boolean }>('/org/my-password', data),

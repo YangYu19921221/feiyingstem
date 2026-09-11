@@ -83,6 +83,15 @@ class OrgAdminPasswordChange(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=50)
 
 
+class TeacherHandover(BaseModel):
+    """把一位老师名下的班级与教学关系整体转交给另一位老师。
+
+    这是「删除老师」的前置步骤 —— 删除只允许删零依赖的账号(见 delete_teacher),
+    所以要清理离职老师的账号,得先把他名下的东西交给接手人。
+    """
+    to_teacher_id: int = Field(..., description="接手老师的 id(必须是本机构在职老师)")
+
+
 @router.get("/info")
 async def org_info(
     db: AsyncSession = Depends(get_db),
@@ -429,6 +438,107 @@ async def teacher_dependents(
     }
 
 
+@router.post("/teachers/{teacher_id}/handover")
+async def handover_teacher(
+    teacher_id: int,
+    data: TeacherHandover,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_org_admin),
+):
+    """把老师名下的班级与教学关系转交给另一位老师(离职交接)。
+
+    ## 为什么需要它
+    删除只允许删零依赖的账号,所以离职老师的账号原本卡在「只能停用」。
+    这个端点是那条路的出口: 先交接、再删除(或停用)。
+
+    ## 转交什么
+    - `classes.teacher_id`: 班级归属(学生跟着班走,**不动 class_students**,
+      所以学生的学习记录、掌握度一行都不会变)
+    - `book_assignments.teacher_id`: 谁开的书。**冲突的行不改而是删掉**,
+      见下面「唯一索引」
+    - `homework_assignments.teacher_id`: 作业归属(学生的完成记录挂在
+      homework_student_assignments 上,不受影响)
+    - `class_invite_codes.teacher_id`: 入班码
+    **不转交**: live_sessions(直播是一次性的历史记录,改归属会让回放对不上人)、
+    reading_assignments(阅读作业同理挂在具体一次布置上)。
+
+    ## 唯一索引: 冲突行必须删而不是改
+    `book_assignments` 上有三个**部分唯一索引**(uq_assign_book/unit/group,
+    生产已实测存在),键里**不含 teacher_id** —— 键是 (book,student[,unit,group])。
+    所以当两位老师给同一个学生开过同一本书时,把 A 的行改成 B 会直接撞
+    UNIQUE 约束抛 IntegrityError,整个交接 500 回滚。
+    处理: 接手人已有等价授权的,**删掉离职老师那一行**(权益不变,学生照样能学,
+    因为判活看的是"有没有一行有效授权"而不是"哪个老师开的")。
+
+    ## 幂等与原子性
+    整个交接在一个事务里,任一步失败全部回滚,不会留下一半交接的状态。
+    重复调用是安全的(第二次没有属于原老师的行可转,返回全 0)。
+    """
+    from app.models.user import Class, ClassInviteCode
+    from app.models.learning import BookAssignment, HomeworkAssignment
+    from sqlalchemy import update as sa_update
+
+    src = await _my_teacher(db, current_user, teacher_id)
+    if data.to_teacher_id == teacher_id:
+        raise HTTPException(400, "不能转交给自己")
+    # 接手人也必须是本机构老师 —— 否则能把班级塞给别家机构的人(跨租户污染)
+    dst = await _my_teacher(db, current_user, data.to_teacher_id)
+    if not dst.is_active:
+        # 交给一个停用的账号 = 这些班级立刻没人管得了,等于换个地方悬挂
+        raise HTTPException(400, f"接手老师「{dst.full_name or dst.username}」已停用，请先恢复他的账号")
+
+    moved = {"classes": 0, "book_assignments": 0, "homework": 0,
+             "invite_codes": 0, "dropped_duplicate_assignments": 0}
+
+    # ① 班级(学生跟着班走,不动 class_students)
+    moved["classes"] = (await db.execute(
+        sa_update(Class).where(Class.teacher_id == src.id)
+        .values(teacher_id=dst.id)
+    )).rowcount or 0
+
+    # ② 书本授权: 先挑出会撞唯一索引的行删掉,再整体改剩下的。
+    # 判重键与三个部分唯一索引一致: (scope_type, book_id, student_id, unit_id, group_index)
+    src_rows = (await db.execute(
+        select(BookAssignment).where(BookAssignment.teacher_id == src.id)
+    )).scalars().all()
+    if src_rows:
+        dst_keys = {
+            (a.scope_type or "book", a.book_id, a.student_id, a.unit_id, a.group_index)
+            for a in (await db.execute(
+                select(BookAssignment).where(BookAssignment.teacher_id == dst.id)
+            )).scalars().all()
+        }
+        for a in src_rows:
+            key = (a.scope_type or "book", a.book_id, a.student_id, a.unit_id, a.group_index)
+            if key in dst_keys:
+                # 接手人已有等价授权 → 删掉旧的那行(学生权益不变)
+                await db.delete(a)
+                moved["dropped_duplicate_assignments"] += 1
+            else:
+                a.teacher_id = dst.id
+                dst_keys.add(key)   # 同一批里可能有两行同键(理论上被索引挡住,防御性加上)
+                moved["book_assignments"] += 1
+
+    # ③ 作业(学生完成记录挂在 homework_student_assignments,不受影响)
+    moved["homework"] = (await db.execute(
+        sa_update(HomeworkAssignment).where(HomeworkAssignment.teacher_id == src.id)
+        .values(teacher_id=dst.id)
+    )).rowcount or 0
+
+    # ④ 入班码
+    moved["invite_codes"] = (await db.execute(
+        sa_update(ClassInviteCode).where(ClassInviteCode.teacher_id == src.id)
+        .values(teacher_id=dst.id)
+    )).rowcount or 0
+
+    await db.commit()
+    return {
+        "from": {"id": src.id, "name": src.full_name or src.username},
+        "to": {"id": dst.id, "name": dst.full_name or dst.username},
+        "moved": moved,
+    }
+
+
 @router.delete("/teachers/{teacher_id}")
 async def delete_teacher(
     teacher_id: int,
@@ -460,8 +570,9 @@ async def delete_teacher(
                 f"「{teacher.full_name or teacher.username}」名下还有 "
                 f"{dep['classes']} 个班级、{dep['students']} 名学生、"
                 f"{dep['book_assignments']} 条书本授权、{dep['homework']} 份作业，"
-                "不能删除。请改用「停用」——停用后他立刻登录不了，"
-                "但班级、学生和已开通的书本都不受影响。"
+                "不能删除。两条出路：①「停用」——他立刻登录不了，"
+                "班级、学生和已开通的书本都不受影响（多数情况用这个）；"
+                "②先「转交」给另一位老师，交接完再删。"
             ),
             "dependents": dep,
         })
