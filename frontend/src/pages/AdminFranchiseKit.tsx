@@ -4,7 +4,9 @@
  * 两份对外标准文档,页面内直接排好版:
  *  1. 合作协议 —— 参照行业同类协议改写为本系统计费口径(2026-08-27 起执行):
  *     基础合作费 ¥12,000(原价 ¥20,000,6 折)含 100 张学生学习卡(每张半年 / 180 天),
- *     超出按 ¥130/张;飞鹰英语专属内容 +¥40,000;教材 ¥50/本;含飞鹰带教培训 2 位老师
+ *     超出按 ¥130/张;飞鹰英语专属内容 +¥40,000;教材 ¥50/本;
+ *     带教培训**自费**(2026-09-11 起由「含 2 位老师、不另收培训费」改为按参训人数自费,
+ *     单价在协议里留空现填;协议与销售方案两份文档口径必须一致,改一处必须改另一处)
  *  2. 功能详解与提分方案 —— 给加盟商看的系统能力说明,围绕"怎么帮学生提分"展开
  *
  * 导出方式与打印默写纸同一套路:纯前端 window.print(),打印对话框里选"另存为 PDF"
@@ -70,7 +72,7 @@ function ContractDoc() {
         </p>
         <p>
           2. 本系统包含学生端、教师端、机构管理端与家长端。协议生效后,甲方为乙方开通独立机构后台,
-          乙方数据独立隔离存储,并支持乙方在系统内使用自己的机构名称与 Logo。
+          乙方数据独立隔离存储。
         </p>
       </Clause>
 
@@ -109,8 +111,9 @@ function ContractDoc() {
           乙方按需订购,运费另计。
         </p>
         <p>
-          5. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训 2 位老师</strong>(不另收培训费),
-          培训期间乙方人员的交通、食宿费用自理。
+          5. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训</strong>,该项服务由
+          <strong>乙方自费</strong>,按每位参训老师人民币 <Blank w="5rem" /> 元计收,
+          参训人数由乙方按需确定;培训期间乙方人员的交通、食宿费用亦由乙方自理。
         </p>
         <p>
           6. 付款方式:本协议签订后<Blank w="3rem" />日内,乙方一次性向甲方支付上述应付款项;
@@ -157,8 +160,8 @@ function ContractDoc() {
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">带教培训</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">2 位老师</td>
-              <td className="border border-slate-500 px-2 py-1.5">飞鹰英语带教培训,不另收培训费(交通食宿自理)</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">自费</td>
+              <td className="border border-slate-500 px-2 py-1.5">飞鹰英语带教培训,培训费由乙方承担,按参训老师人数计收(交通食宿亦自理)</td>
             </tr>
           </tbody>
         </table>
@@ -193,8 +196,9 @@ function ContractDoc() {
       <Clause no="六" title="甲方服务与支持">
         <p>1. 甲方负责本系统的日常维护、故障处理与持续升级,保障系统正常可用。</p>
         <p>
-          2. 甲方为乙方提供<strong>飞鹰英语带教培训 2 位老师</strong>(不另收培训费,乙方人员差旅食宿自理);
-          寒暑假等招生旺季,甲方提供相关运营方法指导,乙方开展的招生活动及其收费由乙方全权负责。
+          2. 甲方为乙方提供<strong>飞鹰英语带教培训</strong>(<strong>乙方自费</strong>,费用标准见第三条第 5 款,
+          乙方人员差旅食宿自理);寒暑假等招生旺季,甲方提供相关运营方法指导,
+          乙方开展的招生活动及其收费由乙方全权负责。
         </p>
         <p>
           3. 系统为每位学员提供家长端监督入口,乙方应确保学员及其家长知悉,便于家长监督学习进度与学习效果。
@@ -298,7 +302,6 @@ const TEACHING_LOOP = [
 const OPERATION = [
   { name: 'AI 测评招生漏斗', desc: '家长扫码免费测评 → 自动生成专业水平报告 → 进入机构线索池跟进转化。地推、家长会、朋友圈都能用,自带获客。' },
   { name: '机构码招生链接', desc: '专属注册链接 / 机构码,扫码注册自动归入机构名下,招生动线一步到位。' },
-  { name: '机构品牌', desc: '系统内展示机构自己的名称与 Logo,家长看到的是"你的系统",品牌沉淀在机构自己身上。' },
   { name: '机构内排行榜 + 竞赛', desc: '排行榜、单词比赛、晋级赛都在机构内部进行,运营活动素材现成,月月有话题。' },
   { name: '家长端 + 学习周报', desc: '家长绑定孩子看学习看板与周报,数据防划水、不掺水——续费谈判时,机构手里有真凭据。' },
   { name: '兑换码体系', desc: '学生账号用兑换码开通,发多少、给谁用,机构自主掌握,收费节奏自己定。' },
@@ -454,9 +457,14 @@ function PitchDoc() {
               <td className="border border-orange-200 px-2 py-1.5">纸质教材按需订购,运费另计</td>
             </tr>
             <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">升级与带教培训</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">系统升级</td>
               <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">免费</td>
-              <td className="border border-orange-200 px-2 py-1.5">新功能自动同步;<strong>飞鹰英语带教培训 2 位老师</strong>(差旅食宿自理)</td>
+              <td className="border border-orange-200 px-2 py-1.5">服务期内新功能、新内容自动同步</td>
+            </tr>
+            <tr>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">带教培训</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">自费</td>
+              <td className="border border-orange-200 px-2 py-1.5">飞鹰英语带教培训,按参训老师人数计收培训费,差旅食宿自理</td>
             </tr>
           </tbody>
         </table>
@@ -486,7 +494,6 @@ function PitchDoc() {
           <li><strong>区域保护</strong>:经营场所直线三公里内不再发展第二家合作点,写进协议,系统按坐标核验。</li>
           <li><strong>一年一签</strong>:先跑通再续签,机构风险可控;正常履约享同等条件优先续签权。</li>
           <li><strong>数据隔离</strong>:机构学员数据独立隔离,平台不用于向机构学员直接招生。</li>
-          <li><strong>品牌归你</strong>:系统内展示机构自己的名称与 Logo,口碑沉淀在机构自己身上。</li>
           <li><strong>持续迭代</strong>:系统每月都在更新(近期上线:纸笔听写 AI 批改、书本全托开放),服务期内全部免费同步。</li>
         </ul>
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]" style={{ breakInside: 'avoid' }}>
