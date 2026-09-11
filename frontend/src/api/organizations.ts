@@ -84,6 +84,9 @@ export interface OrgTeacher {
   is_active: boolean;
   last_login?: string | null;
   created_at?: string;
+  /** 名下班级数 / 去重学生数:停用或删除前让机构看清影响面 */
+  class_count?: number;
+  student_count?: number;
 }
 
 /** 机构管理员账号(与 OrgTeacher 同构,少一个 created_at) */
@@ -137,9 +140,30 @@ export const orgAdminApi = {
     form.append('file', file);
     return client.post<{ logo_url: string }>('/org/logo', form);
   },
-  teachers: () => client.get<OrgTeacher[]>('/org/teachers'),
+  teachers: (q?: string) =>
+    client.get<OrgTeacher[]>('/org/teachers', { params: q ? { q } : undefined }),
   createTeacher: (data: { username: string; password?: string; full_name?: string; phone?: string }) =>
     client.post<{ id: number; username: string; initial_password: string }>('/org/teachers', data),
+  // 改资料: 用户名是登录凭据不在这里改;phone 传空串 = 清空(后端显式区分 undefined/'')
+  updateTeacher: (teacherId: number, data: { full_name?: string; phone?: string }) =>
+    client.patch<OrgTeacher>(`/org/teachers/${teacherId}`, data),
+  // 重置老师密码: 不传 new_password = 服务端生成并回显一次
+  resetTeacherPassword: (teacherId: number, newPassword?: string) =>
+    client.post<{ id: number; username: string; new_password: string | null }>(
+      `/org/teachers/${teacherId}/reset-password`,
+      newPassword ? { new_password: newPassword } : {}),
   toggleTeacher: (teacherId: number) =>
     client.patch<{ id: number; is_active: boolean }>(`/org/teachers/${teacherId}/toggle-active`),
+  // 删除前预检:名下班级/学生/授权/作业各多少(与 DELETE 共用同一份后端判定)
+  teacherDependents: (teacherId: number) =>
+    client.get<{
+      id: number; username: string; full_name: string | null;
+      dependents: { classes: number; students: number; book_assignments: number; homework: number };
+      deletable: boolean;
+    }>(`/org/teachers/${teacherId}/dependents`),
+  deleteTeacher: (teacherId: number) =>
+    client.delete<{ deleted: boolean; id: number }>(`/org/teachers/${teacherId}`),
+  // 机构管理员改自己的密码(需旧密码)
+  changeMyPassword: (data: { old_password: string; new_password: string }) =>
+    client.put<{ updated: boolean }>('/org/my-password', data),
 };

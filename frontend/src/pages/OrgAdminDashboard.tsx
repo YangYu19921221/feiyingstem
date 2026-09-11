@@ -1,10 +1,11 @@
 /** 机构管理端 - 加盟商老板的控制台(org_admin 角色登录后的主页) */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, BookOpen, Building2, Edit3, GraduationCap, Plus, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Building2, Edit3, GraduationCap, KeyRound, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
 import { orgAdminApi } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar, quotaPercent } from '../components/OrgWidgets';
+import ChangeMyPasswordModal from '../components/org/ChangeMyPasswordModal';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 type ApiError = { response?: { data?: { detail?: string } } };
@@ -17,8 +18,28 @@ export default function OrgAdminDashboard() {
   const [form, setForm] = useState({ username: '', full_name: '', phone: '' });
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
 
+  // 老师搜索: 输入框即时回显 search,防抖后的 debounced 才发请求
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const { data: info } = useQuery({ queryKey: ['org-info'], queryFn: orgAdminApi.info });
-  const { data: teachers } = useQuery({ queryKey: ['org-teachers'], queryFn: orgAdminApi.teachers });
+  const { data: teachers } = useQuery({
+    queryKey: ['org-teachers', debouncedSearch],
+    queryFn: () => orgAdminApi.teachers(debouncedSearch || undefined),
+  });
+
+  // 改老师资料: null=没在编辑。phone 允许改成空串(=清空),所以不能用真值判断
+  const [editTeacher, setEditTeacher] = useState<
+    { id: number; username: string; full_name: string; phone: string } | null>(null);
+  // 删除确认: 先拿预检结果再决定能不能删
+  const [delTarget, setDelTarget] = useState<
+    { id: number; label: string; deletable: boolean;
+      dependents: { classes: number; students: number; book_assignments: number; homework: number } } | null>(null);
+  const [showMyPassword, setShowMyPassword] = useState(false);
 
   // 机构信息编辑: null=未在编辑,非null=表单内容(一个状态表达一个概念)
   const [infoForm, setInfoForm] = useState<{ name: string; contact_name: string; contact_phone: string } | null>(null);
@@ -66,6 +87,64 @@ export default function OrgAdminDashboard() {
   const toggleMut = useMutation({
     mutationFn: (id: number) => orgAdminApi.toggleTeacher(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['org-teachers'] }),
+    onError: (e: unknown) => alert(errorDetail(e, '操作失败')),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: () => orgAdminApi.updateTeacher(editTeacher!.id, {
+      full_name: editTeacher!.full_name.trim(),
+      // 传空串表示清空(后端显式区分 undefined=不改 / ''=清空)
+      phone: editTeacher!.phone.trim(),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['org-teachers'] });
+      setEditTeacher(null);
+    },
+    onError: (e: unknown) => alert(errorDetail(e, '保存失败')),
+  });
+
+  const resetPwdMut = useMutation({
+    mutationFn: (t: { id: number; username: string }) =>
+      orgAdminApi.resetTeacherPassword(t.id).then(r => ({ ...r, username: t.username })),
+    onSuccess: (r) => {
+      // 复用初始密码弹窗:重置出来的新密码同样只显示这一次
+      if (r.new_password) setIssued({ username: r.username, password: r.new_password });
+      qc.invalidateQueries({ queryKey: ['org-teachers'] });
+    },
+    onError: (e: unknown) => alert(errorDetail(e, '重置密码失败')),
+  });
+
+  /** 点删除先走预检:有依赖时弹窗只显示原因和「去停用」,不给删除按钮 */
+  const askDelete = async (t: { id: number; username: string; full_name?: string | null }) => {
+    try {
+      const r = await orgAdminApi.teacherDependents(t.id);
+      setDelTarget({
+        id: t.id,
+        label: r.full_name || r.username,
+        deletable: r.deletable,
+        dependents: r.dependents,
+      });
+    } catch (e: unknown) {
+      alert(errorDetail(e, '读取老师信息失败'));
+    }
+  };
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => orgAdminApi.deleteTeacher(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['org-teachers'] });
+      qc.invalidateQueries({ queryKey: ['org-info'] });
+      setDelTarget(null);
+    },
+    // 409 的 detail 是对象(带 code/message/dependents),errorDetail 只认字符串
+    onError: (e: unknown) => {
+      const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      const msg = typeof d === 'string' ? d
+        : (d as { message?: string })?.message || '删除失败';
+      alert(msg);
+      setDelTarget(null);
+      qc.invalidateQueries({ queryKey: ['org-teachers'] });
+    },
   });
 
   const quotaPct = info ? quotaPercent(info.active_students, info.student_quota) : 0;
@@ -87,7 +166,7 @@ export default function OrgAdminDashboard() {
   return (
     <div className="admin-org-page min-h-screen px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
       <div className="mx-auto max-w-[1280px]">
-        <StaffWorkspaceHeader role="org" title={info?.name || '机构管理'} subtitle="本机构教师、学生与学习数据" icon={Building2} action={<div className="flex items-center gap-2"><label className="staff-org-logo-pick" title="更换机构 Logo">{info?.logo_url ? <img src={info.logo_url} alt="机构 Logo" /> : <Building2 className="h-4 w-4" />}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={onLogoPick} /></label><button type="button" className="admin-secondary-light admin-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold" onClick={() => setInfoForm({ name: info?.name || '', contact_name: info?.contact_name || '', contact_phone: info?.contact_phone || '' })}><Edit3 className="h-3.5 w-3.5" />编辑机构</button></div>} />
+        <StaffWorkspaceHeader role="org" title={info?.name || '机构管理'} subtitle="本机构教师、学生与学习数据" icon={Building2} action={<div className="flex items-center gap-2"><label className="staff-org-logo-pick" title="更换机构 Logo">{info?.logo_url ? <img src={info.logo_url} alt="机构 Logo" /> : <Building2 className="h-4 w-4" />}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={onLogoPick} /></label><button type="button" className="admin-secondary-light admin-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold" onClick={() => setShowMyPassword(true)}><KeyRound className="h-3.5 w-3.5" />修改密码</button><button type="button" className="admin-secondary-light admin-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold" onClick={() => setInfoForm({ name: info?.name || '', contact_name: info?.contact_name || '', contact_phone: info?.contact_phone || '' })}><Edit3 className="h-3.5 w-3.5" />编辑机构</button></div>} />
 
         {/* 机构信息编辑表单 */}
         {infoForm && (
@@ -213,10 +292,23 @@ export default function OrgAdminDashboard() {
         <div className="admin-org-card rounded-2xl border p-5 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="flex items-center gap-2 text-lg font-bold text-[#173047]"><GraduationCap className="h-5 w-5 text-[#397b9b]" />老师账号</h2>
-            <button
-              onClick={() => setShowCreate(!showCreate)}
-              className="admin-primary admin-focus-ring inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition"
-            ><Plus className="h-4 w-4" />新建老师</button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="搜用户名/姓名/手机"
+                  aria-label="搜索老师"
+                  className="w-44 rounded-xl border border-slate-300 py-2 pl-8 pr-3 text-sm focus:border-[#3976a9] focus:outline-none focus:ring-2 focus:ring-[#3976a9]/15"
+                />
+              </div>
+              <button
+                onClick={() => setShowCreate(!showCreate)}
+                className="admin-primary admin-focus-ring inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition"
+              ><Plus className="h-4 w-4" />新建老师</button>
+            </div>
           </div>
 
           {showCreate && (
@@ -235,11 +327,14 @@ export default function OrgAdminDashboard() {
             </div>
           )}
 
-          <div className="overflow-x-auto"><table className="w-full min-w-[620px] whitespace-nowrap text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[820px] whitespace-nowrap text-sm">
             <thead>
                 <tr className="text-left text-slate-500 border-b border-slate-200">
                 <th className="py-2">用户名</th>
                 <th className="py-2">姓名</th>
+                <th className="py-2">手机号</th>
+                {/* 班级/学生数: 停用或删除前的影响面,不看这一列会误删带着学生的账号 */}
+                <th className="py-2">名下</th>
                 <th className="py-2">最近登录</th>
                 <th className="py-2">状态</th>
                 <th className="py-2">操作</th>
@@ -250,22 +345,148 @@ export default function OrgAdminDashboard() {
                 <tr key={t.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                   <td className="py-2 font-mono">{t.username}</td>
                   <td className="py-2">{t.full_name || '—'}</td>
+                  <td className="py-2 text-slate-500">{t.phone || '—'}</td>
+                  <td className="py-2 text-slate-500">
+                    {(t.class_count ?? 0) === 0 && (t.student_count ?? 0) === 0
+                      ? <span className="text-slate-400">—</span>
+                      : <span>{t.class_count ?? 0} 班 · {t.student_count ?? 0} 生</span>}
+                  </td>
                   <td className="py-2 text-gray-400">{t.last_login ? String(t.last_login).slice(0, 16).replace('T', ' ') : '从未登录'}</td>
                   <td className="py-2">{t.is_active ? <span className="text-green-600">✅ 正常</span> : <span className="text-red-500">⛔ 停用</span>}</td>
                   <td className="py-2">
-                    <button
-                      className={t.is_active ? 'text-red-500 hover:underline' : 'text-green-600 hover:underline'}
-                      onClick={() => toggleMut.mutate(t.id)}
-                    >{t.is_active ? '停用' : '恢复'}</button>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <button
+                        className="text-[#3976a9] hover:underline"
+                        onClick={() => setEditTeacher({
+                          id: t.id, username: t.username,
+                          full_name: t.full_name || '', phone: t.phone || '',
+                        })}
+                      >改资料</button>
+                      <button
+                        className="text-amber-600 hover:underline disabled:opacity-40"
+                        disabled={resetPwdMut.isPending}
+                        title="生成新密码,旧密码与已登录的设备立即失效"
+                        onClick={() => {
+                          if (!confirm(`给「${t.full_name || t.username}」重置密码?\n\n会生成一个新密码(只显示一次),他当前登录的设备会被强制退出。`)) return;
+                          resetPwdMut.mutate({ id: t.id, username: t.username });
+                        }}
+                      >重置密码</button>
+                      <button
+                        className={t.is_active ? 'text-orange-500 hover:underline' : 'text-green-600 hover:underline'}
+                        title={t.is_active ? '停用后他立刻登录不了,班级与学生不受影响' : undefined}
+                        onClick={() => toggleMut.mutate(t.id)}
+                      >{t.is_active ? '停用' : '恢复'}</button>
+                      <button
+                        className="text-red-600 hover:underline"
+                        title="仅能删除名下没有班级/学生/授权的账号"
+                        onClick={() => askDelete(t)}
+                      >删除</button>
+                    </div>
                   </td>
                 </tr>
               ))}
               {(teachers || []).length === 0 && (
-                <tr><td colSpan={5} className="py-8 text-center text-gray-400">还没有老师,点右上角「新建老师」开始</td></tr>
+                /* 列数改了 colSpan 必须跟着,否则空态文字不居中、右侧留白 */
+                <tr><td colSpan={7} className="py-8 text-center text-gray-400">
+                  {debouncedSearch ? `没有匹配「${debouncedSearch}」的老师` : '还没有老师,点右上角「新建老师」开始'}
+                </td></tr>
               )}
             </tbody>
           </table></div>
         </div>
+
+        {/* 改老师资料 */}
+        {editTeacher && (
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true"
+               onMouseDown={e => { if (e.target === e.currentTarget) setEditTeacher(null); }}>
+            <form className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+                  onSubmit={e => { e.preventDefault(); updateMut.mutate(); }}>
+              <h3 className="text-lg font-bold text-slate-900">修改老师资料</h3>
+              <p className="mt-1 font-mono text-sm text-slate-500">{editTeacher.username}</p>
+              <label className="mt-4 block text-sm font-medium text-slate-700">
+                姓名
+                <input autoFocus type="text" value={editTeacher.full_name}
+                       onChange={e => setEditTeacher({ ...editTeacher, full_name: e.target.value })}
+                       className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-[#3976a9] focus:ring-4 focus:ring-[#3976a9]/10" />
+              </label>
+              <label className="mt-3 block text-sm font-medium text-slate-700">
+                手机号（留空表示清除）
+                <input type="text" value={editTeacher.phone}
+                       onChange={e => setEditTeacher({ ...editTeacher, phone: e.target.value })}
+                       className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-[#3976a9] focus:ring-4 focus:ring-[#3976a9]/10" />
+              </label>
+              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+                登录用户名不能改（它是老师的登录凭据）。要换登录名请停用这个账号、另建一个。
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+                        onClick={() => setEditTeacher(null)}>取消</button>
+                <button type="submit" disabled={!editTeacher.full_name.trim() || updateMut.isPending}
+                        className="admin-primary admin-focus-ring inline-flex min-h-10 items-center rounded-xl px-4 text-sm font-semibold disabled:opacity-50">
+                  {updateMut.isPending ? '保存中…' : '保存'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* 删除确认: 有依赖时**不给**删除按钮,只给「去停用」——
+            后端也会拒(409),但让按钮根本不出现比点了才报错好 */}
+        {delTarget && (
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true"
+               onMouseDown={e => { if (e.target === e.currentTarget) setDelTarget(null); }}>
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+              <h3 className="text-lg font-bold text-slate-900">
+                {delTarget.deletable ? '删除老师账号' : '这个账号不能删除'}
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">{delTarget.label}</p>
+
+              {delTarget.deletable ? (
+                <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm leading-6 text-red-700">
+                  该账号名下没有班级、学生、书本授权和作业，可以安全删除。
+                  <br />删除后不可恢复。
+                </p>
+              ) : (
+                <>
+                  <p className="mt-4 text-sm leading-6 text-slate-600">
+                    他名下还挂着这些内容，删掉会让班级失去归属、学生的学习记录对不上人：
+                  </p>
+                  <ul className="mt-2 space-y-1 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {delTarget.dependents.classes > 0 && <li>· {delTarget.dependents.classes} 个班级</li>}
+                    {delTarget.dependents.students > 0 && <li>· {delTarget.dependents.students} 名在读学生</li>}
+                    {delTarget.dependents.book_assignments > 0 && <li>· {delTarget.dependents.book_assignments} 条学生书本授权（含已付费开通的）</li>}
+                    {delTarget.dependents.homework > 0 && <li>· {delTarget.dependents.homework} 份作业</li>}
+                  </ul>
+                  <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                    <strong>建议改用「停用」</strong>：停用后他立刻登录不了，但班级、学生和已开通的书本都完整保留。
+                    如果确实要删，先把班级转交给别的老师。
+                  </p>
+                </>
+              )}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+                        onClick={() => setDelTarget(null)}>取消</button>
+                {delTarget.deletable ? (
+                  <button type="button" disabled={deleteMut.isPending}
+                          className="min-h-10 rounded-xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                          onClick={() => deleteMut.mutate(delTarget.id)}>
+                    {deleteMut.isPending ? '删除中…' : '确认删除'}
+                  </button>
+                ) : (
+                  <button type="button"
+                          className="min-h-10 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"
+                          onClick={() => { toggleMut.mutate(delTarget.id); setDelTarget(null); }}>
+                    改为停用
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 机构管理员改自己的密码 */}
+        <ChangeMyPasswordModal isOpen={showMyPassword} onClose={() => setShowMyPassword(false)} />
       </div>
     </div>
   );
