@@ -32,7 +32,7 @@ TENANT_MODELS: list = []
 def register_tenant_models():
     """注册需要自动过滤/打戳的锚点模型(延迟导入避免循环依赖),init_db 时调用"""
     from app.models.user import User, Class
-    from app.models.word import WordBook, BookSeries
+    from app.models.word import WordBook, BookSeries, BookStage
     from app.models.sentence import SentenceBook
     from app.models.reading import ReadingPassage
     from app.models.phonetic import PhoneticVideo, PhoneticMaterial
@@ -59,6 +59,8 @@ def register_tenant_models():
         (LiveMaterial, False),
         (WordBook, True),
         (BookSeries, True),
+        # 学段选项: 与 BookSeries 同口径,NULL=平台预置(所有机构可见),非 NULL=机构自建
+        (BookStage, True),
         (SentenceBook, True),
         (ReadingPassage, True),
         (PhoneticVideo, True),   # 音标视频:NULL=平台共享,机构可自建

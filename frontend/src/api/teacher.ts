@@ -196,6 +196,8 @@ export interface TeacherWordBook {
   grade_level: string | null;
   volume: string | null;
   series: string | null;
+  /** 学段ID(二级分组)。null=未分类;选项见 getBookStages */
+  stage_id: number | null;
   cover_color: string;
   cover_url: string | null;
   created_by: number;
@@ -233,6 +235,36 @@ export const getBookSeries = async (): Promise<BookSeriesOption[]> => {
 /** 新增自定义分类(仅 admin/org_admin) */
 export const createBookSeries = async (name: string): Promise<BookSeriesOption> => {
   const response = await axios.post(`${API_BASE_URL}/words/book-series`, { name });
+  return response.data;
+};
+
+// ========================================
+// 学段(book stages) —— 单词本的二级分组
+// ========================================
+
+/** 学段选项。
+ *
+ * ⚠️ **这是学段的唯一真源**,别在组件里再写一份「按 grade_level 猜学段」的规则。
+ * 改造前教师端自己写了一份 stageOf、后端发码另写一份 book_stage.py,结果同一批书
+ * 教师端显示「大学」分组、发码那边归「其他」—— 两个说法。
+ *
+ * code 是平台预置档的稳定标识(primary/junior/senior);机构自建档 code=null,
+ * 所以判断"是哪一档"要用 id,不要用中文名(机构可以把「小学」改名)。 */
+export interface BookStageOption {
+  id: number;
+  name: string;
+  code: string | null;
+  is_preset: boolean;   // true=平台预置(所有机构可见),false=本机构自建
+}
+
+export const getBookStages = async (): Promise<BookStageOption[]> => {
+  const response = await axios.get(`${API_BASE_URL}/words/book-stages`);
+  return response.data;
+};
+
+/** 新增自定义学段(如「大学」「成人」「幼儿园」) */
+export const createBookStage = async (name: string): Promise<BookStageOption> => {
+  const response = await axios.post(`${API_BASE_URL}/words/book-stages`, { name });
   return response.data;
 };
 

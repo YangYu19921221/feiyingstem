@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, delete
 from typing import List, Optional
 from app.core.database import get_db
-from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord, BookSeries
+from app.models.word import Word, WordDefinition, WordTag, WordBook, BookWord, Unit, UnitWord, BookSeries, BookStage
 from app.models.learning import WordMastery
 from app.models.user import User
 from app.schemas.word import (
@@ -14,6 +14,7 @@ from app.schemas.word import (
 from app.api.v1.auth import get_current_teacher, get_current_user
 from app.core.rate_limit import check_rate
 from app.services.image_service import generate_book_cover
+from app.services import book_stage
 
 router = APIRouter()
 
@@ -22,6 +23,7 @@ router = APIRouter()
 # ========================================
 
 MAX_ORG_SERIES = 20  # 每机构自定义教材版本上限,防手滑建一堆
+MAX_ORG_STAGES = 10  # 每机构自定义学段上限(小学/初中/高中之外的档,如大学/成人/幼儿园)
 
 # 反爬虫:内容读取端点的滑动窗口限额(每账号)。给正常人最猛的一次交互留足
 # (学习页一次并发拉 20+ 个词、教师翻页浏览),持续枚举全库会被压到 ~1 次/秒。
@@ -48,6 +50,72 @@ async def list_book_series(
         {"id": s.id, "name": s.name, "is_preset": s.org_id is None}
         for s in rows
     ]
+
+
+@router.get("/book-stages")
+async def list_book_stages(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """学段选项(单词本二级分组): 平台预置 + 本机构自定义。
+
+    **这是学段的唯一真源** —— 教师端分组、发码选书都读这里,别在前端再写一份
+    「按 grade_level 猜学段」的规则(那正是改造前的病根: 教师端显示「大学」、
+    发码那边归「其他」,同一批书两个说法)。
+    """
+    rows = (await db.execute(
+        select(BookStage).order_by(BookStage.sort_order, BookStage.id)
+    )).scalars().all()
+    return [
+        {"id": s.id, "name": s.name, "code": s.code, "is_preset": s.org_id is None}
+        for s in rows
+    ]
+
+
+@router.post("/book-stages", status_code=status.HTTP_201_CREATED)
+async def create_book_stage(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """新增学段(如「大学」「成人」「幼儿园」)。admin 建平台级;org_admin/teacher 建机构级。
+
+    与 create_book_series 同一套路(权限口径、同名 409、每机构上限),
+    改一处要想到另一处。**code 一律留 NULL** —— 那三个稳定标识
+    (primary/junior/senior)是平台预置档的身份,机构自建的档不该冒用,
+    否则发码/PK 那些按 code 对齐的逻辑会把它当成预置档。
+    """
+    if current_user.role not in ("admin", "org_admin", "teacher"):
+        raise HTTPException(status_code=403, detail="学生不能新增学段")
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="学段名称不能为空")
+    if len(name) > 20:
+        raise HTTPException(status_code=400, detail="学段名称不能超过20个字符")
+
+    # 同名查重(可见范围内: 平台预置 + 本机构,tenancy 已过滤)
+    dup = (await db.execute(
+        select(BookStage).where(BookStage.name == name).limit(1)
+    )).scalars().first()
+    if dup:
+        raise HTTPException(status_code=409, detail=f"学段「{name}」已存在")
+
+    if current_user.role != "admin":
+        cnt = (await db.execute(
+            select(func.count(BookStage.id)).where(BookStage.org_id.is_not(None))
+        )).scalar() or 0
+        if cnt >= MAX_ORG_STAGES:
+            raise HTTPException(status_code=400, detail=f"自定义学段最多 {MAX_ORG_STAGES} 个")
+
+    max_sort = (await db.execute(select(func.max(BookStage.sort_order)))).scalar() or 0
+    row = BookStage(name=name, code=None, sort_order=max_sort + 1)
+    if current_user.role == "admin":
+        row.org_id = None   # admin 建平台级;其余留给 tenancy 写侧打本机构戳
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"id": row.id, "name": row.name, "code": row.code,
+            "is_preset": row.org_id is None}
 
 
 @router.post("/book-series", status_code=status.HTTP_201_CREATED)
@@ -106,12 +174,20 @@ async def create_word_book(
         description=book_data.description,
     )
 
+    # 学段: 没显式传就按年级自动推(填了「三年级」自动归小学)。
+    # 不自动补的话老师只填年级、书就落进「未分类」,那是改造前没有的行为回退。
+    # 显式传了(含显式传 None 表示未分类)一律尊重
+    stage_id = book_data.stage_id
+    if stage_id is None:
+        stage_id = await book_stage.resolve_stage_id(db, book_data.grade_level)
+
     db_book = WordBook(
         name=book_data.name,
         description=book_data.description,
         grade_level=book_data.grade_level,
         volume=book_data.volume,
         series=book_data.series,
+        stage_id=stage_id,
         is_public=book_data.is_public,
         cover_color=book_data.cover_color,
         cover_url=cover_url,
@@ -138,6 +214,7 @@ async def create_word_book(
         grade_level=db_book.grade_level,
         volume=db_book.volume,
         series=db_book.series,
+        stage_id=db_book.stage_id,
         is_public=db_book.is_public,
         cover_color=db_book.cover_color,
         cover_url=db_book.cover_url,
@@ -194,6 +271,7 @@ async def get_word_book(
         grade_level=db_book.grade_level,
         volume=db_book.volume,
         series=db_book.series,
+        stage_id=db_book.stage_id,
         is_public=db_book.is_public,
         cover_color=db_book.cover_color,
         cover_url=db_book.cover_url,
@@ -241,6 +319,7 @@ async def list_word_books(
             grade_level=book.grade_level,
             volume=book.volume,
             series=book.series,
+            stage_id=book.stage_id,
             is_public=book.is_public,
             cover_color=book.cover_color,
             cover_url=book.cover_url,
@@ -270,6 +349,18 @@ async def update_word_book(
     data = body.model_dump(exclude_unset=True)
     if "name" in data and not (data["name"] or "").strip():
         raise HTTPException(status_code=400, detail="名称不能为空")
+    # 学段: 0 = 明确要清空(改回未分类);非 0 必须是**可见范围内**存在的学段 ——
+    # 不校验的话能把书挂到别家机构自建的学段 id 上,分组显示成一个空组
+    if "stage_id" in data:
+        sid = data["stage_id"]
+        if not sid:
+            data["stage_id"] = None
+        else:
+            ok = (await db.execute(
+                select(BookStage.id).where(BookStage.id == sid)
+            )).scalar_one_or_none()
+            if not ok:
+                raise HTTPException(status_code=400, detail="学段不存在或无权使用")
     for k, v in data.items():
         setattr(book, k, v.strip() if isinstance(v, str) else v)
     await db.commit()
@@ -283,6 +374,7 @@ async def update_word_book(
     return WordBookResponse(
         id=book.id, name=book.name, description=book.description,
         grade_level=book.grade_level, volume=book.volume, series=book.series,
+        stage_id=book.stage_id,
         is_public=book.is_public, cover_color=book.cover_color,
         cover_url=book.cover_url, created_by=book.created_by or 0,
         word_count=word_count, created_at=book.created_at,

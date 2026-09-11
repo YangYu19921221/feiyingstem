@@ -88,6 +88,9 @@ class WordBookBase(BaseModel):
     grade_level: Optional[str] = Field(None, description="年级，如三年级、七年级，课外书留空")
     volume: Optional[str] = Field(None, description="册次，如上册、下册，课外书留空")
     series: Optional[str] = Field(None, description="教材版本，如人教版、苏教版，选项见 book-series 接口")
+    # 学段(二级分组): 存 book_stages.id。可空 —— 课外书/总复习没有学段,
+    # 强制必填只会迫使人乱填。空值在界面归「未分类」
+    stage_id: Optional[int] = Field(None, description="学段ID，选项见 book-stages 接口，可空")
     is_public: bool = Field(True, description="是否公开")
     cover_color: str = Field("#FF6B6B", description="封面颜色")
     cover_url: Optional[str] = Field(None, description="AI 生成的封面图 URL，可空")
@@ -101,6 +104,10 @@ class WordBookUpdate(BaseModel):
     grade_level: Optional[str] = None
     volume: Optional[str] = None
     series: Optional[str] = None
+    # 学段: 传 0 表示**清空**(改回未分类)。用 0 而不是 None 是因为
+    # None 在 PATCH 语义里是"没传",无法表达"要清空"(CLAUDE.md 记过
+    # 「留空=不修改」的判空陷阱: AI 配置的 api_key 就这么被空串清空过)
+    stage_id: Optional[int] = None
     is_public: Optional[bool] = None
     cover_color: Optional[str] = None
 

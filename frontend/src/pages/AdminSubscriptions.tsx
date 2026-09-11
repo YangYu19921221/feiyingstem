@@ -76,9 +76,14 @@ const GRANT_TYPE_FALLBACK_LABELS: Record<string, string> = {
   times: '次卡（按学习天计次）',
 };
 
-// 学段中文名(与后端 services/book_stage.STAGE_LABELS 对应)
-const STAGE_LABELS: Record<string, string> = {
-  primary: '小学', junior: '初中', senior: '高中', other: '其他',
+/** 学段 key → 中文名的**兜底**表(2026-09-11 学段改成真字段后)。
+ *
+ * 优先用后端 book-groups 下发的 label(那才是真源,机构自建学段只有它认得);
+ * 这张表只用于「列表里回看一张老码的 scope_stage」这种拿不到 label 的场合。
+ * ⚠️ 不要往里加机构自建的学段名 —— 各机构自建的名字不同,写死一份必然错。 */
+const LEGACY_STAGE_LABELS: Record<string, string> = {
+  primary: '小学', junior: '初中', senior: '高中',
+  other: '其他', unassigned: '未分类',
 };
 
 const AdminSubscriptions = () => {
@@ -265,13 +270,23 @@ const AdminSubscriptions = () => {
     catch { toast.warning('当前浏览器不允许复制，请手动选择兑换码'); }
   };
 
+  /** 学段 key → 显示名。优先用后端下发的 label(机构自建学段只有它认得),
+   *  再落兜底表,最后原样显示 key —— 绝不在前端按 key 猜中文名。 */
+  const stageLabelOf = (key: string): string => {
+    for (const g of groups) {
+      const hit = g.stages.find(s => s.stage === key);
+      if (hit) return hit.label;
+    }
+    return LEGACY_STAGE_LABELS[key] || key;
+  };
+
   /** 一张码开了什么:单书显示书名,多书显示「人教版·小学 14 本」 */
   const describeScope = (c: CodeItem) => {
     const n = c.book_count ?? 1;
     if (n <= 1) return c.book_name || c.books?.[0]?.name || `书#${c.book_id}`;
     const parts: string[] = [];
     if (c.scope_series) parts.push(c.scope_series);
-    if (c.scope_stage) parts.push(STAGE_LABELS[c.scope_stage] || c.scope_stage);
+    if (c.scope_stage) parts.push(stageLabelOf(c.scope_stage));
     const prefix = parts.join('·');
     return prefix ? `${prefix} ${n} 本` : `${n} 本单词本`;
   };
@@ -449,7 +464,9 @@ const AdminSubscriptions = () => {
                           ? 'border-[#3976a9] bg-[#3976a9] text-white'
                           : 'border-slate-300 bg-white text-slate-600 hover:border-[#3976a9]'
                       }`}
-                      title={s.stage === 'other' ? '校本教材/大学/未填学段的书都在这里' : undefined}
+                      title={s.stage === 'unassigned' || s.stage === 'other'
+                        ? '还没设学段的书都在这里(课外书/总复习等),可以正常发码;要归类请去教师端单词本页设置学段'
+                        : undefined}
                     >
                       {s.label}（{s.count} 本）
                     </button>
@@ -464,7 +481,7 @@ const AdminSubscriptions = () => {
               <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#3976a9]/25 bg-white px-3 py-2">
                 <span className="text-sm text-slate-600">
                   要开整个<strong className="text-[#3976a9]">
-                    {STAGE_LABELS[genStage] || genStage}
+                    {stageLabelOf(genStage)}
                   </strong>段？
                 </span>
                 <button

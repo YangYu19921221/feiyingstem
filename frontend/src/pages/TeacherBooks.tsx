@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getTeacherWordBooks, getBookSeries, createBookSeries } from '../api/teacher';
-import type { TeacherWordBook, BookSeriesOption } from '../api/teacher';
+import { getTeacherWordBooks, getBookSeries, createBookSeries, getBookStages, createBookStage } from '../api/teacher';
+import type { TeacherWordBook, BookSeriesOption, BookStageOption } from '../api/teacher';
 import { BookOpen, Settings, Trash2, Search, ChevronDown, LayoutGrid, List, Pencil, FileSpreadsheet } from 'lucide-react';
 import api from '../api/client';
 import { toast } from '../components/Toast';
@@ -41,6 +41,10 @@ const TeacherBooks = () => {
   const [seriesFilter, setSeriesFilter] = useState<string>('');  // ''=全部, '__none__'=未分类
   const [newSeriesName, setNewSeriesName] = useState('');
   const [addingSeries, setAddingSeries] = useState(false);
+  // 学段(二级分组): 选项来自后端 book_stages,教师端与发码页共用同一真源
+  const [stageOptions, setStageOptions] = useState<BookStageOption[]>([]);
+  const [newStageName, setNewStageName] = useState('');
+  const [addingStage, setAddingStage] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('teacherBooksView', viewMode);
@@ -62,31 +66,35 @@ const TeacherBooks = () => {
     );
   }, [books, searchKeyword, seriesFilter]);
 
-  // 按年级阶段分组
+  // 按学段分组(二级分组)。
+  //
+  // ⚠️ 这里**不再自己算学段** —— 原来有一份 stageOf(按 grade_level 正则猜),
+  // 而后端发码那边另有一份 services/book_stage.py,两边对不上: 同一批「大学」教材
+  // 教师端显示成「大学」分组、发码那边归进「其他」。现在学段是 word_books.stage_id
+  // 指向 book_stages 表的真字段,两端读同一个真源(见 api/teacher.ts getBookStages)。
+  //
+  // 排序完全跟随 book_stages.sort_order(即 stageOptions 的顺序),
+  // 「未分类」恒排最后 —— 它是待整理的一堆,不该插在正常学段中间。
   const groupedBooks = useMemo(() => {
+    const UNASSIGNED = '未分类';
+    const nameById = new Map(stageOptions.map(s => [s.id, s.name]));
+    const rankById = new Map(stageOptions.map((s, i) => [s.id, i]));
+
     const groups = new Map<string, TeacherWordBook[]>();
-    const stageOf = (g: string | null): string => {
-      if (!g) return '其他';
-      if (g.includes('小学') || /[一二三四五六]年级/.test(g)) return '小学';
-      if (g.includes('初中') || /[七八九]年级/.test(g)) return '初中';
-      if (g.includes('高中') || /高[一二三]/.test(g)) return '高中';
-      return g;
-    };
     for (const b of filteredBooks) {
-      const stage = stageOf(b.grade_level);
-      if (!groups.has(stage)) groups.set(stage, []);
-      groups.get(stage)!.push(b);
+      // 学段被删掉/不可见时也落「未分类」,不要显示成一个空标题
+      const label = (b.stage_id != null && nameById.get(b.stage_id)) || UNASSIGNED;
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label)!.push(b);
     }
-    // 排序：小学 → 初中 → 高中 → 其他
-    const order = ['小学', '初中', '高中'];
-    return Array.from(groups.entries()).sort(([a], [b]) => {
-      const ia = order.indexOf(a), ib = order.indexOf(b);
-      if (ia !== -1 && ib !== -1) return ia - ib;
-      if (ia !== -1) return -1;
-      if (ib !== -1) return 1;
-      return a.localeCompare(b, 'zh');
-    });
-  }, [filteredBooks]);
+
+    const rankByLabel = new Map<string, number>();
+    for (const s of stageOptions) rankByLabel.set(s.name, rankById.get(s.id)!);
+    rankByLabel.set(UNASSIGNED, stageOptions.length);
+
+    return Array.from(groups.entries()).sort(([a], [b]) =>
+      (rankByLabel.get(a) ?? 998) - (rankByLabel.get(b) ?? 998) || a.localeCompare(b, 'zh'));
+  }, [filteredBooks, stageOptions]);
 
   const toggleGroup = (stage: string) => {
     setCollapsedGroups(prev => {
@@ -98,9 +106,9 @@ const TeacherBooks = () => {
   };
   const hasLoadedOnce = useRef(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', series: '', cover_color: '#FF6B6B' });
+  const [newBook, setNewBook] = useState({ name: '', description: '', grade_level: '', volume: '', series: '', stage: '', cover_color: '#FF6B6B' });
   const [renameTarget, setRenameTarget] = useState<TeacherWordBook | null>(null);
-  const [renameForm, setRenameForm] = useState({ name: '', grade_level: '', volume: '', series: '' });
+  const [renameForm, setRenameForm] = useState({ name: '', grade_level: '', volume: '', series: '', stage: '' });
   const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
@@ -111,6 +119,7 @@ const TeacherBooks = () => {
 
     loadBooks();
     getBookSeries().then(setSeriesOptions).catch(() => {});
+    getBookStages().then(setStageOptions).catch(() => {});
   }, []);
 
   const loadBooks = async () => {
@@ -135,6 +144,7 @@ const TeacherBooks = () => {
     setRenameForm({
       name: book.name,
       grade_level: book.grade_level || '',
+      stage: book.stage_id != null ? String(book.stage_id) : '',
       volume: book.volume || '',
       series: book.series || '',
     });
@@ -155,6 +165,8 @@ const TeacherBooks = () => {
         grade_level: renameForm.grade_level.trim() || null,
         volume: renameForm.volume.trim() || null,
         series: renameForm.series || null,
+        // 0 表示清空(改回未分类);后端显式区分 0/未传,不能传 null
+        stage_id: renameForm.stage ? Number(renameForm.stage) : 0,
       });
       toast.success('已保存');
       setRenameTarget(null);
@@ -198,14 +210,17 @@ const TeacherBooks = () => {
     }
 
     try {
-      const response: any = await api.post('/words/books/batch-delete', selectedBooks);
+      // ⚠️ api/client.ts 的响应拦截器已经 return response.data,
+      // 所以这里拿到的**就是**响应体本身,再取 .data 会是 undefined
+      // (解构 undefined 直接抛 TypeError,表现为"批量删除失败"——其实后端已经删成功了)
+      const result = await api.post<{ deleted_count: number; failed_count: number }>(
+        '/words/books/batch-delete', selectedBooks);
+      const { deleted_count: ok = 0, failed_count: failed = 0 } = result || {};
 
-      const { deleted_count, failed_count } = response.data;
-
-      if (failed_count > 0) {
-        toast.warning(`删除完成! 成功: ${deleted_count} 个, 失败: ${failed_count} 个`);
+      if (failed > 0) {
+        toast.warning(`删除完成! 成功: ${ok} 个, 失败: ${failed} 个`);
       } else {
-        toast.success(`成功删除 ${deleted_count} 个单词本!`);
+        toast.success(`成功删除 ${ok} 个单词本!`);
       }
 
       setSelectedBooks([]);
@@ -213,7 +228,7 @@ const TeacherBooks = () => {
       loadBooks();
     } catch (error) {
       console.error('批量删除失败:', error);
-      toast.error('批量删除失败,请重试');
+      toast.error(getErrorMessage(error, '批量删除失败,请重试'));
     }
   };
 
@@ -231,12 +246,13 @@ const TeacherBooks = () => {
         grade_level: newBook.grade_level || null,
         volume: newBook.volume || null,
         series: newBook.series || null,
+        stage_id: newBook.stage ? Number(newBook.stage) : null,
         cover_color: newBook.cover_color,
         is_public: true,
         word_ids: [],
       });
       setShowCreateModal(false);
-      setNewBook({ name: '', description: '', grade_level: '', volume: '', series: '', cover_color: '#FF6B6B' });
+      setNewBook({ name: '', description: '', grade_level: '', volume: '', series: '', stage: '', cover_color: '#FF6B6B' });
       loadBooks();
     } catch (error) {
       console.error('创建单词本失败:', error);
@@ -252,6 +268,7 @@ const TeacherBooks = () => {
     gradeLevel: string;
     volume: string;
     series: string;
+    stage: string;          // 学段 id 的字符串形式,''=未分类
     units: PreviewUnit[];
     skippedSheets: string[];
   }>(null);
@@ -284,6 +301,7 @@ const TeacherBooks = () => {
         gradeLevel: '',
         volume: '',
         series: '',
+        stage: '',
         units,
         skippedSheets,
       });
@@ -302,6 +320,7 @@ const TeacherBooks = () => {
         grade_level: importPreview.gradeLevel || null,
         volume: importPreview.volume || null,
         series: importPreview.series || null,
+        stage_id: importPreview.stage ? Number(importPreview.stage) : null,
         units: importPreview.units,
       }, {
         // 几千词的批量事务 + 服务器低配,默认 10s 会"假失败"(后端还在跑,
@@ -367,6 +386,58 @@ const TeacherBooks = () => {
             className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40"
           >
             {addingSeries ? '…' : '➕添加'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  /** 学段下拉(与教材版本同一套路,三个弹窗共用)。
+   *  值是 stage_id 的字符串形式,''=未分类;提交时转成数字或 0(0=清空)。 */
+  const handleAddStage = async () => {
+    const name = newStageName.trim();
+    if (!name || addingStage) return;
+    setAddingStage(true);
+    try {
+      const created = await createBookStage(name);
+      setStageOptions(prev => [...prev, created]);
+      setNewStageName('');
+      toast.success(`学段「${created.name}」已添加`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || '添加学段失败');
+    } finally {
+      setAddingStage(false);
+    }
+  };
+  const renderStageSelect = (value: string, onChange: (v: string) => void) => (
+    <div>
+      <label className="block text-sm text-gray-600 mb-1">学段（可选）</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-2 border rounded-lg"
+      >
+        <option value="">未分类</option>
+        {stageOptions.map(so => (
+          <option key={so.id} value={String(so.id)}>{so.name}</option>
+        ))}
+      </select>
+      {canManageSeries && (
+        <div className="flex gap-1.5 mt-1.5">
+          <input
+            value={newStageName}
+            onChange={e => setNewStageName(e.target.value)}
+            placeholder="新增学段,如:大学 / 成人"
+            className="flex-1 px-2 py-1 border border-dashed rounded text-xs"
+            maxLength={20}
+          />
+          <button
+            type="button"
+            onClick={handleAddStage}
+            disabled={!newStageName.trim() || addingStage}
+            className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40"
+          >
+            {addingStage ? '…' : '➕添加'}
           </button>
         </div>
       )}
@@ -838,6 +909,7 @@ const TeacherBooks = () => {
             </div>
             <div className="mb-4">
               {renderSeriesSelect(renameForm.series, v => setRenameForm({ ...renameForm, series: v }))}
+              {renderStageSelect(renameForm.stage, v => setRenameForm({ ...renameForm, stage: v }))}
             </div>
             <div className="flex gap-2">
               <button
@@ -902,6 +974,7 @@ const TeacherBooks = () => {
               </div>
               <div className="mt-3">
                 {renderSeriesSelect(importPreview.series, v => setImportPreview({ ...importPreview, series: v }))}
+                {renderStageSelect(importPreview.stage || '', v => setImportPreview({ ...importPreview, stage: v }))}
               </div>
             </div>
 
@@ -990,6 +1063,7 @@ const TeacherBooks = () => {
                 </div>
               </div>
               {renderSeriesSelect(newBook.series, v => setNewBook({ ...newBook, series: v }))}
+              {renderStageSelect(newBook.stage, v => setNewBook({ ...newBook, stage: v }))}
               <div>
                 <label className="block text-sm text-gray-600 mb-1">描述（可选）</label>
                 <input

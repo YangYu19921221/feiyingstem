@@ -1,7 +1,14 @@
 import api from './client';
 
-/** 学段档位(真源在后端 services/book_stage,「其他」放的是校本教材/大学/无学段的书) */
-export type BookStage = 'primary' | 'junior' | 'senior' | 'other';
+/** 学段档位的 key(2026-09-11 学段改成真字段后)。
+ *
+ * 取值三类,**不要再写成固定联合类型** —— 机构能自建学段(大学/成人/…):
+ *   'primary' | 'junior' | 'senior'  平台预置档的 code
+ *   'custom:{id}'                    机构自建档
+ *   'unassigned'                     未分类(没设学段的书,仍可正常发码)
+ * 老码上留痕的 'other' 也仍会出现在历史数据里。
+ * 显示名一律用后端下发的 label,别在前端按 key 猜中文名。 */
+export type BookStage = string;
 
 export interface BookGroupBook {
   id: number;

@@ -81,6 +81,39 @@ def stage_label(stage: str) -> str:
     return STAGE_LABELS.get(stage, STAGE_LABELS[STAGE_OTHER])
 
 
+async def resolve_stage_id(db, grade_level: Optional[str]) -> Optional[int]:
+    """年级 → 平台预置学段的 id。认不出返回 None(= 未分类)。
+
+    ## 为什么需要它(2026-09-11)
+
+    学段改成真字段后,**新建/导入单词本时若只填年级、不选学段,书会落进「未分类」**。
+    这是个真的行为回退: 改造前填「三年级」就自动出现在小学分组里,改造后要多点一次
+    学段才行 —— 老师十有八九不会点,几个月后「未分类」堆成第一大组。
+    (这个回退是 tests/test_redemption_multi_book_http.py 抓出来的: 它建了带
+     grade_level 却没 stage_id 的书,期望在 primary 档下,结果 StopIteration。)
+
+    所以建书/导入时用这个函数补默认值: **年级能推出学段就自动填上**,
+    老师仍可随时改成别的学段或清空。只在 stage_id 没显式传时兜底,
+    显式选了(包括显式选「未分类」)一律尊重用户的选择。
+
+    只映射到**平台预置**的三档(org_id IS NULL 且 code 匹配) —— 机构自建的
+    「大学」「成人」没有年级可推,本来就该手动选。
+    """
+    from sqlalchemy import select
+    from app.models.word import BookStage
+
+    code = stage_of(grade_level)
+    if code == STAGE_OTHER:
+        return None
+    # 显式限定平台预置档: 机构若自建了同 code 的档(理论上不该发生,create 时 code 强制留空),
+    # 也不能让它抢掉预置档的位置
+    return (await db.execute(
+        select(BookStage.id).where(
+            BookStage.code == code, BookStage.org_id.is_(None)
+        ).limit(1)
+    )).scalar_one_or_none()
+
+
 def group_books_by_stage(books: Iterable) -> dict[str, list]:
     """把书按学段分桶 → {stage: [book, ...]}。
 

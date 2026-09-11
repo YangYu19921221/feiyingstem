@@ -101,5 +101,7 @@ class WorkbookImportRequest(BaseModel):
     grade_level: Optional[str] = Field(None, max_length=20)
     volume: Optional[str] = Field(None, max_length=20)
     series: Optional[str] = Field(None, max_length=30, description="教材版本,如人教版/苏教版")
+    # 学段(二级分组)。不传时后端按 grade_level 自动推(见 book_stage.resolve_stage_id)
+    stage_id: Optional[int] = Field(None, description="学段ID,不传则按年级自动归类")
     description: Optional[str] = Field(None, max_length=500)
     units: List[WorkbookImportUnit] = Field(..., min_length=1)

@@ -487,6 +487,9 @@ async def init_db():
             # (可复用),这里是「买过多少张半年卡」(一次性消耗)。NULL = 回退 student_quota,
             # 存量机构零影响。不分开的话半年卡的续卡会被发码上限锁死(已实测)
             "ALTER TABLE organizations ADD COLUMN card_quota INTEGER",
+            # 学段(2026-09-11): 单词本的二级分组,选项见 book_stages 表。
+            # 可空(课外书/总复习本来就没有学段);存量行在下方按 grade_level 回填
+            "ALTER TABLE word_books ADD COLUMN stage_id INTEGER",
         ]:
             try:
                 await conn.execute(text(_sql))
@@ -551,6 +554,70 @@ async def init_db():
                 ), {"s": series_name, "kw": kw})
             except Exception:
                 pass
+
+        # ===== 学段(二级分组): 建表 + 预置 + 存量回填(均幂等,2026-09-11) =====
+        # 学段此前是从 grade_level 现算的推导值,三处规则各写一份且不一致
+        # (教师端显示「大学」分组、发码那边归「其他」)。现在真存一个值,
+        # 教师端分组与发码选书读同一张表。详见 models/word.py 的 BookStage。
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS book_stages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(20) NOT NULL,
+                    code VARCHAR(10),
+                    org_id INTEGER,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_book_stages_org ON book_stages(org_id)"))
+        except Exception:
+            pass
+
+        # 预置三档(仅当表空时插,机构后续自定义/改名/排序不被启动覆盖)。
+        # code 是稳定标识: 机构把「小学」改名成「小学部」时,按 code 对齐的
+        # 发码/PK 逻辑不受影响 —— 别改成按中文名匹配
+        try:
+            has_stage = (await conn.execute(text("SELECT COUNT(*) FROM book_stages"))).scalar()
+            if not has_stage:
+                for i, (nm, cd) in enumerate([("小学", "primary"), ("初中", "junior"),
+                                              ("高中", "senior")]):
+                    await conn.execute(text(
+                        "INSERT INTO book_stages (name, code, org_id, sort_order) "
+                        "VALUES (:n, :c, NULL, :s)"
+                    ), {"n": nm, "c": cd, "s": i})
+        except Exception:
+            pass
+
+        # 存量回填: 按 grade_level 推导一次性写入 stage_id,只动 stage_id IS NULL 的行。
+        # 口径与 services/book_stage.stage_of 保持一致(先判初中/高中再落小学 ——
+        # "高一"含"一"、"七年级"含"年级",按小学的宽松规则先匹配会误判)。
+        # 认不出的(大学/飞鹰/空年级)**留空**,归界面上的「未分类」,由老师补 ——
+        # 不兜底成小学: 发码时把大学教材当小学开出去是真事故
+        try:
+            for grades, code in [
+                (("七年级", "八年级", "九年级", "初一", "初二", "初三"), "junior"),
+                (("高一", "高二", "高三"), "senior"),
+                (("一年级", "二年级", "三年级", "四年级", "五年级", "六年级"), "primary"),
+            ]:
+                placeholders = ", ".join(f":g{i}" for i in range(len(grades)))
+                params = {f"g{i}": g for i, g in enumerate(grades)}
+                await conn.execute(text(
+                    f"UPDATE word_books SET stage_id = "
+                    f"  (SELECT id FROM book_stages WHERE code = '{code}' AND org_id IS NULL) "
+                    f"WHERE stage_id IS NULL AND grade_level IN ({placeholders})"
+                ), params)
+            # 直接写学段名的行(生产有 6 本 grade_level 就是"小学"/"初中"/"高中")
+            for like_kw, code in [("%初中%", "junior"), ("%高中%", "senior"),
+                                  ("%小学%", "primary")]:
+                await conn.execute(text(
+                    f"UPDATE word_books SET stage_id = "
+                    f"  (SELECT id FROM book_stages WHERE code = '{code}' AND org_id IS NULL) "
+                    f"WHERE stage_id IS NULL AND grade_level LIKE :kw"
+                ), {"kw": like_kw})
+        except Exception:
+            pass
 
         # ===== pk_rooms.max_players 上限放开(幂等) =====
         # 与上面 exam_questions / learning_records 同一套做法:查 sqlite_master 里的

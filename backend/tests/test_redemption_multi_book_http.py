@@ -31,10 +31,20 @@ async def _setup(db):
     db.add_all([admin, stu])
     await db.flush()
 
+    # 平台预置学段(生产由 init_db 建;本测试直接 ORM 建书,得自己造)。
+    # 2026-09-11 学段从「按 grade_level 现算」改成 word_books.stage_id 真字段后,
+    # **直接 ORM 插入的书必须显式挂 stage_id** —— 经 API 建书会按年级自动推
+    # (book_stage.resolve_stage_id),但这里绕过了 API。
+    from app.models.word import BookStage
+    primary_stage = BookStage(name="小学", code="primary", org_id=None, sort_order=0)
+    db.add(primary_stage)
+    await db.flush()
+
     # 两本「人教版·小学」书,各一个单元一个词(取词表端点要真能返回内容)
     books, units = [], []
     for i, (nm, gl) in enumerate([("三年级上", "三年级"), ("四年级上", "四年级")]):
-        b = WordBook(name=nm, grade_level=gl, series="人教版", is_public=True)
+        b = WordBook(name=nm, grade_level=gl, series="人教版", is_public=True,
+                     stage_id=primary_stage.id)
         db.add(b)
         await db.flush()
         u = Unit(book_id=b.id, name=f"{nm}-U1", unit_number=1, word_count=1)

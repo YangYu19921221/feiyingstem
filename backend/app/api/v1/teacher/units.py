@@ -11,6 +11,7 @@ from app.schemas.unit import (
     UnitWordAdd, UnitWordAddResponse, WorkbookImportRequest
 )
 from app.api.v1.auth import get_current_teacher
+from app.services import book_stage
 
 router = APIRouter()
 
@@ -78,12 +79,18 @@ async def import_workbook(
             detail=f"你已创建过同名单词本「{data.book_name}」,请先改名/删除旧本,或改用单元内导入追加",
         )
 
+    # 学段: 前端传了就用,没传按年级自动推(与手动建本同口径,见 book_stage.resolve_stage_id)
+    stage_id = getattr(data, "stage_id", None)
+    if stage_id is None:
+        stage_id = await book_stage.resolve_stage_id(db, data.grade_level)
+
     book = WordBook(
         name=data.book_name,
         description=data.description,
         grade_level=data.grade_level,
         volume=data.volume,
         series=data.series,
+        stage_id=stage_id,
         is_public=True,
         cover_color="#FF6B6B",
         cover_url=None,  # AI 封面 commit 后台补(_fill_book_cover),不挡主路径

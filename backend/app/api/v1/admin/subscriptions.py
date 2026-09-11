@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.models.user import (
     User, RedemptionCode, RedemptionCodeBook, RedemptionCodeStatus,
 )
-from app.models.word import WordBook
+from app.models.word import WordBook, BookStage
 from app.api.v1.auth import get_current_admin_or_org_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
@@ -35,19 +35,41 @@ async def list_book_groups(
     多租户由 tenancy 过滤器自动罩住(WordBook 是 shared_nullable 锚点:
     机构看到平台共享 + 自建,平台 admin 看全部),这里不手写 org 条件。
 
-    学段是从 grade_level 推导的(真源 services/book_stage),生产数据里有 27 本
-    归不进小学/初中/高中(校本教材/大学/空),它们落在「其他」档且**可以正常发码**。
+    ## 学段口径(2026-09-11 改)
+
+    以前是从 `grade_level` **现算**的(services/book_stage.stage_of),而教师端
+    单词本页另写了一份规则,两边对不上: 同一批书教师端显示「大学」分组、
+    这里归进「其他」。现在改为读 `word_books.stage_id` → `book_stages` 表,
+    **与教师端二级分组同一个真源**,机构自建的学段(大学/成人/…)两边都认。
+
+    `stage_id` 为空的书归 `unassigned`(界面「未分类」)且**可以正常发码** ——
+    生产有课外书/总复习/校本教材本来就没有学段,不能因为分类空着就发不出卡。
+    兼容: 老码上留痕的 `scope_stage` 仍是 primary/junior/senior 那套 code,
+    所以预置档的 key 继续用 code,机构自建档用 `custom:{id}`。
     """
     rows = (await db.execute(
-        select(WordBook.id, WordBook.name, WordBook.series, WordBook.grade_level)
+        select(WordBook.id, WordBook.name, WordBook.series,
+               WordBook.grade_level, WordBook.stage_id)
         .order_by(WordBook.series, WordBook.grade_level, WordBook.name)
     )).all()
+
+    # 学段表(平台预置 + 本机构自建,经 tenancy 过滤) → 供 key/名称/排序
+    stage_rows = (await db.execute(
+        select(BookStage).order_by(BookStage.sort_order, BookStage.id)
+    )).scalars().all()
+    # key: 预置档用 code(与老码的 scope_stage 对齐),自建档用 custom:{id}
+    stage_key = {s.id: (s.code or f"custom:{s.id}") for s in stage_rows}
+    stage_name = {stage_key[s.id]: s.name for s in stage_rows}
+    stage_rank = {stage_key[s.id]: i for i, s in enumerate(stage_rows)}
+    UNASSIGNED = "unassigned"
+    stage_name[UNASSIGNED] = "未分类"
+    stage_rank[UNASSIGNED] = len(stage_rows)   # 未分类恒排最后
 
     # series → stage → books
     by_series: dict[str, dict[str, list]] = {}
     for r in rows:
         series = r.series or ""      # 空串代表「未分组」,前端显示成"未分组"
-        stage = book_stage.stage_of(r.grade_level)
+        stage = stage_key.get(r.stage_id, UNASSIGNED) if r.stage_id else UNASSIGNED
         by_series.setdefault(series, {}).setdefault(stage, []).append({
             "id": r.id, "name": r.name, "grade_level": r.grade_level,
         })
@@ -62,11 +84,14 @@ async def list_book_groups(
             "stages": [
                 {
                     "stage": st,
-                    "label": book_stage.stage_label(st),
+                    "label": stage_name.get(st, st),
                     "count": len(stages[st]),
                     "books": stages[st],
                 }
-                for st in book_stage.STAGE_ORDER if st in stages
+                # 按 book_stages.sort_order 排,未分类恒最后。
+                # 不再用 book_stage.STAGE_ORDER —— 那是写死的三档,
+                # 机构自建的学段会被它整个过滤掉(书凭空消失,发不出卡)
+                for st in sorted(stages, key=lambda k: stage_rank.get(k, 999))
             ],
         })
     return {"groups": out}

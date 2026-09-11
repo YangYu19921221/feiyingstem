@@ -22,8 +22,15 @@ class RedemptionCodeGenerate(BaseModel):
     grant_times: Optional[int] = Field(None, ge=1, le=1000, description="次卡可用天数")
     # 发码条件留痕(仅展示/追溯,不参与判活)
     scope_series: Optional[str] = Field(None, max_length=30, description="按此分组发的码")
+    # 学段留痕。取值三类(2026-09-11 学段改成真字段后):
+    #   primary/junior/senior  平台预置档的 code(老码就是这套,保持兼容)
+    #   custom:{id}            机构自建的学段(大学/成人/…)
+    #   unassigned / other     未分类(other 是老码的写法,继续接受)
+    # ⚠️ 不能再写死成那四个值 —— 机构自建学段发码会被 422 拦死,
+    # 而这一列只是**展示与追溯**用,不参与判活,宽松些没有安全影响
     scope_stage: Optional[str] = Field(
-        None, pattern="^(primary|junior|senior|other)$", description="按此学段发的码")
+        None, max_length=20, pattern=r"^(primary|junior|senior|other|unassigned|custom:\d+)$",
+        description="按此学段发的码(留痕用)")
 
     @model_validator(mode="after")
     def _check_grant(self):
