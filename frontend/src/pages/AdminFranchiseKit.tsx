@@ -3,10 +3,21 @@
  *
  * 两份对外标准文档,页面内直接排好版:
  *  1. 合作协议 —— 参照行业同类协议改写为本系统计费口径(2026-08-27 起执行):
- *     基础合作费 ¥12,000(原价 ¥20,000,6 折)含 100 张学生学习卡(每张半年 / 180 天),
- *     超出按 ¥130/张;飞鹰英语专属内容 +¥40,000;教材 ¥50/本;
+ *     基础合作费 ¥24,000(2026-09-11 由「¥12,000 = 原价 ¥20,000 打 6 折」改为 ¥24,000 无折扣,
+ *     「原价/折扣/2026-08-27 起执行」的说法一并删除)含 100 张学生学习卡(每张半年 / 180 天),
+ *     超出按 ¥130/张;飞鹰英语专属内容 +¥16,000(同日由 ¥40,000 下调);
+ *     ⚠️ 方案里有三个数字是**从基础合作费算出来的**,改价必须连带重算:
+ *     数字牌(每张卡 24000/100=¥240、每天 240/180≈¥1.3)+ 投入产出那段;
+ *     教材**按供货清单明细计价**(2026-09-11 由固定 ¥50/本 改,单价不再写进协议,
+ *     靠「清单 + 逐单书面确认」定价,已确认订单锁价);
  *     带教培训**自费**(2026-09-11 起由「含 2 位老师、不另收培训费」改为按参训人数自费,
- *     单价在协议里留空现填;协议与销售方案两份文档口径必须一致,改一处必须改另一处)
+ *     单价在协议里留空现填);续卡 **50 张起、无需另签合同**(2026-09-11 加,
+ *     第三条第 3 款 + 第八条第 2 款必须成对出现 —— 只写费用条会与「一年一签」自相矛盾)
+ *     协议与销售方案两份文档口径必须一致,改一处必须改另一处
+ *     ⚠️ 区域保护(第四条)2026-09-11 由「直线三公里」改为**会泽县全境**,是写死的县名:
+ *     再签别的县必须改这里(或改成空栏现填)。且此口径**已与 geo_service 的自动判定脱钩** ——
+ *     那套按 Haversine 半径判(organizations.protect_radius_km),圈不出行政区划,
+ *     县内相距 10km 的第二家它判「不冲突」而协议判违约,开通新机构别再拿它当准。
  *  2. 功能详解与提分方案 —— 给加盟商看的系统能力说明,围绕"怎么帮学生提分"展开
  *
  * 导出方式与打印默写纸同一套路:纯前端 window.print(),打印对话框里选"另存为 PDF"
@@ -94,8 +105,7 @@ function ContractDoc() {
 
       <Clause no="三" title="合作费用与结算">
         <p>
-          1. 基础合作费:人民币 <strong>12,000 元</strong>(大写:<strong>壹万贰仟元整</strong>),
-          为标准价 20,000 元的 <strong>6 折优惠价</strong>(自 2026 年 8 月 27 日起执行),
+          1. 基础合作费:人民币 <strong>24,000 元</strong>(大写:<strong>贰万肆仟元整</strong>),
           包含第二条约定的授权内容及 <strong>100 张学生学习卡(每张半年)</strong>。
         </p>
         <p>
@@ -103,27 +113,36 @@ function ContractDoc() {
           规格同上(半年 / 180 天),按乙方实际增购数量结算。
         </p>
         <p>
-          3. 飞鹰英语专属内容:乙方选配的,另行支付人民币 <strong>40,000 元</strong>
-          (大写:<strong>肆万元整</strong>)。
+          3. 续卡:乙方在协议有效期内可随时增购学习卡(续卡),
+          <strong>每次续卡数量不低于 50 张</strong>(即 50 张起订,可按 50 张的整数倍或实际需要增购),
+          单价同前款。<strong>续卡无需另行签订合同</strong>,由乙方书面(含微信、邮件等可留痕方式)
+          告知甲方所需数量,甲方收到款项后为乙方开通相应数量的学习卡,该次续卡记录即视为本协议附件,
+          适用本协议全部条款。
         </p>
         <p>
-          4. 配套教材:纸质教材按<strong>每本人民币 50 元</strong>(伍拾元整)供货,
-          乙方按需订购,运费另计。
+          4. 飞鹰英语专属内容:乙方选配的,另行支付人民币 <strong>16,000 元</strong>
+          (大写:<strong>壹万陆仟元整</strong>)。
         </p>
         <p>
-          5. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训</strong>,该项服务由
+          5. 配套教材:纸质教材<strong>按甲方教材供货清单所列品种、规格与单价明细计算</strong>,
+          乙方按需订购;每次订购由双方书面(含微信、邮件等可留痕方式)确认订购明细
+          (品种、规格、数量、单价、金额)后执行,运费另计。甲方调整清单单价的,应提前书面告知乙方,
+          <strong>已确认的订单仍按确认时的单价执行</strong>。
+        </p>
+        <p>
+          6. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训</strong>,该项服务由
           <strong>乙方自费</strong>,按每位参训老师人民币 <Blank w="5rem" /> 元计收,
           参训人数由乙方按需确定;培训期间乙方人员的交通、食宿费用亦由乙方自理。
         </p>
         <p>
-          6. 付款方式:本协议签订后<Blank w="3rem" />日内,乙方一次性向甲方支付上述应付款项;
+          7. 付款方式:本协议签订后<Blank w="3rem" />日内,乙方一次性向甲方支付上述应付款项;
           甲方收到款项后<Blank w="3rem" />个工作日内完成系统开通与账号交付。
         </p>
         <p>
-          7. 系统开通后,已付费用不予退还。因不可抗力(如疫情停课等)导致乙方连续停课三十日以上的,
+          8. 系统开通后,已付费用不予退还。因不可抗力(如疫情停课等)导致乙方连续停课三十日以上的,
           乙方可书面申请服务期相应顺延。
         </p>
-        <p>8. 甲方对乙方向其学员的终端收费价格与招生政策不予干涉。</p>
+        <p>9. 甲方对乙方向其学员的终端收费价格与招生政策不予干涉。</p>
         <table className="mt-3 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
           <thead>
             <tr>
@@ -135,8 +154,8 @@ function ContractDoc() {
           <tbody>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">基础合作费</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥12,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">原价 ¥20,000 的 6 折;含 100 张学生学习卡(每张半年);系统内书本内容开放;教师、管理账号不另收费</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥24,000</td>
+              <td className="border border-slate-500 px-2 py-1.5">含 100 张学生学习卡(每张半年);系统内书本内容开放;教师、管理账号不另收费</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">超额学习卡</td>
@@ -144,14 +163,19 @@ function ContractDoc() {
               <td className="border border-slate-500 px-2 py-1.5">自第 101 张起,每张半年(180 天),按实际增购数量计费</td>
             </tr>
             <tr>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">续卡</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">50 张起</td>
+              <td className="border border-slate-500 px-2 py-1.5">协议期内随时增购,每次不低于 50 张,单价同上;<strong>无需另签合同</strong>,书面告知数量并付款即开通</td>
+            </tr>
+            <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥40,000</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥16,000</td>
               <td className="border border-slate-500 px-2 py-1.5">选配项;开放飞鹰自研教材配套单词本、句型本及教学内容</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">配套教材</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥50 / 本</td>
-              <td className="border border-slate-500 px-2 py-1.5">纸质教材按需订购,运费另计</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">按清单明细</td>
+              <td className="border border-slate-500 px-2 py-1.5">按教材供货清单所列品种、规格与单价计算,乙方按需订购;每次订购书面确认明细后执行,运费另计</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">系统升级</td>
@@ -169,11 +193,14 @@ function ContractDoc() {
 
       <Clause no="四" title="区域保护">
         <p>
-          1. 自本协议生效之日起,甲方在乙方上述经营场所<strong>直线距离三公里</strong>范围内,不再发展其他合作点。
+          1. 自本协议生效之日起,甲方在<strong>云南省曲靖市会泽县全境(含县城及下辖所有乡镇)</strong>范围内,
+          不再发展其他合作点,乙方在该区域内享有本系统的独家推广运营权。
         </p>
         <p>
-          2. 前款距离以双方在本协议中确认的经营场所地址所对应的地图坐标为准,由甲方在系统内登记并据此核验;
-          乙方变更经营场所的,应提前书面告知甲方并重新确认保护范围。
+          2. 前款范围以国家现行行政区划为准,不以经营场所之间的距离计算;会泽县行政区划调整的,
+          按调整后覆盖原会泽县辖域的范围执行。乙方在该区域内变更(搬迁)经营场所的,保护范围不变,
+          但应书面告知甲方以便系统登记;乙方在该区域内<strong>增设</strong>经营场所或跨出该区域经营的,
+          应另行与甲方协商。
         </p>
       </Clause>
 
@@ -219,7 +246,10 @@ function ContractDoc() {
           1. 本协议有效期壹年,自<Blank w="4rem" />年<Blank w="2.5rem" />月<Blank w="2.5rem" />日起,
           至<Blank w="4rem" />年<Blank w="2.5rem" />月<Blank w="2.5rem" />日止。
         </p>
-        <p>2. 本协议一年一签。协议期内乙方正常履约的,享有同等条件下的优先续签权。</p>
+        <p>
+          2. 本协议一年一签。协议期内乙方正常履约的,享有同等条件下的优先续签权。
+          <strong>协议有效期内增购学习卡(续卡)不属于续签,无需另行签订合同</strong>,按第三条第 3 款办理。
+        </p>
         <p>
           3. 协议到期未续签的,甲方有权关停乙方管理账号及学员账号服务;乙方数据自到期之日起保留九十日,
           期内续签的予以恢复。
@@ -438,8 +468,8 @@ function PitchDoc() {
           <tbody>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">基础合作费</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥12,000</td>
-              <td className="border border-orange-200 px-2 py-1.5"><strong>原价 ¥20,000,现 6 折</strong>;含 <strong>100 张学生学习卡(每张半年)</strong>,教材同步内容全开放,教师 / 管理账号不限</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥24,000</td>
+              <td className="border border-orange-200 px-2 py-1.5">含 <strong>100 张学生学习卡(每张半年)</strong>,教材同步内容全开放,教师 / 管理账号不限</td>
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">超出 100 张</td>
@@ -447,14 +477,19 @@ function PitchDoc() {
               <td className="border border-orange-200 px-2 py-1.5">同为半年卡(180 天),按实际增购数量计费</td>
             </tr>
             <tr>
+              <td className="border border-orange-200 px-2 py-1.5 text-center">续卡</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">50 张起</td>
+              <td className="border border-orange-200 px-2 py-1.5">协议期内随时续,每次 50 张起,<strong>不用再签合同</strong>——说一声、付款就开通</td>
+            </tr>
+            <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">+¥40,000</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">+¥16,000</td>
               <td className="border border-orange-200 px-2 py-1.5">选配:飞鹰自研教材配套单词本、句型本与教学内容</td>
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">配套教材</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥50 / 本</td>
-              <td className="border border-orange-200 px-2 py-1.5">纸质教材按需订购,运费另计</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">按清单明细</td>
+              <td className="border border-orange-200 px-2 py-1.5">按教材供货清单的品种、规格与单价明细计算,按需订购,运费另计</td>
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">系统升级</td>
@@ -470,9 +505,9 @@ function PitchDoc() {
         </table>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           {[
-            ['6 折', '12,000 元(原价 20,000)'],
-            ['¥120', '每张半年学习卡(100 张满配时)'],
-            ['约 0.7 元', '折合每个学生每天'],
+            ['¥24,000', '基础合作费(含 100 张半年卡)'],
+            ['¥240', '每张半年学习卡(100 张满配时)'],
+            ['约 1.3 元', '折合每个学生每天'],
           ].map(([big, small]) => (
             <div key={small} className="rounded-lg border border-orange-200 bg-[#FFF8F0] px-2 py-2.5">
               <p className="text-[18px] font-black text-[#FF6B35]">{big}</p>
@@ -483,15 +518,16 @@ function PitchDoc() {
         <p className="mt-3">
           <strong>投入产出参考</strong>(仅供测算,终端定价由机构完全自主,平台不干涉,亦不构成收益承诺):
           机构若将系统打包进课程、或按 200–300 元 / 本向学员收取智能学习服务费,100 名学生学一本书即对应
-          2–3 万元流水;基础合作费 1.2 万元摊到 100 张卡为每张约 120 元(半年),
-          不到一本书服务费的一半。
+          2–3 万元流水;基础合作费 2.4 万元摊到 100 张卡为每张 240 元(半年),
+          折合每个学生每天约 1.3 元。首期投入与一本书的服务费流水大致相当,
+          后续续卡每张 130 元(50 张起,无需另签合同),第二期起单张成本降约一半。
         </p>
       </PitchSection>
 
       {/* 九、合作保障 */}
       <PitchSection no="九" title="为什么可以放心合作">
         <ul className="list-disc space-y-1 pl-5">
-          <li><strong>区域保护</strong>:经营场所直线三公里内不再发展第二家合作点,写进协议,系统按坐标核验。</li>
+          <li><strong>区域保护</strong>:会泽县全境(含所有乡镇)独家,县域内不再发展第二家合作点,写进协议。</li>
           <li><strong>一年一签</strong>:先跑通再续签,机构风险可控;正常履约享同等条件优先续签权。</li>
           <li><strong>数据隔离</strong>:机构学员数据独立隔离,平台不用于向机构学员直接招生。</li>
           <li><strong>持续迭代</strong>:系统每月都在更新(近期上线:纸笔听写 AI 批改、书本全托开放),服务期内全部免费同步。</li>
