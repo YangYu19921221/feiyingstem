@@ -95,18 +95,66 @@ async def test_only_one_source_present(db_session):
 
 @pytest.mark.asyncio
 async def test_day_cap_blocks_legacy_dirty_rows(db_session):
-    """单日封顶 12h:挡住 2026-07-09 前逐题累加的旧脏数据。
+    """单日封顶 12h:显式查旧区间时,挡住 2026-07-09 前逐题累加的脏数据。
 
     生产最脏一行是 33538983 秒(9316 小时),裸求和会让学生端显示 717738 分钟。
-    用户 2026-08-29 拍板不改历史数据,靠读取侧封顶挡住,所以这个封顶是数据正确性的
-    唯一防线,删掉它等于把 11962 小时放回页面。
+    用户 2026-08-29 拍板不改历史数据,靠读取侧封顶挡住。
+
+    ⚠️ 2026-09-12 起「累计」口径另有一道 TRUSTED_SINCE 起始日(见下一条测试),
+    所以这里必须**显式传区间**才能验到封顶 —— 不传的话那一天已被起始日整个排除。
+    封顶仍然是必需的: 调用方显式查 4 月数据时,它是唯一防线。
     """
     stu = await _mk_student(db_session)
     d = date(2026, 6, 4)
     await _add_calendar(db_session, stu.id, d, 33538983)
 
     assert await study_time.seconds_on_day(db_session, stu.id, d) == study_time.DAY_CAP_SEC
-    assert await study_time.seconds_total(db_session, stu.id) == 12 * 3600
+    # 显式区间: 封顶生效
+    assert await study_time.seconds_total(db_session, stu.id, d, d) == 12 * 3600
+
+
+@pytest.mark.asyncio
+async def test_cumulative_excludes_pre_trusted_days(db_session):
+    """累计口径从 TRUSTED_SINCE(2026-07-09)起算,不含之前的脏数据。
+
+    为什么单靠 12h 封顶不够(生产实测 uid 23 王彬铜):
+      07-09 前 66 天日均 102.9 分钟、单日最高 10.95 小时 —— **每天都不超顶**,
+      封顶一点没削,但那 113 小时是逐题累加的产物(这些天在 study_sessions 里
+      查不到对应会话);07-09 后 51 天日均 80.2 分钟、两个源能对上。
+      封顶后累计仍 183 小时,其中 113 小时是脏的。
+
+    显示一个虚高 1.6 倍的累计时长比不显示更糟 —— 它会被拿去发家长群。
+    """
+    stu = await _mk_student(db_session)
+    before = date(2026, 6, 4)      # 起始日之前: 不该计入累计
+    on_cut = date(2026, 7, 9)      # 起始日当天: 含首日,该计入
+    after = date(2026, 8, 20)
+    await _add_calendar(db_session, stu.id, before, 3600)
+    await _add_calendar(db_session, stu.id, on_cut, 1800)
+    await _add_calendar(db_session, stu.id, after, 600)
+
+    # 累计 = 起始日当天 + 之后,不含之前
+    assert await study_time.seconds_total(db_session, stu.id) == 1800 + 600
+
+    # 但显式传区间时按调用方给的窗口原样查(不被悄悄改写) ——
+    # 有人真要查 6 月就该拿到 6 月的值,由他判断可信度
+    assert await study_time.seconds_total(db_session, stu.id, before, before) == 3600
+
+
+@pytest.mark.asyncio
+async def test_trusted_since_applies_to_all_entry_points(db_session):
+    """起始日必须对**所有**对外函数生效(它们都经过 _per_day_seconds)。
+
+    逐个函数各加一次判断必然漏掉某个,而漏掉的那个就是下一次"两个页面数字打架"。
+    """
+    stu = await _mk_student(db_session)
+    await _add_calendar(db_session, stu.id, date(2026, 6, 4), 7200)   # 脏,应被排除
+    await _add_calendar(db_session, stu.id, date(2026, 8, 20), 600)   # 干净
+
+    assert await study_time.seconds_total(db_session, stu.id) == 600
+    assert (await study_time.seconds_by_student(db_session, [stu.id])).get(stu.id) == 600
+    rows = await study_time.seconds_rows(db_session, [stu.id])
+    assert dict(rows).get(stu.id) == 600
 
 
 @pytest.mark.asyncio

@@ -70,13 +70,17 @@ async def test_all_five_surfaces_report_same_duration(client, db_session):
     ))
     db_session.add(StudyCalendar(user_id=stu.id, study_date=today,
                                  words_learned=10, duration=900))
-    # 一条 07-09 前的旧脏行(9316 小时):累计里最多只能贡献 12 小时
+    # 一条 07-09 前的旧脏行(9316 小时)。
+    # 2026-09-12 起累计口径从 TRUSTED_SINCE(2026-07-09)起算,所以这一行
+    # **整个不计入累计** —— 之前是"封顶后贡献 12 小时"。
+    # 五个界面必须**一起**变: 只要有一处还在裸求和,这条断言就会炸,
+    # 那正是这个测试文件存在的意义(只测服务层管不住跨端漂移)。
     db_session.add(StudyCalendar(user_id=stu.id, study_date=date(2026, 6, 4),
                                  words_learned=1520, duration=33538983))
     await db_session.commit()
 
     EXPECT_TODAY = 1800                      # 秒
-    EXPECT_TOTAL = 1800 + 12 * 3600          # 今天 + 脏行封顶后的 12h
+    EXPECT_TOTAL = 1800                      # 只有今天;07-09 前那行被起始日排除
 
     stu_headers = {"Authorization": f"Bearer {_make_token(stu.id)}"}
     t_headers = {"Authorization": f"Bearer {_make_token(teacher.id)}"}
