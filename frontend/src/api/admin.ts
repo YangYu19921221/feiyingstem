@@ -31,6 +31,67 @@ export interface AdminTeacherDetail {
   classes: { id: number; name: string; description: string | null; created_at: string }[];
 }
 
+/** 教师教学数据(管理端教师详情/一览)。
+ *
+ * ⚠️ checkin_rate 是**签到率**不是线下到课率 —— 它量的是"学生当天打开 App 签了到"。
+ * 界面上必须显示后端下发的 checkin_note,别把它标成「出勤率」:
+ * 机构会拿这个数考核老师,标错了就是拿错数据做决定。 */
+export interface TeacherMetrics {
+  student_count: number;
+  checkin_rate: number;      // 已签人天 ÷ (在读学生 × 天数)
+  checkin_days?: number;     // 已签人天(逐班明细里有)
+  active_students: number;   // 区间内真做过题的人数
+  active_rate: number;
+  study_minutes: number;
+  vocab: number;
+  training: number;
+}
+
+export interface TeacherClassMetrics extends TeacherMetrics {
+  class_id: number;
+  name: string;
+}
+
+export interface AdminTeacherAnalytics {
+  teacher: { id: number; username: string; full_name: string | null;
+             is_active: boolean; last_login: string | null };
+  window: { days: number; start: string; end: string };
+  summary: TeacherMetrics & {
+    class_count: number;
+    homework_assigned: number;
+    homework_completion_rate: number;
+  };
+  classes: TeacherClassMetrics[];
+  checkin_note: string;
+}
+
+export interface AdminTeachersOverview {
+  window: { days: number; start: string; end: string };
+  teachers: (TeacherMetrics & {
+    teacher_id: number; username: string; full_name: string | null;
+    is_active: boolean; last_login: string | null; class_count: number;
+  })[];
+  totals: {
+    teacher_count: number; student_count: number; checkin_rate: number;
+    active_students: number; active_rate: number; study_minutes: number; vocab: number;
+  };
+  checkin_note: string;
+}
+
+export interface AdminCheckins {
+  day: string;
+  total: number;
+  checked: number;
+  checkin_rate: number;
+  students: {
+    student_id: number; name: string;
+    class_id: number; class_name: string;
+    teacher_id: number; teacher_name: string | null;
+    checked: boolean; checked_at: string | null;
+  }[];
+  checkin_note: string;
+}
+
 export interface AdminClassOverview {
   class_id: number;
   name: string;
@@ -149,6 +210,25 @@ export const admin = {
 
   getTeacher: async (id: number): Promise<AdminTeacherDetail> => {
     const r = await axios.get(`${BASE}/teachers/${id}`);
+    return r.data;
+  },
+
+  /** 一位老师的教学数据(汇总 + 逐班) */
+  getTeacherAnalytics: async (id: number, days = 7): Promise<AdminTeacherAnalytics> => {
+    const r = await axios.get(`${BASE}/teachers/${id}/analytics`, { params: { days } });
+    return r.data;
+  },
+
+  /** 所有老师横向对比 */
+  getTeachersOverview: async (days = 7): Promise<AdminTeachersOverview> => {
+    const r = await axios.get(`${BASE}/teachers-overview`, { params: { days } });
+    return r.data;
+  },
+
+  /** 某天全部学生的签到明细(含未签到的);可按班/按老师筛 */
+  getCheckins: async (params: { day?: string; class_id?: number; teacher_id?: number } = {})
+    : Promise<AdminCheckins> => {
+    const r = await axios.get(`${BASE}/checkins`, { params });
     return r.data;
   },
 

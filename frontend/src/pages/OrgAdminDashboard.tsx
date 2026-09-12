@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, BookOpen, Building2, Edit3, GraduationCap, KeyRound, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, GraduationCap, KeyRound, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
 import { orgAdminApi } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar, quotaPercent } from '../components/OrgWidgets';
 import ChangeMyPasswordModal from '../components/org/ChangeMyPasswordModal';
@@ -183,6 +183,7 @@ export default function OrgAdminDashboard() {
     { icon: Users, title: '用户管理', desc: '本机构师生账号', path: '/admin/users', tone: 'blue' },
     { icon: GraduationCap, title: '教师管理', desc: '老师与名下班级', path: '/admin/teachers', tone: 'teal' },
     { icon: BarChart3, title: '班级数据', desc: '学习统计与名册', path: '/admin/classes', tone: 'indigo' },
+    { icon: CalendarCheck, title: '签到与教学数据', desc: '全部班级签到 · 教师对比', path: '/admin/checkins', tone: 'green' },
     { icon: TrendingUp, title: '数据统计', desc: '本机构使用情况', path: '/admin/statistics', tone: 'green' },
     { icon: Trophy, title: '单词比赛', desc: '赛事排行与概览', path: '/admin/competition', tone: 'orange' },
     // 「发码上限=学生名额」已不成立(2026-09-11 卡额度与学生名额分账),别改回去

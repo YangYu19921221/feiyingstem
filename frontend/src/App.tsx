@@ -104,6 +104,7 @@ const RedeemSubscription = lazyWithRetry(() => import('./pages/RedeemSubscriptio
 const AdminSubscriptions = lazyWithRetry(() => import('./pages/AdminSubscriptions'));
 const AdminTeacherList = lazyWithRetry(() => import('./pages/AdminTeacherList'));
 const AdminTeacherDetail = lazyWithRetry(() => import('./pages/AdminTeacherDetail'));
+const AdminCheckins = lazyWithRetry(() => import('./pages/AdminCheckins'));
 const AdminClassDetail = lazyWithRetry(() => import('./pages/AdminClassDetail'));
 const AdminClassList = lazyWithRetry(() => import('./pages/AdminClassList'));
 const AdminCompetition = lazyWithRetry(() => import('./pages/AdminCompetition'));
@@ -1066,6 +1067,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminTeacherDetail />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 管理员 - 签到与教学数据总览 */}
+        <Route
+          path="/admin/checkins"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
+              <AdminCheckins />
             </ProtectedRoute>
           }
         />

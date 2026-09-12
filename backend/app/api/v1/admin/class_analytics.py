@@ -19,8 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range
-from app.models.user import User, Class, ClassStudent, StudyCalendar
-from app.models.learning import WordMastery, LearningRecord, StudySession
+from app.models.user import User, Class, ClassStudent, StudyCalendar, DailyCheckin
+from app.models.learning import (
+    WordMastery, LearningRecord, StudySession,
+    HomeworkAssignment, HomeworkStudentAssignment,
+)
 from app.models.word import Word
 from app.api.v1.auth import get_current_admin_or_org_admin
 from app.services.weak_words import mastery_buckets, NON_LEARNED_MODES
@@ -301,4 +304,424 @@ async def admin_class_stats_summary(
         "yesterday": metric_of(yesterday),
         "last7days": series,
         "total_vocab": total_vocab,
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. 教师维度的教学数据(管理端「教师详情」页,2026-09-12)
+# ─────────────────────────────────────────────────────────────
+
+# 「近 N 天」窗口。7 天是默认视图,30 天用来看趋势是否稳定
+_TEACHER_WINDOWS = (7, 30)
+
+# 界面必须显示这句(三个端点都下发): 签到 ≠ 线下到课。
+# 机构会拿这些数考核老师,把"用 App 的活跃度"说成"到课率"是拿错数据做决定。
+# 真正的到课率需要新做老师点名功能(live_attendance 只覆盖直播课且生产几乎没数据)。
+_CHECKIN_NOTE = (
+    "签到率 = 学生当天打开 App 完成签到的人天 ÷ 应签人天，"
+    "反映使用活跃度，不等于线下到课率。"
+)
+
+
+async def _teacher_or_404(db: AsyncSession, teacher_id: int) -> User:
+    """取老师。管理员不校验归属,但**必须锁 role=teacher** ——
+    否则传个学生 id 进来会算出一堆空指标,让人以为系统坏了。
+    多租户: select(User) 经 tenancy 过滤,org_admin 传别家老师的 id 自然 404。
+    """
+    t = (await db.execute(
+        select(User).where(User.id == teacher_id, User.role == "teacher")
+    )).scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "教师不存在")
+    return t
+
+
+async def _checkin_counts(
+    db: AsyncSession, student_ids: list[int], start_day: date, end_day: date,
+) -> dict[int, int]:
+    """区间内每个学生的签到天数 → {student_id: 天数}。
+
+    ⚠️ 这是**签到率**不是线下到课率: daily_checkins 记的是"学生当天打开 App 签了到"。
+    系统里没有老师点名的数据,所以界面文案一律写「签到」,不能写「出勤/到课」——
+    拿签到率冒充到课率,机构会据此考核老师,那是拿错数据做决定。
+    (直播考勤 live_attendance 才是"来上课了",但生产只有 14 行、3 节课,做出来全是 0。)
+    """
+    if not student_ids:
+        return {}
+    rows = (await db.execute(
+        select(DailyCheckin.user_id, func.count(DailyCheckin.id))
+        .where(
+            DailyCheckin.user_id.in_(student_ids),
+            DailyCheckin.checkin_date >= start_day,
+            DailyCheckin.checkin_date <= end_day,
+        )
+        .group_by(DailyCheckin.user_id)
+    )).all()
+    return {uid: n for uid, n in rows}
+
+
+async def _active_student_ids(
+    db: AsyncSession, student_ids: list[int], start_day: date, end_day: date,
+) -> set[int]:
+    """区间内**真的学过**的学生(有 learning_record)。
+
+    与签到分开算是刻意的: 签了到但一道题没做 = 打卡走人,这两个数放在一起
+    才看得出班级是"真在学"还是"只在签到"。
+    """
+    if not student_ids:
+        return set()
+    win_start, _ = local_day_utc_range(start_day)
+    _, win_end = local_day_utc_range(end_day)
+    rows = (await db.execute(
+        select(func.distinct(LearningRecord.user_id))
+        .where(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.created_at >= win_start,
+            LearningRecord.created_at < win_end,
+        )
+    )).all()
+    return {r[0] for r in rows}
+
+
+async def _vocab_by_student(
+    db: AsyncSession, student_ids: list[int], start_day: date, end_day: date,
+) -> tuple[dict[int, int], dict[int, int]]:
+    """区间内每人的 (词汇量, 训练量)。
+
+    口径与 admin_class_stats_summary 完全一致,别在这里另起一套:
+    - 词汇量 = distinct(lower(word)) 且**排除 classify 自评**(只拖过卡片不算学会)
+    - 训练量 = 答题条数,classify 也算(它确实是"答了题")
+    """
+    if not student_ids:
+        return {}, {}
+    win_start, _ = local_day_utc_range(start_day)
+    _, win_end = local_day_utc_range(end_day)
+    rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(func.distinct(
+                case((LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
+                      func.lower(Word.word)), else_=None)
+            )),
+            func.count(LearningRecord.id),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.created_at >= win_start,
+            LearningRecord.created_at < win_end,
+        )
+        .group_by(LearningRecord.user_id)
+    )).all()
+    return ({uid: v or 0 for uid, v, _ in rows},
+            {uid: t or 0 for uid, _, t in rows})
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    """百分比(一位小数)。分母 0 时返回 0 而不是抛错/NaN —— 空班级是正常状态。"""
+    if not denominator:
+        return 0.0
+    return round(numerator * 100.0 / denominator, 1)
+
+
+@router.get("/teachers/{teacher_id}/analytics")
+async def admin_teacher_analytics(
+    teacher_id: int,
+    days: int = Query(7, description="统计窗口天数(7 或 30)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin_or_org_admin),
+):
+    """一位老师的教学数据: 汇总 + 逐班明细。
+
+    ## 指标口径(全部复用现有真源,不新造)
+    - 学习时长: services/study_time(全站唯一真源,逐日封顶。别改用
+      LearningRecord.time_spent —— 那是毫秒且会把发呆算进去)
+    - 词汇量/训练量: 与 admin_class_stats_summary 同源(见 _vocab_by_student)
+    - 签到率: 已签到人天 / (在读学生数 × 天数)。**是签到不是到课**,见 _checkin_counts
+    - 活跃率: 区间内真做过题的人 / 在读学生数
+
+    ## 为什么一次全返回
+    逐班 N 次请求会让 9 个班的老师打 9 轮网络;这里每个指标一条 GROUP BY 覆盖
+    全部班级的学生,再在内存里按班分桶。老师最多几十个班,内存分桶代价可忽略。
+    """
+    teacher = await _teacher_or_404(db, teacher_id)
+    if days not in _TEACHER_WINDOWS:
+        days = 7
+
+    end_day = local_today()
+    start_day = end_day - timedelta(days=days - 1)
+
+    # 名下班级
+    classes = (await db.execute(
+        select(Class).where(Class.teacher_id == teacher_id).order_by(Class.id)
+    )).scalars().all()
+
+    # 一次拿到「班 → 在读学生」映射(不按班 N 次查)
+    class_ids = [c.id for c in classes]
+    roster: dict[int, list[int]] = {cid: [] for cid in class_ids}
+    if class_ids:
+        rows = (await db.execute(
+            select(ClassStudent.class_id, ClassStudent.student_id)
+            .join(User, User.id == ClassStudent.student_id)
+            .where(
+                ClassStudent.class_id.in_(class_ids),
+                ClassStudent.is_active.is_(True),
+                User.role == "student",
+                User.is_active.is_(True),
+            )
+        )).all()
+        for cid, sid in rows:
+            roster[cid].append(sid)
+
+    # 全部学生去重(一个学生可能在同一老师的两个班里,汇总必须去重)
+    all_students = sorted({sid for ids in roster.values() for sid in ids})
+
+    # 四个指标各一条查询,覆盖所有班的学生
+    checkins = await _checkin_counts(db, all_students, start_day, end_day)
+    actives = await _active_student_ids(db, all_students, start_day, end_day)
+    vocab, training = await _vocab_by_student(db, all_students, start_day, end_day)
+    seconds = await study_time.seconds_by_student(db, all_students, start_day, end_day)
+
+    # 作业: 这位老师在窗口内布置的份数与完成率
+    hw_rows = (await db.execute(
+        select(
+            func.count(func.distinct(HomeworkAssignment.id)),
+            func.count(HomeworkStudentAssignment.id),
+            func.sum(case((HomeworkStudentAssignment.status == "completed", 1), else_=0)),
+        )
+        .select_from(HomeworkAssignment)
+        .outerjoin(HomeworkStudentAssignment,
+                   HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+        .where(
+            HomeworkAssignment.teacher_id == teacher_id,
+            HomeworkAssignment.created_at >= local_day_utc_range(start_day)[0],
+        )
+    )).one()
+    hw_count, hw_targets, hw_done = (hw_rows[0] or 0), (hw_rows[1] or 0), (hw_rows[2] or 0)
+
+    def bucket(ids: list[int]) -> dict:
+        """一个班(或全部)的指标。ids 已是在读学生 id 列表。"""
+        n = len(ids)
+        checked = sum(checkins.get(i, 0) for i in ids)
+        return {
+            "student_count": n,
+            # 签到人天 / 应签人天。学生中途入班会让分母偏大(按满窗口算),
+            # 这是刻意的保守口径 —— 宁可显示偏低,也不要因为算法复杂而让人看不懂
+            "checkin_rate": _rate(checked, n * days),
+            "checkin_days": checked,
+            "active_students": sum(1 for i in ids if i in actives),
+            "active_rate": _rate(sum(1 for i in ids if i in actives), n),
+            "study_minutes": round(sum(seconds.get(i, 0) for i in ids) / 60),
+            "vocab": sum(vocab.get(i, 0) for i in ids),
+            "training": sum(training.get(i, 0) for i in ids),
+        }
+
+    return {
+        "teacher": {
+            "id": teacher.id, "username": teacher.username,
+            "full_name": teacher.full_name, "is_active": teacher.is_active,
+            "last_login": teacher.last_login,
+        },
+        "window": {"days": days,
+                   "start": start_day.isoformat(), "end": end_day.isoformat()},
+        "summary": {
+            **bucket(all_students),
+            "class_count": len(classes),
+            "homework_assigned": hw_count,
+            "homework_completion_rate": _rate(hw_done, hw_targets),
+        },
+        "classes": [
+            {"class_id": c.id, "name": c.name, **bucket(roster[c.id])}
+            for c in classes
+        ],
+        "checkin_note": _CHECKIN_NOTE,
+    }
+
+
+@router.get("/teachers-overview")
+async def admin_teachers_overview(
+    days: int = Query(7, description="统计窗口天数(7 或 30)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin_or_org_admin),
+):
+    """**所有**老师的教学数据一览(横向对比,找出带得好/带得差的)。
+
+    与 admin_teacher_analytics 的分工: 那个是单个老师下钻到班,这个是全员横排。
+    两者共用同一批口径函数(_checkin_counts/_active_student_ids/_vocab_by_student),
+    不会出现"列表里 60%、点进去 55%"的漂移。
+
+    ## 查询规模
+    指标查询与老师数**无关** —— 一次性把所有在读学生查出来算,再按老师分桶。
+    生产 14 个老师 / 135 个学生,总共 6 条查询。老师涨到几百个也不会变慢。
+
+    多租户: select(User)/select(Class) 都经 tenancy 过滤,org_admin 只看到本机构。
+    """
+    if days not in _TEACHER_WINDOWS:
+        days = 7
+    end_day = local_today()
+    start_day = end_day - timedelta(days=days - 1)
+
+    teachers = (await db.execute(
+        select(User).where(User.role == "teacher").order_by(User.id)
+    )).scalars().all()
+    if not teachers:
+        return {"window": {"days": days, "start": start_day.isoformat(),
+                           "end": end_day.isoformat()},
+                "teachers": [], "totals": {}, "checkin_note": _CHECKIN_NOTE}
+
+    tids = [t.id for t in teachers]
+
+    # 老师 → 班级 → 学生。两条查询,不按老师 N 次查
+    cls_rows = (await db.execute(
+        select(Class.id, Class.teacher_id)
+        .where(Class.teacher_id.in_(tids))
+    )).all()
+    teacher_of_class = {cid: tid for cid, tid in cls_rows}
+    class_ids = list(teacher_of_class)
+
+    students_of_teacher: dict[int, set[int]] = {tid: set() for tid in tids}
+    if class_ids:
+        rows = (await db.execute(
+            select(ClassStudent.class_id, ClassStudent.student_id)
+            .join(User, User.id == ClassStudent.student_id)
+            .where(
+                ClassStudent.class_id.in_(class_ids),
+                ClassStudent.is_active.is_(True),
+                User.role == "student",
+                User.is_active.is_(True),
+            )
+        )).all()
+        for cid, sid in rows:
+            students_of_teacher[teacher_of_class[cid]].add(sid)
+
+    all_students = sorted({s for ss in students_of_teacher.values() for s in ss})
+    checkins = await _checkin_counts(db, all_students, start_day, end_day)
+    actives = await _active_student_ids(db, all_students, start_day, end_day)
+    vocab, training = await _vocab_by_student(db, all_students, start_day, end_day)
+    seconds = await study_time.seconds_by_student(db, all_students, start_day, end_day)
+
+    class_count_of: dict[int, int] = {tid: 0 for tid in tids}
+    for _cid, tid in cls_rows:
+        class_count_of[tid] += 1
+
+    out = []
+    for t in teachers:
+        ids = sorted(students_of_teacher[t.id])
+        n = len(ids)
+        checked = sum(checkins.get(i, 0) for i in ids)
+        act = sum(1 for i in ids if i in actives)
+        out.append({
+            "teacher_id": t.id, "username": t.username,
+            "full_name": t.full_name, "is_active": t.is_active,
+            "last_login": t.last_login,
+            "class_count": class_count_of[t.id],
+            "student_count": n,
+            "checkin_rate": _rate(checked, n * days),
+            "active_students": act,
+            "active_rate": _rate(act, n),
+            "study_minutes": round(sum(seconds.get(i, 0) for i in ids) / 60),
+            "vocab": sum(vocab.get(i, 0) for i in ids),
+            "training": sum(training.get(i, 0) for i in ids),
+        })
+
+    # 全机构合计: 学生按**全局去重**(同一学生在两个老师名下只算一次),
+    # 不能把各老师的数字相加 —— 那会重复计数
+    total_checked = sum(checkins.get(i, 0) for i in all_students)
+    total_act = sum(1 for i in all_students if i in actives)
+    return {
+        "window": {"days": days, "start": start_day.isoformat(),
+                   "end": end_day.isoformat()},
+        "teachers": out,
+        "totals": {
+            "teacher_count": len(teachers),
+            "student_count": len(all_students),
+            "checkin_rate": _rate(total_checked, len(all_students) * days),
+            "active_students": total_act,
+            "active_rate": _rate(total_act, len(all_students)),
+            "study_minutes": round(sum(seconds.get(i, 0) for i in all_students) / 60),
+            "vocab": sum(vocab.get(i, 0) for i in all_students),
+        },
+        "checkin_note": _CHECKIN_NOTE,
+    }
+
+
+@router.get("/checkins")
+async def admin_checkins(
+    day: Optional[str] = Query(None, description="查某一天(YYYY-MM-DD),默认今天"),
+    class_id: Optional[int] = Query(None, description="只看某个班"),
+    teacher_id: Optional[int] = Query(None, description="只看某位老师名下"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin_or_org_admin),
+):
+    """某一天**所有学生**的签到明细(谁签了、几点签的、谁没签)。
+
+    这是「管理端要能看所有教师端所有学生的签到」那条需求的落点:
+    不用逐个老师点进去,一天一张表看全。可按班/按老师筛。
+
+    未签到的学生**也要列出来**并标记 checked=false —— 只列签到的人,
+    看的人无法回答"今天谁没来",而那恰恰是查签到的主要目的。
+    """
+    target = local_today()
+    if day:
+        try:
+            target = date.fromisoformat(day)
+        except ValueError:
+            raise HTTPException(400, "日期格式应为 YYYY-MM-DD")
+
+    # 学生范围: 经 tenancy 过滤(org_admin 只看本机构),再按班/老师收窄
+    q = (
+        select(ClassStudent.student_id, Class.id, Class.name, Class.teacher_id)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .join(User, User.id == ClassStudent.student_id)
+        .where(
+            ClassStudent.is_active.is_(True),
+            User.role == "student",
+            User.is_active.is_(True),
+        )
+    )
+    if class_id is not None:
+        q = q.where(Class.id == class_id)
+    if teacher_id is not None:
+        q = q.where(Class.teacher_id == teacher_id)
+    rows = (await db.execute(q)).all()
+
+    sids = sorted({r[0] for r in rows})
+    if not sids:
+        return {"day": target.isoformat(), "total": 0, "checked": 0,
+                "checkin_rate": 0.0, "students": [], "checkin_note": _CHECKIN_NOTE}
+
+    # 姓名 + 老师名一次查出(不在循环里查库)
+    name_of = {uid: (fn or un) for uid, un, fn in (await db.execute(
+        select(User.id, User.username, User.full_name).where(User.id.in_(sids))
+    )).all()}
+    tids = sorted({r[3] for r in rows})
+    teacher_name = {uid: (fn or un) for uid, un, fn in (await db.execute(
+        select(User.id, User.username, User.full_name).where(User.id.in_(tids))
+    )).all()} if tids else {}
+
+    # 当天签到时刻
+    checked_at = {uid: at for uid, at in (await db.execute(
+        select(DailyCheckin.user_id, DailyCheckin.checkin_at)
+        .where(DailyCheckin.user_id.in_(sids), DailyCheckin.checkin_date == target)
+    )).all()}
+
+    students = []
+    for sid, cid, cname, tid in sorted(rows, key=lambda r: (r[2] or "", name_of.get(r[0], ""))):
+        students.append({
+            "student_id": sid, "name": name_of.get(sid, f"#{sid}"),
+            "class_id": cid, "class_name": cname,
+            "teacher_id": tid, "teacher_name": teacher_name.get(tid),
+            "checked": sid in checked_at,
+            # 签到时刻存 UTC,转北京时间给人看(差 8 小时会让"早上签的"显示成前一天深夜)
+            "checked_at": (checked_at[sid] + timedelta(hours=8)).strftime("%H:%M")
+                          if sid in checked_at else None,
+        })
+
+    checked_n = sum(1 for s in students if s["checked"])
+    return {
+        "day": target.isoformat(),
+        "total": len(students), "checked": checked_n,
+        "checkin_rate": _rate(checked_n, len(students)),
+        "students": students,
+        "checkin_note": _CHECKIN_NOTE,
     }
