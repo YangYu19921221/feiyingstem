@@ -255,3 +255,120 @@ async def test_checkins_past_day(client: AsyncClient, ta_fixture):
     b = r.json()
     checked = {s["name"] for s in b["students"] if s["checked"]}
     assert checked == {"学生一"}, b["students"]
+
+
+# ---------- 导出(学生逐日 + 教师汇总 + 班级汇总) ----------
+
+@pytest.mark.asyncio
+async def test_export_shape(client: AsyncClient, ta_fixture):
+    """三张表齐全,且带两条口径说明(表格会脱离页面单独流传)"""
+    r = await client.get("/api/v1/admin/checkins/export",
+                         headers=_hdr(ta_fixture["admin"]))
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert set(b) >= {"window", "students", "teachers", "classes",
+                      "checkin_note", "teacher_note"}
+    assert b["window"]["days"] == 7
+    assert len(b["window"]["day_keys"]) == 7
+    assert "不等于线下到课率" in b["checkin_note"]
+    # 老师那几列不是签到 —— 导出文件里也必须写明
+    assert "老师没有签到记录" in b["teacher_note"], b["teacher_note"]
+
+
+@pytest.mark.asyncio
+async def test_export_student_daily_marks(client: AsyncClient, ta_fixture):
+    """学生逐日: 每人一行每天一列,签到天数与签到率对得上"""
+    r = await client.get("/api/v1/admin/checkins/export",
+                         headers=_hdr(ta_fixture["admin"]))
+    b = r.json()
+    by_name = {s["name"]: s for s in b["students"]}
+    # s1 签到 3 天(今天/昨天/前天)
+    s1 = by_name["学生一"]
+    assert s1["checked_days"] == 3, s1["marks"]
+    assert s1["checkin_rate"] == pytest.approx(42.9, abs=0.2)
+    assert sum(1 for v in s1["marks"].values() if v == "✓") == 3
+    # 每天一列,列数 = 区间天数
+    assert len(s1["marks"]) == 7
+    # s3 一天没签
+    assert by_name["学生三"]["checked_days"] == 0
+    assert all(v == "" for v in by_name["学生三"]["marks"].values())
+
+
+@pytest.mark.asyncio
+async def test_export_teacher_work_traces(client: AsyncClient, ta_fixture):
+    """教师表带**老师本人的工作痕迹**,而不是"老师签到率"。
+
+    老师没有签到记录(生产 5980 行全是学生),所以这里给的是布作业/发币/开直播。
+    """
+    r = await client.get("/api/v1/admin/checkins/export",
+                         headers=_hdr(ta_fixture["admin"]))
+    b = r.json()
+    t = next(x for x in b["teachers"] if x["name"] == "张老师")
+    # 教学指标
+    assert t["student_count"] == 2 and t["class_count"] == 2
+    # 工作痕迹字段必须存在(值可以是 0)
+    for k in ("homework_assigned", "coins_granted", "live_sessions",
+              "last_homework_at", "last_login"):
+        assert k in t, f"缺少工作痕迹字段 {k}"
+    # 刻意不提供 teacher_checkin_rate —— 那个数不存在,给了就是编的
+    assert "checkin_rate" in t          # 这是他名下**学生**的签到率
+    assert "teacher_checkin_rate" not in t
+
+
+@pytest.mark.asyncio
+async def test_export_custom_range(client: AsyncClient, ta_fixture):
+    today = local_today()
+    r = await client.get("/api/v1/admin/checkins/export",
+                         headers=_hdr(ta_fixture["admin"]),
+                         params={"start": (today - timedelta(days=2)).isoformat(),
+                                 "end": today.isoformat()})
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["window"]["days"] == 3 and len(b["window"]["day_keys"]) == 3
+    # 3 天窗口里 s1 签满 3 天 → 100%
+    s1 = next(s for s in b["students"] if s["name"] == "学生一")
+    assert s1["checked_days"] == 3 and s1["checkin_rate"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_export_range_guards(client: AsyncClient, ta_fixture):
+    hdr = _hdr(ta_fixture["admin"])
+    today = local_today()
+    # 起始晚于结束
+    r = await client.get("/api/v1/admin/checkins/export", headers=hdr,
+                         params={"start": today.isoformat(),
+                                 "end": (today - timedelta(days=3)).isoformat()})
+    assert r.status_code == 400, r.text
+    # 超过上限(92 天): 再长学生表会宽到几百列
+    r = await client.get("/api/v1/admin/checkins/export", headers=hdr,
+                         params={"start": (today - timedelta(days=200)).isoformat(),
+                                 "end": today.isoformat()})
+    assert r.status_code == 400 and "92" in r.json()["detail"], r.text
+    # 格式错
+    r = await client.get("/api/v1/admin/checkins/export", headers=hdr,
+                         params={"start": "2026/09/01"})
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.asyncio
+async def test_export_agrees_with_page(client: AsyncClient, ta_fixture):
+    """导出与页面同源: 教师汇总必须和 teachers-overview 给同一个数"""
+    hdr = _hdr(ta_fixture["admin"])
+    ov = (await client.get("/api/v1/admin/teachers-overview", headers=hdr)).json()
+    ex = (await client.get("/api/v1/admin/checkins/export", headers=hdr)).json()
+    ov_row = next(t for t in ov["teachers"] if t["teacher_id"] == ta_fixture["t1"].id)
+    ex_row = next(t for t in ex["teachers"] if t["teacher_id"] == ta_fixture["t1"].id)
+    for k in ("student_count", "checkin_rate", "active_students",
+              "study_minutes", "vocab"):
+        assert ov_row[k] == ex_row[k], f"{k} 页面={ov_row[k]} 导出={ex_row[k]}"
+
+
+@pytest.mark.asyncio
+async def test_export_class_rows(client: AsyncClient, ta_fixture):
+    r = await client.get("/api/v1/admin/checkins/export",
+                         headers=_hdr(ta_fixture["admin"]))
+    b = r.json()
+    by_name = {c["class_name"]: c for c in b["classes"]}
+    assert set(by_name) == {"一班", "二班", "三班"}
+    assert by_name["一班"]["teacher_name"] == "张老师"
+    assert by_name["一班"]["student_count"] == 1

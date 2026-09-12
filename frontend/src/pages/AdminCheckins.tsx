@@ -10,9 +10,10 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Search } from 'lucide-react';
+import { CalendarCheck, Download, Search } from 'lucide-react';
 import { admin } from '../api/admin';
 import type { AdminCheckins as CheckinsData, AdminTeachersOverview } from '../api/admin';
+import * as XLSX from 'xlsx';
 import { toast } from '../components/Toast';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
@@ -46,6 +47,103 @@ export default function AdminCheckinsPage() {
   const [overview, setOverview] = useState<AdminTeachersOverview | null>(null);
   const [loadingT, setLoadingT] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>('student_count');
+
+  // ── 导出 ──
+  // 默认导近 7 天(与页面默认窗口一致);上限 92 天由后端兜
+  const [exStart, setExStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  });
+  const [exEnd, setExEnd] = useState(todayLocal());
+  const [exporting, setExporting] = useState(false);
+
+  /** 一个 Excel 文件、三个工作表。
+   *  在浏览器里生成(与项目现有 7 处导出同一套路),不走后端。 */
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const d = await admin.getCheckinExport(exStart, exEnd);
+      const wb = XLSX.utils.book_new();
+
+      // ① 学生签到: 每人一行、每天一列
+      const stuRows = d.students.map((s) => {
+        const row: Record<string, string | number> = {
+          学生: s.name,
+          班级: s.class_name,
+          老师: s.teacher_name || '',
+        };
+        // 列头用 09-12 这种短日期,YYYY-MM-DD 会把表撑得很宽
+        for (const k of d.window.day_keys) row[k.slice(5)] = s.marks[k] || '';
+        row['签到天数'] = s.checked_days;
+        row['签到率%'] = s.checkin_rate;
+        row['学习时长(分)'] = s.study_minutes;
+        row['词汇量'] = s.vocab;
+        row['训练量'] = s.training;
+        return row;
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(stuRows), '学生签到');
+
+      // ② 教师汇总: 教学指标 + 本人工作痕迹
+      const tRows = d.teachers.map((t) => ({
+        老师: t.name,
+        账号: t.username,
+        状态: t.is_active ? '正常' : '已停用',
+        班级数: t.class_count,
+        学生数: t.student_count,
+        '学生签到率%': t.checkin_rate,
+        活跃学生: t.active_students,
+        '活跃率%': t.active_rate,
+        '学习时长(分)': t.study_minutes,
+        词汇量: t.vocab,
+        训练量: t.training,
+        布置作业: t.homework_assigned,
+        发放金币: t.coins_granted,
+        开直播: t.live_sessions,
+        最近布作业: t.last_homework_at ? String(t.last_homework_at).slice(0, 16).replace('T', ' ') : '',
+        最近登录: t.last_login ? String(t.last_login).slice(0, 16).replace('T', ' ') : '从未登录',
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tRows), '教师汇总');
+
+      // ③ 班级汇总
+      const cRows = d.classes.map((c) => ({
+        班级: c.class_name,
+        老师: c.teacher_name || '',
+        学生数: c.student_count,
+        '签到率%': c.checkin_rate,
+        签到人天: c.checked_days_total,
+        活跃学生: c.active_students,
+        '活跃率%': c.active_rate,
+        '学习时长(分)': c.study_minutes,
+        词汇量: c.vocab,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cRows), '班级汇总');
+
+      // ④ 口径说明单独一页 —— 表格会脱离页面单独流传,
+      //    没有这页,收到文件的人会把「签到率」当成到课率
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ['统计区间', `${d.window.start} ~ ${d.window.end}（共 ${d.window.days} 天）`],
+        ['导出时间', new Date().toLocaleString('zh-CN')],
+        [''],
+        ['签到率口径', d.checkin_note],
+        ['老师那几列', d.teacher_note],
+        [''],
+        ['活跃学生', '区间内真正做过题的学生（签了到但一道题没做的不算活跃）'],
+        ['学习时长', '按每日封顶后累加，排除长时间挂机'],
+        ['词汇量', '去重后的学习词数，不含分类自评'],
+      ]), '口径说明');
+
+      XLSX.writeFile(wb, `签到与教学数据_${d.window.start}_${d.window.end}.xlsx`);
+      toast.success(`已导出 ${d.students.length} 名学生 · ${d.teachers.length} 位老师`);
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || '导出失败，请重试');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     // setState 放进异步函数里(不在 effect 同步阶段调),避免级联渲染
@@ -117,6 +215,30 @@ export default function AdminCheckinsPage() {
             {note}
           </p>
         )}
+
+        {/* 导出条: 一个文件三个工作表 + 口径说明页 */}
+        <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <span className="text-sm font-semibold text-slate-700">导出 Excel</span>
+          <label className="text-sm text-slate-600">
+            从
+            <input type="date" value={exStart} max={exEnd}
+              onChange={(e) => setExStart(e.target.value)}
+              className="ml-1.5 min-h-9 rounded-lg border border-slate-300 px-2 text-sm" />
+          </label>
+          <label className="text-sm text-slate-600">
+            到
+            <input type="date" value={exEnd} max={todayLocal()} min={exStart}
+              onChange={(e) => setExEnd(e.target.value)}
+              className="ml-1.5 min-h-9 rounded-lg border border-slate-300 px-2 text-sm" />
+          </label>
+          <button type="button" onClick={handleExport} disabled={exporting}
+            className="admin-primary admin-focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold disabled:opacity-50">
+            <Download className="h-4 w-4" />{exporting ? '导出中…' : '导出'}
+          </button>
+          <span className="text-xs text-slate-400">
+            含【学生签到】逐人逐日 ·【教师汇总】·【班级汇总】·【口径说明】四张表，最多 92 天
+          </span>
+        </div>
 
         <div className="mb-5 flex gap-2">
           {([['checkins', '签到明细'], ['teachers', '教师对比']] as [Tab, string][]).map(([k, label]) => (

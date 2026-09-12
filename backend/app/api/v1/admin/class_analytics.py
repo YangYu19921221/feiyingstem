@@ -725,3 +725,252 @@ async def admin_checkins(
         "students": students,
         "checkin_note": _CHECKIN_NOTE,
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. 签到与教学数据导出(2026-09-12)
+# ─────────────────────────────────────────────────────────────
+
+# 导出区间上限。92 天 ≈ 一个季度: 再长的话学生签到表会宽到几百列,
+# Excel 里横向滚动没法看,而且前端一次要渲染上万格
+_MAX_EXPORT_DAYS = 92
+
+
+async def _teacher_work_traces(
+    db: AsyncSession, teacher_ids: list[int], start_day: date, end_day: date,
+) -> dict[int, dict]:
+    """老师**自己**在区间内的工作痕迹 → {teacher_id: {...}}。
+
+    ## 为什么不是"老师签到率"
+
+    老师**没有签到记录** —— daily_checkins 5980 行全是学生(实测),
+    因为 checkin.py 的签到端点用的是 get_current_student,设计上只有学生能签。
+    所以这里改用老师真实动过的痕迹: 布作业、发币、建班、开直播。
+    这些系统本来就在记时间戳,**历史数据全都有**,也不需要老师养成新习惯。
+
+    ⚠️ 没有登录日志表: users 只有 `last_login` 一个时间点,
+    所以"近 7 天登录了几天"**算不出来**,别在界面上编这个指标。
+    """
+    if not teacher_ids:
+        return {}
+    win_start, _ = local_day_utc_range(start_day)
+    _, win_end = local_day_utc_range(end_day)
+    out: dict[int, dict] = {
+        tid: {"homework_assigned": 0, "coins_granted": 0,
+              "live_sessions": 0, "last_homework_at": None}
+        for tid in teacher_ids
+    }
+
+    # 布作业份数 + 最近一次布作业时间
+    for tid, n, last in (await db.execute(
+        select(HomeworkAssignment.teacher_id,
+               func.count(HomeworkAssignment.id),
+               func.max(HomeworkAssignment.created_at))
+        .where(HomeworkAssignment.teacher_id.in_(teacher_ids),
+               HomeworkAssignment.created_at >= win_start,
+               HomeworkAssignment.created_at < win_end)
+        .group_by(HomeworkAssignment.teacher_id)
+    )).all():
+        out[tid]["homework_assigned"] = n or 0
+        out[tid]["last_homework_at"] = last
+
+    # 手动发币笔数(manual 机构里这是老师的主要动作)。
+    # 操作人字段叫 operator_id 不是 created_by(models/coin.py);
+    # 系统自动发放时它为空,所以这里天然只统计到人工操作
+    from app.models.coin import CoinTransaction
+    for tid, n in (await db.execute(
+        select(CoinTransaction.operator_id, func.count(CoinTransaction.id))
+        .where(CoinTransaction.operator_id.in_(teacher_ids),
+               CoinTransaction.created_at >= win_start,
+               CoinTransaction.created_at < win_end)
+        .group_by(CoinTransaction.operator_id)
+    )).all():
+        if tid in out:
+            out[tid]["coins_granted"] = n or 0
+
+    # 开直播课次数
+    from app.models.live import LiveSession
+    for tid, n in (await db.execute(
+        select(LiveSession.teacher_id, func.count(LiveSession.id))
+        .where(LiveSession.teacher_id.in_(teacher_ids),
+               LiveSession.created_at >= win_start,
+               LiveSession.created_at < win_end)
+        .group_by(LiveSession.teacher_id)
+    )).all():
+        if tid in out:
+            out[tid]["live_sessions"] = n or 0
+
+    return out
+
+
+@router.get("/checkins/export")
+async def admin_checkins_export(
+    start: Optional[str] = Query(None, description="起始日 YYYY-MM-DD,默认 7 天前"),
+    end: Optional[str] = Query(None, description="结束日 YYYY-MM-DD,默认今天"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin_or_org_admin),
+):
+    """导出用的完整数据集: 学生逐日签到 + 教师汇总 + 班级汇总。
+
+    返回 JSON,**Excel 在浏览器里生成**(前端 XLSX.writeFile) ——
+    与项目现有 7 处导出同一套路: 省掉服务端 openpyxl 依赖和临时文件,
+    且失败在浏览器就能看到。
+
+    ## 三张表的分工
+    - students: 每人一行、每天一列(✓/空),末尾带签到天数与签到率 → 对账存档
+    - teachers: 每位老师一行,教学指标 + **老师本人的工作痕迹**
+      (布作业/发币/开直播;没有"老师签到"这回事,见 _teacher_work_traces)
+    - classes:  每个班一行,便于按班对比
+
+    区间上限 92 天(约一季度): 再长学生表会宽到几百列,Excel 里横向滚不动。
+    """
+    end_day = local_today()
+    start_day = end_day - timedelta(days=6)
+    try:
+        if end:
+            end_day = date.fromisoformat(end)
+        if start:
+            start_day = date.fromisoformat(start)
+    except ValueError:
+        raise HTTPException(400, "日期格式应为 YYYY-MM-DD")
+    if start_day > end_day:
+        raise HTTPException(400, "起始日不能晚于结束日")
+    span = (end_day - start_day).days + 1
+    if span > _MAX_EXPORT_DAYS:
+        raise HTTPException(
+            400, f"一次最多导出 {_MAX_EXPORT_DAYS} 天(约一个季度),当前选了 {span} 天")
+
+    days = [start_day + timedelta(days=i) for i in range(span)]
+
+    # ── 学生 × 班级 × 老师 关系(经 tenancy 过滤,org_admin 只拿到本机构) ──
+    rows = (await db.execute(
+        select(ClassStudent.student_id, Class.id, Class.name, Class.teacher_id)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .join(User, User.id == ClassStudent.student_id)
+        .where(ClassStudent.is_active.is_(True),
+               User.role == "student", User.is_active.is_(True))
+    )).all()
+
+    sids = sorted({r[0] for r in rows})
+    tids = sorted({r[3] for r in rows})
+
+    name_of = {}
+    if sids:
+        name_of = {uid: (fn or un) for uid, un, fn in (await db.execute(
+            select(User.id, User.username, User.full_name).where(User.id.in_(sids))
+        )).all()}
+    tname_of = {}
+    if tids:
+        tname_of = {uid: (fn or un) for uid, un, fn in (await db.execute(
+            select(User.id, User.username, User.full_name).where(User.id.in_(tids))
+        )).all()}
+
+    # ── 逐日签到: 一条查询拿到 (学生, 日期) 全集 ──
+    checked_pairs: set[tuple[int, str]] = set()
+    if sids:
+        for uid, d in (await db.execute(
+            select(DailyCheckin.user_id, DailyCheckin.checkin_date)
+            .where(DailyCheckin.user_id.in_(sids),
+                   DailyCheckin.checkin_date >= start_day,
+                   DailyCheckin.checkin_date <= end_day)
+        )).all():
+            # checkin_date 可能是 date 或字符串(SQLite),统一成 ISO 字符串比对
+            checked_pairs.add((uid, d.isoformat() if hasattr(d, "isoformat") else str(d)[:10]))
+
+    # ── 其余指标(与页面同源函数,口径不会漂) ──
+    actives = await _active_student_ids(db, sids, start_day, end_day)
+    vocab, training = await _vocab_by_student(db, sids, start_day, end_day)
+    seconds = await study_time.seconds_by_student(db, sids, start_day, end_day)
+
+    day_keys = [d.isoformat() for d in days]
+
+    # 学生表: 每人一行。同一学生在多个班时按"班级"逐行列出(导出要能按班筛),
+    # 但签到天数是这个人的,不会因为在两个班而翻倍
+    students_out = []
+    for sid, cid, cname, tid in sorted(
+        rows, key=lambda r: (r[2] or "", name_of.get(r[0], ""))
+    ):
+        marks = {k: ("✓" if (sid, k) in checked_pairs else "") for k in day_keys}
+        checked_n = sum(1 for k in day_keys if marks[k])
+        students_out.append({
+            "student_id": sid, "name": name_of.get(sid, f"#{sid}"),
+            "class_name": cname, "teacher_name": tname_of.get(tid),
+            "marks": marks,
+            "checked_days": checked_n,
+            "checkin_rate": _rate(checked_n, span),
+            "active": sid in actives,
+            "study_minutes": round(seconds.get(sid, 0) / 60),
+            "vocab": vocab.get(sid, 0),
+            "training": training.get(sid, 0),
+        })
+
+    # 教师表: 教学指标 + 本人工作痕迹
+    students_of_teacher: dict[int, set[int]] = {}
+    students_of_class: dict[int, set[int]] = {}
+    class_meta: dict[int, tuple[str, int]] = {}
+    for sid, cid, cname, tid in rows:
+        students_of_teacher.setdefault(tid, set()).add(sid)
+        students_of_class.setdefault(cid, set()).add(sid)
+        class_meta[cid] = (cname, tid)
+
+    traces = await _teacher_work_traces(db, tids, start_day, end_day)
+    # 老师本人信息(含最近登录 —— 只有这一个时间点,没有登录日志)
+    tinfo = {}
+    if tids:
+        tinfo = {u.id: u for u in (await db.execute(
+            select(User).where(User.id.in_(tids))
+        )).scalars().all()}
+
+    def agg(ids: set[int]) -> dict:
+        n = len(ids)
+        checked = sum(1 for sid in ids for k in day_keys if (sid, k) in checked_pairs)
+        act = sum(1 for sid in ids if sid in actives)
+        return {
+            "student_count": n,
+            "checkin_rate": _rate(checked, n * span),
+            "checked_days_total": checked,
+            "active_students": act,
+            "active_rate": _rate(act, n),
+            "study_minutes": round(sum(seconds.get(i, 0) for i in ids) / 60),
+            "vocab": sum(vocab.get(i, 0) for i in ids),
+            "training": sum(training.get(i, 0) for i in ids),
+        }
+
+    teachers_out = []
+    for tid in tids:
+        u = tinfo.get(tid)
+        tr = traces.get(tid, {})
+        teachers_out.append({
+            "teacher_id": tid,
+            "name": tname_of.get(tid, f"#{tid}"),
+            "username": u.username if u else "",
+            "is_active": bool(u.is_active) if u else True,
+            "last_login": u.last_login if u else None,
+            "class_count": sum(1 for c, (_n, t) in class_meta.items() if t == tid),
+            **agg(students_of_teacher.get(tid, set())),
+            # 老师本人的工作痕迹(不是"老师签到" —— 系统里没有那回事)
+            "homework_assigned": tr.get("homework_assigned", 0),
+            "coins_granted": tr.get("coins_granted", 0),
+            "live_sessions": tr.get("live_sessions", 0),
+            "last_homework_at": tr.get("last_homework_at"),
+        })
+
+    classes_out = [
+        {"class_id": cid, "class_name": cname,
+         "teacher_name": tname_of.get(tid), **agg(students_of_class.get(cid, set()))}
+        for cid, (cname, tid) in sorted(class_meta.items(), key=lambda kv: kv[1][0] or "")
+    ]
+
+    return {
+        "window": {"start": start_day.isoformat(), "end": end_day.isoformat(),
+                   "days": span, "day_keys": day_keys},
+        "students": students_out,
+        "teachers": teachers_out,
+        "classes": classes_out,
+        "checkin_note": _CHECKIN_NOTE,
+        # 导出文件里也要写明"老师那几列不是签到" —— 表格会脱离页面单独流传
+        "teacher_note": (
+            "老师没有签到记录（系统设计上只有学生签到）。"
+            "「布置作业 / 发放金币 / 开直播」是老师本人在该区间内的工作痕迹。"
+        ),
+    }

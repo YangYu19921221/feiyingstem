@@ -92,6 +92,36 @@ export interface AdminCheckins {
   checkin_note: string;
 }
 
+/** 导出用的完整数据集(三张表)。Excel 在浏览器里生成,后端只给 JSON。 */
+export interface AdminCheckinExport {
+  window: { start: string; end: string; days: number; day_keys: string[] };
+  students: {
+    student_id: number; name: string;
+    class_name: string; teacher_name: string | null;
+    marks: Record<string, string>;   // 日期 → '✓' 或 ''
+    checked_days: number; checkin_rate: number;
+    active: boolean; study_minutes: number; vocab: number; training: number;
+  }[];
+  teachers: {
+    teacher_id: number; name: string; username: string;
+    is_active: boolean; last_login: string | null; class_count: number;
+    student_count: number; checkin_rate: number; checked_days_total: number;
+    active_students: number; active_rate: number;
+    study_minutes: number; vocab: number; training: number;
+    // 老师**本人**的工作痕迹 —— 老师没有签到记录,这几列不是"老师签到"
+    homework_assigned: number; coins_granted: number; live_sessions: number;
+    last_homework_at: string | null;
+  }[];
+  classes: {
+    class_id: number; class_name: string; teacher_name: string | null;
+    student_count: number; checkin_rate: number; checked_days_total: number;
+    active_students: number; active_rate: number;
+    study_minutes: number; vocab: number; training: number;
+  }[];
+  checkin_note: string;
+  teacher_note: string;
+}
+
 export interface AdminClassOverview {
   class_id: number;
   name: string;
@@ -222,6 +252,12 @@ export const admin = {
   /** 所有老师横向对比 */
   getTeachersOverview: async (days = 7): Promise<AdminTeachersOverview> => {
     const r = await axios.get(`${BASE}/teachers-overview`, { params: { days } });
+    return r.data;
+  },
+
+  /** 导出数据集: 学生逐日签到 + 教师汇总 + 班级汇总(区间最多 92 天) */
+  getCheckinExport: async (start?: string, end?: string): Promise<AdminCheckinExport> => {
+    const r = await axios.get(`${BASE}/checkins/export`, { params: { start, end } });
     return r.data;
   },
 
