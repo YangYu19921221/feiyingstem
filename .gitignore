@@ -99,3 +99,23 @@ frontend/.impeccable/
 # private_media 是私有目录:里面是老师上传的教学课件与逐页底图,
 # 既可能有版权material也会随机构增长,和 uploads/ 同理不该进仓库
 backend/private_media/
+
+# ===== 临时产物与凭据(2026-09-13 清理) =====
+# 起因: 两次提交用了 `git add -A`,把工作区里堆积的临时文件一并扫进仓库
+# (1df08f9 / 5bb73cf 各 1372+ 个文件,远超功能本身)。这里补规则防复发。
+#
+# ⚠️ 凭据类一律不入库。历史里那两个 token 文件的 JWT 已于 2025-11-28 过期
+# 且只属于测试账号,无实际泄露风险;但**新的凭据绝不能再进来**
+*token.txt
+*token.html
+
+# TTS/语音调试输出(跑一次 test 就生成一批)
+backend/test_*.mp3
+backend/*.wav
+
+# 一次性排障记录与脚本(问题解决后就失效,留在仓库里只会误导)
+/✅*.md
+/修复*.sh
+/DEPLOYMENT-*.md
+/SUMMARY.md
+/test_*.sh
