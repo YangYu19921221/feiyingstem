@@ -188,7 +188,12 @@ class VideoUpdate(BaseModel):
     # 所以下限不能写 min_length=1 —— 那样老师就没有办法把归属清掉了。
     # ⚠️ 判空必须走显式分支(见 CLAUDE.md「留空=不修改」那条:`if "x" in data and data["x"]`
     # 会让空串跳过处理)。这里的语义恰恰相反:传了就改,空串改成 None
-    lecturer: Optional[str] = Field(None, max_length=50)
+    #
+    # ⚠️ 上限**故意放宽到 200 而不是列宽 50**:超长时统一由 normalize() 截断,
+    # 三条写入路径行为一致。若这里卡 50,上传(Form 参数没有校验)是静默截断成 50 字,
+    # 而编辑/批量是 422 英文串 → 老师被迫另敲一个短名字,与截断后的那个对不上
+    # → **同一个人两个 chip**(2026-09-17 实测)。宽进严出,别让两条路一个截一个拒
+    lecturer: Optional[str] = Field(None, max_length=200)
 
 
 def _lecturer_scope(q, org_id: Optional[int]):
@@ -214,6 +219,7 @@ async def _existing_lecturers(
     db: AsyncSession,
     org_id: Optional[int],
     changing_ids: Optional[list[int]] = None,
+    can_edit_preset: bool = False,
 ) -> list[str]:
     """目标机构可见的讲师名(含平台预置),给 lecturer_name.resolve() 消歧用。
 
@@ -225,7 +231,17 @@ async def _existing_lecturers(
     反过来只覆盖了一部分就**必须留在候选里**:剩下那些仍叫旧名,真改了就会在
     学生端分裂成两位几乎同名的老师,而学生分不出哪个是自己的。
     想真改名就把该讲师的课全选上 —— 单条编辑天然满足"全覆盖"(该讲师只有这一个视频时)。
+
+    `can_edit_preset`(仅平台 admin 为真)决定「全覆盖」怎么算:
+    **机构改不动的行(平台预置)不能计入分母**。否则预置视频恰好也叫「王老师」时,
+    机构无论怎么全选自己的课都凑不满 total(预置那条它永远选不了 —— 勾上会 403),
+    于是永远改不掉自己的写法,而界面每次都说「已保存」(2026-09-17 实测复现)。
+    代价要认:改完之后预置那条仍是旧写法,学生端会看到两个相近的 chip ——
+    但这是**机构确实无权改平台内容**的真实反映,比"静默不生效还骗人"好得多;
+    真要统一就找平台管理员改预置那条。
+    候选清单本身仍**包含**预置的写法(新传的视频照旧向它靠拢,保持统一)。
     """
+    # 候选清单:全可见范围(含预置)—— 新名字要能向预置的写法靠拢
     rows = (await db.execute(
         _lecturer_scope(
             select(PhoneticVideo.lecturer, func.count())
@@ -234,9 +250,19 @@ async def _existing_lecturers(
             org_id,
         )
     )).all()
-    totals = {name: (n or 0) for name, n in rows if name}
+    names = [name for name, _ in rows if name]
     if not changing_ids:
-        return list(totals)
+        return names
+
+    # 「全覆盖」的分母:只数**调用者改得动**的行。
+    # 机构:排除预置(org_id IS NULL);admin:预置也算得上,不排除
+    total_q = (select(PhoneticVideo.lecturer, func.count())
+               .where(PhoneticVideo.lecturer.isnot(None))
+               .group_by(PhoneticVideo.lecturer))
+    total_q = (_lecturer_scope(total_q, org_id) if can_edit_preset
+               else total_q.where(PhoneticVideo.org_id == org_id))
+    changeable = {name: (n or 0)
+                  for name, n in (await db.execute(total_q)).all() if name}
 
     changing = (await db.execute(
         _lecturer_scope(
@@ -248,8 +274,9 @@ async def _existing_lecturers(
         )
     )).all()
     covered = {name: (n or 0) for name, n in changing if name}
-    return [name for name, total in totals.items()
-            if covered.get(name, 0) < total]
+    # 改得动的那些全被本批覆盖 → 从候选里剔掉,放行改名
+    return [name for name in names
+            if covered.get(name, 0) < changeable.get(name, 0)]
 
 
 @router.get("/videos")
@@ -359,8 +386,10 @@ async def list_lecturers(
 
 class BatchLecturerRequest(BaseModel):
     ids: list[int] = Field(..., min_length=1, max_length=100)
-    # 空串 / null = 取消归属,改回「全校通用」。这是有效操作,不是"没填"
-    lecturer: Optional[str] = Field(None, max_length=50)
+    # 空串 / null = 取消归属,改回「全校通用」。这是有效操作,不是"没填"。
+    # 上限放宽到 200 的理由同 VideoUpdate.lecturer(超长统一由 normalize 截断,
+    # 三条路径行为一致,不能一条截一条 422)
+    lecturer: Optional[str] = Field(None, max_length=200)
 
 
 @router.post("/videos/batch-lecturer")
@@ -402,9 +431,11 @@ async def batch_set_lecturer(
     # 分别消歧会得出不同的目标名字,而这个端点的语义是"整批设成同一位讲师"。
     # 取所有涉及归属的候选**并集**:任一侧已有该写法就靠拢过去,不凭空造新写法。
     org_ids = {v.org_id for v in rows}
+    is_admin = user.role == "admin"
     existing: list[str] = []
     for oid in org_ids:
-        for n in await _existing_lecturers(db, oid, body.ids):
+        for n in await _existing_lecturers(db, oid, body.ids,
+                                           can_edit_preset=is_admin):
             if n not in existing:
                 existing.append(n)
     final = lecturer_name.resolve(body.lecturer, existing)
@@ -538,7 +569,8 @@ async def update_video(
         # 200 但值没变);还有别的视频叫这名字时则靠拢回原写法,免得分裂。
         # 批量路径本来就有这层豁免,单条此前漏了(2026-09-17 实测复现)
         v.lecturer = lecturer_name.resolve(
-            raw, await _existing_lecturers(db, v.org_id, [v.id]))
+            raw, await _existing_lecturers(
+                db, v.org_id, [v.id], can_edit_preset=(user.role == "admin")))
     for k, val in data.items():
         setattr(v, k, val)
     await db.commit()

@@ -142,6 +142,29 @@ def test_normalize_keeps_inner_space():
     assert lecturer_name.normalize("Miss Lucy") == "Miss Lucy"
 
 
+def test_match_key_folds_fullwidth_and_zero_width():
+    """看不见的差异必须折到一起,否则一个人在学生端分裂成两个 chip。
+
+    三种都实测复现过:
+    - 全角字母:中文输入法全角状态下敲的「Ｍiss Ｌucy」,屏幕上几乎看不出差别
+    - 零宽字符:从 Word/PPT 复制讲师名常带 U+200B,两个 chip 长得一模一样
+    - BOM(U+FEFF):粘贴整行时会带
+    """
+    assert lecturer_name.resolve("Ｍiss Ｌucy", ["Miss Lucy"]) == "Miss Lucy"
+    assert lecturer_name.resolve("王​老师", ["王老师"]) == "王老师"
+    assert lecturer_name.resolve("﻿王老师", ["王老师"]) == "王老师"
+    # 零宽字符也要在 normalize 里删掉(不然它自己入库时就带着)
+    assert lecturer_name.normalize("王​老师") == "王老师"
+
+
+def test_normalize_truncation_leaves_no_trailing_space():
+    """超长截断正好切在空格上时,不能留尾随空格 —— 那正是本模块要消灭的东西"""
+    out = lecturer_name.normalize("A" * 49 + " BCDE")
+    assert out == out.strip(), f"截断后留了空白: {out!r}"
+    assert len(out) <= lecturer_name.MAX_LEN
+    assert lecturer_name.normalize("A" * 49 + "    ") == "A" * 49
+
+
 def test_resolve_snaps_to_existing_spelling():
     """向已有写法靠拢,且**存已有的那个写法**(不存归一键)"""
     assert lecturer_name.resolve("王 老师", ["王老师"]) == "王老师"
@@ -284,6 +307,53 @@ async def test_batch_partial_selection_snaps_back_instead_of_splitting(
     r2 = await client.get("/api/v1/teacher/phonetics/lecturers",
                           headers=_h(lec_env["tok"]["t1"]))
     assert [x["name"] for x in r2.json()] == ["王老师", "李老师"]
+
+
+async def test_preset_sharing_a_name_does_not_block_org_rename(
+        client: AsyncClient, lec_env):
+    """平台预置视频同名时,机构**仍要能改自己那批的写法**。
+
+    「全覆盖」的分母只能数机构**改得动**的行:预置那条机构永远选不了(勾上会 403),
+    若把它算进分母,机构无论怎么全选自己的课都凑不满 → 永远改不掉自己的写法,
+    而界面每次都说「已保存」(2026-09-17 实测复现,是个走不通的死路)。
+    """
+    # admin 先把平台预置那条也设成「王老师」
+    r0 = await client.post("/api/v1/teacher/phonetics/videos/batch-lecturer",
+                           headers=_h(lec_env["tok"]["admin"]),
+                           json={"ids": [lec_env["vid"]["preset"]], "lecturer": "王老师"})
+    assert r0.status_code == 200 and r0.json()["lecturer"] == "王老师", r0.text
+
+    # 机构全选自己那 2 条「王老师」的课改写法 → 必须改得动
+    r = await client.post("/api/v1/teacher/phonetics/videos/batch-lecturer",
+                          headers=_h(lec_env["tok"]["t1"]),
+                          json={"ids": [lec_env["vid"]["wang1"], lec_env["vid"]["wang2"]],
+                                "lecturer": "王小明老师"})
+    assert r.status_code == 200, r.text
+    assert r.json()["lecturer"] == "王小明老师", "被预置那条挡住了,机构改不动自己的课"
+
+
+async def test_over_length_lecturer_consistent_across_paths(
+        client: AsyncClient, lec_env):
+    """超长讲师名三条路径**行为一致**(都截断,不能一条截一条 422)。
+
+    上传是 Form 参数没有校验 → 静默截断;若编辑/批量卡 max_length=50 就是 422
+    英文串 → 老师被迫另敲一个短名字,与截断后的那个对不上 → 同一个人两个 chip。
+    """
+    long_name = "Miss Lucy Anderson from Sunshine International School Room 3"
+    assert len(long_name) > lecturer_name.MAX_LEN
+    expect = lecturer_name.normalize(long_name)
+
+    r = await client.put(f"/api/v1/teacher/phonetics/videos/{lec_env['vid']['legacy']}",
+                         headers=_h(lec_env["tok"]["t1"]), json={"lecturer": long_name})
+    assert r.status_code == 200, r.text          # 不能是 422
+    assert r.json()["lecturer"] == expect
+
+    r2 = await client.post("/api/v1/teacher/phonetics/videos/batch-lecturer",
+                           headers=_h(lec_env["tok"]["t1"]),
+                           json={"ids": [lec_env["vid"]["li1"]], "lecturer": long_name})
+    assert r2.status_code == 200, r2.text
+    # 与编辑路径落到**同一个**字符串上(否则就是两位讲师)
+    assert r2.json()["lecturer"] == expect
 
 
 async def test_batch_clear_lecturer(client: AsyncClient, lec_env):

@@ -72,7 +72,20 @@ export default function TeacherPhonetics() {
 
   // 批量删除:勾选的 id。翻页/搜索后清空,避免删掉看不见的条目
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const allChecked = items.length > 0 && items.every((v) => selected.has(v.id));
+  /**
+   * 本页**可操作**的行(平台预置对机构只读)。
+   *
+   * 「全选本页」只勾这些 —— 预置也勾上的话,批量设讲师/批量删除会被后端**整批 403**
+   * (整批拒是有意的:改了一半不说更糟),于是老师得在 10 行里肉眼认出哪几条是预置
+   * 再逐个取消勾选,而「未指定讲师 → 全选 → 设讲师」这条补归属主路径正好最容易撞上
+   * (预置视频的讲师也是空的)。
+   *
+   * ⚠️ 必须声明在 allChecked 之前:const 有 TDZ,顺序反了是渲染即 ReferenceError
+   */
+  const selectableItems = items.filter((v) => v.can_edit !== false);
+  // 全选态按**可操作的行**算:一页全是预置视频时勾选框不该显示成"已全选"
+  const allChecked = selectableItems.length > 0
+    && selectableItems.every((v) => selected.has(v.id));
   const toggleOne = (id: number) => setSelected((s) => {
     const n = new Set(s);
     if (n.has(id)) n.delete(id);
@@ -82,12 +95,13 @@ export default function TeacherPhonetics() {
   const toggleAll = () => setSelected((s) => {
     // 只全选/取消当前这一页 —— 跨页全选会让老师删掉屏幕上看不到的东西
     const n = new Set(s);
-    if (items.every((v) => n.has(v.id))) items.forEach((v) => n.delete(v.id));
-    else items.forEach((v) => n.add(v.id));
+    if (selectableItems.every((v) => n.has(v.id))) selectableItems.forEach((v) => n.delete(v.id));
+    else selectableItems.forEach((v) => n.add(v.id));
     return n;
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +114,13 @@ export default function TeacherPhonetics() {
         lecturer: lecturerFilter || undefined,
         page, page_size: PAGE_SIZE,
       });
+      // 页码超界就夹回去并重取:批量设讲师/删除之后这些行可能已不属于当前筛选集
+      // (在「未指定讲师」下设完讲师,它们立刻从结果里消失)→ total 变小、page 还停在原处
+      // → offset 超界 → 空列表 + 分页条写「3 / 2」,而空状态文案是「还没有音标视频」,
+      // 老师会以为刚才的操作把视频弄没了。在这里夹(而不是用 effect 夹)是因为
+      // 项目 lint 禁止在 effect 里同步 setState
+      const maxPage = Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE));
+      if (page > maxPage) { setPage(maxPage); return; }   // setPage 会触发重取
       setItems(data.items);
       setTotal(data.total);
       setSelected(new Set());  // 换页/换搜索词后旧勾选已不可见,清掉防误删
@@ -158,10 +179,14 @@ export default function TeacherPhonetics() {
     setProgress(0);
     setBatch(null);
     if (fileRef.current) fileRef.current.value = '';
-    // 回到第一页看新传的(新条目按 id 倒序在前)
+    // 回到第一页看新传的,并**清掉所有筛选** —— 传完必须让老师看见刚传的那几条。
+    // ⚠️ lecturerFilter 也要清:老师常是点着「未指定讲师」在补归属,顺手又传了几个
+    // 带讲师的视频,新传的不满足 lecturer IS NULL → 列表毫无变化,而 toast 说
+    // 「5 个视频上传成功」→ 老师以为没传上去,再传一遍造成重复视频
     setPage(1);
     setSearch('');
     setKeyword('');
+    setLecturerFilter('');
     await load();
     // 这批可能带来一位新讲师,名单要跟着更新(否则下次上传的自动补全里没有他)
     await loadLecturers();
@@ -239,6 +264,9 @@ export default function TeacherPhonetics() {
       // 整页被删空时往前翻一页,避免停在空页
       if (r.deleted >= items.length && page > 1) setPage(page - 1);
       else await load();
+      // 删完可能让某位讲师名下清零,名单要跟着更新 —— 否则筛选条上还挂着
+      // 「李老师 1」,点进去是空页(而空页文案会说"还没有音标视频")
+      await loadLecturers();
     } catch (e) {
       toast.error(getErrorMessage(e, '批量删除失败'));
     }
@@ -252,6 +280,7 @@ export default function TeacherPhonetics() {
       // 删掉当页最后一条时往前翻一页,避免停在空页
       if (items.length === 1 && page > 1) setPage(page - 1);
       else await load();
+      await loadLecturers();   // 理由同批量删除:残留的讲师 chip 点进去是空页
     } catch (e) {
       toast.error(getErrorMessage(e, '删除失败'));
     }
@@ -295,9 +324,13 @@ export default function TeacherPhonetics() {
                 className="min-h-11 w-56 rounded-xl border border-gray-200 bg-white px-3 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
               />
             </div>
+            {/* ⚠️ option 里**不能写 children**:Chrome 把它当副标题显示在 value 旁边,
+                而 Firefox 用 text content **取代** value —— 下拉里只剩「3 个视频」
+                看不到讲师名,输入「王」也匹配不上,老师只能凭记忆手敲,敲成
+                「王老師」就新建出第二位讲师。只给 value,视频数在下面的 chip 上显示 */}
             <datalist id="lecturer-options">
               {lecturers.map((l) => (
-                <option key={l.name} value={l.name}>{`${l.video_count} 个视频`}</option>
+                <option key={l.name} value={l.name} />
               ))}
             </datalist>
             <button
@@ -405,10 +438,28 @@ export default function TeacherPhonetics() {
           {loading ? (
             <p className="py-14 text-center text-sm text-ink-mute">加载中…</p>
           ) : items.length === 0 ? (
+            /* 空状态必须说清是**哪个条件**筛空的。只判 search 的话:老师把最后几个
+               未归属视频都设好讲师、再点「未指定讲师」复核时,会看到「还没有音标视频/
+               点右上『上传视频』开始」—— 而那正是补完归属的成功状态,他会以为
+               刚才的批量操作把视频弄没了 */
             <div className="py-14 text-center">
-              <p className="text-3xl">🎬</p>
-              <p className="mt-2 font-semibold text-ink">{search ? `没有「${search}」相关的视频` : '还没有音标视频'}</p>
-              <p className="mt-1 text-xs text-ink-mute">{search ? '换个关键词试试' : '点右上「上传视频」开始'}</p>
+              <p className="text-3xl">{lecturerFilter === NO_LECTURER && !search ? '✅' : '🎬'}</p>
+              <p className="mt-2 font-semibold text-ink">
+                {search
+                  ? `没有「${search}」相关的视频`
+                  : lecturerFilter === NO_LECTURER
+                    ? '所有视频都指定了讲师'
+                    : lecturerFilter
+                      ? `「${lecturerFilter}」名下还没有视频`
+                      : '还没有音标视频'}
+              </p>
+              <p className="mt-1 text-xs text-ink-mute">
+                {search
+                  ? '换个关键词试试'
+                  : lecturerFilter
+                    ? '点上面的「全部」看所有视频'
+                    : '点右上「上传视频」开始'}
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -421,6 +472,13 @@ export default function TeacherPhonetics() {
                 />
                 <span className="text-xs text-ink-mute">
                   {selected.size > 0 ? `已选 ${selected.size} 个` : '全选本页'}
+                  {/* 本页有预置视频时说明一句它们被跳过了 —— 不说的话老师会数不对
+                      («全选» 之后只勾上 6 个而屏幕上有 10 行) */}
+                  {selectableItems.length < items.length && (
+                    <span className="ml-1 text-amber-600">
+                      (平台预置的 {items.length - selectableItems.length} 条不可改,已跳过)
+                    </span>
+                  )}
                 </span>
                 {selected.size > 0 && (
                   <div className="ml-auto flex items-center gap-1.5">
@@ -443,10 +501,14 @@ export default function TeacherPhonetics() {
               </div>
               {items.map((v) => (
                 <div key={v.id} className={`flex flex-wrap items-center gap-3 px-4 py-3 ${selected.has(v.id) ? 'bg-orange-50/60' : ''}`}>
+                  {/* 预置视频的勾选框直接禁用:勾上只会让整批操作吃 403
+                      (与同一行的编辑/下架/删除按钮同口径 —— 置灰而不是隐藏) */}
                   <input
                     type="checkbox" checked={selected.has(v.id)} onChange={() => toggleOne(v.id)}
+                    disabled={v.can_edit === false}
+                    title={v.can_edit === false ? '平台预置视频,机构不可修改' : undefined}
                     aria-label={`选择 ${v.title}`}
-                    className="h-4 w-4 shrink-0 accent-primary"
+                    className="h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-40"
                   />
                   {/* 缩略图:老师核对"顺序对不对"时看图比看标题快 */}
                   <img
