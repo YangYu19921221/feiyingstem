@@ -52,6 +52,11 @@ class PhoneticVideoOut(BaseModel):
     phonetic_symbol: Optional[str] = None
     category: str
     category_label: str = ""
+    # 讲师姓名(自由文本,见 models/phonetic.py)。None = 全校通用。
+    # 学生端按它分组挑「自己的老师」;**不在这里做二次归一** ——
+    # 归一只在写入路径(lecturer_name.resolve()),读侧再洗一遍会让同一份数据
+    # 在两处算出不同的分组
+    lecturer: Optional[str] = None
     cover_image: Optional[str] = None
     duration_seconds: Optional[int] = None
     file_size: Optional[int] = None
@@ -68,6 +73,7 @@ def to_out(v: PhoneticVideo) -> PhoneticVideoOut:
         phonetic_symbol=v.phonetic_symbol,
         category=v.category,
         category_label=CATEGORY_LABELS.get(v.category, v.category),
+        lecturer=v.lecturer,
         cover_image=v.cover_image,
         duration_seconds=v.duration_seconds,
         file_size=v.file_size,
@@ -90,7 +96,16 @@ async def list_videos(
     """
     # 排序按「上传顺序」(id 升序):老师是按教学顺序一个个传的,
     # 之前用 id.desc() 会把最后传的排最前,批量传 1234 显示成 4321
-    stmt = select(PhoneticVideo).where(PhoneticVideo.is_active.is_(True))
+    #
+    # ⚠️ _scope_org 是 2026-09-17 补的:此前这里**只靠隐式租户过滤器**
+    # (生产 TENANCY_ENFORCE=True 所以没出事),但那是最后一道网不是边界 ——
+    # 任何没走认证的调用(后台任务/脚本/测试)拿到的就是裸查询。
+    # 加了讲师分组后代价变大:前端的老师筛选条是从这个响应聚合出来的,
+    # 一旦漏出别家机构的行,学生就会在 chip 上直接看到别家老师的**姓名**。
+    stmt = _scope_org(
+        select(PhoneticVideo).where(PhoneticVideo.is_active.is_(True)),
+        PhoneticVideo,
+    )
     if category:
         stmt = stmt.where(PhoneticVideo.category == category)
     if q:
@@ -99,6 +114,8 @@ async def list_videos(
             PhoneticVideo.title.ilike(kw),
             PhoneticVideo.phonetic_symbol.ilike(kw),
             PhoneticVideo.description.ilike(kw),
+            # 讲师也要能搜:学生看到卡片上写着「王老师」,搜它却搜不到很别扭
+            PhoneticVideo.lecturer.ilike(kw),
         ))
     rows = (await db.execute(
         stmt.order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
@@ -115,10 +132,18 @@ async def get_video(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """视频详情,顺带记一次观看。"""
+    """视频详情,顺带记一次观看。
+
+    ⚠️ _scope_org 同样是 2026-09-17 补的(理由见 list_videos)。这里是**按 id 直查**,
+    漏了的话拿别家机构的 video_id 就能读到标题/讲师/简介并把观看数记上去。
+    同文件的 /ticket 与 /stream 一直是有显式过滤的,只有这个读端点漏了。
+    """
     v = (await db.execute(
-        select(PhoneticVideo).where(
-            PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+            ),
+            PhoneticVideo,
         )
     )).scalar_one_or_none()
     if v is None:

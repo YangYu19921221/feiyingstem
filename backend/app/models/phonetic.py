@@ -36,6 +36,15 @@ class PhoneticVideo(Base):
     # basic=入门总览 / vowel=元音 / consonant=辅音 / other
     category = Column(String(20), nullable=False, default="basic")
 
+    # 讲师姓名(2026-09-17):**自由文本,不是 users 表的外键**。
+    # 实际讲课的常是外聘老师/助教(没有系统账号),而有账号的老师也不一定是
+    # 视频里讲课的那个人 —— 按 teacher_id 关联会让一半视频无法归属。
+    # 学生端按这个字符串分组挑「自己的老师」,所以写法必须归一:
+    # 一切写入路径都要过 services/lecturer_name.resolve()(向已有写法靠拢),
+    # 否则「王老师」「王 老师」会在学生眼里变成两位老师。
+    # NULL / 空 = 不归属任何讲师 = 学生端的「全校通用」(所有人都该看的内容)
+    lecturer = Column(String(50), nullable=True)
+
     sort_order = Column(Integer, nullable=False, default=0)  # 同类内排序,小的在前
     is_active = Column(Boolean, nullable=False, default=True)  # 下架不删除,学生端不再列出
     view_count = Column(Integer, nullable=False, default=0)

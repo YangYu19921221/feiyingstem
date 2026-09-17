@@ -22,7 +22,8 @@ from app.api.v1.auth import get_current_teacher
 from app.models.user import User
 from app.models.phonetic import PhoneticVideo, PhoneticMaterial
 from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS
-from app.services import office_convert, phonetic_material_service
+from app.services import lecturer_name, office_convert, phonetic_material_service
+from app.services.lecturer_name import NO_LECTURER
 
 logger = logging.getLogger(__name__)
 
@@ -183,12 +184,80 @@ class VideoUpdate(BaseModel):
     cover_image: Optional[str] = Field(None, max_length=500)
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+    # 讲师姓名(自由文本)。**空串是有意义的输入 = 取消归属(改回「全校通用」)**,
+    # 所以下限不能写 min_length=1 —— 那样老师就没有办法把归属清掉了。
+    # ⚠️ 判空必须走显式分支(见 CLAUDE.md「留空=不修改」那条:`if "x" in data and data["x"]`
+    # 会让空串跳过处理)。这里的语义恰恰相反:传了就改,空串改成 None
+    lecturer: Optional[str] = Field(None, max_length=50)
+
+
+def _lecturer_scope(q, org_id: Optional[int]):
+    """按**目标机构**限定讲师查询(不是按调用者的 current_org_id)。
+
+    ⚠️ 不能复用 _org_scope 做这件事:它对平台 admin(current_org_id 为 None)
+    **不加任何条件**,于是 admin 拿到的候选是全平台的讲师名。而候选集是
+    `lecturer_name.resolve()` 的归一权威 —— admin 给 A 机构的视频设讲师时,
+    输入只要与 B 机构某位讲师的 match_key 相同,落库的就是 B 家的写法:
+    别家机构的姓名字符串被搬进 A 家,并直接出现在 A 家学生端的老师 chip 上。
+    (2026-09-17 实测复现过:A 有「王老师」、B 有「Wang老师」,admin 对 A 的视频
+    传 "wang老师" → 落库 'Wang老师')
+
+    org_id 为 None = 平台预置那一层,只跟平台自己的讲师消歧。
+    """
+    if org_id is None:
+        return q.where(PhoneticVideo.org_id.is_(None))
+    return q.where(or_(PhoneticVideo.org_id == org_id,
+                       PhoneticVideo.org_id.is_(None)))
+
+
+async def _existing_lecturers(
+    db: AsyncSession,
+    org_id: Optional[int],
+    changing_ids: Optional[list[int]] = None,
+) -> list[str]:
+    """目标机构可见的讲师名(含平台预置),给 lecturer_name.resolve() 消歧用。
+
+    讲师量级是个位数到几十,一次全取没有分页必要。
+
+    `changing_ids` = 本次要改的视频。**名下视频被这批全覆盖的讲师要从候选里剔掉**,
+    否则改写法时它们自己的旧名字算作"已有写法",resolve 原样退回旧名字 ——
+    老师点了保存却什么都没变,HTTP 还是 200(最难查的那种)。
+    反过来只覆盖了一部分就**必须留在候选里**:剩下那些仍叫旧名,真改了就会在
+    学生端分裂成两位几乎同名的老师,而学生分不出哪个是自己的。
+    想真改名就把该讲师的课全选上 —— 单条编辑天然满足"全覆盖"(该讲师只有这一个视频时)。
+    """
+    rows = (await db.execute(
+        _lecturer_scope(
+            select(PhoneticVideo.lecturer, func.count())
+            .where(PhoneticVideo.lecturer.isnot(None))
+            .group_by(PhoneticVideo.lecturer),
+            org_id,
+        )
+    )).all()
+    totals = {name: (n or 0) for name, n in rows if name}
+    if not changing_ids:
+        return list(totals)
+
+    changing = (await db.execute(
+        _lecturer_scope(
+            select(PhoneticVideo.lecturer, func.count())
+            .where(PhoneticVideo.id.in_(changing_ids),
+                   PhoneticVideo.lecturer.isnot(None))
+            .group_by(PhoneticVideo.lecturer),
+            org_id,
+        )
+    )).all()
+    covered = {name: (n or 0) for name, n in changing if name}
+    return [name for name, total in totals.items()
+            if covered.get(name, 0) < total]
 
 
 @router.get("/videos")
 async def list_videos(
-    q: Optional[str] = Query(None, description="搜索标题/音标/描述"),
+    q: Optional[str] = Query(None, description="搜索标题/音标/描述/讲师"),
     category: Optional[str] = Query(None),
+    lecturer: Optional[str] = Query(
+        None, description=f"精确筛讲师;{NO_LECTURER!r} = 只看未指定讲师的"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -204,9 +273,19 @@ async def list_videos(
             PhoneticVideo.title.ilike(kw),
             PhoneticVideo.phonetic_symbol.ilike(kw),
             PhoneticVideo.description.ilike(kw),
+            # 按讲师搜:补归属时老师要先把某位讲师的课全找出来再勾选,
+            # 与学生端的搜索口径保持一致
+            PhoneticVideo.lecturer.ilike(kw),
         ))
     if category:
         conds.append(PhoneticVideo.category == category)
+    if lecturer:
+        # 精确匹配讲师(筛选条用,与模糊搜索是两件事)。
+        # 哨兵值 ' none' = 只看未指定讲师的那批 —— 这正是要补归属的目标集合
+        if lecturer == NO_LECTURER:
+            conds.append(PhoneticVideo.lecturer.is_(None))
+        else:
+            conds.append(PhoneticVideo.lecturer == lecturer)
 
     # 显式加 org 可见性(理由见 _org_scope:不把安全边界押在隐式过滤器上)
     base = _org_scope(select(PhoneticVideo), PhoneticVideo)
@@ -247,6 +326,95 @@ async def list_videos(
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 
+class LecturerStat(BaseModel):
+    """一位讲师 + 他名下的视频数(含已下架的,这是给老师看的管理视角)"""
+    name: str
+    video_count: int
+
+
+@router.get("/lecturers", response_model=list[LecturerStat])
+async def list_lecturers(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """本机构已有的讲师名单(上传时自动补全 + 批量设讲师的候选)。
+
+    不是 users 表的查询 —— 讲师是自由文本(见 models/phonetic.py 的 lecturer 列),
+    名单由**现有视频聚合**得来:所以老师第一次上传时下拉是空的,敲完第一个名字
+    之后它就出现在候选里。没有单独的讲师表要维护,也不会积累"建了但没用过"的空讲师。
+
+    ⚠️ 一次 group_by 聚合,别按名字 N 次查(音标视频列表那边同样的教训)。
+    按视频数倒序:常讲课的那位排前面,老师敲一半就能挑到。
+    """
+    rows = (await db.execute(
+        _org_scope(
+            select(PhoneticVideo.lecturer, func.count())
+            .where(PhoneticVideo.lecturer.isnot(None))
+            .group_by(PhoneticVideo.lecturer),
+            PhoneticVideo,
+        ).order_by(func.count().desc(), PhoneticVideo.lecturer.asc())
+    )).all()
+    return [LecturerStat(name=name, video_count=n or 0) for name, n in rows if name]
+
+
+class BatchLecturerRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=100)
+    # 空串 / null = 取消归属,改回「全校通用」。这是有效操作,不是"没填"
+    lecturer: Optional[str] = Field(None, max_length=50)
+
+
+@router.post("/videos/batch-lecturer")
+async def batch_set_lecturer(
+    body: BatchLecturerRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """批量设讲师(勾选多条一起改)。
+
+    为什么必须有这个:存量视频的 lecturer 全是 NULL(迁移刻意不猜归属 ——
+    created_by 是"谁上传的"不是"谁讲的",拿它回填会把助教传的课记到助教名下)。
+    没有批量入口,老师就得逐个点「编辑」改几十遍,大概率干脆不用这个功能。
+
+    与批量删除同口径:选中里有平台预置的就**整批拒**,不静默跳过
+    (勾了 5 条只改了 3 条又不说,老师会以为都改了)。
+    """
+    rows = (await db.execute(
+        _org_scope(select(PhoneticVideo).where(PhoneticVideo.id.in_(body.ids)),
+                   PhoneticVideo)
+    )).scalars().all()
+    if not rows:
+        return {"updated": 0, "requested": len(body.ids), "lecturer": None}
+
+    if user.role != "admin":
+        preset = [v.id for v in rows if v.org_id is None]
+        if preset:
+            raise HTTPException(
+                403,
+                f"选中的 {len(preset)} 条是平台预置视频,对机构只读,"
+                "请取消勾选后重试(如需调整请联系平台管理员)",
+            )
+
+    # 消歧候选:按**被改的这些视频的归属**取(不是调用者的 org —— admin 的是 None),
+    # 并剔掉「名下视频被这批全覆盖」的讲师(详见 _existing_lecturers 的 docstring:
+    # 不剔就改不动写法,剔多了会在学生端分裂出两位同名老师)。
+    #
+    # 一批里混着不同归属的视频(admin 可能同时勾了预置的和机构的)时,按**各自的归属**
+    # 分别消歧会得出不同的目标名字,而这个端点的语义是"整批设成同一位讲师"。
+    # 取所有涉及归属的候选**并集**:任一侧已有该写法就靠拢过去,不凭空造新写法。
+    org_ids = {v.org_id for v in rows}
+    existing: list[str] = []
+    for oid in org_ids:
+        for n in await _existing_lecturers(db, oid, body.ids):
+            if n not in existing:
+                existing.append(n)
+    final = lecturer_name.resolve(body.lecturer, existing)
+    for v in rows:
+        v.lecturer = final
+    await db.commit()
+    logger.info("批量设音标视频讲师: %d 条 → %r by=%s", len(rows), final, user.id)
+    return {"updated": len(rows), "requested": len(body.ids), "lecturer": final}
+
+
 @router.post("/videos/upload", response_model=PhoneticVideoOut)
 async def upload_video(
     file: UploadFile = File(...),
@@ -254,6 +422,7 @@ async def upload_video(
     description: Optional[str] = Form(None),
     phonetic_symbol: Optional[str] = Form(None),
     category: str = Form("basic"),
+    lecturer: Optional[str] = Form(None),
     sort_order: int = Form(0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_teacher),
@@ -261,6 +430,9 @@ async def upload_video(
     """上传视频文件。**不传 title 时默认用文件名(去扩展名)**。
 
     落盘文件名随机化:原名可能带中文/空格/../,直接用会有编码与路径穿越问题。
+
+    lecturer = 讲师姓名(自由文本,可空)。批量上传时前端对整批传同一个值 ——
+    老师一次传的通常就是同一位讲师的一套课。
     """
     ext = ALLOWED_VIDEO_MIME.get(file.content_type or "")
     if not ext:
@@ -312,6 +484,13 @@ async def upload_video(
         if guessed:
             final_category = guessed
 
+    # 讲师名向**已有写法**靠拢:库里已有「王老师」时,这次敲「王 老师」也归到同一位。
+    # 不这么做的话学生端的老师筛选条会一个人分裂成好几个 chip。
+    # 候选按**新视频的归属**取(下面 org_id=user.org_id),不是按调用者身份 ——
+    # 否则 admin 会拿全平台的讲师名来消歧(见 _lecturer_scope)
+    final_lecturer = lecturer_name.resolve(
+        lecturer, await _existing_lecturers(db, user.org_id))
+
     v = PhoneticVideo(
         title=final_title,
         description=description,
@@ -320,6 +499,7 @@ async def upload_video(
         mime_type=file.content_type,
         phonetic_symbol=phonetic_symbol,
         category=final_category,
+        lecturer=final_lecturer,
         sort_order=sort_order,
         created_by=user.id,
         org_id=user.org_id,
@@ -346,6 +526,19 @@ async def update_video(
         data.pop("category")
     if "title" in data and data["title"]:
         data["title"] = data["title"].strip()
+    # 讲师:**显式分支**,不能混在下面的 setattr 循环里。
+    # ①「传了空串」= 取消归属改回全校通用,是有效操作,不能当成"没传"跳过
+    #   (CLAUDE.md 记过这个坑:AI 配置的 api_key 就这么被清空过 —— 那次是反过来
+    #    错在"空串被当成要改",这里错在"空串被当成不改",判空一律走显式分支)
+    # ②新名字要向已有写法靠拢,否则改一次讲师就多分裂一位老师
+    if "lecturer" in data:
+        raw = data.pop("lecturer")
+        # 候选按**这条视频的归属**取,并传 changing_ids=[它自己] ——
+        # 该讲师只有这一个视频时要允许改写法(否则被自己的旧名字挡回去,
+        # 200 但值没变);还有别的视频叫这名字时则靠拢回原写法,免得分裂。
+        # 批量路径本来就有这层豁免,单条此前漏了(2026-09-17 实测复现)
+        v.lecturer = lecturer_name.resolve(
+            raw, await _existing_lecturers(db, v.org_id, [v.id]))
     for k, val in data.items():
         setattr(v, k, val)
     await db.commit()
@@ -370,8 +563,16 @@ async def batch_delete_videos(
     批量 id 走 body 最稳。文件删失败只记日志 —— 留个孤儿文件不影响业务,
     但库里删不掉会留下"有记录播不了"的坏条目,所以以库为准。
     """
+    # ⚠️ _org_scope 是 2026-09-17 补的(此前这里是**裸查询**,是本文件唯一漏掉的写端点:
+    # 单条删除走 _own_video → _visible_video → _org_scope,只有批量这条没有)。
+    # 后果比一般泄漏重且不可逆:连带删 phonetic_materials 子行、视频文件、渲染页目录。
+    # 生产靠隐式租户过滤器兜着所以没真删过,但 tenancy.py 明确把 TENANCY_ENFORCE=False
+    # 列为排查问题时的常规临时动作 —— 翻了那个开关这就是活的跨机构数据销毁,
+    # 而 conftest 走 create_all 不注册过滤器,测试也永远抓不到。已实测复现(A 家老师
+    # 传 B 家 video_id → deleted:1,磁盘文件被删),见 test_batch_delete_is_org_scoped
     rows = (await db.execute(
-        select(PhoneticVideo).where(PhoneticVideo.id.in_(body.ids))
+        _org_scope(select(PhoneticVideo).where(PhoneticVideo.id.in_(body.ids)),
+                   PhoneticVideo)
     )).scalars().all()
     if not rows:
         return {"deleted": 0, "requested": len(body.ids)}

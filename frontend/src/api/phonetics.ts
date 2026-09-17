@@ -11,6 +11,9 @@ export const CATEGORY_LABELS: Record<PhoneticCategory, string> = {
   other: '其他',
 };
 
+/** 「全校通用」在筛选状态里的取值。空串已被「全部」占用,所以另用一个哨兵值 */
+export const NO_LECTURER = ' none';
+
 export interface PhoneticVideo {
   id: number;
   title: string;
@@ -18,6 +21,13 @@ export interface PhoneticVideo {
   phonetic_symbol?: string | null;
   category: PhoneticCategory;
   category_label: string;
+  /**
+   * 讲师姓名 —— **自由文本,不是系统里的教师账号**(讲课的常是外聘老师/助教)。
+   * null / 空 = 不归属任何讲师 = 学生端的「全校通用」。
+   * 学生端按这个字符串分组,归一在后端写入时做(services/lecturer_name),
+   * 前端不再洗一遍 —— 两处各洗一遍会算出不同的分组。
+   */
+  lecturer?: string | null;
   cover_image?: string | null;
   duration_seconds?: number | null;
   file_size?: number | null;
@@ -39,6 +49,12 @@ export interface PhoneticVideoPage {
   page: number;
   page_size: number;
   items: PhoneticVideo[];
+}
+
+/** 一位讲师 + 名下视频数(教师端:含已下架的) */
+export interface LecturerStat {
+  name: string;
+  video_count: number;
 }
 
 /** 配套课件 — 教师端(带渲染状态,老师要能看出「传上去了但没渲染成」) */
@@ -110,13 +126,20 @@ export const phoneticsApi = {
   detail: (id: number) => api.get<PhoneticVideo>(`/phonetics/videos/${id}`),
 
   // ---- 教师端 ----
-  teacherList: (params: { q?: string; category?: string; page: number; page_size: number }) =>
-    api.get<PhoneticVideoPage>('/teacher/phonetics/videos', { params }),
+  teacherList: (params: {
+    q?: string; category?: string;
+    /** 精确筛讲师;NO_LECTURER = 只看未指定讲师的(补归属时用) */
+    lecturer?: string;
+    page: number; page_size: number;
+  }) => api.get<PhoneticVideoPage>('/teacher/phonetics/videos', { params }),
 
   /** 上传视频。不传 title 时后端默认用文件名(去扩展名) */
   upload: (
     file: File,
-    meta: { title?: string; description?: string; phonetic_symbol?: string; category?: string; sort_order?: number },
+    meta: {
+      title?: string; description?: string; phonetic_symbol?: string;
+      category?: string; lecturer?: string; sort_order?: number;
+    },
     onProgress?: (percent: number) => void,
   ) => {
     const fd = new FormData();
@@ -125,6 +148,8 @@ export const phoneticsApi = {
     if (meta.description) fd.append('description', meta.description);
     if (meta.phonetic_symbol) fd.append('phonetic_symbol', meta.phonetic_symbol);
     fd.append('category', meta.category || 'basic');
+    // 讲师留空就不传(后端存 NULL = 全校通用),别传空串上去当"改成空"
+    if (meta.lecturer?.trim()) fd.append('lecturer', meta.lecturer.trim());
     fd.append('sort_order', String(meta.sort_order ?? 0));
     return api.post<PhoneticVideo>('/teacher/phonetics/videos/upload', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -139,8 +164,25 @@ export const phoneticsApi = {
 
   update: (id: number, body: Partial<{
     title: string; description: string; phonetic_symbol: string;
-    category: string; sort_order: number; is_active: boolean;
+    category: string;
+    /** 讲师姓名。**传空串 = 取消归属改回「全校通用」**(有意义的操作,不是"没填") */
+    lecturer: string;
+    sort_order: number; is_active: boolean;
   }>) => api.put<PhoneticVideo>(`/teacher/phonetics/videos/${id}`, body),
+
+  /**
+   * 本机构已有的讲师名单(上传时自动补全 / 批量设讲师的候选)。
+   * 由现有视频聚合而来,不是 users 表 —— 讲师是自由文本,可能是没有账号的外聘老师。
+   */
+  lecturers: () => api.get<LecturerStat[]>('/teacher/phonetics/lecturers'),
+
+  /**
+   * 批量设讲师(勾选多条一起改)。存量视频讲师全是空的,靠这个补归属,
+   * 否则老师得逐个点「编辑」改几十遍。传空串 = 整批改回「全校通用」。
+   */
+  batchSetLecturer: (ids: number[], lecturer: string) =>
+    api.post<{ updated: number; requested: number; lecturer: string | null }>(
+      '/teacher/phonetics/videos/batch-lecturer', { ids, lecturer }),
 
   remove: (id: number) => api.delete<void>(`/teacher/phonetics/videos/${id}`),
 

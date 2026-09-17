@@ -490,6 +490,15 @@ async def init_db():
             # 学段(2026-09-11): 单词本的二级分组,选项见 book_stages 表。
             # 可空(课外书/总复习本来就没有学段);存量行在下方按 grade_level 回填
             "ALTER TABLE word_books ADD COLUMN stage_id INTEGER",
+            # 音标视频的讲师(2026-09-17): **自由文本不是 users 外键** —— 讲课的常是
+            # 外聘老师/助教(无账号)。学生端按这个字符串分组挑「自己的老师」。
+            # 存量行留 NULL = 「全校通用」,所有学生照旧都能看到,零影响;
+            # 老师可在列表里勾选后「批量设讲师」补归属。写入必须过
+            # services/lecturer_name.resolve(),否则同一个人会分裂成几位老师
+            "ALTER TABLE phonetic_videos ADD COLUMN lecturer VARCHAR(50)",
+            # 讲师名单是按机构聚合的(group_by lecturer),org 打头
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_lecturer "
+            "ON phonetic_videos(org_id, lecturer)",
         ]:
             try:
                 await conn.execute(text(_sql))

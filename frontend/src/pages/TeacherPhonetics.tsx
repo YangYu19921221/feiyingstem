@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  phoneticsApi, CATEGORY_LABELS, formatSize,
-  type PhoneticVideo, type PhoneticCategory,
+  phoneticsApi, CATEGORY_LABELS, formatSize, NO_LECTURER,
+  type PhoneticVideo, type PhoneticCategory, type LecturerStat,
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -44,7 +44,28 @@ export default function TeacherPhonetics() {
 
   // 编辑中的行
   const [editing, setEditing] = useState<PhoneticVideo | null>(null);
-  const [editForm, setEditForm] = useState({ title: '', phonetic_symbol: '', category: 'basic', description: '' });
+  const [editForm, setEditForm] = useState({ title: '', phonetic_symbol: '', category: 'basic', lecturer: '', description: '' });
+
+  /**
+   * 讲师名单(由现有视频聚合,不是教师账号列表)。用于:
+   * ①上传前填「这批课是谁讲的」的自动补全 ②编辑弹层的候选 ③批量设讲师
+   */
+  const [lecturers, setLecturers] = useState<LecturerStat[]>([]);
+  /** 上传时给整批视频指定的讲师。一次传的通常就是同一位老师的一套课 */
+  const [uploadLecturer, setUploadLecturer] = useState('');
+  /** 批量设讲师弹层里输入的名字。null = 弹层没开 */
+  const [batchLecturer, setBatchLecturer] = useState<string | null>(null);
+  /** 讲师筛选(走后端,因为列表是分页的)。'' = 全部,NO_LECTURER = 只看未指定的 */
+  const [lecturerFilter, setLecturerFilter] = useState('');
+
+  const loadLecturers = useCallback(async () => {
+    try {
+      setLecturers(await phoneticsApi.lecturers());
+    } catch {
+      // 名单只是自动补全的便利,取不到不该妨碍上传(照旧能手敲名字)
+      setLecturers([]);
+    }
+  }, []);
 
   // 正在管理课件的视频。关弹层时刷新列表,让「讲义 N」跟着变
   const [materialFor, setMaterialFor] = useState<PhoneticVideo | null>(null);
@@ -71,8 +92,14 @@ export default function TeacherPhonetics() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // 响应拦截器已拆 data,这里拿到的就是分页对象本身
-      const data = await phoneticsApi.teacherList({ q: search || undefined, page, page_size: PAGE_SIZE });
+      // 响应拦截器已拆 data,这里拿到的就是分页对象本身。
+      // 讲师筛选走**后端**而不是前端过滤:列表是分页的,前端只拿到当前 10 条,
+      // 在本页里筛等于"筛了但翻页还是乱的"
+      const data = await phoneticsApi.teacherList({
+        q: search || undefined,
+        lecturer: lecturerFilter || undefined,
+        page, page_size: PAGE_SIZE,
+      });
       setItems(data.items);
       setTotal(data.total);
       setSelected(new Set());  // 换页/换搜索词后旧勾选已不可见,清掉防误删
@@ -81,9 +108,10 @@ export default function TeacherPhonetics() {
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, lecturerFilter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { void loadLecturers(); }, [loadLecturers]);
 
   // 搜索防抖:老师边打字边搜,不必每个字都打一次后端
   useEffect(() => {
@@ -109,8 +137,10 @@ export default function TeacherPhonetics() {
       setBatch({ done: i, total: files.length, name: f.name });
       setProgress(0);
       try {
-        // 不传 title:后端会用文件名(去扩展名)作标题
-        await phoneticsApi.upload(f, { category: 'basic' }, setProgress);
+        // 不传 title:后端会用文件名(去扩展名)作标题。
+        // 讲师对整批用同一个值 —— 一次传的通常就是同一位老师的一套课
+        await phoneticsApi.upload(
+          f, { category: 'basic', lecturer: uploadLecturer }, setProgress);
       } catch (e) {
         failed.push(f.name);
         console.error('上传失败:', f.name, e);
@@ -133,6 +163,8 @@ export default function TeacherPhonetics() {
     setSearch('');
     setKeyword('');
     await load();
+    // 这批可能带来一位新讲师,名单要跟着更新(否则下次上传的自动补全里没有他)
+    await loadLecturers();
   };
 
   const startEdit = (v: PhoneticVideo) => {
@@ -141,6 +173,7 @@ export default function TeacherPhonetics() {
       title: v.title,
       phonetic_symbol: v.phonetic_symbol || '',
       category: v.category,
+      lecturer: v.lecturer || '',
       description: v.description || '',
     });
   };
@@ -152,13 +185,37 @@ export default function TeacherPhonetics() {
         title: editForm.title.trim(),
         phonetic_symbol: editForm.phonetic_symbol,
         category: editForm.category,
+        // 留空 = 取消归属改回「全校通用」。**必须原样传空串**:
+        // 后端按「传了就改」判(见 VideoUpdate.lecturer 注释),这里若像其它字段
+        // 那样过滤掉空值,老师就永远没法把归属清掉
+        lecturer: editForm.lecturer.trim(),
         description: editForm.description,
       });
       toast.success('已保存');
       setEditing(null);
       await load();
+      await loadLecturers();
     } catch (e) {
       toast.error(getErrorMessage(e, '保存失败'));
+    }
+  };
+
+  /** 批量设讲师:存量视频靠这个补归属,不然要逐个点「编辑」改几十遍 */
+  const submitBatchLecturer = async () => {
+    const ids = [...selected];
+    if (ids.length === 0 || batchLecturer === null) return;
+    const name = batchLecturer.trim();
+    try {
+      const r = await phoneticsApi.batchSetLecturer(ids, name);
+      toast.success(name
+        ? `已把 ${r.updated} 个视频归到「${r.lecturer}」`
+        : `已把 ${r.updated} 个视频改回「全校通用」`);
+      setBatchLecturer(null);
+      setSelected(new Set());
+      await load();
+      await loadLecturers();
+    } catch (e) {
+      toast.error(getErrorMessage(e, '批量设讲师失败'));
     }
   };
 
@@ -217,11 +274,36 @@ export default function TeacherPhonetics() {
               可一次选多个视频批量上传,标题自动取文件名。
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            {/* 讲师:**上传前先填**,整批用同一个值。
+                放在上传按钮左边而不是弹层里 —— 老师的动作是"选文件就传",
+                多一步弹层确认会被跳过,而讲师是学生端分类的依据,漏填就归不了类。
+                自由文本 + datalist 自动补全:讲课的常是没有系统账号的外聘老师,
+                所以不是从教师账号里选。补全让同一个人不至于被敲成几种写法 */}
+            <div>
+              <label htmlFor="up-lecturer" className="mb-1 block text-xs text-ink-soft">
+                讲师(学生按这个挑老师)
+              </label>
+              <input
+                id="up-lecturer"
+                list="lecturer-options"
+                value={uploadLecturer}
+                onChange={(e) => setUploadLecturer(e.target.value)}
+                placeholder="如 王老师;留空=全校通用"
+                maxLength={50}
+                disabled={uploading}
+                className="min-h-11 w-56 rounded-xl border border-gray-200 bg-white px-3 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
+              />
+            </div>
+            <datalist id="lecturer-options">
+              {lecturers.map((l) => (
+                <option key={l.name} value={l.name}>{`${l.video_count} 个视频`}</option>
+              ))}
+            </datalist>
             <button
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              className="btn-glow rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              className="btn-glow min-h-11 rounded-xl px-4 text-sm font-semibold text-white disabled:opacity-60"
             >
               {uploading
                 ? (batch && batch.total > 1
@@ -263,9 +345,60 @@ export default function TeacherPhonetics() {
         {/* 搜索 */}
         <input
           type="search" value={keyword} onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索标题 / 音标 / 描述" aria-label="搜索视频"
-          className="mb-4 w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:border-primary focus:outline-none sm:max-w-xs"
+          placeholder="搜索标题 / 音标 / 描述 / 讲师" aria-label="搜索视频"
+          className="mb-3 w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:border-primary focus:outline-none sm:max-w-xs"
         />
+
+        {/* 讲师筛选条。「未指定讲师」那个 chip 是整件事的入口 ——
+            点它 → 得到还没归属的那批 → 全选 → 设讲师,一次补完。
+            没有它,老师得在几十条里用肉眼找哪些是空的 */}
+        {(lecturers.length > 0 || lecturerFilter) && (
+          <div className="mb-4 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs text-ink-mute">讲师</span>
+            <button
+              type="button"
+              onClick={() => { setLecturerFilter(''); setPage(1); }}
+              aria-pressed={lecturerFilter === ''}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                lecturerFilter === '' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              全部
+            </button>
+            {lecturers.map((l) => (
+              <button
+                type="button"
+                key={l.name}
+                onClick={() => {
+                  setLecturerFilter(lecturerFilter === l.name ? '' : l.name);
+                  setPage(1);   // 换筛选必须回第一页,否则可能停在空页
+                }}
+                aria-pressed={lecturerFilter === l.name}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                  lecturerFilter === l.name ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {l.name}
+                <span className="ml-1 font-numeric opacity-70">{l.video_count}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setLecturerFilter(lecturerFilter === NO_LECTURER ? '' : NO_LECTURER);
+                setPage(1);
+              }}
+              aria-pressed={lecturerFilter === NO_LECTURER}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                lecturerFilter === NO_LECTURER
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+              }`}
+            >
+              未指定讲师
+            </button>
+          </div>
+        )}
 
         {/* 列表 */}
         <div className="card-soft overflow-hidden rounded-2xl">
@@ -290,12 +423,22 @@ export default function TeacherPhonetics() {
                   {selected.size > 0 ? `已选 ${selected.size} 个` : '全选本页'}
                 </span>
                 {selected.size > 0 && (
-                  <button
-                    onClick={batchRemove}
-                    className="ml-auto rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
-                  >
-                    🗑 批量删除({selected.size})
-                  </button>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {/* 批量设讲师排在删除左边:存量视频补归属是这里最常做的事,
+                        而删除是危险动作,不该挨着高频按钮 */}
+                    <button
+                      onClick={() => setBatchLecturer('')}
+                      className="rounded-lg bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+                    >
+                      👤 设讲师({selected.size})
+                    </button>
+                    <button
+                      onClick={batchRemove}
+                      className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+                    >
+                      🗑 批量删除({selected.size})
+                    </button>
+                  </div>
                 )}
               </div>
               {items.map((v) => (
@@ -323,6 +466,13 @@ export default function TeacherPhonetics() {
                       </p>
                     </div>
                     <p className="mt-0.5 text-xs text-ink-mute">
+                      {/* 讲师放这一行第一位:老师核对"归属对不对"比看分类更频繁。
+                          没归属的**明确写出来**而不是留空 —— 留空看不出是"全校通用"
+                          还是"忘了填",而这正是要老师去补的那批 */}
+                      {v.lecturer
+                        ? <span className="font-medium text-teal-700">{v.lecturer}</span>
+                        : <span className="text-amber-600">未指定讲师</span>}
+                      {' · '}
                       {CATEGORY_LABELS[v.category] || v.category}
                       {v.file_size ? ` · ${formatSize(v.file_size)}` : ''}
                       {` · 观看 ${v.view_count}`}
@@ -426,6 +576,20 @@ export default function TeacherPhonetics() {
                 </div>
               </div>
               <div>
+                <label htmlFor="edit-lecturer" className="mb-1 block text-xs text-ink-soft">
+                  讲师(学生按这个挑老师,留空=全校通用)
+                </label>
+                <input
+                  id="edit-lecturer"
+                  list="lecturer-options"
+                  value={editForm.lecturer}
+                  onChange={(e) => setEditForm({ ...editForm, lecturer: e.target.value })}
+                  placeholder="如 王老师"
+                  maxLength={50}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
                 <label className="mb-1 block text-xs text-ink-soft">简介(学生可见)</label>
                 <textarea
                   value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
@@ -437,6 +601,70 @@ export default function TeacherPhonetics() {
             <div className="mt-4 flex gap-2">
               <button onClick={saveEdit} className="btn-glow flex-1 rounded-xl py-2.5 text-sm font-semibold text-white">保存</button>
               <button onClick={() => setEditing(null)} className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm text-ink-soft">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 批量设讲师弹层。存量视频(讲师全是空的)靠这个补归属 */}
+      {batchLecturer !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setBatchLecturer(null)}
+          role="dialog" aria-modal="true" aria-label="批量设讲师"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-1 font-display text-lg font-bold text-ink">
+              给选中的 {selected.size} 个视频设讲师
+            </p>
+            <p className="mb-4 text-xs leading-relaxed text-ink-soft">
+              学生在音标页顶部按讲师挑“自己的老师”。讲师是随手填的名字，
+              不用是系统里的教师账号（外聘老师、助教都可以）。
+            </p>
+            <label htmlFor="batch-lecturer" className="mb-1 block text-xs text-ink-soft">讲师姓名</label>
+            <input
+              id="batch-lecturer"
+              list="lecturer-options"
+              value={batchLecturer}
+              onChange={(e) => setBatchLecturer(e.target.value)}
+              placeholder="如 王老师"
+              maxLength={50}
+              autoFocus
+              /* 回车直接提交:补归属是重复劳动,少一次鼠标移动 */
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void submitBatchLecturer(); }}
+              className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            />
+            {/* 已有讲师做快捷键:补归属时敲字不如点一下,而且点已有的绝不会写错 */}
+            {lecturers.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {lecturers.map((l) => (
+                  <button
+                    key={l.name}
+                    type="button"
+                    onClick={() => setBatchLecturer(l.name)}
+                    className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-ink-soft transition hover:bg-teal-100"
+                  >
+                    {l.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-700">
+              留空点“保存”= 改回「全校通用」，所有学生都能看到。
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={submitBatchLecturer}
+                className="btn-glow flex-1 rounded-xl py-2.5 text-sm font-semibold text-white"
+              >
+                保存
+              </button>
+              <button
+                onClick={() => setBatchLecturer(null)}
+                className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm text-ink-soft"
+              >
+                取消
+              </button>
             </div>
           </div>
         </div>
