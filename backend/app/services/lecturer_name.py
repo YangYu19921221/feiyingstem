@@ -44,22 +44,41 @@ _WS = re.compile(r"[\s\u3000\u00a0]+")
 # 零宽字符:从 Word/PPT/网页复制讲师名时常夹带,屏幕上**完全看不见**。
 # 不删的话「王<200B>老师」入库后与「王老师」是两位老师,而两个 chip 长得一模一样,
 # 老师自己也永远查不出为什么多了一位。U+FEFF 是 BOM(粘贴整行时会带)
-_ZERO_WIDTH = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+def _strip_invisible(s: str) -> str:
+    """删掉**所有**不可见字符 —— 按 Unicode 分类判,不列黑名单。
+
+    Cf(格式字符)+ Cc(控制字符)在姓名里没有任何合法用途,而它们**一个像素都不占**:
+    留着就是「屏幕上一模一样、字符串却不相等」,正是本模块要消灭的东西。
+
+    ⚠️ **必须按分类判而不是列举**(2026-09-17 评审实测): 原先只列了 5 个零宽字符,
+    而整个码空间里有 2176 个不可见码点能同时躲过 normalize 和 match_key。
+    现实里最常撞上的恰恰不在那 5 个里:
+      U+00AD 软连字符(Word 自动断字塞的)、U+200E/200F 双向标记(从网页复制常带)、
+      U+FE0F 变体选择符(跟在 emoji 后面)、U+202A..202E 双向嵌入。
+    列举法还有个结构性问题: Unicode 每年新增码点,注定漏。
+    顺带把 NUL 也挡在门外(它属 Cc)—— 存进去 SQLite 的 length() 会数错。
+    """
+    return "".join(ch for ch in s
+                   if unicodedata.category(ch) not in ("Cf", "Cc"))
 
 
 def normalize(raw: Optional[str]) -> Optional[str]:
-    """洗掉看不见的差异。空 / 纯空白 → None(= 不归属任何讲师,「全校通用」)。
+    """洗掉看不见的差异。空 / 纯空白 / **纯不可见字符** → None(= 「全校通用」)。
 
-    做四件事:删零宽字符、首尾去空白、内部连续空白压成一个半角空格、超长截断。
+    做四件事:删不可见字符、首尾去空白、内部连续空白压成一个半角空格、超长截断。
     **不删内部空格** —— 「Miss Lucy」「张 Amy」删了就成了另一个名字;
     要跨空格消歧是 `resolve()` 的事(它只用来比较,不改存储形态)。
 
     ⚠️ 截断后要**再 strip 一次**:正好切在空格上会留下尾随空格,
     而尾随空格恰恰是这个模块存在的理由(它在输入框里看不见)。
+
+    ⚠️ 「全是不可见字符」必须落到 None(实测复现过): 否则会入库成一位
+    **没有字形的讲师** —— 学生端 chip 上是一片空白,还会因为"有两位讲师"
+    而触发首次选老师弹层。先删不可见字符再判空,这一条就自然成立了。
     """
     if raw is None:
         return None
-    s = _ZERO_WIDTH.sub("", str(raw))
+    s = _strip_invisible(str(raw))
     s = _WS.sub(" ", s).strip()
     if not s:
         return None
@@ -68,20 +87,27 @@ def normalize(raw: Optional[str]) -> Optional[str]:
 
 
 def match_key(name: Optional[str]) -> str:
-    """消歧用的比较键:NFKC 折叠 + 去掉全部空白与零宽字符 + casefold。
+    """消歧用的比较键:NFKC 折叠 + 删不可见字符与组合记号 + 去空白 + casefold。
 
     只用于「这两个写法是不是同一个人」,永不入库、永不展示。
 
-    三件事都必须做,少一件就会有一个人分裂成两位老师(都实测复现过):
+    四件事都必须做,少一件就会有一个人分裂成两位老师(都实测复现过):
     - **NFKC**: 中文输入法全角状态下敲出的是「Ｍiss Ｌucy」(U+FF2D 全角 M),
       与「Miss Lucy」逐字节不同、casefold 也折不到一起,而屏幕上几乎看不出差别
-    - **零宽字符**: 从 Word/PPT 里复制常带 U+200B 等,两个 chip 长得一模一样
+    - **不可见字符**: 见 _strip_invisible(按 Unicode 分类判,不列黑名单)
+    - **组合记号 Mn/Me**: 落单的组合记号(如汉字后跟一个 U+0301)不与前字合成,
+      屏幕上几乎看不出来却让字符串不等。
+      ⚠️ 只在**比较键**里删,**不在 normalize 里删** —— 存储要保留老师原本的写法。
+      它不会把不同的人并成一个: NFKC 已把 é 这类**预组合**字符合成回单码点,
+      所以「René / Rene」「Zoë / Zoe」「Lǐ / Lí」仍是不同的键(已验);
+      被并到一起的只有同一个名字的 NFD / NFC 两种写法,那正是想要的。
     - **casefold** 而不是 lower(对非英文字母更彻底)
     """
     if not name:
         return ""
     s = unicodedata.normalize("NFKC", str(name))
-    s = _ZERO_WIDTH.sub("", s)
+    s = "".join(ch for ch in s
+                if unicodedata.category(ch) not in ("Cf", "Cc", "Mn", "Me"))
     return _WS.sub("", s).casefold()
 
 

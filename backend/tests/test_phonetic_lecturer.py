@@ -157,6 +157,56 @@ def test_match_key_folds_fullwidth_and_zero_width():
     assert lecturer_name.normalize("王​老师") == "王老师"
 
 
+def test_invisible_chars_never_split_a_lecturer():
+    """**所有**不可见字符都不能让一位讲师分裂成两位。
+
+    2026-09-17 评审实测:原先只列了 5 个零宽字符做黑名单,而整个码空间里有
+    2176 个不可见码点能同时躲过 normalize 和 match_key。现实里最常撞上的
+    恰恰不在那 5 个里 —— Word 自动断字塞的软连字符、从网页复制必带的双向标记、
+    跟在 emoji 后面的变体选择符。改成按 Unicode 分类判(Cf/Cc,比较键再加 Mn/Me)。
+
+    ⚠️ 本测试里的不可见字符一律用 `chr(0x...)` 构造,**不写字面量** ——
+    字面量在编辑器和 review 里都看不见(见 lecturer_name.py 文件头那条)。
+    """
+    for cp, label in [
+        (0x00AD, "SOFT HYPHEN (Word 自动断字)"),
+        (0x200E, "LRM (从网页复制)"),
+        (0x200F, "RLM"),
+        (0xFE0F, "VS-16 (emoji 后缀)"),
+        (0x202A, "LRE 双向嵌入"),
+        (0x0301, "落单的组合尖音符"),
+        (0x0000, "NUL(SQLite length() 会数错)"),
+        (0x200B, "ZWSP(原来就覆盖的)"),
+    ]:
+        got = lecturer_name.resolve("王老师" + chr(cp), ["王老师"])
+        assert got == "王老师", f"U+{cp:04X} {label} 让讲师分裂了: {got!r}"
+
+
+def test_invisible_only_name_is_treated_as_shared():
+    """全是不可见字符的名字要落成 None(= 全校通用)。
+
+    否则会入库成一位**没有字形的讲师**:学生端 chip 上一片空白,
+    还会因为"有两位讲师"而触发首次选老师弹层(实测复现过)。
+    """
+    pure = chr(0x200E) + chr(0x00AD) + " " + chr(0x200B)
+    assert lecturer_name.normalize(pure) is None
+
+
+def test_combining_mark_folding_does_not_merge_different_people():
+    """比较键删组合记号**不能把不同的人并成一个**(这是该折叠的主要风险)。
+
+    NFKC 已把 é 这类预组合字符合成回单码点,所以 René / Rene 仍是不同的键;
+    被并到一起的只有同一个名字的 NFD / NFC 两种写法 —— 那正是想要的。
+    """
+    import unicodedata as ud
+    for a, b in [("René", "Rene"), ("Zoë", "Zoe"), ("王老师", "李老师")]:
+        assert lecturer_name.match_key(a) != lecturer_name.match_key(b), f"{a} 与 {b} 被并了"
+    # 同名的两种 Unicode 写法要视作同一人,且**存储保留老师敲的形态**
+    nfc, nfd = ud.normalize("NFC", "René"), ud.normalize("NFD", "René")
+    assert lecturer_name.match_key(nfc) == lecturer_name.match_key(nfd)
+    assert lecturer_name.normalize(nfd) == nfd     # 不改写存储形态
+
+
 def test_normalize_truncation_leaves_no_trailing_space():
     """超长截断正好切在空格上时,不能留尾随空格 —— 那正是本模块要消灭的东西"""
     out = lecturer_name.normalize("A" * 49 + " BCDE")
@@ -330,6 +380,83 @@ async def test_preset_sharing_a_name_does_not_block_org_rename(
                                 "lecturer": "王小明老师"})
     assert r.status_code == 200, r.text
     assert r.json()["lecturer"] == "王小明老师", "被预置那条挡住了,机构改不动自己的课"
+
+
+async def _preset_named(client: AsyncClient, lec_env, name: str = "Miss Lucy"):
+    """把平台预置视频的讲师设成 name(只有它用这个写法)。
+
+    ⚠️ 用完**不要**再往机构里传同名视频再断言 —— 一旦机构自己有了这个写法,
+    分母就不是 0 了,后面的断言在修复前也会通过(测不出东西)。
+    """
+    r = await client.post("/api/v1/teacher/phonetics/videos/batch-lecturer",
+                          headers=_h(lec_env["tok"]["admin"]),
+                          json={"ids": [lec_env["vid"]["preset"]], "lecturer": name})
+    assert r.status_code == 200 and r.json()["lecturer"] == name, r.text
+
+
+async def test_single_edit_snaps_to_preset_only_spelling(client: AsyncClient, lec_env):
+    """单条编辑要靠拢到**只存在于平台预置行**上的写法。
+
+    「全覆盖」的分母只数改得动的行,而预置行机构改不动 → 分母为 0。
+    分母 0 时若照旧剔出候选,老师敲「miss lucy」不会归到预置的「Miss Lucy」,
+    学生端当场分裂成两位同名老师(2026-09-17 实测复现:上传路径会靠拢、
+    编辑与批量却不靠拢,同一件事三条路径两种结果)。
+    """
+    await _preset_named(client, lec_env)
+    r = await client.put(f"/api/v1/teacher/phonetics/videos/{lec_env['vid']['legacy']}",
+                         headers=_h(lec_env["tok"]["t1"]), json={"lecturer": "miss lucy"})
+    assert r.status_code == 200, r.text
+    assert r.json()["lecturer"] == "Miss Lucy", "单条编辑没靠拢到预置写法"
+
+
+async def test_batch_snaps_to_preset_only_spelling(client: AsyncClient, lec_env):
+    """批量设讲师同样要靠拢到只存在于预置行上的写法(与上一条同一段逻辑)"""
+    await _preset_named(client, lec_env)
+    r = await client.post("/api/v1/teacher/phonetics/videos/batch-lecturer",
+                          headers=_h(lec_env["tok"]["t1"]),
+                          json={"ids": [lec_env["vid"]["legacy"]], "lecturer": "miss lucy"})
+    assert r.status_code == 200, r.text
+    assert r.json()["lecturer"] == "Miss Lucy", "批量没靠拢到预置写法"
+
+
+async def test_upload_snaps_to_preset_only_spelling(client: AsyncClient, lec_env):
+    """上传路径的基线(它不传 changing_ids,本来就该靠拢)"""
+    await _preset_named(client, lec_env)
+    r = await _upload(client, lec_env["tok"]["t1"], lecturer="miss lucy")
+    assert r.status_code == 200 and r.json()["lecturer"] == "Miss Lucy", r.text
+
+
+async def test_cross_org_batch_resolves_per_org(client: AsyncClient, lec_env):
+    """admin 跨机构批量时,**每家落各家的规范写法**,不能把 B 家的写法写进 A 家。
+
+    取候选并集会让 A 机构的视频落上 B 机构的姓名字符串 —— 别家的名字被搬进来,
+    还在 A 家学生端分裂出两位同名老师(2026-09-17 实测复现)。
+    构造:乙机构有**两个**「赵老师」的视频,批次里只放其中一个 →
+    乙那条按"没覆盖全"的规则靠拢回「赵老师」(不分裂),而甲那条落甲自己的新写法。
+    两边结果必须**不同** —— 正是这一点能区分「逐 org 解析」和「取并集」:
+    取并集时甲也会落成乙家的「赵老师」。
+    """
+    # 给乙机构再加一个同讲师的视频,让「赵老师」不被本批全覆盖
+    extra = await _upload(client, lec_env["tok"]["t2"], lecturer="赵老师")
+    assert extra.status_code == 200 and extra.json()["lecturer"] == "赵老师", extra.text
+
+    r = await client.post("/api/v1/teacher/phonetics/videos/batch-lecturer",
+                          headers=_h(lec_env["tok"]["admin"]),
+                          json={"ids": [lec_env["vid"]["legacy"], lec_env["vid"]["other"]],
+                                "lecturer": "赵 老师"})
+    assert r.status_code == 200, r.text
+    assert r.json()["updated"] == 2
+
+    # 乙机构:靠拢回自己已有的「赵老师」,名单里**不能多出**第二位
+    r2 = await client.get("/api/v1/teacher/phonetics/lecturers",
+                          headers=_h(lec_env["tok"]["t2"]))
+    assert [x["name"] for x in r2.json()] == ["赵老师"], r2.text
+
+    # 甲机构:没有这个写法,落的是本次输入的规范形态;**且不能是乙家那一个**
+    r3 = await client.get("/api/v1/phonetics/videos", headers=_h(lec_env["tok"]["stu"]))
+    names = {v["lecturer"] for v in r3.json() if v["lecturer"]}
+    assert "赵 老师" in names, names             # 甲家自己的新写法
+    assert "赵老师" not in names, f"乙机构的写法被搬进甲机构了: {names}"
 
 
 async def test_over_length_lecturer_consistent_across_paths(

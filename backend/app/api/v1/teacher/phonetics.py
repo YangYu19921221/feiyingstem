@@ -274,9 +274,16 @@ async def _existing_lecturers(
         )
     )).all()
     covered = {name: (n or 0) for name, n in changing if name}
-    # 改得动的那些全被本批覆盖 → 从候选里剔掉,放行改名
+    # 改得动的那些**全被本批覆盖** → 从候选里剔掉,放行改名。
+    #
+    # ⚠️ `changeable` 为 0(这个写法只存在于我改不动的行上,典型是只有平台预置视频
+    # 用它)时**必须留在候选里**: 那些行我本来就改不了,不存在"改一半"的风险,
+    # 而剔掉它会让我永远靠拢不到那个写法 —— 老师敲「miss lucy」不会归到预置的
+    # 「Miss Lucy」,学生端当场分裂成两位同名老师(2026-09-17 实测复现:
+    # 上传路径正确靠拢、编辑/批量却不靠拢,同一件事三条路径两种结果)
     return [name for name in names
-            if covered.get(name, 0) < changeable.get(name, 0)]
+            if changeable.get(name, 0) == 0
+            or covered.get(name, 0) < changeable[name]]
 
 
 @router.get("/videos")
@@ -423,26 +430,31 @@ async def batch_set_lecturer(
                 "请取消勾选后重试(如需调整请联系平台管理员)",
             )
 
-    # 消歧候选:按**被改的这些视频的归属**取(不是调用者的 org —— admin 的是 None),
-    # 并剔掉「名下视频被这批全覆盖」的讲师(详见 _existing_lecturers 的 docstring:
-    # 不剔就改不动写法,剔多了会在学生端分裂出两位同名老师)。
+    # 消歧候选:按**每条视频各自的归属**取(不是调用者的 org —— admin 的是 None),
+    # 并剔掉「名下视频被这批全覆盖」的讲师(详见 _existing_lecturers 的 docstring)。
     #
-    # 一批里混着不同归属的视频(admin 可能同时勾了预置的和机构的)时,按**各自的归属**
-    # 分别消歧会得出不同的目标名字,而这个端点的语义是"整批设成同一位讲师"。
-    # 取所有涉及归属的候选**并集**:任一侧已有该写法就靠拢过去,不凭空造新写法。
-    org_ids = {v.org_id for v in rows}
+    # ⚠️ **逐 org 各算一次,不能取并集**(2026-09-17 实测复现):
+    # 一批里混着不同机构的视频时(只有 admin 能做到),并集会让 A 机构的视频落上
+    # **B 机构的姓名写法** —— B 家的字符串被搬进 A 家,还在 A 家学生端分裂出
+    # 两位同名老师。逐 org 解析则各家落各家的规范写法:同一个人在 A 家叫「王老师」、
+    # 在 B 家叫「Wang老师」,各家学生看到的都是自己那一个 chip,这才是对的。
     is_admin = user.role == "admin"
-    existing: list[str] = []
-    for oid in org_ids:
-        for n in await _existing_lecturers(db, oid, body.ids,
-                                           can_edit_preset=is_admin):
-            if n not in existing:
-                existing.append(n)
-    final = lecturer_name.resolve(body.lecturer, existing)
+    per_org: dict[Optional[int], Optional[str]] = {}
+    for oid in {v.org_id for v in rows}:
+        per_org[oid] = lecturer_name.resolve(
+            body.lecturer,
+            await _existing_lecturers(db, oid, body.ids, can_edit_preset=is_admin),
+        )
     for v in rows:
-        v.lecturer = final
+        v.lecturer = per_org[v.org_id]
     await db.commit()
-    logger.info("批量设音标视频讲师: %d 条 → %r by=%s", len(rows), final, user.id)
+
+    # 返回给前端显示。跨机构批次可能得出不同写法,那就报归一后的输入本身
+    # (没有单一存储值能概括它;前端只用它拼提示语)
+    used = {n for n in per_org.values()}
+    final = used.pop() if len(used) == 1 else lecturer_name.normalize(body.lecturer)
+    logger.info("批量设音标视频讲师: %d 条 → %r(逐 org: %r) by=%s",
+                len(rows), final, per_org, user.id)
     return {"updated": len(rows), "requested": len(body.ids), "lecturer": final}
 
 

@@ -93,6 +93,8 @@ export default function PhoneticsHub() {
   const [viewing, setViewing] = useState<StudentMaterial | null>(null);
   /** 播放面板 DOM:全屏时把它整个送进 requestFullscreen */
   const panelRef = useRef<HTMLDivElement>(null);
+  /** 选老师弹层的面板 DOM:用来把键盘焦点圈在里面(它是刻意全封闭的) */
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   /**
    * 选老师弹层的 Esc = 「先都看看」(与屏幕上那个按钮同一个动作)。
@@ -104,10 +106,33 @@ export default function PhoneticsHub() {
   useEffect(() => {
     if (!askLecturer) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') pickLecturer('');
+      // ⚠️ 播放器开着时**不接管 Esc**: 两个 Esc 监听都挂在 window 上,一次按键会
+      // 同时关播放器 + 把弹层永久答掉(存空串),而学生根本没选过老师
+      // (2026-09-17 实测复现)。播放器那层自己会处理,这里让开
+      if (e.key === 'Escape' && !playing) pickLecturer('');
+      if (e.key !== 'Tab' || !pickerRef.current) return;
+      // 焦点圈在弹层内:弹层是刻意全封闭的(遮罩不可点、无关闭 X),若能 Tab 到
+      // 背后那些**肉眼看不见**的视频卡,回车就打开了播放器 —— 学生会莫名其妙
+      const items = pickerRef.current.querySelectorAll<HTMLElement>('button');
+      if (items.length === 0) return;
+      const first = items[0], last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !pickerRef.current.contains(active))) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && (active === last || !pickerRef.current.contains(active))) {
+        e.preventDefault(); first.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, [askLecturer, playing]);
+
+  // 弹层出现时把焦点移进去(否则焦点还在背后,读屏用户不知道弹层存在)
+  useEffect(() => {
+    if (!askLecturer) return;
+    const t = window.setTimeout(
+      () => pickerRef.current?.querySelector<HTMLElement>('button')?.focus(), 60);
+    return () => window.clearTimeout(t);
   }, [askLecturer]);
 
   // Esc:先收讲义,再关播放器 —— 两层各退一步,不要一下全关。
@@ -293,8 +318,13 @@ export default function PhoneticsHub() {
 
         {/* 老师筛选条:选自己的老师听他讲的课。
             只有一位讲师时整条不显示 —— 没得选的筛选器只是噪音。
-            min-h-11 是触摸目标下限(44px),手机上一排 chip 最容易点错 */}
-        {lecturerOptions.length >= 2 && (
+            min-h-11 是触摸目标下限(44px),手机上一排 chip 最容易点错。
+
+            ⚠️ 但 lecturerGone 时只要还剩 1 位就得显示: 那句提示会让学生
+            「在上面重新挑一位」,而按 >=2 判会恰好在这个场景把整条藏掉 ——
+            学生往上找什么都没有(2026-09-17 实测复现) */}
+        {(lecturerOptions.length >= 2
+          || (lecturerGone && lecturerOptions.length >= 1)) && (
           <div className="mb-4">
             <div className="mb-1.5 flex items-center gap-2">
               <span className="text-xs font-semibold text-ink-soft">选老师</span>
@@ -339,7 +369,9 @@ export default function PhoneticsHub() {
             而恰恰那时候最需要这句解释 */}
         {lecturerGone && (
           <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            你之前选的老师现在没有视频了，已经先给你显示全部。可以在上面重新挑一位。
+            你之前选的老师现在没有视频了，已经先给你显示全部。
+            {/* 一个老师都不剩时别说「在上面重新挑一位」——上面确实没有可挑的 */}
+            {lecturerOptions.length > 0 && '可以在上面重新挑一位。'}
           </p>
         )}
 
@@ -537,6 +569,7 @@ export default function PhoneticsHub() {
             role="dialog" aria-modal="true" aria-label="选择老师"
           >
             <motion.div
+              ref={pickerRef}
               initial={{ y: 24, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 24, opacity: 0 }}
               /* ⚠️ 必须是「限高 + 内层滚动 + 页脚 shrink-0」的三段式,不能整块自由长高:
                  讲师 4 位时面板要 464px,而横屏手机(iPhone SE 667×375)可用高只有 343px。

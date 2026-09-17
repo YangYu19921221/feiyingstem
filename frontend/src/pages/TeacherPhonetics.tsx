@@ -232,9 +232,18 @@ export default function TeacherPhonetics() {
     const name = batchLecturer.trim();
     try {
       const r = await phoneticsApi.batchSetLecturer(ids, name);
-      toast.success(name
-        ? `已把 ${r.updated} 个视频归到「${r.lecturer}」`
-        : `已把 ${r.updated} 个视频改回「全校通用」`);
+      // ⚠️ HTTP 200 但 updated=0 是**一条都没改**(选中的行已被别人删掉、
+      // 或 id 不属于本机构)。照旧弹绿色成功 = 骗老师,他会以为归属改好了。
+      // 另外 r.lecturer 可能是 null(改回全校通用/一条没改),不能直接插进模板 ——
+      // 会把字面量「null」显示给老师(2026-09-17 实测复现两者)
+      if (r.updated === 0) {
+        toast.warning('一条都没改成:选中的视频可能已被删除或不属于本机构,请刷新后重试');
+      } else {
+        const shown = r.lecturer || name;   // 服务端可能靠拢到已有写法,优先显示它
+        toast.success(shown
+          ? `已把 ${r.updated} 个视频归到「${shown}」`
+          : `已把 ${r.updated} 个视频改回「全校通用」`);
+      }
       setBatchLecturer(null);
       setSelected(new Set());
       await load();
