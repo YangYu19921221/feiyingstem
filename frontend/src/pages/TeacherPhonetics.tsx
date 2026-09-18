@@ -18,6 +18,34 @@ import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
 
 const PAGE_SIZE = 10;
+
+/**
+ * 讲师名是不是「看着填了其实是空的」—— 与后端 lecturer_name.normalize 同口径。
+ *
+ * 为什么前端也要判:讲师上传时**必填**,而这个判断决定「上传视频」按钮能不能点。
+ * 只 trim() 不够 —— 空格、全角空格、零宽字符敲出来的名字在输入框里**看着有内容**,
+ * 后端却会判成空并整批拒掉,那就成了"按钮能点但每次都失败"。
+ *
+ * ⚠️ 正则用 `new RegExp` **运行时构造**,不写成字面量:`\p{...}` 是 ES2018 语法,
+ * 写成字面量会在**构建期**被 legacy bundle 的转译链解析,老浏览器那份直接挂掉。
+ * 运行时构造则最坏只是这一个判断退化,而后端仍然是权威(它会回 400 带清楚的中文)。
+ */
+const INVISIBLE_RE = (() => {
+  try { return new RegExp('[\\p{Cf}\\p{Cc}]', 'gu'); }
+  // 兜底只覆盖最常见的几个,且**一律写转义** —— 字面量在编辑器和 review 里
+  // 都看不见(见 backend/app/services/lecturer_name.py 文件头那条)。
+  // ⚠️ 写成**逐个候选的 alternation 而不是字符类**: ZWNJ/ZWJ(200c/200d)放进
+  // 字符类会被 no-misleading-character-class 判为"可能拆散组合字符序列"而报错 ——
+  // 这里是逐字符删除,alternation 语义完全一样且没有那层歧义
+  catch {
+    return new RegExp(
+      '\\u200b|\\u200c|\\u200d|\\u200e|\\u200f|\\u2060|\\ufeff|\\u00ad', 'g');
+  }
+})();
+
+function isBlankLecturer(v: string): boolean {
+  return v.replace(INVISIBLE_RE, '').trim() === '';
+}
 const CATEGORIES = Object.entries(CATEGORY_LABELS) as [PhoneticCategory, string][];
 /** 分类默认封面(与学生端同一套图与版本号,老师看到的缩略图就是学生看到的) */
 const COVER_V = 2;   // 换图时同步 PhoneticsHub 的 COVER_V,否则缓存里是旧图
@@ -150,6 +178,13 @@ export default function TeacherPhonetics() {
   const onPickFiles = async (fileList?: FileList | null) => {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
+    // 兜底:讲师必填。正常路径上「上传视频」按钮已被禁用(选文件之前就挡住 ——
+    // 让老师选完 8 个文件才整批 400 是最气人的失败方式),这里只防"按钮禁用被绕过"
+    if (isBlankLecturer(uploadLecturer)) {
+      toast.error('请先在左边填「讲师」,再选视频上传');
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
     setUploading(true);
     setBatch({ done: 0, total: files.length, name: '' });
     const failed: string[] = [];
@@ -313,24 +348,33 @@ export default function TeacherPhonetics() {
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            {/* 讲师:**上传前先填**,整批用同一个值。
+            {/* 讲师:**上传前必填**(2026-09-17 改成强制),整批用同一个值。
                 放在上传按钮左边而不是弹层里 —— 老师的动作是"选文件就传",
                 多一步弹层确认会被跳过,而讲师是学生端分类的依据,漏填就归不了类。
                 自由文本 + datalist 自动补全:讲课的常是没有系统账号的外聘老师,
-                所以不是从教师账号里选。补全让同一个人不至于被敲成几种写法 */}
+                所以不是从教师账号里选。补全让同一个人不至于被敲成几种写法。
+                ⚠️ placeholder 里**不能再写「留空=全校通用」** —— 上传这条路已经不允许留空,
+                写着就是骗老师去做一件必然失败的事(要全校通用就传完在「编辑」里清空) */}
             <div>
               <label htmlFor="up-lecturer" className="mb-1 block text-xs text-ink-soft">
-                讲师(学生按这个挑老师)
+                讲师 <span className="text-red-500" aria-hidden="true">*</span>
+                <span className="text-ink-mute">(必填,学生按这个挑老师)</span>
               </label>
               <input
                 id="up-lecturer"
                 list="lecturer-options"
                 value={uploadLecturer}
                 onChange={(e) => setUploadLecturer(e.target.value)}
-                placeholder="如 王老师;留空=全校通用"
+                placeholder="如 王老师"
                 maxLength={50}
+                required
+                aria-required="true"
                 disabled={uploading}
-                className="min-h-11 w-56 rounded-xl border border-gray-200 bg-white px-3 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
+                className={`min-h-11 w-56 rounded-xl border bg-white px-3 text-sm focus:outline-none disabled:opacity-60 ${
+                  isBlankLecturer(uploadLecturer)
+                    ? 'border-amber-300 focus:border-amber-500'
+                    : 'border-gray-200 focus:border-primary'
+                }`}
               />
             </div>
             {/* ⚠️ option 里**不能写 children**:Chrome 把它当副标题显示在 value 旁边,
@@ -342,10 +386,14 @@ export default function TeacherPhonetics() {
                 <option key={l.name} value={l.name} />
               ))}
             </datalist>
+            {/* 没填讲师就**禁用**而不是点了才报错:选文件是个耗时动作
+                (要翻目录、可能一次挑 8 个),让老师选完才整批 400 是最气人的失败方式。
+                title 说清为什么点不了 —— 光禁用不给原因,老师会以为功能坏了 */}
             <button
               onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              className="btn-glow min-h-11 rounded-xl px-4 text-sm font-semibold text-white disabled:opacity-60"
+              disabled={uploading || isBlankLecturer(uploadLecturer)}
+              title={isBlankLecturer(uploadLecturer) ? '请先填左边的「讲师」' : undefined}
+              className="btn-glow min-h-11 rounded-xl px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {uploading
                 ? (batch && batch.total > 1
@@ -358,6 +406,14 @@ export default function TeacherPhonetics() {
               multiple
               className="hidden" onChange={(e) => onPickFiles(e.target.files)}
             />
+            {/* 看得见的原因。**不能只靠上面按钮的 title** —— 平板/手机上没有 hover,
+                title 永远不显示,老师只看到一个灰按钮,会以为上传功能坏了。
+                w-full 让它在 flex-wrap 里独占一行,贴在输入框下方 */}
+            {!uploading && isBlankLecturer(uploadLecturer) && (
+              <p className="w-full text-right text-xs text-amber-600">
+                填了讲师才能上传：学生要按老师挑课
+              </p>
+            )}
           </div>
         </div>
 

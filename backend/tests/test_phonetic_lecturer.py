@@ -129,7 +129,7 @@ def test_sentinel_matches_frontend_constant():
 def test_normalize_strips_invisible_differences():
     """看不见的差异必须洗掉 —— 老师在输入框里根本看不出尾随空格"""
     assert lecturer_name.normalize("  王老师  ") == "王老师"
-    assert lecturer_name.normalize("王　老师") == "王 老师"      # 全角空格→半角
+    assert lecturer_name.normalize("王" + chr(0x3000) + "老师") == "王 老师"      # 全角空格→半角
     assert lecturer_name.normalize("王  老师") == "王 老师"      # 连续空白压成一个
     # 空 / 纯空白 = 不归属任何讲师(全校通用),不是空字符串
     assert lecturer_name.normalize("") is None
@@ -151,10 +151,10 @@ def test_match_key_folds_fullwidth_and_zero_width():
     - BOM(U+FEFF):粘贴整行时会带
     """
     assert lecturer_name.resolve("Ｍiss Ｌucy", ["Miss Lucy"]) == "Miss Lucy"
-    assert lecturer_name.resolve("王​老师", ["王老师"]) == "王老师"
-    assert lecturer_name.resolve("﻿王老师", ["王老师"]) == "王老师"
+    assert lecturer_name.resolve("王" + chr(0x200B) + "老师", ["王老师"]) == "王老师"
+    assert lecturer_name.resolve(chr(0xFEFF) + "王老师", ["王老师"]) == "王老师"
     # 零宽字符也要在 normalize 里删掉(不然它自己入库时就带着)
-    assert lecturer_name.normalize("王​老师") == "王老师"
+    assert lecturer_name.normalize("王" + chr(0x200B) + "老师") == "王老师"
 
 
 def test_invisible_chars_never_split_a_lecturer():
@@ -278,11 +278,59 @@ async def test_upload_with_lecturer_snaps_to_existing(client: AsyncClient, lec_e
     assert r2.json()[0]["video_count"] == 3
 
 
-async def test_upload_without_lecturer_is_shared(client: AsyncClient, lec_env):
-    """不填讲师 = 全校通用(旧调用方式行为不变)"""
+async def test_upload_requires_lecturer(client: AsyncClient, lec_env):
+    """**上传必须填讲师**(2026-09-17 用户要求,此前是可空 = 全校通用)。
+
+    没有讲师的视频在学生端分不清是谁讲的,而"传完再补"实际上没人补 ——
+    所以在入口就卡住。校验必须在**落盘之前**,不能让老师传完 200MB 才被拒。
+    """
     r = await _upload(client, lec_env["tok"]["t1"])
+    assert r.status_code == 400, r.text
+    assert "讲师" in r.json()["detail"]
+
+
+async def test_upload_rejects_lecturer_that_only_looks_filled(
+        client: AsyncClient, lec_env):
+    """「看着填了其实是空的」也要拒:空格 / 全角空格 / 不可见字符。
+
+    判据走 normalize() 而不是 `not lecturer` —— 否则这些值会绕过必填、
+    入库成一位**没有字形的幽灵讲师**(chip 一片空白,还会触发首次选老师弹层)。
+    ⚠️ 不可见字符用 chr(0x...) 构造,不写字面量(见 lecturer_name.py 文件头)。
+    """
+    for label, value in [
+        ("半角空格", "   "),
+        ("全角空格", chr(0x3000) * 2),
+        ("不换行空格", chr(0x00A0)),
+        ("零宽空格", chr(0x200B) + chr(0x200B)),
+        ("软连字符", chr(0x00AD)),
+        ("双向标记", chr(0x200E) + " " + chr(0x200F)),
+    ]:
+        r = await _upload(client, lec_env["tok"]["t1"], lecturer=value)
+        assert r.status_code == 400, f"{label} 没被拒: {r.text}"
+
+
+async def test_upload_with_lecturer_still_works(client: AsyncClient, lec_env):
+    """正常填了就照常上传(必填的正向路径)"""
+    r = await _upload(client, lec_env["tok"]["t1"], lecturer="孙老师")
     assert r.status_code == 200, r.text
-    assert r.json()["lecturer"] is None
+    assert r.json()["lecturer"] == "孙老师"
+
+
+async def test_shared_video_still_reachable_by_clearing_after_upload(
+        client: AsyncClient, lec_env):
+    """「全校通用」这个状态仍然到得了 —— 上传必填,但**编辑仍可清空**。
+
+    这是必填规则的逃生门:确实不属于某位老师的内容(全校公开课、平台预置)
+    先随便填一个再到列表里清空。存量 20 个视频本来就是 NULL,也得留着这个状态。
+    """
+    up = await _upload(client, lec_env["tok"]["t1"], lecturer="临时填的")
+    assert up.status_code == 200, up.text
+    vid = up.json()["id"]
+
+    r = await client.put(f"/api/v1/teacher/phonetics/videos/{vid}",
+                         headers=_h(lec_env["tok"]["t1"]), json={"lecturer": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["lecturer"] is None, "编辑清空讲师这条逃生门被堵了"
 
 
 # ---------- 编辑 ----------

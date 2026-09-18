@@ -474,7 +474,7 @@ async def upload_video(
 
     落盘文件名随机化:原名可能带中文/空格/../,直接用会有编码与路径穿越问题。
 
-    lecturer = 讲师姓名(自由文本,可空)。批量上传时前端对整批传同一个值 ——
+    lecturer = 讲师姓名(自由文本,**上传时必填**)。批量上传时前端对整批传同一个值 ——
     老师一次传的通常就是同一位讲师的一套课。
     """
     ext = ALLOWED_VIDEO_MIME.get(file.content_type or "")
@@ -482,6 +482,21 @@ async def upload_video(
         raise HTTPException(400, "仅支持 mp4 / webm / mov 格式的视频")
     if category not in VALID_CATEGORIES:
         category = "basic"
+
+    # 讲师**必填**(2026-09-17 用户要求)。校验放在落盘**之前** ——
+    # 放到后面就是传完 200MB 才告诉老师"没填讲师",白等一场还留个孤儿文件。
+    #
+    # 判据用 normalize() 而不是 `not lecturer`: 空格、全角空格、零宽字符敲出来的
+    # "看着填了其实是空的"必须一样拒掉(它们 normalize 之后就是 None)。
+    # ⚠️ 只在**上传**这条路强制。编辑那条仍允许清空 = 取消归属改回「全校通用」:
+    #   ①存量 20 个视频本来就是全校通用,得留着这个状态
+    #   ②平台预置内容(admin 传的)确实可能不属于任何一位老师,传完可在编辑里清掉
+    if lecturer_name.normalize(lecturer) is None:
+        raise HTTPException(
+            400,
+            "请先填「讲师」再上传:学生要按老师挑课,没有讲师的视频他们分不清是谁讲的。"
+            "确实不属于某位老师的(比如全校通用的公开课),先填一个再到列表里点「编辑」清空即可",
+        )
 
     d = _ensure_dir()
     stored_name = f"{secrets.token_hex(16)}.{ext}"
