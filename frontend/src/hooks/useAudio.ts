@@ -25,6 +25,20 @@ export function edgeTtsUrl(word: string, wordId?: number): string {
   return `${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(word)}&v=${TTS_VERSION}`;
 }
 
+/**
+ * 逐字合成一段文本（不查库、不套 tts_text、不展开缩写）。
+ * 给后台填「发音纠正」时当场试听用：**听到的就是将来学生听到的**。
+ *
+ * 不能用 edgeTtsUrl 代替 —— 它会拿文本去按拼写查库，命中就套上**已保存的**
+ * tts_text，于是刚改的字听不到、老师以为改了没用（record 这类词必然命中）。
+ *
+ * 不带 v=TTS_VERSION：那是给学生端音频做长缓存版本号的，试听文本每敲一下就变，
+ * 服务端也按 no-store 返回，带上只会让 URL 变长。
+ */
+export function rawTtsUrl(text: string): string {
+  return `${API_BASE_URL}/pronunciation/edge-tts?raw=1&word=${encodeURIComponent(text)}`;
+}
+
 // 全局音频缓存（blob URL），页面生命周期内有效
 const audioCache = new Map<string, string>();
 // 正在加载中的请求，避免重复请求

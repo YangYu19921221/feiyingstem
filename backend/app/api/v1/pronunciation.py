@@ -26,6 +26,29 @@ def _expand_for_tts(word: str) -> str:
     t = re.sub(r'\bsth\.?\b', 'something', t, flags=re.IGNORECASE)
     return t
 
+
+async def _synthesize(text: str) -> Response:
+    """把一段文本原样交给 Edge TTS 合成(给 raw 试听用)。
+
+    ⚠️ **刻意不走剑桥词典兜底**,而正常路径是走的。理由:兜底是**按拼写**取真人录音,
+    与这段文本无关。如果 Edge TTS 挂了而这里退到剑桥,老师会听到那个词**正确的**
+    真人发音 → 以为自己的改写生效了,其实一个字都没生效 —— 试听的全部价值就是
+    "听到的就是将来学生听到的",宁可明确报错也不能给一个听起来对的假象。
+    no-store: 试听文本每敲一个字就变一版,缓存任意字符串没意义还占地方。
+    """
+    if not edge_tts_service.is_available():
+        raise HTTPException(503, "试听需要 Edge TTS,当前不可用")
+    try:
+        audio_bytes = await edge_tts_service.generate_pronunciation(text)
+    except RuntimeError:
+        raise HTTPException(500, "试听合成失败,请重试")
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store", "X-Source": "edge-tts-raw"},
+    )
+
+
 MAX_AUDIO_SIZE = 5 * 1024 * 1024  # 5MB
 
 
@@ -115,14 +138,33 @@ async def whisper_status():
 async def best_pronunciation(
     word: str = Query(None, max_length=500),
     word_id: int = Query(None),
+    raw: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
     """
     最佳英式发音接口（女声）
     优先级：剑桥词典真人女声录音 → Edge TTS en-GB-SoniaNeural 英式女声
     支持通过 word 或 word_id 查询
+
+    raw=1: **把 word 当成最终 TTS 文本逐字合成**，不查库、不套 tts_text、
+    不做缩写展开。这是给后台「填 tts_text 时当场试听」用的 ——
+    不加这个参数，老师在输入框改了字但还没保存，试听会拿输入内容去
+    按拼写查库：
+      · 查不到 → 效果凑巧是对的（多数改写拼法都查不到）
+      · **查到了就骗人** → 播的是那条词已存的旧 tts_text，不是刚敲的字。
+        例:把 record 的 tts_text 改成 "record" 想听原音，`?word=record`
+        会命中 record 那行、套上旧值 "rekord" → 听到的仍是旧发音，
+        老师会以为「改了没用」
+    有了 raw 才有这条硬保证: raw 试听字符串 S == 保存 tts_text=S 后学生听到的。
+    (安全面没变大: word 参数本来就接受任意 500 字文本合成，raw 只是少查一次库)
     """
     from app.models.word import Word
+
+    # raw: 逐字合成,直接跳过所有「查库取 tts_text / 展开缩写」的逻辑
+    if raw:
+        if not word or not word.strip():
+            raise HTTPException(400, "raw 模式需要提供 word 文本")
+        return await _synthesize(word.strip())
 
     db_word = None
     # word_id 优先:精确定位到具体那条(区分一词多音),即使同时传了 word 文本。

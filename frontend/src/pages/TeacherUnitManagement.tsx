@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,7 +13,8 @@ import {
   cacheUnitPronunciations
 } from '../api/teacher';
 import type { UnitResponse, UnitDetailResponse, WordInUnit, CachePronunciationsResponse } from '../api/teacher';
-import { Plus, Trash2, Edit, BookOpen, X, Sparkles, Download, Save } from 'lucide-react';
+import { Plus, Trash2, Edit, BookOpen, X, Sparkles, Download, Save, Volume2 } from 'lucide-react';
+import { rawTtsUrl } from '../hooks/useAudio';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
@@ -54,6 +55,73 @@ const TeacherUnitManagement = () => {
     meaning: string; part_of_speech: string; example_sentence: string; example_translation: string;
   }>({ word: '', phonetic: '', syllables: '', tts_text: '', difficulty: 1, meaning: '', part_of_speech: '', example_sentence: '', example_translation: '' });
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // ── 发音试听 ────────────────────────────────────────────────
+  /**
+   * 正在试听什么。'fix'=输入框里填的发音文本,'default'=不填时的默认发音。
+   * 带上 where 区分「新增」和「编辑」两个表单 —— 两处都有发音文本输入框,
+   * 用同一个 state 会让两边的按钮一起变成「播放中」。
+   */
+  const [previewing, setPreviewing] = useState<
+    { where: 'new' | 'edit'; mode: 'fix' | 'default' } | null
+  >(null);
+  /** 当前试听的 audio 句柄,只用来 pause,放 state 会白白触发重渲染 */
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  /**
+   * 试听发音文本。mode='fix' 听输入框里填的,'default' 听不填时的默认发音。
+   *
+   * **两个都必须走 rawTtsUrl 逐字合成**,这是这个按钮有意义的前提:
+   * 普通发音接口会拿文本去按拼写查库、套上**已保存的** tts_text。于是
+   *   · 'fix' 用普通接口 → 改了字还没保存时,听到的是库里的旧值,
+   *     老师以为「改了没生效」,其实是试听在骗他(record 这类词必然命中)
+   *   · 'default' 用普通接口 → 听到的还是旧纠正音,与 'fix' 毫无区别,
+   *     对比按钮等于没用
+   * 走 raw 才有这条硬保证:试听听到的 == 保存后学生听到的。
+   *
+   * 每次播放前先停掉上一条 —— 老师会连着点两个按钮做对比,叠在一起什么都听不清。
+   */
+  const handlePreviewTts = async (
+    where: 'new' | 'edit',
+    mode: 'fix' | 'default',
+  ) => {
+    const form = where === 'new' ? newWordData : editFormData;
+    const spelling = (form.word || '').trim();
+    const fix = (form.tts_text || '').trim();
+
+    if (!spelling) {
+      toast.warning('请先填写单词');
+      return;
+    }
+    if (mode === 'fix' && !fix) {
+      toast.warning('请先填写发音文本,或点「听默认」听不填时的效果');
+      return;
+    }
+
+    previewAudioRef.current?.pause();
+    previewAudioRef.current = null;
+    setPreviewing({ where, mode });
+
+    try {
+      const audio = new Audio(rawTtsUrl(mode === 'fix' ? fix : spelling));
+      previewAudioRef.current = audio;
+      audio.onended = () => setPreviewing(null);
+      audio.onerror = () => {
+        setPreviewing(null);
+        toast.error('试听失败,请重试');
+      };
+      await audio.play();
+    } catch {
+      setPreviewing(null);
+      toast.error('试听失败,请重试');
+    }
+  };
+
+  /** 组件卸载时停掉试听(念到一半直接跳走的情况) */
+  useEffect(() => () => {
+    previewAudioRef.current?.pause();
+    previewAudioRef.current = null;
+  }, []);
 
   // 发音预缓存
   const [cachingPron, setCachingPron] = useState(false);
@@ -970,10 +1038,32 @@ const TeacherUnitManagement = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">发音文本（读音≠拼写时填，如 Ms→miz；普通单词留空按拼写读）</label>
-                  <input type="text" value={newWordData.tts_text}
-                    onChange={(e) => setNewWordData({ ...newWordData, tts_text: e.target.value })}
-                    placeholder="普通单词留空即可"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                  <div className="flex gap-2">
+                    <input type="text" value={newWordData.tts_text}
+                      onChange={(e) => setNewWordData({ ...newWordData, tts_text: e.target.value })}
+                      placeholder="普通单词留空即可"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" />
+                    <button type="button"
+                      onClick={() => handlePreviewTts('new', 'fix')}
+                      disabled={previewing !== null || !newWordData.tts_text.trim()}
+                      title="听听按你填的这个读法念出来是什么"
+                      className="px-3 py-2 bg-[#FF6B35] text-white rounded-lg hover:shadow-lg transition text-sm flex items-center gap-1 disabled:opacity-40 shrink-0">
+                      <Volume2 className="w-4 h-4" />
+                      {previewing?.where === 'new' && previewing.mode === 'fix' ? '播放中' : '试听'}
+                    </button>
+                    <button type="button"
+                      onClick={() => handlePreviewTts('new', 'default')}
+                      disabled={previewing !== null}
+                      title="听听留空时的默认发音,用来对比"
+                      className="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition text-sm flex items-center gap-1 disabled:opacity-40 shrink-0">
+                      <Volume2 className="w-4 h-4" />
+                      {previewing?.where === 'new' && previewing.mode === 'default' ? '播放中' : '听默认'}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    拿不准就先点「听默认」，念得不对再填、再「试听」对比。
+                    <strong>试听听到的就是学生将来听到的。</strong>
+                  </p>
                 </div>
 
                 {/* 释义列表 */}
@@ -1169,10 +1259,31 @@ const TeacherUnitManagement = () => {
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-gray-500 mb-1">发音文本（读音≠拼写时填，如 Ms→miz；留空按拼写读）</label>
-                            <input type="text" value={editFormData.tts_text}
-                              onChange={(e) => setEditFormData({ ...editFormData, tts_text: e.target.value })}
-                              placeholder="普通单词留空即可"
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+                            <div className="flex gap-1.5">
+                              <input type="text" value={editFormData.tts_text}
+                                onChange={(e) => setEditFormData({ ...editFormData, tts_text: e.target.value })}
+                                placeholder="普通单词留空即可"
+                                className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent" />
+                              <button type="button"
+                                onClick={() => handlePreviewTts('edit', 'fix')}
+                                disabled={previewing !== null || !editFormData.tts_text.trim()}
+                                title="听听按你填的这个读法念出来是什么"
+                                className="px-2 py-1.5 bg-[#FF6B35] text-white rounded-lg hover:shadow transition text-xs flex items-center gap-1 disabled:opacity-40 shrink-0">
+                                <Volume2 className="w-3.5 h-3.5" />
+                                {previewing?.where === 'edit' && previewing.mode === 'fix' ? '播放中' : '试听'}
+                              </button>
+                              <button type="button"
+                                onClick={() => handlePreviewTts('edit', 'default')}
+                                disabled={previewing !== null}
+                                title="听听留空时的默认发音,用来对比"
+                                className="px-2 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition text-xs flex items-center gap-1 disabled:opacity-40 shrink-0">
+                                <Volume2 className="w-3.5 h-3.5" />
+                                {previewing?.where === 'edit' && previewing.mode === 'default' ? '播放中' : '听默认'}
+                              </button>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-400">
+                              先「听默认」，念得不对再填、再「试听」对比。试听听到的就是学生听到的。
+                            </p>
                           </div>
                           <div className="grid grid-cols-3 gap-2">
                             <div>

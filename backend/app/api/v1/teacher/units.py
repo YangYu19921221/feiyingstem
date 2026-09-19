@@ -680,8 +680,23 @@ async def update_word_in_unit(
         v = word_data[field]
         return v is not None and v != ""
 
+    # ⚠️ tts_text 是例外:空串在这里是**有效操作** = 取消发音纠正、改回按拼写读。
+    # 套用上面那条「空串=未提交」会让「清空发音文本 → 保存」变成静默失败:
+    # 库里旧的纠正音还在,而界面照旧弹「保存成功」—— 老师以为改回默认了,
+    # 学生听到的仍是旧读法,最难查的那种。
+    # (与 CLAUDE.md 那条 AI 密钥被空串清掉的坑同源,方向相反:
+    #  那次错在"空串被当成要改",这次错在"空串被当成不改",两种都要走显式分支)
+    # 判据是**键在不在**,不是值空不空。顺手把纯空白归成 None:
+    # 全是空格的"发音文本"在界面上看着像填了,送去 TTS 只会得到静音。
+    CLEARABLE_FIELDS = {'tts_text'}
+
     for field in ['word', 'phonetic', 'syllables', 'tts_text', 'difficulty']:
-        if _provided(field):
+        if field in CLEARABLE_FIELDS:
+            if field in word_data:
+                raw = word_data[field]
+                cleaned = raw.strip() if isinstance(raw, str) else raw
+                setattr(target_word, field, cleaned or None)
+        elif _provided(field):
             setattr(target_word, field, word_data[field])
 
     if any(_provided(k) for k in ['meaning', 'part_of_speech', 'example_sentence', 'example_translation']):
