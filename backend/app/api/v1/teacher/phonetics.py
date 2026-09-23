@@ -8,6 +8,7 @@
 import logging
 import os
 import secrets
+import time
 from datetime import timedelta
 from typing import Optional
 
@@ -45,11 +46,47 @@ VALID_CATEGORIES = set(CATEGORY_LABELS.keys())
 # 都见得到),按 MIME 判会把老师正常的文件挡在门外
 ALLOWED_MATERIAL_EXTS = {".pdf", ".ppt", ".pptx"}
 
+# 封面图白名单(与机构 Logo / 兑换商品图同一套口径)。封面是**唯一**允许落
+# UPLOAD_DIR 的音标文件 —— 那个目录整体公开无鉴权,而封面本来就要给所有学生看
+COVER_EXT_MAP = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+MAX_COVER_SIZE = 2 * 1024 * 1024
+COVER_SUBDIR = "phonetic-covers"
+# 封面 URL 的固定前缀。PUT /videos/{id} 也能改 cover_image 字段,
+# 只放行我们自己产出的路径(理由见 update_video 里的注释)
+COVER_URL_PREFIX = f"/api/v1/files/{COVER_SUBDIR}/"
+
 
 def _ensure_dir() -> str:
     d = settings.PHONETIC_VIDEO_DIR
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def _cover_dir() -> str:
+    d = os.path.join(settings.UPLOAD_DIR, COVER_SUBDIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _remove_cover_files(video_id: int) -> None:
+    """删掉某个视频的封面文件(所有扩展名都试一遍)。
+
+    ⚠️ **删视频时必须调这个**,理由和删 PhoneticVideoView 行一样:
+    phonetic_videos.id 是普通 INTEGER PRIMARY KEY **不带 AUTOINCREMENT**,
+    SQLite 会把删掉的最大 id 重新发给下一次插入(已实测)。封面文件按 id 命名,
+    留着的话新传的视频虽然 cover_image 是 NULL(库里没继承),但**下一次给它传封面
+    并不会先清掉同名旧文件**,而带 ?v= 时间戳的新 URL 指向的就是那个位置 ——
+    真正致命的是反过来:老师给新视频传了封面又删掉,残留的旧图会以同名再次现身。
+    一并删掉最干净,且删文件失败只记日志(以库为准)。
+    """
+    d = os.path.join(settings.UPLOAD_DIR, COVER_SUBDIR)
+    for ext in set(COVER_EXT_MAP.values()):
+        p = os.path.join(d, f"video_{video_id}.{ext}")
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except OSError as e:
+            logger.warning("删除音标视频封面失败(记录已删): %s %s", p, e)
 
 
 def category_from_title(title: str) -> Optional[str]:
@@ -717,6 +754,16 @@ async def update_video(
         data.pop("category")
     if "title" in data and data["title"]:
         data["title"] = data["title"].strip()
+    # 封面只认**我们自己产出的路径**。这个值会被两端直接塞进 <img src>,
+    # 放任自由文本就等于允许老师写 `javascript:...`(存储型 XSS,而受众是学生)
+    # 或挂个外站地址(每个学生打开页面都去访问那台服务器,顺手泄露访客 IP)。
+    # 换封面走 POST /videos/{id}/cover,清空走 DELETE,所以这里只需放行与拒绝
+    if "cover_image" in data:
+        cover = (data.pop("cover_image") or "").strip()
+        if cover and not cover.startswith(COVER_URL_PREFIX):
+            raise HTTPException(400, "封面请用「换封面」上传,不支持填写外部地址")
+        if cover:
+            data["cover_image"] = cover
     # 讲师:**显式分支**,不能混在下面的 setattr 循环里。
     # ①「传了空串」= 取消归属改回全校通用,是有效操作,不能当成"没传"跳过
     #   (CLAUDE.md 记过这个坑:AI 配置的 api_key 就这么被清空过 —— 那次是反过来
@@ -735,6 +782,80 @@ async def update_video(
         setattr(v, k, val)
     await db.commit()
     await db.refresh(v)
+    return to_out(v)
+
+
+@router.post("/videos/{video_id}/cover", response_model=PhoneticVideoOut)
+async def upload_cover(
+    video_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """换封面图。不传封面时前后端都兜底成按分类的四张静态图。
+
+    ⚠️ **这是唯一允许写 UPLOAD_DIR 的音标文件**(该目录整体经 /api/v1/files
+    公开无鉴权,见 main.py 红线)。封面本来就要给所有学生看,与机构 Logo、
+    金币兑换商品图同一性质;视频本身和讲义是付费内容,照旧走私有目录 + 鉴权端点。
+
+    文件名按 video_id 定(不按随机串):同一个视频反复换封面不会在磁盘上堆一串
+    废图。代价是 URL 不变,所以必须带 ?v=时间戳 让浏览器和 CDN 认出换了图 ——
+    /api/v1/files 是 immutable 长缓存(max-age=1年),不带版本号就是换了也看不见。
+    """
+    v = await _own_video(db, video_id, user)
+
+    ext = COVER_EXT_MAP.get(file.content_type or "")
+    if not ext:
+        raise HTTPException(400, "封面仅支持 png/jpg/webp 图片")
+    # 两道尺寸检查:声明的 size 能省掉读盘,但它由客户端给、可以撒谎,
+    # 所以读完还要按真实字节再判一次(与 coins.py / org_admin.py 同口径)
+    if file.size and file.size > MAX_COVER_SIZE:
+        raise HTTPException(400, "封面图不能超过 2MB")
+    content = await file.read()
+    if len(content) > MAX_COVER_SIZE:
+        raise HTTPException(400, "封面图不能超过 2MB")
+    if not content:
+        raise HTTPException(400, "封面图是空文件")
+
+    d = _cover_dir()
+    # 换了格式要把旧扩展名那张删掉,否则磁盘上留着一张永远没人引用的废图
+    for old_ext in set(COVER_EXT_MAP.values()):
+        if old_ext == ext:
+            continue
+        old = os.path.join(d, f"video_{video_id}.{old_ext}")
+        try:
+            if os.path.isfile(old):
+                os.remove(old)
+        except OSError as e:
+            logger.warning("清理旧封面失败: %s %s", old, e)
+
+    with open(os.path.join(d, f"video_{video_id}.{ext}"), "wb") as f:
+        f.write(content)
+
+    v.cover_image = f"{COVER_URL_PREFIX}video_{video_id}.{ext}?v={int(time.time())}"
+    await db.commit()
+    await db.refresh(v)
+    logger.info("音标视频换封面: id=%s by=%s", v.id, user.id)
+    return to_out(v)
+
+
+@router.delete("/videos/{video_id}/cover", response_model=PhoneticVideoOut)
+async def delete_cover(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """删封面 = 改回按分类的默认图。
+
+    单独一个端点而不是「PUT cover_image=''」:后者要在 update_video 里多一条
+    判空分支(CLAUDE.md 那条「留空=不修改」的坑就长在这种地方),而删除本来
+    就是个独立动作,显式端点两端都不会误解。
+    """
+    v = await _own_video(db, video_id, user)
+    v.cover_image = None
+    await db.commit()
+    await db.refresh(v)
+    _remove_cover_files(video_id)
     return to_out(v)
 
 
@@ -812,6 +933,9 @@ async def batch_delete_videos(
             logger.warning("批量删除音标视频文件失败(记录已删): %s %s", p, e)
     for mid, name in mat_files:
         _remove_material_files(mid, name)
+    # 封面文件按 video_id 命名,而 SQLite 会把删掉的 id 重新发出去(见 _remove_cover_files)
+    for vid in vids:
+        _remove_cover_files(vid)
     logger.info("批量删除音标视频: %d 条(连带课件 %d 份) by=%s",
                 len(rows), len(mats), user.id)
     return {"deleted": len(rows), "requested": len(body.ids)}
@@ -857,6 +981,7 @@ async def delete_video(
             logger.warning("删除音标视频文件失败(记录已删): %s %s", p, e)
     for mid, name in mat_files:
         _remove_material_files(mid, name)
+    _remove_cover_files(video_id)   # 同上:id 会被回收复用,别留同名旧封面
     return None
 
 

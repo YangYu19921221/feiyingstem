@@ -271,6 +271,43 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频封面 + 课件改名(2026-09-23): 用户问「编辑音标图片的标题这些实现了没」。
+  查清后是两个缺口(视频**标题**本来就能改,别再去动它):
+  ①**`cover_image` 是个接通了却永远设不了的字段** —— 模型有、`VideoUpdate` 有、
+  `PhoneticVideoOut.to_out` 下发、学生端和教师端都 `src={v.cover_image || CATEGORY_COVER[...]}`
+  渲染它,但**从来没有任何写入路径** → 永远 NULL,一个分类下十几节课缩略图一模一样。
+  补 `POST/DELETE /teacher/phonetics/videos/{id}/cover`(照 coins.py 兑换商品图那套:
+  MIME 白名单 + 声明 size 与真实字节**两道** 2MB 检查 + 换格式删旧扩展名那张)
+  ②课件标题只能是上传时的文件名(老师电脑上那个「音标课件-最终版2.pptx」,
+  **学生端显示的就是它**)—— 后端 `PUT /materials/{id}` 与 `phoneticsApi.updateMaterial`
+  **早就支持 title**,纯粹是前端没入口。
+  六个坑:
+  ①**封面是唯一允许写 UPLOAD_DIR 的音标文件**(该目录整体经 `/api/v1/files` 公开无鉴权,
+  见 main.py 红线)。判据是「本来就要给所有学生看」,与机构 Logo / 兑换商品图同性质;
+  视频本体和讲义是付费内容,照旧 PHONETIC_VIDEO_DIR / private_media
+  ②**URL 必须带 `?v=时间戳`**: 文件按 `video_{id}.{ext}` 命名(不用随机串,否则反复换封面
+  在磁盘上堆一串废图),换图**不换路径**,而 `/api/v1/files` 是 `immutable, max-age=1年` ——
+  不带版本号就是换了也看不见,而且**一年内都不会变**。前端也必须用响应里的 cover_image
+  就地更新列表那一行,不能自己拼老地址
+  ③**`cover_image` 不许收自由文本**(update_video 加了前缀白名单 `COVER_URL_PREFIX`):
+  这个值被两端直接塞进 `<img src>` 而受众是学生,放任写入 = 允许 `javascript:`(存储型 XSS)
+  或挂外站地址(每个学生打开页面都去访问那台服务器,顺手泄露访客 IP)
+  ④**删视频必须连带删封面文件,单条 + 批量两条路径**: 理由与删 `PhoneticVideoView` 行同源 ——
+  `phonetic_videos.id` 是 `INTEGER PRIMARY KEY` **不带 AUTOINCREMENT**,SQLite 会把删掉的
+  最大 rowid 发给下一条(已实测),封面按 id 命名 → 新视频撞上前一个视频的旧图
+  ⑤**清空封面走独立 DELETE 端点不走「PUT cover_image=''」**: 后者要在 update_video 里
+  再加一条判空分支,而 CLAUDE.md 那条「留空=不修改」的坑就长在这种地方;删除本来就是
+  独立动作,显式端点两端都不会误解
+  ⑥前端三点: **换封面立即生效、不等「保存」** → 标签上必须写明(否则老师换完点「取消」
+  会以为封面也撤销了);改名的 **Esc 先收改名框再关弹层**(两个监听都挂 window,
+  不判就是一次按键把两层一起答掉 —— 学生端选老师弹层踩过同类坑);改名回车要判
+  `isComposing`(中文标题必踩),**空标题当取消**不发请求(后端 `min_length=1` 会回 422 英文串,
+  而老师全选删掉的意思本来就是"算了")
+  入口: 老师端「音标视频」→ 视频行「编辑」→ 弹层最上方「换封面 / 用默认图」;
+  讲义改名在同一行「课件」按钮里,每份课件右边的铅笔图标。
+  测试 tests/test_phonetic_video_cover.py(15 例)+ test_phonetic_material.py 加 3 例;
+  **回归锁验证过**: 把「单条删封面 / 批量删封面 / 外链守卫」三处分别改成 pass 后
+  恰好各自那一例失败(3 failed),改回来 15 例全绿
 - ✅ 音标视频观看数据(2026-09-23): 用户要「播放量、多少人在线观看之类的,看看还有别的数据补足」。
   **先查清旧数据是假的**: `phonetic_videos.view_count` 是 `GET /videos/{id}` 每次 +1 =
   **数的是打开次数不是人数**(一个孩子点开五次算五个"观看"),而且只显示在教师列表末尾一行小字。

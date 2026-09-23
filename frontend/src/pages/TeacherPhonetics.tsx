@@ -74,6 +74,9 @@ export default function TeacherPhonetics() {
   // 编辑中的行
   const [editing, setEditing] = useState<PhoneticVideo | null>(null);
   const [editForm, setEditForm] = useState({ title: '', phonetic_symbol: '', category: 'basic', lecturer: '', description: '' });
+  /** 封面上传/删除中。禁用按钮防连点(两下会传两遍同一张图) */
+  const [coverBusy, setCoverBusy] = useState(false);
+  const coverRef = useRef<HTMLInputElement>(null);
 
   /**
    * 讲师名单(由现有视频聚合,不是教师账号列表)。用于:
@@ -260,6 +263,52 @@ export default function TeacherPhonetics() {
       await loadLecturers();
     } catch (e) {
       toast.error(getErrorMessage(e, '保存失败'));
+    }
+  };
+
+  /**
+   * 封面换好后就地更新两处:弹层里的预览 + 列表那一行的缩略图。
+   *
+   * 必须用**响应里的** cover_image,不能自己拼 —— 封面文件按 video_id 命名、
+   * 换图不换路径,只有后端给的 ?v=时间戳 能让浏览器认出图变了
+   * (/api/v1/files 是一年期 immutable 缓存)。不刷新 items 的话老师关掉弹层
+   * 看到列表里还是旧图,会以为没传上去、再传一遍。
+   */
+  const applyCover = (updated: PhoneticVideo) => {
+    setEditing((cur) => (cur && cur.id === updated.id ? { ...cur, cover_image: updated.cover_image } : cur));
+    setItems((cur) => cur.map((it) => (it.id === updated.id ? { ...it, cover_image: updated.cover_image } : it)));
+  };
+
+  const pickCover = async (file: File | undefined) => {
+    if (!file || !editing) return;
+    // 前端先挡一次:2MB 的图传上去再被拒,老师白等一趟(后端照样会验,这只是省时间)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('封面图不能超过 2MB,请压一下再传');
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      applyCover(await phoneticsApi.uploadCover(editing.id, file));
+      toast.success('封面已更新');
+    } catch (e) {
+      toast.error(getErrorMessage(e, '封面上传失败'));
+    } finally {
+      setCoverBusy(false);
+      // 清掉 input 的值:不清的话老师改完图片再选**同一个文件**不会触发 onChange
+      if (coverRef.current) coverRef.current.value = '';
+    }
+  };
+
+  const clearCover = async () => {
+    if (!editing) return;
+    setCoverBusy(true);
+    try {
+      applyCover(await phoneticsApi.removeCover(editing.id));
+      toast.success('已改回默认封面');
+    } catch (e) {
+      toast.error(getErrorMessage(e, '操作失败'));
+    } finally {
+      setCoverBusy(false);
     }
   };
 
@@ -697,6 +746,55 @@ export default function TeacherPhonetics() {
           <div className="w-full max-w-md rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <p className="mb-4 font-display text-lg font-bold text-ink">编辑视频信息</p>
             <div className="space-y-3">
+              {/*
+                封面。与下面几个字段不同,**换封面是立即生效的**(走独立端点、不等「保存」),
+                所以要在标签上写明 —— 否则老师换完点「取消」,以为封面也一起撤销了。
+                没设封面时预览显示的就是按分类兜底的那张图,与学生端看到的一致。
+              */}
+              <div>
+                <label className="mb-1 block text-xs text-ink-soft">封面(换了立即生效)</label>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={editing.cover_image || CATEGORY_COVER[editForm.category] || CATEGORY_COVER.other}
+                    alt={editing.cover_image ? '当前封面' : '按分类的默认封面'}
+                    className="h-16 w-28 shrink-0 rounded-lg border border-gray-200 object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => coverRef.current?.click()}
+                        disabled={coverBusy}
+                        className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary disabled:opacity-50"
+                      >
+                        {coverBusy ? '处理中…' : '换封面'}
+                      </button>
+                      {editing.cover_image && (
+                        <button
+                          type="button"
+                          onClick={clearCover}
+                          disabled={coverBusy}
+                          className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-ink-soft disabled:opacity-50"
+                        >
+                          用默认图
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-tight text-ink-soft">
+                      {editing.cover_image
+                        ? 'png/jpg/webp,2MB 以内'
+                        : '现在用的是按分类的默认图,可换成这节课的截图'}
+                    </p>
+                  </div>
+                </div>
+                <input
+                  ref={coverRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => void pickCover(e.target.files?.[0])}
+                />
+              </div>
               <div>
                 <label className="mb-1 block text-xs text-ink-soft">标题</label>
                 <input

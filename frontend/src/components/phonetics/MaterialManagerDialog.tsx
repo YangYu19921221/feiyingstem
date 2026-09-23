@@ -11,7 +11,7 @@
  *    后面还有服务端转换 —— 不说明白老师会以为卡死。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, FileText, Loader2, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, Check, FileText, Loader2, Pencil, Trash2, Upload, X } from 'lucide-react';
 import { phoneticsApi, formatSize, type TeacherMaterial } from '../../api/phonetics';
 import { toast } from '../Toast';
 import { getErrorMessage } from '../../utils/errorMessage';
@@ -35,6 +35,9 @@ export default function MaterialManagerDialog({
   /** 文件传完、服务端还在转换渲染的那段 —— 必须单独提示,否则看着像卡死 */
   const [processing, setProcessing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** 正在改名的课件 id + 输入框内容。null = 没在改名 */
+  const [renaming, setRenaming] = useState<{ id: number; title: string } | null>(null);
+  const [renameBusy, setRenameBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -47,12 +50,19 @@ export default function MaterialManagerDialog({
 
   useEffect(() => { void load(); }, [load]);
 
-  // Esc 关闭:弹层里手在键盘上,伸手去点右上角的 × 是多余动作
+  // Esc 关闭:弹层里手在键盘上,伸手去点右上角的 × 是多余动作。
+  // ⚠️ 改名中的 Esc **先收改名框**,不关整个弹层 —— 否则老师想撤销一个笔误
+  // 会把弹层整个关掉,回来还得重新点开(本项目在学生端选老师弹层踩过同类坑:
+  // 两个 Esc 监听都挂 window 上时,一次按键会把两层一起答掉)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (renaming) { setRenaming(null); return; }
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, renaming]);
 
   const doUpload = async (file: File) => {
     setUploading(true);
@@ -84,6 +94,31 @@ export default function MaterialManagerDialog({
       await load();
     } catch (e) {
       toast.error(getErrorMessage(e, '删除失败'));
+    }
+  };
+
+  /**
+   * 改名。课件标题默认取的是**上传时的文件名**(去扩展名),
+   * 而老师电脑上那个名字常是「音标课件-最终版2.pptx」这种 —— 学生看到的就是它。
+   *
+   * 空标题直接当取消:后端 title 有 min_length=1(清空会 422 英文串),
+   * 而老师全选删掉再按回车的意思本来就是"算了",不是"我要个没名字的课件"。
+   */
+  const submitRename = async () => {
+    if (!renaming) return;
+    const title = renaming.title.trim();
+    const old = rows?.find((r) => r.id === renaming.id)?.title;
+    if (!title || title === old) { setRenaming(null); return; }
+    setRenameBusy(true);
+    try {
+      await phoneticsApi.updateMaterial(renaming.id, { title });
+      setRenaming(null);
+      await load();
+      toast.success('已改名');
+    } catch (e) {
+      toast.error(getErrorMessage(e, '改名失败'));
+    } finally {
+      setRenameBusy(false);
     }
   };
 
@@ -200,7 +235,24 @@ export default function MaterialManagerDialog({
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">{m.title}</p>
+                  {renaming?.id === m.id ? (
+                    <input
+                      // autoFocus 是这里必需的:点了铅笔手就该能打字,
+                      // 再让老师去点一下输入框是白挨一下
+                      autoFocus
+                      value={renaming.title}
+                      maxLength={200}
+                      onChange={(e) => setRenaming({ id: m.id, title: e.target.value })}
+                      // 输入法组字中途的回车是在选字,不是提交(中文标题必踩)
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) void submitRename();
+                      }}
+                      className="w-full rounded-lg border border-primary px-2 py-1 text-sm focus:outline-none"
+                      aria-label="课件标题"
+                    />
+                  ) : (
+                    <p className="truncate text-sm font-medium text-ink">{m.title}</p>
+                  )}
                   {m.render_ready ? (
                     <p className="text-xs text-ink-soft">
                       {m.page_count} 页 · {m.kind.toUpperCase()}
@@ -217,21 +269,54 @@ export default function MaterialManagerDialog({
 
                 {m.can_edit && (
                   <div className="flex shrink-0 items-center gap-1">
-                    {m.render_ready && (
-                      <button
-                        onClick={() => void toggleActive(m)}
-                        className="rounded-lg px-2 py-1 text-xs text-ink-soft hover:bg-gray-100"
-                      >
-                        {m.is_active ? '下架' : '上架'}
-                      </button>
+                    {renaming?.id === m.id ? (
+                      <>
+                        <button
+                          onClick={() => void submitRename()}
+                          disabled={renameBusy}
+                          className="rounded-lg p-1.5 text-primary hover:bg-primary/10 disabled:opacity-50"
+                          aria-label="保存标题"
+                        >
+                          {renameBusy
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Check className="h-4 w-4" />}
+                        </button>
+                        <button
+                          onClick={() => setRenaming(null)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"
+                          aria-label="取消改名"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {/* 标题默认是上传时的文件名,学生看到的就是它,所以要能改 */}
+                        <button
+                          onClick={() => setRenaming({ id: m.id, title: m.title })}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary"
+                          aria-label={`改名 ${m.title}`}
+                          title="改标题"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        {m.render_ready && (
+                          <button
+                            onClick={() => void toggleActive(m)}
+                            className="rounded-lg px-2 py-1 text-xs text-ink-soft hover:bg-gray-100"
+                          >
+                            {m.is_active ? '下架' : '上架'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => void remove(m)}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                          aria-label={`删除 ${m.title}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
                     )}
-                    <button
-                      onClick={() => void remove(m)}
-                      className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                      aria-label={`删除 ${m.title}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
                   </div>
                 )}
               </div>

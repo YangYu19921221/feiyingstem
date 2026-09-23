@@ -259,6 +259,25 @@ export const phoneticsApi = {
   }>) => api.put<PhoneticVideo>(`/teacher/phonetics/videos/${id}`, body),
 
   /**
+   * 换封面图(png/jpg/webp,2MB 以内)。返回整条视频,`cover_image` 是新地址。
+   *
+   * 返回的 URL 带 ?v=时间戳:封面文件按 video_id 命名、换图不换路径,
+   * 而 /api/v1/files 是一年期 immutable 缓存 —— 不认版本号就是换了也看不见。
+   * 所以拿到响应后要用它更新列表里那一行,别自己拼老地址。
+   */
+  uploadCover: (id: number, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<PhoneticVideo>(`/teacher/phonetics/videos/${id}/cover`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  /** 删封面 = 改回按分类的默认图(不是留个空白) */
+  removeCover: (id: number) =>
+    api.delete<PhoneticVideo>(`/teacher/phonetics/videos/${id}/cover`),
+
+  /**
    * 本机构已有的讲师名单(上传时自动补全 / 批量设讲师的候选)。
    * 由现有视频聚合而来,不是 users 表 —— 讲师是自由文本,可能是没有账号的外聘老师。
    */

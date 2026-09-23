@@ -402,3 +402,44 @@ async def test_title_keeps_slash_in_filename(client: AsyncClient, material_env):
                       name="元音 /æ/ 讲义.pdf")
     assert r.status_code == 200
     assert r.json()["title"] == "元音 /æ/ 讲义"
+
+
+# ---------- 改名(标题默认取文件名,学生看到的就是它)----------
+
+async def test_rename_material(client: AsyncClient, material_env):
+    """改标题要落库,而且学生端看到的跟着变。
+
+    默认标题是老师电脑上的文件名(「音标课件-最终版2.pptx」这类),
+    而学生端讲义列表显示的就是它 —— 所以必须能改。
+    """
+    env = material_env
+    mid = (await _upload(client, env["tok"]["t1"], env["vid"]["v1"])).json()["id"]
+
+    r = await client.put(f"/api/v1/teacher/phonetics/materials/{mid}",
+                         headers=_h(env["tok"]["t1"]),
+                         json={"title": "  第一课 元音 /æ/  "})
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "第一课 元音 /æ/"      # 首尾空白要削掉
+
+    stu = await client.get(f"/api/v1/phonetics/videos/{env['vid']['v1']}/materials",
+                           headers=_h(env["tok"]["stu"]))
+    assert [m["title"] for m in stu.json()] == ["第一课 元音 /æ/"]
+
+
+async def test_rename_rejects_empty_title(client: AsyncClient, material_env):
+    """空标题拒掉(min_length=1)。前端把"清空"当成取消,不会走到这里,
+    但接口自己也不能被一个没名字的课件糊弄过去"""
+    env = material_env
+    mid = (await _upload(client, env["tok"]["t1"], env["vid"]["v1"])).json()["id"]
+    r = await client.put(f"/api/v1/teacher/phonetics/materials/{mid}",
+                         headers=_h(env["tok"]["t1"]), json={"title": ""})
+    assert r.status_code == 422
+
+
+async def test_cross_org_cannot_rename(client: AsyncClient, material_env):
+    """别家机构的课件改不动(标题直接显示在对方学生的页面上)"""
+    env = material_env
+    mid = (await _upload(client, env["tok"]["t1"], env["vid"]["v1"])).json()["id"]
+    r = await client.put(f"/api/v1/teacher/phonetics/materials/{mid}",
+                         headers=_h(env["tok"]["t2"]), json={"title": "我改的"})
+    assert r.status_code == 404
