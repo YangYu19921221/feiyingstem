@@ -8,7 +8,7 @@
 放视频等于谁拿到链接都能看。
 """
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, DateTime, ForeignKey,
+    Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Index,
 )
 from sqlalchemy.sql import func
 
@@ -56,6 +56,55 @@ class PhoneticVideo(Base):
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PhoneticVideoView(Base):
+    """谁看了哪个音标视频、看了多久、看完没有(一人一视频一行)
+
+    为什么需要它:`phonetic_videos.view_count` 是**打开次数**(每次 GET 详情 +1),
+    同一个学生刷新十次就是 10 —— 它回答不了老师真正要问的三件事:
+    「有几个人看过」「看进去了还是点开就走」「谁还没看」。这张表把这三件事补上。
+
+    ⚠️ **必须有 UNIQUE(video_id, user_id)**:没有约束时并发心跳会插出多行,
+    人数和时长统计当场翻倍(word_mastery 与 live_attendance 都吃过这个亏,
+    见 CLAUDE.md「word_mastery 模型缺 UNIQUE 约束」)。
+
+    ## 为什么记三个位置而不是一个
+
+    - `watch_seconds`:净观看时长(心跳累加,**服务端封顶单次增量**,
+      否则改前端就能刷出 10 小时)。回答「看进去了没有」。
+    - `max_position_seconds`:看到过的最远处。回答「看到结尾了没有」。
+    - `last_position_seconds`:上次退出的位置,**续播**用(学生端下次打开接着放)。
+
+    判「看完」必须同时看前两个(见 services/video_watch.is_completed):
+    只看 max_position → 把进度条拖到末尾就算看完,完看率变成废数;
+    只看 watch_seconds → 反复看开头也能攒够时长,却从没看到结尾。
+    """
+
+    __tablename__ = "phonetic_video_views"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    video_id = Column(Integer, ForeignKey("phonetic_videos.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # 打开次数(老 view_count 的同义物,但按人分开,所以能算「人均打开几次」)
+    play_count = Column(Integer, nullable=False, default=0, server_default="0")
+    watch_seconds = Column(Integer, nullable=False, default=0, server_default="0")
+    max_position_seconds = Column(Integer, nullable=False, default=0, server_default="0")
+    last_position_seconds = Column(Integer, nullable=False, default=0, server_default="0")
+    # 冗余标记:算一次存下来,列表页不必每行现算(判定口径仍以 video_watch 为唯一真源)
+    completed = Column(Boolean, nullable=False, default=False, server_default="0")
+
+    first_viewed_at = Column(DateTime, server_default=func.now())
+    # 「今天/近 7 天有多少人看」按这一列筛。UTC naive 存储,分天走 core/timeutil
+    last_viewed_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_phonetic_video_view", "video_id", "user_id", unique=True),
+        # 「近 7 天谁看了」是教师端最频繁的查询
+        Index("idx_phonetic_video_view_recent", "video_id", "last_viewed_at"),
+    )
 
 
 class PhoneticMaterial(Base):

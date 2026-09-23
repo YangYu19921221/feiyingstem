@@ -7,7 +7,7 @@
  * 播放走鉴权串流端点:<video> 带不了请求头,凭证只能放 URL 上 —— 但放的是
  * 只能播这一个视频的两小时票据(api/phonetics.fetchVideoTicket),不是整站会话 token。
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText } from 'lucide-react';
@@ -44,6 +44,22 @@ function formatDuration(sec?: number | null): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * 「我看到了几成」(0~1)。按**看到过的最远处**算,不是累计时长 ——
+ * 孩子问的是"我看到哪儿了",而累计时长会让反复看开头的人显示 80%。
+ *
+ * 分母缺失(存量视频 duration 为 NULL)时返回 0 = 不显示角标:
+ * 编个百分比比不显示更糟。心跳会把 duration 回填上,看一次就有了。
+ */
+function watchedFrac(v: PhoneticVideo): number {
+  const dur = v.duration_seconds || 0;
+  // **用 max_position 不用 position**: position 是"上次停在哪",
+  // 孩子看到一半往回拖一下再退出,拿它算就会显示「看到 5%」
+  const pos = v.my_max_position_seconds || 0;
+  if (dur <= 0 || pos <= 0) return 0;
+  return Math.min(1, pos / dur);
 }
 
 /**
@@ -256,11 +272,24 @@ export default function PhoneticsHub() {
     setPlaying(v);
     setMaterials([]);           // 先清空:否则会短暂显示上一个视频的讲义
     setViewing(null);
-    // 记一次观看(失败不影响播放)
-    try { await phoneticsApi.detail(v.id); } catch { /* 计数失败无所谓 */ }
+    // 记一次观看,并拿回我自己的进度(续播位置)。
+    // **拿详情返回的那份去播** —— 列表里那份是进页面时取的,可能已经旧了
+    // (在别的设备上看过一半);失败就用列表那份,不影响播放
+    try {
+      const fresh = await phoneticsApi.detail(v.id);
+      setPlaying(fresh);
+      setVideos((prev) => prev.map((x) => (x.id === fresh.id ? { ...x, ...fresh } : x)));
+    } catch { /* 计数/进度取失败都不该挡着看视频 */ }
     // 配套讲义:取不到就当没有,**不能因此打断看视频**
     try { setMaterials(await listVideoMaterials(v.id)); } catch { setMaterials([]); }
   };
+
+  /** 看完了:就地把卡片标成「已看完」,不重拉整页(重拉会让列表闪一下) */
+  const markCompleted = useCallback((videoId: number) => {
+    setVideos((prev) => prev.map((x) => (
+      x.id === videoId ? { ...x, my_completed: true } : x
+    )));
+  }, []);
 
   return (
     <div className="min-h-screen bg-paper">
@@ -534,6 +563,19 @@ export default function PhoneticsHub() {
                           {formatDuration(v.duration_seconds)}
                         </span>
                       )}
+                      {/* 「我看到哪了」的角标。右上角(左上是音标、下面两角是播放键和时长)。
+                          **看完与没看完只显示一个** —— 两个都挂会让卡片右上角挤成一团。
+                          没看过的**不显示任何角标**: 一屏十几张卡全印着「未观看」是噪音,
+                          而"哪几个看过了"恰恰靠空白与非空白的对比一眼看出来 */}
+                      {v.my_completed ? (
+                        <span className="absolute right-2 top-2 rounded-lg bg-success px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                          ✓ 已看完
+                        </span>
+                      ) : watchedFrac(v) > 0 && (
+                        <span className="absolute right-2 top-2 rounded-lg bg-black/60 px-2 py-0.5 font-numeric text-[11px] font-semibold text-white">
+                          看到 {Math.round(watchedFrac(v) * 100)}%
+                        </span>
+                      )}
                     </div>
                     <div className="p-3.5">
                       <p className="truncate font-semibold text-ink" title={v.title}>{v.title}</p>
@@ -659,6 +701,7 @@ export default function PhoneticsHub() {
                 viewing={viewing}
                 onViewing={setViewing}
                 panelRef={panelRef}
+                onCompleted={markCompleted}
               />
 
               {!viewing && (

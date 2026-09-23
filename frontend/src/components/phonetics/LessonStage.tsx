@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { fetchVideoTicket, mediaUrl, type PhoneticVideo, type StudentMaterial } from '../../api/phonetics';
 import { useMaterialPages } from './useMaterialPages';
+import { useWatchHeartbeat } from './useWatchHeartbeat';
 import {
   CHROME_H, MIN_W, canHostFloating, defaultLayout, makeBox, maxWidthIn, paneHeight, refit,
   settle, widthCapAgainst, type Box, type Layout, type PaneKind, type Size,
@@ -37,6 +38,8 @@ interface Props {
   onViewing: (m: StudentMaterial | null) => void;
   /** 播放面板的 DOM,全屏就是把它整个送进 requestFullscreen */
   panelRef: React.RefObject<HTMLDivElement | null>;
+  /** 这个视频被看完了(就地把列表里的卡片标成「已看完」,不必重拉整页) */
+  onCompleted?: (videoId: number) => void;
 }
 
 /**
@@ -101,7 +104,9 @@ function useLandscape(): boolean {
   return land;
 }
 
-export default function LessonStage({ video, materials, viewing, onViewing, panelRef }: Props) {
+export default function LessonStage({
+  video, materials, viewing, onViewing, panelRef, onCompleted,
+}: Props) {
   const landscape = useLandscape();
   const [zoomed, setZoomed] = useState(false);
   const [fs, setFs] = useState(false);
@@ -259,13 +264,33 @@ export default function LessonStage({ video, materials, viewing, onViewing, pane
     resumeRef.current = { t: v.currentTime, playing: wasPlaying.current };
     loadTicket().catch(() => setSrcError('视频地址已过期且刷新失败,请刷新页面'));
   };
+  // 续播:上次退出的位置(服务端记的,换设备也接得上)。
+  // **看完的不续播** —— 已经看完还从最后几秒开始放很怪,重看就该从头
+  const resumedOnce = useRef(false);
+  useEffect(() => { resumedOnce.current = false; }, [video.id]);
+
   const onLoadedMetadata = () => {
     const v = videoRef.current, r = resumeRef.current;
-    if (!v || !r) return;
-    resumeRef.current = null;
-    v.currentTime = r.t;
-    if (r.playing) v.play().catch(() => {});
+    if (!v) return;
+    if (r) {
+      // 换票导致的重载:接着原处放(这条优先,它是同一次观看的延续)
+      resumeRef.current = null;
+      v.currentTime = r.t;
+      if (r.playing) v.play().catch(() => {});
+      return;
+    }
+    // 首次加载:从服务端记的位置续播。只做一次(换票重载不该再跳回去)
+    if (resumedOnce.current) return;
+    resumedOnce.current = true;
+    const pos = video.my_position_seconds || 0;
+    // 距结尾不到 15 秒的当作「看完了」,从头放;太靠前(<10s)也没必要跳
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    if (video.my_completed || pos < 10 || (dur > 0 && pos > dur - 15)) return;
+    v.currentTime = pos;
   };
+
+  // 观看心跳:看了多久 / 停在哪 / 看完没有(口径见 useWatchHeartbeat)
+  useWatchHeartbeat(videoRef, video.id, () => onCompleted?.(video.id));
 
   // 换讲义 / 关讲义:不再缩放
   const viewingId = viewing?.id ?? null;

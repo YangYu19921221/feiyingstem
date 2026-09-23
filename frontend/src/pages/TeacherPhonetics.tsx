@@ -16,6 +16,7 @@ import { getErrorMessage } from '../utils/errorMessage';
 import { Upload, Volume2 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
+import ViewerStatsDialog from '../components/phonetics/ViewerStatsDialog';
 
 const PAGE_SIZE = 10;
 
@@ -97,6 +98,8 @@ export default function TeacherPhonetics() {
 
   // 正在管理课件的视频。关弹层时刷新列表,让「讲义 N」跟着变
   const [materialFor, setMaterialFor] = useState<PhoneticVideo | null>(null);
+  /** 正在看哪个视频的观看数据 */
+  const [statsFor, setStatsFor] = useState<PhoneticVideo | null>(null);
 
   // 批量删除:勾选的 id。翻页/搜索后清空,避免删掉看不见的条目
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -602,7 +605,17 @@ export default function TeacherPhonetics() {
                       {' · '}
                       {CATEGORY_LABELS[v.category] || v.category}
                       {v.file_size ? ` · ${formatSize(v.file_size)}` : ''}
-                      {` · 观看 ${v.view_count}`}
+                      {/* ⚠️ 这里原来写的是 `观看 {view_count}` —— 而 view_count 是
+                          **打开次数**,同一个学生刷十次就是 10,老师读成 10 个人。
+                          现在按「人」给,并把次数留给弹层 */}
+                      {` · ${v.viewers ?? 0} 人看过`}
+                      {!!v.completed_count && (
+                        <span className="text-green-600">{` · ${v.completed_count} 人看完`}</span>
+                      )}
+                      {/* 正在看是实时信息,值得抢眼:老师上课时能看出学生在不在看 */}
+                      {!!v.watching_now && (
+                        <span className="font-semibold text-red-500">{` · ${v.watching_now} 人在看`}</span>
+                      )}
                       {!v.is_active && ' · 已下架'}
                       {/* 配过讲义的要看得出来,否则老师分不清哪个视频还缺课件 */}
                       {!!v.material_count && (
@@ -612,6 +625,14 @@ export default function TeacherPhonetics() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {/* 观看数据对平台预置视频**照样可用**(不像编辑/删除要置灰):
+                        看数据是读操作,而机构最该知道的正是"我的学生看没看平台这节课" */}
+                    <button
+                      onClick={() => setStatsFor(v)}
+                      className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100"
+                    >
+                      数据
+                    </button>
                     <button
                       onClick={() => setMaterialFor(v)}
                       className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100"
@@ -804,6 +825,16 @@ export default function TeacherPhonetics() {
           videoTitle={materialFor.title}
           readOnly={materialFor.can_edit === false}
           onClose={() => { setMaterialFor(null); void load(); }}
+        />
+      )}
+
+      {/* 观看数据弹层。**关掉时也刷一次** —— 弹层里的数字比行上的新
+          (老师常是先看数据再回列表),不刷会出现"弹层说 8 人、行上写 5 人" */}
+      {statsFor && (
+        <ViewerStatsDialog
+          videoId={statsFor.id}
+          videoTitle={statsFor.title}
+          onClose={() => { setStatsFor(null); void load(); }}
         />
       )}
     </div>

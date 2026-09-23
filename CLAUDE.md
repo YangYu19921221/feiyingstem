@@ -271,6 +271,59 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频观看数据(2026-09-23): 用户要「播放量、多少人在线观看之类的,看看还有别的数据补足」。
+  **先查清旧数据是假的**: `phonetic_videos.view_count` 是 `GET /videos/{id}` 每次 +1 =
+  **数的是打开次数不是人数**(一个孩子点开五次算五个"观看"),而且只显示在教师列表末尾一行小字。
+  它答不了老师真正会问的三件事: 几个人看了 / 看完还是点开就跑 / **谁还没看**。
+  改成一人一行 `phonetic_video_views`(play_count/watch_seconds/max_position_seconds/
+  last_position_seconds/completed),口径真源 **services/video_watch.py**(阈值、夹取、
+  聚合全在这一份,别在 API 里另写一套 —— 学习时长那次五套算法差 250 倍的教训)。
+  学生端 `POST /videos/{id}/progress` 心跳,教师端 `GET /videos/{id}/viewers` 出名单。
+  **「看完」必须同时满足两个信号**(max_position >= 时长×0.9 **且** watch_seconds >= 时长×0.6):
+  只看位置 → 拖一下进度条到结尾就算看完;只看时长 → 把片头循环放三遍也算看完。两种作弊
+  都在测试里锁住。阈值不取 100% 是因为片尾字幕没人看、也没人正好停在最后一帧。
+  **时长未知(duration 为 NULL)时 completed 恒为假**,`completion_rate` 返回 **None** →
+  前端显示「—」而不是 0%:「算不出」和「一个人都没看完」是两回事,后者会让老师以为课白讲了。
+  同理 `not_watched` 对平台 admin 返回 **None**(admin 没有"我的班"名册,列不出未看名单),
+  不是空数组 —— 空数组的意思是"全看了"。
+  八个坑:
+  ①**UNIQUE 索引是这张表的命门**: `uq_phonetic_video_view(video_id,user_id)` 一旦缺失,
+  upsert 退化成每次插新行 → 人数按打开次数翻倍。word_mastery 就因为模型上写了索引而库里
+  没有,吃过一次永久 500。⚠️ `create_all` **不会给已存在的表补索引**,所以 database.py
+  末尾补了两条 `CREATE ... IF NOT EXISTS`(存量库靠它,新库靠模型)
+  ②**upsert 走 sqlite 的 `ON CONFLICT DO UPDATE` 单语句,不要照 live.py 那套
+  UPDATE→INSERT→捕获 IntegrityError→rollback→重试**: rollback 会让调用方手里还在用的
+  ORM 对象过期 → 下一次属性访问 MissingGreenlet 500(金币发放踩过,CLAUDE.md 有记)
+  ③**累加必须在 SQL 里做**(`watch_seconds + :inc`、`max(max_position, :pos)`),
+  不能读出来加完写回: 孩子开两个标签页同时放,读-改-写会互相覆盖掉对方的时长
+  ④**单次心跳增量要夹**(MAX_HEARTBEAT_SEC=120)、位置要按时长夹: 不夹的话改一行 JS
+  就能报「看了 9999 秒」,而这个数进老师的学情页
+  ⑤**completed 只置不清**: 重看时 watch_seconds 照涨但位置回到 0,重算会把已看完的人
+  打回「没看完」—— 已经看完的事实不该被复习抹掉
+  ⑥**教师打开视频不记数**(只有 `role == "student"` 才 `_touch_view`): 老师检查内容
+  会把自己算进"看过的人",一个只有老师点过的视频显示「1 人看过」最误导
+  ⑦**跨机构必须手动 join User**: 这张表**没有 org_id**,而 `conftest` 建库走 `create_all`
+  **不走 `init_db()`** → 租户监听器从没注册 → 测试里所有查询都是裸的。
+  `stats_for_videos(org_id=...)` 显式 `join(User).where(User.org_id == org_id)`。
+  **这条回归锁是验证过的**: 把那句 join 换成 `pass` 后恰好 2 例失败(`assert 1 == 0`),
+  再改回来 21 例全绿 —— 没证明过能抓到旧 bug 的回归锁不算回归锁
+  ⑧**删视频必须连带删 view 行**(单条 + 批量两条路径): `phonetic_videos.id` 是
+  `INTEGER PRIMARY KEY` **没有 AUTOINCREMENT**,SQLite **会把删掉的最大 rowid 发给下一条**
+  (实测) → 新传的视频继承上一个视频的观看行,界面上凭空写着「12 人看过」且查不出来源
+  前端三点: (a)心跳按 **timeupdate 的差值**累计,不数墙上时间 —— 暂停/缓冲/切后台
+  (后台标签 timer 被压到一分钟一次)/拖进度条四件事都会让两者分道扬镳,报「看了 40 分钟」
+  而孩子开着页面去吃饭比不报更糟;差值 > MAX_STEP(3s)判为拖动不计
+  (b)**最后一段最容易丢**(孩子看完直接关标签页),所以 pause/ended/pagehide/卸载都补一枪;
+  关页面那一枪走 `fetch(keepalive:true)` + Authorization 头,**刻意不用 sendBeacon** ——
+  它带不上头,唯一替代是把 token 塞回 URL,那正是 2026-09-09 刚堵掉的洞
+  (c)续播用 `my_position_seconds`,而进度百分比用 `my_max_position_seconds`(看过的最远处)
+  —— 两个字段不能合并: 孩子退出前往回拖了一下,用位置算就会把「看完的」显示成「看到 5%」
+  入口: 学生端首页「音标学习」→ 视频卡右上角「✓ 已看完 / 看到 N%」角标(**没看过的不标**,
+  满屏「未观看」是噪音),点开自动从上次位置续播;教师端「音标视频」→ 视频行「数据」按钮
+  (**不受 can_edit 限制** —— 平台预置视频机构改不了但必须看得到自己学生的观看情况)→
+  四张数据卡(人看过/播放次数/看完率/人均观看)+「N 人正在看」+ **「还没看」名单排在
+  已看名单上面**(老师要的就是这份,可「复制名单」)。
+  测试 tests/test_phonetic_video_stats.py(21 例)
 - ✅ 发音纠正试听(2026-09-19): 用户反馈「有的音标发音不准,后台能不能填自然拼读的单词来校验」。
   **先查清:发音走后端 Edge TTS(en-GB-SoniaNeural),不是浏览器 TTS;IPA 符号本身从来不发音**
   (IpaKeyboard/ColoredPhonetic 都没接发音,点了不出声)—— 念的一直是真实单词,

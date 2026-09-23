@@ -8,21 +8,24 @@
 import logging
 import os
 import secrets
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenancy import current_org_id
+from app.core.timeutil import utc_now
 from app.api.v1.auth import get_current_teacher
 from app.models.user import User
-from app.models.phonetic import PhoneticVideo, PhoneticMaterial
+from app.models.phonetic import PhoneticVideo, PhoneticMaterial, PhoneticVideoView
 from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS
-from app.services import lecturer_name, office_convert, phonetic_material_service
+from app.api.v1.teacher._permissions import get_my_class_student_ids
+from app.services import lecturer_name, office_convert, phonetic_material_service, video_watch
 from app.services.lecturer_name import NO_LECTURER
 
 logger = logging.getLogger(__name__)
@@ -347,17 +350,147 @@ async def list_videos(
         )).all():
             counts[vid] = n or 0
 
+    # 观看统计:同样一次聚合(口径真源 services/video_watch)。
+    # **按机构收范围** —— 音标视频大量是平台预置的(org_id=NULL,全平台可见),
+    # 不收的话老师会看到全平台几千人的数字,而他会把它读成本校学情
+    stats = await video_watch.stats_for_videos(
+        db, [v.id for v in rows], org_id=current_org_id.get()
+    )
+
     items = []
     for v in rows:
-        out = to_out(v).model_dump()
+        st = stats.get(v.id)
+        out = to_out(v, st).model_dump()
         out["is_active"] = bool(v.is_active)
         out["created_at"] = v.created_at
         out["material_count"] = counts.get(v.id, 0)
         # 平台预置对机构只读:前端据此置灰按钮,别让老师点了才吃 403
         out["is_preset"] = v.org_id is None
         out["can_edit"] = (user.role == "admin") or v.org_id is not None
+        # 统计列。plays 与 view_count 的差别见 PhoneticVideoOut 注释(次 vs 人)
+        out["plays"] = st.plays if st else 0
+        out["completed_count"] = st.completed if st else 0
+        # **完看率可能是 None,前端必须显示「—」不是 0%**:
+        # 「还没人看」和「看了没人看完」是两句不同的话(见 video_watch.completion_rate)
+        out["completion_rate"] = st.completion_rate if st else None
+        out["avg_watch_seconds"] = st.avg_watch_seconds if st else 0
+        out["viewers_today"] = st.viewers_today if st else 0
         items.append(out)
     return {"total": total, "page": page, "page_size": page_size, "items": items}
+
+
+class ViewerRow(BaseModel):
+    student_id: int
+    name: str
+    play_count: int = 0
+    watch_seconds: int = 0
+    max_position_seconds: int = 0
+    completed: bool = False
+    watching_now: bool = False
+    last_viewed_at: Optional[object] = None
+
+
+@router.get("/videos/{video_id}/viewers")
+async def list_viewers(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """谁看了这个视频、看了多久,以及**谁还没看**。
+
+    「谁还没看」是这个端点存在的理由 —— 聚合数字只能告诉老师"有 8 个人看了",
+    他真正要做的动作是把没看的那几个点出来催一下。只给总数的话他还得自己
+    拿花名册对一遍。
+
+    范围是**本教师班上的学生**(get_my_class_student_ids):
+    ① 权限 —— 老师不该看到不是自己学生的姓名
+    ② 有用 —— 平台预置视频全平台可见,不收范围就是几千个陌生名字
+    平台 admin 不收范围(看全部看过的人),与本文件其它端点对 admin 的口径一致。
+
+    ⚠️ 老师自己点开视频**不进这个名单**(get_video 只给 role=='student' 记行),
+    否则「8 个人看过」里有老师自己,催作业时会对着自己的名字发懵。
+    """
+    v = await _visible_video(db, video_id, user)
+
+    is_admin = user.role == "admin"
+    roster: dict[int, str] = {}
+    if is_admin:
+        allowed = None
+    else:
+        ids = await get_my_class_student_ids(db, user.id)
+        allowed = ids
+        if ids:
+            for sid, uname, fname in (await db.execute(
+                select(User.id, User.username, User.full_name).where(User.id.in_(ids))
+            )).all():
+                roster[sid] = fname or uname
+
+    stats = await video_watch.stats_for_videos(
+        db, [v.id], org_id=current_org_id.get(), restrict_user_ids=allowed
+    )
+    st = stats.get(v.id) or video_watch.VideoStats()
+
+    rows_q = select(PhoneticVideoView, User).join(
+        User, User.id == PhoneticVideoView.user_id
+    ).where(PhoneticVideoView.video_id == v.id)
+    if allowed is not None:
+        if not allowed:
+            rows_q = None
+        else:
+            rows_q = rows_q.where(PhoneticVideoView.user_id.in_(allowed))
+    elif current_org_id.get() is not None:
+        # 与 stats_for_videos 同一套手动 join 归属推导(这张表没有 org_id 列)
+        rows_q = rows_q.where(User.org_id == current_org_id.get())
+
+    watched: list[ViewerRow] = []
+    seen_ids: set[int] = set()
+    if rows_q is not None:
+        cutoff = utc_now() - timedelta(seconds=video_watch.WATCHING_WINDOW_SEC)
+        for row, u in (await db.execute(
+            rows_q.order_by(PhoneticVideoView.last_viewed_at.desc())
+        )).all():
+            seen_ids.add(u.id)
+            watched.append(ViewerRow(
+                student_id=u.id,
+                name=u.full_name or u.username,
+                play_count=row.play_count or 0,
+                watch_seconds=row.watch_seconds or 0,
+                max_position_seconds=row.max_position_seconds or 0,
+                completed=bool(row.completed),
+                watching_now=bool(row.last_viewed_at and row.last_viewed_at >= cutoff),
+                last_viewed_at=row.last_viewed_at,
+            ))
+
+    # 没看的 = 我班上的学生 - 看过的。admin 没有班级范围,给不出这个名单
+    # (返回 None 而不是空数组:「没有人没看」和「算不出」必须能区分开)
+    not_watched = None
+    if not is_admin:
+        not_watched = [
+            {"student_id": sid, "name": name}
+            for sid, name in sorted(roster.items(), key=lambda kv: kv[1])
+            if sid not in seen_ids
+        ]
+
+    return {
+        "video_id": v.id,
+        "title": v.title,
+        "duration_seconds": v.duration_seconds,
+        # 前端据此说清空名单是什么原因:没有班级 ≠ 学生都没看
+        "scope": "all" if is_admin else "my_classes",
+        "roster_size": None if is_admin else len(roster),
+        "stats": {
+            "viewers": st.viewers,
+            "plays": st.plays,
+            "completed": st.completed,
+            "completion_rate": st.completion_rate,
+            "avg_watch_seconds": st.avg_watch_seconds,
+            "total_watch_seconds": st.total_watch_seconds,
+            "watching_now": st.watching_now,
+            "viewers_today": st.viewers_today,
+        },
+        "watched": [w.model_dump() for w in watched],
+        "not_watched": not_watched,
+    }
 
 
 class LecturerStat(BaseModel):
@@ -658,6 +791,14 @@ async def batch_delete_videos(
     for m in mats:
         await db.delete(m)
 
+    # 观看记录也要跟着删,理由**不只是**"别留孤儿行":
+    # phonetic_videos.id 是普通 INTEGER PRIMARY KEY 而**不带 AUTOINCREMENT**,
+    # SQLite 会把删掉的最大 id 重新发给下一次插入(已实测)。留着旧行的话,
+    # 新传的视频一上架就带着上一个视频的观看人数和时长 —— 老师会看到一个
+    # 从没人看过的新视频显示「12 人看过、3 人看完」,而且查不出来源
+    await db.execute(sa_delete(PhoneticVideoView).where(
+        PhoneticVideoView.video_id.in_(vids)))
+
     for v in rows:
         await db.delete(v)
     await db.commit()
@@ -698,6 +839,11 @@ async def delete_video(
     mat_files = [(m.id, os.path.basename(m.file_path)) for m in mats if m.file_path]
     for m in mats:
         await db.delete(m)
+
+    # 观看记录跟着删(理由见 batch_delete_videos:id 会被 SQLite 回收复用,
+    # 留着旧行会让新传的视频一上架就带着上一个视频的观看人数)
+    await db.execute(sa_delete(PhoneticVideoView).where(
+        PhoneticVideoView.video_id == v.id))
 
     await db.delete(v)
     await db.commit()

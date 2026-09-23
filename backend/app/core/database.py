@@ -499,6 +499,15 @@ async def init_db():
             # 讲师名单是按机构聚合的(group_by lecturer),org 打头
             "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_lecturer "
             "ON phonetic_videos(org_id, lecturer)",
+            # 音标视频观看明细(2026-09-23): 表本体由 create_all 建,这两条索引在这里
+            # **再保一遍** —— 唯一约束是这张表的命门: 缺了它并发心跳会插出多行,
+            # 「几个人看过」和平均时长当场翻倍(word_mastery / live_attendance 都吃过,
+            # 见 CLAUDE.md)。create_all 对**已存在**的表不补建索引,而这张表若在
+            # 某次部署中先以别的形态落过地,就正好走进那个缺口
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_phonetic_video_view "
+            "ON phonetic_video_views(video_id, user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_video_view_recent "
+            "ON phonetic_video_views(video_id, last_viewed_at)",
         ]:
             try:
                 await conn.execute(text(_sql))

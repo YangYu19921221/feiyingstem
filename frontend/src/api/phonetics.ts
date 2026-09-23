@@ -31,7 +31,29 @@ export interface PhoneticVideo {
   cover_image?: string | null;
   duration_seconds?: number | null;
   file_size?: number | null;
+  /**
+   * ⚠️ **这是打开次数,不是人数**(每次打开详情 +1,同一个学生刷十次就是 10)。
+   * 要显示「多少人」一律用 `viewers` —— 拿这个字段配「人」字就是一句假话。
+   * 名字在生产用着不好改,所以把警告留在这里。
+   */
   view_count: number;
+
+  // ===== 观看统计(2026-09-23)。口径真源 backend/app/services/video_watch.py =====
+  /** 看过的**人**数(去重;只数本机构的人) */
+  viewers?: number;
+  /** 此刻还在看的人数(90 秒内有心跳) */
+  watching_now?: number;
+  /** 我上次停在哪(秒)—— **续播用这个** */
+  my_position_seconds?: number;
+  /**
+   * 我看到过的最远处(秒)—— **显示「看到几成」用这个**。
+   * 拿 my_position_seconds 去显示进度的话,孩子看完后往回拖一下再退出,
+   * 卡片就会显示「看到 5%」
+   */
+  my_max_position_seconds?: number;
+  my_watch_seconds?: number;
+  my_completed?: boolean;
+
   /** 串流端点的相对路径。前端不直接用它:播放要先 fetchVideoTicket 换票,再用票据里的 url */
   play_url: string;
   // 教师端列表额外带的字段
@@ -42,6 +64,55 @@ export interface PhoneticVideo {
   /** 平台预置(org_id 为空):机构只能看不能改,按钮要置灰 */
   is_preset?: boolean;
   can_edit?: boolean;
+  // 教师端统计列
+  /** 打开次数(所有人相加)。与 viewers 是「次」和「人」的区别 */
+  plays?: number;
+  completed_count?: number;
+  /**
+   * 完看率 0~1。**null = 还没有人看过,界面必须显示「—」不能显示 0%** ——
+   * 「还没人看」和「看了但没人看完」是两句不同的话,后者才该去找学生谈
+   */
+  completion_rate?: number | null;
+  avg_watch_seconds?: number;
+  viewers_today?: number;
+}
+
+/** 一个学生在某个视频上的观看情况(教师端名单) */
+export interface VideoViewer {
+  student_id: number;
+  name: string;
+  play_count: number;
+  watch_seconds: number;
+  max_position_seconds: number;
+  completed: boolean;
+  watching_now: boolean;
+  last_viewed_at?: string | null;
+}
+
+export interface VideoViewerReport {
+  video_id: number;
+  title: string;
+  duration_seconds?: number | null;
+  /** my_classes = 只统计我班上的学生;all = 平台 admin 看全部 */
+  scope: 'my_classes' | 'all';
+  /** 我班上有多少学生(admin 为 null:没有班级范围) */
+  roster_size?: number | null;
+  stats: {
+    viewers: number;
+    plays: number;
+    completed: number;
+    completion_rate: number | null;
+    avg_watch_seconds: number;
+    total_watch_seconds: number;
+    watching_now: number;
+    viewers_today: number;
+  };
+  watched: VideoViewer[];
+  /**
+   * 还没看的学生。**null = 算不出**(admin 没有班级范围),
+   * 空数组 = 确实所有人都看了 —— 两者在界面上必须是两句不同的话
+   */
+  not_watched: { student_id: number; name: string }[] | null;
 }
 
 export interface PhoneticVideoPage {
@@ -119,11 +190,28 @@ export function formatSize(bytes?: number | null): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 }
 
+/** 心跳周期(秒)。**与后端 video_watch.HEARTBEAT_SEC 同值** —— 后端拿它算
+ * 「还算在看吗」的窗口(3 倍周期),这边调快了那个数就会一直闪 */
+export const WATCH_HEARTBEAT_SEC = 30;
+
 export const phoneticsApi = {
   // ---- 学生端 ----
   list: (params?: { category?: string; q?: string }) =>
     api.get<PhoneticVideo[]>('/phonetics/videos', { params }),
   detail: (id: number) => api.get<PhoneticVideo>(`/phonetics/videos/${id}`),
+
+  /**
+   * 上报观看进度。播放中每 WATCH_HEARTBEAT_SEC 一次 + 暂停/离开时补一次。
+   *
+   * `seconds` 报的是**真的在播的秒数**(暂停不算),服务端还会再封顶一次 ——
+   * 所以这个数不必也不该由前端"算准",它只是个上限内的申报。
+   * 失败一律静默:统计不重要到可以打断孩子看视频(网络抖一下弹个红条很蠢)。
+   */
+  reportProgress: (
+    id: number,
+    body: { seconds: number; position: number; duration?: number | null },
+  ) => api.post<{ ok: boolean; counted: boolean; watch_seconds: number; completed: boolean }>(
+    `/phonetics/videos/${id}/progress`, body),
 
   // ---- 教师端 ----
   teacherList: (params: {
@@ -175,6 +263,14 @@ export const phoneticsApi = {
    * 由现有视频聚合而来,不是 users 表 —— 讲师是自由文本,可能是没有账号的外聘老师。
    */
   lecturers: () => api.get<LecturerStat[]>('/teacher/phonetics/lecturers'),
+
+  /**
+   * 某个视频的观看名单 —— 谁看了、看了多久,以及**谁还没看**。
+   * 后者才是老师真正要的动作项:聚合数字只说"8 个人看了",
+   * 他要做的是把没看的那几个点出来催一下。
+   */
+  viewers: (id: number) =>
+    api.get<VideoViewerReport>(`/teacher/phonetics/videos/${id}/viewers`),
 
   /**
    * 批量设讲师(勾选多条一起改)。存量视频讲师全是空的,靠这个补归属,

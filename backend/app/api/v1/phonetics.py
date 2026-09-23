@@ -16,17 +16,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.timeutil import utc_now
 from app.core.tenancy import current_org_id, check_org_active
 from app.api.v1.auth import get_current_user
 from app.models.user import User
-from app.models.phonetic import PhoneticVideo, PhoneticMaterial
+from app.models.phonetic import PhoneticVideo, PhoneticMaterial, PhoneticVideoView
 from app.services import phonetic_material_service, rate_limit, watermark_service
-from app.services import auth_service
+from app.services import auth_service, video_watch
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +62,33 @@ class PhoneticVideoOut(BaseModel):
     cover_image: Optional[str] = None
     duration_seconds: Optional[int] = None
     file_size: Optional[int] = None
+    # ⚠️ **这是打开次数,不是人数**(每次 GET 详情 +1,同一个学生刷十次就是 10)。
+    # 名字已经在生产用着不好改,新的人数口径一律看下面 viewers —— 界面上要显示
+    # 「多少人」时**绝不能用这个字段**,那是一句假话
     view_count: int = 0
+
+    # ===== 观看统计(2026-09-23)。口径真源 services/video_watch =====
+    # 看过的**人**数(去重,且只数本机构的人)
+    viewers: int = 0
+    # 此刻还在看的人数(90 秒内有心跳)
+    watching_now: int = 0
+    # 我自己的进度。**position 与 max_position 是两个不同的问题,别合并**:
+    # 前者是"上次停在哪"(续播用),后者是"看到过最远哪儿"(算「看到几成」用)。
+    # 拿 position 去显示进度,孩子看完后往回拖一下再退出就会显示「看到 5%」
+    my_position_seconds: int = 0
+    my_max_position_seconds: int = 0
+    my_watch_seconds: int = 0
+    my_completed: bool = False
+
     # 播放地址:鉴权串流端点。刻意不下发 file_path —— 磁盘路径不该出现在响应里
     play_url: str = ""
 
 
-def to_out(v: PhoneticVideo) -> PhoneticVideoOut:
+def to_out(
+    v: PhoneticVideo,
+    stats: Optional[video_watch.VideoStats] = None,
+    mine: Optional[PhoneticVideoView] = None,
+) -> PhoneticVideoOut:
     return PhoneticVideoOut(
         id=v.id,
         title=v.title,
@@ -78,6 +101,12 @@ def to_out(v: PhoneticVideo) -> PhoneticVideoOut:
         duration_seconds=v.duration_seconds,
         file_size=v.file_size,
         view_count=v.view_count or 0,
+        viewers=stats.viewers if stats else 0,
+        watching_now=stats.watching_now if stats else 0,
+        my_position_seconds=(mine.last_position_seconds or 0) if mine else 0,
+        my_max_position_seconds=(mine.max_position_seconds or 0) if mine else 0,
+        my_watch_seconds=(mine.watch_seconds or 0) if mine else 0,
+        my_completed=bool(mine.completed) if mine else False,
         play_url=f"/api/v1/phonetics/videos/{v.id}/stream",
     )
 
@@ -123,7 +152,31 @@ async def list_videos(
 
     order = {c: i for i, c in enumerate(CATEGORY_ORDER)}
     rows = sorted(rows, key=lambda v: (order.get(v.category, 99), v.sort_order or 0, v.id))
-    return [to_out(v) for v in rows]
+
+    # 统计与「我的进度」各一次批量查询(**不要按行 N 次查**,一屏几十个视频)
+    ids = [v.id for v in rows]
+    stats = await video_watch.stats_for_videos(db, ids, org_id=current_org_id.get())
+    mine = await _my_views(db, user.id, ids)
+    return [to_out(v, stats.get(v.id), mine.get(v.id)) for v in rows]
+
+
+async def _my_views(
+    db: AsyncSession, user_id: int, video_ids: list[int]
+) -> dict[int, PhoneticVideoView]:
+    """我自己在这批视频上的观看行。一次查完,按 video_id 索引。
+
+    不加 org 过滤: 这是**我自己**的行,按 user_id 取本来就只有我的
+    (而且我看过的视频里可能有平台预置的,加机构条件反而会把它们筛掉)。
+    """
+    if not video_ids:
+        return {}
+    rows = (await db.execute(
+        select(PhoneticVideoView).where(
+            PhoneticVideoView.user_id == user_id,
+            PhoneticVideoView.video_id.in_(video_ids),
+        )
+    )).scalars().all()
+    return {r.video_id: r for r in rows}
 
 
 @router.get("/videos/{video_id}", response_model=PhoneticVideoOut)
@@ -149,8 +202,161 @@ async def get_video(
     if v is None:
         raise HTTPException(status_code=404, detail="视频不存在或已下架")
     v.view_count = (v.view_count or 0) + 1
+    # 同一动作记两处: view_count 是历史遗留的「打开次数」(老界面在用,不动它),
+    # 新的按人一行用来回答「几个人看过」。**只有学生算观看** ——
+    # 老师点进去检查视频不该计入学情,否则「5 个人看过」里有 3 个是老师自己刷的
+    if user.role == "student":
+        await _touch_view(db, v.id, user.id)
     await db.commit()
-    return to_out(v)
+
+    stats = await video_watch.stats_for_videos(db, [v.id], org_id=current_org_id.get())
+    mine = await _my_views(db, user.id, [v.id])
+    return to_out(v, stats.get(v.id), mine.get(v.id))
+
+
+async def _touch_view(db: AsyncSession, video_id: int, user_id: int) -> None:
+    """记一次「这个人打开了这个视频」。没行就建,有行就 play_count +1。
+
+    ⚠️ 走 **SQLite 的 ON CONFLICT DO UPDATE(单条语句)**,不走 live.py 那套
+    「UPDATE → rowcount==0 → INSERT → IntegrityError → rollback → 重试」:
+    那套在这里会踩 CLAUDE.md 记的 MissingGreenlet 坑 —— 本函数与调用方共用
+    请求 session,而调用方手上还攥着 ORM 对象(v / user)。一旦 rollback,
+    这些对象全部过期,接着读 v.title 就是一次隐式 IO → 500。
+    单条 upsert 天然没有这个分支,并发也由 UNIQUE(video_id,user_id) 兜住。
+    """
+    now = utc_now()
+    stmt = sqlite_insert(PhoneticVideoView).values(
+        video_id=video_id,
+        user_id=user_id,
+        play_count=1,
+        first_viewed_at=now,
+        last_viewed_at=now,
+    )
+    await db.execute(stmt.on_conflict_do_update(
+        index_elements=[PhoneticVideoView.video_id, PhoneticVideoView.user_id],
+        set_={
+            "play_count": PhoneticVideoView.play_count + 1,
+            "last_viewed_at": now,
+        },
+    ))
+
+
+class WatchProgress(BaseModel):
+    """一次心跳。三个数各有分工,别合并(见 services/video_watch 模块头)"""
+    # 距上次心跳真看了多少秒。**服务端会封顶**,客户端报什么都不能直接累加
+    seconds: int = video_watch.HEARTBEAT_SEC
+    # 当前播放位置(秒)。用于续播 + 算「看到过最远处」
+    position: int = 0
+    # 前端拿到的视频总时长。存量视频 duration_seconds 全是 NULL,
+    # 顺手回填 —— 没有分母就算不出完看率(见 video_watch 模块头「duration 为空怎么办」)
+    duration: Optional[int] = None
+
+
+# 心跳 30 秒一次,给到 20/min: 正常用量 2 次/分,余量兜标签页限流后的补报;
+# 再多就是脚本在刷时长了
+HEARTBEAT_RATE_LIMIT = 20
+
+
+@router.post("/videos/{video_id}/progress")
+async def report_progress(
+    video_id: int,
+    payload: WatchProgress,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """上报观看进度(播放中每 30 秒一次 + 暂停/离开时一次)。
+
+    四道闸门,少一道这个数就不可信:
+    ① **可见性必须显式校验** —— 否则学生拿别家机构的 video_id 就能往那边刷时长,
+       而那些数字会出现在别家老师的学情页上(_scope_org 的理由见 list_videos)
+    ② **增量服务端封顶**(video_watch.clamp_increment): 客户端报多少加多少的话,
+       改一行 JS 就是 10 小时
+    ③ **位置按 duration 夹**(clamp_position): 报个 999999 就永远满足「到过结尾」
+    ④ 限速: 心跳本该 30 秒一次,一秒几十次的只能是脚本
+
+    「看完」的判定不在这里手写,调 video_watch.is_completed —— 那是唯一真源
+    (学习时长在五个界面算出五个数字的教训,见 services/study_time 文件头)。
+    """
+    rate_limit.check(("phonetic-progress", user.id), HEARTBEAT_RATE_LIMIT, 60,
+                     "上报太频繁了")
+
+    v = (await db.execute(
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+            ),
+            PhoneticVideo,
+        )
+    )).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="视频不存在或已下架")
+
+    # 老师/管理员点进去看不计入学情(与 get_video 同口径),但也不该报错 ——
+    # 前端是同一个播放器组件,为角色分叉只会让它更容易漏
+    if user.role != "student":
+        return {"ok": True, "counted": False}
+
+    # duration 回填: 存量视频没有这个数,而它是完看率的分母。
+    # 只在**库里没有**时写(前端报的是浏览器解出来的元数据,以先到的为准即可,
+    # 不要每次心跳都覆盖 —— 那会让这一列在几个孩子的不同播放器之间来回跳)
+    if not v.duration_seconds and payload.duration and payload.duration > 0:
+        v.duration_seconds = int(payload.duration)
+    duration = v.duration_seconds
+
+    inc = video_watch.clamp_increment(payload.seconds)
+    pos = video_watch.clamp_position(payload.position, duration)
+    now = utc_now()
+
+    # 先保证行存在(与 _touch_view 同一套单条 upsert,不走 rollback 分支)
+    await db.execute(sqlite_insert(PhoneticVideoView).values(
+        video_id=video_id, user_id=user.id, play_count=1,
+        first_viewed_at=now, last_viewed_at=now,
+    ).on_conflict_do_nothing(
+        index_elements=[PhoneticVideoView.video_id, PhoneticVideoView.user_id],
+    ))
+
+    # 累加与取最大值都在 SQL 里做(不是读出来改再写回去):
+    # 同一个孩子开两个标签页时,读改写会互相覆盖掉对方的增量
+    await db.execute(
+        update(PhoneticVideoView)
+        .where(
+            PhoneticVideoView.video_id == video_id,
+            PhoneticVideoView.user_id == user.id,
+        )
+        .values({
+            PhoneticVideoView.watch_seconds: PhoneticVideoView.watch_seconds + inc,
+            # 看到过的最远处只增不减(往回拖进度条不该把它拉小)
+            PhoneticVideoView.max_position_seconds: func.max(
+                PhoneticVideoView.max_position_seconds, pos
+            ),
+            # 续播位置是「上次停在哪」,所以直接覆盖
+            PhoneticVideoView.last_position_seconds: pos,
+            PhoneticVideoView.last_viewed_at: now,
+        })
+    )
+
+    # completed 是冗余标记(为了列表页不必每行现算),判定仍以 video_watch 为准。
+    # 累加之后再读回来判 —— 用请求里的增量自己算会漏掉另一个标签页的贡献
+    row = (await db.execute(
+        select(PhoneticVideoView).where(
+            PhoneticVideoView.video_id == video_id,
+            PhoneticVideoView.user_id == user.id,
+        )
+    )).scalar_one()
+    done = video_watch.is_completed(
+        row.watch_seconds or 0, row.max_position_seconds or 0, duration
+    )
+    # **只置不清**: 已经看完的不因为重看开头而变回没看完
+    if done and not row.completed:
+        row.completed = True
+
+    await db.commit()
+    return {
+        "ok": True,
+        "counted": True,
+        "watch_seconds": row.watch_seconds or 0,
+        "completed": bool(row.completed),
+    }
 
 
 def _scope_org(q, model):
