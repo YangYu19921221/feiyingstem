@@ -56,9 +56,14 @@ class Settings(BaseSettings):
     # /api/v1/files 公开无鉴权(见 main.py),只准放公开图片;视频要求登录才能看,
     # 所以落在这个私有目录,只经 /phonetics/videos/{id}/stream 鉴权后串流。
     PHONETIC_VIDEO_DIR: str = "./private_media/phonetics"
-    # 单个视频上限(字节)。注意还受 nginx client_max_body_size 限制,
-    # 两边要一起放开,否则大文件在 nginx 层就被拒(413),压根到不了应用
-    MAX_VIDEO_SIZE: int = 200 * 1024 * 1024  # 200MB
+    # 单个视频上限(字节)。**三处上限是串联的,最小的那个说话**:
+    #   前端预检(phonetics.ts 的 MAX_VIDEO_MB) <= 这里 <= nginx client_max_body_size
+    # nginx 那道必须留余量给 multipart 边界与表单字段(现为 520m)。
+    # ⚠️ 只调这里没用: 超过 nginx 那道的请求**根本到不了应用**,nginx 直接回 413,
+    # 而那个 413 没有响应体 → 老师只看到「上传失败」四个字,不知道是网络还是文件问题。
+    # 2026-09-24 从 200MB 提到 500MB: 生产 error log 里两个真实被拒的文件是
+    # 242MB(同一位老师连传 4 次)和 616MB,而当时 nginx 卡在 220m。
+    MAX_VIDEO_SIZE: int = 500 * 1024 * 1024  # 500MB
 
     # ---- 线上授课(直播)课件资料 ----
     # 同 PHONETIC_VIDEO_DIR 的理由:**必须与 UPLOAD_DIR 分开**。课件是"能看不能下"的

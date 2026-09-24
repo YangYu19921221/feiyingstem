@@ -305,6 +305,18 @@ export function formatSize(bytes?: number | null): string {
  * 「还算在看吗」的窗口(3 倍周期),这边调快了那个数就会一直闪 */
 export const WATCH_HEARTBEAT_SEC = 30;
 
+/**
+ * 视频上限(MB)。**必须与后端 config.MAX_VIDEO_SIZE 同值**
+ * (tests/test_phonetic_video_size_limit.py 正则解析本文件锁住这一点)。
+ *
+ * 三处上限是**串联**的,最小的那个说话:
+ *   浏览器预检(这里) <= 应用层 MAX_VIDEO_SIZE <= nginx client_max_body_size
+ * nginx 那道现为 520m —— 留的余量给 multipart 边界与表单字段开销。
+ * 调大这个数**必须同时**改后端和 nginx,否则大文件在 nginx 层就被拒,
+ * 而那个 413 没有响应体、拿不到后端那句人话提示(见 TeacherPhonetics 的预检注释)。
+ */
+export const MAX_VIDEO_MB = 500;
+
 export const phoneticsApi = {
   // ---- 学生端 ----
   list: (params?: { category?: string; q?: string }) =>

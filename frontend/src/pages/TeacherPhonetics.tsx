@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  phoneticsApi, CATEGORY_LABELS, formatSize, NO_LECTURER,
+  phoneticsApi, CATEGORY_LABELS, formatSize, NO_LECTURER, MAX_VIDEO_MB,
   type PhoneticVideo, type PhoneticCategory, type LecturerStat,
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
@@ -204,14 +204,33 @@ export default function TeacherPhonetics() {
    * 逐个传则单个失败不影响其他,失败的能明确报出是哪个文件。
    */
   const onPickFiles = async (fileList?: FileList | null) => {
-    const files = Array.from(fileList || []);
-    if (files.length === 0) return;
+    const picked = Array.from(fileList || []);
+    if (picked.length === 0) return;
     // 兜底:讲师必填。正常路径上「上传视频」按钮已被禁用(选文件之前就挡住 ——
     // 让老师选完 8 个文件才整批 400 是最气人的失败方式),这里只防"按钮禁用被绕过"
     if (isBlankLecturer(uploadLecturer)) {
       toast.error('请先在左边填「讲师」,再选视频上传');
       if (fileRef.current) fileRef.current.value = '';
       return;
+    }
+    // 超大文件**在开传之前**就挑出来,别让老师白等一场。
+    // 为什么必须在前端拦: 超过 nginx client_max_body_size 的请求是 nginx 回的 413,
+    // **没有响应体**,拿不到后端那句「请压缩后再传」—— 老师只看到「上传失败」
+    // 四个字,不知道是网络问题还是文件问题。生产实测一位老师就这么把同一个
+    // 242MB 的文件连传了 4 次(2026-09-24 19:12–19:14 的 error log)。
+    // 逐个点名而不是只说「有文件太大」: 一次选 8 个时老师得知道是哪几个。
+    const tooBig = picked.filter((f) => f.size > MAX_VIDEO_MB * 1024 * 1024);
+    const files = picked.filter((f) => f.size <= MAX_VIDEO_MB * 1024 * 1024);
+    if (tooBig.length > 0) {
+      toast.error(
+        `${tooBig.map((f) => `${f.name}(${formatSize(f.size)})`).join('、')} ` +
+        `超过 ${MAX_VIDEO_MB}MB 上限,请用剪辑软件压缩后再传`,
+      );
+      if (files.length === 0) {
+        if (fileRef.current) fileRef.current.value = '';
+        return;
+      }
+      // 还有合规的就继续传那些 —— 一个太大不该把整批废掉
     }
     setUploading(true);
     setBatch({ done: 0, total: files.length, name: '' });
