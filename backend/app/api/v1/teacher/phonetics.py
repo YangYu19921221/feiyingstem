@@ -26,7 +26,9 @@ from app.models.user import User
 from app.models.phonetic import PhoneticVideo, PhoneticMaterial, PhoneticVideoView
 from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS
 from app.api.v1.teacher._permissions import get_my_class_student_ids
-from app.services import lecturer_name, office_convert, phonetic_material_service, video_watch
+from app.services import (
+    lecturer_name, office_convert, phonetic_material_service, video_question, video_watch,
+)
 from app.services.lecturer_name import NO_LECTURER
 
 logger = logging.getLogger(__name__)
@@ -394,6 +396,12 @@ async def list_videos(
         db, [v.id for v in rows], org_id=current_org_id.get()
     )
 
+    # 学生提问数 / 待回答数(同样一次 group_by)。列表上要标出来 ——
+    # 待回答的问题若只在另一个页面里显示,老师整理视频时不会想起去看
+    q_counts = await video_question.counts_for_videos(
+        db, [v.id for v in rows], current_org_id.get()
+    )
+
     items = []
     for v in rows:
         st = stats.get(v.id)
@@ -412,8 +420,15 @@ async def list_videos(
         out["completion_rate"] = st.completion_rate if st else None
         out["avg_watch_seconds"] = st.avg_watch_seconds if st else 0
         out["viewers_today"] = st.viewers_today if st else 0
+        qn, qp = q_counts.get(v.id, (0, 0))
+        out["question_count"] = qn
+        out["pending_question_count"] = qp
         items.append(out)
-    return {"total": total, "page": page, "page_size": page_size, "items": items}
+    return {
+        "total": total, "page": page, "page_size": page_size, "items": items,
+        # 全机构待回答数:顶部红点用(翻页/筛选都不该让这个数变)
+        "pending_questions": await video_question.pending_count(db, current_org_id.get()),
+    }
 
 
 class ViewerRow(BaseModel):
@@ -527,6 +542,143 @@ async def list_viewers(
         },
         "watched": [w.model_dump() for w in watched],
         "not_watched": not_watched,
+    }
+
+
+@router.get("/overview")
+async def watch_overview(
+    lecturer: Optional[str] = Query(None, description="只统计这位讲师的课;' none' = 未指定讲师"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """**跨视频**的学情总览 —— 「按视频一览」+「按学生一览」。
+
+    单个视频的数据 2026-09-23 就有了(list_viewers),但要一个个点开看。
+    老师最常问的两件事它都答不了:
+    ① **谁在学** —— 关羽鹤这周看课了没有(按学生汇总)
+    ② **哪几节课白讲了** —— 一个人都没看的课(缺口盘点,排在最前面)
+
+    ## 口径全部复用,没有第二套
+
+    按视频走 `video_watch.stats_for_videos`,按学生走 `video_watch.stats_by_student`,
+    完看率走 `VideoStats.completion_rate`(没人看过时是 None → 前端显示「—」)。
+    这里**一行聚合都不手写** —— 学习时长那次五套算法差 250 倍的教训。
+
+    ## 范围与 list_viewers 完全一致
+
+    本教师班上的学生(get_my_class_student_ids);平台 admin 不收范围。
+    admin 看不到「谁还没看」是因为他没有班级名册,同理这里 `roster_size` 给 None。
+
+    ⚠️ 视频范围包含**已下架**的(is_active=False): 这是管理视角,老师要能看到
+    "我下架的那节课当时有多少人看过";而"零观看"的盘点若漏掉下架的课会虚低。
+    """
+    is_admin = user.role == "admin"
+
+    # ① 视频范围:本机构可见的(含预置、含下架),可按讲师收窄
+    vq = _org_scope(select(PhoneticVideo), PhoneticVideo)
+    if lecturer is not None:
+        if lecturer == NO_LECTURER:
+            vq = vq.where(or_(PhoneticVideo.lecturer.is_(None),
+                              PhoneticVideo.lecturer == ""))
+        else:
+            vq = vq.where(PhoneticVideo.lecturer == lecturer)
+    videos = (await db.execute(
+        vq.order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
+    )).scalars().all()
+    vids = [v.id for v in videos]
+
+    # ② 学生范围(与 list_viewers 同一套)
+    roster: dict[int, str] = {}
+    if is_admin:
+        allowed = None
+    else:
+        allowed = await get_my_class_student_ids(db, user.id)
+        if allowed:
+            for sid, uname, fname in (await db.execute(
+                select(User.id, User.username, User.full_name).where(User.id.in_(allowed))
+            )).all():
+                roster[sid] = fname or uname
+
+    org = current_org_id.get()
+    stats = await video_watch.stats_for_videos(
+        db, vids, org_id=org, restrict_user_ids=allowed
+    )
+    # 按学生聚合**始终收在当前视频范围内**。筛了讲师之后老师要的是"我的学生在
+    # 我这套课上花了多久";而即使没筛,也必须传 vids 而不是 None ——
+    # 传 None 会把老师看不见的视频(别家机构的)上的观看时长算进他的学情页,
+    # 且「本机构零视频」时会显示出一堆观看记录
+    by_student = await video_watch.stats_by_student(
+        db, org_id=org, user_ids=allowed, video_ids=vids,
+    )
+
+    video_rows = []
+    zero_watch = 0
+    for v in videos:
+        st = stats.get(v.id) or video_watch.VideoStats()
+        if st.viewers == 0:
+            zero_watch += 1
+        video_rows.append({
+            "id": v.id,
+            "title": v.title,
+            "category": v.category,
+            "lecturer": v.lecturer,
+            "is_active": bool(v.is_active),
+            "duration_seconds": v.duration_seconds,
+            "viewers": st.viewers,
+            "plays": st.plays,
+            "completed": st.completed,
+            "completion_rate": st.completion_rate,
+            "avg_watch_seconds": st.avg_watch_seconds,
+            "watching_now": st.watching_now,
+        })
+
+    # 按学生一览。**名册里的人即使一节没看也要出现**(补 0 行)——
+    # 这份表的用处就是把没学的人点出来,只列有记录的人等于把他们藏了
+    if is_admin:
+        # admin 没有班级名册,只能列有观看记录的人(与 not_watched 返回 None 同理)
+        uids = list(by_student.keys())
+        names: dict[int, str] = {}
+        if uids:
+            for sid, uname, fname in (await db.execute(
+                select(User.id, User.username, User.full_name).where(User.id.in_(uids))
+            )).all():
+                names[sid] = fname or uname
+    else:
+        names = roster
+
+    student_rows = []
+    for sid, name in names.items():
+        s = by_student.get(sid) or video_watch.StudentStats()
+        student_rows.append({
+            "student_id": sid,
+            "name": name,
+            "videos_started": s.videos_started,
+            "videos_completed": s.videos_completed,
+            "total_watch_seconds": s.total_watch_seconds,
+            "last_viewed_at": s.last_viewed_at,
+        })
+    # 看得最少的排最前 —— 老师打开这个页面是为了找该催的人,不是表扬第一名。
+    # (非 admin 时 names 是整份名册,所以一节没看的人也在表里、且排在最前)
+    student_rows.sort(key=lambda r: (r["videos_completed"], r["total_watch_seconds"]))
+
+    # 「有观看记录的学生数」。by_student 已按 user_id 聚合,一人一条
+    total_viewers = len(by_student)
+    return {
+        "scope": "all" if is_admin else "my_classes",
+        # 前端据此把空表说清是哪种空:没有班级 ≠ 学生都没看
+        "roster_size": None if is_admin else len(roster),
+        "summary": {
+            "videos": len(videos),
+            # 「一个人都没看」的课数 —— 这个数排在总览最前面
+            "zero_watch_videos": zero_watch,
+            "active_students": total_viewers,
+            "total_watch_seconds": sum(
+                s.total_watch_seconds for s in by_student.values()
+            ),
+            "watching_now": sum(r["watching_now"] for r in video_rows),
+        },
+        "videos": video_rows,
+        "students": student_rows,
     }
 
 
@@ -1189,3 +1341,168 @@ async def delete_material(
     await db.commit()
     _remove_material_files(mid, stored)
     return None
+
+
+# ===================== 学生提问:老师端回答 / 公开 / 隐藏 =====================
+# 设计取舍见 models/phonetic.PhoneticVideoQuestion 的类注释:
+# 不做开放论坛,做「按视频提问」——绑上下文、带播放位置、默认仅师生可见。
+
+class TeacherQuestionRow(BaseModel):
+    id: int
+    video_id: int
+    video_title: str
+    student_id: int
+    student_name: str
+    content: str
+    position_seconds: Optional[int] = None
+    answer: Optional[str] = None
+    answered_at: Optional[object] = None
+    answered_by_name: Optional[str] = None
+    is_public: bool = False
+    is_hidden: bool = False
+    created_at: Optional[object] = None
+
+
+class AnswerIn(BaseModel):
+    answer: str = Field(..., max_length=video_question.MAX_ANSWER_LEN)
+    # 顺手公开:老师常在回答的同时就判断"这个问题别人也会问"。
+    # 可空 = 不改当前的公开状态(留空=不修改走**显式分支**,见 CLAUDE.md)
+    is_public: Optional[bool] = None
+
+
+class QuestionFlagIn(BaseModel):
+    """只改标记不动正文。两个字段都可空 = 不改(显式分支判键在不在)"""
+    is_public: Optional[bool] = None
+    is_hidden: Optional[bool] = None
+
+
+async def _own_question(db: AsyncSession, qid: int, user: User):
+    """取一条**管得着**的提问。
+
+    ⚠️ 按 org_id 直接判,**不经视频推导**:平台预置视频的 org_id 是 NULL,
+    照视频判会让任何机构的老师看到/回答别家学生在预置视频下的提问
+    (见 services/video_question 模块头)。
+    """
+    from app.models.phonetic import PhoneticVideoQuestion
+    q = select(PhoneticVideoQuestion).where(PhoneticVideoQuestion.id == qid)
+    row = (await db.execute(
+        video_question.scope_org(q, current_org_id.get())
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, "提问不存在")
+    return row
+
+
+@router.get("/questions")
+async def list_questions(
+    status: str = Query("pending", description="pending=待回答 | answered=已回答 | all"),
+    video_id: Optional[int] = Query(None, description="只看某个视频下的"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """本机构学生的提问列表。默认只给**待回答**的 —— 老师点红点过来就是为了处理它们。
+
+    含 hidden 的行(status=all 时):老师要能看到自己隐藏了什么,
+    隐藏是软删不硬删(未成年人内容出纠纷时需要留痕)。
+    """
+    from app.models.phonetic import PhoneticVideoQuestion as Q
+
+    stmt = select(Q, PhoneticVideo).join(PhoneticVideo, PhoneticVideo.id == Q.video_id)
+    stmt = video_question.scope_org(stmt, current_org_id.get())
+    if status == "pending":
+        stmt = stmt.where(Q.answered_at.is_(None), Q.is_hidden.is_(False))
+    elif status == "answered":
+        stmt = stmt.where(Q.answered_at.isnot(None))
+    if video_id is not None:
+        stmt = stmt.where(Q.video_id == video_id)
+
+    rows = (await db.execute(
+        stmt.order_by(Q.created_at.desc(), Q.id.desc()).limit(limit)
+    )).all()
+
+    uids = {r.user_id for r, _ in rows} | {r.answered_by for r, _ in rows if r.answered_by}
+    names: dict[int, str] = {}
+    if uids:
+        for uid, uname, fname in (await db.execute(
+            select(User.id, User.username, User.full_name).where(User.id.in_(uids))
+        )).all():
+            names[uid] = fname or uname
+
+    return {
+        "pending": await video_question.pending_count(db, current_org_id.get()),
+        "items": [
+            TeacherQuestionRow(
+                id=q.id,
+                video_id=q.video_id,
+                video_title=v.title,
+                student_id=q.user_id,
+                student_name=names.get(q.user_id, f"#{q.user_id}"),
+                content=q.content,
+                position_seconds=q.position_seconds,
+                answer=q.answer,
+                answered_at=q.answered_at,
+                answered_by_name=names.get(q.answered_by) if q.answered_by else None,
+                is_public=bool(q.is_public),
+                is_hidden=bool(q.is_hidden),
+                created_at=q.created_at,
+            ).model_dump()
+            for q, v in rows
+        ],
+    }
+
+
+@router.post("/questions/{question_id}/answer")
+async def answer_question(
+    question_id: int,
+    payload: AnswerIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """回答一条提问。可顺手设为公开(见 AnswerIn.is_public)"""
+    row = await _own_question(db, question_id, user)
+    text = video_question.clean_text(payload.answer, video_question.MAX_ANSWER_LEN)
+    if not text:
+        # 纯空白的回答会让那条**永远挂在待回答里**(判据是 answered_at),
+        # 而界面已经弹了"已回答" —— 正是本项目最常见的静默失败,当场拒掉
+        raise HTTPException(400, "回答不能为空")
+
+    row.answer = text
+    row.answered_by = user.id
+    row.answered_at = utc_now()
+    # 「留空=不修改」走显式分支判 None,不判真假值
+    if payload.is_public is not None:
+        row.is_public = bool(payload.is_public)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "id": row.id,
+        "answer": row.answer,
+        "answered_at": row.answered_at,
+        "is_public": bool(row.is_public),
+        "pending": await video_question.pending_count(db, current_org_id.get()),
+    }
+
+
+@router.patch("/questions/{question_id}")
+async def update_question_flags(
+    question_id: int,
+    payload: QuestionFlagIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """设为公开 / 取消公开 / 隐藏 / 取消隐藏。正文一律不动(那是学生写的)"""
+    row = await _own_question(db, question_id, user)
+    data = payload.model_dump(exclude_unset=True)
+    if "is_public" in data and data["is_public"] is not None:
+        row.is_public = bool(data["is_public"])
+    if "is_hidden" in data and data["is_hidden"] is not None:
+        row.is_hidden = bool(data["is_hidden"])
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "id": row.id,
+        "is_public": bool(row.is_public),
+        "is_hidden": bool(row.is_hidden),
+        "pending": await video_question.pending_count(db, current_org_id.get()),
+    }

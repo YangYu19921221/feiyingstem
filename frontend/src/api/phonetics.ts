@@ -75,6 +75,10 @@ export interface PhoneticVideo {
   completion_rate?: number | null;
   avg_watch_seconds?: number;
   viewers_today?: number;
+  /** 这节课下面学生提了几个问题 */
+  question_count?: number;
+  /** 其中还没回答的。列表上要标出来,否则老师整理视频时不会想起去看提问 */
+  pending_question_count?: number;
 }
 
 /** 一个学生在某个视频上的观看情况(教师端名单) */
@@ -120,7 +124,114 @@ export interface PhoneticVideoPage {
   page: number;
   page_size: number;
   items: PhoneticVideo[];
+  /**
+   * 全机构「待回答」的提问数 —— 红点用它,**不要拿 items 里的加起来**:
+   * 那样翻页/筛讲师时红点会跟着变,老师会以为问题被处理掉了
+   */
+  pending_questions?: number;
 }
+
+// ===== 跨视频学情总览(2026-09-24)。口径与单个视频的 viewers 报表同源 =====
+
+export interface OverviewVideoRow {
+  id: number;
+  title: string;
+  category: PhoneticCategory;
+  lecturer?: string | null;
+  is_active: boolean;
+  duration_seconds?: number | null;
+  viewers: number;
+  plays: number;
+  completed: number;
+  /** null = 还没人看过 → 显示「—」不是 0% */
+  completion_rate: number | null;
+  avg_watch_seconds: number;
+  watching_now: number;
+}
+
+export interface OverviewStudentRow {
+  student_id: number;
+  name: string;
+  videos_started: number;
+  videos_completed: number;
+  total_watch_seconds: number;
+  last_viewed_at?: string | null;
+}
+
+export interface PhoneticOverview {
+  scope: 'my_classes' | 'all';
+  /** 我班上有多少学生。**null = 算不出**(admin 没有班级名册),0 = 真的没学生 */
+  roster_size?: number | null;
+  summary: {
+    videos: number;
+    /** 一个人都没看的课数 —— 这个数排在总览最前面 */
+    zero_watch_videos: number;
+    active_students: number;
+    total_watch_seconds: number;
+    watching_now: number;
+  };
+  videos: OverviewVideoRow[];
+  /**
+   * 按学生一览。**看得最少的排最前** —— 打开这页是为了找该催的人。
+   * 名册里一节没看的人也在表里(补 0 行),admin 只有有记录的人
+   */
+  students: OverviewStudentRow[];
+}
+
+// ===== 看不懂就问(2026-09-24) =====
+
+/** 学生端看到的一条问答 */
+export interface VideoQuestion {
+  id: number;
+  content: string;
+  /** 提问时播放到第几秒。「3 分 20 秒那个音」比「这个音」可回答得多 */
+  position_seconds?: number | null;
+  answer?: string | null;
+  answered_at?: string | null;
+  answered_by_name?: string | null;
+  is_public: boolean;
+  is_mine: boolean;
+  /** 只有**公开**的问答才带提问者姓名;自己那条前端直接显示「我」 */
+  asker_name?: string | null;
+  created_at?: string | null;
+}
+
+/** 老师端看到的一条提问(多了视频、学生、隐藏状态) */
+export interface TeacherQuestion {
+  id: number;
+  video_id: number;
+  video_title: string;
+  student_id: number;
+  student_name: string;
+  content: string;
+  position_seconds?: number | null;
+  answer?: string | null;
+  answered_at?: string | null;
+  answered_by_name?: string | null;
+  is_public: boolean;
+  is_hidden: boolean;
+  created_at?: string | null;
+}
+
+export interface TeacherQuestionPage {
+  /** 全机构待回答数(与列表筛选无关)—— 红点用它 */
+  pending: number;
+  items: TeacherQuestion[];
+}
+
+/** 学生端个人汇总。**刻意没有「全站播放量」**,理由见后端 my_watch_summary 注释 */
+export interface MyWatchSummary {
+  /** 分母 = 我可见且上架的视频数(与列表页同源) */
+  total_videos: number;
+  videos_started: number;
+  videos_completed: number;
+  total_watch_seconds: number;
+  last_viewed_at?: string | null;
+}
+
+/** 提问/回答的正文上限。**与后端 services/video_question 同值** */
+export const MAX_QUESTION_LEN = 500;
+export const MAX_ANSWER_LEN = 2000;
 
 /** 一位讲师 + 名下视频数(教师端:含已下架的) */
 export interface LecturerStat {
@@ -213,7 +324,55 @@ export const phoneticsApi = {
   ) => api.post<{ ok: boolean; counted: boolean; watch_seconds: number; completed: boolean }>(
     `/phonetics/videos/${id}/progress`, body),
 
+  /** 我自己的学习汇总(看完几节 / 累计多久)。学生端**只看自己的数** */
+  myWatchSummary: () => api.get<MyWatchSummary>('/phonetics/my-watch-summary'),
+
+  /** 这节课下面我能看到的问答:我问的 + 老师设为公开的 */
+  listQuestions: (videoId: number) =>
+    api.get<VideoQuestion[]>(`/phonetics/videos/${videoId}/questions`),
+
+  /** 提一个问题。带上播放位置,老师才知道是哪个音 */
+  askQuestion: (videoId: number, content: string, positionSeconds?: number) =>
+    api.post<VideoQuestion>(`/phonetics/videos/${videoId}/questions`, {
+      content,
+      position_seconds: positionSeconds,
+    }),
+
+  /** 「老师回了我的问题」条数 —— 学生端红点。只数自己的 */
+  myAnsweredCount: () =>
+    api.get<{ answered: number }>('/phonetics/my-questions/answered-count'),
+
   // ---- 教师端 ----
+
+  /**
+   * 跨视频学情总览:哪几节没人看、谁还没学。
+   * lecturer 传 NO_LECTURER 只看未指定讲师的那批
+   */
+  overview: (params?: { lecturer?: string }) =>
+    api.get<PhoneticOverview>('/teacher/phonetics/overview', { params }),
+
+  /** 学生提问列表。默认只给待回答的(老师点红点过来就是为了处理它们) */
+  teacherQuestions: (params?: {
+    status?: 'pending' | 'answered' | 'all';
+    video_id?: number;
+    limit?: number;
+  }) => api.get<TeacherQuestionPage>('/teacher/phonetics/questions', { params }),
+
+  /** 回答一条提问,可顺手公开。返回里带最新的 pending 数,拿它更新红点 */
+  answerQuestion: (id: number, answer: string, isPublic?: boolean) =>
+    api.post<{
+      id: number; answer: string; answered_at: string;
+      is_public: boolean; pending: number;
+    }>(`/teacher/phonetics/questions/${id}/answer`, {
+      answer,
+      // undefined = 不改公开状态(后端走显式分支判 None)
+      is_public: isPublic,
+    }),
+
+  /** 设为公开 / 取消公开 / 隐藏。**正文一律不动**(那是学生写的) */
+  flagQuestion: (id: number, body: { is_public?: boolean; is_hidden?: boolean }) =>
+    api.patch<{ id: number; is_public: boolean; is_hidden: boolean; pending: number }>(
+      `/teacher/phonetics/questions/${id}`, body),
   teacherList: (params: {
     q?: string; category?: string;
     /** 精确筛讲师;NO_LECTURER = 只看未指定讲师的(补归属时用) */

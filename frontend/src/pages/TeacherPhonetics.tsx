@@ -13,10 +13,12 @@ import {
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
-import { Upload, Volume2 } from 'lucide-react';
+import { BarChart3, MessageCircleQuestion, Upload, Volume2 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
 import ViewerStatsDialog from '../components/phonetics/ViewerStatsDialog';
+import OverviewDialog from '../components/phonetics/OverviewDialog';
+import QuestionInboxDialog from '../components/phonetics/QuestionInboxDialog';
 
 const PAGE_SIZE = 10;
 
@@ -103,6 +105,24 @@ export default function TeacherPhonetics() {
   const [materialFor, setMaterialFor] = useState<PhoneticVideo | null>(null);
   /** 正在看哪个视频的观看数据 */
   const [statsFor, setStatsFor] = useState<PhoneticVideo | null>(null);
+  /** 跨视频学情总览弹层开着吗 */
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  /**
+   * 学生提问收件箱。null = 关着;{ videoId: undefined } = 全部提问,
+   * 带 videoId = 只看那个视频下的(从行上的红点点进来)
+   */
+  const [inbox, setInbox] = useState<{ videoId?: number } | null>(null);
+  /**
+   * 全机构待回答提问数(红点)。**来自列表响应的 pending_questions,
+   * 不是 items 里加起来的** —— 那样翻页/筛讲师时红点会跟着变,
+   * 老师会以为问题被处理掉了
+   */
+  const [pending, setPending] = useState(0);
+  /**
+   * 交给收件箱弹层回传最新待回答数。**必须是稳定引用**(useCallback 空依赖):
+   * 弹层的 load effect 把它列进了依赖,写成内联箭头会每次渲染都变 → 无限重取
+   */
+  const takePending = useCallback((n: number) => setPending(n), []);
 
   // 批量删除:勾选的 id。翻页/搜索后清空,避免删掉看不见的条目
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -157,6 +177,8 @@ export default function TeacherPhonetics() {
       if (page > maxPage) { setPage(maxPage); return; }   // setPage 会触发重取
       setItems(data.items);
       setTotal(data.total);
+      // 红点取响应里的全机构待回答数(不是本页那几行加起来的,见 pending state 注释)
+      setPending(data.pending_questions || 0);
       setSelected(new Set());  // 换页/换搜索词后旧勾选已不可见,清掉防误删
     } catch (e) {
       toast.error(getErrorMessage(e, '列表加载失败'));
@@ -398,6 +420,36 @@ export default function TeacherPhonetics() {
               音标是英语的基础,学生首页有独立入口。上传的视频只有登录的学生能看。
               可一次选多个视频批量上传,标题自动取文件名。
             </p>
+            {/* 学情总览 / 学生提问:两个一眼能看到的入口。
+                CLAUDE.md 硬性要求「不能只藏在二级页面的展开区里」——
+                行上的「数据」按钮只管一节课,这两个是跨视频的,必须在页面顶部 */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setOverviewOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-[#e8f3f4] px-3 py-2 text-sm
+                           font-semibold text-[#276f78] transition hover:bg-[#d7ebed] active:scale-[0.98]"
+              >
+                <BarChart3 className="h-4 w-4" />
+                学情总览
+                <span className="font-normal text-xs text-[#4b8f97]">哪几节没人看 · 谁还没学</span>
+              </button>
+              <button
+                onClick={() => setInbox({})}
+                className="relative flex items-center gap-1.5 rounded-xl bg-orange-50 px-3 py-2 text-sm
+                           font-semibold text-orange-700 transition hover:bg-orange-100 active:scale-[0.98]"
+              >
+                <MessageCircleQuestion className="h-4 w-4" />
+                学生提问
+                {/* 待回答数就是红点本身:写出数字比一个点更有用(老师知道要花多久) */}
+                {pending > 0 ? (
+                  <span className="rounded-full bg-red-500 px-1.5 py-0.5 font-numeric text-[11px] font-bold text-white">
+                    {pending} 待回答
+                  </span>
+                ) : (
+                  <span className="text-xs font-normal text-orange-500">听不懂的地方</span>
+                )}
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             {/* 讲师:**上传前必填**(2026-09-17 改成强制),整批用同一个值。
@@ -674,6 +726,21 @@ export default function TeacherPhonetics() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {/* 提问入口**只在这节课真有提问时出现**:每行都摆一个「提问 0」
+                        是噪音,而且会把真有问题的那几行淹掉。待回答的标红 */}
+                    {!!v.question_count && (
+                      <button
+                        onClick={() => setInbox({ videoId: v.id })}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs transition ${
+                          v.pending_question_count
+                            ? 'bg-red-50 font-semibold text-red-600 hover:bg-red-100'
+                            : 'bg-gray-100 text-ink-soft hover:bg-orange-100'}`}
+                      >
+                        {v.pending_question_count
+                          ? `提问 ${v.pending_question_count} 待回答`
+                          : `提问 ${v.question_count}`}
+                      </button>
+                    )}
                     {/* 观看数据对平台预置视频**照样可用**(不像编辑/删除要置灰):
                         看数据是读操作,而机构最该知道的正是"我的学生看没看平台这节课" */}
                     <button
@@ -933,6 +1000,23 @@ export default function TeacherPhonetics() {
           videoId={statsFor.id}
           videoTitle={statsFor.title}
           onClose={() => { setStatsFor(null); void load(); }}
+        />
+      )}
+
+      {/* 跨视频学情总览。讲师 chip 复用列表那份名单(已含视频数) */}
+      {overviewOpen && (
+        <OverviewDialog
+          lecturers={lecturers}
+          onClose={() => setOverviewOpen(false)}
+        />
+      )}
+
+      {/* 学生提问收件箱。关掉时刷列表:回答/隐藏之后行上的「提问 N 待回答」要跟着变 */}
+      {inbox && (
+        <QuestionInboxDialog
+          videoId={inbox.videoId}
+          onPendingChange={takePending}
+          onClose={() => { setInbox(null); void load(); }}
         />
       )}
     </div>

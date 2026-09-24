@@ -154,3 +154,74 @@ class PhoneticMaterial(Base):
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PhoneticVideoQuestion(Base):
+    """学生在某个音标视频下的提问 + 老师的回答(一问一行,回答就写在同一行)
+
+    ## 为什么是「按视频提问」而不是论坛
+
+    做开放式论坛在这里会死于两件事:
+    ① **冷启动** —— 一个机构几十个学生,发帖没人回,两周后是一片荒地。
+       而本项目已经吃过「功能上线没人发现等于没做」的亏(纸笔听写那次)。
+    ② **未成年人 UGC 的审核责任** —— 开放讨论区意味着要对孩子之间发的每句话负责,
+       这是持续的人力成本,不是一次性开发。
+
+    上下文绑定的提问反而小而活:孩子看某节课卡住,就在那节课下面问一句
+    (自动带上**播放到第几秒**,老师一看就知道在问哪个音),老师端一个红点逐条回。
+    这条路径能渐进长成讨论区(老师把好问题设为公开 → 那节课的常见问答),
+    反过来把论坛缩成提问不行。
+
+    ## 可见性:默认仅师生可见,老师可一键公开
+
+    `is_public=False`(默认)= 只有提问者本人和老师看得见 → **零审核负担**,
+    孩子也更敢问("怕被同学看见问得蠢"是这个年龄最真实的顾虑)。
+    老师发现某个问题很多人问,点「设为公开」→ 它变成那节课下面所有人可见的问答。
+
+    ⚠️ 公开的是**问题 + 回答这一对**,不是评论区: 本表**没有**楼层/回复链,
+    一个问题只有一个老师回答。想做多轮讨论再加子表,别把 answer 拆成 JSON
+    数组硬塞 —— 那样既查不了"谁还没被回答",也没法给单条回答记时间。
+    """
+
+    __tablename__ = "phonetic_video_questions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    video_id = Column(Integer, ForeignKey("phonetic_videos.id"), nullable=False, index=True)
+    # 提问的学生。删学生账号的情况见 CLAUDE.md「删用户前必查依赖」——
+    # 生产 PRAGMA foreign_keys=0,这里的 FK 只是文档作用,真删要显式处理
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    content = Column(Text, nullable=False)
+    # 提问时播放到第几秒。**这是这个功能比论坛好用的关键** ——
+    # 「3 分 20 秒那个音我读不出来」比「老师这个音怎么读」可回答得多。
+    # 可空:从列表页直接提问时没有播放位置
+    position_seconds = Column(Integer, nullable=True)
+
+    # ===== 老师的回答(未回答时全为空)=====
+    answer = Column(Text, nullable=True)
+    answered_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    answered_at = Column(DateTime, nullable=True)
+
+    # 设为公开后,这节课下面所有学生都能看到这一问一答(见类注释)
+    is_public = Column(Boolean, nullable=False, default=False, server_default="0")
+    # 老师可隐藏不合适的提问:**软删不硬删** —— 硬删之后老师无法举证
+    # "这孩子发过什么",而未成年人内容出纠纷时需要留痕
+    is_hidden = Column(Boolean, nullable=False, default=False, server_default="0")
+
+    # 多租户:与本文件其它表同口径。⚠️ 提问**必须显式带 org_id** 而不是靠视频推导 ——
+    # 平台预置视频的 org_id 是 NULL,靠它推导会让 A 机构的学生看到 B 机构学生
+    # 在同一个预置视频下的公开提问(姓名 + 原话都会漏)
+    org_id = Column(Integer, nullable=True, index=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # 学生端取某视频的问答:按视频 + 可见性筛,新的在前
+        Index("idx_pvq_video", "video_id", "is_hidden", "created_at"),
+        # 教师端红点「几个待回答」:**这是最频繁的查询**(每次进页面都要数),
+        # answer IS NULL 的部分索引在 sqlite 上可用,但这里用普通复合索引
+        # 保持与本文件其它索引同风格,机构内提问量级不值得上部分索引
+        Index("idx_pvq_pending", "org_id", "answered_at"),
+    )

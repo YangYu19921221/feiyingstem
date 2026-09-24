@@ -228,6 +228,74 @@ async def stats_for_videos(
     return out
 
 
+@dataclass
+class StudentStats:
+    """一个学生**跨全部视频**的观看汇总(教师端「按学生」视图 / 学生端个人汇总)。
+
+    与 VideoStats 是转置关系(那个按视频聚合,这个按人聚合),但**不能复用** ——
+    完看率的分母不同:VideoStats 的分母是"看过的人",这里是"看过的视频数"。
+    硬套会得到一个谁都解释不了的比值。
+    """
+    videos_started: int = 0     # 点开过的视频数
+    videos_completed: int = 0   # 看完的视频数(口径仍是 is_completed)
+    total_watch_seconds: int = 0
+    last_viewed_at: Optional[object] = None
+
+
+async def stats_by_student(
+    db: AsyncSession,
+    *,
+    org_id: Optional[int] = None,
+    user_ids: Optional[Iterable[int]] = None,
+    video_ids: Optional[Iterable[int]] = None,
+) -> dict[int, StudentStats]:
+    """按**学生**聚合观看数据 —— 「关羽鹤这周看课了没有」。
+
+    单个视频的数据已经有了(stats_for_videos),但老师最常问的两件事它都答不了:
+    ①按学生看谁在学 ②哪几节课一个人都没看。这个函数补第一件。
+
+    `video_ids` 收范围的用处:传**当前筛选出的视频**(比如某位讲师的课),
+    老师就能看到"我的学生在我这套课上花了多久"。传空列表 = 范围内没有视频 → 全 0
+    (与 None「不限制」是两件事,别搞混 —— 同 stats_for_videos 的口径)。
+
+    ⚠️ org_id 同样**必须显式传**: phonetic_video_views 没有 org_id 列,
+    靠租户过滤器罩不住(CLAUDE.md:聚合查询不经锚点模型必须手动 join User)。
+    """
+    from app.models.phonetic import PhoneticVideoView as V
+    from app.models.user import User
+
+    out: dict[int, StudentStats] = {}
+    stmt = select(
+        V.user_id,
+        func.count(V.id),
+        func.coalesce(func.sum(case((V.completed.is_(True), 1), else_=0)), 0),
+        func.coalesce(func.sum(V.watch_seconds), 0),
+        func.max(V.last_viewed_at),
+    ).group_by(V.user_id)
+
+    if org_id is not None:
+        stmt = stmt.join(User, User.id == V.user_id).where(User.org_id == org_id)
+    if user_ids is not None:
+        allowed = list(user_ids)
+        if not allowed:
+            return out
+        stmt = stmt.where(V.user_id.in_(allowed))
+    if video_ids is not None:
+        vids = list(video_ids)
+        if not vids:
+            return out
+        stmt = stmt.where(V.video_id.in_(vids))
+
+    for uid, started, completed, secs, last in (await db.execute(stmt)).all():
+        out[uid] = StudentStats(
+            videos_started=int(started or 0),
+            videos_completed=int(completed or 0),
+            total_watch_seconds=int(secs or 0),
+            last_viewed_at=last,
+        )
+    return out
+
+
 def _now():
     from app.core.timeutil import utc_now
     return utc_now()

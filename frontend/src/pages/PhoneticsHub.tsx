@@ -14,10 +14,12 @@ import { FileText } from 'lucide-react';
 import {
   phoneticsApi, CATEGORY_LABELS, listVideoMaterials, NO_LECTURER,
   type PhoneticVideo, type PhoneticCategory, type StudentMaterial,
+  type MyWatchSummary,
 } from '../api/phonetics';
 import { getErrorMessage } from '../utils/errorMessage';
 import { segmentIpa } from '../utils/ipaPhonemes';
 import LessonStage from '../components/phonetics/LessonStage';
+import VideoQuestionPanel from '../components/phonetics/VideoQuestionPanel';
 
 const GROUP_ORDER: PhoneticCategory[] = ['basic', 'vowel', 'consonant', 'other'];
 const GROUP_ICON: Record<PhoneticCategory, string> = {
@@ -109,6 +111,18 @@ export default function PhoneticsHub() {
   const [viewing, setViewing] = useState<StudentMaterial | null>(null);
   /** 播放面板 DOM:全屏时把它整个送进 requestFullscreen */
   const panelRef = useRef<HTMLDivElement>(null);
+  /**
+   * 我自己的学习汇总。**刻意没有「全站播放量」** —— 音标课是老师指定的教材,
+   * 学生不需要在海量内容里挑看哪个,而几十人的分母让播放量变成噪音:
+   * 一节课写着「3 人看过」,孩子的结论是"这课没人看,大概不重要"。
+   * 可汗/Coursera 给学生看的也都是自己的完课进度。
+   */
+  const [summary, setSummary] = useState<MyWatchSummary | null>(null);
+  /** 老师回了我几个问题(红点)。0 就整块不显示 */
+  const [answered, setAnswered] = useState(0);
+  /** 读「视频现在播到第几秒」—— 提问时带上位置,由 LessonStage 交上来 */
+  const posGetter = useRef<(() => number) | null>(null);
+  const takePositionGetter = useCallback((g: () => number) => { posGetter.current = g; }, []);
   /** 选老师弹层的面板 DOM:用来把键盘焦点圈在里面(它是刻意全封闭的) */
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -179,6 +193,22 @@ export default function PhoneticsHub() {
         if (alive) setLoading(false);
       }
     })();
+    return () => { alive = false; };
+  }, [reloadKey]);
+
+  /**
+   * 我的学习汇总 + 「老师回了我几个问题」。
+   * 两个都**失败即静默**:它们是锦上添花的数字,取不到不该在页面上摆红条,
+   * 更不该挡着孩子看视频。
+   */
+  useEffect(() => {
+    let alive = true;
+    phoneticsApi.myWatchSummary()
+      .then((s) => { if (alive) setSummary(s); })
+      .catch(() => { /* 汇总拿不到就不显示那张卡 */ });
+    phoneticsApi.myAnsweredCount()
+      .then((r) => { if (alive) setAnswered(r.answered || 0); })
+      .catch(() => { /* 同上 */ });
     return () => { alive = false; };
   }, [reloadKey]);
 
@@ -327,6 +357,44 @@ export default function PhoneticsHub() {
       </div>
 
       <div className="mx-auto max-w-5xl px-5 py-6">
+        {/* 我的学习汇总。**只给自己的数,没有全站播放量** —— 理由见 summary state 的注释。
+            一节都没看过时整块不显示:全 0 的进度卡对刚进来的孩子是一句"你什么都没做",
+            而他这一秒才第一次打开这个页面 */}
+        {summary && summary.total_videos > 0 && summary.videos_started > 0 && (
+          <div className="mb-5 rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-ink">我的音标学习</p>
+              {/* 老师回了我的问题 → 红点。0 时整块不出现 */}
+              {answered > 0 && (
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+                  老师回了你 {answered} 个问题 · 点开对应的课就能看到
+                </span>
+              )}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="font-numeric text-xl font-bold text-accent-warm">
+                  {summary.videos_completed}
+                  <span className="text-sm font-normal text-ink-mute"> / {summary.total_videos}</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-ink-soft">看完的课</p>
+              </div>
+              <div>
+                <p className="font-numeric text-xl font-bold text-ink">{summary.videos_started}</p>
+                <p className="mt-0.5 text-[11px] text-ink-soft">看过的课</p>
+              </div>
+              <div>
+                {/* 累计时长按分钟给:秒数对"我学了多久"这个问题太碎 */}
+                <p className="font-numeric text-xl font-bold text-ink">
+                  {Math.round(summary.total_watch_seconds / 60)}
+                  <span className="text-sm font-normal text-ink-mute"> 分钟</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-ink-soft">累计观看</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 教材练习入口:放在搜索之上、视频列表之前 —— 练习比看视频更该被看见。
             CLAUDE.md 硬性要求「至少一个一眼能看到的入口,不能只藏在二级页面」 */}
         <button
@@ -702,6 +770,7 @@ export default function PhoneticsHub() {
                 onViewing={setViewing}
                 panelRef={panelRef}
                 onCompleted={markCompleted}
+                onPositionGetter={takePositionGetter}
               />
 
               {!viewing && (
@@ -731,6 +800,13 @@ export default function PhoneticsHub() {
                       </div>
                     </div>
                   )}
+
+                  {/* 听不懂就问。**只在讲义没打开时出现**: 讲义铺满舞台时面板是定高的,
+                      底下再挂一块可增长的列表会把翻页条挤出可视区 */}
+                  <VideoQuestionPanel
+                    videoId={playing.id}
+                    getPosition={() => posGetter.current?.() ?? 0}
+                  />
                 </>
               )}
             </motion.div>

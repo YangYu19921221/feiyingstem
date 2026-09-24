@@ -508,6 +508,12 @@ async def init_db():
             "ON phonetic_video_views(video_id, user_id)",
             "CREATE INDEX IF NOT EXISTS idx_phonetic_video_view_recent "
             "ON phonetic_video_views(video_id, last_viewed_at)",
+            # 音标视频提问(表由 create_all 建;存量库靠下面两条补索引)。
+            # 学生端按视频取问答、教师端数「待回答」各走一条
+            "CREATE INDEX IF NOT EXISTS idx_pvq_video "
+            "ON phonetic_video_questions(video_id, is_hidden, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_pvq_pending "
+            "ON phonetic_video_questions(org_id, answered_at)",
         ]:
             try:
                 await conn.execute(text(_sql))

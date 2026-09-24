@@ -40,6 +40,13 @@ interface Props {
   panelRef: React.RefObject<HTMLDivElement | null>;
   /** 这个视频被看完了(就地把列表里的卡片标成「已看完」,不必重拉整页) */
   onCompleted?: (videoId: number) => void;
+  /**
+   * 交出「现在播到第几秒」的读法,提问时用它带上位置。
+   *
+   * 给的是**函数不是数值**: 位置每秒都在变,当 prop 往上抛会让父组件每秒重渲染
+   * (连带整个播放弹层),而这个数只在学生点「提交」的那一刻需要。
+   */
+  onPositionGetter?: (get: () => number) => void;
 }
 
 /**
@@ -105,7 +112,7 @@ function useLandscape(): boolean {
 }
 
 export default function LessonStage({
-  video, materials, viewing, onViewing, panelRef, onCompleted,
+  video, materials, viewing, onViewing, panelRef, onCompleted, onPositionGetter,
 }: Props) {
   const landscape = useLandscape();
   const [zoomed, setZoomed] = useState(false);
@@ -255,6 +262,12 @@ export default function LessonStage({
     setSrc('');
     loadTicket().catch(() => setSrcError('视频地址获取失败,请刷新页面重试'));
   }, [loadTicket]);
+
+  // 把「现在播到第几秒」的读法交给父组件(提问时带位置用)。
+  // 播放器没就绪时给 0,后端会当"没带位置"处理
+  useEffect(() => {
+    onPositionGetter?.(() => Math.floor(videoRef.current?.currentTime || 0));
+  }, [onPositionGetter]);
 
   // 票据两小时过期:暂停放着超过两小时再点播,后续 Range 请求 401 → 元素报错。
   // 只在票据确实到期时换票(不是到期的错误不重试,免死循环),并从原进度继续

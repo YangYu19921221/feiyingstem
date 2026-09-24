@@ -26,9 +26,11 @@ from app.core.timeutil import utc_now
 from app.core.tenancy import current_org_id, check_org_active
 from app.api.v1.auth import get_current_user
 from app.models.user import User
-from app.models.phonetic import PhoneticVideo, PhoneticMaterial, PhoneticVideoView
+from app.models.phonetic import (
+    PhoneticVideo, PhoneticMaterial, PhoneticVideoView, PhoneticVideoQuestion,
+)
 from app.services import phonetic_material_service, rate_limit, watermark_service
-from app.services import auth_service, video_watch
+from app.services import auth_service, video_question, video_watch
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +257,10 @@ class WatchProgress(BaseModel):
 # 心跳 30 秒一次,给到 20/min: 正常用量 2 次/分,余量兜标签页限流后的补报;
 # 再多就是脚本在刷时长了
 HEARTBEAT_RATE_LIMIT = 20
+# 提问:**5 分钟 10 条**(不是按分钟)。提问是写操作且会进老师的待办列表,
+# 一个孩子连点就能刷出几十条把老师的列表淹掉;而真实提问一节课也就一两个,
+# 窗口给宽一点是为了不误伤"想起来再补问一句"
+ASK_RATE_LIMIT = 10
 
 
 @router.post("/videos/{video_id}/progress")
@@ -417,6 +423,191 @@ async def list_video_materials(
         MaterialBrief(id=m.id, title=m.title, page_count=m.page_count or 0)
         for m in rows
     ]
+
+
+# ===================== 看不懂就问(2026-09-23) =====================
+# 刻意**不做开放式论坛**,理由见 models/phonetic.PhoneticVideoQuestion 的类注释
+# (冷启动 + 未成年人 UGC 审核责任)。这里是「按视频提问」:绑上下文、带播放位置,
+# 默认只有提问者和老师可见,老师可一键公开成那节课的常见问答。
+
+class QuestionOut(BaseModel):
+    id: int
+    content: str
+    position_seconds: Optional[int] = None
+    answer: Optional[str] = None
+    answered_at: Optional[object] = None
+    # 回答者显示名(老师)。未回答时为空
+    answered_by_name: Optional[str] = None
+    is_public: bool = False
+    is_mine: bool = False
+    # 提问者显示名。**公开的问题才给名字**,别人的私有提问根本不会出现在列表里;
+    # 自己的那条前端直接显示「我」,所以这里给的名字只用于公开问答
+    asker_name: Optional[str] = None
+    created_at: Optional[object] = None
+
+
+class QuestionCreate(BaseModel):
+    content: str
+    # 提问时播放到第几秒 —— 「3 分 20 秒那个音」比「这个音」可回答得多
+    position_seconds: Optional[int] = None
+
+
+@router.get("/videos/{video_id}/questions", response_model=list[QuestionOut])
+async def list_questions(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """这节课下面我能看到的问答:**我问的** + **老师设为公开的**。
+
+    可见性口径在 services/video_question.student_visible 一处(三个消费方共用)。
+    """
+    v = (await db.execute(
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+            ),
+            PhoneticVideo,
+        )
+    )).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="视频不存在或已下架")
+
+    stmt = video_question.student_visible(
+        select(PhoneticVideoQuestion), video_id, user.id, current_org_id.get()
+    )
+    rows = (await db.execute(
+        stmt.order_by(PhoneticVideoQuestion.created_at.desc(),
+                      PhoneticVideoQuestion.id.desc())
+    )).scalars().all()
+
+    # 姓名一次批量取(提问者 + 回答者),别按行 N 次查
+    uids = {r.user_id for r in rows} | {r.answered_by for r in rows if r.answered_by}
+    names: dict[int, str] = {}
+    if uids:
+        for uid, uname, fname in (await db.execute(
+            select(User.id, User.username, User.full_name).where(User.id.in_(uids))
+        )).all():
+            names[uid] = fname or uname
+
+    return [
+        QuestionOut(
+            id=r.id,
+            content=r.content,
+            position_seconds=r.position_seconds,
+            answer=r.answer,
+            answered_at=r.answered_at,
+            answered_by_name=names.get(r.answered_by) if r.answered_by else None,
+            is_public=bool(r.is_public),
+            is_mine=(r.user_id == user.id),
+            # 私有提问只有自己看得见(前端显示「我」),所以名字只对公开的那批有意义
+            asker_name=names.get(r.user_id) if r.is_public else None,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/videos/{video_id}/questions", response_model=QuestionOut)
+async def ask_question(
+    video_id: int,
+    payload: QuestionCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """提一个问题。
+
+    ⚠️ **org_id 取提问者的,不是视频的**: 平台预置视频 org_id 是 NULL,
+    按视频推导会让 A 机构学生在预置视频下的公开提问被 B 机构学生看到
+    (泄露姓名 + 原话)。见 services/video_question 模块头。
+
+    限速走 services/rate_limit(与翻页/换票同一套): 提问是写操作且会进老师的
+    待办列表,不限速的话一个孩子连点就能刷出几十条把老师的列表淹掉。
+    """
+    v = (await db.execute(
+        _scope_org(
+            select(PhoneticVideo).where(
+                PhoneticVideo.id == video_id, PhoneticVideo.is_active.is_(True)
+            ),
+            PhoneticVideo,
+        )
+    )).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="视频不存在或已下架")
+
+    content = video_question.clean_text(payload.content, video_question.MAX_CONTENT_LEN)
+    if not content:
+        # 纯空白也走这一支(clean_text 把它归成空串)—— 空白提问在老师列表里
+        # 是一行看不懂的空,不如当场拒掉
+        raise HTTPException(status_code=400, detail="请把问题写清楚再提交")
+
+    rate_limit.check(("phonetic-ask", user.id), ASK_RATE_LIMIT, 300,
+                     "提问太频繁了,过几分钟再问")
+
+    pos = payload.position_seconds
+    row = PhoneticVideoQuestion(
+        video_id=v.id,
+        user_id=user.id,
+        content=content,
+        # 位置按视频时长夹(同 video_watch.clamp_position 的理由:前端报 999999
+        # 会让「问在第 277 小时」出现在老师的列表里)
+        position_seconds=video_watch.clamp_position(pos, v.duration_seconds) if pos else None,
+        org_id=user.org_id,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return QuestionOut(
+        id=row.id,
+        content=row.content,
+        position_seconds=row.position_seconds,
+        is_mine=True,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/my-questions/answered-count")
+async def my_answered_count(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """「老师回了我的问题」的条数 —— 学生端红点。只数自己的(见 service 注释)"""
+    return {"answered": await video_question.my_answered_count(db, user.id)}
+
+
+@router.get("/my-watch-summary")
+async def my_watch_summary(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """我自己的音标视频学习汇总:看完几节 / 累计多久 / 在学几节。
+
+    **刻意不给「总播放量」那类全站数字**。视频网站显示播放量是因为用户要在海量
+    内容里挑看什么,数字是社交证明;音标课是老师指定的教材,学生不需要挑,
+    而这里的分母是几十人不是几百万 —— 小分母的播放量是噪音,还会反向做功:
+    一节课写着「3 人看过」,孩子的结论是「这课没人看,大概不重要」;
+    而班里 30 人只有 3 个看完,这个数等于公开了谁没做作业。
+    教育平台(可汗/Coursera)学生端给的都是**自己的**完课进度,就是这个原因。
+
+    分母 `total_videos` 是**我可见且上架**的视频数(与列表页同一套 _scope_org),
+    不是全平台的 —— 两个数不同源会让「看完 12 / 共 8 节」这种自相矛盾的话出现。
+    """
+    vq = _scope_org(
+        select(PhoneticVideo.id).where(PhoneticVideo.is_active.is_(True)),
+        PhoneticVideo,
+    )
+    vids = [r for r in (await db.execute(vq)).scalars().all()]
+    stats = await video_watch.stats_by_student(
+        db, user_ids=[user.id], video_ids=vids,
+    )
+    s = stats.get(user.id) or video_watch.StudentStats()
+    return {
+        "total_videos": len(vids),
+        "videos_started": s.videos_started,
+        "videos_completed": s.videos_completed,
+        "total_watch_seconds": s.total_watch_seconds,
+        "last_viewed_at": s.last_viewed_at,
+    }
 
 
 @router.get("/materials/{material_id}/page/{page_no}")
