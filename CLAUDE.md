@@ -271,6 +271,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 按组作业真正只下发那一组(2026-09-26): 用户反馈「按组分配作业都是给了一个单元的」。
+  group_index 早就存进 homework_assignments,但**链路上没人往下传**: start_homework 不回传、
+  三个入口跳转不带、学生端三个取词端点(`/student/units/{id}/start`、`/ai/generate-unit-quiz`、
+  `/ai/generate-unit-cloze`)都不认它 → 学生打开恒是整单元。现在四种作业模式全链路带
+  `group_index`,切法走 `scope_service.get_group_word_ids`(与教师建作业同一份 get_unit_groups,
+  **前端 getGroupSize 对非小学 group_size=0 的书是 20 而后端是 10,所以必须后端切**)。
+  两个坑: ①组模式**不读写整单元 LearningProgress**(组内游标写进去会把「学完一组」记成学完整单元),
+  WordClassifyLearning 同时跳过 updateProgress、本地存档 key 加 `_hwg{N}` 后缀
+  ②分类页的「本单元待办作业」兜底此前只按 unit_id 找,同单元按组布置会有好几份 → 从作业入口进来
+  优先按 assignmentId 绑。自学进同一单元照旧整单元(只认 fromHomework 的 state)。
+  测试 tests/test_homework_group_scope.py(5 例,关掉过滤后 3 例失败,回归锁验证过)
 - ✅ 视频上传 413 + `/api/v1/files` 图片 404 两个 nginx 坑(2026-09-24): 用户贴生产控制台,
   一条 `POST .../videos/upload` **413**(nginx 回的)、一条
   `GET /api/v1/files/phonetic-covers/video_8.jpg?v=...` **404**。两件事都**不在仓库代码里**,

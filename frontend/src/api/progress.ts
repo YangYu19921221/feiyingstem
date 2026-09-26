@@ -43,6 +43,8 @@ apiClient.interceptors.response.use(
 export interface StartLearningRequest {
   unit_id: number;
   learning_mode: string;
+  /** 按组作业只取这一组的词(1 基);不传 = 整单元 */
+  group_index?: number | null;
 }
 
 export interface WordData {
@@ -165,7 +167,10 @@ export const startLearning = async (request: StartLearningRequest): Promise<Star
 
   const response = await apiClient.post(
     `/student/units/${request.unit_id}/start`,
-    { learning_mode: request.learning_mode }  // 只发送learning_mode,unit_id已在URL中
+    // unit_id 已在 URL 中;group_index 只在按组作业时带
+    request.group_index
+      ? { learning_mode: request.learning_mode, group_index: request.group_index }
+      : { learning_mode: request.learning_mode }
   );
   return response.data;
 };

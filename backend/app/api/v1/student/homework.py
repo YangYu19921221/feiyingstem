@@ -43,6 +43,7 @@ class StudentHomeworkResponse(BaseModel):
     # 前端靠 is_locked 置灰 + 用 available_from 显示"X月X日开放"。
     is_locked: bool = False
     available_from: Optional[str] = None
+    group_index: Optional[int] = None  # 按组布置的作业:只练这一组(1 基)
 
     class Config:
         from_attributes = True
@@ -185,6 +186,7 @@ async def get_my_homework(
             total_time_spent=assignment.total_time_spent,
             teacher_name=teacher_name,
             is_locked=is_locked,
+            group_index=homework.group_index,
             # 开放时刻转成北京墙上时间的 naive 字符串,与 deadline 口径一致
             # (前端 new Date 按本地解析),否则会差 8 小时显示成前一天
             available_from=(homework.available_from + timedelta(hours=8)).isoformat()
@@ -254,7 +256,9 @@ async def start_homework(
     return {
         "message": "开始作业",
         "unit_id": homework.unit_id,
-        "learning_mode": homework.learning_mode
+        "learning_mode": homework.learning_mode,
+        # 按组布置时学生端只学这一组(1 基);None = 整单元
+        "group_index": homework.group_index,
     }
 
 

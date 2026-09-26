@@ -90,6 +90,8 @@ export interface StudentHomeworkResponse {
   is_locked?: boolean;
   /** 当日任务的开放时刻(北京墙上时间);普通作业为 null */
   available_from?: string | null;
+  /** 按组布置的作业:只练这一组(1 基);整单元为 null */
+  group_index?: number | null;
 }
 
 export interface SubmitHomeworkAttemptRequest {
@@ -165,7 +167,7 @@ export const getMyHomework = async (status?: string): Promise<StudentHomeworkRes
 
 export const startHomework = async (
   assignmentId: number
-): Promise<{ message: string; unit_id: number; learning_mode: string }> => {
+): Promise<{ message: string; unit_id: number; learning_mode: string; group_index?: number | null }> => {
   const response = await axios.post(`${API_BASE_URL}/student/homework/${assignmentId}/start`);
   return response.data;
 };

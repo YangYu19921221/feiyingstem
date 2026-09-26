@@ -62,7 +62,7 @@ const UnitSelector = () => {
     try {
       const result = await startHomework(task.id);
       navigate(`/student/units/${result.unit_id}/${result.learning_mode}`, {
-        state: { fromHomework: true, assignmentId: task.id },
+        state: { fromHomework: true, assignmentId: task.id, groupIndex: result.group_index ?? null },
       });
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, '开始作业失败'));

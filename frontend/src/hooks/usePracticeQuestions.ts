@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
+import { useLocation } from 'react-router-dom';
+import { homeworkGroupIndex } from '../utils/homeworkGroup';
 import { API_BASE_URL } from '../config/env';
 import { startLearning, type WordData } from '../api/progress';
 
@@ -49,6 +51,9 @@ export function usePracticeQuestions({
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const retry = useCallback(() => setRetryCount((count) => count + 1), []);
+  // 按组作业:题目和单元词表都只取这一组
+  const location = useLocation();
+  const groupIndex = homeworkGroupIndex(location.state);
 
   useEffect(() => {
     if (!unitId) {
@@ -77,11 +82,11 @@ export function usePracticeQuestions({
         // 并行请求：题目 + 单元信息
         const questionsPromise = isMistakePractice && id === 0
           ? loadMistakeQuestions(questionType)
-          : loadUnitQuestions(id, questionType, questionCount);
+          : loadUnitQuestions(id, questionType, questionCount, groupIndex);
 
         // 只在非错题模式下获取单元信息
         const unitInfoPromise = (!isMistakePractice || id !== 0)
-          ? startLearning({ unit_id: id, learning_mode: 'flashcard' }).catch(() => null)
+          ? startLearning({ unit_id: id, learning_mode: 'flashcard', group_index: groupIndex }).catch(() => null)
           : Promise.resolve(null);
 
         const [qs, unitData] = await Promise.all([questionsPromise, unitInfoPromise]);
@@ -114,7 +119,7 @@ export function usePracticeQuestions({
     return () => {
       cancelled = true;
     };
-  }, [unitId, questionType, questionCount, retryCount]);
+  }, [unitId, questionType, questionCount, retryCount, groupIndex]);
 
   return { questions, unitInfo, unitWords, loading, error, retry };
 }
@@ -140,11 +145,13 @@ async function loadUnitQuestions(
   unitId: number,
   questionType: string,
   questionCount: number,
+  groupIndex: number | null,
 ): Promise<QuizQuestion[]> {
   const response = await axios.post(`${API_BASE_URL}/ai/generate-unit-quiz`, {
     unit_id: unitId,
     question_count: questionCount,
     question_type: questionType,
+    ...(groupIndex ? { group_index: groupIndex } : {}),
   });
   return response.data.questions;
 }

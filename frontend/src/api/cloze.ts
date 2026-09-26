@@ -27,10 +27,12 @@ export interface UnitClozeResponse {
 export const generateUnitCloze = async (
   unitId: number,
   blankCount = 6,
+  groupIndex: number | null = null,
 ): Promise<UnitClozeResponse> => {
   const res = await axios.post(`${API_BASE_URL}/ai/generate-unit-cloze`, {
     unit_id: unitId,
     blank_count: blankCount,
+    ...(groupIndex ? { group_index: groupIndex } : {}),
   });
   return res.data;
 };

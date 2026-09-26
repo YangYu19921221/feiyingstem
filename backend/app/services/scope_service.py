@@ -140,6 +140,16 @@ async def get_unit_groups(db: AsyncSession, unit_id: int) -> list[dict]:
     return groups
 
 
+async def get_group_word_ids(db: AsyncSession, unit_id: int, group_index: int) -> list[int]:
+    """某一组的 word_id 列表(按 order_index)。组号 1 基,越界抛 ValueError。
+    与 get_unit_groups 同一份切法 —— 作业按组布置时,学生端取词必须走这里,
+    否则老师选的「第2组」到学生那边会变成整单元。"""
+    groups = await get_unit_groups(db, unit_id)
+    if group_index < 1 or group_index > len(groups):
+        raise ValueError(f"组序号 {group_index} 超出范围（单元共 {len(groups)} 组）")
+    return groups[group_index - 1]["word_ids"]
+
+
 async def get_group_words(db: AsyncSession, unit_id: int, group_index: int) -> list[Word]:
     """按 order_index 切片取出某一组的 Word 实体"""
     if group_index < 1:

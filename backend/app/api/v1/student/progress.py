@@ -15,7 +15,7 @@ from app.schemas.progress import (
     StudentBookListItem
 )
 from app.api.v1.auth import get_current_student, get_current_user
-from app.services.scope_service import get_allowed_unit_ids
+from app.services.scope_service import get_allowed_unit_ids, get_group_word_ids
 
 router = APIRouter()
 
@@ -104,6 +104,20 @@ async def start_learning(
     )
     word_rows = result.all()
 
+    # 2.5 按组布置的作业:只下发该组的词(切法与教师端建作业时同一份 get_unit_groups)。
+    # 此前这里恒给整单元 → 老师选「第2组」,学生打开却是全单元,按组布置形同虚设
+    group_index = request.group_index
+    if group_index is not None:
+        try:
+            group_ids = await get_group_word_ids(db, unit_id, group_index)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        order = {wid: i for i, wid in enumerate(group_ids)}
+        word_rows = sorted(
+            (r for r in word_rows if r[0].id in order),
+            key=lambda r: order[r[0].id],
+        )
+
     # 3. 组装单词列表
     words = []
     for word, definition, order_idx in word_rows:
@@ -159,6 +173,21 @@ async def start_learning(
             words=[],
             message=f"该单元暂时没有单词,请联系老师添加单词后再开始学习",
             unit_info=_build_unit_info(unit, word_book)
+        )
+
+    # 4.5 按组学习不读写单元进度:单元进度的 current_word_index / is_completed 是
+    # 整单元口径,拿一组的游标去写会把「学完一组」记成「学完整单元」、把续学位置打乱。
+    # 前端在组模式下同样不调 updateProgress。
+    if group_index is not None:
+        return StartLearningResponse(
+            has_existing_progress=False,
+            current_word_index=0,
+            completed_words=0,
+            total_words=total_words,
+            progress_percentage=0.0,
+            words=words,
+            message=f"本次作业只练第 {group_index} 组,共 {total_words} 个单词",
+            unit_info=_build_unit_info(unit, word_book),
         )
 
     # 5. 查询是否有学习进度记录

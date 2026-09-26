@@ -10,6 +10,7 @@ import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
+import { homeworkGroupIndex } from '../utils/homeworkGroup';
 import apiClient from '../api/client';
 import {
   createLearningRecords,
@@ -83,6 +84,10 @@ const WordClassifyLearning = () => {
   // 从「老师布置的任务/我的作业」进来时带 assignmentId,学完整单元后回传成绩
   const homeworkAssignmentId: number | null =
     (location.state as any)?.fromHomework ? ((location.state as any)?.assignmentId ?? null) : null;
+  // 按组布置的作业只学这一组(1 基);自学进同一单元照旧整单元
+  const hwGroupIndex = homeworkGroupIndex(location.state);
+  // 组作业的本地存档与整单元分开:共用一个 key 会让「第2组」捡到整单元的组游标(或反过来)
+  const groupKeySuffix = hwGroupIndex ? `_hwg${hwGroupIndex}` : '';
   // 本单元的待办作业(实时横幅):不管从哪进来的,只要这个单元有任务就显示;完成后自动消失
   const [unitTask, setUnitTask] = useState<StudentHomeworkResponse | null>(null);
   const [taskDone, setTaskDone] = useState(false);
@@ -94,12 +99,14 @@ const WordClassifyLearning = () => {
     getMyHomework()
       .then(all => {
         // 未开放的当日任务不绑横幅/不交卷(后端也会拒),否则学生提前学了却交不上
-        const t = all.find(h => h.unit_id === uid && !h.is_locked &&
-          (h.status === 'pending' || h.status === 'in_progress'));
+        // 从作业入口进来时优先绑那一份(同单元按组布置会有好几份,只按单元找会绑错组)
+        const t = (homeworkAssignmentId ? all.find(h => h.id === homeworkAssignmentId) : undefined)
+          ?? all.find(h => h.unit_id === uid && !h.is_locked &&
+            (h.status === 'pending' || h.status === 'in_progress'));
         setUnitTask(t ?? null);
       })
       .catch(() => {});
-  }, [unitId]);
+  }, [unitId, homeworkAssignmentId]);
 
   const [learningData, setLearningData] = useState<StartLearningResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,7 +164,7 @@ const WordClassifyLearning = () => {
 
   // 组内进度存档 key。必须带用户 id:培训机构常见共用一台平板/电脑,
   // 只按 unitId 存档会让后一个学生捡到前一个学生的组进度和分类结果(串档)。
-  const progressKey = unitId ? `classify_progress_${localProgressUid()}_${unitId}` : '';
+  const progressKey = unitId ? `classify_progress_${localProgressUid()}_${unitId}${groupKeySuffix}` : '';
 
   // 保存组内进度到 localStorage（仅数据加载后生效）
   // 连同 classifyResults / dictationResults 一起存，恢复时能精确回到上次的阶段
@@ -267,7 +274,7 @@ const WordClassifyLearning = () => {
           words,
         };
       } else {
-        data = await startLearning({ unit_id: id, learning_mode: 'classify' });
+        data = await startLearning({ unit_id: id, learning_mode: 'classify', group_index: hwGroupIndex });
       }
 
       if (!data.words || data.words.length === 0) {
@@ -279,7 +286,7 @@ const WordClassifyLearning = () => {
       setLearningData(data);
 
       // 检查 localStorage 是否有组内进度存档(key 带用户 id,共用设备不串档)
-      const savedKey = `classify_progress_${localProgressUid()}_${id}`;
+      const savedKey = `classify_progress_${localProgressUid()}_${id}${groupKeySuffix}`;
       const savedJson = localStorage.getItem(savedKey);
       // 顺带清掉旧版无用户 id 的存档,避免共用设备上残留的别人进度被将来误用
       localStorage.removeItem(`classify_progress_${id}`);
@@ -646,8 +653,9 @@ const WordClassifyLearning = () => {
       globalEndIndex += groups[i].length;
     }
 
-    // 更新进度(复习/错题模式 unit 0 没有单元进度,跳过,否则 404)
-    if (parseInt(unitId) !== 0) {
+    // 更新进度(复习/错题模式 unit 0 没有单元进度,跳过,否则 404)。
+    // 按组作业也跳过:这里的游标是组内下标,写进整单元进度会把「学完一组」记成学完整单元
+    if (parseInt(unitId) !== 0 && !hwGroupIndex) {
       try {
         await updateProgress({
           unit_id: parseInt(unitId),

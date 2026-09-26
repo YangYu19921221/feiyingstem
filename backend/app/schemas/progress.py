@@ -14,6 +14,9 @@ class LearningProgressBase(BaseModel):
 class StartLearningRequest(BaseModel):
     """开始学习请求 - unit_id从路径参数获取"""
     learning_mode: str = Field(..., description="学习模式: flashcard/quiz/spelling/fillblank")
+    # 按组布置的作业:只下发该组的词(1 基,与 homework_assignments.group_index 同口径)。
+    # 为空 = 整单元(旧行为)
+    group_index: Optional[int] = Field(None, ge=1, description="只学某一组(按组作业)")
 
 class StartLearningResponse(BaseModel):
     """开始学习响应"""

@@ -92,7 +92,7 @@ const StudentHomework = () => {
       const result = await startHomework(assignmentId);
       // 跳转到学习页面
       navigate(`/student/units/${result.unit_id}/${result.learning_mode}`, {
-        state: { fromHomework: true, assignmentId },
+        state: { fromHomework: true, assignmentId, groupIndex: result.group_index ?? null },
       });
     } catch (error: any) {
       toast.error(getErrorMessage(error, '开始作业失败'));

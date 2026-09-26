@@ -17,6 +17,7 @@ from app.api.v1.auth import get_current_user
 from app.services.ai_service import ai_service
 from app.models.word import Word, WordDefinition, Unit, UnitWord
 from app.utils.blank_sentence import blank_out, can_blank
+from app.services.scope_service import get_group_word_ids
 
 router = APIRouter()
 
@@ -420,10 +421,22 @@ async def batch_generate_examples_for_word(
 # 基于单元的AI练习题生成(新增)
 # ========================================
 
+async def _filter_group(db: AsyncSession, unit_id: int, group_index: Optional[int], word_rows: list) -> list:
+    """按组作业只保留该组的词(切法走 scope_service,与教师端建作业同一份)"""
+    if group_index is None:
+        return word_rows
+    try:
+        ids = set(await get_group_word_ids(db, unit_id, group_index))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return [r for r in word_rows if r[0].id in ids]
+
+
 class UnitQuizRequest(BaseModel):
     unit_id: int = Field(..., description="单元ID")
     question_count: int = Field(10, ge=5, le=20, description="题目数量")
     question_type: str = Field("choice", description="题型: choice/spelling/fillblank")
+    group_index: Optional[int] = Field(None, ge=1, description="按组作业:只从这一组出题")
 
 class QuizQuestion(BaseModel):
     word_id: int
@@ -469,7 +482,7 @@ async def generate_unit_quiz(
         .where(UnitWord.unit_id == request.unit_id)
         .order_by(UnitWord.order_index)
     )
-    word_rows = result.all()
+    word_rows = await _filter_group(db, request.unit_id, request.group_index, result.all())
 
     if not word_rows:
         raise HTTPException(
@@ -600,6 +613,7 @@ async def generate_unit_quiz(
 class UnitClozeRequest(BaseModel):
     unit_id: int = Field(..., description="单元ID")
     blank_count: int = Field(6, ge=3, le=10, description="一组里的句子/空格数")
+    group_index: Optional[int] = Field(None, ge=1, description="按组作业:只从这一组出题")
 
 class ClozeItem(BaseModel):
     word_id: int
@@ -652,7 +666,7 @@ async def generate_unit_cloze(
         .where(UnitWord.unit_id == request.unit_id)
         .order_by(UnitWord.order_index)
     )
-    word_rows = result.all()
+    word_rows = await _filter_group(db, request.unit_id, request.group_index, result.all())
     if len(word_rows) < 3:
         raise HTTPException(status_code=400, detail="单元单词不足，至少需要3个单词")
 

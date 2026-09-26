@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { homeworkGroupIndex } from '../utils/homeworkGroup';
 import useGoBack from '../hooks/useGoBack';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, LoaderCircle } from 'lucide-react';
@@ -19,6 +20,8 @@ type Phase = 'loading' | 'filling' | 'checked';
 
 const FillBlankPractice = () => {
   const { unitId } = useParams<{ unitId: string }>();
+  // 按组作业:句子和词表都只取这一组
+  const groupIndex = homeworkGroupIndex(useLocation().state);
   const navigate = useNavigate();
   const goBack = useGoBack('/student/dashboard');
 
@@ -51,8 +54,8 @@ const FillBlankPractice = () => {
     (async () => {
       try {
         const [cloze, unitData] = await Promise.all([
-          generateUnitCloze(id, BLANK_COUNT),
-          startLearning({ unit_id: id, learning_mode: 'fillblank' }).catch(() => null),
+          generateUnitCloze(id, BLANK_COUNT, groupIndex),
+          startLearning({ unit_id: id, learning_mode: 'fillblank', group_index: groupIndex }).catch(() => null),
         ]);
         if (cancelled) return;
         setData(cloze);
@@ -67,7 +70,7 @@ const FillBlankPractice = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [unitId, retryCount]);
+  }, [unitId, retryCount, groupIndex]);
 
   const usedIds = useMemo(() => new Set(Object.values(fills)), [fills]);
   const filledCount = Object.keys(fills).length;
