@@ -2,7 +2,7 @@
 认证API
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.tenancy import current_org_id, check_org_active
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest, ChangeUsernameRequest
 from app.services import auth_service
+from app.services import audit_log
 from app.services.sms_service import code_store, send_sms_code
 from app.models.user import User
 from app.api.v1.teacher._permissions import get_my_class_student_ids
@@ -230,8 +231,18 @@ async def register(
     }
 
 
+def _log_staff_login(db: AsyncSession, http: Request, user: User) -> None:
+    """老师/管理员登录留痕(issue_session_token 会一起提交)。
+    共用账号时,操作记录里「哪台设备」要能对上「哪台设备登录过」,所以只记教职工;
+    学生登录量大且与追责无关,不记。"""
+    if user.role in ("teacher", "org_admin", "admin"):
+        audit_log.record(db, http, user, "auth.login", "登录",
+                         target_type="user", target_id=user.id)
+
+
 @router.post("/login", response_model=Token)
 async def login(
+    http: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
@@ -252,6 +263,7 @@ async def login(
         )
 
     user.last_login = datetime.utcnow()
+    _log_staff_login(db, http, user)
     # 顶号发号: 范围内(学生/体验机构)登录会 bump session_ver 并连同 last_login 一起提交
     access_token = await auth_service.issue_session_token(db, user)
 
@@ -264,6 +276,7 @@ async def login(
 @router.post("/login/json", response_model=Token)
 async def login_json(
     login_data: UserLogin,
+    http: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -290,6 +303,7 @@ async def login_json(
 
     # 更新最后登录时间 + 顶号发号(一起提交)
     user.last_login = datetime.utcnow()
+    _log_staff_login(db, http, user)
     access_token = await auth_service.issue_session_token(db, user)
 
     return {

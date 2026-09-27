@@ -40,6 +40,7 @@ from app.models.competition import (
     QuestionSetItem
 )
 from app.models.pk import PkRoom, PkRoomPlayer, PkAnswerRecord
+from app.models.audit import OperationLog  # 操作日志(追责)
 from app.models.live import (
     LiveSession,
     LiveMaterial,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_, case
 from typing import List, Optional
@@ -12,6 +12,7 @@ from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, H
 from app.models.word import Unit, WordBook
 from app.api.v1.auth import get_current_user
 from app.services.scope_service import get_unit_groups
+from app.services import audit_log
 
 router = APIRouter()
 
@@ -104,6 +105,7 @@ class HomeworkAttemptResponse(BaseModel):
 @router.post("/homework", response_model=dict)
 async def create_homework(
     request: CreateHomeworkRequest,
+    http: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -245,6 +247,23 @@ async def create_homework(
             db.add(student_assignment)
             assigned_count += 1
 
+    # 操作日志:与作业同一事务提交。学生名单存快照 —— 追责时问的就是「布置给了谁」
+    stu_names = [s.full_name or s.username for s in students]
+    unit_desc = "、".join(dict.fromkeys(f"{unit_map[u][1].name} {unit_map[u][0].name}" for u, _ in targets))
+    open_desc = f",{available_date} 开放" if any(open_times) else ""
+    audit_log.record(
+        db, http, current_user, "homework.create",
+        f"布置作业「{request.title}」{len(homework_ids)} 份:{unit_desc}{open_desc},"
+        f"给 {len(stu_names)} 名学生",
+        target_type="homework", target_id=homework_ids[0],
+        detail={
+            "homework_ids": homework_ids, "title": request.title,
+            "learning_mode": request.learning_mode,
+            "targets": [{"unit_id": u, "group_index": g} for u, g in targets],
+            "available_date": available_date if any(open_times) else None,
+            "students": [{"id": s.id, "name": n} for s, n in zip(students, stu_names)],
+        },
+    )
     await db.commit()
 
     if any(open_times):
@@ -460,6 +479,7 @@ async def _settle_coins_for_homework(db: AsyncSession, homework_id: int) -> int:
 @router.post("/homework/{homework_id}/toggle-closed")
 async def toggle_homework_closed(
     homework_id: int,
+    http: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -478,6 +498,12 @@ async def toggle_homework_closed(
     if not homework:
         raise HTTPException(status_code=404, detail="作业不存在")
     homework.is_closed = not bool(homework.is_closed)
+    audit_log.record(
+        db, http, current_user,
+        "homework.close" if homework.is_closed else "homework.reopen",
+        f"{'关闭' if homework.is_closed else '重新开放'}作业「{homework.title}」",
+        target_type="homework", target_id=homework.id,
+    )
     await db.commit()
     # 先取出响应要用的值:补发金币内部失败会 rollback,之后 ORM 对象过期,
     # 再读 homework.is_closed 会懒加载 → MissingGreenlet 500(实测过的坑)
@@ -496,6 +522,7 @@ async def toggle_homework_closed(
 @router.delete("/homework/{homework_id}")
 async def delete_homework(
     homework_id: int,
+    http: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -544,6 +571,24 @@ async def delete_homework(
         await db.execute(sa_delete(HomeworkStudentAssignment).where(
             HomeworkStudentAssignment.homework_id == homework_id
         ))
+    # 删之前留快照:删完作业行就没了,日志是唯一能说清「删的是哪份、给了谁、做了几个」的地方
+    done_count = (await db.execute(
+        select(func.count()).select_from(HomeworkStudentAssignment).where(
+            HomeworkStudentAssignment.homework_id == homework_id,
+            HomeworkStudentAssignment.status == 'completed',
+        )
+    )).scalar() or 0
+    audit_log.record(
+        db, http, current_user, "homework.delete",
+        f"删除作业「{homework.title}」(已分配 {len(affected)} 人,{done_count} 人已完成)",
+        target_type="homework", target_id=homework.id,
+        detail={
+            "title": homework.title, "unit_id": homework.unit_id,
+            "group_index": homework.group_index, "learning_mode": homework.learning_mode,
+            "available_from": homework.available_from, "created_at": homework.created_at,
+            "student_ids": [sid for sid, _ in affected], "completed_count": done_count,
+        },
+    )
     await db.delete(homework)
     await db.commit()
 

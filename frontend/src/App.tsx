@@ -111,6 +111,7 @@ const AdminCompetition = lazyWithRetry(() => import('./pages/AdminCompetition'))
 const AdminOrganizations = lazyWithRetry(() => import('./pages/AdminOrganizations'));
 const AdminFranchiseLeads = lazyWithRetry(() => import('./pages/AdminFranchiseLeads'));
 const AdminFranchiseKit = lazyWithRetry(() => import('./pages/AdminFranchiseKit'));
+const AdminOperationLogs = lazyWithRetry(() => import('./pages/AdminOperationLogs'));
 const OrgAdminDashboard = lazyWithRetry(() => import('./pages/OrgAdminDashboard'));
 const MemoryCurve = lazyWithRetry(() => import('./pages/MemoryCurve'));
 const PetPage = lazyWithRetry(() => import('./pages/PetPage'));
@@ -972,6 +973,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminFranchiseLeads />
+            </ProtectedRoute>
+          }
+        />
+        {/* 操作记录(追责): admin 看全平台,机构管理员只看本机构(后端显式过滤) */}
+        <Route
+          path="/admin/operation-logs"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
+              <AdminOperationLogs />
             </ProtectedRoute>
           }
         />

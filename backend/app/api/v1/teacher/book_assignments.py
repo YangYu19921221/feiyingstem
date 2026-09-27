@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, Integer
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from app.models.word import WordBook, Unit
 from app.api.v1.auth import get_current_user
 from app.services.scope_service import validate_scope, get_unit_groups, DEFAULT_GROUP_SIZE
 from app.api.v1.teacher._permissions import get_my_class_student_ids
+from app.services import audit_log
 
 router = APIRouter()
 
@@ -98,6 +99,7 @@ async def get_word_books(
 @router.post("/assign", response_model=dict)
 async def assign_book_to_students(
     request: AssignBookRequest,
+    http: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -192,6 +194,29 @@ async def assign_book_to_students(
             except IntegrityError:
                 skipped += 1
 
+    if created:
+        # 学生名单存快照(改名/删号后日志照样读得懂)
+        name_rows = (await db.execute(
+            select(User.id, User.full_name, User.username).where(User.id.in_(request.student_ids))
+        )).all()
+        students = [{"id": r.id, "name": r.full_name or r.username} for r in name_rows]
+        if request.scope_type == 'book':
+            scope_text = "整本"
+        else:
+            unit_names = [found_units[u].name for u in unit_targets if u in found_units]
+            scope_text = "、".join(unit_names) or "单元"
+            if request.scope_type == 'group':
+                scope_text += f" 第{request.group_index}组"
+        audit_log.record(
+            db, http, current_user, "book.assign",
+            f"分配「{book.name}」{scope_text} 给 {len(request.student_ids)} 名学生"
+            f"(新增 {created},已有跳过 {skipped})",
+            target_type="book", target_id=book.id,
+            detail={"book_id": book.id, "book_name": book.name, "scope_type": request.scope_type,
+                    "unit_ids": [u for u in unit_targets if u is not None],
+                    "group_index": request.group_index, "deadline": request.deadline,
+                    "created": created, "skipped": skipped, "students": students},
+        )
     await db.commit()
 
     return {
@@ -457,6 +482,7 @@ async def get_student_assignments(
 @router.delete("/assignments/{assignment_id}")
 async def delete_assignment(
     assignment_id: int,
+    http: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -478,6 +504,19 @@ async def delete_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="分配记录不存在")
 
+    book = (await db.execute(select(WordBook).where(WordBook.id == assignment.book_id))).scalar_one_or_none()
+    stu = (await db.execute(select(User).where(User.id == assignment.student_id))).scalar_one_or_none()
+    book_name = book.name if book else f"单词本#{assignment.book_id}"
+    stu_name = (stu.full_name or stu.username) if stu else f"学生#{assignment.student_id}"
+    audit_log.record(
+        db, http, current_user, "book.unassign",
+        f"取消 {stu_name} 的「{book_name}」分配",
+        target_type="book_assignment", target_id=assignment.id,
+        detail={"book_id": assignment.book_id, "book_name": book_name,
+                "student_id": assignment.student_id, "student_name": stu_name,
+                "scope_type": assignment.scope_type, "unit_id": assignment.unit_id,
+                "group_index": assignment.group_index, "assigned_at": assignment.assigned_at},
+    )
     await db.delete(assignment)
     await db.commit()
 

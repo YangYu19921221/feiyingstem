@@ -9,7 +9,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,11 +25,18 @@ from app.api.v1.auth import get_current_user
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
 from app.services import daily_words
+from app.services import audit_log
 
 logger = logging.getLogger(__name__)
 from app.services.auth_service import get_password_hash, verify_password
 
 router = APIRouter()
+
+
+async def _student_name(db: AsyncSession, student_id: int) -> str:
+    """操作日志摘要用的学生显示名(查不到就写 id,日志不能因此失败)"""
+    u = (await db.execute(select(User).where(User.id == student_id))).scalar_one_or_none()
+    return (u.full_name or u.username) if u else f"学生#{student_id}"
 
 SOURCE_LABELS = {"task": "完成任务", "unit": "完成单元", "word_king": "单词王", "manual": "手动调整", "redeem": "兑换消耗"}
 
@@ -213,6 +220,7 @@ async def get_coin_mode(
 @router.patch("/coins/mode")
 async def set_coin_mode(
     body: CoinModeUpdate,
+    http: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -229,7 +237,12 @@ async def set_coin_mode(
     )).scalar_one_or_none()
     if org is None:
         raise HTTPException(status_code=404, detail="机构不存在")
+    old_mode = org.coin_mode
     org.coin_mode = body.mode
+    audit_log.record(db, http, current_user, "coin.mode",
+                     f"金币发放模式 {old_mode or 'auto'} → {body.mode}",
+                     target_type="organization", target_id=org.id,
+                     detail={"before": old_mode, "after": body.mode})
     await db.commit()
     logger.info("金币发放模式改为 %s: org_id=%s by=%s", body.mode, org.id, current_user.id)
     return {"success": True, "mode": org.coin_mode}
@@ -469,6 +482,7 @@ async def reset_coin_pin(
 @router.post("/coins/adjust")
 async def adjust(
     body: AdjustRequest,
+    http: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -527,6 +541,16 @@ async def adjust(
         # 上面的前置检查是读后再扣,并发下可能都通过;真正的判定在数据库条件扣减
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    sname = student.full_name or student.username
+    audit_log.record(
+        db, http, current_user, "coin.adjust",
+        f"给 {sname} {'+' if body.amount > 0 else ''}{body.amount} 金币"
+        f"{('(' + reason + ')') if reason else ''}",
+        target_type="coin_tx", target_id=tx.id if tx else None,
+        detail={"student_id": body.student_id, "student_name": sname, "amount": body.amount,
+                "source": src, "reason": reason, "force": bool(body.force),
+                "balance_after": tx.balance_after if tx else cur},
+    )
     await db.commit()
     return {"success": True, "tx_id": tx.id if tx else None, "balance_after": tx.balance_after if tx else cur}
 
@@ -535,6 +559,7 @@ async def adjust(
 @router.patch("/coins/transactions/{tx_id}")
 async def update_transaction(
     tx_id: int,
+    http: Request,
     body: TxUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
@@ -549,6 +574,7 @@ async def update_transaction(
     if tx.source in ("task", "word_king"):
         raise HTTPException(status_code=400, detail="系统自动发放的流水不可修改")
 
+    before = {"amount": tx.amount, "reason": tx.reason}
     coin = (await db.execute(select(StudentCoin).where(StudentCoin.user_id == tx.user_id))).scalar_one_or_none()
     if body.amount is not None and body.amount != tx.amount:
         if body.amount == 0:
@@ -563,6 +589,16 @@ async def update_transaction(
         tx.amount = body.amount
     if body.reason is not None:
         tx.reason = body.reason
+    after = {"amount": tx.amount, "reason": tx.reason}
+    if after != before:
+        sname = await _student_name(db, tx.user_id)
+        audit_log.record(
+            db, http, current_user, "coin.tx_update",
+            f"修改 {sname} 的金币流水 #{tx.id}:{before['amount']} → {after['amount']}"
+            + ("" if before["reason"] == after["reason"] else ",事由已改"),
+            target_type="coin_tx", target_id=tx.id,
+            detail={"student_id": tx.user_id, "before": before, "after": after},
+        )
     await db.commit()
     return {"success": True}
 
@@ -571,6 +607,7 @@ async def update_transaction(
 @router.delete("/coins/transactions/{tx_id}")
 async def delete_transaction(
     tx_id: int,
+    http: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -586,6 +623,14 @@ async def delete_transaction(
     if coin:
         new_bal = coin.balance - tx.amount
         coin.balance = max(0, new_bal)  # 撤销这笔变动
+    sname = await _student_name(db, tx.user_id)
+    audit_log.record(
+        db, http, current_user, "coin.tx_delete",
+        f"删除 {sname} 的金币流水 #{tx.id}({tx.amount:+d},{tx.reason or SOURCE_LABELS.get(tx.source, tx.source)})",
+        target_type="coin_tx", target_id=tx.id,
+        detail={"student_id": tx.user_id, "amount": tx.amount, "source": tx.source,
+                "reason": tx.reason, "created_at": tx.created_at, "operator_id": tx.operator_id},
+    )
     await db.delete(tx)
     await db.commit()
     return {"success": True}
@@ -676,6 +721,7 @@ async def delete_reward(
 @router.post("/coins/redeem")
 async def redeem(
     body: RedeemRequest,
+    http: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -713,6 +759,13 @@ async def redeem(
         raise HTTPException(status_code=400, detail=str(e))
     if reward.stock is not None:
         reward.stock -= 1
+    sname = student.full_name or student.username
+    audit_log.record(
+        db, http, current_user, "coin.redeem",
+        f"给 {sname} 兑换「{reward.name}」(-{reward.cost} 金币)",
+        target_type="coin_tx", target_id=tx.id if tx else None,
+        detail={"student_id": student.id, "reward_id": reward.id, "reward_name": reward.name, "cost": reward.cost},
+    )
     await db.commit()
     return {"success": True, "tx_id": tx.id if tx else None,
             "balance_after": tx.balance_after if tx else cur,
@@ -803,6 +856,7 @@ async def list_redeem_requests(
 @router.post("/coins/redeem-requests/{req_id}/approve")
 async def approve_redeem_request(
     req_id: int,
+    http: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -849,6 +903,13 @@ async def approve_redeem_request(
     req.status = "approved"
     req.reviewed_at = datetime.utcnow()
     req.reviewer_id = current_user.id
+    sname = student.full_name or student.username
+    audit_log.record(
+        db, http, current_user, "coin.redeem_approve",
+        f"同意 {sname} 兑换「{req.reward_name}」(-{req.cost} 金币)",
+        target_type="redeem_request", target_id=req.id,
+        detail={"student_id": req.student_id, "reward_name": req.reward_name, "cost": req.cost},
+    )
     await db.commit()
     return {"success": True}
 
@@ -856,6 +917,7 @@ async def approve_redeem_request(
 @router.post("/coins/redeem-requests/{req_id}/reject")
 async def reject_redeem_request(
     req_id: int,
+    http: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -871,6 +933,13 @@ async def reject_redeem_request(
     req.status = "rejected"
     req.reviewed_at = datetime.utcnow()
     req.reviewer_id = current_user.id
+    sname = await _student_name(db, req.student_id)
+    audit_log.record(
+        db, http, current_user, "coin.redeem_reject",
+        f"拒绝 {sname} 兑换「{req.reward_name}」",
+        target_type="redeem_request", target_id=req.id,
+        detail={"student_id": req.student_id, "reward_name": req.reward_name, "cost": req.cost},
+    )
     await db.commit()
     return {"success": True}
 

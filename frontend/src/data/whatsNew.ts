@@ -24,6 +24,25 @@ export interface WhatsNewEntry {
 
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
+  // 两条分投:admin 与 org_admin 的首页入口位置不同,where 必须各写各的
+  {
+    id: 'operation-logs-org-2026-09',
+    date: '2026-09-27',
+    title: '新增「操作记录」:作业布错了能查到是谁',
+    desc: '老师布置/关闭/删除作业、加减金币、审批兑换、分配单词本,以及老师登录,都会自动留下记录:时间精确到秒,带操作账号、设备(如「iPhone · 微信」)和 IP。几位老师共用一个账号时,按设备和 IP 就能分清是谁做的;点记录上的 IP 可筛出这台设备做过的所有事。删掉的作业也能看到当时布置给了谁、几人已完成。',
+    where: '机构管理首页「管理」区 →「操作记录」卡片(在「教师管理」右边)',
+    roles: ['org_admin'],
+    route: '/admin/operation-logs',
+  },
+  {
+    id: 'operation-logs-admin-2026-09',
+    date: '2026-09-27',
+    title: '新增「操作记录」:作业布错了能查到是谁',
+    desc: '作业增删关、金币加减与兑换审批、单词本分配、教职工登录都会留痕,带账号、设备和 IP;平台管理员可看全部机构,机构管理员只看本机构。',
+    where: '管理端首页「运营工具箱 → 组织与人员 →「操作记录」」',
+    roles: ['admin'],
+    route: '/admin/operation-logs',
+  },
   {
     id: 'franchise-recruit-handbook-2026-09',
     date: '2026-09-27',
