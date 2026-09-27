@@ -84,6 +84,7 @@ const TEACHERS: Array<[string, string]> = [
 
 // 传统做法 vs 飞鹰做法:每一行都要能在系统里指出对应功能,不写说不出落点的口号
 const COMPARE: Array<[string, string, string]> = [
+  ['学习方式', '老师讲、学生抄、考前背,离开老师就不会学', '教音标、拼读和记忆方法,孩子见词会读、听音会写,回家能自己学'],
   ['背单词', '抄写 + 默写,老师逐本批改', '记忆曲线自动排复习,拼写 / 听写 / 纸笔听写系统批改'],
   ['课后练习', '靠家长盯,做没做老师不知道', '作业按天布置,谁没做、做错哪个词老师端实时可见'],
   ['教研', '好老师一走,教法跟着走', '六阶段课程 + 单元测试卷 + 系统内容,新老师照着就能上课'],
@@ -98,7 +99,10 @@ export default function FranchiseRecruitDoc() {
       <header className="border-b-4 border-[#FF6B35] pb-5 text-center">
         <p className="text-[13px] font-semibold tracking-[0.3em] text-[#FF6B35]">飞鹰英语 · 合作伙伴招募</p>
         <h1 className="mt-2 text-[30px] font-black leading-tight text-slate-900">招商手册</h1>
-        <p className="mt-2 text-[14px] text-slate-600">
+        <p className="mt-3 text-[17px] font-black text-slate-900">
+          不替孩子学,教孩子<span className="text-[#FF6B35]">会学</span>
+        </p>
+        <p className="mt-1.5 text-[14px] text-slate-600">
           我们自己办了十多年英语校区,这套方法和系统先在自己的学生身上跑通,再交给你。
         </p>
         <StatRow
@@ -171,8 +175,25 @@ export default function FranchiseRecruitDoc() {
         />
       </Section>
 
-      {/* 四、我们的做法 */}
-      <Section no="四" title="同一件事,我们换了一种做法">
+      {/* 四、我们的做法 —— 教学理念「教方法、培养自学能力」放在最前面(2026-09-27 用户要求)。
+          措辞刻意不用「颠覆」这类绝对化用语(广告法第 9 条),每一种"方法"都要能在系统里指出落点 */}
+      <Section no="四" title="我们不一样:不灌知识,教方法">
+        <p>
+          传统英语课是「老师讲、学生记」:单词靠抄,语法靠背,孩子离开课堂就不知道怎么学,
+          成绩全押在上课那几个小时上。飞鹰这十多年反过来做 ——
+          <strong>课堂上教的是方法,目标是让孩子自己会学</strong>。一个会自学的孩子,
+          离开老师照样能往前走,这才是家长真正愿意长期买单的东西。
+        </p>
+        <p className="mt-2.5 font-bold text-slate-900">我们教孩子四样方法</p>
+        <CardPairs
+          items={[
+            { t: '看词会读,听音会写', d: '从音标和自然拼读入手,弄懂字母和发音的对应规律。新词不用等老师领读,自己就能拼、能读。' },
+            { t: '会记,也会复习', d: '用词根、联想等记忆法把词记牢,再按记忆曲线安排复习 —— 孩子知道今天该复习哪些,不再从头死背。' },
+            { t: '会找自己的错', d: '拼错了系统指出错在哪个字母、属于哪类错误,孩子学会看自己的错,而不是抄十遍正确答案。' },
+            { t: '会安排自己的学习', d: '每天有明确的任务清单,做完、做对多少一目了然。从「老师催着学」慢慢变成「自己知道要学什么」。' },
+          ]}
+        />
+        <p className="mt-3 font-bold text-slate-900">同一件事,两种做法</p>
         <table className="mt-1 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
           <thead>
             <tr className="bg-[#FFF3EC]">
@@ -192,7 +213,7 @@ export default function FranchiseRecruitDoc() {
           </tbody>
         </table>
         <p className="mt-2.5">
-          一句话:<strong>老师负责教,系统负责练和记</strong>。老师的时间花在讲课和答疑上,
+          一句话:<strong>老师教方法,系统陪孩子练,孩子学会自己学</strong>。老师的时间花在讲方法和答疑上,
           背单词、批作业、盯进度交给系统 —— 这也是一个县城机构两三位老师就能带起上百个学生的原因。
         </p>
       </Section>
