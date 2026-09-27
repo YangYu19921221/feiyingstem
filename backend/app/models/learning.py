@@ -160,6 +160,10 @@ class HomeworkAssignment(Base):
     available_from = Column(DateTime, nullable=True)
     # 关闭状态:发错/提前结束时关闭——学生端隐藏、不能再交卷,保留全部做题记录;可重新开放
     is_closed = Column(Boolean, default=False, server_default="0", nullable=False)
+    # 布置人(2026-09-27 助教): teacher_id 是数据归属(主老师),这两列记实际点「布置」的人。
+    # NULL = 主老师本人或存量行。名字存快照:助教账号删了也还能看出是谁布置的
+    assigned_by = Column(Integer, nullable=True)
+    assigned_by_name = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

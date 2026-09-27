@@ -58,6 +58,8 @@ class UserResponse(BaseModel):
     subscription_expires_at: Optional[datetime] = None
     created_at: datetime
     last_login: Optional[datetime] = None
+    # 助教账号挂在哪位主老师名下(NULL=普通账号);前端据此藏掉「我的助教」等主老师专属入口
+    owner_teacher_id: Optional[int] = None
 
     class Config:
         from_attributes = True

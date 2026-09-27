@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit import OperationLog
 from app.models.user import User
+from app.core.actor import acting_user
 
 # 动作 → 中文名。前端筛选下拉与列表标签都从查询接口拿这份,不在前端维护副本
 ACTION_LABELS: dict[str, str] = {
@@ -32,6 +33,9 @@ ACTION_LABELS: dict[str, str] = {
     "coin.redeem_approve": "同意兑换申请",
     "coin.redeem_reject": "拒绝兑换申请",
     "coin.mode": "切换金币模式",
+    "assistant.create": "添加助教",
+    "assistant.update": "修改助教",
+    "assistant.delete": "删除助教",
 }
 
 # 筛选用的大类(按 action 前缀)
@@ -40,6 +44,7 @@ ACTION_GROUPS: dict[str, str] = {
     "book": "单词本分配",
     "coin": "金币",
     "auth": "登录",
+    "assistant": "助教",
 }
 
 _MAX_DETAIL = 20000  # detail JSON 上限:被删作业的学生名单可能很长,截断防止单行过大
@@ -107,7 +112,9 @@ def record(
     target_id: Optional[int] = None,
     detail: Optional[Any] = None,
 ) -> None:
-    """记一条操作日志(只 add 不 commit,见模块说明)。"""
+    """记一条操作日志(只 add 不 commit,见模块说明)。
+    助教请求里 actor 是主老师(认证层换过身份),这里换回助教本人 —— 追责要的是真人。"""
+    actor = acting_user(actor)
     detail_text = None
     if detail is not None:
         detail_text = json.dumps(detail, ensure_ascii=False, default=str)
@@ -118,7 +125,8 @@ def record(
         org_id=actor.org_id,
         actor_id=actor.id,
         actor_name=(actor.full_name or actor.username or "")[:100] or None,
-        actor_role=actor.role,
+        # 助教单独标出来,列表里一眼分得清「主老师本人」还是「他名下的助教」
+        actor_role="assistant" if getattr(actor, "owner_teacher_id", None) else actor.role,
         action=action,
         target_type=target_type,
         target_id=target_id,

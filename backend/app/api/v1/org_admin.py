@@ -102,7 +102,8 @@ async def org_info(
     active = await count_active_students(db, org.id)
     teacher_count = (await db.execute(
         select(func.count(User.id)).where(
-            User.org_id == org.id, User.role == "teacher", User.is_active.is_(True))
+            User.org_id == org.id, User.role == "teacher", User.is_active.is_(True),
+            User.owner_teacher_id.is_(None))  # 助教不算老师(主老师的分身,不占教师数)
     )).scalar() or 0
     # 学习卡额度与学生名额是两笔账,机构首页要同时看得见 —— 只显示学生名额时,
     # 机构会把「发不出卡」误当成「学生满了」(其实要续卡)
@@ -226,7 +227,8 @@ async def list_teachers(
     from app.models.user import Class, ClassStudent
 
     stmt = select(User).where(
-        User.org_id == current_user.org_id, User.role == "teacher")
+        User.org_id == current_user.org_id, User.role == "teacher",
+        User.owner_teacher_id.is_(None))  # 助教挂在主老师那一行下面,不单独成行
     if q and q.strip():
         # LIKE 的 _ 和 % 是通配符必须转义(CLAUDE.md 记过: like('__t_%') 误删过真实账号)
         kw = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -257,7 +259,20 @@ async def list_teachers(
         )).all():
             students_by_t[tid] = n
 
-    return [_teacher_out(u, classes_by_t.get(u.id, 0), students_by_t.get(u.id, 0))
+    # 每位老师名下的助教(机构要看得见谁在用这个老师的数据)
+    assistants_by_t: dict[int, list] = {}
+    if ids:
+        for a in (await db.execute(
+            select(User).where(User.owner_teacher_id.in_(ids),
+                               User.org_id == current_user.org_id).order_by(User.id)
+        )).scalars().all():
+            assistants_by_t.setdefault(a.owner_teacher_id, []).append({
+                "id": a.id, "username": a.username, "full_name": a.full_name,
+                "is_active": bool(a.is_active), "last_login": a.last_login,
+            })
+
+    return [{**_teacher_out(u, classes_by_t.get(u.id, 0), students_by_t.get(u.id, 0)),
+             "assistants": assistants_by_t.get(u.id, [])}
             for u in rows]
 
 

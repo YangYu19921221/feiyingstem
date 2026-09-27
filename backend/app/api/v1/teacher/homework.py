@@ -13,6 +13,7 @@ from app.models.word import Unit, WordBook
 from app.api.v1.auth import get_current_user
 from app.services.scope_service import get_unit_groups
 from app.services import audit_log
+from app.core.actor import acting_user, is_assistant_request
 
 router = APIRouter()
 
@@ -62,6 +63,11 @@ class HomeworkResponse(BaseModel):
     in_progress_count: int
     pending_count: int
     is_closed: bool = False
+    # 布置人(助教账号上线后才有;NULL=老数据或主老师本人布置前未记录)
+    assigned_by: Optional[int] = None
+    assigned_by_name: Optional[str] = None
+    # 当前登录的人能否关闭/删除这份作业(助教只能动自己布置的)
+    can_manage: bool = True
 
     class Config:
         from_attributes = True
@@ -111,6 +117,7 @@ async def create_homework(
 ):
     """创建作业并分配给学生。unit_ids 多选时为每个单元各建一份作业(标题自动带单元名);
     单单元 + group_indexes 多选时为每个组各建一份作业(标题自动带组号)"""
+    actor = acting_user(current_user)  # 布置人记真人(助教请求里 current_user 是主老师)
 
     if current_user.role not in ['teacher', 'admin']:
         raise HTTPException(status_code=403, detail="只有教师可以创建作业")
@@ -221,6 +228,9 @@ async def create_homework(
             title=title,
             description=request.description,
             teacher_id=current_user.id,
+            # 布置人记真人(助教就是助教本人),名字存快照: 助教被删后仍追得到
+            assigned_by=actor.id,
+            assigned_by_name=(actor.full_name or actor.username or "")[:100] or None,
             unit_id=uid,
             learning_mode=request.learning_mode,
             target_score=request.target_score,
@@ -347,6 +357,9 @@ async def get_teacher_homework(
             in_progress_count=stats.in_progress or 0,
             pending_count=stats.pending or 0,
             is_closed=bool(homework.is_closed),
+            assigned_by=homework.assigned_by,
+            assigned_by_name=homework.assigned_by_name,
+            can_manage=_can_manage(current_user, homework),
         ))
 
     return homework_list
@@ -476,6 +489,20 @@ async def _settle_coins_for_homework(db: AsyncSession, homework_id: int) -> int:
     return await award_task_coins_isolated(days)
 
 
+def _can_manage(current_user: User, homework: HomeworkAssignment) -> bool:
+    """助教只能关闭/删除自己布置的作业;主老师(与 admin)可以动名下全部。
+    布置人为空的老作业是助教账号上线前布置的,只能是主老师本人的,助教不能动。"""
+    if not is_assistant_request(current_user):
+        return True
+    return homework.assigned_by == acting_user(current_user).id
+
+
+def _guard_manage(current_user: User, homework: HomeworkAssignment, what: str) -> None:
+    if not _can_manage(current_user, homework):
+        who = homework.assigned_by_name or "主老师"
+        raise HTTPException(status_code=403, detail=f"这份作业是{who}布置的,助教只能{what}自己布置的作业")
+
+
 @router.post("/homework/{homework_id}/toggle-closed")
 async def toggle_homework_closed(
     homework_id: int,
@@ -497,6 +524,7 @@ async def toggle_homework_closed(
     homework = result.scalar_one_or_none()
     if not homework:
         raise HTTPException(status_code=404, detail="作业不存在")
+    _guard_manage(current_user, homework, "关闭")
     homework.is_closed = not bool(homework.is_closed)
     audit_log.record(
         db, http, current_user,
@@ -548,6 +576,7 @@ async def delete_homework(
 
     if not homework:
         raise HTTPException(status_code=404, detail="作业不存在")
+    _guard_manage(current_user, homework, "删除")
 
     # 删之前先记下受影响的学生与布置日:删完记录就查不到了,
     # 而「取消部分任务后剩下的做完也给币」正需要这批人重新结算

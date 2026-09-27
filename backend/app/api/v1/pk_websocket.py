@@ -39,6 +39,11 @@ async def _authenticate(token: str) -> User | None:
         return None
     async with AsyncSessionLocal() as db:
         user = await db.get(User, user_id)
+        if user is not None and not user.is_active:
+            user = None
+        # 助教 → 主老师(与 REST 认证同口径,否则进不了自己建的房/开的课)
+        from app.core.actor import owner_for_ws
+        user = await owner_for_ws(db, user)
     if user is not None:
         # 多租户: 自建鉴权路径也要设机构上下文,否则该WS连接内的DB查询不被过滤
         from app.core.tenancy import current_org_id

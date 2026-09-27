@@ -55,6 +55,7 @@ const navByRole: Record<WorkspaceRole, { primary: NavItem[]; more: NavItem[] }> 
       { label: '竞赛管理', path: '/teacher/competition' },
       { label: 'PK 晋级赛', path: '/teacher/tournaments' },
       { label: '金币管理', path: '/teacher/coins' },
+      { label: '我的助教', path: '/teacher/assistants' },
     ],
   },
   admin: {
@@ -105,7 +106,10 @@ export default function StaffWorkspaceHeader({ role, title, subtitle, icon: Icon
   const [accountOpen, setAccountOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
-  const nav = navByRole[role];
+  const baseNav = navByRole[role];
+  // 助教账号不给「我的助教」入口(后端也会 403)
+  const isAssistant = (() => { try { return !!JSON.parse(localStorage.getItem('user') || 'null')?.owner_teacher_id; } catch { return false; } })();
+  const nav = isAssistant ? { ...baseNav, more: baseNav.more.filter((i) => i.path !== '/teacher/assistants') } : baseNav;
   const BrandIcon = role === 'teacher' ? Sparkles : role === 'org' ? Building2 : ShieldCheck;
   const hasMore = nav.more.length > 0;
   const moreActive = nav.more.some((item) => isActive(location.pathname, item.path));

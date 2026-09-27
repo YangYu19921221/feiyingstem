@@ -2,6 +2,15 @@ import axios from 'axios';
 import './_axiosBootstrap';
 import { API_BASE_URL } from '../config/env';
 
+/** 主老师名下的助教(不占老师名额,操作记在助教本人名下) */
+export interface TeacherAssistantBrief {
+  id: number;
+  username: string;
+  full_name: string | null;
+  is_active: boolean;
+  last_login?: string | null;
+}
+
 export interface AdminTeacherListItem {
   id: number;
   username: string;
@@ -11,6 +20,7 @@ export interface AdminTeacherListItem {
   last_login: string | null;
   class_count: number;
   student_count: number;
+  assistants?: TeacherAssistantBrief[];
 }
 
 export interface AdminClassListItem {

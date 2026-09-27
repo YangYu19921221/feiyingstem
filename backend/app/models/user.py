@@ -37,6 +37,9 @@ class User(Base):
     avatar_url = Column(String(255))
     # 加币 PIN(bcrypt 哈希,可空=未设)。教师手动加币需校验,防学生冒用老师账号自己加币
     coin_pin_hash = Column(String(255), nullable=True)
+    # 助教账号(2026-09-27): 非空 = 本账号是该主老师名下的助教。role 仍是 teacher,
+    # 认证时换成主老师身份看数据/改数据,真实操作人放 core/actor 的 ContextVar(记日志用)
+    owner_teacher_id = Column(Integer, nullable=True, index=True)
 
     # 等级和经验值系统
     level = Column(Integer, default=1)  # 用户等级

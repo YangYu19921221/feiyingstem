@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
 from app.models.learning import WordMastery, LearningRecord, StudySession, GroupExamRecord
 from app.models.word import Word, Unit, WordBook, UnitWord
+from app.core.actor import forbid_assistant
 from app.api.v1.auth import get_current_teacher
 from app.api.v1.teacher._permissions import (
     assert_student_in_my_class,
@@ -161,6 +162,7 @@ async def delete_class(
     current_user: User = Depends(get_current_teacher)
 ):
     """删除班级"""
+    forbid_assistant(current_user, "删除班级")
     cls = await _get_class_or_404(db, class_id, current_user.id)
     # 显式删除关联子行：ClassStudent.class_id / ClassInviteCode.class_id 均为 NOT NULL，
     # 且 SQLite 未开启 PRAGMA foreign_keys，ORM 默认的 nullify 级联会触发
@@ -266,6 +268,7 @@ async def remove_student_from_class(
     current_user: User = Depends(get_current_teacher)
 ):
     """软删除：将学生标记为 is_active=False"""
+    forbid_assistant(current_user, "把学生移出班级")
     await _get_class_or_404(db, class_id, current_user.id)
     result = await db.execute(
         update(ClassStudent)
@@ -303,6 +306,7 @@ async def teacher_transfer_student(
     - 不允许 from == to
     跨教师转班请走 admin 端 /admin/students/{id}/transfer
     """
+    forbid_assistant(current_user, "给学生转班")
     if body.from_class_id == body.to_class_id:
         raise HTTPException(400, "源班级与目标班级不能相同")
 

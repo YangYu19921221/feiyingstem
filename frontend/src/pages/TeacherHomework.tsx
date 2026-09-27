@@ -148,12 +148,14 @@ const TeacherHomework: React.FC = () => {
       return next;
     });
   };
-  const pageAllSelected = pagedList.length > 0 && pagedList.every(h => selectedIds.has(h.id));
+  const pageAllSelected = pagedList.some(h => h.can_manage !== false)
+    && pagedList.filter(h => h.can_manage !== false).every(h => selectedIds.has(h.id));
   const togglePageAll = () => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (pageAllSelected) pagedList.forEach(h => next.delete(h.id));
-      else pagedList.forEach(h => next.add(h.id));
+      // 助教不能删的(can_manage=false)不勾,否则批量删除整片 403
+      else pagedList.filter(h => h.can_manage !== false).forEach(h => next.add(h.id));
       return next;
     });
   };
@@ -468,6 +470,7 @@ const TeacherHomework: React.FC = () => {
                     </th>
                     <th className="py-3 px-4 font-medium">作业</th>
                     <th className="py-3 px-3 font-medium">单元</th>
+                    <th className="py-3 px-3 font-medium">布置人</th>
                     <th className="py-3 px-3 font-medium">模式</th>
                     <th className="py-3 px-3 font-medium text-center">目标分</th>
                     <th className="py-3 px-3 font-medium">截止</th>
@@ -493,6 +496,8 @@ const TeacherHomework: React.FC = () => {
                             <input
                               type="checkbox"
                               checked={selectedIds.has(homework.id)}
+                              disabled={homework.can_manage === false}
+                              title={homework.can_manage === false ? '助教只能删除自己布置的作业' : undefined}
                               onChange={() => toggleSelect(homework.id)}
                               className="w-4 h-4 cursor-pointer accent-orange-500"
                             />
@@ -514,6 +519,9 @@ const TeacherHomework: React.FC = () => {
                             <div className="text-xs text-gray-400 mt-0.5">{homework.book_name}</div>
                           </td>
                           <td className="py-3 px-3 text-sm text-gray-600">{homework.unit_name}</td>
+                          <td className="py-3 px-3 text-sm text-gray-600 whitespace-nowrap">
+                            {homework.assigned_by_name || <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="py-3 px-3">
                             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs font-medium whitespace-nowrap">
                               {LEARNING_MODE_MAP[homework.learning_mode] || homework.learning_mode}
@@ -561,7 +569,10 @@ const TeacherHomework: React.FC = () => {
                             </div>
                           </td>
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            {isScheduledFuture(homework) ? (
+                            {homework.can_manage === false ? (
+                              // 助教账号:别人布置的作业只能看,关闭/删除请找布置人或主老师
+                              <span className="text-xs text-gray-300" title="助教只能关闭/删除自己布置的作业">—</span>
+                            ) : isScheduledFuture(homework) ? (
                               // 还没开放的当日任务:学生看不到、没有任何做题记录,直接「取消」即可
                               <button
                                 onClick={(e) => {

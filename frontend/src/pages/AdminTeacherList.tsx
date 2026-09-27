@@ -128,7 +128,7 @@ const AdminTeacherList = () => {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="admin-teacher-avatar" aria-hidden="true"><GraduationCap className="h-5 w-5" /></span>
-                      <div className="min-w-0"><div className="truncate font-bold text-[#173047]">{t.full_name || t.username}</div><div className="truncate text-xs text-[#6d8195]">{t.username}</div></div>
+                      <div className="min-w-0"><div className="truncate font-bold text-[#173047]">{t.full_name || t.username}</div><div className="truncate text-xs text-[#6d8195]">{t.username}</div>{t.assistants && t.assistants.length > 0 && <div className="mt-0.5 max-w-[15rem] truncate text-xs text-[#7a5aa6]" title="助教用自己的账号登录,操作记在助教名下">助教:{t.assistants.map(a => `${a.full_name || a.username}${a.is_active ? '' : '(停用)'}`).join('、')}</div>}</div>
                     </div>
                     <span className={`admin-teacher-status ${t.is_active ? 'is-active' : 'is-disabled'}`}>{t.is_active ? '正常' : '已禁用'}</span>
                   </div>
@@ -159,7 +159,7 @@ const AdminTeacherList = () => {
                 {teachers.map((t) => (
                   <tr key={t.id}>
                     <td>
-                      <div className="flex items-center gap-3"><span className="admin-teacher-avatar" aria-hidden="true"><GraduationCap className="h-5 w-5" /></span><div className="min-w-0"><div className="max-w-[15rem] truncate font-bold text-[#173047]">{t.full_name || t.username}</div><div className="mt-0.5 max-w-[15rem] truncate text-xs text-[#6d8195]">{t.username}</div></div></div>
+                      <div className="flex items-center gap-3"><span className="admin-teacher-avatar" aria-hidden="true"><GraduationCap className="h-5 w-5" /></span><div className="min-w-0"><div className="max-w-[15rem] truncate font-bold text-[#173047]">{t.full_name || t.username}</div><div className="mt-0.5 max-w-[15rem] truncate text-xs text-[#6d8195]">{t.username}</div>{t.assistants && t.assistants.length > 0 && <div className="mt-0.5 max-w-[15rem] truncate text-xs text-[#7a5aa6]" title="助教用自己的账号登录,操作记在助教名下">助教:{t.assistants.map(a => `${a.full_name || a.username}${a.is_active ? '' : '(停用)'}`).join('、')}</div>}</div></div>
                     </td>
                     <td><span className="block max-w-[17rem] truncate text-sm text-[#526b7f]">{t.email}</span></td>
                     <td><div className="admin-teacher-scale"><span><School className="h-4 w-4" />{t.class_count} 个班级</span><span><Users className="h-4 w-4" />{t.student_count} 名学生</span></div></td>

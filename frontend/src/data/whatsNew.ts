@@ -24,6 +24,15 @@ export interface WhatsNewEntry {
 
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    id: 'teacher-assistants-2026-09',
+    date: '2026-09-27',
+    title: '新增「我的助教」:几位老师共用账号,也能分清谁布置的作业',
+    desc: '给一起带班的老师各开一个助教账号(最多 5 个,不占机构老师名额)。助教用自己的账号登录,能看到你的班级和学生、布置作业、加减金币;作业列表多了「布置人」一列,操作记录里也写着是哪位助教做的。助教只能关闭/删除自己布置的作业,不能删班级、移出学生。',
+    where: '教师工作台下方「教学工具箱 → 课堂推进 →「我的助教」」,或顶部「更多 → 我的助教」',
+    roles: ['teacher'],
+    route: '/teacher/assistants',
+  },
   // 两条分投:admin 与 org_admin 的首页入口位置不同,where 必须各写各的
   {
     id: 'operation-logs-org-2026-09',

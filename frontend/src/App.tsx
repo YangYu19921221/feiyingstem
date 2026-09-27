@@ -41,6 +41,7 @@ const TeacherUnitManagement = lazyWithRetry(() => import('./pages/TeacherUnitMan
 const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
 const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
 const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
+const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
 const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
 const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
@@ -699,6 +700,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherClassManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 我的助教(只有主老师能进,助教账号后端会 403) */}
+        <Route
+          path="/teacher/assistants"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherAssistants />
             </ProtectedRoute>
           }
         />

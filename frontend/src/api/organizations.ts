@@ -87,6 +87,8 @@ export interface OrgTeacher {
   /** 名下班级数 / 去重学生数:停用或删除前让机构看清影响面 */
   class_count?: number;
   student_count?: number;
+  /** 名下助教(不占老师名额) */
+  assistants?: { id: number; username: string; full_name: string | null; is_active: boolean }[];
 }
 
 /** 机构管理员账号(与 OrgTeacher 同构,少一个 created_at) */

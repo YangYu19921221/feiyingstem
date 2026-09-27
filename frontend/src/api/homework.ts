@@ -49,6 +49,11 @@ export interface HomeworkResponse {
   in_progress_count: number;
   pending_count: number;
   is_closed?: boolean;
+  /** 布置人(助教账号上线后才有;老作业为空) */
+  assigned_by?: number | null;
+  assigned_by_name?: string | null;
+  /** 当前登录的人能否关闭/删除(助教只能动自己布置的) */
+  can_manage?: boolean;
 }
 
 export interface StudentHomeworkStatusResponse {

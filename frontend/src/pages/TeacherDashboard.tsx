@@ -68,6 +68,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '线上授课', description: '网页开播、上传课件', route: '/teacher/livestream', icon: Video, tone: 'violet' },
       { title: '课件资料', description: '带水印,学生只能看', route: '/teacher/materials', icon: FileText, tone: 'blue' },
       { title: '签到记录', description: '每日签到与历史', route: '/teacher/checkins', icon: CalendarCheck2, tone: 'blue' },
+      { title: '我的助教', description: '共用账号的老师各开一个号', route: '/teacher/assistants', icon: Users, tone: 'violet' },
     ],
   },
   {
@@ -115,6 +116,11 @@ const TeacherDashboard = () => {
 
   const displayName = user?.full_name || user?.username || '老师';
   const activityPreview = useMemo(() => activities.slice(0, 5), [activities]);
+  // 助教账号不能再管理助教(后端也会 403),入口直接不给
+  const isAssistant = !!(user as { owner_teacher_id?: number | null } | null)?.owner_teacher_id;
+  const visibleToolGroups = useMemo(() => (isAssistant
+    ? toolGroups.map(g => ({ ...g, items: g.items.filter(i => i.route !== '/teacher/assistants') }))
+    : toolGroups), [isAssistant]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
       <StaffWorkspaceHeader role="teacher" title="教师工作台" subtitle="今日教学、学生进度与内容管理" action={<div className="flex items-center gap-1"><button type="button" onClick={() => setShowChangeUsername(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button></div>} />
@@ -184,9 +190,9 @@ const TeacherDashboard = () => {
         </section>
 
         <section className="teacher-tool-list rounded-2xl p-5 sm:p-6">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-xl font-bold tracking-tight text-[#173047]">教学工具箱</h3><p className="mt-1 text-xs text-slate-500">按教学场景整理的常用入口</p></div><span className="text-xs text-slate-400">{toolGroups.reduce((sum, group) => sum + group.items.length, 0)} 项工具</span></div>
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-xl font-bold tracking-tight text-[#173047]">教学工具箱</h3><p className="mt-1 text-xs text-slate-500">按教学场景整理的常用入口</p></div><span className="text-xs text-slate-400">{visibleToolGroups.reduce((sum, group) => sum + group.items.length, 0)} 项工具</span></div>
           <div className="grid gap-6 md:grid-cols-3">
-            {toolGroups.map((group) => <div key={group.title}><div className="mb-2 px-1"><p className="text-sm font-semibold text-[#173047]">{group.title}</p><p className="mt-1 text-xs text-slate-500">{group.description}</p></div><div className="teacher-tool-row-group overflow-hidden rounded-xl border border-slate-100">{group.items.map(({ title, description, route, icon: Icon, tone }) => <button key={route} type="button" onClick={() => navigate(route)} className="teacher-tool-row group flex w-full items-center gap-3 px-3 py-3 text-left transition"><span className={`teacher-tool-icon teacher-tool-icon-${tone} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#173047]">{title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></button>)}</div></div>)}
+            {visibleToolGroups.map((group) => <div key={group.title}><div className="mb-2 px-1"><p className="text-sm font-semibold text-[#173047]">{group.title}</p><p className="mt-1 text-xs text-slate-500">{group.description}</p></div><div className="teacher-tool-row-group overflow-hidden rounded-xl border border-slate-100">{group.items.map(({ title, description, route, icon: Icon, tone }) => <button key={route} type="button" onClick={() => navigate(route)} className="teacher-tool-row group flex w-full items-center gap-3 px-3 py-3 text-left transition"><span className={`teacher-tool-icon teacher-tool-icon-${tone} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#173047]">{title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></button>)}</div></div>)}
           </div>
         </section>
       </main>

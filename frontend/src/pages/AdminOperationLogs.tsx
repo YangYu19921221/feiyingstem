@@ -14,7 +14,7 @@ import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 const PAGE_SIZE = 50;
 
 const ROLE_LABELS: Record<string, string> = {
-  teacher: '老师', org_admin: '机构管理员', admin: '平台管理员',
+  teacher: '老师', assistant: '助教', org_admin: '机构管理员', admin: '平台管理员',
 };
 
 // 动作大类配色:删除/扣减这类最常被追问的要一眼看得出

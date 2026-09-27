@@ -185,7 +185,8 @@ async def list_organizations(
     # 每机构老师数/活跃学生数,各一次 GROUP BY 聚合(admin 上下文本就不过滤,无需逃生口)
     teacher_rows = (await db.execute(
         select(User.org_id, func.count(User.id))
-        .where(User.role.in_(["teacher", "org_admin"]), User.is_active.is_(True))
+        .where(User.role.in_(["teacher", "org_admin"]), User.is_active.is_(True),
+               User.owner_teacher_id.is_(None))  # 助教不算老师
         .group_by(User.org_id)
     )).all()
     teachers_by_org = {r[0]: r[1] for r in teacher_rows}

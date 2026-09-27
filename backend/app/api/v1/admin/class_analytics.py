@@ -562,7 +562,7 @@ async def admin_teachers_overview(
     start_day = end_day - timedelta(days=days - 1)
 
     teachers = (await db.execute(
-        select(User).where(User.role == "teacher").order_by(User.id)
+        select(User).where(User.role == "teacher", User.owner_teacher_id.is_(None)).order_by(User.id)
     )).scalars().all()
     if not teachers:
         return {"window": {"days": days, "start": start_day.isoformat(),

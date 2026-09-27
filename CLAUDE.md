@@ -271,8 +271,27 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 我的助教(2026-09-27,操作记录三步走的 ① 以「助教」形态落地): 用户说「好多老师用一个号,
+  不知道哪个老师布置的」。**不做"班级多老师"而做"主老师挂助教"**: 前者要把全站几十处
+  `teacher_id == current_user.id` 改成成员关系,后者一行不动。
+  实现: users.owner_teacher_id(非空=助教);**认证层换身份** —— `_authenticate_token` 发现是助教
+  就把 current_user 换成主老师,真实助教放进 ContextVar `core/actor.real_actor`(每请求先 reset)。
+  于是所有既有数据范围天然生效;要记"谁做的"的地方走 `acting_user(current_user)`。
+  六个要点: ①**审计 record() 内部已调 acting_user**,actor_role 写 "assistant",调用方不用改
+  ②作业加 assigned_by/assigned_by_name(存名字快照,删了助教作业上还写着是谁),列表「布置人」列;
+  **助教只能关/删自己布置的**(`_guard_manage`,返回 can_manage 给前端置灰),主老师管全部
+  ③`forbid_assistant()` 挡删班级/移出学生/转班/管理助教(转班那条要放在同班 400 **之前**)
+  ④**金币 PIN 按真实操作人**(助教各设各的,不必把主老师的 PIN 告诉他),operator_id 同理
+  ⑤**WebSocket 不走 _authenticate_token**,PK/实时课堂两处 `_authenticate` 要显式
+  `owner_for_ws()`,漏了助教进 WS 看到的是空班 ⑥主老师停用 → 助教登录/请求一律 403;
+  老师计数/列表(org_admin、admin teachers、organizations、class_analytics)**排除助教**,
+  否则助教占掉机构老师名额,列表里改在每位老师下挂 assistants。上限 5(停用的也算)。
+  /me、改密码、改用户名走 `get_real_user`(不换身份,否则助教改的是主老师的密码)。
+  入口: 教师工作台「教学工具箱 → 课堂推进 → 我的助教」/ 顶部「更多 → 我的助教」
+  (助教账号看不到这个入口);作业管理列表「布置人」列;机构/平台教师列表老师名下显示助教。
+  测试 tests/test_teacher_assistant.py(7 例,四条回归锁逐一破坏验证过)
 - ✅ 操作记录(追责)(2026-09-27): 用户反馈「多个老师共用一个账号,布置错了怎么追责」。
-  方案三步走: ①班级多老师(各用各的账号,**待做**;待定: 协同老师能否改别人布置的作业,倾向不能)
+  方案三步走: ①班级多老师(**已用「我的助教」落地**,见上一条;助教不能改别人布置的作业)
   ②**操作日志(本次)** ③防共享。表 operation_logs(models/audit.py),写入唯一入口
   services/audit_log.record(),已接: 作业 建/关/重开/删、金币 加减/改/删流水/兑换/审批/模式切换、
   书本 分配/取消、**教职工登录**(学生不记,量大且无追责需求)。四个要点:

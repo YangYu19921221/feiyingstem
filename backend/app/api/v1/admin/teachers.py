@@ -48,10 +48,22 @@ async def list_teachers(
             ClassStudent,
             (ClassStudent.class_id == Class.id) & (ClassStudent.is_active.is_(True)),
         )
-        .where(User.role == "teacher")
+        .where(User.role == "teacher", User.owner_teacher_id.is_(None))  # 助教挂在主老师下面
         .group_by(User.id)
         .order_by(User.username)
     )
+    rows = res.all()
+    assistants_by_t: dict[int, list] = {}
+    ids = [r[0] for r in rows]
+    if ids:
+        for a in (await db.execute(
+            select(User).where(User.owner_teacher_id.in_(ids)).order_by(User.id)
+        )).scalars().all():
+            assistants_by_t.setdefault(a.owner_teacher_id, []).append({
+                "id": a.id, "username": a.username, "full_name": a.full_name,
+                "is_active": bool(a.is_active),
+                "last_login": a.last_login.isoformat() if a.last_login else None,
+            })
     return [
         {
             "id": i,
@@ -62,8 +74,9 @@ async def list_teachers(
             "last_login": ll.isoformat() if ll else None,
             "class_count": cc,
             "student_count": sc,
+            "assistants": assistants_by_t.get(i, []),
         }
-        for i, u, e, fn, act, ll, cc, sc in res.all()
+        for i, u, e, fn, act, ll, cc, sc in rows
     ]
 
 

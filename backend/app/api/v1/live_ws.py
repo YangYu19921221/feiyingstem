@@ -172,6 +172,11 @@ async def _authenticate(token: str) -> Optional[User]:
         return None
     async with AsyncSessionLocal() as db:
         user = await db.get(User, user_id)
+        if user is not None and not user.is_active:
+            user = None
+        # 助教 → 主老师(与 REST 认证同口径,否则进不了自己建的房/开的课)
+        from app.core.actor import owner_for_ws
+        user = await owner_for_ws(db, user)
     if user is not None:
         from app.core.tenancy import current_org_id
         current_org_id.set(None if user.role == "admin" else user.org_id)

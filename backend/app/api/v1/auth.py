@@ -11,6 +11,7 @@ from jose import JWTError, jwt
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.tenancy import current_org_id, check_org_active
+from app.core.actor import real_actor, acting_user
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest, ChangeUsernameRequest
 from app.services import auth_service
 from app.services import audit_log
@@ -22,6 +23,19 @@ router = APIRouter()
 
 # OAuth2密码流
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+async def _resolve_assistant_owner(db: AsyncSession, assistant: User) -> User:
+    """助教 → 主老师。主老师停用/被删/换了机构时助教一并失效(数据归属已不成立)。"""
+    owner = (await db.execute(
+        select(User).where(User.id == assistant.owner_teacher_id)
+        .execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    if (owner is None or not owner.is_active or owner.role != "teacher"
+            or owner.owner_teacher_id or owner.org_id != assistant.org_id):
+        raise HTTPException(status_code=403, detail="主老师账号已停用,助教账号暂不可用")
+    real_actor.set(assistant)
+    return owner
+
 
 async def _authenticate_token(
     token: str = Depends(oauth2_scheme),
@@ -62,6 +76,12 @@ async def _authenticate_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # 助教账号: 换成主老师身份看数据/改数据,真实操作人留在 real_actor(日志/布置人用)。
+    # 每个请求都显式重设,不依赖默认值
+    real_actor.set(None)
+    if user.owner_teacher_id:
+        user = await _resolve_assistant_owner(db, user)
+
     # 多租户: 设置请求级机构上下文(平台admin设None=跨租户不过滤)
     current_org_id.set(None if user.role == "admin" else user.org_id)
 
@@ -71,6 +91,12 @@ async def _authenticate_token(
             raise HTTPException(status_code=402, detail="机构服务已到期，请联系机构管理员续费")
 
     return user
+
+
+async def get_real_user(user: User = Depends(_authenticate_token)) -> User:
+    """真实登录的人(助教就是助教本人)。只用于「只属于本人」的动作:
+    看自己的资料、改自己的密码/用户名。看数据改数据一律用 get_current_user。"""
+    return acting_user(user)
 
 
 async def get_current_user_no_sub_check(
@@ -262,6 +288,9 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if user.owner_teacher_id:
+        await _resolve_assistant_owner(db, user)  # 主老师停用时助教登不进来(403)
+        real_actor.set(None)
     user.last_login = datetime.utcnow()
     _log_staff_login(db, http, user)
     # 顶号发号: 范围内(学生/体验机构)登录会 bump session_ver 并连同 last_login 一起提交
@@ -302,6 +331,9 @@ async def login_json(
             raise HTTPException(status_code=400, detail={"code": "invalid_code", "message": msg})
 
     # 更新最后登录时间 + 顶号发号(一起提交)
+    if user.owner_teacher_id:
+        await _resolve_assistant_owner(db, user)  # 主老师停用时助教登不进来(403)
+        real_actor.set(None)
     user.last_login = datetime.utcnow()
     _log_staff_login(db, http, user)
     access_token = await auth_service.issue_session_token(db, user)
@@ -313,7 +345,7 @@ async def login_json(
     }
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: User = Depends(get_real_user)):
     """获取当前用户信息"""
     return current_user
 
@@ -398,7 +430,7 @@ async def reset_password(
 @router.put("/change-password")
 async def change_password(
     data: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_real_user),
     db: AsyncSession = Depends(get_db)
 ):
     """修改密码（已登录用户）"""
@@ -414,7 +446,7 @@ async def change_password(
 @router.put("/change-username", response_model=UserResponse)
 async def change_username(
     data: ChangeUsernameRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_real_user),
     db: AsyncSession = Depends(get_db)
 ):
     """修改用户名（已登录用户，需当前密码确认）"""

@@ -373,7 +373,7 @@ export default function OrgAdminDashboard() {
               {(teachers || []).map(t => (
                 <tr key={t.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                   <td className="py-2 font-mono">{t.username}</td>
-                  <td className="py-2">{t.full_name || '—'}</td>
+                  <td className="py-2">{t.full_name || '—'}{t.assistants && t.assistants.length > 0 && <div className="mt-0.5 truncate text-xs text-[#7a5aa6]" title="助教用自己的账号登录,操作记在助教名下">助教:{t.assistants.map(a => `${a.full_name || a.username}${a.is_active ? '' : '(停用)'}`).join('、')}</div>}</td>
                   <td className="py-2 text-slate-500">{t.phone || '—'}</td>
                   <td className="py-2 text-slate-500">
                     {(t.class_count ?? 0) === 0 && (t.student_count ?? 0) === 0

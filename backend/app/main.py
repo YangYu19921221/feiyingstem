@@ -119,6 +119,8 @@ app.include_router(phonetics.router, prefix="/api/v1/phonetics", tags=["音标�
 app.include_router(phonetic_practice.router, prefix="/api/v1/phonetic-practice", tags=["音标填空"])
 app.include_router(phonetic_reading.router, prefix="/api/v1/phonetic-practice", tags=["音标跟读"])
 app.include_router(teacher_live.router, prefix="/api/v1/teacher", tags=["教师端-线上授课"])
+from app.api.v1.teacher import assistants as teacher_assistants
+app.include_router(teacher_assistants.router, prefix="/api/v1/teacher", tags=["教师端-我的助教"])
 app.include_router(student_live.router, prefix="/api/v1/student", tags=["学生端-线上授课"])
 app.include_router(live_ws.router, prefix="/api/v1", tags=["直播互动-弹幕"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])

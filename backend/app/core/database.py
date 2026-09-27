@@ -461,6 +461,11 @@ async def init_db():
             "ALTER TABLE pet_battles ADD COLUMN pet_hp_data TEXT",
             # 顶号机制: 会话版本号(学生/体验机构登录+1,JWT sv 不符=被顶下线)
             "ALTER TABLE users ADD COLUMN session_ver INTEGER NOT NULL DEFAULT 0",
+            # 助教账号: 挂在主老师名下(NULL=普通账号);作业记实际布置人
+            "ALTER TABLE users ADD COLUMN owner_teacher_id INTEGER",
+            "CREATE INDEX IF NOT EXISTS idx_users_owner_teacher ON users(owner_teacher_id)",
+            "ALTER TABLE homework_assignments ADD COLUMN assigned_by INTEGER",
+            "ALTER TABLE homework_assignments ADD COLUMN assigned_by_name VARCHAR(100)",
             # 兑换卡种(次卡/包月): 码上记卡种规格,授权行上记剩余量。
             # 存量行 grant_type 留 NULL = 永久,旧行为不变
             "ALTER TABLE redemption_codes ADD COLUMN grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent'",

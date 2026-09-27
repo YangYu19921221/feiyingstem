@@ -26,6 +26,7 @@ from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
 from app.services import daily_words
 from app.services import audit_log
+from app.core.actor import acting_user
 
 logger = logging.getLogger(__name__)
 from app.services.auth_service import get_password_hash, verify_password
@@ -419,8 +420,9 @@ async def list_transactions(
 # ---------- 增:手动增减 / 兑换 ----------
 @router.get("/coins/pin-status")
 async def coin_pin_status(current_user: User = Depends(get_current_teacher)):
-    """当前老师是否已设加币 PIN(前端据此决定加币时弹「输入 PIN」还是「先去设置」)。"""
-    return {"has_pin": bool(current_user.coin_pin_hash)}
+    """当前老师是否已设加币 PIN(前端据此决定加币时弹「输入 PIN」还是「先去设置」)。
+    助教有自己的 PIN(看的是本人不是主老师): 共用一个 PIN 等于又回到共用账号。"""
+    return {"has_pin": bool(acting_user(current_user).coin_pin_hash)}
 
 
 @router.post("/coins/pin")
@@ -434,6 +436,7 @@ async def set_coin_pin(
     忘记旧密码走 POST /coins/pin/reset(管理员/机构管理员代重置)——
     否则老师忘了密码就永久锁死,加币/减币全部不可用。
     """
+    current_user = acting_user(current_user)  # 助教设的是自己的 PIN
     if current_user.coin_pin_hash:
         if not body.old_pin or not verify_password(body.old_pin, current_user.coin_pin_hash):
             raise HTTPException(
@@ -491,10 +494,12 @@ async def adjust(
     await _assert_can_touch(db, current_user, body.student_id)
     if body.amount == 0:
         raise HTTPException(status_code=400, detail="变动值不能为 0")
-    # 加币 PIN 校验:未设 PIN 的先引导设置(前端据 403 code 弹设置框),已设的校验
-    if not current_user.coin_pin_hash:
+    # 加币 PIN 校验:未设 PIN 的先引导设置(前端据 403 code 弹设置框),已设的校验。
+    # 助教校验自己的 PIN
+    pin_owner = acting_user(current_user)
+    if not pin_owner.coin_pin_hash:
         raise HTTPException(status_code=403, detail="PIN_NOT_SET")
-    if not body.pin or not verify_password(body.pin, current_user.coin_pin_hash):
+    if not body.pin or not verify_password(body.pin, pin_owner.coin_pin_hash):
         raise HTTPException(status_code=403, detail="加币密码不正确")
     src = body.source if body.source in ("manual", "redeem") else "manual"
 
@@ -535,7 +540,7 @@ async def adjust(
     try:
         tx = await coin_service.apply_delta(
             db, body.student_id, student.org_id or 1, body.amount, src,
-            reason=reason, operator_id=current_user.id,
+            reason=reason, operator_id=acting_user(current_user).id,
         )
     except coin_service.InsufficientCoins as e:
         # 上面的前置检查是读后再扣,并发下可能都通过;真正的判定在数据库条件扣减
@@ -752,7 +757,7 @@ async def redeem(
     try:
         tx = await coin_service.apply_delta(
             db, body.student_id, student.org_id or 1, -reward.cost, "redeem",
-            reason=f"兑换:{reward.name}", operator_id=current_user.id,
+            reason=f"兑换:{reward.name}", operator_id=acting_user(current_user).id,
         )
     except coin_service.InsufficientCoins as e:
         await db.rollback()
@@ -893,7 +898,7 @@ async def approve_redeem_request(
     try:
         await coin_service.apply_delta(
             db, req.student_id, student.org_id or 1, -req.cost, "redeem",
-            reason=f"兑换:{req.reward_name}", operator_id=current_user.id,
+            reason=f"兑换:{req.reward_name}", operator_id=acting_user(current_user).id,
         )
     except coin_service.InsufficientCoins as e:
         # 审批时才真正扣币:学生可能同时申请多个、各自够但合计不够,
