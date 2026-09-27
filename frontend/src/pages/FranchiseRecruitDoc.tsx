@@ -1,0 +1,350 @@
+/**
+ * 加盟资料中心 · 文档三:招商手册
+ *
+ * 与「提分方案」分工不同:提分方案讲系统能做什么,招商手册讲**为什么跟我们合作** ——
+ * 我们是谁、市场在哪、真实跑出来的数据、钱怎么算、怎么开始。
+ *
+ * ⚠️ 口径红线(改文案前必读):
+ *  1. **广告法第二十四条**:教育培训广告不得明示或暗示升学、通过考试、提分的保证性承诺。
+ *     所以学员分数只能以「往届学员个案」出现,且紧跟「个体结果因人而异,不构成效果承诺」;
+ *     也不用「颠覆」「最」「第一」这类绝对化用语
+ *  2. **未成年人信息**:学员案例一律用「A 同学 / B 同学」,不写真名、不放试卷照片;
+ *     老师证书照片上有身份证号,手册只写学历与证书名称
+ *  3. **系统数据是生产库实查值**(2026-09-26,直营校区):掌握词数 = word_mastery
+ *     mastery_level>=3 按 distinct lower(word) 计,不是 learning_records 行数(classify 会放大);
+ *     更新数字要重跑同一口径的 SQL,别凭印象改
+ *  4. **价格数字跟着 AdminFranchiseKit 提分方案第八章走**(¥14,400 / ¥144 / 约 0.8 元),
+ *     那边改价这里必须同步
+ *  5. 未核实的数字(续费率等)**留空栏现填**,不替用户编
+ */
+
+/** 空栏:点击可直接输入;留空则打印出下划线供手写(与协议页同一写法) */
+const Blank = ({ w = '6rem' }: { w?: string }) => (
+  <span
+    contentEditable
+    suppressContentEditableWarning
+    spellCheck={false}
+    className="mx-0.5 inline-block min-h-[1.5em] border-b border-slate-600 px-1 text-center align-baseline outline-none focus:bg-amber-50"
+    style={{ minWidth: w }}
+  />
+);
+
+const Section = ({ no, title, children }: { no: string; title: string; children: React.ReactNode }) => (
+  <section className="mt-7">
+    <h2 className="flex items-center gap-2 text-[19px] font-black text-slate-900" style={{ breakAfter: 'avoid' }}>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#FF6B35] text-[13px] font-bold text-white">{no}</span>
+      {title}
+    </h2>
+    <div className="mt-2.5">{children}</div>
+  </section>
+);
+
+/** 数字牌一行。刻意用 flex 不用 grid:html2pdf 的分页占位元素会挤占 grid 格子导致错位 */
+const StatRow = ({ items }: { items: Array<[string, string]> }) => (
+  <div className="mt-3 flex gap-2" style={{ breakInside: 'avoid' }}>
+    {items.map(([big, small]) => (
+      <div key={small} className="flex-1 rounded-lg border border-orange-200 bg-[#FFF8F0] px-2 py-2.5 text-center">
+        <p className="text-[18px] font-black text-[#FF6B35]">{big}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-slate-600">{small}</p>
+      </div>
+    ))}
+  </div>
+);
+
+/** 两列卡片:一行一个 flex 装两张,不用 grid(理由同上) */
+const CardPairs = ({ items }: { items: Array<{ t: string; d: React.ReactNode }> }) => {
+  const rows: Array<typeof items> = [];
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  return (
+    <div className="mt-2.5 space-y-2">
+      {rows.map((row) => (
+        <div key={row[0].t} className="flex gap-2" style={{ breakInside: 'avoid' }}>
+          {row.map((c) => (
+            <div key={c.t} className="flex-1 rounded-lg border border-slate-200 p-2.5">
+              <p className="font-bold text-slate-900">{c.t}</p>
+              <p className="mt-1 text-[12px] leading-5 text-slate-600">{c.d}</p>
+            </div>
+          ))}
+          {row.length === 1 && <div className="flex-1" />}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const td = 'border border-orange-200 px-2 py-1.5';
+
+const TEACHERS: Array<[string, string]> = [
+  ['黄晓晶', '成都理工大学 应用语言学 研究生 · 英语专业八级'],
+  ['赵威', '温州大学 英语专业本科 · 英语专业八级'],
+  ['宋娟娥', '大理学院 英语专业本科 · 英语专业八级'],
+  ['张菊莲', '云南财经大学 经贸英语 · 英语专业四级'],
+  ['吴姗珊', '新西兰 Unitec 理工学院 商务英语 · TESOL 国际英语教师资格'],
+];
+
+// 传统做法 vs 飞鹰做法:每一行都要能在系统里指出对应功能,不写说不出落点的口号
+const COMPARE: Array<[string, string, string]> = [
+  ['背单词', '抄写 + 默写,老师逐本批改', '记忆曲线自动排复习,拼写 / 听写 / 纸笔听写系统批改'],
+  ['课后练习', '靠家长盯,做没做老师不知道', '作业按天布置,谁没做、做错哪个词老师端实时可见'],
+  ['教研', '好老师一走,教法跟着走', '六阶段课程 + 单元测试卷 + 系统内容,新老师照着就能上课'],
+  ['学习动力', '靠老师一张嘴', '宠物养成、PK 对战、晋级赛、金币兑换,孩子自己想来'],
+  ['家长沟通', '期末一张成绩单', '家长端随时看学了多少、错在哪,续费有据可依'],
+];
+
+export default function FranchiseRecruitDoc() {
+  return (
+    <article className="text-[13.5px] leading-6 text-slate-800">
+      {/* 封面头 */}
+      <header className="border-b-4 border-[#FF6B35] pb-5 text-center">
+        <p className="text-[13px] font-semibold tracking-[0.3em] text-[#FF6B35]">飞鹰英语 · 合作伙伴招募</p>
+        <h1 className="mt-2 text-[30px] font-black leading-tight text-slate-900">招商手册</h1>
+        <p className="mt-2 text-[14px] text-slate-600">
+          我们自己办了十多年英语校区,这套方法和系统先在自己的学生身上跑通,再交给你。
+        </p>
+        <StatRow
+          items={[
+            ['2011', '年起深耕英语教学'],
+            ['3 个', '直营校区'],
+            ['2500+', '累计服务学员'],
+            ['700+', '学员正在系统上学'],
+          ]}
+        />
+      </header>
+
+      {/* 一、我们是谁 */}
+      <Section no="一" title="我们是谁">
+        <p>
+          飞鹰英语前身为 2011 年 10 月成立的昆明飞鹰教育信息咨询有限公司,2019 年经昆明市五华区教育局审批,
+          取得办学许可,正式成立<strong>昆明市五华区飞鹰教育培训学校</strong>。十多年来只做一件事:英语。
+          目前有 3 个校区,累计服务学员 2500 余人。
+        </p>
+        <p className="mt-2">
+          <strong>自有课程体系</strong>:从零基础到高级分六个阶段(1–3 阶段初级、4 阶段中级、5–6 阶段高级),
+          每阶段 126 课时,每次课 3 课时。每个单元都有配套测试卷,
+          覆盖<strong>翻译、听力、语法、作文</strong>四类,老师逐份批改留痕 ——
+          教学效果不靠感觉,靠一张张卷子。
+        </p>
+        <p className="mt-2 font-bold text-slate-900">教研团队(部分)</p>
+        <ul className="mt-1 space-y-0.5 pl-5 text-[13px]" style={{ listStyle: 'disc' }}>
+          {TEACHERS.map(([name, cv]) => (
+            <li key={name}>
+              <strong>{name}</strong>:{cv}
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      {/* 二、为什么是现在 */}
+      <Section no="二" title="为什么是现在:英语需求没有消失,只是换了做法">
+        <p>
+          「双减」之后,学科类培训收缩,但家长对孩子英语能力的投入没有停。能留下来的机构,
+          靠的是<strong>合规的素质类定位 + 看得见的学习效果</strong>,而不是题海和课时堆砌。
+        </p>
+        <StatRow
+          items={[
+            ['6463 亿', '2024 年中国非学科类教育市场规模¹'],
+            ['90.86%', '受访家长愿意为素质类课程付费²'],
+            ['30 / 100', '云南中考英语中听说占分³'],
+          ]}
+        />
+        <p className="mt-2.5">
+          以云南为例,中考英语 100 分中有 30 分是听力和口语 —— 这部分靠刷题拿不到,靠的是
+          <strong>词汇量和每天的听说积累</strong>,恰好是系统每天在做的事。县城里家长的需求一样真实,
+          缺的是有体系、有工具、能长期带下去的机构。
+        </p>
+        <p className="mt-2 text-[11px] leading-4 text-slate-400">
+          ¹ 艾瑞咨询 2025 年行业报告(咨询机构估算,仅供参考)
+          ² 艾媒咨询素质教育行业调研
+          ³ 云南省 2025 年初中学业水平考试方案:英语满分 100 分,笔试 70 分 + 听力口语 30 分
+        </p>
+      </Section>
+
+      {/* 三、痛点 */}
+      <Section no="三" title="开英语班,难在哪">
+        <CardPairs
+          items={[
+            { t: '好老师难招,招来也难留', d: '县城专业英语老师少,一个骨干离职,一批学生跟着走。' },
+            { t: '教研全靠个人', d: '每个老师一套教法,新老师上手慢,教学质量忽高忽低。' },
+            { t: '课后没人管', d: '课上会了课后忘,家长看不到过程,只看期末分数。' },
+            { t: '续费靠人情', d: '拿不出孩子进步的证据,续费全凭家长对老师的信任。' },
+          ]}
+        />
+      </Section>
+
+      {/* 四、我们的做法 */}
+      <Section no="四" title="同一件事,我们换了一种做法">
+        <table className="mt-1 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
+          <thead>
+            <tr className="bg-[#FFF3EC]">
+              <th className={`${td} w-[16%] text-center font-bold`}>环节</th>
+              <th className={`${td} w-[38%] text-center font-bold`}>常见做法</th>
+              <th className={`${td} text-center font-bold`}>飞鹰做法</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARE.map(([k, old, now]) => (
+              <tr key={k}>
+                <td className={`${td} text-center font-semibold`}>{k}</td>
+                <td className={`${td} text-slate-500`}>{old}</td>
+                <td className={td}>{now}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-2.5">
+          一句话:<strong>老师负责教,系统负责练和记</strong>。老师的时间花在讲课和答疑上,
+          背单词、批作业、盯进度交给系统 —— 这也是一个县城机构两三位老师就能带起上百个学生的原因。
+        </p>
+      </Section>
+
+      {/* 五、真实数据 */}
+      <Section no="五" title="不讲故事,看数据">
+        <p>
+          以下是飞鹰直营校区学员在系统上的真实使用数据,截至 2026 年 9 月,<strong>全部可在系统后台查证</strong>:
+        </p>
+        <StatRow
+          items={[
+            ['744', '名学员在系统上学习'],
+            ['3943', '份作业由老师在系统上布置'],
+            ['86.4%', '拼写 / 选择 / 填空平均正确率'],
+          ]}
+        />
+        <StatRow
+          items={[
+            ['7153', '个不同单词被学员掌握'],
+            ['97', '名学员掌握 500 词以上'],
+            ['39', '名学员掌握 1000 词以上'],
+            ['2648', '单个学员最高掌握词数'],
+          ]}
+        />
+        <p className="mt-2 text-[11px] leading-4 text-slate-400">
+          「掌握」指同一单词在系统内多次答对、达到掌握标准,同一单词只计一次,不是练习次数。
+        </p>
+
+        <p className="mt-3 font-bold text-slate-900">往届学员个案</p>
+        <CardPairs
+          items={[
+            {
+              t: 'A 同学 · 零基础入学',
+              d: '从零基础开始,完整学完飞鹰五个阶段课程,目前英语水平已可直接备考雅思。',
+            },
+            {
+              t: 'B 同学 · 初二暑假插班',
+              d: '入学时学校英语成绩 25 分,暑假两个月集中学习,中考英语取得 98 分,现已出国深造。',
+            },
+          ]}
+        />
+        <p className="mt-2">
+          校区续费率:<Blank w="4rem" />%(统计口径:<Blank w="14rem" />)
+        </p>
+        <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
+          以上为往届学员个人情况,学习效果受学员基础、投入时间等多种因素影响,个体结果因人而异,
+          不构成对学习效果或考试成绩的承诺。
+        </p>
+      </Section>
+
+      {/* 六、钱怎么算 */}
+      <Section no="六" title="投入多少,怎么回本">
+        <StatRow
+          items={[
+            ['¥14,400', '基础合作费 限期六折(标准价 ¥24,000)'],
+            ['100 张', '含学生学习卡,每张半年'],
+            ['约 0.8 元', '折合每个学生每天'],
+          ]}
+        />
+        <p className="mt-2.5">
+          基础合作费含 100 张半年学习卡,系统内教材同步内容全部开放,教师和管理账号不限;
+          超出或续卡按 ¥130 / 张,每次 50 张起,不用重新签合同。
+          <strong>终端收费由你自己定</strong>,可以打包进课程,也可以单独收智能学习服务费 ——
+          按每人每本 200–300 元测算,100 名学生学一本书即对应 2–3 万元流水,高于首期投入。
+        </p>
+        <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
+          测算仅供参考,不构成收益承诺。完整费用明细(飞鹰专属内容、配套教材、带教培训)见《功能详解与提分方案》第八章及合作协议。
+        </p>
+      </Section>
+
+      {/* 七、支持 */}
+      <Section no="七" title="签约之后,我们给你什么">
+        <CardPairs
+          items={[
+            { t: '独立机构后台', d: '签约即开通,你的学员数据独立隔离,机构名称和 Logo 用你自己的。' },
+            { t: '县域独家保护', d: '同一县域内不再发展第二家合作点,写进协议,不是口头承诺。' },
+            { t: '课程与内容', d: '小学到高中主流教材同步内容全开放;可选配飞鹰自研课程内容。' },
+            { t: '带教培训', d: '到飞鹰直营校区跟岗学习,看我们的老师怎么排课、怎么用系统带班(自费)。' },
+            { t: '招生工具', d: 'AI 英语测评、招生链接、兑换码,开班前就能先做一轮测评活动。' },
+            { t: '持续升级', d: '系统每月更新,新功能、新内容在服务期内免费同步。' },
+          ]}
+        />
+      </Section>
+
+      {/* 八、适合谁 */}
+      <Section no="八" title="我们在找什么样的伙伴">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>已经有校区、有生源的英语或综合类培训机构,想把英语做深做稳;</li>
+          <li>至少有 1–2 位能上英语课的老师,愿意按体系教、按数据管;</li>
+          <li>认同「效果靠每天练出来」,不想靠压课时、刷题海留学生;</li>
+          <li>打算在当地长期做下去,而不是赚一波就走。</li>
+        </ul>
+      </Section>
+
+      {/* 九、流程 */}
+      <Section no="九" title="合作流程">
+        <div className="mt-1 flex items-stretch gap-1.5 text-center text-[12px]" style={{ breakInside: 'avoid' }}>
+          {[
+            ['1', '沟通咨询', '了解你的校区与生源'],
+            ['2', '免费体验', '开通体验账号,老师学生先用起来'],
+            ['3', '考察交流', '来直营校区看课,或线上演示'],
+            ['4', '签约开通', '签协议、付款,当天开通后台'],
+            ['5', '带教开课', '老师培训后开班招生'],
+          ].map(([n, t, d]) => (
+            <div key={n} className="flex-1 rounded-lg border border-orange-200 bg-[#FFF8F0] px-1.5 py-2">
+              <p className="text-[16px] font-black text-[#FF6B35]">{n}</p>
+              <p className="font-bold text-slate-900">{t}</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-600">{d}</p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* 十、常见问题 */}
+      <Section no="十" title="常见问题">
+        <div className="space-y-2.5">
+          {[
+            [
+              '我这边英语老师不强,能做吗?',
+              '可以。单词、听写、作业批改由系统完成,老师主要负责组织课堂和答疑;带教培训会教你们怎么用系统带班。',
+            ],
+            [
+              '能保证学生提分吗?',
+              '我们不承诺分数,也不建议你对家长承诺分数。我们能保证的是:孩子每天学了什么、掌握了多少、错在哪,你和家长都看得见。',
+            ],
+            [
+              '一年后不想续了怎么办?',
+              '协议一年一签。到期不续即可,已售出的学习卡在有效期内照常使用,不会影响你的学员。',
+            ],
+            [
+              '学员数据归谁?',
+              '机构数据独立隔离存储,平台不会拿你的学员资料向学员直接招生。',
+            ],
+          ].map(([q, a]) => (
+            <div key={q} style={{ breakInside: 'avoid' }}>
+              <p className="font-bold text-slate-900">问:{q}</p>
+              <p className="mt-0.5 text-slate-700">答:{a}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]" style={{ breakInside: 'avoid' }}>
+          <p className="font-bold text-slate-900">合作咨询</p>
+          <p className="mt-1">
+            联系人:<Blank w="7rem" />{'\u3000\u3000'}电话:<Blank w="9rem" />{'\u3000\u3000'}微信:<Blank w="9rem" />
+          </p>
+          <p className="mt-1">校区地址:<Blank w="24rem" /></p>
+        </div>
+      </Section>
+
+      <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-[11px] text-slate-400">
+        昆明市五华区飞鹰教育培训学校 · 飞鹰AI英语 —— 本手册所述数据与功能以系统实际情况为准
+      </footer>
+    </article>
+  );
+}

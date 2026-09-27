@@ -39,7 +39,7 @@ const toolGroups: Array<{ title: string; description: string; items: ToolItem[] 
     items: [
       { title: '机构管理', description: '加盟商开户与配额', path: '/admin/organizations', icon: Building2, tone: 'orange' },
       { title: '加盟线索', description: '意向客户跟进与导出', path: '/admin/franchise-leads', icon: Handshake, tone: 'amber' },
-      { title: '加盟资料', description: '合作协议与提分方案下载', path: '/admin/franchise-kit', icon: FileText, tone: 'violet' },
+      { title: '加盟资料', description: '招商手册、合作协议与提分方案下载', path: '/admin/franchise-kit', icon: FileText, tone: 'violet' },
       { title: '用户管理', description: '管理师生账号', path: '/admin/users', icon: Users, tone: 'blue' },
       { title: '教师管理', description: '教师列表与班级', path: '/admin/teachers', icon: GraduationCap, tone: 'teal' },
       { title: '签到与教学数据', description: '全部班级签到 · 教师对比', path: '/admin/checkins', icon: CalendarCheck, tone: 'green' },

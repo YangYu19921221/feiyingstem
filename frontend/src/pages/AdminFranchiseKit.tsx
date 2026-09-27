@@ -40,6 +40,8 @@
  *     那套按 Haversine 半径判(organizations.protect_radius_km),圈不出行政区划,
  *     县内相距 10km 的第二家它判「不冲突」而协议判违约,开通新机构别再拿它当准。
  *  2. 功能详解与提分方案 —— 给加盟商看的系统能力说明,围绕"怎么帮学生提分"展开
+ *  3. 招商手册 —— 讲"为什么跟我们合作"(机构背景/真实数据/回本/流程),见 FranchiseRecruitDoc.tsx;
+ *     价格数字引自第 2 份第八章,改价三处一起改
  *
  * 导出方式与打印默写纸同一套路:纯前端 window.print(),打印对话框里选"另存为 PDF"
  * 即完成下载,文档不经服务器、不落盘(UPLOAD_DIR 公开无鉴权,敏感资料禁止走那条路)。
@@ -47,10 +49,17 @@
  */
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, FileSignature, LoaderCircle, Printer, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, FileSignature, Handshake, LoaderCircle, Printer, Sparkles } from 'lucide-react';
 import { downloadElementAsPdf } from '../utils/downloadPdf';
+import FranchiseRecruitDoc from './FranchiseRecruitDoc';
 
-type DocKey = 'contract' | 'pitch';
+type DocKey = 'contract' | 'pitch' | 'recruit';
+
+const DOC_FILENAME: Record<DocKey, string> = {
+  recruit: '飞鹰英语-招商手册',
+  pitch: '飞鹰AI英语-功能详解与提分方案',
+  contract: '飞鹰AI英语-合作协议',
+};
 
 /** 协议空栏:点击可直接输入,打印保留手填内容;留空则打印出下划线供手写 */
 const Blank = ({ w = '8rem' }: { w?: string }) => (
@@ -674,7 +683,7 @@ const FeatureList = ({ items }: { items: Array<{ name: string; desc: string }> }
 /** ============ 页面壳 ============ */
 export default function AdminFranchiseKit() {
   const navigate = useNavigate();
-  const [doc, setDoc] = useState<DocKey>('pitch');
+  const [doc, setDoc] = useState<DocKey>('recruit');
   const sheetRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -685,7 +694,7 @@ export default function AdminFranchiseKit() {
     setDownloading(true);
     try {
       await downloadElementAsPdf(sheetRef.current, {
-        filename: doc === 'contract' ? '飞鹰AI英语-合作协议' : '飞鹰AI英语-功能详解与提分方案',
+        filename: DOC_FILENAME[doc],
       });
     } catch {
       // downloadElementAsPdf 已 toast 提示
@@ -719,6 +728,13 @@ export default function AdminFranchiseKit() {
             <ArrowLeft className="h-4 w-4" /> 返回
           </button>
           <div className="flex overflow-hidden rounded-lg border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setDoc('recruit')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === 'recruit' ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Handshake className="h-4 w-4" /> 招商手册
+            </button>
             <button
               type="button"
               onClick={() => setDoc('pitch')}
@@ -759,7 +775,7 @@ export default function AdminFranchiseKit() {
       {/* A4 文档区 */}
       <div className="fk-wrap px-3 py-6">
         <div ref={sheetRef} className="fk-sheet mx-auto max-w-[820px] rounded-xl border border-slate-200 bg-white p-10 shadow-sm sm:p-12">
-          {doc === 'contract' ? <ContractDoc /> : <PitchDoc />}
+          {doc === 'contract' ? <ContractDoc /> : doc === 'recruit' ? <FranchiseRecruitDoc /> : <PitchDoc />}
         </div>
       </div>
     </div>
