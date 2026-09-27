@@ -28,7 +28,7 @@ from app.services import audit_log
 
 router = APIRouter()
 
-MAX_ASSISTANTS = 5
+MAX_ASSISTANTS = 10
 
 
 class AssistantCreate(BaseModel):

@@ -20,7 +20,7 @@ const fmt = (iso: string | null) => {
 
 const TeacherAssistants = () => {
   const [items, setItems] = useState<Assistant[]>([]);
-  const [max, setMax] = useState(5);
+  const [max, setMax] = useState(10);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ full_name: '', username: '', password: '' });
   const [saving, setSaving] = useState(false);

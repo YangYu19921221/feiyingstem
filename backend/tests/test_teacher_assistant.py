@@ -5,7 +5,7 @@
   2. 作业记布置人;助教只能关闭/删除**自己**布置的,主老师能动全部
   3. 助教不能删班级/移出学生/转班/管理助教
   4. 越权: 不能管别的老师/别家机构的助教;主老师停用后助教登不进来
-  5. 助教不进教师统计;上限 5 个;加币走助教自己的 PIN
+  5. 助教不进教师统计;上限 MAX_ASSISTANTS 个;加币走助教自己的 PIN
 """
 import pytest
 from sqlalchemy import select
@@ -171,10 +171,12 @@ async def test_disabled_owner_or_assistant_blocks_login(client, db_session, ctx)
 
 @pytest.mark.asyncio
 async def test_limit_and_excluded_from_teacher_counts(client, ctx):
-    for i in range(5):
+    from app.api.v1.teacher.assistants import MAX_ASSISTANTS
+    assert MAX_ASSISTANTS == 10
+    for i in range(MAX_ASSISTANTS):
         await _add_assistant(client, ctx["owner"], f"助教{i}", f"astmany{i}")
     r = await client.post("/api/v1/teacher/assistants", headers=_h(ctx["owner"].id), json={
-        "full_name": "第六个", "username": "astmany6", "password": "abc123"})
+        "full_name": "超额", "username": "astmanyover", "password": "abc123"})
     assert r.status_code == 400
     # 用户名撞别家机构的也要拒(用户名全平台唯一)
     r = await client.post("/api/v1/teacher/assistants", headers=_h(ctx["other"].id), json={
@@ -184,7 +186,7 @@ async def test_limit_and_excluded_from_teacher_counts(client, ctx):
     teachers = (await client.get("/api/v1/org/teachers", headers=_h(ctx["oa"].id))).json()
     assert {t["username"] for t in teachers} == {"astowner", "astother"}
     owner_row = next(t for t in teachers if t["username"] == "astowner")
-    assert len(owner_row["assistants"]) == 5
+    assert len(owner_row["assistants"]) == MAX_ASSISTANTS
 
 
 @pytest.mark.asyncio

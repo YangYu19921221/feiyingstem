@@ -285,7 +285,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   ⑤**WebSocket 不走 _authenticate_token**,PK/实时课堂两处 `_authenticate` 要显式
   `owner_for_ws()`,漏了助教进 WS 看到的是空班 ⑥主老师停用 → 助教登录/请求一律 403;
   老师计数/列表(org_admin、admin teachers、organizations、class_analytics)**排除助教**,
-  否则助教占掉机构老师名额,列表里改在每位老师下挂 assistants。上限 5(停用的也算)。
+  否则助教占掉机构老师名额,列表里改在每位老师下挂 assistants。上限 10(09-27 用户要求从 5 调到 10,停用的也算)。
   /me、改密码、改用户名走 `get_real_user`(不换身份,否则助教改的是主老师的密码)。
   入口: 教师工作台「教学工具箱 → 课堂推进 → 我的助教」/ 顶部「更多 → 我的助教」
   (助教账号看不到这个入口);作业管理列表「布置人」列;机构/平台教师列表老师名下显示助教。
