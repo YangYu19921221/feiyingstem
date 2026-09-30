@@ -149,13 +149,6 @@ export default function FranchiseRecruitDoc() {
             </li>
           ))}
         </ul>
-        {/* 奖项必须是真实获得的,不替用户编(红线 5);留空栏现填,不填则打印成下划线手写 */}
-        <p className="mt-2 font-bold text-slate-900">教学荣誉</p>
-        <ul className="mt-1 space-y-1 pl-5 text-[13px]" style={{ listStyle: 'disc' }}>
-          <li>年份 <Blank w="4rem" /> 奖项 <Blank w="16rem" /></li>
-          <li>年份 <Blank w="4rem" /> 奖项 <Blank w="16rem" /></li>
-          <li>年份 <Blank w="4rem" /> 奖项 <Blank w="16rem" /></li>
-        </ul>
       </Section>
 
       {/* 二、为什么是现在 */}
