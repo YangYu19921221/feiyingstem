@@ -18,6 +18,8 @@
  *  5. 未核实的数字**留空栏现填**,不替用户编(续费率 90%+ 为用户 09-30 提供,口径=校区缴费数据)
  */
 
+import { PYRAMID } from '../data/franchisePyramid';
+
 /** 空栏:点击可直接输入;留空则打印出下划线供手写(与协议页同一写法) */
 const Blank = ({ w = '6rem' }: { w?: string }) => (
   <span
@@ -82,18 +84,6 @@ const TEACHERS: Array<[string, string]> = [
   ['吴姗珊', '新西兰 Unitec 理工学院 商务英语 · TESOL 国际英语教师资格'],
 ];
 
-// 学习路线图(语素金字塔)—— 来源《飞鹰学习理念 2026.8.8》。自上而下画,越往下越宽 = 根基。
-// ⚠️ 原件里「雅思 6.5–7.5」「高考 130–140」是分数承诺,广告法第 24 条不能用;
-//    KET/PET 写成「可开始备考」而不是「能考过」
-const PYRAMID: Array<{ stage: string; name: string; note?: string; top?: boolean }> = [
-  { stage: '塔尖', name: '考研 · 四六级 · 雅思托福', note: '可自学,或选择继续深造', top: true },
-  { stage: '第 6–7 阶段', name: '高中 · 高考' },
-  { stage: '第 5 阶段', name: '九年级下 · 初高衔接' },
-  { stage: '第 4 阶段', name: '语法第三册(八下、九上内容)', note: '本阶段中期可开始备考 PET' },
-  { stage: '第 3 阶段', name: '语法第二册(八上内容)' },
-  { stage: '第 2 阶段', name: '语法第一册(七年级内容)' },
-  { stage: '第 1 阶段', name: '《单词记忆法》四册 —— 以背单词为根基', note: '本阶段中期可开始备考 KET' },
-];
 
 // 传统做法 vs 飞鹰做法:每一行都要能在系统里指出对应功能,不写说不出落点的口号
 const COMPARE: Array<[string, string, string]> = [

@@ -42,7 +42,7 @@
  *  2. 功能详解与提分方案 —— 给加盟商看的系统能力说明,围绕"怎么帮学生提分"展开
  *  3. 招商手册 —— 讲"为什么跟我们合作"(机构背景/真实数据/回本/流程),见 FranchiseRecruitDoc.tsx;
  *     价格数字引自第 2 份第八章,改价三处一起改
- *  4. 家长招生成交手册 —— 给机构咨询老师用的对 C 端成交流程(测评→体验→家长端演示→当天开卡绑定),见 FranchiseParentDoc.tsx
+ *  4. 家长手册 —— 机构直接发给家长看的(怎么教/能获得什么/路线图/家长端/家长常问),见 FranchiseParentDoc.tsx
  *
  * 导出方式与打印默写纸同一套路:纯前端 window.print(),打印对话框里选"另存为 PDF"
  * 即完成下载,文档不经服务器、不落盘(UPLOAD_DIR 公开无鉴权,敏感资料禁止走那条路)。
@@ -59,7 +59,7 @@ type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent';
 
 const DOC_FILENAME: Record<DocKey, string> = {
   recruit: '飞鹰英语-招商手册',
-  parent: '飞鹰英语-家长招生成交手册',
+  parent: '飞鹰英语-家长手册',
   pitch: '飞鹰AI英语-功能详解与提分方案',
   contract: '飞鹰AI英语-合作协议',
 };
@@ -743,7 +743,7 @@ export default function AdminFranchiseKit() {
               onClick={() => setDoc('parent')}
               className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === 'parent' ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
             >
-              <Users className="h-4 w-4" /> 家长招生
+              <Users className="h-4 w-4" /> 家长手册
             </button>
             <button
               type="button"

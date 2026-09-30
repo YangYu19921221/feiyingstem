@@ -1,19 +1,19 @@
 /**
- * 加盟资料中心 · 文档四:家长招生成交手册
+ * 加盟资料中心 · 文档四:家长手册
  *
- * 给**合作机构的招生/咨询老师**用的,讲怎么把一个来咨询的家长谈成报名 —— 不是给家长的宣传单。
- * 核心思路:家长买单不是因为听到承诺,而是因为**看见**(看见孩子的问题、看见方法、看见每天的进度),
- * 所以整套流程围绕「测评报告 → 体验课 → 家长端演示」三次让家长看见来排。
+ * **直接给家长看的**(合作机构打印/发 PDF 给来咨询的家长),不是给咨询老师的话术本 ——
+ * 所以通篇用「您」「孩子」,不出现成交、话术、转化这类字眼。
+ * 主线是「让家长看得见」:看得见孩子怎么学、学完能到哪、每天学了什么。
  *
  * ⚠️ 口径红线与招商手册(FranchiseRecruitDoc)同一套,改文案前必读:
- *  1. **广告法第二十四条**:不承诺分数、升学、通过考试;个案必须带「个体结果因人而异」。
- *     第八章「哪些话不能说」就是把这条翻译成咨询老师的日常用语,机构违规宣传的风险在机构,
- *     但砸的是飞鹰的牌子
+ *  1. **广告法第二十四条**:不承诺分数、升学、通过考试;个案必须紧跟「个体结果因人而异」
  *  2. 未成年人一律 A/B 同学,不放试卷照片
- *  3. 数据与招商手册第五章同源(2026-09-26 直营校区生产库实查),那边更新这里同步
- *  4. **机构自己的价格、课时、体验课安排一律留空栏**,不替机构定价
- *  5. 不写「成交率提升 N%」这类没有数据的数字
+ *  3. 数据与招商手册第五章同源(2026-09-26 直营校区生产库实查),那边更新这里同步;
+ *     学习路线图与招商手册共用 data/franchisePyramid.ts
+ *  4. **机构自己的价格、课时、体验课、退费规定一律留空栏**,不替机构定价
+ *  5. 机构名称统一用飞鹰品牌;校区名称/地址/电话留空由机构填
  */
+import { PYRAMID } from '../data/franchisePyramid';
 
 /** 空栏:点击可直接输入;留空则打印出下划线供手写(与协议页同一写法) */
 const Blank = ({ w = '6rem' }: { w?: string }) => (
@@ -69,63 +69,34 @@ const CardPairs = ({ items }: { items: Array<{ t: string; d: React.ReactNode }> 
   );
 };
 
-/** 话术框:引号里的是可以直接对家长说的原话 */
-const Say = ({ children }: { children: React.ReactNode }) => (
-  <div className="mt-2 rounded-lg border-l-4 border-[#FF6B35] bg-[#FFF8F0] px-3 py-2 text-[13px] leading-6 text-slate-800" style={{ breakInside: 'avoid' }}>
-    {children}
-  </div>
-);
-
 const td = 'border border-orange-200 px-2 py-1.5';
 
-// 成交五步:每一步都要让家长「看见」一样东西,看不见的步骤家长会跳过或流失
-const STEPS: Array<{ n: string; t: string; see: string; tool: string; goal: string }> = [
-  { n: '1', t: '引流', see: '一个免费、有用的东西', tool: 'AI 英语测评链接 / 小学语法免费课 / 机构招生码', goal: '留下联系方式,约到测评或试听' },
-  { n: '2', t: '测评', see: '孩子的真实问题', tool: 'AI 英语测评,当场出报告', goal: '家长认同「问题在方法,不在孩子笨」' },
-  { n: '3', t: '体验', see: '孩子当场学会一个方法', tool: '体验课 + 学生端现场练', goal: '孩子愿意来,家长看到变化' },
-  { n: '4', t: '面谈', see: '报名后每天能看到什么', tool: '家长端演示 + 学习路线图', goal: '家长明白学什么、多久、怎么配合' },
-  { n: '5', t: '报名', see: '第一周的学习安排', tool: '开学习卡 + 当场绑定家长端', goal: '当天开学,不留「回去再想想」' },
-];
-
-// 家长常见顾虑。答法原则:先认同,再给事实,最后落到「您可以看得见」
+// 家长最常问的问题。答法:说实话,不承诺分数,落到「您看得见」
 const FAQ: Array<[string, string]> = [
   [
-    '报了能提多少分?',
-    '分数我们不承诺,谁承诺谁不靠谱。我们能给孩子的是三样能力:自己能读英语、有技巧地背单词、国内中高考和雅思托福两条路都打好底。能力上来了,分数是跟着走的 —— 而且每天学了什么、对了多少,您在手机上都看得到。',
+    '报了飞鹰,成绩马上就能上去吗?',
+    '不会马上。我们培养的是孩子学英语的能力,这是一辈子用得上的本事。学完第一阶段,孩子能自己读学校的单词和课文;但只会读、不把课本单词和知识点背熟,在校成绩一样上不去。所以需要您每天督促孩子完成作业,老师会记录并反馈每天的完成情况。',
   ],
   [
-    '多久能见效?',
-    '看孩子基础和每天坚持的程度。按我们的节奏每天用方法背 6 个词、读一篇短文,不超过 20 分钟,约半年能把小学词汇学完。成绩不会马上上去,但孩子会不会自己读单词、背得快不快,一两周您就能看出来。',
+    '孩子基础很差,或者一直不喜欢英语,能学吗?',
+    '能。我们从音标和背单词的方法教起,不是接着学校进度往下讲,零基础也能跟上。很多孩子不喜欢英语,是因为背了就忘、越学越没信心;当他自己读出一个没学过的单词,兴趣往往就是从这里来的。',
   ],
   [
-    '孩子基础很差 / 一直不喜欢英语,能学吗?',
-    '基础差的孩子反而最适合,我们是从音标和背单词的方法教起的,不是接着学校进度往下讲。至于喜不喜欢 —— 刚才体验课您也看到了,孩子学会一个方法、自己读出一个新词,兴趣是这么来的。',
+    '我们工作忙,英语也不好,辅导不了怎么办?',
+    '不需要您辅导,也不需要您会英语。背单词、听写、批改由系统完成,您只做一件事:每天督促孩子把作业做完。做没做、做对多少,手机上都看得到。',
   ],
   [
-    '我们工作忙,没时间辅导怎么办?',
-    '不用您辅导,英语您也不需要会。您只做一件事:每天督促孩子把老师的作业做完。做没做、做对多少,系统会记下来,老师也会反馈给您,您看手机就行。',
+    '每天要学多久?会不会加重负担?',
+    '每天用方法背 6 个新词,再读一篇绘本或短文,合计不超过 20 分钟。我们靠的是每天不断,而不是一次学很久。',
   ],
   [
-    '和其他机构 / 学校补课有什么不同?',
-    '一般补课是老师讲、孩子记,离开老师就不会学。我们课堂上老师不教孩子任何一个单词和句子,只教方法、做引导,让孩子自己学会;课后的背单词、听写、批改交给系统,每天都在练,不是一周只学上课那两小时。',
+    '和学校补课、其他培训班有什么不同?',
+    '一般的补课是老师讲、孩子记,离开老师就不知道怎么学。我们课堂上老师不教孩子任何一个单词和句子,只教方法、做引导,目标是让孩子自己会学;课后每天在系统上练,不是一周只学上课那两小时。',
   ],
   [
-    '价格有点高,我回去考虑一下。',
-    '可以理解。您可以算一笔账:一个阶段 ¥____,折合每天 ¥____,孩子每天都在练、您每天都看得到。今天报名我们当场开卡、帮您绑好家长端,孩子今晚就能开始第一次练习。(若仍犹豫:约定具体回访时间,不要只说「等您消息」)',
+    '孩子以后想走国际路线(雅思托福),适合吗?',
+    '适合。我们走的是双路线:国内中高考和国际雅思托福的能力一起打底。学习路线的塔尖就是雅思托福、四六级 —— 走到那里时,孩子已经能自己阅读、高效背单词,可以自学,也可以选择继续深造。',
   ],
-  [
-    '学不好能退吗?',
-    '按本校区退费规定执行:____(机构填写,报名前书面告知家长)。',
-  ],
-];
-
-// 广告法第 24 条翻译成咨询老师的日常用语
-const REDLINE: Array<[string, string]> = [
-  ['保证提 20 分 / 包过 / 考不上退钱', '不承诺分数;可以说「我们培养的是自主阅读、技巧背单词的能力」'],
-  ['上了我们的课能考上 ×× 中学', '不承诺升学;可以介绍学习路线图每个阶段学什么'],
-  ['全县最好 / 第一 / 最专业', '不用绝对化用语;说具体的:「2014 年起只做英语」'],
-  ['某某同学(真名)中考考了 98', '个案用 A/B 同学,说完必须加「每个孩子情况不同,因人而异」'],
-  ['发试卷照片 / 成绩单截图到朋友圈', '不发;可以发孩子学习时长、掌握词数这类学习过程数据(征得家长同意、隐去姓名)'],
 ];
 
 export default function FranchiseParentDoc() {
@@ -133,166 +104,179 @@ export default function FranchiseParentDoc() {
     <article className="text-[13.5px] leading-6 text-slate-800">
       {/* 封面头 */}
       <header className="border-b-4 border-[#FF6B35] pb-5 text-center">
-        <p className="text-[13px] font-semibold tracking-[0.3em] text-[#FF6B35]">飞鹰英语 · 合作机构招生工具</p>
-        <h1 className="mt-2 text-[30px] font-black leading-tight text-slate-900">家长招生成交手册</h1>
+        <p className="text-[13px] font-semibold tracking-[0.3em] text-[#FF6B35]">飞鹰英语 · 致家长</p>
+        <h1 className="mt-2 text-[30px] font-black leading-tight text-slate-900">家长手册</h1>
         <p className="mt-3 text-[17px] font-black text-slate-900">
-          家长买单,不是因为听到承诺,是因为<span className="text-[#FF6B35]">看见</span>
+          不替孩子学,教孩子<span className="text-[#FF6B35]">会学</span>
         </p>
         <p className="mt-1.5 text-[14px] text-slate-600">
-          给校区招生、咨询老师用:从家长第一次咨询到报名开学,每一步做什么、说什么、给家长看什么。
+          授人以鱼,不如授人以渔。我们想给孩子的,是离开老师也能自己往前走的英语学习能力。
         </p>
+        <StatRow
+          items={[
+            ['2014', '年起专注英语教学'],
+            ['7000+', '累计服务学员'],
+            ['90%+', '直营校区续费率'],
+            ['20 分钟', '每天学习时长'],
+          ]}
+        />
       </header>
 
-      {/* 一、家长在担心什么 */}
-      <Section no="一" title="先想清楚:家长在担心什么">
-        <p>
-          来咨询的家长,嘴上问的是「多少钱」「能提多少分」,心里担心的通常是这三件事。
-          咨询的全部工作,就是把这三件事<strong>一件件让家长亲眼看到解决办法</strong>:
-        </p>
+      {/* 一、痛点 */}
+      <Section no="一" title="您是不是也遇到过这些情况">
         <CardPairs
           items={[
-            { t: '「背了就忘,白花钱」', d: '以前报过班,单词抄了几十遍,一个月后全忘了。→ 让家长看到:我们教的是记单词的方法,系统按记忆曲线自动排复习。' },
-            { t: '「学得怎么样,我不知道」', d: '钱交了,孩子到底学没学、学会没有,只能等期末成绩。→ 让家长看到:家长端每天的学习记录、错词和周报。' },
-            { t: '「我没时间,也辅导不了」', d: '父母英语不好或工作忙,作业没人管。→ 让家长看到:背单词、听写、批改由系统完成,家长只需要督促。' },
-            { t: '「孩子不愿意去」', d: '报了班孩子不想去,最后不了了之。→ 让家长看到:体验课上孩子自己学会了一个方法,以及宠物、PK 这些孩子自己想玩的东西。' },
+            { t: '单词背了就忘', d: '抄了几十遍、默写也过了,一个月后又不认识了。' },
+            { t: '看到生词就不会读', d: '新单词必须等老师领读,离开课堂就不知道怎么学。' },
+            { t: '学得怎么样,不知道', d: '孩子每天到底学没学、学会没有,只能等考试成绩。' },
+            { t: '想管,但管不了', d: '工作忙,或者自己英语不好,孩子的作业没法辅导。' },
           ]}
         />
         <p className="mt-2.5">
-          <strong>一条原则:少讲,多给看。</strong>讲十分钟方法论,不如让孩子当场自己读出一个没学过的单词。
+          这些问题大多不是孩子不聪明、不努力,而是<strong>没有人教过他怎么学</strong>。
         </p>
       </Section>
 
-      {/* 二、成交五步 */}
-      <Section no="二" title="成交五步:每一步让家长看见一样东西">
-        <table className="mt-1 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
-          <thead>
-            <tr className="bg-[#FFF3EC]">
-              <th className={`${td} w-[11%] text-center font-bold`}>步骤</th>
-              <th className={`${td} w-[22%] text-center font-bold`}>让家长看见</th>
-              <th className={`${td} w-[36%] text-center font-bold`}>用什么</th>
-              <th className={`${td} text-center font-bold`}>这一步的目标</th>
-            </tr>
-          </thead>
-          <tbody>
-            {STEPS.map((s) => (
-              <tr key={s.n}>
-                <td className={`${td} text-center font-semibold`}>
-                  <span className="text-[#FF6B35]">{s.n}</span> {s.t}
-                </td>
-                <td className={td}>{s.see}</td>
-                <td className={`${td} text-slate-600`}>{s.tool}</td>
-                <td className={td}>{s.goal}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-2.5 font-bold text-slate-900">第 1 步 引流:先给有用的东西,再谈报名</p>
-        <ul className="mt-1 list-disc space-y-1 pl-5">
-          <li><strong>AI 英语测评</strong>:把测评链接发到家长群、朋友圈,孩子手机上做完即出报告,家长留手机号查看完整报告 —— 线索自动进后台「测评线索」,不用手抄。</li>
-          <li><strong>小学语法免费课</strong>:直营校区的做法是小学《语法》免费上,作为引流课,家长先看到效果再谈付费课程。</li>
-          <li><strong>老学员转介绍</strong>:最便宜、成交率最高的来源,做法见第七章。</li>
-        </ul>
-        <p className="mt-2.5 font-bold text-slate-900">第 2 步 测评:让家长认同「问题在方法」</p>
-        <p className="mt-1">
-          拿着报告跟家长一起看,指出<strong>具体</strong>的问题(比如:认识的单词会选、但拼不出来;看到生词完全不会读),
-          然后告诉家长:这不是孩子笨,是没人教过方法。
-        </p>
-        <Say>
-          「您看,孩子认识这些单词,但一拼就错 —— 说明他是靠死记字母顺序在背,背得慢、忘得快。
-          我们第一阶段先教的就是这个:看到单词会读、听到发音会写。」
-        </Say>
-        <p className="mt-2.5 font-bold text-slate-900">第 3 步 体验课:让孩子当场学会一个方法</p>
-        <p className="mt-1">
-          体验课不讲知识点,只做一件事:教一个方法,让孩子<strong>自己</strong>用它读出、记住几个没学过的单词,
-          再在学生端上练一轮,系统当场判对错。下课时家长问孩子「学会了吗」,孩子能自己演示给家长看,这节课就成功了。
-        </p>
-        <p className="mt-1 text-[12.5px] text-slate-600">
-          本校区体验课安排:时长 <Blank w="4rem" /> 分钟,授课老师 <Blank w="5rem" />,预约方式 <Blank w="10rem" />
-        </p>
-      </Section>
-
-      {/* 三、三分钟讲清飞鹰 */}
-      <Section no="三" title="面谈:三分钟讲清我们教什么">
-        <p>面谈时按这个顺序讲,每段一两句,讲完立刻进入第四章的演示:</p>
-        <Say>
-          <strong>① 学方法,不灌知识。</strong>「我们课堂上老师不教孩子任何一个单词和句子,只教方法、做引导。
-          孩子学会自己背单词、自己读,离开老师也能往前走。」
-        </Say>
-        <Say>
-          <strong>② 线上线下结合,每天都在练。</strong>「线下课老师讲方法、带阅读、答疑;回家每天用系统背 6 个词、读一篇短文,
-          不超过 20 分钟。系统按记忆曲线安排复习,听写、批改都是自动的。」
-        </Say>
-        <Say>
-          <strong>③ 我们能给孩子的三样能力。</strong>「自主阅读能力、有技巧地背单词,还有双路线 ——
-          国内中高考和国际雅思托福的能力一起打底。」
-        </Say>
-        <Say>
-          <strong>④ 您每天都看得见。</strong>「孩子今天学没学、学了多少、错在哪,您手机上随时能看,每周还有一份学情周报。」
-        </Say>
-        <p className="mt-3 font-bold text-slate-900">给家长看学习路线(语素金字塔)</p>
-        <p className="mt-1">
-          家长最想知道「学完能到什么程度」。用招商手册第四章的路线图,从第 1 阶段《单词记忆法》讲起,
-          指给家长看孩子现在该从哪一阶开始、每一阶学什么。<strong>只讲每个阶段学什么内容,不讲考多少分。</strong>
-        </p>
-        <p className="mt-3 font-bold text-slate-900">可以引用的真实数据</p>
-        <StatRow
-          items={[
-            ['2014', '年起只做英语'],
-            ['7000+', '累计服务学员'],
-            ['90%+', '直营校区续费率'],
-            ['7153', '个不同单词被学员掌握'],
-          ]}
-        />
-        <p className="mt-2">
-          往届个案(只能这样讲):A 同学零基础入学,学完五个阶段,目前可直接备考雅思;B 同学初二暑假插班,入学时学校英语 25 分,
-          暑假集中学习两个月,中考英语 98 分。<strong>讲完必须加一句:「每个孩子基础和投入不一样,结果因人而异。」</strong>
-        </p>
-        <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
-          数据来源:飞鹰直营校区,截至 2026 年 9 月;续费率以校区缴费数据为准。个案为往届学员个人情况,不构成效果承诺。
-        </p>
-      </Section>
-
-      {/* 四、现场演示 */}
-      <Section no="四" title="现场演示:把手机递给家长">
+      {/* 二、我们怎么教 */}
+      <Section no="二" title="我们怎么教:不灌知识,教方法">
         <p>
-          这一步最容易被省略,却最决定成交。准备一个<strong>演示用的学生账号</strong>(有一两周学习记录的),
-          把手机或平板直接递到家长手里,让家长自己点:
+          传统英语课是「老师讲、学生记」。飞鹰反过来做 ——
+          <strong>课堂上教的是方法,老师不教孩子任何一个单词和句子,只做引导</strong>。
+          这就是<strong>引导式学习:以结果为导向,反向推理</strong> —— 先让孩子看到要达成的结果,
+          再由他自己一步步推出怎么做到。
         </p>
+        <p className="mt-2.5 font-bold text-slate-900">孩子会学到四样方法</p>
         <CardPairs
           items={[
-            { t: '家长端 · 今日状态', d: '今天学没学、学了多少分钟、复习完没有 —— 「您下班路上打开看一眼就知道。」' },
-            { t: '家长端 · 学习日历', d: '每天有没有坚持,一格一格看得清 —— 「断了哪天,一眼就看出来。」' },
-            { t: '家长端 · 薄弱词 / 学情周报', d: '孩子错在哪些词、这周比上周进步在哪 —— 「不用等期末成绩单。」' },
-            { t: '学生端 · 背单词和听写', d: '拼错了系统指出错在哪个字母,听写自动批改 —— 「这些不用您管。」' },
-            { t: '学生端 · 宠物与 PK', d: '学得越多宠物长得越大,和同学 PK 背单词 —— 「孩子愿意自己打开,您不用天天催。」' },
-            { t: '老师端 · 作业完成情况', d: '(可选)给家长看老师这边谁没交、错在哪都看得到 —— 「老师会及时反馈给您。」' },
+            { t: '看词会读,听音会写', d: '从音标入手,弄懂字母和发音的对应规律。新词不用等老师领读,自己就能拼、能读。' },
+            { t: '会记,也会复习', d: '用词根、联想等记忆法把词记牢,再按记忆曲线安排复习,不再从头死背。' },
+            { t: '会找自己的错', d: '拼错了系统指出错在哪个字母,孩子学会看自己的错,而不是抄十遍正确答案。' },
+            { t: '会安排自己的学习', d: '每天有明确的任务清单,从「大人催着学」慢慢变成「自己知道要学什么」。' },
           ]}
         />
-        <p className="mt-2 text-[12.5px] text-slate-600">
-          演示前检查:演示账号有近期学习记录;网络通畅;不要用真实学员账号演示(涉及他人孩子信息)。
+        <p className="mt-2.5">
+          <strong>线上线下结合</strong>:线下课堂上,老师讲方法、带阅读、答疑;回家后,背单词、听写、批改交给系统,
+          孩子每天都在练,不只是上课那几个小时。
         </p>
       </Section>
 
-      {/* 五、顾虑 */}
-      <Section no="五" title="家长常见顾虑,这样回答">
-        <p className="text-[12.5px] text-slate-600">答法原则:先认同家长的担心,再给事实,最后落到「您可以看得见」。</p>
-        <div className="mt-2 space-y-2.5">
+      {/* 三、学完能获得什么 */}
+      <Section no="三" title="孩子能获得什么">
+        <p>我们不承诺分数。我们努力让孩子获得的,是这三样能力:</p>
+        <div className="mt-2 space-y-2">
+          {[
+            ['自主阅读能力', '能自己读懂英语绘本、短文和课文,阅读量一点点积累起来。'],
+            ['技巧背单词', '掌握记单词的方法,背得快、忘得慢,新词自己就能学。'],
+            ['双路线', '国内中高考 + 国际雅思托福能力打底,考试落地,夯实学术英语基础,完成能力过渡。'],
+          ].map(([t, d], i) => (
+            <div key={t} className="flex gap-2.5 rounded-lg border border-orange-200 bg-[#FFF8F0] p-2.5" style={{ breakInside: 'avoid' }}>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#FF6B35] text-[12px] font-bold text-white">{i + 1}</span>
+              <p>
+                <strong className="text-slate-900">{t}</strong>
+                <span className="text-slate-600">:{d}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* 四、学习路线 */}
+      <Section no="四" title="学习路线图:语素金字塔">
+        <p>
+          路线从最宽的塔基往上走:先用《单词记忆法》把背单词的方法练扎实,再通过三册语法学完初中语法主体,
+          之后初高衔接、高中高考。走到塔尖时,孩子已经能自己有效阅读、高效背单词。
+        </p>
+        <div className="mt-2.5 flex flex-col items-center gap-1" style={{ breakInside: 'avoid' }}>
+          {PYRAMID.map((row, i) => (
+            <div
+              key={row.stage}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[12px] ${row.top ? 'bg-[#FF6B35] text-white' : i < 3 ? 'bg-[#FFE3D3] text-slate-900' : 'bg-[#FFF3EC] text-slate-900'}`}
+              style={{ width: `${58 + i * 7}%` }}
+            >
+              <span className="shrink-0 font-black">{row.stage}</span>
+              <span className="min-w-0 flex-1 font-semibold">{row.name}</span>
+              {row.note && <span className={`text-right text-[11px] leading-4 ${row.top ? 'text-white/90' : 'text-[#c2410c]'}`}>{row.note}</span>}
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[12.5px] text-slate-600">
+          孩子从哪一阶段开始,由老师根据入学测评决定。按每天 6 词的节奏,约半年学完小学词汇,三年学完初高中词汇。
+        </p>
+      </Section>
+
+      {/* 五、看得见 */}
+      <Section no="五" title="孩子学得怎么样,您每天都看得见">
+        <p>报名后,您的手机可以绑定<strong>家长端</strong>,不用等期末成绩单:</p>
+        <CardPairs
+          items={[
+            { t: '今日状态', d: '今天学没学、学了多少分钟、该复习的复习完没有。' },
+            { t: '学习日历', d: '每天有没有坚持,一格一格看得清。' },
+            { t: '薄弱词', d: '孩子总错的是哪些词,一目了然。' },
+            { t: '学情周报', d: '这周学了多少、比上周进步在哪。' },
+          ]}
+        />
+        <p className="mt-2.5">
+          孩子这边,学得越多,系统里的宠物伙伴长得越大,还能和同学 PK 背单词 ——
+          <strong>很多孩子是自己想打开的</strong>,不用您天天催。
+        </p>
+      </Section>
+
+      {/* 六、数据与个案 */}
+      <Section no="六" title="真实数据">
+        <p>以下是飞鹰直营校区学员在系统上的学习数据,截至 2026 年 9 月:</p>
+        <StatRow
+          items={[
+            ['744', '名学员在系统上学习'],
+            ['86.4%', '拼写 / 选择 / 填空平均正确率'],
+            ['97', '名学员掌握 500 词以上'],
+            ['39', '名学员掌握 1000 词以上'],
+          ]}
+        />
+        <p className="mt-2 text-[11px] leading-4 text-slate-400">
+          「掌握」指同一单词在系统内多次答对、达到掌握标准,同一单词只计一次,不是练习次数。续费率以校区缴费数据为准。
+        </p>
+        <p className="mt-3 font-bold text-slate-900">往届学员个案</p>
+        <CardPairs
+          items={[
+            { t: 'A 同学 · 零基础入学', d: '从零基础开始,完整学完五个阶段课程,目前英语水平已可直接备考雅思。' },
+            { t: 'B 同学 · 初二暑假插班', d: '入学时学校英语成绩 25 分,暑假两个月集中学习,中考英语取得 98 分,现已出国深造。' },
+          ]}
+        />
+        <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
+          以上为往届学员个人情况,学习效果受学员基础、投入时间等多种因素影响,个体结果因人而异,
+          不构成对学习效果或考试成绩的承诺。
+        </p>
+      </Section>
+
+      {/* 七、家长的角色 */}
+      <Section no="七" title="需要您做的,只有一件事">
+        <p>
+          「喂到嘴里的饭,要孩子自己咽下去。」学校课本孩子完全可以自学,但课本单词和知识点不背熟,成绩就上不去。
+        </p>
+        <p className="mt-2 rounded-lg border-l-4 border-[#FF6B35] bg-[#FFF8F0] px-3 py-2 font-bold text-slate-900">
+          请您每天督促孩子完成老师布置的作业。老师会记录每天的完成情况,并及时反馈给您。
+        </p>
+        <p className="mt-2">英语您不需要会,也不需要辅导 —— 坚持,是孩子和您一起完成的事。</p>
+      </Section>
+
+      {/* 八、FAQ */}
+      <Section no="八" title="家长常问的问题">
+        <div className="space-y-2.5">
           {FAQ.map(([q, a]) => (
             <div key={q} style={{ breakInside: 'avoid' }}>
-              <p className="font-bold text-slate-900">家长:{q}</p>
+              <p className="font-bold text-slate-900">问:{q}</p>
               <p className="mt-0.5 text-slate-700">答:{a}</p>
             </div>
           ))}
         </div>
       </Section>
 
-      {/* 六、价格与报名 */}
-      <Section no="六" title="报价与报名当天">
-        <p className="font-bold text-slate-900">本校区收费(机构填写)</p>
+      {/* 九、课程与报名 */}
+      <Section no="九" title="课程与报名">
         <table className="mt-1 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
           <tbody>
             {[
-              ['课程 / 阶段', '课时', '学费', '其他费用'],
+              ['课程 / 阶段', '课时', '学费', '备注'],
               ['', '', '', ''],
               ['', '', '', ''],
               ['', '', '', ''],
@@ -305,83 +289,38 @@ export default function FranchiseParentDoc() {
             ))}
           </tbody>
         </table>
-        <p className="mt-1.5 text-[12px] text-slate-500">
-          参考:直营校区每阶段 120 课时,学费 ¥11,880(第 1 阶段另收资料费 ¥280),小学《语法》免费作引流课。
-        </p>
-        <p className="mt-2.5">
-          <strong>报价时把总价换算成「每天」</strong>,并说清楚这笔钱买到的是每天的练习和每天的反馈,而不只是上课那几个小时。
-        </p>
-        <p className="mt-2.5 font-bold text-slate-900">报名当天必做的三件事(别让家长「回去再说」)</p>
-        <ol className="mt-1 list-decimal space-y-1 pl-5">
-          <li><strong>当场开卡</strong>:给孩子开通学习卡,登录学生端。</li>
-          <li><strong>当场绑定家长端</strong>:孩子在学生端生成绑定码,家长手机注册家长端输入绑定码 —— 不当场绑,多数家长回去就不会绑了,后面的「看得见」全都落空。</li>
-          <li><strong>当场布置第一次任务</strong>:告诉家长今晚孩子要完成什么、大概几分钟,并约好第一周结束时老师反馈一次。</li>
-        </ol>
-      </Section>
-
-      {/* 七、续费和转介绍 */}
-      <Section no="七" title="报名只是开始:续费和转介绍从第一天做起">
-        <p>
-          直营校区续费率能到 90% 以上,靠的不是续费前的推销,而是<strong>家长每天都看得见</strong>。报名后头 30 天按这个节奏来:
-        </p>
-        <div className="mt-2 flex items-stretch gap-1.5 text-center text-[12px]" style={{ breakInside: 'avoid' }}>
+        <p className="mt-3 font-bold text-slate-900">报名流程</p>
+        <div className="mt-1.5 flex items-stretch gap-1.5 text-center text-[12px]" style={{ breakInside: 'avoid' }}>
           {[
-            ['第 1 天', '开卡 + 绑定家长端', '确认家长手机能看到孩子的学习记录'],
-            ['第 1 周', '老师第一次反馈', '告诉家长孩子学会了什么、哪里要督促'],
-            ['每周', '学情周报', '提醒家长看周报,有问题及时沟通'],
-            ['第 4 周', '阶段小结', '单元测试或家长会,给家长看一个月的变化'],
+            ['1', '免费测评', '了解孩子现在的英语水平'],
+            ['2', '体验课', '孩子亲身感受怎么学'],
+            ['3', '定学习方案', '老师建议从哪一阶段开始'],
+            ['4', '报名开学', '开通账号、绑定家长端'],
           ].map(([n, t, d]) => (
             <div key={n} className="flex-1 rounded-lg border border-orange-200 bg-[#FFF8F0] px-1.5 py-2">
-              <p className="text-[14px] font-black text-[#FF6B35]">{n}</p>
+              <p className="text-[16px] font-black text-[#FF6B35]">{n}</p>
               <p className="font-bold text-slate-900">{t}</p>
               <p className="mt-0.5 text-[11px] leading-4 text-slate-600">{d}</p>
             </div>
           ))}
         </div>
-        <p className="mt-2.5 font-bold text-slate-900">转介绍</p>
-        <p className="mt-1">
-          最好的时机是家长<strong>刚看到变化</strong>的时候(第一次阶段小结、孩子宠物进化、掌握词数过百)。
-          请家长把 AI 测评链接转给身边有同龄孩子的朋友,来测评的新家长自动进入本校区线索。
-          本校区转介绍政策:<Blank w="16rem" />
+        <p className="mt-2.5 text-[12.5px]">
+          体验课时间:<Blank w="12rem" />{'\u3000\u3000'}退费说明:<Blank w="14rem" />
         </p>
-      </Section>
-
-      {/* 八、红线 */}
-      <Section no="八" title="哪些话不能说">
-        <p>
-          教育培训广告不得承诺提分、升学、通过考试(《广告法》第二十四条)。违规宣传会被处罚,也会砸掉家长的信任 ——
-          承诺了做不到的分数,续费和口碑一起没了。
-        </p>
-        <table className="mt-2 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
-          <thead>
-            <tr className="bg-[#FFF3EC]">
-              <th className={`${td} w-[42%] text-center font-bold`}>不能说 / 不能做</th>
-              <th className={`${td} text-center font-bold`}>可以这样说</th>
-            </tr>
-          </thead>
-          <tbody>
-            {REDLINE.map(([no, yes]) => (
-              <tr key={no}>
-                <td className={`${td} text-slate-500`}>✗ {no}</td>
-                <td className={td}>✓ {yes}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
 
         <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]" style={{ breakInside: 'avoid' }}>
-          <p className="font-bold text-slate-900">本校区信息</p>
+          <p className="font-bold text-slate-900">欢迎来校区了解</p>
           <p className="mt-1">
-            校区名称:<Blank w="12rem" />{'\u3000\u3000'}咨询电话:<Blank w="9rem" />
+            校区:<Blank w="12rem" />{'\u3000\u3000'}咨询电话:<Blank w="9rem" />
           </p>
           <p className="mt-1">
-            校区地址:<Blank w="18rem" />{'\u3000\u3000'}微信:<Blank w="7rem" />
+            地址:<Blank w="18rem" />{'\u3000\u3000'}微信:<Blank w="7rem" />
           </p>
         </div>
       </Section>
 
       <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-[11px] text-slate-400">
-        昆明市五华区飞鹰教育培训学校 · 飞鹰AI英语 —— 仅供合作机构内部使用,所述数据与功能以系统实际情况为准
+        飞鹰英语 —— 本手册所述数据与功能以系统实际情况为准
       </footer>
     </article>
   );
