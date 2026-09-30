@@ -82,12 +82,25 @@ const TEACHERS: Array<[string, string]> = [
   ['吴姗珊', '新西兰 Unitec 理工学院 商务英语 · TESOL 国际英语教师资格'],
 ];
 
+// 学习路线图(语素金字塔)—— 来源《飞鹰学习理念 2026.8.8》。自上而下画,越往下越宽 = 根基。
+// ⚠️ 原件里「雅思 6.5–7.5」「高考 130–140」是分数承诺,广告法第 24 条不能用;
+//    KET/PET 写成「可开始备考」而不是「能考过」
+const PYRAMID: Array<{ stage: string; name: string; note?: string; top?: boolean }> = [
+  { stage: '塔尖', name: '考研 · 四六级 · 雅思托福', note: '可自学,或选择继续深造', top: true },
+  { stage: '第 6–7 阶段', name: '高中 · 高考' },
+  { stage: '第 5 阶段', name: '九年级下 · 初高衔接' },
+  { stage: '第 4 阶段', name: '语法第三册(八下、九上内容)', note: '本阶段中期可开始备考 PET' },
+  { stage: '第 3 阶段', name: '语法第二册(八上内容)' },
+  { stage: '第 2 阶段', name: '语法第一册(七年级内容)' },
+  { stage: '第 1 阶段', name: '《单词记忆法》四册 —— 以背单词为根基', note: '本阶段中期可开始备考 KET' },
+];
+
 // 传统做法 vs 飞鹰做法:每一行都要能在系统里指出对应功能,不写说不出落点的口号
 const COMPARE: Array<[string, string, string]> = [
   ['学习方式', '老师讲、学生抄、考前背,离开老师就不会学', '教音标、拼读和记忆方法,孩子见词会读、听音会写,回家能自己学'],
   ['背单词', '抄写 + 默写,老师逐本批改', '记忆曲线自动排复习,拼写 / 听写 / 纸笔听写系统批改'],
   ['课后练习', '靠家长盯,做没做老师不知道', '作业按天布置,谁没做、做错哪个词老师端实时可见'],
-  ['教研', '好老师一走,教法跟着走', '六阶段课程 + 单元测试卷 + 系统内容,新老师照着就能上课'],
+  ['教研', '好老师一走,教法跟着走', '七阶段课程 + 单元测试卷 + 系统内容,新老师照着就能上课'],
   ['学习动力', '靠老师一张嘴', '宠物养成、PK 对战、晋级赛、金币兑换,孩子自己想来'],
   ['家长沟通', '期末一张成绩单', '家长端随时看学了多少、错在哪,续费有据可依'],
 ];
@@ -123,8 +136,8 @@ export default function FranchiseRecruitDoc() {
           目前有 3 个校区,累计服务学员 2500 余人。
         </p>
         <p className="mt-2">
-          <strong>自有课程体系</strong>:从零基础到高级分六个阶段(1–3 阶段初级、4 阶段中级、5–6 阶段高级),
-          每阶段 126 课时,每次课 3 课时。每个单元都有配套测试卷,
+          <strong>自有课程体系</strong>:从《单词记忆法》打根基,到三册语法、初高衔接、高中高考,
+          共七个阶段(路线图见第四章),每阶段 120 课时。每个单元都有配套测试卷,
           覆盖<strong>翻译、听力、语法、作文</strong>四类,老师逐份批改留痕 ——
           教学效果不靠感觉,靠一张张卷子。
         </p>
@@ -193,6 +206,36 @@ export default function FranchiseRecruitDoc() {
             { t: '会安排自己的学习', d: '每天有明确的任务清单,做完、做对多少一目了然。从「老师催着学」慢慢变成「自己知道要学什么」。' },
           ]}
         />
+        <p className="mt-4 font-bold text-slate-900">学习路线图:语素金字塔</p>
+        <p className="mt-1">
+          <strong>授人以鱼,不如授人以渔。</strong>
+          路线从最宽的塔基往上走:先用《单词记忆法》把背单词的方法练扎实,再用飞鹰独创的「写作翻译式」教学,
+          通过三册语法把初中语法主体学完,之后初高衔接、高中高考。走到塔尖时,孩子已经能自己有效阅读、高效背单词,
+          考研、四六级、雅思托福可以自学,也可以选择继续深造。
+        </p>
+        <div className="mt-2.5 flex flex-col items-center gap-1" style={{ breakInside: 'avoid' }}>
+          {PYRAMID.map((row, i) => (
+            <div
+              key={row.stage}
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[12px] ${row.top ? 'bg-[#FF6B35] text-white' : i < 3 ? 'bg-[#FFE3D3] text-slate-900' : 'bg-[#FFF3EC] text-slate-900'}`}
+              style={{ width: `${58 + i * 7}%` }}
+            >
+              <span className="shrink-0 font-black">{row.stage}</span>
+              <span className="min-w-0 flex-1 font-semibold">{row.name}</span>
+              {row.note && <span className={`text-right text-[11px] leading-4 ${row.top ? 'text-white/90' : 'text-[#c2410c]'}`}>{row.note}</span>}
+            </div>
+          ))}
+        </div>
+        <CardPairs
+          items={[
+            { t: '每天的节奏', d: '每天用方法背 6 个新词,再读一篇绘本或短文,合计不超过 20 分钟。按这个规划,约半年学完小学词汇,三年学完初高中词汇 —— 靠的是每天不断,不是考前突击。' },
+            { t: '家长的角色', d: '学校课本孩子完全可以自学,但「喂到嘴里的饭要自己咽下去」:课本单词和知识点不背熟,成绩就上不去。老师每天记录作业完成情况并及时反馈,家长负责督促孩子每天完成。' },
+          ]}
+        />
+        <p className="mt-2 text-[13px] text-slate-700">
+          坚持 1 米的宽度、10 公里的深度 —— 我们不追求什么都教一点,而是把一条路走深。
+        </p>
+
         <p className="mt-3 font-bold text-slate-900">同一件事,两种做法</p>
         <table className="mt-1 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
           <thead>
@@ -279,6 +322,10 @@ export default function FranchiseRecruitDoc() {
           <strong>终端收费由你自己定</strong>,可以打包进课程,也可以单独收智能学习服务费 ——
           按每人每本 200–300 元测算,100 名学生学一本书即对应 2–3 万元流水,高于首期投入。
         </p>
+        <p className="mt-2">
+          <strong>直营校区定价参考</strong>:每阶段 120 课时,学费 ¥11,880(第 1 阶段另收资料费 ¥280);
+          初中学员按学情调整教学方案、按课时收费;小学《语法》免费上,作为引流课。你可以参照这个结构定自己的价。
+        </p>
         <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
           测算仅供参考,不构成收益承诺。完整费用明细(飞鹰专属内容、配套教材、带教培训)见《功能详解与提分方案》第八章及合作协议。
         </p>
@@ -338,6 +385,10 @@ export default function FranchiseRecruitDoc() {
             [
               '能保证学生提分吗?',
               '我们不承诺分数,也不建议你对家长承诺分数。我们能保证的是:孩子每天学了什么、掌握了多少、错在哪,你和家长都看得见。',
+            ],
+            [
+              '家长问「报了飞鹰,成绩马上就能上去吗?」怎么答?',
+              '照实说:不会马上。飞鹰培养的是孩子的英语学习能力,这是一辈子的技能;学完一阶课程,孩子能自己读学校的单词和课文,但只会读、不背熟课本单词和知识点,在校成绩一样考不好。所以需要家长每天督促孩子完成老师建议的作业,老师会记录并反馈每天的完成情况。',
             ],
             [
               '一年后不想续了怎么办?',
