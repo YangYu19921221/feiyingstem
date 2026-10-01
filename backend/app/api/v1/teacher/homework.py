@@ -42,6 +42,9 @@ class CreateHomeworkRequest(BaseModel):
     available_date: Optional[str] = None
     # 多单元/多组 + 开始日期时:每份作业比前一份顺延一天(一次布置未来一周的任务)
     daily_sequence: bool = False
+    # 上课地点(2026-09-30): 'classroom'=电教室(默认,照常发金币)/ 'home'=家里(不发金币)。
+    # 家里作业照常显示、照常要做、照常解锁单元,只是不进金币计算
+    location_type: str = "classroom"
 
 
 class HomeworkResponse(BaseModel):
@@ -57,6 +60,8 @@ class HomeworkResponse(BaseModel):
     max_attempts: int
     deadline: Optional[str]
     available_from: Optional[str]
+    # 上课地点:'classroom'=电教室(发金币)/ 'home'=家里(不发金币)
+    location_type: str = "classroom"
     created_at: str
     total_assigned: int
     completed_count: int
@@ -239,6 +244,8 @@ async def create_homework(
             deadline=deadline,
             group_index=gi,
             available_from=open_times[idx],
+            # 家里作业不发金币(白名单归一:认不出的一律按电教室=照常发币,不静默吞成家里)
+            location_type=("home" if request.location_type == "home" else "classroom"),
         )
         db.add(homework)
         await db.flush()  # 获取homework.id
@@ -261,9 +268,10 @@ async def create_homework(
     stu_names = [s.full_name or s.username for s in students]
     unit_desc = "、".join(dict.fromkeys(f"{unit_map[u][1].name} {unit_map[u][0].name}" for u, _ in targets))
     open_desc = f",{available_date} 开放" if any(open_times) else ""
+    loc_desc = "(家里·不发金币)" if request.location_type == "home" else ""
     audit_log.record(
         db, http, current_user, "homework.create",
-        f"布置作业「{request.title}」{len(homework_ids)} 份:{unit_desc}{open_desc},"
+        f"布置作业「{request.title}」{len(homework_ids)} 份{loc_desc}:{unit_desc}{open_desc},"
         f"给 {len(stu_names)} 名学生",
         target_type="homework", target_id=homework_ids[0],
         detail={
@@ -351,6 +359,7 @@ async def get_teacher_homework(
             # 原样给前端 new Date() 会显示成前一天
             available_from=(homework.available_from + timedelta(hours=8)).date().isoformat()
             if homework.available_from else None,
+            location_type=homework.location_type or "classroom",
             created_at=homework.created_at.isoformat(),
             total_assigned=stats.total or 0,
             completed_count=stats.completed or 0,

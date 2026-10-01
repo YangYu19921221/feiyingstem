@@ -156,6 +156,13 @@ class HomeworkAssignment(Base):
     max_attempts = Column(Integer, default=3)  # 最多尝试次数
     deadline = Column(DateTime, nullable=True)
     group_index = Column(Integer, nullable=True)  # null=整单元, 有值=指定分组
+    # 上课地点(2026-09-30): 'classroom'=电教室(默认,照常发金币)/ 'home'=家里(不发金币)。
+    # 用户诉求:「在电教室背才有币,在家里背没有」——不做运行时定位(IP/GPS 都能伪造),
+    # 改由老师布置时自己标。金币闸门只收在两处分母查询(coin_service 的 task_progress_on_day
+    # 与 settle_day 内联那份),把 'home' 排除在外即可;作业可见/解锁单元/完成追踪全走
+    # scope_service,一律不动 —— 家里任务照常显示、照常要做,只是不进金币计算。
+    # 存量行经 server_default 落 'classroom'(等于旧行为:都发币),零影响。
+    location_type = Column(String(20), default="classroom", server_default="classroom", nullable=False)
     # 定时发布:到点(北京日期0点对应的UTC)前学生端不可见/不可做/不解锁单元;NULL=立即开放
     available_from = Column(DateTime, nullable=True)
     # 关闭状态:发错/提前结束时关闭——学生端隐藏、不能再交卷,保留全部做题记录;可重新开放

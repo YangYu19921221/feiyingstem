@@ -97,6 +97,10 @@ export default function CoinRulesModal({ open, onClose, audience, autoCoin, rule
                 但这枚金币不发(补做的那天也不会发,发币只看{isStudent ? '你' : '学生'}当天的任务)。
               </p>
               <p>· 当天一份任务都没布置,就没有这枚金币(不是漏发)。</p>
+              <p>
+                · 老师标为<b>🏠 在家做</b>的作业<b>不发金币</b>({you}照常能看、要做、成绩照常记录),
+                只有在<b>电教室</b>完成的任务才算金币。当天只有家里作业时,这枚金币不发。
+              </p>
             </Row>
 
             <Row icon="👑" title={`当上单词王 → 额外 +${n.word_king_reward} 枚`}>

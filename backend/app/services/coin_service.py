@@ -512,6 +512,12 @@ async def task_progress_on_day(
     老师关闭(⏸)或删除(取消)的任务不进分母 —— 学生做不了的任务不能挡住金币,
     这正是「老师取消了部分任务,剩下的做完也给币」的实现。
 
+    **家里作业(location_type='home')整个排除在分母之外**(2026-09-30):
+    用户要「电教室背才有币、家里背没有」。排除而非"计入但不触发",是唯一不会互相
+    毒化的语义 —— 2 份电教室 + 1 份家里,做完那 2 份就发币,家里那份与金币无关。
+    于是只有家里任务的一天分母为 0 → 不发任务币、也不产生单词王(词王要先满足任务),
+    正是「家里就不给币」。这个口径必须与 settle_day 内联那份完全一致(见那里的注释)。
+
     「已完成数」只数**当天完成**的(completed_at 落当天,上界放宽 LATE_SUBMIT_GRACE),
     不是所有 status='completed'。差别只在查历史某天时显现:今天补做昨天的任务,
     昨天的进度不会因此变成"全完成" —— 否则「🔄补算昨天」会追认迟做的任务发币,
@@ -538,6 +544,7 @@ async def task_progress_on_day(
             HomeworkStudentAssignment.assigned_at >= day_start,
             HomeworkStudentAssignment.assigned_at < day_end,
             HomeworkAssignment.is_closed.is_(False),
+            HomeworkAssignment.location_type != "home",  # 家里作业不进金币分母
         ))
         .group_by(HomeworkStudentAssignment.student_id)
     )).all()
@@ -591,15 +598,24 @@ async def try_award_task_coin(
 
 
 async def task_coin_hint(
-    db: AsyncSession, student_id: int, assignment_day: date
+    db: AsyncSession, student_id: int, assignment_day: date,
+    *, location_type: Optional[str] = None,
 ) -> Optional[dict]:
     """交卷达标却没拿到任务币时,给前端一句「为什么」(减少学生/老师来问规则)。
 
     assignment_day = 这份作业的布置日(北京日,调用方按 assigned_at+8h 算好传入)。
+    location_type = 这份作业的上课地点('home'=家里,不发币;其余=电教室,照常)。
     返回 {code, message} 或 None(不需要提示,如已发币/异常)。
     只做只读查询;任何失败都吞掉返回 None —— 提示是附赠品,绝不能影响交卷。
     """
     try:
+        # 家里作业不发金币,最先判 —— 它被排除在金币分母外,后面「还差 N 份」的口径
+        # 对它没意义(它压根不在分母里)。直接说清楚,免得孩子以为是漏发。
+        if location_type == "home":
+            return {
+                "code": "home",
+                "message": "这份是在家做的作业,成绩照常记录;金币要在电教室完成才有",
+            }
         today = local_today()
         if assignment_day != today:
             return {
@@ -760,6 +776,8 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
     # 「done」的判定与 task_progress_on_day 必须完全一致(那里有完整说明):
     # 只数**当天完成**的,不是所有 status='completed'。否则今天补做昨天的任务,
     # 管理员一点「🔄补算昨天」就会追认发币,绕过「只发当天」的规则。
+    # 分母同样排除家里作业(location_type='home',见 task_progress_on_day)——
+    # 漏了这条,夜间结算/「补算昨天」会把只布置了家里作业的天也发币,前功尽弃。
     # 这里没直接复用那个 helper,是因为要在同一查询里带出 org_id 判 manual 机构;
     # **改判定条件时两处必须同步改**。
     done_expr = func.sum(case((and_(
@@ -781,6 +799,7 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
             HomeworkStudentAssignment.assigned_at >= day_start,
             HomeworkStudentAssignment.assigned_at < day_end,
             HomeworkAssignment.is_closed.is_(False),
+            HomeworkAssignment.location_type != "home",  # 家里作业不进金币分母
         ))
         .group_by(HomeworkStudentAssignment.student_id, User.org_id)
     )).all()

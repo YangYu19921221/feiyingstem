@@ -27,6 +27,9 @@ export interface CreateHomeworkRequest {
   available_date?: string;
   // 多单元/多组 + 开始日期时:每份作业比前一份顺延一天(一次布置未来一周)
   daily_sequence?: boolean;
+  // 上课地点:'classroom'=电教室(默认,照常发金币)/ 'home'=家里(不发金币)。
+  // 家里作业照常显示、照常要做,只是不进金币结算
+  location_type?: 'classroom' | 'home';
 }
 
 export interface HomeworkResponse {
@@ -49,6 +52,8 @@ export interface HomeworkResponse {
   in_progress_count: number;
   pending_count: number;
   is_closed?: boolean;
+  /** 上课地点:'home'=家里(不发金币)/ 其余=电教室(照常) */
+  location_type?: string;
   /** 布置人(助教账号上线后才有;老作业为空) */
   assigned_by?: number | null;
   assigned_by_name?: string | null;
@@ -97,6 +102,8 @@ export interface StudentHomeworkResponse {
   available_from?: string | null;
   /** 按组布置的作业:只练这一组(1 基);整单元为 null */
   group_index?: number | null;
+  /** 上课地点:'home'=家里(不发金币)/ 其余=电教室(照常) */
+  location_type?: string;
 }
 
 export interface SubmitHomeworkAttemptRequest {

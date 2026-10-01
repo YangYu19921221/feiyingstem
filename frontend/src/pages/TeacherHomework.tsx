@@ -107,6 +107,7 @@ const TeacherHomework: React.FC = () => {
     // 曾因老师不选日期、次日才做而漏发(2026-08-23),现强制必选、默认今天。
     available_date: localDateStr(new Date()),
     daily_sequence: false,
+    location_type: 'classroom',
   });
   // ScopeSelector state: allowBook=false means book_id is used for cascading but not submitted.
   // Only unit_id and group_index are included in the homework create payload.
@@ -322,6 +323,7 @@ const TeacherHomework: React.FC = () => {
       deadline: '',
       available_date: localDateStr(new Date()),
       daily_sequence: false,
+      location_type: 'classroom',
     });
     setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
     setStudentQuery('');
@@ -513,6 +515,11 @@ const TeacherHomework: React.FC = () => {
                               {homework.is_closed && (
                                 <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs font-normal">
                                   ⏸ 已关闭
+                                </span>
+                              )}
+                              {homework.location_type === 'home' && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-normal whitespace-nowrap">
+                                  🏠 家里·不发金币
                                 </span>
                               )}
                             </div>
@@ -863,6 +870,39 @@ const TeacherHomework: React.FC = () => {
                         自动在开放当天 24:00 截止,过期学生不能再做
                       </div>
                     </div>
+                  </div>
+
+                  {/* 上课地点:电教室发金币 / 家里不发金币 */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      📍 在哪里做 *
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {([
+                        { key: 'classroom', icon: '🏫', title: '电教室', desc: '完成得金币' },
+                        { key: 'home', icon: '🏠', title: '家里', desc: '不发金币' },
+                      ] as const).map((opt) => (
+                        <motion.div
+                          key={opt.key}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setFormData({ ...formData, location_type: opt.key })}
+                          className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                            (formData.location_type ?? 'classroom') === opt.key
+                              ? 'border-orange-500 bg-orange-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="font-semibold text-gray-800">{opt.icon} {opt.title}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{opt.desc}</div>
+                        </motion.div>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-gray-500 leading-relaxed">
+                      {(formData.location_type ?? 'classroom') === 'home'
+                        ? '🏠 家里作业:学生照常能看到、要做、单元照常解锁,只是做完不发金币(成绩仍记录)。'
+                        : '🏫 电教室作业:当天全部完成照常发金币,规则不变。'}
+                    </p>
                   </div>
 
                   {/* 多单元/多组 + 开始日期:按天依次排期,一次布置未来一周 */}

@@ -44,6 +44,9 @@ class StudentHomeworkResponse(BaseModel):
     is_locked: bool = False
     available_from: Optional[str] = None
     group_index: Optional[int] = None  # 按组布置的作业:只练这一组(1 基)
+    # 上课地点:'home'=家里(不发金币)/ 其余=电教室(照常)。学生端提前标注,
+    # 免得做完才发现没币。金币口径见 coin_service
+    location_type: str = "classroom"
 
     class Config:
         from_attributes = True
@@ -187,6 +190,7 @@ async def get_my_homework(
             teacher_name=teacher_name,
             is_locked=is_locked,
             group_index=homework.group_index,
+            location_type=homework.location_type or "classroom",
             # 开放时刻转成北京墙上时间的 naive 字符串,与 deadline 口径一致
             # (前端 new Date 按本地解析),否则会差 8 小时显示成前一天
             available_from=(homework.available_from + timedelta(hours=8)).isoformat()
@@ -342,6 +346,9 @@ async def submit_homework_attempt(
     if assignment.assigned_at:
         primary_day = (assignment.assigned_at + timedelta(hours=8)).date()
         affected_days.add(primary_day)
+    # 上课地点:家里作业不发金币(见 coin_service)。趁 commit 前抓成局部变量,
+    # 与下面 resp_* 同理 —— 发币若 rollback 会让 homework 过期
+    primary_location = homework.location_type
 
     # 增加尝试次数
     assignment.attempts_count += 1
@@ -438,7 +445,8 @@ async def submit_homework_attempt(
         # 免得每个"完成了没加币"都变成一次找老师问规则。只读查询,失败返回 None。
         if not coin_awarded:
             coin_hint = await task_coin_hint(
-                db, current_user.id, primary_day or local_today())
+                db, current_user.id, primary_day or local_today(),
+                location_type=primary_location)
 
     return {
         "message": "提交成功",

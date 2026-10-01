@@ -445,6 +445,11 @@ const StudentHomework = () => {
                                 已达标
                               </span>
                             )}
+                            {homework.location_type === 'home' && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700 ring-1 ring-purple-200">
+                                🏠 在家做·不发金币
+                              </span>
+                            )}
                           </div>
                           {homework.description && (
                             <p className="mb-3 max-w-2xl text-sm leading-6 text-ink-soft">{homework.description}</p>
