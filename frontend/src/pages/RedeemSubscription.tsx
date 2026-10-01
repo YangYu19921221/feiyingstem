@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { gsap } from 'gsap';
 import { useGSAP } from '@gsap/react';
@@ -13,6 +13,11 @@ gsap.registerPlugin(useGSAP);
 const RedeemSubscription = () => {
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
+  // 从音标页 🔒 弹窗进来带 ?for=phonetic:页面文案换成「开通音标视频」。
+  // 只影响兑换前的文案;兑换后去哪儿一律以后端返回的 scope 为准(码是哪种只有后端知道)
+  const [searchParams] = useSearchParams();
+  const forPhonetic = searchParams.get('for') === 'phonetic';
+  const [successScope, setSuccessScope] = useState<'phonetic' | 'book' | null>(null);
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,6 +50,14 @@ const RedeemSubscription = () => {
       const res: any = await redeemCode(code);
       if (res.success) {
         setSuccess(res.message);
+        // 音标码(scope=phonetic)开的是音标视频库,不进书架 —— 跳回音标页,不然学生
+        // 被送回首页还以为没开成
+        if (res.scope === 'phonetic') {
+          setSuccessScope('phonetic');
+          setTimeout(() => navigate('/student/phonetics'), 2000);
+          return;
+        }
+        setSuccessScope('book');
         setGotBooks(res.books || []);
         setSkippedNotes(res.skipped || []);
         // 多书卡要多留一会儿让学生看清开了哪些书
@@ -86,10 +99,10 @@ const RedeemSubscription = () => {
   return (
     <div ref={pageRef} className="min-h-screen bg-paper page-warm-glow">
       <StudentPageHeader
-        title="兑换教材"
-        subtitle="输入兑换码，把新教材加入书架"
+        title={forPhonetic ? '开通音标视频' : '兑换教材'}
+        subtitle={forPhonetic ? '输入老师给的音标兑换码，开通全部音标视频' : '输入兑换码，把新教材加入书架'}
         icon={KeyRound}
-        backTo="/student/dashboard"
+        backTo={forPhonetic ? '/student/phonetics' : '/student/dashboard'}
         maxWidth="5xl"
       />
 
@@ -139,7 +152,7 @@ const RedeemSubscription = () => {
             className="card-soft order-1 rounded-2xl p-5 sm:p-7 lg:order-2"
           >
             <div className="mb-6">
-              <p className="text-xs font-semibold text-accent-warm">教材兑换</p>
+              <p className="text-xs font-semibold text-accent-warm">{forPhonetic ? '音标视频开通' : '教材兑换'}</p>
               <h2 className="mt-1 font-display text-xl font-bold text-ink">输入 16 位兑换码</h2>
               <p className="mt-1 text-sm text-ink-soft">系统会自动补上分隔符，直接粘贴也可以。</p>
             </div>
@@ -162,7 +175,7 @@ const RedeemSubscription = () => {
                   role="status"
                   className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm leading-5 text-green-700"
                 >
-                  <p>{success}，正在返回书架…</p>
+                  <p>{success}，{successScope === 'phonetic' ? '正在打开音标视频…' : '正在返回书架…'}</p>
                   {/* 一码多书:把拿到的书列出来,学生能当场核对开了几本、是哪几本 */}
                   {gotBooks.length > 1 && (
                     <ul className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs text-green-800/80 sm:grid-cols-2">
@@ -207,16 +220,16 @@ const RedeemSubscription = () => {
                 disabled={loading || Boolean(success) || code.length !== 19}
                 className="btn-glow w-full rounded-xl py-3.5 font-semibold text-white disabled:cursor-not-allowed"
               >
-                {loading ? '正在兑换…' : success ? '兑换成功' : '兑换并加入书架'}
+                {loading ? '正在兑换…' : success ? '兑换成功' : forPhonetic ? '兑换并开通' : '兑换并加入书架'}
               </button>
             </form>
 
             <button
               type="button"
-              onClick={() => navigate('/student/dashboard')}
+              onClick={() => navigate(forPhonetic ? '/student/phonetics' : '/student/dashboard')}
               className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl text-sm font-medium text-accent-warm transition hover:bg-orange-50"
             >
-              返回我的书架
+              {forPhonetic ? '返回音标视频' : '返回我的书架'}
             </button>
           </section>
         </div>

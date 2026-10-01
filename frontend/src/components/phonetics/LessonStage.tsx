@@ -17,7 +17,7 @@
  * 两块都是同一个 relative 舞台下的 absolute 子节点,DOM 顺序永远不变;
  * 写成「按布局分支各放一个 <video>」,切布局那一下就重挂、播放进度归零。
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Expand, GripHorizontal, LayoutTemplate, LoaderCircle,
   RotateCw, Shrink, X, ZoomIn, ZoomOut,
@@ -56,6 +56,22 @@ interface Props {
  */
 const NO_COPY: React.CSSProperties = { WebkitTouchCallout: 'none', userSelect: 'none' };
 const block = (e: React.SyntheticEvent) => e.preventDefault();
+
+/**
+ * 水印身份串:姓名 · ID。与后端讲义水印同口径(_viewer_label = "{name} · ID{id}")。
+ * 取自 localStorage 登录用户(与 StudentIdentityBadge 同源)。
+ * ⚠️ 这是**前端**水印,防不住改 DOM / 录屏裁掉 —— 它只让顺手录屏转发的人留下名字,
+ * 真溯源仍靠服务端访问日志(每次换票记一条 IP+设备+时间)。所以别把它当硬防线。
+ */
+function readViewerLabel(): string {
+  try {
+    const me = JSON.parse(localStorage.getItem('user') || '{}');
+    const name = (me.full_name || me.username || '').trim();
+    return me.id ? `${name} · ID${me.id}` : name;
+  } catch {
+    return '';
+  }
+}
 
 const BTN = 'rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20 disabled:opacity-30';
 const BTN_SM = 'rounded-md p-1 text-slate-200 hover:bg-white/15';
@@ -119,6 +135,8 @@ export default function LessonStage({
   const [fs, setFs] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const pages = useMaterialPages(viewing);
+  // 水印身份:登录期间不变,算一次即可
+  const viewerLabel = useMemo(() => readViewerLabel(), []);
 
   // ---- 舞台尺寸:浮窗的一切几何都相对它算 ----
   const [stage, setStage] = useState<Size>({ w: 0, h: 0 });
@@ -312,10 +330,19 @@ export default function LessonStage({
 
   // ---- 全屏:拿走浏览器地址栏那截。iOS Safari 不支持非 video 元素全屏,按钮直接不给 ----
   useEffect(() => {
-    const on = () => setFs(!!document.fullscreenElement);
+    const on = () => {
+      setFs(!!document.fullscreenElement);
+      // 原生视频全屏(双击画面 / 控件栏按钮)只画 <video> 本身,叠在上面的姓名水印就没了 ——
+      // 录屏最可能用的恰是这个模式。截下来改成**整块面板**全屏(水印在面板里)
+      if (document.fullscreenElement && document.fullscreenElement === videoRef.current) {
+        void document.exitFullscreen()
+          .then(() => panelRef.current?.requestFullscreen?.())
+          .catch(() => { /* 浏览器不给二次请求就退回窗口模式,至少水印还在 */ });
+      }
+    };
     document.addEventListener('fullscreenchange', on);
     return () => document.removeEventListener('fullscreenchange', on);
-  }, []);
+  }, [panelRef]);
   const canFs = typeof document !== 'undefined' && !!document.fullscreenEnabled;
   const toggleFs = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -414,10 +441,10 @@ export default function LessonStage({
         ? `min-h-0 flex-1 ${floating ? 'relative' : 'flex flex-col'}`
         : 'flex flex-col'}
     >
-      {/* ===== 视频块。⚠️ 永远是舞台的第一个孩子 ===== */}
+      {/* ===== 视频块。⚠️ 永远是舞台的第一个孩子;relative 给水印层做定位锚 ===== */}
       <div
         className={[
-          'bg-black',
+          'relative bg-black',
           viewing ? (floating ? paneCls : 'flex w-full shrink-0 flex-col') : 'flex w-full flex-col',
         ].join(' ')}
         style={boxStyle(layout?.video)}
@@ -429,7 +456,10 @@ export default function LessonStage({
           src={src || undefined}
           controls
           autoPlay
-          controlsList="nodownload noremoteplayback"
+          // playsInline: iPhone 不加就自动进系统全屏播放器,水印层根本画不上去。
+          // nofullscreen: 关掉原生全屏按钮(Chromium),全屏走下面的面板级按钮(带水印)
+          playsInline
+          controlsList="nodownload noremoteplayback nofullscreen"
           disablePictureInPicture
           onContextMenu={block}
           onPlay={() => { wasPlaying.current = true; }}
@@ -442,6 +472,30 @@ export default function LessonStage({
         >
           你的浏览器不支持视频播放,请换用 Chrome 或 Safari
         </video>
+        {/* 水印:盖在画面上、不吃点击(pointer-events-none),录屏/转发留下名字。
+            偏右上、半透明,不压播放控件(控件在底部);mix-blend 让深浅底都看得见 */}
+        {viewerLabel && (
+          <span
+            className="pointer-events-none absolute right-3 top-2 z-10 select-none text-[11px]
+                       font-medium tracking-wide text-white/45 mix-blend-difference"
+            aria-hidden="true"
+          >
+            {viewerLabel}
+          </span>
+        )}
+        {/* 单看视频时也要能全屏:原生全屏按钮已关(会丢水印),这里补一个面板级的。
+            看讲义时讲义顶栏已有全屏按钮,不重复给 */}
+        {!viewing && canFs && (
+          <button
+            type="button"
+            onClick={toggleFs}
+            aria-label={fs ? '退出全屏' : '全屏'}
+            title={fs ? '退出全屏' : '全屏'}
+            className={`absolute left-2 top-2 z-10 bg-black/40 ${BTN_SM}`}
+          >
+            {fs ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
+          </button>
+        )}
         {srcError && <p className="px-3 py-2 text-center text-xs text-rose-300">{srcError}</p>}
         {floating && grips('video')}
       </div>

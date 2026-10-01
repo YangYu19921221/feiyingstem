@@ -36,6 +36,8 @@ ACTION_LABELS: dict[str, str] = {
     "assistant.create": "添加助教",
     "assistant.update": "修改助教",
     "assistant.delete": "删除助教",
+    # 注:音标观看**不进** operation_logs(学生不记,见 CLAUDE.md),单独落
+    # phonetic_access_logs(见 models/phonetic.PhoneticAccessLog),故这里没有 phonetic.* 项
 }
 
 # 筛选用的大类(按 action 前缀)

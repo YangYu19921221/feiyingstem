@@ -56,6 +56,12 @@ export interface PhoneticVideo {
 
   /** 串流端点的相对路径。前端不直接用它:播放要先 fetchVideoTicket 换票,再用票据里的 url */
   play_url: string;
+  /**
+   * 库级锁(2026-10-01):机构把音标库设成「需兑换码」且本学生无生效授权时为 true。
+   * **要么全锁要么全开** —— 同一响应里所有视频的 locked 一致。
+   * 老师/管理员恒 false。前端据此画 🔒 并拦截打开动作。
+   */
+  locked?: boolean;
   // 教师端列表额外带的字段
   is_active?: boolean;
   created_at?: string | null;

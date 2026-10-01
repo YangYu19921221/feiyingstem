@@ -126,15 +126,28 @@ _org_cache: dict = {}
 _ORG_CACHE_TTL = 300
 
 
-async def _org_state(db, org_id: int) -> tuple[bool, bool]:
-    """(is_active, all_books) 一次查询同缓存:两个判定几乎总是同请求内先后要用"""
+async def _org_state(db, org_id: int) -> tuple[bool, bool, str]:
+    """(is_active, all_books, phonetic_access_mode) 一次查询同缓存:
+    这几个判定几乎总是同请求内先后要用。phonetic_access_mode: open/code。
+    ⚠️ 老库若尚未迁出 phonetic_access_mode 列,SELECT 会抛 → 整句失败。
+    用 COALESCE + 单列查询兜底不划算,改为:列缺失时按 'open' 处理(= 旧行为,不拦人)。
+    """
     now = time.time()
     hit = _org_cache.get(org_id)
     if hit and hit[0] > now:
-        return hit[1], hit[2]
-    row = (await db.execute(
-        text("SELECT status, expires_at, access_mode FROM organizations WHERE id = :i"), {"i": org_id}
-    )).first()
+        return hit[1], hit[2], hit[3]
+    try:
+        row = (await db.execute(
+            text("SELECT status, expires_at, access_mode, phonetic_access_mode "
+                 "FROM organizations WHERE id = :i"), {"i": org_id}
+        )).first()
+    except Exception:
+        # phonetic_access_mode 列还没迁出来的老库:退回只查已有列,音标默认开放
+        row = (await db.execute(
+            text("SELECT status, expires_at, access_mode FROM organizations WHERE id = :i"),
+            {"i": org_id}
+        )).first()
+        row = tuple(row) + ("open",) if row else None
     active = bool(row and row[0] == "active")
     if active and row[1]:
         # SQLite 存 ISO 字符串;expires_at 语义为"服务有效期最后一天",过了当天才停
@@ -147,8 +160,9 @@ async def _org_state(db, org_id: int) -> tuple[bool, bool]:
         except (ValueError, TypeError):
             pass  # 脏数据不拦服务
     all_books = bool(row and row[2] == "all_books")
-    _org_cache[org_id] = (now + _ORG_CACHE_TTL, active, all_books)
-    return active, all_books
+    phonetic_mode = (row[3] if row and len(row) > 3 and row[3] else "open")
+    _org_cache[org_id] = (now + _ORG_CACHE_TTL, active, all_books, phonetic_mode)
+    return active, all_books, phonetic_mode
 
 
 async def check_org_active(db, org_id: int) -> bool:
@@ -157,15 +171,26 @@ async def check_org_active(db, org_id: int) -> bool:
     到期自动停: expires_at < 今天即视为停用——不需要定时任务,到期后该机构
     第一个请求进来就生效;续费(admin 改 expires_at)+缓存失效后立即恢复。
     """
-    active, _ = await _org_state(db, org_id)
+    active, _, _ = await _org_state(db, org_id)
     return active
 
 
 async def check_org_all_books(db, org_id: int) -> bool:
     """机构是否为全托模式(时间+人数付费,书本全开放)。已停用/过期的机构不算——
     全托的'不限书本'是付费权益,服务停了权益跟着停,学生自然回到无分配可学状态。"""
-    active, all_books = await _org_state(db, org_id)
+    active, all_books, _ = await _org_state(db, org_id)
     return active and all_books
+
+
+async def phonetic_access_mode(db, org_id: int) -> str:
+    """机构的音标视频访问模式: 'open'(默认,免费开放) | 'code'(需音标专用兑换码)。
+
+    带进程内缓存(与 check_org_active 同一份)。闸门调用方见 api/v1/phonetics.py:
+    只有 mode=='code' 且学生无生效授权时才拦,老师/管理员永不受限。
+    平台 admin 上下文(org_id 为 None)不会走到这里 —— 调用方自行放行。
+    """
+    _, _, mode = await _org_state(db, org_id)
+    return mode or "open"
 
 
 def invalidate_org_cache(org_id: int | None = None):

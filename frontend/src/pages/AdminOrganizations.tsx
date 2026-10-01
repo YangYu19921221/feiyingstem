@@ -616,6 +616,22 @@ export default function AdminOrganizations() {
     }
   };
 
+  /** 音标视频库开通方式切换: open(本机构学生都能看) ⇄ code(要单独的音标兑换码) */
+  const togglePhoneticAccessMode = async (org: Organization) => {
+    const next = org.phonetic_access_mode === 'code' ? 'open' : 'code';
+    const msg = next === 'code'
+      ? `「${org.name}」音标视频改为需兑换码开通?\n\n该机构学生此后要用「音标兑换码」才能看音标视频库(整库一起锁)。\n在兑换码管理页生成音标码发给学生,学生在音标页点任意一节 →「去输入兑换码」激活。\n已经激活过的学生不受影响。`
+      : `「${org.name}」音标视频改为免费开放?\n\n该机构学生无需兑换码,直接就能看全部音标视频。`;
+    if (!window.confirm(msg)) return;
+    try {
+      await adminOrgApi.update(org.id, { phonetic_access_mode: next });
+      await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+      toast.success(next === 'code' ? '音标视频已改为需兑换码开通' : '音标视频已改为免费开放');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '切换音标开通方式失败'));
+    }
+  };
+
   /** 到期状态: null=有效 */
   const expiryBadge = (org: Organization) => {
     if (!org.expires_at) return null;
@@ -954,6 +970,7 @@ export default function AdminOrganizations() {
                     <div>老师 <span className="font-medium text-slate-700">{org.teacher_count} 人</span></div>
                     <div>授权 <span className={`font-medium ${org.access_mode === 'all_books' ? 'text-amber-600' : 'text-slate-700'}`}>{org.access_mode === 'all_books' ? '全托·书本全开放' : '逐本分配'}</span></div>
                     <div>金币 <span className={`font-medium ${org.coin_mode === 'manual' ? 'text-orange-600' : 'text-slate-700'}`}>{org.coin_mode === 'manual' ? '教师手动加' : '系统自动发'}</span></div>
+                    <div>音标 <span className={`font-medium ${org.phonetic_access_mode === 'code' ? 'text-indigo-600' : 'text-slate-700'}`}>{org.phonetic_access_mode === 'code' ? '需兑换码' : '免费开放'}</span></div>
                     <div className="col-span-2 flex items-center gap-2">学生 <span className="font-medium text-slate-700">{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>{org.student_quota < 999999 && <QuotaBar active={org.active_students} quota={org.student_quota} className="w-20" />}</div>
                     {/* 学习卡额度: 与学生名额分列两行,它们不是一回事 */}
                     <div className="col-span-2 flex items-center gap-2">
@@ -977,6 +994,7 @@ export default function AdminOrganizations() {
                     <button className="text-[#3976a9]" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                     <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
                     <button className="text-orange-600" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
+                    <button className="text-indigo-600" onClick={() => togglePhoneticAccessMode(org)}>{org.phonetic_access_mode === 'code' ? '音标改免费' : '音标改需码'}</button>
                     {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
                     {org.id !== 1 && <button className={org.status === 'active' ? 'text-red-600' : 'text-emerald-600'} onClick={() => { if (org.status === 'active' && !window.confirm(`确认停用「${org.name}」?该机构师生将无法使用系统`)) return; toggleStatus.mutate(org); }}>{org.status === 'active' ? '停用' : '恢复'}</button>}
                     {org.id !== 1 && <button className="text-red-700" onClick={() => deleteOrg(org)}>删除</button>}
@@ -1034,6 +1052,9 @@ export default function AdminOrganizations() {
                         {org.coin_mode === 'manual' && (
                           <span className="ml-1.5 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">金币手动</span>
                         )}
+                        {org.phonetic_access_mode === 'code' && (
+                          <span className="ml-1.5 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">音标需码</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -1076,6 +1097,7 @@ export default function AdminOrganizations() {
                           <button className="text-[#3976a9] hover:underline" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                           <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
                           <button className="text-orange-600 hover:underline" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
+                          <button className="text-indigo-600 hover:underline" onClick={() => togglePhoneticAccessMode(org)}>{org.phonetic_access_mode === 'code' ? '音标改免费' : '音标改需码'}</button>
                           {org.id !== 1 && (
                             <button className="text-purple-500 hover:underline" onClick={() => changeExpiry(org)}>有效期</button>
                           )}

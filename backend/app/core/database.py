@@ -435,6 +435,9 @@ async def init_db():
             "ALTER TABLE organizations ADD COLUMN access_mode VARCHAR(20) NOT NULL DEFAULT 'assigned'",
             # 金币发放模式: auto=系统自动按规则发(默认) | manual=只能老师核实后手动加
             "ALTER TABLE organizations ADD COLUMN coin_mode VARCHAR(10) NOT NULL DEFAULT 'auto'",
+            # 音标视频访问模式(2026-10-01): open=免费开放(默认,=上线前行为,零影响) |
+            # code=需音标专用兑换码。闸门见 api/v1/phonetics.py,授权行见 phonetic_access_grants
+            "ALTER TABLE organizations ADD COLUMN phonetic_access_mode VARCHAR(10) NOT NULL DEFAULT 'open'",
             # 学习效率功能: AI记忆钩子缓存列 + 学生实际输入(拼写诊断数据地基)
             "ALTER TABLE words ADD COLUMN memory_hook TEXT",
             "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",
@@ -466,6 +469,10 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_users_owner_teacher ON users(owner_teacher_id)",
             "ALTER TABLE homework_assignments ADD COLUMN assigned_by INTEGER",
             "ALTER TABLE homework_assignments ADD COLUMN assigned_by_name VARCHAR(100)",
+            # 上课地点(2026-09-30): 'home' 的作业不发金币,'classroom' 照常。存量行
+            # 落 'classroom' = 旧行为(都发币),零影响。金币闸门见 coin_service 的
+            # task_progress_on_day / settle_day —— 只在分母里排除 'home'
+            "ALTER TABLE homework_assignments ADD COLUMN location_type VARCHAR(20) NOT NULL DEFAULT 'classroom'",
             # 兑换卡种(次卡/包月): 码上记卡种规格,授权行上记剩余量。
             # 存量行 grant_type 留 NULL = 永久,旧行为不变
             "ALTER TABLE redemption_codes ADD COLUMN grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent'",
@@ -538,6 +545,65 @@ async def init_db():
                )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_code_book ON redemption_code_books(code_id, book_id)",
             "CREATE INDEX IF NOT EXISTS idx_code_books_code ON redemption_code_books(code_id)",
+        ]:
+            try:
+                await conn.execute(text(_sql))
+            except Exception:
+                pass
+
+        # ===== 音标视频专用兑换码 + 访问授权(2026-10-01) =====
+        # 两张表由 create_all 建(含索引),这里**再保一遍**保持与本文件其它新表同风格、
+        # 让 anchor-patch 部署自带建表。CREATE ... IF NOT EXISTS 幂等。
+        # 刻意不复用 redemption_codes/book_assignments:那两张表的 book 外键 NOT NULL,
+        # 音标码不绑单词本(见 models/phonetic.py 的 PhoneticCode 类注释)。
+        for _sql in [
+            """CREATE TABLE IF NOT EXISTS phonetic_codes (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   code VARCHAR(19) NOT NULL UNIQUE,
+                   grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent',
+                   grant_days INTEGER,
+                   grant_times INTEGER,
+                   status VARCHAR(20) NOT NULL DEFAULT 'unused',
+                   created_by INTEGER,
+                   org_id INTEGER,
+                   batch_note VARCHAR(200),
+                   code_expires_at DATETIME,
+                   used_by INTEGER,
+                   used_at DATETIME,
+                   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+               )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_phonetic_code ON phonetic_codes(code)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_codes_status ON phonetic_codes(status)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_codes_org ON phonetic_codes(org_id)",
+            """CREATE TABLE IF NOT EXISTS phonetic_access_grants (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   student_id INTEGER NOT NULL,
+                   grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent',
+                   expires_at DATETIME,
+                   times_left INTEGER,
+                   last_consumed_date VARCHAR(10),
+                   created_by INTEGER,
+                   granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+               )""",
+            # 一个学生对整个音标库只有一条授权行,兑换时按 student_id upsert
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_phonetic_access_student "
+            "ON phonetic_access_grants(student_id)",
+            # 访问日志:学生看音标视频的记录,**不进** operation_logs(那是教职工追责日志,
+            # 学生不记;见 models/phonetic.PhoneticAccessLog 类注释)。带 IP+设备防转卖追人。
+            """CREATE TABLE IF NOT EXISTS phonetic_access_logs (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   user_id INTEGER NOT NULL,
+                   org_id INTEGER,
+                   video_id INTEGER,
+                   ip VARCHAR(64),
+                   user_agent VARCHAR(300),
+                   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+               )""",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_access_log_user "
+            "ON phonetic_access_logs(user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_access_log_org "
+            "ON phonetic_access_logs(org_id)",
         ]:
             try:
                 await conn.execute(text(_sql))

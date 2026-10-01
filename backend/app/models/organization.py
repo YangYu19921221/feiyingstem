@@ -38,6 +38,11 @@ class Organization(Base):
     # 金币发放模式: auto=系统按规则自动发(默认) | manual=只能老师核实后手动加。
     # 关成 manual 后自动结算跳过该机构,已发的币不回收(见 services/coin_service.py)
     coin_mode = Column(String(10), default="auto", server_default="auto", nullable=False)
+    # 音标视频访问模式(2026-10-01): open=免费开放(默认,=上线前的行为,零影响) |
+    # code=需音标专用兑换码。置 code 后,学生必须有生效的 PhoneticAccessGrant 才能拿
+    # 播放票据(见 api/v1/phonetics.py 的闸门);老师/管理员永不受限。
+    # ⚠️ 机构应**先备好码再翻 code**,否则学生当场全被挡在外面
+    phonetic_access_mode = Column(String(10), default="open", server_default="open", nullable=False)
     # 区域保护(协议第四条): 经营场所地址与坐标 + 独家半径。
     # 坐标为空 = 未登记,不参与冲突判定也不受保护(存量机构默认如此,零影响)。
     # 判定与口径见 services/geo_service.py

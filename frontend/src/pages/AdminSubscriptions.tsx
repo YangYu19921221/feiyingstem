@@ -14,6 +14,7 @@ import {
 } from '../api/subscription';
 import { Ban, Check, Clock3, Search, Ticket, Trash2, X } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import PhoneticCodePanel from '../components/admin/PhoneticCodePanel';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
@@ -899,6 +900,11 @@ const AdminSubscriptions = () => {
             </div>
           )}
         </div>
+
+        {/* 音标视频库兑换码:库级、不绑书,只有平台 admin 能发(机构 org_admin 调端点会 403)。
+            ⚠️ 必须按 role === 'admin' **正向**判,不能写 !isOrgLimited:policy 回来之前是 null,
+            !isOrgLimited 为真 → 面板先挂上、发一次列表请求 → org_admin 每次进页都吃 403 红字 */}
+        {policy?.role === 'admin' && <PhoneticCodePanel />}
       </main>
     </div>
   );

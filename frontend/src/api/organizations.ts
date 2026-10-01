@@ -26,6 +26,8 @@ export interface Organization {
   access_mode?: 'assigned' | 'all_books';
   // 金币发放: auto=系统按规则自动发(默认) | manual=只能老师核实后手动加
   coin_mode?: 'auto' | 'manual';
+  // 音标视频库: open=随本机构学生都能看(默认) | code=要单独的音标兑换码才能开
+  phonetic_access_mode?: 'open' | 'code';
   // 区域保护(协议第四条): 经营场所与独家半径。lat/lng 为空=未登记,不参与判定也不受保护
   address?: string | null;
   lat?: number | null;
@@ -109,7 +111,7 @@ export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
   create: (data: { name: string; code?: string; plan?: string; student_quota?: number; card_quota?: number; contact_name?: string; contact_phone?: string; address?: string; lat?: number; lng?: number; protect_radius_km?: number; force?: boolean }) =>
     client.post<Organization>('/admin/organizations', data),
-  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; card_quota: number; add_cards: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
+  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; card_quota: number; add_cards: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; phonetic_access_mode: 'open' | 'code'; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
     client.patch<Organization>(`/admin/organizations/${orgId}`, data),
   /** 区域保护预检: 填完坐标先看周边有没有冲突(只读,谈单时也能查) */
   territoryCheck: (params: { lat: number; lng: number; radius_km?: number; exclude_org_id?: number }) =>

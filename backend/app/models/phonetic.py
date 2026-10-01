@@ -225,3 +225,125 @@ class PhoneticVideoQuestion(Base):
         # 保持与本文件其它索引同风格,机构内提问量级不值得上部分索引
         Index("idx_pvq_pending", "org_id", "answered_at"),
     )
+
+
+class PhoneticCode(Base):
+    """音标视频**专用兑换码**(2026-10-01):和单词本兑换码分开的一套码。
+
+    ## 为什么不复用 redemption_codes
+
+    单词本兑换码的 `redemption_codes.book_id` 与 `redemption_code_books.book_id`
+    都是 `ForeignKey('word_books.id')` 且 **NOT NULL** —— 音标视频不是单词本,
+    硬塞一个假的"音标 word_book"做占位,它会漏进每一处书本列表 / 单元选择器
+    (学生会在选书页看到一本点不开的幽灵书)。所以音标码**另起一张表**,不带 book 外键。
+
+    一张码只开一件事:**整个音标视频库**的访问权(不是按视频),与
+    `organizations.phonetic_access_mode` 这个闸门配合 —— 机构置为 "code" 后,
+    学生必须有一条生效的 PhoneticAccessGrant 才能拿播放票据。
+
+    卡种与单词本兑换码同一套语义(services/subscription_service):
+    permanent 永久 / period 包月(grant_days)/ times 次卡(grant_times,按学习日消耗)。
+    """
+
+    __tablename__ = "phonetic_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # "XXXX-XXXX-XXXX-XXXX" —— 与 subscription_service.generate_code_string() 同格式(19 位)
+    code = Column(String(19), nullable=False, unique=True, index=True)
+
+    # 卡种:permanent / period / times(见 subscription_service 的 GRANT_* 常量)
+    grant_type = Column(String(10), nullable=False, default="permanent")
+    grant_days = Column(Integer, nullable=True)   # period 卡的有效天数
+    grant_times = Column(Integer, nullable=True)  # times 卡的可用次数(学习日)
+
+    # unused = 未使用 / used = 已兑换 / disabled = 作废(与 redemption_codes 同口径)
+    status = Column(String(20), nullable=False, default="unused", index=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # 发码者所属机构。NULL = 平台 admin 发(v1 只有平台 admin 能发音标码)。
+    # 兑换时按机构隔离:学生只能用本机构(或平台)发的码,靠 service 层显式判
+    org_id = Column(Integer, nullable=True, index=True)
+
+    batch_note = Column(String(200), nullable=True)   # 批次备注,便于后台检索
+    # 码本身的有效期(到期后不可兑换);与它兑出来的授权有效期(grant_days)是两回事
+    code_expires_at = Column(DateTime, nullable=True)
+
+    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    used_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PhoneticAccessGrant(Base):
+    """学生对**音标视频库**的访问授权(一人一行,兑换/续期都落在这一行)
+
+    ## 列形状刻意对齐 book_assignments 的授权列
+
+    `grant_type` / `expires_at` / `times_left` / `last_consumed_date` 四列与
+    BookAssignment 完全同名同义 —— 这样 `subscription_service.is_assignment_active(a)`
+    (鸭子类型,只读这四列)可以**直接拿来判活**,不必另写一套判活逻辑。
+
+    - permanent:恒生效
+    - period:`expires_at` 之前生效(续期从现有到期日往后接)
+    - times:`times_left > 0` 或**今天已消耗过**(`last_consumed_date == 北京日`)才生效;
+      次卡在学生当天**真的进去看**时才扣一次(见 service 的消耗逻辑),没进不扣
+
+    与 book_assignments 不同的是:它不绑某本书,`student_id` 就是主键维度
+    (一个学生对整个音标库只有一条授权行,重复兑换 = 续期/充值)。
+    """
+
+    __tablename__ = "phonetic_access_grants"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # ===== 与 book_assignments 同形状的授权列(供 is_assignment_active 直接判活)=====
+    grant_type = Column(String(10), nullable=False, default="permanent")
+    expires_at = Column(DateTime, nullable=True)         # period 卡到期时间
+    times_left = Column(Integer, nullable=True)          # times 卡剩余次数
+    last_consumed_date = Column(String(10), nullable=True)  # 次卡最近扣减的北京日 'YYYY-MM-DD'
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    granted_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # 一个学生对整个音标库只有一条授权行;兑换时按 student_id upsert
+        Index("uq_phonetic_access_student", "student_id", unique=True),
+    )
+
+
+class PhoneticAccessLog(Base):
+    """音标视频**访问日志**(2026-10-01):学生每拿一张播放票据写一条。
+
+    ## 为什么**不**写进 operation_logs
+
+    operation_logs 是**教职工追责**日志(CLAUDE.md 定: 学生不记,量大且无追责需求),
+    它的受众是机构管理员排查「哪个老师布置错了」。音标观看是**学生**行为、按视频 × 2 小时
+    一条,量级完全不同 —— 混进去会把追责列表淹没,且违反「学生不记」那条约定。
+
+    但用户要的「访问日志」(防转卖、流出可追人)仍需要,所以单独落这张表:
+    带 IP + 设备 + 时间,出纠纷时能追到是谁的账号在看。它**不进**机构操作记录列表,
+    将来要查就单独做一个「音标访问」视图。保留字段与 operation_logs 一致(ip/user_agent),
+    这样设备解析可复用 audit_log.describe_device。
+    """
+
+    __tablename__ = "phonetic_access_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # 冗余机构列:按机构查访问情况时不必 join users(与观看明细表同考量)
+    org_id = Column(Integer, nullable=True, index=True)
+    video_id = Column(Integer, nullable=True, index=True)
+
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(300), nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+    __table_args__ = (
+        Index("idx_phonetic_access_log_user", "user_id", "created_at"),
+    )

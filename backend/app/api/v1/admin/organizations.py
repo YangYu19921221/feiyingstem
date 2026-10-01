@@ -68,6 +68,9 @@ class OrgUpdate(BaseModel):
     access_mode: Optional[str] = Field(None, pattern="^(assigned|all_books)$")
     # 金币发放: auto=系统自动按规则发(默认) | manual=只能老师核实后手动加
     coin_mode: Optional[str] = Field(None, pattern="^(auto|manual)$")
+    # 音标视频访问: open=免费开放(默认) | code=需音标专用兑换码。
+    # ⚠️ 翻成 code 前机构应先备好码,否则学生当场全被挡在外面
+    phonetic_access_mode: Optional[str] = Field(None, pattern="^(open|code)$")
     # 显式清空有效期(改回永不过期): expires_at 的 None 语义是"未传不动",
     # 无法表达"传了要清",用独立布尔区分
     clear_expires: Optional[bool] = None
@@ -162,6 +165,7 @@ def _org_out(
         "status": org.status, "expires_at": org.expires_at, "created_at": org.created_at,
         "access_mode": getattr(org, "access_mode", None) or "assigned",
         "coin_mode": getattr(org, "coin_mode", None) or "auto",
+        "phonetic_access_mode": getattr(org, "phonetic_access_mode", None) or "open",
         # 区域保护(协议第四条);坐标为 NULL = 未登记,前端提示"未登记不受保护"
         "address": getattr(org, "address", None),
         "lat": getattr(org, "lat", None),
@@ -293,6 +297,7 @@ async def update_organization(
 
     for field in ["name", "plan", "student_quota", "card_quota", "contact_name",
                   "contact_phone", "status", "expires_at", "access_mode", "coin_mode",
+                  "phonetic_access_mode",
                   "address", "lat", "lng", "protect_radius_km"]:
         v = getattr(data, field)
         if v is not None:

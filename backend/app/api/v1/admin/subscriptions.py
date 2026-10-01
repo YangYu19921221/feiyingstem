@@ -13,14 +13,18 @@ from app.models.user import (
     User, RedemptionCode, RedemptionCodeBook, RedemptionCodeStatus,
 )
 from app.models.word import WordBook, BookStage
-from app.api.v1.auth import get_current_admin_or_org_admin
+from app.models.phonetic import PhoneticCode
+from app.api.v1.auth import get_current_admin_or_org_admin, get_current_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
     RedemptionCodeResponse,
     RedemptionCodeListResponse,
     SubscriptionStatsResponse,
+    PhoneticCodeGenerate,
+    PhoneticCodeResponse,
+    PhoneticCodeListResponse,
 )
-from app.services import subscription_service, book_stage
+from app.services import subscription_service, book_stage, phonetic_access_service
 
 router = APIRouter()
 
@@ -440,6 +444,147 @@ async def delete_code(
             detail="已使用的兑换码不能删除(需保留兑换记录),如需停用请改为禁用",
         )
 
+    await db.delete(code)
+    await db.commit()
+    return {"message": "兑换码已删除"}
+
+
+# ==================== 音标视频库专用兑换码(2026-10-01) ====================
+# v1 仅**平台 admin** 可发(get_current_admin,不是 _or_org_admin): 音标库是平台
+# 内容,先不并入机构的学习卡额度账(避免与 card_quota 口径纠缠);机构要卖再议。
+
+
+@router.post("/phonetic-codes/generate", response_model=list[PhoneticCodeResponse])
+async def generate_phonetic_codes(
+    req: PhoneticCodeGenerate,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量生成音标视频库兑换码(平台 admin)。开通的是**整个音标视频库**的访问权。"""
+    codes = await phonetic_access_service.batch_generate_phonetic_codes(
+        db=db,
+        admin_id=current_user.id,
+        count=req.count,
+        org_id=None,              # 平台码,不绑机构
+        batch_note=req.batch_note,
+        grant_type=req.grant_type,
+        grant_days=req.grant_days,
+        grant_times=req.grant_times,
+    )
+    name = current_user.full_name or current_user.username
+    return [
+        PhoneticCodeResponse(
+            id=c.id, code=c.code, status=c.status,
+            grant_type=c.grant_type or "permanent",
+            grant_days=c.grant_days, grant_times=c.grant_times,
+            batch_note=c.batch_note, created_by=c.created_by,
+            created_by_name=name, created_at=c.created_at,
+            code_expires_at=c.code_expires_at,
+            used_by=c.used_by, used_at=c.used_at,
+        )
+        for c in codes
+    ]
+
+
+@router.get("/phonetic-codes", response_model=PhoneticCodeListResponse)
+async def list_phonetic_codes(
+    status: Optional[str] = Query(None, description="按状态筛选 unused/used/disabled"),
+    search: Optional[str] = Query(None, description="搜索兑换码或批次备注"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """音标兑换码列表(平台 admin,分页+筛选+搜索)。"""
+    query = select(PhoneticCode)
+    count_query = select(func.count(PhoneticCode.id))
+
+    if status:
+        query = query.where(PhoneticCode.status == status)
+        count_query = count_query.where(PhoneticCode.status == status)
+
+    if search and search.strip():
+        # LIKE 的 _ 和 % 是通配符,必须转义(与单词本码列表同诫)
+        kw = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{kw}%"
+        cond = or_(
+            PhoneticCode.code.ilike(pattern, escape="\\"),
+            PhoneticCode.batch_note.ilike(pattern, escape="\\"),
+        )
+        query = query.where(cond)
+        count_query = count_query.where(cond)
+
+    query = query.order_by(PhoneticCode.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    codes = (await db.execute(query)).scalars().all()
+    total = (await db.execute(count_query)).scalar() or 0
+
+    # 发码人姓名(本页去重后一次查)
+    creator_ids = set(c.created_by for c in codes if c.created_by)
+    name_map = {}
+    if creator_ids:
+        rows = await db.execute(
+            select(User.id, User.full_name, User.username)
+            .where(User.id.in_(creator_ids))
+            .execution_options(skip_tenant_filter=True)
+        )
+        for uid, full_name, username in rows.all():
+            name_map[uid] = full_name or username
+
+    return PhoneticCodeListResponse(
+        total=total,
+        codes=[
+            PhoneticCodeResponse(
+                id=c.id, code=c.code, status=c.status,
+                grant_type=c.grant_type or "permanent",
+                grant_days=c.grant_days, grant_times=c.grant_times,
+                batch_note=c.batch_note, created_by=c.created_by,
+                created_by_name=name_map.get(c.created_by),
+                created_at=c.created_at, code_expires_at=c.code_expires_at,
+                used_by=c.used_by, used_at=c.used_at,
+            )
+            for c in codes
+        ],
+    )
+
+
+@router.post("/phonetic-codes/{code_id}/disable")
+async def disable_phonetic_code(
+    code_id: int,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """禁用音标兑换码(平台 admin)。已使用的不许禁用(语义同单词本码)。"""
+    code = (await db.execute(
+        select(PhoneticCode).where(PhoneticCode.id == code_id)
+    )).scalar_one_or_none()
+    if not code:
+        raise HTTPException(status_code=404, detail="兑换码不存在")
+    if code.status == "used":
+        raise HTTPException(status_code=400, detail="已使用的兑换码无法禁用")
+    code.status = "disabled"
+    await db.commit()
+    return {"message": "兑换码已禁用"}
+
+
+@router.delete("/phonetic-codes/{code_id}")
+async def delete_phonetic_code(
+    code_id: int,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除音标兑换码(平台 admin)。已使用的不许删(保留兑换凭证,语义同单词本码)。"""
+    code = (await db.execute(
+        select(PhoneticCode).where(PhoneticCode.id == code_id)
+    )).scalar_one_or_none()
+    if not code:
+        raise HTTPException(status_code=404, detail="兑换码不存在")
+    if code.status == "used":
+        raise HTTPException(
+            status_code=400,
+            detail="已使用的兑换码不能删除(需保留兑换记录),如需停用请改为禁用",
+        )
     await db.delete(code)
     await db.commit()
     return {"message": "兑换码已删除"}

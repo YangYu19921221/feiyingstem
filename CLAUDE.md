@@ -271,6 +271,81 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频单独码开(2026-10-01,**本地完成未部署**): 用户先选「有任一书即可看」,随后改口
+  「音标视频改成单独码开」—— **以后者为准,别回到"随书开"**。机构级开关
+  `organizations.phonetic_access_mode`: open(默认,server_default,存量零影响)/ code(要音标专用码)。
+  **库级闸门**(整库一起锁/开,不按视频): 判定唯一真源 phonetics.py `_gate_state`(三态
+  free / granted / times_due / locked)—— 教职工(teacher/org_admin/admin)恒放行(要备课);
+  **家长等其它角色一律拦**(审查实测的后门: 家长号凭孩子自己生成的绑定码零成本注册、不验手机、
+  org_id 落列默认 1,旧的「非学生恒放行」= 没码的学生换个家长号就能看整个预置库;家长端本无音标入口);
+  学生只在本机构 code 模式且无生效授权时拦。列表/详情用 `_is_locked_for`(只判不扣),
+  **四个交付内容的端点**用 `_enforce_gate`(判 + 扣次卡): video_ticket(主闸门)/
+  stream_video(Bearer 分支)/ **list_video_materials / material_page**(第一版漏了这两处,
+  逐页 PNG 照看不误 = 绕开视频锁;material_page 的闸门放在查行**之前**,不泄露课件是否存在)。
+  **次卡四处都扣、只在 times_due 时扣**: 只扣换票的话直接 Bearer 串流 / 只翻讲义永远不掉天数,
+  1 天卡 = 永久卡;open 模式(free)不扣 —— 免费期间看视频不该消耗学生买的卡。
+  扣减是**单条条件 UPDATE**(今天没扣 + 有余量写进 WHERE),打开一节课换票和讲义列表并发
+  两个请求,读-改-写会扣两天。
+  **码不复用 redemption_codes**: 那两张表 book 外键 NOT NULL,塞假书会漏进选书页 →
+  新表 phonetic_codes + phonetic_access_grants(一人一行,UNIQUE student_id)。
+  卡种语义**完全复用** subscription_service(permanent/period/times,判活直接借
+  `is_assignment_active`,授权列名刻意与 book_assignments 对齐),次卡只在换票那步扣、按北京日幂等。
+  统一入口 `/subscription/redeem` 先查音标码再查书码,返回 `scope:'phonetic'`。
+  四个坑: ①**失效后换卡种是死路**(审查发现): 包月过期再兑次卡,旧逻辑判「跨类型请等当前用完」,
+  而过期的卡永远不会再"用完" → 永远续不上。现 `elif not existing_active:` 整条覆盖;
+  **生效中**的跨类型仍拒且不吞码 ②**访问日志不进 operation_logs**: 那是教职工追责日志(学生不记),
+  每看一节写一条会淹没机构「操作记录」→ 单独表 phonetic_access_logs(IP+设备,防转卖追人),
+  audit_log 里的 phonetic.* 已删 ③**兑换码只授权不防拷贝**(用户问过「还能被爬吗」,答: 能):
+  能播的账号就能抓到 mp4,4 核单 worker 上不做 DRM;手段是让流出去的东西价值低、时效短、追得到人 ——
+  2 小时 HMAC 票据 + 讲义逐页烧水印 + `<video>` 上叠姓名·ID 水印(LessonStage,身份格式与后端
+  `_viewer_label` 同口径)+ 限速 + 访问日志 ④学生端没有「我的」页,文案别写「在我的里激活」
+  (第一版写了 5 处,已改成「音标页点任意一节输入」)。
+  入口: 管理端「机构管理」每行「音标改需码 / 音标改免费」(表格里 code 模式挂「音标需码」角标);
+  「兑换码管理」页最下方「音标视频兑换码」面板(**仅平台 admin**,org_admin 看不到,后端也 403)
+  生成/搜索/禁用/删除;学生端音标页视频卡挂「🔒 需兑换码」,点开弹「去输入兑换码」→
+  `/subscription/redeem?for=phonetic`(文案换成开通音标),兑换成功跳回 `/student/phonetics`。
+  公告 whatsNew 只投 admin(学生撞锁时弹窗已就地讲清,whatsNew 不能按机构投放)。
+  **兑换并发两个坑**(审查用真文件库 + 两个独立会话复现): ①一码多兑 —— 旧写法「读 status → Python 判 →
+  最后改 used」,两个学生同时兑同一张码都成功;现在先用条件 UPDATE `WHERE status='unused'` 认领、看 rowcount
+  ②同一学生两台设备同时兑两张码 → 两边都 INSERT → UNIQUE 冲突 500;认领那条 UPDATE 拿到写锁后**在写事务里
+  重读**授权行(populate_existing),后到的走续期分支,IntegrityError 再兜一层。码字段一开始就取成局部变量
+  (rollback 会让 ORM 对象过期 → MissingGreenlet)。码过期写 `expired` 不写 `disabled`(后者=管理员作废)。
+  ⚠️ **测并发不能用 conftest 那个共享内存会话**(所有请求共用一个 session,永远串行,测不出竞态),
+  见测试里的 file_db fixture。
+  前端三处: AdminSubscriptions 挂面板必须 `policy?.role === 'admin'` 正向判(写 `!isOrgLimited` 时
+  policy 还是 null → org_admin 每次进页面板先挂上吃 403 红字);PhoneticsHub 打开时详情返回 locked 要
+  退出播放器改弹引导(列表是旧的);视频水印在**原生全屏**和 iPhone 内联播放下会丢 ——
+  加 playsInline + controlsList nofullscreen,原生全屏被触发时改成整块面板全屏。
+  测试 tests/test_phonetic_video_access.py(21 例);回归锁逐条验证过(破坏 → 恰好对应用例失败 → 改回 md5 一致):
+  讲义闸门 / 失效覆盖 / 访问日志分表 / 家长拦截 / 次卡在讲义与串流也扣 / open 模式不扣 / 过期写 expired /
+  一码多兑(去掉 status 条件后连跑 3 次都失败)/ 同学生并发(重读与 IntegrityError 兜底**同时**去掉才失败 ——
+  单去重读时兜底仍接住,但失效覆盖两例会挂)。修好后连跑 5 次全绿。
+  **部署注意**: database.py 有 drift,走 anchor patch(phonetic 段 + organizations ALTER);
+  上线后机构默认 open,不切 code 就零变化
+- ✅ 作业分「电教室/家里」按地点发金币(2026-09-30): 用户说「学生在电教室背才有币,在家里背
+  是没有奖励的」。**明确否掉了运行时定位(IP/GPS)**:「不用换 ip 啊,我布置的时候老师能选是
+  家里还是电教室,家里就不给币」—— 于是做成**建作业时的一个每份标记**,不猜位置。
+  查清后整件事收敛成**一个闸门**: 作业的可见/解锁/完成全走 scope_service(不碰),金币规则
+  只落在 coin_service 的**两处任务分母查询**上,所以只需把 `location_type == 'home'` 的作业
+  从这两处排除。① 实时交卷 `task_progress_on_day` 的 WHERE 加 `location_type != "home"`
+  ② 夜间 00:35 `settle_day` 内联那份**另写了一遍**同样的分母查询,必须同步加同一条
+  (两处注释互相指认,漏一处就是「白天不发、半夜补发」)。
+  语义定死(按「直接做完别反问」自行拍板): 家里作业**从分母里剔除**,不是「计入但不触发」——
+  于是混合日(电教室做完 + 家里没做)照常发币;纯家里日既无任务币**也无单词王**
+  (单词王要求当天任务完成)。default='classroom'(server_default 同值),存量行零影响。
+  五个要点: ①**归一化白名单**: 建作业 `location_type=("home" if req==... else "classroom")`,
+  不认的值一律落 classroom,绝不把脏值静默当成 home(不发币是「惩罚」,宁可错发也不错扣)
+  ②**coin_hint 加 `home` 码**: 交卷达标却没币时提示「这份是在家做的作业,成绩照常记录;
+  金币要在电教室完成才有」—— 否则老师学生又来问「为什么没发」(金币自解释那套的延续)
+  ③**CoinRulesModal 是文案唯一真源**,已加「🏠 在家做的作业不发金币」条款(走 `{you}` 受众变量)
+  ④交卷路径 `primary_location = homework.location_type` 在 commit **之前**捕获(rollback 会让
+  ORM 对象过期 → MissingGreenlet,金币发放踩过)⑤迁移在 database.py 末尾 ALTER(紧跟
+  assigned_by_name 那条),模型列带 server_default 回填。
+  **回归锁验证过**: sed 抹掉两处 `location_type != "home"` 过滤 → 恰好 5 个 home 用例失败、
+  「电教室照常发币」那 1 例仍绿 → 改回后 diff 完全一致、6 例全过(证明测试真能抓到旧 bug)。
+  入口: 教师工作台 → 作业管理 → 创建新作业,学习模式下方「📍 在哪里做」选「🏫 电教室(完成得
+  金币)/ 🏠 家里(不发金币)」;家里作业在教师端和学生端作业列表都挂「🏠 家里·不发金币」角标。
+  测试 tests/test_homework_location_coin.py(7 例)
 - ✅ 我的助教(2026-09-27,操作记录三步走的 ① 以「助教」形态落地): 用户说「好多老师用一个号,
   不知道哪个老师布置的」。**不做"班级多老师"而做"主老师挂助教"**: 前者要把全站几十处
   `teacher_id == current_user.id` 改成成员关系,后者一行不动。

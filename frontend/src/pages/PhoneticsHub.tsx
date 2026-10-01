@@ -109,6 +109,12 @@ export default function PhoneticsHub() {
   const [materials, setMaterials] = useState<StudentMaterial[]>([]);
   /** 正在看的那份讲义。null = 只看视频 */
   const [viewing, setViewing] = useState<StudentMaterial | null>(null);
+  /**
+   * 点了一节「要兑换码才能开」的视频 → 弹一句引导,**不进播放器**。
+   * 库级锁:要么整库锁、要么整库开(后端 locked 字段,老师/管理员恒 false)。
+   * 这里只做拦截与引导;真正的判定在后端,前端 locked 只是省一次 403 往返。
+   */
+  const [lockNudge, setLockNudge] = useState(false);
   /** 播放面板 DOM:全屏时把它整个送进 requestFullscreen */
   const panelRef = useRef<HTMLDivElement>(null);
   /**
@@ -299,6 +305,12 @@ export default function PhoneticsHub() {
   }, [filtered]);
 
   const openVideo = async (v: PhoneticVideo) => {
+    // 库级锁:没开通就不进播放器,弹一句引导去领码/用码。
+    // 后端 ticket/stream 都会再判一次,这里只是省一次 403 往返、给个友好提示。
+    if (v.locked) {
+      setLockNudge(true);
+      return;
+    }
     setPlaying(v);
     setMaterials([]);           // 先清空:否则会短暂显示上一个视频的讲义
     setViewing(null);
@@ -307,6 +319,15 @@ export default function PhoneticsHub() {
     // (在别的设备上看过一半);失败就用列表那份,不影响播放
     try {
       const fresh = await phoneticsApi.detail(v.id);
+      if (fresh.locked) {
+        // 列表是进页面时取的,可能已经旧了(页面开着期间机构被切成需码、或卡到期了)。
+        // 库级锁:一节锁住就是整库锁住 → 全部卡片标锁、退出播放器改弹开通引导。
+        // 不拦的话播放器会因换票 403 只显示一句像网络故障的「视频地址获取失败」
+        setVideos((prev) => prev.map((x) => ({ ...x, locked: true })));
+        setPlaying(null);
+        setLockNudge(true);
+        return;
+      }
       setPlaying(fresh);
       setVideos((prev) => prev.map((x) => (x.id === fresh.id ? { ...x, ...fresh } : x)));
     } catch { /* 计数/进度取失败都不该挡着看视频 */ }
@@ -635,7 +656,16 @@ export default function PhoneticsHub() {
                           **看完与没看完只显示一个** —— 两个都挂会让卡片右上角挤成一团。
                           没看过的**不显示任何角标**: 一屏十几张卡全印着「未观看」是噪音,
                           而"哪几个看过了"恰恰靠空白与非空白的对比一眼看出来 */}
-                      {v.my_completed ? (
+                      {/* 没开通:整张卡压暗 + 右上角 🔒,点了弹引导不进播放器。
+                          锁态盖过「看完/看到N%」—— 没开通时那两个进度角标无意义 */}
+                      {v.locked ? (
+                        <>
+                          <span className="absolute inset-0 bg-black/35" aria-hidden="true" />
+                          <span className="absolute right-2 top-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                            🔒 需兑换码
+                          </span>
+                        </>
+                      ) : v.my_completed ? (
                         <span className="absolute right-2 top-2 rounded-lg bg-success px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
                           ✓ 已看完
                         </span>
@@ -723,6 +753,49 @@ export default function PhoneticsHub() {
                 className="mt-3 min-h-11 w-full shrink-0 rounded-2xl bg-black/5 px-4 text-sm font-semibold text-ink-soft transition hover:bg-black/10"
               >
                 先都看看
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 没开通音标视频库 → 点任意一节都弹这个,引导去领码/用码。
+          文案要说清两条路:找老师领(机构发码)或手里已有码就点下面按钮直接输入。
+          有关闭 X —— 这不是刻意全封闭的弹层,只是一句提示,随手关掉没有副作用 */}
+      <AnimatePresence>
+        {lockNudge && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+            role="dialog" aria-modal="true" aria-label="音标视频需要兑换码"
+            onClick={() => setLockNudge(false)}
+          >
+            <motion.div
+              initial={{ y: 24, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 24, opacity: 0 }}
+              className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 text-3xl">
+                🔒
+              </div>
+              <p className="mt-4 font-display text-lg font-bold text-ink">音标视频需要开通</p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                这一套音标视频要用兑换码开通。找老师领一张兑换码，
+                手里已经有码的话，点下面的按钮输入就能开通。
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/subscription/redeem?for=phonetic')}
+                className="mt-5 min-h-11 w-full rounded-2xl bg-primary px-5 text-sm font-bold text-white transition hover:brightness-105 active:scale-[0.99]"
+              >
+                去输入兑换码
+              </button>
+              <button
+                type="button"
+                onClick={() => setLockNudge(false)}
+                className="mt-2 min-h-11 w-full rounded-2xl bg-black/5 px-5 text-sm font-semibold text-ink-soft transition hover:bg-black/10"
+              >
+                先不看
               </button>
             </motion.div>
           </motion.div>

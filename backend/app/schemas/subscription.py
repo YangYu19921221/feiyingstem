@@ -56,6 +56,9 @@ class RedeemResponse(BaseModel):
     """兑换响应"""
     success: bool
     message: str
+    # 兑换对象: book=单词本码(默认,老前端只认这个,缺省即兼容) | phonetic=音标视频库码。
+    # 统一 /redeem 端点按码所在的表分派,前端据此给不同成功文案/跳转
+    scope: str = "book"
     book_name: Optional[str] = None
     # 一码多书: 这张卡覆盖的书与逐本结果(老前端只读 message/book_name 仍工作)
     books: Optional[List[dict]] = None
@@ -112,3 +115,46 @@ class SubscriptionStatsResponse(BaseModel):
     cards_left: Optional[int] = None
     card_quota_explicit: Optional[bool] = None
     renewal_min: Optional[int] = None
+
+
+# ==================== 音标视频库专用兑换码(2026-10-01) ====================
+# 为什么是独立一套码/一套 schema 而不复用上面的: 单词本码的 book 外键是 NOT NULL,
+# 音标不是单词本,塞假书会漏进选书页(见 models/phonetic.py)。v1 仅平台 admin 可发。
+class PhoneticCodeGenerate(BaseModel):
+    """批量生成音标视频库兑换码"""
+    count: int = Field(..., ge=1, le=100, description="生成数量(1-100)")
+    batch_note: Optional[str] = Field(None, max_length=200, description="批次备注")
+    # 卡种: permanent=永久(默认) / period=包月 / times=次卡
+    grant_type: str = Field("permanent", pattern="^(permanent|period|times)$", description="卡种")
+    grant_days: Optional[int] = Field(None, ge=1, le=3650, description="包月卡有效天数")
+    grant_times: Optional[int] = Field(None, ge=1, le=1000, description="次卡可用天数")
+
+    @model_validator(mode="after")
+    def _check_grant(self):
+        if self.grant_type == "period" and not self.grant_days:
+            raise ValueError("包月卡必须填写有效天数")
+        if self.grant_type == "times" and not self.grant_times:
+            raise ValueError("次卡必须填写可用天数")
+        return self
+
+
+class PhoneticCodeResponse(BaseModel):
+    """音标兑换码响应"""
+    id: int
+    code: str
+    status: str
+    grant_type: str = "permanent"
+    grant_days: Optional[int] = None
+    grant_times: Optional[int] = None
+    batch_note: Optional[str] = None
+    created_by: Optional[int] = None
+    created_by_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    code_expires_at: Optional[datetime] = None
+    used_by: Optional[int] = None
+    used_at: Optional[datetime] = None
+
+
+class PhoneticCodeListResponse(BaseModel):
+    total: int
+    codes: List[PhoneticCodeResponse]

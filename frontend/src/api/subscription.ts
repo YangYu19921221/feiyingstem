@@ -92,3 +92,48 @@ export const deleteCode = (codeId: number) =>
 // 学生端:我兑换的书本(含剩余量/到期时间)
 export const getMyPurchasedBooks = () =>
   api.get('/subscription/my-books');
+
+// ========== 音标视频库兑换码(2026-10-01) ==========
+// 单词本码按「书」开通,音标码开通的是**整个音标视频库**(库级,不绑任何书)。
+// 两套码走各自的表与端点,学生端兑换入口是同一个 /subscription/redeem(后端按码分流)。
+
+export interface PhoneticCode {
+  id: number;
+  code: string;
+  status: string;              // unused / used / disabled
+  grant_type: string;          // permanent / period / times
+  grant_days?: number | null;
+  grant_times?: number | null;
+  batch_note?: string | null;
+  created_by?: number | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
+  code_expires_at?: string | null;
+  used_by?: number | null;
+  used_at?: string | null;
+}
+
+// 管理员:批量生成音标兑换码
+export const generatePhoneticCodes = (data: {
+  count: number;
+  batch_note?: string;
+  grant_type?: string;     // permanent/period/times
+  grant_days?: number;     // 包月:有效天数
+  grant_times?: number;    // 次卡:可用天数
+}) => api.post<PhoneticCode[]>('/admin/subscriptions/phonetic-codes/generate', data);
+
+// 管理员:音标兑换码列表(search 支持码片段/批次备注模糊搜)
+export const listPhoneticCodes = (params: {
+  page?: number;
+  page_size?: number;
+  status?: string;
+  search?: string;
+}) => api.get<{ total: number; codes: PhoneticCode[] }>('/admin/subscriptions/phonetic-codes', { params });
+
+// 管理员:禁用音标兑换码(留痕;已使用的后端拒绝)
+export const disablePhoneticCode = (codeId: number) =>
+  api.post(`/admin/subscriptions/phonetic-codes/${codeId}/disable`);
+
+// 管理员:删除音标兑换码(彻底删行;已使用的后端拒绝)
+export const deletePhoneticCode = (codeId: number) =>
+  api.delete(`/admin/subscriptions/phonetic-codes/${codeId}`);
