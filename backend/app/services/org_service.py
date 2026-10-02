@@ -82,6 +82,45 @@ async def card_quota_status(db: AsyncSession, org_id: int) -> dict:
     }
 
 
+# ===== 音标兑换码额度(2026-10-02) =====
+# 平台 admin 给机构发放「可生成多少张音标码」,机构在额度内自己发给学生。
+# 计数口径与学习卡一致: 按码张数;禁用的归还额度(删除自然也归还);已兑换的永久占额。
+# 与 card_quota 是**两笔账**: 音标库是另卖的内容,混进学习卡额度会让机构发音标码
+# 吃掉续卡的名额。按 phonetic_codes.org_id 计(发码时写入),平台发的码 org_id 为 NULL 不计入任何机构。
+
+
+def phonetic_code_quota_of(org: Organization | None) -> int:
+    """平台给该机构发放的音标码总额度。NULL = 未发放 = 0(不回退学生名额)。"""
+    if org is None:
+        return 0
+    return getattr(org, "phonetic_code_quota", None) or 0
+
+
+async def count_issued_phonetic_codes(db: AsyncSession, org_id: int) -> int:
+    """该机构已生成(未禁用)的音标码张数 = 已占用额度。
+    ⚠️ 机构列表的 GROUP BY 聚合与此同口径,改一处要同步另一处。"""
+    from app.models.phonetic import PhoneticCode
+
+    return (await db.execute(
+        select(func.count(PhoneticCode.id)).where(
+            PhoneticCode.org_id == org_id,
+            PhoneticCode.status != "disabled",
+        ).execution_options(skip_tenant_filter=True)
+    )).scalar() or 0
+
+
+async def phonetic_code_quota_status(db: AsyncSession, org_id: int) -> dict:
+    """音标码额度水位 —— 机构端额度条与发码闸门共用这一份。"""
+    org = await get_org(db, org_id)
+    quota = phonetic_code_quota_of(org)
+    used = await count_issued_phonetic_codes(db, org_id)
+    return {
+        "phonetic_code_quota": quota,
+        "phonetic_codes_used": used,
+        "phonetic_codes_left": max(0, quota - used),
+    }
+
+
 async def resolve_org_code(db: AsyncSession, code: str | None) -> int:
     """机构码 → org_id。无码/无效码/机构停用 → 直营。
     测评链接、注册页、后台共用这一处语义(大小写不敏感)。"""

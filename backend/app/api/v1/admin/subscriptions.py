@@ -14,7 +14,7 @@ from app.models.user import (
 )
 from app.models.word import WordBook, BookStage
 from app.models.phonetic import PhoneticCode
-from app.api.v1.auth import get_current_admin_or_org_admin, get_current_admin
+from app.api.v1.auth import get_current_admin_or_org_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
     RedemptionCodeResponse,
@@ -450,22 +450,86 @@ async def delete_code(
 
 
 # ==================== 音标视频库专用兑换码(2026-10-01) ====================
-# v1 仅**平台 admin** 可发(get_current_admin,不是 _or_org_admin): 音标库是平台
-# 内容,先不并入机构的学习卡额度账(避免与 card_quota 口径纠缠);机构要卖再议。
+# 2026-10-02 起机构管理员也能发: 平台 admin 先在「机构管理」给机构发放音标码额度
+# (organizations.phonetic_code_quota),机构在额度内自己生成。三条规则:
+#   ①org_admin 只看得见/改得动**本机构**发的码(org_id == 我的),平台码与别家码一律 404
+#     —— PhoneticCode 不是 tenancy 锚点,过滤必须显式写
+#   ②生成前过额度闸门(真源 org_service.phonetic_code_quota_status),禁用的归还额度
+#   ③卡种/时长与单词本发码同一道 guard_card_policy(机构只能发 ≤180 天的包月卡)
+# 平台 admin 发的码 org_id 仍为 NULL,不占任何机构额度。
+
+
+def _scope_phonetic_codes(query, user: User):
+    """org_admin 只看本机构发的码;平台 admin 看全部。"""
+    if user.role == "org_admin":
+        return query.where(PhoneticCode.org_id == user.org_id)
+    return query
+
+
+async def _own_phonetic_code(db: AsyncSession, code_id: int, user: User) -> PhoneticCode:
+    code = (await db.execute(
+        _scope_phonetic_codes(select(PhoneticCode).where(PhoneticCode.id == code_id), user)
+    )).scalar_one_or_none()
+    if not code:
+        # 别家的码按 404(不暴露存在性),与单词本码跨机构同口径
+        raise HTTPException(status_code=404, detail="兑换码不存在")
+    return code
+
+
+@router.get("/phonetic-codes/quota")
+async def phonetic_code_quota(
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """当前身份的音标码额度。平台 admin 不限(unlimited=true)。"""
+    if current_user.role != "org_admin":
+        return {"unlimited": True}
+    from app.services import org_service
+    st = await org_service.phonetic_code_quota_status(db, current_user.org_id)
+    return {"unlimited": False, **st}
 
 
 @router.post("/phonetic-codes/generate", response_model=list[PhoneticCodeResponse])
 async def generate_phonetic_codes(
     req: PhoneticCodeGenerate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """批量生成音标视频库兑换码(平台 admin)。开通的是**整个音标视频库**的访问权。"""
+    """批量生成音标视频库兑换码。开通的是**整个音标视频库**的访问权。
+
+    平台 admin 不限量、码不绑机构;机构管理员在平台发放的额度内生成,码绑本机构
+    (只有本机构学生能兑,见 redeem_phonetic_code)。
+    """
+    subscription_service.guard_card_policy(
+        current_user.role, req.grant_type, req.grant_days, req.grant_times,
+    )
+
+    org_id = None
+    if current_user.role == "org_admin":
+        from app.services import org_service
+        org_id = current_user.org_id
+        st = await org_service.phonetic_code_quota_status(db, org_id)
+        if st["phonetic_code_quota"] <= 0:
+            raise HTTPException(
+                status_code=403,
+                detail="平台还没有给本机构发放音标兑换码额度,请联系平台开通后再生成。",
+            )
+        if st["phonetic_codes_used"] + req.count > st["phonetic_code_quota"]:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"音标兑换码额度不足: 已发 {st['phonetic_codes_used']}/"
+                    f"{st['phonetic_code_quota']} 张,剩 {st['phonetic_codes_left']} 张,"
+                    f"本次申请 {req.count} 张。请联系平台追加额度;"
+                    "生成错的未使用码可以禁用或删除,额度会退回来。"
+                ),
+            )
+
     codes = await phonetic_access_service.batch_generate_phonetic_codes(
         db=db,
         admin_id=current_user.id,
         count=req.count,
-        org_id=None,              # 平台码,不绑机构
+        org_id=org_id,
         batch_note=req.batch_note,
         grant_type=req.grant_type,
         grant_days=req.grant_days,
@@ -492,12 +556,12 @@ async def list_phonetic_codes(
     search: Optional[str] = Query(None, description="搜索兑换码或批次备注"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """音标兑换码列表(平台 admin,分页+筛选+搜索)。"""
-    query = select(PhoneticCode)
-    count_query = select(func.count(PhoneticCode.id))
+    """音标兑换码列表(分页+筛选+搜索)。org_admin 只看本机构发的。"""
+    query = _scope_phonetic_codes(select(PhoneticCode), current_user)
+    count_query = _scope_phonetic_codes(select(func.count(PhoneticCode.id)), current_user)
 
     if status:
         query = query.where(PhoneticCode.status == status)
@@ -552,15 +616,11 @@ async def list_phonetic_codes(
 @router.post("/phonetic-codes/{code_id}/disable")
 async def disable_phonetic_code(
     code_id: int,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """禁用音标兑换码(平台 admin)。已使用的不许禁用(语义同单词本码)。"""
-    code = (await db.execute(
-        select(PhoneticCode).where(PhoneticCode.id == code_id)
-    )).scalar_one_or_none()
-    if not code:
-        raise HTTPException(status_code=404, detail="兑换码不存在")
+    """禁用音标兑换码(禁用的归还机构额度)。已使用的不许禁用(语义同单词本码)。"""
+    code = await _own_phonetic_code(db, code_id, current_user)
     if code.status == "used":
         raise HTTPException(status_code=400, detail="已使用的兑换码无法禁用")
     code.status = "disabled"
@@ -571,15 +631,11 @@ async def disable_phonetic_code(
 @router.delete("/phonetic-codes/{code_id}")
 async def delete_phonetic_code(
     code_id: int,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除音标兑换码(平台 admin)。已使用的不许删(保留兑换凭证,语义同单词本码)。"""
-    code = (await db.execute(
-        select(PhoneticCode).where(PhoneticCode.id == code_id)
-    )).scalar_one_or_none()
-    if not code:
-        raise HTTPException(status_code=404, detail="兑换码不存在")
+    """删除音标兑换码。已使用的不许删(保留兑换凭证,语义同单词本码)。"""
+    code = await _own_phonetic_code(db, code_id, current_user)
     if code.status == "used":
         raise HTTPException(
             status_code=400,

@@ -1,11 +1,14 @@
 /**
- * 音标视频库兑换码面板(平台 admin 专用)。
+ * 音标视频库兑换码面板(平台 admin + 机构管理员)。
  *
  * 单词本码按「书」开通,音标码开通的是**整个音标视频库**(库级,不绑任何书),
  * 所以它单独一张表、单独一套端点,不塞进 AdminSubscriptions 那套按书选的表单里 ——
  * 混在一起会让「选书」那半个界面对音标码毫无意义、还容易误发。
  *
- * 只在平台 admin 下渲染(机构 org_admin 调这些端点后端会 403):调用方按 policy.role 判。
+ * 2026-10-02 起机构管理员也能发: 平台在「机构管理 → 音标码额度」给机构发放张数,
+ * 机构在额度内生成,码只给本机构学生兑。卡种/时长照 card-policy(机构只能 ≤180 天包月),
+ * 额度水位走 /phonetic-codes/quota(真源 org_service.phonetic_code_quota_status)。
+ * 调用方必须等 policy 到了再挂(policy 为 null 时别渲染),见 AdminSubscriptions。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Ban, Check, Copy, Search, Trash2 } from 'lucide-react';
@@ -14,7 +17,10 @@ import {
   listPhoneticCodes,
   disablePhoneticCode,
   deletePhoneticCode,
+  getPhoneticCodeQuota,
+  type CardPolicy,
   type PhoneticCode,
+  type PhoneticCodeQuota,
 } from '../../api/subscription';
 import { toast } from '../Toast';
 import { getErrorMessage } from '../../utils/errorMessage';
@@ -26,7 +32,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   disabled: { label: '已禁用', color: 'bg-red-100 text-red-600' },
 };
 
-// 包月常用档。音标码不限身份,全档都能发
+// 包月常用档。机构按 policy.max_grant_days 截掉超限的档
 const DAYS_PRESETS = [30, 90, 180, 365];
 const DAYS_PRESET_LABELS: Record<number, string> = {
   30: '1个月', 90: '3个月', 180: '半年', 365: '1年',
@@ -34,7 +40,11 @@ const DAYS_PRESET_LABELS: Record<number, string> = {
 
 const PAGE_SIZE = 20;
 
-export default function PhoneticCodePanel() {
+export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
+  const isOrg = policy.role === 'org_admin';
+  const grantTypes = ['permanent', 'period', 'times'].filter((t) => policy.allowed_grant_types.includes(t));
+  const dayPresets = DAYS_PRESETS.filter((d) => d <= policy.max_grant_days);
+  const [quota, setQuota] = useState<PhoneticCodeQuota | null>(null);
   const [codes, setCodes] = useState<PhoneticCode[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -44,8 +54,8 @@ export default function PhoneticCodePanel() {
 
   const [genCount, setGenCount] = useState(10);
   const [genNote, setGenNote] = useState('');
-  const [genGrantType, setGenGrantType] = useState('permanent'); // permanent/period/times
-  const [genGrantDays, setGenGrantDays] = useState(180);  // 包月默认半年
+  const [genGrantType, setGenGrantType] = useState(isOrg ? 'period' : 'permanent'); // permanent/period/times
+  const [genGrantDays, setGenGrantDays] = useState(Math.min(180, policy.max_grant_days));  // 包月默认半年
   const [genGrantTimes, setGenGrantTimes] = useState(30); // 次卡默认 30 天
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<PhoneticCode[]>([]);
@@ -76,10 +86,26 @@ export default function PhoneticCodePanel() {
   useEffect(() => { setPage(1); }, [filterStatus]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
+  const fetchQuota = useCallback(async () => {
+    if (!isOrg) return;
+    try { setQuota(await getPhoneticCodeQuota()); } catch { /* 额度条拿不到不影响列表 */ }
+  }, [isOrg]);
+  useEffect(() => { fetchQuota(); }, [fetchQuota]);
+  const quotaTotal = quota?.phonetic_code_quota ?? 0;
+  const quotaLeft = quota?.phonetic_codes_left ?? 0;
+  // 机构没额度时整块生成区置灰并说清找谁,别让人填完点了才吃 403
+  const noQuota = isOrg && quota !== null && quotaTotal <= 0;
+
   const handleGenerate = async () => {
     if (genCount < 1 || genCount > 100) { toast.warning('生成数量需在 1～100 之间'); return; }
     if (genGrantType === 'period' && (!genGrantDays || genGrantDays < 1)) {
       toast.warning('包月卡请填写有效天数'); return;
+    }
+    if (genGrantType === 'period' && genGrantDays > policy.max_grant_days) {
+      toast.warning(`最长 ${policy.max_grant_days} 天`); return;
+    }
+    if (isOrg && quota && genCount > quotaLeft) {
+      toast.warning(`音标码额度只剩 ${quotaLeft} 张，请联系平台追加`); return;
     }
     if (genGrantType === 'times' && (!genGrantTimes || genGrantTimes < 1)) {
       toast.warning('次卡请填写可用天数'); return;
@@ -97,6 +123,7 @@ export default function PhoneticCodePanel() {
       const res = await generatePhoneticCodes(payload);
       setGenResult(res);
       await fetchCodes();
+      fetchQuota();
       toast.success(`已生成 ${res.length} 个音标兑换码`);
     } catch (error) { toast.error(getErrorMessage(error, '生成音标兑换码失败，请检查参数后重试')); }
     finally { setGenerating(false); }
@@ -104,13 +131,13 @@ export default function PhoneticCodePanel() {
 
   const handleDisable = async (codeId: number) => {
     if (!confirm('确定要禁用此音标兑换码吗？')) return;
-    try { await disablePhoneticCode(codeId); fetchCodes(); }
+    try { await disablePhoneticCode(codeId); fetchCodes(); fetchQuota(); }
     catch { toast.error('禁用兑换码失败，请重试'); }
   };
 
   const handleDelete = async (item: PhoneticCode) => {
     if (!confirm(`确定删除音标兑换码 ${item.code} 吗？\n\n删除后该码从列表彻底消失，不可恢复。\n如果只是想让它失效并留个记录，请用「禁用」。`)) return;
-    try { await deletePhoneticCode(item.id); toast.success('兑换码已删除'); fetchCodes(); }
+    try { await deletePhoneticCode(item.id); toast.success('兑换码已删除'); fetchCodes(); fetchQuota(); }
     catch (error) { toast.error(getErrorMessage(error, '删除兑换码失败，请重试')); }
   };
 
@@ -140,8 +167,15 @@ export default function PhoneticCodePanel() {
     <section className="mt-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5 sm:p-6">
       <div className="mb-1 flex items-center gap-2">
         <h2 className="text-lg font-bold text-gray-800">音标视频兑换码</h2>
-        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">库级 · 平台码</span>
+        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{isOrg ? '库级 · 本机构码' : '库级 · 平台码'}</span>
       </div>
+      {isOrg && quota && (
+        <div className={`mb-3 rounded-xl px-4 py-3 text-sm ${noQuota ? 'bg-amber-50 text-amber-800' : 'bg-white text-gray-700 shadow-sm'}`}>
+          {noQuota
+            ? '平台还没有给本机构发放音标兑换码额度，暂时不能生成。请联系平台开通（开通后这里会显示可发张数）。'
+            : <>音标码额度：已发 <strong>{quota.phonetic_codes_used ?? 0}</strong> / {quotaTotal} 张，剩 <strong className={quotaLeft === 0 ? 'text-red-600' : 'text-indigo-700'}>{quotaLeft}</strong> 张。禁用或删除未使用的码会退回额度；这些码只有本机构学生能兑换。</>}
+        </div>
+      )}
       <p className="mb-4 text-xs leading-relaxed text-gray-500">
         开通的是<strong>整个音标视频库</strong>的访问权,不绑任何单词本。只对「音标开通方式 = 需兑换码」的机构有意义
         (在机构管理里切换);其余机构学生本就免费看音标。学生在音标页点任意一节 →「去输入兑换码」,或首页「我的书架 → 兑换教材」里输入激活(两处是同一个兑换框,后端按码自动分流)。
@@ -153,7 +187,7 @@ export default function PhoneticCodePanel() {
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-gray-700">卡种</label>
           <div className="flex flex-wrap gap-2">
-            {['permanent', 'period', 'times'].map((t) => (
+            {grantTypes.map((t) => (
               <button
                 key={t}
                 type="button"
@@ -170,7 +204,7 @@ export default function PhoneticCodePanel() {
           </div>
           {genGrantType === 'period' && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {DAYS_PRESETS.map((d) => (
+              {dayPresets.map((d) => (
                 <button
                   key={d}
                   type="button"
@@ -183,7 +217,7 @@ export default function PhoneticCodePanel() {
                 </button>
               ))}
               <input
-                type="number" min={1} max={3650} value={genGrantDays}
+                type="number" min={1} max={policy.max_grant_days} value={genGrantDays}
                 onChange={(e) => setGenGrantDays(Number(e.target.value))}
                 className="w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
               />
@@ -224,7 +258,7 @@ export default function PhoneticCodePanel() {
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={generating || noQuota}
             className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
           >
             {generating ? '生成中…' : '生成兑换码'}

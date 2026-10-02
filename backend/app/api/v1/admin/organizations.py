@@ -71,6 +71,9 @@ class OrgUpdate(BaseModel):
     # 音标视频访问: open=免费开放(默认) | code=需音标专用兑换码。
     # ⚠️ 翻成 code 前机构应先备好码,否则学生当场全被挡在外面
     phonetic_access_mode: Optional[str] = Field(None, pattern="^(open|code)$")
+    # 音标兑换码额度(2026-10-02): 绝对值 / 原子追加,语义同 card_quota / add_cards
+    phonetic_code_quota: Optional[int] = Field(None, ge=0, description="音标码总额度(设为绝对值)")
+    add_phonetic_codes: Optional[int] = Field(None, ge=1, le=100000, description="追加 N 张音标码额度")
     # 显式清空有效期(改回永不过期): expires_at 的 None 语义是"未传不动",
     # 无法表达"传了要清",用独立布尔区分
     clear_expires: Optional[bool] = None
@@ -149,8 +152,9 @@ def _org_out(
     active_students: int = 0,
     teacher_count: int = 0,
     cards_used: int = 0,
+    phonetic_codes_used: int = 0,
 ) -> dict:
-    from app.services.org_service import card_quota_of
+    from app.services.org_service import card_quota_of, phonetic_code_quota_of
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
         "student_quota": org.student_quota, "active_students": active_students,
@@ -166,6 +170,9 @@ def _org_out(
         "access_mode": getattr(org, "access_mode", None) or "assigned",
         "coin_mode": getattr(org, "coin_mode", None) or "auto",
         "phonetic_access_mode": getattr(org, "phonetic_access_mode", None) or "open",
+        "phonetic_code_quota": phonetic_code_quota_of(org),
+        "phonetic_codes_used": phonetic_codes_used,
+        "phonetic_codes_left": max(0, phonetic_code_quota_of(org) - phonetic_codes_used),
         # 区域保护(协议第四条);坐标为 NULL = 未登记,前端提示"未登记不受保护"
         "address": getattr(org, "address", None),
         "lat": getattr(org, "lat", None),
@@ -214,9 +221,18 @@ async def list_organizations(
     )).all()
     cards_by_org = {r[0]: r[1] for r in card_rows}
 
+    # 每机构已发音标码: 口径与 org_service.count_issued_phonetic_codes 一致(禁用的不算)
+    from app.models.phonetic import PhoneticCode
+    pc_rows = (await db.execute(
+        select(PhoneticCode.org_id, func.count(PhoneticCode.id))
+        .where(PhoneticCode.org_id.is_not(None), PhoneticCode.status != "disabled")
+        .group_by(PhoneticCode.org_id)
+    )).all()
+    pcodes_by_org = {r[0]: r[1] for r in pc_rows}
+
     return [
         _org_out(org, students_by_org.get(org.id, 0), teachers_by_org.get(org.id, 0),
-                 cards_by_org.get(org.id, 0))
+                 cards_by_org.get(org.id, 0), pcodes_by_org.get(org.id, 0))
         for org in orgs
     ]
 
@@ -297,7 +313,7 @@ async def update_organization(
 
     for field in ["name", "plan", "student_quota", "card_quota", "contact_name",
                   "contact_phone", "status", "expires_at", "access_mode", "coin_mode",
-                  "phonetic_access_mode",
+                  "phonetic_access_mode", "phonetic_code_quota",
                   "address", "lat", "lng", "protect_radius_km"]:
         v = getattr(data, field)
         if v is not None:
@@ -318,15 +334,25 @@ async def update_organization(
                 if org.card_quota is not None else base + data.add_cards
             ))
         )
+    if data.add_phonetic_codes:
+        # 原子追加(理由同续卡);NULL 视为 0
+        await db.execute(
+            update(Organization)
+            .where(Organization.id == org_id)
+            .values(phonetic_code_quota=(
+                func.coalesce(Organization.phonetic_code_quota, 0) + data.add_phonetic_codes
+            ))
+        )
     await db.commit()
-    if data.add_cards:
+    if data.add_cards or data.add_phonetic_codes:
         await db.refresh(org)
     invalidate_org_cache(org_id)  # 停用/恢复/续费立即生效
     active = await count_active_students(db, org_id)
     # 已发卡数要真查:默认 0 会让续卡后的响应显示成"额度全新未用",
     # 前端拿它回填列表就成了错数
-    from app.services.org_service import count_issued_cards
-    out = _org_out(org, active, cards_used=await count_issued_cards(db, org_id))
+    from app.services.org_service import count_issued_cards, count_issued_phonetic_codes
+    out = _org_out(org, active, cards_used=await count_issued_cards(db, org_id),
+                   phonetic_codes_used=await count_issued_phonetic_codes(db, org_id))
     if conflicts:
         out["territory_overridden"] = conflicts
     return out

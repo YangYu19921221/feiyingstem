@@ -438,6 +438,8 @@ async def init_db():
             # 音标视频访问模式(2026-10-01): open=免费开放(默认,=上线前行为,零影响) |
             # code=需音标专用兑换码。闸门见 api/v1/phonetics.py,授权行见 phonetic_access_grants
             "ALTER TABLE organizations ADD COLUMN phonetic_access_mode VARCHAR(10) NOT NULL DEFAULT 'open'",
+            # 音标兑换码额度(2026-10-02): 平台给机构发放,NULL=未发放(机构不能自己生成音标码)
+            "ALTER TABLE organizations ADD COLUMN phonetic_code_quota INTEGER",
             # 学习效率功能: AI记忆钩子缓存列 + 学生实际输入(拼写诊断数据地基)
             "ALTER TABLE words ADD COLUMN memory_hook TEXT",
             "ALTER TABLE learning_records ADD COLUMN user_answer VARCHAR(100)",

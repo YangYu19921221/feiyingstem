@@ -130,6 +130,16 @@ export const listPhoneticCodes = (params: {
   search?: string;
 }) => api.get<{ total: number; codes: PhoneticCode[] }>('/admin/subscriptions/phonetic-codes', { params });
 
+// 当前身份的音标码额度(平台 admin 不限;机构=平台发放的张数/已发/剩余)
+export interface PhoneticCodeQuota {
+  unlimited: boolean;
+  phonetic_code_quota?: number;
+  phonetic_codes_used?: number;
+  phonetic_codes_left?: number;
+}
+export const getPhoneticCodeQuota = () =>
+  api.get<PhoneticCodeQuota>('/admin/subscriptions/phonetic-codes/quota');
+
 // 管理员:禁用音标兑换码(留痕;已使用的后端拒绝)
 export const disablePhoneticCode = (codeId: number) =>
   api.post(`/admin/subscriptions/phonetic-codes/${codeId}/disable`);

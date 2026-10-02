@@ -306,6 +306,10 @@ async def redeem_phonetic_code(
         return _fail("兑换码不存在")
     if code.status in _STATUS_MESSAGES:
         return _fail(_STATUS_MESSAGES[code.status])
+    # 机构码只给本机构学生兑(2026-10-02): 否则 A 机构的额度会被 B 机构的学生用掉。
+    # 平台码(org_id 为 NULL)不限机构。放在过期判定之前: 别家的码不该被这边改成 expired
+    if code.org_id is not None and code.org_id != user.org_id:
+        return _fail("这张兑换码不是你所在学校发放的,请向自己的老师索取")
 
     now = datetime.utcnow()
     if code.code_expires_at and code.code_expires_at < now:

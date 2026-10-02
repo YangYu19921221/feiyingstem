@@ -43,6 +43,11 @@ class Organization(Base):
     # 播放票据(见 api/v1/phonetics.py 的闸门);老师/管理员永不受限。
     # ⚠️ 机构应**先备好码再翻 code**,否则学生当场全被挡在外面
     phonetic_access_mode = Column(String(10), default="open", server_default="open", nullable=False)
+    # 音标兑换码额度(2026-10-02): 平台给机构发放的「可生成多少张音标码」。
+    # NULL/0 = 平台还没给额度 → 机构不能自己发音标码(只能用平台发的)。
+    # **不回退 student_quota**(与 card_quota 不同): 音标库是另卖的内容,不是合作费自带的。
+    # 口径真源 org_service.phonetic_code_quota_status
+    phonetic_code_quota = Column(Integer, nullable=True)
     # 区域保护(协议第四条): 经营场所地址与坐标 + 独家半径。
     # 坐标为空 = 未登记,不参与冲突判定也不受保护(存量机构默认如此,零影响)。
     # 判定与口径见 services/geo_service.py

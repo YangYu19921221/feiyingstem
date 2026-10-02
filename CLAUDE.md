@@ -271,6 +271,19 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标兑换码额度由平台发给机构(2026-10-02): 用户「音标的兑换码额度需要总管理给机构发放」。
+  organizations.phonetic_code_quota(NULL/0=未发放,**不回退 student_quota** —— 音标库另卖,
+  与 card_quota 是两笔账,混算会让发音标码吃掉续卡名额)。口径真源 org_service.phonetic_code_quota_status
+  (按 phonetic_codes.org_id 计,禁用的归还、已兑换的永久占额;机构列表 GROUP BY 同口径)。
+  音标码四个端点改 get_current_admin_or_org_admin,四条规则: ①org_admin 只看/改本机构码
+  (`_scope_phonetic_codes`,PhoneticCode **不是 tenancy 锚点**,过滤必须显式写),别家码/平台码 404
+  ②生成前过额度闸门(未发放/超额 403)③卡种走同一道 guard_card_policy(机构只能 ≤180 天包月)
+  ④**redeem_phonetic_code 机构码只给本机构学生兑**(否则 A 的额度被 B 的学生用掉),平台码不限。
+  OrgUpdate 加 phonetic_code_quota(绝对值)/add_phonetic_codes(SQL 原子加,coalesce NULL→0)。
+  前端 PhoneticCodePanel 改收 policy prop(AdminSubscriptions 等 policy 到了**正向**判 admin/org_admin 才挂),
+  机构端显示额度条、没额度整块置灰说清找平台。回归锁验证过: 去掉兑换的机构判 / 去掉列表 scope 各恰好 1 例失败。
+  入口: 平台「机构管理」每行「音标码额度」;机构「兑换码管理」页底部「音标视频兑换码」。
+  测试 tests/test_phonetic_code_quota.py(9 例)
 - ✅ 音标视频单独码开(2026-10-01,已部署生产,提交 ed73bb6;上线时 15 个机构全为 open,
   **10-02 用户要求全部切成 code**(直接改库,改前 .backup;新建机构仍默认 open),
   同日学生/老师公告各加一条 —— 全切之后「只投 admin」的理由不成立了): 用户先选「有任一书即可看」,随后改口

@@ -901,10 +901,10 @@ const AdminSubscriptions = () => {
           )}
         </div>
 
-        {/* 音标视频库兑换码:库级、不绑书,只有平台 admin 能发(机构 org_admin 调端点会 403)。
-            ⚠️ 必须按 role === 'admin' **正向**判,不能写 !isOrgLimited:policy 回来之前是 null,
-            !isOrgLimited 为真 → 面板先挂上、发一次列表请求 → org_admin 每次进页都吃 403 红字 */}
-        {policy?.role === 'admin' && <PhoneticCodePanel />}
+        {/* 音标视频库兑换码:库级、不绑书。平台 admin 不限量;机构管理员在平台发放的额度内发
+            (2026-10-02)。⚠️ 必须**正向**判 role 且等 policy 到了再挂:policy 为 null 时
+            面板拿不到卡种白名单,会按平台全集画出永久卡、点了才 403 */}
+        {policy && (policy.role === 'admin' || policy.role === 'org_admin') && <PhoneticCodePanel policy={policy} />}
       </main>
     </div>
   );
