@@ -34,6 +34,8 @@ export function useWatchHeartbeat(
   videoId: number,
   /** 看完的回调(用于就地把卡片标成「已看完」,不必重拉列表) */
   onCompleted?: () => void,
+  /** 每次上报时交出当前位置(秒),父组件就地更新卡片 —— 关掉再开同一节时续播位置是新的 */
+  onProgress?: (position: number) => void,
 ) {
   // 攒着还没报的秒数。用 ref 不用 state:它每秒都在变,进 state 会把播放器重渲染几十次
   const pending = useRef(0);
@@ -46,6 +48,8 @@ export function useWatchHeartbeat(
   // 渲染期改 ref 会被 react-hooks/refs 拦下,而且 StrictMode 双调用下语义不明确
   const onCompletedRef = useRef(onCompleted);
   useEffect(() => { onCompletedRef.current = onCompleted; }, [onCompleted]);
+  const onProgressRef = useRef(onProgress);
+  useEffect(() => { onProgressRef.current = onProgress; }, [onProgress]);
 
   /** 报一次。`beacon` 用于页面正在关闭的那一枪 */
   const flush = useCallback((beacon = false) => {
@@ -59,6 +63,9 @@ export function useWatchHeartbeat(
       position: Math.round(position.current),
       duration: duration.current,
     };
+    // 本地先记一笔(含关播放器那一枪):列表里那份位置是进页面时取的,不更新的话
+    // 关掉再点开同一节,续播要赌详情接口比视频元数据先回来,输了就跳回旧位置
+    onProgressRef.current?.(body.position);
 
     if (beacon) {
       // 页面关闭中:axios/普通 fetch 会被浏览器掐掉,要 keepalive 才发得出去。

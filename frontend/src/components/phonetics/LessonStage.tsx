@@ -40,6 +40,8 @@ interface Props {
   panelRef: React.RefObject<HTMLDivElement | null>;
   /** 这个视频被看完了(就地把列表里的卡片标成「已看完」,不必重拉整页) */
   onCompleted?: (videoId: number) => void;
+  /** 每次上报观看进度时交出当前位置(秒),父组件就地更新卡片的续播位置与「看到 N%」 */
+  onProgress?: (videoId: number, position: number) => void;
   /**
    * 交出「现在播到第几秒」的读法,提问时用它带上位置。
    *
@@ -57,20 +59,32 @@ interface Props {
 const NO_COPY: React.CSSProperties = { WebkitTouchCallout: 'none', userSelect: 'none' };
 const block = (e: React.SyntheticEvent) => e.preventDefault();
 
+/** 水印上的品牌(2026-10-02 用户要求「水印改成飞鹰教育」;讲义烧的水印本来就带这四个字) */
+const WATERMARK_BRAND = '飞鹰教育';
+
 /**
- * 水印身份串:姓名 · ID。与后端讲义水印同口径(_viewer_label = "{name} · ID{id}")。
- * 取自 localStorage 登录用户(与 StudentIdentityBadge 同源)。
+ * 水印串:飞鹰教育 · 姓名 · ID。身份部分与后端讲义水印同口径(_viewer_label = "{name} · ID{id}")。
+ * 取自 localStorage 登录用户(与 StudentIdentityBadge 同源)。读不到身份时只剩品牌,不会整条消失。
  * ⚠️ 这是**前端**水印,防不住改 DOM / 录屏裁掉 —— 它只让顺手录屏转发的人留下名字,
  * 真溯源仍靠服务端访问日志(每次换票记一条 IP+设备+时间)。所以别把它当硬防线。
  */
 function readViewerLabel(): string {
   try {
     const me = JSON.parse(localStorage.getItem('user') || '{}');
-    const name = (me.full_name || me.username || '').trim();
-    return me.id ? `${name} · ID${me.id}` : name;
+    const name = String(me.full_name || me.username || '').trim();
+    return [WATERMARK_BRAND, name, me.id ? `ID${me.id}` : ''].filter(Boolean).join(' · ');
   } catch {
-    return '';
+    return WATERMARK_BRAND;
   }
+}
+
+/** 续播提示停留多久(毫秒):够看清并点「从头看」,又不一直挡画面 */
+const RESUME_HINT_MS = 8000;
+
+/** 秒 → 3:20(续播提示用) */
+function fmtClock(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 const BTN = 'rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20 disabled:opacity-30';
@@ -128,7 +142,7 @@ function useLandscape(): boolean {
 }
 
 export default function LessonStage({
-  video, materials, viewing, onViewing, panelRef, onCompleted, onPositionGetter,
+  video, materials, viewing, onViewing, panelRef, onCompleted, onProgress, onPositionGetter,
 }: Props) {
   const landscape = useLandscape();
   const [zoomed, setZoomed] = useState(false);
@@ -296,9 +310,23 @@ export default function LessonStage({
     loadTicket().catch(() => setSrcError('视频地址已过期且刷新失败,请刷新页面'));
   };
   // 续播:上次退出的位置(服务端记的,换设备也接得上)。
-  // **看完的不续播** —— 已经看完还从最后几秒开始放很怪,重看就该从头
+  // **看完的也续播**(2026-10-02 改):旧规则「看完的从头放」让回来复习、看到一半退出的孩子
+  // 下次又被拉回 0:00 —— 生产 28 条「已看完」里有 5 条停在片中。现在只有停在最后 15 秒内
+  // (真看到结尾了)才从头;接着放时顶上给一句提示 +「从头看」,想重看整节一键回去
   const resumedOnce = useRef(false);
   useEffect(() => { resumedOnce.current = false; }, [video.id]);
+  // 按视频 id 记:换视频不串;几秒后自动收起,不一直挡画面
+  const [resumedAt, setResumedAt] = useState<{ vid: number; t: number } | null>(null);
+  useEffect(() => {
+    if (!resumedAt) return;
+    const timer = window.setTimeout(() => setResumedAt(null), RESUME_HINT_MS);
+    return () => window.clearTimeout(timer);
+  }, [resumedAt]);
+  const restartFromBeginning = () => {
+    const v = videoRef.current;
+    if (v) v.currentTime = 0;
+    setResumedAt(null);
+  };
 
   const onLoadedMetadata = () => {
     const v = videoRef.current, r = resumeRef.current;
@@ -314,14 +342,20 @@ export default function LessonStage({
     if (resumedOnce.current) return;
     resumedOnce.current = true;
     const pos = video.my_position_seconds || 0;
-    // 距结尾不到 15 秒的当作「看完了」,从头放;太靠前(<10s)也没必要跳
+    // 太靠前(<10s)没必要跳;距结尾不到 15 秒的当作看到头了,从头放。
+    // **不看 my_completed**:「看完过」不等于「这次也看完了」,见上方续播注释
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
-    if (video.my_completed || pos < 10 || (dur > 0 && pos > dur - 15)) return;
+    if (pos < 10 || (dur > 0 && pos > dur - 15)) return;
     v.currentTime = pos;
+    setResumedAt({ vid: video.id, t: pos });
   };
 
   // 观看心跳:看了多久 / 停在哪 / 看完没有(口径见 useWatchHeartbeat)
-  useWatchHeartbeat(videoRef, video.id, () => onCompleted?.(video.id));
+  useWatchHeartbeat(
+    videoRef, video.id,
+    () => onCompleted?.(video.id),
+    (p) => onProgress?.(video.id, p),
+  );
 
   // 换讲义 / 关讲义:不再缩放
   const viewingId = viewing?.id ?? null;
@@ -495,6 +529,23 @@ export default function LessonStage({
           >
             {fs ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
           </button>
+        )}
+        {/* 续播提示:放在第二行(top-10),避开左上全屏按钮与右上水印 */}
+        {resumedAt && resumedAt.vid === video.id && (
+          <div
+            role="status"
+            className="absolute left-2 top-10 z-10 flex items-center gap-2 rounded-full bg-black/70
+                       px-3 py-1 text-xs text-white shadow"
+          >
+            <span>接着上次 {fmtClock(resumedAt.t)} 继续放</span>
+            <button
+              type="button"
+              onClick={restartFromBeginning}
+              className="rounded-full bg-white/20 px-2 py-0.5 font-semibold hover:bg-white/30"
+            >
+              从头看
+            </button>
+          </div>
         )}
         {srcError && <p className="px-3 py-2 text-center text-xs text-rose-300">{srcError}</p>}
         {floating && grips('video')}

@@ -342,6 +342,23 @@ export default function PhoneticsHub() {
     )));
   }, []);
 
+  /**
+   * 每次上报进度时就地更新这张卡的位置(同样不重拉整页)。
+   * 关掉再点开同一节时,续播用的就是刚才停的位置,不必赌详情接口先回来;
+   * 卡片「看到 N%」也跟着走(用看到过的最远处,往回拖不让它变小)
+   */
+  const markProgress = useCallback((videoId: number, position: number) => {
+    setVideos((prev) => prev.map((x) => (
+      x.id === videoId
+        ? {
+          ...x,
+          my_position_seconds: position,
+          my_max_position_seconds: Math.max(x.my_max_position_seconds || 0, position),
+        }
+        : x
+    )));
+  }, []);
+
   return (
     <div className="min-h-screen bg-paper">
       {/* 顶部:强调「这是英语的基础」 */}
@@ -843,6 +860,7 @@ export default function PhoneticsHub() {
                 onViewing={setViewing}
                 panelRef={panelRef}
                 onCompleted={markCompleted}
+                onProgress={markProgress}
                 onPositionGetter={takePositionGetter}
               />
 
