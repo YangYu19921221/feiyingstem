@@ -14,7 +14,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, or_, delete as sa_delete
+from sqlalchemy import case, select, func, or_, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -24,7 +24,7 @@ from app.core.timeutil import utc_now
 from app.api.v1.auth import get_current_teacher
 from app.models.user import User
 from app.models.phonetic import PhoneticVideo, PhoneticMaterial, PhoneticVideoView
-from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS
+from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS, CATEGORY_ORDER
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import (
     lecturer_name, office_convert, phonetic_material_service, video_question, video_watch,
@@ -42,6 +42,8 @@ ALLOWED_VIDEO_MIME = {
     "video/quicktime": "mov",
 }
 VALID_CATEGORIES = set(CATEGORY_LABELS.keys())
+# 手动排序时 sort_order 按 10 递增(留空隙只为手改数据库时好插队,接口每次都整组重写)
+SORT_STEP = 10
 
 # 课件白名单。**按扩展名判而不是 content_type**:pptx 的 MIME 各浏览器/系统报得五花八门
 # (标准的 vnd.openxmlformats-...presentationml.presentation、application/octet-stream
@@ -168,6 +170,37 @@ def _org_scope(q, model):
     if org_id is not None:
         q = q.where(or_(model.org_id == org_id, model.org_id.is_(None)))
     return q
+
+
+def _display_order():
+    """列表排序 = 学生端分组顺序。学生端在 Python 里按 CATEGORY_ORDER 排,
+    这里分页查询只能在 SQL 里排,用 CASE 写同一份顺序(两处都从 CATEGORY_ORDER 来)"""
+    return (
+        case({c: i for i, c in enumerate(CATEGORY_ORDER)},
+             value=PhoneticVideo.category, else_=99),
+        PhoneticVideo.sort_order.asc(),
+        PhoneticVideo.id.asc(),
+    )
+
+
+def _same_owner(org_id: Optional[int]):
+    """「与这个视频同一归属」的条件。NULL 要用 IS NULL,`== None` 在 SQL 里恒为假"""
+    return (PhoneticVideo.org_id.is_(None) if org_id is None
+            else PhoneticVideo.org_id == org_id)
+
+
+async def _next_sort_order(db: AsyncSession, org_id: Optional[int], category: str) -> int:
+    """排到该分类**末尾**的 sort_order。
+
+    ⚠️ 新视频不能沿用默认 0: 老师手动排过序后,那批视频是 10/20/30…,
+    一个 sort_order=0 的新视频会直接跳到最前面 —— 老师刚排好的顺序被打乱,
+    还以为排序没保存住。上传、改分类两条路径都走这里
+    """
+    cur = (await db.execute(
+        select(func.max(PhoneticVideo.sort_order))
+        .where(_same_owner(org_id), PhoneticVideo.category == category)
+    )).scalar()
+    return (cur or 0) + SORT_STEP
 
 
 async def _visible_video(db: AsyncSession, video_id: int, user: User) -> PhoneticVideo:
@@ -341,7 +374,8 @@ async def list_videos(
 ):
     """分页列表(视频多了要翻页)。返回 {total, page, page_size, items},
     与教师端其它列表端点同样式。含已下架的,老师要能看到并重新启用。
-    顺序与学生端一致:按上传顺序(id 升序),老师看到的排序就是学生看到的。"""
+    顺序与学生端一致:分类(入门→元音→辅音→其他)→ sort_order → id,
+    老师看到的排序就是学生看到的(手动排序见 POST /videos/reorder)。"""
     conds = []
     if q:
         kw = f"%{q.strip()}%"
@@ -373,7 +407,7 @@ async def list_videos(
     )).scalar() or 0
 
     rows = (await db.execute(
-        base.order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
+        base.order_by(*_display_order())
         .offset((page - 1) * page_size).limit(page_size)
     )).scalars().all()
 
@@ -721,6 +755,82 @@ class BatchLecturerRequest(BaseModel):
     lecturer: Optional[str] = Field(None, max_length=200)
 
 
+class ReorderRequest(BaseModel):
+    category: str
+    # 该分类下**本机构全部视频**的新顺序(含已下架)。上限与分类规模匹配,留足余量
+    ids: list[int] = Field(..., min_length=1, max_length=500)
+
+
+@router.get("/videos/order")
+async def list_for_reorder(
+    category: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """排序弹层用:某分类下**本机构**的全部视频(不分页、含已下架),按当前顺序。
+
+    为什么不复用分页列表: 拖动排序必须一屏看到整组,跨页拖不了;
+    也不混平台预置 —— 预置视频全平台共用一个 sort_order,一家机构挪它会改掉所有机构的顺序。
+    `preset_count` 告诉前端有几条预置(它们 sort_order 多为 0,在学生端排在最前)
+    """
+    if category not in VALID_CATEGORIES:
+        raise HTTPException(400, "分类不存在")
+    rows = (await db.execute(
+        select(PhoneticVideo)
+        .where(_same_owner(user.org_id), PhoneticVideo.category == category)
+        .order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
+    )).scalars().all()
+    preset = 0
+    if user.org_id is not None:
+        preset = (await db.execute(
+            select(func.count()).select_from(PhoneticVideo).where(
+                PhoneticVideo.org_id.is_(None), PhoneticVideo.category == category,
+                PhoneticVideo.is_active.is_(True))
+        )).scalar() or 0
+    return {
+        "category": category,
+        "items": [{
+            "id": v.id, "title": v.title, "phonetic_symbol": v.phonetic_symbol,
+            "lecturer": v.lecturer, "is_active": bool(v.is_active),
+            "cover_image": v.cover_image,
+        } for v in rows],
+        "preset_count": preset,
+    }
+
+
+@router.post("/videos/reorder")
+async def reorder_videos(
+    body: ReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """保存某分类的手动顺序:按 ids 的先后整组重写 sort_order(10, 20, 30…)。
+
+    ids 必须**恰好**等于该分类下本机构的全部视频,否则 409 不写:
+    - 少了: 弹层打开后别的老师又传了一个(或另一台设备改过分类),
+      按旧名单写会让漏掉的那条留着旧值、插在中间某处 —— 顺序不是老师排的那样
+    - 多了: 混进了别家机构 / 平台预置 / 别的分类的 id。按 id 直接写就是越权改别人的顺序
+    整组重写而不是只改挪动的那几条: 存量全是 0,只改几条的话剩下的仍并列,顺序照旧靠 id 决定
+    """
+    if body.category not in VALID_CATEGORIES:
+        raise HTTPException(400, "分类不存在")
+    if len(set(body.ids)) != len(body.ids):
+        raise HTTPException(400, "视频列表有重复")
+    rows = (await db.execute(
+        select(PhoneticVideo)
+        .where(_same_owner(user.org_id), PhoneticVideo.category == body.category)
+    )).scalars().all()
+    by_id = {v.id: v for v in rows}
+    if set(by_id) != set(body.ids):
+        raise HTTPException(409, "视频列表已有变化(可能刚有人上传或改了分类),请关闭后重新打开排序")
+    for i, vid in enumerate(body.ids):
+        by_id[vid].sort_order = (i + 1) * SORT_STEP
+    await db.commit()
+    logger.info("音标视频排序: org=%s category=%s n=%d by=%s",
+                user.org_id, body.category, len(body.ids), user.id)
+    return {"updated": len(body.ids)}
+
+
 @router.post("/videos/batch-lecturer")
 async def batch_set_lecturer(
     body: BatchLecturerRequest,
@@ -788,7 +898,7 @@ async def upload_video(
     phonetic_symbol: Optional[str] = Form(None),
     category: str = Form("basic"),
     lecturer: Optional[str] = Form(None),
-    sort_order: int = Form(0),
+    sort_order: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_teacher),
 ):
@@ -880,7 +990,9 @@ async def upload_video(
         phonetic_symbol=phonetic_symbol,
         category=final_category,
         lecturer=final_lecturer,
-        sort_order=sort_order,
+        # 没指定就排到该分类末尾(批量上传逐个调用,于是按上传顺序依次往后排)
+        sort_order=(sort_order if sort_order is not None
+                    else await _next_sort_order(db, user.org_id, final_category)),
         created_by=user.id,
         org_id=user.org_id,
     )
@@ -930,6 +1042,13 @@ async def update_video(
         v.lecturer = lecturer_name.resolve(
             raw, await _existing_lecturers(
                 db, v.org_id, [v.id], can_edit_preset=(user.role == "admin")))
+    # 换分类:原来的 sort_order 是在旧分类里的位置,带到新分类会落在随机位置
+    # (旧分类第 2 = 新分类里也插到第 2 前后),老师找不到它去哪了。统一排到新分类末尾
+    if ("category" in data and data["category"] != v.category
+            and data.get("sort_order") is None):
+        data["sort_order"] = await _next_sort_order(db, v.org_id, data["category"])
+    if data.get("sort_order", 0) is None:
+        data.pop("sort_order")      # sort_order 列 NOT NULL,显式传 null 当没传
     for k, val in data.items():
         setattr(v, k, val)
     await db.commit()

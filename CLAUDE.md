@@ -271,6 +271,18 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频手动排序(2026-10-04): 此前 sort_order 字段一直在、但没有任何入口能改(存量全是 0,
+  顺序=上传顺序,传错只能删了重传)。教师端「音标视频」顶部「调整顺序」→ 按分类分 tab,
+  拖抓手 / 上下箭头 / 置顶,攒着改点「保存顺序」一次写(components/phonetics/ReorderDialog.tsx)。
+  `GET /teacher/phonetics/videos/order?category=` 取本机构该分类**全部**视频(不分页、含下架),
+  `POST /videos/reorder` 整组重写 10/20/30…。四个要点: ①**名单必须恰好等于该分类本机构全部视频**,
+  否则 409 一条不写(少了=中途有人上传,按旧名单写会让漏的那条插在中间;多了=混进别家/预置/
+  别的分类 = 越权改别人顺序)②**只排本机构的,平台预置不让机构排**(全平台共用一个 sort_order,
+  一家挪会改掉所有机构);预置 sort_order 多为 0 所以排在本校视频前,弹层里写明
+  ③**新上传/改分类排到该分类末尾**(`_next_sort_order`),沿用 0 会跳到老师排好的最前面
+  ④教师分页列表改成与学生端同一顺序(先 CATEGORY_ORDER 再 sort_order,SQL 里用 CASE),
+  此前教师端只按 sort_order 排、跟学生端看到的不一样。拖动只认左侧抓手(整行可拖会让平板滑不动列表)。
+  测试 tests/test_phonetic_video_reorder.py(6 例;去掉 409 校验 / 末尾排序后 4 例失败,回归锁验证过)
 - ✅ 音标兑换码额度由平台发给机构(2026-10-02): 用户「音标的兑换码额度需要总管理给机构发放」。
   organizations.phonetic_code_quota(NULL/0=未发放,**不回退 student_quota** —— 音标库另卖,
   与 card_quota 是两笔账,混算会让发音标码吃掉续卡名额)。口径真源 org_service.phonetic_code_quota_status

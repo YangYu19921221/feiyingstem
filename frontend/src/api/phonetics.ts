@@ -239,6 +239,23 @@ export interface MyWatchSummary {
 export const MAX_QUESTION_LEN = 500;
 export const MAX_ANSWER_LEN = 2000;
 
+/** 排序弹层的一行 */
+export interface PhoneticOrderItem {
+  id: number;
+  title: string;
+  phonetic_symbol?: string | null;
+  lecturer?: string | null;
+  is_active: boolean;
+  cover_image?: string | null;
+}
+
+export interface PhoneticOrderList {
+  category: PhoneticCategory;
+  items: PhoneticOrderItem[];
+  /** 该分类下平台预置的视频数。机构排不了它们,学生端它们排在本机构视频前面 */
+  preset_count: number;
+}
+
 /** 一位讲师 + 名下视频数(教师端:含已下架的) */
 export interface LecturerStat {
   name: string;
@@ -475,6 +492,17 @@ export const phoneticsApi = {
   batchSetLecturer: (ids: number[], lecturer: string) =>
     api.post<{ updated: number; requested: number; lecturer: string | null }>(
       '/teacher/phonetics/videos/batch-lecturer', { ids, lecturer }),
+
+  /** 排序弹层:某分类下本机构的全部视频(不分页、含已下架),按当前顺序 */
+  orderList: (category: PhoneticCategory) =>
+    api.get<PhoneticOrderList>('/teacher/phonetics/videos/order', { params: { category } }),
+
+  /**
+   * 保存某分类的手动顺序。ids 必须是该分类本机构的**全部**视频 ——
+   * 中途有人上传/改分类时后端回 409,要重新打开排序
+   */
+  reorder: (category: PhoneticCategory, ids: number[]) =>
+    api.post<{ updated: number }>('/teacher/phonetics/videos/reorder', { category, ids }),
 
   remove: (id: number) => api.delete<void>(`/teacher/phonetics/videos/${id}`),
 

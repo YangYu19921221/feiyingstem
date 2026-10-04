@@ -24,6 +24,15 @@ export interface WhatsNewEntry {
 
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    id: 'phonetic-video-reorder-2026-10',
+    date: '2026-10-04',
+    title: '音标视频可以手动排序了',
+    desc: '以前音标视频只能按上传顺序排,传错顺序只能删了重传。现在可以按分类(入门总览/元音/辅音/其他)拖动或点箭头调整顺序,点「保存顺序」后学生端立刻按新顺序显示。新上传的视频会自动排到该分类最后。',
+    where: '教师端「音标视频」→ 页面顶部「调整顺序」按钮',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/phonetics',
+  },
   // 音标码额度(2026-10-02): 平台发额度 → 机构自己发码。两端各一条,入口不同
   {
     id: 'phonetic-code-quota-org-2026-10',

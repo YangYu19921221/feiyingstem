@@ -13,12 +13,13 @@ import {
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
-import { BarChart3, MessageCircleQuestion, Upload, Volume2 } from 'lucide-react';
+import { BarChart3, ListOrdered, MessageCircleQuestion, Upload, Volume2 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
 import ViewerStatsDialog from '../components/phonetics/ViewerStatsDialog';
 import OverviewDialog from '../components/phonetics/OverviewDialog';
 import QuestionInboxDialog from '../components/phonetics/QuestionInboxDialog';
+import ReorderDialog from '../components/phonetics/ReorderDialog';
 
 const PAGE_SIZE = 10;
 
@@ -107,6 +108,8 @@ export default function TeacherPhonetics() {
   const [statsFor, setStatsFor] = useState<PhoneticVideo | null>(null);
   /** 跨视频学情总览弹层开着吗 */
   const [overviewOpen, setOverviewOpen] = useState(false);
+  /** 手动排序弹层开着吗 */
+  const [reorderOpen, setReorderOpen] = useState(false);
   /**
    * 学生提问收件箱。null = 关着;{ videoId: undefined } = 全部提问,
    * 带 videoId = 只看那个视频下的(从行上的红点点进来)
@@ -467,6 +470,16 @@ export default function TeacherPhonetics() {
                 ) : (
                   <span className="text-xs font-normal text-orange-500">听不懂的地方</span>
                 )}
+              </button>
+              {/* 手动排序:与上两个同排,是整理整库的动作,不属于某一行 */}
+              <button
+                onClick={() => setReorderOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-sm
+                           font-semibold text-ink-soft transition hover:bg-gray-200 active:scale-[0.98]"
+              >
+                <ListOrdered className="h-4 w-4" />
+                调整顺序
+                <span className="text-xs font-normal text-ink-mute">学生端按这个顺序看</span>
               </button>
             </div>
           </div>
@@ -1027,6 +1040,14 @@ export default function TeacherPhonetics() {
         <OverviewDialog
           lecturers={lecturers}
           onClose={() => setOverviewOpen(false)}
+        />
+      )}
+
+      {/* 手动排序。保存后刷列表(教师列表与学生端同一个顺序) */}
+      {reorderOpen && (
+        <ReorderDialog
+          onSaved={() => void load()}
+          onClose={() => setReorderOpen(false)}
         />
       )}
 
