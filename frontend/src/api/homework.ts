@@ -33,6 +33,8 @@ export interface CreateHomeworkRequest {
   // 进入方式:'open'=默认(书本里也能进)/ 'homework_only'=只能从作业进入。
   // 学生本来分配了这本书/单元的,照样能从书本自学(不锁已有的书)
   entry_mode?: 'open' | 'homework_only';
+  // 比赛模式:学生当天的单词数/排行榜/单词王只算比赛作业里的词,书本里刷的不计数
+  is_contest?: boolean;
 }
 
 export interface HomeworkResponse {
@@ -59,6 +61,8 @@ export interface HomeworkResponse {
   location_type?: string;
   /** 'homework_only'=只能从作业进入(书本里该单元是锁的) */
   entry_mode?: string;
+  /** 比赛作业:当天只算比赛作业里的词 */
+  is_contest?: boolean;
   /** 布置人(助教账号上线后才有;老作业为空) */
   assigned_by?: number | null;
   assigned_by_name?: string | null;
@@ -111,6 +115,8 @@ export interface StudentHomeworkResponse {
   location_type?: string;
   /** 'homework_only'=只能从作业进入(书本里该单元是锁的) */
   entry_mode?: string;
+  /** 比赛作业:当天只算比赛作业里的词 */
+  is_contest?: boolean;
 }
 
 export interface SubmitHomeworkAttemptRequest {

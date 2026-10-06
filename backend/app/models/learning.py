@@ -169,6 +169,10 @@ class HomeworkAssignment(Base):
     # 单元的分配时照样能自学 —— 这个开关只收回「作业额外开放的那部分」,不锁付费的书。
     # 存量行经 server_default 落 'open' = 旧行为,零影响
     entry_mode = Column(String(20), default="open", server_default="open", nullable=False)
+    # 比赛模式(2026-10-06): 老师勾选。学生当天只要有一份比赛作业,单词数/排行榜/大屏/单词王
+    # 就只算比赛作业单元里的词,书本里刷的不计数(学习记录照常保存)。没有比赛作业的日子照常全算。
+    # 判据唯一真源 daily_words._contest_condition。存量行 0 = 旧行为
+    is_contest = Column(Boolean, default=False, server_default="0", nullable=False)
     # 定时发布:到点(北京日期0点对应的UTC)前学生端不可见/不可做/不解锁单元;NULL=立即开放
     available_from = Column(DateTime, nullable=True)
     # 关闭状态:发错/提前结束时关闭——学生端隐藏、不能再交卷,保留全部做题记录;可重新开放

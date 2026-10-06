@@ -1377,7 +1377,7 @@ const TeacherClassManagement = () => {
                                 {(s.all_words ?? 0) > s.words_learned && (
                                   <span
                                     className="block text-[10px] font-medium text-gray-400"
-                                    title="今天有作业:只算作业里的词。在书本里自学的词照常记录,但不计入单词数和排行"
+                                    title="今天是比赛日:只算比赛作业里的词。在书本里自学的词照常记录,但不计入单词数和排行"
                                   >
                                     共学{s.all_words}
                                   </span>

@@ -450,6 +450,11 @@ const StudentHomework = () => {
                                 🏠 在家做·不发金币
                               </span>
                             )}
+                            {homework.is_contest && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                                🏆 比赛:只算这里的单词
+                              </span>
+                            )}
                             {homework.entry_mode === 'homework_only' && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
                                 🔒 只能从这里进入

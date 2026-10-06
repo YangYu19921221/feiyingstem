@@ -478,6 +478,8 @@ async def init_db():
             # 进入方式(2026-10-05): 'homework_only' 的作业不并入单元白名单、不开书,
             # 只能从作业入口进。存量行落 'open' = 旧行为,零影响
             "ALTER TABLE homework_assignments ADD COLUMN entry_mode VARCHAR(20) NOT NULL DEFAULT 'open'",
+            # 比赛模式(2026-10-06): 有比赛作业的日子只算比赛作业单元里的词。存量 0 = 旧行为
+            "ALTER TABLE homework_assignments ADD COLUMN is_contest BOOLEAN NOT NULL DEFAULT 0",
             # 兑换卡种(次卡/包月): 码上记卡种规格,授权行上记剩余量。
             # 存量行 grant_type 留 NULL = 永久,旧行为不变
             "ALTER TABLE redemption_codes ADD COLUMN grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent'",

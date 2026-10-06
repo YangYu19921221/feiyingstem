@@ -30,8 +30,8 @@ from app.services.weak_words import NON_LEARNED_MODES
 
 
 def _contest_condition():
-    """比赛口径(2026-10-06,用户定): **当天有作业的学生,只算作业单元里的词**;
-    当天没作业的照常全算。用于排行/大屏/班级每日数据 —— 学生做完作业去没布置的书里
+    """比赛口径(2026-10-06,用户定): **当天有「比赛模式」作业的学生,只算比赛作业单元里的词**;
+    当天没有比赛作业的照常全算(普通作业不影响计数 —— 老师布置时勾「🏆 比赛模式」才生效)。用于排行/大屏/班级每日数据 —— 学生做完作业去没布置的书里
     刷词量不再上榜。家长端、学生自己的学习统计、复习**不用**这个口径(照常是总量)。
 
     逐条记录判断(相关子查询,按记录所在的北京日找该生当天的作业):
@@ -51,6 +51,7 @@ def _contest_condition():
                 func.date(HomeworkStudentAssignment.assigned_at, "+8 hours") == rec_day,
                 HomeworkAssignment.is_closed.is_(False),
                 HomeworkAssignment.location_type != "home",
+                HomeworkAssignment.is_contest.is_(True),
             ))
             .correlate(LearningRecord)
         )

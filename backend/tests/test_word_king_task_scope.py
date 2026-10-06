@@ -1,4 +1,4 @@
-"""单词王只数「当天作业单元里的词」(2026-10-06)。
+"""比赛模式:当天有「🏆 比赛模式」作业时,单词王/排行只数比赛作业单元里的词(2026-10-06)。
 
 起因: 老师布置任务拿来比赛,学生做完作业就跑去没布置的书里刷词量当单词王。
 生产核对(09-29 班 55): 某生作业内只背 25 词、另在别的书刷到 174 词当上了王,
@@ -72,10 +72,11 @@ async def scene(db_session):
     return db_session, teacher, cls, a, b, units
 
 
-async def _assign(db, teacher, unit, stu, d, *, completed=True, closed=False, location="classroom"):
+async def _assign(db, teacher, unit, stu, d, *, completed=True, closed=False, location="classroom",
+                  contest=True):
     hw = HomeworkAssignment(title="比赛", unit_id=unit.id, teacher_id=teacher.id,
                             learning_mode="spelling", target_score=80, max_attempts=3,
-                            is_closed=closed, location_type=location)
+                            is_closed=closed, location_type=location, is_contest=contest)
     db.add(hw)
     await db.flush()
     db.add(HomeworkStudentAssignment(
@@ -122,7 +123,7 @@ async def test_same_spelling_in_other_book_not_counted(scene):
 
 
 async def test_scope_matches_task_denominator(scene):
-    """关闭的作业、家里作业、别的日子布置的作业,单元都不算作业范围。"""
+    """关闭的、家里的、别的日子布置的比赛作业都不构成「比赛日」,当天照常全算。"""
     db, teacher, _cls, a, _b, units = scene
     d = local_today() - timedelta(days=1)
     hw_unit, hw_words = units["hw"]
@@ -130,8 +131,10 @@ async def test_scope_matches_task_denominator(scene):
     await _assign(db, teacher, hw_unit, a, d, location="home")
     await _assign(db, teacher, hw_unit, a, d - timedelta(days=1))
     await _learn(db, a, hw_words, d)
+    await _learn(db, a, units["ex"][1][5:10], d)
     await db.commit()
-    assert (await task_words_by_student(db, [a.id], d)).get(a.id, 0) == 0
+    # 关闭的/家里的/别的日子的比赛作业都不让当天成为比赛日 → 照常全算(10 作业词 + 5 书本词)
+    assert (await task_words_by_student(db, [a.id], d)).get(a.id, 0) == 15
 
 
 async def test_classify_not_counted_and_dedup(scene):
@@ -177,7 +180,7 @@ async def test_daily_stats_exposes_task_words(scene, client):
     assert r.status_code == 200, r.text
     row = next(s for s in r.json()["students"] if s["user_id"] == a.id)
     # 用户定:有作业的日子书本里背的不增加 → words_learned 只算作业内;all_words 留总量
-    assert row["words_learned"] == 3 and row["all_words"] == 10 and row["has_task"] is True
+    assert row["words_learned"] == 3 and row["all_words"] == 10
 
 
 async def _checkin(db, stu):
@@ -205,7 +208,7 @@ async def test_start_learning_contest_notice(scene, client):
         assert r.status_code == 200, r.text
         return r.json().get("contest_notice")
 
-    assert "不增加单词数" in (await start(a, ex_unit) or "")   # 有作业,进作业外单元
+    assert "不增加单词数" in (await start(a, ex_unit) or "")   # 比赛日,进比赛外单元
     assert await start(a, hw_unit) is None                      # 进的就是作业单元
     assert await start(b, ex_unit) is None                      # 今天没作业,不评王,不提示
 
@@ -247,3 +250,39 @@ async def test_weekly_contest_sum_is_per_day(scene):
     got = await daily_words.words_sum_by_student(db, [a.id], d1, d2, contest=True)
     assert got[a.id] == 10
     assert (await daily_words.words_sum_by_student(db, [a.id], d1, d2))[a.id] == 20
+
+
+async def test_ordinary_homework_does_not_restrict(scene):
+    """普通作业(没勾比赛模式)不影响计数:书本里背的照常全算,单词王也按总量。"""
+    from app.core.timeutil import local_day_utc_range
+    from app.services import daily_words
+    db, teacher, cls, a, b, units = scene
+    d = local_today() - timedelta(days=1)
+    hw_unit, hw_words = units["hw"]
+    ex_words = units["ex"][1]
+    for s in (a, b):
+        await _assign(db, teacher, hw_unit, s, d, contest=False)
+    await _learn(db, a, hw_words[:4], d)
+    await _learn(db, a, ex_words[5:25], d)   # a 书本里背 20
+    await _learn(db, b, hw_words[:8], d)
+    await db.commit()
+    st, en = local_day_utc_range(d)
+    assert await daily_words.words_by_student(db, [a.id, b.id], st, en, contest=True) == {a.id: 24, b.id: 8}
+    assert await word_kings_for_class(db, cls.id, d) == {a.id}
+
+
+async def test_create_homework_is_contest_flag(scene, client):
+    """建作业时勾比赛模式 → 落库 + 教师/学生列表都带 is_contest。"""
+    from tests.conftest import _make_token
+    db, teacher, _cls, a, _b, units = scene
+    r = await client.post("/api/v1/teacher/homework", json={
+        "title": "周赛", "unit_id": units["hw"][0].id, "learning_mode": "spelling",
+        "student_ids": [a.id], "target_score": 80, "max_attempts": 3, "is_contest": True,
+    }, headers={"Authorization": f"Bearer {_make_token(teacher.id)}"})
+    assert r.status_code == 200, r.text
+    hid = r.json()["homework_ids"][0]
+    assert (await db.get(HomeworkAssignment, hid)).is_contest is True
+    t = await client.get("/api/v1/teacher/homework", headers={"Authorization": f"Bearer {_make_token(teacher.id)}"})
+    assert any(h["id"] == hid and h["is_contest"] for h in t.json())
+    m = await client.get("/api/v1/student/my-homework", headers={"Authorization": f"Bearer {_make_token(a.id)}"})
+    assert any(h["homework_id"] == hid and h["is_contest"] for h in m.json())

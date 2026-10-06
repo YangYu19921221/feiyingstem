@@ -49,6 +49,8 @@ class StudentHomeworkResponse(BaseModel):
     location_type: str = "classroom"
     # 'homework_only' = 只能从作业入口进(书本里这个单元是锁的),学生端挂角标
     entry_mode: str = "open"
+    # 比赛作业:当天单词数/排行只算比赛作业里的词,学生端挂「🏆 比赛」角标
+    is_contest: bool = False
 
     class Config:
         from_attributes = True
@@ -194,6 +196,7 @@ async def get_my_homework(
             group_index=homework.group_index,
             location_type=homework.location_type or "classroom",
             entry_mode=homework.entry_mode or "open",
+            is_contest=bool(homework.is_contest),
             # 开放时刻转成北京墙上时间的 naive 字符串,与 deadline 口径一致
             # (前端 new Date 按本地解析),否则会差 8 小时显示成前一天
             available_from=(homework.available_from + timedelta(hours=8)).isoformat()

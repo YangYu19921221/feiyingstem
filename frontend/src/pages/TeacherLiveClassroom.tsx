@@ -1008,7 +1008,7 @@ const TeacherLiveClassroom = () => {
                                 {d.full_name}
                               </span>
                               <span className="relative text-xs font-mono shrink-0" style={{ color: t.sub }}
-                                title={(d.all_words ?? 0) > d.words_learned ? '今天有作业只算作业里的词;书本里自学的不计入' : undefined}>
+                                title={(d.all_words ?? 0) > d.words_learned ? '今天是比赛日,只算比赛作业里的词;书本里自学的不计入' : undefined}>
                                 {d.words_learned} 词{(d.all_words ?? 0) > d.words_learned && <span style={{ color: t.dim }}> (共学 {d.all_words})</span>}
                               </span>
                               <span className="relative text-xs font-mono shrink-0 w-16 text-right" style={{ color: t.dim }}>

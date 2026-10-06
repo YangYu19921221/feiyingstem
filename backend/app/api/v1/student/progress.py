@@ -167,13 +167,13 @@ async def start_learning(
     # 4.1 比赛提示(2026-10-06): 单词王只比当天作业单元里的词。今天有作业、这个单元
     # 却不在作业范围里 → 告诉学生「这里背的不计入单词王」,免得白刷一晚上以为能当王。
     # 学习记录照常保存(学情/复习都要),只是不进比赛。判据与评选同源(coin_service)
-    from app.services.coin_service import task_unit_ids_on_day
+    from app.services.coin_service import contest_unit_ids_on_day
     from app.core.timeutil import local_today as _local_today
-    _task_units = await task_unit_ids_on_day(db, user_id, _local_today())
+    _contest_units = await contest_unit_ids_on_day(db, user_id, _local_today())
     contest_notice = (
-        "今天有作业:这里背的词不增加单词数,也不计入排行榜和单词王(学习记录照常保存)。"
-        "想上榜,先回「我的作业」背作业里的词!"
-        if _task_units and unit_id not in _task_units else None
+        "今天是比赛日:这里背的词不增加单词数,也不计入排行榜和单词王(学习记录照常保存)。"
+        "想上榜,先回「我的作业」背比赛作业里的词!"
+        if _contest_units and unit_id not in _contest_units else None
     )
 
     # 4. 如果单元没有单词,直接返回提示信息

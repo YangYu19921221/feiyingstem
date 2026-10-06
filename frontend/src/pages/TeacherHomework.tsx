@@ -109,6 +109,7 @@ const TeacherHomework: React.FC = () => {
     daily_sequence: false,
     location_type: 'classroom',
     entry_mode: 'open',
+    is_contest: false,
   });
   // ScopeSelector state: allowBook=false means book_id is used for cascading but not submitted.
   // Only unit_id and group_index are included in the homework create payload.
@@ -326,6 +327,7 @@ const TeacherHomework: React.FC = () => {
       daily_sequence: false,
       location_type: 'classroom',
       entry_mode: 'open',
+      is_contest: false,
     });
     setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
     setStudentQuery('');
@@ -522,6 +524,11 @@ const TeacherHomework: React.FC = () => {
                               {homework.location_type === 'home' && (
                                 <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-normal whitespace-nowrap">
                                   🏠 家里·不发金币
+                                </span>
+                              )}
+                              {homework.is_contest && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-xs font-normal whitespace-nowrap">
+                                  🏆 比赛
                                 </span>
                               )}
                               {homework.entry_mode === 'homework_only' && (
@@ -910,6 +917,30 @@ const TeacherHomework: React.FC = () => {
                         ? '🏠 家里作业:学生照常能看到、要做、单元照常解锁,只是做完不发金币(成绩仍记录)。'
                         : '🏫 电教室作业:当天全部完成照常发金币,规则不变。'}
                     </p>
+                  </div>
+
+                  {/* 比赛模式:当天只算比赛作业里的词 */}
+                  <div>
+                    <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      formData.is_contest
+                        ? 'border-orange-500 bg-orange-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 accent-orange-500"
+                        checked={!!formData.is_contest}
+                        onChange={(e) => setFormData({ ...formData, is_contest: e.target.checked })}
+                      />
+                      <span>
+                        <span className="block font-semibold text-gray-800">🏆 比赛模式</span>
+                        <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">
+                          {formData.is_contest
+                            ? '开放当天,学生的单词数、排行榜、大屏和单词王只算这份作业里的词;在书本里背的词照常保存、照常复习,但不计数。'
+                            : '不勾:学生当天在书本里背的词也照常计入单词数和排行。'}
+                        </span>
+                      </span>
+                    </label>
                   </div>
 
                   {/* 进入方式:只能从作业进 / 书本里也能进 */}

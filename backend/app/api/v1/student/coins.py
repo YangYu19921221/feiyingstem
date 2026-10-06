@@ -140,8 +140,8 @@ async def word_king_race_status(
     # 2026-08-20 起单词王有参评门(要有对手 + 当天任务全做完),下面三支专管
     # "为什么今天没有王 / 我为什么不在候选里"。必须排在领先判断**之前** ——
     # 不然没资格的人会先落进 behind 那支,看到"还差 N 词就能追上"白刷一晚上。
-    # 2026-10-06 起单词王只数作业单元里的词(my_words);my_all_words 是含别的书的总量。
-    # 两者不等时补一句,否则孩子背了 300 个却看到「你 20 词」会以为系统漏算
+    # 2026-10-06 起比赛日(有「🏆 比赛模式」作业)只数比赛作业单元里的词(my_words);
+    # my_all_words 是含书本自学的总量。两者不等时补一句,否则孩子会以为系统漏算
     outside = max(0, race.get("my_all_words", 0) - race["my_words"])
     if not race["in_class"]:
         tip, level = "", "none"
@@ -150,34 +150,34 @@ async def word_king_race_status(
             "今天老师没布置任务,不评单词王(不是漏发)。明天做完任务再来争!", "no_task")
     elif race["my_words"] <= 0:
         tip, level = (
-            "今天作业里的词还没开始背。单词王只比作业里的词,背得最多的同学 24 点当选!"
+            "今天是比赛日,比赛作业里的词还没开始背。只有比赛作业里的词才计数,背得最多的同学 24 点当选!"
             if outside else
-            "今天还没开始学词。作业里的词背得最多的同学 24 点会被评为单词王!", "idle")
+            "今天还没开始学词。学得最多的同学 24 点会被评为单词王!", "idle")
     elif race.get("task_pending"):
         tip, level = (
-            f"你今天作业里学了 {race['my_words']} 词,但作业还没做完 —— "
+            f"你今天学了 {race['my_words']} 词,但作业还没做完 —— "
             "单词王要先完成当天的任务才参评。做完就有机会!", "task_pending")
     elif race.get("no_contest"):
         tip, level = (
-            f"你今天作业里学了 {race['my_words']} 词。今天班里没有别人参与争夺,"
+            f"你今天学了 {race['my_words']} 词。今天班里没有别人参与争夺,"
             "不评单词王。", "no_contest")
     elif race["is_leading"] and race["tied"]:
         tip, level = (
-            f"你和别人并列第一(作业里 {race['my_words']} 词)!24 点结算,再多学几个才稳。", "tied")
+            f"你和别人并列第一({race['my_words']} 词)!24 点结算,再多学几个才稳。", "tied")
     elif race["is_leading"] and race["chasers"] > 0:
         tip, level = (
-            f"你暂列第一(作业里 {race['my_words']} 词),但有 {race['chasers']} 人紧追不舍,"
+            f"你暂列第一({race['my_words']} 词),但有 {race['chasers']} 人紧追不舍,"
             "随时可能被超越!24 点结算。", "chased")
     elif race["is_leading"]:
         tip, level = (
-            f"你暂列第一(作业里 {race['my_words']} 词)!别人随时可能反超,24 点结算才算数。", "leading")
+            f"你暂列第一({race['my_words']} 词)!别人随时可能反超,24 点结算才算数。", "leading")
     else:
         tip, level = (
-            f"作业里的词:第一名 {race['top_words']} 个,你 {race['my_words']} 个,"
+            f"第一名 {race['top_words']} 词,你 {race['my_words']} 词,"
             f"还差 {race['gap']} 个就能追上!24 点结算。", "behind")
 
     if outside and level not in ("none", "no_task", "idle"):
-        tip += f"(今天另外在别的书背了 {outside} 词,不计入单词王)"
+        tip += f"(今天是比赛日,另外在书本里背的 {outside} 词不计数)"
 
     return {
         "date": d.isoformat(),

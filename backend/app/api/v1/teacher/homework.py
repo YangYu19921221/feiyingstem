@@ -48,6 +48,8 @@ class CreateHomeworkRequest(BaseModel):
     # 进入方式(2026-10-05): 'open'=默认(书本里也能进)/ 'homework_only'=只能从作业进入
     # (不给单元授权、不开书;学生本来有该书分配的照样能自学)
     entry_mode: str = "open"
+    # 比赛模式:勾上后学生当天的单词数/排行/单词王只算这份作业的单元
+    is_contest: bool = False
 
 
 class HomeworkResponse(BaseModel):
@@ -66,6 +68,8 @@ class HomeworkResponse(BaseModel):
     # 上课地点:'classroom'=电教室(发金币)/ 'home'=家里(不发金币)
     location_type: str = "classroom"
     entry_mode: str = "open"
+    # 比赛模式:勾上后学生当天的单词数/排行/单词王只算这份作业的单元
+    is_contest: bool = False
     created_at: str
     total_assigned: int
     completed_count: int
@@ -252,6 +256,7 @@ async def create_homework(
             location_type=("home" if request.location_type == "home" else "classroom"),
             # 白名单归一:认不出的一律按 open(旧行为),不静默把学生锁在书外
             entry_mode=("homework_only" if request.entry_mode == "homework_only" else "open"),
+            is_contest=bool(request.is_contest),
         )
         db.add(homework)
         await db.flush()  # 获取homework.id
@@ -277,6 +282,8 @@ async def create_homework(
     loc_desc = "(家里·不发金币)" if request.location_type == "home" else ""
     if request.entry_mode == "homework_only":
         loc_desc += "(仅作业入口)"
+    if request.is_contest:
+        loc_desc += "(比赛模式)"
     audit_log.record(
         db, http, current_user, "homework.create",
         f"布置作业「{request.title}」{len(homework_ids)} 份{loc_desc}:{unit_desc}{open_desc},"
@@ -369,6 +376,7 @@ async def get_teacher_homework(
             if homework.available_from else None,
             location_type=homework.location_type or "classroom",
             entry_mode=homework.entry_mode or "open",
+            is_contest=bool(homework.is_contest),
             created_at=homework.created_at.isoformat(),
             total_assigned=stats.total or 0,
             completed_count=stats.completed or 0,
