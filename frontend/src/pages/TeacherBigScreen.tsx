@@ -34,6 +34,9 @@ interface DailyRow {
   user_id: number;
   full_name: string;
   words_learned: number;
+  /** 作业内词量(与单词王同口径);老接口没有该字段时按总量 */
+  task_words?: number;
+  has_task?: boolean;
   study_duration: number;
   accuracy_rate: number;
 }
@@ -254,10 +257,16 @@ const TeacherBigScreen = () => {
 
   // 打码在数据派生点统一做一次——下游(冠军条/前三/轮播/热血播报文案)全部
   // 从 ranking 取名,逐渲染点包裹迟早漏(播报是拼进字符串的)
+  // 比赛口径(2026-10-06):今天有人布置了作业 → 排行只比作业内的词(与单词王同一个数),
+  // 去没布置的书里刷的词不上榜;一份作业都没有的日子照旧按总量排(自学日也要有榜)。
+  // 下游冠军条/档位/进度条都读 words_learned,所以在派生点把它换成作业内词量,一处换全处一致
+  const contestMode = useMemo(() => daily.some(d => d.has_task), [daily]);
   const ranking = useMemo(
-    () => daily.filter(d => d.words_learned > 0).sort((a, b) => b.words_learned - a.words_learned)
+    () => daily
+      .map(d => (contestMode ? { ...d, words_learned: d.has_task ? (d.task_words ?? 0) : 0 } : d))
+      .filter(d => d.words_learned > 0).sort((a, b) => b.words_learned - a.words_learned)
       .map(d => (privacy ? { ...d, full_name: maskName(d.full_name) } : d)),
-    [daily, privacy]
+    [daily, privacy, contestMode]
   );
   const gridStudents = useMemo(
     () => (snap?.students ?? []).filter(s => s.status !== 'offline')
@@ -547,7 +556,7 @@ const TeacherBigScreen = () => {
              style={{ background: 'rgba(10,16,36,0.5)', border: '1px solid rgba(255,215,0,0.22)' }}>
           <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,215,0,0.18)' }}>
             <motion.span className="text-2xl" animate={{ rotate: [0, -8, 8, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}>🏆</motion.span>
-            <h2 className="text-lg font-black tracking-[0.2em] text-white font-mono">今日学词排行</h2>
+            <h2 className="text-lg font-black tracking-[0.2em] text-white font-mono">{contestMode ? '今日作业词排行' : '今日学词排行'}</h2>
             <span className="ml-auto text-xs font-mono text-white/50">
               全班 <AnimatePresence mode="popLayout"><motion.span key={totalWords} initial={{ y: -8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} className="inline-block font-black text-base" style={{ color: C.gold }}>{totalWords}</motion.span></AnimatePresence> 词
             </span>

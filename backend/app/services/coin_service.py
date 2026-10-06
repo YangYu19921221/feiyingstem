@@ -143,9 +143,9 @@ async def king_eligible_counts(
 ) -> dict[int, int]:
     """把一批同班学生筛成「有资格参评单词王的人 → 当天词数」。
 
-    2026-08-20 加的参评资格。**词量口径一点没动** —— 返回的词数仍是
-    daily_words_by_student 的 distinct(lower(word)),教师端日报/大屏/战况提示
-    看到的数字与这里完全一致;这里只决定"谁进候选",不决定"数字是多少"。
+    2026-08-20 加的参评资格。2026-10-06 起**词数只算当天作业单元里的词**
+    (task_words_by_student):学生做完作业去没布置的书里刷词量不再算进比赛。
+    教师端日报/大屏的「作业内」列、学生战况提示用的都是这同一个数。
 
     资格两条:
     1. 当天真的学过词(>0)。
@@ -160,8 +160,7 @@ async def king_eligible_counts(
     """
     if not member_ids:
         return {}
-    day_start, day_end = local_day_utc_range(d)
-    counts = await daily_words_by_student(db, member_ids, day_start, day_end)
+    counts = await task_words_by_student(db, member_ids, d)
     learned = {uid: v for uid, v in counts.items() if v > 0}
     if not learned:
         return {}
@@ -229,9 +228,10 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
     no_task 与 task_pending 是两回事,文案必须分开:前者学生做什么都没用(今天就是
     没有王),后者是"去把作业做完就有机会"。混成一句会让孩子白刷一晚上词。
 
-    ⚠️ my_words / top_words 用的是**真实词量**(不筛资格),学生看到的数字必须与
-    教师端日报/大屏一致;资格只影响 is_leading / no_contest / no_task / task_pending。
-    否则孩子会看到"我今天 0 词"却明明学了一上午。
+    my_words / top_words 是**作业内词量**(2026-10-06 起,与评选同口径,不筛资格);
+    my_all_words 是当天总词量(含没布置的书)—— 两个都给,孩子才看得懂
+    「我背了 300 个怎么没当上王」:作业外的不计入比赛。
+    资格只影响 is_leading / no_contest / no_task / task_pending。
     """
     class_ids = (await db.execute(
         select(ClassStudent.class_id).where(and_(
@@ -239,14 +239,22 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
     )).scalars().all()
     settled = d < local_today()
     if not class_ids:
-        return {"in_class": False, "my_words": 0, "top_words": 0, "is_leading": False,
+        return {"in_class": False, "my_words": 0, "my_all_words": 0, "top_words": 0, "is_leading": False,
                 "tied": False, "chasers": 0, "gap": 0, "settled": settled,
                 "no_contest": False, "no_task": False, "task_pending": False}
 
     day_start, day_end = local_day_utc_range(d)
+    my_all = (await daily_words_by_student(db, [student_id], day_start, day_end)).get(student_id, 0)
+    # 没资格的两种原因要分开报(见 docstring):今天没布置任务 vs 布置了没做完。
+    # 这是学生本人的状态、与哪个班无关,放在循环外 —— 放在循环里时,作业内 0 词的学生
+    # 一个班都选不中,best 停在默认值,no_task 会被误报成 False
+    my_total, my_done = (await task_progress_on_day(db, [student_id], d)).get(
+        student_id, (0, 0))
+    no_task = my_total <= 0
+    task_pending = my_total > 0 and my_done < my_total
     best: dict = {"my_words": 0, "top_words": 0, "is_leading": False,
                   "tied": False, "chasers": 0, "gap": 0,
-                  "no_contest": False, "no_task": False, "task_pending": False}
+                  "no_contest": False, "no_task": no_task, "task_pending": task_pending}
     for cid in class_ids:
         members = (await db.execute(
             select(ClassStudent.student_id).where(and_(
@@ -254,17 +262,12 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
         )).scalars().all()
         if not members:
             continue
-        # 展示用的真实词量 + 评选用的参评名单,两套分开(见 docstring)
-        counts = await daily_words_by_student(db, list(members), day_start, day_end)
+        # 展示用的作业内词量(不筛资格) + 评选用的参评名单,两套分开(见 docstring)
+        counts = await task_words_by_student(db, list(members), d)
         eligible = await king_eligible_counts(db, list(members), d)
         mine = counts.get(student_id, 0)
         top = max(counts.values(), default=0)
         no_contest = not has_king_contest(eligible)
-        # 没资格的两种原因要分开报(见 docstring):今天没布置任务 vs 布置了没做完
-        my_total, my_done = (await task_progress_on_day(db, [student_id], d)).get(
-            student_id, (0, 0))
-        no_task = my_total <= 0
-        task_pending = my_total > 0 and my_done < my_total
         # 领先 = 词量第一 且 自己有资格 且 这个班构成争夺
         leading = (mine > 0 and mine >= top
                    and student_id in eligible and not no_contest)
@@ -285,7 +288,7 @@ async def word_king_race(db: AsyncSession, student_id: int, d: date) -> dict:
             best = cand
         elif best["my_words"] == 0 and cand["my_words"] > 0:
             best = cand
-    return {"in_class": True, "settled": settled, **best}
+    return {"in_class": True, "settled": settled, "my_all_words": my_all, **best}
 
 
 async def _get_or_create_coin(db: AsyncSession, user_id: int, org_id: int) -> StudentCoin:
@@ -501,6 +504,56 @@ async def is_auto_coin_org(db: AsyncSession, org_id: Optional[int]) -> bool:
         select(Organization.coin_mode).where(Organization.id == (org_id or 1))
     )).scalar_one_or_none()
     return (mode or "auto") != "manual"
+
+
+async def task_words_by_student(
+    db: AsyncSession, student_ids: list[int], d: date
+) -> dict[int, int]:
+    """一批学生在 d 这天「作业范围内」的去重学词数 → {student_id: 词数}(缺省 0)。
+
+    2026-10-06 用户反馈: 老师布置任务拿来比赛,学生做完作业就跑去没布置的书里刷词量
+    当单词王。所以单词王**只数当天作业单元里的词** —— 去别的书背照样记学习记录、
+    照样进学生自己的总量统计,只是不进比赛。
+
+    「当天作业单元」与 task_progress_on_day 分母同口径: assigned_at 落当天、未关闭、
+    非家里作业。按单元而不是按组: 按组作业的学生多背同单元其他组也算(同一单元是
+    老师圈定的范围,不算刷)。词量口径与 daily_words 一致(distinct lower(word)、
+    排除 classify);判「词在不在作业单元里」用 word_id —— 单元级隔离后每个单元的词
+    有独立 word_id,所以别的书里同拼写的词不会被误算进来。
+    """
+    if not student_ids:
+        return {}
+    from app.models.word import Word, UnitWord
+    from app.models.learning import LearningRecord
+    from app.services.weak_words import NON_LEARNED_MODES
+    day_start, day_end = local_day_utc_range(d)
+    # 学习记录 → 这个词所在单元 → 该生当天的作业是不是这个单元。
+    # join 会让同一条记录因多份作业/多个单元重复出现,distinct(lower(word)) 吸收掉
+    rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            func.count(func.distinct(func.lower(Word.word))).label("cnt"),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .join(UnitWord, UnitWord.word_id == LearningRecord.word_id)
+        .join(HomeworkAssignment, HomeworkAssignment.unit_id == UnitWord.unit_id)
+        .join(HomeworkStudentAssignment, and_(
+            HomeworkStudentAssignment.homework_id == HomeworkAssignment.id,
+            HomeworkStudentAssignment.student_id == LearningRecord.user_id,
+        ))
+        .where(and_(
+            LearningRecord.user_id.in_(student_ids),
+            LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
+            LearningRecord.created_at >= day_start,
+            LearningRecord.created_at < day_end,
+            HomeworkStudentAssignment.assigned_at >= day_start,
+            HomeworkStudentAssignment.assigned_at < day_end,
+            HomeworkAssignment.is_closed.is_(False),
+            HomeworkAssignment.location_type != "home",
+        ))
+        .group_by(LearningRecord.user_id)
+    )).all()
+    return {r.user_id: int(r.cnt or 0) for r in rows}
 
 
 async def task_progress_on_day(

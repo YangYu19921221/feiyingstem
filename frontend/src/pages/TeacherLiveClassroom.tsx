@@ -48,6 +48,8 @@ interface DailyStatRow {
   user_id: number;
   full_name: string;
   words_learned: number;
+  task_words?: number;      // 作业内词量(与单词王同口径)
+  has_task?: boolean;
   study_duration: number;   // 秒
   accuracy_rate: number;
   sessions_count: number;
@@ -550,7 +552,11 @@ const TeacherLiveClassroom = () => {
       avgAccuracy: active.length > 0
         ? Math.round(active.reduce((s, d) => s + d.accuracy_rate, 0) / active.length)
         : 0,
-      rows: [...active].sort((a, b) => b.words_learned - a.words_learned),
+      // 有作业的日子按作业内词量排(与单词王同口径),见 TeacherBigScreen 的 contestMode
+      rows: daily.some(d => d.has_task)
+        ? [...active].sort((a, b) => (b.has_task ? b.task_words ?? 0 : -1) - (a.has_task ? a.task_words ?? 0 : -1)
+            || b.words_learned - a.words_learned)
+        : [...active].sort((a, b) => b.words_learned - a.words_learned),
     };
   }, [daily]);
 
@@ -1005,8 +1011,9 @@ const TeacherLiveClassroom = () => {
                               <span className="relative text-sm font-medium flex-1 truncate" style={{ color: t.text }}>
                                 {d.full_name}
                               </span>
-                              <span className="relative text-xs font-mono shrink-0" style={{ color: t.sub }}>
-                                {d.words_learned} 词
+                              <span className="relative text-xs font-mono shrink-0" style={{ color: t.sub }}
+                                title={d.has_task ? '作业内词数(单词王只比这个)/ 今天总共学的词' : undefined}>
+                                {d.has_task ? <>作业 {d.task_words ?? 0} · 共 {d.words_learned} 词</> : <>{d.words_learned} 词</>}
                               </span>
                               <span className="relative text-xs font-mono shrink-0 w-16 text-right" style={{ color: t.dim }}>
                                 {fmtMin(Math.round(d.study_duration / 60))}

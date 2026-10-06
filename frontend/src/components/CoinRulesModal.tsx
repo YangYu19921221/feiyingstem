@@ -105,7 +105,7 @@ export default function CoinRulesModal({ open, onClose, audience, autoCoin, rule
 
             <Row icon="👑" title={`当上单词王 → 额外 +${n.word_king_reward} 枚`}>
               <p>
-                每天班上<b>学的单词最多</b>的那个人是单词王,额外再加 {n.word_king_reward} 枚
+                每天班上<b>作业里的单词背得最多</b>的那个人是单词王,额外再加 {n.word_king_reward} 枚
                 ——{isStudent ? '和上面的任务金币可以叠加' : '与任务金币叠加'},
                 所以一天最多 {n.daily_cap} 枚。
               </p>
@@ -116,6 +116,12 @@ export default function CoinRulesModal({ open, onClose, audience, autoCoin, rule
               </p>
               <p>· 学的词数一样多可以<b>并列</b>,并列的人都算单词王、都发金币。</p>
               <p>· 词数按<b>不重复</b>的单词算:同一个词今天练几遍都只算 1 个。翻卡片和分类不计入。</p>
+              <p>
+                · <b>只算当天作业里的单词</b>:
+                {isStudent
+                  ? '去别的书背的词照样记进你的学习记录,但不算进单词王比赛。'
+                  : '学生在没布置的书里背的词照常记录,但不计入单词王,防止「做完作业去刷别的书」抢王。'}
+              </p>
               <p>
                 · 要先<b>完成当天布置的任务</b>才参评 ——
                 {isStudent

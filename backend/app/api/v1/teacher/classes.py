@@ -528,6 +528,10 @@ async def get_class_daily_stats(
         .group_by(LearningRecord.user_id)
     )
     words_learned_map = {r.user_id: (r.cnt or 0) for r in words_res.all()}
+    # 作业内词量(2026-10-06): 单词王只比这个数 —— 学生去没布置的书里刷的词不进比赛
+    from app.services.coin_service import task_words_by_student, task_progress_on_day
+    task_words_map = await task_words_by_student(db, student_ids, dt)
+    has_task_map = await task_progress_on_day(db, student_ids, dt)
 
     # 批量查询会话数
     sess_result = await db.execute(
@@ -611,6 +615,8 @@ async def get_class_daily_stats(
             "full_name": student.full_name or student.username,
             "study_date": dt.isoformat(),
             "words_learned": words_learned_map.get(student.id, 0),
+            "task_words": task_words_map.get(student.id, 0),
+            "has_task": has_task_map.get(student.id, (0, 0))[0] > 0,
             "study_duration": sess_duration_map.get(student.id, 0),
             "correct_count": correct,
             "wrong_count": total_records - correct,

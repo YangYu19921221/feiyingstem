@@ -172,7 +172,10 @@ export interface WordKingRace {
   date: string;
   in_class: boolean;
   settled: boolean;      // 这天是否已结算(今天=false,24点后才定)
+  /** 作业内词量(单词王只比这个数) */
   my_words: number;
+  /** 今天总共学的词(含没布置的书) */
+  my_all_words?: number;
   top_words: number;
   is_leading: boolean;
   tied: boolean;

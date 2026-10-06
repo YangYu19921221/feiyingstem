@@ -9,8 +9,8 @@
   A 有对手 —— 班里当天有资格参评的人 >= MIN_KING_CONTENDERS,否则整班不出王
   B 完成作业 —— 当天布置了任务且全部完成才参评;没布置任务的日子不产生王
 
-⚠️ 词量口径没动(仍是 daily_words 的 distinct(lower(word)) 排除 classify)。
-资格只决定"谁进候选",不决定"数字是多少" —— 教师端日报/大屏/学生端看到的词数不变。
+2026-10-06 起词数只算当天作业单元里的词(task_words_by_student),见
+test_word_king_task_scope.py;这里的词都挂在作业单元里,所以两道门的结论不变。
 """
 from datetime import date, datetime, timedelta
 
@@ -25,7 +25,7 @@ from app.models.learning import (
 )
 from app.models.organization import Organization
 from app.models.user import User, Class, ClassStudent
-from app.models.word import WordBook, Unit, Word
+from app.models.word import WordBook, Unit, Word, UnitWord
 from app.services.coin_service import (
     word_kings_for_class, word_king_race, settle_day, MIN_KING_CONTENDERS,
 )
@@ -106,6 +106,10 @@ async def ctx(db_session):
     await db_session.flush()
     words = [Word(word=f"w{i:03d}", difficulty=1) for i in range(20)]
     db_session.add_all(words)
+    await db_session.flush()
+    # 词挂进作业单元:单词王只数作业单元里的词(2026-10-06)
+    for i, w in enumerate(words):
+        db_session.add(UnitWord(unit_id=unit.id, word_id=w.id, order_index=i))
     await db_session.flush()
 
     c = _Ctx(db_session, org, cls, unit, words, local_today() - timedelta(days=1))

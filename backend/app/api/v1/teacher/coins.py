@@ -24,7 +24,6 @@ from app.models.word import Word
 from app.api.v1.auth import get_current_user
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import coin_service
-from app.services import daily_words
 from app.services import audit_log
 from app.core.actor import acting_user
 
@@ -170,10 +169,9 @@ async def word_king_banner(
         king_ids = await coin_service.word_kings_for_class(db, class_id, d)
         if not king_ids:
             return []
-        day_start, day_end = local_day_utc_range(d)
         # 每王的当日词量:必须与 coin_service.word_kings_for_class 评选时同口径
-        # (含排除 classify),否则横幅上显示的词数会大于让他当上单词王的那个数
-        wc = await daily_words.words_by_student(db, king_ids, day_start, day_end)
+        # (2026-10-06 起只算作业单元内的词),否则横幅上的数会大于让他当上王的那个数
+        wc = await coin_service.task_words_by_student(db, list(king_ids), d)
         users = {u.id: u for u in (await db.execute(
             select(User).where(User.id.in_(king_ids))
         )).scalars().all()}

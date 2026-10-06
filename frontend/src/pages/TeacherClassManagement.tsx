@@ -48,6 +48,9 @@ interface DailyStudentData {
   full_name: string;
   study_date: string;
   words_learned: number;
+  /** 作业内词量(当天作业单元里的词,单词王只比这个数);has_task=今天有作业 */
+  task_words?: number;
+  has_task?: boolean;
   study_duration: number;
   correct_count: number;
   wrong_count: number;
@@ -587,6 +590,7 @@ const TeacherClassManagement = () => {
         '答题数': s.answered,
         '答对数': s.correct,
         '学习单词数': s.words_learned,
+        '作业内单词数(单词王口径)': s.has_task ? (s.task_words ?? 0) : '无作业',
         '学习天数': s.study_days,
         '学习时长(分钟)': Math.round((s.study_time || 0) / 60),
         '最后活跃日': s.last_active || '—',
@@ -1368,6 +1372,14 @@ const TeacherClassManagement = () => {
                                     title="当天第一次学的新拼写数;复习旧词不计入,复习日为0是正常的"
                                   >
                                     新{dayNewWords[String(s.user_id)] ?? 0}
+                                  </span>
+                                )}
+                                {s.has_task && s.words_learned > 0 && (
+                                  <span
+                                    className="block text-[10px] font-medium text-amber-600"
+                                    title="当天作业单元里的词。单词王只比这个数,在没布置的书里背的词不计入"
+                                  >
+                                    作业内{s.task_words ?? 0}
                                   </span>
                                 )}
                               </td>

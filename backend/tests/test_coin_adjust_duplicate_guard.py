@@ -55,11 +55,12 @@ def _utc_now_for_today():
     return start + (end - start) / 2
 
 
-async def _assign_completed_task(db, teacher: User, students: list[User]):
+async def _assign_completed_task(db, teacher: User, students: list[User], words=()):
     """给一批学生布置今天的任务并标记已完成 —— 单词王参评的前提条件之一
-    (2026-08-20 起没做完当天作业不参评,见 test_word_king_eligibility.py)。"""
+    (2026-08-20 起没做完当天作业不参评,见 test_word_king_eligibility.py)。
+    words 挂进作业单元:2026-10-06 起单词王只数作业单元里的词。"""
     from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
-    from app.models.word import WordBook, Unit
+    from app.models.word import WordBook, Unit, UnitWord
 
     book = WordBook(name="测试书", is_public=True)
     db.add(book)
@@ -67,6 +68,8 @@ async def _assign_completed_task(db, teacher: User, students: list[User]):
     unit = Unit(book_id=book.id, unit_number=1, name="Unit 1")
     db.add(unit)
     await db.flush()
+    for i, w in enumerate(words):
+        db.add(UnitWord(unit_id=unit.id, word_id=w.id, order_index=i))
     hw = HomeworkAssignment(
         title="今日任务", unit_id=unit.id, teacher_id=teacher.id,
         learning_mode="spelling", target_score=80, max_attempts=3, is_closed=False,
@@ -274,7 +277,7 @@ async def test_blocked_when_word_king_pending(client, db_session, coin_teacher_s
                        is_correct=True, created_at=ts),   # 对手 1 词
     ])
     # 两人当天都有任务且都已完成(参评前提)
-    await _assign_completed_task(db_session, teacher, [stu, rival])
+    await _assign_completed_task(db_session, teacher, [stu, rival], [w, w2])
     await db_session.commit()
 
     resp = await client.post(
