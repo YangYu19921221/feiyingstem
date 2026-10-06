@@ -309,6 +309,8 @@ const UnitSelector = () => {
               const hasTask = taskUnitIds.has(unit.unit_id);
               const isSeqLocked = !whitelistMode && !hasTask && index > 0 && !sortedUnits[index - 1].has_progress && !sortedUnits[index - 1].is_completed;
               const isLocked = isNotAllowed || isSeqLocked;
+              // 「只能从作业进入」且有待办作业:右侧按钮可点,直接走作业入口(handleStartLearning 里分流)
+              const viaHomework = isNotAllowed && !!unit.homework_only && hasTask;
 
               return (
                 <motion.div
@@ -432,17 +434,21 @@ const UnitSelector = () => {
                     <button
                       type="button"
                       onClick={() => handleStartLearning(unit.unit_id, 'classify', index)}
-                      disabled={isLocked}
+                      disabled={isLocked && !viaHomework}
                       className={`min-h-11 shrink-0 self-center rounded-lg px-3 py-2 text-sm font-medium transition active:scale-95 sm:px-4 ${
-                        isLocked
+                        viaHomework
+                          ? 'bg-accent-warm text-white hover:opacity-90'
+                          : isLocked
                           ? 'text-ink-mute cursor-not-allowed'
                           : isCurrent
                           ? 'bg-accent-warm text-white hover:opacity-90'
                           : 'border border-black/15 text-ink hover:bg-black/5'
                       }`}
                     >
-                      {isNotAllowed ? (
-                        <span className="inline-flex items-center gap-1"><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />待分配</span>
+                      {viaHomework ? (
+                        <span className="inline-flex items-center gap-1"><ClipboardCheck className="h-3.5 w-3.5" aria-hidden="true" />去作业</span>
+                      ) : isNotAllowed ? (
+                        <span className="inline-flex items-center gap-1"><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />{unit.homework_only ? '从作业进' : '待分配'}</span>
                       ) : isLocked ? (
                         <LockKeyhole className="h-4 w-4" aria-label="已锁定" />
                       ) : (
