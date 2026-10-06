@@ -283,6 +283,8 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   ④**喂食每日 3 次**改一条条件 UPDATE(子查询数当天 feed 日志 < 3 + 粮 >= 5)。
   **仍未修**: `/pet/earn-food` 信任前端传的 score/total(粮食可无限刷),粮食只能喂食且每天 3 次封顶,经验影响有限。
   **部署必须前后端一起上**(治疗接口契约变了,旧页面交题会 422,UpdateNudge 会提示刷新)。
+  **2026-10-06 15:18 已部署生产**(与比赛模式同批;database.py anchor patch 只加 is_contest 那条;
+  备份 /root/eh_db_before_contest_pet_20261006_1518.db、/root/eh_code_before_contest_pet_20261006_1518.tgz、frontend/dist_bak_20261006_1518)
   测试 tests/test_pet_multitab_exploits.py(9 例含真文件库并发结算;四个守卫逐一破坏各自恰好失败,回归锁验证过)
 - ✅ 作业「🏆 比赛模式」勾选(2026-10-06 傍晚,取代下面两条的「有作业就生效」): 用户「布置作业的时候加个比赛模式来打钩」。
   homework_assignments.is_contest(默认 0);**只有当天有比赛作业**时单词数/排行/大屏/单词王才只算比赛作业单元里的词,
@@ -290,7 +292,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   `coin_service.task_words_by_student` 改为直接委托 contest=True(单词王与排行一个数);学习页提示改走
   `contest_unit_ids_on_day`。旧公告 word-king-task-scope-* 删掉换成 homework-contest-mode-*。
   入口: 作业管理 → 创建新作业 →「📍 在哪里做」下面「🏆 比赛模式」;列表角标「🏆 比赛」。
-  **部署注意**: database.py 有 drift,anchor patch 补 is_contest 那条 ALTER(entry_mode 那条已在生产)
+  2026-10-06 已部署生产(见上一条宠物修复的备份路径)
 - ✅ 有作业的日子书本里背的词不计数(2026-10-06 下午,用户「非作业模式学生背书本单词不增加」):
   上一条的「只比作业内」从单词王**扩到全部比赛/排名面**: 班级每日数据 words_learned、大屏、实时课堂、
   教师班级排行榜(mastered_words 周期)、学生端词汇榜(含环比)。用户选: **只管比赛和排名**
