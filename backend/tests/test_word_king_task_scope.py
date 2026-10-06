@@ -205,7 +205,7 @@ async def test_start_learning_contest_notice(scene, client):
         assert r.status_code == 200, r.text
         return r.json().get("contest_notice")
 
-    assert "不计入单词王" in (await start(a, ex_unit) or "")   # 有作业,进作业外单元
+    assert "不增加单词数" in (await start(a, ex_unit) or "")   # 有作业,进作业外单元
     assert await start(a, hw_unit) is None                      # 进的就是作业单元
     assert await start(b, ex_unit) is None                      # 今天没作业,不评王,不提示
 
