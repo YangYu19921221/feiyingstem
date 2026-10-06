@@ -108,6 +108,7 @@ const TeacherHomework: React.FC = () => {
     available_date: localDateStr(new Date()),
     daily_sequence: false,
     location_type: 'classroom',
+    entry_mode: 'open',
   });
   // ScopeSelector state: allowBook=false means book_id is used for cascading but not submitted.
   // Only unit_id and group_index are included in the homework create payload.
@@ -324,6 +325,7 @@ const TeacherHomework: React.FC = () => {
       available_date: localDateStr(new Date()),
       daily_sequence: false,
       location_type: 'classroom',
+      entry_mode: 'open',
     });
     setScope({ scope_type: 'unit', book_id: null, unit_id: null, group_index: null, unit_ids: [] });
     setStudentQuery('');
@@ -520,6 +522,11 @@ const TeacherHomework: React.FC = () => {
                               {homework.location_type === 'home' && (
                                 <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-normal whitespace-nowrap">
                                   🏠 家里·不发金币
+                                </span>
+                              )}
+                              {homework.entry_mode === 'homework_only' && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded text-xs font-normal whitespace-nowrap">
+                                  🔒 仅作业入口
                                 </span>
                               )}
                             </div>
@@ -903,6 +910,32 @@ const TeacherHomework: React.FC = () => {
                         ? '🏠 家里作业:学生照常能看到、要做、单元照常解锁,只是做完不发金币(成绩仍记录)。'
                         : '🏫 电教室作业:当天全部完成照常发金币,规则不变。'}
                     </p>
+                  </div>
+
+                  {/* 进入方式:只能从作业进 / 书本里也能进 */}
+                  <div>
+                    <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      formData.entry_mode === 'homework_only'
+                        ? 'border-orange-500 bg-orange-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 accent-orange-500"
+                        checked={formData.entry_mode === 'homework_only'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, entry_mode: e.target.checked ? 'homework_only' : 'open' })
+                        }
+                      />
+                      <span>
+                        <span className="block font-semibold text-gray-800">🔒 只能从作业进入</span>
+                        <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">
+                          {formData.entry_mode === 'homework_only'
+                            ? '学生只能从「我的作业」点进去背,书本里这个单元是锁着的(防止提前自学)。已经给学生分配过这本书/单元的不受影响,照样能自学。'
+                            : '不勾:学生既能从作业进,也能从书本里直接进这个单元自学。'}
+                        </span>
+                      </span>
+                    </label>
                   </div>
 
                   {/* 多单元/多组 + 开始日期:按天依次排期,一次布置未来一周 */}

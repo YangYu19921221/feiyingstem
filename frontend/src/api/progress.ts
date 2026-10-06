@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { submitReliably } from './submitQueue';
+import { currentHomeworkAssignmentId } from '../utils/homeworkGroup';
 
 // 创建axios实例
 const apiClient = axios.create({
@@ -118,6 +119,8 @@ export interface UnitProgress {
   attempt_count?: number;
   // 严格模式:false = 未在教师分配范围内,锁定不可学
   is_allowed?: boolean;
+  /** 锁定原因是「只能从作业进入」(而非没分配) */
+  homework_only?: boolean;
 }
 
 export interface BookProgress {
@@ -165,12 +168,16 @@ export const startLearning = async (request: StartLearningRequest): Promise<Star
     throw err;
   }
 
+  // unit_id 已在 URL 中;group_index 只在按组作业时带;
+  // assignment_id 只在从作业入口进来时带(「只能从作业进入」的作业靠它放行)
+  const assignmentId = currentHomeworkAssignmentId();
   const response = await apiClient.post(
     `/student/units/${request.unit_id}/start`,
-    // unit_id 已在 URL 中;group_index 只在按组作业时带
-    request.group_index
-      ? { learning_mode: request.learning_mode, group_index: request.group_index }
-      : { learning_mode: request.learning_mode }
+    {
+      learning_mode: request.learning_mode,
+      ...(request.group_index ? { group_index: request.group_index } : {}),
+      ...(assignmentId ? { assignment_id: assignmentId } : {}),
+    }
   );
   return response.data;
 };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
-import { homeworkGroupIndex } from '../utils/homeworkGroup';
+import { homeworkGroupIndex, withHomeworkAssignment } from '../utils/homeworkGroup';
 import { API_BASE_URL } from '../config/env';
 import { startLearning, type WordData } from '../api/progress';
 
@@ -152,6 +152,7 @@ async function loadUnitQuestions(
     question_count: questionCount,
     question_type: questionType,
     ...(groupIndex ? { group_index: groupIndex } : {}),
+    ...withHomeworkAssignment(),
   });
   return response.data.questions;
 }

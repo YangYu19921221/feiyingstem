@@ -47,6 +47,8 @@ class StudentHomeworkResponse(BaseModel):
     # 上课地点:'home'=家里(不发金币)/ 其余=电教室(照常)。学生端提前标注,
     # 免得做完才发现没币。金币口径见 coin_service
     location_type: str = "classroom"
+    # 'homework_only' = 只能从作业入口进(书本里这个单元是锁的),学生端挂角标
+    entry_mode: str = "open"
 
     class Config:
         from_attributes = True
@@ -191,6 +193,7 @@ async def get_my_homework(
             is_locked=is_locked,
             group_index=homework.group_index,
             location_type=homework.location_type or "classroom",
+            entry_mode=homework.entry_mode or "open",
             # 开放时刻转成北京墙上时间的 naive 字符串,与 deadline 口径一致
             # (前端 new Date 按本地解析),否则会差 8 小时显示成前一天
             available_from=(homework.available_from + timedelta(hours=8)).isoformat()

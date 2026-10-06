@@ -1,4 +1,5 @@
 import client from './client';
+import { currentHomeworkAssignmentId } from '../utils/homeworkGroup';
 
 export const EXAM_TYPE_LABELS: Record<string, string> = {
   en_to_cn: '英译中', cn_to_en: '中译英',
@@ -79,7 +80,11 @@ export interface AIAnalysis {
 
 // 生成考试试卷
 export const generateExam = async (unitId: number): Promise<ExamData> => {
-  return client.get(`/student/exam/generate/${unitId}`);
+  // 从作业入口进来时带上作业分配 ID(「只能从作业进入」的作业靠它放行)
+  const assignmentId = currentHomeworkAssignmentId();
+  return client.get(`/student/exam/generate/${unitId}`, {
+    params: assignmentId ? { assignment_id: assignmentId } : undefined,
+  });
 };
 
 // 提交考试

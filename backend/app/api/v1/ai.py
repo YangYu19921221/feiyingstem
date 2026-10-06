@@ -437,6 +437,7 @@ class UnitQuizRequest(BaseModel):
     question_count: int = Field(10, ge=5, le=20, description="题目数量")
     question_type: str = Field("choice", description="题型: choice/spelling/fillblank")
     group_index: Optional[int] = Field(None, ge=1, description="按组作业:只从这一组出题")
+    assignment_id: Optional[int] = Field(None, description="从作业进入时的作业分配ID")
 
 class QuizQuestion(BaseModel):
     word_id: int
@@ -454,10 +455,21 @@ class UnitQuizResponse(BaseModel):
     questions: List[QuizQuestion]
     total_count: int
 
+async def _guard_unit_access(db: AsyncSession, user, unit: Unit, assignment_id: Optional[int]) -> None:
+    """学生出题与取词(units/start)同一道闸门。此前这两个出题端点连登录都不要,
+    知道单元 id 就能拿整单元题目 =「只能从作业进入」的后门。教职工不拦(备课/预览)。"""
+    if getattr(user, "role", None) != "student":
+        return
+    from app.services.scope_service import can_enter_unit, deny_message
+    if not await can_enter_unit(db, user.id, unit.book_id, unit.id, assignment_id):
+        raise HTTPException(status_code=403, detail=await deny_message(db, user.id, unit.id))
+
+
 @router.post("/generate-unit-quiz", response_model=UnitQuizResponse)
 async def generate_unit_quiz(
     request: UnitQuizRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     基于单元生成AI练习题
@@ -470,6 +482,7 @@ async def generate_unit_quiz(
 
     if not unit:
         raise HTTPException(status_code=404, detail=f"单元ID {request.unit_id} 不存在")
+    await _guard_unit_access(db, current_user, unit, request.assignment_id)
 
     # 2. 获取单元的所有单词
     result = await db.execute(
@@ -614,6 +627,7 @@ class UnitClozeRequest(BaseModel):
     unit_id: int = Field(..., description="单元ID")
     blank_count: int = Field(6, ge=3, le=10, description="一组里的句子/空格数")
     group_index: Optional[int] = Field(None, ge=1, description="按组作业:只从这一组出题")
+    assignment_id: Optional[int] = Field(None, description="从作业进入时的作业分配ID")
 
 class ClozeItem(BaseModel):
     word_id: int
@@ -646,6 +660,7 @@ def _blank_out(sentence: str, word: str) -> str:
 async def generate_unit_cloze(
     request: UnitClozeRequest,
     db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """
     生成「选词填空」一组题：共享词库 + 多句，每个空唯一答案。
@@ -655,6 +670,7 @@ async def generate_unit_cloze(
     unit = result.scalar_one_or_none()
     if not unit:
         raise HTTPException(status_code=404, detail=f"单元ID {request.unit_id} 不存在")
+    await _guard_unit_access(db, current_user, unit, request.assignment_id)
 
     result = await db.execute(
         select(Word, WordDefinition, UnitWord.order_index)

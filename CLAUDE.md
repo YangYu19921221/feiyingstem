@@ -271,6 +271,23 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 作业「只能从作业进入」(2026-10-05): 用户「布置任务时有个选项只能从布置任务中进入背单词,
+  没选可以从书本中进入」。homework_assignments.entry_mode: open(默认,server_default,存量零影响)/
+  homework_only。**口径用户选 A「书本分配优先」**: 开关只收回「作业额外开放的那部分」——
+  homework_only 作业不并入 get_allowed_unit_ids 白名单、不在 /student/books 开书;
+  学生本来就有该书/单元分配的照样能自学(**别改成作业优先**,那会锁住学生付费的书)。
+  放行走 `scope_service.can_enter_unit(..., assignment_id)`: 请求带 homework_student_assignments.id,
+  四条件(发给本人/单元对得上/已开放/未关闭)。**四个取词/出题端点共用这一份**: units/start、
+  exam/generate、ai/generate-unit-quiz、ai/generate-unit-cloze —— 后两个**此前连登录都不要**,
+  知道单元 id 就能拿整单元题 = 后门,已补 get_current_user + 学生闸门(教职工不拦,备课用)。
+  前端 assignment_id **不逐页传**,由 api 层 `currentHomeworkAssignmentId()` 读
+  window.history.state.usr(navigate 的 state;学习页十来个,逐页传漏一个就是「从作业点进去
+  却提示要从作业进」)。被拒文案走 deny_message 区分「要从作业里进」与「还没分配」;
+  /books/{id}/progress 每单元下发 homework_only,UnitSelector 锁定角标写「从作业进入」,
+  点它若有待办作业直接走作业入口。入口: 作业管理 → 创建新作业 →「📍 在哪里做」下方
+  「🔒 只能从作业进入」;列表角标「🔒 仅作业入口」(学生端「🔒 只能从这里进入」)。
+  测试 tests/test_homework_entry_mode.py(8 例;去掉白名单排除 → 4 例失败,去掉出题闸门 → 1 例失败,回归锁验证过)。
+  **部署注意**: database.py 有 drift,走 anchor patch(entry_mode 那条 ALTER)
 - ✅ 音标视频手动排序(2026-10-04): 此前 sort_order 字段一直在、但没有任何入口能改(存量全是 0,
   顺序=上传顺序,传错只能删了重传)。教师端「音标视频」顶部「调整顺序」→ 按分类分 tab,
   拖抓手 / 上下箭头 / 置顶,攒着改点「保存顺序」一次写(components/phonetics/ReorderDialog.tsx)。

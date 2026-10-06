@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'homework-entry-only-2026-10',
+    date: '2026-10-05',
+    title: '作业可以设成「只能从作业进入」',
+    desc: '布置作业时勾上「只能从作业进入」,学生只能从「我的作业」点进去背这个单元,书本里这个单元是锁着的,不能提前自己学掉。不勾就和以前一样,作业和书本两边都能进。已经给学生分配过这本书或这个单元的,不受影响,照样能自学。',
+    where: '教师工作台 → 作业管理 → 创建新作业,「📍 在哪里做」下面的「🔒 只能从作业进入」;勾了的作业在列表里挂「🔒 仅作业入口」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/homework',
+  },
+  {
     id: 'phonetic-video-reorder-2026-10',
     date: '2026-10-04',
     title: '音标视频可以手动排序了',

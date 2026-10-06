@@ -30,6 +30,9 @@ export interface CreateHomeworkRequest {
   // 上课地点:'classroom'=电教室(默认,照常发金币)/ 'home'=家里(不发金币)。
   // 家里作业照常显示、照常要做,只是不进金币结算
   location_type?: 'classroom' | 'home';
+  // 进入方式:'open'=默认(书本里也能进)/ 'homework_only'=只能从作业进入。
+  // 学生本来分配了这本书/单元的,照样能从书本自学(不锁已有的书)
+  entry_mode?: 'open' | 'homework_only';
 }
 
 export interface HomeworkResponse {
@@ -54,6 +57,8 @@ export interface HomeworkResponse {
   is_closed?: boolean;
   /** 上课地点:'home'=家里(不发金币)/ 其余=电教室(照常) */
   location_type?: string;
+  /** 'homework_only'=只能从作业进入(书本里该单元是锁的) */
+  entry_mode?: string;
   /** 布置人(助教账号上线后才有;老作业为空) */
   assigned_by?: number | null;
   assigned_by_name?: string | null;
@@ -104,6 +109,8 @@ export interface StudentHomeworkResponse {
   group_index?: number | null;
   /** 上课地点:'home'=家里(不发金币)/ 其余=电教室(照常) */
   location_type?: string;
+  /** 'homework_only'=只能从作业进入(书本里该单元是锁的) */
+  entry_mode?: string;
 }
 
 export interface SubmitHomeworkAttemptRequest {

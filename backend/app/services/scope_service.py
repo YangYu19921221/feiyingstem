@@ -78,6 +78,8 @@ async def get_allowed_unit_ids(
 
     # 并入该书下布置给该学生的作业单元(定时布置未开放的不算——
     # 到开放日之前单元不解锁,否则学生能提前进去把下周的任务学掉)
+    # 「只能从作业进入」的作业不并入:它的授权只在请求带 assignment_id 时生效
+    # (见 homework_grants_unit),否则学生从书本里就能自学到它。
     from datetime import datetime as _dt
     from sqlalchemy import or_ as _or
     hw_res = await db.execute(
@@ -87,6 +89,7 @@ async def get_allowed_unit_ids(
         .where(
             HomeworkStudentAssignment.student_id == student_id,
             Unit.book_id == book_id,
+            HomeworkAssignment.entry_mode != "homework_only",
             _or(
                 HomeworkAssignment.available_from.is_(None),
                 HomeworkAssignment.available_from <= _dt.utcnow(),
@@ -95,6 +98,90 @@ async def get_allowed_unit_ids(
     )
     allowed.update(uid for (uid,) in hw_res.all() if uid is not None)
     return allowed
+
+
+async def homework_grants_unit(
+    db: AsyncSession, student_id: int, assignment_id: Optional[int], unit_id: int
+) -> bool:
+    """从作业入口进来时,这份作业是否授权学生进这个单元。
+
+    assignment_id 是 homework_student_assignments.id(前端 location.state.assignmentId)。
+    四个条件缺一不可: 是发给本人的 / 单元对得上 / 已开放 / 没被关闭。
+    不看 entry_mode —— open 作业的单元本来就在白名单里,这里放行也是同一结论。
+    """
+    if not assignment_id:
+        return False
+    from datetime import datetime as _dt
+    from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
+    row = (await db.execute(
+        select(HomeworkAssignment.unit_id, HomeworkAssignment.available_from, HomeworkAssignment.is_closed)
+        .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+        .where(
+            HomeworkStudentAssignment.id == assignment_id,
+            HomeworkStudentAssignment.student_id == student_id,
+        )
+    )).one_or_none()
+    if row is None:
+        return False
+    hw_unit_id, available_from, is_closed = row
+    if hw_unit_id != unit_id or is_closed:
+        return False
+    return available_from is None or available_from <= _dt.utcnow()
+
+
+async def can_enter_unit(
+    db: AsyncSession, student_id: int, book_id: int, unit_id: int,
+    assignment_id: Optional[int] = None,
+) -> bool:
+    """学生能否进这个单元: 白名单(书本分配 ∪ 普通作业)或带着授权它的作业进来。
+    取词/出题/考试几个端点共用这一份判定,别各写一套。"""
+    allowed = await get_allowed_unit_ids(db, student_id, book_id)
+    if allowed is None or unit_id in allowed:
+        return True
+    return await homework_grants_unit(db, student_id, assignment_id, unit_id)
+
+
+async def homework_only_unit_ids(
+    db: AsyncSession, student_id: int, book_id: Optional[int] = None,
+    unit_id: Optional[int] = None,
+) -> set[int]:
+    """发给该生、已开放、未关闭的「只能从作业进入」作业所在的单元 —— 用于给被拒的学生
+    说清原因(「要从作业里进」而不是「还没分配给你」,后者会让孩子以为老师漏布置了)。"""
+    from datetime import datetime as _dt
+    from sqlalchemy import or_ as _or
+    from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
+    q = (
+        select(HomeworkAssignment.unit_id)
+        .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+        .where(
+            HomeworkStudentAssignment.student_id == student_id,
+            HomeworkAssignment.entry_mode == "homework_only",
+            HomeworkAssignment.is_closed.is_(False),
+            _or(
+                HomeworkAssignment.available_from.is_(None),
+                HomeworkAssignment.available_from <= _dt.utcnow(),
+            ),
+        )
+    )
+    if book_id is not None:
+        q = q.join(Unit, Unit.id == HomeworkAssignment.unit_id).where(Unit.book_id == book_id)
+    if unit_id is not None:
+        q = q.where(HomeworkAssignment.unit_id == unit_id)
+    return {uid for (uid,) in (await db.execute(q)).all() if uid is not None}
+
+
+async def is_homework_only_unit(db: AsyncSession, student_id: int, unit_id: int) -> bool:
+    return bool(await homework_only_unit_ids(db, student_id, unit_id=unit_id))
+
+
+HOMEWORK_ONLY_DENY_MSG = "这个单元要从作业里进入:回首页点「我的作业」开始"
+NOT_ASSIGNED_MSG = "这个单元还没有分配给你,请联系老师"
+
+
+async def deny_message(db: AsyncSession, student_id: int, unit_id: int) -> str:
+    if await is_homework_only_unit(db, student_id, unit_id):
+        return HOMEWORK_ONLY_DENY_MSG
+    return NOT_ASSIGNED_MSG
 
 
 def validate_scope(scope_type: str, unit_id: Optional[int], group_index: Optional[int]) -> None:

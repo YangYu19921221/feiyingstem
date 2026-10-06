@@ -163,6 +163,12 @@ class HomeworkAssignment(Base):
     # scope_service,一律不动 —— 家里任务照常显示、照常要做,只是不进金币计算。
     # 存量行经 server_default 落 'classroom'(等于旧行为:都发币),零影响。
     location_type = Column(String(20), default="classroom", server_default="classroom", nullable=False)
+    # 进入方式(2026-10-05): 'open'=默认,作业单元并入学生可学白名单,书本里也能进 /
+    # 'homework_only'=这份作业不给单元授权、不开书,学生只能从作业入口进(请求带 assignment_id,
+    # 见 scope_service.homework_grants_unit)。用户拍板「书本分配优先」: 学生本来就有该书/
+    # 单元的分配时照样能自学 —— 这个开关只收回「作业额外开放的那部分」,不锁付费的书。
+    # 存量行经 server_default 落 'open' = 旧行为,零影响
+    entry_mode = Column(String(20), default="open", server_default="open", nullable=False)
     # 定时发布:到点(北京日期0点对应的UTC)前学生端不可见/不可做/不解锁单元;NULL=立即开放
     available_from = Column(DateTime, nullable=True)
     # 关闭状态:发错/提前结束时关闭——学生端隐藏、不能再交卷,保留全部做题记录;可重新开放

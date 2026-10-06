@@ -45,6 +45,9 @@ class CreateHomeworkRequest(BaseModel):
     # 上课地点(2026-09-30): 'classroom'=电教室(默认,照常发金币)/ 'home'=家里(不发金币)。
     # 家里作业照常显示、照常要做、照常解锁单元,只是不进金币计算
     location_type: str = "classroom"
+    # 进入方式(2026-10-05): 'open'=默认(书本里也能进)/ 'homework_only'=只能从作业进入
+    # (不给单元授权、不开书;学生本来有该书分配的照样能自学)
+    entry_mode: str = "open"
 
 
 class HomeworkResponse(BaseModel):
@@ -62,6 +65,7 @@ class HomeworkResponse(BaseModel):
     available_from: Optional[str]
     # 上课地点:'classroom'=电教室(发金币)/ 'home'=家里(不发金币)
     location_type: str = "classroom"
+    entry_mode: str = "open"
     created_at: str
     total_assigned: int
     completed_count: int
@@ -246,6 +250,8 @@ async def create_homework(
             available_from=open_times[idx],
             # 家里作业不发金币(白名单归一:认不出的一律按电教室=照常发币,不静默吞成家里)
             location_type=("home" if request.location_type == "home" else "classroom"),
+            # 白名单归一:认不出的一律按 open(旧行为),不静默把学生锁在书外
+            entry_mode=("homework_only" if request.entry_mode == "homework_only" else "open"),
         )
         db.add(homework)
         await db.flush()  # 获取homework.id
@@ -269,6 +275,8 @@ async def create_homework(
     unit_desc = "、".join(dict.fromkeys(f"{unit_map[u][1].name} {unit_map[u][0].name}" for u, _ in targets))
     open_desc = f",{available_date} 开放" if any(open_times) else ""
     loc_desc = "(家里·不发金币)" if request.location_type == "home" else ""
+    if request.entry_mode == "homework_only":
+        loc_desc += "(仅作业入口)"
     audit_log.record(
         db, http, current_user, "homework.create",
         f"布置作业「{request.title}」{len(homework_ids)} 份{loc_desc}:{unit_desc}{open_desc},"
@@ -360,6 +368,7 @@ async def get_teacher_homework(
             available_from=(homework.available_from + timedelta(hours=8)).date().isoformat()
             if homework.available_from else None,
             location_type=homework.location_type or "classroom",
+            entry_mode=homework.entry_mode or "open",
             created_at=homework.created_at.isoformat(),
             total_assigned=stats.total or 0,
             completed_count=stats.completed or 0,

@@ -56,6 +56,7 @@ class ExamSubmitRequest(BaseModel):
 @router.get("/generate/{unit_id}")
 async def generate_exam(
     unit_id: int,
+    assignment_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student)
 ):
@@ -66,11 +67,11 @@ async def generate_exam(
     if not unit:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "单元不存在")
 
-    # 1.5 严格模式:考试也只能考分配范围内的单元(与 units/start 同一口径)
-    from app.services.scope_service import get_allowed_unit_ids
-    allowed = await get_allowed_unit_ids(db, current_user.id, unit.book_id)
-    if allowed is not None and unit_id not in allowed:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "这个单元还没有分配给你,请联系老师")
+    # 1.5 严格模式:考试也只能考分配范围内的单元(与 units/start 同一口径;
+    # 「只能从作业进入」的作业带 assignment_id 放行)
+    from app.services.scope_service import can_enter_unit, deny_message
+    if not await can_enter_unit(db, current_user.id, unit.book_id, unit_id, assignment_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, await deny_message(db, current_user.id, unit_id))
 
     # 2. 获取单元所有单词 + 释义
     result = await db.execute(

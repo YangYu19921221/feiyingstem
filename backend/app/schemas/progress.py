@@ -17,6 +17,9 @@ class StartLearningRequest(BaseModel):
     # 按组布置的作业:只下发该组的词(1 基,与 homework_assignments.group_index 同口径)。
     # 为空 = 整单元(旧行为)
     group_index: Optional[int] = Field(None, ge=1, description="只学某一组(按组作业)")
+    # 从作业入口进来时带上(homework_student_assignments.id):「只能从作业进入」的作业
+    # 不在单元白名单里,靠它放行。自学入口不传
+    assignment_id: Optional[int] = Field(None, description="作业分配ID(从作业进入时)")
 
 class StartLearningResponse(BaseModel):
     """开始学习响应"""
@@ -69,6 +72,8 @@ class UnitProgressResponse(BaseModel):
     total_study_time: int = Field(0, description="总学习时长(秒)")
     attempt_count: int = Field(0, description="学习轮次（完整走完该单元的会话数，半途退出不计）")
     is_allowed: bool = Field(True, description="是否在教师分配范围内(严格模式,False=锁定)")
+    # 锁定原因是「只能从作业进入」(而非没分配):前端据此提示去作业里进
+    homework_only: bool = Field(False, description="锁定但可从作业入口进入")
 
 class BookProgressResponse(BaseModel):
     """单词本进度响应"""

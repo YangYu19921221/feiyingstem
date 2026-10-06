@@ -118,7 +118,15 @@ const UnitSelector = () => {
     const unit = sortedUnits[unitIndex];
     // 未分配的单元锁定
     if (unit && unit.is_allowed === false) {
-      toast.warning('这个单元还没有分配,请联系老师');
+      // 「只能从作业进入」的单元:有待办作业就直接走作业入口,否则说清去哪儿进
+      const task = bookTasks.find(t => t.unit_id === unitId);
+      if (unit.homework_only && task) {
+        handleStartTask(task);
+        return;
+      }
+      toast.warning(unit.homework_only
+        ? '这个单元要从作业里进入:回首页点「我的作业」开始'
+        : '这个单元还没有分配,请联系老师');
       return;
     }
     // 顺序解锁只在整本可学时生效;白名单模式或有作业的单元直接可学
@@ -345,7 +353,7 @@ const UnitSelector = () => {
                         {isNotAllowed && (
                           <span className="inline-flex items-center gap-1 rounded bg-black/[0.06] px-2 py-0.5 text-xs font-medium text-ink-mute">
                             <LockKeyhole className="h-3 w-3" aria-hidden="true" />
-                            待老师分配
+                            {unit.homework_only ? '从作业进入' : '待老师分配'}
                           </span>
                         )}
                         {hasTask && (

@@ -15,7 +15,9 @@ from app.schemas.progress import (
     StudentBookListItem
 )
 from app.api.v1.auth import get_current_student, get_current_user
-from app.services.scope_service import get_allowed_unit_ids, get_group_word_ids
+from app.services.scope_service import (
+    get_allowed_unit_ids, get_group_word_ids, can_enter_unit, deny_message,
+)
 
 router = APIRouter()
 
@@ -77,12 +79,12 @@ async def start_learning(
             detail="今天还没有签到,请先回到首页签到"
         )
 
-    # 1.5 严格模式:校验该单元在学生的分配范围内(白名单见 get_allowed_unit_ids)
-    allowed = await get_allowed_unit_ids(db, user_id, unit.book_id)
-    if allowed is not None and unit_id not in allowed:
+    # 1.5 严格模式:校验该单元在学生的分配范围内(白名单见 get_allowed_unit_ids);
+    # 「只能从作业进入」的作业不在白名单里,带着 assignment_id 进来才放行
+    if not await can_enter_unit(db, user_id, unit.book_id, unit_id, request.assignment_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="这个单元还没有分配给你,请联系老师"
+            detail=await deny_message(db, user_id, unit_id),
         )
 
     # 1.6 次卡计次:这是「真正开始学」的唯一入口(取词表),当天首次进入扣 1 天。
@@ -408,6 +410,10 @@ async def get_book_progress(
 
     # 2.5 严格模式:该学生在这本书的可学单元白名单(None=整本可学)
     allowed = await get_allowed_unit_ids(db, user_id, book_id)
+    homework_only_ids: set[int] = set()
+    if allowed is not None:
+        from app.services.scope_service import homework_only_unit_ids
+        homework_only_ids = await homework_only_unit_ids(db, user_id, book_id) - allowed
 
     # 3. 批量查询所有单元的最佳成绩、学习时间、会话数（避免 N+1）
     # 轮次 attempt_count 仅统计「完整走完单元」的会话（words_studied >= 单元真实词数）
@@ -540,6 +546,7 @@ async def get_book_progress(
             total_study_time=unit_study_time.get(unit.id, 0),
             attempt_count=unit_attempt_count.get(unit.id, 0),
             is_allowed=is_allowed,
+            homework_only=unit.id in homework_only_ids,
         ))
 
     # 4. 计算整体进度
@@ -677,6 +684,8 @@ async def get_student_books(
         .join(HomeworkAssignment, HomeworkAssignment.unit_id == Unit.id)
         .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
         .where(HomeworkStudentAssignment.student_id == user_id)
+        # 「只能从作业进入」的作业不开书(否则书架上这本书亮着,点进去又全锁着)
+        .where(HomeworkAssignment.entry_mode != "homework_only")
         .where(or_(
             HomeworkAssignment.available_from.is_(None),
             HomeworkAssignment.available_from <= datetime.utcnow(),

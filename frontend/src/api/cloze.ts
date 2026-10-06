@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import './_axiosBootstrap';
+import { withHomeworkAssignment } from '../utils/homeworkGroup';
 
 // 选词填空 (word-bank cloze)：一个共享词库 + 多个句子，每空一词、每词一次
 export interface ClozeBankWord {
@@ -33,6 +34,7 @@ export const generateUnitCloze = async (
     unit_id: unitId,
     blank_count: blankCount,
     ...(groupIndex ? { group_index: groupIndex } : {}),
+    ...withHomeworkAssignment(),
   });
   return res.data;
 };
