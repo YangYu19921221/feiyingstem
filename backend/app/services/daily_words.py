@@ -20,13 +20,46 @@ word_id(见 migrate_split_words_by_unit),按 word_id 数会把"apple"数成好�
 from datetime import date, datetime
 from typing import Iterable, Optional
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import local_day_utc_range
-from app.models.learning import LearningRecord
-from app.models.word import Word
+from app.models.learning import LearningRecord, HomeworkAssignment, HomeworkStudentAssignment
+from app.models.word import Word, UnitWord
 from app.services.weak_words import NON_LEARNED_MODES
+
+
+def _contest_condition():
+    """比赛口径(2026-10-06,用户定): **当天有作业的学生,只算作业单元里的词**;
+    当天没作业的照常全算。用于排行/大屏/班级每日数据 —— 学生做完作业去没布置的书里
+    刷词量不再上榜。家长端、学生自己的学习统计、复习**不用**这个口径(照常是总量)。
+
+    逐条记录判断(相关子查询,按记录所在的北京日找该生当天的作业):
+      该生当天没有作业  OR  这个词(word_id)在该生当天某份作业的单元里
+    「当天作业」与 coin_service._task_scope_conditions / task_progress_on_day 同口径:
+    当天布置、未关闭、非家里作业。按 word_id 判:单元级隔离后别的书里同拼写的词不算。
+    对有作业的学生,结果与 coin_service.task_words_by_student(单词王)完全一致(测试锁住)。
+    """
+    rec_day = func.date(LearningRecord.created_at, "+8 hours")
+
+    def _today_tasks():
+        return (
+            select(HomeworkStudentAssignment.id)
+            .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
+            .where(and_(
+                HomeworkStudentAssignment.student_id == LearningRecord.user_id,
+                func.date(HomeworkStudentAssignment.assigned_at, "+8 hours") == rec_day,
+                HomeworkAssignment.is_closed.is_(False),
+                HomeworkAssignment.location_type != "home",
+            ))
+            .correlate(LearningRecord)
+        )
+
+    in_task_unit = _today_tasks().join(UnitWord, and_(
+        UnitWord.unit_id == HomeworkAssignment.unit_id,
+        UnitWord.word_id == LearningRecord.word_id,
+    ))
+    return or_(~exists(_today_tasks()), exists(in_task_unit))
 
 
 def _base_conditions(user_ids: list[int], start: datetime, end: datetime):
@@ -43,6 +76,8 @@ async def words_by_student(
     user_ids: Iterable[int],
     start: datetime,
     end: datetime,
+    *,
+    contest: bool = False,
 ) -> dict[int, int]:
     """一段时间内每个学生的去重学词数 → {user_id: 词数}。
 
@@ -52,13 +87,16 @@ async def words_by_student(
     uids = list(user_ids)
     if not uids:
         return {}
+    conds = _base_conditions(uids, start, end)
+    if contest:  # 比赛口径:当天有作业只算作业单元里的词(见 _contest_condition)
+        conds.append(_contest_condition())
     rows = (await db.execute(
         select(
             LearningRecord.user_id,
             func.count(func.distinct(func.lower(Word.word))).label("cnt"),
         )
         .join(Word, Word.id == LearningRecord.word_id)
-        .where(and_(*_base_conditions(uids, start, end)))
+        .where(and_(*conds))
         .group_by(LearningRecord.user_id)
     )).all()
     return {r.user_id: (r.cnt or 0) for r in rows}
@@ -97,6 +135,8 @@ async def words_sum_rows(
     allowed,
     start_day: date,
     end_day: date,
+    *,
+    contest: bool = False,
 ) -> list[tuple[int, int]]:
     """区间内每个学生的「各天去重词数之和」,按词数降序 → [(user_id, 词数)]。
 
@@ -109,6 +149,8 @@ async def words_sum_rows(
     否则机构大了会撞 SQLite 绑定参数上限。
 
     用一条 group by (学生, 天) 的 SQL 算完,不要在调用方按学生×天循环发 SQL。
+
+    contest=True 走比赛口径(见 _contest_condition):排行榜/大屏/班级每日数据用。
     """
     start, _ = local_day_utc_range(start_day)
     _, end = local_day_utc_range(end_day)
@@ -121,6 +163,8 @@ async def words_sum_rows(
     ]
     if allowed is not None:
         conds.append(LearningRecord.user_id.in_(allowed))
+    if contest:
+        conds.append(_contest_condition())
 
     per_day = (
         select(
@@ -147,6 +191,8 @@ async def words_sum_by_student(
     user_ids: Iterable[int],
     start_day: date,
     end_day: date,
+    *,
+    contest: bool = False,
 ) -> dict[int, int]:
     """区间内每个学生的「各天去重词数之和」→ {user_id: 词数}。含首尾两天。
 
@@ -155,7 +201,7 @@ async def words_sum_by_student(
     uids = list(user_ids)
     if not uids:
         return {}
-    return dict(await words_sum_rows(db, uids, start_day, end_day))
+    return dict(await words_sum_rows(db, uids, start_day, end_day, contest=contest))
 
 
 async def words_by_day(

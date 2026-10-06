@@ -171,8 +171,8 @@ async def start_learning(
     from app.core.timeutil import local_today as _local_today
     _task_units = await task_unit_ids_on_day(db, user_id, _local_today())
     contest_notice = (
-        "今天单词王只比作业里的单词,这里背的词不计入单词王(学习记录照常保存)。"
-        "想冲单词王,先回「我的作业」背作业里的词!"
+        "今天有作业:这里背的词不增加单词数,也不计入排行榜和单词王(学习记录照常保存)。"
+        "想上榜,先回「我的作业」背作业里的词!"
         if _task_units and unit_id not in _task_units else None
     )
 

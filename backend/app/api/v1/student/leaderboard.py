@@ -125,7 +125,8 @@ async def _vocabulary_rows(db, period, allowed):
     会被抹成只学了一批,和教师端数字差 3 倍(生产实测 2536 vs 7795)。
     """
     start_day, end_day = _period_days(period)
-    return await daily_words.words_sum_rows(db, allowed, start_day, end_day)
+    # 比赛口径(2026-10-06):有作业的日子只算作业单元里的词,刷别的书不上榜
+    return await daily_words.words_sum_rows(db, allowed, start_day, end_day, contest=True)
 
 
 async def _diligence_rows(db, period, allowed):
@@ -231,7 +232,7 @@ async def _get_my_period_value(db, kind, user_id, start, end) -> int:
         # 直接 .date() 会把周一算成周日,整个环比错一天。
         first_day = (start + timedelta(hours=8)).date()
         last_day = (end + timedelta(hours=8)).date() - timedelta(days=1)
-        scores = await daily_words.words_sum_by_student(db, [user_id], first_day, last_day)
+        scores = await daily_words.words_sum_by_student(db, [user_id], first_day, last_day, contest=True)
         return scores.get(user_id, 0)
     if kind == "diligence":
         # 与 _diligence_rows 同口径(study_time 统一口径),否则环比拿两把尺子比。

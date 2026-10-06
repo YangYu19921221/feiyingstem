@@ -176,7 +176,8 @@ async def test_daily_stats_exposes_task_words(scene, client):
                          headers={"Authorization": f"Bearer {_make_token(teacher.id)}"})
     assert r.status_code == 200, r.text
     row = next(s for s in r.json()["students"] if s["user_id"] == a.id)
-    assert row["words_learned"] == 10 and row["task_words"] == 3 and row["has_task"] is True
+    # 用户定:有作业的日子书本里背的不增加 → words_learned 只算作业内;all_words 留总量
+    assert row["words_learned"] == 3 and row["all_words"] == 10 and row["has_task"] is True
 
 
 async def _checkin(db, stu):
@@ -207,3 +208,42 @@ async def test_start_learning_contest_notice(scene, client):
     assert "不计入单词王" in (await start(a, ex_unit) or "")   # 有作业,进作业外单元
     assert await start(a, hw_unit) is None                      # 进的就是作业单元
     assert await start(b, ex_unit) is None                      # 今天没作业,不评王,不提示
+
+
+async def test_contest_count_matches_word_king_and_spares_no_task_days(scene):
+    """比赛口径(排行/大屏/每日数据)与单词王同一个数;当天没作业的学生照常全算。"""
+    from app.core.timeutil import local_day_utc_range
+    from app.services import daily_words
+    db, teacher, _cls, a, b, units = scene
+    d = local_today() - timedelta(days=1)
+    hw_unit, hw_words = units["hw"]
+    ex_words = units["ex"][1]
+    await _assign(db, teacher, hw_unit, a, d)          # a 有作业,b 没有
+    await _learn(db, a, hw_words[:4], d)
+    await _learn(db, a, ex_words[5:25], d)             # a 去别的书刷 20 词
+    await _learn(db, b, ex_words[5:15], d)             # b 当天没作业,自学 10 词
+    await db.commit()
+    s, e = local_day_utc_range(d)
+    contest = await daily_words.words_by_student(db, [a.id, b.id], s, e, contest=True)
+    assert contest == {a.id: 4, b.id: 10}
+    assert (await task_words_by_student(db, [a.id], d))[a.id] == contest[a.id]
+    # 总量口径(家长端/学生自己的统计)不受影响
+    assert (await daily_words.words_by_student(db, [a.id], s, e))[a.id] == 24
+
+
+async def test_weekly_contest_sum_is_per_day(scene):
+    """周榜按天判:有作业那天只算作业内,没作业那天照常全算,再相加。"""
+    from app.services import daily_words
+    db, teacher, _cls, a, _b, units = scene
+    d1 = local_today() - timedelta(days=2)
+    d2 = local_today() - timedelta(days=1)
+    hw_unit, hw_words = units["hw"]
+    ex_words = units["ex"][1]
+    await _assign(db, teacher, hw_unit, a, d1)
+    await _learn(db, a, hw_words[:3], d1)
+    await _learn(db, a, ex_words[5:15], d1)             # d1 有作业:只算 3
+    await _learn(db, a, ex_words[5:12], d2)             # d2 没作业:算 7
+    await db.commit()
+    got = await daily_words.words_sum_by_student(db, [a.id], d1, d2, contest=True)
+    assert got[a.id] == 10
+    assert (await daily_words.words_sum_by_student(db, [a.id], d1, d2))[a.id] == 20

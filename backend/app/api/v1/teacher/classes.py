@@ -527,10 +527,12 @@ async def get_class_daily_stats(
         ))
         .group_by(LearningRecord.user_id)
     )
-    words_learned_map = {r.user_id: (r.cnt or 0) for r in words_res.all()}
-    # 作业内词量(2026-10-06): 单词王只比这个数 —— 学生去没布置的书里刷的词不进比赛
-    from app.services.coin_service import task_words_by_student, task_progress_on_day
-    task_words_map = await task_words_by_student(db, student_ids, dt)
+    all_words_map = {r.user_id: (r.cnt or 0) for r in words_res.all()}
+    # 比赛口径(2026-10-06,用户定):当天有作业的学生只算作业单元里的词,刷别的书不增加;
+    # 没作业照常全算。all_words 留着总量,老师点开还能看到孩子在书本里背了多少
+    words_learned_map = await daily_words.words_by_student(
+        db, student_ids, day_start, day_end, contest=True)
+    from app.services.coin_service import task_progress_on_day
     has_task_map = await task_progress_on_day(db, student_ids, dt)
 
     # 批量查询会话数
@@ -615,7 +617,9 @@ async def get_class_daily_stats(
             "full_name": student.full_name or student.username,
             "study_date": dt.isoformat(),
             "words_learned": words_learned_map.get(student.id, 0),
-            "task_words": task_words_map.get(student.id, 0),
+            "all_words": all_words_map.get(student.id, 0),
+            # 兼容 10-06 上午那版前端(读 task_words 排大屏);新前端不再用,下次发版可删
+            "task_words": words_learned_map.get(student.id, 0),
             "has_task": has_task_map.get(student.id, (0, 0))[0] > 0,
             "study_duration": sess_duration_map.get(student.id, 0),
             "correct_count": correct,

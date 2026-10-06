@@ -186,17 +186,14 @@ async def bigscreen_daily_stats_all(
         )
         .group_by(LearningRecord.user_id)
     )).all()
-    # 作业内词量(2026-10-06,与单词王同口径):大屏比赛排行按它排,见 TeacherBigScreen
-    from app.services.coin_service import task_words_by_student, task_progress_on_day
-    from app.core.timeutil import local_today
+    # 比赛口径(2026-10-06):有作业的学生只算作业单元里的词,与班级每日数据同源
+    from app.services import daily_words
     uids = [uid for uid, _ in word_rows]
-    tw = await task_words_by_student(db, uids, local_today())
-    tp = await task_progress_on_day(db, uids, local_today())
+    contest = await daily_words.words_by_student(db, uids, day_start, day_end, contest=True)
     return {
         "students": [
             {"user_id": uid, "full_name": name_map.get(uid, "?"),
-             "words_learned": cnt, "task_words": tw.get(uid, 0),
-             "has_task": tp.get(uid, (0, 0))[0] > 0,
+             "words_learned": contest.get(uid, 0), "all_words": cnt,
              "study_duration": 0, "accuracy_rate": 0}
             for uid, cnt in word_rows
         ],

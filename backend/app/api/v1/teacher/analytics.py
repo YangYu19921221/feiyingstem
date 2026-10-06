@@ -992,7 +992,8 @@ async def _period_ranking_scores(db, student_ids, metric, period, start, end) ->
         # 一周复习同一批词全被抹掉,本周数字只有每日表逐日之和的 1/3,
         # 老师对不上(2026-07-31 生产实测 2534 vs 7747)。
         start_day, end_day = _ranking_period_days(period)
-        scores = await daily_words.words_sum_by_student(db, list(student_ids), start_day, end_day)
+        # 比赛口径(2026-10-06):有作业的日子只算作业单元里的词
+        scores = await daily_words.words_sum_by_student(db, list(student_ids), start_day, end_day, contest=True)
         return {uid: float(v) for uid, v in scores.items()}
     if metric == "study_time":
         # 时长走 services/study_time 全站唯一口径(逐日 max(封顶会话和, min(日历,12h))
