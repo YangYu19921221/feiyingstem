@@ -271,6 +271,23 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 单词王只比作业里的词 + 学习页比赛提示(2026-10-06): 用户「布置任务来比赛,学生点到没有布置的书本去刷单词量」。
+  **不做「比赛模式」勾选**(讨论后用户同意): 单词王本来就要求当天作业做完才参评,天天都是比赛;
+  做成开关则没勾的日子漏洞照旧、同班口径不一。规则: **有作业的日子单词王只数当天作业单元里的词**,
+  别的书背的词照常进学习记录/学情/复习(`words_learned` 不变),只是不进比赛。
+  真源 `coin_service.task_words_by_student` + `_task_scope_conditions`(与 task_progress_on_day 分母
+  同口径: 当天布置/未关闭/非家里);判「在不在作业单元」用 word_id(单元级隔离,别的书同拼写不算)。
+  按单元不按入口: 同一单元从书本进也算(同一批词,公平),要锁入口另配「只能从作业进入」。
+  接入: king_eligible_counts(评选/发币/👑)、word_king_race(学生战况,另给 my_all_words 总量,
+  文案写「作业里 N 词」并补「另在别的书背了 M 词不计入」)、教师金币横幅词数、日报加 task_words/has_task
+  (每日数据表「作业内 N」+ 导出列)、大屏/实时课堂有作业时按作业内词量排(「今日作业词排行」)。
+  顺修 word_king_race: task 状态挪出班级循环,作业内 0 词时 no_task 曾被误报。
+  **学习页提示**: start_learning 返回 contest_notice(今天有作业且本单元不在作业范围 → 提示「这里背的不计入单词王」),
+  `startLearning` 广播 CONTEST_NOTICE_EVENT,全局 `ContestNoticeBanner` 只在该单元学习页顶部显示 ——
+  **不逐页加横幅**(学习页十来个)。手机上横幅会盖住顶栏「退出」,所以 8 秒自动收起 + 点任意处收起;
+  「知道了」按天按单元记 sessionStorage。生产核对 09-29 班 55: 旧规则王是作业内 25 词+别的书刷到 174 的学生,
+  新规则王是作业内 40 词那位。测试 tests/test_word_king_task_scope.py(7 例,改回总量后 farming 那例失败)。
+  10-06 已部署生产(备份 /root/eh_code_before_wordking_20261006_1329.tgz、frontend/dist_bak_20261006_1329)
 - ✅ 作业「只能从作业进入」(2026-10-05): 用户「布置任务时有个选项只能从布置任务中进入背单词,
   没选可以从书本中进入」。homework_assignments.entry_mode: open(默认,server_default,存量零影响)/
   homework_only。**口径用户选 A「书本分配优先」**: 开关只收回「作业额外开放的那部分」——

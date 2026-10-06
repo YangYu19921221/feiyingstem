@@ -177,3 +177,33 @@ async def test_daily_stats_exposes_task_words(scene, client):
     assert r.status_code == 200, r.text
     row = next(s for s in r.json()["students"] if s["user_id"] == a.id)
     assert row["words_learned"] == 10 and row["task_words"] == 3 and row["has_task"] is True
+
+
+async def _checkin(db, stu):
+    from app.models.user import DailyCheckin
+    db.add(DailyCheckin(user_id=stu.id, checkin_date=local_today()))
+    await db.flush()
+
+
+async def test_start_learning_contest_notice(scene, client):
+    """学习页比赛提示: 今天有作业时进作业外单元才提示;进作业单元 / 今天没作业都不提示。"""
+    from app.models.learning import BookAssignment
+    from tests.conftest import _make_token
+    db, teacher, _cls, a, b, units = scene
+    hw_unit, ex_unit = units["hw"][0], units["ex"][0]
+    for s in (a, b):
+        await _checkin(db, s)
+        db.add(BookAssignment(student_id=s.id, book_id=ex_unit.book_id, scope_type="book",
+                              teacher_id=teacher.id))
+    await _assign(db, teacher, hw_unit, a, local_today(), completed=False)
+    await db.commit()
+
+    async def start(stu, unit):
+        r = await client.post(f"/api/v1/student/units/{unit.id}/start", json={"learning_mode": "spelling"},
+                              headers={"Authorization": f"Bearer {_make_token(stu.id)}"})
+        assert r.status_code == 200, r.text
+        return r.json().get("contest_notice")
+
+    assert "不计入单词王" in (await start(a, ex_unit) or "")   # 有作业,进作业外单元
+    assert await start(a, hw_unit) is None                      # 进的就是作业单元
+    assert await start(b, ex_unit) is None                      # 今天没作业,不评王,不提示

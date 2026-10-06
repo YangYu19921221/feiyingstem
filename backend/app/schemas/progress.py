@@ -31,6 +31,9 @@ class StartLearningResponse(BaseModel):
     words: List[dict] = Field(..., description="单词列表")
     message: str = Field(..., description="提示信息")
     unit_info: dict = Field(..., description="单元信息")
+    # 今天有作业、而这个单元不在作业范围里时给一句提示(单词王只比作业里的词);
+    # 为空 = 不提示(没作业 / 本来就是作业单元)。前端学习页顶部显示
+    contest_notice: Optional[str] = Field(None, description="比赛提示")
 
 class UpdateProgressRequest(BaseModel):
     """更新学习进度请求"""

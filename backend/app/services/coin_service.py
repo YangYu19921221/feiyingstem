@@ -506,6 +506,30 @@ async def is_auto_coin_org(db: AsyncSession, org_id: Optional[int]) -> bool:
     return (mode or "auto") != "manual"
 
 
+def _task_scope_conditions(day_start, day_end) -> list:
+    """「当天作业范围」的作业筛选条件 —— 与 task_progress_on_day 分母同口径
+    (当天布置、未关闭、非家里作业)。task_words_by_student 与 task_unit_ids_on_day
+    共用这一份,学习页「这里背的不计入单词王」提示与评选永远一致。"""
+    return [
+        HomeworkStudentAssignment.assigned_at >= day_start,
+        HomeworkStudentAssignment.assigned_at < day_end,
+        HomeworkAssignment.is_closed.is_(False),
+        HomeworkAssignment.location_type != "home",
+    ]
+
+
+async def task_unit_ids_on_day(db: AsyncSession, student_id: int, d: date) -> set[int]:
+    """该生 d 这天作业范围内的单元 id(空集 = 今天没有作业,不评单词王)。"""
+    day_start, day_end = local_day_utc_range(d)
+    rows = (await db.execute(
+        select(HomeworkAssignment.unit_id)
+        .join(HomeworkStudentAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
+        .where(and_(HomeworkStudentAssignment.student_id == student_id,
+                    *_task_scope_conditions(day_start, day_end)))
+    )).all()
+    return {uid for (uid,) in rows if uid is not None}
+
+
 async def task_words_by_student(
     db: AsyncSession, student_ids: list[int], d: date
 ) -> dict[int, int]:
@@ -546,10 +570,7 @@ async def task_words_by_student(
             LearningRecord.learning_mode.notin_(NON_LEARNED_MODES),
             LearningRecord.created_at >= day_start,
             LearningRecord.created_at < day_end,
-            HomeworkStudentAssignment.assigned_at >= day_start,
-            HomeworkStudentAssignment.assigned_at < day_end,
-            HomeworkAssignment.is_closed.is_(False),
-            HomeworkAssignment.location_type != "home",
+            *_task_scope_conditions(day_start, day_end),
         ))
         .group_by(LearningRecord.user_id)
     )).all()

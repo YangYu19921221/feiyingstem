@@ -72,6 +72,8 @@ export interface StartLearningResponse {
   progress_percentage: number;
   words: WordData[];
   message: string;
+  /** 今天有作业而本单元不在作业范围里:单词王不计这里的词(为空=不提示) */
+  contest_notice?: string | null;
   unit_info: {
     id: number;
     unit_number: number;
@@ -179,8 +181,15 @@ export const startLearning = async (request: StartLearningRequest): Promise<Star
       ...(assignmentId ? { assignment_id: assignmentId } : {}),
     }
   );
+  // 比赛提示走全局事件,由 ContestNoticeBanner 统一显示 —— 学习页有十来个,
+  // 逐页加横幅漏一个就是「孩子在那页白刷一晚上」。每次进单元都发一次(含 null=收起)
+  window.dispatchEvent(new CustomEvent(CONTEST_NOTICE_EVENT, {
+    detail: { unitId: request.unit_id, notice: response.data?.contest_notice ?? null },
+  }));
   return response.data;
 };
+
+export const CONTEST_NOTICE_EVENT = 'contest-notice';
 
 // 进度更新是绝对值写入(天然幂等),走可靠队列:失败自动补交,
 // 最后一组的 is_completed 丢了会导致单元不解锁/轮数不涨,必须保证送达
