@@ -287,7 +287,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   点它若有待办作业直接走作业入口。入口: 作业管理 → 创建新作业 →「📍 在哪里做」下方
   「🔒 只能从作业进入」;列表角标「🔒 仅作业入口」(学生端「🔒 只能从这里进入」)。
   测试 tests/test_homework_entry_mode.py(8 例;去掉白名单排除 → 4 例失败,去掉出题闸门 → 1 例失败,回归锁验证过)。
-  **部署注意**: database.py 有 drift,走 anchor patch(entry_mode 那条 ALTER)
+  **2026-10-06 已部署生产**(database.py 有 drift,走 anchor patch 只加 entry_mode 那条 ALTER;
+  其余 8 个文件生产==HEAD~1 整文件推;存量 3724 份作业全为 open;备份 /root/eh_db_before_entrymode_20261006_1228.db、
+  /root/eh_code_before_entrymode_20261006_1228.tgz、frontend/dist_bak_20261006_1228)
 - ✅ 音标视频手动排序(2026-10-04): 此前 sort_order 字段一直在、但没有任何入口能改(存量全是 0,
   顺序=上传顺序,传错只能删了重传)。教师端「音标视频」顶部「调整顺序」→ 按分类分 tab,
   拖抓手 / 上下箭头 / 置顶,攒着改点「保存顺序」一次写(components/phonetics/ReorderDialog.tsx)。
