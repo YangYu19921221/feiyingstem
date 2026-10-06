@@ -35,3 +35,21 @@ class PetEventLog(Base):
     event_type = Column(String(30), nullable=False)  # feed/evolve/adopt/happiness_decay
     detail = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class PetHealQuestion(Base):
+    """宠物治疗题(2026-10-06): 服务端出题、服务端判分、一题只能用一次。
+
+    此前 /pet/heal 直接收前端传来的 is_correct,答案(释义)也随题下发,
+    改一行 JS 或开几个标签页就能无限回血。现在题目在服务端落一行,
+    提交时用条件 UPDATE「used_at IS NULL」认领,判分只看这里存的正确释义。
+    """
+    __tablename__ = "pet_heal_questions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    pet_id = Column(Integer, ForeignKey('user_pets.id', ondelete='CASCADE'), nullable=False)
+    word_id = Column(Integer, nullable=False)
+    correct_meaning = Column(Text, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

@@ -526,6 +526,49 @@ async def create_battle(
     return battle
 
 
+async def claim_exclusive_battle(db: AsyncSession, battle: PetBattle) -> bool:
+    """一人同时只能打一场(2026-10-06,多开浏览器刷经验)。返回这场是否保留。
+
+    生产实测: 同一学生 14 天里 1182 场对战与自己的另一场时间重叠(单日最多 471 场),
+    每个标签页各开一场 AI 对战、各自结算经验和粮食;另一场结束时还会用开局血量
+    覆盖掉前一场打出的伤 → 受伤不用治疗。
+
+    规则「**最新开打的那场为准**」(按 id): 调用时这场必须已是 active 且已提交。
+      1. 作废双方 id 更小的进行中/待开始对战(cancelled,结算时拿不到奖励 ——
+         finish_battle 的条件认领只认 active)
+      2. 若双方还有 id 更大的进行中对战,说明有更新的一场 → 作废自己
+    两个标签同时开: 不论两边语句怎么交错,id 大的那场一定留下、小的一定被作废,
+    不会出现「互相作废、两场都没了」。只靠 SQLite 写串行,不依赖进程内状态。
+    AI 训练师(负数 ID)不参与。
+    """
+    players = [pid for pid in (battle.player1_id, battle.player2_id) if pid and pid > 0]
+    if not players:
+        return True
+    involves = or_(PetBattle.player1_id.in_(players), PetBattle.player2_id.in_(players))
+    now = datetime.utcnow()
+    await db.execute(
+        update(PetBattle)
+        .where(and_(PetBattle.id < battle.id,
+                    PetBattle.status.in_(("active", "pending")), involves))
+        .values(status="cancelled", finished_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    newer = (await db.execute(
+        select(PetBattle.id).where(and_(
+            PetBattle.id > battle.id, PetBattle.status == "active", involves,
+        )).limit(1)
+    )).first()
+    if newer is not None:
+        await db.execute(
+            update(PetBattle)
+            .where(PetBattle.id == battle.id, PetBattle.status == "active")
+            .values(status="cancelled", finished_at=now)
+            .execution_options(synchronize_session=False)
+        )
+    await db.commit()
+    return newer is None
+
+
 async def accept_battle(db: AsyncSession, battle_id: int) -> PetBattle:
     """接受对战邀请"""
     battle = await db.get(PetBattle, battle_id)
@@ -543,6 +586,8 @@ async def accept_battle(db: AsyncSession, battle_id: int) -> PetBattle:
     battle.status = "active"
     battle.started_at = datetime.utcnow()
     await db.commit()
+    if not await claim_exclusive_battle(db, battle):
+        raise ValueError("你正在进行另一场对战,先打完那一场吧")
     await db.refresh(battle)
 
     return battle
@@ -884,15 +929,25 @@ async def finish_battle(
     Returns:
         奖励数据
     """
+    # 结算认领必须是**一条条件 UPDATE**(只认 active): 旧写法「读 status → 判 → 最后 commit 才写
+    # finished」中间隔着好几个 await,WS 正常结束与 HTTP 逃跑判负同时到就会发两遍奖励;
+    # 被新对战作废(cancelled)的那场也靠这里拿不到奖励。认领失败不 rollback ——
+    # 长连接会话里 rollback 会让 battle 对象过期,下一次属性访问 MissingGreenlet
+    now = datetime.utcnow()
+    claimed = await db.execute(
+        update(PetBattle)
+        .where(PetBattle.id == battle_id, PetBattle.status == "active")
+        .values(status="finished", winner_id=winner_id, finished_at=now)
+        .execution_options(synchronize_session=False)
+    )
     battle = await db.get(PetBattle, battle_id)
     await db.refresh(battle)
-    if battle.status == "finished":
-        capture = json.loads(battle.capture_data) if battle.capture_data else None
-        return {"_capture": capture}
-
-    battle.status = "finished"
-    battle.winner_id = winner_id
-    battle.finished_at = datetime.utcnow()
+    if (claimed.rowcount or 0) == 0:
+        await db.commit()
+        if battle.status == "finished":
+            capture = json.loads(battle.capture_data) if battle.capture_data else None
+            return {"_capture": capture}
+        return {"_superseded": True}
 
     # 计算奖励
     rewards = {}
@@ -929,8 +984,9 @@ async def finish_battle(
         if player_id <= 0:
             continue
 
-        # 更新宠物
+        # 更新宠物(refresh:WS 长连接会话里的对象可能是开局时读的,对战期间喂过食会被旧值覆盖)
         pet = await db.get(UserPet, battle.player1_pet_id if is_player1 else battle.player2_pet_id)
+        await db.refresh(pet)
 
         # 发放奖励
         pet.food_balance += food

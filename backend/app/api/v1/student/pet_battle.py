@@ -557,6 +557,9 @@ async def quick_match_battle(
     battle.started_at = datetime.utcnow()
     
     await db.commit()
+    # 一人同时只打一场:这场开打后作废自己其它进行中的对战(多开标签刷经验的根因)
+    if not await pet_battle_service.claim_exclusive_battle(db, battle):
+        raise HTTPException(status_code=409, detail="你在另一个页面开了新的对战,请回到那个页面继续")
     await db.refresh(battle)
     
     print(f"快速对战创建成功: battle_id={battle.id}, status={battle.status}, is_ai={battle.is_ai_battle}")

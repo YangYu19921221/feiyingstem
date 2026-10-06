@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,6 +24,7 @@ export default function PetHealingPage() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [correctAnswer, setCorrectAnswer] = useState('');
   const [healedTotal, setHealedTotal] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -46,25 +47,27 @@ export default function PetHealingPage() {
   const wordsQuery = useQuery<HealingWord[]>({
     queryKey: ['healingWords'],
     queryFn: () => getHealingWords(20),
+    // 每次拉题服务端都会新出一批题(旧题作废),别让 react-query 在切回标签页时偷偷重拉
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     // 健康状态下后端会返回 400「宠物不需要治疗」；不要把这个正常状态当成网络错误。
     enabled: healingStatus?.is_injured === true,
   });
   const words = wordsQuery.data ?? [];
 
   const currentWord = words[currentQuestionIndex];
-  const options = useMemo(() => {
-    if (!currentWord) return [];
-    const meanings = Array.from(new Set(words.map((word) => word.meaning).filter((meaning) => meaning !== currentWord.meaning)));
-    const distractors = [...meanings].sort(() => Math.random() - 0.5).slice(0, 3);
-    return [currentWord.meaning, ...distractors].sort(() => Math.random() - 0.5);
-  }, [currentWord, words]);
-  const correctIndex = currentWord ? options.indexOf(currentWord.meaning) : -1;
+  // 选项由服务端给(已打乱),对错也由服务端判 —— 前端拿不到答案,改 JS 刷不了血
+  const options = currentWord?.options ?? [];
 
   // 治疗mutation
   const healMutation = useMutation({
-    mutationFn: ({ wordId, isCorrect }: { wordId: number; isCorrect: boolean }) =>
-      healPet(wordId, isCorrect),
+    mutationFn: ({ questionId, answer }: { questionId: number; answer: string }) =>
+      healPet(questionId, answer),
     onSuccess: (data) => {
+      setIsCorrect(data.is_correct);
+      setCorrectAnswer(data.correct_answer);
+      setShowResult(true);
+      setAnsweredCount((prev) => prev + 1);
       queryClient.invalidateQueries({ queryKey: ['healingStatus'] });
       queryClient.invalidateQueries({ queryKey: ['myPet'] });
 
@@ -82,11 +85,14 @@ export default function PetHealingPage() {
       }
 
       setTimeout(() => {
+        setSelectedAnswer(null);
+        setShowResult(false);
+        healMutation.reset();
         if (currentQuestionIndex < words.length - 1) {
           setCurrentQuestionIndex((prev) => prev + 1);
-          setSelectedAnswer(null);
-          setShowResult(false);
-          healMutation.reset();
+        } else {
+          // 一批题做完还没恢复:服务端再出一批(每题只能用一次,不能重做旧题)
+          void wordsQuery.refetch().then(() => setCurrentQuestionIndex(0));
         }
       }, 1600);
     },
@@ -169,18 +175,11 @@ export default function PetHealingPage() {
     return null;
   }
 
-  const handleAnswer = (answer: string, index: number) => {
-    if (showResult) return;
-
+  const handleAnswer = (answer: string) => {
+    if (showResult || healMutation.isPending) return;
     setSelectedAnswer(answer);
-    const correct = index === correctIndex;
-    setIsCorrect(correct);
-    setShowResult(true);
-    setAnsweredCount((prev) => prev + 1);
-
-    // 提交治疗
-    healMutation.mutate({ wordId: currentWord.id, isCorrect: correct });
-
+    // 提交给服务端判分;结果回来后再显示对错(onSuccess)
+    healMutation.mutate({ questionId: currentWord.question_id, answer });
   };
 
   const petImage = getPetImage(pet.species, pet.evolution_stage);
@@ -275,7 +274,7 @@ export default function PetHealingPage() {
           <div className="grid grid-cols-1 gap-3">
             {options.map((option, index) => {
               const isSelected = selectedAnswer === option;
-              const isCorrectOption = index === correctIndex;
+              const isCorrectOption = showResult && option === correctAnswer;
               const showCorrect = showResult && isCorrectOption;
               const showWrong = showResult && isSelected && !isCorrectOption;
 
@@ -285,7 +284,7 @@ export default function PetHealingPage() {
                   whileHover={{ scale: showResult ? 1 : 1.02 }}
                   whileTap={{ scale: showResult ? 1 : 0.98 }}
                   disabled={showResult || healMutation.isPending}
-                  onClick={() => handleAnswer(option, index)}
+                  onClick={() => handleAnswer(option)}
                   className={`p-4 rounded-xl text-left font-medium transition-all ${
                     showCorrect
                       ? 'bg-green-500 text-white ring-4 ring-green-300'
@@ -308,7 +307,7 @@ export default function PetHealingPage() {
 
           {/* 结果提示 */}
           <AnimatePresence>
-            {showResult && (
+            {(showResult || healMutation.isError) && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -320,14 +319,34 @@ export default function PetHealingPage() {
                 {healMutation.isError ? (
                   <>
                     <div className="font-bold">这次记录还没保存</div>
-                    <p className="mt-1 text-sm">检查网络后重试，当前题目不会跳过。</p>
-                    <button
-                      type="button"
-                      onClick={() => healMutation.mutate({ wordId: currentWord.id, isCorrect })}
-                      className="mt-3 min-h-11 rounded-xl bg-orange-600 px-5 text-sm font-semibold text-white"
-                    >
-                      重新保存
-                    </button>
+                    <p className="mt-1 text-sm">
+                      {(healMutation.error as { response?: { status?: number } })?.response?.status === 409
+                        ? '这道题已经在别的页面答过了，换下一题吧。'
+                        : '检查网络后重试，当前题目不会跳过。'}
+                    </p>
+                    {(healMutation.error as { response?: { status?: number } })?.response?.status === 409 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          healMutation.reset();
+                          setSelectedAnswer(null);
+                          setShowResult(false);
+                          if (currentQuestionIndex < words.length - 1) setCurrentQuestionIndex((p) => p + 1);
+                          else void wordsQuery.refetch().then(() => setCurrentQuestionIndex(0));
+                        }}
+                        className="mt-3 min-h-11 rounded-xl bg-orange-600 px-5 text-sm font-semibold text-white"
+                      >
+                        下一题
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => selectedAnswer && healMutation.mutate({ questionId: currentWord.question_id, answer: selectedAnswer })}
+                        className="mt-3 min-h-11 rounded-xl bg-orange-600 px-5 text-sm font-semibold text-white"
+                      >
+                        重新保存
+                      </button>
+                    )}
                   </>
                 ) : isCorrect ? (
                   <>
@@ -338,7 +357,7 @@ export default function PetHealingPage() {
                   <>
                     <div className="text-3xl mb-2">💡</div>
                     <div className="font-bold">答错了，继续加油！</div>
-                    <div className="text-sm mt-1">正确答案：{currentWord.meaning}</div>
+                    <div className="text-sm mt-1">正确答案：{correctAnswer}</div>
                   </>
                 )}
               </motion.div>

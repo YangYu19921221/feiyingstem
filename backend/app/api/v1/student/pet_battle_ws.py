@@ -464,6 +464,13 @@ async def battle_websocket(
         # 结算奖励
         winner_id = await pet_battle_service.check_battle_end(battle)
         rewards = await pet_battle_service.finish_battle(db, battle_id, winner_id)
+        if rewards.get("_superseded"):
+            # 这场被另一个页面新开的对战作废了(一人同时只打一场),不发奖励
+            await manager.broadcast(battle_id, WSError(
+                message="你在另一个页面开始了新的对战,这一场已结束(不计奖励)。",
+                code="superseded",
+            ).model_dump(mode="json"))
+            return
 
         # 获取胜者名字
         winner_name = None

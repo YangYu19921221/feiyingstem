@@ -271,6 +271,26 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 宠物多开刷经验/刷血修复(2026-10-06): 用户「多开浏览器可以同时刷经验 治疗」。生产实测同一学生
+  14 天里 1182 场对战与自己另一场时间重叠(单日最多 471 场)。四个洞四个守卫(全是 DB 原子操作,不靠进程内状态):
+  ①**一人同时只打一场** `pet_battle_service.claim_exclusive_battle`: 开打(quick-match / accept)后作废双方
+  其它 active/pending 对战;规则「id 大的为准」—— 后认领的若是旧场则作废自己,两标签并发不会互相作废
+  ②**finish_battle 条件 UPDATE 认领**(`WHERE status='active'`),旧写法读-判-最后才写,WS 结束与逃跑判负并发发两遍;
+  被作废的场返回 `_superseded`,WS 广播 code=superseded「另一个页面开了新对战,这一场不计奖励」
+  ③**治疗改服务端出题判分**: 新表 pet_heal_questions(带正确释义),`GET /pet/healing-words` 下发 question_id+选项
+  **不下发答案**,`POST /pet/heal` 收 JSON {question_id, answer}(旧的 ?is_correct= 现在 422),一题一用
+  (条件 UPDATE used_at IS NULL,重复交 409),回血一条 SQL 原子加,另有 30 次/分钟限速
+  ④**喂食每日 3 次**改一条条件 UPDATE(子查询数当天 feed 日志 < 3 + 粮 >= 5)。
+  **仍未修**: `/pet/earn-food` 信任前端传的 score/total(粮食可无限刷),粮食只能喂食且每天 3 次封顶,经验影响有限。
+  **部署必须前后端一起上**(治疗接口契约变了,旧页面交题会 422,UpdateNudge 会提示刷新)。
+  测试 tests/test_pet_multitab_exploits.py(9 例含真文件库并发结算;四个守卫逐一破坏各自恰好失败,回归锁验证过)
+- ✅ 作业「🏆 比赛模式」勾选(2026-10-06 傍晚,取代下面两条的「有作业就生效」): 用户「布置作业的时候加个比赛模式来打钩」。
+  homework_assignments.is_contest(默认 0);**只有当天有比赛作业**时单词数/排行/大屏/单词王才只算比赛作业单元里的词,
+  普通作业不再限制计数。真源仍是 `daily_words._contest_condition()`(多了 is_contest 条件),
+  `coin_service.task_words_by_student` 改为直接委托 contest=True(单词王与排行一个数);学习页提示改走
+  `contest_unit_ids_on_day`。旧公告 word-king-task-scope-* 删掉换成 homework-contest-mode-*。
+  入口: 作业管理 → 创建新作业 →「📍 在哪里做」下面「🏆 比赛模式」;列表角标「🏆 比赛」。
+  **部署注意**: database.py 有 drift,anchor patch 补 is_contest 那条 ALTER(entry_mode 那条已在生产)
 - ✅ 有作业的日子书本里背的词不计数(2026-10-06 下午,用户「非作业模式学生背书本单词不增加」):
   上一条的「只比作业内」从单词王**扩到全部比赛/排名面**: 班级每日数据 words_learned、大屏、实时课堂、
   教师班级排行榜(mastered_words 周期)、学生端词汇榜(含环比)。用户选: **只管比赛和排名**

@@ -310,31 +310,38 @@ async def feed_pet(
     if not pet:
         raise HTTPException(status_code=404, detail="还没有宠物")
 
-    # 检查粮食余额
-    if pet.food_balance < 5:
-        raise HTTPException(status_code=400, detail="粮食不足，去练习赚粮食吧！")
-
-    # 检查每日喂食上限（3次）
     now = datetime.utcnow()
     today_start, _ = local_today_utc_range()  # 北京今天起点(UTC),每日喂食上限按北京日重置
-    feed_count_result = await db.execute(
+    today_feeds_sq = (
         select(sa_func.count(PetEventLog.id)).where(
             PetEventLog.pet_id == pet.id,
             PetEventLog.event_type == "feed",
             PetEventLog.created_at >= today_start,
-        )
+        ).scalar_subquery()
     )
-    today_feeds = feed_count_result.scalar() or 0
-    if today_feeds >= 3:
+    # 扣粮 + 加经验 + 每日 3 次上限放进**一条条件 UPDATE**(2026-10-06 防多开):
+    # 旧写法先数今天喂了几次、再在 Python 里扣,几个标签页同时点能一起越过上限。
+    # 喂食日志与这条 UPDATE 同事务写入,下一个请求的子查询就数得到它
+    claimed = await db.execute(
+        update(UserPet)
+        .where(UserPet.id == pet.id, UserPet.food_balance >= 5, today_feeds_sq < 3)
+        .values(food_balance=UserPet.food_balance - 5, experience=UserPet.experience + FEED_XP)
+        .execution_options(synchronize_session=False)
+    )
+    if (claimed.rowcount or 0) == 0:
+        await db.commit()
+        await db.refresh(pet)
+        if (pet.food_balance or 0) < 5:
+            raise HTTPException(status_code=400, detail="粮食不足，去练习赚粮食吧！")
         raise HTTPException(status_code=400, detail="今天已经喂了3次啦，明天再来吧！")
+    db.add(PetEventLog(pet_id=pet.id, event_type="feed", detail=f"喂食 -5粮 +{FEED_XP}XP"))
+    await db.refresh(pet)
 
     pet = apply_decay(pet)
 
-    # 扣除粮食，喂食属性变化
-    pet.food_balance -= 5
+    # 喂食属性变化(粮食与经验已在上面那条 UPDATE 里原子扣加)
     pet.hunger = min(100, pet.hunger + 25)
     pet.happiness = min(100, pet.happiness + 10)
-    pet.experience += FEED_XP
     pet.last_fed_at = now
     pet.last_interaction_at = now
     await sync_food_balance(db, current_user.id, pet.food_balance, except_pet_id=pet.id)
@@ -347,12 +354,6 @@ async def feed_pet(
             event_type="evolve",
             detail=f"进化为{get_pet_stage_name(pet.species, pet.evolution_stage)}！(Lv{pet.level})",
         ))
-
-    db.add(PetEventLog(
-        pet_id=pet.id,
-        event_type="feed",
-        detail=f"喂食 -5粮 +{FEED_XP}XP (Lv{pet.level})",
-    ))
 
     await db.commit()
     await db.refresh(pet)
