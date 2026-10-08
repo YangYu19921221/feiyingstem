@@ -1,7 +1,7 @@
 /**
  * 加盟资料中心(平台 admin 专用,org_admin 不可见)
  *
- * ⚠️ 2026-10-08 起新签约按**卡包政策**(标准包 ¥60,000 分 4 期,真源 backend/app/services/card_pack.py):
+ * ⚠️ 2026-10-08 起新签约按**卡包政策**(标准包 ¥60,000 分 3 期,真源 backend/app/services/card_pack.py):
  *    合作协议第二条第 2 款、第三条第 1–3 款与费用表、提分方案第八章已改;下面关于 ¥14,400 / ¥130
  *    的说明是**老政策**(已签约机构仍按它执行),留作历史。逾期宽限/退款/年度续购量标了【待确认】,不替用户定。
  *
@@ -152,15 +152,16 @@ function ContractDoc() {
           学段卡、全通卡有效期内,甲方新增的同版本、同范围同步书,持卡学员同步享有。
         </p>
         <p>
-          2. 分期付款:标准包分 <strong>4 期</strong>支付,每期人民币 <strong>15,000 元</strong>。
-          第 1 期于本协议签订时支付,开通入门卡 100 张、单册卡 60 张、学段卡 42 张、全通卡 5 张;
-          第 2、3、4 期分别于签约后第 3、6、9 个月内支付,每期开通单册卡 30 张、学段卡 36 张、全通卡 15 张。
+          2. 分期付款:标准包分 <strong>3 期</strong>支付,每期人民币 <strong>20,000 元</strong>。
+          第 1 期于本协议签订时支付,开通入门卡 100 张、单册卡 50 张、学段卡 50 张、全通卡 15 张;
+          第 2 期于签约后第 3 个月内支付,开通单册卡 60 张、学段卡 50 张、全通卡 16 张;
+          第 3 期于签约后第 6 个月内支付,开通单册卡 40 张、学段卡 50 张、全通卡 19 张。
           乙方可提前支付后续各期,甲方收到款项后开通该期学习卡。
-          乙方一次付清 4 期的,甲方另赠全通卡 <strong>10 张</strong>;
-          已付部分期次后一次结清剩余两期及以上的,另赠全通卡 <strong>5 张</strong>。
+          乙方一次付清 3 期的,甲方另赠全通卡 <strong>10 张</strong>;
+          已付第 1 期后一次结清剩余两期的,另赠全通卡 <strong>5 张</strong>。
         </p>
         <p>
-          3. 补货:4 期付清后乙方需要更多学习卡的,按前述单价购买,每种 <strong>20 张起</strong>;
+          3. 补货:3 期付清后乙方需要更多学习卡的,按前述单价购买,每种 <strong>20 张起</strong>;
           精品卡(考纲词汇等精品书)单价 <strong>150 元</strong>,仅通过补货购买。
           <strong>补货无需另行签订合同</strong>,由乙方书面(含微信、邮件等可留痕方式)告知甲方所需种类与数量,
           甲方收到款项后为乙方开通,该次补货记录即视为本协议附件,适用本协议全部条款。
@@ -205,7 +206,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">标准包</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥60,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">450 张学生学习卡(每张半年),分 4 期每期 ¥15,000;一次付清另赠全通卡 10 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">450 张学生学习卡(每张半年),分 3 期每期 ¥20,000;一次付清另赠全通卡 10 张</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">学习卡单价</td>
@@ -215,7 +216,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">补货</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">每种 20 张起</td>
-              <td className="border border-slate-500 px-2 py-1.5">4 期付清后按单价补货;精品卡 ¥150 / 张;无需另签合同</td>
+              <td className="border border-slate-500 px-2 py-1.5">3 期付清后按单价补货;精品卡 ¥150 / 张;无需另签合同</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
@@ -568,13 +569,13 @@ function PitchDoc() {
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">分期</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">4 期 × ¥15,000</td>
-              <td className="border border-orange-200 px-2 py-1.5">签约付第 1 期,之后每 3 个月一期;每到账一期开通这一期的卡,可提前付</td>
+              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">3 期 × ¥20,000</td>
+              <td className="border border-orange-200 px-2 py-1.5">签约付第 1 期,第 3、6 个月各付一期;每到账一期开通这一期的卡,可提前付</td>
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">一次付清</td>
               <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">送 10 张全通卡</td>
-              <td className="border border-orange-200 px-2 py-1.5">一次付清 4 期加送;中途一次结清剩余两期以上送 5 张</td>
+              <td className="border border-orange-200 px-2 py-1.5">一次付清 3 期加送;付完第 1 期后结清剩余两期送 5 张</td>
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">四种卡</td>
@@ -584,7 +585,7 @@ function PitchDoc() {
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">补货</td>
               <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">按单价</td>
-              <td className="border border-orange-200 px-2 py-1.5">4 期付完后按上面单价补货,每种 20 张起;精品卡(考纲词汇等)¥150 / 张,只通过补货购买</td>
+              <td className="border border-orange-200 px-2 py-1.5">3 期付完后按上面单价补货,每种 20 张起;精品卡(考纲词汇等)¥150 / 张,只通过补货购买</td>
             </tr>
             <tr>
               <td className="border border-orange-200 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
@@ -610,7 +611,7 @@ function PitchDoc() {
         </table>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           {[
-            ['¥60,000', '标准包,分 4 期每期 ¥15,000'],
+            ['¥60,000', '标准包,分 3 期每期 ¥20,000'],
             ['450 张', '学生学习卡,每张半年'],
             ['约 0.7 元', '学段卡折合每个学生每天(¥200 / 180 天)'],
           ].map(([big, small]) => (
@@ -622,8 +623,8 @@ function PitchDoc() {
         </div>
         <p className="mt-3">
           <strong>投入产出参考</strong>(仅供测算,终端定价由机构完全自主,平台不干涉,亦不构成收益承诺):
-          按常见零售价(单册卡 ¥150、学段卡 ¥500、全通卡 ¥800)测算,第 1 期 ¥15,000 开通的正式卡全部售出
-          约对应 3.4 万元流水;入门卡用于招生体验,可免费赠送。分期付款让机构先招生、后付款,首期投入只有标准包的四分之一。
+          按常见零售价(单册卡 ¥150、学段卡 ¥500、全通卡 ¥800)测算,第 1 期 ¥20,000 开通的正式卡全部售出
+          约对应 4.5 万元流水;入门卡用于招生体验,可免费赠送。分期付款让机构先招生、后付款,首期投入只有标准包的三分之一。
         </p>
       </PitchSection>
 

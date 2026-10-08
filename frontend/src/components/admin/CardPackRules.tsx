@@ -108,9 +108,9 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
           </div>
           <ul className="mt-2 list-disc space-y-0.5 pl-5">
             <li>每种卡的额度<strong>分开算</strong>:{labelOf.trial}用完了,不能拿{labelOf.full}的额度去发。</li>
-            <li>卡用得快可以<strong>提前付下一期</strong>;一次付清 4 期送 {catalog.bonus_full_pay} 张{labelOf.full},
-              中途把剩下两期以上一次结清送 {catalog.bonus_early_settle} 张。</li>
-            <li>付完 4 期还要卡就<strong>补货</strong>,按上面单价,每种 {catalog.restock_min} 张起。{premium?.label}只通过补货买。</li>
+            <li>卡用得快可以<strong>提前付下一期</strong>;一次付清 {catalog.installments.length} 期送 {catalog.bonus_full_pay} 张{labelOf.full},
+              付完第 1 期后把剩下两期一次结清送 {catalog.bonus_early_settle} 张。</li>
+            <li>付完 {catalog.installments.length} 期还要卡就<strong>补货</strong>,按上面单价,每种 {catalog.restock_min} 张起。{premium?.label}只通过补货买。</li>
             <li>码生成错了:没兑换的删掉或禁用,额度退回来。已兑换的不退。</li>
           </ul>
         </section>

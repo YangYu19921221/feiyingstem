@@ -69,16 +69,16 @@ CARD_KINDS: dict[str, dict] = {
 }
 KIND_ORDER = ["trial", "single", "stage", "full", "premium"]
 
-# 标准包 6 万 = 4 期 × 1.5 万。每期开的卡按单价算正好值 1.5 万,机构不欠卡、平台不垫卡
+# 标准包 6 万 = 3 期 × 2 万(2026-10-08 用户定「最多三期」)。每期开的卡按单价算正好值 2 万,
+# 机构不欠卡、平台不垫卡;三期合计 入门 100 / 单册 150 / 学段 150 / 全通 50
 PACK_PRICE = 60000
 INSTALLMENTS: dict[int, dict[str, int]] = {
-    1: {"trial": 100, "single": 60, "stage": 42, "full": 5},
-    2: {"single": 30, "stage": 36, "full": 15},
-    3: {"single": 30, "stage": 36, "full": 15},
-    4: {"single": 30, "stage": 36, "full": 15},
+    1: {"trial": 100, "single": 50, "stage": 50, "full": 15},
+    2: {"single": 60, "stage": 50, "full": 16},
+    3: {"single": 40, "stage": 50, "full": 19},
 }
 INSTALLMENT_MONTHS = 3          # 每 3 个月一期(签约时付第 1 期)
-BONUS_FULL_PAY = 10             # 一次付清 4 期: 送 10 张全通卡
+BONUS_FULL_PAY = 10             # 一次付清 3 期: 送 10 张全通卡
 BONUS_EARLY_SETTLE = 5          # 剩 2 期及以上一次结清: 送 5 张全通卡
 RESTOCK_MIN = 20                # 补货每档 20 张起(提示用,不硬拦: 平台可能赠零头)
 
@@ -90,7 +90,8 @@ def installment_value(no: int) -> int:
 
 
 # 自检: 每期都必须正好 1.5 万,四期合计 6 万。改单价/张数时这里会在启动时炸出来
-assert all(installment_value(n) == PACK_PRICE // 4 for n in INSTALLMENTS), "分期卡值必须每期 1.5 万"
+assert all(installment_value(n) == PACK_PRICE // len(INSTALLMENTS) for n in INSTALLMENTS), \
+    "每期开的卡按单价合计必须正好等于 标准包 / 期数"
 
 
 def catalog() -> dict:
@@ -286,13 +287,13 @@ async def record_payment(
     if action in ("installment", "settle"):
         remaining = [n for n in INSTALLMENTS if n not in paid]
         if not remaining:
-            raise HTTPException(400, "4 期都已经到账了,再要卡请用「补货」")
+            raise HTTPException(400, f"{len(INSTALLMENTS)} 期都已经到账了,再要卡请用「补货」")
         todo = remaining[:1] if action == "installment" else remaining
         for no in todo:
             for kind, n in INSTALLMENTS[no].items():
                 add(kind, n, "installment", no)
         if action == "settle":
-            # 一次付清 4 期送 10 张;剩 2 期及以上提前结清送 5 张;只剩最后一期不送
+            # 一次付清全部 3 期送 10 张;付过第 1 期后结清剩余 2 期送 5 张;只剩最后一期不送
             bonus = BONUS_FULL_PAY if not paid else (BONUS_EARLY_SETTLE if len(remaining) >= 2 else 0)
             add("full", bonus, "bonus", 0, f"一次结清赠送(结清第 {todo[0]}–{todo[-1]} 期)")
     elif action == "restock":

@@ -79,8 +79,8 @@ async def _gen(client, user, **body):
                              json={"count": 1, **body}, headers=_hdr(user))
 
 
-def test_installments_each_worth_15000():
-    assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [15000] * 4
+def test_installments_each_worth_20000():
+    assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [20000] * 3
     total = {}
     for cards in card_pack.INSTALLMENTS.values():
         for k, n in cards.items():
@@ -118,13 +118,13 @@ async def test_quota_per_kind_and_installment_once(client, env):
     assert r.status_code == 200, r.text
     assert r.json()["installments"] == [1]
     kinds = {k["kind"]: k for k in r.json()["status"]["kinds"]}
-    assert kinds["trial"]["quota"] == 100 and kinds["full"]["quota"] == 5
+    assert kinds["trial"]["quota"] == 100 and kinds["full"]["quota"] == 15
     assert kinds["premium"]["quota"] == 0
 
-    # 第 1 期只有 5 张全通卡: 发 6 张被拒,入门卡的额度不能挪用
-    r = await _gen(client, env["oa"], card_kind="full", series="人教版", count=6)
+    # 第 1 期只有 15 张全通卡: 发 16 张被拒,入门卡的额度不能挪用
+    r = await _gen(client, env["oa"], card_kind="full", series="人教版", count=16)
     assert r.status_code == 403
-    r = await _gen(client, env["oa"], card_kind="full", series="人教版", count=5)
+    r = await _gen(client, env["oa"], card_kind="full", series="人教版", count=15)
     assert r.status_code == 200, r.text
     code = r.json()[0]
     assert code["card_kind"] == "full" and code["grant_days"] == 180
@@ -143,7 +143,7 @@ async def test_full_pay_bonus(client, env):
     kinds = {k["kind"]: k["quota"] for k in r.json()["status"]["kinds"]}
     assert kinds["full"] == 50 + card_pack.BONUS_FULL_PAY
     assert kinds["stage"] == 150
-    # 4 期都付完再点到账 → 400
+    # 3 期都付完再点到账 → 400
     assert (await _pay(client, env)).status_code == 400
     assert (await _pay(client, env, action="settle")).status_code == 400
 

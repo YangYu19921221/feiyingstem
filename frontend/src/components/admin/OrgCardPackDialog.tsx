@@ -100,7 +100,7 @@ export default function OrgCardPackDialog({ orgId, onClose }: { orgId: number; o
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" disabled={busy || !next} onClick={() => pay('installment')}
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">
-              {next ? `确认第 ${next} 期到账` : '4 期已全部到账'}
+              {next ? `确认第 ${next} 期到账` : `${catalog.installments.length} 期已全部到账`}
             </button>
             {remaining.length > 1 && (
               <button type="button" disabled={busy} onClick={() => pay('settle')}

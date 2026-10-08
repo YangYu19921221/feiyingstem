@@ -81,7 +81,7 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
           <h2 className="text-sm font-semibold text-amber-900">学习卡额度(每种卡分开算)</h2>
           <span className="text-xs text-amber-800">
             已到账 {status?.paid_installments.length ?? 0}/{catalog.installments.length} 期
-            {status?.next_installment ? ` · 下一期是第 ${status.next_installment} 期` : ' · 4 期已付清,再要卡请找平台补货'}
+            {status?.next_installment ? ` · 下一期是第 ${status.next_installment} 期` : ` · ${catalog.installments.length} 期已付清,再要卡请找平台补货`}
           </span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
