@@ -425,6 +425,7 @@ _ORG_OWNED_TABLES = [
     "word_books", "sentence_books", "reading_passages", "competition_question_sets",
     "phonetic_videos", "book_series", "student_coins", "coin_transactions",
     "coin_rewards", "coin_redeem_requests",
+    "org_card_ledger",  # 新政策卡包额度台账(2026-10-08)
 ]
 
 
@@ -465,6 +466,17 @@ async def delete_organization(
     user_count = (await db.execute(
         select(func.count(User.id)).where(User.org_id == org_id)
     )).scalar() or 0
+
+    # 卡包/兑换码的两张表没有指向 users 的外键,下面的通用扫描找不到,先显式清掉:
+    # pack_card_grants 按学生、redemption_code_books 按码(码本身由扫描按 created_by/used_by 删)
+    await db.execute(text(
+        "DELETE FROM pack_card_grants WHERE student_id IN (SELECT id FROM users WHERE org_id = :o)"
+    ), {"o": org_id})
+    await db.execute(text(
+        "DELETE FROM redemption_code_books WHERE code_id IN ("
+        "SELECT id FROM redemption_codes WHERE created_by IN (SELECT id FROM users WHERE org_id = :o)"
+        " OR used_by IN (SELECT id FROM users WHERE org_id = :o))"
+    ), {"o": org_id})
 
     # 顶层受害行: {表名: 主键集合}
     victims: dict[str, set[int]] = {}

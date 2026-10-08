@@ -29,6 +29,9 @@ def _hdr(u):
 @pytest.fixture
 async def env(db_session):
     tenancy._org_cache.clear()
+    # id=1 固定是直营(不可删),先占住,让测试机构的 id 和生产一样不是 1
+    db_session.add(Organization(name="直营", code="HQ01", status="active", student_quota=999999))
+    await db_session.flush()
     pack = Organization(name="新机构", code="PK01", status="active", student_quota=100,
                         card_plan="pack")
     old = Organization(name="老机构", code="LG01", status="active", student_quota=100,
@@ -315,3 +318,25 @@ async def test_card_rules_for_teacher(client, env, db_session):
     assert r.json()["card_plan"] == "legacy"
     r = await client.get("/api/v1/teacher/card-rules", headers=_hdr(env["stu"]))
     assert r.status_code == 403
+
+
+async def test_delete_pack_org_leaves_nothing(client, env, db_session):
+    """删新政策机构: 台账、码、码明细、学生的卡授权一行不留(这几张表通用扫描找不到)"""
+    from sqlalchemy import text
+    await _pay(client, env)
+    code = (await _gen(client, env["oa"], card_kind="stage", series="人教版", stage="primary")).json()[0]["code"]
+    assert (await client.post("/api/v1/subscription/redeem", json={"code": code},
+                              headers=_hdr(env["stu"]))).json()["success"]
+    oid, ocode = env["pack"].id, env["pack"].code
+    await client.patch(f"/api/v1/admin/organizations/{oid}", json={"status": "suspended"}, headers=_hdr(env["admin"]))
+    r = await client.delete(f"/api/v1/admin/organizations/{oid}", params={"code": ocode}, headers=_hdr(env["admin"]))
+    assert r.status_code == 200, r.text
+    for sql in ("SELECT count(*) FROM org_card_ledger WHERE org_id=:o",
+                "SELECT count(*) FROM pack_card_grants",
+                "SELECT count(*) FROM redemption_codes WHERE card_kind IS NOT NULL",
+                "SELECT count(*) FROM redemption_code_books WHERE code_id NOT IN (SELECT id FROM redemption_codes)",
+                "SELECT count(*) FROM users WHERE org_id=:o"):
+        assert (await db_session.execute(text(sql), {"o": oid})).scalar() == 0, sql
+    # 别家机构/平台的书和老机构的数据不受影响
+    assert (await db_session.execute(text("SELECT count(*) FROM organizations WHERE id=:o"),
+                                     {"o": env["old"].id})).scalar() == 1
