@@ -163,6 +163,7 @@ async def init_db():
     from app.models import organization  # 多租户: 机构(租户)表
     from app.models import coin  # 金币系统: 余额 + 流水
     from app.models import phonetic  # 音标教学视频
+    from app.models import card_pack  # 新政策卡包: 额度台账 + 学段/全通卡授权
     try:
         from app.models import competition
     except Exception:
@@ -533,6 +534,12 @@ async def init_db():
             "ON phonetic_video_questions(video_id, is_hidden, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_pvq_pending "
             "ON phonetic_video_questions(org_id, answered_at)",
+            # 新政策卡包(2026-10-08): 存量机构落 legacy = 旧行为零影响;平台书档位 NULL =
+            # 未定档不进任何卡;老码 card_kind NULL = 按发码时勾的书。表由 create_all 建
+            "ALTER TABLE organizations ADD COLUMN card_plan VARCHAR(10) NOT NULL DEFAULT 'legacy'",
+            "ALTER TABLE word_books ADD COLUMN pack_tier VARCHAR(10)",
+            "ALTER TABLE redemption_codes ADD COLUMN card_kind VARCHAR(10)",
+            "CREATE INDEX IF NOT EXISTS idx_redemption_codes_card_kind ON redemption_codes(card_kind)",
         ]:
             try:
                 await conn.execute(text(_sql))

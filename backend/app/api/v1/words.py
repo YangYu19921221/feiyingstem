@@ -364,6 +364,10 @@ async def update_word_book(
     for k, v in data.items():
         setattr(book, k, v.strip() if isinstance(v, str) else v)
     await db.commit()
+    # 平台书改了版本/学段 → 可能落进某张学段卡/全通卡的范围,补给有效期内的学生
+    if book.org_id is None and ("series" in data or "stage_id" in data):
+        from app.services import card_pack
+        await card_pack.sync_book(db, book.id)
     await db.refresh(book)
 
     word_count_res = await db.execute(

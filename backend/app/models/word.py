@@ -50,6 +50,10 @@ class WordBook(Base):
     # 很多本来就没有学段,强制必填只会迫使人乱填。空值在界面归「未分类」。
     # 存量行由 init_db 按 grade_level 一次性回填(见 database.py)
     stage_id = Column(Integer, nullable=True)
+    # 卡包档位(2026-10-08,只对平台书 org_id=NULL 有意义): trial=体验 | basic=基础 |
+    # premium=精品 | school=校本(不进卡包)。NULL = 平台还没定档,**不进任何卡** ——
+    # 宁可新书晚一点进卡包,也不能把考纲书/校本书误开进学段卡。规则见 services/card_pack.py
+    pack_tier = Column(String(10), nullable=True)
     created_by = Column(Integer, nullable=True)  # 暂时不使用外键
     org_id = Column(Integer, nullable=True)  # 多租户: NULL=平台共享库,非NULL=机构自建;索引由init_db迁移建
     is_public = Column(Boolean, default=True)

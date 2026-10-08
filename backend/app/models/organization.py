@@ -48,6 +48,10 @@ class Organization(Base):
     # **不回退 student_quota**(与 card_quota 不同): 音标库是另卖的内容,不是合作费自带的。
     # 口径真源 org_service.phonetic_code_quota_status
     phonetic_code_quota = Column(Integer, nullable=True)
+    # 卡政策(2026-10-08): legacy=老政策(一个总数 card_quota,存量机构全是它,零影响) |
+    # pack=新政策(按卡种分档进货、按期到账开额度,见 services/card_pack.py)。
+    # 模型默认 legacy,只有「开通新机构」接口显式写 pack —— 体验机构等其它建行路径不受影响
+    card_plan = Column(String(10), default="legacy", server_default="legacy", nullable=False)
     # 区域保护(协议第四条): 经营场所地址与坐标 + 独家半径。
     # 坐标为空 = 未登记,不参与冲突判定也不受保护(存量机构默认如此,零影响)。
     # 判定与口径见 services/geo_service.py

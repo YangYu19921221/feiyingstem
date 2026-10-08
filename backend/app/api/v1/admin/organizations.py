@@ -7,7 +7,7 @@ import string
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, distinct, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +22,7 @@ from app.models.user import User, Class, ClassStudent
 from app.models.word import WordBook
 from app.services import auth_service, geo_service
 from app.services.org_service import count_active_students
+from app.schemas.subscription import PackPaymentRequest
 
 router = APIRouter()
 
@@ -36,6 +37,8 @@ class OrgCreate(BaseModel):
     # 学习卡额度(协议第三条: 基础合作费含 100 张半年卡)。不传 = 跟随 student_quota
     card_quota: Optional[int] = Field(
         None, ge=0, description="已购学习卡张数(不传=跟随学生名额)")
+    # 卡政策(2026-10-08): 新开通的机构默认走新卡包政策;要按老合同开的显式传 legacy
+    card_plan: str = Field("pack", pattern="^(legacy|pack)$")
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
     expires_at: Optional[datetime] = None
@@ -68,6 +71,7 @@ class OrgUpdate(BaseModel):
     access_mode: Optional[str] = Field(None, pattern="^(assigned|all_books)$")
     # 金币发放: auto=系统自动按规则发(默认) | manual=只能老师核实后手动加
     coin_mode: Optional[str] = Field(None, pattern="^(auto|manual)$")
+    card_plan: Optional[str] = Field(None, pattern="^(legacy|pack)$")
     # 音标视频访问: open=免费开放(默认) | code=需音标专用兑换码。
     # ⚠️ 翻成 code 前机构应先备好码,否则学生当场全被挡在外面
     phonetic_access_mode: Optional[str] = Field(None, pattern="^(open|code)$")
@@ -169,6 +173,7 @@ def _org_out(
         "status": org.status, "expires_at": org.expires_at, "created_at": org.created_at,
         "access_mode": getattr(org, "access_mode", None) or "assigned",
         "coin_mode": getattr(org, "coin_mode", None) or "auto",
+        "card_plan": getattr(org, "card_plan", None) or "legacy",
         "phonetic_access_mode": getattr(org, "phonetic_access_mode", None) or "open",
         "phonetic_code_quota": phonetic_code_quota_of(org),
         "phonetic_codes_used": phonetic_codes_used,
@@ -261,6 +266,7 @@ async def create_organization(
         name=data.name, code=code, plan=data.plan,
         student_quota=data.student_quota,
         card_quota=data.card_quota,
+        card_plan=data.card_plan,
         contact_name=data.contact_name, contact_phone=data.contact_phone,
         expires_at=data.expires_at, status="active",
         address=data.address, lat=data.lat, lng=data.lng,
@@ -312,7 +318,7 @@ async def update_organization(
         )
 
     for field in ["name", "plan", "student_quota", "card_quota", "contact_name",
-                  "contact_phone", "status", "expires_at", "access_mode", "coin_mode",
+                  "contact_phone", "status", "expires_at", "access_mode", "coin_mode", "card_plan",
                   "phonetic_access_mode", "phonetic_code_quota",
                   "address", "lat", "lng", "protect_radius_km"]:
         v = getattr(data, field)
@@ -695,3 +701,63 @@ async def provision_trial(
             {"role": "student", "label": "学生端", "username": accounts["student"]},
         ],
     }
+
+
+# ---------- 新政策卡包: 确认到账 / 补货(2026-10-08) ----------
+
+@router.get("/organizations/{org_id}/card-pack")
+async def org_card_pack(
+    org_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """某机构的分期进度、每档额度、到账台账。"""
+    from app.models.card_pack import OrgCardLedger
+    from app.services import card_pack
+    org = (await db.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "机构不存在")
+    ledger = (await db.execute(
+        select(OrgCardLedger).where(OrgCardLedger.org_id == org_id)
+        .order_by(OrgCardLedger.id.desc())
+    )).scalars().all()
+    return {
+        "org_id": org_id, "org_name": org.name, "card_plan": org.card_plan or "legacy",
+        "contract_start": org.created_at,
+        "catalog": card_pack.catalog(),
+        "status": await card_pack.quota_status(db, org_id),
+        "ledger": [{
+            "id": r.id, "card_kind": r.card_kind, "count": r.count, "source": r.source,
+            "installment_no": r.installment_no, "note": r.note, "created_at": r.created_at,
+        } for r in ledger],
+    }
+
+
+@router.post("/organizations/{org_id}/card-pack")
+async def org_card_pack_payment(
+    org_id: int,
+    data: PackPaymentRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    """确认到账开额度: 下一期 / 剩余一次结清(按规则送全通卡) / 按档补货。"""
+    from app.services import card_pack, audit_log
+    org = (await db.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "机构不存在")
+    if (org.card_plan or "legacy") != card_pack.PLAN_PACK:
+        raise HTTPException(400, "该机构是原合作政策,学习卡请用「学习卡」按钮调整额度")
+    org_name = org.name
+    res = await card_pack.record_payment(
+        db, org_id, data.action, current_user.id, restock=data.restock, note=data.note)
+    labels = {k: v["label"] for k, v in card_pack.CARD_KINDS.items()}
+    detail = "、".join(f"{labels[k]} {n} 张" for k, n in res["granted"].items())
+    what = {"installment": f"第 {res['installments'][0]} 期到账" if res["installments"] else "到账",
+            "settle": "一次结清", "restock": "补货"}[data.action]
+    audit_log.record(db, request, current_user, "org.card_pack",
+                     f"{org_name}: {what},开通 {detail}",
+                     target_type="organization", target_id=org_id,
+                     detail={"action": data.action, **res, "note": data.note})
+    await db.commit()
+    return {**res, "status": await card_pack.quota_status(db, org_id)}

@@ -171,6 +171,9 @@ class RedemptionCode(Base):
     scope_kind = Column(String(10), nullable=False, default="book", server_default="book")  # book | group
     scope_series = Column(String(30), nullable=True)   # 发码时选的单词本分组
     scope_stage = Column(String(10), nullable=True)    # 发码时选的学段(见 services/book_stage)
+    # 新政策卡种(2026-10-08): trial/single/stage/full/premium;NULL = 老码(按发码时勾的书)。
+    # 新政策机构的额度按它分档计数;stage/full 兑换时按规则重新取书(见 services/card_pack.py)
+    card_kind = Column(String(10), nullable=True)
 
     books = relationship(
         "RedemptionCodeBook", back_populates="code",

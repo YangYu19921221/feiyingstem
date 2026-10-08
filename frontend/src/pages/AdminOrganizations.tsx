@@ -9,6 +9,7 @@ import { InitialPasswordModal, QuotaBar } from '../components/OrgWidgets';
 import TrialAccountsModal from '../components/TrialAccountsModal';
 import { Building2, Gift, MapPin, Plus, Search, TriangleAlert, X, Check } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import OrgCardPackDialog from '../components/admin/OrgCardPackDialog';
 import { toast } from '../components/Toast';
 
 const PLAN_LABELS: Record<string, string> = {
@@ -255,9 +256,11 @@ export default function AdminOrganizations() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   // card_quota 存成字符串: 空串要能表达「不传 → 跟随学生配额」,数字类型没法区分空与 0
-  const [form, setForm] = useState({ name: '', code: '', plan: 'standard', student_quota: 100, card_quota: '', contact_name: '', contact_phone: '' });
+  const [form, setForm] = useState({ name: '', code: '', plan: 'standard', student_quota: 100, card_quota: '', contact_name: '', contact_phone: '', card_plan: 'pack' as 'pack' | 'legacy' });
   // 区域保护: 开通表单里的坐标录入 + 预检结果
   const [territory, setTerritory] = useState<TerritoryForm>(EMPTY_TERRITORY);
+  // 新卡包政策: 正在看哪家机构的「卡包到账」
+  const [packOrgId, setPackOrgId] = useState<number | null>(null);
   const [territoryCheck, setTerritoryCheck] = useState<TerritoryCheckResult | null>(null);
   const [checkingTerritory, setCheckingTerritory] = useState(false);
   // 已有机构改地址(搬迁)
@@ -352,7 +355,7 @@ export default function AdminOrganizations() {
 
   const resetCreateForm = () => {
     setShowCreate(false);
-    setForm({ name: '', code: '', plan: 'standard', student_quota: 100, card_quota: '', contact_name: '', contact_phone: '' });
+    setForm({ name: '', code: '', plan: 'standard', student_quota: 100, card_quota: '', contact_name: '', contact_phone: '', card_plan: 'pack' as 'pack' | 'legacy' });
     setTerritory(EMPTY_TERRITORY);
     setTerritoryCheck(null);
   };
@@ -363,7 +366,9 @@ export default function AdminOrganizations() {
       name: form.name, code: form.code || undefined, plan: form.plan,
       student_quota: form.student_quota,
       // 留空就不传 → 后端存 NULL → 生效值跟随学生配额
-      ...(form.card_quota.trim() ? { card_quota: Number(form.card_quota) } : {}),
+      card_plan: form.card_plan,
+      // 新卡包政策的额度走分期到账,不用 card_quota
+      ...(form.card_plan === 'legacy' && form.card_quota.trim() ? { card_quota: Number(form.card_quota) } : {}),
       contact_name: form.contact_name || undefined, contact_phone: form.contact_phone || undefined,
       ...territoryPayload(territory),
       ...(force ? { force: true } : {}),
@@ -796,6 +801,10 @@ export default function AdminOrganizations() {
         )}
 
         {/* 机构管理员面板(密码弹窗 z-50 天然盖在面板 z-40 之上,无需状态耦合) */}
+        {packOrgId != null && (
+          <OrgCardPackDialog orgId={packOrgId} onClose={() => setPackOrgId(null)} />
+        )}
+
         {managerPanel && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40" onClick={() => setManagerPanel(null)}>
             <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 max-w-lg w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
@@ -929,11 +938,18 @@ export default function AdminOrganizations() {
               </select>
               <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" type="number" placeholder="学生配额" value={form.student_quota}
                      onChange={e => setForm({ ...form, student_quota: parseInt(e.target.value || '0', 10) })} />
-              {/* 学习卡额度: 协议基础档含 100 张半年卡。留空 = 跟随学生配额 */}
-              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" type="number" min={0}
+              {/* 卡政策(2026-10-08): 新签约默认新卡包;按老合同补开的选原合作政策 */}
+              <select className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" value={form.card_plan}
+                      aria-label="学习卡政策"
+                      onChange={e => setForm({ ...form, card_plan: e.target.value as 'pack' | 'legacy' })}>
+                <option value="pack">新卡包政策(分期到账,按卡种发卡)</option>
+                <option value="legacy">原合作政策(100 张全开卡)</option>
+              </select>
+              {/* 学习卡额度: 老政策才填;新政策开通后点「卡包到账」开额度 */}
+              {form.card_plan === 'legacy' && <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" type="number" min={0}
                      placeholder="学习卡张数(留空=同学生配额)" value={form.card_quota}
                      title="按张卖的半年卡张数。与学生配额是两笔账,同一学生学一年要两张"
-                     onChange={e => setForm({ ...form, card_quota: e.target.value })} />
+                     onChange={e => setForm({ ...form, card_quota: e.target.value })} />}
               <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系人" value={form.contact_name}
                      onChange={e => setForm({ ...form, contact_name: e.target.value })} />
               <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" placeholder="联系电话" value={form.contact_phone}
@@ -1005,11 +1021,13 @@ export default function AdminOrganizations() {
                     </div>
                     <div className="col-span-2 flex items-center gap-2">学生 <span className="font-medium text-slate-700">{org.active_students}/{org.student_quota >= 999999 ? '∞' : org.student_quota}</span>{org.student_quota < 999999 && <QuotaBar active={org.active_students} quota={org.student_quota} className="w-20" />}</div>
                     {/* 学习卡额度: 与学生名额分列两行,它们不是一回事 */}
-                    <div className="col-span-2 flex items-center gap-2">
+                    {org.card_plan === 'pack'
+                      ? <div className="col-span-2">学习卡 <span className="font-medium text-amber-700">新卡包政策</span></div>
+                      : <div className="col-span-2 flex items-center gap-2">
                       学习卡 <span className={`font-medium ${org.cards_left === 0 ? 'text-red-600' : 'text-slate-700'}`}>{org.cards_used}/{org.card_quota >= 999999 ? '∞' : org.card_quota}</span>
                       {org.card_quota < 999999 && <QuotaBar active={org.cards_used} quota={org.card_quota} className="w-20" />}
                       {!org.card_quota_explicit && <span className="text-[11px] text-slate-400">跟随学生名额</span>}
-                    </div>
+                    </div>}
                     {org.plan !== 'trial' && (
                       <div className="col-span-2 truncate">
                         场所 {org.lat != null && org.lng != null
@@ -1022,7 +1040,9 @@ export default function AdminOrganizations() {
                     <button className="text-blue-600" onClick={() => issueAdmin(org)}>开管理员</button>
                     <button className="text-teal-600" onClick={() => openManagerPanel(org)}>管理员</button>
                     <button className="text-orange-600" onClick={() => changeQuota(org)}>改配额</button>
-                    <button className="text-amber-700" onClick={() => changeCards(org)}>学习卡</button>
+                    {org.card_plan === 'pack'
+                      ? <button className="text-amber-700" onClick={() => setPackOrgId(org.id)}>卡包到账</button>
+                      : <button className="text-amber-700" onClick={() => changeCards(org)}>学习卡</button>}
                     <button className="text-indigo-600" onClick={() => changePhoneticCodes(org)}>音标码额度</button>
                     <button className="text-[#3976a9]" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                     <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
@@ -1099,6 +1119,9 @@ export default function AdminOrganizations() {
                       </td>
                       {/* 学习卡: 按张卖的半年卡,与学生名额独立(学生离班腾名额,卡不退) */}
                       <td className="px-4 py-3">
+                        {org.card_plan === 'pack' ? (
+                          <button className="rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 hover:bg-amber-100" onClick={() => setPackOrgId(org.id)}>新卡包 · 查看额度</button>
+                        ) : <>
                         <div className="flex items-center gap-2">
                           <span className={org.cards_left === 0 ? 'font-semibold text-red-600' : undefined}>
                             {org.cards_used}/{org.card_quota >= 999999 ? '∞' : org.card_quota}
@@ -1110,6 +1133,7 @@ export default function AdminOrganizations() {
                         {!org.card_quota_explicit && (
                           <div className="text-[10px] text-gray-400">跟随学生名额</div>
                         )}
+                        </>}
                         <div className={`mt-0.5 text-[11px] ${(org.phonetic_code_quota ?? 0) > 0 && org.phonetic_codes_left === 0 ? 'font-semibold text-red-600' : 'text-indigo-600'}`}>
                           音标码 {(org.phonetic_code_quota ?? 0) > 0 ? `${org.phonetic_codes_used ?? 0}/${org.phonetic_code_quota}` : '未发放'}
                         </div>
@@ -1129,7 +1153,9 @@ export default function AdminOrganizations() {
                           <button className="text-blue-500 hover:underline" onClick={() => issueAdmin(org)}>开管理员</button>
                           <button className="text-teal-600 hover:underline" onClick={() => openManagerPanel(org)}>管理员</button>
                           <button className="text-orange-500 hover:underline" onClick={() => changeQuota(org)}>改配额</button>
-                          <button className="text-amber-700 hover:underline" onClick={() => changeCards(org)} title="调整或续卡学习卡额度">学习卡</button>
+                          {org.card_plan === 'pack'
+                            ? <button className="text-amber-700 hover:underline" onClick={() => setPackOrgId(org.id)} title="确认分期到账 / 补货">卡包到账</button>
+                            : <button className="text-amber-700 hover:underline" onClick={() => changeCards(org)} title="调整或续卡学习卡额度">学习卡</button>}
                           <button className="text-indigo-600 hover:underline" onClick={() => changePhoneticCodes(org)} title="给机构发放可生成的音标兑换码张数">音标码额度</button>
                           <button className="text-[#3976a9] hover:underline" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                           <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>

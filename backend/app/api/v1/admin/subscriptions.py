@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,7 @@ from app.models.user import (
 )
 from app.models.word import WordBook, BookStage
 from app.models.phonetic import PhoneticCode
-from app.api.v1.auth import get_current_admin_or_org_admin
+from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
     RedemptionCodeResponse,
@@ -23,8 +23,10 @@ from app.schemas.subscription import (
     PhoneticCodeGenerate,
     PhoneticCodeResponse,
     PhoneticCodeListResponse,
+    PackCodeGenerate,
+    BookTierUpdate,
 )
-from app.services import subscription_service, book_stage, phonetic_access_service
+from app.services import subscription_service, book_stage, phonetic_access_service, card_pack, audit_log
 
 router = APIRouter()
 
@@ -129,6 +131,12 @@ async def generate_codes(
     2. **卡种与时长**(2026-09-11):只能发包月卡、最长半年(180 天),从学生兑换
        那天算起;永久卡/次卡一律拒(它们都能绕开这个上限,见 guard_card_policy)。
     """
+    # 新政策机构只能按卡种发(见 /pack/generate)。不拦的话它们的 card_quota 回退成
+    # 学生名额,能用老表单自由勾书发出「全开卡」,整套分档定价当场作废
+    if current_user.role == "org_admin" and \
+            await card_pack.plan_of(db, current_user.org_id) == card_pack.PLAN_PACK:
+        raise HTTPException(403, "本机构是新卡包政策,请在上方「按卡种发码」里选卡种发卡")
+
     # 卡种/时长闸门:纯判断不查库,放最前面(选错卡种时不必先等书本校验)
     subscription_service.guard_card_policy(
         current_user.role, req.grant_type, req.grant_days, req.grant_times,
@@ -323,6 +331,7 @@ async def list_codes(
             scope_kind=code.scope_kind or "book",
             scope_series=code.scope_series,
             scope_stage=code.scope_stage,
+            card_kind=code.card_kind,
             book_count=len(bids),
             # 只回前 8 本:一张卡可能开 200 本,整列表全塞会把响应撑大;
             # 前端显示"共 N 本"+展开看前几本足够核对
@@ -367,7 +376,8 @@ async def subscription_stats(
     # 卡额度水位:与发码闸门同源(org_service),否则会出现
     # 「界面说还剩 5 张、点生成说额度不足」。平台 admin 不限额,不下发这组字段。
     cards = None
-    if current_user.role == "org_admin":
+    if current_user.role == "org_admin" and \
+            await card_pack.plan_of(db, current_user.org_id) != card_pack.PLAN_PACK:
         from app.services import org_service
         cards = await org_service.card_quota_status(db, current_user.org_id)
 
@@ -644,3 +654,115 @@ async def delete_phonetic_code(
     await db.delete(code)
     await db.commit()
     return {"message": "兑换码已删除"}
+
+
+# ==================== 新政策卡包(2026-10-08) ====================
+# 规则/价格/额度口径全在 services/card_pack.py,这里只做鉴权与拼响应。
+
+@router.get("/pack")
+async def pack_info(
+    org_id: Optional[int] = Query(None, description="平台 admin 查某机构;机构管理员忽略此参数"),
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """卡种目录 + 本机构卡政策 + 每档额度 + 发码可选项。
+
+    机构端「按卡种发码」、规则说明、平台到账弹窗都读这一份,前端不写价格不写张数。
+    """
+    target = current_user.org_id if current_user.role == "org_admin" else org_id
+    plan = await card_pack.plan_of(db, target)
+    out = {"card_plan": plan, "catalog": card_pack.catalog(),
+           "options": await card_pack.options(db)}
+    if target and plan == card_pack.PLAN_PACK:
+        out["status"] = await card_pack.quota_status(db, target)
+    return out
+
+
+@router.post("/pack/generate", response_model=list[RedemptionCodeResponse])
+async def pack_generate(
+    req: PackCodeGenerate,
+    request: Request,
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """新政策按卡种发码。开哪些书、多久、码几年有效都由服务端定,前端传什么书都不认。"""
+    if current_user.role == "org_admin":
+        if await card_pack.plan_of(db, current_user.org_id) != card_pack.PLAN_PACK:
+            raise HTTPException(403, "本机构是原合作政策,请用下方「生成兑换码」")
+        await card_pack.check_quota(db, current_user.org_id, req.card_kind, req.count)
+
+    books = await card_pack.resolve_books(
+        db, req.card_kind, book_id=req.book_id, series=req.series, stage=req.stage)
+    spec = card_pack.CARD_KINDS[req.card_kind]
+    pick = spec["pick"]
+    codes = await subscription_service.batch_generate_codes(
+        db=db,
+        admin_id=current_user.id,
+        count=req.count,
+        book_ids=[b for b, _ in books],
+        batch_note=req.batch_note,
+        code_valid_days=card_pack.CODE_VALID_DAYS,
+        grant_type="period",
+        grant_days=card_pack.CARD_DAYS,
+        scope_series=req.series if pick in ("series", "series_stage") else None,
+        scope_stage=req.stage if pick == "series_stage" else None,
+        card_kind=req.card_kind,
+    )
+    names = dict(books)
+    payload = [{"id": b, "name": n} for b, n in books[:8]]
+    return [
+        {
+            "id": c.id, "code": c.code, "book_id": c.book_id,
+            "book_name": names.get(c.book_id), "status": c.status,
+            "created_by": c.created_by,
+            "created_by_name": current_user.full_name or current_user.username,
+            "created_at": c.created_at, "code_expires_at": c.code_expires_at,
+            "used_by": None, "used_at": None, "batch_note": c.batch_note,
+            "grant_type": "period", "grant_days": c.grant_days, "grant_times": None,
+            "scope_kind": c.scope_kind or "book", "scope_series": c.scope_series,
+            "scope_stage": c.scope_stage, "card_kind": c.card_kind,
+            "book_count": len(books), "books": payload,
+        }
+        for c in codes
+    ]
+
+
+@router.get("/pack/books")
+async def pack_books(
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """平台书 + 卡包档位(仅平台 admin): 定档面板用。机构自建书不进卡包,不列。"""
+    stages = {s.id: s.name for s in (await db.execute(select(BookStage))).scalars()}
+    rows = (await db.execute(
+        select(WordBook.id, WordBook.name, WordBook.series, WordBook.stage_id, WordBook.pack_tier)
+        .where(WordBook.org_id.is_(None))
+        .order_by(WordBook.series, WordBook.stage_id, WordBook.id)
+    )).all()
+    return {"tiers": card_pack.TIERS, "books": [
+        {"id": r.id, "name": r.name, "series": r.series or "",
+         "stage_label": stages.get(r.stage_id, "未分类"), "pack_tier": r.pack_tier}
+        for r in rows
+    ]}
+
+
+@router.put("/pack/books/{book_id}")
+async def set_book_tier(
+    book_id: int,
+    body: BookTierUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """给平台书定档。定成「基础」后,有效期内的同范围学段/全通卡学生立刻拿到这本书。"""
+    book = (await db.execute(select(WordBook).where(WordBook.id == book_id))).scalar_one_or_none()
+    if book is None or book.org_id is not None:
+        raise HTTPException(404, "平台书不存在(机构自建的书不进卡包)")
+    old = book.pack_tier
+    book.pack_tier = body.pack_tier
+    audit_log.record(db, request, current_user, "book.pack_tier",
+                     f"《{book.name}》卡包档位 {old or '未定'} → {body.pack_tier or '未定'}",
+                     target_type="word_book", target_id=book.id)
+    await db.commit()
+    synced = await card_pack.sync_book(db, book_id)
+    return {"id": book_id, "pack_tier": body.pack_tier, "synced_students": synced}

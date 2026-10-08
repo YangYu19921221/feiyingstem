@@ -47,6 +47,30 @@ class RedemptionCodeGenerate(BaseModel):
         return self
 
 
+class PackCodeGenerate(BaseModel):
+    """新政策机构按卡种发码(2026-10-08)。开哪些书由服务端按规则定,前端只给选择。"""
+    card_kind: str = Field(..., pattern="^(trial|single|stage|full|premium)$")
+    count: int = Field(..., ge=1, le=100, description="生成数量(1-100)")
+    book_id: Optional[int] = Field(None, description="单册卡/精品卡: 选哪一本")
+    series: Optional[str] = Field(None, max_length=30, description="学段卡/全通卡: 教材版本")
+    stage: Optional[str] = Field(
+        None, max_length=20, pattern=r"^(primary|junior|senior|custom:\d+)$",
+        description="学段卡: 学段")
+    batch_note: Optional[str] = Field(None, max_length=200)
+
+
+class PackPaymentRequest(BaseModel):
+    """平台确认到账: installment=下一期 / settle=剩余一次结清 / restock=补货"""
+    action: str = Field(..., pattern="^(installment|settle|restock)$")
+    restock: Optional[dict[str, int]] = None
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class BookTierUpdate(BaseModel):
+    """平台书的卡包档位;None = 改回未定档(不进任何卡)"""
+    pack_tier: Optional[str] = Field(None, pattern="^(trial|basic|premium|school)$")
+
+
 class RedeemRequest(BaseModel):
     """兑换请求"""
     code: str = Field(..., min_length=19, max_length=19, description="兑换码 XXXX-XXXX-XXXX-XXXX")
@@ -88,6 +112,7 @@ class RedemptionCodeResponse(BaseModel):
     scope_kind: str = "book"            # book=单书 | group=按分组/学段批量
     scope_series: Optional[str] = None  # 发码时选的分组
     scope_stage: Optional[str] = None   # 发码时选的学段
+    card_kind: Optional[str] = None     # 新政策卡种(trial/single/stage/full/premium),老码为 None
     book_count: int = 1                 # 覆盖几本书
     books: Optional[List[dict]] = None  # [{id,name}] 前若干本,列表展开用
 

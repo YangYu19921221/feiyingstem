@@ -15,6 +15,9 @@ import {
 import { Ban, Check, Clock3, Search, Ticket, Trash2, X } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import PhoneticCodePanel from '../components/admin/PhoneticCodePanel';
+import PackCodePanel from '../components/admin/PackCodePanel';
+import PackBookTiers from '../components/admin/PackBookTiers';
+import { cardPackApi, type PackInfo } from '../api/cardPack';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
@@ -54,6 +57,7 @@ interface CodeItem {
   scope_stage?: BookStage | null;
   book_count?: number;
   books?: { id: number; name: string }[];
+  card_kind?: string | null;   // 新政策卡种;老码为 null
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -104,6 +108,9 @@ const AdminSubscriptions = () => {
   // 能发什么卡由后端说(机构=只能包月、最长半年);policy 到达前先按最紧的假设
   // 渲染,免得机构管理员看到永久卡一闪而过
   const [policy, setPolicy] = useState<CardPolicy | null>(null);
+  // 新政策卡包: card_plan==='pack' 的机构只能按卡种发码,老表单整块不显示
+  const [pack, setPack] = useState<PackInfo | null>(null);
+  const isPackOrg = policy?.role === 'org_admin' && pack?.card_plan === 'pack';
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<CodeItem[]>([]);
   const [copied, setCopied] = useState(false);
@@ -199,7 +206,12 @@ const AdminSubscriptions = () => {
   // 换关键词/换筛选后回到第 1 页,否则停在第 3 页会显示空列表让人以为没搜到
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus]);
 
-  useEffect(() => { fetchGroups(); fetchStats(); fetchPolicy(); }, [fetchGroups, fetchStats, fetchPolicy]);
+  const fetchPack = useCallback(async () => {
+    try { setPack((await cardPackApi.info()) as unknown as PackInfo); }
+    catch { /* 拿不到就按老政策显示,发码时后端仍会拦 */ }
+  }, []);
+
+  useEffect(() => { fetchGroups(); fetchStats(); fetchPolicy(); fetchPack(); }, [fetchGroups, fetchStats, fetchPolicy, fetchPack]);
   useEffect(() => { fetchCodes(); }, [fetchCodes]);
 
   const handleGenerate = async () => {
@@ -283,6 +295,11 @@ const AdminSubscriptions = () => {
 
   /** 一张码开了什么:单书显示书名,多书显示「人教版·小学 14 本」 */
   const describeScope = (c: CodeItem) => {
+    const kindLabel = c.card_kind ? pack?.catalog.kinds.find(k => k.kind === c.card_kind)?.label : null;
+    const base = describeScopeBase(c);
+    return kindLabel ? `${kindLabel} · ${base}` : base;
+  };
+  const describeScopeBase = (c: CodeItem) => {
     const n = c.book_count ?? 1;
     if (n <= 1) return c.book_name || c.books?.[0]?.name || `书#${c.book_id}`;
     const parts: string[] = [];
@@ -416,7 +433,15 @@ const AdminSubscriptions = () => {
           </div>
         )}
 
-        {/* 生成兑换码 */}
+        {isPackOrg && pack && (
+          <PackCodePanel info={pack} onIssued={() => { fetchPack(); fetchStats(); fetchCodes(); }} />
+        )}
+
+        {/* 平台 admin: 给书定卡包档位(新书上架后在这里定档才会进卡) */}
+        {policy?.role === 'admin' && <PackBookTiers />}
+
+        {/* 生成兑换码(老政策机构 / 平台) */}
+        {!isPackOrg && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6 mb-6">
           <h2 className="text-lg font-bold text-gray-800 mb-1">生成兑换码</h2>
           <p className="text-xs text-slate-500 mb-4">
@@ -712,6 +737,7 @@ const AdminSubscriptions = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* 兑换码列表 */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6">

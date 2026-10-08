@@ -230,6 +230,7 @@ async def batch_generate_codes(
     book_ids: Optional[List[int]] = None,
     scope_series: Optional[str] = None,
     scope_stage: Optional[str] = None,
+    card_kind: Optional[str] = None,
 ) -> List[RedemptionCode]:
     """批量生成兑换码。
 
@@ -280,6 +281,7 @@ async def batch_generate_codes(
             scope_kind="group" if len(ids) > 1 else "book",
             scope_series=scope_series,
             scope_stage=scope_stage,
+            card_kind=card_kind,
         )
         # 明细表随码一起 flush(relationship cascade),单书码也走这条路 → 读取侧同构
         code.books = [RedemptionCodeBook(book_id=bid) for bid in ids]
@@ -408,6 +410,22 @@ async def redeem_code(
     if not detail_ids and code.book_id:
         detail_ids = [code.book_id]
 
+    rule_added: list[int] = []   # 成功后才写明细(全部跳过那支不能留下待提交的写)
+    # 新政策入门/学段/全通卡: 兑换这一刻**按规则重新取书**(码可能放了两年,
+    # 期间上架的同范围书也要开)。补进明细表,列表里看得到这张卡实际开了什么。
+    # 规则取不出书(书全被挪走/改档)就退回发码时的快照,不让学生白拿一张废卡
+    if code.card_kind in ("trial", "stage", "full"):
+        from app.services import card_pack
+        try:
+            rule_books = await card_pack.resolve_books(
+                db, code.card_kind, series=code.scope_series, stage=code.scope_stage)
+        except HTTPException:
+            rule_books = []
+        for bid, _ in rule_books:
+            if bid not in detail_ids:
+                detail_ids.append(bid)
+                rule_added.append(bid)
+
     books: list[WordBook] = []
     for bid in detail_ids:
         b = await db.get(WordBook, bid)
@@ -464,6 +482,12 @@ async def redeem_code(
     code.status = RedemptionCodeStatus.USED
     code.used_by = user.id
     code.used_at = now
+    for bid in rule_added:
+        db.add(RedemptionCodeBook(code_id=code.id, book_id=bid))
+    if code.card_kind in ("stage", "full"):
+        # 记下这张卡的范围,之后同范围新上架的书由 card_pack.sync_book 补给他
+        from app.services import card_pack
+        await card_pack.upsert_grant(db, user.id, code, now)
     await db.commit()
 
     # 文案:单书**原样**沿用改造前那几句(学生/客服都习惯了,别动);

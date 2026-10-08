@@ -41,6 +41,7 @@ from app.models.competition import (
 )
 from app.models.pk import PkRoom, PkRoomPlayer, PkAnswerRecord
 from app.models.audit import OperationLog  # 操作日志(追责)
+from app.models.card_pack import OrgCardLedger, PackCardGrant  # 新政策卡包
 from app.models.live import (
     LiveSession,
     LiveMaterial,
