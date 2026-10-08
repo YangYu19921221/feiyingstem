@@ -127,6 +127,16 @@ async def assign_book_to_students(
     if not book:
         raise HTTPException(status_code=404, detail="单词本不存在")
 
+    # 2.5) 新政策机构: 平台的课本/精品书只能凭兑换码开,老师不能直接分配
+    if current_user.role != 'admin':
+        from app.services import card_pack
+        if await card_pack.gated_book_ids(db, current_user.org_id, [book.id]):
+            raise HTTPException(
+                status_code=403,
+                detail="本机构是卡包政策:这本书要给学生发兑换码开通,不能直接分配。"
+                       "去「兑换码管理」按卡种发码;机构自建的书和入门课可以直接分配。",
+            )
+
     # 3) 如果是 unit/group,校验所有单元存在且属于该单词本
     if request.scope_type in ('unit', 'group'):
         target_ids = [uid for uid in unit_targets if uid is not None]

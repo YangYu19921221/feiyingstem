@@ -290,7 +290,12 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **10-08 17:24 已部署生产**(database.py drift 走 anchor patch,只加 card_pack import + 4 条迁移;其余 10 文件生产==HEAD~1 整文件推;
   上线后 5 家机构全为 legacy、平台书全部未定档 = 线上行为零变化;备份 /root/eh_db_before_cardpack_20261008_1720.db、
   /root/eh_code_before_cardpack_20261008_1720.tgz、frontend/dist_bak_20261008_1720)。
-  **待办**: 给生产平台书定档(清单待用户确认,未定档前新政策机构发不出卡)→ 招商手册第六章/提分方案第八章/合作协议改价
+  **10-08 晚补两个绕过口**(只对新政策机构的平台基础/精品书,真源 card_pack.gated_book_ids / is_gated_for_student):
+  ①老师直接分配 → 403 ②老师分配的行(grant_type NULL)与作业单元**都不算授权**(get_allowed_unit_ids / 书架 owned /
+  can_enter_unit 连「只能从作业进入」也不放行 / start_homework 403 提示要兑换)。兑换时撞上老师分配的旧行,改写成卡授权
+  (否则当成「已永久拥有」跳过,学生拿着卡兑不了)。回归锁验证过: 去掉三处守卫恰好 2 例失败。
+  招商手册第六章、提分方案第八章、合作协议第二/三条已改成卡包口径;逾期宽限、退款、年度续购量标【待确认】未替用户定。
+  **待办**: 生产平台书定档 + 三上(id=335,直营自建,词表与平台同版)改平台书 —— 远程写库被权限拦,需用户执行或放行
 - ✅ 宠物多开刷经验/刷血修复(2026-10-06): 用户「多开浏览器可以同时刷经验 治疗」。生产实测同一学生
   14 天里 1182 场对战与自己另一场时间重叠(单日最多 471 场)。四个洞四个守卫(全是 DB 原子操作,不靠进程内状态):
   ①**一人同时只打一场** `pet_battle_service.claim_exclusive_battle`: 开打(quick-match / accept)后作废双方

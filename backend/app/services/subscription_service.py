@@ -321,6 +321,16 @@ async def _apply_one_book(
         )
     )).scalars().first()
 
+    # 新政策卡: 老师直接分配的行(grant_type NULL)在新政策机构对卡包书**不算授权**
+    # (见 scope_service),若照旧当「已永久拥有」跳过,学生拿着卡也兑不了 → 改写成这张卡的授权
+    if existing is not None and code.card_kind and existing.grant_type is None \
+            and grant_type == GRANT_PERIOD:
+        existing.grant_type = GRANT_PERIOD
+        existing.expires_at = now + timedelta(days=code.grant_days or 0)
+        existing.times_left = None
+        return "granted", (f"兑换成功！已获得《{book_name}》{code.grant_days} 天，"
+                           f"到 {existing.expires_at.strftime('%Y-%m-%d')}")
+
     if existing is not None:
         existing_type = existing.grant_type or GRANT_PERMANENT
         # 已经是永久的,任何卡都没有意义;拿永久卡去覆盖次卡/月卡则是升级,放行

@@ -709,6 +709,20 @@ async def get_student_books(
     )
     owned_book_ids |= set(row for row in hw_books_result.scalars())
 
+    # 新政策机构的卡包书: 只有兑换码开的(grant_type 非空且判活)才算拥有,
+    # 老师分配/作业顺带开的不算 —— 与 scope_service.get_allowed_unit_ids 同口径
+    from app.services import card_pack
+    gated = await card_pack.gated_book_ids(db, current_user.org_id, owned_book_ids)
+    if gated:
+        from app.services.subscription_service import is_assignment_active
+        carded = {
+            a.book_id for a in (await db.execute(select(BookAssignment).where(
+                BookAssignment.student_id == user_id, BookAssignment.book_id.in_(gated),
+                BookAssignment.grant_type.is_not(None),
+            ))).scalars() if is_assignment_active(a)
+        }
+        owned_book_ids -= (gated - carded)
+
     # 2. 获取所有单词本
     result = await db.execute(
         select(WordBook).order_by(WordBook.created_at.desc())

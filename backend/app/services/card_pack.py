@@ -404,3 +404,40 @@ async def sync_book(db: AsyncSession, book_id: int) -> int:
             touched += 1
     await db.commit()
     return touched
+
+
+# ---------- 新政策机构: 卡包书只能靠兑换码开(2026-10-08) ----------
+# 两个绕开卡包的口子都收在这里判:
+#   1. 老师直接分配平台书(teacher/book_assignments.assign) → 拒
+#   2. 布置作业顺带开书(scope_service 的作业单元白名单 / 书架 owned) → 不算授权
+# 老师分配的 book_assignments 行 grant_type 为 NULL,兑换码/新书补给写的行恒有值,
+# 所以「有效授权 = grant_type 非空且判活」。老政策机构一律不走这里。
+GATED_TIERS = ("basic", "premium")
+PACK_CARD_REQUIRED_MSG = "这本书要先兑换学习卡才能学,请找老师要兑换码"
+
+
+async def gated_book_ids(db: AsyncSession, org_id: Optional[int], book_ids) -> set[int]:
+    """这些书里,对该机构来说哪些必须凭卡学。老政策机构返回空集。"""
+    ids = [b for b in book_ids if b is not None]
+    if not ids or await plan_of(db, org_id) != PLAN_PACK:
+        return set()
+    return set((await db.execute(
+        select(WordBook.id).where(
+            WordBook.id.in_(ids), WordBook.org_id.is_(None),
+            WordBook.pack_tier.in_(GATED_TIERS),
+        ).execution_options(skip_tenant_filter=True)
+    )).scalars())
+
+
+async def is_gated_for_student(db: AsyncSession, student_id: int, book_id: int) -> bool:
+    # 先看书(多数请求是机构自建书或老政策,一条查询就返回),再看学生所在机构
+    tier = (await db.execute(
+        select(WordBook.pack_tier).where(WordBook.id == book_id, WordBook.org_id.is_(None))
+        .execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    if tier not in GATED_TIERS:
+        return False
+    org_id = (await db.execute(
+        select(User.org_id).where(User.id == student_id).execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    return await plan_of(db, org_id) == PLAN_PACK

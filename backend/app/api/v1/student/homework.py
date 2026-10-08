@@ -239,6 +239,17 @@ async def start_homework(
     if getattr(homework, 'is_closed', False):
         raise HTTPException(status_code=400, detail="这份作业已被老师关闭")
 
+    # 新政策机构的卡包书: 学生没兑换这本书的卡就不能做(作业不再顺带开书)
+    from app.services.scope_service import can_enter_unit
+    from app.services.card_pack import is_gated_for_student, PACK_CARD_REQUIRED_MSG
+    from app.models.word import Unit as _Unit
+    _book_id = (await db.execute(
+        select(_Unit.book_id).where(_Unit.id == homework.unit_id)
+    )).scalar_one_or_none()
+    if _book_id is not None and await is_gated_for_student(db, current_user.id, _book_id) \
+            and not await can_enter_unit(db, current_user.id, _book_id, homework.unit_id):
+        raise HTTPException(status_code=403, detail=PACK_CARD_REQUIRED_MSG)
+
     # 按日期布置的当日任务:没到开放日不能做,过了当天也不能再做
     if homework.available_from and datetime.utcnow() < homework.available_from:
         raise HTTPException(status_code=400, detail="这份任务还没开始,到开始日期当天才能做")

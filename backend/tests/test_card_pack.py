@@ -226,3 +226,74 @@ async def test_org_admin_cannot_set_tier_or_pay(client, env):
     r = await client.post(f"/api/v1/admin/organizations/{env['pack'].id}/card-pack",
                           json={"action": "settle"}, headers=_hdr(env["oa"]))
     assert r.status_code == 403
+
+
+# ---------- 新政策机构: 卡包书只能凭兑换码开 ----------
+
+async def test_teacher_cannot_assign_gated_book(client, env, db_session):
+    t = User(username="pkteacher", email="t@e.com", hashed_password="x", role="teacher",
+             is_active=True, org_id=env["pack"].id)
+    lt = User(username="lgteacher", email="lt@e.com", hashed_password="x", role="teacher",
+              is_active=True, org_id=env["old"].id)
+    db_session.add_all([t, lt])
+    await db_session.commit()
+    body = {"book_id": env["books"]["p3"].id, "student_ids": [env["stu"].id]}
+    r = await client.post("/api/v1/teacher/assign", json=body, headers=_hdr(t))
+    assert r.status_code == 403 and "兑换码" in r.json()["detail"]
+    # 入门课(体验档)和机构自建书照常可分配 —— 至少不被卡包闸门拦
+    for key in ("intro", "own"):
+        r = await client.post("/api/v1/teacher/assign",
+                              json={**body, "book_id": env["books"][key].id}, headers=_hdr(t))
+        assert "兑换码" not in r.text, key
+    # 老政策机构的老师不受影响
+    r = await client.post("/api/v1/teacher/assign", json=body, headers=_hdr(lt))
+    assert "兑换码" not in r.text
+
+
+async def test_teacher_rows_and_homework_dont_open_gated_book(client, env, db_session):
+    from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
+    from app.models.word import Unit
+    from app.services.scope_service import get_allowed_unit_ids, can_enter_unit
+    b = env["books"]["p3"]
+    unit = Unit(book_id=b.id, name="U1", unit_number=1, order_index=1)
+    db_session.add(unit)
+    await db_session.flush()
+    # 绕过接口写一条老师分配的行 + 一份作业(模拟改造前的存量或别的入口)
+    db_session.add(BookAssignment(book_id=b.id, student_id=env["stu"].id,
+                                  teacher_id=env["oa"].id, scope_type="book"))
+    hw = HomeworkAssignment(title="作业", teacher_id=env["oa"].id, unit_id=unit.id,
+                            learning_mode="spelling")
+    db_session.add(hw)
+    await db_session.flush()
+    hsa = HomeworkStudentAssignment(homework_id=hw.id, student_id=env["stu"].id)
+    db_session.add(hsa)
+    await db_session.commit()
+
+    assert await get_allowed_unit_ids(db_session, env["stu"].id, b.id) == set()
+    assert not await can_enter_unit(db_session, env["stu"].id, b.id, unit.id, hsa.id)
+    r = await client.post(f"/api/v1/student/homework/{hsa.id}/start", headers=_hdr(env["stu"]))
+    assert r.status_code == 403 and "兑换" in r.json()["detail"]
+    books = (await client.get("/api/v1/student/books", headers=_hdr(env["stu"]))).json()
+    assert not next(x for x in books if x["id"] == b.id)["owned"]
+
+    # 兑换单册卡之后: 整本可学,作业也能做
+    await _pay(client, env)
+    code = (await _gen(client, env["oa"], card_kind="single", book_id=b.id)).json()[0]["code"]
+    assert (await client.post("/api/v1/subscription/redeem", json={"code": code},
+                              headers=_hdr(env["stu"]))).json()["success"]
+    assert await get_allowed_unit_ids(db_session, env["stu"].id, b.id) is None
+    books = (await client.get("/api/v1/student/books", headers=_hdr(env["stu"]))).json()
+    assert next(x for x in books if x["id"] == b.id)["owned"]
+
+
+async def test_legacy_org_homework_still_opens_book(env, db_session):
+    """老政策机构: 老师分配照样整本可学(零影响)"""
+    from app.services.scope_service import get_allowed_unit_ids
+    s2 = User(username="lgstu", email="ls@e.com", hashed_password="x", role="student",
+              is_active=True, org_id=env["old"].id)
+    db_session.add(s2)
+    await db_session.flush()
+    db_session.add(BookAssignment(book_id=env["books"]["p3"].id, student_id=s2.id,
+                                  teacher_id=env["old_oa"].id, scope_type="book"))
+    await db_session.commit()
+    assert await get_allowed_unit_ids(db_session, s2.id, env["books"]["p3"].id) is None

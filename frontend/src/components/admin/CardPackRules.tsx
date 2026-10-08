@@ -66,9 +66,18 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
         </ul>
       </section>
 
+      <section>
+        <h3 className="font-bold text-slate-900">四、老师布置作业要注意</h3>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5">
+          <li><strong>课本和精品书只能用兑换码开</strong>,老师不能在后台直接分配给学生。</li>
+          <li>布置这些书的作业前,先确认学生已经兑换了卡;没兑换的学生打开作业会提示「要先兑换学习卡」。</li>
+          <li>入门课和本机构自己建的书不受限制,老师照常直接分配、布置作业。</li>
+        </ul>
+      </section>
+
       {!compact && (
         <section>
-          <h3 className="font-bold text-slate-900">四、额度怎么来</h3>
+          <h3 className="font-bold text-slate-900">五、额度怎么来</h3>
           <p className="mt-1">
             标准包 {yuan(catalog.pack_price)},分 {catalog.installments.length} 期付,每期{' '}
             {yuan(catalog.installments[0]?.value ?? 0)}。平台每确认到账一期,你这边就多出这一期的卡:

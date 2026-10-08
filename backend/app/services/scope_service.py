@@ -53,10 +53,14 @@ async def get_allowed_unit_ids(
         def __init__(self, gt, ea, tl, lcd):
             self.grant_type, self.expires_at, self.times_left, self.last_consumed_date = gt, ea, tl, lcd
 
+    # 新政策机构的卡包书: 只认兑换码开出来的行(grant_type 非空),老师直接分配的不算,
+    # 作业也不开书 —— 否则老师分配/布置作业就能绕开卡包(见 card_pack.gated_book_ids)
+    from app.services.card_pack import is_gated_for_student
+    gated = await is_gated_for_student(db, student_id, book_id)
     rows = [
         (scope_type, unit_id)
         for scope_type, unit_id, gt, ea, tl, lcd in res.all()
-        if is_assignment_active(_A(gt, ea, tl, lcd), _today)
+        if is_assignment_active(_A(gt, ea, tl, lcd), _today) and (not gated or gt is not None)
     ]
     allowed: set[int] = set()
     for scope_type, unit_id in rows:
@@ -65,6 +69,9 @@ async def get_allowed_unit_ids(
             return None
         if unit_id is not None:
             allowed.add(unit_id)
+
+    if gated:
+        return allowed
 
     # 全托机构 + 这本书老师没做过任何分配 → 整本可学
     if not rows:
@@ -138,6 +145,10 @@ async def can_enter_unit(
     allowed = await get_allowed_unit_ids(db, student_id, book_id)
     if allowed is None or unit_id in allowed:
         return True
+    # 新政策卡包书: 从作业入口进也不放行(否则「只能从作业进入」的作业就是绕开卡包的后门)
+    from app.services.card_pack import is_gated_for_student
+    if await is_gated_for_student(db, student_id, book_id):
+        return False
     return await homework_grants_unit(db, student_id, assignment_id, unit_id)
 
 
@@ -179,6 +190,10 @@ NOT_ASSIGNED_MSG = "这个单元还没有分配给你,请联系老师"
 
 
 async def deny_message(db: AsyncSession, student_id: int, unit_id: int) -> str:
+    from app.services.card_pack import is_gated_for_student, PACK_CARD_REQUIRED_MSG
+    book_id = (await db.execute(select(Unit.book_id).where(Unit.id == unit_id))).scalar_one_or_none()
+    if book_id is not None and await is_gated_for_student(db, student_id, book_id):
+        return PACK_CARD_REQUIRED_MSG
     if await is_homework_only_unit(db, student_id, unit_id):
         return HOMEWORK_ONLY_DENY_MSG
     return NOT_ASSIGNED_MSG
