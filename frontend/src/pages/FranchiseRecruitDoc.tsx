@@ -228,7 +228,7 @@ export default function FranchiseRecruitDoc() {
             「举一反百」改为「举一反三」;词汇目标写成规划而非承诺(广告法第 24 条) */}
         <p className="mt-4 font-bold text-slate-900">入门课程:方法课(¥1,000,含教材)</p>
         <p className="mt-1">
-          方法课是孩子进入飞鹰的第一站。学费 ¥1,000,含全套教材,另配<strong>阅读绘本 2 本</strong>和
+          方法课是孩子进入飞鹰的第一站。学费 ¥1,000,含全套教材,另<strong>赠送阅读绘本 2 本</strong>和
           <strong>必背绘本 1 本</strong> —— 读的用来养语感,背的用来打底子。
         </p>
         <CardPairs
