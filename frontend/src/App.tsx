@@ -43,6 +43,7 @@ const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
 const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
 const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
 const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'));
+const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
 const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
 const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
@@ -701,6 +702,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherClassManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学习卡规则说明(新卡包政策,老师/机构管理员/平台都能看) */}
+        <Route
+          path="/teacher/card-rules"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherCardRules />
             </ProtectedRoute>
           }
         />

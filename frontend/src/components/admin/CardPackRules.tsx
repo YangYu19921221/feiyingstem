@@ -21,7 +21,8 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
               <tr className="bg-amber-50 text-left">
                 <th className="border border-amber-200 px-2 py-1.5">卡</th>
                 <th className="border border-amber-200 px-2 py-1.5">开哪些书</th>
-                <th className="border border-amber-200 px-2 py-1.5 text-right">单价</th>
+                {/* 单价是机构进货价,老师版(compact)不显示,免得传到家长那里 */}
+                {!compact && <th className="border border-amber-200 px-2 py-1.5 text-right">单价</th>}
               </tr>
             </thead>
             <tbody>
@@ -29,7 +30,7 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
                 <tr key={k.kind}>
                   <td className="border border-amber-200 px-2 py-1.5 font-semibold">{k.label}</td>
                   <td className="border border-amber-200 px-2 py-1.5">{k.covers}</td>
-                  <td className="border border-amber-200 px-2 py-1.5 text-right">{yuan(k.price)}</td>
+                  {!compact && <td className="border border-amber-200 px-2 py-1.5 text-right">{yuan(k.price)}</td>}
                 </tr>
               ))}
             </tbody>

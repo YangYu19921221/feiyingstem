@@ -297,3 +297,21 @@ async def test_legacy_org_homework_still_opens_book(env, db_session):
                                   teacher_id=env["old_oa"].id, scope_type="book"))
     await db_session.commit()
     assert await get_allowed_unit_ids(db_session, s2.id, env["books"]["p3"].id) is None
+
+
+async def test_card_rules_for_teacher(client, env, db_session):
+    """老师能看规则;card_plan 区分新老机构(前端据此决定是否显示入口);学生看不到"""
+    t = User(username="pkrulet", email="rt@e.com", hashed_password="x", role="teacher",
+             is_active=True, org_id=env["pack"].id)
+    lt = User(username="lgrulet", email="lrt@e.com", hashed_password="x", role="teacher",
+              is_active=True, org_id=env["old"].id)
+    db_session.add_all([t, lt])
+    await db_session.commit()
+    r = await client.get("/api/v1/teacher/card-rules", headers=_hdr(t))
+    assert r.status_code == 200
+    assert r.json()["card_plan"] == "pack"
+    assert len(r.json()["catalog"]["installments"]) == 3
+    r = await client.get("/api/v1/teacher/card-rules", headers=_hdr(lt))
+    assert r.json()["card_plan"] == "legacy"
+    r = await client.get("/api/v1/teacher/card-rules", headers=_hdr(env["stu"]))
+    assert r.status_code == 403

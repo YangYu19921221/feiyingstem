@@ -531,3 +531,23 @@ async def delete_assignment(
     await db.commit()
 
     return {"message": "删除成功"}
+
+
+@router.get("/card-rules")
+async def card_rules(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """发卡 / 布置作业规则(2026-10-08): 给老师看的「一看就懂」说明页数据。
+
+    所有教职工都能看(老师布置作业时要知道哪些书得先兑换);
+    card_plan 告诉前端本机构是不是新卡包政策 —— 老政策机构的老师不需要这套规则,前端据此不显示入口。
+    数字全来自 services/card_pack,前端不写死。
+    """
+    if current_user.role not in ("teacher", "org_admin", "admin"):
+        raise HTTPException(status_code=403, detail="只有老师和管理员可以查看")
+    from app.services import card_pack
+    return {
+        "card_plan": await card_pack.plan_of(db, current_user.org_id),
+        "catalog": card_pack.catalog(),
+    }

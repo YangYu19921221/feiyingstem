@@ -24,10 +24,12 @@ import {
   Trophy,
   Users,
   Volume2,
+  KeyRound,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
 import ChangePasswordModal from '../components/ChangePasswordModal';
+import { useCardPlan } from '../hooks/useCardPlan';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
@@ -64,6 +66,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
     items: [
       { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'green' },
       { title: '分配单词本', description: '规划学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'orange' },
+      { title: '学习卡规则', description: '课本要先兑换,布置作业前必看', route: '/teacher/card-rules', icon: KeyRound, tone: 'amber' },
       { title: '实时课堂', description: '查看课堂状态', route: '/teacher/live', icon: Radio, tone: 'teal' },
       { title: '线上授课', description: '网页开播、上传课件', route: '/teacher/livestream', icon: Video, tone: 'violet' },
       { title: '课件资料', description: '带水印,学生只能看', route: '/teacher/materials', icon: FileText, tone: 'blue' },
@@ -118,9 +121,14 @@ const TeacherDashboard = () => {
   const activityPreview = useMemo(() => activities.slice(0, 5), [activities]);
   // 助教账号不能再管理助教(后端也会 403),入口直接不给
   const isAssistant = !!(user as { owner_teacher_id?: number | null } | null)?.owner_teacher_id;
-  const visibleToolGroups = useMemo(() => (isAssistant
-    ? toolGroups.map(g => ({ ...g, items: g.items.filter(i => i.route !== '/teacher/assistants') }))
-    : toolGroups), [isAssistant]);
+  // 学习卡规则只对新卡包政策机构有意义,老政策机构不给这个入口
+  const cardPlan = useCardPlan();
+  const visibleToolGroups = useMemo(() => toolGroups.map(g => ({
+    ...g,
+    items: g.items.filter(i =>
+      !(isAssistant && i.route === '/teacher/assistants') &&
+      !(cardPlan !== 'pack' && i.route === '/teacher/card-rules')),
+  })), [isAssistant, cardPlan]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
       <StaffWorkspaceHeader role="teacher" title="教师工作台" subtitle="今日教学、学生进度与内容管理" action={<div className="flex items-center gap-1"><button type="button" onClick={() => setShowChangeUsername(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button></div>} />

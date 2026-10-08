@@ -4,6 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { BookOpen } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { cardPackApi, type CardKind, type PackInfo } from '../../api/cardPack';
 import { toast } from '../Toast';
 import { getErrorMessage } from '../../utils/errorMessage';
@@ -112,6 +113,12 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
         {showRules && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
             <CardPackRules catalog={catalog} />
+            <p className="mt-3 border-t border-amber-200 pt-3 text-sm text-slate-600">
+              老师也要知道这套规则(课本不能直接分配、布置作业前学生要先兑换)。
+              老师在工作台「课堂推进 → 学习卡规则」能看到,也可以直接把{' '}
+              <Link to="/teacher/card-rules" className="font-semibold text-[#3976a9] underline">老师版说明</Link>{' '}
+              发给他们。
+            </p>
           </div>
         )}
 

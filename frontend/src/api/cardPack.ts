@@ -50,6 +50,8 @@ export interface PackLedgerRow {
 }
 
 export const cardPackApi = {
+  /** 老师/机构管理员都能看的规则(含本机构是不是新卡包政策) */
+  rules: () => api.get<{ card_plan: 'legacy' | 'pack'; catalog: PackCatalog }>('/teacher/card-rules'),
   info: (orgId?: number) =>
     api.get<PackInfo>('/admin/subscriptions/pack', { params: orgId ? { org_id: orgId } : {} }),
   generate: (data: { card_kind: CardKind; count: number; book_id?: number; series?: string; stage?: string; batch_note?: string }) =>

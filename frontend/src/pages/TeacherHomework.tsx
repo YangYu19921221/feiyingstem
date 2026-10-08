@@ -18,6 +18,7 @@ import type { ScopeValue } from '../components/teacher/ScopeSelector';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import CardRulesNotice from '../components/CardRulesNotice';
 import { ClipboardList, Plus, Search } from 'lucide-react';
 
 // 学习模式映射
@@ -727,6 +728,8 @@ const TeacherHomework: React.FC = () => {
                 </div>
 
                 <form onSubmit={handleCreateHomework} className="p-6 space-y-6">
+                  {/* 新卡包政策机构: 提醒课本作业要学生先兑换(老政策机构不渲染) */}
+                  <CardRulesNotice context="homework" />
                   {/* 作业标题 */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">

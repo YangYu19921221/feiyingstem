@@ -11,6 +11,7 @@ import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
 import { BookOpenText, Settings } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import CardRulesNotice from '../components/CardRulesNotice';
 
 interface Student {
   id: number;
@@ -422,6 +423,10 @@ const TeacherBookAssignment = () => {
         subtitle="规划学生学习范围"
         icon={BookOpenText}
       />
+      {/* 新卡包政策机构: 课本不能直接分配(老政策机构不渲染) */}
+      <div className="teacher-workspace-main pb-0">
+        <CardRulesNotice context="assign" />
+      </div>
 
       {/* 消息提示 */}
       {message && (
