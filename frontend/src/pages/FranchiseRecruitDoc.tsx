@@ -86,6 +86,14 @@ const TEACHERS: Array<[string, string]> = [
 
 
 // 传统做法 vs 飞鹰做法:每一行都要能在系统里指出对应功能,不写说不出落点的口号
+/** 方法课教材(2026-10-08 用户提供)。⚠️ 册次与 franchisePyramid 的「语法第一/二/三册」对应关系待用户确认,别自行合并 */
+const METHOD_BOOKS: Array<[string, string, string]> = [
+  ['第一册', '音标', '音、形、意结合:看到词会读,听到音会写,背单词不再靠死记硬背'],
+  ['第二册', '语法', '覆盖初一(七年级)内容'],
+  ['第三册', '语法', '覆盖初二(八年级)内容'],
+  ['第四册', '语法', '覆盖初三(九年级)内容'],
+];
+
 const COMPARE: Array<[string, string, string]> = [
   ['学习方式', '老师讲、学生抄、考前背,离开老师就不会学', '教音标、拼读和记忆方法,孩子见词会读、听音会写,回家能自己学'],
   ['背单词', '抄写 + 默写,老师逐本批改', '记忆曲线自动排复习,拼写 / 听写 / 纸笔听写系统批改'],
@@ -226,23 +234,38 @@ export default function FranchiseRecruitDoc() {
         />
         {/* 方法课(2026-10-08 用户提供)。用户原话「背单词速度是 3–5 倍」无出处未采用(同「词汇量增长 90%」口径),
             「举一反百」改为「举一反三」;词汇目标写成规划而非承诺(广告法第 24 条) */}
-        <p className="mt-4 font-bold text-slate-900">入门课程:方法课(¥1,000,含教材)</p>
+        <p className="mt-4 font-bold text-slate-900">方法课:¥1,000,含四册教材</p>
         <p className="mt-1">
-          方法课是孩子进入飞鹰的第一站。学费 ¥1,000,含全套教材,另<strong>赠送阅读绘本 2 本</strong>和
-          <strong>必背绘本 1 本</strong> —— 读的用来养语感,背的用来打底子。
+          方法课学费 ¥1,000,含下面四册教材,另<strong>赠送阅读绘本 2 本</strong>和<strong>必背绘本 1 本</strong>
+          —— 读的用来养语感,背的用来打底子。
         </p>
-        <CardPairs
-          items={[
-            {
-              t: '第一册 · 音标:音、形、意结合',
-              d: '把发音、拼写和词义放在一起学,看到词会读、听到音会写,背单词不再靠死记硬背。按这个规划,目标是一年左右背完小学词汇,小升初前背完初中词汇和 3500 基础词汇,带着四千多词的词汇量进初中。',
-            },
-            {
-              t: '第二至四册 · 语法',
-              d: '第二册覆盖初一内容,第三册覆盖初二,第四册覆盖初三。直营校区目前已有三年级的孩子在学第二册。',
-            },
-          ]}
-        />
+        <table className="mt-2 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
+          <thead>
+            <tr className="bg-[#FFF3EC]">
+              <th className={`${td} w-[16%] text-center font-bold`}>教材</th>
+              <th className={`${td} w-[24%] text-center font-bold`}>内容</th>
+              <th className={`${td} text-center font-bold`}>学什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            {METHOD_BOOKS.map(([k, name, what]) => (
+              <tr key={k}>
+                <td className={`${td} text-center font-semibold`}>{k}</td>
+                <td className={`${td} text-center`}>{name}</td>
+                <td className={td}>{what}</td>
+              </tr>
+            ))}
+            <tr>
+              <td className={`${td} text-center font-semibold`}>赠送</td>
+              <td className={`${td} text-center`}>绘本 3 本</td>
+              <td className={td}>阅读绘本 2 本 + 必背绘本 1 本</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="mt-2">
+          <strong>词汇目标</strong>:按课程规划,一年左右背完小学词汇,小升初前背完初中词汇和 3500 基础词汇,
+          带着四千多词的词汇量进初中。语法也可以提前学,直营校区目前已有三年级的孩子在学第二册。
+        </p>
         <p className="mt-2">
           <strong>为什么词汇量要先行</strong>:初高中的阅读理解,文章大多选自课外时文,课本里学过的词远远不够。
           词汇量上去了,孩子才听得懂老师讲课、读得进阅读理解。
