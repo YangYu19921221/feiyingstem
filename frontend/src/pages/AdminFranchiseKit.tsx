@@ -101,7 +101,7 @@ function ContractDoc() {
     <article className="fk-serif text-[14px] leading-7 text-slate-900">
       <header className="text-center">
         <h1 className="text-[26px] font-bold tracking-wide">「飞鹰AI英语」智能学习系统合作协议</h1>
-        <p className="mt-1 text-[13px] text-slate-600">(全托授权 · 单校区版)</p>
+        <p className="mt-1 text-[13px] text-slate-600">(学习卡标准包 · 单校区版)</p>
         <p className="mt-3 text-right text-[13px]">协议编号:<Blank w="10rem" /></p>
       </header>
 
@@ -128,45 +128,53 @@ function ContractDoc() {
         </p>
       </Clause>
 
-      <Clause no="二" title="授权内容(全托模式)">
+      {/* 10-09 按招商手册第六章改写: 单词本凭学习卡开(不再是「全托全开放」),其余内容与功能不另收费 */}
+      <Clause no="二" title="授权内容">
         <p>
-          1. 服务期内,甲方向乙方<strong>全量开放系统内教材同步单词本、句型本、阅读理解及配套学习内容</strong>
-          (覆盖小学、初中、高中各年级主流教材同步内容),乙方无需按册另行付费;
-          服务期内甲方新增的内容与功能升级,乙方免费同步享有。飞鹰英语专属内容除外,见本条第 3 款。
+          1. 服务期内,甲方为乙方开放本系统的<strong>学生学习功能</strong>:系统内教材同步单词本与精品单词本
+          (覆盖小学、初中、高中各年级主流教材,以及中高考、剑桥英语、大学英语等考试词汇)
+          <strong>凭学生学习卡开放</strong>,每张卡开放乙方发卡时选定的书(见第三条第 1 款);
+          入门课、句型本、阅读理解及乙方自建的单词本不占用学习卡。
+          服务期内甲方的功能升级,乙方免费同步享有;甲方新上架的单词本按其所属卡种纳入可选范围。
+          飞鹰英语专属内容除外,见本条第 3 款。
         </p>
         <p>
           2. 本协议标准包含 <strong>300 张学生学习卡</strong>,分入门卡、15本卡、5本卡、小学2本卡、单本卡五种
           (各卡开放范围见第三条),每张卡有效期 <strong>半年(180 天)</strong>,
           自该卡兑换激活之日起算;兑换码自生成之日起 <strong>5 年</strong>内可兑换。
           教师账号与机构管理账号不另行收费,数量以乙方正常教学使用为限。
-          标准包同时包含第三条第 6 款约定的<strong>飞鹰英语带教培训</strong>。
+          标准包同时包含<strong>机构独立后台</strong>、第三条第 6 款约定的<strong>飞鹰英语带教培训</strong>
+          与服务期内的系统升级。
         </p>
         <p>
-          3. <strong>飞鹰英语专属内容</strong>(飞鹰自研教材配套单词本、句型本及配套教学内容)
-          为选配项,乙方选配后一并开放,费用见第三条。
+          3. <strong>飞鹰英语专属内容</strong>(飞鹰自研教材配套单词本、句型本及配套教学内容,
+          含飞鹰语法、飞鹰单词速记法等)为选配项,不含在标准包与学习卡内;乙方选配后一并开放,费用见第三条第 4 款。
         </p>
       </Clause>
 
       <Clause no="三" title="合作费用与结算">
         <p>
           1. 标准包:人民币 <strong>60,000 元</strong>(大写:<strong>陆万元整</strong>),
-          包含 300 张学生学习卡与飞鹰英语带教培训(见本条第 6 款),不另收加盟费、培训费。
-          各卡的单价、标准包张数与开放范围如下(开放的书由乙方发卡时选定):
-          入门卡 <strong>15 元</strong> × 80 张(体验课程);
+          包含 300 张学生学习卡、机构独立后台、飞鹰英语带教培训(见本条第 6 款)与服务期内的系统升级,
+          不另收加盟费、培训费。
+          各卡的单价(即乙方进货价)、标准包张数与开放范围如下(开放的书由乙方发卡时选定):
+          入门卡 <strong>15 元</strong> × 80 张(全部体验课程,用于招生体验、试听);
           15本卡 <strong>600 元</strong> × 30 张(任选 15 本教材同步书);
           5本卡 <strong>360 元</strong> × 50 张(任选 5 本教材同步书);
           小学2本卡 <strong>120 元</strong> × 90 张(任选 2 本小学教材同步书);
-          单本卡 <strong>240 元</strong> × 50 张(任选 1 本教材同步书或精品书)。
+          单本卡 <strong>240 元</strong> × 50 张(任选 1 本教材同步书,或 1 本精品书,
+          如中高考词汇、剑桥英语、大学英语四六级、雅思、托福等)。
           合计 60,000 元。每张卡开放乙方发卡时选定的书,甲方此后新增的书不自动加入已发出的卡。
         </p>
         <p>
           2. 分期付款:标准包分 <strong>3 期</strong>支付,每期人民币 <strong>20,000 元</strong>。
-          第 1 期于本协议签订时支付,开通入门卡 80 张、15本卡 10 张、5本卡 17 张、小学2本卡 30 张、单本卡 13 张;
+          第 1 期于本协议签订时支付,开通入门卡 80 张、15本卡 10 张、5本卡 17 张、小学2本卡 30 张、单本卡 13 张,
+          同时开通机构后台并安排带教培训;
           第 2 期于签约后第 3 个月内支付,开通 15本卡 10 张、5本卡 17 张、小学2本卡 30 张、单本卡 18 张;
           第 3 期于签约后第 6 个月内支付,开通 15本卡 10 张、5本卡 16 张、小学2本卡 30 张、单本卡 19 张。
           各期开通的学习卡按单价计分别为 20,040 元、20,040 元、19,920 元,三期合计 60,000 元,
           乙方每期均按 20,000 元支付,不另行找补。
-          乙方可提前支付后续各期,甲方收到款项后开通该期学习卡。
+          乙方可提前支付后续各期,甲方收到款项后<strong>当日</strong>开通该期学习卡。
           乙方一次付清 3 期的,甲方另赠 5本卡 <strong>10 张</strong>;
           已付第 1 期后一次结清剩余两期的,另赠 5本卡 <strong>5 张</strong>。
         </p>
@@ -197,7 +205,7 @@ function ContractDoc() {
         </p>
         <p>
           7. 付款方式:乙方按本条第 2 款分期支付标准包费用,其余费用按实际发生结算;
-          甲方收到每期款项后<Blank w="3rem" />个工作日内开通该期学习卡,首期付款后同时完成系统开通与账号交付。
+          甲方收到每期款项后当日开通该期学习卡,首期付款后同时完成系统开通与账号交付。
         </p>
         <p>
           8. 系统开通后,已付费用不予退还。因不可抗力(如疫情停课等)导致乙方连续停课三十日以上的,
@@ -216,7 +224,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">标准包</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥60,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">300 张学生学习卡(每张半年)+ 带教培训,分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">300 张学生学习卡(每张半年)+ 机构独立后台 + 带教培训 + 系统升级,分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">学习卡单价</td>
@@ -241,7 +249,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">系统升级</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">免费</td>
-              <td className="border border-slate-500 px-2 py-1.5">服务期内新功能、新内容自动同步</td>
+              <td className="border border-slate-500 px-2 py-1.5">服务期内新功能免费同步;新上架的单词本纳入对应卡种的可选范围,不自动加入已发出的卡</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">带教培训</td>
@@ -455,7 +463,7 @@ function PitchDoc() {
         <div className="mx-auto mt-5 grid max-w-xl grid-cols-4 gap-2 text-center">
           {[
             ['8+', '种学习模式'],
-            ['全托', '书本全开放'],
+            ['54 本', '课本与考试词汇'],
             ['AI', '批改与出题'],
             ['闭环', '教学测评赛'],
           ].map(([big, small]) => (
@@ -603,7 +611,7 @@ function PitchDoc() {
             最多是区域改为非独家或到期不续。
           </li>
           <li><strong>数据隔离</strong>:机构学员数据独立隔离,平台不用于向机构学员直接招生。</li>
-          <li><strong>持续迭代</strong>:系统每月都在更新(近期上线:纸笔听写 AI 批改、书本全托开放),服务期内全部免费同步。</li>
+          <li><strong>持续迭代</strong>:系统每月都在更新(近期上线:纸笔听写 AI 批改、学习卡按本发放),服务期内全部免费同步。</li>
         </ul>
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]" style={{ breakInside: 'avoid' }}>
           <p className="font-bold text-slate-900">合作咨询</p>
