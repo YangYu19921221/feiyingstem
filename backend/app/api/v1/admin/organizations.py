@@ -29,6 +29,9 @@ router = APIRouter()
 
 # ---------- Schemas ----------
 
+UNLIMITED_STUDENTS = 999999   # 与直营同口径,前端显示「∞」
+
+
 class OrgCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     code: Optional[str] = Field(None, max_length=16, description="机构码,不传自动生成")
@@ -72,6 +75,8 @@ class OrgUpdate(BaseModel):
     # 金币发放: auto=系统自动按规则发(默认) | manual=只能老师核实后手动加
     coin_mode: Optional[str] = Field(None, pattern="^(auto|manual)$")
     card_plan: Optional[str] = Field(None, pattern="^(legacy|pack)$")
+    # 飞鹰英语专属内容(选配 ¥16,000)是否已开通;只对新卡包机构生效
+    exclusive_content: Optional[bool] = None
     # 音标视频访问: open=免费开放(默认) | code=需音标专用兑换码。
     # ⚠️ 翻成 code 前机构应先备好码,否则学生当场全被挡在外面
     phonetic_access_mode: Optional[str] = Field(None, pattern="^(open|code)$")
@@ -174,6 +179,7 @@ def _org_out(
         "access_mode": getattr(org, "access_mode", None) or "assigned",
         "coin_mode": getattr(org, "coin_mode", None) or "auto",
         "card_plan": getattr(org, "card_plan", None) or "legacy",
+        "exclusive_content": bool(getattr(org, "exclusive_content", False)),
         "phonetic_access_mode": getattr(org, "phonetic_access_mode", None) or "open",
         "phonetic_code_quota": phonetic_code_quota_of(org),
         "phonetic_codes_used": phonetic_codes_used,
@@ -262,9 +268,10 @@ async def create_organization(
         db, data.lat, data.lng, data.protect_radius_km, data.force
     )
 
+    # 新卡包机构不按人头卖,学习卡张数就是限制 → 学生名额不限(999999 与直营同口径)
     org = Organization(
         name=data.name, code=code, plan=data.plan,
-        student_quota=data.student_quota,
+        student_quota=UNLIMITED_STUDENTS if data.card_plan == "pack" else data.student_quota,
         card_quota=data.card_quota,
         card_plan=data.card_plan,
         contact_name=data.contact_name, contact_phone=data.contact_phone,
@@ -317,8 +324,16 @@ async def update_organization(
             db, eff_lat, eff_lng, eff_radius, data.force, exclude_org_id=org_id
         )
 
+    # 新卡包机构不能切全托: 全托 = 书本全开放,会把卡包整个绕过去
+    eff_plan = data.card_plan or org.card_plan or "legacy"
+    if data.access_mode == "all_books" and eff_plan == "pack":
+        raise HTTPException(400, "新卡包政策的机构按学习卡开书,不能切成全托")
+    if data.card_plan == "pack" and (org.access_mode or "assigned") == "all_books" and data.access_mode != "assigned":
+        raise HTTPException(400, "这家机构是全托模式,先改回逐本分配再切新卡包政策")
+
     for field in ["name", "plan", "student_quota", "card_quota", "contact_name",
                   "contact_phone", "status", "expires_at", "access_mode", "coin_mode", "card_plan",
+                  "exclusive_content",
                   "phonetic_access_mode", "phonetic_code_quota",
                   "address", "lat", "lng", "protect_radius_km"]:
         v = getattr(data, field)

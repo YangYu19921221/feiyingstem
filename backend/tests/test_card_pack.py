@@ -332,3 +332,68 @@ async def test_delete_pack_org_leaves_nothing(client, env, db_session):
     # 别家机构/平台的书和老机构的数据不受影响
     assert (await db_session.execute(text("SELECT count(*) FROM organizations WHERE id=:o"),
                                      {"o": env["old"].id})).scalar() == 1
+
+
+# ---------- 10-09: 合同对齐 —— 学生不限 / 飞鹰专属内容要开通 / 不能切全托 ----------
+
+async def test_pack_org_created_with_unlimited_students(client, env):
+    r = await client.post("/api/v1/admin/organizations",
+                          json={"name": "新签机构", "code": "NEWPK1", "student_quota": 100},
+                          headers=_hdr(env["admin"]))
+    assert r.status_code == 200, r.text
+    assert r.json()["card_plan"] == "pack" and r.json()["student_quota"] == 999999
+    assert r.json()["exclusive_content"] is False
+    # 老政策照旧按填的名额
+    r = await client.post("/api/v1/admin/organizations",
+                          json={"name": "老合同机构", "code": "OLDPK1", "student_quota": 100,
+                                "card_plan": "legacy"}, headers=_hdr(env["admin"]))
+    assert r.json()["student_quota"] == 100
+
+
+async def test_exclusive_content_locked_until_enabled(client, env, db_session):
+    from app.models.word import Unit
+    from app.services.scope_service import get_allowed_unit_ids
+    fy = env["books"]["fy"]
+    unit = Unit(book_id=fy.id, name="U1", unit_number=1, order_index=1)
+    t = User(username="exct", email="ex@e.com", hashed_password="x", role="teacher",
+             is_active=True, org_id=env["pack"].id)
+    lt = User(username="exlt", email="exl@e.com", hashed_password="x", role="teacher",
+              is_active=True, org_id=env["old"].id)
+    db_session.add_all([unit, t, lt])
+    await db_session.commit()
+    body = {"book_id": fy.id, "student_ids": [env["stu"].id]}
+
+    # 没开通: 老师分配被拒,原因是「专属内容」而不是「要兑换卡」
+    r = await client.post("/api/v1/teacher/assign", json=body, headers=_hdr(t))
+    assert r.status_code == 403 and "专属内容" in r.json()["detail"]
+    # 绕过接口写一条分配: 学生照样学不了,书架上也不亮
+    db_session.add(BookAssignment(book_id=fy.id, student_id=env["stu"].id,
+                                  teacher_id=t.id, scope_type="book"))
+    await db_session.commit()
+    assert await get_allowed_unit_ids(db_session, env["stu"].id, fy.id) == set()
+    books = (await client.get("/api/v1/student/books", headers=_hdr(env["stu"]))).json()
+    assert not next(x for x in books if x["id"] == fy.id)["owned"]
+    # 老政策机构的老师不受影响
+    r = await client.post("/api/v1/teacher/assign", json=body, headers=_hdr(lt))
+    assert "专属内容" not in r.text
+
+    # 平台开通后: 老师分配照常,学生整本可学(不占卡)
+    r = await client.patch(f"/api/v1/admin/organizations/{env['pack'].id}",
+                           json={"exclusive_content": True}, headers=_hdr(env["admin"]))
+    assert r.status_code == 200 and r.json()["exclusive_content"] is True
+    await db_session.refresh(env["pack"])
+    r = await client.post("/api/v1/teacher/assign", json=body, headers=_hdr(t))
+    assert "专属内容" not in r.text and "兑换码" not in r.text
+    assert await get_allowed_unit_ids(db_session, env["stu"].id, fy.id) is None
+    books = (await client.get("/api/v1/student/books", headers=_hdr(env["stu"]))).json()
+    assert next(x for x in books if x["id"] == fy.id)["owned"]
+
+
+async def test_pack_org_cannot_switch_to_all_books(client, env):
+    r = await client.patch(f"/api/v1/admin/organizations/{env['pack'].id}",
+                           json={"access_mode": "all_books"}, headers=_hdr(env["admin"]))
+    assert r.status_code == 400 and "全托" in r.json()["detail"]
+    # 老政策机构照常能切
+    r = await client.patch(f"/api/v1/admin/organizations/{env['old'].id}",
+                           json={"access_mode": "all_books"}, headers=_hdr(env["admin"]))
+    assert r.status_code == 200

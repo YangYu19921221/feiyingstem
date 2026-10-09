@@ -241,11 +241,14 @@ async def start_homework(
 
     # 新政策机构的卡包书: 学生没兑换这本书的卡就不能做(作业不再顺带开书)
     from app.services.scope_service import can_enter_unit
-    from app.services.card_pack import is_gated_for_student, PACK_CARD_REQUIRED_MSG
+    from app.services.card_pack import (is_gated_for_student, is_exclusive_locked,
+                                        PACK_CARD_REQUIRED_MSG, EXCLUSIVE_REQUIRED_MSG)
     from app.models.word import Unit as _Unit
     _book_id = (await db.execute(
         select(_Unit.book_id).where(_Unit.id == homework.unit_id)
     )).scalar_one_or_none()
+    if _book_id is not None and await is_exclusive_locked(db, current_user.id, _book_id):
+        raise HTTPException(status_code=403, detail=EXCLUSIVE_REQUIRED_MSG)
     if _book_id is not None and await is_gated_for_student(db, current_user.id, _book_id) \
             and not await can_enter_unit(db, current_user.id, _book_id, homework.unit_id):
         raise HTTPException(status_code=403, detail=PACK_CARD_REQUIRED_MSG)

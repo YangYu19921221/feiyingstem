@@ -55,7 +55,9 @@ async def get_allowed_unit_ids(
 
     # 新政策机构的卡包书: 只认兑换码开出来的行(grant_type 非空),老师直接分配的不算,
     # 作业也不开书 —— 否则老师分配/布置作业就能绕开卡包(见 card_pack.gated_book_ids)
-    from app.services.card_pack import is_gated_for_student
+    from app.services.card_pack import is_gated_for_student, is_exclusive_locked
+    if await is_exclusive_locked(db, student_id, book_id):
+        return set()  # 飞鹰专属内容没开通: 谁分配的都不算
     gated = await is_gated_for_student(db, student_id, book_id)
     rows = [
         (scope_type, unit_id)
@@ -146,8 +148,9 @@ async def can_enter_unit(
     if allowed is None or unit_id in allowed:
         return True
     # 新政策卡包书: 从作业入口进也不放行(否则「只能从作业进入」的作业就是绕开卡包的后门)
-    from app.services.card_pack import is_gated_for_student
-    if await is_gated_for_student(db, student_id, book_id):
+    from app.services.card_pack import is_gated_for_student, is_exclusive_locked
+    if await is_gated_for_student(db, student_id, book_id) or \
+            await is_exclusive_locked(db, student_id, book_id):
         return False
     return await homework_grants_unit(db, student_id, assignment_id, unit_id)
 
@@ -190,8 +193,11 @@ NOT_ASSIGNED_MSG = "这个单元还没有分配给你,请联系老师"
 
 
 async def deny_message(db: AsyncSession, student_id: int, unit_id: int) -> str:
-    from app.services.card_pack import is_gated_for_student, PACK_CARD_REQUIRED_MSG
+    from app.services.card_pack import (is_gated_for_student, is_exclusive_locked,
+                                        PACK_CARD_REQUIRED_MSG, EXCLUSIVE_REQUIRED_MSG)
     book_id = (await db.execute(select(Unit.book_id).where(Unit.id == unit_id))).scalar_one_or_none()
+    if book_id is not None and await is_exclusive_locked(db, student_id, book_id):
+        return EXCLUSIVE_REQUIRED_MSG
     if book_id is not None and await is_gated_for_student(db, student_id, book_id):
         return PACK_CARD_REQUIRED_MSG
     if await is_homework_only_unit(db, student_id, unit_id):

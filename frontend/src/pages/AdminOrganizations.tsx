@@ -631,6 +631,22 @@ export default function AdminOrganizations() {
     }
   };
 
+  /** 飞鹰英语专属内容开关(新卡包机构,合同第二条第 3 款选配 ¥16,000) */
+  const toggleExclusive = async (org: Organization) => {
+    const next = !org.exclusive_content;
+    const msg = next
+      ? `确认「${org.name}」已付飞鹰英语专属内容费用(¥16,000),开通飞鹰语法等专属内容?\n\n开通后该机构老师可以直接把这些书分配给学生,不占学习卡。`
+      : `关闭「${org.name}」的飞鹰英语专属内容?\n\n该机构学生将立即无法再学飞鹰语法等专属内容(学习记录保留)。`;
+    if (!window.confirm(msg)) return;
+    try {
+      await adminOrgApi.update(org.id, { exclusive_content: next });
+      await qc.invalidateQueries({ queryKey: ['admin-orgs'] });
+      toast.success(next ? '已开通飞鹰专属内容' : '已关闭飞鹰专属内容');
+    } catch (e: unknown) {
+      toast.error(errorText(e, '操作失败'));
+    }
+  };
+
   /** 金币发放模式切换: auto(系统自动发) ⇄ manual(只能老师手动加) */
   const toggleCoinMode = async (org: Organization) => {
     const next = org.coin_mode === 'manual' ? 'auto' : 'manual';
@@ -936,8 +952,12 @@ export default function AdminOrganizations() {
                 <option value="county">县级独家</option>
                 <option value="city">市级独家</option>
               </select>
-              <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" type="number" placeholder="学生配额" value={form.student_quota}
-                     onChange={e => setForm({ ...form, student_quota: parseInt(e.target.value || '0', 10) })} />
+              {/* 新卡包机构学生不限(学习卡张数就是限制),只有原合作政策才填学生配额 */}
+              {form.card_plan === 'legacy'
+                ? <input className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" type="number" placeholder="学生配额" value={form.student_quota}
+                         aria-label="学生配额"
+                         onChange={e => setForm({ ...form, student_quota: parseInt(e.target.value || '0', 10) })} />
+                : <div className="flex items-center rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-500">学生名额不限(按学习卡开书)</div>}
               {/* 卡政策(2026-10-08): 新签约默认新卡包;按老合同补开的选原合作政策 */}
               <select className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#3976a9]/30" value={form.card_plan}
                       aria-label="学习卡政策"
@@ -1010,7 +1030,9 @@ export default function AdminOrganizations() {
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                     <div>档位 <span className="font-medium text-slate-700">{PLAN_LABELS[org.plan] || org.plan}</span></div>
                     <div>老师 <span className="font-medium text-slate-700">{org.teacher_count} 人</span></div>
-                    <div>授权 <span className={`font-medium ${org.access_mode === 'all_books' ? 'text-amber-600' : 'text-slate-700'}`}>{org.access_mode === 'all_books' ? '全托·书本全开放' : '逐本分配'}</span></div>
+                    {org.card_plan === 'pack'
+                      ? <div>专属内容 <span className={`font-medium ${org.exclusive_content ? 'text-amber-600' : 'text-slate-500'}`}>{org.exclusive_content ? '已开通' : '未开通'}</span></div>
+                      : <div>授权 <span className={`font-medium ${org.access_mode === 'all_books' ? 'text-amber-600' : 'text-slate-700'}`}>{org.access_mode === 'all_books' ? '全托·书本全开放' : '逐本分配'}</span></div>}
                     <div>金币 <span className={`font-medium ${org.coin_mode === 'manual' ? 'text-orange-600' : 'text-slate-700'}`}>{org.coin_mode === 'manual' ? '教师手动加' : '系统自动发'}</span></div>
                     <div>音标 <span className={`font-medium ${org.phonetic_access_mode === 'code' ? 'text-indigo-600' : 'text-slate-700'}`}>{org.phonetic_access_mode === 'code' ? '需兑换码' : '免费开放'}</span></div>
                     <div className="col-span-2 flex items-center gap-2">
@@ -1045,7 +1067,9 @@ export default function AdminOrganizations() {
                       : <button className="text-amber-700" onClick={() => changeCards(org)}>学习卡</button>}
                     <button className="text-indigo-600" onClick={() => changePhoneticCodes(org)}>音标码额度</button>
                     <button className="text-[#3976a9]" onClick={() => openTerritoryEdit(org)}>经营场所</button>
-                    <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
+                    {org.card_plan === 'pack'
+                      ? <button className="text-amber-600" onClick={() => toggleExclusive(org)}>{org.exclusive_content ? '关闭专属内容' : '开通专属内容'}</button>
+                      : <button className="text-amber-600" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>}
                     <button className="text-orange-600" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                     <button className="text-indigo-600" onClick={() => togglePhoneticAccessMode(org)}>{org.phonetic_access_mode === 'code' ? '音标改免费' : '音标改需码'}</button>
                     {org.id !== 1 && <button className="text-purple-600" onClick={() => changeExpiry(org)}>有效期</button>}
@@ -1158,7 +1182,9 @@ export default function AdminOrganizations() {
                             : <button className="text-amber-700 hover:underline" onClick={() => changeCards(org)} title="调整或续卡学习卡额度">学习卡</button>}
                           <button className="text-indigo-600 hover:underline" onClick={() => changePhoneticCodes(org)} title="给机构发放可生成的音标兑换码张数">音标码额度</button>
                           <button className="text-[#3976a9] hover:underline" onClick={() => openTerritoryEdit(org)}>经营场所</button>
-                          <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>
+                          {org.card_plan === 'pack'
+                            ? <button className="text-amber-600 hover:underline" onClick={() => toggleExclusive(org)} title="飞鹰语法等专属内容,选配 ¥16,000">{org.exclusive_content ? '关闭专属内容' : '开通专属内容'}</button>
+                            : <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>}
                           <button className="text-orange-600 hover:underline" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                           <button className="text-indigo-600 hover:underline" onClick={() => togglePhoneticAccessMode(org)}>{org.phonetic_access_mode === 'code' ? '音标改免费' : '音标改需码'}</button>
                           {org.id !== 1 && (

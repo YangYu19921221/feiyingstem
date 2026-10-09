@@ -537,6 +537,8 @@ async def init_db():
             # 新政策卡包(2026-10-08): 存量机构落 legacy = 旧行为零影响;平台书档位 NULL =
             # 未定档不进任何卡;老码 card_kind NULL = 按发码时勾的书。表由 create_all 建
             "ALTER TABLE organizations ADD COLUMN card_plan VARCHAR(10) NOT NULL DEFAULT 'legacy'",
+            # 飞鹰专属内容开关(2026-10-09): 存量 0 = 未开通;只对 card_plan=pack 的机构生效
+            "ALTER TABLE organizations ADD COLUMN exclusive_content BOOLEAN NOT NULL DEFAULT 0",
             "ALTER TABLE word_books ADD COLUMN pack_tier VARCHAR(10)",
             "ALTER TABLE redemption_codes ADD COLUMN card_kind VARCHAR(10)",
             "CREATE INDEX IF NOT EXISTS idx_redemption_codes_card_kind ON redemption_codes(card_kind)",

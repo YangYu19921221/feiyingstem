@@ -437,23 +437,67 @@ async def sync_book(db: AsyncSession, book_id: int) -> int:
 # 老师分配的 book_assignments 行 grant_type 为 NULL,兑换码/新书补给写的行恒有值,
 # 所以「有效授权 = grant_type 非空且判活」。老政策机构一律不走这里。
 GATED_TIERS = ("basic", "premium")
+# 飞鹰专属内容(合同第二条第 3 款,选配 ¥16,000): 平台「校本」档书。新机构没开通 = 老师不能分配、
+# 学生不能学;开通后照老规矩(老师直接分配,不占卡)。老政策机构不受影响
+EXCLUSIVE_TIER = "school"
 PACK_CARD_REQUIRED_MSG = "这本书要先兑换学习卡才能学,请找老师要兑换码"
+EXCLUSIVE_REQUIRED_MSG = "这本书属于飞鹰英语专属内容,本机构还没有开通,请联系机构管理员"
+
+
+async def _pack_org(db: AsyncSession, org_id: Optional[int]) -> Optional[Organization]:
+    """新卡包机构返回机构行,其它(老政策/无机构)返回 None"""
+    if not org_id:
+        return None
+    org = (await db.execute(
+        select(Organization).where(Organization.id == org_id)
+        .execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    return org if org is not None and (org.card_plan or PLAN_LEGACY) == PLAN_PACK else None
+
+
+def _locked_tiers(org: Organization) -> tuple[str, ...]:
+    """对这家新机构来说,哪些档位的平台书老师不能直接开"""
+    return GATED_TIERS if org.exclusive_content else GATED_TIERS + (EXCLUSIVE_TIER,)
 
 
 async def gated_book_ids(db: AsyncSession, org_id: Optional[int], book_ids) -> set[int]:
-    """这些书里,对该机构来说哪些必须凭卡学。老政策机构返回空集。"""
+    """这些书里,对该机构来说哪些老师不能直接开(课本/精品书凭卡;专属内容没开通)。老政策机构返回空集。"""
     ids = [b for b in book_ids if b is not None]
-    if not ids or await plan_of(db, org_id) != PLAN_PACK:
+    org = await _pack_org(db, org_id) if ids else None
+    if org is None:
         return set()
     return set((await db.execute(
         select(WordBook.id).where(
             WordBook.id.in_(ids), WordBook.org_id.is_(None),
-            WordBook.pack_tier.in_(GATED_TIERS),
+            WordBook.pack_tier.in_(_locked_tiers(org)),
         ).execution_options(skip_tenant_filter=True)
     )).scalars())
 
 
+async def lock_reason(db: AsyncSession, org_id: Optional[int], book_id: int) -> Optional[str]:
+    """这本书对该机构锁着的话,返回给人看的原因;没锁返回 None"""
+    org = await _pack_org(db, org_id)
+    if org is None:
+        return None
+    tier = (await db.execute(
+        select(WordBook.pack_tier).where(WordBook.id == book_id, WordBook.org_id.is_(None))
+        .execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    if tier in GATED_TIERS:
+        return PACK_CARD_REQUIRED_MSG
+    if tier == EXCLUSIVE_TIER and not org.exclusive_content:
+        return EXCLUSIVE_REQUIRED_MSG
+    return None
+
+
+async def _student_org(db: AsyncSession, student_id: int) -> Optional[int]:
+    return (await db.execute(
+        select(User.org_id).where(User.id == student_id).execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+
+
 async def is_gated_for_student(db: AsyncSession, student_id: int, book_id: int) -> bool:
+    """课本/精品书: 新机构学生只认兑换码开的授权(专属内容不在这里,见 is_exclusive_locked)"""
     # 先看书(多数请求是机构自建书或老政策,一条查询就返回),再看学生所在机构
     tier = (await db.execute(
         select(WordBook.pack_tier).where(WordBook.id == book_id, WordBook.org_id.is_(None))
@@ -461,7 +505,16 @@ async def is_gated_for_student(db: AsyncSession, student_id: int, book_id: int) 
     )).scalar_one_or_none()
     if tier not in GATED_TIERS:
         return False
-    org_id = (await db.execute(
-        select(User.org_id).where(User.id == student_id).execution_options(skip_tenant_filter=True)
+    return await plan_of(db, await _student_org(db, student_id)) == PLAN_PACK
+
+
+async def is_exclusive_locked(db: AsyncSession, student_id: int, book_id: int) -> bool:
+    """飞鹰专属内容: 新机构没开通时,不论谁分配的、作业里有没有,学生都不能学"""
+    tier = (await db.execute(
+        select(WordBook.pack_tier).where(WordBook.id == book_id, WordBook.org_id.is_(None))
+        .execution_options(skip_tenant_filter=True)
     )).scalar_one_or_none()
-    return await plan_of(db, org_id) == PLAN_PACK
+    if tier != EXCLUSIVE_TIER:
+        return False
+    org = await _pack_org(db, await _student_org(db, student_id))
+    return org is not None and not org.exclusive_content

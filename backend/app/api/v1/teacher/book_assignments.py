@@ -127,10 +127,18 @@ async def assign_book_to_students(
     if not book:
         raise HTTPException(status_code=404, detail="单词本不存在")
 
-    # 2.5) 新政策机构: 平台的课本/精品书只能凭兑换码开,老师不能直接分配
+    # 2.5) 新政策机构: 平台的课本/精品书只能凭兑换码开,老师不能直接分配;
+    #      飞鹰专属内容(校本档)没开通也不能分配
     if current_user.role != 'admin':
         from app.services import card_pack
-        if await card_pack.gated_book_ids(db, current_user.org_id, [book.id]):
+        reason = await card_pack.lock_reason(db, current_user.org_id, book.id)
+        if reason == card_pack.EXCLUSIVE_REQUIRED_MSG:
+            raise HTTPException(
+                status_code=403,
+                detail="这本书属于飞鹰英语专属内容(选配),本机构还没有开通,不能分配。"
+                       "需要请联系平台开通;机构自建的书和入门课可以直接分配。",
+            )
+        if reason:
             raise HTTPException(
                 status_code=403,
                 detail="本机构是卡包政策:这本书要给学生发兑换码开通,不能直接分配。"

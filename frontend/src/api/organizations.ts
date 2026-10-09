@@ -28,6 +28,8 @@ export interface Organization {
   coin_mode?: 'auto' | 'manual';
   /** 卡政策: legacy=原合作(一个总额度) | pack=新卡包(分档额度、按期到账) */
   card_plan?: 'legacy' | 'pack';
+  /** 飞鹰英语专属内容(选配 ¥16,000)已开通;只对新卡包机构生效 */
+  exclusive_content?: boolean;
   // 音标视频库: open=随本机构学生都能看(默认) | code=要单独的音标兑换码才能开
   phonetic_access_mode?: 'open' | 'code';
   // 音标兑换码额度(平台发放给机构,机构在额度内自己发码;0=未发放)
@@ -117,7 +119,7 @@ export const adminOrgApi = {
   list: () => client.get<Organization[]>('/admin/organizations'),
   create: (data: { name: string; code?: string; plan?: string; student_quota?: number; card_quota?: number; card_plan?: 'legacy' | 'pack'; contact_name?: string; contact_phone?: string; address?: string; lat?: number; lng?: number; protect_radius_km?: number; force?: boolean }) =>
     client.post<Organization>('/admin/organizations', data),
-  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; card_quota: number; add_cards: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; phonetic_access_mode: 'open' | 'code'; phonetic_code_quota: number; add_phonetic_codes: number; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
+  update: (orgId: number, data: Partial<{ name: string; plan: string; student_quota: number; card_quota: number; add_cards: number; status: string; contact_name: string; contact_phone: string; expires_at: string; clear_expires: boolean; access_mode: 'assigned' | 'all_books'; coin_mode: 'auto' | 'manual'; exclusive_content: boolean; phonetic_access_mode: 'open' | 'code'; phonetic_code_quota: number; add_phonetic_codes: number; address: string; lat: number; lng: number; protect_radius_km: number; force: boolean }>) =>
     client.patch<Organization>(`/admin/organizations/${orgId}`, data),
   /** 区域保护预检: 填完坐标先看周边有没有冲突(只读,谈单时也能查) */
   territoryCheck: (params: { lat: number; lng: number; radius_km?: number; exclude_org_id?: number }) =>

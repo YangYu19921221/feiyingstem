@@ -715,9 +715,15 @@ async def get_student_books(
     gated = await card_pack.gated_book_ids(db, current_user.org_id, owned_book_ids)
     if gated:
         from app.services.subscription_service import is_assignment_active
+        from app.models.word import WordBook as _WB
+        # 飞鹰专属内容没开通: 不论怎么来的都不算拥有(它不进任何卡,兑换行也不认)
+        locked_exclusive = set((await db.execute(
+            select(_WB.id).where(_WB.id.in_(gated), _WB.pack_tier == card_pack.EXCLUSIVE_TIER)
+            .execution_options(skip_tenant_filter=True)
+        )).scalars())
         carded = {
             a.book_id for a in (await db.execute(select(BookAssignment).where(
-                BookAssignment.student_id == user_id, BookAssignment.book_id.in_(gated),
+                BookAssignment.student_id == user_id, BookAssignment.book_id.in_(gated - locked_exclusive),
                 BookAssignment.grant_type.is_not(None),
             ))).scalars() if is_assignment_active(a)
         }
