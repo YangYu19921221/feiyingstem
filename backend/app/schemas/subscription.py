@@ -49,13 +49,10 @@ class RedemptionCodeGenerate(BaseModel):
 
 class PackCodeGenerate(BaseModel):
     """新政策机构按卡种发码(2026-10-08)。开哪些书由服务端按规则定,前端只给选择。"""
-    card_kind: str = Field(..., pattern="^(trial|single|stage|full|premium)$")
+    card_kind: str = Field(..., pattern="^(trial|b15|b5|p2|b1)$")
     count: int = Field(..., ge=1, le=100, description="生成数量(1-100)")
-    book_id: Optional[int] = Field(None, description="单册卡/精品卡: 选哪一本")
-    series: Optional[str] = Field(None, max_length=30, description="学段卡/全通卡: 教材版本")
-    stage: Optional[str] = Field(
-        None, max_length=20, pattern=r"^(primary|junior|senior|custom:\d+)$",
-        description="学段卡: 学段")
+    book_ids: Optional[list[int]] = Field(
+        None, max_length=30, description="N 本卡: 勾的书,必须正好 N 本(入门卡不用传)")
     batch_note: Optional[str] = Field(None, max_length=200)
 
 

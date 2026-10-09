@@ -2,15 +2,20 @@
  *  前端**不写死任何一个数字** —— 两处各写一份,改价时必然一处漏改。 */
 import api from './client';
 
-export type CardKind = 'trial' | 'single' | 'stage' | 'full' | 'premium';
+export type CardKind = 'trial' | 'b15' | 'b5' | 'p2' | 'b1';
 export type PackTier = 'trial' | 'basic' | 'premium' | 'school';
 
 export interface CardKindSpec {
   kind: CardKind;
   label: string;
   price: number;
-  tier: PackTier;
-  pick: 'none' | 'book' | 'series_stage' | 'series';
+  /** none=入门卡不用选 / books=发码时勾 n 本 */
+  pick: 'none' | 'books';
+  n: number;
+  /** 能勾哪些档位的书 */
+  tiers: PackTier[];
+  /** 只能勾这个学段(如 primary),null=不限 */
+  stage: string | null;
   covers: string;
 }
 
@@ -20,7 +25,10 @@ export interface PackCatalog {
   kinds: CardKindSpec[];
   tiers: Record<PackTier, string>;
   pack_price: number;
-  installments: { no: number; cards: Partial<Record<CardKind, number>>; value: number; due_month: number }[];
+  pack_totals: Record<CardKind, number>;
+  /** value = 这一期机构要付的钱;card_value = 这一期开的卡按单价合计 */
+  installments: { no: number; cards: Partial<Record<CardKind, number>>; value: number; card_value: number; due_month: number }[];
+  bonus_kind: CardKind;
   bonus_full_pay: number;
   bonus_early_settle: number;
   restock_min: number;
@@ -29,10 +37,11 @@ export interface PackCatalog {
 export interface PackKindStatus { kind: CardKind; label: string; quota: number; used: number; left: number }
 export interface PackStatus { kinds: PackKindStatus[]; paid_installments: number[]; next_installment: number | null }
 
+export interface PackBook { id: number; name: string; series: string | null; stage: string; stage_label: string }
 export interface PackOptions {
   series: { series: string; total: number; stages: { stage: string; label: string; count: number }[] }[];
-  basic_books: { id: number; name: string; series: string | null; stage_label: string }[];
-  premium_books: { id: number; name: string; series: string | null; stage_label: string }[];
+  basic_books: PackBook[];
+  premium_books: PackBook[];
   trial_books: { id: number; name: string }[];
 }
 
@@ -54,7 +63,7 @@ export const cardPackApi = {
   rules: () => api.get<{ card_plan: 'legacy' | 'pack'; catalog: PackCatalog }>('/teacher/card-rules'),
   info: (orgId?: number) =>
     api.get<PackInfo>('/admin/subscriptions/pack', { params: orgId ? { org_id: orgId } : {} }),
-  generate: (data: { card_kind: CardKind; count: number; book_id?: number; series?: string; stage?: string; batch_note?: string }) =>
+  generate: (data: { card_kind: CardKind; count: number; book_ids?: number[]; batch_note?: string }) =>
     api.post('/admin/subscriptions/pack/generate', data),
   books: () =>
     api.get<{ tiers: Record<PackTier, string>; books: { id: number; name: string; series: string; stage_label: string; pack_tier: PackTier | null }[] }>(

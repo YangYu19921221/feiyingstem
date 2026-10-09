@@ -83,7 +83,7 @@ export default function TeacherCardRules() {
                 </div>
                 <div>
                   <dt className="font-semibold text-slate-900">学生半年到期了怎么办?</dt>
-                  <dd>再给他兑一张同种同范围的卡,到期日接着往后加半年,学习记录都在。</dd>
+                  <dd>再给他兑一张含同样那几本书的卡,到期日接着往后加半年,学习记录都在。</dd>
                 </div>
                 <div>
                   <dt className="font-semibold text-slate-900">学校换了版本 / 孩子转学了?</dt>
@@ -91,7 +91,7 @@ export default function TeacherCardRules() {
                 </div>
                 <div>
                   <dt className="font-semibold text-slate-900">平台上了新课本,学生要重新兑换吗?</dt>
-                  <dd>持学段卡、全通卡的学生不用,同范围的新课本会自动出现在书架上;单册卡只管选定的那一本。</dd>
+                  <dd>要。卡开的是发码时选的那几本书,新课本不会自动加进旧卡,找管理员再发一张。</dd>
                 </div>
               </dl>
             </section>

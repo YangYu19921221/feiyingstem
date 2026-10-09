@@ -1,12 +1,13 @@
-"""新政策卡包(2026-10-08): 分档额度、按期到账、按规则开书、新书自动补给。
+"""新政策卡包: 分档额度、按期到账、按卡种开书。
 
+卡种 10-09 换成 入门卡 / 15本卡 / 5本卡 / 小学2本卡 / 单本卡(发码时勾 N 本)。
 守的几件事(每条都对应一个会让钱算错或权益错发的洞):
 - 老机构(legacy)零影响: 老发码照旧,不出现分档额度
 - 新机构不能用老表单自由勾书(否则分档定价作废)
-- 每档额度独立,入门卡的额度发不出全通卡
-- 同一期不能确认两次;一次付清送 10 张全通卡
+- 每种卡额度独立,入门卡的额度发不出 15本卡
+- N 本卡必须正好勾 N 本;小学2本卡只能勾小学书;只有单本卡能开精品书
+- 同一期不能确认两次;一次付清送 10 张 5本卡
 - 只开平台的对应档位书: 未定档/校本/机构自建的书不进卡
-- 学段卡兑换时按规则重新取书;兑换后同范围新书补给有效期内的学生
 """
 from datetime import datetime, timedelta
 
@@ -16,7 +17,7 @@ from sqlalchemy import select
 from app.core import tenancy
 from app.models.learning import BookAssignment
 from app.models.organization import Organization
-from app.models.user import RedemptionCode, User
+from app.models.user import User
 from app.models.word import BookStage, WordBook
 from app.services import card_pack
 from tests.conftest import _make_token
@@ -82,13 +83,19 @@ async def _gen(client, user, **body):
                              json={"count": 1, **body}, headers=_hdr(user))
 
 
-def test_installments_each_worth_20000():
-    assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [20000] * 3
+def test_pack_adds_up_to_60000():
+    """用户 10-09 给的价: 15×80 + 600×40 + 360×60 + 120×50 + 240×30 = 60,000"""
+    price = {k: v["price"] for k, v in card_pack.CARD_KINDS.items()}
+    assert price == {"trial": 15, "b15": 600, "b5": 360, "p2": 120, "b1": 240}
     total = {}
     for cards in card_pack.INSTALLMENTS.values():
         for k, n in cards.items():
             total[k] = total.get(k, 0) + n
-    assert total == {"trial": 100, "single": 150, "stage": 150, "full": 50}
+    assert total == {"trial": 80, "b15": 40, "b5": 60, "p2": 50, "b1": 30}
+    assert sum(price[k] * n for k, n in total.items()) == 60000
+    # 每期收 2 万;卡值 20,040 / 20,040 / 19,920,合计正好 6 万
+    assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [20040, 20040, 19920]
+    assert [i["value"] for i in card_pack.catalog()["installments"]] == [20000] * 3
 
 
 async def test_legacy_org_unchanged(client, env):
@@ -121,16 +128,16 @@ async def test_quota_per_kind_and_installment_once(client, env):
     assert r.status_code == 200, r.text
     assert r.json()["installments"] == [1]
     kinds = {k["kind"]: k for k in r.json()["status"]["kinds"]}
-    assert kinds["trial"]["quota"] == 100 and kinds["full"]["quota"] == 15
-    assert kinds["premium"]["quota"] == 0
+    assert {k: v["quota"] for k, v in kinds.items()} == {"trial": 80, "b15": 12, "b5": 20, "p2": 17, "b1": 10}
 
-    # 第 1 期只有 15 张全通卡: 发 16 张被拒,入门卡的额度不能挪用
-    r = await _gen(client, env["oa"], card_kind="full", series="人教版", count=16)
+    # 第 1 期只有 10 张单本卡: 发 11 张被拒,入门卡的额度不能挪用
+    one = [env["books"]["p3"].id]
+    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=11)
     assert r.status_code == 403
-    r = await _gen(client, env["oa"], card_kind="full", series="人教版", count=15)
+    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=10)
     assert r.status_code == 200, r.text
     code = r.json()[0]
-    assert code["card_kind"] == "full" and code["grant_days"] == 180
+    assert code["card_kind"] == "b1" and code["grant_days"] == 180
     # 5 年内可兑换
     exp = datetime.fromisoformat(code["code_expires_at"].replace("Z", ""))
     assert exp - datetime.utcnow() > timedelta(days=365 * 5 - 2)
@@ -144,8 +151,8 @@ async def test_full_pay_bonus(client, env):
     r = await _pay(client, env, action="settle")
     assert r.status_code == 200
     kinds = {k["kind"]: k["quota"] for k in r.json()["status"]["kinds"]}
-    assert kinds["full"] == 50 + card_pack.BONUS_FULL_PAY
-    assert kinds["stage"] == 150
+    assert kinds["b5"] == 60 + card_pack.BONUS_FULL_PAY
+    assert kinds["b15"] == 40
     # 3 期都付完再点到账 → 400
     assert (await _pay(client, env)).status_code == 400
     assert (await _pay(client, env, action="settle")).status_code == 400
@@ -154,70 +161,53 @@ async def test_full_pay_bonus(client, env):
 async def test_only_platform_books_of_right_tier(client, env):
     await _pay(client, env)
     b = env["books"]
-    # 单册卡只认平台基础书
-    assert (await _gen(client, env["oa"], card_kind="single", book_id=b["p3"].id)).status_code == 200
-    for bad in ("kao", "fy", "untier", "own", "intro"):
-        r = await _gen(client, env["oa"], card_kind="single", book_id=b[bad].id)
+    ok = lambda r: r.status_code == 200
+    # 单本卡: 平台基础书、精品书都行;校本/未定档/机构自建/体验课不行
+    for good in ("p3", "j7", "kao"):
+        assert ok(await _gen(client, env["oa"], card_kind="b1", book_ids=[b[good].id])), good
+    for bad in ("fy", "untier", "own", "intro"):
+        r = await _gen(client, env["oa"], card_kind="b1", book_ids=[b[bad].id])
         assert r.status_code == 400, bad
-    # 学段卡: 人教版小学 = 三上 + 四上;未定档的新书不进
-    r = await _gen(client, env["oa"], card_kind="stage", series="人教版", stage="primary")
-    assert {x["name"] for x in r.json()[0]["books"]} == {"三上", "四上"}
-    # 全通卡不含精品书和机构自建书
-    r = await _gen(client, env["oa"], card_kind="full", series="人教版")
-    assert {x["name"] for x in r.json()[0]["books"]} == {"三上", "四上", "七上"}
-    # 入门卡开体验档
+    # 小学2本卡: 必须正好 2 本,而且都是小学书
+    assert ok(await _gen(client, env["oa"], card_kind="p2", book_ids=[b["p3"].id, b["p4"].id]))
+    r = await _gen(client, env["oa"], card_kind="p2", book_ids=[b["p3"].id, b["j7"].id])
+    assert r.status_code == 400 and "小学" in r.json()["detail"]
+    r = await _gen(client, env["oa"], card_kind="p2", book_ids=[b["p3"].id])
+    assert r.status_code == 400 and "正好选 2 本" in r.json()["detail"]
+    # 重复勾同一本不算两本
+    r = await _gen(client, env["oa"], card_kind="p2", book_ids=[b["p3"].id, b["p3"].id])
+    assert r.status_code == 400
+    # 5本卡不能放精品书(精品书只走单本卡)
+    r = await _gen(client, env["oa"], card_kind="b5",
+                   book_ids=[b["p3"].id, b["p4"].id, b["j7"].id, b["kao"].id, b["untier"].id])
+    assert r.status_code == 400
+    # 入门卡开体验档,不用选
     r = await _gen(client, env["oa"], card_kind="trial")
     assert [x["name"] for x in r.json()[0]["books"]] == ["入门课"]
 
 
-async def test_stage_card_picks_up_new_books(client, env, db_session):
+async def test_n_book_card_opens_exactly_picked_books(client, env, db_session):
+    """5本卡兑换后正好开勾的 5 本;之后平台再给书定档,不会补给(N 本卡不随新书变)"""
     await _pay(client, env)
-    r = await _gen(client, env["oa"], card_kind="stage", series="人教版", stage="primary", count=2)
-    first, second = r.json()[0]["code"], r.json()[1]["code"]
-
-    # 发码后、兑换前上架一本: 兑换时按规则重新取书,也要开
-    late = WordBook(name="五上", series="人教版", stage_id=env["primary"].id,
-                    pack_tier="basic", is_public=True)
-    db_session.add(late)
+    extra = [WordBook(name=f"课本{i}", series="人教版", stage_id=env["primary"].id,
+                      pack_tier="basic", is_public=True) for i in range(3)]
+    db_session.add_all(extra)
     await db_session.commit()
-    r = await client.post("/api/v1/subscription/redeem", json={"code": first}, headers=_hdr(env["stu"]))
+    picked = [env["books"]["p3"].id, env["books"]["j7"].id] + [x.id for x in extra]
+    r = await _gen(client, env["oa"], card_kind="b5", book_ids=picked)
+    assert r.status_code == 200, r.text
+    assert r.json()[0]["book_count"] == 5
+    r = await client.post("/api/v1/subscription/redeem", json={"code": r.json()[0]["code"]},
+                          headers=_hdr(env["stu"]))
     assert r.json()["success"], r.json()
     owned = set((await db_session.execute(select(BookAssignment.book_id).where(
         BookAssignment.student_id == env["stu"].id))).scalars())
-    assert late.id in owned
-
-    # 兑换后平台再给一本定档成基础 → 学生自动拿到,到期日跟卡一致
-    untier = env["books"]["untier"]
-    r = await client.put(f"/api/v1/admin/subscriptions/pack/books/{untier.id}",
-                         json={"pack_tier": "basic"}, headers=_hdr(env["admin"]))
-    assert r.json()["synced_students"] == 1
+    assert owned == set(picked)
     a = (await db_session.execute(select(BookAssignment).where(
-        BookAssignment.student_id == env["stu"].id, BookAssignment.book_id == untier.id
-    ))).scalar_one()
-    p3 = (await db_session.execute(select(BookAssignment).where(
-        BookAssignment.student_id == env["stu"].id,
-        BookAssignment.book_id == env["books"]["p3"].id))).scalar_one()
-    assert a.grant_type == "period" and abs((a.expires_at - p3.expires_at).total_seconds()) < 5
+        BookAssignment.student_id == env["stu"].id, BookAssignment.book_id == picked[0]))).scalar_one()
+    assert a.grant_type == "period" and a.expires_at - datetime.utcnow() > timedelta(days=178)
 
-    # 续卡: 范围授权往后接 180 天,新补的书也跟着延长
-    r = await client.post("/api/v1/subscription/redeem", json={"code": second}, headers=_hdr(env["stu"]))
-    assert r.json()["success"]
-    newbie = WordBook(name="六上", series="人教版", stage_id=env["primary"].id,
-                      pack_tier=None, is_public=True)
-    db_session.add(newbie)
-    await db_session.commit()
-    await client.put(f"/api/v1/admin/subscriptions/pack/books/{newbie.id}",
-                     json={"pack_tier": "basic"}, headers=_hdr(env["admin"]))
-    n = (await db_session.execute(select(BookAssignment).where(
-        BookAssignment.student_id == env["stu"].id, BookAssignment.book_id == newbie.id
-    ))).scalar_one()
-    assert n.expires_at - datetime.utcnow() > timedelta(days=355)
-
-    # 初中的书不会补给小学学段卡
-    j8 = WordBook(name="八上", series="人教版", stage_id=None, pack_tier=None, is_public=True)
-    db_session.add(j8)
-    await db_session.commit()
-    r = await client.put(f"/api/v1/admin/subscriptions/pack/books/{j8.id}",
+    r = await client.put(f"/api/v1/admin/subscriptions/pack/books/{env['books']['untier'].id}",
                          json={"pack_tier": "basic"}, headers=_hdr(env["admin"]))
     assert r.json()["synced_students"] == 0
 
@@ -281,7 +271,7 @@ async def test_teacher_rows_and_homework_dont_open_gated_book(client, env, db_se
 
     # 兑换单册卡之后: 整本可学,作业也能做
     await _pay(client, env)
-    code = (await _gen(client, env["oa"], card_kind="single", book_id=b.id)).json()[0]["code"]
+    code = (await _gen(client, env["oa"], card_kind="b1", book_ids=[b.id])).json()[0]["code"]
     assert (await client.post("/api/v1/subscription/redeem", json={"code": code},
                               headers=_hdr(env["stu"]))).json()["success"]
     assert await get_allowed_unit_ids(db_session, env["stu"].id, b.id) is None
@@ -324,7 +314,8 @@ async def test_delete_pack_org_leaves_nothing(client, env, db_session):
     """删新政策机构: 台账、码、码明细、学生的卡授权一行不留(这几张表通用扫描找不到)"""
     from sqlalchemy import text
     await _pay(client, env)
-    code = (await _gen(client, env["oa"], card_kind="stage", series="人教版", stage="primary")).json()[0]["code"]
+    code = (await _gen(client, env["oa"], card_kind="p2",
+                       book_ids=[env["books"]["p3"].id, env["books"]["p4"].id])).json()[0]["code"]
     assert (await client.post("/api/v1/subscription/redeem", json={"code": code},
                               headers=_hdr(env["stu"]))).json()["success"]
     oid, ocode = env["pack"].id, env["pack"].code

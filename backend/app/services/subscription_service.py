@@ -424,11 +424,10 @@ async def redeem_code(
     # 新政策入门/学段/全通卡: 兑换这一刻**按规则重新取书**(码可能放了两年,
     # 期间上架的同范围书也要开)。补进明细表,列表里看得到这张卡实际开了什么。
     # 规则取不出书(书全被挪走/改档)就退回发码时的快照,不让学生白拿一张废卡
-    if code.card_kind in ("trial", "stage", "full"):
+    if code.card_kind == "trial":
         from app.services import card_pack
         try:
-            rule_books = await card_pack.resolve_books(
-                db, code.card_kind, series=code.scope_series, stage=code.scope_stage)
+            rule_books = await card_pack.resolve_books(db, code.card_kind)
         except HTTPException:
             rule_books = []
         for bid, _ in rule_books:

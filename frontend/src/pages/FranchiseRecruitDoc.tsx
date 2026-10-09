@@ -354,61 +354,73 @@ export default function FranchiseRecruitDoc() {
         </p>
       </Section>
 
-      {/* 六、合作方案(2026-10-08 起新签约按卡包政策;真源 backend/app/services/card_pack.py,改价那边先改)。
+      {/* 六、合作方案(2026-10-09 起卡种 = 入门 / 15本 / 5本 / 小学2本 / 单本;真源 backend/app/services/card_pack.py,改价那边先改)。
           完整合作方案放在招商手册这里(用户要求),提分方案第八章只留摘要指过来 */}
       <Section no="六" title="合作方案:投入多少,怎么回本">
         <StatRow
           items={[
             ['¥60,000', '标准包 · 分 3 期,每期 ¥20,000'],
-            ['450 张', '学生学习卡,每张半年'],
+            ['260 张', '学生学习卡,每张半年'],
             ['含培训', '老师带教培训包含在内'],
           ]}
         />
         <p className="mt-2.5">
-          <strong>6 万元包含</strong>:450 张学生学习卡、机构独立后台(教师 / 管理账号不限)、
+          <strong>6 万元包含</strong>:260 张学生学习卡、机构独立后台(教师 / 管理账号不限)、
           <strong>老师带教培训</strong>、服务期内系统升级。不另收加盟费、培训费。
         </p>
 
-        <p className="mt-3 font-bold text-slate-900">学习卡:家长要什么你就发什么</p>
+        <p className="mt-3 font-bold text-slate-900">学习卡:按本数发,发卡时你来选书</p>
         <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
           <thead>
             <tr className="bg-[#FFF3EC]">
               <th className={`${td} text-center`}>卡</th>
               <th className={`${td} text-center`}>进货价</th>
+              <th className={`${td} text-center`}>标准包张数</th>
               <th className={`${td} text-center`}>开哪些书</th>
             </tr>
           </thead>
           <tbody>
               <tr>
                 <td className={`${td} text-center`}>入门卡</td>
-                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥10</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥15</td>
+                <td className={`${td} text-center`}>80</td>
                 <td className={td}>全部体验课,用于招生体验、试听</td>
               </tr>
               <tr>
-                <td className={`${td} text-center`}>单册卡</td>
-                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥60</td>
-                <td className={td}>选定的 1 本课本</td>
+                <td className={`${td} text-center`}>15本卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥600</td>
+                <td className={`${td} text-center`}>40</td>
+                <td className={td}>任选 15 本课本,适合整个学段或衔接</td>
               </tr>
               <tr>
-                <td className={`${td} text-center`}>学段卡</td>
-                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥200</td>
-                <td className={td}>一个版本一个学段的全部课本(如 人教版 · 小学)</td>
+                <td className={`${td} text-center`}>5本卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥360</td>
+                <td className={`${td} text-center`}>60</td>
+                <td className={td}>任选 5 本课本</td>
               </tr>
               <tr>
-                <td className={`${td} text-center`}>全通卡</td>
-                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥400</td>
-                <td className={td}>一个版本小学到高中的全部课本,适合衔接</td>
+                <td className={`${td} text-center`}>小学2本卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥120</td>
+                <td className={`${td} text-center`}>50</td>
+                <td className={td}>任选 2 本小学课本,如一学期的上下册</td>
               </tr>
               <tr>
-                <td className={`${td} text-center`}>精品卡</td>
-                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥150</td>
-                <td className={td}>考纲词汇等精品书,1 本</td>
+                <td className={`${td} text-center`}>单本卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥240</td>
+                <td className={`${td} text-center`}>30</td>
+                <td className={td}>任选 1 本课本,或考纲词汇等精品书</td>
+              </tr>
+              <tr className="font-semibold">
+                <td className={`${td} text-center`}>合计</td>
+                <td className={`${td} text-center text-[#FF6B35]`}>¥60,000</td>
+                <td className={`${td} text-center`}>260</td>
+                <td className={td}>每张卡兑换后有效半年</td>
               </tr>
           </tbody>
         </table>
         <p className="mt-1.5 text-[12px] leading-5 text-slate-600">
-          每张卡从学生兑换那天起有效半年;兑换码 5 年内有效,不用担心囤卡过期。
-          学段卡、全通卡有效期内,平台新上架的同范围课本自动开给学生。
+          发卡时勾哪几本,学生就开哪几本;兑换码 5 年内有效,不用担心囤卡过期。
+          平台上了新书不会自动加进已发出的卡,学生要学新书就再发一张。
         </p>
 
         <p className="mt-3 font-bold text-slate-900">分 3 期付,先拿卡先招生</p>
@@ -422,14 +434,15 @@ export default function FranchiseRecruitDoc() {
             </tr>
           </thead>
           <tbody>
-            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 100、单册卡 50、学段卡 50、全通卡 15;开通后台,安排带教培训</td></tr>
-            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>单册卡 60、学段卡 50、全通卡 16</td></tr>
-            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>单册卡 40、学段卡 50、全通卡 19</td></tr>
+            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 80、15本卡 12、5本卡 20、小学2本卡 17、单本卡 10;开通后台,安排带教培训</td></tr>
+            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 14、5本卡 20、小学2本卡 17、单本卡 10</td></tr>
+            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 14、5本卡 20、小学2本卡 16、单本卡 10</td></tr>
           </tbody>
         </table>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
           <li>卡卖得快可以<strong>提前付</strong>下一期,到账当天开卡。</li>
-          <li><strong>一次付清 3 期送 10 张全通卡</strong>;付完第 1 期后一次结清剩余两期,送 5 张。</li>
+          <li>每期付 ¥20,000;按进货价算三期卡值是 ¥20,040 / ¥20,040 / ¥19,920,合计正好 6 万,不用找补。</li>
+          <li><strong>一次付清 3 期送 10 张 5本卡</strong>;付完第 1 期后一次结清剩余两期,送 5 张。</li>
           <li>3 期付完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
         </ul>
 
@@ -441,8 +454,7 @@ export default function FranchiseRecruitDoc() {
         </ul>
 
         <p className="mt-3">
-          <strong>终端收费由你自己定</strong>。按常见零售价测算(单册卡 ¥150、学段卡 ¥500、全通卡 ¥800),
-          第 1 期的正式卡全部售出约对应 4.5 万元流水,高于当期投入;入门卡可以免费送,用来招生。
+          <strong>终端收费由你自己定</strong>,平台不干涉。入门卡进货价 ¥15,可以免费送给来试听的孩子,用来招生。
         </p>
         <p className="mt-2">
           <strong>直营校区定价参考</strong>:每阶段 120 课时,学费 ¥11,880(第 1 阶段另收资料费 ¥280);

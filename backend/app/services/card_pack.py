@@ -3,15 +3,17 @@
 只管 organizations.card_plan == 'pack' 的机构。老机构(legacy)的发码/额度
 一行不碰,仍走 org_service.card_quota_status。
 
-## 卡种
+## 卡种(2026-10-09 用户定价,替换 10-08 的单册/学段/全通/精品四种)
 
-| 卡种 | 开什么书                                 | 时长            |
-|------|------------------------------------------|-----------------|
-| 入门卡 trial   | 全部「体验」档平台书                 | 兑换后 180 天 |
-| 单册卡 single  | 发码时选 1 本「基础」档平台书        | 同上          |
-| 学段卡 stage   | 一个版本 × 一个学段的全部「基础」档书 | 同上          |
-| 全通卡 full    | 一个版本小初高全部「基础」档书       | 同上          |
-| 精品卡 premium | 发码时选 1 本「精品」档平台书        | 同上          |
+| 卡种 | 单价 | 标准包张数 | 开什么书(发码时机构管理员勾选) |
+|------|------|-----------|---------------------------------|
+| 入门卡 trial  | ¥15  | 80  | 全部「体验」档平台书(不用选)   |
+| 15本卡 b15    | ¥600 | 40  | 任选 15 本「基础」档平台书       |
+| 5本卡 b5      | ¥360 | 60  | 任选 5 本「基础」档平台书        |
+| 小学2本卡 p2  | ¥120 | 50  | 任选 2 本小学「基础」档平台书    |
+| 单本卡 b1     | ¥240 | 30  | 任选 1 本「基础」或「精品」档书  |
+
+合计 80×15 + 40×600 + 60×360 + 50×120 + 30×240 = 60,000。每张卡兑换后 180 天,
 
 兑换码本身 5 年内有效(没兑换就不开始计时)。
 
@@ -21,9 +23,9 @@
    不该占卡额度;也不能让 A 机构的卡开出 B 机构的书。
 2. **档位 NULL = 不进任何卡**。新书默认不进卡包,平台定档后才进 ——
    默认成「基础」会让考纲书/校本书在定档前就被学段卡白送出去。
-3. **学段卡 / 全通卡按规则开书,不按快照**: 兑换那一刻重新按规则取书
-   (码可能在柜子里放了两年),兑换后同范围新上架的基础书由 sync_book 补给
-   有效期内的学生(用户 2026-10-08 拍板)。单册/精品卡永远只是那一本。
+3. **N 本卡就是发码时勾的那 N 本**,不随新书变化;入门卡兑换时按规则重新取体验档书。
+   (10-08 的学段卡/全通卡「新书自动补给」随卡种一起下线;sync_book / PackCardGrant
+   留着不删 —— 没有卡种再写 grant,它们是空转,删表反而要迁移)
 """
 from __future__ import annotations
 
@@ -54,44 +56,56 @@ TIERS = {
     "school": "校本(不进卡包)",
 }
 
-# pick: 发码时要选什么 —— none=不用选 / book=选一本 / series_stage=版本+学段 / series=版本
+# pick: none=不用选(入门卡) / books=发码时勾 n 本。
+# tiers: 能勾哪些档位的书;stage: 只能勾这个学段(None=不限)
 CARD_KINDS: dict[str, dict] = {
-    "trial":   {"label": "入门卡", "price": 10,  "tier": "trial",   "pick": "none",
-                "covers": "全部体验课(目前是入门课)"},
-    "single":  {"label": "单册卡", "price": 60,  "tier": "basic",   "pick": "book",
-                "covers": "选定的 1 本课本"},
-    "stage":   {"label": "学段卡", "price": 200, "tier": "basic",   "pick": "series_stage",
-                "covers": "一个版本一个学段的全部课本(如 人教版·小学)"},
-    "full":    {"label": "全通卡", "price": 400, "tier": "basic",   "pick": "series",
-                "covers": "一个版本小学到高中的全部课本"},
-    "premium": {"label": "精品卡", "price": 150, "tier": "premium", "pick": "book",
-                "covers": "选定的 1 本精品书(考纲词汇等)"},
+    "trial": {"label": "入门卡", "price": 15, "pick": "none", "n": 0,
+              "tiers": ("trial",), "stage": None, "covers": "全部体验课(目前是入门课)"},
+    "b15":   {"label": "15本卡", "price": 600, "pick": "books", "n": 15,
+              "tiers": ("basic",), "stage": None, "covers": "任选 15 本课本"},
+    "b5":    {"label": "5本卡", "price": 360, "pick": "books", "n": 5,
+              "tiers": ("basic",), "stage": None, "covers": "任选 5 本课本"},
+    "p2":    {"label": "小学2本卡", "price": 120, "pick": "books", "n": 2,
+              "tiers": ("basic",), "stage": "primary", "covers": "任选 2 本小学课本"},
+    "b1":    {"label": "单本卡", "price": 240, "pick": "books", "n": 1,
+              "tiers": ("basic", "premium"), "stage": None,
+              "covers": "任选 1 本课本或精品书(考纲词汇等)"},
 }
-KIND_ORDER = ["trial", "single", "stage", "full", "premium"]
+KIND_ORDER = ["trial", "b15", "b5", "p2", "b1"]
 
-# 标准包 6 万 = 3 期 × 2 万(2026-10-08 用户定「最多三期」)。每期开的卡按单价算正好值 2 万,
-# 机构不欠卡、平台不垫卡;三期合计 入门 100 / 单册 150 / 学段 150 / 全通 50
+# 标准包 6 万,3 期每期收 2 万(2026-10-08 用户定「最多三期」)。
+# 单价都是 120 的倍数,每期卡值凑不出正好 2 万: 拆成 20,040 / 20,040 / 19,920,三期合计正好 6 万,
+# 机构每期照样付 2 万(差额 ±120,第 3 期补平)。入门卡全放第 1 期 —— 签约就能招生
 PACK_PRICE = 60000
+INSTALLMENT_PRICE = 20000
 INSTALLMENTS: dict[int, dict[str, int]] = {
-    1: {"trial": 100, "single": 50, "stage": 50, "full": 15},
-    2: {"single": 60, "stage": 50, "full": 16},
-    3: {"single": 40, "stage": 50, "full": 19},
+    1: {"trial": 80, "b15": 12, "b5": 20, "p2": 17, "b1": 10},
+    2: {"b15": 14, "b5": 20, "p2": 17, "b1": 10},
+    3: {"b15": 14, "b5": 20, "p2": 16, "b1": 10},
 }
+PACK_TOTALS = {"trial": 80, "b15": 40, "b5": 60, "p2": 50, "b1": 30}
 INSTALLMENT_MONTHS = 3          # 每 3 个月一期(签约时付第 1 期)
-BONUS_FULL_PAY = 10             # 一次付清 3 期: 送 10 张全通卡
-BONUS_EARLY_SETTLE = 5          # 剩 2 期及以上一次结清: 送 5 张全通卡
-RESTOCK_MIN = 20                # 补货每档 20 张起(提示用,不硬拦: 平台可能赠零头)
+# 一次结清赠送(10-09 原全通卡已下线,改送 5本卡;10 张 5本卡 ¥3,600 ≈ 原 10 张全通卡 ¥4,000)
+BONUS_KIND = "b5"
+BONUS_FULL_PAY = 10             # 一次付清 3 期
+BONUS_EARLY_SETTLE = 5          # 付完第 1 期后结清剩余两期
+RESTOCK_MIN = 20                # 补货每种 20 张起(提示用,不硬拦: 平台可能赠零头)
 
 PACKABLE_KINDS = set(CARD_KINDS)
 
 
 def installment_value(no: int) -> int:
+    """这一期开的卡按单价合计(¥20,040 / 20,040 / 19,920),机构实付是 INSTALLMENT_PRICE"""
     return sum(CARD_KINDS[k]["price"] * n for k, n in INSTALLMENTS[no].items())
 
 
-# 自检: 每期都必须正好 1.5 万,四期合计 6 万。改单价/张数时这里会在启动时炸出来
-assert all(installment_value(n) == PACK_PRICE // len(INSTALLMENTS) for n in INSTALLMENTS), \
-    "每期开的卡按单价合计必须正好等于 标准包 / 期数"
+# 自检(启动时跑): 三期张数合计 = 标准包张数,卡值合计 = 6 万,每期卡值离 2 万不超过 ¥120
+assert {k: sum(c.get(k, 0) for c in INSTALLMENTS.values()) for k in KIND_ORDER} == PACK_TOTALS, \
+    "三期张数合计必须等于标准包张数"
+assert sum(CARD_KINDS[k]["price"] * n for k, n in PACK_TOTALS.items()) == PACK_PRICE, \
+    "标准包张数 × 单价 必须正好 6 万"
+assert INSTALLMENT_PRICE * len(INSTALLMENTS) == PACK_PRICE
+assert all(abs(installment_value(n) - INSTALLMENT_PRICE) <= 120 for n in INSTALLMENTS)
 
 
 def catalog() -> dict:
@@ -102,11 +116,14 @@ def catalog() -> dict:
         "kinds": [{"kind": k, **CARD_KINDS[k]} for k in KIND_ORDER],
         "tiers": TIERS,
         "pack_price": PACK_PRICE,
+        "pack_totals": PACK_TOTALS,
+        # value = 机构这一期要付的钱(都是 2 万);card_value = 这一期开的卡按单价合计
         "installments": [
-            {"no": n, "cards": INSTALLMENTS[n], "value": installment_value(n),
-             "due_month": (n - 1) * INSTALLMENT_MONTHS}
+            {"no": n, "cards": INSTALLMENTS[n], "value": INSTALLMENT_PRICE,
+             "card_value": installment_value(n), "due_month": (n - 1) * INSTALLMENT_MONTHS}
             for n in INSTALLMENTS
         ],
+        "bonus_kind": BONUS_KIND,
         "bonus_full_pay": BONUS_FULL_PAY,
         "bonus_early_settle": BONUS_EARLY_SETTLE,
         "restock_min": RESTOCK_MIN,
@@ -143,35 +160,40 @@ def _platform(tier: str):
 
 
 async def resolve_books(
-    db: AsyncSession, kind: str,
-    book_id: Optional[int] = None, series: Optional[str] = None, stage: Optional[str] = None,
+    db: AsyncSession, kind: str, book_ids: Optional[list[int]] = None,
 ) -> list[tuple[int, str]]:
-    """某卡种 + 选择 → 这张卡开哪些书 [(id, name)]。选不出书抛 400(带能照着改的说明)。"""
+    """某卡种 + 勾的书 → 这张卡开哪些书 [(id, name)]。不合规抛 400(带能照着改的说明)。
+
+    入门卡不用选,按规则取全部体验档书;N 本卡必须正好勾 N 本、且每本都在该卡允许的范围里。
+    """
     spec = CARD_KINDS.get(kind)
     if spec is None:
         raise HTTPException(400, f"不认识的卡种: {kind}")
-    q = select(WordBook.id, WordBook.name).where(_platform(spec["tier"]))
-    pick = spec["pick"]
-    if pick == "book":
-        if not book_id:
-            raise HTTPException(400, f"{spec['label']}要选一本书")
-        q = q.where(WordBook.id == book_id)
-    elif pick in ("series", "series_stage"):
-        if not series:
-            raise HTTPException(400, f"{spec['label']}要选教材版本")
-        q = q.where(WordBook.series == series)
-        if pick == "series_stage":
-            if not stage:
-                raise HTTPException(400, "学段卡要选学段")
-            q = q.where(WordBook.stage_id.in_(await _stage_ids(db, stage)))
-    rows = (await db.execute(
-        q.order_by(WordBook.stage_id, WordBook.id).execution_options(skip_tenant_filter=True)
-    )).all()
-    if not rows:
-        if pick == "book":
-            raise HTTPException(400, f"这本书不能发{spec['label']}(不是平台的{TIERS[spec['tier']]}档书)")
-        raise HTTPException(400, f"这个范围里还没有可以开的书,发不了{spec['label']}")
-    return [(r.id, r.name) for r in rows]
+    if spec["pick"] == "none":
+        rows = (await db.execute(
+            select(WordBook.id, WordBook.name)
+            .where(WordBook.org_id.is_(None), WordBook.pack_tier.in_(spec["tiers"]))
+            .order_by(WordBook.id).execution_options(skip_tenant_filter=True)
+        )).all()
+        if not rows:
+            raise HTTPException(400, f"平台还没有可以开的体验课,发不了{spec['label']}")
+        return [(r.id, r.name) for r in rows]
+
+    ids = list(dict.fromkeys(b for b in (book_ids or []) if b))
+    n = spec["n"]
+    if len(ids) != n:
+        raise HTTPException(400, f"{spec['label']}要正好选 {n} 本书,现在选了 {len(ids)} 本")
+    q = (select(WordBook.id, WordBook.name)
+         .where(WordBook.id.in_(ids), WordBook.org_id.is_(None),
+                WordBook.pack_tier.in_(spec["tiers"])))
+    if spec["stage"]:
+        q = q.where(WordBook.stage_id.in_(await _stage_ids(db, spec["stage"])))
+    rows = {r.id: r.name for r in (await db.execute(
+        q.execution_options(skip_tenant_filter=True))).all()}
+    bad = [b for b in ids if b not in rows]
+    if bad:
+        raise HTTPException(400, f"有 {len(bad)} 本书不能放进{spec['label']}({spec['covers']}),请重新选")
+    return [(b, rows[b]) for b in ids]
 
 
 async def options(db: AsyncSession) -> dict:
@@ -210,6 +232,7 @@ async def options(db: AsyncSession) -> dict:
 
     def books(tier):
         return [{"id": r.id, "name": r.name, "series": r.series,
+                 "stage": key_of.get(r.stage_id, ""),
                  "stage_label": name_of.get(key_of.get(r.stage_id), "")}
                 for r in rows if r.pack_tier == tier]
 
@@ -261,7 +284,7 @@ async def check_quota(db: AsyncSession, org_id: int, kind: str, count: int) -> N
         label = row["label"]
         raise HTTPException(403, (
             f"{label}额度不足: 已发 {row['used']}/{row['quota']} 张,剩 {row['left']} 张,"
-            f"本次要发 {count} 张。请联系平台确认下一期到账或补货({label}每次 {RESTOCK_MIN} 张起);"
+            f"本次要发 {count} 张。请联系平台确认下一期到账或补货(每种 {RESTOCK_MIN} 张起);"
             "生成错的批次删掉后额度会退回来。"
         ))
 
@@ -295,7 +318,7 @@ async def record_payment(
         if action == "settle":
             # 一次付清全部 3 期送 10 张;付过第 1 期后结清剩余 2 期送 5 张;只剩最后一期不送
             bonus = BONUS_FULL_PAY if not paid else (BONUS_EARLY_SETTLE if len(remaining) >= 2 else 0)
-            add("full", bonus, "bonus", 0, f"一次结清赠送(结清第 {todo[0]}–{todo[-1]} 期)")
+            add(BONUS_KIND, bonus, "bonus", 0, f"一次结清赠送(结清第 {todo[0]}–{todo[-1]} 期)")
     elif action == "restock":
         for kind, n in (restock or {}).items():
             if kind not in PACKABLE_KINDS:

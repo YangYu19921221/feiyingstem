@@ -135,7 +135,7 @@ function ContractDoc() {
           服务期内甲方新增的内容与功能升级,乙方免费同步享有。飞鹰英语专属内容除外,见本条第 3 款。
         </p>
         <p>
-          2. 本协议标准包含 <strong>450 张学生学习卡</strong>,分入门卡、单册卡、学段卡、全通卡四种
+          2. 本协议标准包含 <strong>260 张学生学习卡</strong>,分入门卡、15本卡、5本卡、小学2本卡、单本卡五种
           (各卡开放范围见第三条),每张卡有效期 <strong>半年(180 天)</strong>,
           自该卡兑换激活之日起算;兑换码自生成之日起 <strong>5 年</strong>内可兑换。
           教师账号与机构管理账号不另行收费,数量以乙方正常教学使用为限。
@@ -150,25 +150,28 @@ function ContractDoc() {
       <Clause no="三" title="合作费用与结算">
         <p>
           1. 标准包:人民币 <strong>60,000 元</strong>(大写:<strong>陆万元整</strong>),
-          包含 450 张学生学习卡与飞鹰英语带教培训(见本条第 6 款),不另收加盟费、培训费。
-          四种卡的单价与开放范围如下:
-          入门卡 <strong>10 元</strong>(体验课程);单册卡 <strong>60 元</strong>(乙方发卡时选定的一本教材同步书);
-          学段卡 <strong>200 元</strong>(同一教材版本、同一学段的全部同步书);
-          全通卡 <strong>400 元</strong>(同一教材版本小学至高中的全部同步书)。
-          学段卡、全通卡有效期内,甲方新增的同版本、同范围同步书,持卡学员同步享有。
+          包含 260 张学生学习卡与飞鹰英语带教培训(见本条第 6 款),不另收加盟费、培训费。
+          各卡的单价、标准包张数与开放范围如下(开放的书由乙方发卡时选定):
+          入门卡 <strong>15 元</strong> × 80 张(体验课程);
+          15本卡 <strong>600 元</strong> × 40 张(任选 15 本教材同步书);
+          5本卡 <strong>360 元</strong> × 60 张(任选 5 本教材同步书);
+          小学2本卡 <strong>120 元</strong> × 50 张(任选 2 本小学教材同步书);
+          单本卡 <strong>240 元</strong> × 30 张(任选 1 本教材同步书或精品书)。
+          合计 60,000 元。每张卡开放乙方发卡时选定的书,甲方此后新增的书不自动加入已发出的卡。
         </p>
         <p>
           2. 分期付款:标准包分 <strong>3 期</strong>支付,每期人民币 <strong>20,000 元</strong>。
-          第 1 期于本协议签订时支付,开通入门卡 100 张、单册卡 50 张、学段卡 50 张、全通卡 15 张;
-          第 2 期于签约后第 3 个月内支付,开通单册卡 60 张、学段卡 50 张、全通卡 16 张;
-          第 3 期于签约后第 6 个月内支付,开通单册卡 40 张、学段卡 50 张、全通卡 19 张。
+          第 1 期于本协议签订时支付,开通入门卡 80 张、15本卡 12 张、5本卡 20 张、小学2本卡 17 张、单本卡 10 张;
+          第 2 期于签约后第 3 个月内支付,开通 15本卡 14 张、5本卡 20 张、小学2本卡 17 张、单本卡 10 张;
+          第 3 期于签约后第 6 个月内支付,开通 15本卡 14 张、5本卡 20 张、小学2本卡 16 张、单本卡 10 张。
+          各期开通的学习卡按单价计分别为 20,040 元、20,040 元、19,920 元,三期合计 60,000 元,
+          乙方每期均按 20,000 元支付,不另行找补。
           乙方可提前支付后续各期,甲方收到款项后开通该期学习卡。
-          乙方一次付清 3 期的,甲方另赠全通卡 <strong>10 张</strong>;
-          已付第 1 期后一次结清剩余两期的,另赠全通卡 <strong>5 张</strong>。
+          乙方一次付清 3 期的,甲方另赠 5本卡 <strong>10 张</strong>;
+          已付第 1 期后一次结清剩余两期的,另赠 5本卡 <strong>5 张</strong>。
         </p>
         <p>
-          3. 补货:3 期付清后乙方需要更多学习卡的,按前述单价购买,每种 <strong>20 张起</strong>;
-          精品卡(考纲词汇等精品书)单价 <strong>150 元</strong>,仅通过补货购买。
+          3. 补货:3 期付清后乙方需要更多学习卡的,按前述单价购买,每种 <strong>20 张起</strong>。
           <strong>补货无需另行签订合同</strong>,由乙方书面(含微信、邮件等可留痕方式)告知甲方所需种类与数量,
           甲方收到款项后为乙方开通,该次补货记录即视为本协议附件,适用本协议全部条款。
         </p>
@@ -213,17 +216,17 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">标准包</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥60,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">450 张学生学习卡(每张半年)+ 带教培训,分 3 期每期 ¥20,000;一次付清另赠全通卡 10 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">260 张学生学习卡(每张半年)+ 带教培训,分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">学习卡单价</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥10 / ¥60 / ¥200 / ¥400</td>
-              <td className="border border-slate-500 px-2 py-1.5">入门卡 / 单册卡 / 学段卡 / 全通卡;兑换后半年有效,兑换码 5 年有效</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥15 / ¥600 / ¥360 / ¥120 / ¥240</td>
+              <td className="border border-slate-500 px-2 py-1.5">入门卡 / 15本卡 / 5本卡 / 小学2本卡 / 单本卡;兑换后半年有效,兑换码 5 年有效</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">补货</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">每种 20 张起</td>
-              <td className="border border-slate-500 px-2 py-1.5">3 期付清后按单价补货;精品卡 ¥150 / 张;无需另签合同</td>
+              <td className="border border-slate-500 px-2 py-1.5">3 期付清后按单价补货;无需另签合同</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
@@ -268,7 +271,7 @@ function ContractDoc() {
           1. 自<strong>第二个协议年度起</strong>,乙方每一协议年度应向甲方续购学生学习卡
           <strong>不少于 50 张</strong>,单价及办理方式见第三条第 3 款
           (一次续购 50 张即满足本款,无需分次购买)。首个协议年度的标准包已含
-          450 张学习卡,<strong>视为已达标</strong>,无需另行续购。
+          260 张学习卡,<strong>视为已达标</strong>,无需另行续购。
           <span className="rounded bg-amber-50 px-1 text-[13px] text-amber-900">
             【待确认】新卡包政策下年度续购量是否仍按 50 张计,或改为年度补货金额不少于<Blank w="4rem" />元。
           </span>
@@ -565,7 +568,7 @@ function PitchDoc() {
         <div className="mt-1 grid grid-cols-3 gap-2 text-center">
           {[
             ['¥60,000', '标准包,分 3 期每期 ¥20,000'],
-            ['450 张', '学生学习卡,每张半年'],
+            ['260 张', '学生学习卡,每张半年'],
             ['含培训', '老师带教培训包含在内'],
           ].map(([big, small]) => (
             <div key={small} className="rounded-lg border border-orange-200 bg-[#FFF8F0] px-2 py-2.5">
@@ -575,9 +578,9 @@ function PitchDoc() {
           ))}
         </div>
         <p className="mt-3">
-          标准包 6 万元包含 450 张学生学习卡(入门卡 / 单册卡 / 学段卡 / 全通卡)、机构独立后台、
+          标准包 6 万元包含 260 张学生学习卡(入门卡 / 15本卡 / 5本卡 / 小学2本卡 / 单本卡)、机构独立后台、
           <strong>老师带教培训</strong>与服务期内系统升级,不另收加盟费、培训费。签约付第 1 期即开通,
-          第 3、6 个月各付一期;一次付清送 10 张全通卡。
+          第 3、6 个月各付一期;一次付清送 10 张 5本卡。
         </p>
         <p className="mt-2">
           卡种、进货价、每期开多少卡、补货和投入产出测算,详见<strong>《招商手册》第六章「合作方案」</strong>;

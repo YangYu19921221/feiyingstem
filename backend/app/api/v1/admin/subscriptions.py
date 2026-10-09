@@ -691,10 +691,7 @@ async def pack_generate(
             raise HTTPException(403, "本机构是原合作政策,请用下方「生成兑换码」")
         await card_pack.check_quota(db, current_user.org_id, req.card_kind, req.count)
 
-    books = await card_pack.resolve_books(
-        db, req.card_kind, book_id=req.book_id, series=req.series, stage=req.stage)
-    spec = card_pack.CARD_KINDS[req.card_kind]
-    pick = spec["pick"]
+    books = await card_pack.resolve_books(db, req.card_kind, book_ids=req.book_ids)
     codes = await subscription_service.batch_generate_codes(
         db=db,
         admin_id=current_user.id,
@@ -704,12 +701,10 @@ async def pack_generate(
         code_valid_days=card_pack.CODE_VALID_DAYS,
         grant_type="period",
         grant_days=card_pack.CARD_DAYS,
-        scope_series=req.series if pick in ("series", "series_stage") else None,
-        scope_stage=req.stage if pick == "series_stage" else None,
         card_kind=req.card_kind,
     )
     names = dict(books)
-    payload = [{"id": b, "name": n} for b, n in books[:8]]
+    payload = [{"id": b, "name": n} for b, n in books[:20]]
     return [
         {
             "id": c.id, "code": c.code, "book_id": c.book_id,

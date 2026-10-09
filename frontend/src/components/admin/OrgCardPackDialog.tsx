@@ -44,7 +44,7 @@ export default function OrgCardPackDialog({ orgId, onClose }: { orgId: number; o
       msg = `确认「${data.org_name}」第 ${next} 期 ¥${ins.value.toLocaleString()} 已到账?\n将开通: ${describe(ins.cards)}`;
     } else if (action === 'settle') {
       msg = `确认「${data.org_name}」一次结清剩余 ${remaining.length} 期,共 ¥${settleAmount.toLocaleString()} 已到账?` +
-        (settleBonus ? `\n另送 ${labelOf.full} ${settleBonus} 张。` : '');
+        (settleBonus ? `\n另送 ${labelOf[catalog.bonus_kind]} ${settleBonus} 张。` : '');
     } else {
       if (restockAmount === 0) { toast.warning('至少填一种卡的张数'); return; }
       msg = `确认「${data.org_name}」补货 ¥${restockAmount.toLocaleString()} 已到账?\n将开通: ${describe(restock)}`;
@@ -105,7 +105,7 @@ export default function OrgCardPackDialog({ orgId, onClose }: { orgId: number; o
             {remaining.length > 1 && (
               <button type="button" disabled={busy} onClick={() => pay('settle')}
                       className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40">
-                一次结清剩余 {remaining.length} 期 ¥{settleAmount.toLocaleString()}{settleBonus ? `(送 ${settleBonus} 张全通卡)` : ''}
+                一次结清剩余 {remaining.length} 期 ¥{settleAmount.toLocaleString()}{settleBonus ? `(送 ${settleBonus} 张${labelOf[catalog.bonus_kind]})` : ''}
               </button>
             )}
           </div>

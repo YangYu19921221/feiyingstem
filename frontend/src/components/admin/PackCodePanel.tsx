@@ -1,6 +1,7 @@
 /**
- * 新政策机构「按卡种发码」(2026-10-08)。
- * 只让选卡种 + 范围,开哪些书由后端按规则定 —— 这里不给勾书,勾书就是绕开定价。
+ * 新政策机构「按卡种发码」。
+ * 10-09 起卡种是「N 本卡」: 选卡种 → 勾正好 N 本书。能勾哪些书由卡种决定
+ * (小学2本卡只列小学书、只有单本卡能勾精品书),后端再校验一遍,前端过滤只是方便。
  */
 import { useMemo, useState } from 'react';
 import { BookOpen } from 'lucide-react';
@@ -14,10 +15,9 @@ interface Generated { id: number; code: string }
 
 export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIssued: () => void }) {
   const { catalog, options, status } = info;
-  const [kind, setKind] = useState<CardKind>('stage');
-  const [series, setSeries] = useState(options.series[0]?.series ?? '');
-  const [stage, setStage] = useState('');
-  const [bookId, setBookId] = useState<number | ''>('');
+  const [kind, setKind] = useState<CardKind>('b5');
+  const [picked, setPicked] = useState<number[]>([]);
+  const [kw, setKw] = useState('');
   const [count, setCount] = useState(10);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -26,24 +26,38 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
 
   const spec = catalog.kinds.find(k => k.kind === kind)!;
   const row = status?.kinds.find(k => k.kind === kind);
-  const seriesRow = options.series.find(s => s.series === series);
-  const bookList = kind === 'premium' ? options.premium_books : options.basic_books;
+  // 这种卡能勾的书: 按档位 + 学段过滤,按学段分组显示
+  const bookList = useMemo(() => {
+    const pool = [
+      ...(spec.tiers.includes('basic') ? options.basic_books : []),
+      ...(spec.tiers.includes('premium') ? options.premium_books.map(b => ({ ...b, stage_label: '精品书' })) : []),
+    ];
+    return pool.filter(b => !spec.stage || b.stage === spec.stage);
+  }, [spec, options]);
+  const groups = useMemo(() => {
+    const k = kw.trim();
+    const m = new Map<string, typeof bookList>();
+    for (const b of bookList) {
+      if (k && !b.name.includes(k)) continue;
+      const g = b.stage_label || '其他';
+      m.set(g, [...(m.get(g) ?? []), b]);
+    }
+    return [...m.entries()];
+  }, [bookList, kw]);
+  const nameOf = useMemo(() => new Map(bookList.map(b => [b.id, b.name])), [bookList]);
 
-  // 这张卡会开几本: 让老师发之前就看到,别发完才发现范围选错
-  const preview = useMemo(() => {
-    if (spec.pick === 'none') return `${options.trial_books.length} 本(${options.trial_books.map(b => b.name).join('、') || '无'})`;
-    if (spec.pick === 'book') return bookId ? '1 本' : '';
-    if (!seriesRow) return '';
-    if (spec.pick === 'series') return `${seriesRow.total} 本`;
-    const st = seriesRow.stages.find(s => s.stage === stage);
-    return st ? `${st.count} 本` : '';
-  }, [spec, options, bookId, seriesRow, stage]);
+  const toggle = (id: number) => setPicked(p => p.includes(id) ? p.filter(x => x !== id)
+    : spec.n === 1 ? [id] : p.length >= spec.n ? p : [...p, id]);
 
-  const ready = spec.pick === 'none' || (spec.pick === 'book' ? !!bookId :
-    spec.pick === 'series' ? !!series : !!series && !!stage);
+  // 这张卡会开哪些书: 发之前就让人看到,别发完才发现选错
+  const preview = spec.pick === 'none'
+    ? `${options.trial_books.length} 本(${options.trial_books.map(b => b.name).join('、') || '无'})`
+    : picked.length === spec.n ? picked.map(id => nameOf.get(id)).join('、') : '';
+
+  const ready = spec.pick === 'none' || picked.length === spec.n;
 
   const submit = async () => {
-    if (!ready) { toast.warning('请先选好范围'); return; }
+    if (!ready) { toast.warning(`${spec.label}要正好选 ${spec.n} 本书,现在选了 ${picked.length} 本`); return; }
     if (row && count > row.left) {
       toast.warning(row.left === 0
         ? `${spec.label}额度已用完,请联系平台确认下一期到账或补货`
@@ -54,9 +68,7 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
     try {
       const res = (await cardPackApi.generate({
         card_kind: kind, count,
-        ...(spec.pick === 'book' ? { book_id: Number(bookId) } : {}),
-        ...(spec.pick === 'series' || spec.pick === 'series_stage' ? { series } : {}),
-        ...(spec.pick === 'series_stage' ? { stage } : {}),
+        ...(spec.pick === 'books' ? { book_ids: picked } : {}),
         batch_note: note || undefined,
       })) as unknown as Generated[];
       setResult(res);
@@ -128,9 +140,9 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
             const on = k.kind === kind;
             return (
               <button key={k.kind} type="button" role="radio" aria-checked={on}
-                      onClick={() => { setKind(k.kind); setBookId(''); setResult([]); }}
+                      onClick={() => { setKind(k.kind); setPicked([]); setResult([]); }}
                       className={`rounded-xl border px-3 py-2 text-left transition ${on ? 'border-[#3976a9] bg-[#3976a9]/10' : 'border-slate-200 hover:border-slate-300'}`}>
-                <div className="font-semibold text-slate-800">{k.label}</div>
+                <div className="font-semibold text-slate-800">{k.label}<span className="ml-1 text-xs font-normal text-slate-400">¥{k.price}</span></div>
                 <div className="text-[11px] leading-4 text-slate-500">{k.covers}</div>
                 <div className={`mt-1 text-[11px] ${left === 0 ? 'text-red-600' : 'text-slate-400'}`}>剩 {left} 张</div>
               </button>
@@ -138,34 +150,42 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
           })}
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          {(spec.pick === 'series' || spec.pick === 'series_stage') && (
-            <label className="block text-sm text-gray-600">教材版本
-              <select className={`${input} mt-1`} value={series} onChange={e => { setSeries(e.target.value); setStage(''); }}>
-                {options.series.length === 0 && <option value="">(还没有可开的版本)</option>}
-                {options.series.map(s => <option key={s.series} value={s.series}>{s.series}(共 {s.total} 本)</option>)}
-              </select>
-            </label>
-          )}
-          {spec.pick === 'series_stage' && (
-            <label className="block text-sm text-gray-600">学段
-              <select className={`${input} mt-1`} value={stage} onChange={e => setStage(e.target.value)}>
-                <option value="">请选择</option>
-                {seriesRow?.stages.map(s => <option key={s.stage} value={s.stage}>{s.label}({s.count} 本)</option>)}
-              </select>
-            </label>
-          )}
-          {spec.pick === 'book' && (
-            <label className="block text-sm text-gray-600 sm:col-span-2">选书
-              <select className={`${input} mt-1`} value={bookId} onChange={e => setBookId(e.target.value ? Number(e.target.value) : '')}>
-                <option value="">请选择</option>
-                {bookList.map(b => (
-                  <option key={b.id} value={b.id}>{[b.series, b.stage_label].filter(Boolean).join(' · ')}{b.series || b.stage_label ? ' · ' : ''}{b.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
+        {spec.pick === 'books' && (
+          <fieldset className="mb-4 rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-sm text-gray-600">
+              选书:<strong className={picked.length === spec.n ? 'text-emerald-700' : 'text-slate-800'}>已选 {picked.length} / {spec.n} 本</strong>
+              {spec.stage && <span className="ml-1 text-xs text-slate-400">(只能选小学课本)</span>}
+            </legend>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <input value={kw} onChange={e => setKw(e.target.value)} placeholder="搜书名,如「七年级」"
+                     aria-label="搜书名" className={`${input} max-w-xs py-1.5 text-sm`} />
+              {picked.length > 0 && (
+                <button type="button" onClick={() => setPicked([])} className="text-xs text-slate-500 underline">清空</button>
+              )}
+            </div>
+            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+              {groups.length === 0 && <p className="text-sm text-slate-400">没有可选的书</p>}
+              {groups.map(([g, list]) => (
+                <div key={g}>
+                  <div className="mb-1 text-xs font-semibold text-slate-500">{g}</div>
+                  <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {list.map(b => {
+                      const on = picked.includes(b.id);
+                      const full = !on && spec.n > 1 && picked.length >= spec.n;
+                      return (
+                        <label key={b.id} className={`flex items-center gap-2 rounded-lg px-2 py-1 text-sm ${on ? 'bg-[#3976a9]/10 text-slate-900' : full ? 'text-slate-300' : 'text-slate-700 hover:bg-slate-50'}`}>
+                          <input type={spec.n === 1 ? 'radio' : 'checkbox'} name="pack-book" checked={on} disabled={full}
+                                 onChange={() => toggle(b.id)} />
+                          <span className="truncate">{b.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="block text-sm text-gray-600">数量
@@ -182,7 +202,7 @@ export default function PackCodePanel({ info, onIssued }: { info: PackInfo; onIs
             {busy ? '生成中…' : `生成 ${count} 张${spec.label}`}
           </button>
         </div>
-        {preview && <p className="mt-2 text-xs text-slate-500">每张开 {preview},学生兑换后 {catalog.card_days} 天有效。</p>}
+        {preview && <p className="mt-2 text-xs text-slate-500">每张开:{preview}。学生兑换后 {catalog.card_days} 天有效。</p>}
 
         {result.length > 0 && (
           <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
