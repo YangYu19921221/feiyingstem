@@ -70,14 +70,17 @@ const DOC_FILENAME: Record<DocKey, string> = {
 };
 
 /** 协议空栏:点击可直接输入,打印保留手填内容;留空则打印出下划线供手写 */
-const Blank = ({ w = '8rem' }: { w?: string }) => (
+/** 可手填空栏。传 children 就是预填的默认文字(如区域保护的「全境…」),签约时可直接改写 */
+const Blank = ({ w = '8rem', children }: { w?: string; children?: React.ReactNode }) => (
   <span
     contentEditable
     suppressContentEditableWarning
     spellCheck={false}
     className="mx-0.5 inline-block min-h-[1.5em] border-b border-slate-600 px-1 text-center align-baseline outline-none focus:bg-amber-50"
     style={{ minWidth: w }}
-  />
+  >
+    {children}
+  </span>
 );
 
 /**
@@ -248,7 +251,8 @@ function ContractDoc() {
 
       <Clause no="四" title="区域保护">
         <p>
-          1. 自本协议生效之日起,甲方在<strong><Blank w="4.5rem" />省<Blank w="4.5rem" />市<Blank w="4.5rem" />县(区)全境(含城区及下辖所有乡镇、街道)</strong>
+          {/* 范围那一栏预填「全境…」,只保护部分乡镇/街道时签约现场直接改写(用户 10-09 要求) */}
+          1. 自本协议生效之日起,甲方在<strong><Blank w="4.5rem" />省<Blank w="4.5rem" />市<Blank w="4.5rem" />县(区)<Blank w="14rem">全境(含城区及下辖所有乡镇、街道)</Blank></strong>
           (以下简称"保护区域")范围内,不再发展其他合作点,乙方在保护区域内享有本系统的独家推广运营权。
         </p>
         <p>
