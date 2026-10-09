@@ -52,8 +52,9 @@ class Organization(Base):
     # pack=新政策(按卡种分档进货、按期到账开额度,见 services/card_pack.py)。
     # 模型默认 legacy,只有「开通新机构」接口显式写 pack —— 体验机构等其它建行路径不受影响
     card_plan = Column(String(10), default="legacy", server_default="legacy", nullable=False)
-    # 飞鹰英语专属内容(合同第二条第 3 款,选配 ¥16,000): 平台「校本」档书(飞鹰语法等)。
-    # 只对新卡包机构生效 —— 没开通时这些书对该机构老师/学生不可用;老政策机构不看这一列(零影响)
+    # 飞鹰英语专属内容(合同第二条第 3 款,含在 6 万标准包内): 平台「校本」档书(飞鹰语法等)。
+    # 新卡包机构开通时默认 True;平台可手动关(如合作终止前收回)。关着时这些书对该机构老师/学生不可用;
+    # 老政策机构不看这一列(零影响)
     exclusive_content = Column(Boolean, default=False, server_default="0", nullable=False)
     # 区域保护(协议第四条): 经营场所地址与坐标 + 独家半径。
     # 坐标为空 = 未登记,不参与冲突判定也不受保护(存量机构默认如此,零影响)。

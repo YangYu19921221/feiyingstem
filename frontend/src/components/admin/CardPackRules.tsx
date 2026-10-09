@@ -62,7 +62,7 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
         <ul className="mt-1 list-disc space-y-0.5 pl-5">
           <li>卡开的就是发码时勾的那几本,<strong>平台上了新书不会自动加进旧卡</strong>。学生要学新书,再发一张卡。</li>
           <li>精品书(考纲词汇等)只能用{labelOf.b1}开。</li>
-          <li><strong>飞鹰语法等专属内容不进任何卡</strong>:机构选配开通后,老师直接分配给学生,不占学习卡;没开通的机构用不了。</li>
+          <li><strong>飞鹰语法、飞鹰单词速记法等专属内容不用卡</strong>:标准包已包含,老师直接分配给学生,不占学习卡。</li>
         </ul>
       </section>
 

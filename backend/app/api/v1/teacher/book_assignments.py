@@ -135,8 +135,7 @@ async def assign_book_to_students(
         if reason == card_pack.EXCLUSIVE_REQUIRED_MSG:
             raise HTTPException(
                 status_code=403,
-                detail="这本书属于飞鹰英语专属内容(选配),本机构还没有开通,不能分配。"
-                       "需要请联系平台开通;机构自建的书和入门课可以直接分配。",
+                detail="这本书属于飞鹰英语专属内容,本机构暂未开放,不能分配。请联系平台开通。",
             )
         if reason:
             raise HTTPException(

@@ -365,8 +365,9 @@ export default function FranchiseRecruitDoc() {
           ]}
         />
         <p className="mt-2.5">
-          <strong>6 万元包含</strong>:300 张学生学习卡、机构独立后台(教师 / 管理账号不限)、
-          <strong>老师带教培训</strong>、服务期内系统升级。不另收加盟费、培训费。
+          <strong>6 万元包含</strong>:300 张学生学习卡、机构独立后台(教师 / 管理账号不限、学生不限)、
+          <strong>飞鹰英语专属内容</strong>(飞鹰语法、飞鹰单词速记法等自研教材,不占学习卡)、
+          <strong>老师带教培训</strong>、服务期内系统升级。不另收加盟费、培训费、内容费。
         </p>
 
         <p className="mt-3 font-bold text-slate-900">学习卡:按本数发,发卡时你来选书</p>
@@ -446,9 +447,8 @@ export default function FranchiseRecruitDoc() {
           <li>3 期付完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
         </ul>
 
-        <p className="mt-3 font-bold text-slate-900">选配与另计</p>
+        <p className="mt-3 font-bold text-slate-900">另计</p>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
-          <li>飞鹰英语专属内容(飞鹰自研教材配套单词本、句型本与教学内容):选配,¥16,000。</li>
           <li>纸质配套教材:按供货清单明细计价,按需订购,运费另计。</li>
           <li>参加带教培训的交通、食宿由机构自理。</li>
         </ul>
@@ -471,7 +471,7 @@ export default function FranchiseRecruitDoc() {
           items={[
             { t: '独立机构后台', d: '签约即开通,你的学员数据独立隔离,统一使用飞鹰品牌名称和 Logo。' },
             { t: '区域保护', d: '签约所在县(区)全境独家,含县城和所有乡镇,县内不再发展第二家合作点,写进协议,不是口头承诺。' },
-            { t: '课程与内容', d: '小学到高中主流教材同步内容全开放;可选配飞鹰自研课程内容。' },
+            { t: '课程与内容', d: '小学到高中主流教材按学习卡开放;飞鹰语法、飞鹰单词速记法等自研内容包含在内,直接分配给学生。' },
             { t: '带教培训', d: '到飞鹰直营校区跟岗学习,看我们的老师怎么排课、怎么用系统带班。培训费已含在 6 万元标准包里。' },
             { t: '招生工具', d: 'AI 英语测评、招生链接、兑换码,开班前就能先做一轮测评活动。' },
             { t: '持续升级', d: '系统每月更新,新功能、新内容在服务期内免费同步。' },

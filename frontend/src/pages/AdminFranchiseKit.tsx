@@ -136,7 +136,7 @@ function ContractDoc() {
           <strong>凭学生学习卡开放</strong>,每张卡开放乙方发卡时选定的书(见第三条第 1 款);
           入门课、句型本、阅读理解及乙方自建的单词本不占用学习卡。
           服务期内甲方的功能升级,乙方免费同步享有;甲方新上架的单词本按其所属卡种纳入可选范围。
-          飞鹰英语专属内容除外,见本条第 3 款。
+          飞鹰英语专属内容见本条第 3 款。
         </p>
         <p>
           2. 本协议标准包含 <strong>300 张学生学习卡</strong>,分入门卡、15本卡、5本卡、小学2本卡、单本卡五种
@@ -144,20 +144,21 @@ function ContractDoc() {
           自该卡兑换激活之日起算;兑换码自生成之日起 <strong>5 年</strong>内可兑换。
           教师账号与机构管理账号不另行收费,数量以乙方正常教学使用为限;
           <strong>学生账号数量不限</strong>,学生可学的书以其兑换的学习卡为准。
-          标准包同时包含<strong>机构独立后台</strong>、第三条第 6 款约定的<strong>飞鹰英语带教培训</strong>
-          与服务期内的系统升级。
+          标准包同时包含<strong>机构独立后台</strong>、本条第 3 款的<strong>飞鹰英语专属内容</strong>、
+          第三条第 6 款约定的<strong>飞鹰英语带教培训</strong>与服务期内的系统升级。
         </p>
         <p>
           3. <strong>飞鹰英语专属内容</strong>(飞鹰自研教材配套单词本、句型本及配套教学内容,
-          含飞鹰语法、飞鹰单词速记法等)为选配项,不含在标准包与学习卡内;乙方选配后一并开放,费用见第三条第 4 款。
+          含飞鹰语法、飞鹰单词速记法等)<strong>包含在标准包内,不另收费</strong>,系统开通时一并开放;
+          专属内容不占用学生学习卡,由乙方老师直接分配给学生使用。
         </p>
       </Clause>
 
       <Clause no="三" title="合作费用与结算">
         <p>
           1. 标准包:人民币 <strong>60,000 元</strong>(大写:<strong>陆万元整</strong>),
-          包含 300 张学生学习卡、机构独立后台、飞鹰英语带教培训(见本条第 6 款)与服务期内的系统升级,
-          不另收加盟费、培训费。
+          包含 300 张学生学习卡、机构独立后台、飞鹰英语专属内容(见第二条第 3 款)、
+          飞鹰英语带教培训(见本条第 6 款)与服务期内的系统升级,不另收加盟费、培训费、内容费。
           各卡的单价(即乙方进货价)、标准包张数与开放范围如下(开放的书由乙方发卡时选定):
           入门卡 <strong>15 元</strong> × 80 张(全部体验课程,用于招生体验、试听);
           15本卡 <strong>600 元</strong> × 30 张(任选 15 本教材同步书);
@@ -189,8 +190,7 @@ function ContractDoc() {
           以及已付期次的退款处理,请甲方确认后补入本款。
         </p>
         <p>
-          4. 飞鹰英语专属内容:乙方选配的,另行支付人民币 <strong>16,000 元</strong>
-          (大写:<strong>壹万陆仟元整</strong>)。
+          4. 飞鹰英语专属内容:已包含在本条第 1 款标准包内,乙方<strong>不另行支付</strong>费用。
         </p>
         <p>
           5. 配套教材:纸质教材<strong>按甲方教材供货清单所列品种、规格与单价明细计算</strong>,
@@ -225,7 +225,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">标准包</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥60,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">300 张学生学习卡(每张半年)+ 机构独立后台 + 带教培训 + 系统升级,分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">300 张学生学习卡(每张半年)+ 机构独立后台 + 飞鹰专属内容 + 带教培训 + 系统升级,分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">学习卡单价</td>
@@ -239,8 +239,8 @@ function ContractDoc() {
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥16,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">选配项;开放飞鹰自研教材配套单词本、句型本及教学内容</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">含在标准包</td>
+              <td className="border border-slate-500 px-2 py-1.5">飞鹰语法、飞鹰单词速记法等自研内容,开通即用,不占学习卡,不另收费</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">配套教材</td>
@@ -588,7 +588,8 @@ function PitchDoc() {
         </div>
         <p className="mt-3">
           标准包 6 万元包含 300 张学生学习卡(入门卡 / 15本卡 / 5本卡 / 小学2本卡 / 单本卡)、机构独立后台、
-          <strong>老师带教培训</strong>与服务期内系统升级,不另收加盟费、培训费。签约付第 1 期即开通,
+          <strong>飞鹰英语专属内容</strong>(飞鹰语法、单词速记法等)、<strong>老师带教培训</strong>与服务期内系统升级,
+          不另收加盟费、培训费、内容费。签约付第 1 期即开通,
           第 3、6 个月各付一期;一次付清送 10 张 5本卡。
         </p>
         <p className="mt-2">

@@ -342,7 +342,8 @@ async def test_pack_org_created_with_unlimited_students(client, env):
                           headers=_hdr(env["admin"]))
     assert r.status_code == 200, r.text
     assert r.json()["card_plan"] == "pack" and r.json()["student_quota"] == 999999
-    assert r.json()["exclusive_content"] is False
+    # 飞鹰专属内容含在 6 万里: 新机构开通即开放
+    assert r.json()["exclusive_content"] is True
     # 老政策照旧按填的名额
     r = await client.post("/api/v1/admin/organizations",
                           json={"name": "老合同机构", "code": "OLDPK1", "student_quota": 100,
@@ -350,7 +351,8 @@ async def test_pack_org_created_with_unlimited_students(client, env):
     assert r.json()["student_quota"] == 100
 
 
-async def test_exclusive_content_locked_until_enabled(client, env, db_session):
+async def test_exclusive_content_locked_when_switched_off(client, env, db_session):
+    """env 里的新机构是直接建行的(没走开通接口),exclusive_content 为默认 False = 平台关掉的情形"""
     from app.models.word import Unit
     from app.services.scope_service import get_allowed_unit_ids
     fy = env["books"]["fy"]

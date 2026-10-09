@@ -437,11 +437,11 @@ async def sync_book(db: AsyncSession, book_id: int) -> int:
 # 老师分配的 book_assignments 行 grant_type 为 NULL,兑换码/新书补给写的行恒有值,
 # 所以「有效授权 = grant_type 非空且判活」。老政策机构一律不走这里。
 GATED_TIERS = ("basic", "premium")
-# 飞鹰专属内容(合同第二条第 3 款,选配 ¥16,000): 平台「校本」档书。新机构没开通 = 老师不能分配、
-# 学生不能学;开通后照老规矩(老师直接分配,不占卡)。老政策机构不受影响
+# 飞鹰专属内容(合同第二条第 3 款,含在 6 万标准包内,新机构开通即开放): 平台「校本」档书。
+# 平台手动关掉时 = 老师不能分配、学生不能学;开着时老师直接分配,不占卡。老政策机构不受影响
 EXCLUSIVE_TIER = "school"
 PACK_CARD_REQUIRED_MSG = "这本书要先兑换学习卡才能学,请找老师要兑换码"
-EXCLUSIVE_REQUIRED_MSG = "这本书属于飞鹰英语专属内容,本机构还没有开通,请联系机构管理员"
+EXCLUSIVE_REQUIRED_MSG = "这本书属于飞鹰英语专属内容,本机构暂未开放,请联系机构管理员"
 
 
 async def _pack_org(db: AsyncSession, org_id: Optional[int]) -> Optional[Organization]:

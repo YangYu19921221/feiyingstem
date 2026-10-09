@@ -274,6 +274,8 @@ async def create_organization(
         student_quota=UNLIMITED_STUDENTS if data.card_plan == "pack" else data.student_quota,
         card_quota=data.card_quota,
         card_plan=data.card_plan,
+        # 飞鹰专属内容含在 6 万标准包内(合同第二条第 3 款,用户 10-09 定),新卡包机构开通即开放
+        exclusive_content=data.card_plan == "pack",
         contact_name=data.contact_name, contact_phone=data.contact_phone,
         expires_at=data.expires_at, status="active",
         address=data.address, lat=data.lat, lng=data.lng,

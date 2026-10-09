@@ -631,11 +631,12 @@ export default function AdminOrganizations() {
     }
   };
 
-  /** 飞鹰英语专属内容开关(新卡包机构,合同第二条第 3 款选配 ¥16,000) */
+  /** 飞鹰英语专属内容开关(新卡包机构;合同第二条第 3 款: 含在 6 万标准包内,开通机构时默认打开)。
+   *  保留开关只为特殊情况(如合作终止前先收回),平时不用动 */
   const toggleExclusive = async (org: Organization) => {
     const next = !org.exclusive_content;
     const msg = next
-      ? `确认「${org.name}」已付飞鹰英语专属内容费用(¥16,000),开通飞鹰语法等专属内容?\n\n开通后该机构老师可以直接把这些书分配给学生,不占学习卡。`
+      ? `给「${org.name}」开通飞鹰英语专属内容(飞鹰语法、单词速记法等)?\n\n标准包已包含,不另收费。开通后该机构老师可以直接把这些书分配给学生,不占学习卡。`
       : `关闭「${org.name}」的飞鹰英语专属内容?\n\n该机构学生将立即无法再学飞鹰语法等专属内容(学习记录保留)。`;
     if (!window.confirm(msg)) return;
     try {
@@ -1183,7 +1184,7 @@ export default function AdminOrganizations() {
                           <button className="text-indigo-600 hover:underline" onClick={() => changePhoneticCodes(org)} title="给机构发放可生成的音标兑换码张数">音标码额度</button>
                           <button className="text-[#3976a9] hover:underline" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                           {org.card_plan === 'pack'
-                            ? <button className="text-amber-600 hover:underline" onClick={() => toggleExclusive(org)} title="飞鹰语法等专属内容,选配 ¥16,000">{org.exclusive_content ? '关闭专属内容' : '开通专属内容'}</button>
+                            ? <button className="text-amber-600 hover:underline" onClick={() => toggleExclusive(org)} title="飞鹰语法等专属内容,含在标准包内(新机构默认已开通)">{org.exclusive_content ? '关闭专属内容' : '开通专属内容'}</button>
                             : <button className="text-amber-600 hover:underline" onClick={() => toggleAccessMode(org)}>{org.access_mode === 'all_books' ? '改逐本分配' : '改全托'}</button>}
                           <button className="text-orange-600 hover:underline" onClick={() => toggleCoinMode(org)}>{org.coin_mode === 'manual' ? '金币改自动发' : '金币改手动加'}</button>
                           <button className="text-indigo-600 hover:underline" onClick={() => togglePhoneticAccessMode(org)}>{org.phonetic_access_mode === 'code' ? '音标改免费' : '音标改需码'}</button>
