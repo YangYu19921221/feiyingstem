@@ -360,12 +360,12 @@ export default function FranchiseRecruitDoc() {
         <StatRow
           items={[
             ['¥60,000', '标准包 · 分 3 期,每期 ¥20,000'],
-            ['260 张', '学生学习卡,每张半年'],
+            ['300 张', '学生学习卡,每张半年'],
             ['含培训', '老师带教培训包含在内'],
           ]}
         />
         <p className="mt-2.5">
-          <strong>6 万元包含</strong>:260 张学生学习卡、机构独立后台(教师 / 管理账号不限)、
+          <strong>6 万元包含</strong>:300 张学生学习卡、机构独立后台(教师 / 管理账号不限)、
           <strong>老师带教培训</strong>、服务期内系统升级。不另收加盟费、培训费。
         </p>
 
@@ -389,31 +389,31 @@ export default function FranchiseRecruitDoc() {
               <tr>
                 <td className={`${td} text-center`}>15本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥600</td>
-                <td className={`${td} text-center`}>40</td>
+                <td className={`${td} text-center`}>30</td>
                 <td className={td}>任选 15 本课本,适合整个学段或衔接</td>
               </tr>
               <tr>
                 <td className={`${td} text-center`}>5本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥360</td>
-                <td className={`${td} text-center`}>60</td>
+                <td className={`${td} text-center`}>50</td>
                 <td className={td}>任选 5 本课本</td>
               </tr>
               <tr>
                 <td className={`${td} text-center`}>小学2本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥120</td>
-                <td className={`${td} text-center`}>50</td>
+                <td className={`${td} text-center`}>90</td>
                 <td className={td}>任选 2 本小学课本,如一学期的上下册</td>
               </tr>
               <tr>
                 <td className={`${td} text-center`}>单本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥240</td>
-                <td className={`${td} text-center`}>30</td>
-                <td className={td}>任选 1 本课本,或考纲词汇等精品书</td>
+                <td className={`${td} text-center`}>50</td>
+                <td className={td}>任选 1 本课本,或 1 本精品书(中高考词汇、KET/PET、四六级、雅思托福等)</td>
               </tr>
               <tr className="font-semibold">
                 <td className={`${td} text-center`}>合计</td>
                 <td className={`${td} text-center text-[#FF6B35]`}>¥60,000</td>
-                <td className={`${td} text-center`}>260</td>
+                <td className={`${td} text-center`}>300</td>
                 <td className={td}>每张卡兑换后有效半年</td>
               </tr>
           </tbody>
@@ -434,9 +434,9 @@ export default function FranchiseRecruitDoc() {
             </tr>
           </thead>
           <tbody>
-            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 80、15本卡 12、5本卡 20、小学2本卡 17、单本卡 10;开通后台,安排带教培训</td></tr>
-            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 14、5本卡 20、小学2本卡 17、单本卡 10</td></tr>
-            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 14、5本卡 20、小学2本卡 16、单本卡 10</td></tr>
+            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 80、15本卡 10、5本卡 17、小学2本卡 30、单本卡 13;开通后台,安排带教培训</td></tr>
+            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 10、5本卡 17、小学2本卡 30、单本卡 18</td></tr>
+            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 10、5本卡 16、小学2本卡 30、单本卡 19</td></tr>
           </tbody>
         </table>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">

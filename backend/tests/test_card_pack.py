@@ -91,7 +91,8 @@ def test_pack_adds_up_to_60000():
     for cards in card_pack.INSTALLMENTS.values():
         for k, n in cards.items():
             total[k] = total.get(k, 0) + n
-    assert total == {"trial": 80, "b15": 40, "b5": 60, "p2": 50, "b1": 30}
+    assert total == {"trial": 80, "b15": 30, "b5": 50, "p2": 90, "b1": 50}
+    assert sum(total.values()) == 300
     assert sum(price[k] * n for k, n in total.items()) == 60000
     # 每期收 2 万;卡值 20,040 / 20,040 / 19,920,合计正好 6 万
     assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [20040, 20040, 19920]
@@ -128,13 +129,13 @@ async def test_quota_per_kind_and_installment_once(client, env):
     assert r.status_code == 200, r.text
     assert r.json()["installments"] == [1]
     kinds = {k["kind"]: k for k in r.json()["status"]["kinds"]}
-    assert {k: v["quota"] for k, v in kinds.items()} == {"trial": 80, "b15": 12, "b5": 20, "p2": 17, "b1": 10}
+    assert {k: v["quota"] for k, v in kinds.items()} == {"trial": 80, "b15": 10, "b5": 17, "p2": 30, "b1": 13}
 
-    # 第 1 期只有 10 张单本卡: 发 11 张被拒,入门卡的额度不能挪用
+    # 第 1 期只有 13 张单本卡: 发 14 张被拒,入门卡的额度不能挪用
     one = [env["books"]["p3"].id]
-    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=11)
+    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=14)
     assert r.status_code == 403
-    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=10)
+    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=13)
     assert r.status_code == 200, r.text
     code = r.json()[0]
     assert code["card_kind"] == "b1" and code["grant_days"] == 180
@@ -151,8 +152,8 @@ async def test_full_pay_bonus(client, env):
     r = await _pay(client, env, action="settle")
     assert r.status_code == 200
     kinds = {k["kind"]: k["quota"] for k in r.json()["status"]["kinds"]}
-    assert kinds["b5"] == 60 + card_pack.BONUS_FULL_PAY
-    assert kinds["b15"] == 40
+    assert kinds["b5"] == 50 + card_pack.BONUS_FULL_PAY
+    assert kinds["b15"] == 30
     # 3 期都付完再点到账 → 400
     assert (await _pay(client, env)).status_code == 400
     assert (await _pay(client, env, action="settle")).status_code == 400
