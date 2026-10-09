@@ -13,8 +13,9 @@
  *  3. **系统数据是生产库实查值**(2026-09-26,直营校区):掌握词数 = word_mastery
  *     mastery_level>=3 按 distinct lower(word) 计,不是 learning_records 行数(classify 会放大);
  *     更新数字要重跑同一口径的 SQL,别凭印象改
- *  4. **价格数字跟着 backend/app/services/card_pack.py 走**(2026-10-08 起新签约按卡包政策:
- *     标准包 ¥60,000 分 3 期 / 四种卡单价 / 赠送),提分方案第八章同口径,改价三处一起改
+ *  4. **完整合作方案在本手册第六章**(2026-10-08 用户要求从提分方案挪过来):价格数字跟着
+ *     backend/app/services/card_pack.py 走(标准包 ¥60,000 分 3 期 / 五种卡进货价 / 赠送 / **含带教培训**),
+ *     提分方案第八章只留摘要,合作协议第三条同口径,改价三处一起改
  *  5. 未核实的数字**留空栏现填**,不替用户编(续费率 90%+ 为用户 09-30 提供,口径=校区缴费数据)
  */
 
@@ -353,37 +354,102 @@ export default function FranchiseRecruitDoc() {
         </p>
       </Section>
 
-      {/* 六、钱怎么算 */}
-      <Section no="六" title="投入多少,怎么回本">
-        {/* 2026-10-08 起新签约按卡包政策(真源 backend/app/services/card_pack.py,改价那边先改) */}
+      {/* 六、合作方案(2026-10-08 起新签约按卡包政策;真源 backend/app/services/card_pack.py,改价那边先改)。
+          完整合作方案放在招商手册这里(用户要求),提分方案第八章只留摘要指过来 */}
+      <Section no="六" title="合作方案:投入多少,怎么回本">
         <StatRow
           items={[
             ['¥60,000', '标准包 · 分 3 期,每期 ¥20,000'],
             ['450 张', '学生学习卡,每张半年'],
-            ['送 10 张', '一次付清加送全通卡'],
+            ['含培训', '老师带教培训包含在内'],
           ]}
         />
         <p className="mt-2.5">
-          标准包全部是学生学习卡,不收另外的加盟费。卡分四种,家长要什么你就发什么:
-          <strong>入门卡</strong>(¥10,招生体验)、<strong>单册卡</strong>(¥60,一本课本)、
-          <strong>学段卡</strong>(¥200,一个学段全套课本)、<strong>全通卡</strong>(¥400,小学到高中全套)。
-          每张卡从学生兑换那天起有效半年,兑换码 5 年内有效,不用担心囤卡过期。
+          <strong>6 万元包含</strong>:450 张学生学习卡、机构独立后台(教师 / 管理账号不限)、
+          <strong>老师带教培训</strong>、服务期内系统升级。不另收加盟费、培训费。
         </p>
-        <p className="mt-2">
-          <strong>分 3 期付,先拿卡先招生</strong>:签约付第 1 期 ¥20,000,拿到 100 张入门卡和 115 张正式卡;
-          之后每 3 个月一期,每到账一期就开通这一期的卡。卡卖得快可以提前付下一期。
-          3 期付完还要卡就按单价补货,每种 20 张起;考纲词汇等精品书另有精品卡(¥150)。
+
+        <p className="mt-3 font-bold text-slate-900">学习卡:家长要什么你就发什么</p>
+        <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
+          <thead>
+            <tr className="bg-[#FFF3EC]">
+              <th className={`${td} text-center`}>卡</th>
+              <th className={`${td} text-center`}>进货价</th>
+              <th className={`${td} text-center`}>开哪些书</th>
+            </tr>
+          </thead>
+          <tbody>
+              <tr>
+                <td className={`${td} text-center`}>入门卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥10</td>
+                <td className={td}>全部体验课,用于招生体验、试听</td>
+              </tr>
+              <tr>
+                <td className={`${td} text-center`}>单册卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥60</td>
+                <td className={td}>选定的 1 本课本</td>
+              </tr>
+              <tr>
+                <td className={`${td} text-center`}>学段卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥200</td>
+                <td className={td}>一个版本一个学段的全部课本(如 人教版 · 小学)</td>
+              </tr>
+              <tr>
+                <td className={`${td} text-center`}>全通卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥400</td>
+                <td className={td}>一个版本小学到高中的全部课本,适合衔接</td>
+              </tr>
+              <tr>
+                <td className={`${td} text-center`}>精品卡</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥150</td>
+                <td className={td}>考纲词汇等精品书,1 本</td>
+              </tr>
+          </tbody>
+        </table>
+        <p className="mt-1.5 text-[12px] leading-5 text-slate-600">
+          每张卡从学生兑换那天起有效半年;兑换码 5 年内有效,不用担心囤卡过期。
+          学段卡、全通卡有效期内,平台新上架的同范围课本自动开给学生。
         </p>
-        <p className="mt-2">
+
+        <p className="mt-3 font-bold text-slate-900">分 3 期付,先拿卡先招生</p>
+        <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
+          <thead>
+            <tr className="bg-[#FFF3EC]">
+              <th className={`${td} text-center`}>期</th>
+              <th className={`${td} text-center`}>付款时间</th>
+              <th className={`${td} text-center`}>金额</th>
+              <th className={`${td} text-center`}>到账开通</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 100、单册卡 50、学段卡 50、全通卡 15;开通后台,安排带教培训</td></tr>
+            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>单册卡 60、学段卡 50、全通卡 16</td></tr>
+            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>单册卡 40、学段卡 50、全通卡 19</td></tr>
+          </tbody>
+        </table>
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
+          <li>卡卖得快可以<strong>提前付</strong>下一期,到账当天开卡。</li>
+          <li><strong>一次付清 3 期送 10 张全通卡</strong>;付完第 1 期后一次结清剩余两期,送 5 张。</li>
+          <li>3 期付完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
+        </ul>
+
+        <p className="mt-3 font-bold text-slate-900">选配与另计</p>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
+          <li>飞鹰英语专属内容(飞鹰自研教材配套单词本、句型本与教学内容):选配,¥16,000。</li>
+          <li>纸质配套教材:按供货清单明细计价,按需订购,运费另计。</li>
+          <li>参加带教培训的交通、食宿由机构自理。</li>
+        </ul>
+
+        <p className="mt-3">
           <strong>终端收费由你自己定</strong>。按常见零售价测算(单册卡 ¥150、学段卡 ¥500、全通卡 ¥800),
-          第 1 期的正式卡全部售出约对应 4.5 万元流水,高于当期投入。
+          第 1 期的正式卡全部售出约对应 4.5 万元流水,高于当期投入;入门卡可以免费送,用来招生。
         </p>
         <p className="mt-2">
           <strong>直营校区定价参考</strong>:每阶段 120 课时,学费 ¥11,880(第 1 阶段另收资料费 ¥280);
           初中学员按学情调整教学方案、按课时收费;小学《语法》免费上,作为引流课。你可以参照这个结构定自己的价。
         </p>
         <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
-          测算仅供参考,不构成收益承诺。完整费用明细(飞鹰专属内容、配套教材、带教培训)见《功能详解与提分方案》第八章及合作协议。
+          测算仅供参考,不构成收益承诺。最终以双方签署的合作协议为准。
         </p>
       </Section>
 
@@ -394,7 +460,7 @@ export default function FranchiseRecruitDoc() {
             { t: '独立机构后台', d: '签约即开通,你的学员数据独立隔离,统一使用飞鹰品牌名称和 Logo。' },
             { t: '区域保护', d: '以合作点为中心,直线距离 3 公里内不再发展第二家合作点,写进协议,不是口头承诺。' },
             { t: '课程与内容', d: '小学到高中主流教材同步内容全开放;可选配飞鹰自研课程内容。' },
-            { t: '带教培训', d: '到飞鹰直营校区跟岗学习,看我们的老师怎么排课、怎么用系统带班(自费)。' },
+            { t: '带教培训', d: '到飞鹰直营校区跟岗学习,看我们的老师怎么排课、怎么用系统带班。培训费已含在 6 万元标准包里。' },
             { t: '招生工具', d: 'AI 英语测评、招生链接、兑换码,开班前就能先做一轮测评活动。' },
             { t: '持续升级', d: '系统每月更新,新功能、新内容在服务期内免费同步。' },
           ]}

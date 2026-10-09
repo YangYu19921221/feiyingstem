@@ -2,7 +2,8 @@
  * 加盟资料中心(平台 admin 专用,org_admin 不可见)
  *
  * ⚠️ 2026-10-08 起新签约按**卡包政策**(标准包 ¥60,000 分 3 期,真源 backend/app/services/card_pack.py):
- *    合作协议第二条第 2 款、第三条第 1–3 款与费用表、提分方案第八章已改;下面关于 ¥14,400 / ¥130
+ *    合作协议第二条第 2 款、第三条第 1–3/6 款与费用表、第七条第 2 款已改;**完整合作方案在招商手册第六章**,
+ *    提分方案第八章只留摘要;**6 万含带教培训**(用户 10-08 定,参训人数/天数在第三条第 6 款留空现填);下面关于 ¥14,400 / ¥130
  *    的说明是**老政策**(已签约机构仍按它执行),留作历史。逾期宽限/退款/年度续购量标了【待确认】,不替用户定。
  *
  * 两份对外标准文档,页面内直接排好版:
@@ -135,6 +136,7 @@ function ContractDoc() {
           (各卡开放范围见第三条),每张卡有效期 <strong>半年(180 天)</strong>,
           自该卡兑换激活之日起算;兑换码自生成之日起 <strong>5 年</strong>内可兑换。
           教师账号与机构管理账号不另行收费,数量以乙方正常教学使用为限。
+          标准包同时包含第三条第 6 款约定的<strong>飞鹰英语带教培训</strong>。
         </p>
         <p>
           3. <strong>飞鹰英语专属内容</strong>(飞鹰自研教材配套单词本、句型本及配套教学内容)
@@ -145,7 +147,8 @@ function ContractDoc() {
       <Clause no="三" title="合作费用与结算">
         <p>
           1. 标准包:人民币 <strong>60,000 元</strong>(大写:<strong>陆万元整</strong>),
-          全部为学生学习卡,不另收加盟费。四种卡的单价与开放范围如下:
+          包含 450 张学生学习卡与飞鹰英语带教培训(见本条第 6 款),不另收加盟费、培训费。
+          四种卡的单价与开放范围如下:
           入门卡 <strong>10 元</strong>(体验课程);单册卡 <strong>60 元</strong>(乙方发卡时选定的一本教材同步书);
           学段卡 <strong>200 元</strong>(同一教材版本、同一学段的全部同步书);
           全通卡 <strong>400 元</strong>(同一教材版本小学至高中的全部同步书)。
@@ -167,7 +170,7 @@ function ContractDoc() {
           甲方收到款项后为乙方开通,该次补货记录即视为本协议附件,适用本协议全部条款。
         </p>
         <p className="rounded bg-amber-50 px-2 text-[13px] text-amber-900">
-          【待确认】逾期付款的宽限期({B}日)、逾期期间是否暂停开通后续学习卡与区域保护,
+          【待确认】逾期付款的宽限期(<Blank w="4rem" />日)、逾期期间是否暂停开通后续学习卡与区域保护,
           以及已付期次的退款处理,请甲方确认后补入本款。
         </p>
         <p>
@@ -181,9 +184,10 @@ function ContractDoc() {
           <strong>已确认的订单仍按确认时的单价执行</strong>。
         </p>
         <p>
-          6. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训</strong>,该项服务由
-          <strong>乙方自费</strong>,按每位参训老师人民币 <Blank w="5rem" /> 元计收,
-          参训人数由乙方按需确定;培训期间乙方人员的交通、食宿费用亦由乙方自理。
+          6. 带教培训:甲方为乙方提供<strong>飞鹰英语带教培训</strong>,
+          <strong>培训费已包含在本条第 1 款标准包内</strong>,乙方不另行支付;
+          标准包含参训老师<Blank w="3rem" />名、培训<Blank w="3rem" />天,超出部分双方另行书面约定。
+          培训期间乙方人员的交通、食宿费用由乙方自理。
         </p>
         <p>
           7. 付款方式:乙方按本条第 2 款分期支付标准包费用,其余费用按实际发生结算;
@@ -206,7 +210,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">标准包</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥60,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">450 张学生学习卡(每张半年),分 3 期每期 ¥20,000;一次付清另赠全通卡 10 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">450 张学生学习卡(每张半年)+ 带教培训,分 3 期每期 ¥20,000;一次付清另赠全通卡 10 张</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">学习卡单价</td>
@@ -235,8 +239,8 @@ function ContractDoc() {
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">带教培训</td>
-              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">自费</td>
-              <td className="border border-slate-500 px-2 py-1.5">飞鹰英语带教培训,培训费由乙方承担,按参训老师人数计收(交通食宿亦自理)</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">含在标准包</td>
+              <td className="border border-slate-500 px-2 py-1.5">飞鹰英语带教培训,不另收培训费;参训人数与天数见第三条第 6 款,交通食宿乙方自理</td>
             </tr>
           </tbody>
         </table>
@@ -319,7 +323,7 @@ function ContractDoc() {
       <Clause no="七" title="甲方服务与支持">
         <p>1. 甲方负责本系统的日常维护、故障处理与持续升级,保障系统正常可用。</p>
         <p>
-          2. 甲方为乙方提供<strong>飞鹰英语带教培训</strong>(<strong>乙方自费</strong>,费用标准见第三条第 6 款,
+          2. 甲方为乙方提供<strong>飞鹰英语带教培训</strong>(<strong>已含在标准包内</strong>,见第三条第 6 款,
           乙方人员差旅食宿自理);寒暑假等招生旺季,甲方提供相关运营方法指导,
           乙方开展的招生活动及其收费由乙方全权负责。
         </p>
@@ -551,69 +555,14 @@ function PitchDoc() {
         <FeatureList items={OPERATION} />
       </PitchSection>
 
-      {/* 八、合作方案 */}
-      <PitchSection no="八" title="合作方案:一笔算得清的账">
-        <table className="mt-1 w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="bg-[#FFF3EC]">
-              <th className="border border-orange-200 px-2 py-1.5 text-center font-bold">项目</th>
-              <th className="border border-orange-200 px-2 py-1.5 text-center font-bold">标准</th>
-              <th className="border border-orange-200 px-2 py-1.5 text-center font-bold">说明</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">标准包</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥60,000</td>
-              <td className="border border-orange-200 px-2 py-1.5">450 张学生学习卡(每张半年),教材同步内容按卡开放,教师 / 管理账号不限;不另收加盟费</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">分期</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">3 期 × ¥20,000</td>
-              <td className="border border-orange-200 px-2 py-1.5">签约付第 1 期,第 3、6 个月各付一期;每到账一期开通这一期的卡,可提前付</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">一次付清</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">送 10 张全通卡</td>
-              <td className="border border-orange-200 px-2 py-1.5">一次付清 3 期加送;付完第 1 期后结清剩余两期送 5 张</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">四种卡</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">¥10 / ¥60 / ¥200 / ¥400</td>
-              <td className="border border-orange-200 px-2 py-1.5">入门卡 / 单册卡 / 学段卡 / 全通卡,兑换后半年有效,兑换码 5 年有效</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">补货</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">按单价</td>
-              <td className="border border-orange-200 px-2 py-1.5">3 期付完后按上面单价补货,每种 20 张起;精品卡(考纲词汇等)¥150 / 张,只通过补货购买</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">+¥16,000</td>
-              <td className="border border-orange-200 px-2 py-1.5">选配:飞鹰自研教材配套单词本、句型本与教学内容</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">配套教材</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">按清单明细</td>
-              <td className="border border-orange-200 px-2 py-1.5">按教材供货清单的品种、规格与单价明细计算,按需订购,运费另计</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">系统升级</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">免费</td>
-              <td className="border border-orange-200 px-2 py-1.5">服务期内新功能、新内容自动同步</td>
-            </tr>
-            <tr>
-              <td className="border border-orange-200 px-2 py-1.5 text-center">带教培训</td>
-              <td className="border border-orange-200 px-2 py-1.5 text-center font-bold text-[#FF6B35]">自费</td>
-              <td className="border border-orange-200 px-2 py-1.5">飞鹰英语带教培训,按参训老师人数计收培训费,差旅食宿自理</td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+      {/* 八、合作方案 —— 完整方案在《招商手册》第六章(2026-10-08 用户要求挪过去),这里只留摘要,
+          数字与 backend/app/services/card_pack.py 一致,改价时三份文档一起改 */}
+      <PitchSection no="八" title="合作方案">
+        <div className="mt-1 grid grid-cols-3 gap-2 text-center">
           {[
             ['¥60,000', '标准包,分 3 期每期 ¥20,000'],
             ['450 张', '学生学习卡,每张半年'],
-            ['约 0.7 元', '学段卡折合每个学生每天(¥200 / 180 天)'],
+            ['含培训', '老师带教培训包含在内'],
           ].map(([big, small]) => (
             <div key={small} className="rounded-lg border border-orange-200 bg-[#FFF8F0] px-2 py-2.5">
               <p className="text-[18px] font-black text-[#FF6B35]">{big}</p>
@@ -622,9 +571,13 @@ function PitchDoc() {
           ))}
         </div>
         <p className="mt-3">
-          <strong>投入产出参考</strong>(仅供测算,终端定价由机构完全自主,平台不干涉,亦不构成收益承诺):
-          按常见零售价(单册卡 ¥150、学段卡 ¥500、全通卡 ¥800)测算,第 1 期 ¥20,000 开通的正式卡全部售出
-          约对应 4.5 万元流水;入门卡用于招生体验,可免费赠送。分期付款让机构先招生、后付款,首期投入只有标准包的三分之一。
+          标准包 6 万元包含 450 张学生学习卡(入门卡 / 单册卡 / 学段卡 / 全通卡)、机构独立后台、
+          <strong>老师带教培训</strong>与服务期内系统升级,不另收加盟费、培训费。签约付第 1 期即开通,
+          第 3、6 个月各付一期;一次付清送 10 张全通卡。
+        </p>
+        <p className="mt-2">
+          卡种、进货价、每期开多少卡、补货和投入产出测算,详见<strong>《招商手册》第六章「合作方案」</strong>;
+          最终以合作协议为准。
         </p>
       </PitchSection>
 
