@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     # 不设上限的话一个班一学期能堆出几十万条小文件
     PHONETIC_AUDIO_KEEP_PER_LESSON: int = 40
 
+    # 开口背录音(句子背诵第 3 步): 孩子的声音,同理必须在 private_media;后台转写完即删
+    SENTENCE_SPEECH_DIR: str = "./private_media/sentence_speech"
+    MAX_SENTENCE_SPEECH_SIZE: int = 2 * 1024 * 1024  # 长句可录到 15 秒左右
+
     # 跟读判定服务(独立进程)。空字符串 = 不启用,跟读退回纯对比回放模式。
     # 模型推理常驻约 2.6GB,而生产机可用内存只剩 4.6GB 且 uvicorn 单 worker
     # (PK 房间/限流是进程内状态),所以刻意跑在独立进程里,主应用只做 HTTP 调用。

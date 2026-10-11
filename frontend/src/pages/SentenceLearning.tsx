@@ -150,7 +150,7 @@ export default function SentenceLearning() {
       case 'arrange':
         return <ArrangeStage key={`a${groupIdx}`} items={group} onDone={first => { report('arrange', first); setPhase({ kind: 'intro', step: 3 }); }} />;
       case 'speak':
-        return <SpeakStage key={`s${groupIdx}`} items={group} onDone={() => setPhase({ kind: 'intro', step: 4 })} />;
+        return <SpeakStage key={`s${groupIdx}`} items={group} unitId={uid} onDone={() => setPhase({ kind: 'intro', step: 4 })} />;
       case 'dictation':
         return <DictationStage key={`d${groupIdx}`} items={group} onDone={first => { report('dictation', first); setPhase({ kind: 'intro', step: 5 }); }} />;
       case 'exam':

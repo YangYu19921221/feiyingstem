@@ -25,6 +25,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'sentence-speech-transcript-2026-10',
+    date: '2026-10-11',
+    title: '🎙️ 看得到学生「开口背」背得怎么样',
+    desc: '句子背诵第 3 步学生开口背的录音,系统在后台转成文字、逐词比对,标出漏说或说错的词。只供老师参考,学生那边不显示对错、不拦人;录音转完就删,不留档。',
+    where: '教师工作台 → 学生 → 点某个学生进详情页 →「句子开口背」区块(学生背过句子才出现)',
+    roles: ['teacher'],
+  },
+  {
     id: 'sentence-recite-steps-2026-10',
     date: '2026-10-11',
     title: '🗣️ 句子背诵改版:一组一组背,还要开口说',

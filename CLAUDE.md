@@ -271,6 +271,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 句子「开口背」后台转写(2026-10-11,**本地完成未部署**): 孩子说完照常往下走,录音进 sentence_speeches 排队,
+  主进程起 speech_loop 调度、**独立 spawn 进程池**(SENTENCE_SPEECH_WORKERS 默认 2,每进程 1 线程)跑 faster-whisper small
+  + beam 5 + VAD,吃 uvicorn 单 worker 用不到的空闲核。生产实测(合成音): base 4 路 40 句 24s、small 4 路 70s → 不能让孩子等,只能后台。
+  判据 services/sentence_speech.judge: **实词全中才算背出**(只许漏 a/is 这类虚词);七成比例阈值实测放过「My mother is a banana」,别改回去。
+  **不喂 initial_prompt 原句**(喂了 Whisper 会照抄原句,背错也转成对)。合成音本地验 en 32/32、zh 口音 31/32(three→free);**真人录音未验**。
+  结果只给老师(学生详情页「句子开口背」区块,本班才放行),学生端不显示对错;音频转完即删,落 private_media/sentence_speech。
+  部署注意: main.py / database.py 有 drift 走 anchor patch;两个 small 进程常驻约 1GB 内存,上线前看 free。测试 tests/test_sentence_speech.py(9 例)
 - ✅ 句子背诵改版(2026-10-11,取代「英翻中选择 / 听句子默写」二选一的单遍版): 单元按服务端分组,
   每组「听读 → 连词成句 → 开口背 → 默写 → 过关检测(80 分)」,最后一组过关后「跟读整篇」→ 总结。
   分组/关键词/记作答口径真源 services/sentence_learning.py(**对话一问一答不拆**、按句长定组大小

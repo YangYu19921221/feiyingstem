@@ -120,3 +120,30 @@ export const submitSentenceGroupPass = (unitId: number, groupIndex: number, scor
     `/student/sentences/units/${unitId}/group-pass`, { group_index: groupIndex, score },
   );
 
+
+/** 开口背录音进后台转写队列。孩子不等结果、失败静默(只给老师参考,不影响学习) */
+export const uploadSentenceSpeech = (unitId: number, sentenceId: number, blob: Blob) => {
+  const fd = new FormData();
+  fd.append('audio', blob, 'speech');
+  fd.append('unit_id', String(unitId));
+  fd.append('sentence_id', String(sentenceId));
+  return client.post('/student/sentences/speech', fd);
+};
+
+export interface SentenceSpeechItem {
+  id: number;
+  unit_name: string;
+  english: string;
+  chinese: string;
+  status: 'pending' | 'done' | 'failed';
+  transcript: string | null;
+  missed_words: string[];
+  hit_ratio: number | null;
+  passed: boolean | null;
+  created_at: string | null;
+}
+
+export const getStudentSentenceSpeech = (studentId: number) =>
+  client.get<{ items: SentenceSpeechItem[]; summary: { total: number; done: number; passed: number; pending: number } }>(
+    `/teacher/students/${studentId}/sentence-speech`,
+  );

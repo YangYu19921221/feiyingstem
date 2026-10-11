@@ -5,11 +5,12 @@
  * 说完播一遍原声给孩子对照,然后下一句。不打分、不上报掌握度 —— 记对错的是后面的默写和过关检测。
  * 对话行: 系统先说上一句(问句),孩子说这一句(答句)。
  * 录不了音(没麦克风/权限被拒/http 打开)时不卡人: 写明原因,改成「心里默念一遍」后继续。
+ * 说够长度的录音顺手传给后台转写(10-11): 孩子不等结果、上传失败静默,转写结果只在老师端学生详情里看。
  */
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mic, Volume2 } from 'lucide-react';
-import type { LearnSentence } from '../../api/sentences';
+import { uploadSentenceSpeech, type LearnSentence } from '../../api/sentences';
 import { useAudio } from '../../hooks/useAudio';
 import { getRecorderBlocker, useSpeechRecorder } from '../../hooks/useSpeechRecorder';
 import useAccidentalTapGuard from '../../hooks/useAccidentalTapGuard';
@@ -19,7 +20,7 @@ import MarkedText from './MarkedText';
 
 type Phase = 'ready' | 'recording' | 'tooShort' | 'heard';
 
-export default function SpeakStage({ items, onDone }: { items: LearnSentence[]; onDone: () => void }) {
+export default function SpeakStage({ items, unitId, onDone }: { items: LearnSentence[]; unitId: number; onDone: () => void }) {
   const [idx, setIdx] = useState(0);
   const cur = items[idx];
   const { playAudio, stopAudio } = useAudio();
@@ -59,6 +60,7 @@ export default function SpeakStage({ items, onDone }: { items: LearnSentence[]; 
     if (!r) { setPhase('ready'); return; }               // 录音失败,rec.error 会显示原因
     if (r.hadSpeech && r.speechMs >= minSpeechMs(cur.english)) {
       setPhase('heard');
+      uploadSentenceSpeech(unitId, cur.id, r.blob).catch(() => {});
       setTimeout(playOriginal, 200);                     // 说完放原声对照
     } else {
       setPhase('tooShort');

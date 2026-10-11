@@ -171,6 +171,7 @@ async def init_db():
     try:
         from app.models import sentence  # 句子背诵
         from app.models import sentence_learning  # 句子背诵学习数据(掌握度/单元进度),表由 create_all 建
+        from app.models import sentence_speech  # 开口背后台转写结果
     except Exception:
         pass
 

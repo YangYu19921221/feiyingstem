@@ -9,6 +9,7 @@ import api from '../api/client';
 import { analyzeStudentMistakes, generatePersonalizedExam, getStudentWeeklyReport, regenerateStudentWeeklyReport, type WeeklyReport } from '../api/teacher';
 import { getStudentWordTrends } from '../api/analytics';
 import { getStudentAssignments, type BookAssignmentResponse } from '../api/assignments';
+import SentenceSpeechPanel from '../components/teacher/SentenceSpeechPanel';
 import WordTrendChart from '../components/WordTrendChart';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import type { StudentMistakeAnalysis } from '../types/exam';
@@ -430,6 +431,8 @@ const TeacherStudentDetail = () => {
             </div>
           </motion.div>
         )}
+
+        {studentId && <SentenceSpeechPanel studentId={parseInt(studentId)} />}
 
         {/* 已开通书本(只读;含其他老师分配的,即学生实际可学范围) */}
         <motion.div

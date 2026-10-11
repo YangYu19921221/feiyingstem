@@ -29,6 +29,7 @@ from app.api.v1 import checkin
 from app.api.v1.teacher import live as teacher_live
 from app.api.v1.student import live as student_live
 from app.api.v1.student import sentence_learning as student_sentence_learning
+from app.api.v1.teacher import sentence_speech as teacher_sentence_speech
 from app.api.v1 import live_ws  # 直播弹幕/互动 WebSocket
 from app.services import online_tracker  # 在线用户追踪(容量监测)
 
@@ -42,9 +43,14 @@ async def lifespan(app: FastAPI):
     import asyncio as _asyncio
     from app.services.coin_scheduler import daily_settle_loop
     _settle_task = _asyncio.create_task(daily_settle_loop())
+    # 开口背录音后台转写(独立进程池,吃 uvicorn 用不到的空闲核)
+    from app.services import sentence_speech as _ss
+    _speech_task = _asyncio.create_task(_ss.speech_loop())
     yield
     # 关闭时清理资源
     _settle_task.cancel()
+    _speech_task.cancel()
+    _ss.shutdown()
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -124,6 +130,7 @@ from app.api.v1.teacher import assistants as teacher_assistants
 app.include_router(teacher_assistants.router, prefix="/api/v1/teacher", tags=["教师端-我的助教"])
 app.include_router(student_live.router, prefix="/api/v1/student", tags=["学生端-线上授课"])
 app.include_router(student_sentence_learning.router, prefix="/api/v1/student", tags=["学生端-句子背诵"])
+app.include_router(teacher_sentence_speech.router, prefix="/api/v1/teacher", tags=["教师端-开口背转写"])
 app.include_router(live_ws.router, prefix="/api/v1", tags=["直播互动-弹幕"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])

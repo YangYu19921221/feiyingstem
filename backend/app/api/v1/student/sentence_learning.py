@@ -155,3 +155,47 @@ async def group_pass(
     await db.commit()
     return {"success": True, "groups_passed": prog.groups_passed, "total_groups": total,
             "unit_completed": unit_done}
+
+
+# ---------- 开口背录音(后台转写,只给老师参考) ----------
+import os as _os
+import secrets as _secrets
+from fastapi import File, Form, UploadFile
+from app.core.config import settings
+from app.core.tenancy import current_org_id
+from app.models.sentence_speech import SentenceSpeech
+
+_SPEECH_MIME = {"audio/webm": ".webm", "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/mpeg": ".mp3"}
+
+
+@router.post("/sentences/speech")
+async def upload_speech(
+    audio: UploadFile = File(...),
+    sentence_id: int = Form(...),
+    unit_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """存一条开口背录音进转写队列。孩子不等结果;失败也不影响学习流程(前端静默)"""
+    check_rate(str(current_user.id), "sentence_speech", [(60.0, 40)])
+    await sl.visible_unit(db, unit_id, current_user)
+    ok = (await db.execute(select(Sentence.id).where(
+        Sentence.id == sentence_id, Sentence.unit_id == unit_id))).scalar_one_or_none()
+    if ok is None:
+        raise HTTPException(400, "句子不属于这个单元")
+    ctype = (audio.content_type or "").split(";")[0].strip().lower()
+    if ctype not in _SPEECH_MIME:
+        raise HTTPException(400, f"不支持的音频格式: {ctype}")
+    data = await audio.read(settings.MAX_SENTENCE_SPEECH_SIZE + 1)
+    if len(data) > settings.MAX_SENTENCE_SPEECH_SIZE:
+        raise HTTPException(413, "录音太长")
+    if len(data) < 2000:
+        raise HTTPException(400, "录音是空的")
+    _os.makedirs(settings.SENTENCE_SPEECH_DIR, exist_ok=True)
+    name = f"{current_user.id}_{sentence_id}_{_secrets.token_hex(8)}{_SPEECH_MIME[ctype]}"
+    with open(_os.path.join(settings.SENTENCE_SPEECH_DIR, name), "wb") as f:
+        f.write(data)
+    db.add(SentenceSpeech(user_id=current_user.id, sentence_id=sentence_id, unit_id=unit_id,
+                          org_id=current_org_id.get(), file_path=name, status="pending"))
+    await db.commit()
+    return {"success": True}
