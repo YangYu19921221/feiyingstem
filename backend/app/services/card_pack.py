@@ -8,12 +8,13 @@
 | 卡种 | 单价 | 标准包张数 | 开什么书(发码时机构管理员勾选) |
 |------|------|-----------|---------------------------------|
 | 入门卡 trial  | ¥15  | 80  | 全部「体验」档平台书(不用选)   |
-| 15本卡 b15    | ¥600 | 30  | 任选 15 本「基础」档平台书       |
-| 5本卡 b5      | ¥360 | 50  | 任选 5 本「基础」档平台书        |
-| 小学2本卡 p2  | ¥120 | 90  | 任选 2 本小学「基础」档平台书    |
-| 单本卡 b1     | ¥240 | 50  | 任选 1 本「基础」或「精品」档书  |
+| 15本卡 b15    | ¥600 | 15  | 任选 15 本「基础」档平台书       |
+| 5本卡 b5      | ¥360 | 40  | 任选 5 本「基础」档平台书        |
+| 小学2本卡 p2  | ¥120 | 135 | 任选 2 本小学「基础」档平台书    |
+| 单本卡 b1     | ¥240 | 30  | 任选 1 本「基础」或「精品」档书  |
+| (方法课)    | ¥1,000/套 | 12 套 | 纸质教材,不是卡,不发码           |
 
-合计 300 张: 80×15 + 30×600 + 50×360 + 90×120 + 50×240 = 60,000(10-09 用户要 300 张,单价不动)。每张卡兑换后 180 天,
+合计 300 张卡 ¥48,000 + 方法课 12 套 ¥12,000 = 60,000(10-11 用户选方案 A)。每张卡兑换后 180 天,
 
 兑换码本身 5 年内有效(没兑换就不开始计时)。
 
@@ -74,16 +75,24 @@ CARD_KINDS: dict[str, dict] = {
 KIND_ORDER = ["trial", "b15", "b5", "p2", "b1"]
 
 # 标准包 6 万,3 期每期收 2 万(2026-10-08 用户定「最多三期」)。
-# 单价都是 120 的倍数,每期卡值凑不出正好 2 万: 拆成 20,040 / 20,040 / 19,920,三期合计正好 6 万,
-# 机构每期照样付 2 万(差额 ±120,第 3 期补平)。入门卡全放第 1 期 —— 签约就能招生
+# 10-11 用户选方案 A: 标准包 = 300 张卡 + 方法课 12 套(¥1,000/套,纸质教材,系统不发码,每期随卡交付 4 套)。
+# 单价都是 120 的倍数,每期凑不出正好 2 万: 卡值 + 方法课 = 19,960 / 19,960 / 20,080,三期合计正好 6 万,
+# 机构每期照样付 2 万。入门卡全放第 1 期 —— 签约就能招生
 PACK_PRICE = 60000
 INSTALLMENT_PRICE = 20000
 INSTALLMENTS: dict[int, dict[str, int]] = {
-    1: {"trial": 80, "b15": 10, "b5": 17, "p2": 30, "b1": 13},
-    2: {"b15": 10, "b5": 17, "p2": 30, "b1": 18},
-    3: {"b15": 10, "b5": 16, "p2": 30, "b1": 19},
+    1: {"trial": 80, "b15": 4, "b5": 13, "p2": 44, "b1": 10},
+    2: {"b15": 5, "b5": 14, "p2": 46, "b1": 10},
+    3: {"b15": 6, "b5": 13, "p2": 45, "b1": 10},
 }
-PACK_TOTALS = {"trial": 80, "b15": 30, "b5": 50, "p2": 90, "b1": 50}
+PACK_TOTALS = {"trial": 80, "b15": 15, "b5": 40, "p2": 135, "b1": 30}
+
+# 方法课(纸质教材,每位学员一套: 音标 1 册 + 语法 3 册,赠绘本 3 本)。不是学习卡,不进额度台账,
+# 只在目录/到账提示里显示「这一期交付几套」;平台线下发货
+METHOD_COURSE = {"label": "方法课", "price": 1000, "unit": "套",
+                 "covers": "每位学员一套:音标 1 册 + 语法 3 册教材,赠阅读绘本 2 本、必背绘本 1 本"}
+METHOD_SETS: dict[int, int] = {1: 4, 2: 4, 3: 4}
+METHOD_TOTAL = sum(METHOD_SETS.values())
 INSTALLMENT_MONTHS = 3          # 每 3 个月一期(签约时付第 1 期)
 # 一次结清赠送(10-09 原全通卡已下线,改送 5本卡;10 张 5本卡 ¥3,600 ≈ 原 10 张全通卡 ¥4,000)
 BONUS_KIND = "b5"
@@ -94,16 +103,23 @@ RESTOCK_MIN = 20                # 补货每种 20 张起(提示用,不硬拦: �
 PACKABLE_KINDS = set(CARD_KINDS)
 
 
-def installment_value(no: int) -> int:
-    """这一期开的卡按单价合计(¥20,040 / 20,040 / 19,920),机构实付是 INSTALLMENT_PRICE"""
+def card_value(no: int) -> int:
+    """这一期开的卡按单价合计(¥15,960 / 15,960 / 16,080)"""
     return sum(CARD_KINDS[k]["price"] * n for k, n in INSTALLMENTS[no].items())
 
 
-# 自检(启动时跑): 三期张数合计 = 标准包张数,卡值合计 = 6 万,每期卡值离 2 万不超过 ¥120
+def installment_value(no: int) -> int:
+    """这一期交付的东西按单价合计 = 卡 + 方法课(¥19,960 / 19,960 / 20,080),机构实付是 INSTALLMENT_PRICE"""
+    return card_value(no) + METHOD_COURSE["price"] * METHOD_SETS.get(no, 0)
+
+
+# 自检(启动时跑): 三期张数合计 = 标准包张数,卡值 + 方法课合计 = 6 万,每期离 2 万不超过 ¥120
 assert {k: sum(c.get(k, 0) for c in INSTALLMENTS.values()) for k in KIND_ORDER} == PACK_TOTALS, \
     "三期张数合计必须等于标准包张数"
-assert sum(CARD_KINDS[k]["price"] * n for k, n in PACK_TOTALS.items()) == PACK_PRICE, \
-    "标准包张数 × 单价 必须正好 6 万"
+assert sum(PACK_TOTALS.values()) == 300, "标准包 300 张卡"
+assert sum(CARD_KINDS[k]["price"] * n for k, n in PACK_TOTALS.items()) \
+    + METHOD_COURSE["price"] * METHOD_TOTAL == PACK_PRICE, "卡 + 方法课 必须正好 6 万"
+assert set(METHOD_SETS) == set(INSTALLMENTS)
 assert INSTALLMENT_PRICE * len(INSTALLMENTS) == PACK_PRICE
 assert all(abs(installment_value(n) - INSTALLMENT_PRICE) <= 120 for n in INSTALLMENTS)
 
@@ -117,10 +133,12 @@ def catalog() -> dict:
         "tiers": TIERS,
         "pack_price": PACK_PRICE,
         "pack_totals": PACK_TOTALS,
-        # value = 机构这一期要付的钱(都是 2 万);card_value = 这一期开的卡按单价合计
+        "method_course": {**METHOD_COURSE, "total": METHOD_TOTAL},
+        # value = 机构这一期要付的钱(都是 2 万);card_value = 这一期交付的卡 + 方法课按单价合计
         "installments": [
-            {"no": n, "cards": INSTALLMENTS[n], "value": INSTALLMENT_PRICE,
-             "card_value": installment_value(n), "due_month": (n - 1) * INSTALLMENT_MONTHS}
+            {"no": n, "cards": INSTALLMENTS[n], "method_sets": METHOD_SETS.get(n, 0),
+             "value": INSTALLMENT_PRICE, "card_value": installment_value(n),
+             "due_month": (n - 1) * INSTALLMENT_MONTHS}
             for n in INSTALLMENTS
         ],
         "bonus_kind": BONUS_KIND,

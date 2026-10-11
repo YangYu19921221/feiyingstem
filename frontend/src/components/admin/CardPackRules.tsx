@@ -79,9 +79,12 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
         <section>
           <h3 className="font-bold text-slate-900">五、额度怎么来</h3>
           <p className="mt-1">
-            标准包 {yuan(catalog.pack_price)},分 {catalog.installments.length} 期付,每期{' '}
-            {yuan(catalog.installments[0]?.value ?? 0)}。平台每确认到账一期,你这边就多出这一期的卡
-            (按单价算每期卡值差几十元,{catalog.installments.length} 期合计正好 {yuan(catalog.pack_price)}):
+            标准包 {yuan(catalog.pack_price)},含 {Object.values(catalog.pack_totals).reduce((a, b) => a + b, 0)} 张学习卡和{' '}
+            {catalog.method_course.total} {catalog.method_course.unit}{catalog.method_course.label}
+            ({yuan(catalog.method_course.price)} / {catalog.method_course.unit},纸质教材,随期寄出),
+            分 {catalog.installments.length} 期付,每期 {yuan(catalog.installments[0]?.value ?? 0)}。
+            平台每确认到账一期,你这边就多出这一期的卡
+            (按单价算每期差几十元,{catalog.installments.length} 期合计正好 {yuan(catalog.pack_price)}):
           </p>
           <div className="mt-2 overflow-x-auto">
             <table className="w-full min-w-[480px] border-collapse text-[13px]">
@@ -89,11 +92,12 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
                 <tr className="bg-amber-50">
                   <th className="border border-amber-200 px-2 py-1.5 text-left">期</th>
                   {packKinds.map(k => <th key={k.kind} className="border border-amber-200 px-2 py-1.5">{k.label}</th>)}
+                  <th className="border border-amber-200 px-2 py-1.5">{catalog.method_course.label}</th>
                 </tr>
               </thead>
               <tbody>
                 {[...catalog.installments.map(ins => ({ ...ins, total: false })),
-                  { no: 0, cards: catalog.pack_totals, due_month: -1, total: true }].map(ins => (
+                  { no: 0, cards: catalog.pack_totals, method_sets: catalog.method_course.total, due_month: -1, total: true }].map(ins => (
                   <tr key={ins.no} className={ins.total ? 'bg-amber-50/60 font-semibold' : ''}>
                     <td className="border border-amber-200 px-2 py-1.5">
                       {ins.total ? '合计' : `第 ${ins.no} 期${ins.due_month === 0 ? '(签约时)' : `(第 ${ins.due_month} 个月)`}`}
@@ -103,6 +107,9 @@ export default function CardPackRules({ catalog, compact = false }: { catalog: P
                         {ins.cards[k.kind] ?? '–'}
                       </td>
                     ))}
+                    <td className="border border-amber-200 px-2 py-1.5 text-center">
+                      {ins.method_sets ? `${ins.method_sets} ${catalog.method_course.unit}` : '–'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

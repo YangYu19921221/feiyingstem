@@ -34,17 +34,21 @@ export default function OrgCardPackDialog({ orgId, onClose }: { orgId: number; o
   const settleAmount = remaining.reduce((s, i) => s + i.value, 0);
   const restockAmount = catalog.kinds.reduce((s, k) => s + (restock[k.kind] || 0) * k.price, 0);
 
-  const describe = (cards: Partial<Record<CardKind, number>>) =>
-    Object.entries(cards).filter(([, n]) => n).map(([k, n]) => `${labelOf[k as CardKind]} ${n}`).join('、');
+  const describe = (cards: Partial<Record<CardKind, number>>, methodSets = 0) =>
+    [...Object.entries(cards).filter(([, n]) => n).map(([k, n]) => `${labelOf[k as CardKind]} ${n}`),
+     ...(methodSets ? [`${catalog.method_course.label} ${methodSets} ${catalog.method_course.unit}`] : [])].join('、');
 
   const pay = async (action: 'installment' | 'settle' | 'restock') => {
     let msg = '';
     if (action === 'installment' && next) {
       const ins = catalog.installments.find(i => i.no === next)!;
-      msg = `确认「${data.org_name}」第 ${next} 期 ¥${ins.value.toLocaleString()} 已到账?\n将开通: ${describe(ins.cards)}`;
+      msg = `确认「${data.org_name}」第 ${next} 期 ¥${ins.value.toLocaleString()} 已到账?\n将开通: ${describe(ins.cards)}` +
+        (ins.method_sets ? `\n另需线下寄出: ${catalog.method_course.label} ${ins.method_sets} ${catalog.method_course.unit}` : '');
     } else if (action === 'settle') {
+      const sets = remaining.reduce((n, i) => n + i.method_sets, 0);
       msg = `确认「${data.org_name}」一次结清剩余 ${remaining.length} 期,共 ¥${settleAmount.toLocaleString()} 已到账?` +
-        (settleBonus ? `\n另送 ${labelOf[catalog.bonus_kind]} ${settleBonus} 张。` : '');
+        (settleBonus ? `\n另送 ${labelOf[catalog.bonus_kind]} ${settleBonus} 张。` : '') +
+        (sets ? `\n另需线下寄出: ${catalog.method_course.label} ${sets} ${catalog.method_course.unit}` : '');
     } else {
       if (restockAmount === 0) { toast.warning('至少填一种卡的张数'); return; }
       msg = `确认「${data.org_name}」补货 ¥${restockAmount.toLocaleString()} 已到账?\n将开通: ${describe(restock)}`;
@@ -92,7 +96,7 @@ export default function OrgCardPackDialog({ orgId, onClose }: { orgId: number; o
               return (
                 <li key={i.no} className={`flex justify-between rounded-lg px-3 py-1.5 ${paid ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-600'}`}>
                   <span>{paid ? '✓ ' : ''}第 {i.no} 期 · ¥{i.value.toLocaleString()} · {i.due_month === 0 ? '签约时' : `第 ${i.due_month} 个月`}</span>
-                  <span className="text-xs">{describe(i.cards)}</span>
+                  <span className="text-xs">{describe(i.cards, i.method_sets)}</span>
                 </li>
               );
             })}

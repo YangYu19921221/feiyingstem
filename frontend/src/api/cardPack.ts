@@ -26,8 +26,10 @@ export interface PackCatalog {
   tiers: Record<PackTier, string>;
   pack_price: number;
   pack_totals: Record<CardKind, number>;
-  /** value = 这一期机构要付的钱;card_value = 这一期开的卡按单价合计 */
-  installments: { no: number; cards: Partial<Record<CardKind, number>>; value: number; card_value: number; due_month: number }[];
+  /** 方法课: 纸质教材,不是卡、不发码,随每期交付 */
+  method_course: { label: string; price: number; unit: string; covers: string; total: number };
+  /** value = 这一期机构要付的钱;card_value = 这一期交付的卡 + 方法课按单价合计 */
+  installments: { no: number; cards: Partial<Record<CardKind, number>>; method_sets: number; value: number; card_value: number; due_month: number }[];
   bonus_kind: CardKind;
   bonus_full_pay: number;
   bonus_early_settle: number;

@@ -84,19 +84,22 @@ async def _gen(client, user, **body):
 
 
 def test_pack_adds_up_to_60000():
-    """用户 10-09 给的价: 15×80 + 600×40 + 360×60 + 120×50 + 240×30 = 60,000"""
+    """10-11 方案 A: 300 张卡(¥48,000)+ 方法课 12 套(¥12,000)= 60,000"""
     price = {k: v["price"] for k, v in card_pack.CARD_KINDS.items()}
     assert price == {"trial": 15, "b15": 600, "b5": 360, "p2": 120, "b1": 240}
     total = {}
     for cards in card_pack.INSTALLMENTS.values():
         for k, n in cards.items():
             total[k] = total.get(k, 0) + n
-    assert total == {"trial": 80, "b15": 30, "b5": 50, "p2": 90, "b1": 50}
+    assert total == {"trial": 80, "b15": 15, "b5": 40, "p2": 135, "b1": 30}
     assert sum(total.values()) == 300
-    assert sum(price[k] * n for k, n in total.items()) == 60000
-    # 每期收 2 万;卡值 20,040 / 20,040 / 19,920,合计正好 6 万
-    assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [20040, 20040, 19920]
-    assert [i["value"] for i in card_pack.catalog()["installments"]] == [20000] * 3
+    assert sum(price[k] * n for k, n in total.items()) == 48000
+    cat = card_pack.catalog()
+    assert cat["method_course"]["price"] == 1000 and cat["method_course"]["total"] == 12
+    assert [i["method_sets"] for i in cat["installments"]] == [4, 4, 4]
+    # 每期收 2 万;卡 + 方法课 19,960 / 19,960 / 20,080,合计正好 6 万
+    assert [card_pack.installment_value(n) for n in card_pack.INSTALLMENTS] == [19960, 19960, 20080]
+    assert [i["value"] for i in cat["installments"]] == [20000] * 3
 
 
 async def test_legacy_org_unchanged(client, env):
@@ -129,13 +132,13 @@ async def test_quota_per_kind_and_installment_once(client, env):
     assert r.status_code == 200, r.text
     assert r.json()["installments"] == [1]
     kinds = {k["kind"]: k for k in r.json()["status"]["kinds"]}
-    assert {k: v["quota"] for k, v in kinds.items()} == {"trial": 80, "b15": 10, "b5": 17, "p2": 30, "b1": 13}
+    assert {k: v["quota"] for k, v in kinds.items()} == {"trial": 80, "b15": 4, "b5": 13, "p2": 44, "b1": 10}
 
-    # 第 1 期只有 13 张单本卡: 发 14 张被拒,入门卡的额度不能挪用
+    # 第 1 期只有 10 张单本卡: 发 11 张被拒,入门卡的额度不能挪用
     one = [env["books"]["p3"].id]
-    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=14)
+    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=11)
     assert r.status_code == 403
-    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=13)
+    r = await _gen(client, env["oa"], card_kind="b1", book_ids=one, count=10)
     assert r.status_code == 200, r.text
     code = r.json()[0]
     assert code["card_kind"] == "b1" and code["grant_days"] == 180
@@ -152,8 +155,8 @@ async def test_full_pay_bonus(client, env):
     r = await _pay(client, env, action="settle")
     assert r.status_code == 200
     kinds = {k["kind"]: k["quota"] for k in r.json()["status"]["kinds"]}
-    assert kinds["b5"] == 50 + card_pack.BONUS_FULL_PAY
-    assert kinds["b15"] == 30
+    assert kinds["b5"] == 40 + card_pack.BONUS_FULL_PAY
+    assert kinds["b15"] == 15
     # 3 期都付完再点到账 → 400
     assert (await _pay(client, env)).status_code == 400
     assert (await _pay(client, env, action="settle")).status_code == 400

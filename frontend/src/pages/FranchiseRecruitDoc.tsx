@@ -235,10 +235,12 @@ export default function FranchiseRecruitDoc() {
         />
         {/* 方法课(2026-10-08 用户提供)。用户原话「背单词速度是 3–5 倍」无出处未采用(同「词汇量增长 90%」口径),
             「举一反百」改为「举一反三」;词汇目标写成规划而非承诺(广告法第 24 条) */}
-        {/* 10-09 用户定: ¥1,000 是合作机构的进货价(每位学员一套),不是给家长的学费;不含在 6 万标准包内 */}
+        {/* 10-09 用户定: ¥1,000 是合作机构的进货价(每位学员一套),不是给家长的学费。
+            10-11 方案 A: 6 万标准包含 12 套,超出按 ¥1,000/套补订 */}
         <p className="mt-4 font-bold text-slate-900">方法课:进货价 ¥1,000 / 套,含四册教材</p>
         <p className="mt-1">
-          方法课按每位学员一套订购,<strong>进货价 ¥1,000</strong>,含下面四册教材,另<strong>赠送阅读绘本 2 本</strong>和
+          方法课每位学员一套,<strong>进货价 ¥1,000</strong>,6 万标准包已含 <strong>12 套</strong>,超出按进货价补订。
+          每套含下面四册教材,另<strong>赠送阅读绘本 2 本</strong>和
           <strong>必背绘本 1 本</strong> —— 读的用来养语感,背的用来打底子。向家长收多少由你自己定。
         </p>
         <table className="mt-2 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
@@ -361,17 +363,17 @@ export default function FranchiseRecruitDoc() {
         <StatRow
           items={[
             ['¥60,000', '标准包 · 分 3 期,每期 ¥20,000'],
-            ['300 张', '学生学习卡,每张半年'],
+            ['300 张 + 12 套', '学习卡(每张半年)+ 方法课'],
             ['含培训', '老师带教培训包含在内'],
           ]}
         />
         <p className="mt-2.5">
-          <strong>6 万元包含</strong>:300 张学生学习卡、机构独立后台(教师 / 管理账号不限、学生不限)、
+          <strong>6 万元包含</strong>:300 张学生学习卡、12 套方法课教材、机构独立后台(教师 / 管理账号不限、学生不限)、
           <strong>飞鹰英语专属内容</strong>(飞鹰语法、飞鹰单词速记法等自研教材,不占学习卡)、
           <strong>老师带教培训</strong>、服务期内系统升级。不另收加盟费、培训费、内容费。
         </p>
 
-        <p className="mt-3 font-bold text-slate-900">学习卡:按本数发,发卡时你来选书</p>
+        <p className="mt-3 font-bold text-slate-900">学习卡与方法课:按本数发卡,发卡时你来选书</p>
         <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
           <thead>
             <tr className="bg-[#FFF3EC]">
@@ -391,32 +393,38 @@ export default function FranchiseRecruitDoc() {
               <tr>
                 <td className={`${td} text-center`}>15本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥600</td>
-                <td className={`${td} text-center`}>30</td>
+                <td className={`${td} text-center`}>15</td>
                 <td className={td}>任选 15 本课本,适合整个学段或衔接</td>
               </tr>
               <tr>
                 <td className={`${td} text-center`}>5本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥360</td>
-                <td className={`${td} text-center`}>50</td>
+                <td className={`${td} text-center`}>40</td>
                 <td className={td}>任选 5 本课本</td>
               </tr>
               <tr>
                 <td className={`${td} text-center`}>小学2本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥120</td>
-                <td className={`${td} text-center`}>90</td>
+                <td className={`${td} text-center`}>135</td>
                 <td className={td}>任选 2 本小学课本,如一学期的上下册</td>
               </tr>
               <tr>
                 <td className={`${td} text-center`}>单本卡</td>
                 <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥240</td>
-                <td className={`${td} text-center`}>50</td>
+                <td className={`${td} text-center`}>30</td>
                 <td className={td}>任选 1 本课本,或 1 本精品书(中高考词汇、KET/PET、四六级、雅思托福等)</td>
+              </tr>
+              <tr>
+                <td className={`${td} text-center`}>方法课</td>
+                <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥1,000 / 套</td>
+                <td className={`${td} text-center`}>12 套</td>
+                <td className={td}>纸质教材,每位学员一套:音标 1 册 + 语法 3 册,赠绘本 3 本</td>
               </tr>
               <tr className="font-semibold">
                 <td className={`${td} text-center`}>合计</td>
                 <td className={`${td} text-center text-[#FF6B35]`}>¥60,000</td>
-                <td className={`${td} text-center`}>300</td>
-                <td className={td}>每张卡兑换后有效半年</td>
+                <td className={`${td} text-center`}>300 张 + 12 套</td>
+                <td className={td}>每张卡兑换后有效半年;方法课随每期寄出</td>
               </tr>
           </tbody>
         </table>
@@ -436,22 +444,21 @@ export default function FranchiseRecruitDoc() {
             </tr>
           </thead>
           <tbody>
-            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 80、15本卡 10、5本卡 17、小学2本卡 30、单本卡 13;开通后台,安排带教培训</td></tr>
-            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 10、5本卡 17、小学2本卡 30、单本卡 18</td></tr>
-            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 10、5本卡 16、小学2本卡 30、单本卡 19</td></tr>
+            <tr><td className={`${td} text-center`}>第 1 期</td><td className={`${td} text-center`}>签约时</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>入门卡 80、15本卡 4、5本卡 13、小学2本卡 44、单本卡 10,方法课 4 套;开通后台,安排带教培训</td></tr>
+            <tr><td className={`${td} text-center`}>第 2 期</td><td className={`${td} text-center`}>第 3 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 5、5本卡 14、小学2本卡 46、单本卡 10,方法课 4 套</td></tr>
+            <tr><td className={`${td} text-center`}>第 3 期</td><td className={`${td} text-center`}>第 6 个月</td><td className={`${td} text-center`}>¥20,000</td><td className={td}>15本卡 6、5本卡 13、小学2本卡 45、单本卡 10,方法课 4 套</td></tr>
           </tbody>
         </table>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
           <li>卡卖得快可以<strong>提前付</strong>下一期,到账当天开卡。</li>
-          <li>每期付 ¥20,000;按进货价算三期卡值是 ¥20,040 / ¥20,040 / ¥19,920,合计正好 6 万,不用找补。</li>
+          <li>每期付 ¥20,000;按进货价算三期交付的卡和方法课是 ¥19,960 / ¥19,960 / ¥20,080,合计正好 6 万,不用找补。</li>
           <li><strong>一次付清 3 期送 10 张 5本卡</strong>;付完第 1 期后一次结清剩余两期,送 5 张。</li>
           <li>3 期付完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
         </ul>
 
-        <p className="mt-3 font-bold text-slate-900">另计(按需订购,不含在 6 万内)</p>
+        <p className="mt-3 font-bold text-slate-900">另计(按需订购)</p>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
-          <li><strong>方法课</strong>:进货价 <strong>¥1,000 / 套</strong>,每位学员一套,含音标 1 册 + 语法 3 册教材,
-            赠送阅读绘本 2 本、必背绘本 1 本(详见第四章)。</li>
+          <li><strong>方法课超出 12 套</strong>:按进货价 <strong>¥1,000 / 套</strong>补订,每位学员一套(详见第四章)。</li>
           <li>其他纸质配套教材:按供货清单明细计价,按需订购,运费另计。</li>
           <li>参加带教培训的交通、食宿由机构自理。</li>
         </ul>
