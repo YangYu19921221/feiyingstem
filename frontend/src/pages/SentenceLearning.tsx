@@ -1,392 +1,270 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {useParams} from 'react-router-dom';
-import useGoBack from '../hooks/useGoBack';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Volume2, Check, X as XIcon, RefreshCw } from 'lucide-react';
-import { listSentences, type Sentence } from '../api/sentences';
-import { reportStudyTime } from '../api/learningRecords';
-import useNetActiveTime from '../hooks/useNetActiveTime';
-import { useAudio } from '../hooks/useAudio';
-import { toast } from '../components/Toast';
-import { parseError } from '../utils/errorMessage';
-import { normalizeAnswer } from '../utils/normalizeAnswer';
-import { imeSafeInputProps } from '../utils/noSuggestInput';
-import { usePreventCopy } from '../hooks/usePreventCopy';
-
-type Mode = 'choice' | 'dictation';
-
 /**
- * 句子背诵学习页：
- * - choice: 英翻中四选一（中文选项里只有一个是正确翻译，其它从同单元里随机抽干扰）
- * - dictation: 听句子写英文，错答需照抄正确句子 3 遍才放行（与 SpellingPractice 一致）
+ * 句子背诵(2026-10-11 重做,取代「英翻中选择 / 听句子默写」二选一的单遍版)。
+ *
+ * 单元按服务端切好的组走,每组: 听读 → 连词成句 → 开口背 → 默写 → 过关检测(80 分);
+ * 最后一组过关后「跟读整篇」(整单元连着播,不打分)→ 总结。
+ * - 错的句子放到本轮最后再来,一轮全对才进下一步(与分类学习同口径);每句只记首答
+ * - 开口背不用语音识别、不自评,只判真的开口说够了长度
+ * - 断点: 服务端记已过关几组,刷新/明天再来从下一组开始;组内进度不存(一组 6-8 分钟)
+ * - 首答在每一步做完时上报(走可靠队列),过关检测通过再上报一次 group-pass
  */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
+import useGoBack from '../hooks/useGoBack';
+import useNetActiveTime from '../hooks/useNetActiveTime';
+import useIdleDetector from '../hooks/useIdleDetector';
+import usePresence from '../hooks/usePresence';
+import { usePreventCopy } from '../hooks/usePreventCopy';
+import FocusReminder from '../components/FocusReminder';
+import { parseError } from '../utils/errorMessage';
+import { earnFood } from '../api/pet';
+import { dispatchPetEvent } from '../utils/petEventBus';
+import {
+  getLearnUnit, submitSentenceGroupPass, submitSentenceRecords,
+  type LearnSentence, type LearnUnit, type SentenceStage,
+} from '../api/sentences';
+import ListenStage from '../components/sentence/ListenStage';
+import ArrangeStage from '../components/sentence/ArrangeStage';
+import SpeakStage from '../components/sentence/SpeakStage';
+import DictationStage from '../components/sentence/DictationStage';
+import ExamStage from '../components/sentence/ExamStage';
+import ReadAlongStage from '../components/sentence/ReadAlongStage';
+import type { FirstResult } from '../components/sentence/useRoundQueue';
+import { PrimaryButton, SecondaryButton, StepIntro } from '../components/sentence/ui';
+import { PASS_SCORE, STEP_NAMES } from '../components/sentence/constants';
+
+type Phase =
+  | { kind: 'intro'; step: number }
+  | { kind: 'listen' } | { kind: 'arrange' } | { kind: 'speak' } | { kind: 'dictation' } | { kind: 'exam' }
+  | { kind: 'examResult'; score: number; wrong: FirstResult[] }
+  | { kind: 'readAlong' }
+  | { kind: 'summary' };
+
+const STEP_DESC = [
+  '句子会循环播放,跟着读。会读了点「会读了」,没把握就「再听听」。',
+  '看中文、听录音,把打乱的词块按顺序点出来。',
+  '只看中文,凭记忆把英文大声说出来,说完会放原句给你对照。',
+  '看中文,把英文整句写出来。大小写和标点不用管,写错的词会标出来。',
+  `每句一道题,题型不一样,每题只答一次。${PASS_SCORE} 分过关。`,
+];
+
 export default function SentenceLearning() {
-  usePreventCopy();  // 防划走答案:禁右键/复制/选中(输入框内放行)
-  // 返回上一层(单元列表)必须走历史出栈,不要 navigate 到单元页 URL ——
-  // 那是 push,会和单元页自身的返回形成 学习页⇄单元页 无限来回。
-  // useGoBack 正常出栈,只在没有历史(直开/刷新)时才兜底跳首页。
+  usePreventCopy();
   const goBack = useGoBack('/student/dashboard');
-  const { bookId, unitId } = useParams<{ bookId: string; unitId: string }>();
+  const { unitId } = useParams<{ bookId: string; unitId: string }>();
   const uid = parseInt(unitId || '0', 10);
-  const { playAudio } = useAudio();
 
-  const [mode, setMode] = useState<Mode>('choice');
-  const [sentences, setSentences] = useState<Sentence[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [idx, setIdx] = useState(0);
-  const [done, setDone] = useState(false);
-  const [correctCount, setCorrectCount] = useState(0);
-  const [wrongCount, setWrongCount] = useState(0);
+  const [data, setData] = useState<LearnUnit | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [groupIdx, setGroupIdx] = useState(0);
+  const [phase, setPhase] = useState<Phase>({ kind: 'intro', step: 1 });
+  // 每进一次过关检测 +1: 重测换一套题序,但同一次检测里重渲染不能重新出题
+  const [examRun, setExamRun] = useState(0);
+  const totals = useRef({ correct: 0, total: 0 });
+  const [summaryStats, setSummaryStats] = useState({ correct: 0, total: 0 });
 
-  // ── 学习时长上报:背诵没有逐题落库,单独按净活动时长计入学习日历 ──
-  // 计时口径统一在 useNetActiveTime(发呆/切屏整段不计,含判定前的 60 秒)
-  const { takeDelta } = useNetActiveTime();
-  const reportDelta = useCallback(() => {
-    const delta = takeDelta();
-    if (delta > 0) reportStudyTime(delta).catch(() => {});
-  }, [takeDelta]);
-  // 完成一组时结一次;退出页面(含中途返回)把尾巴补上
-  useEffect(() => { if (done) reportDelta(); }, [done, reportDelta]);
-  const reportRef = useRef(reportDelta);
-  reportRef.current = reportDelta;
-  useEffect(() => () => reportRef.current(), []);
+  const { idle, takeDelta } = useNetActiveTime();
+  const isNudge = useIdleDetector(30_000);
+  usePresence({
+    unitName: data ? `句子·${data.book_name} ${data.unit_name}` : undefined,
+    idle,
+    enabled: !!data,
+  });
 
   useEffect(() => {
     if (!uid) return;
-    (async () => {
-      try {
-        const list = await listSentences(uid);
-        setSentences(list);
-      } catch (err: any) {
-        toast.error(parseError(err, '加载失败').message);
-      } finally { setLoading(false); }
-    })();
+    getLearnUnit(uid)
+      .then(d => {
+        setData(d);
+        // 断点: 已全过的单元从第 1 组重来;否则从下一组开始
+        setGroupIdx(d.groups_passed >= d.groups.length ? 0 : d.groups_passed);
+      })
+      .catch(e => setLoadError(parseError(e, '加载失败').message));
   }, [uid]);
 
-  const cur = sentences[idx];
+  // 退出页面把没报的时长补上
+  const takeRef = useRef(takeDelta);
+  useEffect(() => { takeRef.current = takeDelta; }, [takeDelta]);
+  useEffect(() => () => {
+    const sec = takeRef.current();
+    if (sec > 0 && uid) submitSentenceRecords({ unit_id: uid, answers: [], session_seconds: sec }).catch(() => {});
+  }, [uid]);
 
-  const restart = () => {
-    setIdx(0); setDone(false); setCorrectCount(0); setWrongCount(0);
+  /** 返回上报的 Promise: 过关要等首答落库后再报(两条写同时到 SQLite 会撞写锁,实测 500 一次靠重试队列补上) */
+  const report = useCallback((stage: SentenceStage, first: FirstResult[]): Promise<unknown> => {
+    totals.current.correct += first.filter(r => r.isCorrect).length;
+    totals.current.total += first.length;
+    const sent = submitSentenceRecords({
+      unit_id: uid,
+      session_seconds: takeDelta(),
+      answers: first.map(r => ({
+        sentence_id: r.sentence.id, stage, is_correct: r.isCorrect,
+        answer: r.isCorrect ? undefined : r.answer,
+      })),
+    }).catch(() => { /* 已进可靠队列,稍后自动补交 */ });
+    const right = first.filter(r => r.isCorrect).length;
+    if (right > 0) dispatchPetEvent('correct', { combo: right });
+    return sent;
+  }, [uid, takeDelta]);
+
+  if (loadError) return <Shell title="句子背诵" onBack={goBack}><p className="py-20 text-center text-sm text-ink-mute">{loadError}</p></Shell>;
+  if (!data) return <div className="flex min-h-screen items-center justify-center text-sm text-ink-mute">加载中…</div>;
+  if (data.groups.length === 0) return <Shell title="句子背诵" onBack={goBack}><p className="py-20 text-center text-sm text-ink-mute">这个单元还没有句子</p></Shell>;
+
+  const group: LearnSentence[] = data.groups[groupIdx] ?? [];
+  const isLastGroup = groupIdx + 1 >= data.groups.length;
+  const title = `${data.unit_name} · 第 ${groupIdx + 1}/${data.groups.length} 组`;
+
+  const startStep = (step: number) => {
+    const kinds = ['listen', 'arrange', 'speak', 'dictation', 'exam'] as const;
+    if (step === 5) setExamRun(n => n + 1);
+    setPhase({ kind: kinds[step - 1] });
   };
 
-  const handleResult = (ok: boolean) => {
-    if (ok) setCorrectCount(c => c + 1);
-    else setWrongCount(w => w + 1);
+  const onExamDone = (score: number, first: FirstResult[]) => {
+    const sent = report('exam', first);
+    if (score >= PASS_SCORE) {
+      void sent.finally(() => submitSentenceGroupPass(uid, groupIdx, score).catch(() => {}));
+    }
+    setPhase({ kind: 'examResult', score, wrong: first.filter(r => !r.isCorrect) });
   };
 
-  const goNext = () => {
-    if (idx + 1 >= sentences.length) setDone(true);
-    else setIdx(i => i + 1);
+  const finishUnit = () => {
+    const { correct, total } = totals.current;
+    setSummaryStats({ correct, total });
+    if (total > 0) {
+      earnFood({ score: correct, total, mode: 'spelling' })
+        .then(() => dispatchPetEvent('complete')).catch(() => {});
+    }
+    setPhase({ kind: 'summary' });
   };
 
-  if (loading) {
-    return <CenterText text="加载中…" />;
-  }
-  if (sentences.length === 0) {
-    return (
-      <Shell title="句子背诵" onBack={goBack}>
-        <div className="py-20 text-center text-sm text-ink-mute">该单元还没有句子</div>
-      </Shell>
-    );
-  }
-  if (done) {
-    const total = correctCount + wrongCount;
-    const acc = total > 0 ? Math.round((correctCount / total) * 100) : 0;
-    return (
-      <Shell title="本组完成" onBack={goBack}>
-        <div className="py-12 text-center">
-          <div className="text-5xl mb-3">🎉</div>
-          <h2 className="font-display text-2xl font-semibold text-ink mb-2">练完啦</h2>
-          <p className="text-sm text-ink-soft mb-6">
-            答对 <span className="text-ink font-semibold">{correctCount}</span> · 答错 <span className="text-ink font-semibold">{wrongCount}</span> · 准确率 {acc}%
-          </p>
-          <div className="flex gap-3 justify-center">
-            <button onClick={restart} className="px-5 py-2.5 rounded-xl border border-black/10 hover:bg-black/[0.02] inline-flex items-center gap-1.5 text-sm">
-              <RefreshCw className="w-4 h-4" /> 再练一组
-            </button>
-            <button onClick={goBack} className="px-5 py-2.5 rounded-xl bg-accent-warm text-white hover:opacity-90 text-sm">
-              换一个单元
-            </button>
+  const body = (() => {
+    switch (phase.kind) {
+      case 'intro':
+        return <StepIntro step={phase.step} title={STEP_NAMES[phase.step - 1]} desc={STEP_DESC[phase.step - 1]} onStart={() => startStep(phase.step)} />;
+      case 'listen':
+        return <ListenStage key={`l${groupIdx}`} items={group} onDone={() => setPhase({ kind: 'intro', step: 2 })} />;
+      case 'arrange':
+        return <ArrangeStage key={`a${groupIdx}`} items={group} onDone={first => { report('arrange', first); setPhase({ kind: 'intro', step: 3 }); }} />;
+      case 'speak':
+        return <SpeakStage key={`s${groupIdx}`} items={group} onDone={() => setPhase({ kind: 'intro', step: 4 })} />;
+      case 'dictation':
+        return <DictationStage key={`d${groupIdx}`} items={group} onDone={first => { report('dictation', first); setPhase({ kind: 'intro', step: 5 }); }} />;
+      case 'exam':
+        return <ExamStage key={`e${groupIdx}-${examRun}`} items={group} onDone={onExamDone} />;
+      case 'examResult':
+        return (
+          <ExamResult
+            score={phase.score}
+            wrong={phase.wrong}
+            isLastGroup={isLastGroup}
+            onNext={() => {
+              if (isLastGroup) setPhase({ kind: 'readAlong' });
+              else { setGroupIdx(groupIdx + 1); setPhase({ kind: 'intro', step: 1 }); }
+            }}
+            onRetry={() => { setExamRun(n => n + 1); setPhase({ kind: 'exam' }); }}
+            onRelearn={() => setPhase({ kind: 'intro', step: 1 })}
+          />
+        );
+      case 'readAlong':
+        return <ReadAlongStage sentences={data.groups.flat()} onDone={finishUnit} />;
+      case 'summary': {
+        const { correct, total } = summaryStats;
+        return (
+          <div className="py-12 text-center">
+            <div className="text-5xl">🎉</div>
+            <h2 className="mt-3 font-display text-2xl font-semibold text-ink">这个单元背完了</h2>
+            <p className="mt-2 text-sm text-ink-soft">
+              {data.groups.flat().length} 句 · 第一次就做对 {total > 0 ? Math.round((correct / total) * 100) : 0}%
+            </p>
+            <div className="mx-auto mt-8 grid max-w-xs gap-3">
+              <PrimaryButton onClick={goBack}>换一个单元</PrimaryButton>
+              <SecondaryButton onClick={() => { totals.current = { correct: 0, total: 0 }; setGroupIdx(0); setPhase({ kind: 'intro', step: 1 }); }}>
+                <span className="inline-flex items-center gap-1.5"><RefreshCw className="h-4 w-4" />从头再背一遍</span>
+              </SecondaryButton>
+            </div>
           </div>
-        </div>
-      </Shell>
-    );
-  }
+        );
+      }
+    }
+  })();
 
   return (
-    <Shell title={`句子背诵 ${idx + 1} / ${sentences.length}`} onBack={goBack}>
-      {/* 模式切换 */}
-      <div className="inline-flex bg-black/[0.04] p-1 rounded-full mb-6">
-        {(['choice', 'dictation'] as Mode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => { setMode(m); }}
-            className={`min-h-11 px-4 py-2 text-xs font-medium rounded-full transition ${
-              mode === m ? 'bg-white text-ink shadow-sm' : 'text-ink-soft hover:text-ink'
-            }`}
-          >
-            {m === 'choice' ? '英翻中（选择）' : '听句子默写'}
-          </button>
-        ))}
-      </div>
-
-      {/* 进度条 */}
-      <div className="h-1.5 bg-black/[0.06] rounded-full overflow-hidden mb-6">
-        <div className="h-full bg-accent-warm transition-all" style={{ width: `${((idx + 1) / sentences.length) * 100}%` }} />
-      </div>
-
-      <AnimatePresence mode="wait">
-        {mode === 'choice' && cur ? (
-          <ChoiceCard
-            key={`c-${cur.id}`}
-            sentence={cur}
-            pool={sentences}
-            onAnswer={(ok) => { handleResult(ok); }}
-            onNext={goNext}
-            playAudio={playAudio}
-          />
-        ) : cur ? (
-          <DictationCard
-            key={`d-${cur.id}`}
-            sentence={cur}
-            onAnswer={(ok) => handleResult(ok)}
-            onNext={goNext}
-            playAudio={playAudio}
-          />
-        ) : null}
-      </AnimatePresence>
+    <Shell title={phase.kind === 'readAlong' ? `${data.unit_name} · 跟读整篇` : phase.kind === 'summary' ? data.unit_name : title} onBack={goBack}>
+      {!['readAlong', 'summary', 'examResult'].includes(phase.kind) && <StepDots phase={phase} />}
+      {body}
+      {phase.kind !== 'summary' && <FocusReminder nudge={isNudge} block={idle} />}
     </Shell>
   );
 }
 
-/* ============= 英翻中：四选一 ============= */
-function ChoiceCard({ sentence, pool, onAnswer, onNext, playAudio }: {
-  sentence: Sentence; pool: Sentence[]; onAnswer: (ok: boolean) => void; onNext: () => void;
-  playAudio: (text: string) => Promise<void>;
-}) {
-  const options = useMemo(() => {
-    const correct = sentence.chinese;
-    const distractors = pool
-      .filter(s => s.id !== sentence.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3)
-      .map(s => s.chinese);
-    return [correct, ...distractors].sort(() => Math.random() - 0.5);
-  }, [sentence.id, pool]);
-
-  const [picked, setPicked] = useState<string | null>(null);
-  const isAnswered = picked !== null;
-
-  const pick = (opt: string) => {
-    if (isAnswered) return;
-    setPicked(opt);
-    onAnswer(opt === sentence.chinese);
-  };
-
+function StepDots({ phase }: { phase: Phase }) {
+  const order = ['listen', 'arrange', 'speak', 'dictation', 'exam'];
+  const cur = phase.kind === 'intro' ? phase.step - 1 : order.indexOf(phase.kind);
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-      className="bg-white rounded-2xl border border-black/[0.05] p-6"
-    >
-      <div className="flex items-center gap-2 mb-4">
-        <button type="button" onClick={() => playAudio(sentence.tts_text || sentence.english)} className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-accent-warm/[0.08] text-accent-warm hover:bg-accent-warm/[0.15]" title="朗读">
-          <Volume2 className="w-4 h-4" />
-        </button>
-        <span className="text-xs text-ink-mute">点击朗读</span>
-      </div>
-      <p className="font-display text-2xl text-ink leading-snug mb-1">{sentence.english}</p>
-      {sentence.phonetic && <p className="text-sm text-ink-mute mb-5">{sentence.phonetic}</p>}
-
-      <p className="text-xs text-ink-soft mb-3">下面哪个是它的意思？</p>
-      <div className="space-y-2.5">
-        {options.map((opt, i) => {
-          const isCorrect = isAnswered && opt === sentence.chinese;
-          const isWrong = isAnswered && picked === opt && opt !== sentence.chinese;
-          return (
-            <button
-              key={i}
-              onClick={() => pick(opt)}
-              disabled={isAnswered}
-              className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition ${
-                isCorrect ? 'bg-green-50 border-green-300 text-green-800' :
-                isWrong ? 'bg-red-50 border-red-300 text-red-800' :
-                'border-black/10 hover:border-accent-warm/40 hover:bg-accent-warm/[0.04]'
-              }`}
-            >
-              <span className="inline-block w-5 h-5 mr-2 text-xs font-numeric text-ink-mute">{String.fromCharCode(65 + i)}.</span>
-              {opt}
-              {isCorrect && <Check className="inline w-4 h-4 ml-2 text-green-600" />}
-              {isWrong && <XIcon className="inline w-4 h-4 ml-2 text-red-500" />}
-            </button>
-          );
-        })}
-      </div>
-
-      {isAnswered && (
-        <button onClick={onNext} className="mt-5 w-full py-3 rounded-xl bg-accent-warm text-white font-medium hover:opacity-90">
-          下一句 →
-        </button>
-      )}
-    </motion.div>
+    <ol className="mb-6 flex items-center gap-1.5" aria-label="学习步骤">
+      {STEP_NAMES.map((name, i) => (
+        <li key={name} className="flex flex-1 flex-col items-center gap-1">
+          <span className={`h-1.5 w-full rounded-full ${i < cur ? 'bg-accent-warm' : i === cur ? 'bg-accent-warm/60' : 'bg-black/[0.08]'}`} />
+          <span className={`text-[11px] ${i === cur ? 'font-medium text-ink' : 'text-ink-mute'}`}>{name}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
-/* ============= 听句子默写：错答需抄 3 遍 ============= */
-function DictationCard({ sentence, onAnswer, onNext, playAudio }: {
-  sentence: Sentence; onAnswer: (ok: boolean) => void; onNext: () => void;
-  playAudio: (text: string) => Promise<void>;
+function ExamResult({ score, wrong, isLastGroup, onNext, onRetry, onRelearn }: {
+  score: number; wrong: FirstResult[]; isLastGroup: boolean;
+  onNext: () => void; onRetry: () => void; onRelearn: () => void;
 }) {
-  const [input, setInput] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(false);
-  // 错答抄写：必须连续 3 次正确才放行
-  const [copyMode, setCopyMode] = useState(false);
-  const [copyDoneCount, setCopyDoneCount] = useState(0);
-  const COPY_REQUIRED = 3;
-  const inputRef = useRef<HTMLInputElement>(null);
-  const playedRef = useRef(false);
-
-  useEffect(() => {
-    if (!playedRef.current) {
-      playedRef.current = true;
-      setTimeout(() => playAudio(sentence.tts_text || sentence.english), 300);
-    }
-    setTimeout(() => inputRef.current?.focus(), 200);
-  }, [sentence.id, playAudio, sentence.tts_text, sentence.english]);
-
-  // 句子默写场景按整句严格匹配，大小写不敏感（学生不一定按规范敲首字母大写）
-  const norm = (s: string) => normalizeAnswer(s).toLowerCase();
-  const targetNorm = norm(sentence.english);
-
-  const handleCheck = () => {
-    if (!input.trim()) return;
-    const ok = norm(input) === targetNorm;
-    setIsCorrect(ok);
-    setSubmitted(true);
-    if (ok) {
-      onAnswer(true);
-    } else {
-      onAnswer(false);
-      setCopyMode(true);
-      setCopyDoneCount(0);
-      setTimeout(() => {
-        setInput('');
-        inputRef.current?.focus();
-      }, 700);
-    }
-  };
-
-  const handleCopySubmit = () => {
-    if (!input.trim()) return;
-    if (norm(input) === targetNorm) {
-      const next = copyDoneCount + 1;
-      setCopyDoneCount(next);
-      if (next >= COPY_REQUIRED) {
-        // 抄写完成，退出抄写模式（amber 提示框换成"参考答案"）
-        setCopyMode(false);
-      } else {
-        setTimeout(() => {
-          setInput('');
-          inputRef.current?.focus();
-        }, 200);
-      }
-    } else {
-      toast.warning('请照着上方正确句子完整抄写');
-    }
-  };
-
-  const handleNext = () => {
-    setInput(''); setSubmitted(false); setIsCorrect(false);
-    setCopyMode(false); setCopyDoneCount(0);
-    onNext();
-  };
-
-  const passed = isCorrect || copyDoneCount >= COPY_REQUIRED;
-
+  const passed = score >= PASS_SCORE;
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-      className="bg-white rounded-2xl border border-black/[0.05] p-6"
-    >
-      <div className="flex items-center gap-3 mb-5">
-        <button type="button" onClick={() => playAudio(sentence.tts_text || sentence.english)} className="flex min-h-11 min-w-11 items-center justify-center rounded-full bg-accent-warm/[0.08] text-accent-warm hover:bg-accent-warm/[0.15]" title="重播">
-          <Volume2 className="w-5 h-5" />
-        </button>
-        <div>
-          <p className="text-sm text-ink">中文：{sentence.chinese}</p>
-          <p className="text-xs text-ink-mute mt-0.5">听音频写出英文</p>
+    <div className="py-8 text-center">
+      <div className="text-5xl">{passed ? (score === 100 ? '🏆' : '🎉') : '💪'}</div>
+      <p className={`mt-3 font-display text-4xl font-bold ${passed ? 'text-accent-warm' : 'text-ink'}`}>{score} 分</p>
+      <p className="mt-1 text-sm text-ink-soft">{passed ? '过关了' : `还差一点,${PASS_SCORE} 分过关`}</p>
+      {wrong.length > 0 && (
+        <div className="mx-auto mt-6 max-w-md rounded-xl bg-black/[0.03] p-4 text-left">
+          <p className="text-xs text-ink-mute">这几句再记一记</p>
+          <ul className="mt-2 space-y-2">
+            {wrong.map(r => (
+              <li key={r.sentence.id} className="text-sm">
+                <span className="text-ink">{r.sentence.english.replace(/^\s*[—–-]+\s*/, '')}</span>
+                <span className="ml-2 text-ink-mute">{r.sentence.chinese}</span>
+              </li>
+            ))}
+          </ul>
         </div>
+      )}
+      <div className="mx-auto mt-8 grid max-w-xs gap-3">
+        {passed ? (
+          <PrimaryButton onClick={onNext}>{isLastGroup ? '最后一步:跟读整篇' : '下一组'}</PrimaryButton>
+        ) : (
+          <>
+            <PrimaryButton onClick={onRetry}>再测一次</PrimaryButton>
+            <SecondaryButton onClick={onRelearn}>这一组从头学</SecondaryButton>
+          </>
+        )}
       </div>
-
-      {submitted && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
-          <p className="text-xs text-amber-700 mb-1">{copyMode ? '正确句子（请照着抄写）' : '参考答案'}</p>
-          <p className="text-base font-mono text-amber-900 leading-relaxed">{sentence.english}</p>
-          {sentence.phonetic && <p className="text-xs text-amber-700 mt-1">{sentence.phonetic}</p>}
-        </div>
-      )}
-
-      <input
-        {...imeSafeInputProps()}
-        ref={inputRef}
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') (passed ? handleNext() : copyMode ? handleCopySubmit() : handleCheck()); }}
-        placeholder={copyMode ? '请抄写上面的句子' : '听到的英文…'}
-        className="w-full px-4 py-3 rounded-xl border-2 border-black/10 focus:border-accent-warm outline-none text-base font-mono"
-      />
-
-      {!submitted ? (
-        <button
-          onClick={handleCheck}
-          disabled={!input.trim()}
-          className="mt-4 w-full py-3 rounded-xl bg-accent-warm text-white font-medium hover:opacity-90 disabled:opacity-50"
-        >提交检查</button>
-      ) : !passed ? (
-        <>
-          <p className="text-sm text-amber-700 mt-3">
-            ✏️ 拼错了，请照着抄 {COPY_REQUIRED} 遍（已完成 {copyDoneCount} / {COPY_REQUIRED}）
-          </p>
-          <button
-            onClick={handleCopySubmit}
-            disabled={!input.trim()}
-            className="mt-3 w-full py-3 rounded-xl bg-accent-warm text-white font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            提交本遍（{Math.min(copyDoneCount + 1, COPY_REQUIRED)} / {COPY_REQUIRED}）
-          </button>
-        </>
-      ) : (
-        <>
-          <p className="text-sm text-green-700 mt-3">
-            {isCorrect ? '✅ 完全正确！' : `✅ 已抄写 ${COPY_REQUIRED} 遍`}
-          </p>
-          <button onClick={handleNext} className="mt-3 w-full py-3 rounded-xl bg-accent-warm text-white font-medium hover:opacity-90">
-            下一句 →
-          </button>
-        </>
-      )}
-    </motion.div>
-  );
-}
-
-/* ============= 通用壳 ============= */
-function Shell({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-paper">
-      <nav className="border-b border-slate-200/80 bg-white/95 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-2xl mx-auto px-5 py-3.5 flex items-center justify-between">
-          <button type="button" onClick={onBack} className="flex min-h-11 items-center gap-2 text-ink-soft hover:text-ink text-sm">
-            <ArrowLeft className="w-4 h-4" /> 返回
-          </button>
-          <h1 className="font-display text-base font-semibold text-ink">{title}</h1>
-          <div className="w-12" />
-        </div>
-      </nav>
-      <div className="max-w-2xl mx-auto px-5 py-8">{children}</div>
     </div>
   );
 }
 
-function CenterText({ text }: { text: string }) {
-  return <div className="min-h-screen flex items-center justify-center text-sm text-ink-mute">{text}</div>;
+function Shell({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-paper">
+      <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3.5">
+          <button type="button" onClick={onBack} className="flex min-h-11 items-center gap-2 text-sm text-ink-soft hover:text-ink">
+            <ArrowLeft className="h-4 w-4" /> 返回
+          </button>
+          <h1 className="truncate px-2 font-display text-base font-semibold text-ink">{title}</h1>
+          <div className="w-12" />
+        </div>
+      </nav>
+      <div className="mx-auto max-w-2xl px-5 py-6">{children}</div>
+    </div>
+  );
 }

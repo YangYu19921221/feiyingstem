@@ -24,6 +24,15 @@ export interface WhatsNewEntry {
 
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    id: 'sentence-recite-steps-2026-10',
+    date: '2026-10-11',
+    title: '🗣️ 句子背诵改版:一组一组背,还要开口说',
+    desc: '每个单元分成几组,每组按「听读 → 连词成句 → 开口背 → 默写 → 过关检测」走,80 分过关才进下一组;做错的句子会在本轮最后再来一遍。默写只标出写错的词,大小写和标点不用管。下次进来从没过的那一组接着背。',
+    where: '首页「句子背诵」→ 选一本 → 选单元',
+    roles: ['student'],
+    route: '/student/sentences',
+  },
   // 学习卡规则(2026-10-08): whatsNew 不能按机构投放,老政策机构的老师也会看到,
   // 所以文案开头写明「新签约的卡包政策机构」,老机构老师看了知道与自己无关
   {

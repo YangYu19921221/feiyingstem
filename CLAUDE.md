@@ -271,6 +271,25 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 句子背诵改版(2026-10-11,取代「英翻中选择 / 听句子默写」二选一的单遍版): 单元按服务端分组,
+  每组「听读 → 连词成句 → 开口背 → 默写 → 过关检测(80 分)」,最后一组过关后「跟读整篇」→ 总结。
+  分组/关键词/记作答口径真源 services/sentence_learning.py(**对话一问一答不拆**、按句长定组大小
+  预算 28 词/最多 6 句、末组只剩 1 句并入上一组;关键词不挖功能词/缩写/句中大写的人名/招呼语,
+  生产 288 句 253 句挖得出)。新表 sentence_mastery(一人一句,阶梯复用 mastery.level_for)+
+  sentence_unit_progress(断点,只进不退);端点 student/sentence_learning.py
+  (`GET /student/sentences/units/{id}/learn`、`POST /student/sentences/records`、`POST .../group-pass`)。
+  四个口径: ①**只记首答**,重练轮不报 ②**只有过关检测推进记忆曲线**(连词/默写/检测都推的话
+  一节课把复习间隔顶到 12 小时)③**开口背不用语音识别也不自评**(用户 10-11 定),只判 VAD
+  「真的开口 + 说够时长」(minSpeechMs = 词数×280ms,至少 600ms),说完放原声对照;录不了音写明原因放行
+  ④默写判分宽容(大小写/标点/弯撇号/对话破折号/常见缩写展开等价),逐词 LCS 对齐只标错词
+  (utils/sentenceCheck.ts)。顺手补了两个只要登录的老接口的机构/公开过滤
+  (`/sentences/books/{id}/units`、`/sentences/units/{id}/sentences`)。
+  三个实测坑: (a)SpeakStage 清理 effect 依赖不能写整个 `rec` 对象(每渲染新对象 → 一开录就 stop →
+  永远「没听清」)(b)过关上报要等首答上报完成再发(两条写同时到 SQLite 撞写锁 500)
+  (c)宠物浮标压底部按钮 → FloatingPetWidget 加了学习页路由。
+  **第二步(作业 + 每日复习)未做**: 作业表 unit_id 外键到 units,要改表结构。
+  入口: 学生首页「句子背诵」→ 选书 → 选单元。测试 tests/test_sentence_learning.py(7 例;
+  去掉机构过滤 / 让每步都推进记忆曲线各恰好 1 例失败,回归锁验证过)
 - ✅ 新机构卡包政策(2026-10-08): 用户对标北大单词营,新签约机构改「标准包 6 万 = 3 期 × 2 万」,
   老机构(organizations.card_plan='legacy',存量全是)一行不动。真源 `services/card_pack.py`(卡种/单价/分期张数/赠送/
   按规则取书/额度/新书补给),前端一律读 `GET /admin/subscriptions/pack`,**不写死数字**。

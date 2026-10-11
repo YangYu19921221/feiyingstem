@@ -15,6 +15,7 @@ from app.core.rate_limit import check_rate
 from app.api.v1.auth import get_current_user, get_current_teacher
 from app.models.user import User
 from app.models.sentence import SentenceBook, SentenceUnit, Sentence
+from app.services import sentence_learning as sl
 
 
 router = APIRouter()
@@ -263,6 +264,13 @@ async def list_units(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    book = (await db.execute(
+        select(SentenceBook).where(SentenceBook.id == book_id).execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    if book is None or (current_user.role != "admin" and (
+            (book.org_id is not None and book.org_id != current_user.org_id)
+            or (current_user.role == "student" and not book.is_public))):
+        raise HTTPException(404, "句子集不存在")
     res = await db.execute(
         select(SentenceUnit, func.count(Sentence.id).label("cnt"))
         .outerjoin(Sentence, Sentence.unit_id == SentenceUnit.id)
@@ -348,6 +356,7 @@ async def list_sentences(
 ):
     # 反爬:句子是教材内容,登录后仍按账号限速,逐单元枚举会被压到 ~1 次/秒
     check_rate(str(current_user.id), "sentence_content", [(10.0, 40), (60.0, 120), (300.0, 400)])
+    await sl.visible_unit(db, unit_id, current_user)
     res = await db.execute(
         select(Sentence).where(Sentence.unit_id == unit_id).order_by(Sentence.order_index, Sentence.id)
     )

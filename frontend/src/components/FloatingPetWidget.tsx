@@ -38,6 +38,8 @@ export default function FloatingPetWidget() {
     // 音标教材的三种练法都是作答页,宠物浮标压在底部主按钮上(卡片版尤其明显:
     // 「看看对不对」固定在底部,宠物正好盖住右边)。/student/phonetics 本身是目录页不算
     || location.pathname.startsWith('/student/phonetics/textbook/')
+    // 句子背诵学习页: 主按钮都在底部,宠物浮标会压住(浏览器实测)
+    || /^\/student\/sentences\/\d+\/\d+\/learn/.test(location.pathname)
     || location.pathname.startsWith('/pk/')
     || [
       '/student/assignments',

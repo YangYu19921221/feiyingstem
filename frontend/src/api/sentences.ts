@@ -1,4 +1,5 @@
 import client from './client';
+import { submitReliably } from './submitQueue';
 
 export interface SentenceBook {
   id: number;
@@ -72,3 +73,46 @@ export const bulkImportSentences = async (unitId: number, file: File): Promise<B
   fd.append('file', file);
   return client.post<BulkImportResult>(`/sentences/units/${unitId}/bulk-import`, fd);
 };
+
+// ===================== 学生端分组学习(2026-10-11) =====================
+// 流程: 听读 → 连词成句 → 开口背 → 默写 → 过关检测 → 单元复习(pages/SentenceLearning.tsx)
+
+export interface LearnSentence {
+  id: number;
+  english: string;
+  chinese: string;
+  tts_text: string | null;
+  /** 以破折号开头的对话行;同一段对话服务端已放进同一组 */
+  is_dialogue: boolean;
+  /** 过关检测「关键词填空」挖的词(功能词和缩写不挖),可能为空 */
+  key_word: string | null;
+}
+
+export interface LearnUnit {
+  unit_id: number;
+  unit_name: string;
+  book_name: string;
+  /** 服务端切好的组(按句长 + 对话不拆),前端别自己再切 */
+  groups: LearnSentence[][];
+  /** 断点: 已过关的组数 */
+  groups_passed: number;
+  completed: boolean;
+}
+
+export type SentenceStage = 'arrange' | 'dictation' | 'exam';
+
+export const getLearnUnit = (unitId: number) =>
+  client.get<LearnUnit>(`/student/sentences/units/${unitId}/learn`);
+
+/** 首答上报(走可靠队列,断网关页下次补交;幂等键防重复) */
+export const submitSentenceRecords = (payload: {
+  unit_id: number;
+  answers: { sentence_id: number; stage: SentenceStage; is_correct: boolean; answer?: string }[];
+  session_seconds: number;
+}) => submitReliably('/student/sentences/records', payload);
+
+export const submitSentenceGroupPass = (unitId: number, groupIndex: number, score: number) =>
+  submitReliably<{ groups_passed: number; total_groups: number; unit_completed: boolean }>(
+    `/student/sentences/units/${unitId}/group-pass`, { group_index: groupIndex, score },
+  );
+
