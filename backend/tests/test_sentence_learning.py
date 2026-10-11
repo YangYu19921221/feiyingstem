@@ -177,3 +177,68 @@ async def test_group_pass_progress(client, env, db_session):
     body = (await client.get(f"/api/v1/student/sentences/units/{uid}/learn", headers=h)).json()
     assert body["groups_passed"] == total and body["completed"] is True
     assert (await client.post(url, json={"group_index": total, "score": 100}, headers=h)).status_code == 400
+
+
+# ---------- 高频词 # 标记(2026-10-11) ----------
+from app.services import sentence_marks as sm
+
+
+def test_marks_parse():
+    assert sm.parse("I #like# apples.") == ("I like apples.", "I #like# apples.")
+    assert sm.parse("I ##like## apples.") == ("I like apples.", "I #like# apples.")
+    assert sm.parse("  I  # like #  apples. ") == ("I like apples.", "I #like# apples.")
+    assert sm.parse("#Nice to meet you#.") == ("Nice to meet you.", "#Nice to meet you#.")
+    assert sm.parse("No marks.") == ("No marks.", None)
+    for bad in ("I #like apples.", "I ## apples.", "I #like# #apples."):
+        with pytest.raises(sm.MarkError):
+            sm.parse(bad)
+    assert sm.highlighted("We #can# #water# the flowers.") == ["can", "water"]
+
+
+def test_key_word_prefers_teacher_mark():
+    assert sl.key_word("We can water the flowers.", "We #can# #water# the flowers.") == "can"
+    assert sl.key_word("We can water the flowers.") == "flowers"   # 没标走规则
+
+
+async def test_import_and_learn_with_marks(client, env, db_session):
+    teacher = User(username="tmark", email="t@e.com", hashed_password="x", role="teacher",
+                   is_active=True, org_id=env["stu"].org_id)
+    db_session.add(teacher)
+    await db_session.flush()
+    book = SentenceBook(name="老师的句子", is_public=True, org_id=env["stu"].org_id, created_by=teacher.id)
+    db_session.add(book)
+    await db_session.flush()
+    unit = SentenceUnit(book_id=book.id, unit_number=1, name="U1")
+    db_session.add(unit)
+    await db_session.commit()
+    csv_text = ("english,chinese\n"
+                "I #like# red and #pink#.,我喜欢红色和粉色。\n"
+                "I #like apples.,坏行\n"
+                "Hello! I am Mike.,你好\n")
+    r = await client.post(f"/api/v1/sentences/units/{unit.id}/bulk-import",
+                          files={"file": ("s.csv", csv_text.encode("utf-8-sig"), "text/csv")},
+                          headers=_hdr(teacher))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["added"] == 2 and any("第 3 行" in e for e in body["errors"])
+    rows = list((await db_session.execute(
+        select(Sentence).where(Sentence.unit_id == unit.id).order_by(Sentence.id))).scalars())
+    assert rows[0].english == "I like red and pink." and rows[0].english_marked == "I #like# red and #pink#."
+    assert rows[1].english_marked is None
+    # 再导一次: 按干净的英文去重,带 # 的同一句不会重复进来
+    r = await client.post(f"/api/v1/sentences/units/{unit.id}/bulk-import",
+                          files={"file": ("s.csv", csv_text.encode("utf-8-sig"), "text/csv")},
+                          headers=_hdr(teacher))
+    assert r.json()["added"] == 0
+    # 学生端: 下发标记,填空考老师标的词
+    d = (await client.get(f"/api/v1/student/sentences/units/{unit.id}/learn", headers=_hdr(env["stu"]))).json()
+    s0 = d["groups"][0][0]
+    assert s0["marked"] == "I #like# red and #pink#." and s0["key_word"] == "like"
+    # 单条修改: 改了标记照样拆开存
+    r = await client.patch(f"/api/v1/sentences/sentences/{rows[1].id}",
+                           json={"english": "Hello! I am #Mike#."}, headers=_hdr(teacher))
+    assert r.status_code == 200 and r.json()["english"] == "Hello! I am Mike." \
+        and r.json()["english_marked"] == "Hello! I am #Mike#."
+    r = await client.patch(f"/api/v1/sentences/sentences/{rows[1].id}",
+                           json={"english": "Hello #Mike."}, headers=_hdr(teacher))
+    assert r.status_code == 400 and "成对" in r.json()["detail"]

@@ -29,6 +29,7 @@ router = APIRouter()
 class LearnSentence(BaseModel):
     id: int
     english: str
+    marked: Optional[str] = None   # 带 # 的高频词标记,显示时上色
     chinese: str
     tts_text: Optional[str] = None
     is_dialogue: bool
@@ -63,8 +64,8 @@ async def learn_unit(
     return LearnUnitOut(
         unit_id=unit.id, unit_name=unit.name, book_name=book.name,
         groups=[[LearnSentence(
-            id=s.id, english=s.english, chinese=s.chinese, tts_text=s.tts_text,
-            is_dialogue=sl.is_dialogue_line(s.english), key_word=sl.key_word(s.english),
+            id=s.id, english=s.english, marked=s.english_marked, chinese=s.chinese, tts_text=s.tts_text,
+            is_dialogue=sl.is_dialogue_line(s.english), key_word=sl.key_word(s.english, s.english_marked),
         ) for s in g] for g in groups],
         groups_passed=passed,
         completed=bool(prog and prog.completed_at),

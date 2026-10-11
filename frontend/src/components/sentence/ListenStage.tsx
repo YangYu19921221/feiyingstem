@@ -12,6 +12,7 @@ import useAccidentalTapGuard from '../../hooks/useAccidentalTapGuard';
 import { stripDialogueDash } from '../../utils/sentenceCheck';
 import { useRoundQueue } from './useRoundQueue';
 import { StageHeader, PrimaryButton, SecondaryButton } from './ui';
+import MarkedText from './MarkedText';
 
 export default function ListenStage({ items, onDone }: { items: LearnSentence[]; onDone: () => void }) {
   const q = useRoundQueue(items);
@@ -45,11 +46,11 @@ export default function ListenStage({ items, onDone }: { items: LearnSentence[];
       <div className="rounded-2xl border border-black/[0.05] bg-white p-6">
         {prev && (
           <p className="mb-3 rounded-lg bg-black/[0.03] px-3 py-2 text-sm text-ink-soft">
-            {stripDialogueDash(prev.english)}
+            <MarkedText text={prev.english} marked={prev.marked} />
             <span className="ml-2 text-ink-mute">{prev.chinese}</span>
           </p>
         )}
-        <p className="font-display text-2xl leading-snug text-ink">{stripDialogueDash(cur.english)}</p>
+        <p className="font-display text-2xl leading-snug text-ink"><MarkedText text={cur.english} marked={cur.marked} /></p>
         <p className="mt-2 text-base text-ink-soft">{cur.chinese}</p>
         <button
           type="button"

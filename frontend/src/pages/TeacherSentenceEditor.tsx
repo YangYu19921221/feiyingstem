@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Edit, Upload, FileSpreadsheet, Save, MessageSquareText } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import * as XLSX from 'xlsx';
+import MarkedText from '../components/sentence/MarkedText';
+import { downloadSentenceTemplate, TEMPLATE_HINT_ROW_FIRST_CELL } from '../utils/sentenceTemplate';
 import {
   listSentenceUnits, createSentenceUnit, updateSentenceUnit, deleteSentenceUnit,
   listSentences, createSentence, updateSentence, deleteSentence,
@@ -139,7 +141,7 @@ export default function TeacherSentenceEditor() {
   const editSentence = (s: Sentence) => {
     setSentForm({
       id: s.id,
-      english: s.english, chinese: s.chinese, phonetic: s.phonetic || '',
+      english: s.english_marked || s.english, chinese: s.chinese, phonetic: s.phonetic || '',
       difficulty: s.difficulty, topic: s.topic || '', grammar_focus: s.grammar_focus || '',
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -165,7 +167,10 @@ export default function TeacherSentenceEditor() {
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const csv = XLSX.utils.sheet_to_csv(ws);
+        // 模板第 2 行是中文提示(「英文句子(必填)」…),去掉,否则会被当成一句导进去
+        const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' })
+          .filter((r, i) => !(i === 1 && String(r[0] ?? '').trim() === TEMPLATE_HINT_ROW_FIRST_CELL));
+        const csv = XLSX.utils.sheet_to_csv(XLSX.utils.aoa_to_sheet(rows));
         // 加 UTF-8 BOM，避免后端 GBK 误判（虽然后端会试 utf-8-sig）
         toUpload = new File(
           [new Uint8Array([0xEF, 0xBB, 0xBF]), csv],
@@ -185,19 +190,7 @@ export default function TeacherSentenceEditor() {
     }
   };
 
-  const downloadTemplate = () => {
-    const rows = [
-      { english: 'How are you?', chinese: '你好吗？', phonetic: '/haʊ ɑːr juː/', difficulty: 1, topic: '问候', grammar_focus: '一般疑问句' },
-      { english: 'I am a student.', chinese: '我是一个学生。', phonetic: '', difficulty: 2, topic: '自我介绍', grammar_focus: '系动词' },
-    ];
-    const ws = XLSX.utils.json_to_sheet(rows, {
-      header: ['english', 'chinese', 'phonetic', 'difficulty', 'topic', 'grammar_focus'],
-    });
-    ws['!cols'] = [{ wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 6 }, { wch: 12 }, { wch: 14 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '句子导入模板');
-    XLSX.writeFile(wb, '句子导入模板.xlsx');
-  };
+  const downloadTemplate = () => downloadSentenceTemplate();
 
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
@@ -279,11 +272,11 @@ export default function TeacherSentenceEditor() {
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Field label="英文" required>
+                    <Field label="英文(高频词用 # 包起来,如 I #like# apples.)" required>
                       <input
                         value={sentForm.english}
                         onChange={e => setSentForm({ ...sentForm, english: e.target.value })}
-                        placeholder="How are you?"
+                        placeholder="How #are# you?"
                         className="w-full px-3 py-2 rounded-lg border border-black/10 focus:border-accent-warm outline-none"
                       />
                     </Field>
@@ -361,7 +354,7 @@ export default function TeacherSentenceEditor() {
                         <div key={s.id} className="px-5 py-3.5 flex items-start gap-3 hover:bg-black/[0.02]">
                           <span className="text-xs text-ink-mute font-numeric mt-0.5 w-6">{s.order_index}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-ink">{s.english}</p>
+                            <p className="text-sm text-ink"><MarkedText text={s.english} marked={s.english_marked} stripDash={false} /></p>
                             <p className="text-sm text-ink-soft mt-0.5">{s.chinese}</p>
                             {(s.phonetic || s.topic || s.grammar_focus) && (
                               <p className="text-[11px] text-ink-mute mt-1 truncate">

@@ -29,6 +29,8 @@ export interface Sentence {
   unit_id: number;
   order_index: number;
   english: string;
+  /** 带 # 的高频词标记原文(I #like# apples.),没标为 null */
+  english_marked?: string | null;
   chinese: string;
   phonetic: string | null;
   tts_text: string | null;
@@ -80,6 +82,8 @@ export const bulkImportSentences = async (unitId: number, file: File): Promise<B
 export interface LearnSentence {
   id: number;
   english: string;
+  /** 带 # 的高频词标记,显示时上色;没标为 null */
+  marked: string | null;
   chinese: string;
   tts_text: string | null;
   /** 以破折号开头的对话行;同一段对话服务端已放进同一组 */

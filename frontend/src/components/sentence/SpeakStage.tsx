@@ -15,6 +15,7 @@ import { getRecorderBlocker, useSpeechRecorder } from '../../hooks/useSpeechReco
 import useAccidentalTapGuard from '../../hooks/useAccidentalTapGuard';
 import { minSpeechMs, stripDialogueDash } from '../../utils/sentenceCheck';
 import { StageHeader, PrimaryButton, SecondaryButton } from './ui';
+import MarkedText from './MarkedText';
 
 type Phase = 'ready' | 'recording' | 'tooShort' | 'heard';
 
@@ -85,7 +86,7 @@ export default function SpeakStage({ items, onDone }: { items: LearnSentence[]; 
         {phase === 'heard' ? (
           <div className="mt-4 rounded-xl bg-green-50 px-4 py-3">
             <p className="text-xs text-green-700">原句,听听和你说的一样吗</p>
-            <p className="mt-1 font-display text-xl text-green-900">{stripDialogueDash(cur.english)}</p>
+            <p className="mt-1 font-display text-xl text-green-900"><MarkedText text={cur.english} marked={cur.marked} /></p>
           </div>
         ) : (
           <p className="mt-4 text-sm text-ink-mute">英文先藏起来了,凭记忆说</p>

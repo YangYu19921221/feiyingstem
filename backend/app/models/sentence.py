@@ -54,7 +54,8 @@ class Sentence(Base):
     unit_id = Column(Integer, ForeignKey("sentence_units.id", ondelete="CASCADE"), nullable=False, index=True)
     order_index = Column(Integer, default=0)
 
-    english = Column(Text, nullable=False)          # 英文原句
+    english = Column(Text, nullable=False)          # 英文原句(不含 # 标记,判分/TTS/去重都用它)
+    english_marked = Column(Text, nullable=True)    # 带 # 标记的原文,只给显示用: I #like# apples.(见 services/sentence_marks)
     chinese = Column(Text, nullable=False)          # 中文翻译
     phonetic = Column(String(500), nullable=True)   # 整句音标（可选，AI 生成或人工填）
     audio_url = Column(String(500), nullable=True)  # 音频 URL（一般不填，前端走 Edge TTS）

@@ -33,6 +33,7 @@ import ReadAlongStage from '../components/sentence/ReadAlongStage';
 import type { FirstResult } from '../components/sentence/useRoundQueue';
 import { PrimaryButton, SecondaryButton, StepIntro } from '../components/sentence/ui';
 import { PASS_SCORE, STEP_NAMES } from '../components/sentence/constants';
+import MarkedText from '../components/sentence/MarkedText';
 
 type Phase =
   | { kind: 'intro'; step: number }
@@ -231,7 +232,7 @@ function ExamResult({ score, wrong, isLastGroup, onNext, onRetry, onRelearn }: {
           <ul className="mt-2 space-y-2">
             {wrong.map(r => (
               <li key={r.sentence.id} className="text-sm">
-                <span className="text-ink">{r.sentence.english.replace(/^\s*[—–-]+\s*/, '')}</span>
+                <span className="text-ink"><MarkedText text={r.sentence.english} marked={r.sentence.marked} /></span>
                 <span className="ml-2 text-ink-mute">{r.sentence.chinese}</span>
               </li>
             ))}

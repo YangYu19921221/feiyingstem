@@ -8,6 +8,7 @@ import type { LearnSentence } from '../../api/sentences';
 import { useAudio } from '../../hooks/useAudio';
 import { stripDialogueDash } from '../../utils/sentenceCheck';
 import { PrimaryButton, SecondaryButton } from './ui';
+import MarkedText from './MarkedText';
 
 export default function ReadAlongStage({ sentences, onDone }: { sentences: LearnSentence[]; onDone: () => void }) {
   const { playAudioLoop, stopAudio } = useAudio();
@@ -43,7 +44,7 @@ export default function ReadAlongStage({ sentences, onDone }: { sentences: Learn
         {sentences.map((s, i) => (
           <li key={s.id} ref={el => { itemRefs.current[i] = el; }}
             className={`rounded-xl px-4 py-3 transition ${i === idx ? 'bg-accent-warm/10 ring-2 ring-accent-warm/40' : 'bg-white'}`}>
-            <p className={`font-display text-lg ${i === idx ? 'text-ink' : 'text-ink-soft'}`}>{stripDialogueDash(s.english)}</p>
+            <p className={`font-display text-lg ${i === idx ? 'text-ink' : 'text-ink-soft'}`}><MarkedText text={s.english} marked={s.marked} /></p>
             <p className="text-xs text-ink-mute">{s.chinese}</p>
           </li>
         ))}

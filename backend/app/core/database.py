@@ -540,6 +540,8 @@ async def init_db():
             "ALTER TABLE organizations ADD COLUMN card_plan VARCHAR(10) NOT NULL DEFAULT 'legacy'",
             # 飞鹰专属内容开关(2026-10-09): 存量 0 = 未开通;只对 card_plan=pack 的机构生效
             "ALTER TABLE organizations ADD COLUMN exclusive_content BOOLEAN NOT NULL DEFAULT 0",
+            # 句子高频词标记(2026-10-11): 带 # 的原文,NULL = 没标
+            "ALTER TABLE sentences ADD COLUMN english_marked TEXT",
             "ALTER TABLE word_books ADD COLUMN pack_tier VARCHAR(10)",
             "ALTER TABLE redemption_codes ADD COLUMN card_kind VARCHAR(10)",
             "CREATE INDEX IF NOT EXISTS idx_redemption_codes_card_kind ON redemption_codes(card_kind)",

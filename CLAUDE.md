@@ -294,6 +294,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   其余 4 文件整推;备份 /root/eh_db_before_sentence_20261011_1507.db、/root/eh_code_before_sentence_20261011_1507.tgz、
   frontend/dist_bak_20261011_1507)。生产临时学生 9 项全过;⚠️ 生产 FK 关闭,删学生不级联 ——
   测完手动清了 sentence_mastery 6 行 / sentence_unit_progress 1 行孤儿(user_id=945)
+  **10-11 句子高频词 # 标记**: 老师在英文里用 # 包住高频词(`I #like# apples.`,`##like##` 等价),
+  学生端橙色加粗(components/sentence/MarkedText)。真源 services/sentence_marks.parse:
+  english 存**去掉 # 的干净句**(判分/TTS/去重都用它,学生默写不用打 #),新列 sentences.english_marked
+  存带 # 原文(NULL=没标);# 不成对/空对 → 单条 400、导入按行号跳过并报出。过关检测填空**优先考老师标的词**
+  (sentence_learning.key_word 第二参)。Excel 模板 utils/sentenceTemplate.ts 三张表(句子/填写说明/常见错误),
+  第 2 行中文提示上传时按首格内容剔除(TEMPLATE_HINT_ROW_FIRST_CELL),否则会被当成一句导入。
+  模板→前端解析→真导入接口回环验过 6/6;编辑时回填带 # 原文,保存不丢标记。
 - ✅ 新机构卡包政策(2026-10-08): 用户对标北大单词营,新签约机构改「标准包 6 万 = 3 期 × 2 万」,
   老机构(organizations.card_plan='legacy',存量全是)一行不动。真源 `services/card_pack.py`(卡种/单价/分期张数/赠送/
   按规则取书/额度/新书补给),前端一律读 `GET /admin/subscriptions/pack`,**不写死数字**。

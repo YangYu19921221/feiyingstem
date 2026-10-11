@@ -87,8 +87,13 @@ _STOPWORDS |= set("hello hi hey thanks thank bye goodbye sorry please oops wow".
 _SENT_START_RE = re.compile(r"(^|[.!?]\s*[\"“”']?\s*)$")
 
 
-def key_word(english: str) -> Optional[str]:
-    """句子里最值得考的那个词: 去掉功能词、缩写、人名后取最长的(并列取靠前的)。没有就 None"""
+def key_word(english: str, marked: Optional[str] = None) -> Optional[str]:
+    """句子里最值得考的那个词。老师用 # 标了高频词就考第一个标出来的(老师比规则更懂哪个该考);
+    没标: 去掉功能词、缩写、人名后取最长的(并列取靠前的)。都没有就 None"""
+    from app.services.sentence_marks import highlighted
+    for seg in highlighted(marked):
+        if re.search(rf"\b{re.escape(seg)}\b", english or ""):
+            return seg
     text = _DIALOGUE_RE.sub("", english or "")
     best: Optional[str] = None
     for m in _TOKEN_RE.finditer(text):

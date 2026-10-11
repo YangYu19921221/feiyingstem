@@ -16,6 +16,7 @@ from app.api.v1.auth import get_current_user, get_current_teacher
 from app.models.user import User
 from app.models.sentence import SentenceBook, SentenceUnit, Sentence
 from app.services import sentence_learning as sl
+from app.services import sentence_marks
 
 
 router = APIRouter()
@@ -28,6 +29,7 @@ class SentenceOut(BaseModel):
     unit_id: int
     order_index: int
     english: str
+    english_marked: Optional[str] = None   # 带 # 的高频词标记原文,没标为空
     chinese: str
     phonetic: Optional[str] = None
     tts_text: Optional[str] = None
@@ -374,9 +376,13 @@ async def create_sentence(
     max_idx = (await db.execute(
         select(func.max(Sentence.order_index)).where(Sentence.unit_id == unit_id)
     )).scalar() or 0
+    try:
+        clean, marked = sentence_marks.parse(body.english)
+    except sentence_marks.MarkError as e:
+        raise HTTPException(400, str(e))
     s = Sentence(
         unit_id=unit_id, order_index=max_idx + 1,
-        english=body.english.strip(), chinese=body.chinese.strip(),
+        english=clean, english_marked=marked, chinese=body.chinese.strip(),
         phonetic=body.phonetic, tts_text=body.tts_text,
         difficulty=body.difficulty, topic=body.topic, grammar_focus=body.grammar_focus,
     )
@@ -394,7 +400,13 @@ async def update_sentence(
     current_user: User = Depends(get_current_teacher),
 ):
     s = await _assert_sentence_owner(db, sentence_id, current_user)
-    for k, v in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+    if "english" in data and data["english"] is not None:
+        try:
+            data["english"], data["english_marked"] = sentence_marks.parse(data["english"])
+        except sentence_marks.MarkError as e:
+            raise HTTPException(400, str(e))
+    for k, v in data.items():
         setattr(s, k, v)
     await db.commit()
     await db.refresh(s)
@@ -436,6 +448,7 @@ async def bulk_import(
       english/英文/句子 · chinese/中文/翻译 · phonetic/音标 ·
       difficulty/难度 · topic/主题 · grammar_focus/语法
     只 english + chinese 必填。空行 / 重复英文整句跳过。
+    高频词用 # 包起来(I #like# apples.),# 不成对的行跳过并报出行号。
     """
     await _assert_unit_owner(db, unit_id, current_user)
 
@@ -484,13 +497,19 @@ async def bulk_import(
     skipped_empty = 0
     skipped_dup = 0
     errors: List[str] = []
+    bad_marks: List[str] = []
     BATCH = 200
 
     for row_no, row in enumerate(reader, start=2):
-        en = col(row, "english", "英文", "句子", "english_sentence")
+        en_raw = col(row, "english", "英文", "句子", "english_sentence")
         cn = col(row, "chinese", "中文", "翻译", "translation")
-        if not en or not cn:
+        if not en_raw or not cn:
             skipped_empty += 1
+            continue
+        try:
+            en, en_marked = sentence_marks.parse(en_raw)
+        except sentence_marks.MarkError as e:
+            bad_marks.append(f"第 {row_no} 行: {e}")
             continue
         if en.lower() in existing_eng:
             skipped_dup += 1
@@ -505,7 +524,7 @@ async def bulk_import(
         cur_idx += 1
         db.add(Sentence(
             unit_id=unit_id, order_index=cur_idx,
-            english=en, chinese=cn,
+            english=en, english_marked=en_marked, chinese=cn,
             phonetic=col(row, "phonetic", "音标") or None,
             difficulty=diff,
             topic=col(row, "topic", "主题") or None,
@@ -522,4 +541,7 @@ async def bulk_import(
         errors.append(f"{skipped_empty} 行 english 或 chinese 为空")
     if skipped_dup:
         errors.append(f"{skipped_dup} 行 english 与已有句子重复")
-    return BulkImportResult(added=added, skipped=skipped_empty + skipped_dup, errors=errors)
+    errors.extend(bad_marks[:20])
+    if len(bad_marks) > 20:
+        errors.append(f"……另有 {len(bad_marks) - 20} 行 # 格式不对")
+    return BulkImportResult(added=added, skipped=skipped_empty + skipped_dup + len(bad_marks), errors=errors)
