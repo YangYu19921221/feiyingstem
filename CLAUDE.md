@@ -289,7 +289,11 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   (c)宠物浮标压底部按钮 → FloatingPetWidget 加了学习页路由。
   **第二步(作业 + 每日复习)未做**: 作业表 unit_id 外键到 units,要改表结构。
   入口: 学生首页「句子背诵」→ 选书 → 选单元。测试 tests/test_sentence_learning.py(7 例;
-  去掉机构过滤 / 让每步都推进记忆曲线各恰好 1 例失败,回归锁验证过)
+  去掉机构过滤 / 让每步都推进记忆曲线各恰好 1 例失败,回归锁验证过)。
+  **10-11 15:07 已部署生产**(database.py / main.py 有 drift 走 rsync 往返 anchor patch,各只加句子那两行;
+  其余 4 文件整推;备份 /root/eh_db_before_sentence_20261011_1507.db、/root/eh_code_before_sentence_20261011_1507.tgz、
+  frontend/dist_bak_20261011_1507)。生产临时学生 9 项全过;⚠️ 生产 FK 关闭,删学生不级联 ——
+  测完手动清了 sentence_mastery 6 行 / sentence_unit_progress 1 行孤儿(user_id=945)
 - ✅ 新机构卡包政策(2026-10-08): 用户对标北大单词营,新签约机构改「标准包 6 万 = 3 期 × 2 万」,
   老机构(organizations.card_plan='legacy',存量全是)一行不动。真源 `services/card_pack.py`(卡种/单价/分期张数/赠送/
   按规则取书/额度/新书补给),前端一律读 `GET /admin/subscriptions/pack`,**不写死数字**。
