@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 句子「开口背」后台转写(2026-10-11,**本地完成未部署**): 孩子说完照常往下走,录音进 sentence_speeches 排队,
+- ✅ 句子「开口背」后台转写(2026-10-11 19:29 **已部署生产**,config/database/main 走 anchor patch;备份 /root/eh_db_before_speech_20261011_1926.db、/root/eh_code_before_speech_20261011_1926.tgz、frontend/dist_bak_20261011_1926;真人准确率待验): 孩子说完照常往下走,录音进 sentence_speeches 排队,
   主进程起 speech_loop 调度、**独立 spawn 进程池**(SENTENCE_SPEECH_WORKERS 默认 2,每进程 1 线程)跑 faster-whisper small
   + beam 5 + VAD,吃 uvicorn 单 worker 用不到的空闲核。生产实测(合成音): base 4 路 40 句 24s、small 4 路 70s → 不能让孩子等,只能后台。
   判据 services/sentence_speech.judge: **实词全中才算背出**(只许漏 a/is 这类虚词);七成比例阈值实测放过「My mother is a banana」,别改回去。
