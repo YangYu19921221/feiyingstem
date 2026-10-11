@@ -235,10 +235,11 @@ export default function FranchiseRecruitDoc() {
         />
         {/* 方法课(2026-10-08 用户提供)。用户原话「背单词速度是 3–5 倍」无出处未采用(同「词汇量增长 90%」口径),
             「举一反百」改为「举一反三」;词汇目标写成规划而非承诺(广告法第 24 条) */}
-        <p className="mt-4 font-bold text-slate-900">方法课:¥1,000,含四册教材</p>
+        {/* 10-09 用户定: ¥1,000 是合作机构的进货价(每位学员一套),不是给家长的学费;不含在 6 万标准包内 */}
+        <p className="mt-4 font-bold text-slate-900">方法课:进货价 ¥1,000 / 套,含四册教材</p>
         <p className="mt-1">
-          方法课学费 ¥1,000,含下面四册教材,另<strong>赠送阅读绘本 2 本</strong>和<strong>必背绘本 1 本</strong>
-          —— 读的用来养语感,背的用来打底子。
+          方法课按每位学员一套订购,<strong>进货价 ¥1,000</strong>,含下面四册教材,另<strong>赠送阅读绘本 2 本</strong>和
+          <strong>必背绘本 1 本</strong> —— 读的用来养语感,背的用来打底子。向家长收多少由你自己定。
         </p>
         <table className="mt-2 w-full border-collapse text-[12.5px]" style={{ breakInside: 'avoid' }}>
           <thead>
@@ -447,9 +448,11 @@ export default function FranchiseRecruitDoc() {
           <li>3 期付完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
         </ul>
 
-        <p className="mt-3 font-bold text-slate-900">另计</p>
+        <p className="mt-3 font-bold text-slate-900">另计(按需订购,不含在 6 万内)</p>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
-          <li>纸质配套教材:按供货清单明细计价,按需订购,运费另计。</li>
+          <li><strong>方法课</strong>:进货价 <strong>¥1,000 / 套</strong>,每位学员一套,含音标 1 册 + 语法 3 册教材,
+            赠送阅读绘本 2 本、必背绘本 1 本(详见第四章)。</li>
+          <li>其他纸质配套教材:按供货清单明细计价,按需订购,运费另计。</li>
           <li>参加带教培训的交通、食宿由机构自理。</li>
         </ul>
 

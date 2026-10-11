@@ -193,7 +193,9 @@ function ContractDoc() {
           4. 飞鹰英语专属内容:已包含在本条第 1 款标准包内,乙方<strong>不另行支付</strong>费用。
         </p>
         <p>
-          5. 配套教材:纸质教材<strong>按甲方教材供货清单所列品种、规格与单价明细计算</strong>,
+          5. 配套教材:<strong>方法课</strong>(每位学员一套,含第一册音标、第二至四册语法教材,
+          另赠送阅读绘本 2 本、必背绘本 1 本)单价人民币 <strong>1,000 元 / 套</strong>,不含在本条第 1 款标准包内,
+          乙方按学员人数订购。其他纸质教材<strong>按甲方教材供货清单所列品种、规格与单价明细计算</strong>,
           乙方按需订购;每次订购由双方书面(含微信、邮件等可留痕方式)确认订购明细
           (品种、规格、数量、单价、金额)后执行,运费另计。甲方调整清单单价的,应提前书面告知乙方,
           <strong>已确认的订单仍按确认时的单价执行</strong>。
@@ -243,7 +245,12 @@ function ContractDoc() {
               <td className="border border-slate-500 px-2 py-1.5">飞鹰语法、飞鹰单词速记法等自研内容,开通即用,不占学习卡,不另收费</td>
             </tr>
             <tr>
-              <td className="border border-slate-500 px-2 py-1.5 text-center">配套教材</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">方法课</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥1,000 / 套</td>
+              <td className="border border-slate-500 px-2 py-1.5">每位学员一套:音标 1 册 + 语法 3 册教材,赠送绘本 3 本;按学员人数订购,不含在标准包内</td>
+            </tr>
+            <tr>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">其他配套教材</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">按清单明细</td>
               <td className="border border-slate-500 px-2 py-1.5">按教材供货清单所列品种、规格与单价计算,乙方按需订购;每次订购书面确认明细后执行,运费另计</td>
             </tr>
