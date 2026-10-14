@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 家长推荐(老带新)(2026-10-14,**未部署**): 用户「我需要家长裂变的功能,运营方案也加到资料去,加盟商也可以用」。
+- ✅ 家长推荐(老带新)(2026-10-14 16:55 **已部署生产**,main.py 走 anchor patch 只加 referral 两行,其余 9 个文件生产==HEAD~1 整推;三张新表由 create_all 建、先在生产库副本上跑过 init_db;备份 /root/eh_db_before_referral_20261014_1637.db、/root/eh_code_before_referral_20261014_1637.tgz、frontend/dist_bak_20261014_1637;上线后各机构没有设置行 = 推荐默认开启、奖励 0 金币): 用户「我需要家长裂变的功能,运营方案也加到资料去,加盟商也可以用」。
   链路: 老生家长(家长端首页「邀请朋友来免费体验」)或老师(「家长推荐」→ 给学生家长发邀请)生成带二维码的海报
   → 朋友家长打开公开落地页 `/invite/{code}` 留电话(不注册、不验短信)→ 线索进「推荐线索」
   → 老师点「确认报名」才给推荐的孩子发金币(机构设 0–50,source=referral,dedup_key=referral:{线索id},不算每日封顶),
@@ -292,8 +292,6 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   新依赖 qrcode@1.5.4(+ @types/qrcode@1.5.6),只进海报懒加载 chunk。浏览器验过: 落地页手机宽度、错手机号提示、
   提交 → 线索 → 确认报名 → 金币 5 枚到账 + 操作日志、海报生成、家长端同码、机构端设置与资料标签。
   入口: 教师工作台「激励与复盘 → 家长推荐」;机构管理首页「家长推荐」「运营资料」;家长端首页顶部卡片。
-  **部署注意**: main.py 有 drift 走 anchor patch(只加 referral 的 import 与 include_router 两行);
-  parent.py / audit_log.py / 两个 coins.py / models/__init__.py / models/coin.py 先比对生产 md5 再决定整推还是 anchor
 - ✅ 音标视频全屏去掉下方黑边(2026-10-14,**已部署生产**,纯前端;dist 从提交 e7d8b9c 的干净 worktree 构建 ——
   工作区里有未提交的裂变/邀请改动,直接在主工作区 build 会把半成品带上线;备份 frontend/dist_bak_20261014_fsfix,
   构建号 mv7rtx4y): 用户「全屏的时候下方黑色空白的太多了」。根因: 只看视频时全屏是把整块
