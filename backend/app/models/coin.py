@@ -84,6 +84,8 @@ class CoinTransaction(Base):
                   改成 +1 且叠加;当王又做完任务=2)。一天封顶 2 枚
       - manual    老师手动增减(可正可负)
       - redeem    兑换消耗(负数)
+      - referral  家长推荐的新同学报名成功(老师确认后发,机构设金额;dedup_key=referral:{线索id}),
+                  不算在每日封顶里(见 services/referral.py)
     金额以 coin_service 的 TASK_REWARD / WORD_KING_REWARD / DAILY_CAP 为准,
     别在这里写死数字 —— 这段注释就曾因规则重定义而过时。
     dedup_key: 系统发放的幂等键(如 task:20260719、word_king:20260719),

@@ -25,6 +25,7 @@ import {
   Users,
   Volume2,
   KeyRound,
+  Gift,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
@@ -82,6 +83,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: 'PK 晋级赛', description: '分组与淘汰赛', route: '/teacher/tournaments', icon: GraduationCap, tone: 'violet' },
       { title: 'PK 对战房间', description: '组织个人或分组对战', route: '/pk/lobby', icon: Swords, tone: 'orange' },
       { title: '金币管理', description: '奖励与兑换记录', route: '/teacher/coins', icon: CircleDollarSign, tone: 'amber' },
+      { title: '家长推荐', description: '发邀请海报,跟进老带新', route: '/teacher/referrals', icon: Gift, tone: 'orange' },
     ],
   },
 ];

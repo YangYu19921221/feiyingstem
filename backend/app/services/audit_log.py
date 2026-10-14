@@ -36,6 +36,9 @@ ACTION_LABELS: dict[str, str] = {
     "assistant.create": "添加助教",
     "assistant.update": "修改助教",
     "assistant.delete": "删除助教",
+    "referral.enroll": "确认推荐报名",
+    "referral.reward": "兑现推荐奖励",
+    "referral.settings": "修改推荐奖励",
     # 注:音标观看**不进** operation_logs(学生不记,见 CLAUDE.md),单独落
     # phonetic_access_logs(见 models/phonetic.PhoneticAccessLog),故这里没有 phonetic.* 项
 }
@@ -47,6 +50,7 @@ ACTION_GROUPS: dict[str, str] = {
     "coin": "金币",
     "auth": "登录",
     "assistant": "助教",
+    "referral": "家长推荐",
 }
 
 _MAX_DETAIL = 20000  # detail JSON 上限:被删作业的学生名单可能很长,截断防止单行过大

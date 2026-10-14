@@ -15,6 +15,8 @@ import {
 } from '../api/parent';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import { toast } from '../components/Toast';
+import InviteShareDialog from '../components/referral/InviteShareDialog';
+import { getParentChildInvite, type InviteInfo } from '../api/referral';
 
 const ParentDashboard = () => {
   const navigate = useNavigate();
@@ -31,6 +33,20 @@ const ParentDashboard = () => {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportRegenerating, setReportRegenerating] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [invite, setInvite] = useState<InviteInfo | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  const openInvite = async () => {
+    if (activeStudentId === null || inviteLoading) return;
+    setInviteLoading(true);
+    try {
+      setInvite(await getParentChildInvite(activeStudentId));
+    } catch {
+      toast('邀请链接没拿到,请稍后再试', 'error');
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadChildren();
@@ -194,6 +210,25 @@ const ParentDashboard = () => {
           </div>
         )}
 
+        {/* 邀请朋友(家长裂变入口): 放在周报上面,一进来就看得见 */}
+        {activeStudentId !== null && (
+          <section className="card-soft mb-6 flex items-center gap-4 rounded-2xl p-5">
+            <span className="text-3xl" aria-hidden>🎁</span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-ink">邀请朋友来免费体验</p>
+              <p className="mt-0.5 text-xs leading-5 text-ink-mute">生成带二维码的邀请海报,发给身边也在给孩子找英语课的朋友</p>
+            </div>
+            <button
+              type="button"
+              onClick={openInvite}
+              disabled={inviteLoading}
+              className="shrink-0 rounded-xl bg-accent-warm px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              {inviteLoading ? '生成中…' : '生成海报'}
+            </button>
+          </section>
+        )}
+
         {activeStudentId !== null && (
           <WeeklyReportCard
             report={report}
@@ -210,6 +245,14 @@ const ParentDashboard = () => {
           <DashboardContent data={dashboard} onOpenReviewRules={() => setShowReviewRules(true)} />
         )}
       </div>
+
+      {invite && (
+        <InviteShareDialog
+          info={invite}
+          audience="parent"
+          onClose={() => setInvite(null)}
+        />
+      )}
 
       {showBindDialog && <BindDialog
         code={bindCode} setCode={setBindCode}

@@ -52,6 +52,8 @@ const PhoneticFlashCards = lazyWithRetry(() => import('./pages/PhoneticFlashCard
 const PhoneticLessons = lazyWithRetry(() => import('./pages/PhoneticLessons'));
 const PhoneticReading = lazyWithRetry(() => import('./pages/PhoneticReading'));
 const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
+const ReferralLeads = lazyWithRetry(() => import('./pages/ReferralLeads'));
+const ReferralLanding = lazyWithRetry(() => import('./pages/ReferralLanding'));
 const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
 const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
 const QuizPractice = lazyWithRetry(() => import('./pages/QuizPractice'));
@@ -244,6 +246,9 @@ function App() {
 
         {/* 匿名测评（公开，无需登录） */}
         <Route path="/assessment" element={<Assessment />} />
+
+        {/* 家长推荐落地页(公开,朋友家长扫码打开) */}
+        <Route path="/invite/:code" element={<ReferralLanding />} />
 
         {/* 根据角色显示不同的仪表盘 */}
         <Route
@@ -736,6 +741,25 @@ function App() {
           }
         />
 
+        {/* 家长推荐线索: 同一个页面挂两条路由 —— 工作台的布局/底部导航按路径前缀(/teacher、/admin)认角色,
+            挂在中性路径下会变成没边距的裸页(StaffMobileNav)。老师看本班、机构管理员看全机构 + 推荐设置 */}
+        <Route
+          path="/teacher/referrals"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <ReferralLeads />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/referrals"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
+              <ReferralLeads />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 教师端 - 测评线索管理 */}
         <Route
           path="/teacher/leads"
@@ -1008,11 +1032,12 @@ function App() {
             </ProtectedRoute>
           }
         />
-        {/* 管理员 - 加盟资料(合作协议+提分方案,平台级业务,org_admin 不可见) */}
+        {/* 加盟资料: 平台 admin 看全部五份;机构管理员/老师只看「家长手册」「推荐运营方案」两份
+            (标签过滤在 AdminFranchiseKit 的 DOC_TABS.partner,纯前端静态文档,不经后端) */}
         <Route
           path="/admin/franchise-kit"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['admin', 'org_admin', 'teacher']}>
               <AdminFranchiseKit />
             </ProtectedRoute>
           }

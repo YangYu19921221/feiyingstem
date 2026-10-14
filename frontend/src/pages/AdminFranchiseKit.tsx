@@ -1,5 +1,5 @@
 /**
- * 加盟资料中心(平台 admin 专用,org_admin 不可见)
+ * 加盟资料中心(平台 admin 看全部;2026-10-14 起机构管理员/老师可看「家长手册」「推荐运营方案」两份,见 DOC_TABS)
  *
  * ⚠️ 2026-10-08 起新签约按**卡包政策**(标准包 ¥60,000 分 3 期,真源 backend/app/services/card_pack.py):
  *    合作协议第二条第 2 款、第三条第 1–3/6 款与费用表、第七条第 2 款已改;**完整合作方案在招商手册第六章**,
@@ -54,17 +54,19 @@
  * 协议里的空栏是 contentEditable,可先在页面上填好乙方信息再打印。
  */
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, FileSignature, Handshake, LoaderCircle, Printer, Sparkles, Users } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Download, FileSignature, Gift, Handshake, LoaderCircle, Printer, Sparkles, Users } from 'lucide-react';
 import { downloadElementAsPdf } from '../utils/downloadPdf';
 import FranchiseRecruitDoc from './FranchiseRecruitDoc';
 import FranchiseParentDoc from './FranchiseParentDoc';
+import FranchiseReferralDoc from './FranchiseReferralDoc';
 
-type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent';
+type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral';
 
 const DOC_FILENAME: Record<DocKey, string> = {
   recruit: '飞鹰英语-招商手册',
   parent: '飞鹰英语-家长手册',
+  referral: '飞鹰英语-家长推荐运营方案',
   pitch: '飞鹰AI英语-功能详解与提分方案',
   contract: '飞鹰AI英语-合作协议',
 };
@@ -658,10 +660,30 @@ const FeatureList = ({ items }: { items: Array<{ name: string; desc: string }> }
   </div>
 );
 
+/** 标签顺序与谁能看。合作机构(org_admin/老师)只给「拿去用」的两份:
+ *  家长手册(发给咨询家长)、家长推荐运营方案(自己照着做);招商手册/提分方案/合作协议是平台招商用的,不给 */
+const DOC_TABS: Array<{ key: DocKey; label: string; icon: typeof Users; partner: boolean }> = [
+  { key: 'recruit', label: '招商手册', icon: Handshake, partner: false },
+  { key: 'parent', label: '家长手册', icon: Users, partner: true },
+  { key: 'referral', label: '推荐运营方案', icon: Gift, partner: true },
+  { key: 'pitch', label: '提分方案', icon: Sparkles, partner: false },
+  { key: 'contract', label: '合作协议', icon: FileSignature, partner: false },
+];
+
+function currentRole(): string {
+  try { return JSON.parse(localStorage.getItem('user') || '{}').role || ''; } catch { return ''; }
+}
+
 /** ============ 页面壳 ============ */
 export default function AdminFranchiseKit() {
   const navigate = useNavigate();
-  const [doc, setDoc] = useState<DocKey>('recruit');
+  const [params] = useSearchParams();
+  const isPlatform = currentRole() === 'admin';
+  const tabs = DOC_TABS.filter((t) => isPlatform || t.partner);
+  const wanted = params.get('doc') as DocKey | null;
+  const [doc, setDoc] = useState<DocKey>(
+    wanted && tabs.some((t) => t.key === wanted) ? wanted : tabs[0].key,
+  );
   const sheetRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -700,40 +722,22 @@ export default function AdminFranchiseKit() {
         <div className="mx-auto flex max-w-[880px] flex-wrap items-center gap-2 px-4 py-3">
           <button
             type="button"
-            onClick={() => navigate('/admin')}
+            onClick={() => navigate(isPlatform ? '/admin' : '/dashboard')}
             className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
           >
             <ArrowLeft className="h-4 w-4" /> 返回
           </button>
-          <div className="flex overflow-hidden rounded-lg border border-slate-200">
-            <button
-              type="button"
-              onClick={() => setDoc('recruit')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === 'recruit' ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              <Handshake className="h-4 w-4" /> 招商手册
-            </button>
-            <button
-              type="button"
-              onClick={() => setDoc('parent')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === 'parent' ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              <Users className="h-4 w-4" /> 家长手册
-            </button>
-            <button
-              type="button"
-              onClick={() => setDoc('pitch')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === 'pitch' ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              <Sparkles className="h-4 w-4" /> 提分方案
-            </button>
-            <button
-              type="button"
-              onClick={() => setDoc('contract')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === 'contract' ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              <FileSignature className="h-4 w-4" /> 合作协议
-            </button>
+          <div className="flex overflow-x-auto rounded-lg border border-slate-200">
+            {tabs.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setDoc(key)}
+                className={`inline-flex shrink-0 items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === key ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >
+                <Icon className="h-4 w-4" /> {label}
+              </button>
+            ))}
           </div>
           <button
             type="button"
@@ -760,7 +764,11 @@ export default function AdminFranchiseKit() {
       {/* A4 文档区 */}
       <div className="fk-wrap px-3 py-6">
         <div ref={sheetRef} className="fk-sheet mx-auto max-w-[820px] rounded-xl border border-slate-200 bg-white p-10 shadow-sm sm:p-12">
-          {doc === 'contract' ? <ContractDoc /> : doc === 'recruit' ? <FranchiseRecruitDoc /> : doc === 'parent' ? <FranchiseParentDoc /> : <PitchDoc />}
+          {doc === 'contract' ? <ContractDoc />
+            : doc === 'recruit' ? <FranchiseRecruitDoc />
+            : doc === 'parent' ? <FranchiseParentDoc />
+            : doc === 'referral' ? <FranchiseReferralDoc />
+            : <PitchDoc />}
         </div>
       </div>
     </div>

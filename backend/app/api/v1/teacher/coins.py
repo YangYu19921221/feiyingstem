@@ -38,7 +38,7 @@ async def _student_name(db: AsyncSession, student_id: int) -> str:
     u = (await db.execute(select(User).where(User.id == student_id))).scalar_one_or_none()
     return (u.full_name or u.username) if u else f"学生#{student_id}"
 
-SOURCE_LABELS = {"task": "完成任务", "unit": "完成单元", "word_king": "单词王", "manual": "手动调整", "redeem": "兑换消耗"}
+SOURCE_LABELS = {"task": "完成任务", "unit": "完成单元", "word_king": "单词王", "manual": "手动调整", "redeem": "兑换消耗", "referral": "推荐奖励"}
 
 
 async def get_current_teacher(

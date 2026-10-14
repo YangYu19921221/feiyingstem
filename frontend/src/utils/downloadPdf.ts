@@ -110,7 +110,9 @@ export async function downloadElementAsPdf(
           // 让 html2canvas 内部克隆用桌面宽度评估媒体查询,
           // 这样手机上导出的也是双列 A4 版式,与电脑打印件一致
           windowWidth: desktopWidth,
-          width: desktopWidth,
+          // **不能再传 width**: html2pdf 把内容排在 A4 可打印宽度(210mm - 左右边距 ≈ 718px)的容器里,
+          // 分页避让(break-inside: avoid)也按这个宽度算每页高度;强行截 794px 宽,
+          // 切页时每页实际高出约 10%,分页点越往后偏得越多 —— 文字被拦腰切开、右侧留一条白边。
           scrollX: 0,
           scrollY: 0,
         },

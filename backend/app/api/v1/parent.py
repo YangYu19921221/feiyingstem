@@ -113,6 +113,11 @@ async def parent_register(
         raise HTTPException(400, detail={"code": "phone_taken", "message": "该手机号已被其它角色注册"})
 
     # 3. 创建家长账号
+    # org_id 跟孩子走: 不写就落列默认 1(直营),家长请求的租户上下文就是直营,
+    # 非直营孩子的家长看不到孩子(User 是锚点表,按 org 过滤)。推荐链接按孩子的机构归属,同理
+    child = (await db.execute(
+        select(User).where(User.id == code_row.student_id).execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
     parent = User(
         username=f"parent_{data.phone}",
         email=f"{data.phone}@parent.local",
@@ -120,6 +125,7 @@ async def parent_register(
         hashed_password=get_password_hash(data.password),
         full_name=data.full_name or f"{data.phone[-4:]} 的家长",
         role="parent",
+        org_id=child.org_id if child is not None else 1,
     )
     db.add(parent)
     await db.flush()

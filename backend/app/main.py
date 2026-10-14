@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.v1 import auth, words, learning, exams, ai, competition, achievements, analytics, parent
+from app.api.v1 import referral  # 家长推荐(老带新)
 from app.api.v1.teacher import units as teacher_units, competition_questions as teacher_competition, analytics as teacher_analytics, reading as teacher_reading, book_assignments as teacher_assignments, homework as teacher_homework, dashboard as teacher_dashboard, exam_generator as teacher_exam_generator, classes as teacher_classes, student_monitor as teacher_student_monitor, coins as teacher_coins, phonetics as teacher_phonetics, phonetic_books as teacher_phonetic_books
 from app.api.v1.student import progress as student_progress, learning_records as student_learning_records, mistake_book as student_mistake_book, reading as student_reading, assignments as student_assignments, homework as student_homework, dashboard as student_dashboard, pet as student_pet, unit_exam as student_unit_exam, leaderboard as student_leaderboard, class_join as student_class_join, pet_battle as student_pet_battle, pet_battle_ws as student_pet_battle_ws, pet_healing as student_pet_healing, coins as student_coins, handwriting as student_handwriting
 from app.api.v1.admin import users as admin_users, content as admin_content, statistics as admin_statistics, ai_config as admin_ai_config, subscriptions as admin_subscriptions, system_update as admin_system_update
@@ -151,6 +152,7 @@ app.include_router(student_unit_exam.router, prefix="/api/v1/student/exam", tags
 app.include_router(student_leaderboard.router, prefix="/api/v1/student", tags=["学生端-光荣榜"])
 app.include_router(student_class_join.router, prefix="/api/v1/student", tags=["学生端-加入班级"])
 app.include_router(parent.router, prefix="/api/v1", tags=["家长端"])
+app.include_router(referral.router, prefix="/api/v1", tags=["家长推荐"])
 app.include_router(admin_users.router, prefix="/api/v1/admin", tags=["管理员-用户管理"])
 app.include_router(admin_organizations.router, prefix="/api/v1/admin", tags=["管理员-机构管理"])
 app.include_router(admin_franchise_leads.router, prefix="/api/v1/admin", tags=["管理员-加盟线索"])

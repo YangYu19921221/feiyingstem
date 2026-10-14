@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'parent-referral-teacher-2026-10',
+    date: '2026-10-14',
+    title: '🎁 家长推荐:让老生家长帮你带新同学',
+    desc: '给班上任意一个学生生成专属邀请海报(带二维码),发给他的家长转给朋友。朋友家长扫码留电话,你这里就多一条线索,写清是哪个孩子推荐的;到店报名后点「确认报名」,推荐的孩子才拿到奖励(只留电话不发,防刷)。',
+    where: '教师工作台 → 激励与复盘 →「家长推荐」→ 右上「给学生家长发邀请」',
+    roles: ['teacher'],
+    route: '/teacher/referrals',
+  },
+  {
+    id: 'parent-referral-org-2026-10',
+    date: '2026-10-14',
+    title: '🎁 家长推荐(老带新)上线,先设奖励',
+    desc: '家长和老师都能生成带二维码的邀请海报,新朋友扫码留电话进「推荐线索」,老师确认到店报名后,系统自动给推荐的孩子发金币,线下奖励(如赠课)记成待兑现。奖励多少、新朋友能得到什么,由你在「推荐设置」里定;不设也能用,只是没有奖励。运营打法见加盟资料里的《家长推荐运营方案》。',
+    where: '机构管理首页 → 管理 →「家长推荐」→ 右上「推荐设置」',
+    roles: ['org_admin'],
+    route: '/admin/referrals',
+  },
+  {
     id: 'sentence-speech-transcript-2026-10',
     date: '2026-10-11',
     title: '🎙️ 看得到学生「开口背」背得怎么样',

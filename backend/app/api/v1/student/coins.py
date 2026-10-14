@@ -15,7 +15,7 @@ from app.api.v1.auth import get_current_student
 
 router = APIRouter()
 
-SOURCE_LABELS = {"task": "完成作业", "unit": "完成单元", "word_king": "单词王", "manual": "老师奖励", "redeem": "兑换消耗"}
+SOURCE_LABELS = {"task": "完成作业", "unit": "完成单元", "word_king": "单词王", "manual": "老师奖励", "redeem": "兑换消耗", "referral": "推荐奖励"}
 
 
 class MyTx(BaseModel):
