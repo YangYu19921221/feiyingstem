@@ -271,6 +271,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 安全收口(2026-10-14 19:35 已部署生产,5 个文件生产==HEAD~1 整推,备份 /root/eh_code_before_seclock_20261014_1932.tgz):
+  ①**GET /admin/ai/providers/default 原先免登录返回通义千问 API Key 明文**(生产实测能拿到;nginx 日志 08-24 有外部 IP
+  13.228.168.117 拿走过一次)→ 仅平台 admin。**Key 本身用户说先不换**(10-14),旧 Key 仍可能被他人使用。
+  ②PUT/DELETE /words/{id} 免登录可改删任意单词 → get_current_teacher(老师单词库页本来就带 token)
+  ③/ai/* 全部挂 router 级 get_current_user;录词生成类(generate-example/distractors/phonetic/meaning/complete/exam、
+  analyze-weak-points、batch-generate-examples)再加 get_current_teacher;explain-mistake/tts/quiz 类只要登录
+  ④/achievements/leaderboard 跨机构返回学生真名、前端无调用 → 仅平台 admin
+  ⑤**单词本兑换码按发码人判机构**(码表无 org_id 列): 发码人非 admin 且 org_id ≠ 学生 org_id → 拒,文案与音标码一致
+  (上线时生产 1167 张码全是平台 admin 发的,存量无影响)。回归锁 tests/test_security_lockdown_1014.py 6 例。
+  仍免登录但属正常: /auth/* 登录注册、/assessment/* 公开测评、/referral/public/*、/pronunciation/edge-tts(学生端发音)、
+  /words/books(只列公开书);exams.py / learning.py 里是返回「待实现」的空桩
 - ✅ 家长推荐(老带新)(2026-10-14 16:55 **已部署生产**,main.py 走 anchor patch 只加 referral 两行,其余 9 个文件生产==HEAD~1 整推;三张新表由 create_all 建、先在生产库副本上跑过 init_db;备份 /root/eh_db_before_referral_20261014_1637.db、/root/eh_code_before_referral_20261014_1637.tgz、frontend/dist_bak_20261014_1637;上线后各机构没有设置行 = 推荐默认开启、奖励 0 金币): 用户「我需要家长裂变的功能,运营方案也加到资料去,加盟商也可以用」。
   链路: 老生家长(家长端首页「邀请朋友来免费体验」)或老师(「家长推荐」→ 给学生家长发邀请)生成带二维码的海报
   → 朋友家长打开公开落地页 `/invite/{code}` 留电话(不注册、不验短信)→ 线索进「推荐线索」
