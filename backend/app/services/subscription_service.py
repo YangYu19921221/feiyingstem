@@ -405,6 +405,13 @@ async def redeem_code(
     if code.status == RedemptionCodeStatus.DISABLED:
         return {"success": False, "message": "兑换码已被禁用"}
 
+    # 机构发的码只给本机构学生兑(2026-10-14,与音标码同规则): 否则 A 机构的额度会被 B 机构的学生用掉。
+    # 单词本码表没有 org_id 列,按发码人判 —— 平台管理员发的码不限机构。
+    # 放在过期判定之前: 别家的码不该被这边改成 expired
+    creator = await db.get(User, code.created_by) if code.created_by else None
+    if creator is not None and creator.role != "admin" and creator.org_id != user.org_id:
+        return {"success": False, "message": "这张兑换码不是你所在学校发放的,请向自己的老师索取"}
+
     # 检查兑换码本身是否过期
     now = datetime.utcnow()
     if code.code_expires_at < now:

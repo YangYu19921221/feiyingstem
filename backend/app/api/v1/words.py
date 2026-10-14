@@ -805,7 +805,9 @@ async def list_words(
 async def update_word(
     word_id: int,
     word_data: WordUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    # 原先不用登录就能改任意单词(生产日志里有调用);至少要是老师/管理员
+    _user: User = Depends(get_current_teacher),
 ):
     """更新单词信息"""
     result = await db.execute(select(Word).where(Word.id == word_id))
@@ -852,7 +854,9 @@ async def update_word(
 @router.delete("/{word_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_word(
     word_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    # 原先不用登录就能删任意单词;至少要是老师/管理员
+    _user: User = Depends(get_current_teacher),
 ):
     """删除单词"""
     result = await db.execute(select(Word).where(Word.id == word_id))

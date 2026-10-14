@@ -10,7 +10,7 @@ from datetime import datetime, date, timedelta
 from app.core.database import get_db
 from app.core.timeutil import local_today
 from app.models.user import User
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_user, get_current_admin
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -446,7 +446,9 @@ async def add_experience(
 @router.get("/leaderboard")
 async def get_leaderboard(
     limit: int = 20,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    # 返回学生真名、跨机构,前端没在用;原先不登录就能拉 → 只留平台管理员
+    _user: User = Depends(get_current_admin),
 ):
     """获取等级排行榜"""
     result = await db.execute(

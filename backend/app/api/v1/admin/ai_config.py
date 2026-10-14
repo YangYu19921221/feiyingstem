@@ -16,7 +16,7 @@ from app.schemas.system_config import (
     AIProviderTestRequest,
     AIProviderTestResponse
 )
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_user, get_current_admin
 from app.models.user import User, UserRole
 
 router = APIRouter()
@@ -329,9 +329,12 @@ async def test_provider_by_id(
 
 @router.get("/providers/default")
 async def get_default_provider(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    # 返回的是解密后的 API Key 明文。原先不用登录就能调(生产日志里有外部 IP 拿走过),
+    # 前端也没有调用方 → 只给平台管理员
+    _user: User = Depends(get_current_admin),
 ):
-    """获取默认AI提供商(供前端调用)"""
+    """获取默认AI提供商(仅平台管理员)"""
     result = await db.execute(
         select(AIProvider).where(
             AIProvider.is_default == True,

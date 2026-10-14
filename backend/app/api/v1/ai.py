@@ -13,13 +13,16 @@ from typing import List, Dict, Optional
 import random
 import asyncio
 from app.core.database import get_db
-from app.api.v1.auth import get_current_user
+from app.api.v1.auth import get_current_user, get_current_teacher
 from app.services.ai_service import ai_service
 from app.models.word import Word, WordDefinition, Unit, UnitWord
 from app.utils.blank_sentence import blank_out, can_blank
 from app.services.scope_service import get_group_word_ids
 
-router = APIRouter()
+# 整个 /ai/* 都要登录(2026-10-14): 原先 11 个接口不用登录就能调,
+# 等于把大模型/TTS 额度白送给任何知道地址的人(生产日志里有外部 IP 试过)。
+# 下面只给老师录词用的生成类接口再收紧到老师/管理员
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 # ========================================
 # 请求/响应模型
@@ -150,7 +153,7 @@ async def get_memory_hook(
     return {"word": word.word, "hook": hook, "cached": False}
 
 
-@router.post("/generate-example", response_model=ExampleSentenceResponse)
+@router.post("/generate-example", response_model=ExampleSentenceResponse, dependencies=[Depends(get_current_teacher)])
 async def generate_example_sentence(
     request: GenerateExampleRequest
 ):
@@ -169,7 +172,7 @@ async def generate_example_sentence(
     return ExampleSentenceResponse(**result)
 
 
-@router.post("/generate-distractors", response_model=List[str])
+@router.post("/generate-distractors", response_model=List[str], dependencies=[Depends(get_current_teacher)])
 async def generate_distractors(
     request: GenerateDistractorsRequest
 ):
@@ -203,7 +206,7 @@ async def explain_mistake(
     return {"explanation": explanation}
 
 
-@router.post("/generate-phonetic", response_model=GeneratePhoneticResponse)
+@router.post("/generate-phonetic", response_model=GeneratePhoneticResponse, dependencies=[Depends(get_current_teacher)])
 async def generate_phonetic(
     request: GeneratePhoneticRequest
 ):
@@ -220,7 +223,7 @@ async def generate_phonetic(
     )
 
 
-@router.post("/generate-meaning", response_model=GenerateMeaningResponse)
+@router.post("/generate-meaning", response_model=GenerateMeaningResponse, dependencies=[Depends(get_current_teacher)])
 async def generate_meaning(
     request: GenerateMeaningRequest
 ):
@@ -242,7 +245,7 @@ async def generate_meaning(
     )
 
 
-@router.post("/generate-complete", response_model=GenerateCompleteResponse)
+@router.post("/generate-complete", response_model=GenerateCompleteResponse, dependencies=[Depends(get_current_teacher)])
 async def generate_complete(
     request: GenerateCompleteRequest
 ):
@@ -275,7 +278,7 @@ async def generate_complete(
     )
 
 
-@router.post("/generate-exam", response_model=GenerateExamResponse)
+@router.post("/generate-exam", response_model=GenerateExamResponse, dependencies=[Depends(get_current_teacher)])
 async def generate_exam(
     request: GenerateExamRequest,
     db: AsyncSession = Depends(get_db)
@@ -333,7 +336,7 @@ async def generate_exam(
     )
 
 
-@router.post("/analyze-weak-points", response_model=WeakPointsAnalysis)
+@router.post("/analyze-weak-points", response_model=WeakPointsAnalysis, dependencies=[Depends(get_current_teacher)])
 async def analyze_weak_points(
     request: AnalyzeWeakPointsRequest,
     db: AsyncSession = Depends(get_db)
@@ -373,7 +376,7 @@ async def analyze_weak_points(
     return WeakPointsAnalysis(**analysis)
 
 
-@router.post("/batch-generate-examples/{word_id}")
+@router.post("/batch-generate-examples/{word_id}", dependencies=[Depends(get_current_teacher)])
 async def batch_generate_examples_for_word(
     word_id: int,
     count: int = 3,
