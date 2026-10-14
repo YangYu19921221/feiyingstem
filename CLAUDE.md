@@ -271,6 +271,15 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频全屏去掉下方黑边(2026-10-14): 用户「全屏的时候下方黑色空白的太多了」。根因: 只看视频时全屏是把整块
+  面板送进 requestFullscreen,而 <video> 仍按弹窗口径 `max-h-[70vh]`(768 高的屏上约 537px),简介/讲义列表/提问区
+  照旧排在下面。现在全屏时面板竖排、收起简介和讲义列表(讲义入口挪到顶栏)、提问区只 hidden 不卸载(打了一半的
+  问题退出全屏还在);视频框按**真实画面比例**(loadedmetadata 取,4:3 老录屏也对)算最大尺寸居中。两个坑:
+  ①**别让 <video> 铺满舞台再 object-contain** —— 黑边长在框里,水印/全屏按钮/续播提示贴着框角会落进黑边
+  (录屏一裁水印就没了)②全屏监听挂在 PhoneticsHub 不挂面板里: 全屏中直接点「关闭」面板先卸载,监听没了
+  panelFs 会卡在 true。竖屏手机全屏时横版视频试 `screen.orientation.lock('landscape')`(只 Android Chrome 有,
+  其余静默)。真浏览器实测: 1366×768 → 1287×724、1920×1080 → 1842×1036、4:3 → 965×724 居中,水印都在画面内;
+  全屏中开讲义/收讲义/关闭再开无残留
 - ✅ 句子「开口背」后台转写(2026-10-11 19:29 **已部署生产**,config/database/main 走 anchor patch;备份 /root/eh_db_before_speech_20261011_1926.db、/root/eh_code_before_speech_20261011_1926.tgz、frontend/dist_bak_20261011_1926;真人准确率待验): 孩子说完照常往下走,录音进 sentence_speeches 排队,
   主进程起 speech_loop 调度、**独立 spawn 进程池**(SENTENCE_SPEECH_WORKERS 默认 2,每进程 1 线程)跑 faster-whisper small
   + beam 5 + VAD,吃 uvicorn 单 worker 用不到的空闲核。生产实测(合成音): base 4 路 40 句 24s、small 4 路 70s → 不能让孩子等,只能后台。

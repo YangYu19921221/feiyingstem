@@ -125,6 +125,18 @@ function loadSaved(): SavedLayout | null {
   }
 }
 
+/**
+ * 只看视频时进全屏:横版画面锁成横屏 —— 手机竖着拿时 16:9 只占屏幕中间一条,上下全是黑的。
+ * 只有 Android Chrome 这类支持;桌面 / iOS 会 reject 或干脆没有 lock,吞掉即可,不影响全屏本身。
+ * 不用手动解锁:规范规定退出全屏时浏览器自动解除方向锁定。
+ * (TS 的 lib.dom 已把 lock 拿掉了,所以自己补个可选签名)
+ */
+type LockableOrientation = ScreenOrientation & { lock?: (o: 'landscape') => Promise<void> };
+function lockLandscape() {
+  const o = (typeof screen !== 'undefined' ? screen.orientation : undefined) as LockableOrientation | undefined;
+  o?.lock?.('landscape').catch(() => { /* 不支持就保持原方向,画面照样居中 */ });
+}
+
 /** 横屏/桌面为 true。竖屏走上下堆叠,不做浮窗 */
 function useLandscape(): boolean {
   const Q = '(orientation: landscape)';
@@ -167,6 +179,21 @@ export default function LessonStage({
 
   /** 浮窗模式:横屏 + 正在看讲义 + 舞台放得下两块不重叠的窗 */
   const floating = !!viewing && landscape && stage.w > 0 && canHostFloating(stage);
+
+  /** 画面宽高比:元数据到了按真实值(4:3 的老录屏也有),之前先按 16:9 */
+  const [videoAR, setVideoAR] = useState(16 / 9);
+  /**
+   * 只看视频 + 全屏:视频吃掉面板顶栏以下的全部高度(2026-10-14 用户反馈「全屏下方黑色空白太多」)。
+   * 弹窗口径的 max-h-[70vh] 在全屏下就是「下面三成空着」,面板那边同时收起简介/提问区,见 PhoneticsHub panelFs。
+   * 视频框按**画面比例**算出能放下的最大尺寸、在舞台里居中 —— 不让 <video> 铺满舞台再 object-contain:
+   * 那样黑边长在视频框里面,水印 / 全屏按钮 / 续播提示都贴着框的角,会落进黑边(录屏一裁水印就没了)
+   */
+  const fillScreen = fs && !viewing;
+  const fit = fillScreen && stage.w > 0 && stage.h > 0
+    ? (stage.w / stage.h > videoAR
+      ? { w: Math.round(stage.h * videoAR), h: stage.h }
+      : { w: stage.w, h: Math.round(stage.w / videoAR) })
+    : null;
 
   // ---- 布局 ----
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -331,6 +358,7 @@ export default function LessonStage({
   const onLoadedMetadata = () => {
     const v = videoRef.current, r = resumeRef.current;
     if (!v) return;
+    if (v.videoWidth > 0 && v.videoHeight > 0) setVideoAR(v.videoWidth / v.videoHeight);
     if (r) {
       // 换票导致的重载:接着原处放(这条优先,它是同一次观看的延续)
       resumeRef.current = null;
@@ -379,8 +407,10 @@ export default function LessonStage({
   }, [panelRef]);
   const canFs = typeof document !== 'undefined' && !!document.fullscreenEnabled;
   const toggleFs = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void panelRef.current?.requestFullscreen?.();
+    if (document.fullscreenElement) { void document.exitFullscreen(); return; }
+    const p = panelRef.current?.requestFullscreen?.();
+    // 讲义打开时不锁:竖屏的上下堆叠是给讲义设计的,锁成横屏反而把讲义挤小
+    if (!viewing && videoAR > 1) void p?.then(lockLandscape).catch(() => { /* 进不了全屏就不锁 */ });
   };
 
   // ---- 键盘翻页。e.repeat 挡按住连翻;焦点在 <video>/输入控件上时不接管
@@ -473,15 +503,17 @@ export default function LessonStage({
       ref={stageRef}
       className={viewing
         ? `min-h-0 flex-1 ${floating ? 'relative' : 'flex flex-col'}`
-        : 'flex flex-col'}
+        // 全屏:舞台吃掉顶栏以下全部高度,视频框在里面居中(尺寸见 fit)
+        : fillScreen ? 'flex min-h-0 flex-1 items-center justify-center overflow-hidden' : 'flex flex-col'}
     >
       {/* ===== 视频块。⚠️ 永远是舞台的第一个孩子;relative 给水印层做定位锚 ===== */}
       <div
         className={[
           'relative bg-black',
-          viewing ? (floating ? paneCls : 'flex w-full shrink-0 flex-col') : 'flex w-full flex-col',
+          viewing ? (floating ? paneCls : 'flex w-full shrink-0 flex-col')
+            : fillScreen ? 'flex shrink-0 flex-col' : 'flex w-full flex-col',
         ].join(' ')}
-        style={boxStyle(layout?.video)}
+        style={fit ? { width: fit.w, height: fit.h } : boxStyle(layout?.video)}
       >
         {floating && chrome('video', video.title)}
         <video
@@ -502,7 +534,8 @@ export default function LessonStage({
           onLoadedMetadata={onLoadedMetadata}
           className={viewing
             ? (floating ? 'w-full min-h-0 flex-1 object-contain' : 'aspect-video w-full object-contain')
-            : 'max-h-[70vh] w-full'}
+            // flex-1 不写 h-full:出错时下面那行提示语要有地方放,不被定高的框裁掉
+            : fillScreen ? 'min-h-0 w-full flex-1 object-contain' : 'max-h-[70vh] w-full'}
         >
           你的浏览器不支持视频播放,请换用 Chrome 或 Safari
         </video>

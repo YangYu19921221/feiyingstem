@@ -118,6 +118,19 @@ export default function PhoneticsHub() {
   /** 播放面板 DOM:全屏时把它整个送进 requestFullscreen */
   const panelRef = useRef<HTMLDivElement>(null);
   /**
+   * 播放面板是不是正处在浏览器全屏。全屏时只留视频:简介/提问区收起,讲义入口挪到顶栏,
+   * 否则视频仍按弹窗口径卡在 70vh,屏幕下方三成是空着的黑底(2026-10-14 用户反馈)。
+   * ⚠️ 监听挂在本页而不是 LessonStage:全屏中直接关播放器时面板先卸载、浏览器后退全屏,
+   * 挂在面板里的监听那时已经没了,这个值会卡在 true,下一节课打开就是全屏布局
+   */
+  const [panelFs, setPanelFs] = useState(false);
+  useEffect(() => {
+    const on = () => setPanelFs(!!document.fullscreenElement
+      && document.fullscreenElement === panelRef.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+  /**
    * 我自己的学习汇总。**刻意没有「全站播放量」** —— 音标课是老师指定的教材,
    * 学生不需要在海量内容里挑看哪个,而几十人的分母让播放量变成噪音:
    * 一节课写着「3 人看过」,孩子的结论是"这课没人看,大概不重要"。
@@ -834,22 +847,47 @@ export default function PhoneticsHub() {
             <motion.div
               ref={panelRef}
               initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, opacity: 0 }}
-              className={viewing
-                // 讲义打开:面板撑到近全屏、固定高度 —— 讲义要铺满整个舞台才看得清字。
-                // 宽度别卡 max-w-6xl(1152):1366 的屏就浪费了 200 多像素
-                ? 'flex h-[min(96vh,calc(100dvh-0.75rem))] w-[min(98vw,1600px)] flex-col overflow-hidden rounded-2xl bg-slate-900 shadow-2xl'
-                : 'w-full max-w-3xl overflow-hidden rounded-2xl bg-slate-900 shadow-2xl'}
+              className={[
+                'overflow-hidden shadow-2xl',
+                // 全屏时贴满屏幕,圆角会在四角露出黑底
+                panelFs ? '' : 'rounded-2xl',
+                viewing
+                  // 讲义打开:面板撑到近全屏、固定高度 —— 讲义要铺满整个舞台才看得清字。
+                  // 宽度别卡 max-w-6xl(1152):1366 的屏就浪费了 200 多像素
+                  ? 'flex h-[min(96vh,calc(100dvh-0.75rem))] w-[min(98vw,1600px)] flex-col bg-slate-900'
+                  // 只看视频 + 全屏:浏览器把面板撑满整屏,这里改成竖排让视频吃掉顶栏以下全部高度
+                  : panelFs ? 'flex flex-col bg-black' : 'w-full max-w-3xl bg-slate-900',
+              ].join(' ')}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
+              <div className={`flex shrink-0 items-center justify-between gap-3 px-4 ${panelFs ? 'py-2' : 'py-3'}`}>
                 <p className="min-w-0 truncate font-semibold text-white">{playing.title}</p>
-                <button
-                  onClick={() => setPlaying(null)}
-                  aria-label="关闭视频"
-                  className="shrink-0 rounded-lg bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20"
-                >
-                  ✕ 关闭
-                </button>
+                <div className="flex min-w-0 items-center gap-2">
+                  {/* 全屏时下方的讲义列表收起了,入口挪到顶栏 —— 不退出全屏也能点开讲义 */}
+                  {panelFs && !viewing && materials.length > 0 && (
+                    <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+                      {materials.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setViewing(m)}
+                          title={`打开讲义:${m.title}`}
+                          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1
+                                     text-xs text-white hover:bg-white/20"
+                        >
+                          <FileText className="h-3.5 w-3.5 shrink-0 text-orange-300" />
+                          <span className="max-w-[10rem] truncate">{m.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setPlaying(null)}
+                    aria-label="关闭视频"
+                    className="shrink-0 rounded-lg bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20"
+                  >
+                    ✕ 关闭
+                  </button>
+                </div>
               </div>
 
               {/* 舞台:<video> 住在这里,不管有没有讲义都是同一个元素 */}
@@ -864,15 +902,17 @@ export default function PhoneticsHub() {
                 onPositionGetter={takePositionGetter}
               />
 
+              {/* 全屏时简介/讲义列表不渲染(讲义入口已在顶栏);提问区只藏不卸载,
+                  孩子打了一半的问题退出全屏后还在 */}
               {!viewing && (
                 <>
-                  {playing.description && (
+                  {!panelFs && playing.description && (
                     <p className="px-4 py-3 text-sm leading-relaxed text-slate-300">{playing.description}</p>
                   )}
 
                   {/* 配套讲义:老师上传的 PPT/PDF,渲染成图。没有讲义时整块不出现,
                       不摆一个"暂无讲义"的空状态占地方 */}
-                  {materials.length > 0 && (
+                  {!panelFs && materials.length > 0 && (
                     <div className="border-t border-white/10 px-4 py-3">
                       <p className="mb-2 text-xs text-slate-400">老师的讲义 · 点开后讲义铺满、视频缩到角上,一起看</p>
                       <div className="flex flex-wrap gap-2">
@@ -894,10 +934,12 @@ export default function PhoneticsHub() {
 
                   {/* 听不懂就问。**只在讲义没打开时出现**: 讲义铺满舞台时面板是定高的,
                       底下再挂一块可增长的列表会把翻页条挤出可视区 */}
-                  <VideoQuestionPanel
-                    videoId={playing.id}
-                    getPosition={() => posGetter.current?.() ?? 0}
-                  />
+                  <div className={panelFs ? 'hidden' : undefined}>
+                    <VideoQuestionPanel
+                      videoId={playing.id}
+                      getPosition={() => posGetter.current?.() ?? 0}
+                    />
+                  </div>
                 </>
               )}
             </motion.div>
