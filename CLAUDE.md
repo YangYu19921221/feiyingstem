@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标兑换码「指定几节」(2026-10-16,**未部署**): 用户「现在音标视频开一个码就全部可以看全部视频,
+- ✅ 音标兑换码「指定几节」(2026-10-16 16:06 **已部署生产**,database.py 走 anchor patch 只加 phonetic 段那 1 条 ALTER + 2 张表,其余 6 个文件生产==HEAD~1 整推;上线后存量码全为 scope=library、两张新表为空 = 线上行为零变化;备份 /root/eh_db_before_svcode_20261016_1603.db、/root/eh_code_before_svcode_20261016_1603.tgz、frontend/dist_bak_20261016_1603,构建号 mvanqg0i): 用户「现在音标视频开一个码就全部可以看全部视频,
   现在需要可以一个码单开一个视频」,随后改成「增加个可以选择多节的」—— **以多选为准**(一节是多选的特例)。
   phonetic_codes.scope(library=整库,存量全是它 / videos)+ 明细表 phonetic_code_videos(一节一行 + 标题快照,
   与 redemption_code_books 同构);单节授权另起新表 phonetic_video_grants(一人一节一行,四个授权列与
@@ -292,8 +292,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   入口: 「兑换码管理」页底部「音标视频兑换码」→「开通范围」选「指定几节」→ 勾视频 →「生成兑换码」。
   测试 tests/test_phonetic_single_video_code.py(20 例;10 处守卫逐一破坏各自对应用例失败,回归锁验证过)。
   浏览器验过(临时库 + ffmpeg 造的视频): 勾 2 节发码 → 学生兑 → 2 节开、1 节锁、能播;单节码兑完自动打开。
-  **部署注意**: database.py 有 drift,走 anchor patch(phonetic 段加 1 条 ALTER + 2 张表);前后端必须一起上
-  (兑换响应改成 video_ids、列表 locked 语义变了)
+  前后端必须一起上(兑换响应改成 video_ids、列表 locked 语义变了)。
+  ⚠️ 全量 pytest 一条命令跑会卡死(tests/pk/test_websocket.py、tests/test_book_stage_field.py 各自挂住),
+  要逐文件带超时跑;另有 9 个文件 43 例在 main 上就失败(pk/*、review_findings、unit_word_edit_isolation、
+  word_upload_book_isolation),与本功能无关,失败名单与 main 逐例一致
 - ✅ 安全收口(2026-10-14 19:35 已部署生产,5 个文件生产==HEAD~1 整推,备份 /root/eh_code_before_seclock_20261014_1932.tgz):
   ①**GET /admin/ai/providers/default 原先免登录返回通义千问 API Key 明文**(生产实测能拿到;nginx 日志 08-24 有外部 IP
   13.228.168.117 拿走过一次)→ 仅平台 admin。**Key 本身用户说先不换**(10-14),旧 Key 仍可能被他人使用。
