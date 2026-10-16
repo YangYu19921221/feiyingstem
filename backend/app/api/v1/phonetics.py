@@ -83,9 +83,9 @@ class PhoneticVideoOut(BaseModel):
     my_watch_seconds: int = 0
     my_completed: bool = False
 
-    # 锁态(2026-10-01): 机构开了「音标视频需兑换码」且该学生没有生效授权时为 True。
-    # 卡片置灰、点开提示去兑换;老师/管理员恒 False。**库级而非单个视频级** ——
-    # 要么全锁要么全开,所以同一响应里所有视频的 locked 一致
+    # 锁态(2026-10-01): 机构开了「音标视频需兑换码」且该学生对**这一节**没有生效授权时为 True。
+    # 卡片置灰、点开提示去兑换;老师/管理员恒 False。
+    # 2026-10-16 起**按节判**: 整库授权开全部,单节码只开那一节 —— 同一响应里 locked 可以不一致
     locked: bool = False
 
     # 播放地址:鉴权串流端点。刻意不下发 file_path —— 磁盘路径不该出现在响应里
@@ -125,49 +125,70 @@ def to_out(
 _STAFF_ROLES = frozenset({"teacher", "org_admin", "admin"})
 
 
-async def _gate_state(db: AsyncSession, user: User) -> str:
-    """库级闸门(2026-10-01)的三态判定,唯一真源:
+async def _gate(
+    db: AsyncSession, user: User, video_id: Optional[int] = None
+) -> tuple[str, Optional[phonetic_access_service.Grant]]:
+    """闸门的三态判定,唯一真源。返回 (状态, 放行所靠的那条授权):
 
     - "free":      不需要授权就能看(教职工;或本机构 open 模式)
     - "granted":   本机构 code 模式,学生有生效授权(永久/包月,或今天已扣过的次卡)
     - "times_due": 同上,但是次卡且今天还没扣 —— 交付内容时要扣当天那一次
     - "locked":    挡在外面
 
+    授权有两种(2026-10-16): 整库授权(开全部)与这一节的单节授权(单节码兑出来的)。
+    video_id 为空 = 只看整库授权;两条都生效时选哪条扣见 phonetic_access_service.pick_grant。
+
     **除教职工和学生外的角色(家长等)一律 locked**(审查实测过的后门): 家长号能凭孩子
     自己生成的绑定码零成本注册,不验手机,org_id 落列默认值 1 —— 早先「非学生恒放行」等于
     给没码的学生开了一个旁门,换个家长号就能看整个平台预置库。家长端本来就没有音标入口。
     """
     if user.role in _STAFF_ROLES:
-        return "free"
+        return "free", None
     if user.role != "student":
-        return "locked"
+        return "locked", None
     if user.org_id is None:
-        return "free"
+        return "free", None
     if (await phonetic_access_mode(db, user.org_id)) != "code":
-        return "free"
-    grant = await phonetic_access_service.active_grant(db, user.id)
+        return "free", None
+    grant = await phonetic_access_service.pick_grant(db, user.id, video_id)
     if grant is None:
-        return "locked"
-    return "times_due" if phonetic_access_service.times_due_today(grant) else "granted"
+        return "locked", None
+    if phonetic_access_service.times_due_today(grant):
+        return "times_due", grant
+    return "granted", grant
 
 
-async def _is_locked_for(db: AsyncSession, user: User) -> bool:
-    """列表/详情用:只要个是否锁住的布尔(不扣次卡 —— 翻列表不算「看」)。"""
-    return (await _gate_state(db, user)) == "locked"
+async def _is_locked_for(db: AsyncSession, user: User, video_id: Optional[int] = None) -> bool:
+    """详情用:只要个是否锁住的布尔(不扣次卡 —— 翻列表不算「看」)。"""
+    return (await _gate(db, user, video_id))[0] == "locked"
 
 
-async def _enforce_gate(db: AsyncSession, user: User, detail: str) -> None:
+async def _locked_ids(db: AsyncSession, user: User, video_ids: list[int]) -> set[int]:
+    """列表用:这批视频里哪些是锁着的。整库判一次 + 单节授权一次批量查(不按行 N 次查)。"""
+    state, _ = await _gate(db, user)
+    if state != "locked":
+        return set()
+    if user.role != "student":
+        return set(video_ids)
+    granted = await phonetic_access_service.granted_video_ids(db, user.id, video_ids)
+    return set(video_ids) - granted
+
+
+async def _enforce_gate(
+    db: AsyncSession, user: User, detail: str, video_id: Optional[int] = None
+) -> None:
     """**交付内容**的端点用(换票 / Bearer 串流 / 讲义列表 / 讲义页图):
     锁住就 403;放行且是靠授权进来的,当天扣一次次卡(按北京日幂等,原子扣减)。
 
     四处都扣,不只扣换票 —— 只扣换票的话,直接调 Bearer 串流或只翻讲义的人永远不掉天数,
     1 天的次卡等于永久卡。open 模式(free)**不扣**:免费期间看视频不该消耗学生买的次卡。
+    video_id 必须传: 不传就只认整库授权,单节码开的那一节会被误拦。
     """
-    state = await _gate_state(db, user)
+    state, grant = await _gate(db, user, video_id)
     if state == "locked":
         raise HTTPException(status_code=403, detail=detail)
-    if state == "times_due":
-        await phonetic_access_service.consume_times_if_needed(db, user.id)
+    if state == "times_due" and grant is not None:
+        await phonetic_access_service.consume_times_if_needed(db, grant)
 
 
 @router.get("/videos", response_model=list[PhoneticVideoOut])
@@ -216,9 +237,9 @@ async def list_videos(
     ids = [v.id for v in rows]
     stats = await video_watch.stats_for_videos(db, ids, org_id=current_org_id.get())
     mine = await _my_views(db, user.id, ids)
-    # 库级锁态:整份列表要么全锁要么全开(只查一次机构模式 + 一次授权)
-    locked = await _is_locked_for(db, user)
-    return [to_out(v, stats.get(v.id), mine.get(v.id), locked) for v in rows]
+    # 锁态按节判:整库授权开全部,单节码只开那一节(一次整库判定 + 一次单节批量查)
+    locked = await _locked_ids(db, user, ids)
+    return [to_out(v, stats.get(v.id), mine.get(v.id), v.id in locked) for v in rows]
 
 
 async def _my_views(
@@ -264,7 +285,7 @@ async def get_video(
         raise HTTPException(status_code=404, detail="视频不存在或已下架")
     # 被锁的学生拿到的是「可以看见元数据但不能播」—— 不记打开次数/观看行,
     # 否则「几个人看过」里混进了压根没播成的人(锁住时真正的闸门在 /ticket)
-    locked = await _is_locked_for(db, user)
+    locked = await _is_locked_for(db, user, v.id)
     if not locked:
         v.view_count = (v.view_count or 0) + 1
         # 同一动作记两处: view_count 是历史遗留的「打开次数」(老界面在用,不动它),
@@ -472,9 +493,9 @@ async def list_video_materials(
     if v is None:
         raise HTTPException(status_code=404, detail="视频不存在或已下架")
 
-    # 库级闸门:讲义是视频的一部分,没开通的学生连带看不到(否则逐页 PNG 照看不误,
-    # 等于绕开了视频锁)。与 ticket/stream/get_video 同一道闸。
-    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义")
+    # 闸门:讲义是视频的一部分,没开通的学生连带看不到(否则逐页 PNG 照看不误,
+    # 等于绕开了视频锁)。与 ticket/stream/get_video 同一道闸,按这一节判
+    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义", video_id)
 
     rows = (await db.execute(
         select(PhoneticMaterial)
@@ -699,10 +720,15 @@ async def material_page(
     rate_limit.check(("phonetic-page", user.id), PAGE_RATE_LIMIT, 60,
                      "翻得太快了,歇一下再看")
 
-    # 库级闸门:同 list_video_materials —— 没开通就连讲义页图也不给(否则直接按
+    # 闸门:同 list_video_materials —— 没开通就连讲义页图也不给(否则直接按
     # material_id 逐页拉 PNG 就绕开了视频锁)。放在查行**之前**:既挡住绕行,
-    # 也不向未开通的学生泄露某份课件是否存在
-    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义")
+    # 也不向未开通的学生泄露某份课件是否存在。
+    # 按课件挂的那一节判(单节码开的那节要能翻讲义);查不到的 material_id 只认整库授权,
+    # 锁着的学生拿到的仍是同一句 403,存在与否照样看不出来
+    mat_video_id = (await db.execute(
+        select(PhoneticMaterial.video_id).where(PhoneticMaterial.id == material_id)
+    )).scalar_one_or_none()
+    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义", mat_video_id)
 
     row = (await db.execute(
         _scope_org(
@@ -883,10 +909,11 @@ async def video_ticket(
         raise HTTPException(status_code=404, detail="视频不存在或已下架")
 
     # 闸门 + 次卡扣减(只在「靠授权进来」时扣,open 模式不扣;按北京日幂等)。
-    # 教职工恒放行;家长等其它角色一律拦(见 _gate_state)
+    # 教职工恒放行;家长等其它角色一律拦(见 _gate)。按这一节判(整库或单节授权都放行)
     await _enforce_gate(
         db, user,
-        "音标视频需要兑换码开通，请找老师领取兑换码，在音标页点任意一节输入激活")
+        "这一节音标视频需要兑换码开通，请找老师领取兑换码，点开这一节输入激活",
+        v.id)
 
     # 访问日志:每次签票记一条(靠 IP+设备+时间追到人,与防盗同口径)。
     # **不写 operation_logs** —— 那是教职工追责日志(学生不记,量大;见 CLAUDE.md)。
@@ -926,7 +953,8 @@ async def stream_video(
         # ?t= 那条不必再查 —— 票据本来就是过了闸门才签出来的(主闸门在 /ticket)
         await _enforce_gate(
             db, u,
-            "音标视频需要兑换码开通，请找老师领取兑换码，在音标页点任意一节输入激活")
+            "这一节音标视频需要兑换码开通，请找老师领取兑换码，点开这一节输入激活",
+            video_id)
         # 访问日志只在「从头开始取」时记一条(无 Range 或 bytes=0-):播放器拖进度会发
         # 几十个 Range 请求,每个都记会把表撑爆;换票那条路径已在 /ticket 记过
         _rng = (request.headers.get("range") or "").replace(" ", "")

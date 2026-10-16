@@ -28,6 +28,7 @@ from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS, CATE
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import (
     lecturer_name, office_convert, phonetic_material_service, video_question, video_watch,
+    phonetic_access_service,
 )
 from app.services.lecturer_name import NO_LECTURER
 
@@ -1190,6 +1191,9 @@ async def batch_delete_videos(
     # 从没人看过的新视频显示「12 人看过、3 人看完」,而且查不出来源
     await db.execute(sa_delete(PhoneticVideoView).where(
         PhoneticVideoView.video_id.in_(vids)))
+    # 单节码同理(2026-10-16): 授权行删掉、绑这节的未使用码作废,
+    # 否则 id 被回收后,旧授权/旧码开的是新传的那一节
+    await phonetic_access_service.forget_videos(db, vids)
 
     for v in rows:
         await db.delete(v)
@@ -1239,6 +1243,8 @@ async def delete_video(
     # 留着旧行会让新传的视频一上架就带着上一个视频的观看人数)
     await db.execute(sa_delete(PhoneticVideoView).where(
         PhoneticVideoView.video_id == v.id))
+    # 单节授权与绑这节的未使用码(理由同上,见 phonetic_access_service.forget_videos)
+    await phonetic_access_service.forget_videos(db, [v.id])
 
     await db.delete(v)
     await db.commit()

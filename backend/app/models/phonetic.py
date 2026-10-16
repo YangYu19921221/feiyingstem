@@ -237,9 +237,10 @@ class PhoneticCode(Base):
     硬塞一个假的"音标 word_book"做占位,它会漏进每一处书本列表 / 单元选择器
     (学生会在选书页看到一本点不开的幽灵书)。所以音标码**另起一张表**,不带 book 外键。
 
-    一张码只开一件事:**整个音标视频库**的访问权(不是按视频),与
-    `organizations.phonetic_access_mode` 这个闸门配合 —— 机构置为 "code" 后,
-    学生必须有一条生效的 PhoneticAccessGrant 才能拿播放票据。
+    一张码开一件事: scope='library' = **整个音标视频库**;scope='videos' = **只开指定的几节**
+    (2026-10-16 起,开哪几节见 PhoneticCodeVideo 明细)。与 `organizations.phonetic_access_mode`
+    这个闸门配合 —— 机构置为 "code" 后,学生要有生效的整库授权(PhoneticAccessGrant)或该节的
+    单节授权(PhoneticVideoGrant)才能拿播放票据。
 
     卡种与单词本兑换码同一套语义(services/subscription_service):
     permanent 永久 / period 包月(grant_days)/ times 次卡(grant_times,按学习日消耗)。
@@ -269,10 +270,73 @@ class PhoneticCode(Base):
     # 码本身的有效期(到期后不可兑换);与它兑出来的授权有效期(grant_days)是两回事
     code_expires_at = Column(DateTime, nullable=True)
 
+    # 开通范围(2026-10-16): library = 整个音标视频库(上线前的唯一形态,存量全是它);
+    # videos = 只开 PhoneticCodeVideo 里列的那几节,兑换后落 PhoneticVideoGrant。
+    # **范围必须是显式列,不能拿「明细行有没有」来推**: 删视频会清掉未用码的明细行,
+    # 删光了的码要是退回成整库码,一张开一节的码就变成了开全部
+    scope = Column(String(10), nullable=False, default="library", server_default="library")
+
     used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     used_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now())
+
+
+class PhoneticCodeVideo(Base):
+    """一张音标码开哪几节(scope='videos' 的码才有明细,一节一行)。照单词本「一码多书」
+    的 redemption_code_books 同构: 兑换时按**这张表当时的内容**逐节发授权。
+
+    删视频时(phonetic_access_service.forget_videos): **未使用**码的明细行删掉、删光的码作废 ——
+    phonetic_videos.id 会被 SQLite 回收给下一条新视频,留着就是开了别人的新课。
+    已使用的码明细保留当凭证(列表靠 video_title 快照显示当时开的是哪几节)。
+    """
+
+    __tablename__ = "phonetic_code_videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code_id = Column(Integer, ForeignKey("phonetic_codes.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    # 不挂外键: 视频删了,已使用码的明细还要留着当凭证
+    video_id = Column(Integer, nullable=False, index=True)
+    # 发码时的视频标题快照(码列表显示它,不按 video_id 现查 —— id 会被回收复用)
+    video_title = Column(String(200), nullable=True)
+
+    __table_args__ = (
+        Index("uq_phonetic_code_video", "code_id", "video_id", unique=True),
+    )
+
+
+class PhoneticVideoGrant(Base):
+    """学生对**某一节**音标视频的访问授权(2026-10-16,指定几节的码兑出来的,一节一行)。
+
+    与 PhoneticAccessGrant(整库)分两张表而不是给那张加 video_id 列: 那张的
+    UNIQUE(student_id) 在 SQLite 里改不了约束只能重建表,而 NULL 在唯一索引里互不相等,
+    改成 (student_id, video_id) 后整库行就不再去重。两张表互不影响,存量零改动。
+
+    授权四列与 BookAssignment / PhoneticAccessGrant 同名同义,
+    `subscription_service.is_assignment_active` 直接拿来判活(卡种语义完全复用)。
+    """
+
+    __tablename__ = "phonetic_video_grants"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    video_id = Column(Integer, nullable=False, index=True)
+
+    grant_type = Column(String(10), nullable=False, default="permanent")
+    expires_at = Column(DateTime, nullable=True)
+    times_left = Column(Integer, nullable=True)
+    last_consumed_date = Column(String(10), nullable=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    granted_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # 一人一节一行;重复兑同一节 = 续期/充值(与整库同语义)
+        Index("uq_phonetic_video_grant", "student_id", "video_id", unique=True),
+    )
 
 
 class PhoneticAccessGrant(Base):

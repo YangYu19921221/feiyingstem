@@ -111,7 +111,26 @@ export interface PhoneticCode {
   code_expires_at?: string | null;
   used_by?: number | null;
   used_at?: string | null;
+  /** library = 整库码;videos = 只开 videos 里那几节。标题是发码时的快照(视频改名/删除后仍写着当时开的哪几节) */
+  scope?: 'library' | 'videos';
+  videos?: { id: number; title: string | null }[];
 }
+
+// 发「指定几节」码时可勾的视频(机构 = 本机构 + 平台预置;平台 admin = 全部,带机构名)
+export interface PhoneticCodeVideo {
+  id: number;
+  title: string;
+  phonetic_symbol?: string | null;
+  category: string;
+  category_label: string;
+  lecturer?: string | null;
+  is_preset: boolean;
+  /** 平台预置为 null。一张码不能混选两个机构的视频(学生只属于一个机构) */
+  org_id: number | null;
+  org_name?: string | null;
+}
+export const listPhoneticCodeVideos = () =>
+  api.get<PhoneticCodeVideo[]>('/admin/subscriptions/phonetic-codes/videos');
 
 // 管理员:批量生成音标兑换码
 export const generatePhoneticCodes = (data: {
@@ -120,6 +139,7 @@ export const generatePhoneticCodes = (data: {
   grant_type?: string;     // permanent/period/times
   grant_days?: number;     // 包月:有效天数
   grant_times?: number;    // 次卡:可用天数
+  video_ids?: number[];    // 不传 = 整个音标视频库;传 = 只开这几节(一节或多节)
 }) => api.post<PhoneticCode[]>('/admin/subscriptions/phonetic-codes/generate', data);
 
 // 管理员:音标兑换码列表(search 支持码片段/批次备注模糊搜)

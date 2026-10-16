@@ -8,7 +8,7 @@
  * 只能播这一个视频的两小时票据(api/phonetics.fetchVideoTicket),不是整站会话 token。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText } from 'lucide-react';
 import {
@@ -90,6 +90,7 @@ function saveLecturer(v: string) {
 
 export default function PhoneticsHub() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [videos, setVideos] = useState<PhoneticVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -110,11 +111,11 @@ export default function PhoneticsHub() {
   /** 正在看的那份讲义。null = 只看视频 */
   const [viewing, setViewing] = useState<StudentMaterial | null>(null);
   /**
-   * 点了一节「要兑换码才能开」的视频 → 弹一句引导,**不进播放器**。
-   * 库级锁:要么整库锁、要么整库开(后端 locked 字段,老师/管理员恒 false)。
+   * 点了一节「要兑换码才能开」的视频 → 弹一句引导,**不进播放器**。值是被拦的那一节。
+   * 锁按节判(2026-10-16 起):整库码开全部,单节码只开那一节(后端 locked 字段,老师/管理员恒 false)。
    * 这里只做拦截与引导;真正的判定在后端,前端 locked 只是省一次 403 往返。
    */
-  const [lockNudge, setLockNudge] = useState(false);
+  const [lockNudge, setLockNudge] = useState<PhoneticVideo | null>(null);
   /** 播放面板 DOM:全屏时把它整个送进 requestFullscreen */
   const panelRef = useRef<HTMLDivElement>(null);
   /**
@@ -318,10 +319,10 @@ export default function PhoneticsHub() {
   }, [filtered]);
 
   const openVideo = async (v: PhoneticVideo) => {
-    // 库级锁:没开通就不进播放器,弹一句引导去领码/用码。
+    // 这一节没开通就不进播放器,弹一句引导去领码/用码。
     // 后端 ticket/stream 都会再判一次,这里只是省一次 403 往返、给个友好提示。
     if (v.locked) {
-      setLockNudge(true);
+      setLockNudge(v);
       return;
     }
     setPlaying(v);
@@ -334,11 +335,11 @@ export default function PhoneticsHub() {
       const fresh = await phoneticsApi.detail(v.id);
       if (fresh.locked) {
         // 列表是进页面时取的,可能已经旧了(页面开着期间机构被切成需码、或卡到期了)。
-        // 库级锁:一节锁住就是整库锁住 → 全部卡片标锁、退出播放器改弹开通引导。
+        // 只标**这一节**: 锁按节判,别的节可能有单节码开着,不能连坐。
         // 不拦的话播放器会因换票 403 只显示一句像网络故障的「视频地址获取失败」
-        setVideos((prev) => prev.map((x) => ({ ...x, locked: true })));
+        setVideos((prev) => prev.map((x) => (x.id === v.id ? { ...x, locked: true } : x)));
         setPlaying(null);
-        setLockNudge(true);
+        setLockNudge(v);
         return;
       }
       setPlaying(fresh);
@@ -347,6 +348,21 @@ export default function PhoneticsHub() {
     // 配套讲义:取不到就当没有,**不能因此打断看视频**
     try { setMaterials(await listVideoMaterials(v.id)); } catch { setMaterials([]); }
   };
+
+  /**
+   * 兑完单节码跳回来(兑换页 navigate state 带 openVideoId)→ 列表到了就直接打开那一节。
+   * 否则学生回到一屏锁着的卡里,看不出刚开的是哪一节。
+   * 用完立刻把 state 清掉(replace): 它存在 history 里,不清的话刷新页面会再自动打开一次
+   */
+  const openVideoId = (location.state as { openVideoId?: number } | null)?.openVideoId;
+  useEffect(() => {
+    if (!openVideoId || loading) return;
+    navigate(location.pathname, { replace: true, state: null });
+    const v = videos.find((x) => x.id === openVideoId);
+    if (v) openVideo(v);
+    // openVideo 每次渲染都是新函数,只在列表到位时跑一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openVideoId, loading, videos]);
 
   /** 看完了:就地把卡片标成「已看完」,不重拉整页(重拉会让列表闪一下) */
   const markCompleted = useCallback((videoId: number) => {
@@ -789,7 +805,7 @@ export default function PhoneticsHub() {
         )}
       </AnimatePresence>
 
-      {/* 没开通音标视频库 → 点任意一节都弹这个,引导去领码/用码。
+      {/* 这一节没开通 → 点它弹这个,引导去领码/用码(整库码或这一节的单节码都能开)。
           文案要说清两条路:找老师领(机构发码)或手里已有码就点下面按钮直接输入。
           有关闭 X —— 这不是刻意全封闭的弹层,只是一句提示,随手关掉没有副作用 */}
       <AnimatePresence>
@@ -798,7 +814,7 @@ export default function PhoneticsHub() {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-4 sm:items-center"
             role="dialog" aria-modal="true" aria-label="音标视频需要兑换码"
-            onClick={() => setLockNudge(false)}
+            onClick={() => setLockNudge(null)}
           >
             <motion.div
               initial={{ y: 24, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 24, opacity: 0 }}
@@ -808,9 +824,12 @@ export default function PhoneticsHub() {
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 text-3xl">
                 🔒
               </div>
-              <p className="mt-4 font-display text-lg font-bold text-ink">音标视频需要开通</p>
+              <p className="mt-4 font-display text-lg font-bold text-ink">这一节需要开通</p>
+              {lockNudge.title && (
+                <p className="mt-1 text-sm font-semibold text-ink">「{lockNudge.title}」</p>
+              )}
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                这一套音标视频要用兑换码开通。找老师领一张兑换码，
+                这一节音标视频要用兑换码开通。找老师领一张兑换码，
                 手里已经有码的话，点下面的按钮输入就能开通。
               </p>
               <button
@@ -822,7 +841,7 @@ export default function PhoneticsHub() {
               </button>
               <button
                 type="button"
-                onClick={() => setLockNudge(false)}
+                onClick={() => setLockNudge(null)}
                 className="mt-2 min-h-11 w-full rounded-2xl bg-black/5 px-5 text-sm font-semibold text-ink-soft transition hover:bg-black/10"
               >
                 先不看

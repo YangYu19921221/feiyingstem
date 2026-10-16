@@ -668,7 +668,7 @@ export default function AdminOrganizations() {
   const togglePhoneticAccessMode = async (org: Organization) => {
     const next = org.phonetic_access_mode === 'code' ? 'open' : 'code';
     const msg = next === 'code'
-      ? `「${org.name}」音标视频改为需兑换码开通?\n\n该机构学生此后要用「音标兑换码」才能看音标视频库(整库一起锁)。\n在兑换码管理页生成音标码发给学生,学生在音标页点任意一节 →「去输入兑换码」激活。\n已经激活过的学生不受影响。`
+      ? `「${org.name}」音标视频改为需兑换码开通?\n\n该机构学生此后要用「音标兑换码」才能看音标视频。\n在兑换码管理页生成音标码发给学生:可开整个音标库,也可只开一节。学生在音标页点锁着的那一节 →「去输入兑换码」激活。\n已经激活过的学生不受影响。`
       : `「${org.name}」音标视频改为免费开放?\n\n该机构学生无需兑换码,直接就能看全部音标视频。`;
     if (!window.confirm(msg)) return;
     try {

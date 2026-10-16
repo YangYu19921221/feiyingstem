@@ -81,6 +81,8 @@ class RedeemResponse(BaseModel):
     # 统一 /redeem 端点按码所在的表分派,前端据此给不同成功文案/跳转
     scope: str = "book"
     book_name: Optional[str] = None
+    # 音标「指定几节」码这次开通/续期的那几节(前端据此打开或标出它们);整库码与单词本码为 None
+    video_ids: Optional[List[int]] = None
     # 一码多书: 这张卡覆盖的书与逐本结果(老前端只读 message/book_name 仍工作)
     books: Optional[List[dict]] = None
     granted: Optional[List[str]] = None
@@ -150,6 +152,8 @@ class PhoneticCodeGenerate(BaseModel):
     grant_type: str = Field("permanent", pattern="^(permanent|period|times)$", description="卡种")
     grant_days: Optional[int] = Field(None, ge=1, le=3650, description="包月卡有效天数")
     grant_times: Optional[int] = Field(None, ge=1, le=1000, description="次卡可用天数")
+    # 开通范围(2026-10-16): 不传/空 = 整个音标视频库;传 = 只开这几节(一节或多节)
+    video_ids: Optional[List[int]] = Field(None, description="只开哪几节视频(视频 id 列表)")
 
     @model_validator(mode="after")
     def _check_grant(self):
@@ -175,6 +179,9 @@ class PhoneticCodeResponse(BaseModel):
     code_expires_at: Optional[datetime] = None
     used_by: Optional[int] = None
     used_at: Optional[datetime] = None
+    # library = 整库码;videos = 只开 videos 里那几节。标题是发码时的快照(视频改名/删除后仍显示当时开的哪几节)
+    scope: str = "library"
+    videos: List[dict] = []
 
 
 class PhoneticCodeListResponse(BaseModel):

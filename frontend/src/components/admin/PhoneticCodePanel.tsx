@@ -9,8 +9,11 @@
  * 机构在额度内生成,码只给本机构学生兑。卡种/时长照 card-policy(机构只能 ≤180 天包月),
  * 额度水位走 /phonetic-codes/quota(真源 org_service.phonetic_code_quota_status)。
  * 调用方必须等 policy 到了再挂(policy 为 null 时别渲染),见 AdminSubscriptions。
+ *
+ * 2026-10-16 起可发「指定几节」的码: 开通范围选「指定几节」再勾一节或多节,兑出来只开勾的那几节。
+ * 与整库码共用同一份额度(一张码算一张,不按节数);列表「开通范围」列写的是发码时的视频标题快照。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ban, Check, Copy, Search, Trash2 } from 'lucide-react';
 import {
   generatePhoneticCodes,
@@ -18,9 +21,11 @@ import {
   disablePhoneticCode,
   deletePhoneticCode,
   getPhoneticCodeQuota,
+  listPhoneticCodeVideos,
   type CardPolicy,
   type PhoneticCode,
   type PhoneticCodeQuota,
+  type PhoneticCodeVideo,
 } from '../../api/subscription';
 import { toast } from '../Toast';
 import { getErrorMessage } from '../../utils/errorMessage';
@@ -57,6 +62,11 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
   const [genGrantType, setGenGrantType] = useState(isOrg ? 'period' : 'permanent'); // permanent/period/times
   const [genGrantDays, setGenGrantDays] = useState(Math.min(180, policy.max_grant_days));  // 包月默认半年
   const [genGrantTimes, setGenGrantTimes] = useState(30); // 次卡默认 30 天
+  // 开通范围: library = 整个音标视频库(默认,即原来的码);videos = 只开勾选的几节
+  const [genScope, setGenScope] = useState<'library' | 'videos'>('library');
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [videos, setVideos] = useState<PhoneticCodeVideo[] | null>(null);
+  const [videoKw, setVideoKw] = useState('');
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<PhoneticCode[]>([]);
   const [copied, setCopied] = useState(false);
@@ -91,6 +101,54 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
     try { setQuota(await getPhoneticCodeQuota()); } catch { /* 额度条拿不到不影响列表 */ }
   }, [isOrg]);
   useEffect(() => { fetchQuota(); }, [fetchQuota]);
+  // 视频清单只在第一次切到「指定几节」时取(多数人只发整库码,不必每次进页面都拉)
+  useEffect(() => {
+    if (genScope !== 'videos' || videos !== null) return;
+    listPhoneticCodeVideos()
+      .then((rows) => setVideos(rows))
+      .catch(() => { setVideos([]); toast.error('视频列表加载失败，请刷新重试'); });
+  }, [genScope, videos]);
+  const videoOptions = useMemo(() => {
+    const kw = videoKw.trim().toLowerCase();
+    if (!videos) return [];
+    if (!kw) return videos;
+    return videos.filter((v) => [v.title, v.phonetic_symbol, v.lecturer, v.org_name]
+      .some((s) => (s || '').toLowerCase().includes(kw)));
+  }, [videos, videoKw]);
+  // 已勾的视频,按清单顺序(= 学生端顺序)排,发码时也按这个顺序传
+  const pickedVideos = useMemo(
+    () => (videos || []).filter((v) => picked.has(v.id)),
+    [videos, picked],
+  );
+  // 一张码只能开同一个机构的视频(学生只属于一个机构;平台预置可以和任何一家混选)。
+  // 只有平台 admin 看得到多家的视频,机构管理员这里恒为本机构或 null
+  const pickedOrg = pickedVideos.find((v) => v.org_id !== null)?.org_id ?? null;
+  const blockedByOrg = (v: PhoneticCodeVideo) =>
+    v.org_id !== null && pickedOrg !== null && v.org_id !== pickedOrg;
+  const groups = useMemo(() => {
+    const labels = Array.from(new Set(videoOptions.map((v) => v.category_label)));
+    return labels.map((label) => ({
+      label, items: videoOptions.filter((v) => v.category_label === label),
+    }));
+  }, [videoOptions]);
+  const togglePick = (id: number) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  // 「全选本组」只动当前搜索结果里、没被机构冲突挡住的那些;本组已全勾则全部取消
+  const toggleGroup = (items: PhoneticCodeVideo[]) => setPicked((prev) => {
+    const selectable = items.filter((v) => !blockedByOrg(v));
+    const allOn = selectable.length > 0 && selectable.every((v) => prev.has(v.id));
+    const next = new Set(prev);
+    selectable.forEach((v) => (allOn ? next.delete(v.id) : next.add(v.id)));
+    return next;
+  });
+  const videoMeta = (v: PhoneticCodeVideo) => [
+    v.lecturer,
+    v.org_name || (v.is_preset ? '平台预置' : null),
+  ].filter(Boolean).join(' · ');
+
   const quotaTotal = quota?.phonetic_code_quota ?? 0;
   const quotaLeft = quota?.phonetic_codes_left ?? 0;
   // 机构没额度时整块生成区置灰并说清找谁,别让人填完点了才吃 403
@@ -110,6 +168,9 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
     if (genGrantType === 'times' && (!genGrantTimes || genGrantTimes < 1)) {
       toast.warning('次卡请填写可用天数'); return;
     }
+    if (genScope === 'videos' && pickedVideos.length === 0) {
+      toast.warning('请先勾选这批码要开哪几节视频'); return;
+    }
     setGenerating(true);
     setGenResult([]);
     try {
@@ -120,11 +181,14 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
       };
       if (genGrantType === 'period') payload.grant_days = genGrantDays;
       if (genGrantType === 'times') payload.grant_times = genGrantTimes;
+      if (genScope === 'videos') payload.video_ids = pickedVideos.map((v) => v.id);
       const res = await generatePhoneticCodes(payload);
       setGenResult(res);
       await fetchCodes();
       fetchQuota();
-      toast.success(`已生成 ${res.length} 个音标兑换码`);
+      toast.success(genScope === 'videos'
+        ? `已生成 ${res.length} 个码（每张只开选中的 ${pickedVideos.length} 节）`
+        : `已生成 ${res.length} 个音标兑换码（开整个音标视频库）`);
     } catch (error) { toast.error(getErrorMessage(error, '生成音标兑换码失败，请检查参数后重试')); }
     finally { setGenerating(false); }
   };
@@ -161,13 +225,23 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
     return c.grant_type;
   };
 
+  // 「开通范围」列: 整库 / 只开一节「x」/ 只开 N 节「a」「b」…(完整列表放 title 里悬停看)
+  const scopeTitles = (c: PhoneticCode) => (c.videos || []).map((v) => `「${v.title || `#${v.id}`}」`);
+  const formatScope = (c: PhoneticCode) => {
+    if (c.scope !== 'videos') return '整个音标库';
+    const ts = scopeTitles(c);
+    if (ts.length === 0) return '指定的视频已全部删除';
+    if (ts.length === 1) return `只开${ts[0]}`;
+    return `只开 ${ts.length} 节：${ts.join('')}`;
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <section className="mt-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5 sm:p-6">
       <div className="mb-1 flex items-center gap-2">
         <h2 className="text-lg font-bold text-gray-800">音标视频兑换码</h2>
-        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{isOrg ? '库级 · 本机构码' : '库级 · 平台码'}</span>
+        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{isOrg ? '本机构码' : '平台码'}</span>
       </div>
       {isOrg && quota && (
         <div className={`mb-3 rounded-xl px-4 py-3 text-sm ${noQuota ? 'bg-amber-50 text-amber-800' : 'bg-white text-gray-700 shadow-sm'}`}>
@@ -177,12 +251,121 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
         </div>
       )}
       <p className="mb-4 text-xs leading-relaxed text-gray-500">
-        开通的是<strong>整个音标视频库</strong>的访问权,不绑任何单词本。只对「音标开通方式 = 需兑换码」的机构有意义
-        (在机构管理里切换);其余机构学生本就免费看音标。学生在音标页点任意一节 →「去输入兑换码」,或首页「我的书架 → 兑换教材」里输入激活(两处是同一个兑换框,后端按码自动分流)。
+        一张码可以开<strong>整个音标视频库</strong>,也可以<strong>只开其中几节</strong>(下面「开通范围」里选「指定几节」再勾视频)。只对「音标开通方式 = 需兑换码」的机构有意义
+        (在机构管理里切换);其余机构学生本就免费看音标。学生在音标页点锁着的那一节 →「去输入兑换码」,或首页「我的书架 → 兑换教材」里输入激活(两处是同一个兑换框,后端按码自动分流)。
       </p>
 
       {/* 生成区 */}
       <div className="rounded-xl bg-white p-4 shadow-sm">
+        {/* 开通范围 */}
+        <div className="mb-4">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700">开通范围</label>
+          <div className="flex flex-wrap gap-2">
+            {(['library', 'videos'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setGenScope(s)}
+                aria-pressed={genScope === s}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                  genScope === s
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                {s === 'library' ? '整个音标视频库' : '指定几节'}
+              </button>
+            ))}
+          </div>
+          {genScope === 'videos' && (
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text" value={videoKw}
+                  onChange={(e) => setVideoKw(e.target.value)}
+                  placeholder="搜标题 / 音标 / 讲师"
+                  aria-label="搜索视频"
+                  className="w-full max-w-xs rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+                />
+                <span className="text-sm text-gray-600" aria-live="polite">
+                  已选 <strong className="text-indigo-700">{pickedVideos.length}</strong> 节
+                </span>
+                {pickedVideos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPicked(new Set())}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline"
+                  >
+                    清空
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-200">
+                {videos === null ? (
+                  <p className="px-3 py-6 text-center text-sm text-gray-400">加载中…</p>
+                ) : groups.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-gray-400">
+                    {videoKw.trim() ? '没有符合搜索的视频' : '没有可选的视频(只列已上架的)'}
+                  </p>
+                ) : groups.map((g) => {
+                  const selectable = g.items.filter((v) => !blockedByOrg(v));
+                  const allOn = selectable.length > 0 && selectable.every((v) => picked.has(v.id));
+                  return (
+                    <fieldset key={g.label} className="border-b border-gray-100 last:border-b-0">
+                      <legend className="sr-only">{g.label}</legend>
+                      <div className="sticky top-0 z-[1] flex items-center justify-between bg-gray-50 px-3 py-1.5">
+                        <span className="text-xs font-semibold text-gray-600">
+                          {g.label} · {g.items.length} 节
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(g.items)}
+                          disabled={selectable.length === 0}
+                          aria-label={`${allOn ? '取消全选' : '全选'}${g.label}`}
+                          className="text-xs font-medium text-indigo-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-300"
+                        >
+                          {allOn ? '取消本组' : '全选本组'}
+                        </button>
+                      </div>
+                      {g.items.map((v) => {
+                        const blocked = blockedByOrg(v);
+                        const meta = videoMeta(v);
+                        return (
+                          <label
+                            key={v.id}
+                            title={blocked ? '已选了别的机构的视频,一张码只能开同一个机构的' : undefined}
+                            className={`flex items-center gap-3 px-3 py-2 text-sm ${
+                              blocked ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-indigo-50/50'
+                            } ${picked.has(v.id) ? 'bg-indigo-50/70' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={picked.has(v.id)}
+                              disabled={blocked}
+                              onChange={() => togglePick(v.id)}
+                              className="h-4 w-4 shrink-0 accent-indigo-600"
+                            />
+                            {v.phonetic_symbol && (
+                              <span className="w-12 shrink-0 font-mono text-indigo-700">{v.phonetic_symbol}</span>
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-gray-800">{v.title}</span>
+                            {meta && <span className="shrink-0 text-xs text-gray-400">{meta}</span>}
+                          </label>
+                        );
+                      })}
+                    </fieldset>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500">
+                学生兑这批码只能看勾选的这几节,别的节照旧锁着。只列已上架的视频;某节被删除后,没用掉的码里会去掉那一节(全删光的码自动作废)。
+                {!isOrg && ' 一张码只能开同一个机构的视频,平台预置的可以和任何一家混选。'}
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* 卡种 */}
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-gray-700">卡种</label>
@@ -269,7 +452,10 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
         {genResult.length > 0 && (
           <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-indigo-900">刚生成的 {genResult.length} 个码</p>
+              <p className="text-sm font-semibold text-indigo-900">
+                刚生成的 {genResult.length} 个码
+                <span className="ml-1 font-normal text-indigo-700">· {genResult[0] ? formatScope(genResult[0]) : ''}</span>
+              </p>
               <button
                 type="button"
                 onClick={copyAll}
@@ -305,7 +491,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
               <input
                 type="text" value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜码片段/批次备注"
+                placeholder="搜码片段/备注/视频名"
                 className="w-48 rounded-lg border border-gray-200 py-1.5 pl-8 pr-2 text-sm"
               />
             </div>
@@ -324,10 +510,11 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-gray-600">
                 <th className="px-4 py-3">兑换码</th>
+                <th className="px-4 py-3">开通范围</th>
                 <th className="px-4 py-3">卡种</th>
                 <th className="px-4 py-3">状态</th>
                 <th className="px-4 py-3">创建人</th>
@@ -339,7 +526,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
             <tbody>
               {codes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                     {debouncedSearch || filterStatus ? '没有符合条件的兑换码' : '还没有生成任何音标兑换码'}
                   </td>
                 </tr>
@@ -347,6 +534,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
                 codes.map((c) => (
                   <tr key={c.id} className="border-t border-gray-50">
                     <td className="px-4 py-3 font-mono">{c.code}</td>
+                    <td className="max-w-[14rem] truncate px-4 py-3 text-gray-700" title={formatScope(c)}>{formatScope(c)}</td>
                     <td className="px-4 py-3">{formatGrantType(c)}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_MAP[c.status]?.color || 'bg-gray-100 text-gray-500'}`}>

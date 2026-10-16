@@ -271,6 +271,29 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标兑换码「指定几节」(2026-10-16,**未部署**): 用户「现在音标视频开一个码就全部可以看全部视频,
+  现在需要可以一个码单开一个视频」,随后改成「增加个可以选择多节的」—— **以多选为准**(一节是多选的特例)。
+  phonetic_codes.scope(library=整库,存量全是它 / videos)+ 明细表 phonetic_code_videos(一节一行 + 标题快照,
+  与 redemption_code_books 同构);单节授权另起新表 phonetic_video_grants(一人一节一行,四个授权列与
+  book_assignments 同名,is_assignment_active 直接判活)。整库那张 phonetic_access_grants **一行不动**
+  (它的 UNIQUE(student_id) SQLite 改不了,NULL 在唯一索引里又互不相等)。
+  闸门真源 phonetics._gate(video_id) + phonetic_access_service.pick_grant: 整库或这一节的授权任一生效即放行;
+  两条都生效时选**今天不用扣**的那条(整库次卡 + 这节永久,看这节不扣整库天数)。五个交付端点全按节判
+  (讲义页图先查课件挂在哪节再判)。列表 locked **按节**,同一响应里不再全库一致。六个要点:
+  ①**范围只看 scope 列,不能拿「有没有明细」推** —— 删视频会清未用码的明细,删光的码若退成整库码就是开全部
+  ②删视频(单条 + 批量)走 forget_videos: 删单节授权、删未用码里那节的明细、删光的码 disabled
+  (视频 id 会被 SQLite 回收给新视频);已用码明细保留当凭证 ③删码要显式删明细(生产 FK 是关的)
+  ④多节码逐节给结果(照一码多书): 已永久/生效中跨卡种的那节跳过,**每节都跳过才失败且不吞码**;
+  已有整库永久、视频全下架、视频不是本机构的 → 整张拒且不吞码 ⑤平台 admin 不能混选两个机构的视频
+  (学生只属一个机构,混选的码谁都兑不成),平台预置可与任一家混 ⑥一张码算一张额度,不按节数。
+  前端: PhoneticCodePanel「开通范围: 整个音标视频库 / 指定几节」→ 按分类分组的勾选清单(搜索、全选本组、
+  别家机构置灰);码列表「开通范围」列;学生端锁按节、锁弹窗写节名;只开一节的码兑完自动打开那节
+  (history state,用完 replace 清掉,否则刷新会再打开一次)。公告两条(admin+org_admin / teacher)。
+  入口: 「兑换码管理」页底部「音标视频兑换码」→「开通范围」选「指定几节」→ 勾视频 →「生成兑换码」。
+  测试 tests/test_phonetic_single_video_code.py(20 例;10 处守卫逐一破坏各自对应用例失败,回归锁验证过)。
+  浏览器验过(临时库 + ffmpeg 造的视频): 勾 2 节发码 → 学生兑 → 2 节开、1 节锁、能播;单节码兑完自动打开。
+  **部署注意**: database.py 有 drift,走 anchor patch(phonetic 段加 1 条 ALTER + 2 张表);前后端必须一起上
+  (兑换响应改成 video_ids、列表 locked 语义变了)
 - ✅ 安全收口(2026-10-14 19:35 已部署生产,5 个文件生产==HEAD~1 整推,备份 /root/eh_code_before_seclock_20261014_1932.tgz):
   ①**GET /admin/ai/providers/default 原先免登录返回通义千问 API Key 明文**(生产实测能拿到;nginx 日志 08-24 有外部 IP
   13.228.168.117 拿走过一次)→ 仅平台 admin。**Key 本身用户说先不换**(10-14),旧 Key 仍可能被他人使用。

@@ -13,7 +13,7 @@ from app.models.user import (
     User, RedemptionCode, RedemptionCodeBook, RedemptionCodeStatus,
 )
 from app.models.word import WordBook, BookStage
-from app.models.phonetic import PhoneticCode
+from app.models.phonetic import PhoneticCode, PhoneticCodeVideo
 from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.schemas.subscription import (
     RedemptionCodeGenerate,
@@ -499,20 +499,53 @@ async def phonetic_code_quota(
     return {"unlimited": False, **st}
 
 
+@router.get("/phonetic-codes/videos")
+async def phonetic_code_videos(
+    current_user: User = Depends(get_current_admin_or_org_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """发「指定几节」码时可勾的视频(只列上架的): 机构 = 本机构 + 平台预置,平台 admin = 全部。
+    顺序与学生端音标页一致(分类 → sort_order → id),老师找起来和学生看到的一样。"""
+    from app.api.v1.phonetics import CATEGORY_LABELS, CATEGORY_ORDER
+    order = {c: i for i, c in enumerate(CATEGORY_ORDER)}
+    rows = await phonetic_access_service.codeable_videos(db, current_user)
+    rows.sort(key=lambda r: (order.get(r[0].category, 99), r[0].sort_order or 0, r[0].id))
+    return [
+        {
+            "id": v.id,
+            "title": v.title,
+            "phonetic_symbol": v.phonetic_symbol,
+            "category": v.category,
+            "category_label": CATEGORY_LABELS.get(v.category, v.category),
+            "lecturer": v.lecturer,
+            "is_preset": v.org_id is None,
+            # 前端据此拦「混选两个机构的视频」(学生只属于一个机构,后端 resolve_code_videos 也会 400)
+            "org_id": v.org_id,
+            # 平台 admin 看得到所有机构的视频,得写明是谁家的,免得给 A 家的码开了 B 家的课
+            "org_name": org_name if current_user.role == "admin" else None,
+        }
+        for v, org_name in rows
+    ]
+
+
 @router.post("/phonetic-codes/generate", response_model=list[PhoneticCodeResponse])
 async def generate_phonetic_codes(
     req: PhoneticCodeGenerate,
     current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """批量生成音标视频库兑换码。开通的是**整个音标视频库**的访问权。
+    """批量生成音标兑换码。不传 video_ids = 开**整个音标视频库**;传 = 只开这几节(2026-10-16,可多选)。
 
     平台 admin 不限量、码不绑机构;机构管理员在平台发放的额度内生成,码绑本机构
-    (只有本机构学生能兑,见 redeem_phonetic_code)。
+    (只有本机构学生能兑,见 redeem_phonetic_code)。指定几节的码与整库码**共用同一份额度**
+    (一张码算一张,不按节数算)。机构只能选本机构或平台预置的视频(resolve_code_videos)。
     """
     subscription_service.guard_card_policy(
         current_user.role, req.grant_type, req.grant_days, req.grant_times,
     )
+    videos = None
+    if req.video_ids:
+        videos = await phonetic_access_service.resolve_code_videos(db, current_user, req.video_ids)
 
     org_id = None
     if current_user.role == "org_admin":
@@ -544,8 +577,10 @@ async def generate_phonetic_codes(
         grant_type=req.grant_type,
         grant_days=req.grant_days,
         grant_times=req.grant_times,
+        videos=videos,
     )
     name = current_user.full_name or current_user.username
+    picked = [{"id": vid, "title": title} for vid, title in (videos or [])]
     return [
         PhoneticCodeResponse(
             id=c.id, code=c.code, status=c.status,
@@ -555,6 +590,7 @@ async def generate_phonetic_codes(
             created_by_name=name, created_at=c.created_at,
             code_expires_at=c.code_expires_at,
             used_by=c.used_by, used_at=c.used_at,
+            scope=c.scope or "library", videos=picked,
         )
         for c in codes
     ]
@@ -584,6 +620,11 @@ async def list_phonetic_codes(
         cond = or_(
             PhoneticCode.code.ilike(pattern, escape="\\"),
             PhoneticCode.batch_note.ilike(pattern, escape="\\"),
+            # 指定几节的码: 搜节名就能找到开这一节的码
+            PhoneticCode.id.in_(
+                select(PhoneticCodeVideo.code_id)
+                .where(PhoneticCodeVideo.video_title.ilike(pattern, escape="\\"))
+            ),
         )
         query = query.where(cond)
         count_query = count_query.where(cond)
@@ -605,6 +646,8 @@ async def list_phonetic_codes(
         )
         for uid, full_name, username in rows.all():
             name_map[uid] = full_name or username
+    # 每张码开哪几节(本页一次查完)
+    video_map = await phonetic_access_service.code_videos(db, [c.id for c in codes])
 
     return PhoneticCodeListResponse(
         total=total,
@@ -617,6 +660,7 @@ async def list_phonetic_codes(
                 created_by_name=name_map.get(c.created_by),
                 created_at=c.created_at, code_expires_at=c.code_expires_at,
                 used_by=c.used_by, used_at=c.used_at,
+                scope=c.scope or "library", videos=video_map.get(c.id, []),
             )
             for c in codes
         ],
@@ -651,6 +695,10 @@ async def delete_phonetic_code(
             status_code=400,
             detail="已使用的兑换码不能删除(需保留兑换记录),如需停用请改为禁用",
         )
+    # 明细行显式删: 生产 FK 是关的,ON DELETE CASCADE 不生效;phonetic_codes 由 create_all 建、
+    # id 不带 AUTOINCREMENT 会被回收,留着孤儿明细就会挂到下一张新码上
+    from sqlalchemy import delete as sa_delete
+    await db.execute(sa_delete(PhoneticCodeVideo).where(PhoneticCodeVideo.code_id == code.id))
     await db.delete(code)
     await db.commit()
     return {"message": "兑换码已删除"}

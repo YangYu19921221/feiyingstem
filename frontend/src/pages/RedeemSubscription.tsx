@@ -50,11 +50,14 @@ const RedeemSubscription = () => {
       const res: any = await redeemCode(code);
       if (res.success) {
         setSuccess(res.message);
-        // 音标码(scope=phonetic)开的是音标视频库,不进书架 —— 跳回音标页,不然学生
-        // 被送回首页还以为没开成
+        // 音标码(scope=phonetic)开的是音标视频,不进书架 —— 跳回音标页,不然学生
+        // 被送回首页还以为没开成。只开一节的码带上那一节,音标页到了直接打开它;
+        // 开了好几节的不替学生挑,成功文案里已列出是哪几节,回到列表它们就是解锁的
         if (res.scope === 'phonetic') {
           setSuccessScope('phonetic');
-          setTimeout(() => navigate('/student/phonetics'), 2000);
+          const ids: number[] = res.video_ids || [];
+          const state = ids.length === 1 ? { openVideoId: ids[0] } : undefined;
+          setTimeout(() => navigate('/student/phonetics', { state }), ids.length > 1 ? 3200 : 2000);
           return;
         }
         setSuccessScope('book');
@@ -100,7 +103,7 @@ const RedeemSubscription = () => {
     <div ref={pageRef} className="min-h-screen bg-paper page-warm-glow">
       <StudentPageHeader
         title={forPhonetic ? '开通音标视频' : '兑换教材'}
-        subtitle={forPhonetic ? '输入老师给的音标兑换码，开通全部音标视频' : '输入兑换码，把新教材加入书架'}
+        subtitle={forPhonetic ? '输入老师给的音标兑换码，开通音标视频' : '输入兑换码，把新教材加入书架'}
         icon={KeyRound}
         backTo={forPhonetic ? '/student/phonetics' : '/student/dashboard'}
         maxWidth="5xl"

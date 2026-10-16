@@ -624,6 +624,36 @@ async def init_db():
             "ON phonetic_access_logs(user_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_phonetic_access_log_org "
             "ON phonetic_access_logs(org_id)",
+            # 指定几节的码(2026-10-16): 码上记开通范围(library=整库,存量全是它 | videos=只开明细里那几节),
+            # 明细一节一行 + 标题快照;单节授权另起一张表(整库那张的 UNIQUE(student_id) 改不了,见 models/phonetic)
+            "ALTER TABLE phonetic_codes ADD COLUMN scope VARCHAR(10) NOT NULL DEFAULT 'library'",
+            """CREATE TABLE IF NOT EXISTS phonetic_code_videos (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   code_id INTEGER NOT NULL,
+                   video_id INTEGER NOT NULL,
+                   video_title VARCHAR(200),
+                   FOREIGN KEY (code_id) REFERENCES phonetic_codes(id) ON DELETE CASCADE
+               )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_phonetic_code_video "
+            "ON phonetic_code_videos(code_id, video_id)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_code_videos_video "
+            "ON phonetic_code_videos(video_id)",
+            """CREATE TABLE IF NOT EXISTS phonetic_video_grants (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   student_id INTEGER NOT NULL,
+                   video_id INTEGER NOT NULL,
+                   grant_type VARCHAR(10) NOT NULL DEFAULT 'permanent',
+                   expires_at DATETIME,
+                   times_left INTEGER,
+                   last_consumed_date VARCHAR(10),
+                   created_by INTEGER,
+                   granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+               )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_phonetic_video_grant "
+            "ON phonetic_video_grants(student_id, video_id)",
+            "CREATE INDEX IF NOT EXISTS idx_phonetic_video_grants_video "
+            "ON phonetic_video_grants(video_id)",
         ]:
             try:
                 await conn.execute(text(_sql))
