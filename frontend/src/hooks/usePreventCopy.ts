@@ -22,7 +22,9 @@ import { useEffect } from 'react';
 function isEditable(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el || !el.tagName) return false;
-  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+  // data-allow-save: 要让家长长按保存的图(学习报告),长按菜单被拦就存不下来
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+    || !!el.closest?.('[data-allow-save]');
 }
 
 export function usePreventCopy(enabled = true): void {

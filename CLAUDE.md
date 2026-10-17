@@ -271,6 +271,25 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 分类学习「学习报告」分享图(2026-10-17,**未部署生产**): 用户「家长不知道背了哪些…家长可以保存图片发在群里,
+  知道这个孩子学了啥差啥还有什么建议」。结算页(整单元结算 + 每组小结都有)「📸 生成学习报告,发给家长」→
+  弹层出一张长图: 机构名 / 孩子姓名 / 书名单元 / 分数与档位 / 词数·一次拼对·分钟 /「还要多练」(正确拼写 + 中文 +
+  孩子当时拼成什么,划掉)/「给家长的建议」/「第一次就拼对」词表 / 落款机构名。长按保存、「保存图片」「分享图片」
+  (navigator.share,微信内置浏览器没有就不显示)、「复制文字版」(剪贴板不给权限退回 prompt)。
+  **AI 只出三张不带字的吉祥物插画**(public/report-card/{excellent,good,keep}.jpg,脚本 backend/scripts/gen_report_card_art.py,
+  走 IMAGE_API_* 中转、白底放进白色圆徽章不抠图),字和词全部 canvas 现画 —— 生图模型画不准中文和单词表,且每张 15–60 秒按张计费。
+  口径真源 utils/learningReport.ts: ①分数与结算页 overallRate **同一公式**(听写首答拼对率);组小结页点开算的是
+  **本次会话已学几组合计**,图上写「第 1–2 组(共 4 组)」②只写「一次就拼对 / 还要多练」**不写「已掌握」**(当天拼对≠记住)
+  ③建议是规则生成的家长动作(念中文让孩子默写 + 按拼错类型 漏字母/多字母/顺序/元音/大小写 挑最多的一类给一条),不承诺分数
+  ④姓名只用 full_name,**不拿 username 顶**(常是手机号,图要发群里)⑤低分不用红色(当众难堪),用蓝色。
+  画图在 components/classify/LearningReportDialog.tsx: 先排版算总高再建画布(改尺寸会清空);1.5 倍出 1125 宽,
+  超 1200 万像素自动降倍率(iOS Safari 约 1678 万像素以上 toDataURL 出空图);多练封顶 20 行、拼对词封顶 40 个。
+  **长按保存要过三道拦截**: usePreventCopy(JS)、页面根 .no-select(touch-callout:none)、main.tsx 学生端禁右键 ——
+  图片带 `data-allow-save`(两处 JS 认它)+ `allow-select`(CSS 认它),其它文字照旧拦(验过);弹层走 portal 挂 body
+  (结算页外层 framer-motion transform 会困住 fixed)。后端 `_build_unit_info` 加 book_name / org_name(学生自己的 org_id,
+  加盟机构落款是本机构名;Organization 不是租户锚点表),测试 tests/test_learning_report_unit_info.py。
+  浏览器验过(临时库副本 + 种 unitRecap 存档,复习卡池要拖拽分完才能「完成」): 真实流程出图 1125×2430、390 宽手机弹层、
+  满分/95 词压力场景、长按放行。入口: 学生端分类学习结算页「📸 生成学习报告,发给家长」;公告学生/老师各一条
 - ✅ 音标兑换码「指定几节」(2026-10-16 16:06 **已部署生产**,database.py 走 anchor patch 只加 phonetic 段那 1 条 ALTER + 2 张表,其余 6 个文件生产==HEAD~1 整推;上线后存量码全为 scope=library、两张新表为空 = 线上行为零变化;备份 /root/eh_db_before_svcode_20261016_1603.db、/root/eh_code_before_svcode_20261016_1603.tgz、frontend/dist_bak_20261016_1603,构建号 mvanqg0i): 用户「现在音标视频开一个码就全部可以看全部视频,
   现在需要可以一个码单开一个视频」,随后改成「增加个可以选择多节的」—— **以多选为准**(一节是多选的特例)。
   phonetic_codes.scope(library=整库,存量全是它 / videos)+ 明细表 phonetic_code_videos(一节一行 + 标题快照,

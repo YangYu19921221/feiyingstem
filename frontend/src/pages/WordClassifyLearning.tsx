@@ -35,6 +35,8 @@ import { submitReviewRecords } from '../api/memoryCurve';
 import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
+import LearningReportDialog from '../components/classify/LearningReportDialog';
+import { buildLearningReport, type LearningReport } from '../utils/learningReport';
 import ChaseBanner from '../components/classify/ChaseBanner';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
@@ -751,6 +753,36 @@ const WordClassifyLearning = () => {
     };
   }, [phase, isLastGroup, buildAllResults]);
 
+  // 学习报告(给家长的分享图)。点按钮那一刻定格数据,弹层开着时不跟着状态变
+  const [report, setReport] = useState<LearningReport | null>(null);
+  const closeReport = useCallback(() => setReport(null), []);
+  const openReport = useCallback(() => {
+    if (!learningData) return;
+    const all = buildAllResults();
+    // 本次会话学了哪几组: 从断点续学进来时,前面的组不在 allGroupResults 里,报告也不该算它们
+    const firstGroup = Math.max(0, currentGroupIndex - allGroupResults.length);
+    let progressText: string | null = null;
+    if (totalGroups > 1) {
+      if (isLastGroup && firstGroup === 0) progressText = `${totalGroups} 组全部学完`;
+      else if (firstGroup === currentGroupIndex) progressText = `第 ${currentGroupIndex + 1}/${totalGroups} 组`;
+      else progressText = `第 ${firstGroup + 1}–${currentGroupIndex + 1} 组(共 ${totalGroups} 组)`;
+    }
+    let childName = '';
+    try {
+      // 只用真实姓名:用户名常是手机号,图会发到群里
+      childName = JSON.parse(localStorage.getItem('user') || 'null')?.full_name || '';
+    } catch { /* 取不到就不写名字 */ }
+    setReport(buildLearningReport({
+      childName,
+      bookName: learningData.unit_info.book_name,
+      unitName: learningData.unit_info.name,
+      progressText,
+      words: all.flatMap(gr => gr.words.map(w => ({ id: w.id, word: w.word, meaning: w.meaning }))),
+      dictation: all.flatMap(gr => gr.dictationResults),
+      elapsedSeconds: netSeconds(),
+    }));
+  }, [learningData, buildAllResults, currentGroupIndex, allGroupResults.length, totalGroups, isLastGroup, netSeconds]);
+
   // 进入 finalSummary 时给宠物发粮（每个会话仅一次）
   const foodEarnedRef = useRef(false);
   useEffect(() => {
@@ -1140,6 +1172,7 @@ const WordClassifyLearning = () => {
                 totalGroups={totalGroups}
                 onNextGroup={handleNextGroup}
                 taskTargetScore={unitTask?.target_score ?? null}
+                onShowReport={openReport}
               />
             </motion.div>
           )}
@@ -1153,10 +1186,18 @@ const WordClassifyLearning = () => {
                 elapsedSeconds={netSeconds()}
                 onBack={() => goBack()}
                 mode="finalSummary"
+                onShowReport={openReport}
               />
             </motion.div>
           )}
         </AnimatePresence>
+        {report && (
+          <LearningReportDialog
+            report={report}
+            orgName={learningData.unit_info.org_name ?? null}
+            onClose={closeReport}
+          />
+        )}
       </div>
 
       {/* 退出确认对话框 */}

@@ -7,6 +7,7 @@ from datetime import datetime
 from app.core.database import get_db
 from app.models.word import Word, WordBook, Unit, UnitWord, WordDefinition
 from app.models.user import User
+from app.models.organization import Organization
 from app.models.learning import LearningProgress, StudySession, BookAssignment
 from app.schemas.progress import (
     StartLearningRequest, StartLearningResponse,
@@ -22,16 +23,22 @@ from app.services.scope_service import (
 router = APIRouter()
 
 
-def _build_unit_info(unit: Unit, word_book: WordBook) -> dict:
-    """构建 unit_info 响应字典"""
+def _build_unit_info(unit: Unit, word_book: WordBook, org_name: str | None = None) -> dict:
+    """构建 unit_info 响应字典
+
+    book_name / org_name 给结算页「学习报告」分享图用(图上写哪本书、落款哪个机构 ——
+    加盟机构的家长看到的得是本机构的名字,不能写死平台品牌)。
+    """
     return {
         "id": unit.id,
         "unit_number": unit.unit_number,
         "name": unit.name,
         "description": unit.description,
         "book_id": unit.book_id,
+        "book_name": word_book.name if word_book else None,
         "grade_level": word_book.grade_level if word_book else None,
         "group_size": getattr(unit, 'group_size', 0) or 0,
+        "org_name": org_name,
     }
 
 # ========================================
@@ -70,6 +77,9 @@ async def start_learning(
             detail=f"单元ID {unit_id} 不存在"
         )
     unit, word_book = row
+    # 学习报告图的落款(Organization 不是租户锚点表,按学生自己的 org_id 直取即可)
+    org = await db.get(Organization, current_user.org_id) if current_user.org_id else None
+    org_name = org.name if org else None
 
     # 1.4 每日签到门槛:今天没签到不能开始学习(前端会先引导签到,这里是兜底)
     from app.api.v1.checkin import has_checked_in_today
@@ -186,7 +196,7 @@ async def start_learning(
             progress_percentage=0.0,
             words=[],
             message=f"该单元暂时没有单词,请联系老师添加单词后再开始学习",
-            unit_info=_build_unit_info(unit, word_book),
+            unit_info=_build_unit_info(unit, word_book, org_name),
             contest_notice=contest_notice,
         )
 
@@ -202,7 +212,7 @@ async def start_learning(
             progress_percentage=0.0,
             words=words,
             message=f"本次作业只练第 {group_index} 组,共 {total_words} 个单词",
-            unit_info=_build_unit_info(unit, word_book),
+            unit_info=_build_unit_info(unit, word_book, org_name),
             contest_notice=contest_notice,
         )
 
@@ -296,7 +306,7 @@ async def start_learning(
         progress_percentage=round(progress_percentage, 2),
         words=words,
         message=message,
-        unit_info=_build_unit_info(unit, word_book),
+        unit_info=_build_unit_info(unit, word_book, org_name),
         contest_notice=contest_notice,
     )
 

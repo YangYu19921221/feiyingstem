@@ -21,6 +21,8 @@ interface ClassifySummaryProps {
   onNextGroup?: () => void;
   /** 本单元有老师布置的任务时传入,用于在组小结页说清"还没交卷" */
   taskTargetScore?: number | null;
+  /** 打开「学习报告」分享图(给家长看学了啥、哪些要多练);不传就不显示按钮 */
+  onShowReport?: () => void;
 }
 
 interface Rank {
@@ -159,6 +161,7 @@ export default function ClassifySummary({
   totalGroups = 1,
   onNextGroup,
   taskTargetScore,
+  onShowReport,
 }: ClassifySummaryProps) {
   const totalSeconds = Math.max(0, Math.round(elapsedSeconds));
   const minutes = Math.floor(totalSeconds / 60);
@@ -246,6 +249,16 @@ export default function ClassifySummary({
                 还剩 {totalGroups - groupIndex - 1} 组未学
               </p>
             </div>
+          )}
+          {/* 学到一半就下课的孩子很多(一个单元分两三天学),报告不能只在整单元学完才给 */}
+          {onShowReport && (
+            <button
+              type="button"
+              onClick={onShowReport}
+              className="mt-4 w-full rounded-2xl border-2 border-orange-200 bg-orange-50 py-3 text-base font-bold text-[#FF6B35] hover:bg-orange-100"
+            >
+              📸 生成学习报告,发给家长
+            </button>
           )}
         </motion.div>
       </div>
@@ -446,6 +459,21 @@ export default function ClassifySummary({
             </motion.div>
           ))}
         </motion.div>
+
+        {onShowReport && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2.0 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={onShowReport}
+            className="mb-3 w-full rounded-2xl bg-white py-4 text-lg font-bold text-[#FF6B35] shadow-xl hover:bg-orange-50"
+          >
+            📸 生成学习报告,发给家长
+            <span className="mt-0.5 block text-xs font-medium text-slate-500">学了哪些词、哪些要多练、家长怎么帮</span>
+          </motion.button>
+        )}
 
         <motion.button
           initial={{ opacity: 0, y: 20 }}

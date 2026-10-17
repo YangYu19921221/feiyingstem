@@ -33,7 +33,8 @@ window.addEventListener('contextmenu', (e) => {
   if (!isStudent()) return
   // 输入框 / textarea 内的右键保留（学生需要复制粘贴账号、修改资料）
   const target = e.target as HTMLElement
-  if (target.closest('input, textarea, [contenteditable]')) return
+  // data-allow-save: 学习报告图要能长按保存发给家长
+  if (target.closest('input, textarea, [contenteditable], [data-allow-save]')) return
   e.preventDefault()
 })
 

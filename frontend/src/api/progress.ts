@@ -80,8 +80,11 @@ export interface StartLearningResponse {
     name: string;
     description: string | null;
     book_id: number;
+    /** 学习报告图用:书名、落款机构名(复习/错题练习没有单元,两者都为空) */
+    book_name?: string | null;
     grade_level: string | null;
     group_size?: number;
+    org_name?: string | null;
   };
 }
 
