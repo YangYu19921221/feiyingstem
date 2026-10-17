@@ -544,7 +544,8 @@ export default function LearningReportDialog({ report, orgName, onClose }: Props
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
           <div className="min-w-0">
             <h2 id="learning-report-title" className="text-base font-bold text-gray-800">学习报告</h2>
-            <p className="text-xs text-gray-500">手机上长按图片保存,发给家长或班级群</p>
+            {/* 电脑上没有长按,要告诉老师/家长点下面的按钮 */}
+            <p className="text-xs text-gray-500">手机长按图片保存,电脑点下方「保存图片」</p>
           </div>
           <button
             ref={closeRef} type="button" onClick={onClose} aria-label="关闭"
