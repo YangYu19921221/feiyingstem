@@ -23,6 +23,8 @@ interface ClassifySummaryProps {
   taskTargetScore?: number | null;
   /** 打开「学习报告」分享图(给家长看学了啥、哪些要多练);不传就不显示按钮 */
   onShowReport?: () => void;
+  /** 今天的任务全部做完时传入: 打开「今日学习报告」(一天一张,含今天全部任务);不传就不显示 */
+  onShowTodayReport?: () => void;
 }
 
 interface Rank {
@@ -162,6 +164,7 @@ export default function ClassifySummary({
   onNextGroup,
   taskTargetScore,
   onShowReport,
+  onShowTodayReport,
 }: ClassifySummaryProps) {
   const totalSeconds = Math.max(0, Math.round(elapsedSeconds));
   const minutes = Math.floor(totalSeconds / 60);
@@ -472,6 +475,22 @@ export default function ClassifySummary({
           >
             📸 生成学习报告,发给家长
             <span className="mt-0.5 block text-xs font-medium text-slate-500">学了哪些词、哪些要多练、家长怎么帮</span>
+          </motion.button>
+        )}
+
+        {/* 最后一份任务就是这个单元时,在这里就能拿到一天的总报告,不用回首页找 */}
+        {onShowTodayReport && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2.1 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={onShowTodayReport}
+            className="mb-3 w-full rounded-2xl bg-green-50 py-4 text-lg font-bold text-green-700 shadow-xl hover:bg-green-100"
+          >
+            🎉 今天的任务全部完成,生成今日学习报告
+            <span className="mt-0.5 block text-xs font-medium text-green-700/80">今天做了哪些任务、学了多少词,一张图发给家长</span>
           </motion.button>
         )}
 

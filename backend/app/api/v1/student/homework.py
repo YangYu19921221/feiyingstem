@@ -525,3 +525,20 @@ async def get_my_homework_attempts(
         ))
 
     return attempts
+
+
+@router.get("/today-report")
+async def get_today_report(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """今日学习报告(孩子做完当天全部任务后发给家长的分享图)。口径见 services/today_report。
+
+    只返回自己的数据;all_done=False 时前端不给入口,但接口照样返回(老师布置了家里的任务、
+    孩子还差一份时,首页能写「还差 1 份就能生成」)。
+    """
+    if current_user.role != 'student':
+        raise HTTPException(status_code=403, detail="只有学生可以查看")
+    from app.services.today_report import build_today_report
+    from app.core.timeutil import local_today
+    return await build_today_report(db, current_user, local_today())

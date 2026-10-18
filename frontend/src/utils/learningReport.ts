@@ -147,20 +147,20 @@ export interface LearningReport {
 
 const WEEKDAY = '日一二三四五六';
 
-function dateTextOf(d: Date): string {
+export function dateTextOf(d: Date): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEKDAY[d.getDay()]}`;
 }
 
-/** 从拼错的词里挑最常见的一类错误给一条建议;一类都认不出就不给 */
-function spellingTip(weak: WeakWord[]): string | null {
-  const groups = new Map<Exclude<SpellingIssue, 'other'>, WeakWord[]>();
+/** 从拼错的词里挑最常见的一类错误给一条建议;一类都认不出就不给(今日学习报告也用) */
+export function spellingTip(weak: Array<{ word: string; wrote: string | null }>): string | null {
+  const groups = new Map<Exclude<SpellingIssue, 'other'>, Array<{ word: string; wrote: string | null }>>();
   for (const w of weak) {
     if (!w.wrote) continue;
     const issue = spellingIssueOf(w.word, w.wrote);
     if (issue === 'other') continue;
     groups.set(issue, [...(groups.get(issue) ?? []), w]);
   }
-  let best: [Exclude<SpellingIssue, 'other'>, WeakWord[]] | null = null;
+  let best: [Exclude<SpellingIssue, 'other'>, Array<{ word: string; wrote: string | null }>] | null = null;
   for (const entry of groups) {
     if (!best || entry[1].length > best[1].length) best = entry;
   }

@@ -36,6 +36,8 @@ import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
 import LearningReportDialog from '../components/classify/LearningReportDialog';
+import TodayReportDialog from '../components/report/TodayReportDialog';
+import { getTodayReport, type TodayReportData } from '../api/todayReport';
 import { buildLearningReport, reportChildName, type LearningReport } from '../utils/learningReport';
 import {
   clearDoneGroups, doneGroupsKeyOf, entrySeconds, loadDoneGroups, localDay, pickRestorableGroups,
@@ -816,6 +818,11 @@ const WordClassifyLearning = () => {
 
   // 学习报告(给家长的分享图)。点按钮那一刻定格数据,弹层开着时不跟着状态变
   const [report, setReport] = useState<LearningReport | null>(null);
+  // 今日学习报告(一天一张,含今天全部任务): 作业交卷达标后查一次,今天全做完才给入口
+  const [todayReport, setTodayReport] = useState<TodayReportData | null>(null);
+  const [showTodayReport, setShowTodayReport] = useState(false);
+  const openTodayReport = useCallback(() => setShowTodayReport(true), []);
+  const closeTodayReport = useCallback(() => setShowTodayReport(false), []);
   const closeReport = useCallback(() => setReport(null), []);
   const openReport = useCallback(() => {
     if (!learningData) return;
@@ -877,7 +884,11 @@ const WordClassifyLearning = () => {
         total_words: total,
       })
         .then(r => {
-          if (r.is_passed) setTaskDone(true);  // 横幅变绿打勾后淡出
+          if (r.is_passed) {
+            setTaskDone(true);  // 横幅变绿打勾后淡出
+            // 这份可能是今天最后一份: 查一下,全做完了结算页就多一个「今日学习报告」
+            getTodayReport().then(setTodayReport).catch(() => {});
+          }
           toast.success(r.is_passed
             ? `🎉 作业达标!得分 ${r.score}`
             : `作业已提交,得分 ${r.score}(目标未达,还可再试 ${r.remaining_attempts} 次)`);
@@ -1251,6 +1262,7 @@ const WordClassifyLearning = () => {
                 onBack={() => goBack()}
                 mode="finalSummary"
                 onShowReport={openReport}
+                onShowTodayReport={todayReport?.all_done ? openTodayReport : undefined}
               />
             </motion.div>
           )}
@@ -1261,6 +1273,9 @@ const WordClassifyLearning = () => {
             orgName={learningData.unit_info.org_name ?? null}
             onClose={closeReport}
           />
+        )}
+        {showTodayReport && todayReport && (
+          <TodayReportDialog data={todayReport} onClose={closeTodayReport} />
         )}
       </div>
 

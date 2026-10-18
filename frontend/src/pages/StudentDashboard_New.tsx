@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Reorder } from 'framer-motion';
@@ -12,6 +12,8 @@ import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
 import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
 import { formatOpenDay } from '../utils/openDay';
+import { getTodayReport, type TodayReportData } from '../api/todayReport';
+import TodayReportDialog from '../components/report/TodayReportDialog';
 import { toast } from '../components/Toast';
 import PetWidget from '../components/PetWidget';
 import MyCoinsCard from '../components/MyCoinsCard';
@@ -83,6 +85,16 @@ const StudentDashboard = () => {
   const [showMoreBooks, setShowMoreBooks] = useState(false);
   const [showAllQuickTools, setShowAllQuickTools] = useState(false);
   const [showLearningDetails, setShowLearningDetails] = useState(false);
+  // 今日学习报告:今天布置的任务全部完成后,首页出一张卡,点开生成发给家长的图
+  const [todayReport, setTodayReport] = useState<TodayReportData | null>(null);
+  const [showTodayReport, setShowTodayReport] = useState(false);
+  const closeTodayReport = useCallback(() => setShowTodayReport(false), []);
+
+  const loadTodayReport = async () => {
+    try {
+      setTodayReport(await getTodayReport());
+    } catch { /* 拿不到就不显示入口 */ }
+  };
 
   const loadCheckin = async () => {
     try {
@@ -120,6 +132,7 @@ const StudentDashboard = () => {
     loadReviewDueCount();
     loadAchievements();
     loadPendingHomework();
+    loadTodayReport();
     loadCheckin();
     const interval = setInterval(loadOnlineUsers, 30000);
     // 老师布置的任务近实时:60 秒轮询 + 切回页面立即刷(布置作业后学生开着仪表盘也能看到)
@@ -127,7 +140,7 @@ const StudentDashboard = () => {
       if (!document.hidden) loadPendingHomework();
     }, 60000);
     const onVisible = () => {
-      if (!document.hidden) { loadPendingHomework(); refreshPendingSync(); }
+      if (!document.hidden) { loadPendingHomework(); loadTodayReport(); refreshPendingSync(); }
     };
     document.addEventListener('visibilitychange', onVisible);
     // 未上传学习记录:进页刷一次 + 每 10 秒刷(补交成功后数字会自动降到 0)
@@ -618,6 +631,29 @@ const StudentDashboard = () => {
             loading="lazy"
           />
         </section>
+
+        {/* 今日学习报告:今天布置的任务全部完成才出现,点开生成发给家长的图 */}
+        {todayReport?.all_done && (
+          <section data-dashboard-reveal className="mb-5 sm:mb-8">
+            <button
+              type="button"
+              onClick={() => setShowTodayReport(true)}
+              className="flex w-full items-center gap-4 rounded-2xl border-2 border-green-200 bg-green-50 px-5 py-4 text-left transition hover:bg-green-100"
+            >
+              <span className="text-3xl" aria-hidden="true">📸</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-bold text-green-800">今天的任务全部完成,生成今日学习报告</span>
+                <span className="mt-0.5 block text-xs text-green-700">
+                  {todayReport.today_total} 份任务 · 学了 {todayReport.words_learned} 个词,发给爸爸妈妈看看
+                </span>
+              </span>
+              <span className="shrink-0 text-sm font-semibold text-green-700">生成 →</span>
+            </button>
+          </section>
+        )}
+        {showTodayReport && todayReport && (
+          <TodayReportDialog data={todayReport} onClose={closeTodayReport} />
+        )}
 
         {/* 我的金币 — 放在今日任务之后，保留奖励感但不抢先学习任务的注意力 */}
         <section data-dashboard-reveal className="mb-5 sm:mb-8">
