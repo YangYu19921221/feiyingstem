@@ -36,7 +36,7 @@ import SpeechVerifyCard from '../components/classify/SpeechVerifyCard';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import ClassifySummary from '../components/classify/ClassifySummary';
 import LearningReportDialog from '../components/classify/LearningReportDialog';
-import { buildLearningReport, type LearningReport } from '../utils/learningReport';
+import { buildLearningReport, reportChildName, type LearningReport } from '../utils/learningReport';
 import {
   clearDoneGroups, doneGroupsKeyOf, entrySeconds, loadDoneGroups, localDay, pickRestorableGroups,
   pruneStaleDoneGroups, saveDoneGroups, upsertDoneGroup,
@@ -831,8 +831,8 @@ const WordClassifyLearning = () => {
     }
     let childName = '';
     try {
-      // 只用真实姓名:用户名常是手机号,图会发到群里
-      childName = JSON.parse(localStorage.getItem('user') || 'null')?.full_name || '';
+      // 姓名优先,没填姓名用用户名,带数字的用户名(常是手机号)不用 —— 图会发到群里
+      childName = reportChildName(JSON.parse(localStorage.getItem('user') || 'null'));
     } catch { /* 取不到就不写名字 */ }
     setReport(buildLearningReport({
       childName,

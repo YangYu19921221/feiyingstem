@@ -292,7 +292,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   口径真源 utils/learningReport.ts: ①分数与结算页 overallRate **同一公式**(听写首答拼对率);组小结页点开算的是
   **本次会话已学几组合计**,图上写「第 1–2 组(共 4 组)」②只写「一次就拼对 / 还要多练」**不写「已掌握」**(当天拼对≠记住)
   ③建议是规则生成的家长动作(念中文让孩子默写 + 按拼错类型 漏字母/多字母/顺序/元音/大小写 挑最多的一类给一条),不承诺分数
-  ④姓名只用 full_name,**不拿 username 顶**(常是手机号,图要发群里)⑤低分不用红色(当众难堪),用蓝色。
+  ④名字取 reportChildName(utils/learningReport.ts): full_name 优先,没填退回 username,**username 带数字不用**
+  (常是手机号,图要发群里)。10-18 改的: 原先只认 full_name,而生产在读 793 人里 780 人没填姓名(763 人用户名就是中文真名),
+  图上几乎都没名字 ⑤低分不用红色(当众难堪),用蓝色。
   画图在 components/classify/LearningReportDialog.tsx: 先排版算总高再建画布(改尺寸会清空);1.5 倍出 1125 宽,
   超 1200 万像素自动降倍率(iOS Safari 约 1678 万像素以上 toDataURL 出空图);多练封顶 20 行、拼对词封顶 40 个。
   **长按保存要过三道拦截**: usePreventCopy(JS)、页面根 .no-select(touch-callout:none)、main.tsx 学生端禁右键 ——

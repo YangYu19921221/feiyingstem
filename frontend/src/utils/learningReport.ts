@@ -98,8 +98,21 @@ export interface WeakWord extends ReportWord {
   wrote: string | null;
 }
 
+/**
+ * 图上写的孩子名字。优先姓名(full_name);没填姓名时退回用户名,但用户名带数字就不用 ——
+ * 带数字的常是手机号(wy15308897486 这种),图要发到家长群里。
+ * 生产 2026-10-18: 在读学生 793 人里 780 人没填姓名,其中 763 人的用户名就是中文真名,
+ * 只认 full_name 的话几乎每张图都没名字。
+ */
+export function reportChildName(user: { full_name?: string | null; username?: string | null } | null | undefined): string {
+  const fullName = user?.full_name?.trim();
+  if (fullName) return fullName;
+  const username = user?.username?.trim() ?? '';
+  return username && !/\d/.test(username) ? username : '';
+}
+
 export interface ReportInput {
-  /** 孩子的姓名;取不到就留空(别拿用户名顶,用户名常是手机号,发群里就泄露了) */
+  /** 孩子的名字,取法见 reportChildName;取不到就留空 */
   childName: string;
   bookName?: string | null;
   unitName: string;
