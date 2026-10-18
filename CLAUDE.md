@@ -271,7 +271,8 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 今日学习报告(2026-10-18): 用户「你应该增加个他背完所有任务的分享」。分类学习那张「学习报告」只管一个单元,
+- ✅ 今日学习报告(2026-10-18 14:52 **已部署生产**,homework.py 生产==HEAD~1 整推 + 新文件 today_report.py,systemd 重启;
+  dist 整推;备份 /root/homework_before_todayreport_20261018_1446.py、frontend/dist_bak_20261018_1452,构建号 mvdgnk6a): 用户「你应该增加个他背完所有任务的分享」。分类学习那张「学习报告」只管一个单元,
   一天三份任务要发三张;这张一天一张。`GET /student/today-report`,口径真源 services/today_report.py:
   ①今天的任务 = 今天布置、没关闭的作业,**含在家做的**(金币分母排除家里作业,但家长看的是老师布置了什么)
   ②全部完成 = 至少一份且每份 completed,failed 不算 ③今天补做完成的旧任务列出来标「补做」,不参与判定
