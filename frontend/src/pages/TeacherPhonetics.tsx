@@ -1046,6 +1046,7 @@ export default function TeacherPhonetics() {
       {/* 手动排序。保存后刷列表(教师列表与学生端同一个顺序) */}
       {reorderOpen && (
         <ReorderDialog
+          initialLecturer={lecturerFilter || undefined}
           onSaved={() => void load()}
           onClose={() => setReorderOpen(false)}
         />

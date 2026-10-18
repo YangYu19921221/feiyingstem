@@ -254,6 +254,10 @@ export interface PhoneticOrderList {
   items: PhoneticOrderItem[];
   /** 该分类下平台预置的视频数。机构排不了它们,学生端它们排在本机构视频前面 */
   preset_count: number;
+  /** 这次只列了哪位讲师(null = 整个分类) */
+  lecturer: string | null;
+  /** 该分类里有哪几位讲师(按学生端先后);name 为 NO_LECTURER 的是未指定讲师的 */
+  lecturers: Array<{ name: string; count: number }>;
 }
 
 /** 一位讲师 + 名下视频数(教师端:含已下架的) */
@@ -494,15 +498,19 @@ export const phoneticsApi = {
       '/teacher/phonetics/videos/batch-lecturer', { ids, lecturer }),
 
   /** 排序弹层:某分类下本机构的全部视频(不分页、含已下架),按当前顺序 */
-  orderList: (category: PhoneticCategory) =>
-    api.get<PhoneticOrderList>('/teacher/phonetics/videos/order', { params: { category } }),
+  orderList: (category: PhoneticCategory, lecturer?: string | null) =>
+    api.get<PhoneticOrderList>('/teacher/phonetics/videos/order', {
+      params: lecturer != null ? { category, lecturer } : { category },
+    }),
 
   /**
    * 保存某分类的手动顺序。ids 必须是该分类本机构的**全部**视频 ——
-   * 中途有人上传/改分类时后端回 409,要重新打开排序
+   * 中途有人上传/改分类时后端回 409,要重新打开排序。
+   * 传 lecturer = 只排这位讲师的课(ids 是她在该分类的全部视频),别的讲师的课位置不变
    */
-  reorder: (category: PhoneticCategory, ids: number[]) =>
-    api.post<{ updated: number }>('/teacher/phonetics/videos/reorder', { category, ids }),
+  reorder: (category: PhoneticCategory, ids: number[], lecturer?: string | null) =>
+    api.post<{ updated: number }>('/teacher/phonetics/videos/reorder',
+      lecturer != null ? { category, ids, lecturer } : { category, ids }),
 
   remove: (id: number) => api.delete<void>(`/teacher/phonetics/videos/${id}`),
 

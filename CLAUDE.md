@@ -271,6 +271,14 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频排序按讲师分开排(2026-10-18): 用户「调整顺序有两个老师是不是得分开,现在混在一起不好弄」。
+  生产直营入门总览 42 节 = Ella老师 21 + 佳佳老师 21,两人的课交错着排。排序弹层分类下加一排讲师标签
+  (分类里有 ≥2 位讲师时出现,默认停在第一位;列表页正筛着某位讲师就停在她),每位只排自己的课,另有「全部混排」。
+  后端 `GET /videos/order?lecturer=`、`POST /videos/reorder` 带 lecturer: ids 要恰好是这位讲师在该分类的全部视频
+  (少了/混进别的讲师 → 409),**这位讲师的课按新顺序填回她原来占的那几个位置,别人的原地不动**,再整个分类重写
+  10/20/30…(只给这几条写 10/20/30 会和另一位撞成并列)。讲师匹配与学生端同口径: 空/空白 = 未指定(NO_LECTURER)。
+  不传 lecturer = 旧行为。测试 tests/test_phonetic_video_reorder.py 加 3 例(9 例);浏览器验过: 置顶 Ella 一节 →
+  佳佳老师 4 节顺序、位置都不变,学生端列表同步
 - ✅ 今日学习报告(2026-10-18 14:52 **已部署生产**,homework.py 生产==HEAD~1 整推 + 新文件 today_report.py,systemd 重启;
   dist 整推;备份 /root/homework_before_todayreport_20261018_1446.py、frontend/dist_bak_20261018_1452,构建号 mvdgnk6a): 用户「你应该增加个他背完所有任务的分享」。分类学习那张「学习报告」只管一个单元,
   一天三份任务要发三张;这张一天一张。`GET /student/today-report`,口径真源 services/today_report.py:

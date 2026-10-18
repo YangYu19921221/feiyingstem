@@ -758,13 +758,25 @@ class BatchLecturerRequest(BaseModel):
 
 class ReorderRequest(BaseModel):
     category: str
-    # 该分类下**本机构全部视频**的新顺序(含已下架)。上限与分类规模匹配,留足余量
+    # 该分类下**本机构全部视频**的新顺序(含已下架)。上限与分类规模匹配,留足余量;
+    # 传了 lecturer 时是**这位讲师**在该分类下的全部视频
     ids: list[int] = Field(..., min_length=1, max_length=500)
+    # 只排一位讲师的课(一个机构几位老师各讲一套,混在一起没法排)。
+    # None = 整个分类;NO_LECTURER = 未指定讲师的那批
+    lecturer: Optional[str] = Field(None, max_length=200)
+
+
+def _lecturer_matches(v: PhoneticVideo, lecturer: str) -> bool:
+    """排序用的讲师匹配。与学生端筛选同口径: 空/空白 = 未指定讲师"""
+    name = (v.lecturer or "").strip()
+    return not name if lecturer == NO_LECTURER else name == lecturer
 
 
 @router.get("/videos/order")
 async def list_for_reorder(
     category: str = Query(...),
+    lecturer: Optional[str] = Query(
+        None, description=f"只看一位讲师的课;{NO_LECTURER!r} = 未指定讲师的"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_teacher),
 ):
@@ -776,11 +788,17 @@ async def list_for_reorder(
     """
     if category not in VALID_CATEGORIES:
         raise HTTPException(400, "分类不存在")
-    rows = (await db.execute(
+    all_rows = (await db.execute(
         select(PhoneticVideo)
         .where(_same_owner(user.org_id), PhoneticVideo.category == category)
         .order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
     )).scalars().all()
+    # 这个分类里有哪几位讲师(弹层按讲师分开排用);按第一次出现的位置排,与学生端看到的先后一致
+    lecturer_counts: dict[str, int] = {}
+    for v in all_rows:
+        key = (v.lecturer or "").strip() or NO_LECTURER
+        lecturer_counts[key] = lecturer_counts.get(key, 0) + 1
+    rows = all_rows if lecturer is None else [v for v in all_rows if _lecturer_matches(v, lecturer)]
     preset = 0
     if user.org_id is not None:
         preset = (await db.execute(
@@ -796,6 +814,8 @@ async def list_for_reorder(
             "cover_image": v.cover_image,
         } for v in rows],
         "preset_count": preset,
+        "lecturer": lecturer,
+        "lecturers": [{"name": k, "count": n} for k, n in lecturer_counts.items()],
     }
 
 
@@ -812,6 +832,11 @@ async def reorder_videos(
       按旧名单写会让漏掉的那条留着旧值、插在中间某处 —— 顺序不是老师排的那样
     - 多了: 混进了别家机构 / 平台预置 / 别的分类的 id。按 id 直接写就是越权改别人的顺序
     整组重写而不是只改挪动的那几条: 存量全是 0,只改几条的话剩下的仍并列,顺序照旧靠 id 决定
+
+    传 lecturer = 只排这位讲师的课(2026-10-18 用户「两个老师是不是得分开,混在一起不好弄」):
+    ids 要恰好等于这位讲师在该分类下的全部视频;**别的讲师的视频原地不动**,这位讲师的视频
+    按新顺序填回它们原来占的那几个位置,然后整个分类重写 10/20/30…。
+    不能只给这几条写 10/20/30: 会和另一位讲师的 10/20/30 撞成并列,两人的课在「全部」里乱插
     """
     if body.category not in VALID_CATEGORIES:
         raise HTTPException(400, "分类不存在")
@@ -820,15 +845,19 @@ async def reorder_videos(
     rows = (await db.execute(
         select(PhoneticVideo)
         .where(_same_owner(user.org_id), PhoneticVideo.category == body.category)
+        .order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
     )).scalars().all()
-    by_id = {v.id: v for v in rows}
+    scope = rows if body.lecturer is None else [v for v in rows if _lecturer_matches(v, body.lecturer)]
+    by_id = {v.id: v for v in scope}
     if set(by_id) != set(body.ids):
-        raise HTTPException(409, "视频列表已有变化(可能刚有人上传或改了分类),请关闭后重新打开排序")
-    for i, vid in enumerate(body.ids):
-        by_id[vid].sort_order = (i + 1) * SORT_STEP
+        raise HTTPException(409, "视频列表已有变化(可能刚有人上传或改了分类/讲师),请关闭后重新打开排序")
+    picked = iter(by_id[vid] for vid in body.ids)
+    merged = [next(picked) if v.id in by_id else v for v in rows]
+    for i, v in enumerate(merged):
+        v.sort_order = (i + 1) * SORT_STEP
     await db.commit()
-    logger.info("音标视频排序: org=%s category=%s n=%d by=%s",
-                user.org_id, body.category, len(body.ids), user.id)
+    logger.info("音标视频排序: org=%s category=%s lecturer=%r n=%d by=%s",
+                user.org_id, body.category, body.lecturer, len(body.ids), user.id)
     return {"updated": len(body.ids)}
 
 

@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-reorder-by-lecturer-2026-10',
+    date: '2026-10-18',
+    title: '音标视频「调整顺序」按讲师分开排了',
+    desc: '一个分类里有两位以上老师的课时,排序弹层会在分类下面多一排「讲师」标签,默认停在第一位老师。每位老师只看到、只排自己的课,保存后另一位老师的课位置一个都不动。学生选了某位老师,就按这位老师排好的顺序看。想管学生「不选老师」时看到的穿插顺序,点最后的「全部混排」。',
+    where: '教师端「音标视频」→ 顶部「调整顺序」→ 选分类 → 选讲师 → 拖动或点箭头 →「保存顺序」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/phonetics',
+  },
+  {
     id: 'today-report-student-2026-10',
     date: '2026-10-18',
     title: '🎉 做完今天的全部任务,能生成「今日学习报告」了',
