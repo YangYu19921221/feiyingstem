@@ -271,7 +271,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标视频排序按讲师分开排(2026-10-18): 用户「调整顺序有两个老师是不是得分开,现在混在一起不好弄」。
+- ✅ 音标视频排序按讲师分开排(2026-10-18 17:16 **已部署生产**,teacher/phonetics.py 生产==HEAD~1 整推 + systemd 重启;
+  dist 整推(第一次 rsync 中途断线,--delay-updates 没换上半成品,重传后校验 0 差异);备份
+  /root/teacher_phonetics_before_lecsort_20261018_1715.py、frontend/dist_bak_20261018_1715,构建号 mvdlyhxx): 用户「调整顺序有两个老师是不是得分开,现在混在一起不好弄」。
   生产直营入门总览 42 节 = Ella老师 21 + 佳佳老师 21,两人的课交错着排。排序弹层分类下加一排讲师标签
   (分类里有 ≥2 位讲师时出现,默认停在第一位;列表页正筛着某位讲师就停在她),每位只排自己的课,另有「全部混排」。
   后端 `GET /videos/order?lecturer=`、`POST /videos/reorder` 带 lecturer: ids 要恰好是这位讲师在该分类的全部视频
