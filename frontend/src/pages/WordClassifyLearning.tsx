@@ -37,6 +37,10 @@ import DictationPhase, { type DictationResult } from '../components/classify/Dic
 import ClassifySummary from '../components/classify/ClassifySummary';
 import LearningReportDialog from '../components/classify/LearningReportDialog';
 import { buildLearningReport, type LearningReport } from '../utils/learningReport';
+import {
+  clearDoneGroups, doneGroupsKeyOf, entrySeconds, loadDoneGroups, localDay, pickRestorableGroups,
+  pruneStaleDoneGroups, saveDoneGroups, upsertDoneGroup,
+} from '../utils/classifyDoneGroups';
 import ChaseBanner from '../components/classify/ChaseBanner';
 import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
@@ -167,6 +171,15 @@ const WordClassifyLearning = () => {
   // 组内进度存档 key。必须带用户 id:培训机构常见共用一台平板/电脑,
   // 只按 unitId 存档会让后一个学生捡到前一个学生的组进度和分类结果(串档)。
   const progressKey = unitId ? `classify_progress_${localProgressUid()}_${unitId}${groupKeySuffix}` : '';
+  // 今天已学完的组(刷新/重进后结算页、学习报告、作业交卷仍按整单元算,见 utils/classifyDoneGroups)。
+  // 复习/错题(unit 0)每次词表不同,不存
+  const doneGroupsKey = unitId && unitId !== '0'
+    ? doneGroupsKeyOf(localProgressUid(), unitId, groupKeySuffix) : '';
+  // 用时也要接上: netSeconds() 每次进页面从 0 起算。
+  // 今天这个单元累计 = priorSecondsRef + netSeconds();当前组用时 = netSeconds() - groupStartNetRef
+  const priorSecondsRef = useRef(0);   // 进页面前已学的时间(恢复的组 + 当前组刷新前那段)
+  const groupStartNetRef = useRef(0);  // 当前组开始时的 netSeconds()(刷新续上时可为负)
+  const unitSeconds = useCallback(() => priorSecondsRef.current + netSeconds(), [netSeconds]);
 
   // 保存组内进度到 localStorage（仅数据加载后生效）
   // 连同 classifyResults / dictationResults 一起存，恢复时能精确回到上次的阶段
@@ -293,6 +306,9 @@ const WordClassifyLearning = () => {
       // 顺带清掉旧版无用户 id 的存档,避免共用设备上残留的别人进度被将来误用
       localStorage.removeItem(`classify_progress_${id}`);
       let resumedFromLocal = false;
+      // 下面两条分支最终落到哪一组、哪个阶段(恢复「今天已学完的组」要用)
+      let startIdx = 0;
+      let startPhase: Phase = 'classify';
 
       if (savedJson) {
         try {
@@ -303,6 +319,7 @@ const WordClassifyLearning = () => {
             const totalGroups = Math.ceil(data.words.length / groupSize);
             if (saved.groupIndex < totalGroups) {
               setCurrentGroupIndex(saved.groupIndex);
+              startIdx = saved.groupIndex;
 
               // 恢复分类结果（若有）
               const savedClassify: Array<[number, WordCategory]> =
@@ -339,6 +356,7 @@ const WordClassifyLearning = () => {
                 }
               }
               setPhase(restored);
+              startPhase = restored;
               if (saved.dictationSource === 'recap' || saved.dictationSource === 'normal') {
                 setDictationSource(saved.dictationSource);
               }
@@ -359,6 +377,7 @@ const WordClassifyLearning = () => {
           const totalGroups = Math.ceil(data.words.length / groupSize);
           const startGroup = Math.min(resumeGroup, totalGroups - 1);
           setCurrentGroupIndex(startGroup);
+          startIdx = startGroup;
           // 明确告知续学位置:上次背到哪一组学生自己记不住,
           // 直接跳到第3组又会让人怀疑"前两组白背了/系统串了"
           if (startGroup > 0) {
@@ -367,6 +386,26 @@ const WordClassifyLearning = () => {
         } else {
           setCurrentGroupIndex(0);
         }
+      }
+
+      // 接上今天已学完的组: 组结果原先只在内存里,刷新/重进后结算页、学习报告、作业交卷
+      // 都只算最后进页面之后的那几组(实案: 61 词学完 4 组,报告只剩最后一组 1 个词)
+      if (doneGroupsKey) {
+        const today = localDay();
+        pruneStaleDoneGroups(today);
+        const groupsNow = splitIntoGroups(data.words, data.unit_info.grade_level, data.unit_info.group_size);
+        const picked = pickRestorableGroups(
+          loadDoneGroups(doneGroupsKey), groupsNow.map(g => g.map(w => w.id)), startIdx, today,
+        );
+        // 恢复到过关检测/单元复习 = 当前组听写已交,它刷新前用掉的时间也要接上
+        const carry = startPhase === 'exam' || startPhase === 'unitRecap' ? entrySeconds(picked.current) : 0;
+        setAllGroupResults(picked.groups.map(e => ({
+          classifyResults: new Map(e.classifyResults),
+          dictationResults: e.dictationResults,
+          words: groupsNow[e.groupIndex],
+        })));
+        priorSecondsRef.current = picked.seconds + carry;
+        groupStartNetRef.current = -carry;
       }
 
       // 学习会话改为延迟创建:第一组真正学完时(saveGroupProgress)才建。
@@ -546,6 +585,17 @@ const WordClassifyLearning = () => {
     }
 
     setDictationResults(results);
+    // 本组听写首答已定,落本地:刷新/重进页面后结算页、学习报告、作业交卷仍按整单元算
+    if (doneGroupsKey) {
+      saveDoneGroups(doneGroupsKey, upsertDoneGroup(loadDoneGroups(doneGroupsKey), {
+        groupIndex: currentGroupIndex,
+        wordIds: currentGroupWords.map(w => w.id),
+        dictationResults: results,
+        classifyResults: Array.from(classifyResults.entries()),
+        seconds: Math.max(0, netSeconds() - groupStartNetRef.current),
+        day: localDay(),
+      }));
+    }
     submitMistakesRealtime(
       mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string, user_answer: r.userInput || undefined }))
     );
@@ -567,6 +617,16 @@ const WordClassifyLearning = () => {
         score: scorePercent ?? Math.round((correct / total) * 100),
         time_spent: elapsedSeconds ?? 0,
       }).catch(() => {});  // 失败静默,不挡学习流程
+    }
+    // 组存档的用时补上过关检测这段(听写交卷时先记过一次)
+    if (doneGroupsKey) {
+      const list = loadDoneGroups(doneGroupsKey);
+      const mine = list.find(e => e.groupIndex === currentGroupIndex);
+      if (mine) {
+        saveDoneGroups(doneGroupsKey, upsertDoneGroup(list, {
+          ...mine, seconds: Math.max(0, netSeconds() - groupStartNetRef.current),
+        }));
+      }
     }
     if (isLastGroup) {
       setPhase('unitRecap');
@@ -715,6 +775,7 @@ const WordClassifyLearning = () => {
     ]);
 
     // 重置当前组的阶段状态
+    groupStartNetRef.current = netSeconds();
     setCurrentGroupIndex(prev => prev + 1);
     setPhase('classify');
     setClassifyResults(new Map());
@@ -759,7 +820,8 @@ const WordClassifyLearning = () => {
   const openReport = useCallback(() => {
     if (!learningData) return;
     const all = buildAllResults();
-    // 本次会话学了哪几组: 从断点续学进来时,前面的组不在 allGroupResults 里,报告也不该算它们
+    // 学了哪几组: allGroupResults 含今天刷新/重进前学完的组(classifyDoneGroups 恢复);
+    // 前几天学的、或换设备学的组不在里面,报告也不算它们
     const firstGroup = Math.max(0, currentGroupIndex - allGroupResults.length);
     let progressText: string | null = null;
     if (totalGroups > 1) {
@@ -779,15 +841,17 @@ const WordClassifyLearning = () => {
       progressText,
       words: all.flatMap(gr => gr.words.map(w => ({ id: w.id, word: w.word, meaning: w.meaning }))),
       dictation: all.flatMap(gr => gr.dictationResults),
-      elapsedSeconds: netSeconds(),
+      elapsedSeconds: unitSeconds(),
     }));
-  }, [learningData, buildAllResults, currentGroupIndex, allGroupResults.length, totalGroups, isLastGroup, netSeconds]);
+  }, [learningData, buildAllResults, currentGroupIndex, allGroupResults.length, totalGroups, isLastGroup, unitSeconds]);
 
   // 进入 finalSummary 时给宠物发粮（每个会话仅一次）
   const foodEarnedRef = useRef(false);
   useEffect(() => {
     if (!finalSummaryData || foodEarnedRef.current) return;
     foodEarnedRef.current = true;
+    // 整单元结算了,今天的组存档用完(再学一遍从第 1 组算起)
+    clearDoneGroups(doneGroupsKey);
     const correct = finalSummaryData.allDictation.filter(r => r.isCorrect).length;
     const total = Math.max(finalSummaryData.totalWords, 1);
     earnFood({ score: correct, total, mode: 'classify' })
@@ -807,7 +871,7 @@ const WordClassifyLearning = () => {
       submitHomeworkAttempt(submitId, {
         score: Math.round((correct / total) * 100),
         // 作业耗时同样用净活动时长:此前是墙上时钟,发呆两小时也照记
-        time_spent: Math.max(1, netSeconds()),
+        time_spent: Math.max(1, unitSeconds()),
         correct_count: correct,
         wrong_count: total - correct,
         total_words: total,
@@ -1165,7 +1229,7 @@ const WordClassifyLearning = () => {
                 dictationResults={dictationResults}
                 fillBlankResults={[]}
                 totalWords={currentGroupWords.length}
-                elapsedSeconds={netSeconds()}
+                elapsedSeconds={unitSeconds()}
                 onBack={() => goBack()}
                 mode="groupSummary"
                 groupIndex={currentGroupIndex}
@@ -1183,7 +1247,7 @@ const WordClassifyLearning = () => {
                 dictationResults={finalSummaryData.allDictation}
                 fillBlankResults={[]}
                 totalWords={finalSummaryData.totalWords}
-                elapsedSeconds={netSeconds()}
+                elapsedSeconds={unitSeconds()}
                 onBack={() => goBack()}
                 mode="finalSummary"
                 onShowReport={openReport}
