@@ -302,7 +302,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   切换走 openVideo 同一条路(判锁/续播/讲义),连点只认最后一次(openSeq)
   ③预加载: 剩 60 秒且过半时用 `GET /ticket?prefetch=1` 给下一节换票 + 隐藏 `<video preload=metadata>` 取开头;
   **prefetch 绝不扣次卡**(今天要扣的 409 不签,点开时照常扣),预取的票跨天作废、剩不到 10 分钟作废;
-  串流加 `Cache-Control: private, max-age=7200` + 强 ETag(mtime+大小),点开时开头从浏览器缓存出(CDP 验过 fromDiskCache)。
+  ⚠️ **串流不许带 Cache-Control**(10-20 线上事故,15:23 已修,提交 2fc803e): 一开始给串流加了 `private, max-age`
+  想让浏览器复用预加载的开头(本地 CDP 验过 fromDiskCache),上线后 **Mac Safari 连开几节都播不出来**。
+  根因: 生产 nginx 在 http 级开着 proxy_cache(宝塔默认 proxy.conf),它把浏览器的 Range 删掉、拿整文件回包
+  自己切片,且**只对可缓存的回包切片** —— 带 private 就不切,每个 Range 请求都回 200 整文件:
+  Safari 要求 206 直接失败,Chrome 遇到索引在尾的大视频要下完整个文件才开播。本地没有 nginx 复现不了,
+  回归锁 test_stream_has_no_cache_control_but_strong_etag。只留强 ETag + Last-Modified。
+  代价: 预加载的开头能不能被复用要看浏览器的启发式缓存,不再保证;提前换票那部分照常省一次往返。
   **不做整节预下载**(电教室共用带宽会更卡)也不做离线缓存(一节 87MB + 等于给出可拷走的原文件)。
   坑: 切节那一下元素还停在上一节结尾,它的 timeupdate 会配上新的「下一节」把下下节提前预加载 → onTimeUpdate 只认 currentSrc 是当前这节的
   ④faststart: services/video_faststart.py(-c copy -movflags +faststart,不重新压缩;时长/音视频流/大小三项校验,
