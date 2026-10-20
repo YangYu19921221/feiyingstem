@@ -538,3 +538,42 @@ async def test_same_student_two_codes_concurrently_no_500(file_db):
         assert len(grants) == 1
         statuses = sorted((await s.execute(select(PhoneticCode.status))).scalars().all())
         assert statuses == ["unused", "used"]   # 被拒的那张码退回未使用
+
+
+# ---------- 预加载下一节(2026-10-18): prefetch=1 绝不扣次卡 ----------
+
+async def test_prefetch_ticket_never_consumes_times_card(client: AsyncClient, access_env, db_session):
+    """次卡今天还没扣时,prefetch 换票 409 不签、不扣;点开(正常换票)才扣一天。
+    扣过之后同一天 prefetch 照常签。守卫: video_ticket 里 prefetch 分支不调 _enforce_gate。"""
+    env = access_env
+    code = await _gen_code(client, env["tok"]["admin"], grant_type="times", grant_times=2)
+    assert (await _redeem(client, env["tok"]["stuA"], code)).json()["success"] is True
+    tok, vid = env["tok"]["stuA"], env["vid"]["vA"]
+
+    async def _times_left() -> int:
+        row = (await db_session.execute(
+            select(PhoneticAccessGrant).where(
+                PhoneticAccessGrant.student_id == env["uid"]["stuA"])
+        )).scalars().first()
+        await db_session.refresh(row)
+        return row.times_left
+
+    r = await client.get(f"/api/v1/phonetics/videos/{vid}/ticket?prefetch=1", headers=_h(tok))
+    assert r.status_code == 409, r.text
+    assert await _times_left() == 2
+    assert (await _ticket(client, tok, vid)).status_code == 200
+    assert await _times_left() == 1
+    r = await client.get(f"/api/v1/phonetics/videos/{vid}/ticket?prefetch=1", headers=_h(tok))
+    assert r.status_code == 200, r.text
+    assert await _times_left() == 1
+
+
+async def test_prefetch_ticket_still_gated(client: AsyncClient, access_env):
+    """没开通的照样 403;open 机构照常签"""
+    env = access_env
+    r = await client.get(f"/api/v1/phonetics/videos/{env['vid']['vA']}/ticket?prefetch=1",
+                         headers=_h(env["tok"]["stuA"]))
+    assert r.status_code == 403
+    r = await client.get(f"/api/v1/phonetics/videos/{env['vid']['preset']}/ticket?prefetch=1",
+                         headers=_h(env["tok"]["stuOpen"]))
+    assert r.status_code == 200, r.text

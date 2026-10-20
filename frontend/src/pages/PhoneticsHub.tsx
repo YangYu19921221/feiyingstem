@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, ListVideo, X } from 'lucide-react';
 import {
   phoneticsApi, CATEGORY_LABELS, listVideoMaterials, NO_LECTURER,
   type PhoneticVideo, type PhoneticCategory, type StudentMaterial,
@@ -19,6 +19,7 @@ import {
 import { getErrorMessage } from '../utils/errorMessage';
 import { segmentIpa } from '../utils/ipaPhonemes';
 import LessonStage from '../components/phonetics/LessonStage';
+import { releaseAllPrefetch } from '../components/phonetics/nextPrefetch';
 import VideoQuestionPanel from '../components/phonetics/VideoQuestionPanel';
 
 const GROUP_ORDER: PhoneticCategory[] = ['basic', 'vowel', 'consonant', 'other'];
@@ -96,6 +97,10 @@ export default function PhoneticsHub() {
   const [error, setError] = useState('');
   const [keyword, setKeyword] = useState('');
   const [playing, setPlaying] = useState<PhoneticVideo | null>(null);
+  /** 播放器里的「选集」列表开着没有 */
+  const [episodesOpen, setEpisodesOpen] = useState(false);
+  /** 打开视频的序号: 连点切换时只认最后一次,详情慢回来的旧请求不能把播放器切回去 */
+  const openSeq = useRef(0);
   const [reloadKey, setReloadKey] = useState(0);
   /**
    * 当前选中的讲师。'' = 全部,NO_LECTURER = 全校通用,其它 = 讲师姓名。
@@ -191,12 +196,24 @@ export default function PhoneticsHub() {
     if (!playing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (viewing) setViewing(null);
+      if (episodesOpen) setEpisodesOpen(false);
+      else if (viewing) setViewing(null);
       else setPlaying(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [playing, viewing]);
+  }, [playing, viewing, episodesOpen]);
+
+  // 关掉播放器: 停掉下一节的预加载(不在后台白下)
+  const playingId = playing?.id ?? null;
+  useEffect(() => {
+    if (playingId === null) {
+      openSeq.current += 1;      // 还没回来的详情请求作废,别把刚关掉的播放器又打开
+      releaseAllPrefetch();
+      setEpisodesOpen(false);
+    }
+  }, [playingId]);
+  useEffect(() => () => releaseAllPrefetch(), []);
 
   useEffect(() => {
     let alive = true;
@@ -318,6 +335,28 @@ export default function PhoneticsHub() {
       .filter((g) => g.items.length > 0);
   }, [filtered]);
 
+  /**
+   * 选集(2026-10-18): 播放器里的上一节/下一节/选集列表。
+   * 只列**同一位老师**的课(学生选了老师就按选的;没选就按正在看的这一节的老师),
+   * 顺序 = 分类顺序 → 老师在「调整顺序」里排好的顺序(后端列表已按这个排)。
+   * 不跟着搜索走: 搜「元音」点开一节,下一节应该是这位老师的下一课,不是搜索结果里的下一个
+   */
+  const playlistLecturer = lecturer || ((playing?.lecturer || '').trim() || NO_LECTURER);
+  const playlist = useMemo(() => {
+    const order = new Map(GROUP_ORDER.map((c, i) => [c, i]));
+    return videos
+      .filter((v) => {
+        const name = (v.lecturer || '').trim();
+        return playlistLecturer === NO_LECTURER ? !name : name === playlistLecturer;
+      })
+      .map((v, i) => ({ v, i }))
+      .sort((a, b) => (order.get(a.v.category) ?? 99) - (order.get(b.v.category) ?? 99) || a.i - b.i)
+      .map((x) => x.v);
+  }, [videos, playlistLecturer]);
+  const playIndex = playing ? playlist.findIndex((v) => v.id === playing.id) : -1;
+  const prevVideo = playIndex > 0 ? playlist[playIndex - 1] : null;
+  const nextVideo = playIndex >= 0 && playIndex < playlist.length - 1 ? playlist[playIndex + 1] : null;
+
   const openVideo = async (v: PhoneticVideo) => {
     // 这一节没开通就不进播放器,弹一句引导去领码/用码。
     // 后端 ticket/stream 都会再判一次,这里只是省一次 403 往返、给个友好提示。
@@ -325,6 +364,9 @@ export default function PhoneticsHub() {
       setLockNudge(v);
       return;
     }
+    // 选集里连点几下「下一节」时,只认最后一次: 慢回来的旧详情不能把播放器切回上一节;
+    // 关播放器也会让序号作废(见 playingId 那个 effect),否则详情晚回来会把关掉的播放器又打开
+    const my = ++openSeq.current;
     setPlaying(v);
     setMaterials([]);           // 先清空:否则会短暂显示上一个视频的讲义
     setViewing(null);
@@ -333,6 +375,7 @@ export default function PhoneticsHub() {
     // (在别的设备上看过一半);失败就用列表那份,不影响播放
     try {
       const fresh = await phoneticsApi.detail(v.id);
+      if (my !== openSeq.current) return;
       if (fresh.locked) {
         // 列表是进页面时取的,可能已经旧了(页面开着期间机构被切成需码、或卡到期了)。
         // 只标**这一节**: 锁按节判,别的节可能有单节码开着,不能连坐。
@@ -346,8 +389,30 @@ export default function PhoneticsHub() {
       setVideos((prev) => prev.map((x) => (x.id === fresh.id ? { ...x, ...fresh } : x)));
     } catch { /* 计数/进度取失败都不该挡着看视频 */ }
     // 配套讲义:取不到就当没有,**不能因此打断看视频**
-    try { setMaterials(await listVideoMaterials(v.id)); } catch { setMaterials([]); }
+    try {
+      const ms = await listVideoMaterials(v.id);
+      if (my === openSeq.current) setMaterials(ms);
+    } catch {
+      if (my === openSeq.current) setMaterials([]);
+    }
   };
+
+  /**
+   * 播放器里切到另一节(上一节 / 下一节 / 选集 / 看完自动下一节)。
+   * 锁着的那节不关播放器,只弹开通引导(孩子关掉引导还在原来那节)
+   */
+  const switchTo = (v: PhoneticVideo | null) => {
+    if (!v) return;
+    setEpisodesOpen(false);
+    if (v.locked) { setLockNudge(v); return; }
+    void openVideo(v);
+  };
+  // 给播放器的「下一节」: 倒计时到点要调它,引用不稳定会让倒计时 effect 每次渲染都重来
+  const switchRef = useRef(switchTo);
+  useEffect(() => { switchRef.current = switchTo; });
+  const nextRef = useRef(nextVideo);
+  useEffect(() => { nextRef.current = nextVideo; }, [nextVideo]);
+  const playNext = useCallback(() => switchRef.current(nextRef.current), []);
 
   /**
    * 兑完单节码跳回来(兑换页 navigate state 带 openVideoId)→ 列表到了就直接打开那一节。
@@ -867,7 +932,8 @@ export default function PhoneticsHub() {
               ref={panelRef}
               initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, opacity: 0 }}
               className={[
-                'overflow-hidden shadow-2xl',
+                // relative: 选集列表(absolute inset-0)盖在面板里,全屏时也跟着面板走
+                'relative overflow-hidden shadow-2xl',
                 // 全屏时贴满屏幕,圆角会在四角露出黑底
                 panelFs ? '' : 'rounded-2xl',
                 viewing
@@ -882,6 +948,33 @@ export default function PhoneticsHub() {
               <div className={`flex shrink-0 items-center justify-between gap-3 px-4 ${panelFs ? 'py-2' : 'py-3'}`}>
                 <p className="min-w-0 truncate font-semibold text-white">{playing.title}</p>
                 <div className="flex min-w-0 items-center gap-2">
+                  {/* 选集: 上一节 / 第几节共几节(点开列表)/ 下一节。只有一节时不显示 */}
+                  {playIndex >= 0 && playlist.length > 1 && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button" onClick={() => switchTo(prevVideo)} disabled={!prevVideo}
+                        aria-label="上一节" title={prevVideo ? `上一节:${prevVideo.title}` : '已经是第一节'}
+                        className="rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20 disabled:opacity-30"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button" onClick={() => setEpisodesOpen((o) => !o)}
+                        aria-expanded={episodesOpen} aria-label="选集"
+                        className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1 text-xs text-white hover:bg-white/20"
+                      >
+                        <ListVideo className="h-3.5 w-3.5" />
+                        <span className="font-numeric">{playIndex + 1}/{playlist.length}</span>
+                      </button>
+                      <button
+                        type="button" onClick={() => switchTo(nextVideo)} disabled={!nextVideo}
+                        aria-label="下一节" title={nextVideo ? `下一节:${nextVideo.title}` : '已经是最后一节'}
+                        className="rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20 disabled:opacity-30"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                   {/* 全屏时下方的讲义列表收起了,入口挪到顶栏 —— 不退出全屏也能点开讲义 */}
                   {panelFs && !viewing && materials.length > 0 && (
                     <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
@@ -919,7 +1012,74 @@ export default function PhoneticsHub() {
                 onCompleted={markCompleted}
                 onProgress={markProgress}
                 onPositionGetter={takePositionGetter}
+                nextVideo={nextVideo}
+                onPlayNext={playNext}
               />
+
+              {/* 选集列表: 电脑上从右侧滑出盖在舞台上,手机上从底部弹出。全屏时也能开(在面板里) */}
+              <AnimatePresence>
+                {episodesOpen && (
+                  <motion.div
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-30 flex items-end justify-end bg-black/40 sm:items-stretch"
+                    onClick={() => setEpisodesOpen(false)}
+                  >
+                    <motion.div
+                      initial={{ x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 24, opacity: 0 }}
+                      role="dialog" aria-label="选集"
+                      className="flex max-h-[70%] w-full flex-col bg-slate-900 shadow-2xl sm:max-h-none sm:w-80"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
+                        <p className="text-sm font-semibold text-white">
+                          {playlistLecturer === NO_LECTURER ? '全校通用' : playlistLecturer}的课
+                          <span className="ml-1.5 text-xs font-normal text-slate-400">共 {playlist.length} 节</span>
+                        </p>
+                        <button type="button" onClick={() => setEpisodesOpen(false)} aria-label="关闭选集"
+                                className="rounded-lg p-1 text-slate-300 hover:bg-white/10">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-y-auto py-1">
+                        {GROUP_ORDER.map((c) => {
+                          const items = playlist.filter((v) => v.category === c);
+                          if (items.length === 0) return null;
+                          return (
+                            <div key={c}>
+                              <p className="px-4 pb-1 pt-3 text-[11px] font-semibold text-slate-400">{CATEGORY_LABELS[c]}</p>
+                              {items.map((v) => {
+                                const current = v.id === playing.id;
+                                const frac = watchedFrac(v);
+                                return (
+                                  <button
+                                    key={v.id} type="button" onClick={() => !current && switchTo(v)}
+                                    aria-current={current ? 'true' : undefined}
+                                    ref={current ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                                    className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${
+                                      current ? 'bg-orange-500/20 text-orange-200' : 'text-slate-200 hover:bg-white/5'}`}
+                                  >
+                                    <span className="w-6 shrink-0 text-right font-numeric text-xs text-slate-500">
+                                      {playlist.indexOf(v) + 1}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate">{v.title}</span>
+                                    <span className="shrink-0 text-[11px]">
+                                      {current ? '▶ 正在看'
+                                        : v.locked ? '🔒'
+                                          : v.my_completed ? <span className="text-green-400">✓</span>
+                                            : frac > 0 ? <span className="font-numeric text-slate-400">{Math.round(frac * 100)}%</span>
+                                              : ''}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* 全屏时简介/讲义列表不渲染(讲义入口已在顶栏);提问区只藏不卸载,
                   孩子打了一半的问题退出全屏后还在 */}

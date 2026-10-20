@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import time
+from email.utils import formatdate
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -887,6 +888,7 @@ class MediaTicketOut(BaseModel):
 async def video_ticket(
     video_id: int,
     request: Request,
+    prefetch: bool = Query(False, description="预加载下一节用: 今天要扣次卡的不签(409),其余与正常换票相同"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -895,6 +897,11 @@ async def video_ticket(
     这里是音标库**主闸门**(2026-10-01): 机构开了「需兑换码」且学生没有生效授权,
     就在这拦掉 —— 拿不到票据 = 播不了。<video> 的直连 stream 路径也挡(见 stream_video),
     但那条走的是票据校验,真正「放不放行」在这一步决定。
+
+    prefetch=1(2026-10-18,播放器快看完这一节时提前给下一节换票、取开头那点数据):
+    **不扣次卡** —— 孩子不一定接着看下一节,预加载就扣掉一天等于白扣。所以「今天要扣」的那种
+    (times_due)直接 409 不签,前端就不预加载,点开时照常走正常换票去扣;不用扣的(免费/包月/
+    永久/今天已扣过)照常签,前端点开时直接用这张票,不再换第二次。
     """
     rate_limit.check(("phonetic-ticket", user.id), TICKET_RATE_LIMIT, 60,
                      "切换太频繁,稍等一下")
@@ -910,10 +917,15 @@ async def video_ticket(
 
     # 闸门 + 次卡扣减(只在「靠授权进来」时扣,open 模式不扣;按北京日幂等)。
     # 教职工恒放行;家长等其它角色一律拦(见 _gate)。按这一节判(整库或单节授权都放行)
-    await _enforce_gate(
-        db, user,
-        "这一节音标视频需要兑换码开通，请找老师领取兑换码，点开这一节输入激活",
-        v.id)
+    locked_msg = "这一节音标视频需要兑换码开通，请找老师领取兑换码，点开这一节输入激活"
+    if prefetch:
+        state, _ = await _gate(db, user, v.id)
+        if state == "locked":
+            raise HTTPException(status_code=403, detail=locked_msg)
+        if state == "times_due":
+            raise HTTPException(status_code=409, detail="这一节点开时才扣次卡,先不预加载")
+    else:
+        await _enforce_gate(db, user, locked_msg, v.id)
 
     # 访问日志:每次签票记一条(靠 IP+设备+时间追到人,与防盗同口径)。
     # **不写 operation_logs** —— 那是教职工追责日志(学生不记,量大;见 CLAUDE.md)。
@@ -989,13 +1001,25 @@ async def stream_video(
         logger.warning("音标视频文件不存在: id=%s path=%s", video_id, path)
         raise HTTPException(status_code=404, detail="视频文件已丢失,请联系老师重新上传")
 
-    total = os.path.getsize(path)
+    st = os.stat(path)
+    total = st.st_size
     mime = v.mime_type or "video/mp4"
     range_header = request.headers.get("range")
+    # 浏览器缓存(2026-10-18): 带强校验的 ETag + private max-age,浏览器才肯把取过的片段存起来 ——
+    # ①预加载下一节时取的开头,点开时直接从缓存出,不再下第二遍 ②往回拖进度不重复下载(电教室共用 12M)。
+    # private: 只存在这个孩子自己的浏览器里,nginx 等中间层不缓存。max-age 与票据有效期一致,
+    # 地址里带着票据,票据一换就是新地址,旧缓存自然用不上。
+    # ETag 用 mtime+大小: faststart 换了文件就变,不会拿旧文件的片段拼新文件
+    cache_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": f"private, max-age={TICKET_TTL_SEC}",
+        "ETag": f'"{st.st_mtime_ns:x}-{total:x}"',
+        "Last-Modified": formatdate(st.st_mtime, usegmt=True),
+    }
 
     if not range_header:
         # 整file 返回时也要声明 accept-ranges,否则部分播放器不给拖进度条
-        return FileResponse(path, media_type=mime, headers={"Accept-Ranges": "bytes"})
+        return FileResponse(path, media_type=mime, headers=cache_headers)
 
     m = _RANGE_RE.match(range_header)
     if not m:
@@ -1027,8 +1051,8 @@ async def stream_video(
         status_code=206,
         media_type=mime,
         headers={
+            **cache_headers,
             "Content-Range": f"bytes {start}-{end}/{total}",
-            "Accept-Ranges": "bytes",
             "Content-Length": str(end - start + 1),
         },
     )

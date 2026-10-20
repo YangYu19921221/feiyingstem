@@ -25,6 +25,7 @@ import {
 import { fetchVideoTicket, mediaUrl, type PhoneticVideo, type StudentMaterial } from '../../api/phonetics';
 import { useMaterialPages } from './useMaterialPages';
 import { useWatchHeartbeat } from './useWatchHeartbeat';
+import { prefetchVideo, takePrefetchedTicket } from './nextPrefetch';
 import {
   CHROME_H, MIN_W, canHostFloating, defaultLayout, makeBox, maxWidthIn, paneHeight, refit,
   settle, widthCapAgainst, type Box, type Layout, type PaneKind, type Size,
@@ -49,6 +50,13 @@ interface Props {
    * (连带整个播放弹层),而这个数只在学生点「提交」的那一刻需要。
    */
   onPositionGetter?: (get: () => number) => void;
+  /**
+   * 选集里的下一节(null = 这一组最后一节)。快看完时预加载它的开头;看完后倒计时自动播
+   * (讲义开着或下一节锁着时不自动,只给按钮)
+   */
+  nextVideo?: PhoneticVideo | null;
+  /** 播下一节(倒计时到点 / 点「立即播放」/ 下一节锁着时点「去开通」) */
+  onPlayNext?: () => void;
 }
 
 /**
@@ -80,6 +88,36 @@ function readViewerLabel(): string {
 
 /** 续播提示停留多久(毫秒):够看清并点「从头看」,又不一直挡画面 */
 const RESUME_HINT_MS = 8000;
+
+/**
+ * 倍速档位(2026-10-18)。不给 2x: 音标要看口型、听清发音,太快没用;0.75 跟读最有用。
+ * 「看完」按视频内容的秒数判(心跳累计 currentTime 的差值),1.5x 看完照样算看完
+ */
+const RATES = [0.5, 0.75, 1, 1.25, 1.5];
+/** 剩这么多秒(且已过半)时预加载下一节的开头 */
+const PREFETCH_LEAD_SEC = 60;
+/** 看完后几秒自动播下一节 */
+const AUTO_NEXT_SEC = 5;
+/** 缓冲超过这么久才提示「网络有点慢」—— 一两秒的小卡顿不提示,免得一直闪 */
+const SLOW_HINT_MS = 2500;
+
+/** 倍速记在本地、按用户分键(一台平板几个孩子轮着用,不串) */
+function rateKey(): string {
+  let uid = 'anon';
+  try {
+    const me = JSON.parse(localStorage.getItem('user') || 'null');
+    if (me?.id) uid = String(me.id);
+  } catch { /* 读不出来当匿名 */ }
+  return `phonetics.rate.${uid}`;
+}
+function readRate(): number {
+  try {
+    const r = Number(localStorage.getItem(rateKey()));
+    return RATES.includes(r) ? r : 1;
+  } catch {
+    return 1;
+  }
+}
 
 /** 秒 → 3:20(续播提示用) */
 function fmtClock(sec: number): string {
@@ -155,6 +193,7 @@ function useLandscape(): boolean {
 
 export default function LessonStage({
   video, materials, viewing, onViewing, panelRef, onCompleted, onProgress, onPositionGetter,
+  nextVideo, onPlayNext,
 }: Props) {
   const landscape = useLandscape();
   const [zoomed, setZoomed] = useState(false);
@@ -319,8 +358,73 @@ export default function LessonStage({
 
   useEffect(() => {
     setSrc('');
+    // 预加载过这一节(上一节快看完时取的): 直接用那张票,地址一样,开头从浏览器缓存出,几乎马上出画面
+    const pre = takePrefetchedTicket(video.id);
+    if (pre) {
+      ticketExp.current = pre.expires_at;
+      setSrc(mediaUrl(pre.url));
+      setSrcError('');
+      return;
+    }
     loadTicket().catch(() => setSrcError('视频地址获取失败,请刷新页面重试'));
-  }, [loadTicket]);
+  }, [loadTicket, video.id]);
+
+  // ---- 倍速 ----
+  const [rate, setRate] = useState(readRate);
+  const [rateOpen, setRateOpen] = useState(false);
+  // 浏览器换 src 时会把 playbackRate 重置回 1,所以每次加载元数据后都要重新设(见 onLoadedMetadata)
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = rate;
+  }, [rate]);
+  const pickRate = (r: number) => {
+    setRate(r);
+    setRateOpen(false);
+    try { localStorage.setItem(rateKey(), String(r)); } catch { /* 隐私模式写不了,本次照样生效 */ }
+  };
+
+  // ---- 网络慢提示: 缓冲超过 SLOW_HINT_MS 才出,播起来就收 ----
+  const [slow, setSlow] = useState(false);
+  const slowTimer = useRef<number | null>(null);
+  const onWaiting = () => {
+    if (slowTimer.current !== null) return;
+    slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_HINT_MS);
+  };
+  const clearSlow = () => {
+    if (slowTimer.current !== null) { window.clearTimeout(slowTimer.current); slowTimer.current = null; }
+    setSlow(false);
+  };
+  useEffect(() => () => { if (slowTimer.current !== null) window.clearTimeout(slowTimer.current); }, []);
+
+  // ---- 预加载下一节 + 看完自动下一节 ----
+  const nextId = nextVideo?.id ?? null;
+  const nextLocked = !!nextVideo?.locked;
+  const onTimeUpdate = () => {
+    const v = videoRef.current;
+    if (!v || nextId === null || nextLocked) return;
+    // 切节的那一下,元素里还是上一节的画面(停在快结尾),这时的 timeupdate 会配上新的「下一节」,
+    // 把下下节提前预加载了 —— 只认当前这一节自己的媒体
+    if (!v.currentSrc.includes(`/videos/${video.id}/stream`)) return;
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    if (dur > 0 && v.currentTime > dur / 2 && dur - v.currentTime <= PREFETCH_LEAD_SEC) {
+      void prefetchVideo(nextId);
+    }
+  };
+  /** 看完后的倒计时(秒);null = 没在倒计时 */
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [ended, setEnded] = useState(false);
+  useEffect(() => { setEnded(false); setCountdown(null); clearSlow(); }, [video.id]);
+  const onEnded = () => {
+    setEnded(true);
+    // 讲义开着时不自动跳(孩子可能还在翻讲义);下一节锁着也不跳,只给「去开通」
+    if (nextId !== null && !nextLocked && !viewing) setCountdown(AUTO_NEXT_SEC);
+  };
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) { setCountdown(null); onPlayNext?.(); return; }
+    const t = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
+    return () => window.clearTimeout(t);
+  }, [countdown, onPlayNext]);
+  const cancelAutoNext = () => { setCountdown(null); setEnded(false); };
 
   // 把「现在播到第几秒」的读法交给父组件(提问时带位置用)。
   // 播放器没就绪时给 0,后端会当"没带位置"处理
@@ -351,13 +455,20 @@ export default function LessonStage({
   }, [resumedAt]);
   const restartFromBeginning = () => {
     const v = videoRef.current;
-    if (v) v.currentTime = 0;
+    if (v) {
+      v.currentTime = 0;
+      // 从「看完了」那一层点进来时视频是停着的,要接着放
+      if (v.ended || v.paused) v.play().catch(() => {});
+    }
     setResumedAt(null);
+    setEnded(false);
+    setCountdown(null);
   };
 
   const onLoadedMetadata = () => {
     const v = videoRef.current, r = resumeRef.current;
     if (!v) return;
+    v.playbackRate = rate;   // 换 src 后浏览器把倍速重置回 1,这里补回孩子选的那档
     if (v.videoWidth > 0 && v.videoHeight > 0) setVideoAR(v.videoWidth / v.videoHeight);
     if (r) {
       // 换票导致的重载:接着原处放(这条优先,它是同一次观看的延续)
@@ -525,13 +636,19 @@ export default function LessonStage({
           // playsInline: iPhone 不加就自动进系统全屏播放器,水印层根本画不上去。
           // nofullscreen: 关掉原生全屏按钮(Chromium),全屏走下面的面板级按钮(带水印)
           playsInline
-          controlsList="nodownload noremoteplayback nofullscreen"
+          // noplaybackrate: 关掉 Chrome ⋮ 菜单里自带的倍速,只留画面上那个按钮(两处设置会对不上)
+          controlsList="nodownload noremoteplayback nofullscreen noplaybackrate"
           disablePictureInPicture
           onContextMenu={block}
-          onPlay={() => { wasPlaying.current = true; }}
+          onPlay={() => { wasPlaying.current = true; setEnded(false); setCountdown(null); }}
           onPause={() => { wasPlaying.current = false; }}
           onError={onVideoError}
           onLoadedMetadata={onLoadedMetadata}
+          onTimeUpdate={onTimeUpdate}
+          onEnded={onEnded}
+          onWaiting={onWaiting}
+          onPlaying={clearSlow}
+          onSeeked={clearSlow}
           className={viewing
             ? (floating ? 'w-full min-h-0 flex-1 object-contain' : 'aspect-video w-full object-contain')
             // flex-1 不写 h-full:出错时下面那行提示语要有地方放,不被定高的框裁掉
@@ -578,6 +695,75 @@ export default function LessonStage({
             >
               从头看
             </button>
+          </div>
+        )}
+        {/* 倍速: 左上全屏按钮右边。原生控件的倍速藏在 ⋮ 里孩子找不到,微信/iPhone 上还不一定有 */}
+        <div className={`absolute top-2 z-20 ${!viewing && canFs ? 'left-12' : 'left-2'}`}>
+          <button
+            type="button"
+            onClick={() => setRateOpen((o) => !o)}
+            aria-label={`播放速度 ${rate} 倍,点一下换`}
+            aria-expanded={rateOpen}
+            className="rounded-md bg-black/50 px-2 py-1 font-numeric text-xs font-semibold text-white hover:bg-black/70"
+          >
+            {rate === 1 ? '1.0x' : `${rate}x`}
+          </button>
+          {rateOpen && (
+            <div role="menu" className="mt-1 flex flex-col overflow-hidden rounded-lg bg-black/85 py-1 shadow-lg">
+              {RATES.map((r) => (
+                <button
+                  key={r} type="button" role="menuitemradio" aria-checked={r === rate}
+                  onClick={() => pickRate(r)}
+                  className={`px-4 py-1.5 text-left font-numeric text-xs ${
+                    r === rate ? 'font-bold text-orange-300' : 'text-white hover:bg-white/10'}`}
+                >
+                  {r === 1 ? '1.0x 正常' : r < 1 ? `${r}x 慢速跟读` : `${r}x`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {slow && !ended && (
+          <div role="status" className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
+            <span className="rounded-full bg-black/70 px-3 py-1.5 text-xs text-white">网络有点慢，正在缓冲…</span>
+          </div>
+        )}
+        {/* 看完了: 下一节倒计时 / 下一节锁着 / 这是最后一节 */}
+        {ended && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4">
+            <div className="max-w-sm text-center text-white">
+              {nextVideo ? (
+                <>
+                  <p className="text-xs text-white/70">{countdown !== null ? `${countdown} 秒后播放下一节` : '下一节'}</p>
+                  <p className="mt-1 line-clamp-2 text-sm font-semibold">{nextVideo.title}</p>
+                  <div className="mt-3 flex justify-center gap-2">
+                    {/* 取消 = 收起这一层(否则它盖着播放控件,孩子没法重看) */}
+                    <button type="button" onClick={cancelAutoNext}
+                            className="rounded-lg bg-white/15 px-3 py-1.5 text-xs hover:bg-white/25">
+                      {countdown !== null ? '取消' : '关闭'}
+                    </button>
+                    <button type="button" onClick={() => { setCountdown(null); onPlayNext?.(); }}
+                            className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold hover:bg-orange-600">
+                      {nextLocked ? '🔒 这一节需要开通' : '立即播放'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">这一组都看完了 🎉</p>
+                  <div className="mt-3 flex justify-center gap-2">
+                    <button type="button" onClick={cancelAutoNext}
+                            className="rounded-lg bg-white/15 px-3 py-1.5 text-xs hover:bg-white/25">
+                      关闭
+                    </button>
+                    <button type="button" onClick={restartFromBeginning}
+                            className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold hover:bg-orange-600">
+                      再看一遍
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
         {srcError && <p className="px-3 py-2 text-center text-xs text-rose-300">{srcError}</p>}

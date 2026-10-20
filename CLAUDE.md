@@ -271,6 +271,26 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标播放器: 倍速 + 选集 + 预加载下一节 + 索引挪到文件头(2026-10-20): 用户「要不要加倍速画质选集」「是不是还要预缓存」。
+  先查的实情: 约七成播放在 Windows Chrome(原生倍速藏在 ⋮ 里),42 节都是 720p 为主、码率中位 0.67 Mbps,
+  服务器出口 12M ≈ 18 人同时看就满 —— 卡是带宽不是清晰度;**42 节 mp4 的 moov(索引)全在文件末尾**,
+  点开要先跳到文件尾取索引。这一批做了四件,画质「流畅」档(另转 480p)留作第二步未做:
+  ①倍速 0.5/0.75/1/1.25/1.5(不给 2x,音标要看口型),按用户分键记在本地,换 src 后在 loadedmetadata 补回;
+  controlsList 加 noplaybackrate 关掉 Chrome 自带那个。「看完」按内容秒数判,观看时长记内容时长不是墙上时间
+  ②选集: 顶栏 上一节/n/m/下一节 + 右侧(手机底部)列表,**只列同一位老师**(选了老师按选的,没选按正在看的这节),
+  顺序 = 分类 → 后端 sort_order(老师「调整顺序」排的);看完倒数 5 秒自动下一节(讲义开着/下一节锁着不自动),
+  切换走 openVideo 同一条路(判锁/续播/讲义),连点只认最后一次(openSeq)
+  ③预加载: 剩 60 秒且过半时用 `GET /ticket?prefetch=1` 给下一节换票 + 隐藏 `<video preload=metadata>` 取开头;
+  **prefetch 绝不扣次卡**(今天要扣的 409 不签,点开时照常扣),预取的票跨天作废、剩不到 10 分钟作废;
+  串流加 `Cache-Control: private, max-age=7200` + 强 ETag(mtime+大小),点开时开头从浏览器缓存出(CDP 验过 fromDiskCache)。
+  **不做整节预下载**(电教室共用带宽会更卡)也不做离线缓存(一节 87MB + 等于给出可拷走的原文件)。
+  坑: 切节那一下元素还停在上一节结尾,它的 timeupdate 会配上新的「下一节」把下下节提前预加载 → onTimeUpdate 只认 currentSrc 是当前这节的
+  ④faststart: services/video_faststart.py(-c copy -movflags +faststart,不重新压缩;时长/音视频流/大小三项校验,
+  不对就保留原文件;同目录 os.replace 原子替换;一次只跑一个 + nice 19)。新上传落盘后后台跑;存量走
+  scripts/faststart_phonetic_videos.py(--dry-run / --backup-dir 硬链接备份,跳过 10 分钟内有人看的那几节)。
+  ⚠️ **存量要夜里没人上课时跑**: 正在播的文件被换掉,播放器按旧索引取数据会出错。生产实测 242MB 那节 13 秒。
+  测试: test_video_faststart.py(3 例,ffmpeg 现做小视频)、prefetch 不扣次卡 2 例、串流缓存头 1 例。
+  浏览器验过(临时库 + ffmpeg 造的视频): 倍速记住并跨节沿用、选集 1/3→自动下一节 2/3、切换后开头命中缓存、手机底部列表
 - ✅ 音标视频排序按讲师分开排(2026-10-18 17:16 **已部署生产**,teacher/phonetics.py 生产==HEAD~1 整推 + systemd 重启;
   dist 整推(第一次 rsync 中途断线,--delay-updates 没换上半成品,重传后校验 0 差异);备份
   /root/teacher_phonetics_before_lecsort_20261018_1715.py、frontend/dist_bak_20261018_1715,构建号 mvdlyhxx): 用户「调整顺序有两个老师是不是得分开,现在混在一起不好弄」。

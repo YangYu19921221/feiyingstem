@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-player-speed-episodes-student-2026-10',
+    date: '2026-10-20',
+    title: '🎬 音标视频能调速、能选集了',
+    desc: '视频左上角多了一个「1.0x」按钮,可以调成 0.5x / 0.75x 慢速跟读,或 1.25x / 1.5x,下次打开还是你选的速度。播放器顶上有「上一节 / 选集 / 下一节」,点「选集」能看到这位老师的全部课,哪节看完了、看到几成一目了然。一节看完会倒数 5 秒自动播下一节,不想看点「取消」。',
+    where: '学生端首页「音标学习」→ 点开任意一节 → 视频左上角「1.0x」/ 顶上「选集」',
+    roles: ['student'],
+    route: '/student/phonetics',
+  },
+  {
+    id: 'phonetic-player-speed-episodes-teacher-2026-10',
+    date: '2026-10-20',
+    title: '学生看音标视频可以调速、选集了',
+    desc: '学生端播放器加了倍速(0.5x–1.5x,记住上次选的)、上一节 / 下一节 / 选集列表,看完自动接下一节。选集按您在「调整顺序」里排好的顺序、只列同一位老师的课,所以排序要排好。倍速看完照样算「看完」,观看时长按视频本身的长度记。另外视频现在点开就能播(以前要先加载一阵),新上传的视频会自动处理。',
+    where: '学生端「音标学习」→ 点开任意一节;排序在教师端「音标视频」→「调整顺序」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/phonetics',
+  },
+  {
     id: 'phonetic-reorder-by-lecturer-2026-10',
     date: '2026-10-18',
     title: '音标视频「调整顺序」按讲师分开排了',

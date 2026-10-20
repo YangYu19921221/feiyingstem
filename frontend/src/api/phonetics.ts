@@ -311,6 +311,13 @@ export const fetchVideoTicket = (videoId: number) =>
   api.get<MediaTicket>(`/phonetics/videos/${videoId}/ticket`);
 
 /**
+ * 预加载下一节用的票(2026-10-18)。**绝不扣次卡**: 今天要扣次卡的那种后端回 409 不签,
+ * 前端就不预加载,点开时照常走 fetchVideoTicket 去扣。其余与正常换票相同(同样过闸门、记访问日志)
+ */
+export const fetchPrefetchTicket = (videoId: number) =>
+  api.get<MediaTicket>(`/phonetics/videos/${videoId}/ticket`, { params: { prefetch: 1 } });
+
+/**
  * 相对媒体地址 → 绝对地址。后端给的是 `/api/v1/...`,生产同源没问题,
  * 但开发时前端 5173、后端另一个端口,相对路径会打到 dev server 上 500。
  */

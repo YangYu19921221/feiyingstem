@@ -28,7 +28,7 @@ from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS, CATE
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import (
     lecturer_name, office_convert, phonetic_material_service, video_question, video_watch,
-    phonetic_access_service,
+    phonetic_access_service, video_faststart,
 )
 from app.services.lecturer_name import NO_LECTURER
 
@@ -1030,6 +1030,9 @@ async def upload_video(
     await db.commit()
     await db.refresh(v)
     logger.info("音标视频上传: id=%s title=%s size=%s by=%s", v.id, v.title, size, user.id)
+    # 索引挪到文件头(点开就能播,不用先跳到文件末尾取索引)。后台跑,不让老师的上传多等十几秒;
+    # 刚传完没人在看,换文件是安全的。失败只记日志,原文件照常能播
+    video_faststart.schedule_after_upload(v.id, path)
     return to_out(v)
 
 
