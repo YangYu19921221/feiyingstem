@@ -205,17 +205,20 @@ async def test_kicked_session_token_cannot_stream_via_header(
 
 # ---------- 串流的浏览器缓存头(2026-10-18) ----------
 
-async def test_stream_cacheable_privately_with_validator(client: AsyncClient, media_env):
-    """预加载取过的开头要能被浏览器复用: private + max-age + 强 ETag。
-    **不能是 public**(中间层不许存付费视频);Range 回包与整包同一个 ETag"""
+async def test_stream_has_no_cache_control_but_strong_etag(client: AsyncClient, media_env):
+    """**串流回包不许带 Cache-Control**(2026-10-20 线上事故的回归锁)。
+
+    生产 nginx 开着 proxy_cache: 它把浏览器的 Range 删掉、拿整文件回包自己切片,而且只对可缓存的回包切。
+    回包带 `Cache-Control: private` → nginx 不切片 → 每个 Range 请求都回 200 整文件 → Safari 播不出来、
+    大视频要下完整个文件才开播。本地/测试里没有 nginx 复现不了,只能锁住这个头不出现。
+    强 ETag 留着: nginx 的 If-Range 判断靠它,Range 回包与整包必须是同一个"""
     env = media_env
     tk = await _ticket(client, env["tok"]["stu"], env["vid"]["v1"])
     full = await client.get(tk["url"])
     part = await client.get(tk["url"], headers={"Range": "bytes=0-99"})
     assert part.status_code == 206
     for r in (full, part):
-        cc = r.headers["cache-control"]
-        assert "private" in cc and "max-age=" in cc and "public" not in cc
+        assert "cache-control" not in r.headers, "串流带了 Cache-Control,生产 nginx 会不切片、Safari 播不出来"
         assert r.headers["etag"].startswith('"') and not r.headers["etag"].startswith('W/')
         assert r.headers["accept-ranges"] == "bytes"
     assert full.headers["etag"] == part.headers["etag"]

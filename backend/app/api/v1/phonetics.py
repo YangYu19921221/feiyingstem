@@ -1028,14 +1028,17 @@ async def stream_video(
     st = os.stat(path)
     total = st.st_size
     range_header = request.headers.get("range")
-    # 浏览器缓存(2026-10-18): 带强校验的 ETag + private max-age,浏览器才肯把取过的片段存起来 ——
-    # ①预加载下一节时取的开头,点开时直接从缓存出,不再下第二遍 ②往回拖进度不重复下载(电教室共用 12M)。
-    # private: 只存在这个孩子自己的浏览器里,nginx 等中间层不缓存。max-age 与票据有效期一致,
-    # 地址里带着票据,票据一换就是新地址,旧缓存自然用不上。
-    # ETag 用 mtime+大小: faststart 换了文件就变,不会拿旧文件的片段拼新文件
+    # ⚠️ **不要加 Cache-Control**(2026-10-20 线上事故): 生产 nginx 在 http 级开着 proxy_cache(宝塔默认
+    # proxy.conf),于是 nginx 把浏览器的 Range 头**删掉**再转给这里,这里永远只收到整文件请求;
+    # 切片是 nginx 自己做的 —— 而它只对「可缓存」的回包做切片。回包一带 `Cache-Control: private`
+    # (或 no-cache/no-store),nginx 就判不可缓存、不切片,每个 Range 请求都回整个文件(200)。
+    # 结果: Safari(Mac/iPhone/iPad)要求 206,直接播不出来;Chrome 索引在文件尾的要先下完整个文件才开播,
+    # 大的那几节看着就是「播不出来」;预加载下一节也变成整节下载。10-20 13:52 加了 private max-age,
+    # 14:55 起 Mac Safari 连开几节都播不了,撤掉后恢复。
+    # 也不要只给 max-age 不带 private: 那样 nginx 会把付费视频整个存进自己的磁盘缓存(按带票据的地址,一票一份)。
+    # ETag 用 mtime+大小: faststart 换了文件就变,nginx 的 If-Range 判断不会拿旧文件的片段拼新文件
     cache_headers = {
         "Accept-Ranges": "bytes",
-        "Cache-Control": f"private, max-age={TICKET_TTL_SEC}",
         "ETag": f'"{st.st_mtime_ns:x}-{total:x}"',
         "Last-Modified": formatdate(st.st_mtime, usegmt=True),
     }
