@@ -271,7 +271,12 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标播放器: 倍速 + 选集 + 预加载下一节 + 索引挪到文件头(2026-10-20): 用户「要不要加倍速画质选集」「是不是还要预缓存」。
+- ✅ 音标播放器: 倍速 + 选集 + 预加载下一节 + 索引挪到文件头(2026-10-20 13:52 **已部署生产**,phonetics.py / teacher/phonetics.py
+  生产==HEAD~1 整推 + 新文件 video_faststart.py、scripts/faststart_phonetic_videos.py,systemd 重启;dist 整推;
+  备份 /root/eh_code_before_player_20261020_1348.tgz、frontend/dist_bak_20261020_1351,构建号 mvg9fnnp。
+  **存量 42 节的 faststart 定在 10-21 03:17 自动跑**(systemd-run 一次性定时器 eh-phonetic-faststart.timer,
+  日志 /root/eh_faststart_20261021.log,原文件硬链接到 private_media/phonetics_bak_20261021 —— 确认播放正常后要手动删这个目录,
+  否则旧数据一直占着 3.6GB): 用户「要不要加倍速画质选集」「是不是还要预缓存」。
   先查的实情: 约七成播放在 Windows Chrome(原生倍速藏在 ⋮ 里),42 节都是 720p 为主、码率中位 0.67 Mbps,
   服务器出口 12M ≈ 18 人同时看就满 —— 卡是带宽不是清晰度;**42 节 mp4 的 moov(索引)全在文件末尾**,
   点开要先跳到文件尾取索引。这一批做了四件,画质「流畅」档(另转 480p)留作第二步未做:
