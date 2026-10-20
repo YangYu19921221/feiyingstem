@@ -65,6 +65,12 @@ def top_level_atoms(path: str, limit: int = 64) -> list[str]:
     return names
 
 
+def is_iso_bmff(path: str) -> bool:
+    """看着像一个完整的 mp4/mov(有 moov 也有 mdat)。不是的(webm / 坏文件 / 测试里的假文件)不去压流畅版"""
+    atoms = top_level_atoms(path)
+    return "moov" in atoms and "mdat" in atoms
+
+
 def needs_faststart(path: str) -> bool:
     """mdat(画面数据)排在 moov(索引)前面 = 需要挪。没有 moov 的(坏文件/不是 mp4)不碰"""
     if os.path.splitext(path)[1].lower() not in _FORMAT_BY_EXT:
@@ -181,14 +187,18 @@ _background: set[asyncio.Task] = set()
 async def _after_upload(video_id: int, path: str) -> None:
     # 不回写 file_size: 只挪索引,大小只差几十 KB(那一列只用于列表展示);
     # 串流按 os.stat 取真实大小,不读这一列
-    status = await faststart_in_place(path)
-    if status != "skipped":
-        logger.info("音标视频 faststart: id=%s %s", video_id, status)
+    if needs_faststart(path):
+        status = await faststart_in_place(path)
+        if status != "skipped":
+            logger.info("音标视频 faststart: id=%s %s", video_id, status)
+    # 挪完再压流畅版(两件事都读原片,排着来不抢磁盘)
+    from app.services import video_lite
+    video_lite.ensure_scheduled(path)
 
 
 def schedule_after_upload(video_id: int, path: str) -> None:
-    """upload_video 落盘并入库后调。不需要挪的(webm / 已经在头上 / 不是 mp4)直接跳过"""
-    if not needs_faststart(path):
+    """upload_video 落盘并入库后调: 挪索引 → 压流畅版。只对完整的 mp4/mov(webm 两样都不做)"""
+    if not is_iso_bmff(path):
         return
     task = asyncio.create_task(_after_upload(video_id, path))
     _background.add(task)

@@ -28,7 +28,7 @@ from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS, CATE
 from app.api.v1.teacher._permissions import get_my_class_student_ids
 from app.services import (
     lecturer_name, office_convert, phonetic_material_service, video_question, video_watch,
-    phonetic_access_service, video_faststart,
+    phonetic_access_service, video_faststart, video_lite,
 )
 from app.services.lecturer_name import NO_LECTURER
 
@@ -1238,6 +1238,7 @@ async def batch_delete_videos(
                 os.remove(p)
         except OSError as e:
             logger.warning("批量删除音标视频文件失败(记录已删): %s %s", p, e)
+        video_lite.remove_for(p)    # 流畅版跟着走,否则一直占磁盘
     for mid, name in mat_files:
         _remove_material_files(mid, name)
     # 封面文件按 video_id 命名,而 SQLite 会把删掉的 id 重新发出去(见 _remove_cover_files)
@@ -1288,6 +1289,7 @@ async def delete_video(
                 os.remove(p)
         except OSError as e:
             logger.warning("删除音标视频文件失败(记录已删): %s %s", p, e)
+        video_lite.remove_for(p)    # 流畅版跟着走,否则一直占磁盘
     for mid, name in mat_files:
         _remove_material_files(mid, name)
     _remove_cover_files(video_id)   # 同上:id 会被回收复用,别留同名旧封面

@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-player-lite-quality-student-2026-10',
+    date: '2026-10-21',
+    title: '📶 音标视频卡的时候能换「流畅」画质了',
+    desc: '视频左上角倍速按钮旁边多了一个「高清」按钮,点一下换成「流畅」:画面清晰度低一点,但不容易卡,声音一点没变。网络卡了两次会自动换成流畅并提示你,想换回来点「换回高清」。',
+    where: '学生端首页「音标学习」→ 点开任意一节 → 视频左上角「高清 / 流畅」',
+    roles: ['student'],
+    route: '/student/phonetics',
+  },
+  {
+    id: 'phonetic-player-lite-quality-teacher-2026-10',
+    date: '2026-10-21',
+    title: '音标视频有「流畅」画质了,电教室一起看不容易卡',
+    desc: '每节音标视频另有一份 480p 的「流畅」版,流量只有原来的三分之一左右,声音不变。学生端视频左上角可以在「高清 / 流畅」之间切,卡两次会自动换成流畅。电教室一个班同时看时,可以让孩子们直接选「流畅」。新上传的视频会在后台自动生成流畅版,生成好之前只有高清。',
+    where: '学生端「音标学习」→ 点开任意一节 → 视频左上角「高清 / 流畅」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/phonetics',
+  },
+  {
     id: 'phonetic-player-speed-episodes-student-2026-10',
     date: '2026-10-20',
     title: '🎬 音标视频能调速、能选集了',

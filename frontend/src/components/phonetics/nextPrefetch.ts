@@ -17,6 +17,8 @@ interface Entry {
   ticket: MediaTicket;
   day: string;
   el: HTMLVideoElement;
+  /** 取的是不是流畅版的开头 */
+  lite: boolean;
 }
 
 const ready = new Map<number, Entry>();
@@ -40,9 +42,23 @@ function release(id: number) {
   e.el.load();
 }
 
-/** 预加载这一节。同时只留一节,换了别的就把旧的停掉 */
-export async function prefetchVideo(id: number): Promise<void> {
-  if (ready.has(id) || pending.has(id)) return;
+/**
+ * 预加载这一节。同时只留一节,换了别的就把旧的停掉。
+ * lite: 取流畅版的开头(孩子正在看流畅版时) —— 预加载的画质要和点开时一致才命中缓存
+ */
+export async function prefetchVideo(id: number, opts: { lite?: boolean } = {}): Promise<void> {
+  const lite = !!opts.lite;
+  if (pending.has(id)) return;
+  const have = ready.get(id);
+  if (have) {
+    if (have.lite === lite) return;
+    // 预加载之后孩子换了画质: 票照用(票只绑视频),只换成另一档的开头,点开时才命中缓存
+    have.el.removeAttribute('src');
+    have.el.load();
+    have.el.src = mediaUrl(have.ticket.url) + (lite ? '&q=lite' : '');
+    have.lite = lite;
+    return;
+  }
   // 用户开了「省流量」就不预加载
   const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
   if (conn?.saveData) return;
@@ -55,8 +71,9 @@ export async function prefetchVideo(id: number): Promise<void> {
     const el = document.createElement('video');
     el.preload = 'metadata';
     el.muted = true;
-    el.src = mediaUrl(ticket.url);
-    ready.set(id, { ticket, day: today(), el });
+    // 票据只绑视频不绑画质,流畅版就是同一张票后面加 &q=lite(与 LessonStage 拼地址的方式一致)
+    el.src = mediaUrl(ticket.url) + (lite ? '&q=lite' : '');
+    ready.set(id, { ticket, day: today(), el, lite });
   } catch {
     // 409(今天点开才扣次卡)/ 403(没开通)/ 网络错: 不预加载,点开时照常换票
   } finally {

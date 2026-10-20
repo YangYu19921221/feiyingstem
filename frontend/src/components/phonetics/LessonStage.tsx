@@ -101,21 +101,39 @@ const AUTO_NEXT_SEC = 5;
 /** 缓冲超过这么久才提示「网络有点慢」—— 一两秒的小卡顿不提示,免得一直闪 */
 const SLOW_HINT_MS = 2500;
 
-/** 倍速记在本地、按用户分键(一台平板几个孩子轮着用,不串) */
-function rateKey(): string {
+/**
+ * 画质(2026-10-20): 高清 = 原片;流畅 = 480p 低码率副本(约 0.2 Mbps,声音不动,见 backend services/video_lite)。
+ * 默认高清;2 分钟内卡顿(缓冲超过 SLOW_HINT_MS)2 次就自动换流畅并说一句,孩子自己选过高清就不再自动换。
+ * 电教室一个班共用 12M,原片码率中位 0.67 Mbps,18 人同时看就满 —— 卡是带宽不够,流畅版让同时能看的人数翻一倍多
+ */
+type Quality = 'hd' | 'lite';
+const AUTO_LITE_STALLS = 2;
+const AUTO_LITE_WINDOW_MS = 120_000;
+/** 自动换成流畅后,那句提示停留多久 */
+const AUTO_LITE_NOTICE_MS = 8000;
+
+/** 播放偏好记在本地、按用户分键(一台平板几个孩子轮着用,不串) */
+function prefKey(name: 'rate' | 'quality'): string {
   let uid = 'anon';
   try {
     const me = JSON.parse(localStorage.getItem('user') || 'null');
     if (me?.id) uid = String(me.id);
   } catch { /* 读不出来当匿名 */ }
-  return `phonetics.rate.${uid}`;
+  return `phonetics.${name}.${uid}`;
 }
 function readRate(): number {
   try {
-    const r = Number(localStorage.getItem(rateKey()));
+    const r = Number(localStorage.getItem(prefKey('rate')));
     return RATES.includes(r) ? r : 1;
   } catch {
     return 1;
+  }
+}
+function readQuality(): Quality {
+  try {
+    return localStorage.getItem(prefKey('quality')) === 'lite' ? 'lite' : 'hd';
+  } catch {
+    return 'hd';
   }
 }
 
@@ -343,7 +361,8 @@ export default function LessonStage({
 
   // ---- 播放票据:URL 里放的不再是整站会话 token,而是只能播这一个视频的两小时票 ----
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [src, setSrc] = useState('');
+  /** 票据换来的原片地址。实际播放地址是下面的 src(流畅版在后面加 &q=lite,同一张票) */
+  const [baseSrc, setBaseSrc] = useState('');
   const [srcError, setSrcError] = useState('');
   const ticketExp = useRef(0);
   const resumeRef = useRef<{ t: number; playing: boolean } | null>(null);
@@ -352,22 +371,57 @@ export default function LessonStage({
   const loadTicket = useCallback(async () => {
     const tk = await fetchVideoTicket(video.id);
     ticketExp.current = tk.expires_at;
-    setSrc(mediaUrl(tk.url));
+    setBaseSrc(mediaUrl(tk.url));
     setSrcError('');
   }, [video.id]);
 
   useEffect(() => {
-    setSrc('');
+    setBaseSrc('');
     // 预加载过这一节(上一节快看完时取的): 直接用那张票,地址一样,开头从浏览器缓存出,几乎马上出画面
     const pre = takePrefetchedTicket(video.id);
     if (pre) {
       ticketExp.current = pre.expires_at;
-      setSrc(mediaUrl(pre.url));
+      setBaseSrc(mediaUrl(pre.url));
       setSrcError('');
       return;
     }
     loadTicket().catch(() => setSrcError('视频地址获取失败,请刷新页面重试'));
   }, [loadTicket, video.id]);
+
+  // ---- 画质 ----
+  const [quality, setQuality] = useState<Quality>(readQuality);
+  // 这一节的流畅版播不了(列表说有、文件其实没了): 退回高清,这一节不再试。按视频 id 记,换节自动失效
+  const [liteBroken, setLiteBroken] = useState<number | null>(null);
+  const canLite = !!video.has_lite && liteBroken !== video.id;
+  const useLite = quality === 'lite' && canLite;
+  const src = baseSrc ? (useLite ? `${baseSrc}&q=lite` : baseSrc) : '';
+  /** 孩子这次自己点过画质: 不再自动换 */
+  const manualQuality = useRef(false);
+  const [autoNotice, setAutoNotice] = useState(false);
+  useEffect(() => {
+    if (!autoNotice) return;
+    const t = window.setTimeout(() => setAutoNotice(false), AUTO_LITE_NOTICE_MS);
+    return () => window.clearTimeout(t);
+  }, [autoNotice]);
+  /** 换地址时接着原处放。还没加载出元数据时不记(否则会挡掉「从上次的位置续播」) */
+  const keepPosition = () => {
+    const v = videoRef.current;
+    if (v && v.readyState >= 1 && v.currentTime > 0) {
+      resumeRef.current = { t: v.currentTime, playing: !v.paused };
+    }
+  };
+  const pickQuality = (q: Quality, how: 'manual' | 'auto') => {
+    if (q === quality) return;
+    keepPosition();
+    setQuality(q);
+    if (how === 'manual') {
+      manualQuality.current = true;
+      setAutoNotice(false);
+      try { localStorage.setItem(prefKey('quality'), q); } catch { /* 隐私模式写不了,本次照样生效 */ }
+    } else {
+      setAutoNotice(true);      // 自动换的不记: 下次打开还是高清,网络好了就是好画面
+    }
+  };
 
   // ---- 倍速 ----
   const [rate, setRate] = useState(readRate);
@@ -379,15 +433,29 @@ export default function LessonStage({
   const pickRate = (r: number) => {
     setRate(r);
     setRateOpen(false);
-    try { localStorage.setItem(rateKey(), String(r)); } catch { /* 隐私模式写不了,本次照样生效 */ }
+    try { localStorage.setItem(prefKey('rate'), String(r)); } catch { /* 隐私模式写不了,本次照样生效 */ }
   };
 
-  // ---- 网络慢提示: 缓冲超过 SLOW_HINT_MS 才出,播起来就收 ----
+  // ---- 网络慢提示: 缓冲超过 SLOW_HINT_MS 才出,播起来就收;卡得多就自动换流畅 ----
   const [slow, setSlow] = useState(false);
   const slowTimer = useRef<number | null>(null);
+  const stallTimes = useRef<number[]>([]);
+  const onStall = () => {
+    setSlow(true);
+    const now = Date.now();
+    stallTimes.current = [...stallTimes.current.filter((t) => now - t < AUTO_LITE_WINDOW_MS), now];
+    if (quality === 'hd' && canLite && !manualQuality.current
+        && stallTimes.current.length >= AUTO_LITE_STALLS) {
+      stallTimes.current = [];
+      pickQuality('lite', 'auto');
+    }
+  };
+  // 计时器到点时要用**那一刻**的画质状态,不能用 2.5 秒前那次渲染的闭包
+  const onStallRef = useRef(onStall);
+  useEffect(() => { onStallRef.current = onStall; });
   const onWaiting = () => {
     if (slowTimer.current !== null) return;
-    slowTimer.current = window.setTimeout(() => setSlow(true), SLOW_HINT_MS);
+    slowTimer.current = window.setTimeout(() => { slowTimer.current = null; onStallRef.current(); }, SLOW_HINT_MS);
   };
   const clearSlow = () => {
     if (slowTimer.current !== null) { window.clearTimeout(slowTimer.current); slowTimer.current = null; }
@@ -406,7 +474,8 @@ export default function LessonStage({
     if (!v.currentSrc.includes(`/videos/${video.id}/stream`)) return;
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
     if (dur > 0 && v.currentTime > dur / 2 && dur - v.currentTime <= PREFETCH_LEAD_SEC) {
-      void prefetchVideo(nextId);
+      // 预加载与正在看的同一档画质,点开时才能命中缓存
+      void prefetchVideo(nextId, { lite: quality === 'lite' && !!nextVideo?.has_lite });
     }
   };
   /** 看完后的倒计时(秒);null = 没在倒计时 */
@@ -436,9 +505,17 @@ export default function LessonStage({
   // 只在票据确实到期时换票(不是到期的错误不重试,免死循环),并从原进度继续
   const onVideoError = () => {
     const v = videoRef.current;
-    if (!v || Date.now() / 1000 < ticketExp.current - 30) return;
-    resumeRef.current = { t: v.currentTime, playing: wasPlaying.current };
-    loadTicket().catch(() => setSrcError('视频地址已过期且刷新失败,请刷新页面'));
+    if (!v) return;
+    if (Date.now() / 1000 >= ticketExp.current - 30) {
+      resumeRef.current = { t: v.currentTime, playing: wasPlaying.current };
+      loadTicket().catch(() => setSrcError('视频地址已过期且刷新失败,请刷新页面'));
+      return;
+    }
+    // 流畅版播不了(文件刚被删 / 列表里的 has_lite 是旧的,后端回 404): 退回高清,接着原处放
+    if (useLite) {
+      if (v.currentTime > 0) resumeRef.current = { t: v.currentTime, playing: wasPlaying.current };
+      setLiteBroken(video.id);
+    }
   };
   // 续播:上次退出的位置(服务端记的,换设备也接得上)。
   // **看完的也续播**(2026-10-02 改):旧规则「看完的从头放」让回来复习、看到一半退出的孩子
@@ -698,7 +775,8 @@ export default function LessonStage({
           </div>
         )}
         {/* 倍速: 左上全屏按钮右边。原生控件的倍速藏在 ⋮ 里孩子找不到,微信/iPhone 上还不一定有 */}
-        <div className={`absolute top-2 z-20 ${!viewing && canFs ? 'left-12' : 'left-2'}`}>
+        <div className={`absolute top-2 z-20 flex items-start gap-1 ${!viewing && canFs ? 'left-12' : 'left-2'}`}>
+          <div className="relative">
           <button
             type="button"
             onClick={() => setRateOpen((o) => !o)}
@@ -709,7 +787,7 @@ export default function LessonStage({
             {rate === 1 ? '1.0x' : `${rate}x`}
           </button>
           {rateOpen && (
-            <div role="menu" className="mt-1 flex flex-col overflow-hidden rounded-lg bg-black/85 py-1 shadow-lg">
+            <div role="menu" className="absolute left-0 top-full mt-1 flex w-max flex-col overflow-hidden rounded-lg bg-black/85 py-1 shadow-lg">
               {RATES.map((r) => (
                 <button
                   key={r} type="button" role="menuitemradio" aria-checked={r === rate}
@@ -722,10 +800,42 @@ export default function LessonStage({
               ))}
             </div>
           )}
+          </div>
+          {/* 画质: 只有压好了流畅版的视频才给。点一下在 高清/流畅 之间切,接着原处放 */}
+          {canLite && (
+            <button
+              type="button"
+              onClick={() => pickQuality(useLite ? 'hd' : 'lite', 'manual')}
+              aria-label={useLite ? '现在是流畅画质,点一下换高清' : '现在是高清画质,点一下换流畅(网络卡时用)'}
+              title={useLite ? '流畅:省流量,网络卡时用' : '高清:原画质'}
+              className="rounded-md bg-black/50 px-2 py-1 text-xs font-semibold text-white hover:bg-black/70"
+            >
+              {useLite ? '流畅' : '高清'}
+            </button>
+          )}
         </div>
         {slow && !ended && (
-          <div role="status" className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
-            <span className="rounded-full bg-black/70 px-3 py-1.5 text-xs text-white">网络有点慢，正在缓冲…</span>
+          <div role="status" className="absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 justify-center">
+            <span className="flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-white">
+              网络有点慢，正在缓冲…
+              {canLite && !useLite && (
+                <button type="button" onClick={() => pickQuality('lite', 'manual')}
+                        className="rounded-full bg-orange-500 px-2 py-0.5 font-semibold hover:bg-orange-600">
+                  换流畅
+                </button>
+              )}
+            </span>
+          </div>
+        )}
+        {autoNotice && useLite && (
+          <div role="status" className="absolute inset-x-0 bottom-14 z-10 flex justify-center">
+            <span className="flex items-center gap-2 rounded-full bg-black/75 px-3 py-1.5 text-xs text-white">
+              网络有点卡，已换成流畅画质
+              <button type="button" onClick={() => pickQuality('hd', 'manual')}
+                      className="rounded-full bg-white/20 px-2 py-0.5 font-semibold hover:bg-white/30">
+                换回高清
+              </button>
+            </span>
           </div>
         )}
         {/* 看完了: 下一节倒计时 / 下一节锁着 / 这是最后一节 */}

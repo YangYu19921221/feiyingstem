@@ -32,7 +32,7 @@ from app.models.phonetic import (
 )
 from app.services import phonetic_material_service, rate_limit, watermark_service
 from app.services import auth_service, video_question, video_watch
-from app.services import phonetic_access_service, audit_log
+from app.services import phonetic_access_service, audit_log, video_lite
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,8 @@ class PhoneticVideoOut(BaseModel):
 
     # 播放地址:鉴权串流端点。刻意不下发 file_path —— 磁盘路径不该出现在响应里
     play_url: str = ""
+    # 有没有「流畅」版(480p 低码率副本,见 services/video_lite)。没有时播放器不给这个选项
+    has_lite: bool = False
 
 
 def to_out(
@@ -119,7 +121,15 @@ def to_out(
         my_completed=bool(mine.completed) if mine else False,
         locked=locked,
         play_url=f"/api/v1/phonetics/videos/{v.id}/stream",
+        has_lite=video_lite.has_lite(_video_file(v)),
     )
+
+
+def _video_file(v: PhoneticVideo) -> Optional[str]:
+    """视频原片在磁盘上的路径(只用文件名拼,杜绝 ../ 穿越)。没有文件名返回 None"""
+    if not v.file_path:
+        return None
+    return os.path.join(settings.PHONETIC_VIDEO_DIR, os.path.basename(v.file_path))
 
 
 # 永不受音标闸门限制的角色:要备课、要检查内容的教职工
@@ -939,6 +949,9 @@ async def video_ticket(
     await db.commit()
 
     tok, exp = _mint_ticket(user, v.id)
+    # 还没有流畅版就顺手在后台压一份(自愈: 上传后压到一半服务重启丢了的,有人看时补上)。
+    # nice 19 + 一次一个,只吃空闲 CPU;已有/压过判不值得/压失败过的都直接跳过
+    video_lite.ensure_scheduled(_video_file(v))
     return MediaTicketOut(url=f"/api/v1/phonetics/videos/{v.id}/stream?t={tok}", expires_at=exp)
 
 
@@ -950,9 +963,13 @@ async def stream_video(
     video_id: int,
     request: Request,
     t: Optional[str] = Query(None, description="播放票据(见 /videos/{id}/ticket),<video> 标签带不了请求头"),
+    q: Optional[str] = Query(None, description="lite = 流畅版(480p 低码率);不传 = 原片"),
     db: AsyncSession = Depends(get_db),
 ):
     """鉴权串流。支持 Range 请求 —— 不支持的话移动端拖不动进度条、Safari 可能整个不播。
+
+    q=lite 播流畅版。票据只绑视频不绑画质: 同一张票切画质不用重新换票(切换时接着原处放)。
+    流畅版还没压好时 404,前端退回原片。
 
     鉴权双通道:Authorization 头(fetch/axios)或 ?t= 播放票据(<video> 标签)。
     ⚠️ **不再接受 ?token= 整站会话 token**:那等于把账号写在视频地址里,
@@ -1001,9 +1018,15 @@ async def stream_video(
         logger.warning("音标视频文件不存在: id=%s path=%s", video_id, path)
         raise HTTPException(status_code=404, detail="视频文件已丢失,请联系老师重新上传")
 
+    mime = v.mime_type or "video/mp4"
+    if q == "lite":
+        lite = video_lite.lite_path_for(path)
+        if not os.path.isfile(lite):
+            raise HTTPException(status_code=404, detail="流畅版还没准备好,先看高清")
+        path, mime = lite, "video/mp4"
+
     st = os.stat(path)
     total = st.st_size
-    mime = v.mime_type or "video/mp4"
     range_header = request.headers.get("range")
     # 浏览器缓存(2026-10-18): 带强校验的 ETag + private max-age,浏览器才肯把取过的片段存起来 ——
     # ①预加载下一节时取的开头,点开时直接从缓存出,不再下第二遍 ②往回拖进度不重复下载(电教室共用 12M)。
