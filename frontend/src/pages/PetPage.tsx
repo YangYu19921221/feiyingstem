@@ -1246,7 +1246,7 @@ function NurtureView({
                 <h3 className="font-display text-lg font-semibold text-orange-900 sm:text-xl">伙伴正在恢复</h3>
                 <p className="mt-1 text-sm text-gray-700">
                   当前 HP <span className="font-numeric font-semibold text-orange-700">{pet.current_hp || 0}</span> / {maxHp}
-                  <span className="text-gray-500"> · 每答对 1 题恢复 {healPerQuestion} HP</span>
+                  <span className="text-gray-500"> · 每答对 1 题恢复 {healPerQuestion} HP，不答也会慢慢自己好</span>
                 </p>
               </div>
               <button

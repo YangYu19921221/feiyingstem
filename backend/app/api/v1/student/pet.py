@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func as sa_func, update
+from sqlalchemy import select, desc, func as sa_func, update, Integer
 from datetime import datetime, timedelta
 import math
+import re
 
 from app.core.database import get_db
 from app.core.timeutil import local_today_utc_range
@@ -56,6 +57,49 @@ async def sync_food_balance(db: AsyncSession, user_id: int, balance: int, *, exc
     await db.execute(stmt.values(food_balance=balance))
 
 
+# 受伤后自己慢慢好(2026-10-20): 每过 1 小时恢复最大 HP 的这么多;到 80% 解除受伤(与答题治疗同一条线)。
+# 从 0 血到 80% 约 16 小时 —— 隔天回来就好了,当天想马上出战就答题治疗(一题 10%)。
+# 为什么要有: 生产 444 只在用的宠物里 237 只是受伤状态,其中 181 只的主人 30 天以上没碰过宠物 ——
+# 孩子隔了很久回来,第一眼看到的是一只受伤、要先答一串题才能玩的宠物,很多就直接走了
+NATURAL_HEAL_PER_HOUR = 0.05
+INJURY_CURED_AT = 0.8
+
+
+async def apply_natural_heal(db: AsyncSession, pet: UserPet) -> bool:
+    """按受伤以来过了多久回血,够 80% 就解除受伤。返回这次有没有痊愈。
+
+    「受伤以来」取最近一条 injured 日志的时间(存量受伤宠物都有这条);找不到就按 last_interaction_at。
+    起点血量取那条日志里记的「当前HP: x/y」(对战受伤都这么写),读不出就当 0 —— 只会让恢复慢一点,不会错放。
+    目标血量 = 起点 + 每小时 5% × 小时数,**和现在的血量取大**: 只抬不压(中间答题回过的血不会被拉回去),
+    按时间算所以重复调用幂等。
+    不碰 last_interaction_at: 那是「孩子来没来过」,自然回血不算孩子来过。
+    """
+    if not pet.is_injured:
+        return False
+    row = (await db.execute(
+        select(PetEventLog.created_at, PetEventLog.detail)
+        .where(PetEventLog.pet_id == pet.id, PetEventLog.event_type == "injured")
+        .order_by(PetEventLog.id.desc()).limit(1)
+    )).first()
+    injured_at = row[0] if row else pet.last_interaction_at
+    if injured_at is None:
+        return False
+    max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
+    start_hp = 0
+    m = re.search(r"HP[:：]\s*(\d+)\s*/", (row[1] or "") if row else "")
+    if m:
+        start_hp = min(max_hp, int(m.group(1)))
+    hours = max(0.0, (datetime.utcnow() - injured_at).total_seconds() / 3600)
+    target = min(max_hp, start_hp + int(max_hp * NATURAL_HEAL_PER_HOUR * hours))
+    if target > (pet.current_hp or 0):
+        pet.current_hp = target
+    if (pet.current_hp or 0) >= max_hp * INJURY_CURED_AT:
+        pet.is_injured = False
+        db.add(PetEventLog(pet_id=pet.id, event_type="healed", detail="休息好了，宠物自己恢复了健康！"))
+        return True
+    return False
+
+
 def apply_decay(pet: UserPet) -> UserPet:
     """计算属性衰减：超过2天不互动，每天 happiness-8, hunger-10，最低不低于10/5"""
     if not pet.last_interaction_at:
@@ -104,21 +148,13 @@ async def get_my_pet(
     if not pet:
         return None
     pet = apply_decay(pet)
+    # 受伤的按时间自己回血(见 apply_natural_heal)
+    await apply_natural_heal(db, pet)
 
-    # 长期不喂养（≥2天不互动）且饱食度过低 → 宠物挨饿受伤，需背单词治疗
-    # 只在查看时判定：喂食路径会先抬高饱食度不会误伤；治疗/喂食都会刷新 last_interaction_at
-    # 使 days_inactive 归零，故治疗后不会立刻复发
-    if not pet.is_injured and pet.last_interaction_at:
-        days_inactive = (datetime.utcnow() - pet.last_interaction_at).days
-        if days_inactive >= 2 and pet.hunger <= 15:
-            max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
-            pet.is_injured = True
-            pet.current_hp = min(pet.current_hp, int(max_hp * 0.4))
-            db.add(PetEventLog(
-                pet_id=pet.id,
-                event_type="injured",
-                detail="太久没喂食，宠物挨饿受伤了！背单词可以治疗它",
-            ))
+    # ⚠️ 2026-10-20 去掉了「≥2 天不来且饱食度 ≤15 → 挨饿受伤、血压到 40%」:
+    # 孩子越久没来,回来时宠物越惨、门槛越高 —— 生产受伤的宠物里 181 只主人 30 天以上没来过,
+    # 这条是在把回来的孩子往外推。饿了照样会显示(饱食度条 + 喂食按钮),惩罚到这一步就够了;
+    # 受伤现在只来自对战(孩子自己选的风险),而且会随时间自己好。别加回来
 
     await db.commit()
     return build_pet_response(pet)
@@ -394,15 +430,53 @@ async def earn_food(
     )
     is_first_today = (earn_count_result.scalar() or 0) == 0
 
-    # 计算奖励
+    # 计算奖励。⚠️ 正确率与「有没有真的练」**按服务端的答题记录算**(2026-10-20),不信前端报的 score/total:
+    # 以前前端报多少就按多少给,改一行 JS 就能无限刷粮。粮食在只能喂食(一天 3 次)的时候刷了也没用,
+    # 但给粮食加任何用途之前必须先堵上。口径: 上一次领粮之后(最多回看 2 小时)本人的 learning_records ——
+    # 生产 10 月以来 1063 次领粮只有 8 次对不上记录,口径吻合。
+    # 没有新的答题记录 → 0 粮(不是报错: 前端是练完顺手调的,失败了孩子也看不到原因)
+    since = now - timedelta(hours=2)
+    last_earn = (await db.execute(
+        select(sa_func.max(PetEventLog.created_at))
+        .join(UserPet, UserPet.id == PetEventLog.pet_id)
+        .where(UserPet.user_id == current_user.id, PetEventLog.event_type == "earn_food")
+    )).scalar()
+    if last_earn and last_earn > since:
+        since = last_earn
+    answered, correct = (await db.execute(
+        select(sa_func.count(LearningRecord.id),
+               sa_func.coalesce(sa_func.sum(sa_func.cast(LearningRecord.is_correct, Integer)), 0))
+        .where(LearningRecord.user_id == current_user.id, LearningRecord.created_at > since)
+    )).one()
+    answered, correct = int(answered or 0), int(correct or 0)
+    if not answered and data.mode == "spelling":
+        # 句子练习不写 learning_records,只更新 sentence_mastery.last_practiced_at。
+        # 那里没有逐题对错的流水,算不出这一次的正确率 —— 只认「真练过」,正确率按 0 档给(基础+模式+首练)
+        from app.models.sentence_learning import SentenceMastery
+        practiced = (await db.execute(
+            select(sa_func.count(SentenceMastery.id)).where(
+                SentenceMastery.user_id == current_user.id,
+                SentenceMastery.last_practiced_at > since,
+            )
+        )).scalar() or 0
+        if practiced:
+            answered, correct = int(practiced), 0
+
     base = 2
-    accuracy = data.score / data.total
+    accuracy = (correct / answered) if answered else 0.0
     accuracy_bonus = math.floor(accuracy * 6)
     mode_map = {"flashcard": 0, "quiz": 1, "fillblank": 2, "spelling": 2, "classify": 2}
     mode_bonus = mode_map.get(data.mode, 0)
     daily_bonus = 3 if is_first_today else 0
 
-    food_earned = base + accuracy_bonus + mode_bonus + daily_bonus
+    food_earned = (base + accuracy_bonus + mode_bonus + daily_bonus) if answered else 0
+    if not answered:
+        # 没有新的答题记录: 不发粮,也不记领粮日志(否则会占掉今天的「首练」加成)
+        await db.commit()
+        return EarnFoodResponse(
+            food_earned=0, food_balance=pet.food_balance, is_first_today=is_first_today,
+            breakdown={"base": 0, "accuracy_bonus": 0, "mode_bonus": 0, "daily_bonus": 0},
+        )
     pet.food_balance += food_earned
     pet.last_interaction_at = now
     await sync_food_balance(db, current_user.id, pet.food_balance, except_pet_id=pet.id)

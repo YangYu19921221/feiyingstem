@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'pet-self-heal-and-pvp-join-2026-10',
+    date: '2026-10-21',
+    title: '🐾 宠物受伤会自己好了，和同学对战也能打起来了',
+    desc: '宠物对战受伤后，休息一阵会自己慢慢恢复，大约一晚上就好，想马上出战还可以答题治疗。很久没来也不会再因为太饿而受伤。向同学发起挑战后，留在对战大厅等着，对方一接受就会自动进入对战，不用再手动去找。',
+    where: '学生端「我的宠物」→ 对战大厅 / 宠物治疗',
+    roles: ['student'],
+    route: '/student/pet',
+  },
+  {
     id: 'phonetic-player-lite-quality-student-2026-10',
     date: '2026-10-21',
     title: '📶 音标视频卡的时候能换「流畅」画质了',

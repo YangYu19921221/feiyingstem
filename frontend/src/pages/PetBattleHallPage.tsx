@@ -6,6 +6,7 @@ import { ArrowLeft, Swords, Clock, Trophy, TrendingUp } from 'lucide-react';
 import {
   getMyBattles,
   getPendingInvites,
+  getReadyBattle,
   getBattleStats,
   createBattle,
   acceptBattle,
@@ -39,6 +40,28 @@ export default function PetBattleHallPage() {
     queryFn: () => getMyBattles(undefined, 20),
   });
 
+  // 我发出的挑战被接受了 → 自动进场。对方点「接受」就直接进了对战页,在那等我 30 秒;
+  // 没有这个的话我这边毫不知情,对方等满 30 秒被踢出 —— 真人对战九成打不起来就是这个原因
+  const hasPendingOutgoing = history.some((b) => b.status === 'pending');
+  /** 刚发出挑战后的 70 秒内(邀请 60 秒过期)都要问;发出时置 true,到点由定时器收回 */
+  const [awaitingAccept, setAwaitingAccept] = useState(false);
+  useEffect(() => {
+    if (!awaitingAccept) return;
+    const t = window.setTimeout(() => setAwaitingAccept(false), 70_000);
+    return () => window.clearTimeout(t);
+  }, [awaitingAccept]);
+  const { data: ready } = useQuery({
+    queryKey: ['petBattleReady'],
+    queryFn: getReadyBattle,
+    // 刚发出挑战、或记录里还有等待中的挑战时才轮询;都没有就不问
+    refetchInterval: hasPendingOutgoing || awaitingAccept ? 3000 : false,
+  });
+  useEffect(() => {
+    if (!ready?.battle_id) return;
+    toast.success(`${ready.opponent_name || '对方'}接受了挑战，进入对战！`);
+    navigate(`/student/pet/battle/${ready.battle_id}`);
+  }, [ready?.battle_id, ready?.opponent_name, navigate]);
+
   const { data: stats } = useQuery<BattleStats>({
     queryKey: ['petBattleStats'],
     queryFn: getBattleStats,
@@ -61,7 +84,8 @@ export default function PetBattleHallPage() {
     mutationFn: createBattle,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['petBattleHistory'] });
-      toast.success('对战邀请已发送');
+      setAwaitingAccept(true);
+      toast.success('挑战已发出，对方接受后会自动进入对战，别离开这个页面');
       setShowInviteDialog(false);
       setPickedOpp(null); setOppQuery('');
     },

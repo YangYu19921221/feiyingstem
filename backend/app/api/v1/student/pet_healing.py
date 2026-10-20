@@ -35,6 +35,10 @@ async def get_healing_status(
     pet = result.scalar_one_or_none()
     if not pet:
         raise HTTPException(status_code=404, detail="还没有宠物")
+    # 治疗页显示的血量/还要答几题,要先算上自然回血(否则显示的比实际差,孩子白答几题)
+    from app.api.v1.student.pet import apply_natural_heal, NATURAL_HEAL_PER_HOUR, INJURY_CURED_AT
+    if await apply_natural_heal(db, pet):
+        await db.commit()
 
     max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
     hp_percent = (pet.current_hp / max_hp) * 100
@@ -57,6 +61,12 @@ async def get_healing_status(
         "is_injured": pet.is_injured,
         "questions_needed": questions_needed,
         "heal_per_question": heal_per_question,
+        # 不答题的话大约还要几小时自己好(前端显示「休息 N 小时也会好」)
+        "hours_to_self_heal": (
+            max(0, math.ceil((max_hp * INJURY_CURED_AT - (pet.current_hp or 0))
+                             / (max_hp * NATURAL_HEAL_PER_HOUR)))
+            if pet.is_injured else 0
+        ),
     }
 
 

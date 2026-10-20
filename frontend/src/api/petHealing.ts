@@ -13,6 +13,8 @@ export interface HealingStatus {
   is_injured: boolean;
   questions_needed: number;
   heal_per_question: number;
+  /** 不答题的话大约还要几小时自己好(每小时恢复 5%,到 80% 解除受伤;2026-10-20) */
+  hours_to_self_heal?: number;
 }
 
 /** 治疗题:服务端出题、服务端判分(2026-10-06 防多开刷血),不再下发正确答案 */

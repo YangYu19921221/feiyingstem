@@ -168,6 +168,14 @@ export const getMyBattles = async (status?: string, limit = 20): Promise<BattleL
   return api.get('/student/battles/my', { params: { status, limit } });
 };
 
+/**
+ * 我发出的挑战刚被接受、对手在等我进场 → 这场的 id(没有就 null)。
+ * 对战大厅轮询它自动进场 —— 否则发起方不知道对方接了,接受方等 30 秒后被踢出
+ */
+export const getReadyBattle = async (): Promise<{ battle_id: number | null; opponent_name?: string }> => {
+  return api.get('/student/battles/ready');
+};
+
 export const getPendingInvites = async (): Promise<Battle[]> => {
   return api.get('/student/battles/invites');
 };

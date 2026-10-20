@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, desc
 from typing import List
+from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.models.user import User
@@ -17,6 +18,7 @@ from app.schemas.pet_battle import (
     BattlePetOption,
 )
 from app.services import pet_battle_service
+from app.api.v1.student.pet import apply_natural_heal
 from app.services.ai_opponent_service import generate_ai_opponent
 from app.api.v1.auth import get_current_student
 from app.core.pet_formulas import calculate_max_hp, evolution_stage_for_level
@@ -197,6 +199,9 @@ async def create_battle(
     my_pet = my_pet_result.scalar_one_or_none()
     if not my_pet:
         raise HTTPException(status_code=400, detail="你还没有宠物")
+    # 受伤会随时间自己好: 判受伤之前先按时间回血,休息够了的不该被挡在门外
+    if await apply_natural_heal(db, my_pet):
+        await db.commit()
     if my_pet.is_injured:
         raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
 
@@ -242,6 +247,8 @@ async def accept_battle(
     accept_pet = (await db.execute(
         select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
     )).scalar_one_or_none()
+    if accept_pet and await apply_natural_heal(db, accept_pet):
+        await db.commit()
     if accept_pet and accept_pet.is_injured:
         raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能应战哦！")
 
@@ -383,13 +390,14 @@ async def get_pending_invites(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """获取待接受的邀请"""
+    """获取待接受的邀请(只给还没过期的: 过期的点「接受」也只会报错,列着是误导)"""
     stmt = (
         select(PetBattle)
         .where(
             and_(
                 PetBattle.player2_id == current_user.id,
                 PetBattle.status == "pending",
+                or_(PetBattle.expires_at.is_(None), PetBattle.expires_at > datetime.utcnow()),
             )
         )
         .order_by(desc(PetBattle.created_at))
@@ -399,6 +407,38 @@ async def get_pending_invites(
     battles = result.scalars().all()
 
     return [await build_battle_response(b, db) for b in battles]
+
+
+@router.get("/battles/ready")
+async def get_ready_battle(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """我发出的挑战**刚被接受**、对手正在等我进场 → 返回这场的 id;没有就 battle_id=null。
+
+    为什么要有这个(2026-10-20 查出来的,真人对战九成打不起来的根因):
+    接受方点「接受」直接跳进对战页,而**发起方根本不知道** —— 大厅只轮询「别人发给我的邀请」,
+    发起方的页面停在原地。接受方在对战页等 30 秒「对手未连接」后被踢出,这场就变成「开了没打」。
+    生产 9 月以来 104 场被接受的真人对战,56 场一个回合都没打。对战大厅每 3 秒问一次这里,
+    有就自动进场。只看 started_at 在 30 秒内的(与 WS 端等待对手的时长一致),再晚接受方已经走了
+    """
+    since = datetime.utcnow() - timedelta(seconds=30)
+    battle = (await db.execute(
+        select(PetBattle).where(
+            PetBattle.player1_id == current_user.id,
+            PetBattle.status == "active",
+            PetBattle.is_ai_battle.is_not(True),
+            PetBattle.current_round == 0,
+            PetBattle.started_at >= since,
+        ).order_by(desc(PetBattle.id)).limit(1)
+    )).scalar_one_or_none()
+    if battle is None:
+        return {"battle_id": None}
+    opponent = await db.get(User, battle.player2_id)
+    return {
+        "battle_id": battle.id,
+        "opponent_name": (opponent.full_name or opponent.username) if opponent else "",
+    }
 
 
 @router.get("/battles/stats", response_model=BattleStatsResponse)
@@ -468,6 +508,9 @@ async def quick_match_battle(
     my_pet = my_pet_result.scalar_one_or_none()
     if not my_pet:
         raise HTTPException(status_code=400, detail="你还没有宠物")
+    # 受伤会随时间自己好: 判受伤之前先按时间回血,休息够了的不该被挡在门外
+    if await apply_natural_heal(db, my_pet):
+        await db.commit()
     if my_pet.is_injured:
         raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
 

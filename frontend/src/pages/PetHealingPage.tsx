@@ -232,6 +232,11 @@ export default function PetHealingPage() {
 
           <div className="text-center text-sm text-gray-600">
             还需答对约 {Math.max(0, healingStatus.questions_needed)} 题恢复健康
+            {(healingStatus.hours_to_self_heal ?? 0) > 0 && (
+              <span className="block text-xs text-gray-500">
+                不答也没关系，休息约 {healingStatus.hours_to_self_heal} 小时它会自己好
+              </span>
+            )}
           </div>
         </div>
 
