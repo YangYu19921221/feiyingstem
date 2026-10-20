@@ -161,6 +161,10 @@ async def make_lite(original_path: str, *, threads: int = DEFAULT_THREADS) -> st
         # 压的这几分钟里视频被删了: 别把流畅版「复活」成没人认领的孤儿
         if not os.path.isfile(original_path):
             return "failed:原片已不在(视频可能刚被删除)"
+        # 夜里的脚本和服务的后台任务同时压了同一节、对方先压好了: 留先到的那份,
+        # 不去替换 —— 可能已经有孩子在看它,中途换文件播放器按旧偏移取数据会出错
+        if os.path.isfile(lite):
+            return "exists"
         os.replace(tmp, lite)
         return "done"
     except Exception as e:  # noqa: BLE001 - 附加功能,任何异常都只是没有流畅版
