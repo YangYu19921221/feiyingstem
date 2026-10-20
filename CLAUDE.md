@@ -271,7 +271,11 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标视频「流畅」画质(2026-10-20,音标播放器第二步): 每节另压一份 480p 低码率副本放在原片旁边
+- ✅ 音标视频「流畅」画质(2026-10-20 14:44 **已部署生产**,phonetics.py / teacher/phonetics.py / video_faststart.py
+  生产==HEAD~1 整推 + 新文件 video_lite.py、scripts/gen_phonetic_lite.py,systemd 重启;dist 整推;备份
+  /root/eh_code_before_lite_20261020_1440.tgz、frontend/dist_bak_20261020_1444,构建号 mvgba116。
+  **存量 42 节的流畅版定在 10-21 03:47 跑**(eh-phonetic-lite.timer,在 03:17 faststart 之后;日志 /root/eh_lite_20261021.log),
+  跑完前播放器只有高清(没有流畅版的视频不显示画质按钮);白天有人看时服务会一节节慢慢补(1 线程)。音标播放器第二步): 每节另压一份 480p 低码率副本放在原片旁边
   (`{原片名}.lite.mp4`,不进库,有没有看文件在不在;列表下发 has_lite)。参数在服务器实测过:
   libx264 veryfast crf30 maxrate 300k,1080p 2002→196 kbps、720p 721→201 kbps,白板字和音标符号截帧看过清楚;
   **声音原样拷贝不重压**(音标课听发音是正事)。压完 ≥ 原片 70% 就不留、写 `.lite.skip` 不再压。
