@@ -51,7 +51,9 @@ function facts(r: CoachRow): string {
   }
   if (r.accuracy_today !== null && r.scored_today >= 5) out.push(`拼写 ${r.accuracy_today}%`);
   out.push(`近 7 天学了 ${r.week_days} 天`);
-  if (r.review_due) out.push(`待复习 ${r.review_due} 词`);
+  const dr = r.daily_review;
+  if (dr && dr.total) out.push(dr.completed ? `今日复习 ${dr.total} 个做完了` : `今日复习 ${dr.done}/${dr.total}`);
+  else if (r.review_due) out.push(`今日复习还没开始 · 积压 ${r.review_due} 词`);
   return out.join(' · ');
 }
 

@@ -23,7 +23,10 @@ from app.core.database import Base
 
 KIND_SENTENCE = "sentence"
 KIND_PHONETIC_VIDEO = "phonetic_video"
-KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO)
+# 每日复习(2026-10-21): 没有具体内容目标(target_id=0),当天那一份 20 个词做完就算完成,
+# 见 services/daily_review.py。一天一份作业,「连续 N 天」= 建 N 份、逐天顺延
+KIND_DAILY_REVIEW = "daily_review"
+KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO, KIND_DAILY_REVIEW)
 
 
 class ContentHomework(Base):

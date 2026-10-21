@@ -31,6 +31,8 @@ export interface CoachRow {
   scored_today: number;
   accuracy_today: number | null;
   review_due: number;
+  /** 今天那一份每日复习;null = 今天还没打开过复习 */
+  daily_review: { done: number; total: number; completed: boolean } | null;
   weak_today: string[];
   parent_bound: boolean;
   note: CoachNoteInfo | null;

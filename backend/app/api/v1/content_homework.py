@@ -19,18 +19,21 @@ from app.core.actor import acting_user, is_assistant_request
 from app.core.database import get_db
 from app.core.timeutil import local_day_utc_range, local_today
 from app.models.content_homework import (
-    KIND_PHONETIC_VIDEO, KIND_SENTENCE, KINDS, ContentHomework, ContentHomeworkStudent,
+    KIND_DAILY_REVIEW, KIND_PHONETIC_VIDEO, KIND_SENTENCE, KINDS, ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo, PhoneticVideoView
 from app.models.sentence import SentenceBook, SentenceUnit
 from app.models.sentence_learning import SentenceUnitProgress
 from app.models.user import User
 from app.services import audit_log
+from app.services import daily_review
 
 teacher_router = APIRouter()
 student_router = APIRouter()
 
-KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频"}
+KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频", KIND_DAILY_REVIEW: "每日复习"}
+DAILY_REVIEW_NAME = f"今天的 {daily_review.DAILY_SIZE} 个复习词"
+MAX_REVIEW_DAYS = 31
 
 
 # ---------- 目标(句子单元 / 音标视频)----------
@@ -38,6 +41,8 @@ KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频"
 async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Optional[int]) -> Optional[dict]:
     """目标存在且对这个机构可见 → {name, book_id?, ...};否则 None。
     可见性**显式写**(本机构的 + 平台共享的),不押在隐式租户过滤器上"""
+    if kind == KIND_DAILY_REVIEW:
+        return {"name": DAILY_REVIEW_NAME, "book_id": None}
     if kind == KIND_SENTENCE:
         row = (await db.execute(
             select(SentenceUnit, SentenceBook)
@@ -69,6 +74,9 @@ async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Opti
 async def _target_names(db: AsyncSession, rows: list[ContentHomework]) -> dict[tuple[str, int], str]:
     """列表批量取目标名(不按行查)。目标被删了的显示「(已删除)」"""
     out: dict[tuple[str, int], str] = {}
+    for h in rows:
+        if h.kind == KIND_DAILY_REVIEW:
+            out[(KIND_DAILY_REVIEW, h.target_id)] = DAILY_REVIEW_NAME
     sids = {h.target_id for h in rows if h.kind == KIND_SENTENCE}
     vids = {h.target_id for h in rows if h.kind == KIND_PHONETIC_VIDEO}
     if sids:
@@ -97,6 +105,8 @@ async def _refresh_completion(db: AsyncSession, links: list[tuple[ContentHomewor
       要求开放后把每一组重过一遍的话得给每组记时间,那张表没有,而且对复习作业来说过严了
     - 视频: phonetic_video_views.completed(services/video_watch.is_completed 判的),看完就算,
       不要求开放后重看(视频看完一遍就是看过了,强制重看只会让孩子拖进度条)
+    - 每日复习: 开放那天的那一份(services/daily_review)全做完。只认那一天 —— 「今天的 20 个」
+      隔天就换了一批,补做不了,所以这类作业恒为当天截止
     """
     pending = [(s, h) for s, h in links if s.completed_at is None]
     if not pending:
@@ -116,6 +126,8 @@ async def _refresh_completion(db: AsyncSession, links: list[tuple[ContentHomewor
                 SentenceUnitProgress.completed_at.is_not(None),
             ))).scalars():
                 sent_done[p.unit_id] = max(p.completed_at, p.updated_at or p.completed_at)
+        review_days = {_open_day(h) for _, h in items if h.kind == KIND_DAILY_REVIEW}
+        review_done = await daily_review.completed_days(db, student_id, review_days) if review_days else set()
         video_done: set[int] = set()
         if vids:
             video_done = set((await db.execute(select(PhoneticVideoView.video_id).where(
@@ -133,7 +145,15 @@ async def _refresh_completion(db: AsyncSession, links: list[tuple[ContentHomewor
             elif h.kind == KIND_PHONETIC_VIDEO and h.target_id in video_done:
                 s.completed_at = now
                 wrote = True
+            elif h.kind == KIND_DAILY_REVIEW and _open_day(h) in review_done:
+                s.completed_at = now
+                wrote = True
     return wrote
+
+
+def _open_day(h: ContentHomework):
+    """作业开放的北京日(available_from 存的是那天 0 点对应的 UTC)"""
+    return (h.available_from + timedelta(hours=8)).date()
 
 
 def _status(s: ContentHomeworkStudent, h: ContentHomework, now: datetime) -> str:
@@ -150,7 +170,8 @@ def _status(s: ContentHomeworkStudent, h: ContentHomework, now: datetime) -> str
 
 class CreateIn(BaseModel):
     kind: str
-    target_ids: List[int] = Field(..., min_length=1, max_length=30)
+    # 每日复习不用选内容(传空)
+    target_ids: List[int] = Field(default_factory=list, max_length=30)
     student_ids: List[int] = Field(..., min_length=1, max_length=500)
     title: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
@@ -160,6 +181,8 @@ class CreateIn(BaseModel):
     daily_sequence: bool = False
     # True = 只能开放当天做(同单词当日任务);False = 开放后一直能做(默认: 在家做的作业给孩子留余地)
     same_day_only: bool = False
+    # 每日复习: 从开始日期起连续几天,每天一份(恒为当天截止)
+    days: int = Field(1, ge=1, le=MAX_REVIEW_DAYS)
 
 
 async def _students_teacher_can_assign(db: AsyncSession, teacher: User, ids: list[int]) -> list[User]:
@@ -180,10 +203,14 @@ async def create_content_homework(
     if body.kind not in KINDS:
         raise HTTPException(400, "作业类型不对")
     actor = acting_user(teacher)
-    targets = list(dict.fromkeys(body.target_ids))
+    is_review = body.kind == KIND_DAILY_REVIEW
+    org_scope = teacher.org_id if teacher.role != "admin" else None
+    targets = [] if is_review else list(dict.fromkeys(body.target_ids))
+    if not is_review and not targets:
+        raise HTTPException(400, f"先选要布置的{KIND_LABEL[body.kind]}")
     infos = {}
     for tid in targets:
-        info = await _target_info(db, body.kind, tid, teacher.org_id if teacher.role != "admin" else None)
+        info = await _target_info(db, body.kind, tid, org_scope)
         if info is None:
             raise HTTPException(404, f"{KIND_LABEL[body.kind]}不存在或已下架: {tid}")
         infos[tid] = info
@@ -202,18 +229,31 @@ async def create_content_homework(
     if base > local_today() + timedelta(days=60):
         raise HTTPException(400, "开始日期最多提前 60 天")
 
+    # (目标 id, 开放日, 标题)
+    if is_review:
+        items = []
+        for i in range(body.days):
+            day = base + timedelta(days=i)
+            label = f"{KIND_LABEL[body.kind]} · {day.month}月{day.day}日"
+            items.append((0, day, f"{body.title.strip()} · {day.month}月{day.day}日" if (body.title or "").strip() else label))
+    else:
+        items = []
+        for i, tid in enumerate(targets):
+            day = base + timedelta(days=i) if (body.daily_sequence and len(targets) > 1) else base
+            title = (body.title or "").strip() or f"{KIND_LABEL[body.kind]}:{infos[tid]['name']}"
+            if body.title and len(targets) > 1:
+                title = f"{body.title.strip()} · {infos[tid]['name']}"
+            items.append((tid, day, title))
+
     ids = []
-    for i, tid in enumerate(targets):
-        day = base + timedelta(days=i) if (body.daily_sequence and len(targets) > 1) else base
+    for tid, day, title in items:
         open_at, day_end = local_day_utc_range(day)
-        title = (body.title or "").strip() or f"{KIND_LABEL[body.kind]}:{infos[tid]['name']}"
-        if body.title and len(targets) > 1:
-            title = f"{body.title.strip()} · {infos[tid]['name']}"
         hw = ContentHomework(
             kind=body.kind, target_id=tid, title=title[:200], description=body.description,
             teacher_id=teacher.id, org_id=teacher.org_id,
             assigned_by=actor.id, assigned_by_name=(actor.full_name or actor.username or "")[:100] or None,
-            available_from=open_at, deadline=day_end if body.same_day_only else None,
+            # 每日复习恒为当天截止: 那一天的 20 个第二天就换了
+            available_from=open_at, deadline=day_end if (body.same_day_only or is_review) else None,
         )
         db.add(hw)
         await db.flush()
@@ -222,10 +262,11 @@ async def create_content_homework(
             db.add(ContentHomeworkStudent(homework_id=hw.id, student_id=s.id))
 
     names = [s.full_name or s.username for s in students]
+    what = (f"连续 {len(ids)} 天" if is_review
+            else f"{len(ids)} 份:{'、'.join(infos[t]['name'] for t in targets)}")
     audit_log.record(
         db, http, teacher, "homework.create",
-        f"布置{KIND_LABEL[body.kind]}作业 {len(ids)} 份:"
-        f"{'、'.join(infos[t]['name'] for t in targets)},{base.isoformat()} 开放,给 {len(names)} 名学生",
+        f"布置{KIND_LABEL[body.kind]}作业 {what},{base.isoformat()} 开放,给 {len(names)} 名学生",
         target_type="content_homework", target_id=ids[0],
         detail={"kind": body.kind, "homework_ids": ids, "target_ids": targets,
                 "students": [{"id": s.id, "name": n} for s, n in zip(students, names)]},
@@ -343,7 +384,9 @@ async def content_homework_targets(
     db: AsyncSession = Depends(get_db),
     teacher: User = Depends(get_current_teacher),
 ):
-    """布置弹窗里的可选项: 句子 = 书 → 单元;视频 = 按讲师分组的视频列表"""
+    """布置弹窗里的可选项: 句子 = 书 → 单元;视频 = 按讲师分组的视频列表;每日复习不用选"""
+    if kind == KIND_DAILY_REVIEW:
+        return []
     org_id = teacher.org_id if teacher.role != "admin" else None
     if kind == KIND_SENTENCE:
         q = select(SentenceBook, SentenceUnit).join(SentenceUnit, SentenceUnit.book_id == SentenceBook.id) \
@@ -408,6 +451,8 @@ async def my_content_homework(
         # (兑换单节码跳回来用的就是这条路,见 PhoneticsHub)
         if h.kind == KIND_SENTENCE:
             route = f"/student/sentences/{book_of.get(h.target_id, 0)}/{h.target_id}/learn"
+        elif h.kind == KIND_DAILY_REVIEW:
+            route = "/student/memory-curve"
         else:
             route = "/student/phonetics"
         out.append({

@@ -8,7 +8,8 @@ import { API_BASE_URL } from '../config/env';
 import { getStudentBooks } from '../api/progress';
 import type { StudentBook } from '../api/progress';
 import { getMistakeBookStats } from '../api/mistakeBook';
-import { getReviewDueCount, getReviewDueWords } from '../api/memoryCurve';
+import { getDailyReview, type DailyReview } from '../api/dailyReview';
+import { startReviewSession } from '../utils/startReview';
 import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
 import { formatOpenDay } from '../utils/openDay';
@@ -73,7 +74,9 @@ const StudentDashboard = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<number>(0);
   const [mistakeStats, setMistakeStats] = useState<{ unresolved_mistakes: number } | null>(null);
+  // 今天那一份每日复习还剩几个(不是全部到期数: 那个数常是几百,孩子看了就不想做)
   const [reviewDueCount, setReviewDueCount] = useState<number>(0);
+  const [dailyReview, setDailyReview] = useState<DailyReview | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [pendingHomeworkCount, setPendingHomeworkCount] = useState<number>(0);
   const [pendingSync, setPendingSync] = useState<number>(0);  // 本机未上传的学习记录数
@@ -203,8 +206,9 @@ const StudentDashboard = () => {
 
   const loadReviewDueCount = async () => {
     try {
-      const data = await getReviewDueCount();
-      setReviewDueCount(data.due_today);
+      const data = await getDailyReview();
+      setDailyReview(data);
+      setReviewDueCount(data.remaining);
     } catch (error) {
       console.error('加载复习数据失败:', error);
     }
@@ -346,38 +350,14 @@ const StudentDashboard = () => {
   /**
    * 启动一次复习：拉随机打乱的到期词 → 塞 sessionStorage → 跳 classify 复习流程。
    */
+  /**
+   * 启动一次复习: 取今天那一份(20 个,第一次打开时挑好、当天不变)里还没复习的 → 跳 classify 复习流程。
+   * 原来是随机取 20 个到期最早的词,全是几个月前的旧词,这周刚学的永远轮不到(见 services/daily_review.py)。
+   */
   const handleStartReview = async () => {
     try {
-      const words = await getReviewDueWords(20, true);
-      if (!words.length) {
-        return;
-      }
-      const wordData = words.map((w, index) => ({
-        id: w.word_id,
-        word: w.word,
-        phonetic: w.phonetic || '',
-        meaning: w.meaning || '',
-        part_of_speech: w.part_of_speech || '',
-        example_sentence: w.example_sentence || '',
-        example_translation: w.example_translation || '',
-        difficulty: w.difficulty,
-        syllables: w.syllables || '',
-        audio_url: '',
-        image_url: '',
-        tags: [],
-        definitions: w.meaning ? [{
-          id: 0,
-          part_of_speech: w.part_of_speech || '',
-          meaning: w.meaning,
-          example_sentence: w.example_sentence || '',
-          example_translation: w.example_translation || '',
-          is_primary: true,
-        }] : [],
-        order_index: index,
-      }));
-      sessionStorage.setItem('review_practice_words', JSON.stringify(wordData));
-      sessionStorage.setItem('is_review_practice', 'true');
-      navigate('/student/units/0/classify');
+      const dr = await getDailyReview(true);
+      startReviewSession(dr.words || [], navigate);
     } catch (e) {
       console.error('启动复习失败:', e);
     }
@@ -553,11 +533,13 @@ const StudentDashboard = () => {
               <>
                 <h1 className="font-display mb-3 text-2xl font-semibold leading-[1.08] tracking-tight text-slate-800 sm:mb-4 sm:text-3xl md:text-5xl">
                   今天，先复习<span className="hidden sm:inline"><br /></span>{' '}
-                  <span className="font-numeric text-accent-warm text-glow-warm">{Math.min(20, reviewDueCount)}</span>{' '}
+                  <span className="font-numeric text-accent-warm text-glow-warm">{reviewDueCount}</span>{' '}
                   <span className="text-ink-soft">个该回顾的词</span>
                 </h1>
                 <p className="text-ink-soft mb-4 max-w-xl text-sm leading-relaxed sm:mb-6 sm:text-base">
-                  根据艾宾浩斯曲线，这些是你现在最该温习的单词。预计花费 5 分钟。
+                  {dailyReview && dailyReview.done > 0
+                    ? `今天这一份 ${dailyReview.total} 个，已经复习了 ${dailyReview.done} 个，做完就好。`
+                    : '先复习最近学过、快要忘的词，再顺带捡回几个以前的。预计花费 5 分钟。'}
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
                   <button
@@ -1062,9 +1044,9 @@ const StudentDashboard = () => {
                 title: '今日复习',
                 route: '/student/memory-curve',
                 image: reviewDueCount > 0 ? '/eagle-alert.jpeg' : '/eagle-idle.jpeg',
-                metric: reviewDueCount > 0 ? Math.min(20, reviewDueCount) : null,
+                metric: reviewDueCount > 0 ? reviewDueCount : null,
                 metricLabel: '个词待回顾',
-                empty: '今日无需复习',
+                empty: dailyReview?.completed && dailyReview.total > 0 ? `今天的 ${dailyReview.total} 个复习完了` : '今日无需复习',
                 action: reviewDueCount > 0 ? '开始复习 →' : '查看计划 →',
               },
               {

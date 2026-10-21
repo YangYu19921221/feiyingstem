@@ -6,7 +6,7 @@
  */
 import client from './client';
 
-export type ContentKind = 'sentence' | 'phonetic_video';
+export type ContentKind = 'sentence' | 'phonetic_video' | 'daily_review';
 
 export interface ContentTargetGroup {
   /** 句子 = 书 id;视频 = 讲师名 */
@@ -70,6 +70,8 @@ export const createContentHomework = (body: {
   available_date?: string;
   daily_sequence?: boolean;
   same_day_only?: boolean;
+  /** 每日复习: 从开始日期起连续几天,每天一份 */
+  days?: number;
 }) => client.post('/teacher/content-homework', body) as unknown as Promise<{ homework_ids: number[]; assigned: number }>;
 
 export const listTeacherContentHomework = () =>

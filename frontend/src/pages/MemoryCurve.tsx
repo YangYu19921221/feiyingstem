@@ -13,6 +13,8 @@ import {
   type ReviewWord,
   type ReviewProgress,
 } from '../api/memoryCurve';
+import { getDailyReview, type DailyReview } from '../api/dailyReview';
+import { startReviewSession } from '../utils/startReview';
 import { readAllStages, tierByStage, isGraduated, stageFromMastery, initStagesIfMissing } from '../utils/reviewTier';
 
 const REVIEW_PAGE_SIZE = 20;
@@ -71,6 +73,10 @@ const MemoryCurve = () => {
   const [showRules, setShowRules] = useState(false);
   // 复习完成小结：背完返回时对比快照，给"刚复习 N 个、X 个升档"的正反馈
   const [recap, setRecap] = useState<{ done: number; promoted: number } | null>(null);
+  // 今天那一份(20 个,第一次打开时挑好、当天不变)。主按钮开练的是它,不是全部到期词的前 20 个
+  const [daily, setDaily] = useState<DailyReview | null>(null);
+  const [startingDaily, setStartingDaily] = useState(false);
+  const hasDaily = !!daily && daily.total > 0;
 
   useEffect(() => {
     loadData();
@@ -79,11 +85,13 @@ const MemoryCurve = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsData, wordsData, progressData] = await Promise.all([
+      const [statsData, wordsData, progressData, dailyData] = await Promise.all([
         getMemoryCurveStats(),
         getReviewDueWords(500),  // 不限上限：把今日全部到期词都拿回来
         getReviewProgress().catch(() => null),
+        getDailyReview(true).catch(() => null),
       ]);
+      setDaily(dailyData);
       setStats(statsData);
       // 单元隔离后同一拼写在不同单元各有独立词条,到期会一起涌进复习列表,
       // 导致同一个词(如 name)在薄弱/一般里重复出现、要背好多遍。
@@ -273,12 +281,48 @@ const MemoryCurve = () => {
           )}
         </AnimatePresence>
 
+        {/* 今天这一份: 每天固定 20 个,先挑最近学过、快要忘的,再顺带捡回几个以前的 */}
+        {daily && daily.total > 0 && (
+          <section className="rounded-2xl border-2 border-orange-200 bg-orange-50 px-5 py-5">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-orange-700">今天这一份</p>
+                {daily.completed ? (
+                  <p className="mt-1 font-display text-2xl font-semibold text-ink">🎉 今天的 {daily.total} 个复习完了</p>
+                ) : (
+                  <p className="mt-1 font-display text-2xl font-semibold text-ink">
+                    还剩 <span className="font-numeric text-accent-warm">{daily.remaining}</span> 个
+                    <span className="mt-0.5 block text-sm font-normal text-ink-mute">共 {daily.total} 个 · 已复习 {daily.done}</span>
+                  </p>
+                )}
+                <div className="mt-2 h-2 max-w-md overflow-hidden rounded-full bg-black/5">
+                  <div className="h-full bg-accent-warm transition-all" style={{ width: `${Math.round((daily.done / daily.total) * 100)}%` }} />
+                </div>
+                <p className="mt-2 text-xs text-ink-mute">
+                  先复习最近学过、快要忘的词，再顺带捡回几个以前的；每天做完这一份就好
+                  {daily.backlog > daily.total ? `（一共攒了 ${daily.backlog} 个，不用一次补完）` : ''}
+                </p>
+              </div>
+              {!daily.completed && (
+                <button
+                  type="button"
+                  disabled={startingDaily || !daily.words?.length}
+                  onClick={() => { setStartingDaily(true); startReviewSession(daily.words || [], navigate); }}
+                  className="btn-glow w-full shrink-0 rounded-xl px-6 py-3 text-base font-semibold text-white disabled:opacity-50 sm:w-auto"
+                >
+                  {daily.done > 0 ? '接着复习 →' : '开始复习 →'}
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Hero：今日复习 */}
         <section>
           {stats && stats.due_today > 0 ? (
             <>
-              <p className="text-ink-mute text-sm mb-2">今日复习</p>
-              {(() => {
+              <p className="text-ink-mute text-sm mb-2">{hasDaily ? '做完今天这一份还想多复习？按掌握度分组挑着练' : '今日复习'}</p>
+              {!hasDaily && (() => {
                 // 用去重后的实际待复习词数(reviewWords 已按拼写去重),
                 // 与下方三档卡片口径一致;后端 due_today 可能含同拼写多条不一致。
                 const dueTotal = reviewWords.length || (progress?.review_due_today ?? stats.due_today);
@@ -295,7 +339,7 @@ const MemoryCurve = () => {
                   </h2>
                 );
               })()}
-              {progress && (progress.review_done_today > 0 || progress.review_due_today > 0) && (() => {
+              {!hasDaily && progress && (progress.review_done_today > 0 || progress.review_due_today > 0) && (() => {
                 const total = progress.review_done_today + progress.review_due_today;
                 const pct = total > 0 ? Math.round((progress.review_done_today / total) * 100) : 0;
                 return (
@@ -317,9 +361,11 @@ const MemoryCurve = () => {
                   </div>
                 );
               })()}
-              <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
-                按掌握度分成三组，先啃硬骨头再确认熟词；今日全部清零会触发庆祝 🎉
-              </p>
+              {!hasDaily && (
+                <p className="text-ink-soft text-base max-w-xl leading-relaxed mb-6">
+                  按掌握度分成三组，先啃硬骨头再确认熟词；今日全部清零会触发庆祝 🎉
+                </p>
+              )}
 
               {/* 分组复习:薄弱/一般/熟练，各组单独开练，薄弱排首位最该先做 */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -364,9 +410,13 @@ const MemoryCurve = () => {
               <button
                 onClick={() => handleStartReview()}
                 disabled={startingReview}
-                className="px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition disabled:opacity-50"
+                className={hasDaily
+                  // 有今天那一份时,这里只是「多做一点」,别和上面的主按钮抢
+                  ? 'px-5 py-2.5 rounded-xl border border-black/15 text-ink text-sm font-semibold hover:bg-black/5 transition disabled:opacity-50'
+                  : 'px-7 py-3.5 bg-accent-warm text-white rounded-xl text-base font-semibold hover:opacity-90 transition disabled:opacity-50'}
               >
                 {startingReview ? '准备中…'
+                  : hasDaily ? `再多复习 ${Math.min(REVIEW_BATCH, reviewWords.length)} 个 →`
                   : reviewWords.length > REVIEW_BATCH
                     ? `先背 ${REVIEW_BATCH} 个 (共 ${reviewWords.length}) →`
                     : `开始复习 (${reviewWords.length}) →`}

@@ -30,7 +30,7 @@ from app.models.coach import CoachNote
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, LearningRecord, WordMastery
 from app.models.user import ParentStudentLink, StudyCalendar, User
 from app.models.word import Word
-from app.services import daily_words, study_time
+from app.services import daily_review, daily_words, study_time
 from app.services.weak_words import SCORING_MODES
 
 ABSENT_DAYS = 2          # 隔了 2 天及以上没学 = 好几天没来
@@ -146,6 +146,8 @@ async def board(db: AsyncSession, students: Iterable[User], class_of: dict[int, 
         if w and w not in lst and len(lst) < 5:
             lst.append(w)
 
+    review = await daily_review.status_for_students(db, uids, today)
+
     bound = set((await db.execute(
         select(ParentStudentLink.student_id).where(ParentStudentLink.student_id.in_(uids)).distinct()
     )).scalars())
@@ -176,6 +178,8 @@ async def board(db: AsyncSession, students: Iterable[User], class_of: dict[int, 
             "scored_today": n_scored,
             "accuracy_today": round(rate * 100) if rate is not None else None,
             "review_due": review_due.get(s.id, 0),
+            # 今天那一份每日复习: None = 今天还没打开过复习
+            "daily_review": review.get(s.id),
             "weak_today": weak.get(s.id, []),
             "parent_bound": s.id in bound,
             "note": None if note is None else {
@@ -230,8 +234,11 @@ def draft_note(row: dict, weak_words: list[str]) -> str:
             parts.append(f"拼写正确率 {row['accuracy_today']}%,很稳")
     if weak_words:
         parts.append(f"{'、'.join(weak_words[:3])} 拼错了,明天再写两遍")
-    if row["review_due"] > 0 and st not in ("absent", "gone"):
-        parts.append("明天先把「今日复习」做一轮")
+    dr = row.get("daily_review")
+    if dr and dr["total"] and dr["completed"] and st not in ("absent", "gone"):
+        parts.append(f"今天的 {dr['total']} 个复习词也做完了")
+    elif row["review_due"] > 0 and st not in ("absent", "gone"):
+        parts.append("明天先把「今日复习」的 20 个词做完")
     return "。".join(parts)[:NOTE_MAX_LEN] + "。"
 
 

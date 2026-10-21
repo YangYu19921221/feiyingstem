@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'daily-review-student-2026-10',
+    date: '2026-10-22',
+    title: '🧠 复习改成每天一小份',
+    desc: '以前复习的词都是好几个月前的，刚学的反而轮不到。现在每天固定 20 个：先复习最近学过、快要忘的，再捡回几个以前错过的。做完这 20 个，今天的复习就完成了，攒下来的不用一次补完。',
+    where: '学生端首页「今天，先复习」→「开始复习」，或「学习工具 → 今日复习」',
+    roles: ['student'],
+    route: '/student/memory-curve',
+  },
+  {
+    id: 'daily-review-teacher-2026-10',
+    date: '2026-10-22',
+    title: '🧠 「每日复习」能布置成作业了',
+    desc: '学生的复习改成每天固定 20 个（先挑最近学过、快要忘的）。布置作业时选「每日复习」、选连续几天，学生每天做完那 20 个就自动完成，不用交卷。「每日陪跑」里也能看到每个孩子今天复习到第几个。',
+    where: '教师端「作业」→ 上方「布置句子 / 音标 / 复习作业」→ 选「每日复习」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/homework',
+  },
+  {
     id: 'coach-teacher-2026-10',
     date: '2026-10-21',
     title: '💬 每日陪跑：谁没来、谁没做完，一页看清',
