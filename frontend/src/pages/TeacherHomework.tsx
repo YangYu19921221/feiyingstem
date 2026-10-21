@@ -19,6 +19,7 @@ import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import CardRulesNotice from '../components/CardRulesNotice';
+import ContentHomeworkPanel from '../components/teacher/ContentHomeworkPanel';
 import { ClipboardList, Plus, Search } from 'lucide-react';
 
 // 学习模式映射
@@ -419,6 +420,9 @@ const TeacherHomework: React.FC = () => {
     <div className="staff-legacy-page min-h-screen text-slate-800">
       <StaffWorkspaceHeader role="teacher" title="作业管理" subtitle="创建和管理学生作业" icon={ClipboardList} action={<motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowCreateModal(true)} className="teacher-primary teacher-focus-ring flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"><Plus className="h-4 w-4" />创建新作业</motion.button>} />
       <main className="teacher-workspace-main text-slate-800">
+
+        {/* 句子 / 音标视频作业(2026-10-21): 单独一栏,口径与单词作业分开(见 ContentHomeworkPanel 文件头) */}
+        <ContentHomeworkPanel students={students} />
 
         {/* 工具栏:搜索 + 批量删除 */}
         {homeworkList.length > 0 && (

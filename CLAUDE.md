@@ -271,6 +271,21 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 句子 / 音标视频作业(2026-10-21,用户「系统再加什么好」→「按你最好的建议」): 查的生产实情:
+  近 30 天 1045 份作业**全是单词分类**;句子背诵从来没有真实学生练过(sentence_mastery 0 行;9 次上报是测试号和误点,
+  不是数据丢了);两周学过的 96 人里音标视频 11 人。原因: 作业只能选单词单元,老师布置不了。
+  **单开两张表** content_homework / content_homework_students(models/content_homework.py),不碰 homework_assignments:
+  那张表 unit_id NOT NULL 外键到单词单元,金币分母、每日单词数、比赛模式、单元解锁、今日报告十几处都按它 join,
+  塞进去要么重建表要么造假单元。API 在 app/api/v1/content_homework.py(老师 /teacher/content-homework*,
+  学生 /student/content-homework),main.py 挂路由(**main.py 生产与 HEAD 有 15 行漂移(live 相关 import 位置),
+  只能补丁式改**;表靠 import 模型后 create_all 建,没动 database.py —— 它也漂移)。
+  **完成不由前端报**: 列作业时按真实数据现判、写 completed_at 只写不清 —— 句子 = 全部组过过 + 作业开放后
+  sentence_unit_progress.updated_at 刷新过(复习从第 1 组重来过一组就算);视频 = phonetic_video_views.completed。
+  不发金币、不进单词数;只能布置给本机构学生、本机构或平台共享的内容(测试锁住)。
+  前端: 教师作业页顶部 components/teacher/ContentHomeworkPanel(单独弹窗,不塞进单词作业那个大弹窗),
+  学生「我的作业」顶部 components/student/ContentHomeworkList;视频「去完成」用 navigate state openVideoId 直接开那一节。
+  浏览器验过: 老师布置句子单元+音标视频 → 学生看到两条 → 去完成分别进单元学习页 / 打开那节播放器 → 学完两边都显示已完成。
+  测试 tests/test_content_homework.py(5 例)
 - ✅ 宠物三处修复(2026-10-20,用户「宠物还有什么建议」→「按你建议」): 先查的生产实情: 444 只在用宠物,
   ①**真人对战打不起来、收服从没成功过**: 9 月以来 2953 场对战收服 0 次;真人对战被接受的 104 场里 56 场一回合没打。
   根因: 接受方点「接受」直接跳进对战页、在 WS 端等 30 秒「对手未连接」后被踢,**发起方毫不知情**

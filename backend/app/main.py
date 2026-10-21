@@ -132,6 +132,10 @@ app.include_router(teacher_assistants.router, prefix="/api/v1/teacher", tags=["�
 app.include_router(student_live.router, prefix="/api/v1/student", tags=["学生端-线上授课"])
 app.include_router(student_sentence_learning.router, prefix="/api/v1/student", tags=["学生端-句子背诵"])
 app.include_router(teacher_sentence_speech.router, prefix="/api/v1/teacher", tags=["教师端-开口背转写"])
+# 句子 / 音标视频作业(2026-10-21): 单开表,不碰单词作业的口径
+from app.api.v1 import content_homework  # noqa: E402
+app.include_router(content_homework.teacher_router, prefix="/api/v1/teacher", tags=["教师端-句子/音标作业"])
+app.include_router(content_homework.student_router, prefix="/api/v1/student", tags=["学生端-句子/音标作业"])
 app.include_router(live_ws.router, prefix="/api/v1", tags=["直播互动-弹幕"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])

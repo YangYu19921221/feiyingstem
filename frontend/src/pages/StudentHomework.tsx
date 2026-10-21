@@ -26,6 +26,7 @@ import {
 import { toast } from '../components/Toast';
 import { formatOpenDay } from '../utils/openDay';
 import { getErrorMessage } from '../utils/errorMessage';
+import ContentHomeworkList from '../components/student/ContentHomeworkList';
 
 // 学习模式中文映射
 const LEARNING_MODE_MAP: Record<string, string> = {
@@ -315,6 +316,9 @@ const StudentHomework = () => {
             <img src="/eagle-homework.jpeg" alt="" className="hidden h-24 w-32 rounded-xl object-cover shadow-sm sm:block" />
           </div>
         </section>
+
+        {/* 句子 / 音标视频作业(2026-10-21): 学完自动算完成,没有就不显示 */}
+        <ContentHomeworkList />
 
         {/* 状态筛选标签 */}
         <div className="card-soft mb-6 rounded-xl p-2">

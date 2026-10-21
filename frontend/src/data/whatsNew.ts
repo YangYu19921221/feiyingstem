@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'content-homework-teacher-2026-10',
+    date: '2026-10-21',
+    title: '📝 句子背诵、音标视频也能布置成作业了',
+    desc: '作业管理页上面多了「句子 / 音标视频作业」一栏：选句子单元或某节音标视频、选学生、选哪天开放就能布置，可以一次选多个、每天顺延一份。学生学完自动算完成，不用交作业：句子是把单元每一组都过关，视频是看完。这类作业不发金币、不算进单词数，适合布置成在家做的。',
+    where: '教师端「作业」→ 页面上方「布置句子 / 音标作业」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/homework',
+  },
+  {
+    id: 'content-homework-student-2026-10',
+    date: '2026-10-21',
+    title: '📝 老师布置的句子、音标视频作业在这里',
+    desc: '「我的作业」最上面会显示老师布置的句子背诵和音标视频作业，点「去完成」直接进去学。学完就自动算完成，不用再点提交。',
+    where: '学生端「我的作业」',
+    roles: ['student'],
+    route: '/student/homework',
+  },
+  {
     id: 'pet-self-heal-and-pvp-join-2026-10',
     date: '2026-10-21',
     title: '🐾 宠物受伤会自己好了，和同学对战也能打起来了',
