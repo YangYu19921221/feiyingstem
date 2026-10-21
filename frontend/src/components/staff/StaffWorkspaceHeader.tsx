@@ -55,6 +55,7 @@ const navByRole: Record<WorkspaceRole, { primary: NavItem[]; more: NavItem[] }> 
       { label: '竞赛管理', path: '/teacher/competition' },
       { label: 'PK 晋级赛', path: '/teacher/tournaments' },
       { label: '金币管理', path: '/teacher/coins' },
+      { label: '每日陪跑', path: '/teacher/coach' },
       { label: '家长绑定', path: '/teacher/parent-binding' },
       { label: '我的助教', path: '/teacher/assistants' },
     ],

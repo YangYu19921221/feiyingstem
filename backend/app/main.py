@@ -136,6 +136,10 @@ app.include_router(teacher_sentence_speech.router, prefix="/api/v1/teacher", tag
 from app.api.v1 import content_homework  # noqa: E402
 app.include_router(content_homework.teacher_router, prefix="/api/v1/teacher", tags=["教师端-句子/音标作业"])
 app.include_router(content_homework.student_router, prefix="/api/v1/student", tags=["学生端-句子/音标作业"])
+from app.api.v1 import coach  # noqa: E402
+app.include_router(coach.teacher_router, prefix="/api/v1/teacher", tags=["教师端-陪跑"])
+app.include_router(coach.student_router, prefix="/api/v1/student", tags=["学生端-陪跑"])
+app.include_router(coach.parent_router, prefix="/api/v1", tags=["家长端-陪跑"])
 app.include_router(live_ws.router, prefix="/api/v1", tags=["直播互动-弹幕"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])

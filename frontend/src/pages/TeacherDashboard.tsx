@@ -27,6 +27,7 @@ import {
   KeyRound,
   Gift,
   HeartHandshake,
+  MessageSquareHeart,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
@@ -67,6 +68,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
     description: '布置任务、跟进学习进度',
     items: [
       { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'green' },
+      { title: '每日陪跑', description: '谁没来、谁没做完,每天留一句话', route: '/teacher/coach', icon: MessageSquareHeart, tone: 'orange' },
       { title: '分配单词本', description: '规划学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'orange' },
       { title: '学习卡规则', description: '课本要先兑换,布置作业前必看', route: '/teacher/card-rules', icon: KeyRound, tone: 'amber' },
       { title: '实时课堂', description: '查看课堂状态', route: '/teacher/live', icon: Radio, tone: 'teal' },

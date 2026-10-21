@@ -14,6 +14,7 @@ import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../a
 import { formatOpenDay } from '../utils/openDay';
 import { getTodayReport, type TodayReportData } from '../api/todayReport';
 import TodayReportDialog from '../components/report/TodayReportDialog';
+import CoachNoteCard from '../components/coach/CoachNoteCard';
 import { toast } from '../components/Toast';
 import PetWidget from '../components/PetWidget';
 import MyCoinsCard from '../components/MyCoinsCard';
@@ -631,6 +632,9 @@ const StudentDashboard = () => {
             loading="lazy"
           />
         </section>
+
+        {/* 老师的话(陪跑点评):最近 3 天老师留了才出现 */}
+        <CoachNoteCard />
 
         {/* 今日学习报告:今天布置的任务全部完成才出现,点开生成发给家长的图 */}
         {todayReport?.all_done && (

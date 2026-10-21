@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'coach-teacher-2026-10',
+    date: '2026-10-21',
+    title: '💬 每日陪跑：谁没来、谁没做完，一页看清',
+    desc: '新页面把你班里的孩子按「好几天没来 → 今天还没学 → 任务没做完 → 做完了」排好，刚断两三天的排最前面，他们最容易拉回来。每个孩子下面都按今天的数据写好了一句点评（做了几份、学了几个词、哪几个词拼错了），看一眼合适就点「发送」，孩子首页和家长端都能看到，还能看到孩子和家长看没看。「复制提醒」是发给家长的微信话术。',
+    where: '教师工作台「课堂推进 → 每日陪跑」，或顶部「更多 → 每日陪跑」',
+    roles: ['teacher'],
+    route: '/teacher/coach',
+  },
+  {
+    id: 'coach-student-2026-10',
+    date: '2026-10-21',
+    title: '💬 老师每天会对你说一句话',
+    desc: '老师看了你今天学得怎么样，会给你留一句话，比如哪几个词还要再写两遍。留了就显示在首页最上面，爸爸妈妈在家长端也看得到。',
+    where: '学生端首页上方「老师今天对你说」',
+    roles: ['student'],
+    route: '/student/dashboard',
+  },
+  {
     id: 'parent-binding-teacher-2026-10',
     date: '2026-10-21',
     title: '👨‍👩‍👧 一人一条链接，把家长绑进来',

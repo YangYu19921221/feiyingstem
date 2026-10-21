@@ -14,6 +14,7 @@ import {
   type WeeklyReport,
 } from '../api/parent';
 import WeeklyReportCard from '../components/WeeklyReportCard';
+import ParentCoachNotes from '../components/coach/ParentCoachNotes';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import InviteShareDialog from '../components/referral/InviteShareDialog';
@@ -229,6 +230,8 @@ const ParentDashboard = () => {
             </button>
           </section>
         )}
+
+        {activeStudentId !== null && <ParentCoachNotes studentId={activeStudentId} />}
 
         {activeStudentId !== null && (
           <WeeklyReportCard
