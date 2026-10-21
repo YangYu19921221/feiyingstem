@@ -94,7 +94,7 @@ function pickAction(
 
   if (context === 'parent-login') {
     if (code === 'user_not_found') return { label: '没有账号？去注册', to: '/parent/register' };
-    if (code === 'wrong_password') return { label: '忘记密码？请孩子重新生成绑定码后重置' };
+    if (code === 'wrong_password') return { label: '忘记密码？请找孩子的老师重置' };
     if (code === 'inactive')      return { label: '账号已被禁用' };
   }
 

@@ -104,6 +104,48 @@ export const parentLogin = async (
   return res.data;
 };
 
+// ================== 老师：家长绑定 ==================
+// 规则真源 backend/app/api/v1/parent.py(链接码 7 天、一次性;只能给本班学生发)
+
+export interface BoundParent {
+  link_id: number;
+  name: string;
+  phone: string;        // 已脱敏 138****5678
+  bound_at: string | null;
+}
+
+export interface ParentBindingStudent {
+  id: number;
+  username: string;
+  full_name: string;
+  class_name: string;
+  parents: BoundParent[];
+  pending: { code: string; expires_at: string } | null;  // 已发出、还没用掉的链接
+}
+
+export interface TeacherBindCode {
+  code: string;
+  expires_at: string;
+  child_name: string;
+  renewed: boolean;
+}
+
+export const parentBindingApi = {
+  list: (): Promise<{ items: ParentBindingStudent[]; bound: number; total: number }> =>
+    client.get('/teacher/parent-binding/students'),
+  code: (studentId: number, renew = false): Promise<TeacherBindCode> =>
+    client.post(`/teacher/parent-binding/students/${studentId}/code`, null, { params: renew ? { renew: true } : undefined }),
+  codes: (studentIds: number[]): Promise<{ items: Array<{ student_id: number; child_name: string; username: string; code: string; expires_at: string }> }> =>
+    client.post('/teacher/parent-binding/codes', { student_ids: studentIds }),
+  unbind: (linkId: number): Promise<{ ok: boolean }> =>
+    client.delete(`/teacher/parent-binding/links/${linkId}`),
+  resetPassword: (linkId: number): Promise<{ password: string }> =>
+    client.post(`/teacher/parent-binding/links/${linkId}/reset-password`),
+};
+
+/** 家长点开就能注册的链接(码已填好) */
+export const parentRegisterUrl = (code: string) => `${window.location.origin}/parent/register?code=${encodeURIComponent(code)}`;
+
 // 家长：再绑定一个孩子
 export const parentBindAdditional = async (bind_code: string): Promise<ChildSummary> => {
   return client.post('/parent/bind', { bind_code });

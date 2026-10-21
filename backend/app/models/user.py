@@ -25,7 +25,10 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(100), unique=True, nullable=False, index=True)
-    phone = Column(String(20), unique=True, nullable=True, index=True)
+    # 不唯一: 孩子的学生号注册时填的就是家长手机,家长再用同一个号注册家长号是正常的
+    # (2026-10-21 前因此 0 个家长注册成功)。学生/老师之间的查重在 auth_service.get_user_by_phone,
+    # 家长之间靠 username=parent_{手机号} 的唯一约束兜底。生产库这列本来就没有唯一索引
+    phone = Column(String(20), nullable=True, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(100))
     role = Column(String(20), default=UserRole.STUDENT)

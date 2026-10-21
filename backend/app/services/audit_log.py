@@ -39,6 +39,9 @@ ACTION_LABELS: dict[str, str] = {
     "referral.enroll": "确认推荐报名",
     "referral.reward": "兑现推荐奖励",
     "referral.settings": "修改推荐奖励",
+    "parent.bind_link": "生成家长绑定链接",
+    "parent.unbind": "解除家长绑定",
+    "parent.reset_password": "重置家长密码",
     # 注:音标观看**不进** operation_logs(学生不记,见 CLAUDE.md),单独落
     # phonetic_access_logs(见 models/phonetic.PhoneticAccessLog),故这里没有 phonetic.* 项
 }
@@ -51,6 +54,7 @@ ACTION_GROUPS: dict[str, str] = {
     "auth": "登录",
     "assistant": "助教",
     "referral": "家长推荐",
+    "parent": "家长绑定",
 }
 
 _MAX_DETAIL = 20000  # detail JSON 上限:被删作业的学生名单可能很长,截断防止单行过大

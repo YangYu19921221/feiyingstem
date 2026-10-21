@@ -43,6 +43,7 @@ const TeacherStudents = lazyWithRetry(() => import('./pages/TeacherStudents'));
 const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassManagement'));
 const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
 const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'));
+const TeacherParentBinding = lazyWithRetry(() => import('./pages/TeacherParentBinding'));
 const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
 const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
@@ -213,6 +214,9 @@ const DashboardRedirect = () => {
       case 'display':
         // 大屏只读账号:登录后直接进大屏,无处可去
         return <Navigate to="/teacher/bigscreen" replace />;
+      case 'parent':
+        // 家长落到学生首页会满屏 403(家长号和孩子同手机号,主登录页也登得进来)
+        return <Navigate to="/parent/dashboard" replace />;
       case 'student':
       default:
         return <StudentDashboard />;
@@ -717,6 +721,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
               <TeacherCardRules />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 家长绑定(给本班学生的家长发绑定链接) */}
+        <Route
+          path="/teacher/parent-binding"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherParentBinding />
             </ProtectedRoute>
           }
         />

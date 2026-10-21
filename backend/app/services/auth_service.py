@@ -89,9 +89,20 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> O
         return None
 
 
+def _password_ok(plain: str, hashed: Optional[str]) -> bool:
+    try:
+        return bool(hashed) and verify_password(plain, hashed)
+    except ValueError:  # 认不出的哈希(脏数据)当作不匹配,别让一行坏数据挡住同号的其它账号
+        return False
+
+
 async def authenticate_user_strict(db: AsyncSession, username: str, password: str) -> User:
     """
     严格版：区分 user_not_found / wrong_password / inactive 三种失败。
+
+    同一个手机号可能有两个账号: 孩子的学生号(注册时填的是家长手机)和家长号。
+    原来 scalar_one_or_none() 碰到两行直接 500;现在逐个试密码 ——
+    用户名精确匹配优先,学生/老师优先于家长(这个登录页本来是给学生老师的)。
     """
     stmt = select(User).where(
         or_(
@@ -99,13 +110,15 @@ async def authenticate_user_strict(db: AsyncSession, username: str, password: st
             User.email == username,
             User.phone == username
         )
-    )
+    ).limit(5)
     result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    users = list(result.scalars().all())
 
-    if not user:
+    if not users:
         raise AuthFailure("user_not_found", "该账号不存在，请检查输入或先去注册")
-    if not verify_password(password, user.hashed_password):
+    users.sort(key=lambda u: (u.username != username, u.role == "parent"))
+    user = next((u for u in users if _password_ok(password, u.hashed_password)), None)
+    if user is None:
         raise AuthFailure("wrong_password", "密码不正确，请重试或找回密码")
     if not user.is_active:
         raise AuthFailure("inactive", "账号已被禁用，请联系老师或管理员")
@@ -124,10 +137,15 @@ async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User
     return result.scalar_one_or_none()
 
 async def get_user_by_phone(db: AsyncSession, phone: str) -> Optional[User]:
-    """通过手机号获取用户(phone 全局唯一,查重需跨机构,跳过租户过滤)"""
-    stmt = select(User).where(User.phone == phone).execution_options(skip_tenant_filter=True)
+    """通过手机号找学生/老师账号(查重需跨机构,跳过租户过滤)。
+
+    **不含家长号**: 家长号和孩子的学生号常是同一个手机号,两者并存是正常的。
+    这里服务的是学生注册查重、短信登录、找回密码;家长号走 api/v1/parent.py。
+    """
+    stmt = (select(User).where(User.phone == phone, User.role != "parent")
+            .execution_options(skip_tenant_filter=True).limit(1))
     result = await db.execute(stmt)
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     """通过邮箱获取用户(email 全局唯一,查重需跨机构,跳过租户过滤)"""

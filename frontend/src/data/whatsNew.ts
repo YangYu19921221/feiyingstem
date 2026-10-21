@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'parent-binding-teacher-2026-10',
+    date: '2026-10-21',
+    title: '👨‍👩‍👧 一人一条链接，把家长绑进来',
+    desc: '以前家长用自己的手机号注册家长端会提示「已被其它角色注册」（孩子的学生账号用的就是家长手机），所以一直没人注册成功，现在修好了。新加的「家长绑定」页能看到哪些学生的家长还没绑：点「复制链接」在微信里私发给家长，家长点开、用手机号注册就绑上了，链接 7 天有效。不方便私发可以「打印绑定条」让孩子带回家。家长忘了密码也在这里重置。链接别发到家长群，谁点开都能绑上这个孩子。',
+    where: '教师工作台「激励与复盘 → 家长绑定」，或顶部「更多 → 家长绑定」',
+    roles: ['teacher'],
+    route: '/teacher/parent-binding',
+  },
+  {
+    id: 'parent-binding-student-2026-10',
+    date: '2026-10-21',
+    title: '👨‍👩‍👧 家长绑定码改成一天内有效',
+    desc: '给家长的绑定码以前 5 分钟就过期，现在 24 小时内都能用，放学回家再告诉家长也来得及。家长注册时可以用和你账号一样的手机号。',
+    where: '学生端「光荣榜」→ 右边「让家长看到你的进步」',
+    roles: ['student'],
+    route: '/student/leaderboard',
+  },
+  {
     id: 'content-homework-teacher-2026-10',
     date: '2026-10-21',
     title: '📝 句子背诵、音标视频也能布置成作业了',

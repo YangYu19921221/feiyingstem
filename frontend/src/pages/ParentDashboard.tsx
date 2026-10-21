@@ -15,6 +15,7 @@ import {
 } from '../api/parent';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
 import InviteShareDialog from '../components/referral/InviteShareDialog';
 import { getParentChildInvite, type InviteInfo } from '../api/referral';
 
@@ -122,7 +123,7 @@ const ParentDashboard = () => {
       setBindCode('');
       loadChildren();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || '绑定失败');
+      toast.error(getErrorMessage(err, '绑定失败'));
     } finally {
       setBinding(false);
     }
@@ -141,7 +142,7 @@ const ParentDashboard = () => {
       <div className="min-h-screen bg-paper page-warm-glow flex items-center justify-center px-5">
         <div className="card-soft rounded-2xl p-8 text-center max-w-sm">
           <h1 className="font-display text-2xl font-semibold text-ink mb-3">还没有绑定孩子</h1>
-          <p className="text-ink-soft text-sm mb-6">请孩子生成绑定码后绑定。</p>
+          <p className="text-ink-soft text-sm mb-6">找孩子的老师要绑定码，或让孩子在光荣榜里生成。</p>
           <button
             onClick={() => setShowBindDialog(true)}
             className="btn-glow w-full py-3.5 text-white rounded-xl font-semibold"
@@ -571,16 +572,16 @@ function BindDialog({ code, setCode, loading, onConfirm, onClose }: {
         className="bg-white rounded-2xl p-6 w-full max-w-sm"
       >
         <h3 className="font-display text-lg font-semibold text-ink mb-2">绑定新的孩子</h3>
-        <p className="text-ink-soft text-sm mb-4">请孩子在「光荣榜 → 邀请家长查看」中生成绑定码。</p>
+        <p className="text-ink-soft text-sm mb-4">绑定码找孩子的老师要，或让孩子在「光荣榜 → 让家长看到你的进步」里生成。</p>
         <input
           type="text"
-          inputMode="numeric"
-          maxLength={8}
+          maxLength={12}
+          autoCapitalize="characters"
           value={code}
-          onChange={e => setCode(e.target.value.replace(/\s/g, ''))}
+          onChange={e => setCode(e.target.value.replace(/\s/g, '').toUpperCase())}
           autoFocus
           className="w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-ink font-numeric text-lg tracking-widest focus:border-accent-warm focus:outline-none mb-4"
-          placeholder="6 位数字"
+          placeholder="绑定码"
         />
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-3 border border-black/15 text-ink rounded-xl font-medium hover:bg-black/5 transition">取消</button>

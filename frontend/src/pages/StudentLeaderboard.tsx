@@ -36,7 +36,7 @@ const StudentLeaderboard = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [bindCode, setBindCode] = useState<{ code: string; minutesLeft: number } | null>(null);
+  const [bindCode, setBindCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [genLoading, setGenLoading] = useState(false);
   // 直播打码: 镜头对着排行榜时开启,全名 → "杨同学"(未成年人隐私红线)
   const [privacy, setPrivacy] = useState(isLivePrivacyOn());
@@ -73,7 +73,7 @@ const StudentLeaderboard = () => {
     setGenLoading(true);
     try {
       const res = await generateParentBindCode();
-      setBindCode({ code: res.code, minutesLeft: res.minutes_left });
+      setBindCode({ code: res.code, expiresAt: res.expires_at });
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || '生成失败');
     } finally {
@@ -129,7 +129,7 @@ const StudentLeaderboard = () => {
         </section>
 
         {bindCode && (
-          <BindCodeDialog code={bindCode.code} minutesLeft={bindCode.minutesLeft}
+          <BindCodeDialog code={bindCode.code} expiresAt={bindCode.expiresAt}
             onClose={() => setBindCode(null)} />
         )}
 
@@ -193,7 +193,7 @@ const StudentLeaderboard = () => {
                 className="card-soft flex min-h-14 w-full items-center justify-between gap-3 rounded-xl px-4 py-3.5 text-left hover:border-accent-warm/30 disabled:cursor-not-allowed sm:px-5">
                 <div className="min-w-0">
                   <p className="font-medium text-ink text-sm">让家长看到你的进步</p>
-                  <p className="text-xs text-ink-soft mt-0.5">生成 6 位绑定码，5 分钟内告诉家长去注册</p>
+                  <p className="text-xs text-ink-soft mt-0.5">生成绑定码，24 小时内告诉家长去注册</p>
                 </div>
                 <span className="text-accent-warm text-sm font-medium ml-3 shrink-0">
                   {genLoading ? '生成中…' : bindCode ? '已生成' : '生成 →'}

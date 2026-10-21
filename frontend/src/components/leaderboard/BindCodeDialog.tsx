@@ -2,18 +2,28 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 
 /** 家长绑定码使用说明弹窗（自原 StudentLeaderboard 抽出，逻辑不变） */
-export default function BindCodeDialog({ code, minutesLeft, onClose }: {
+/** 明天 18:30 / 10月22日 18:30 */
+const fmtExpire = (iso: string) => {
+  const d = new Date(iso.endsWith('Z') ? iso : `${iso}Z`);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return d.toDateString() === tomorrow.toDateString() ? `明天 ${hm}` : `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+};
+
+export default function BindCodeDialog({ code, expiresAt, onClose }: {
   code: string;
-  minutesLeft: number;
+  expiresAt: string;
   onClose: () => void;
 }) {
   const parentUrl = `${window.location.origin}/parent/register?code=${code}`;
+  const until = fmtExpire(expiresAt);
   const shareText =
     `我在「飞鹰AI英语」学习呢，邀请你查看我的学习数据：\n\n` +
     `1. 打开链接：${parentUrl}\n` +
-    `2. 输入手机号 + 设置密码（绑定码已自动填好：${code}）\n` +
+    `2. 输入手机号 + 设置密码（绑定码已自动填好：${code}；手机号可以和我的账号一样）\n` +
     `3. 注册后就能看到我的学习情况啦\n\n` +
-    `（绑定码 ${minutesLeft} 分钟内有效，过期我会再发一个）`;
+    `（绑定码 ${until} 前有效，过期我会再发一个）`;
 
   const [copied, setCopied] = useState<'code' | 'text' | null>(null);
 
@@ -45,7 +55,7 @@ export default function BindCodeDialog({ code, minutesLeft, onClose }: {
           onClick={() => copy(code, 'code')}
           className="w-full py-4 rounded-xl bg-paper hover:bg-black/[0.03] transition mb-2 group"
         >
-          <p className="font-display text-5xl font-bold text-accent-warm font-numeric text-glow-warm tracking-[0.25em]">
+          <p className="font-display text-4xl sm:text-5xl font-bold text-accent-warm font-numeric text-glow-warm tracking-[0.2em]">
             {code}
           </p>
           <p className="text-xs text-ink-mute mt-2 group-hover:text-accent-warm">
@@ -53,7 +63,7 @@ export default function BindCodeDialog({ code, minutesLeft, onClose }: {
           </p>
         </button>
         <p className="text-center text-xs text-ink-mute mb-6">
-          ⏱ {minutesLeft} 分钟内有效，过期请重新生成
+          ⏱ {until} 前有效，只能绑定一次
         </p>
 
         <div className="bg-paper rounded-xl p-4 mb-4">
@@ -65,11 +75,11 @@ export default function BindCodeDialog({ code, minutesLeft, onClose }: {
             </li>
             <li className="flex gap-2">
               <span className="font-numeric font-semibold text-accent-warm shrink-0">2.</span>
-              <span>输入这 6 位绑定码：<span className="font-numeric font-semibold text-ink">{code}</span></span>
+              <span>输入这个绑定码：<span className="font-numeric font-semibold text-ink">{code}</span></span>
             </li>
             <li className="flex gap-2">
               <span className="font-numeric font-semibold text-accent-warm shrink-0">3.</span>
-              <span>填家长手机号 + 设置密码 → 注册成功</span>
+              <span>填家长手机号 + 设置密码 → 注册成功（手机号可以和你的账号一样）</span>
             </li>
             <li className="flex gap-2">
               <span className="font-numeric font-semibold text-accent-warm shrink-0">4.</span>

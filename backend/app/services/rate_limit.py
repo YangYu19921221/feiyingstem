@@ -43,6 +43,22 @@ def check(key: tuple, limit: int, window_sec: int, detail: str) -> None:
             _buckets.pop(k, None)
 
 
+def count(key: tuple, window_sec: int) -> int:
+    """只看不记: 窗口内已有几次(配合 record 做「失败才计数」的闸门)"""
+    dq = _buckets.get(key)
+    if not dq:
+        return 0
+    cutoff = time.monotonic() - window_sec
+    while dq and dq[0] < cutoff:
+        dq.popleft()
+    return len(dq)
+
+
+def record(key: tuple) -> None:
+    """只记不判"""
+    _buckets.setdefault(key, deque()).append(time.monotonic())
+
+
 def reset() -> None:
     """测试用:清空全部计数"""
     _buckets.clear()

@@ -28,7 +28,7 @@ const ParentRegister = () => {
       toast.warning('密码至少 6 位');
       return;
     }
-    if (phone.length < 11) {
+    if (!/^1[3-9]\d{9}$/.test(phone.trim())) {
       toast.warning('请输入正确的手机号');
       return;
     }
@@ -65,7 +65,7 @@ const ParentRegister = () => {
           绑定孩子账号
         </h1>
         <p className="text-ink-soft text-sm mb-4 leading-relaxed">
-          请孩子在「光荣榜 → 让家长看到你的进步」中获取 6 位绑定码（5 分钟内有效）。
+          绑定码找孩子的老师要，或让孩子在「光荣榜 → 让家长看到你的进步」里生成。手机号可以和孩子的账号用同一个。
         </p>
 
         {/* 注册后能看到什么的简介 */}
@@ -93,15 +93,15 @@ const ParentRegister = () => {
           />
 
           <div>
-            <label className="block text-xs text-ink-soft mb-1.5">6 位绑定码</label>
+            <label className="block text-xs text-ink-soft mb-1.5">绑定码</label>
             <input
               type="text"
-              inputMode="numeric"
-              maxLength={8}
+              maxLength={12}
+              autoCapitalize="characters"
               value={bindCode}
-              onChange={e => setBindCode(e.target.value.replace(/\s/g, ''))}
+              onChange={e => setBindCode(e.target.value.replace(/\s/g, '').toUpperCase())}
               className="w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-ink font-numeric text-lg tracking-widest focus:border-accent-warm focus:outline-none transition"
-              placeholder="例如 123456"
+              placeholder="老师给的 8 位码"
             />
           </div>
 

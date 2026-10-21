@@ -7,16 +7,19 @@ import secrets
 from datetime import datetime, date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_, or_, case, Integer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range, local_today_utc_range
-from app.api.v1.auth import get_current_student, get_current_parent
+from app.api.v1.auth import get_current_student, get_current_parent, get_current_teacher
+from app.api.v1.teacher._permissions import assert_student_in_my_class, get_my_class_student_ids
 from app.services.auth_service import get_password_hash, verify_password, create_access_token
-from app.models.user import User, ParentStudentLink, ParentBindCode
+from app.models.user import User, ParentStudentLink, ParentBindCode, Class, ClassStudent
+from app.services import audit_log, rate_limit
 from app.models.learning import LearningRecord, StudySession, WordMastery
 from app.models.word import Word
 from app.api.v1._weekly_report import build_and_cache_weekly_report, WeeklyReportResponse
@@ -35,8 +38,8 @@ class BindCodeResponse(BaseModel):
 
 
 class ParentRegisterRequest(BaseModel):
-    bind_code: str = Field(..., min_length=6, max_length=8)
-    phone: str = Field(..., min_length=11, max_length=20)
+    bind_code: str = Field(..., min_length=6, max_length=12)  # 带空格粘进来的也收,_normalize_code 再去
+    phone: str = Field(..., pattern=r"^1[3-9]\d{9}$")
     password: str = Field(..., min_length=6, max_length=64)
     full_name: Optional[str] = Field(None, max_length=50)
 
@@ -63,22 +66,94 @@ class ChildSummary(BaseModel):
 
 
 class BindAdditionalRequest(BaseModel):
-    bind_code: str = Field(..., min_length=6, max_length=8)
+    bind_code: str = Field(..., min_length=6, max_length=12)
 
 
-# ================== 学生：生成绑定码 ==================
+# ================== 绑定码 ==================
+# 两种码同一张表(code 列 8 字符),**按有没有字母区分**:
+# - 学生自己生成: 8 位纯数字(孩子要念给家长听),24 小时有效 —— 原来 6 位 5 分钟,
+#   孩子在电教室生成、晚上回家才见到家长,码早过期了。有效期拉长后 6 位数字太好猜(见 _limit_bind)
+# - 老师替学生生成: 8 位、首字符必是字母,7 天有效,拼成链接发家长群/私聊(家长点开码已填好)
+# 两种都是一次性的: 码 = 「看这个孩子全部学习数据」的钥匙,发错人能看到别人家孩子
+STUDENT_CODE_TTL = timedelta(hours=24)
+STUDENT_CODE_LEN = 8
+TEACHER_CODE_TTL = timedelta(days=7)
+_TEACHER_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"  # 去掉 I/O,家长手抄不会错
+_TEACHER_ALPHABET = _TEACHER_LETTERS + "23456789"  # 去掉 0/1
+
+
+def is_teacher_code(code: str) -> bool:
+    return not code.isdigit()
+# 注册/绑定按 IP 限速防猜码。家长会在同一个 Wi-Fi 下集中注册(家长会),别卡太死
+BIND_RATE_LIMIT = (30, 600)
+BIND_FAIL_KEY = ("parent-bind-fail",)
+BIND_FAIL_LIMIT = (100, 600)
+
+
+def _normalize_code(code: str) -> str:
+    return (code or "").strip().replace(" ", "").upper()
+
+
+async def _new_bind_code(db: AsyncSession, student_id: int, teacher: bool) -> ParentBindCode:
+    """code 是主键,用过/过期的码不删,随机撞上旧码会 IntegrityError —— 先查再插"""
+    for _ in range(20):
+        if teacher:
+            code = secrets.choice(_TEACHER_LETTERS) + "".join(secrets.choice(_TEACHER_ALPHABET) for _ in range(7))
+        else:
+            code = "".join(secrets.choice("0123456789") for _ in range(STUDENT_CODE_LEN))
+        if await db.get(ParentBindCode, code) is None:
+            break
+    else:
+        raise HTTPException(503, "绑定码生成失败,请重试")
+    row = ParentBindCode(code=code, student_id=student_id,
+                         expires_at=datetime.utcnow() + (TEACHER_CODE_TTL if teacher else STUDENT_CODE_TTL))
+    db.add(row)
+    return row
+
+
+async def _load_valid_code(db: AsyncSession, raw: str) -> ParentBindCode:
+    code_row = await db.get(ParentBindCode, _normalize_code(raw))
+    if not code_row:
+        _bind_failed()
+        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码不对,请核对后重输,或请老师/孩子重新生成"})
+    if code_row.used_at is not None:
+        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "这个绑定码已经用过了,请老师/孩子重新生成"})
+    if code_row.expires_at < datetime.utcnow():
+        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码已过期,请老师/孩子重新生成"})
+    return code_row
+
+
+def _parent_token(user_id: int) -> str:
+    # 家长一周才看一两次,7 天的默认 token 等于每次都要重新登录 → 30 天
+    return create_access_token({"sub": str(user_id)}, expires_delta=timedelta(days=30))
+
+
+def _limit_bind(request: Request) -> None:
+    """单 IP 限速 + 全站「输错码」总量闸门(换 IP 也绕不过)。
+    全站 10 分钟错 100 次远超正常(家长会上几十个家长也就错几次),到了就整体先停,只在真被猜时误伤。
+    算账: 一天最多试 1.44 万次;同时有效的学生码按 50 个算,8 位数字一天猜中的期望 ≈ 0.007 个
+    (6 位数字是 0.7 个,所以有效期拉到 24 小时必须同时加长到 8 位)"""
+    rate_limit.check(("parent-bind", audit_log.client_ip(request) or "-"), *BIND_RATE_LIMIT,
+                     "尝试次数太多,请 10 分钟后再试")
+    if rate_limit.count(BIND_FAIL_KEY, BIND_FAIL_LIMIT[1]) >= BIND_FAIL_LIMIT[0]:
+        raise HTTPException(429, "绑定码输错的人太多,系统先暂停一会儿,请 10 分钟后再试")
+
+
+def _bind_failed() -> None:
+    rate_limit.record(BIND_FAIL_KEY)
+
 
 @router.post("/student/parent-bind-codes", response_model=BindCodeResponse)
 async def generate_parent_bind_code(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    """学生发起 — 生成 6 位绑定码（5 分钟有效），告诉家长去注册"""
-    code = "".join(secrets.choice("0123456789") for _ in range(6))
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
-    db.add(ParentBindCode(code=code, student_id=current_user.id, expires_at=expires_at))
+    """学生发起 — 生成 8 位数字绑定码（24 小时有效），告诉家长去注册"""
+    row = await _new_bind_code(db, current_user.id, teacher=False)
+    code, expires_at = row.code, row.expires_at
     await db.commit()
-    return BindCodeResponse(code=code, expires_at=expires_at, minutes_left=5)
+    return BindCodeResponse(code=code, expires_at=expires_at,
+                            minutes_left=int(STUDENT_CODE_TTL.total_seconds() // 60))
 
 
 # ================== 家长：注册（含绑定）==================
@@ -86,62 +161,78 @@ async def generate_parent_bind_code(
 @router.post("/parent/register", response_model=ParentTokenResponse)
 async def parent_register(
     data: ParentRegisterRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """家长注册：绑定码必填，验证后建账户 + 自动绑定该孩子"""
-    # 1. 校验绑定码
-    res = await db.execute(
-        select(ParentBindCode).where(ParentBindCode.code == data.bind_code)
-    )
-    code_row = res.scalar_one_or_none()
-    if not code_row:
-        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码无效，请让孩子重新生成"})
-    if code_row.used_at is not None:
-        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码已使用，请让孩子重新生成"})
-    if code_row.expires_at < datetime.utcnow():
-        raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码已过期，请让孩子重新生成"})
+    """家长注册：绑定码必填，验证后建账户 + 自动绑定该孩子
 
-    # 2. 校验手机号未占用
-    existing = await db.execute(
-        select(User).where(User.phone == data.phone)
-    )
-    existing_user = existing.scalar_one_or_none()
-    if existing_user:
-        # 如果已是家长账号 → 提示登录
-        if existing_user.role == "parent":
-            raise HTTPException(400, detail={"code": "phone_taken", "message": "该手机号已注册为家长，直接登录就能绑定新孩子"})
-        raise HTTPException(400, detail={"code": "phone_taken", "message": "该手机号已被其它角色注册"})
+    手机号只和**家长号**查重: 孩子的学生号注册时填的多半就是这个手机号
+    (生产 793 个学生 768 个填了手机),原来跟所有角色查重 → 家长一个都注册不上。
+    已有家长号且密码对 → 直接把这个孩子绑上并登录(家长忘了自己注册过,是常态)。
+    """
+    _limit_bind(request)
+    code_row = await _load_valid_code(db, data.bind_code)
+    student_id = code_row.student_id
 
-    # 3. 创建家长账号
+    existing_parent = (await db.execute(
+        select(User).where(User.phone == data.phone, User.role == "parent")
+        .execution_options(skip_tenant_filter=True).limit(1)
+    )).scalars().first()
+    if existing_parent is not None:
+        if not verify_password(data.password, existing_parent.hashed_password):
+            raise HTTPException(400, detail={"code": "phone_taken",
+                                             "message": "这个手机号已经注册过家长账号,密码不对。请直接登录,登录后点「绑定孩子」输入绑定码"})
+        if not existing_parent.is_active:
+            raise HTTPException(403, detail={"code": "inactive", "message": "账号已被禁用，请联系管理员"})
+        await _link(db, existing_parent.id, code_row)
+        await db.commit()
+        return ParentTokenResponse(access_token=_parent_token(existing_parent.id),
+                                   parent_id=existing_parent.id, full_name=existing_parent.full_name)
+
     # org_id 跟孩子走: 不写就落列默认 1(直营),家长请求的租户上下文就是直营,
     # 非直营孩子的家长看不到孩子(User 是锚点表,按 org 过滤)。推荐链接按孩子的机构归属,同理
     child = (await db.execute(
-        select(User).where(User.id == code_row.student_id).execution_options(skip_tenant_filter=True)
+        select(User).where(User.id == student_id).execution_options(skip_tenant_filter=True)
     )).scalar_one_or_none()
     parent = User(
         username=f"parent_{data.phone}",
         email=f"{data.phone}@parent.local",
         phone=data.phone,
         hashed_password=get_password_hash(data.password),
-        full_name=data.full_name or f"{data.phone[-4:]} 的家长",
+        full_name=(data.full_name or "").strip() or f"{data.phone[-4:]} 的家长",
         role="parent",
         org_id=child.org_id if child is not None else 1,
     )
     db.add(parent)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # 同一手机号两台设备同时注册: username=parent_{手机号} 唯一,后到的撞上
+        await db.rollback()
+        raise HTTPException(400, detail={"code": "phone_taken", "message": "这个手机号刚刚注册过家长账号,请直接登录"})
+    parent_id, parent_name = parent.id, parent.full_name
 
-    # 4. 创建绑定关系 + 标记码已用
-    db.add(ParentStudentLink(parent_id=parent.id, student_id=code_row.student_id))
-    code_row.used_at = datetime.utcnow()
+    await _link(db, parent_id, code_row)
     await db.commit()
 
-    # 5. 直接发 token 让前端登录
-    token = create_access_token({"sub": str(parent.id)})
     return ParentTokenResponse(
-        access_token=token,
-        parent_id=parent.id,
-        full_name=parent.full_name,
+        access_token=_parent_token(parent_id),
+        parent_id=parent_id,
+        full_name=parent_name,
     )
+
+
+async def _link(db: AsyncSession, parent_id: int, code_row: ParentBindCode) -> None:
+    """绑定 + 标记码已用。已经绑过这个孩子也把码用掉(否则一个码能反复试)"""
+    exists = (await db.execute(
+        select(ParentStudentLink.id).where(
+            ParentStudentLink.parent_id == parent_id,
+            ParentStudentLink.student_id == code_row.student_id,
+        ).limit(1)
+    )).scalar_one_or_none()
+    if exists is None:
+        db.add(ParentStudentLink(parent_id=parent_id, student_id=code_row.student_id))
+    code_row.used_at = datetime.utcnow()
 
 
 # ================== 家长：登录 ==================
@@ -149,20 +240,34 @@ async def parent_register(
 @router.post("/parent/login", response_model=ParentTokenResponse)
 async def parent_login(
     data: ParentLoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    res = await db.execute(select(User).where(User.phone == data.phone))
-    user = res.scalar_one_or_none()
-    if not user or user.role != "parent":
-        raise HTTPException(401, detail={"code": "user_not_found", "message": "该手机号还没有注册家长账号"})
+    rate_limit.check(("parent-login", audit_log.client_ip(request) or "-"), 60, 600,
+                     "尝试次数太多,请 10 分钟后再试")
+    phone = (data.phone or "").strip()
+    user = (await db.execute(
+        select(User).where(User.phone == phone, User.role == "parent")
+        .execution_options(skip_tenant_filter=True).limit(1)
+    )).scalars().first()
+    if user is None:
+        # 这个号只有孩子的学生号: 家长常以为「孩子用我手机号注册了,我就能登」
+        is_student = (await db.execute(
+            select(User.id).where(User.phone == phone, User.role != "parent")
+            .execution_options(skip_tenant_filter=True).limit(1)
+        )).scalar_one_or_none() is not None
+        raise HTTPException(401, detail={
+            "code": "user_not_found",
+            "message": ("这个手机号是孩子的学生账号,家长账号还没注册。请用老师或孩子给的绑定码注册(手机号可以一样)"
+                        if is_student else "该手机号还没有注册家长账号"),
+        })
     if not verify_password(data.password, user.hashed_password):
         raise HTTPException(401, detail={"code": "wrong_password", "message": "密码不正确，请重试"})
     if not user.is_active:
         raise HTTPException(403, detail={"code": "inactive", "message": "账号已被禁用，请联系管理员"})
 
-    token = create_access_token({"sub": str(user.id)})
     return ParentTokenResponse(
-        access_token=token,
+        access_token=_parent_token(user.id),
         parent_id=user.id,
         full_name=user.full_name,
     )
@@ -173,34 +278,255 @@ async def parent_login(
 @router.post("/parent/bind", response_model=ChildSummary)
 async def parent_bind_additional_child(
     data: BindAdditionalRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_parent: User = Depends(get_current_parent),
 ):
     """已登录家长再绑定一个新孩子"""
-    res = await db.execute(
-        select(ParentBindCode).where(ParentBindCode.code == data.bind_code)
-    )
-    code_row = res.scalar_one_or_none()
-    if not code_row or code_row.used_at is not None or code_row.expires_at < datetime.utcnow():
-        raise HTTPException(400, "绑定码无效或已过期")
+    _limit_bind(request)
+    code_row = await _load_valid_code(db, data.bind_code)
+    student_id = code_row.student_id
 
     # 是否已绑过
     existing = await db.execute(
         select(ParentStudentLink).where(
             and_(
                 ParentStudentLink.parent_id == current_parent.id,
-                ParentStudentLink.student_id == code_row.student_id,
+                ParentStudentLink.student_id == student_id,
             )
         )
     )
     if existing.scalar_one_or_none():
         raise HTTPException(400, "已经绑定过这个孩子")
 
-    db.add(ParentStudentLink(parent_id=current_parent.id, student_id=code_row.student_id))
+    db.add(ParentStudentLink(parent_id=current_parent.id, student_id=student_id))
     code_row.used_at = datetime.utcnow()
     await db.commit()
 
-    return await _build_child_summary(db, code_row.student_id)
+    return await _build_child_summary(db, student_id)
+
+
+# ================== 老师：替学生给家长发绑定链接 ==================
+# 学生自己生成绑定码的入口藏在光荣榜里,一年 363 个码 0 个家长绑上。
+# 真正能把家长拉进来的是老师: 在家长群/私聊里一人发一条链接。
+
+def _mask_phone(p: Optional[str]) -> str:
+    if not p or len(p) < 7:
+        return p or ""
+    return f"{p[:3]}****{p[-4:]}"
+
+
+@router.get("/teacher/parent-binding/students")
+async def teacher_parent_binding_students(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """本班学生 + 每人绑了哪些家长 + 有没有还没用的链接(老师端「家长绑定」页)"""
+    sids = await get_my_class_student_ids(db, current_user.id)
+    if not sids:
+        return {"items": [], "bound": 0, "total": 0}
+
+    students = (await db.execute(
+        select(User.id, User.username, User.full_name).where(User.id.in_(sids))
+    )).all()
+    class_rows = (await db.execute(
+        select(ClassStudent.student_id, Class.name)
+        .join(Class, Class.id == ClassStudent.class_id)
+        .where(Class.teacher_id == current_user.id, ClassStudent.is_active.is_(True),
+               ClassStudent.student_id.in_(sids))
+    )).all()
+    class_of: dict[int, str] = {}
+    for sid, cname in class_rows:
+        class_of.setdefault(sid, cname)
+
+    # 家长号的 org_id 跟孩子走,但老数据可能不一致 —— 跨机构读家长行,范围已由 sids 收住
+    links = (await db.execute(
+        select(ParentStudentLink.id, ParentStudentLink.student_id, ParentStudentLink.bound_at,
+               User.full_name, User.phone)
+        .join(User, User.id == ParentStudentLink.parent_id)
+        .where(ParentStudentLink.student_id.in_(sids))
+        .order_by(ParentStudentLink.id)
+        .execution_options(skip_tenant_filter=True)
+    )).all()
+    parents_of: dict[int, list] = {}
+    for lid, sid, bound_at, pname, phone in links:
+        parents_of.setdefault(sid, []).append({
+            "link_id": lid, "name": pname or "", "phone": _mask_phone(phone), "bound_at": bound_at,
+        })
+
+    now = datetime.utcnow()
+    pending = (await db.execute(
+        select(ParentBindCode.student_id, ParentBindCode.code, ParentBindCode.expires_at)
+        .where(ParentBindCode.student_id.in_(sids), ParentBindCode.used_at.is_(None),
+               ParentBindCode.expires_at > now)
+        .order_by(ParentBindCode.expires_at)
+    )).all()
+    # 只认老师发的链接码: 孩子自己生成的码是念给家长听的,不该冒充成「已发的链接」
+    pending_of = {sid: {"code": code, "expires_at": exp}
+                  for sid, code, exp in pending if is_teacher_code(code)}
+
+    items = [{
+        "id": sid, "username": uname, "full_name": fname or "",
+        "class_name": class_of.get(sid, ""),
+        "parents": parents_of.get(sid, []),
+        "pending": pending_of.get(sid),
+    } for sid, uname, fname in students]
+    # 没绑家长的排前面: 打开这页就是为了挨个发链接
+    items.sort(key=lambda x: (len(x["parents"]) > 0, x["class_name"], x["full_name"] or x["username"]))
+    return {"items": items, "bound": sum(1 for x in items if x["parents"]), "total": len(items)}
+
+
+async def _teacher_code(db: AsyncSession, student_id: int, renew: bool) -> tuple[ParentBindCode, bool, bool]:
+    """(码, 是不是新生成的, 有没有作废旧码)。
+    已有没用掉的链接默认原样返回: 老师可能已经发出去了,换码会让家长手里那条失效。
+    renew=True 才作废旧的换新的(发错人了)。"""
+    now = datetime.utcnow()
+    old = [r for r in (await db.execute(
+        select(ParentBindCode).where(
+            ParentBindCode.student_id == student_id, ParentBindCode.used_at.is_(None),
+            ParentBindCode.expires_at > now,
+        ).order_by(ParentBindCode.expires_at.desc())
+    )).scalars().all() if is_teacher_code(r.code)]
+    if old and not renew:
+        return old[0], False, False
+    for r in old:  # 作废 = 让它过期(used_at 留给「真被用了」,事后查得清)
+        r.expires_at = now
+    return await _new_bind_code(db, student_id, teacher=True), True, bool(old)
+
+
+class BatchCodeRequest(BaseModel):
+    student_ids: list[int] = Field(..., min_length=1, max_length=200)
+
+
+@router.post("/teacher/parent-binding/students/{student_id}/code")
+async def teacher_parent_bind_code(
+    student_id: int,
+    request: Request,
+    renew: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """给本班学生的家长生成绑定链接(7 天有效,一次性)"""
+    if current_user.role != "admin":
+        await assert_student_in_my_class(db, current_user.id, student_id)
+    student = (await db.execute(select(User).where(User.id == student_id))).scalar_one_or_none()
+    if student is None or student.role != "student":
+        raise HTTPException(404, "学生不存在")
+    child_name, child_label = student.full_name or "", student.full_name or student.username
+
+    row, created, renewed = await _teacher_code(db, student_id, renew)
+    code, expires_at = row.code, row.expires_at
+    if created:
+        audit_log.record(db, request, current_user, "parent.bind_link",
+                         f"给「{child_label}」的家长生成绑定链接" + ("(换新,旧链接作废)" if renewed else ""),
+                         target_type="user", target_id=student_id)
+        await db.commit()
+    return {"code": code, "expires_at": expires_at, "child_name": child_name, "renewed": renewed}
+
+
+@router.post("/teacher/parent-binding/codes")
+async def teacher_parent_bind_codes(
+    body: BatchCodeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """一次给多个学生拿绑定码(打印「家长绑定条」用,孩子带回家)。已有没用掉的照旧返回同一个码"""
+    ids = list(dict.fromkeys(body.student_ids))
+    if current_user.role != "admin":
+        mine = await get_my_class_student_ids(db, current_user.id)
+        if any(i not in mine for i in ids):
+            raise HTTPException(403, "只能给自己班里的学生生成")
+    students = (await db.execute(
+        select(User.id, User.username, User.full_name).where(User.id.in_(ids), User.role == "student")
+    )).all()
+    out, created_n = [], 0
+    for sid, uname, fname in students:
+        row, created, _ = await _teacher_code(db, sid, False)
+        created_n += int(created)
+        out.append({"student_id": sid, "child_name": fname or "", "username": uname,
+                    "code": row.code, "expires_at": row.expires_at})
+    if created_n:
+        audit_log.record(db, request, current_user, "parent.bind_link",
+                         f"批量生成家长绑定链接 {created_n} 个(打印绑定条)",
+                         detail={"student_ids": [o["student_id"] for o in out]})
+    await db.commit()
+    order = {sid: i for i, sid in enumerate(ids)}
+    out.sort(key=lambda o: order.get(o["student_id"], 0))
+    return {"items": out}
+
+
+@router.post("/teacher/parent-binding/links/{link_id}/reset-password")
+async def teacher_reset_parent_password(
+    link_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """家长忘了密码: 生产没配短信,家长端没有自助找回,只能老师重置。
+    只在这个家长绑定的**每个**孩子都在本班时放行 —— 他还绑着别班的孩子,
+    重置等于让这个老师进得去别班孩子的家长号。新密码只在响应里出现这一次"""
+    from app.services.auth_service import generate_random_password
+
+    link = (await db.execute(
+        select(ParentStudentLink).where(ParentStudentLink.id == link_id)
+    )).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(404, "绑定关系不存在")
+    parent_id = link.parent_id
+    mine = await get_my_class_student_ids(db, current_user.id)
+    if current_user.role != "admin":
+        if link.student_id not in mine:
+            raise HTTPException(403, "无权操作该学生")
+        kids = (await db.execute(
+            select(ParentStudentLink.student_id).where(ParentStudentLink.parent_id == parent_id)
+        )).scalars().all()
+        if any(k not in mine for k in kids):
+            raise HTTPException(403, "这位家长还绑定了别的班的孩子,请找机构管理员在「用户管理」里重置")
+    parent = (await db.execute(
+        select(User).where(User.id == parent_id, User.role == "parent")
+        .execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    if parent is None:
+        raise HTTPException(404, "家长账号不存在")
+
+    pwd = generate_random_password(8)
+    parent.hashed_password = get_password_hash(pwd)
+    audit_log.record(db, request, current_user, "parent.reset_password",
+                     f"重置家长「{parent.full_name or ''} {_mask_phone(parent.phone)}」的密码",
+                     target_type="user", target_id=parent_id)
+    await db.commit()
+    return {"password": pwd}
+
+
+@router.delete("/teacher/parent-binding/links/{link_id}")
+async def teacher_remove_parent_link(
+    link_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_teacher),
+):
+    """解除绑定(链接发错人了 / 家长换了)。家长账号本身不删"""
+    link = (await db.execute(
+        select(ParentStudentLink).where(ParentStudentLink.id == link_id)
+    )).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(404, "绑定关系不存在")
+    if current_user.role != "admin":
+        await assert_student_in_my_class(db, current_user.id, link.student_id)
+    parent = (await db.execute(
+        select(User.full_name, User.phone).where(User.id == link.parent_id)
+        .execution_options(skip_tenant_filter=True)
+    )).first()
+    student = (await db.execute(select(User.full_name, User.username).where(User.id == link.student_id))).first()
+    audit_log.record(db, request, current_user, "parent.unbind",
+                     f"解除「{(student.full_name or student.username) if student else link.student_id}」与家长"
+                     f"「{(parent.full_name if parent else '') or ''} {_mask_phone(parent.phone if parent else '')}」的绑定",
+                     target_type="user", target_id=link.student_id,
+                     detail={"parent_id": link.parent_id, "student_id": link.student_id})
+    await db.delete(link)
+    await db.commit()
+    return {"ok": True}
 
 
 # ================== 家长：我的孩子列表 ==================
