@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'douyin-live-plan-admin-2026-10',
+    date: '2026-10-22',
+    title: '📣 加盟资料新增「抖音直播招生方案」',
+    desc: '卖「每日陪跑」的整套做法:红线、产品和价格、成本与利润测算(工资、投流费、转化率都能改,全文数字跟着变)、直播流程和逐段话术、体验营 7 天交付、岗位绩效、漏斗复盘。可下载 PDF 拿去培训员工和主播。',
+    where: '管理端首页「运营工具箱 → 组织与人员 → 抖音直播招生」,或「加盟资料」顶部「抖音直播招生」标签',
+    roles: ['admin'],
+    route: '/admin/franchise-kit?doc=douyin',
+  },
+  {
     id: 'daily-review-student-2026-10',
     date: '2026-10-22',
     title: '🧠 复习改成每天一小份',

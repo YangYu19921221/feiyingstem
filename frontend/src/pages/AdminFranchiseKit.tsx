@@ -48,6 +48,8 @@
  *  3. 招商手册 —— 讲"为什么跟我们合作"(机构背景/真实数据/回本/流程),见 FranchiseRecruitDoc.tsx;
  *     价格数字引自第 2 份第八章,改价三处一起改
  *  4. 家长手册 —— 机构直接发给家长看的(怎么教/能获得什么/路线图/家长端/家长常问),见 FranchiseParentDoc.tsx
+ *  6. 抖音直播招生方案(2026-10-22)—— 卖「每日陪跑」的直播话术/定价/交付/绩效,培训员工和主播用,
+ *     见 FranchiseDouyinDoc.tsx。**只给平台 admin**(第四章有用人成本和利润测算);第四章参数可改,全文数字跟着变
  *
  * 导出方式与打印默写纸同一套路:纯前端 window.print(),打印对话框里选"另存为 PDF"
  * 即完成下载,文档不经服务器、不落盘(UPLOAD_DIR 公开无鉴权,敏感资料禁止走那条路)。
@@ -55,18 +57,20 @@
  */
 import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Download, FileSignature, Gift, Handshake, LoaderCircle, Printer, Sparkles, Users } from 'lucide-react';
+import { ArrowLeft, Download, FileSignature, Gift, Handshake, LoaderCircle, Printer, Radio, Sparkles, Users } from 'lucide-react';
 import { downloadElementAsPdf } from '../utils/downloadPdf';
 import FranchiseRecruitDoc from './FranchiseRecruitDoc';
 import FranchiseParentDoc from './FranchiseParentDoc';
 import FranchiseReferralDoc from './FranchiseReferralDoc';
+import FranchiseDouyinDoc from './FranchiseDouyinDoc';
 
-type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral';
+type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral' | 'douyin';
 
 const DOC_FILENAME: Record<DocKey, string> = {
   recruit: '飞鹰英语-招商手册',
   parent: '飞鹰英语-家长手册',
   referral: '飞鹰英语-家长推荐运营方案',
+  douyin: '飞鹰英语-抖音直播招生方案',
   pitch: '飞鹰AI英语-功能详解与提分方案',
   contract: '飞鹰AI英语-合作协议',
 };
@@ -666,6 +670,8 @@ const DOC_TABS: Array<{ key: DocKey; label: string; icon: typeof Users; partner:
   { key: 'recruit', label: '招商手册', icon: Handshake, partner: false },
   { key: 'parent', label: '家长手册', icon: Users, partner: true },
   { key: 'referral', label: '推荐运营方案', icon: Gift, partner: true },
+  // 有用人成本和利润测算,先只给平台;要给加盟商用,改 true 前先让对方把第四章参数换成自己的
+  { key: 'douyin', label: '抖音直播招生', icon: Radio, partner: false },
   { key: 'pitch', label: '提分方案', icon: Sparkles, partner: false },
   { key: 'contract', label: '合作协议', icon: FileSignature, partner: false },
 ];
@@ -768,6 +774,7 @@ export default function AdminFranchiseKit() {
             : doc === 'recruit' ? <FranchiseRecruitDoc />
             : doc === 'parent' ? <FranchiseParentDoc />
             : doc === 'referral' ? <FranchiseReferralDoc />
+            : doc === 'douyin' ? <FranchiseDouyinDoc />
             : <PitchDoc />}
         </div>
       </div>
