@@ -755,13 +755,17 @@ export default function AdminFranchiseKit() {
           >
             <ArrowLeft className="h-4 w-4" /> 返回
           </button>
-          <div className="flex overflow-x-auto rounded-lg border border-slate-200">
+          {/* 标签换行不横向滚动: 8 个标签在 880 宽里放不下,横向滚动时最右边的被裁掉、Mac 上滚动条还是隐藏的,
+              用户以为「合作协议(一次付清)」不存在(10-22 实际发生) */}
+          <div className="order-last flex w-full flex-wrap gap-1.5" role="tablist" aria-label="选择文档">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 type="button"
+                role="tab"
+                aria-selected={doc === key}
                 onClick={() => setDoc(key)}
-                className={`inline-flex shrink-0 items-center gap-1.5 px-3.5 py-2 text-sm font-semibold transition ${doc === key ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold transition ${doc === key ? 'border-[#FF6B35] bg-[#FF6B35] text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
               >
                 <Icon className="h-4 w-4" /> {label}
               </button>
