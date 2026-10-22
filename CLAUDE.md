@@ -292,6 +292,18 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   没做完时按钮的位置换成一句「老师今天布置的任务还有 N 份没做完」+「再查一次」(只藏按钮孩子会以为功能坏了);
   查询失败也不放行(写明查不到 + 重试);接口 403(老师备课进来)不拦。报告图是前端 canvas 现画的,本来就没有后端端点,
   所以闸门只在前端。公告只投老师(学生在结算页就地看到原因)。
+- ✅ 音标兑换码: 码不过期 + 生成即占额度、删除不退(2026-10-22,用户查「曲靖会泽是不是生成音标码了」→
+  「生成后兑换了才开始记时间,删除后额度不能返回,你修改下」): 查到会泽管理员 16:37 生成 10 张、一分钟内逐张删掉,
+  旧规则删了就退额度,机构可以反复生成、删除。改了三处: ①**码本身不过期**: batch_generate_phonetic_codes 的
+  code_valid_days 默认 None → code_expires_at=NULL,卡的天数本来就从兑换那天算;生产存量未用码的 code_expires_at
+  一并清空(改前值备份在 /root/phonetic_code_expiry_backup_20261022.csv)②**额度 = 生成过的张数**
+  (org_service.count_issued_phonetic_codes 与机构列表 GROUP BY 同口径),**禁用也不退**(用户只说了删除;禁用若退,
+  改点禁用就绕过去了)③**删除改软删** status=deleted: 行和开哪几节的明细都留着(id 不回收、数得到额度、留生成记录),
+  列表默认不显示、状态筛选「已删除」看得到,学生兑换提示「已作废」,已删除的不能再禁用。机构生成前多一道确认
+  「生成后禁用或删除都不退回」。**只改了音标码**,单词本兑换码/学习卡额度仍是删除退回(用户没提)。
+  上线时生产机构码只有罗平 2 张未用、没有禁用/删除过的机构码 = 现有额度数字零变化;会泽当天删掉的 10 张是旧规则硬删的,
+  已经退回,仍剩 100。测试 tests/test_phonetic_code_quota.py 加 3 例 + test_phonetic_single_video_code 改 1 例
+  (改回「禁用不算」/ 硬删 / 码 180 天过期 / 列表显示已删除 四处守卫逐一破坏各自对应用例失败,回归锁验证过)
 - ✅ 招商手册 / 合作协议「一次付清」版(2026-10-22,用户「之前不是有个 6w 分期的吗,我还需要一份去掉分期的方案给特殊能力强的加盟商」):
   加盟资料多两个标签「招商手册(一次付清)」「合作协议(一次付清)」,**同一个组件传 fullPay**(FranchiseRecruitDoc / ContractDoc),
   只有付款相关处不同: 协议副标题、第三条第 2 款(签约付 ¥60,000、当日开全部 300 张 + 赠 5本卡 10 张、方法课 12 套一次交付)、
@@ -773,7 +785,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 - ✅ 音标兑换码额度由平台发给机构(2026-10-02): 用户「音标的兑换码额度需要总管理给机构发放」。
   organizations.phonetic_code_quota(NULL/0=未发放,**不回退 student_quota** —— 音标库另卖,
   与 card_quota 是两笔账,混算会让发音标码吃掉续卡名额)。口径真源 org_service.phonetic_code_quota_status
-  (按 phonetic_codes.org_id 计,禁用的归还、已兑换的永久占额;机构列表 GROUP BY 同口径)。
+  (按 phonetic_codes.org_id 计,已兑换的永久占额;机构列表 GROUP BY 同口径。**10-22 起生成即占、禁用/删除都不退**,见上方那条)。
   音标码四个端点改 get_current_admin_or_org_admin,四条规则: ①org_admin 只看/改本机构码
   (`_scope_phonetic_codes`,PhoneticCode **不是 tenancy 锚点**,过滤必须显式写),别家码/平台码 404
   ②生成前过额度闸门(未发放/超额 403)③卡种走同一道 guard_card_policy(机构只能 ≤180 天包月)

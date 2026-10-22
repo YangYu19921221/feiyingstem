@@ -12,6 +12,9 @@
  *
  * 2026-10-16 起可发「指定几节」的码: 开通范围选「指定几节」再勾一节或多节,兑出来只开勾的那几节。
  * 与整库码共用同一份额度(一张码算一张,不按节数);列表「开通范围」列写的是发码时的视频标题快照。
+ *
+ * 2026-10-22 起: 生成即占额度,**禁用、删除都不退回**;删除改软删(状态「已删除」,列表默认不显示);
+ * 码本身不过期,学生兑换那天才开始计时。机构生成前多一道确认(说清不退)。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ban, Check, Copy, Search, Trash2 } from 'lucide-react';
@@ -35,6 +38,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   used: { label: '已使用', color: 'bg-blue-100 text-blue-700' },
   expired: { label: '已过期', color: 'bg-gray-100 text-gray-500' },
   disabled: { label: '已禁用', color: 'bg-red-100 text-red-600' },
+  deleted: { label: '已删除', color: 'bg-gray-100 text-gray-400' },
 };
 
 // 包月常用档。机构按 policy.max_grant_days 截掉超限的档
@@ -171,6 +175,9 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
     if (genScope === 'videos' && pickedVideos.length === 0) {
       toast.warning('请先勾选这批码要开哪几节视频'); return;
     }
+    if (isOrg && !confirm(
+      `确定生成 ${genCount} 张音标兑换码吗？\n\n生成后立即占用 ${genCount} 张额度，之后禁用或删除都不退回。\n请先核对开通范围和卡种。`,
+    )) return;
     setGenerating(true);
     setGenResult([]);
     try {
@@ -194,13 +201,13 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
   };
 
   const handleDisable = async (codeId: number) => {
-    if (!confirm('确定要禁用此音标兑换码吗？')) return;
+    if (!confirm(isOrg ? '确定要禁用此音标兑换码吗？\n\n禁用后学生不能再兑换，额度不退回。' : '确定要禁用此音标兑换码吗？')) return;
     try { await disablePhoneticCode(codeId); fetchCodes(); fetchQuota(); }
     catch { toast.error('禁用兑换码失败，请重试'); }
   };
 
   const handleDelete = async (item: PhoneticCode) => {
-    if (!confirm(`确定删除音标兑换码 ${item.code} 吗？\n\n删除后该码从列表彻底消失，不可恢复。\n如果只是想让它失效并留个记录，请用「禁用」。`)) return;
+    if (!confirm(`确定删除音标兑换码 ${item.code} 吗？\n\n删除后学生不能再兑换，不可恢复${isOrg ? '，额度不退回' : ''}。\n删掉的码在状态筛选「已删除」里还能查到。`)) return;
     try { await deletePhoneticCode(item.id); toast.success('兑换码已删除'); fetchCodes(); fetchQuota(); }
     catch (error) { toast.error(getErrorMessage(error, '删除兑换码失败，请重试')); }
   };
@@ -247,7 +254,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
         <div className={`mb-3 rounded-xl px-4 py-3 text-sm ${noQuota ? 'bg-amber-50 text-amber-800' : 'bg-white text-gray-700 shadow-sm'}`}>
           {noQuota
             ? '平台还没有给本机构发放音标兑换码额度，暂时不能生成。请联系平台开通（开通后这里会显示可发张数）。'
-            : <>音标码额度：已发 <strong>{quota.phonetic_codes_used ?? 0}</strong> / {quotaTotal} 张，剩 <strong className={quotaLeft === 0 ? 'text-red-600' : 'text-indigo-700'}>{quotaLeft}</strong> 张。禁用或删除未使用的码会退回额度；这些码只有本机构学生能兑换。</>}
+            : <>音标码额度：已发 <strong>{quota.phonetic_codes_used ?? 0}</strong> / {quotaTotal} 张，剩 <strong className={quotaLeft === 0 ? 'text-red-600' : 'text-indigo-700'}>{quotaLeft}</strong> 张。<strong>生成即占额度，禁用或删除都不退回</strong>；码不过期，学生兑换那天才开始计时；这些码只有本机构学生能兑换。</>}
         </div>
       )}
       <p className="mb-4 text-xs leading-relaxed text-gray-500">
@@ -505,6 +512,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
               <option value="used">已使用</option>
               <option value="disabled">已禁用</option>
               <option value="expired">已过期</option>
+              <option value="deleted">已删除</option>
             </select>
           </div>
         </div>
@@ -558,7 +566,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
                           </button>
                         )}
                         {/* 已使用的码不给删(是学生兑换凭证,后端也会拒) */}
-                        {c.status !== 'used' && (
+                        {c.status !== 'used' && c.status !== 'deleted' && (
                           <button
                             type="button"
                             onClick={() => handleDelete(c)}

@@ -232,11 +232,11 @@ async def list_organizations(
     )).all()
     cards_by_org = {r[0]: r[1] for r in card_rows}
 
-    # 每机构已发音标码: 口径与 org_service.count_issued_phonetic_codes 一致(禁用的不算)
+    # 每机构已发音标码: 口径与 org_service.count_issued_phonetic_codes 一致(生成过就算,禁用/删除不退)
     from app.models.phonetic import PhoneticCode
     pc_rows = (await db.execute(
         select(PhoneticCode.org_id, func.count(PhoneticCode.id))
-        .where(PhoneticCode.org_id.is_not(None), PhoneticCode.status != "disabled")
+        .where(PhoneticCode.org_id.is_not(None))
         .group_by(PhoneticCode.org_id)
     )).all()
     pcodes_by_org = {r[0]: r[1] for r in pc_rows}

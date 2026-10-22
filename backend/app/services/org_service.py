@@ -97,14 +97,14 @@ def phonetic_code_quota_of(org: Organization | None) -> int:
 
 
 async def count_issued_phonetic_codes(db: AsyncSession, org_id: int) -> int:
-    """该机构已生成(未禁用)的音标码张数 = 已占用额度。
-    ⚠️ 机构列表的 GROUP BY 聚合与此同口径,改一处要同步另一处。"""
+    """该机构生成过的音标码张数 = 已占用额度。**禁用、删除都不退回**(2026-10-22 用户定:
+    「删除后额度不能返回」;禁用也不退,否则改点「禁用」就绕过去了)。删除是软删(status=deleted),
+    行还在,所以数得到。⚠️ 机构列表的 GROUP BY 聚合与此同口径,改一处要同步另一处。"""
     from app.models.phonetic import PhoneticCode
 
     return (await db.execute(
         select(func.count(PhoneticCode.id)).where(
             PhoneticCode.org_id == org_id,
-            PhoneticCode.status != "disabled",
         ).execution_options(skip_tenant_filter=True)
     )).scalar() or 0
 

@@ -759,7 +759,7 @@ export default function AdminOrganizations() {
                   ))}
                 </div>
               )}
-              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">{orgDialog.kind === 'quota' ? '配额立即影响该机构可用的学生账号数量。' : orgDialog.kind === 'cards' ? `已发 ${orgDialog.org.cards_used ?? 0} 张。学习卡按张卖（每张半年），与学生名额是两笔账：学生离班会腾出名额，但卡已经消耗掉了。同一个学生学满一年要两张。` : orgDialog.kind === 'pcodes' ? `已发 ${orgDialog.org.phonetic_codes_used ?? 0} 张。机构管理员在这个额度内自己生成音标视频兑换码发给本机构学生（最长半年包月卡）；禁用未用的码会退回额度。与学习卡是两笔账。` : orgDialog.kind === 'expiry' ? '到期后机构会自动停用，账号无法继续登录。' : '初始密码只展示一次，请在弹窗中复制并安全转交。'}</p>
+              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">{orgDialog.kind === 'quota' ? '配额立即影响该机构可用的学生账号数量。' : orgDialog.kind === 'cards' ? `已发 ${orgDialog.org.cards_used ?? 0} 张。学习卡按张卖（每张半年），与学生名额是两笔账：学生离班会腾出名额，但卡已经消耗掉了。同一个学生学满一年要两张。` : orgDialog.kind === 'pcodes' ? `已发 ${orgDialog.org.phonetic_codes_used ?? 0} 张。机构管理员在这个额度内自己生成音标视频兑换码发给本机构学生（最长半年包月卡）；生成即占额度，禁用或删除都不退回。与学习卡是两笔账。` : orgDialog.kind === 'expiry' ? '到期后机构会自动停用，账号无法继续登录。' : '初始密码只展示一次，请在弹窗中复制并安全转交。'}</p>
               <div className="mt-5 flex justify-end gap-2">
                 <button type="button" className="min-h-10 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-600 hover:bg-slate-200" onClick={() => setOrgDialog(null)}>取消</button>
                 <button type="submit" className="admin-primary admin-focus-ring inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold"><Check className="h-4 w-4" />确认</button>

@@ -205,7 +205,7 @@ async def batch_generate_phonetic_codes(
     count: int,
     org_id: Optional[int] = None,
     batch_note: Optional[str] = None,
-    code_valid_days: int = 180,
+    code_valid_days: Optional[int] = None,
     grant_type: str = GRANT_PERMANENT,
     grant_days: Optional[int] = None,
     grant_times: Optional[int] = None,
@@ -214,13 +214,15 @@ async def batch_generate_phonetic_codes(
     """批量生成音标专用兑换码。
 
     grant_type: permanent / period(grant_days 必填) / times(grant_times 必填)。
-    code_valid_days 是「码本身多久内必须兑换」,与卡的时长/次数无关。
+    code_valid_days 是「码本身多久内必须兑换」,与卡的时长/次数无关。默认 None = **码不过期**
+    (2026-10-22 用户定「生成后兑换了才开始记时间」): 卡的天数本来就从兑换那天算,
+    这里不再给码加「生成后 180 天内必须兑」的期限。
     卡种/时长的身份闸门由调用方先过 guard_card_policy(与单词本发码同口径)。
     videos 为空 = 整库码;非空 = 只开这几节,[(视频id, 标题)],归属由调用方先过
     resolve_code_videos 校验,标题存进明细当快照。
     """
     gt = _normalize_grant_type(grant_type)
-    code_expires_at = datetime.utcnow() + timedelta(days=code_valid_days)
+    code_expires_at = datetime.utcnow() + timedelta(days=code_valid_days) if code_valid_days else None
 
     # 收集已有码避免重复(与 subscription_service.batch_generate_codes 同套路)
     existing = set((await db.execute(select(PhoneticCode.code))).scalars())
@@ -282,6 +284,7 @@ _STATUS_MESSAGES = {
     "used": "兑换码已被使用",
     "disabled": "兑换码已被禁用",
     "expired": "兑换码已过期",
+    "deleted": "兑换码已作废,请向老师重新索取",
 }
 
 
@@ -591,7 +594,7 @@ async def forget_videos(db: AsyncSession, video_ids: Iterable[int]) -> None:
     (实测,见 teacher/phonetics 删视频处)。所以:
     - 单节授权行要删 —— 留着的话学生凭旧授权直接看新传的那节;
     - **未使用**码里这一节的明细删掉 —— 否则兑出来开的是新视频;一节都不剩的码改 disabled
-      (禁用的同时归还机构额度)。码的 scope 仍是 videos,不会退化成整库码。
+      (2026-10-22 起禁用不退回机构额度)。码的 scope 仍是 videos,不会退化成整库码。
     已使用的码不动(兑换凭证,明细里的标题快照还写着当时开的是哪几节)。
     """
     from sqlalchemy import delete as sa_delete, exists

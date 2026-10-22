@@ -258,7 +258,8 @@ class PhoneticCode(Base):
     grant_days = Column(Integer, nullable=True)   # period 卡的有效天数
     grant_times = Column(Integer, nullable=True)  # times 卡的可用次数(学习日)
 
-    # unused = 未使用 / used = 已兑换 / disabled = 作废(与 redemption_codes 同口径)
+    # unused = 未使用 / used = 已兑换 / disabled = 作废 / expired = 过期 /
+    # deleted = 删除(2026-10-22 起软删: 行留着,额度按生成过的张数算,删了不退)
     status = Column(String(20), nullable=False, default="unused", index=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -267,7 +268,8 @@ class PhoneticCode(Base):
     org_id = Column(Integer, nullable=True, index=True)
 
     batch_note = Column(String(200), nullable=True)   # 批次备注,便于后台检索
-    # 码本身的有效期(到期后不可兑换);与它兑出来的授权有效期(grant_days)是两回事
+    # 码本身的有效期(到期后不可兑换);与它兑出来的授权有效期(grant_days)是两回事。
+    # 2026-10-22 起新码为 NULL = 不过期(兑换那天才开始计时)
     code_expires_at = Column(DateTime, nullable=True)
 
     # 开通范围(2026-10-16): library = 整个音标视频库(上线前的唯一形态,存量全是它);

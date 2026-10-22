@@ -464,7 +464,9 @@ async def delete_code(
 # (organizations.phonetic_code_quota),机构在额度内自己生成。三条规则:
 #   ①org_admin 只看得见/改得动**本机构**发的码(org_id == 我的),平台码与别家码一律 404
 #     —— PhoneticCode 不是 tenancy 锚点,过滤必须显式写
-#   ②生成前过额度闸门(真源 org_service.phonetic_code_quota_status),禁用的归还额度
+#   ②生成前过额度闸门(真源 org_service.phonetic_code_quota_status),生成即占额度,禁用/删除都不退
+#     (2026-10-22 起;删除改软删 status=deleted,列表默认不显示,筛「已删除」看得到)
+#   码本身不过期(2026-10-22 起 code_expires_at=NULL),学生兑换那天才开始计时
 #   ③卡种/时长与单词本发码同一道 guard_card_policy(机构只能发 ≤180 天的包月卡)
 # 平台 admin 发的码 org_id 仍为 NULL,不占任何机构额度。
 
@@ -563,8 +565,8 @@ async def generate_phonetic_codes(
                 detail=(
                     f"音标兑换码额度不足: 已发 {st['phonetic_codes_used']}/"
                     f"{st['phonetic_code_quota']} 张,剩 {st['phonetic_codes_left']} 张,"
-                    f"本次申请 {req.count} 张。请联系平台追加额度;"
-                    "生成错的未使用码可以禁用或删除,额度会退回来。"
+                    f"本次申请 {req.count} 张。请联系平台追加额度"
+                    "(生成过的码禁用或删除都不退回额度)。"
                 ),
             )
 
@@ -612,6 +614,10 @@ async def list_phonetic_codes(
     if status:
         query = query.where(PhoneticCode.status == status)
         count_query = count_query.where(PhoneticCode.status == status)
+    else:
+        # 删掉的码(软删)默认不显示,筛「已删除」才看得到
+        query = query.where(PhoneticCode.status != "deleted")
+        count_query = count_query.where(PhoneticCode.status != "deleted")
 
     if search and search.strip():
         # LIKE 的 _ 和 % 是通配符,必须转义(与单词本码列表同诫)
@@ -673,10 +679,12 @@ async def disable_phonetic_code(
     current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """禁用音标兑换码(禁用的归还机构额度)。已使用的不许禁用(语义同单词本码)。"""
+    """禁用音标兑换码(不退回机构额度)。已使用的不许禁用(语义同单词本码)。"""
     code = await _own_phonetic_code(db, code_id, current_user)
     if code.status == "used":
         raise HTTPException(status_code=400, detail="已使用的兑换码无法禁用")
+    if code.status == "deleted":
+        raise HTTPException(status_code=400, detail="这张兑换码已删除")
     code.status = "disabled"
     await db.commit()
     return {"message": "兑换码已禁用"}
@@ -688,18 +696,18 @@ async def delete_phonetic_code(
     current_user: User = Depends(get_current_admin_or_org_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除音标兑换码。已使用的不许删(保留兑换凭证,语义同单词本码)。"""
+    """删除音标兑换码 = **软删**(status=deleted,2026-10-22 起)。已使用的不许删(保留兑换凭证)。
+
+    为什么不真删: 额度按「生成过多少张」算(删了不退,见 org_service.count_issued_phonetic_codes),
+    行没了就数不到;也留着谁、什么时候生成过的记录。删掉的码学生兑换提示已作废,列表默认不显示。
+    明细行(开哪几节)跟着码一起留着 —— 码行还在,id 不会被回收,不会挂到新码上。"""
     code = await _own_phonetic_code(db, code_id, current_user)
     if code.status == "used":
         raise HTTPException(
             status_code=400,
             detail="已使用的兑换码不能删除(需保留兑换记录),如需停用请改为禁用",
         )
-    # 明细行显式删: 生产 FK 是关的,ON DELETE CASCADE 不生效;phonetic_codes 由 create_all 建、
-    # id 不带 AUTOINCREMENT 会被回收,留着孤儿明细就会挂到下一张新码上
-    from sqlalchemy import delete as sa_delete
-    await db.execute(sa_delete(PhoneticCodeVideo).where(PhoneticCodeVideo.code_id == code.id))
-    await db.delete(code)
+    code.status = "deleted"
     await db.commit()
     return {"message": "兑换码已删除"}
 

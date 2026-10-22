@@ -34,6 +34,15 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     route: '/teacher/livestream',
   },
   {
+    id: 'phonetic-code-quota-no-refund-2026-10',
+    date: '2026-10-22',
+    title: '音标兑换码: 生成即占额度,删除不退回',
+    desc: '生成的音标兑换码立即占用额度,之后禁用或删除都不再退回,生成前请核对开通范围和卡种(页面会再确认一次)。码本身不过期,学生兑换那天才开始计时,提前生成、慢慢发不会浪费天数。删掉的码学生兑换会提示已作废,在状态筛选「已删除」里还能查到。',
+    where: '「兑换码管理」页底部「音标视频兑换码」',
+    roles: ['org_admin', 'admin'],
+    route: '/admin/subscriptions',
+  },
+  {
     id: 'learning-report-needs-tasks-teacher-2026-10',
     date: '2026-10-22',
     title: '学生要先做完今天的任务,才能生成「学习报告」',

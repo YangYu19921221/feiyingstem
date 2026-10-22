@@ -100,7 +100,7 @@ export const getMyPurchasedBooks = () =>
 export interface PhoneticCode {
   id: number;
   code: string;
-  status: string;              // unused / used / disabled
+  status: string;              // unused / used / disabled / expired / deleted(音标码软删)
   grant_type: string;          // permanent / period / times
   grant_days?: number | null;
   grant_times?: number | null;

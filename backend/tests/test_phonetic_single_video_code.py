@@ -463,13 +463,17 @@ async def test_code_list_shows_videos_and_searches_titles(client: AsyncClient, e
     assert len(lib) == 1 and lib[0]["videos"] == []
 
 
-async def test_delete_code_removes_its_video_rows(client: AsyncClient, env, db_session):
-    """生产 FK 是关的,ON DELETE CASCADE 不生效 —— 删码必须显式删明细,否则孤儿行会挂到回收 id 的新码上。"""
+async def test_delete_code_is_soft_and_keeps_its_video_rows(client: AsyncClient, env, db_session):
+    """2026-10-22 起删码是软删(额度按生成过的张数算,删了不退): 码行和明细都留着,
+    id 不会被回收,明细不会挂到新码上;删掉的码兑不了。"""
     admin = env["tok"]["admin"]
     r = await _gen(client, admin, video_ids=[env["vid"]["a1"]])
-    code_id = r.json()[0]["id"]
+    code_id, code = r.json()[0]["id"], r.json()[0]["code"]
     d = await client.delete(f"/api/v1/admin/subscriptions/phonetic-codes/{code_id}", headers=_h(admin))
     assert d.status_code == 200, d.text
-    db_session.expire_all()
-    assert (await db_session.execute(select(PhoneticCodeVideo).where(
-        PhoneticCodeVideo.code_id == code_id))).scalars().all() == []
+    row = await _code_row(db_session, code)
+    assert row.status == "deleted"
+    assert len((await db_session.execute(select(PhoneticCodeVideo).where(
+        PhoneticCodeVideo.code_id == code_id))).scalars().all()) == 1
+    res = await _redeem(client, env["tok"]["stuA"], code)
+    assert res["success"] is False

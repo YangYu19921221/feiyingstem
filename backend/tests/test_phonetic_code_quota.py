@@ -1,7 +1,9 @@
 """音标兑换码额度: 平台给机构发放,机构在额度内自己发(2026-10-02)
 
 守的是四件事:
-- 平台没发额度 → 机构发不出(403);额度用完 → 403;禁用归还额度;
+- 平台没发额度 → 机构发不出(403);额度用完 → 403;
+- 2026-10-22 起: 生成即占额度,禁用、删除都不退回;删除是软删(列表默认不显示,兑换提示作废);
+  码本身不过期(兑换那天才开始计时);
 - 机构只看得见/改得动本机构的码(平台码、别家码一律 404);
 - 机构码只给本机构学生兑(否则 A 的额度被 B 的学生用掉);平台码不限机构;
 - 机构只能发 ≤180 天包月卡(与单词本发码同一道 guard_card_policy)。
@@ -105,15 +107,58 @@ async def test_add_is_incremental_and_absolute_set(client: AsyncClient, env):
     assert row["phonetic_code_quota"] == 20 and row["phonetic_codes_used"] == 0
 
 
-async def test_disable_returns_quota_and_list_counts(client: AsyncClient, env):
-    await _grant(client, env["tok"]["admin"], 9931, add_phonetic_codes=1)
-    code_id = (await _gen(client, env["tok"]["oaA"])).json()[0]["id"]
+async def test_disable_and_delete_do_not_return_quota(client: AsyncClient, env):
+    """禁用、删除都不退额度(2026-10-22 用户定)。机构列表与额度接口同口径"""
+    await _grant(client, env["tok"]["admin"], 9931, add_phonetic_codes=2)
+    a = (await _gen(client, env["tok"]["oaA"])).json()[0]["id"]
+    b = (await _gen(client, env["tok"]["oaA"])).json()[0]["id"]
+    assert (await client.post(f"{BASE}/{a}/disable", headers=_h(env["tok"]["oaA"]))).status_code == 200
+    assert (await client.delete(f"{BASE}/{b}", headers=_h(env["tok"]["oaA"]))).status_code == 200
     assert (await _gen(client, env["tok"]["oaA"])).status_code == 403
-    r = await client.post(f"{BASE}/{code_id}/disable", headers=_h(env["tok"]["oaA"]))
-    assert r.status_code == 200
-    assert (await _gen(client, env["tok"]["oaA"])).status_code == 200
+    q = (await client.get(f"{BASE}/quota", headers=_h(env["tok"]["oaA"]))).json()
+    assert (q["phonetic_codes_used"], q["phonetic_codes_left"]) == (2, 0)
     lst = (await client.get("/api/v1/admin/organizations", headers=_h(env["tok"]["admin"]))).json()
-    assert next(o for o in lst if o["id"] == 9931)["phonetic_codes_used"] == 1
+    assert next(o for o in lst if o["id"] == 9931)["phonetic_codes_used"] == 2
+
+
+async def test_delete_is_soft_hidden_and_unredeemable(client: AsyncClient, env, db_session):
+    """删除 = 软删: 行还在(status=deleted)、列表默认不显示、筛「已删除」看得到、学生兑换提示作废"""
+    from sqlalchemy import select
+    from app.models.phonetic import PhoneticCode
+    await _grant(client, env["tok"]["admin"], 9931, add_phonetic_codes=2)
+    body = (await _gen(client, env["tok"]["oaA"])).json()[0]
+    keep = (await _gen(client, env["tok"]["oaA"])).json()[0]
+    assert (await client.delete(f"{BASE}/{body['id']}", headers=_h(env["tok"]["oaA"]))).status_code == 200
+    db_session.expire_all()
+    row = (await db_session.execute(select(PhoneticCode).where(PhoneticCode.id == body["id"]))).scalar_one()
+    assert row.status == "deleted"
+    lst = (await client.get(BASE, headers=_h(env["tok"]["oaA"]))).json()
+    assert [c["id"] for c in lst["codes"]] == [keep["id"]] and lst["total"] == 1
+    gone = (await client.get(BASE, params={"status": "deleted"}, headers=_h(env["tok"]["oaA"]))).json()
+    assert [c["id"] for c in gone["codes"]] == [body["id"]]
+    r = await client.post("/api/v1/subscription/redeem", headers=_h(env["tok"]["stuA"]), json={"code": body["code"]})
+    assert r.json()["success"] is False and "作废" in r.json()["message"]
+    # 已删除的不能再禁用/删除
+    assert (await client.post(f"{BASE}/{body['id']}/disable", headers=_h(env["tok"]["oaA"]))).status_code == 400
+
+
+async def test_code_never_expires_before_redeem(client: AsyncClient, env, db_session):
+    """码本身不过期: 生成时 code_expires_at 为空;放很久以后兑换,天数从兑换那天算"""
+    from datetime import datetime, timedelta
+    from sqlalchemy import select
+    from app.models.phonetic import PhoneticAccessGrant, PhoneticCode
+    await _grant(client, env["tok"]["admin"], 9931, add_phonetic_codes=1)
+    body = (await _gen(client, env["tok"]["oaA"], grant_days=30)).json()[0]
+    assert body["code_expires_at"] is None
+    row = (await db_session.execute(select(PhoneticCode).where(PhoneticCode.id == body["id"]))).scalar_one()
+    row.created_at = datetime.utcnow() - timedelta(days=400)   # 一年多前生成的
+    await db_session.commit()
+    r = await client.post("/api/v1/subscription/redeem", headers=_h(env["tok"]["stuA"]), json={"code": body["code"]})
+    assert r.json()["success"] is True, r.text
+    db_session.expire_all()
+    g = (await db_session.execute(select(PhoneticAccessGrant))).scalar_one()
+    left = (g.expires_at - datetime.utcnow()).days
+    assert 29 <= left <= 30
 
 
 async def test_org_admin_sees_only_own_codes(client: AsyncClient, env):
