@@ -17,6 +17,10 @@
  *     backend/app/services/card_pack.py 走(标准包 ¥60,000 分 3 期 / 五种卡进货价 / 赠送 / **含带教培训**),
  *     提分方案第八章只留摘要,合作协议第三条同口径,改价三处一起改
  *  5. 未核实的数字**留空栏现填**,不替用户编(续费率 90%+ 为用户 09-30 提供,口径=校区缴费数据)
+ *  6. **一次付清版**(2026-10-22,用户「去掉分期的方案给特殊能力强的加盟商」): fullPay=true 时第六章换成
+ *     「签约一次付清 ¥60,000 → 当天开通全部 300 张 + 赠 5本卡 10 张,方法课 12 套一次寄出」。
+ *     赠送张数就是系统里的 card_pack.BONUS_FULL_PAY(平台「卡包到账 → 一次结清」会自动开),改赠送先改那边。
+ *     只有第六章不同,其余章节两版共用
  */
 
 import { PYRAMID } from '../data/franchisePyramid';
@@ -106,7 +110,7 @@ const COMPARE: Array<[string, string, string]> = [
   ['家长沟通', '期末一张成绩单', '家长端随时看学了多少、错在哪,续费有据可依'],
 ];
 
-export default function FranchiseRecruitDoc() {
+export default function FranchiseRecruitDoc({ fullPay = false }: { fullPay?: boolean }) {
   return (
     <article className="text-[13.5px] leading-6 text-slate-800">
       {/* 封面头 */}
@@ -364,8 +368,8 @@ export default function FranchiseRecruitDoc() {
       <Section no="六" title="合作方案:投入多少,怎么回本">
         <StatRow
           items={[
-            ['¥60,000', '标准包 · 分 3 期,每期 ¥20,000'],
-            ['300 张 + 12 套', '学习卡(每张半年)+ 方法课'],
+            fullPay ? ['¥60,000', '标准包 · 签约时一次付清'] : ['¥60,000', '标准包 · 分 3 期,每期 ¥20,000'],
+            fullPay ? ['310 张 + 12 套', '学习卡(含赠送 10 张)+ 方法课'] : ['300 张 + 12 套', '学习卡(每张半年)+ 方法课'],
             ['含培训', '老师带教培训包含在内'],
           ]}
         />
@@ -426,7 +430,7 @@ export default function FranchiseRecruitDoc() {
                 <td className={`${td} text-center`}>合计</td>
                 <td className={`${td} text-center text-[#FF6B35]`}>¥60,000</td>
                 <td className={`${td} text-center`}>300 张 + 12 套</td>
-                <td className={td}>每张卡兑换后有效半年;方法课随每期寄出</td>
+                <td className={td}>每张卡兑换后有效半年;{fullPay ? '方法课签约后一次寄出' : '方法课随每期寄出'}</td>
               </tr>
           </tbody>
         </table>
@@ -435,6 +439,36 @@ export default function FranchiseRecruitDoc() {
           平台上了新书不会自动加进已发出的卡,学生要学新书就再发一张。
         </p>
 
+{fullPay ? (
+        <>
+        <p className="mt-3 font-bold text-slate-900">签约一次付清,全部卡当天开通</p>
+        <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
+          <thead>
+            <tr className="bg-[#FFF3EC]">
+              <th className={`${td} text-center`}>付款时间</th>
+              <th className={`${td} text-center`}>金额</th>
+              <th className={`${td} text-center`}>到账开通</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className={`${td} text-center`}>签约时</td>
+              <td className={`${td} text-center font-bold text-[#FF6B35]`}>¥60,000</td>
+              <td className={td}>
+                入门卡 80、15本卡 15、5本卡 40、小学2本卡 135、单本卡 30,<strong>另赠 5本卡 10 张</strong>;
+                方法课 12 套一次寄出;开通后台,安排带教培训
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
+          <li><strong>不分期</strong>:全部 300 张卡签约当天到账,开学季、寒暑假可以集中发卡招生,不用等下一期。</li>
+          <li><strong>赠送 10 张 5本卡</strong>,按进货价值 ¥3,600,和标准包的卡一样兑换后有效半年。</li>
+          <li>卡用完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
+        </ul>
+        </>
+      ) : (
+        <>
         <p className="mt-3 font-bold text-slate-900">分 3 期付,先拿卡先招生</p>
         <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
           <thead>
@@ -457,6 +491,8 @@ export default function FranchiseRecruitDoc() {
           <li><strong>一次付清 3 期送 10 张 5本卡</strong>;付完第 1 期后一次结清剩余两期,送 5 张。</li>
           <li>3 期付完还要卡就<strong>按进货价补货</strong>,每种 20 张起,不用重新签合同。</li>
         </ul>
+        </>
+      )}
 
         <p className="mt-3 font-bold text-slate-900">另计(按需订购)</p>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] leading-5">

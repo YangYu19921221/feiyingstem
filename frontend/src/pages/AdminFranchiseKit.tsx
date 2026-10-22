@@ -48,6 +48,10 @@
  *  3. 招商手册 —— 讲"为什么跟我们合作"(机构背景/真实数据/回本/流程),见 FranchiseRecruitDoc.tsx;
  *     价格数字引自第 2 份第八章,改价三处一起改
  *  4. 家长手册 —— 机构直接发给家长看的(怎么教/能获得什么/路线图/家长端/家长常问),见 FranchiseParentDoc.tsx
+ *  5. **一次付清版**(2026-10-22,用户「去掉分期的方案给特殊能力强的加盟商」): 招商手册与合作协议各多一个标签
+ *     「…(一次付清)」,同一个组件传 fullPay。只有付款相关的几处不同: 协议第三条第 2/3/5/7 款、费用表、副标题;
+ *     招商手册第六章。一次付清 = 签约付 ¥60,000、当天开全部 300 张 + 赠 5本卡 10 张(= card_pack.BONUS_FULL_PAY,
+ *     平台「卡包到账 → 一次结清」会自动开),方法课 12 套一次寄出。改赠送张数先改 card_pack.py,再改这两份
  *  6. 抖音直播招生方案(2026-10-22)—— 卖「每日陪跑」的直播话术/定价/交付/绩效,培训员工和主播用,
  *     见 FranchiseDouyinDoc.tsx。**只给平台 admin**(第四章有用人成本和利润测算);第四章参数可改,全文数字跟着变
  *
@@ -64,15 +68,17 @@ import FranchiseParentDoc from './FranchiseParentDoc';
 import FranchiseReferralDoc from './FranchiseReferralDoc';
 import FranchiseDouyinDoc from './FranchiseDouyinDoc';
 
-type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral' | 'douyin';
+type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral' | 'douyin' | 'recruitFull' | 'contractFull';
 
 const DOC_FILENAME: Record<DocKey, string> = {
   recruit: '飞鹰英语-招商手册',
+  recruitFull: '飞鹰英语-招商手册(一次付清)',
   parent: '飞鹰英语-家长手册',
   referral: '飞鹰英语-家长推荐运营方案',
   douyin: '飞鹰英语-抖音直播招生方案',
   pitch: '飞鹰AI英语-功能详解与提分方案',
   contract: '飞鹰AI英语-合作协议',
+  contractFull: '飞鹰AI英语-合作协议(一次付清)',
 };
 
 /** 协议空栏:点击可直接输入,打印保留手填内容;留空则打印出下划线供手写 */
@@ -102,12 +108,12 @@ const Clause = ({ no, title, children }: { no: string; title: string; children: 
 );
 
 /** ============ 文档一:合作协议 ============ */
-function ContractDoc() {
+function ContractDoc({ fullPay = false }: { fullPay?: boolean }) {
   return (
     <article className="fk-serif text-[14px] leading-7 text-slate-900">
       <header className="text-center">
         <h1 className="text-[26px] font-bold tracking-wide">「飞鹰AI英语」智能学习系统合作协议</h1>
-        <p className="mt-1 text-[13px] text-slate-600">(学习卡标准包 · 单校区版)</p>
+        <p className="mt-1 text-[13px] text-slate-600">(学习卡标准包 · 单校区版{fullPay ? ' · 一次付清' : ''})</p>
         <p className="mt-3 text-right text-[13px]">协议编号:<Blank w="10rem" /></p>
       </header>
 
@@ -175,6 +181,15 @@ function ContractDoc() {
           以上学习卡合计 48,000 元;另含方法课 <strong>12 套</strong>,单价 <strong>1,000 元 / 套</strong>,合计 12,000 元。
           标准包合计 60,000 元。每张卡开放乙方发卡时选定的书,甲方此后新增的书不自动加入已发出的卡。
         </p>
+{fullPay ? (
+        <p>
+          2. 一次付清:乙方于本协议签订时<strong>一次性支付</strong>标准包费用人民币 <strong>60,000 元</strong>,不分期。
+          甲方收到款项后<strong>当日</strong>开通全部学习卡:入门卡 80 张、15本卡 15 张、5本卡 40 张、小学2本卡 135 张、单本卡 30 张,
+          另<strong>赠送 5本卡 10 张</strong>(与标准包学习卡同等适用本协议条款,兑换后有效期同为半年);
+          同时开通机构后台、交付方法课 12 套并安排带教培训。
+        </p>
+        ) : (
+        <>
         <p>
           2. 分期付款:标准包分 <strong>3 期</strong>支付,每期人民币 <strong>20,000 元</strong>。
           第 1 期于本协议签订时支付,开通入门卡 80 张、15本卡 4 张、5本卡 13 张、小学2本卡 44 张、单本卡 10 张,交付方法课 4 套,
@@ -187,22 +202,26 @@ function ContractDoc() {
           乙方一次付清 3 期的,甲方另赠 5本卡 <strong>10 张</strong>;
           已付第 1 期后一次结清剩余两期的,另赠 5本卡 <strong>5 张</strong>。
         </p>
+        </>
+        )}
         <p>
-          3. 补货:3 期付清后乙方需要更多学习卡的,按前述单价购买,每种 <strong>20 张起</strong>。
+          3. 补货:{fullPay ? '标准包学习卡不足时' : '3 期付清后'}乙方需要更多学习卡的,按前述单价购买,每种 <strong>20 张起</strong>。
           <strong>补货无需另行签订合同</strong>,由乙方书面(含微信、邮件等可留痕方式)告知甲方所需种类与数量,
           甲方收到款项后为乙方开通,该次补货记录即视为本协议附件,适用本协议全部条款。
         </p>
-        <p className="rounded bg-amber-50 px-2 text-[13px] text-amber-900">
-          【待确认】逾期付款的宽限期(<Blank w="4rem" />日)、逾期期间是否暂停开通后续学习卡与区域保护,
-          以及已付期次的退款处理,请甲方确认后补入本款。
-        </p>
+        {!fullPay && (
+          <p className="rounded bg-amber-50 px-2 text-[13px] text-amber-900">
+            【待确认】逾期付款的宽限期(<Blank w="4rem" />日)、逾期期间是否暂停开通后续学习卡与区域保护,
+            以及已付期次的退款处理,请甲方确认后补入本款。
+          </p>
+        )}
         <p>
           4. 飞鹰英语专属内容:已包含在本条第 1 款标准包内,乙方<strong>不另行支付</strong>费用。
         </p>
         <p>
           5. 配套教材:<strong>方法课</strong>(每位学员一套,含第一册音标、第二至四册语法教材,
           另赠送阅读绘本 2 本、必背绘本 1 本)单价人民币 <strong>1,000 元 / 套</strong>。
-          本条第 1 款标准包已含 <strong>12 套</strong>,按第 2 款随各期交付,运费由甲方承担;
+          本条第 1 款标准包已含 <strong>12 套</strong>,{fullPay ? '于乙方付款后一次交付' : '按第 2 款随各期交付'},运费由甲方承担;
           超出部分乙方按学员人数补订,按前述单价结算,运费另计。其他纸质教材<strong>按甲方教材供货清单所列品种、规格与单价明细计算</strong>,
           乙方按需订购;每次订购由双方书面(含微信、邮件等可留痕方式)确认订购明细
           (品种、规格、数量、单价、金额)后执行,运费另计。甲方调整清单单价的,应提前书面告知乙方,
@@ -215,8 +234,9 @@ function ContractDoc() {
           培训期间乙方人员的交通、食宿费用由乙方自理。
         </p>
         <p>
-          7. 付款方式:乙方按本条第 2 款分期支付标准包费用,其余费用按实际发生结算;
-          甲方收到每期款项后当日开通该期学习卡,首期付款后同时完成系统开通与账号交付。
+          {fullPay
+            ? '7. 付款方式:乙方于签约时一次性支付标准包费用,其余费用按实际发生结算;甲方收到款项后当日开通全部学习卡,同时完成系统开通与账号交付。'
+            : '7. 付款方式:乙方按本条第 2 款分期支付标准包费用,其余费用按实际发生结算;甲方收到每期款项后当日开通该期学习卡,首期付款后同时完成系统开通与账号交付。'}
         </p>
         <p>
           8. 系统开通后,已付费用不予退还。因不可抗力(如疫情停课等)导致乙方连续停课三十日以上的,
@@ -235,7 +255,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">标准包</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">¥60,000</td>
-              <td className="border border-slate-500 px-2 py-1.5">300 张学生学习卡(每张半年)+ 12 套方法课 + 机构独立后台 + 飞鹰专属内容 + 带教培训 + 系统升级,分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张</td>
+              <td className="border border-slate-500 px-2 py-1.5">300 张学生学习卡(每张半年)+ 12 套方法课 + 机构独立后台 + 飞鹰专属内容 + 带教培训 + 系统升级,{fullPay ? '签约时一次付清,当日开通全部学习卡,另赠 5本卡 10 张' : '分 3 期每期 ¥20,000;一次付清另赠 5本卡 10 张'}</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">学习卡单价</td>
@@ -245,7 +265,7 @@ function ContractDoc() {
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">补货</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">每种 20 张起</td>
-              <td className="border border-slate-500 px-2 py-1.5">3 期付清后按单价补货;无需另签合同</td>
+              <td className="border border-slate-500 px-2 py-1.5">{fullPay ? '标准包学习卡不足时' : '3 期付清后'}按单价补货;无需另签合同</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">飞鹰英语专属内容</td>
@@ -668,12 +688,14 @@ const FeatureList = ({ items }: { items: Array<{ name: string; desc: string }> }
  *  家长手册(发给咨询家长)、家长推荐运营方案(自己照着做);招商手册/提分方案/合作协议是平台招商用的,不给 */
 const DOC_TABS: Array<{ key: DocKey; label: string; icon: typeof Users; partner: boolean }> = [
   { key: 'recruit', label: '招商手册', icon: Handshake, partner: false },
+  { key: 'recruitFull', label: '招商手册(一次付清)', icon: Handshake, partner: false },
   { key: 'parent', label: '家长手册', icon: Users, partner: true },
   { key: 'referral', label: '推荐运营方案', icon: Gift, partner: true },
   // 有用人成本和利润测算,先只给平台;要给加盟商用,改 true 前先让对方把第四章参数换成自己的
   { key: 'douyin', label: '抖音直播招生', icon: Radio, partner: false },
   { key: 'pitch', label: '提分方案', icon: Sparkles, partner: false },
   { key: 'contract', label: '合作协议', icon: FileSignature, partner: false },
+  { key: 'contractFull', label: '合作协议(一次付清)', icon: FileSignature, partner: false },
 ];
 
 function currentRole(): string {
@@ -771,7 +793,9 @@ export default function AdminFranchiseKit() {
       <div className="fk-wrap px-3 py-6">
         <div ref={sheetRef} className="fk-sheet mx-auto max-w-[820px] rounded-xl border border-slate-200 bg-white p-10 shadow-sm sm:p-12">
           {doc === 'contract' ? <ContractDoc />
+            : doc === 'contractFull' ? <ContractDoc key="full" fullPay />
             : doc === 'recruit' ? <FranchiseRecruitDoc />
+            : doc === 'recruitFull' ? <FranchiseRecruitDoc key="full" fullPay />
             : doc === 'parent' ? <FranchiseParentDoc />
             : doc === 'referral' ? <FranchiseReferralDoc />
             : doc === 'douyin' ? <FranchiseDouyinDoc />
