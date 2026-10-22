@@ -39,6 +39,8 @@ import LearningReportDialog from '../components/classify/LearningReportDialog';
 import TodayReportDialog from '../components/report/TodayReportDialog';
 import { getTodayReport, type TodayReportData } from '../api/todayReport';
 import { buildLearningReport, reportChildName, type LearningReport } from '../utils/learningReport';
+import { learningReportGate } from '../utils/todayReport';
+import type { ReportLocked } from '../components/classify/ClassifySummary';
 import {
   clearDoneGroups, doneGroupsKeyOf, entrySeconds, loadDoneGroups, localDay, pickRestorableGroups,
   pruneStaleDoneGroups, saveDoneGroups, upsertDoneGroup,
@@ -818,12 +820,56 @@ const WordClassifyLearning = () => {
 
   // 学习报告(给家长的分享图)。点按钮那一刻定格数据,弹层开着时不跟着状态变
   const [report, setReport] = useState<LearningReport | null>(null);
-  // 今日学习报告(一天一张,含今天全部任务): 作业交卷达标后查一次,今天全做完才给入口
+  // 今日学习报告(一天一张,含今天全部任务): 进结算页、交完作业各查一次,今天全做完才给入口
   const [todayReport, setTodayReport] = useState<TodayReportData | null>(null);
   const [showTodayReport, setShowTodayReport] = useState(false);
   const openTodayReport = useCallback(() => setShowTodayReport(true), []);
   const closeTodayReport = useCallback(() => setShowTodayReport(false), []);
   const closeReport = useCallback(() => setReport(null), []);
+
+  // 学习报告也要先做完老师今天布置的任务(用户 10-22),判据与今日学习报告同一份数据(utils/todayReport)。
+  // 进结算页查一次;作业交卷后再查一次(这份可能就是最后一份)。连发时只认最后一次请求的结果
+  // na = 不是学生(老师备课进来,接口 403): 没有「老师布置的任务」这回事,不拦
+  const [todayReportStatus, setTodayReportStatus] = useState<'idle' | 'loading' | 'ok' | 'error' | 'na'>('idle');
+  const [submittingHomework, setSubmittingHomework] = useState(false);
+  const todayReportSeq = useRef(0);
+  const refreshTodayReport = useCallback(() => {
+    const seq = ++todayReportSeq.current;
+    setTodayReportStatus('loading');
+    getTodayReport()
+      .then(d => {
+        if (seq !== todayReportSeq.current) return;
+        setTodayReport(d);
+        setTodayReportStatus('ok');
+      })
+      .catch(err => {
+        if (seq !== todayReportSeq.current) return;
+        setTodayReportStatus(err?.response?.status === 403 ? 'na' : 'error');
+      });
+  }, []);
+  const inSummary = phase === 'summary';
+  useEffect(() => {
+    if (inSummary) refreshTodayReport();
+  }, [inSummary, currentGroupIndex, refreshTodayReport]);
+  const reportGate = todayReportStatus === 'na'
+    ? { open: true, left: 0 }
+    : todayReport ? learningReportGate(todayReport) : null;
+  const reportLocked: ReportLocked | null = (() => {
+    if (reportGate?.open) return null;
+    if (submittingHomework) return { text: '正在交卷,稍等一下…' };
+    // 交完卷正在重查时,手里那份还是交卷前的(差 1 份),先别说「没做完」
+    if (todayReportStatus === 'loading') return { text: '正在查今天的任务…' };
+    if (reportGate) {
+      return {
+        text: `老师今天布置的任务还有 ${reportGate.left} 份没做完,全部做完才能生成学习报告。`,
+        onRetry: refreshTodayReport,
+      };
+    }
+    if (todayReportStatus === 'error') {
+      return { text: '没查到今天的任务做没做完,学习报告暂时生成不了。', onRetry: refreshTodayReport };
+    }
+    return { text: '正在查今天的任务…' };
+  })();
   const openReport = useCallback(() => {
     if (!learningData) return;
     const all = buildAllResults();
@@ -875,6 +921,7 @@ const WordClassifyLearning = () => {
     // 学生自己点进单元学完,任务同样算完成
     const submitId = homeworkAssignmentId ?? unitTask?.id ?? null;
     if (submitId) {
+      setSubmittingHomework(true);
       submitHomeworkAttempt(submitId, {
         score: Math.round((correct / total) * 100),
         // 作业耗时同样用净活动时长:此前是墙上时钟,发呆两小时也照记
@@ -886,8 +933,6 @@ const WordClassifyLearning = () => {
         .then(r => {
           if (r.is_passed) {
             setTaskDone(true);  // 横幅变绿打勾后淡出
-            // 这份可能是今天最后一份: 查一下,全做完了结算页就多一个「今日学习报告」
-            getTodayReport().then(setTodayReport).catch(() => {});
           }
           toast.success(r.is_passed
             ? `🎉 作业达标!得分 ${r.score}`
@@ -906,6 +951,11 @@ const WordClassifyLearning = () => {
           if (!err?.response || err.response.status >= 500) {
             toast.success('📡 网络不稳,成绩已保存,恢复后会自动提交');
           }
+        })
+        .finally(() => {
+          setSubmittingHomework(false);
+          // 这份可能是今天最后一份: 交完再查一次,全做完了学习报告和「今日学习报告」才放出来
+          refreshTodayReport();
         });
     }
   }, [finalSummaryData]);
@@ -1247,7 +1297,8 @@ const WordClassifyLearning = () => {
                 totalGroups={totalGroups}
                 onNextGroup={handleNextGroup}
                 taskTargetScore={unitTask?.target_score ?? null}
-                onShowReport={openReport}
+                onShowReport={reportGate?.open ? openReport : undefined}
+                reportLocked={reportLocked}
               />
             </motion.div>
           )}
@@ -1261,7 +1312,8 @@ const WordClassifyLearning = () => {
                 elapsedSeconds={unitSeconds()}
                 onBack={() => goBack()}
                 mode="finalSummary"
-                onShowReport={openReport}
+                onShowReport={reportGate?.open ? openReport : undefined}
+                reportLocked={reportLocked}
                 onShowTodayReport={todayReport?.all_done ? openTodayReport : undefined}
               />
             </motion.div>

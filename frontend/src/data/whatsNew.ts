@@ -25,6 +25,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'learning-report-needs-tasks-teacher-2026-10',
+    date: '2026-10-22',
+    title: '学生要先做完今天的任务,才能生成「学习报告」',
+    desc: '分类学习结算页的「生成学习报告,发给家长」现在要等您今天布置的任务全部完成才出现(在家做的、句子/音标/复习作业都算)。没做完时,按钮的位置会写明「还有 N 份没做完」。今天没布置任务的,照常能生成。学生来问为什么没有报告,就是还有任务没做完。',
+    where: '学生端「分类学习」学完一组或整个单元的结算页',
+    roles: ['teacher'],
+  },
+  {
     id: 'douyin-live-plan-admin-2026-10',
     date: '2026-10-22',
     title: '📣 加盟资料新增「抖音直播招生方案」',

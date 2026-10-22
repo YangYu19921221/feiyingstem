@@ -23,8 +23,34 @@ interface ClassifySummaryProps {
   taskTargetScore?: number | null;
   /** 打开「学习报告」分享图(给家长看学了啥、哪些要多练);不传就不显示按钮 */
   onShowReport?: () => void;
+  /** 学习报告暂时生成不了时的说明(老师今天的任务没做完 / 没查到);不传 onShowReport 时显示在按钮的位置 */
+  reportLocked?: ReportLocked | null;
   /** 今天的任务全部做完时传入: 打开「今日学习报告」(一天一张,含今天全部任务);不传就不显示 */
   onShowTodayReport?: () => void;
+}
+
+export interface ReportLocked {
+  text: string;
+  onRetry?: () => void;
+}
+
+/** 报告按钮的位置换成一句话,说清为什么没有、怎样才有 —— 只藏按钮的话孩子会以为功能坏了 */
+function ReportLockedNote({ text, onRetry, dark }: ReportLocked & { dark?: boolean }) {
+  return (
+    <p
+      role="status"
+      className={`rounded-2xl border px-4 py-3 text-center text-sm leading-relaxed ${
+        dark ? 'border-white/15 bg-white/5 text-slate-300' : 'border-gray-200 bg-gray-50 text-gray-500'
+      }`}
+    >
+      <span aria-hidden>📸 </span>{text}
+      {onRetry && (
+        <button type="button" onClick={onRetry} className="ml-1 font-semibold underline underline-offset-2">
+          再查一次
+        </button>
+      )}
+    </p>
+  );
 }
 
 interface Rank {
@@ -164,6 +190,7 @@ export default function ClassifySummary({
   onNextGroup,
   taskTargetScore,
   onShowReport,
+  reportLocked,
   onShowTodayReport,
 }: ClassifySummaryProps) {
   const totalSeconds = Math.max(0, Math.round(elapsedSeconds));
@@ -253,8 +280,9 @@ export default function ClassifySummary({
               </p>
             </div>
           )}
-          {/* 学到一半就下课的孩子很多(一个单元分两三天学),报告不能只在整单元学完才给 */}
-          {onShowReport && (
+          {/* 学到一半就下课的孩子很多(一个单元分两三天学),报告不能只在整单元学完才给;
+              但老师今天布置的任务没做完就不给(10-22),组小结页也一样 */}
+          {onShowReport ? (
             <button
               type="button"
               onClick={onShowReport}
@@ -262,6 +290,8 @@ export default function ClassifySummary({
             >
               📸 生成学习报告,发给家长
             </button>
+          ) : reportLocked && (
+            <div className="mt-4"><ReportLockedNote {...reportLocked} /></div>
           )}
         </motion.div>
       </div>
@@ -476,6 +506,16 @@ export default function ClassifySummary({
             📸 生成学习报告,发给家长
             <span className="mt-0.5 block text-xs font-medium text-slate-500">学了哪些词、哪些要多练、家长怎么帮</span>
           </motion.button>
+        )}
+        {!onShowReport && reportLocked && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 2.0 }}
+            className="mb-3"
+          >
+            <ReportLockedNote {...reportLocked} dark />
+          </motion.div>
         )}
 
         {/* 最后一份任务就是这个单元时,在这里就能拿到一天的总报告,不用回首页找 */}

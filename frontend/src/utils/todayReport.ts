@@ -27,6 +27,19 @@ export interface TodayReport {
   suggestions: string[];
 }
 
+/** left = 今天还没做完的任务份数(open 时为 0) */
+export interface LearningReportGate { open: boolean; left: number }
+
+/**
+ * 分类学习那张「学习报告」能不能生成(用户 2026-10-22: 没做完老师布置的任务就没有学习报告)。
+ * 口径与今日学习报告同一份数据: 今天开放的任务(含在家做的、句子/音标/复习作业)全部达标才给;
+ * 今天没布置任务 = 没有没做完的,照常给。次数用完没达标(failed)的也算没做完
+ */
+export function learningReportGate(data: TodayReportData): LearningReportGate {
+  if (data.today_total === 0 || data.all_done) return { open: true, left: 0 };
+  return { open: false, left: Math.max(1, data.today_total - data.today_done) };
+}
+
 /** 单词作业有分数;句子/音标视频/每日复习作业只有做没做完 */
 export const hasScore = (t: TodayReportTask) => t.kind === 'word';
 
