@@ -14,8 +14,9 @@
 另有一个不互斥的标记 struggling: 今天计分模式做了 ≥ STRUGGLE_MIN 题、正确率 < STRUGGLE_RATE。
 
 口径都借现成的: 学词数 daily_words、学习时长 study_time、今日任务与 today_report 同口径
-(今天布置、没关闭、含在家做的单词作业)、「最近一次学习」看 study_calendar(每天学过就有一行,
-生产 14 天里每个有学习记录的日子都在日历里,反查 0 缺)。
+(今天布置、没关闭、含在家做的单词作业 + 今天开放的句子/音标视频/每日复习作业,
+后者做没做完走 services/content_homework 那一份判定)、「最近一次学习」看 study_calendar
+(每天学过就有一行,生产 14 天里每个有学习记录的日子都在日历里,反查 0 缺,且覆盖句子/音标)。
 """
 from __future__ import annotations
 
@@ -27,9 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import local_day_utc_range
 from app.models.coach import CoachNote
+from app.models.content_homework import ContentHomework, ContentHomeworkStudent
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, LearningRecord, WordMastery
 from app.models.user import ParentStudentLink, StudyCalendar, User
 from app.models.word import Word
+from app.services import content_homework as chw
 from app.services import daily_review, daily_words, study_time
 from app.services.weak_words import SCORING_MODES
 
@@ -105,6 +108,27 @@ async def board(db: AsyncSession, students: Iterable[User], class_of: dict[int, 
         .group_by(HomeworkStudentAssignment.student_id)
     )).all()}
 
+    # 句子/音标视频/每日复习作业: 今天开放、没关闭的也是今天的任务(不发金币,但老师布置了就是任务)
+    links = list((await db.execute(
+        select(ContentHomeworkStudent, ContentHomework)
+        .join(ContentHomework, ContentHomework.id == ContentHomeworkStudent.homework_id)
+        .where(ContentHomeworkStudent.student_id.in_(uids),
+               ContentHomework.is_closed.is_(False),
+               ContentHomework.available_from >= start,
+               ContentHomework.available_from < end)
+        .order_by(ContentHomework.id)
+    )).all())
+    if await chw.refresh_completion(db, links):
+        await db.commit()
+    names = await chw.target_names(db, [h for _, h in links])
+    other_tasks: dict[int, list[dict]] = {}
+    for link, hw in links:
+        name = names.get((hw.kind, hw.target_id))
+        if name is None:
+            continue    # 内容被删了: 学生端也不显示这份,不算任务
+        other_tasks.setdefault(link.student_id, []).append(
+            {"kind": hw.kind, "label": chw.short_label(hw, name), "done": link.completed_at is not None})
+
     acc = {r.user_id: (int(r.n), int(r.ok or 0)) for r in (await db.execute(
         select(LearningRecord.user_id, func.count().label("n"),
                func.sum(case((LearningRecord.is_correct.is_(True), 1), else_=0)).label("ok"))
@@ -154,7 +178,10 @@ async def board(db: AsyncSession, students: Iterable[User], class_of: dict[int, 
 
     out = []
     for s in students:
-        total, done = tasks.get(s.id, (0, 0))
+        word_total, word_done = tasks.get(s.id, (0, 0))
+        others = other_tasks.get(s.id, [])
+        total = word_total + len(others)
+        done = word_done + sum(1 for t in others if t["done"])
         ld = last_day.get(s.id)
         n_scored, n_ok = acc.get(s.id, (0, 0))
         rate = (n_ok / n_scored) if n_scored else None
@@ -173,6 +200,8 @@ async def board(db: AsyncSession, students: Iterable[User], class_of: dict[int, 
             "week_days": week_days.get(s.id, 0),
             "tasks_total": total,
             "tasks_done": done,
+            # 其中句子/音标视频/每日复习作业那几份(单词作业不在这里列)
+            "other_tasks": others,
             "words_today": words.get(s.id, 0),
             "minutes_today": secs.get(s.id, 0) // 60,
             "scored_today": n_scored,
@@ -221,10 +250,12 @@ def draft_note(row: dict, weak_words: list[str]) -> str:
     elif st == "not_started":
         parts.append(f"{hi}今天的 {total} 份任务还没开始,记得完成" if total else f"{hi}今天还没开始学,记得来练一会儿")
     elif st == "in_progress":
+        left = list(dict.fromkeys(t["label"] for t in row.get("other_tasks", []) if not t["done"]))
+        which = f"({'、'.join(left[:2])}还没做)" if left else ""
         if done:
-            parts.append(f"{hi}今天完成了 {done}/{total} 份任务,还差 {total - done} 份,加油")
+            parts.append(f"{hi}今天完成了 {done}/{total} 份任务,还差 {total - done} 份{which},加油")
         else:
-            parts.append(f"{hi}今天学了 {row['words_today']} 个词,{total} 份任务还没做完,加油")
+            parts.append(f"{hi}今天学了 {row['words_today']} 个词,{total} 份任务还没做完{which},加油")
     else:
         if total:
             parts.append(f"{hi}今天 {total} 份任务全部完成,学了 {row['words_today']} 个词")
@@ -237,7 +268,9 @@ def draft_note(row: dict, weak_words: list[str]) -> str:
     dr = row.get("daily_review")
     if dr and dr["total"] and dr["completed"] and st not in ("absent", "gone"):
         parts.append(f"今天的 {dr['total']} 个复习词也做完了")
-    elif row["review_due"] > 0 and st not in ("absent", "gone"):
+    elif (row["review_due"] > 0 and st not in ("absent", "gone")
+          and not any(t["kind"] == "daily_review" and not t["done"] for t in row.get("other_tasks", []))):
+        # 今天就有一份没做完的每日复习作业时,上面已经点名了,这里不再说一遍
         parts.append("明天先把「今日复习」的 20 个词做完")
     return "。".join(parts)[:NOTE_MAX_LEN] + "。"
 
@@ -252,11 +285,13 @@ def remind_text(row: dict) -> str:
             body = f"{name}已经 {row['days_since']} 天没有背单词了"
         ask = "麻烦您提醒孩子今天抽 15 分钟学一下,隔天复习一次比一次学很多更记得住。"
     elif row["status"] == "not_started":
-        body = f"{name}今天的 {row['tasks_total']} 份单词任务还没开始" if row["tasks_total"] else f"{name}今天还没有学习"
+        body = f"{name}今天的 {row['tasks_total']} 份学习任务还没开始" if row["tasks_total"] else f"{name}今天还没有学习"
         ask = "麻烦您提醒孩子今天完成,谢谢。"
     elif row["status"] == "in_progress":
-        body = f"{name}今天完成了 {row['tasks_done']}/{row['tasks_total']} 份单词任务"
-        ask = f"还差 {row['tasks_total'] - row['tasks_done']} 份,麻烦您提醒孩子做完,谢谢。"
+        body = f"{name}今天完成了 {row['tasks_done']}/{row['tasks_total']} 份学习任务"
+        left = list(dict.fromkeys(t["label"] for t in row.get("other_tasks", []) if not t["done"]))
+        which = f"(其中有{'、'.join(left[:3])})" if left else ""
+        ask = f"还差 {row['tasks_total'] - row['tasks_done']} 份{which},麻烦您提醒孩子做完,谢谢。"
     else:
         body = f"{name}今天的任务都完成了"
         ask = "辛苦您多鼓励孩子。"

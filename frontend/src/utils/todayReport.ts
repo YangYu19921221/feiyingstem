@@ -27,6 +27,9 @@ export interface TodayReport {
   suggestions: string[];
 }
 
+/** 单词作业有分数;句子/音标视频/每日复习作业只有做没做完 */
+export const hasScore = (t: TodayReportTask) => t.kind === 'word';
+
 function taskLine(t: TodayReportTask): string {
   const group = t.group_index ? ` · 第 ${t.group_index} 组` : '';
   return `${t.unit_name}${group}`;
@@ -43,7 +46,8 @@ function taskSub(t: TodayReportTask): string {
 export function buildTodayReport(data: TodayReportData, childName: string, at: Date = new Date()): TodayReport {
   // 档位(配色/插画)按今天这几份任务的平均得分 —— 图上大字写的是「全部完成」、每份任务列着分数,
   // 按「一次都没错」的比例定档会出现「2/2 全部完成」却是「继续加油」配色的怪图
-  const todayScores = data.tasks.filter(t => t.is_today).map(t => t.best_score);
+  // 句子/音标/复习作业没有分数,不拿 0 分去拉低平均
+  const todayScores = data.tasks.filter(t => t.is_today && hasScore(t)).map(t => t.best_score);
   const rate = todayScores.length > 0
     ? Math.round(todayScores.reduce((s, x) => s + x, 0) / todayScores.length) : 100;
   const weak = data.weak.map(w => ({ word: w.word, meaning: shortMeaning(w.meaning), wrote: w.wrote }));
@@ -82,7 +86,7 @@ export function todayReportText(r: TodayReport, orgName: string | null): string 
   const lines = [
     `${head}${r.dateText}`,
     `今天的 ${r.todayTotal} 份任务全部完成:学了 ${r.wordsLearned} 个词,学习 ${r.minutes} 分钟。`,
-    ...r.tasks.map((t, i) => `${i + 1}. ${t.line}(${t.sub}${t.status === 'completed' ? ` · ${t.best_score} 分` : ''})`),
+    ...r.tasks.map((t, i) => `${i + 1}. ${t.line}(${t.sub}${t.status === 'completed' && hasScore(t) ? ` · ${t.best_score} 分` : ''})`),
   ];
   if (r.weakTotal > 0) {
     const list = r.weak.map(w => `${w.word}${w.meaning ? ` ${w.meaning}` : ''}${w.wrote ? `(写成 ${w.wrote})` : ''}`);

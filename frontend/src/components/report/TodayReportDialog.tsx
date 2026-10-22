@@ -12,7 +12,7 @@ import {
 } from './canvasKit';
 import type { TodayReportData } from '../../api/todayReport';
 import { reportChildName } from '../../utils/learningReport';
-import { buildTodayReport, todayReportText, type TodayReport } from '../../utils/todayReport';
+import { buildTodayReport, hasScore, todayReportText, type TodayReport } from '../../utils/todayReport';
 
 const CARD_H = 270;
 const SECTIONS_TOP = CARD_Y + CARD_H + 44;
@@ -97,12 +97,21 @@ async function drawTodayReport(canvas: HTMLCanvasElement, r: TodayReport, orgNam
     const right = W - PAD - 24;
     ctx.textAlign = 'right';
     ctx.fillStyle = '#15803D';
-    ctx.font = font(30, 800);
-    const score = `${t.best_score}`;
-    ctx.fillText(score, right - 30, y + 56);
-    const scoreW = ctx.measureText(score).width;
-    ctx.font = font(22, 600);
-    ctx.fillText('分', right, y + 56);
+    let scoreW: number;
+    if (hasScore(t)) {
+      ctx.font = font(30, 800);
+      const score = `${t.best_score}`;
+      ctx.fillText(score, right - 30, y + 56);
+      scoreW = ctx.measureText(score).width;
+      ctx.font = font(22, 600);
+      ctx.fillText('分', right, y + 56);
+    } else {
+      // 句子/音标/复习作业没有分数,只写做完了
+      ctx.font = font(24, 700);
+      const mark = t.status === 'completed' ? '✓ 完成' : '未完成';
+      ctx.fillText(mark, right, y + 56);
+      scoreW = ctx.measureText(mark).width - 30;
+    }
     ctx.textAlign = 'left';
     const leftMax = CONTENT_W - 48 - scoreW - 60;
     ctx.fillStyle = '#1F2937';

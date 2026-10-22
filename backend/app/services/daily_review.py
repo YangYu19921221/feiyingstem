@@ -22,7 +22,7 @@ import json
 from datetime import date, datetime, timedelta
 from typing import Iterable, Optional
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,27 +105,50 @@ async def get_plan(db: AsyncSession, user_id: int, d: date, *, create: bool = Tr
     return (await db.execute(q)).scalar_one()
 
 
-async def _progress(db: AsyncSession, user_id: int, ids: list[int], d: date) -> tuple[list[int], set[int]]:
-    """(还在的词 按原顺序, 其中当天有学习记录的)。词被删了的不算进份子 —— 否则永远凑不满"""
-    if not ids:
-        return [], set()
-    day_start, day_end = local_day_utc_range(d)
-    alive = set((await db.execute(select(Word.id).where(Word.id.in_(ids)))).scalars())
-    done = set((await db.execute(
-        select(LearningRecord.word_id).where(
-            LearningRecord.user_id == user_id, LearningRecord.word_id.in_(ids),
-            LearningRecord.created_at >= day_start, LearningRecord.created_at < day_end,
-        ).distinct()
-    )).scalars())
-    return [i for i in ids if i in alive], done
+async def _first_times(db: AsyncSession, plans: list[DailyReviewPlan]) -> dict[int, tuple[list[int], dict[int, datetime]]]:
+    """{plan.id: (还在的词 按原顺序, {其中当天练到的词: 当天第一次练到的时刻})}。
+    词被删了的不算进份子 —— 否则永远凑不满。按天一条学习记录查询(看板一次给全班算也是一条)"""
+    out: dict[int, tuple[list[int], dict[int, datetime]]] = {}
+    plans = [p for p in plans if _words(p)]
+    if not plans:
+        return out
+    all_ids = {i for p in plans for i in _words(p)}
+    alive: set[int] = set()
+    ids_list = list(all_ids)
+    for k in range(0, len(ids_list), 500):
+        alive |= set((await db.execute(select(Word.id).where(Word.id.in_(ids_list[k:k + 500])))).scalars())
+    by_day: dict[date, list[DailyReviewPlan]] = {}
+    for p in plans:
+        d = p.plan_date if isinstance(p.plan_date, date) else date.fromisoformat(str(p.plan_date))
+        by_day.setdefault(d, []).append(p)
+    for d, day_plans in by_day.items():
+        day_start, day_end = local_day_utc_range(d)
+        firsts: dict[tuple[int, int], datetime] = {}
+        for uid, wid, at in (await db.execute(
+            select(LearningRecord.user_id, LearningRecord.word_id, func.min(LearningRecord.created_at))
+            .where(LearningRecord.user_id.in_({p.user_id for p in day_plans}),
+                   LearningRecord.created_at >= day_start, LearningRecord.created_at < day_end)
+            .group_by(LearningRecord.user_id, LearningRecord.word_id)
+        )).all():
+            firsts[(uid, wid)] = at
+        for p in day_plans:
+            ids = [i for i in _words(p) if i in alive]
+            out[p.id] = (ids, {i: firsts[(p.user_id, i)] for i in ids if (p.user_id, i) in firsts})
+    return out
+
+
+def _settle_one(plan: DailyReviewPlan, prog: Optional[tuple[list[int], dict[int, datetime]]]) -> tuple[list[int], set[int]]:
+    """按算好的进度标 completed_at(不 commit)。完成时刻 = 最后一个词当天第一次练到的时刻,
+    不是「被谁看到的那一刻」—— 作业完成时间、今日报告的「几点完成」都读它"""
+    ids, times = prog or ([], {})
+    if plan.completed_at is None and all(i in times for i in ids):
+        plan.completed_at = max(times.values()) if times else datetime.utcnow()
+    return ids, set(times)
 
 
 async def _settle(db: AsyncSession, plan: DailyReviewPlan) -> tuple[list[int], set[int]]:
     """算进度,做完了就标 completed_at(不 commit,调用方提交)"""
-    ids, done = await _progress(db, plan.user_id, _words(plan), plan.plan_date)
-    if plan.completed_at is None and all(i in done for i in ids):
-        plan.completed_at = datetime.utcnow()
-    return ids, done
+    return _settle_one(plan, (await _first_times(db, [plan])).get(plan.id))
 
 
 async def status(db: AsyncSession, user_id: int, d: Optional[date] = None, *, create: bool = True) -> dict:
@@ -150,46 +173,37 @@ async def status(db: AsyncSession, user_id: int, d: Optional[date] = None, *, cr
     }
 
 
-async def completed_days(db: AsyncSession, user_id: int, days: Iterable[date]) -> set[date]:
-    """这几天里哪几天那一份做完了(作业判完成用)。顺手把算出来做完的标上 completed_at,调用方 commit。
-    当天没打开过复习(没有那一份)= 没做"""
-    days = set(days)
-    if not days:
-        return set()
-    out: set[date] = set()
-    for plan in (await db.execute(
-        select(DailyReviewPlan).where(DailyReviewPlan.user_id == user_id, DailyReviewPlan.plan_date.in_(days))
-    )).scalars():
-        if plan.completed_at is None:
-            await _settle(db, plan)
-        if plan.completed_at is not None:
-            out.add(plan.plan_date)
+async def completion_times(db: AsyncSession, user_ids: Iterable[int], days: Iterable[date]) -> dict[tuple[int, date], datetime]:
+    """这些孩子这几天的那一份做完的时刻 {(user_id, 日期): 完成时刻}(作业判完成用,一批学生一起判)。
+    顺手把算出来做完的标上 completed_at,调用方 commit。当天没打开过复习(没有那一份)= 没做"""
+    user_ids, days = set(user_ids), set(days)
+    if not user_ids or not days:
+        return {}
+    plans = list((await db.execute(
+        select(DailyReviewPlan).where(DailyReviewPlan.user_id.in_(user_ids), DailyReviewPlan.plan_date.in_(days))
+    )).scalars())
+    progress = await _first_times(db, [p for p in plans if p.completed_at is None])
+    out: dict[tuple[int, date], datetime] = {}
+    for p in plans:
+        if p.completed_at is None:
+            _settle_one(p, progress.get(p.id))
+        if p.completed_at is not None:
+            d = p.plan_date if isinstance(p.plan_date, date) else date.fromisoformat(str(p.plan_date))
+            out[(p.user_id, d)] = p.completed_at
     return out
 
 
 async def status_for_students(db: AsyncSession, user_ids: list[int], d: date) -> dict[int, dict]:
-    """老师看板用: 只读已有的那份(不替孩子建),{uid: {done, total, completed}}。
-    两条查询: 当天的份 + 这些孩子当天的学习记录(按 user_id IN,不把几千个词 id 塞进 IN)"""
+    """老师看板用: 只读已有的那份(不替孩子建、不写库),{uid: {done, total, completed}}"""
     if not user_ids:
         return {}
     plans = list((await db.execute(
         select(DailyReviewPlan).where(DailyReviewPlan.user_id.in_(user_ids), DailyReviewPlan.plan_date == d)
     )).scalars())
-    if not plans:
-        return {}
-    day_start, day_end = local_day_utc_range(d)
-    practiced: dict[int, set[int]] = {}
-    for uid, wid in (await db.execute(
-        select(LearningRecord.user_id, LearningRecord.word_id).where(
-            LearningRecord.user_id.in_([p.user_id for p in plans]),
-            LearningRecord.created_at >= day_start, LearningRecord.created_at < day_end,
-        ).distinct()
-    )).all():
-        practiced.setdefault(uid, set()).add(wid)
+    progress = await _first_times(db, plans)
     out = {}
     for p in plans:
-        ids = _words(p)
-        n = sum(1 for i in ids if i in practiced.get(p.user_id, ()))
-        out[p.user_id] = {"done": n, "total": len(ids),
-                          "completed": p.completed_at is not None or n >= len(ids)}
+        ids, times = progress.get(p.id, ([], {}))
+        n = sum(1 for i in ids if i in times)
+        out[p.user_id] = {"done": n, "total": len(ids), "completed": p.completed_at is not None or n >= len(ids)}
     return out

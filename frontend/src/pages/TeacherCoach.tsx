@@ -225,6 +225,16 @@ export default function TeacherCoach() {
                     </div>
                   </div>
                   <p className="mt-1 text-xs text-slate-500">{facts(r)}</p>
+                  {r.other_tasks.length > 0 && (
+                    <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="今天的句子/音标/复习作业">
+                      {r.other_tasks.map((t, i) => (
+                        <li key={`${t.kind}-${i}`}
+                          className={`rounded-full px-2 py-0.5 text-xs ${t.done ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+                          {t.done ? '✓ ' : '未做 · '}{t.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {r.weak_today.length > 0 && (
                     <p className="mt-1 text-xs text-slate-500">今天错过: {r.weak_today.join('、')}</p>
                   )}

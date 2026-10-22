@@ -3,6 +3,8 @@ import api from './client';
 
 export interface TodayReportTask {
   id: number;
+  /** word = 单词作业(有分数);其余是句子/音标视频/每日复习作业,没有分数,unit_name 是内容名 */
+  kind: 'word' | 'sentence' | 'phonetic_video' | 'daily_review';
   title: string;
   book_name: string;
   unit_name: string;

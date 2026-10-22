@@ -24,8 +24,11 @@ export interface CoachRow {
   days_since: number | null;
   /** 近 7 天学了几天 */
   week_days: number;
+  /** 今天的任务份数: 单词作业 + 今天开放的句子/音标视频/每日复习作业 */
   tasks_total: number;
   tasks_done: number;
+  /** 其中句子/音标视频/每日复习作业那几份(单词作业不在这里列) */
+  other_tasks: Array<{ kind: 'sentence' | 'phonetic_video' | 'daily_review'; label: string; done: boolean }>;
   words_today: number;
   minutes_today: number;
   scored_today: number;
