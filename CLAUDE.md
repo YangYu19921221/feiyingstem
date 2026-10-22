@@ -271,6 +271,18 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 直播共享屏幕套娃修复(2026-10-22,用户「直播用屏幕共享会出现一层层嵌套」): 从源站拉了一帧实拍 —— 老师共享的是
+  **开播页所在的浏览器窗口**,页面里的实时预览被共享进去再显示出来,一层套一层。旧逻辑按 displaySurface 判:
+  整屏/标签页藏预览、'window' 放行,**而浏览器窗口本身就是 'window'**(Mac 上最常见)。现在共享屏幕时**一律不放实时预览**,
+  改「看一眼学生画面」截一张静态图(用不挂进页面的 <video> 取帧;共享错窗口也只多一层,一眼看出选错了);
+  提示语按 displaySurface 写(整屏 = 把 PPT 放最前面;其余 = 选 PPT 所在窗口)。getDisplayMedia 加
+  selfBrowserSurface:'exclude' + displaySurface:'window'(Chrome/Edge 选择框去掉本标签页、默认停「窗口」页签;
+  Safari 用系统选择框会忽略),不认这几项抛 TypeError 时退回基本参数。真浏览器验过: 假屏幕流报 window → 无可见预览、
+  截图 960×540、切回摄像头预览恢复。公告投老师/机构管理员。
+- ✅ 直播源站迁到 171.80.3.205(2026-10-22): 旧机 171.80.0.70 10-17 前后被重装/回收(443 拒握手、80 变 nginx 默认页、
+  SSH 主机密钥变了),老师开播报「服务器不接受证书 / access control checks」。新机 CentOS 7(`ssh feiying-live`),
+  SRS 5 docker + nginx 1.26 + Let's Encrypt(acme.sh 自动续),DNS 17:02 已切。细节与坑见 deploy/srs/srs.conf 注释
+  (生产 candidate 填公网 IP + api_as_candidates off)。SRS 管理 API 经 nginx 只放行主应用 42.193.250.250。
 - ✅ 没做完老师布置的任务就没有「学习报告」(2026-10-22,用户原话): 分类学习结算页(每组小结 + 整单元结算)的
   「📸 生成学习报告,发给家长」改成**今天的任务全部达标才出现**。判据不另写一套,读 `GET /student/today-report`
   (与「今日学习报告」同一份: 今天开放的单词作业含在家做的 + 句子/音标视频/每日复习作业;failed 算没做完;

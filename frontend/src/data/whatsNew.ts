@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'live-screen-share-no-nesting-teacher-2026-10',
+    date: '2026-10-22',
+    title: '直播共享屏幕不再一层套一层',
+    desc: '共享屏幕时,开播页不再放实时预览(它会被共享进去,学生那边就是一层套一层)。想确认学生看到什么,点「看一眼学生画面」截一张静态图。共享时请选 PPT / 课件所在的那个窗口,别选开播这个浏览器窗口。',
+    where: '教师端「线上授课」→ 开播后点「共享屏幕」→ 画面区里的「看一眼学生画面」',
+    roles: ['teacher', 'org_admin'],
+    route: '/teacher/livestream',
+  },
+  {
     id: 'learning-report-needs-tasks-teacher-2026-10',
     date: '2026-10-22',
     title: '学生要先做完今天的任务,才能生成「学习报告」',

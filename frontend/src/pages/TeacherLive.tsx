@@ -35,7 +35,21 @@ async function captureSource(source: SourceKind): Promise<MediaStream> {
     });
   }
   // 屏幕:只取屏幕视频(丢弃系统音),再单独抓麦克风音,合成一路推
-  const disp = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 15 } }, audio: false });
+  // Chrome/Edge 的选择框: 去掉本标签页(共享它只会套娃)、默认停在「窗口」页签;Safari 用系统选择框,忽略这几项
+  const opts: DisplayMediaStreamOptions & { selfBrowserSurface?: 'include' | 'exclude'; preferCurrentTab?: boolean } = {
+    video: { frameRate: { ideal: 15, max: 15 }, displaySurface: 'window' },
+    audio: false,
+    selfBrowserSurface: 'exclude',
+    preferCurrentTab: false,
+  };
+  let disp: MediaStream;
+  try {
+    disp = await navigator.mediaDevices.getDisplayMedia(opts);
+  } catch (e) {
+    // 个别浏览器不认这几项会抛 TypeError —— 退回最基本的参数,别因为一个提示项整场共享开不了
+    if (!(e instanceof TypeError)) throw e;
+    disp = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 15 } }, audio: false });
+  }
   const videoTrack = disp.getVideoTracks()[0];
   // contentHint 必须在轨道加入 PeerConnection 之前设,协商后再改不生效
   try { videoTrack.contentHint = 'detail'; } catch { /* 老浏览器无此属性 */ }
@@ -49,7 +63,8 @@ async function captureSource(source: SourceKind): Promise<MediaStream> {
 
 /**
  * 读屏幕轨的画面类型:'monitor'(整屏)/ 'browser'(标签页)/ 'window'(应用窗口)/ ''(拿不到)。
- * 整屏和标签页会把直播预览也照进去 → 套娃,靠这个判断要不要藏预览。
+ * 只用来写提示语。**不能拿它判断能不能放实时预览** —— 'window' 也可能就是这个浏览器窗口
+ * (Mac 上最常见),一放预览就一层套一层(2026-10-22 生产实拍)。
  */
 function getDisplaySurface(track: MediaStreamTrack | undefined): string {
   if (!track) return '';
@@ -92,9 +107,10 @@ export default function TeacherLive() {
   // 当前推的是摄像头还是屏幕。开播后可中途切换(replaceTrack,不重开推流),
   // 用来决定按钮显示「共享屏幕」还是「退出共享屏幕」。
   const [liveSource, setLiveSource] = useState<SourceKind | null>(null);
-  // 共享屏幕时的画面类型:'monitor'=整屏 / 'browser'=标签页 / 'window'=应用窗口 / ''=未知。
-  // 整屏和标签页会把直播预览也照进去 → 无限套娃,所以那两种藏预览;窗口共享安全,显示预览让老师看到学生看到啥。
+  // 共享屏幕时的画面类型:'monitor'=整屏 / 'browser'=标签页 / 'window'=应用窗口 / ''=未知。只用于提示语
   const [screenSurface, setScreenSurface] = useState<string>('');
+  // 共享屏幕时「看一眼学生画面」的静态截图。不放实时预览: 共享的若是这个浏览器窗口,实时预览会一层套一层
+  const [snapshot, setSnapshot] = useState<{ url: string; at: string } | null>(null);
   const [cred, setCred] = useState<PushCredentials | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -257,6 +273,7 @@ export default function TeacherLive() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (previewRef.current) previewRef.current.srcObject = null;
+    setSnapshot(null);
     if (!silent) { setPublishing(null); setLiveSource(null); }
     setCred(null);
     setConnState(null);
@@ -300,6 +317,7 @@ export default function TeacherLive() {
       }
       setLiveSource(source);
       setScreenSurface(source === 'screen' ? getDisplaySurface(newVideo) : '');
+      setSnapshot(null);  // 换了画面,旧截图不再是学生看到的
     } catch (e: any) {
       // 切换失败:清理新抓的流,保持原来的推流不动(不能因为切失败把直播也搞断)
       next?.getTracks().forEach((t) => t.stop());
@@ -307,6 +325,43 @@ export default function TeacherLive() {
       setErr(msg);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * 「看一眼学生画面」: 从正在推的视频轨截一帧静态图。
+   * 用一个不挂进页面的 <video> 取帧 —— 它不在屏幕上,不会被共享进去;截图是静的,
+   * 就算共享错了窗口也只多一层(老师一眼能看出选错了),不会无限往里套
+   */
+  const takeSnapshot = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.srcObject = new MediaStream([track]);
+    try {
+      await v.play();
+      if (v.readyState < 2) {
+        await Promise.race([
+          new Promise((r) => v.addEventListener('loadeddata', r, { once: true })),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000)),
+        ]);
+      }
+      const w = Math.min(960, v.videoWidth || 960);
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = Math.round(((v.videoHeight || 540) * w) / (v.videoWidth || 960));
+      c.getContext('2d')?.drawImage(v, 0, 0, c.width, c.height);
+      setSnapshot({
+        url: c.toDataURL('image/jpeg', 0.8),
+        at: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+      });
+    } catch {
+      setErr('没截到画面,稍后再点一次');
+    } finally {
+      v.pause();
+      v.srcObject = null;
     }
   };
 
@@ -466,47 +521,62 @@ export default function TeacherLive() {
                 </span>
               )}
             </div>
-            {/* 预览显示策略(治"隧道套娃"又不让老师瞎):
-                - 摄像头:正常显示预览。
-                - 共享「应用窗口」(window):安全,显示预览 —— 老师能确认学生看到哪块。
-                - 共享「整屏 / 标签页」(monitor/browser/未知):预览会照到自己 → 无限套娃,
-                  藏预览、提示改成"共享某个窗口",避免隧道效果又让老师有据可依。 */}
-            {(() => {
-              const risky = liveSource === 'screen' && screenSurface !== 'window';
-              return (
-                <div className="relative">
-                  <video
-                    ref={previewRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className={`w-full aspect-video bg-black rounded-xl ${risky ? 'hidden' : ''}`}
-                  />
-                  {liveSource === 'screen' && screenSurface === 'window' && (
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/60 text-white text-xs">
-                      👁 这就是学生看到的画面
-                    </span>
-                  )}
-                  {risky && (
-                    <div className="w-full aspect-video bg-gray-900 rounded-xl flex flex-col items-center justify-center text-center px-4">
-                      <div className="text-4xl mb-2">🖥</div>
-                      <div className="text-white font-bold">正在共享{screenSurface === 'browser' ? '浏览器标签页' : '整个屏幕'}</div>
-                      <div className="text-gray-400 text-sm mt-1 max-w-xs">
-                        这里不显示预览,否则会照到本页画面无限套娃。
-                        <br />想看到学生看的画面?点「重选共享」改成<b className="text-amber-300">共享某个应用窗口</b>。
+            {/* 预览显示策略:
+                - 摄像头: 正常放实时预览。
+                - 共享屏幕: **一律不放实时预览**。共享的若是这个浏览器窗口(Mac 上选「窗口」最常见)或整屏,
+                  预览会被共享进去再显示出来,学生那边一层套一层(10-22 生产实拍)。早先只藏整屏/标签页、
+                  放行「应用窗口」,而浏览器窗口本身也算应用窗口。想确认学生看到什么,点「看一眼」截一张静态图。 */}
+            <div className="relative">
+              <video
+                ref={previewRef}
+                autoPlay
+                muted
+                playsInline
+                className={`w-full aspect-video bg-black rounded-xl ${liveSource === 'screen' ? 'hidden' : ''}`}
+              />
+              {liveSource === 'screen' && (
+                <div className="w-full aspect-video bg-gray-900 rounded-xl overflow-hidden relative flex flex-col items-center justify-center text-center px-4">
+                  {snapshot ? (
+                    <>
+                      <img src={snapshot.url} alt="学生看到的画面(静态截图)" className="absolute inset-0 w-full h-full object-contain" />
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/60 text-white text-xs">
+                        👁 {snapshot.at} 学生看到的画面(截图,不会动)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-4xl mb-2" aria-hidden>🖥</div>
+                      <div className="text-white font-bold">
+                        正在共享{screenSurface === 'browser' ? '浏览器标签页'
+                          : screenSurface === 'monitor' ? '整个屏幕'
+                          : screenSurface === 'window' ? '一个窗口' : '屏幕'}
                       </div>
-                      <button
-                        onClick={() => switchSource('screen')}
-                        disabled={busy || connState !== 'connected'}
-                        className="mt-3 px-4 py-1.5 rounded-lg bg-[#FFD23F] text-gray-800 text-sm font-bold disabled:opacity-40"
-                      >
-                        🔄 重选共享
-                      </button>
-                    </div>
+                      <div className="text-gray-400 text-sm mt-1 max-w-sm leading-relaxed">
+                        {screenSurface === 'monitor'
+                          ? '学生能看到你整个屏幕。讲课时把 PPT / 课件放在最前面,这个页面切到后面去。'
+                          : <>请共享 PPT / 课件<b className="text-amber-300">所在的那个窗口</b>,别选这个浏览器窗口,否则学生看到的是这一页。</>}
+                      </div>
+                    </>
                   )}
+                  <div className={`flex gap-2 ${snapshot ? 'absolute bottom-2 right-2' : 'mt-3'}`}>
+                    <button
+                      onClick={takeSnapshot}
+                      disabled={busy || connState !== 'connected'}
+                      className="px-3 py-1.5 rounded-lg bg-white/90 text-gray-800 text-sm font-bold disabled:opacity-40"
+                    >
+                      📸 {snapshot ? '再看一眼' : '看一眼学生画面'}
+                    </button>
+                    <button
+                      onClick={() => switchSource('screen')}
+                      disabled={busy || connState !== 'connected'}
+                      className="px-3 py-1.5 rounded-lg bg-[#FFD23F] text-gray-800 text-sm font-bold disabled:opacity-40"
+                    >
+                      🔄 重选共享
+                    </button>
+                  </div>
                 </div>
-              );
-            })()}
+              )}
+            </div>
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => endClass(liveOne)}
