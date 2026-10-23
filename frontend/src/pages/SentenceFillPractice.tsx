@@ -1,6 +1,10 @@
 /**
  * 独立句子填空练习页面
  * 加载单元全部单词，使用 SentenceFillPhase 组件
+ *
+ * 2026-10-23 起每个词第一轮的第一次作答记学习记录(learning_mode='sentencefill',此前一条都不记):
+ * 错的进错题本和记忆曲线,老师学情/陪跑看板/今日学习报告都看得到。重试、后面的轮次、
+ * 结束页「错的再练一遍」都不记 —— 看过答案再写对不算会了。
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
@@ -8,10 +12,11 @@ import useGoBack from '../hooks/useGoBack';
 import { ArrowLeft, CheckCircle2, FilePenLine, RefreshCw } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
 import type { StartLearningResponse } from '../api/progress';
-import { reportStudyTime } from '../api/learningRecords';
+import { createLearningRecords, reportStudyTime } from '../api/learningRecords';
 import useNetActiveTime from '../hooks/useNetActiveTime';
 import { usePreventCopy } from '../hooks/usePreventCopy';
-import SentenceFillPhase, { type FillBlankResult } from '../components/classify/SentenceFillPhase';
+import SentenceFillPhase, { type FillBlankResult, type FirstAnswer } from '../components/classify/SentenceFillPhase';
+import type { WordData } from '../api/progress';
 import { useAudio } from '../hooks/useAudio';
 import { getErrorMessage } from '../utils/errorMessage';
 
@@ -26,6 +31,9 @@ export default function SentenceFillPractice() {
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [results, setResults] = useState<FillBlankResult[]>([]);
+  // 结束页「错的再练一遍」: 只练这几个词,不记学习记录、不改单元进度
+  const [redoWords, setRedoWords] = useState<WordData[] | null>(null);
+  const [runKey, setRunKey] = useState(0);
 
   // ── 学习时长上报:独立句子填空页按净活动时长计入学习日历 ──
   // 计时口径统一在 useNetActiveTime(发呆/切屏整段不计,含判定前的 60 秒)
@@ -57,11 +65,29 @@ export default function SentenceFillPractice() {
     void loadLearningData();
   }, [loadLearningData]);
 
+  // 首答即记(与拼写/选择同口径): 时长按净活动增量走 session_seconds,结束时剩下的那段由 reportDelta 补
+  const handleFirstAnswer = useCallback((a: FirstAnswer) => {
+    if (!unitId) return;
+    const delta = takeDelta();
+    createLearningRecords({
+      unit_id: parseInt(unitId),
+      learning_mode: 'sentencefill',
+      records: [{
+        word_id: a.wordId,
+        is_correct: a.isCorrect,
+        time_spent: delta * 1000,
+        learning_mode: 'sentencefill',
+        user_answer: !a.isCorrect && a.userAnswer ? a.userAnswer : undefined,
+      }],
+      session_seconds: delta,
+    }).catch(() => {});
+  }, [unitId, takeDelta]);
+
   const handleComplete = async (fillResults: FillBlankResult[]) => {
     setResults(fillResults);
     setCompleted(true);
 
-    if (unitId) {
+    if (unitId && !redoWords) {
       try {
         await updateProgress({
           unit_id: parseInt(unitId),
@@ -146,9 +172,11 @@ export default function SentenceFillPractice() {
       <div className="max-w-3xl mx-auto">
         {!completed ? (
           <SentenceFillPhase
-            words={learningData.words}
+            key={runKey}
+            words={redoWords ?? learningData.words}
             onComplete={handleComplete}
-            playAudio={(text) => playAudio(text)}
+            onFirstAnswer={redoWords ? undefined : handleFirstAnswer}
+            playAudio={(text, rate, wordId) => playAudio(text, rate, wordId)}
           />
         ) : (
           <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
@@ -156,21 +184,31 @@ export default function SentenceFillPractice() {
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
                 <CheckCircle2 className="h-8 w-8" aria-hidden="true" />
               </div>
-              <h3 className="font-display text-2xl font-semibold text-ink">句子填空完成</h3>
+              <h3 className="font-display text-2xl font-semibold text-ink">{redoWords ? '错词再练完成' : '句子填空完成'}</h3>
               <div className={`mb-2 mt-3 font-numeric text-4xl font-bold ${accuracy >= 80 ? 'text-green-600' : 'text-accent-warm'}`}>
                 {accuracy}%
               </div>
-              <p className="text-gray-500 mb-6">答对 {correctCount}/{totalCount} 个单词</p>
+              <p className="text-gray-500 mb-6">第一次就写对 {correctCount}/{totalCount} 个</p>
 
               {(() => {
                 const wrongResults = results.filter(r => !r.isCorrect);
                 return wrongResults.length > 0 && (
-                <div className="text-left mb-6 max-h-48 overflow-y-auto">
-                  <p className="text-sm font-medium text-gray-600 mb-2">错词回顾：</p>
+                <div className="text-left mb-6 max-h-64 overflow-y-auto">
+                  <p className="text-sm font-medium text-gray-600 mb-2">要再练的 {wrongResults.length} 个：</p>
                   {wrongResults.map(r => (
-                    <div key={r.wordId} className="flex items-center gap-2 py-1.5 border-b border-gray-100 text-sm">
-                      <span className="text-red-400">✗</span>
-                      <span className="font-medium">{r.word}</span>
+                    <div key={r.wordId} className="border-b border-gray-100 py-2 text-sm">
+                      <p className="leading-6 text-gray-700">
+                        {r.sentence && r.expected && r.sentence.includes(r.expected) ? (
+                          <>
+                            {r.sentence.slice(0, r.sentence.indexOf(r.expected))}
+                            <strong className="text-green-700">{r.expected}</strong>
+                            {r.sentence.slice(r.sentence.indexOf(r.expected) + r.expected.length)}
+                          </>
+                        ) : <strong>{r.word}</strong>}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {r.userInput ? <>你写的 <span className="font-mono text-red-400 line-through">{r.userInput}</span></> : '当时点了看答案'}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -178,13 +216,31 @@ export default function SentenceFillPractice() {
               })()}
 
               <div className="flex flex-col gap-3">
+                {results.some(r => !r.isCorrect) && (
+                  <button
+                    onClick={() => {
+                      const wrongIds = new Set(results.filter(r => !r.isCorrect).map(r => r.wordId));
+                      setRedoWords(learningData.words.filter(w => wrongIds.has(w.id)));
+                      setResults([]);
+                      setCompleted(false);
+                      setRunKey(k => k + 1);
+                    }}
+                    className="min-h-12 w-full rounded-xl bg-accent-warm font-bold text-white transition hover:opacity-90"
+                  >
+                    错的再练一遍
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setCompleted(false);
                     setResults([]);
+                    setRedoWords(null);
+                    setRunKey(k => k + 1);
                     void loadLearningData();
                   }}
-                  className="min-h-12 w-full rounded-xl bg-accent-warm font-bold text-white transition hover:opacity-90"
+                  className={results.some(r => !r.isCorrect)
+                    ? 'min-h-12 w-full rounded-xl border border-accent-warm/40 bg-white font-bold text-accent-warm transition hover:bg-orange-50'
+                    : 'min-h-12 w-full rounded-xl bg-accent-warm font-bold text-white transition hover:opacity-90'}
                 >
                   再来一次
                 </button>

@@ -25,7 +25,8 @@ from app.models.word import Word, WordDefinition
 
 # 有对错判定的模式;classify/review 不算。
 # handwriting=纸笔听写拍照批改(2026-08-06 加):AI 盲转写+服务端比对,是真实作答
-SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank', 'handwriting')
+# sentencefill=句子填空(2026-10-23 加):此前一条记录都不写,改版后只记每个词第一次作答
+SCORING_MODES = ('exam', 'quiz', 'spelling', 'fillblank', 'handwriting', 'sentencefill')
 
 # 掌握线(与学生端 /analytics/overview 一致)
 MASTERY_LINE = 3

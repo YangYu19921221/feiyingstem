@@ -1130,7 +1130,7 @@ async def get_student_ai_advice(
     habit_desc = f"累计学习 {study_days} 天，平均每天 {avg_daily_time // 60} 分钟"
 
     # 5. 各题型分析
-    mode_names = {"classify": "分类记忆", "spelling": "拼写", "fillblank": "填空", "quiz": "选择题"}
+    mode_names = {"classify": "分类记忆", "spelling": "拼写", "fillblank": "填空", "sentencefill": "句子填空", "quiz": "选择题"}
     weakest_mode = None
     weakest_acc = 100
     for mode, stats in mode_stats.items():

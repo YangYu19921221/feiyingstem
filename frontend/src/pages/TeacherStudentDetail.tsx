@@ -160,6 +160,7 @@ const TeacherStudentDetail = () => {
       case 'quiz': return '📝';
       case 'spelling': return '✍️';
       case 'fillblank': return '📋';
+      case 'sentencefill': return '📝';
       case 'exam': return '📄';
       default: return '📚';
     }
@@ -171,6 +172,7 @@ const TeacherStudentDetail = () => {
       case 'quiz': return '选择题';
       case 'spelling': return '拼写';
       case 'fillblank': return '填空';
+      case 'sentencefill': return '句子填空';
       case 'exam': return '单元考试';
       case 'handwriting': return '纸笔听写';
       default: return mode;

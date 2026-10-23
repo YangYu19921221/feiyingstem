@@ -25,6 +25,22 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'sentencefill-redesign-2026-10',
+    date: '2026-10-23',
+    title: '句子填空改版: 写错有提示,还能看答案',
+    desc: '写错了先给提示(首字母和字母个数),再写一次;还不会就点「不会,看答案」,正确的词会填回句子里,照着写一遍再继续。按句子里的样子填就对,比如「She ___ a song」要写 sings。做完能把错的再练一遍。',
+    where: '单元页「基础巩固 → 填句」',
+    roles: ['student'],
+  },
+  {
+    id: 'sentencefill-records-teacher-2026-10',
+    date: '2026-10-23',
+    title: '句子填空的作答现在算进学情了',
+    desc: '学生做句子填空,每个词第一次写的答案会记下来:写错的进错题本和记忆曲线,学情正确率、陪跑看板、今日学习报告都看得到(以前填句一条都不记)。判分按句子里的形式(句子要 sings 写 sing 算错,大小写不算错)。',
+    where: '学生详情「各模式错题」、今日学习报告',
+    roles: ['teacher', 'org_admin'],
+  },
+  {
     id: 'register-org-code-required-org-2026-10',
     date: '2026-10-23',
     title: '学生注册必须填机构码,您的机构码在首页第一张卡',

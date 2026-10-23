@@ -594,7 +594,7 @@ class AIService:
         # 中文模式名,便于 LLM 和兜底文案表达
         mode_cn = {
             "flashcard": "单词卡", "quiz": "选择题",
-            "spelling": "拼写", "fillblank": "填空",
+            "spelling": "拼写", "fillblank": "填空", "sentencefill": "句子填空",
         }
         mode_lines = "\n".join(
             f"- {mode_cn.get(m.get('mode'), m.get('mode', '未知'))}: "

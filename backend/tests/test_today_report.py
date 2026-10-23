@@ -177,3 +177,20 @@ async def test_teacher_forbidden(client, env):
     r = await client.get("/api/v1/student/today-report",
                          headers={"Authorization": f"Bearer {_make_token(teacher.id)}"})
     assert r.status_code == 403
+
+
+async def test_sentencefill_wrong_answer_shows_in_report(client, env):
+    """句子填空(2026-10-23 起记学习记录): 写错的词进今日学习报告的薄弱词,并带「写成了 xxx」
+    (写成原形本身不显示「写成了」,与拼写同口径,见 _wrote_of)"""
+    db, org, teacher, stu, other, units, day_start = env
+    sing = Word(word="sing", difficulty=1)
+    db.add(sing)
+    await db.flush()
+    db.add(WordDefinition(word_id=sing.id, meaning="v. 唱歌", is_primary=True))
+    db.add(LearningRecord(user_id=stu.id, word_id=sing.id, learning_mode="sentencefill", is_correct=False,
+                          user_answer="seng", created_at=day_start + timedelta(hours=2)))
+    await db.commit()
+    data = await _report(client, stu.id)
+    weak = {w["word"]: w for w in data["weak"]}
+    assert "sing" in weak and weak["sing"]["wrote"] == "seng"
+    assert data["scored_words"] == 1

@@ -34,7 +34,7 @@ from app.services.study_time import seconds_on_day
 from app.services.weak_words import SCORING_MODES
 
 # 这几种模式的 user_answer 是孩子拼出来的词,能写「写成了 xxx」
-SPELLING_MODES = ("spelling", "handwriting", "fillblank")
+SPELLING_MODES = ("spelling", "handwriting", "fillblank", "sentencefill")
 _CJK = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
 MAX_WEAK = 200
 

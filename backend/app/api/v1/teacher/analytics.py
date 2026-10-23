@@ -1235,7 +1235,7 @@ async def get_student_day_timeline(
 
     MODE_LABELS = {
         "classify": "分类", "spelling": "拼写", "dictation": "听写",
-        "fillblank": "填空", "exam": "考试", "quiz": "选择",
+        "fillblank": "填空", "sentencefill": "填句", "exam": "考试", "quiz": "选择",
         "review": "复习", "flashcard": "卡片", "sentence": "句子",
     }
 

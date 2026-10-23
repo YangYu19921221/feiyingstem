@@ -132,6 +132,7 @@ const TeacherAnalytics = () => {
       case 'quiz': return '📝';
       case 'spelling': return '✍️';
       case 'fillblank': return '📋';
+      case 'sentencefill': return '📝';
       default: return '📚';
     }
   };
@@ -142,6 +143,7 @@ const TeacherAnalytics = () => {
       case 'quiz': return '选择题';
       case 'spelling': return '拼写练习';
       case 'fillblank': return '填空练习';
+      case 'sentencefill': return '句子填空';
       case 'handwriting': return '纸笔听写';
       default: return mode;
     }
