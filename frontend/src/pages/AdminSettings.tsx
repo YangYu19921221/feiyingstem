@@ -301,7 +301,10 @@ const AdminSettings: React.FC = () => {
   );
 };
 
-// 系统更新面板
+const fmtTime = (s?: string | null) => (s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '—');
+
+// 系统更新面板。2026-10-23 起一键更新默认停用(后端 SYSTEM_UPDATE_ENABLED=1 才开,原因见 system_update.py),
+// 停用时只显示线上真实的构建号和部署时间
 const SystemUpdatePanel: React.FC = () => {
   const [version, setVersion] = useState<any>(null);
   const [updateInfo, setUpdateInfo] = useState<any>(null);
@@ -310,9 +313,11 @@ const SystemUpdatePanel: React.FC = () => {
   const [updateResult, setUpdateResult] = useState<any>(null);
 
   useEffect(() => {
-    api.get('/admin/system/version').then(setVersion).catch(() => {});
-    // 自动检查更新
-    api.get('/admin/system/check-update').then(setUpdateInfo).catch(() => {});
+    api.get<{ update_enabled?: boolean }>('/admin/system/version').then((v) => {
+      setVersion(v);
+      // 停用时不去检查更新(后端也不会碰 git)
+      if (v?.update_enabled) api.get('/admin/system/check-update').then(setUpdateInfo).catch(() => {});
+    }).catch(() => {});
   }, []);
 
   const handleCheckUpdate = async () => {
@@ -350,6 +355,32 @@ const SystemUpdatePanel: React.FC = () => {
       setUpdating(false);
     }
   };
+
+  if (version && !version.update_enabled) {
+    return (
+      <div className="admin-panel mb-5 rounded-2xl p-5 sm:p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fff3d9] text-[#9a6a1f]"><Rocket className="h-4 w-4" /></span> 版本信息
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            ['前端构建号', version.build || '—'],
+            ['前端最近部署', fmtTime(version.deployed_at)],
+            ['后端最近重启', fmtTime(version.backend_started_at)],
+          ].map(([k, v]) => (
+            <div key={k} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+              <div className="text-sm text-gray-500">{k}</div>
+              <div className="mt-1 font-mono text-lg font-bold text-gray-800">{v}</div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-500">
+          线上代码由发布流程直接同步到服务器，这里不再提供一键更新（在这里更新会用服务器上的旧仓库覆盖线上代码）。
+          学生和老师打开页面时，如果有新版本会自动提示刷新。
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-panel mb-5 rounded-2xl p-5 sm:p-6">

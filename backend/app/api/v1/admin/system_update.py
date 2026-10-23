@@ -1,13 +1,20 @@
 """
 系统更新 API
-管理员一键从 Gitee 拉取最新代码并重部署
+
+⚠️ 2026-10-23 起「一键更新」默认停用(环境变量 SYSTEM_UPDATE_ENABLED=1 才开):
+2026-09-13 之后线上一直是「本地改好 → rsync 同步文件 → systemd 重启」部署,不经服务器上的 git,
+所以服务器 git 记录停在 9-13、和线上文件对不上(64 个已改文件 + 10 万多个备份目录文件)。
+这时点一键更新会 `git reset --hard` 用旧仓库覆盖线上文件(main.py / database.py 生产本来就和仓库有差异),
+还会在服务器上编译前端占满 CPU;检查更新每次打开管理端首页都要带着明文凭据去 git fetch,结论还是错的。
+停用后: /version 报线上真实的前端构建号、部署时间和后端启动时间;/check-update 恒为无更新、不碰 git;
+/update 返回 410。要重新启用,得先把服务器 git 对齐线上(见 CLAUDE.md「一键更新停用」那条)。
 """
 import asyncio
 import json
 import logging
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from app.api.v1.auth import get_current_user, get_current_admin
@@ -19,6 +26,31 @@ logger = logging.getLogger(__name__)
 # 自动检测项目根目录：backend 的上级目录
 _DEFAULT_ROOT = str(Path(__file__).resolve().parents[5])
 PROJECT_ROOT = os.getenv("PROJECT_ROOT", _DEFAULT_ROOT)
+
+_BJ = timezone(timedelta(hours=8))
+# 进程启动时刻 = 后端最近一次重启(systemd restart)的时间
+_STARTED_AT = datetime.now(_BJ)
+DISABLED_MESSAGE = (
+    "一键更新已停用:线上代码由发布流程直接同步到服务器,服务器上的 git 记录不跟踪线上文件,"
+    "在这里更新会用旧仓库覆盖线上代码。"
+)
+
+
+def _update_enabled() -> bool:
+    return os.getenv("SYSTEM_UPDATE_ENABLED", "") == "1"
+
+
+def _deployed_build() -> dict:
+    """线上前端真实的构建号与部署时间: frontend/dist/version.json 的内容和修改时间
+    (rsync 推 dist 时这个文件会被换成新的)。读不到返回空值,不报错。"""
+    f = Path(PROJECT_ROOT) / "frontend" / "dist" / "version.json"
+    try:
+        build = json.loads(f.read_text()).get("v")
+        deployed_at = datetime.fromtimestamp(f.stat().st_mtime, _BJ).isoformat(timespec="seconds")
+    except Exception:
+        return {"build": None, "deployed_at": None}
+    return {"build": build, "deployed_at": deployed_at}
+
 
 _update_lock = asyncio.Lock()
 _update_log: list[dict] = []
@@ -83,15 +115,24 @@ def _run_cmd(cmd: str, cwd: str = PROJECT_ROOT, timeout: int = 120) -> tuple[int
 
 @router.get("/version")
 async def get_current_version(current_user: User = Depends(get_current_user)):
-    """获取当前版本信息（所有登录用户可见）"""
-    ver = _get_version()
-    code, commit = _run_cmd("git log --oneline -1", timeout=5)
+    """当前线上版本(所有登录用户可见)。
 
-    return {
+    build / deployed_at = 线上前端真实的构建号和部署时间,backend_started_at = 后端最近重启时间。
+    version / build_date 来自仓库根 version.json,发布流程不更新它,只留着兼容旧调用方,界面不再显示。
+    一键更新停用时不再跑 git log(服务器 git 记录停在旧版本,报出来的 commit 是错的)。"""
+    ver = _get_version()
+    out = {
         "version": ver.get("version", "1.0.1"),
         "build_date": ver.get("build_date", "未知"),
-        "commit": commit if code == 0 else "未知",
+        **_deployed_build(),
+        "backend_started_at": _STARTED_AT.isoformat(timespec="seconds"),
+        "update_enabled": _update_enabled(),
+        "commit": None,
     }
+    if _update_enabled():
+        code, commit = _run_cmd("git log --oneline -1", timeout=5)
+        out["commit"] = commit if code == 0 else "未知"
+    return out
 
 
 def _parse_semver(v: str | None) -> tuple[int, ...] | None:
@@ -114,7 +155,18 @@ async def check_for_update(current_user: User = Depends(get_current_admin)):
     「有新版本」——只要 HEAD 不等于 origin/main 就亮红点,即便本地才是更新的一方。
     现在改为:先比 version.json 语义版本号,版本相同或本地更高 → 无更新;
     版本号一致或无法解析时,再看「origin/main 是否有本地没有的提交」(HEAD..origin/main)。
+
+    停用时(默认)恒为无更新、不碰 git: 结论本来就是错的,还每次带着凭据去拉远端。
     """
+    if not _update_enabled():
+        return {
+            "has_update": False,
+            "disabled": True,
+            "local_version": _get_version().get("version", "1.0.1"),
+            "remote_version": None,
+            "changelog": DISABLED_MESSAGE,
+            "update_history": [],
+        }
     code, output = _run_cmd("git fetch origin main --depth 1", timeout=30)
     if code != 0:
         raise HTTPException(500, f"检查更新失败: {output}")
@@ -174,7 +226,9 @@ async def check_for_update(current_user: User = Depends(get_current_admin)):
 
 @router.post("/update")
 async def perform_update(current_user: User = Depends(get_current_admin)):
-    """执行系统更新：git pull → pip install → npm build → 重启"""
+    """执行系统更新：git pull → pip install → npm build → 重启(默认停用,见模块说明)"""
+    if not _update_enabled():
+        raise HTTPException(410, DISABLED_MESSAGE)
     if _update_lock.locked():
         raise HTTPException(409, "更新正在进行中，请稍候")
 

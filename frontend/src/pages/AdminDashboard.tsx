@@ -15,7 +15,6 @@ import {
   GraduationCap,
   Handshake,
   History,
-  Megaphone,
   Radio,
   Server,
   Settings,
@@ -79,8 +78,9 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Statistics | null>(null);
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentVersion, setCurrentVersion] = useState('');
-  const [hasUpdate, setHasUpdate] = useState(false);
+  // 线上前端最近部署时间(后端读 frontend/dist/version.json 的修改时间)。
+  // 2026-10-23 起不再检查「有新版本」: 服务器 git 不跟踪线上文件,那个提示恒为误报,一键更新也已停用
+  const [deployedAt, setDeployedAt] = useState('');
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   const loadDashboard = useCallback(async () => {
@@ -91,18 +91,15 @@ export default function AdminDashboard() {
       axios.get(`${API_BASE_URL}/admin/stats`, { headers }),
       axios.get(`${API_BASE_URL}/admin/users`, { params: { page: 1, page_size: 5 }, headers }),
       axios.get(`${API_BASE_URL}/admin/system/version`, { headers }),
-      axios.get(`${API_BASE_URL}/admin/system/check-update`, { headers }),
     ]);
-    const [statsResult, usersResult, versionResult, updateResult] = results;
+    const [statsResult, usersResult, versionResult] = results;
     const errors: string[] = [];
     if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
     else errors.push('系统指标');
     if (usersResult.status === 'fulfilled') setRecentUsers(usersResult.value.data?.users || []);
     else errors.push('最近用户');
-    if (versionResult.status === 'fulfilled') setCurrentVersion(versionResult.value.data?.version || '');
+    if (versionResult.status === 'fulfilled') setDeployedAt(versionResult.value.data?.deployed_at || '');
     else errors.push('版本信息');
-    if (updateResult.status === 'fulfilled') setHasUpdate(Boolean(updateResult.value.data?.has_update));
-    else errors.push('更新检查');
     if (errors.length) setLoadErrors(errors);
     setLoading(false);
   }, []);
@@ -127,13 +124,12 @@ export default function AdminDashboard() {
         title="系统管理后台"
         subtitle="用户、内容、服务与运营数据"
         icon={ShieldCheck}
-        action={hasUpdate ? <button type="button" onClick={() => navigate('/admin/settings')} className="admin-update inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold"><Megaphone className="h-3.5 w-3.5" />有新版本</button> : undefined}
       />
 
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
         {loadErrors.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status"><span>部分数据暂时不可用：{loadErrors.join('、')}。</span><button type="button" onClick={() => void loadDashboard()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100">重新加载</button></div>}
         <section className="admin-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
-          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="admin-pill mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold text-[#173047] sm:text-3xl">欢迎回来，{displayName}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">先确认系统服务和用户活动，再处理机构、内容与账号任务。</p><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3"><button type="button" onClick={() => navigate('/admin/statistics')} className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">查看数据报告 <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">检查服务状态 <Server className="h-4 w-4" /></button></div></div><div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]"><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">今日活跃</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl">{formatNumber(stats?.active_users_today)}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">位用户有学习记录</p></div><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">当前版本</p><p className="mt-2 truncate text-xl font-bold text-[#173047] font-numeric sm:text-2xl">{currentVersion ? `v${currentVersion}` : '—'}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">{hasUpdate ? '有更新可查看' : '版本运行正常'}</p></div></div></div>
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="admin-pill mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold text-[#173047] sm:text-3xl">欢迎回来，{displayName}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">先确认系统服务和用户活动，再处理机构、内容与账号任务。</p><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3"><button type="button" onClick={() => navigate('/admin/statistics')} className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">查看数据报告 <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">检查服务状态 <Server className="h-4 w-4" /></button></div></div><div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]"><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">今日活跃</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl">{formatNumber(stats?.active_users_today)}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">位用户有学习记录</p></div><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">最近部署</p><p className="mt-2 truncate text-xl font-bold text-[#173047] font-numeric sm:text-2xl">{deployedAt ? new Date(deployedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">线上前端版本</p></div></div></div>
         </section>
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4" aria-label="系统指标">
@@ -147,7 +143,7 @@ export default function AdminDashboard() {
 
         <section className="admin-tool-list rounded-2xl p-5 sm:p-6"><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-xl font-bold tracking-tight text-[#173047]">运营工具箱</h3><p className="mt-1 text-xs text-slate-500">每个入口都对应一个可执行的管理动作</p></div><span className="text-xs text-slate-400">{toolGroups.reduce((sum, group) => sum + group.items.length, 0)} 项工具</span></div><div className="grid gap-6 md:grid-cols-3">{toolGroups.map((group) => <div key={group.title}><div className="mb-2 px-1"><p className="text-sm font-semibold text-[#173047]">{group.title}</p><p className="mt-1 text-xs text-slate-500">{group.description}</p></div><div className="admin-tool-row-group overflow-hidden rounded-xl border border-slate-100">{group.items.map(({ title, description, path, icon: Icon, tone }) => <button key={path} type="button" onClick={() => navigate(path)} className="admin-tool-row admin-focus-ring group flex w-full items-center gap-3 px-3 py-3 text-left transition"><span className={`admin-tool-icon admin-tool-icon-${tone} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#173047]">{title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></button>)}</div></div>)}</div></section>
 
-        <section className="admin-panel flex flex-col gap-5 rounded-2xl p-5 sm:p-6 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf5fa] text-[#397b9b]"><CircleDollarSign className="h-5 w-5" /></span><div><h3 className="font-bold text-[#173047]">版本与服务提醒</h3><p className="mt-1 text-sm leading-6 text-slate-500">{hasUpdate ? '检测到新版本，建议在低峰期完成更新。' : '当前版本运行正常，定期查看设置与服务监控即可。'}</p></div></div><button type="button" onClick={() => navigate(hasUpdate ? '/admin/settings' : '/admin/server-monitor')} className="admin-secondary-light admin-focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">{hasUpdate ? '查看更新' : '打开服务监控'} <ArrowRight className="h-4 w-4" /></button></section>
+        <section className="admin-panel flex flex-col gap-5 rounded-2xl p-5 sm:p-6 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf5fa] text-[#397b9b]"><CircleDollarSign className="h-5 w-5" /></span><div><h3 className="font-bold text-[#173047]">版本与服务提醒</h3><p className="mt-1 text-sm leading-6 text-slate-500">线上版本由发布流程直接更新，定期查看服务监控即可。</p></div></div><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary-light admin-focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">打开服务监控 <ArrowRight className="h-4 w-4" /></button></section>
       </main>
     </div>
   );

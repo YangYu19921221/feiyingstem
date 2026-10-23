@@ -34,6 +34,8 @@ def _fake_git(*, local_hash, remote_hash, remote_version, behind):
 
 
 def _check(monkeypatch, *, local_version, local_hash, remote_hash, remote_version, behind):
+    # 下面这几例测的是「启用时」的判定逻辑;默认停用的行为见文件末尾
+    monkeypatch.setattr(system_update, "_update_enabled", lambda: True)
     monkeypatch.setattr(system_update, "_get_version",
                         lambda: {"version": local_version, "build_date": "x"})
     monkeypatch.setattr(system_update, "_run_cmd",
@@ -99,3 +101,40 @@ def test_local_worktree_changes_fails_closed(monkeypatch):
         assert getattr(exc, "status_code", None) == 500
     else:
         raise AssertionError("git 状态读取失败时必须阻止更新")
+
+
+# ---------- 2026-10-23 起一键更新默认停用 ----------
+
+def _no_git(*args, **kwargs):
+    raise AssertionError("停用时不许跑任何 git/构建命令")
+
+
+def test_disabled_by_default_check_update_never_touches_git(monkeypatch):
+    monkeypatch.delenv("SYSTEM_UPDATE_ENABLED", raising=False)
+    monkeypatch.setattr(system_update, "_run_cmd", _no_git)
+    r = asyncio.run(system_update.check_for_update(current_user=None))
+    assert r["has_update"] is False and r["disabled"] is True
+
+
+def test_disabled_by_default_update_is_refused(monkeypatch):
+    monkeypatch.delenv("SYSTEM_UPDATE_ENABLED", raising=False)
+    monkeypatch.setattr(system_update, "_run_cmd", _no_git)
+    try:
+        asyncio.run(system_update.perform_update(current_user=None))
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 410
+    else:
+        raise AssertionError("停用时一键更新必须被拒绝")
+
+
+def test_version_reports_live_build_and_deploy_time(monkeypatch, tmp_path):
+    dist = tmp_path / "frontend" / "dist"
+    dist.mkdir(parents=True)
+    (dist / "version.json").write_text(json.dumps({"v": "mvtest01"}))
+    monkeypatch.setattr(system_update, "PROJECT_ROOT", str(tmp_path))
+    monkeypatch.delenv("SYSTEM_UPDATE_ENABLED", raising=False)
+    monkeypatch.setattr(system_update, "_run_cmd", _no_git)
+    r = asyncio.run(system_update.get_current_version(current_user=None))
+    assert r["build"] == "mvtest01"
+    assert r["deployed_at"] and r["deployed_at"].endswith("+08:00")
+    assert r["backend_started_at"] and r["update_enabled"] is False and r["commit"] is None
