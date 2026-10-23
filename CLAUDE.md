@@ -341,7 +341,11 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   → 用前端真实挖空代码 node 跑一遍筛(挖不出/超长/答案重复出现/模板句)→ 坏的带提示重生 → 生产 dry-run → .backup 整库
   → 只往 example_sentence 仍为空的行写(先导原值 CSV)。**小学 14 本已写入**: 4353 条释义(1636 组),
   备份 /root/eh_db_before_examples_20261023_1957.db + /root/example_fill_backup_20261023_1957.csv。
-  其余学段(初中/高中/大学,约 4.8 万组 8.2 万释义行)生成中,写入同一流程。跳过: 带 sb/sth/one's/... 的短语(挖不出空)、
+  **其余学段 10-23 21:35 已写入**: 47,862 组生成 → 检查长度按学段卡(小学 15/初中 18/高中 22/大学 24 词,统一卡 15 会误杀 5 千句)
+  → 挖不出/答案重复的 410 组带「上次错在哪」提示重生两轮 → 合格 47,540 组 = 81,389 条释义;备份
+  /root/eh_db_before_examples_all_20261023_2135.db + /root/example_fill_backup_20261023_2135.csv。
+  写完全站 1633 个单元**每个都有带例句的词**(之前 1499 个一道填句都出不了)。仍缺例句的 322 组是词条本身挖不出空
+  (depend on/upon、a.m.、tyre, tire、A as well as B 这类斜杠/括号/逗号/A B 占位),照旧不出题。跳过: 带 sb/sth/one's/... 的短语(挖不出空)、
   unit_words 指向已删除书的 5.1 万行(39 个书 id 已不存在,学生进不去)。
   挖空规则(前端 utils/blankSentence.ts 与后端 app/utils/blank_sentence.py **同一份**,测试解析前端文件核对不规则表一致):
   连字符词算一个词(T-shirt/hard-working)、be 动词各形式(be good at → is good at)、更多不规则动词/名词复数、
@@ -357,7 +361,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   /student/books/{id}/progress 每个单元加 has_examples(单元里有没有带例句的词),单元页「填句」置灰 + 「暂无例句」;
   SentenceFillPractice 一道题都没出时**不调 updateProgress**,显示「这个单元还没有例句,先去练听写或测试」。
   ⚠️ 存量未清理: 生产 186 条 sentencefill 进度落在无例句单元(60 个孩子),180 条 is_completed=1 —— 改数据待用户确认。
-  补例句(第 2 步)待做: 别的书同拼写的例句只能借到约 1 成(小学书 3~5 成),其余要 AI 生成,先抽样给用户看。
+  补例句(第 2 步)10-23 已做完,全站单元都有例句了,见上一条「全站补例句」。
   测试 tests/test_sentencefill_records.py 加 has_examples 一例
 - ✅ 句子填空改版(2026-10-23,用户「基础巩固的填句应该怎么设计,填错没有提示正确答案也没有」→「按你建议」):
   查到五个问题: ①判完再按一下回车就跳下一题(按住连跳),答案一闪而过 —— 用户说的「没有正确答案」多半是这个
