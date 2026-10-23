@@ -69,3 +69,28 @@ async def test_wrong_first_answer_is_recorded(client, db_session, env):
     m = (await db_session.execute(select(WordMastery).where(
         WordMastery.user_id == env["stu"], WordMastery.word_id == env["word"]))).scalar_one()
     assert m.wrong_count == 1 and m.total_encounters == 1 and m.next_review_at is not None
+
+
+async def test_book_progress_flags_units_without_examples(client, db_session, env):
+    """单元页「填句」置灰靠 has_examples: 有例句的单元 True,一条例句都没有的单元 False"""
+    from app.models.learning import BookAssignment
+    unit = (await db_session.execute(select(Unit).where(Unit.id == env["unit"]))).scalar_one()
+    book_id = unit.book_id
+    bare = Unit(book_id=book_id, unit_number=2, name="U2 没例句")
+    w2 = Word(word="apple", difficulty=1)
+    teacher = User(username="sftch2", email="sftch2@e.com", hashed_password="x", role="teacher",
+                   full_name="老师", is_active=True)
+    db_session.add_all([bare, w2, teacher])
+    await db_session.flush()
+    db_session.add_all([
+        UnitWord(unit_id=bare.id, word_id=w2.id, order_index=0),
+        WordDefinition(word_id=w2.id, meaning="n. 苹果", is_primary=True, example_sentence="  "),
+        BookAssignment(book_id=book_id, student_id=env["stu"], teacher_id=teacher.id, scope_type="book"),
+    ])
+    await db_session.commit()
+    bare_id = bare.id
+    tok = _make_token(env["stu"])
+    r = await client.get(f"/api/v1/student/books/{book_id}/progress", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200, r.text
+    flags = {u["unit_id"]: u["has_examples"] for u in r.json()["units"]}
+    assert flags == {env["unit"]: True, bare_id: False}

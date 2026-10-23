@@ -545,26 +545,34 @@ const UnitSelector = () => {
                                 <p className="mt-0.5 text-xs text-ink-mute">{group.hint}</p>
                               </div>
                               <div className="grid grid-cols-3 gap-2">
-                                {group.modes.map((mode) => (
-                                  <button
-                                    key={mode.key}
-                                    type="button"
-                                    onClick={() => handleStartLearning(unit.unit_id, mode.key, index)}
-                                    disabled={isLocked}
-                                    className={`relative min-h-11 rounded-lg px-2 py-2.5 text-sm font-medium transition active:scale-95 ${
-                                      isLocked
-                                        ? 'cursor-not-allowed text-ink-mute'
-                                        : 'border border-black/[0.08] bg-white text-ink hover:border-black/20 hover:bg-black/[0.02]'
-                                    }`}
-                                  >
-                                    {mode.name}
-                                    {mode.badge && (
-                                      <span className="ml-1 text-xs font-normal text-ink-mute">
-                                        {mode.badge}
-                                      </span>
-                                    )}
-                                  </button>
-                                ))}
+                                {group.modes.map((mode) => {
+                                  // 没有例句的单元出不了句子填空(全站 47 本书是这样),置灰并说明,别点进去白跑
+                                  const noExamples = mode.key === 'sentencefill' && unit.has_examples === false;
+                                  const off = isLocked || noExamples;
+                                  return (
+                                    <button
+                                      key={mode.key}
+                                      type="button"
+                                      onClick={() => handleStartLearning(unit.unit_id, mode.key, index)}
+                                      disabled={off}
+                                      title={noExamples ? '这个单元还没有例句，暂时不能做填句' : undefined}
+                                      className={`relative min-h-11 rounded-lg px-2 py-2.5 text-sm font-medium transition active:scale-95 ${
+                                        off
+                                          ? 'cursor-not-allowed text-ink-mute'
+                                          : 'border border-black/[0.08] bg-white text-ink hover:border-black/20 hover:bg-black/[0.02]'
+                                      }`}
+                                    >
+                                      {mode.name}
+                                      {noExamples ? (
+                                        <span className="block text-[11px] font-normal leading-4 text-ink-mute">暂无例句</span>
+                                      ) : mode.badge && (
+                                        <span className="ml-1 text-xs font-normal text-ink-mute">
+                                          {mode.badge}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </section>
                           ))}

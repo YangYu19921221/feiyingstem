@@ -77,6 +77,9 @@ class UnitProgressResponse(BaseModel):
     is_allowed: bool = Field(True, description="是否在教师分配范围内(严格模式,False=锁定)")
     # 锁定原因是「只能从作业进入」(而非没分配):前端据此提示去作业里进
     homework_only: bool = Field(False, description="锁定但可从作业入口进入")
+    # 2026-10-23: 单元里有没有带例句的词。没有 = 句子填空出不了题,前端把「填句」置灰
+    # (粗判: 有例句不等于一定挖得出空,挖空在前端;全站 1499 个空单元都是一条例句都没有)
+    has_examples: bool = Field(True, description="单元里是否有带例句的词(句子填空需要)")
 
 class BookProgressResponse(BaseModel):
     """单词本进度响应"""

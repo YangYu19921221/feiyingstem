@@ -87,6 +87,10 @@ export default function SentenceFillPractice() {
     setResults(fillResults);
     setCompleted(true);
 
+    // 一道题都没出(单元里没有能挖空的例句): 不记完成 —— 以前直接记「已完成」,
+    // 孩子以为做完了、单元进度被顶到 100%,线上 261 条填句进度里 168 条是这么来的
+    if (fillResults.length === 0) return;
+
     if (unitId && !redoWords) {
       try {
         await updateProgress({
@@ -138,6 +142,30 @@ export default function SentenceFillPractice() {
               重新加载
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 单元里没有能挖空的例句: 说清楚原因,引导去别的练法
+  if (completed && results.length === 0 && !redoWords) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-paper p-4 no-select">
+        <div className="card-soft w-full max-w-md rounded-2xl p-7 text-center sm:p-9" role="status">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
+            <FilePenLine className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <h1 className="font-display text-xl font-semibold text-ink">这个单元还没有例句</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">
+            句子填空要用单词的例句来出题，这个单元的单词还没有例句。先去练听写或测试吧。
+          </p>
+          <button
+            type="button"
+            onClick={() => goBack()}
+            className="mt-6 min-h-11 w-full rounded-xl bg-accent-warm px-5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            返回单元
+          </button>
         </div>
       </div>
     );

@@ -459,6 +459,20 @@ async def get_book_progress(
         for u in units:
             if unit_word_count[u.id] == 0:
                 unit_word_count[u.id] = u.word_count or 0
+    # 单元里有没有带例句的词(句子填空要用)。只看 primary 释义,与 /units/{id}/start 下发的口径一致
+    # (没有 primary 时 start 会回退第一条释义,这里不细抠 —— 只用来把按钮置灰,点进去页面还会再判)
+    units_with_examples: set[int] = set()
+    if unit_ids:
+        units_with_examples = set((await db.execute(
+            select(UnitWord.unit_id)
+            .join(WordDefinition, WordDefinition.word_id == UnitWord.word_id)
+            .where(
+                UnitWord.unit_id.in_(unit_ids),
+                WordDefinition.example_sentence.is_not(None),
+                func.trim(WordDefinition.example_sentence) != "",
+            )
+            .distinct()
+        )).scalars().all())
     unit_best_scores: dict[int, tuple[float | None, bool]] = {uid: (None, False) for uid in unit_ids}
     unit_study_time: dict[int, int] = {uid: 0 for uid in unit_ids}
     unit_attempt_count: dict[int, int] = {uid: 0 for uid in unit_ids}
@@ -572,6 +586,7 @@ async def get_book_progress(
             attempt_count=unit_attempt_count.get(unit.id, 0),
             is_allowed=is_allowed,
             homework_only=unit.id in homework_only_ids,
+            has_examples=unit.id in units_with_examples,
         ))
 
     # 4. 计算整体进度

@@ -126,6 +126,8 @@ export interface UnitProgress {
   is_allowed?: boolean;
   /** 锁定原因是「只能从作业进入」(而非没分配) */
   homework_only?: boolean;
+  /** 单元里有没有带例句的词;false = 句子填空出不了题,「填句」置灰(老接口不返回时当 true) */
+  has_examples?: boolean;
 }
 
 export interface BookProgress {
