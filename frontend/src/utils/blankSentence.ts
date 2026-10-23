@@ -4,6 +4,12 @@
  * 以及少量高频不规则 made/does 等),短语按「首词可变形 + 其余词原样」匹配。
  *
  * 找不到返回 null —— 调用方应跳过该词，绝不展示「没有横线」的句子。
+ *
+ * 2026-10-23 补(全站批量生成例句时发现): 连字符词当一个词(T-shirt / ping-pong / hard-working,
+ * 以前被切成两半永远对不上)、be 动词各形式(be good at → is good at)、更多常见不规则动词
+ * (过去式例句很常见)、去后缀后双写辅音还原(getting → get, stopped → stop)。
+ * ⚠️ 后端 app/utils/blank_sentence.py 是同一份规则(选词填空/考试用),改一处必须同步另一处,
+ * tests/test_blank_sentence.py 会解析本文件核对 IRREGULAR 两边一致。
  */
 
 // 高频不规则词 → 归一到同一词干，保证目标词与句中变形两边一致
@@ -24,7 +30,50 @@ const IRREGULAR: Record<string, string> = {
   sing: 'sing', sings: 'sing', sang: 'sing', sung: 'sing',
   buy: 'buy', buys: 'buy', bought: 'buy',
   find: 'find', finds: 'find', found: 'find',
-  put: 'put', puts: 'put',
+  put: 'put', puts: 'put', putting: 'put',
+  be: 'be', is: 'be', am: 'be', are: 'be', was: 'be', were: 'be', been: 'be', being: 'be',
+  tell: 'tell', tells: 'tell', told: 'tell',
+  think: 'think', thinks: 'think', thought: 'think',
+  bring: 'bring', brings: 'bring', brought: 'bring',
+  teach: 'teach', teaches: 'teach', taught: 'teach',
+  catch: 'catch', catches: 'catch', caught: 'catch',
+  sit: 'sit', sits: 'sit', sat: 'sit', sitting: 'sit',
+  stand: 'stand', stands: 'stand', stood: 'stand',
+  speak: 'speak', speaks: 'speak', spoke: 'speak', spoken: 'speak',
+  wear: 'wear', wears: 'wear', wore: 'wear', worn: 'wear',
+  swim: 'swim', swims: 'swim', swam: 'swim', swum: 'swim', swimming: 'swim',
+  begin: 'begin', begins: 'begin', began: 'begin', begun: 'begin', beginning: 'begin',
+  drink: 'drink', drinks: 'drink', drank: 'drink', drunk: 'drink',
+  drive: 'drive', drives: 'drive', drove: 'drive', driven: 'drive',
+  fly: 'fly', flies: 'fly', flew: 'fly', flown: 'fly',
+  grow: 'grow', grows: 'grow', grew: 'grow', grown: 'grow',
+  know: 'know', knows: 'know', knew: 'know', known: 'know',
+  leave: 'leave', leaves: 'leave', left: 'leave', leaving: 'leave',
+  lose: 'lose', loses: 'lose', lost: 'lose', losing: 'lose',
+  meet: 'meet', meets: 'meet', met: 'meet',
+  pay: 'pay', pays: 'pay', paid: 'pay',
+  ride: 'ride', rides: 'ride', rode: 'ride', ridden: 'ride',
+  sell: 'sell', sells: 'sell', sold: 'sell',
+  send: 'send', sends: 'send', sent: 'send',
+  sleep: 'sleep', sleeps: 'sleep', slept: 'sleep',
+  spend: 'spend', spends: 'spend', spent: 'spend',
+  win: 'win', wins: 'win', won: 'win', winning: 'win',
+  keep: 'keep', keeps: 'keep', kept: 'keep',
+  feel: 'feel', feels: 'feel', felt: 'feel',
+  hear: 'hear', hears: 'hear', heard: 'hear',
+  hold: 'hold', holds: 'hold', held: 'hold',
+  become: 'become', becomes: 'become', became: 'become',
+  build: 'build', builds: 'build', built: 'build',
+  fall: 'fall', falls: 'fall', fell: 'fall', fallen: 'fall',
+  forget: 'forget', forgets: 'forget', forgot: 'forget', forgotten: 'forget',
+  understand: 'understand', understands: 'understand', understood: 'understand',
+  choose: 'choose', chooses: 'choose', chose: 'choose', chosen: 'choose',
+  break: 'break', breaks: 'break', broke: 'break', broken: 'break',
+  wake: 'wake', wakes: 'wake', woke: 'wake', woken: 'wake',
+  child: 'child', children: 'child',
+  man: 'man', men: 'man', woman: 'woman', women: 'woman',
+  foot: 'foot', feet: 'foot', tooth: 'tooth', teeth: 'tooth',
+  mouse: 'mouse', mice: 'mouse',
 };
 
 /** 小写并去掉首尾非字母字符（保留内部空格） */
@@ -36,12 +85,18 @@ function stem(raw: string): string {
   if (!w) return '';
   if (IRREGULAR[w]) return IRREGULAR[w];
   let s = w;
-  if (s.length >= 5 && s.endsWith('ing')) s = s.slice(0, -3);
+  let ingEd = false;
+  if (s.length >= 5 && s.endsWith('ing')) { s = s.slice(0, -3); ingEd = true; }
   else if (s.length >= 4 && s.endsWith('ies')) s = s.slice(0, -3) + 'y';
   else if (s.length >= 4 && s.endsWith('ied')) s = s.slice(0, -3) + 'y';
   else if (s.length >= 4 && s.endsWith('es')) s = s.slice(0, -2);
-  else if (s.length >= 4 && s.endsWith('ed')) s = s.slice(0, -2);
+  else if (s.length >= 4 && s.endsWith('ed')) { s = s.slice(0, -2); ingEd = true; }
   else if (s.length >= 3 && s.endsWith('s') && !s.endsWith('ss')) s = s.slice(0, -1);
+  // 加 -ing/-ed 时双写的辅音还原: getting→gett→get, stopped→stopp→stop。
+  // 只对 -ing/-ed 做(复数 watts/butts 本身就是双写),ll/ss/ff/zz 是原词就有的不动
+  if (ingEd && s.length >= 4 && s[s.length - 1] === s[s.length - 2] && /[bcdgkmnprtv]/.test(s[s.length - 1])) {
+    s = s.slice(0, -1);
+  }
   if (s.endsWith('e')) s = s.slice(0, -1); // introduce/introduces 都归到 introduc
   return s;
 }
@@ -50,7 +105,8 @@ interface Tok { text: string; start: number; end: number; }
 
 function tokenize(s: string): Tok[] {
   const toks: Tok[] = [];
-  const re = /[A-Za-z']+/g;
+  // 连字符词算一个词(T-shirt / hard-working),否则会被切成两半、和目标词永远对不上
+  const re = /[A-Za-z']+(?:-[A-Za-z']+)*/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(s)) !== null) {
     toks.push({ text: m[0], start: m.index, end: m.index + m[0].length });

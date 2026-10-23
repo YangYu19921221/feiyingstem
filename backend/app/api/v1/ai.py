@@ -592,9 +592,12 @@ async def generate_unit_quiz(
             else:
                 example_sentence = word_data["example"]
 
-            # 将单词替换为下划线
-            blanked_sentence = example_sentence.replace(word_data["word"], "______")
-            blanked_sentence = blanked_sentence.replace(word_data["word"].capitalize(), "______")
+            # 挖空走 blank_sentence(容忍变形、不误伤别的词);挖不出就跳过这个词,
+            # 不能把答案原样留在题面(以前 str.replace 遇到 moved/is good at 就挖不出,
+            # 还会把 great 里的 eat 挖成 gr______)
+            blanked_sentence = blank_out(example_sentence, word_data["word"])
+            if blanked_sentence is None:
+                continue
 
             # 生成选项(正确答案+3个干扰项)
             other_words = [w for w in unit_words if w["id"] != word_data["id"]]
@@ -876,8 +879,10 @@ async def generate_quiz_from_words(
         )
 
         for word_data, example_sentence in zip(selected_words, example_sentences):
-            blanked_sentence = example_sentence.replace(word_data["word"], "______")
-            blanked_sentence = blanked_sentence.replace(word_data["word"].capitalize(), "______")
+            # 同 generate-unit-quiz: 挖不出空就跳过,不让答案留在题面
+            blanked_sentence = blank_out(example_sentence, word_data["word"])
+            if blanked_sentence is None:
+                continue
 
             other_words = [w for w in words_data if w["id"] != word_data["id"]]
             if len(other_words) >= 3:

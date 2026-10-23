@@ -201,19 +201,19 @@ async def generate_exam(
     # 例句填空
     for w in sentence_words:
         sentence = w["example_sentence"]
-        # 将目标词替换为 ______
-        blanked = sentence.replace(w["word"], "______")
-        # 也处理首字母大写的情况
-        blanked = blanked.replace(w["word"].capitalize(), "______")
-        if blanked == sentence:
-            # 没有成功替换，跳过
+        # 挖空走 blank_sentence(容忍 moved/is good at 这类变形,不误伤别的词);挖不出就跳过
+        from app.utils.blank_sentence import blank_out, find_blank_span
+        blanked = blank_out(sentence, w["word"])
+        if blanked is None:
             continue
+        span = find_blank_span(sentence, w["word"])
         questions.append({
             "id": q_id, "type": "sentence_fill", "word_id": w["id"],
             "prompt": blanked, "hint": w["meaning"],
             "score": 0,
         })
-        answer_map[q_id] = w["word"]
+        # 正确答案是空里的那个形式(句子要 moved to 就判 moved to),与句子填空同口径
+        answer_map[q_id] = sentence[span[0]:span[1]]
         q_id += 1
 
     # 分配分数：总分 100，均匀分配到每道题
@@ -308,8 +308,12 @@ async def submit_exam(
         db_q = db_questions.get(ans.question_id)
         score = db_q.score if db_q else 5
 
-        # 判分（严格区分大小写）
-        is_correct = ans.answer.strip() == correct_answer.strip()
+        # 判分（严格区分大小写）。例句填空例外: 空在句首时答案首字母大写(Happy birthday),
+        # 孩子写小写也算对 —— 与句子填空页同口径
+        if db_q and db_q.question_type == "sentence_fill":
+            is_correct = ans.answer.strip().lower() == correct_answer.strip().lower()
+        else:
+            is_correct = ans.answer.strip() == correct_answer.strip()
         earned = score if is_correct else 0
         total_score += earned
 
