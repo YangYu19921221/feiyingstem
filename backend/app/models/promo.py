@@ -85,6 +85,19 @@ class PromoLead(Base):
     )
 
 
+class PromoCardDesign(Base):
+    """一版卡的卡面: 选哪套模板 + 卡上印的老师名字和电话(2026-10-23,用户「老师可以在上面自定义加自己的号码和选不同的模版,
+    这样就不会拿错卡片」)。没有行 = 默认模板 t01、名字取销售姓名、电话取销售账号手机号。
+    单开一张表不往 promo_channels 加列: 那张表 10-23 已上线,create_all 不会给已有表补列,加列要 ALTER(database.py 有 drift)"""
+    __tablename__ = "promo_card_designs"
+
+    channel_id = Column(Integer, ForeignKey("promo_channels.id", ondelete="CASCADE"), primary_key=True)
+    template_id = Column(String(8), nullable=True)      # t01..t20,真源 services/promo.TEMPLATE_IDS(前端 data/promoTemplates.ts 同值)
+    display_name = Column(String(20), nullable=True)    # 卡上印的「王老师」;NULL = 销售姓名
+    display_phone = Column(String(20), nullable=True)   # 卡上印的电话;NULL = 销售账号手机号,空串 = 不印
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class PromoOrgSettings(Base):
     """机构的体验卡设置。没有行 = 默认(体验价 99 元、默认介绍语)。
     单开一张表不往 organizations 加列: 新表 create_all 就建,生产不用 ALTER(database.py 有 drift)"""

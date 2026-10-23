@@ -11,6 +11,7 @@ import {
   type FollowUp, type PromoLead, type PromoLeadList, type PromoStatus,
 } from '../../api/promo';
 import { toast } from '../Toast';
+import Pager from './Pager';
 
 const errText = (e: unknown, fallback: string) => {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -45,17 +46,19 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<PromoLead | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await listPromoLeads({ status, overdue, owner: manager ? owner : null, search: query }));
+      setData(await listPromoLeads({ status, overdue, owner: manager ? owner : null, search: query, page, size: PAGE_SIZE }));
     } catch (e) {
       toast(errText(e, '线索加载失败'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [status, overdue, owner, query, manager]);
+  }, [status, overdue, owner, query, manager, page]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
@@ -70,31 +73,31 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => { setStatus(''); setOverdue(false); }}
+        <button type="button" onClick={() => { setStatus(''); setOverdue(false); setPage(1); }}
           className={`min-h-9 rounded-lg px-3 text-sm font-semibold ${!status && !overdue ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-700 border border-slate-200'}`}>
           全部 {total}
         </button>
         {PROMO_STATUSES.map((s) => (
-          <button key={s.key} type="button" onClick={() => { setStatus(s.key); setOverdue(false); }}
+          <button key={s.key} type="button" onClick={() => { setStatus(s.key); setOverdue(false); setPage(1); }}
             className={`min-h-9 rounded-lg px-3 text-sm font-semibold ${status === s.key ? 'bg-[#FF6B35] text-white' : 'bg-white text-slate-700 border border-slate-200'}`}>
             {s.label} {counts?.[s.key] ?? 0}
           </button>
         ))}
-        <button type="button" onClick={() => { setOverdue((v) => !v); setStatus(''); }}
+        <button type="button" onClick={() => { setOverdue((v) => !v); setStatus(''); setPage(1); }}
           className={`inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-sm font-semibold ${overdue ? 'bg-red-500 text-white' : 'border border-red-200 bg-red-50 text-red-600'}`}>
           <Clock className="h-3.5 w-3.5" aria-hidden /> 该跟进了 {data?.overdue ?? 0}
         </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <form className="relative" onSubmit={(e) => { e.preventDefault(); setQuery(search.trim()); }}>
+        <form className="relative" onSubmit={(e) => { e.preventDefault(); setQuery(search.trim()); setPage(1); }}>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜手机号 / 称呼"
             aria-label="搜手机号或称呼"
             className="min-h-9 w-56 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-[#FF6B35]" />
         </form>
         {manager && owners.length > 0 && (
-          <select value={owner ?? ''} onChange={(e) => setOwner(e.target.value ? Number(e.target.value) : null)}
+          <select value={owner ?? ''} onChange={(e) => { setOwner(e.target.value ? Number(e.target.value) : null); setPage(1); }}
             aria-label="按销售筛选"
             className="min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
             <option value="">全部销售</option>
@@ -139,6 +142,8 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
           </li>
         ))}
       </ul>
+
+      {data && <Pager page={data.page} size={data.size} total={data.total} onChange={setPage} />}
 
       {open && (
         <LeadDrawer lead={open} manager={manager} owners={owners} onClose={() => setOpen(null)}

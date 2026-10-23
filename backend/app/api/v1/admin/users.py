@@ -318,6 +318,11 @@ async def delete_user(
 
     guard_org_admin(current_user, target=user)
 
+    # 销售名下有卡和线索,直接删会留下没人跟的线索、扫了显示不出微信的卡(生产外键是关的,不会级联)。
+    # 删销售走 /promo/sales/{id},那里会先把卡和线索转给接手人
+    if user.role == "sales":
+        raise HTTPException(status_code=409, detail="销售账号请到「地推体验卡 → 销售」里删除(要先选接手人)")
+
     await db.delete(user)
     await db.commit()
 

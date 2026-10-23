@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -27,7 +28,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization import Organization
-from app.models.promo import PromoChannel, PromoFollowUp, PromoLead, PromoOrgSettings, PromoSalesProfile
+from app.models.promo import (
+    PromoCardDesign, PromoChannel, PromoFollowUp, PromoLead, PromoOrgSettings, PromoSalesProfile,
+)
 from app.models.user import StudyCalendar, User
 from app.services.referral import normalize_phone
 
@@ -50,6 +53,12 @@ _STAGE_COL = {"contacted": "contacted_at", "paid": "paid_at", "opened": "opened_
 OWNER_ROLES = ("sales", "org_admin", "admin")   # 能挂卡码、能有线索的账号(admin 只在自己那个机构)
 QR_STALE_DAYS = 6                     # 个人微信群码 7 天过期: 6 天没换就提醒
 STUDY_DAYS_TARGET = 5                 # 开通后 7 天里学满几天算「学满」
+# 卡面模板(2026-10-23 用户要 20 套): 图在 frontend/public/promo-card/tpl/,前端 data/promoTemplates.ts 同一组 id
+# (tests/test_promo.py 解析那个 .ts 锁住两边一致)。新开的卡按「本机构还没人用的」顺序分一套,不同销售的卡一眼分得开
+TEMPLATE_IDS = tuple(f"t{i:02d}" for i in range(1, 21))
+DEFAULT_TEMPLATE = TEMPLATE_IDS[0]
+_PHONE_PRINT_RE = re.compile(r"^[0-9+\- ]{5,20}$")   # 卡上印的电话: 数字、+、横线、空格
+
 GRADES = ("幼儿园", "一年级", "二年级", "三年级", "四年级", "五年级", "六年级",
           "初一", "初二", "初三", "高一", "高二", "高三")
 
@@ -178,10 +187,67 @@ async def create_channel(db: AsyncSession, org_id: int, name: str, owner: User, 
             async with db.begin_nested():
                 db.add(ch)
                 await db.flush()
+            db.add(PromoCardDesign(channel_id=ch.id, template_id=await _next_template(db, org_id)))
+            await db.flush()
             return ch
         except IntegrityError:
             continue
     raise HTTPException(status_code=500, detail="卡码生成失败,请重试")
+
+
+async def _next_template(db: AsyncSession, org_id: int) -> str:
+    """本机构在用的卡还没用过的第一套;20 套都用过了就按卡数轮"""
+    used = (await db.execute(
+        select(PromoCardDesign.template_id)
+        .join(PromoChannel, PromoChannel.id == PromoCardDesign.channel_id)
+        .where(PromoChannel.org_id == org_id, PromoChannel.is_active.is_(True))
+    )).scalars().all()
+    for t in TEMPLATE_IDS:
+        if t not in used:
+            return t
+    return TEMPLATE_IDS[len(used) % len(TEMPLATE_IDS)]
+
+
+async def designs_of(db: AsyncSession, channel_ids) -> dict[int, PromoCardDesign]:
+    ids = [i for i in channel_ids if i]
+    if not ids:
+        return {}
+    return {d.channel_id: d for d in (await db.execute(
+        select(PromoCardDesign).where(PromoCardDesign.channel_id.in_(ids))
+    )).scalars().all()}
+
+
+def design_out(d: Optional[PromoCardDesign], owner: Optional[User]) -> dict:
+    """卡上印什么。名字/电话没自定义过就用销售账号上的;display_phone 空串 = 老师选了不印电话"""
+    tpl = d.template_id if d and d.template_id in TEMPLATE_IDS else DEFAULT_TEMPLATE
+    name = d.display_name if d and d.display_name else display_name(owner) if owner else ""
+    if d is not None and d.display_phone is not None:
+        phone = d.display_phone
+    else:
+        phone = (owner.phone if owner else None) or ""
+    return {"template_id": tpl, "display_name": name, "display_phone": phone}
+
+
+async def save_design(db: AsyncSession, ch: PromoChannel, data: dict) -> PromoCardDesign:
+    d = await db.get(PromoCardDesign, ch.id)
+    if d is None:
+        d = PromoCardDesign(channel_id=ch.id)
+        db.add(d)
+    if "template_id" in data:
+        t = data["template_id"]
+        if t not in TEMPLATE_IDS:
+            raise HTTPException(status_code=400, detail="没有这套模板")
+        d.template_id = t
+    # 「留空 = 用账号上的」走显式分支(CLAUDE.md: 空串别被 if 吞掉)
+    if "display_name" in data:
+        d.display_name = _clip(data["display_name"], 20)
+    if "display_phone" in data:
+        v = (data["display_phone"] or "").strip()
+        if v and not _PHONE_PRINT_RE.match(v):
+            raise HTTPException(status_code=400, detail="电话只能填数字、空格和横线")
+        d.display_phone = v   # 空串 = 不印电话(和 NULL「跟账号走」区分开)
+    await db.flush()
+    return d
 
 
 async def resolve_channel(db: AsyncSession, code: str) -> tuple[PromoChannel, Organization, Optional[User]]:
@@ -372,7 +438,8 @@ async def studied_days(db: AsyncSession, leads: list[PromoLead]) -> dict[int, in
 
 async def list_leads(db: AsyncSession, org_id: Optional[int], sales_user_id: Optional[int], *,
                      status: Optional[str] = None, owner: Optional[int] = None,
-                     overdue_only: bool = False, search: Optional[str] = None) -> dict:
+                     overdue_only: bool = False, search: Optional[str] = None,
+                     page: int = 1, size: int = 20) -> dict:
     now = datetime.utcnow()
     stmt = scope_stmt(select(PromoLead), org_id, sales_user_id)
     if status:
@@ -390,7 +457,12 @@ async def list_leads(db: AsyncSession, org_id: Optional[int], sales_user_id: Opt
         esc = kw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.where(or_(PromoLead.parent_phone.like(f"%{esc}%", escape="\\"),
                               PromoLead.parent_name.like(f"%{esc}%", escape="\\")))
-    leads = list((await db.execute(stmt.order_by(PromoLead.id.desc()).limit(500))).scalars().all())
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    page = max(1, page)
+    size = max(1, min(100, size))
+    leads = list((await db.execute(
+        stmt.order_by(PromoLead.id.desc()).offset((page - 1) * size).limit(size)
+    )).scalars().all())
 
     users = await _users_by_id(db, [l.sales_user_id for l in leads] + [l.student_id for l in leads])
     chs = {c.id: c for c in (await db.execute(
@@ -411,6 +483,7 @@ async def list_leads(db: AsyncSession, org_id: Optional[int], sales_user_id: Opt
     )).scalar() or 0
     return {
         "items": [lead_out(l, users, chs, now, sd.get(l.id)) for l in leads],
+        "total": int(total), "page": page, "size": size,
         "counts": counts,
         "overdue": int(overdue),
         "statuses": [{"value": s, "label": STATUS_LABELS[s]} for s in STATUSES],
@@ -502,3 +575,62 @@ async def board(db: AsyncSession, org_id: int, since: Optional[datetime], until:
         for k in ("channels", "views", "leads", "contacted", "paid", "opened", "studied", "won", "lost", "revenue", "overdue"):
             total[k] += r[k]
     return {"items": items, "total": total, "study_days_target": STUDY_DAYS_TARGET}
+
+
+# ---------------- 删除销售 ----------------
+
+async def owned_counts(db: AsyncSession, org_id: int, user_ids) -> dict[int, dict]:
+    """每个人名下几版卡、几条线索(删销售前要知道要不要选接手人)"""
+    ids = [i for i in user_ids if i]
+    out = {i: {"channels": 0, "leads": 0} for i in ids}
+    if not ids:
+        return out
+    for uid, n in (await db.execute(
+        select(PromoChannel.sales_user_id, func.count(PromoChannel.id))
+        .where(PromoChannel.org_id == org_id, PromoChannel.sales_user_id.in_(ids))
+        .group_by(PromoChannel.sales_user_id)
+    )).all():
+        out[uid]["channels"] = int(n)
+    for uid, n in (await db.execute(
+        select(PromoLead.sales_user_id, func.count(PromoLead.id))
+        .where(PromoLead.org_id == org_id, PromoLead.sales_user_id.in_(ids))
+        .group_by(PromoLead.sales_user_id)
+    )).all():
+        out[uid]["leads"] = int(n)
+    return out
+
+
+async def delete_sales(db: AsyncSession, sales: User, transfer_to: Optional[User], actor: User) -> dict:
+    """删销售账号。名下有卡或线索就必须选一个接手人 —— 不转就删,线索没人跟、卡扫了显示不出微信。
+    生产库外键是关的(CLAUDE.md: 删用户前必查依赖),所以引用都在这里显式改掉再删行"""
+    c = (await owned_counts(db, sales.org_id, [sales.id]))[sales.id]
+    if (c["channels"] or c["leads"]) and transfer_to is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "TRANSFER_REQUIRED",
+            "message": f"他名下还有 {c['channels']} 版卡、{c['leads']} 条线索,先选一个接手的人",
+            **c,
+        })
+    if transfer_to is not None and transfer_to.id == sales.id:
+        raise HTTPException(status_code=400, detail="不能转给他自己")
+    moved_leads = 0
+    if transfer_to is not None:
+        await db.execute(update(PromoChannel)
+                         .where(PromoChannel.org_id == sales.org_id, PromoChannel.sales_user_id == sales.id)
+                         .values(sales_user_id=transfer_to.id))
+        lead_ids = list((await db.execute(
+            select(PromoLead.id).where(PromoLead.org_id == sales.org_id, PromoLead.sales_user_id == sales.id)
+        )).scalars().all())
+        if lead_ids:
+            await db.execute(update(PromoLead).where(PromoLead.id.in_(lead_ids))
+                             .values(sales_user_id=transfer_to.id))
+            note = f"销售「{display_name(sales)}」账号删除,线索转给「{display_name(transfer_to)}」"
+            for lid in lead_ids:
+                db.add(PromoFollowUp(lead_id=lid, content=note, created_by=actor.id,
+                                     created_by_name=display_name(actor)))
+        moved_leads = len(lead_ids)
+    prof = await db.get(PromoSalesProfile, sales.id)
+    if prof is not None:
+        await db.delete(prof)
+    await db.delete(sales)
+    await db.flush()
+    return {"moved_channels": c["channels"], "moved_leads": moved_leads}

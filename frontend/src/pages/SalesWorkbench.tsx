@@ -12,6 +12,7 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import PromoCardPrint from '../components/promo/PromoCardPrint';
 import PromoLeadsPanel from '../components/promo/PromoLeadsPanel';
 import { cardUrl, getMyPromo, updateMyPromo, uploadMyQr, type MyPromo, type PromoChannel } from '../api/promo';
+import { templateImg, templateOf } from '../data/promoTemplates';
 import { copyText } from '../utils/copyText';
 import { toast } from '../components/Toast';
 
@@ -173,9 +174,13 @@ export default function SalesWorkbench() {
             <ul className="mt-3 divide-y divide-slate-100">
               {me.channels.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                  <img src={templateImg(c.design.template_id, 'thumb')} alt="" className="h-12 w-[72px] shrink-0 rounded-md object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">{c.name} {!c.is_active && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">已停用</span>}</p>
-                    <p className="text-xs text-slate-500">卡码 {c.code} · 被扫开 {c.view_count} 次</p>
+                    <p className="text-xs text-slate-500">
+                      模板「{templateOf(c.design.template_id).name}」· 卡上印 {[c.design.display_name, c.design.display_phone].filter(Boolean).join(' ') || '(没印名字电话)'}
+                      · 卡码 {c.code} · 被扫开 {c.view_count} 次
+                    </p>
                   </div>
                   <button type="button" onClick={() => copyText(cardUrl(c.code), '扫码地址已复制')}
                     className="min-h-9 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
@@ -183,7 +188,7 @@ export default function SalesWorkbench() {
                   </button>
                   <button type="button" onClick={() => setPrinting(c)} disabled={!c.is_active}
                     className="min-h-9 rounded-lg bg-slate-800 px-3 text-sm font-semibold text-white disabled:opacity-40">
-                    印刷文件
+                    卡面与印刷
                   </button>
                 </li>
               ))}
@@ -197,7 +202,10 @@ export default function SalesWorkbench() {
         </section>
       </main>
 
-      {printing && <PromoCardPrint code={printing.code} name={printing.name} onClose={() => setPrinting(null)} />}
+      {printing && (
+        <PromoCardPrint channel={printing} onClose={() => setPrinting(null)}
+          onSaved={(c) => setMe((m) => m && { ...m, channels: m.channels.map((x) => (x.id === c.id ? { ...x, design: c.design } : x)) })} />
+      )}
       <ChangePasswordModal isOpen={showPwd} onClose={() => setShowPwd(false)} />
     </div>
   );

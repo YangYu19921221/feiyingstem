@@ -2,28 +2,35 @@
  * 体验卡印刷文件(浏览器里 canvas 现画,不经服务器)
  *
  * 成品 90×60mm,四边各 2mm 出血 → 94×64mm,300dpi = 1110×756 像素。
- * 背面底图 public/promo-card/back.png 是 AI 出的(1536×1024,中间留了一块纯白方框放二维码),
- * 二维码、卡号、小字由这里画上去 —— 生图模型画不准二维码,也画不准每张不同的卡号。
- * 正面 public/promo-card/front.jpg 每张一样,同样按出血尺寸铺满导出。
+ * 20 套模板(data/promoTemplates.ts): 正面/背面底图都是 AI 出的 1536×1024,背面中间留了一块纯白方框。
+ * 程序往上画三样「每版卡不一样」的东西 —— 生图模型画不准二维码,也写不准每个老师的名字和电话:
+ * ① 背面白框里: 二维码 + 老师名字电话 + 卡号  ② 正面底部一条: 老师名字电话(一眼分得清是谁的卡)
  *
- * 白框位置是对底图逐像素扫出来的(BACK_BOX),**换底图要重扫**,否则二维码会压到框外。
+ * 白框位置是对每张底图逐像素扫出来的(模板的 box),**换底图要重扫**;画之前检查框里是不是白的,
+ * 不是就报错不出图 —— 宁可报错,也别印出一批二维码压到花纹上的卡。
  */
 import QRCode from 'qrcode';
+import { templateImg, templateOf } from '../data/promoTemplates';
 
 const DPI = 300;
 const MM = DPI / 25.4;
 export const PRINT_W = Math.round(94 * MM);   // 1110
 export const PRINT_H = Math.round(64 * MM);   // 756
 export const BLEED_PX = Math.round(2 * MM);
+/** 安全区: 裁切误差约 1mm,字和二维码离成品边至少 3mm */
+const SAFE_PX = BLEED_PX + Math.round(3 * MM);
 
 const SRC_W = 1536;
 const SRC_H = 1024;
-/** 底图里白色方框(原图坐标 左,上,右,下) */
-const BACK_BOX = { l: 148, t: 154, r: 612, b: 618 };
-/** 「微信扫码 预约体验」下面那条纯米色带(印刷画布坐标,扫描所得) */
-const SMALL_PRINT_Y = 527;
-
 const FONT = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Noto Sans SC",sans-serif';
+
+export interface CardPrintOptions {
+  templateId: string;
+  url: string;            // 二维码内容(卡上印的固定网址)
+  code: string;           // 卡码,印在二维码下面,电话里能念给家长
+  name: string;           // 卡上印的老师名字(空 = 不印)
+  phone: string;          // 卡上印的电话(空 = 不印)
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -32,17 +39,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error(`图片加载失败: ${src}`));
     img.src = src;
   });
-}
-
-/** 按出血尺寸铺满(cover)居中裁,返回缩放比例与偏移,用来把底图坐标换算到画布 */
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
-  const s = Math.max(PRINT_W / img.width, PRINT_H / img.height);
-  const w = img.width * s;
-  const h = img.height * s;
-  const ox = (w - PRINT_W) / 2;
-  const oy = (h - PRINT_H) / 2;
-  ctx.drawImage(img, -ox, -oy, w, h);
-  return { s, ox, oy };
 }
 
 function newCanvas() {
@@ -54,56 +50,100 @@ function newCanvas() {
   return { c, ctx };
 }
 
-export async function drawCardFront(): Promise<HTMLCanvasElement> {
+/** 按出血尺寸铺满(cover)居中裁,返回把底图坐标换算到画布的函数 */
+function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
+  if (img.width !== SRC_W || img.height !== SRC_H) {
+    throw new Error('模板底图尺寸不对,需要重新标定二维码位置');
+  }
+  const s = Math.max(PRINT_W / img.width, PRINT_H / img.height);
+  const ox = (img.width * s - PRINT_W) / 2;
+  const oy = (img.height * s - PRINT_H) / 2;
+  ctx.drawImage(img, -ox, -oy, img.width * s, img.height * s);
+  return (x: number, y: number) => [x * s - ox, y * s - oy] as const;
+}
+
+/** 把文字缩到放得下(长名字、带区号的电话) */
+function fitFont(ctx: CanvasRenderingContext2D, text: string, weight: number, max: number, min: number, width: number) {
+  let size = max;
+  for (; size > min; size -= 1) {
+    ctx.font = `${weight} ${size}px ${FONT}`;
+    if (ctx.measureText(text).width <= width) break;
+  }
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  return size;
+}
+
+function contactLine(name: string, phone: string) {
+  return [name.trim(), phone.trim()].filter(Boolean).join('  ');
+}
+
+export async function drawCardFront(o: CardPrintOptions): Promise<HTMLCanvasElement> {
   const { c, ctx } = newCanvas();
-  drawCover(ctx, await loadImage('/promo-card/front.jpg'));
+  drawCover(ctx, await loadImage(templateImg(o.templateId, 'front')));
+  const line = contactLine(o.name, o.phone);
+  if (line) {
+    // 底部居中一条半透明白底胶囊: 不管模板什么配色都看得清,也不跟模板自己的字抢
+    const size = fitFont(ctx, line, 600, 30, 20, PRINT_W * 0.6);
+    const tw = ctx.measureText(line).width;
+    const padX = 22;
+    const h = size + 18;
+    const x = (PRINT_W - tw) / 2 - padX;
+    const y = PRINT_H - SAFE_PX - h + 6;
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, tw + padX * 2, h, h / 2);
+    ctx.fill();
+    ctx.fillStyle = '#3D2B1F';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(line, PRINT_W / 2, y + h / 2 + 1);
+  }
   return c;
 }
 
-export interface BackOptions {
-  url: string;          // 二维码内容(卡上印的固定网址)
-  code: string;         // 卡码,印在二维码下面,电话里能念给家长
-  smallPrint?: string;  // 有效期 / 限领说明
-}
-
-export async function drawCardBack({ url, code, smallPrint }: BackOptions): Promise<HTMLCanvasElement> {
+export async function drawCardBack(o: CardPrintOptions): Promise<HTMLCanvasElement> {
   const { c, ctx } = newCanvas();
-  const bg = await loadImage('/promo-card/back.png');
-  if (bg.width !== SRC_W || bg.height !== SRC_H) {
-    // 底图换了尺寸,白框坐标就对不上了: 宁可报错也别印出一批二维码压到框外的卡
-    throw new Error('背面底图尺寸变了,需要重新标定二维码位置');
-  }
-  const { s, ox, oy } = drawCover(ctx, bg);
-  const l = BACK_BOX.l * s - ox;
-  const t = BACK_BOX.t * s - oy;
-  const r = BACK_BOX.r * s - ox;
-  const b = BACK_BOX.b * s - oy;
+  const tpl = templateOf(o.templateId);
+  const map = drawCover(ctx, await loadImage(templateImg(tpl.id, 'back')));
+  const [l, t] = map(tpl.box.l, tpl.box.t);
+  const [r, b] = map(tpl.box.r, tpl.box.b);
 
-  const no = `NO. ${code}`;
-  ctx.font = `600 22px ${FONT}`;
-  const noH = 24;
-  const inner = 18;
-  const side = Math.floor(Math.min(r - l - 2 * inner, b - t - 2 * inner - noH - 10));
+  // 框里抽几个点,确认是白的(换了底图没重扫框的位置,这里会拦住)
+  const probe = ctx.getImageData(Math.round(l + 12), Math.round(t + 12), Math.round(r - l - 24), Math.round(b - t - 24)).data;
+  let dark = 0;
+  for (let i = 0; i < probe.length; i += 4 * 97) {
+    if (Math.min(probe[i], probe[i + 1], probe[i + 2]) < 225) dark++;
+  }
+  if (dark > 3) throw new Error('二维码框里不是空白的,模板需要重新标定');
+
+  const inner = 14;
+  const line = contactLine(o.name, o.phone);
+  const lineH = line ? 26 : 0;
+  const noH = 20;
+  const gap = 6;
+  const side = Math.floor(Math.min(r - l - 2 * inner, b - t - 2 * inner - noH - lineH - gap * 2));
   // 纠错等级 M: 卡片会被揉、被茶水溅,比 L 稳;码再密就要更大的印刷尺寸
-  const qr = await loadImage(await QRCode.toDataURL(url, {
+  const qr = await loadImage(await QRCode.toDataURL(o.url, {
     errorCorrectionLevel: 'M', margin: 0, width: side * 2, color: { dark: '#3D2B1F', light: '#FFFFFF' },
   }));
-  const qx = l + (r - l - side) / 2;
+  const cx = (l + r) / 2;
   const qy = t + inner;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(qr, qx, qy, side, side);
+  ctx.drawImage(qr, cx - side / 2, qy, side, side);
   ctx.imageSmoothingEnabled = true;
 
-  ctx.fillStyle = '#3D2B1F';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(no, (l + r) / 2, qy + side + 8);
-
-  if (smallPrint) {
-    ctx.font = `400 19px ${FONT}`;
-    ctx.fillStyle = '#7D6250';
-    ctx.fillText(smallPrint, (l + r) / 2, SMALL_PRINT_Y);
+  let y = qy + side + gap;
+  if (line) {
+    ctx.fillStyle = '#3D2B1F';
+    fitFont(ctx, line, 600, 22, 15, r - l - 2 * inner);
+    ctx.fillText(line, cx, y);
+    y += lineH;
   }
+  ctx.fillStyle = '#8A7262';
+  ctx.font = `500 16px ${FONT}`;
+  ctx.fillText(`NO. ${o.code}`, cx, y);
   return c;
 }
 
@@ -128,7 +168,5 @@ export function trimmedDataUrl(c: HTMLCanvasElement): string {
   out.width = PRINT_W - 2 * BLEED_PX;
   out.height = PRINT_H - 2 * BLEED_PX;
   out.getContext('2d')?.drawImage(c, -BLEED_PX, -BLEED_PX);
-  return out.toDataURL('image/png');
+  return out.toDataURL('image/jpeg', 0.9);
 }
-
-export const DEFAULT_SMALL_PRINT = '2026.12.31 前有效 · 每个手机号限领 1 张';

@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'promo-card-templates-2026-10',
+    date: '2026-10-23',
+    title: '🎨 体验卡 20 套模板,卡上能印老师名字和电话',
+    desc: '每版卡可以选 20 套卡面里的一套,卡的正面和背面会印上老师自己的名字和电话 —— 几个销售同时发卡,拿在手里一眼分得清,不会拿错。新开的卡会自动分一套还没人用过的模板。销售管理也补齐了:可以编辑姓名/用户名/手机号、删除(名下的卡和线索要先选人接手)、列表分页和搜索。',
+    where: '「地推体验卡 → 卡码」每行点「卡面与印刷」选模板、填名字电话;「销售」页里编辑和删除',
+    roles: ['org_admin', 'admin'],
+    route: '/admin/promo',
+  },
+  {
     id: 'promo-card-org-2026-10',
     date: '2026-10-23',
     title: '📣 地推体验卡:每个销售一版卡,扫码自动记到发卡人名下',

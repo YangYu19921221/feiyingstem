@@ -43,6 +43,16 @@ export interface SalesProfile {
   qr_stale: boolean;
 }
 
+export interface CardDesign {
+  template_id: string;
+  /** 卡上印的名字(没自定义过 = 销售姓名) */
+  display_name: string;
+  /** 卡上印的电话(没自定义过 = 销售账号手机号;空串 = 不印) */
+  display_phone: string;
+}
+
+export interface Paged<T> { items: T[]; total: number; page: number; size: number }
+
 export interface PromoChannel {
   id: number;
   code: string;
@@ -50,6 +60,7 @@ export interface PromoChannel {
   path: string;
   is_active: boolean;
   view_count: number;
+  design: CardDesign;
   sales_user_id?: number | null;
   sales_name?: string;
   leads?: number;
@@ -96,6 +107,9 @@ export interface PromoLead {
 
 export interface PromoLeadList {
   items: PromoLead[];
+  total: number;
+  page: number;
+  size: number;
   counts: Record<PromoStatus, number>;
   overdue: number;
   is_manager: boolean;
@@ -117,6 +131,10 @@ export interface SalesAccount {
   phone: string;
   is_active: boolean;
   profile: SalesProfile;
+  created_at: string | null;
+  /** 名下几版卡 / 几条线索(删之前要不要选接手人) */
+  channels: number;
+  leads: number;
 }
 
 export interface BoardRow {
@@ -164,7 +182,7 @@ export const uploadMyQr = (file: File, kind: 'wechat' | 'group'): Promise<SalesP
 // ---------------- 跟单 ----------------
 
 export const listPromoLeads = (params: {
-  status?: PromoStatus | ''; owner?: number | null; overdue?: boolean; search?: string;
+  status?: PromoStatus | ''; owner?: number | null; overdue?: boolean; search?: string; page?: number; size?: number;
 }): Promise<PromoLeadList> =>
   client.get('/promo/leads', {
     params: {
@@ -172,6 +190,8 @@ export const listPromoLeads = (params: {
       owner: params.owner ?? undefined,
       overdue: params.overdue || undefined,
       search: params.search || undefined,
+      page: params.page || 1,
+      size: params.size || 20,
     },
   });
 
@@ -187,22 +207,41 @@ export const addFollowUp = (id: number, data: { content: string; status?: PromoS
 
 // ---------------- 机构管理员 ----------------
 
-export const listSales = (): Promise<SalesAccount[]> => client.get('/promo/sales');
+export const listSales = (params: { page?: number; size?: number; search?: string; status?: 'active' | 'inactive' | '' } = {}):
+  Promise<Paged<SalesAccount>> =>
+  client.get('/promo/sales', {
+    params: { page: params.page || 1, size: params.size || 20, search: params.search || undefined, status: params.status || undefined },
+  });
+
+/** 下拉框用: 在用的全部销售,不分页 */
+export const listActiveSales = (): Promise<Paged<SalesAccount>> => client.get('/promo/sales', { params: { all: true } });
 
 export const createSales = (data: { username: string; full_name: string; phone?: string; password?: string }):
   Promise<{ id: number; username: string; full_name: string; initial_password: string }> =>
   client.post('/promo/sales', data);
 
-export const updateSales = (id: number, data: { full_name?: string; is_active?: boolean }) =>
+export const updateSales = (id: number, data: { full_name?: string; username?: string; phone?: string; is_active?: boolean }) =>
   client.patch(`/promo/sales/${id}`, data);
+
+/** 名下有卡或线索要带接手人;不带时后端回 409 detail.code=TRANSFER_REQUIRED */
+export const deleteSales = (id: number, transferTo?: number | null): Promise<{ moved_channels: number; moved_leads: number }> =>
+  client.delete(`/promo/sales/${id}`, { params: { transfer_to: transferTo ?? undefined } });
 
 export const resetSalesPassword = (id: number): Promise<{ username: string; password: string }> =>
   client.post(`/promo/sales/${id}/reset-password`);
 
-export const listChannels = (): Promise<PromoChannel[]> => client.get('/promo/channels');
+export const listChannels = (params: { page?: number; size?: number; owner?: number | null; search?: string } = {}):
+  Promise<Paged<PromoChannel>> =>
+  client.get('/promo/channels', {
+    params: { page: params.page || 1, size: params.size || 20, owner: params.owner ?? undefined, search: params.search || undefined },
+  });
 
-export const createChannel = (data: { name?: string; sales_user_id: number }): Promise<PromoChannel> =>
+export const createChannel = (data: { name?: string; sales_user_id: number; template_id?: string }): Promise<PromoChannel> =>
   client.post('/promo/channels', data);
+
+/** 改卡面(销售改自己的、管理员改全机构的)。display_name 空串 = 跟销售姓名;display_phone 空串 = 不印电话 */
+export const updateCardDesign = (id: number, data: Partial<CardDesign>): Promise<PromoChannel> =>
+  client.put(`/promo/channels/${id}/design`, data);
 
 export const updateChannel = (id: number, data: { name?: string; sales_user_id?: number; is_active?: boolean }): Promise<PromoChannel> =>
   client.patch(`/promo/channels/${id}`, data);

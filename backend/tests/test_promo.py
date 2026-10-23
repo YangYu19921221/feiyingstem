@@ -225,3 +225,124 @@ async def test_platform_admin_manages_own_org_only(client, db_session, ctx):
     await client.post(f"/api/v1/promo/public/{ch['code']}/leads", json={"parent_phone": "13900000010"})
     r = await client.get("/api/v1/promo/board", headers=_h(adm.id))
     assert r.json()["total"]["leads"] == 1
+
+
+# ---------------- 10-23 第二批: 销售增删改查 + 分页 + 卡面模板 ----------------
+
+@pytest.mark.asyncio
+async def test_delete_sales_requires_handover(client, db_session, ctx):
+    """名下有卡或线索的销售,不选接手人不让删;选了就把卡和线索一起转过去再删"""
+    from app.models.promo import PromoFollowUp
+    s1_id, s2_id, oa_id = ctx["s1"].id, ctx["s2"].id, ctx["oa"].id
+    ch = await _new_channel(client, ctx["oa"], ctx["s1"])
+    await client.post(f"/api/v1/promo/public/{ch['code']}/leads", json={"parent_phone": "13900000011"})
+    r = await client.delete(f"/api/v1/promo/sales/{ctx['s1'].id}", headers=_h(ctx["oa"].id))
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "TRANSFER_REQUIRED"
+    assert r.json()["detail"]["channels"] == 1 and r.json()["detail"]["leads"] == 1
+    # 不能转给别家机构的销售
+    r = await client.delete(f"/api/v1/promo/sales/{ctx['s1'].id}?transfer_to={ctx['sb'].id}", headers=_h(ctx["oa"].id))
+    assert r.status_code == 400
+    r = await client.delete(f"/api/v1/promo/sales/{ctx['s1'].id}?transfer_to={ctx['s2'].id}", headers=_h(ctx["oa"].id))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"moved_channels": 1, "moved_leads": 1}
+    fresh = {"populate_existing": True}
+    assert (await db_session.execute(select(User).where(User.id == s1_id))).scalar_one_or_none() is None
+    chan = (await db_session.execute(select(PromoChannel).where(PromoChannel.id == ch["id"])
+                                     .execution_options(**fresh))).scalar_one()
+    lead = (await db_session.execute(select(PromoLead).execution_options(**fresh))).scalar_one()
+    assert chan.sales_user_id == s2_id and lead.sales_user_id == s2_id
+    logs = (await db_session.execute(select(PromoFollowUp).where(PromoFollowUp.lead_id == lead.id))).scalars().all()
+    assert any("转给「李销售」" in x.content for x in logs)
+    # 名下没东西的销售直接删
+    r = await client.post("/api/v1/promo/sales", json={"username": "prmsempty", "full_name": "空销售"}, headers=_h(oa_id))
+    r = await client.delete(f"/api/v1/promo/sales/{r.json()['id']}", headers=_h(oa_id))
+    assert r.status_code == 200 and r.json()["moved_leads"] == 0
+    # 别家机构的管理员删不了本机构销售;通用用户管理也不让直接删销售(会丢线索)
+    r = await client.delete(f"/api/v1/promo/sales/{s2_id}", headers=_h(ctx["ob"].id))
+    assert r.status_code == 404
+    r = await client.delete(f"/api/v1/admin/users/{s2_id}", headers=_h(oa_id))
+    assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_sales_crud_and_pagination(client, db_session, ctx):
+    for i in range(23):
+        r = await client.post("/api/v1/promo/sales", json={"username": f"prmspage{chr(97 + i)}", "full_name": f"分页{i}"},
+                              headers=_h(ctx["oa"].id))
+        assert r.status_code == 200
+    r = await client.get("/api/v1/promo/sales?page=1&size=10", headers=_h(ctx["oa"].id))
+    body = r.json()
+    assert body["total"] == 25 and len(body["items"]) == 10      # 23 + fixture 里的王销售、李销售
+    r = await client.get("/api/v1/promo/sales?page=3&size=10", headers=_h(ctx["oa"].id))
+    assert len(r.json()["items"]) == 5
+    r = await client.get("/api/v1/promo/sales?search=" + "王", headers=_h(ctx["oa"].id))
+    assert [x["full_name"] for x in r.json()["items"]] == ["王销售"]
+    # 搜索里的 _ 不当通配符(CLAUDE.md: LIKE 下划线坑)
+    r = await client.get("/api/v1/promo/sales?search=_", headers=_h(ctx["oa"].id))
+    assert r.json()["total"] == 0
+    # 改: 姓名 / 用户名 / 手机号,清空手机号走显式分支
+    sid = ctx["s1"].id
+    r = await client.patch(f"/api/v1/promo/sales/{sid}", json={"full_name": "王老师", "username": "prmswangnew",
+                                                               "phone": "13700000001"}, headers=_h(ctx["oa"].id))
+    assert r.status_code == 200, r.text
+    r = await client.patch(f"/api/v1/promo/sales/{sid}", json={"username": "prmstwo"}, headers=_h(ctx["oa"].id))
+    assert r.status_code == 409                                    # 用户名撞了李销售
+    r = await client.patch(f"/api/v1/promo/sales/{sid}", json={"phone": ""}, headers=_h(ctx["oa"].id))
+    u = (await db_session.execute(select(User).where(User.id == sid)
+                                  .execution_options(populate_existing=True))).scalar_one()
+    assert u.full_name == "王老师" and u.username == "prmswangnew" and u.phone is None
+    # 停用后 all=true 的下拉不出现
+    await client.patch(f"/api/v1/promo/sales/{sid}", json={"is_active": False}, headers=_h(ctx["oa"].id))
+    r = await client.get("/api/v1/promo/sales?all=true", headers=_h(ctx["oa"].id))
+    assert sid not in [x["id"] for x in r.json()["items"]]
+
+
+@pytest.mark.asyncio
+async def test_card_design_templates_and_print_fields(client, db_session, ctx):
+    from app.services.promo import TEMPLATE_IDS
+    ctx["s1"].phone = "13800000001"
+    await db_session.commit()
+    a = await _new_channel(client, ctx["oa"], ctx["s1"], "一版")
+    b = await _new_channel(client, ctx["oa"], ctx["s2"], "二版")
+    # 新开的卡按机构里还没人用过的顺序分模板 —— 两个销售默认就不是同一套
+    assert a["design"]["template_id"] == "t01" and b["design"]["template_id"] == "t02"
+    # 没自定义过: 名字电话跟销售账号走
+    assert a["design"]["display_name"] == "王销售" and a["design"]["display_phone"] == "13800000001"
+    # 销售改自己的卡面
+    r = await client.put(f"/api/v1/promo/channels/{a['id']}/design",
+                         json={"template_id": "t07", "display_name": "王老师", "display_phone": "138-0000-0002"},
+                         headers=_h(ctx["s1"].id))
+    assert r.status_code == 200, r.text
+    assert r.json()["design"] == {"template_id": "t07", "display_name": "王老师", "display_phone": "138-0000-0002"}
+    # 空串电话 = 不印(不是退回账号手机号)
+    r = await client.put(f"/api/v1/promo/channels/{a['id']}/design", json={"display_phone": ""}, headers=_h(ctx["s1"].id))
+    assert r.json()["design"]["display_phone"] == ""
+    # 不能改别人的卡面、不能填不存在的模板、电话不能乱写
+    r = await client.put(f"/api/v1/promo/channels/{b['id']}/design", json={"template_id": "t03"}, headers=_h(ctx["s1"].id))
+    assert r.status_code == 404
+    r = await client.put(f"/api/v1/promo/channels/{a['id']}/design", json={"template_id": "t99"}, headers=_h(ctx["s1"].id))
+    assert r.status_code == 400
+    r = await client.put(f"/api/v1/promo/channels/{a['id']}/design", json={"display_phone": "<script>"}, headers=_h(ctx["s1"].id))
+    assert r.status_code == 400
+    # 销售工作台里能看到自己卡的卡面
+    r = await client.get("/api/v1/promo/me", headers=_h(ctx["s1"].id))
+    assert r.json()["channels"][0]["design"]["template_id"] == "t07"
+    # 卡码列表分页
+    r = await client.get("/api/v1/promo/channels?page=1&size=1", headers=_h(ctx["oa"].id))
+    assert r.json()["total"] == 2 and len(r.json()["items"]) == 1
+    assert len(TEMPLATE_IDS) == 20
+
+
+def test_template_ids_match_frontend():
+    """前端 data/promoTemplates.ts 与后端 TEMPLATE_IDS 必须同一组(正则解析 .ts,不维护副本);
+    每套模板的三张图都得在 public 里 —— *.png 被 .gitignore 挡过一次,这里顺带锁住"""
+    import os
+    import re
+    from app.services.promo import TEMPLATE_IDS
+    root = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
+    ts = open(os.path.join(root, "src", "data", "promoTemplates.ts"), encoding="utf-8").read()
+    ids = re.findall(r"\{ id: '(t\d{2})'", ts)
+    assert tuple(ids) == TEMPLATE_IDS
+    for t in TEMPLATE_IDS:
+        for side in ("front", "back", "thumb"):
+            assert os.path.isfile(os.path.join(root, "public", "promo-card", "tpl", f"{t}_{side}.jpg")), (t, side)
