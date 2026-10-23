@@ -56,6 +56,9 @@ const PhoneticReading = lazyWithRetry(() => import('./pages/PhoneticReading'));
 const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
 const ReferralLeads = lazyWithRetry(() => import('./pages/ReferralLeads'));
 const ReferralLanding = lazyWithRetry(() => import('./pages/ReferralLanding'));
+const PromoCardLanding = lazyWithRetry(() => import('./pages/PromoCardLanding'));
+const SalesWorkbench = lazyWithRetry(() => import('./pages/SalesWorkbench'));
+const AdminPromo = lazyWithRetry(() => import('./pages/AdminPromo'));
 const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
 const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
 const QuizPractice = lazyWithRetry(() => import('./pages/QuizPractice'));
@@ -218,6 +221,9 @@ const DashboardRedirect = () => {
       case 'parent':
         // 家长落到学生首页会满屏 403(家长号和孩子同手机号,主登录页也登得进来)
         return <Navigate to="/parent/dashboard" replace />;
+      case 'sales':
+        // 销售只有工作台一页;落到学生首页同样满屏 403
+        return <Navigate to="/sales" replace />;
       case 'student':
       default:
         return <StudentDashboard />;
@@ -254,6 +260,19 @@ function App() {
 
         {/* 家长推荐落地页(公开,朋友家长扫码打开) */}
         <Route path="/invite/:code" element={<ReferralLanding />} />
+
+        {/* 地推体验卡落地页(公开,家长扫卡背面的二维码打开)。路径短 = 二维码点阵稀,卡上印得小也扫得出 */}
+        <Route path="/c/:code" element={<PromoCardLanding />} />
+
+        {/* 销售工作台: 销售账号只有这一页;机构管理员自己发卡时也在这里传二维码 */}
+        <Route
+          path="/sales"
+          element={
+            <ProtectedRoute allowedRoles={['sales', 'org_admin', 'admin']}>
+              <SalesWorkbench />
+            </ProtectedRoute>
+          }
+        />
 
         {/* 根据角色显示不同的仪表盘 */}
         <Route
@@ -773,6 +792,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <ReferralLeads />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/promo"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
+              <AdminPromo />
             </ProtectedRoute>
           }
         />

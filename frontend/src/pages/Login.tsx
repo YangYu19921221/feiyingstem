@@ -110,7 +110,9 @@ const Login = () => {
               // 家长号和孩子的学生号常是同一个手机号,家长在这里登录也要进家长端
               : response.data.user.role === 'parent'
                 ? '/parent/dashboard'
-                : '/student/dashboard';
+                : response.data.user.role === 'sales'
+                  ? '/sales'
+                  : '/student/dashboard';
       navigate(destination, { replace: true });
     } catch (err: unknown) {
       const e = parseError(err, '登录失败，请稍后重试');

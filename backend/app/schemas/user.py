@@ -43,7 +43,7 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     password: Optional[str] = Field(None, min_length=6)
     # 限定合法角色: 自由字符串会被写进库弄坏账号(如"ADMIN"登录后无任何权限)
-    role: Optional[Literal["admin", "org_admin", "teacher", "student", "parent", "display"]] = None
+    role: Optional[Literal["admin", "org_admin", "teacher", "student", "parent", "display", "sales"]] = None
     is_active: Optional[bool] = None
 
 class UserResponse(BaseModel):

@@ -86,7 +86,7 @@ async def _authenticate_token(
     current_org_id.set(None if user.role == "admin" else user.org_id)
 
     # 多租户: 机构停用/到期时,该机构师生全站拦截(org_admin放行以便登录看续费提示)
-    if user.role in ("student", "teacher", "parent"):
+    if user.role in ("student", "teacher", "parent", "sales"):
         if not await check_org_active(db, user.org_id):
             raise HTTPException(status_code=402, detail="机构服务已到期，请联系机构管理员续费")
 
@@ -277,7 +277,7 @@ def _log_staff_login(db: AsyncSession, http: Request, user: User) -> None:
     """老师/管理员登录留痕(issue_session_token 会一起提交)。
     共用账号时,操作记录里「哪台设备」要能对上「哪台设备登录过」,所以只记教职工;
     学生登录量大且与追责无关,不记。"""
-    if user.role in ("teacher", "org_admin", "admin"):
+    if user.role in ("teacher", "org_admin", "admin", "sales"):
         audit_log.record(db, http, user, "auth.login", "登录",
                          target_type="user", target_id=user.id)
 

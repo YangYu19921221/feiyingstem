@@ -270,7 +270,7 @@ const AdminUserManagement = () => {
   };
 
   const getRoleName = (role: string) => {
-    const map: any = { student: '学生', teacher: '教师', admin: '管理员' };
+    const map: any = { student: '学生', teacher: '教师', admin: '管理员', org_admin: '机构管理员', parent: '家长', sales: '销售' };
     return map[role] || role;
   };
 
@@ -624,6 +624,7 @@ const AdminUserManagement = () => {
                   <option value="student">学生</option>
                   <option value="teacher">教师</option>
                   <option value="admin">管理员</option>
+                  {editingUser.role === 'sales' && <option value="sales">销售</option>}
                 </select>
               </div>
               <div>

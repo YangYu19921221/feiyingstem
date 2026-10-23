@@ -163,6 +163,8 @@ app.include_router(student_leaderboard.router, prefix="/api/v1/student", tags=["
 app.include_router(student_class_join.router, prefix="/api/v1/student", tags=["学生端-加入班级"])
 app.include_router(parent.router, prefix="/api/v1", tags=["家长端"])
 app.include_router(referral.router, prefix="/api/v1", tags=["家长推荐"])
+from app.api.v1 import promo  # noqa: E402  地推体验卡 + 销售跟单(2026-10-23)
+app.include_router(promo.router, prefix="/api/v1", tags=["地推体验卡"])
 app.include_router(admin_users.router, prefix="/api/v1/admin", tags=["管理员-用户管理"])
 app.include_router(admin_organizations.router, prefix="/api/v1/admin", tags=["管理员-机构管理"])
 app.include_router(admin_franchise_leads.router, prefix="/api/v1/admin", tags=["管理员-加盟线索"])
