@@ -246,5 +246,5 @@ async def test_student_signup_not_blocked_by_parent_phone(client, db_session, en
     d = await _student_code(client, env["stu"])
     assert (await _register(client, d["code"], phone="13700001111")).status_code == 200
     r = await client.post("/api/v1/auth/register", json={
-        "phone": "13700001111", "username": "pbnewkid", "password": "kidpass1"})
+        "phone": "13700001111", "username": "pbnewkid", "password": "kidpass1", "org_code": "PBIND"})
     assert r.status_code == 200, r.text

@@ -232,9 +232,25 @@ async def register(
     if existing_phone:
         raise HTTPException(status_code=400, detail={"code": "phone_taken", "message": "该手机号已注册，直接登录即可"})
 
-    # 多租户: 带机构码注册直接归属该机构(招生链接 ?org=机构码);无码/无效码归直营
-    from app.services.org_service import resolve_org_code
-    reg_org_id = await resolve_org_code(db, data.org_code)
+    # 机构码必填(2026-10-22 用户定): 以前无码/无效码默认归直营,直营攒了 535 个从没进过班的自注册学生,
+    # 哪家机构的学生都分不清。直营学生填直营的机构码。不走 resolve_org_code —— 它无效码会兜底回直营,
+    # 测评/线索那几处还要这个兜底,这里要的是填错就拦下来。
+    from sqlalchemy import func as _func
+    from app.models.organization import Organization
+    org_code = (data.org_code or "").strip()
+    if not org_code:
+        raise HTTPException(status_code=400, detail={
+            "code": "org_code_required", "message": "请填写机构码(向你的老师或学校索取)"})
+    org = (await db.execute(
+        select(Organization).where(_func.upper(Organization.code) == org_code.upper())
+    )).scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=400, detail={
+            "code": "org_code_invalid", "message": "机构码不对,请向你的老师或学校核对"})
+    if org.status != "active":
+        raise HTTPException(status_code=400, detail={
+            "code": "org_inactive", "message": "这个机构暂时停止服务,请联系你的老师或学校"})
+    reg_org_id = org.id
 
     # 创建用户（用手机号生成默认邮箱）
     user = await auth_service.create_user(

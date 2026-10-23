@@ -242,7 +242,7 @@ export default function OrgAdminDashboard() {
                 onClick={() => info && navigator.clipboard?.writeText(`${window.location.origin}/assessment?org=${info.code}`)}
               >复制测评链接</button>
             </div>
-            <div className="mt-1 text-[11px] text-gray-400">学生用注册链接注册即归属本机构;测评链接的线索进本机构线索池</div>
+            <div className="mt-1 text-[11px] text-gray-400">学生自己注册<strong className="text-gray-500">必须填机构码</strong>:把机构码或注册链接发给学生,用链接打开会自动填好;测评链接的线索进本机构线索池</div>
           </div>
           <div className="admin-org-card rounded-2xl border p-5">
             <div className="mb-1 flex items-center gap-2 text-sm text-slate-500"><Users className="h-4 w-4 text-[#397b9b]" />学生名额</div>

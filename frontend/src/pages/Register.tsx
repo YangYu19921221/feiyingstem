@@ -53,7 +53,6 @@ const Register = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const hasOrgParam = !!searchParams.get('org');
   const [orgCode, setOrgCode] = useState(() => (searchParams.get('org') || '').toUpperCase());
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -73,7 +72,7 @@ const Register = () => {
         phone,
         username: username.trim(),
         password,
-        org_code: orgCode.trim() || undefined,
+        org_code: orgCode.trim(),
       });
       localStorage.setItem('access_token', response.data.access_token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -133,18 +132,19 @@ const Register = () => {
       autoComplete: 'new-password',
       minLength: 6,
     },
-    ...(hasOrgParam ? [{
+    // 机构码必填(2026-10-22): 以前不填默认归直营,几百个学生分不清是哪家的。邀请链接 ?org= 会自动填上
+    {
       id: 'register-org-code',
-      label: '机构码（来自邀请链接）',
+      label: '机构码',
       type: 'text',
       value: orgCode,
       setter: (value: string) => setOrgCode(value.toUpperCase()),
-      placeholder: '机构提供的邀请码',
+      placeholder: '向你的老师或学校索取',
       icon: Building2,
       autoComplete: 'off',
       inputMode: 'text' as const,
       maxLength: 16,
-    }] : []),
+    },
   ];
 
   return (
@@ -182,6 +182,9 @@ const Register = () => {
             minLength={field.minLength}
           />
         ))}
+        <p className="-mt-2 text-xs leading-5 text-[#687383]">
+          机构码由你上课的学校或老师提供，用老师发的注册链接打开会自动填好。
+        </p>
 
         <button
           type="submit"

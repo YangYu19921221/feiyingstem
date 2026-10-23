@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'register-org-code-required-org-2026-10',
+    date: '2026-10-23',
+    title: '学生注册必须填机构码,您的机构码在首页第一张卡',
+    desc: '学生自己注册账号时,现在必须填机构码,填了才归到本机构(以前不填会算到别的机构,老师在班里看不到)。把机构码,或者「复制注册链接」发给学生:用链接打开,机构码会自动填好。',
+    where: '机构管理首页最上面第一张卡「机构码」,旁边有「复制机构码」「复制注册链接」',
+    roles: ['org_admin'],
+    route: '/org',
+  },
+  {
+    id: 'register-org-code-required-admin-2026-10',
+    date: '2026-10-23',
+    title: '学生注册必须填机构码',
+    desc: '学生自注册现在必须填机构码,不填或填错都注册不了(以前不填默认归直营,直营攒了 500 多个从没进过班的自注册账号)。直营学生填直营的机构码。各机构的机构码在机构管理列表里;机构管理员登录后,首页第一张卡就是本机构的机构码和注册链接。',
+    where: '管理端「运营工具箱 → 组织与人员 → 机构管理」,列表「机构码」一列',
+    roles: ['admin'],
+    route: '/admin/organizations',
+  },
+  {
     id: 'live-screen-share-no-nesting-teacher-2026-10',
     date: '2026-10-22',
     title: '直播共享屏幕不再一层套一层',
