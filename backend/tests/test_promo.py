@@ -330,7 +330,7 @@ async def test_card_design_templates_and_print_fields(client, db_session, ctx):
     # 卡码列表分页
     r = await client.get("/api/v1/promo/channels?page=1&size=1", headers=_h(ctx["oa"].id))
     assert r.json()["total"] == 2 and len(r.json()["items"]) == 1
-    assert len(TEMPLATE_IDS) == 20
+    assert len(TEMPLATE_IDS) == 36
 
 
 def test_template_ids_match_frontend():

@@ -1,5 +1,5 @@
 /**
- * 一版体验卡的卡面编辑 + 印刷文件: 选模板(20 套)、改卡上印的名字和电话、预览、下载正面 / 背面
+ * 一版体验卡的卡面编辑 + 印刷文件: 选模板(几十套,按风格筛)、改卡上印的名字和电话、预览、下载正面 / 背面
  *
  * 用户 10-23:「老师可以在上面自定义加自己的号码和选不同的模版,这样就不会拿错卡片」。
  * 名字电话印两处: 正面底部一条(拿在手里一眼分得清是谁的卡)+ 背面二维码下面(家长扫不了码时能直接打电话)。
@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Download, LoaderCircle, X } from 'lucide-react';
 import { cardUrl, updateCardDesign, type CardDesign, type PromoChannel } from '../../api/promo';
-import { PROMO_TEMPLATES, templateImg, templateOf } from '../../data/promoTemplates';
+import { PROMO_TEMPLATES, TEMPLATE_GROUPS, templateImg, templateOf, type TemplateGroup } from '../../data/promoTemplates';
 import { downloadCanvas, drawCardBack, drawCardFront, trimmedDataUrl } from '../../utils/promoPrint';
 import { copyText } from '../../utils/copyText';
 import { toast } from '../Toast';
@@ -30,6 +30,8 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
   const url = cardUrl(channel.code);
   const [design, setDesign] = useState<CardDesign>(channel.design);
   const [saved, setSaved] = useState<CardDesign>(channel.design);
+  // 50 套一屏翻不完: 按风格筛。默认停在当前模板所在的那一组,打开就看得到选中的是哪张
+  const [group, setGroup] = useState<TemplateGroup | '全部'>(() => templateOf(channel.design.template_id).group);
   const [saving, setSaving] = useState(false);
   const [front, setFront] = useState<HTMLCanvasElement | null>(null);
   const [back, setBack] = useState<HTMLCanvasElement | null>(null);
@@ -164,15 +166,23 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
                 选模板 <span className="font-normal text-slate-500">· {templateOf(design.template_id).name}</span>
               </h3>
               <p className="mt-0.5 text-xs text-slate-500">每个销售用不同的模板,发卡时不会拿错。</p>
+              <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="按风格筛模板">
+                {(['全部', ...TEMPLATE_GROUPS] as const).map((g) => (
+                  <button key={g} type="button" onClick={() => setGroup(g)}
+                    className={`min-h-7 rounded-full px-2.5 text-xs font-semibold ${group === g ? 'bg-[#FF6B35] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {g}
+                  </button>
+                ))}
+              </div>
               <div className="mt-2 grid max-h-[340px] grid-cols-3 gap-2 overflow-y-auto pr-1" role="radiogroup" aria-label="卡面模板">
-                {PROMO_TEMPLATES.map((t) => {
+                {PROMO_TEMPLATES.filter((t) => group === '全部' || t.group === group).map((t) => {
                   const on = t.id === design.template_id;
                   return (
                     <button key={t.id} type="button" role="radio" aria-checked={on} aria-label={t.name}
                       onClick={() => setDesign((d) => ({ ...d, template_id: t.id }))}
                       className={`relative overflow-hidden rounded-lg border-2 text-left ${on ? 'border-[#FF6B35]' : 'border-transparent hover:border-slate-300'}`}>
                       <img src={templateImg(t.id, 'thumb')} alt="" loading="lazy" className="block aspect-[3/2] w-full object-cover" />
-                      <span className="block truncate bg-white px-1 py-0.5 text-[11px] text-slate-600">{t.name}</span>
+                      <span className="block truncate bg-white px-1 py-0.5 text-[11px] text-slate-600">{t.no}. {t.name}</span>
                       {on && (
                         <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B35] text-white">
                           <Check className="h-3.5 w-3.5" aria-hidden />

@@ -53,9 +53,10 @@ _STAGE_COL = {"contacted": "contacted_at", "paid": "paid_at", "opened": "opened_
 OWNER_ROLES = ("sales", "org_admin", "admin")   # 能挂卡码、能有线索的账号(admin 只在自己那个机构)
 QR_STALE_DAYS = 6                     # 个人微信群码 7 天过期: 6 天没换就提醒
 STUDY_DAYS_TARGET = 5                 # 开通后 7 天里学满几天算「学满」
-# 卡面模板(2026-10-23 用户要 20 套): 图在 frontend/public/promo-card/tpl/,前端 data/promoTemplates.ts 同一组 id
+# 卡面模板(2026-10-23 用户要 20 套,10-24 要再加 30 套;出图中转 10-24 中午起整体 503,先上线 36 套,其余补齐后改这里的数字):
+# 图在 frontend/public/promo-card/tpl/,前端 data/promoTemplates.ts 同一组 id
 # (tests/test_promo.py 解析那个 .ts 锁住两边一致)。新开的卡按「本机构还没人用的」顺序分一套,不同销售的卡一眼分得开
-TEMPLATE_IDS = tuple(f"t{i:02d}" for i in range(1, 21))
+TEMPLATE_IDS = tuple(f"t{i:02d}" for i in range(1, 37))
 DEFAULT_TEMPLATE = TEMPLATE_IDS[0]
 _PHONE_PRINT_RE = re.compile(r"^[0-9+\- ]{5,20}$")   # 卡上印的电话: 数字、+、横线、空格
 
@@ -196,7 +197,7 @@ async def create_channel(db: AsyncSession, org_id: int, name: str, owner: User, 
 
 
 async def _next_template(db: AsyncSession, org_id: int) -> str:
-    """本机构在用的卡还没用过的第一套;20 套都用过了就按卡数轮"""
+    """本机构在用的卡还没用过的第一套;全都用过了就按卡数轮"""
     used = (await db.execute(
         select(PromoCardDesign.template_id)
         .join(PromoChannel, PromoChannel.id == PromoCardDesign.channel_id)

@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'promo-card-templates-36-2026-10',
+    date: '2026-10-24',
+    title: '🎨 体验卡模板加到 36 套,能按风格筛',
+    desc: '新加 16 套卡面(海洋、彩虹、雪花、樱花、海滩、露营、图书馆、科学实验、音乐、运动会、美术、超级英雄、像素游戏、恐龙、童话城堡、小火车)。选模板时每套带编号,可按「经典 / 清新 / 学习 / 冒险 / 四季 / 节日国风 / 深色」筛选,跟销售说「用第几套」就行。',
+    where: '「地推体验卡 → 卡码」每行点「卡面与印刷」→ 右侧「选模板」',
+    roles: ['org_admin', 'admin'],
+    route: '/admin/promo',
+  },
+  {
     id: 'promo-card-templates-2026-10',
     date: '2026-10-23',
     title: '🎨 体验卡 20 套模板,卡上能印老师名字和电话',

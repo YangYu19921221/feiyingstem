@@ -82,21 +82,24 @@ export async function drawCardFront(o: CardPrintOptions): Promise<HTMLCanvasElem
   drawCover(ctx, await loadImage(templateImg(o.templateId, 'front')));
   const line = contactLine(o.name, o.phone);
   if (line) {
-    // 底部居中一条半透明白底胶囊: 不管模板什么配色都看得清,也不跟模板自己的字抢
+    // 底部一条半透明白底胶囊: 不管模板什么配色都看得清。默认居中;个别模板居中会压到它自己底部的字
+    // (strip 字段,OCR 测出来的),挪到左 / 右下角
     const size = fitFont(ctx, line, 600, 30, 20, PRINT_W * 0.6);
     const tw = ctx.measureText(line).width;
     const padX = 22;
+    const w = tw + padX * 2;
     const h = size + 18;
-    const x = (PRINT_W - tw) / 2 - padX;
+    const side = templateOf(o.templateId).strip;
+    const x = side === 'l' ? SAFE_PX : side === 'r' ? PRINT_W - SAFE_PX - w : (PRINT_W - w) / 2;
     const y = PRINT_H - SAFE_PX - h + 6;
     ctx.fillStyle = 'rgba(255,255,255,0.88)';
     ctx.beginPath();
-    ctx.roundRect(x, y, tw + padX * 2, h, h / 2);
+    ctx.roundRect(x, y, w, h, h / 2);
     ctx.fill();
     ctx.fillStyle = '#3D2B1F';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(line, PRINT_W / 2, y + h / 2 + 1);
+    ctx.fillText(line, x + w / 2, y + h / 2 + 1);
   }
   return c;
 }
