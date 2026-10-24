@@ -90,21 +90,23 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-3 py-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 sm:px-3 sm:py-4" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="体验卡卡面与印刷文件"
-        className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        className="flex h-full max-h-full w-full max-w-5xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">卡面与印刷 · {channel.name}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">卡码 {channel.code} · 扫码地址 {url}</p>
+            <h2 className="text-base font-bold text-slate-800 sm:text-lg">卡面与印刷 · {channel.name}</h2>
+            <p className="mt-0.5 break-all text-xs text-slate-500">卡码 {channel.code} · 扫码地址 {url}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="关闭" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 lg:grid-cols-[1fr_300px]">
-          <div className="space-y-4">
+        <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto p-4 sm:gap-5 sm:p-5 lg:grid-cols-[1fr_300px]">
+          {/* 三块直接做 grid 子项: 手机单列按 预览 → 名字电话/模板 → 印刷说明 排(印刷说明 order-last);
+              大屏左列上预览、下说明,右列整列是名字电话/模板 */}
+          <div className="space-y-4 lg:col-start-1 lg:row-start-1">
             {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{err}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               {[{ c: front, label: '正面' }, { c: back, label: '背面' }].map(({ c, label }) => (
@@ -123,7 +125,9 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
                 </figure>
               ))}
             </div>
+          </div>
 
+          <div className="order-last space-y-4 lg:order-none lg:col-start-1 lg:row-start-2">
             <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
               <b>给印刷厂说:</b>成品 <b>90×60mm</b>(不是普通名片的 90×54),文件已含四边各 2mm 出血(94×64mm,300dpi),
               双面彩印,按成品线裁切。同一版卡每张都一样,不用可变数据。
@@ -141,7 +145,7 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <aside className="space-y-4">
+          <aside className="space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
             <section>
               <h3 className="text-sm font-bold text-slate-700">卡上印的名字和电话</h3>
               <p className="mt-0.5 text-xs leading-5 text-slate-500">印在正面底部和背面二维码下面,一眼分得清是谁的卡。电话留空就不印。</p>
@@ -166,15 +170,15 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
                 选模板 <span className="font-normal text-slate-500">· {templateOf(design.template_id).name}</span>
               </h3>
               <p className="mt-0.5 text-xs text-slate-500">每个销售用不同的模板,发卡时不会拿错。</p>
-              <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="按风格筛模板">
+              <div className="-mx-4 mt-2 flex gap-1 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0" role="group" aria-label="按风格筛模板">
                 {(['全部', ...TEMPLATE_GROUPS] as const).map((g) => (
                   <button key={g} type="button" onClick={() => setGroup(g)}
-                    className={`min-h-7 rounded-full px-2.5 text-xs font-semibold ${group === g ? 'bg-[#FF6B35] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    className={`min-h-8 shrink-0 rounded-full px-3 text-xs font-semibold ${group === g ? 'bg-[#FF6B35] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     {g}
                   </button>
                 ))}
               </div>
-              <div className="mt-2 grid max-h-[340px] grid-cols-3 gap-2 overflow-y-auto pr-1" role="radiogroup" aria-label="卡面模板">
+              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:max-h-[340px] lg:grid-cols-3 lg:overflow-y-auto lg:pr-1" role="radiogroup" aria-label="卡面模板">
                 {PROMO_TEMPLATES.filter((t) => group === '全部' || t.group === group).map((t) => {
                   const on = t.id === design.template_id;
                   return (

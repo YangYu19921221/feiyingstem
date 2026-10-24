@@ -84,15 +84,18 @@ export default function AdminPromo() {
           <span className="text-orange-700">同一个手机号只认第一张卡,销售之间不会抢单。</span>
         </section>
 
-        <div className="flex flex-wrap gap-2" role="tablist">
-          {TABS.map((t) => (
-            <button key={t.key} type="button" role="tab" aria-selected={tab === t.key}
-              onClick={() => { setTab(t.key); setRefreshKey((k) => k + 1); }}
-              className={`min-h-10 rounded-lg px-4 text-sm font-semibold ${tab === t.key ? 'bg-[#FF6B35] text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
-              {t.label}
-            </button>
-          ))}
-          <a href="/sales" className="ml-auto inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        {/* 手机上页签一行横滑(挤成两行时「设置」会掉到第二行很难找),「我自己也发卡」另起一行 */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:overflow-visible sm:pb-0" role="tablist">
+            {TABS.map((t) => (
+              <button key={t.key} type="button" role="tab" aria-selected={tab === t.key}
+                onClick={() => { setTab(t.key); setRefreshKey((k) => k + 1); }}
+                className={`min-h-10 shrink-0 rounded-lg px-4 text-sm font-semibold ${tab === t.key ? 'bg-[#FF6B35] text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <a href="/sales" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:ml-auto">
             <QrCode className="h-4 w-4" aria-hidden /> 我自己也发卡:传我的二维码
           </a>
         </div>
@@ -145,7 +148,40 @@ function BoardTab({ refreshKey }: { refreshKey: number }) {
         {(start || end) && <button type="button" onClick={() => { setStart(''); setEnd(''); }} className="text-[#FF6B35] underline">看全部</button>}
         {loading && <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" aria-label="加载中" />}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+
+      {/* 手机 / 平板: 每个销售一张卡片(表格 10 列,窄屏要横滑一倍多) */}
+      <ul className="space-y-2 lg:hidden">
+        {rows.map((r, i) => {
+          const isTotal = i === rows.length - 1;
+          return (
+            <li key={`${r.sales_user_id ?? 'x'}-${i}`}
+              className={`rounded-xl border p-3 ${isTotal ? 'border-orange-200 bg-orange-50/60' : 'border-slate-200 bg-white'}`}>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="font-semibold">{r.name}{!r.is_active && !isTotal && <span className="ml-1 text-xs font-normal text-slate-400">(已停用)</span>}</p>
+                <p className="shrink-0 text-sm tabular-nums">实收 <b>¥{r.revenue}</b></p>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {r.channels} 版卡 · 扫开 {r.views} 次
+                {r.overdue > 0 && <span className="ml-1 font-semibold text-red-600">· {r.overdue} 条该跟进</span>}
+              </p>
+              <dl className="mt-2 grid grid-cols-3 gap-1.5">
+                {cols.map((c, ci) => {
+                  const v = r[c.k] as number;
+                  const prev = ci === 0 ? r.views : (r[cols[ci - 1].k] as number);
+                  return (
+                    <div key={c.k} className="rounded-lg bg-slate-50 px-2 py-1.5">
+                      <dt className="text-[11px] text-slate-500">{c.label}</dt>
+                      <dd className="tabular-nums"><b className="text-base">{v}</b> <span className="text-[11px] text-slate-400">{pct(v, prev)}</span></dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
         <table className="w-full min-w-[820px] text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500">
             <tr>
@@ -249,22 +285,22 @@ function SalesTab({ owners, onChanged }: { owners: Owner[]; onChanged: () => voi
         <p className="mt-1 text-xs text-slate-500">销售登录后只能看到自己的卡和线索,看不到学生学习数据,也改不了别人的线索。</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="姓名(家长看到的,如 王老师)" required maxLength={50}
-            aria-label="销售姓名" className="min-h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm" />
+            aria-label="销售姓名" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-auto sm:flex-1" />
           <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="登录用户名" required minLength={3} maxLength={50}
-            aria-label="登录用户名" className="min-h-10 w-44 rounded-lg border border-slate-200 px-3 text-sm" />
+            aria-label="登录用户名" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-44" />
           <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="手机号(选填,默认印在卡上)" maxLength={20}
-            aria-label="手机号" className="min-h-10 w-52 rounded-lg border border-slate-200 px-3 text-sm" />
-          <button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white disabled:opacity-50">
+            aria-label="手机号" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-52" />
+          <button type="submit" disabled={busy} className="min-h-10 w-full rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">
             开通
           </button>
         </div>
       </form>
 
       <div className="flex flex-wrap items-center gap-2">
-        <form className="relative" onSubmit={(e) => { e.preventDefault(); setQuery(search.trim()); setPage(1); }}>
+        <form className="relative w-full sm:w-60" onSubmit={(e) => { e.preventDefault(); setQuery(search.trim()); setPage(1); }}>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜姓名 / 用户名 / 手机号" aria-label="搜索销售"
-            className="min-h-9 w-60 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-[#FF6B35]" />
+            className="min-h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-[#FF6B35]" />
         </form>
         {(['', 'active', 'inactive'] as const).map((k) => (
           <button key={k || 'all'} type="button" onClick={() => { setStatus(k); setPage(1); }}
@@ -275,7 +311,49 @@ function SalesTab({ owners, onChanged }: { owners: Owner[]; onChanged: () => voi
         {data && <span className="ml-auto text-sm text-slate-500">共 {data.total} 个</span>}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      {/* 手机 / 平板: 一个销售一张卡片,四个操作排成两行两列(表格要横滑才看得到「删除」) */}
+      <ul className="space-y-2 lg:hidden">
+        {data && items.length === 0 && (
+          <li className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+            {query || status ? '这个条件下没有销售' : '还没有销售账号'}
+          </li>
+        )}
+        {items.map((s) => (
+          <li key={s.id} className={`rounded-xl border border-slate-200 bg-white p-3 ${s.is_active ? '' : 'opacity-70'}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold">{s.full_name}{!s.is_active && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-500">已停用</span>}</p>
+                <p className="truncate text-xs text-slate-500">{s.username}{s.phone ? ` · ${s.phone}` : ''}</p>
+              </div>
+              <p className="shrink-0 text-right text-xs text-slate-500">
+                <span className="tabular-nums">{s.channels} 版卡 · {s.leads} 条线索</span><br />
+                {s.profile.qr_image_url ? (s.profile.qr_kind === 'group' ? '已传群码' : '已传微信码') : <span className="text-amber-600">还没传二维码</span>}
+                {s.profile.qr_stale && <span className="text-amber-600"> · 快过期</span>}
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setEditing(s)}
+                className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700">
+                <Pencil className="h-4 w-4" aria-hidden /> 编辑
+              </button>
+              <button type="button" onClick={() => reset(s)}
+                className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700">
+                <KeyRound className="h-4 w-4" aria-hidden /> 重置密码
+              </button>
+              <button type="button" onClick={() => toggle(s)}
+                className={`inline-flex min-h-10 items-center justify-center gap-1 rounded-lg text-sm font-semibold ${s.is_active ? 'border border-slate-200 text-slate-700' : 'bg-emerald-500 text-white'}`}>
+                <Power className="h-4 w-4" aria-hidden /> {s.is_active ? '停用' : '启用'}
+              </button>
+              <button type="button" onClick={() => setDeleting(s)}
+                className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-red-200 text-sm font-semibold text-red-600">
+                <Trash2 className="h-4 w-4" aria-hidden /> 删除
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
         <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500">
             <tr>
@@ -514,28 +592,28 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
         <p className="mt-1 text-xs text-slate-500">一版卡一个二维码,挂在一个销售名下。同一个销售在不同学校门口发,可以各开一版,看哪个点出线索。模板不选就自动分一套本机构还没用过的。</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <select value={owner} onChange={(e) => setOwner(e.target.value ? Number(e.target.value) : '')} aria-label="给哪个销售"
-            className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+            className="min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm sm:w-auto">
             <option value="">给哪个销售…</option>
             {owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
           <select value={tpl} onChange={(e) => setTpl(e.target.value)} aria-label="卡面模板"
-            className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+            className="min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm sm:w-auto">
             <option value="">模板:自动分一套</option>
             {PROMO_TEMPLATES.map((t, i) => <option key={t.id} value={t.id}>{i + 1}. {t.name}</option>)}
           </select>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="卡的名字(如 王老师 · 实验小学门口)" maxLength={60}
-            aria-label="卡的名字" className="min-h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm" />
-          <button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white disabled:opacity-50">
+            aria-label="卡的名字" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-auto sm:flex-1" />
+          <button type="submit" disabled={busy} className="min-h-10 w-full rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">
             开卡码并设计卡面
           </button>
         </div>
       </form>
 
       <div className="flex flex-wrap items-center gap-2">
-        <form className="relative" onSubmit={(e) => { e.preventDefault(); setQuery(search.trim()); setPage(1); }}>
+        <form className="relative w-full sm:w-52" onSubmit={(e) => { e.preventDefault(); setQuery(search.trim()); setPage(1); }}>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜卡名 / 卡码" aria-label="搜索卡码"
-            className="min-h-9 w-52 rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-[#FF6B35]" />
+            className="min-h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-[#FF6B35]" />
         </form>
         <select value={filterOwner ?? ''} onChange={(e) => { setFilterOwner(e.target.value ? Number(e.target.value) : null); setPage(1); }}
           aria-label="按销售筛选" className="min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
@@ -545,7 +623,53 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
         {data && <span className="ml-auto text-sm text-slate-500">共 {data.total} 版</span>}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      {/* 手机 / 平板: 一版卡一张卡片(表格要横滑才看得到「卡面与印刷」) */}
+      <ul className="space-y-2 lg:hidden">
+        {data && items.length === 0 && (
+          <li className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+            {query || filterOwner ? '这个条件下没有卡码' : '还没开卡码'}
+          </li>
+        )}
+        {items.map((c) => (
+          <li key={c.id} className={`rounded-xl border border-slate-200 bg-white p-3 ${c.is_active ? '' : 'opacity-70'}`}>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setPrinting(c)} className="shrink-0" aria-label={`${c.name} 的卡面`}>
+                <img src={templateImg(c.design.template_id, 'thumb')} alt="" className="h-16 w-24 rounded-md object-cover" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold">{c.name}</p>
+                <p className="truncate text-xs text-slate-500">
+                  {templateOf(c.design.template_id).no}. {templateOf(c.design.template_id).name} · 卡上印 {[c.design.display_name, c.design.display_phone].filter(Boolean).join(' ') || '(没印)'}
+                </p>
+                <p className="text-xs text-slate-400">
+                  卡码 {c.code} · 扫开 {c.view_count} · 留电话 {c.leads ?? 0}{!c.is_active && ' · 已停用'}
+                </p>
+              </div>
+            </div>
+            <label className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+              <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+              <span className="shrink-0">归属</span>
+              <select value={c.sales_user_id ?? ''} onChange={(e) => e.target.value && transfer(c, Number(e.target.value))}
+                aria-label={`${c.name} 转交给`} className="min-h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700">
+                {!owners.some((o) => o.id === c.sales_user_id) && <option value={c.sales_user_id ?? ''}>{c.sales_name}</option>}
+                {owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </label>
+            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+              <button type="button" onClick={() => setPrinting(c)} disabled={!c.is_active}
+                className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-slate-800 text-sm font-semibold text-white disabled:opacity-40">
+                <Printer className="h-4 w-4" aria-hidden /> 卡面与印刷
+              </button>
+              <button type="button" onClick={() => toggle(c)}
+                className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700">
+                {c.is_active ? '停用' : '启用'}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
         <table className="w-full min-w-[820px] text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500">
             <tr>
