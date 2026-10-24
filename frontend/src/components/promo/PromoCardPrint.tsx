@@ -5,11 +5,13 @@
  * 名字电话印两处: 正面底部一条(拿在手里一眼分得清是谁的卡)+ 背面二维码下面(家长扫不了码时能直接打电话)。
  * 选的模板和名字电话存在后端(PUT /promo/channels/{id}/design),下次打开、换台电脑都还在。
  * 背面的二维码是这版卡的固定地址,扫码后显示什么由销售在「我的二维码」里换 —— 卡印出去不用重印。
+ * 正面徽章里的价格 = 机构「设置」里的体验价,现画(10-24 起底图不再印死 ¥99);改了价格要重新下载印刷文件。
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Download, LoaderCircle, X } from 'lucide-react';
 import { cardUrl, updateCardDesign, type CardDesign, type PromoChannel } from '../../api/promo';
-import { PROMO_TEMPLATES, TEMPLATE_GROUPS, templateImg, templateOf, type TemplateGroup } from '../../data/promoTemplates';
+import { PROMO_TEMPLATES, TEMPLATE_GROUPS, templateOf, type TemplateGroup } from '../../data/promoTemplates';
+import PromoCardThumb from './PromoCardThumb';
 import { downloadCanvas, drawCardBack, drawCardFront, trimmedDataUrl } from '../../utils/promoPrint';
 import { copyText } from '../../utils/copyText';
 import { toast } from '../Toast';
@@ -21,12 +23,14 @@ const errText = (e: unknown, fallback: string) => {
 
 interface Props {
   channel: PromoChannel;
+  /** 机构「设置」里的体验价(元),印在正面徽章里 */
+  price: number;
   onClose: () => void;
   /** 卡面保存后通知外面刷新列表 */
   onSaved?: (c: PromoChannel) => void;
 }
 
-export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
+export default function PromoCardPrint({ channel, price, onClose, onSaved }: Props) {
   const url = cardUrl(channel.code);
   const [design, setDesign] = useState<CardDesign>(channel.design);
   const [saved, setSaved] = useState<CardDesign>(channel.design);
@@ -40,8 +44,8 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
     || design.display_phone !== saved.display_phone;
 
   const opts = useMemo(() => ({
-    templateId: design.template_id, url, code: channel.code, name: design.display_name, phone: design.display_phone,
-  }), [design, url, channel.code]);
+    templateId: design.template_id, url, code: channel.code, name: design.display_name, phone: design.display_phone, price,
+  }), [design, url, channel.code, price]);
 
   useEffect(() => {
     let alive = true;
@@ -83,7 +87,7 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
     // 下载前先存卡面: 印出去的卡和系统里记的必须是同一套,否则以后补印会印错
     if (!(await save())) return;
     try {
-      await downloadCanvas(c, `体验卡_${safe}_${channel.code}_${templateOf(design.template_id).name}_${side}.png`);
+      await downloadCanvas(c, `体验卡_${safe}_${channel.code}_${templateOf(design.template_id).name}_${price}元_${side}.png`);
     } catch {
       toast('下载失败,请换个浏览器再试', 'error');
     }
@@ -131,6 +135,7 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
             <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
               <b>给印刷厂说:</b>成品 <b>90×60mm</b>(不是普通名片的 90×54),文件已含四边各 2mm 出血(94×64mm,300dpi),
               双面彩印,按成品线裁切。同一版卡每张都一样,不用可变数据。
+              <br />正面印的价格是 <b>¥{price}</b>(「设置」里的体验价)。改了价格要重新下载、重新印 —— 已经印出去的卡上的价格改不了。
               <br />印之前先用手机扫一下下载的背面图,能打开填手机号的页面再下单。
             </div>
             <div className="flex flex-wrap gap-2">
@@ -185,7 +190,7 @@ export default function PromoCardPrint({ channel, onClose, onSaved }: Props) {
                     <button key={t.id} type="button" role="radio" aria-checked={on} aria-label={t.name}
                       onClick={() => setDesign((d) => ({ ...d, template_id: t.id }))}
                       className={`relative overflow-hidden rounded-lg border-2 text-left ${on ? 'border-[#FF6B35]' : 'border-transparent hover:border-slate-300'}`}>
-                      <img src={templateImg(t.id, 'thumb')} alt="" loading="lazy" className="block aspect-[3/2] w-full object-cover" />
+                      <PromoCardThumb templateId={t.id} price={price} className="block aspect-[3/2] w-full" />
                       <span className="block truncate bg-white px-1 py-0.5 text-[11px] text-slate-600">{t.no}. {t.name}</span>
                       {on && (
                         <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B35] text-white">

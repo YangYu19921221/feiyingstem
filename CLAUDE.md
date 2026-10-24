@@ -271,6 +271,23 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 体验卡卡面价格跟着「设置」走(2026-10-24 晚,用户「设置里改了体验价,卡上还是 99」):
+  以前 50 套正面底图把 ¥99 整张画死,落地页读 promo_org_settings.trial_price、卡面不读,改了价就对不上。
+  现在 **每套正面 / 缩略图换成去掉价格的底图** public/promo-card/tpl/{id}_front_blank.jpg、_thumb_blank.jpg。做法: macOS Vision
+  OCR 定位每套的「¥99」→ 图片编辑接口(gpt-image-2.5-sunburst /edits,用户给的作图 key)去字 → **只把徽章那一块合回原图**
+  (与原图差得多且连到价格框的像素,其余像素一律用原图,标题和花纹不会被顺手改)→ OCR 复查 50 张都没有残留价格、标题都在。
+  先试过纯本地抹字(拟合底色 + 插值),纹理 / 发光 / 渐变徽章会留痕,放弃了。价格按 data/promoTemplates.ts 每套的 `price` 框(原图 1536×1024 坐标:中心 x/y、最宽 w、
+  原字高 h、字色 fill、描边 stroke)现画: 印刷文件 utils/promoPrint.ts canvas 画,缩略图 components/promo/PromoCardThumb.tsx
+  用 SVG 叠字(不用 canvas,列表一屏几十张不卡)。位数多了自动缩字号塞进 w,¥ 比数字小一号。字体 public/promo-card/fonts/
+  baloo-2-latin-800.woff2(OFL,随包发,印刷前 document.fonts.load 等它到位,不靠系统字体)。价格格式 utils/promoPrice.ts
+  (只算排版: 体验价后端存整数,前端按整数画)。**旧的 {id}_front.jpg / _thumb.jpg(印着 ¥99)没删**,只为已经打开的旧页面不裂图,新代码不再引用。
+  调用方: 卡码列表缩略图、选模板小图、印刷预览、下载正面(文件名带「_199元_」)、销售工作台「我的卡」都传机构体验价;
+  印刷说明写明「正面印的价格是 ¥X,改了要重新下载重新印」;设置页保存提示同样写明,并在价格框下面现画一张卡面预览。
+  后端没改(PUT /promo/settings 早就有)。测试 test_template_ids_match_frontend 改成检查每套 _blank 两张 + 背面在、
+  每套都有 price 框且在图内、字体文件在;去掉一套 price 框 / 删一张 _blank 各恰好让它失败(回归锁验证过)。
+  浏览器验过(临时库,手机 390 宽 + 电脑 1366 宽): 设置改 199 保存 → 卡码缩略图、50 套选模板小图、印刷预览、下载的正面 PNG、
+  销售工作台都是 ¥199。顺手修了销售工作台「我的卡」手机上卡名被挤成一字一行(flex-1 basis 0,两个按钮还塞得下同一行;
+  给文字列 min-w-[12rem],放不下按钮就换行,这个毛病改之前就有)。公告一条(admin+org_admin)。
 - ✅ 体验卡: 线索 / 卡码 / 看板上的销售都能删(2026-10-24 晚,用户「看榜线索卡码都需要支持删除」):
   **看板没有自己的数据**(从线索和卡码现算),所以「删看板」= 看板每行能直接删那个销售(复用销售页的删除弹窗,
   名下有卡或线索要选接手人,同 409 TRANSFER_REQUIRED);停用了且名下没有卡也没有线索的销售不再上看板;管理员自己那行不给删。
@@ -342,7 +359,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   开通当天起 7 天窗口),要先在线索上关联学生号。看板按「留电话日期」切一批线索看后来走到哪(不按各阶段发生时间,否则跨月失真)。
   五张新表(promo_sales_profiles / promo_channels / promo_leads / promo_follow_ups / promo_org_settings,create_all 建,
   **不进 tenancy 锚点**,查询显式写 org_id)。销售二维码是公开图,落 UPLOAD_DIR/promo-qr(换图带 ?v= 时间戳);
-  群码 6 天没换后台标黄。体验价默认 99(promo_org_settings 可改,落地页读它;卡面印死 ¥99)。
+  群码 6 天没换后台标黄。体验价默认 99(promo_org_settings 可改,落地页读它;卡面当时印死 ¥99,10-24 晚起也跟着它现画)。
   平台 admin 按自己账号的机构(直营)管 —— 直营没有机构管理员账号。跟进记录只加不改不删。
   卡面: 方案 C(鹰戴耳麦)AI 整张出图含中文(gpt-image-2.5-sunburst,¥99 是 images/edits 改的),
   底图 public/promo-card/{front.jpg,back.png};印刷文件前端 canvas 现画(utils/promoPrint.ts): 成品 90×60mm(不是名片 90×54)

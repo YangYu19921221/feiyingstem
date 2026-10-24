@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 体验卡正面的价格字(utils/promoPrice): 只覆盖 ¥ 和数字,别的字照旧走系统字体;
+   Baloo 2 ExtraBold,SIL OFL 1.1(许可证在 public/promo-card/fonts/Baloo2-OFL.txt) */
+@font-face {
+  font-family: 'PromoPrice';
+  src: url('/promo-card/fonts/baloo-2-latin-800.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0030-0039, U+00A5;
+}
+
 @layer utilities {
   .perspective-1000 {
     perspective: 1000px;

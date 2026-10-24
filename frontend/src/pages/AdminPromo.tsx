@@ -22,7 +22,8 @@ import {
   resetSalesPassword, savePromoSettings, updateChannel, updateSales,
   type BoardRow, type Paged, type PromoBoard, type PromoChannel, type PromoSettings, type SalesAccount,
 } from '../api/promo';
-import { PROMO_TEMPLATES, templateImg, templateOf } from '../data/promoTemplates';
+import { PROMO_TEMPLATES, templateOf } from '../data/promoTemplates';
+import PromoCardThumb from '../components/promo/PromoCardThumb';
 import { toast } from '../components/Toast';
 
 const errText = (e: unknown, fallback: string) => {
@@ -55,6 +56,11 @@ export default function AdminPromo() {
   const [tab, setTab] = useState<Tab>('board');
   const [activeSales, setActiveSales] = useState<SalesAccount[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  // 体验价: 卡面徽章里现画的价格(卡码页缩略图 / 印刷文件)跟设置页同一个数,设置页保存后这里跟着变
+  const [settings, setSettings] = useState<PromoSettings | null>(null);
+  useEffect(() => {
+    getPromoSettings().then(setSettings).catch((e) => toast(errText(e, '设置加载失败'), 'error'));
+  }, []);
 
   // 下拉框(挂卡码 / 转交 / 改归属 / 删销售选接手人)用在用的全部销售,不分页
   const loadOwners = useCallback(
@@ -105,8 +111,8 @@ export default function AdminPromo() {
         {tab === 'board' && <BoardTab refreshKey={refreshKey} owners={owners} onChanged={loadOwners} />}
         {tab === 'leads' && <PromoLeadsPanel manager owners={owners} refreshKey={refreshKey} />}
         {tab === 'sales' && <SalesTab owners={owners} onChanged={loadOwners} />}
-        {tab === 'channels' && <ChannelsTab owners={owners} />}
-        {tab === 'settings' && <SettingsTab />}
+        {tab === 'channels' && <ChannelsTab owners={owners} price={settings?.trial_price ?? null} />}
+        {tab === 'settings' && <SettingsTab initial={settings} onSaved={setSettings} />}
       </main>
     </div>
   );
@@ -565,7 +571,7 @@ function DeleteSalesDialog({ sales, owners, onClose, onDeleted }: {
 
 // ---------------- 卡码 ----------------
 
-function ChannelsTab({ owners }: { owners: Owner[] }) {
+function ChannelsTab({ owners, price }: { owners: Owner[]; price: number | null }) {
   const [name, setName] = useState('');
   const [owner, setOwner] = useState<number | ''>('');
   const [tpl, setTpl] = useState('');
@@ -663,7 +669,8 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
           <li key={c.id} className={`rounded-xl border border-slate-200 bg-white p-3 ${c.is_active ? '' : 'opacity-70'}`}>
             <div className="flex gap-3">
               <button type="button" onClick={() => setPrinting(c)} className="shrink-0" aria-label={`${c.name} 的卡面`}>
-                <img src={templateImg(c.design.template_id, 'thumb')} alt="" className="h-16 w-24 rounded-md object-cover" />
+                {price != null ? <PromoCardThumb templateId={c.design.template_id} price={price} className="h-16 w-24 rounded-md" />
+                  : <span className="block h-16 w-24 rounded-md bg-slate-100" />}
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{c.name}</p>
@@ -721,7 +728,8 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
               <tr key={c.id} className={`border-t border-slate-100 ${c.is_active ? '' : 'text-slate-400'}`}>
                 <td className="px-3 py-2">
                   <button type="button" onClick={() => setPrinting(c)} className="block" aria-label={`${c.name} 的卡面`}>
-                    <img src={templateImg(c.design.template_id, 'thumb')} alt="" className={`h-12 w-[72px] rounded-md object-cover ${c.is_active ? '' : 'opacity-40'}`} />
+                    {price != null ? <PromoCardThumb templateId={c.design.template_id} price={price} className={`h-12 w-[72px] rounded-md ${c.is_active ? '' : 'opacity-40'}`} />
+                      : <span className="block h-12 w-[72px] rounded-md bg-slate-100" />}
                   </button>
                 </td>
                 <td className="px-3 py-2">
@@ -764,8 +772,8 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
         </table>
       </div>
       {data && <Pager page={data.page} size={data.size} total={data.total} onChange={setPage} />}
-      {printing && (
-        <PromoCardPrint channel={printing} onClose={() => setPrinting(null)}
+      {printing && price != null && (
+        <PromoCardPrint channel={printing} price={price} onClose={() => setPrinting(null)}
           onSaved={(c) => setData((d) => d && { ...d, items: d.items.map((x) => (x.id === c.id ? c : x)) })} />
       )}
       {removing && (
@@ -821,26 +829,30 @@ function DeleteChannelDialog({ channel, onClose, onDeleted }: { channel: PromoCh
 
 // ---------------- 设置 ----------------
 
-function SettingsTab() {
-  const [s, setS] = useState<PromoSettings | null>(null);
-  const [price, setPrice] = useState('');
-  const [offer, setOffer] = useState('');
-  const [busy, setBusy] = useState(false);
+function SettingsTab({ initial, onSaved }: { initial: PromoSettings | null; onSaved: (s: PromoSettings) => void }) {
+  if (!initial) return <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" aria-label="加载中" />;
+  return <SettingsForm initial={initial} onSaved={onSaved} />;
+}
 
-  useEffect(() => {
-    getPromoSettings().then((r) => { setS(r); setPrice(String(r.trial_price)); setOffer(r.offer_text); })
-      .catch((e) => toast(errText(e, '设置加载失败'), 'error'));
-  }, []);
+function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (s: PromoSettings) => void }) {
+  const [s, setS] = useState<PromoSettings>(initial);
+  const [price, setPrice] = useState(String(initial.trial_price));
+  const [offer, setOffer] = useState(initial.offer_text);
+  const [busy, setBusy] = useState(false);
+  const n = Number(price);
+  const previewPrice = Number.isInteger(n) && n >= 0 && n <= 100000 ? n : s.trial_price;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    const n = Number(price);
     if (!Number.isInteger(n) || n < 0) { toast('体验价要填整数元', 'error'); return; }
     setBusy(true);
     try {
       const r = await savePromoSettings({ trial_price: n, offer_text: offer });
+      const changed = r.trial_price !== s.trial_price;
       setS(r);
-      toast('已保存,家长扫卡看到的页面立刻生效', 'success');
+      onSaved(r);
+      toast(changed ? `已保存。家长扫卡看到的页面和卡面都改成 ¥${r.trial_price} 了,要印新卡请到「卡码」重新下载印刷文件`
+        : '已保存,家长扫卡看到的页面立刻生效', 'success');
     } catch (err) {
       toast(errText(err, '没保存上'), 'error');
     } finally {
@@ -848,14 +860,21 @@ function SettingsTab() {
     }
   };
 
-  if (!s) return <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" aria-label="加载中" />;
   return (
     <form onSubmit={save} className="max-w-xl space-y-4 rounded-xl border border-slate-200 bg-white p-5">
       <label className="block">
         <span className="text-sm font-semibold text-slate-700">7 天体验价(元)</span>
         <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)}
           className="mt-1 min-h-10 w-32 rounded-lg border border-slate-200 px-3 text-sm" />
-        <span className="mt-1 block text-xs text-slate-500">落地页上显示的价格。卡面上印的是 ¥99,改了价格要换卡面。</span>
+        <span className="mt-1 block text-xs leading-5 text-slate-500">
+          家长扫卡看到的页面、卡面正面徽章里的价格都用这个数,保存后立刻变。
+          <b className="text-slate-700">已经印出去的卡上的价格改不了</b> —— 改价后到「卡码」重新下载印刷文件、重印新卡,
+          旧卡还在发的话,家长手里的卡和扫码页上的价格会对不上。
+        </span>
+        <div className="mt-2 flex items-center gap-3">
+          <PromoCardThumb templateId="t01" price={previewPrice} className="h-20 w-[120px] rounded-lg shadow-sm" />
+          <span className="text-xs text-slate-500">卡面预览(以第 1 套为例)</span>
+        </div>
       </label>
       <label className="block">
         <span className="text-sm font-semibold text-slate-700">「体验包含」那段话</span>

@@ -8,9 +8,11 @@
  *
  * 白框位置是对每张底图逐像素扫出来的(模板的 box),**换底图要重扫**;画之前检查框里是不是白的,
  * 不是就报错不出图 —— 宁可报错,也别印出一批二维码压到花纹上的卡。
+ * ③ 正面徽章里的价格: 按机构「设置」里的体验价现画(底图已去掉原来的 ¥99),排版与缩略图共用 utils/promoPrice。
  */
 import QRCode from 'qrcode';
-import { templateImg, templateOf } from '../data/promoTemplates';
+import { templateImg, templateOf, type PromoTemplate } from '../data/promoTemplates';
+import { PRICE_FONT, priceLayout } from './promoPrice';
 
 const DPI = 300;
 const MM = DPI / 25.4;
@@ -30,6 +32,7 @@ export interface CardPrintOptions {
   code: string;           // 卡码,印在二维码下面,电话里能念给家长
   name: string;           // 卡上印的老师名字(空 = 不印)
   phone: string;          // 卡上印的电话(空 = 不印)
+  price: number;          // 正面徽章里的体验价(机构「设置」里的,元)
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -73,13 +76,39 @@ function fitFont(ctx: CanvasRenderingContext2D, text: string, weight: number, ma
   return size;
 }
 
+/** 正面价格: 先描边(有的模板原来的字带描边)再填色。字体先等加载完,否则 canvas 会用兜底字体画 */
+async function drawPrice(ctx: CanvasRenderingContext2D, tpl: PromoTemplate, price: number,
+  map: (x: number, y: number) => readonly [number, number]) {
+  const p = tpl.price;
+  const L = priceLayout(p, price);
+  const k = map(1, 0)[0] - map(0, 0)[0];
+  try {
+    await document.fonts?.load(`800 ${Math.round(L.size * k)}px "PromoPrice"`, '¥0123456789');
+  } catch { /* 字体没加载上就用兜底的圆体,照样能印 */ }
+  const [yenX, base] = map(L.yenLeft, L.baseline);
+  const [digX] = map(L.digitsLeft, 0);
+  const parts: Array<[string, number, number]> = [['¥', yenX, L.yenSize * k], [L.digits, digX, L.size * k]];
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  if (p.stroke && p.sw) {
+    ctx.strokeStyle = p.stroke;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = p.sw * 2 * k;
+    for (const [t, x, sz] of parts) { ctx.font = `800 ${sz}px ${PRICE_FONT}`; ctx.strokeText(t, x, base); }
+  }
+  ctx.fillStyle = p.fill;
+  for (const [t, x, sz] of parts) { ctx.font = `800 ${sz}px ${PRICE_FONT}`; ctx.fillText(t, x, base); }
+}
+
 function contactLine(name: string, phone: string) {
   return [name.trim(), phone.trim()].filter(Boolean).join('  ');
 }
 
 export async function drawCardFront(o: CardPrintOptions): Promise<HTMLCanvasElement> {
   const { c, ctx } = newCanvas();
-  drawCover(ctx, await loadImage(templateImg(o.templateId, 'front')));
+  const tpl = templateOf(o.templateId);
+  const map = drawCover(ctx, await loadImage(templateImg(tpl.id, 'front')));
+  await drawPrice(ctx, tpl, o.price, map);
   const line = contactLine(o.name, o.phone);
   if (line) {
     // 底部一条半透明白底胶囊: 不管模板什么配色都看得清。默认居中;个别模板居中会压到它自己底部的字
@@ -89,7 +118,7 @@ export async function drawCardFront(o: CardPrintOptions): Promise<HTMLCanvasElem
     const padX = 22;
     const w = tw + padX * 2;
     const h = size + 18;
-    const side = templateOf(o.templateId).strip;
+    const side = tpl.strip;
     const x = side === 'l' ? SAFE_PX : side === 'r' ? PRINT_W - SAFE_PX - w : (PRINT_W - w) / 2;
     const y = PRINT_H - SAFE_PX - h + 6;
     ctx.fillStyle = 'rgba(255,255,255,0.88)';

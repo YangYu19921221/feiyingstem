@@ -335,7 +335,9 @@ async def test_card_design_templates_and_print_fields(client, db_session, ctx):
 
 def test_template_ids_match_frontend():
     """前端 data/promoTemplates.ts 与后端 TEMPLATE_IDS 必须同一组(正则解析 .ts,不维护副本);
-    每套模板的三张图都得在 public 里 —— *.png 被 .gitignore 挡过一次,这里顺带锁住"""
+    每套模板用到的图都得在 public 里 —— *.png 被 .gitignore 挡过一次,这里顺带锁住。
+    10-24 起正面 / 缩略图用去掉价格的 _blank 版(价格按机构体验价现画),每套都要有 price 框,
+    漏一套就是那套卡面上没有价格"""
     import os
     import re
     from app.services.promo import TEMPLATE_IDS
@@ -343,9 +345,17 @@ def test_template_ids_match_frontend():
     ts = open(os.path.join(root, "src", "data", "promoTemplates.ts"), encoding="utf-8").read()
     ids = re.findall(r"\{ id: '(t\d{2})'", ts)
     assert tuple(ids) == TEMPLATE_IDS
+    rows = dict(re.findall(r"\{ id: '(t\d{2})'([^\n]*)", ts))
+    tpl = os.path.join(root, "public", "promo-card", "tpl")
     for t in TEMPLATE_IDS:
-        for side in ("front", "back", "thumb"):
-            assert os.path.isfile(os.path.join(root, "public", "promo-card", "tpl", f"{t}_{side}.jpg")), (t, side)
+        for f in (f"{t}_front_blank.jpg", f"{t}_thumb_blank.jpg", f"{t}_back.jpg"):
+            assert os.path.isfile(os.path.join(tpl, f)), f
+        m = re.search(r"price: \{ x: (\d+), y: (\d+), w: (\d+), h: (\d+), fill: '#[0-9a-f]{6}'", rows[t])
+        assert m, (t, "缺 price 框")
+        x, y, w, h = map(int, m.groups())
+        assert 0 < x - w / 2 and x + w / 2 < 1536 and 0 < y - h / 2 and y + h / 2 < 1024 and w > h > 40, t
+    # 价格字体要跟着发(印刷文件和缩略图都用它)
+    assert os.path.isfile(os.path.join(root, "public", "promo-card", "fonts", "baloo-2-latin-800.woff2"))
 
 
 # ---------------- 10-24: 线索 / 卡码删除,看板 ----------------

@@ -12,7 +12,8 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import PromoCardPrint from '../components/promo/PromoCardPrint';
 import PromoLeadsPanel from '../components/promo/PromoLeadsPanel';
 import { cardUrl, getMyPromo, updateMyPromo, uploadMyQr, type MyPromo, type PromoChannel } from '../api/promo';
-import { templateImg, templateOf } from '../data/promoTemplates';
+import { templateOf } from '../data/promoTemplates';
+import PromoCardThumb from '../components/promo/PromoCardThumb';
 import { copyText } from '../utils/copyText';
 import { toast } from '../components/Toast';
 
@@ -174,8 +175,9 @@ export default function SalesWorkbench() {
             <ul className="mt-3 divide-y divide-slate-100">
               {me.channels.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center gap-3 py-2.5">
-                  <img src={templateImg(c.design.template_id, 'thumb')} alt="" className="h-12 w-[72px] shrink-0 rounded-md object-cover" />
-                  <div className="min-w-0 flex-1">
+                  <PromoCardThumb templateId={c.design.template_id} price={me.settings.trial_price} className="h-12 w-[72px] shrink-0 rounded-md" />
+                  {/* min-w-[12rem]:手机上按钮放不下就换到下一行,别把卡名挤成一字一行(flex-1 的 basis 是 0) */}
+                  <div className="min-w-[12rem] flex-1">
                     <p className="font-semibold">{c.name} {!c.is_active && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">已停用</span>}</p>
                     <p className="text-xs text-slate-500">
                       模板「{templateOf(c.design.template_id).name}」· 卡上印 {[c.design.display_name, c.design.display_phone].filter(Boolean).join(' ') || '(没印名字电话)'}
@@ -203,7 +205,7 @@ export default function SalesWorkbench() {
       </main>
 
       {printing && (
-        <PromoCardPrint channel={printing} onClose={() => setPrinting(null)}
+        <PromoCardPrint channel={printing} price={me.settings.trial_price} onClose={() => setPrinting(null)}
           onSaved={(c) => setMe((m) => m && { ...m, channels: m.channels.map((x) => (x.id === c.id ? { ...x, design: c.design } : x)) })} />
       )}
       <ChangePasswordModal isOpen={showPwd} onClose={() => setShowPwd(false)} />

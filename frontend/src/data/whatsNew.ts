@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'promo-card-live-price-2026-10',
+    date: '2026-10-24',
+    title: '💴 体验卡卡面上的价格跟着「设置」走了',
+    desc: '以前 50 套卡面正面都印死了 ¥99,「设置」里改了体验价,家长扫码看到的页面变了、卡上还是 99。现在卡面上的价格就是「设置」里填的数:改完保存,卡码列表的缩略图、选模板的小图、印刷预览和下载的正面文件马上都是新价格,文件名里也带上价格(如「…_199元_正面.png」),给印刷厂时不会拿错。已经印出去的卡改不了,改价后请重新下载、重新印。',
+    where: '「地推体验卡 → 设置」改价格 →「卡码」每行点「卡面与印刷」重新下载正面',
+    roles: ['org_admin', 'admin'],
+    route: '/admin/promo',
+  },
+  {
     id: 'promo-delete-leads-cards-2026-10',
     date: '2026-10-24',
     title: '🗑️ 体验卡: 线索、卡码、看板上的销售都能删了',
