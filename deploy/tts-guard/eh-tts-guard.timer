@@ -1,0 +1,10 @@
+# 每晚 03:37 跑一次(避开 00:35 金币结算);错过了不补跑,第二天晚上照常
+[Unit]
+Description=Nightly Edge TTS self-check for english-helper
+
+[Timer]
+OnCalendar=*-*-* 03:37:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

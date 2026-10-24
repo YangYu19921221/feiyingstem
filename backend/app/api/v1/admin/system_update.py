@@ -135,6 +135,15 @@ async def get_current_version(current_user: User = Depends(get_current_user)):
     return out
 
 
+@router.get("/tts-status")
+async def get_tts_status(current_user: User = Depends(get_current_admin)):
+    """发音组件夜间自检的最近一次结果(services/tts_guard.py 写的状态文件)。
+
+    还没跑过返回 {"status": None};前端据此显示「还没检查过」,不当成故障。"""
+    from app.services import tts_guard
+    return {"status": tts_guard.read_status()}
+
+
 def _parse_semver(v: str | None) -> tuple[int, ...] | None:
     """把 '1.6.3' 解析成 (1,6,3) 便于比较;解析不了返回 None。"""
     if not v:

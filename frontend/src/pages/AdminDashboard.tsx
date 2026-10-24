@@ -31,6 +31,8 @@ import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 
 interface UserData { full_name: string }
 interface Statistics { total_users: number; students?: number; total_words: number; total_books: number; active_users_today: number; active_users_week: number; learning_records_today: number; learning_records_week: number }
+/** 发音组件夜间自检(后端 services/tts_guard.py 写的最近一条) */
+interface TtsStatus { checked_at: string; ok: boolean; action: string; message: string; version_after: string | null; recent_upgrade?: { checked_at: string; message: string } | null }
 interface RecentUser { id: number; username: string; full_name: string | null; role: string; is_active: boolean; created_at: string | null }
 interface ToolItem { title: string; description: string; path: string; icon: LucideIcon; tone: 'orange' | 'blue' | 'teal' | 'green' | 'indigo' | 'amber' | 'violet' }
 
@@ -83,6 +85,8 @@ export default function AdminDashboard() {
   // 线上前端最近部署时间(后端读 frontend/dist/version.json 的修改时间)。
   // 2026-10-23 起不再检查「有新版本」: 服务器 git 不跟踪线上文件,那个提示恒为误报,一键更新也已停用
   const [deployedAt, setDeployedAt] = useState('');
+  // 发音组件夜间自检: null = 还没跑过(不算故障),undefined = 还没取到
+  const [ttsStatus, setTtsStatus] = useState<TtsStatus | null | undefined>(undefined);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   const loadDashboard = useCallback(async () => {
@@ -93,8 +97,9 @@ export default function AdminDashboard() {
       axios.get(`${API_BASE_URL}/admin/stats`, { headers }),
       axios.get(`${API_BASE_URL}/admin/users`, { params: { page: 1, page_size: 5 }, headers }),
       axios.get(`${API_BASE_URL}/admin/system/version`, { headers }),
+      axios.get(`${API_BASE_URL}/admin/system/tts-status`, { headers }),
     ]);
-    const [statsResult, usersResult, versionResult] = results;
+    const [statsResult, usersResult, versionResult, ttsResult] = results;
     const errors: string[] = [];
     if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
     else errors.push('系统指标');
@@ -102,6 +107,7 @@ export default function AdminDashboard() {
     else errors.push('最近用户');
     if (versionResult.status === 'fulfilled') setDeployedAt(versionResult.value.data?.deployed_at || '');
     else errors.push('版本信息');
+    if (ttsResult.status === 'fulfilled') setTtsStatus(ttsResult.value.data?.status ?? null);
     if (errors.length) setLoadErrors(errors);
     setLoading(false);
   }, []);
@@ -131,7 +137,7 @@ export default function AdminDashboard() {
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
         {loadErrors.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status"><span>部分数据暂时不可用：{loadErrors.join('、')}。</span><button type="button" onClick={() => void loadDashboard()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100">重新加载</button></div>}
         <section className="admin-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
-          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="admin-pill mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold text-[#173047] sm:text-3xl">欢迎回来，{displayName}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">先确认系统服务和用户活动，再处理机构、内容与账号任务。</p><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3"><button type="button" onClick={() => navigate('/admin/statistics')} className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">查看数据报告 <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">检查服务状态 <Server className="h-4 w-4" /></button></div></div><div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]"><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">今日活跃</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl">{formatNumber(stats?.active_users_today)}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">位用户有学习记录</p></div><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">最近部署</p><p className="mt-2 truncate text-xl font-bold text-[#173047] font-numeric sm:text-2xl">{deployedAt ? new Date(deployedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">线上前端版本</p></div></div></div>
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="admin-pill mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold text-[#173047] sm:text-3xl">欢迎回来，{displayName}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">先确认系统服务和用户活动，再处理机构、内容与账号任务。</p><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3"><button type="button" onClick={() => navigate('/admin/statistics')} className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">查看数据报告 <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">检查服务状态 <Server className="h-4 w-4" /></button></div></div><div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]"><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">今日活跃</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl">{formatNumber(stats?.active_users_today)}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">位用户有学习记录</p></div><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">最近部署</p><p className="mt-2 truncate text-xl font-bold text-[#173047] font-numeric sm:text-2xl">{deployedAt ? new Date(deployedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">线上前端版本</p></div>{ttsStatus !== undefined && <div className={`col-span-2 rounded-xl border p-3.5 sm:p-4 ${ttsStatus && !ttsStatus.ok ? 'border-red-200 bg-red-50' : ttsStatus?.recent_upgrade ? 'border-amber-200 bg-amber-50' : 'border-[#d6e2eb] bg-white'}`} role="status"><p className="text-xs text-slate-500">发音检查(每晚自动)</p>{ttsStatus ? <><p className={`mt-1.5 text-sm font-bold ${ttsStatus.ok ? 'text-[#173047]' : 'text-red-700'}`}>{ttsStatus.ok ? '✓ 发音正常' : '✗ 发音异常'}{ttsStatus.version_after ? <span className="ml-1.5 text-xs font-normal text-slate-500">组件 {ttsStatus.version_after}</span> : null}</p><p className="mt-1 text-[11px] leading-5 text-slate-600 sm:text-xs">{ttsStatus.recent_upgrade && ttsStatus.ok ? ttsStatus.recent_upgrade.message : ttsStatus.ok ? `上次检查 ${new Date(ttsStatus.checked_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}` : ttsStatus.message}</p></> : <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">还没检查过,今晚 3:37 第一次自动检查</p>}</div>}</div></div>
         </section>
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4" aria-label="系统指标">

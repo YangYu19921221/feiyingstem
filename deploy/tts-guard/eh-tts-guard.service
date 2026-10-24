@@ -1,0 +1,13 @@
+# 发音组件夜间自检(见 backend/app/services/tts_guard.py)
+# 安装: cp eh-tts-guard.{service,timer} /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now eh-tts-guard.timer
+[Unit]
+Description=English helper nightly Edge TTS self-check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/www/wwwroot/english-helper/backend
+ExecStart=/www/wwwroot/english-helper/backend/venv/bin/python scripts/tts_guard.py
+Nice=10
+TimeoutStartSec=900

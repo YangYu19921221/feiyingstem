@@ -25,6 +25,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'tts-nightly-guard-admin-2026-10',
+    date: '2026-10-24',
+    title: '🔊 发音每晚自动检查,坏了自动修',
+    desc: '10-17 到 10-24 微软拒绝了旧版发音组件,没生成过的单词和句子都没声音,一周没人发现。现在每晚 3:37 自动试一句新话:正常就不动;坏了先在临时环境试最新版,能出声才升级并重启服务(白天不重启,不打断上课)。结果显示在首页,异常会标红。',
+    where: '管理端首页右上「发音检查(每晚自动)」卡片',
+    roles: ['admin'],
+  },
+  {
     id: 'promo-card-templates-36-2026-10',
     date: '2026-10-24',
     title: '🎨 体验卡模板加到 36 套,能按风格筛',
