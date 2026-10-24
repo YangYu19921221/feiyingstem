@@ -152,6 +152,13 @@ export interface BoardRow {
   lost: number;
   revenue: number;
   overdue: number;
+  /** 账号角色: sales / org_admin / admin;合计行和「未分配」行为空 */
+  role?: string | null;
+  /** 只有销售那几行能从看板删(管理员自己那行不能) */
+  deletable?: boolean;
+  /** 他名下现在有几版卡 / 几条线索(不随日期筛选变,删之前要不要选接手人看这个) */
+  owned_channels?: number;
+  owned_leads?: number;
 }
 
 export interface PromoBoard { items: BoardRow[]; total: BoardRow; study_days_target: number }
@@ -200,6 +207,12 @@ export const updatePromoLead = (id: number, data: {
   student_ref?: string; sales_user_id?: number | null;
 }): Promise<PromoLead> => client.patch(`/promo/leads/${id}`, data);
 
+/** 删线索(只给机构管理员)。跟进记录一起删;删了这个手机号能重新扫码登记 */
+export const deletePromoLead = (id: number): Promise<{ deleted: number }> => client.delete(`/promo/leads/${id}`);
+
+export const batchDeletePromoLeads = (ids: number[]): Promise<{ deleted: number }> =>
+  client.post('/promo/leads/batch-delete', { ids });
+
 export const listFollowUps = (id: number): Promise<FollowUp[]> => client.get(`/promo/leads/${id}/follow-ups`);
 
 export const addFollowUp = (id: number, data: { content: string; status?: PromoStatus; next_follow_at?: string }): Promise<FollowUp[]> =>
@@ -245,6 +258,10 @@ export const updateCardDesign = (id: number, data: Partial<CardDesign>): Promise
 
 export const updateChannel = (id: number, data: { name?: string; sales_user_id?: number; is_active?: boolean }): Promise<PromoChannel> =>
   client.patch(`/promo/channels/${id}`, data);
+
+/** 删卡码: 印出去的卡作废;已留的线索留着、归属不变 */
+export const deleteChannel = (id: number): Promise<{ id: number; code: string; name: string; leads_kept: number }> =>
+  client.delete(`/promo/channels/${id}`);
 
 export const getPromoBoard = (params: { start?: string; end?: string }): Promise<PromoBoard> =>
   client.get('/promo/board', { params });

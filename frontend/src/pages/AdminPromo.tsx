@@ -5,6 +5,8 @@
  * 多个销售的关键设计: 一版卡 = 一个卡码挂一个销售;家长扫哪版卡,线索就归哪个销售;
  * 同一个手机号只认第一张卡(销售之间不抢单);销售离职把卡码「转交」或删除时选接手人,印出去的卡照样能用。
  * 几十套卡面模板(data/promoTemplates.ts)+ 卡上印老师名字电话: 新开的卡自动分一套本机构还没用过的,不同销售的卡拿在手里分得清。
+ * 删除: 看板上的销售行(同「销售」页签的删除,名下有东西要选接手人)、线索(只管理员)、卡码(线索留着)。
+ * 看板本身是从线索和卡码算出来的,没有自己的数据;停用了、名下什么都没有的销售不上看板。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -16,9 +18,9 @@ import Pager from '../components/promo/Pager';
 import PromoCardPrint from '../components/promo/PromoCardPrint';
 import PromoLeadsPanel from '../components/promo/PromoLeadsPanel';
 import {
-  createChannel, createSales, deleteSales, getPromoBoard, getPromoSettings, listActiveSales, listChannels, listSales,
+  createChannel, createSales, deleteChannel, deleteSales, getPromoBoard, getPromoSettings, listActiveSales, listChannels, listSales,
   resetSalesPassword, savePromoSettings, updateChannel, updateSales,
-  type Paged, type PromoBoard, type PromoChannel, type PromoSettings, type SalesAccount,
+  type BoardRow, type Paged, type PromoBoard, type PromoChannel, type PromoSettings, type SalesAccount,
 } from '../api/promo';
 import { PROMO_TEMPLATES, templateImg, templateOf } from '../data/promoTemplates';
 import { toast } from '../components/Toast';
@@ -100,7 +102,7 @@ export default function AdminPromo() {
           </a>
         </div>
 
-        {tab === 'board' && <BoardTab refreshKey={refreshKey} />}
+        {tab === 'board' && <BoardTab refreshKey={refreshKey} owners={owners} onChanged={loadOwners} />}
         {tab === 'leads' && <PromoLeadsPanel manager owners={owners} refreshKey={refreshKey} />}
         {tab === 'sales' && <SalesTab owners={owners} onChanged={loadOwners} />}
         {tab === 'channels' && <ChannelsTab owners={owners} />}
@@ -112,12 +114,14 @@ export default function AdminPromo() {
 
 // ---------------- 看板 ----------------
 
-function BoardTab({ refreshKey }: { refreshKey: number }) {
+function BoardTab({ refreshKey, owners, onChanged }: { refreshKey: number; owners: Owner[]; onChanged: () => void }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [data, setData] = useState<PromoBoard | null>(null);
+  const [deleting, setDeleting] = useState<BoardRow | null>(null);
+  const [bump, setBump] = useState(0);
   // 「加载中」由请求参数和最后一次拿到结果的参数是否一致推出来,不在 effect 里同步 setState
-  const reqKey = `${start}|${end}|${refreshKey}`;
+  const reqKey = `${start}|${end}|${refreshKey}|${bump}`;
   const [doneKey, setDoneKey] = useState('');
   const loading = doneKey !== reqKey;
 
@@ -128,7 +132,7 @@ function BoardTab({ refreshKey }: { refreshKey: number }) {
       .catch((e) => toast(errText(e, '看板加载失败'), 'error'))
       .finally(() => { if (alive) setDoneKey(reqKey); });
     return () => { alive = false; };
-  }, [start, end, refreshKey, reqKey]);
+  }, [start, end, refreshKey, bump, reqKey]);
 
   const cols: Array<{ k: keyof PromoBoard['total']; label: string }> = [
     { k: 'leads', label: '留电话' }, { k: 'contacted', label: '加微信' }, { k: 'paid', label: '付体验费' },
@@ -176,6 +180,14 @@ function BoardTab({ refreshKey }: { refreshKey: number }) {
                   );
                 })}
               </dl>
+              {!isTotal && r.deletable && (
+                <div className="mt-2 flex justify-end">
+                  <button type="button" onClick={() => setDeleting(r)}
+                    className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-600 hover:bg-red-50">
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden /> 删除这个销售
+                  </button>
+                </div>
+              )}
             </li>
           );
         })}
@@ -190,6 +202,7 @@ function BoardTab({ refreshKey }: { refreshKey: number }) {
               {cols.map((c) => <th key={c.k} className="px-3 py-2 text-right font-semibold">{c.label}</th>)}
               <th className="px-3 py-2 text-right font-semibold">实收</th>
               <th className="px-3 py-2 text-right font-semibold">该跟进</th>
+              <th className="px-3 py-2 font-semibold"><span className="sr-only">操作</span></th>
             </tr>
           </thead>
           <tbody>
@@ -211,6 +224,14 @@ function BoardTab({ refreshKey }: { refreshKey: number }) {
                   })}
                   <td className="px-3 py-2 text-right tabular-nums">¥{r.revenue}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${r.overdue > 0 ? 'text-red-600' : ''}`}>{r.overdue}</td>
+                  <td className="px-3 py-2 text-right">
+                    {!isTotal && r.deletable && (
+                      <button type="button" onClick={() => setDeleting(r)} aria-label={`删除销售 ${r.name}`} title="删除这个销售"
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -220,8 +241,15 @@ function BoardTab({ refreshKey }: { refreshKey: number }) {
       <p className="text-xs leading-5 text-slate-500">
         每格后面的灰色百分比 = 比上一步留下了多少。按「留电话的日期」选一批线索,看它们后来走到了哪一步(标了无效的也算它走到过的那步)。
         「学满 5 天」看孩子开通后 7 天里真实的学习记录,不看销售标的状态 —— 提成建议按它和「报正价」算,不按发了多少张卡。
-        「扫开」是落地页打开次数(累计,不随日期变)。
+        「扫开」是落地页打开次数(累计,不随日期变)。看板没有自己的数据,删线索、删卡码后跟着变;停用了且名下什么都没有的销售不上看板。
       </p>
+      {deleting && deleting.sales_user_id != null && (
+        <DeleteSalesDialog
+          sales={{ id: deleting.sales_user_id, full_name: deleting.name, channels: deleting.owned_channels ?? 0, leads: deleting.owned_leads ?? 0 }}
+          owners={owners.filter((o) => o.id !== deleting.sales_user_id)}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => { setDeleting(null); setBump((k) => k + 1); onChanged(); }} />
+      )}
     </section>
   );
 }
@@ -479,7 +507,7 @@ function EditSalesDialog({ sales, onClose, onSaved }: { sales: SalesAccount; onC
 }
 
 function DeleteSalesDialog({ sales, owners, onClose, onDeleted }: {
-  sales: SalesAccount; owners: Owner[]; onClose: () => void; onDeleted: () => void;
+  sales: Pick<SalesAccount, 'id' | 'full_name' | 'channels' | 'leads'>; owners: Owner[]; onClose: () => void; onDeleted: () => void;
 }) {
   const needTransfer = sales.channels > 0 || sales.leads > 0;
   const [to, setTo] = useState<number | ''>('');
@@ -543,6 +571,7 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
   const [tpl, setTpl] = useState('');
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState<PromoChannel | null>(null);
+  const [removing, setRemoving] = useState<PromoChannel | null>(null);
   const [data, setData] = useState<Paged<PromoChannel> | null>(null);
   const [page, setPage] = useState(1);
   const [filterOwner, setFilterOwner] = useState<number | null>(null);
@@ -655,7 +684,7 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
                 {owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </label>
-            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+            <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-2">
               <button type="button" onClick={() => setPrinting(c)} disabled={!c.is_active}
                 className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-slate-800 text-sm font-semibold text-white disabled:opacity-40">
                 <Printer className="h-4 w-4" aria-hidden /> 卡面与印刷
@@ -663,6 +692,10 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
               <button type="button" onClick={() => toggle(c)}
                 className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700">
                 {c.is_active ? '停用' : '启用'}
+              </button>
+              <button type="button" onClick={() => setRemoving(c)} aria-label={`删除 ${c.name}`}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-200 px-3 text-red-600">
+                <Trash2 className="h-4 w-4" aria-hidden />
               </button>
             </div>
           </li>
@@ -719,6 +752,10 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
                       className="min-h-8 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                       {c.is_active ? '停用' : '启用'}
                     </button>
+                    <button type="button" onClick={() => setRemoving(c)}
+                      className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-red-200 px-2.5 text-xs font-semibold text-red-600 hover:bg-red-50">
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden /> 删除
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -731,7 +768,54 @@ function ChannelsTab({ owners }: { owners: Owner[] }) {
         <PromoCardPrint channel={printing} onClose={() => setPrinting(null)}
           onSaved={(c) => setData((d) => d && { ...d, items: d.items.map((x) => (x.id === c.id ? c : x)) })} />
       )}
+      {removing && (
+        <DeleteChannelDialog channel={removing} onClose={() => setRemoving(null)}
+          onDeleted={() => { setRemoving(null); if (items.length === 1 && page > 1) setPage(page - 1); else load(); }} />
+      )}
     </section>
+  );
+}
+
+function DeleteChannelDialog({ channel, onClose, onDeleted }: { channel: PromoChannel; onClose: () => void; onDeleted: () => void }) {
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const leads = channel.leads ?? 0;
+  const submit = async () => {
+    if (!sure) return;
+    setBusy(true);
+    try {
+      const r = await deleteChannel(channel.id);
+      toast(r.leads_kept ? `已删除,${r.leads_kept} 条线索留着,还归原来的销售` : '已删除', 'success');
+      onDeleted();
+    } catch (err) {
+      toast(errText(err, '删除失败'), 'error');
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title={`删除卡码 · ${channel.name}`} onClose={onClose}>
+      <div className="mt-3 space-y-3 text-sm text-slate-700">
+        <p className="rounded-lg bg-red-50 px-3 py-2 leading-6 text-red-700">
+          删除后卡码 {channel.code} 作废:已经印出去、发出去的卡,家长再扫只会看到「这张卡已经停用」,恢复不了。
+          只是暂时不发,用「停用」就行,随时能启用回来。
+        </p>
+        <ul className="list-disc space-y-1 pl-5 leading-6 text-slate-600">
+          <li>{leads > 0 ? `这版卡已经来了 ${leads} 条线索,都留着、还归原来的销售,列表里卡名显示「(卡已删除)」。` : '这版卡还没有家长留电话。'}</li>
+          <li>卡面设计一起删;看板上这版卡的「扫开」次数({channel.view_count} 次)跟着没了。</li>
+        </ul>
+        <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2">
+          <input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} className="mt-1 h-4 w-4 accent-red-600" />
+          <span>我知道印出去的卡扫了就打不开了</span>
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700">取消</button>
+          <button type="button" disabled={!sure || busy} onClick={submit}
+            className="min-h-10 rounded-lg bg-red-600 px-5 text-sm font-bold text-white disabled:opacity-40">
+            删除卡码
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

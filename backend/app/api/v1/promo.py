@@ -112,6 +112,10 @@ class DesignUpdate(BaseModel):
     display_phone: Optional[str] = Field(None, max_length=30)  # 空串 = 不印电话
 
 
+class LeadBatchDelete(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=200)
+
+
 class SettingsUpdate(BaseModel):
     trial_price: Optional[int] = None
     offer_text: Optional[str] = Field(None, max_length=500)
@@ -308,6 +312,39 @@ async def add_follow_up(lead_id: int, body: FollowUpCreate, db: AsyncSession = D
     svc.add_follow_up(db, lead, actor, body.content.strip(), status_after=st)
     await db.commit()
     return await svc.follow_ups(db, lead_id)
+
+
+def _lead_summary(snaps: list[dict]) -> str:
+    """操作记录那一行: 手机号打码(记录列表谁都能翻),完整内容在 detail 快照里"""
+    head = "、".join(f"{svc.mask_phone(x['parent_phone'])}({x['sales']})" for x in snaps[:3])
+    return head + (f" 等 {len(snaps)} 条" if len(snaps) > 3 else "")
+
+
+@router.delete("/promo/leads/{lead_id}")
+async def delete_lead(lead_id: int, request: Request, db: AsyncSession = Depends(get_db),
+                      current_user: User = Depends(get_promo_manager)):
+    """删一条线索(只给机构管理员;销售遇到假线索标「无效」,删了会把自己转化差的痕迹一起抹掉)。
+    跟进记录一起删,删前快照写进操作记录"""
+    snaps = await svc.delete_leads(db, current_user.org_id, [lead_id])
+    if not snaps:
+        raise HTTPException(status_code=404, detail="线索不存在")
+    audit_log.record(db, request, current_user, "promo.lead_delete", f"删除体验卡线索: {_lead_summary(snaps)}",
+                     target_type="promo_lead", target_id=lead_id, detail={"leads": snaps})
+    await db.commit()
+    return {"deleted": len(snaps)}
+
+
+@router.post("/promo/leads/batch-delete")
+async def batch_delete_leads(body: LeadBatchDelete, request: Request, db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(get_promo_manager)):
+    """批量删线索(清测试号 / 刷出来的假线索)。只删本机构的,别家机构的 id 忽略"""
+    snaps = await svc.delete_leads(db, current_user.org_id, body.ids)
+    if not snaps:
+        raise HTTPException(status_code=404, detail="选中的线索不存在")
+    audit_log.record(db, request, current_user, "promo.lead_delete", f"批量删除体验卡线索 {len(snaps)} 条: {_lead_summary(snaps)}",
+                     target_type="promo_lead", detail={"leads": snaps})
+    await db.commit()
+    return {"deleted": len(snaps)}
 
 
 # ================== 机构管理员: 销售账号 ==================
@@ -551,6 +588,20 @@ async def update_channel(channel_id: int, body: ChannelUpdate, request: Request,
         ch.is_active = bool(data["is_active"])
     await db.commit()
     return (await _channels_out(db, current_user.org_id, [ch]))[0]
+
+
+@router.delete("/promo/channels/{channel_id}")
+async def delete_channel(channel_id: int, request: Request, db: AsyncSession = Depends(get_db),
+                         current_user: User = Depends(get_promo_manager)):
+    """删卡码: 印出去的卡就作废了(扫了显示已停用)。已经留下的线索留着、归属不变。只是暂时不发用「停用」"""
+    ch = await _load_channel(db, channel_id, current_user)
+    owner = (await svc._users_by_id(db, [ch.sales_user_id])).get(ch.sales_user_id) if ch.sales_user_id else None
+    snap = await svc.delete_channel(db, ch)
+    audit_log.record(db, request, current_user, "promo.channel_delete",
+                     f"删除体验卡码 {snap['code']}({snap['name']},{svc.display_name(owner) if owner else '未分配'}),"
+                     f"保留线索 {snap['leads_kept']} 条", target_type="promo_channel", target_id=channel_id, detail=snap)
+    await db.commit()
+    return snap
 
 
 @router.put("/promo/channels/{channel_id}/design")

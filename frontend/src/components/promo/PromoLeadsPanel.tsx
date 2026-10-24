@@ -3,11 +3,13 @@
  *
  * 跟单的核心是三件事: 现在到哪一步了(状态)、下次什么时候跟(到点没跟标红)、跟过什么(时间线)。
  * 时间线只能加不能改不能删 —— 谁答应了家长什么,出纠纷要有据。
+ * 整条线索只有机构管理员能删(清测试号、刷出来的假线索);销售遇到不想跟的标「无效」,
+ * 删了等于把自己转化差的痕迹一起抹掉。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Clock, LoaderCircle, Phone, Search, X } from 'lucide-react';
+import { Clock, LoaderCircle, Phone, Search, Trash2, X } from 'lucide-react';
 import {
-  PROMO_STATUSES, addFollowUp, listFollowUps, listPromoLeads, updatePromoLead,
+  PROMO_STATUSES, addFollowUp, batchDeletePromoLeads, deletePromoLead, listFollowUps, listPromoLeads, updatePromoLead,
   type FollowUp, type PromoLead, type PromoLeadList, type PromoStatus,
 } from '../../api/promo';
 import { toast } from '../Toast';
@@ -47,12 +49,16 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<PromoLead | null>(null);
   const [page, setPage] = useState(1);
+  // 管理端勾选批量删(只在本页内选,翻页/换筛选就清掉 —— 跨页勾选看不见勾了谁,容易误删)
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const PAGE_SIZE = 20;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setData(await listPromoLeads({ status, overdue, owner: manager ? owner : null, search: query, page, size: PAGE_SIZE }));
+      setPicked(new Set());   // 列表换了(翻页 / 筛选 / 删完重新拉)就清空勾选
     } catch (e) {
       toast(errText(e, '线索加载失败'), 'error');
     } finally {
@@ -61,6 +67,35 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
   }, [status, overdue, owner, query, manager, page]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
+  const togglePick = (id: number) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const pageIds = data?.items.map((l) => l.id) ?? [];
+  const allPicked = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
+
+  // 删完这一页空了就退回上一页,不然停在一页空白上
+  const afterDelete = (n: number) => {
+    if (data && n >= data.items.length && page > 1) setPage(page - 1);
+    else load();
+  };
+
+  const removePicked = async () => {
+    const ids = pageIds.filter((id) => picked.has(id));
+    if (!ids.length) return;
+    if (!window.confirm(`删除选中的 ${ids.length} 条线索?\n跟进记录一起删,删了恢复不了;删了以后这些手机号能重新扫码登记。\n只是不想跟了的,点开改成「无效」就行。`)) return;
+    setDeleting(true);
+    try {
+      const r = await batchDeletePromoLeads(ids);
+      toast(`已删除 ${r.deleted} 条`, 'success');
+      afterDelete(r.deleted);
+    } catch (e) {
+      toast(errText(e, '删除失败'), 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const onSaved = (lead: PromoLead) => {
     setOpen(lead);
@@ -105,6 +140,19 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
           </select>
         )}
         {loading && <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" aria-label="加载中" />}
+        {manager && pageIds.length > 0 && (
+          <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+            <label className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 text-sm text-slate-600">
+              <input type="checkbox" checked={allPicked} className="h-4 w-4 accent-[#FF6B35]"
+                onChange={() => setPicked(allPicked ? new Set() : new Set(pageIds))} />
+              全选本页
+            </label>
+            <button type="button" disabled={!picked.size || deleting} onClick={removePicked}
+              className="ml-auto inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40 sm:ml-0">
+              <Trash2 className="h-4 w-4" aria-hidden /> 删除{picked.size ? ` ${picked.size} 条` : ''}
+            </button>
+          </div>
+        )}
       </div>
 
       {data && data.items.length === 0 && !loading && (
@@ -115,9 +163,15 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
 
       <ul className="space-y-2">
         {data?.items.map((l) => (
-          <li key={l.id}>
+          <li key={l.id} className="flex items-stretch gap-2">
+            {manager && (
+              <label className={`flex w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border bg-white ${picked.has(l.id) ? 'border-orange-300' : 'border-slate-200'}`}>
+                <input type="checkbox" checked={picked.has(l.id)} onChange={() => togglePick(l.id)}
+                  aria-label={`选中 ${l.parent_phone}`} className="h-4 w-4 accent-[#FF6B35]" />
+              </label>
+            )}
             <button type="button" onClick={() => setOpen(l)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left hover:border-orange-300">
+              className={`min-w-0 flex-1 rounded-xl border bg-white px-4 py-3 text-left hover:border-orange-300 ${picked.has(l.id) ? 'border-orange-300' : 'border-slate-200'}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-slate-800 tabular-nums">{l.parent_phone}</span>
                 {l.parent_name && <span className="text-sm text-slate-600">{l.parent_name}</span>}
@@ -147,15 +201,16 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
 
       {open && (
         <LeadDrawer lead={open} manager={manager} owners={owners} onClose={() => setOpen(null)}
-          onSaved={onSaved} onChanged={load} />
+          onSaved={onSaved} onChanged={load}
+          onDeleted={() => { setOpen(null); afterDelete(1); }} />
       )}
     </section>
   );
 }
 
-function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged }: {
+function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged, onDeleted }: {
   lead: PromoLead; manager: boolean; owners: Array<{ id: number; name: string }>;
-  onClose: () => void; onSaved: (l: PromoLead) => void; onChanged: () => void;
+  onClose: () => void; onSaved: (l: PromoLead) => void; onChanged: () => void; onDeleted: () => void;
 }) {
   const [logs, setLogs] = useState<FollowUp[] | null>(null);
   const [content, setContent] = useState('');
@@ -206,6 +261,19 @@ function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged }: {
     } catch (err) {
       toast(errText(err, '没记上'), 'error');
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm(`删除 ${lead.parent_phone} 这条线索?\n跟进记录一起删,删了恢复不了;删了以后这个手机号能重新扫码登记。\n只是不想跟了的,改成「无效」就行。`)) return;
+    setBusy(true);
+    try {
+      await deletePromoLead(lead.id);
+      toast('已删除', 'success');
+      onDeleted();
+    } catch (e) {
+      toast(errText(e, '删除失败'), 'error');
       setBusy(false);
     }
   };
@@ -365,6 +433,19 @@ function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged }: {
               </ol>
             )}
           </section>
+
+          {manager && (
+            <section className="rounded-xl border border-red-100 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-700">删除这条线索</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                用来清测试号、刷出来的假线索。跟进记录一起删,恢复不了(操作记录里留着删前的内容)。真家长只是不想跟了,改成「无效」就行。
+              </p>
+              <button type="button" disabled={busy} onClick={remove}
+                className="mt-2 inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                <Trash2 className="h-4 w-4" aria-hidden /> 删除
+              </button>
+            </section>
+          )}
         </div>
       </aside>
     </div>

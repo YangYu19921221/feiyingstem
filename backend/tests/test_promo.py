@@ -346,3 +346,92 @@ def test_template_ids_match_frontend():
     for t in TEMPLATE_IDS:
         for side in ("front", "back", "thumb"):
             assert os.path.isfile(os.path.join(root, "public", "promo-card", "tpl", f"{t}_{side}.jpg")), (t, side)
+
+
+# ---------------- 10-24: 线索 / 卡码删除,看板 ----------------
+
+@pytest.mark.asyncio
+async def test_delete_leads_admin_only_and_scoped(client, db_session, ctx):
+    from app.models.audit import OperationLog
+    from app.models.promo import PromoFollowUp
+    oa_id, s1_id, ob_id = ctx["oa"].id, ctx["s1"].id, ctx["ob"].id
+    ch = await _new_channel(client, ctx["oa"], ctx["s1"])
+    for ph in ("13900000021", "13900000022", "13900000023"):
+        await client.post(f"/api/v1/promo/public/{ch['code']}/leads", json={"parent_phone": ph})
+    leads = {l.parent_phone: l.id for l in (await db_session.execute(select(PromoLead))).scalars()}
+    lid = leads["13900000021"]
+    await client.patch(f"/api/v1/promo/leads/{lid}", json={"status": "contacted"}, headers=_h(s1_id))
+    # 销售不能删(假线索标「无效」)、别家机构管理员删不了
+    r = await client.delete(f"/api/v1/promo/leads/{lid}", headers=_h(s1_id))
+    assert r.status_code == 403
+    r = await client.delete(f"/api/v1/promo/leads/{lid}", headers=_h(ob_id))
+    assert r.status_code == 404
+    r = await client.delete(f"/api/v1/promo/leads/{lid}", headers=_h(oa_id))
+    assert r.status_code == 200 and r.json() == {"deleted": 1}
+    fresh = {"populate_existing": True}
+    left = (await db_session.execute(select(PromoLead).execution_options(**fresh))).scalars().all()
+    assert sorted(l.parent_phone for l in left) == ["13900000022", "13900000023"]
+    # 跟进记录跟着删(生产外键关闭,不能靠级联)
+    assert (await db_session.execute(select(PromoFollowUp).where(PromoFollowUp.lead_id == lid))).first() is None
+    # 删前快照进了操作记录,手机号在 summary 里打码
+    log = (await db_session.execute(select(OperationLog).where(OperationLog.action == "promo.lead_delete"))).scalars().first()
+    assert log is not None and "139****0021" in log.summary and "13900000021" in log.detail
+    # 同一个手机号删了以后能重新登记
+    r = await client.post(f"/api/v1/promo/public/{ch['code']}/leads", json={"parent_phone": "13900000021"})
+    assert r.json()["status"] == "created"
+    # 批量删: 混进别家机构的 id 不删
+    other_ch = await _new_channel(client, ctx["ob"], ctx["sb"], "乙校区卡")
+    await client.post(f"/api/v1/promo/public/{other_ch['code']}/leads", json={"parent_phone": "13900000029"})
+    other_id = (await db_session.execute(select(PromoLead.id).where(PromoLead.parent_phone == "13900000029"))).scalar_one()
+    r = await client.post("/api/v1/promo/leads/batch-delete",
+                          json={"ids": [leads["13900000022"], leads["13900000023"], other_id]}, headers=_h(oa_id))
+    assert r.status_code == 200 and r.json() == {"deleted": 2}
+    assert (await db_session.execute(select(PromoLead.id).where(PromoLead.id == other_id))).scalar_one_or_none() == other_id
+
+
+@pytest.mark.asyncio
+async def test_delete_channel_keeps_leads(client, db_session, ctx):
+    from app.models.promo import PromoCardDesign
+    oa_id, s1_id = ctx["oa"].id, ctx["s1"].id
+    ch = await _new_channel(client, ctx["oa"], ctx["s1"])
+    await client.post(f"/api/v1/promo/public/{ch['code']}/leads", json={"parent_phone": "13900000031"})
+    r = await client.delete(f"/api/v1/promo/channels/{ch['id']}", headers=_h(s1_id))
+    assert r.status_code == 403                                     # 销售不能删卡码
+    r = await client.delete(f"/api/v1/promo/channels/{ch['id']}", headers=_h(ctx["ob"].id))
+    assert r.status_code == 404                                     # 别家机构
+    r = await client.delete(f"/api/v1/promo/channels/{ch['id']}", headers=_h(oa_id))
+    assert r.status_code == 200 and r.json()["leads_kept"] == 1
+    # 印出去的卡扫了打不开
+    r = await client.get(f"/api/v1/promo/public/{ch['code']}")
+    assert r.status_code == 404
+    # 线索留着、归属不变,卡名显示已删除;卡面设计一起删
+    lead = (await db_session.execute(select(PromoLead).execution_options(populate_existing=True))).scalar_one()
+    assert lead.sales_user_id == s1_id and lead.channel_id is None
+    r = await client.get("/api/v1/promo/leads", headers=_h(s1_id))
+    assert r.json()["items"][0]["channel_name"] == "(卡已删除)"
+    assert (await db_session.execute(select(PromoCardDesign).where(PromoCardDesign.channel_id == ch["id"]))).first() is None
+    # 看板: 卡没了,线索还算在销售名下
+    r = await client.get("/api/v1/promo/board", headers=_h(oa_id))
+    row = next(x for x in r.json()["items"] if x["sales_user_id"] == s1_id)
+    assert row["channels"] == 0 and row["leads"] == 1
+
+
+@pytest.mark.asyncio
+async def test_board_hides_inactive_empty_sales_and_marks_deletable(client, db_session, ctx):
+    oa_id = ctx["oa"].id
+    ch = await _new_channel(client, ctx["oa"], ctx["s1"])
+    # 李销售名下什么都没有,停用后不上看板;王销售有卡,停用了也照样显示
+    await client.patch(f"/api/v1/promo/sales/{ctx['s2'].id}", json={"is_active": False}, headers=_h(oa_id))
+    await client.patch(f"/api/v1/promo/sales/{ctx['s1'].id}", json={"is_active": False}, headers=_h(oa_id))
+    r = await client.get("/api/v1/promo/board", headers=_h(oa_id))
+    items = r.json()["items"]
+    ids = [x["sales_user_id"] for x in items]
+    assert ctx["s2"].id not in ids and ctx["s1"].id in ids
+    row = next(x for x in items if x["sales_user_id"] == ctx["s1"].id)
+    assert row["deletable"] is True and row["owned_channels"] == 1 and row["owned_leads"] == 0
+    # 管理员自己发卡的那行不能从看板删
+    await _new_channel(client, ctx["oa"], ctx["oa"], "管理员自己的卡")
+    r = await client.get("/api/v1/promo/board", headers=_h(oa_id))
+    me = next(x for x in r.json()["items"] if x["sales_user_id"] == oa_id)
+    assert me["deletable"] is False
+    assert ch["code"]

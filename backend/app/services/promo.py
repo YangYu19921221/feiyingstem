@@ -23,7 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,7 @@ from app.models.promo import (
     PromoCardDesign, PromoChannel, PromoFollowUp, PromoLead, PromoOrgSettings, PromoSalesProfile,
 )
 from app.models.user import StudyCalendar, User
-from app.services.referral import normalize_phone
+from app.services.referral import mask_phone, normalize_phone  # noqa: F401  mask_phone 给 API 写操作记录用
 
 # 卡码字母表: 去掉 0/O/1/I/L 这些印在卡上、念电话时会认错的字符
 _CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
@@ -401,7 +401,7 @@ def lead_out(lead: PromoLead, users: dict[int, User], channels: dict[int, PromoC
         "sales_user_id": lead.sales_user_id,
         "sales_name": display_name(users.get(lead.sales_user_id)) if lead.sales_user_id else "(未分配)",
         "channel_id": lead.channel_id,
-        "channel_name": ch.name if ch else "",
+        "channel_name": ch.name if ch else "(卡已删除)",
         "channel_code": ch.code if ch else "",
         "student_id": lead.student_id,
         "student_name": display_name(stu) if stu else "",
@@ -546,15 +546,25 @@ async def board(db: AsyncSession, org_id: int, since: Optional[datetime], until:
         .execution_options(skip_tenant_filter=True)
     )).scalars().all()
     now = datetime.utcnow()
+    owned = await owned_counts(db, org_id, [u.id for u in owners])
 
-    def blank(uid, name, active):
+    def blank(uid, name, active, role=None):
         return {"sales_user_id": uid, "name": name, "is_active": active, "channels": 0, "views": 0,
                 "leads": 0, "contacted": 0, "paid": 0, "opened": 0, "studied": 0, "won": 0,
-                "lost": 0, "revenue": 0, "overdue": 0}
+                "lost": 0, "revenue": 0, "overdue": 0,
+                # 看板上能点「删除」的只有销售账号(机构管理员 / 平台管理员自己发卡的那行不能删);
+                # owned_* 是名下全部(不随日期段变),删之前判断要不要选接手人
+                "role": role, "deletable": role == "sales", "owned_channels": 0, "owned_leads": 0}
     rows: dict = {}
     for u in owners:
-        if u.role == "sales" or any(c.sales_user_id == u.id for c in chans) or any(l.sales_user_id == u.id for l in leads):
-            rows[u.id] = blank(u.id, display_name(u), bool(u.is_active))
+        oc = owned.get(u.id, {"channels": 0, "leads": 0})
+        has_any = bool(oc["channels"] or oc["leads"])
+        # 停用了、名下也没有卡和线索的销售不上看板: 删账号前常先停用,一排全 0 的旧账号只是噪音
+        if u.role == "sales" and not u.is_active and not has_any:
+            continue
+        if u.role == "sales" or has_any or any(l.sales_user_id == u.id for l in leads):
+            r = rows[u.id] = blank(u.id, display_name(u), bool(u.is_active), u.role)
+            r["owned_channels"], r["owned_leads"] = oc["channels"], oc["leads"]
     for c in chans:
         r = rows.setdefault(c.sales_user_id, blank(c.sales_user_id, "(未分配)", True))
         r["channels"] += 1
@@ -635,3 +645,60 @@ async def delete_sales(db: AsyncSession, sales: User, transfer_to: Optional[User
     await db.delete(sales)
     await db.flush()
     return {"moved_channels": c["channels"], "moved_leads": moved_leads}
+
+
+# ---------------- 删线索 / 删卡码(只给机构管理员) ----------------
+
+def _lead_snapshot(l: PromoLead, users: dict, chs: dict) -> dict:
+    """删前快照,写进操作记录 —— 删完行就没了,只存 id 追不了责(CLAUDE.md 操作记录那条)"""
+    ch = chs.get(l.channel_id) if l.channel_id else None
+    return {
+        "id": l.id, "parent_phone": l.parent_phone, "parent_name": l.parent_name or "",
+        "child_grade": l.child_grade or "", "status": l.status,
+        "sales": display_name(users.get(l.sales_user_id)) if l.sales_user_id else "(未分配)",
+        "channel": f"{ch.name}({ch.code})" if ch else "(卡已删除)",
+        "paid_amount": l.paid_amount, "student_id": l.student_id,
+        "created_at": to_local_str(l.created_at), "note": (l.note or "")[:200],
+    }
+
+
+async def delete_leads(db: AsyncSession, org_id: int, ids) -> list[dict]:
+    """删线索,返回被删那几条的快照(调用方写操作记录)。
+    **只删本机构的**: 混进别家机构的 id 直接忽略;跟进记录显式一起删 —— 生产外键是关的,不会级联。
+    删了以后这个手机号可以重新扫码登记(同号只认第一张卡的约束跟着这条线索一起没了)"""
+    want = sorted({int(i) for i in ids if i})
+    if not want:
+        return []
+    leads = list((await db.execute(
+        select(PromoLead).where(PromoLead.org_id == org_id, PromoLead.id.in_(want))
+    )).scalars().all())
+    if not leads:
+        return []
+    users = await _users_by_id(db, [l.sales_user_id for l in leads])
+    chs = {c.id: c for c in (await db.execute(
+        select(PromoChannel).where(PromoChannel.id.in_({l.channel_id for l in leads if l.channel_id} or {-1}))
+    )).scalars().all()}
+    snaps = [_lead_snapshot(l, users, chs) for l in leads]
+    await db.execute(delete(PromoFollowUp).where(PromoFollowUp.lead_id.in_([l.id for l in leads])))
+    for l in leads:
+        await db.delete(l)
+    await db.flush()
+    return snaps
+
+
+async def delete_channel(db: AsyncSession, ch: PromoChannel) -> dict:
+    """删一版卡码。印出去的卡扫了会显示「已停用」(码查不到 = 404,和停用同一句话)。
+    已经留下的线索**留着**,归属销售不变,只断开和这版卡的关联(列表里卡名显示「(卡已删除)」)——
+    线索是家长留的电话,不该跟着一张卡没了。卡面设计一起删。
+    看板里这版卡的「扫开」次数跟着没了(打开次数只记在卡码上)"""
+    kept = (await db.execute(
+        select(func.count(PromoLead.id)).where(PromoLead.org_id == ch.org_id, PromoLead.channel_id == ch.id)
+    )).scalar() or 0
+    snap = {"id": ch.id, "code": ch.code, "name": ch.name, "sales_user_id": ch.sales_user_id,
+            "view_count": int(ch.view_count or 0), "is_active": bool(ch.is_active), "leads_kept": int(kept)}
+    await db.execute(update(PromoLead).where(PromoLead.org_id == ch.org_id, PromoLead.channel_id == ch.id)
+                     .values(channel_id=None))
+    await db.execute(delete(PromoCardDesign).where(PromoCardDesign.channel_id == ch.id))
+    await db.delete(ch)
+    await db.flush()
+    return snap
