@@ -388,7 +388,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   以前空单元一打开就「完成 0%」并**记已完成**(completed_words 顶满 → 书级进度被抬高)。改:
   /student/books/{id}/progress 每个单元加 has_examples(单元里有没有带例句的词),单元页「填句」置灰 + 「暂无例句」;
   SentenceFillPractice 一道题都没出时**不调 updateProgress**,显示「这个单元还没有例句,先去练听写或测试」。
-  ⚠️ 存量未清理: 生产 186 条 sentencefill 进度落在无例句单元(60 个孩子),180 条 is_completed=1 —— 改数据待用户确认。
+  **存量已清(10-24 14:22,用户「按你建议」)**: 补例句前落在无例句单元的 186 条 sentencefill 进度里,删掉 184 条(59 个孩子,
+  178 条是假「已完成」);另 2 条孩子补例句后真做过,没动。这些单元上 sentencefill 学习记录为 0,只删进度不碰别的。
+  备份 /root/eh_db_before_sfprog_clear_20261024_1422.db + /root/sentencefill_progress_cleared_20261024_1422.csv(整行)。
   补例句(第 2 步)10-23 已做完,全站单元都有例句了,见上一条「全站补例句」。
   测试 tests/test_sentencefill_records.py 加 has_examples 一例
 - ✅ 句子填空改版(2026-10-23,用户「基础巩固的填句应该怎么设计,填错没有提示正确答案也没有」→「按你建议」):
