@@ -476,3 +476,53 @@ async def test_trial_price_and_paid_amount_accept_decimals(client, db_session, c
     assert r.json()["total"]["revenue"] == 29.7
     r = await client.patch(f"/api/v1/promo/leads/{ids[0]}", json={"paid_amount": 100001}, headers=_h(s1_id))
     assert r.status_code == 422
+
+
+# ---------------- 10-24: 平台管理员看各校区汇总(用户「加一个汇总页」) ----------------
+
+@pytest.mark.asyncio
+async def test_platform_summary_lists_every_org_and_is_admin_only(client, db_session, ctx):
+    adm = User(username="prmsum", email="prmsum@e.com", hashed_password="x", role="admin",
+               full_name="平台", org_id=ctx["org_a"].id, is_active=True)
+    idle = Organization(name="丙校区", code="PRMC", status="active")   # 还没开始做体验卡的机构
+    db_session.add_all([adm, idle])
+    await db_session.commit()
+    adm_id, a_id, b_id, c_id = adm.id, ctx["org_a"].id, ctx["org_b"].id, idle.id
+    # 机构管理员 / 销售看不了汇总(只看自己那家)
+    for uid in (ctx["oa"].id, ctx["s1"].id):
+        r = await client.get("/api/v1/promo/summary", headers=_h(uid))
+        assert r.status_code == 403
+        r = await client.get(f"/api/v1/promo/summary/orgs/{b_id}/board", headers=_h(uid))
+        assert r.status_code == 403
+    # 甲: 2 版卡 3 条线索,1 条付了 9.9;乙: 1 版卡 1 条线索;丙: 什么都没有
+    await client.put("/api/v1/promo/settings", json={"trial_price": 9.9}, headers=_h(ctx["oa"].id))
+    ca = await _new_channel(client, ctx["oa"], ctx["s1"])
+    await _new_channel(client, ctx["oa"], ctx["s2"], "二小门口")
+    cb = await _new_channel(client, ctx["ob"], ctx["sb"], "乙校区卡")
+    for ph in ("13900000051", "13900000052", "13900000053"):
+        await client.post(f"/api/v1/promo/public/{ca['code']}/leads", json={"parent_phone": ph})
+    await client.post(f"/api/v1/promo/public/{cb['code']}/leads", json={"parent_phone": "13900000054"})
+    lid = (await db_session.execute(select(PromoLead.id).where(PromoLead.parent_phone == "13900000051"))).scalar_one()
+    await client.patch(f"/api/v1/promo/leads/{lid}", json={"status": "paid", "paid_amount": 9.9}, headers=_h(ctx["s1"].id))
+
+    r = await client.get("/api/v1/promo/summary", headers=_h(adm_id))
+    assert r.status_code == 200
+    rows = {x["org_id"]: x for x in r.json()["items"]}
+    assert set(rows) >= {a_id, b_id, c_id}
+    assert (rows[a_id]["channels"], rows[a_id]["leads"], rows[a_id]["paid"], rows[a_id]["revenue"]) == (2, 3, 1, 9.9)
+    assert rows[a_id]["sales"] == 2 and rows[a_id]["trial_price"] == 9.9
+    assert (rows[b_id]["channels"], rows[b_id]["leads"], rows[b_id]["trial_price"]) == (1, 1, 99)
+    assert (rows[c_id]["channels"], rows[c_id]["leads"], rows[c_id]["sales"]) == (0, 0, 0)
+    total = r.json()["total"]
+    assert total["leads"] == 4 and total["channels"] == 3 and total["revenue"] == 9.9
+    # 日期筛选: 明天起没有线索
+    tomorrow = (datetime.utcnow() + timedelta(hours=8) + timedelta(days=1)).date().isoformat()
+    r = await client.get("/api/v1/promo/summary", params={"start": tomorrow}, headers=_h(adm_id))
+    assert r.json()["total"]["leads"] == 0 and r.json()["total"]["channels"] == 3
+    # 点开乙校区: 按销售看,与乙自己看到的看板同一份数
+    r = await client.get(f"/api/v1/promo/summary/orgs/{b_id}/board", headers=_h(adm_id))
+    own = await client.get("/api/v1/promo/board", headers=_h(ctx["ob"].id))
+    assert r.status_code == 200 and r.json()["org_name"] == "乙校区"
+    assert r.json()["total"] == own.json()["total"]
+    r = await client.get("/api/v1/promo/summary/orgs/999999/board", headers=_h(adm_id))
+    assert r.status_code == 404

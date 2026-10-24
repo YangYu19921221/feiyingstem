@@ -271,6 +271,19 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 体验卡各校区汇总(2026-10-24 晚,用户问「子管理端也做了没,别的校区」→「加一个汇总页」):
+  各校区机构管理员本来就有整套「地推体验卡」(数据按 org_id 各管各的);缺的是**平台管理员看不到别的校区** ——
+  `/admin/promo` 对 admin 只管自己账号所在的直营。新页 `/admin/promo-summary`(pages/AdminPromoSummary.tsx,只给 admin,
+  路由 + 后端 `require_role("admin")` 两道)。真源 services/promo.org_summary: 每个机构一行(体验价 / 在用销售数 / 卡在用/全部 /
+  扫开 / 留电话 → 加微信 → 付体验费 → 开通 → 学满 5 天 → 报正价 / 实收 / 该跟进 / 最近留电话),与机构看板 board()
+  **同一套判据**(按留电话日期切一批线索、studied_days 读 study_calendar、扫开累计);**没开始做的机构也列**(灰色「还没开始」,
+  只列有数据的会把它们藏掉)。点开一个校区走 `GET /promo/summary/orgs/{id}/board` = 直接调那家的 board(),
+  测试锁住与那家机构管理员自己看到的 total 完全一致。只读,不给 admin 跨机构改卡码 / 销售。
+  入口: 管理端首页「组织与人员 → 体验卡各校区汇总」+「地推体验卡」页右上角「各校区汇总」(只对 admin 显示)。公告一条(admin)。
+  顺手: `/admin/promo` 和新页主体原先用 `teacher-workspace-main`,那个类的边距只对教师端 body 生效 → 管理端 / 机构端电脑上
+  内容贴着屏幕左边,改成和机构管理页一样的 `max-w-[1440px] px-4 sm:px-6 lg:px-10`。
+  测试 test_platform_summary_lists_every_org_and_is_admin_only(机构管理员也能看 / 没开始的机构不列 / 线索不按机构归组
+  三处各让它失败,回归锁验证过)。浏览器验过(临时库三个校区,1366 宽 + 390 宽,无横向溢出)。
 - ✅ 体验卡卡面价格跟着「设置」走(2026-10-24 晚,用户「设置里改了体验价,卡上还是 99」):
   以前 50 套正面底图把 ¥99 整张画死,落地页读 promo_org_settings.trial_price、卡面不读,改了价就对不上。
   现在 **每套正面 / 缩略图换成去掉价格的底图** public/promo-card/tpl/{id}_front_blank.jpg、_thumb_blank.jpg。做法: macOS Vision

@@ -36,6 +36,7 @@ router = APIRouter()
 # 平台 admin 管的是自己挂的那个机构(生产上 admin 的 org_id=1 直营,直营没有单独的机构管理员账号)
 get_promo_staff = require_role("sales", "org_admin", "admin")
 get_promo_manager = require_role("org_admin", "admin")
+get_platform_admin = require_role("admin")   # 各校区汇总只给平台管理员(机构管理员只看自己那家)
 
 QR_DIR_NAME = "promo-qr"
 QR_EXT = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
@@ -624,13 +625,52 @@ async def promo_board(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_promo_manager),
 ):
+    since, until = _day_range(start, end)
+    return await svc.board(db, current_user.org_id, since, until)
+
+
+def _day_range(start: Optional[str], end: Optional[str]):
+    """北京日期(含两头)→ UTC 起止;看板和汇总同一个口径"""
     from datetime import date as _date
     try:
         since = local_day_utc_range(_date.fromisoformat(start))[0] if start else None
         until = local_day_utc_range(_date.fromisoformat(end))[1] if end else None
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式不对")
-    return await svc.board(db, current_user.org_id, since, until)
+    return since, until
+
+
+# ================== 平台管理员: 各校区汇总(只读) ==================
+
+@router.get("/promo/summary")
+async def promo_summary(
+    start: Optional[str] = Query(None, description="北京日期 YYYY-MM-DD,含"),
+    end: Optional[str] = Query(None, description="北京日期 YYYY-MM-DD,含"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_platform_admin),
+):
+    """每个机构一行: 销售几个 / 卡几版 / 扫开 / 留电话 → 报正价 / 实收 / 该跟进。没开始做的机构也列出来"""
+    since, until = _day_range(start, end)
+    return await svc.org_summary(db, since, until)
+
+
+@router.get("/promo/summary/orgs/{org_id}/board")
+async def promo_org_board(
+    org_id: int,
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_platform_admin),
+):
+    """汇总页点开一个校区: 按销售看(与那家机构自己看到的看板同一份数),只读"""
+    from app.models.organization import Organization
+    org = await db.get(Organization, org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="机构不存在")
+    since, until = _day_range(start, end)
+    out = await svc.board(db, org_id, since, until)
+    out["org_name"] = org.name
+    return out
 
 
 @router.get("/promo/settings")

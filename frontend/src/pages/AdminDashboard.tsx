@@ -46,6 +46,7 @@ const toolGroups: Array<{ title: string; description: string; items: ToolItem[] 
       { title: '加盟资料', description: '招商手册、合作协议与提分方案下载', path: '/admin/franchise-kit', icon: FileText, tone: 'violet' },
       { title: '抖音直播招生', description: '陪跑话术、定价测算、员工主播培训', path: '/admin/franchise-kit?doc=douyin', icon: Radio, tone: 'orange' },
       { title: '地推体验卡', description: '直营销售发卡、扫码线索与跟单看板', path: '/admin/promo', icon: Megaphone, tone: 'orange' },
+      { title: '体验卡各校区汇总', description: '每个校区发卡、留电话、转化与实收', path: '/admin/promo-summary', icon: BarChart3, tone: 'amber' },
       { title: '用户管理', description: '管理师生账号', path: '/admin/users', icon: Users, tone: 'blue' },
       { title: '教师管理', description: '教师列表与班级', path: '/admin/teachers', icon: GraduationCap, tone: 'teal' },
       { title: '操作记录', description: '谁布置/删了作业、改了金币', path: '/admin/operation-logs', icon: History, tone: 'indigo' },

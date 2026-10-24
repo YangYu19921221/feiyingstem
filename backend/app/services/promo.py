@@ -607,6 +607,81 @@ async def board(db: AsyncSession, org_id: int, since: Optional[datetime], until:
     return {"items": items, "total": total, "study_days_target": STUDY_DAYS_TARGET}
 
 
+# ---------------- 平台汇总(各校区) ----------------
+
+_FUNNEL = ("leads", "contacted", "paid", "opened", "studied", "won", "lost", "overdue")
+
+
+async def org_summary(db: AsyncSession, since: Optional[datetime], until: Optional[datetime]) -> dict:
+    """平台管理员看各校区(10-24 用户「加一个汇总页」): 每个机构一行,口径与机构自己的看板同一套
+    (按留电话日期切一批线索 / 学满 5 天看 study_calendar / 扫开是累计的)。
+    **没开始做的机构也列出来**(卡和线索都是 0),一眼看出谁还没动。只读,不改任何机构的数据。
+    平台 admin 的租户上下文本来就不过滤,这里仍逐条显式按 org_id 归组(CLAUDE.md: 别押在隐式过滤器上)"""
+    orgs = (await db.execute(select(Organization).order_by(Organization.id))).scalars().all()
+    stmt = select(PromoLead)
+    if since is not None:
+        stmt = stmt.where(PromoLead.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(PromoLead.created_at < until)
+    leads = list((await db.execute(stmt)).scalars().all())
+    sd = await studied_days(db, leads)
+    chans = (await db.execute(select(PromoChannel))).scalars().all()
+    sales = dict((await db.execute(
+        select(User.org_id, func.count(User.id))
+        .where(User.role == "sales", User.is_active.is_(True))
+        .group_by(User.org_id).execution_options(skip_tenant_filter=True)
+    )).all())
+    prices = {s.org_id: s.trial_price for s in (await db.execute(select(PromoOrgSettings))).scalars().all()}
+    now = datetime.utcnow()
+
+    def blank(org=None):
+        r = {"org_id": org.id if org else None, "name": org.name if org else "合计",
+             "status": org.status if org else "", "trial_price": None,
+             "sales": 0, "channels": 0, "active_channels": 0, "views": 0, "revenue": 0.0,
+             "last_lead_at": None}
+        r.update({k: 0 for k in _FUNNEL})
+        if org is not None:
+            p = prices.get(org.id)
+            r["trial_price"] = money(p) if p is not None else DEFAULT_TRIAL_PRICE
+            r["sales"] = int(sales.get(org.id, 0))
+        return r
+
+    rows = {o.id: blank(o) for o in orgs}
+    for c in chans:
+        r = rows.get(c.org_id)
+        if r is None:
+            continue
+        r["channels"] += 1
+        r["active_channels"] += bool(c.is_active)
+        r["views"] += int(c.view_count or 0)
+    last: dict[int, datetime] = {}
+    for l in leads:
+        r = rows.get(l.org_id)
+        if r is None:
+            continue
+        r["leads"] += 1
+        r["contacted"] += l.contacted_at is not None
+        r["paid"] += l.paid_at is not None
+        r["opened"] += l.opened_at is not None
+        r["studied"] += sd.get(l.id, 0) >= STUDY_DAYS_TARGET
+        r["won"] += l.won_at is not None
+        r["lost"] += l.status == "lost"
+        r["overdue"] += is_overdue(l, now)
+        r["revenue"] += float(l.paid_amount or 0)
+        if l.created_at and (l.org_id not in last or l.created_at > last[l.org_id]):
+            last[l.org_id] = l.created_at
+    for oid, t in last.items():
+        rows[oid]["last_lead_at"] = to_local_str(t)
+    items = sorted(rows.values(), key=lambda r: (-r["won"], -r["studied"], -r["paid"], -r["leads"], -r["channels"], r["org_id"]))
+    total = blank()
+    for r in items:
+        for k in ("sales", "channels", "active_channels", "views", "revenue", *_FUNNEL):
+            total[k] += r[k]
+    for r in [*items, total]:
+        r["revenue"] = money(r["revenue"])
+    return {"items": items, "total": total, "study_days_target": STUDY_DAYS_TARGET}
+
+
 # ---------------- 删除销售 ----------------
 
 async def owned_counts(db: AsyncSession, org_id: int, user_ids) -> dict[int, dict]:

@@ -266,6 +266,38 @@ export const deleteChannel = (id: number): Promise<{ id: number; code: string; n
 export const getPromoBoard = (params: { start?: string; end?: string }): Promise<PromoBoard> =>
   client.get('/promo/board', { params });
 
+// ---------------- 平台管理员: 各校区汇总(只读) ----------------
+
+export interface OrgSummaryRow {
+  org_id: number | null;   // 合计行为 null
+  name: string;
+  status: string;
+  trial_price: number | null;
+  sales: number;
+  channels: number;
+  active_channels: number;
+  views: number;
+  leads: number;
+  contacted: number;
+  paid: number;
+  opened: number;
+  studied: number;
+  won: number;
+  lost: number;
+  overdue: number;
+  revenue: number;
+  last_lead_at: string | null;
+}
+
+export interface OrgSummary { items: OrgSummaryRow[]; total: OrgSummaryRow; study_days_target: number }
+
+export const getPromoSummary = (params: { start?: string; end?: string }): Promise<OrgSummary> =>
+  client.get('/promo/summary', { params });
+
+/** 汇总页点开一个校区: 按销售看(与那家机构自己的看板同一份数) */
+export const getOrgPromoBoard = (orgId: number, params: { start?: string; end?: string }): Promise<PromoBoard & { org_name: string }> =>
+  client.get(`/promo/summary/orgs/${orgId}/board`, { params });
+
 export const getPromoSettings = (): Promise<PromoSettings> => client.get('/promo/settings');
 
 export const savePromoSettings = (data: { trial_price?: number | null; offer_text?: string }): Promise<PromoSettings> =>

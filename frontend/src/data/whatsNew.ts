@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'promo-summary-admin-2026-10',
+    date: '2026-10-24',
+    title: '📊 体验卡各校区汇总',
+    desc: '一页看全部校区的地推体验卡: 每个校区的体验价、几个销售、几版卡、扫开次数,家长从留电话到加微信、付体验费、开通、学满 5 天、报正价各走到多少,实收多少、几条该跟进。还没开始做的校区也列出来(灰色写「还没开始」)。点一个校区看它按销售的明细,和那家机构自己看到的看板是同一份数。只读,卡码和销售还是各校区自己管。',
+    where: '管理端首页「组织与人员 → 体验卡各校区汇总」;或「地推体验卡」页右上角「各校区汇总」',
+    roles: ['admin'],
+    route: '/admin/promo-summary',
+  },
+  {
     id: 'promo-card-live-price-2026-10',
     date: '2026-10-24',
     title: '💴 体验卡卡面上的价格跟着「设置」走了',

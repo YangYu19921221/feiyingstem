@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRightLeft, KeyRound, LoaderCircle, Megaphone, Pencil, Plus, Power, Printer, QrCode, Search, Trash2, UserPlus, X,
+  ArrowRightLeft, BarChart3, KeyRound, LoaderCircle, Megaphone, Pencil, Plus, Power, Printer, QrCode, Search, Trash2, UserPlus, X,
 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { InitialPasswordModal } from '../components/OrgWidgets';
@@ -85,7 +85,7 @@ export default function AdminPromo() {
         subtitle="每个销售一版卡,扫码留电话自动记到发卡人名下"
         icon={Megaphone}
       />
-      <main className="teacher-workspace-main space-y-5">
+      <main className="mx-auto w-full max-w-[1440px] space-y-5 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
         <section className="rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3 text-sm leading-6 text-orange-900">
           <b>怎么用:</b>① 「销售」里给每个销售开账号 → ② 「卡码」里给每个销售开一版卡,选模板、填卡上印的名字电话,下载印刷文件去印
           → ③ 销售登录后传自己的微信二维码 → ④ 家长扫卡留电话,线索自动记到发卡的销售名下,同时看到他的二维码
@@ -104,7 +104,13 @@ export default function AdminPromo() {
               </button>
             ))}
           </div>
-          <a href="/sales" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:ml-auto">
+          {/* 平台管理员在这里只管直营;各校区的汇总另有一页 */}
+          {me.role === 'admin' && (
+            <a href="/admin/promo-summary" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 text-sm font-semibold text-orange-700 hover:bg-orange-100 sm:ml-auto">
+              <BarChart3 className="h-4 w-4" aria-hidden /> 各校区汇总
+            </a>
+          )}
+          <a href="/sales" className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 ${me.role === 'admin' ? '' : 'sm:ml-auto'}`}>
             <QrCode className="h-4 w-4" aria-hidden /> 我自己也发卡:传我的二维码
           </a>
         </div>

@@ -59,6 +59,7 @@ const ReferralLanding = lazyWithRetry(() => import('./pages/ReferralLanding'));
 const PromoCardLanding = lazyWithRetry(() => import('./pages/PromoCardLanding'));
 const SalesWorkbench = lazyWithRetry(() => import('./pages/SalesWorkbench'));
 const AdminPromo = lazyWithRetry(() => import('./pages/AdminPromo'));
+const AdminPromoSummary = lazyWithRetry(() => import('./pages/AdminPromoSummary'));
 const SpellingPractice = lazyWithRetry(() => import('./pages/SpellingPractice'));
 const FillBlankPractice = lazyWithRetry(() => import('./pages/FillBlankPractice'));
 const QuizPractice = lazyWithRetry(() => import('./pages/QuizPractice'));
@@ -800,6 +801,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
               <AdminPromo />
+            </ProtectedRoute>
+          }
+        />
+        {/* 体验卡各校区汇总: 只给平台管理员(机构管理员只看自己那家,后端也 403) */}
+        <Route
+          path="/admin/promo-summary"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminPromoSummary />
             </ProtectedRoute>
           }
         />
