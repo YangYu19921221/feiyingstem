@@ -10,7 +10,7 @@
   font-weight: 800;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0030-0039, U+00A5;
+  unicode-range: U+002E, U+0030-0039, U+00A5;
 }
 
 @layer utilities {

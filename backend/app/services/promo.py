@@ -39,6 +39,25 @@ _CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 _CODE_LEN = 8
 
 DEFAULT_TRIAL_PRICE = 99   # 用户 10-23 定: 9.9 改 99,「这样家长才愿意掏钱」
+MAX_PRICE = 100000
+
+
+def money(v):
+    """金额规整成给前端的数: 保留两位小数,整数就给整数(99 而不是 99.0,卡面和文件名里写「99」)。
+    10-24 用户「没法输入 9.9」: 体验价和实收原先都只收整数元"""
+    if v is None:
+        return None
+    x = round(float(v), 2)
+    return int(x) if x == int(x) else x
+
+
+def parse_money(v, what: str):
+    """收进来的金额: 0~10 万元、最多两位小数(第三位四舍五入),NaN / 无穷拒掉"""
+    import math
+    x = float(v)
+    if not math.isfinite(x) or x < 0 or x > MAX_PRICE:
+        raise HTTPException(status_code=400, detail=f"{what}要在 0 到 {MAX_PRICE} 元之间")
+    return round(x, 2)
 DEFAULT_OFFER = "7 天 AI 陪跑:每天一份单词任务 + 20 个复习词,老师每天点评,第 7 天给家长一份学习总结。"
 
 STATUSES = ("new", "contacted", "paid", "opened", "won", "lost")
@@ -101,7 +120,7 @@ def parse_local(s: Optional[str]) -> Optional[datetime]:
 async def get_settings(db: AsyncSession, org_id: int) -> dict:
     row = await db.get(PromoOrgSettings, org_id)
     return {
-        "trial_price": int(row.trial_price) if row and row.trial_price is not None else DEFAULT_TRIAL_PRICE,
+        "trial_price": money(row.trial_price) if row and row.trial_price is not None else DEFAULT_TRIAL_PRICE,
         "offer_text": (row.offer_text if row and row.offer_text else DEFAULT_OFFER),
     }
 
@@ -117,10 +136,7 @@ async def save_settings(db: AsyncSession, org_id: int, data: dict) -> dict:
         if p is None:
             row.trial_price = None
         else:
-            p = int(p)
-            if p < 0 or p > 100000:
-                raise HTTPException(status_code=400, detail="体验价要在 0 到 100000 元之间")
-            row.trial_price = p
+            row.trial_price = parse_money(p, "体验价")
     if "offer_text" in data:
         row.offer_text = _clip(data["offer_text"], 200)
     await db.flush()
@@ -397,7 +413,7 @@ def lead_out(lead: PromoLead, users: dict[int, User], channels: dict[int, PromoC
         "note": lead.note or "",
         "next_follow_at": to_local_str(lead.next_follow_at),
         "overdue": is_overdue(lead, now),
-        "paid_amount": lead.paid_amount,
+        "paid_amount": money(lead.paid_amount),
         "sales_user_id": lead.sales_user_id,
         "sales_name": display_name(users.get(lead.sales_user_id)) if lead.sales_user_id else "(未分配)",
         "channel_id": lead.channel_id,
@@ -578,13 +594,16 @@ async def board(db: AsyncSession, org_id: int, since: Optional[datetime], until:
         r["studied"] += sd.get(l.id, 0) >= STUDY_DAYS_TARGET
         r["won"] += l.won_at is not None
         r["lost"] += l.status == "lost"
-        r["revenue"] += int(l.paid_amount or 0)
+        r["revenue"] += float(l.paid_amount or 0)
         r["overdue"] += is_overdue(l, now)
     items = sorted(rows.values(), key=lambda r: (-r["won"], -r["studied"], -r["paid"], -r["leads"]))
     total = blank(None, "合计", True)
     for r in items:
         for k in ("channels", "views", "leads", "contacted", "paid", "opened", "studied", "won", "lost", "revenue", "overdue"):
             total[k] += r[k]
+    # 实收按浮点加(9.9 × 3 = 29.700000000000003),出口统一规整
+    for r in [*items, total]:
+        r["revenue"] = money(r["revenue"])
     return {"items": items, "total": total, "study_days_target": STUDY_DAYS_TARGET}
 
 
@@ -657,7 +676,7 @@ def _lead_snapshot(l: PromoLead, users: dict, chs: dict) -> dict:
         "child_grade": l.child_grade or "", "status": l.status,
         "sales": display_name(users.get(l.sales_user_id)) if l.sales_user_id else "(未分配)",
         "channel": f"{ch.name}({ch.code})" if ch else "(卡已删除)",
-        "paid_amount": l.paid_amount, "student_id": l.student_id,
+        "paid_amount": money(l.paid_amount), "student_id": l.student_id,
         "created_at": to_local_str(l.created_at), "note": (l.note or "")[:200],
     }
 

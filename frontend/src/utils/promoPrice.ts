@@ -13,7 +13,7 @@ export const PRICE_FONT = '"PromoPrice","Arial Rounded MT Bold","PingFang SC","M
 
 /** Baloo 2 ExtraBold 的字宽(1000 单位/em,fontTools 从字体文件读的) */
 const ADV: Record<string, number> = {
-  '¥': 597, '0': 606, '1': 393, '2': 522, '3': 518, '4': 602, '5': 522, '6': 558, '7': 482, '8': 560, '9': 558,
+  '¥': 597, '0': 606, '1': 393, '2': 522, '3': 518, '4': 602, '5': 522, '6': 558, '7': 482, '8': 560, '9': 558, '.': 238,
 };
 /** 数字高约 0.63em,中心在基线上方约 0.30em */
 const DIGIT_H = 0.63;
@@ -21,6 +21,12 @@ const DIGIT_MID = 0.30;
 /** ¥ 画得比数字小(原来 50 套都是小 ¥ 大数字) */
 const YEN = 0.62;
 const GAP = 0.03;
+
+/** 价格写成卡上的样子: 最多两位小数,末尾的 0 不写(99 → "99",9.9 → "9.9",19.90 → "19.9") */
+export function formatPrice(v: number): string {
+  const x = Math.round(Math.max(0, Number(v) || 0) * 100) / 100;
+  return Number.isInteger(x) ? String(x) : x.toFixed(2).replace(/0$/, '');
+}
 
 export interface PriceLayout {
   digits: string;
@@ -34,7 +40,7 @@ export interface PriceLayout {
 }
 
 export function priceLayout(p: PromoTemplate['price'], price: number): PriceLayout {
-  const digits = String(Math.max(0, Math.round(price)));
+  const digits = formatPrice(price);
   const digitsEm = [...digits].reduce((a, ch) => a + (ADV[ch] ?? 560), 0) / 1000;
   const yenEm = (YEN * ADV['¥']) / 1000;
   const widthEm = yenEm + GAP + digitsEm;

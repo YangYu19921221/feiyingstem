@@ -24,6 +24,7 @@ import {
 } from '../api/promo';
 import { PROMO_TEMPLATES, templateOf } from '../data/promoTemplates';
 import PromoCardThumb from '../components/promo/PromoCardThumb';
+import { formatPrice } from '../utils/promoPrice';
 import { toast } from '../components/Toast';
 
 const errText = (e: unknown, fallback: string) => {
@@ -109,7 +110,7 @@ export default function AdminPromo() {
         </div>
 
         {tab === 'board' && <BoardTab refreshKey={refreshKey} owners={owners} onChanged={loadOwners} />}
-        {tab === 'leads' && <PromoLeadsPanel manager owners={owners} refreshKey={refreshKey} />}
+        {tab === 'leads' && <PromoLeadsPanel manager owners={owners} refreshKey={refreshKey} trialPrice={settings?.trial_price} />}
         {tab === 'sales' && <SalesTab owners={owners} onChanged={loadOwners} />}
         {tab === 'channels' && <ChannelsTab owners={owners} price={settings?.trial_price ?? null} />}
         {tab === 'settings' && <SettingsTab initial={settings} onSaved={setSettings} />}
@@ -840,18 +841,20 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
   const [offer, setOffer] = useState(initial.offer_text);
   const [busy, setBusy] = useState(false);
   const n = Number(price);
-  const previewPrice = Number.isInteger(n) && n >= 0 && n <= 100000 ? n : s.trial_price;
+  // 最多两位小数(9.9 / 19.99);更多位不让存,免得卡上印出 9.999
+  const priceOk = price.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 100000 && Math.round(n * 100) === n * 100;
+  const previewPrice = priceOk ? n : s.trial_price;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!Number.isInteger(n) || n < 0) { toast('体验价要填整数元', 'error'); return; }
+    if (!priceOk) { toast('体验价填 0 到 100000 元,最多两位小数(如 9.9)', 'error'); return; }
     setBusy(true);
     try {
       const r = await savePromoSettings({ trial_price: n, offer_text: offer });
       const changed = r.trial_price !== s.trial_price;
       setS(r);
       onSaved(r);
-      toast(changed ? `已保存。家长扫卡看到的页面和卡面都改成 ¥${r.trial_price} 了,要印新卡请到「卡码」重新下载印刷文件`
+      toast(changed ? `已保存。家长扫卡看到的页面和卡面都改成 ¥${formatPrice(r.trial_price)} 了,要印新卡请到「卡码」重新下载印刷文件`
         : '已保存,家长扫卡看到的页面立刻生效', 'success');
     } catch (err) {
       toast(errText(err, '没保存上'), 'error');
@@ -864,7 +867,7 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
     <form onSubmit={save} className="max-w-xl space-y-4 rounded-xl border border-slate-200 bg-white p-5">
       <label className="block">
         <span className="text-sm font-semibold text-slate-700">7 天体验价(元)</span>
-        <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)}
+        <input type="number" min={0} max={100000} step={0.01} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)}
           className="mt-1 min-h-10 w-32 rounded-lg border border-slate-200 px-3 text-sm" />
         <span className="mt-1 block text-xs leading-5 text-slate-500">
           家长扫卡看到的页面、卡面正面徽章里的价格都用这个数,保存后立刻变。

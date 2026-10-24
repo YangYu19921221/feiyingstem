@@ -14,6 +14,7 @@ import {
 } from '../../api/promo';
 import { toast } from '../Toast';
 import Pager from './Pager';
+import { formatPrice } from '../../utils/promoPrice';
 
 const errText = (e: unknown, fallback: string) => {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -37,9 +38,11 @@ interface Props {
   owners?: Array<{ id: number; name: string }>;
   /** 外部要求刷新(如管理端切回这个页签) */
   refreshKey?: number;
+  /** 机构体验价,标「已付」时弹框默认填它 */
+  trialPrice?: number;
 }
 
-export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }: Props) {
+export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0, trialPrice }: Props) {
   const [data, setData] = useState<PromoLeadList | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<PromoStatus | ''>('');
@@ -200,7 +203,7 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
       {data && <Pager page={data.page} size={data.size} total={data.total} onChange={setPage} />}
 
       {open && (
-        <LeadDrawer lead={open} manager={manager} owners={owners} onClose={() => setOpen(null)}
+        <LeadDrawer lead={open} manager={manager} owners={owners} trialPrice={trialPrice} onClose={() => setOpen(null)}
           onSaved={onSaved} onChanged={load}
           onDeleted={() => { setOpen(null); afterDelete(1); }} />
       )}
@@ -208,8 +211,8 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0 }
   );
 }
 
-function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged, onDeleted }: {
-  lead: PromoLead; manager: boolean; owners: Array<{ id: number; name: string }>;
+function LeadDrawer({ lead, manager, owners, trialPrice, onClose, onSaved, onChanged, onDeleted }: {
+  lead: PromoLead; manager: boolean; owners: Array<{ id: number; name: string }>; trialPrice?: number;
   onClose: () => void; onSaved: (l: PromoLead) => void; onChanged: () => void; onDeleted: () => void;
 }) {
   const [logs, setLogs] = useState<FollowUp[] | null>(null);
@@ -280,10 +283,10 @@ function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged, onDele
 
   const setStatusQuick = (s: PromoStatus) => {
     if (s === 'paid' && !paid) {
-      const v = window.prompt('实收体验费多少元?', '99');
+      const v = window.prompt('实收体验费多少元?', formatPrice(trialPrice ?? 99));
       if (v === null) return;
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0) { toast('金额不对', 'error'); return; }
+      const n = Number(v.trim());
+      if (!v.trim() || !Number.isFinite(n) || n < 0 || n > 100000) { toast('金额不对,填 0 到 100000 元(可以带小数,如 9.9)', 'error'); return; }
       setPaid(String(n));
       save({ status: s, paid_amount: n }, `已标「已付体验费」${n} 元`);
       return;
@@ -358,7 +361,7 @@ function LeadDrawer({ lead, manager, owners, onClose, onSaved, onChanged, onDele
               className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#FF6B35]" />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <label className="text-xs text-slate-500" htmlFor={`paid-${lead.id}`}>实收体验费</label>
-              <input id={`paid-${lead.id}`} type="number" min={0} value={paid} onChange={(e) => setPaid(e.target.value)}
+              <input id={`paid-${lead.id}`} type="number" min={0} max={100000} step={0.01} inputMode="decimal" value={paid} onChange={(e) => setPaid(e.target.value)}
                 className="min-h-9 w-24 rounded-lg border border-slate-200 px-2 text-sm" />
               <span className="text-xs text-slate-500">元</span>
               <button type="button" disabled={busy}

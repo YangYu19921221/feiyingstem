@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle2, LoaderCircle, Phone } from 'lucide-react';
 import { getPublicCard, submitCardLead, type CardSubmitResult, type PublicCard } from '../api/promo';
+import { formatPrice } from '../utils/promoPrice';
 
 const errText = (e: unknown, fallback: string) => {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -97,7 +98,7 @@ export default function PromoCardLanding() {
           <p className="mt-1 text-sm text-white/90">AI 智能背单词 · 老师每天点评</p>
           <div className="mt-4 inline-flex items-baseline gap-1 rounded-full bg-white px-4 py-1.5 text-[#FF6B35]">
             <span className="text-sm font-bold">7 天体验</span>
-            <span className="text-2xl font-black">¥{info.trial_price}</span>
+            <span className="text-2xl font-black">¥{formatPrice(info.trial_price)}</span>
           </div>
         </div>
       </header>

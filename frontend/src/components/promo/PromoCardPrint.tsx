@@ -12,6 +12,7 @@ import { Check, Copy, Download, LoaderCircle, X } from 'lucide-react';
 import { cardUrl, updateCardDesign, type CardDesign, type PromoChannel } from '../../api/promo';
 import { PROMO_TEMPLATES, TEMPLATE_GROUPS, templateOf, type TemplateGroup } from '../../data/promoTemplates';
 import PromoCardThumb from './PromoCardThumb';
+import { formatPrice } from '../../utils/promoPrice';
 import { downloadCanvas, drawCardBack, drawCardFront, trimmedDataUrl } from '../../utils/promoPrint';
 import { copyText } from '../../utils/copyText';
 import { toast } from '../Toast';
@@ -87,7 +88,7 @@ export default function PromoCardPrint({ channel, price, onClose, onSaved }: Pro
     // 下载前先存卡面: 印出去的卡和系统里记的必须是同一套,否则以后补印会印错
     if (!(await save())) return;
     try {
-      await downloadCanvas(c, `体验卡_${safe}_${channel.code}_${templateOf(design.template_id).name}_${price}元_${side}.png`);
+      await downloadCanvas(c, `体验卡_${safe}_${channel.code}_${templateOf(design.template_id).name}_${formatPrice(price)}元_${side}.png`);
     } catch {
       toast('下载失败,请换个浏览器再试', 'error');
     }
@@ -135,7 +136,7 @@ export default function PromoCardPrint({ channel, price, onClose, onSaved }: Pro
             <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
               <b>给印刷厂说:</b>成品 <b>90×60mm</b>(不是普通名片的 90×54),文件已含四边各 2mm 出血(94×64mm,300dpi),
               双面彩印,按成品线裁切。同一版卡每张都一样,不用可变数据。
-              <br />正面印的价格是 <b>¥{price}</b>(「设置」里的体验价)。改了价格要重新下载、重新印 —— 已经印出去的卡上的价格改不了。
+              <br />正面印的价格是 <b>¥{formatPrice(price)}</b>(「设置」里的体验价)。改了价格要重新下载、重新印 —— 已经印出去的卡上的价格改不了。
               <br />印之前先用手机扫一下下载的背面图,能打开填手机号的页面再下单。
             </div>
             <div className="flex flex-wrap gap-2">

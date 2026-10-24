@@ -83,7 +83,7 @@ async function drawPrice(ctx: CanvasRenderingContext2D, tpl: PromoTemplate, pric
   const L = priceLayout(p, price);
   const k = map(1, 0)[0] - map(0, 0)[0];
   try {
-    await document.fonts?.load(`800 ${Math.round(L.size * k)}px "PromoPrice"`, '¥0123456789');
+    await document.fonts?.load(`800 ${Math.round(L.size * k)}px "PromoPrice"`, '¥0123456789.');
   } catch { /* 字体没加载上就用兜底的圆体,照样能印 */ }
   const [yenX, base] = map(L.yenLeft, L.baseline);
   const [digX] = map(L.digitsLeft, 0);

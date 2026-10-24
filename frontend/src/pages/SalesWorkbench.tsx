@@ -14,6 +14,7 @@ import PromoLeadsPanel from '../components/promo/PromoLeadsPanel';
 import { cardUrl, getMyPromo, updateMyPromo, uploadMyQr, type MyPromo, type PromoChannel } from '../api/promo';
 import { templateOf } from '../data/promoTemplates';
 import PromoCardThumb from '../components/promo/PromoCardThumb';
+import { formatPrice } from '../utils/promoPrice';
 import { copyText } from '../utils/copyText';
 import { toast } from '../components/Toast';
 
@@ -97,7 +98,7 @@ export default function SalesWorkbench() {
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <div>
             <h1 className="text-lg font-bold">销售工作台</h1>
-            <p className="text-xs text-slate-500">{me.name} · 体验卡 ¥{me.settings.trial_price}</p>
+            <p className="text-xs text-slate-500">{me.name} · 体验卡 ¥{formatPrice(me.settings.trial_price)}</p>
           </div>
           <div className="flex items-center gap-2">
             {me.role !== 'sales' && (
@@ -200,7 +201,7 @@ export default function SalesWorkbench() {
 
         <section>
           <h2 className="mb-3 font-bold">我的线索</h2>
-          <PromoLeadsPanel manager={false} />
+          <PromoLeadsPanel manager={false} trialPrice={me.settings.trial_price} />
         </section>
       </main>
 

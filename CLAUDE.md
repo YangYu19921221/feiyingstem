@@ -280,7 +280,14 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   原字高 h、字色 fill、描边 stroke)现画: 印刷文件 utils/promoPrint.ts canvas 画,缩略图 components/promo/PromoCardThumb.tsx
   用 SVG 叠字(不用 canvas,列表一屏几十张不卡)。位数多了自动缩字号塞进 w,¥ 比数字小一号。字体 public/promo-card/fonts/
   baloo-2-latin-800.woff2(OFL,随包发,印刷前 document.fonts.load 等它到位,不靠系统字体)。价格格式 utils/promoPrice.ts
-  (只算排版: 体验价后端存整数,前端按整数画)。**旧的 {id}_front.jpg / _thumb.jpg(印着 ¥99)没删**,只为已经打开的旧页面不裂图,新代码不再引用。
+  (formatPrice: 最多两位小数、末尾 0 不写,99 / 9.9 / 19.99;字宽表含小数点)。
+  **10-24 晚补: 体验价和实收可以带小数**(用户「没法输入 9.9」——设置页 `<input type=number>` 默认 step=1,浏览器直接拦下 9.9,
+  后端也只收 int)。后端 trial_price / paid_amount 模型列 Integer → Float,**不用 ALTER**: 生产表是 INTEGER 亲和列,
+  SQLite 照样把 9.9 存成 REAL、99.0 存成整数 99;出口统一走 services/promo.money()(两位小数,整数给 int,
+  看板实收按浮点加完再规整,9.9×3 不会显示 29.700000000000003),入口 parse_money()(0~10 万、第三位四舍五入、NaN/无穷拒)。
+  前端设置页和线索实收输入框 step=0.01 + inputMode=decimal;标「已付」弹框默认填机构体验价(原来写死 99)。
+  测试 test_trial_price_and_paid_amount_accept_decimals(去掉看板规整 / 改回只收整数 / 整数不给 int 三处各让它失败,回归锁验证过)。
+  ⚠️ 用户 10-24 19:06 在生产把直营体验价存成了 **9**(输不进 9.9 退而求其次),上线后要提醒用户重新填 9.9。**旧的 {id}_front.jpg / _thumb.jpg(印着 ¥99)没删**,只为已经打开的旧页面不裂图,新代码不再引用。
   调用方: 卡码列表缩略图、选模板小图、印刷预览、下载正面(文件名带「_199元_」)、销售工作台「我的卡」都传机构体验价;
   印刷说明写明「正面印的价格是 ¥X,改了要重新下载重新印」;设置页保存提示同样写明,并在价格框下面现画一张卡面预览。
   后端没改(PUT /promo/settings 早就有)。测试 test_template_ids_match_frontend 改成检查每套 _blank 两张 + 背面在、

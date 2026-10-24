@@ -445,3 +445,34 @@ async def test_board_hides_inactive_empty_sales_and_marks_deletable(client, db_s
     me = next(x for x in r.json()["items"] if x["sales_user_id"] == oa_id)
     assert me["deletable"] is False
     assert ch["code"]
+
+
+# ---------------- 10-24: 体验价 / 实收可以带小数(用户「没法输入 9.9」) ----------------
+
+@pytest.mark.asyncio
+async def test_trial_price_and_paid_amount_accept_decimals(client, db_session, ctx):
+    oa_id, s1_id = ctx["oa"].id, ctx["s1"].id
+    r = await client.put("/api/v1/promo/settings", json={"trial_price": 9.9}, headers=_h(oa_id))
+    assert r.status_code == 200 and r.json()["trial_price"] == 9.9
+    # 整数仍给整数(卡面、文件名里写「99」不写「99.0」),第三位小数四舍五入
+    r = await client.put("/api/v1/promo/settings", json={"trial_price": 99.0}, headers=_h(oa_id))
+    assert r.json()["trial_price"] == 99 and isinstance(r.json()["trial_price"], int)
+    r = await client.put("/api/v1/promo/settings", json={"trial_price": 19.999}, headers=_h(oa_id))
+    assert r.json()["trial_price"] == 20
+    r = await client.put("/api/v1/promo/settings", json={"trial_price": -0.1}, headers=_h(oa_id))
+    assert r.status_code == 400
+    await client.put("/api/v1/promo/settings", json={"trial_price": 9.9}, headers=_h(oa_id))
+    ch = await _new_channel(client, ctx["oa"], ctx["s1"])
+    r = await client.get(f"/api/v1/promo/public/{ch['code']}")
+    assert r.json()["trial_price"] == 9.9                      # 家长扫码看到的也是 9.9
+    # 实收: 三条各 9.9,看板合计 29.7(不是 29.700000000000003)
+    for ph in ("13900000041", "13900000042", "13900000043"):
+        await client.post(f"/api/v1/promo/public/{ch['code']}/leads", json={"parent_phone": ph})
+    ids = [l.id for l in (await db_session.execute(select(PromoLead))).scalars()]
+    for lid in ids:
+        r = await client.patch(f"/api/v1/promo/leads/{lid}", json={"status": "paid", "paid_amount": 9.9}, headers=_h(s1_id))
+        assert r.status_code == 200 and r.json()["paid_amount"] == 9.9
+    r = await client.get("/api/v1/promo/board", headers=_h(oa_id))
+    assert r.json()["total"]["revenue"] == 29.7
+    r = await client.patch(f"/api/v1/promo/leads/{ids[0]}", json={"paid_amount": 100001}, headers=_h(s1_id))
+    assert r.status_code == 422

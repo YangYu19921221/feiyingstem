@@ -14,7 +14,7 @@
 所有查询在 services/promo.py 里显式写 org_id(CLAUDE.md: 别押在隐式过滤器上)。
 """
 from sqlalchemy import (
-    Column, DateTime, ForeignKey, Index, Integer, String, Text, Boolean, UniqueConstraint,
+    Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, Boolean, UniqueConstraint,
 )
 from sqlalchemy.sql import func
 
@@ -68,7 +68,9 @@ class PromoLead(Base):
     status = Column(String(12), default="new", server_default="new", nullable=False)
     note = Column(Text, nullable=True)                 # 销售自己的备注(孩子情况、家长顾虑)
     next_follow_at = Column(DateTime, nullable=True)   # 下次跟进(过了还没跟 = 逾期,列表标红)
-    paid_amount = Column(Integer, nullable=True)       # 实收体验费(元),标「已付」时记
+    # 实收体验费(元,最多两位小数,如 9.9),标「已付」时记。10-24 由 Integer 改 Float: 生产表是 INTEGER 亲和列,
+    # SQLite 照样原样存 9.9(存成 REAL),不用 ALTER;读出来统一走 services/promo.money() 规整
+    paid_amount = Column(Float, nullable=True)
     # 各阶段第一次到达的时间: 漏斗按它数(流失的线索也算它走到过哪一步),只写不清
     contacted_at = Column(DateTime, nullable=True)
     paid_at = Column(DateTime, nullable=True)
@@ -104,7 +106,7 @@ class PromoOrgSettings(Base):
     __tablename__ = "promo_org_settings"
 
     org_id = Column(Integer, primary_key=True)
-    trial_price = Column(Integer, nullable=True)       # 体验价(元),落地页显示;NULL = 默认 99
+    trial_price = Column(Float, nullable=True)         # 体验价(元,最多两位小数,如 9.9);NULL = 默认 99。同上由 Integer 改来
     offer_text = Column(String(200), nullable=True)    # 落地页「体验包含」上面那句话
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

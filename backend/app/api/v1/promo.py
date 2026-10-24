@@ -60,7 +60,7 @@ class LeadUpdate(BaseModel):
     status: Optional[str] = None
     note: Optional[str] = Field(None, max_length=4000)
     next_follow_at: Optional[str] = None      # 北京时间 YYYY-MM-DDTHH:MM;空串 = 清掉
-    paid_amount: Optional[int] = Field(None, ge=0, le=100000)
+    paid_amount: Optional[float] = Field(None, ge=0, le=100000, allow_inf_nan=False)   # 元,最多两位小数
     student_ref: Optional[str] = Field(None, max_length=50)   # 关联学生号(用户名或手机号)
     sales_user_id: Optional[int] = None       # 改归属(只有机构管理员)
 
@@ -117,7 +117,7 @@ class LeadBatchDelete(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    trial_price: Optional[int] = None
+    trial_price: Optional[float] = Field(None, allow_inf_nan=False)   # 元,最多两位小数(如 9.9);范围在 save_settings 判
     offer_text: Optional[str] = Field(None, max_length=500)
 
 
@@ -277,7 +277,8 @@ async def update_lead(lead_id: int, body: LeadUpdate, request: Request, db: Asyn
         else:
             lead.student_id = None
     if "paid_amount" in data:
-        lead.paid_amount = data["paid_amount"]
+        v = data["paid_amount"]
+        lead.paid_amount = None if v is None else svc.parse_money(v, "实收金额")
     if "note" in data:
         lead.note = (data["note"] or "").strip()[:4000] or None
     if "next_follow_at" in data:
