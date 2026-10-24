@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'promo-card-templates-50-2026-10',
+    date: '2026-10-24',
+    title: '🎨 体验卡模板加到 50 套,卡背面印上学习网址',
+    desc: '又加了 14 套卡面(热气球、海盗寻宝、机器人、田园农场、城市日落、中秋月圆、新春剪纸、水墨山水、可爱贴纸、水彩、霓虹、笔记本、珊瑚渐变、金色荣誉)。卡背面二维码下面现在印着网址 es.feiyingsteam.com/c/卡号:家长扫不了码,照着输入也能打开登记页;家长登记完的页面也会写明孩子学习的网址 es.feiyingsteam.com。之前下载过的印刷文件是旧版(印的是卡号),要印新卡请重新下载。',
+    where: '「地推体验卡 → 卡码」每行点「卡面与印刷」→ 选模板、下载正面 / 背面',
+    roles: ['org_admin', 'admin'],
+    route: '/admin/promo',
+  },
+  {
     id: 'tts-nightly-guard-admin-2026-10',
     date: '2026-10-24',
     title: '🔊 发音每晚自动检查,坏了自动修',

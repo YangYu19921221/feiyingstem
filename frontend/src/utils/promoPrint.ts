@@ -122,7 +122,7 @@ export async function drawCardBack(o: CardPrintOptions): Promise<HTMLCanvasEleme
   const inner = 14;
   const line = contactLine(o.name, o.phone);
   const lineH = line ? 26 : 0;
-  const noH = 20;
+  const noH = 24;   // 网址那一行(20px ≈ 1.7mm,家长要照着输入,不能再小)
   const gap = 6;
   const side = Math.floor(Math.min(r - l - 2 * inner, b - t - 2 * inner - noH - lineH - gap * 2));
   // 纠错等级 M: 卡片会被揉、被茶水溅,比 L 稳;码再密就要更大的印刷尺寸
@@ -144,9 +144,12 @@ export async function drawCardBack(o: CardPrintOptions): Promise<HTMLCanvasEleme
     ctx.fillText(line, cx, y);
     y += lineH;
   }
-  ctx.fillStyle = '#8A7262';
-  ctx.font = `500 16px ${FONT}`;
-  ctx.fillText(`NO. ${o.code}`, cx, y);
+  // 二维码下面印网址(不印「NO. 卡号」): 家长扫不了码时照着输入也能打开留电话页,线索照样归这张卡的销售;
+  // 卡号就在网址末尾,电话里也念得出来。不写 https:// —— 印出来太长,浏览器输入 http 会被 301 到 https
+  const host = o.url.replace(/^https?:\/\//, '');
+  ctx.fillStyle = '#6B5444';
+  fitFont(ctx, host, 600, 20, 14, r - l - 2 * inner);
+  ctx.fillText(host, cx, y);
   return c;
 }
 

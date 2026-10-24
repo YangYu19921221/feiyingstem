@@ -20,6 +20,8 @@ const errText = (e: unknown, fallback: string) => {
 };
 
 const STEPS = ['留下手机号', '加班主任微信', '7 天每天学 20 分钟'];
+/** 孩子开通后登录学习的网址(卡背面也印这个域名)。不写 https:// —— 家长手输 http 会被 301 到 https */
+const STUDY_SITE = 'es.feiyingsteam.com';
 
 export default function PromoCardLanding() {
   const { code = '' } = useParams();
@@ -140,6 +142,12 @@ export default function PromoCardLanding() {
                 {info.org_name}的老师会尽快打电话联系您,请留意来电。
               </p>
             )}
+            {/* 开通后孩子去哪学: 家长最常问的一句,这里先告诉他(收藏 / 截图都行) */}
+            <div className="mt-5 rounded-xl bg-orange-50 px-4 py-3 text-left text-sm leading-6 text-orange-900">
+              <p className="font-semibold">孩子学习的网址</p>
+              <p className="mt-0.5 select-all font-mono text-base font-bold tracking-wide text-[#FF6B35]">{STUDY_SITE}</p>
+              <p className="mt-0.5 text-xs text-orange-800/80">老师开通账号后,用手机或电脑浏览器打开这个网址登录就能学。建议现在收藏。</p>
+            </div>
           </section>
         ) : (
           <form onSubmit={submit} className="rounded-2xl bg-white p-5 shadow-sm" noValidate>

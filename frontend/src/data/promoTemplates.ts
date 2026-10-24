@@ -1,5 +1,5 @@
 /**
- * 体验卡卡面模板(36 套: 10-23 先出 20 套,10-24 加到 36 套)—— 图在 public/promo-card/tpl/{id}_front.jpg / _back.jpg / _thumb.jpg
+ * 体验卡卡面模板(50 套: 10-23 先出 20 套,10-24 加到 50 套)—— 图在 public/promo-card/tpl/{id}_front.jpg / _back.jpg / _thumb.jpg
  *
  * id 与后端 services/promo.TEMPLATE_IDS 同一组(tests/test_promo.py 解析本文件锁住两边一致)。
  * box = 背面底图里那个空白方框(原图 1536×1024 坐标),二维码、老师名字电话、卡号画在框里。
@@ -58,6 +58,20 @@ export const PROMO_TEMPLATES: PromoTemplate[] = [
   { id: 't34', no: 34, name: '恐龙乐园', group: '冒险', box: { l: 236, t: 200, r: 700, b: 660 } },
   { id: 't35', no: 35, name: '童话城堡', group: '冒险', box: { l: 152, t: 172, r: 600, b: 620 } },
   { id: 't36', no: 36, name: '小火车', group: '冒险', box: { l: 152, t: 136, r: 628, b: 584 } },
+  { id: 't37', no: 37, name: '热气球', group: '冒险', strip: 'r', box: { l: 212, t: 164, r: 680, b: 624 } },
+  { id: 't38', no: 38, name: '海盗寻宝', group: '冒险', box: { l: 188, t: 148, r: 652, b: 612 } },
+  { id: 't39', no: 39, name: '机器人', group: '学习', box: { l: 168, t: 168, r: 644, b: 628 } },
+  { id: 't40', no: 40, name: '田园农场', group: '四季', box: { l: 124, t: 156, r: 592, b: 620 } },
+  { id: 't41', no: 41, name: '城市日落', group: '冒险', box: { l: 172, t: 160, r: 660, b: 616 } },
+  { id: 't42', no: 42, name: '中秋月圆', group: '节日国风', box: { l: 236, t: 176, r: 672, b: 596 } },
+  { id: 't43', no: 43, name: '新春剪纸', group: '节日国风', box: { l: 184, t: 188, r: 636, b: 636 } },
+  { id: 't44', no: 44, name: '水墨山水', group: '节日国风', box: { l: 212, t: 224, r: 632, b: 636 } },
+  { id: 't45', no: 45, name: '可爱贴纸', group: '经典', strip: 'r', box: { l: 156, t: 112, r: 680, b: 636 } },
+  { id: 't46', no: 46, name: '水彩', group: '清新', box: { l: 140, t: 160, r: 616, b: 632 } },
+  { id: 't47', no: 47, name: '霓虹', group: '深色', box: { l: 160, t: 144, r: 664, b: 628 } },
+  { id: 't48', no: 48, name: '笔记本', group: '学习', box: { l: 200, t: 172, r: 668, b: 632 } },
+  { id: 't49', no: 49, name: '珊瑚渐变', group: '经典', box: { l: 192, t: 176, r: 620, b: 600 } },
+  { id: 't50', no: 50, name: '金色荣誉', group: '深色', box: { l: 200, t: 172, r: 644, b: 616 } },
 ];
 
 export const DEFAULT_TEMPLATE_ID = 't01';
