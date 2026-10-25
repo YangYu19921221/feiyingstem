@@ -186,3 +186,45 @@ async def test_start_returns_503_when_origin_unconfigured(
     sid = r.json()["id"]
     r = await client.post(f"/api/v1/teacher/live/sessions/{sid}/start", headers=_auth(f["teacher"]))
     assert r.status_code == 503
+
+
+async def test_rejoin_and_heartbeat_reuse_one_attendance_row(client: AsyncClient, live_fixture, db_session):
+    """上过课的学生再进同一节课(考勤行已在)不能 500。
+    旧写法: INSERT 撞 UNIQUE → rollback → 再读 student.id,对象已过期 → MissingGreenlet 500
+    (生产 10-09 起出现,10-25 晚直播时上过课的学生全进不去)"""
+    f = live_fixture
+    teacher, stu_a = f["teacher"], f["stu_a"]
+    r = await client.post("/api/v1/teacher/live/sessions",
+                          json={"title": "重进", "class_id": f["cls_a"].id}, headers=_auth(teacher))
+    assert r.status_code in (200, 201), r.text
+    sid = r.json()["id"]
+    assert (await client.post(f"/api/v1/teacher/live/sessions/{sid}/start", headers=_auth(teacher))).status_code == 200
+
+    for _ in range(3):
+        r = await client.post(f"/api/v1/student/live/sessions/{sid}/join", headers=_auth(stu_a))
+        assert r.status_code == 200, r.text
+        assert r.json()["flv_url"] and "学生甲" in r.json()["watermark"]
+    r = await client.post(f"/api/v1/student/live/sessions/{sid}/heartbeat",
+                          json={"seconds": 30, "blurred": True}, headers=_auth(stu_a))
+    assert r.status_code == 200, r.text
+
+    rows = (await db_session.execute(
+        LiveAttendance.__table__.select().where(LiveAttendance.live_session_id == sid))).fetchall()
+    assert len(rows) == 1
+    assert rows[0].watch_seconds == 30 and rows[0].blur_count == 1 and rows[0].replay_seconds == 0
+
+
+async def test_replay_heartbeat_without_join_creates_then_accumulates(client: AsyncClient, live_fixture, db_session):
+    """回放没走过 join: 第一次心跳建行,之后累加;直播时长不受影响"""
+    f = live_fixture
+    teacher, stu_a = f["teacher"], f["stu_a"]
+    r = await client.post("/api/v1/teacher/live/sessions",
+                          json={"title": "回放", "class_id": f["cls_a"].id}, headers=_auth(teacher))
+    sid = r.json()["id"]
+    for sec in (40, 200):          # 第二次超过 120 秒封顶
+        r = await client.post(f"/api/v1/student/live/sessions/{sid}/heartbeat",
+                              json={"seconds": sec, "is_replay": True}, headers=_auth(stu_a))
+        assert r.status_code == 200, r.text
+    rows = (await db_session.execute(
+        LiveAttendance.__table__.select().where(LiveAttendance.live_session_id == sid))).fetchall()
+    assert len(rows) == 1 and rows[0].replay_seconds == 160 and rows[0].watch_seconds == 0

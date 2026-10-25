@@ -14,9 +14,9 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import select, update, and_, or_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -103,20 +103,18 @@ async def join_session(
     if row.status != "live":
         raise HTTPException(status_code=409, detail="老师还没开始上课")
 
-    # 考勤 UPSERT。**并发心跳下必须靠 UNIQUE 兜底**,不然写出多行让时长翻倍
-    att = LiveAttendance(live_session_id=session_id, student_id=student.id)
-    db.add(att)
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        await db.execute(
-            update(LiveAttendance)
-            .where(and_(LiveAttendance.live_session_id == session_id,
-                        LiveAttendance.student_id == student.id))
-            .values(last_seen_at=datetime.utcnow())
+    # 考勤 UPSERT,UNIQUE 兜并发。必须单条 ON CONFLICT: 旧写法「INSERT → 撞 UNIQUE → rollback → 再 UPDATE」
+    # 里 rollback 让 student / row 过期,下一句读 student.id 就 MissingGreenlet 500 —— 上过这节课的学生再进都进不去
+    student_id = student.id
+    await db.execute(
+        sqlite_insert(LiveAttendance)
+        .values(live_session_id=session_id, student_id=student_id)
+        .on_conflict_do_update(
+            index_elements=[LiveAttendance.live_session_id, LiveAttendance.student_id],
+            set_={"last_seen_at": datetime.utcnow()},
         )
-        await db.commit()
+    )
+    await db.commit()
 
     urls = live_service.build_play_urls(row.stream_key, student.id, row.origin_node)
     return {
@@ -155,46 +153,28 @@ async def heartbeat(
     await _visible_session(db, session_id, student)
 
     inc = max(0, min(payload.seconds, 120))
-    col = LiveAttendance.replay_seconds if payload.is_replay else LiveAttendance.watch_seconds
-    res = await db.execute(
-        update(LiveAttendance)
-        .where(and_(LiveAttendance.live_session_id == session_id,
-                    LiveAttendance.student_id == student.id))
-        .values({
-            col: col + inc,
-            LiveAttendance.last_seen_at: datetime.utcnow(),
-            LiveAttendance.blur_count: LiveAttendance.blur_count + (1 if payload.blurred else 0),
-        })
-    )
-
-    if res.rowcount == 0:
-        # 回放首次心跳: 建行并把本次增量直接写进去。UNIQUE 兜并发,
-        # 撞了就回滚重跑 UPDATE(此时行已由并发请求建好)
-        att = LiveAttendance(
+    blur = 1 if payload.blurred else 0
+    col = "replay_seconds" if payload.is_replay else "watch_seconds"
+    # 没行(回放没走过 join)就建行并写入本次增量,有行就在 SQL 里累加。单条 ON CONFLICT,
+    # 不走 rollback 重试(rollback 让 student 过期 → MissingGreenlet,见 join_session)
+    await db.execute(
+        sqlite_insert(LiveAttendance)
+        .values(
             live_session_id=session_id,
             student_id=student.id,
             watch_seconds=0 if payload.is_replay else inc,
             replay_seconds=inc if payload.is_replay else 0,
-            blur_count=1 if payload.blurred else 0,
+            blur_count=blur,
         )
-        db.add(att)
-        try:
-            await db.commit()
-            return {"ok": True}
-        except IntegrityError:
-            await db.rollback()
-            await db.execute(
-                update(LiveAttendance)
-                .where(and_(LiveAttendance.live_session_id == session_id,
-                            LiveAttendance.student_id == student.id))
-                .values({
-                    col: col + inc,
-                    LiveAttendance.last_seen_at: datetime.utcnow(),
-                    LiveAttendance.blur_count:
-                        LiveAttendance.blur_count + (1 if payload.blurred else 0),
-                })
-            )
-
+        .on_conflict_do_update(
+            index_elements=[LiveAttendance.live_session_id, LiveAttendance.student_id],
+            set_={
+                col: getattr(LiveAttendance, col) + inc,
+                "last_seen_at": datetime.utcnow(),
+                "blur_count": LiveAttendance.blur_count + blur,
+            },
+        )
+    )
     await db.commit()
     return {"ok": True}
 
