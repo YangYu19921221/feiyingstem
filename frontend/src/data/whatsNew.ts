@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'video-cdn-switch-admin-2026-10',
+    date: '2026-10-25',
+    title: '⚡ 音标视频加速开关(CDN)',
+    desc: '音标视频现在可以走腾讯云 CDN: 学生从离自己最近的节点下载,外地、晚上人多时更不容易卡。开关打开前会自动测一次 CDN,测不通不会打开;CDN 出问题时关掉,马上回到原来的 COS 直接下载。两种方式都不占服务器带宽。改开关会记进操作记录。',
+    where: '管理端首页往下拉「音标视频加速(CDN)」,右边的开关;旁边「测试 CDN」只测不改',
+    roles: ['admin'],
+    route: '/admin',
+  },
+  {
     id: 'promo-summary-admin-2026-10',
     date: '2026-10-24',
     title: '📊 体验卡各校区汇总',

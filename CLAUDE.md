@@ -289,6 +289,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   用量参考: 10 月视频下行 13.2GB ≈ 6.6 元(外网下行 0.5 元/GB),存储 5.2GB ≈ 0.6 元/月;CDN 没上(要备案域名 + 证书,量大了再加)。
   ⚠️ 腾讯云按量扣余额,**余额用完 COS 停服、视频播不了**(会退回?不会 —— 跳转照发,COS 那边 403),要提醒用户设余额告警。
   测试 tests/test_cos_video.py(8 例;一致性校验 / 只传 mp4 / no-store / 删 COS 四处各恰好 1 例失败,回归锁验证过)
+  **10-25 下午加 CDN 开关**(用户「管理端加个开关,打开走 CDN、关闭走原来的 COS」): CDN 域名 media.feiyingsteam.com
+  (源站 = 这个私有桶,CDN 控制台开了「私有存储桶访问」;TypeA 鉴权,参数 sign、有效期 10800 秒,主 Key 在生产 .env 的
+  CDN_AUTH_KEY,域名 CDN_DOMAIN)。开 = /stream 302 跳 CDN 签名地址,关 = 跳 COS 签名地址(原样)。三个要点:
+  ①**开关存文件** private_media/cos_video/cdn_switch.json(后端在改多进程,放内存别的进程看不到),
+  读不了/坏了/"true" 字符串一律按关;每次播放多一次 stat ②**打开前服务器先实测一次**(probe_cdn: 签地址取开头 1KB,
+  必须 206 且与本机一致),测不过 409 不让开;403 按 Server 头区分「CDN 鉴权没过(Lego Server)」与「回源被 COS 拒
+  (tencent-cos,= 私有存储桶访问没开)」—— 10-25 排查卡在后者一个多小时;关闭不测 ③地址带 `v=本机 mtime`:
+  实测 CDN 缓存键含普通参数、不含 sign,换文件(faststart/重压)v 变就不会拿旧缓存。
+  COS_REDIRECT 没开时开关不起作用(卡片上写明)。改开关记操作记录 system.video_cdn。
+  入口: 管理端首页「音标视频加速(CDN)」(开关 +「测试 CDN」);公告一条(admin)。测试同文件加 6 例
+  (开关被无视 / 字符串当开 / 去掉 v / 打开不实测 / 403 不分来源 五处各让对应用例失败,回归锁验证过)
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):

@@ -16,8 +16,11 @@ import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user, get_current_admin
+from app.core.database import get_db
 from app.models.user import User
 
 router = APIRouter()
@@ -142,6 +145,69 @@ async def get_tts_status(current_user: User = Depends(get_current_admin)):
     还没跑过返回 {"status": None};前端据此显示「还没检查过」,不当成故障。"""
     from app.services import tts_guard
     return {"status": tts_guard.read_status()}
+
+
+# ---------- 音标视频走 CDN 的开关(services/cos_video) ----------
+
+class VideoCdnSwitchIn(BaseModel):
+    enabled: bool
+
+
+def _video_cdn_state() -> dict:
+    from app.core.config import settings
+    from app.services import cos_video
+    domain, key = cos_video.cdn_conf()
+    sw = cos_video.read_cdn_switch()
+    return {
+        "enabled": sw["enabled"],
+        "updated_at": sw.get("updated_at"),
+        "updated_by": sw.get("updated_by"),
+        "cdn_domain": domain,
+        "cdn_configured": bool(domain and key),
+        "cos_configured": cos_video.enabled(),
+        # off = COS_REDIRECT 没开,视频全从服务器本机放,这个开关不起作用
+        "redirect_mode": cos_video.redirect_mode(),
+        "video_dir_exists": os.path.isdir(settings.PHONETIC_VIDEO_DIR),
+    }
+
+
+@router.get("/video-cdn")
+async def get_video_cdn(current_user: User = Depends(get_current_admin)):
+    return _video_cdn_state()
+
+
+@router.post("/video-cdn/test")
+async def test_video_cdn(current_user: User = Depends(get_current_admin)):
+    """只测不改: 从服务器按学生的方式经 CDN 取一段视频"""
+    from app.core.config import settings
+    from app.services import cos_video
+    ok, message = await cos_video.probe_cdn(settings.PHONETIC_VIDEO_DIR)
+    return {"ok": ok, "message": message}
+
+
+@router.put("/video-cdn")
+async def set_video_cdn(
+    body: VideoCdnSwitchIn,
+    request: Request,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """打开前先实测 CDN,测不过 409 不让开(配错了打开 = 全部视频播不了);关闭不测,随时能关"""
+    from app.core.config import settings
+    from app.services import audit_log, cos_video
+    message = None
+    if body.enabled:
+        ok, message = await cos_video.probe_cdn(settings.PHONETIC_VIDEO_DIR)
+        if not ok:
+            raise HTTPException(status_code=409, detail=f"没打开: {message}")
+    before = cos_video.read_cdn_switch()["enabled"]
+    cos_video.write_cdn_switch(body.enabled, by=current_user.full_name or current_user.username)
+    if before != body.enabled:
+        audit_log.record(db, request, current_user, "system.video_cdn",
+                         "音标视频改走 CDN 加速" if body.enabled else "音标视频改回 COS 直接下载",
+                         detail={"enabled": body.enabled, "probe": message})
+        await db.commit()
+    return {**_video_cdn_state(), "message": message}
 
 
 def _parse_semver(v: str | None) -> tuple[int, ...] | None:

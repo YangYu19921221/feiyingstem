@@ -176,3 +176,163 @@ async def test_redirect_switch_off_or_only_listed_videos(client, env, fake_cos, 
     monkeypatch.setenv("COS_REDIRECT", f"{env['v2'].id},{env['v'].id}")
     assert (await client.get(url, params=tk, follow_redirects=False)).status_code == 302
 
+
+
+# ---------- CDN 开关(管理端首页「音标视频加速」) ----------
+import hashlib
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+
+CDN_KEY = "testcdnkey0123456789abcdefABCDEF"
+
+
+@pytest.fixture
+def cdn(monkeypatch, tmp_path):
+    """开关文件放临时目录;CDN 域名和 Key 走环境变量,不读本机 backend/.env"""
+    monkeypatch.setattr(cos_video, "CDN_SWITCH_FILE", tmp_path / "sw" / "cdn_switch.json")
+    monkeypatch.setattr(cos_video, "_switch_cache", None)
+    monkeypatch.setattr(cos_video, "_dotenv_cache", {"COS_REDIRECT": "all"})
+    monkeypatch.setenv("CDN_DOMAIN", "https://media.example.com/")
+    monkeypatch.setenv("CDN_AUTH_KEY", CDN_KEY)
+    return tmp_path
+
+
+@pytest_asyncio.fixture
+async def admin_headers(db_session):
+    a = User(username="cdnadmin", email="cdnadmin@e.com", hashed_password="x", role="admin",
+             is_active=True, full_name="平台管理员")
+    db_session.add(a)
+    await db_session.commit()
+    return {"Authorization": f"Bearer {_make_token(a.id)}"}
+
+
+def _check_type_a(url: str, local_path: str):
+    u = urlparse(url)
+    assert u.scheme == "https" and u.netloc == "media.example.com"
+    q = parse_qs(u.query)
+    ts, rand, uid, digest = q["sign"][0].split("-")
+    assert uid == "0"
+    assert hashlib.md5(f"{u.path}-{ts}-{rand}-0-{CDN_KEY}".encode()).hexdigest() == digest
+    # v = 本机文件 mtime: 换了文件(faststart/重压)CDN 缓存键跟着变
+    assert q["v"][0] == str(int(os.path.getmtime(local_path)))
+    return u.path
+
+
+async def test_switch_on_redirects_to_signed_cdn_url(client, env, fake_cos, cdn):
+    p = os.path.join(env["dir"], "abc123.mp4")
+    cos_video.upload(p)
+    cos_video.write_cdn_switch(True, by="t")
+    r = await client.get(f"/api/v1/phonetics/videos/{env['v'].id}/stream",
+                         params={"t": _ticket(env["stu"], env["v"].id)}, follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["cache-control"] == "no-store"
+    assert _check_type_a(r.headers["location"], p) == "/phonetics/abc123.mp4"
+
+
+async def test_switch_off_or_unconfigured_keeps_cos(client, env, fake_cos, cdn, monkeypatch):
+    cos_video.upload(os.path.join(env["dir"], "abc123.mp4"))
+    url = f"/api/v1/phonetics/videos/{env['v'].id}/stream"
+    tk = {"t": _ticket(env["stu"], env["v"].id)}
+    # 关着 / 还没设过 → COS 签名地址(原来的方式)
+    r = await client.get(url, params=tk, follow_redirects=False)
+    assert r.status_code == 302 and ".cos.ap-guangzhou.myqcloud.com/" in r.headers["location"]
+    # 开着但 Key 没配 → 也照旧 COS,不发出签不了名的 CDN 地址
+    cos_video.write_cdn_switch(True)
+    monkeypatch.setenv("CDN_AUTH_KEY", "")
+    r = await client.get(url, params=tk, follow_redirects=False)
+    assert ".cos.ap-guangzhou.myqcloud.com/" in r.headers["location"]
+
+
+async def test_broken_switch_file_counts_as_off(env, fake_cos, cdn):
+    p = os.path.join(env["dir"], "abc123.mp4")
+    cos_video.upload(p)
+    f = cos_video.CDN_SWITCH_FILE
+    f.parent.mkdir(parents=True, exist_ok=True)
+    for bad in ["{坏了", '["enabled"]', '{"enabled": "true"}']:
+        f.write_text(bad, encoding="utf-8")
+        os.utime(f, None)
+        assert cos_video.read_cdn_switch()["enabled"] is False
+        assert ".cos." in cos_video.signed_url(p)
+    # 另一个进程改了文件 → 这个进程下一次播放就读到(不靠进程内存)
+    cos_video.write_cdn_switch(True)
+    assert cos_video.signed_url(p).startswith("https://media.example.com/")
+
+
+async def test_enable_requires_probe_and_is_logged(client, db_session, cdn, admin_headers, monkeypatch):
+    calls = []
+
+    async def fake_probe(directory):
+        calls.append(directory)
+        return fake_probe.result
+
+    fake_probe.result = (False, "CDN 去 COS 取文件被拒了(403)")
+    monkeypatch.setattr(cos_video, "probe_cdn", fake_probe)
+    url = "/api/v1/admin/system/video-cdn"
+    # 测不过 → 409,开关不动
+    r = await client.put(url, json={"enabled": True}, headers=admin_headers)
+    assert r.status_code == 409 and "私有" not in r.json()["detail"] and "被拒" in r.json()["detail"]
+    assert cos_video.read_cdn_switch()["enabled"] is False
+    # 测过了 → 打开,记操作日志(谁开的)
+    fake_probe.result = (True, "CDN 正常")
+    r = await client.put(url, json={"enabled": True}, headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["enabled"] is True and r.json()["updated_by"] == "平台管理员"
+    # 关闭不测,随时关得掉
+    n = len(calls)
+    r = await client.put(url, json={"enabled": False}, headers=admin_headers)
+    assert r.status_code == 200 and r.json()["enabled"] is False and len(calls) == n
+    rows = (await db_session.execute(sql_text(
+        "SELECT summary FROM operation_logs WHERE action='system.video_cdn' ORDER BY id"))).scalars().all()
+    assert rows == ["音标视频改走 CDN 加速", "音标视频改回 COS 直接下载"]
+    st = (await client.get(url, headers=admin_headers)).json()
+    assert st["cdn_domain"] == "media.example.com" and st["cdn_configured"] is True
+
+
+async def test_switch_endpoints_admin_only(client, env, cdn):
+    h = {"Authorization": f"Bearer {_make_token(env['tch'].id)}"}
+    assert (await client.get("/api/v1/admin/system/video-cdn", headers=h)).status_code == 403
+    assert (await client.put("/api/v1/admin/system/video-cdn", json={"enabled": True},
+                             headers=h)).status_code == 403
+    assert (await client.post("/api/v1/admin/system/video-cdn/test", headers=h)).status_code == 403
+    assert cos_video.read_cdn_switch()["enabled"] is False
+
+
+async def test_probe_classifies_cdn_answers(env, fake_cos, cdn, monkeypatch):
+    big = env["dir"] / "abc123.mp4"
+    big.write_bytes(bytes(range(256)) * 8)                  # 2KB,够取 1KB 开头
+    cos_video.upload(str(big))
+    seen = {}
+    real = httpx.AsyncClient
+
+    def install(handler):
+        def make(**kw):
+            kw.pop("trust_env", None)
+            return real(transport=httpx.MockTransport(handler), **kw)
+        monkeypatch.setattr(httpx, "AsyncClient", make)
+
+    def ok(req):
+        seen["url"] = str(req.url)
+        lo, hi = map(int, req.headers["range"].split("=")[1].split("-"))
+        return httpx.Response(206, content=big.read_bytes()[lo:hi + 1], headers={"server": "tencent-cos"})
+
+    install(ok)
+    good, msg = await cos_video.probe_cdn(str(env["dir"]))
+    assert good, msg
+    _check_type_a(seen["url"], str(big))
+
+    install(lambda req: httpx.Response(403, headers={"server": "tencent-cos"}))
+    good, msg = await cos_video.probe_cdn(str(env["dir"]))
+    assert not good and "私有存储桶访问" in msg
+
+    install(lambda req: httpx.Response(403, headers={"server": "Lego Server"}))
+    good, msg = await cos_video.probe_cdn(str(env["dir"]))
+    assert not good and "TypeA" in msg
+
+    install(lambda req: httpx.Response(206, content=b"\x09" * 1024))
+    good, msg = await cos_video.probe_cdn(str(env["dir"]))
+    assert not good and "对不上" in msg
+
+    monkeypatch.setenv("CDN_AUTH_KEY", "")
+    good, msg = await cos_video.probe_cdn(str(env["dir"]))
+    assert not good and "CDN_AUTH_KEY" in msg
