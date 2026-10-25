@@ -4,13 +4,16 @@
 # 服务器升级 CPU / 内存后: systemctl restart english-helper-workers 即按新配置开。
 #
 # 安装顺序(每步验证了再走下一步):
-#   1. Redis 起来且只听本机: systemctl start redis-server && redis-cli -p 6379 ping
+#   1. Redis 起来且只听本机: redis-server.service.d/eh.conf 放 /etc/systemd/system/redis-server.service.d/
+#      (修 jemalloc 加载失败 + 限 256MB、不落盘),systemctl daemon-reload && systemctl start redis-server && redis-cli ping
 #   2. 主进程连 Redis: mkdir -p /etc/systemd/system/english-helper.service.d && cp english-helper.service.d/redis.conf 进去,
 #      systemctl daemon-reload && systemctl restart english-helper;管理端「服务器监控」共享存储显示 redis
 #   3. 工作进程: cp english-helper-workers.service /etc/systemd/system/ && systemctl daemon-reload &&
 #      systemctl enable --now english-helper-workers;curl -sI 127.0.0.1:8001/health 看 x-eh-proc: worker
 #   4. nginx: nginx/0.eh_upstream.conf 放 /www/server/panel/vhost/nginx/,另外三个 .inc 放 .../vhost/nginx/eh/,
 #      两个站点把 `location ^~ /api/ { ... }` 整块换成 include .../eh/api-locations.inc;nginx -t 通过才 reload
+# ⚠️ 部署后端代码后两个服务都要重启: systemctl restart english-helper && systemctl restart english-helper-workers
+#   (只重启主进程的话工作进程还在跑旧代码)
 # 回到单进程: systemctl disable --now english-helper-workers(nginx 的 upstream 带 backup,8001 不在自动全走 8000);
 #   要彻底还原再把两个站点的 include 换回原来那块、删 drop-in 后重启 english-helper
 [Unit]

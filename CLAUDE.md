@@ -271,8 +271,21 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- 🚧 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」):
-  **第一步(代码)已完成,第二步(Redis + 工作进程服务 + nginx 分流)要用户点头才动生产**。
+- ✅ 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」→「你来做多核的」):
+  **第一步 16:49 已部署**(提交 7d55020,main.py / tenancy.py 走 anchor patch,其余整推;备份 /root/eh_code_before_multiproc_20261025_1648.tgz、
+  frontend/dist_bak_20261025_1648);**第二步 18:14 已上线**(用户同意后): 系统 Redis 起来、主进程配 REDIS_URL、
+  工作进程服务 3 个、两份 vhost 改 /api/ 分流(备份 *.conf.bak_multiproc_20261025_1813)。上线后监控页: 4 个进程 / 3 个工作进程 /
+  CPU 按 4 核算 / 共享存储 redis;CPU 路容量 566 → 793 人,瓶颈仍是带宽(要撑更多人优先升带宽)。
+  验过: 公网两个入口逐类接口看 X-EH-Proc(PK / 竞赛 / 监控 / 视频串流 / verify-word → main,其余 → worker)、
+  登录态接口在工作进程 200、PK WS 进主进程、上传 519MB 放行 / 521MB 413、官网不受影响;
+  演练停工作进程 → 请求自动全落主进程(0 个 5xx)→ 再启动回到工作进程。工作进程每个约 170MB,Redis 约 1MB。
+  **Redis 一年起不来的根因**: /usr/local/lib 另装了一份 libjemalloc.so.2,动态链接优先加载它,而 Redis 单元的沙箱
+  (NoExecPaths=/ + ExecPaths=/usr/lib)不许从 /usr/local/lib 映射可执行段 → exit 127「failed to map segment」。
+  修法只对 Redis 单元设 LD_LIBRARY_PATH 指向系统包那份(drop-in deploy/multiproc/redis-server.service.d/eh.conf,
+  同时限 256MB + volatile-lru + 不落盘),**没改全局 ldconfig**(别的程序可能在用那份)。
+  ⚠️ **以后部署后端要重启两个服务**: `systemctl restart english-helper && systemctl restart english-helper-workers`
+  (只重启主进程 = 工作进程还在跑旧代码,大部分接口落在工作进程上)。改 nginx 时 /api/ 那块已换成
+  `include .../vhost/nginx/eh/api-locations.inc`,上传上限 520m 在 eh/proxy-*.inc 里。
   起因: uvicorn 单进程,Python 一个进程只用满 1 核(GIL),4 核机器监控页只按 1 核算(≈170 人)。
   架构: 主进程(english-helper,8000,原服务不变)+ 工作进程池(english-helper-workers,8001,`uvicorn --workers N`,
   PROCESS_ROLE=worker,只听本机)。个数 core/worker_plan **启动时现算** = min(核数−1, (可用内存−1.5G)÷300M),
@@ -301,7 +314,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   本机验过: 主进程 + 2 工作进程 + Redis,工作进程拒 PK(503)、三个进程报到、同一 IP 限流主/工作进程交替打 200 次后两边都 429。
   测试 tests/test_multiprocess.py(63 例,Redis 用例要本机 `redis-server --port 6391`,连不上自动跳过;
   每个 Redis 用例结束检查「没有退回内存」,否则会在内存上假装通过);13 处守卫逐一破坏各自对应用例失败(回归锁验证过)。
-  公告等第二步真开了多进程再加(第一步用户看不出变化)
+  公告一条(admin,服务器监控)。入口: 管理端首页「检查服务状态」/「服务器监控」→ 容量卡片「CPU 4 核」
 - ✅ 音标视频走腾讯云 COS(2026-10-25 13:06 **已部署生产**,提交 31edd28;4 个文件生产==HEAD~1 整推 + 新文件 services/cos_video.py,
   venv 装 cos-python-sdk-v5==1.9.44;备份 /root/eh_code_before_cos_20261025_1254.tgz(含 .env)、/root/env_before_cos.bak):
   用户问「加 COS 后几百人看不卡吗」→ 买 COS。服务器在**腾讯云广州**(不是阿里云),桶 `eh-media-1250000000-1358494268`
@@ -2016,7 +2029,6 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 **待做**:
 - 🚧 AI 限流覆盖全部 LLM 端点(错因讲解/组卷/周报接入 ai_quota)
 - 🚧 organizations.ai_quota_json 按机构覆盖限额(P3 预留列)
-- 🚧 后端多进程第二步(启用 Redis + 工作进程服务 + nginx 分流),见项目状态第一条;代码与部署材料已就绪
 - 🚧 金币「补算昨天」会追认迟做的任务(settle_day 只看 assigned_at 落当天且已完成,
   不看 completed_at)。自动路径无此问题(实时那条只认今天)。堵不堵取决于该按钮本意是
   "补救当晚漏发"还是"严格只有当天做完才有币",待产品定;测试见 test_coin_only_today.py

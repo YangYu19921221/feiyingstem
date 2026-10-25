@@ -25,6 +25,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'backend-multicore-admin-2026-10',
+    date: '2026-10-25',
+    title: '🖥️ 后端用上多核了',
+    desc: '以前后端只有一个进程,4 核服务器只用得上 1 核。现在拆成主进程 + 3 个工作进程,4 核都用上了;工作进程个数每次启动时按服务器的 CPU 核数和可用内存自动算,以后升级服务器重启一次就按新配置开,不用改设置。PK、直播弹幕、宠物对战这些实时功能仍在主进程里,用法不变。现在同时在线最先到顶的是带宽,要撑更多人优先升带宽。',
+    where: '管理端首页「检查服务状态」(或「服务器监控」卡片)→ 顶部容量卡片「CPU 4 核」那一格写着后端几个进程;共享存储没连上时会标黄',
+    roles: ['admin'],
+    route: '/admin/server-monitor',
+  },
+  {
     id: 'video-cdn-switch-admin-2026-10',
     date: '2026-10-25',
     title: '⚡ 音标视频加速开关(CDN)',
