@@ -271,6 +271,24 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频走腾讯云 COS(2026-10-25 13:06 **已部署生产**,提交 31edd28;4 个文件生产==HEAD~1 整推 + 新文件 services/cos_video.py,
+  venv 装 cos-python-sdk-v5==1.9.44;备份 /root/eh_code_before_cos_20261025_1254.tgz(含 .env)、/root/env_before_cos.bak):
+  用户问「加 COS 后几百人看不卡吗」→ 买 COS。服务器在**腾讯云广州**(不是阿里云),桶 `eh-media-1250000000-1358494268`
+  (名字里的 1250000000 是建桶时把示例数字也填进去了,改不了,照用),私有读写,子账号 eh-cos 关联 QcloudCOSDataFullControl
+  (**用户在聊天里发过明文 SecretKey,待用户给 eh-cos 新建密钥、删旧密钥后更新 .env**;权限也可再收窄到只这一个桶)。
+  机制(services/cos_video.py): ①**播放器一行没改**: /stream 验票、过闸门、扣次卡之后,文件在 COS 且与本机一致就 302 跳 COS 签名地址
+  (3 小时),浏览器自己带 Range 去 COS 取片段;302 带 no-store(生产 nginx http 级开着 proxy_cache,不能把签名跳转缓存给别人)
+  ②「一致」= 本机文件大小 + mtime 与上传时记在 COS 元数据(x-cos-meta-mtime)里的相同 —— faststart/重压换过文件就对不上、照旧本机串流,
+  等后台补传 ③同步: 后台线程(挂在 sentence_speech.speech_loop 里启动,**没挂 main.py**: 生产 main.py 有 drift),启动 list 一次桶建清单,
+  每 10 分钟把本机 *.mp4(原片+流畅版)补传,不传 .tmp/.lite.skip;服务器→COS 走同地域内网(169.254.0.47)不收流量费
+  ④开关 COS_REDIRECT(.env): 不设 = 只同步不跳 / =id,id = 只跳这几节 / =all 全部跳 —— **出问题改回空再重启就回到原样**
+  ⑤删视频(单条/批量)连带删 COS 上的原片和流畅版 ⑥没配 COS / 没装 SDK / 签名出错一律本机兜底。
+  COS 配置不进 Settings(config.py 生产有注释 drift),cos_video 自己读环境变量和 backend/.env。
+  上线顺序: 只同步(84 个文件 5.2GB 约 3 分钟传完,逐个核对一致)→ COS_REDIRECT=48 单节 → Chrome/Safari 经线上地址实测
+  能播、跳到 60 秒接着播,nginx 日志里该节只剩 0 字节的 302 → =all,42 节逐个过票 + 跟跳转都 206。
+  用量参考: 10 月视频下行 13.2GB ≈ 6.6 元(外网下行 0.5 元/GB),存储 5.2GB ≈ 0.6 元/月;CDN 没上(要备案域名 + 证书,量大了再加)。
+  ⚠️ 腾讯云按量扣余额,**余额用完 COS 停服、视频播不了**(会退回?不会 —— 跳转照发,COS 那边 403),要提醒用户设余额告警。
+  测试 tests/test_cos_video.py(8 例;一致性校验 / 只传 mp4 / no-store / 删 COS 四处各恰好 1 例失败,回归锁验证过)
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):
