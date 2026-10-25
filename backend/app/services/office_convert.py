@@ -25,8 +25,7 @@
    文件名来自老师上传(可能带空格、中文、引号、分号),拼进 shell 就是命令注入。
 
 **5. 并发要压到 1。**
-   生产机 uvicorn 单 worker(PK 房间/限流是进程内状态,不能多 worker)、只吃 1 核,
-   而每个 soffice 实例吃几百 MB。实测 3 并发内存多用 ~370MB;老师同时传几份大课件
+   每个 soffice 实例吃几百 MB(2026-10-25 起后端多进程,闸门是跨进程文件锁,几个进程合起来也只跑一个)。实测 3 并发内存多用 ~370MB;老师同时传几份大课件
    就有 OOM 风险,而 OOM 会掐掉整个应用。排队几秒可接受,拒绝上传不可接受。
 """
 from __future__ import annotations
@@ -49,8 +48,7 @@ OFFICE_EXTS = {".ppt", ".pptx"}
 CONVERT_TIMEOUT_SEC = 150
 
 # 串行化闸门:同一时刻只允许一个 soffice 在跑(理由见文件头第 5 条)。
-# 模块级单例,单 worker 下 asyncio 原语足够(与 pk/tournament.py 同惯例)
-_SOFFICE_SEM = asyncio.Semaphore(1)
+# 2026-10-25 起后端多进程,asyncio.Semaphore 只管本进程 → 改跨进程文件锁(core/file_lock)
 
 
 def soffice_bin() -> str | None:
@@ -172,5 +170,6 @@ async def convert_to_pdf_async(src_path: str, out_dir: str) -> str:
 
     调用方一律用这个,不要自己 to_thread —— 闸门放在这里,谁也绕不过去。
     """
-    async with _SOFFICE_SEM:
+    from app.core.file_lock import interprocess_lock
+    async with interprocess_lock("soffice"):
         return await asyncio.to_thread(convert_to_pdf, src_path, out_dir)

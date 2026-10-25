@@ -378,7 +378,7 @@ async def report_progress(
     「看完」的判定不在这里手写,调 video_watch.is_completed —— 那是唯一真源
     (学习时长在五个界面算出五个数字的教训,见 services/study_time 文件头)。
     """
-    rate_limit.check(("phonetic-progress", user.id), HEARTBEAT_RATE_LIMIT, 60,
+    await rate_limit.check(("phonetic-progress", user.id), HEARTBEAT_RATE_LIMIT, 60,
                      "上报太频繁了")
 
     v = (await db.execute(
@@ -640,7 +640,7 @@ async def ask_question(
         # 是一行看不懂的空,不如当场拒掉
         raise HTTPException(status_code=400, detail="请把问题写清楚再提交")
 
-    rate_limit.check(("phonetic-ask", user.id), ASK_RATE_LIMIT, 300,
+    await rate_limit.check(("phonetic-ask", user.id), ASK_RATE_LIMIT, 300,
                      "提问太频繁了,过几分钟再问")
 
     pos = payload.position_seconds
@@ -728,7 +728,7 @@ async def material_page(
     缓存了 blob,来回翻页不重复走网络,服务端缓存本来就用不上。
     再加速率上限:学生手翻一秒一两页,爬虫一秒几十页,速率一卡就露馅。
     """
-    rate_limit.check(("phonetic-page", user.id), PAGE_RATE_LIMIT, 60,
+    await rate_limit.check(("phonetic-page", user.id), PAGE_RATE_LIMIT, 60,
                      "翻得太快了,歇一下再看")
 
     # 闸门:同 list_video_materials —— 没开通就连讲义页图也不给(否则直接按
@@ -913,7 +913,7 @@ async def video_ticket(
     (times_due)直接 409 不签,前端就不预加载,点开时照常走正常换票去扣;不用扣的(免费/包月/
     永久/今天已扣过)照常签,前端点开时直接用这张票,不再换第二次。
     """
-    rate_limit.check(("phonetic-ticket", user.id), TICKET_RATE_LIMIT, 60,
+    await rate_limit.check(("phonetic-ticket", user.id), TICKET_RATE_LIMIT, 60,
                      "切换太频繁,稍等一下")
     v = (await db.execute(
         _scope_org(

@@ -26,15 +26,11 @@ _FORMAT_BY_EXT = {".mp4": "mp4", ".m4v": "mp4", ".mov": "mov"}
 # 时长允许的误差(秒)。-c copy 不动编码,时长应完全一致;留一点给容器层取整
 _DURATION_TOLERANCE = 1.0
 
-# 一次只跑一个: ffmpeg 读写整个文件,并发跑几个会把磁盘 IO 占满,拖慢正在上课的人
-_lock: Optional[asyncio.Lock] = None
-
-
-def _get_lock() -> asyncio.Lock:
-    global _lock
-    if _lock is None:
-        _lock = asyncio.Lock()
-    return _lock
+# 一次只跑一个: ffmpeg 读写整个文件,并发跑几个会把磁盘 IO 占满,拖慢正在上课的人。
+# 跨进程的文件锁(2026-10-25 起后端多进程,asyncio.Lock 只管得住本进程;存量脚本也走这把锁)
+def _get_lock():
+    from app.core.file_lock import interprocess_lock
+    return interprocess_lock("video-faststart")
 
 
 def top_level_atoms(path: str, limit: int = 64) -> list[str]:

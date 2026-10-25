@@ -39,17 +39,16 @@ MIN_FREE_GB = 3
 # 后台(白天也可能跑)用的线程数;夜里批量脚本可以给多些
 DEFAULT_THREADS = 2
 
-_lock: Optional[asyncio.Lock] = None
 _running: set[str] = set()
 _failed: set[str] = set()
 _background: set[asyncio.Task] = set()
 
 
-def _get_lock() -> asyncio.Lock:
-    global _lock
-    if _lock is None:
-        _lock = asyncio.Lock()
-    return _lock
+def _get_lock():
+    """一次只压一个(跨进程文件锁: 2026-10-25 起后端多进程,两个进程各排一个就会两个 ffmpeg 同时跑)。
+    _running / _failed 仍是本进程的,别的进程排了同一节也不要紧: 排到锁以后 make_lite 先看流畅版在不在"""
+    from app.core.file_lock import interprocess_lock
+    return interprocess_lock("video-lite")
 
 
 def lite_path_for(original_path: str) -> str:

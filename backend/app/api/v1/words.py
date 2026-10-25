@@ -33,7 +33,7 @@ _CONTENT_WINDOWS = [(10.0, 60), (60.0, 150), (300.0, 500)]
 
 async def anti_crawl(current_user: User = Depends(get_current_user)) -> User:
     """内容读取端点的防抓取闸:必须登录 + 按账号限速。返回当前用户供端点复用。"""
-    check_rate(str(current_user.id), "word_content", _CONTENT_WINDOWS)
+    await check_rate(str(current_user.id), "word_content", _CONTENT_WINDOWS)
     return current_user
 
 

@@ -185,7 +185,7 @@ async def send_verification_code(
 ):
     """发送短信验证码（公开接口）"""
     # 检查是否可以发送
-    can, msg = code_store.can_send(data.phone)
+    can, msg = await code_store.can_send(data.phone)
     if not can:
         raise HTTPException(status_code=429, detail=msg)
 
@@ -201,7 +201,7 @@ async def send_verification_code(
             raise HTTPException(status_code=400, detail="该手机号未注册")
 
     # 生成并发送验证码
-    code = code_store.generate_and_store(data.phone)
+    code = await code_store.generate_and_store(data.phone)
     success = await send_sms_code(data.phone, code)
 
     if not success:
@@ -218,7 +218,7 @@ async def register(
     """手机号注册（公开接口）"""
     # 校验验证码（暂时跳过，测试阶段不校验）
     if data.code:
-        ok, msg = code_store.verify(data.phone, data.code)
+        ok, msg = await code_store.verify(data.phone, data.code)
         if not ok:
             raise HTTPException(status_code=400, detail={"code": "invalid_code", "message": msg})
 
@@ -342,7 +342,7 @@ async def login_json(
 
     # 如果提供了手机号和验证码，校验验证码
     if login_data.phone and login_data.code:
-        ok, msg = code_store.verify(login_data.phone, login_data.code)
+        ok, msg = await code_store.verify(login_data.phone, login_data.code)
         if not ok:
             raise HTTPException(status_code=400, detail={"code": "invalid_code", "message": msg})
 
@@ -429,7 +429,7 @@ async def reset_password(
     db: AsyncSession = Depends(get_db)
 ):
     """通过手机验证码重置密码（忘记密码，公开接口）"""
-    ok, msg = code_store.verify(data.phone, data.code)
+    ok, msg = await code_store.verify(data.phone, data.code)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
 

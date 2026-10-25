@@ -84,7 +84,7 @@ async def presence_heartbeat(
     data: HeartbeatRequest,
     current_user: User = Depends(get_current_student),
 ):
-    presence_service.heartbeat(
+    await presence_service.heartbeat(
         current_user.id,
         visible=data.visible,
         idle=data.idle,
@@ -99,7 +99,7 @@ async def presence_switch(
     data: SwitchRequest,
     current_user: User = Depends(get_current_student),
 ):
-    presence_service.report_switch(current_user.id, leaving=data.leaving)
+    await presence_service.report_switch(current_user.id, leaving=data.leaving)
     return {"ok": True}
 
 
@@ -203,7 +203,7 @@ async def bigscreen_daily_stats_all(
 async def _live_students_for(db: AsyncSession, name_map: dict[int, str]) -> list[dict]:
     """给一批学生算实时状态(内存心跳 + 学习记录兜底 + 今日切屏/走神),已排序。
     单班/全班级端点共用;查询按传入的整批学生一次完成,班多时不放大查询数。"""
-    live = presence_service.snapshot(list(name_map.keys()))
+    live = await presence_service.snapshot(list(name_map.keys()))
     for item in live:
         item["student_name"] = name_map.get(item["user_id"], "?")
 

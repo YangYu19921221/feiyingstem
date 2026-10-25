@@ -62,7 +62,7 @@ class SettingsUpdate(BaseModel):
 @router.get("/referral/public/{code}")
 async def public_invite(code: str, request: Request, db: AsyncSession = Depends(get_db)):
     # 家长会现场几十人连同一个 Wi-Fi 扫码,出口 IP 是同一个,别卡太紧
-    rate_limit.check(("referral-view", audit_log.client_ip(request) or "-"), 200, 60,
+    await rate_limit.check(("referral-view", audit_log.client_ip(request) or "-"), 200, 60,
                      "打开太频繁了,请稍后再试")
     inv, student, org = await svc.resolve_invite(db, code)
     s = await svc.get_settings(db, inv.org_id)
@@ -83,8 +83,8 @@ async def public_submit(code: str, body: LeadSubmit, request: Request,
     # 按 IP 限速,但不能卡太紧: 家长会现场几十位家长连同一个 Wi-Fi 扫码,出口 IP 是同一个;
     # 再加一道按邀请码的,防一个码被脚本灌满线索
     ip = audit_log.client_ip(request) or "-"
-    rate_limit.check(("referral-submit", ip), 30, 600, "提交太频繁了,请 10 分钟后再试")
-    rate_limit.check(("referral-submit-code", (code or "").upper()[:16]), 20, 600,
+    await rate_limit.check(("referral-submit", ip), 30, 600, "提交太频繁了,请 10 分钟后再试")
+    await rate_limit.check(("referral-submit-code", (code or "").upper()[:16]), 20, 600,
                      "这个邀请链接提交太频繁了,请稍后再试")
     return await svc.submit_lead(db, code, body.model_dump())
 

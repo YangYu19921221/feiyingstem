@@ -36,12 +36,22 @@ from app.services import online_tracker  # 在线用户追踪(容量监测)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio as _asyncio
+    from app.core import process_role
+    # 在线人数 / 流量统计: 每个进程把自己攒的数定时汇总到共享存储(监控页读汇总后的)
+    _flush_task = _asyncio.create_task(online_tracker.flush_loop())
+    if process_role.is_worker():
+        # 工作进程(2026-10-25 起,见 core/process_role): 不建表不迁移、不跑后台任务(主进程做),
+        # 只注册租户过滤 —— 漏了这一步,工作进程上的查询就不按机构隔离
+        await process_role.init_worker()
+        yield
+        _flush_task.cancel()
+        return
     # 启动时初始化数据库
     await init_db()
     # 金币每日自动结算(2026-08-08 恢复):北京 00:35 结算前一天的单词王(+1)与
     # 任务币兜底。任务币平时在学生交卷时实时发,这里兜住漏发;单词王必须等 24 点
     # 榜单定了才能评,只能在这里发。coin_mode='manual' 的机构自动跳过。
-    import asyncio as _asyncio
     from app.services.coin_scheduler import daily_settle_loop
     _settle_task = _asyncio.create_task(daily_settle_loop())
     # 开口背录音后台转写(独立进程池,吃 uvicorn 用不到的空闲核)
@@ -49,6 +59,7 @@ async def lifespan(app: FastAPI):
     _speech_task = _asyncio.create_task(_ss.speech_loop())
     yield
     # 关闭时清理资源
+    _flush_task.cancel()
     _settle_task.cancel()
     _speech_task.cancel()
     _ss.shutdown()
@@ -84,6 +95,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# 进程角色(2026-10-25 起后端多进程): 响应头 X-EH-Proc 标出请求落在主进程还是工作进程;
+# 工作进程收到只该主进程处理的请求(nginx 配错)直接 503,不悄悄处理。纯 ASGI,websocket 也管得到
+from app.core.process_role import ProcessRoleMiddleware  # noqa: E402
+app.add_middleware(ProcessRoleMiddleware)
 
 
 # 在线用户追踪(容量监测数据源):只读 header,失败静默,绝不影响业务请求

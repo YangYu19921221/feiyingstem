@@ -220,7 +220,7 @@ async def generate_personalized_exam(
     # AI 组卷是最贵的单次调用(max_tokens 16000),接入通用限额;
     # 老师正常一天出几份卷,30 次足够宽松
     from app.services.ai_quota import check_and_consume
-    check_and_consume(current_user.id, "generate_exam", daily_limit=30)
+    await check_and_consume(current_user.id, "generate_exam", daily_limit=30)
 
     exam_data = await ai_service.generate_personalized_exam(
         student_name=student.full_name or student.username,

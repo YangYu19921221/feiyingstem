@@ -7,6 +7,8 @@
 - CPU 百分比是"距上次调用"的差分,采样循环是唯一调用方,
   请求处理器只读缓存,避免多个调用方互相污染差分基准
 - psutil 用 try 导入:生产先更新代码后装依赖的窗口期内,不能让 main.py 崩启动
+- 2026-10-25 起后端多进程(主进程 + 工作进程池,见 core/process_role): 「后端服务」的 CPU / 内存是
+  所有后端进程加起来的(进程名单来自 online_tracker 的报到),容量按「能用几核」算,不再写死 1 核
 """
 import asyncio
 import json
@@ -43,6 +45,8 @@ _BACKEND_DIR = Path(__file__).resolve().parents[4]
 
 _history: deque = deque(maxlen=_HISTORY_POINTS)
 _latest: dict = {}
+# 各后端进程的 psutil 句柄(cpu_percent 是相对上次调用的差分,句柄要留着复用)
+_procs: dict[int, "psutil.Process"] = {}
 _sampler_task: asyncio.Task | None = None
 _last_poll_at: float = 0.0
 
@@ -57,11 +61,10 @@ def _safe(fn, default=None):
 async def _sampler_loop():
     global _latest, _sampler_task
     try:
-        proc = psutil.Process(os.getpid())
         # 差分类指标先空调一次建立基准
         psutil.cpu_percent(interval=None)
         psutil.cpu_percent(interval=None, percpu=True)
-        proc.cpu_percent(interval=None)
+        await _backend_usage()
         last_net = _safe(psutil.net_io_counters)
         last_disk = _safe(psutil.disk_io_counters)
         last_t = time.monotonic()
@@ -88,13 +91,16 @@ async def _sampler_loop():
                 "net_down": round(rate(net, last_net, "bytes_recv")),
                 "disk_read": round(rate(disk, last_disk, "read_bytes")),
                 "disk_write": round(rate(disk, last_disk, "write_bytes")),
-                "online": online_tracker.active_count(300),
+                "online": await online_tracker.active_count(300),
             }
+            usage = await _backend_usage()
             _latest = {
                 **sample,
                 "per_core": psutil.cpu_percent(interval=None, percpu=True),
-                "proc_cpu": _safe(lambda: proc.cpu_percent(interval=None), 0.0),
-                "proc_rss": _safe(lambda: proc.memory_info().rss, 0),
+                "proc_cpu": usage["cpu"],
+                "proc_rss": usage["rss"],
+                "proc_count": usage["count"],
+                "proc_workers": usage["workers"],
             }
             _history.append(sample)
             last_net, last_disk, last_t = net, disk, now_t
@@ -103,6 +109,30 @@ async def _sampler_loop():
                 break
     finally:
         _sampler_task = None
+
+
+async def _backend_usage() -> dict:
+    """所有后端进程(主进程 + 工作进程)合计的 CPU%(相对 1 核)和内存。
+    进程名单 = 最近在共享存储报到过的 + 本进程(没配 Redis 时只有本进程,= 原来的口径)"""
+    listed = await online_tracker.processes()
+    roles = {p["pid"]: p["role"] for p in listed}
+    roles.setdefault(os.getpid(), "main")
+    cpu, rss, alive = 0.0, 0, {}
+    for pid, role in roles.items():
+        proc = _procs.get(pid)
+        try:
+            if proc is None:
+                proc = psutil.Process(pid)
+                proc.cpu_percent(interval=None)   # 新句柄第一次只建基准(返回 0)
+            cpu += proc.cpu_percent(interval=None)
+            rss += proc.memory_info().rss
+            alive[pid] = proc
+        except Exception:  # noqa: BLE001  进程刚退出 / 不是本机的
+            continue
+    _procs.clear()
+    _procs.update(alive)
+    return {"cpu": round(cpu, 1), "rss": rss, "count": len(alive),
+            "workers": sum(1 for pid in alive if roles.get(pid) == "worker")}
 
 
 def _ensure_sampler():
@@ -157,8 +187,8 @@ def _connections() -> dict | None:
 # 目标:回答"当前配置最多支撑多少人同时在线使用"。
 # 方法:三种资源分别外推,取最小值为整体容量,标出瓶颈项。
 #   带宽  = 公网带宽上限(可配置,默认12Mbps) / 人均出网速率
-#   CPU   = 单核100%(uvicorn 单worker事件循环,GIL 上限≈1核,压测实证"4核只用1核")
-#           / 人均后端CPU占用;若改多worker部署需同步调整此上限
+#   CPU   = 后端能用几核 × 100% / 人均后端CPU占用。一个 Python 进程最多用满 1 核(GIL,压测实证),
+#           所以「能用几核」= min(后端进程数, 机器核数);2026-10-25 起多进程,进程数见 _backend_usage
 #   内存  = 可用内存 / 人均增量(弱相关,基本不会是瓶颈,仅作 sanity 展示)
 # 人均消耗优先用实测(≥5个活跃用户才有统计意义),样本不足时退回参考基准。
 # 参考基准来自 2026-07 压测:12M带宽下 PK 8人房≈180人、20人房≈37人同时对战,
@@ -206,9 +236,9 @@ async def _capacity_block(db: AsyncSession) -> dict:
     cfg = await _read_capacity_config(db)
     bw_limit = cfg["bandwidth_mbps"] * 1_000_000 / 8  # B/s
 
-    active_5m = online_tracker.active_count(300)
-    active_1m = online_tracker.active_count(60)
-    app_up_bps, req_per_s = online_tracker.app_rates(300)
+    active_5m = await online_tracker.active_count(300)
+    active_1m = await online_tracker.active_count(60)
+    app_up_bps, req_per_s = await online_tracker.app_rates(300)
     app_up_wire = app_up_bps * _PROTO_OVERHEAD
     proc_cpu = float(_latest.get("proc_cpu") or 0.0)
     machine_up = float(_latest.get("net_up") or 0.0)
@@ -223,21 +253,32 @@ async def _capacity_block(db: AsyncSession) -> dict:
         per_user_cpu = _REF_CPU_PER_USER
 
     est_bw = int(bw_limit * _SAFETY / per_user_bw)
-    # 单worker事件循环:上限1核=100%,不乘全机核数(见块首注释)
-    est_cpu = int(100.0 * _SAFETY / per_user_cpu)
+    # 能用几核 = min(后端进程数, 机器核数)(见块首注释);进程数还没采到时按 1
+    cores = (psutil.cpu_count() or 1) if psutil else 1
+    proc_count = int(_latest.get("proc_count") or 1)
+    cpu_cores = max(1, min(proc_count, cores))
+    est_cpu = int(100.0 * cpu_cores * _SAFETY / per_user_cpu)
     est_mem = int(mem_available * 0.8 / _MEM_PER_USER) + active_5m
 
     estimates = {"bandwidth": est_bw, "cpu": est_cpu, "memory": est_mem}
     bottleneck = min(estimates, key=lambda k: estimates[k])
     scale = cfg["bandwidth_mbps"] / _PK_REF["at_mbps"]
 
+    from app.core.shared_store import store
     return {
         "config": cfg,
         "online": {
             "active_1m": active_1m,
             "active_5m": active_5m,
-            "peak_today": online_tracker.peak_today(),
-            "roles": await _role_breakdown(db, online_tracker.active_user_ids(300)),
+            "peak_today": await online_tracker.peak_today(),
+            "roles": await _role_breakdown(db, await online_tracker.active_user_ids(300)),
+        },
+        # 后端进程: 几个、其中几个工作进程、能用几核、共享存储是不是 Redis(不是 = 各进程各算各的)
+        "processes": {
+            "count": proc_count,
+            "workers": int(_latest.get("proc_workers") or 0),
+            "cpu_cores": cpu_cores,
+            "shared_store": store.backend_name(),
         },
         "estimate": {
             "max_users": estimates[bottleneck],
@@ -251,7 +292,7 @@ async def _capacity_block(db: AsyncSession) -> dict:
             "bw_machine_up": int(machine_up),
             "bw_app_up": int(app_up_wire),
             "bw_percent": round(min(machine_up / bw_limit * 100, 100), 1) if bw_limit else 0,
-            "proc_cpu_percent": round(proc_cpu, 1),   # 相对1核,可>100前端截断
+            "proc_cpu_percent": round(proc_cpu, 1),   # 所有后端进程合计,相对 1 核(4 个进程跑满 = 400)
             "req_per_s": round(req_per_s, 2),
             "per_user_bw": round(per_user_bw),
             "per_user_cpu": round(per_user_cpu, 2),

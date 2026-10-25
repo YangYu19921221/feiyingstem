@@ -107,8 +107,21 @@ def try_latest_in_temp() -> tuple[Optional[str], bool, str]:
         return ver, works, err
 
 
+# 工作进程服务(2026-10-25 起后端多进程,见 deploy/multiproc): 发音接口多数落在工作进程上,
+# 升完 edge-tts 只重启主进程的话工作进程还在用旧版本
+WORKERS_SERVICE = "english-helper-workers"
+
+
+def _workers_enabled() -> bool:
+    return _run(["systemctl", "is-enabled", WORKERS_SERVICE], timeout=20)[0] == 0
+
+
 def restart_service() -> tuple[bool, str]:
-    return _run(["systemctl", "restart", SERVICE_NAME], timeout=120)[0] == 0, ""
+    ok = _run(["systemctl", "restart", SERVICE_NAME], timeout=120)[0] == 0
+    if ok and _workers_enabled():
+        # 主进程先起来(工作进程启动时要等它的 /health)
+        ok = _run(["systemctl", "restart", WORKERS_SERVICE], timeout=240)[0] == 0
+    return ok, ""
 
 
 def http_ok(wait_seconds: int = 60) -> bool:

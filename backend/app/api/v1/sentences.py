@@ -357,7 +357,7 @@ async def list_sentences(
     current_user: User = Depends(get_current_user),
 ):
     # 反爬:句子是教材内容,登录后仍按账号限速,逐单元枚举会被压到 ~1 次/秒
-    check_rate(str(current_user.id), "sentence_content", [(10.0, 40), (60.0, 120), (300.0, 400)])
+    await check_rate(str(current_user.id), "sentence_content", [(10.0, 40), (60.0, 120), (300.0, 400)])
     await sl.visible_unit(db, unit_id, current_user)
     res = await db.execute(
         select(Sentence).where(Sentence.unit_id == unit_id).order_by(Sentence.order_index, Sentence.id)

@@ -24,6 +24,13 @@ export interface CapacityInfo {
     peak_today: number;
     roles: Record<string, number>;
   };
+  // 后端进程(2026-10-25 起可开多个工作进程;旧后端没有这个字段 = 单进程)
+  processes?: {
+    count: number;          // 主进程 + 工作进程,最近 20 秒报到过的
+    workers: number;        // 其中工作进程几个
+    cpu_cores: number;      // 能用满几核 = min(进程数, 机器核数)
+    shared_store: 'memory' | 'memory_fallback' | 'redis';   // 不是 redis = 各进程各算各的
+  };
   estimate: {
     max_users: number;
     bottleneck: 'bandwidth' | 'cpu' | 'memory';

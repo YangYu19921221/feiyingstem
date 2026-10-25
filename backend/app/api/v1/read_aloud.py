@@ -79,7 +79,7 @@ async def read_aloud_round(
     db: AsyncSession = Depends(get_db),
     student: User = Depends(get_current_student),
 ):
-    check_rate(str(student.id), "read_aloud_round", [(60.0, 30)])
+    await check_rate(str(student.id), "read_aloud_round", [(60.0, 30)])
     unit = await _enter(db, student, unit_id, assignment_id)
     items = await ra.pick_round(db, student.id, unit_id)
     return {"unit_id": unit_id, "unit_name": unit.name, "round_size": ra.ROUND_SIZE,
@@ -95,7 +95,7 @@ async def upload_read_aloud(
     db: AsyncSession = Depends(get_db),
     student: User = Depends(get_current_student),
 ):
-    check_rate(str(student.id), "read_aloud_upload", [(60.0, 40)])
+    await check_rate(str(student.id), "read_aloud_upload", [(60.0, 40)])
     await _enter(db, student, unit_id, assignment_id)
     # 读的那句以服务端为准(这个词在这个单元里能跟读的那条),不信前端传的文本
     item = next((s for s in (await ra.eligible_sentences(db, [unit_id]))[unit_id] if s["word_id"] == word_id), None)

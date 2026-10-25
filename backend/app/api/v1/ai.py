@@ -132,7 +132,7 @@ async def get_memory_hook(
 
     # 通用AI限额: 只对真实生成计数
     from app.services.ai_quota import check_and_consume
-    check_and_consume(current_user.id, "memory_hook", daily_limit=20)
+    await check_and_consume(current_user.id, "memory_hook", daily_limit=20)
 
     # 取主释义给AI做素材
     defn = (await db.execute(

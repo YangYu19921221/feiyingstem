@@ -82,8 +82,10 @@ async def get_pronunciation(word: str) -> bytes | None:
                 miss.touch()
                 return None
 
-            # 4. 缓存
-            cache.write_bytes(audio_resp.content)
+            # 4. 缓存(先写本进程的临时文件再换上去: 多进程时别的进程可能正好在读这个词)
+            tmp = cache.with_suffix(f".{os.getpid()}.tmp")
+            tmp.write_bytes(audio_resp.content)
+            os.replace(tmp, cache)
             logger.info(f"剑桥词典缓存: {word} ({len(audio_resp.content)} bytes)")
             return audio_resp.content
 

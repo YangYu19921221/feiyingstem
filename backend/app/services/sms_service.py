@@ -11,80 +11,61 @@ logger = logging.getLogger(__name__)
 
 
 class VerificationCodeStore:
-    """验证码内存缓存"""
+    """验证码存储(2026-10-25 起放 core/shared_store: 多进程时发码和校验可能落在不同进程上,
+    各存各的就会「刚收到的码说已过期」)。没配 Redis 时退回进程内存 = 原来的行为。
 
-    def __init__(self):
-        # {phone: {"code": str, "created_at": float, "attempts": int}}
-        self._codes: Dict[str, dict] = {}
-        # {phone: [timestamp1, timestamp2, ...]} 每日发送记录
-        self._daily_sends: Dict[str, list] = {}
+    键: sms:code:{手机} = {"code","created_at"}(5 分钟过期)、sms:att:{手机} = 输错次数、
+    sms:day:{北京日}:{手机} = 当天发了几条。"""
 
-    def _clean_expired(self, phone: str):
-        """清理过期验证码"""
-        if phone in self._codes:
-            if time.time() - self._codes[phone]["created_at"] > 300:
-                del self._codes[phone]
+    CODE_TTL = 300          # 验证码 5 分钟有效
+    RESEND_GAP = 60         # 同一手机号 60 秒内不重发
+    DAILY_LIMIT = 10        # 每天最多 10 条
+    MAX_ATTEMPTS = 5        # 输错 5 次作废
 
-    def _get_daily_count(self, phone: str) -> int:
-        """获取今日发送次数"""
-        if phone not in self._daily_sends:
-            return 0
-        now = time.time()
-        day_start = now - (now % 86400)
-        self._daily_sends[phone] = [
-            t for t in self._daily_sends[phone] if t >= day_start
-        ]
-        return len(self._daily_sends[phone])
+    @staticmethod
+    def _day_key(phone: str) -> str:
+        from app.core.timeutil import local_today
+        return f"sms:day:{local_today().isoformat()}:{phone}"
 
-    def can_send(self, phone: str) -> tuple[bool, str]:
+    async def can_send(self, phone: str) -> tuple[bool, str]:
         """检查是否可以发送验证码"""
-        # 每日上限 10 条
-        if self._get_daily_count(phone) >= 10:
+        from app.core.shared_store import store
+        sent = await store.get(self._day_key(phone))
+        if sent is not None and int(sent) >= self.DAILY_LIMIT:
             return False, "今日发送次数已达上限"
-
-        # 60 秒发送间隔
-        if phone in self._codes:
-            elapsed = time.time() - self._codes[phone]["created_at"]
-            if elapsed < 60:
-                remaining = int(60 - elapsed)
-                return False, f"请{remaining}秒后再试"
-
+        rec = await store.get_json(f"sms:code:{phone}")
+        if rec:
+            elapsed = time.time() - float(rec.get("created_at") or 0)
+            if elapsed < self.RESEND_GAP:
+                return False, f"请{int(self.RESEND_GAP - elapsed)}秒后再试"
         return True, ""
 
-    def generate_and_store(self, phone: str) -> str:
-        """生成并存储验证码"""
-        code = f"{random.randint(100000, 999999)}"
-        self._codes[phone] = {
-            "code": code,
-            "created_at": time.time(),
-            "attempts": 0,
-        }
-        # 记录发送
-        if phone not in self._daily_sends:
-            self._daily_sends[phone] = []
-        self._daily_sends[phone].append(time.time())
+    async def generate_and_store(self, phone: str) -> str:
+        """生成并存储验证码(新码作废旧码,输错次数清零)"""
+        from app.core.shared_store import store
+        code = f"{random.SystemRandom().randint(100000, 999999)}"
+        await store.set_json(f"sms:code:{phone}", {"code": code, "created_at": time.time()}, self.CODE_TTL)
+        await store.delete(f"sms:att:{phone}")
+        await store.incr(self._day_key(phone), 1, 2 * 86400)
         return code
 
-    def verify(self, phone: str, code: str) -> tuple[bool, str]:
-        """校验验证码"""
-        self._clean_expired(phone)
-
-        if phone not in self._codes:
+    async def verify(self, phone: str, code: str) -> tuple[bool, str]:
+        """校验验证码。成功即作废(删键看返回值: 两个请求同时拿对的码来,只有一个算数)"""
+        from app.core.shared_store import store
+        code_key, att_key = f"sms:code:{phone}", f"sms:att:{phone}"
+        rec = await store.get_json(code_key)
+        if not rec:
             return False, "验证码已过期或未发送"
-
-        record = self._codes[phone]
-
-        # 5 次错误锁定
-        if record["attempts"] >= 5:
-            del self._codes[phone]
+        attempts = await store.get(att_key)
+        if attempts is not None and int(attempts) >= self.MAX_ATTEMPTS:
+            await store.delete(code_key)
             return False, "错误次数过多，请重新获取验证码"
-
-        if record["code"] != code:
-            record["attempts"] += 1
+        if rec.get("code") != code:
+            await store.incr(att_key, 1, self.CODE_TTL)
             return False, "验证码错误"
-
-        # 验证成功，删除记录
-        del self._codes[phone]
+        if not await store.delete(code_key):
+            return False, "验证码已过期或未发送"
+        await store.delete(att_key)
         return True, ""
 
 

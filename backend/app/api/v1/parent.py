@@ -114,7 +114,7 @@ async def _new_bind_code(db: AsyncSession, student_id: int, teacher: bool) -> Pa
 async def _load_valid_code(db: AsyncSession, raw: str) -> ParentBindCode:
     code_row = await db.get(ParentBindCode, _normalize_code(raw))
     if not code_row:
-        _bind_failed()
+        await _bind_failed()
         raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "绑定码不对,请核对后重输,或请老师/孩子重新生成"})
     if code_row.used_at is not None:
         raise HTTPException(400, detail={"code": "invalid_bind_code", "message": "这个绑定码已经用过了,请老师/孩子重新生成"})
@@ -128,19 +128,19 @@ def _parent_token(user_id: int) -> str:
     return create_access_token({"sub": str(user_id)}, expires_delta=timedelta(days=30))
 
 
-def _limit_bind(request: Request) -> None:
+async def _limit_bind(request: Request) -> None:
     """单 IP 限速 + 全站「输错码」总量闸门(换 IP 也绕不过)。
     全站 10 分钟错 100 次远超正常(家长会上几十个家长也就错几次),到了就整体先停,只在真被猜时误伤。
     算账: 一天最多试 1.44 万次;同时有效的学生码按 50 个算,8 位数字一天猜中的期望 ≈ 0.007 个
     (6 位数字是 0.7 个,所以有效期拉到 24 小时必须同时加长到 8 位)"""
-    rate_limit.check(("parent-bind", audit_log.client_ip(request) or "-"), *BIND_RATE_LIMIT,
+    await rate_limit.check(("parent-bind", audit_log.client_ip(request) or "-"), *BIND_RATE_LIMIT,
                      "尝试次数太多,请 10 分钟后再试")
-    if rate_limit.count(BIND_FAIL_KEY, BIND_FAIL_LIMIT[1]) >= BIND_FAIL_LIMIT[0]:
+    if await rate_limit.count(BIND_FAIL_KEY, BIND_FAIL_LIMIT[1]) >= BIND_FAIL_LIMIT[0]:
         raise HTTPException(429, "绑定码输错的人太多,系统先暂停一会儿,请 10 分钟后再试")
 
 
-def _bind_failed() -> None:
-    rate_limit.record(BIND_FAIL_KEY)
+async def _bind_failed() -> None:
+    await rate_limit.record(BIND_FAIL_KEY, BIND_FAIL_LIMIT[1])
 
 
 @router.post("/student/parent-bind-codes", response_model=BindCodeResponse)
@@ -170,7 +170,7 @@ async def parent_register(
     (生产 793 个学生 768 个填了手机),原来跟所有角色查重 → 家长一个都注册不上。
     已有家长号且密码对 → 直接把这个孩子绑上并登录(家长忘了自己注册过,是常态)。
     """
-    _limit_bind(request)
+    await _limit_bind(request)
     code_row = await _load_valid_code(db, data.bind_code)
     student_id = code_row.student_id
 
@@ -243,7 +243,7 @@ async def parent_login(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    rate_limit.check(("parent-login", audit_log.client_ip(request) or "-"), 60, 600,
+    await rate_limit.check(("parent-login", audit_log.client_ip(request) or "-"), 60, 600,
                      "尝试次数太多,请 10 分钟后再试")
     phone = (data.phone or "").strip()
     user = (await db.execute(
@@ -283,7 +283,7 @@ async def parent_bind_additional_child(
     current_parent: User = Depends(get_current_parent),
 ):
     """已登录家长再绑定一个新孩子"""
-    _limit_bind(request)
+    await _limit_bind(request)
     code_row = await _load_valid_code(db, data.bind_code)
     student_id = code_row.student_id
 
@@ -939,5 +939,5 @@ async def parent_regenerate_weekly_report(
     # force=True 绕过缓存,每点一次都是一次真实 LLM 调用 —— 这是唯一对非员工角色
     # 开放的无限量 LLM 入口,必须限额(家长连点刷新就能烧钱)
     from app.services.ai_quota import check_and_consume
-    check_and_consume(current_parent.id, "weekly_report_regen", daily_limit=5)
+    await check_and_consume(current_parent.id, "weekly_report_regen", daily_limit=5)
     return await build_and_cache_weekly_report(db, student_id, force=True)

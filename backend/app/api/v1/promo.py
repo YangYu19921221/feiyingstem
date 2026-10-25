@@ -127,7 +127,7 @@ class SettingsUpdate(BaseModel):
 @router.get("/promo/public/{code}")
 async def public_card(code: str, request: Request, db: AsyncSession = Depends(get_db)):
     # 地推现场几十个家长同一个 Wi-Fi / 同一个基站出口,别卡太紧
-    rate_limit.check(("promo-view", audit_log.client_ip(request) or "-"), 200, 60, "打开太频繁了,请稍后再试")
+    await rate_limit.check(("promo-view", audit_log.client_ip(request) or "-"), 200, 60, "打开太频繁了,请稍后再试")
     ch, org, _owner = await svc.resolve_channel(db, code)
     s = await svc.get_settings(db, ch.org_id)
     await svc.bump_view(db, ch.id)
@@ -144,8 +144,8 @@ async def public_card(code: str, request: Request, db: AsyncSession = Depends(ge
 @router.post("/promo/public/{code}/leads")
 async def public_submit(code: str, body: LeadSubmit, request: Request, db: AsyncSession = Depends(get_db)):
     ip = audit_log.client_ip(request) or "-"
-    rate_limit.check(("promo-submit", ip), 30, 600, "提交太频繁了,请 10 分钟后再试")
-    rate_limit.check(("promo-submit-code", (code or "").upper()[:16]), 60, 600, "这张卡提交太频繁了,请稍后再试")
+    await rate_limit.check(("promo-submit", ip), 30, 600, "提交太频繁了,请 10 分钟后再试")
+    await rate_limit.check(("promo-submit-code", (code or "").upper()[:16]), 60, 600, "这张卡提交太频繁了,请稍后再试")
     return await svc.submit_lead(db, code, body.model_dump())
 
 

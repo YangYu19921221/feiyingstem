@@ -67,7 +67,7 @@ async def grade_handwriting(
     mime = image.content_type if image.content_type in ALLOWED_MIME else "image/jpeg"
 
     # 3. AI 限额:一次批改 = 一次视觉调用(拍糊重批也计次,20/天足够宽松)
-    check_and_consume(current_user.id, "handwriting_grade", daily_limit=20)
+    await check_and_consume(current_user.id, "handwriting_grade", daily_limit=20)
 
     # 4. 盲转写 → 代码比对
     try:

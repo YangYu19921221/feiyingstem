@@ -224,11 +224,11 @@ async def capture_phone(
     if not result.scalar_one_or_none():
         raise HTTPException(404, "测评会话不存在")
 
-    can, msg = code_store.can_send(data.phone)
+    can, msg = await code_store.can_send(data.phone)
     if not can:
         raise HTTPException(429, msg)
 
-    code = code_store.generate_and_store(data.phone)
+    code = await code_store.generate_and_store(data.phone)
     success = await send_sms_code(data.phone, code)
     if not success:
         raise HTTPException(500, "短信发送失败")
@@ -242,7 +242,7 @@ async def verify_phone(
     db: AsyncSession = Depends(get_db)
 ):
     """验证手机号，生成AI深度报告"""
-    ok, msg = code_store.verify(data.phone, data.code)
+    ok, msg = await code_store.verify(data.phone, data.code)
     if not ok:
         raise HTTPException(400, msg)
 

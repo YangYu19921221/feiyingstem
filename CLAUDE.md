@@ -271,6 +271,37 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- 🚧 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」):
+  **第一步(代码)已完成,第二步(Redis + 工作进程服务 + nginx 分流)要用户点头才动生产**。
+  起因: uvicorn 单进程,Python 一个进程只用满 1 核(GIL),4 核机器监控页只按 1 核算(≈170 人)。
+  架构: 主进程(english-helper,8000,原服务不变)+ 工作进程池(english-helper-workers,8001,`uvicorn --workers N`,
+  PROCESS_ROLE=worker,只听本机)。个数 core/worker_plan **启动时现算** = min(核数−1, (可用内存−1.5G)÷300M),
+  1..16,EH_WORKERS 可写死 —— 升级 CPU/内存后重启一次服务就按新配置开(生产 4 核 3.9G 可用 → 3 个)。
+  启动入口 scripts/start_workers.py(先等主进程 /health 通,建表迁移只在主进程做)。
+  **只能在主进程的**(core/process_role.MAIN_ONLY,工作进程收到直接 503 / WS 关 1013,不悄悄处理):
+  PK 房间与晋级赛、竞赛(答题广播排行)、直播弹幕 WS、宠物对战 WS、Whisper 本机语音(verify-word / assessment/evaluate);
+  **放主进程更好的**(PREFER_MAIN): 音标视频 /stream(COS 清单只有主进程的同步线程维护)、服务器监控(采样曲线在进程里)。
+  后台任务(金币结算 / 转写调度 / COS 同步)只在主进程跑。nginx 清单 deploy/multiproc/nginx/api-locations.inc
+  必须与 MAIN_ONLY 一致 —— **测试解析该文件核对,且 app 里所有 WebSocket 路由必须在清单里**(新加 WS 漏了会失败)。
+  跨请求小数据改放 core/shared_store(配 REDIS_URL 用 Redis,没配 / 连不上退回进程内存 = 原单进程行为,
+  Redis 中途挂了 5 秒后重试、不报错): 限流(services/rate_limit、core/rate_limit,**都改成 async**,调用点全加了 await)、
+  AI 每日次数(incr_if_below 原子)、短信验证码(校验靠 delete 返回值,同一正确码并发只认一次;每日计数改按北京日)、
+  实时课堂在线状态、在线人数/流量(各进程攒 5 秒汇总)、机构状态缓存(停用/续费走 invalidate_org_cache_everywhere
+  共享代数,其它进程 2 秒内清缓存;**接口里别再调只清本进程的 invalidate_org_cache**,测试扫源码锁住)。
+  单元考试答案原来放进程内存(出卷交卷落不同进程 = 「考试不存在」),改成 exam_id = 试卷号.时间.HMAC(绑学生、30 分钟),
+  答案从 exam_questions 读、单元记 generation_strategy、交过一次看 exam_submissions 拒重交。⚠️ 上线那一刻正在考的
+  旧 8 位 exam_id 会交不了(重开一份即可)。ffmpeg / soffice 的一次只跑一个改成跨进程文件锁(core/file_lock,
+  private_media/locks);TTS / 剑桥缓存临时文件名带 pid。发音自检升级 edge-tts 后两个服务都重启。
+  监控页: CPU 按「min(进程数, 核数)」核算容量,文案写几个进程几核;开了工作进程却没连上 Redis 标黄。
+  Redis 坑: 过期一律毫秒(PEXPIRE / PX),按秒向上取整 0.4 秒的键会活 1 秒(测试抓到的)。
+  生产现状(10-25 只读查过): 系统 Redis 7.0.15 已装但 redis-server.service 2025-10-22 起 failed(exit 127,
+  日志已轮转查不到原因);宝塔另有一个 Redis 6.2(端口 6378,带密码,没在跑,官网 PHP 用)—— 第二步用系统那个 6379,不碰宝塔的。
+  第二步材料在 deploy/multiproc/(工作进程 systemd 单元 + 主进程 REDIS_URL drop-in + nginx upstream/include,
+  eh_workers 带 `127.0.0.1:8000 backup`: 工作进程停了 nginx 自动全走主进程;回滚 = disable 工作进程服务)。
+  本机验过: 主进程 + 2 工作进程 + Redis,工作进程拒 PK(503)、三个进程报到、同一 IP 限流主/工作进程交替打 200 次后两边都 429。
+  测试 tests/test_multiprocess.py(63 例,Redis 用例要本机 `redis-server --port 6391`,连不上自动跳过;
+  每个 Redis 用例结束检查「没有退回内存」,否则会在内存上假装通过);13 处守卫逐一破坏各自对应用例失败(回归锁验证过)。
+  公告等第二步真开了多进程再加(第一步用户看不出变化)
 - ✅ 音标视频走腾讯云 COS(2026-10-25 13:06 **已部署生产**,提交 31edd28;4 个文件生产==HEAD~1 整推 + 新文件 services/cos_video.py,
   venv 装 cos-python-sdk-v5==1.9.44;备份 /root/eh_code_before_cos_20261025_1254.tgz(含 .env)、/root/env_before_cos.bak):
   用户问「加 COS 后几百人看不卡吗」→ 买 COS。服务器在**腾讯云广州**(不是阿里云),桶 `eh-media-1250000000-1358494268`
@@ -1985,7 +2016,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 **待做**:
 - 🚧 AI 限流覆盖全部 LLM 端点(错因讲解/组卷/周报接入 ai_quota)
 - 🚧 organizations.ai_quota_json 按机构覆盖限额(P3 预留列)
-- 🚧 多 worker 部署时限流/机构状态缓存换共享存储
+- 🚧 后端多进程第二步(启用 Redis + 工作进程服务 + nginx 分流),见项目状态第一条;代码与部署材料已就绪
 - 🚧 金币「补算昨天」会追认迟做的任务(settle_day 只看 assigned_at 落当天且已完成,
   不看 completed_at)。自动路径无此问题(实时那条只认今天)。堵不堵取决于该按钮本意是
   "补救当晚漏发"还是"严格只有当天做完才有币",待产品定;测试见 test_coin_only_today.py

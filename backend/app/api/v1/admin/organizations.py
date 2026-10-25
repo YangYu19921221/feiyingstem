@@ -13,7 +13,7 @@ from sqlalchemy import select, func, distinct, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.tenancy import invalidate_org_cache
+from app.core.tenancy import invalidate_org_cache_everywhere
 from app.core.timeutil import local_today
 from app.api.v1.auth import get_current_admin
 from app.models.learning import BookAssignment
@@ -369,7 +369,7 @@ async def update_organization(
     await db.commit()
     if data.add_cards or data.add_phonetic_codes:
         await db.refresh(org)
-    invalidate_org_cache(org_id)  # 停用/恢复/续费立即生效
+    await invalidate_org_cache_everywhere(org_id)  # 停用/恢复/续费立即生效(各进程)
     active = await count_active_students(db, org_id)
     # 已发卡数要真查:默认 0 会让续卡后的响应显示成"额度全新未用",
     # 前端拿它回填列表就成了错数
@@ -562,7 +562,7 @@ async def delete_organization(
 
     await db.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org_id})
     await db.commit()
-    invalidate_org_cache(org_id)
+    await invalidate_org_cache_everywhere(org_id)
     return {"deleted": True, "org_name": org.name, "users_removed": user_count,
             "rows_removed": deleted_rows}
 
@@ -716,7 +716,7 @@ async def provision_trial(
         books = len(book_ids)
 
     await db.commit()
-    invalidate_org_cache(org.id)
+    await invalidate_org_cache_everywhere(org.id)
 
     return {
         "org": _org_out(org, active_students=1, teacher_count=2),

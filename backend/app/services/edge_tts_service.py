@@ -49,7 +49,9 @@ async def generate_pronunciation(word: str) -> bytes:
         if not text.endswith(('.', '!', '?')):
             text += '.'
 
-        tmp = cache.with_suffix(".mp3.tmp")
+        # 临时文件名带进程号: 多进程(2026-10-25 起)时两个进程同时生成同一个词,
+        # 共用一个 .tmp 会互相截断,换上去的可能是半截音频
+        tmp = cache.with_suffix(f".{os.getpid()}.mp3.tmp")
         # 微软 Edge TTS 偶发网络抖动/空响应：服务端先重试，
         # 尽量不把瞬时失败传导到前端造成单个词静音
         max_attempts = 3
@@ -78,7 +80,7 @@ async def generate_pronunciation(word: str) -> bytes:
     except Exception as e:
         logger.error(f"Edge TTS 生成失败: {word} - {e}")
         # 清理可能残留的空文件，防止污染缓存
-        for p in (cache, cache.with_suffix(".mp3.tmp")):
+        for p in (cache, cache.with_suffix(f".{os.getpid()}.mp3.tmp")):
             try:
                 if p.exists() and p.stat().st_size == 0:
                     p.unlink()

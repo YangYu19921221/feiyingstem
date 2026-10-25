@@ -1,0 +1,38 @@
+# 后端工作进程池(2026-10-25,见 backend/app/core/process_role.py)
+# 主进程仍是 english-helper.service(8000,PK/直播弹幕/宠物对战/语音模型/后台任务);
+# 这里是其余接口的工作进程(8001,只听本机),个数启动时按 CPU 核数和可用内存现算(scripts/start_workers.py)。
+# 服务器升级 CPU / 内存后: systemctl restart english-helper-workers 即按新配置开。
+#
+# 安装顺序(每步验证了再走下一步):
+#   1. Redis 起来且只听本机: systemctl start redis-server && redis-cli -p 6379 ping
+#   2. 主进程连 Redis: mkdir -p /etc/systemd/system/english-helper.service.d && cp english-helper.service.d/redis.conf 进去,
+#      systemctl daemon-reload && systemctl restart english-helper;管理端「服务器监控」共享存储显示 redis
+#   3. 工作进程: cp english-helper-workers.service /etc/systemd/system/ && systemctl daemon-reload &&
+#      systemctl enable --now english-helper-workers;curl -sI 127.0.0.1:8001/health 看 x-eh-proc: worker
+#   4. nginx: nginx/0.eh_upstream.conf 放 /www/server/panel/vhost/nginx/,另外三个 .inc 放 .../vhost/nginx/eh/,
+#      两个站点把 `location ^~ /api/ { ... }` 整块换成 include .../eh/api-locations.inc;nginx -t 通过才 reload
+# 回到单进程: systemctl disable --now english-helper-workers(nginx 的 upstream 带 backup,8001 不在自动全走 8000);
+#   要彻底还原再把两个站点的 include 换回原来那块、删 drop-in 后重启 english-helper
+[Unit]
+Description=English Helper Backend workers (stateless API)
+After=network.target english-helper.service redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/wwwroot/english-helper/backend
+Environment=PATH=/www/wwwroot/english-helper/backend/venv/bin:/usr/local/bin:/usr/bin
+Environment=PROCESS_ROLE=worker
+Environment=REDIS_URL=redis://127.0.0.1:6379/0
+# Environment=EH_WORKERS=2     # 需要时写死个数(排查问题 / 临时压低),优先于自动计算
+ExecStart=/www/wwwroot/english-helper/backend/venv/bin/python scripts/start_workers.py
+Restart=always
+RestartSec=5
+# 工作进程比主进程先让出 CPU: 主进程里是 PK / 直播这些实时功能
+Nice=2
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

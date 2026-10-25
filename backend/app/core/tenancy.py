@@ -121,9 +121,31 @@ def _stamp_tenant_writes(session, flush_context, instances):
             obj.org_id = org_id
 
 
-# 机构状态进程内缓存: {org_id: (过期时间戳, is_active, all_books)},5分钟TTL
+# 机构状态进程内缓存: {org_id: (过期时间戳, is_active, all_books, phonetic_mode)},5分钟TTL
 _org_cache: dict = {}
 _ORG_CACHE_TTL = 300
+# 跨进程失效(2026-10-25 起后端多进程): 管理员停用/续费时 invalidate_org_cache_everywhere 把共享存储里的
+# 代数加一,各进程最多每 _GEN_CHECK_SEC 秒看一次代数,变了就清掉自己的缓存 —— 不然别的进程要等 5 分钟才知道停用了
+_GEN_KEY = "org_cache_gen"
+_GEN_CHECK_SEC = 2.0
+_gen_seen: object = None
+_gen_checked_at = 0.0
+
+
+async def _sync_org_cache_gen() -> None:
+    global _gen_seen, _gen_checked_at
+    now = time.time()
+    if now - _gen_checked_at < _GEN_CHECK_SEC:
+        return
+    _gen_checked_at = now
+    from app.core.shared_store import store
+    try:
+        gen = await store.get(_GEN_KEY)
+    except Exception:  # noqa: BLE001  共享存储出问题不拦请求,按本进程缓存走
+        return
+    if gen != _gen_seen:
+        _org_cache.clear()
+        _gen_seen = gen
 
 
 async def _org_state(db, org_id: int) -> tuple[bool, bool, str]:
@@ -132,6 +154,7 @@ async def _org_state(db, org_id: int) -> tuple[bool, bool, str]:
     ⚠️ 老库若尚未迁出 phonetic_access_mode 列,SELECT 会抛 → 整句失败。
     用 COALESCE + 单列查询兜底不划算,改为:列缺失时按 'open' 处理(= 旧行为,不拦人)。
     """
+    await _sync_org_cache_gen()
     now = time.time()
     hit = _org_cache.get(org_id)
     if hit and hit[0] > now:
@@ -194,8 +217,15 @@ async def phonetic_access_mode(db, org_id: int) -> str:
 
 
 def invalidate_org_cache(org_id: int | None = None):
-    """机构状态变更(停用/续费)后调用,立即生效"""
+    """清本进程的机构状态缓存(测试用;接口里改了机构状态要调 invalidate_org_cache_everywhere)"""
     if org_id is None:
         _org_cache.clear()
     else:
         _org_cache.pop(org_id, None)
+
+
+async def invalidate_org_cache_everywhere(org_id: int | None = None):
+    """机构状态变更(停用/续费)后调用: 本进程立即生效,其它进程 _GEN_CHECK_SEC 秒内生效"""
+    invalidate_org_cache(org_id)
+    from app.core.shared_store import store
+    await store.incr(_GEN_KEY, 1, 30 * 86400)

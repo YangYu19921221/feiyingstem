@@ -51,7 +51,7 @@ async def learn_unit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
-    check_rate(str(current_user.id), "sentence_content", [(10.0, 40), (60.0, 120), (300.0, 400)])
+    await check_rate(str(current_user.id), "sentence_content", [(10.0, 40), (60.0, 120), (300.0, 400)])
     unit, book = await sl.visible_unit(db, unit_id, current_user)
     sentences = list((await db.execute(
         select(Sentence).where(Sentence.unit_id == unit_id).order_by(Sentence.order_index, Sentence.id)
@@ -177,7 +177,7 @@ async def upload_speech(
     current_user: User = Depends(get_current_student),
 ):
     """存一条开口背录音进转写队列。孩子不等结果;失败也不影响学习流程(前端静默)"""
-    check_rate(str(current_user.id), "sentence_speech", [(60.0, 40)])
+    await check_rate(str(current_user.id), "sentence_speech", [(60.0, 40)])
     await sl.visible_unit(db, unit_id, current_user)
     ok = (await db.execute(select(Sentence.id).where(
         Sentence.id == sentence_id, Sentence.unit_id == unit_id))).scalar_one_or_none()

@@ -93,7 +93,7 @@ async def heal_pet(
     """
     # 正常答题一题要好几秒;限速挡脚本(进程内桶,多 worker 时各算各的,真正的闸门是一题一用)
     from app.services import rate_limit
-    rate_limit.check(("pet-heal", current_user.id), 30, 60, "答得太快了,休息一下再继续")
+    await rate_limit.check(("pet-heal", current_user.id), 30, 60, "答得太快了,休息一下再继续")
 
     pet = (await db.execute(
         select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))

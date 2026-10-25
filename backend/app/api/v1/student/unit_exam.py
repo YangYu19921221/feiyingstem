@@ -2,8 +2,9 @@
 单元考试API - 学完单元后的测验
 题型：英译中(选择) + 中译英(选择) + 听写 + 拼写填空 + 例句填空
 """
+import hashlib
+import hmac
 import random
-import uuid
 import json
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.word import Word, Unit, UnitWord, WordDefinition
 from app.models.user import User
@@ -25,17 +27,35 @@ from app.services.mastery import apply_answer
 
 router = APIRouter()
 
-# 内存缓存试题答案（带 TTL，生产环境应使用 Redis）
-_exam_cache: Dict[str, dict] = {}
+# exam_id 是签了名的「试卷号.出卷时间.签名」(2026-10-25 起,后端多进程):
+# 以前答案放进程内存,出卷和交卷落在不同进程就是「考试不存在或已过期」,重启也全丢。
+# 现在答案本来就存在 exam_questions(correct_answer / order_index = 题号),交卷时从库里读,
+# exam_id 只负责证明「这份卷是发给你的、30 分钟内」,哪个进程接到都一样,不依赖 Redis。
 EXAM_CACHE_TTL = 1800  # 30分钟
 
 
-def _cleanup_exam_cache():
-    """清理过期的考试缓存"""
-    now = time.time()
-    expired = [k for k, v in _exam_cache.items() if now - v.get("created_at", 0) > EXAM_CACHE_TTL]
-    for k in expired:
-        del _exam_cache[k]
+def _exam_sig(paper_id: int, user_id: int, ts: int) -> str:
+    key = hmac.new(settings.SECRET_KEY.encode(), b"unit-exam-id", hashlib.sha256).digest()
+    return hmac.new(key, f"{paper_id}.{user_id}.{ts}".encode(), hashlib.sha256).hexdigest()[:20]
+
+
+def _make_exam_id(paper_id: int, user_id: int) -> str:
+    ts = int(time.time())
+    return f"{paper_id}.{ts}.{_exam_sig(paper_id, user_id, ts)}"
+
+
+def _parse_exam_id(exam_id: str, user_id: int) -> Optional[int]:
+    """验签 + 验有效期,返回试卷 id;不是发给这个学生的 / 过期 / 乱写的 → None"""
+    try:
+        pid_s, ts_s, sig = exam_id.split(".")
+        paper_id, ts = int(pid_s), int(ts_s)
+    except (ValueError, AttributeError):
+        return None
+    if not hmac.compare_digest(sig, _exam_sig(paper_id, user_id, ts)):
+        return None
+    if not (0 <= time.time() - ts <= EXAM_CACHE_TTL):
+        return None
+    return paper_id
 
 
 # ========== Schemas ==========
@@ -226,14 +246,13 @@ async def generate_exam(
     total_score = 100
 
     # 5. 创建考试记录
-    exam_id = str(uuid.uuid4())[:8]
-
     exam_paper = ExamPaper(
         user_id=current_user.id,
         title=f"{unit.name} 单元测验",
         description=f"共{len(questions)}题，总分{total_score}分",
         total_score=total_score,
         generated_by_ai=False,
+        generation_strategy=json.dumps({"kind": "unit_exam", "unit_id": unit_id}),
     )
     db.add(exam_paper)
     await db.flush()
@@ -254,14 +273,8 @@ async def generate_exam(
 
     await db.commit()
 
-    # 缓存答案（带时间戳）
-    _cleanup_exam_cache()
-    _exam_cache[exam_id] = {
-        "paper_id": exam_paper.id,
-        "answer_map": answer_map,
-        "unit_id": unit_id,
-        "created_at": time.time(),
-    }
+    # 答案已随题目落库(correct_answer),交卷时按签名的 exam_id 找回这份卷
+    exam_id = _make_exam_id(exam_paper.id, current_user.id)
 
     return {
         "exam_id": exam_id,
@@ -284,12 +297,17 @@ async def submit_exam(
 ):
     """提交考试答案并判分"""
     # 获取试卷信息
-    cached = _exam_cache.get(data.exam_id)
-    if not cached:
+    paper_id = _parse_exam_id(data.exam_id, current_user.id)
+    if paper_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "考试不存在或已过期")
-
-    paper_id = cached["paper_id"]
-    answer_map = cached["answer_map"]
+    paper = await db.get(ExamPaper, paper_id)
+    if paper is None or paper.user_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "考试不存在或已过期")
+    # 一份卷只交一次(以前靠交卷后删内存缓存,现在看库里有没有这份卷的提交记录)
+    if (await db.execute(
+        select(ExamSubmission.id).where(ExamSubmission.paper_id == paper_id).limit(1)
+    )).first() is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "考试不存在或已过期")
 
     # 判分
     total_score = 0
@@ -297,11 +315,17 @@ async def submit_exam(
     wrong_word_ids = []
     details = []
 
-    # 获取试题以查分值
+    # 获取试题(分值 + 正确答案;题号 = order_index,与出卷时下发的 id 同一个数)
     result = await db.execute(
         select(ExamQuestion).where(ExamQuestion.paper_id == paper_id).order_by(ExamQuestion.order_index)
     )
     db_questions = {q.order_index: q for q in result.scalars().all()}
+    answer_map = {oi: q.correct_answer for oi, q in db_questions.items()}
+    # 单元归属出卷时记在 generation_strategy(这张卷是单元考试生成的,那一列别处没用)
+    try:
+        unit_id = json.loads(paper.generation_strategy or "{}").get("unit_id")
+    except (ValueError, AttributeError):
+        unit_id = None
 
     for ans in data.answers:
         correct_answer = answer_map.get(ans.question_id, "")
@@ -369,7 +393,7 @@ async def submit_exam(
     submission = ExamSubmission(
         paper_id=paper_id,
         user_id=current_user.id,
-        unit_id=cached.get("unit_id"),
+        unit_id=unit_id,
         score=total_score,
         total_score=max_score,
     )
@@ -412,9 +436,6 @@ async def submit_exam(
         )
 
     await db.commit()
-
-    # 清理缓存
-    _exam_cache.pop(data.exam_id, None)
 
     # 按题型统计
     type_stats = {}

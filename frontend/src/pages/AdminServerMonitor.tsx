@@ -302,7 +302,7 @@ const ROLE_LABELS: Record<string, string> = {
   student: '学生', teacher: '教师', admin: '管理员', org_admin: '机构管理', parent: '家长', display: '大屏',
 };
 const BOTTLENECK_LABELS: Record<CapacityInfo['estimate']['bottleneck'], string> = {
-  bandwidth: '公网带宽', cpu: 'CPU(单核)', memory: '内存',
+  bandwidth: '公网带宽', cpu: 'CPU', memory: '内存',
 };
 
 function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogical: number }) {
@@ -311,6 +311,13 @@ function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogica
   const [saving, setSaving] = useState(false);
 
   const { estimate: est, usage: u, online: on } = cap;
+  // 后端能用几核 = min(进程数, 机器核数);proc_cpu_percent 是所有后端进程合计、相对 1 核(4 个进程跑满 = 400)
+  const procs = cap.processes;
+  const cpuCores = Math.max(1, procs?.cpu_cores ?? 1);
+  const cpuPct = Math.min(100, u.proc_cpu_percent / cpuCores);
+  const multiProc = (procs?.workers ?? 0) > 0;
+  // 开了工作进程却没连上 Redis: 各进程各算各的(限流变松、在线人数偏少、实时课堂可能看不到人)
+  const storeWarn = multiProc && procs?.shared_store !== 'redis';
   const levelPct = est.max_users > 0 ? Math.min(100, (on.active_5m / est.max_users) * 100) : 0;
   const roleText = Object.entries(on.roles)
     .sort((a, b) => b[1] - a[1])
@@ -408,9 +415,11 @@ function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogica
             detail={`≈可撑 ${est.by_resource.bandwidth} 人 · 全机上行 ${fmtRate(u.bw_machine_up)}`}
           />
           <Meter
-            label={`CPU 单核${est.bottleneck === 'cpu' ? ' · 瓶颈' : ''}`}
-            percent={Math.min(100, u.proc_cpu_percent)}
-            detail={`≈可撑 ${est.by_resource.cpu} 人 · 后端单进程,只能用满 1 核(全机 ${coresLogical} 核)`}
+            label={`CPU ${cpuCores > 1 ? `${cpuCores} 核` : '单核'}${est.bottleneck === 'cpu' ? ' · 瓶颈' : ''}`}
+            percent={cpuPct}
+            detail={multiProc
+              ? `≈可撑 ${est.by_resource.cpu} 人 · 后端 ${procs?.count} 个进程(主进程 1 + 工作进程 ${procs?.workers}),用得上 ${cpuCores} 核(全机 ${coresLogical} 核)`
+              : `≈可撑 ${est.by_resource.cpu} 人 · 后端单进程,只能用满 1 核(全机 ${coresLogical} 核)`}
           />
           <Meter
             label={`容量水位${est.bottleneck === 'memory' ? '(内存瓶颈)' : ''}`}
@@ -420,6 +429,13 @@ function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogica
         </div>
       </div>
 
+      {storeWarn && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          共享存储没连上 Redis({procs?.shared_store === 'memory_fallback' ? 'Redis 连不上,暂时退回各进程内存' : '没有配置 REDIS_URL'}):
+          各进程各算各的,限流会变松、在线人数偏少、实时课堂可能看不到人。请检查 Redis 服务。
+        </p>
+      )}
+
       <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-3 text-[11px] text-slate-400">
         <p>
           PK 对战是消耗最陡的场景(实时榜广播随房间人数平方增长):按 {cap.pk_reference.tested_at_mbps}M 带宽压测折算,
@@ -428,8 +444,11 @@ function CapacitySection({ cap, coresLogical }: { cap: CapacityInfo; coresLogica
         </p>
         <p>
           扩容优先级:<b className="text-slate-600">升带宽</b>见效最直接(改上限即可看到新估算);
-          后端是单进程部署,只能用满 1 核,加 worker 用多核需先把 PK 房间/限流等进程内状态迁到共享存储,
-          且当前瓶颈多为带宽时提升有限。
+          {multiProc
+            ? <>后端已按多进程运行,工作进程个数按 CPU 核数和可用内存自动算(核数 − 1,内存不够时少开),
+                服务器升级 CPU / 内存后重启一次服务就按新配置开,不用改配置。</>
+            : <>后端目前是单进程,只能用满 1 核;多进程(按 CPU 核数和可用内存自动开工作进程)要先启用 Redis 和工作进程服务。</>}
+          瓶颈是带宽时,加核提升有限。
         </p>
         <p>估算已预留 15% 余量;在线口径=5分钟内有请求的账号(含PK的WebSocket心跳);今日峰值重启后重新统计。</p>
       </div>
