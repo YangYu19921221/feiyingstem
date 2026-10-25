@@ -28,6 +28,9 @@ faster-whisper>=1.0.0
 # 发音大面积 500 且日志是 wss 403,先升级这个包
 edge-tts==7.3.1
 
+# 腾讯云 COS(音标视频走对象存储,见 app/services/cos_video.py)
+cos-python-sdk-v5==1.9.44
+
 # 工具库
 python-dotenv>=1.0.0
 httpx>=0.26.0

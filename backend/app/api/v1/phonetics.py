@@ -14,7 +14,7 @@ from email.utils import formatdate
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_, update
@@ -32,7 +32,7 @@ from app.models.phonetic import (
 )
 from app.services import phonetic_material_service, rate_limit, watermark_service
 from app.services import auth_service, video_question, video_watch
-from app.services import phonetic_access_service, audit_log, video_lite
+from app.services import phonetic_access_service, audit_log, video_lite, cos_video
 
 logger = logging.getLogger(__name__)
 
@@ -1024,6 +1024,12 @@ async def stream_video(
         if not os.path.isfile(lite):
             raise HTTPException(status_code=404, detail="流畅版还没准备好,先看高清")
         path, mime = lite, "video/mp4"
+
+    # 文件已在腾讯云 COS(且与本机一致)→ 302 跳到 COS 签名地址,视频流量不走服务器(2026-10-25,见 services/cos_video)。
+    # 鉴权/闸门/次卡上面都已过完。no-store: 生产 nginx 开着 proxy_cache,不能把一个人的签名跳转缓存给别人
+    cos_url = cos_video.signed_url(path) if cos_video.redirect_enabled(video_id) else None
+    if cos_url:
+        return RedirectResponse(cos_url, status_code=302, headers={"Cache-Control": "no-store"})
 
     st = os.stat(path)
     total = st.st_size

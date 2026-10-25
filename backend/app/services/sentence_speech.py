@@ -173,6 +173,13 @@ async def speech_loop() -> None:
     from app.models.sentence import Sentence
     from app.models.sentence_speech import SentenceSpeech
     from app.services import read_aloud
+    # 音标视频同步到腾讯云 COS(2026-10-25,见 services/cos_video): 后台线程,没配 COS 什么都不做。
+    # 挂在这里而不是 main.py 的 lifespan: 生产 main.py 与仓库有 drift,少碰一次
+    try:
+        from app.services import cos_video
+        cos_video.start_background_sync(settings.PHONETIC_VIDEO_DIR)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("COS 视频同步没启动: %s", e)
     if not is_available():
         # 不转写也得按时删跟读录音: 14 天保留是答应过的,不能因为没装 whisper 就一直留着孩子的声音
         logger.warning("faster-whisper 未安装,开口背/跟读后台转写不启用(跟读录音照常 14 天后删)")
