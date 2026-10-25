@@ -131,7 +131,12 @@ export function clozeIsCorrect(input: string, answer: string): boolean {
   return compareTokens(input).join(' ') === compareTokens(answer).join(' ');
 }
 
-/** 开口背最短要说多久(毫秒): 按词数估,一词约 280ms,至少 600ms。只判「真的开口了」,不判对错 */
+/**
+ * 开口背 / 例句跟读最短要说多久(毫秒): 按词数估,一词 160ms,至少 600ms。只判「真的开口了」,不判对错。
+ * 量的是 VAD 判为有声的时长(useSpeechRecorder 的 speechMs),不是录音总长: 2026-10-24 用 Edge TTS 标准音
+ * 实测 4/7/10/11 词的句子 VAD 有声 238–260ms/词 —— 原先按 280ms/词要求,正常语速把整句读完也判「没听清」。
+ * 160 留了余量;只读半句(约一半时长)仍过不了
+ */
 export function minSpeechMs(english: string): number {
-  return Math.max(600, compareTokens(english).length * 280);
+  return Math.max(600, compareTokens(english).length * 160);
 }

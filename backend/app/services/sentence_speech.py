@@ -172,10 +172,21 @@ async def speech_loop() -> None:
     from app.core.database import AsyncSessionLocal
     from app.models.sentence import Sentence
     from app.models.sentence_speech import SentenceSpeech
+    from app.services import read_aloud
     if not is_available():
-        logger.warning("faster-whisper 未安装,开口背后台转写不启用")
-        return
-    inflight: set[int] = set()
+        # 不转写也得按时删跟读录音: 14 天保留是答应过的,不能因为没装 whisper 就一直留着孩子的声音
+        logger.warning("faster-whisper 未安装,开口背/跟读后台转写不启用(跟读录音照常 14 天后删)")
+        while True:
+            try:
+                await read_aloud.purge_expired()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error("跟读录音到期删除出错: %s", e)
+            await asyncio.sleep(3600)
+    # 开口背与例句跟读(2026-10-24)共用这一个进程池和调度循环;两张表的 id 各自独立,在飞集合按 (来源, id) 记
+    inflight: set[tuple[str, int]] = set()
+    last_purge = 0.0
     while True:
         try:
             room = WORKERS * 2 - len(inflight)
@@ -188,12 +199,22 @@ async def speech_loop() -> None:
                         .order_by(SentenceSpeech.id).limit(room + len(inflight))
                         .execution_options(skip_tenant_filter=True)
                     )).all()
-                for rid, fp, eng in rows:
-                    if rid in inflight or len(inflight) >= WORKERS * 2:
+                    ra_rows = await read_aloud.pending_rows(db, room + len(inflight))
+                jobs = [("speech", rid, fp, eng, _process_one) for rid, fp, eng in rows] + \
+                       [("read_aloud", rid, fp, s, read_aloud.process_one) for rid, fp, s in ra_rows]
+                for src, rid, fp, text, fn in jobs:
+                    key = (src, rid)
+                    if key in inflight or len(inflight) >= WORKERS * 2:
                         continue
-                    inflight.add(rid)
-                    t = asyncio.create_task(_process_one(rid, fp, eng))
-                    t.add_done_callback(lambda _t, r=rid: inflight.discard(r))
+                    inflight.add(key)
+                    t = asyncio.create_task(fn(rid, fp, text))
+                    t.add_done_callback(lambda _t, k=key: inflight.discard(k))
+            # 跟读录音保留 14 天,到期删文件(一小时查一次)
+            if asyncio.get_running_loop().time() - last_purge > 3600:
+                last_purge = asyncio.get_running_loop().time()
+                n = await read_aloud.purge_expired()
+                if n:
+                    logger.info("跟读录音到期删除 %s 条", n)
         except asyncio.CancelledError:
             raise
         except Exception as e:

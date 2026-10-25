@@ -6,10 +6,10 @@
  */
 import client from './client';
 
-export type ContentKind = 'sentence' | 'phonetic_video' | 'daily_review';
+export type ContentKind = 'sentence' | 'phonetic_video' | 'daily_review' | 'read_aloud';
 
 export interface ContentTargetGroup {
-  /** 句子 = 书 id;视频 = 讲师名 */
+  /** 句子/跟读 = 书 id;视频 = 讲师名 */
   id: number | string;
   name: string;
   units: { id: number; name: string }[];

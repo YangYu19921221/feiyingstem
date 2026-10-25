@@ -14,7 +14,7 @@ import AnimatedProgress from '../components/student/AnimatedProgress';
 const DAILY_GOAL = 10;
 
 const MODE_LABELS: Record<string, string> = {
-  flashcard: '闪卡', classify: '分类', dictation: '听写', sentencefill: '填句',
+  flashcard: '闪卡', classify: '分类', dictation: '听写', sentencefill: '填句', 'read-aloud': '跟读',
   quiz: '测试', spelling: '拼写', fillblank: '选词', handwriting: '纸笔听写',
 };
 
@@ -172,6 +172,7 @@ const UnitSelector = () => {
     { key: 'classify', name: '分类', requiresPrevious: null },
     { key: 'dictation', name: '听写', requiresPrevious: 'classify' },
     { key: 'sentencefill', name: '填句', requiresPrevious: 'classify' },
+    { key: 'read-aloud', name: '跟读', requiresPrevious: 'classify' },
     { key: 'quiz', name: '测试', badge: 'AI', requiresPrevious: 'classify' },
     { key: 'spelling', name: '拼写', badge: 'AI', requiresPrevious: 'quiz' },
     { key: 'fillblank', name: '选词', badge: 'AI', requiresPrevious: 'spelling' },
@@ -179,7 +180,7 @@ const UnitSelector = () => {
     { key: 'handwriting', name: '手写听写', badge: 'AI', requiresPrevious: 'classify' },
     { key: 'handwriting-sheet', name: '打印默写纸', requiresPrevious: 'classify' },
   ];
-  const foundationModes = learningModes.filter((mode) => ['dictation', 'sentencefill', 'quiz'].includes(mode.key));
+  const foundationModes = learningModes.filter((mode) => ['dictation', 'sentencefill', 'read-aloud', 'quiz'].includes(mode.key));
   const challengeModes = learningModes.filter((mode) => ['spelling', 'fillblank', 'exam'].includes(mode.key));
   const paperModes = learningModes.filter((mode) => ['handwriting', 'handwriting-sheet'].includes(mode.key));
 
@@ -544,10 +545,10 @@ const UnitSelector = () => {
                                 <p className="text-sm font-semibold text-ink">{group.title}</p>
                                 <p className="mt-0.5 text-xs text-ink-mute">{group.hint}</p>
                               </div>
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className={`grid gap-2 ${group.modes.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
                                 {group.modes.map((mode) => {
                                   // 没有例句的单元出不了句子填空(全站 47 本书是这样),置灰并说明,别点进去白跑
-                                  const noExamples = mode.key === 'sentencefill' && unit.has_examples === false;
+                                  const noExamples = (mode.key === 'sentencefill' || mode.key === 'read-aloud') && unit.has_examples === false;
                                   const off = isLocked || noExamples;
                                   return (
                                     <button
@@ -555,7 +556,7 @@ const UnitSelector = () => {
                                       type="button"
                                       onClick={() => handleStartLearning(unit.unit_id, mode.key, index)}
                                       disabled={off}
-                                      title={noExamples ? '这个单元还没有例句，暂时不能做填句' : undefined}
+                                      title={noExamples ? `这个单元还没有例句，暂时不能做${mode.name}` : undefined}
                                       className={`relative min-h-11 rounded-lg px-2 py-2.5 text-sm font-medium transition active:scale-95 ${
                                         off
                                           ? 'cursor-not-allowed text-ink-mute'

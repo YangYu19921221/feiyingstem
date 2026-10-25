@@ -16,6 +16,8 @@
   今日报告会把它写成「今天补做」。开放前就看完的,算开放那一刻完成
 - 每日复习: 开放那天的那一份(services/daily_review)全做完,完成时刻取那一份做完的时刻。
   只认那一天 —— 「今天的 20 个」隔天就换了一批,补做不了,所以这类作业恒为当天截止
+- 例句跟读: 作业开放后在这个单词单元读满一轮(services/read_aloud.completion_times),
+  完成时刻取读满那一句的时刻。只判读没读、不判读得对不对(第一版识别没验证过)
 """
 from __future__ import annotations
 
@@ -26,14 +28,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_homework import (
-    KIND_DAILY_REVIEW, KIND_PHONETIC_VIDEO, KIND_SENTENCE, ContentHomework, ContentHomeworkStudent,
+    KIND_DAILY_REVIEW, KIND_PHONETIC_VIDEO, KIND_READ_ALOUD, KIND_SENTENCE, ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo, PhoneticVideoView
 from app.models.sentence import SentenceBook, SentenceUnit
 from app.models.sentence_learning import SentenceUnitProgress
-from app.services import daily_review
+from app.models.word import Unit, WordBook
+from app.services import daily_review, read_aloud
 
-KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频", KIND_DAILY_REVIEW: "每日复习"}
+KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频", KIND_DAILY_REVIEW: "每日复习",
+              KIND_READ_ALOUD: "例句跟读"}
 DAILY_REVIEW_NAME = f"今天的 {daily_review.DAILY_SIZE} 个复习词"
 
 Link = tuple[ContentHomeworkStudent, ContentHomework]
@@ -63,6 +67,13 @@ async def target_names(db: AsyncSession, rows: Iterable[ContentHomework]) -> dic
             out[(KIND_DAILY_REVIEW, h.target_id)] = DAILY_REVIEW_NAME
     sids = {h.target_id for h in rows if h.kind == KIND_SENTENCE}
     vids = {h.target_id for h in rows if h.kind == KIND_PHONETIC_VIDEO}
+    uids = {h.target_id for h in rows if h.kind == KIND_READ_ALOUD}
+    if uids:
+        for u, b in (await db.execute(
+            select(Unit, WordBook).join(WordBook, WordBook.id == Unit.book_id)
+            .where(Unit.id.in_(uids)).execution_options(skip_tenant_filter=True)
+        )).all():
+            out[(KIND_READ_ALOUD, u.id)] = f"{b.name} · {u.name}"
     if sids:
         for u, b in (await db.execute(
             select(SentenceUnit, SentenceBook).join(SentenceBook, SentenceBook.id == SentenceUnit.book_id)
@@ -96,6 +107,7 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
     sids = {h.target_id for _, h in pending if h.kind == KIND_SENTENCE}
     vids = {h.target_id for _, h in pending if h.kind == KIND_PHONETIC_VIDEO}
     rdays = {open_day(h) for _, h in pending if h.kind == KIND_DAILY_REVIEW}
+    ra_pairs = {(s.student_id, h.target_id, h.available_from) for s, h in pending if h.kind == KIND_READ_ALOUD}
 
     sent_done: dict[tuple[int, int], datetime] = {}
     if sids:
@@ -114,6 +126,7 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
                 PhoneticVideoView.completed.is_(True),
             ))).all()}
     review_done = await daily_review.completion_times(db, uids, rdays) if rdays else {}
+    ra_done = await read_aloud.completion_times(db, ra_pairs) if ra_pairs else {}
 
     now = datetime.utcnow()
     wrote = False
@@ -130,6 +143,8 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
                 at = min(now, max(h.available_from, seen))
         elif h.kind == KIND_DAILY_REVIEW:
             at = review_done.get((s.student_id, open_day(h)))
+        elif h.kind == KIND_READ_ALOUD:
+            at = ra_done.get((s.student_id, h.target_id, h.available_from))
         if at is not None:
             s.completed_at = at
             wrote = True

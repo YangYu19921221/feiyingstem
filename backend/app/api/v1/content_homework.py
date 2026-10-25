@@ -19,12 +19,15 @@ from app.core.actor import acting_user, is_assistant_request
 from app.core.database import get_db
 from app.core.timeutil import local_day_utc_range, local_today
 from app.models.content_homework import (
-    KIND_DAILY_REVIEW, KIND_PHONETIC_VIDEO, KIND_SENTENCE, KINDS, ContentHomework, ContentHomeworkStudent,
+    KIND_DAILY_REVIEW, KIND_PHONETIC_VIDEO, KIND_READ_ALOUD, KIND_SENTENCE, KINDS,
+    ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo
 from app.models.sentence import SentenceBook, SentenceUnit
 from app.models.user import User
+from app.models.word import Unit, WordBook
 from app.services import audit_log
+from app.services import read_aloud as ra
 from app.services import content_homework as chw
 
 teacher_router = APIRouter()
@@ -67,6 +70,22 @@ async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Opti
         if v.org_id is not None and org_id is not None and v.org_id != org_id:
             return None
         return {"name": v.title, "book_id": None}
+    if kind == KIND_READ_ALOUD:
+        row = (await db.execute(
+            select(Unit, WordBook).join(WordBook, WordBook.id == Unit.book_id)
+            .where(Unit.id == target_id).execution_options(skip_tenant_filter=True)
+        )).first()
+        if row is None:
+            return None
+        unit, book = row
+        if book.org_id is not None and org_id is not None and book.org_id != org_id:
+            return None
+        if not book.is_public and book.org_id is None:
+            return None
+        # 一句能跟读的例句都没有的单元布置了也做不成(永远完成不了)
+        if not (await ra.eligible_sentences(db, [unit.id]))[unit.id]:
+            return None
+        return {"name": f"{book.name} · {unit.name}", "book_id": book.id}
     return None
 
 
@@ -322,6 +341,24 @@ async def content_homework_targets(
             groups.setdefault(name, {"id": name, "name": name, "units": []})["units"].append(
                 {"id": v.id, "name": v.title})
         return list(groups.values())
+    if kind == KIND_READ_ALOUD:
+        # 单词书 → 单元;只列有能跟读例句的单元(一句都没有的布置了永远完成不了)
+        q = select(WordBook, Unit).join(Unit, Unit.book_id == WordBook.id) \
+            .execution_options(skip_tenant_filter=True) \
+            .order_by(WordBook.id, Unit.unit_number)
+        if org_id is not None:
+            q = q.where(or_(and_(WordBook.org_id.is_(None), WordBook.is_public.is_(True)),
+                            WordBook.org_id == org_id))
+        pairs = (await db.execute(q)).all()
+        counts = await ra.eligible_sentences(db, [u.id for _, u in pairs])
+        books: dict[int, dict] = {}
+        for b, u in pairs:
+            n = len(counts.get(u.id, []))
+            if n == 0:
+                continue
+            books.setdefault(b.id, {"id": b.id, "name": b.name, "units": []})["units"].append(
+                {"id": u.id, "name": f"{u.name}({n} 句)"})
+        return list(books.values())
     raise HTTPException(400, "作业类型不对")
 
 
@@ -364,6 +401,8 @@ async def my_content_homework(
             route = f"/student/sentences/{book_of.get(h.target_id, 0)}/{h.target_id}/learn"
         elif h.kind == KIND_DAILY_REVIEW:
             route = "/student/memory-curve"
+        elif h.kind == KIND_READ_ALOUD:
+            route = f"/student/units/{h.target_id}/read-aloud"
         else:
             route = "/student/phonetics"
         out.append({

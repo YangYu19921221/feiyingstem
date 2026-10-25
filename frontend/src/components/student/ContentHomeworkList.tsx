@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookText, Brain, CheckCircle2, Clapperboard, Lock } from 'lucide-react';
+import { BookText, Brain, CheckCircle2, Clapperboard, Lock, Mic } from 'lucide-react';
 import { getMyContentHomework, type StudentContentHomework } from '../../api/contentHomework';
 
 function dayText(iso: string): string {
@@ -47,12 +47,12 @@ export default function ContentHomeworkList() {
   return (
     <section className="card-soft mb-6 rounded-2xl p-4 sm:p-5" aria-labelledby="content-hw-heading">
       <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h2 id="content-hw-heading" className="font-display text-lg font-semibold text-ink">句子 / 音标 / 复习作业</h2>
+        <h2 id="content-hw-heading" className="font-display text-lg font-semibold text-ink">句子 / 音标 / 复习 / 跟读作业</h2>
         <span className="text-xs text-ink-mute">{todo > 0 ? `还有 ${todo} 项没做完` : '都做完啦'} · 学完自动算完成</span>
       </div>
       <ul className="space-y-2">
         {sorted.map((h) => {
-          const Icon = h.kind === 'sentence' ? BookText : h.kind === 'daily_review' ? Brain : Clapperboard;
+          const Icon = h.kind === 'sentence' ? BookText : h.kind === 'daily_review' ? Brain : h.kind === 'read_aloud' ? Mic : Clapperboard;
           const done = h.status === 'completed';
           const locked = h.status === 'locked';
           const overdue = h.status === 'overdue';

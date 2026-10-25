@@ -142,6 +142,9 @@ app.include_router(coach.student_router, prefix="/api/v1/student", tags=["学生
 app.include_router(coach.parent_router, prefix="/api/v1", tags=["家长端-陪跑"])
 from app.api.v1 import daily_review  # noqa: E402
 app.include_router(daily_review.student_router, prefix="/api/v1/student", tags=["学生端-每日复习"])
+from app.api.v1 import read_aloud  # noqa: E402
+app.include_router(read_aloud.student_router, prefix="/api/v1/student", tags=["学生端-例句跟读"])
+app.include_router(read_aloud.teacher_router, prefix="/api/v1/teacher", tags=["教师端-例句跟读"])
 app.include_router(live_ws.router, prefix="/api/v1", tags=["直播互动-弹幕"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])

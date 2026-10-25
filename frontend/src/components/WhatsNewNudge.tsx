@@ -21,7 +21,7 @@ const MAX_SHOWN = 3;
 
 /** 学习中的全屏页面不打断(答题、对战、考试、大屏) */
 const QUIET_PATTERNS = [
-  '/learn', '/dictation', '/spelling', '/quiz', '/fillblank', '/sentencefill',
+  '/learn', '/dictation', '/spelling', '/quiz', '/fillblank', '/sentencefill', '/read-aloud',
   '/exam', '/handwriting', '/pk/arena', '/battle', '/bigscreen', '/competition',
   '/phonics', '/phonetics', '/reading/',
 ];

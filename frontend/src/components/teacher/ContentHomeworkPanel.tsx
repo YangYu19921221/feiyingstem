@@ -8,7 +8,7 @@
  * 完成不用学生交卷: 后端按真实学习数据判(句子: 开放后全部组过关;视频: 看完),这里只展示。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { BookText, Brain, Clapperboard, Plus, X } from 'lucide-react';
+import { BookText, Brain, Clapperboard, Mic, Plus, X } from 'lucide-react';
 import {
   createContentHomework, deleteContentHomework, getContentHomeworkStudents, getContentTargets,
   listTeacherContentHomework, toggleContentHomework,
@@ -22,6 +22,7 @@ const KIND_META: Record<ContentKind, { label: string; icon: typeof BookText; hin
   sentence: { label: '句子背诵', icon: BookText, hint: '学生把这个单元的每一组都过关就算完成' },
   phonetic_video: { label: '音标视频', icon: Clapperboard, hint: '学生把这节视频看完就算完成' },
   daily_review: { label: '每日复习', icon: Brain, hint: '每天 20 个该复习的词，做完当天那份就算完成' },
+  read_aloud: { label: '例句跟读', icon: Mic, hint: '学生把这个单词单元的例句读满一轮（8 句）就算完成' },
 };
 
 const STATUS_LABEL: Record<ContentHomeworkStudentStatus['status'], string> = {
@@ -90,7 +91,7 @@ export default function ContentHomeworkPanel({ students }: { students: StudentIn
           onClick={() => setOpen(true)}
           className="teacher-primary teacher-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3.5 text-sm font-semibold"
         >
-          <Plus className="h-4 w-4" aria-hidden="true" />布置句子 / 音标 / 复习作业
+          <Plus className="h-4 w-4" aria-hidden="true" />布置句子 / 音标 / 复习 / 跟读作业
         </button>
       </div>
 
@@ -239,7 +240,7 @@ function CreateDialog({ students, onClose, onCreated }: {
            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <h3 id="content-hw-create" className="text-base font-semibold text-slate-800">布置句子 / 音标 / 复习作业</h3>
+          <h3 id="content-hw-create" className="text-base font-semibold text-slate-800">布置句子 / 音标 / 复习 / 跟读作业</h3>
           <button type="button" onClick={onClose} aria-label="关闭" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
             <X className="h-5 w-5" />
           </button>
@@ -248,7 +249,7 @@ function CreateDialog({ students, onClose, onCreated }: {
         <div className="space-y-5 overflow-y-auto px-5 py-4">
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-slate-700">布置什么</legend>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {(Object.keys(KIND_META) as ContentKind[]).map((k) => {
                 const M = KIND_META[k];
                 return (
@@ -281,7 +282,7 @@ function CreateDialog({ students, onClose, onCreated }: {
           ) : (
           <div>
             <label htmlFor="content-hw-group" className="mb-2 block text-sm font-semibold text-slate-700">
-              {kind === 'sentence' ? '句子集' : '讲师'}
+              {kind === 'sentence' ? '句子集' : kind === 'read_aloud' ? '单词书' : '讲师'}
               <span className="ml-1 text-xs font-normal text-slate-500">(可多选，每个单元/每节各一份作业)</span>
             </label>
             <select id="content-hw-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}

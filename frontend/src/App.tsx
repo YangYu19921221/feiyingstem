@@ -137,6 +137,7 @@ const HandwritingHub = lazyWithRetry(() => import('./pages/HandwritingHub'));
 const HandwritingDictation = lazyWithRetry(() => import('./pages/HandwritingDictation'));
 const HandwritingSheet = lazyWithRetry(() => import('./pages/HandwritingSheet'));
 const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
+const ReadAloudPractice = lazyWithRetry(() => import('./pages/ReadAloudPractice'));
 const PkLobby = lazyWithRetry(() => import('./pages/PkLobby'));
 const TeacherTournaments = lazyWithRetry(() => import('./pages/TeacherTournaments'));
 const PkArena = lazyWithRetry(() => import('./pages/PkArena'));
@@ -438,6 +439,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <SentenceFillPractice />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 例句跟读 */}
+        <Route
+          path="/student/units/:unitId/read-aloud"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <ReadAloudPractice />
             </ProtectedRoute>
           }
         />
