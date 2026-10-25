@@ -271,6 +271,25 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
+  新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
+  备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):
+  用户「口语练习…中英文翻译准吗」→「按你建议」(先做看英文跟读)→ 录音「保留 14 天、不发金币」。**放进单词单元而不是单独模块**:
+  句子背诵/开口背 10-11 上线后生产真实学生 0 条记录,单独模块没人点。规则真源 services/read_aloud.py:
+  ①能跟读的句 = 单元里每词一条例句(主释义优先)、3–15 个词、同句去重;一轮 8 句,没读过的先读,都读过挑最久没读的
+  ②当场只判 VAD「开口说够时长」,孩子看不到对错;录音进开口背**同一个进程池和调度循环**(sentence_speech.speech_loop,
+  在飞集合按 (来源, id) 记),逐词比对复用 judge;**结果只给本班老师**
+  ③**录音保留 14 天**: 落 private_media/read_aloud(AUDIO_DIR 由 SENTENCE_SPEECH_DIR 推出,没改 config.py —— 它在生产有注释 drift),
+  转写**不删**音频,purge_expired 每小时删超 14 天的文件、行保留;没装 whisper 时调度循环也照常跑删除(答应过的保留期不能因为缺包失效)
+  ④老师在学生详情页「例句跟读」回放(blob 取,no-store)、标「读对了 / 没读对」,summary 给 marked/agree = 机器和老师一致几句
+  —— **这是决定以后给不给孩子看对错的依据**,先攒数据 ⑤作业 content_homework kind=read_aloud(target=单词单元):开放后读满
+  min(8, 单元句数) 句不同例句自动完成;布置了跟读作业的单元即使书没分配也放行跟读(卡包书/专属内容照旧不放)
+  ⑥不发金币、不进掌握度和单词数 ⑦minSpeechMs 280→160ms/词(开口背共用): Edge TTS 标准音实测 VAD 有声 238–260ms/词,
+  原阈值正常语速读完整句也判「没听清」。生产冒烟(临时机构+账号,跑完删净): 没布置时 403 → 布置后 8 句 → 上传 → 作业自动完成 →
+  生产进程池转写 8/8 → 老师回放 200 + 标记 200。浏览器验过手机/桌面两种宽度。⚠️ 浏览器自动测试用的是假麦克风(固定一段合成音),
+  **真人录音的识别准确率仍未验证**。入口: 单元页「基础巩固 → 跟读」;教师「作业管理 → 布置句子 / 音标 / 复习 / 跟读作业 → 例句跟读」;
+  学生详情页「例句跟读」。公告学生/老师各一条。测试 tests/test_read_aloud.py(8 例;14 天保留 / 长度过滤 / 作业放行 / 只看本班 /
+  开放前不算 各自对应用例失败,回归锁验证过 —— 开放前那条要 SQL 和 Python 两处都去掉才失败,单去一处有另一处兜着)
 - ✅ 体验卡各校区汇总(2026-10-24 晚,用户问「子管理端也做了没,别的校区」→「加一个汇总页」):
   各校区机构管理员本来就有整套「地推体验卡」(数据按 org_id 各管各的);缺的是**平台管理员看不到别的校区** ——
   `/admin/promo` 对 admin 只管自己账号所在的直营。新页 `/admin/promo-summary`(pages/AdminPromoSummary.tsx,只给 admin,
