@@ -271,6 +271,40 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ AI 学习助手「小鹰老师」(2026-10-26 16:33 **已部署生产**,提交 02328ff;main.py 走 anchor patch 只加 tutor 路由 6 行,
+  其余 5 个文件生产==HEAD~1 整推 + 新文件 api/v1/tutor.py、services/tutor.py、models/tutor.py;两张新表 create_all 建;
+  两个服务都重启;备份 /root/eh_db_before_tutor_20261026_1627.db、/root/eh_code_before_tutor_20261026_1627.tgz、
+  frontend/dist_bak_20261026_1627,构建号 mvozvcsm): 用户给了 Claude 中转 Key(hk.hueling.cc)要「做个学习的 agent」,
+  **并明确「这个 key 只用在解题学习 agent 上面,周报这些别用,贵,要节约」**。
+  ①**Key 隔离**: 存 ai_providers 一行 provider_name='claude_tutor'(Fernet 加密),**不能设默认**(admin/ai_config 创建/更新
+  两处 400);ai_service 的默认通道 / OCR / TTS 三处查询都 `provider_name != "claude_tutor"` —— 就算库里被手改成 is_default=1
+  周报也拿不到它(测试锁住)。学习助手只读这一行(services/tutor.relay_conf)
+  ②**模型**: 主 claude-haiku-5-5、备 claude-sonnet-4-6(extra_config.fallback_model)。**haiku-5-5 在这个 Key 的分组一直 503
+  「No available accounts」**(10-26 多次实测,上线时也是),所以实际全走 sonnet-4-6;主模型 503/404/429/5xx 记 5 分钟
+  「主模型不可用」(shared_store tutor:primary_down)直接用备用,最后一个模型多试一次。
+  **中转在上游回空时自己编一段「⚠️ 上游模型未返回任何内容…」当正文**(实测),以 ⚠ 开头的回答先攒着、命中就丢掉重试(RELAY_EMPTY_MARK)
+  ③**省钱**: 每人每天 20 次(管理端可改,ai_quota feature=tutor,彻底失败 refund)+ 限速 6/分钟 60/小时;max_tokens 600;
+  只带最近 8 条历史;工具最多 3 轮(最后一轮 tool_choice=none 保证出字);规则段 cache_control(实测缓存命中 4k–20k token);
+  照片前端压 1280 + 后端压 1100px JPEG(去 EXIF)。实测一问约 200–1700 输入 + 100–200 输出 token
+  ④**工具**(全部按当前学生 id 查): get_today_tasks(today_report + daily_review)、get_weak_words(top_wrong_words + 写成过什么)、
+  lookup_word(课本释义/音标/例句/记忆钩子)、get_task_words(今天没做完的作业单元/组的词)、make_practice(练习卡,
+  **看中文写单词时释义里的英文提示要去掉** _hide_spelling,如「(=center) 中心」)、show_link(复习/作业/错题本按钮)。
+  练习卡前端当场判,**不计分不进学习记录**(聊天里随手练,算进掌握度会变成刷分入口)
+  ⑤**规则**(提示词): 只聊英语学习、口语化 ≤120 字、不用 markdown(模型仍偶尔带 **,存库前 tutor.plain 去掉,前端 clean 同步)、
+  **作业考试题只给提示**(真模型实测: 「直接告诉我答案」仍只给提示)、拍题第一行写「我看到的题目: …」、讲词先 lookup_word、
+  出了练习卡不在回答里写出卡上的词(第一版写了 = 送答案)、调工具前不说「我查一下」、不问不复述姓名学校。只发学习数据
+  ⑥**流式**: SSE(X-Accel-Buffering: no + no-store),回答在 asyncio 后台任务里跑、**自己开 AsyncSessionLocal**(孩子关页面也写完库);
+  经 nginx 实测首字约 6s、逐段到达(不是攒着一起发)。走工作进程,不用进主进程
+  ⑦**开放范围** system_configs.tutor_settings: off / hq(只直营 org 1,**默认**)/ all。首页卡片、错题本按钮、学生/老师公告
+  都按 status 决定显不显示(whatsNew 新增 `gate` 字段,没开放的不弹也不记已读,开放后再弹)
+  ⑧老师: 学生详情页「问小鹰老师」只读(assert_student_in_my_class),照片不存只记 has_image
+  入口: 学生首页工具第二个「问小鹰老师」/ 错题本每个词「问小鹰老师怎么记」(带问题进来只填不自动发,省次数);
+  老师学生详情页往下;管理端首页「AI 学习助手」卡片(范围/次数/模型/Key 留空不改/测试模型/近 7 天 token)。
+  公告学生/老师(gate)/admin 各一条。测试 tests/test_tutor.py(16 例,中转用 MockTransport 假装;Key 隔离两处 / 只开直营 /
+  失败退回 / 最后一轮禁工具 / 只看本班 / 换备用 / 别人的对话 404 九处守卫逐一破坏各自恰好对应用例失败,回归锁验证过)。
+  ⚠️ **Key 在聊天里明文出现过,建议用户在中转后台换一个**,换完在管理端卡片里填新的即可(留空不改)。
+  ⚠️ test_multiprocess::test_online_tracker_memory 跟在任何 HTTP 测试文件后面跑会失败(online_tracker 进程内 _pending_seen 残留),
+  HEAD 上 test_read_aloud + test_multiprocess 一样复现,与本功能无关,单独跑全绿
 - ✅ 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」→「你来做多核的」):
   **第一步 16:49 已部署**(提交 7d55020,main.py / tenancy.py 走 anchor patch,其余整推;备份 /root/eh_code_before_multiproc_20261025_1648.tgz、
   frontend/dist_bak_20261025_1648);**第二步 18:14 已上线**(用户同意后): 系统 Redis 起来、主进程配 REDIS_URL、
