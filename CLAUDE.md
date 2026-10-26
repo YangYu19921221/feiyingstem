@@ -326,7 +326,11 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   新增守卫 10 处逐一破坏各自对应用例失败;老师列表「请求的排最前」那条排序没有用例锁(只有一个学生的班测不出)。
   ⚠️ test_multiprocess::test_online_tracker_memory 跟在任何 HTTP 测试文件后面跑会失败(online_tracker 进程内 _pending_seen 残留),
   HEAD 上 test_read_aloud + test_multiprocess 一样复现,与本功能无关,单独跑全绿
-  **10-26 晚第三版: 收费写进合同 + 答不上来的三步**(用户「免费 20 次后需要付费」→「按你建议方案写进合同,要让家长觉得值、便宜,
+  **10-26 晚第三版: 收费写进合同 + 答不上来的三步**(22:20 **已部署生产**,提交 d3090dc;database.py 走 anchor patch 只加 1 条 ALTER,
+  其余 7 个文件生产==HEAD~1 整推;三张新表 create_all 建;两个服务都重启;备份 /root/eh_db_before_tutor3_20261026_2218.db、
+  /root/eh_code_before_tutor3_20261026_2218.tgz、frontend/dist_bak_20261026_2218,构建号 mvpcert2。
+  生产冒烟(临时学生跑完删净): 真模型第一问只提示、点「还是不会,讲给我听」讲出 likes + 理由 + 出同类题,追问 cost 0、次数 20→19)
+  (用户「免费 20 次后需要付费」→「按你建议方案写进合同,要让家长觉得值、便宜,
   也要确实能帮助孩子提升;如果不给答案孩子一直回答不上来怎么办」)。数字真源 services/tutor.py 文件头「收费」,
   **合同第三条第 10 款 + 费用表、招商手册第六章、家长手册第八章 FAQ、提分方案第八章摘要同口径,改数字四处一起改**:
   ①**三步提示**(RULES 第 3 条): 先点方向 → 答错/说不会给更具体的提示(范围、类似例子、首字母)→ 还不会或说「讲给我听」
