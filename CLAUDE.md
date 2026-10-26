@@ -359,7 +359,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   老师加不扣池 / 扣回不限 / 同卡送多次 / pack 放开老机构 / 到上限照扣池 / 兑换不送 十一处逐一破坏各自对应用例失败(回归锁验证过)。
   入口: 学生「问小鹰老师」回答下面三个快捷按钮;平台「机构管理」每行「学习助手次数」;机构首页「学习助手次数」卡片;
   老师「学习助手次数」页顶上池子余量;「加盟资料 → 合作协议」第三条第 10 款。公告学生/老师/机构管理员(gate)/平台各一条
-  **10-27 第四版: 单词记忆图 + 学习画像**(部署信息: DEPLOY_PENDING)(用户给了一个出图 Key「GPT Image 2.5 Sunburst…定价 3 毛一张
+  **10-27 第四版: 单词记忆图 + 学习画像**(10-27 02:00 **已部署生产**,提交 3a94c7d;8 个改动文件生产==HEAD~1 整推 + 新文件
+  services/tutor_profile.py、services/word_picture.py、utils/spelling_diff.py;新表 word_pictures 由 create_all 建;两个服务都重启;
+  备份 /root/eh_db_before_tutor4_20261027_0152.db、/root/eh_code_before_tutor4_20261027_0152.tgz、frontend/dist_bak_20261027_0152,
+  构建号 mvpk1p49;出图 Key 经管理端接口写入(stdin 传,没落盘没回显),开放范围仍是 hq、每人 20 次没动。
+  生产冒烟(临时学生跑完删净): 「elephant 好难记,给我画张记忆图」→ lookup_word + draw_word_picture,首字 3.0s,图 39 秒画好、
+  公网 200 58KB(长鼻子卷着字母 e,单词拼写正确);「我这周学得怎么样」→ get_my_progress 按画像答;次数 20→18(问 1 + 画 1),
+  图留着(pic_id 1,全平台共用))(用户给了一个出图 Key「GPT Image 2.5 Sunburst…定价 3 毛一张
   你设计下」→「通了就按你说的开发」→「再加上这个 agent 还知道这个学生在我们系统的学习情况」):
   ①**出图 Key 隔离**: ai_providers 一行 provider_name='image_tutor'(Fernet 加密),和 claude_tutor 一样**不能设默认**
   (admin/ai_config 的 DEDICATED_PROVIDERS 两处 400),ai_service 默认通道 / OCR / TTS 三处 `notin_(("claude_tutor","image_tutor"))`。
