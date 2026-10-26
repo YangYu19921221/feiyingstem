@@ -4,7 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const API = 'https://pikachu.claudecode.love/v1/images/generations';
-const KEY = 'sk-54936f745ee385e62e6f6b304c988928faead2a727dc4cd8bcbc2fc45912533f';
+// Key 不进仓库: 运行前 export IMAGE_API_KEY=...
+const KEY = process.env.IMAGE_API_KEY;
+if (!KEY) { console.error('请先设置环境变量 IMAGE_API_KEY'); process.exit(1); }
 
 const STYLE_TAIL =
   'Full-body RPG game card portrait illustration, low-poly paper-craft aesthetic with soft cinematic rim light, ' +
