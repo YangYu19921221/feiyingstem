@@ -22,6 +22,18 @@ ai_service._get_ai_config 也排除它。主模型 model_name,备用 extra_confi
 - 每个学生**一共**送 free_total 次(管理端设,默认 20),**不按天清零**;老师给本班学生加(tutor_allowances.extra)
 - 扣次数是一条条件 UPDATE(used + cost <= 送的 + 加的),两台设备同时问不会超;调用彻底失败 / 停下时一个字没出 → 退回
 
+## 收费(用户 10-26「免费 20 次后需要付费」→「按你建议,写进合同,要让家长觉得值、便宜,也要真能帮到孩子」)
+合同第三条第 10 款、招商手册第六章、家长手册第八章写的就是下面这几条,改数字要四处一起改:
+- 学习卡带次数: 新卡包政策的学习卡(入门卡除外)兑换时给这个学生加 CARD_TUTOR_TIMES 次(add_card_bonus,
+  按兑换码去重,同一张卡只送一次)
+- 机构次数池: 加盟机构向平台按次进货(POOL_PRICE 元/次,POOL_MIN_BUY 次起),平台在机构管理页给机构加;
+  机构老师给本机构学生加次数时从池里扣,扣不出来 409 —— 不然老师「加次数」就是免费送平台的模型费。
+  **直营(org 1)不走池子**(平台自己的,老师照旧随便加)
+- 一道题的追问不另算(followup_state): 同一段对话里,付过次数的那次提问之后 FOLLOWUP_MINUTES 分钟内、
+  用快速回答、没有新照片的追问,最多 FOLLOWUP_FREE 次不扣次数。这是「孩子一直答不上来」的另一半:
+  提示词里规定先提示、再提示、还不会就讲答案和理由并出一道同类题(RULES 第 3 条),每一步都要孩子再说一句,
+  如果每句都扣次数,越不会的孩子花得越多。深度思考的追问照常扣(它一次就要几毛钱)
+
 ## 省钱(用户原话「贵…要节约」)
 - 回答 max_tokens 有上限,只带最近几轮对话,工具最多 3 轮
 - 规则部分走提示缓存(cache_control,中转实测支持);孩子的情况放在后面一段,不影响缓存
@@ -30,7 +42,7 @@ ai_service._get_ai_config 也排除它。主模型 model_name,备用 extra_confi
 ## 安全
 - 只发学习数据,不发孩子姓名、学校、手机号
 - 照片不落盘;助手回答第一行写「我看到的题目: …」,老师看记录时知道问的是什么
-- 作业/考试题只给提示(规则写在提示词里;机器做不到 100%,所以老师能看对话)
+- 作业/考试题先提示、再提示,试过两次还不会才讲答案和理由并出同类题(RULES 第 3 条;机器做不到 100%,所以老师能看对话)
 - 工具全部按 student_id 查,孩子查不到别人的数据(测试锁住)
 """
 from __future__ import annotations
@@ -55,7 +67,7 @@ from app.core.tenancy import DEFAULT_ORG_ID
 from app.core.timeutil import local_day_utc_range, local_today, utc_now
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, LearningProgress, LearningRecord
 from app.models.system_config import AIProvider, SystemConfig
-from app.models.tutor import TutorAllowance, TutorMessage
+from app.models.tutor import TutorAllowance, TutorGrantLog, TutorMessage, TutorOrgPool, TutorPoolLedger
 from app.models.user import User
 from app.models.word import BookStage, Unit, UnitWord, Word, WordBook, WordDefinition
 
@@ -65,8 +77,9 @@ PROVIDER_NAME = "claude_tutor"
 QUOTA_FEATURE = "tutor"
 SETTINGS_KEY = "tutor_settings"
 # hq = 只开给直营学生;free_total = 每个学生一共送几次;deep_cost = 深度思考一次算几次
-DEFAULT_SETTINGS = {"scope": "hq", "free_total": 20, "deep_cost": 2}
-SCOPES = ("off", "hq", "all")
+DEFAULT_SETTINGS = {"scope": "pack", "free_total": 20, "deep_cost": 2}
+# hq = 只开直营;pack = 直营 + 新卡包政策的加盟机构(卡包合同里写了学习助手,10-26);all = 全部机构
+SCOPES = ("off", "hq", "pack", "all")
 MODES = ("fast", "deep")
 
 DEFAULT_DEEP_MODEL = "claude-opus-5-5"
@@ -89,9 +102,13 @@ RULES = """你是「飞鹰AI英语」里的英语学习助手「小鹰老师」,
 你能做的: 讲单词怎么记、拼写错在哪、语法、句子意思、学习方法;帮孩子看他拍的英语题;给他出小练习;告诉他今天还有什么任务。
 必须遵守:
 1. 只聊英语学习。别的话题(游戏、八卦、别的科目)用一句话温和地带回英语学习。
-2. 回答简短、口语化,一般不超过 120 个汉字;要分几点时一行一点。不用星号、井号、表格等 markdown 符号,不用表情,少用感叹号。英文单词和例句保持英文。
+2. 回答简短、口语化,一般不超过 120 个汉字(按第 3 条第三步讲答案和理由时可以到 200 个汉字);要分几点时一行一点。不用星号、井号、表格等 markdown 符号,不用表情,少用感叹号。英文单词和例句保持英文。
    要查东西时直接调工具,调之前不要说「我查一下」「稍等」之类的话。
-3. 作业、考试、练习里的题,不要直接说出答案或正确选项。先给提示、讲思路,让孩子自己说出答案;孩子说了答案以后,再告诉他对不对、为什么。孩子让你代写作文或句子时,帮他列思路、给个开头,不整篇代写。
+3. 作业、考试、练习里的题,按三步帮,不要一上来就说答案或正确选项:
+   第一步,只点方向: 这题考什么、该往哪想,让孩子自己再试一次。
+   第二步,孩子答错了或说不会,给更具体的提示: 缩小范围、举一个类似的例子,或者给出首字母、关键词。
+   第三步,还是不会,或者孩子说「还是不会」「讲给我听」,就把答案和一步一步的理由讲清楚,讲完马上出一道同类的题让他自己做一遍(练单词就用 make_practice 出卡片),他做对了具体地夸。
+   孩子已经试过两次还答不上来时,不要再让他自己想,第三步一定要讲明白,别让他一直卡着。孩子说出答案以后,告诉他对不对、为什么。孩子让你代写作文或句子时,帮他列思路、给个开头,不整篇代写。
 4. 孩子发来题目照片时,回答第一行写「我看到的题目: 」加上你认出的题目原文(看不清就说看不清,请他重拍清楚),然后按第 3 条给提示。
 5. 讲单词的音标、释义、例句之前,先用 lookup_word 查课本里的说法,以课本为准。英文拼写和语法必须准确,拿不准就说拿不准,不要编。
 6. 孩子问今天要做什么、做完没有,用 get_today_tasks 查;想知道自己哪些词容易错,用 get_weak_words 查;想练习、默写、考考自己,用 make_practice 出卡片(一次最多 8 个词,优先用他常错的词或今天任务里的词,今天任务里的词用 get_task_words 查);要他去做复习、作业或看错题时,用 show_link 给他一个按钮。工具查到的都是这个孩子自己的数据,可以直接告诉他。出了练习卡以后,回答里不要再写出卡上的单词和中文意思(写了等于把答案给他了),一句话让他在下面做就行。
@@ -151,7 +168,7 @@ LINKS = {
 }
 THINKING_STATUS = {"fast": "在想…", "deep": "在深度思考…"}
 DEEP_NOTE = ("这次孩子选了「深度思考」: 可以讲得更透一点,分几步讲清楚,但仍然口语化,不超过 250 个汉字;"
-             "作业、考试题仍然只给提示不给答案。")
+             "作业、考试题仍然按三步来: 先提示,试过两次还不会再讲答案和理由。")
 TOOL_STATUS = {
     "get_today_tasks": "在看你今天的任务…",
     "get_weak_words": "在看你常错的词…",
@@ -202,17 +219,30 @@ def cost_of(mode: str, settings: dict) -> int:
     return settings["deep_cost"] if mode == "deep" else 1
 
 
-def scope_allows(scope: str, user: User) -> bool:
+async def scope_allows(db: AsyncSession, scope: str, user: User) -> bool:
     if scope == "all":
         return True
-    if scope == "hq":
-        return (user.org_id or DEFAULT_ORG_ID) == DEFAULT_ORG_ID
+    if scope in ("hq", "pack") and (user.org_id or DEFAULT_ORG_ID) == DEFAULT_ORG_ID:
+        return True
+    if scope == "pack":
+        from app.services import card_pack
+        return await card_pack.plan_of(db, user.org_id) == card_pack.PLAN_PACK
     return False
 
 
 # ---------------------------------------------------------------- 次数(每个学生一共送 N 次,老师加)
 
-MAX_EXTRA = 1000          # 老师一共最多给一个学生加多少次(防手滑填成 10000)
+# 老师一共最多给一个学生加到多少次(一次最多加 100 在接口那边拦着,这里防的是反复点)。
+# 学习卡带的次数是买来的,不受这个上限
+MAX_EXTRA = 5000
+CARD_TUTOR_TIMES = 50                         # 每张学习卡带几次(合同第三条第 10 款)
+CARD_TUTOR_KINDS = ("b15", "b5", "p2", "b1")  # 入门卡(¥15 体验卡)不带
+POOL_PRICE = 0.3                              # 机构进货价 元/次(合同第三条第 10 款)。快速一问成本约 ¥0.1,追问不另算,按一问带 1.5 次追问 ≈ ¥0.25,毛利很薄;要调价按合同提前 30 天通知
+POOL_MIN_BUY = 1000                           # 每次进货起订量
+FOLLOWUP_FREE = 3                             # 一道题最多追问几次不另算(三步: 试一次 → 再试一次 → 做同类题)
+FOLLOWUP_MINUTES = 15                         # 付过次数的那次提问之后多久内算「同一道题」
+# TutorMessage.cost: NULL = 加这列之前的提问(当付过费的算)/ >0 付过 / 0 免费追问 / -1 没调通退回了(两头都不算)
+COST_REFUNDED = -1
 
 
 async def _used_before_allowance(db: AsyncSession, user_id: int) -> int:
@@ -262,15 +292,124 @@ async def refund(db: AsyncSession, user_id: int, cost: int) -> None:
     await db.commit()
 
 
-async def grant(db: AsyncSession, user_ids: list[int], add: int) -> None:
-    """老师给学生加次数(调用方先校验是不是本班),顺手清掉「请老师加」"""
+async def plan_grant(db: AsyncSession, user_ids: list[int], add: int) -> dict[int, int]:
+    """老师给这些学生各加 add 次,实际每人能加几次(加到 MAX_EXTRA 为止)。只建行不改数"""
     for uid in user_ids:
         await _ensure_allowance(db, uid)
-    await db.execute(
-        update(TutorAllowance).where(TutorAllowance.user_id.in_(user_ids))
-        .values(extra=case((TutorAllowance.extra + add > MAX_EXTRA, MAX_EXTRA), else_=TutorAllowance.extra + add),
-                requested_at=None, updated_at=utc_now())
+    rows = (await db.execute(select(TutorAllowance.user_id, TutorAllowance.extra)
+                             .where(TutorAllowance.user_id.in_(user_ids)))).all()
+    return {uid: max(0, min(add, MAX_EXTRA - (extra or 0))) for uid, extra in rows}
+
+
+async def apply_grant(db: AsyncSession, incs: dict[int, int], teacher_id: int) -> None:
+    """按 plan_grant 的结果加上,顺手清掉「请老师加」,每人记一笔明细。不 commit"""
+    for uid, inc in incs.items():
+        values = {"requested_at": None, "updated_at": utc_now()}
+        if inc > 0:
+            values["extra"] = case((TutorAllowance.extra + inc > MAX_EXTRA, MAX_EXTRA), else_=TutorAllowance.extra + inc)
+            db.add(TutorGrantLog(user_id=uid, times=inc, source="teacher", ref_id=teacher_id))
+        await db.execute(update(TutorAllowance).where(TutorAllowance.user_id == uid).values(**values)
+                         .execution_options(synchronize_session=False))
+
+
+async def add_card_bonus(db: AsyncSession, user_id: int, code_id: int, times: int = CARD_TUTOR_TIMES) -> bool:
+    """兑换学习卡送次数。同一张卡只送一次(明细表 card 那支按兑换码唯一);返回这次送没送。不 commit"""
+    r = await db.execute(sqlite_insert(TutorGrantLog)
+                         .values(user_id=user_id, times=times, source="card", ref_id=code_id, created_at=utc_now())
+                         .on_conflict_do_nothing())
+    if r.rowcount != 1:
+        return False
+    await _ensure_allowance(db, user_id)
+    await db.execute(update(TutorAllowance).where(TutorAllowance.user_id == user_id)
+                     .values(extra=TutorAllowance.extra + times, updated_at=utc_now())
+                     .execution_options(synchronize_session=False))
+    return True
+
+
+async def card_times(db: AsyncSession, user_id: int) -> int:
+    """学习卡一共带来几次(学生端写明「学习卡带了 N 次」)"""
+    return int((await db.execute(
+        select(func.coalesce(func.sum(TutorGrantLog.times), 0))
+        .where(TutorGrantLog.user_id == user_id, TutorGrantLog.source == "card"))).scalar() or 0)
+
+
+# ---------------------------------------------------------------- 机构次数池(加盟机构进货,老师从池里加)
+
+def uses_pool(org_id: Optional[int]) -> bool:
+    return (org_id or DEFAULT_ORG_ID) != DEFAULT_ORG_ID
+
+
+async def pool_status(db: AsyncSession, org_id: int) -> dict:
+    # 直接查列,不用 db.get: 池子是条件 UPDATE 改的(不同步会话),db.get 会拿到会话里缓存的旧值
+    row = (await db.execute(select(TutorOrgPool.total, TutorOrgPool.used)
+                            .where(TutorOrgPool.org_id == org_id))).first()
+    total, used = (row.total, row.used) if row else (0, 0)
+    return {"total": total, "used": used, "left": max(0, total - used),
+            "price": POOL_PRICE, "min_buy": POOL_MIN_BUY}
+
+
+async def _ensure_pool(db: AsyncSession, org_id: int) -> None:
+    await db.execute(sqlite_insert(TutorOrgPool).values(org_id=org_id, total=0, used=0, updated_at=utc_now())
+                     .on_conflict_do_nothing(index_elements=[TutorOrgPool.org_id]))
+
+
+async def credit_pool(db: AsyncSession, org_id: int, times: int, note: Optional[str], operator_id: int) -> bool:
+    """平台给机构加次数(times>0 = 进货到账)/ 扣回(times<0,最多扣到已经分出去的数)。不 commit;
+    扣回扣不动返回 False"""
+    await _ensure_pool(db, org_id)
+    q = update(TutorOrgPool).where(TutorOrgPool.org_id == org_id)
+    if times < 0:
+        q = q.where(TutorOrgPool.total + times >= TutorOrgPool.used)
+    r = await db.execute(q.values(total=TutorOrgPool.total + times, updated_at=utc_now())
+                         .execution_options(synchronize_session=False))
+    if r.rowcount != 1:
+        return False
+    db.add(TutorPoolLedger(org_id=org_id, times=times, source="purchase" if times > 0 else "adjust",
+                           note=(note or "").strip()[:200] or None, created_by=operator_id))
+    return True
+
+
+async def take_from_pool(db: AsyncSession, org_id: int, n: int) -> bool:
+    """老师加次数时从机构池里扣。一条条件 UPDATE: 两位老师同时加不会扣成负数。不 commit"""
+    await _ensure_pool(db, org_id)
+    r = await db.execute(
+        update(TutorOrgPool)
+        .where(TutorOrgPool.org_id == org_id, TutorOrgPool.used + n <= TutorOrgPool.total)
+        .values(used=TutorOrgPool.used + n, updated_at=utc_now())
         .execution_options(synchronize_session=False))
+    return r.rowcount == 1
+
+
+# ---------------------------------------------------------------- 一道题的追问不另算
+
+async def followup_state(db: AsyncSession, conversation_id: int) -> Optional[dict]:
+    """这段对话现在还能免费追问几次。None = 不在追问时间里(下一问照常扣次数)。
+    付过次数的最后一问(cost NULL 或 >0)之后 FOLLOWUP_MINUTES 分钟内,cost=0 的追问最多 FOLLOWUP_FREE 次。
+    时间在 Python 里比,不在 SQL 里比字符串(SQLite 微秒格式混用的坑)"""
+    anchor = (await db.execute(
+        select(TutorMessage.id, TutorMessage.created_at)
+        .where(TutorMessage.conversation_id == conversation_id, TutorMessage.role == "user",
+               (TutorMessage.cost.is_(None)) | (TutorMessage.cost > 0))
+        .order_by(TutorMessage.id.desc()).limit(1))).first()
+    if anchor is None or anchor.created_at is None:
+        return None
+    until = anchor.created_at + timedelta(minutes=FOLLOWUP_MINUTES)
+    if utc_now() >= until:
+        return None
+    used = int((await db.execute(
+        select(func.count(TutorMessage.id))
+        .where(TutorMessage.conversation_id == conversation_id, TutorMessage.role == "user",
+               TutorMessage.cost == 0, TutorMessage.id > anchor.id))).scalar() or 0)
+    left = FOLLOWUP_FREE - used
+    if left <= 0:
+        return None
+    return {"left": left, "until": until.isoformat()}
+
+
+async def available_to(db: AsyncSession, user: User) -> bool:
+    """这个人现在能不能用学习助手(开放范围 + 配好了 Key)"""
+    settings = await get_settings(db)
+    return await scope_allows(db, settings["scope"], user) and await relay_conf(db) is not None
 
 
 async def request_more(db: AsyncSession, user_id: int) -> None:

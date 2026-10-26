@@ -9,7 +9,7 @@
   不按天清零(用户 10-26「每个学生总共 20,需要多的需要教师给增加额度」)
 规则见 services/tutor.py。
 """
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -44,6 +44,9 @@ class TutorMessage(Base):
     model = Column(String(60), nullable=True)
     # fast = 快速回答 / deep = 深度思考(更强的模型 + 先想再答,算 2 次)。NULL = 10-26 加这列之前的(都是快速)
     mode = Column(String(10), nullable=True)
+    # 孩子这条提问扣了几次(只记在 user 消息上): 0 = 同一道题的追问,不另算(services/tutor.followup_state);
+    # NULL = 10-26 晚加这列之前的提问(按 mode 算: 快速 1 / 深度 deep_cost)
+    cost = Column(Integer, nullable=True)
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
     cache_read_tokens = Column(Integer, nullable=True)
@@ -68,3 +71,50 @@ class TutorAllowance(Base):
     # 孩子点了「请老师加次数」;老师加过就清空
     requested_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, server_default=func.now())
+
+
+class TutorOrgPool(Base):
+    """机构的学习助手次数池(2026-10-26 用户「免费 20 次后后续需要付费」→「按你建议,写进合同」)。
+
+    加盟机构向平台**按次进货**(合同第三条),平台在这里给机构加次数(total);
+    老师给本机构学生加次数时从池里扣(used),池里不够就加不了 —— 不然老师「加次数」就成了
+    免费送平台的模型费。直营(org 1)不走池子,平台自己的。
+    used 只用一条条件 UPDATE 加(used + n <= total),两位老师同时加不会超
+    """
+    __tablename__ = "tutor_org_pools"
+
+    org_id = Column(Integer, primary_key=True)
+    total = Column(Integer, nullable=False, default=0, server_default="0")
+    used = Column(Integer, nullable=False, default=0, server_default="0")
+    updated_at = Column(DateTime, server_default=func.now())
+
+
+class TutorPoolLedger(Base):
+    """次数池到账记录(只加不改): purchase=机构进货到账 / adjust=平台扣回(times 为负)"""
+    __tablename__ = "tutor_pool_ledger"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    org_id = Column(Integer, nullable=False, index=True)
+    times = Column(Integer, nullable=False)
+    source = Column(String(10), nullable=False)
+    note = Column(String(200), nullable=True)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class TutorGrantLog(Base):
+    """给学生加次数的明细(只加不改): teacher=老师加(ref_id=老师 id)/ card=兑换学习卡带的(ref_id=兑换码 id)。
+    同一张卡只送一次(card 那支 ref_id 唯一,部分唯一索引);孩子 / 家长问「卡带的次数去哪了」查这里"""
+    __tablename__ = "tutor_grant_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    times = Column(Integer, nullable=False)
+    source = Column(String(10), nullable=False)
+    ref_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_tutor_grant_user", "user_id"),
+        Index("uq_tutor_grant_card", "ref_id", unique=True, sqlite_where=text("source = 'card'")),
+    )

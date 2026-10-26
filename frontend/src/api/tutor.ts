@@ -43,15 +43,23 @@ export interface TutorStatus {
   deep_enabled: boolean;
   /** 深度思考一次算几次 */
   deep_cost: number;
+  /** 学习卡一共带来几次(已含在 extra 里) */
+  card_times: number;
+  /** 同一道题的追问: 付过次数的那问之后 followup_minutes 分钟内,最多 followup_free 次不另算 */
+  followup_free: number;
+  followup_minutes: number;
   max_text: number;
 }
+
+/** 这段对话现在还能免费追问几次;null = 下一问照常算次数 */
+export type TutorFollowup = { left: number; until: string } | null;
 
 export interface TutorConversationItem { id: number; title: string; message_count: number; updated_at: string | null }
 
 export const getTutorStatus = () => client.get<TutorStatus>('/student/tutor/status');
 export const listConversations = () => client.get<{ items: TutorConversationItem[] }>('/student/tutor/conversations');
 export const getConversation = (id: number) =>
-  client.get<{ id: number; title: string; messages: TutorMessage[] }>(`/student/tutor/conversations/${id}`);
+  client.get<{ id: number; title: string; messages: TutorMessage[]; followup: TutorFollowup }>(`/student/tutor/conversations/${id}`);
 
 export const requestMoreTutor = () => client.post<{ ok: boolean }>('/student/tutor/request-more');
 export const stopTutor = (userMessageId: number) =>
@@ -64,7 +72,7 @@ export type TutorEvent =
   | { type: 'thinking' }
   | { type: 'status'; text: string }
   | { type: 'card'; card: TutorCard }
-  | { type: 'done'; message_id: number; stopped?: boolean; refunded?: boolean }
+  | { type: 'done'; message_id: number; stopped?: boolean; refunded?: boolean; followup?: TutorFollowup }
   | { type: 'error'; message: string; refunded?: boolean };
 
 export class TutorAskError extends Error {
@@ -148,11 +156,16 @@ export interface TutorQuotaStudent {
   questions: number;
   requested_at: string | null;
 }
+/** 机构学习助手次数池(加盟机构老师加次数从这里扣);直营为 null */
+export interface TutorPool { total: number; used: number; left: number; price: number; min_buy: number }
 export const getTutorStudents = () =>
-  client.get<{ free_total: number; deep_cost: number; enabled: boolean; requested: number; items: TutorQuotaStudent[] }>(
-    '/teacher/tutor/students');
+  client.get<{
+    free_total: number; deep_cost: number; enabled: boolean; requested: number; items: TutorQuotaStudent[];
+    pool: TutorPool | null; card_times: number;
+  }>('/teacher/tutor/students');
 export const grantTutor = (studentIds: number[], add: number) =>
-  client.post<{ ok: boolean; count: number }>('/teacher/tutor/grant', { student_ids: studentIds, add });
+  client.post<{ ok: boolean; count: number; added: number; capped: number; pool: TutorPool | null }>(
+    '/teacher/tutor/grant', { student_ids: studentIds, add });
 export const TUTOR_GRANT_MAX = 100;
 
 // ---- 管理端
@@ -166,7 +179,7 @@ export interface TutorUsageDay {
   }>;
 }
 export interface TutorAdminState {
-  scope: 'off' | 'hq' | 'all';
+  scope: 'off' | 'hq' | 'pack' | 'all';
   free_total: number;
   deep_cost: number;
   provider: null | {
@@ -185,3 +198,16 @@ export const saveTutorAdmin = (body: {
 export const testTutorAdmin = () =>
   client.post<{ results: Array<{ model: string; mode: TutorMode; ok: boolean; message: string; ms: number }> }>(
     '/admin/tutor/test', undefined, { timeout: 70000 });
+
+// ---- 平台: 各机构的学习助手次数池(合同第三条第 10 款: 机构按次进货)
+export interface TutorPoolDetail extends TutorPool {
+  org_id: number;
+  org_name: string;
+  ledger: Array<{ id: number; times: number; source: 'purchase' | 'adjust'; note: string | null; created_at: string | null }>;
+}
+export const getTutorPools = () =>
+  client.get<{ price: number; min_buy: number; card_times: number; items: Record<string, { total: number; used: number; left: number }> }>(
+    '/admin/tutor/pools');
+export const getTutorPool = (orgId: number) => client.get<TutorPoolDetail>(`/admin/tutor/pools/${orgId}`);
+export const creditTutorPool = (orgId: number, times: number, note?: string) =>
+  client.post<TutorPoolDetail>(`/admin/tutor/pools/${orgId}`, { times, note });

@@ -1,7 +1,7 @@
 /**
  * 教师端学生详情:「问小鹰老师」对话记录(2026-10-26,只读)
  *
- * 学习助手的规则是作业/考试题只给提示不给答案,但机器做不到 100%,所以老师能看孩子问了什么、
+ * 学习助手的规则是作业/考试题先提示、试过两次还不会才讲答案(10-26 晚起),但机器做不到 100%,所以老师能看孩子问了什么、
  * 助手怎么答的。孩子拍的题目照片不保存,助手回答第一行会写「我看到的题目: …」。
  */
 import { useEffect, useState } from 'react';
@@ -37,7 +37,7 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
         {data && <p className="text-xs text-slate-500">一共问过 {data.total_questions} 次</p>}
       </div>
       <p className="mb-4 text-xs leading-5 text-slate-500">
-        孩子和 AI 学习助手的对话。助手对作业、考试题只给提示,不直接给答案;孩子拍的照片不保存。
+        孩子和 AI 学习助手的对话。助手对作业、考试题先给提示,孩子试过两次还不会才讲答案和理由并出同类题;孩子拍的照片不保存。
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <ul className="divide-y divide-slate-100">

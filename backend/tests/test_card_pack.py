@@ -402,3 +402,21 @@ async def test_pack_org_cannot_switch_to_all_books(client, env):
     r = await client.patch(f"/api/v1/admin/organizations/{env['old'].id}",
                            json={"access_mode": "all_books"}, headers=_hdr(env["admin"]))
     assert r.status_code == 200
+
+
+async def test_pack_card_brings_tutor_times(client, env, db_session):
+    """学习卡(入门卡除外)兑换时带「问小鹰老师」50 次(合同第三条第 10 款);入门卡不带"""
+    from app.models.tutor import TutorAllowance
+    from app.services import tutor
+    await _pay(client, env)
+    code = (await _gen(client, env["oa"], card_kind="b1", book_ids=[env["books"]["p3"].id])).json()[0]["code"]
+    r = await client.post("/api/v1/subscription/redeem", json={"code": code}, headers=_hdr(env["stu"]))
+    assert r.json()["success"] and f"小鹰老师」{tutor.CARD_TUTOR_TIMES} 次" in r.json()["message"]
+    row = await db_session.get(TutorAllowance, env["stu"].id)
+    await db_session.refresh(row)
+    assert row.extra == tutor.CARD_TUTOR_TIMES
+    trial = (await _gen(client, env["oa"], card_kind="trial")).json()[0]["code"]
+    r = await client.post("/api/v1/subscription/redeem", json={"code": trial}, headers=_hdr(env["stu"]))
+    assert r.json()["success"] and "小鹰老师" not in r.json()["message"]
+    await db_session.refresh(row)
+    assert row.extra == tutor.CARD_TUTOR_TIMES

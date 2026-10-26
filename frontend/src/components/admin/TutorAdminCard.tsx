@@ -2,7 +2,7 @@
  * 管理端首页「AI 学习助手」(2026-10-26)。规则见后端 services/tutor.py
  *
  * 学习助手用单独的一个 Claude Key(贵),只给学习助手,周报 / 例句这些不走它。
- * 这里管: 开给谁(关闭 / 只开直营 / 全部机构)、每个学生一共送几次(用完了老师在「学习助手次数」加)、
+ * 这里管: 开给谁(关闭 / 只开直营 / 直营 + 卡包机构 / 全部机构)、每个学生一共送几次(用完了老师在「学习助手次数」加)、
  * 快速 / 深度思考两组模型(深度思考模型留空 = 关掉)、深度思考一次算几次、Key(留空 = 不改),
  * 以及近 7 天用了多少(回答数、提问人数、token,按模型和回答方式分开)。
  */
@@ -21,6 +21,7 @@ function errorText(e: unknown): string {
 const SCOPES: Array<{ value: TutorAdminState['scope']; label: string }> = [
   { value: 'off', label: '关闭' },
   { value: 'hq', label: '只开直营' },
+  { value: 'pack', label: '直营 + 卡包机构(合同里写了)' },
   { value: 'all', label: '全部机构' },
 ];
 

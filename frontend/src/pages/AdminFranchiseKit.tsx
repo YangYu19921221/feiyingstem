@@ -158,6 +158,7 @@ function ContractDoc({ fullPay = false }: { fullPay?: boolean }) {
           <strong>学生账号数量不限</strong>,学生可学的书以其兑换的学习卡为准。
           标准包同时包含<strong>机构独立后台</strong>、本条第 3 款的<strong>飞鹰英语专属内容</strong>、
           第三条第 6 款约定的<strong>飞鹰英语带教培训</strong>与服务期内的系统升级。
+          系统内的 <strong>AI 学习助手「小鹰老师」</strong>按提问次数计,赠送与购买方式见第三条第 10 款。
         </p>
         <p>
           3. <strong>飞鹰英语专属内容</strong>(飞鹰自研教材配套单词本、句型本及配套教学内容,
@@ -243,6 +244,21 @@ function ContractDoc({ fullPay = false }: { fullPay?: boolean }) {
           乙方可书面申请服务期相应顺延。
         </p>
         <p>9. 甲方对乙方向其学员的终端收费价格与招生政策不予干涉。</p>
+        {/* 10-26 用户「免费 20 次后需要付费」→「按你建议写进合同,要让家长觉得值、便宜,也要确实能帮到孩子」。
+            数字真源 backend/app/services/tutor.py(CARD_TUTOR_TIMES / POOL_PRICE / POOL_MIN_BUY / FOLLOWUP_*),
+            改数字要与招商手册第六章、家长手册第八章一起改 */}
+        <p>
+          10. AI 学习助手:本系统为学生提供 AI 学习助手「小鹰老师」(讲解单词记法、拼写错因、语法与题目思路,出小练习),按提问次数计算:
+          (1)每个学生账号<strong>赠送 20 次</strong>,不按天清零;
+          (2)本协议学习卡(入门卡除外)<strong>每张另带 50 次</strong>,学生兑换学习卡时自动到账,不另收费;
+          (3)同一道题在 15 分钟内的追问(快速回答、不另发照片)<strong>最多 3 次不另计次数</strong>;学生选择「深度思考」的,每次计 2 次;
+          (4)以上次数不够用的,乙方可向甲方购买,单价人民币 <strong>0.3 元 / 次</strong>,每次 <strong>1,000 次起</strong>;
+          甲方收到款项后当日开通至乙方的机构次数池,由乙方老师在系统内分配给本机构学生;
+          (5)学习助手对作业、考试题按「先给提示,再给更具体的提示,学生仍不会时讲解答案与理由并出一道同类练习」的方式辅导,
+          不提供拍照搜题、代写作业服务;学习助手由人工智能模型生成回答,可能出现错误,乙方老师可在系统内查看本班学生的提问与回答记录;
+          (6)甲方因模型服务成本变化调整第(4)项单价的,应提前三十日书面通知乙方,已付款的次数不受影响;
+          乙方宣传学习助手时,不得称其可以「拍照出答案」或保证提高成绩。
+        </p>
         <table className="mt-3 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
           <thead>
             <tr>
@@ -286,6 +302,11 @@ function ContractDoc({ fullPay = false }: { fullPay?: boolean }) {
               <td className="border border-slate-500 px-2 py-1.5 text-center">系统升级</td>
               <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">免费</td>
               <td className="border border-slate-500 px-2 py-1.5">服务期内新功能免费同步;新上架的单词本纳入对应卡种的可选范围,不自动加入已发出的卡</td>
+            </tr>
+            <tr>
+              <td className="border border-slate-500 px-2 py-1.5 text-center">AI 学习助手</td>
+              <td className="border border-slate-500 px-2 py-1.5 text-center font-semibold">赠送 + ¥0.3 / 次</td>
+              <td className="border border-slate-500 px-2 py-1.5">每生赠 20 次,学习卡每张带 50 次(入门卡除外);同一道题 15 分钟内追问 3 次不另计;不够用按 ¥0.3 / 次购买,1,000 次起,见第三条第 10 款</td>
             </tr>
             <tr>
               <td className="border border-slate-500 px-2 py-1.5 text-center">带教培训</td>
@@ -390,6 +411,13 @@ function ContractDoc({ fullPay = false }: { fullPay?: boolean }) {
           亦不向第三方提供(法律法规另有规定的除外)。
         </p>
         <p>2. 双方对本协议合作价格及知悉的对方商业信息负有保密义务,协议终止后仍然有效。</p>
+        <p>
+          3. AI 学习助手处理学生提问时,甲方只向模型服务提供方发送与学习有关的内容(提问文字、题目照片、学习记录),
+          不发送学生姓名、学校与联系方式;学生拍摄的题目照片不在系统内保存。
+        </p>
+        <p className="rounded bg-amber-50 px-2 text-[13px] text-amber-900">
+          【待确认】学习助手所用模型服务是否需要办理生成式人工智能服务备案、向学员及家长告知的方式,请甲方咨询律师后补入本款。
+        </p>
       </Clause>
 
       <Clause no="九" title="协议期限与续签">
@@ -626,6 +654,7 @@ function PitchDoc() {
           <strong>飞鹰英语专属内容</strong>(飞鹰语法、单词速记法等)、<strong>老师带教培训</strong>与服务期内系统升级,
           不另收加盟费、培训费、内容费。签约付第 1 期即开通,
           第 3、6 个月各付一期;一次付清送 10 张 5本卡。
+          AI 学习助手「小鹰老师」每生送 20 次、学习卡每张带 50 次,不够用 ¥0.3 / 次购买(1,000 次起)。
         </p>
         <p className="mt-2">
           卡种、进货价、每期开多少卡、补货和投入产出测算,详见<strong>《招商手册》第六章「合作方案」</strong>;

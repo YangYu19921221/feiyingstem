@@ -86,10 +86,12 @@ export default function WhatsNewNudge() {
     e.gate === 'tutor' && e.roles.includes(role as WhatsNewEntry['roles'][number]) && !seen.includes(e.id));
   useEffect(() => {
     if (!needTutorGate || 'tutor' in gates) return;
-    const url = role === 'student' ? '/student/tutor/status' : role === 'teacher' ? '/teacher/tutor/available' : null;
+    // 机构管理员: 本机构有学习助手次数池(开放了、又是加盟机构)才弹
+    const url = role === 'student' ? '/student/tutor/status' : role === 'teacher' ? '/teacher/tutor/available'
+      : role === 'org_admin' ? '/org/info' : null;
     if (!url) return;
-    client.get<{ enabled: boolean }>(url)
-      .then((r) => setGates((g) => ({ ...g, tutor: !!r.enabled })))
+    client.get<{ enabled?: boolean; tutor_pool?: unknown }>(url)
+      .then((r) => setGates((g) => ({ ...g, tutor: role === 'org_admin' ? !!r.tutor_pool : !!r.enabled })))
       .catch(() => setGates((g) => ({ ...g, tutor: false })));
   }, [needTutorGate, gates, role]);
 

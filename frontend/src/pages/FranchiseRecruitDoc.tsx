@@ -494,11 +494,36 @@ export default function FranchiseRecruitDoc({ fullPay = false }: { fullPay?: boo
         </>
       )}
 
+        {/* 10-26 学习助手收费,与合作协议第三条第 10 款同口径;数字真源 backend/app/services/tutor.py */}
+        <p className="mt-3 font-bold text-slate-900">AI 学习助手「小鹰老师」:先送,不够再买</p>
+        <table className="mt-1.5 w-full border-collapse text-[13px]" style={{ breakInside: 'avoid' }}>
+          <thead>
+            <tr className="bg-[#FFF3EC]">
+              <th className={`${td} text-center`}>项目</th>
+              <th className={`${td} text-center`}>次数 / 价格</th>
+              <th className={`${td} text-center`}>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td className={`${td} text-center`}>每个学生</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>送 20 次</td><td className={td}>开号就有,不按天清零</td></tr>
+            <tr><td className={`${td} text-center`}>每张学习卡</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>带 50 次</td><td className={td}>学生兑换卡时自动到账(入门卡不带),标准包 220 张卡共带 11,000 次</td></tr>
+            <tr><td className={`${td} text-center`}>同一道题追问</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>3 次不另算</td><td className={td}>15 分钟内接着问(快速回答),孩子答不上来可以放心多问几句</td></tr>
+            <tr><td className={`${td} text-center`}>不够用再买</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>¥0.3 / 次</td><td className={td}>1,000 次起(¥300),到账进机构次数池,老师在后台分给学生</td></tr>
+          </tbody>
+        </table>
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
+          <li><strong>它帮孩子想明白,不替孩子写答案</strong>:作业题先给提示,再给更具体的提示,孩子还是不会就讲清答案和理由,马上出一道同类题让他自己做一遍。不做拍照搜题。</li>
+          <li>它知道孩子今天的任务和常错的词,能当场出默写小卡片;回答里的英文点一下就能听标准音。</li>
+          <li>老师在学生详情页看得到孩子问了什么、助手怎么答的;孩子拍的题目照片不保存。</li>
+          <li>宣传时请说「英语学习助手 / 单词陪练」,不要说「拍题出答案」,也不要承诺提分。</li>
+        </ul>
+
         <p className="mt-3 font-bold text-slate-900">另计(按需订购)</p>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px] leading-5">
           <li><strong>方法课超出 12 套</strong>:按进货价 <strong>¥1,000 / 套</strong>补订,每位学员一套(详见第四章)。</li>
           <li>其他纸质配套教材:按供货清单明细计价,按需订购,运费另计。</li>
           <li>参加带教培训的交通、食宿由机构自理。</li>
+          <li><strong>AI 学习助手次数</strong>:送的和卡带的用完后,按 ¥0.3 / 次购买,1,000 次起(见上表)。</li>
         </ul>
 
         <p className="mt-3">

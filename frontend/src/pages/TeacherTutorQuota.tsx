@@ -4,12 +4,16 @@
  * 每个学生一共送 free_total 次(管理端设),不按天清零;用完了孩子点「请老师加次数」,在这里排最前。
  * 老师可以单个加、勾选几个一起加。只列本班在读学生,后端也只放行本班(有一个不是本班整批 403)。
  * 加次数进操作记录(tutor.grant)。
+ *
+ * 加盟机构(10-26 晚,合同第三条第 10 款): 老师加的次数从机构次数池里扣(机构向平台按次进货),
+ * 页面顶上写明池里还剩几次;池里不够后端 409 整批不加。直营没有池子(pool = null)。
+ * 学习卡带的次数(每张 card_times 次)兑换时自动加,也算在 extra 里。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BellRing, LoaderCircle, MessageCircle, Plus, Search } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
-import { getTutorStudents, grantTutor, TUTOR_GRANT_MAX, type TutorQuotaStudent } from '../api/tutor';
+import { getTutorStudents, grantTutor, TUTOR_GRANT_MAX, type TutorPool, type TutorQuotaStudent } from '../api/tutor';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
@@ -20,7 +24,8 @@ const displayName = (s: TutorQuotaStudent) => s.full_name || s.username;
 export default function TeacherTutorQuota() {
   const navigate = useNavigate();
   const [items, setItems] = useState<TutorQuotaStudent[]>([]);
-  const [meta, setMeta] = useState({ free_total: 20, deep_cost: 2, enabled: true, requested: 0 });
+  const [meta, setMeta] = useState({ free_total: 20, deep_cost: 2, enabled: true, requested: 0, card_times: 50 });
+  const [pool, setPool] = useState<TutorPool | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
@@ -32,7 +37,9 @@ export default function TeacherTutorQuota() {
     try {
       const r = await getTutorStudents();
       setItems(r.items);
-      setMeta({ free_total: r.free_total, deep_cost: r.deep_cost, enabled: r.enabled, requested: r.requested });
+      setMeta({ free_total: r.free_total, deep_cost: r.deep_cost, enabled: r.enabled, requested: r.requested,
+        card_times: r.card_times });
+      setPool(r.pool);
       // 有孩子在请求就先停在「请求加的」那一栏
       setFilter((f) => (f === 'all' && r.requested > 0 ? 'requested' : f));
       return r.requested;
@@ -62,8 +69,9 @@ export default function TeacherTutorQuota() {
     if (!ids.length || busy !== null) return;
     setBusy(who);
     try {
-      await grantTutor(ids, add);
-      toast.success(ids.length === 1 ? `已加 ${add} 次` : `已给 ${ids.length} 个学生各加 ${add} 次`);
+      const r = await grantTutor(ids, add);
+      const capped = r.capped > 0 ? `(${r.capped} 人已经加到上限,只加进去一部分)` : '';
+      toast.success((ids.length === 1 ? `已加 ${r.added} 次` : `已给 ${ids.length} 个学生加了 ${r.added} 次`) + capped);
       setPicked(new Set());
       // 请求加的都处理完了: 回到「全部」,让老师看到刚加完的结果,别停在一个空列表上
       if ((await load()) === 0) setFilter((f) => (f === 'requested' ? 'all' : f));
@@ -87,9 +95,23 @@ export default function TeacherTutorQuota() {
       <main className="teacher-workspace-main mx-auto max-w-5xl space-y-5">
         <section className="rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3 text-sm leading-6 text-orange-900">
           <p>每个学生一共送 <b>{meta.free_total} 次</b>,不按天清零;「深度思考」一次算 {meta.deep_cost} 次。</p>
+          <p>同一道题接着追问(15 分钟内,用快速回答)最多 3 次不另算,孩子答不上来时可以放心多问几句。</p>
           <p>次数用完的孩子点了「请老师加次数」会排在最前面。加多少你来定,一次最多 {TUTOR_GRANT_MAX} 次;孩子问了什么在学生详情页「问小鹰老师」里看得到。</p>
+          {pool && <p>孩子兑换学习卡(入门卡除外)时,每张卡自动带 {meta.card_times} 次,不用你加。</p>}
           {!meta.enabled && <p className="mt-1 text-orange-700">你们学校的学习助手现在还没开放,加了次数孩子暂时也用不了。</p>}
         </section>
+
+        {pool && (
+          <section className={`rounded-xl border px-4 py-3 text-sm leading-6 ${pool.left > 0 ? 'border-slate-200 bg-white text-slate-700' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
+            <p>
+              本机构的学习助手次数还剩 <b className={pool.left > 0 ? 'text-slate-900' : ''}>{pool.left}</b> 次
+              <span className="text-slate-500">(一共 {pool.total} 次,已经加给学生 {pool.used} 次)</span>
+            </p>
+            <p className="text-xs text-slate-500">
+              你给学生加的次数从这里扣{pool.left <= 0 ? ',现在加不了。请机构管理员向平台购买次数' : ''}。
+            </p>
+          </section>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
           {([
@@ -176,7 +198,7 @@ export default function TeacherTutorQuota() {
                           <div className={`h-full rounded-full ${s.left <= 0 ? 'bg-rose-400' : s.left <= 3 ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
                         </div>
                         <span className="text-xs text-slate-500">
-                          {s.used} / {s.total}{s.extra > 0 ? `(含老师加的 ${s.extra})` : ''} · 还剩
+                          {s.used} / {s.total}{s.extra > 0 ? `(含加的 ${s.extra})` : ''} · 还剩
                           <b className={s.left <= 0 ? ' text-rose-600' : s.left <= 3 ? ' text-amber-600' : ' text-slate-700'}> {s.left}</b>
                           {s.questions > 0 && <span className="text-slate-400"> · 问过 {s.questions} 次</span>}
                         </span>

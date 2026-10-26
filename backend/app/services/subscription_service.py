@@ -504,6 +504,12 @@ async def redeem_code(
         # 记下这张卡的范围,之后同范围新上架的书由 card_pack.sync_book 补给他
         from app.services import card_pack
         await card_pack.upsert_grant(db, user.id, code, now)
+    # 新卡包学习卡带学习助手次数(合同第三条第 10 款;入门卡不带)。按兑换码去重,与兑换同一事务
+    tutor_bonus = 0
+    if code.card_kind in _tutor_card_kinds():
+        from app.services import tutor
+        if await tutor.add_card_bonus(db, user.id, code.id):
+            tutor_bonus = tutor.CARD_TUTOR_TIMES
     await db.commit()
 
     # 文案:单书**原样**沿用改造前那几句(学生/客服都习惯了,别动);
@@ -517,6 +523,8 @@ async def redeem_code(
             msg += f"（{head}{'…' if ok_count > 3 else ''}）"
         if skipped:
             msg += f"，另有 {len(skipped)} 本已拥有未重复开通"
+    if tutor_bonus:
+        msg += f"。另送「问小鹰老师」{tutor_bonus} 次"
 
     return {
         "success": True,
@@ -527,6 +535,11 @@ async def redeem_code(
         "renewed": renewed,
         "skipped": skipped,
     }
+
+
+def _tutor_card_kinds() -> tuple[str, ...]:
+    from app.services.tutor import CARD_TUTOR_KINDS
+    return CARD_TUTOR_KINDS
 
 
 def _grant_label(grant_type: str) -> str:

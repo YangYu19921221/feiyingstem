@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, Gift, GraduationCap, History, KeyRound, Megaphone, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, Gift, GraduationCap, History, KeyRound, Megaphone, MessageCircle, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
 import { orgAdminApi } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar, quotaPercent } from '../components/OrgWidgets';
 import ChangeMyPasswordModal from '../components/org/ChangeMyPasswordModal';
@@ -287,6 +287,24 @@ export default function OrgAdminDashboard() {
               onClick={() => navigate('/admin/subscriptions')}
             >去发卡 / 看明细</button>
           </div>
+          {/* 学习助手次数池(10-26,合同第三条第 10 款): 老师给学生加「问小鹰老师」次数从这里扣,
+              用完了老师加不了 —— 机构首页要看得见还剩几次,别等老师来问才知道 */}
+          {info?.tutor_pool && (
+            <div className="admin-org-card rounded-2xl border p-5">
+              <div className="mb-1 flex items-center gap-2 text-sm text-slate-500">
+                <MessageCircle className="h-4 w-4 text-[#397b9b]" />学习助手次数
+              </div>
+              <div className="text-2xl font-bold">
+                {info.tutor_pool.left}
+                <span className="text-base text-gray-400"> 次可加</span>
+              </div>
+              <div className="mt-1 text-[11px] leading-5 text-gray-400">
+                一共 {info.tutor_pool.total} 次,老师已加给学生 {info.tutor_pool.used} 次。学习卡自带的次数不从这里扣;
+                不够了向平台购买(¥{info.tutor_pool.price}/次,{info.tutor_pool.min_buy} 次起)
+              </div>
+              {info.tutor_pool.left === 0 && <div className="mt-1 text-xs font-semibold text-red-500">用完了,老师现在给学生加不了次数</div>}
+            </div>
+          )}
           <div className="admin-org-card rounded-2xl border p-5">
             <div className="mb-1 flex items-center gap-2 text-sm text-slate-500"><GraduationCap className="h-4 w-4 text-[#397b9b]" />老师</div>
             <div className="text-2xl font-bold">{info?.teacher_count ?? '—'} 人</div>

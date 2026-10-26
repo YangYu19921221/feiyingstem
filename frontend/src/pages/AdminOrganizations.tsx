@@ -1,5 +1,5 @@
 /** 平台管理端 - 机构(加盟商)管理 */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   adminOrgApi, Organization, OrgManager, TrialProvisionResult,
@@ -10,6 +10,7 @@ import TrialAccountsModal from '../components/TrialAccountsModal';
 import { Building2, Gift, MapPin, Plus, Search, TriangleAlert, X, Check } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import OrgCardPackDialog from '../components/admin/OrgCardPackDialog';
+import OrgTutorPoolDialog from '../components/admin/OrgTutorPoolDialog';
 import { toast } from '../components/Toast';
 
 const PLAN_LABELS: Record<string, string> = {
@@ -261,6 +262,9 @@ export default function AdminOrganizations() {
   const [territory, setTerritory] = useState<TerritoryForm>(EMPTY_TERRITORY);
   // 新卡包政策: 正在看哪家机构的「卡包到账」
   const [packOrgId, setPackOrgId] = useState<number | null>(null);
+  // 学习助手次数池(加盟机构按次进货,合同第三条第 10 款);直营不走池子
+  const [tutorPoolOrgId, setTutorPoolOrgId] = useState<number | null>(null);
+  const closeTutorPool = useCallback(() => setTutorPoolOrgId(null), []);
   const [territoryCheck, setTerritoryCheck] = useState<TerritoryCheckResult | null>(null);
   const [checkingTerritory, setCheckingTerritory] = useState(false);
   // 已有机构改地址(搬迁)
@@ -821,6 +825,7 @@ export default function AdminOrganizations() {
         {packOrgId != null && (
           <OrgCardPackDialog orgId={packOrgId} onClose={() => setPackOrgId(null)} />
         )}
+        {tutorPoolOrgId != null && <OrgTutorPoolDialog orgId={tutorPoolOrgId} onClose={closeTutorPool} />}
 
         {managerPanel && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40" onClick={() => setManagerPanel(null)}>
@@ -1067,6 +1072,7 @@ export default function AdminOrganizations() {
                       ? <button className="text-amber-700" onClick={() => setPackOrgId(org.id)}>卡包到账</button>
                       : <button className="text-amber-700" onClick={() => changeCards(org)}>学习卡</button>}
                     <button className="text-indigo-600" onClick={() => changePhoneticCodes(org)}>音标码额度</button>
+                    {org.id !== 1 && <button className="text-orange-700" onClick={() => setTutorPoolOrgId(org.id)}>学习助手次数</button>}
                     <button className="text-[#3976a9]" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                     {org.card_plan === 'pack'
                       ? <button className="text-amber-600" onClick={() => toggleExclusive(org)}>{org.exclusive_content ? '关闭专属内容' : '开通专属内容'}</button>
@@ -1182,6 +1188,7 @@ export default function AdminOrganizations() {
                             ? <button className="text-amber-700 hover:underline" onClick={() => setPackOrgId(org.id)} title="确认分期到账 / 补货">卡包到账</button>
                             : <button className="text-amber-700 hover:underline" onClick={() => changeCards(org)} title="调整或续卡学习卡额度">学习卡</button>}
                           <button className="text-indigo-600 hover:underline" onClick={() => changePhoneticCodes(org)} title="给机构发放可生成的音标兑换码张数">音标码额度</button>
+                          {org.id !== 1 && <button className="text-orange-700 hover:underline" onClick={() => setTutorPoolOrgId(org.id)} title="机构向平台购买的「问小鹰老师」次数,老师给学生加次数从这里扣">学习助手次数</button>}
                           <button className="text-[#3976a9] hover:underline" onClick={() => openTerritoryEdit(org)}>经营场所</button>
                           {org.card_plan === 'pack'
                             ? <button className="text-amber-600 hover:underline" onClick={() => toggleExclusive(org)} title="飞鹰语法等专属内容,含在标准包内(新机构默认已开通)">{org.exclusive_content ? '关闭专属内容' : '开通专属内容'}</button>

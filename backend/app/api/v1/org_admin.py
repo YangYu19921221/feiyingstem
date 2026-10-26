@@ -109,6 +109,11 @@ async def org_info(
     # 机构会把「发不出卡」误当成「学生满了」(其实要续卡)
     from app.services.org_service import card_quota_status
     cards = await card_quota_status(db, org.id)
+    # 学习助手次数池(合同第三条第 10 款): 老师给学生加次数从这里扣,机构首页要看得见还剩几次
+    from app.services import tutor
+    tutor_info = None
+    if tutor.uses_pool(org.id) and await tutor.available_to(db, current_user):
+        tutor_info = await tutor.pool_status(db, org.id)
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
         "student_quota": org.student_quota, "active_students": active,
@@ -116,6 +121,7 @@ async def org_info(
         "contact_name": org.contact_name, "contact_phone": org.contact_phone,
         "status": org.status, "expires_at": org.expires_at,
         **cards,
+        "tutor_pool": tutor_info,
     }
 
 

@@ -6,8 +6,12 @@
  * - 回答流式显示;出字过程中发送键变成「停止」,一个字没出就停下的不算次数
  * - 次数是每个学生**一共**几次(不按天清零),用完了点「请老师加次数」,老师在「学习助手次数」页加
  * - 回答里的英文点一下就能听(同一个 Edge TTS 声音)
- * - 可以拍一道题问思路: 照片压缩后只发给模型看,不存;作业/考试题只给提示不给答案
+ * - 可以拍一道题问思路: 照片压缩后只发给模型看,不存;作业/考试题先提示,试过两次还不会再讲答案和理由
  * - 从错题本等地方点「问小鹰老师」进来会把问题填好(location.state.q),孩子自己点发送 —— 不自动发,省次数
+ * - 同一道题的追问不另算(10-26 晚,用户「不给答案孩子一直答不上来怎么办」): 付过次数的那问之后 15 分钟内、
+ *   快速回答、不带新照片,最多 3 次不扣(后端 services/tutor.followup_state,回答完的 done 事件带 followup)。
+ *   回答下面给三个快捷回复「给我一点提示 / 还是不会,讲给我听 / 再出一道类似的」—— 孩子卡住时不用自己组织语言,
+ *   助手按规则先提示、试过两次还不会就讲答案和理由并出同类题。次数用完了也能接着追问这道题
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -16,7 +20,7 @@ import useGoBack from '../hooks/useGoBack';
 import { useAudio } from '../hooks/useAudio';
 import {
   askTutor, getConversation, getTutorStatus, listConversations, requestMoreTutor, stopTutor, TutorAskError,
-  type TutorCard, type TutorConversationItem, type TutorMode, type TutorStatus,
+  type TutorCard, type TutorConversationItem, type TutorFollowup, type TutorMode, type TutorStatus,
 } from '../api/tutor';
 import PracticeCard from '../components/tutor/PracticeCard';
 import SpeakableText from '../components/tutor/SpeakableText';
@@ -39,6 +43,9 @@ interface ChatMsg {
   /** 没调通时「再问一次」要用的原话 */
   retry?: { text: string; image: Img | null; mode: TutorMode; userKey: string };
 }
+
+/** 回答下面的快捷回复: 孩子卡住时点一下就行,不用自己想怎么说(追问不另算) */
+const QUICK_REPLIES = ['给我一点提示', '还是不会,讲给我听', '再出一道类似的题'];
 
 const SUGGESTIONS = [
   '今天老师布置了什么,我做完了吗?',
@@ -85,6 +92,7 @@ export default function StudentTutor() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<TutorConversationItem[] | null>(null);
   const [asking, setAsking] = useState(false);
+  const [followup, setFollowup] = useState<TutorFollowup>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -125,6 +133,13 @@ export default function StudentTutor() {
     return () => window.clearInterval(t);
   }, [sending]);
 
+  // 免费追问有时间限制: 不在出字的时候也半分钟看一下,过了时间提示语自己消失(后端照样按时间判)
+  useEffect(() => {
+    if (!followup || sending) return;
+    const t = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(t);
+  }, [followup, sending]);
+
   // 输入框跟着字数长高(最多 4 行左右)
   useEffect(() => {
     const el = textRef.current;
@@ -133,9 +148,12 @@ export default function StudentTutor() {
     el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
   }, [input]);
 
+  const followLeft = followup && new Date(followup.until + 'Z').getTime() > now ? followup.left : 0;
   const deepCost = status?.deep_cost ?? 2;
   const deepUsable = !!status?.deep_enabled && (status?.left ?? 0) >= deepCost;
   const effMode: TutorMode = mode === 'deep' && deepUsable ? 'deep' : 'fast';
+  // 下一问是不是免费追问(快速回答、没有新照片)
+  const freeNext = followLeft > 0 && effMode === 'fast' && !image;
 
   const pickMode = (m: TutorMode) => {
     setMode(m);
@@ -185,6 +203,7 @@ export default function StudentTutor() {
     }
     setSending(true);
     setStopping(false);
+    setFollowup(null);
     setToolStatus('');
     setThinkStart(null);
     setNow(Date.now());
@@ -221,6 +240,8 @@ export default function StudentTutor() {
           patchBot((m) => ({ ...m, cards: [...m.cards, ev.card] }));
           scrollToEnd();
         } else if (ev.type === 'done') {
+          setFollowup(ev.followup ?? null);
+          setNow(Date.now());
           if (ev.stopped) patchBot((m) => ({ ...m, stopped: true }));
           if (ev.refunded) setStatus((s) => (s ? { ...s, left: s.left + cost, used: Math.max(0, s.used - cost) } : s));
         } else if (ev.type === 'error') {
@@ -299,6 +320,8 @@ export default function StudentTutor() {
     try {
       const c = await getConversation(id);
       setConvId(c.id);
+      setFollowup(c.followup);
+      setNow(Date.now());
       setMessages(c.messages.map((m) => ({
         key: `s${m.id}`, role: m.role, mode: m.mode, text: m.failed ? '这次没有回答上来' : m.text,
         hasImage: m.has_image, cards: m.cards || [], failed: m.failed, stopped: m.stopped,
@@ -314,11 +337,17 @@ export default function StudentTutor() {
     if (sending) return;
     setConvId(null);
     setMessages([]);
+    setFollowup(null);
     setHistoryOpen(false);
   };
 
-  const outOfQuota = !!status?.enabled && status.left <= 0;
+  // 次数用完了,但这道题还能免费追问: 输入框照常能用(只是不能换照片 / 深度思考)
+  const outOfQuota = !!status?.enabled && status.left <= 0 && followLeft <= 0;
+  const onlyFollowup = !!status?.enabled && status.left <= 0 && followLeft > 0;
   const disabled = !status?.enabled || outOfQuota;
+  const lastBot = messages.length > 0 ? messages[messages.length - 1] : null;
+  const showQuick = !sending && !disabled && followLeft > 0 && !!lastBot && lastBot.role === 'assistant'
+    && !lastBot.failed && !!lastBot.text;
   const thinkSecs = thinkStart ? Math.max(1, Math.round((now - thinkStart) / 1000)) : 0;
 
   const waitingText = (m: ChatMsg) => {
@@ -376,10 +405,10 @@ export default function StudentTutor() {
               <p className="text-base font-semibold text-ink">你好,我是小鹰老师</p>
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
                 单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问我。也可以点左下角的相机拍一道题。
-                作业和考试题我只给提示,答案要你自己想出来哦。回答里的英文点一下就能听发音。
+                作业和考试题我先给提示,你自己再想想;试过两次还不会,我就把答案和理由讲给你听,再出一道类似的让你练。回答里的英文点一下就能听发音。
               </p>
               <p className="mt-2 text-xs text-ink-mute">
-                你一共可以问 {status.total} 次,现在还剩 {status.left} 次。
+                你一共可以问 {status.total} 次,现在还剩 {status.left} 次;同一道题接着追问,{status.followup_minutes} 分钟内最多 {status.followup_free} 次不另算。
                 {status.deep_enabled && ` 难的题可以选「深度思考」,想得更透,一次算 ${deepCost} 次。`}
               </p>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -458,6 +487,20 @@ export default function StudentTutor() {
               </div>
             )
           ))}
+          {showQuick && (
+            <div className="flex flex-wrap gap-2 pl-1" aria-label="快捷回复">
+              {QUICK_REPLIES.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => send({ text: q, image: null, mode: 'fast' })}
+                  className="min-h-10 rounded-full border border-orange-200 bg-white px-3.5 text-sm text-orange-800 hover:bg-orange-50"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -486,7 +529,12 @@ export default function StudentTutor() {
                   </button>
                 </div>
               )}
-              {status?.enabled && status.deep_enabled && (
+              {freeNext && (
+                <p className="mb-1.5 text-xs text-emerald-700">
+                  接着问这道题不算次数(还能免费问 {followLeft} 次){onlyFollowup ? ',次数用完了也能问' : ''}
+                </p>
+              )}
+              {status?.enabled && status.deep_enabled && !onlyFollowup && (
                 <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <div role="radiogroup" aria-label="回答方式" className="inline-flex rounded-xl bg-slate-100 p-1">
                     <button
@@ -515,7 +563,7 @@ export default function StudentTutor() {
                       ? `深度思考一次要 ${deepCost} 次,剩的不够了`
                       : effMode === 'deep'
                         ? `更强的模型先想再答,慢几秒,一次算 ${deepCost} 次`
-                        : '几秒就回答,一次算 1 次'}
+                        : freeNext ? '几秒就回答' : '几秒就回答,一次算 1 次'}
                   </span>
                 </div>
               )}
@@ -530,7 +578,7 @@ export default function StudentTutor() {
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  disabled={disabled || sending}
+                  disabled={disabled || sending || onlyFollowup}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600 hover:bg-orange-100 disabled:opacity-40"
                   aria-label="拍一道题"
                   title="拍一道题"
