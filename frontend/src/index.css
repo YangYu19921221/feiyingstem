@@ -1677,3 +1677,60 @@ body.staff-admin .admin-teacher-scale {
 /* 直播弹幕:右侧半透明聊天列表(见 DanmakuOverlay)。滚动条隐藏复用 .hide-scrollbar。 */
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── 学习助手聊天(pages/StudentTutor + components/tutor) ──
+ * 等待动画分几种: 三个点(在想)/ 文字扫光(在查课本等工具)/ 头像轻轻上下(还没出字)/
+ * 出字时末尾闪一下的光标 / 新气泡从下面浮上来 / 画图时卡片扫光 + 画笔晃。
+ * 减少动态效果的用户: 全部停下,只留静态的点和文字(仍看得出在等)。 */
+/* 输入条里的文字框: 外框已经有底色和聚焦描边,框里这层要透明(全站学生端给输入框加了白底和聚焦阴影) */
+body.student-interface textarea.tutor-composer-input,
+body.student-interface textarea.tutor-composer-input:focus {
+  background-color: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+@keyframes tutorDot { 0%, 60%, 100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-4px); opacity: 1; } }
+.tutor-dot { animation: tutorDot 1.2s ease-in-out infinite; }
+.tutor-dot:nth-child(2) { animation-delay: .15s; }
+.tutor-dot:nth-child(3) { animation-delay: .3s; }
+
+@keyframes tutorShine { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.tutor-shine {
+  background: linear-gradient(90deg, currentColor 0%, currentColor 40%, #fdba74 50%, currentColor 60%, currentColor 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: tutorShine 2.4s linear infinite;
+}
+.tutor-shine-deep {
+  background-image: linear-gradient(90deg, currentColor 0%, currentColor 40%, #7dd3fc 50%, currentColor 60%, currentColor 100%);
+}
+
+@keyframes tutorBob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-4deg); } }
+.tutor-bob { animation: tutorBob 1.6s ease-in-out infinite; }
+
+@keyframes tutorCaret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.tutor-caret {
+  display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em;
+  border-radius: 1px; background: #f97316; animation: tutorCaret 1s steps(1) infinite;
+}
+
+@keyframes tutorIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.tutor-in { animation: tutorIn .28s cubic-bezier(.2, .8, .3, 1) both; transform-origin: bottom left; }
+.tutor-in-right { transform-origin: bottom right; }
+
+@keyframes tutorSweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.tutor-sweep::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, .7) 50%, transparent 80%);
+  animation: tutorSweep 1.8s ease-in-out infinite;
+}
+@keyframes tutorScribble { 0%, 100% { transform: translate(0, 0) rotate(-8deg); } 25% { transform: translate(6px, -3px) rotate(4deg); } 50% { transform: translate(10px, 2px) rotate(-6deg); } 75% { transform: translate(3px, 4px) rotate(6deg); } }
+.tutor-scribble { animation: tutorScribble 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tutor-dot, .tutor-bob, .tutor-caret, .tutor-in, .tutor-scribble, .tutor-sweep::after { animation: none !important; }
+  .tutor-dot { opacity: .6; }
+  .tutor-shine { animation: none !important; -webkit-text-fill-color: currentColor; background: none; }
+}

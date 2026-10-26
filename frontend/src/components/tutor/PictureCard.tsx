@@ -5,7 +5,7 @@
  * 图在公开目录(只有单词的画面,没有孩子的信息),点一下放大看。
  */
 import { memo, useEffect, useState } from 'react';
-import { ImageOff, Loader2, X } from 'lucide-react';
+import { ImageOff, Paintbrush, X } from 'lucide-react';
 import { getPicture, type PictureStatus } from '../../api/tutor';
 
 const POLL_MS = 3000;
@@ -44,7 +44,7 @@ function PictureCard({ picId, word, status: initStatus, url: initUrl }: {
         <button type="button" onClick={() => setBig(true)}
           className="mt-3 block overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm"
           aria-label={`放大看 ${word} 的记忆图`}>
-          <img src={url} alt={`${word} 的记忆图`} className="h-48 w-48 object-contain sm:h-56 sm:w-56" loading="lazy" />
+          <img src={url} alt={`${word} 的记忆图`} className="tutor-in h-48 w-48 object-contain sm:h-56 sm:w-56" loading="lazy" />
           <span className="block border-t border-orange-50 px-3 py-1.5 text-left text-xs text-orange-700">{word} 的记忆图 · 点一下放大</span>
         </button>
         {big && (
@@ -59,11 +59,20 @@ function PictureCard({ picId, word, status: initStatus, url: initUrl }: {
     );
   }
   if (status === 'pending') {
+    // 和画好的图同样大小占位(画好时不跳);进度条按 30 秒估,到 95% 停住等真的画完
+    const pct = Math.min(95, Math.round((secs / 30) * 100));
     return (
-      <div className="mt-3 flex h-48 w-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 text-sm text-orange-800 sm:h-56 sm:w-56" aria-live="polite">
-        <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
-        <span>正在画 {word}…{secs ? ` ${secs} 秒` : ''}</span>
-        <span className="px-3 text-center text-xs text-orange-700/70">大约要 20–30 秒,先往下看也行</span>
+      <div className="tutor-sweep relative mt-3 flex h-48 w-48 flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 via-amber-50 to-sky-50 text-sm text-orange-800 sm:h-56 sm:w-56" role="status" aria-live="polite">
+        <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-white/80 shadow-sm">
+          <Paintbrush className="tutor-scribble h-7 w-7 text-orange-500" aria-hidden="true" />
+        </span>
+        <span className="relative font-medium">正在画 {word}</span>
+        <span className="relative px-4 text-center text-xs text-orange-700/70">
+          {secs >= 40 ? '这张画得久一点,马上好' : '大约 30 秒,先往下看也行'}
+        </span>
+        <span className="absolute inset-x-4 bottom-3 h-1.5 overflow-hidden rounded-full bg-white/70" aria-hidden="true">
+          <span className="block h-full rounded-full bg-orange-400 transition-[width] duration-1000 ease-linear" style={{ width: `${pct}%` }} />
+        </span>
       </div>
     );
   }

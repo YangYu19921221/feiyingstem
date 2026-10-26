@@ -16,7 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Brain, Camera, History, Loader2, Plus, RotateCcw, Send, Square, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Brain, Camera, History, Loader2, Plus, RotateCcw, Send, Square, X, Zap } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { useAudio } from '../hooks/useAudio';
 import {
@@ -26,6 +26,7 @@ import {
 import PictureCard from '../components/tutor/PictureCard';
 import PracticeCard from '../components/tutor/PracticeCard';
 import SpeakableText from '../components/tutor/SpeakableText';
+import TutorWaiting, { TutorAvatar, type WaitKind } from '../components/tutor/TutorWaiting';
 import { compressImage } from '../utils/compressImage';
 import { getErrorMessage } from '../utils/errorMessage';
 import { toast } from '../components/Toast';
@@ -42,6 +43,8 @@ interface ChatMsg {
   cards: TutorCard[];
   failed?: boolean;
   stopped?: boolean;
+  /** 这次刚发 / 刚收到的(从下面浮上来);翻出来的历史记录不做动画,不然一屏一起动 */
+  fresh?: boolean;
   /** 没调通时「再问一次」要用的原话 */
   retry?: { text: string; image: Img | null; mode: TutorMode; userKey: string };
 }
@@ -92,6 +95,7 @@ export default function StudentTutor() {
   const [stopping, setStopping] = useState(false);
   const [toolStatus, setToolStatus] = useState('');
   const [thinkStart, setThinkStart] = useState<number | null>(null);
+  const [sendStart, setSendStart] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<TutorConversationItem[] | null>(null);
@@ -103,6 +107,9 @@ export default function StudentTutor() {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const nearBottom = useRef(true);
+  const sendingRef = useRef(false);
+  // 往上翻着看的时候不跟着滚;这时有新字就在底部给个「看新回答」按钮
+  const [awayFromEnd, setAwayFromEnd] = useState(false);
   // 停止: 提问的 id 要等 meta 事件才知道,点得早就先记下来,拿到 id 再发
   const userMsgIdRef = useRef<number | null>(null);
   const stopWantedRef = useRef(false);
@@ -164,12 +171,34 @@ export default function StudentTutor() {
     try { localStorage.setItem(modeKey(), m); } catch { /* 隐私模式 */ }
   };
 
-  /** 只有孩子本来就在底部时才跟着滚,往上翻着看的时候不打断 */
-  const scrollToEnd = useCallback((force = false) => {
+  /** 只有孩子本来就在底部时才跟着滚,往上翻着看的时候不打断。smooth 只给「看新回答」按钮用 */
+  const quietScrollUntil = useRef(0);
+  const scrollToEnd = useCallback((force = false, smooth = false) => {
     requestAnimationFrame(() => {
       const el = listRef.current;
-      if (el && (force || nearBottom.current)) el.scrollTop = el.scrollHeight;
+      if (!el) return;
+      if (force || nearBottom.current) {
+        nearBottom.current = true;
+        setAwayFromEnd(false);
+        // 平滑滚动途中的 scroll 事件位置还没到底,别拿它判「孩子往上翻了」
+        if (smooth) quietScrollUntil.current = Date.now() + 700;
+        el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      }
     });
+  }, []);
+
+  // 跟着内容长高滚: 字是一段段来的,练习卡、记忆图、照片的高度要等它们画出来才知道,
+  // 只在收到字的那一下滚会停在卡片半截。看内容区高度变了就跟(孩子在底部时)
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = contentRef.current;
+    const el = listRef.current;
+    if (!box || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (nearBottom.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(box);
+    return () => ro.disconnect();
   }, []);
 
   const sendStop = (id: number) => {
@@ -193,13 +222,15 @@ export default function StudentTutor() {
     const text = (fromInput ? input : opts.text ?? '').trim();
     const img = fromInput ? image : opts.image ?? null;
     const useMode = opts?.mode ?? effMode;
-    if (sending || (!text && !img) || !status?.enabled) return;
-    const userMsg: ChatMsg = { key: nextKey(), role: 'user', text, mode: useMode, hasImage: !!img, imageUrl: img?.url ?? null, cards: [] };
+    // sending 是 state,同一帧里连按两下回车 / 发送键时它还没变,靠 ref 挡第二下
+    if (sending || sendingRef.current || (!text && !img) || !status?.enabled) return;
+    sendingRef.current = true;
+    const userMsg: ChatMsg = { key: nextKey(), role: 'user', text, mode: useMode, hasImage: !!img, imageUrl: img?.url ?? null, cards: [], fresh: true };
     const botKey = nextKey();
     setMessages((m) => [
       ...m.filter((x) => !opts?.replace?.includes(x.key)),
       userMsg,
-      { key: botKey, role: 'assistant', text: '', mode: useMode, cards: [] },
+      { key: botKey, role: 'assistant', text: '', mode: useMode, cards: [], fresh: true },
     ]);
     if (fromInput) {
       setInput('');
@@ -210,6 +241,7 @@ export default function StudentTutor() {
     setFollowup(null);
     setToolStatus('');
     setThinkStart(null);
+    setSendStart(Date.now());
     setNow(Date.now());
     userMsgIdRef.current = null;
     stopWantedRef.current = false;
@@ -275,7 +307,9 @@ export default function StudentTutor() {
       setStopping(false);
       setToolStatus('');
       setThinkStart(null);
+      setSendStart(null);
       abortRef.current = null;
+      sendingRef.current = false;
     }
   };
 
@@ -353,12 +387,15 @@ export default function StudentTutor() {
   const showQuick = !sending && !disabled && followLeft > 0 && !!lastBot && lastBot.role === 'assistant'
     && !lastBot.failed && !!lastBot.text;
   const thinkSecs = thinkStart ? Math.max(1, Math.round((now - thinkStart) / 1000)) : 0;
+  const waitSecs = sendStart ? Math.max(0, Math.round((now - sendStart) / 1000)) : 0;
+  const liveKey = sending && lastBot?.role === 'assistant' ? lastBot.key : null;
 
-  const waitingText = (m: ChatMsg) => {
-    if (stopping) return '正在停下…';
-    if (toolStatus) return toolStatus;
-    if (m.mode === 'deep') return thinkSecs ? `在深度思考… ${thinkSecs} 秒` : '在深度思考…';
-    return '小鹰老师在想…';
+  /** 还没出字(或出到一半去查东西)时显示什么 */
+  const waitView = (m: ChatMsg): { kind: WaitKind; label: string } => {
+    if (stopping) return { kind: 'stopping', label: '正在停下…' };
+    if (toolStatus) return { kind: m.mode === 'deep' ? 'deep' : 'tool', label: toolStatus };
+    if (m.mode === 'deep') return { kind: 'deep', label: '在深度思考' };
+    return { kind: 'think', label: '小鹰老师在想' };
   };
 
   return (
@@ -387,15 +424,19 @@ export default function StudentTutor() {
         </div>
       </nav>
 
+      <div className="relative min-h-0 flex-1">
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto"
+        className="h-full overflow-y-auto overscroll-contain"
         onScroll={(e) => {
+          if (Date.now() < quietScrollUntil.current) return;
           const el = e.currentTarget;
-          nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          nearBottom.current = near;
+          setAwayFromEnd((v) => (v === !near ? v : !near));
         }}
       >
-        <div className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-5">
+        <div ref={contentRef} className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-5">
           {statusError && <p className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{statusError}</p>}
           {status && !status.enabled && (
             <div className="rounded-2xl bg-white p-6 text-center shadow-sm">
@@ -405,9 +446,15 @@ export default function StudentTutor() {
           )}
 
           {status?.enabled && messages.length === 0 && (
-            <div className="rounded-2xl bg-white p-5 shadow-sm">
-              <p className="text-base font-semibold text-ink">你好,我是小鹰老师</p>
-              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+            <div className="tutor-in rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/[0.04]">
+              <div className="flex items-center gap-3">
+                <TutorAvatar size="lg" />
+                <div>
+                  <p className="text-base font-semibold text-ink">你好,我是小鹰老师</p>
+                  <p className="text-xs text-ink-mute">英语学习上的事都可以问我</p>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                 单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问我。也可以点左下角的相机拍一道题。
                 作业和考试题我先给提示,你自己再想想;试过两次还不会,我就把答案和理由讲给你听,再出一道类似的让你练。回答里的英文点一下就能听发音。
               </p>
@@ -431,70 +478,91 @@ export default function StudentTutor() {
             </div>
           )}
 
-          {messages.map((m) => (
-            m.role === 'user' ? (
-              <div key={m.key} className="flex justify-end">
-                <div className="max-w-[85%] rounded-2xl rounded-br-md bg-orange-500 px-4 py-2.5 text-white shadow-sm">
-                  {m.imageUrl && <img src={m.imageUrl} alt="我发的题目照片" className="mb-2 max-h-48 rounded-lg" />}
-                  {m.hasImage && !m.imageUrl && <p className="mb-1 text-xs text-white/80">[发了一张题目照片]</p>}
-                  {m.text && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{m.text}</p>}
+          {messages.map((m) => {
+            if (m.role === 'user') {
+              const onlyImage = !!m.imageUrl && !m.text;
+              return (
+                <div key={m.key} className={`flex justify-end ${m.fresh ? 'tutor-in tutor-in-right' : ''}`}>
+                  {/* 气泡跟着字数走: 一两个字就是小气泡,长了最多占到 80%(电脑上 70%) */}
+                  {/* 只发照片: 不套橙色气泡,直接一张圆角图(套了像个粗边相框) */}
+                  <div className={`w-fit max-w-[80%] sm:max-w-[70%] ${onlyImage ? '' : 'rounded-2xl rounded-tr-md bg-accent-warm px-4 py-2.5 text-white shadow-sm'}`}>
+                    {m.imageUrl && (
+                      <img
+                        src={m.imageUrl}
+                        alt="我发的题目照片"
+                        className={`max-h-48 rounded-2xl object-contain sm:max-h-56 ${m.text ? 'mb-2 rounded-xl' : 'shadow-sm ring-1 ring-black/10'}`}
+                      />
+                    )}
+                    {m.hasImage && !m.imageUrl && <p className="mb-1 text-xs text-white/85">[发了一张题目照片]</p>}
+                    {m.text && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{m.text}</p>}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div key={m.key} className="flex justify-start">
-                <div className={`w-full max-w-[92%] rounded-2xl rounded-bl-md px-4 py-3 shadow-sm ${m.failed ? 'bg-rose-50 text-rose-700' : 'bg-white text-ink'}`}>
-                  {m.mode === 'deep' && !m.failed && (
-                    <p className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                      <Brain className="h-3 w-3" aria-hidden="true" /> 深度思考
-                    </p>
-                  )}
-                  {m.text ? (
-                    <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
-                      {m.failed ? m.text : <SpeakableText text={clean(m.text)} onSpeak={(s) => { void playAudio(s); }} />}
-                    </p>
-                  ) : m.stopped ? (
-                    <p className="text-sm text-ink-mute">停下了,这次不算次数</p>
-                  ) : (
-                    <p className="flex items-center gap-2 text-sm text-ink-mute" aria-live="polite">
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      {waitingText(m)}
-                    </p>
-                  )}
-                  {m.cards.map((c, i) => (
-                    c.type === 'practice' ? (
-                      <PracticeCard key={i} mode={c.mode} items={c.items} />
-                    ) : c.type === 'picture' ? (
-                      <PictureCard key={`p${c.pic_id}`} picId={c.pic_id} word={c.word} status={c.status} url={c.url} />
-                    ) : (
+              );
+            }
+            const live = m.key === liveKey;
+            const wide = m.cards.some((c) => c.type === 'practice'); // 练习卡要地方放输入框,撑满
+            const waiting = !m.text && !m.stopped && !m.failed;
+            const w = waitView(m);
+            return (
+              <div key={m.key} className={`flex items-start gap-2 ${m.fresh ? 'tutor-in' : ''}`}>
+                <TutorAvatar busy={live && waiting} deep={m.mode === 'deep'} />
+                <div className={`min-w-0 ${wide ? 'w-full max-w-xl flex-1' : 'max-w-[min(100%,36rem)]'}`}>
+                  <div className={`rounded-2xl rounded-tl-md px-4 py-3 shadow-sm ring-1 ${wide ? 'w-full' : 'w-fit max-w-full'} ${
+                    m.failed ? 'bg-rose-50 text-rose-700 ring-rose-100' : 'bg-white text-ink ring-black/[0.04]'
+                  }`}>
+                    {m.mode === 'deep' && !m.failed && !waiting && (
+                      <p className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                        <Brain className="h-3 w-3" aria-hidden="true" /> 深度思考
+                      </p>
+                    )}
+                    {m.text ? (
+                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+                        {m.failed ? m.text : <SpeakableText text={clean(m.text)} onSpeak={(s) => { void playAudio(s); }} />}
+                        {live && !toolStatus && !stopping && <span className="tutor-caret" aria-hidden="true" />}
+                      </p>
+                    ) : m.stopped ? (
+                      <p className="text-sm text-ink-mute">停下了,这次不算次数</p>
+                    ) : live ? (
+                      <TutorWaiting kind={w.kind} label={w.label} secs={thinkSecs} waited={waitSecs} />
+                    ) : null}
+                    {/* 说了半句又去查东西(比如「好,来给你画一张」→ 在准备画图): 字下面挂一小行 */}
+                    {live && m.text && (toolStatus || stopping) && <TutorWaiting kind={w.kind} label={w.label} compact />}
+                    {m.cards.map((c, i) => (
+                      c.type === 'practice' ? (
+                        <PracticeCard key={i} mode={c.mode} items={c.items} />
+                      ) : c.type === 'picture' ? (
+                        <PictureCard key={`p${c.pic_id}`} picId={c.pic_id} word={c.word} status={c.status} url={c.url} />
+                      ) : (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => navigate(c.route)}
+                          className="mt-3 flex min-h-11 items-center rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"
+                        >
+                          {c.label}
+                        </button>
+                      )
+                    ))}
+                    {m.stopped && m.text && <p className="mt-1.5 text-xs text-ink-mute">(停下了)</p>}
+                    {m.failed && m.retry && !sending && !disabled && (
                       <button
-                        key={i}
                         type="button"
-                        onClick={() => navigate(c.route)}
-                        className="mt-3 min-h-11 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"
+                        onClick={() => {
+                          const r = m.retry!;
+                          void send({ text: r.text, image: r.image, mode: r.mode, replace: [m.key, r.userKey] });
+                        }}
+                        className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
                       >
-                        {c.label}
+                        <RotateCcw className="h-4 w-4" aria-hidden="true" /> 再问一次
                       </button>
-                    )
-                  ))}
-                  {m.stopped && m.text && <p className="mt-1.5 text-xs text-ink-mute">(停下了)</p>}
-                  {m.failed && m.retry && !sending && !disabled && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const r = m.retry!;
-                        void send({ text: r.text, image: r.image, mode: r.mode, replace: [m.key, r.userKey] });
-                      }}
-                      className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
-                    >
-                      <RotateCcw className="h-4 w-4" aria-hidden="true" /> 再问一次
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
-            )
-          ))}
+            );
+          })}
           {showQuick && (
-            <div className="flex flex-wrap gap-2 pl-1" aria-label="快捷回复">
+            <div className="tutor-in flex flex-wrap gap-2 pl-11" aria-label="快捷回复">
               {QUICK_REPLIES.map((q) => (
                 <button
                   key={q}
@@ -508,6 +576,16 @@ export default function StudentTutor() {
             </div>
           )}
         </div>
+      </div>
+      {awayFromEnd && messages.length > 0 && (
+        <button
+          type="button"
+          onClick={() => scrollToEnd(true, true)}
+          className="tutor-in absolute bottom-3 left-1/2 flex min-h-10 -translate-x-1/2 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-orange-700 shadow-md ring-1 ring-orange-100 hover:bg-orange-50"
+        >
+          <ArrowDown className="h-4 w-4" aria-hidden="true" /> {sending ? '看新回答' : '回到最新'}
+        </button>
+      )}
       </div>
 
       <div className="border-t border-black/[0.06] bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))]">
@@ -528,11 +606,19 @@ export default function StudentTutor() {
           ) : (
             <>
               {image && (
-                <div className="mb-2 flex items-center gap-2">
-                  <img src={image.url} alt="要发的题目照片" className="h-16 rounded-lg border border-black/10" />
-                  <button type="button" onClick={() => setImage(null)} className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft hover:bg-black/5" aria-label="不发这张照片">
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                <div className="tutor-in mb-2 flex items-end gap-2">
+                  <span className="relative">
+                    <img src={image.url} alt="要发的题目照片" className="h-20 rounded-xl border border-black/10 object-cover shadow-sm" />
+                    <button
+                      type="button"
+                      onClick={() => setImage(null)}
+                      className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-slate-700 text-white shadow ring-2 ring-white hover:bg-slate-800"
+                      aria-label="不发这张照片"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </span>
+                  <span className="pb-1 text-xs text-ink-mute">写一句想问什么,或者直接发</span>
                 </div>
               )}
               {freeNext && (
@@ -573,7 +659,12 @@ export default function StudentTutor() {
                   </span>
                 </div>
               )}
-              <div className="flex items-end gap-2">
+              {/* 输入条: 相机 / 文字 / 发送 放在同一个圆角框里,点到框里哪都能打字 */}
+              <div
+                className={`flex items-end gap-1 rounded-3xl border bg-paper p-1 transition focus-within:bg-white focus-within:ring-2 ${
+                  effMode === 'deep' ? 'border-sky-200 focus-within:border-sky-300 focus-within:ring-sky-100' : 'border-black/10 focus-within:border-orange-300 focus-within:ring-orange-100'
+                } ${disabled ? 'opacity-60' : ''}`}
+              >
                 <input
                   ref={fileRef}
                   type="file"
@@ -585,7 +676,7 @@ export default function StudentTutor() {
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={disabled || sending || onlyFollowup}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600 hover:bg-orange-100 disabled:opacity-40"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-orange-600 hover:bg-orange-100 disabled:opacity-40"
                   aria-label="拍一道题"
                   title="拍一道题"
                 >
@@ -605,14 +696,14 @@ export default function StudentTutor() {
                   disabled={disabled}
                   placeholder={disabled ? '' : '想问什么就写下来'}
                   aria-label="你的问题"
-                  className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-black/10 bg-paper px-3 py-2.5 text-base text-ink placeholder:text-ink-mute focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                  className="tutor-composer-input max-h-32 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-1 py-2.5 text-base leading-6 text-ink placeholder:text-ink-mute focus:outline-none"
                 />
                 {sending ? (
                   <button
                     type="button"
                     onClick={onStop}
                     disabled={stopping}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-60"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-60"
                     aria-label="停下"
                     title="停下(还没出字就停,不算次数)"
                   >
@@ -623,7 +714,7 @@ export default function StudentTutor() {
                     type="button"
                     onClick={() => { void send(); }}
                     disabled={disabled || (!input.trim() && !image)}
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white disabled:opacity-40 ${effMode === 'deep' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-orange-500 hover:bg-orange-600'}`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition active:scale-95 disabled:bg-slate-300 ${effMode === 'deep' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-orange-500 hover:bg-orange-600'}`}
                     aria-label={effMode === 'deep' ? '深度思考,发送' : '发送'}
                   >
                     <Send className="h-5 w-5" aria-hidden="true" />
