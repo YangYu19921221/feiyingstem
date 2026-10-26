@@ -344,6 +344,11 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   COS_REDIRECT 没开时开关不起作用(卡片上写明)。改开关记操作记录 system.video_cdn。
   入口: 管理端首页「音标视频加速(CDN)」(开关 +「测试 CDN」);公告一条(admin)。测试同文件加 6 例
   (开关被无视 / 字符串当开 / 去掉 v / 打开不实测 / 403 不分来源 五处各让对应用例失败,回归锁验证过)
+  **10-26 加自检自动关**(提交 6fb6c7d,12:02 上线): 10-26 上午 CDN 域名整体 418(Lego Server, Return Directly)、
+  HTTPS 回默认证书 *.cdn.myqcloud.com,开关开着视频全播不了,10:40 才被另一会话手动关掉(原因待用户在 CDN 控制台查:
+  域名被停 / 欠费 / 用量封顶)。现在主进程线程 cdn-guard(和 COS 同步线程一起起)在开关开着时每 5 分钟 probe_cdn 一次,
+  **连续 2 次**不通写 off + reason,updated_by="系统自动关闭";测的过程中管理员动过开关(updated_at 变了)不覆盖。
+  卡片红框显示几点关的和原因。测试 1 例(一次就关 / 覆盖管理员 / 没开也测 三处各让它失败,回归锁验证过)
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):
@@ -483,6 +488,26 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   浏览器验过(本地库副本): 管理员开两版卡 → 下载的背面图用 BarcodeDetector 解出 /c/{卡码} → 王老师传微信码 →
   家长手机宽度扫卡留电话看到王老师的码 → 同号扫李老师的卡仍显示王老师 → 跟单加微信/已付 99/关联学生/开通/写跟进 →
   李老师看不到 → 看板王老师 1 留电话 1 付费 ¥99。**抖音直播方案文档里体验营默认价仍是 9.9,没跟着改**
+- ✅ 直播卡顿修复(2026-10-26 12:02 上线,提交 831d382 + 734df3a;用户「直播不流畅是什么问题」→「好的」):
+  先查的实情: 直播机 CPU 0.5%、出口约 115M、观众个位数,**不是服务器瓶颈**。修了四处:
+  ①**学生端每 4 分半黑一下**: 播放票据 5 分钟过期,续签时 setCred 触发播放器 effect 整个销毁重建。现在续签只换
+  credRef(下次重连用),播放器只在 playKey 变时(进来 / 重连)重建 —— 已经连上的 FLV 长连接不受票据过期影响
+  ②**缓冲全关 + 落后就跳帧**(enableStashBuffer:false + liveBufferLatencyChasing)→ 留缓冲、liveSync 1.1 倍速追
+  (目标 2 秒、超 4 秒才追),延迟多 1–2 秒 ③**断了不会自己恢复**: 学生端 mpegts ERROR / LOADING_COMPLETE(源站关流)/
+  画面 10 秒不动 → 自动重连 1→2→4→8→15 秒,动起来清零;重连中不发观看心跳;没开播每 5 秒自动再试;
+  join 409 带「下课」两字 → 停在结束页(后端 detail 区分 ended)。续签失败(非下课)不动正在放的画面。
+  老师端 connectionState failed 立刻 / disconnected 5 秒没回来 → **不重新采集**,重调 /start(拿新地址 + 后端踢残留推流)
+  再建 WHIP;4xx 停下照实报;连的过程中点了下课要关掉刚建好的连接。开播后显示丢包 / 延迟(remote-inbound-rtp),
+  丢包 ≥3% / 延迟 ≥300ms / 码率 <250k 提醒插网线 ④直播页不弹新功能公告(WhatsNewNudge QUIET_PATTERNS 加
+  /student/live/、/teacher/livestream —— 公告会盖住学生画面、挡住老师开播按钮)。
+  831d382 是昨晚的 500: 学生重进同一节课 INSERT 撞 UNIQUE → rollback → student 过期 → MissingGreenlet;
+  join 和心跳都改成单条 ON CONFLICT。**直播课 3 从 8-26 起一直没下课**,老学生每次重进都 500。
+  本地实测(临时库 + ffmpeg 往生产 SRS 推测试流): 80 秒 7 次续签播放器 0 次重建;掐断推流 → 学生端提示重连 →
+  恢复推流后自动接上;下课后停在结束页;老师端从源站踢掉推流 → 页面自动重推、源站出现新推流者。
+  ⚠️ **iPad/iPhone 的 HLS 放长还没生效**: deploy/srs/srs.conf 与生产 /opt/srs/conf/srs.conf 都已改 hls_fragment 2 /
+  hls_window 10(生产备份 srs.conf.bak_20261026_1200),配置检查通过,但 **SRS 5.0.225 的 SIGHUP reload 不改 HLS 参数**
+  (实测新推的流仍是 win=5000ms frag=1000ms),要 `docker restart srs` 才生效 —— 会断正在推的流,10-26 中午有一路
+  推流(0 观众)没敢重启,等用户定。公告老师一条
 - ✅ 直播共享屏幕套娃修复(2026-10-22,用户「直播用屏幕共享会出现一层层嵌套」): 从源站拉了一帧实拍 —— 老师共享的是
   **开播页所在的浏览器窗口**,页面里的实时预览被共享进去再显示出来,一层套一层。旧逻辑按 displaySurface 判:
   整屏/标签页藏预览、'window' 放行,**而浏览器窗口本身就是 'window'**(Mac 上最常见)。现在共享屏幕时**一律不放实时预览**,
