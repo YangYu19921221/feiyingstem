@@ -160,9 +160,12 @@ def read_cdn_switch() -> dict:
     return data
 
 
-def write_cdn_switch(enabled: bool, by: Optional[str] = None) -> dict:
+def write_cdn_switch(enabled: bool, by: Optional[str] = None, reason: Optional[str] = None) -> dict:
+    """reason 只在系统自动关闭时写(管理端卡片显示「几点自动关了: 原因」);手动开关不带,打开时自然清掉"""
     data = {"enabled": bool(enabled), "updated_at": datetime.now(_BJ).isoformat(timespec="seconds"),
             "updated_by": by}
+    if reason:
+        data["reason"] = reason
     path = Path(CDN_SWITCH_FILE)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
@@ -237,6 +240,53 @@ async def probe_cdn(directory: str) -> tuple[bool, str]:
     if r.content != head:
         return False, "CDN 返回的内容和服务器上的文件对不上"
     return True, f"CDN 正常: 从 {domain} 取到了视频开头,和服务器上的文件一致"
+
+
+# ---------- CDN 自动关(10-26: CDN 域名被停 → 418,开关开着视频全播不了,第二天上午才发现) ----------
+
+CDN_GUARD_SEC = 300      # 开关开着时每 5 分钟测一次
+CDN_GUARD_FAILS = 2      # 连续 2 次不通才关: 偶尔一次网络抖动不该把全站切回 COS
+CDN_AUTO_OFF_BY = "系统自动关闭"
+
+
+async def cdn_guard_once(directory: str, fails: int) -> int:
+    """测一次,返回新的连续失败次数。开关没开不测;连续失败够数就关开关并写原因。
+    测的过程中管理员动过开关(updated_at 变了)就不覆盖 —— 以管理员这次操作为准"""
+    before = read_cdn_switch()
+    if not (before["enabled"] and cdn_enabled()):
+        return 0
+    try:
+        ok, msg = await probe_cdn(directory)
+    except Exception as e:  # noqa: BLE001
+        ok, msg = False, f"检查出错: {type(e).__name__}"
+    if ok:
+        return 0
+    fails += 1
+    logger.warning("CDN 自检不通(%s/%s): %s", fails, CDN_GUARD_FAILS, msg)
+    if fails < CDN_GUARD_FAILS:
+        return fails
+    now = read_cdn_switch()
+    if now.get("updated_at") != before.get("updated_at") or not now["enabled"]:
+        return 0
+    write_cdn_switch(False, by=CDN_AUTO_OFF_BY, reason=msg)
+    logger.warning("CDN 连续 %s 次不通,已自动关闭开关,视频改回 COS: %s", fails, msg)
+    return 0
+
+
+def start_cdn_guard(directory: str, every_sec: int = CDN_GUARD_SEC) -> None:
+    """后台线程,跟 COS 同步线程一起只在主进程起(多进程时只要一份在测)"""
+    import asyncio
+
+    def _loop():
+        fails = 0
+        while True:
+            time.sleep(every_sec)
+            try:
+                fails = asyncio.run(cdn_guard_once(directory, fails))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("CDN 自检出错: %s", e)
+
+    threading.Thread(target=_loop, name="cdn-guard", daemon=True).start()
 
 
 def key_for(local_path: str) -> str:
@@ -385,3 +435,4 @@ def start_background_sync(directory: str, every_sec: int = 600) -> None:
             time.sleep(every_sec)
 
     threading.Thread(target=_loop, name="cos-video-sync", daemon=True).start()
+    start_cdn_guard(directory)

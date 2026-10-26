@@ -336,3 +336,44 @@ async def test_probe_classifies_cdn_answers(env, fake_cos, cdn, monkeypatch):
     monkeypatch.setenv("CDN_AUTH_KEY", "")
     good, msg = await cos_video.probe_cdn(str(env["dir"]))
     assert not good and "CDN_AUTH_KEY" in msg
+
+
+async def test_guard_turns_off_after_two_failures_and_keeps_admin_changes(env, fake_cos, cdn, monkeypatch, client, admin_headers):
+    """CDN 开着时连续 2 次测不通 → 自动关、写原因;1 次不通不关;测的时候管理员动过开关就不覆盖"""
+    async def probe(directory):
+        return probe.result
+    probe.result = (False, "连不上 CDN(media.example.com): ConnectError")
+    monkeypatch.setattr(cos_video, "probe_cdn", probe)
+
+    # 开关没开: 不测、不动
+    assert await cos_video.cdn_guard_once(str(env["dir"]), 0) == 0
+    assert not cos_video.CDN_SWITCH_FILE.exists()
+
+    cos_video.write_cdn_switch(True, by="管理员")
+    fails = await cos_video.cdn_guard_once(str(env["dir"]), 0)
+    assert fails == 1 and cos_video.read_cdn_switch()["enabled"] is True      # 一次不通先不关
+    fails = await cos_video.cdn_guard_once(str(env["dir"]), fails)
+    sw = cos_video.read_cdn_switch()
+    assert fails == 0 and sw["enabled"] is False
+    assert sw["updated_by"] == cos_video.CDN_AUTO_OFF_BY and "ConnectError" in sw["reason"]
+    st = (await client.get("/api/v1/admin/system/video-cdn", headers=admin_headers)).json()
+    assert st["enabled"] is False and "ConnectError" in st["auto_off_reason"]
+
+    # 通了就清零
+    cos_video.write_cdn_switch(True, by="管理员")
+    probe.result = (True, "CDN 正常")
+    assert await cos_video.cdn_guard_once(str(env["dir"]), 1) == 0
+    assert cos_video.read_cdn_switch()["enabled"] is True and "reason" not in cos_video.read_cdn_switch()
+
+    # 第二次测的过程中管理员重新打开了开关(updated_at 变了) → 不覆盖
+    probe.result = (False, "x")
+
+    async def slow_probe(directory):
+        import asyncio as _a
+        await _a.sleep(1.1)                 # updated_at 精确到秒
+        cos_video.write_cdn_switch(True, by="另一位管理员")
+        return (False, "x")
+    monkeypatch.setattr(cos_video, "probe_cdn", slow_probe)
+    assert await cos_video.cdn_guard_once(str(env["dir"]), 1) == 0
+    sw = cos_video.read_cdn_switch()
+    assert sw["enabled"] is True and sw["updated_by"] == "另一位管理员"

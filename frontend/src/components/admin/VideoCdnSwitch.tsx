@@ -87,7 +87,7 @@ export default function VideoCdnSwitch() {
               <p className="mt-1 text-sm text-slate-500">{loadError ? `读取失败: ${loadError}` : '读取中…'}</p>
             )}
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              打开前会先自动测一次 CDN,测不通不会打开。CDN 出问题时关掉,马上回到 COS。两种方式都不占服务器带宽。
+              打开前会先自动测一次 CDN,测不通不会打开;开着时服务器每 5 分钟测一次,连续两次不通自动关掉、改回 COS。两种方式都不占服务器带宽。
             </p>
             {state?.updated_at && (
               <p className="mt-1 text-xs text-slate-400">
@@ -124,6 +124,11 @@ export default function VideoCdnSwitch() {
         </div>
       </div>
 
+      {state && !on && state.auto_off_reason && (
+        <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          {fmtTime(state.updated_at)} CDN 连续测不通,系统已自动关闭,视频改回 COS: {state.auto_off_reason}。CDN 修好后点「测试 CDN」,通了再打开。
+        </p>
+      )}
       {state && !state.cdn_configured && (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
           服务器还没配 CDN 地址和鉴权 Key,现在打不开。

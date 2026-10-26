@@ -10,6 +10,8 @@ export interface VideoCdnState {
   enabled: boolean;
   updated_at: string | null;
   updated_by: string | null;
+  /** 系统自动关闭时的原因(CDN 连续测不通);手动开关为 null */
+  auto_off_reason: string | null;
   cdn_domain: string | null;
   cdn_configured: boolean;
   cos_configured: boolean;

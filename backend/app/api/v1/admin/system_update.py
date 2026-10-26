@@ -162,6 +162,8 @@ def _video_cdn_state() -> dict:
         "enabled": sw["enabled"],
         "updated_at": sw.get("updated_at"),
         "updated_by": sw.get("updated_by"),
+        # 系统自动关闭时的原因(CDN 连续测不通);手动开关为 None
+        "auto_off_reason": sw.get("reason") if sw.get("updated_by") == cos_video.CDN_AUTO_OFF_BY else None,
         "cdn_domain": domain,
         "cdn_configured": bool(domain and key),
         "cos_configured": cos_video.enabled(),
