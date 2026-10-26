@@ -359,6 +359,35 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   老师加不扣池 / 扣回不限 / 同卡送多次 / pack 放开老机构 / 到上限照扣池 / 兑换不送 十一处逐一破坏各自对应用例失败(回归锁验证过)。
   入口: 学生「问小鹰老师」回答下面三个快捷按钮;平台「机构管理」每行「学习助手次数」;机构首页「学习助手次数」卡片;
   老师「学习助手次数」页顶上池子余量;「加盟资料 → 合作协议」第三条第 10 款。公告学生/老师/机构管理员(gate)/平台各一条
+  **10-27 第四版: 单词记忆图 + 学习画像**(部署信息: DEPLOY_PENDING)(用户给了一个出图 Key「GPT Image 2.5 Sunburst…定价 3 毛一张
+  你设计下」→「通了就按你说的开发」→「再加上这个 agent 还知道这个学生在我们系统的学习情况」):
+  ①**出图 Key 隔离**: ai_providers 一行 provider_name='image_tutor'(Fernet 加密),和 claude_tutor 一样**不能设默认**
+  (admin/ai_config 的 DEDICATED_PROVIDERS 两处 400),ai_service 默认通道 / OCR / TTS 三处 `notin_(("claude_tutor","image_tutor"))`。
+  管理端卡片「画单词记忆图」里填 Key(留空不改)、模型(默认 gpt-image-2.5-sunburst)、画质(默认 low)、每人每天几张新图(默认 5)。
+  这个 Key 与学习助手 Key **同一个中转钱包**;sunburst low 实测约 27 秒一张、钱包扣 0.15
+  ②**一个词全平台只画一张**(表 word_pictures,pic_key = sha1(小写拼写|去词性的释义),UNIQUE): 已画好 / 正在画的直接给,**不扣次数**;
+  第一次画扣孩子 1 次学习助手次数(= ¥0.3 口径),没画出来退回次数并退回当天张数;5 分钟还没画完算卡住,下一个人来重画、**退回卡住那人的次数**。
+  抢画走 reclaim 条件 UPDATE(只认 failed / removed / 卡住的 pending),没抢到的人退回。图压成 768px JPEG 落 UPLOAD_DIR/word-pics
+  (**只有单词的画面、没有孩子的信息**,同封面性质可公开),换图文件名带时间戳。提示词固定绘本风格、白底、不写字;孩子的「想法」最多 80 字
+  ③画图在后台任务里跑,**自己开会话**(word_picture.session_factory 可替换,测试用);前端卡片(components/tutor/PictureCard)每 3 秒问一次。
+  入口两个: 聊天里让小鹰老师画(工具 draw_word_picture,**没配出图 Key 时这个工具不给模型**)、错题本每个词「看记忆图」
+  (components/tutor/WordPictureButton,先问有没有不扣次数,没有才写「画一张记忆图(用 1 次)」)。管理端卡片列最近 60 张,
+  画得不合适点「删掉」(status=removed + 删文件,记操作记录 tutor.picture_remove),下次有人要会重画
+  ④**学习画像**(services/tutor_profile.py)进系统提示: 学段 + 最近学的单元、学过 / 掌握 / 薄弱 / 待巩固词数(mastery_buckets)、
+  近 7 天学了几天几个词几分钟 + 最近一次学习、近 14 天计分题正确率(≥10 题才写)、到期复习、**拼写老毛病**(learning_records 里
+  拼写类模式的错答按 utils/spelling_diff.first_diff_chunk 归类,出现 ≥2 次才算)、常错词和写成过什么、老师 7 天内的陪跑点评
+  (**里面的孩子姓名 / 用户名替换成「你」**)、今天的作业和每日复习。慢的部分缓存 10 分钟(shared_store tutor:profile:{uid}),今天的部分每次现算;
+  整段 ≤600 字(实测本地 326 字 0.6 秒)。规则写明「帮你了解他,不要整段念出来」。新工具 get_my_progress 给「这周和上周比」
+  (学了几天 / 多少词 / 几分钟 / 正确率不到 10 题写 None)+ 14 天每日 + 拼写毛病 + 老师点评,学生问「我这周学得怎么样」时用。
+  只发学习数据,不发姓名学校手机号。老师在学生详情页「问小鹰老师」能展开「小鹰老师眼里的这个孩子」看到同一份画像
+  ⑤合同第三条第 10 款、招商手册、家长手册 FAQ 加了记忆图口径(同一单词只画一张、首次画计 1 次、已画过的看不计)。
+  测试 tests/test_tutor_picture_profile.py(12 例,出图用 MockTransport 假装);失败退回 / 卡住退回前一个人 / 每天张数 / 没 Key 不给工具 /
+  点评去名字 / 默认通道和 OCR 不用 image_tutor / image_tutor 不能设默认 / 对话里刷新图卡 / reclaim 条件 九处逐一破坏各自对应用例失败。
+  **没锁住的一处**: 「正在画也扣次数」那个破坏测不出(扣了之后 reclaim 失败又退回,结果仍是 0,无害)。
+  ⚠️ 做变异测试时备份文件**别按 basename 起名**: services/tutor.py 和 api/v1/tutor.py 同名,备份互相覆盖把 services/tutor.py 写成了接口文件
+  (已从 HEAD 恢复重做);备份名要带路径。
+  入口: 学生首页「问小鹰老师」(建议问题「elephant 好难记,给我画张记忆图」「我这周学得怎么样」)/ 错题本每个词「看记忆图」;
+  老师学生详情页「问小鹰老师」→「小鹰老师眼里的这个孩子」;管理端首页「AI 学习助手」卡片 →「画单词记忆图」。公告学生/老师(gate)/admin 各一条
 - ✅ 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」→「你来做多核的」):
   **第一步 16:49 已部署**(提交 7d55020,main.py / tenancy.py 走 anchor patch,其余整推;备份 /root/eh_code_before_multiproc_20261025_1648.tgz、
   frontend/dist_bak_20261025_1648);**第二步 18:14 已上线**(用户同意后): 系统 Redis 起来、主进程配 REDIS_URL、

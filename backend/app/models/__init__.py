@@ -45,7 +45,7 @@ from app.models.referral import ReferralInvite, ReferralLead, OrgReferralSetting
 from app.models.card_pack import OrgCardLedger, PackCardGrant  # 新政策卡包
 from app.models.read_aloud import ReadAloudRecording  # 例句跟读录音
 from app.models.tutor import (  # AI 学习助手对话 + 次数 + 机构次数池
-    TutorAllowance, TutorConversation, TutorGrantLog, TutorMessage, TutorOrgPool, TutorPoolLedger,
+    TutorAllowance, TutorConversation, TutorGrantLog, TutorMessage, TutorOrgPool, TutorPoolLedger, WordPicture,
 )
 from app.models.promo import (  # 地推体验卡 + 销售跟单
     PromoSalesProfile, PromoChannel, PromoLead, PromoOrgSettings, PromoFollowUp, PromoCardDesign,

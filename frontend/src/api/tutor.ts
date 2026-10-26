@@ -11,7 +11,19 @@ import { onUnauthorized } from './_authInterceptors';
 export interface PracticeItem { word: string; meaning: string | null; phonetic: string | null }
 export type TutorCard =
   | { type: 'practice'; mode: 'listen' | 'meaning'; items: PracticeItem[] }
-  | { type: 'link'; target: 'review' | 'homework' | 'mistakes'; label: string; route: string };
+  | { type: 'link'; target: 'review' | 'homework' | 'mistakes'; label: string; route: string }
+  /** 单词记忆图(services/word_picture): status 是画图那一刻的,前端按 pic_id 轮询拿最新的 */
+  | { type: 'picture'; pic_id: number; word: string; status: PictureStatus; url: string | null };
+
+export type PictureStatus = 'pending' | 'ready' | 'failed' | 'removed';
+export interface WordPictureOut {
+  pic_id: number;
+  word: string;
+  meaning: string | null;
+  status: PictureStatus;
+  url: string | null;
+  error: string | null;
+}
 
 export type TutorMode = 'fast' | 'deep';
 
@@ -48,6 +60,9 @@ export interface TutorStatus {
   /** 同一道题的追问: 付过次数的那问之后 followup_minutes 分钟内,最多 followup_free 次不另算 */
   followup_free: number;
   followup_minutes: number;
+  /** 能不能画记忆图;画一张新图用掉几次 */
+  picture_enabled: boolean;
+  picture_cost: number;
   max_text: number;
 }
 
@@ -62,6 +77,14 @@ export const getConversation = (id: number) =>
   client.get<{ id: number; title: string; messages: TutorMessage[]; followup: TutorFollowup }>(`/student/tutor/conversations/${id}`);
 
 export const requestMoreTutor = () => client.post<{ ok: boolean }>('/student/tutor/request-more');
+// ---- 单词记忆图: 一个词全平台一张,画过的免费看;第一次画扣 picture_cost 次
+export const getWordPicture = (wordId: number) =>
+  client.get<{ word: string; exists: boolean; picture: WordPictureOut | null; enabled: boolean; cost: number }>(
+    `/student/tutor/pictures/word/${wordId}`);
+export const requestWordPicture = (wordId: number) =>
+  client.post<WordPictureOut & { charged: number }>('/student/tutor/pictures', { word_id: wordId });
+export const getPicture = (picId: number) => client.get<WordPictureOut>(`/student/tutor/pictures/${picId}`);
+
 export const stopTutor = (userMessageId: number) =>
   client.post<{ ok: boolean }>('/student/tutor/stop', { user_message_id: userMessageId });
 
@@ -137,6 +160,8 @@ export async function askTutor(
 // ---- 老师: 本班学生的对话(只读)
 export interface TeacherTutorLog {
   total_questions: number;
+  /** 助手看到的这个孩子的学情摘要(一行一条);没问过为 null */
+  profile: string[] | null;
   items: Array<{ id: number; title: string; updated_at: string | null; messages: TutorMessage[] }>;
 }
 export const getStudentTutorLog = (studentId: number) =>
@@ -189,12 +214,25 @@ export interface TutorAdminState {
     api_key_masked: string; key_ok: boolean;
   };
   usage: TutorUsageDay[];
+  picture: {
+    enabled: boolean;
+    daily_limit: number;
+    cost: number;
+    counts: Partial<Record<PictureStatus, number>>;
+    provider: null | { model: string | null; base_url: string | null; quality: 'low' | 'medium' | 'high';
+      api_key_masked: string; key_ok: boolean };
+  };
 }
 export const getTutorAdmin = () => client.get<TutorAdminState>('/admin/tutor');
 export const saveTutorAdmin = (body: {
   scope: TutorAdminState['scope']; free_total: number; deep_cost: number; model?: string; fallback_model?: string;
   deep_model?: string; deep_fallback_model?: string; base_url?: string; api_key?: string;
+  picture_enabled?: boolean; picture_daily_limit?: number; picture_model?: string;
+  picture_quality?: 'low' | 'medium' | 'high'; picture_base_url?: string; picture_api_key?: string;
 }) => client.put<TutorAdminState>('/admin/tutor', body);
+export const getAdminPictures = () =>
+  client.get<{ items: Array<WordPictureOut & { model: string | null; created_at: string | null }> }>('/admin/tutor/pictures');
+export const removeAdminPicture = (picId: number) => client.delete<{ ok: boolean }>(`/admin/tutor/pictures/${picId}`);
 export const testTutorAdmin = () =>
   client.post<{ results: Array<{ model: string; mode: TutorMode; ok: boolean; message: string; ms: number }> }>(
     '/admin/tutor/test', undefined, { timeout: 70000 });

@@ -46,6 +46,7 @@ ACTION_LABELS: dict[str, str] = {
     "system.tutor": "学习助手设置",
     "tutor.grant": "给学生加学习助手次数",
     "org.tutor_pool": "机构学习助手次数到账",
+    "tutor.picture_remove": "删掉学习助手记忆图",
     # 注:音标观看**不进** operation_logs(学生不记,见 CLAUDE.md),单独落
     # phonetic_access_logs(见 models/phonetic.PhoneticAccessLog),故这里没有 phonetic.* 项
 }

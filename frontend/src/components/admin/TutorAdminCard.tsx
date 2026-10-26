@@ -5,10 +5,11 @@
  * 这里管: 开给谁(关闭 / 只开直营 / 直营 + 卡包机构 / 全部机构)、每个学生一共送几次(用完了老师在「学习助手次数」加)、
  * 快速 / 深度思考两组模型(深度思考模型留空 = 关掉)、深度思考一次算几次、Key(留空 = 不改),
  * 以及近 7 天用了多少(回答数、提问人数、token,按模型和回答方式分开)。
+ * 10-27 加「画记忆图」一组: 单独一个 Key(和答题的分开)、模型、画质、每人每天最多画几张新图,下面列最近画的图可删。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
-import { getTutorAdmin, saveTutorAdmin, testTutorAdmin, type TutorAdminState } from '../../api/tutor';
+import { getAdminPictures, getTutorAdmin, removeAdminPicture, saveTutorAdmin, testTutorAdmin, type TutorAdminState, type WordPictureOut } from '../../api/tutor';
 
 type Note = { ok: boolean; text: string } | null;
 
@@ -33,7 +34,10 @@ export default function TutorAdminCard() {
   const [form, setForm] = useState({
     scope: 'hq' as TutorAdminState['scope'], free_total: 20, deep_cost: 2, model: '', fallback_model: '',
     deep_model: '', deep_fallback_model: '', base_url: '', api_key: '',
+    picture_enabled: true, picture_daily_limit: 5, picture_model: '', picture_quality: 'low' as 'low' | 'medium' | 'high',
+    picture_base_url: '', picture_api_key: '',
   });
+  const [pics, setPics] = useState<WordPictureOut[] | null>(null);
   const [busy, setBusy] = useState<'' | 'save' | 'test'>('');
   const [note, setNote] = useState<Note>(null);
   const [showUsage, setShowUsage] = useState(false);
@@ -44,6 +48,9 @@ export default function TutorAdminCard() {
       scope: s.scope, free_total: s.free_total, deep_cost: s.deep_cost, model: s.provider?.model ?? '',
       fallback_model: s.provider?.fallback_model ?? '', deep_model: s.provider?.deep_model ?? '',
       deep_fallback_model: s.provider?.deep_fallback_model ?? '', base_url: s.provider?.base_url ?? '', api_key: '',
+      picture_enabled: s.picture.enabled, picture_daily_limit: s.picture.daily_limit,
+      picture_model: s.picture.provider?.model ?? '', picture_quality: s.picture.provider?.quality ?? 'low',
+      picture_base_url: s.picture.provider?.base_url ?? '', picture_api_key: '',
     });
   };
 
@@ -58,7 +65,8 @@ export default function TutorAdminCard() {
     setBusy('save');
     setNote(null);
     try {
-      apply(await saveTutorAdmin({ ...form, api_key: form.api_key.trim() || undefined }));
+      apply(await saveTutorAdmin({ ...form, api_key: form.api_key.trim() || undefined,
+        picture_api_key: form.picture_api_key.trim() || undefined }));
       setNote({ ok: true, text: '已保存' });
     } catch (e) {
       setNote({ ok: false, text: errorText(e) });
@@ -82,6 +90,17 @@ export default function TutorAdminCard() {
     } finally {
       setBusy('');
     }
+  };
+
+  const loadPics = async () => {
+    try { setPics((await getAdminPictures()).items); } catch (e) { setNote({ ok: false, text: errorText(e) }); }
+  };
+  const dropPic = async (p: WordPictureOut) => {
+    if (!window.confirm(`删掉「${p.word}」这张记忆图?下次有孩子点会重新画(扣那个孩子 1 次)。`)) return;
+    try {
+      await removeAdminPicture(p.pic_id);
+      setPics((all) => (all || []).map((x) => (x.pic_id === p.pic_id ? { ...x, status: 'removed', url: null } : x)));
+    } catch (e) { setNote({ ok: false, text: errorText(e) }); }
   };
 
   const today = state?.usage[0];
@@ -147,6 +166,59 @@ export default function TutorAdminCard() {
           <label className="block text-xs text-slate-500">Key{state.provider?.api_key_masked ? `(现在: ${state.provider.api_key_masked},留空不改)` : ''}
             <input type="password" autoComplete="new-password" value={form.api_key} onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))} placeholder={state.provider ? '留空 = 不改' : 'sk-...'} className={`${input} mt-1`} />
           </label>
+        </div>
+      )}
+
+      {state && (
+        <div className="mt-5 rounded-xl border border-slate-200 p-4">
+          <p className="text-sm font-semibold text-[#173047]">画单词记忆图</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            小鹰老师讲完难记的词可以画一张绘本风格的记忆图,错题本每个词也能看。一个词全平台只画一张,画过的谁看都不扣次数;
+            第一次画扣那个孩子 {state.picture.cost} 次学习助手次数,没画出来退回。用单独的 Key,和答题的分开。
+            {' '}已画好 {state.picture.counts.ready ?? 0} 张{state.picture.counts.pending ? `,正在画 ${state.picture.counts.pending} 张` : ''}
+            {!state.picture.provider?.key_ok && <span className="text-red-600"> · Key 还没配好,孩子那边不显示画图</span>}
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" checked={form.picture_enabled} onChange={(e) => setForm((f) => ({ ...f, picture_enabled: e.target.checked }))} className="h-4 w-4" />
+              开着(关了孩子那边不显示画图)
+            </label>
+            <label className="block text-xs text-slate-500">每人每天最多画几张新图
+              <input type="number" min={1} max={50} value={form.picture_daily_limit}
+                onChange={(e) => setForm((f) => ({ ...f, picture_daily_limit: Math.max(1, Math.min(50, Number(e.target.value) || 1)) }))}
+                className={`${input} mt-1`} />
+            </label>
+            <label className="block text-xs text-slate-500">画质(低 约 25 秒,画面差别不大)
+              <select value={form.picture_quality} onChange={(e) => setForm((f) => ({ ...f, picture_quality: e.target.value as 'low' | 'medium' | 'high' }))} className={`${input} mt-1`}>
+                <option value="low">低(推荐)</option><option value="medium">中</option><option value="high">高(慢、贵)</option>
+              </select>
+            </label>
+            <label className="block text-xs text-slate-500">模型
+              <input value={form.picture_model} onChange={(e) => setForm((f) => ({ ...f, picture_model: e.target.value }))} placeholder="gpt-image-2.5-sunburst" className={`${input} mt-1`} />
+            </label>
+            <label className="block text-xs text-slate-500">中转地址
+              <input value={form.picture_base_url} onChange={(e) => setForm((f) => ({ ...f, picture_base_url: e.target.value }))} placeholder="https://hk.hueling.cc" className={`${input} mt-1`} />
+            </label>
+            <label className="block text-xs text-slate-500">Key{state.picture.provider?.api_key_masked ? `(现在: ${state.picture.provider.api_key_masked},留空不改)` : ''}
+              <input type="password" autoComplete="new-password" value={form.picture_api_key} onChange={(e) => setForm((f) => ({ ...f, picture_api_key: e.target.value }))} placeholder={state.picture.provider ? '留空 = 不改' : 'sk-...'} className={`${input} mt-1`} />
+            </label>
+          </div>
+          <button type="button" onClick={() => { if (pics) setPics(null); else void loadPics(); }}
+            className="admin-focus-ring mt-3 inline-flex min-h-10 items-center rounded-xl px-3 text-sm text-[#397b9b] hover:bg-[#eaf5fa]">
+            {pics ? '收起' : '最近画的图'}
+          </button>
+          {pics && (pics.length === 0 ? <p className="mt-2 text-xs text-slate-400">还没画过</p> : (
+            <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
+              {pics.map((p) => (
+                <li key={p.pic_id} className="rounded-lg border border-slate-100 p-1.5 text-center text-xs">
+                  {p.url ? <img src={p.url} alt={p.word} className="mx-auto h-20 w-20 object-contain" loading="lazy" />
+                    : <div className="mx-auto flex h-20 w-20 items-center justify-center text-slate-400">{p.status === 'pending' ? '在画' : p.status === 'removed' ? '已删' : '没画出'}</div>}
+                  <p className="mt-1 truncate font-medium text-slate-700">{p.word}</p>
+                  {p.status === 'ready' && <button type="button" onClick={() => { void dropPic(p); }} className="text-red-600 hover:underline">删掉</button>}
+                </li>
+              ))}
+            </ul>
+          ))}
         </div>
       )}
 

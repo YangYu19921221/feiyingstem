@@ -6,7 +6,10 @@
       POST /student/tutor/ask                       提问(文字 + 可选一张照片 + mode=fast|deep),回答按 SSE 一段段推
       POST /student/tutor/stop                      停下正在出的回答(一个字没出就退回次数)
       POST /student/tutor/request-more              次数用完了,请老师加
-老师: GET  /teacher/students/{sid}/tutor            本班学生和助手的对话(只读)
+      GET  /student/tutor/pictures/word/{word_id}   这个词有没有记忆图(错题本「看记忆图」先问这个,不扣次数)
+      POST /student/tutor/pictures                  要一张记忆图(有就给,没有就扣 1 次开画,services/word_picture)
+      GET  /student/tutor/pictures/{pic_id}         画好没有(前端每 3 秒问一次)
+老师: GET  /teacher/students/{sid}/tutor            本班学生和助手的对话(只读)+ 助手看到的这个孩子的学情摘要
       GET  /teacher/tutor/available                 本校开没开(公告用)
       GET  /teacher/tutor/students                  本班学生用了几次 / 还剩几次 / 谁在请求加 / 机构次数池还剩几次
       POST /teacher/tutor/grant                     给本班学生加次数(加盟机构从机构次数池里扣,池里不够 409)
@@ -16,6 +19,8 @@
       GET  /admin/tutor/pools                       各机构的学习助手次数池
       GET  /admin/tutor/pools/{org_id}              一个机构的次数池和到账记录
       POST /admin/tutor/pools/{org_id}              机构进货到账加次数 / 扣回(合同第三条第 10 款)
+      GET  /admin/tutor/pictures                    画过的记忆图(最近 60 张)
+      DELETE /admin/tutor/pictures/{pic_id}         删掉一张不合适的图(下次有人点再画)
 
 回答是流式的: 浏览器收到一段字就显示一段(孩子不用干等十几秒)。
 ⚠️ SSE 三件事: X-Accel-Buffering: no(nginx 不攒着一起发)、no-store(全局 proxy_cache)、
@@ -48,6 +53,7 @@ from app.models.tutor import TutorAllowance, TutorConversation, TutorMessage, Tu
 from app.models.user import Class, ClassStudent, User
 from app.services import audit_log
 from app.services import tutor as tt
+from app.services import word_picture as wp
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +109,7 @@ async def tutor_status(db: AsyncSession = Depends(get_db), student: User = Depen
             "card_times": await tt.card_times(db, student.id),
             "deep_enabled": bool(conf and conf.deep_enabled), "deep_cost": settings["deep_cost"],
             "followup_free": tt.FOLLOWUP_FREE, "followup_minutes": tt.FOLLOWUP_MINUTES,
+            "picture_enabled": ok and await wp.available(db), "picture_cost": wp.COST,
             "max_text": tt.MAX_TEXT}
 
 
@@ -112,6 +119,52 @@ async def tutor_request_more(db: AsyncSession = Depends(get_db), student: User =
     await tt.request_more(db, student.id)
     await db.commit()
     return {"ok": True}
+
+
+class PictureIn(BaseModel):
+    word_id: int
+
+
+@student_router.get("/tutor/pictures/word/{word_id}")
+async def picture_for_word(word_id: int, db: AsyncSession = Depends(get_db),
+                           student: User = Depends(get_current_student)):
+    """这个词有没有画好的记忆图。没有 = exists false(不扣次数,前端据此写「画一张(用 1 次)」)"""
+    found = await wp.find_word(db, word_id=word_id)
+    if found is None:
+        raise HTTPException(404, "没有这个词")
+    p = await wp.lookup(db, *found)
+    o = wp.out(p) if p else None
+    return {"word": found[0], "exists": bool(o and o["status"] in ("ready", "pending")), "picture": o,
+            "enabled": await wp.available(db), "cost": wp.COST}
+
+
+@student_router.post("/tutor/pictures")
+async def request_picture(body: PictureIn, db: AsyncSession = Depends(get_db),
+                          student: User = Depends(get_current_student)):
+    ok, reason, _ = await _availability(db, student)
+    if not ok:
+        raise HTTPException(403, reason)
+    found = await wp.find_word(db, word_id=body.word_id)
+    if found is None:
+        raise HTTPException(404, "没有这个词")
+    await check_rate(str(student.id), "tutor_pic", [(60, 6)])
+    try:
+        return await wp.request(db, student, *found)
+    except wp.PictureRefused as e:
+        raise HTTPException(429, str(e))
+
+
+@student_router.get("/tutor/pictures/{pic_id}")
+async def picture_status(pic_id: int, db: AsyncSession = Depends(get_db),
+                         _student: User = Depends(get_current_student)):
+    """图是全平台共用的(只有单词的画面),谁都能看"""
+    from app.models.tutor import WordPicture
+
+    p = (await db.execute(select(WordPicture).where(WordPicture.id == pic_id)
+                          .execution_options(populate_existing=True))).scalar_one_or_none()
+    if p is None:
+        raise HTTPException(404, "没有这张图")
+    return wp.out(p)
 
 
 class StopIn(BaseModel):
@@ -152,8 +205,22 @@ async def conversation_detail(cid: int, db: AsyncSession = Depends(get_db),
     msgs = (await db.execute(
         select(TutorMessage).where(TutorMessage.conversation_id == c.id).order_by(TutorMessage.id)
     )).scalars().all()
-    return {"id": c.id, "title": c.title or "新对话", "messages": [_msg_out(m) for m in msgs],
+    return {"id": c.id, "title": c.title or "新对话", "messages": await _with_pictures(db, [_msg_out(m) for m in msgs]),
             "followup": await tt.followup_state(db, c.id)}
+
+
+async def _with_pictures(db: AsyncSession, msgs: list[dict]) -> list[dict]:
+    """消息里存的图片卡是画图那一刻的状态(pending),读的时候换成现在的"""
+    from app.models.tutor import WordPicture
+
+    ids = {c["pic_id"] for m in msgs for c in m["cards"] if c.get("type") == "picture" and c.get("pic_id")}
+    if not ids:
+        return msgs
+    pics = {p.id: wp.out(p) for p in (await db.execute(select(WordPicture).where(WordPicture.id.in_(ids)))).scalars()}
+    for m in msgs:
+        m["cards"] = [({**c, "status": pics[c["pic_id"]]["status"], "url": pics[c["pic_id"]]["url"]}
+                       if c.get("type") == "picture" and c.get("pic_id") in pics else c) for c in m["cards"]]
+    return msgs
 
 
 async def _mark_refunded(db: AsyncSession, um_id: int) -> None:
@@ -231,6 +298,7 @@ async def ask(
     if not ok:
         raise HTTPException(403, reason)
     conf = await tt.relay_conf(db)
+    conf.pictures = await wp.available(db)
     if mode not in tt.MODES:
         mode = "fast"
     if mode == "deep" and not conf.deep_enabled:
@@ -445,7 +513,16 @@ async def student_tutor_log(student_id: int, limit: int = Query(20, ge=1, le=50)
     total = (await db.execute(
         select(func.count(TutorMessage.id)).where(TutorMessage.user_id == student_id, TutorMessage.role == "user")
     )).scalar() or 0
-    return {"total_questions": int(total),
+    # 助手看到的这个孩子的学情(老师能看到助手知道什么);没问过的学生不算(省一次查询)
+    profile = None
+    if total:
+        from app.services.tutor_profile import profile_lines
+        student = await db.get(User, student_id)
+        if student is not None:
+            profile = await profile_lines(db, student)
+    for c in convs:
+        by_conv[c.id] = await _with_pictures(db, by_conv[c.id])
+    return {"total_questions": int(total), "profile": profile,
             "items": [{"id": c.id, "title": c.title or "新对话",
                        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
                        "messages": by_conv[c.id]} for c in convs]}
@@ -465,6 +542,13 @@ class TutorAdminIn(BaseModel):
     base_url: Optional[str] = Field(None, max_length=255)
     # 留空 = 不改(显式分支,见 CLAUDE.md「留空=不修改」那条)
     api_key: Optional[str] = Field(None, max_length=400)
+    # 画记忆图(services/word_picture): 单独一个 Key,和答题那个分开;都留空 = 不动
+    picture_enabled: Optional[bool] = None
+    picture_daily_limit: Optional[int] = Field(None, ge=1, le=50)
+    picture_model: Optional[str] = Field(None, max_length=100)
+    picture_quality: Optional[str] = Field(None, pattern="^(low|medium|high)$")
+    picture_base_url: Optional[str] = Field(None, max_length=255)
+    picture_api_key: Optional[str] = Field(None, max_length=400)
 
 
 async def _provider_row(db: AsyncSession) -> Optional[AIProvider]:
@@ -491,7 +575,25 @@ async def _admin_state(db: AsyncSession) -> dict:
             "key_ok": bool(key) and key != "DECRYPTION_FAILED",
         },
         "usage": await tt.usage_summary(db, days=7),
+        "picture": await _picture_state(db),
     }
+
+
+async def _picture_state(db: AsyncSession) -> dict:
+    from app.api.v1.admin.ai_config import decrypt_api_key, mask_api_key
+    from app.models.tutor import WordPicture
+
+    ps = await wp.get_settings(db)
+    row = await wp.provider_row(db)
+    key = decrypt_api_key(row.api_key) if row and row.api_key else ""
+    counts = dict((await db.execute(select(WordPicture.status, func.count(WordPicture.id))
+                                    .group_by(WordPicture.status))).all())
+    return {**ps, "cost": wp.COST, "counts": counts,
+            "provider": None if row is None else {
+                "model": row.model_name, "base_url": row.base_url,
+                "quality": (row.extra_config or {}).get("quality") or wp.DEFAULT_QUALITY,
+                "api_key_masked": mask_api_key(key) if key and key != "DECRYPTION_FAILED" else "",
+                "key_ok": bool(key) and key != "DECRYPTION_FAILED"}}
 
 
 @admin_router.get("/tutor")
@@ -534,10 +636,12 @@ async def admin_tutor_update(body: TutorAdminIn, request: Request, db: AsyncSess
         row.extra_config = extra
         row.is_default = False     # 永远不当默认(见 admin/ai_config.TUTOR_PROVIDER)
     await tt.save_settings(db, body.scope, body.free_total, body.deep_cost)
+    pic_changed = await _save_picture(db, body)
     conf_extra = (row.extra_config or {}) if row else {}
     audit_log.record(db, request, admin, "system.tutor",
                      f"学习助手: 开放范围 {dict(off='关闭', hq='只开直营', pack='直营 + 卡包机构', all='全部机构')[body.scope]},"
-                     f"每个学生送 {body.free_total} 次,深度思考算 {body.deep_cost} 次" + (",换了密钥" if key else ""),
+                     f"每个学生送 {body.free_total} 次,深度思考算 {body.deep_cost} 次" + (",换了密钥" if key else "")
+                     + (f",画图: {pic_changed}" if pic_changed else ""),
                      detail={"scope": body.scope, "free_total": body.free_total, "deep_cost": body.deep_cost,
                              "model": row.model_name if row else None,
                              "fallback_model": conf_extra.get("fallback_model"),
@@ -545,6 +649,61 @@ async def admin_tutor_update(body: TutorAdminIn, request: Request, db: AsyncSess
                              "deep_fallback_model": conf_extra.get("deep_fallback_model")})
     await db.commit()
     return await _admin_state(db)
+
+
+async def _save_picture(db: AsyncSession, body: TutorAdminIn) -> str:
+    """画图那一组设置;返回改了什么(写进操作记录,不含密钥)"""
+    from app.api.v1.admin.ai_config import encrypt_api_key
+
+    changed: list[str] = []
+    ps = await wp.get_settings(db)
+    enabled = ps["enabled"] if body.picture_enabled is None else body.picture_enabled
+    limit = ps["daily_limit"] if body.picture_daily_limit is None else body.picture_daily_limit
+    if (enabled, limit) != (ps["enabled"], ps["daily_limit"]):
+        await wp.save_settings(db, enabled, limit)
+        changed.append(f"{'开' if enabled else '关'},每人每天 {limit} 张")
+    row = await wp.provider_row(db)
+    key = (body.picture_api_key or "").strip()
+    if row is None and key:
+        row = AIProvider(provider_name=wp.PROVIDER_NAME, display_name="画记忆图(学习助手专用)",
+                         enabled=True, is_default=False, model_name=wp.DEFAULT_MODEL,
+                         base_url="https://hk.hueling.cc", extra_config={"quality": wp.DEFAULT_QUALITY})
+        db.add(row)
+    if row is None:
+        return ";".join(changed)
+    if key and "***" not in key and "..." not in key:
+        row.api_key = encrypt_api_key(key)
+        changed.append("换了密钥")
+    if body.picture_model is not None and body.picture_model.strip():
+        row.model_name = body.picture_model.strip()
+        changed.append(f"模型 {row.model_name}")
+    if body.picture_base_url is not None and body.picture_base_url.strip():
+        row.base_url = body.picture_base_url.strip()
+    if body.picture_quality is not None:
+        row.extra_config = {**(row.extra_config or {}), "quality": body.picture_quality}
+    row.is_default = False     # 永远不当默认(见 admin/ai_config.DEDICATED_PROVIDERS)
+    return ";".join(changed)
+
+
+@admin_router.get("/tutor/pictures")
+async def admin_pictures(db: AsyncSession = Depends(get_db), _admin: User = Depends(get_current_admin)):
+    from app.models.tutor import WordPicture
+
+    rows = (await db.execute(select(WordPicture).order_by(WordPicture.id.desc()).limit(60))).scalars().all()
+    return {"items": [{**wp.out(p), "model": p.model,
+                       "created_at": p.created_at.isoformat() if p.created_at else None} for p in rows]}
+
+
+@admin_router.delete("/tutor/pictures/{pic_id}")
+async def admin_remove_picture(pic_id: int, request: Request, db: AsyncSession = Depends(get_db),
+                               admin: User = Depends(get_current_admin)):
+    p = await wp.remove(db, pic_id, admin.id)
+    if p is None:
+        raise HTTPException(404, "没有这张图")
+    audit_log.record(db, request, admin, "tutor.picture_remove", f"删掉记忆图「{p.word}」",
+                     target_type="word_picture", target_id=pic_id, detail={"word": p.word, "meaning": p.meaning})
+    await db.commit()
+    return {"ok": True}
 
 
 @admin_router.post("/tutor/test")

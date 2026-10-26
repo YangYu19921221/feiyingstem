@@ -118,3 +118,29 @@ class TutorGrantLog(Base):
         Index("ix_tutor_grant_user", "user_id"),
         Index("uq_tutor_grant_card", "ref_id", unique=True, sqlite_where=text("source = 'card'")),
     )
+
+
+class WordPicture(Base):
+    """单词记忆图(2026-10-27,用户「GPT Image 2.5 Sunburst…3 毛一张,你设计下」)。规则见 services/word_picture.py
+
+    **一个词(拼写 + 主释义)全平台只画一张**(pic_key 唯一): 画过的谁看都不扣次数;
+    第一个点「画」的孩子扣 1 次学习助手次数,画不出来退回。
+    图是按单词和课本释义画的,不含任何孩子的信息,存在公开目录 UPLOAD_DIR/word-pics(与封面图同性质)
+    """
+    __tablename__ = "word_pictures"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pic_key = Column(String(64), nullable=False, unique=True)   # sha1(小写拼写 | 归一后的主释义)
+    word = Column(String(100), nullable=False)
+    meaning = Column(String(200), nullable=True)
+    # pending 正在画 / ready 画好了 / failed 没画出来(已退回)/ removed 老师或管理员删掉了(下次有人点再画)
+    status = Column(String(10), nullable=False, default="pending", server_default="pending")
+    url = Column(String(255), nullable=True)
+    model = Column(String(60), nullable=True)
+    requested_by = Column(Integer, nullable=True)                # 这一次是谁点的「画」(扣的是他的次数)
+    charged = Column(Integer, nullable=False, default=0, server_default="0")  # 这一次扣了几次(退回时用,退过清 0)
+    error = Column(String(200), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    removed_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

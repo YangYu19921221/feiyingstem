@@ -1187,7 +1187,7 @@ class AIService:
                         AIProvider.is_default == 1,
                         AIProvider.enabled == 1,
                         # 学习助手专用的 Claude 中转(贵)只给 services/tutor 用,周报/例句/组卷绝不走它
-                        AIProvider.provider_name != "claude_tutor",
+                        AIProvider.provider_name.notin_(("claude_tutor", "image_tutor")),
                     )
                 )
                 provider = result.scalar_one_or_none()
@@ -1391,7 +1391,7 @@ class AIService:
             async for db in get_db():
                 result = await db.execute(
                     select(AIProvider)
-                    .where(AIProvider.enabled == 1, AIProvider.provider_name != "claude_tutor")
+                    .where(AIProvider.enabled == 1, AIProvider.provider_name.notin_(("claude_tutor", "image_tutor")))
                     .order_by(AIProvider.is_default.desc(), AIProvider.id)
                 )
                 providers = result.scalars().all()
@@ -1495,7 +1495,7 @@ class AIService:
                         AIProvider.is_default == True,
                         AIProvider.enabled == True,
                         AIProvider.tts_enabled == True,
-                        AIProvider.provider_name != "claude_tutor",
+                        AIProvider.provider_name.notin_(("claude_tutor", "image_tutor")),
                     )
                 )
                 provider = result.scalar_one_or_none()

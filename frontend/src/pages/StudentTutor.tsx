@@ -8,6 +8,7 @@
  * - 回答里的英文点一下就能听(同一个 Edge TTS 声音)
  * - 可以拍一道题问思路: 照片压缩后只发给模型看,不存;作业/考试题先提示,试过两次还不会再讲答案和理由
  * - 从错题本等地方点「问小鹰老师」进来会把问题填好(location.state.q),孩子自己点发送 —— 不自动发,省次数
+ * - 记忆图(10-27): 助手调 draw_word_picture 后回答下面出一张图片卡(PictureCard 自己轮询到画好)
  * - 同一道题的追问不另算(10-26 晚,用户「不给答案孩子一直答不上来怎么办」): 付过次数的那问之后 15 分钟内、
  *   快速回答、不带新照片,最多 3 次不扣(后端 services/tutor.followup_state,回答完的 done 事件带 followup)。
  *   回答下面给三个快捷回复「给我一点提示 / 还是不会,讲给我听 / 再出一道类似的」—— 孩子卡住时不用自己组织语言,
@@ -22,6 +23,7 @@ import {
   askTutor, getConversation, getTutorStatus, listConversations, requestMoreTutor, stopTutor, TutorAskError,
   type TutorCard, type TutorConversationItem, type TutorFollowup, type TutorMode, type TutorStatus,
 } from '../api/tutor';
+import PictureCard from '../components/tutor/PictureCard';
 import PracticeCard from '../components/tutor/PracticeCard';
 import SpeakableText from '../components/tutor/SpeakableText';
 import { compressImage } from '../utils/compressImage';
@@ -49,10 +51,12 @@ const QUICK_REPLIES = ['给我一点提示', '还是不会,讲给我听', '再�
 
 const SUGGESTIONS = [
   '今天老师布置了什么,我做完了吗?',
-  '我哪些单词最容易错?',
+  '我这周学得怎么样,进步了吗?',
   '用我常错的词考考我',
-  '一般现在时什么时候加 s?',
 ];
+// 第四条: 能画记忆图时换成画图那条(画图没开就别让孩子点了落空)
+const SUGGESTION_PICTURE = 'elephant 好难记,给我画张记忆图';
+const SUGGESTION_GRAMMAR = '一般现在时什么时候加 s?';
 
 /** 提示词要求不用 markdown,模型偶尔还是会带,显示前去掉(后端存库前做同样的事) */
 const clean = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#{1,6}\s*/gm, '').replace(/^\s*[-*]\s+/gm, '· ');
@@ -412,7 +416,7 @@ export default function StudentTutor() {
                 {status.deep_enabled && ` 难的题可以选「深度思考」,想得更透,一次算 ${deepCost} 次。`}
               </p>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {SUGGESTIONS.map((s) => (
+                {[...SUGGESTIONS, status.picture_enabled ? SUGGESTION_PICTURE : SUGGESTION_GRAMMAR].map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -459,6 +463,8 @@ export default function StudentTutor() {
                   {m.cards.map((c, i) => (
                     c.type === 'practice' ? (
                       <PracticeCard key={i} mode={c.mode} items={c.items} />
+                    ) : c.type === 'picture' ? (
+                      <PictureCard key={`p${c.pic_id}`} picId={c.pic_id} word={c.word} status={c.status} url={c.url} />
                     ) : (
                       <button
                         key={i}

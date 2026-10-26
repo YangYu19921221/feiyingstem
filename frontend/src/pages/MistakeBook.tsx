@@ -16,6 +16,7 @@ import ColoredWord from '../components/ColoredWord';
 import { toast } from '../components/Toast';
 import StudentPageHeader from '../components/student/StudentPageHeader';
 import { getTutorStatus } from '../api/tutor';
+import WordPictureButton from '../components/tutor/WordPictureButton';
 
 const PAGE_SIZE = 20;
 
@@ -23,8 +24,10 @@ const MistakeBook = () => {
   const navigate = useNavigate();
   // 学习助手开放了才显示「问小鹰老师」
   const [tutorOn, setTutorOn] = useState(false);
+  const [pictureOn, setPictureOn] = useState(false);
   useEffect(() => {
-    getTutorStatus().then((st) => setTutorOn(st.enabled)).catch(() => setTutorOn(false));
+    getTutorStatus().then((st) => { setTutorOn(st.enabled); setPictureOn(st.enabled && st.picture_enabled); })
+      .catch(() => setTutorOn(false));
   }, []);
   const location = useLocation();
 
@@ -404,6 +407,7 @@ const MistakeBook = () => {
                               问小鹰老师怎么记
                             </button>
                           )}
+                          {pictureOn && <WordPictureButton wordId={word.word_id} word={word.word} />}
                         </div>
 
                         <div className="ml-4">

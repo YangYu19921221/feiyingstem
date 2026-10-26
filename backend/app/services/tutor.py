@@ -111,7 +111,7 @@ RULES = """你是「飞鹰AI英语」里的英语学习助手「小鹰老师」,
    孩子已经试过两次还答不上来时,不要再让他自己想,第三步一定要讲明白,别让他一直卡着。孩子说出答案以后,告诉他对不对、为什么。孩子让你代写作文或句子时,帮他列思路、给个开头,不整篇代写。
 4. 孩子发来题目照片时,回答第一行写「我看到的题目: 」加上你认出的题目原文(看不清就说看不清,请他重拍清楚),然后按第 3 条给提示。
 5. 讲单词的音标、释义、例句之前,先用 lookup_word 查课本里的说法,以课本为准。英文拼写和语法必须准确,拿不准就说拿不准,不要编。
-6. 孩子问今天要做什么、做完没有,用 get_today_tasks 查;想知道自己哪些词容易错,用 get_weak_words 查;想练习、默写、考考自己,用 make_practice 出卡片(一次最多 8 个词,优先用他常错的词或今天任务里的词,今天任务里的词用 get_task_words 查);要他去做复习、作业或看错题时,用 show_link 给他一个按钮。工具查到的都是这个孩子自己的数据,可以直接告诉他。出了练习卡以后,回答里不要再写出卡上的单词和中文意思(写了等于把答案给他了),一句话让他在下面做就行。
+6. 孩子问今天要做什么、做完没有,用 get_today_tasks 查;想知道自己哪些词容易错,用 get_weak_words 查;想练习、默写、考考自己,用 make_practice 出卡片(一次最多 8 个词,优先用他常错的词或今天任务里的词,今天任务里的词用 get_task_words 查);要他去做复习、作业或看错题时,用 show_link 给他一个按钮;孩子问「我学得怎么样」「我进步了吗」「这周怎么样」,用 get_my_progress 查两周明细,和上周比,有进步就具体地夸,没进步不批评、给一个下周做得到的小目标;讲完一个难记的单词,或孩子说想看图、记不住,可以用 draw_word_picture(有这个工具时)给他画一张记忆图(第一次画这个词要用掉他 1 次次数,画过的免费看,一次只画一个词)。工具查到的都是这个孩子自己的数据,可以直接告诉他。下面「这个孩子的情况」是系统里记录的他的学习情况,讲题、出练习时结合它(比如他常把 ie 写成 ei,讲到这类词就提醒一句),但不要整段念给他听,也不要每次都提。出了练习卡以后,回答里不要再写出卡上的单词和中文意思(写了等于把答案给他了),一句话让他在下面做就行。
 7. 你听不到声音,判断不了发音。孩子问发音时讲发音要点,告诉他点一下回答里的英文就能听标准音。
 8. 不问、不提孩子的姓名、学校、电话、住址;孩子主动说了也不要复述。
 9. 多鼓励,具体地夸,不说教,不吓唬。
@@ -151,6 +151,19 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "get_my_progress",
+        "description": "查这个孩子近两周每天学了多少词、多少分钟,这周和上周比(学了几天、词数、正确率),最近在学的单元进度,拼写上的固定毛病。孩子问「我学得怎么样」「进步了吗」时用。",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "draw_word_picture",
+        "description": "给孩子画一张这个单词的记忆插图(绘本风格,图里不写字),显示在回答下面,大约要等 20–30 秒。一次只画一个词,课本里要有这个词。第一次画这个词要用掉孩子 1 次次数,别人画过的免费看。",
+        "input_schema": {"type": "object", "properties": {
+            "word": {"type": "string", "description": "要画的英文单词"},
+            "idea": {"type": "string", "description": "记忆的画面,一句中文,比如「大象用长鼻子卷着字母 e 形状的气球」;不写就按释义画"},
+        }, "required": ["word"]},
+    },
+    {
         "name": "show_link",
         "description": "在回答下面给孩子一个按钮: review=去做今天的复习,homework=去做作业,mistakes=去看错题本。",
         "input_schema": {
@@ -176,6 +189,8 @@ TOOL_STATUS = {
     "get_task_words": "在看今天任务里的词…",
     "make_practice": "在出练习…",
     "show_link": "",
+    "get_my_progress": "在看你这两周的学习…",
+    "draw_word_picture": "在准备画图…",
 }
 
 
@@ -427,6 +442,8 @@ class RelayConf:
     fallback: Optional[str]
     deep_model: Optional[str] = None
     deep_fallback: Optional[str] = None
+    # 画记忆图配好了没有(services/word_picture.available);没配就不把 draw_word_picture 给模型,免得它答应孩子画图
+    pictures: bool = False
 
     def chain(self, mode: str) -> list[str]:
         """这种回答方式依次试哪几个模型(去重、去空)"""
@@ -507,9 +524,14 @@ def _headers(conf: RelayConf) -> dict:
     return {"x-api-key": conf.api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
 
 
-def request_body(model: str, mode: str, system: list[dict], messages: list[dict], allow_tools: bool) -> dict:
+def tools_for(pictures: bool) -> list[dict]:
+    return TOOLS if pictures else [t for t in TOOLS if t["name"] != "draw_word_picture"]
+
+
+def request_body(model: str, mode: str, system: list[dict], messages: list[dict], allow_tools: bool,
+                 pictures: bool = False) -> dict:
     body = {"model": model, "max_tokens": MAX_TOKENS.get(mode, MAX_TOKENS["fast"]), "system": system,
-            "tools": TOOLS, "messages": messages, "stream": True}
+            "tools": tools_for(pictures), "messages": messages, "stream": True}
     if mode == "deep":
         # 5.x 只认 adaptive(传 enabled + budget 直接 400,10-26 实测);快速档不传,让模型自己定
         body["thinking"] = {"type": "adaptive"}
@@ -530,7 +552,7 @@ async def stream_round(conf: RelayConf, model: str, system: list[dict], messages
     """一轮流式调用。文字片段经 on_text 往外送;思考开始时调 on_thinking()(思考内容不往外送);
     工具调用攒完整后放进结果。孩子点了停止(should_stop 每秒看一次)就断开连接,上游跟着停、不再计费。
     还没收到任何内容就失败 → RelayUnavailable / RelayError(调用方决定要不要换模型)"""
-    body = request_body(model, mode, system, messages, allow_tools)
+    body = request_body(model, mode, system, messages, allow_tools, pictures=conf.pictures)
     should_stop = should_stop or _never_stop
     res = RoundResult()
     blocks: dict[int, dict] = {}
@@ -857,6 +879,13 @@ async def run_tool(db: AsyncSession, user: User, name: str, inp: dict) -> tuple[
             return await tool_make_practice(db, (inp or {}).get("words") or [], str((inp or {}).get("mode") or "listen"))
         if name == "show_link":
             return tool_show_link(str((inp or {}).get("target") or ""))
+        if name == "get_my_progress":
+            from app.services.tutor_profile import my_progress
+            return await my_progress(db, user), None
+        if name == "draw_word_picture":
+            from app.services import word_picture
+            return await word_picture.tool_draw(db, user, str((inp or {}).get("word") or ""),
+                                                str((inp or {}).get("idea") or ""))
     except Exception:  # noqa: BLE001
         logger.exception("学习助手工具出错: %s", name)
         return {"error": "这个工具暂时查不了"}, None
@@ -866,37 +895,10 @@ async def run_tool(db: AsyncSession, user: User, name: str, inp: dict) -> tuple[
 # ---------------------------------------------------------------- 提示词 / 对话历史
 
 async def student_context(db: AsyncSession, user: User) -> str:
-    """每次提问带上的孩子情况(短,省 token)。不含姓名学校"""
-    from app.services import daily_review
-    from app.services.weak_words import top_wrong_words
+    """每次提问带上的孩子学情(services/tutor_profile,口径全读系统已有的唯一真源)。不含姓名学校"""
+    from app.services.tutor_profile import profile_lines, render
 
-    lines = [f"- 学段: {await _stage_name(db, user.id)}"]
-    try:
-        start, end = local_day_utc_range(local_today())
-        total, done = (await db.execute(
-            select(func.count(HomeworkStudentAssignment.id),
-                   func.sum(case((HomeworkStudentAssignment.status == "completed", 1), else_=0)))
-            .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
-            .where(HomeworkStudentAssignment.student_id == user.id,
-                   HomeworkAssignment.is_closed.is_(False),
-                   HomeworkStudentAssignment.assigned_at >= start,
-                   HomeworkStudentAssignment.assigned_at < end)
-        )).one()
-        lines.append(f"- 今天老师布置的单词任务: {int(total or 0)} 份,做完 {int(done or 0)} 份(详细用 get_today_tasks 查)")
-        rv = await daily_review.status(db, user.id, create=False)
-        if rv.get("started") and rv["total"]:
-            lines.append(f"- 今天的每日复习: {rv['total']} 个,做了 {rv['done']} 个")
-        top = await top_wrong_words(db, user.id, limit=5)
-        if top:
-            wrote = await _recent_wrong_spellings(db, user.id, [t["word"] for t in top])
-            parts = []
-            for t in top:
-                w = wrote.get(t["word"].lower())
-                parts.append(t["word"] + (f"(写成过 {'、'.join(w)})" if w else ""))
-            lines.append("- 最近常错的词: " + ",".join(parts))
-    except Exception:  # noqa: BLE001
-        logger.exception("学习助手取学情失败 user=%s", user.id)
-    return "这个孩子的情况(帮你了解他,不要整段念出来):\n" + "\n".join(lines)
+    return "这个孩子的情况(系统记录的学习情况,帮你了解他,不要整段念出来):\n" + render(await profile_lines(db, user))
 
 
 def build_system(context: str, mode: str = "fast") -> list[dict]:

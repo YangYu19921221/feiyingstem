@@ -33,6 +33,7 @@ from app.services.mastery import (
     SRS_INTERVALS as _SRS_INTERVALS,
     SRS_LABELS as _SRS_LABELS,
 )
+from app.utils.spelling_diff import first_diff_chunk
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -623,7 +624,7 @@ async def get_spelling_diagnosis(
         if not expect or not got or got == expect:
             continue
         analyzed += 1
-        pair = _first_diff_chunk(expect, got)
+        pair = first_diff_chunk(expect, got)
         if pair:
             s = stats[pair]
             s["count"] += 1
@@ -644,27 +645,6 @@ async def get_spelling_diagnosis(
         "patterns": patterns,
         "enough_data": analyzed >= 5,
     }
-
-
-def _first_diff_chunk(expect: str, got: str) -> tuple | None:
-    """找出第一处差异的字符块(前后各扩1个字符做上下文),如 believe/beleive → ('ie','ei')。
-    简单双指针,不做完整编辑距离——诊断要的是'哪一小块写错',不是精确对齐。"""
-    # 掐头
-    i = 0
-    while i < len(expect) and i < len(got) and expect[i] == got[i]:
-        i += 1
-    # 去尾
-    j_e, j_g = len(expect), len(got)
-    while j_e > i and j_g > i and expect[j_e - 1] == got[j_g - 1]:
-        j_e -= 1
-        j_g -= 1
-    exp_chunk, got_chunk = expect[i:j_e], got[i:j_g]
-    if not exp_chunk and not got_chunk:
-        return None
-    # 差异块太长说明整词写错(不是局部混淆),不计入模式
-    if len(exp_chunk) > 4 or len(got_chunk) > 4:
-        return None
-    return (exp_chunk or "(漏写)", got_chunk or "(多写)")
 
 
 @router.get("/memory-curve-stats")

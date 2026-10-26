@@ -2,6 +2,7 @@
  * 教师端学生详情:「问小鹰老师」对话记录(2026-10-26,只读)
  *
  * 学习助手的规则是作业/考试题先提示、试过两次还不会才讲答案(10-26 晚起),但机器做不到 100%,所以老师能看孩子问了什么、
+ * (10-27 起顶上还能展开看助手参考的这个孩子的学情摘要 —— 助手知道什么,老师就知道什么)
  * 助手怎么答的。孩子拍的题目照片不保存,助手回答第一行会写「我看到的题目: …」。
  */
 import { useEffect, useState } from 'react';
@@ -40,6 +41,14 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
         孩子和 AI 学习助手的对话。助手对作业、考试题先给提示,孩子试过两次还不会才讲答案和理由并出同类题;孩子拍的照片不保存。
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {data?.profile && data.profile.length > 0 && (
+        <details className="mb-3 rounded-lg bg-orange-50/60 px-3 py-2 text-xs leading-5 text-slate-600">
+          <summary className="cursor-pointer select-none font-medium text-orange-800">小鹰老师眼里的这个孩子(它回答时参考这些)</summary>
+          <ul className="mt-1.5 space-y-0.5">
+            {data.profile.map((l, i) => <li key={i}>{l.replace(/^-\s*/, '· ')}</li>)}
+          </ul>
+        </details>
+      )}
       <ul className="divide-y divide-slate-100">
         {(data?.items || []).map((c) => (
           <li key={c.id} className="py-2">
@@ -63,6 +72,11 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
                       {m.role === 'user' && m.has_image && <span className="mr-1 text-xs text-orange-700">[照片]</span>}
                       {m.role === 'assistant' && m.mode === 'deep' && !m.failed && <span className="mr-1 text-xs text-sky-700">[深度思考]</span>}
                       {m.failed ? '(这次没调通,孩子没拿到回答)' : m.stopped && !m.text ? '(孩子停下了)' : m.text}
+                      {m.cards.some((x) => x.type === 'picture') && (
+                        <span className="mt-1 block text-xs text-slate-400">
+                          [画了记忆图: {m.cards.flatMap((x) => (x.type === 'picture' ? [x.word] : [])).join('、')}]
+                        </span>
+                      )}
                       {m.cards.some((x) => x.type === 'practice') && (
                         <span className="mt-1 block text-xs text-slate-400">
                           [出了练习: {m.cards.flatMap((x) => (x.type === 'practice' ? x.items.map((i) => i.word) : [])).join('、')}]
