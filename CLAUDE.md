@@ -506,8 +506,9 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   恢复推流后自动接上;下课后停在结束页;老师端从源站踢掉推流 → 页面自动重推、源站出现新推流者。
   ⚠️ **iPad/iPhone 的 HLS 放长还没生效**: deploy/srs/srs.conf 与生产 /opt/srs/conf/srs.conf 都已改 hls_fragment 2 /
   hls_window 10(生产备份 srs.conf.bak_20261026_1200),配置检查通过,但 **SRS 5.0.225 的 SIGHUP reload 不改 HLS 参数**
-  (实测新推的流仍是 win=5000ms frag=1000ms),要 `docker restart srs` 才生效 —— 会断正在推的流,10-26 中午有一路
-  推流(0 观众)没敢重启,等用户定。公告老师一条
+  (实测新推的流仍是 win=5000ms frag=1000ms),要 `docker restart srs` 才生效 —— 会断正在推的流。
+  **10-26 13:15 已生效**: 等那路推流自己停了(流 0、客户端 0)才重启容器,测试流实测 win=10000ms frag=2000ms、
+  列表 6 段共 12 秒。公告老师一条
 - ✅ 直播共享屏幕套娃修复(2026-10-22,用户「直播用屏幕共享会出现一层层嵌套」): 从源站拉了一帧实拍 —— 老师共享的是
   **开播页所在的浏览器窗口**,页面里的实时预览被共享进去再显示出来,一层套一层。旧逻辑按 displaySurface 判:
   整屏/标签页藏预览、'window' 放行,**而浏览器窗口本身就是 'window'**(Mac 上最常见)。现在共享屏幕时**一律不放实时预览**,
