@@ -228,3 +228,18 @@ async def test_replay_heartbeat_without_join_creates_then_accumulates(client: As
     rows = (await db_session.execute(
         LiveAttendance.__table__.select().where(LiveAttendance.live_session_id == sid))).fetchall()
     assert len(rows) == 1 and rows[0].replay_seconds == 160 and rows[0].watch_seconds == 0
+
+
+async def test_join_after_class_ended_says_ended(client: AsyncClient, live_fixture):
+    """下课后再进: 409 且写明下课了(前端据此停在结束页,不再每 5 秒自动重试)"""
+    f = live_fixture
+    teacher, stu_a = f["teacher"], f["stu_a"]
+    r = await client.post("/api/v1/teacher/live/sessions",
+                          json={"title": "下课", "class_id": f["cls_a"].id}, headers=_auth(teacher))
+    sid = r.json()["id"]
+    r = await client.post(f"/api/v1/student/live/sessions/{sid}/join", headers=_auth(stu_a))
+    assert r.status_code == 409 and "下课" not in r.json()["detail"]
+    await client.post(f"/api/v1/teacher/live/sessions/{sid}/start", headers=_auth(teacher))
+    await client.post(f"/api/v1/teacher/live/sessions/{sid}/end", headers=_auth(teacher))
+    r = await client.post(f"/api/v1/student/live/sessions/{sid}/join", headers=_auth(stu_a))
+    assert r.status_code == 409 and "下课" in r.json()["detail"]

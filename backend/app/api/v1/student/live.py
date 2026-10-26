@@ -101,7 +101,9 @@ async def join_session(
     """进直播间:签播放地址 + 落考勤。响应不含任何推流信息。"""
     row = await _visible_session(db, session_id, student)
     if row.status != "live":
-        raise HTTPException(status_code=409, detail="老师还没开始上课")
+        # 前端按「下课」两个字区分: 下课了就停在结束页,没开始就每 5 秒自动再试
+        raise HTTPException(status_code=409,
+                            detail="这节课已经下课了" if row.status == "ended" else "老师还没开始上课")
 
     # 考勤 UPSERT,UNIQUE 兜并发。必须单条 ON CONFLICT: 旧写法「INSERT → 撞 UNIQUE → rollback → 再 UPDATE」
     # 里 rollback 让 student / row 过期,下一句读 student.id 就 MissingGreenlet 500 —— 上过这节课的学生再进都进不去

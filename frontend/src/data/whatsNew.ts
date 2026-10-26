@@ -25,6 +25,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'live-auto-reconnect-teacher-2026-10',
+    date: '2026-10-26',
+    title: '📡 线上授课更稳了: 断网自动接上',
+    desc: '直播时你这边网络断了,页面会自己重新推流,不用点下课再开播;学生那边画面断了也会自己重新连上,不用刷新。学生看直播多留了一两秒缓冲,网络抖一下不再卡住。开播后画面上方会显示丢包和延迟,网络不稳时会提醒你: 最好插网线,上课时别同时传文件、看视频。',
+    where: '教师端「线上授课」开播后,看画面上方那一行',
+    roles: ['teacher'],
+    route: '/teacher/livestream',
+  },
+  {
+    id: 'video-cdn-auto-off-admin-2026-10',
+    date: '2026-10-26',
+    title: '🛡️ 音标视频 CDN 坏了会自动关',
+    desc: 'CDN 开关开着时,服务器每 5 分钟测一次 CDN,连续两次测不通就自动关掉,视频改回 COS 直接下载,学生照常能看。卡片上会写明几点关的、什么原因;CDN 修好后先点「测试 CDN」,通了再打开。',
+    where: '管理端首页「音标视频加速(CDN)」卡片',
+    roles: ['admin'],
+    route: '/admin',
+  },
+  {
     id: 'backend-multicore-admin-2026-10',
     date: '2026-10-25',
     title: '🖥️ 后端用上多核了',

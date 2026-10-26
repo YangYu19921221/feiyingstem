@@ -117,9 +117,15 @@ export default function TeacherLive() {
   // 推流健康状态。**必须显式监控** —— WebRTC 断线时页面不会自己变,
   // 老师会对着黑屏继续讲(这是网页推流相对 OBS 最容易翻车的地方)
   const [connState, setConnState] = useState<RTCPeerConnectionState | null>(null);
-  const [liveStats, setLiveStats] = useState<{ kbps: number; fps: number } | null>(null);
+  // loss = 学生方向收到的丢包率(%),rtt = 往返延迟(ms),源站回报里取;取不到为 null
+  const [liveStats, setLiveStats] = useState<{ kbps: number; fps: number; loss: number | null; rtt: number | null } | null>(null);
   const statsTimerRef = useRef<number | null>(null);
   const lastBytesRef = useRef<{ bytes: number; ts: number } | null>(null);
+  // 断线自动重推。sessionId 为 null = 没在推(下课/没开播),不重推
+  const republishRef = useRef<{ timer: number | null; attempt: number; sessionId: number | null; source: SourceKind | null }>(
+    { timer: null, attempt: 0, sessionId: null, source: null });
+  const discTimerRef = useRef<number | null>(null);
+  const [reconnecting, setReconnecting] = useState(0);
 
   const reload = () => liveApi.listSessions().then(setSessions).catch(() => {});
 
@@ -143,6 +149,8 @@ export default function TeacherLive() {
   }, []);
 
   // 离开页面务必停掉摄像头 —— 不停的话摄像头灯一直亮,老师会以为还在直播
+  // 只在离开页面时跑一次;stopPublish 只碰 ref 和 setState,拿第一次渲染的那份没问题
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => stopPublish(true), []);
 
   // 预览框绑本地流。**必须在 publishing 变化后做** ——
@@ -182,7 +190,161 @@ export default function TeacherLive() {
     }
   };
 
-  /** WHIP 推流:一次 HTTP POST 换回 answer,不需要信令服务器 */
+  const stopStats = () => {
+    if (statsTimerRef.current) {
+      clearInterval(statsTimerRef.current);
+      statsTimerRef.current = null;
+    }
+    lastBytesRef.current = null;
+  };
+
+  /**
+   * 码率/帧率 + 丢包/延迟轮询:让老师看得见自己推出去的画质和网络好不好。
+   * 码率靠 bytesSent 增量算(outbound-rtp 里没有现成的瞬时码率);
+   * 丢包和延迟来自源站回报(remote-inbound-rtp)—— 老师上行网络差时学生那边就卡,这两个数最直接
+   */
+  const startStats = (pc: RTCPeerConnection) => {
+    stopStats();
+    type StatLike = { type: string; kind?: string; bytesSent?: number; framesPerSecond?: number; fractionLost?: number; roundTripTime?: number };
+    statsTimerRef.current = window.setInterval(async () => {
+      if (pcRef.current !== pc) return;
+      try {
+        const report = await pc.getStats();
+        let kbps = 0;
+        let fps = 0;
+        let loss: number | null = null;
+        let rtt: number | null = null;
+        let gotOut = false;
+        report.forEach((raw) => {
+          const st = raw as StatLike;
+          if (st.kind !== 'video') return;
+          if (st.type === 'outbound-rtp') {
+            gotOut = true;
+            const now = Date.now();
+            const prev = lastBytesRef.current;
+            if (prev && now > prev.ts) kbps = Math.round((((st.bytesSent || 0) - prev.bytes) * 8) / (now - prev.ts));
+            lastBytesRef.current = { bytes: st.bytesSent || 0, ts: now };
+            fps = Math.round(st.framesPerSecond || 0);
+          } else if (st.type === 'remote-inbound-rtp') {
+            if (typeof st.fractionLost === 'number') loss = Math.round(st.fractionLost * 1000) / 10;
+            if (typeof st.roundTripTime === 'number') rtt = Math.round(st.roundTripTime * 1000);
+          }
+        });
+        if (gotOut) setLiveStats({ kbps, fps, loss, rtt });
+      } catch { /* 取不到统计不影响直播 */ }
+    }, 3000);
+  };
+
+  const clearDiscTimer = () => {
+    if (discTimerRef.current) {
+      window.clearTimeout(discTimerRef.current);
+      discTimerRef.current = null;
+    }
+  };
+
+  /** 排一次自动重推。已经排着 / 没在推就不排 */
+  const scheduleRepublish = () => {
+    const r = republishRef.current;
+    if (r.timer || r.sessionId === null) return;
+    const n = r.attempt;
+    r.attempt = n + 1;
+    setReconnecting(n + 1);
+    const delay = [1000, 2000, 4000, 8000, 15000][Math.min(n, 4)];
+    r.timer = window.setTimeout(() => {
+      r.timer = null;
+      void republish();
+    }, delay);
+  };
+
+  /**
+   * 连接状态变化。断线**必须显式处理** —— WebRTC 断了页面不会自己变,老师会对着黑屏继续讲。
+   * failed 立刻重推;disconnected 常常几秒内自己恢复,5 秒还没回来再重推
+   */
+  const onConnState = (st: RTCPeerConnectionState) => {
+    if (st === 'connected') {
+      clearDiscTimer();
+      if (republishRef.current.attempt) {
+        republishRef.current.attempt = 0;
+        setReconnecting(0);
+      }
+      return;
+    }
+    if (st === 'failed') {
+      clearDiscTimer();
+      scheduleRepublish();
+    } else if (st === 'disconnected' && !discTimerRef.current) {
+      discTimerRef.current = window.setTimeout(() => {
+        discTimerRef.current = null;
+        if (pcRef.current?.connectionState !== 'connected') scheduleRepublish();
+      }, 5000);
+    }
+  };
+
+  /** 用已经采集好的流建一次 WHIP 连接(一次 HTTP POST 换回 answer,不需要信令服务器)。开播和断线重推共用 */
+  const connectWhip = async (c: PushCredentials, stream: MediaStream, source: SourceKind) => {
+    const pc = new RTCPeerConnection();
+    pcRef.current = pc;
+    pc.onconnectionstatechange = () => {
+      if (pcRef.current !== pc) return;   // 已经换了新连接,旧连接的事件不管
+      setConnState(pc.connectionState);
+      onConnState(pc.connectionState);
+    };
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    await applyVideoSenderParams(pc, source);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const res = await fetch(c.whip_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      body: offer.sdp || '',
+    });
+    if (!res.ok) throw new Error(`源站拒绝推流(${res.status})`);
+    await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+    setConnState(pc.connectionState);
+    startStats(pc);
+  };
+
+  /**
+   * 断线重推: 摄像头/屏幕**不重新采集**(不弹选择框、不断麦),只重建连接。
+   * 重新调开播接口: 拿新地址,顺带让后端踢掉源站上还挂着的旧推流(不踢会撞「流已被占用」)。
+   * 学生端检测到流断了会自己重连,老师这边推回来学生自动接上
+   */
+  const republish = async () => {
+    const r = republishRef.current;
+    const stream = streamRef.current;
+    if (r.sessionId === null || !stream || !r.source) return;
+    const old = pcRef.current;
+    pcRef.current = null;
+    try { old?.close(); } catch { /* 已关 */ }
+    stopStats();
+    try {
+      const c = await liveApi.startSession(r.sessionId);
+      if (republishRef.current.sessionId === null) return;   // 等接口期间点了下课
+      setCred(c);
+      await connectWhip(c, stream, r.source);
+      // 连的过程中点了下课: 刚建好的连接要关掉,不然一直挂在源站上
+      if (republishRef.current.sessionId === null) {
+        const pc = pcRef.current;
+        pcRef.current = null;
+        stopStats();
+        try { pc?.close(); } catch { /* 已关 */ }
+      }
+    } catch (e: unknown) {
+      if (republishRef.current.sessionId === null) return;
+      const code = (e as { response?: { status?: number } })?.response?.status;
+      // 4xx(课已结束 / 登录过期 / 没权限)再试也没用: 停下,照实告诉老师
+      if (code && code >= 400 && code < 500) {
+        const sid = republishRef.current.sessionId;
+        republishRef.current = { timer: null, attempt: 0, sessionId: null, source: null };
+        setReconnecting(0);
+        setErr(code === 401 ? '登录已过期,推流停了。重新登录后再开播' : `推流停了,自动重连没成功(${code})。点「下课」后重新开播`);
+        if (sid !== null) void reload();
+        return;
+      }
+      scheduleRepublish();
+    }
+  };
+
   const startPublish = async (session: TeacherLiveSession, source: SourceKind) => {
     setErr('');
     setBusy(true);
@@ -195,66 +357,21 @@ export default function TeacherLive() {
       // 这里**不能直接绑 previewRef** —— 那个 <video> 在 {liveOne && ...} 块内,
       // 而 liveOne 要等下面 setPublishing 之后才成立,此刻元素还没进 DOM,
       // ref 是 null,赋值会被 if 静默跳过 → 本地预览全黑(推流其实是好的)。
-      // 改由下面的 useEffect 在元素挂载后绑定。
+      // 改由上面的 useEffect 在元素挂载后绑定。
 
-      const pc = new RTCPeerConnection();
-      pcRef.current = pc;
-
-      // 断线检测:disconnected/failed 时页面必须变红告警,不能继续显示"直播中"
-      pc.onconnectionstatechange = () => {
-        setConnState(pc.connectionState);
-        if (pc.connectionState === 'failed') {
-          setErr('推流已中断(网络断开)。点「停止」后重新开播。');
-        }
-      };
-
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      await applyVideoSenderParams(pc, source);
       // 老师从浏览器自带的「停止共享」小条退出屏幕共享时,轨道会 ended —— 此时不能傻站着推死画面,
       // 自动切回摄像头保持直播不断(见 switchSource)。摄像头轨道被系统停不挂此逻辑。
       if (source === 'screen') attachScreenEndedGuard(stream.getVideoTracks()[0]);
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      const res = await fetch(c.whip_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/sdp' },
-        body: offer.sdp || '',
-      });
-      if (!res.ok) throw new Error(`源站拒绝推流(${res.status})`);
-      const answer = await res.text();
-      await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+      await connectWhip(c, stream, source);
+      // 连上之后才登记「在推」: 第一次就连不上照旧报错让老师重试,不自动重推
+      republishRef.current = { timer: null, attempt: 0, sessionId: session.id, source };
 
       setPublishing(session.id);
       setLiveSource(source);
       setScreenSurface(source === 'screen' ? getDisplaySurface(stream.getVideoTracks()[0]) : '');
-      setConnState(pc.connectionState);
-
-      // 码率/帧率轮询:让老师看得见自己推出去的画质。
-      // 码率靠 bytesSent 增量算 —— outbound-rtp 里没有现成的瞬时码率
-      statsTimerRef.current = window.setInterval(async () => {
-        if (!pcRef.current) return;
-        try {
-          const report = await pcRef.current.getStats();
-          report.forEach((s: any) => {
-            if (s.type === 'outbound-rtp' && s.kind === 'video') {
-              const now = Date.now();
-              const prev = lastBytesRef.current;
-              let kbps = 0;
-              if (prev && now > prev.ts) {
-                kbps = Math.round(((s.bytesSent - prev.bytes) * 8) / (now - prev.ts));
-              }
-              lastBytesRef.current = { bytes: s.bytesSent, ts: now };
-              setLiveStats({ kbps, fps: Math.round(s.framesPerSecond || 0) });
-            }
-          });
-        } catch { /* 取不到统计不影响直播 */ }
-      }, 3000);
-
       await reload();
-    } catch (e: any) {
-      setErr(e?.message || '开播失败,请检查摄像头权限和网络');
+    } catch (e: unknown) {
+      setErr((e as Error)?.message || '开播失败,请检查摄像头权限和网络');
       stopPublish(true);
     } finally {
       setBusy(false);
@@ -263,13 +380,15 @@ export default function TeacherLive() {
 
   /** silent=true 时只收拾本地资源,不调后端(用于卸载清理) */
   const stopPublish = (silent = false) => {
-    if (statsTimerRef.current) {
-      clearInterval(statsTimerRef.current);
-      statsTimerRef.current = null;
-    }
-    lastBytesRef.current = null;
-    pcRef.current?.close();
+    const r = republishRef.current;
+    if (r.timer) window.clearTimeout(r.timer);
+    republishRef.current = { timer: null, attempt: 0, sessionId: null, source: null };
+    clearDiscTimer();
+    setReconnecting(0);
+    stopStats();
+    const pc = pcRef.current;
     pcRef.current = null;
+    pc?.close();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (previewRef.current) previewRef.current.srcObject = null;
@@ -316,6 +435,7 @@ export default function TeacherLive() {
         previewRef.current.play().catch(() => {});
       }
       setLiveSource(source);
+      if (republishRef.current.sessionId !== null) republishRef.current.source = source;
       setScreenSurface(source === 'screen' ? getDisplaySurface(newVideo) : '');
       setSnapshot(null);  // 换了画面,旧截图不再是学生看到的
     } catch (e: any) {
@@ -499,6 +619,13 @@ export default function TeacherLive() {
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
                   <span className="font-bold text-gray-800">直播中 · {liveOne.title}</span>
                 </>
+              ) : reconnecting > 0 ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="font-bold text-amber-700" role="status">
+                    网络断了,正在自动重新推流(第 {reconnecting} 次)· 学生那边会自动接上,不用点下课
+                  </span>
+                </>
               ) : connState === 'failed' || connState === 'disconnected' ? (
                 <>
                   <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
@@ -515,12 +642,20 @@ export default function TeacherLive() {
               {liveStats && connState === 'connected' && (
                 <span className="ml-auto text-xs text-gray-500 tabular-nums">
                   {liveStats.kbps} kbps · {liveStats.fps} fps
-                  {liveStats.kbps > 0 && liveStats.kbps < 250 && (
-                    <span className="text-amber-600 font-bold"> · 网络偏弱</span>
-                  )}
+                  {liveStats.loss !== null && <> · 丢包 {liveStats.loss}%</>}
+                  {liveStats.rtt !== null && <> · 延迟 {liveStats.rtt} ms</>}
                 </span>
               )}
             </div>
+            {liveStats && connState === 'connected' && (
+              (liveStats.loss !== null && liveStats.loss >= 3) ||
+              (liveStats.rtt !== null && liveStats.rtt >= 300) ||
+              (liveStats.kbps > 0 && liveStats.kbps < 250)
+            ) && (
+              <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+                你这边网络不稳,学生那边会卡。尽量插网线,或者让电脑离路由器近一点;上课时别同时传文件、看视频。
+              </p>
+            )}
             {/* 预览显示策略:
                 - 摄像头: 正常放实时预览。
                 - 共享屏幕: **一律不放实时预览**。共享的若是这个浏览器窗口(Mac 上选「窗口」最常见)或整屏,

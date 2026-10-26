@@ -24,6 +24,8 @@ const QUIET_PATTERNS = [
   '/learn', '/dictation', '/spelling', '/quiz', '/fillblank', '/sentencefill', '/read-aloud',
   '/exam', '/handwriting', '/pk/arena', '/battle', '/bigscreen', '/competition',
   '/phonics', '/phonetics', '/reading/',
+  // 直播: 学生看直播时公告会盖住画面,老师开播时会挡住开播按钮
+  '/student/live/', '/teacher/livestream',
 ];
 
 function readSeen(): string[] {
