@@ -303,6 +303,27 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   公告学生/老师(gate)/admin 各一条。测试 tests/test_tutor.py(16 例,中转用 MockTransport 假装;Key 隔离两处 / 只开直营 /
   失败退回 / 最后一轮禁工具 / 只看本班 / 换备用 / 别人的对话 404 九处守卫逐一破坏各自恰好对应用例失败,回归锁验证过)。
   ⚠️ **Key 在聊天里明文出现过,建议用户在中转后台换一个**,换完在管理端卡片里填新的即可(留空不改)。
+  **10-26 18:27 第二版上线**(提交 c3535c0;database.py 走 anchor patch 只加 1 条 ALTER,其余 5 个文件生产==HEAD~1 整推;
+  新表 tutor_allowances create_all 建;两个服务都重启;备份 /root/eh_db_before_tutor2_20261026_1825.db、
+  /root/eh_code_before_tutor2_20261026_1825.tgz、frontend/dist_bak_20261026_1825,构建号 mvp43s9r),用户「用不同的模型分个高级思考…
+  UI 提交交互还能做的更好吗…每个学生总共 20,需要多的需要教师给增加额度,现在最高是 opus5.5」:
+  ①**快速 / 深度思考两档**: 深度思考 extra_config.deep_model(默认 claude-opus-5-5)/ deep_fallback_model(默认 claude-sonnet-5-5),
+  **留空串 = 关掉**(显式分支);`thinking: adaptive` + `output_config.effort: medium`。**5.x 不收 `enabled + budget_tokens`(400)
+  也不收 disabled,只认 adaptive**;opus-5-5 不传 thinking 也会默认思考 —— 快速档所以不用 5.x。实测出字: 快速 sonnet-4-6 约 2–4s,
+  深度 opus-5-5 约 6–9s(low/medium/high 6.1/6.3/8.5s)。深度一次算 deep_cost 次(默认 2)。
+  **思考内容不下发**(里面常直接写着作业答案),前端只显示「在深度思考… N 秒」;**思考块带 signature 原样带回工具轮**,否则 400。
+  每个模型单独记 5 分钟「没号」(tutor:down:{model}),haiku-5-5 仍一直 503
+  ②**次数改成每个学生一共 free_total 次(默认 20,不按天清零)**,不再用 ai_quota 的按天计数: 表 tutor_allowances(user_id 主键 /
+  used / extra / requested_at),扣次数一条条件 UPDATE(used + cost <= 送的 + extra),两台设备同时问不会超;没调通 / 停下时一个字没出退回。
+  上线前问过的按「拿到回答的次数」算已用。孩子点「请老师加次数」→ 教师 `/teacher/tutor-quota`(pages/TeacherTutorQuota.tsx)
+  请求的排最前,单个或勾选批量加(一次 ≤100,累计 extra ≤1000),**有一个不是本班整批 403**,记操作记录 tutor.grant;
+  工作台入口上有数字(`GET /teacher/tutor/available` 带 requested),本校没开放不显示入口
+  ③学生端 UI: 快速/深度切换(按账号记 localStorage)、出字时发送键变「停止」(`POST /student/tutor/stop`,标记放 shared_store,
+  回答在哪个进程跑都看得到,每秒看一次;断开上游连接就不再计费)、没调通「再问一次」、回答里的英文点一下就读(SpeakableText,同一个 Edge TTS)、
+  只有在底部时才自动滚动、输入框随字数长高、剩 ≤3 次标橙、用完了输入区换成「请老师加次数」
+  ④管理端卡片: 每个学生送几次、深度算几次、两组模型;用量按方式分开;「测试模型」四个模型都测。
+  生产冒烟(公网,临时学生跑完删净): 深度 opus-5-5 出字 8.8s、283 入 / 369 出 token、次数 20→18。测试 tests/test_tutor.py 25 例,
+  新增守卫 10 处逐一破坏各自对应用例失败;老师列表「请求的排最前」那条排序没有用例锁(只有一个学生的班测不出)。
   ⚠️ test_multiprocess::test_online_tracker_memory 跟在任何 HTTP 测试文件后面跑会失败(online_tracker 进程内 _pending_seen 残留),
   HEAD 上 test_read_aloud + test_multiprocess 一样复现,与本功能无关,单独跑全绿
 - ✅ 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」→「你来做多核的」):
