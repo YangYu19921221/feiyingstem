@@ -11,6 +11,8 @@
  * - roles: 谁该看到。学生功能别弹给管理员,反之亦然
  * - route: 「去看看」的落地页;留空则只做告知不跳转
  * - where: 一句话说清"在哪儿点得到"——公告最容易漏掉的恰恰是这句
+ * - gate: 只对开放了这个功能的人弹(比如学习助手试用期只开直营)。没开放的先不弹、也不记已读,
+ *   以后开放了再弹。判断在 WhatsNewNudge 里
  */
 export interface WhatsNewEntry {
   id: string;
@@ -20,10 +22,39 @@ export interface WhatsNewEntry {
   where: string;
   roles: Array<'student' | 'teacher' | 'admin' | 'org_admin'>;
   route?: string;
+  gate?: 'tutor';
 }
 
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    id: 'tutor-student-2026-10',
+    date: '2026-10-26',
+    title: '🦅 有问题可以问「小鹰老师」了',
+    desc: '单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问它;还能拍一道题问思路。它知道你今天的任务和常错的词,可以出几个词考考你。作业和考试题它只给提示,答案要你自己想。每天能问的次数有限,顶上写着还剩几次。',
+    where: '首页「更多工具」里的「问小鹰老师」;错题本每个词下面也有「问小鹰老师怎么记」',
+    roles: ['student'],
+    route: '/student/tutor',
+    gate: 'tutor',
+  },
+  {
+    id: 'tutor-teacher-2026-10',
+    date: '2026-10-26',
+    title: '🦅 学生可以问 AI 学习助手了,你能看对话',
+    desc: '学生在首页「问小鹰老师」里问单词、语法、拍题问思路。它只聊英语学习,作业和考试题只给提示不给答案,每人每天次数有限。孩子问了什么、它怎么答的,你在学生详情页都看得到(照片不保存,回答第一行会写它看到的题目)。',
+    where: '班级 → 点学生进详情页,往下翻「问小鹰老师」(学生问过才出现)',
+    roles: ['teacher'],
+    gate: 'tutor',
+  },
+  {
+    id: 'tutor-admin-2026-10',
+    date: '2026-10-26',
+    title: '🦅 AI 学习助手「小鹰老师」上线(先只开直营)',
+    desc: '学生问单词、语法、拍题问思路,助手会查孩子自己的任务和错词、出小练习。用单独的 Claude Key,只给学习助手,周报和例句这些照旧走默认通道。默认只开直营、每人每天 20 次;主模型没号时自动换备用模型。卡片上能改开给谁、次数、模型,看近 7 天用了多少 token。',
+    where: '管理端首页往下拉「AI 学习助手」卡片(在音标视频加速下面)',
+    roles: ['admin'],
+    route: '/admin',
+  },
   {
     id: 'live-auto-reconnect-teacher-2026-10',
     date: '2026-10-26',

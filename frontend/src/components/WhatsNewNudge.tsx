@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, MapPin, Sparkles, X } from 'lucide-react';
 import { WHATS_NEW, WHATS_NEW_GRACE_DAYS, type WhatsNewEntry } from '../data/whatsNew';
+import client from '../api/client';
 
 const SEEN_KEY = 'whats_new_seen_v1';
 const INIT_KEY = 'whats_new_initialized_v1';
@@ -26,6 +27,8 @@ const QUIET_PATTERNS = [
   '/phonics', '/phonetics', '/reading/',
   // 直播: 学生看直播时公告会盖住画面,老师开播时会挡住开播按钮
   '/student/live/', '/teacher/livestream',
+  // 学习助手: 孩子正在打字提问
+  '/student/tutor',
 ];
 
 function readSeen(): string[] {
@@ -77,13 +80,27 @@ export default function WhatsNewNudge() {
   const role = currentRole();
   const quiet = QUIET_PATTERNS.some((p) => location.pathname.includes(p));
 
+  // 带 gate 的条目: 问一下这个人能不能用,能用才弹(没开放的学校不弹、也不记已读)
+  const [gates, setGates] = useState<Record<string, boolean>>({});
+  const needTutorGate = ready && !!role && WHATS_NEW.some((e) =>
+    e.gate === 'tutor' && e.roles.includes(role as WhatsNewEntry['roles'][number]) && !seen.includes(e.id));
+  useEffect(() => {
+    if (!needTutorGate || 'tutor' in gates) return;
+    const url = role === 'student' ? '/student/tutor/status' : role === 'teacher' ? '/teacher/tutor/available' : null;
+    if (!url) return;
+    client.get<{ enabled: boolean }>(url)
+      .then((r) => setGates((g) => ({ ...g, tutor: !!r.enabled })))
+      .catch(() => setGates((g) => ({ ...g, tutor: false })));
+  }, [needTutorGate, gates, role]);
+
   const pending = useMemo<WhatsNewEntry[]>(() => {
     if (!ready || !role) return [];
     return WHATS_NEW
       .filter((e) => e.roles.includes(role as WhatsNewEntry['roles'][number]))
       .filter((e) => !seen.includes(e.id))
+      .filter((e) => !e.gate || gates[e.gate] === true)
       .slice(0, MAX_SHOWN);
-  }, [ready, role, seen]);
+  }, [ready, role, seen, gates]);
 
   const dismiss = () => {
     const ids = [...seen, ...pending.map((e) => e.id)];

@@ -14,8 +14,23 @@ from app.core.timeutil import local_today
 _TTL = 2 * 86400
 
 
+def _key(user_id: int, feature: str) -> str:
+    return f"aiq:{local_today().isoformat()}:{feature}:{user_id}"
+
+
 async def check_and_consume(user_id: int, feature: str, daily_limit: int) -> None:
     """消耗一次额度;超限抛 429。只对真实消耗调用(缓存命中不要调)。"""
-    key = f"aiq:{local_today().isoformat()}:{feature}:{user_id}"
-    if not await store.incr_if_below(key, daily_limit, _TTL):
+    if not await store.incr_if_below(_key(user_id, feature), daily_limit, _TTL):
         raise HTTPException(status_code=429, detail="今日AI次数已用完,明天再来~")
+
+
+async def used(user_id: int, feature: str) -> int:
+    """今天已经用了几次"""
+    v = await store.get(_key(user_id, feature))
+    return int(v) if v else 0
+
+
+async def refund(user_id: int, feature: str) -> None:
+    """退回一次(调用彻底失败、孩子什么都没拿到时)。不会退成负数"""
+    if await used(user_id, feature) > 0:
+        await store.incr(_key(user_id, feature), -1, _TTL)

@@ -134,6 +134,7 @@ const UnitExam = lazyWithRetry(() => import('./pages/UnitExam'));
 const UnitExamResult = lazyWithRetry(() => import('./pages/UnitExamResult'));
 const DictationPractice = lazyWithRetry(() => import('./pages/DictationPractice'));
 const HandwritingHub = lazyWithRetry(() => import('./pages/HandwritingHub'));
+const StudentTutor = lazyWithRetry(() => import('./pages/StudentTutor'));
 const HandwritingDictation = lazyWithRetry(() => import('./pages/HandwritingDictation'));
 const HandwritingSheet = lazyWithRetry(() => import('./pages/HandwritingSheet'));
 const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
@@ -411,6 +412,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <HandwritingHub />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - AI 学习助手「小鹰老师」 */}
+        <Route
+          path="/student/tutor"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentTutor />
             </ProtectedRoute>
           }
         />

@@ -50,6 +50,8 @@ export default function FloatingPetWidget() {
       '/student/mistake-practice',
       '/student/mistake-challenge',
       '/subscription/redeem',
+      // 学习助手: 输入框在底部,宠物浮标会压住发送按钮
+      '/student/tutor',
     ].includes(location.pathname);
   // 所有 Hook 必须在条件判断前声明
   const [bubble, setBubble] = useState('');

@@ -55,6 +55,7 @@ export default function StudentMobileNav() {
     || location.pathname === '/student/mistake-challenge'
     || location.pathname.startsWith('/student/pet/battle')
     || location.pathname === '/student/pet/heal'
+    || location.pathname === '/student/tutor'
     || location.pathname.startsWith('/pk/arena');
   const visible = studentSurfaceVisible && visiblePaths.has(location.pathname);
 

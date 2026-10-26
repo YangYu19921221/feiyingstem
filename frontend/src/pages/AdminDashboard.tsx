@@ -29,6 +29,7 @@ import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import VideoCdnSwitch from '../components/admin/VideoCdnSwitch';
+import TutorAdminCard from '../components/admin/TutorAdminCard';
 
 interface UserData { full_name: string }
 interface Statistics { total_users: number; students?: number; total_words: number; total_books: number; active_users_today: number; active_users_week: number; learning_records_today: number; learning_records_week: number }
@@ -154,6 +155,8 @@ export default function AdminDashboard() {
         <section className="admin-tool-list rounded-2xl p-5 sm:p-6"><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-xl font-bold tracking-tight text-[#173047]">运营工具箱</h3><p className="mt-1 text-xs text-slate-500">每个入口都对应一个可执行的管理动作</p></div><span className="text-xs text-slate-400">{toolGroups.reduce((sum, group) => sum + group.items.length, 0)} 项工具</span></div><div className="grid gap-6 md:grid-cols-3">{toolGroups.map((group) => <div key={group.title}><div className="mb-2 px-1"><p className="text-sm font-semibold text-[#173047]">{group.title}</p><p className="mt-1 text-xs text-slate-500">{group.description}</p></div><div className="admin-tool-row-group overflow-hidden rounded-xl border border-slate-100">{group.items.map(({ title, description, path, icon: Icon, tone }) => <button key={path} type="button" onClick={() => navigate(path)} className="admin-tool-row admin-focus-ring group flex w-full items-center gap-3 px-3 py-3 text-left transition"><span className={`admin-tool-icon admin-tool-icon-${tone} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#173047]">{title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></button>)}</div></div>)}</div></section>
 
         <VideoCdnSwitch />
+
+        <TutorAdminCard />
 
         <section className="admin-panel flex flex-col gap-5 rounded-2xl p-5 sm:p-6 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf5fa] text-[#397b9b]"><CircleDollarSign className="h-5 w-5" /></span><div><h3 className="font-bold text-[#173047]">版本与服务提醒</h3><p className="mt-1 text-sm leading-6 text-slate-500">线上版本由发布流程直接更新，定期查看服务监控即可。</p></div></div><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary-light admin-focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">打开服务监控 <ArrowRight className="h-4 w-4" /></button></section>
       </main>

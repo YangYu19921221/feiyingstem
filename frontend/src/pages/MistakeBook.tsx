@@ -15,11 +15,17 @@ import ColoredPhonetic from '../components/ColoredPhonetic';
 import ColoredWord from '../components/ColoredWord';
 import { toast } from '../components/Toast';
 import StudentPageHeader from '../components/student/StudentPageHeader';
+import { getTutorStatus } from '../api/tutor';
 
 const PAGE_SIZE = 20;
 
 const MistakeBook = () => {
   const navigate = useNavigate();
+  // 学习助手开放了才显示「问小鹰老师」
+  const [tutorOn, setTutorOn] = useState(false);
+  useEffect(() => {
+    getTutorStatus().then((st) => setTutorOn(st.enabled)).catch(() => setTutorOn(false));
+  }, []);
   const location = useLocation();
 
   const [stats, setStats] = useState<MistakeBookStats | null>(null);
@@ -388,6 +394,15 @@ const MistakeBook = () => {
                             <p className="text-xs text-gray-400 mt-2">
                               最近一次: {new Date(word.last_mistake_at).toLocaleDateString('zh-CN')}
                             </p>
+                          )}
+                          {tutorOn && (
+                            <button
+                              type="button"
+                              onClick={() => navigate('/student/tutor', { state: { q: `${word.word} 这个词我老是错,怎么记住它?` } })}
+                              className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-orange-50 px-3 text-sm font-medium text-orange-700 ring-1 ring-orange-200 hover:bg-orange-100"
+                            >
+                              问小鹰老师怎么记
+                            </button>
                           )}
                         </div>
 

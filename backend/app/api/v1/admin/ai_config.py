@@ -60,6 +60,12 @@ def mask_api_key(api_key: str) -> str:
     return f"{api_key[:8]}...{api_key[-4:]}"
 
 
+# 学习助手专用的 Claude 中转(services/tutor.py)。用户 10-26 定: 这个 Key 贵,只给学习助手用,
+# 不能设成默认 —— 设成默认,周报 / 例句 / 组卷这些全站 AI 调用都会走它
+TUTOR_PROVIDER = "claude_tutor"
+TUTOR_NOT_DEFAULT = "学习助手专用的 Claude 通道不能设为默认(设了周报、例句这些都会走它,很贵)"
+
+
 async def require_admin(current_user: User = Depends(get_current_user)):
     """验证管理员权限"""
     if current_user.role != UserRole.ADMIN:
@@ -127,6 +133,9 @@ async def create_ai_provider(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"提供商 {provider_data.provider_name} 已存在"
         )
+
+    if provider_data.provider_name == TUTOR_PROVIDER and provider_data.is_default:
+        raise HTTPException(status_code=400, detail=TUTOR_NOT_DEFAULT)
 
     # 如果设置为默认,取消其他默认配置
     if provider_data.is_default:
@@ -201,6 +210,10 @@ async def update_ai_provider(
             del update_data["api_key"]
         else:
             update_data["api_key"] = encrypt_api_key(api_key)
+
+    if update_data.get("is_default") and \
+            (update_data.get("provider_name") or provider.provider_name) == TUTOR_PROVIDER:
+        raise HTTPException(status_code=400, detail=TUTOR_NOT_DEFAULT)
 
     # 如果设置为默认,取消其他默认配置
     if update_data.get("is_default"):

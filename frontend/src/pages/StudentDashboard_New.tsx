@@ -14,6 +14,7 @@ import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
 import { formatOpenDay } from '../utils/openDay';
 import { getTodayReport, type TodayReportData } from '../api/todayReport';
+import { getTutorStatus } from '../api/tutor';
 import TodayReportDialog from '../components/report/TodayReportDialog';
 import CoachNoteCard from '../components/coach/CoachNoteCard';
 import { toast } from '../components/Toast';
@@ -91,6 +92,11 @@ const StudentDashboard = () => {
   const [showLearningDetails, setShowLearningDetails] = useState(false);
   // 今日学习报告:今天布置的任务全部完成后,首页出一张卡,点开生成发给家长的图
   const [todayReport, setTodayReport] = useState<TodayReportData | null>(null);
+  // 学习助手只在开放给本校时才放入口(试用期只开直营;没开放的学校点进去只会看到「暂时用不了」)
+  const [tutorOn, setTutorOn] = useState(false);
+  useEffect(() => {
+    getTutorStatus().then((s) => setTutorOn(s.enabled)).catch(() => setTutorOn(false));
+  }, []);
   const [showTodayReport, setShowTodayReport] = useState(false);
   const closeTodayReport = useCallback(() => setShowTodayReport(false), []);
 
@@ -406,6 +412,7 @@ const StudentDashboard = () => {
   const quickTools = [
     // 前 4 个默认可见(见下面 slice(0,4)),线上课要让孩子一眼看到,放第一个
     { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/dashboard-banner.jpeg' },
+    ...(tutorOn ? [{ title: '问小鹰老师', desc: '单词、语法、拍题问思路', route: '/student/tutor', image: '/hero-memory.jpeg' }] : []),
     { title: '纸笔听写', desc: '纸上手写，拍照 AI 批改', route: '/student/handwriting', image: '/hero-memory.jpeg' },
     { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/hero-memory.jpeg' },
     { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/dashboard-banner.jpeg' },

@@ -162,6 +162,12 @@ app.include_router(daily_review.student_router, prefix="/api/v1/student", tags=[
 from app.api.v1 import read_aloud  # noqa: E402
 app.include_router(read_aloud.student_router, prefix="/api/v1/student", tags=["学生端-例句跟读"])
 app.include_router(read_aloud.teacher_router, prefix="/api/v1/teacher", tags=["教师端-例句跟读"])
+
+# AI 学习助手(2026-10-26): 学习助手专用的 Claude 中转,别的 AI 功能不走它
+from app.api.v1 import tutor as tutor_api  # noqa: E402
+app.include_router(tutor_api.student_router, prefix="/api/v1/student", tags=["学生端-学习助手"])
+app.include_router(tutor_api.teacher_router, prefix="/api/v1/teacher", tags=["教师端-学习助手"])
+app.include_router(tutor_api.admin_router, prefix="/api/v1/admin", tags=["管理员-学习助手"])
 app.include_router(live_ws.router, prefix="/api/v1", tags=["直播互动-弹幕"])
 app.include_router(presence.router, prefix="/api/v1", tags=["实时课堂"])
 app.include_router(checkin.router, prefix="/api/v1", tags=["每日签到"])

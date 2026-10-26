@@ -43,6 +43,7 @@ ACTION_LABELS: dict[str, str] = {
     "parent.unbind": "解除家长绑定",
     "parent.reset_password": "重置家长密码",
     "system.video_cdn": "切换音标视频 CDN",
+    "system.tutor": "学习助手设置",
     # 注:音标观看**不进** operation_logs(学生不记,见 CLAUDE.md),单独落
     # phonetic_access_logs(见 models/phonetic.PhoneticAccessLog),故这里没有 phonetic.* 项
 }
