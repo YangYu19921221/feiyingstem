@@ -44,6 +44,7 @@ const TeacherClassManagement = lazyWithRetry(() => import('./pages/TeacherClassM
 const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
 const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'));
 const TeacherParentBinding = lazyWithRetry(() => import('./pages/TeacherParentBinding'));
+const TeacherTutorQuota = lazyWithRetry(() => import('./pages/TeacherTutorQuota'));
 const TeacherCoach = lazyWithRetry(() => import('./pages/TeacherCoach'));
 const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
@@ -784,6 +785,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <TeacherParentBinding />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 学习助手次数(给本班学生加「问小鹰老师」的次数) */}
+        <Route
+          path="/teacher/tutor-quota"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherTutorQuota />
             </ProtectedRoute>
           }
         />

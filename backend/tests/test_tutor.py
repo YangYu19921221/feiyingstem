@@ -5,7 +5,8 @@
 2. 开放范围: hq = 只给直营学生;别的机构 403;没配 Key 403
 3. 主模型没号(503 No available accounts)自动换备用,记下实际回答的模型和用量
 4. 工具只查孩子自己的数据(别的孩子的错词不会出现在他的工具结果里)
-5. 次数: 每人每天上限,调用彻底失败退回次数
+5. 次数: 每个学生一共送 N 次(不按天清零),老师只能给本班加;调用彻底失败 / 停下时一个字没出退回
+8. 深度思考: 换 opus + adaptive thinking,算 2 次;思考块原样带回工具轮;思考内容不发给孩子
 6. 老师只看本班学生的对话
 7. 工具循环: 模型先调工具再回答,练习卡片落库、刷新后还在
 """
@@ -21,7 +22,7 @@ from app.core import tenancy
 from app.core.shared_store import reset_memory
 from app.models.learning import LearningRecord
 from app.models.system_config import AIProvider
-from app.models.tutor import TutorConversation, TutorMessage
+from app.models.tutor import TutorAllowance, TutorConversation, TutorMessage
 from app.models.user import Class, ClassStudent, User
 from app.models.word import Word, WordDefinition
 from app.services import tutor as tt
@@ -198,19 +199,19 @@ async def test_default_ai_config_never_picks_tutor_key(db_session, monkeypatch):
 async def test_scope_hq_only_and_needs_key(client, db_session, relay, shared_session):
     users = await _env(db_session)
     r = await client.get("/api/v1/student/tutor/status", headers=_h(users["s"].id))
-    assert r.json()["enabled"] is True and r.json()["left"] == 20
+    assert r.json()["enabled"] is True and r.json()["left"] == 20 and r.json()["deep_enabled"] is True
     r = await client.get("/api/v1/student/tutor/status", headers=_h(users["fs"].id))
     assert r.json()["enabled"] is False
     r, _ = await _ask(client, users["fs"].id)
     assert r.status_code == 403
     # 管理员开到全部机构
-    r = await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "all", "daily_limit": 20})
+    r = await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "all", "free_total": 20})
     assert r.status_code == 200 and r.json()["scope"] == "all"
     assert r.json()["provider"]["api_key_masked"] and "sk-relay-secret" not in json.dumps(r.json())
     r = await client.get("/api/v1/student/tutor/status", headers=_h(users["fs"].id))
     assert r.json()["enabled"] is True
     # 关掉
-    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "off", "daily_limit": 20})
+    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "off", "free_total": 20})
     r, _ = await _ask(client, users["s"].id)
     assert r.status_code == 403
 
@@ -226,7 +227,7 @@ async def test_no_provider_means_disabled(client, db_session):
 async def test_admin_blank_key_keeps_old_key(client, db_session):
     users = await _env(db_session)
     r = await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id),
-                         json={"scope": "hq", "daily_limit": 10, "api_key": "", "model": "claude-sonnet-5"})
+                         json={"scope": "hq", "free_total": 10, "api_key": "", "model": "claude-sonnet-5"})
     assert r.status_code == 200
     conf = await tt.relay_conf(db_session)
     assert conf.api_key == "sk-relay-secret" and conf.model == "claude-sonnet-5"
@@ -277,15 +278,19 @@ async def test_total_failure_refunds_quota(client, db_session, relay, shared_ses
 
 
 @pytest.mark.asyncio
-async def test_daily_limit(client, db_session, relay, shared_session):
+async def test_total_limit_not_daily(client, db_session, relay, shared_session):
+    """一共 2 次: 用完就是用完,不按天清零(次数不在 ai_quota 的按天计数里)"""
     users = await _env(db_session)
-    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "hq", "daily_limit": 2})
+    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "hq", "free_total": 2})
     relay([(200, _text_reply("第一次回答")), (200, _text_reply("第二次回答"))])
     for _ in range(2):
         r, _ = await _ask(client, users["s"].id)
         assert r.status_code == 200
     r, _ = await _ask(client, users["s"].id)
-    assert r.status_code == 429 and "2 次" in r.json()["detail"]
+    assert r.status_code == 429 and "请老师加次数" in r.json()["detail"]
+    row = await db_session.get(TutorAllowance, users["s"].id)
+    await db_session.refresh(row)
+    assert row.used == 2
 
 
 # ---------------------------------------------------------------- 4 + 7. 工具: 只查自己的;卡片落库
@@ -407,10 +412,10 @@ async def test_image_is_compressed_and_not_saved(client, db_session, relay, shar
 async def test_teacher_available_follows_scope(client, db_session):
     users = await _env(db_session)
     r = await client.get("/api/v1/teacher/tutor/available", headers=_h(users["t"].id))
-    assert r.json() == {"enabled": True}
-    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "off", "daily_limit": 20})
+    assert r.json() == {"enabled": True, "requested": 0}
+    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "off", "free_total": 20})
     r = await client.get("/api/v1/teacher/tutor/available", headers=_h(users["t"].id))
-    assert r.json() == {"enabled": False}
+    assert r.json()["enabled"] is False
 
 
 @pytest.mark.asyncio
@@ -439,3 +444,210 @@ def test_practice_meaning_hides_spelling():
 
 def test_plain_strips_markdown():
     assert tt.plain("注意 **now** 这个词\n## 小结\n- 第一点") == "注意 now 这个词\n小结\n· 第一点"
+
+
+# ---------------------------------------------------------------- 8. 深度思考
+
+def _thinking_then(blocks_after: list[dict], stop: str, *, thought="答案是 rains,先别说") -> list[dict]:
+    """先一段思考(带 signature),再接文字或工具调用"""
+    ev = [
+        {"type": "message_start", "message": {"usage": {"input_tokens": 300}}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": thought}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "sig123"}},
+        {"type": "content_block_stop", "index": 0},
+    ]
+    for i, b in enumerate(blocks_after, start=1):
+        if b["type"] == "text":
+            ev += [{"type": "content_block_start", "index": i, "content_block": {"type": "text", "text": ""}},
+                   {"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": b["text"]}},
+                   {"type": "content_block_stop", "index": i}]
+        else:
+            ev += [{"type": "content_block_start", "index": i,
+                    "content_block": {"type": "tool_use", "id": b["id"], "name": b["name"], "input": {}}},
+                   {"type": "content_block_delta", "index": i,
+                    "delta": {"type": "input_json_delta", "partial_json": json.dumps(b["input"])}},
+                   {"type": "content_block_stop", "index": i}]
+    ev.append({"type": "message_delta", "delta": {"stop_reason": stop}, "usage": {"output_tokens": 200}})
+    return ev
+
+
+async def _ask_mode(client, uid, text, mode, conversation_id=None):
+    data = {"text": text, "mode": mode}
+    if conversation_id:
+        data["conversation_id"] = str(conversation_id)
+    r = await client.post("/api/v1/student/tutor/ask", data=data, headers=_h(uid))
+    events = [json.loads(c[6:]) for c in r.text.split("\n\n") if c.startswith("data: ")] if r.status_code == 200 else []
+    return r, events
+
+
+@pytest.mark.asyncio
+async def test_deep_mode_uses_opus_thinking_and_costs_two(client, db_session, relay, shared_session):
+    users = await _env(db_session)
+    fake = relay([
+        (200, _thinking_then([{"type": "tool_use", "id": "tu_9", "name": "get_weak_words", "input": {}}], "tool_use")),
+        (200, _thinking_then([{"type": "text", "text": "先看 if 从句用什么时态,再想 it 后面动词怎么变。"}], "end_turn",
+                             thought="第二轮思考")),
+    ])
+    r, events = await _ask_mode(client, users["s"].id, "If it ___ (rain) tomorrow 怎么填", "deep")
+    assert r.status_code == 200, r.text
+    # 深度思考: opus-5-5 + adaptive thinking;快速档默认不带 thinking
+    assert fake.requests[0]["model"] == tt.DEFAULT_DEEP_MODEL
+    assert fake.requests[0]["thinking"] == {"type": "adaptive"}
+    assert fake.requests[0]["output_config"] == {"effort": tt.DEEP_EFFORT}
+    assert "深度思考" in fake.requests[0]["system"][1]["text"]
+    # 工具轮: 第一轮的思考块原样(带 signature)放回 assistant 消息,放在工具调用前面
+    back = fake.requests[1]["messages"][-2]
+    assert back["role"] == "assistant"
+    assert back["content"][0] == {"type": "thinking", "thinking": "答案是 rains,先别说", "signature": "sig123"}
+    assert back["content"][1]["type"] == "tool_use" and back["content"][1]["id"] == "tu_9"
+    # 思考内容不发给孩子(里面常直接写着答案),只发一个「在思考」事件
+    wire = json.dumps(events, ensure_ascii=False)
+    assert "答案是 rains" not in wire and "第二轮思考" not in wire
+    assert any(e["type"] == "thinking" for e in events)
+    assert events[0]["mode"] == "deep" and events[0]["cost"] == 2
+    msg = (await db_session.execute(select(TutorMessage).where(TutorMessage.role == "assistant"))).scalar_one()
+    assert msg.mode == "deep" and "rains" not in msg.text
+    st = (await client.get("/api/v1/student/tutor/status", headers=_h(users["s"].id))).json()
+    assert st["used"] == 2 and st["left"] == 18
+
+
+@pytest.mark.asyncio
+async def test_fast_mode_sends_no_thinking(client, db_session, relay, shared_session):
+    users = await _env(db_session)
+    fake = relay([(200, _text_reply("好的。"))])
+    await _ask_mode(client, users["s"].id, "hi", "fast")
+    assert "thinking" not in fake.requests[0] and "output_config" not in fake.requests[0]
+    assert fake.requests[0]["model"] == "claude-haiku-5-5"
+
+
+@pytest.mark.asyncio
+async def test_deep_needs_enough_left_and_can_be_turned_off(client, db_session, relay, shared_session):
+    users = await _env(db_session)
+    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "hq", "free_total": 1})
+    r, _ = await _ask_mode(client, users["s"].id, "q", "deep")
+    assert r.status_code == 429 and "快速回答" in r.json()["detail"]
+    row = await db_session.get(TutorAllowance, users["s"].id)
+    await db_session.refresh(row)
+    assert row.used == 0          # 不够扣就一次都不扣
+    # 管理员把深度思考模型清空 = 关掉(空串不能当成「没填」)
+    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id),
+                     json={"scope": "hq", "free_total": 5, "deep_model": ""})
+    st = (await client.get("/api/v1/student/tutor/status", headers=_h(users["s"].id))).json()
+    assert st["deep_enabled"] is False
+    r, _ = await _ask_mode(client, users["s"].id, "q", "deep")
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_deep_falls_back_to_second_deep_model(client, db_session, relay, shared_session):
+    users = await _env(db_session)
+    fake = relay([
+        (503, {"error": {"message": "No available accounts"}}),
+        (200, _thinking_then([{"type": "text", "text": "想想主语。"}], "end_turn")),
+    ])
+    r, events = await _ask_mode(client, users["s"].id, "q", "deep")
+    assert [b["model"] for b in fake.requests] == [tt.DEFAULT_DEEP_MODEL, tt.DEFAULT_DEEP_FALLBACK]
+    assert events[-1]["type"] == "done"
+
+
+# ---------------------------------------------------------------- 次数: 老师加 / 请老师加 / 老数据
+
+@pytest.mark.asyncio
+async def test_teacher_grants_only_own_class(client, db_session, relay, shared_session):
+    users = await _env(db_session)
+    await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "hq", "free_total": 1})
+    relay([(200, _text_reply("一"))])
+    await _ask(client, users["s"].id)
+    r, _ = await _ask(client, users["s"].id)
+    assert r.status_code == 429
+    # 孩子请老师加 → 老师列表里排最前、带标记
+    assert (await client.post("/api/v1/student/tutor/request-more", headers=_h(users["s"].id))).status_code == 200
+    assert (await client.get("/api/v1/teacher/tutor/available", headers=_h(users["t"].id))).json()["requested"] == 1
+    lst = (await client.get("/api/v1/teacher/tutor/students", headers=_h(users["t"].id))).json()
+    assert lst["requested"] == 1 and lst["items"][0]["id"] == users["s"].id and lst["items"][0]["left"] == 0
+    # 别的老师加不了(不是他班上的);s2 不在 t 班上,整批拒
+    r = await client.post("/api/v1/teacher/tutor/grant", headers=_h(users["ot"].id),
+                          json={"student_ids": [users["s"].id], "add": 5})
+    assert r.status_code == 403
+    r = await client.post("/api/v1/teacher/tutor/grant", headers=_h(users["t"].id),
+                          json={"student_ids": [users["s"].id, users["s2"].id], "add": 5})
+    assert r.status_code == 403
+    r = await client.post("/api/v1/teacher/tutor/grant", headers=_h(users["t"].id),
+                          json={"student_ids": [users["s"].id], "add": 5})
+    assert r.status_code == 200
+    st = (await client.get("/api/v1/student/tutor/status", headers=_h(users["s"].id))).json()
+    assert st["total"] == 6 and st["left"] == 5 and st["requested"] is False
+    from app.models.audit import OperationLog
+    log = (await db_session.execute(select(OperationLog).where(OperationLog.action == "tutor.grant"))).scalar_one()
+    assert "加学习助手 5 次" in log.summary
+    # 一次最多加 100
+    r = await client.post("/api/v1/teacher/tutor/grant", headers=_h(users["t"].id),
+                          json={"student_ids": [users["s"].id], "add": 500})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_old_answers_count_as_used(client, db_session):
+    """改成「一共 N 次」之前问过的(上线当天): 拿到回答的那几次算进已用,没调通的不算"""
+    users = await _env(db_session)
+    c = TutorConversation(user_id=users["s"].id, org_id=1, title="x", message_count=3)
+    db_session.add(c)
+    await db_session.flush()
+    for text, err in [("好", None), ("", "503"), ("对", None)]:
+        db_session.add(TutorMessage(conversation_id=c.id, user_id=users["s"].id, role="assistant", text=text, error=err))
+    await db_session.commit()
+    st = (await client.get("/api/v1/student/tutor/status", headers=_h(users["s"].id))).json()
+    assert st["used"] == 2 and st["left"] == 18
+
+
+@pytest.mark.asyncio
+async def test_consume_never_goes_over(db_session):
+    """同一个孩子连点: 条件 UPDATE 保证扣不过头"""
+    users = await _env(db_session)
+    uid = users["s"].id
+    results = [await tt.consume(db_session, uid, 1, 3) for _ in range(5)]
+    assert results == [True, True, True, False, False]
+    assert await tt.consume(db_session, uid, 2, 4) is False      # 剩 1 次,深度思考要 2 次
+    await tt.refund(db_session, uid, 5)
+    row = await db_session.get(TutorAllowance, uid)
+    await db_session.refresh(row)
+    assert row.used == 0
+
+
+# ---------------------------------------------------------------- 停止
+
+@pytest.mark.asyncio
+async def test_stop_before_any_text_refunds(client, db_session, relay, shared_session, monkeypatch):
+    users = await _env(db_session)
+    from app.core.shared_store import store
+
+    real_get = store.get
+
+    async def fake_get(key):
+        return "1" if key.startswith("tutor:stop:") else await real_get(key)
+
+    monkeypatch.setattr(store, "get", fake_get)
+    relay([(200, _text_reply("不会发出来"))])
+    r, events = await _ask(client, users["s"].id)
+    done = events[-1]
+    assert done["type"] == "done" and done["stopped"] is True and done["refunded"] is True
+    st = (await client.get("/api/v1/student/tutor/status", headers=_h(users["s"].id))).json()
+    assert st["used"] == 0
+    msg = (await db_session.execute(select(TutorMessage).where(TutorMessage.role == "assistant"))).scalar_one()
+    assert msg.error == "停下了"
+    cid = events[0]["conversation_id"]
+    hist = (await client.get(f"/api/v1/student/tutor/conversations/{cid}", headers=_h(users["s"].id))).json()
+    assert hist["messages"][1]["stopped"] is True and hist["messages"][1]["failed"] is False
+
+
+@pytest.mark.asyncio
+async def test_stop_needs_own_message(client, db_session, relay, shared_session):
+    users = await _env(db_session)
+    relay([(200, _text_reply("嗯"))])
+    _, events = await _ask(client, users["s"].id)
+    um_id = events[0]["user_message_id"]
+    r = await client.post("/api/v1/student/tutor/stop", headers=_h(users["s2"].id), json={"user_message_id": um_id})
+    assert r.status_code == 404
+    r = await client.post("/api/v1/student/tutor/stop", headers=_h(users["s"].id), json={"user_message_id": um_id})
+    assert r.status_code == 200

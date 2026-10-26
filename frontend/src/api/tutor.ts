@@ -13,6 +13,8 @@ export type TutorCard =
   | { type: 'practice'; mode: 'listen' | 'meaning'; items: PracticeItem[] }
   | { type: 'link'; target: 'review' | 'homework' | 'mistakes'; label: string; route: string };
 
+export type TutorMode = 'fast' | 'deep';
+
 export interface TutorMessage {
   id: number;
   role: 'user' | 'assistant';
@@ -21,15 +23,26 @@ export interface TutorMessage {
   cards: TutorCard[];
   /** 这次没调通(只有错误,没有字) */
   failed: boolean;
+  /** 孩子点了停止 */
+  stopped: boolean;
+  mode: TutorMode;
   created_at: string | null;
 }
 
+/** 次数: 每个学生一共送 free_total 次(不按天清零),老师加的在 extra,total = 两者之和 */
 export interface TutorStatus {
   enabled: boolean;
   reason: string;
-  daily_limit: number;
   used: number;
+  extra: number;
+  total: number;
   left: number;
+  free_total: number;
+  /** 已经点过「请老师加次数」、老师还没加 */
+  requested: boolean;
+  deep_enabled: boolean;
+  /** 深度思考一次算几次 */
+  deep_cost: number;
   max_text: number;
 }
 
@@ -40,12 +53,18 @@ export const listConversations = () => client.get<{ items: TutorConversationItem
 export const getConversation = (id: number) =>
   client.get<{ id: number; title: string; messages: TutorMessage[] }>(`/student/tutor/conversations/${id}`);
 
+export const requestMoreTutor = () => client.post<{ ok: boolean }>('/student/tutor/request-more');
+export const stopTutor = (userMessageId: number) =>
+  client.post<{ ok: boolean }>('/student/tutor/stop', { user_message_id: userMessageId });
+
 export type TutorEvent =
-  | { type: 'meta'; conversation_id: number; user_message_id: number; left: number }
+  | { type: 'meta'; conversation_id: number; user_message_id: number; left: number; mode: TutorMode; cost: number }
   | { type: 'delta'; text: string }
+  /** 模型开始思考了(思考内容不下发,里面常直接写着答案) */
+  | { type: 'thinking' }
   | { type: 'status'; text: string }
   | { type: 'card'; card: TutorCard }
-  | { type: 'done'; message_id: number }
+  | { type: 'done'; message_id: number; stopped?: boolean; refunded?: boolean }
   | { type: 'error'; message: string; refunded?: boolean };
 
 export class TutorAskError extends Error {
@@ -58,12 +77,13 @@ export class TutorAskError extends Error {
 
 /** 提问。onEvent 每收到一个事件调一次;请求被拒(403/429/400)抛 TutorAskError */
 export async function askTutor(
-  params: { text: string; conversationId?: number | null; image?: Blob | null },
+  params: { text: string; conversationId?: number | null; image?: Blob | null; mode?: TutorMode },
   onEvent: (ev: TutorEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const form = new FormData();
   form.append('text', params.text);
+  form.append('mode', params.mode || 'fast');
   if (params.conversationId) form.append('conversation_id', String(params.conversationId));
   if (params.image) form.append('image', params.image, 'question.jpg');
   const token = localStorage.getItem('access_token');
@@ -114,30 +134,54 @@ export interface TeacherTutorLog {
 export const getStudentTutorLog = (studentId: number) =>
   client.get<TeacherTutorLog>(`/teacher/students/${studentId}/tutor`);
 
+export const getTutorAvailable = () => client.get<{ enabled: boolean; requested: number }>('/teacher/tutor/available');
+
+export interface TutorQuotaStudent {
+  id: number;
+  username: string;
+  full_name: string;
+  class_name: string;
+  used: number;
+  extra: number;
+  total: number;
+  left: number;
+  questions: number;
+  requested_at: string | null;
+}
+export const getTutorStudents = () =>
+  client.get<{ free_total: number; deep_cost: number; enabled: boolean; requested: number; items: TutorQuotaStudent[] }>(
+    '/teacher/tutor/students');
+export const grantTutor = (studentIds: number[], add: number) =>
+  client.post<{ ok: boolean; count: number }>('/teacher/tutor/grant', { student_ids: studentIds, add });
+export const TUTOR_GRANT_MAX = 100;
+
 // ---- 管理端
 export interface TutorUsageDay {
   date: string;
   /** 这天提过问的学生数 */
   students: number;
   by_model: Array<{
-    model: string; answers: number; students: number; input_tokens: number; output_tokens: number;
+    model: string; mode: TutorMode; answers: number; students: number; input_tokens: number; output_tokens: number;
     cache_read_tokens: number; cache_write_tokens: number; errors: number;
   }>;
 }
 export interface TutorAdminState {
   scope: 'off' | 'hq' | 'all';
-  daily_limit: number;
+  free_total: number;
+  deep_cost: number;
   provider: null | {
     enabled: boolean; base_url: string | null; model: string | null; fallback_model: string | null;
+    /** null = 深度思考关着 */
+    deep_model: string | null; deep_fallback_model: string | null;
     api_key_masked: string; key_ok: boolean;
   };
   usage: TutorUsageDay[];
 }
 export const getTutorAdmin = () => client.get<TutorAdminState>('/admin/tutor');
 export const saveTutorAdmin = (body: {
-  scope: TutorAdminState['scope']; daily_limit: number; model?: string; fallback_model?: string;
-  base_url?: string; api_key?: string;
+  scope: TutorAdminState['scope']; free_total: number; deep_cost: number; model?: string; fallback_model?: string;
+  deep_model?: string; deep_fallback_model?: string; base_url?: string; api_key?: string;
 }) => client.put<TutorAdminState>('/admin/tutor', body);
 export const testTutorAdmin = () =>
-  client.post<{ results: Array<{ model: string; ok: boolean; message: string; ms: number }> }>(
+  client.post<{ results: Array<{ model: string; mode: TutorMode; ok: boolean; message: string; ms: number }> }>(
     '/admin/tutor/test', undefined, { timeout: 70000 });

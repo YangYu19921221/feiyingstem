@@ -28,6 +28,7 @@ import {
   Gift,
   HeartHandshake,
   MessageSquareHeart,
+  MessageCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
@@ -35,6 +36,7 @@ import ChangePasswordModal from '../components/ChangePasswordModal';
 import { useCardPlan } from '../hooks/useCardPlan';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import { getTutorAvailable } from '../api/tutor';
 
 interface UserData { username: string; full_name: string }
 interface DashboardStats {
@@ -49,7 +51,7 @@ interface DashboardStats {
   weekly_new_assignments: number;
 }
 interface RecentActivity { type: 'homework' | 'unit'; student_name: string; title: string; score: number | null; time: string }
-interface ActionItem { title: string; description: string; route: string; icon: LucideIcon; tone: 'orange' | 'blue' | 'green' | 'teal' | 'amber' | 'violet' }
+interface ActionItem { title: string; description: string; route: string; icon: LucideIcon; tone: 'orange' | 'blue' | 'green' | 'teal' | 'amber' | 'violet'; badge?: number }
 
 const toolGroups: Array<{ title: string; description: string; items: ActionItem[] }> = [
   {
@@ -87,6 +89,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: 'PK 对战房间', description: '组织个人或分组对战', route: '/pk/lobby', icon: Swords, tone: 'orange' },
       { title: '金币管理', description: '奖励与兑换记录', route: '/teacher/coins', icon: CircleDollarSign, tone: 'amber' },
       { title: '家长绑定', description: '一人一条链接,家长每天看学情', route: '/teacher/parent-binding', icon: HeartHandshake, tone: 'green' },
+      { title: '学习助手次数', description: '学生问「小鹰老师」的次数,用完了在这里加', route: '/teacher/tutor-quota', icon: MessageCircle, tone: 'orange' },
       { title: '家长推荐', description: '发邀请海报,跟进老带新', route: '/teacher/referrals', icon: Gift, tone: 'orange' },
     ],
   },
@@ -111,6 +114,11 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeUsername, setShowChangeUsername] = useState(false);
+  // 学习助手: 本校没开放就不放入口;有孩子在请求加次数时入口上显示数字
+  const [tutor, setTutor] = useState<{ enabled: boolean; requested: number } | null>(null);
+  useEffect(() => {
+    getTutorAvailable().then(setTutor).catch(() => setTutor(null));
+  }, []);
 
   useEffect(() => {
     const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
@@ -133,8 +141,10 @@ const TeacherDashboard = () => {
     ...g,
     items: g.items.filter(i =>
       !(isAssistant && i.route === '/teacher/assistants') &&
-      !(cardPlan !== 'pack' && i.route === '/teacher/card-rules')),
-  })), [isAssistant, cardPlan]);
+      !(cardPlan !== 'pack' && i.route === '/teacher/card-rules') &&
+      !(!tutor?.enabled && i.route === '/teacher/tutor-quota'))
+      .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested } : i)),
+  })), [isAssistant, cardPlan, tutor]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
       <StaffWorkspaceHeader role="teacher" title="教师工作台" subtitle="今日教学、学生进度与内容管理" action={<div className="flex items-center gap-1"><button type="button" onClick={() => setShowChangeUsername(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button></div>} />
@@ -206,7 +216,7 @@ const TeacherDashboard = () => {
         <section className="teacher-tool-list rounded-2xl p-5 sm:p-6">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-xl font-bold tracking-tight text-[#173047]">教学工具箱</h3><p className="mt-1 text-xs text-slate-500">按教学场景整理的常用入口</p></div><span className="text-xs text-slate-400">{visibleToolGroups.reduce((sum, group) => sum + group.items.length, 0)} 项工具</span></div>
           <div className="grid gap-6 md:grid-cols-3">
-            {visibleToolGroups.map((group) => <div key={group.title}><div className="mb-2 px-1"><p className="text-sm font-semibold text-[#173047]">{group.title}</p><p className="mt-1 text-xs text-slate-500">{group.description}</p></div><div className="teacher-tool-row-group overflow-hidden rounded-xl border border-slate-100">{group.items.map(({ title, description, route, icon: Icon, tone }) => <button key={route} type="button" onClick={() => navigate(route)} className="teacher-tool-row group flex w-full items-center gap-3 px-3 py-3 text-left transition"><span className={`teacher-tool-icon teacher-tool-icon-${tone} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-[#173047]">{title}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></button>)}</div></div>)}
+            {visibleToolGroups.map((group) => <div key={group.title}><div className="mb-2 px-1"><p className="text-sm font-semibold text-[#173047]">{group.title}</p><p className="mt-1 text-xs text-slate-500">{group.description}</p></div><div className="teacher-tool-row-group overflow-hidden rounded-xl border border-slate-100">{group.items.map(({ title, description, route, icon: Icon, tone, badge }) => <button key={route} type="button" onClick={() => navigate(route)} className="teacher-tool-row group flex w-full items-center gap-3 px-3 py-3 text-left transition"><span className={`teacher-tool-icon teacher-tool-icon-${tone} flex h-9 w-9 shrink-0 items-center justify-center rounded-lg`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="flex items-center gap-1.5 truncate text-sm font-semibold text-[#173047]">{title}{badge ? <span className="rounded-full bg-[#e8590c] px-1.5 text-[11px] font-bold leading-5 text-white" aria-label={`${badge} 个学生在请求加次数`}>{badge}</span> : null}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-600" /></button>)}</div></div>)}
           </div>
         </section>
       </main>

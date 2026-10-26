@@ -61,7 +61,8 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
                       m.role === 'user' ? 'bg-orange-100 text-orange-900' : m.failed ? 'bg-rose-50 text-rose-700' : 'bg-white text-slate-700'
                     }`}>
                       {m.role === 'user' && m.has_image && <span className="mr-1 text-xs text-orange-700">[照片]</span>}
-                      {m.failed ? '(这次没调通,孩子没拿到回答)' : m.text}
+                      {m.role === 'assistant' && m.mode === 'deep' && !m.failed && <span className="mr-1 text-xs text-sky-700">[深度思考]</span>}
+                      {m.failed ? '(这次没调通,孩子没拿到回答)' : m.stopped && !m.text ? '(孩子停下了)' : m.text}
                       {m.cards.some((x) => x.type === 'practice') && (
                         <span className="mt-1 block text-xs text-slate-400">
                           [出了练习: {m.cards.flatMap((x) => (x.type === 'practice' ? x.items.map((i) => i.word) : [])).join('、')}]

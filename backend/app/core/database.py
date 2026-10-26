@@ -546,6 +546,8 @@ async def init_db():
             "ALTER TABLE word_books ADD COLUMN pack_tier VARCHAR(10)",
             "ALTER TABLE redemption_codes ADD COLUMN card_kind VARCHAR(10)",
             "CREATE INDEX IF NOT EXISTS idx_redemption_codes_card_kind ON redemption_codes(card_kind)",
+            # 学习助手分快速 / 深度思考(2026-10-26): NULL = 加这列之前的,都是快速
+            "ALTER TABLE tutor_messages ADD COLUMN mode VARCHAR(10)",
         ]:
             try:
                 await conn.execute(text(_sql))
