@@ -174,6 +174,8 @@ async def speech_loop() -> None:
     from app.models.sentence_speech import SentenceSpeech
     from app.services import read_aloud
     from app.services import tutor_history
+    from app.services import tutor_relay_health
+    from app.services import tutor_voice
     # 音标视频同步到腾讯云 COS(2026-10-25,见 services/cos_video): 后台线程,没配 COS 什么都不做。
     # 挂在这里而不是 main.py 的 lifespan: 生产 main.py 与仓库有 drift,少碰一次
     try:
@@ -193,7 +195,9 @@ async def speech_loop() -> None:
                 logger.error("跟读录音到期删除出错: %s", e)
             # 学习助手对话到期清理(services/tutor_history,出错只记日志)
             await tutor_history.purge_quietly()
-            await asyncio.sleep(3600)
+            # 学习助手中转钱包 / Key 检查(services/tutor_relay_health,内部按 30 分钟节流)
+            await tutor_relay_health.check_quietly(asyncio.get_running_loop().time())
+            await asyncio.sleep(1800)
     # 开口背与例句跟读(2026-10-24)共用这一个进程池和调度循环;两张表的 id 各自独立,在飞集合按 (来源, id) 记
     inflight: set[tuple[str, int]] = set()
     last_purge = 0.0
@@ -210,7 +214,10 @@ async def speech_loop() -> None:
                         .execution_options(skip_tenant_filter=True)
                     )).all()
                     ra_rows = await read_aloud.pending_rows(db, room + len(inflight))
-                jobs = [("speech", rid, fp, eng, _process_one) for rid, fp, eng in rows] + \
+                    # 学习助手「按住说话」(services/tutor_voice): 孩子在等,排最前
+                    tv_rows = await tutor_voice.pending_rows(db, room + len(inflight))
+                jobs = [("tutor_voice", rid, fp, s, tutor_voice.process_one) for rid, fp, s in tv_rows] + \
+                       [("speech", rid, fp, eng, _process_one) for rid, fp, eng in rows] + \
                        [("read_aloud", rid, fp, s, read_aloud.process_one) for rid, fp, s in ra_rows]
                 for src, rid, fp, text, fn in jobs:
                     key = (src, rid)
@@ -226,6 +233,11 @@ async def speech_loop() -> None:
                 if n:
                     logger.info("跟读录音到期删除 %s 条", n)
                 await tutor_history.purge_quietly()
+                try:
+                    await tutor_voice.purge_expired()
+                except Exception as e:  # noqa: BLE001
+                    logger.error("学习助手语音到期删除出错: %s", e)
+            await tutor_relay_health.check_quietly(asyncio.get_running_loop().time())
         except asyncio.CancelledError:
             raise
         except Exception as e:

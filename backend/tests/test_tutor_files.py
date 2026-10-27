@@ -7,7 +7,7 @@
 4. 照片和文件一次只能发一样;发文件的那问不算「同一道题的追问」(算 1 次)
 5. 只发文件不写字: 对话标题用文件名
 6. 下一问的历史里只提一句「之前发了一份文件《xxx》」,不重发内容
-7. .doc 走 LibreOffice 转 PDF;服务器没装就 400 让孩子另存为 docx / PDF
+7. .doc 不转换,400 让孩子另存为 docx / PDF(前端同一句话当场提示,不上传)
 """
 import io
 import json
@@ -91,34 +91,26 @@ async def test_extract_rejects():
 
 
 @pytest.mark.asyncio
-async def test_doc_without_soffice_is_rejected(monkeypatch):
+async def test_doc_is_rejected_without_calling_soffice(monkeypatch):
+    """.doc 不转换: 直接让孩子另存为 docx / PDF,也不去碰 soffice(那把锁是音标课件在用)"""
     from app.services import office_convert
-    monkeypatch.setattr(office_convert, "office_available", lambda: False)
-    with pytest.raises(tf.FileRejected) as e:
-        await tf.extract("old.doc", b"\xd0\xcf\x11\xe0 fake")
-    assert ".docx" in str(e.value)
 
-
-@pytest.mark.asyncio
-async def test_doc_converts_via_soffice(monkeypatch, tmp_path):
-    """.doc: 交给 office_convert 转 PDF(这里假装转好了),再按 PDF 读;临时目录用完删掉"""
-    from app.services import office_convert
-    seen = {}
-
-    async def fake_convert(src, out_dir):
-        import os
-        seen["src_dir"] = os.path.dirname(src)
-        os.makedirs(out_dir, exist_ok=True)
-        p = os.path.join(out_dir, "upload.pdf")
-        with open(p, "wb") as f:
-            f.write(_pdf("old word file: My brother plays football every weekend."))
-        return p
+    async def boom(*a, **k):
+        raise AssertionError("不该调 soffice")
 
     monkeypatch.setattr(office_convert, "office_available", lambda: True)
-    monkeypatch.setattr(office_convert, "convert_to_pdf_async", fake_convert)
-    d = await tf.extract("老作业.doc", b"\xd0\xcf\x11\xe0 fake doc")
-    import os
-    assert d.kind == "doc" and "plays football" in d.text and not os.path.exists(seen["src_dir"])
+    monkeypatch.setattr(office_convert, "convert_to_pdf_async", boom)
+    with pytest.raises(tf.FileRejected) as e:
+        await tf.extract("老作业.doc", b"\xd0\xcf\x11\xe0 fake doc")
+    assert ".docx" in str(e.value) and "另存为" in str(e.value)
+
+
+def test_doc_hint_matches_frontend():
+    """前端选到 .doc 当场提示同一句话(不上传),两边别说两样"""
+    import pathlib, re
+    ts = (pathlib.Path(__file__).resolve().parents[2] / "frontend/src/utils/tutorFile.ts").read_text()
+    m = re.search(r"DOC_HINT\s*=\s*'([^']+)'", ts)
+    assert m and m.group(1) == tf.DOC_HINT
 
 
 def test_safe_name():

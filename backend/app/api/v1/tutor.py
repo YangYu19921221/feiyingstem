@@ -41,7 +41,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.auth import get_current_admin, get_current_student, get_current_teacher
+from app.api.v1.auth import get_current_admin, get_current_student, get_current_teacher, require_role
 from app.api.v1.teacher._permissions import assert_student_in_my_class
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.rate_limit import check_rate
@@ -110,7 +110,13 @@ async def tutor_status(db: AsyncSession = Depends(get_db), student: User = Depen
             "deep_enabled": bool(conf and conf.deep_enabled), "deep_cost": settings["deep_cost"],
             "followup_free": tt.FOLLOWUP_FREE, "followup_minutes": tt.FOLLOWUP_MINUTES,
             "picture_enabled": ok and await wp.available(db), "picture_cost": wp.COST,
-            "max_text": tt.MAX_TEXT}
+            "max_text": tt.MAX_TEXT, "voice_enabled": ok and _voice_ok()}
+
+
+def _voice_ok() -> bool:
+    """「按住说话」: 服务器装了 Whisper 才开(services/tutor_voice)"""
+    from app.services import sentence_speech
+    return sentence_speech.is_available()
 
 
 @student_router.post("/tutor/request-more")
@@ -320,6 +326,17 @@ async def _mark_refunded(db: AsyncSession, um_id: int) -> None:
     await db.commit()
 
 
+async def _care_refund(db: AsyncSession, user_id: int, um_id: int, cost: int) -> None:
+    """小鹰老师判断孩子在说难过的事(调了 flag_concern): 这一问退回次数,记成 COST_CARE(一天 CARE_DAILY 次)"""
+    from app.services import tutor_safety
+    if not await tutor_safety.care_is_free(user_id):
+        return
+    await db.execute(update(TutorMessage).where(TutorMessage.id == um_id).values(cost=tt.COST_CARE)
+                     .execution_options(synchronize_session=False))
+    await db.commit()
+    await tt.refund(db, user_id, cost)
+
+
 async def _release_feedback(db: AsyncSession, quiz_id: int) -> None:
     from app.services import tutor_quiz
     await tutor_quiz.release_feedback(db, quiz_id)
@@ -359,6 +376,8 @@ async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: i
                 if title and not conv.title:
                     conv.title = title
             await db.commit()
+            if not refunded and cost and "flag_concern" in turn.tools:
+                await _care_refund(db, user_id, um_id, cost)
             if refunded:
                 await _mark_refunded(db, um_id)
                 if cost:
@@ -386,6 +405,38 @@ async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: i
         await queue.put(None)
 
 
+@student_router.post("/tutor/voice")
+async def upload_voice(audio: UploadFile = File(...), db: AsyncSession = Depends(get_db),
+                       student: User = Depends(get_current_student)):
+    """「按住说话」: 录音进转写队列,返回 id;前端每秒问 GET /tutor/voice/{id} 拿文字(services/tutor_voice)"""
+    from app.services import sentence_speech, tutor_voice
+    ok, reason, _ = await _availability(db, student)
+    if not ok:
+        raise HTTPException(403, reason)
+    if not sentence_speech.is_available():
+        raise HTTPException(503, "服务器暂时听不了语音,打字问吧")
+    ext = tutor_voice.ext_for(audio.content_type)
+    if ext is None:
+        raise HTTPException(400, "这段录音的格式不支持,打字问吧")
+    raw = await audio.read(tutor_voice.MAX_BYTES + 1)
+    if not raw:
+        raise HTTPException(400, "没录到声音,再按住说一次")
+    if len(raw) > tutor_voice.MAX_BYTES:
+        raise HTTPException(400, f"说得太长了,一次说 {tutor_voice.MAX_SECONDS} 秒以内")
+    await check_rate(str(student.id), "tutor_voice", [(60, 10), (3600, 60)])
+    clip = await tutor_voice.save(db, student.id, raw, ext)
+    return {"id": clip.id, "status": clip.status}
+
+
+@student_router.get("/tutor/voice/{clip_id}")
+async def voice_result(clip_id: int, db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
+    from app.models.tutor import TutorVoiceClip
+    c = await db.get(TutorVoiceClip, clip_id)
+    if c is None or c.user_id != student.id:
+        raise HTTPException(404, "没有这段录音")
+    return {"id": c.id, "status": c.status, "text": c.text or ""}
+
+
 @student_router.post("/tutor/ask")
 async def ask(
     text: str = Form(""),
@@ -394,6 +445,7 @@ async def ask(
     image: Optional[UploadFile] = File(None),
     file: Optional[UploadFile] = File(None),
     quiz_id: Optional[int] = Form(None),
+    care: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     student: User = Depends(get_current_student),
 ):
@@ -454,8 +506,18 @@ async def ask(
     if conversation_id:
         conv = await _own_conversation(db, student, conversation_id)
 
+    from app.services import tutor_safety
+    # 孩子说到难过、被欺负、想伤害自己(services/tutor_safety): 只看孩子自己写的字,练习点评那条不看
+    concern = tutor_safety.detect(text) if fq is None else None
+    # 次数用完了的孩子点「想说说心里话」进来的(care=1): 只回应心里话,不讲题(CARE_BUTTON_NOTE),一天最多 CARE_BUTTON_DAILY 次
+    care_button = bool(care) and fq is None and img is None and doc is None
     stored_cost = None
-    if fq is not None and fq.free_feedback:
+    if concern is not None and await tutor_safety.care_is_free(student.id):
+        # 这一问不扣次数,也不算追问(次数用完了也能说);一天最多 CARE_DAILY 次,超了照常扣
+        cost, stored_cost = 0, tt.COST_CARE
+    elif care_button and await tutor_safety.care_button_is_free(student.id):
+        cost, stored_cost = 0, tt.COST_CARE
+    elif fq is not None and fq.free_feedback:
         # 做完练习后的点评不扣次数,也不占「同一道题追问」那 3 次(用户 10-27)
         cost, stored_cost = 0, tt.COST_FEEDBACK
     elif conv is not None and mode == "fast" and img is None and doc is None and await tt.followup_state(db, conv.id):
@@ -495,6 +557,11 @@ async def ask(
         conv.message_count = (conv.message_count or 0) + 1
         conv.updated_at = utc_now()
         await db.flush()
+        if concern is not None:
+            # 和提问同一个事务: 提问落库了,提醒一定在
+            await tutor_safety.record(db, user_id=student.id, org_id=student.org_id, conversation_id=conv.id,
+                                      message_id=um.id, level=concern[0], source="keyword", matched=concern[1],
+                                      excerpt=text)
         history = await tt.history_messages(db, conv.id, um.id)
         context = await tt.student_context(db, student)
         conv_id, um_id = conv.id, um.id
@@ -522,11 +589,21 @@ async def ask(
         ask_text = text or "帮我看看这道题"
     content.append({"type": "text", "text": ask_text})
     messages = history + [{"role": "user", "content": content}]
+    if concern is not None:
+        context += "\n\n" + tt.CARE_NOTE
+    if care_button and stored_cost == tt.COST_CARE and concern is None:
+        context += "\n\n" + tt.CARE_BUTTON_NOTE
+    if fq is None and text:
+        # 问到的词先按课本查好,省掉一轮 lookup_word(services/tutor「提速」)
+        pre = await tt.prefetch_words(db, text)
+        if pre:
+            context += "\n\n" + pre
     system = tt.build_system(context, mode)
     left = (await tt.allowance_status(db, student.id, settings, student.org_id))["left"]
 
     queue: asyncio.Queue = asyncio.Queue()
-    ctx = {"conversation_id": conv_id, "is_feedback": fq is not None and bool(fq.free_feedback)}
+    ctx = {"conversation_id": conv_id, "is_feedback": fq is not None and bool(fq.free_feedback),
+           "user_message_id": um_id, "user_text": text}
     task = asyncio.create_task(_run_answer(queue, student.id, conv_id, um_id, conf, system, messages, title, mode, cost,
                                            ctx, fq.id if fq is not None else None))
     _running.add(task)
@@ -552,14 +629,27 @@ async def teacher_tutor_available(db: AsyncSession = Depends(get_db), teacher: U
     """本校学生能不能用学习助手(公告按它决定弹不弹,试用期只开直营)+ 几个本班学生在请求加次数(工作台提醒)"""
     enabled = await tt.available_to(db, teacher)
     requested = 0
+    ids = [s[0] for s in await _my_class_students(db, teacher.id)]
     if enabled:
-        ids = [s[0] for s in await _my_class_students(db, teacher.id)]
         if ids:
             requested = int((await db.execute(
                 select(func.count(TutorAllowance.user_id))
                 .where(TutorAllowance.user_id.in_(ids), TutorAllowance.requested_at.isnot(None))
             )).scalar() or 0)
-    return {"enabled": enabled, "requested": requested}
+    # 需要关心的孩子(services/tutor_safety): 本班没处理的,urgent 单独数(工作台红条)
+    alerts = await _alert_counts(db, ids)
+    return {"enabled": enabled, "requested": requested, "alerts": alerts}
+
+
+async def _alert_counts(db: AsyncSession, student_ids: list[int]) -> dict:
+    from app.models.tutor import TutorAlert
+    if not student_ids:
+        return {"open": 0, "urgent": 0}
+    rows = dict((await db.execute(
+        select(TutorAlert.level, func.count(TutorAlert.id))
+        .where(TutorAlert.user_id.in_(student_ids), TutorAlert.handled_at.is_(None))
+        .group_by(TutorAlert.level))).all())
+    return {"open": int(sum(rows.values())), "urgent": int(rows.get("urgent", 0))}
 
 
 GRANT_MAX = 100   # 老师一次最多加几次
@@ -680,7 +770,12 @@ async def student_tutor_log(student_id: int, limit: int = Query(20, ge=1, le=50)
     from app.services import tutor_quiz
     for c in convs:
         by_conv[c.id] = await tutor_quiz.attach(db, await _with_pictures(db, by_conv[c.id]), teacher=True)
-    return {"total_questions": int(total), "profile": profile,
+    from app.models.tutor import TutorAlert
+    from app.services import tutor_safety
+    alerts = [tutor_safety.out(a) for a in (await db.execute(
+        select(TutorAlert).where(TutorAlert.user_id == student_id).order_by(TutorAlert.id.desc()).limit(10)
+    )).scalars().all()]
+    return {"total_questions": int(total), "profile": profile, "alerts": alerts,
             "items": [{"id": c.id, "title": c.title or "新对话",
                        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
                        # 孩子删掉的老师 30 天内还看得到(services/tutor_history),标出来
@@ -780,6 +875,20 @@ async def admin_tutor(db: AsyncSession = Depends(get_db), _admin: User = Depends
     return await _admin_state(db)
 
 
+@admin_router.get("/tutor/health")
+async def admin_tutor_health(db: AsyncSession = Depends(get_db), _admin: User = Depends(get_current_admin)):
+    """中转钱包余额、两个 Key 还能不能用、最近 1 小时失败几次(services/tutor_relay_health)"""
+    from app.services import tutor_relay_health
+    return await tutor_relay_health.last(db)
+
+
+@admin_router.post("/tutor/health/check")
+async def admin_tutor_health_check(db: AsyncSession = Depends(get_db), _admin: User = Depends(get_current_admin)):
+    from app.services import tutor_relay_health
+    await tutor_relay_health.check(db)
+    return await tutor_relay_health.last(db)
+
+
 @admin_router.put("/tutor")
 async def admin_tutor_update(body: TutorAdminIn, request: Request, db: AsyncSession = Depends(get_db),
                              admin: User = Depends(get_current_admin)):
@@ -827,6 +936,9 @@ async def admin_tutor_update(body: TutorAdminIn, request: Request, db: AsyncSess
                              "deep_model": conf_extra.get("deep_model"),
                              "deep_fallback_model": conf_extra.get("deep_fallback_model")})
     await db.commit()
+    # 换了 Key / 地址: 上次的检查结果不作数了,下次打开卡片重新查
+    from app.services import tutor_relay_health
+    await store.delete(tutor_relay_health.STORE_KEY)
     return await _admin_state(db)
 
 
@@ -1006,3 +1118,130 @@ async def admin_tutor_pool_credit(org_id: int, body: PoolIn, request: Request, d
                      detail={"times": body.times, "note": body.note, "source": body.source if body.times > 0 else "adjust"})
     await db.commit()
     return await admin_tutor_pool(org_id, db, admin)
+
+
+# ---------------------------------------------------------------- 需要关心的孩子(services/tutor_safety)
+
+class AlertHandleIn(BaseModel):
+    note: str = Field("", max_length=200)
+
+
+async def _alerts_page(db: AsyncSession, where, status: str, limit: int) -> list[dict]:
+    from app.models.tutor import TutorAlert
+    from app.services import tutor_safety
+
+    q = select(TutorAlert).where(*where)
+    if status == "open":
+        q = q.where(TutorAlert.handled_at.is_(None))
+    elif status == "done":
+        q = q.where(TutorAlert.handled_at.isnot(None))
+    # 没处理的在前,urgent 在前,新的在前
+    q = q.order_by(TutorAlert.handled_at.isnot(None), (TutorAlert.level != "urgent"), TutorAlert.id.desc()).limit(limit)
+    rows = (await db.execute(q)).scalars().all()
+    uids = {a.user_id for a in rows}
+    names, classes, orgs = {}, {}, {}
+    if uids:
+        for uid, uname, fname, oid in (await db.execute(
+            select(User.id, User.username, User.full_name, User.org_id).where(User.id.in_(uids))
+            .execution_options(skip_tenant_filter=True))).all():
+            names[uid] = fname or uname
+            orgs[uid] = oid
+        for sid, cname in (await db.execute(
+            select(ClassStudent.student_id, Class.name).join(Class, Class.id == ClassStudent.class_id)
+            .where(ClassStudent.student_id.in_(uids), ClassStudent.is_active.is_(True))
+            .execution_options(skip_tenant_filter=True))).all():
+            classes.setdefault(sid, cname)
+    org_names = {}
+    oids = {o for o in orgs.values() if o}
+    if oids:
+        org_names = dict((await db.execute(select(Organization.id, Organization.name)
+                                           .where(Organization.id.in_(oids)))).all())
+    return [tutor_safety.out(a, names.get(a.user_id), classes.get(a.user_id), org_names.get(orgs.get(a.user_id)))
+            for a in rows]
+
+
+async def _handle_alert(db: AsyncSession, request: Request, actor: User, alert, note: str) -> dict:
+    from app.core.actor import acting_user
+    from app.services import tutor_safety
+
+    if alert.handled_at is None:
+        real = acting_user(actor)
+        alert.handled_at = utc_now()
+        alert.handled_by = real.id
+        alert.handled_by_name = (real.full_name or real.username)[:60]
+        alert.handled_note = (note or "").strip()[:200] or None
+        audit_log.record(db, request, actor, "tutor.alert_handle",
+                         f"处理了学习助手提醒(学生 {alert.user_id})", target_type="tutor_alert", target_id=alert.id,
+                         detail={"level": alert.level, "note": alert.handled_note})
+        await db.commit()
+    return tutor_safety.out(alert)
+
+
+@teacher_router.get("/tutor/alerts")
+async def teacher_alerts(status: str = Query("open", pattern="^(open|done|all)$"), limit: int = Query(100, ge=1, le=200),
+                         db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    """本班孩子在学习助手里说到难过、被欺负、想伤害自己的(没处理的在前)"""
+    from app.models.tutor import TutorAlert
+    ids = [s[0] for s in await _my_class_students(db, teacher.id)]
+    if not ids:
+        return {"items": [], "counts": {"open": 0, "urgent": 0}}
+    return {"items": await _alerts_page(db, [TutorAlert.user_id.in_(ids)], status, limit),
+            "counts": await _alert_counts(db, ids)}
+
+
+@teacher_router.post("/tutor/alerts/{alert_id}/handle")
+async def teacher_handle_alert(alert_id: int, body: AlertHandleIn, request: Request,
+                               db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    from app.models.tutor import TutorAlert
+    a = await db.get(TutorAlert, alert_id)
+    if a is None:
+        raise HTTPException(404, "没有这条提醒")
+    await assert_student_in_my_class(db, teacher.id, a.user_id)
+    return await _handle_alert(db, request, teacher, a, body.note)
+
+
+get_admin_or_org_admin = require_role("admin", "org_admin")
+
+
+def _alert_scope(user: User):
+    """平台管理员看全部;机构管理员只看本机构(TutorAlert 不是租户锚点表,机构过滤要显式写)"""
+    from app.models.tutor import TutorAlert
+    return [] if user.role == "admin" else [TutorAlert.org_id == user.org_id]
+
+
+@admin_router.get("/tutor/alerts")
+async def admin_alerts(status: str = Query("open", pattern="^(open|done|all)$"), limit: int = Query(100, ge=1, le=200),
+                       db: AsyncSession = Depends(get_db), user: User = Depends(get_admin_or_org_admin)):
+    from app.models.tutor import TutorAlert
+    where = _alert_scope(user)
+    counts = dict((await db.execute(
+        select(TutorAlert.level, func.count(TutorAlert.id)).where(*where, TutorAlert.handled_at.is_(None))
+        .group_by(TutorAlert.level))).all())
+    return {"items": await _alerts_page(db, where, status, limit),
+            "counts": {"open": int(sum(counts.values())), "urgent": int(counts.get("urgent", 0))}}
+
+
+@admin_router.post("/tutor/alerts/{alert_id}/handle")
+async def admin_handle_alert(alert_id: int, body: AlertHandleIn, request: Request,
+                             db: AsyncSession = Depends(get_db), user: User = Depends(get_admin_or_org_admin)):
+    from app.models.tutor import TutorAlert
+    a = await db.get(TutorAlert, alert_id)
+    if a is None or (user.role != "admin" and a.org_id != user.org_id):
+        raise HTTPException(404, "没有这条提醒")
+    return await _handle_alert(db, request, user, a, body.note)
+
+
+# ---------------------------------------------------------------- 全班汇总 / 效果(services/tutor_insight)
+
+@teacher_router.get("/tutor/summary")
+async def teacher_tutor_summary(days: int = Query(7, ge=1, le=30),
+                                db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    """本班这几天: 谁问了几次、卡在哪、需要关心的孩子、问过的词后来拼对没有"""
+    from app.services import tutor_insight
+    return await tutor_insight.class_summary(db, await _my_class_students(db, teacher.id), days)
+
+
+@admin_router.get("/tutor/effect")
+async def admin_tutor_effect(db: AsyncSession = Depends(get_db), user: User = Depends(get_admin_or_org_admin)):
+    from app.services import tutor_insight
+    return await tutor_insight.effect(db, org_id=None if user.role == "admin" else user.org_id)

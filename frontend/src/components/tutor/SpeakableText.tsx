@@ -12,9 +12,8 @@
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Volume2 } from 'lucide-react';
+import { speakParts } from '../../utils/speakable';
 
-const EN_RUN = /[A-Za-z][A-Za-z'’-]*(?: [A-Za-z][A-Za-z'’-]*)*/g;
-const TITLE = /《[^》]*》/g;
 const SPEAK_MS = 1400;     // 读一个词 / 一句短话大概多久;喇叭跳这么久
 
 function hintKey(): string {
@@ -26,28 +25,7 @@ function hintKey(): string {
 }
 
 function SpeakableText({ text, onSpeak, hint = false }: { text: string; onSpeak: (s: string) => void; hint?: boolean }) {
-  const parts = useMemo(() => {
-    const out: Array<{ en: boolean; s: string }> = [];
-    const cut = (seg: string) => {
-      let last = 0;
-      for (const m of seg.matchAll(EN_RUN)) {
-        const i = m.index ?? 0;
-        if (i > last) out.push({ en: false, s: seg.slice(last, i) });
-        out.push({ en: m[0].length >= 2, s: m[0] });
-        last = i + m[0].length;
-      }
-      if (last < seg.length) out.push({ en: false, s: seg.slice(last) });
-    };
-    let last = 0;
-    for (const m of text.matchAll(TITLE)) {
-      const i = m.index ?? 0;
-      cut(text.slice(last, i));
-      out.push({ en: false, s: m[0] });
-      last = i + m[0].length;
-    }
-    cut(text.slice(last));
-    return out;
-  }, [text]);
+  const parts = useMemo(() => speakParts(text), [text]);
 
   const [speaking, setSpeaking] = useState<number | null>(null);
   const timer = useRef<number | undefined>(undefined);

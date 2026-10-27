@@ -7,10 +7,12 @@
  * 以及近 7 天用了多少(回答数、提问人数、token,按模型和回答方式分开)。
  * 10-27 加「画记忆图」一组: 单独一个 Key(和答题的分开)、模型、画质、每人每天最多画几张新图,下面列最近画的图可删。
  * 10-27 加「各机构次数」(TutorOrgsPanel): 给加盟机构发次数(进货 / 赠送),发过的机构自动开通。
+ * 10-27 晚顶上加 TutorHealthPanel: 中转钱包余额 / Key 能不能用 / 最近失败,以及需要关心的孩子。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import TutorOrgsPanel from './TutorOrgsPanel';
+import TutorHealthPanel from './TutorHealthPanel';
 import { getAdminPictures, getTutorAdmin, removeAdminPicture, saveTutorAdmin, testTutorAdmin, type TutorAdminState, type WordPictureOut } from '../../api/tutor';
 
 type Note = { ok: boolean; text: string } | null;
@@ -124,6 +126,8 @@ export default function TutorAdminCard() {
             只给学习助手用,周报、例句这些照旧走默认通道。每个学生一共送几次在这里设,用完了老师在「学习助手次数」给本班学生加。
           </p>
           {loadError && <p className="mt-2 text-sm text-red-600">读取失败: {loadError}</p>}
+          {/* 钱包 / Key 自动检查 + 需要关心的孩子(10-27) */}
+          {state && <TutorHealthPanel />}
           {state && (
             <p className="mt-2 text-sm text-slate-600">
               今天: {today?.students ?? 0} 人问了 {sum(today, 'answers')} 次

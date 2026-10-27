@@ -38,6 +38,7 @@ export type TutorCard =
   | { type: 'file'; name: string; kind: 'pdf' | 'docx' | 'doc' | 'txt'; pages: number | null; scanned: boolean; truncated: boolean };
 
 /** 能传的文件(和后端 tutor_files 同一份) */
+// .doc 也放进来: 选到了当场提示另存(灰着选不了,孩子不知道为什么)
 export const TUTOR_FILE_ACCEPT = '.pdf,.doc,.docx,.txt';
 export const TUTOR_FILE_MAX_MB = 20;
 
@@ -71,6 +72,8 @@ export interface TutorMessage {
 export interface TutorStatus {
   enabled: boolean;
   reason: string;
+  /** 「按住说话」能不能用(服务器装了语音识别) */
+  voice_enabled?: boolean;
   used: number;
   extra: number;
   total: number;
@@ -139,7 +142,9 @@ export class TutorAskError extends Error {
 
 /** 提问。onEvent 每收到一个事件调一次;请求被拒(403/429/400)抛 TutorAskError */
 export async function askTutor(
-  params: { text: string; conversationId?: number | null; image?: Blob | null; file?: File | null; mode?: TutorMode; quizId?: number },
+  params: { text: string; conversationId?: number | null; image?: Blob | null; file?: File | null; mode?: TutorMode; quizId?: number;
+    /** 次数用完了,点「想说说心里话」进来的(services/tutor_safety) */
+    care?: boolean },
   onEvent: (ev: TutorEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -150,6 +155,7 @@ export async function askTutor(
   if (params.image) form.append('image', params.image, 'question.jpg');
   if (params.file) form.append('file', params.file, params.file.name);
   if (params.quizId) form.append('quiz_id', String(params.quizId));
+  if (params.care) form.append('care', '1');
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API_BASE_URL}/student/tutor/ask`, {
     method: 'POST',
@@ -203,11 +209,66 @@ export interface TeacherTutorLog {
   }>;
   /** 小鹰老师按什么讲这个孩子(services/tutor_level) */
   prefs?: import('./tutorHistory').TutorLevel | null;
+  /** 这个孩子说到难过 / 被欺负的提醒(services/tutor_safety),新的在前 */
+  alerts?: TutorAlert[];
 }
 export const getStudentTutorLog = (studentId: number) =>
   client.get<TeacherTutorLog>(`/teacher/students/${studentId}/tutor`);
 
-export const getTutorAvailable = () => client.get<{ enabled: boolean; requested: number }>('/teacher/tutor/available');
+export interface AlertCounts { open: number; urgent: number }
+export const getTutorAvailable = () =>
+  client.get<{ enabled: boolean; requested: number; alerts?: AlertCounts }>('/teacher/tutor/available');
+
+// ---- 需要关心的孩子(services/tutor_safety)
+export interface TutorAlert {
+  id: number; student_id: number; student_name: string | null; class_name: string | null; org_name: string | null;
+  conversation_id: number | null;
+  /** urgent = 说到想伤害自己 / 不想活;concern = 被欺负、很难过 */
+  level: 'urgent' | 'concern';
+  source: string; matched: string | null; reason: string | null; excerpt: string | null;
+  created_at: string | null; handled_at: string | null; handled_by_name: string | null; handled_note: string | null;
+}
+export type AlertStatus = 'open' | 'done' | 'all';
+export const getTeacherAlerts = (status: AlertStatus = 'open') =>
+  client.get<{ items: TutorAlert[]; counts: AlertCounts }>('/teacher/tutor/alerts', { params: { status } });
+export const handleTeacherAlert = (id: number, note: string) =>
+  client.post<TutorAlert>(`/teacher/tutor/alerts/${id}/handle`, { note });
+export const getAdminAlerts = (status: AlertStatus = 'open') =>
+  client.get<{ items: TutorAlert[]; counts: AlertCounts }>('/admin/tutor/alerts', { params: { status } });
+export const handleAdminAlert = (id: number, note: string) =>
+  client.post<TutorAlert>(`/admin/tutor/alerts/${id}/handle`, { note });
+
+// ---- 效果数据 / 全班汇总(services/tutor_insight)
+export interface TutorEffect {
+  /** 能比较的词数(之前之后都有正式计分题) */
+  words: number;
+  /** 小鹰老师笔记里一共记了几个词 */
+  noted_words: number;
+  before: number | null; after: number | null;
+  /** 够 min_words 个词才下结论 */
+  enough: boolean; min_words: number; before_days: number;
+}
+export interface TutorClassSummary {
+  days: number;
+  items: Array<{ id: number; name: string; class_name: string; questions: number; last_at: string | null;
+    stuck: number; alerts: number; urgent: number }>;
+  stuck_points: Array<{ topic: string; students: number; wrong: number }>;
+  stuck_words: Array<{ topic: string; students: number; wrong: number }>;
+  effect: TutorEffect;
+  asked_students: number; questions: number;
+}
+export const getTutorSummary = (days = 7) => client.get<TutorClassSummary>('/teacher/tutor/summary', { params: { days } });
+export const getAdminTutorEffect = () => client.get<TutorEffect>('/admin/tutor/effect');
+
+// ---- 按住说话(services/tutor_voice)
+export const uploadTutorVoice = (blob: Blob) => {
+  const form = new FormData();
+  const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+  form.append('audio', blob, `voice.${ext}`);
+  return client.post<{ id: number; status: string }>('/student/tutor/voice', form, { timeout: 30000 });
+};
+export const getTutorVoice = (id: number) =>
+  client.get<{ id: number; status: 'pending' | 'done' | 'failed'; text: string }>(`/student/tutor/voice/${id}`);
 
 export interface TutorQuotaStudent {
   id: number;
@@ -265,6 +326,16 @@ export interface TutorAdminState {
   };
 }
 export const getTutorAdmin = () => client.get<TutorAdminState>('/admin/tutor');
+
+/** 中转钱包 / Key 检查(services/tutor_relay_health) */
+export type RelayStatus = 'ok' | 'low' | 'empty' | 'invalid' | 'unknown' | 'unset';
+export interface RelayProbe { status: RelayStatus; balance: number | null; note: string }
+export interface RelayHealth {
+  checked_at: string; tutor: RelayProbe; picture: RelayProbe; warn_balance: number;
+  recent: { minutes: number; answers: number; failed: number };
+}
+export const getTutorHealth = () => client.get<RelayHealth>('/admin/tutor/health');
+export const checkTutorHealth = () => client.post<RelayHealth>('/admin/tutor/health/check', undefined, { timeout: 40000 });
 export const saveTutorAdmin = (body: {
   scope: TutorAdminState['scope']; free_total: number; deep_cost: number; model?: string; fallback_model?: string;
   deep_model?: string; deep_fallback_model?: string; base_url?: string; api_key?: string;

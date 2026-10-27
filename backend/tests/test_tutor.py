@@ -415,7 +415,8 @@ async def test_image_is_compressed_and_not_saved(client, db_session, relay, shar
 async def test_teacher_available_follows_scope(client, db_session):
     users = await _env(db_session)
     r = await client.get("/api/v1/teacher/tutor/available", headers=_h(users["t"].id))
-    assert r.json() == {"enabled": True, "requested": 0}
+    assert r.json()["enabled"] is True and r.json()["requested"] == 0
+    assert r.json()["alerts"] == {"open": 0, "urgent": 0}
     await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "off", "free_total": 20})
     r = await client.get("/api/v1/teacher/tutor/available", headers=_h(users["t"].id))
     assert r.json()["enabled"] is False

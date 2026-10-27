@@ -45,6 +45,8 @@ const TeacherCoins = lazyWithRetry(() => import('./pages/TeacherCoins'));
 const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'));
 const TeacherParentBinding = lazyWithRetry(() => import('./pages/TeacherParentBinding'));
 const TeacherTutorQuota = lazyWithRetry(() => import('./pages/TeacherTutorQuota'));
+const TeacherTutorClass = lazyWithRetry(() => import('./pages/TeacherTutorClass'));
+const AdminTutorAlerts = lazyWithRetry(() => import('./pages/AdminTutorAlerts'));
 const TeacherCoach = lazyWithRetry(() => import('./pages/TeacherCoach'));
 const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
@@ -785,6 +787,25 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <TeacherParentBinding />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 小鹰老师本班情况(需要关心的孩子 / 谁问了什么 / 卡在哪 / 效果) */}
+        <Route
+          path="/teacher/tutor-class"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherTutorClass />
+            </ProtectedRoute>
+          }
+        />
+        {/* 管理端 / 机构管理端 - 学习助手里需要关心的孩子 */}
+        <Route
+          path="/admin/tutor-alerts"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
+              <AdminTutorAlerts />
             </ProtectedRoute>
           }
         />

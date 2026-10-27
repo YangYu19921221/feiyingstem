@@ -1,6 +1,6 @@
 """学习助手「上传文件」(2026-10-27,用户「拍照有了,上传文件的功能呢,小鹰 AI 可以做吗」→「doc 文档也要支持」)
 
-孩子除了拍照,还能直接传一份文件问小鹰老师: PDF / Word(.docx、老的 .doc)/ txt。
+孩子除了拍照,还能直接传一份文件问小鹰老师: PDF / Word(.docx)/ txt。
 
 ## 怎么读
 - txt: 直接读(UTF-8,不行退 GB18030 —— Windows 记事本存的中文常是 GBK)
@@ -8,8 +8,9 @@
   渲染成图片发给模型看,跟拍照一个效果
 - .docx: 自己解 zip 读 word/document.xml 的段落和表格(不加依赖)。XML 用 xml.etree:
   Python 3.12 + expat 2.6 默认挡住实体展开炸弹(billion laughs),外部实体也不解析
-- .doc(老格式,二进制): 服务器上 LibreOffice(soffice)先转 PDF,再按 PDF 读。
-  soffice 转换跨进程一次只跑一个(core/file_lock,和音标课件共用一个闸门),转完临时目录整个删掉
+- .doc(老格式,二进制)**不读**,直接告诉孩子在 Word 里另存为 .docx 或 PDF(10-27 用户定: 不装 LibreOffice Writer)。
+  生产 LibreOffice 只装了 core + impress(音标课件 PPT 用),打不开 Word;就算装了,转换要排音标课件那把跨进程锁,
+  一份卷子转十几秒还会挡住老师传课件。要支持得先 `apt install --no-install-recommends libreoffice-writer`
 
 ## 不存文件
 和照片一样,文件只在内存 / 临时目录里过一下给模型看,不落盘、不进库。消息上只记文件名和类型
@@ -27,8 +28,6 @@ import asyncio
 import io
 import os
 import re
-import shutil
-import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from typing import Optional
@@ -43,6 +42,8 @@ NAME_MAX = 60
 
 KINDS = {".pdf": "pdf", ".docx": "docx", ".doc": "doc", ".txt": "txt"}
 ACCEPT = ".pdf,.doc,.docx,.txt"
+# .doc 认得出但不读(见文件头);前端 utils/tutorFile.DOC_HINT 同一句话
+DOC_HINT = "老版 Word(.doc)读不了。在 Word 里点「文件 → 另存为」,选 .docx 或 PDF 再发给我"
 
 
 class FileRejected(Exception):
@@ -189,33 +190,11 @@ def _read_docx(raw: bytes, name: str) -> Extracted:
     return Extracted(name=name, kind="docx", text=text, truncated=truncated)
 
 
-async def _read_doc(raw: bytes, name: str) -> Extracted:
-    """老的 .doc: soffice 转 PDF 再读。临时目录用完整个删(不留孩子文件的副本)"""
-    from app.services import office_convert
-
-    if not office_convert.office_available():
-        raise FileRejected("服务器暂时读不了老版 Word(.doc),请另存为 .docx 或 PDF 再发")
-    tmp = tempfile.mkdtemp(prefix="tutor_doc_")
-    try:
-        src = os.path.join(tmp, "upload.doc")
-        with open(src, "wb") as f:
-            f.write(raw)
-        try:
-            pdf_path = await office_convert.convert_to_pdf_async(src, os.path.join(tmp, "out"))
-        except RuntimeError:
-            raise FileRejected("这份 Word 文件打不开,请另存为 .docx 或 PDF 再发")
-        with open(pdf_path, "rb") as f:
-            pdf = f.read()
-        return await asyncio.to_thread(_read_pdf, pdf, name, "doc")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
 async def extract(name: Optional[str], raw: bytes) -> Extracted:
     nm = safe_name(name)
     kind = kind_of(nm)
     if kind is None:
-        raise FileRejected("只能发 PDF、Word(.doc / .docx)或 txt 文件")
+        raise FileRejected("只能发 PDF、Word(.docx)或 txt 文件")
     if not raw:
         raise FileRejected("这份文件是空的")
     if len(raw) > MAX_BYTES:
@@ -229,4 +208,4 @@ async def extract(name: Optional[str], raw: bytes) -> Extracted:
         return await asyncio.to_thread(_read_pdf, raw, nm)
     if kind == "docx":
         return await asyncio.to_thread(_read_docx, raw, nm)
-    return await _read_doc(raw, nm)
+    raise FileRejected(DOC_HINT)

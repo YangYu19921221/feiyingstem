@@ -89,6 +89,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: 'PK 对战房间', description: '组织个人或分组对战', route: '/pk/lobby', icon: Swords, tone: 'orange' },
       { title: '金币管理', description: '奖励与兑换记录', route: '/teacher/coins', icon: CircleDollarSign, tone: 'amber' },
       { title: '家长绑定', description: '一人一条链接,家长每天看学情', route: '/teacher/parent-binding', icon: HeartHandshake, tone: 'green' },
+      { title: '小鹰老师 · 本班情况', description: '谁问了什么、卡在哪、有没有需要关心的孩子', route: '/teacher/tutor-class', icon: HeartHandshake, tone: 'orange' },
       { title: '学习助手次数', description: '学生问「小鹰老师」的次数,用完了在这里加', route: '/teacher/tutor-quota', icon: MessageCircle, tone: 'orange' },
       { title: '家长推荐', description: '发邀请海报,跟进老带新', route: '/teacher/referrals', icon: Gift, tone: 'orange' },
     ],
@@ -115,7 +116,7 @@ const TeacherDashboard = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeUsername, setShowChangeUsername] = useState(false);
   // 学习助手: 本校没开放就不放入口;有孩子在请求加次数时入口上显示数字
-  const [tutor, setTutor] = useState<{ enabled: boolean; requested: number } | null>(null);
+  const [tutor, setTutor] = useState<{ enabled: boolean; requested: number; alerts?: { open: number; urgent: number } } | null>(null);
   useEffect(() => {
     getTutorAvailable().then(setTutor).catch(() => setTutor(null));
   }, []);
@@ -142,14 +143,27 @@ const TeacherDashboard = () => {
     items: g.items.filter(i =>
       !(isAssistant && i.route === '/teacher/assistants') &&
       !(cardPlan !== 'pack' && i.route === '/teacher/card-rules') &&
-      !(!tutor?.enabled && i.route === '/teacher/tutor-quota'))
-      .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested } : i)),
+      !(!tutor?.enabled && (i.route === '/teacher/tutor-quota' || i.route === '/teacher/tutor-class')))
+      .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested }
+        : i.route === '/teacher/tutor-class' && tutor?.alerts?.open ? { ...i, badge: tutor.alerts.open } : i)),
   })), [isAssistant, cardPlan, tutor]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
       <StaffWorkspaceHeader role="teacher" title="教师工作台" subtitle="今日教学、学生进度与内容管理" action={<div className="flex items-center gap-1"><button type="button" onClick={() => setShowChangeUsername(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button></div>} />
 
       <main className="teacher-workspace-main space-y-5 sm:space-y-6">
+        {/* 学习助手里有孩子说到难过 / 被欺负 / 想伤害自己(services/tutor_safety),没处理的: 顶上红条,点进去处理 */}
+        {!!tutor?.alerts?.open && (
+          <button type="button" onClick={() => navigate('/teacher/tutor-class')}
+            className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm ${tutor.alerts.urgent ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-orange-200 bg-orange-50 text-orange-900'}`}>
+            <HeartHandshake className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <b>{tutor.alerts.urgent ? `有 ${tutor.alerts.urgent} 个孩子说到了不想活或想伤害自己` : `有 ${tutor.alerts.open} 个孩子需要关心`}</b>
+              <span className="ml-1 text-xs opacity-80">(在问小鹰老师时说的)请今天看一下</span>
+            </span>
+            <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+          </button>
+        )}
         <section className="teacher-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div className="max-w-2xl">

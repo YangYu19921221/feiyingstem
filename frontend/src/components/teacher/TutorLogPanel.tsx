@@ -7,6 +7,7 @@
  * 孩子发的文件(PDF / Word / txt,10-27 起)也不保存内容,这里只显示文件名;助手回答第一行会写「我看了你发的《…》」。
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronDown, MessageCircle } from 'lucide-react';
 import { getStudentTutorLog, type TeacherTutorLog } from '../../api/tutor';
 import TutorLevelControl from '../tutor/TutorLevelControl';
@@ -44,6 +45,16 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
         孩子删掉的对话你这里还能看 30 天;没收藏的对话 180 天没再问会自动清理。
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {/* 孩子说到难过 / 被欺负 / 想伤害自己(services/tutor_safety): 放最上面,处理在「小鹰老师 · 本班情况」 */}
+      {data?.alerts && data.alerts.some((a) => !a.handled_at) && (
+        <div className={`mb-3 rounded-lg px-3 py-2 text-sm leading-6 ${data.alerts.some((a) => !a.handled_at && a.level === 'urgent') ? 'bg-rose-50 text-rose-900' : 'bg-orange-50 text-orange-900'}`}>
+          <p className="font-semibold">这个孩子在问小鹰老师时说到了让人担心的事,请尽快和他聊一聊</p>
+          {data.alerts.filter((a) => !a.handled_at).slice(0, 3).map((a) => (
+            <p key={a.id} className="text-xs">{fmt(a.created_at)} 孩子说: {a.excerpt || a.reason}</p>
+          ))}
+          <Link to="/teacher/tutor-class" className="text-xs font-semibold underline">去处理 →</Link>
+        </div>
+      )}
       {data?.profile && data.profile.length > 0 && (
         <details className="mb-3 rounded-lg bg-orange-50/60 px-3 py-2 text-xs leading-5 text-slate-600">
           <summary className="cursor-pointer select-none font-medium text-orange-800">小鹰老师眼里的这个孩子(它回答时参考这些)</summary>

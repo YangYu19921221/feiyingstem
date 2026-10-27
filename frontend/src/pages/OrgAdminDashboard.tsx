@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, Gift, GraduationCap, History, KeyRound, Megaphone, MessageCircle, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, Gift, GraduationCap, HeartHandshake, History, KeyRound, Megaphone, MessageCircle, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
+import { getAdminAlerts } from '../api/tutor';
 import { orgAdminApi } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar, quotaPercent } from '../components/OrgWidgets';
 import ChangeMyPasswordModal from '../components/org/ChangeMyPasswordModal';
@@ -178,11 +179,17 @@ export default function OrgAdminDashboard() {
   // 学习卡余量: 后端已算好 cards_left(与发码闸门同源),这里不要自己减 ——
   // 两处各算一遍就会漂移成「首页说还剩 3 张、发码页说 0 张」
   const cardsLeft = info?.cards_left ?? 0;
+  // 学习助手里需要关心的孩子(services/tutor_safety): 没处理的,首页顶上提醒
+  const [alerts, setAlerts] = useState<{ open: number; urgent: number } | null>(null);
+  useEffect(() => {
+    getAdminAlerts('open').then((r) => setAlerts(r.counts)).catch(() => setAlerts(null));
+  }, []);
 
   const managementLinks = [
     { icon: Users, title: '用户管理', desc: '本机构师生账号', path: '/admin/users', tone: 'blue' },
     { icon: GraduationCap, title: '教师管理', desc: '老师与名下班级', path: '/admin/teachers', tone: 'teal' },
     { icon: History, title: '操作记录', desc: '谁布置/删了作业、改了金币', path: '/admin/operation-logs', tone: 'indigo' },
+    { icon: HeartHandshake, title: '需要关心的孩子', desc: '学习助手里说到难过、被欺负的孩子', path: '/admin/tutor-alerts', tone: 'orange' },
     { icon: BarChart3, title: '班级数据', desc: '学习统计与名册', path: '/admin/classes', tone: 'indigo' },
     { icon: CalendarCheck, title: '签到与教学数据', desc: '全部班级签到 · 教师对比', path: '/admin/checkins', tone: 'green' },
     { icon: TrendingUp, title: '数据统计', desc: '本机构使用情况', path: '/admin/statistics', tone: 'green' },
@@ -198,6 +205,14 @@ export default function OrgAdminDashboard() {
   return (
     <div className="admin-org-page min-h-screen px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
       <div className="mx-auto max-w-[1280px]">
+        {!!alerts?.open && (
+          <button type="button" onClick={() => navigate('/admin/tutor-alerts')}
+            className={`mb-4 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm ${alerts.urgent ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-orange-200 bg-orange-50 text-orange-900'}`}>
+            <HeartHandshake className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <b className="flex-1">{alerts.urgent ? `有 ${alerts.urgent} 个孩子在问小鹰老师时说到了不想活或想伤害自己` : `有 ${alerts.open} 个孩子在问小鹰老师时说到了难过的事`}</b>
+            <span className="text-xs">去看 →</span>
+          </button>
+        )}
         <StaffWorkspaceHeader role="org" title={info?.name || '机构管理'} subtitle="本机构教师、学生与学习数据" icon={Building2} action={<div className="flex items-center gap-2"><label className="staff-org-logo-pick" title="更换机构 Logo">{info?.logo_url ? <img src={info.logo_url} alt="机构 Logo" /> : <Building2 className="h-4 w-4" />}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={onLogoPick} /></label><button type="button" className="admin-secondary-light admin-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold" onClick={() => setShowMyPassword(true)}><KeyRound className="h-3.5 w-3.5" />修改密码</button><button type="button" className="admin-secondary-light admin-focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold" onClick={() => setInfoForm({ name: info?.name || '', contact_name: info?.contact_name || '', contact_phone: info?.contact_phone || '' })}><Edit3 className="h-3.5 w-3.5" />编辑机构</button></div>} />
 
         {/* 机构信息编辑表单 */}

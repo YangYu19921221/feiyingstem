@@ -216,3 +216,49 @@ class TutorPref(Base):
     pace = Column(Integer, nullable=True)            # -1 讲简单一点 / 0 正常 / 1 讲深一点;NULL = 自动
     pace_by = Column(String(10), nullable=True)
     updated_at = Column(DateTime, server_default=func.now())
+
+
+class TutorAlert(Base):
+    """孩子在学习助手里说到难过、被欺负、想伤害自己(2026-10-27)。规则见 services/tutor_safety.py。
+
+    一条提问最多一条(message_id 唯一,关键词和模型都命中时合并)。孩子删了对话、对话到期清理,提醒都留着 ——
+    这是给老师的,出了事要有据。excerpt 存孩子那句话(最多 300 字),不存助手的回答"""
+    __tablename__ = "tutor_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    org_id = Column(Integer, nullable=True)
+    conversation_id = Column(Integer, nullable=True)
+    message_id = Column(Integer, nullable=True)
+    level = Column(String(10), nullable=False)          # urgent 想伤害自己 / concern 被欺负、很难过
+    source = Column(String(20), nullable=False)         # keyword / model / keyword,model
+    matched = Column(String(40), nullable=True)         # 关键词命中的那几个字
+    reason = Column(String(120), nullable=True)         # 模型写的一句原因
+    excerpt = Column(String(300), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    handled_at = Column(DateTime, nullable=True)
+    handled_by = Column(Integer, nullable=True)
+    handled_by_name = Column(String(60), nullable=True)
+    handled_note = Column(String(200), nullable=True)
+
+    __table_args__ = (
+        Index("uq_tutor_alert_msg", "message_id", unique=True),
+        Index("ix_tutor_alert_user", "user_id", "id"),
+        Index("ix_tutor_alert_org", "org_id", "handled_at"),
+    )
+
+
+class TutorVoiceClip(Base):
+    """学习助手「按住说话」的一段录音(2026-10-27,services/tutor_voice)。
+    录音转完就删(file_path 置空),行里只留文字,1 天后整行删掉"""
+    __tablename__ = "tutor_voice_clips"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    file_path = Column(String(120), nullable=True)
+    status = Column(String(10), nullable=False, default="pending", server_default="pending")   # pending / done / failed
+    text = Column(String(200), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    processed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (Index("ix_tutor_voice_status", "status", "id"),)

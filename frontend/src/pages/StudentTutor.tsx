@@ -7,7 +7,9 @@
  * - 次数是每个学生**一共**几次(不按天清零),用完了点「请老师加次数」,老师在「学习助手次数」页加
  * - 回答里的英文点一下就能听(同一个 Edge TTS 声音)
  * - 可以拍一道题问思路: 照片压缩后只发给模型看,不存;作业/考试题先提示,试过两次还不会再讲答案和理由
- * - 可以发一份文件(10-27,PDF / Word .docx .doc / txt,20MB 内;后端 services/tutor_files 取文字,扫描版 PDF 取前几页图):
+ * - 说一句(10-27 晚,components/tutor/VoiceInputButton): 服务器转成字填进输入框,孩子改好再发;回答下面「听全部英文」连着读
+ * - 次数用完了也能「说说心里话」(care=1,不扣次数,services/tutor_safety)
+ * - 可以发一份文件(10-27,PDF / Word .docx / txt,20MB 内;.doc 选到了当场提示另存,不上传;后端 services/tutor_files 取文字,扫描版 PDF 取前几页图):
  *   和照片一次只能发一样;内容不存,气泡里只留文件名卡片(FileChip);带文件的那问不算免费追问
  * - 从错题本等地方点「问小鹰老师」进来会把问题填好(location.state.q),孩子自己点发送 —— 不自动发,省次数
  * - 记忆图(10-27): 助手调 draw_word_picture 后回答下面出一张图片卡(PictureCard 自己轮询到画好)
@@ -18,7 +20,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, Brain, Camera, History, Loader2, Paperclip, Plus, RotateCcw, Send, Square, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Brain, Camera, History, Loader2, Paperclip, Plus, RotateCcw, Send, Square, Volume2, X, Zap } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { useAudio } from '../hooks/useAudio';
 import {
@@ -33,7 +35,9 @@ import SpeakableText from '../components/tutor/SpeakableText';
 import TutorWaiting, { TutorAvatar, type WaitKind } from '../components/tutor/TutorWaiting';
 import TutorHistoryDrawer from '../components/tutor/TutorHistoryDrawer';
 import FileChip from '../components/tutor/FileChip';
-import { fileKindOf } from '../utils/tutorFile';
+import { DOC_HINT, fileKindOf } from '../utils/tutorFile';
+import { englishToRead } from '../utils/speakable';
+import VoiceInputButton from '../components/tutor/VoiceInputButton';
 import { compressImage } from '../utils/compressImage';
 import { getErrorMessage } from '../utils/errorMessage';
 import { toast } from '../components/Toast';
@@ -55,7 +59,7 @@ interface ChatMsg {
   /** 这次刚发 / 刚收到的(从下面浮上来);翻出来的历史记录不做动画,不然一屏一起动 */
   fresh?: boolean;
   /** 没调通时「再问一次」要用的原话 */
-  retry?: { text: string; image: Img | null; file?: File | null; mode: TutorMode; userKey: string; quizId?: number };
+  retry?: { text: string; image: Img | null; file?: File | null; mode: TutorMode; userKey: string; quizId?: number; care?: boolean };
 }
 
 /** 回答下面的快捷回复: 孩子卡住时点一下就行,不用自己想怎么说(追问不另算) */
@@ -89,7 +93,7 @@ export default function StudentTutor() {
   const goBack = useGoBack('/student/dashboard');
   const navigate = useNavigate();
   const location = useLocation();
-  const { playAudio } = useAudio();
+  const { playAudio, stopAudio } = useAudio();
 
   const [status, setStatus] = useState<TutorStatus | null>(null);
   const [statusError, setStatusError] = useState('');
@@ -111,6 +115,9 @@ export default function StudentTutor() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [levelOpen, setLevelOpen] = useState(false);
   const [asking, setAsking] = useState(false);
+  // 次数用完了也能「说说心里话」(后端 services/tutor_safety,care=1,不扣次数、不讲题)
+  const [careOpen, setCareOpen] = useState(false);
+  const [careText, setCareText] = useState('');
   const [followup, setFollowup] = useState<TutorFollowup>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
@@ -231,7 +238,7 @@ export default function StudentTutor() {
     else stopWantedRef.current = true;
   };
 
-  const send = async (opts?: { text?: string; image?: Img | null; file?: File | null; mode?: TutorMode; replace?: string[]; quizId?: number }) => {
+  const send = async (opts?: { text?: string; image?: Img | null; file?: File | null; mode?: TutorMode; replace?: string[]; quizId?: number; care?: boolean }) => {
     // 没传 opts = 从输入框发的;传了 = 点建议 / 再问一次(不动输入框里正在写的字)
     const fromInput = !opts;
     const text = (fromInput ? input : opts.text ?? '').trim();
@@ -278,7 +285,7 @@ export default function StudentTutor() {
     const session = sessionRef.current;
     const live = () => sessionRef.current === session;
     try {
-      await askTutor({ text, conversationId: convId, image: img?.blob, file: fileToSend, mode: useMode, quizId: opts?.quizId }, (ev) => {
+      await askTutor({ text, conversationId: convId, image: img?.blob, file: fileToSend, mode: useMode, quizId: opts?.quizId, care: opts?.care }, (ev) => {
         if (!live()) {
           // 已经开了新对话: 这次回答不要了,拿到提问 id 就让服务端停下(一个字没出的退回次数)
           if (ev.type === 'meta') stopTutor(ev.user_message_id).catch(() => ctrl.abort());
@@ -313,7 +320,7 @@ export default function StudentTutor() {
         } else if (ev.type === 'error') {
           patchBot((m) => ({
             ...m, failed: !m.text, text: m.text || ev.message,
-            retry: !m.text ? { text, image: img, file: fileToSend, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId } : undefined,
+            retry: !m.text ? { text, image: img, file: fileToSend, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId, care: opts?.care } : undefined,
           }));
           if (ev.refunded) setStatus((s) => (s ? { ...s, left: s.left + cost, used: Math.max(0, s.used - cost) } : s));
         }
@@ -378,8 +385,13 @@ export default function StudentTutor() {
   const onPickDoc = (file: File | undefined) => {
     if (!file) return;
     if (file.type.startsWith('image/')) { void onPickImage(file); return; }
-    if (!fileKindOf(file.name)) {
-      toast.error('只能发 PDF、Word(.doc / .docx)或 txt 文件');
+    const kind = fileKindOf(file.name);
+    if (!kind) {
+      toast.error('只能发 PDF、Word(.docx)或 txt 文件');
+      return;
+    }
+    if (kind === 'doc') {
+      toast.error(DOC_HINT);
       return;
     }
     if (file.size > TUTOR_FILE_MAX_MB * 1024 * 1024) {
@@ -573,7 +585,7 @@ export default function StudentTutor() {
                 </div>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-                单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问我。也可以点左下角的相机拍一道题,或者点回形针发一份 PDF / Word 文件。
+                单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问我。也可以点左下角的相机拍一道题,或者点回形针发一份 PDF / Word 文件{status?.voice_enabled ? ',懒得打字就点麦克风说一句' : ''}。
                 作业和考试题我先给提示,你自己再想想;试过两次还不会,我就把答案和理由讲给你听,再出一道类似的让你练。回答里的英文点一下就能听发音。
               </p>
               <p className="mt-2 text-xs text-ink-mute">
@@ -678,12 +690,20 @@ export default function StudentTutor() {
                       ) : null
                     ))}
                     {m.stopped && m.text && <p className="mt-1.5 text-xs text-ink-mute">(停下了)</p>}
+                    {/* 最新一条回答里英文有两段以上: 一键连着听(同一个 Edge TTS 声音) */}
+                    {!live && !m.failed && m.key === lastBot?.key && englishToRead(clean(m.text)).length >= 2 && (
+                      <button type="button" onClick={() => { void playAudio(englishToRead(clean(m.text)).join('. ')); }}
+                        className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-sky-700 hover:bg-sky-50"
+                        aria-label="把这条回答里的英文连着读一遍">
+                        <Volume2 className="h-4 w-4" aria-hidden="true" /> 听全部英文
+                      </button>
+                    )}
                     {m.failed && m.retry && !sending && !disabled && (
                       <button
                         type="button"
                         onClick={() => {
                           const r = m.retry!;
-                          void send({ text: r.text, image: r.image, file: r.file, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId });
+                          void send({ text: r.text, image: r.image, file: r.file, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId, care: r.care });
                         }}
                         className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
                       >
@@ -736,6 +756,24 @@ export default function StudentTutor() {
               >
                 {status!.requested ? '已经告诉老师了,等老师加' : asking ? '正在告诉老师…' : '请老师加次数'}
               </button>
+              {!careOpen ? (
+                <button type="button" onClick={() => setCareOpen(true)}
+                  className="mt-2 block w-full text-xs text-orange-800/80 underline-offset-2 hover:underline">
+                  心里不开心、被人欺负了?想说说心里话,不用次数
+                </button>
+              ) : (
+                <div className="mt-3 flex items-end gap-2 text-left">
+                  <textarea value={careText} onChange={(e) => setCareText(e.target.value.slice(0, 300))} rows={2} autoFocus
+                    placeholder="想说什么就写下来,小鹰老师在听" aria-label="想说的话"
+                    className="min-h-11 flex-1 resize-none rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-400" />
+                  <button type="button" disabled={!careText.trim() || sending}
+                    onClick={() => { const t = careText; setCareText(''); void send({ text: t, mode: 'fast', care: true }); }}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white disabled:bg-slate-300"
+                    aria-label="发送">
+                    <Send className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -839,6 +877,16 @@ export default function StudentTutor() {
                 >
                   <Paperclip className="h-5 w-5" aria-hidden="true" />
                 </button>
+                {status?.voice_enabled && (
+                  <VoiceInputButton
+                    disabled={disabled || sending}
+                    beforeRecord={stopAudio}
+                    onText={(t) => {
+                      setInput((v) => (v.trim() ? `${v.trim()} ${t}` : t).slice(0, status?.max_text ?? 500));
+                      textRef.current?.focus();
+                    }}
+                  />
+                )}
                 <textarea
                   ref={textRef}
                   value={input}
