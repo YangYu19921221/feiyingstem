@@ -619,7 +619,11 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   接口 PUT /admin/system/video-cos、POST /admin/system/video-cos/test,GET /admin/system/video-cdn 多给 cos;操作记录 system.video_cos。
   测试 tests/test_cos_video.py 加 5 例(20 例);开关文件不生效 / 坏文件按开 / 欠费不识别 / 一次不通就关 / 恢复后不自动开 / 手动关也自动开 /
   覆盖管理员改动 / 切回不实测 八处逐一破坏各自恰好 1 例失败(回归锁验证过)。浏览器验过(1366 / 390): 欠费自动改回、自动切回、手动改回三种文案
-  **10-27 忙的时候才走 COS**(部署信息: SMART_DEPLOY_PENDING)(用户「不卡的时候就不用 COS,卡的时候如果 COS 有余额就切到 COS,没余额就不切」):
+  **10-27 忙的时候才走 COS**(17:33 **已部署生产**,提交 7b3158c;2 个后端文件生产==3315b4f 整推,两个服务都重启;前端 dist 构建号 mvqhkvbq;
+  备份 /root/eh_code_before_cossmart_20261027_1728.tgz、/root/cos_switch_before_smart_20261027_1728.json、frontend/dist_bak_20261027_1728。
+  **17:13 用户已充值**: cos-guard 连续两次取到 COS,自动切回(切换记录写着「腾讯云 COS 恢复正常,系统已自动切回 COS」)。
+  上线后: 开关开着、线路 smart(老开关文件没有 route 字段 = 默认 smart)、阈值 6 Mbps;当时出网 0.08 Mbps → 学生看视频从本机放(公网实测 206 本机)。
+  net-load 采样和手工读 eth0 对得上)(用户「不卡的时候就不用 COS,卡的时候如果 COS 有余额就切到 COS,没余额就不切」):
   开关文件多两个字段 route(smart 默认 / always)+ busy_mbps(默认 6 = 12M 的一半);切开关不改它们,改线路不动开关和切换记录。
   smart 时 redirect_enabled = 开关开着 **且** 服务器忙 **且** 最近一次 COS 自动检查没失败(刚欠费、还没连续两次自动关时也不切)。
   「忙」= 公网网卡(eth*/ens*,不算 docker 的 br-/veth)出网 30 秒平均 ≥ busy_mbps,**看整台机器**(背单词 / PK 人多也算忙,
