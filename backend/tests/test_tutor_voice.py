@@ -45,7 +45,7 @@ async def test_upload_transcribe_delete(client, db_session, monkeypatch, tmp_pat
 
     async def fake_transcribe(p):
         assert os.path.exists(p)
-        return "There is 和 There are 怎么区分"
+        return "There is 和 There are 怎麼區分"        # Whisper 常出繁体,存下来要是简体
     monkeypatch.setattr(tv, "transcribe", fake_transcribe)
     rows = await tv.pending_rows(db_session, 5)
     assert [r[0] for r in rows] == [cid]
@@ -83,3 +83,10 @@ async def test_purge(db_session, tmp_path, monkeypatch):
     await db_session.commit()
     assert await tv.purge_expired(db_session) == 1
     assert not (tmp_path / "old.webm").exists()
+
+
+def test_to_simplified():
+    """10-27 生产第一条: 「你在幹什麼?聽得到嗎?」→ 简体;英文不动"""
+    assert tv.to_simplified("你在幹什麼?聽得到嗎?") == "你在干什么?听得到吗?"
+    assert tv.to_simplified("Wednesday 怎麼拼?") == "Wednesday 怎么拼?"
+    assert tv.to_simplified("我被同學欺負了") == "我被同学欺负了"

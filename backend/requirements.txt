@@ -51,3 +51,5 @@ psutil>=5.9.8
 # 图片课件和直播本身照常
 PyMuPDF>=1.26.0
 Pillow>=10.0.0
+# 学习助手「说一句」: Whisper 听中文常出繁体,转成简体(services/tutor_voice.to_simplified)
+zhconv==1.4.3

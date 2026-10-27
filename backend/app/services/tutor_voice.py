@@ -10,6 +10,11 @@ Whisper 模型只在主进程(进程池,core/process_role 说的那份),所以�
 主进程的转写循环(sentence_speech.speech_loop,和开口背 / 跟读同一个进程池)取走转写,language=zh;
 前端每秒问一次结果。一般 5–10 秒(轮询 3 秒 + 转写约 6 秒)。
 
+## 一律转成简体
+Whisper 听中文常写成繁体(10-27 生产第一条就是「你在幹什麼?聽得到嗎?」,用户「麦克风怎么是这个不是中文简体」)。
+转完用 zhconv(纯 Python,自带字表)按 zh-hans 转简体: 只换字形不换说法(不把「软件」换成别的词),英文不动。
+转换出错就原样返回并记日志 —— 宁可是繁体也别把孩子说的话弄丢。
+
 ## 不留孩子的声音
 转完(成功失败都)马上删音频;行里只留文字,1 天后连行删掉。录音只能本人取结果。
 不扣「问小鹰老师」次数(只是把话转成字),但限速: 每人每分钟 10 段、每小时 60 段;一段最长 MAX_SECONDS 秒、MAX_BYTES。
@@ -77,6 +82,15 @@ def _transcribe_zh(path: str) -> str:
     return "".join(s.text for s in segs).strip()
 
 
+def to_simplified(text: str) -> str:
+    try:
+        from zhconv import convert
+        return convert(text, "zh-hans")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("学习助手语音转简体失败,原样返回: %s", e)
+        return text
+
+
 async def transcribe(path: str) -> str:
     """交给主进程的转写进程池(和开口背 / 跟读共用)"""
     from app.services import sentence_speech as ss
@@ -89,8 +103,8 @@ async def process_one(row_id: int, file_path: str, _unused: str = "") -> None:
     path = audio_path(file_path)
     values: dict = {"processed_at": utc_now(), "file_path": None}
     try:
-        text = await transcribe(path)
-        values.update(status="done", text=(text or "")[:MAX_TEXT])
+        text = to_simplified(await transcribe(path) or "")
+        values.update(status="done", text=text[:MAX_TEXT])
     except Exception as e:  # noqa: BLE001  坏文件: 记 failed,不重试
         logger.warning("学习助手语音转写失败 id=%s: %s", row_id, e)
         values.update(status="failed")

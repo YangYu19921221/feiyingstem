@@ -527,6 +527,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **填进输入框不自动发**(本机实测 small: 「What about you 是什么意思」「Wednesday 怎么拼」对,「There is」听成「Diarris」、「go」听成「勾」,
   孩子要能改)。转完马上删音频,行 1 天后删;只能本人取;不扣次数,限速 10/分钟 60/小时;一次约 6–9 秒。服务器没装 Whisper 不显示麦克风。
   开录前停掉正在放的发音 + 开回声消除。回答里英文 ≥2 段时下面「听全部英文」连着读(utils/speakable,和点读同一份切法,同一个 Edge TTS 声音)。
+  **转出来一律简体**(10-27 23:55 用户「麦克风怎么是这个不是中文简体」: 生产第一条是「你在幹什麼?聽得到嗎?」,Whisper language=zh 常出繁体):转完用 zhconv==1.4.3 按 zh-hans 转(只换字形不换说法,英文不动;纯 Python 自带字表。⚠️ 生产 setuptools 82 没有 pkg_resources,zhconv 会退回按文件路径读字表,实测换 cwd 也能用);转换出错原样返回不丢字
   ⚠️ VoiceInputButton 的 alive ref 要在 effect 挂载时设回 true —— 开发环境 StrictMode 先卸载再挂载,不设的话轮询一次都不发(本机实测踩到)
   测试: test_tutor_safety 24 例、test_tutor_relay_health 5、test_tutor_speed 3、test_tutor_insight 4、test_tutor_voice 3;
   安全 8 处 / 钱包 4 / 提速 4 / 效果汇总 5 处守卫逐一破坏各自对应用例失败(回归锁验证过,第一轮有 4 处没抓到,补了用例)。
