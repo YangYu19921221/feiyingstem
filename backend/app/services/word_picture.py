@@ -20,6 +20,13 @@ low 每张扣中转钱包 0.15,标准约 1.25)
 提示词 = 固定风格(绘本、白底、不写字)+ 单词 + 课本主释义 + 一句记忆画面(助手给的,截 80 字)。
 孩子不能自己写画什么(画出来不可控,也没法按词复用)。
 
+## 单词由服务器印在图下面(10-27,用户「为什么图上没有单词」)
+画图模型拼不准单词(记忆图上拼错比不写更糟),所以**画面里不让它写字**,画好后服务器用 Pillow 在下面
+印一条: 单词(随包的 Baloo 2 字体)+ 音标(DejaVu)+ 词性和中文(文泉驿)—— 拼写来自词库,不会错。
+成图 768×960(4:5): 上面 768 见方是画,下面 192 是字。原画另存一份 {id}_{ts}_art.jpg,
+换版式 / 改了音标后跑 scripts/recompose_word_pictures.py 重新印字,不用重画(重画要钱)。
+找不到某种字体就不印那一行(不印方框乱码)。
+
 ## 进程
 画图要 20–90 秒,在后台任务里跑(自己开数据库会话),前端每 3 秒问一次状态。
 进程中途重启: pending 超过 STALE_SEC 的算卡住,下一个人点时重新画,并退回上一个人扣的那次。
@@ -39,7 +46,7 @@ from datetime import timedelta
 from typing import Optional
 
 import httpx
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +70,15 @@ COST = 1                  # 画一张新图扣几次学习助手次数(合同第
 STALE_SEC = 300           # pending 超过这么久算卡住(进程重启等)
 TIMEOUT_SEC = 180
 SAVE_DIM = 768
+CARD_H = 960              # 768 见方的画 + 下面 192 高印单词、音标、中文(4:5,前端按这个比例占位)
+_FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts")
+WORD_FONT = os.path.join(_FONT_DIR, "baloo-2-latin-800.woff2")
+# 生产 Ubuntu 有 DejaVu(音标)和文泉驿(中文);后面几个是本机 macOS 跑测试用的
+IPA_FONTS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+             "/System/Library/Fonts/Supplemental/Arial Unicode.ttf", "/Library/Fonts/Arial Unicode.ttf"]
+CJK_FONTS = ["/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+             "/System/Library/Fonts/Hiragino Sans GB.ttc", "/System/Library/Fonts/STHeiti Medium.ttc",
+             "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"]
 SUBDIR = "word-pics"
 URL_PREFIX = f"/api/v1/files/{SUBDIR}/"
 MAX_PARALLEL = 2          # 每个进程同时最多画几张
@@ -191,7 +207,8 @@ def build_prompt(word: str, meaning: Optional[str], idea: str) -> str:
     return (f"儿童绘本风格的英语单词记忆插图,给中国中小学生记单词用。单词: {word}"
             + (f"(意思: {_norm_meaning(meaning)})" if meaning else "")
             + f"。画面: {scene}。要求: 白色背景,主体居中,暖色明亮,线条干净可爱,适合小学生;"
-              "画面里不要出现文字和数字(画面里明确要某个字母形状时才画那个字母);不画真实人物的脸、品牌标志。")
+              "画面里不要出现任何文字、单词、字母和数字(单词会另外印在图片下面;只有画面里明确要某个字母形状时才画那个字母);"
+              "不画真实人物的脸、品牌标志。")
 
 
 def _day_key(user_id: int) -> str:
@@ -304,6 +321,105 @@ def shrink(raw: bytes) -> bytes:
     return buf.getvalue()
 
 
+# ---------------------------------------------------------------- 在图下面印字
+
+def _font(paths: list[str], size: int):
+    from PIL import ImageFont
+
+    for path in paths:
+        if path and os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return None
+
+
+# 随包的 Baloo 2 只有拉丁字符;别的字符(很少见)改用 DejaVu
+_WORD_CHARS = re.compile(r"[A-Za-z0-9\u00C0-\u00FF '’\-.,!?&/()]+")
+
+
+def caption_meaning(meaning: Optional[str]) -> str:
+    """「n. 名字;姓名」→「n. 名字」: 词性 + 第一个意思,去掉括号里的补充"""
+    m = re.sub(r"[(（][^)）]*[)）]", "", meaning or "").strip()
+    pm = re.match(r"^((?:[a-z]+\.\s*[&/]?\s*)+)", m, re.I)
+    pos = re.sub(r"\s+", "", pm.group(1)) if pm else ""
+    first = re.split(r"[;；,，、]", m[pm.end():] if pm else m)[0].strip()[:16]
+    return f"{pos} {first}".strip() if first else ""
+
+
+def caption_phonetic(phonetic: Optional[str]) -> str:
+    ph = (phonetic or "").strip()[:40]
+    if not ph:
+        return ""
+    return ph if ph[0] in "/[" else f"/{ph.strip('/')}/"
+
+
+def compose_card(art_jpg: bytes, word: str, phonetic: Optional[str], meaning: Optional[str]) -> bytes:
+    """上面画、下面印「单词 / 音标  词性 中文」,出 768×960 的 JPEG"""
+    from PIL import Image, ImageDraw, ImageOps
+
+    art = ImageOps.contain(Image.open(io.BytesIO(art_jpg)).convert("RGB"), (SAVE_DIM, SAVE_DIM))
+    card = Image.new("RGB", (SAVE_DIM, CARD_H), (255, 255, 255))
+    card.paste(art, ((SAVE_DIM - art.width) // 2, (SAVE_DIM - art.height) // 2))
+    d = ImageDraw.Draw(card)
+    band, max_w, mid = CARD_H - SAVE_DIM, SAVE_DIM - 64, SAVE_DIM // 2
+    d.rounded_rectangle((mid - 36, SAVE_DIM + 2, mid + 36, SAVE_DIM + 8), radius=3, fill=(253, 186, 116))
+
+    word = (word or "").strip()
+    word_paths = [WORD_FONT] + IPA_FONTS if _WORD_CHARS.fullmatch(word or "a") else IPA_FONTS
+
+    def ink(font, text):        # 墨迹相对基线的上下沿(负数在基线上面)
+        b = d.textbbox((0, 0), text, font=font, anchor="ls")
+        return b[1], b[3], b[2] - b[0]
+
+    wf, w_top, w_bot = None, 0, 0
+    for size in range(100, 38, -4):          # 长短语自动缩字号塞进一行
+        wf = _font(word_paths, size)
+        if wf is None:
+            break
+        w_top, w_bot, _ = ink(wf, "Hdgjpy")
+        if ink(wf, word)[2] <= max_w and w_bot - w_top <= 96:
+            break
+
+    ph, mean = caption_phonetic(phonetic), caption_meaning(meaning)
+    parts: list = []
+    for size in range(34, 20, -2):
+        pf = _font(IPA_FONTS, size) if ph else None
+        cf = _font(CJK_FONTS, size) if mean else None
+        parts = [(t, f) for t, f in ((ph, pf), (mean, cf)) if t and f is not None]
+        if sum(ink(f, t)[2] for t, f in parts) + 24 * max(0, len(parts) - 1) <= max_w:
+            break
+    i_top = min((ink(f, "Hgy名")[0] for _, f in parts), default=0)
+    i_bot = max((ink(f, "Hgy名")[1] for _, f in parts), default=0)
+
+    gap = 14 if parts and wf else 0
+    block = (w_bot - w_top if wf else 0) + gap + (i_bot - i_top if parts else 0)
+    top = SAVE_DIM + 8 + (band - 8 - block) // 2
+    if wf is not None and word:
+        d.text((mid, top - w_top), word, font=wf, fill=(194, 65, 12), anchor="ms")
+        top += w_bot - w_top + gap
+    if parts:
+        widths = [ink(f, t)[2] for t, f in parts]
+        x = mid - (sum(widths) + 24 * (len(parts) - 1)) // 2
+        for (t, f), w in zip(parts, widths):
+            # 音标灰一点,中文深一点
+            color = (95, 107, 122) if t == ph else (41, 53, 69)
+            d.text((x, top - i_top), t, font=f, fill=color, anchor="ls")
+            x += w + 24
+    buf = io.BytesIO()
+    card.save(buf, "JPEG", quality=86, optimize=True)
+    return buf.getvalue()
+
+
+async def _phonetic_for(db: AsyncSession, word: str) -> Optional[str]:
+    return (await db.execute(
+        select(Word.phonetic).where(func.lower(Word.word) == (word or "").strip().lower(),
+                                    Word.phonetic.isnot(None), Word.phonetic != "")
+        .order_by(Word.id).limit(1)
+    )).scalar_one_or_none()
+
+
 def _pic_dir() -> str:
     d = os.path.join(settings.UPLOAD_DIR, SUBDIR)
     os.makedirs(d, exist_ok=True)
@@ -311,14 +427,41 @@ def _pic_dir() -> str:
 
 
 def _remove_file(url: Optional[str]) -> None:
+    """删成图,连带它的原画({名字}_art.jpg)"""
     if not url or not url.startswith(URL_PREFIX):
         return
     name = os.path.basename(url[len(URL_PREFIX):].split("?")[0])
-    path = os.path.join(_pic_dir(), name)
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        pass
+    for n in (name, name[:-4] + "_art.jpg" if name.endswith(".jpg") else None):
+        if not n:
+            continue
+        try:
+            os.remove(os.path.join(_pic_dir(), n))
+        except FileNotFoundError:
+            pass
+
+
+def art_path(url: Optional[str]) -> Optional[str]:
+    if not url or not url.startswith(URL_PREFIX):
+        return None
+    name = os.path.basename(url[len(URL_PREFIX):].split("?")[0])
+    return os.path.join(_pic_dir(), name[:-4] + "_art.jpg") if name.endswith(".jpg") else None
+
+
+def _write(name: str, data: bytes) -> None:
+    tmp = os.path.join(_pic_dir(), name + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, os.path.join(_pic_dir(), name))
+
+
+async def save_card(db: AsyncSession, pic_id: int, word: str, meaning: Optional[str], art: bytes) -> str:
+    """原画 + 印好字的成图各存一份,返回成图地址(文件名带时间戳,换图不吃旧缓存)"""
+    phonetic = await _phonetic_for(db, word)
+    card = await asyncio.to_thread(compose_card, art, word, phonetic, meaning)
+    ts = int(time.time())
+    _write(f"{pic_id}_{ts}_art.jpg", art)
+    _write(f"{pic_id}_{ts}.jpg", card)
+    return f"{URL_PREFIX}{pic_id}_{ts}.jpg?v={ts}"
 
 
 async def _generate(pic_id: int, prompt: str) -> None:
@@ -331,18 +474,15 @@ async def _generate(pic_id: int, prompt: str) -> None:
         try:
             async with _session() as db:
                 conf = await image_conf(db)
+                row = await db.get(WordPicture, pic_id)
+                word, meaning = (row.word, row.meaning) if row else ("", None)
             if conf is None:
                 raise RuntimeError("画图没配置")
             model = conf["model"]
             raw = await call_image_api(conf, prompt)
-            jpg = await asyncio.to_thread(shrink, raw)
-            ts = int(time.time())
-            name = f"{pic_id}_{ts}.jpg"
-            tmp = os.path.join(_pic_dir(), name + ".tmp")
-            with open(tmp, "wb") as f:
-                f.write(jpg)
-            os.replace(tmp, os.path.join(_pic_dir(), name))
-            url = f"{URL_PREFIX}{name}?v={ts}"
+            art = await asyncio.to_thread(shrink, raw)
+            async with _session() as db:
+                url = await save_card(db, pic_id, word, meaning, art)
         except Exception as e:  # noqa: BLE001
             logger.warning("画记忆图失败 pic=%s: %s", pic_id, e)
             err = str(e)[:200] or type(e).__name__

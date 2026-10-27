@@ -3,6 +3,7 @@
  *
  * 一个词全平台只画一张: 正在画时每 3 秒问一次,画好显示图;没画出来写明「没扣次数」。
  * 图在公开目录(只有单词的画面,没有孩子的信息),点一下放大看。
+ * 图是 4:5: 上面是画,下面服务器印好了单词、音标、中文(画图模型拼不准单词,所以不让它写)。
  */
 import { memo, useEffect, useState } from 'react';
 import { ImageOff, Paintbrush, X } from 'lucide-react';
@@ -44,8 +45,8 @@ function PictureCard({ picId, word, status: initStatus, url: initUrl }: {
         <button type="button" onClick={() => setBig(true)}
           className="mt-3 block overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm"
           aria-label={`放大看 ${word} 的记忆图`}>
-          <img src={url} alt={`${word} 的记忆图`} className="tutor-in h-48 w-48 object-contain sm:h-56 sm:w-56" loading="lazy" />
-          <span className="block border-t border-orange-50 px-3 py-1.5 text-left text-xs text-orange-700">{word} 的记忆图 · 点一下放大</span>
+          <img src={url} alt={`${word} 的记忆图`} className="tutor-in aspect-[4/5] w-48 object-contain sm:w-56" loading="lazy" />
+          <span className="block border-t border-orange-50 px-3 py-1.5 text-left text-xs text-orange-700">点一下放大</span>
         </button>
         {big && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={() => setBig(false)} role="dialog" aria-label={`${word} 的记忆图`}>
@@ -62,7 +63,7 @@ function PictureCard({ picId, word, status: initStatus, url: initUrl }: {
     // 和画好的图同样大小占位(画好时不跳);进度条按 30 秒估,到 95% 停住等真的画完
     const pct = Math.min(95, Math.round((secs / 30) * 100));
     return (
-      <div className="tutor-sweep relative mt-3 flex h-48 w-48 flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 via-amber-50 to-sky-50 text-sm text-orange-800 sm:h-56 sm:w-56" role="status" aria-live="polite">
+      <div className="tutor-sweep relative mt-3 flex aspect-[4/5] w-48 flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 via-amber-50 to-sky-50 text-sm text-orange-800 sm:w-56" role="status" aria-live="polite">
         <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-white/80 shadow-sm">
           <Paintbrush className="tutor-scribble h-7 w-7 text-orange-500" aria-hidden="true" />
         </span>

@@ -355,3 +355,45 @@ async def test_reclaim_only_failed_removed_or_stale(db_session):
                    ("failed", True): True, ("removed", True): True}
     # 第二个同时点的: 已经被第一个认领成 pending 了,认领不到
     assert await wp.reclaim(db_session, rows[("failed", True)], 2, now) is False
+
+
+# ---------------------------------------------------------------- 8. 单词印在图下面(10-27)
+
+@pytest.mark.asyncio
+async def test_card_has_word_printed_below_and_art_kept(client, db_session, images, shared_session):
+    """画图模型拼不准单词,画面里不让它写;服务器在下面印单词。成图 768×960,原画另存一份,删图时一起删"""
+    import os
+    from PIL import Image
+
+    users, w = await _picture_env(db_session)
+    images()
+    r = await client.post("/api/v1/student/tutor/pictures", json={"word_id": w.id}, headers=_h(users["s"].id))
+    assert r.status_code == 200
+    prompt = _PENDING[0][1]
+    assert "不要出现任何文字" in prompt and "印在图片下面" in prompt
+    await _wait_tasks()
+    p = (await db_session.execute(select(WordPicture))).scalar_one()
+    await db_session.refresh(p)
+    assert p.status == "ready"
+    card = os.path.join(wp._pic_dir(), os.path.basename(p.url.split("?")[0][len(wp.URL_PREFIX):]))
+    img = Image.open(card)
+    assert img.size == (wp.SAVE_DIM, wp.CARD_H)
+    # 下面那条不是白的(印了字),上面是画
+    band = img.crop((0, wp.SAVE_DIM + 10, wp.SAVE_DIM, wp.CARD_H)).convert("L")
+    assert min(band.getdata()) < 120
+    art = wp.art_path(p.url)
+    assert art and os.path.exists(art)
+
+    await wp.remove(db_session, p.id, users["a"].id)
+    await db_session.commit()
+    assert not os.path.exists(card) and not os.path.exists(art)
+
+
+def test_caption_text():
+    assert wp.caption_meaning("n. 名字;姓名") == "n. 名字"
+    assert wp.caption_meaning("adj. (尤指女人)美丽的,漂亮的") == "adj. 美丽的"
+    assert wp.caption_meaning("中秋节") == "中秋节"
+    assert wp.caption_meaning("v. & n. 跑;奔跑") == "v.&n. 跑"
+    assert wp.caption_phonetic("neɪm") == "/neɪm/"
+    assert wp.caption_phonetic("/neɪm/") == "/neɪm/"
+    assert wp.caption_phonetic(None) == ""
