@@ -108,6 +108,8 @@ export default function StudentTutor() {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const nearBottom = useRef(true);
+  // 做完练习时小鹰老师还在说话: 先排着,说完再自动请它讲(onQuizSubmitted)
+  const [pendingFeedback, setPendingFeedback] = useState<{ r: QuizSubmitted; conv: number | null } | null>(null);
   const sendingRef = useRef(false);
   // 往上翻着看的时候不跟着滚;这时有新字就在底部给个「看新回答」按钮
   const [awayFromEnd, setAwayFromEnd] = useState(false);
@@ -339,11 +341,21 @@ export default function StudentTutor() {
       return;
     }
     if (sendingRef.current) {
-      toast.success(`对了 ${r.score} / ${r.total}。等这次回答完,点「再问一次」让小鹰老师讲讲`);
+      // 小鹰老师还在说上一段: 排着,说完自动讲(换了对话就不讲了,见下面的 effect)
+      setPendingFeedback({ r, conv: convId });
       return;
     }
     void send({ text: `我做完了,对了 ${r.score}/${r.total}`, image: null, mode: 'fast', quizId: r.quizId });
   };
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    if (sending || !pendingFeedback) return;
+    const { r, conv } = pendingFeedback;
+    setPendingFeedback(null);
+    if (conv !== convId) return;
+    void sendRef.current({ text: `我做完了,对了 ${r.score}/${r.total}`, image: null, mode: 'fast', quizId: r.quizId });
+  }, [sending, pendingFeedback, convId]);
 
   const onPickImage = async (file: File | undefined) => {
     if (!file) return;
