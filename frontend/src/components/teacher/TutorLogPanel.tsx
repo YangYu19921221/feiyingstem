@@ -4,6 +4,7 @@
  * 学习助手的规则是作业/考试题先提示、试过两次还不会才讲答案(10-26 晚起),但机器做不到 100%,所以老师能看孩子问了什么、
  * (10-27 起顶上还能展开看助手参考的这个孩子的学情摘要 —— 助手知道什么,老师就知道什么)
  * 助手怎么答的。孩子拍的题目照片不保存,助手回答第一行会写「我看到的题目: …」。
+ * 孩子发的文件(PDF / Word / txt,10-27 起)也不保存内容,这里只显示文件名;助手回答第一行会写「我看了你发的《…》」。
  */
 import { useEffect, useState } from 'react';
 import { ChevronDown, MessageCircle } from 'lucide-react';
@@ -78,6 +79,8 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
                       m.role === 'user' ? 'bg-orange-100 text-orange-900' : m.failed ? 'bg-rose-50 text-rose-700' : 'bg-white text-slate-700'
                     }`}>
                       {m.role === 'user' && m.has_image && <span className="mr-1 text-xs text-orange-700">[照片]</span>}
+                      {m.role === 'user' && m.cards.map((x, fi) => (x.type === 'file'
+                        ? <span key={`f${fi}`} className="mr-1 text-xs text-orange-700">[文件《{x.name}》]</span> : null))}
                       {m.role === 'assistant' && m.mode === 'deep' && !m.failed && <span className="mr-1 text-xs text-sky-700">[深度思考]</span>}
                       {m.failed ? '(这次没调通,孩子没拿到回答)' : m.stopped && !m.text ? '(孩子停下了)' : m.text}
                       {m.cards.some((x) => x.type === 'picture') && (

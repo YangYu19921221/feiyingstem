@@ -481,6 +481,20 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **但不冒充真人**(问是不是真人要说是 AI,老师是真人)—— 未成年人场景下冒充真人不行,这半句别删。原 13 条顺延为 14。
   生产冒烟(真模型,临时学生删净): 三问分别答「我是小鹰老师…」/「这个我不方便说。我是小鹰老师…」/「我不是真人,是 AI 学习助手。你的老师是真人…」。
   测试 tests/test_tutor_identity.py(2 例)
+  **10-27 发文件**(用户「拍照有了,上传文件的功能呢」→「doc 文档也要支持」): 输入框左边回形针,能发 PDF / Word(.docx / .doc)/ txt,
+  20MB 内,**和照片一次只能发一样**。真源 services/tutor_files.py: PDF 用 PyMuPDF 取文字层,取不到 30 个字 = 扫描版,渲染前 3 页
+  (110dpi)走照片同一条压缩(prepare_image)当图片发;带密码的拒;.docx 自己解 zip + xml(段落 + 表格,表格一行用「 | 」连),
+  **不装 python-docx**;.doc 走 LibreOffice 转 PDF(office_convert.convert_to_pdf_async,跨进程文件锁,临时目录 finally 删),
+  **本机没装 soffice 会拒「另存为 .docx 或 PDF」**(生产有);txt 先 utf-8-sig 再 gb18030。文字最多 6000 字(超了截断并告诉模型)。
+  文件名去路径去控制字符、保留扩展名截到 60 字。**内容不进库**: user 消息只存一张 {"type":"file", name, kind, pages, scanned, truncated} 卡片,
+  历史里只写「[孩子之前发了一份文件《…》]」(不重发内容,省钱);文件里的「忽略规则」当内容不照做(RULES 第 5 条)。
+  带文件的那问**不算免费追问**(要付次数);打不开 / 不支持 / 太大一律 400、不扣次数。标题:没写字时「文件: 文件名」。
+  前端: components/tutor/FileChip(输入框上面可去掉 / 气泡里)、utils/tutorFile.fileKindOf;老师对话记录显示「[文件《…》]」;
+  SpeakableText **书名号里的不切成点读**(否则文件名里的 Unit / docx 也带小喇叭)。
+  测试 tests/test_tutor_files.py(9 例);内容存库 / 历史带名 / 追问免费 / 扫描版 / 截断 / 照片文件同发 / 密码 / 路径 / 临时目录 / 标题
+  十处逐一破坏各自对应用例失败(回归锁验证过)。本机浏览器(库副本 + 真中转)390 / 1366 宽验过: 发 docx 问第 2 题 → 第一行
+  「我看了你发的《Unit3练习卷.docx》」+ 只给提示;发 PDF 作文 → 逐句先问;从「以前的对话」重开文件卡片还在、无横向溢出。
+  入口: 「问小鹰老师」输入框左边回形针;公告学生 / 老师(gate)各一条
   **10-27 首页显眼入口 + 学习工具换图**(11:30 **已部署生产**,提交 1d844e9,纯前端 dist 整推;备份 frontend/dist_bak_20261027_1124,
   构建号 mvq4io0u,从含 1b5a99f 记忆图印字的 HEAD 重新构建)(用户「学生端工具的图片有重复的…问小鹰老师这个 agent 应该放在一个显眼的地方」):
   ①Hero 下面(老师的话之后、金币之前)单独一张卡 components/tutor/TutorEntryCard: 头像 + 小鹰老师的一句话 + 假输入框

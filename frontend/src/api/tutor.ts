@@ -33,7 +33,13 @@ export type TutorCard =
   | { type: 'quiz'; quiz_id: number; topic: string | null; items: QuizItem[]; result?: QuizResult; key?: string[] }
   | { type: 'link'; target: 'review' | 'homework' | 'mistakes'; label: string; route: string }
   /** 单词记忆图(services/word_picture): status 是画图那一刻的,前端按 pic_id 轮询拿最新的 */
-  | { type: 'picture'; pic_id: number; word: string; word_id?: number; status: PictureStatus; url: string | null };
+  | { type: 'picture'; pic_id: number; word: string; word_id?: number; status: PictureStatus; url: string | null }
+  /** 孩子发的文件(services/tutor_files): 只有文件名和类型,内容不存 */
+  | { type: 'file'; name: string; kind: 'pdf' | 'docx' | 'doc' | 'txt'; pages: number | null; scanned: boolean; truncated: boolean };
+
+/** 能传的文件(和后端 tutor_files 同一份) */
+export const TUTOR_FILE_ACCEPT = '.pdf,.doc,.docx,.txt';
+export const TUTOR_FILE_MAX_MB = 20;
 
 export type PictureStatus = 'pending' | 'ready' | 'failed' | 'removed';
 export interface WordPictureOut {
@@ -133,7 +139,7 @@ export class TutorAskError extends Error {
 
 /** 提问。onEvent 每收到一个事件调一次;请求被拒(403/429/400)抛 TutorAskError */
 export async function askTutor(
-  params: { text: string; conversationId?: number | null; image?: Blob | null; mode?: TutorMode; quizId?: number },
+  params: { text: string; conversationId?: number | null; image?: Blob | null; file?: File | null; mode?: TutorMode; quizId?: number },
   onEvent: (ev: TutorEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -142,6 +148,7 @@ export async function askTutor(
   form.append('mode', params.mode || 'fast');
   if (params.conversationId) form.append('conversation_id', String(params.conversationId));
   if (params.image) form.append('image', params.image, 'question.jpg');
+  if (params.file) form.append('file', params.file, params.file.name);
   if (params.quizId) form.append('quiz_id', String(params.quizId));
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API_BASE_URL}/student/tutor/ask`, {

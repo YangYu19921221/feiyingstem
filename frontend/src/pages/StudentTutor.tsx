@@ -7,6 +7,8 @@
  * - 次数是每个学生**一共**几次(不按天清零),用完了点「请老师加次数」,老师在「学习助手次数」页加
  * - 回答里的英文点一下就能听(同一个 Edge TTS 声音)
  * - 可以拍一道题问思路: 照片压缩后只发给模型看,不存;作业/考试题先提示,试过两次还不会再讲答案和理由
+ * - 可以发一份文件(10-27,PDF / Word .docx .doc / txt,20MB 内;后端 services/tutor_files 取文字,扫描版 PDF 取前几页图):
+ *   和照片一次只能发一样;内容不存,气泡里只留文件名卡片(FileChip);带文件的那问不算免费追问
  * - 从错题本等地方点「问小鹰老师」进来会把问题填好(location.state.q),孩子自己点发送 —— 不自动发,省次数
  * - 记忆图(10-27): 助手调 draw_word_picture 后回答下面出一张图片卡(PictureCard 自己轮询到画好)
  * - 同一道题的追问不另算(10-26 晚,用户「不给答案孩子一直答不上来怎么办」): 付过次数的那问之后 15 分钟内、
@@ -16,11 +18,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, Brain, Camera, History, Loader2, Plus, RotateCcw, Send, Square, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Brain, Camera, History, Loader2, Paperclip, Plus, RotateCcw, Send, Square, X, Zap } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { useAudio } from '../hooks/useAudio';
 import {
   askTutor, getConversation, getTutorStatus, requestMoreTutor, stopTutor, TutorAskError,
+  TUTOR_FILE_ACCEPT, TUTOR_FILE_MAX_MB,
   type TutorCard, type TutorFollowup, type TutorMode, type TutorStatus,
 } from '../api/tutor';
 import PictureCard from '../components/tutor/PictureCard';
@@ -29,6 +32,8 @@ import QuizCard from '../components/tutor/QuizCard';
 import SpeakableText from '../components/tutor/SpeakableText';
 import TutorWaiting, { TutorAvatar, type WaitKind } from '../components/tutor/TutorWaiting';
 import TutorHistoryDrawer from '../components/tutor/TutorHistoryDrawer';
+import FileChip from '../components/tutor/FileChip';
+import { fileKindOf } from '../utils/tutorFile';
 import { compressImage } from '../utils/compressImage';
 import { getErrorMessage } from '../utils/errorMessage';
 import { toast } from '../components/Toast';
@@ -42,13 +47,15 @@ interface ChatMsg {
   mode: TutorMode;
   hasImage?: boolean;
   imageUrl?: string | null;
+  /** 孩子这条发了文件(刚发的从本地拿,翻出来的历史从 cards 里的 file 卡拿) */
+  file?: { name: string; kind: string; size?: number; pages?: number | null } | null;
   cards: TutorCard[];
   failed?: boolean;
   stopped?: boolean;
   /** 这次刚发 / 刚收到的(从下面浮上来);翻出来的历史记录不做动画,不然一屏一起动 */
   fresh?: boolean;
   /** 没调通时「再问一次」要用的原话 */
-  retry?: { text: string; image: Img | null; mode: TutorMode; userKey: string; quizId?: number };
+  retry?: { text: string; image: Img | null; file?: File | null; mode: TutorMode; userKey: string; quizId?: number };
 }
 
 /** 回答下面的快捷回复: 孩子卡住时点一下就行,不用自己想怎么说(追问不另算) */
@@ -90,6 +97,8 @@ export default function StudentTutor() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [image, setImage] = useState<Img | null>(null);
+  // 要发的文件(PDF / Word / txt,后端 services/tutor_files):和照片一次只能发一样
+  const [doc, setDoc] = useState<File | null>(null);
   const [mode, setMode] = useState<TutorMode>(() => {
     try { return localStorage.getItem(modeKey()) === 'deep' ? 'deep' : 'fast'; } catch { return 'fast'; }
   });
@@ -170,7 +179,7 @@ export default function StudentTutor() {
   const deepUsable = !!status?.deep_enabled && (status?.left ?? 0) >= deepCost;
   const effMode: TutorMode = mode === 'deep' && deepUsable ? 'deep' : 'fast';
   // 下一问是不是免费追问(快速回答、没有新照片)
-  const freeNext = followLeft > 0 && effMode === 'fast' && !image;
+  const freeNext = followLeft > 0 && effMode === 'fast' && !image && !doc;
 
   const pickMode = (m: TutorMode) => {
     setMode(m);
@@ -222,16 +231,21 @@ export default function StudentTutor() {
     else stopWantedRef.current = true;
   };
 
-  const send = async (opts?: { text?: string; image?: Img | null; mode?: TutorMode; replace?: string[]; quizId?: number }) => {
+  const send = async (opts?: { text?: string; image?: Img | null; file?: File | null; mode?: TutorMode; replace?: string[]; quizId?: number }) => {
     // 没传 opts = 从输入框发的;传了 = 点建议 / 再问一次(不动输入框里正在写的字)
     const fromInput = !opts;
     const text = (fromInput ? input : opts.text ?? '').trim();
     const img = fromInput ? image : opts.image ?? null;
+    const fileToSend = fromInput ? doc : opts.file ?? null;
     const useMode = opts?.mode ?? effMode;
     // sending 是 state,同一帧里连按两下回车 / 发送键时它还没变,靠 ref 挡第二下
-    if (sending || sendingRef.current || (!text && !img) || !status?.enabled) return;
+    if (sending || sendingRef.current || (!text && !img && !fileToSend) || !status?.enabled) return;
     sendingRef.current = true;
-    const userMsg: ChatMsg = { key: nextKey(), role: 'user', text, mode: useMode, hasImage: !!img, imageUrl: img?.url ?? null, cards: [], fresh: true };
+    const userMsg: ChatMsg = {
+      key: nextKey(), role: 'user', text, mode: useMode, hasImage: !!img, imageUrl: img?.url ?? null,
+      file: fileToSend ? { name: fileToSend.name, kind: fileKindOf(fileToSend.name), size: fileToSend.size } : null,
+      cards: [], fresh: true,
+    };
     const botKey = nextKey();
     setMessages((m) => [
       ...m.filter((x) => !opts?.replace?.includes(x.key)),
@@ -241,6 +255,7 @@ export default function StudentTutor() {
     if (fromInput) {
       setInput('');
       setImage(null);
+      setDoc(null);
     }
     setSending(true);
     setStopping(false);
@@ -263,7 +278,7 @@ export default function StudentTutor() {
     const session = sessionRef.current;
     const live = () => sessionRef.current === session;
     try {
-      await askTutor({ text, conversationId: convId, image: img?.blob, mode: useMode, quizId: opts?.quizId }, (ev) => {
+      await askTutor({ text, conversationId: convId, image: img?.blob, file: fileToSend, mode: useMode, quizId: opts?.quizId }, (ev) => {
         if (!live()) {
           // 已经开了新对话: 这次回答不要了,拿到提问 id 就让服务端停下(一个字没出的退回次数)
           if (ev.type === 'meta') stopTutor(ev.user_message_id).catch(() => ctrl.abort());
@@ -298,7 +313,7 @@ export default function StudentTutor() {
         } else if (ev.type === 'error') {
           patchBot((m) => ({
             ...m, failed: !m.text, text: m.text || ev.message,
-            retry: !m.text ? { text, image: img, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId } : undefined,
+            retry: !m.text ? { text, image: img, file: fileToSend, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId } : undefined,
           }));
           if (ev.refunded) setStatus((s) => (s ? { ...s, left: s.left + cost, used: Math.max(0, s.used - cost) } : s));
         }
@@ -316,6 +331,7 @@ export default function StudentTutor() {
       if (fromInput) {
         setInput(text);
         if (img) setImage(img);
+        if (fileToSend) setDoc(fileToSend);
       }
       toast.error(msg);
       if (e instanceof TutorAskError && e.status === 429) refreshStatus();
@@ -358,12 +374,30 @@ export default function StudentTutor() {
     void sendRef.current({ text: `我做完了,对了 ${r.score}/${r.total}`, image: null, mode: 'fast', quizId: r.quizId });
   }, [sending, pendingFeedback, convId]);
 
+  /** 选了文件: 图片走照片(压缩),PDF / Word / txt 走文件;两样一次只能发一样 */
+  const onPickDoc = (file: File | undefined) => {
+    if (!file) return;
+    if (file.type.startsWith('image/')) { void onPickImage(file); return; }
+    if (!fileKindOf(file.name)) {
+      toast.error('只能发 PDF、Word(.doc / .docx)或 txt 文件');
+      return;
+    }
+    if (file.size > TUTOR_FILE_MAX_MB * 1024 * 1024) {
+      toast.error(`文件太大了(最大 ${TUTOR_FILE_MAX_MB}MB),拆开发或者只发要问的那几页`);
+      return;
+    }
+    setImage(null);
+    setDoc(file);
+    textRef.current?.focus();
+  };
+
   const onPickImage = async (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      toast.error('只能选照片');
+      onPickDoc(file);
       return;
     }
+    setDoc(null);
     try {
       const blob = await compressImage(file, 1280, 0.85);
       const url = URL.createObjectURL(blob);
@@ -373,6 +407,7 @@ export default function StudentTutor() {
       toast.error('这张照片打不开,换一张试试');
     }
   };
+  const docRef = useRef<HTMLInputElement>(null);
 
   const askTeacher = async () => {
     if (asking) return;
@@ -423,7 +458,11 @@ export default function StudentTutor() {
       setNow(Date.now());
       setMessages(c.messages.map((m) => ({
         key: `s${m.id}`, role: m.role, mode: m.mode, text: m.failed ? '这次没有回答上来' : m.text,
-        hasImage: m.has_image, cards: m.cards || [], failed: m.failed, stopped: m.stopped,
+        hasImage: m.has_image, cards: m.role === 'user' ? [] : (m.cards || []), failed: m.failed, stopped: m.stopped,
+        file: (() => {
+          const f = (m.cards || []).find((c) => c.type === 'file');
+          return f && f.type === 'file' ? { name: f.name, kind: f.kind, pages: f.pages } : null;
+        })(),
       })));
       setHistoryOpen(false);
       scrollToEnd(true);
@@ -534,7 +573,7 @@ export default function StudentTutor() {
                 </div>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-                单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问我。也可以点左下角的相机拍一道题。
+                单词怎么记、哪里拼错了、语法不懂、题目没思路,都可以问我。也可以点左下角的相机拍一道题,或者点回形针发一份 PDF / Word 文件。
                 作业和考试题我先给提示,你自己再想想;试过两次还不会,我就把答案和理由讲给你听,再出一道类似的让你练。回答里的英文点一下就能听发音。
               </p>
               <p className="mt-2 text-xs text-ink-mute">
@@ -566,7 +605,7 @@ export default function StudentTutor() {
 
           {messages.map((m) => {
             if (m.role === 'user') {
-              const onlyImage = !!m.imageUrl && !m.text;
+              const onlyImage = !!m.imageUrl && !m.text && !m.file;
               return (
                 <div key={m.key} className={`flex justify-end ${m.fresh ? 'tutor-in tutor-in-right' : ''}`}>
                   {/* 气泡跟着字数走: 一两个字就是小气泡,长了最多占到 80%(电脑上 70%) */}
@@ -580,6 +619,11 @@ export default function StudentTutor() {
                       />
                     )}
                     {m.hasImage && !m.imageUrl && <p className="mb-1 text-xs text-white/85">[发了一张题目照片]</p>}
+                    {m.file && (
+                      <div className={m.text ? 'mb-2' : ''}>
+                        <FileChip name={m.file.name} kind={m.file.kind} pages={m.file.pages} size={m.file.size} tone="onWarm" />
+                      </div>
+                    )}
                     {m.text && <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{m.text}</p>}
                   </div>
                 </div>
@@ -622,7 +666,7 @@ export default function StudentTutor() {
                           result={c.result} onSubmitted={onQuizSubmitted} />
                       ) : c.type === 'picture' ? (
                         <PictureCard key={`p${c.pic_id}`} picId={c.pic_id} word={c.word} wordId={c.word_id} status={c.status} url={c.url} />
-                      ) : (
+                      ) : c.type === 'link' ? (
                         <button
                           key={i}
                           type="button"
@@ -631,7 +675,7 @@ export default function StudentTutor() {
                         >
                           {c.label}
                         </button>
-                      )
+                      ) : null
                     ))}
                     {m.stopped && m.text && <p className="mt-1.5 text-xs text-ink-mute">(停下了)</p>}
                     {m.failed && m.retry && !sending && !disabled && (
@@ -639,7 +683,7 @@ export default function StudentTutor() {
                         type="button"
                         onClick={() => {
                           const r = m.retry!;
-                          void send({ text: r.text, image: r.image, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId });
+                          void send({ text: r.text, image: r.image, file: r.file, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId });
                         }}
                         className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
                       >
@@ -711,6 +755,12 @@ export default function StudentTutor() {
                   <span className="pb-1 text-xs text-ink-mute">写一句想问什么,或者直接发</span>
                 </div>
               )}
+              {doc && (
+                <div className="tutor-in mb-2 flex items-end gap-2">
+                  <FileChip name={doc.name} kind={fileKindOf(doc.name)} size={doc.size} onRemove={() => setDoc(null)} />
+                  <span className="pb-1 text-xs text-ink-mute">写一句想问哪里,或者直接发</span>
+                </div>
+              )}
               {freeNext && (
                 <p className="mb-1.5 text-xs text-emerald-700">
                   接着问这道题不算次数(还能免费问 {followLeft} 次){onlyFollowup ? ',次数用完了也能问' : ''}
@@ -772,6 +822,23 @@ export default function StudentTutor() {
                 >
                   <Camera className="h-5 w-5" aria-hidden="true" />
                 </button>
+                <input
+                  ref={docRef}
+                  type="file"
+                  accept={TUTOR_FILE_ACCEPT}
+                  className="hidden"
+                  onChange={(e) => { onPickDoc(e.target.files?.[0]); e.target.value = ''; }}
+                />
+                <button
+                  type="button"
+                  onClick={() => docRef.current?.click()}
+                  disabled={disabled || sending || onlyFollowup}
+                  className="-ml-1 flex h-11 w-9 shrink-0 items-center justify-center rounded-full text-orange-600 hover:bg-orange-100 disabled:opacity-40"
+                  aria-label="发一份文件(PDF、Word、txt)"
+                  title="发一份文件(PDF、Word、txt)"
+                >
+                  <Paperclip className="h-5 w-5" aria-hidden="true" />
+                </button>
                 <textarea
                   ref={textRef}
                   value={input}
@@ -803,7 +870,7 @@ export default function StudentTutor() {
                   <button
                     type="button"
                     onClick={() => { void send(); }}
-                    disabled={disabled || (!input.trim() && !image)}
+                    disabled={disabled || (!input.trim() && !image && !doc)}
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition active:scale-95 disabled:bg-slate-300 ${effMode === 'deep' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-orange-500 hover:bg-orange-600'}`}
                     aria-label={effMode === 'deep' ? '深度思考,发送' : '发送'}
                   >

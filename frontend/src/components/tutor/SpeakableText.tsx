@@ -8,11 +8,13 @@
  * 孩子看不出能点。现在每段英文是一个浅蓝底的小块,前面带小喇叭;点了喇叭跳动一下(知道在读了)。
  * 用 inline + box-decoration-clone,长句子跨行时每行都有底色,不会撑破气泡。
  * hint: 这条回答下面写一句「带小喇叭的英文点一下就能听」,孩子点过一次就不再写(按账号记)。
+ * 书名号里的不切(10-27 发文件后): 回答第一行「我看了你发的《Unit3练习卷.docx》」,文件名里的 Unit / docx 不该念。
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Volume2 } from 'lucide-react';
 
 const EN_RUN = /[A-Za-z][A-Za-z'’-]*(?: [A-Za-z][A-Za-z'’-]*)*/g;
+const TITLE = /《[^》]*》/g;
 const SPEAK_MS = 1400;     // 读一个词 / 一句短话大概多久;喇叭跳这么久
 
 function hintKey(): string {
@@ -26,14 +28,24 @@ function hintKey(): string {
 function SpeakableText({ text, onSpeak, hint = false }: { text: string; onSpeak: (s: string) => void; hint?: boolean }) {
   const parts = useMemo(() => {
     const out: Array<{ en: boolean; s: string }> = [];
+    const cut = (seg: string) => {
+      let last = 0;
+      for (const m of seg.matchAll(EN_RUN)) {
+        const i = m.index ?? 0;
+        if (i > last) out.push({ en: false, s: seg.slice(last, i) });
+        out.push({ en: m[0].length >= 2, s: m[0] });
+        last = i + m[0].length;
+      }
+      if (last < seg.length) out.push({ en: false, s: seg.slice(last) });
+    };
     let last = 0;
-    for (const m of text.matchAll(EN_RUN)) {
+    for (const m of text.matchAll(TITLE)) {
       const i = m.index ?? 0;
-      if (i > last) out.push({ en: false, s: text.slice(last, i) });
-      out.push({ en: m[0].length >= 2, s: m[0] });
+      cut(text.slice(last, i));
+      out.push({ en: false, s: m[0] });
       last = i + m[0].length;
     }
-    if (last < text.length) out.push({ en: false, s: text.slice(last) });
+    cut(text.slice(last));
     return out;
   }, [text]);
 

@@ -392,6 +392,7 @@ async def ask(
     conversation_id: Optional[int] = Form(None),
     mode: str = Form("fast"),
     image: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile] = File(None),
     quiz_id: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db),
     student: User = Depends(get_current_student),
@@ -421,6 +422,19 @@ async def ask(
             img = await asyncio.to_thread(tt.prepare_image, raw)
         except Exception:  # noqa: BLE001
             raise HTTPException(400, "这张照片打不开,换一张试试")
+    # 上传文件(PDF / Word / txt,services/tutor_files): 只读给模型看,不存
+    from app.services import tutor_files
+    doc = None
+    if file is not None and file.filename:
+        if img is not None:
+            raise HTTPException(400, "照片和文件一次只能发一样")
+        raw_f = await file.read(tutor_files.MAX_BYTES + 1)
+        try:
+            doc = await tutor_files.extract(file.filename, raw_f)
+        except tutor_files.FileRejected as e:
+            raise HTTPException(400, str(e))
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "这份文件打不开,换一份试试")
     # 做完聊天里的练习、请小鹰老师点评(services/tutor_quiz): 题目和对错由服务器从库里拼,不信前端传的
     from app.services import tutor_quiz
     fq = None
@@ -430,10 +444,10 @@ async def ask(
             raise HTTPException(404, "没有这份练习")
         if fq.feedback_at is not None:
             raise HTTPException(409, "这份练习已经讲过了")
-        mode, img = "fast", None
+        mode, img, doc = "fast", None, None
         text = tutor_quiz.feedback_display(fq)
         conversation_id = fq.conversation_id or conversation_id
-    if not text and img is None:
+    if not text and img is None and doc is None:
         raise HTTPException(400, "先写下你想问的")
 
     conv: Optional[TutorConversation] = None
@@ -444,7 +458,7 @@ async def ask(
     if fq is not None and fq.free_feedback:
         # 做完练习后的点评不扣次数,也不占「同一道题追问」那 3 次(用户 10-27)
         cost, stored_cost = 0, tt.COST_FEEDBACK
-    elif conv is not None and mode == "fast" and img is None and await tt.followup_state(db, conv.id):
+    elif conv is not None and mode == "fast" and img is None and doc is None and await tt.followup_state(db, conv.id):
         # 同一道题的追问(快速回答、没有新照片)不另算,见 services/tutor 文件头「收费」
         cost = 0
 
@@ -472,9 +486,10 @@ async def ask(
             db.add(conv)
             await db.flush()
         if not conv.title:
-            title = tt.make_title(text, img is not None)
+            title = tt.make_title(text, img is not None, doc.name if doc else None)
         um = TutorMessage(conversation_id=conv.id, user_id=student.id, role="user",
                           text=text, has_image=img is not None, mode=mode,
+                          cards=[doc.card()] if doc else None,
                           cost=stored_cost if stored_cost is not None else cost)
         db.add(um)
         conv.message_count = (conv.message_count or 0) + 1
@@ -495,7 +510,17 @@ async def ask(
     content: list[dict] = []
     if img is not None:
         content.append({"type": "image", "source": {"type": "base64", "media_type": img[1], "data": img[0]}})
-    content.append({"type": "text", "text": tutor_quiz.feedback_prompt(fq) if fq is not None else (text or "帮我看看这道题")})
+    if doc is not None:
+        content.append({"type": "text", "text": doc.prompt_block()})
+        for b64, mime in doc.images:
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+    if fq is not None:
+        ask_text = tutor_quiz.feedback_prompt(fq)
+    elif doc is not None:
+        ask_text = text or "帮我看看这份文件"
+    else:
+        ask_text = text or "帮我看看这道题"
+    content.append({"type": "text", "text": ask_text})
     messages = history + [{"role": "user", "content": content}]
     system = tt.build_system(context, mode)
     left = (await tt.allowance_status(db, student.id, settings, student.org_id))["left"]

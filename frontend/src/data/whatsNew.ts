@@ -28,6 +28,25 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'tutor-file-student-2026-10',
+    date: '2026-10-27',
+    title: '📎 小鹰老师能看文件了: PDF、Word 都行',
+    desc: '除了拍照,现在还能把 PDF、Word(.docx / .doc)或 txt 文件发给小鹰老师,比如老师发的练习卷、作文、单词表,20MB 以内。发的时候写一句想问哪一题,小鹰老师会先给提示,还是不会再讲。文件只给小鹰老师看,不会保存。',
+    where: '「问小鹰老师」输入框左边的回形针按钮',
+    roles: ['student'],
+    route: '/student/tutor',
+    gate: 'tutor',
+  },
+  {
+    id: 'tutor-file-teacher-2026-10',
+    date: '2026-10-27',
+    title: '📎 孩子可以把 PDF / Word 文件发给小鹰老师了',
+    desc: '孩子除了拍照,还能发 PDF、Word(.docx / .doc)、txt 文件(比如练习卷、作文)。作业考试题照样先给提示、试过两次还不会才讲答案;文件内容不保存,对话记录里显示「[文件《文件名》]」,小鹰老师回答第一行会写它看的是哪份文件。',
+    where: '班级 → 点学生进详情页 →「问小鹰老师」对话记录',
+    roles: ['teacher'],
+    gate: 'tutor',
+  },
+  {
     id: 'video-cos-smart-admin-2026-10',
     date: '2026-10-27',
     title: '📺 音标视频: 服务器不忙从本机放,忙了才走 COS',
