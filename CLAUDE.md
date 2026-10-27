@@ -427,6 +427,19 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   图里不写字),脚本 backend/scripts/gen_student_tool_art.py(Key 只读环境变量 IMAGE_API_KEY,gpt-image-2.5-sunburst low,
   11 张约 2 分钟);旧图 hero-memory 等别的页面还在用,没删。公告学生一条(gate tutor)。
   浏览器验过(构建产物 + 假接口): 320 / 390 / 1366 宽无横向溢出,点问题进聊天页已填好、没有发请求
+  **10-27 12:25 快速档换 sonnet-5-5 + 「新对话」按钮修复**(已部署生产,提交 a0a947c;api/v1/tutor.py、services/tutor.py 生产==HEAD~1 整推,
+  两个服务都重启;前端从干净 worktree 构建 mvq6ey2l 整推;备份 /root/eh_code_before_tutorfast_20261027_1223.tgz、frontend/dist_bak_20261027_1223;
+  生产 claude_tutor 行 model_name 由 claude-haiku-5-5 改为 claude-sonnet-5-5,改前值存 /root/tutor_model_before_20261027.txt,备用仍 sonnet-4-6)
+  (用户「快速模型用sonnet 5-5 深度的用opus 5-5」「右上角的加号点击没有反应…应该是新对话的功能」):
+  ①**sonnet-5-5 关不掉思考**: `thinking: disabled` 在它上面 400,不传就按 effort high 先想再答。快速档改传它最低档
+  `between_tools` + effort low(services/tutor.fast_thinking);**between_tools 只有 sonnet-5-5 认,别的模型传了 400**,
+  所以备用 sonnet-4-6 什么思考参数都不带(测试锁住,去掉模型判断恰好 2 例失败)。管理端「测试模型」用同一套参数。
+  经中转实测首字: sonnet-4-6 约 2s;sonnet-5-5 不传 10s / between_tools 8-9s / +low 7-8s;带一次工具约 11s。
+  **比原来慢不少,孩子会多等 5-8 秒**(前端 8 秒、20 秒有安抚话)。中转把 5-5 的回答整段一起发,不是逐字。
+  ②「+」新对话: 原来回答进行中按钮是 disabled(灰掉、点了没反应),空对话时点了也没有任何变化。现在随时能点:
+  回答进行中就让那次回答停下(stopTutor,一个字没出的退回次数),旧回答后面的事件按 sessionRef 丢掉、不写进新对话;
+  空对话点了提示「现在就是新对话」。翻旧对话同理。深度思考仍 opus-5-5 + adaptive + medium(没动)。
+  生产冒烟: 真学生上下文问「because 是什么意思」→ sonnet-5-5、调 lookup_word、11.5s 出字、答对(没写库没扣次数)
 - ✅ 后端多进程(2026-10-25,用户「CPU 单核…后续肯定会超过 170 人」「要考虑服务器 CPU 内存升级后的情况」→「你来做多核的」):
   **第一步 16:49 已部署**(提交 7d55020,main.py / tenancy.py 走 anchor patch,其余整推;备份 /root/eh_code_before_multiproc_20261025_1648.tgz、
   frontend/dist_bak_20261025_1648);**第二步 18:14 已上线**(用户同意后): 系统 Redis 起来、主进程配 REDIS_URL、
