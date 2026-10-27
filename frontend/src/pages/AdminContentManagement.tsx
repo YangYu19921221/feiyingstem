@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../config/env';
 import { toast } from '../components/Toast';
 import { BookOpen, FileText, LibraryBig, PackageOpen } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import BookJacket from '../components/book/BookJacket';
 
 interface ContentStats {
   word_books: {
@@ -22,6 +23,7 @@ interface WordBook {
   name: string;
   description: string;
   grade_level: string;
+  series?: string | null;
   is_public: boolean;
   cover_color: string;
   created_by: number;
@@ -445,10 +447,7 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
                         <tr key={book.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: book.cover_color || '#FF6B35' }}
-                              ></div>
+                              <BookJacket book={book} variant="mini" className="w-7 shrink-0" />
                               <span className="font-medium">{book.name}</span>
                             </div>
                           </td>

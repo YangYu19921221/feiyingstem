@@ -24,6 +24,10 @@ class StudentBookAssignmentResponse(BaseModel):
     book_id: int
     book_name: str
     book_description: str | None
+    # 书封现画要用(frontend/src/utils/bookJacket): 和书架同一组字段,同一本书两处才长得一样
+    book_grade_level: Optional[str] = None
+    book_volume: Optional[str] = None
+    book_series: Optional[str] = None
     teacher_name: str
     # 开书人角色(teacher/admin/org_admin)。管理员开的书 teacher_name 就是管理员姓名,
     # 前端据此换文案与图标,不然学位帽图标会让管理员看着像"老师"。
@@ -202,6 +206,9 @@ async def get_my_assignments(
             book_id=book.id,
             book_name=book.name,
             book_description=book.description,
+            book_grade_level=book.grade_level,
+            book_volume=book.volume,
+            book_series=book.series,
             teacher_name=teacher_name,
             assigner_role=assigner_role,
             assigned_at=assignment.assigned_at.isoformat(),

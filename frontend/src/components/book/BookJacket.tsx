@@ -1,15 +1,19 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo } from 'react';
 import { Lock } from 'lucide-react';
-import { jacketOf, SMALL_EM, SMALL_GAP_EM, type JacketBook } from '../../utils/bookJacket';
+import {
+  jacketOf, SMALL_EM, SMALL_GAP_EM,
+  type JacketBook, type JacketShape, type JacketTone,
+} from '../../utils/bookJacket';
 
 /**
- * 书架上的一本书: 书脊 + 纸片层封面 + 书名印在封面上(规则见 utils/bookJacket)。
+ * 一本书的封面: 书脊 + 纸片画 + 左上角「飞鹰」+ 书名印在下半截那层纸上(规则见 utils/bookJacket)。
  *
- * - shelf: 我的书架。在学的书插一根书签带,学完的盖「学完」章,底边是进度条
- * - locked: 更多书籍(还没兑换)。褪色 + 「输入兑换码」
- * - mini: 调整顺序 / 作业列表的小图,只有封面不排字(书名在旁边)
+ * - shelf: 学生书架。在学的书插一根书签带,学完的太阳换成「学完」章,底边是进度条
+ * - locked: 更多书籍(还没兑换)。褪色 +「输入兑换码」
+ * - cover: 老师端列表和建书 / 导入 / 编辑弹窗的预览,只有书名和词数
+ * - mini: 小图(调整顺序 / 作业 / 纸笔听写 / 老师列表),只有画和封面大字,书名在旁边
  *
- * 有 cover_url(老师传的封面)就用那张图当天空,书名那层照样压在下面;图坏了退回画的封面。
+ * 老师上传的书和学生看到的是同一个组件、同一套规则,风格一定一致。
  * 外层可点的元素由调用方给(button),这里只画书。
  */
 
@@ -19,12 +23,19 @@ export interface BookJacketBook extends JacketBook {
   progress_percentage?: number;
 }
 
-type Variant = 'shelf' | 'locked' | 'mini';
+type Variant = 'shelf' | 'locked' | 'cover' | 'mini';
 
 const MARK_FONT = "'JacketMark', 'Arial Rounded MT Bold', system-ui, sans-serif";
 const CJK_FONT = "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif";
 const MARK_X = 40;
-const MARK_CY = 118;
+const MARK_CY = 134; // 左上角是「飞鹰」那一行,最窄的书(320 宽手机)上也要留出空隙
+
+function Shape({ s, tone }: { s: JacketShape; tone: JacketTone }) {
+  const fill = tone[s.fill];
+  return s.kind === 'circle'
+    ? <circle cx={s.cx} cy={s.cy} r={s.r} fill={fill} opacity={s.opacity} />
+    : <path d={s.d} fill={fill} opacity={s.opacity} />;
+}
 
 function BookJacket({ book, variant = 'shelf', className = '', ratio = '133.33%' }: {
   book: BookJacketBook;
@@ -33,10 +44,11 @@ function BookJacket({ book, variant = 'shelf', className = '', ratio = '133.33%'
   /** 高 / 宽,写成 padding-top 百分比(书架上每本高矮略不同,见 shelfRatioOf) */
   ratio?: string;
 }) {
-  const { id, name, series } = book;
-  const j = useMemo(() => jacketOf({ id, name, series }), [id, name, series]);
-  const [imageFailed, setImageFailed] = useState(false);
-  const image = book.cover_url && !imageFailed ? book.cover_url : null;
+  const { id, name, grade_level, volume, series } = book;
+  const j = useMemo(
+    () => jacketOf({ id, name, grade_level, volume, series }),
+    [id, name, grade_level, volume, series],
+  );
   const { tone, mark } = j;
 
   const progress = Math.max(0, Math.min(100, book.progress_percentage ?? 0));
@@ -63,33 +75,33 @@ function BookJacket({ book, variant = 'shelf', className = '', ratio = '133.33%'
     </text>
   );
 
+  const words = book.word_count;
+  const units = book.unit_count;
+
   return (
     <div
-      className={`book-jacket ${variant === 'mini' ? 'book-jacket-mini' : ''} ${variant === 'locked' ? 'book-jacket-locked' : ''} ${className}`}
+      className={[
+        'book-jacket',
+        tone.light ? 'is-light' : '',
+        variant === 'mini' ? 'book-jacket-mini' : '',
+        variant === 'locked' ? 'book-jacket-locked' : '',
+        className,
+      ].join(' ')}
     >
       {/* padding-top 的百分比按「包含块」的宽度算: 放在 flex 行里时包含块是整行,必须垫一层自己的 div */}
       <div style={{ paddingTop: ratio }} aria-hidden="true" />
       {variant !== 'mini' && <span className="book-jacket-pages" aria-hidden="true" />}
       <div className="book-jacket-cover" style={{ backgroundColor: tone.cover }}>
-        {image && (
-          <img
-            src={image}
-            alt=""
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
         <svg className="book-jacket-art" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-          {!image && (
-            <>
-              {/* 学完的书: 太阳换成「学完」金章,同一个位置 */}
-              {!done && <circle cx={j.sun.cx} cy={j.sun.cy} r={j.sun.r} fill={tone.glow} />}
-              <path d={j.backPath} fill={tone.back} />
-              {markText(tone.markShadow, 4, 5)}
-              {markText(tone.mark)}
-            </>
-          )}
+          {/* 学完的书: 太阳 / 月亮换成「学完」金章 */}
+          {j.sky.filter((s) => !(done && s.body)).map((s, i) => <Shape key={`s${i}`} s={s} tone={tone} />)}
+          {/* 每层纸往上错开一点画一道影子,纸片才有前后 */}
+          <path d={j.backPath} fill="#000" opacity={0.1} transform="translate(0 -3)" />
+          <path d={j.backPath} fill={tone.back} />
+          {j.ridge.map((s, i) => <Shape key={`r${i}`} s={s} tone={tone} />)}
+          {markText(tone.markShadow, 4, 5)}
+          {markText(tone.mark)}
+          <path d={j.frontPath} fill="#000" opacity={0.14} transform="translate(0 -4)" />
           <path d={j.frontPath} fill={tone.front} />
           {reading && (
             <g>
@@ -98,7 +110,7 @@ function BookJacket({ book, variant = 'shelf', className = '', ratio = '133.33%'
             </g>
           )}
           {done && (
-            <g transform="translate(252 208) rotate(-12)">
+            <g transform="translate(252 206) rotate(-12)">
               <circle r={36} fill="#FFD23F" />
               <circle r={29} fill="none" stroke="#8A5300" strokeWidth={2} strokeDasharray="3 4" opacity={0.6} />
               <text y={9} textAnchor="middle" fill="#6B3A00" fontFamily={CJK_FONT} fontSize={24} fontWeight={800}>学完</text>
@@ -110,30 +122,36 @@ function BookJacket({ book, variant = 'shelf', className = '', ratio = '133.33%'
 
         {variant !== 'mini' && (
           <>
-            {j.imprint && (
-              <span
-                className="book-jacket-imprint"
-                style={{ color: tone.ink, borderColor: tone.light ? 'rgb(59 38 4 / 0.35)' : 'rgb(255 255 255 / 0.45)', backgroundColor: image ? tone.front : undefined }}
-              >
-                {j.imprint}
-              </span>
-            )}
+            <span className="book-jacket-brand" style={{ color: tone.ink }}>
+              <span className="book-jacket-eagle" aria-hidden="true" />
+              <span className="book-jacket-brand-name" aria-hidden="true">飞鹰</span>
+              {j.imprint && <span className="book-jacket-brand-series">{j.imprint}</span>}
+            </span>
             <div className="book-jacket-label" style={{ color: tone.ink }}>
               <span className="book-jacket-title" title={book.name}>{book.name}</span>
               {variant === 'locked' ? (
                 <span className="book-jacket-row">
-                  <span className="book-jacket-meta font-numeric">{book.word_count ?? 0} 词</span>
+                  <span className="book-jacket-meta font-numeric">{words ?? 0} 词</span>
                   <span className="inline-flex items-center gap-1 font-semibold">
                     <Lock className="h-[1em] w-[1em]" aria-hidden="true" />
                     输入兑换码
                   </span>
                 </span>
+              ) : variant === 'cover' ? (
+                (units !== undefined || words !== undefined) && (
+                  <span className="book-jacket-row">
+                    <span className="book-jacket-meta font-numeric">
+                      {units !== undefined && <span className="book-jacket-units">{units} 单元 · </span>}
+                      {words ?? 0} 词
+                    </span>
+                  </span>
+                )
               ) : (
                 <span className="book-jacket-row">
                   {/* 书窄的时候(手机竖屏 / 平板四本一排)只写词数,单元数藏起来 */}
                   <span className="book-jacket-meta font-numeric">
-                    <span className="book-jacket-units">{book.unit_count ?? 0} 单元 · </span>
-                    {book.word_count ?? 0} 词
+                    <span className="book-jacket-units">{units ?? 0} 单元 · </span>
+                    {words ?? 0} 词
                   </span>
                   <span className="font-numeric font-semibold">
                     <span className="sr-only">学习进度 </span>
@@ -143,11 +161,7 @@ function BookJacket({ book, variant = 'shelf', className = '', ratio = '133.33%'
               )}
             </div>
             {variant === 'shelf' && (
-              <span
-                className="book-jacket-progress"
-                style={{ backgroundColor: tone.light ? 'rgb(59 38 4 / 0.16)' : 'rgb(0 0 0 / 0.28)' }}
-                aria-hidden="true"
-              >
+              <span className="book-jacket-progress" aria-hidden="true">
                 <span
                   className={done ? 'progress-gold' : ''}
                   style={{ width: `${progress}%`, backgroundColor: done ? undefined : tone.accent }}

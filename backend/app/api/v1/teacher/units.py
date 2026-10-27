@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, and_
 from typing import List
@@ -20,31 +20,9 @@ router = APIRouter()
 # 整本 Excel 一键导入
 # ========================================
 
-async def _fill_book_cover(book_id: int, name: str, grade_level: str | None, description: str | None):
-    """导入完成后在后台补 AI 封面(gpt-image-2 典型 10-20s,不能挡在事务路径上——
-    否则前端 10s 超时会看到'假失败',重试再撞 409/建出双份书)。失败保持纯色封面。"""
-    from app.core.database import AsyncSessionLocal
-    from app.services.image_service import generate_book_cover
-    try:
-        cover_url = await generate_book_cover(name=name, grade_level=grade_level, description=description)
-        if not cover_url:
-            return
-        async with AsyncSessionLocal() as session:
-            book = (await session.execute(
-                select(WordBook).where(WordBook.id == book_id)
-                .execution_options(skip_tenant_filter=True)  # 后台任务无请求上下文
-            )).scalars().first()
-            if book:
-                book.cover_url = cover_url
-                await session.commit()
-    except Exception:
-        pass  # 封面是锦上添花,失败不打扰导入结果
-
-
 @router.post("/books/import-workbook", status_code=status.HTTP_201_CREATED)
 async def import_workbook(
     data: WorkbookImportRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
@@ -93,7 +71,7 @@ async def import_workbook(
         stage_id=stage_id,
         is_public=True,
         cover_color="#FF6B6B",
-        cover_url=None,  # AI 封面 commit 后台补(_fill_book_cover),不挡主路径
+        cover_url=None,  # 封面由前端按书本资料现画(utils/bookJacket),不出图
         created_by=current_user.id,
         # org_id 由 tenancy 写侧安全网打戳: 教师=本机构,与手动建本一致
     )
@@ -141,9 +119,6 @@ async def import_workbook(
             book_order += 1
 
     await db.commit()
-    background_tasks.add_task(
-        _fill_book_cover, book.id, data.book_name, data.grade_level, data.description,
-    )
 
     return {
         "book_id": book.id,

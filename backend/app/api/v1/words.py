@@ -13,7 +13,6 @@ from app.schemas.word import (
 )
 from app.api.v1.auth import get_current_teacher, get_current_user
 from app.core.rate_limit import check_rate
-from app.services.image_service import generate_book_cover
 from app.services import book_stage
 
 router = APIRouter()
@@ -167,12 +166,12 @@ async def create_word_book(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_teacher),
 ):
-    """创建单词本（同步生成 AI 封面，失败降级到 cover_color）"""
-    cover_url = await generate_book_cover(
-        name=book_data.name,
-        grade_level=book_data.grade_level,
-        description=book_data.description,
-    )
+    """创建单词本。
+
+    封面不再出图(2026-10-28): 前端按书名 / 年级 / 册次 / 版本现画(frontend/src/utils/bookJacket),
+    老师和学生看到的是同一张。原来这里同步等 AI 出图最多 30 秒,网页 10 秒就放弃,
+    老师看到「创建失败」书其实已建好;生产近 30 天 7 次出图全部超时。
+    """
 
     # 学段: 没显式传就按年级自动推(填了「三年级」自动归小学)。
     # 不自动补的话老师只填年级、书就落进「未分类」,那是改造前没有的行为回退。
@@ -190,7 +189,7 @@ async def create_word_book(
         stage_id=stage_id,
         is_public=book_data.is_public,
         cover_color=book_data.cover_color,
-        cover_url=cover_url,
+        cover_url=None,
         created_by=current_user.id,
         # org_id 由 tenancy.before_flush 写侧安全网打戳: admin=平台共享(NULL),教师=本机构
     )

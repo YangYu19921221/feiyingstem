@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import { parseWordRows, type ParsedWord } from '../utils/excelWords';
 import { getErrorMessage } from '../utils/errorMessage';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import BookJacket from '../components/book/BookJacket';
 
 type PreviewUnit = { name: string; words: ParsedWord[] };
 
@@ -681,22 +682,8 @@ const TeacherBooks = () => {
                                       className="w-4 h-4 rounded border-gray-300 text-primary cursor-pointer shrink-0"
                                     />
                                   )}
-                                  {/* 小封面/色块 */}
-                                  {book.cover_url ? (
-                                    <img
-                                      src={book.cover_url}
-                                      alt=""
-                                      loading="lazy"
-                                      className="w-10 h-10 rounded-md object-cover shrink-0 bg-gray-100"
-                                    />
-                                  ) : (
-                                    <div
-                                      className="w-10 h-10 rounded-md flex items-center justify-center text-white text-base shrink-0"
-                                      style={{ background: book.cover_color }}
-                                    >
-                                      📖
-                                    </div>
-                                  )}
+                                  {/* 小封面: 和学生书架同一套(components/book/BookJacket) */}
+                                  <BookJacket book={book} variant="mini" className="w-8 shrink-0" />
                                   {/* 名字 + 标签 同行 */}
                                   <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-gray-800 truncate">{book.name}</span>
@@ -762,27 +749,8 @@ const TeacherBooks = () => {
                                       />
                                     </div>
                                   )}
-                                  {book.cover_url ? (
-                                    <div className="w-full aspect-[4/3] rounded-lg mb-2 overflow-hidden bg-gray-100">
-                                      <img
-                                        src={book.cover_url}
-                                        alt={book.name}
-                                        loading="lazy"
-                                        onError={e => { e.currentTarget.style.display = 'none'; }}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div
-                                      className="w-full aspect-[4/3] rounded-lg mb-2 flex items-center justify-center text-white text-2xl"
-                                      style={{ background: book.cover_color }}
-                                    >
-                                      📖
-                                    </div>
-                                  )}
-                                  <h4 className="text-sm font-semibold text-gray-800 mb-1 group-hover:text-primary transition line-clamp-2 leading-snug min-h-[2.5em]">
-                                    {book.name}
-                                  </h4>
+                                  {/* 书名已经印在封面上,下面不再重复写一遍 */}
+                                  <BookJacket book={book} variant="cover" className="mb-2.5" />
                                   {(book.grade_level || book.volume) && (
                                     <div className="flex items-center gap-1 mb-2 flex-wrap">
                                       {book.series && (
@@ -911,6 +879,14 @@ const TeacherBooks = () => {
               {renderSeriesSelect(renameForm.series, v => setRenameForm({ ...renameForm, series: v }))}
               {renderStageSelect(renameForm.stage, v => setRenameForm({ ...renameForm, stage: v }))}
             </div>
+            <CoverPreview
+              name={renameForm.name}
+              grade_level={renameForm.grade_level}
+              volume={renameForm.volume}
+              series={renameForm.series}
+              words={renameTarget.word_count}
+              className="mb-4"
+            />
             <div className="flex gap-2">
               <button
                 onClick={() => setRenameTarget(null)}
@@ -977,6 +953,16 @@ const TeacherBooks = () => {
                 {renderStageSelect(importPreview.stage || '', v => setImportPreview({ ...importPreview, stage: v }))}
               </div>
             </div>
+
+            <CoverPreview
+              name={importPreview.bookName}
+              grade_level={importPreview.gradeLevel}
+              volume={importPreview.volume}
+              series={importPreview.series}
+              units={importPreview.units.length}
+              words={importPreview.units.reduce((s, u) => s + u.words.length, 0)}
+              className="mt-4"
+            />
 
             <div className="mt-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
               将创建 {importPreview.units.length} 个单元,共 {importPreview.units.reduce((s, u) => s + u.words.length, 0)} 个单词
@@ -1074,19 +1060,12 @@ const TeacherBooks = () => {
                   className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">封面颜色</label>
-                <div className="flex gap-2">
-                  {['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#FF6B35'].map(c => (
-                    <button
-                      key={c}
-                      onClick={() => setNewBook({...newBook, cover_color: c})}
-                      className={`w-8 h-8 rounded-full border-2 ${newBook.cover_color === c ? 'border-gray-800 scale-110' : 'border-transparent'}`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
+              <CoverPreview
+                name={newBook.name}
+                grade_level={newBook.grade_level}
+                volume={newBook.volume}
+                series={newBook.series}
+              />
             </div>
             <div className="flex gap-3 mt-6">
               <button
@@ -1111,3 +1090,33 @@ const TeacherBooks = () => {
 };
 
 export default TeacherBooks;
+
+/**
+ * 建书 / 导入 / 编辑弹窗里的封面预览: 和学生书架同一个组件、同一套规则(utils/bookJacket),
+ * 书名、年级、册次、版本改一个字封面当场跟着变,老师传完书学生看到的就是这一张。
+ */
+function CoverPreview({ name, grade_level, volume, series, units, words, className = '' }: {
+  name: string;
+  grade_level?: string;
+  volume?: string;
+  series?: string;
+  units?: number;
+  words?: number;
+  className?: string;
+}) {
+  const title = name.trim() || '书名';
+  return (
+    <div className={`flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50 p-3 ${className}`}>
+      <BookJacket
+        book={{ id: 0, name: title, grade_level: grade_level || null, volume: volume || null, series: series || null, unit_count: units, word_count: words }}
+        variant="cover"
+        className="w-32 shrink-0"
+      />
+      <div className="min-w-0 text-xs leading-5 text-gray-500">
+        <p className="mb-1 text-sm font-medium text-gray-700">封面预览</p>
+        <p>封面按书名、年级、册次和版本自动排好,学生书架上就是这一张。</p>
+        <p className="mt-1">书名里写年级册次(如「七年级上册」),封面大字会写成「7上」。</p>
+      </div>
+    </div>
+  );
+}

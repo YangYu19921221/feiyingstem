@@ -45,6 +45,10 @@ export interface StudentBookAssignmentResponse {
   book_id: number;
   book_name: string;
   book_description?: string;
+  /** 书封现画用(utils/bookJacket),和书架同一组字段 */
+  book_grade_level?: string | null;
+  book_volume?: string | null;
+  book_series?: string | null;
   teacher_name: string;
   /** 开书人角色:管理员开的书 teacher_name 是管理员姓名,前端据此换文案 */
   assigner_role?: string | null;

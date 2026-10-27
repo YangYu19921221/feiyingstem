@@ -8,10 +8,10 @@
 
 - `services/pk/score.py:grade_level_to_tier` —— 计分用,未知值兜底成 primary
 - `frontend/.../TeacherBooks.tsx:stageOf` —— 列表分组显示用,未知值自成一组
-- `services/image_service.py:_style_for_grade` —— 选 AI 封面画风用,第三套子串判断
+- (原有第三份: image_service 选 AI 封面画风;2026-10-28 封面改成前端现画,那份已删)
 
 本模块只服务「按学段发兑换码 / 按学段选书」这一件事,**不去动那三处**:
-pk 那份已退出计分链路且 fallback 语义有其道理,image 那份只影响画风,
+pk 那份已退出计分链路且 fallback 语义有其道理,
 前端那份做的是显示分组(语义确实不同)。硬把它们合并会牵动 PK 和出图,
 收益不抵风险。要合并也应另起一次改动、单独验证。
 

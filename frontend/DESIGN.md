@@ -52,6 +52,20 @@
 - Toast: `components/Toast` 的 `toast.error/success`。
 - 移动优先，Tailwind `sm: md: lg:` 响应式，320px 起。
 
+## 书封（`components/book/BookJacket` + `utils/bookJacket`）
+
+单词本封面不出图，全站一个组件按书名 / 年级 / 册次 / 版本现画：学生书架、作业页、纸笔听写、
+老师「单词本」列表和建书 / 导入 / 编辑弹窗的预览都是它，老师传完书学生看到的就是那一张。
+
+- **结构**：书脊压痕 + 两层纸片画 + 纸纹（`public/brand/paper-grain.png`）；左上「飞鹰」品牌行
+  （官网 logo 里的鹰，`public/brand/eagle-mark.png` 只取形状，用 mask 按字色染）+ 版本；
+  中间封面大字（Baloo 2 ExtraBold，`@font-face JacketMark`，汉字走系统字体）；书名印在下层纸里。
+- **颜色按年级**（同年级上下册同色），11 套配色，封面底色和书名那层对白字都 ≥ 4.5:1；
+  浅色两套（sun / mint）用深色字。**画面按学段**：小学圆山太阳、初中雪山、高中云海月亮星星、其它海浪。
+- **四种用法**：`shelf`（书签带 / 学完章 / 进度条）、`locked`（褪色 +「输入兑换码」）、
+  `cover`（老师端，只有书名词数）、`mini`（小图，只有画和大字）。
+- 字号写死不用容器查询（iOS 12），书的宽度要保持在 127–229px；改每排本数先量。
+
 ## Bans（项目特定，叠加在 impeccable 通用禁令上）
 
 - 不用淡紫 / 冷紫渐变、不用玻璃拟态做默认卡。

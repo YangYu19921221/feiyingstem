@@ -201,6 +201,8 @@ export interface TeacherWordBook {
   cover_color: string;
   cover_url: string | null;
   created_by: number;
+  /** 单词数(列表接口带) */
+  word_count?: number;
   created_at: string;
   updated_at: string;
 }

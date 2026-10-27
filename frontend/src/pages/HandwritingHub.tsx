@@ -7,11 +7,12 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpenText, Camera, LockKeyhole, Printer, Search, X } from 'lucide-react';
+import { ArrowLeft, Camera, LockKeyhole, Printer, Search, X } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { getStudentBooks, getBookProgress } from '../api/progress';
 import type { StudentBook, BookProgress } from '../api/progress';
 import { toast } from '../components/Toast';
+import BookJacket from '../components/book/BookJacket';
 import { getErrorMessage } from '../utils/errorMessage';
 
 // 折叠阈值都取网格列数(lg 3 列)的整倍数,折叠态收在两行/四行整
@@ -210,17 +211,10 @@ export default function HandwritingHub() {
                           : 'border-black/[0.06] hover:border-black/[0.14]'
                       }`}
                     >
-                      {/* 封面色带:让 40 本书不是一片白,孩子按颜色认书。
-                          外层必须 flex-col:button 默认把内容垂直居中,同行卡片被
-                          grid 拉成等高后,矮内容会浮到中间、色带脱离顶部(实测参差) */}
-                      <div className="h-1.5 w-full shrink-0" style={{ background: book.cover_color || '#FF6B35' }} />
+                      {/* 小书封: 和首页书架同一套(components/book/BookJacket),孩子按封面认书。
+                          外层必须 flex-col:button 默认把内容垂直居中,同行卡片被 grid 拉成等高后矮内容会浮到中间 */}
                       <div className="flex items-start gap-3 p-4">
-                        <span
-                          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
-                          style={{ background: book.cover_color || '#FF6B35' }}
-                        >
-                          <BookOpenText className="h-5 w-5" aria-hidden="true" />
-                        </span>
+                        <BookJacket book={book} variant="mini" className="w-10 shrink-0" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium text-ink">{book.name}</span>
                           <span className="mt-0.5 block text-xs text-ink-mute">

@@ -119,7 +119,13 @@ export default function StudentAssignments() {
       >
         <div className="flex items-start gap-4">
           <BookJacket
-            book={{ id: assignment.book_id, name: assignment.book_name }}
+            book={{
+              id: assignment.book_id,
+              name: assignment.book_name,
+              grade_level: assignment.book_grade_level,
+              volume: assignment.book_volume,
+              series: assignment.book_series,
+            }}
             variant="mini"
             className="w-16 shrink-0 sm:w-[4.5rem]"
           />
