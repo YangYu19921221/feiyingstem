@@ -481,7 +481,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **但不冒充真人**(问是不是真人要说是 AI,老师是真人)—— 未成年人场景下冒充真人不行,这半句别删。原 13 条顺延为 14。
   生产冒烟(真模型,临时学生删净): 三问分别答「我是小鹰老师…」/「这个我不方便说。我是小鹰老师…」/「我不是真人,是 AI 学习助手。你的老师是真人…」。
   测试 tests/test_tutor_identity.py(2 例)
-  **10-27 发文件**(用户「拍照有了,上传文件的功能呢」→「doc 文档也要支持」): 输入框左边回形针,能发 PDF / Word(.docx / .doc)/ txt,
+  **10-27 发文件**(19:43 **已部署生产**,提交 a008ce5;api/v1/tutor.py、services/tutor.py 生产==c230897 整推 + 新文件 services/tutor_files.py,两个服务都重启;备份 /root/eh_code_before_tutorfile_20261027_1941.tgz、frontend/dist_bak_20261027_1941,构建号 mvqm4fut)(用户「拍照有了,上传文件的功能呢」→「doc 文档也要支持」): 输入框左边回形针,能发 PDF / Word(.docx / .doc)/ txt,
   20MB 内,**和照片一次只能发一样**。真源 services/tutor_files.py: PDF 用 PyMuPDF 取文字层,取不到 30 个字 = 扫描版,渲染前 3 页
   (110dpi)走照片同一条压缩(prepare_image)当图片发;带密码的拒;.docx 自己解 zip + xml(段落 + 表格,表格一行用「 | 」连),
   **不装 python-docx**;.doc 走 LibreOffice 转 PDF(office_convert.convert_to_pdf_async,跨进程文件锁,临时目录 finally 删),
@@ -495,6 +495,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   十处逐一破坏各自对应用例失败(回归锁验证过)。本机浏览器(库副本 + 真中转)390 / 1366 宽验过: 发 docx 问第 2 题 → 第一行
   「我看了你发的《Unit3练习卷.docx》」+ 只给提示;发 PDF 作文 → 逐句先问;从「以前的对话」重开文件卡片还在、无横向溢出。
   入口: 「问小鹰老师」输入框左边回形针;公告学生 / 老师(gate)各一条
+  生产冒烟(公网,临时学生删净): docx 首字 2.7s「我看了你发的《Unit3练习卷.docx》…你想先看哪一题」、PDF 作文逐句先问,各扣 1 次,库里 user 消息不含文件原文;xlsx 400 不扣。⚠️ **.doc 在生产还转不了**: 生产 LibreOffice 只装了 core + impress(音标 PPT 用),**没有 writer**,soffice 打不开 Word / txt → 现在 .doc 回 400「这份 Word 文件打不开,请另存为 .docx 或 PDF」、不扣次数。要支持得 `apt install --no-install-recommends libreoffice-writer`(会把 libreoffice-core 等 16 个包从 24.2.7-…6 升到 …7,音标 PPT 转换也跟着升;模拟过无删除),待用户同意
   **10-27 首页显眼入口 + 学习工具换图**(11:30 **已部署生产**,提交 1d844e9,纯前端 dist 整推;备份 frontend/dist_bak_20261027_1124,
   构建号 mvq4io0u,从含 1b5a99f 记忆图印字的 HEAD 重新构建)(用户「学生端工具的图片有重复的…问小鹰老师这个 agent 应该放在一个显眼的地方」):
   ①Hero 下面(老师的话之后、金币之前)单独一张卡 components/tutor/TutorEntryCard: 头像 + 小鹰老师的一句话 + 假输入框
