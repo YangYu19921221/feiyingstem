@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'video-cos-switch-admin-2026-10',
+    date: '2026-10-27',
+    title: '📺 音标视频线路: 欠费自动改回本机,充值后自动切回 COS',
+    desc: '10-27 腾讯云账号欠费,COS 不给下载,音标视频全播不了。现在服务器每 5 分钟检查一次: 取不到就自动改回服务器本机播放(视频照常能看,只是走服务器带宽、人多会卡);充值后检查通过会自动切回 COS,不用手动操作。卡片上大字写着现在走哪条线、为什么、几点切的,下面列最近几次切换;也可以手动「切回 COS」(先自动测一次)或「改回本机播放」。',
+    where: '管理端首页「音标视频播放线路」卡片',
+    roles: ['admin'],
+    route: '/admin',
+  },
+  {
     id: 'tutor-history-level-student-2026-10',
     date: '2026-10-27',
     title: '🦅 小鹰老师的对话能搜、能改名了,还会按你的年级讲',

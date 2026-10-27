@@ -46,6 +46,14 @@ class FakeCos:
         return {"x-cos-meta-mtime": self.objects[Key][1]}
 
 
+@pytest.fixture(autouse=True)
+def _no_real_cos_switch(monkeypatch, tmp_path):
+    """COS 线路开关文件指到临时目录(没有文件 = 照旧看 COS_REDIRECT),不读本机 private_media 里的真开关"""
+    monkeypatch.setattr(cos_video, "COS_SWITCH_FILE", tmp_path / "cos_sw" / "cos_switch.json")
+    monkeypatch.setattr(cos_video, "COS_CHECK_FILE", tmp_path / "cos_sw" / "cos_check.json")
+    monkeypatch.setattr(cos_video, "_cos_switch_cache", None)
+
+
 @pytest.fixture
 def fake_cos(monkeypatch):
     monkeypatch.setenv("COS_REDIRECT", "all")
@@ -377,3 +385,133 @@ async def test_guard_turns_off_after_two_failures_and_keeps_admin_changes(env, f
     assert await cos_video.cdn_guard_once(str(env["dir"]), 1) == 0
     sw = cos_video.read_cdn_switch()
     assert sw["enabled"] is True and sw["updated_by"] == "另一位管理员"
+
+
+# ---------- COS 线路开关 + 欠费自动切换(10-27: 腾讯云欠费,COS 回 451,视频全播不了) ----------
+
+async def test_cos_switch_file_overrides_env(client, env, fake_cos):
+    """开关文件在就听开关的;没有文件照旧看 COS_REDIRECT;文件坏了按关(本机串流永远能播)"""
+    cos_video.upload(os.path.join(env["dir"], "abc123.mp4"))
+    url = f"/api/v1/phonetics/videos/{env['v'].id}/stream"
+    tk = {"t": _ticket(env["stu"], env["v"].id)}
+    get = lambda: client.get(url, params=tk, headers={"Range": "bytes=0-9"}, follow_redirects=False)  # noqa: E731
+    assert (await get()).status_code == 302                        # 没有开关文件: COS_REDIRECT=all
+    cos_video.write_cos_switch(False, by="管理员")
+    assert (await get()).status_code == 206 and cos_video.redirect_mode() == "off"
+    cos_video.write_cos_switch(True, by="管理员")
+    assert (await get()).status_code == 302 and cos_video.redirect_mode() == "all"
+    cos_video.COS_SWITCH_FILE.write_text("{坏了", encoding="utf-8")
+    assert (await get()).status_code == 206
+
+
+async def test_probe_cos_names_arrears(env, fake_cos, monkeypatch):
+    p = env["dir"] / "abc123.mp4"
+    p.write_bytes(bytes(range(256)) * 8)
+    cos_video.upload(str(p))
+    real = httpx.AsyncClient
+
+    def install(handler):
+        def make(**kw):
+            kw.pop("trust_env", None)
+            return real(transport=httpx.MockTransport(handler), **kw)
+        monkeypatch.setattr(httpx, "AsyncClient", make)
+
+    def ok(req):
+        assert "/phonetics/abc123.mp4" in str(req.url) and "media.example" not in str(req.url)   # 走 COS 不走 CDN
+        lo, hi = map(int, req.headers["range"].split("=")[1].split("-"))
+        return httpx.Response(206, content=p.read_bytes()[lo:hi + 1])
+
+    install(ok)
+    good, msg = await cos_video.probe_cos(str(env["dir"]))
+    assert good, msg
+    arrears = ("<Error><Code>UnavailableForLegalReasons</Code><Message>Due to your account is arrears, "
+               "it is unavailable until you recharge.</Message></Error>")
+    install(lambda req: httpx.Response(451, text=arrears, headers={"server": "tencent-cos"}))
+    good, msg = await cos_video.probe_cos(str(env["dir"]))
+    assert not good and "欠费" in msg
+    install(lambda req: httpx.Response(403, text="AccessDenied"))
+    good, msg = await cos_video.probe_cos(str(env["dir"]))
+    assert not good and "403" in msg
+    install(lambda req: httpx.Response(206, content=b"\x09" * 1024))
+    good, msg = await cos_video.probe_cos(str(env["dir"]))
+    assert not good and "对不上" in msg
+
+
+async def test_cos_guard_auto_off_then_auto_back(env, fake_cos, monkeypatch):
+    """开着: 连续 2 次不通自动改回本机(写原因、记一条切换);系统自动关的: 连续 2 次通了自动切回 COS;
+    管理员手动关的不测也不自动开;没有开关文件(还在用 .env)不测"""
+    calls = []
+
+    async def probe(directory):
+        calls.append(1)
+        return probe.result
+    probe.result = (False, "腾讯云账号欠费,COS 停止服务了(充值后才能用)")
+    monkeypatch.setattr(cos_video, "probe_cos", probe)
+    d = str(env["dir"])
+
+    assert await cos_video.cos_guard_once(d) == (0, 0) and not calls           # 没有开关文件: 不测
+
+    cos_video.write_cos_switch(True, by="管理员")
+    f, o = await cos_video.cos_guard_once(d)
+    assert (f, o) == (1, 0) and cos_video.read_cos_switch()["enabled"] is True  # 一次不通先不关
+    f, o = await cos_video.cos_guard_once(d, f, o)
+    sw = cos_video.read_cos_switch()
+    assert sw["enabled"] is False and sw["auto"] and sw["updated_by"] == cos_video.COS_AUTO_BY and "欠费" in sw["reason"]
+    assert cos_video.read_cos_check()["ok"] is False
+
+    # 充值了: 第一次通先不开,第二次通了才自动切回
+    probe.result = (True, "COS 正常")
+    f, o = await cos_video.cos_guard_once(d, f, o)
+    assert (f, o) == (0, 1) and cos_video.read_cos_switch()["enabled"] is False
+    f, o = await cos_video.cos_guard_once(d, f, o)
+    sw = cos_video.read_cos_switch()
+    assert sw["enabled"] is True and sw["auto"] and "切回 COS" in sw["reason"]
+    assert [e["enabled"] for e in sw["events"]] == [True, False, True]
+
+    # 管理员手动改回本机: 不测、不自动开
+    cos_video.write_cos_switch(False, by="管理员", reason="管理员手动改回服务器本机播放")
+    n = len(calls)
+    assert await cos_video.cos_guard_once(d, 0, 1) == (0, 0) and len(calls) == n
+    assert cos_video.read_cos_switch()["enabled"] is False
+
+
+async def test_cos_guard_keeps_admin_change_during_probe(env, fake_cos, monkeypatch):
+    cos_video.write_cos_switch(True, by="管理员")
+
+    async def slow(directory):
+        import asyncio as _a
+        await _a.sleep(1.1)                  # updated_at 精确到秒
+        cos_video.write_cos_switch(True, by="另一位管理员")
+        return (False, "x")
+    monkeypatch.setattr(cos_video, "probe_cos", slow)
+    assert await cos_video.cos_guard_once(str(env["dir"]), 1, 0) == (0, 0)
+    sw = cos_video.read_cos_switch()
+    assert sw["enabled"] is True and sw["updated_by"] == "另一位管理员"
+
+
+async def test_cos_switch_endpoint(client, db_session, env, fake_cos, admin_headers, monkeypatch):
+    async def probe(directory):
+        return probe.result
+    probe.result = (False, "腾讯云账号欠费,COS 停止服务了(充值后才能用)")
+    monkeypatch.setattr(cos_video, "probe_cos", probe)
+    url = "/api/v1/admin/system/video-cos"
+    h = {"Authorization": f"Bearer {_make_token(env['tch'].id)}"}
+    assert (await client.put(url, json={"enabled": True}, headers=h)).status_code == 403
+    assert (await client.post(url + "/test", headers=h)).status_code == 403
+
+    # 测不过不让切过去,开关不动
+    r = await client.put(url, json={"enabled": False}, headers=admin_headers)
+    assert r.status_code == 200 and r.json()["cos"]["enabled"] is False and r.json()["cos"]["source"] == "file"
+    r = await client.put(url, json={"enabled": True}, headers=admin_headers)
+    assert r.status_code == 409 and "欠费" in r.json()["detail"]
+    assert cos_video.read_cos_switch()["enabled"] is False
+    # 测通了切回 COS,记操作记录
+    probe.result = (True, "COS 正常")
+    r = await client.put(url, json={"enabled": True}, headers=admin_headers)
+    assert r.status_code == 200 and r.json()["cos"]["enabled"] is True
+    assert r.json()["cos"]["events"][0]["enabled"] is True
+    rows = (await db_session.execute(sql_text(
+        "SELECT summary FROM operation_logs WHERE action='system.video_cos' ORDER BY id"))).scalars().all()
+    assert rows == ["音标视频改回服务器本机播放", "音标视频切回腾讯云 COS"]
+    st = (await client.get("/api/v1/admin/system/video-cdn", headers=admin_headers)).json()
+    assert st["cos"]["enabled"] is True and st["redirect_mode"] == "all"

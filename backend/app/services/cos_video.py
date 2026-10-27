@@ -24,6 +24,18 @@ CDN(2026-10-25 加): 管理端首页「音标视频加速」开关。开着 → 
 - 地址带 v=本机文件 mtime: CDN 缓存键含普通参数、不含鉴权参数 sign(10-25 实测),
   faststart / 重压换了文件 v 就变,不会拿到 CDN 缓存的旧文件拼新文件的片段
 - CDN_DOMAIN / CDN_AUTH_KEY 在 .env,Key 与 CDN 控制台「鉴权配置」的主 Key 一致
+
+COS 开关 + 欠费自动切换(2026-10-27,用户「有钱了切回 COS 要有个开关,还要有个切回 COS 的文字显示」):
+10-27 腾讯云账号欠费,COS 对每个视频回 451「account is arrears」,学生全都播不了(我们的 /stream 照常 302,
+坏在跳过去的那边)。现在:
+- 开关存文件 COS_SWITCH_FILE(多进程都看得到)。**文件在就以文件为准**;文件没有 = 照旧看 .env 的 COS_REDIRECT
+  (上线之前的老办法,测试和存量配置不受影响);文件坏了 = 关(本机串流永远能播)
+- 主进程线程 cos-guard 每 5 分钟用签名地址取一个视频开头 1KB(probe_cos):
+  开着 → 连续 2 次取不到就自动关(改回本机播放),写原因(欠费 / 403 / 404 / 连不上);
+  **系统自动关的**才会在连续 2 次取到之后自动开回去(充值后不用人管);管理员手动关的不自动开
+- 每次切换记一条 events(最近 20 条,管理端卡片显示「几点切回 COS 了 / 几点因为欠费改回本机」);
+  每次检查的结果另存 COS_CHECK_FILE(不和开关写同一个文件: 免得检查结果把管理员刚改的开关盖回去)
+- COS 关着时 CDN 开关不起作用(不跳转就不经过 CDN)
 """
 from __future__ import annotations
 
@@ -55,6 +67,10 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 CDN_SWITCH_FILE = BACKEND_DIR / "private_media" / "cos_video" / "cdn_switch.json"
 CDN_PROBE_BYTES = 1024
 _BJ = timezone(timedelta(hours=8))
+COS_SWITCH_FILE = BACKEND_DIR / "private_media" / "cos_video" / "cos_switch.json"
+COS_CHECK_FILE = BACKEND_DIR / "private_media" / "cos_video" / "cos_check.json"
+COS_AUTO_BY = "系统自动"
+COS_EVENTS_MAX = 20
 
 
 def _conf() -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -108,8 +124,12 @@ def enabled() -> bool:
 
 
 def redirect_enabled(video_id: Optional[int] = None) -> bool:
-    """播放要不要跳 COS。COS_REDIRECT=all 全部跳;=1,2,3 只跳这几节(先切一节验证用);不设/其它 = 都不跳。
+    """播放要不要跳 COS。开关文件在就听开关的(管理端「音标视频播放线路」/ 欠费自动切换);
+    没有开关文件才看 .env: COS_REDIRECT=all 全部跳;=1,2,3 只跳这几节(先切一节验证用);不设/其它 = 都不跳。
     不跳时照旧本机串流 —— 上线顺序: 先只同步不跳 → 挑一节试 → 再切全部,任何时候改回不跳就回到原样"""
+    sw = read_cos_switch()
+    if sw is not None:
+        return sw["enabled"]
     v = (os.environ.get("COS_REDIRECT") or _dotenv("COS_REDIRECT") or "").strip().lower()
     if v == "all":
         return True
@@ -120,8 +140,185 @@ def redirect_enabled(video_id: Optional[int] = None) -> bool:
 
 def redirect_mode() -> str:
     """给管理端看的: all = 全部跳 / some = 只跳几节 / off = 都不跳(此时 CDN 开关不起作用)"""
+    sw = read_cos_switch()
+    if sw is not None:
+        return "all" if sw["enabled"] else "off"
     v = (os.environ.get("COS_REDIRECT") or _dotenv("COS_REDIRECT") or "").strip().lower()
     return "all" if v == "all" else ("some" if v else "off")
+
+
+# ---------- COS 开关(10-27: 欠费时自动改回本机,充值后自动切回) ----------
+
+_cos_switch_cache: Optional[tuple[tuple, Optional[dict]]] = None
+
+
+def read_cos_switch() -> Optional[dict]:
+    """开关文件。没有文件 → None(调用方照旧看 .env);读不了 / 坏了 → {"enabled": False}(关 = 本机串流,永远能播)。
+    每次播放都会调: 按 (路径, mtime, 大小) 缓存,只多一次 stat"""
+    global _cos_switch_cache
+    path = COS_SWITCH_FILE
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return {"enabled": False, "events": []}
+    sig = (str(path), st.st_mtime_ns, st.st_size)
+    if _cos_switch_cache is not None and _cos_switch_cache[0] == sig:
+        return _cos_switch_cache[1]
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+    data["enabled"] = data.get("enabled") is True
+    if not isinstance(data.get("events"), list):
+        data["events"] = []
+    _cos_switch_cache = (sig, data)
+    return data
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def write_cos_switch(enabled: bool, by: Optional[str] = None, reason: Optional[str] = None,
+                     auto: bool = False) -> dict:
+    """auto=True: 系统自动切的(只有这种关法,系统才会在 COS 恢复后自动开回去)。每次切换记一条 events"""
+    old = read_cos_switch() or {"events": []}
+    now = datetime.now(_BJ).isoformat(timespec="seconds")
+    data = {"enabled": bool(enabled), "updated_at": now, "updated_by": by, "auto": bool(auto)}
+    if reason:
+        data["reason"] = reason
+    events = list(old.get("events") or [])
+    if old.get("enabled") is not bool(enabled) or not events:
+        events.append({"at": now, "enabled": bool(enabled), "by": by, "auto": bool(auto), "reason": reason})
+    data["events"] = events[-COS_EVENTS_MAX:]
+    _write_json(Path(COS_SWITCH_FILE), data)
+    return data
+
+
+def read_cos_check() -> Optional[dict]:
+    try:
+        d = json.loads(Path(COS_CHECK_FILE).read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _record_cos_check(ok: bool, message: str) -> None:
+    try:
+        _write_json(Path(COS_CHECK_FILE), {"at": datetime.now(_BJ).isoformat(timespec="seconds"),
+                                           "ok": ok, "message": message})
+    except OSError:
+        pass
+
+
+async def probe_cos(directory: str) -> tuple[bool, str]:
+    """按学生的方式取一次: 签 COS 地址(不走 CDN)→ 取开头 1KB → 必须 206 且与本机文件一致。
+    原因分开写: 欠费(451)/ 没权限(403)/ 没传上去(404)/ 连不上"""
+    import httpx
+
+    c = client()
+    if c is None:
+        return False, "服务器没配 COS(.env 里的 COS_BUCKET / COS_SECRET_ID 等)"
+    p = _pick_probe_file(directory)
+    if p is None:
+        return False, "服务器上还没有音标视频,没法测试"
+    try:
+        url = c.get_presigned_url(Bucket=_bucket, Key=key_for(p), Method="GET", Expired=300)
+        with open(p, "rb") as f:
+            head = f.read(CDN_PROBE_BYTES)
+        async with httpx.AsyncClient(timeout=10, trust_env=False, follow_redirects=False) as cli:
+            r = await cli.get(url, headers={"Range": f"bytes=0-{len(head) - 1}"})
+    except (httpx.HTTPError, OSError) as e:
+        return False, f"连不上腾讯云 COS: {type(e).__name__}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"签 COS 地址失败: {type(e).__name__}"
+    body = r.text[:600].lower() if r.status_code >= 400 else ""
+    if r.status_code == 451 or "arrears" in body:
+        return False, "腾讯云账号欠费,COS 停止服务了(充值后才能用)"
+    if r.status_code == 403:
+        return False, "COS 拒绝访问(403): 检查服务器 .env 里的 COS 密钥、子账号权限"
+    if r.status_code == 404:
+        return False, "COS 上没找到视频(404): 等后台同步把视频传上去"
+    if r.status_code != 206:
+        return False, f"COS 返回 {r.status_code},不是正常的分段回包(206)"
+    if r.content != head:
+        return False, "COS 上的视频和服务器上的文件对不上"
+    return True, "COS 正常: 取到了视频开头,和服务器上的文件一致"
+
+
+COS_GUARD_SEC = 300
+COS_GUARD_FAILS = 2      # 开着时连续 2 次取不到才关
+COS_GUARD_OKS = 2        # 系统自动关的,连续 2 次取到才开回去
+
+
+async def cos_guard_once(directory: str, fails: int = 0, oks: int = 0) -> tuple[int, int]:
+    """测一次,返回 (连续失败次数, 连续成功次数)。没有开关文件(还在用 .env 管)不测。
+    测的过程中管理员动过开关(updated_at 变了)就不覆盖 —— 以管理员这次操作为准"""
+    before = read_cos_switch()
+    if before is None:
+        return 0, 0
+    if not before["enabled"] and not (before.get("auto") and before.get("updated_by") == COS_AUTO_BY):
+        return 0, 0                       # 管理员手动关的: 不测、不自动开
+    try:
+        ok, msg = await probe_cos(directory)
+    except Exception as e:  # noqa: BLE001
+        ok, msg = False, f"检查出错: {type(e).__name__}"
+    _record_cos_check(ok, msg)
+    if before["enabled"]:
+        if ok:
+            return 0, 0
+        fails += 1
+        logger.warning("COS 自检不通(%s/%s): %s", fails, COS_GUARD_FAILS, msg)
+        if fails < COS_GUARD_FAILS:
+            return fails, 0
+        now = read_cos_switch() or {}
+        if now.get("updated_at") != before.get("updated_at") or not now.get("enabled"):
+            return 0, 0
+        write_cos_switch(False, by=COS_AUTO_BY, reason=msg, auto=True)
+        logger.warning("COS 连续 %s 次不通,已自动改回本机播放: %s", fails, msg)
+        return 0, 0
+    # 系统自动关的: 恢复了就开回去
+    if not ok:
+        return 0, 0
+    oks += 1
+    if oks < COS_GUARD_OKS:
+        return 0, oks
+    now = read_cos_switch() or {}
+    if now.get("updated_at") != before.get("updated_at") or now.get("enabled"):
+        return 0, 0
+    with _index_lock:
+        empty = not _index
+    if empty:
+        try:
+            refresh_index()       # 启动时 list 失败过的话清单是空的,不补的话开了也全走本机
+        except Exception as e:  # noqa: BLE001
+            logger.warning("COS 恢复后读清单失败: %s", e)
+    write_cos_switch(True, by=COS_AUTO_BY, reason="腾讯云 COS 恢复正常,系统已自动切回 COS", auto=True)
+    logger.warning("COS 恢复正常,已自动切回 COS")
+    return 0, 0
+
+
+def start_cos_guard(directory: str, every_sec: int = COS_GUARD_SEC) -> None:
+    """后台线程,跟 COS 同步线程一起只在主进程起"""
+    import asyncio
+
+    def _loop():
+        fails = oks = 0
+        while True:
+            time.sleep(every_sec)
+            try:
+                fails, oks = asyncio.run(cos_guard_once(directory, fails, oks))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("COS 自检出错: %s", e)
+
+    threading.Thread(target=_loop, name="cos-guard", daemon=True).start()
 
 
 # ---------- CDN ----------
@@ -339,6 +536,12 @@ def is_uploaded(local_path: str) -> bool:
     return got is not None and got[0] == st[0] and abs(got[1] - st[1]) < 1.0
 
 
+def is_uploaded_any(directory: str) -> bool:
+    """清单里有没有这个目录的视频(清单是空的 = 启动时 list 失败过,切回 COS 前要补读一次)"""
+    with _index_lock:
+        return bool(_index)
+
+
 def upload(local_path: str) -> bool:
     """传一个文件(大文件自动分块)。成功后记进清单。失败返回 False,不抛"""
     c = client()
@@ -436,3 +639,4 @@ def start_background_sync(directory: str, every_sec: int = 600) -> None:
 
     threading.Thread(target=_loop, name="cos-video-sync", daemon=True).start()
     start_cdn_guard(directory)
+    start_cos_guard(directory)

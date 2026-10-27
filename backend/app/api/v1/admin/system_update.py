@@ -167,10 +167,71 @@ def _video_cdn_state() -> dict:
         "cdn_domain": domain,
         "cdn_configured": bool(domain and key),
         "cos_configured": cos_video.enabled(),
-        # off = COS_REDIRECT 没开,视频全从服务器本机放,这个开关不起作用
+        # off = COS 跳转没开,视频全从服务器本机放,这个开关不起作用
         "redirect_mode": cos_video.redirect_mode(),
         "video_dir_exists": os.path.isdir(settings.PHONETIC_VIDEO_DIR),
+        "cos": _video_cos_state(),
     }
+
+
+def _video_cos_state() -> dict:
+    """COS 线路(10-27): 现在走不走 COS、谁 / 什么时候切的、为什么、最近一次自动检查、最近几次切换"""
+    from app.services import cos_video
+    sw = cos_video.read_cos_switch()
+    return {
+        # file = 管理端开关在管;env = 还没用过开关,照旧看 .env 的 COS_REDIRECT
+        "source": "file" if sw is not None else "env",
+        "enabled": cos_video.redirect_mode() == "all",
+        "updated_at": sw.get("updated_at") if sw else None,
+        "updated_by": sw.get("updated_by") if sw else None,
+        "auto": bool(sw and sw.get("auto")),
+        "reason": sw.get("reason") if sw else None,
+        "events": list(reversed((sw or {}).get("events") or []))[:5],
+        "last_check": cos_video.read_cos_check(),
+    }
+
+
+class VideoCosSwitchIn(BaseModel):
+    enabled: bool
+
+
+@router.post("/video-cos/test")
+async def test_video_cos(current_user: User = Depends(get_current_admin)):
+    """只测不改: 从服务器按学生的方式经 COS 取一段视频(欠费会写明「欠费」)"""
+    from app.core.config import settings
+    from app.services import cos_video
+    ok, message = await cos_video.probe_cos(settings.PHONETIC_VIDEO_DIR)
+    return {"ok": ok, "message": message}
+
+
+@router.put("/video-cos")
+async def set_video_cos(
+    body: VideoCosSwitchIn,
+    request: Request,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """切到 COS 前先实测(欠费 / 配错了切过去 = 全部视频播不了),测不过 409;改回本机不测,随时能改。
+    手动改回本机的,系统不会自动切回 COS(只有系统自动关的才会)"""
+    from app.core.config import settings
+    from app.services import audit_log, cos_video
+    message = None
+    if body.enabled:
+        ok, message = await cos_video.probe_cos(settings.PHONETIC_VIDEO_DIR)
+        if not ok:
+            raise HTTPException(status_code=409, detail=f"没切过去: {message}")
+        if not cos_video.is_uploaded_any(settings.PHONETIC_VIDEO_DIR):
+            cos_video.refresh_index()
+    before = cos_video.redirect_mode() == "all"
+    who = current_user.full_name or current_user.username
+    cos_video.write_cos_switch(body.enabled, by=who,
+                               reason=None if body.enabled else "管理员手动改回服务器本机播放")
+    if before != body.enabled:
+        audit_log.record(db, request, current_user, "system.video_cos",
+                         "音标视频切回腾讯云 COS" if body.enabled else "音标视频改回服务器本机播放",
+                         detail={"enabled": body.enabled, "probe": message})
+        await db.commit()
+    return {**_video_cdn_state(), "message": message}
 
 
 @router.get("/video-cdn")

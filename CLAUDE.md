@@ -602,7 +602,20 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   两个服务重启 → 视频改回本机串流;公网实测 3 节 206、真实学生请求 206。⚠️ **现在视频走服务器 12M 带宽**,人多会卡;
   用户充值后把 COS_REDIRECT 改回 all 再重启两个服务。排查顺序: 先看 nginx 里 /stream 是 302 还是 206,302 就是跳出去的那边坏了,
   从服务器 refresh_index() 后签一个地址带 Range 取一下看状态码(没有 refresh_index 时 signed_url 恒为 None,别误判)。
-  COS 本身没有 CDN 那样的自动退回(cdn-guard 只测 CDN),要加的话另做
+  **10-27 晚已做 COS 开关 + 欠费自动切换**(见下一段)
+  **10-27 COS 线路开关 + 欠费自动切换**(部署信息: COSSW_DEPLOY_PENDING)(用户「是不是要做个开关切换 COS,有钱了之后」→「切回 COS 了需要有个切换 COS 的文字显示」):
+  ①开关存文件 private_media/cos_video/cos_switch.json(多进程都看得到),**文件在就以文件为准**,没有文件照旧看 .env 的 COS_REDIRECT,
+  文件坏了按关(本机串流永远能播)。redirect_enabled / redirect_mode 都先看它
+  ②主进程线程 cos-guard 每 5 分钟 probe_cos: 签 COS 地址(不走 CDN)取开头 1KB,必须 206 且和本机一致;原因分开写
+  (451 / 正文含 arrears =「腾讯云账号欠费」、403、404、连不上)。**开着连续 2 次不通 → 自动改回本机**(auto=True,写原因);
+  **只有系统自动关的**,连续 2 次通了才自动切回 COS(清单空就先 refresh_index),管理员手动改回本机的不测不自动开;
+  测的过程中管理员动过开关不覆盖。没有开关文件(还在用 .env)不测。每次检查结果另存 cos_check.json(不和开关同一个文件)
+  ③每次切换记一条 events(最近 20 条);管理端「音标视频播放线路」卡片(components/admin/VideoCdnSwitch,原「音标视频加速」改名并入)
+  上面一块大字「现在: 走腾讯云 COS / 从服务器本机播放」+ 为什么 + 几点切的 + 最近一次自动检查 + 最近 5 次切换(「10/28 09:10 系统自动切回腾讯云 COS」),
+  按钮「测试 COS」「切回 COS」(先实测,欠费 409)/「改回本机播放」(确认框写明走 12M 带宽);下面一块 CDN,没走 COS 时写明不起作用。
+  接口 PUT /admin/system/video-cos、POST /admin/system/video-cos/test,GET /admin/system/video-cdn 多给 cos;操作记录 system.video_cos。
+  测试 tests/test_cos_video.py 加 5 例(20 例);开关文件不生效 / 坏文件按开 / 欠费不识别 / 一次不通就关 / 恢复后不自动开 / 手动关也自动开 /
+  覆盖管理员改动 / 切回不实测 八处逐一破坏各自恰好 1 例失败(回归锁验证过)。浏览器验过(1366 / 390): 欠费自动改回、自动切回、手动改回三种文案
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):

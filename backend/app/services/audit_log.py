@@ -43,6 +43,7 @@ ACTION_LABELS: dict[str, str] = {
     "parent.unbind": "解除家长绑定",
     "parent.reset_password": "重置家长密码",
     "system.video_cdn": "切换音标视频 CDN",
+    "system.video_cos": "切换音标视频 COS 线路",
     "system.tutor": "学习助手设置",
     "tutor.grant": "给学生加学习助手次数",
     "org.tutor_pool": "机构学习助手次数到账",
