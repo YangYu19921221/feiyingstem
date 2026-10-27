@@ -272,7 +272,11 @@ async def test_admin_remove_picture(client, db_session, images, shared_session):
     pid = r.json()["pic_id"]
     await _wait_tasks()
     assert (await client.delete(f"/api/v1/admin/tutor/pictures/{pid}", headers=_h(users["t"].id))).status_code == 403
+    listed = (await client.get("/api/v1/admin/tutor/pictures", headers=_h(users["a"].id))).json()["items"]
+    assert [p["pic_id"] for p in listed] == [pid]
     assert (await client.delete(f"/api/v1/admin/tutor/pictures/{pid}", headers=_h(users["a"].id))).status_code == 200
+    # 删掉的不再出现在「最近画的图」里
+    assert (await client.get("/api/v1/admin/tutor/pictures", headers=_h(users["a"].id))).json()["items"] == []
     r = await client.get(f"/api/v1/student/tutor/pictures/word/{w.id}", headers=_h(users["s2"].id))
     assert r.json()["exists"] is False
 

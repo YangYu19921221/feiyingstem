@@ -843,7 +843,9 @@ async def _save_picture(db: AsyncSession, body: TutorAdminIn) -> str:
 async def admin_pictures(db: AsyncSession = Depends(get_db), _admin: User = Depends(get_current_admin)):
     from app.models.tutor import WordPicture
 
-    rows = (await db.execute(select(WordPicture).order_by(WordPicture.id.desc()).limit(60))).scalars().all()
+    # 删掉的不列(用户 10-27「图片删除了占位图也不要了」);有人再点画,这一行回到 pending 又会出现
+    rows = (await db.execute(select(WordPicture).where(WordPicture.status != "removed")
+                             .order_by(WordPicture.id.desc()).limit(60))).scalars().all()
     return {"items": [{**wp.out(p), "model": p.model,
                        "created_at": p.created_at.isoformat() if p.created_at else None} for p in rows]}
 

@@ -101,7 +101,8 @@ export default function TutorAdminCard() {
     if (!window.confirm(`删掉「${p.word}」这张记忆图?下次有孩子点会重新画(扣那个孩子 1 次)。`)) return;
     try {
       await removeAdminPicture(p.pic_id);
-      setPics((all) => (all || []).map((x) => (x.pic_id === p.pic_id ? { ...x, status: 'removed', url: null } : x)));
+      // 删掉的直接从列表里拿掉,不留「已删」占位
+      setPics((all) => (all || []).filter((x) => x.pic_id !== p.pic_id));
     } catch (e) { setNote({ ok: false, text: errorText(e) }); }
   };
 
