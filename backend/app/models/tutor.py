@@ -144,3 +144,58 @@ class WordPicture(Base):
     finished_at = Column(DateTime, nullable=True)
     removed_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class TutorNote(Base):
+    """小鹰老师给每个孩子记的笔记(2026-10-27,用户「按你建议来」: 跨对话记住讲过什么、哪些还卡着,隔几天回头考)。
+    规则见 services/tutor_notes.py。
+
+    一条 = 一个知识点或一个单词(topic 归一后唯一)。stage 0 = 刚讲 / 刚错,答对一次升一级,
+    复习间隔 1 → 3 → 7 天,第 3 次答对算掌握;答错回到 0、明天再考。
+    只记学习内容,不记姓名学校"""
+    __tablename__ = "tutor_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    topic_key = Column(String(80), nullable=False)          # 归一后的 topic(去空白标点、小写),去重用
+    topic = Column(String(40), nullable=False)               # 显示用,如「一般现在时第三人称加 s」/ beautiful
+    kind = Column(String(10), nullable=False, default="point", server_default="point")   # point 知识点 / word 单词
+    detail = Column(String(120), nullable=True)              # 卡在哪(「常忘 does 后面动词还原」)
+    stage = Column(Integer, nullable=False, default=0, server_default="0")
+    mastered = Column(Boolean, nullable=False, default=False, server_default="0")
+    due_date = Column(String(10), nullable=True)             # 北京日 YYYY-MM-DD(字符串比较,不碰 datetime 微秒格式坑)
+    times_right = Column(Integer, nullable=False, default=0, server_default="0")
+    times_wrong = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("uq_tutor_note_topic", "user_id", "topic_key", unique=True),
+        Index("ix_tutor_note_due", "user_id", "mastered", "due_date"),
+    )
+
+
+class TutorQuiz(Base):
+    """小鹰老师在聊天里出的一组练习(2026-10-27)。规则见 services/tutor_quiz.py。
+
+    **答案只存在这里,不下发**: 消息里存的卡片(cards)是去掉答案的,孩子交了以后服务器判分,
+    结果和正确答案才回给前端,再把结果发给小鹰老师点评。
+    不进学习记录 / 掌握度(聊天里随手练,算进去会变成刷分入口),但会记进小鹰老师的笔记(tutor_notes)"""
+    __tablename__ = "tutor_quizzes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    conversation_id = Column(Integer, nullable=True)
+    topic = Column(String(40), nullable=True)            # 语法题考的知识点(记笔记用);单词卡为空,按单词记
+    items = Column(JSON, nullable=False)                 # 含答案
+    answers = Column(JSON, nullable=True)                # 孩子第一次交的
+    results = Column(JSON, nullable=True)                # 第一次交的判分结果
+    score = Column(Integer, nullable=True)
+    total = Column(Integer, nullable=False, default=0, server_default="0")
+    submitted_at = Column(DateTime, nullable=True)
+    feedback_at = Column(DateTime, nullable=True)        # 结果已经发给小鹰老师点评了(一份练习只点评一次)
+    # 点评这份练习不扣次数。点评那一轮里又出的练习为 False(不然「做题 → 免费点评 → 又出题」能一直白用)
+    free_feedback = Column(Boolean, nullable=False, default=True, server_default="1")
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (Index("ix_tutor_quiz_user", "user_id", "id"),)

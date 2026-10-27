@@ -6,15 +6,19 @@
  * 图是 4:5: 上面是画,下面服务器印好了单词、音标、中文(画图模型拼不准单词,所以不让它写)。
  */
 import { memo, useEffect, useState } from 'react';
-import { ImageOff, Paintbrush, X } from 'lucide-react';
+import { ImageOff, Paintbrush, Volume2, X } from 'lucide-react';
+import { useAudio } from '../../hooks/useAudio';
 import { getPicture, type PictureStatus } from '../../api/tutor';
 
 const POLL_MS = 3000;
 const MAX_POLL = 60; // 最多问 3 分钟(后端 5 分钟没画完算卡住)
 
-function PictureCard({ picId, word, status: initStatus, url: initUrl }: {
-  picId: number; word: string; status: PictureStatus; url: string | null;
+function PictureCard({ picId, word, wordId, status: initStatus, url: initUrl }: {
+  picId: number; word: string; wordId?: number; status: PictureStatus; url: string | null;
 }) {
+  const { playAudio } = useAudio();
+  // 图下面印着单词: 点「听」读这个词(同一个 Edge TTS 英式女声;有 word_id 时按 id 读,区分一词多音)
+  const say = () => { void playAudio(word, 1, wordId); };
   const [status, setStatus] = useState<PictureStatus>(initStatus);
   const [url, setUrl] = useState<string | null>(initUrl);
   const [secs, setSecs] = useState(0);
@@ -48,12 +52,22 @@ function PictureCard({ picId, word, status: initStatus, url: initUrl }: {
           <img src={url} alt={`${word} 的记忆图`} className="tutor-in aspect-[4/5] w-48 object-contain sm:w-56" loading="lazy" />
           <span className="block border-t border-orange-50 px-3 py-1.5 text-left text-xs text-orange-700">点一下放大</span>
         </button>
+        <button type="button" onClick={say}
+          className="mt-1.5 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-sky-700 ring-1 ring-sky-200 hover:bg-sky-50"
+          aria-label={`听 ${word} 的发音`}>
+          <Volume2 className="h-4 w-4" aria-hidden="true" /> 听 {word}
+        </button>
         {big && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={() => setBig(false)} role="dialog" aria-label={`${word} 的记忆图`}>
             <button type="button" onClick={() => setBig(false)} className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-ink" aria-label="关闭">
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
-            <img src={url} alt={`${word} 的记忆图`} className="max-h-[85vh] max-w-full rounded-2xl bg-white" />
+            <img src={url} alt={`${word} 的记忆图`} className="max-h-[78vh] max-w-full rounded-2xl bg-white" onClick={(e) => e.stopPropagation()} />
+            <button type="button" onClick={(e) => { e.stopPropagation(); say(); }}
+              className="absolute bottom-6 left-1/2 inline-flex min-h-12 -translate-x-1/2 items-center gap-2 rounded-full bg-white px-5 text-base font-semibold text-sky-700 shadow-lg"
+              aria-label={`听 ${word} 的发音`}>
+              <Volume2 className="h-5 w-5" aria-hidden="true" /> 听 {word}
+            </button>
           </div>
         )}
       </>

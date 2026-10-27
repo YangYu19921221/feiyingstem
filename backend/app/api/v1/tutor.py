@@ -32,7 +32,7 @@ import asyncio
 import contextlib
 import json
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -205,8 +205,28 @@ async def conversation_detail(cid: int, db: AsyncSession = Depends(get_db),
     msgs = (await db.execute(
         select(TutorMessage).where(TutorMessage.conversation_id == c.id).order_by(TutorMessage.id)
     )).scalars().all()
-    return {"id": c.id, "title": c.title or "新对话", "messages": await _with_pictures(db, [_msg_out(m) for m in msgs]),
-            "followup": await tt.followup_state(db, c.id)}
+    from app.services import tutor_quiz
+    out = await tutor_quiz.attach(db, await _with_pictures(db, [_msg_out(m) for m in msgs]))
+    return {"id": c.id, "title": c.title or "新对话", "messages": out, "followup": await tt.followup_state(db, c.id)}
+
+
+class QuizSubmitIn(BaseModel):
+    answers: list[Optional[Union[int, str]]] = Field(default_factory=list, max_length=10)
+
+
+@student_router.post("/tutor/quizzes/{quiz_id}/submit")
+async def submit_quiz(quiz_id: int, body: QuizSubmitIn, db: AsyncSession = Depends(get_db),
+                      student: User = Depends(get_current_student)):
+    """交聊天里的练习: 服务器判分(答案不下发),第一次交的记进小鹰老师的笔记;
+    feedback=True 时前端接着用 quiz_id 问一句,让小鹰老师点评(services/tutor_quiz)"""
+    from app.services import tutor_quiz
+
+    await check_rate(str(student.id), "tutor_quiz", [(60, 20)])
+    answers = [a if isinstance(a, int) and not isinstance(a, bool) else str(a or "")[:200] for a in body.answers]
+    try:
+        return await tutor_quiz.submit(db, student.id, quiz_id, answers)
+    except tutor_quiz.QuizNotFound:
+        raise HTTPException(404, "没有这份练习")
 
 
 async def _with_pictures(db: AsyncSession, msgs: list[dict]) -> list[dict]:
@@ -229,8 +249,14 @@ async def _mark_refunded(db: AsyncSession, um_id: int) -> None:
     await db.commit()
 
 
+async def _release_feedback(db: AsyncSession, quiz_id: int) -> None:
+    from app.services import tutor_quiz
+    await tutor_quiz.release_feedback(db, quiz_id)
+
+
 async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: int, conf: tt.RelayConf,
-                      system: list[dict], messages: list[dict], title: Optional[str], mode: str, cost: int) -> None:
+                      system: list[dict], messages: list[dict], title: Optional[str], mode: str, cost: int,
+                      ctx: Optional[dict] = None, feedback_quiz_id: Optional[int] = None) -> None:
     """在后台任务里跑模型、写库。孩子关了页面也跑完(回答落库,老师看得到)"""
     async def emit(ev: dict):
         await queue.put(ev)
@@ -241,7 +267,7 @@ async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: i
     try:
         async with session_factory() as db:
             user = await db.get(User, user_id)
-            turn = await tt.answer(db, user, conf, system, messages, emit, mode=mode, should_stop=should_stop)
+            turn = await tt.answer(db, user, conf, system, messages, emit, mode=mode, should_stop=should_stop, ctx=ctx)
             text = tt.plain(turn.text.strip())
             failed = bool(turn.error) and not text
             # 停下时一个字没出 = 孩子什么都没拿到,和没调通一样退回
@@ -266,6 +292,8 @@ async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: i
                 await _mark_refunded(db, um_id)
                 if cost:
                     await tt.refund(db, user_id, cost)
+                if feedback_quiz_id:
+                    await _release_feedback(db, feedback_quiz_id)
             if failed:
                 await queue.put({"type": "error", "message": BUSY_MSG, "refunded": True})
             else:
@@ -278,6 +306,8 @@ async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: i
                 await _mark_refunded(db2, um_id)
                 if cost:
                     await tt.refund(db2, user_id, cost)
+                if feedback_quiz_id:
+                    await _release_feedback(db2, feedback_quiz_id)
         await queue.put({"type": "error", "message": BUSY_MSG, "refunded": True})
     finally:
         with contextlib.suppress(Exception):
@@ -291,6 +321,7 @@ async def ask(
     conversation_id: Optional[int] = Form(None),
     mode: str = Form("fast"),
     image: Optional[UploadFile] = File(None),
+    quiz_id: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db),
     student: User = Depends(get_current_student),
 ):
@@ -319,6 +350,18 @@ async def ask(
             img = await asyncio.to_thread(tt.prepare_image, raw)
         except Exception:  # noqa: BLE001
             raise HTTPException(400, "这张照片打不开,换一张试试")
+    # 做完聊天里的练习、请小鹰老师点评(services/tutor_quiz): 题目和对错由服务器从库里拼,不信前端传的
+    from app.services import tutor_quiz
+    fq = None
+    if quiz_id:
+        fq = await db.get(tutor_quiz.TutorQuiz, quiz_id)
+        if fq is None or fq.user_id != student.id or fq.submitted_at is None:
+            raise HTTPException(404, "没有这份练习")
+        if fq.feedback_at is not None:
+            raise HTTPException(409, "这份练习已经讲过了")
+        mode, img = "fast", None
+        text = tutor_quiz.feedback_display(fq)
+        conversation_id = fq.conversation_id or conversation_id
     if not text and img is None:
         raise HTTPException(400, "先写下你想问的")
 
@@ -326,13 +369,25 @@ async def ask(
     if conversation_id:
         conv = await _own_conversation(db, student, conversation_id)
 
-    # 同一道题的追问(快速回答、没有新照片)不另算,见 services/tutor 文件头「收费」
-    if conv is not None and mode == "fast" and img is None and await tt.followup_state(db, conv.id):
+    stored_cost = None
+    if fq is not None and fq.free_feedback:
+        # 做完练习后的点评不扣次数,也不占「同一道题追问」那 3 次(用户 10-27)
+        cost, stored_cost = 0, tt.COST_FEEDBACK
+    elif conv is not None and mode == "fast" and img is None and await tt.followup_state(db, conv.id):
+        # 同一道题的追问(快速回答、没有新照片)不另算,见 services/tutor 文件头「收费」
         cost = 0
 
     # 限速(防连点 / 脚本)在前,次数在后: 被限速的那一下不该扣次数
     await check_rate(str(student.id), "tutor", [(60, 6), (3600, 60)])
+    if fq is not None:
+        # 一份练习只点评一次: 条件 UPDATE 认领,两个请求同时到只有一个拿到
+        fq = await tutor_quiz.claim_feedback(db, student.id, fq.id)
+        await db.commit()
+        if fq is None:
+            raise HTTPException(409, "这份练习已经讲过了")
     if cost and not await tt.consume(db, student.id, cost, settings["free_total"]):
+        if fq is not None:
+            await tutor_quiz.release_feedback(db, fq.id)
         left = (await tt.allowance_status(db, student.id, settings))["left"]
         if mode == "deep" and left > 0:
             raise HTTPException(429, f"深度思考一次算 {cost} 次,你还剩 {left} 次,先用快速回答吧")
@@ -348,7 +403,8 @@ async def ask(
         if not conv.title:
             title = tt.make_title(text, img is not None)
         um = TutorMessage(conversation_id=conv.id, user_id=student.id, role="user",
-                          text=text, has_image=img is not None, mode=mode, cost=cost)
+                          text=text, has_image=img is not None, mode=mode,
+                          cost=stored_cost if stored_cost is not None else cost)
         db.add(um)
         conv.message_count = (conv.message_count or 0) + 1
         conv.updated_at = utc_now()
@@ -361,18 +417,22 @@ async def ask(
         await db.rollback()
         if cost:
             await tt.refund(db, student.id, cost)
+        if fq is not None:
+            await tutor_quiz.release_feedback(db, fq.id)
         raise
 
     content: list[dict] = []
     if img is not None:
         content.append({"type": "image", "source": {"type": "base64", "media_type": img[1], "data": img[0]}})
-    content.append({"type": "text", "text": text or "帮我看看这道题"})
+    content.append({"type": "text", "text": tutor_quiz.feedback_prompt(fq) if fq is not None else (text or "帮我看看这道题")})
     messages = history + [{"role": "user", "content": content}]
     system = tt.build_system(context, mode)
     left = (await tt.allowance_status(db, student.id, settings))["left"]
 
     queue: asyncio.Queue = asyncio.Queue()
-    task = asyncio.create_task(_run_answer(queue, student.id, conv_id, um_id, conf, system, messages, title, mode, cost))
+    ctx = {"conversation_id": conv_id, "is_feedback": fq is not None and bool(fq.free_feedback)}
+    task = asyncio.create_task(_run_answer(queue, student.id, conv_id, um_id, conf, system, messages, title, mode, cost,
+                                           ctx, fq.id if fq is not None else None))
     _running.add(task)
     task.add_done_callback(_running.discard)
 
@@ -520,8 +580,9 @@ async def student_tutor_log(student_id: int, limit: int = Query(20, ge=1, le=50)
         student = await db.get(User, student_id)
         if student is not None:
             profile = await profile_lines(db, student)
+    from app.services import tutor_quiz
     for c in convs:
-        by_conv[c.id] = await _with_pictures(db, by_conv[c.id])
+        by_conv[c.id] = await tutor_quiz.attach(db, await _with_pictures(db, by_conv[c.id]), teacher=True)
     return {"total_questions": int(total), "profile": profile,
             "items": [{"id": c.id, "title": c.title or "新对话",
                        "updated_at": c.updated_at.isoformat() if c.updated_at else None,

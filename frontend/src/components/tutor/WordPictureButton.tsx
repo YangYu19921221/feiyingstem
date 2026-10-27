@@ -44,7 +44,7 @@ function WordPictureButton({ wordId, word }: { wordId: number; word: string }) {
     }
   };
 
-  if (pic) return <PictureCard picId={pic.pic_id} word={word} status={pic.status} url={pic.url} />;
+  if (pic) return <PictureCard picId={pic.pic_id} word={word} wordId={wordId} status={pic.status} url={pic.url} />;
   if (asked && !asked.exists) {
     if (!asked.enabled) return <p className="mt-2 text-xs text-gray-400">这个词还没有记忆图</p>;
     return (

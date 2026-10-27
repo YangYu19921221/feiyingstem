@@ -24,7 +24,8 @@ import {
   type TutorCard, type TutorConversationItem, type TutorFollowup, type TutorMode, type TutorStatus,
 } from '../api/tutor';
 import PictureCard from '../components/tutor/PictureCard';
-import PracticeCard from '../components/tutor/PracticeCard';
+import PracticeCard, { type QuizSubmitted } from '../components/tutor/PracticeCard';
+import QuizCard from '../components/tutor/QuizCard';
 import SpeakableText from '../components/tutor/SpeakableText';
 import TutorWaiting, { TutorAvatar, type WaitKind } from '../components/tutor/TutorWaiting';
 import { compressImage } from '../utils/compressImage';
@@ -46,7 +47,7 @@ interface ChatMsg {
   /** 这次刚发 / 刚收到的(从下面浮上来);翻出来的历史记录不做动画,不然一屏一起动 */
   fresh?: boolean;
   /** 没调通时「再问一次」要用的原话 */
-  retry?: { text: string; image: Img | null; mode: TutorMode; userKey: string };
+  retry?: { text: string; image: Img | null; mode: TutorMode; userKey: string; quizId?: number };
 }
 
 /** 回答下面的快捷回复: 孩子卡住时点一下就行,不用自己想怎么说(追问不另算) */
@@ -218,7 +219,7 @@ export default function StudentTutor() {
     else stopWantedRef.current = true;
   };
 
-  const send = async (opts?: { text?: string; image?: Img | null; mode?: TutorMode; replace?: string[] }) => {
+  const send = async (opts?: { text?: string; image?: Img | null; mode?: TutorMode; replace?: string[]; quizId?: number }) => {
     // 没传 opts = 从输入框发的;传了 = 点建议 / 再问一次(不动输入框里正在写的字)
     const fromInput = !opts;
     const text = (fromInput ? input : opts.text ?? '').trim();
@@ -259,7 +260,7 @@ export default function StudentTutor() {
     const session = sessionRef.current;
     const live = () => sessionRef.current === session;
     try {
-      await askTutor({ text, conversationId: convId, image: img?.blob, mode: useMode }, (ev) => {
+      await askTutor({ text, conversationId: convId, image: img?.blob, mode: useMode, quizId: opts?.quizId }, (ev) => {
         if (!live()) {
           // 已经开了新对话: 这次回答不要了,拿到提问 id 就让服务端停下(一个字没出的退回次数)
           if (ev.type === 'meta') stopTutor(ev.user_message_id).catch(() => ctrl.abort());
@@ -294,7 +295,7 @@ export default function StudentTutor() {
         } else if (ev.type === 'error') {
           patchBot((m) => ({
             ...m, failed: !m.text, text: m.text || ev.message,
-            retry: !m.text ? { text, image: img, mode: useMode, userKey: userMsg.key } : undefined,
+            retry: !m.text ? { text, image: img, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId } : undefined,
           }));
           if (ev.refunded) setStatus((s) => (s ? { ...s, left: s.left + cost, used: Math.max(0, s.used - cost) } : s));
         }
@@ -327,6 +328,21 @@ export default function StudentTutor() {
         sendingRef.current = false;
       }
     }
+  };
+
+  /** 孩子交了聊天里的练习: 服务器已经判完分,接着请小鹰老师点评。
+   * 点评不扣次数(或还在免费追问时间里)才自动发;要扣次数的不替孩子花,他想听再自己问 */
+  const onQuizSubmitted = (r: QuizSubmitted) => {
+    if (!r.feedback) return;
+    if (!r.free && followLeft <= 0) {
+      toast.success(`对了 ${r.score} / ${r.total}。想听小鹰老师讲讲,就在下面问一句`);
+      return;
+    }
+    if (sendingRef.current) {
+      toast.success(`对了 ${r.score} / ${r.total}。等这次回答完,点「再问一次」让小鹰老师讲讲`);
+      return;
+    }
+    void send({ text: `我做完了,对了 ${r.score}/${r.total}`, image: null, mode: 'fast', quizId: r.quizId });
   };
 
   const onPickImage = async (file: File | undefined) => {
@@ -546,7 +562,7 @@ export default function StudentTutor() {
               );
             }
             const live = m.key === liveKey;
-            const wide = m.cards.some((c) => c.type === 'practice'); // 练习卡要地方放输入框,撑满
+            const wide = m.cards.some((c) => c.type === 'practice' || c.type === 'quiz'); // 练习卡要地方放输入框,撑满
             const waiting = !m.text && !m.stopped && !m.failed;
             const w = waitView(m);
             return (
@@ -575,9 +591,13 @@ export default function StudentTutor() {
                     {live && m.text && (toolStatus || stopping) && <TutorWaiting kind={w.kind} label={w.label} compact />}
                     {m.cards.map((c, i) => (
                       c.type === 'practice' ? (
-                        <PracticeCard key={i} mode={c.mode} items={c.items} />
+                        <PracticeCard key={`q${c.quiz_id ?? i}`} mode={c.mode} items={c.items} quizId={c.quiz_id}
+                          result={c.result} onSubmitted={onQuizSubmitted} />
+                      ) : c.type === 'quiz' ? (
+                        <QuizCard key={`q${c.quiz_id}`} quizId={c.quiz_id} topic={c.topic} items={c.items}
+                          result={c.result} onSubmitted={onQuizSubmitted} />
                       ) : c.type === 'picture' ? (
-                        <PictureCard key={`p${c.pic_id}`} picId={c.pic_id} word={c.word} status={c.status} url={c.url} />
+                        <PictureCard key={`p${c.pic_id}`} picId={c.pic_id} word={c.word} wordId={c.word_id} status={c.status} url={c.url} />
                       ) : (
                         <button
                           key={i}
@@ -595,7 +615,7 @@ export default function StudentTutor() {
                         type="button"
                         onClick={() => {
                           const r = m.retry!;
-                          void send({ text: r.text, image: r.image, mode: r.mode, replace: [m.key, r.userKey] });
+                          void send({ text: r.text, image: r.image, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId });
                         }}
                         className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
                       >

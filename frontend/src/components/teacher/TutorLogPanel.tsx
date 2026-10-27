@@ -77,11 +77,18 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
                           [画了记忆图: {m.cards.flatMap((x) => (x.type === 'picture' ? [x.word] : [])).join('、')}]
                         </span>
                       )}
-                      {m.cards.some((x) => x.type === 'practice') && (
-                        <span className="mt-1 block text-xs text-slate-400">
-                          [出了练习: {m.cards.flatMap((x) => (x.type === 'practice' ? x.items.map((i) => i.word) : [])).join('、')}]
-                        </span>
-                      )}
+                      {m.cards.map((x, ci) => {
+                        if (x.type !== 'practice' && x.type !== 'quiz') return null;
+                        // 老师看的带答案(key);旧卡(10-27 之前)单词在 items 里
+                        const words = x.key ?? (x.type === 'practice' ? x.items.flatMap((i) => (i.word ? [i.word] : [])) : []);
+                        return (
+                          <span key={ci} className="mt-1 block text-xs text-slate-400">
+                            [{x.type === 'quiz' ? `出了 ${x.items.length} 道小题${x.topic ? `(${x.topic})` : ''}` : '出了单词练习'}
+                            {words.length ? `: ${words.join('、')}` : ''}
+                            {x.result ? ` · 孩子做对 ${x.result.score}/${x.result.total}` : ' · 还没做'}]
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

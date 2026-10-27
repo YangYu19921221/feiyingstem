@@ -335,13 +335,16 @@ async def test_tool_loop_uses_own_data_and_saves_card(client, db_session, relay,
     ctx = json.dumps(fake.requests[0]["system"][1], ensure_ascii=False)
     assert "apple" in ctx and "secretword" not in ctx
     card = next(e["card"] for e in events if e["type"] == "card")
-    assert card["mode"] == "listen" and [i["word"] for i in card["items"]] == ["apple"]
+    # 答案只在服务器: 卡片上没有拼写(听发音靠 word_id),交了才判(services/tutor_quiz)
+    assert card["mode"] == "listen" and card["quiz_id"] and len(card["items"]) == 1
+    assert "word" not in card["items"][0] and "apple" not in json.dumps(card)
+    apple_id = card["items"][0]["word_id"]
     # 刷新后卡片还在
     cid = events[0]["conversation_id"]
     r = await client.get(f"/api/v1/student/tutor/conversations/{cid}", headers=_h(users["s"].id))
     msgs = r.json()["messages"]
     assert [m["role"] for m in msgs] == ["user", "assistant"]
-    assert msgs[1]["cards"][0]["items"][0]["word"] == "apple"
+    assert msgs[1]["cards"][0]["items"][0]["word_id"] == apple_id and "apple" not in json.dumps(msgs[1]["cards"])
     assert (await db_session.execute(select(TutorMessage.tools).where(TutorMessage.role == "assistant"))).scalar() \
         == "get_weak_words,make_practice"
     # 别的孩子看不到这段对话

@@ -529,7 +529,8 @@ async def tool_draw(db: AsyncSession, user: User, word: str, idea: str) -> tuple
         res = await request(db, user, w, meaning, idea)
     except PictureRefused as e:
         return {"ok": False, "reason": str(e)}, None
-    card = {"type": "picture", "pic_id": res["pic_id"], "word": w, "status": res["status"], "url": res["url"]}
+    wid = (await db.execute(select(Word.id).where(func.lower(Word.word) == w.lower()).order_by(Word.id).limit(1))).scalar()
+    card = {"type": "picture", "pic_id": res["pic_id"], "word": w, "word_id": wid, "status": res["status"], "url": res["url"]}
     if res["status"] == "ready":
         note = "这张图已经显示在回答下面了(以前画过,这次没用次数)。回答里接着讲记忆方法,别描述图里每个细节"
     else:

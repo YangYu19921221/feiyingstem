@@ -217,6 +217,11 @@ async def _today_lines(db: AsyncSession, user: User) -> list[str]:
     rv = await daily_review.status(db, user.id, create=False)
     if rv.get("started") and rv["total"]:
         lines.append(f"- 今天的每日复习: {rv['total']} 个,做了 {rv['done']} 个")
+    # 小鹰老师自己的笔记(services/tutor_notes): 每次现算,孩子刚做完练习就问要是新的
+    from app.services import tutor_notes
+    note = await tutor_notes.profile_line(db, user.id)
+    if note:
+        lines.append(note)
     return lines
 
 
@@ -246,10 +251,15 @@ async def profile_lines(db: AsyncSession, user: User, *, use_cache: bool = True)
 
 
 def render(lines: list[str]) -> str:
+    """超长时从前面的慢变部分砍,**最后一行(小鹰老师的笔记 / 今天的任务)一定留着**"""
     body = "\n".join(lines)
-    if len(body) > MAX_LEN:
-        body = body[:MAX_LEN].rsplit("\n", 1)[0]
-    return body
+    if len(body) <= MAX_LEN:
+        return body
+    keep = [ln for ln in lines if ln.startswith("- 小鹰老师的笔记") or ln.startswith("- 今天")]
+    rest = [ln for ln in lines if ln not in keep]
+    budget = MAX_LEN - len("\n".join(keep)) - 1
+    head = "\n".join(rest)[:max(0, budget)].rsplit("\n", 1)[0] if budget > 0 else ""
+    return "\n".join([x for x in (head, "\n".join(keep)) if x])
 
 
 async def my_progress(db: AsyncSession, user: User) -> dict:

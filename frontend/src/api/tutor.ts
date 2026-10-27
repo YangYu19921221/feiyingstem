@@ -8,12 +8,32 @@ import client from './client';
 import { API_BASE_URL } from '../config/env';
 import { onUnauthorized } from './_authInterceptors';
 
-export interface PracticeItem { word: string; meaning: string | null; phonetic: string | null }
+/** 单词练习卡的一个词: 不带拼写和音标(答案只在服务器),听发音按 word_id 取;letters = 几个字母。
+ * 10-27 之前出的旧卡没有 quiz_id,带 word(网页当场判) */
+export interface PracticeItem { word_id?: number; meaning: string | null; letters?: number; word?: string; phonetic?: string | null }
+/** 语法 / 句子小题(services/tutor_quiz): 发下来的没有答案 */
+export type QuizItem =
+  | { type: 'choice'; question: string; options: string[] }
+  | { type: 'fill'; question: string }
+  | { type: 'order'; question: string; tokens: string[] };
+export interface QuizItemResult { ok: boolean; your: string; answer: string; explain?: string | null }
+/** 交过的练习(刷新对话后带着第一次的作答和结果) */
+export interface QuizResult {
+  answers: Array<string | number | null>;
+  results: QuizItemResult[];
+  score: number;
+  total: number;
+  /** 已经让小鹰老师点评过 */
+  feedback_done: boolean;
+  /** 点评这份不扣次数 */
+  free: boolean;
+}
 export type TutorCard =
-  | { type: 'practice'; mode: 'listen' | 'meaning'; items: PracticeItem[] }
+  | { type: 'practice'; mode: 'listen' | 'meaning'; items: PracticeItem[]; quiz_id?: number; result?: QuizResult; key?: string[] }
+  | { type: 'quiz'; quiz_id: number; topic: string | null; items: QuizItem[]; result?: QuizResult; key?: string[] }
   | { type: 'link'; target: 'review' | 'homework' | 'mistakes'; label: string; route: string }
   /** 单词记忆图(services/word_picture): status 是画图那一刻的,前端按 pic_id 轮询拿最新的 */
-  | { type: 'picture'; pic_id: number; word: string; status: PictureStatus; url: string | null };
+  | { type: 'picture'; pic_id: number; word: string; word_id?: number; status: PictureStatus; url: string | null };
 
 export type PictureStatus = 'pending' | 'ready' | 'failed' | 'removed';
 export interface WordPictureOut {
@@ -85,6 +105,11 @@ export const requestWordPicture = (wordId: number) =>
   client.post<WordPictureOut & { charged: number }>('/student/tutor/pictures', { word_id: wordId });
 export const getPicture = (picId: number) => client.get<WordPictureOut>(`/student/tutor/pictures/${picId}`);
 
+/** 交聊天里的练习: 服务器判分。feedback=true 时接着带 quiz_id 问一句,请小鹰老师点评(不扣次数) */
+export const submitQuiz = (quizId: number, answers: Array<string | number | null>) =>
+  client.post<{ quiz_id: number; results: QuizItemResult[]; score: number; total: number; first: boolean; feedback: boolean; free: boolean }>(
+    `/student/tutor/quizzes/${quizId}/submit`, { answers });
+
 export const stopTutor = (userMessageId: number) =>
   client.post<{ ok: boolean }>('/student/tutor/stop', { user_message_id: userMessageId });
 
@@ -108,7 +133,7 @@ export class TutorAskError extends Error {
 
 /** 提问。onEvent 每收到一个事件调一次;请求被拒(403/429/400)抛 TutorAskError */
 export async function askTutor(
-  params: { text: string; conversationId?: number | null; image?: Blob | null; mode?: TutorMode },
+  params: { text: string; conversationId?: number | null; image?: Blob | null; mode?: TutorMode; quizId?: number },
   onEvent: (ev: TutorEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -117,6 +142,7 @@ export async function askTutor(
   form.append('mode', params.mode || 'fast');
   if (params.conversationId) form.append('conversation_id', String(params.conversationId));
   if (params.image) form.append('image', params.image, 'question.jpg');
+  if (params.quizId) form.append('quiz_id', String(params.quizId));
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API_BASE_URL}/student/tutor/ask`, {
     method: 'POST',
