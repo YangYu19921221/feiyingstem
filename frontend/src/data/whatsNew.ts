@@ -28,6 +28,16 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'tutor-entry-home-student-2026-10',
+    date: '2026-10-27',
+    title: '🦅 小鹰老师搬到首页最显眼的地方了',
+    desc: '不会的题、记不住的词,随时问小鹰老师。首页上面就有一个输入框,点下面的问题能直接问(先帮你填好,你点发送才算次数);手机底部也多了一个「问老师」。学习工具里每个工具也换上了自己的图,一眼就认得出。',
+    where: '首页上方「问小鹰老师」卡片;手机底部导航中间的「问老师」',
+    roles: ['student'],
+    route: '/student/tutor',
+    gate: 'tutor',
+  },
+  {
     id: 'tutor-picture-student-2026-10',
     date: '2026-10-27',
     title: '🖼️ 难记的词,让小鹰老师画张记忆图',

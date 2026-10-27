@@ -14,8 +14,9 @@ import { getMyAchievements, type Achievement } from '../api/achievements';
 import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../api/homework';
 import { formatOpenDay } from '../utils/openDay';
 import { getTodayReport, type TodayReportData } from '../api/todayReport';
-import { getTutorStatus } from '../api/tutor';
+import { getTutorStatus, type TutorStatus } from '../api/tutor';
 import TodayReportDialog from '../components/report/TodayReportDialog';
+import TutorEntryCard from '../components/tutor/TutorEntryCard';
 import CoachNoteCard from '../components/coach/CoachNoteCard';
 import { toast } from '../components/Toast';
 import PetWidget from '../components/PetWidget';
@@ -93,9 +94,9 @@ const StudentDashboard = () => {
   // 今日学习报告:今天布置的任务全部完成后,首页出一张卡,点开生成发给家长的图
   const [todayReport, setTodayReport] = useState<TodayReportData | null>(null);
   // 学习助手只在开放给本校时才放入口(试用期只开直营;没开放的学校点进去只会看到「暂时用不了」)
-  const [tutorOn, setTutorOn] = useState(false);
+  const [tutorStatus, setTutorStatus] = useState<TutorStatus | null>(null);
   useEffect(() => {
-    getTutorStatus().then((s) => setTutorOn(s.enabled)).catch(() => setTutorOn(false));
+    getTutorStatus().then(setTutorStatus).catch(() => setTutorStatus(null));
   }, []);
   const [showTodayReport, setShowTodayReport] = useState(false);
   const closeTodayReport = useCallback(() => setShowTodayReport(false), []);
@@ -409,19 +410,21 @@ const StudentDashboard = () => {
     return anyInProgress ? 'studying' : 'idle';
   }, [reviewDueCount, ownedBooks]);
 
+  // 每张卡一张自己的图(public/tools/,脚本 backend/scripts/gen_student_tool_art.py):
+  // 原来十张卡只有 6 张图,听写 / 句子 / 小鹰老师共用一张发光大脑,扫一眼分不出哪个是哪个。
+  // 「问小鹰老师」不在这里: 它在 Hero 下面有自己的大卡片(TutorEntryCard)。
   const quickTools = [
     // 前 4 个默认可见(见下面 slice(0,4)),线上课要让孩子一眼看到,放第一个
-    { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/dashboard-banner.jpeg' },
-    ...(tutorOn ? [{ title: '问小鹰老师', desc: '单词、语法、拍题问思路', route: '/student/tutor', image: '/hero-memory.jpeg' }] : []),
-    { title: '纸笔听写', desc: '纸上手写，拍照 AI 批改', route: '/student/handwriting', image: '/hero-memory.jpeg' },
-    { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/hero-memory.jpeg' },
-    { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/dashboard-banner.jpeg' },
-    { title: '光荣榜', desc: '看看本周学习进展', route: '/student/leaderboard', image: '/result-champion.jpeg' },
-    { title: '阅读理解', desc: '通过短篇阅读积累语感', route: '/student/reading', image: '/hero-reading.jpeg' },
-    { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', image: '/hero-competition.jpeg', metric: onlineUsers, metricLabel: '在线' },
-    { title: '我的成就', desc: '查看已解锁徽章', route: '/student/achievements', image: '/fx-achievement.jpeg' },
-    { title: '学习数据', desc: '查看学习趋势和掌握情况', route: '/student/analytics', image: '/hero-exam-result.jpeg' },
-    { title: 'PK 竞技场', desc: '和同班同学实时对战', route: '/pk/lobby', image: '/hero-challenge.jpeg' },
+    { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/tools/live.jpg' },
+    { title: '纸笔听写', desc: '纸上手写，拍照 AI 批改', route: '/student/handwriting', image: '/tools/handwriting.jpg' },
+    { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/tools/sentences.jpg' },
+    { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/tools/join_class.jpg' },
+    { title: '光荣榜', desc: '看看本周学习进展', route: '/student/leaderboard', image: '/tools/leaderboard.jpg' },
+    { title: '阅读理解', desc: '通过短篇阅读积累语感', route: '/student/reading', image: '/tools/reading.jpg' },
+    { title: '竞赛模式', desc: '实时 PK', route: '/student/competition', image: '/tools/competition.jpg', metric: onlineUsers, metricLabel: '在线' },
+    { title: '我的成就', desc: '查看已解锁徽章', route: '/student/achievements', image: '/tools/achievements.jpg' },
+    { title: '学习数据', desc: '查看学习趋势和掌握情况', route: '/student/analytics', image: '/tools/analytics.jpg' },
+    { title: 'PK 竞技场', desc: '和同班同学实时对战', route: '/pk/lobby', image: '/tools/pk.jpg' },
   ];
   const visibleQuickTools = showAllQuickTools ? quickTools : quickTools.slice(0, 4);
 
@@ -624,6 +627,9 @@ const StudentDashboard = () => {
 
         {/* 老师的话(陪跑点评):最近 3 天老师留了才出现 */}
         <CoachNoteCard />
+
+        {/* 问小鹰老师: 紧跟今天要做的事,孩子卡住时第一眼就能找到;本校没开放不显示 */}
+        {tutorStatus?.enabled && <TutorEntryCard status={tutorStatus} />}
 
         {/* 今日学习报告:今天布置的任务全部完成才出现,点开生成发给家长的图 */}
         {todayReport?.all_done && (
