@@ -173,6 +173,7 @@ async def speech_loop() -> None:
     from app.models.sentence import Sentence
     from app.models.sentence_speech import SentenceSpeech
     from app.services import read_aloud
+    from app.services import tutor_history
     # 音标视频同步到腾讯云 COS(2026-10-25,见 services/cos_video): 后台线程,没配 COS 什么都不做。
     # 挂在这里而不是 main.py 的 lifespan: 生产 main.py 与仓库有 drift,少碰一次
     try:
@@ -190,6 +191,8 @@ async def speech_loop() -> None:
                 raise
             except Exception as e:
                 logger.error("跟读录音到期删除出错: %s", e)
+            # 学习助手对话到期清理(services/tutor_history,出错只记日志)
+            await tutor_history.purge_quietly()
             await asyncio.sleep(3600)
     # 开口背与例句跟读(2026-10-24)共用这一个进程池和调度循环;两张表的 id 各自独立,在飞集合按 (来源, id) 记
     inflight: set[tuple[str, int]] = set()
@@ -222,6 +225,7 @@ async def speech_loop() -> None:
                 n = await read_aloud.purge_expired()
                 if n:
                     logger.info("跟读录音到期删除 %s 条", n)
+                await tutor_history.purge_quietly()
         except asyncio.CancelledError:
             raise
         except Exception as e:

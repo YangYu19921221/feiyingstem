@@ -25,6 +25,10 @@ class TutorConversation(Base):
     message_count = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now())
+    # 对话记录(2026-10-27,services/tutor_history): 收藏的不会到期自动删;
+    # deleted_at = 孩子删了(孩子那边看不到,老师 30 天内还看得到,之后真删)
+    starred = Column(Boolean, nullable=False, default=False, server_default="0")
+    deleted_at = Column(DateTime, nullable=True)
 
     __table_args__ = (Index("ix_tutor_conv_user", "user_id", "updated_at"),)
 
@@ -199,3 +203,16 @@ class TutorQuiz(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (Index("ix_tutor_quiz_user", "user_id", "id"),)
+
+
+class TutorPref(Base):
+    """小鹰老师按什么讲(2026-10-27,规则见 services/tutor_level.py)。没有这一行 = 年级按书推断、讲解方式自动。
+    grade / pace 都可以由孩子自己设,也可以由本班老师替他设(*_by 记是谁设的);后设的为准"""
+    __tablename__ = "tutor_prefs"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    grade = Column(String(10), nullable=True)        # 一年级…高三;NULL = 按在学的书推断
+    grade_by = Column(String(10), nullable=True)     # student / teacher
+    pace = Column(Integer, nullable=True)            # -1 讲简单一点 / 0 正常 / 1 讲深一点;NULL = 自动
+    pace_by = Column(String(10), nullable=True)
+    updated_at = Column(DateTime, server_default=func.now())

@@ -188,7 +188,14 @@ export interface TeacherTutorLog {
   total_questions: number;
   /** 助手看到的这个孩子的学情摘要(一行一条);没问过为 null */
   profile: string[] | null;
-  items: Array<{ id: number; title: string; updated_at: string | null; messages: TutorMessage[] }>;
+  items: Array<{
+    id: number; title: string; updated_at: string | null; messages: TutorMessage[];
+    /** 孩子删了(老师 30 天内还看得到,services/tutor_history) */
+    deleted?: boolean;
+    starred?: boolean;
+  }>;
+  /** 小鹰老师按什么讲这个孩子(services/tutor_level) */
+  prefs?: import('./tutorHistory').TutorLevel | null;
 }
 export const getStudentTutorLog = (studentId: number) =>
   client.get<TeacherTutorLog>(`/teacher/students/${studentId}/tutor`);

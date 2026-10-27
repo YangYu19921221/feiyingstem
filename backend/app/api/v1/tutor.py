@@ -182,18 +182,89 @@ async def tutor_stop(body: StopIn, db: AsyncSession = Depends(get_db), student: 
 
 
 @student_router.get("/tutor/conversations")
-async def my_conversations(db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
-    rows = (await db.execute(
-        select(TutorConversation).where(TutorConversation.user_id == student.id)
-        .order_by(TutorConversation.updated_at.desc(), TutorConversation.id.desc()).limit(30)
-    )).scalars().all()
-    return {"items": [{"id": c.id, "title": c.title or "新对话", "message_count": c.message_count,
-                       "updated_at": c.updated_at.isoformat() if c.updated_at else None} for c in rows]}
+async def my_conversations(q: Optional[str] = Query(None, max_length=100), offset: int = Query(0, ge=0, le=10000),
+                           limit: int = Query(30, ge=1, le=50),
+                           db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
+    """我的对话: 收藏的在前,其余按最后一次提问倒序;q 搜标题和内容。分组 / 保留天数见 services/tutor_history"""
+    from app.services import tutor_history
+
+    return await tutor_history.list_page(db, student.id, q, offset, limit)
+
+
+class ConversationPatchIn(BaseModel):
+    # 只改传了的字段(显式分支): 只点收藏时不带 title,不能把标题清掉
+    title: Optional[str] = Field(None, max_length=100)
+    starred: Optional[bool] = None
+
+
+@student_router.patch("/tutor/conversations/{cid}")
+async def patch_conversation(cid: int, body: ConversationPatchIn, db: AsyncSession = Depends(get_db),
+                             student: User = Depends(get_current_student)):
+    """改标题 / 收藏。不动 updated_at(改个名不该把对话挪到「今天」那组)"""
+    from app.services import tutor_history
+
+    await check_rate(str(student.id), "tutor_conv_edit", [(60, 30)])
+    c = await _own_conversation(db, student, cid)
+    sent = body.model_fields_set
+    if "title" in sent:
+        title = tutor_history.clean_title(body.title)
+        if not title:
+            raise HTTPException(400, "标题不能是空的")
+        c.title = title
+    if "starred" in sent and body.starred is not None:
+        c.starred = bool(body.starred)
+    await db.commit()
+    return tutor_history.item_out(c)
+
+
+@student_router.delete("/tutor/conversations/{cid}")
+async def delete_conversation(cid: int, db: AsyncSession = Depends(get_db),
+                              student: User = Depends(get_current_student)):
+    """孩子删对话: 孩子这边马上看不到;老师 30 天内还看得到,之后到期真删(services/tutor_history)"""
+    from app.services import tutor_history
+
+    await check_rate(str(student.id), "tutor_conv_edit", [(60, 30)])
+    c = await _own_conversation(db, student, cid)
+    c.deleted_at = utc_now()
+    await db.commit()
+    return {"ok": True, "deleted_keep_days": tutor_history.DELETED_KEEP_DAYS}
+
+
+class TutorPrefsIn(BaseModel):
+    # 只改传了的字段(显式分支): grade 传 null / 空串 = 改回按书推断;pace 传 auto = 改回自动
+    grade: Optional[str] = Field(None, max_length=10)
+    pace: Optional[str] = Field(None, pattern="^(auto|simple|normal|deep)$")
+
+
+async def _save_prefs(db: AsyncSession, user: User, body: TutorPrefsIn, by: str) -> dict:
+    from app.services import tutor_level
+
+    try:
+        await tutor_level.save_prefs(db, user.id, {k: getattr(body, k) for k in body.model_fields_set}, by)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return await tutor_level.level_info(db, user)
+
+
+@student_router.get("/tutor/prefs")
+async def my_tutor_prefs(db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
+    """小鹰老师现在按什么讲: 年级(设的 / 按书推断)和讲解方式(自动 / 选的),规则见 services/tutor_level"""
+    from app.services import tutor_level
+
+    return await tutor_level.level_info(db, student)
+
+
+@student_router.put("/tutor/prefs")
+async def set_my_tutor_prefs(body: TutorPrefsIn, db: AsyncSession = Depends(get_db),
+                             student: User = Depends(get_current_student)):
+    await check_rate(str(student.id), "tutor_prefs", [(60, 20)])
+    return await _save_prefs(db, student, body, "student")
 
 
 async def _own_conversation(db: AsyncSession, student: User, cid: int) -> TutorConversation:
     c = await db.get(TutorConversation, cid)
-    if c is None or c.user_id != student.id:
+    # 孩子删掉的对话当作没有: 打不开、不能接着问、不能再改
+    if c is None or c.user_id != student.id or c.deleted_at is not None:
         raise HTTPException(404, "没有这段对话")
     return c
 
@@ -587,7 +658,28 @@ async def student_tutor_log(student_id: int, limit: int = Query(20, ge=1, le=50)
     return {"total_questions": int(total), "profile": profile,
             "items": [{"id": c.id, "title": c.title or "新对话",
                        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-                       "messages": by_conv[c.id]} for c in convs]}
+                       # 孩子删掉的老师 30 天内还看得到(services/tutor_history),标出来
+                       "deleted": c.deleted_at is not None, "starred": bool(c.starred),
+                       "messages": by_conv[c.id]} for c in convs],
+            "prefs": await _level_or_none(db, student_id)}
+
+
+async def _level_or_none(db: AsyncSession, student_id: int) -> Optional[dict]:
+    from app.services import tutor_level
+
+    student = await db.get(User, student_id)
+    return await tutor_level.level_info(db, student) if student is not None else None
+
+
+@teacher_router.put("/students/{student_id}/tutor-prefs")
+async def set_student_tutor_prefs(student_id: int, body: TutorPrefsIn, db: AsyncSession = Depends(get_db),
+                                  teacher: User = Depends(get_current_teacher)):
+    """老师替本班学生设年级 / 讲解方式(学生也能自己改,后设的为准)"""
+    await assert_student_in_my_class(db, teacher.id, student_id)
+    student = await db.get(User, student_id)
+    if student is None:
+        raise HTTPException(404, "没有这个学生")
+    return await _save_prefs(db, student, body, "teacher")
 
 
 # ---------------------------------------------------------------- 管理端

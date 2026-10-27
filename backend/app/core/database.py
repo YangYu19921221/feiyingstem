@@ -549,6 +549,9 @@ async def init_db():
             # 学习助手分快速 / 深度思考(2026-10-26): NULL = 加这列之前的,都是快速
             "ALTER TABLE tutor_messages ADD COLUMN mode VARCHAR(10)",
             "ALTER TABLE tutor_messages ADD COLUMN cost INTEGER",
+            # 学习助手对话记录(2026-10-27): 收藏 / 孩子删了(services/tutor_history)
+            "ALTER TABLE tutor_conversations ADD COLUMN starred BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE tutor_conversations ADD COLUMN deleted_at DATETIME",
         ]:
             try:
                 await conn.execute(text(_sql))

@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, MessageCircle } from 'lucide-react';
 import { getStudentTutorLog, type TeacherTutorLog } from '../../api/tutor';
+import TutorLevelControl from '../tutor/TutorLevelControl';
 
 const fmt = (iso: string | null) =>
   iso ? new Date(iso + 'Z').toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
@@ -39,6 +40,7 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
       </div>
       <p className="mb-4 text-xs leading-5 text-slate-500">
         孩子和 AI 学习助手的对话。助手对作业、考试题先给提示,孩子试过两次还不会才讲答案和理由并出同类题;孩子拍的照片不保存。
+        孩子删掉的对话你这里还能看 30 天;没收藏的对话 180 天没再问会自动清理。
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {data?.profile && data.profile.length > 0 && (
@@ -48,6 +50,11 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
             {data.profile.map((l, i) => <li key={i}>{l.replace(/^-\s*/, '· ')}</li>)}
           </ul>
         </details>
+      )}
+      {data?.prefs && (
+        <div className="mb-3">
+          <TutorLevelControl studentId={studentId} initial={data.prefs} />
+        </div>
       )}
       <ul className="divide-y divide-slate-100">
         {(data?.items || []).map((c) => (
@@ -59,6 +66,7 @@ export default function TutorLogPanel({ studentId }: { studentId: number }) {
               className="flex w-full items-center gap-2 py-1.5 text-left"
             >
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{c.title}</span>
+              {c.deleted && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">孩子删了</span>}
               <span className="shrink-0 text-xs text-slate-400">{fmt(c.updated_at)} · {c.messages.filter((m) => m.role === 'user').length} 问</span>
               <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open === c.id ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>

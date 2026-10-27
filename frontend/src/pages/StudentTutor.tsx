@@ -20,14 +20,15 @@ import { ArrowDown, ArrowLeft, Brain, Camera, History, Loader2, Plus, RotateCcw,
 import useGoBack from '../hooks/useGoBack';
 import { useAudio } from '../hooks/useAudio';
 import {
-  askTutor, getConversation, getTutorStatus, listConversations, requestMoreTutor, stopTutor, TutorAskError,
-  type TutorCard, type TutorConversationItem, type TutorFollowup, type TutorMode, type TutorStatus,
+  askTutor, getConversation, getTutorStatus, requestMoreTutor, stopTutor, TutorAskError,
+  type TutorCard, type TutorFollowup, type TutorMode, type TutorStatus,
 } from '../api/tutor';
 import PictureCard from '../components/tutor/PictureCard';
 import PracticeCard, { type QuizSubmitted } from '../components/tutor/PracticeCard';
 import QuizCard from '../components/tutor/QuizCard';
 import SpeakableText from '../components/tutor/SpeakableText';
 import TutorWaiting, { TutorAvatar, type WaitKind } from '../components/tutor/TutorWaiting';
+import TutorHistoryDrawer from '../components/tutor/TutorHistoryDrawer';
 import { compressImage } from '../utils/compressImage';
 import { getErrorMessage } from '../utils/errorMessage';
 import { toast } from '../components/Toast';
@@ -51,7 +52,7 @@ interface ChatMsg {
 }
 
 /** 回答下面的快捷回复: 孩子卡住时点一下就行,不用自己想怎么说(追问不另算) */
-const QUICK_REPLIES = ['给我一点提示', '还是不会,讲给我听', '再出一道类似的题'];
+const QUICK_REPLIES = ['给我一点提示', '还是不会,讲给我听', '讲简单一点', '再出一道类似的题'];
 
 const SUGGESTIONS = [
   '今天老师布置了什么,我做完了吗?',
@@ -99,7 +100,7 @@ export default function StudentTutor() {
   const [sendStart, setSendStart] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [history, setHistory] = useState<TutorConversationItem[] | null>(null);
+  const [levelOpen, setLevelOpen] = useState(false);
   const [asking, setAsking] = useState(false);
   const [followup, setFollowup] = useState<TutorFollowup>(null);
 
@@ -387,15 +388,10 @@ export default function StudentTutor() {
     }
   };
 
-  const openHistory = async () => {
-    setHistoryOpen(true);
-    try {
-      setHistory((await listConversations()).items);
-    } catch (e) {
-      toast.error(getErrorMessage(e, '加载记录失败'));
-      setHistory([]);
-    }
-  };
+  const openHistory = () => { setLevelOpen(false); setHistoryOpen(true); };
+  // 欢迎卡「按你的年级讲」: 打开抽屉并直接展开讲解方式(services/tutor_level)
+  const openLevel = () => { setLevelOpen(true); setHistoryOpen(true); };
+  const closeHistory = useCallback(() => setHistoryOpen(false), []);
 
   /** 回答还在写就要换对话: 让这次回答停下,界面上的「正在回答」状态全部清掉。
    * 以前这两个按钮在回答时是灰的、点了没反应(用户 10-27「右上角的加号点击没有反应」) */
@@ -434,6 +430,15 @@ export default function StudentTutor() {
     } catch (e) {
       toast.error(getErrorMessage(e, '加载失败'));
     }
+  };
+
+  const resetToEmpty = () => {
+    detachAnswer();
+    setConvId(null);
+    setMessages([]);
+    setFollowup(null);
+    setAwayFromEnd(false);
+    nearBottom.current = true;
   };
 
   const newConversation = () => {
@@ -536,6 +541,13 @@ export default function StudentTutor() {
                 你一共可以问 {status.total} 次,现在还剩 {status.left} 次;同一道题接着追问,{status.followup_minutes} 分钟内最多 {status.followup_free} 次不另算。
                 {status.deep_enabled && ` 难的题可以选「深度思考」,想得更透,一次算 ${deepCost} 次。`}
               </p>
+              <button
+                type="button"
+                onClick={openLevel}
+                className="mt-2 inline-flex min-h-10 items-center text-left text-sm font-medium text-sky-700 underline-offset-2 hover:underline"
+              >
+                我会按你的年级讲,觉得太难或太简单都能改 →
+              </button>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {[...SUGGESTIONS, status.picture_enabled ? SUGGESTION_PICTURE : SUGGESTION_GRAMMAR].map((s) => (
                   <button
@@ -804,43 +816,15 @@ export default function StudentTutor() {
         </div>
       </div>
 
-      {historyOpen && (
-        <div className="fixed inset-0 z-[70] flex justify-end bg-black/30" onClick={() => setHistoryOpen(false)}>
-          <div className="h-full w-full max-w-sm overflow-y-auto bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="以前的对话">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-ink">以前的对话</h2>
-              <button type="button" onClick={() => setHistoryOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-lg text-ink-soft hover:bg-black/5" aria-label="关闭">
-                <X className="h-5 w-5" aria-hidden="true" />
-              </button>
-            </div>
-            <button type="button" onClick={newConversation} className="mb-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-xl bg-orange-500 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              <Plus className="h-4 w-4" aria-hidden="true" /> 新对话
-            </button>
-            {history === null ? (
-              <p className="text-sm text-ink-mute">加载中…</p>
-            ) : history.length === 0 ? (
-              <p className="text-sm text-ink-mute">还没有问过问题</p>
-            ) : (
-              <ul className="space-y-1">
-                {history.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => { void loadConversation(c.id); }}
-                      className={`w-full rounded-xl px-3 py-2.5 text-left hover:bg-orange-50 ${c.id === convId ? 'bg-orange-50' : ''}`}
-                    >
-                      <p className="truncate text-sm text-ink">{c.title}</p>
-                      <p className="text-xs text-ink-mute">
-                        {c.updated_at ? new Date(c.updated_at + 'Z').toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
+      <TutorHistoryDrawer
+        open={historyOpen}
+        currentId={convId}
+        onClose={closeHistory}
+        onPick={(id) => { void loadConversation(id); }}
+        onNew={newConversation}
+        onDeletedCurrent={resetToEmpty}
+        levelOpen={levelOpen}
+      />
     </div>
   );
 }
