@@ -619,6 +619,15 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   接口 PUT /admin/system/video-cos、POST /admin/system/video-cos/test,GET /admin/system/video-cdn 多给 cos;操作记录 system.video_cos。
   测试 tests/test_cos_video.py 加 5 例(20 例);开关文件不生效 / 坏文件按开 / 欠费不识别 / 一次不通就关 / 恢复后不自动开 / 手动关也自动开 /
   覆盖管理员改动 / 切回不实测 八处逐一破坏各自恰好 1 例失败(回归锁验证过)。浏览器验过(1366 / 390): 欠费自动改回、自动切回、手动改回三种文案
+  **10-27 忙的时候才走 COS**(部署信息: SMART_DEPLOY_PENDING)(用户「不卡的时候就不用 COS,卡的时候如果 COS 有余额就切到 COS,没余额就不切」):
+  开关文件多两个字段 route(smart 默认 / always)+ busy_mbps(默认 6 = 12M 的一半);切开关不改它们,改线路不动开关和切换记录。
+  smart 时 redirect_enabled = 开关开着 **且** 服务器忙 **且** 最近一次 COS 自动检查没失败(刚欠费、还没连续两次自动关时也不切)。
+  「忙」= 公网网卡(eth*/ens*,不算 docker 的 br-/veth)出网 30 秒平均 ≥ busy_mbps,**看整台机器**(背单词 / PK 人多也算忙,
+  把视频挪走别的才不卡);进忙立刻进,出忙要满 10 分钟且连续 3 分钟低于六成(next_load_state 纯函数);主进程线程 net-load
+  每 5 秒读 /proc/net/dev 写 private_media/cos_video/net_load.json,超过 60 秒没更新 = 测不到 → 按忙算(宁可多花几毛钱不让孩子卡)。
+  接口 PUT /admin/system/video-cos/route;GET video-cdn 的 cos 多给 route / busy_mbps / calm_mbps / load / now_route。
+  卡片「什么时候走 COS」: 两个选项、阈值可改、「服务器现在出网 X Mbps · 忙,学生看视频走 COS」、最近几次忙闲切换。
+  测试加 5 例(25 例);smart 一直跳 / 欠费也切 / 测不到按不忙 / 出忙不等 10 分钟 / 中途冒高不清零 / 切开关丢线路 / 忽略上次检查 七处各让对应用例失败
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):
