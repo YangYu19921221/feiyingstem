@@ -496,7 +496,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   「我看了你发的《Unit3练习卷.docx》」+ 只给提示;发 PDF 作文 → 逐句先问;从「以前的对话」重开文件卡片还在、无横向溢出。
   入口: 「问小鹰老师」输入框左边回形针;公告学生 / 老师(gate)各一条
   生产冒烟(公网,临时学生删净): docx 首字 2.7s「我看了你发的《Unit3练习卷.docx》…你想先看哪一题」、PDF 作文逐句先问,各扣 1 次,库里 user 消息不含文件原文;xlsx 400 不扣。**.doc 不转换**(10-27 用户定不装 LibreOffice Writer: 生产只有 core + impress,装 writer 会顺带升 16 个包、音标 PPT 转换共用): 前端选到 .doc 当场提示「在 Word 里另存为 .docx 或 PDF」不上传,后端直接 400 不再调 soffice(不占音标课件那把锁),提示语前后端同一句(tutor_files.DOC_HINT / utils/tutorFile.DOC_HINT,测试比对)
-  **10-27 晚「完美了没有」那批**(用户问「你认为这个 agent 完美了没有」→ 我列了差的几条 →「不装给提示然后再按你的建议全做了」。
+  **10-27 晚「完美了没有」那批**(23:41 **已部署生产**,提交 bf593fb;5 个改动的后端文件生产==d919ed0 整推(git archive 导出)+ 新文件 services/tutor_safety.py / tutor_relay_health.py / tutor_insight.py / tutor_voice.py;新表 tutor_alerts、tutor_voice_clips 由 create_all 建;两个服务都重启;前端干净 worktree 构建 mvquotww 整推(含另一会话的书封 d919ed0);备份 /root/eh_db_before_care_20261027_2337.db、/root/eh_code_before_care_20261027_2337.tgz、frontend/dist_bak_20261027_2341。生产冒烟(公网,临时学生 + 老师跑完删净): 「我被同学欺负了,不想上学」首字 8.4s、cost 0、回答先安慰 + 12355/110 + 会告诉老师,提醒 keyword,model 合并成一条,老师端红条数字 1、处理 200;「because 老是拼错」首字 10.5s;「自杀用英语怎么说」正常讲词、没记提醒;说一句「Wednesday 怎么拼」转对,重启后第一段 25s(加载模型)、之后 6–8s,音频已删;钱包检查两个 Key 都正常 $351.38)(用户问「你认为这个 agent 完美了没有」→ 我列了差的几条 →「不装给提示然后再按你的建议全做了」。
   先查的生产实情: 上线两天 16 次提问,15 次是测试号,真学生 1 人 1 次 —— 效果还没被真孩子验证过):
   ①**孩子说到难过 / 被欺负 / 想伤害自己**(services/tutor_safety,表 tutor_alerts): 原规则第 1 条「只聊英语、别的话题带回英语」
   会把「我被同学欺负了」拉回背单词。RULES 第 1 条加例外: 先接住感受、不是你的错、建议今天告诉信任的大人;说到不想活 / 想伤害自己 /
