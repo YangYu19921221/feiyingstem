@@ -94,7 +94,9 @@ export default function TeacherTutorQuota() {
 
       <main className="teacher-workspace-main mx-auto max-w-5xl space-y-5">
         <section className="rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3 text-sm leading-6 text-orange-900">
-          <p>每个学生一共送 <b>{meta.free_total} 次</b>,不按天清零;「深度思考」一次算 {meta.deep_cost} 次。</p>
+          {meta.free_total > 0
+            ? <p>每个学生一共送 <b>{meta.free_total} 次</b>,不按天清零;「深度思考」一次算 {meta.deep_cost} 次。</p>
+            : <p>本机构的学生没有送的次数: 孩子能问几次,看你从本机构的次数里给他加几次。「深度思考」一次算 {meta.deep_cost} 次。</p>}
           <p>同一道题接着追问(15 分钟内,用快速回答)最多 3 次不另算,孩子答不上来时可以放心多问几句。</p>
           <p>次数用完的孩子点了「请老师加次数」会排在最前面。加多少你来定,一次最多 {TUTOR_GRANT_MAX} 次;孩子问了什么在学生详情页「问小鹰老师」里看得到。</p>
           {pool && <p>孩子兑换学习卡(入门卡除外)时,每张卡自动带 {meta.card_times} 次,不用你加。</p>}

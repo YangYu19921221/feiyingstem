@@ -31,6 +31,11 @@ ai_service._get_ai_config 也排除它。主模型 model_name,备用 extra_confi
 - 机构次数池: 加盟机构向平台按次进货(POOL_PRICE 元/次,POOL_MIN_BUY 次起),平台在机构管理页给机构加;
   机构老师给本机构学生加次数时从池里扣,扣不出来 409 —— 不然老师「加次数」就是免费送平台的模型费。
   **直营(org 1)不走池子**(平台自己的,老师照旧随便加)
+- 10-27 用户「总管理端可以给别的机构发学习助手次数」→ 选了: 老师分给学生 / **这些机构的学生不送免费次数,只用机构的** /
+  进货和赠送分开记。所以: free_for() 直营送 free_total;**卡包政策机构照样送 free_total**(签了的合同第三条第 10 款写着
+  「每个学生账号赠送 20 次」,不能悄悄改);其它加盟机构(老政策)0,学生能问几次全看老师从池里分的(学习卡带的 50 次照样在 extra 里);
+  平台给机构发过次数(进货或赠送,池子 total > 0)的机构**自动开通**,不受「只开直营」限制(开关为「关闭」时照样全关);
+  池子到账记录 source = purchase(收了钱,按 POOL_PRICE 记金额)/ gift(平台赠送,不记金额、不受起订量)/ adjust(扣回)
 - 一道题的追问不另算(followup_state): 同一段对话里,付过次数的那次提问之后 FOLLOWUP_MINUTES 分钟内、
   用快速回答、没有新照片的追问,最多 FOLLOWUP_FREE 次不扣次数。这是「孩子一直答不上来」的另一半:
   提示词里规定先提示、再提示、还不会就讲答案和理由并出一道同类题(RULES 第 3 条),每一步都要孩子再说一句,
@@ -286,14 +291,41 @@ def cost_of(mode: str, settings: dict) -> int:
 
 
 async def scope_allows(db: AsyncSession, scope: str, user: User) -> bool:
+    return (await org_open_reason(db, scope, user.org_id)) is not None
+
+
+async def org_open_reason(db: AsyncSession, scope: str, org_id: Optional[int]) -> Optional[str]:
+    """这个机构的人能不能用学习助手;能用返回原因(管理端列表上写),不能用 None"""
+    if scope == "off":
+        return None
     if scope == "all":
-        return True
-    if scope in ("hq", "pack") and (user.org_id or DEFAULT_ORG_ID) == DEFAULT_ORG_ID:
-        return True
+        return "全部机构"
+    if (org_id or DEFAULT_ORG_ID) == DEFAULT_ORG_ID:
+        return "直营"
     if scope == "pack":
         from app.services import card_pack
-        return await card_pack.plan_of(db, user.org_id) == card_pack.PLAN_PACK
-    return False
+        if await card_pack.plan_of(db, org_id) == card_pack.PLAN_PACK:
+            return "卡包机构"
+    # 平台给这个机构发过次数(进货或赠送): 自动开通(用户 10-27)
+    if await has_pool(db, org_id):
+        return "发过次数"
+    return None
+
+
+async def has_pool(db: AsyncSession, org_id: Optional[int]) -> bool:
+    if not uses_pool(org_id):
+        return False
+    total = (await db.execute(select(TutorOrgPool.total).where(TutorOrgPool.org_id == org_id))).scalar()
+    return bool(total and total > 0)
+
+
+async def free_for(db: AsyncSession, org_id: Optional[int], settings: dict) -> int:
+    """每个学生送几次(用户 10-27): 直营、卡包政策机构(合同写了送 20)按管理端设的 free_total;
+    其它加盟机构不送,只用机构次数池里老师分的 + 学习卡带的"""
+    if not uses_pool(org_id):
+        return settings["free_total"]
+    from app.services import card_pack
+    return settings["free_total"] if await card_pack.plan_of(db, org_id) == card_pack.PLAN_PACK else 0
 
 
 # ---------------------------------------------------------------- 次数(每个学生一共送 N 次,老师加)
@@ -329,11 +361,12 @@ async def _ensure_allowance(db: AsyncSession, user_id: int) -> None:
                      .on_conflict_do_nothing(index_elements=[TutorAllowance.user_id]))
 
 
-async def allowance_status(db: AsyncSession, user_id: int, settings: dict) -> dict:
+async def allowance_status(db: AsyncSession, user_id: int, settings: dict, org_id: Optional[int] = None) -> dict:
+    """org_id: 学生所在机构(加盟机构不送免费次数,见 free_for)。None = 直营"""
     row = await db.get(TutorAllowance, user_id)
     used = row.used if row else await _used_before_allowance(db, user_id)
     extra = row.extra if row else 0
-    total = settings["free_total"] + extra
+    total = await free_for(db, org_id, settings) + extra
     return {"used": used, "extra": extra, "total": total, "left": max(0, total - used),
             "requested": bool(row and row.requested_at)}
 
@@ -412,7 +445,11 @@ async def pool_status(db: AsyncSession, org_id: int) -> dict:
     row = (await db.execute(select(TutorOrgPool.total, TutorOrgPool.used)
                             .where(TutorOrgPool.org_id == org_id))).first()
     total, used = (row.total, row.used) if row else (0, 0)
+    sums = dict((await db.execute(select(TutorPoolLedger.source, func.sum(TutorPoolLedger.times))
+                                  .where(TutorPoolLedger.org_id == org_id)
+                                  .group_by(TutorPoolLedger.source))).all())
     return {"total": total, "used": used, "left": max(0, total - used),
+            "purchased": int(sums.get("purchase") or 0), "gifted": int(sums.get("gift") or 0),
             "price": POOL_PRICE, "min_buy": POOL_MIN_BUY}
 
 
@@ -421,9 +458,13 @@ async def _ensure_pool(db: AsyncSession, org_id: int) -> None:
                      .on_conflict_do_nothing(index_elements=[TutorOrgPool.org_id]))
 
 
-async def credit_pool(db: AsyncSession, org_id: int, times: int, note: Optional[str], operator_id: int) -> bool:
-    """平台给机构加次数(times>0 = 进货到账)/ 扣回(times<0,最多扣到已经分出去的数)。不 commit;
-    扣回扣不动返回 False"""
+POOL_SOURCES = ("purchase", "gift")
+
+
+async def credit_pool(db: AsyncSession, org_id: int, times: int, note: Optional[str], operator_id: int,
+                      source: str = "purchase") -> bool:
+    """平台给机构加次数(times>0: source=purchase 进货到账 / gift 平台赠送)/ 扣回(times<0,最多扣到已经分出去的数)。
+    不 commit;扣回扣不动返回 False"""
     await _ensure_pool(db, org_id)
     q = update(TutorOrgPool).where(TutorOrgPool.org_id == org_id)
     if times < 0:
@@ -432,7 +473,8 @@ async def credit_pool(db: AsyncSession, org_id: int, times: int, note: Optional[
                          .execution_options(synchronize_session=False))
     if r.rowcount != 1:
         return False
-    db.add(TutorPoolLedger(org_id=org_id, times=times, source="purchase" if times > 0 else "adjust",
+    db.add(TutorPoolLedger(org_id=org_id, times=times,
+                           source=(source if source in POOL_SOURCES else "purchase") if times > 0 else "adjust",
                            note=(note or "").strip()[:200] or None, created_by=operator_id))
     return True
 

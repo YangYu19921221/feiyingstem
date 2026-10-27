@@ -6,9 +6,11 @@
  * 快速 / 深度思考两组模型(深度思考模型留空 = 关掉)、深度思考一次算几次、Key(留空 = 不改),
  * 以及近 7 天用了多少(回答数、提问人数、token,按模型和回答方式分开)。
  * 10-27 加「画记忆图」一组: 单独一个 Key(和答题的分开)、模型、画质、每人每天最多画几张新图,下面列最近画的图可删。
+ * 10-27 加「各机构次数」(TutorOrgsPanel): 给加盟机构发次数(进货 / 赠送),发过的机构自动开通。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
+import TutorOrgsPanel from './TutorOrgsPanel';
 import { getAdminPictures, getTutorAdmin, removeAdminPicture, saveTutorAdmin, testTutorAdmin, type TutorAdminState, type WordPictureOut } from '../../api/tutor';
 
 type Note = { ok: boolean; text: string } | null;
@@ -138,7 +140,7 @@ export default function TutorAdminCard() {
               {SCOPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </label>
-          <label className="block text-xs text-slate-500">每个学生一共送几次(不按天清零)
+          <label className="block text-xs text-slate-500">每个学生一共送几次(直营和卡包机构;不按天清零)
             <input type="number" min={1} max={1000} value={form.free_total}
               onChange={(e) => setForm((f) => ({ ...f, free_total: Math.max(1, Math.min(1000, Number(e.target.value) || 1)) }))}
               className={`${input} mt-1`} />
@@ -221,6 +223,8 @@ export default function TutorAdminCard() {
           ))}
         </div>
       )}
+
+      {state && <TutorOrgsPanel />}
 
       {state && (
         <div className="mt-4 flex flex-wrap items-center gap-3">

@@ -104,8 +104,8 @@ def _stop_key(user_message_id: int) -> str:
 async def tutor_status(db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
     ok, reason, settings = await _availability(db, student)
     conf = await tt.relay_conf(db) if ok else None
-    a = await tt.allowance_status(db, student.id, settings)
-    return {"enabled": ok, "reason": reason, **a, "free_total": settings["free_total"],
+    a = await tt.allowance_status(db, student.id, settings, student.org_id)
+    return {"enabled": ok, "reason": reason, **a, "free_total": await tt.free_for(db, student.org_id, settings),
             "card_times": await tt.card_times(db, student.id),
             "deep_enabled": bool(conf and conf.deep_enabled), "deep_cost": settings["deep_cost"],
             "followup_free": tt.FOLLOWUP_FREE, "followup_minutes": tt.FOLLOWUP_MINUTES,
@@ -385,10 +385,10 @@ async def ask(
         await db.commit()
         if fq is None:
             raise HTTPException(409, "这份练习已经讲过了")
-    if cost and not await tt.consume(db, student.id, cost, settings["free_total"]):
+    if cost and not await tt.consume(db, student.id, cost, await tt.free_for(db, student.org_id, settings)):
         if fq is not None:
             await tutor_quiz.release_feedback(db, fq.id)
-        left = (await tt.allowance_status(db, student.id, settings))["left"]
+        left = (await tt.allowance_status(db, student.id, settings, student.org_id))["left"]
         if mode == "deep" and left > 0:
             raise HTTPException(429, f"深度思考一次算 {cost} 次,你还剩 {left} 次,先用快速回答吧")
         raise HTTPException(429, "次数用完了,点「请老师加次数」让老师给你加")
@@ -427,7 +427,7 @@ async def ask(
     content.append({"type": "text", "text": tutor_quiz.feedback_prompt(fq) if fq is not None else (text or "帮我看看这道题")})
     messages = history + [{"role": "user", "content": content}]
     system = tt.build_system(context, mode)
-    left = (await tt.allowance_status(db, student.id, settings))["left"]
+    left = (await tt.allowance_status(db, student.id, settings, student.org_id))["left"]
 
     queue: asyncio.Queue = asyncio.Queue()
     ctx = {"conversation_id": conv_id, "is_feedback": fq is not None and bool(fq.free_feedback)}
@@ -492,6 +492,7 @@ async def teacher_tutor_students(db: AsyncSession = Depends(get_db), teacher: Us
     """本班学生的学习助手次数: 送了几次 / 老师加了几次 / 用了几次 / 还剩几次 / 有没有在请求加。
     请求加的排最前,其次剩得少的"""
     settings = await tt.get_settings(db)
+    free = await tt.free_for(db, teacher.org_id, settings)    # 老政策加盟机构不送免费次数(用户 10-27)
     students = await _my_class_students(db, teacher.id)
     ids = [s[0] for s in students]
     rows = {}
@@ -507,7 +508,7 @@ async def teacher_tutor_students(db: AsyncSession = Depends(get_db), teacher: Us
     for uid, uname, fname, cname in students:
         r = rows.get(uid)
         used, extra = (r.used, r.extra) if r else (0, 0)
-        total = settings["free_total"] + extra
+        total = free + extra
         items.append({"id": uid, "username": uname, "full_name": fname, "class_name": cname,
                       "used": used, "extra": extra, "total": total, "left": max(0, total - used),
                       "questions": int(asked.get(uid, 0)),
@@ -515,7 +516,7 @@ async def teacher_tutor_students(db: AsyncSession = Depends(get_db), teacher: Us
     items.sort(key=lambda x: (x["requested_at"] is None, x["left"], x["class_name"]))
     # 加盟机构: 老师加的次数从机构次数池里扣,页面上写明池里还剩几次;直营没有池子(None)
     pool = await tt.pool_status(db, teacher.org_id) if tt.uses_pool(teacher.org_id) else None
-    return {"free_total": settings["free_total"], "deep_cost": settings["deep_cost"],
+    return {"free_total": free, "deep_cost": settings["deep_cost"],
             "enabled": await tt.scope_allows(db, settings["scope"], teacher), "items": items,
             "requested": sum(1 for x in items if x["requested_at"]), "pool": pool,
             "card_times": tt.CARD_TUTOR_TIMES}
@@ -806,9 +807,11 @@ async def admin_tutor_test(db: AsyncSession = Depends(get_db), _admin: User = De
 # ---------------------------------------------------------------- 管理端: 机构次数池(合同第三条第 10 款)
 
 class PoolIn(BaseModel):
-    # 正数 = 机构进货到账;负数 = 扣回(录错了),最多扣到已经分给学生的那部分
+    # 正数 = 加次数;负数 = 扣回(录错了),最多扣到已经分给学生的那部分
     times: int = Field(..., ge=-100000, le=100000)
     note: Optional[str] = Field(None, max_length=200)
+    # purchase = 机构付了钱(按 ¥0.3/次记金额)/ gift = 平台赠送(不收费、不受起订量)。扣回不看这个(10-27)
+    source: str = Field("purchase", pattern="^(purchase|gift)$")
 
 
 @admin_router.get("/tutor/pools")
@@ -816,6 +819,32 @@ async def admin_tutor_pools(db: AsyncSession = Depends(get_db), _admin: User = D
     rows = (await db.execute(select(TutorOrgPool))).scalars().all()
     return {"price": tt.POOL_PRICE, "min_buy": tt.POOL_MIN_BUY, "card_times": tt.CARD_TUTOR_TIMES,
             "items": {r.org_id: {"total": r.total, "used": r.used, "left": max(0, r.total - r.used)} for r in rows}}
+
+
+@admin_router.get("/tutor/orgs")
+async def admin_tutor_orgs(db: AsyncSession = Depends(get_db), _admin: User = Depends(get_current_admin)):
+    """平台总览: 每个机构开没开学习助手(为什么开)、机构次数池(进货 / 赠送 / 已分 / 还剩)、多少学生、多少人问过。
+    给机构发次数在这里点进去(OrgTutorPoolDialog);发过次数的机构自动开通(services/tutor.org_open_reason)"""
+    settings = await tt.get_settings(db)
+    orgs = (await db.execute(select(Organization.id, Organization.name, Organization.status, Organization.card_plan)
+                             .order_by(Organization.id))).all()
+    students = dict((await db.execute(
+        select(User.org_id, func.count(User.id)).where(User.role == "student", User.is_active.is_(True))
+        .group_by(User.org_id).execution_options(skip_tenant_filter=True))).all())
+    asked = dict((await db.execute(
+        select(User.org_id, func.count(func.distinct(TutorMessage.user_id)))
+        .join(User, User.id == TutorMessage.user_id).where(TutorMessage.role == "user")
+        .group_by(User.org_id).execution_options(skip_tenant_filter=True))).all())
+    items = []
+    for oid, name, status, plan in orgs:
+        items.append({"id": oid, "name": name, "status": status, "card_plan": plan,
+                      "open": await tt.org_open_reason(db, settings["scope"], oid),
+                      "uses_pool": tt.uses_pool(oid),
+                      "pool": await tt.pool_status(db, oid) if tt.uses_pool(oid) else None,
+                      "free_per_student": await tt.free_for(db, oid, settings),
+                      "students": int(students.get(oid, 0)), "asked_students": int(asked.get(oid, 0))})
+    return {"scope": settings["scope"], "price": tt.POOL_PRICE, "min_buy": tt.POOL_MIN_BUY,
+            "card_times": tt.CARD_TUTOR_TIMES, "items": items}
 
 
 async def _pool_org(db: AsyncSession, org_id: int) -> Organization:
@@ -844,12 +873,17 @@ async def admin_tutor_pool_credit(org_id: int, body: PoolIn, request: Request, d
     org_name = org.name
     if body.times == 0:
         raise HTTPException(400, "次数不能是 0")
-    if not await tt.credit_pool(db, org_id, body.times, body.note, admin.id):
+    if not await tt.credit_pool(db, org_id, body.times, body.note, admin.id, body.source):
         st = await tt.pool_status(db, org_id)
         raise HTTPException(409, f"已经有 {st['used']} 次分给学生了,最多只能扣回 {st['left']} 次")
-    what = f"到账 {body.times} 次(¥{body.times * tt.POOL_PRICE:,.0f})" if body.times > 0 else f"扣回 {-body.times} 次"
+    if body.times < 0:
+        what = f"扣回 {-body.times} 次"
+    elif body.source == "gift":
+        what = f"平台赠送 {body.times} 次(不收费)"
+    else:
+        what = f"进货到账 {body.times} 次(¥{body.times * tt.POOL_PRICE:,.0f})"
     audit_log.record(db, request, admin, "org.tutor_pool", f"{org_name}: 学习助手次数{what}",
                      target_type="organization", target_id=org_id,
-                     detail={"times": body.times, "note": body.note})
+                     detail={"times": body.times, "note": body.note, "source": body.source if body.times > 0 else "adjust"})
     await db.commit()
     return await admin_tutor_pool(org_id, db, admin)

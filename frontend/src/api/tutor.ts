@@ -208,7 +208,8 @@ export interface TutorQuotaStudent {
   requested_at: string | null;
 }
 /** 机构学习助手次数池(加盟机构老师加次数从这里扣);直营为 null */
-export interface TutorPool { total: number; used: number; left: number; price: number; min_buy: number }
+/** 机构次数池: purchased = 进货(收了钱)累计,gifted = 平台赠送累计 */
+export interface TutorPool { total: number; used: number; left: number; price: number; min_buy: number; purchased?: number; gifted?: number }
 export const getTutorStudents = () =>
   client.get<{
     free_total: number; deep_cost: number; enabled: boolean; requested: number; items: TutorQuotaStudent[];
@@ -267,11 +268,22 @@ export const testTutorAdmin = () =>
 export interface TutorPoolDetail extends TutorPool {
   org_id: number;
   org_name: string;
-  ledger: Array<{ id: number; times: number; source: 'purchase' | 'adjust'; note: string | null; created_at: string | null }>;
+  ledger: Array<{ id: number; times: number; source: 'purchase' | 'gift' | 'adjust'; note: string | null; created_at: string | null }>;
 }
 export const getTutorPools = () =>
   client.get<{ price: number; min_buy: number; card_times: number; items: Record<string, { total: number; used: number; left: number }> }>(
     '/admin/tutor/pools');
 export const getTutorPool = (orgId: number) => client.get<TutorPoolDetail>(`/admin/tutor/pools/${orgId}`);
-export const creditTutorPool = (orgId: number, times: number, note?: string) =>
-  client.post<TutorPoolDetail>(`/admin/tutor/pools/${orgId}`, { times, note });
+/** source: purchase = 机构付了钱(记金额)/ gift = 平台赠送(不收费、不受起订量)。times 为负 = 扣回 */
+export const creditTutorPool = (orgId: number, times: number, note?: string, source: 'purchase' | 'gift' = 'purchase') =>
+  client.post<TutorPoolDetail>(`/admin/tutor/pools/${orgId}`, { times, note, source });
+
+/** 平台总览: 每个机构开没开(open 是原因,null = 没开)、次数池、学生数、问过的人数 */
+export interface TutorOrgRow {
+  id: number; name: string; status: string; card_plan: string;
+  open: string | null; uses_pool: boolean; pool: TutorPool | null;
+  free_per_student: number; students: number; asked_students: number;
+}
+export const getTutorOrgs = () =>
+  client.get<{ scope: TutorAdminState['scope']; price: number; min_buy: number; card_times: number; items: TutorOrgRow[] }>(
+    '/admin/tutor/orgs');

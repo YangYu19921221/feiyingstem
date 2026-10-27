@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'tutor-org-grant-admin-2026-10',
+    date: '2026-10-27',
+    title: '🦅 可以直接给加盟机构发学习助手次数了',
+    desc: '管理端「AI 学习助手」卡片下面新增「各机构次数」: 每个机构开没开、池里还剩几次、进货和赠送各多少、多少学生问过。点「发次数」可以记「进货到账」(按 ¥0.3/次 记金额)或「平台赠送」(不收费、不受 1,000 次起订)。发过次数的机构自动开通小鹰老师;老政策机构的学生不送免费次数,由机构老师从池里分。',
+    where: '管理端首页「AI 学习助手」卡片 →「各机构次数」→ 机构那一行「发次数」',
+    roles: ['admin'],
+    route: '/admin',
+  },
+  {
     id: 'tutor-teach-student-2026-10',
     date: '2026-10-27',
     title: '🦅 小鹰老师能一步步教你新知识了',

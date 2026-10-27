@@ -236,7 +236,7 @@ async def request(db: AsyncSession, user: User, word: str, meaning: Optional[str
     limit = (await get_settings(db))["daily_limit"]
     if not await store.incr_if_below(_day_key(user.id), limit, 2 * 86400):
         raise PictureRefused(f"今天已经画了 {limit} 张新图,明天再画吧(画过的图随时能看)")
-    if not await tt.consume(db, user.id, COST, settings_["free_total"]):
+    if not await tt.consume(db, user.id, COST, await tt.free_for(db, user.org_id, settings_)):
         await store.incr(_day_key(user.id), -1, 2 * 86400)
         raise PictureRefused("次数不够了,画一张新图要用掉 1 次")
 
