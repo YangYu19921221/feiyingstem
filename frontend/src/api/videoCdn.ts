@@ -40,6 +40,19 @@ export interface VideoCosState {
   events: VideoCosEvent[];
   /** 最近一次自动检查 */
   last_check: { at: string; ok: boolean; message: string } | null;
+  /** smart = 服务器忙才走 COS(省钱);always = 一直走 COS */
+  route: 'smart' | 'always';
+  /** 忙的阈值: 服务器出网 30 秒平均到这么多 Mbps 就走 COS */
+  busy_mbps: number;
+  /** 降到这么多 Mbps 以下、连续 calm_minutes 分钟才回本机 */
+  calm_mbps: number;
+  calm_minutes: number;
+  /** 进了忙至少走 COS 这么多分钟 */
+  min_busy_minutes: number;
+  /** 服务器现在的出网;null = 测不到(按忙算) */
+  load: { mbps: number; busy: boolean; since: number; events: Array<{ ts: number; busy: boolean; mbps: number }> } | null;
+  /** 现在这一刻学生点开视频走哪 */
+  now_route: 'cos' | 'local';
 }
 
 export const getVideoCdn = () => client.get<VideoCdnState>('/admin/system/video-cdn');
@@ -49,6 +62,9 @@ export const setVideoCdn = (enabled: boolean) =>
 
 export const setVideoCos = (enabled: boolean) =>
   client.put<VideoCdnState>('/admin/system/video-cos', { enabled }, { timeout: 30000 });
+
+export const setVideoCosRoute = (route: 'smart' | 'always', busyMbps: number) =>
+  client.put<VideoCdnState>('/admin/system/video-cos/route', { route, busy_mbps: busyMbps });
 
 export const testVideoCos = () =>
   client.post<{ ok: boolean; message: string }>('/admin/system/video-cos/test', undefined, { timeout: 30000 });

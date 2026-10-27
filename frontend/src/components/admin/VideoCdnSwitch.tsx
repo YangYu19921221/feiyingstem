@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CloudOff, Server, Zap } from 'lucide-react';
 import {
-  getVideoCdn, setVideoCdn, setVideoCos, testVideoCdn, testVideoCos,
+  getVideoCdn, setVideoCdn, setVideoCos, setVideoCosRoute, testVideoCdn, testVideoCos,
   type VideoCdnState, type VideoCosEvent,
 } from '../../api/videoCdn';
 
@@ -33,6 +33,10 @@ function eventText(e: VideoCosEvent): string {
  * - 走 COS: 学生直接从腾讯云下载,不占服务器带宽;改回本机: 走服务器 12M 带宽,人多会卡
  * - 欠费(COS 回 451)时系统每 5 分钟检查,连续两次取不到就自动改回本机;**系统自动改回的**,充值后连续两次取到就自动切回 COS
  * - 状态用一句大字写清「现在走哪条线 + 为什么 + 几点切的」,下面列最近几次切换
+ * 中间「什么时候走 COS」(10-27 用户「不卡的时候就不用 COS,卡的时候如果 COS 有余额就切到 COS,没余额就不切」):
+ * - 服务器忙才走(默认): 出网 30 秒平均到阈值(默认 6 Mbps)就跳 COS,降到六成以下连续 3 分钟才回本机,进了忙至少 10 分钟;省 COS 流量费
+ * - 一直走: 原来的做法
+ * 阈值和现在的出网直接写在卡片上,让人看得出几点会切。
  * 下面一块是 CDN(只在走 COS 时起作用)。
  */
 export default function VideoCdnSwitch() {
@@ -73,6 +77,24 @@ export default function VideoCdnSwitch() {
     try {
       const r = await testVideoCdn();
       setNote({ ok: r.ok, text: r.message });
+    } catch (e) {
+      setNote({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const [mbpsDraft, setMbpsDraft] = useState('');
+  const saveRoute = async (route: 'smart' | 'always', mbps?: number) => {
+    if (!state || busy) return;
+    const v = mbps ?? state.cos.busy_mbps;
+    if (!(v >= 1 && v <= 1000)) { setNote({ ok: false, text: '阈值填 1 到 1000 之间的数' }); return; }
+    setBusy('cos');
+    try {
+      const s = await setVideoCosRoute(route, v);
+      setState(s);
+      setMbpsDraft('');
+      setNote({ ok: true, text: route === 'smart' ? `已保存: 服务器出网到 ${v} Mbps 才走 COS` : '已保存: 一直走 COS' });
     } catch (e) {
       setNote({ ok: false, text: errorText(e) });
     } finally {
@@ -133,13 +155,13 @@ export default function VideoCdnSwitch() {
               </span>
               <div className="min-w-0" role="status">
                 <p className={`text-base font-bold ${cosOn ? 'text-emerald-800' : cosAutoOff ? 'text-red-700' : 'text-amber-900'}`}>
-                  {cosOn ? '现在: 走腾讯云 COS' : '现在: 从服务器本机播放'}
+                  {cosOn ? (cos.route === 'smart' ? '腾讯云 COS 可以用(服务器忙时才走)' : '现在: 走腾讯云 COS') : '现在: 从服务器本机播放'}
                 </p>
                 <p className="mt-0.5 text-sm leading-6 text-slate-700">
                   {cosOn
                     ? (cos.auto && cos.reason
-                      ? <>{fmtTime(cos.updated_at)} {cos.reason}。学生直接从腾讯云下载,不占服务器带宽。</>
-                      : <>学生直接从腾讯云下载,不占服务器带宽{cos.updated_at ? <>(从 {fmtTime(cos.updated_at)} 起{cos.updated_by ? ` · ${cos.updated_by}` : ''})</> : null}。</>)
+                      ? <>{fmtTime(cos.updated_at)} {cos.reason}。{cos.route === 'smart' ? '服务器忙的时候学生直接从腾讯云下载。' : '学生直接从腾讯云下载,不占服务器带宽。'}</>
+                      : <>{cos.route === 'smart' ? '服务器忙的时候学生直接从腾讯云下载' : '学生直接从腾讯云下载,不占服务器带宽'}{cos.updated_at ? <>(从 {fmtTime(cos.updated_at)} 起{cos.updated_by ? ` · ${cos.updated_by}` : ''})</> : null}。</>)
                     : cosAutoOff
                       ? <>{fmtTime(cos.updated_at)} {cos.reason || 'COS 取不到视频'},系统自动改回本机播放(视频能看,走服务器带宽,人多会卡)。
                         <b> 充值后系统会自动切回 COS</b>,不用手动操作;着急可以点「切回 COS」。</>
@@ -172,6 +194,61 @@ export default function VideoCdnSwitch() {
               )}
             </div>
           </div>
+          {cosOn && (
+            <div className="mt-3 rounded-lg bg-white/70 p-3 ring-1 ring-black/5">
+              <p className="text-sm font-semibold text-[#173047]">什么时候走 COS</p>
+              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="什么时候走 COS">
+                {([['smart', '服务器忙才走(省钱)'], ['always', '一直走 COS']] as const).map(([v, label]) => (
+                  <button key={v} type="button" role="radio" aria-checked={cos.route === v} disabled={!!busy}
+                    onClick={() => { if (cos.route !== v) void saveRoute(v); }}
+                    className={`min-h-9 rounded-lg px-3 text-xs font-semibold ring-1 transition disabled:opacity-50 ${
+                      cos.route === v ? 'bg-[#35658d] text-white ring-[#35658d]' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {cos.route === 'smart' ? (
+                <>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    服务器出网到 <b>{cos.busy_mbps} Mbps</b> 就把视频切到 COS(服务器带宽 12M,背单词、PK 留给它);
+                    降到 {cos.calm_mbps} Mbps 以下、连续 {cos.calm_minutes} 分钟才切回本机,切过去至少走 {cos.min_busy_minutes} 分钟,不来回跳。
+                    不忙时从本机放,不花 COS 流量费。COS 欠费时再忙也不切。
+                  </p>
+                  <p className={`mt-1 text-sm font-semibold ${cos.now_route === 'cos' ? 'text-emerald-700' : 'text-slate-700'}`} role="status">
+                    {cos.load
+                      ? <>服务器现在出网 {cos.load.mbps} Mbps · {cos.now_route === 'cos' ? '忙,学生看视频走 COS' : '不忙,学生看视频从本机放'}</>
+                      : <>现在测不到服务器出网,按忙算 · 学生看视频走 COS</>}
+                  </p>
+                  {cos.load && cos.load.events.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
+                      {cos.load.events.map((e, i) => (
+                        <li key={`${e.ts}-${i}`}>
+                          {new Date(e.ts * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                          {e.busy ? ` 出网到 ${e.mbps} Mbps,切到 COS` : ` 出网降到 ${e.mbps} Mbps,切回本机`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <label className="flex items-center gap-1.5">
+                      忙的阈值
+                      <input type="number" min={1} max={1000} step={0.5} inputMode="decimal"
+                        value={mbpsDraft !== '' ? mbpsDraft : String(cos.busy_mbps)}
+                        onChange={(e) => setMbpsDraft(e.target.value)}
+                        className="h-9 w-20 rounded-lg border border-slate-300 bg-white px-2 text-sm" />
+                      Mbps
+                    </label>
+                    {mbpsDraft !== '' && Number(mbpsDraft) !== cos.busy_mbps && (
+                      <button type="button" disabled={!!busy} onClick={() => { void saveRoute('smart', Number(mbpsDraft)); }}
+                        className="min-h-9 rounded-lg bg-[#35658d] px-3 text-xs font-semibold text-white disabled:opacity-50">保存</button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-slate-700">学生看视频一直从 COS 下载,不占服务器带宽,但每看一次都花 COS 流量费。</p>
+              )}
+            </div>
+          )}
           {cos.events.length > 0 && (
             <ul className="mt-3 space-y-0.5 border-t border-black/5 pt-2 text-xs text-slate-500">
               {cos.events.map((e, i) => <li key={`${e.at}-${i}`}>{eventText(e)}</li>)}

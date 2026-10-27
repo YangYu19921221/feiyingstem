@@ -36,6 +36,15 @@ COS 开关 + 欠费自动切换(2026-10-27,用户「有钱了切回 COS 要有�
 - 每次切换记一条 events(最近 20 条,管理端卡片显示「几点切回 COS 了 / 几点因为欠费改回本机」);
   每次检查的结果另存 COS_CHECK_FILE(不和开关写同一个文件: 免得检查结果把管理员刚改的开关盖回去)
 - COS 关着时 CDN 开关不起作用(不跳转就不经过 CDN)
+
+忙的时候才走 COS(2026-10-27,用户「不卡的时候就不用 COS,卡的时候如果 COS 有余额就切到 COS,没余额就不切」):
+- 开关文件里 route: smart(默认)= 服务器忙才跳 COS,不忙从本机放(省 COS 流量费);always = 一直跳 COS(原来的做法)
+- 「忙」= 服务器公网网卡出网 30 秒平均 ≥ busy_mbps(默认 6 Mbps,买的 12M 的一半)。看的是**整台机器的出网**,
+  不只是视频: 背单词 / PK 人多时也算忙,这时把视频挪走,别的才不卡
+- 不来回跳: 进了「忙」至少保持 MIN_BUSY_SEC(10 分钟);降到 busy_mbps×CALM_RATIO 以下**连续** CALM_SEC(3 分钟)才回本机
+- 主进程线程 net-load 每 5 秒读 /proc/net/dev 算一次,写 COS_LOAD_FILE(多进程都看得到),切换记 events
+- 「没余额就不切」: 欠费时 cos-guard 会把开关关掉(开关关着一律本机);在那之前,最近一次自动检查没通过也不切
+- 测不到(文件没有 / 超过 60 秒没更新,比如采样线程挂了)→ 按忙算、走 COS: 宁可多花几毛钱,不让孩子卡
 """
 from __future__ import annotations
 
@@ -71,6 +80,17 @@ COS_SWITCH_FILE = BACKEND_DIR / "private_media" / "cos_video" / "cos_switch.json
 COS_CHECK_FILE = BACKEND_DIR / "private_media" / "cos_video" / "cos_check.json"
 COS_AUTO_BY = "系统自动"
 COS_EVENTS_MAX = 20
+COS_LOAD_FILE = BACKEND_DIR / "private_media" / "cos_video" / "net_load.json"
+ROUTES = ("smart", "always")
+DEFAULT_ROUTE = "smart"
+DEFAULT_BUSY_MBPS = 6.0
+LOAD_SAMPLE_SEC = 5
+LOAD_WINDOW = 6            # 30 秒平均
+LOAD_STALE_SEC = 60        # 这么久没更新 = 测不到,按忙算
+CALM_RATIO = 0.6           # 降到阈值的六成以下才算不忙
+CALM_SEC = 180             # 连续不忙 3 分钟才回本机
+MIN_BUSY_SEC = 600         # 进了「忙」至少走 COS 10 分钟
+LOAD_EVENTS_MAX = 10
 
 
 def _conf() -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -129,7 +149,16 @@ def redirect_enabled(video_id: Optional[int] = None) -> bool:
     不跳时照旧本机串流 —— 上线顺序: 先只同步不跳 → 挑一节试 → 再切全部,任何时候改回不跳就回到原样"""
     sw = read_cos_switch()
     if sw is not None:
-        return sw["enabled"]
+        if not sw["enabled"]:
+            return False                   # COS 没余额 / 手动关了: 一律本机
+        if cos_route(sw)[0] == "always":
+            return True
+        if not video_busy():               # smart: 服务器不忙就本机放(省 COS 流量费)
+            return False
+        # 忙了才跳 COS,但最近一次自动检查 COS 没通过(比如刚欠费,还没连续两次自动关)就不跳 ——
+        # 「没余额就不切」不用等两次检查(10 分钟)
+        chk = read_cos_check()
+        return not (chk and chk.get("ok") is False)
     v = (os.environ.get("COS_REDIRECT") or _dotenv("COS_REDIRECT") or "").strip().lower()
     if v == "all":
         return True
@@ -192,6 +221,8 @@ def write_cos_switch(enabled: bool, by: Optional[str] = None, reason: Optional[s
     old = read_cos_switch() or {"events": []}
     now = datetime.now(_BJ).isoformat(timespec="seconds")
     data = {"enabled": bool(enabled), "updated_at": now, "updated_by": by, "auto": bool(auto)}
+    route, busy = cos_route(old)
+    data["route"], data["busy_mbps"] = route, busy          # 线路和阈值跟着走,切换开关不改它们
     if reason:
         data["reason"] = reason
     events = list(old.get("events") or [])
@@ -200,6 +231,136 @@ def write_cos_switch(enabled: bool, by: Optional[str] = None, reason: Optional[s
     data["events"] = events[-COS_EVENTS_MAX:]
     _write_json(Path(COS_SWITCH_FILE), data)
     return data
+
+
+def cos_route(sw: Optional[dict]) -> tuple[str, float]:
+    """(线路 smart / always, 忙的阈值 Mbps)。没写过就是默认: smart、6 Mbps"""
+    sw = sw or {}
+    route = sw.get("route") if sw.get("route") in ROUTES else DEFAULT_ROUTE
+    try:
+        busy = float(sw.get("busy_mbps") or DEFAULT_BUSY_MBPS)
+    except (TypeError, ValueError):
+        busy = DEFAULT_BUSY_MBPS
+    return route, busy if 0.5 <= busy <= 1000 else DEFAULT_BUSY_MBPS
+
+
+def set_cos_route(route: str, busy_mbps: float, by: Optional[str] = None) -> dict:
+    """只改线路和阈值,不动开关(enabled / auto / events)。还没有开关文件时按 .env 现状建一份"""
+    if route not in ROUTES:
+        raise ValueError("route")
+    old = read_cos_switch()
+    if old is None:
+        v = (os.environ.get("COS_REDIRECT") or _dotenv("COS_REDIRECT") or "").strip().lower()
+        old = {"enabled": v == "all", "events": [], "updated_at": None, "updated_by": None, "auto": False}
+    data = dict(old)
+    data["route"], data["busy_mbps"] = route, round(float(busy_mbps), 1)
+    data["route_updated_by"] = by
+    data["route_updated_at"] = datetime.now(_BJ).isoformat(timespec="seconds")
+    _write_json(Path(COS_SWITCH_FILE), data)
+    return data
+
+
+# ---------- 服务器忙不忙(只在主进程采样,写文件给所有进程看) ----------
+
+_load_cache: Optional[tuple[tuple, Optional[dict]]] = None
+
+
+def read_net_load() -> Optional[dict]:
+    global _load_cache
+    try:
+        st = os.stat(COS_LOAD_FILE)
+    except OSError:
+        return None
+    sig = (str(COS_LOAD_FILE), st.st_mtime_ns, st.st_size)
+    if _load_cache is not None and _load_cache[0] == sig:
+        return _load_cache[1]
+    try:
+        d = json.loads(Path(COS_LOAD_FILE).read_text(encoding="utf-8"))
+        d = d if isinstance(d, dict) else None
+    except (OSError, ValueError):
+        d = None
+    _load_cache = (sig, d)
+    return d
+
+
+def video_busy(now: Optional[float] = None) -> bool:
+    """服务器现在忙不忙(决定 smart 线路跳不跳 COS)。测不到按忙算"""
+    d = read_net_load()
+    now = time.time() if now is None else now
+    if not d or now - float(d.get("ts") or 0) > LOAD_STALE_SEC:
+        return True
+    return bool(d.get("busy"))
+
+
+def next_load_state(prev: Optional[dict], now: float, mbps: float, busy_mbps: float) -> dict:
+    """纯函数(好测): 上一次的状态 + 这次 30 秒平均 → 新状态。进忙立刻进;出忙要满 10 分钟、且连续 3 分钟低于六成"""
+    prev = prev or {}
+    busy = bool(prev.get("busy"))
+    since = prev.get("since") or now
+    calm_since = prev.get("calm_since")
+    events = list(prev.get("events") or [])
+    if not busy:
+        if mbps >= busy_mbps:
+            busy, since, calm_since = True, now, None
+            events.append({"ts": now, "busy": True, "mbps": round(mbps, 1)})
+    elif mbps < busy_mbps * CALM_RATIO:
+        calm_since = calm_since or now
+        if now - calm_since >= CALM_SEC and now - since >= MIN_BUSY_SEC:
+            busy, since, calm_since = False, now, None
+            events.append({"ts": now, "busy": False, "mbps": round(mbps, 1)})
+    else:
+        calm_since = None
+    return {"ts": now, "mbps": round(mbps, 2), "busy": busy, "since": since, "calm_since": calm_since,
+            "busy_mbps": busy_mbps, "events": events[-LOAD_EVENTS_MAX:]}
+
+
+_NIC = re.compile(r"^(eth|ens|enp|eno)\d")
+
+
+def _tx_bytes() -> Optional[int]:
+    """公网网卡累计发出的字节(/proc/net/dev)。只数 eth*/ens* 这类物理网卡: docker 的 br-/veth 是机器内部的,
+    出去的流量本来也会再经过 eth0,算进来就重复了"""
+    try:
+        lines = Path("/proc/net/dev").read_text().splitlines()[2:]
+    except OSError:
+        return None
+    total, found = 0, False
+    for ln in lines:
+        name, _, rest = ln.partition(":")
+        name = name.strip()
+        if _NIC.match(name):
+            total += int(rest.split()[8])
+            found = True
+    return total if found else None
+
+
+def start_load_sampler(every_sec: int = LOAD_SAMPLE_SEC) -> None:
+    """主进程线程: 每 5 秒算一次出网,写 COS_LOAD_FILE。不是 Linux(没有 /proc/net/dev)就不起"""
+    if _tx_bytes() is None:
+        logger.info("测不到网卡流量(没有 /proc/net/dev),智能线路按忙算(一直走 COS)")
+        return
+
+    def _loop():
+        from collections import deque
+        rates: deque = deque(maxlen=LOAD_WINDOW)
+        last_b, last_t = _tx_bytes(), time.monotonic()
+        state = read_net_load()
+        while True:
+            time.sleep(every_sec)
+            try:
+                b, t = _tx_bytes(), time.monotonic()
+                if b is None or last_b is None or b < last_b:
+                    last_b, last_t = b, t
+                    continue
+                rates.append((b - last_b) * 8 / max(t - last_t, 1e-6) / 1e6)
+                last_b, last_t = b, t
+                busy_mbps = cos_route(read_cos_switch())[1]
+                state = next_load_state(state, time.time(), sum(rates) / len(rates), busy_mbps)
+                _write_json(Path(COS_LOAD_FILE), state)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("出网采样出错: %s", e)
+
+    threading.Thread(target=_loop, name="net-load", daemon=True).start()
 
 
 def read_cos_check() -> Optional[dict]:
@@ -640,3 +801,4 @@ def start_background_sync(directory: str, every_sec: int = 600) -> None:
     threading.Thread(target=_loop, name="cos-video-sync", daemon=True).start()
     start_cdn_guard(directory)
     start_cos_guard(directory)
+    start_load_sampler()

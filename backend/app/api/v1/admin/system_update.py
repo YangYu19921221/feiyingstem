@@ -17,7 +17,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user, get_current_admin
 from app.core.database import get_db
@@ -176,11 +176,27 @@ def _video_cdn_state() -> dict:
 
 def _video_cos_state() -> dict:
     """COS 线路(10-27): 现在走不走 COS、谁 / 什么时候切的、为什么、最近一次自动检查、最近几次切换"""
+    import time as _time
     from app.services import cos_video
     sw = cos_video.read_cos_switch()
+    route, busy_mbps = cos_video.cos_route(sw)
+    load = cos_video.read_net_load()
+    stale = not load or _time.time() - float(load.get("ts") or 0) > cos_video.LOAD_STALE_SEC
     return {
         # file = 管理端开关在管;env = 还没用过开关,照旧看 .env 的 COS_REDIRECT
         "source": "file" if sw is not None else "env",
+        # smart = 服务器忙才走 COS(忙 = 出网 30 秒平均 ≥ busy_mbps);always = 一直走 COS
+        "route": route if sw is not None else "always",
+        "busy_mbps": busy_mbps,
+        "calm_mbps": round(busy_mbps * cos_video.CALM_RATIO, 1),
+        "calm_minutes": cos_video.CALM_SEC // 60,
+        "min_busy_minutes": cos_video.MIN_BUSY_SEC // 60,
+        "load": None if stale else {
+            "mbps": load.get("mbps"), "busy": bool(load.get("busy")), "since": load.get("since"),
+            "events": list(reversed(load.get("events") or []))[:5],
+        },
+        # 现在这一刻学生点开视频走哪: cos / local(redirect_enabled 和 /stream 用的是同一个判断)
+        "now_route": "cos" if cos_video.redirect_enabled(0) else "local",
         "enabled": cos_video.redirect_mode() == "all",
         "updated_at": sw.get("updated_at") if sw else None,
         "updated_by": sw.get("updated_by") if sw else None,
@@ -193,6 +209,32 @@ def _video_cos_state() -> dict:
 
 class VideoCosSwitchIn(BaseModel):
     enabled: bool
+
+
+class VideoCosRouteIn(BaseModel):
+    route: str = Field(..., pattern="^(smart|always)$")
+    busy_mbps: float = Field(6.0, ge=1, le=1000)
+
+
+@router.put("/video-cos/route")
+async def set_video_cos_route(
+    body: VideoCosRouteIn,
+    request: Request,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """线路: smart = 服务器忙才走 COS(省钱)/ always = 一直走 COS。不动开关(欠费自动切换照旧)"""
+    from app.services import audit_log, cos_video
+    before = cos_video.cos_route(cos_video.read_cos_switch())
+    cos_video.set_cos_route(body.route, body.busy_mbps, by=current_user.full_name or current_user.username)
+    after = cos_video.cos_route(cos_video.read_cos_switch())
+    if before != after:
+        audit_log.record(db, request, current_user, "system.video_cos",
+                         (f"音标视频: 服务器出网到 {after[1]:g} Mbps 才走 COS" if body.route == "smart"
+                          else "音标视频: 一直走 COS"),
+                         detail={"route": body.route, "busy_mbps": after[1]})
+        await db.commit()
+    return _video_cdn_state()
 
 
 @router.post("/video-cos/test")

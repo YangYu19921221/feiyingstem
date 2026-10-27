@@ -51,7 +51,9 @@ def _no_real_cos_switch(monkeypatch, tmp_path):
     """COS 线路开关文件指到临时目录(没有文件 = 照旧看 COS_REDIRECT),不读本机 private_media 里的真开关"""
     monkeypatch.setattr(cos_video, "COS_SWITCH_FILE", tmp_path / "cos_sw" / "cos_switch.json")
     monkeypatch.setattr(cos_video, "COS_CHECK_FILE", tmp_path / "cos_sw" / "cos_check.json")
+    monkeypatch.setattr(cos_video, "COS_LOAD_FILE", tmp_path / "cos_sw" / "net_load.json")
     monkeypatch.setattr(cos_video, "_cos_switch_cache", None)
+    monkeypatch.setattr(cos_video, "_load_cache", None)
 
 
 @pytest.fixture
@@ -515,3 +517,107 @@ async def test_cos_switch_endpoint(client, db_session, env, fake_cos, admin_head
     assert rows == ["音标视频改回服务器本机播放", "音标视频切回腾讯云 COS"]
     st = (await client.get("/api/v1/admin/system/video-cdn", headers=admin_headers)).json()
     assert st["cos"]["enabled"] is True and st["redirect_mode"] == "all"
+
+
+
+# ---------- 忙的时候才走 COS(10-27: 不卡用本机省钱,卡了且 COS 有余额才切 COS) ----------
+import json as _json
+import time as _time
+
+
+def _set_load(busy: bool, mbps: float = 1.0, age: float = 0):
+    cos_video.COS_LOAD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    cos_video.COS_LOAD_FILE.write_text(_json.dumps(
+        {"ts": _time.time() - age, "mbps": mbps, "busy": busy, "since": _time.time(), "events": []}), encoding="utf-8")
+
+
+async def test_smart_route_uses_cos_only_when_busy(client, env, fake_cos):
+    cos_video.upload(os.path.join(env["dir"], "abc123.mp4"))
+    url = f"/api/v1/phonetics/videos/{env['v'].id}/stream"
+    tk = {"t": _ticket(env["stu"], env["v"].id)}
+    get = lambda: client.get(url, params=tk, headers={"Range": "bytes=0-9"}, follow_redirects=False)  # noqa: E731
+    cos_video.write_cos_switch(True, by="管理员")
+    assert cos_video.cos_route(cos_video.read_cos_switch())[0] == "smart"      # 默认 smart
+    _set_load(False, 2.0)
+    assert (await get()).status_code == 206                                   # 不忙: 本机
+    _set_load(True, 9.0)
+    assert (await get()).status_code == 302                                   # 忙: COS
+    _set_load(False, 2.0, age=cos_video.LOAD_STALE_SEC + 5)
+    assert (await get()).status_code == 302                                   # 测不到: 按忙算
+    # 没余额(欠费自动关了): 再忙也不切
+    cos_video.write_cos_switch(False, by=cos_video.COS_AUTO_BY, reason="欠费", auto=True)
+    _set_load(True, 11.0)
+    assert (await get()).status_code == 206
+    # 一直走 COS: 不忙也跳
+    cos_video.write_cos_switch(True, by="管理员")
+    cos_video.set_cos_route("always", 6, by="管理员")
+    _set_load(False, 1.0)
+    assert (await get()).status_code == 302
+
+
+def test_route_and_switch_keep_each_other():
+    """改线路不动开关和切换记录;切开关不动线路和阈值"""
+    cos_video.write_cos_switch(False, by=cos_video.COS_AUTO_BY, reason="欠费", auto=True)
+    cos_video.set_cos_route("smart", 8, by="管理员")
+    sw = cos_video.read_cos_switch()
+    assert sw["enabled"] is False and sw["auto"] and len(sw["events"]) == 1
+    assert cos_video.cos_route(sw) == ("smart", 8.0)
+    cos_video.write_cos_switch(True, by=cos_video.COS_AUTO_BY, reason="恢复", auto=True)
+    assert cos_video.cos_route(cos_video.read_cos_switch()) == ("smart", 8.0)
+    assert cos_video.cos_route({"route": "x", "busy_mbps": "坏"}) == ("smart", cos_video.DEFAULT_BUSY_MBPS)
+
+
+def test_load_state_hysteresis():
+    """进忙立刻进;出忙要满 10 分钟,且连续 3 分钟低于阈值六成;中途又冒高要重新数"""
+    t0 = 1_000_000.0
+    st = cos_video.next_load_state(None, t0, 3.0, 6.0)
+    assert st["busy"] is False
+    st = cos_video.next_load_state(st, t0 + 5, 6.5, 6.0)
+    assert st["busy"] is True and st["events"][-1]["busy"] is True
+    # 马上降下来: 没满 10 分钟,不回本机
+    st = cos_video.next_load_state(st, t0 + 60, 1.0, 6.0)
+    st = cos_video.next_load_state(st, t0 + 300, 1.0, 6.0)
+    assert st["busy"] is True
+    # 在阈值和六成之间(4 Mbps): 不算安静,安静计时清零
+    st = cos_video.next_load_state(st, t0 + 590, 4.0, 6.0)
+    assert st["busy"] is True and st["calm_since"] is None
+    st = cos_video.next_load_state(st, t0 + 620, 1.0, 6.0)
+    st = cos_video.next_load_state(st, t0 + 620 + cos_video.CALM_SEC - 5, 1.0, 6.0)
+    assert st["busy"] is True                                   # 安静不满 3 分钟
+    st = cos_video.next_load_state(st, t0 + 620 + cos_video.CALM_SEC, 1.0, 6.0)
+    assert st["busy"] is False and [e["busy"] for e in st["events"]] == [True, False]
+
+
+async def test_route_endpoint(client, db_session, env, fake_cos, admin_headers):
+    url = "/api/v1/admin/system/video-cos/route"
+    h = {"Authorization": f"Bearer {_make_token(env['tch'].id)}"}
+    assert (await client.put(url, json={"route": "always"}, headers=h)).status_code == 403
+    cos_video.write_cos_switch(True, by="管理员")
+    r = await client.put(url, json={"route": "smart", "busy_mbps": 5}, headers=admin_headers)
+    assert r.status_code == 200
+    cos = r.json()["cos"]
+    assert cos["route"] == "smart" and cos["busy_mbps"] == 5 and cos["calm_mbps"] == 3.0 and cos["enabled"] is True
+    _set_load(False, 1.0)
+    st = (await client.get("/api/v1/admin/system/video-cdn", headers=admin_headers)).json()["cos"]
+    assert st["now_route"] == "local" and st["load"]["mbps"] == 1.0
+    _set_load(True, 7.0)
+    st = (await client.get("/api/v1/admin/system/video-cdn", headers=admin_headers)).json()["cos"]
+    assert st["now_route"] == "cos"
+    assert (await client.put(url, json={"route": "sometimes"}, headers=admin_headers)).status_code == 422
+    rows = (await db_session.execute(sql_text(
+        "SELECT summary FROM operation_logs WHERE action='system.video_cos' ORDER BY id"))).scalars().all()
+    assert rows[-1] == "音标视频: 服务器出网到 5 Mbps 才走 COS"
+
+
+
+async def test_smart_route_skips_cos_when_last_check_failed(client, env, fake_cos):
+    """忙了,但最近一次自动检查 COS 没通过(刚欠费,还没连续两次自动关): 不切 COS,照旧本机"""
+    cos_video.upload(os.path.join(env["dir"], "abc123.mp4"))
+    url = f"/api/v1/phonetics/videos/{env['v'].id}/stream"
+    tk = {"t": _ticket(env["stu"], env["v"].id)}
+    cos_video.write_cos_switch(True, by="管理员")
+    _set_load(True, 9.0)
+    cos_video._record_cos_check(False, "腾讯云账号欠费")
+    assert (await client.get(url, params=tk, headers={"Range": "bytes=0-9"}, follow_redirects=False)).status_code == 206
+    cos_video._record_cos_check(True, "COS 正常")
+    assert (await client.get(url, params=tk, follow_redirects=False)).status_code == 302

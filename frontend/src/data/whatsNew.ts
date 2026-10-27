@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'video-cos-smart-admin-2026-10',
+    date: '2026-10-27',
+    title: '📺 音标视频: 服务器不忙从本机放,忙了才走 COS',
+    desc: '默认改成「服务器忙才走 COS」: 服务器出网到 6 Mbps(12M 带宽的一半)就把视频切到 COS,降到 3.6 Mbps 以下连续 3 分钟才切回本机,切过去至少走 10 分钟,不来回跳。不忙时从本机放,不花 COS 流量费;COS 欠费时再忙也不切。卡片上能看到服务器现在出网多少、学生看视频走哪条线,阈值可以改,也可以改回「一直走 COS」。',
+    where: '管理端首页「音标视频播放线路」卡片 →「什么时候走 COS」',
+    roles: ['admin'],
+    route: '/admin',
+  },
+  {
     id: 'video-cos-switch-admin-2026-10',
     date: '2026-10-27',
     title: '📺 音标视频线路: 欠费自动改回本机,充值后自动切回 COS',
