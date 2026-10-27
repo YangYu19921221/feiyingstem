@@ -721,6 +721,9 @@ async def admin_tutor_test(db: AsyncSession = Depends(get_db), _admin: User = De
             if mode == "deep":
                 body["thinking"] = {"type": "adaptive"}
                 body["output_config"] = {"effort": "low"}
+            else:
+                # 和真提问同一套参数(sonnet-5-5 要 between_tools),测出来的才是真能不能用
+                body.update(tt.fast_thinking(m))
             try:
                 r = await cli.post(f"{conf.base_url}/v1/messages", headers=tt._headers(conf), json=body)
                 ok = r.status_code == 200

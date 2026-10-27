@@ -149,7 +149,7 @@ export default function TutorAdminCard() {
               className={`${input} mt-1`} />
           </label>
           <label className="block text-xs text-slate-500">快速: 主模型
-            <input value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} placeholder="claude-haiku-5-5" className={`${input} mt-1`} />
+            <input value={form.model} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} placeholder="claude-sonnet-5-5" className={`${input} mt-1`} />
           </label>
           <label className="block text-xs text-slate-500">快速: 备用模型(主模型没号时自动换)
             <input value={form.fallback_model} onChange={(e) => setForm((f) => ({ ...f, fallback_model: e.target.value }))} placeholder="claude-sonnet-4-6" className={`${input} mt-1`} />

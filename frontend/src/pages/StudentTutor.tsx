@@ -114,6 +114,8 @@ export default function StudentTutor() {
   const userMsgIdRef = useRef<number | null>(null);
   const stopWantedRef = useRef(false);
   const frozenRef = useRef(false);
+  // 回答写到一半就开新对话 / 翻出旧对话时加一: 那次回答后面的事件不再往界面上写(见 detachAnswer)
+  const sessionRef = useRef(0);
 
   const refreshStatus = useCallback(() => {
     getTutorStatus().then(setStatus).catch((e) => setStatusError(getErrorMessage(e, '学习助手打不开')));
@@ -254,8 +256,17 @@ export default function StudentTutor() {
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const session = sessionRef.current;
+    const live = () => sessionRef.current === session;
     try {
       await askTutor({ text, conversationId: convId, image: img?.blob, mode: useMode }, (ev) => {
+        if (!live()) {
+          // 已经开了新对话: 这次回答不要了,拿到提问 id 就让服务端停下(一个字没出的退回次数)
+          if (ev.type === 'meta') stopTutor(ev.user_message_id).catch(() => ctrl.abort());
+          // 旧回答结束了(可能退回了次数): 重新取一下剩余次数
+          if (ev.type === 'done' || ev.type === 'error') refreshStatus();
+          return;
+        }
         if (ev.type === 'meta') {
           setConvId(ev.conversation_id);
           userMsgIdRef.current = ev.user_message_id;
@@ -289,6 +300,8 @@ export default function StudentTutor() {
         }
       }, ctrl.signal);
     } catch (e) {
+      // 已经换到别的对话: 旧提问出错不提示、也不把字塞回新对话的输入框
+      if (!live()) return;
       if ((e as Error)?.name === 'AbortError') {
         patchBot((m) => ({ ...m, stopped: true }));
         return;
@@ -303,13 +316,16 @@ export default function StudentTutor() {
       toast.error(msg);
       if (e instanceof TutorAskError && e.status === 429) refreshStatus();
     } finally {
-      setSending(false);
-      setStopping(false);
-      setToolStatus('');
-      setThinkStart(null);
-      setSendStart(null);
-      abortRef.current = null;
-      sendingRef.current = false;
+      // 换过对话的话这些已经在 detachAnswer 里清了,而且新对话可能正在发,别把它的状态清掉
+      if (live()) {
+        setSending(false);
+        setStopping(false);
+        setToolStatus('');
+        setThinkStart(null);
+        setSendStart(null);
+        abortRef.current = null;
+        sendingRef.current = false;
+      }
     }
   };
 
@@ -353,10 +369,31 @@ export default function StudentTutor() {
     }
   };
 
+  /** 回答还在写就要换对话: 让这次回答停下,界面上的「正在回答」状态全部清掉。
+   * 以前这两个按钮在回答时是灰的、点了没反应(用户 10-27「右上角的加号点击没有反应」) */
+  const detachAnswer = () => {
+    if (!sendingRef.current) return;
+    const id = userMsgIdRef.current;
+    const old = abortRef.current;
+    // 还没拿到提问 id 的: send() 里收到 meta 时再发停止
+    if (id) stopTutor(id).catch(() => old?.abort());
+    sessionRef.current += 1;
+    sendingRef.current = false;
+    abortRef.current = null;
+    userMsgIdRef.current = null;
+    stopWantedRef.current = false;
+    frozenRef.current = false;
+    setSending(false);
+    setStopping(false);
+    setToolStatus('');
+    setThinkStart(null);
+    setSendStart(null);
+  };
+
   const loadConversation = async (id: number) => {
-    if (sending) return;
     try {
       const c = await getConversation(id);
+      detachAnswer();
       setConvId(c.id);
       setFollowup(c.followup);
       setNow(Date.now());
@@ -372,11 +409,20 @@ export default function StudentTutor() {
   };
 
   const newConversation = () => {
-    if (sending) return;
+    setHistoryOpen(false);
+    if (!sendingRef.current && messages.length === 0 && convId === null) {
+      // 本来就是一段空的新对话: 点了也要有反应,不然孩子以为按钮坏了
+      toast.info('现在就是新对话,直接问吧');
+      textRef.current?.focus();
+      return;
+    }
+    detachAnswer();
     setConvId(null);
     setMessages([]);
     setFollowup(null);
-    setHistoryOpen(false);
+    setAwayFromEnd(false);
+    nearBottom.current = true;
+    textRef.current?.focus();
   };
 
   // 次数用完了,但这道题还能免费追问: 输入框照常能用(只是不能换照片 / 深度思考)
@@ -414,7 +460,7 @@ export default function StudentTutor() {
             )}
           </div>
           <div className="flex items-center">
-            <button type="button" onClick={newConversation} disabled={sending} className="flex h-11 w-11 items-center justify-center rounded-xl text-ink-soft hover:bg-black/5 disabled:opacity-40" aria-label="新对话" title="新对话">
+            <button type="button" onClick={newConversation} className="flex h-11 w-11 items-center justify-center rounded-xl text-ink-soft hover:bg-black/5 disabled:opacity-40" aria-label="新对话" title="新对话">
               <Plus className="h-5 w-5" aria-hidden="true" />
             </button>
             <button type="button" onClick={openHistory} className="flex h-11 w-11 items-center justify-center rounded-xl text-ink-soft hover:bg-black/5" aria-label="以前的对话" title="以前的对话">
@@ -735,7 +781,7 @@ export default function StudentTutor() {
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
-            <button type="button" onClick={newConversation} disabled={sending} className="mb-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-xl bg-orange-500 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+            <button type="button" onClick={newConversation} className="mb-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-xl bg-orange-500 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
               <Plus className="h-4 w-4" aria-hidden="true" /> 新对话
             </button>
             {history === null ? (

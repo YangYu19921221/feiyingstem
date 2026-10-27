@@ -522,6 +522,30 @@ async def test_fast_mode_sends_no_thinking(client, db_session, relay, shared_ses
 
 
 @pytest.mark.asyncio
+async def test_fast_sonnet_5_5_uses_between_tools_and_fallback_sends_none(client, db_session, relay, shared_session):
+    """快速档主模型 sonnet-5-5: 传它最低的思考档 between_tools + effort low(disabled 在它上面 400);
+    between_tools 只有 sonnet-5-5 认,换到备用 sonnet-4-6 时必须一个思考参数都不带,否则备用也 400"""
+    users = await _env(db_session)
+    await db_session.execute(sql_text("UPDATE ai_providers SET model_name = 'claude-sonnet-5-5' WHERE provider_name = :p"),
+                             {"p": tt.PROVIDER_NAME})
+    await db_session.commit()
+    fake = relay([
+        (503, {"error": {"type": "api_error", "message": "No available accounts"}}),
+        (200, _text_reply("because 拆成 be + cause。")),
+    ])
+    r, events = await _ask_mode(client, users["s"].id, "because 怎么记", "fast")
+    assert r.status_code == 200 and events[-1]["type"] == "done"
+    first, second = fake.requests
+    assert first["model"] == "claude-sonnet-5-5"
+    assert first["thinking"] == {"type": "between_tools"}
+    assert first["output_config"] == {"effort": tt.FAST_EFFORT_5_5}
+    assert second["model"] == "claude-sonnet-4-6"
+    assert "thinking" not in second and "output_config" not in second
+    # 深度思考不受影响
+    assert tt.request_body("claude-opus-5-5", "deep", [], [], True)["thinking"] == {"type": "adaptive"}
+
+
+@pytest.mark.asyncio
 async def test_deep_needs_enough_left_and_can_be_turned_off(client, db_session, relay, shared_session):
     users = await _env(db_session)
     await client.put("/api/v1/admin/tutor", headers=_h(users["a"].id), json={"scope": "hq", "free_total": 1})

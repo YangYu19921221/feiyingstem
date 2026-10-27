@@ -12,7 +12,9 @@ ai_service._get_ai_config 也排除它。主模型 model_name,备用 extra_confi
 省掉每次先撞一次 503。
 
 ## 两种回答方式(用户 10-26「分个高级思考之类的,现在最高是 opus5.5」)
-- 快速(fast): model_name / extra_config.fallback_model,不开思考,几秒出字
+- 快速(fast): model_name / extra_config.fallback_model。10-27 用户定主模型 claude-sonnet-5-5、备用 claude-sonnet-4-6;
+  sonnet-5-5 没法完全关思考,用它最低档 between_tools + effort low(fast_thinking),经中转首字约 7-9 秒,
+  比 sonnet-4-6 的 2 秒慢,且中转把 5-5 的回答整段一起发过来(不是逐字)
 - 深度思考(deep): extra_config.deep_model(默认 claude-opus-5-5)/ deep_fallback_model,
   adaptive thinking + effort medium,先想再答,**算 deep_cost 次**(默认 2)。
   思考内容**不给孩子看**(里面常直接写着作业答案),前端只显示「在深度思考… N 秒」。
@@ -85,6 +87,7 @@ MODES = ("fast", "deep")
 DEFAULT_DEEP_MODEL = "claude-opus-5-5"
 DEFAULT_DEEP_FALLBACK = "claude-sonnet-5-5"
 DEEP_EFFORT = "medium"    # 实测 opus-5-5: low 6.1s / medium 6.3s / high 8.5s 出字,medium 讲得更分步
+FAST_EFFORT_5_5 = "low"   # 快速档用 sonnet-5-5 时(见 fast_thinking)
 
 MAX_TEXT = 500            # 孩子一次最多打多少字
 # 一轮回答的上限。提示词要求 120 字左右,这个数只是兜底: 不用的不收钱;
@@ -528,14 +531,27 @@ def tools_for(pictures: bool) -> list[dict]:
     return TOOLS if pictures else [t for t in TOOLS if t["name"] != "draw_word_picture"]
 
 
+def fast_thinking(model: str) -> dict:
+    """快速档的思考参数。sonnet-5-5 不传 thinking 会按 high 默认先想再答,首字更慢;
+    between_tools 是它最低的思考档(disabled 在它上面 400),配 effort low。
+    between_tools **只有 sonnet-5-5 认**,别的模型传了 400 —— 备用模型(sonnet-4-6 等)什么都不传。
+    10-27 生产经中转实测首字: sonnet-4-6 约 2s;sonnet-5-5 不传 10s / between_tools 8-9s /
+    between_tools+low 7-8s / adaptive+low 7-12s"""
+    if model.startswith("claude-sonnet-5-5"):
+        return {"thinking": {"type": "between_tools"}, "output_config": {"effort": FAST_EFFORT_5_5}}
+    return {}
+
+
 def request_body(model: str, mode: str, system: list[dict], messages: list[dict], allow_tools: bool,
                  pictures: bool = False) -> dict:
     body = {"model": model, "max_tokens": MAX_TOKENS.get(mode, MAX_TOKENS["fast"]), "system": system,
             "tools": tools_for(pictures), "messages": messages, "stream": True}
     if mode == "deep":
-        # 5.x 只认 adaptive(传 enabled + budget 直接 400,10-26 实测);快速档不传,让模型自己定
+        # 5.x 只认 adaptive(传 enabled + budget 直接 400,10-26 实测)
         body["thinking"] = {"type": "adaptive"}
         body["output_config"] = {"effort": DEEP_EFFORT}
+    else:
+        body.update(fast_thinking(model))
     if not allow_tools:
         # 工具轮次用完: 工具定义还得带着(历史里有 tool_use),但这一轮只许写字
         body["tool_choice"] = {"type": "none"}
