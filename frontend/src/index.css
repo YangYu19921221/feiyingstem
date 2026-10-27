@@ -1734,3 +1734,47 @@ body.student-interface textarea.tutor-composer-input:focus {
   .tutor-dot { opacity: .6; }
   .tutor-shine { animation: none !important; -webkit-text-fill-color: currentColor; background: none; }
 }
+
+/* ── 学习助手: 回答里能点着听的英文(components/tutor/SpeakableText)──
+ * 浅蓝底小块 + 前面小喇叭,一眼看出能点;inline + box-decoration-break 让长句跨行时每行都带底色。
+ * 点了喇叭跳几下(.is-speaking),知道在读了。 */
+.tutor-speak {
+  display: inline;
+  margin: 0 1px;
+  padding: 1px 6px 1px 4px;
+  border-radius: 7px;
+  background: #e0f2fe;
+  color: #075985;
+  font-weight: 500;
+  line-height: 1.9;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  cursor: pointer;
+  transition: background-color .15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.tutor-speak:hover { background: #bae6fd; }
+.tutor-speak:active { background: #7dd3fc; }
+.tutor-speak:focus-visible { outline: 2px solid #0284c7; outline-offset: 1px; }
+.tutor-speak-icon {
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  margin-right: 3px;
+  vertical-align: -0.12em;
+  color: #0284c7;
+}
+.tutor-speak.is-speaking { background: #bae6fd; }
+@keyframes tutorSpeaking { 0%, 100% { transform: scale(1); } 30% { transform: scale(1.25); } 60% { transform: scale(.92); } }
+.tutor-speak.is-speaking .tutor-speak-icon,
+.tutor-speaking { animation: tutorSpeaking .5s ease-in-out 3; }
+
+/* 看大图(components/tutor/ImageLightbox,portal 到 body):淡入 + 图稍微放大进来 */
+@keyframes tutorLbIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tutorLbImg { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+.tutor-lightbox { animation: tutorLbIn .18s ease-out both; }
+.tutor-lightbox-img { animation: tutorLbImg .24s cubic-bezier(.2, .8, .3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tutor-speak.is-speaking .tutor-speak-icon, .tutor-speaking, .tutor-lightbox, .tutor-lightbox-img { animation: none !important; }
+}

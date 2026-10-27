@@ -4,9 +4,11 @@
  * 一个词全平台只画一张: 正在画时每 3 秒问一次,画好显示图;没画出来写明「没扣次数」。
  * 图在公开目录(只有单词的画面,没有孩子的信息),点一下放大看。
  * 图是 4:5: 上面是画,下面服务器印好了单词、音标、中文(画图模型拼不准单词,所以不让它写)。
+ * 大图走 ImageLightbox(portal 到 body: 气泡的入场动画带 transform,遮罩放在气泡里只盖住那个气泡)。
  */
-import { memo, useEffect, useState } from 'react';
-import { ImageOff, Paintbrush, Volume2, X } from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ImageOff, Maximize2, Paintbrush, Volume2 } from 'lucide-react';
+import ImageLightbox from './ImageLightbox';
 import { useAudio } from '../../hooks/useAudio';
 import { getPicture, type PictureStatus } from '../../api/tutor';
 
@@ -18,11 +20,20 @@ function PictureCard({ picId, word, wordId, status: initStatus, url: initUrl }: 
 }) {
   const { playAudio } = useAudio();
   // 图下面印着单词: 点「听」读这个词(同一个 Edge TTS 英式女声;有 word_id 时按 id 读,区分一词多音)
-  const say = () => { void playAudio(word, 1, wordId); };
+  const [speaking, setSpeaking] = useState(false);
+  const speakTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(speakTimer.current), []);
+  const say = useCallback(() => {
+    void playAudio(word, 1, wordId);
+    setSpeaking(true);
+    window.clearTimeout(speakTimer.current);
+    speakTimer.current = window.setTimeout(() => setSpeaking(false), 1400);
+  }, [playAudio, word, wordId]);
   const [status, setStatus] = useState<PictureStatus>(initStatus);
   const [url, setUrl] = useState<string | null>(initUrl);
   const [secs, setSecs] = useState(0);
   const [big, setBig] = useState(false);
+  const close = useCallback(() => setBig(false), []);
 
   useEffect(() => {
     if (status !== 'pending') return;
@@ -45,32 +56,24 @@ function PictureCard({ picId, word, wordId, status: initStatus, url: initUrl }: 
 
   if (status === 'ready' && url) {
     return (
-      <>
+      <div className="mt-3 w-48 sm:w-56">
         <button type="button" onClick={() => setBig(true)}
-          className="mt-3 block overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm"
+          className="group relative block w-full overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm"
           aria-label={`放大看 ${word} 的记忆图`}>
-          <img src={url} alt={`${word} 的记忆图`} className="tutor-in aspect-[4/5] w-48 object-contain sm:w-56" loading="lazy" />
-          <span className="block border-t border-orange-50 px-3 py-1.5 text-left text-xs text-orange-700">点一下放大</span>
+          <img src={url} alt={`${word} 的记忆图`} className="tutor-in aspect-[4/5] w-full object-contain" loading="lazy" />
+          <span className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-white opacity-90 transition group-hover:bg-black/60"
+            aria-hidden="true">
+            <Maximize2 className="h-4 w-4" />
+          </span>
         </button>
         <button type="button" onClick={say}
-          className="mt-1.5 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-sky-700 ring-1 ring-sky-200 hover:bg-sky-50"
+          className="mt-1.5 flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-sky-50 px-3 text-sm font-semibold text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100"
           aria-label={`听 ${word} 的发音`}>
-          <Volume2 className="h-4 w-4" aria-hidden="true" /> 听 {word}
+          <Volume2 className={`h-4 w-4 shrink-0 ${speaking ? 'tutor-speaking' : ''}`} aria-hidden="true" />
+          <span className="truncate">听 {word}</span>
         </button>
-        {big && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onClick={() => setBig(false)} role="dialog" aria-label={`${word} 的记忆图`}>
-            <button type="button" onClick={() => setBig(false)} className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-ink" aria-label="关闭">
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
-            <img src={url} alt={`${word} 的记忆图`} className="max-h-[78vh] max-w-full rounded-2xl bg-white" onClick={(e) => e.stopPropagation()} />
-            <button type="button" onClick={(e) => { e.stopPropagation(); say(); }}
-              className="absolute bottom-6 left-1/2 inline-flex min-h-12 -translate-x-1/2 items-center gap-2 rounded-full bg-white px-5 text-base font-semibold text-sky-700 shadow-lg"
-              aria-label={`听 ${word} 的发音`}>
-              <Volume2 className="h-5 w-5" aria-hidden="true" /> 听 {word}
-            </button>
-          </div>
-        )}
-      </>
+        {big && <ImageLightbox url={url} word={word} onClose={close} onSpeak={say} speaking={speaking} />}
+      </div>
     );
   }
   if (status === 'pending') {

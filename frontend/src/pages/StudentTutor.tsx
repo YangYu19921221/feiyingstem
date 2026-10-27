@@ -591,7 +591,7 @@ export default function StudentTutor() {
                     )}
                     {m.text ? (
                       <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
-                        {m.failed ? m.text : <SpeakableText text={clean(m.text)} onSpeak={(s) => { void playAudio(s); }} />}
+                        {m.failed ? m.text : <SpeakableText text={clean(m.text)} onSpeak={(s) => { void playAudio(s); }} hint={m.key === lastBot?.key && !live} />}
                         {live && !toolStatus && !stopping && <span className="tutor-caret" aria-hidden="true" />}
                       </p>
                     ) : m.stopped ? (
