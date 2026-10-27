@@ -33,21 +33,3 @@ export function SkeletonText({ lines = 1, className = '' }: { lines?: number; cl
     </div>
   );
 }
-
-/** 仪表板书架骨架：3 张书卡的占位 */
-export function BookGridSkeleton({ count = 3 }: { count?: number }) {
-  return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl overflow-hidden border border-black/[0.05]">
-          <Skeleton className="h-36 rounded-none" />
-          <div className="p-4 space-y-3">
-            <Skeleton className="h-5 w-3/4" />
-            <Skeleton className="h-3 w-1/2" />
-            <Skeleton className="h-1 w-full" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}

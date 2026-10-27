@@ -1778,3 +1778,233 @@ body.student-interface textarea.tutor-composer-input:focus {
 @media (prefers-reduced-motion: reduce) {
   .tutor-speak.is-speaking .tutor-speak-icon, .tutor-speaking, .tutor-lightbox, .tutor-lightbox-img { animation: none !important; }
 }
+
+/* ===== 学生首页「我的书架」书封(components/book/BookJacket + BookShelf) =====
+   书立在木板上: 书脊 + 纸片层封面 + 书名印在封面下半截那层纸上。
+   书的宽度在各尺寸下都在 127–229px(BookShelf 按屏宽定每排几本),字号因此写死,不用容器查询(iOS 12 要能看)。 */
+@font-face {
+  font-family: 'JacketMark';
+  src: url('/promo-card/fonts/baloo-2-latin-800.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020-007E;
+}
+
+.book-shelf-tier { margin-bottom: 1.75rem; }
+.book-shelf-tier:last-child { margin-bottom: 0; }
+.book-shelf-row {
+  display: grid;
+  align-items: end;
+  column-gap: 0.875rem;
+  padding: 0 0.375rem;
+}
+@media (min-width: 640px) {
+  .book-shelf-tier { margin-bottom: 2.25rem; }
+  .book-shelf-row { column-gap: 1.25rem; padding: 0 0.75rem; }
+}
+@media (min-width: 1024px) {
+  .book-shelf-row { column-gap: 1.5rem; padding: 0 1rem; }
+}
+/* 木板: 上面一道亮面,正面一截木色,底下一层软影 */
+.book-shelf-plank {
+  position: relative;
+  height: 0.75rem;
+  border-radius: 0.25rem 0.25rem 0.375rem 0.375rem;
+  background: linear-gradient(180deg, #ecd0ad 0, #ecd0ad 3px, #cf9a69 3px, #b97e4f 100%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 8px 14px -8px rgb(111 72 43 / 0.55);
+}
+.book-shelf-plank::after {
+  content: '';
+  position: absolute;
+  inset: 3px 0 auto;
+  height: 1px;
+  background: rgb(120 72 36 / 0.25);
+}
+
+.book-shelf-item {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0.5rem;
+  -webkit-tap-highlight-color: transparent;
+  animation: bookShelve 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+/* 书一直看得见: 只是从板子上方一点点落下来放好,不做淡入(排在后面的书等动画时不会是空的) */
+@keyframes bookShelve {
+  from { transform: translateY(-8px); }
+  to { transform: none; }
+}
+
+.book-jacket {
+  position: relative;
+  transform-origin: 50% 100%;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (hover: hover) {
+  .book-shelf-item:hover .book-jacket { transform: translateY(-6px); }
+  .book-shelf-item:hover .book-jacket-cover {
+    box-shadow: 0 1px 2px rgb(60 30 10 / 0.2), 8px 16px 22px -10px rgb(60 30 10 / 0.5);
+  }
+}
+.book-shelf-item:active .book-jacket { transform: translateY(-2px) scale(0.985); }
+
+/* 封面右边露出一点书页 */
+.book-jacket-pages {
+  position: absolute;
+  top: 4px;
+  right: -4px;
+  bottom: 3px;
+  width: 8px;
+  border-radius: 0 3px 3px 0;
+  background: repeating-linear-gradient(90deg, #fffaf0 0 1px, #e8d9c2 1px 2px);
+  box-shadow: 2px 3px 6px -3px rgb(60 30 10 / 0.35);
+}
+.book-jacket-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 3px 8px 8px 3px;
+  box-shadow: 0 1px 2px rgb(60 30 10 / 0.18), 6px 10px 16px -10px rgb(60 30 10 / 0.45);
+  transition: box-shadow 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.book-jacket-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* 书脊: 一道压痕 + 左边暗、右边一道亮 */
+.book-jacket-spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 8%;
+  background: linear-gradient(90deg,
+    rgb(0 0 0 / 0.26) 0%, rgb(0 0 0 / 0.08) 55%, rgb(255 255 255 / 0.22) 78%, rgb(0 0 0 / 0.12) 100%);
+  pointer-events: none;
+}
+.book-jacket-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, rgb(255 255 255 / 0.18) 0%, rgb(255 255 255 / 0) 34%);
+  pointer-events: none;
+}
+
+.book-jacket-imprint {
+  position: absolute;
+  top: 8px;
+  left: calc(8% + 6px);
+  max-width: 62%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.book-jacket-label {
+  position: absolute;
+  left: calc(8% + 6px);
+  right: 9px;
+  bottom: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.book-jacket-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.28;
+  word-break: break-all;
+}
+.book-jacket-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.book-jacket-row > :last-child { flex-shrink: 0; }
+.book-jacket-meta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.86;
+}
+.book-jacket-units { display: none; }
+@media (min-width: 390px) and (max-width: 639px), (min-width: 768px) {
+  .book-jacket-title { font-size: 14px; }
+  .book-jacket-row { font-size: 12px; }
+  .book-jacket-units { display: inline; }
+}
+.book-jacket-progress {
+  position: absolute;
+  left: 8%;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+}
+.book-jacket-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 0 3px 3px 0;
+}
+
+/* 还没兑换的书: 画面褪色,书名照常看得清 */
+.book-jacket-locked .book-jacket-cover {
+  -webkit-filter: saturate(0.32);
+  filter: saturate(0.32);
+  box-shadow: 0 1px 2px rgb(60 30 10 / 0.14);
+}
+@media (hover: hover) {
+  .book-shelf-item:hover .book-jacket-locked .book-jacket-cover { -webkit-filter: saturate(0.75); filter: saturate(0.75); }
+}
+
+/* 小图(调整顺序 / 作业列表): 只有封面 */
+.book-jacket-mini .book-jacket-cover {
+  border-radius: 2px 5px 5px 2px;
+  box-shadow: 0 1px 2px rgb(60 30 10 / 0.2), 2px 4px 8px -4px rgb(60 30 10 / 0.35);
+}
+
+/* 加载中的书影 */
+.book-shelf-ghost {
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px 8px 8px 3px;
+  background: #efe4d6;
+}
+.book-shelf-ghost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: bookGhostSweep 2s infinite;
+}
+@keyframes bookGhostSweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-shelf-item, .book-shelf-ghost::after { animation: none !important; }
+  .book-jacket, .book-jacket-cover { transition: none; }
+  .book-shelf-item:hover .book-jacket, .book-shelf-item:active .book-jacket { transform: none; }
+}

@@ -24,7 +24,9 @@ import MyCoinsCard from '../components/MyCoinsCard';
 import RankingBanner from '../components/leaderboard/RankingBanner';
 import ChangePasswordModal from '../components/ChangePasswordModal';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
-import { BookGridSkeleton } from '../components/Skeleton';
+import BookShelf, { BookShelfSkeleton } from '../components/book/BookShelf';
+import { shelfPreviewCount, useShelfColumns } from '../hooks/useShelfColumns';
+import BookJacket from '../components/book/BookJacket';
 import { AchievementIcon } from '../components/AchievementIcon';
 import { BarChart3, BookOpenText, Check, ChevronDown, Hand, KeyRound, LogOut, MapPin, PencilLine, Search, Settings2, Volume2, Wifi } from 'lucide-react';
 import { pendingCount, flushQueue } from '../api/submitQueue';
@@ -311,8 +313,11 @@ const StudentDashboard = () => {
     return list.filter(b => b.name.toLowerCase().includes(q));
   }, [sortedOwnedBooks, bookQuery, shelfSeries]);
   const isShelfFiltered = Boolean(bookQuery.trim() || shelfSeries);
+  // 收起时先放一排(手机两排),按屏宽算;展开 / 搜索 / 筛版本时全放
+  const shelfCols = useShelfColumns();
+  const shelfPreview = shelfPreviewCount(shelfCols);
   const visibleOwnedBooks = !isShelfFiltered && !showAllOwnedBooks
-    ? displayedBooks.slice(0, 3)
+    ? displayedBooks.slice(0, shelfPreview)
     : displayedBooks;
 
   // 书架上实际存在的版本(有两种以上才显示 chips,单一版本没有筛选意义)
@@ -375,16 +380,6 @@ const StudentDashboard = () => {
 
   const handleStartLearning = (bookId: number) => {
     navigate(`/student/books/${bookId}/units`);
-  };
-
-  const handleBookCoverError = (event: React.SyntheticEvent<HTMLImageElement>) => {
-    const image = event.currentTarget;
-    const fallback = '/book-cover-1.jpeg';
-    if (image.src.endsWith(fallback)) {
-      image.classList.add('hidden');
-      return;
-    }
-    image.src = fallback;
   };
 
   // 取首页展示的成就（已解锁优先 + 兜底未解锁，最多 6 个）
@@ -853,7 +848,7 @@ const StudentDashboard = () => {
           )}
 
           {loading ? (
-            <BookGridSkeleton count={3} />
+            <BookShelfSkeleton cols={shelfCols} />
           ) : ownedBooks.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-orange-200 bg-white/70 px-5 py-9 text-center sm:py-14">
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-accent-warm">
@@ -878,7 +873,6 @@ const StudentDashboard = () => {
               className="space-y-2"
             >
               {sortedOwnedBooks.map((book) => {
-                const coverIndex = (book.id % 4) + 1;
                 return (
                   <Reorder.Item
                     key={book.id}
@@ -887,9 +881,7 @@ const StudentDashboard = () => {
                     whileDrag={{ scale: 1.01, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
                   >
                     <span className="text-ink-mute select-none">⋮⋮</span>
-                    <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0 bg-black/5">
-                      <img onError={handleBookCoverError} src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover" />
-                    </div>
+                    <BookJacket book={book} variant="mini" className="w-10 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-ink truncate">{book.name}</h3>
                       <p className="text-xs text-ink-mute font-numeric">{book.unit_count} 单元 · {book.word_count} 词</p>
@@ -910,60 +902,13 @@ const StudentDashboard = () => {
               </button>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {visibleOwnedBooks.map((book) => {
-                const coverIndex = (book.id % 4) + 1;
-                return (
-                  <button
-                    type="button"
-                    key={book.id}
-                    className="card-soft flex w-full cursor-pointer flex-col overflow-hidden rounded-2xl text-left"
-                    onClick={() => handleStartLearning(book.id)}
-                  >
-                    <div className="relative h-36 overflow-hidden bg-black/5">
-                      <img
-                        onError={handleBookCoverError}
-                        src={book.cover_url || `/book-cover-${coverIndex}.jpeg`}
-                        alt={book.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="p-4 flex-1 flex flex-col">
-                      <h3 className="font-display text-base font-semibold text-ink mb-1.5 line-clamp-1">{book.name}</h3>
-                      <p className="text-xs text-ink-mute font-numeric mb-3">
-                        {book.unit_count} 单元 · {book.word_count} 词
-                        {book.grade_level && <span className="ml-1.5 text-ink-soft">· {book.grade_level}</span>}
-                        {book.volume && <span className="text-ink-soft"> {book.volume}</span>}
-                      </p>
-                      <div className="mt-auto">
-                        <div className="flex items-baseline justify-between mb-1.5">
-                          <span className="text-xs text-ink-soft">学习进度</span>
-                          <span className="text-sm font-numeric font-semibold text-ink">{book.progress_percentage.toFixed(0)}%</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-black/[0.06] rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              book.progress_percentage >= 100
-                                ? 'progress-gold'
-                                : book.progress_percentage > 0
-                                ? 'bg-accent-warm progress-striped'
-                                : 'bg-accent-warm'
-                            }`}
-                            style={{ width: `${book.progress_percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <BookShelf books={visibleOwnedBooks} cols={shelfCols} onOpen={(book) => handleStartLearning(book.id)} />
           )}
 
-          {!loading && !isEditingOrder && !isShelfFiltered && displayedBooks.length > 3 && (
+          {!loading && !isEditingOrder && !isShelfFiltered && displayedBooks.length > shelfPreview && (
             <div className="mt-5 flex flex-col items-center gap-2 border-t border-black/[0.06] pt-5 sm:flex-row sm:justify-between">
               <p className="text-center text-xs text-ink-mute sm:text-left">
-                先显示书架前 3 本，今天更容易找到要学的内容。
+                先放前 {shelfPreview} 本，今天要学的更好找。
               </p>
               <button
                 type="button"
@@ -992,35 +937,7 @@ const StudentDashboard = () => {
                 </button>
               </header>
               {showMoreBooks ? (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {unownedBooks.map((book) => {
-                    const coverIndex = (book.id % 4) + 1;
-                    return (
-                      <button
-                        type="button"
-                        key={book.id}
-                        className="group flex w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/[0.05] bg-white text-left opacity-75 transition hover:border-black/15 hover:opacity-100"
-                        onClick={() => navigate('/subscription/redeem')}
-                      >
-                        <div className="relative h-32 overflow-hidden bg-black/5">
-                          <img onError={handleBookCoverError} src={book.cover_url || `/book-cover-${coverIndex}.jpeg`} alt={book.name} className="w-full h-full object-cover grayscale" />
-                          <div className="absolute inset-0 bg-black/30" />
-                        </div>
-                        <div className="p-4">
-                          <h3 className="font-display text-base font-semibold text-ink mb-1.5 line-clamp-1">{book.name}</h3>
-                          <p className="text-xs text-ink-mute font-numeric mb-3">
-                            {book.unit_count} 单元 · {book.word_count} 词
-                          </p>
-                          <span
-                            className="block w-full rounded-lg border border-black/15 py-2 text-center text-sm font-medium text-ink transition group-hover:bg-black/5"
-                          >
-                            输入兑换码
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <BookShelf books={unownedBooks} cols={shelfCols} variant="locked" onOpen={() => navigate('/subscription/redeem')} />
               ) : (
                 <p className="rounded-xl border border-dashed border-black/[0.08] bg-white/60 px-4 py-3 text-center text-xs text-ink-mute">
                   还有 {unownedBooks.length} 本书可解锁，点“展开更多”查看，或直接兑换教材

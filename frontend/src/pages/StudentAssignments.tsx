@@ -15,6 +15,7 @@ import useGoBack from '../hooks/useGoBack';
 import { getMyAssignments } from '../api/assignments';
 import type { StudentBookAssignmentResponse } from '../api/assignments';
 import { toast } from '../components/Toast';
+import BookJacket from '../components/book/BookJacket';
 import { getErrorMessage } from '../utils/errorMessage';
 
 const getDaysUntilDeadline = (deadline?: string): number | null => {
@@ -117,11 +118,10 @@ export default function StudentAssignments() {
         className="card-soft rounded-2xl p-4 sm:p-5"
       >
         <div className="flex items-start gap-4">
-          <img
-            src={`/book-cover-${(assignment.book_id % 4) + 1}.jpeg`}
-            alt=""
-            className="h-20 w-16 shrink-0 rounded-xl object-cover sm:h-24 sm:w-20"
-            loading="lazy"
+          <BookJacket
+            book={{ id: assignment.book_id, name: assignment.book_name }}
+            variant="mini"
+            className="w-16 shrink-0 sm:w-[4.5rem]"
           />
 
           <div className="min-w-0 flex-1">
