@@ -596,6 +596,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   域名被停 / 欠费 / 用量封顶)。现在主进程线程 cdn-guard(和 COS 同步线程一起起)在开关开着时每 5 分钟 probe_cdn 一次,
   **连续 2 次**不通写 off + reason,updated_by="系统自动关闭";测的过程中管理员动过开关(updated_at 变了)不覆盖。
   卡片红框显示几点关的和原因。测试 1 例(一次就关 / 覆盖管理员 / 没开也测 三处各让它失败,回归锁验证过)
+  **10-27 16:15 腾讯云欠费,视频全播不了**(用户「音标视频怎么又看不了了」): 我们的 /stream 照常 302,跳到 COS 后 COS 回
+  **451 UnavailableForLegalReasons「account is arrears, unavailable until you recharge」**(CDN 10-26 起已关,全走 COS)。
+  10-26 上午 CDN 域名 418 多半也是同一个欠费。处理: 生产 .env 的 COS_REDIRECT 改成空(备份 /root/env_before_cosoff_20261027_1615.bak),
+  两个服务重启 → 视频改回本机串流;公网实测 3 节 206、真实学生请求 206。⚠️ **现在视频走服务器 12M 带宽**,人多会卡;
+  用户充值后把 COS_REDIRECT 改回 all 再重启两个服务。排查顺序: 先看 nginx 里 /stream 是 302 还是 206,302 就是跳出去的那边坏了,
+  从服务器 refresh_index() 后签一个地址带 Range 取一下看状态码(没有 refresh_index 时 signed_url 恒为 None,别误判)。
+  COS 本身没有 CDN 那样的自动退回(cdn-guard 只测 CDN),要加的话另做
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):
