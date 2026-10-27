@@ -603,7 +603,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   用户充值后把 COS_REDIRECT 改回 all 再重启两个服务。排查顺序: 先看 nginx 里 /stream 是 302 还是 206,302 就是跳出去的那边坏了,
   从服务器 refresh_index() 后签一个地址带 Range 取一下看状态码(没有 refresh_index 时 signed_url 恒为 None,别误判)。
   **10-27 晚已做 COS 开关 + 欠费自动切换**(见下一段)
-  **10-27 COS 线路开关 + 欠费自动切换**(部署信息: COSSW_DEPLOY_PENDING)(用户「是不是要做个开关切换 COS,有钱了之后」→「切回 COS 了需要有个切换 COS 的文字显示」):
+  **10-27 COS 线路开关 + 欠费自动切换**(17:00 **已部署生产**,提交 82e033f;3 个后端文件生产==c361d23 整推(git archive 导出),两个服务都重启;前端 dist 构建号 mvqgeq57;
+  备份 /root/eh_code_before_cossw_20261027_1652.tgz、frontend/dist_bak_20261027_1652。上线时在生产写了开关文件
+  「16:15 系统自动因欠费改回本机」(auto=True),所以**充值后 cos-guard 连续 2 次取到就自动切回 COS,不用改 .env**;
+  .env 的 COS_REDIRECT 现在是空的,开关文件在就不看它。16:58 首次自动检查: 仍欠费,保持本机,视频 206 正常)(用户「是不是要做个开关切换 COS,有钱了之后」→「切回 COS 了需要有个切换 COS 的文字显示」):
   ①开关存文件 private_media/cos_video/cos_switch.json(多进程都看得到),**文件在就以文件为准**,没有文件照旧看 .env 的 COS_REDIRECT,
   文件坏了按关(本机串流永远能播)。redirect_enabled / redirect_mode 都先看它
   ②主进程线程 cos-guard 每 5 分钟 probe_cos: 签 COS 地址(不走 CDN)取开头 1KB,必须 206 且和本机一致;原因分开写
