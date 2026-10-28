@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'ipa-keyboard-howto-2026-10',
+    date: '2026-10-28',
+    title: '⌨️ 音标键盘会教你怎么打了',
+    desc: '每个音标键下面都印了一个你认识的词,比如 æ 下面是 cat,点一下还会读出来,听着对就是它。橙色键是元音。第一次打开会先放一遍「怎么打」,以后点键盘上的「怎么打?」随时再看。单词前面的重音记号 ˈ 已经帮你印好,不用再填了。',
+    where: '首页「音标」→ 教材目录 → 任意一节「卡片写音标」或「整页版」',
+    roles: ['student'],
+    route: '/student/phonetics/textbook',
+  },
+  {
     id: 'login-guard-2026-10',
     date: '2026-10-28',
     title: '🔒 账号更安全了: 密码输错多次会暂时锁住',

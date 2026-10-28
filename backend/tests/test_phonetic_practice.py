@@ -364,3 +364,55 @@ async def test_cannot_upload_reading_for_other_org_item(
         data={"item_id": str(d["item_secret"])},
     )
     assert r.status_code == 404
+
+
+async def test_lesson_marks_stress_slot_without_leaking_answer(
+        client: AsyncClient, db_session, two_orgs_with_books):
+    """10-28: 177 道题第 0 格是重音符,孩子把第一个音填进去整排错一格。
+    前端要把重音格印好、不让填 —— 后端只说「第几格是重音」,不能顺手把音素带出去"""
+    d = two_orgs_with_books
+    ls = await _mk_lesson(db_session, d["shared"], "9—3", [
+        ("handle", ["ˈ", "h", "æ", "n", "d", "l"], "手柄"),
+        ("cab", ["k", "æ", "b"], "出租车"),
+    ])
+    await db_session.commit()
+    r = await client.get(f"/api/v1/phonetic-practice/lessons/{ls.id}",
+                         headers={"Authorization": f"Bearer {d['s1']}"})
+    items = r.json()["items"]
+    assert [i["stress_at"] for i in items] == [[0], []]
+    assert [i["slot_count"] for i in items] == [6, 3]
+    # 题目上只多了 stress_at 一个字段(highlight 是这一节教的音,本来就下发,不算答案)
+    assert all(set(i) == {"id", "word", "meaning", "slot_count", "stress_at"} for i in items)
+    for leaked in ("hændl", "kæb", "answer"):
+        assert leaked not in r.text, f"响应里泄露了 {leaked}"
+
+
+def test_keyboard_examples_cover_every_key_and_hold_the_sound():
+    """音标键盘每个键下面印一个例词(c**a**t),点键还会读它。
+    例词必须①每个键都有 ②真的含这个音(按本机词库的音标核对)③不超过 5 个字母(320 宽手机一个键 35px)。
+    例词表在前端 utils/ipaPhonemes.ts,这里正则解析源文件,不维护 Python 副本"""
+    import re
+    import sqlite3
+    from pathlib import Path
+    from app.services.phonetic_tokenize import GROUPS, tokenize
+
+    src = (Path(__file__).resolve().parents[2] / "frontend/src/utils/ipaPhonemes.ts").read_text(encoding="utf-8")
+    block = src.split("PHONEME_EXAMPLES", 1)[1].split("};", 1)[0]
+    ex = {k: (a, b, c) for k, a, b, c in re.findall(
+        r"'?([^\s',:{]+)'?\s*:\s*\['([^']*)',\s*'([^']*)',\s*'([^']*)'\]", block)}
+    keys = [k for _, ks in GROUPS for k in ks if k != "ˈ"]
+    assert sorted(ex) == sorted(keys), "例词表和键盘上的键对不上"
+
+    db = Path(__file__).resolve().parents[1] / "english_helper.db"
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True) if db.exists() else None
+    for k, parts in ex.items():
+        word = "".join(parts)
+        assert parts[1] and len(word) <= 5, f"{k} 的例词 {word} 太长或没标发音字母"
+        if con is None:
+            continue
+        rows = con.execute("select phonetic from words where lower(word)=? and phonetic!='' limit 3",
+                           (word,)).fetchall()
+        if not rows:
+            continue   # CI 上的空库没有这个词,只查长度
+        toks = [tokenize(p)[0] if isinstance(tokenize(p), tuple) else tokenize(p) for (p,) in rows]
+        assert any(k in t for t in toks), f"{word} 里没有 /{k}/ 这个音: {rows}"

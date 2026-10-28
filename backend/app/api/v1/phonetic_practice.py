@@ -79,6 +79,10 @@ class ItemOut(BaseModel):
     word: str
     meaning: Optional[str] = None
     slot_count: int = Field(description="答案有几个音素,即画几个空格")
+    # 重音符在第几格。前端直接印好、不让学生打: 判分本来就不算它(_grade_one 恒判对),
+    # 而 938 题里 177 题第 0 格是重音,孩子把第一个音填进去,后面整排错一格(生产实测)。
+    # 只透露「这里有重音」,不透露任何音素,不算泄题
+    stress_at: List[int] = []
 
 
 class LessonDetail(BaseModel):
@@ -184,9 +188,11 @@ async def get_lesson(
         items=[
             ItemOut(
                 id=it.id, word=it.word, meaning=it.meaning,
-                slot_count=len(_loads(it.answer_json, [])),
+                slot_count=len(ans),
+                stress_at=[i for i, t in enumerate(ans) if t == 'ˈ'],
             )
             for it in items
+            for ans in [_loads(it.answer_json, [])]
         ],
     )
 

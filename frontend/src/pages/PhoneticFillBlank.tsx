@@ -15,7 +15,7 @@ import useStudyTimeReporter from '../hooks/useStudyTimeReporter';
 import IpaKeyboard from '../components/phonetics/IpaKeyboard';
 import WordRow from '../components/phonetics/WordRow';
 import {
-  fetchPhoneticLesson, checkPhoneticPage,
+  fetchPhoneticLesson, checkPhoneticPage, initialSlots,
   type PhoneticLesson, type PageItemResult,
 } from '../api/phoneticPractice';
 
@@ -63,10 +63,10 @@ export default function PhoneticFillBlank() {
           return;
         }
         setLesson(d);
-        setRows(d.items.map(it => ({
-          slots: Array(it.slot_count).fill(null),
-          editable: Array.from({ length: it.slot_count }, (_, i) => i),
-        })));
+        // 重音格印好、不可编辑(见 initialSlots)
+        const init = d.items.map(initialSlots);
+        setRows(init);
+        setCursor(init[0]?.editable[0] ?? -1);
         setPhase('filling');
         startTsRef.current = Date.now();
         attemptIdRef.current = `${d.id}-p1-${Date.now()}`;
@@ -264,6 +264,8 @@ export default function PhoneticFillBlank() {
                 onClear={handleClearRow}
                 full={cursor < 0}
                 highlight={lesson?.highlight}
+                // 平板上键盘铺在底部整宽,一行 14 个省高度;电脑上键盘在 26rem 侧栏里,回到 7 个
+                gridClassName="grid-cols-7 md:grid-cols-[repeat(14,minmax(0,1fr))] lg:grid-cols-7"
               />
               <button
                 onClick={handleSubmit}

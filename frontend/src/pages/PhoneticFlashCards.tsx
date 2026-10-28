@@ -24,7 +24,7 @@ import IpaKeyboard from '../components/phonetics/IpaKeyboard';
 import AnswerSlots from '../components/phonetics/AnswerSlots';
 import ColoredPhonetic from '../components/ColoredPhonetic';
 import {
-  fetchPhoneticLesson, checkPhoneticItem,
+  fetchPhoneticLesson, checkPhoneticItem, initialSlots,
   type PhoneticLesson, type PhoneticItem, type CheckResult,
 } from '../api/phoneticPractice';
 
@@ -103,9 +103,11 @@ export default function PhoneticFlashCards() {
   /** 装载一张卡:回到第一遍全空 */
   const mountCard = useCallback((it: PhoneticItem) => {
     setPass(1);
-    setSlots(Array(it.slot_count).fill(null));
-    setEditable(Array.from({ length: it.slot_count }, (_, i) => i));
-    setCursor(0);
+    // 重音格印好、不可编辑(见 initialSlots),光标从第一个要填的格开始
+    const init = initialSlots(it);
+    setSlots(init.slots);
+    setEditable(init.editable);
+    setCursor(init.editable[0] ?? -1);
     setResult(null);
     setFlipped(false);
     enterPhase('front');
@@ -457,8 +459,8 @@ export default function PhoneticFlashCards() {
                   </span>
                 </p>
               ) : (
-                <p className="text-center text-xs text-slate-400">
-                  {remaining > 0 ? `点下面的音标键填空,还剩 ${remaining} 格` : '填好了,看看对不对'}
+                <p className="text-center text-sm text-slate-600">
+                  {remaining > 0 ? `点下面的音标键,一格放一个音 · 还剩 ${remaining} 格` : '填好了,点下面「看看对不对」'}
                 </p>
               )}
             </div>
@@ -526,7 +528,7 @@ export default function PhoneticFlashCards() {
 
         {/* 键盘只在正面出现 */}
         {(phase === 'front' || phase === 'judged') && (
-          <div className="mx-auto mt-3 w-full max-w-md">
+          <div className="mx-auto mt-3 w-full max-w-md md:max-w-3xl">
             <IpaKeyboard
               onKey={handleKey}
               onBackspace={handleBackspace}
@@ -535,16 +537,18 @@ export default function PhoneticFlashCards() {
               disabled={phase === 'judged'}
               highlight={lesson?.highlight}
               clearLabel="清空"
+              // 电脑上卡片版键盘有 max-w-3xl 宽,一行 14 个键,省出高度给卡片和交卷键
+              gridClassName="grid-cols-7 md:grid-cols-[repeat(14,minmax(0,1fr))]"
               action={
                 <button
                   type="button"
                   onClick={() => submit(true)}
                   disabled={phase === 'judged' || checking}
-                  className="flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-xs
-                             text-slate-400 ring-1 ring-slate-200 transition active:scale-95
-                             hover:bg-slate-100 disabled:opacity-40"
+                  className="flex h-10 items-center gap-1.5 rounded-lg bg-white px-3.5 text-sm
+                             text-slate-700 ring-1 ring-slate-300 transition active:scale-95
+                             hover:bg-slate-50 disabled:opacity-40"
                 >
-                  <Eye className="h-3.5 w-3.5" /> 不会,看答案
+                  <Eye className="h-4 w-4" aria-hidden /> 不会,看答案
                 </button>
               }
             />

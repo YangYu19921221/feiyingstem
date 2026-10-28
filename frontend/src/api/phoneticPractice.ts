@@ -12,6 +12,17 @@ export interface PhoneticItem {
   meaning?: string | null;
   /** 答案有几个音素 = 画几个空格。刻意给长度提示,省掉「长度也要猜」的额外难度 */
   slot_count: number;
+  /** 重音符在第几格: 前端直接印好、不让学生打(判分本来就不算它)。旧后端没有这个字段 */
+  stress_at?: number[];
+}
+
+/** 一道题的起始格子: 重音格印好 ˈ 且不可编辑,其余全空 */
+export function initialSlots(it: PhoneticItem): { slots: (string | null)[]; editable: number[] } {
+  const stress = new Set(it.stress_at ?? []);
+  return {
+    slots: Array.from({ length: it.slot_count }, (_, i) => (stress.has(i) ? 'ˈ' : null)),
+    editable: Array.from({ length: it.slot_count }, (_, i) => i).filter(i => !stress.has(i)),
+  };
 }
 
 export interface PhoneticLesson {

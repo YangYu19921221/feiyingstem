@@ -22,6 +22,34 @@ export const PHONEME_GROUPS: { label: string; keys: string[] }[] = [
   { label: '重音', keys: ['ˈ'] },
 ];
 
+/**
+ * 键盘上每个音标的例词: [前半, 发这个音的字母, 后半] —— 键上印成 c**a**t。
+ * 孩子不认识 æ,但认识 cat:看键上的小词就知道这是哪个音,点键时也读这个词。
+ * 都是小学课本里的词,音标逐个用词库核对过(该音素确实在这个词里),
+ * 最长 5 个字母: 320 宽的手机上一个键只有 35px 宽,再长就截断了。
+ * 改了要保证每个键都有,测试会核对(重音符不是音,不进键盘也不要例词)
+ */
+export const PHONEME_EXAMPLES: Record<string, [string, string, string]> = {
+  p: ['', 'p', 'ig'], b: ['', 'b', 'ag'], t: ['', 't', 'en'], d: ['', 'd', 'og'],
+  k: ['', 'k', 'ite'], 'ɡ': ['', 'g', 'irl'],
+  f: ['', 'f', 'ish'], v: ['', 'v', 'an'], s: ['', 's', 'un'], z: ['', 'z', 'oo'],
+  'θ': ['', 'th', 'ank'], 'ð': ['', 'th', 'is'], 'ʃ': ['', 'sh', 'ip'], 'ʒ': ['u', 's', 'ual'],
+  ts: ['ca', 'ts', ''], dz: ['be', 'ds', ''], tr: ['', 'tr', 'ee'], dr: ['', 'dr', 'aw'],
+  'tʃ': ['', 'ch', 'ip'], 'dʒ': ['', 'j', 'ump'],
+  m: ['', 'm', 'ap'], n: ['', 'n', 'ose'], 'ŋ': ['si', 'ng', ''],
+  h: ['', 'h', 'at'], r: ['', 'r', 'ed'], l: ['', 'l', 'eg'],
+  'iː': ['s', 'ee', ''], 'ɪ': ['s', 'i', 't'], i: ['cit', 'y', ''], e: ['', 'e', 'gg'],
+  'æ': ['c', 'a', 't'], 'ɑː': ['c', 'ar', ''], 'ʌ': ['c', 'u', 'p'], 'ɒ': ['h', 'o', 't'],
+  'ɔː': ['b', 'a', 'll'], 'ʊ': ['b', 'oo', 'k'], 'uː': ['m', 'oo', 'n'], 'ɜː': ['b', 'ir', 'd'],
+  'ə': ['', 'a', 'bout'],
+  'eɪ': ['c', 'a', 'ke'], 'aɪ': ['f', 'i', 've'], 'ɔɪ': ['b', 'oy', ''], 'əʊ': ['h', 'o', 'me'],
+  'aʊ': ['c', 'ow', ''], 'ɪə': ['', 'ear', ''], 'eə': ['h', 'air', ''], 'ʊə': ['t', 'our', ''],
+  w: ['', 'w', 'e'], j: ['', 'y', 'es'],
+};
+
+/** 重音符不是一个音: 题目里它已经印好(后端下发 stress_at),键盘上不放这个键 */
+export const STRESS_MARK = 'ˈ';
+
 /** 全部合法音素。分词时必须**先长后短**匹配,否则 tʃ 会被切成 t + ʃ */
 export const ALL_PHONEMES: string[] = PHONEME_GROUPS.flatMap(g => g.keys);
 const BY_LEN_DESC = [...ALL_PHONEMES].sort((a, b) => b.length - a.length);

@@ -292,6 +292,18 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   conftest 加 autouse 清共享存储(登录计数按用户 id,内存库 id 每个用例从 1 开始会串)。
   账号×IP / 成功清零 / 常用 IP 豁免 / 学生宽一些 / 不存在的号计数 / 旧 token 放行 / bcrypt 回事件循环 / 确认密码不计数 / 管理员 7 天 / 文档放回公网
   十处逐一破坏各自对应用例失败(回归锁验证过)。WS 那三处没有用例锁(它们自己开 AsyncSessionLocal,测试库够不着)。公告一条(teacher/org_admin/admin)
+- ✅ 音标键盘会教 + 提问区看得清(2026-10-28,用户「音标视频下方的评论字体和文本框看不清楚」「音标键盘学生不知道怎么打」):
+  ①**提问区白底白字**的根因: 全站 `body.student-interface textarea` 铺白底,优先级压过 bg-white/10,而这里写的是白字。
+  改成白底深字输入框(16px,iOS 小于 16px 聚焦会放大整页)+ 写的时候实时显示「老师会看到你问的是视频 3:20 这里」+
+  标题 16px、时间/状态 13px、老师回答 16px,深色面板上对比度都 ≥ 4.5:1;按钮「问老师」改「发给老师」
+  ②**键盘每个键下面印例词**(c**a**t,发这个音的字母加粗上色),真源 utils/ipaPhonemes.PHONEME_EXAMPLES,
+  49 个键全有、最长 5 个字母(320 宽一个键 35px),例词逐个用词库音标核对过(测试 test_keyboard_examples_cover_every_key_and_hold_the_sound
+  正则解析前端文件、本机库里查得到就核对音素);点键读这个词(同一个 Edge TTS,可关,按账号记)。辅音白键、元音橙键,图例写在键盘顶上
+  ③**第一次打开自动放「怎么打」**(components/phonetics/IpaHowTo,用真键真格子演示打 bed 五步,按账号记已看,键盘上「怎么打?」随时再看;
+  portal 到 body,捕获阶段截住回车/退格不漏给卡片页)④**重音符不用打了**: 生产 177 道题第 0 格是 ˈ,判分本来恒判对,
+  孩子却把第一个音填进去整排错位(带重音的题一遍正确率 77.4% vs 87.8%)。lessons 接口每题多给 stress_at(只说第几格,不带音素),
+  前端 initialSlots 印好、不可编辑、键盘去掉 ˈ 键。旧前端没这字段照旧能用。生产用过写音标的只有 3 个学生(1075 次作答)。
+  公告学生一条
 - ✅ 管理员自己改用户名 / 密码 + 「最近部署」格子修复(2026-10-28,用户「管理端增加修改自己的用户名和密码功能」
   「最近部署 10/28 11:52 线上前端版本 这里 UI 显示不全」): 后端早有 `PUT /auth/change-username`(要当前密码)/
   `PUT /auth/change-password`(都走 get_real_user),纯前端接入。StaffWorkspaceHeader 只对 role='admin' 把右上角名字

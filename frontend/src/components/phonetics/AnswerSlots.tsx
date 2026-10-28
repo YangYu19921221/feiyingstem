@@ -30,7 +30,7 @@ const BOX: Record<'compact' | 'md' | 'lg', { box: string; wrap: string }> = {
   lg: { box: 'h-14 min-w-[3rem] text-3xl', wrap: 'text-3xl' },
 };
 
-import { isVowel } from '../../utils/ipaPhonemes';
+import { isVowel, STRESS_MARK } from '../../utils/ipaPhonemes';
 
 export default function AnswerSlots({
   slots, editable, cursor, correct, onSlotClick, compact = false, size,
@@ -45,6 +45,22 @@ export default function AnswerSlots({
         const editing = canEdit.has(i);
         const judged = correct?.[i];
         const isCursor = i === cursor && editing && judged == null;
+
+        // 重音符是题目印好的(不是一个音、不用填、判分也不算):不画格子,只印一个记号,
+        // 否则孩子会把第一个音填进这格,后面整排错一格(生产 177 道带重音的题都在第 0 格)
+        if (v === STRESS_MARK && !editing) {
+          return (
+            <span
+              key={i}
+              role="img"
+              aria-label="重音记号,已印好不用填"
+              title="重音记号:已经印好,不用填"
+              className="-mx-0.5 self-start font-bold leading-none text-slate-500"
+            >
+              {STRESS_MARK}
+            </span>
+          );
+        }
 
         // 元音格标出来:与 ColoredPhonetic「元音深、辅音浅」同一套口径。
         // 第二遍只挖元音,颜色让"要填的就是元音"这件事在第一遍就看得见
