@@ -712,6 +712,14 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   接口 PUT /admin/system/video-cos/route;GET video-cdn 的 cos 多给 route / busy_mbps / calm_mbps / load / now_route。
   卡片「什么时候走 COS」: 两个选项、阈值可改、「服务器现在出网 X Mbps · 忙,学生看视频走 COS」、最近几次忙闲切换。
   测试加 5 例(25 例);smart 一直跳 / 欠费也切 / 测不到按不忙 / 出忙不等 10 分钟 / 中途冒高不清零 / 切开关丢线路 / 忽略上次检查 七处各让对应用例失败
+  **10-28 卡片最上面写清「学生现在走哪条线」**(用户「要显示目前是走的本机播放还是 COS,CDN 开没有开」): 纯前端,
+  components/admin/VideoCdnSwitch 顶部加一块: 大字「学生现在看视频: 从服务器本机播放 / 走腾讯云 COS / 走 CDN 加速(经腾讯云 COS)」
+  + 一句为什么(不忙出网 X Mbps 到 6 才走 / 忙了 / 一直走 / 欠费自动关 / 手动关 / 忙了但最近一次检查 COS 没通过)
+  + 三站「服务器本机 → 腾讯云 COS → CDN 加速」各写开没开,学生正在走的那站高亮。判断和 /stream 同口径:
+  cos.now_route(= redirect_enabled)决定本机还是 COS,走 COS 时 CDN 开关开着且配了域名 Key 才算 CDN。
+  卡片开着时每 30 秒刷新一次(页面在后台不刷,切回来马上刷),右上角写是几点的状态、可手动刷新。
+  下面原来的 COS 块标题改成只说 COS 开没开(「腾讯云 COS 可以用(服务器忙时才走)」),不再和顶部抢「现在」。
+  已上传到 COS 之外的单节视频照旧本机放(顶部按全局线路写,不逐节判)
 - ✅ 例句跟读(2026-10-25 09:45 **已部署生产**,提交 a49b661;main.py 走 anchor patch 只加 3 行 router,其余 5 个文件生产==HEAD~1 整推,
   新文件 api/v1/read_aloud.py、services/read_aloud.py、models/read_aloud.py;新表 read_aloud_recordings 由 create_all 建(先在生产库副本跑过 init_db);
   备份 /root/eh_db_before_readaloud_20261025_0943.db、/root/eh_code_before_readaloud_20261025_0943.tgz、frontend/dist_bak_20261025_0943,构建号 mvn5x1jw):

@@ -1,9 +1,136 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CloudOff, Server, Zap } from 'lucide-react';
+import { Cloud, CloudOff, Globe, RefreshCw, Server, Zap, type LucideIcon } from 'lucide-react';
 import {
   getVideoCdn, setVideoCdn, setVideoCos, setVideoCosRoute, testVideoCdn, testVideoCos,
   type VideoCdnState, type VideoCosEvent,
 } from '../../api/videoCdn';
+
+type Via = 'local' | 'cos' | 'cdn';
+
+/**
+ * 现在这一刻学生点开视频走哪条线(10-28 用户「要显示目前是走的本机播放还是 COS,CDN 开没有开」)。
+ * 和后端 /stream 同口径: cos.now_route 是 cos_video.redirect_enabled 算的;走 COS 时,CDN 开关开着
+ * 且配了域名和 Key 就给 CDN 地址(cos_video.signed_url → cdn_enabled)。还没传到 COS 的视频照旧本机放。
+ */
+function viaOf(s: VideoCdnState): Via {
+  if (s.cos.now_route !== 'cos') return 'local';
+  return s.enabled && s.cdn_configured ? 'cdn' : 'cos';
+}
+
+/** 为什么现在走这条: 一句话写清 */
+function whyNow(s: VideoCdnState, via: Via): string {
+  const c = s.cos;
+  if (!s.cos_configured) return '服务器没连上腾讯云 COS(.env 里的 COS 配置),只能本机播放。';
+  if (!c.enabled) {
+    if (c.source === 'env') {
+      return s.redirect_mode === 'some' ? '服务器配置里只让指定的几节走 COS,其余从本机播放。' : '服务器配置里没开 COS 跳转。';
+    }
+    if (c.auto) return `${fmtTime(c.updated_at)} ${c.reason || 'COS 取不到视频'},系统自动改回本机;充值后会自动切回 COS。`;
+    return `${fmtTime(c.updated_at)}${c.updated_by ? ` ${c.updated_by}` : ''}手动改回本机,系统不会自动切回。`;
+  }
+  const load = c.load;
+  if (via === 'local') {
+    // COS 开着、线路是「忙才走」却在本机: 要么不忙,要么忙了但最近一次检查 COS 没通过
+    if (!load || load.busy) {
+      const busyText = load ? `服务器忙(出网 ${load.mbps} Mbps)` : '测不到服务器出网(按忙算)';
+      return `${busyText},但最近一次自动检查 COS 没通过,先不切${c.last_check?.message ? `: ${c.last_check.message}` : ''}。`;
+    }
+    return `服务器不忙: 出网 ${load.mbps} Mbps,到 ${c.busy_mbps} Mbps 才走 COS(不忙时不花 COS 流量费)。`;
+  }
+  const why = c.route === 'always'
+    ? '设成了一直走 COS'
+    : load ? `服务器忙: 出网 ${load.mbps} Mbps,过了 ${c.busy_mbps} Mbps` : '测不到服务器出网,按忙算';
+  const how = via === 'cdn'
+    ? '再经 CDN 加速,学生从离自己最近的节点下载'
+    : s.cdn_configured ? 'CDN 关着,学生直接从 COS 下载' : '学生直接从 COS 下载';
+  return `${why};${how}。`;
+}
+
+const VIA_TEXT: Record<Via, string> = {
+  local: '从服务器本机播放',
+  cos: '走腾讯云 COS',
+  cdn: '走 CDN 加速(经腾讯云 COS)',
+};
+
+const VIA_TONE: Record<Via, { text: string; dot: string; ring: string; line: string; pill: string }> = {
+  local: { text: 'text-amber-800', dot: 'bg-amber-500', ring: 'ring-amber-200', line: 'bg-amber-400', pill: 'bg-amber-100 text-amber-900' },
+  cos: { text: 'text-emerald-700', dot: 'bg-emerald-600', ring: 'ring-emerald-200', line: 'bg-emerald-500', pill: 'bg-emerald-100 text-emerald-800' },
+  cdn: { text: 'text-[#22707a]', dot: 'bg-[#2f8791]', ring: 'ring-[#bfe3e6]', line: 'bg-[#2f8791]', pill: 'bg-[#e4f3f5] text-[#1d5f67]' },
+};
+
+type Station = { key: Via; name: string; Icon: LucideIcon; note: string; problem: boolean };
+
+/** 卡片最上面: 学生现在走哪条线 + 为什么 + 本机 → COS → CDN 三站(各自开没开) */
+function RouteNow({ state, checkedAt, stale, onRefresh, refreshing }: {
+  state: VideoCdnState;
+  checkedAt: Date | null;
+  stale: boolean;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  const c = state.cos;
+  const via = viaOf(state);
+  const tone = VIA_TONE[via];
+  const cosNow = via !== 'local';
+  const stations: Station[] = [
+    { key: 'local', name: '服务器本机', Icon: Server, note: '走服务器 12M 带宽', problem: false },
+    {
+      key: 'cos', name: '腾讯云 COS', Icon: Cloud,
+      note: !state.cos_configured ? '没连上'
+        : !c.enabled ? (c.auto ? '系统自动关了' : '关着')
+          : c.route === 'smart' ? '开着 · 忙时才走' : '开着 · 一直走',
+      problem: !state.cos_configured || (!c.enabled && c.auto),
+    },
+    {
+      key: 'cdn', name: 'CDN 加速', Icon: Globe,
+      note: !state.cdn_configured ? '没配置'
+        : state.enabled ? (cosNow ? '开着' : '开着 · 走 COS 时才用')
+          : state.auto_off_reason ? '系统自动关了' : '关着',
+      problem: !state.enabled && !!state.auto_off_reason,
+    },
+  ];
+  const active = stations.findIndex((s) => s.key === via);
+
+  return (
+    <div className="mt-3 rounded-xl border border-[#d6e2eb] bg-white p-3 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0" role="status" aria-live="polite">
+          <p className="text-base font-bold text-[#173047]">
+            学生现在看视频: <span className={tone.text}>{VIA_TEXT[via]}</span>
+          </p>
+          <p className="mt-0.5 text-sm leading-6 text-slate-600">{whyNow(state, via)}</p>
+        </div>
+        <button type="button" onClick={onRefresh} disabled={refreshing} aria-label="刷新线路状态"
+          className="admin-focus-ring inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs text-slate-500 transition hover:bg-slate-50 disabled:opacity-60">
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+          <span className={`font-numeric ${stale ? 'text-red-600' : ''}`}>
+            {stale ? '刷新失败,' : ''}{checkedAt ? `${checkedAt.toLocaleTimeString('zh-CN', { hour12: false })} 的状态` : '刷新'}
+          </span>
+        </button>
+      </div>
+
+      <ol className="mt-4 grid grid-cols-3" aria-label="播放线路: 服务器本机、腾讯云 COS、CDN 加速">
+        {stations.map((s, i) => {
+          const on = i === active;
+          return (
+            <li key={s.key} className="relative flex min-w-0 flex-col items-center px-1 text-center">
+              {i > 0 && <span aria-hidden="true" className={`absolute left-0 right-1/2 top-[15px] h-0.5 ${i <= active ? tone.line : 'bg-slate-200'}`} />}
+              {i < stations.length - 1 && <span aria-hidden="true" className={`absolute left-1/2 right-0 top-[15px] h-0.5 ${i < active ? tone.line : 'bg-slate-200'}`} />}
+              <span className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${
+                on ? `${tone.dot} text-white ring-4 ${tone.ring}`
+                  : `bg-white ring-1 ${s.problem ? 'text-red-500 ring-red-300' : 'text-slate-400 ring-slate-300'}`}`}>
+                <s.Icon className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span className={`mt-2 text-[13px] font-semibold leading-5 ${on ? tone.text : 'text-slate-600'}`}>{s.name}</span>
+              <span className={`text-xs leading-4 ${s.problem ? 'text-red-600' : 'text-slate-500'}`}>{s.note}</span>
+              {on && <span className={`mt-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone.pill}`}>学生正在走</span>}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 
 type Note = { ok: boolean; text: string } | null;
 
@@ -44,14 +171,25 @@ export default function VideoCdnSwitch() {
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState<'' | 'toggle' | 'test' | 'cos' | 'cos-test'>('');
   const [note, setNote] = useState<Note>(null);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => getVideoCdn()
-    .then((s) => { setState(s); setLoadError(''); })
-    .catch((e: unknown) => setLoadError(errorText(e))), []);
+  const load = useCallback(() => {
+    setRefreshing(true);
+    return getVideoCdn()
+      .then((s) => { setState(s); setLoadError(''); setCheckedAt(new Date()); })
+      .catch((e: unknown) => setLoadError(errorText(e)))
+      .finally(() => setRefreshing(false));
+  }, []);
 
   useEffect(() => {
-    getVideoCdn().then(setState).catch((e: unknown) => setLoadError(errorText(e)));
-  }, []);
+    void load();
+    // 「现在走哪」跟着服务器忙闲变(忙才走 COS),卡片开着时每 30 秒问一次;页面在后台不问,切回来马上问
+    const tick = () => { if (document.visibilityState === 'visible') void load(); };
+    const timer = window.setInterval(tick, 30000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
+  }, [load]);
 
   const toggle = async () => {
     if (!state || busy) return;
@@ -145,6 +283,10 @@ export default function VideoCdnSwitch() {
       <h3 id="video-route-title" className="font-bold text-[#173047]">音标视频播放线路</h3>
       {!state && <p className="mt-1 text-sm text-slate-500">{loadError ? `读取失败: ${loadError}` : '读取中…'}</p>}
 
+      {state && (
+        <RouteNow state={state} checkedAt={checkedAt} stale={!!loadError} refreshing={refreshing} onRefresh={() => { void load(); }} />
+      )}
+
       {/* ---- COS 线路: 一眼看清现在走哪条线、为什么 ---- */}
       {state && cos && (
         <div className={`mt-3 rounded-xl border p-4 ${cosOn ? 'border-emerald-200 bg-emerald-50/60' : cosAutoOff ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50/70'}`}>
@@ -155,7 +297,10 @@ export default function VideoCdnSwitch() {
               </span>
               <div className="min-w-0" role="status">
                 <p className={`text-base font-bold ${cosOn ? 'text-emerald-800' : cosAutoOff ? 'text-red-700' : 'text-amber-900'}`}>
-                  {cosOn ? (cos.route === 'smart' ? '腾讯云 COS 可以用(服务器忙时才走)' : '现在: 走腾讯云 COS') : '现在: 从服务器本机播放'}
+                  {/* 「现在走哪」写在最上面那块;这里只说 COS 这条线开没开,两处不打架 */}
+                  {cosOn
+                    ? (cos.route === 'smart' ? '腾讯云 COS 可以用(服务器忙时才走)' : '腾讯云 COS 开着(一直走)')
+                    : cosAutoOff ? '腾讯云 COS 被系统自动关了' : '腾讯云 COS 关着'}
                 </p>
                 <p className="mt-0.5 text-sm leading-6 text-slate-700">
                   {cosOn
@@ -267,8 +412,8 @@ export default function VideoCdnSwitch() {
             <p className="text-sm font-semibold text-[#173047]">CDN 加速{state.cdn_domain ? <span className="font-normal text-slate-500">({state.cdn_domain})</span> : null}</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
               {!cosOn
-                ? '现在没走 COS,CDN 开关不起作用。'
-                : on ? '开着: 学生从离自己最近的 CDN 节点下载。' : '关着: 学生从 COS 直接下载。'}
+                ? 'COS 关着,CDN 开关不起作用。'
+                : on ? '开着: 走 COS 时学生从离自己最近的 CDN 节点下载。' : '关着: 走 COS 时学生从 COS 直接下载。'}
             </p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               打开前会先自动测一次 CDN,测不通不会打开;开着时服务器每 5 分钟测一次,连续两次不通自动关掉、改回 COS。
