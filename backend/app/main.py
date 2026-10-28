@@ -68,7 +68,13 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="中小学生英语学习系统API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # 接口文档不对公网开(2026-10-28): 以前 /docs、/openapi.json 经 nginx 谁都能打开,等于把整张接口地图
+    # 交给扫描器(日志里有境外 IP 来抓过)。挪到 /_internal/ 下 —— nginx 不转发这个前缀,
+    # 只有在服务器上 curl 127.0.0.1:8000 / 本地开发时打得开
+    docs_url="/_internal/docs",
+    redoc_url=None,
+    openapi_url="/_internal/openapi.json",
 )
 
 # 上传文件静态服务(机构Logo等): 挂在 /api/v1/files 下,nginx 的 /api/ 代理天然覆盖。
@@ -221,7 +227,7 @@ async def root():
     return {
         "message": "欢迎使用英语学习助手 API",
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": "/_internal/docs"
     }
 
 @app.get("/health")

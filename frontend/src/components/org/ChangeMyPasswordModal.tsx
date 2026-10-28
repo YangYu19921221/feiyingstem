@@ -43,7 +43,9 @@ export default function ChangeMyPasswordModal({ isOpen, onClose }: Props) {
 
     setLoading(true);
     try {
-      await orgAdminApi.changeMyPassword({ old_password: oldPassword, new_password: newPassword });
+      const res = await orgAdminApi.changeMyPassword({ old_password: oldPassword, new_password: newPassword });
+      // 改完密码后端会让所有旧登录失效,这台设备换成响应里的新 token 接着用
+      if (res?.access_token) localStorage.setItem('access_token', res.access_token);
       setSuccess(true);
       timerRef.current = setTimeout(handleClose, 1500);
     } catch (err: unknown) {
@@ -80,7 +82,7 @@ export default function ChangeMyPasswordModal({ isOpen, onClose }: Props) {
               <div className="py-8 text-center">
                 <div className="mb-3 text-4xl">✅</div>
                 <p className="font-medium text-slate-700">密码已修改</p>
-                <p className="mt-1 text-xs text-slate-500">下次登录请用新密码</p>
+                <p className="mt-1 text-xs text-slate-500">下次登录请用新密码，其它设备上的登录已退出</p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="mt-4 space-y-3">

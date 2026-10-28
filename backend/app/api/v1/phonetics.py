@@ -810,9 +810,7 @@ async def _user_from_query_token(token: str, db: AsyncSession) -> User:
         raise cred_exc
     # 顶号校验与主认证链(auth._authenticate_token)同口径:被顶下线的会话,
     # 它的 token 拿来串流/回放也不该再好使 —— 此前这里漏了这一步
-    sv = payload.get("sv")
-    cur_ver = u.session_ver or 0
-    if (sv is not None and sv != cur_ver) or (sv is None and u.role == "student" and cur_ver > 0):
+    if not auth_service.session_ok(payload, u):
         raise cred_exc
     # 多租户上下文与机构有效期:与主认证链保持一致,别让串流成为绕过口
     current_org_id.set(None if u.role == "admin" else u.org_id)

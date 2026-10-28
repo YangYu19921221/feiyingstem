@@ -29,6 +29,7 @@ from app.core.actor import acting_user
 
 logger = logging.getLogger(__name__)
 from app.services.auth_service import get_password_hash, verify_password
+from app.services import login_guard
 
 router = APIRouter()
 
@@ -436,7 +437,8 @@ async def set_coin_pin(
     """
     current_user = acting_user(current_user)  # 助教设的是自己的 PIN
     if current_user.coin_pin_hash:
-        if not body.old_pin or not verify_password(body.old_pin, current_user.coin_pin_hash):
+        if not await login_guard.confirm_secret("pin", current_user.id, body.old_pin,
+                                                current_user.coin_pin_hash):
             raise HTTPException(
                 status_code=403,
                 detail="当前金币密码不正确;忘记密码请让管理员在「教师管理」里帮你重置",
@@ -497,7 +499,8 @@ async def adjust(
     pin_owner = acting_user(current_user)
     if not pin_owner.coin_pin_hash:
         raise HTTPException(status_code=403, detail="PIN_NOT_SET")
-    if not body.pin or not verify_password(body.pin, pin_owner.coin_pin_hash):
+    # PIN 常是 4 位数字: 不数输错的话,拿到老师登录态的人一万次就试出来了
+    if not await login_guard.confirm_secret("pin", pin_owner.id, body.pin, pin_owner.coin_pin_hash):
         raise HTTPException(status_code=403, detail="加币密码不正确")
     src = body.source if body.source in ("manual", "redeem") else "manual"
 

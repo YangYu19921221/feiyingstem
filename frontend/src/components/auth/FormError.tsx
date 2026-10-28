@@ -90,12 +90,14 @@ function pickAction(
     if (code === 'user_not_found') return { label: '没有账号？去注册', to: '/register' };
     if (code === 'wrong_password') return { label: '忘记密码？', to: '/forgot-password' };
     if (code === 'inactive')      return { label: '账号已被管理员禁用，请联系老师' };
+    if (code === 'login_locked')  return { label: '忘记密码？', to: '/forgot-password' };
   }
 
   if (context === 'parent-login') {
     if (code === 'user_not_found') return { label: '没有账号？去注册', to: '/parent/register' };
     if (code === 'wrong_password') return { label: '忘记密码？请找孩子的老师重置' };
     if (code === 'inactive')      return { label: '账号已被禁用' };
+    if (code === 'login_locked')  return { label: '忘记密码？请找孩子的老师重置' };
   }
 
   if (context === 'register' || context === 'parent-register') {

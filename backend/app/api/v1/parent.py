@@ -17,7 +17,8 @@ from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range, local_today_utc_range
 from app.api.v1.auth import get_current_student, get_current_parent, get_current_teacher
 from app.api.v1.teacher._permissions import assert_student_in_my_class, get_my_class_student_ids
-from app.services.auth_service import get_password_hash, verify_password, create_access_token
+from app.services.auth_service import get_password_hash, verify_password, verify_password_async, create_access_token
+from app.services import login_guard
 from app.models.user import User, ParentStudentLink, ParentBindCode, Class, ClassStudent
 from app.services import audit_log, rate_limit
 from app.models.learning import LearningRecord, StudySession, WordMastery
@@ -123,9 +124,11 @@ async def _load_valid_code(db: AsyncSession, raw: str) -> ParentBindCode:
     return code_row
 
 
-def _parent_token(user_id: int) -> str:
-    # 家长一周才看一两次,7 天的默认 token 等于每次都要重新登录 → 30 天
-    return create_access_token({"sub": str(user_id)}, expires_delta=timedelta(days=30))
+def _parent_token(user_id: int, session_ver: int = 0) -> str:
+    # 家长一周才看一两次,7 天的默认 token 等于每次都要重新登录 → 30 天。
+    # 带 sv: 老师重置家长密码时 session_ver+1,手里的旧 token 一起作废(见 auth_service.session_ok)
+    return create_access_token({"sub": str(user_id), "sv": session_ver or 0},
+                               expires_delta=timedelta(days=30))
 
 
 async def _limit_bind(request: Request) -> None:
@@ -179,14 +182,18 @@ async def parent_register(
         .execution_options(skip_tenant_filter=True).limit(1)
     )).scalars().first()
     if existing_parent is not None:
-        if not verify_password(data.password, existing_parent.hashed_password):
+        # 这里等于一个「凭绑定码试家长密码」的入口,和登录走同一道防爆破闸门
+        keys = login_guard.account_keys([existing_parent.id])
+        await login_guard.check(audit_log.client_ip(request), keys, staff=False)
+        if not await verify_password_async(data.password, existing_parent.hashed_password):
             raise HTTPException(400, detail={"code": "phone_taken",
                                              "message": "这个手机号已经注册过家长账号,密码不对。请直接登录,登录后点「绑定孩子」输入绑定码"})
         if not existing_parent.is_active:
             raise HTTPException(403, detail={"code": "inactive", "message": "账号已被禁用，请联系管理员"})
+        await login_guard.record_success(audit_log.client_ip(request), keys)
         await _link(db, existing_parent.id, code_row)
         await db.commit()
-        return ParentTokenResponse(access_token=_parent_token(existing_parent.id),
+        return ParentTokenResponse(access_token=_parent_token(existing_parent.id, existing_parent.session_ver),
                                    parent_id=existing_parent.id, full_name=existing_parent.full_name)
 
     # org_id 跟孩子走: 不写就落列默认 1(直营),家长请求的租户上下文就是直营,
@@ -261,13 +268,16 @@ async def parent_login(
             "message": ("这个手机号是孩子的学生账号,家长账号还没注册。请用老师或孩子给的绑定码注册(手机号可以一样)"
                         if is_student else "该手机号还没有注册家长账号"),
         })
-    if not verify_password(data.password, user.hashed_password):
+    keys = login_guard.account_keys([user.id])
+    await login_guard.check(audit_log.client_ip(request), keys, staff=False)
+    if not await verify_password_async(data.password, user.hashed_password):
         raise HTTPException(401, detail={"code": "wrong_password", "message": "密码不正确，请重试"})
+    await login_guard.record_success(audit_log.client_ip(request), keys)
     if not user.is_active:
         raise HTTPException(403, detail={"code": "inactive", "message": "账号已被禁用，请联系管理员"})
 
     return ParentTokenResponse(
-        access_token=_parent_token(user.id),
+        access_token=_parent_token(user.id, user.session_ver),
         parent_id=user.id,
         full_name=user.full_name,
     )
@@ -492,6 +502,7 @@ async def teacher_reset_parent_password(
 
     pwd = generate_random_password(8)
     parent.hashed_password = get_password_hash(pwd)
+    parent.session_ver = (parent.session_ver or 0) + 1  # 重置 = 可能泄露了,家长手里的旧登录作废
     audit_log.record(db, request, current_user, "parent.reset_password",
                      f"重置家长「{parent.full_name or ''} {_mask_phone(parent.phone)}」的密码",
                      target_type="user", target_id=parent_id)

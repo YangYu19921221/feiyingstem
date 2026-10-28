@@ -35,7 +35,7 @@ pip install -r requirements.txt
 ```
 
 后端运行在 `http://localhost:8000`
-API文档: `http://localhost:8000/docs`
+API文档: `http://localhost:8000/_internal/docs`(2026-10-28 起不对公网开,线上只能在服务器上 curl 127.0.0.1:8000/_internal/openapi.json)
 
 ### 前端开发
 
@@ -271,6 +271,27 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 登录防爆破 + 改密码踢掉旧登录 + 接口文档下线(2026-10-28,用户「你看看管理端会不会爆破风险」→「好的」):
+  先查的实情: 登录不限次数、nginx 没有 limit_req,唯一平台管理员用户名 feiying(品牌名、没绑手机);bcrypt 一次约 0.3 秒
+  且在事件循环里算;改密码不让旧 token 失效(正式机构 / 管理员 token 不带 sv);/docs、/openapi.json 公网能开(日志里境外 IP 抓过 49 次)。
+  nginx 日志 2 月以来登录 401 共 5,639 次,失败最多的 IP 是学校机房出口(和管理员自己登录的网段同一段),单 IP 10 分钟最多失败 257 次。
+  ①**services/login_guard**: 先记一次再校验(并发时只记失败会全放过去),三道: 账号×IP 15 分钟 教职工 5 次 / 学生家长 10 次;
+  账号×全部 IP 1 小时 30 / 60 次,**最近 7 天在这个 IP 登录成功过的不受这道拦**(否则别人随手试就能把真管理员锁在外面);
+  IP×全部账号 10 分钟 500 次(机房)。**刻意没有全站总闸门**(等于一键锁全校)。账号按用户 id 计(用户名 / 手机号 / 邮箱同一号),
+  不存在的号按输入散列计。登录成功清掉账号×IP 计数。被拦 429 detail.code=login_locked + Retry-After。家长登录、家长注册里的「已有家长号试密码」同一套。
+  登录后的确认密码(改密码 / 改用户名 / 机构改密码)和金币 PIN 走 confirm_secret: 只数输错的,15 分钟错 8 次 429(PIN 常是 4 位)
+  ②**bcrypt 挪到线程**(verify_password_async / get_password_hash_async,bcrypt 算时放 GIL)
+  ③**所有角色的 token 都带 sv**(auth_service.session_token_for),校验统一 session_ok(没 sv 的旧 token 按 0;上线时生产非学生 session_ver 全是 0,没人被登出)。
+  改密码(/auth/change-password、/org/my-password)、找回密码、管理员 / 机构 / 销售 / 家长重置密码都 bump_session → 其它设备下线;
+  改密码响应带新 access_token,前端两个弹窗换上,当前设备不掉线。正式机构老师 / 管理员登录本身仍不 bump(照样双开)。
+  WS 三处(PK / 直播弹幕 / 竞赛)自建鉴权也加了 session_ok。**平台管理员 token 1 天**(ADMIN_TOKEN_TTL),其它照旧 7 天 / 家长 30 天
+  ④接口文档挪到 /_internal/docs、/_internal/openapi.json(nginx 不转发这个前缀),公网 /docs、/openapi.json 404。
+  ⚠️ 副作用: 同一个机房里的人故意输错 10 次,能把同学锁 15 分钟(只锁这个号在这个 IP 上)。
+  **没做(要用户定)**: 「账号不存在 / 密码不正确」合并成一句(建议只对教职工合并);管理员登录记录展示;管理员动态验证码;nginx 层 limit_req。
+  测试 tests/test_login_guard.py(17 例)+ 改 test_org_admin_teacher_crud 1 例(改密码现在会让旧 token 失效)/ test_parent_binding 1 例;
+  conftest 加 autouse 清共享存储(登录计数按用户 id,内存库 id 每个用例从 1 开始会串)。
+  账号×IP / 成功清零 / 常用 IP 豁免 / 学生宽一些 / 不存在的号计数 / 旧 token 放行 / bcrypt 回事件循环 / 确认密码不计数 / 管理员 7 天 / 文档放回公网
+  十处逐一破坏各自对应用例失败(回归锁验证过)。WS 那三处没有用例锁(它们自己开 AsyncSessionLocal,测试库够不着)。公告一条(teacher/org_admin/admin)
 - ✅ 管理员自己改用户名 / 密码 + 「最近部署」格子修复(2026-10-28,用户「管理端增加修改自己的用户名和密码功能」
   「最近部署 10/28 11:52 线上前端版本 这里 UI 显示不全」): 后端早有 `PUT /auth/change-username`(要当前密码)/
   `PUT /auth/change-password`(都走 get_real_user),纯前端接入。StaffWorkspaceHeader 只对 role='admin' 把右上角名字

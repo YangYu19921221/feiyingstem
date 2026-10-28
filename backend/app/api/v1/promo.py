@@ -524,6 +524,7 @@ async def reset_sales_password(user_id: int, request: Request, db: AsyncSession 
     guard_org_admin(current_user, target=u)
     pwd = auth_service.generate_random_password()
     u.hashed_password = auth_service.get_password_hash(pwd)
+    auth_service.bump_session(u)  # 重置 = 可能泄露了,旧登录作废
     audit_log.record(db, request, current_user, "promo.sales_password", f"重置销售密码: {u.full_name}",
                      target_type="user", target_id=u.id)
     await db.commit()

@@ -201,10 +201,13 @@ async def test_reset_password_only_when_all_kids_in_my_class(client, db_session,
     pwd = r.json()["password"]
     r = await client.post("/api/v1/parent/login", json={"phone": PHONE, "password": pwd})
     assert r.status_code == 200
+    # 重置密码把家长手里的旧登录作废了(2026-10-28 起),用新密码登录拿到的 token 接着用
+    assert (await client.get("/api/v1/auth/me", headers=_h(pid))).status_code == 401
+    parent_hdr = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     # 这位家长再绑一个别班的孩子 → 一班老师不能再重置(否则进得去别班孩子的家长号)
     d2 = await _student_code(client, other)
-    r = await client.post("/api/v1/parent/bind", headers=_h(pid), json={"bind_code": d2["code"]})
+    r = await client.post("/api/v1/parent/bind", headers=parent_hdr, json={"bind_code": d2["code"]})
     assert r.status_code == 200, r.text
     r = await client.post(f"/api/v1/teacher/parent-binding/links/{link_id}/reset-password", headers=_h(t1.id))
     assert r.status_code == 403

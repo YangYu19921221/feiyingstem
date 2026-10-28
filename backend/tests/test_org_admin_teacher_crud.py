@@ -98,18 +98,22 @@ async def test_change_own_password_too_short(client: AsyncClient, org_fixture):
 
 
 @pytest.mark.asyncio
-async def test_change_password_does_not_kick_self(client: AsyncClient, org_fixture, db_session):
-    """改完密码不该把自己踢下线(正式机构管理员不在顶号范围)"""
+async def test_change_password_kicks_others_not_self(client: AsyncClient, org_fixture, db_session):
+    """改完密码: 别的设备上的旧 token 作废,这台设备拿响应里的新 token 接着用(2026-10-28 起)"""
     oa = org_fixture["oa_a"]
+    oa_id, old_hdr = oa.id, _hdr(oa)
     before = (await db_session.execute(
-        select(User.session_ver).where(User.id == oa.id))).scalar() or 0
-    await client.put("/api/v1/org/my-password", headers=_hdr(oa),
-                     json={"old_password": "Passw0rd!", "new_password": "NewPass123"})
+        select(User.session_ver).where(User.id == oa_id))).scalar() or 0
+    r = await client.put("/api/v1/org/my-password", headers=old_hdr,
+                         json={"old_password": "Passw0rd!", "new_password": "NewPass123"})
+    assert r.status_code == 200, r.text
+    new_hdr = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    db_session.expire_all()
     after = (await db_session.execute(
-        select(User.session_ver).where(User.id == oa.id))).scalar() or 0
-    assert after == before
-    # 原 token 仍可用
-    r = await client.get("/api/v1/org/info", headers=_hdr(oa))
+        select(User.session_ver).where(User.id == oa_id))).scalar() or 0
+    assert after == before + 1
+    assert (await client.get("/api/v1/org/info", headers=old_hdr)).status_code == 401
+    r = await client.get("/api/v1/org/info", headers=new_hdr)
     assert r.status_code == 200, r.text
 
 

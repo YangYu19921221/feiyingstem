@@ -19,6 +19,7 @@ from app.api.v1.auth import require_role
 from app.models.organization import Organization
 from app.models.user import User
 from app.services import auth_service
+from app.services import login_guard
 from app.services.org_service import count_active_students, get_org
 
 router = APIRouter()
@@ -162,18 +163,20 @@ async def change_my_password(
     ②口令与机构端其它响应同构,前端不必为一个动作切两套错误处理。
     校验/哈希仍复用 auth_service,不另写一套。
     """
-    if not auth_service.verify_password(data.old_password, current_user.hashed_password):
+    if not await login_guard.confirm_secret("pwd", current_user.id, data.old_password,
+                                            current_user.hashed_password):
         # 刻意不区分"旧密码错"与其它失败: 这是登录态下的本人确认,
-        # 但仍不给攻击者"密码是否接近"的任何线索
+        # 但仍不给攻击者"密码是否接近"的任何线索(输错计数见 login_guard.confirm_secret)
         raise HTTPException(400, "当前密码不正确")
     if data.old_password == data.new_password:
         raise HTTPException(400, "新密码与当前密码相同，等于没改")
 
-    current_user.hashed_password = auth_service.get_password_hash(data.new_password)
+    current_user.hashed_password = await auth_service.get_password_hash_async(data.new_password)
+    # 2026-10-28 起改密码让**别的设备**全部下线(改密码常常就是怀疑泄露了);
+    # 当前这台拿响应里的新 token 接着用,不会被登出(以前不 bump 就是怕把自己踢掉)
+    auth_service.bump_session(current_user)
     await db.commit()
-    # 不 bump session_ver: 正式机构的管理员不在顶号范围内(手机电脑双开是正常用法),
-    # 这里 bump 会把他自己当前这个会话也踢下线,改完密码立刻被登出很莫名
-    return {"updated": True}
+    return {"updated": True, "access_token": auth_service.session_token_for(current_user)}
 
 
 @router.post("/logo")

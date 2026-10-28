@@ -28,6 +28,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'login-guard-2026-10',
+    date: '2026-10-28',
+    title: '🔒 账号更安全了: 密码输错多次会暂时锁住',
+    desc: '同一个账号在同一个网络里连续输错密码 5 次(学生 10 次),要等 15 分钟才能再试,防止别人一直猜你的密码。改密码以后,手机、电脑等其它设备上的登录会自动退出,只有你正在用的这台不受影响。管理员账号登录一天后要重新登录。',
+    where: '登录页;右上角点自己的名字 →「修改密码」',
+    roles: ['teacher', 'org_admin', 'admin'],
+  },
+  {
     id: 'admin-account-self-edit-2026-10',
     date: '2026-10-28',
     title: '🔑 管理员可以自己改用户名和密码了',

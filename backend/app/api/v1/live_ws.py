@@ -174,6 +174,10 @@ async def _authenticate(token: str) -> Optional[User]:
         user = await db.get(User, user_id)
         if user is not None and not user.is_active:
             user = None
+        # 会话版本与 REST 同口径: 改过密码 / 被顶下线的旧 token 也连不上 WS
+        from app.services.auth_service import session_ok
+        if user is not None and not session_ok(payload, user):
+            user = None
         # 助教 → 主老师(与 REST 认证同口径,否则进不了自己建的房/开的课)
         from app.core.actor import owner_for_ws
         user = await owner_for_ws(db, user)

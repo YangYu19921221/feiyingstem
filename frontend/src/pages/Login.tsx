@@ -137,8 +137,8 @@ const Login = () => {
           <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <span className="mt-0.5">⚠️</span>
             <div>
-              <p className="font-semibold">你的账号在其他设备登录了</p>
-              <p className="mt-0.5 text-xs text-amber-700">同一账号同时只能一台设备在线。若不是本人操作，建议登录后尽快修改密码。</p>
+              <p className="font-semibold">你已退出登录</p>
+              <p className="mt-0.5 text-xs text-amber-700">账号在其他设备登录了，或者密码刚被修改过。若不是本人操作，建议登录后尽快修改密码。</p>
             </div>
             <button type="button" onClick={() => setKicked(false)} className="ml-auto shrink-0 text-amber-400 hover:text-amber-600" aria-label="关闭提示">✕</button>
           </div>

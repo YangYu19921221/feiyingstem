@@ -1,4 +1,5 @@
 """pytest 共用 fixture:为每个测试函数提供独立的内存数据库 + AsyncClient。"""
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -6,6 +7,15 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from app.main import app
 from app.core.database import Base, get_db
 from app import models  # noqa: F401  确保所有 SQLAlchemy 模型注册到 Base.metadata
+
+
+@pytest.fixture(autouse=True)
+def _clean_shared_store():
+    """每个用例前清空进程内共享存储(限流 / 登录尝试计数 / 验证码)。
+    登录尝试按用户 id 计,而每个用例的内存库 id 都从 1 开始,不清就会串到下一个用例"""
+    from app.core.shared_store import reset_memory
+    reset_memory()
+    yield
 
 
 @pytest_asyncio.fixture

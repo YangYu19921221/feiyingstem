@@ -264,8 +264,9 @@ async def reset_user_password(
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="密码长度至少6位")
 
-    # 更新密码
+    # 更新密码 + 作废他已发出去的登录(重置通常就是因为忘了或泄露了)
     user.hashed_password = auth_service.get_password_hash(new_password)
+    auth_service.bump_session(user)
     await db.commit()
 
     return {"message": "密码重置成功", "new_password": new_password if not body.new_password else None}

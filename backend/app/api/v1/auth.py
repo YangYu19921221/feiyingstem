@@ -15,6 +15,7 @@ from app.core.actor import real_actor, acting_user
 from app.schemas.user import UserLogin, UserResponse, Token, UserCreate, TokenData, SendCodeRequest, UserRegister, ResetPasswordRequest, ChangePasswordRequest, ChangeUsernameRequest
 from app.services import auth_service
 from app.services import audit_log
+from app.services import login_guard
 from app.services.sms_service import code_store, send_sms_code
 from app.models.user import User
 from app.api.v1.teacher._permissions import get_my_class_student_ids
@@ -63,16 +64,12 @@ async def _authenticate_token(
     if not user.is_active:
         raise HTTPException(status_code=400, detail="用户已被禁用")
 
-    # 顶号校验: token 带 sv(登录时属于顶号范围)则必须与库中版本一致,
-    # 不符=账号已在别处重新登录,本会话被顶下线。
-    # 旧版无 sv 的学生 token 视作 sv=0:该账号一旦在新版登录过(ver>0)即作废,
-    # 否则(ver还是0)放行——避免上线瞬间全体学生被强制登出
-    sv = payload.get("sv")
-    cur_ver = user.session_ver or 0
-    if (sv is not None and sv != cur_ver) or (sv is None and user.role == "student" and cur_ver > 0):
+    # 会话版本: token 里的 sv 必须与库里一致(没带 sv 的旧 token 按 0)。
+    # 不一致 = 学生在别处登录了(顶号),或这个账号改过 / 被重置过密码(全员下线)
+    if not auth_service.session_ok(payload, user):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "SESSION_KICKED", "message": "账号已在其他设备登录，你已被下线"},
+            detail={"code": "SESSION_KICKED", "message": "账号在其他设备登录或改过密码，请重新登录"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -296,6 +293,7 @@ async def login(
     try:
         user = await auth_service.authenticate_user_strict(
             db, username=form_data.username, password=form_data.password,
+            ip=audit_log.client_ip(http),
         )
     except auth_service.AuthFailure as exc:
         raise HTTPException(
@@ -333,6 +331,7 @@ async def login_json(
     try:
         user = await auth_service.authenticate_user_strict(
             db, username=login_data.username, password=login_data.password,
+            ip=audit_log.client_ip(http),
         )
     except auth_service.AuthFailure as exc:
         raise HTTPException(
@@ -437,7 +436,8 @@ async def reset_password(
     if not user:
         raise HTTPException(status_code=400, detail="该手机号未注册")
 
-    user.hashed_password = auth_service.get_password_hash(data.new_password)
+    user.hashed_password = await auth_service.get_password_hash_async(data.new_password)
+    auth_service.bump_session(user)  # 找回密码 = 原密码可能已被别人知道,手里的旧登录全部作废
     await db.commit()
 
     return {"message": "密码重置成功，请使用新密码登录"}
@@ -449,14 +449,22 @@ async def change_password(
     current_user: User = Depends(get_real_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """修改密码（已登录用户）"""
-    if not auth_service.verify_password(data.old_password, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="旧密码错误")
+    """修改密码（已登录用户）。
 
-    current_user.hashed_password = auth_service.get_password_hash(data.new_password)
+    改完**别的设备全部下线**(session_ver+1): 改密码常常就是因为怀疑泄露了,
+    以前改完旧 token 还能用满 7 天。当前这台设备拿响应里的新 token 接着用,不会被登出。"""
+    if not await login_guard.confirm_secret("pwd", current_user.id, data.old_password,
+                                            current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="旧密码错误")
+    if data.old_password == data.new_password:
+        raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+
+    current_user.hashed_password = await auth_service.get_password_hash_async(data.new_password)
+    auth_service.bump_session(current_user)
     await db.commit()
 
-    return {"message": "密码修改成功"}
+    return {"message": "密码修改成功，其它设备上的登录已退出",
+            "access_token": auth_service.session_token_for(current_user)}
 
 
 @router.put("/change-username", response_model=UserResponse)
@@ -466,8 +474,9 @@ async def change_username(
     db: AsyncSession = Depends(get_db)
 ):
     """修改用户名（已登录用户，需当前密码确认）"""
-    # 验证密码，确认本人操作
-    if not auth_service.verify_password(data.password, current_user.hashed_password):
+    # 验证密码，确认本人操作(输错计数: 拿到别人登录态的人不能用这里去试原密码)
+    if not await login_guard.confirm_secret("pwd", current_user.id, data.password,
+                                            current_user.hashed_password):
         raise HTTPException(status_code=400, detail="密码错误")
 
     new_username = data.new_username.strip()

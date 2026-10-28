@@ -179,6 +179,7 @@ async def reset_teacher_password(
         raise HTTPException(status_code=404, detail="教师不存在")
     new_pwd = generate_random_password()
     t.hashed_password = get_password_hash(new_pwd)
+    t.session_ver = (t.session_ver or 0) + 1  # 重置 = 可能泄露了,旧登录作废
     await db.commit()
     return {"new_password": new_pwd}
 

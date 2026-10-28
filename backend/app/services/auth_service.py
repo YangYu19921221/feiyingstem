@@ -19,9 +19,21 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
     return pwd_context.verify(plain_password, hashed_password)
 
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """在线程里校验: bcrypt 一次约 0.3 秒,直接在事件循环里算会把同一进程里所有孩子的请求卡住
+    (有人狂刷登录时尤其明显)。bcrypt 算的时候会放开 GIL,放线程里不占事件循环"""
+    import asyncio
+    return await asyncio.to_thread(pwd_context.verify, plain_password, hashed_password)
+
 def get_password_hash(password: str) -> str:
     """生成密码哈希"""
     return pwd_context.hash(password)
+
+async def get_password_hash_async(password: str) -> str:
+    """同 verify_password_async: 在线程里算 bcrypt,不卡事件循环"""
+    import asyncio
+    return await asyncio.to_thread(pwd_context.hash, password)
 
 def generate_random_password(length: int = 12) -> str:
     """生成随机密码。排除易混淆字符(0/O、1/l/I):初始密码靠人工抄传,混淆字符是登录失败重灾区"""
@@ -47,8 +59,8 @@ async def issue_session_token(db: AsyncSession, user: User) -> str:
 
     范围: 学生一律顶号;体验机构(plan=trial)老师/机构管理员也顶号——
     体验账号发出去就是明文流传,一号多人同时在线是白嫖主通道。
-    正式机构老师/管理员/平台admin/家长不顶(手机电脑双开是正常用法),
-    token 不带 sv,认证侧自然跳过校验。
+    正式机构老师/管理员/平台admin/家长不顶(手机电脑双开是正常用法): 登录时 session_ver 不变,
+    token 照样带上当前的 sv —— 改密码 / 被重置密码时才 +1,让旧 token 作废(见 session_token_for)。
 
     机制: 范围内每次登录 session_ver+1 写库,并把新值放进 JWT 的 sv;
     认证时 sv != 库值 → 401 SESSION_KICKED(后登录踢先登录)。
@@ -64,12 +76,39 @@ async def issue_session_token(db: AsyncSession, user: User) -> str:
 
     if in_scope:
         user.session_ver = (user.session_ver or 0) + 1
-        await db.commit()
-        return create_access_token(
-            {"sub": str(user.id), "username": user.username, "sv": user.session_ver}
-        )
     await db.commit()
-    return create_access_token({"sub": str(user.id), "username": user.username})
+    return session_token_for(user)
+
+
+# 平台管理员的登录凭证 1 天(2026-10-28): 管什么都能改,凭证被抄走的代价最大;其它角色照旧 7 天
+ADMIN_TOKEN_TTL = timedelta(days=1)
+
+
+def session_token_for(user: User, expires_delta: Optional[timedelta] = None) -> str:
+    """按账号当前的 session_ver 发 token(不改库)。
+
+    **所有角色都带 sv**(2026-10-28 起): 不顶号的角色登录时 sv 不变,手机电脑照样双开;
+    改密码 / 被重置密码时 session_ver+1,手里的旧 token 全部作废。以前只有顶号范围内带 sv,
+    正式机构老师被重置密码后旧 token 还能用满 7 天。"""
+    if expires_delta is None and user.role == "admin":
+        expires_delta = ADMIN_TOKEN_TTL
+    return create_access_token(
+        {"sub": str(user.id), "username": user.username, "sv": user.session_ver or 0},
+        expires_delta=expires_delta,
+    )
+
+
+def session_ok(payload: dict, user: User) -> bool:
+    """token 里的 sv 与库里一致才算数。没带 sv 的旧 token 按 0 算:
+    上线时只有学生会顶号,别的角色库里都是 0,不会有人被登出;
+    之后谁改过 / 被重置过密码(库里变成 1),他手里没带 sv 的旧 token 就作废了"""
+    sv = payload.get("sv")
+    return (sv if sv is not None else 0) == (user.session_ver or 0)
+
+
+def bump_session(user: User) -> None:
+    """作废这个账号已经发出去的全部 token(改密码 / 重置密码时调,调用方 commit)"""
+    user.session_ver = (user.session_ver or 0) + 1
 
 class AuthFailure(Exception):
     """登录失败的细分原因（前端按 code 显示对应文案与跳转链接）"""
@@ -96,14 +135,27 @@ def _password_ok(plain: str, hashed: Optional[str]) -> bool:
         return False
 
 
-async def authenticate_user_strict(db: AsyncSession, username: str, password: str) -> User:
+async def _password_ok_async(plain: str, hashed: Optional[str]) -> bool:
+    try:
+        return bool(hashed) and await verify_password_async(plain, hashed)
+    except ValueError:  # 同 _password_ok
+        return False
+
+
+async def authenticate_user_strict(
+    db: AsyncSession, username: str, password: str, ip: Optional[str] = None,
+) -> User:
     """
     严格版：区分 user_not_found / wrong_password / inactive 三种失败。
 
     同一个手机号可能有两个账号: 孩子的学生号(注册时填的是家长手机)和家长号。
     原来 scalar_one_or_none() 碰到两行直接 500;现在逐个试密码 ——
     用户名精确匹配优先,学生/老师优先于家长(这个登录页本来是给学生老师的)。
+
+    校验密码前先过防爆破闸门(services/login_guard,太频繁直接 429、不去算 bcrypt)。
     """
+    from app.services import login_guard
+
     stmt = select(User).where(
         or_(
             User.username == username,
@@ -114,12 +166,21 @@ async def authenticate_user_strict(db: AsyncSession, username: str, password: st
     result = await db.execute(stmt)
     users = list(result.scalars().all())
 
+    await login_guard.check(
+        ip, login_guard.account_keys([u.id for u in users], username),
+        staff=any(login_guard.is_staff(u.role) for u in users),
+    )
     if not users:
         raise AuthFailure("user_not_found", "该账号不存在，请检查输入或先去注册")
     users.sort(key=lambda u: (u.username != username, u.role == "parent"))
-    user = next((u for u in users if _password_ok(password, u.hashed_password)), None)
+    user = None
+    for u in users:
+        if await _password_ok_async(password, u.hashed_password):
+            user = u
+            break
     if user is None:
         raise AuthFailure("wrong_password", "密码不正确，请重试或找回密码")
+    await login_guard.record_success(ip, login_guard.account_keys([user.id]))
     if not user.is_active:
         raise AuthFailure("inactive", "账号已被禁用，请联系老师或管理员")
     return user

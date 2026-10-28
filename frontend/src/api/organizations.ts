@@ -191,5 +191,5 @@ export const orgAdminApi = {
     }>(`/org/teachers/${teacherId}/handover`, { to_teacher_id: toTeacherId }),
   // 机构管理员改自己的密码(需旧密码)
   changeMyPassword: (data: { old_password: string; new_password: string }) =>
-    client.put<{ updated: boolean }>('/org/my-password', data),
+    client.put<{ updated: boolean; access_token?: string }>('/org/my-password', data),
 };

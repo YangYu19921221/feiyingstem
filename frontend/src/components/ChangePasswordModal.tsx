@@ -54,13 +54,15 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
 
     setLoading(true);
     try {
-      await api.put('/auth/change-password', {
+      const res = await api.put<{ access_token?: string }>('/auth/change-password', {
         old_password: oldPassword,
         new_password: newPassword,
       });
+      // 改完密码后端会让所有旧登录失效,这台设备换成响应里的新 token 接着用(不换会被立刻登出)
+      if (res?.access_token) localStorage.setItem('access_token', res.access_token);
       setSuccess(true);
       timerRef.current = setTimeout(handleClose, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(getErrorMessage(err, '修改密码失败'));
     } finally {
       setLoading(false);
@@ -102,6 +104,7 @@ export default function ChangePasswordModal({ isOpen, onClose }: ChangePasswordM
               >
                 <div className="text-4xl mb-3">✅</div>
                 <p className="text-gray-700 font-medium">密码修改成功</p>
+                <p className="mt-1 text-xs text-gray-500">其它设备上的登录已退出</p>
               </motion.div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">

@@ -74,6 +74,10 @@ async def websocket_endpoint(
 
         if user is None or not user.is_active:
             raise ValueError("用户不存在或已禁用")
+        # 会话版本与 REST 同口径: 改过密码 / 被顶下线的旧 token 也连不上
+        from app.services.auth_service import session_ok
+        if not session_ok(payload, user):
+            raise ValueError("登录已失效")
 
         # 多租户: 自建鉴权路径也要设机构上下文,否则该WS连接内的DB查询不被过滤
         from app.core.tenancy import current_org_id
