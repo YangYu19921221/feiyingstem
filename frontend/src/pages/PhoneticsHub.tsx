@@ -927,8 +927,8 @@ export default function PhoneticsHub() {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             // 能滚: 视频 + 提问区 + 音标键在手机上比一屏高。原来 items-center 又不能滚,
             // 高出来的部分上下各被裁掉一半(关闭键、发给老师都看不到)。面板用 my-auto 居中:
-            // 放得下时居中,放不下时贴顶、整个遮罩往下滚
-            className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/80 p-2 sm:p-4"
+            // 放得下时居中,放不下时贴顶、整个遮罩往下滚。滚动条隐藏(用户 10-28: 不好看),照样能滑
+            className="hide-scrollbar fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/80 p-2 sm:p-4"
             onClick={() => setPlaying(null)}
           >
             <motion.div

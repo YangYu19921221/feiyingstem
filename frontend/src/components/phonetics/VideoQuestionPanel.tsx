@@ -208,7 +208,7 @@ export default function VideoQuestionPanel({ videoId, getPosition }: Props) {
           placeholder="哪里没听懂?比如: /æ/ 的嘴巴要张多大?"
           aria-label="向老师提问"
           aria-describedby={`vq-hint-${videoId}`}
-          className="block w-full resize-none !rounded-xl !border-0 !bg-transparent px-2.5 py-2 text-base leading-7
+          className="hide-scrollbar block w-full resize-none !rounded-xl !border-0 !bg-transparent px-2.5 py-2 text-base leading-7
                      text-slate-900 !shadow-none placeholder:text-slate-500 focus:outline-none"
         />
         {padOpen && (
