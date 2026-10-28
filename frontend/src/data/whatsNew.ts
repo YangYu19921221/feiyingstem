@@ -28,6 +28,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'admin-account-self-edit-2026-10',
+    date: '2026-10-28',
+    title: '🔑 管理员可以自己改用户名和密码了',
+    desc: '以前管理员账号的登录用户名和密码只能找技术改。现在点右上角自己的名字,就能改登录用户名(要输当前密码确认)和密码。改完不会被踢下线,下次登录用新的。',
+    where: '管理端右上角点自己的名字 →「修改用户名」/「修改密码」;手机上点右上角人像图标',
+    roles: ['admin'],
+  },
+  {
     id: 'tutor-voice-care-student-2026-10',
     date: '2026-10-27',
     title: '🎤 小鹰老师能听你说话了',

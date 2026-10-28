@@ -271,6 +271,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 管理员自己改用户名 / 密码 + 「最近部署」格子修复(2026-10-28,用户「管理端增加修改自己的用户名和密码功能」
+  「最近部署 10/28 11:52 线上前端版本 这里 UI 显示不全」): 后端早有 `PUT /auth/change-username`(要当前密码)/
+  `PUT /auth/change-password`(都走 get_real_user),纯前端接入。StaffWorkspaceHeader 只对 role='admin' 把右上角名字
+  变成按钮 → 菜单(名字 + 登录用户名 + 修改用户名 / 修改密码),复用 ChangeUsernameModal / ChangePasswordModal;
+  768–960 宽名字胶囊原本整个藏掉,管理端改成只留人像图标;手机账号菜单多两项。**弹窗 createPortal 到 body**
+  (顶栏有 backdrop-filter,fixed 遮罩放在顶栏里只盖住顶栏那一条)。教师端自己页面里已有这两个按钮、机构端走
+  /org/my-password,所以 canEditAccount 只开 admin。JWT sub 是用户 id,改用户名不掉线。
+  「最近部署」: 半宽格子塞不下「10/28 11:52」被 truncate 截断 → 大字只放时分,今天 / 昨天 / 日期放标题右侧,
+  底行改成前端构建号(/admin/system/version 的 build)。顺手: 音标视频线路卡 RouteNow 在返回没有 cos 字段时
+  读 undefined 会把整个管理首页打进错误页,加了 `state && cos` 判断。浏览器验过 1366 / 820 / 390 / 320(假接口)。
+  公告一条(admin)
 - ✅ AI 学习助手「小鹰老师」(2026-10-26 16:33 **已部署生产**,提交 02328ff;main.py 走 anchor patch 只加 tutor 路由 6 行,
   其余 5 个文件生产==HEAD~1 整推 + 新文件 api/v1/tutor.py、services/tutor.py、models/tutor.py;两张新表 create_all 建;
   两个服务都重启;备份 /root/eh_db_before_tutor_20261026_1627.db、/root/eh_code_before_tutor_20261026_1627.tgz、

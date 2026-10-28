@@ -283,7 +283,8 @@ export default function VideoCdnSwitch() {
       <h3 id="video-route-title" className="font-bold text-[#173047]">音标视频播放线路</h3>
       {!state && <p className="mt-1 text-sm text-slate-500">{loadError ? `读取失败: ${loadError}` : '读取中…'}</p>}
 
-      {state && (
+      {/* 没有 cos 字段(老后端 / 返回不全)时不画,否则 viaOf 读 undefined 会把整个管理首页打进错误页 */}
+      {state && cos && (
         <RouteNow state={state} checkedAt={checkedAt} stale={!!loadError} refreshing={refreshing} onRefresh={() => { void load(); }} />
       )}
 
