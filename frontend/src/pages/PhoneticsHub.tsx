@@ -925,7 +925,10 @@ export default function PhoneticsHub() {
         {playing && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-2 sm:p-4"
+            // 能滚: 视频 + 提问区 + 音标键在手机上比一屏高。原来 items-center 又不能滚,
+            // 高出来的部分上下各被裁掉一半(关闭键、发给老师都看不到)。面板用 my-auto 居中:
+            // 放得下时居中,放不下时贴顶、整个遮罩往下滚
+            className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/80 p-2 sm:p-4"
             onClick={() => setPlaying(null)}
           >
             <motion.div
@@ -933,7 +936,7 @@ export default function PhoneticsHub() {
               initial={{ scale: 0.94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, opacity: 0 }}
               className={[
                 // relative: 选集列表(absolute inset-0)盖在面板里,全屏时也跟着面板走
-                'relative overflow-hidden shadow-2xl',
+                'relative my-auto shrink-0 overflow-hidden shadow-2xl',
                 // 全屏时贴满屏幕,圆角会在四角露出黑底
                 panelFs ? '' : 'rounded-2xl',
                 viewing

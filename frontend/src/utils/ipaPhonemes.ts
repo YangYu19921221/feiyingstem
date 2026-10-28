@@ -145,6 +145,48 @@ export function segmentIpa(raw: string): { text: string; kind: 'vowel' | 'conson
   return out;
 }
 
+/**
+ * 往一段普通文字里插音标(视频提问框用): 孩子的手机 / 电脑键盘打不出 æ。
+ *
+ * 点一个键插成 /æ/(老师一眼认得出是音标不是字母);**紧接着再点**就拼进同一对斜杠里,
+ * 连点 b æ d 得到 /bæd/。「紧接着」= 光标还停在上一次插完的位置(joinAt),
+ * 中间打过字或挪过光标就另起一对斜杠。纯函数,不碰 DOM。
+ */
+export function insertIpaAt(
+  text: string, caret: number, joinAt: number, p: string,
+): { text: string; caret: number } {
+  const at = Math.max(0, Math.min(caret, text.length));
+  if (joinAt === at && text[at - 1] === '/') {
+    return { text: text.slice(0, at - 1) + p + '/' + text.slice(at), caret: at + p.length };
+  }
+  return { text: `${text.slice(0, at)}/${p}/${text.slice(at)}`, caret: at + p.length + 2 };
+}
+
+/**
+ * 提问框里的「退格」(手机上点音标键时系统键盘是收起的,删错得有个键)。
+ * 刚拼的那对斜杠里: 删最后一个**音**(tʃ、aɪ 整个删),删空了连斜杠一起删;其余位置删一个字。
+ * 返回的 joined = 删完光标是否还在可以接着拼的位置
+ */
+export function backspaceIpaAt(
+  text: string, caret: number, joinAt: number,
+): { text: string; caret: number; joined: boolean } {
+  const at = Math.max(0, Math.min(caret, text.length));
+  if (at === 0) return { text, caret: 0, joined: false };
+  if (joinAt === at && text[at - 1] === '/') {
+    const before = text.slice(0, at - 1);
+    const hit = BY_LEN_DESC.find(ph => before.endsWith(ph));
+    if (hit) {
+      const start = at - 1 - hit.length;
+      if (text[start - 1] === '/') {
+        // 只剩这一个音: /æ/ 整对删掉
+        return { text: text.slice(0, start - 1) + text.slice(at), caret: start - 1, joined: false };
+      }
+      return { text: text.slice(0, start) + '/' + text.slice(at), caret: start + 1, joined: true };
+    }
+  }
+  return { text: text.slice(0, at - 1) + text.slice(at), caret: at - 1, joined: false };
+}
+
 /** token 数组 → 展示串。纸书用方括号,跟教材保持一致 */
 export const tokensToDisplay = (t: string[]): string => `[${t.join('')}]`;
 

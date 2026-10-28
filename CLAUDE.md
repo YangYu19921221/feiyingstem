@@ -304,6 +304,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   孩子却把第一个音填进去整排错位(带重音的题一遍正确率 77.4% vs 87.8%)。lessons 接口每题多给 stress_at(只说第几格,不带音素),
   前端 initialSlots 印好、不可编辑、键盘去掉 ˈ 键。旧前端没这字段照旧能用。生产用过写音标的只有 3 个学生(1075 次作答)。
   公告学生一条
+  **同日补: 提问框能打音标**(用户「视频下面的提问区怎么输入音标」→「UI 键盘显示不全」): 输入框下面「/æ/ 打音标」展开
+  components/phonetics/IpaInsertPad(同一个 IpaKey,compact 档 36/40px 高),点了插到光标处成 /æ/,紧接着再点拼进同一对斜杠
+  (/bæd/),退格整个删一个音、删空连斜杠一起删(utils/ipaPhonemes.insertIpaAt / backspaceIpaAt,纯函数)。不读例词(视频在放)。
+  手机上收起系统键盘、展开后把输入卡片滚进屏幕、输入框收成两行;768 以上辅音元音左右并排只占 4 行。
+  **播放器遮罩原来 items-center 且不能滚**,面板比屏高时上下各被裁一半 → 改 overflow-y-auto + 面板 my-auto。
+  320 / 360 / 375(SE 可见 553)/ 390 / 1280×577 / 1366×625 / 820 七种尺寸实测: 输入框 + 整块键盘 + 发送键同屏、例词不截断。
+  ⚠️ 卡片写音标页在 iPhone SE 上键盘下半截要在卡片区里往上滑(交卷键固定在底部不受影响),没改
 - ✅ 管理员自己改用户名 / 密码 + 「最近部署」格子修复(2026-10-28,用户「管理端增加修改自己的用户名和密码功能」
   「最近部署 10/28 11:52 线上前端版本 这里 UI 显示不全」): 后端早有 `PUT /auth/change-username`(要当前密码)/
   `PUT /auth/change-password`(都走 get_real_user),纯前端接入。StaffWorkspaceHeader 只对 role='admin' 把右上角名字

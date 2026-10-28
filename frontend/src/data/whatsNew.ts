@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'video-question-ipa-pad-2026-10',
+    date: '2026-10-28',
+    title: '🔤 问老师时也能打音标了',
+    desc: '看音标视频听不懂,想问「/æ/ 的嘴巴张多大」,可手机键盘打不出 æ?现在提问框下面有个「/æ/ 打音标」按钮,点开就是音标键,点一下插进问题里,连着点还能拼成一个词,比如 /bæd/。',
+    where: '首页「音标」→ 点开任意一节视频 → 视频下面「听不懂就问老师」→「/æ/ 打音标」',
+    roles: ['student'],
+    route: '/student/phonetics',
+  },
+  {
     id: 'ipa-keyboard-howto-2026-10',
     date: '2026-10-28',
     title: '⌨️ 音标键盘会教你怎么打了',
