@@ -526,3 +526,34 @@ async def test_platform_summary_lists_every_org_and_is_admin_only(client, db_ses
     assert r.json()["total"] == own.json()["total"]
     r = await client.get("/api/v1/promo/summary/orgs/999999/board", headers=_h(adm_id))
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sales_username_conflict_explains_and_suggests(client, db_session, ctx):
+    """10-28: 开销售撞了学生 / 老师的用户名只回「已经有人用了」,管理员连点三次才猜到要换。
+    现在说清是全站唯一、不分角色,给一个真能用的名字;不说被谁占了"""
+    oa = _h(ctx["oa"].id)
+    db_session.add(User(username="xs_prmstu", email="xsp@e.com", hashed_password="x", role="teacher",
+                        full_name="占位", org_id=ctx["org_b"].id, is_active=True))
+    await db_session.commit()
+    r = await client.post("/api/v1/promo/sales", json={"username": "prmstu", "full_name": "新销售"}, headers=oa)
+    assert r.status_code == 409
+    d = r.json()["detail"]
+    assert d["code"] == "USERNAME_TAKEN" and d["field"] == "username"
+    assert "不分角色" in d["message"] and "张小明" not in d["message"]   # 不泄露是谁的号
+    assert d["suggestion"] == "prmstu2"                                 # xs_ 那个也被占了,跳过
+    r = await client.post("/api/v1/promo/sales", json={"username": d["suggestion"], "full_name": "新销售"}, headers=oa)
+    assert r.status_code == 200, r.text
+    # 编辑改名撞了也一样
+    r = await client.patch(f"/api/v1/promo/sales/{ctx['s1'].id}", json={"username": "prmstu"}, headers=oa)
+    assert r.status_code == 409 and r.json()["detail"]["field"] == "username"
+    # 手机号撞了学生号: 说明可以先空着
+    ctx_stu_id = ctx["stu"].id
+    stu = (await db_session.execute(select(User).where(User.id == ctx_stu_id))).scalar_one()
+    stu.phone = "13800000088"
+    await db_session.commit()
+    r = await client.post("/api/v1/promo/sales", json={"username": "prmsphone", "full_name": "x", "phone": "13800000088"},
+                          headers=oa)
+    assert r.status_code == 409
+    d = r.json()["detail"]
+    assert d["code"] == "PHONE_TAKEN" and d["field"] == "phone" and "选填" in d["message"]

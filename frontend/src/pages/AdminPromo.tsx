@@ -34,6 +34,32 @@ const errText = (e: unknown, fallback: string) => {
   return fallback;
 };
 
+/** 开通 / 编辑销售时用户名或手机号撞了别的账号: 后端给 field + 原因 + 一个能用的用户名。
+ * 要钉在输入框下面,不能只弹 3 秒的 toast —— 没看清原因就会以为系统坏了反复点 */
+type FieldConflict = { field: 'username' | 'phone'; message: string; suggestion?: string | null };
+const conflictOf = (e: unknown): FieldConflict | null => {
+  const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail as
+    { field?: unknown; message?: unknown; suggestion?: unknown } | undefined;
+  if (!d || typeof d !== 'object' || (d.field !== 'username' && d.field !== 'phone') || typeof d.message !== 'string') return null;
+  return { field: d.field, message: d.message, suggestion: typeof d.suggestion === 'string' ? d.suggestion : null };
+};
+
+function ConflictNote({ c, onUse }: { c: FieldConflict; onUse?: (name: string) => void }) {
+  return (
+    <div role="alert" className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700">
+      <p>{c.message}</p>
+      {c.suggestion && onUse && (
+        <button type="button" onClick={() => onUse(c.suggestion!)}
+          className="mt-1 min-h-9 rounded-lg border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 hover:bg-red-100">
+          改用「{c.suggestion}」
+        </button>
+      )}
+    </div>
+  );
+}
+
+const USERNAME_TIP = '用户名全站只能有一个,学生、老师用过的也不能再用。建议加 xs_ 前缀(如 xs_wangli)或直接用销售的手机号。';
+
 type Tab = 'board' | 'leads' | 'sales' | 'channels' | 'settings';
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'board', label: '看板' },
@@ -272,6 +298,7 @@ function BoardTab({ refreshKey, owners, onChanged }: { refreshKey: number; owner
 function SalesTab({ owners, onChanged }: { owners: Owner[]; onChanged: () => void }) {
   const [form, setForm] = useState({ username: '', full_name: '', phone: '' });
   const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState<FieldConflict | null>(null);
   const [pwd, setPwd] = useState<{ title: string; username: string; password: string } | null>(null);
   const [data, setData] = useState<Paged<SalesAccount> | null>(null);
   const [page, setPage] = useState(1);
@@ -296,10 +323,13 @@ function SalesTab({ owners, onChanged }: { owners: Owner[]; onChanged: () => voi
       const r = await createSales({ username: form.username.trim(), full_name: form.full_name.trim(), phone: form.phone.trim() || undefined });
       setPwd({ title: `已开通销售「${r.full_name}」`, username: r.username, password: r.initial_password });
       setForm({ username: '', full_name: '', phone: '' });
+      setConflict(null);
       setPage(1);
       reload();
     } catch (err) {
-      toast(errText(err, '开通失败'), 'error');
+      const c = conflictOf(err);
+      if (c) setConflict(c);
+      else toast(errText(err, '开通失败'), 'error');
     } finally {
       setBusy(false);
     }
@@ -327,14 +357,21 @@ function SalesTab({ owners, onChanged }: { owners: Owner[]; onChanged: () => voi
         <div className="mt-3 flex flex-wrap gap-2">
           <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="姓名(家长看到的,如 王老师)" required maxLength={50}
             aria-label="销售姓名" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-auto sm:flex-1" />
-          <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="登录用户名" required minLength={3} maxLength={50}
-            aria-label="登录用户名" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-44" />
-          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="手机号(选填,默认印在卡上)" maxLength={20}
-            aria-label="手机号" className="min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-52" />
+          <input value={form.username} placeholder="登录用户名" required minLength={3} maxLength={50}
+            onChange={(e) => { setForm({ ...form, username: e.target.value }); if (conflict?.field === 'username') setConflict(null); }}
+            aria-label="登录用户名" aria-invalid={conflict?.field === 'username'}
+            className={`min-h-10 w-full rounded-lg border px-3 text-sm sm:w-44 ${conflict?.field === 'username' ? 'border-red-400' : 'border-slate-200'}`} />
+          <input value={form.phone} placeholder="手机号(选填,默认印在卡上)" maxLength={20}
+            onChange={(e) => { setForm({ ...form, phone: e.target.value }); if (conflict?.field === 'phone') setConflict(null); }}
+            aria-label="手机号" aria-invalid={conflict?.field === 'phone'}
+            className={`min-h-10 w-full rounded-lg border px-3 text-sm sm:w-52 ${conflict?.field === 'phone' ? 'border-red-400' : 'border-slate-200'}`} />
           <button type="submit" disabled={busy} className="min-h-10 w-full rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">
             开通
           </button>
         </div>
+        {conflict
+          ? <ConflictNote c={conflict} onUse={(name) => { setForm((f) => ({ ...f, username: name })); setConflict(null); }} />
+          : <p className="mt-2 text-xs leading-5 text-slate-500">{USERNAME_TIP}</p>}
       </form>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -484,6 +521,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 function EditSalesDialog({ sales, onClose, onSaved }: { sales: SalesAccount; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({ full_name: sales.full_name, username: sales.username, phone: sales.phone });
   const [busy, setBusy] = useState(false);
+  const [conflict, setConflict] = useState<FieldConflict | null>(null);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.full_name.trim() || f.username.trim().length < 3) { toast('姓名不能空,用户名至少 3 个字', 'error'); return; }
@@ -494,7 +532,9 @@ function EditSalesDialog({ sales, onClose, onSaved }: { sales: SalesAccount; onC
       toast('已保存', 'success');
       onSaved();
     } catch (err) {
-      toast(errText(err, '没保存上'), 'error');
+      const c = conflictOf(err);
+      if (c) setConflict(c);
+      else toast(errText(err, '没保存上'), 'error');
     } finally {
       setBusy(false);
     }
@@ -505,8 +545,13 @@ function EditSalesDialog({ sales, onClose, onSaved }: { sales: SalesAccount; onC
         {([['full_name', '姓名(家长看到的)'], ['username', '登录用户名'], ['phone', '手机号(留空 = 不填)']] as const).map(([k, label]) => (
           <label key={k} className="block">
             <span className="text-sm font-medium text-slate-700">{label}</span>
-            <input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} maxLength={k === 'phone' ? 20 : 50}
-              className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#FF6B35]" />
+            <input value={f[k]} maxLength={k === 'phone' ? 20 : 50} aria-invalid={conflict?.field === k}
+              onChange={(e) => { setF({ ...f, [k]: e.target.value }); if (conflict?.field === k) setConflict(null); }}
+              className={`mt-1 min-h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#FF6B35] ${conflict?.field === k ? 'border-red-400' : 'border-slate-200'}`} />
+            {conflict?.field === k && (
+              <ConflictNote c={conflict} onUse={(name) => { setF((x) => ({ ...x, username: name })); setConflict(null); }} />
+            )}
+            {k === 'username' && conflict?.field !== 'username' && <span className="mt-1 block text-xs leading-5 text-slate-500">{USERNAME_TIP}</span>}
           </label>
         ))}
         <p className="text-xs leading-5 text-slate-500">改了用户名,销售要用新用户名登录。卡上印的名字电话在「卡码 → 卡面与印刷」里单独改。</p>

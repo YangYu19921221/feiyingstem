@@ -356,6 +356,41 @@ def _no_admin(user: User) -> None:
         raise HTTPException(status_code=400, detail="账号没有所属机构,不能管理体验卡")
 
 
+async def _suggest_username(db: AsyncSession, base: str) -> Optional[str]:
+    """给一个没人用的用户名: 先试 xs_ 前缀,再试末尾加数字。一条查询判完"""
+    stem = base[3:] if base.lower().startswith("xs_") else base
+    cands = [c for c in [f"xs_{stem}"] + [f"{base}{i}" for i in range(2, 21)] if len(c) <= 50 and c != base]
+    taken = set((await db.execute(
+        select(User.username).where(User.username.in_(cands)).execution_options(skip_tenant_filter=True)
+    )).scalars().all())
+    return next((c for c in cands if c not in taken), None)
+
+
+async def _username_taken(db: AsyncSession, username: str) -> HTTPException:
+    """用户名撞了: 说清是全站唯一、不分角色(否则会以为系统坏了反复点),给一个能用的。
+    不说被谁占了 —— 那是别人(常是别家机构的学生)的账号"""
+    sug = await _suggest_username(db, username)
+    msg = (f"用户名「{username}」系统里已经有账号在用了。学生、老师、家长、销售都在同一个登录页登录,"
+           f"用户名全站只能有一个,不分角色,所以要换一个")
+    msg += f",比如「{sug}」。" if sug else "。"
+    return HTTPException(status_code=409, detail={"code": "USERNAME_TAKEN", "field": "username",
+                                                  "message": msg, "suggestion": sug})
+
+
+def _phone_taken(phone: str) -> HTTPException:
+    return HTTPException(status_code=409, detail={
+        "code": "PHONE_TAKEN", "field": "phone",
+        "message": (f"手机号 {phone} 已经登记在系统里另一个账号上(常见的是孩子的学生号填了这个手机)。"
+                    "一个手机号只能登记一个账号。手机号是选填的,可以先空着开通;"
+                    "卡上要印的电话在「卡码 → 卡面与印刷」里单独填。"),
+    })
+
+
+def _race_taken() -> HTTPException:
+    # 查重之后、写库之前被别人抢先占了(两个人同时开通)才会走到这里
+    return HTTPException(status_code=409, detail="用户名或手机号刚被别的账号占用了,换一个再试")
+
+
 @router.get("/promo/sales")
 async def list_sales(
     page: int = Query(1, ge=1),
@@ -400,10 +435,10 @@ async def create_sales(body: SalesCreate, request: Request, db: AsyncSession = D
     guard_org_admin(current_user, new_role="sales")
     username = body.username.strip()
     if await auth_service.get_user_by_username(db, username):
-        raise HTTPException(status_code=409, detail="这个用户名已经有人用了,换一个")
+        raise await _username_taken(db, username)
     phone = (body.phone or "").strip() or None
     if phone and await auth_service.get_user_by_phone(db, phone):
-        raise HTTPException(status_code=409, detail="这个手机号已经注册过账号")
+        raise _phone_taken(phone)
     pwd = body.password or auth_service.generate_random_password()
     u = User(username=username, email=f"{username}@sales.feiying.local", phone=phone,
              full_name=body.full_name.strip(), hashed_password=auth_service.get_password_hash(pwd),
@@ -413,7 +448,7 @@ async def create_sales(body: SalesCreate, request: Request, db: AsyncSession = D
         await db.flush()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="用户名或手机号已存在")
+        raise _race_taken()
     audit_log.record(db, request, current_user, "promo.sales_create", f"新建销售账号: {u.full_name}({username})",
                      target_type="user", target_id=u.id)
     await db.commit()
@@ -437,7 +472,7 @@ async def update_sales(user_id: int, body: SalesUpdate, request: Request, db: As
         if un != u.username:
             other = await auth_service.get_user_by_username(db, un)
             if other is not None and other.id != u.id:
-                raise HTTPException(status_code=409, detail="这个用户名已经有人用了,换一个")
+                raise await _username_taken(db, un)
             changes.append(f"用户名 {u.username} → {un}")
             u.username = un
     if "phone" in data:
@@ -447,7 +482,7 @@ async def update_sales(user_id: int, body: SalesUpdate, request: Request, db: As
             if ph:
                 other = await auth_service.get_user_by_phone(db, ph)
                 if other is not None and other.id != u.id:
-                    raise HTTPException(status_code=409, detail="这个手机号已经注册过账号")
+                    raise _phone_taken(ph)
             changes.append(f"手机号 {u.phone or '空'} → {ph or '空'}")
             u.phone = ph
     if "is_active" in data and data["is_active"] is not None and bool(data["is_active"]) != bool(u.is_active):
@@ -460,7 +495,7 @@ async def update_sales(user_id: int, body: SalesUpdate, request: Request, db: As
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="用户名或手机号已存在")
+        raise _race_taken()
     return {"ok": True}
 
 
