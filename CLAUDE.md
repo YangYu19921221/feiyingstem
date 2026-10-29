@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 体验卡正面印校区地址(2026-10-29,用户「地推卡还需要加上公司地址: 昆明市五华区霖雨路飞鹰教育3楼,需要动态填写…换地址了后台也可以换」):
+- ✅ 体验卡正面印校区地址(2026-10-29 20:45 **已部署生产**,提交 956e741;promo 三个后端文件生产==HEAD~1 整推,database.py 生产有 drift 走 anchor patch 只加 1 条 ALTER;两个服务都重启;前端 dist 构建号 mvtj8pd6;备份 /root/eh_db_before_cardaddr_20261029_2043.db、/root/eh_code_before_cardaddr_20261029_2043.tgz、frontend/dist_bak_20261029_2043。**生产还没填地址**(等用户自己在设置里填),没填 = 卡面和以前一样,用户「地推卡还需要加上公司地址: 昆明市五华区霖雨路飞鹰教育3楼,需要动态填写…换地址了后台也可以换」):
   **按机构填,不按卡填**: promo_org_settings 加列 card_address(VARCHAR 60,NULL = 不印;database.py 1 条 ALTER),
   「设置」里一个输入框,全机构每版卡都印同一个;搬了家改设置、到「卡码」重新下载印刷文件就是新地址,**已印出去的卡改不了**(设置页、印刷说明都写明)。
   最多 22 个字(services/promo.CARD_ADDRESS_MAX,前端 AdminPromo 同值),换行和连续空格并成一个空格;
