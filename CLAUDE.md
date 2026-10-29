@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 小鹰老师自动布置作业(2026-10-30,用户「我的目的就是需要解放老师 让ai全自动」→ 一路定规则 →「开始 怎么用我们的逻辑是什么你需要在教师端写清楚，什么时候需要人工什么时候不需要」):
+- ✅ 小鹰老师自动布置作业(2026-10-30 04:10 **已部署生产**,提交 d5b0b98;11 个改动的后端文件生产==HEAD~1 整推(git archive 导出)+ 新文件 services/autopilot.py、models/autopilot.py、api/v1/autopilot.py;六张新表 create_all 建(先在生产库副本跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvtyxld2 整推(补了 3 张 .gitignore 挡住的 eagle-original-cutout*.png);备份 /root/eh_db_before_autopilot_20261030_0403.db、/root/eh_code_before_autopilot_20261030_0403.tgz、frontend/dist_bak_20261030_0403。上线后所有班都是「给建议」,没有班签到就派 = 孩子那边零变化,直到老师自己点「按建议布置」或改成签到就派。生产库副本量过: 70 人的班全班建议 3.9 秒(单人最慢 0.47 秒)。生产冒烟(临时老师 + 学生 + 班,跑完删净): 建议 25 个词 → 按建议布置 → 撤回 → 改签到就派 → 签到当场派 2 份 → 学习页 15 个词过关线 80 → 考 70 没过不标完成 → 考 95 第 1 份完成 → 第 2 份过关全部完成、金币 +1 → 6 秒后 AI 点评写好(1045 token,署名小鹰老师)→ 再来一份出加练;用户「我的目的就是需要解放老师 让ai全自动」→ 一路定规则 →「开始 怎么用我们的逻辑是什么你需要在教师端写清楚，什么时候需要人工什么时候不需要」):
   规则真源 services/autopilot.py 文件头(1–10 条),**老师页的说明(pages/TeacherAutopilot.tsx Guide)要和它同步**。
   ①**按班两种**: 给建议(默认,老师看建议点「按建议布置」才写作业)/ 签到就派(checkin.py 签到成功顺手 ensure_dispatch);
   老师今天自己给这个孩子布置了单词作业 → 不派;一天只派一次(autopilot_dispatches UNIQUE student+day,claiming 5 分钟算卡住);
