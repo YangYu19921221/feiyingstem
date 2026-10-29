@@ -202,6 +202,7 @@ async def _slow_lines(db: AsyncSession, user: User) -> list[str]:
 
 async def _today_lines(db: AsyncSession, user: User) -> list[str]:
     """今天的任务(每次现算)"""
+    from app.models.autopilot import extra_homework_ids
     from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
     from app.services import daily_review
 
@@ -211,6 +212,7 @@ async def _today_lines(db: AsyncSession, user: User) -> list[str]:
                func.sum(case((HomeworkStudentAssignment.status == "completed", 1), else_=0)))
         .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
         .where(HomeworkStudentAssignment.student_id == user.id, HomeworkAssignment.is_closed.is_(False),
+               HomeworkAssignment.id.not_in(extra_homework_ids()),
                HomeworkStudentAssignment.assigned_at >= start, HomeworkStudentAssignment.assigned_at < end)
     )).one()
     lines = [f"- 今天老师布置的单词任务: {int(total or 0)} 份,做完 {int(done or 0)} 份(详细用 get_today_tasks 查)"]

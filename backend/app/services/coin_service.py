@@ -47,6 +47,7 @@ UNIT_THRESHOLD = 2     # 完成几个单元发一个活动币
 from app.services.weak_words import SCORING_MODES, NON_LEARNED_MODES  # noqa: E402  (放在常量区便于阅读)
 # 「学了多少词」的全站唯一口径,单词王评选/战况必须与它一致(见 daily_words 模块头注释)
 from app.services.daily_words import words_by_student as daily_words_by_student  # noqa: E402
+from app.models.autopilot import extra_homework_ids  # noqa: E402
 
 
 class InsufficientCoins(Exception):
@@ -515,6 +516,8 @@ def _task_scope_conditions(day_start, day_end) -> list:
         HomeworkStudentAssignment.assigned_at < day_end,
         HomeworkAssignment.is_closed.is_(False),
         HomeworkAssignment.location_type != "home",
+        # 小鹰老师的「加练」(今天的做完了孩子自己要的)不算今天的任务,见 models/autopilot.extra_homework_ids
+        HomeworkAssignment.id.not_in(extra_homework_ids()),
     ]
 
 
@@ -589,6 +592,7 @@ async def task_progress_on_day(
             HomeworkStudentAssignment.assigned_at < day_end,
             HomeworkAssignment.is_closed.is_(False),
             HomeworkAssignment.location_type != "home",  # 家里作业不进金币分母
+            HomeworkAssignment.id.not_in(extra_homework_ids()),  # 加练不进分母
         ))
         .group_by(HomeworkStudentAssignment.student_id)
     )).all()
@@ -844,6 +848,7 @@ async def settle_day(db: AsyncSession, d: date) -> dict:
             HomeworkStudentAssignment.assigned_at < day_end,
             HomeworkAssignment.is_closed.is_(False),
             HomeworkAssignment.location_type != "home",  # 家里作业不进金币分母
+            HomeworkAssignment.id.not_in(extra_homework_ids()),  # 加练不进分母(与 task_progress_on_day 同步)
         ))
         .group_by(HomeworkStudentAssignment.student_id, User.org_id)
     )).all()

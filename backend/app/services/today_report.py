@@ -23,6 +23,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import local_day_utc_range
+from app.models.autopilot import extra_homework_ids
 from app.models.content_homework import ContentHomework, ContentHomeworkStudent
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, LearningRecord
 from app.models.organization import Organization
@@ -105,6 +106,7 @@ async def build_today_report(db: AsyncSession, user: User, d: date) -> dict:
         .where(and_(
             HomeworkStudentAssignment.student_id == user.id,
             HomeworkAssignment.is_closed.is_(False),
+            HomeworkAssignment.id.not_in(extra_homework_ids()),   # 小鹰老师的加练不算今天的任务
             or_(
                 and_(HomeworkStudentAssignment.assigned_at >= day_start,
                      HomeworkStudentAssignment.assigned_at < day_end),

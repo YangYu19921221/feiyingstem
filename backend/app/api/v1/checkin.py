@@ -13,6 +13,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
 from datetime import datetime
+import logging
 
 from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, DailyCheckin
@@ -27,6 +28,18 @@ _UTC = ZoneInfo("UTC")
 
 def _fmt_bjt(dt: datetime) -> str:
     return dt.replace(tzinfo=_UTC).astimezone(LOCAL_TZ).strftime('%H:%M')
+
+
+async def _autopilot_after_checkin(db: AsyncSession, uid: int) -> Optional[str]:
+    from app.services import autopilot
+    try:
+        student = await db.get(User, uid)
+        r = await autopilot.ensure_dispatch(db, student)
+        return r.get("status")
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).exception("签到后小鹰老师派任务出错 student=%s", uid)
+        await db.rollback()
+        return None
 
 
 async def has_checked_in_today(db: AsyncSession, user_id: int) -> bool:
@@ -80,7 +93,6 @@ async def do_checkin(
         db.add(row)
         await db.commit()
         await db.refresh(row)
-        return {"checked_in": True, "checkin_time": _fmt_bjt(row.checkin_at), "already": False}
     except IntegrityError:
         await db.rollback()
         res = await db.execute(
@@ -90,6 +102,10 @@ async def do_checkin(
         )
         row = res.scalar_one()
         return {"checked_in": True, "checkin_time": _fmt_bjt(row.checkin_at) if row.checkin_at else None, "already": True}
+    out = {"checked_in": True, "checkin_time": _fmt_bjt(row.checkin_at), "already": False}
+    # 小鹰老师自动布置(services/autopilot): 自动班签到这一刻派今天的任务。出错不影响签到
+    out["autopilot"] = await _autopilot_after_checkin(db, uid)
+    return out
 
 
 @router.get("/teacher/checkins")

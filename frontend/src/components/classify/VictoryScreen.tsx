@@ -39,6 +39,8 @@ interface Props {
   onPass: () => void;
   onRetry: () => void;
   onRelearn: () => void;
+  /** 过关要多少分(小鹰老师按能力定 80/85/90/95,服务器给的;没给就是 80) */
+  passLine?: number;
 }
 
 type TierKey = 'perfect' | 'great' | 'retry';
@@ -109,9 +111,9 @@ const THEMES: Record<TierKey, Theme> = {
   },
 };
 
-function pickTheme(score: number): Theme {
+function pickTheme(score: number, passLine: number): Theme {
   if (score === 100) return THEMES.perfect;
-  if (score >= 80) return THEMES.great;
+  if (score >= passLine) return THEMES.great;
   return THEMES.retry;
 }
 
@@ -342,10 +344,10 @@ function PetHero({ image, name, spotlight, isGem }: {
 
 export default function VictoryScreen({
   score, correctCount, totalQuestions, elapsedSeconds, wrongAnswers,
-  onPass, onRetry, onRelearn,
+  onPass, onRetry, onRelearn, passLine = 80,
 }: Props) {
-  const theme = pickTheme(score);
-  const passed = score >= 80;
+  const theme = pickTheme(score, passLine);
+  const passed = score >= passLine;
   const [showWrongList, setShowWrongList] = useState(false);
   const [animatedScore, setAnimatedScore] = useState(0);
 
@@ -539,6 +541,12 @@ export default function VictoryScreen({
             className="text-center text-white/80 text-xs md:text-sm mb-4"
           >
             正确率 <span className="font-numeric font-semibold text-white">{accuracy}%</span>
+            {(passLine !== 80 || !passed) && (
+              <span className="ml-2">
+                · 过关要 <span className="font-numeric font-semibold text-white">{passLine}</span> 分
+                {!passed && `,还差 ${passLine - score} 分`}
+              </span>
+            )}
           </motion.div>
 
           {wrongAnswers.length > 0 && (

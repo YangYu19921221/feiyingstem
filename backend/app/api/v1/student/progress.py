@@ -119,9 +119,14 @@ async def start_learning(
     # 2.5 按组布置的作业:只下发该组的词(切法与教师端建作业时同一份 get_unit_groups)。
     # 此前这里恒给整单元 → 老师选「第2组」,学生打开却是全单元,按组布置形同虚设
     group_index = request.group_index
+    from app.services import autopilot as _ap
+    # 小鹰老师派的作业一份可能是连着的好几组(第 3–5 组),作业表里只存了第一组
+    _ap_groups = await _ap.assignment_groups(db, request.assignment_id, user_id) if group_index is not None else None
     if group_index is not None:
         try:
-            group_ids = await get_group_word_ids(db, unit_id, group_index)
+            group_ids = []
+            for gi in (_ap_groups or [group_index]):
+                group_ids += await get_group_word_ids(db, unit_id, gi)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         order = {wid: i for i, wid in enumerate(group_ids)}
@@ -185,6 +190,7 @@ async def start_learning(
         "想上榜,先回「我的作业」背比赛作业里的词!"
         if _contest_units and unit_id not in _contest_units else None
     )
+    pass_line, _ = await _ap.pass_line_for(db, user_id)
 
     # 4. 如果单元没有单词,直接返回提示信息
     if total_words == 0:
@@ -198,6 +204,7 @@ async def start_learning(
             message=f"该单元暂时没有单词,请联系老师添加单词后再开始学习",
             unit_info=_build_unit_info(unit, word_book, org_name),
             contest_notice=contest_notice,
+            pass_line=pass_line,
         )
 
     # 4.5 按组学习不读写单元进度:单元进度的 current_word_index / is_completed 是
@@ -211,9 +218,11 @@ async def start_learning(
             total_words=total_words,
             progress_percentage=0.0,
             words=words,
-            message=f"本次作业只练第 {group_index} 组,共 {total_words} 个单词",
+            message=(f"本次作业练第 {_ap_groups[0]}–{_ap_groups[-1]} 组,共 {total_words} 个单词" if _ap_groups
+                     else f"本次作业只练第 {group_index} 组,共 {total_words} 个单词"),
             unit_info=_build_unit_info(unit, word_book, org_name),
             contest_notice=contest_notice,
+            pass_line=pass_line,
         )
 
     # 5. 查询是否有学习进度记录
@@ -308,6 +317,7 @@ async def start_learning(
         message=message,
         unit_info=_build_unit_info(unit, word_book, org_name),
         contest_notice=contest_notice,
+        pass_line=pass_line,
     )
 
 

@@ -382,6 +382,12 @@ async def submit_homework_attempt(
 
     # 检查是否达到目标分数
     is_passed = request.score >= homework.target_score
+    # 小鹰老师派的作业: 这份里的每一组今天都过了过关检测才算(过关线按孩子的能力,见 services/autopilot)
+    from app.services import autopilot as _ap
+    _ap_passed = await _ap.task_passed(db, homework.id, current_user.id)
+    if _ap_passed is not None:
+        # 过关检测那一刻多半已经标完成了(/student/autopilot/attempt),这里只记这次交卷
+        is_passed = _ap_passed or assignment.status == 'completed'
     if is_passed:
         assignment.status = 'completed'
         assignment.completed_at = datetime.utcnow()
@@ -467,6 +473,9 @@ async def submit_homework_attempt(
             coin_hint = await task_coin_hint(
                 db, current_user.id, primary_day or local_today(),
                 location_type=primary_location)
+
+    if _ap_passed is not None and is_passed:
+        await _ap.run_later(_ap.after_submit, current_user.id)
 
     return {
         "message": "提交成功",

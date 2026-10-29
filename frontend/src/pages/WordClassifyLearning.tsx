@@ -50,6 +50,7 @@ import { edgeTtsUrl, useAudio, preloadAudio } from '../hooks/useAudio';
 import useIdleDetector from '../hooks/useIdleDetector';
 import useNetActiveTime from '../hooks/useNetActiveTime';
 import GroupExamPhase from '../components/classify/GroupExamPhase';
+import { autopilotApi } from '../api/autopilot';
 import UnitRecapPhase from '../components/classify/recap/UnitRecapPhase';
 import { dispatchPetEvent } from '../utils/petEventBus';
 
@@ -640,6 +641,20 @@ const WordClassifyLearning = () => {
       clearLocalProgress();
     }
   };
+
+  // 每考完一次都报给小鹰老师(过了没过都报): 过关线按「当天第一次」的分数定,
+  // 今天派的作业这几组都过了就在服务器那边标完成(不等整单元交卷)。复习/错题(unit 0)不报
+  const handleExamFinish = useCallback((scorePercent: number) => {
+    const uid = parseInt(unitId || '0');
+    if (!uid || isReviewRef.current) return;
+    autopilotApi.attempt({
+      unit_id: uid,
+      word_ids: currentGroupWords.map(w => w.id),
+      score: scorePercent,
+    }).then(r => {
+      if (r?.coin_awarded) toast.success('🪙 今天的任务全部完成,金币 +1!');
+    }).catch(() => {});  // 失败进本地队列,联网后补交;不挡学习
+  }, [unitId, currentGroupWords]);
 
   // 过关检测重考
   const handleExamRetry = () => {
@@ -1257,6 +1272,8 @@ const WordClassifyLearning = () => {
                 onPass={handleExamPass}
                 onRetry={handleExamRetry}
                 onRelearn={handleExamRelearn}
+                passLine={isReviewRef.current ? 80 : (learningData?.pass_line ?? 80)}
+                onFinish={handleExamFinish}
               />
             </motion.div>
           )}

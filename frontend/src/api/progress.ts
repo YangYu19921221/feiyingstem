@@ -74,6 +74,8 @@ export interface StartLearningResponse {
   message: string;
   /** 今天有作业而本单元不在作业范围里:单词王不计这里的词(为空=不提示) */
   contest_notice?: string | null;
+  /** 过关检测要多少分(小鹰老师按能力定 80/85/90/95;旧后端没这个字段 = 80) */
+  pass_line?: number;
   unit_info: {
     id: number;
     unit_number: number;

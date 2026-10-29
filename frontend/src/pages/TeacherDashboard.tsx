@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   BookOpenText,
+  Bot,
   CalendarCheck2,
   CheckCircle2,
   ChevronRight,
@@ -69,6 +70,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
     title: '课堂推进',
     description: '布置任务、跟进学习进度',
     items: [
+      { title: '小鹰老师 · 自动布置', description: '每天给每个孩子排任务、复习、点评,你只处理它解决不了的', route: '/teacher/autopilot', icon: Bot, tone: 'orange' },
       { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'green' },
       { title: '问小鹰老师', description: '备课、出卷带答案、看全班卡在哪', route: '/teacher/tutor', icon: Sparkles, tone: 'orange' },
       { title: '每日陪跑', description: '谁没来、谁没做完,每天留一句话', route: '/teacher/coach', icon: MessageSquareHeart, tone: 'orange' },

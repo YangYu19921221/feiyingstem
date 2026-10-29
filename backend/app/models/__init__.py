@@ -48,6 +48,9 @@ from app.models.tutor import (  # AI 学习助手对话 + 次数 + 机构次数�
     TutorAllowance, TutorConversation, TutorGrantLog, TutorMessage, TutorNote, TutorOrgPool, TutorPoolLedger,
     TutorPref, TutorQuiz, WordPicture, TutorHandoff, TeacherTutorUsage,
 )
+from app.models.autopilot import (  # 小鹰老师自动布置作业
+    AutopilotClass, AutopilotStudent, AutopilotGroup, AutopilotAttempt, AutopilotDispatch, AutopilotTask,
+)
 from app.models.promo import (  # 地推体验卡 + 销售跟单
     PromoSalesProfile, PromoChannel, PromoLead, PromoOrgSettings, PromoFollowUp, PromoCardDesign,
 )

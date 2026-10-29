@@ -27,6 +27,10 @@ interface GroupExamPhaseProps {
   onPass: (score: number, total: number, scorePercent: number, elapsedSeconds: number) => void;
   onRetry: () => void;
   onRelearn: () => void;
+  /** 过关要多少分(服务器给的,见 backend services/autopilot.pass_line_for) */
+  passLine?: number;
+  /** 每考完一次都调(过了没过都调),一份试卷只调一次 */
+  onFinish?: (scorePercent: number) => void;
 }
 
 function generateQuestions(words: WordData[]): ExamQuestion[] {
@@ -100,7 +104,7 @@ const TYPE_LABELS: Record<string, string> = {
 /** 听写题每题可播放次数(含自动播放的那一次) */
 const MAX_PLAYS = 3;
 
-export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: GroupExamPhaseProps) {
+export default function GroupExamPhase({ words, onPass, onRetry, onRelearn, passLine = 80, onFinish }: GroupExamPhaseProps) {
   const [questions] = useState(() => generateQuestions(words));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<number, string>>(new Map());
@@ -275,6 +279,14 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
+  // 考完了就报一次分(没过的也报: 小鹰老师按「当天第一次」的分数定过关线、判学会没有)
+  const finishedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'result' || finishedRef.current) return;
+    finishedRef.current = true;
+    onFinish?.(score);
+  }, [phase, score, onFinish]);
+
   if (phase === 'result') {
     const wrongAnswers: WrongAnswer[] = results
       .filter(r => !r.isCorrect)
@@ -296,6 +308,7 @@ export default function GroupExamPhase({ words, onPass, onRetry, onRelearn }: Gr
         onPass={() => onPass(correctCount, totalQuestions, score, elapsedSeconds)}
         onRetry={onRetry}
         onRelearn={onRelearn}
+        passLine={passLine}
       />
     );
   }

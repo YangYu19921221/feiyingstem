@@ -49,6 +49,7 @@ const TeacherTutorClass = lazyWithRetry(() => import('./pages/TeacherTutorClass'
 const TeacherTutor = lazyWithRetry(() => import('./pages/TeacherTutor'));
 const AdminTutorAlerts = lazyWithRetry(() => import('./pages/AdminTutorAlerts'));
 const TeacherCoach = lazyWithRetry(() => import('./pages/TeacherCoach'));
+const TeacherAutopilot = lazyWithRetry(() => import('./pages/TeacherAutopilot'));
 const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'));
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
 const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
@@ -770,6 +771,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
               <TeacherCardRules />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 小鹰老师自动布置(每天给每个孩子排任务、复习、点评) */}
+        <Route
+          path="/teacher/autopilot"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherAutopilot />
             </ProtectedRoute>
           }
         />

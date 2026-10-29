@@ -27,6 +27,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import local_day_utc_range
+from app.models.autopilot import extra_homework_ids
 from app.models.coach import CoachNote
 from app.models.content_homework import ContentHomework, ContentHomeworkStudent
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment, LearningRecord, WordMastery
@@ -103,6 +104,7 @@ async def board(db: AsyncSession, students: Iterable[User], class_of: dict[int, 
         .join(HomeworkAssignment, HomeworkAssignment.id == HomeworkStudentAssignment.homework_id)
         .where(HomeworkStudentAssignment.student_id.in_(uids),
                HomeworkAssignment.is_closed.is_(False),
+               HomeworkAssignment.id.not_in(extra_homework_ids()),   # 小鹰老师的加练不算今天的任务
                HomeworkStudentAssignment.assigned_at >= start,
                HomeworkStudentAssignment.assigned_at < end)
         .group_by(HomeworkStudentAssignment.student_id)

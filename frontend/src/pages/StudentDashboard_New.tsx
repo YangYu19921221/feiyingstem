@@ -18,6 +18,7 @@ import { getTutorStatus, type TutorStatus } from '../api/tutor';
 import TodayReportDialog from '../components/report/TodayReportDialog';
 import TutorEntryCard from '../components/tutor/TutorEntryCard';
 import CoachNoteCard from '../components/coach/CoachNoteCard';
+import AutopilotTodayCard from '../components/autopilot/AutopilotTodayCard';
 import { toast } from '../components/Toast';
 import PetWidget from '../components/PetWidget';
 import MyCoinsCard from '../components/MyCoinsCard';
@@ -86,6 +87,14 @@ const StudentDashboard = () => {
   const [pendingSync, setPendingSync] = useState<number>(0);  // 本机未上传的学习记录数
   // 老师布置的待办任务(待开始/进行中),显示在 Hero 下方
   const [pendingTasks, setPendingTasks] = useState<StudentHomeworkResponse[]>([]);
+  // 小鹰老师排的那几份在它自己的卡片里列,「老师布置的任务」不再重复列
+  const [autopilotIds, setAutopilotIds] = useState<number[]>([]);
+  const [autopilotKey, setAutopilotKey] = useState(0);
+  const shownTasks = useMemo(
+    () => pendingTasks.filter((t) => !autopilotIds.includes(t.id)),
+    [pendingTasks, autopilotIds],
+  );
+  const shownOpenCount = shownTasks.filter((t) => !t.is_locked).length;
   // 每日签到:未签到时置顶大卡引导,签到后小徽章
   const [checkin, setCheckin] = useState<{ checked_in: boolean; checkin_time: string | null } | null>(null);
   const [checkinBusy, setCheckinBusy] = useState(false);
@@ -128,6 +137,9 @@ const StudentDashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       setCheckin({ checked_in: true, checkin_time: r.data.checkin_time });
+      // 自动班是签到那一刻派任务的: 重新取小鹰老师那张卡和作业列表
+      setAutopilotKey((k) => k + 1);
+      loadPendingHomework();
     } catch (e) {
       console.error('签到失败:', e);
     } finally {
@@ -620,6 +632,9 @@ const StudentDashboard = () => {
           />
         </section>
 
+        {/* 小鹰老师今天排的任务: 班级开了自动布置、签了到才出现 */}
+        <AutopilotTodayCard refreshKey={autopilotKey} onTasks={setAutopilotIds} />
+
         {/* 老师的话(陪跑点评):最近 3 天老师留了才出现 */}
         <CoachNoteCard />
 
@@ -655,7 +670,7 @@ const StudentDashboard = () => {
         </section>
 
         {/* 老师布置的任务:一登录就看到今天要做什么(最多3条,更多去「我的作业」) */}
-        {pendingTasks.length > 0 && (
+        {shownTasks.length > 0 && (
           <section className="mb-10">
             <div className="rounded-2xl border-2 border-accent-warm/40 bg-accent-warm/[0.06] overflow-hidden">
               <div className="px-5 py-3 flex items-center gap-2 border-b border-accent-warm/20">
@@ -665,7 +680,7 @@ const StudentDashboard = () => {
                   {(() => {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
-                    const oldTasksCount = pendingTasks.filter((t) => {
+                    const oldTasksCount = shownTasks.filter((t) => {
                       const assignDate = t.available_from ? new Date(t.available_from) : new Date(t.created_at);
                       assignDate.setHours(0, 0, 0, 0);
                       return assignDate.getTime() < today.getTime() && !t.is_locked;
@@ -677,19 +692,19 @@ const StudentDashboard = () => {
                     ) : null;
                   })()}
                 </div>
-                {/* 徽章只数今天能做的(= pendingHomeworkCount);未开放的另标,
+                {/* 徽章只数今天能做的(= shownOpenCount);未开放的另标,
                     否则"3"里混着做不了的,孩子会以为自己漏做 */}
-                {pendingHomeworkCount > 0 && (
+                {shownOpenCount > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-accent-warm text-white text-[11px] font-numeric font-semibold">
-                    {pendingHomeworkCount}
+                    {shownOpenCount}
                   </span>
                 )}
-                {pendingTasks.length > pendingHomeworkCount && (
+                {shownTasks.length > shownOpenCount && (
                   <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[11px] font-numeric font-semibold">
-                    🔒{pendingTasks.length - pendingHomeworkCount}
+                    🔒{shownTasks.length - shownOpenCount}
                   </span>
                 )}
-                {pendingTasks.length > 3 && (
+                {shownTasks.length > 3 && (
                   <button
                     onClick={() => navigate('/student/homework')}
                     className="ml-auto text-xs text-accent-warm hover:opacity-80"
@@ -699,7 +714,7 @@ const StudentDashboard = () => {
                 )}
               </div>
               <div className="divide-y divide-accent-warm/10">
-                {pendingTasks.slice(0, 3).map((task) => {
+                {shownTasks.slice(0, 3).map((task) => {
                   const overdue = task.deadline && new Date(task.deadline) < new Date();
                   // 未开放的任务:列出来让学生知道后面几天要练什么,但点不动
                   const locked = !!task.is_locked;

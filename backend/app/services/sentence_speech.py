@@ -167,6 +167,12 @@ async def _process_one(row_id: int, file_path: str, english: str) -> None:
         await db.commit()
 
 
+async def _autopilot_evening() -> None:
+    """小鹰老师晚上统一写点评(services/autopilot.evening_quietly,到点才做、一天一遍、出错只记日志)"""
+    from app.services import autopilot
+    await autopilot.evening_quietly()
+
+
 async def speech_loop() -> None:
     """每 POLL_SEC 取一批 pending,最多 WORKERS×2 条在飞(进程池自己排队)"""
     from app.core.database import AsyncSessionLocal
@@ -197,7 +203,8 @@ async def speech_loop() -> None:
             await tutor_history.purge_quietly()
             # 学习助手中转钱包 / Key 检查(services/tutor_relay_health,内部按 30 分钟节流)
             await tutor_relay_health.check_quietly(asyncio.get_running_loop().time())
-            await asyncio.sleep(1800)
+            await _autopilot_evening()
+            await asyncio.sleep(600)
     # 开口背与例句跟读(2026-10-24)共用这一个进程池和调度循环;两张表的 id 各自独立,在飞集合按 (来源, id) 记
     inflight: set[tuple[str, int]] = set()
     last_purge = 0.0
@@ -238,6 +245,7 @@ async def speech_loop() -> None:
                 except Exception as e:  # noqa: BLE001
                     logger.error("学习助手语音到期删除出错: %s", e)
             await tutor_relay_health.check_quietly(asyncio.get_running_loop().time())
+            await _autopilot_evening()
         except asyncio.CancelledError:
             raise
         except Exception as e:

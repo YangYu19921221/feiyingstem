@@ -1616,3 +1616,12 @@ async def teacher_handle_handoff(note_id: int, body: HandoffIn, db: AsyncSession
     await tutor_notes.handle_handoff(db, note, me.id, me.full_name or me.username or "", body.note)
     await db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- 小鹰老师自动布置作业(2026-10-29)
+# 路由写在 api/v1/autopilot.py,挂在这里的三个 router 上: main.py 生产有 drift,不为它改 main.py
+from app.api.v1 import autopilot as _autopilot_api  # noqa: E402
+
+student_router.include_router(_autopilot_api.student_router)
+teacher_router.include_router(_autopilot_api.teacher_router)
+admin_router.include_router(_autopilot_api.admin_router)

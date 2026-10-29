@@ -30,6 +30,7 @@ import { API_BASE_URL } from '../config/env';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import VideoCdnSwitch from '../components/admin/VideoCdnSwitch';
 import TutorAdminCard from '../components/admin/TutorAdminCard';
+import AutopilotAdminCard from '../components/admin/AutopilotAdminCard';
 
 interface UserData { full_name: string }
 interface Statistics { total_users: number; students?: number; total_words: number; total_books: number; active_users_today: number; active_users_week: number; learning_records_today: number; learning_records_week: number }
@@ -176,6 +177,8 @@ export default function AdminDashboard() {
         <VideoCdnSwitch />
 
         <TutorAdminCard />
+
+        <AutopilotAdminCard />
 
         <section className="admin-panel flex flex-col gap-5 rounded-2xl p-5 sm:p-6 md:flex-row md:items-center md:justify-between"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf5fa] text-[#397b9b]"><CircleDollarSign className="h-5 w-5" /></span><div><h3 className="font-bold text-[#173047]">版本与服务提醒</h3><p className="mt-1 text-sm leading-6 text-slate-500">线上版本由发布流程直接更新，定期查看服务监控即可。</p></div></div><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary-light admin-focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">打开服务监控 <ArrowRight className="h-4 w-4" /></button></section>
       </main>
