@@ -123,6 +123,7 @@ class LeadBatchDelete(BaseModel):
 class SettingsUpdate(BaseModel):
     trial_price: Optional[float] = Field(None, allow_inf_nan=False)   # 元,最多两位小数(如 9.9);范围在 save_settings 判
     offer_text: Optional[str] = Field(None, max_length=500)
+    card_address: Optional[str] = Field(None, max_length=200)   # 卡正面印的地址;字数上限在 save_settings 判(422 英文串没用)
     referral_enabled: Optional[bool] = None
     referral_max: Optional[int] = None        # 最多算几家朋友(0..20);范围在 save_settings 判(422 英文串没用)
 
@@ -146,6 +147,7 @@ async def public_card(code: str, request: Request, db: AsyncSession = Depends(ge
         "org_logo": org.logo_url or "",
         "trial_price": s["trial_price"],
         "offer_text": s["offer_text"],
+        "card_address": s["card_address"],   # 印出去的卡改不了,扫码页显示的是现在的地址
         "grades": list(svc.GRADES),
     }
 
@@ -805,6 +807,7 @@ async def put_promo_settings(body: SettingsUpdate, request: Request, db: AsyncSe
     _no_admin(current_user)
     s = await svc.save_settings(db, current_user.org_id, body.model_dump(exclude_unset=True))
     ref = f",邀请朋友{'开' if s['referral_enabled'] else '关'}、最多算 {s['referral_max']} 家"
+    ref += f",卡上地址「{s['card_address']}」" if s["card_address"] else ",卡上不印地址"
     audit_log.record(db, request, current_user, "promo.settings", f"体验卡设置: 体验价 {s['trial_price']} 元{ref}",
                      detail=s)
     await db.commit()

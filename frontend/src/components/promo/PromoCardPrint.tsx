@@ -6,6 +6,7 @@
  * 选的模板和名字电话存在后端(PUT /promo/channels/{id}/design),下次打开、换台电脑都还在。
  * 背面的二维码是这版卡的固定地址,扫码后显示什么由销售在「我的二维码」里换 —— 卡印出去不用重印。
  * 正面徽章里的价格 = 机构「设置」里的体验价,现画(10-24 起底图不再印死 ¥99);改了价格要重新下载印刷文件。
+ * 正面名字电话下面的地址 = 机构「设置」里的地址(10-29 起),全机构的卡一样;搬了家改设置、重新下载就是新地址。
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Download, LoaderCircle, X } from 'lucide-react';
@@ -26,12 +27,14 @@ interface Props {
   channel: PromoChannel;
   /** 机构「设置」里的体验价(元),印在正面徽章里 */
   price: number;
+  /** 机构「设置」里的地址,印在正面名字电话下面(空 = 不印) */
+  address: string;
   onClose: () => void;
   /** 卡面保存后通知外面刷新列表 */
   onSaved?: (c: PromoChannel) => void;
 }
 
-export default function PromoCardPrint({ channel, price, onClose, onSaved }: Props) {
+export default function PromoCardPrint({ channel, price, address, onClose, onSaved }: Props) {
   const url = cardUrl(channel.code);
   const [design, setDesign] = useState<CardDesign>(channel.design);
   const [saved, setSaved] = useState<CardDesign>(channel.design);
@@ -45,8 +48,8 @@ export default function PromoCardPrint({ channel, price, onClose, onSaved }: Pro
     || design.display_phone !== saved.display_phone;
 
   const opts = useMemo(() => ({
-    templateId: design.template_id, url, code: channel.code, name: design.display_name, phone: design.display_phone, price,
-  }), [design, url, channel.code, price]);
+    templateId: design.template_id, url, code: channel.code, name: design.display_name, phone: design.display_phone, price, address,
+  }), [design, url, channel.code, price, address]);
 
   useEffect(() => {
     let alive = true;
@@ -136,7 +139,9 @@ export default function PromoCardPrint({ channel, price, onClose, onSaved }: Pro
             <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
               <b>给印刷厂说:</b>成品 <b>90×60mm</b>(不是普通名片的 90×54),文件已含四边各 2mm 出血(94×64mm,300dpi),
               双面彩印,按成品线裁切。同一版卡每张都一样,不用可变数据。
-              <br />正面印的价格是 <b>¥{formatPrice(price)}</b>(「设置」里的体验价)。改了价格要重新下载、重新印 —— 已经印出去的卡上的价格改不了。
+              <br />正面印的价格是 <b>¥{formatPrice(price)}</b>(「设置」里的体验价)
+              {address ? <>、地址是 <b>{address}</b></> : '、没有印地址(在「设置」里填了才印)'}。
+              改了价格或地址要重新下载、重新印 —— 已经印出去的卡改不了。
               <br />印之前先用手机扫一下下载的背面图,能打开填手机号的页面再下单。
             </div>
             <div className="flex flex-wrap gap-2">

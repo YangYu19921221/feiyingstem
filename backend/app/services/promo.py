@@ -76,6 +76,9 @@ def parse_money(v, what: str):
     if not math.isfinite(x) or x < 0 or x > MAX_PRICE:
         raise HTTPException(status_code=400, detail=f"{what}要在 0 到 {MAX_PRICE} 元之间")
     return round(x, 2)
+
+
+CARD_ADDRESS_MAX = 22   # 卡正面印的地址最多几个字: 22 个汉字在最小字号下刚好放进名字条(utils/promoPrint TWO_LINE_TEXT_W)
 DEFAULT_OFFER = "7 天 AI 陪跑:每天一份单词任务 + 20 个复习词,老师每天点评,第 7 天给家长一份学习总结。"
 
 STATUSES = ("new", "contacted", "paid", "opened", "won", "lost", "refunded")
@@ -142,6 +145,7 @@ async def get_settings(db: AsyncSession, org_id: int) -> dict:
     return {
         "trial_price": money(row.trial_price) if row and row.trial_price is not None else DEFAULT_TRIAL_PRICE,
         "offer_text": (row.offer_text if row and row.offer_text else DEFAULT_OFFER),
+        "card_address": (row.card_address if row and row.card_address else ""),
         "referral_enabled": ref["enabled"],
         "referral_max": ref["max_count"],
         "referral_days": REFERRAL_DAYS,
@@ -163,6 +167,12 @@ async def save_settings(db: AsyncSession, org_id: int, data: dict) -> dict:
             row.trial_price = parse_money(p, "体验价")
     if "offer_text" in data:
         row.offer_text = _clip(data["offer_text"], 200)
+    # 地址: 键在才改(只改体验价的请求不能把地址抹掉),空串 = 不印;换行、连续空格并成一个空格(卡上只印一行)
+    if "card_address" in data:
+        a = " ".join((data["card_address"] or "").split())
+        if len(a) > CARD_ADDRESS_MAX:
+            raise HTTPException(status_code=400, detail=f"地址最多 {CARD_ADDRESS_MAX} 个字,再长卡上印不下")
+        row.card_address = a or None
     if "referral_enabled" in data or "referral_max" in data:
         ref = await db.get(PromoReferralSettings, org_id)
         if ref is None:

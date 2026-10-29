@@ -557,3 +557,36 @@ async def test_sales_username_conflict_explains_and_suggests(client, db_session,
     assert r.status_code == 409
     d = r.json()["detail"]
     assert d["code"] == "PHONE_TAKEN" and d["field"] == "phone" and "选填" in d["message"]
+
+
+# ---------------- 10-29: 卡上印的校区地址(用户「地推卡加上公司地址…换地址了后台也可以换」) ----------------
+
+@pytest.mark.asyncio
+async def test_card_address_setting(client, db_session, ctx):
+    oa_id = ctx["oa"].id
+    r = await client.get("/api/v1/promo/settings", headers=_h(oa_id))
+    assert r.json()["card_address"] == ""                       # 没填 = 不印
+    r = await client.put("/api/v1/promo/settings", json={"card_address": "  昆明市五华区霖雨路\n飞鹰教育3楼 "},
+                         headers=_h(oa_id))
+    assert r.status_code == 200 and r.json()["card_address"] == "昆明市五华区霖雨路 飞鹰教育3楼"   # 卡上只印一行
+    # 只改体验价的请求不带地址键,地址不能被抹掉
+    r = await client.put("/api/v1/promo/settings", json={"trial_price": 9.9}, headers=_h(oa_id))
+    assert r.json()["card_address"] == "昆明市五华区霖雨路 飞鹰教育3楼"
+    # 家长扫码页显示现在的地址;别家机构看不到也改不到这一份
+    ch = await _new_channel(client, ctx["oa"], ctx["s1"])
+    assert (await client.get(f"/api/v1/promo/public/{ch['code']}")).json()["card_address"] == "昆明市五华区霖雨路 飞鹰教育3楼"
+    assert (await client.get("/api/v1/promo/settings", headers=_h(ctx["ob"].id))).json()["card_address"] == ""
+    # 销售工作台拿到同一个地址(印刷文件用它)
+    assert (await client.get("/api/v1/promo/me", headers=_h(ctx["s1"].id))).json()["settings"]["card_address"] == "昆明市五华区霖雨路 飞鹰教育3楼"
+    # 太长印不下 → 400 说清原因,原值不动
+    r = await client.put("/api/v1/promo/settings", json={"card_address": "云" * 23}, headers=_h(oa_id))
+    assert r.status_code == 400 and "22" in r.json()["detail"]
+    # 销售改不了设置
+    assert (await client.put("/api/v1/promo/settings", json={"card_address": "别处"}, headers=_h(ctx["s1"].id))).status_code == 403
+    # 换地址
+    r = await client.put("/api/v1/promo/settings", json={"card_address": "昆明市盘龙区北京路 88 号"}, headers=_h(oa_id))
+    assert r.json()["card_address"] == "昆明市盘龙区北京路 88 号"
+    # 清空 = 不印(空串走显式分支,不能被当成「没传」)
+    r = await client.put("/api/v1/promo/settings", json={"card_address": ""}, headers=_h(oa_id))
+    assert r.json()["card_address"] == ""
+    assert (await client.get(f"/api/v1/promo/public/{ch['code']}")).json()["card_address"] == ""

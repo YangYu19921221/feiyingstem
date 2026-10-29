@@ -25,6 +25,7 @@ import {
 import { PROMO_TEMPLATES, templateOf } from '../data/promoTemplates';
 import PromoCardThumb from '../components/promo/PromoCardThumb';
 import { formatPrice } from '../utils/promoPrice';
+import { drawCardFront, trimmedDataUrl } from '../utils/promoPrint';
 import { toast } from '../components/Toast';
 
 const errText = (e: unknown, fallback: string) => {
@@ -144,7 +145,7 @@ export default function AdminPromo() {
         {tab === 'board' && <BoardTab refreshKey={refreshKey} owners={owners} onChanged={loadOwners} />}
         {tab === 'leads' && <PromoLeadsPanel manager owners={owners} refreshKey={refreshKey} trialPrice={settings?.trial_price} />}
         {tab === 'sales' && <SalesTab owners={owners} onChanged={loadOwners} />}
-        {tab === 'channels' && <ChannelsTab owners={owners} price={settings?.trial_price ?? null} />}
+        {tab === 'channels' && <ChannelsTab owners={owners} price={settings?.trial_price ?? null} address={settings?.card_address ?? ''} />}
         {tab === 'settings' && <SettingsTab initial={settings} onSaved={setSettings} />}
       </main>
     </div>
@@ -629,7 +630,7 @@ function DeleteSalesDialog({ sales, owners, onClose, onDeleted }: {
 
 // ---------------- 卡码 ----------------
 
-function ChannelsTab({ owners, price }: { owners: Owner[]; price: number | null }) {
+function ChannelsTab({ owners, price, address }: { owners: Owner[]; price: number | null; address: string }) {
   const [name, setName] = useState('');
   const [owner, setOwner] = useState<number | ''>('');
   const [tpl, setTpl] = useState('');
@@ -831,7 +832,7 @@ function ChannelsTab({ owners, price }: { owners: Owner[]; price: number | null 
       </div>
       {data && <Pager page={data.page} size={data.size} total={data.total} onChange={setPage} />}
       {printing && price != null && (
-        <PromoCardPrint channel={printing} price={price} onClose={() => setPrinting(null)}
+        <PromoCardPrint channel={printing} price={price} address={address} onClose={() => setPrinting(null)}
           onSaved={(c) => setData((d) => d && { ...d, items: d.items.map((x) => (x.id === c.id ? c : x)) })} />
       )}
       {removing && (
@@ -887,6 +888,32 @@ function DeleteChannelDialog({ channel, onClose, onDeleted }: { channel: PromoCh
 
 // ---------------- 设置 ----------------
 
+/** 卡上地址最多几个字(后端 services/promo.CARD_ADDRESS_MAX 同值): 再长名字条放不下 */
+const CARD_ADDRESS_MAX = 22;
+
+/** 设置页的卡面预览: 跟印刷文件同一个画法(utils/promoPrint),以第 1 套、示例名字电话为例 */
+function FrontPreview({ price, address }: { price: number; address: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const t = window.setTimeout(() => {
+      drawCardFront({ templateId: 't01', url: '', code: '', name: '王老师', phone: '138 0000 0000', price, address })
+        .then((c) => { if (alive) setSrc(trimmedDataUrl(c)); })
+        .catch(() => { if (alive) setSrc(null); });
+    }, 300);
+    return () => { alive = false; window.clearTimeout(t); };
+  }, [price, address]);
+  return (
+    <figure className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex aspect-[3/2] w-60 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 shadow-sm">
+        {src ? <img src={src} alt="卡面正面预览" className="h-full w-full object-cover" />
+          : <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" aria-label="生成中" />}
+      </div>
+      <figcaption className="text-xs leading-5 text-slate-500">卡面正面预览(以第 1 套为例,名字电话是示例,实际印每版卡自己的)</figcaption>
+    </figure>
+  );
+}
+
 function SettingsTab({ initial, onSaved }: { initial: PromoSettings | null; onSaved: (s: PromoSettings) => void }) {
   if (!initial) return <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" aria-label="加载中" />;
   return <SettingsForm initial={initial} onSaved={onSaved} />;
@@ -896,6 +923,7 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
   const [s, setS] = useState<PromoSettings>(initial);
   const [price, setPrice] = useState(String(initial.trial_price));
   const [offer, setOffer] = useState(initial.offer_text);
+  const [address, setAddress] = useState(initial.card_address ?? '');
   const [refOn, setRefOn] = useState(initial.referral_enabled);
   const [refMax, setRefMax] = useState(String(initial.referral_max));
   const [busy, setBusy] = useState(false);
@@ -912,11 +940,16 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
     if (!maxOk) { toast('最多算几家填 0 到 20 的整数', 'error'); return; }
     setBusy(true);
     try {
-      const r = await savePromoSettings({ trial_price: n, offer_text: offer, referral_enabled: refOn, referral_max: maxN });
-      const changed = r.trial_price !== s.trial_price;
+      const r = await savePromoSettings({
+        trial_price: n, offer_text: offer, card_address: address, referral_enabled: refOn, referral_max: maxN,
+      });
+      const priceChanged = r.trial_price !== s.trial_price;
+      const addrChanged = (r.card_address ?? '') !== (s.card_address ?? '');
       setS(r);
+      setAddress(r.card_address ?? '');
       onSaved(r);
-      toast(changed ? `已保存。家长扫卡看到的页面和卡面都改成 ¥${formatPrice(r.trial_price)} 了,要印新卡请到「卡码」重新下载印刷文件`
+      const what = [priceChanged && `价格 ¥${formatPrice(r.trial_price)}`, addrChanged && (r.card_address ? '地址' : '去掉地址')].filter(Boolean).join('、');
+      toast(what ? `已保存。卡面已经换成新的${what},要印新卡请到「卡码」重新下载印刷文件(已经印出去的卡改不了)`
         : '已保存,家长扫卡看到的页面立刻生效', 'success');
     } catch (err) {
       toast(errText(err, '没保存上'), 'error');
@@ -936,11 +969,21 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
           <b className="text-slate-700">已经印出去的卡上的价格改不了</b> —— 改价后到「卡码」重新下载印刷文件、重印新卡,
           旧卡还在发的话,家长手里的卡和扫码页上的价格会对不上。
         </span>
-        <div className="mt-2 flex items-center gap-3">
-          <PromoCardThumb templateId="t01" price={previewPrice} className="h-20 w-[120px] rounded-lg shadow-sm" />
-          <span className="text-xs text-slate-500">卡面预览(以第 1 套为例)</span>
-        </div>
       </label>
+      <label className="block">
+        <span className="text-sm font-semibold text-slate-700">卡上印的地址</span>
+        <input value={address} maxLength={CARD_ADDRESS_MAX} onChange={(e) => setAddress(e.target.value)}
+          placeholder="如:昆明市五华区霖雨路飞鹰教育3楼"
+          className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+        <span className="mt-1 flex justify-between gap-3 text-xs leading-5 text-slate-500">
+          <span>
+            印在卡正面老师名字电话下面,家长扫码看到的页面也显示它。留空 = 不印。
+            搬了家改这里、到「卡码」重新下载印刷文件就是新地址;<b className="text-slate-700">已经印出去的卡改不了</b>。
+          </span>
+          <span className="shrink-0 tabular-nums">{address.trim().length}/{CARD_ADDRESS_MAX}</span>
+        </span>
+      </label>
+      <FrontPreview price={previewPrice} address={address} />
       <label className="block">
         <span className="text-sm font-semibold text-slate-700">「体验包含」那段话</span>
         <textarea value={offer} onChange={(e) => setOffer(e.target.value)} rows={3} maxLength={200}

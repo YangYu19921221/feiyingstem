@@ -206,7 +206,7 @@ export default function SalesWorkbench() {
       </main>
 
       {printing && (
-        <PromoCardPrint channel={printing} price={me.settings.trial_price} onClose={() => setPrinting(null)}
+        <PromoCardPrint channel={printing} price={me.settings.trial_price} address={me.settings.card_address ?? ''} onClose={() => setPrinting(null)}
           onSaved={(c) => setMe((m) => m && { ...m, channels: m.channels.map((x) => (x.id === c.id ? { ...x, design: c.design } : x)) })} />
       )}
       <ChangePasswordModal isOpen={showPwd} onClose={() => setShowPwd(false)} />

@@ -271,6 +271,19 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 体验卡正面印校区地址(2026-10-29,用户「地推卡还需要加上公司地址: 昆明市五华区霖雨路飞鹰教育3楼,需要动态填写…换地址了后台也可以换」):
+  **按机构填,不按卡填**: promo_org_settings 加列 card_address(VARCHAR 60,NULL = 不印;database.py 1 条 ALTER),
+  「设置」里一个输入框,全机构每版卡都印同一个;搬了家改设置、到「卡码」重新下载印刷文件就是新地址,**已印出去的卡改不了**(设置页、印刷说明都写明)。
+  最多 22 个字(services/promo.CARD_ADDRESS_MAX,前端 AdminPromo 同值),换行和连续空格并成一个空格;
+  「键在才改」走显式分支,只改体验价的请求不会抹掉地址,空串 = 清掉(测试两处各破坏一次都失败,回归锁验证过)。
+  印在**正面**名字电话下面一行(前面画一个定位小图标,不用 emoji —— 印刷厂字体里不一定有),**背面不印**: 背面二维码框最窄那套二维码只有 18mm,再塞一行会缩到 16mm。
+  正面那条从一行变两行高了一截,OCR 逐套量过: 50 套里 10 套居中会压到模板底部的「扫码进群 预约体验」,
+  promoTemplates.ts 加 strip2(印了地址时放哪边);两行条最宽 460 + 留白(第 50 套左边只放得下 504),
+  名字电话特别长缩到最小字号还放不下就横向压(fillText maxWidth),白条不变宽。只印地址不印名字电话时也走这套宽度(否则压第 37 套)。
+  核对办法(以后换模板 / 改条的尺寸要重跑): 浏览器里调 utils/promoPrint.frontStripLayout 取 50 套的实际矩形,与 OCR 文字框和 price 框求交,
+  短地址 / 22 字 + 超长名字电话 / 只有地址三种情况都 0 处压字、不出安全区。家长扫码页最下面也显示「机构名 · 地址」。
+  本机浏览器(库副本)1366 / 390 宽验过: 设置页填地址实时出卡面预览、印刷弹窗、扫码页,无横向溢出,控制台 0 报错。
+  测试 test_promo.py::test_card_address_setting。入口: 「地推体验卡 → 设置 → 卡上印的地址」;公告一条(admin + org_admin)
 - ✅ 小鹰老师补知识点 + 教师端小鹰老师(2026-10-29 17:25 **已部署生产**,提交 8b8aa91;10 个后端文件生产==1bd34fe 整推(git archive 导出)
   + 新文件 services/teacher_tutor.py;两张新表 tutor_handoffs / teacher_tutor_usage 由 create_all 建(先在生产库副本上跑过 init_db);
   两个服务都重启;前端干净 worktree 构建 mvtc16l6 整推(补了 35 张被 .gitignore 挡住的 public 图);备份 /root/eh_db_before_tutorteacher_20261029_1714.db、

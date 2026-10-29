@@ -552,6 +552,8 @@ async def init_db():
             # 学习助手对话记录(2026-10-27): 收藏 / 孩子删了(services/tutor_history)
             "ALTER TABLE tutor_conversations ADD COLUMN starred BOOLEAN NOT NULL DEFAULT 0",
             "ALTER TABLE tutor_conversations ADD COLUMN deleted_at DATETIME",
+            # 体验卡正面印的校区地址(2026-10-29,services/promo.save_settings)
+            "ALTER TABLE promo_org_settings ADD COLUMN card_address VARCHAR(60)",
         ]:
             try:
                 await conn.execute(text(_sql))

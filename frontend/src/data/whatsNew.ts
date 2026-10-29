@@ -58,6 +58,15 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     gate: 'tutor',
   },
   {
+    id: 'promo-card-address-2026-10',
+    date: '2026-10-29',
+    title: '📍 体验卡正面可以印校区地址了',
+    desc: '在「设置」里填上地址(最多 22 个字),每版卡正面老师名字电话下面就多一行地址,家长扫码看到的页面最下面也显示它。搬了地址就在「设置」里改,再到「卡码」重新下载印刷文件,新印的卡就是新地址;已经印出去的卡改不了。留空就不印。',
+    where: '地推体验卡 →「设置」→「卡上印的地址」;改完到「卡码」→「卡面与印刷」重新下载',
+    roles: ['admin', 'org_admin'],
+    route: '/admin/promo',
+  },
+  {
     id: 'promo-trial-referral-1029',
     date: '2026-10-29',
     title: '🎫 体验卡: 开通 7 天体验 + 老带新延期',

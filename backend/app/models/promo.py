@@ -108,6 +108,9 @@ class PromoOrgSettings(Base):
     org_id = Column(Integer, primary_key=True)
     trial_price = Column(Float, nullable=True)         # 体验价(元,最多两位小数,如 9.9);NULL = 默认 99。同上由 Integer 改来
     offer_text = Column(String(200), nullable=True)    # 落地页「体验包含」上面那句话
+    # 卡正面底部印的校区地址(10-29 用户「地推卡加上公司地址…换地址了后台也可以换」);NULL = 不印。
+    # 落地页也显示它: 已经印出去的卡改不了,家长扫码看到的是现在的地址。ALTER 在 database.py
+    card_address = Column(String(60), nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 

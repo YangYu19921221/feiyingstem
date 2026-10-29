@@ -26,6 +26,8 @@ export interface PublicCard {
   org_logo: string;
   trial_price: number;
   offer_text: string;
+  /** 卡正面印的校区地址(机构「设置」里的,空 = 没填) */
+  card_address: string;
   grades: string[];
 }
 
@@ -75,6 +77,8 @@ export interface PromoChannel {
 export interface PromoSettings {
   trial_price: number;
   offer_text: string;
+  /** 卡正面名字电话下面印的地址;空串 = 不印。最多 22 个字(后端 CARD_ADDRESS_MAX) */
+  card_address: string;
   /** 老带新: 开没开、最多算几家朋友、每家延几天、体验送几天(后两个只读,真源 services/promo.py) */
   referral_enabled: boolean;
   referral_max: number;
@@ -381,7 +385,7 @@ export const getOrgPromoBoard = (orgId: number, params: { start?: string; end?: 
 export const getPromoSettings = (): Promise<PromoSettings> => client.get('/promo/settings');
 
 export const savePromoSettings = (data: {
-  trial_price?: number | null; offer_text?: string; referral_enabled?: boolean; referral_max?: number;
+  trial_price?: number | null; offer_text?: string; card_address?: string; referral_enabled?: boolean; referral_max?: number;
 }): Promise<PromoSettings> => client.put('/promo/settings', data);
 
 /**

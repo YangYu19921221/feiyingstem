@@ -10,10 +10,12 @@
  * - 不写「转发有奖」「分享领红包」—— 微信判利益诱导分享会封域名,学生端也在这个域名下
  * - 朋友发来的链接带 ?f={分享码}: 原样带给后端(只认同机构的),登记成功后记成那家推荐的。
  *   登记成功页给一个中性的「邀请朋友一起体验」+ 复制链接;**奖励(延 7 天)这里一个字都不写**,由销售私聊告诉家长
+ * - 校区地址(机构「设置」里填的,和卡正面印的同一个)放在最下面: 想先上门看看的家长照着找。
+ *   印出去的卡改不了,搬了家这里显示的是新地址
  */
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Copy, LoaderCircle, Phone } from 'lucide-react';
+import { CheckCircle2, Copy, LoaderCircle, MapPin, Phone } from 'lucide-react';
 import {
   getPublicCard, inviteUrl, submitCardLead, type CardSubmitResult, type PublicCard,
 } from '../api/promo';
@@ -207,6 +209,13 @@ export default function PromoCardLanding() {
               您的手机号只给{info.org_name}的老师用来联系您,不会公开。
             </p>
           </form>
+        )}
+
+        {info.card_address && (
+          <p className="flex items-start justify-center gap-1.5 px-2 text-center text-sm leading-6 text-gray-500">
+            <MapPin className="mt-1 h-4 w-4 shrink-0 text-[#FF6B35]" aria-hidden />
+            <span><span className="sr-only">校区地址:</span>{info.org_name} · {info.card_address}</span>
+          </p>
         )}
       </div>
     </main>

@@ -5,6 +5,7 @@
  * 20 套模板(data/promoTemplates.ts): 正面/背面底图都是 AI 出的 1536×1024,背面中间留了一块纯白方框。
  * 程序往上画三样「每版卡不一样」的东西 —— 生图模型画不准二维码,也写不准每个老师的名字和电话:
  * ① 背面白框里: 二维码 + 老师名字电话 + 卡号  ② 正面底部一条: 老师名字电话(一眼分得清是谁的卡)
+ *   + 校区地址(10-29 起,机构「设置」里填,全机构的卡一样;换了地址重新下载就是新地址)
  *
  * 白框位置是对每张底图逐像素扫出来的(模板的 box),**换底图要重扫**;画之前检查框里是不是白的,
  * 不是就报错不出图 —— 宁可报错,也别印出一批二维码压到花纹上的卡。
@@ -33,6 +34,7 @@ export interface CardPrintOptions {
   name: string;           // 卡上印的老师名字(空 = 不印)
   phone: string;          // 卡上印的电话(空 = 不印)
   price: number;          // 正面徽章里的体验价(机构「设置」里的,元)
+  address: string;        // 正面底部名字电话下面印的地址(机构「设置」里的,空 = 不印)
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -104,31 +106,98 @@ function contactLine(name: string, phone: string) {
   return [name.trim(), phone.trim()].filter(Boolean).join('  ');
 }
 
+/** 地址前面的定位小图标(画的,不用 emoji —— 印刷机那边字体里不一定有,会印成方框) */
+function drawPin(ctx: CanvasRenderingContext2D, left: number, midY: number, size: number) {
+  const r = size * 0.28;
+  const cx = left + r;
+  const cy = midY - size * 0.12;
+  ctx.beginPath();
+  ctx.moveTo(cx, midY + size * 0.42);
+  ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** 正面底部那条的大小和位置(drawCardFront 用;单独导出是为了能拿 OCR 核对它压不压模板自己的字)。
+ * 只有名字电话 = 原来那一条(一行,最宽 60% 卡宽);加了地址 = 两行,最宽 TWO_LINE_TEXT_W ——
+ * 两行高了一截,50 套里有 10 套居中会压到底部的「扫码进群 预约体验」,这些换到 strip2 那边;
+ * 宽度再大第 50 套哪边都放不下(10-29 按 OCR 文字框逐套量过,最宽 504 = 460 + 两边留白)。
+ * 地址最多 22 个字(后端 CARD_ADDRESS_MAX),最小 20px(印出来约 1.7mm 高,再小家长看不清)正好放得下;
+ * 名字电话特别长时缩到最小字号还放不下,就横向压一点(fillText 的 maxWidth),不让白条变宽压到模板的字 */
+const TWO_LINE_TEXT_W = 460;
+export function frontStripLayout(ctx: CanvasRenderingContext2D, o: Pick<CardPrintOptions, 'templateId' | 'name' | 'phone' | 'address'>) {
+  const top = contactLine(o.name, o.phone);
+  const addr = o.address.trim();
+  if (!top && !addr) return null;
+  // 印了地址就按两行那套宽度和位置算(只有地址没有名字电话时也是: 一行地址放宽了照样压第 37 套的字)
+  const two = !!(top && addr);
+  const maxText = addr ? TWO_LINE_TEXT_W : PRINT_W * 0.6;
+  const padX = 22;
+  const padY = 9;
+  const lineGap = two ? 5 : 0;
+  const pinGap = 6;
+  let s1 = 0;
+  let w1 = 0;
+  if (top) {
+    s1 = fitFont(ctx, top, 600, 30, two ? 18 : 20, maxText);
+    w1 = Math.min(ctx.measureText(top).width, maxText);
+  }
+  let s2 = 0;
+  let w2 = 0;
+  if (addr) {
+    // 地址比名字电话小一号: 主角是「谁的卡」,地址给想上门看看的家长。图标宽度按最大字号预留
+    s2 = fitFont(ctx, addr, 500, 24, 20, maxText - 24 * 0.56 - pinGap);
+    w2 = Math.min(s2 * 0.56 + pinGap + ctx.measureText(addr).width, maxText);
+  }
+  const w = Math.max(w1, w2) + padX * 2;
+  const h = padY * 2 + s1 + s2 + lineGap;
+  const tpl = templateOf(o.templateId);
+  const side = addr ? (tpl.strip2 ?? tpl.strip) : tpl.strip;
+  const x = side === 'l' ? SAFE_PX : side === 'r' ? PRINT_W - SAFE_PX - w : (PRINT_W - w) / 2;
+  const y = PRINT_H - SAFE_PX - h + 6;
+  return { x, y, w, h, top, addr, s1, s2, padY, padX, lineGap, pinGap };
+}
+
 export async function drawCardFront(o: CardPrintOptions): Promise<HTMLCanvasElement> {
   const { c, ctx } = newCanvas();
   const tpl = templateOf(o.templateId);
   const map = drawCover(ctx, await loadImage(templateImg(tpl.id, 'front')));
   await drawPrice(ctx, tpl, o.price, map);
-  const line = contactLine(o.name, o.phone);
-  if (line) {
-    // 底部一条半透明白底胶囊: 不管模板什么配色都看得清。默认居中;个别模板居中会压到它自己底部的字
-    // (strip 字段,OCR 测出来的),挪到左 / 右下角
-    const size = fitFont(ctx, line, 600, 30, 20, PRINT_W * 0.6);
-    const tw = ctx.measureText(line).width;
-    const padX = 22;
-    const w = tw + padX * 2;
-    const h = size + 18;
-    const side = tpl.strip;
-    const x = side === 'l' ? SAFE_PX : side === 'r' ? PRINT_W - SAFE_PX - w : (PRINT_W - w) / 2;
-    const y = PRINT_H - SAFE_PX - h + 6;
+  const L = frontStripLayout(ctx, o);
+  if (L) {
+    // 底部一条半透明白底: 不管模板什么配色都看得清。默认居中;个别模板居中会压到它自己底部的字
+    // (strip 字段,OCR 测出来的),挪到左 / 右下角。两行(名字电话 + 地址)时圆角收小,不然两头的字贴着弧线
     ctx.fillStyle = 'rgba(255,255,255,0.88)';
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, h / 2);
+    ctx.roundRect(L.x, L.y, L.w, L.h, L.lineGap ? 20 : L.h / 2);
     ctx.fill();
-    ctx.fillStyle = '#3D2B1F';
-    ctx.textAlign = 'center';
+    const cx = L.x + L.w / 2;
+    let y = L.y + L.padY;
     ctx.textBaseline = 'middle';
-    ctx.fillText(line, x + w / 2, y + h / 2 + 1);
+    if (L.top) {
+      ctx.fillStyle = '#3D2B1F';
+      ctx.font = `600 ${L.s1}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(L.top, cx, y + L.s1 / 2 + 1, L.w - L.padX * 2);
+      y += L.s1 + L.lineGap;
+    }
+    if (L.addr) {
+      ctx.font = `500 ${L.s2}px ${FONT}`;
+      const pinW = L.s2 * 0.56;
+      const room = L.w - L.padX * 2 - pinW - L.pinGap;
+      const tw = Math.min(ctx.measureText(L.addr).width, room);
+      const left = cx - (pinW + L.pinGap + tw) / 2;
+      const mid = y + L.s2 / 2;
+      ctx.fillStyle = '#FF6B35';
+      drawPin(ctx, left, mid, L.s2);
+      ctx.fillStyle = '#6B5444';
+      ctx.textAlign = 'left';
+      ctx.fillText(L.addr, left + pinW + L.pinGap, mid + 1, room);
+    }
   }
   return c;
 }
