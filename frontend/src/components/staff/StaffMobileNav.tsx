@@ -45,9 +45,11 @@ export default function StaffMobileNav() {
   const visible = isTeacher || isAdmin;
   // 沉浸页隐藏底部导航。**用精确匹配而非 startsWith('/teacher/live')** ——
   // 后者会连带吞掉 /teacher/livestream 下的课件管理页,那页需要导航
+  // 「问小鹰老师」聊天页是整屏高(100dvh),输入条在最底下,底部导航会盖住它;顶上有返回键
   const immersive = location.pathname.startsWith('/teacher/bigscreen')
     || location.pathname === '/teacher/live'
-    || location.pathname === '/teacher/livestream';
+    || location.pathname === '/teacher/livestream'
+    || location.pathname === '/teacher/tutor';
   const navVisible = visible && !immersive;
   const items = isTeacher ? teacherItems : isOrgAdmin ? orgItems : adminItems;
 

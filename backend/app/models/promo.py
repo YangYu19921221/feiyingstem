@@ -14,7 +14,7 @@
 所有查询在 services/promo.py 里显式写 org_id(CLAUDE.md: 别押在隐式过滤器上)。
 """
 from sqlalchemy import (
-    Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, Boolean, UniqueConstraint,
+    JSON, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, Boolean, UniqueConstraint,
 )
 from sqlalchemy.sql import func
 
@@ -122,3 +122,63 @@ class PromoFollowUp(Base):
     created_by = Column(Integer, nullable=True)
     created_by_name = Column(String(50), nullable=True)  # 冗余存名字: 销售账号删了时间线不残缺
     created_at = Column(DateTime, server_default=func.now())
+
+
+# ---------------- 体验期 + 老带新延期(2026-10-29) ----------------
+# 用户原话: 「地推体验卡如果家长分享一个用户报名了就增加 7 天,2 个 14 天以此增加,并且分享的用户报名付费了才有效」。
+# 以前「已开通」只是线索上的一个状态,孩子的书是老师手动分配的永久授权,7 天到期全靠人记,
+# 「+7 天」没地方加。现在开通体验 = 按包月卡的口径开限期授权(book_assignments.grant_type='period'),
+# 到期日由 services/promo.trial_expiry 一处算。三张都是新表(create_all 建,不 ALTER),不进 tenancy 锚点。
+
+
+class PromoTrial(Base):
+    """一条线索开的 7 天体验(一个学生号只能有一份)。
+    book_ids = **这份体验自己开出来、还在管的**那几本书: 学生本来就有的书不碰也不管;
+    之后被兑换码续期 / 升级永久 / 老师改过的(到期日和 expires_at 对不上)就不再管,从这里去掉"""
+    __tablename__ = "promo_trials"
+
+    lead_id = Column(Integer, ForeignKey("promo_leads.id", ondelete="CASCADE"), primary_key=True)
+    org_id = Column(Integer, nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    book_ids = Column(JSON, nullable=False, default=list)
+    started_at = Column(DateTime, nullable=False)        # 开通时刻(UTC naive);按它的北京日起算 7 天
+    # 退款 / 删线索让到期日往前缩时,孩子今天正在学 → 保底到今天 24 点(只在那一刻写一次,之后不再按当前时间推)
+    floor_until = Column(DateTime, nullable=True)
+    # 体验已经到期之后才有朋友付费: 「从今天起再给 7 天」,中间空着没学的那几天记在这里(只加不减),
+    # 否则 11-05 到期、11-10 才算进来的那 7 天只剩 11-10 到 11-12 两天
+    gap_days = Column(Integer, nullable=False, default=0, server_default="0")
+    expires_at = Column(DateTime, nullable=False)        # 最近一次写到授权行上的到期时间
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class PromoLeadLink(Base):
+    """线索的推荐关系。一条线索一行(需要时才建):
+    - 作为推荐人: share_code(朋友扫的链接 /c/{卡码}?f={share_code})+ view_code(家长自己看进度的页面)。
+      两个码分开: 分享链接会转给朋友,进度页里有别的朋友的手机尾号和孩子的体验日期,不该朋友也能看
+    - 作为被推荐的朋友: referred_by_lead_id + credited_at(付了体验费、算进推荐人的那一刻)+ revoked_at(退款,只写不清)"""
+    __tablename__ = "promo_lead_links"
+
+    lead_id = Column(Integer, ForeignKey("promo_leads.id", ondelete="CASCADE"), primary_key=True)
+    org_id = Column(Integer, nullable=False)
+    share_code = Column(String(16), nullable=True, unique=True)
+    view_code = Column(String(16), nullable=True, unique=True)
+    # referred = 这条线索是点朋友的链接来的;referred_by_lead_id = 推荐人那条线索。推荐人线索删了置 NULL、referred 留着
+    # (显示「(推荐人已删除)」)—— 不能留着旧 id: promo_leads 的 id 会被 SQLite 回收给新线索,旧 id 会指到别人身上
+    referred = Column(Boolean, nullable=False, default=False, server_default="0")
+    referred_by_lead_id = Column(Integer, nullable=True, index=True)
+    credited_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PromoReferralSettings(Base):
+    """机构的老带新设置。没有行 = 开着、最多算 4 家。
+    上限的原因: 每多一家就要多陪跑 7 天,一直在体验的孩子也不会去报正价"""
+    __tablename__ = "promo_referral_settings"
+
+    org_id = Column(Integer, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True, server_default="1")
+    max_count = Column(Integer, nullable=False, default=4, server_default="4")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

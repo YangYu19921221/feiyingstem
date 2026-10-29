@@ -110,7 +110,18 @@ async def tutor_status(db: AsyncSession = Depends(get_db), student: User = Depen
             "deep_enabled": bool(conf and conf.deep_enabled), "deep_cost": settings["deep_cost"],
             "followup_free": tt.FOLLOWUP_FREE, "followup_minutes": tt.FOLLOWUP_MINUTES,
             "picture_enabled": ok and await wp.available(db), "picture_cost": wp.COST,
-            "max_text": tt.MAX_TEXT, "voice_enabled": ok and _voice_ok()}
+            "max_text": tt.MAX_TEXT, "voice_enabled": ok and _voice_ok(),
+            "review": await _review_or_none(db, student) if ok else None}
+
+
+async def _review_or_none(db: AsyncSession, student: User) -> Optional[dict]:
+    """首页小鹰老师卡片上的「考考你」(services/tutor_notes);算不出来不影响状态接口"""
+    from app.services import tutor_notes
+    try:
+        return await tutor_notes.review_question(db, student.id)
+    except Exception:  # noqa: BLE001
+        logger.exception("考考你失败 user=%s", student.id)
+        return None
 
 
 def _voice_ok() -> bool:
@@ -344,8 +355,16 @@ async def _release_feedback(db: AsyncSession, quiz_id: int) -> None:
 
 async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: int, conf: tt.RelayConf,
                       system: list[dict], messages: list[dict], title: Optional[str], mode: str, cost: int,
-                      ctx: Optional[dict] = None, feedback_quiz_id: Optional[int] = None) -> None:
-    """在后台任务里跑模型、写库。孩子关了页面也跑完(回答落库,老师看得到)"""
+                      ctx: Optional[dict] = None, feedback_quiz_id: Optional[int] = None,
+                      review_claimed: bool = False, refund_fn=None, followup: bool = True) -> None:
+    """在后台任务里跑模型、写库。孩子关了页面也跑完(回答落库,老师看得到)。
+    refund_fn(db): 退回次数的另一种办法(教师端退老师本月的和机构池,services/teacher_tutor);None = 退学生的次数"""
+    async def give_back(db_):
+        if refund_fn is not None:
+            await refund_fn(db_)
+        elif cost:
+            await tt.refund(db_, user_id, cost)
+
     async def emit(ev: dict):
         await queue.put(ev)
 
@@ -381,23 +400,30 @@ async def _run_answer(queue: asyncio.Queue, user_id: int, conv_id: int, um_id: i
             if refunded:
                 await _mark_refunded(db, um_id)
                 if cost:
-                    await tt.refund(db, user_id, cost)
+                    await give_back(db)
                 if feedback_quiz_id:
                     await _release_feedback(db, feedback_quiz_id)
+                if review_claimed:
+                    from app.services import tutor_notes
+                    await tutor_notes.release_review(user_id)
             if failed:
                 await queue.put({"type": "error", "message": BUSY_MSG, "refunded": True})
             else:
                 await queue.put({"type": "done", "message_id": msg.id, "stopped": turn.stopped,
-                                 "refunded": refunded, "followup": await tt.followup_state(db, conv_id)})
+                                 "refunded": refunded,
+                                 "followup": await tt.followup_state(db, conv_id) if followup else None})
     except Exception:  # noqa: BLE001
         logger.exception("学习助手回答失败 user=%s conv=%s", user_id, conv_id)
         with contextlib.suppress(Exception):
             async with session_factory() as db2:
                 await _mark_refunded(db2, um_id)
                 if cost:
-                    await tt.refund(db2, user_id, cost)
+                    await give_back(db2)
                 if feedback_quiz_id:
                     await _release_feedback(db2, feedback_quiz_id)
+                if review_claimed:
+                    from app.services import tutor_notes
+                    await tutor_notes.release_review(user_id)
         await queue.put({"type": "error", "message": BUSY_MSG, "refunded": True})
     finally:
         with contextlib.suppress(Exception):
@@ -437,6 +463,47 @@ async def voice_result(clip_id: int, db: AsyncSession = Depends(get_db), student
     return {"id": c.id, "status": c.status, "text": c.text or ""}
 
 
+async def _read_uploads(image: Optional[UploadFile], file: Optional[UploadFile]):
+    """照片压缩成 JPEG;文件(PDF / Word / txt,services/tutor_files)只取文字给模型看,不存。学生端、教师端共用"""
+    from app.services import tutor_files
+
+    img: Optional[tuple[str, str]] = None
+    if image is not None and image.filename:
+        if (image.content_type or "").lower() not in IMAGE_MIME:
+            raise HTTPException(400, "只能发 jpg / png 照片")
+        raw = await image.read(IMAGE_MAX_BYTES + 1)
+        if len(raw) > IMAGE_MAX_BYTES:
+            raise HTTPException(400, "照片太大了,换一张小一点的")
+        try:
+            img = await asyncio.to_thread(tt.prepare_image, raw)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "这张照片打不开,换一张试试")
+    doc = None
+    if file is not None and file.filename:
+        if img is not None:
+            raise HTTPException(400, "照片和文件一次只能发一样")
+        raw_f = await file.read(tutor_files.MAX_BYTES + 1)
+        try:
+            doc = await tutor_files.extract(file.filename, raw_f)
+        except tutor_files.FileRejected as e:
+            raise HTTPException(400, str(e))
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "这份文件打不开,换一份试试")
+    return img, doc
+
+
+def _content_blocks(img, doc, ask_text: str) -> list[dict]:
+    content: list[dict] = []
+    if img is not None:
+        content.append({"type": "image", "source": {"type": "base64", "media_type": img[1], "data": img[0]}})
+    if doc is not None:
+        content.append({"type": "text", "text": doc.prompt_block()})
+        for b64, mime in doc.images:
+            content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
+    content.append({"type": "text", "text": ask_text})
+    return content
+
+
 @student_router.post("/tutor/ask")
 async def ask(
     text: str = Form(""),
@@ -446,6 +513,7 @@ async def ask(
     file: Optional[UploadFile] = File(None),
     quiz_id: Optional[int] = Form(None),
     care: bool = Form(False),
+    review_note_id: Optional[int] = Form(None),
     db: AsyncSession = Depends(get_db),
     student: User = Depends(get_current_student),
 ):
@@ -463,30 +531,7 @@ async def ask(
     if len(text) > tt.MAX_TEXT:
         raise HTTPException(400, f"一次最多写 {tt.MAX_TEXT} 个字,分开问吧")
 
-    img: Optional[tuple[str, str]] = None
-    if image is not None and image.filename:
-        if (image.content_type or "").lower() not in IMAGE_MIME:
-            raise HTTPException(400, "只能发 jpg / png 照片")
-        raw = await image.read(IMAGE_MAX_BYTES + 1)
-        if len(raw) > IMAGE_MAX_BYTES:
-            raise HTTPException(400, "照片太大了,换一张小一点的")
-        try:
-            img = await asyncio.to_thread(tt.prepare_image, raw)
-        except Exception:  # noqa: BLE001
-            raise HTTPException(400, "这张照片打不开,换一张试试")
-    # 上传文件(PDF / Word / txt,services/tutor_files): 只读给模型看,不存
-    from app.services import tutor_files
-    doc = None
-    if file is not None and file.filename:
-        if img is not None:
-            raise HTTPException(400, "照片和文件一次只能发一样")
-        raw_f = await file.read(tutor_files.MAX_BYTES + 1)
-        try:
-            doc = await tutor_files.extract(file.filename, raw_f)
-        except tutor_files.FileRejected as e:
-            raise HTTPException(400, str(e))
-        except Exception:  # noqa: BLE001
-            raise HTTPException(400, "这份文件打不开,换一份试试")
+    img, doc = await _read_uploads(image, file)
     # 做完聊天里的练习、请小鹰老师点评(services/tutor_quiz): 题目和对错由服务器从库里拼,不信前端传的
     from app.services import tutor_quiz
     fq = None
@@ -499,6 +544,15 @@ async def ask(
         mode, img, doc = "fast", None, None
         text = tutor_quiz.feedback_display(fq)
         conversation_id = fq.conversation_id or conversation_id
+    # 首页「考考你」(services/tutor_notes): 考哪个点由服务器从笔记里拼,不信前端传的字
+    from app.services import tutor_notes
+    rn = None
+    if review_note_id and fq is None:
+        rn = await tutor_notes.review_note(db, student.id, review_note_id)
+        if rn is None:
+            raise HTTPException(404, "这个点今天不用考了")
+        mode, img, doc = "fast", None, None
+        text = f"考考我: {rn.topic}"
     if not text and img is None and doc is None:
         raise HTTPException(400, "先写下你想问的")
 
@@ -520,12 +574,20 @@ async def ask(
     elif fq is not None and fq.free_feedback:
         # 做完练习后的点评不扣次数,也不占「同一道题追问」那 3 次(用户 10-27)
         cost, stored_cost = 0, tt.COST_FEEDBACK
+    elif rn is not None:
+        # 首页「考考你」: 今天第一次不扣(一天 REVIEW_DAILY 次,限速之后再占,见下面);超了照常扣
+        cost, stored_cost = 0, tt.COST_REVIEW
     elif conv is not None and mode == "fast" and img is None and doc is None and await tt.followup_state(db, conv.id):
         # 同一道题的追问(快速回答、没有新照片)不另算,见 services/tutor 文件头「收费」
         cost = 0
 
     # 限速(防连点 / 脚本)在前,次数在后: 被限速的那一下不该扣次数
     await check_rate(str(student.id), "tutor", [(60, 6), (3600, 60)])
+    review_claimed = False
+    if rn is not None:
+        review_claimed = await tutor_notes.claim_review(student.id)
+        if not review_claimed:
+            cost, stored_cost = tt.cost_of("fast", settings), None
     if fq is not None:
         # 一份练习只点评一次: 条件 UPDATE 认领,两个请求同时到只有一个拿到
         fq = await tutor_quiz.claim_feedback(db, student.id, fq.id)
@@ -541,6 +603,9 @@ async def ask(
         raise HTTPException(429, "次数用完了,点「请老师加次数」让老师给你加")
 
     try:
+        # 次数那一行先建好: 没有这一行时「用了几次」按收到过几次回答现算(10-26 第一版的口径),
+        # 第一问就是不扣次数的(考考你 / 说心里话)会被算成用了 1 次
+        await tt._ensure_allowance(db, student.id)
         title = None
         if conv is None:
             conv = TutorConversation(user_id=student.id, org_id=student.org_id, title="",
@@ -572,6 +637,8 @@ async def ask(
             await tt.refund(db, student.id, cost)
         if fq is not None:
             await tutor_quiz.release_feedback(db, fq.id)
+        if review_claimed:
+            await tutor_notes.release_review(student.id)
         raise
 
     content: list[dict] = []
@@ -583,6 +650,8 @@ async def ask(
             content.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}})
     if fq is not None:
         ask_text = tutor_quiz.feedback_prompt(fq)
+    elif rn is not None:
+        ask_text = tutor_notes.review_prompt(rn)
     elif doc is not None:
         ask_text = text or "帮我看看这份文件"
     else:
@@ -593,7 +662,7 @@ async def ask(
         context += "\n\n" + tt.CARE_NOTE
     if care_button and stored_cost == tt.COST_CARE and concern is None:
         context += "\n\n" + tt.CARE_BUTTON_NOTE
-    if fq is None and text:
+    if fq is None and rn is None and text:
         # 问到的词先按课本查好,省掉一轮 lookup_word(services/tutor「提速」)
         pre = await tt.prefetch_words(db, text)
         if pre:
@@ -605,7 +674,7 @@ async def ask(
     ctx = {"conversation_id": conv_id, "is_feedback": fq is not None and bool(fq.free_feedback),
            "user_message_id": um_id, "user_text": text}
     task = asyncio.create_task(_run_answer(queue, student.id, conv_id, um_id, conf, system, messages, title, mode, cost,
-                                           ctx, fq.id if fq is not None else None))
+                                           ctx, fq.id if fq is not None else None, review_claimed))
     _running.add(task)
     task.add_done_callback(_running.discard)
 
@@ -638,7 +707,11 @@ async def teacher_tutor_available(db: AsyncSession = Depends(get_db), teacher: U
             )).scalar() or 0)
     # 需要关心的孩子(services/tutor_safety): 本班没处理的,urgent 单独数(工作台红条)
     alerts = await _alert_counts(db, ids)
-    return {"enabled": enabled, "requested": requested, "alerts": alerts}
+    # 要请老师当面讲的点(services/tutor_notes「交给老师」)
+    from app.services import teacher_tutor as tch, tutor_notes
+    handoffs = await tutor_notes.handoff_count(db, ids) if enabled else 0
+    me_ok, _ = await tch.availability(db, teacher)
+    return {"enabled": enabled, "requested": requested, "alerts": alerts, "handoffs": handoffs, "me_enabled": me_ok}
 
 
 async def _alert_counts(db: AsyncSession, student_ids: list[int]) -> dict:
@@ -850,7 +923,13 @@ async def _admin_state(db: AsyncSession) -> dict:
         },
         "usage": await tt.usage_summary(db, days=7),
         "picture": await _picture_state(db),
+        "teacher": await _teacher_state(db),
     }
+
+
+async def _teacher_state(db: AsyncSession) -> dict:
+    from app.services import teacher_tutor as tch
+    return {**await tch.get_settings(db), **await tch.month_summary(db), "price": tt.POOL_PRICE}
 
 
 async def _picture_state(db: AsyncSession) -> dict:
@@ -976,6 +1055,19 @@ async def _save_picture(db: AsyncSession, body: TutorAdminIn) -> str:
     return ";".join(changed)
 
 
+@admin_router.put("/tutor/teacher")
+async def admin_teacher_tutor_update(body: TeacherTutorAdminIn, request: Request, db: AsyncSession = Depends(get_db),
+                                     admin: User = Depends(get_current_admin)):
+    """教师端小鹰老师: 开不开、每位老师每月几次(services/teacher_tutor)"""
+    from app.services import teacher_tutor as tch
+    await tch.save_settings(db, body.enabled, body.monthly)
+    audit_log.record(db, request, admin, "system.teacher_tutor",
+                     f"教师端小鹰老师: {'开' if body.enabled else '关'},每位老师每月 {body.monthly} 次",
+                     detail={"enabled": body.enabled, "monthly": body.monthly})
+    await db.commit()
+    return await _teacher_state(db)
+
+
 @admin_router.get("/tutor/pictures")
 async def admin_pictures(db: AsyncSession = Depends(get_db), _admin: User = Depends(get_current_admin)):
     from app.models.tutor import WordPicture
@@ -1064,7 +1156,7 @@ async def admin_tutor_orgs(db: AsyncSession = Depends(get_db), _admin: User = De
         .group_by(User.org_id).execution_options(skip_tenant_filter=True))).all())
     asked = dict((await db.execute(
         select(User.org_id, func.count(func.distinct(TutorMessage.user_id)))
-        .join(User, User.id == TutorMessage.user_id).where(TutorMessage.role == "user")
+        .join(User, User.id == TutorMessage.user_id).where(TutorMessage.role == "user", User.role == "student")
         .group_by(User.org_id).execution_options(skip_tenant_filter=True))).all())
     items = []
     for oid, name, status, plan in orgs:
@@ -1092,7 +1184,9 @@ async def admin_tutor_pool(org_id: int, db: AsyncSession = Depends(get_db), _adm
     org = await _pool_org(db, org_id)
     ledger = (await db.execute(select(TutorPoolLedger).where(TutorPoolLedger.org_id == org_id)
                                .order_by(TutorPoolLedger.id.desc()).limit(50))).scalars().all()
+    from app.services import teacher_tutor as tch
     return {"org_id": org_id, "org_name": org.name, **await tt.pool_status(db, org_id),
+            "teacher_used": await tch.usage_by_org(db, org_id),
             "ledger": [{"id": r.id, "times": r.times, "source": r.source, "note": r.note,
                         "created_at": r.created_at.isoformat() if r.created_at else None} for r in ledger]}
 
@@ -1245,3 +1339,280 @@ async def teacher_tutor_summary(days: int = Query(7, ge=1, le=30),
 async def admin_tutor_effect(db: AsyncSession = Depends(get_db), user: User = Depends(get_admin_or_org_admin)):
     from app.services import tutor_insight
     return await tutor_insight.effect(db, org_id=None if user.role == "admin" else user.org_id)
+
+
+# ---------------------------------------------------------------- 教师端: 老师自己问小鹰老师(services/teacher_tutor)
+# 对话存在同一张表里,user_id = 真实操作人(助教问的记在助教自己名下,不和主老师的对话混在一起);
+# 次数和本班名单按主老师(认证层把助教换成了主老师)
+
+class TeacherTutorAdminIn(BaseModel):
+    enabled: bool
+    monthly: int = Field(..., ge=1, le=10000)
+
+
+def _me(teacher: User) -> User:
+    from app.core.actor import acting_user
+    return acting_user(teacher)
+
+
+async def _teacher_conf(db: AsyncSession) -> Optional[tt.RelayConf]:
+    from app.services import teacher_tutor as tch
+    conf = await tt.relay_conf(db)
+    if conf is None:
+        return None
+    conf.pictures = False
+    conf.tools, conf.runner = tch.TOOLS, tch.run_tool
+    conf.max_tokens, conf.tool_status = tch.MAX_TOKENS, tch.TOOL_STATUS
+    return conf
+
+
+async def _own_teacher_conversation(db: AsyncSession, teacher: User, cid: int) -> TutorConversation:
+    c = await db.get(TutorConversation, cid)
+    if c is None or c.user_id != _me(teacher).id or c.deleted_at is not None:
+        raise HTTPException(404, "没有这段对话")
+    return c
+
+
+@teacher_router.get("/tutor/me/status")
+async def teacher_my_tutor_status(db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    from app.services import teacher_tutor as tch
+    ok, reason = await tch.availability(db, teacher)
+    conf = await tt.relay_conf(db) if ok else None
+    settings = await tt.get_settings(db)
+    return {"enabled": ok, "reason": reason, **await tch.status(db, teacher),
+            "deep_enabled": bool(conf and conf.deep_enabled), "deep_cost": settings["deep_cost"],
+            "max_text": tch.MAX_TEXT, "voice_enabled": ok and _voice_ok()}
+
+
+@teacher_router.get("/tutor/me/roster")
+async def teacher_my_tutor_roster(db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    """回答里的学生代号(S+id)换成名字用。只给页面,不给模型"""
+    from app.services import teacher_tutor as tch
+    return {"items": tch.roster_out(await tch.roster(db, teacher.id))}
+
+
+@teacher_router.post("/tutor/me/ask")
+async def teacher_ask(
+    text: str = Form(""),
+    conversation_id: Optional[int] = Form(None),
+    mode: str = Form("fast"),
+    image: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile] = File(None),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    from app.services import teacher_tutor as tch
+    ok, reason = await tch.availability(db, teacher)
+    if not ok:
+        raise HTTPException(403, reason)
+    conf = await _teacher_conf(db)
+    if conf is None:
+        raise HTTPException(403, "小鹰老师还没配置好,请联系平台")
+    if mode not in tt.MODES:
+        mode = "fast"
+    if mode == "deep" and not conf.deep_enabled:
+        raise HTTPException(400, "深度思考现在没开,先用快速回答吧")
+    settings = await tt.get_settings(db)
+    cost = tt.cost_of(mode, settings)
+    text = (text or "").strip()
+    if len(text) > tch.MAX_TEXT:
+        raise HTTPException(400, f"一次最多写 {tch.MAX_TEXT} 个字,分开问吧")
+    img, doc = await _read_uploads(image, file)
+    if not text and img is None and doc is None:
+        raise HTTPException(400, "先写下你想问的")
+    me = _me(teacher)
+    conv: Optional[TutorConversation] = None
+    if conversation_id:
+        conv = await _own_teacher_conversation(db, teacher, conversation_id)
+
+    await check_rate(str(me.id), "teacher_tutor", [(60, 10), (3600, 120)])
+    teacher_id, org_id = teacher.id, teacher.org_id
+    ok_c, why, month = await tch.consume(db, teacher, cost)
+    if not ok_c:
+        st = await tch.status(db, teacher)
+        if why == "pool":
+            raise HTTPException(429, f"本机构的学习助手次数还剩 {st['pool_left']} 次,不够这次用。请机构管理员向平台购买次数")
+        if mode == "deep" and st["month_left"] > 0:
+            raise HTTPException(429, f"深度思考一次算 {cost} 次,这个月你还剩 {st['month_left']} 次,先用快速回答吧")
+        raise HTTPException(429, f"这个月的 {st['monthly']} 次用完了,下个月 1 号恢复")
+
+    async def give_back(db_):
+        await tch.refund(db_, teacher_id, org_id, month, cost)
+
+    ros = await tch.roster(db, teacher_id)
+    try:
+        title = None
+        if conv is None:
+            conv = TutorConversation(user_id=me.id, org_id=org_id, title="", message_count=0, updated_at=utc_now())
+            db.add(conv)
+            await db.flush()
+        if not conv.title:
+            title = tt.make_title(text, img is not None, doc.name if doc else None)
+        um = TutorMessage(conversation_id=conv.id, user_id=me.id, role="user", text=text, has_image=img is not None,
+                          mode=mode, cards=[doc.card()] if doc else None, cost=cost)
+        db.add(um)
+        conv.message_count = (conv.message_count or 0) + 1
+        conv.updated_at = utc_now()
+        await db.flush()
+        history = tch.pseudonymize_history(await tt.history_messages(db, conv.id, um.id), ros)
+        conv_id, um_id, me_id = conv.id, um.id, me.id
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await give_back(db)
+        raise
+
+    ask_text = tch.pseudonymize(text, ros) or ("帮我看看这份文件" if doc is not None else "帮我看看这张图")
+    messages = history + [{"role": "user", "content": _content_blocks(img, doc, ask_text)}]
+    context = tch.teacher_context(ros)
+    if text:
+        pre = await tt.prefetch_words(db, text)
+        if pre:
+            context += "\n\n" + pre.replace("孩子这次问到的词", "老师这次问到的词")
+    system = tch.build_system(context, mode)
+    left = (await tch.status(db, teacher))["left"]
+
+    queue: asyncio.Queue = asyncio.Queue()
+    ctx = {"conversation_id": conv_id, "user_message_id": um_id, "user_text": text, "roster": ros}
+    task = asyncio.create_task(_run_answer(queue, me_id, conv_id, um_id, conf, system, messages, title, mode, cost,
+                                           ctx, refund_fn=give_back, followup=False))
+    _running.add(task)
+    task.add_done_callback(_running.discard)
+
+    async def gen():
+        yield _sse({"type": "meta", "conversation_id": conv_id, "user_message_id": um_id, "left": left,
+                    "mode": mode, "cost": cost})
+        while True:
+            ev = await queue.get()
+            if ev is None:
+                break
+            yield _sse(ev)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+@teacher_router.post("/tutor/me/stop")
+async def teacher_tutor_stop(body: StopIn, db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    m = await db.get(TutorMessage, body.user_message_id)
+    if m is None or m.user_id != _me(teacher).id or m.role != "user":
+        raise HTTPException(404, "没有这条提问")
+    await store.set(_stop_key(m.id), "1", 300)
+    return {"ok": True}
+
+
+@teacher_router.get("/tutor/me/conversations")
+async def teacher_my_conversations(q: Optional[str] = Query(None, max_length=100), offset: int = Query(0, ge=0, le=10000),
+                                   limit: int = Query(30, ge=1, le=50),
+                                   db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    from app.services import tutor_history
+    return await tutor_history.list_page(db, _me(teacher).id, q, offset, limit)
+
+
+@teacher_router.get("/tutor/me/conversations/{cid}")
+async def teacher_conversation_detail(cid: int, db: AsyncSession = Depends(get_db),
+                                      teacher: User = Depends(get_current_teacher)):
+    c = await _own_teacher_conversation(db, teacher, cid)
+    msgs = (await db.execute(select(TutorMessage).where(TutorMessage.conversation_id == c.id)
+                             .order_by(TutorMessage.id))).scalars().all()
+    return {"id": c.id, "title": c.title or "新对话", "messages": [_msg_out(m) for m in msgs], "followup": None}
+
+
+@teacher_router.patch("/tutor/me/conversations/{cid}")
+async def teacher_patch_conversation(cid: int, body: ConversationPatchIn, db: AsyncSession = Depends(get_db),
+                                     teacher: User = Depends(get_current_teacher)):
+    from app.services import tutor_history
+    await check_rate(str(_me(teacher).id), "tutor_conv_edit", [(60, 30)])
+    c = await _own_teacher_conversation(db, teacher, cid)
+    sent = body.model_fields_set
+    if "title" in sent:
+        title = tutor_history.clean_title(body.title)
+        if not title:
+            raise HTTPException(400, "标题不能是空的")
+        c.title = title
+    if "starred" in sent and body.starred is not None:
+        c.starred = bool(body.starred)
+    await db.commit()
+    return tutor_history.item_out(c)
+
+
+@teacher_router.delete("/tutor/me/conversations/{cid}")
+async def teacher_delete_conversation(cid: int, db: AsyncSession = Depends(get_db),
+                                      teacher: User = Depends(get_current_teacher)):
+    from app.services import tutor_history
+    await check_rate(str(_me(teacher).id), "tutor_conv_edit", [(60, 30)])
+    c = await _own_teacher_conversation(db, teacher, cid)
+    c.deleted_at = utc_now()
+    await db.commit()
+    return {"ok": True, "deleted_keep_days": tutor_history.DELETED_KEEP_DAYS}
+
+
+@teacher_router.post("/tutor/me/voice")
+async def teacher_upload_voice(audio: UploadFile = File(...), db: AsyncSession = Depends(get_db),
+                               teacher: User = Depends(get_current_teacher)):
+    from app.services import sentence_speech, teacher_tutor as tch, tutor_voice
+    ok, reason = await tch.availability(db, teacher)
+    if not ok:
+        raise HTTPException(403, reason)
+    if not sentence_speech.is_available():
+        raise HTTPException(503, "服务器暂时听不了语音,打字问吧")
+    ext = tutor_voice.ext_for(audio.content_type)
+    if ext is None:
+        raise HTTPException(400, "这段录音的格式不支持,打字问吧")
+    raw = await audio.read(tutor_voice.MAX_BYTES + 1)
+    if not raw:
+        raise HTTPException(400, "没录到声音,再说一次")
+    if len(raw) > tutor_voice.MAX_BYTES:
+        raise HTTPException(400, f"说得太长了,一次说 {tutor_voice.MAX_SECONDS} 秒以内")
+    me = _me(teacher)
+    await check_rate(str(me.id), "tutor_voice", [(60, 10), (3600, 60)])
+    clip = await tutor_voice.save(db, me.id, raw, ext)
+    return {"id": clip.id, "status": clip.status}
+
+
+@teacher_router.get("/tutor/me/voice/{clip_id}")
+async def teacher_voice_result(clip_id: int, db: AsyncSession = Depends(get_db), teacher: User = Depends(get_current_teacher)):
+    from app.models.tutor import TutorVoiceClip
+    c = await db.get(TutorVoiceClip, clip_id)
+    if c is None or c.user_id != _me(teacher).id:
+        raise HTTPException(404, "没有这段录音")
+    return {"id": c.id, "status": c.status, "text": c.text or ""}
+
+
+# ---------------------------------------------------------------- 教师端: 要请老师当面讲的点(services/tutor_notes「交给老师」)
+
+class HandoffIn(BaseModel):
+    note: Optional[str] = Field(None, max_length=200)
+
+
+@teacher_router.get("/tutor/handoffs")
+async def teacher_handoffs(all: bool = Query(False), db: AsyncSession = Depends(get_db),
+                           teacher: User = Depends(get_current_teacher)):
+    """本班孩子练习里同一个点错了好几次、小鹰老师讲不会的。all=1 连讲过的也列"""
+    from app.services import tutor_notes
+    students = await _my_class_students(db, teacher.id)
+    by = {s[0]: s for s in students}
+    items = await tutor_notes.handoffs(db, list(by), include_handled=all)
+    for it in items:
+        s = by[it["student_id"]]
+        # 老师自己看的页面: 姓名没填就用用户名(和「这几天谁问了」同口径);
+        # coach.child_name 会把带数字的用户名藏成「孩子」,那是给发家长群的图用的,这里老师会认不出是谁
+        it["student_name"] = s[2] or s[1]
+        it["class_name"] = s[3]
+    return {"items": items, "pending": sum(1 for x in items if x["pending"]), "threshold": tutor_notes.HANDOFF_WRONG}
+
+
+@teacher_router.post("/tutor/handoffs/{note_id}")
+async def teacher_handle_handoff(note_id: int, body: HandoffIn, db: AsyncSession = Depends(get_db),
+                                 teacher: User = Depends(get_current_teacher)):
+    """老师讲过了。之后孩子又错了会重新出现在列表里"""
+    from app.models.tutor import TutorNote
+    from app.services import tutor_notes
+    note = await db.get(TutorNote, note_id)
+    if note is None:
+        raise HTTPException(404, "没有这一条")
+    await assert_student_in_my_class(db, teacher.id, note.user_id)
+    me = _me(teacher)
+    await tutor_notes.handle_handoff(db, note, me.id, me.full_name or me.username or "", body.note)
+    await db.commit()
+    return {"ok": True}

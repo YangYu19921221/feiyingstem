@@ -23,11 +23,14 @@ const MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.
 
 type Phase = 'idle' | 'rec' | 'wait';
 
-export default function VoiceInputButton({ onText, disabled, beforeRecord }: {
+export default function VoiceInputButton({ onText, disabled, beforeRecord, upload = uploadTutorVoice, poll = getTutorVoice }: {
   onText: (text: string) => void;
   disabled?: boolean;
   /** 开录前调: 停掉正在放的发音 */
   beforeRecord?: () => void;
+  /** 教师端换成 /teacher/tutor/me/voice 那一对 */
+  upload?: typeof uploadTutorVoice;
+  poll?: typeof getTutorVoice;
 }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [secs, setSecs] = useState(0);
@@ -57,10 +60,10 @@ export default function VoiceInputButton({ onText, disabled, beforeRecord }: {
     }
     setPhase('wait');
     try {
-      const { id } = await uploadTutorVoice(blob);
+      const { id } = await upload(blob);
       for (let i = 0; i < POLL_MAX && alive.current; i++) {
         await new Promise((r) => setTimeout(r, POLL_MS));
-        const r = await getTutorVoice(id);
+        const r = await poll(id);
         if (r.status === 'done') {
           if (r.text.trim()) onText(r.text.trim());
           else toast.info('没听清,再说一次或者打字吧');
@@ -77,7 +80,7 @@ export default function VoiceInputButton({ onText, disabled, beforeRecord }: {
     } finally {
       if (alive.current) setPhase('idle');
     }
-  }, [onText]);
+  }, [onText, upload, poll]);
 
   const start = async () => {
     const blocked = getRecorderBlocker();

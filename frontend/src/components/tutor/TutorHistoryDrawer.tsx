@@ -63,9 +63,11 @@ interface Props {
   onDeletedCurrent: () => void;
   /** 从欢迎卡「按年级讲」点进来: 打开时直接展开讲解方式 */
   levelOpen?: boolean;
+  /** 教师端自己的对话(api/tutorHistory TEACHER_HISTORY);不传 = 学生的。教师端不显示「讲解方式」 */
+  base?: string;
 }
 
-export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, onNew, onDeletedCurrent, levelOpen }: Props) {
+export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, onNew, onDeletedCurrent, levelOpen, base }: Props) {
   const reduce = useReducedMotion();
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
@@ -92,7 +94,7 @@ export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, o
     const my = ++seq.current;
     if (!keepOld) setError('');
     try {
-      const r = await listHistory(query, offset);
+      const r = await listHistory(query, offset, base);
       if (my !== seq.current) return;   // 搜别的了,这次的结果不要了
       setItems((old) => (keepOld && old ? [...old, ...r.items.filter((x) => !old.some((o) => o.id === x.id))] : r.items));
       setHasMore(r.has_more);
@@ -102,7 +104,7 @@ export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, o
       if (keepOld) toast.error(getErrorMessage(e, '没加载出来,再点一次'));
       else setError(getErrorMessage(e, '记录没加载出来'));
     }
-  }, [query]);
+  }, [query, base]);
 
   useEffect(() => {
     if (!open) return;
@@ -149,7 +151,7 @@ export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, o
   const toggleStar = async (it: HistoryItem) => {
     setBusyId(it.id);
     try {
-      replace(await starConversation(it.id, !it.starred));
+      replace(await starConversation(it.id, !it.starred, base));
       if (!it.starred) toast.success('收藏好了,这段对话会一直留着');
     } catch (e) {
       toast.error(getErrorMessage(e, '没收藏上,再点一次'));
@@ -169,7 +171,7 @@ export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, o
     }
     setBusyId(renaming.id);
     try {
-      replace(await renameConversation(renaming.id, title));
+      replace(await renameConversation(renaming.id, title, base));
       setRenaming(null);
       setMenuFor(null);
     } catch (e) {
@@ -182,7 +184,7 @@ export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, o
   const remove = async (id: number) => {
     setBusyId(id);
     try {
-      await deleteConversation(id);
+      await deleteConversation(id, base);
       setItems((xs) => (xs ? xs.filter((x) => x.id !== id) : xs));
       setConfirmDel(null);
       setMenuFor(null);
@@ -409,7 +411,7 @@ export default function TutorHistoryDrawer({ open, currentId, onClose, onPick, o
 
             {/* 底部: 讲解方式 + 保存多久 */}
             <div className="max-h-[60dvh] shrink-0 space-y-3 overflow-y-auto overscroll-contain border-t border-black/[0.06] bg-slate-50/70 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-              <TutorLevelControl defaultOpen={levelOpen} />
+              {!base && <TutorLevelControl defaultOpen={levelOpen} />}
               {keep && (
                 <p className="text-xs leading-5 text-ink-mute">
                   没收藏的对话 {keep.days} 天没再问会自动清理,点星星收藏的会一直留着。

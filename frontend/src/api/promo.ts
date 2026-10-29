@@ -8,7 +8,7 @@ import axios from 'axios';
 import client from './client';
 import { API_BASE_URL } from '../config/env';
 
-export type PromoStatus = 'new' | 'contacted' | 'paid' | 'opened' | 'won' | 'lost';
+export type PromoStatus = 'new' | 'contacted' | 'paid' | 'opened' | 'won' | 'lost' | 'refunded';
 
 /** 状态的展示顺序与文案(列表、筛选、看板共用一份,与后端 STATUS_LABELS 同值) */
 export const PROMO_STATUSES: Array<{ key: PromoStatus; label: string }> = [
@@ -18,6 +18,7 @@ export const PROMO_STATUSES: Array<{ key: PromoStatus; label: string }> = [
   { key: 'opened', label: '已开通' },
   { key: 'won', label: '已报正价' },
   { key: 'lost', label: '无效' },
+  { key: 'refunded', label: '已退款' },
 ];
 
 export interface PublicCard {
@@ -28,11 +29,15 @@ export interface PublicCard {
   grades: string[];
 }
 
+/** 登记成功后给家长的邀请链接。view_code 只在第一次登记时给(已登记过的再扫一次不给,防随手填别人手机号看进度) */
+export interface ShareLink { card_code: string; share_code: string; view_code: string | null }
+
 export interface CardSubmitResult {
   status: 'created' | 'duplicate';
   sales_name: string;
   qr_image_url: string;
   wechat_hint: string;
+  share: ShareLink | null;
 }
 
 export interface SalesProfile {
@@ -67,7 +72,15 @@ export interface PromoChannel {
   created_at?: string | null;
 }
 
-export interface PromoSettings { trial_price: number; offer_text: string }
+export interface PromoSettings {
+  trial_price: number;
+  offer_text: string;
+  /** 老带新: 开没开、最多算几家朋友、每家延几天、体验送几天(后两个只读,真源 services/promo.py) */
+  referral_enabled: boolean;
+  referral_max: number;
+  referral_days: number;
+  trial_days: number;
+}
 
 export interface MyPromo {
   name: string;
@@ -103,6 +116,55 @@ export interface PromoLead {
   paid_at: string | null;
   opened_at: string | null;
   won_at: string | null;
+  /** 点朋友的邀请链接来的 */
+  referred: boolean;
+  /** 推荐人的手机号(打码);推荐人线索删了是「(推荐人已删除)」 */
+  referred_by: string;
+  referral_state: '' | 'pending' | 'counted' | 'refunded' | 'existing' | 'orphan';
+  referral_label: string;
+  /** 这家推荐来几家 / 其中算数几家(已套上限) */
+  friends_total: number;
+  friends_counted: number;
+  trial: PromoTrial | null;
+}
+
+export interface PromoTrial {
+  started_at: string | null;
+  expires_at: string | null;
+  /** 最后能学的那天(北京日 YYYY-MM-DD) */
+  last_day: string;
+  active: boolean;
+  days_left: number;
+  books: Array<{ id: number; name: string }>;
+  counted: number;
+  cap: number;
+  added_days: number;
+}
+
+export interface TrialBook { id: number; name: string; grade_level: string; volume: string; series: string; own: boolean; has: boolean }
+
+export interface LeadFriend { lead_id: number; phone: string; state: 'pending' | 'counted' | 'over' | 'refunded' | 'existing'; label: string; created_at: string | null }
+
+export interface LeadShare {
+  enabled: boolean;
+  reason?: string;
+  card_code?: string;
+  share_code?: string;
+  view_code?: string;
+  friends: LeadFriend[];
+  cap: number;
+  days_each: number;
+  counted: number;
+}
+
+export interface ShareProgress {
+  org_name: string;
+  friends: Array<{ phone: string; state: LeadFriend['state']; label: string; created_at: string | null }>;
+  counted: number;
+  cap: number;
+  added_days: number;
+  trial_last_day: string | null;
+  trial_active: boolean;
 }
 
 export interface PromoLeadList {
@@ -159,6 +221,9 @@ export interface BoardRow {
   /** 他名下现在有几版卡 / 几条线索(不随日期筛选变,删之前要不要选接手人看这个) */
   owned_channels?: number;
   owned_leads?: number;
+  /** 点朋友的邀请链接来的 / 其中付了体验费且算数的 */
+  referred: number;
+  referred_paid: number;
 }
 
 export interface PromoBoard { items: BoardRow[]; total: BoardRow; study_days_target: number }
@@ -169,9 +234,13 @@ export const getPublicCard = async (code: string): Promise<PublicCard> =>
   (await axios.get(`${API_BASE_URL}/promo/public/${encodeURIComponent(code)}`)).data;
 
 export const submitCardLead = async (code: string, data: {
-  parent_phone: string; parent_name?: string; child_grade?: string;
+  parent_phone: string; parent_name?: string; child_grade?: string; ref?: string;
 }): Promise<CardSubmitResult> =>
   (await axios.post(`${API_BASE_URL}/promo/public/${encodeURIComponent(code)}/leads`, data)).data;
+
+/** 推荐人家长看进度(公开) */
+export const getShareProgress = async (viewCode: string): Promise<ShareProgress> =>
+  (await axios.get(`${API_BASE_URL}/promo/public/share/${encodeURIComponent(viewCode)}`)).data;
 
 // ---------------- 销售自己 ----------------
 
@@ -217,6 +286,15 @@ export const listFollowUps = (id: number): Promise<FollowUp[]> => client.get(`/p
 
 export const addFollowUp = (id: number, data: { content: string; status?: PromoStatus; next_follow_at?: string }): Promise<FollowUp[]> =>
   client.post(`/promo/leads/${id}/follow-ups`, data);
+
+export const listTrialBooks = (id: number): Promise<{ items: TrialBook[]; trial_days: number }> =>
+  client.get(`/promo/leads/${id}/trial-books`);
+
+/** 开通体验(或给开着的体验加书)。孩子本来就有的书后端跳过不动 */
+export const openTrial = (id: number, bookIds: number[]): Promise<PromoLead> =>
+  client.post(`/promo/leads/${id}/trial`, { book_ids: bookIds });
+
+export const getLeadShare = (id: number): Promise<LeadShare> => client.get(`/promo/leads/${id}/share`);
 
 // ---------------- 机构管理员 ----------------
 
@@ -287,6 +365,8 @@ export interface OrgSummaryRow {
   overdue: number;
   revenue: number;
   last_lead_at: string | null;
+  referred: number;
+  referred_paid: number;
 }
 
 export interface OrgSummary { items: OrgSummaryRow[]; total: OrgSummaryRow; study_days_target: number }
@@ -300,8 +380,9 @@ export const getOrgPromoBoard = (orgId: number, params: { start?: string; end?: 
 
 export const getPromoSettings = (): Promise<PromoSettings> => client.get('/promo/settings');
 
-export const savePromoSettings = (data: { trial_price?: number | null; offer_text?: string }): Promise<PromoSettings> =>
-  client.put('/promo/settings', data);
+export const savePromoSettings = (data: {
+  trial_price?: number | null; offer_text?: string; referral_enabled?: boolean; referral_max?: number;
+}): Promise<PromoSettings> => client.put('/promo/settings', data);
 
 /**
  * 卡上二维码指向的地址。**印出去就改不了**,所以不能用当前地址栏的域名:
@@ -309,8 +390,22 @@ export const savePromoSettings = (data: { trial_price?: number | null; offer_tex
  */
 export const PROMO_PUBLIC_ORIGIN = 'https://es.feiyingsteam.com';
 
-export function cardUrl(code: string): string {
+function publicOrigin(): string {
   const h = window.location.hostname;
   const isLocalDev = h === 'localhost' || h === '127.0.0.1';
-  return `${isLocalDev ? window.location.origin : PROMO_PUBLIC_ORIGIN}/c/${code}`;
+  return isLocalDev ? window.location.origin : PROMO_PUBLIC_ORIGIN;
+}
+
+export function cardUrl(code: string): string {
+  return `${publicOrigin()}/c/${code}`;
+}
+
+/** 发给朋友的邀请链接: 就是卡上那个地址带上这家的分享码,朋友留电话后记成这家推荐的 */
+export function inviteUrl(cardCode: string, shareCode: string): string {
+  return `${publicOrigin()}/c/${cardCode}?f=${encodeURIComponent(shareCode)}`;
+}
+
+/** 推荐人家长自己看进度的页面(别转给朋友: 里面有别的朋友的手机尾号) */
+export function shareProgressUrl(viewCode: string): string {
+  return `${publicOrigin()}/c/share/${encodeURIComponent(viewCode)}`;
 }

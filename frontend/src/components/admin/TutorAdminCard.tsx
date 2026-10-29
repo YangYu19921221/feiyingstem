@@ -8,11 +8,13 @@
  * 10-27 加「画记忆图」一组: 单独一个 Key(和答题的分开)、模型、画质、每人每天最多画几张新图,下面列最近画的图可删。
  * 10-27 加「各机构次数」(TutorOrgsPanel): 给加盟机构发次数(进货 / 赠送),发过的机构自动开通。
  * 10-27 晚顶上加 TutorHealthPanel: 中转钱包余额 / Key 能不能用 / 最近失败,以及需要关心的孩子。
+ * 10-29 加「教师端小鹰老师」一组(TeacherTutorAdmin): 开不开、每位老师每月几次,单独保存。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import TutorOrgsPanel from './TutorOrgsPanel';
 import TutorHealthPanel from './TutorHealthPanel';
+import TeacherTutorAdmin from './TeacherTutorAdmin';
 import { getAdminPictures, getTutorAdmin, removeAdminPicture, saveTutorAdmin, testTutorAdmin, type TutorAdminState, type WordPictureOut } from '../../api/tutor';
 
 type Note = { ok: boolean; text: string } | null;
@@ -174,6 +176,11 @@ export default function TutorAdminCard() {
             <input type="password" autoComplete="new-password" value={form.api_key} onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))} placeholder={state.provider ? '留空 = 不改' : 'sk-...'} className={`${input} mt-1`} />
           </label>
         </div>
+      )}
+
+      {state?.teacher && (
+        <TeacherTutorAdmin key={`${state.teacher.enabled}-${state.teacher.monthly}`} state={state.teacher}
+          onSaved={(t) => setState((s) => (s ? { ...s, teacher: t } : s))} />
       )}
 
       {state && (

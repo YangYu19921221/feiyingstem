@@ -314,7 +314,8 @@ export default function OrgAdminDashboard() {
                 <span className="text-base text-gray-400"> 次可加</span>
               </div>
               <div className="mt-1 text-[11px] leading-5 text-gray-400">
-                一共 {info.tutor_pool.total} 次,老师已加给学生 {info.tutor_pool.used} 次。学习卡自带的次数不从这里扣;
+                一共 {info.tutor_pool.total} 次,已用 {info.tutor_pool.used} 次
+                {info.tutor_pool.teacher_used ? `(其中老师自己问小鹰老师 ${info.tutor_pool.teacher_used} 次,其余加给了学生)` : '(都是老师加给学生的)'}。学习卡自带的次数不从这里扣;
                 不够了向平台购买(¥{info.tutor_pool.price}/次,{info.tutor_pool.min_buy} 次起)
               </div>
               {info.tutor_pool.left === 0 && <div className="mt-1 text-xs font-semibold text-red-500">用完了,老师现在给学生加不了次数</div>}

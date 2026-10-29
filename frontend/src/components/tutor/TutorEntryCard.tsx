@@ -6,10 +6,12 @@
  * 一个假输入框(点了进聊天页,占位字自己打出几个例子问题)、三个能直接点的问题。
  * 点问题只把问题填好、不自动发(聊天页的 location.state.q 那套),省孩子的次数。
  * 只在本校开放时出现(status.enabled),由首页传进来。
+ * 10-29 加「考考你」: 小鹰老师讲过、今天到期该回头考的点(后端 services/tutor_notes),卡片上直接写出来,
+ * 点了进聊天自动出题(孩子自己点的;一天第一次不扣次数)。没有到期的就不显示
  */
 import { memo, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, Camera } from 'lucide-react';
+import { ArrowUp, Camera, Zap } from 'lucide-react';
 import type { TutorStatus } from '../../api/tutor';
 
 const reducedMotion = () =>
@@ -111,6 +113,20 @@ function TutorEntryCard({ status }: { status: TutorStatus }) {
             <ArrowUp className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
           </span>
         </button>
+
+        {status.review && (
+          <button
+            type="button"
+            onClick={() => navigate('/student/tutor', { state: { review: { id: status.review!.note_id, topic: status.review!.topic } } })}
+            className="mt-3 flex min-h-12 w-full items-center gap-2.5 rounded-2xl border border-sky-300 bg-sky-600 px-3.5 py-2 text-left text-white shadow-sm transition hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
+          >
+            <Zap className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1 text-sm sm:text-base">
+              <span className="font-semibold">{status.review.since}的「{status.review.topic}」,10 秒考考你</span>
+              <span className="block text-xs text-white/80">这一次不算次数</span>
+            </span>
+          </button>
+        )}
 
         <div className="mt-3 flex flex-wrap gap-2">
           {asks.map((q) => (

@@ -18,6 +18,21 @@
 
 ## 日期
 due_date 存北京日的字符串 YYYY-MM-DD,比较是字符串比较(不碰 datetime 微秒格式混用的坑)
+
+## 缺前置知识(2026-10-29,用户「如果用户欠缺知识点如何帮助学生解决问题」)
+同一个点换了讲法还错,多半是下面一层没会(三单加 s 学不会,常是分不清主语是不是第三人称)。
+小鹰老师先问一个前置小问题,前置不会就先补前置: save_note(stuck, missing=缺的前置) →
+原来那条记「缺前置: …」,前置本身另记一条 stuck(明天一起回头考)。
+
+## 交给老师(同日)
+笔记里同一个点**练习里错满 HANDOFF_WRONG 次、还没学会** = 要请真人老师当面讲(AI 讲不通的,老师当面两分钟最有效)。
+「要请老师讲」不另存,每次按笔记现算;老师在「小鹰老师 · 本班情况」点「我讲过了」写一行 tutor_handoffs,
+记下那一刻错了几次。之后孩子又错了(times_wrong 变大)就重新出现 —— 讲过一次不等于会了;学会了(mastered)就不再出现。
+只数练习里判出来的错(event=wrong),小鹰老师自己记的 stuck 不算(同一段对话里会记好几遍)。
+
+## 首页「考考你」(同日)
+到期该回头考的点,不再只等孩子打开聊天才提: 学生首页小鹰老师卡片上直接写「昨天的 xx,10 秒考考你」,
+点了进聊天自动出 1–2 道题。这一问不扣次数,一天 REVIEW_DAILY 次(services/tutor 的 COST_REVIEW)。
 """
 from __future__ import annotations
 
@@ -29,13 +44,17 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.shared_store import store
 from app.core.timeutil import local_today, utc_now
-from app.models.tutor import TutorNote
+from app.models.tutor import TutorHandoff, TutorNote
 
 INTERVALS = (1, 3, 7)        # 停在 stage 0 / 1 / 2 时隔几天再考(刚讲完明天考);stage 到 3 = 学会
 EVENTS = ("taught", "stuck", "right", "wrong")
 TOPIC_MAX = 40
 DETAIL_MAX = 120
+HANDOFF_WRONG = 3            # 练习里同一个点错满几次、还没学会,就请老师当面讲
+HANDOFF_NOTE_MAX = 200
+REVIEW_DAILY = 1             # 首页「考考你」一天几次不扣次数
 
 
 def topic_key(topic: str) -> str:
@@ -118,9 +137,16 @@ async def profile_line(db: AsyncSession, user_id: int, today: Optional[date] = N
     mastered = int((await db.execute(
         select(func.count(TutorNote.id)).where(TutorNote.user_id == user_id, TutorNote.mastered.is_(True))
     )).scalar() or 0)
-    if not due and not learning and not mastered:
+    handoff = list((await db.execute(
+        select(TutorNote.topic).where(TutorNote.user_id == user_id, TutorNote.mastered.is_(False),
+                                      TutorNote.times_wrong >= HANDOFF_WRONG)
+        .order_by(TutorNote.times_wrong.desc(), TutorNote.updated_at.desc()).limit(3))).scalars().all())
+    if not due and not learning and not mastered and not handoff:
         return None
     parts = []
+    if handoff:
+        parts.append("这几个点练习里错了好几次,系统已经请他的老师当面讲: " + "、".join(handoff)
+                     + "(讲到时可以告诉他老师会再给他讲一次,换个角度讲,别一直在这一个点上磨)")
     if due:
         parts.append("今天该回头考: " + "、".join(
             n.topic + (f"(上次卡在: {n.detail})" if n.detail else "") for n in due))
@@ -136,14 +162,28 @@ async def tool_save_note(db: AsyncSession, user_id: int, inp: dict) -> dict:
     event = {"taught": "taught", "stuck": "stuck", "got_it": "right"}.get(status)
     if event is None:
         return {"ok": False, "reason": "status 只能是 taught / stuck / got_it"}
-    n = await record(db, user_id, str(inp.get("topic") or ""), event,
-                     kind=str(inp.get("kind") or "point"), detail=str(inp.get("detail") or ""))
+    topic = str(inp.get("topic") or "")
+    detail = str(inp.get("detail") or "")
+    missing = re.sub(r"\s+", " ", str(inp.get("missing") or "")).strip()[:TOPIC_MAX]
+    if missing and topic_key(missing) == topic_key(topic):
+        missing = ""
+    if missing and event == "stuck":
+        # 卡住是因为缺了前置: 原来那条写明缺什么,前置另记一条(明天一起回头考),见文件头「缺前置知识」
+        detail = (f"缺前置: {missing}" + (f";{detail}" if detail else ""))[:DETAIL_MAX]
+    n = await record(db, user_id, topic, event, kind=str(inp.get("kind") or "point"), detail=detail)
     if n is None:
         return {"ok": False, "reason": "topic 不能为空"}
+    pre = None
+    if missing and event == "stuck":
+        pre = await record(db, user_id, missing, "stuck", kind="point", detail=f"学「{n.topic}」时发现还没会")
     await db.commit()
     when = "已经学会了" if n.mastered else (f"{n.due_date} 回头考" if n.due_date else "")
-    return {"ok": True, "topic": n.topic, "next": when,
-            "note": "记好了。不用告诉孩子你记了笔记,接着讲就行"}
+    out = {"ok": True, "topic": n.topic, "next": when,
+           "note": "记好了。不用告诉孩子你记了笔记,接着讲就行"}
+    if pre is not None:
+        out["missing"] = pre.topic
+        out["note"] = "记好了。先把前置讲会、出一道题确认,再回来讲原来那个点。不用告诉孩子你记了笔记"
+    return out
 
 
 async def mark_reviewed_today(db: AsyncSession, user_id: int, topics: list[str]) -> None:
@@ -152,3 +192,110 @@ async def mark_reviewed_today(db: AsyncSession, user_id: int, topics: list[str])
     if keys:
         await db.execute(update(TutorNote).where(TutorNote.user_id == user_id, TutorNote.topic_key.in_(keys))
                          .values(due_date=_day(local_today() + timedelta(days=1))))
+
+
+# ---------------------------------------------------------------- 交给老师(见文件头)
+
+def _pending(n: TutorNote, h: Optional[TutorHandoff]) -> bool:
+    return h is None or h.handled_at is None or (h.wrong_at_handle or 0) < (n.times_wrong or 0)
+
+
+async def handoffs(db: AsyncSession, student_ids: list[int], *, include_handled: bool = False) -> list[dict]:
+    """这些学生里要请老师当面讲的点(还没学会、练习里错满 HANDOFF_WRONG 次)。
+    include_handled=False 只列还没讲过 / 讲过以后又错了的"""
+    if not student_ids:
+        return []
+    rows = (await db.execute(
+        select(TutorNote, TutorHandoff)
+        .outerjoin(TutorHandoff, TutorHandoff.note_id == TutorNote.id)
+        .where(TutorNote.user_id.in_(student_ids), TutorNote.mastered.is_(False),
+               TutorNote.times_wrong >= HANDOFF_WRONG)
+        .order_by(TutorNote.times_wrong.desc(), TutorNote.updated_at.desc())
+    )).all()
+    out = []
+    for n, h in rows:
+        pending = _pending(n, h)
+        if not pending and not include_handled:
+            continue
+        out.append({
+            "note_id": n.id, "student_id": n.user_id, "topic": n.topic, "kind": n.kind, "detail": n.detail,
+            "times_wrong": n.times_wrong or 0, "times_right": n.times_right or 0, "pending": pending,
+            "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+            # 讲过以后又错了: 老师上次讲的时候写了什么
+            "handled": None if h is None or h.handled_at is None else {
+                "at": h.handled_at.isoformat(), "by": h.handled_by_name or "", "note": h.handled_note or "",
+                "wrong_then": h.wrong_at_handle or 0},
+        })
+    return out
+
+
+async def handoff_count(db: AsyncSession, student_ids: list[int]) -> int:
+    return len(await handoffs(db, student_ids))
+
+
+async def handle_handoff(db: AsyncSession, note: TutorNote, actor_id: int, actor_name: str,
+                         text: Optional[str]) -> None:
+    """老师讲过了: 记下这一刻错了几次。不 commit"""
+    await db.execute(sqlite_insert(TutorHandoff).values(
+        note_id=note.id, user_id=note.user_id, wrong_at_handle=note.times_wrong or 0, handled_at=utc_now(),
+        handled_by=actor_id, handled_by_name=(actor_name or "")[:60],
+        handled_note=(text or "").strip()[:HANDOFF_NOTE_MAX] or None,
+    ).on_conflict_do_update(index_elements=[TutorHandoff.note_id], set_={
+        "wrong_at_handle": note.times_wrong or 0, "handled_at": utc_now(), "handled_by": actor_id,
+        "handled_by_name": (actor_name or "")[:60],
+        "handled_note": (text or "").strip()[:HANDOFF_NOTE_MAX] or None,
+    }))
+    # 讲过了: 明天让小鹰老师回头考一下,看当面讲的有没有讲会
+    note.due_date = _day(local_today() + timedelta(days=1))
+    note.stage = 0
+
+
+# ---------------------------------------------------------------- 首页「考考你」(见文件头)
+
+def _review_key(user_id: int, today: date) -> str:
+    return f"tutor:review:{user_id}:{today.isoformat()}"
+
+
+async def review_question(db: AsyncSession, user_id: int, today: Optional[date] = None) -> Optional[dict]:
+    """首页卡片上那一题: 今天到期、还没学会的第一条;今天的免费次数用过了就不给"""
+    today = today or local_today()
+    if int(await store.get(_review_key(user_id, today)) or 0) >= REVIEW_DAILY:
+        return None
+    due = await due_notes(db, user_id, 1, today)
+    if not due:
+        return None
+    n = due[0]
+    # 库里存 UTC naive,按北京日算是不是昨天记的
+    made = (n.updated_at + timedelta(hours=8)).date() if n.updated_at else None
+    return {"note_id": n.id, "topic": n.topic, "kind": n.kind,
+            "since": "昨天" if made is not None and (today - made).days == 1 else "上次"}
+
+
+async def review_note(db: AsyncSession, user_id: int, note_id: int, today: Optional[date] = None) -> Optional[TutorNote]:
+    """点了「考考你」的那条: 是他的、今天到期、还没学会才算数(只判断,不扣今天的免费次数)"""
+    today = today or local_today()
+    n = await db.get(TutorNote, note_id)
+    if n is None or n.user_id != user_id or n.mastered or not n.due_date or n.due_date > _day(today):
+        return None
+    return n
+
+
+async def claim_review(user_id: int, today: Optional[date] = None) -> bool:
+    """占掉今天的免费「考考你」(一天 REVIEW_DAILY 次)。限速检查过了才调,被限速的那一下不该占"""
+    return await store.incr_if_below(_review_key(user_id, today or local_today()), REVIEW_DAILY, 26 * 3600)
+
+
+async def release_review(user_id: int, today: Optional[date] = None) -> None:
+    """这次没调通: 把今天的免费「考考你」还回去"""
+    await store.incr(_review_key(user_id, today or local_today()), -1, 26 * 3600)
+
+
+def review_prompt(n: TutorNote) -> str:
+    """发给小鹰老师的那段(孩子看到的只是「考考我: 一般现在时」)"""
+    why = f"(上次卡在: {n.detail})" if n.detail else ""
+    if n.kind == "word":
+        how = f"用 make_practice 出这个词(words 就写 {n.topic},mode 用 meaning)"
+    else:
+        how = f"用 make_quiz 出 1–2 道题,topic 一字不改写「{n.topic}」(系统按它记他会没会)"
+    return (f"[系统] 孩子从首页点了「考考你」,回头考他以前学过的「{n.topic}」{why}。"
+            f"一句话开场(比如「来,10 秒考考你」),然后{how}。先别讲解,回答里不要写出答案。")

@@ -5,12 +5,18 @@
  * 时间线只能加不能改不能删 —— 谁答应了家长什么,出纠纷要有据。
  * 整条线索只有机构管理员能删(清测试号、刷出来的假线索);销售遇到不想跟的标「无效」,
  * 删了等于把自己转化差的痕迹一起抹掉。
+ *
+ * 体验期 + 老带新(10-29): 抽屉里「开通体验」给关联的学生号开 7 天限期授权(到期自动锁);
+ * 「邀请朋友」复制这家的邀请链接发给家长 —— 朋友用这个链接留电话并付了体验费(实收 > 0),这家的体验延 7 天,
+ * 最多算机构设置的几家。奖励规则只在这里写给销售看,**家长那边的页面不写「转发得 7 天」**(微信判诱导分享会封域名),
+ * 由销售私聊告诉家长。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Clock, LoaderCircle, Phone, Search, Trash2, X } from 'lucide-react';
+import { Clock, Copy, Gift, LoaderCircle, Phone, Search, Trash2, X } from 'lucide-react';
 import {
-  PROMO_STATUSES, addFollowUp, batchDeletePromoLeads, deletePromoLead, listFollowUps, listPromoLeads, updatePromoLead,
-  type FollowUp, type PromoLead, type PromoLeadList, type PromoStatus,
+  PROMO_STATUSES, addFollowUp, batchDeletePromoLeads, deletePromoLead, getLeadShare, inviteUrl, listFollowUps,
+  listPromoLeads, listTrialBooks, openTrial, shareProgressUrl, updatePromoLead,
+  type FollowUp, type LeadShare, type PromoLead, type PromoLeadList, type PromoStatus, type TrialBook,
 } from '../../api/promo';
 import { toast } from '../Toast';
 import Pager from './Pager';
@@ -28,9 +34,22 @@ const STATUS_TONE: Record<PromoStatus, string> = {
   opened: 'bg-violet-50 text-violet-700',
   won: 'bg-emerald-50 text-emerald-700',
   lost: 'bg-slate-100 text-slate-500',
+  refunded: 'bg-rose-50 text-rose-600',
 };
 
 const fmt = (s: string | null) => (s ? s.replace('T', ' ').slice(5, 16) : '');
+/** 2026-11-05 → 11-05 */
+const md = (d: string) => d.slice(5);
+
+/** 复制到剪贴板;没权限(老浏览器 / 非 https)退回 prompt 让人自己长按复制 */
+async function copyText(text: string, okMsg: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(okMsg, 'success');
+  } catch {
+    window.prompt('长按复制下面的链接', text);
+  }
+}
 
 interface Props {
   manager: boolean;
@@ -181,6 +200,17 @@ export default function PromoLeadsPanel({ manager, owners = [], refreshKey = 0, 
                 {l.child_grade && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{l.child_grade}</span>}
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[l.status]}`}>{l.status_label}</span>
                 {l.existing_account && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-600">老客户</span>}
+                {l.referred && <span className="rounded-full bg-pink-50 px-2 py-0.5 text-xs text-pink-600">朋友推荐 {l.referred_by}</span>}
+                {l.friends_total > 0 && (
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                    推荐了 {l.friends_total} 家{l.friends_counted ? `,${l.friends_counted} 家已付` : ''}
+                  </span>
+                )}
+                {l.trial && (
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${l.trial.active ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {l.trial.active ? `体验到 ${md(l.trial.last_day)}` : '体验已到期'}
+                  </span>
+                )}
                 {l.overdue && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">该跟进了</span>}
                 {l.studied_days != null && (
                   <span className={`rounded-full px-2 py-0.5 text-xs ${l.studied_days >= 5 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -291,6 +321,8 @@ function LeadDrawer({ lead, manager, owners, trialPrice, onClose, onSaved, onCha
       save({ status: s, paid_amount: n }, `已标「已付体验费」${n} 元`);
       return;
     }
+    if (s === 'refunded' && lead.referred && lead.referral_state === 'counted'
+      && !window.confirm('标「已退款」后,这家不再算进推荐人,推荐人家孩子的体验会少 7 天(今天还在学的保底到今天结束)。\n退款只写不清,改回去也不再算。确定吗?')) return;
     save({ status: s }, `已改成「${PROMO_STATUSES.find((x) => x.key === s)?.label}」`);
   };
 
@@ -306,6 +338,11 @@ function LeadDrawer({ lead, manager, owners, trialPrice, onClose, onSaved, onCha
             <p className="mt-0.5 text-xs text-slate-500">
               {[lead.parent_name, lead.child_grade, lead.channel_name && `卡: ${lead.channel_name}`, `${fmt(lead.created_at)} 扫码`].filter(Boolean).join(' · ')}
             </p>
+            {lead.referred && (
+              <p className="mt-1 text-xs text-pink-600">
+                朋友 {lead.referred_by} 推荐来的 · {lead.referral_label}
+              </p>
+            )}
           </div>
           <button type="button" onClick={onClose} aria-label="关闭" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
             <X className="h-5 w-5" />
@@ -352,6 +389,10 @@ function LeadDrawer({ lead, manager, owners, trialPrice, onClose, onSaved, onCha
               </button>
             </div>
           </section>
+
+          <TrialSection lead={lead} busy={busy} onSaved={(l) => { onSaved(l); listFollowUps(lead.id).then(setLogs).catch(() => {}); onChanged(); }} />
+
+          <ShareSection lead={lead} />
 
           <section className="rounded-xl bg-white p-4">
             <h3 className="text-sm font-bold text-slate-700">备注 / 实收</h3>
@@ -452,5 +493,175 @@ function LeadDrawer({ lead, manager, owners, trialPrice, onClose, onSaved, onCha
         </div>
       </aside>
     </div>
+  );
+}
+
+
+/** 开通体验: 给关联的学生号开 7 天(+ 朋友延的)限期授权,到期自动锁 */
+function TrialSection({ lead, busy, onSaved }: { lead: PromoLead; busy: boolean; onSaved: (l: PromoLead) => void }) {
+  const [books, setBooks] = useState<TrialBook[] | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState('');
+  const t = lead.trial;
+
+  const load = async () => {
+    setOpen(true);
+    if (books) return;
+    try {
+      setBooks((await listTrialBooks(lead.id)).items);
+    } catch (e) {
+      toast(errText(e, '书单加载失败'), 'error');
+      setOpen(false);
+    }
+  };
+
+  const submit = async () => {
+    const ids = [...picked];
+    if (!ids.length) return;
+    setSaving(true);
+    try {
+      const l = await openTrial(lead.id, ids);
+      onSaved(l);
+      setPicked(new Set());
+      setOpen(false);
+      setBooks(null);
+      toast(l.trial ? `已开通,孩子能学到 ${md(l.trial.last_day)}` : '已开通', 'success');
+    } catch (e) {
+      toast(errText(e, '没开通上'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const shown = (books ?? []).filter((b) => !filter.trim() || b.name.includes(filter.trim()));
+
+  return (
+    <section className="rounded-xl bg-white p-4">
+      <h3 className="text-sm font-bold text-slate-700">体验期</h3>
+      {t ? (
+        <div className="mt-1 space-y-1 text-sm text-slate-700">
+          <p>
+            {t.active
+              ? <>孩子能学到 <b>{md(t.last_day)}</b>(还剩 {t.days_left} 天)</>
+              : <>体验 {md(t.last_day)} 已到期,书已经锁上</>}
+          </p>
+          {t.added_days > 0 && <p className="text-xs text-emerald-700">其中 {t.counted} 家朋友付了体验费,多了 {t.added_days} 天</p>}
+          <p className="text-xs text-slate-500">
+            {t.books.length ? `开的书: ${t.books.map((b) => b.name).join('、')}` : '开的书后来都改成了别的授权(兑换码 / 老师分配),体验不再管它们'}
+          </p>
+        </div>
+      ) : (
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          {lead.student_id
+            ? '选几本书给孩子开 7 天体验,到期自动锁,不用记着去关。孩子本来就有的书不动。'
+            : '先在上面关联孩子的学生号,再开通体验。'}
+        </p>
+      )}
+      {lead.student_id && (!t || t.active) && !open && (
+        <button type="button" disabled={busy} onClick={load}
+          className="mt-2 min-h-9 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white disabled:opacity-40">
+          {t ? '再加几本书' : '开通 7 天体验'}
+        </button>
+      )}
+      {open && (
+        <div className="mt-2 space-y-2">
+          {books === null ? (
+            <LoaderCircle className="h-4 w-4 animate-spin text-slate-400" aria-label="加载中" />
+          ) : (
+            <>
+              <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="搜书名" aria-label="搜书名"
+                className="min-h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-violet-400" />
+              <ul className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-100 p-1">
+                {shown.map((b) => (
+                  <li key={b.id}>
+                    <label className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm ${b.has ? 'text-slate-400' : 'text-slate-700 hover:bg-slate-50'}`}>
+                      <input type="checkbox" disabled={b.has} checked={picked.has(b.id)} className="h-4 w-4 accent-violet-600"
+                        onChange={() => setPicked((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(b.id)) next.delete(b.id); else next.add(b.id);
+                          return next;
+                        })} />
+                      <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                      {b.has && <span className="shrink-0 text-xs">孩子已有</span>}
+                    </label>
+                  </li>
+                ))}
+                {shown.length === 0 && <li className="px-2 py-3 text-center text-xs text-slate-400">没有能开体验的书</li>}
+              </ul>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => { setOpen(false); setPicked(new Set()); }}
+                  className="min-h-9 rounded-lg border border-slate-200 px-3 text-sm text-slate-600">取消</button>
+                <button type="button" disabled={saving || !picked.size} onClick={submit}
+                  className="ml-auto min-h-9 rounded-lg bg-violet-600 px-4 text-sm font-bold text-white disabled:opacity-40">
+                  {saving ? '开通中…' : `开通${picked.size ? ` ${picked.size} 本` : ''}`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 邀请朋友: 复制这家的邀请链接 + 推荐来的朋友各算不算。奖励规则写给销售看,由销售私聊告诉家长 */
+function ShareSection({ lead }: { lead: PromoLead }) {
+  const [share, setShare] = useState<LeadShare | null>(null);
+  // 「加载中」由请求参数和最后一次拿到结果的参数是否一致推出来,不在 effect 里同步 setState(同看板那段)
+  const reqKey = `${lead.id}|${lead.friends_total}|${lead.friends_counted}`;
+  const [doneKey, setDoneKey] = useState('');
+  const loading = doneKey !== reqKey;
+
+  useEffect(() => {
+    let alive = true;
+    getLeadShare(lead.id)
+      .then((r) => { if (alive) setShare(r); })
+      .catch(() => { if (alive) setShare(null); })
+      .finally(() => { if (alive) setDoneKey(reqKey); });
+    return () => { alive = false; };
+  }, [lead.id, reqKey]);
+
+  return (
+    <section className="rounded-xl bg-white p-4">
+      <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-700"><Gift className="h-4 w-4 text-pink-500" aria-hidden />邀请朋友</h3>
+      {loading && !share && <LoaderCircle className="mt-2 h-4 w-4 animate-spin text-slate-400" aria-label="加载中" />}
+      {share && !share.enabled && <p className="mt-1 text-xs text-slate-500">{share.reason}</p>}
+      {share?.enabled && share.card_code && share.share_code && (
+        <>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            规则(私聊告诉家长,别写进朋友圈文案): 朋友用这家的链接留电话、付了体验费,这家孩子的体验延 {share.days_each} 天,
+            最多算 {share.cap} 家。只留电话、只加微信不算;朋友退了体验费就不算了。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={() => copyText(inviteUrl(share.card_code!, share.share_code!), '邀请链接已复制,发给家长转给朋友')}
+              className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-pink-500 px-3 text-sm font-semibold text-white">
+              <Copy className="h-4 w-4" aria-hidden /> 复制邀请链接
+            </button>
+            {share.view_code && (
+              <button type="button" onClick={() => copyText(shareProgressUrl(share.view_code!), '进度链接已复制,只发给这位家长')}
+                className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700">
+                <Copy className="h-4 w-4" aria-hidden /> 复制看进度的链接
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">看进度的链接里有朋友的手机尾号,只发给这位家长,别让他转出去。</p>
+          {share.friends.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm">
+              {share.friends.map((f) => (
+                <li key={f.lead_id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-1.5">
+                  <span className="tabular-nums text-slate-700">{f.phone}</span>
+                  <span className={`text-xs ${f.state === 'counted' ? 'font-semibold text-emerald-700' : 'text-slate-500'}`}>{f.label}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {share.friends.length > 0 && (
+            <p className="mt-1 text-xs text-slate-500">算数 {share.counted} / 最多 {share.cap} 家</p>
+          )}
+        </>
+      )}
+    </section>
   );
 }

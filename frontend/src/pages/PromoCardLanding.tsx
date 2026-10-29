@@ -8,11 +8,15 @@
  * - 只问手机号(必填)+ 孩子年级 + 怎么称呼;不要验证码(生产没配短信,加了就是一道挡死所有人的门)
  * - 二维码图片要能长按识别: 带 data-allow-save(全站长按拦截认它),微信里长按图片 → 「识别图中二维码」
  * - 不写「转发有奖」「分享领红包」—— 微信判利益诱导分享会封域名,学生端也在这个域名下
+ * - 朋友发来的链接带 ?f={分享码}: 原样带给后端(只认同机构的),登记成功后记成那家推荐的。
+ *   登记成功页给一个中性的「邀请朋友一起体验」+ 复制链接;**奖励(延 7 天)这里一个字都不写**,由销售私聊告诉家长
  */
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { CheckCircle2, LoaderCircle, Phone } from 'lucide-react';
-import { getPublicCard, submitCardLead, type CardSubmitResult, type PublicCard } from '../api/promo';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { CheckCircle2, Copy, LoaderCircle, Phone } from 'lucide-react';
+import {
+  getPublicCard, inviteUrl, submitCardLead, type CardSubmitResult, type PublicCard,
+} from '../api/promo';
 import { formatPrice } from '../utils/promoPrice';
 
 const errText = (e: unknown, fallback: string) => {
@@ -26,6 +30,8 @@ const STUDY_SITE = 'es.feiyingsteam.com';
 
 export default function PromoCardLanding() {
   const { code = '' } = useParams();
+  const [params] = useSearchParams();
+  const ref = (params.get('f') || '').slice(0, 30);
   const [info, setInfo] = useState<PublicCard | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState({ parent_phone: '', parent_name: '', child_grade: '' });
@@ -56,7 +62,7 @@ export default function PromoCardLanding() {
     setFormError(null);
     setSubmitting(true);
     try {
-      setDone(await submitCardLead(code, { ...form, parent_phone: phone }));
+      setDone(await submitCardLead(code, { ...form, parent_phone: phone, ref: ref || undefined }));
     } catch (err) {
       setFormError(errText(err, '提交没成功,请检查网络后再试一次'));
     } finally {
@@ -149,6 +155,7 @@ export default function PromoCardLanding() {
               <p className="mt-0.5 select-all font-mono text-base font-bold tracking-wide text-[#FF6B35]">{STUDY_SITE}</p>
               <p className="mt-0.5 text-xs text-orange-800/80">老师开通账号后,用手机或电脑浏览器打开这个网址登录就能学。建议现在收藏。</p>
             </div>
+            {done.share && <InviteBlock share={done.share} />}
           </section>
         ) : (
           <form onSubmit={submit} className="rounded-2xl bg-white p-5 shadow-sm" noValidate>
@@ -203,5 +210,36 @@ export default function PromoCardLanding() {
         )}
       </div>
     </main>
+  );
+}
+
+
+/** 登记成功后: 邀请朋友一起体验(中性措辞,不写奖励)+ 看看哪些朋友来了 */
+function InviteBlock({ share }: { share: NonNullable<CardSubmitResult['share']> }) {
+  const [copied, setCopied] = useState(false);
+  const url = inviteUrl(share.card_code, share.share_code);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      window.prompt('长按复制下面的链接', url);
+    }
+  };
+  return (
+    <div className="mt-4 rounded-xl border border-pink-100 bg-pink-50/60 px-4 py-3 text-left text-sm leading-6 text-pink-900">
+      <p className="font-semibold">邀请朋友一起体验</p>
+      <p className="mt-0.5 text-xs text-pink-900/80">身边有孩子也在学英语的朋友,可以把这个链接发给他。</p>
+      <button type="button" onClick={copy}
+        className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-white px-3 text-sm font-semibold text-pink-600 shadow-sm">
+        <Copy className="h-4 w-4" aria-hidden /> {copied ? '已复制' : '复制邀请链接'}
+      </button>
+      {share.view_code && (
+        <p className="mt-2 text-xs">
+          <Link to={`/c/share/${encodeURIComponent(share.view_code)}`} className="text-pink-700 underline">看看哪些朋友来了</Link>
+          <span className="text-pink-900/60"> · 建议收藏这个页面</span>
+        </p>
+      )}
+    </div>
   );
 }

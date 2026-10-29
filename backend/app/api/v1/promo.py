@@ -1,7 +1,9 @@
 """地推体验卡 + 销售跟单 API —— 口径与规矩全在 services/promo.py
 
 三组端点:
-- 公开(卡上的二维码打开的落地页,无鉴权): GET /promo/public/{code}、POST /promo/public/{code}/leads
+- 公开(卡上的二维码打开的落地页,无鉴权): GET /promo/public/{code}、POST /promo/public/{code}/leads、
+  GET /promo/public/share/{看进度码}(推荐人家长看几家朋友付了体验费、孩子的体验到哪天)
+- 体验期 + 老带新(10-29): GET /promo/leads/{id}/trial-books、POST /promo/leads/{id}/trial、GET /promo/leads/{id}/share
 - 销售 / 机构管理员跟单(销售只看自己的,管理员看全机构): /promo/leads...、/promo/me...
 - 机构管理员管理: 销售账号 /promo/sales...、卡码 /promo/channels...、看板 /promo/board、设置 /promo/settings
 
@@ -55,6 +57,7 @@ class LeadSubmit(BaseModel):
     parent_phone: str = Field(..., max_length=30)
     parent_name: Optional[str] = Field(None, max_length=100)
     child_grade: Optional[str] = Field(None, max_length=50)
+    ref: Optional[str] = Field(None, max_length=30)   # 朋友发来的链接里的分享码(/c/{卡码}?f=…)
 
 
 class LeadUpdate(BaseModel):
@@ -120,6 +123,12 @@ class LeadBatchDelete(BaseModel):
 class SettingsUpdate(BaseModel):
     trial_price: Optional[float] = Field(None, allow_inf_nan=False)   # 元,最多两位小数(如 9.9);范围在 save_settings 判
     offer_text: Optional[str] = Field(None, max_length=500)
+    referral_enabled: Optional[bool] = None
+    referral_max: Optional[int] = None        # 最多算几家朋友(0..20);范围在 save_settings 判(422 英文串没用)
+
+
+class TrialOpen(BaseModel):
+    book_ids: list[int] = Field(..., min_length=1, max_length=50)
 
 
 # ================== 公开: 卡上的二维码 ==================
@@ -147,6 +156,13 @@ async def public_submit(code: str, body: LeadSubmit, request: Request, db: Async
     await rate_limit.check(("promo-submit", ip), 30, 600, "提交太频繁了,请 10 分钟后再试")
     await rate_limit.check(("promo-submit-code", (code or "").upper()[:16]), 60, 600, "这张卡提交太频繁了,请稍后再试")
     return await svc.submit_lead(db, code, body.model_dump())
+
+
+@router.get("/promo/public/share/{view_code}")
+async def public_share_progress(view_code: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """推荐人家长看进度(公开,链接只在这家登记成功页和销售那里)。只写事实,朋友手机号打码,不出孩子姓名"""
+    await rate_limit.check(("promo-share-view", audit_log.client_ip(request) or "-"), 120, 60, "打开太频繁了,请稍后再试")
+    return await svc.share_progress(db, view_code)
 
 
 # ================== 销售: 我的资料与二维码 ==================
@@ -290,14 +306,30 @@ async def update_lead(lead_id: int, body: LeadUpdate, request: Request, db: Asyn
         svc.add_follow_up(db, lead, actor, ";".join(notes), status_after=data["status"])
     elif notes:
         svc.add_follow_up(db, lead, actor, ";".join(notes))
+    await _referral_hooks(db, lead, actor)
     await db.commit()
+    return await _lead_full(db, lead)
+
+
+async def _referral_hooks(db: AsyncSession, lead: PromoLead, actor: User) -> None:
+    """改了状态 / 实收之后: 退款 → 推荐人少一家;付了体验费(实收 > 0)→ 计入推荐人。都在同一个事务里"""
+    await db.flush()
+    if lead.status == "refunded":
+        await svc.revoke_referral(db, lead, actor)
+    else:
+        await svc.maybe_credit(db, lead, actor)
+
+
+async def _lead_full(db: AsyncSession, lead: PromoLead) -> dict:
+    now = datetime.utcnow()
     users = await svc._users_by_id(db, [lead.sales_user_id, lead.student_id])
     chs = {}
     if lead.channel_id:
         ch = await db.get(PromoChannel, lead.channel_id)
         chs = {ch.id: ch} if ch else {}
     sd = await svc.studied_days(db, [lead])
-    return svc.lead_out(lead, users, chs, now, sd.get(lead.id))
+    ex = await svc.lead_extras(db, [lead])
+    return svc.lead_out(lead, users, chs, now, sd.get(lead.id), ex.get(lead.id))
 
 
 @router.post("/promo/leads/{lead_id}/follow-ups")
@@ -312,8 +344,61 @@ async def add_follow_up(lead_id: int, body: FollowUpCreate, db: AsyncSession = D
     if body.next_follow_at is not None:
         lead.next_follow_at = svc.parse_local(body.next_follow_at)
     svc.add_follow_up(db, lead, actor, body.content.strip(), status_after=st)
+    if st:
+        await _referral_hooks(db, lead, actor)
     await db.commit()
     return await svc.follow_ups(db, lead_id)
+
+
+# ================== 体验期 + 老带新(10-29) ==================
+
+@router.get("/promo/leads/{lead_id}/trial-books")
+async def trial_books(lead_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_promo_staff)):
+    """开体验能选的书: 本机构的 + 平台公开的;卡包机构凭卡才能开的不在里面。孩子已经有的标出来(选了也会跳过)"""
+    lead = await svc.load_lead(db, lead_id, current_user.org_id, _scope(current_user))
+    books = await svc.openable_books(db, lead.org_id)
+    have: set[int] = set()
+    if lead.student_id:
+        from app.models.learning import BookAssignment
+        have = set((await db.execute(
+            select(BookAssignment.book_id).where(BookAssignment.student_id == lead.student_id)
+        )).scalars().all())
+    for b in books:
+        b["has"] = b["id"] in have
+    return {"items": books, "trial_days": svc.TRIAL_DAYS}
+
+
+@router.post("/promo/leads/{lead_id}/trial")
+async def open_trial(lead_id: int, body: TrialOpen, request: Request, db: AsyncSession = Depends(get_db),
+                     current_user: User = Depends(get_promo_staff)):
+    """开通 7 天体验(或给开着的体验加书): 给关联的学生号开限期授权,到期自动锁。孩子本来就有的书不动"""
+    lead = await svc.load_lead(db, lead_id, current_user.org_id, _scope(current_user))
+    actor = acting_user(current_user)
+    trial, added, skipped = await svc.open_trial(db, lead, body.book_ids, actor)
+    last = (trial.expires_at + timedelta(hours=8) - timedelta(seconds=1)).strftime("%m-%d")
+    note = f"开通体验《{'》《'.join(added)}》,到 {last}"
+    if skipped:
+        note += f"(孩子本来就有的《{'》《'.join(skipped)}》没动)"
+    svc.add_follow_up(db, lead, actor, note, status_after=lead.status)
+    audit_log.record(db, request, current_user, "promo.trial_open",
+                     f"体验卡线索 {svc.mask_phone(lead.parent_phone)} 开通体验: {'、'.join(added)},到 {last}",
+                     target_type="promo_lead", target_id=lead.id,
+                     detail={"student_id": lead.student_id, "added": added, "skipped": skipped,
+                             "expires_at": trial.expires_at.isoformat()})
+    await db.commit()
+    return await _lead_full(db, lead)
+
+
+@router.get("/promo/leads/{lead_id}/share")
+async def lead_share(lead_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_promo_staff)):
+    """这家的邀请链接(销售复制发给家长)+ 推荐来的朋友各算不算"""
+    lead = await svc.load_lead(db, lead_id, current_user.org_id, _scope(current_user))
+    info = await svc.share_info(db, lead)
+    await db.commit()
+    ref = await svc.referral_settings(db, lead.org_id)
+    friends = await svc.friends_of(db, lead.org_id, lead.id, ref["max_count"])
+    return {**info, "friends": friends, "cap": ref["max_count"], "days_each": svc.REFERRAL_DAYS,
+            "counted": sum(1 for f in friends if f["state"] == "counted")}
 
 
 def _lead_summary(snaps: list[dict]) -> str:
@@ -719,7 +804,8 @@ async def put_promo_settings(body: SettingsUpdate, request: Request, db: AsyncSe
                              current_user: User = Depends(get_promo_manager)):
     _no_admin(current_user)
     s = await svc.save_settings(db, current_user.org_id, body.model_dump(exclude_unset=True))
-    audit_log.record(db, request, current_user, "promo.settings", f"体验卡设置: 体验价 {s['trial_price']} 元",
+    ref = f",邀请朋友{'开' if s['referral_enabled'] else '关'}、最多算 {s['referral_max']} 家"
+    audit_log.record(db, request, current_user, "promo.settings", f"体验卡设置: 体验价 {s['trial_price']} 元{ref}",
                      detail=s)
     await db.commit()
     return s

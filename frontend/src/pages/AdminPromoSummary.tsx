@@ -109,6 +109,7 @@ export default function AdminPromoSummary() {
                 </div>
                 <p className="mt-0.5 text-xs text-slate-500">
                   体验价 ¥{formatPrice(r.trial_price ?? 0)} · {r.sales} 个销售 · {r.active_channels}/{r.channels} 版卡在用 · 扫开 {r.views} 次
+                  {r.referred > 0 && <span className="ml-1 text-pink-600">· 朋友推荐来 {r.referred},付费 {r.referred_paid}</span>}
                   {r.overdue > 0 && <span className="ml-1 font-semibold text-red-600">· {r.overdue} 条该跟进</span>}
                 </p>
                 {!notStarted(r) && (
@@ -136,7 +137,7 @@ export default function AdminPromoSummary() {
         </ul>
 
         <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
-          <table className="w-full min-w-[1080px] text-sm">
+          <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-3 py-2 font-semibold">校区</th>
@@ -145,6 +146,8 @@ export default function AdminPromoSummary() {
                 <th className="px-3 py-2 text-right font-semibold">卡 在用/全部</th>
                 <th className="px-3 py-2 text-right font-semibold">扫开</th>
                 {STEPS.map((c) => <th key={c.k} className="px-3 py-2 text-right font-semibold">{c.label}</th>)}
+                <th className="px-3 py-2 text-right font-semibold">推荐来的</th>
+                <th className="px-3 py-2 text-right font-semibold">推荐后付费</th>
                 <th className="px-3 py-2 text-right font-semibold">实收</th>
                 <th className="px-3 py-2 text-right font-semibold">该跟进</th>
                 <th className="px-3 py-2 font-semibold">最近留电话</th>
@@ -175,6 +178,8 @@ export default function AdminPromoSummary() {
                       </td>
                     );
                   })}
+                  <td className="px-3 py-2 text-right tabular-nums">{r.referred}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.referred_paid}</td>
                   <td className="px-3 py-2 text-right tabular-nums">¥{formatPrice(r.revenue)}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${r.overdue > 0 ? 'font-semibold text-red-600' : ''}`}>{r.overdue}</td>
                   <td className="px-3 py-2 text-xs text-slate-500">{fmtTime(r.last_lead_at) || '—'}</td>
@@ -197,6 +202,8 @@ export default function AdminPromoSummary() {
                       </td>
                     );
                   })}
+                  <td className="px-3 py-2 text-right tabular-nums">{total.referred}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{total.referred_paid}</td>
                   <td className="px-3 py-2 text-right tabular-nums">¥{formatPrice(total.revenue)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{total.overdue}</td>
                   <td className="px-3 py-2" />
@@ -276,6 +283,7 @@ function OrgDetail({ org, start, end, onClose }: { org: OrgSummaryRow; start: st
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {r.channels} 版卡 · 扫开 {r.views} 次
+                      {r.referred > 0 && <span className="ml-1 text-pink-600">· 朋友推荐来 {r.referred},付费 {r.referred_paid}</span>}
                       {r.overdue > 0 && <span className="ml-1 font-semibold text-red-600">· {r.overdue} 条该跟进</span>}
                     </p>
                     <dl className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">

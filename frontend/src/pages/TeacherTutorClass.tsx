@@ -3,6 +3,7 @@
  *
  * 一页看本班孩子用学习助手的情况,从上到下:
  * 1. 需要关心的孩子(services/tutor_safety): 孩子说到难过、被欺负、想伤害自己,没处理的排最前,处理时写一句
+ * 1.5 要请你当面讲的点(10-29,services/tutor_notes「交给老师」): 小鹰老师的练习里同一个点错了好几次还没会
  * 2. 这几天: 谁问了几次、最近一次、还卡着几个点(点名字进学生详情页看对话)
  * 3. 全班卡得最多的知识点 / 单词(小鹰老师的笔记里记的)
  * 4. 效果: 问过小鹰老师的词,在正式练习里拼对率前后对比(services/tutor_insight)。不够 5 个词不下结论
@@ -10,7 +11,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HeartHandshake, MessageCircle } from 'lucide-react';
+import { HeartHandshake, MessageCircle, Presentation } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import TutorAlertList from '../components/tutor/TutorAlertList';
 import {
@@ -18,6 +19,7 @@ import {
   type AlertStatus, type TutorClassSummary,
 } from '../api/tutor';
 import EffectBlock from '../components/tutor/TutorEffectBlock';
+import TutorHandoffList from '../components/tutor/TutorHandoffList';
 import { getErrorMessage } from '../utils/errorMessage';
 
 export default function TeacherTutorClass() {
@@ -49,6 +51,19 @@ export default function TeacherTutorClass() {
           </p>
           <div className="mt-4">
             <TutorAlertList load={loadAlerts} handle={handleAlert} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+            <Presentation className="h-5 w-5 text-orange-600" aria-hidden="true" />要请你当面讲的点
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            孩子在小鹰老师出的练习里,同一个点错了好几次还没会。小鹰老师已经换着讲法讲过,也查过是不是缺前面的知识,
+            还是没讲通的就列在这里: 你当面讲两分钟,比让它再讲十遍有用。讲完点「我讲过了」,明天小鹰老师会回头考他一下。
+          </p>
+          <div className="mt-3">
+            <TutorHandoffList />
           </div>
         </section>
 

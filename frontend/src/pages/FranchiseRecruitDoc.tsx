@@ -510,6 +510,7 @@ export default function FranchiseRecruitDoc({ fullPay = false }: { fullPay?: boo
             <tr><td className={`${td} text-center`}>同一道题追问</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>3 次不另算</td><td className={td}>15 分钟内接着问(快速回答),孩子答不上来可以放心多问几句</td></tr>
             <tr><td className={`${td} text-center`}>练习讲评</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>不算次数</td><td className={td}>做完小鹰老师出的练习,它讲哪里错了、为什么,不另扣次数</td></tr>
             <tr><td className={`${td} text-center`}>不够用再买</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>¥0.3 / 次</td><td className={td}>1,000 次起(¥300),到账进机构次数池,老师在后台分给学生</td></tr>
+            <tr><td className={`${td} text-center`}>老师自己用</td><td className={`${td} text-center font-bold text-[#FF6B35]`}>每月 1,000 次封顶</td><td className={td}>备课、出练习卷(带答案能打印)、看全班卡在哪;每问一次从机构次数池计 1 次</td></tr>
           </tbody>
         </table>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] leading-5">

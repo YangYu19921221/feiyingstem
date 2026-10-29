@@ -114,7 +114,10 @@ async def org_info(
     from app.services import tutor
     tutor_info = None
     if tutor.uses_pool(org.id) and await tutor.available_to(db, current_user):
-        tutor_info = await tutor.pool_status(db, org.id)
+        from app.services import teacher_tutor
+        # 池子的 used 里也有老师自己问小鹰老师用掉的(教师端,10-29),分开写
+        tutor_info = {**await tutor.pool_status(db, org.id),
+                      "teacher_used": await teacher_tutor.usage_by_org(db, org.id)}
     return {
         "id": org.id, "name": org.name, "code": org.code, "plan": org.plan,
         "student_quota": org.student_quota, "active_students": active,

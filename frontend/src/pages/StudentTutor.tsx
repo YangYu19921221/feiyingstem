@@ -17,6 +17,8 @@
  *   快速回答、不带新照片,最多 3 次不扣(后端 services/tutor.followup_state,回答完的 done 事件带 followup)。
  *   回答下面给三个快捷回复「给我一点提示 / 还是不会,讲给我听 / 再出一道类似的」—— 孩子卡住时不用自己组织语言,
  *   助手按规则先提示、试过两次还不会就讲答案和理由并出同类题。次数用完了也能接着追问这道题
+ * - 首页「考考你」(10-29,后端 services/tutor_notes): 首页卡片点了带 location.state.review 进来,这里自动发
+ *   (孩子自己点的,而且一天第一次不扣次数);考哪个点由服务器从笔记里拼,前端只传 note_id
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -59,7 +61,7 @@ interface ChatMsg {
   /** 这次刚发 / 刚收到的(从下面浮上来);翻出来的历史记录不做动画,不然一屏一起动 */
   fresh?: boolean;
   /** 没调通时「再问一次」要用的原话 */
-  retry?: { text: string; image: Img | null; file?: File | null; mode: TutorMode; userKey: string; quizId?: number; care?: boolean };
+  retry?: { text: string; image: Img | null; file?: File | null; mode: TutorMode; userKey: string; quizId?: number; care?: boolean; reviewNoteId?: number };
 }
 
 /** 回答下面的快捷回复: 孩子卡住时点一下就行,不用自己想怎么说(追问不另算) */
@@ -141,6 +143,16 @@ export default function StudentTutor() {
     getTutorStatus().then(setStatus).catch((e) => setStatusError(getErrorMessage(e, '学习助手打不开')));
   }, []);
   useEffect(() => { refreshStatus(); }, [refreshStatus]);
+
+  // 首页「考考你」: 等状态到了再发(send 要看 status.enabled);state 用完马上清掉,刷新不会再发一遍
+  const [pendingReview, setPendingReview] = useState<{ id: number; topic: string } | null>(null);
+  useEffect(() => {
+    const rv = (location.state as { review?: { id: number; topic: string } } | null)?.review;
+    if (rv) {
+      setPendingReview(rv);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate]);
 
   // 从别的页面带着问题进来: 只填好,不自动发
   useEffect(() => {
@@ -238,7 +250,7 @@ export default function StudentTutor() {
     else stopWantedRef.current = true;
   };
 
-  const send = async (opts?: { text?: string; image?: Img | null; file?: File | null; mode?: TutorMode; replace?: string[]; quizId?: number; care?: boolean }) => {
+  const send = async (opts?: { text?: string; image?: Img | null; file?: File | null; mode?: TutorMode; replace?: string[]; quizId?: number; care?: boolean; reviewNoteId?: number }) => {
     // 没传 opts = 从输入框发的;传了 = 点建议 / 再问一次(不动输入框里正在写的字)
     const fromInput = !opts;
     const text = (fromInput ? input : opts.text ?? '').trim();
@@ -285,7 +297,7 @@ export default function StudentTutor() {
     const session = sessionRef.current;
     const live = () => sessionRef.current === session;
     try {
-      await askTutor({ text, conversationId: convId, image: img?.blob, file: fileToSend, mode: useMode, quizId: opts?.quizId, care: opts?.care }, (ev) => {
+      await askTutor({ text, conversationId: convId, image: img?.blob, file: fileToSend, mode: useMode, quizId: opts?.quizId, care: opts?.care, reviewNoteId: opts?.reviewNoteId }, (ev) => {
         if (!live()) {
           // 已经开了新对话: 这次回答不要了,拿到提问 id 就让服务端停下(一个字没出的退回次数)
           if (ev.type === 'meta') stopTutor(ev.user_message_id).catch(() => ctrl.abort());
@@ -317,10 +329,11 @@ export default function StudentTutor() {
           setNow(Date.now());
           if (ev.stopped) patchBot((m) => ({ ...m, stopped: true }));
           if (ev.refunded) setStatus((s) => (s ? { ...s, left: s.left + cost, used: Math.max(0, s.used - cost) } : s));
+          if (opts?.reviewNoteId) refreshStatus();
         } else if (ev.type === 'error') {
           patchBot((m) => ({
             ...m, failed: !m.text, text: m.text || ev.message,
-            retry: !m.text ? { text, image: img, file: fileToSend, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId, care: opts?.care } : undefined,
+            retry: !m.text ? { text, image: img, file: fileToSend, mode: useMode, userKey: userMsg.key, quizId: opts?.quizId, care: opts?.care, reviewNoteId: opts?.reviewNoteId } : undefined,
           }));
           if (ev.refunded) setStatus((s) => (s ? { ...s, left: s.left + cost, used: Math.max(0, s.used - cost) } : s));
         }
@@ -373,6 +386,12 @@ export default function StudentTutor() {
   };
   const sendRef = useRef(send);
   sendRef.current = send;
+  useEffect(() => {
+    if (!pendingReview || !status?.enabled || sending) return;
+    const rv = pendingReview;
+    setPendingReview(null);
+    void sendRef.current({ text: `考考我: ${rv.topic}`, image: null, mode: 'fast', reviewNoteId: rv.id });
+  }, [pendingReview, status, sending]);
   useEffect(() => {
     if (sending || !pendingFeedback) return;
     const { r, conv } = pendingFeedback;
@@ -599,6 +618,20 @@ export default function StudentTutor() {
               >
                 我会按你的年级讲,觉得太难或太简单都能改 →
               </button>
+              {status.review && (
+                <button
+                  type="button"
+                  disabled={disabled || sending}
+                  onClick={() => send({ text: `考考我: ${status.review!.topic}`, image: null, mode: 'fast', reviewNoteId: status.review!.note_id })}
+                  className="mt-4 flex min-h-12 w-full items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-left text-sm text-sky-900 hover:bg-sky-100 disabled:opacity-50"
+                >
+                  <span className="min-w-0 flex-1">
+                    {status.review.since}讲过的「{status.review.topic}」,10 秒考考你
+                    <span className="block text-xs text-sky-700/80">这一次不算次数</span>
+                  </span>
+                  <Zap className="h-4 w-4 shrink-0" aria-hidden="true" />
+                </button>
+              )}
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {[...SUGGESTIONS, status.picture_enabled ? SUGGESTION_PICTURE : SUGGESTION_GRAMMAR].map((s) => (
                   <button
@@ -703,7 +736,7 @@ export default function StudentTutor() {
                         type="button"
                         onClick={() => {
                           const r = m.retry!;
-                          void send({ text: r.text, image: r.image, file: r.file, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId, care: r.care });
+                          void send({ text: r.text, image: r.image, file: r.file, mode: r.mode, replace: [m.key, r.userKey], quizId: r.quizId, care: r.care, reviewNoteId: r.reviewNoteId });
                         }}
                         className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
                       >

@@ -46,6 +46,7 @@ const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'
 const TeacherParentBinding = lazyWithRetry(() => import('./pages/TeacherParentBinding'));
 const TeacherTutorQuota = lazyWithRetry(() => import('./pages/TeacherTutorQuota'));
 const TeacherTutorClass = lazyWithRetry(() => import('./pages/TeacherTutorClass'));
+const TeacherTutor = lazyWithRetry(() => import('./pages/TeacherTutor'));
 const AdminTutorAlerts = lazyWithRetry(() => import('./pages/AdminTutorAlerts'));
 const TeacherCoach = lazyWithRetry(() => import('./pages/TeacherCoach'));
 const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'));
@@ -60,6 +61,7 @@ const TeacherLeads = lazyWithRetry(() => import('./pages/TeacherLeads'));
 const ReferralLeads = lazyWithRetry(() => import('./pages/ReferralLeads'));
 const ReferralLanding = lazyWithRetry(() => import('./pages/ReferralLanding'));
 const PromoCardLanding = lazyWithRetry(() => import('./pages/PromoCardLanding'));
+const PromoShareProgress = lazyWithRetry(() => import('./pages/PromoShareProgress'));
 const SalesWorkbench = lazyWithRetry(() => import('./pages/SalesWorkbench'));
 const AdminPromo = lazyWithRetry(() => import('./pages/AdminPromo'));
 const AdminPromoSummary = lazyWithRetry(() => import('./pages/AdminPromoSummary'));
@@ -268,6 +270,7 @@ function App() {
         <Route path="/invite/:code" element={<ReferralLanding />} />
 
         {/* 地推体验卡落地页(公开,家长扫卡背面的二维码打开)。路径短 = 二维码点阵稀,卡上印得小也扫得出 */}
+        <Route path="/c/share/:viewCode" element={<PromoShareProgress />} />
         <Route path="/c/:code" element={<PromoCardLanding />} />
 
         {/* 销售工作台: 销售账号只有这一页;机构管理员自己发卡时也在这里传二维码 */}
@@ -787,6 +790,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <TeacherParentBinding />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 老师自己问小鹰老师(备课 / 出卷 / 看全班卡在哪,services/teacher_tutor) */}
+        <Route
+          path="/teacher/tutor"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <TeacherTutor />
             </ProtectedRoute>
           }
         />

@@ -16,7 +16,7 @@ export interface Organization {
   cards_used: number;
   cards_left: number;
   /** 机构首页(/org/info)才有: 学习助手次数池(合同第三条第 10 款,老师给学生加次数从这里扣);没开放 / 直营为 null */
-  tutor_pool?: { total: number; used: number; left: number; price: number; min_buy: number } | null;
+  tutor_pool?: { total: number; used: number; left: number; price: number; min_buy: number; teacher_used?: number } | null;
   active_students: number;
   teacher_count: number;
   logo_url?: string | null;

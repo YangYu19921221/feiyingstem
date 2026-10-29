@@ -205,6 +205,7 @@ function BoardTab({ refreshKey, owners, onChanged }: { refreshKey: number; owner
               </div>
               <p className="mt-0.5 text-xs text-slate-500">
                 {r.channels} 版卡 · 扫开 {r.views} 次
+                {r.referred > 0 && <span className="ml-1 text-pink-600">· 朋友推荐来 {r.referred},付费 {r.referred_paid}</span>}
                 {r.overdue > 0 && <span className="ml-1 font-semibold text-red-600">· {r.overdue} 条该跟进</span>}
               </p>
               <dl className="mt-2 grid grid-cols-3 gap-1.5">
@@ -233,12 +234,14 @@ function BoardTab({ refreshKey, owners, onChanged }: { refreshKey: number; owner
       </ul>
 
       <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white lg:block">
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="w-full min-w-[960px] text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-500">
             <tr>
               <th className="px-3 py-2 font-semibold">销售</th>
               <th className="px-3 py-2 text-right font-semibold">卡 / 扫开</th>
               {cols.map((c) => <th key={c.k} className="px-3 py-2 text-right font-semibold">{c.label}</th>)}
+              <th className="px-3 py-2 text-right font-semibold">推荐来的</th>
+              <th className="px-3 py-2 text-right font-semibold">推荐后付费</th>
               <th className="px-3 py-2 text-right font-semibold">实收</th>
               <th className="px-3 py-2 text-right font-semibold">该跟进</th>
               <th className="px-3 py-2 font-semibold"><span className="sr-only">操作</span></th>
@@ -261,6 +264,8 @@ function BoardTab({ refreshKey, owners, onChanged }: { refreshKey: number; owner
                       </td>
                     );
                   })}
+                  <td className="px-3 py-2 text-right tabular-nums">{r.referred}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.referred_paid}</td>
                   <td className="px-3 py-2 text-right tabular-nums">¥{r.revenue}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${r.overdue > 0 ? 'text-red-600' : ''}`}>{r.overdue}</td>
                   <td className="px-3 py-2 text-right">
@@ -281,6 +286,7 @@ function BoardTab({ refreshKey, owners, onChanged }: { refreshKey: number; owner
         每格后面的灰色百分比 = 比上一步留下了多少。按「留电话的日期」选一批线索,看它们后来走到了哪一步(标了无效的也算它走到过的那步)。
         「学满 5 天」看孩子开通后 7 天里真实的学习记录,不看销售标的状态 —— 提成建议按它和「报正价」算,不按发了多少张卡。
         「扫开」是落地页打开次数(累计,不随日期变)。看板没有自己的数据,删线索、删卡码后跟着变;停用了且名下什么都没有的销售不上看板。
+        「推荐来的」= 点老家长的邀请链接来留电话的;「推荐后付费」= 其中付了体验费(实收 &gt; 0)、算进推荐人的(老客户、退款的不算)。
       </p>
       {deleting && deleting.sales_user_id != null && (
         <DeleteSalesDialog
@@ -890,7 +896,11 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
   const [s, setS] = useState<PromoSettings>(initial);
   const [price, setPrice] = useState(String(initial.trial_price));
   const [offer, setOffer] = useState(initial.offer_text);
+  const [refOn, setRefOn] = useState(initial.referral_enabled);
+  const [refMax, setRefMax] = useState(String(initial.referral_max));
   const [busy, setBusy] = useState(false);
+  const maxN = Number(refMax);
+  const maxOk = refMax.trim() !== '' && Number.isInteger(maxN) && maxN >= 0 && maxN <= 20;
   const n = Number(price);
   // 最多两位小数(9.9 / 19.99);更多位不让存,免得卡上印出 9.999
   const priceOk = price.trim() !== '' && Number.isFinite(n) && n >= 0 && n <= 100000 && Math.round(n * 100) === n * 100;
@@ -899,9 +909,10 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!priceOk) { toast('体验价填 0 到 100000 元,最多两位小数(如 9.9)', 'error'); return; }
+    if (!maxOk) { toast('最多算几家填 0 到 20 的整数', 'error'); return; }
     setBusy(true);
     try {
-      const r = await savePromoSettings({ trial_price: n, offer_text: offer });
+      const r = await savePromoSettings({ trial_price: n, offer_text: offer, referral_enabled: refOn, referral_max: maxN });
       const changed = r.trial_price !== s.trial_price;
       setS(r);
       onSaved(r);
@@ -936,6 +947,25 @@ function SettingsForm({ initial, onSaved }: { initial: PromoSettings; onSaved: (
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
         <span className="mt-1 block text-xs text-slate-500">清空保存 = 恢复默认。不写「保证提分」「名师」这类承诺(广告法)。</span>
       </label>
+      <fieldset className="space-y-2 rounded-lg border border-slate-100 p-3">
+        <legend className="px-1 text-sm font-semibold text-slate-700">老带新: 邀请朋友延体验</legend>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={refOn} onChange={(e) => setRefOn(e.target.checked)} className="h-4 w-4 accent-[#FF6B35]" />
+          开着(家长登记完能看到「邀请朋友一起体验」的链接,线索抽屉里能复制)
+        </label>
+        <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          最多算
+          <input type="number" min={0} max={20} step={1} inputMode="numeric" value={refMax} onChange={(e) => setRefMax(e.target.value)}
+            aria-label="最多算几家" className="min-h-9 w-16 rounded-lg border border-slate-200 px-2 text-sm" />
+          家朋友(每家延 {initial.referral_days} 天)
+        </label>
+        <span className="block text-xs leading-5 text-slate-500">
+          规则: 朋友用这家的链接留电话并付了体验费(实收 &gt; 0)才算,这家孩子的体验延 {initial.referral_days} 天;只留电话、加微信不算,
+          老客户(手机号已有本机构账号)不算,退款的不再算。体验期要先在线索里「开通 7 天体验」才有,到期自动锁。
+          每多一家就要多陪跑 {initial.referral_days} 天,一直在体验的孩子也不会去报正价,所以设个上限(默认 4 家 = 最多延 28 天)。
+          <b className="text-slate-700">别把「转发得 7 天」写进朋友圈文案或群里</b>: 微信判利益诱导分享会封域名,孩子学习的网站也在这个域名下。由销售私聊告诉家长。
+        </span>
+      </fieldset>
       <button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-[#FF6B35] px-5 text-sm font-bold text-white disabled:opacity-50">保存</button>
     </form>
   );

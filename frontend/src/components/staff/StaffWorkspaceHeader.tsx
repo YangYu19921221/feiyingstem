@@ -62,6 +62,7 @@ const navByRole: Record<WorkspaceRole, { primary: NavItem[]; more: NavItem[] }> 
       { label: '金币管理', path: '/teacher/coins' },
       { label: '每日陪跑', path: '/teacher/coach' },
       { label: '家长绑定', path: '/teacher/parent-binding' },
+      { label: '问小鹰老师', path: '/teacher/tutor' },
       { label: '学习助手次数', path: '/teacher/tutor-quota' },
       { label: '我的助教', path: '/teacher/assistants' },
     ],

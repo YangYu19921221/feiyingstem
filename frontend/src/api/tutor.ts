@@ -35,7 +35,14 @@ export type TutorCard =
   /** 单词记忆图(services/word_picture): status 是画图那一刻的,前端按 pic_id 轮询拿最新的 */
   | { type: 'picture'; pic_id: number; word: string; word_id?: number; status: PictureStatus; url: string | null }
   /** 孩子发的文件(services/tutor_files): 只有文件名和类型,内容不存 */
-  | { type: 'file'; name: string; kind: 'pdf' | 'docx' | 'doc' | 'txt'; pages: number | null; scanned: boolean; truncated: boolean };
+  | { type: 'file'; name: string; kind: 'pdf' | 'docx' | 'doc' | 'txt'; pages: number | null; scanned: boolean; truncated: boolean }
+  /** 教师端出的练习卷(services/teacher_tutor.make_worksheet): 带答案,给老师下载打印 */
+  | { type: 'worksheet'; title: string; topic: string | null; items: WorksheetItem[]; students: string[] };
+
+export type WorksheetItem =
+  | { type: 'choice'; question: string; options: string[]; answer: string; explain?: string | null }
+  | { type: 'fill'; question: string; answer: string; also?: string[]; explain?: string | null }
+  | { type: 'order'; question: string; tokens: string[]; answer: string; explain?: string | null };
 
 /** 能传的文件(和后端 tutor_files 同一份) */
 // .doc 也放进来: 选到了当场提示另存(灰着选不了,孩子不知道为什么)
@@ -93,7 +100,11 @@ export interface TutorStatus {
   picture_enabled: boolean;
   picture_cost: number;
   max_text: number;
+  /** 首页「考考你」(services/tutor_notes): 今天到期该回头考的一个点;今天的免费那次用过了 / 没有到期的为 null */
+  review?: TutorReview | null;
 }
+
+export interface TutorReview { note_id: number; topic: string; kind: 'point' | 'word'; since: '昨天' | '上次' }
 
 /** 这段对话现在还能免费追问几次;null = 下一问照常算次数 */
 export type TutorFollowup = { left: number; until: string } | null;
@@ -144,9 +155,13 @@ export class TutorAskError extends Error {
 export async function askTutor(
   params: { text: string; conversationId?: number | null; image?: Blob | null; file?: File | null; mode?: TutorMode; quizId?: number;
     /** 次数用完了,点「想说说心里话」进来的(services/tutor_safety) */
-    care?: boolean },
+    care?: boolean;
+    /** 首页「考考你」(services/tutor_notes): 考哪个点由服务器从笔记里拼 */
+    reviewNoteId?: number },
   onEvent: (ev: TutorEvent) => void,
   signal?: AbortSignal,
+  /** 教师端问自己的小鹰老师: /teacher/tutor/me/ask */
+  path = '/student/tutor/ask',
 ): Promise<void> {
   const form = new FormData();
   form.append('text', params.text);
@@ -156,8 +171,9 @@ export async function askTutor(
   if (params.file) form.append('file', params.file, params.file.name);
   if (params.quizId) form.append('quiz_id', String(params.quizId));
   if (params.care) form.append('care', '1');
+  if (params.reviewNoteId) form.append('review_note_id', String(params.reviewNoteId));
   const token = localStorage.getItem('access_token');
-  const res = await fetch(`${API_BASE_URL}/student/tutor/ask`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     body: form,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -217,7 +233,57 @@ export const getStudentTutorLog = (studentId: number) =>
 
 export interface AlertCounts { open: number; urgent: number }
 export const getTutorAvailable = () =>
-  client.get<{ enabled: boolean; requested: number; alerts?: AlertCounts }>('/teacher/tutor/available');
+  client.get<{ enabled: boolean; requested: number; alerts?: AlertCounts;
+    /** 要请老师当面讲的点(services/tutor_notes「交给老师」) */
+    handoffs?: number;
+    /** 老师自己能不能用教师端小鹰老师 */
+    me_enabled?: boolean }>('/teacher/tutor/available');
+
+// ---- 要请老师当面讲的点(services/tutor_notes「交给老师」)
+export interface TutorHandoff {
+  note_id: number; student_id: number; student_name: string; class_name: string;
+  topic: string; kind: 'point' | 'word'; detail: string | null;
+  times_wrong: number; times_right: number;
+  /** false = 讲过了、之后没再错(只在 all=1 时出现) */
+  pending: boolean;
+  updated_at: string | null;
+  /** 讲过以后又错了: 上次讲的记录 */
+  handled: null | { at: string; by: string; note: string; wrong_then: number };
+}
+export const getTutorHandoffs = (all = false) =>
+  client.get<{ items: TutorHandoff[]; pending: number; threshold: number }>('/teacher/tutor/handoffs', { params: { all: all || undefined } });
+export const handleTutorHandoff = (noteId: number, note: string) =>
+  client.post<{ ok: boolean }>(`/teacher/tutor/handoffs/${noteId}`, { note });
+
+// ---- 教师端: 老师自己问小鹰老师(services/teacher_tutor)
+export interface TeacherTutorStatus {
+  enabled: boolean; reason: string;
+  /** 每位老师每月几次;month = 北京时间 YYYY-MM */
+  monthly: number; month: string; month_used: number; month_left: number;
+  /** 加盟机构: 每问一次从机构次数池扣 */
+  uses_pool: boolean; pool_left: number | null; price: number;
+  /** 这次能问几次(本月剩的和池子剩的取小) */
+  left: number;
+  /** 问不了时是哪个不够: month 本月的用完了 / pool 机构池没了 */
+  limit_by: 'month' | 'pool' | null;
+  deep_enabled: boolean; deep_cost: number; max_text: number; voice_enabled: boolean;
+}
+export interface RosterItem { code: string; id: number; name: string; class_name: string }
+export const getTeacherTutorStatus = () => client.get<TeacherTutorStatus>('/teacher/tutor/me/status');
+export const getTeacherTutorRoster = () => client.get<{ items: RosterItem[] }>('/teacher/tutor/me/roster');
+export const getTeacherConversation = (id: number) =>
+  client.get<{ id: number; title: string; messages: TutorMessage[]; followup: null }>(`/teacher/tutor/me/conversations/${id}`);
+export const stopTeacherTutor = (userMessageId: number) =>
+  client.post<{ ok: boolean }>('/teacher/tutor/me/stop', { user_message_id: userMessageId });
+export const TEACHER_ASK_PATH = '/teacher/tutor/me/ask';
+export const uploadTeacherVoice = (blob: Blob) => {
+  const form = new FormData();
+  const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+  form.append('audio', blob, `voice.${ext}`);
+  return client.post<{ id: number; status: string }>('/teacher/tutor/me/voice', form, { timeout: 30000 });
+};
+export const getTeacherVoice = (id: number) =>
+  client.get<{ id: number; status: 'pending' | 'done' | 'failed'; text: string }>(`/teacher/tutor/me/voice/${id}`);
 
 // ---- 需要关心的孩子(services/tutor_safety)
 export interface TutorAlert {
@@ -324,7 +390,11 @@ export interface TutorAdminState {
     provider: null | { model: string | null; base_url: string | null; quality: 'low' | 'medium' | 'high';
       api_key_masked: string; key_ok: boolean };
   };
+  /** 教师端小鹰老师(services/teacher_tutor): 开没开、每位老师每月几次、本月几位老师用了几次 */
+  teacher: { enabled: boolean; monthly: number; month: string; teachers: number; used: number; price: number };
 }
+export const saveTeacherTutorAdmin = (body: { enabled: boolean; monthly: number }) =>
+  client.put<TutorAdminState['teacher']>('/admin/tutor/teacher', body);
 export const getTutorAdmin = () => client.get<TutorAdminState>('/admin/tutor');
 
 /** 中转钱包 / Key 检查(services/tutor_relay_health) */
@@ -353,6 +423,8 @@ export const testTutorAdmin = () =>
 export interface TutorPoolDetail extends TutorPool {
   org_id: number;
   org_name: string;
+  /** 其中老师自己问小鹰老师用掉的(教师端,10-29) */
+  teacher_used?: number;
   ledger: Array<{ id: number; times: number; source: 'purchase' | 'gift' | 'adjust'; note: string | null; created_at: string | null }>;
 }
 export const getTutorPools = () =>

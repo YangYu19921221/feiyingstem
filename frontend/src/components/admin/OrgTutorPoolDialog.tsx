@@ -103,6 +103,7 @@ export default function OrgTutorPoolDialog({ orgId, onClose, onChanged }: {
         </div>
         <p className="mt-2 text-center text-xs text-slate-500">
           其中进货 {data.purchased ?? 0} 次 · 平台赠送 {data.gifted ?? 0} 次
+          {!!data.teacher_used && ` · 已分出去的里有 ${data.teacher_used} 次是老师自己问小鹰老师用的`}
         </p>
 
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">

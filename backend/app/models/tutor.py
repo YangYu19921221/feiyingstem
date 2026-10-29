@@ -262,3 +262,35 @@ class TutorVoiceClip(Base):
     processed_at = Column(DateTime, nullable=True)
 
     __table_args__ = (Index("ix_tutor_voice_status", "status", "id"),)
+
+
+class TutorHandoff(Base):
+    """小鹰老师讲不会、要请真人老师当面讲的点(2026-10-29,用户「孩子欠缺知识点小鹰老师怎么帮」)。规则见 services/tutor_notes.py「交给老师」。
+
+    「要请老师讲」不存在这里: 笔记(tutor_notes)里同一个点错满 HANDOFF_WRONG 次、还没学会,就算要请老师讲。
+    这张表只记**老师讲过了**: 讲过的那一刻这个点错了几次(wrong_at_handle)。之后孩子又错了(times_wrong 变大),
+    这个点重新出现在老师的列表里 —— 讲过一次不等于会了"""
+    __tablename__ = "tutor_handoffs"
+
+    note_id = Column(Integer, primary_key=True)                 # tutor_notes.id(生产 FK 关着,不挂外键;删笔记时显式删)
+    user_id = Column(Integer, nullable=False)                   # 学生
+    wrong_at_handle = Column(Integer, nullable=False, default=0, server_default="0")
+    handled_at = Column(DateTime, nullable=True)
+    handled_by = Column(Integer, nullable=True)                 # 真实操作人(助教讲的记助教)
+    handled_by_name = Column(String(60), nullable=True)
+    handled_note = Column(String(200), nullable=True)
+
+    __table_args__ = (Index("ix_tutor_handoff_user", "user_id"),)
+
+
+class TeacherTutorUsage(Base):
+    """老师自己用小鹰老师(教师端,2026-10-29,用户「教师端也需要一个月 1000 的额度,需要同样的功能」)的月度用量。
+    规则见 services/teacher_tutor.py。一位老师一个月一行;month = 北京时间的 YYYY-MM,换月自然从 0 开始。
+    助教用主老师那份(认证层把助教换成了主老师)"""
+    __tablename__ = "teacher_tutor_usage"
+
+    user_id = Column(Integer, primary_key=True)
+    month = Column(String(7), primary_key=True)
+    used = Column(Integer, nullable=False, default=0, server_default="0")
+    org_id = Column(Integer, nullable=True)                     # 用的时候在哪个机构(机构看「老师用了多少」)
+    updated_at = Column(DateTime, server_default=func.now())

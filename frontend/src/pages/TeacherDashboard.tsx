@@ -70,6 +70,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
     description: '布置任务、跟进学习进度',
     items: [
       { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'green' },
+      { title: '问小鹰老师', description: '备课、出卷带答案、看全班卡在哪', route: '/teacher/tutor', icon: Sparkles, tone: 'orange' },
       { title: '每日陪跑', description: '谁没来、谁没做完,每天留一句话', route: '/teacher/coach', icon: MessageSquareHeart, tone: 'orange' },
       { title: '分配单词本', description: '规划学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'orange' },
       { title: '学习卡规则', description: '课本要先兑换,布置作业前必看', route: '/teacher/card-rules', icon: KeyRound, tone: 'amber' },
@@ -116,7 +117,8 @@ const TeacherDashboard = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeUsername, setShowChangeUsername] = useState(false);
   // 学习助手: 本校没开放就不放入口;有孩子在请求加次数时入口上显示数字
-  const [tutor, setTutor] = useState<{ enabled: boolean; requested: number; alerts?: { open: number; urgent: number } } | null>(null);
+  const [tutor, setTutor] = useState<{ enabled: boolean; requested: number; alerts?: { open: number; urgent: number };
+    handoffs?: number; me_enabled?: boolean } | null>(null);
   useEffect(() => {
     getTutorAvailable().then(setTutor).catch(() => setTutor(null));
   }, []);
@@ -143,9 +145,11 @@ const TeacherDashboard = () => {
     items: g.items.filter(i =>
       !(isAssistant && i.route === '/teacher/assistants') &&
       !(cardPlan !== 'pack' && i.route === '/teacher/card-rules') &&
-      !(!tutor?.enabled && (i.route === '/teacher/tutor-quota' || i.route === '/teacher/tutor-class')))
+      !(!tutor?.enabled && (i.route === '/teacher/tutor-quota' || i.route === '/teacher/tutor-class')) &&
+      !(!tutor?.me_enabled && i.route === '/teacher/tutor'))
       .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested }
-        : i.route === '/teacher/tutor-class' && tutor?.alerts?.open ? { ...i, badge: tutor.alerts.open } : i)),
+        : i.route === '/teacher/tutor-class' && ((tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0))
+          ? { ...i, badge: (tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0) } : i)),
   })), [isAssistant, cardPlan, tutor]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
@@ -164,6 +168,18 @@ const TeacherDashboard = () => {
             <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
           </button>
         )}
+        {/* 小鹰老师讲不通、要请老师当面讲的点(services/tutor_notes「交给老师」) */}
+        {!tutor?.alerts?.open && !!tutor?.handoffs && (
+          <button type="button" onClick={() => navigate('/teacher/tutor-class')}
+            className="flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm text-amber-900">
+            <Sparkles className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <b>有 {tutor.handoffs} 个知识点要请你当面讲</b>
+              <span className="ml-1 text-xs opacity-80">(孩子在小鹰老师的练习里错了好几次还没会)</span>
+            </span>
+            <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+          </button>
+        )}
         <section className="teacher-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div className="max-w-2xl">
@@ -173,6 +189,9 @@ const TeacherDashboard = () => {
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
                 <button type="button" onClick={() => navigate('/teacher/homework')} className="teacher-primary teacher-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">布置今日作业 <ArrowRight className="h-4 w-4" /></button>
                 <button type="button" onClick={() => navigate('/teacher/analytics')} className="teacher-secondary teacher-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">看班级数据 <BarChart3 className="h-4 w-4" /></button>
+                {tutor?.me_enabled && (
+                  <button type="button" onClick={() => navigate('/teacher/tutor')} className="teacher-secondary teacher-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">问小鹰老师 <Sparkles className="h-4 w-4" /></button>
+                )}
               </div>
             </div>
             <div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]">

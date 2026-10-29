@@ -39,14 +39,17 @@ export interface HistoryPage {
 
 export const HISTORY_PAGE = 30;
 
-export const listHistory = (q: string, offset = 0) =>
-  client.get<HistoryPage>('/student/tutor/conversations', { params: { q: q || undefined, offset, limit: HISTORY_PAGE } });
-export const renameConversation = (id: number, title: string) =>
-  client.patch<HistoryItem>(`/student/tutor/conversations/${id}`, { title });
-export const starConversation = (id: number, starred: boolean) =>
-  client.patch<HistoryItem>(`/student/tutor/conversations/${id}`, { starred });
-export const deleteConversation = (id: number) =>
-  client.delete<{ ok: boolean; deleted_keep_days: number }>(`/student/tutor/conversations/${id}`);
+/** base: 学生 /student/tutor/conversations;教师端自己的对话 /teacher/tutor/me/conversations(TEACHER_HISTORY) */
+const STUDENT_HISTORY = '/student/tutor/conversations';
+export const TEACHER_HISTORY = '/teacher/tutor/me/conversations';
+export const listHistory = (q: string, offset = 0, base = STUDENT_HISTORY) =>
+  client.get<HistoryPage>(base, { params: { q: q || undefined, offset, limit: HISTORY_PAGE } });
+export const renameConversation = (id: number, title: string, base = STUDENT_HISTORY) =>
+  client.patch<HistoryItem>(`${base}/${id}`, { title });
+export const starConversation = (id: number, starred: boolean, base = STUDENT_HISTORY) =>
+  client.patch<HistoryItem>(`${base}/${id}`, { starred });
+export const deleteConversation = (id: number, base = STUDENT_HISTORY) =>
+  client.delete<{ ok: boolean; deleted_keep_days: number }>(`${base}/${id}`);
 
 // ---- 讲解方式: 年级 + 讲简单一点 / 正常 / 讲深一点(不给孩子贴「聪明 / 笨」的标签)
 export type TutorPace = 'simple' | 'normal' | 'deep';
