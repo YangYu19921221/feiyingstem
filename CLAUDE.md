@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标教材每个词可以改发音(2026-10-30,用户「有的长音或者短音发音的后台传的时候可以增加个重发音按我给的单词发音吗」):
+- ✅ 音标教材每个词可以改发音(2026-10-30 21:05 **已部署生产**,提交 af81c18;6 个后端文件生产==HEAD~1 整推,database.py 走 anchor patch 只加 1 条 ALTER(先在生产库副本上跑过);两个服务都重启;前端干净 worktree 构建 mvuz6qbh 整推;备份 /root/eh_db_before_phtts_20261030_2054.db、/root/eh_code_before_phtts_20261030_2054.tgz、frontend/dist_bak_20261030_2054。生产冒烟(临时机构管理员 + 学生 + 教材,跑完删净): 填音标被拒、填 seed 保存、机构管理员改平台预置书 403、题目列表不带发音、做错不给、做对给 seed、跟读页给 seed、raw 合成 200。**上线时生产没有任何词填了发音**(938 题全是 NULL = 和以前一样),用户「有的长音或者短音发音的后台传的时候可以增加个重发音按我给的单词发音吗」):
   标准音是 Edge TTS 按拼写读的,cede / faff 这类生僻词常读错长短音。phonetic_items 加列 tts_text(database.py 1 条 ALTER,NULL = 按单词读),
   填了学生端就**逐字合成**这段文字(rawTtsUrl,和老师「试听」同一个接口,一字不差)。只收英文字母 / 空格 / 撇号 / 连字符、≤60
   (真源 services/phonetic_tokenize.check_tts_text,前端 PhoneticTtsEditor 同口径只做当场提示)—— 填音标符号 TTS 读不出来。
