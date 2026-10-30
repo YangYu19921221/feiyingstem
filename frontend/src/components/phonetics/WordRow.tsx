@@ -33,10 +33,15 @@ export default function WordRow({
   return (
     <div
       onClick={onFocusRow}
+      // 选中 / 判错两种底色只给一个(以前两个 bg 类同时写,rose 在 CSS 里排在 orange 后面,
+      // 判错的那一行被点中后看不出选中了)
       className={[
-        'flex items-center gap-3 rounded-xl px-3 py-2 transition',
-        active ? 'bg-orange-50/70 ring-1 ring-orange-200' : 'hover:bg-slate-50',
-        judged && !allRight ? 'bg-rose-50/40' : '',
+        'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition',
+        active
+          ? 'bg-orange-50 ring-2 ring-[#FF6B35]'
+          : judged && !allRight
+            ? 'bg-rose-50/40 hover:bg-rose-50 hover:ring-1 hover:ring-rose-200'
+            : 'hover:bg-orange-50/50 hover:ring-1 hover:ring-orange-200',
       ].join(' ')}
     >
       <span className="w-5 shrink-0 text-right text-xs text-slate-300">{index + 1}</span>

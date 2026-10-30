@@ -27,6 +27,31 @@ interface Props {
 /** 星星散开的方向,六个角度均分 */
 const SPARKS = [0, 60, 120, 180, 240, 300];
 
+/**
+ * 底色 × 选中态。**每种组合只给一组 ring 类,不叠加**(2026-10-30 用户「鼠标选中音标模块要有选中的样式」):
+ * 以前底色的 ring-emerald-300 / ring-amber-300 和选中的 ring-orange-400 同时写在一个元素上,
+ * Tailwind 生成的 CSS 里 amber、emerald 排在 orange 后面,于是绿格、琥珀格被点中后选中框直接被盖掉,
+ * 看不出点中了哪一格;白格的边框是 slate-100,几乎看不见,鼠标移上去也没有任何变化。
+ */
+function cellTone(status: Props['status'], active: boolean): string {
+  // ⚠️ 白底不能写 bg-white: index.css 里 `body.student-interface .bg-white.rounded-xl` 会把 box-shadow
+  // 整个改掉,而 Tailwind 的 ring 就是 box-shadow —— 写 bg-white 的话选中框、悬停框一律画不出来
+  // (浏览器实测: 白格点中后 box-shadow 仍是那条全局卡片阴影)。bg-white/95 是另一个类名,那条规则匹配不到
+  const bg = status === 'done' ? 'bg-emerald-50' : status === 'retry' ? 'bg-amber-50' : 'bg-white/95';
+  if (active) {
+    // 没读的那一格选中时底色换成浅橙,和别的白格一眼分开。
+    // ⚠️ 不能加 shadow-md / shadow-lg: index.css 的 `body.student-interface .shadow-md` 同样会把 box-shadow
+    // 整个改掉,ring 跟着没了(浏览器实测)
+    return `${status === 'todo' ? 'bg-orange-50' : bg} ring-[3px] ring-[#FF6B35]`;
+  }
+  const idle = status === 'done'
+    ? 'ring-1 ring-emerald-300 hover:ring-2 hover:ring-emerald-400'
+    : status === 'retry'
+      ? 'ring-1 ring-amber-300 hover:ring-2 hover:ring-amber-400'
+      : 'ring-1 ring-slate-200 hover:ring-2 hover:ring-orange-300 hover:bg-orange-50/40';
+  return `${bg} ${idle} hover:shadow-sm`;
+}
+
 export default function PhonemeCell({
   phonetic, word, meaning, status, active, justDone, onClick,
 }: Props) {
@@ -36,22 +61,30 @@ export default function PhonemeCell({
   return (
     <motion.div
       onClick={onClick}
+      // 不用 <button>: 里面是 <p>,按钮里不能放段落。键盘也要能选(Tab 到这一格,回车 / 空格)
+      role="button"
+      tabIndex={0}
+      aria-pressed={active}
+      aria-label={`${phonetic}${done ? ` ${word}` : ''}`}
+      onKeyDown={(e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); onClick(); }
+      }}
       // 变绿时弹一下。reduce 模式下不缩放,只保留颜色变化
       animate={justDone && !reduce
         ? { scale: [1, 1.12, 1] }
         : { scale: 1 }}
       transition={{ duration: 0.42, times: [0, 0.45, 1], ease: [0.34, 1.56, 0.64, 1] }}
       className={[
-        'relative cursor-pointer overflow-hidden rounded-xl p-3 text-center',
-        'transition-colors duration-300',
-        done
-          ? 'bg-emerald-50 ring-1 ring-emerald-300'
-          : status === 'retry'
-            ? 'bg-amber-50 ring-1 ring-amber-300'
-            : 'bg-white ring-1 ring-slate-100',
-        active && !done ? 'ring-2 ring-orange-400' : '',
+        'relative cursor-pointer overflow-hidden rounded-xl p-3 text-center outline-none',
+        'transition-[background-color,box-shadow] duration-200',
+        'focus-visible:ring-[3px] focus-visible:ring-[#FF6B35]',
+        cellTone(status, active),
       ].join(' ')}
     >
+      {/* 选中的格子右上角一个小橙点: 不靠颜色深浅也能一眼看出点中了哪一格 */}
+      {active && (
+        <span className="pointer-events-none absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#FF6B35]" aria-hidden="true" />
+      )}
       {/* 绿光从下往上扫 */}
       {justDone && !reduce && (
         <motion.div
