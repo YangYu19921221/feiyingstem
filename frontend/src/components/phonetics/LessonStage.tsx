@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { fetchVideoTicket, mediaUrl, type PhoneticVideo, type StudentMaterial } from '../../api/phonetics';
 import { useMaterialPages } from './useMaterialPages';
+import MovingWatermark from './MovingWatermark';
+import { maskLongDigits } from './watermarkGeometry';
 import { getErrorCode } from '../../utils/errorMessage';
 import { useWatchHeartbeat } from './useWatchHeartbeat';
 import { prefetchVideo, takePrefetchedTicket } from './nextPrefetch';
@@ -74,13 +76,14 @@ const WATERMARK_BRAND = '飞鹰教育';
 /**
  * 水印串:飞鹰教育 · 姓名 · ID。身份部分与后端讲义水印同口径(_viewer_label = "{name} · ID{id}")。
  * 取自 localStorage 登录用户(与 StudentIdentityBadge 同源)。读不到身份时只剩品牌,不会整条消失。
- * ⚠️ 这是**前端**水印,防不住改 DOM / 录屏裁掉 —— 它只让顺手录屏转发的人留下名字,
- * 真溯源仍靠服务端访问日志(每次换票记一条 IP+设备+时间)。所以别把它当硬防线。
+ * 2026-10-30 起水印会走、带时间、被藏起来就暂停视频(MovingWatermark)。仍是**前端**水印: 懂技术的人改脚本
+ * 能去掉,它挡的是顺手录屏转发 —— 录下来的每一段都带着是谁的号、几点看的,能对上服务端访问日志(IP+设备+时间)。
  */
 function readViewerLabel(): string {
   try {
     const me = JSON.parse(localStorage.getItem('user') || '{}');
-    const name = String(me.full_name || me.username || '').trim();
+    // 用户名常是手机号: 画面会被录走,长串数字中间打码(ID 仍能对上是谁)
+    const name = maskLongDigits(String(me.full_name || me.username || '').trim());
     return [WATERMARK_BRAND, name, me.id ? `ID${me.id}` : ''].filter(Boolean).join(' · ');
   } catch {
     return WATERMARK_BRAND;
@@ -362,6 +365,33 @@ export default function LessonStage({
 
   // ---- 播放票据:URL 里放的不再是整站会话 token,而是只能播这一个视频的两小时票 ----
   const videoRef = useRef<HTMLVideoElement>(null);
+  // 水印被删 / 藏起来时先停下(见 MovingWatermark)
+  const pauseForWatermark = useCallback(() => { videoRef.current?.pause(); }, []);
+  /**
+   * iPhone: Safari 不认 controlsList,原生控件里的全屏会进系统播放器 —— 那里只画 <video>,水印画不上去,
+   * 正好拿来录屏。进去马上退出来,提示横过来看。AirPlay / 远程播放把视频流单独投到别的屏幕,也不带水印,关掉
+   * (投屏整个手机屏幕挡不住,那样水印跟着一起投过去)
+   */
+  const [iosFsNotice, setIosFsNotice] = useState(false);
+  useEffect(() => {
+    const v = videoRef.current as (HTMLVideoElement & {
+      webkitExitFullscreen?: () => void; disableRemotePlayback?: boolean;
+    }) | null;
+    if (!v) return;
+    v.disableRemotePlayback = true;
+    v.setAttribute('x-webkit-airplay', 'deny');
+    const onBegin = () => {
+      window.setTimeout(() => { try { v.webkitExitFullscreen?.(); } catch { /* 已经退出了 */ } }, 0);
+      setIosFsNotice(true);
+    };
+    v.addEventListener('webkitbeginfullscreen', onBegin);
+    return () => v.removeEventListener('webkitbeginfullscreen', onBegin);
+  }, [video.id]);
+  useEffect(() => {
+    if (!iosFsNotice) return;
+    const t = window.setTimeout(() => setIosFsNotice(false), 6000);
+    return () => window.clearTimeout(t);
+  }, [iosFsNotice]);
   /** 票据换来的原片地址。实际播放地址是下面的 src(流畅版在后面加 &q=lite,同一张票) */
   const [baseSrc, setBaseSrc] = useState('');
   const [srcError, setSrcError] = useState('');
@@ -737,16 +767,15 @@ export default function LessonStage({
         >
           你的浏览器不支持视频播放,请换用 Chrome 或 Safari
         </video>
-        {/* 水印:盖在画面上、不吃点击(pointer-events-none),录屏/转发留下名字。
-            偏右上、半透明,不压播放控件(控件在底部);mix-blend 让深浅底都看得见 */}
-        {viewerLabel && (
-          <span
-            className="pointer-events-none absolute right-3 top-2 z-10 select-none text-[11px]
-                       font-medium tracking-wide text-white/45 mix-blend-difference"
-            aria-hidden="true"
-          >
-            {viewerLabel}
-          </span>
+        {/* 水印(2026-10-30 改成会走的): 每 6–10 秒换个位置、带时间,录屏裁一个角裁不掉;
+            被删掉 / 藏起来就暂停视频。见 MovingWatermark */}
+        <MovingWatermark label={viewerLabel} topInset={floating ? CHROME_H : 0} onTamper={pauseForWatermark} />
+        {iosFsNotice && (
+          <div role="status" className="absolute inset-x-0 top-1/3 z-20 flex justify-center px-4">
+            <span className="rounded-full bg-black/80 px-4 py-2 text-center text-xs text-white shadow">
+              {canFs ? '用画面左上角的全屏按钮看(带名字的那种)' : '这里不能全屏播放。把手机横过来看,画面会变大'}
+            </span>
+          </div>
         )}
         {/* 单看视频时也要能全屏:原生全屏按钮已关(会丢水印),这里补一个面板级的。
             看讲义时讲义顶栏已有全屏按钮,不重复给 */}

@@ -28,6 +28,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-moving-watermark-2026-10',
+    date: '2026-10-30',
+    title: '🔏 音标视频的水印会走了,录屏裁不掉',
+    desc: '学生看音标视频时,画面上「飞鹰教育 · 名字 · ID · 时间」每隔几秒换一个位置(不挡正中间老师的口型)。以前固定在右上角,录屏后裁掉一角就没了;现在录下来的每一段都带着是谁的号、几点看的。有人用开发者工具把它删掉或藏起来,视频会自动停下。iPhone 上不能再用系统全屏播放(那里画不上水印),横过来看就行。手机号当用户名的,中间几位打了码。',
+    where: '学生看音标视频时的画面上;讲义页的水印没变(本来就印在图里)',
+    roles: ['teacher', 'org_admin', 'admin'],
+  },
+  {
     id: 'homework-check-student-2026-10',
     date: '2026-10-30',
     title: '📝 作业做完了,拍一页给小鹰老师批',
