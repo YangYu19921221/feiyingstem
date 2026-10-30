@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标跟读乱读不能过(2026-10-30,用户「现在我乱读都能过」→「没有更好的方案了对吧 乱读不要过 还是要有一定的正确率」):
+- ✅ 音标跟读乱读不能过(2026-10-30 19:40 **已部署生产**,提交 7822d61;4 个后端文件生产==HEAD~1 整推,database.py 生产有 drift 走 anchor patch 只加 3 条 ALTER(先在生产库副本上跑过);english-helper / english-helper-workers / phoneme-judge 三个服务都重启;前端干净 worktree 构建 mvuwesua 整推;备份 /root/eh_db_before_gate_20261030_1934.db、/root/eh_code_before_gate_20261030_1934.tgz、frontend/dist_bak_20261030_1934。生产冒烟(临时学生,跑完删净): 公网传一条「说一句话」录音 → not_close 2.1 秒,传一条孩子认真读 babe → pass 0.6 秒;两条判定都存了、self-pass 200。生产 39 条存量录音经线上判定服务重判: 10-03 那批真孩子 9 条全过,10-30 乱读的全拦,用户「现在我乱读都能过」→「没有更好的方案了对吧 乱读不要过 还是要有一定的正确率」):
   以前闭集判定只看「本节 20 个词里更像哪个」,乱读也总有个最像的词,前端又只拦没声音 → 整页都绿。
   讯飞 ISE 实测最准(乱读直接 is_rejected),用户嫌按次收费,所以用免费方案: **还是现在的 wav2vec2,先过两道门**
   (真源 services/phoneme_closed_set.judge): ①贴合分 GOP = (强制读成目标词的维特比总分 − 每帧取最像的总分) ÷ 音素数 ≥ GOP_FLOOR(-5.5)
