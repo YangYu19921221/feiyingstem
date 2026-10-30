@@ -12,6 +12,7 @@ import { getStudentAssignments, type BookAssignmentResponse } from '../api/assig
 import SentenceSpeechPanel from '../components/teacher/SentenceSpeechPanel';
 import ReadAloudPanel from '../components/teacher/ReadAloudPanel';
 import TutorLogPanel from '../components/teacher/TutorLogPanel';
+import HomeworkCheckPanel from '../components/teacher/HomeworkCheckPanel';
 import WordTrendChart from '../components/WordTrendChart';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import type { StudentMistakeAnalysis } from '../types/exam';
@@ -439,6 +440,7 @@ const TeacherStudentDetail = () => {
         {studentId && <ReadAloudPanel studentId={parseInt(studentId)} />}
         {studentId && <SentenceSpeechPanel studentId={parseInt(studentId)} />}
         {studentId && <TutorLogPanel studentId={parseInt(studentId)} />}
+        {studentId && <HomeworkCheckPanel studentId={parseInt(studentId)} />}
 
         {/* 已开通书本(只读;含其他老师分配的,即学生实际可学范围) */}
         <motion.div

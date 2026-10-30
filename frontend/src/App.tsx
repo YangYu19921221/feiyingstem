@@ -143,6 +143,7 @@ const UnitExamResult = lazyWithRetry(() => import('./pages/UnitExamResult'));
 const DictationPractice = lazyWithRetry(() => import('./pages/DictationPractice'));
 const HandwritingHub = lazyWithRetry(() => import('./pages/HandwritingHub'));
 const StudentTutor = lazyWithRetry(() => import('./pages/StudentTutor'));
+const StudentHomeworkCheck = lazyWithRetry(() => import('./pages/StudentHomeworkCheck'));
 const HandwritingDictation = lazyWithRetry(() => import('./pages/HandwritingDictation'));
 const HandwritingSheet = lazyWithRetry(() => import('./pages/HandwritingSheet'));
 const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
@@ -421,6 +422,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <HandwritingHub />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 作业批改(拍一页做完的英语作业,小鹰老师逐题批改) */}
+        <Route
+          path="/student/homework-check"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentHomeworkCheck />
             </ProtectedRoute>
           }
         />

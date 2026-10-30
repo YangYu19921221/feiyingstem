@@ -423,6 +423,10 @@ const StudentDashboard = () => {
   const quickTools = [
     // 前 4 个默认可见(见下面 slice(0,4)),线上课要让孩子一眼看到,放第一个
     { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/tools/live.jpg' },
+    // 作业批改(10-30): 拍一页做完的英语作业给小鹰老师批,和问小鹰老师同一份次数,本校没开放不放
+    ...(tutorStatus?.enabled
+      ? [{ title: '作业批改', desc: '拍一页作业，小鹰老师逐题批', route: '/student/homework-check', image: '/tools/homework_check.jpg' }]
+      : []),
     { title: '纸笔听写', desc: '纸上手写，拍照 AI 批改', route: '/student/handwriting', image: '/tools/handwriting.jpg' },
     { title: '句子背诵', desc: '听写 + 翻译两种练法', route: '/student/sentences', image: '/tools/sentences.jpg' },
     { title: '加入班级', desc: '输入老师给的邀请码', route: '/student/join-class', image: '/tools/join_class.jpg' },

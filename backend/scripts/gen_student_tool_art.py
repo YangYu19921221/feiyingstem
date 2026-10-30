@@ -70,6 +70,9 @@ ART = {
                   "taller step by step with an upward arrow, a small paper calendar beside it."),
     "pk": (3.0, 960, "Two origami eagles face each other in a friendly duel, one with an orange scarf and "
            "one with a sky-blue scarf, a crackling paper lightning spark between them, both smiling."),
+    "homework_check": (3.0, 960, "The eagle teacher holds a big red paper pencil and happily checks a sheet of "
+                       "homework paper covered in squiggly lines (no readable letters), drawing big red tick marks "
+                       "and one small circle on it; a paper smartphone and a small paper webcam beside the sheet."),
     "tutor": (1.0, 512, "The eagle teacher smiles warmly and raises one wing as if answering a question, a "
               "big round sky-blue paper speech bubble with a paper question mark shape and a small paper "
               "lightbulb floating beside its head."),

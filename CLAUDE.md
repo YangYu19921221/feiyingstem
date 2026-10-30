@@ -292,6 +292,32 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   本机浏览器(库副本,X-Real-IP 模拟三个网络)验过: 登记 → 打开 → 在家角标 + 说明不进播放器 → 电教室能播 → 换 IP 后没登录的电教室电脑报到、新 IP 学生能看
   → 老师开允许在家看 → 在家能看;1366 / 390 无横向溢出。入口: 教师工作台「内容准备 → 电教室网络」/ 顶部「更多」/ 音标视频管理页顶上;
   机构管理首页「管理 → 电教室网络」;平台「运营工具箱 → 内容与服务 → 电教室网络」;学生端卡片「🏫 到电教室看」。公告老师 / 机构+平台各一条
+- ✅ 作业批改(2026-10-30,用户「学生端单独需要个作业批改 摄像头也可以拍照」): 学生拍一页**自己做完的**英语作业,小鹰老师逐题批改、学生在网页上订正。
+  规则真源 services/homework_check.py 文件头(1–7 条)。和「问小鹰老师」拍一道题问思路分开: 这里是整页判对错。
+  ①**先做后批,不做拍照搜题**(合同第三条第 10 款): 错题先给提示让孩子自己改,**改对了**才看讲解,**改了 2 次(REVEAL_AFTER)还不对**才给答案;
+  **没写的题永远不给答案**(最多试 5 次,之后提示去问小鹰老师或老师);作文 / 开放题(checkable=false)只给修改建议,不在网页上订正、讲解不给孩子(可能是范文)。
+  正确答案只在服务器(homework_checks.items),下发的那份按 public_item 去掉;提示里写出了答案的(「选A就对了」、整个答案出现在提示里)换成带知识点的通用提示(_leaks,
+  注意不能用 \b —— 汉字也算单词字符)
+  ②**照片不存**: 浏览器先压成长边 2000 的 JPEG(HEIC 也转),服务器再压一次只在后台任务内存里给模型看,库里只存读出来的文字;孩子带汉字的姓名 / 用户名换成 **
+  ③**次数**: 批一页扣 1 次「问小鹰老师」次数(同一份 tutor_allowances);看不清 / 不是英语 / 一题没读出来 / 模型都没调通 / 写满 max_tokens / 5 分钟没批完 → 标 failed 退回
+  (条件 UPDATE 从 pending 改过去的那一下才退,迟到的结果不覆盖);同一个孩子同时只能批一页(409);限速 3/分钟 30/小时
+  ④**模型**: 小鹰老师那个专用 Key、快速档那组(conf.chain("fast"): 主 sonnet-5-5 / 备 sonnet-4-6),**非流式、和学习助手一样走 raw httpx**(tt.new_client,测试 MockTransport 替换)。
+  5.x: adaptive 思考 + effort medium + strict 工具 + tool_choice auto(5.5 强制调工具 400)+ `fallbacks: "default"`(beta server-side-fallback-2026-07-01;中转 400 提到 fallbacks 就去掉重发);
+  4.6: 不开思考 + 强制 tool_choice=tool、不带 strict。被拒(refusal)/ 写满 / 没号换下一个。**output_config.format 中转不认**(回 ```json 文本),所以用工具交结果;
+  4.6 有时把 items 写成 JSON 字符串,两种都认。10-30 经中转实测(合成的 9 题手写页): sonnet-5-5 11–16 秒 9 题全判对,约 3–4k 入 / 1.1–1.3k 出 token;
+  sonnet-4-6 15 秒判错 1 题(Its 当 It's);opus-5-5 也全对但贵一倍,没用
+  ⑤错题的知识点记进小鹰老师笔记(stuck,不算「请老师当面讲」的判错次数),一页同一个点只记一次、最多 5 个 ⑥「批错了?」只做记号给老师看,不改对错数
+  ⑦订正判分: 大小写 / 标点 / 弯撇号不算错,don't = do not,选择题认字母((A) / A. It's 都算 A);订正并发按 version 条件 UPDATE
+  表 homework_checks(models/tutor.py,create_all 建);路由挂在 api/v1/tutor.py 已有的 student_router / teacher_router 上(**main.py 没动**);半年前的孩子打开页面时顺手删。
+  前端: 页面 /student/homework-check(pages/StudentHomeworkCheck.tsx): 手机「拍照」走系统相机(input capture),电脑 / 平板「打开摄像头」在网页里拍
+  (components/homework/CameraCapture,getUserMedia 要 https;权限被拒、没有摄像头、被占用各给一句怎么办;portal 到 body),都能「选一张照片」;
+  拍完先预览再交;批改中每 3 秒问一次、走秒,关了页面再进来接着等;批过的列在下面。老师: 学生详情页「作业批改」(components/teacher/HomeworkCheckPanel,只读、带正确答案、
+  孩子标了「批错了?」的高亮)。管理端「AI 学习助手」卡片多一行近 7 天批了几页 / token。卡片图 public/tools/homework_check.jpg(gen_student_tool_art.py 新加一张,
+  **本机中转 Key 出不了图(404)**,在生产机用 image_tutor 那行的 Key 出的)。合同第三条第 10 款、招商手册、家长手册加了「每页计 1 次 / 没写的不给答案」。
+  测试 tests/test_homework_check.py(15 例);18 处守卫逐一破坏各自对应用例失败(回归锁验证过)。本机浏览器(库副本 + 真中转,1366 / 390)走过:
+  首页两个入口 + 公告 → 选照片预览 → 交 → 批完 9 题 5 对 3 错 1 没写 → 错题改错一次只给提示、改错两次给答案 → 选择题改对看讲解、改对数 +1 →
+  老师详情页看到答案和改了几次;390 宽无横向溢出、控制台 0 报错。**电脑摄像头只在代码里写了,自动化浏览器没有摄像头,没实测**。
+  入口: 学生首页「学习工具」第一张「作业批改」(本校开了小鹰老师才有)/ 首页「问小鹰老师」卡片里「作业做完了?拍一页」;老师学生详情页往下。公告学生 / 老师各一条(gate tutor)
 - ✅ 小鹰老师自动布置作业(2026-10-30 04:10 **已部署生产**,提交 d5b0b98;11 个改动的后端文件生产==HEAD~1 整推(git archive 导出)+ 新文件 services/autopilot.py、models/autopilot.py、api/v1/autopilot.py;六张新表 create_all 建(先在生产库副本跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvtyxld2 整推(补了 3 张 .gitignore 挡住的 eagle-original-cutout*.png);备份 /root/eh_db_before_autopilot_20261030_0403.db、/root/eh_code_before_autopilot_20261030_0403.tgz、frontend/dist_bak_20261030_0403。上线后所有班都是「给建议」,没有班签到就派 = 孩子那边零变化,直到老师自己点「按建议布置」或改成签到就派。生产库副本量过: 70 人的班全班建议 3.9 秒(单人最慢 0.47 秒)。生产冒烟(临时老师 + 学生 + 班,跑完删净): 建议 25 个词 → 按建议布置 → 撤回 → 改签到就派 → 签到当场派 2 份 → 学习页 15 个词过关线 80 → 考 70 没过不标完成 → 考 95 第 1 份完成 → 第 2 份过关全部完成、金币 +1 → 6 秒后 AI 点评写好(1045 token,署名小鹰老师)→ 再来一份出加练;用户「我的目的就是需要解放老师 让ai全自动」→ 一路定规则 →「开始 怎么用我们的逻辑是什么你需要在教师端写清楚，什么时候需要人工什么时候不需要」):
   规则真源 services/autopilot.py 文件头(1–10 条),**老师页的说明(pages/TeacherAutopilot.tsx Guide)要和它同步**。
   ①**按班两种**: 给建议(默认,老师看建议点「按建议布置」才写作业)/ 签到就派(checkin.py 签到成功顺手 ensure_dispatch);

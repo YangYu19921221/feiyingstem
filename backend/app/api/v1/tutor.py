@@ -924,7 +924,14 @@ async def _admin_state(db: AsyncSession) -> dict:
         "usage": await tt.usage_summary(db, days=7),
         "picture": await _picture_state(db),
         "teacher": await _teacher_state(db),
+        "homework": await _homework_state(db),
     }
+
+
+async def _homework_state(db: AsyncSession) -> dict:
+    """作业批改(services/homework_check)近 7 天: 批了几页、没批出来几页、几个孩子、token"""
+    from app.services import homework_check as hc
+    return await hc.usage_summary(db, days=7)
 
 
 async def _teacher_state(db: AsyncSession) -> dict:
@@ -1625,3 +1632,9 @@ from app.api.v1 import autopilot as _autopilot_api  # noqa: E402
 student_router.include_router(_autopilot_api.student_router)
 teacher_router.include_router(_autopilot_api.teacher_router)
 admin_router.include_router(_autopilot_api.admin_router)
+
+# 作业批改(api/v1/homework_check.py): 拍一页做完的作业,小鹰老师批改。同一个专用 Key、同一份次数
+from app.api.v1 import homework_check as _homework_check_api  # noqa: E402
+
+student_router.include_router(_homework_check_api.student_router)
+teacher_router.include_router(_homework_check_api.teacher_router)

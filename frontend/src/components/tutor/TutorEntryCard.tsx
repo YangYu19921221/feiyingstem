@@ -11,7 +11,7 @@
  */
 import { memo, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, Camera, Zap } from 'lucide-react';
+import { ArrowUp, Camera, ClipboardCheck, Zap } from 'lucide-react';
 import type { TutorStatus } from '../../api/tutor';
 
 const reducedMotion = () =>
@@ -140,6 +140,16 @@ function TutorEntryCard({ status }: { status: TutorStatus }) {
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          onClick={() => navigate('/student/homework-check')}
+          className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-xl border border-orange-200 bg-white/80 px-3 text-left text-sm font-medium text-orange-800 transition hover:border-orange-300 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+        >
+          <ClipboardCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">作业做完了?拍一页,小鹰老师帮你批</span>
+          <span aria-hidden="true">→</span>
+        </button>
 
         <p className="mt-3 text-xs text-ink-mute">
           {left > 0

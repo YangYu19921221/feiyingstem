@@ -392,6 +392,8 @@ export interface TutorAdminState {
   };
   /** 教师端小鹰老师(services/teacher_tutor): 开没开、每位老师每月几次、本月几位老师用了几次 */
   teacher: { enabled: boolean; monthly: number; month: string; teachers: number; used: number; price: number };
+  /** 作业批改(services/homework_check)近 7 天 */
+  homework?: { days: number; done: number; failed: number; students: number; input_tokens: number; output_tokens: number };
 }
 export const saveTeacherTutorAdmin = (body: { enabled: boolean; monthly: number }) =>
   client.put<TutorAdminState['teacher']>('/admin/tutor/teacher', body);

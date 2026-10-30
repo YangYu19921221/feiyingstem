@@ -294,3 +294,35 @@ class TeacherTutorUsage(Base):
     used = Column(Integer, nullable=False, default=0, server_default="0")
     org_id = Column(Integer, nullable=True)                     # 用的时候在哪个机构(机构看「老师用了多少」)
     updated_at = Column(DateTime, server_default=func.now())
+
+
+class HomeworkCheck(Base):
+    """学生拍一页做完的英语作业,小鹰老师批改(2026-10-30)。规则见 services/homework_check.py。
+
+    **照片不存**(只在后台任务的内存里给模型看一次),这里只存模型读出来的文字: 每题题目、孩子写的答案、对错、
+    正确答案、提示和讲解。正确答案只在服务器: 学生要先自己改,改对了或改了还不对才看得到;没写的题永远不给答案
+    (不做拍照搜题)。批改一页扣 1 次「问小鹰老师」次数,看不清 / 不是英语作业 / 一题都批不了退回"""
+    __tablename__ = "homework_checks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    org_id = Column(Integer, nullable=True)
+    status = Column(String(10), nullable=False, default="pending", server_default="pending")  # pending / done / failed
+    cost = Column(Integer, nullable=False, default=0, server_default="0")    # 实际扣了几次(退回了是 0)
+    readable = Column(Boolean, nullable=True)
+    reason = Column(Text, nullable=True)            # 看不清 / 不是英语作业时给孩子看的话;失败原因
+    items = Column(JSON, nullable=True)             # 每题(含正确答案、订正次数),见 services/homework_check.parse_items
+    total = Column(Integer, nullable=False, default=0, server_default="0")
+    right = Column(Integer, nullable=False, default=0, server_default="0")
+    wrong = Column(Integer, nullable=False, default=0, server_default="0")
+    blank = Column(Integer, nullable=False, default=0, server_default="0")
+    fixed = Column(Integer, nullable=False, default=0, server_default="0")   # 订正改对了几题
+    version = Column(Integer, nullable=False, default=0, server_default="0")  # 订正并发: 条件 UPDATE 用
+    model = Column(String(60), nullable=True)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    finished_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (Index("ix_homework_checks_user_created", "user_id", "created_at"),)

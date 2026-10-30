@@ -46,7 +46,7 @@ from app.models.card_pack import OrgCardLedger, PackCardGrant  # 新政策卡包
 from app.models.read_aloud import ReadAloudRecording  # 例句跟读录音
 from app.models.tutor import (  # AI 学习助手对话 + 次数 + 机构次数池
     TutorAllowance, TutorConversation, TutorGrantLog, TutorMessage, TutorNote, TutorOrgPool, TutorPoolLedger,
-    TutorPref, TutorQuiz, WordPicture, TutorHandoff, TeacherTutorUsage,
+    TutorPref, TutorQuiz, WordPicture, TutorHandoff, TeacherTutorUsage, HomeworkCheck,
 )
 from app.models.autopilot import (  # 小鹰老师自动布置作业
     AutopilotClass, AutopilotStudent, AutopilotGroup, AutopilotAttempt, AutopilotDispatch, AutopilotTask,

@@ -137,6 +137,14 @@ export default function TutorAdminCard() {
               {!state.provider?.key_ok && <span className="text-red-600"> · Key 还没配好</span>}
             </p>
           )}
+          {/* 作业批改(10-30): 学生拍一页做完的作业给小鹰老师批,同一个 Key、同一份次数 */}
+          {state?.homework && (state.homework.done + state.homework.failed) > 0 && (
+            <p className="mt-1 text-sm text-slate-600">
+              作业批改近 {state.homework.days} 天: {state.homework.students} 人批了 {state.homework.done} 页
+              {state.homework.failed > 0 && <span className="text-amber-700"> · {state.homework.failed} 页没批出来(已退回次数)</span>}
+              <span className="text-slate-400"> · {k(state.homework.input_tokens)} 入 / {k(state.homework.output_tokens)} 出 token</span>
+            </p>
+          )}
         </div>
       </div>
 
