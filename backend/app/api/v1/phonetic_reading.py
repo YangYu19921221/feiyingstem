@@ -206,10 +206,12 @@ async def upload_reading(
 class JudgeOut(BaseModel):
     """跟读判定结果
 
-    verdict: pass=读对了(前端变绿自动下一个) / confused=念成了本节另一个词 /
-             not_speech=压根没在读词(静音/噪音/说中文,撞了 SCORE_FLOOR) /
-             silent=没听到 / uncertain=判不准 / off=判定不可用
-    刻意不给分数:分数会被当成评价,而这个判定只够决定「要不要变绿」。
+    verdict(真源 services/phoneme_closed_set.judge):
+      拦的两种 —— not_close=读得不像这个词(乱读 / 说中文 / 只「啊」一声)/
+                  wrong_word=明显读成了本节另一个词(heard 是那个词)
+      放的三种 —— pass=读对了 / confused=过了门槛但另一个词更像一点(只当提示)/ uncertain=判不准
+      另有 silent=没听到 / off=判定不可用(放过)。not_speech 是 10-30 之前的旧值,新判定不再发
+    刻意不给分数:分数会被当成评价,而这个判定只够决定「要不要变绿」。分数存库(pron_score)只给标定用。
 
     ⚠️ near_miss / mismatch 是**旧 whisper 判定**的字符串,换成闭集打分后
     再没发过。前端曾经在等 near_miss,于是那个分支成了永不触发的死代码,
@@ -276,12 +278,54 @@ async def judge_and_save(
         # 判定服务没起/超时 —— 前端退回纯对比回放模式,课照上
         return JudgeOut(verdict="off", reading_id=reading_id)
 
+    await _save_verdict(db, reading_id, r)
     return JudgeOut(verdict=r.get("verdict", "off"),
                     heard=r.get("best"),
                     reason=r.get("note") or r.get("reason"),
                     error_code=r.get("error_code"),
                     error_hint=r.get("error_hint"),
                     reading_id=reading_id)
+
+
+async def _save_verdict(db, reading_id: Optional[int], r: dict) -> None:
+    """判定结果写回那一行录音。只为以后重新标定门槛,失败不影响孩子"""
+    if not reading_id:
+        return
+    try:
+        row = await db.get(PhoneticReading, reading_id)
+        if not row:
+            return
+        gop = r.get("gop")
+        row.verdict = (r.get("verdict") or "")[:12] or None
+        row.pron_score = round(gop * 100) if isinstance(gop, (int, float)) else None
+        row.judge_detail = json.dumps({
+            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code")
+            if r.get(k) is not None
+        }, ensure_ascii=False)[:2000]
+        await db.commit()
+    except Exception as e:
+        logger.warning("跟读判定结果存档失败: %s", e)
+        await db.rollback()
+
+
+@router.post("/readings/{reading_id}/self-pass")
+async def mark_self_pass(
+    reading_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """孩子读了几次没过,点了「我读对了」。记在他最后那条录音上
+
+    这个数是门槛定得对不对的信号: 认真读的孩子被拦多了就会大量自己放行,
+    那时该把 GOP_FLOOR 往宽调(先拿这些录音重跑标定)。
+    只能标自己的录音;别人的 / 不存在的一律 404,不说是哪种。
+    """
+    row = await db.get(PhoneticReading, reading_id)
+    if not row or row.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="录音不存在")
+    row.self_passed = True
+    await db.commit()
+    return {"ok": True}
 
 
 async def _save_audio(db, user, item, data: bytes, ctype: str,

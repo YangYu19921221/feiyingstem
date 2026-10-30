@@ -55,24 +55,19 @@ export const uploadReading = (
 
 export interface JudgeResult {
   /**
-   * 闭集判定(services/phoneme_closed_set.py)只出三种:
-   *   pass       读对了 → 变绿跳下一个(含「差距太小按读对处理」那一档)
-   *   confused   念成了本节另一个词 → 不变绿,明确告诉孩子念成了哪个
-   *   not_speech 压根没在读词(静音/噪音/说中文/哼歌)→ 不变绿。
-   *              这一档是绝对分数地板(SCORE_FLOOR)判的,专治「乱说也变绿」:
-   *              实测非语音得分 -6.8~-7.6,真实读词 -0.1~-2.8,中间空 4 个单位。
-   *   uncertain  判不准 → 放过(宁可漏纠,不可假拒绝)
-   * 另有两种不来自模型:silent=前端 VAD 没听到人声 / off=判定服务不可用。
-   *
-   * ⚠️ 曾经写成 near_miss / mismatch,那是**旧 whisper 判定**的字符串,
-   * 后端换成闭集打分后再没发过 —— 前端那个 `verdict === 'near_miss'` 分支
-   * 于是成了永不触发的死代码,一切都静默按「读了就绿」处理。改这里要连带
-   * 改 PhoneticReading.tsx 的分支,两边必须对齐。
+   * 判定真源 backend/app/services/phoneme_closed_set.judge(2026-10-30 起先过两道门):
+   *   拦 —— not_close  读得不像这个音标(乱读 / 说中文 / 只「啊」一声)
+   *         wrong_word 明显读成了本节另一个词(heard 是那个词)
+   *   放 —— pass       读对了
+   *         confused   过了门槛,但另一个词更像一点(只当提示,不拦)
+   *         uncertain  判不准
+   * 另有两种不来自模型:silent=前端 VAD 没听到人声 / off=判定服务不可用(放过)。
+   * not_speech 是 10-30 之前的旧值,新判定不再发,留着只为页面没刷新时也认。
    *
    * 刻意没有分数:分数会被当成评价,而这个判定只够决定「要不要变绿」。
    */
-  verdict: 'pass' | 'confused' | 'not_speech' | 'silent' | 'uncertain' | 'off';
-  /** 闭集里得分最高的词。confused 时就是孩子实际念成的那个 */
+  verdict: 'pass' | 'confused' | 'not_close' | 'wrong_word' | 'not_speech' | 'silent' | 'uncertain' | 'off';
+  /** 闭集里得分最高的词。wrong_word / confused 时就是孩子实际念成的那个 */
   heard?: string | null;
   /**
    * 具体错在哪。目前只有一种:extra_final_vowel = 词尾多带了一个元音
@@ -100,6 +95,10 @@ export const judgeReading = (
   if (durationMs) fd.append('duration_ms', String(durationMs));
   return api.post('/phonetic-practice/readings/judge', fd) as unknown as Promise<JudgeResult>;
 };
+
+/** 孩子读了几次没过,自己点了「我读对了」—— 记在他最后那条录音上(门槛是不是太严的信号) */
+export const markSelfPass = (readingId: number): Promise<{ ok: boolean }> =>
+  api.post(`/phonetic-practice/readings/${readingId}/self-pass`) as unknown as Promise<{ ok: boolean }>;
 
 /** 录音回放地址。<audio> 带不了请求头,所以走 query token(与音标视频串流同套路) */
 export const readingAudioUrl = (readingId: number): string => {

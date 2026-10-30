@@ -28,6 +28,23 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-reading-gate-student-2026-10',
+    date: '2026-10-30',
+    title: '🎙️ 读音标:要读得像才会变绿',
+    desc: '「读音标」那一页,以前随便出个声就能变绿。现在要读得像这个音标才过;读得不像、或者读成了这一节别的词,格子会变黄,告诉你哪里不对。先点「听标准音」,跟着一个音一个音读。同一个读了 3 次还过不了,会出现「我读对了」。',
+    where: '首页「音标」→ 教材目录 → 任意一节「读音标」',
+    roles: ['student'],
+    route: '/student/phonetics/textbook',
+  },
+  {
+    id: 'phonetic-reading-gate-staff-2026-10',
+    date: '2026-10-30',
+    title: '🎙️ 音标跟读不能乱读过关了',
+    desc: '学生「读音标」以前只要出声就变绿,乱读、说中文都能过。现在要读得像这个音标才过(用本校孩子的真实录音定的门槛:认真读的都能过,乱读、说中文的会被拦)。读不像的格子变黄并提示怎么读;同一个被拦 3 次才给「我读对了」,学生点了会记下来,以后用来判断门槛是不是太严。机器偶尔也会判错,有疑问可以听学生的录音。',
+    where: '学生端「音标 → 教材目录 → 读音标」;不用设置,已经生效',
+    roles: ['teacher', 'org_admin', 'admin'],
+  },
+  {
     id: 'phonetic-moving-watermark-2026-10',
     date: '2026-10-30',
     title: '🔏 音标视频的水印会走了,录屏裁不掉',

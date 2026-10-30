@@ -126,10 +126,8 @@ async def handle_judge(request):
         return web.json_response({"verdict": "off", "reason": str(e)})
 
     r = verdict_of(scores, target)
-    # top3 = 排序分(候选间比大小的那个);top3f = 逐帧分(绝对门槛用的那个)。
-    # 两个都回传:标定 SCORE_FLOOR 要看逐帧分,排查误判要看排序分。
-    r["top3"] = [[w, round(s, 2)] for w, s, *_ in scores[:3]]
-    r["top3f"] = [[w, round(rest[0], 3)] for w, s, *rest in scores[:3] if rest]
+    # top3 = 排序分(候选间比大小的那个),排查误判用。贴合分(GOP)判定里已经带着(gop / gate_margin)
+    r["top3"] = [[w, round(s, 2)] for w, s, *_ in scores[:3] if s > float("-inf")]
 
     # 错误类型:「更像哪个词」对孩子没用(他没想读 daff),「词尾多带了个音」才有用。
     # 只在能明确指认时给,给不出就不给 —— 不硬凑反馈。

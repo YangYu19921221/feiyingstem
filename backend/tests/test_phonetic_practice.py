@@ -416,3 +416,54 @@ def test_keyboard_examples_cover_every_key_and_hold_the_sound():
             continue   # CI 上的空库没有这个词,只查长度
         toks = [tokenize(p)[0] if isinstance(tokenize(p), tuple) else tokenize(p) for (p,) in rows]
         assert any(k in t for t in toks), f"{word} 里没有 /{k}/ 这个音: {rows}"
+
+
+async def test_judge_result_is_stored_for_recalibration(
+        client: AsyncClient, db_session, two_orgs_with_books, monkeypatch):
+    """10-30: 判定结果写回录音那一行 —— 以后重标两道门的门槛就靠它们"""
+    from app.services import phoneme_judge_client
+    from app.models.phonetic_practice import PhoneticReading
+
+    async def fake(audio, target, cands):
+        return {"verdict": "not_close", "best": "cab", "gop": -9.876, "gate_margin": -1.2,
+                "heard_phonemes": "pei5tə1"}
+    monkeypatch.setattr(phoneme_judge_client, "judge", fake)
+    d = two_orgs_with_books
+    r = await client.post(
+        "/api/v1/phonetic-practice/readings/judge",
+        headers={"Authorization": f"Bearer {d['s1']}"},
+        files={"audio": ("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 3000, "audio/webm")},
+        data={"item_id": str(d["item_bad"])},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verdict"] == "not_close"
+    assert "gop" not in body, "分数不下发给学生(会被当成评价)"
+    row = await db_session.get(PhoneticReading, body["reading_id"])
+    await db_session.refresh(row)
+    assert row.verdict == "not_close"
+    assert row.pron_score == -988
+    assert json.loads(row.judge_detail)["heard_phonemes"] == "pei5tə1"
+
+
+async def test_self_pass_only_on_own_reading(
+        client: AsyncClient, db_session, two_orgs_with_books):
+    """「我读对了」记在自己最后那条录音上;别人的录音 404"""
+    from app.models.phonetic_practice import PhoneticReading
+    d = two_orgs_with_books
+    r = await client.post(
+        "/api/v1/phonetic-practice/readings/judge",
+        headers={"Authorization": f"Bearer {d['s1']}"},
+        files={"audio": ("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 3000, "audio/webm")},
+        data={"item_id": str(d["item_bad"])},
+    )
+    rid = r.json()["reading_id"]
+    other = await client.post(f"/api/v1/phonetic-practice/readings/{rid}/self-pass",
+                              headers={"Authorization": f"Bearer {d['s2']}"})
+    assert other.status_code == 404
+    mine = await client.post(f"/api/v1/phonetic-practice/readings/{rid}/self-pass",
+                             headers={"Authorization": f"Bearer {d['s1']}"})
+    assert mine.status_code == 200
+    row = await db_session.get(PhoneticReading, rid)
+    await db_session.refresh(row)
+    assert row.self_passed is True

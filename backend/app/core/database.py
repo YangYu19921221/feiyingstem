@@ -554,6 +554,10 @@ async def init_db():
             "ALTER TABLE tutor_conversations ADD COLUMN deleted_at DATETIME",
             # 体验卡正面印的校区地址(2026-10-29,services/promo.save_settings)
             "ALTER TABLE promo_org_settings ADD COLUMN card_address VARCHAR(60)",
+            # 音标跟读存判定结果(2026-10-30,services/phoneme_closed_set 两道门的标定数据)
+            "ALTER TABLE phonetic_readings ADD COLUMN verdict VARCHAR(12)",
+            "ALTER TABLE phonetic_readings ADD COLUMN judge_detail TEXT",
+            "ALTER TABLE phonetic_readings ADD COLUMN self_passed BOOLEAN",
         ]:
             try:
                 await conn.execute(text(_sql))

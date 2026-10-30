@@ -23,33 +23,30 @@ import useGoBack from '../hooks/useGoBack';
 import { useSpeechRecorder, getRecorderBlocker } from '../hooks/useSpeechRecorder';
 import PhonemeCell from '../components/phonetics/PhonemeCell';
 import {
-  fetchReadingLesson, judgeReading, type ReadingLesson, type JudgeResult,
+  fetchReadingLesson, judgeReading, markSelfPass, type ReadingLesson, type JudgeResult,
 } from '../api/phoneticReading';
 import { API_BASE_URL } from '../config/env';
 
 type RowStatus = 'todo' | 'done' | 'retry';
 
 /**
- * 变色口径:**绿色 = 判定认可**,不再是「只要出声就绿」。
+ * 变色口径:**绿色 = 判定认可**(真源 backend/app/services/phoneme_closed_set.judge)。
  *
- * ## 为什么改
- * 上一版绿色只看 VAD(有人声且 ≥250ms),于是哼一声、说中文、咳嗽都变绿 ——
- * 页面对读得对不对完全没有约束力,孩子乱读一遍也能全绿通关。
+ * ## 2026-10-30 起乱读不能过(用户「现在我乱读都能过」「乱读不要过 还是要有一定的正确率」)
+ * 以前只拦没声音:判定只看「本节 20 个词里更像哪个」,乱读也总有个最像的词,于是整页都绿。
+ * 现在后端先过两道门(像不像这个音标 + 是不是明显在读别的词),门槛按真孩子录音标定:
+ * 10-03 认真读的 9 条全过,10-30 乱读 / 说中文 / 说一句话的 5 条全拦。
  *
- * 当时那么写有理由:whisper 把标准音 fee 听成 See、cab 听成 Cap,用它变色
- * 会给读对的孩子标红。但后端已换成**闭集打分**(在本节 20 个词里问「更像哪个」,
- * 不在 392 个音素里自由猜),实测 80% → 95%,而且它自带 MARGIN_UNCERTAIN
- * 把声学上真分不开的(bee/fee、bad/bed)主动吐成 pass。
+ *   not_close / wrong_word / not_speech / silent → 不变绿,琥珀色,说清楚再怎么读
+ *   pass / confused / uncertain / off / 请求失败 → 变绿。判定服务没起、网络断照旧放过,
+ *     不能挡住孩子读下一个
  *
- * ## 现在的口径(方向仍是宁可漏放)
- *   pass / uncertain / off / 请求失败 → 变绿。判不准、服务没起、网络断,
- *     全都放过 —— 判定不可用绝不能挡住孩子读下一个。
- *   confused(念成了本节另一个词,且分差 ≥ 0.6)→ 不变绿,琥珀色「再读一次」,
- *     并明确说念成了哪个词。**只有这一种情况**拦。
- *
- * 仍然不打分、不拦路:格子可以点「我读对了」自评通过(判定误判时的出口)。
+ * ## 「我读对了」
+ * 以前一直摆着 = 乱读一遍点它就过,判定形同虚设。现在**被拦 3 次**才出现(录不了音的设备一直有),
+ * 点了记到最后那条录音上(self_passed)—— 认真读的孩子大量自己放行,说明门槛太严,要重新标定。
  */
 const STD_HINT_AFTER_TRIES = 2;   // 同一个词读这么多次还没绿,主动提示听标准音
+const SELF_PASS_AFTER_MISSES = 3; // 被判定拦了这么多次,才给「我读对了」
 
 /** 标准音走现有 edge-tts 端点(英式女声,与全 App 单词发音同一个声音) */
 const stdUrl = (word: string) =>
@@ -67,6 +64,10 @@ export default function PhoneticReading() {
   const [feedback, setFeedback] = useState<JudgeResult | null>(null);
   const [myUrl, setMyUrl] = useState<string | null>(null);
   const [tries, setTries] = useState<number[]>([]);
+  // 被判定拦下的次数(没声音不算:那是麦克风 / 离得远,不是读得不对)
+  const [misses, setMisses] = useState<number[]>([]);
+  // 每一格最后那条录音的 id,「我读对了」记在它上面
+  const lastReading = useRef<Record<number, number>>({});
   // 只让**刚**变绿的那一格放庆祝特效;900ms 后清掉,否则重渲染会重复播
   const [justDone, setJustDone] = useState<number | null>(null);
   // 判定在路上(录完到出结果之间)。这段时间不给再录,避免两次判定串结果
@@ -94,6 +95,7 @@ export default function PhoneticReading() {
         setLesson(d);
         setStatus(d.items.map(() => 'todo'));
         setTries(d.items.map(() => 0));
+        setMisses(d.items.map(() => 0));
       })
       .catch(() => { if (alive) setError('加载失败,请检查网络后重试'); })
       .finally(() => { if (alive) setLoading(false); });
@@ -163,16 +165,16 @@ export default function PhoneticReading() {
     // 判定期间孩子可能已经手动点了别的格子,那就别改现在这一格
     if (idx !== activeRef.current) return;
 
-    // ⚠️ 2026-09-03:**confused 暂时不拦人**,只当提示。
-    // 原因是现用模型(espeak 多语言 wav2vec2)会把中国孩子的英语发音归到
-    // **中文音素**那一侧 —— 实测 7 条真人录音全被转成 `pei5tə1` 这类带声调的
-    // 拼音音素(标准音则干净解出 bæd),于是与纯英语候选集对不上,一律判 confused。
-    // 拿它拦人等于把所有认真读的孩子挡在门外(实测 0/7 通过)。
-    // 削静音、限英语音素、按段切分三种补救都试过,无效 —— 这不是调参能解决的,
-    // 要根治得换成针对中国学生英语发音训练的引擎。
-    // 在那之前:confused 只显示「听起来像 X」当参考,格子照常变绿。
-    // silent / not_speech 仍然拦 —— 那两种是「确实没在读」,与口音无关。
-    if (r.verdict === 'not_speech' || r.verdict === 'silent') {
+    if (r.reading_id) lastReading.current[idx] = r.reading_id;
+
+    // 拦:读得不像这个音标 / 明显读成了别的词。旧值 not_speech 也拦(页面没刷新时后端可能已经是新的)
+    if (r.verdict === 'not_close' || r.verdict === 'wrong_word' || r.verdict === 'not_speech') {
+      setStatus(prev => { const n = [...prev]; n[idx] = 'retry'; return n; });
+      setMisses(prev => { const n = [...prev]; n[idx] += 1; return n; });
+      setFeedback(r);
+      return;
+    }
+    if (r.verdict === 'silent') {
       setStatus(prev => { const n = [...prev]; n[idx] = 'retry'; return n; });
       setFeedback(r);
       return;
@@ -208,7 +210,12 @@ export default function PhoneticReading() {
     });
   }, [gotoNextTodo]);
 
-  const markSelfDone = () => markDone(active);
+  const markSelfDone = () => {
+    const rid = lastReading.current[active];
+    // 记下来就行,失败不挡孩子
+    if (rid) markSelfPass(rid).catch(() => { /* 忽略 */ });
+    markDone(active);
+  };
 
   const play = (which: 'std' | 'mine') => {
     const el = which === 'std' ? stdRef.current : mineRef.current;
@@ -386,11 +393,21 @@ export default function PhoneticReading() {
               {feedback.verdict === 'silent' && (
                 <p className="text-slate-500">没听到声音,离麦克风近一点再读一次</p>
               )}
-              {feedback.verdict === 'not_speech' && (
-                // 没听出在读这一节的词。不说「你读错了」—— 更可能是没读、
-                // 声音太小、或者麦克风收到的全是环境噪音
-                <p className="text-slate-500">
-                  没听清你在读哪个词,大声一点、对着麦克风再读一次
+              {(feedback.verdict === 'not_speech'
+                || (feedback.verdict === 'not_close' && !feedback.error_hint)) && (
+                // 读得不像这个音标。不说「你读错了」—— 也可能是声音太小、离麦克风远
+                <p className="text-amber-700">
+                  听着不太像 <span className="font-mono">{item?.phonetic}</span>
+                  ,先点上面「听标准音」,跟着一个音一个音读
+                </p>
+              )}
+              {feedback.verdict === 'wrong_word' && (
+                // 读成了本节另一个词:把那个词的音标摆出来对比,比只说单词有用(孩子看的是音标)
+                <p className="text-amber-700">
+                  听着像在读 <span className="font-mono">{
+                    lesson?.items.find(x => x.word_reveal === feedback.heard)?.phonetic ?? feedback.heard
+                  }</span>,这一个是 <span className="font-mono">{item?.phonetic}</span>
+                  ,听一下标准音再读
                 </p>
               )}
               {/* 有具体错误类型就说具体的 —— 「词尾多带了个音」孩子能照着改,
@@ -458,12 +475,16 @@ export default function PhoneticReading() {
             </button>
           </div>
 
-          {/* 「我读对了」自评按钮 —— 判定会拦人之后,这颗按钮更重要了。
-              三个用处:①录音不可用的设备(老 iOS、非 https 入口)也能推进
-              ②判定判错时孩子有出口,不至于卡在一格上反复读
-              ③判定服务没起时照旧能上课。
-              自评不准但无害,而**没有出口**的机器误判会让孩子不敢开口。 */}
-          {status[active] !== 'done' && (
+          {/* 「我读对了」自评按钮。两个用处:①录音不可用的设备(老 iOS、非 https 入口)也能推进
+              ②判定判错时孩子有出口,不至于卡在一格上反复读。
+              但一直摆着就成了乱读的后门,所以**被拦 3 次**才出现(10-30),点了记到录音上 */}
+          {status[active] !== 'done' && misses[active] >= SELF_PASS_AFTER_MISSES && !blocker && !recError && (
+            <p className="mt-3 text-center text-xs text-slate-400">
+              读了 {misses[active]} 次还没过?实在读不过可以点下面「我读对了」
+            </p>
+          )}
+          {status[active] !== 'done'
+            && (misses[active] >= SELF_PASS_AFTER_MISSES || !!blocker || !!recError) && (
             <button
               onClick={markSelfDone}
               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl

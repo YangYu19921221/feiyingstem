@@ -14,6 +14,11 @@
 - 目标词得分与最高分差得很少 → 判不准,当读对(宁可漏纠,不可假拒绝)
 
 阈值方向只有一个:**宁可漏放**。判错一次孩子就不敢开口,而漏纠一次下节课还能补。
+
+## 乱读也能过的洞(2026-10-30 补上,见 judge() 的「两道门」)
+上面三条只看**相对排序**。一段乱读、一句中文、一声「啊」,照样有个「最像」的词,
+目标词又常常落在 0.6 以内 → 判过。生产 10-30 用户自己乱读,整页都绿。
+现在先过两道门(GOP_FLOOR / GATE_MARGIN),过了才轮到上面的排序判定。
 """
 import math
 from typing import Dict, List, Optional, Tuple
@@ -179,37 +184,43 @@ class ClosedSetScorer:
         return end / max(len(target), 1)
 
     def rank(self, audio, candidates: Dict[str, List[str]]
-             ) -> List[Tuple[str, float, float]]:
-        """candidates: {词: 音素token列表} → [(词, 排序分, 逐帧分)] 按排序分降序
+             ) -> List[Tuple[str, float, float, float]]:
+        """candidates: {词: 音素token列表} → [(词, 排序分, 逐帧分, 贴合分)] 按排序分降序
 
-        返回两个分,用途不同:
-        - **排序分** = 除音素数。候选之间比大小用,MARGIN_UNCERTAIN 按它标定。
-        - **逐帧分** = 再除帧数 T。绝对门槛(SCORE_FLOOR)用它。
+        三个分,用途不同:
+        - **排序分** = 维特比总分 ÷ 音素数。候选之间比大小用,MARGIN_UNCERTAIN / GATE_MARGIN 按它标定。
+        - **逐帧分** = 再除帧数 T。只留着排查用(曾拿它做绝对门槛,标定失败,见 judge())。
+        - **贴合分(GOP)** = (强制读成这个词的总分 − 模型自由听的最好总分) ÷ 音素数。
+          0 = 和模型自己听到的一样好,越负越不像这个词。GOP_FLOOR 用它。
 
-        为什么必须分开:排序分在**所有帧**上累加负对数概率却只除音素数,
-        所以录音越长分越低 —— 同一个 bad,0.98 秒的 TTS 得 -0.78,
-        4.58 秒的真人录音得 -15.19。量的是长度不是发音质量。
-        浏览器录音天然比 TTS 长得多(VAD 要静 600ms 才停,前后都带静音),
-        拿排序分做绝对门槛必然把真人全判成"没在读词"(2026-09-03 实测:
-        11 条真实录音 100% 被 -5.0 的地板拦掉,而它们的音频质量没问题,
-        RMS 0.033~0.100 对比 TTS 的 0.051,峰值还更高)。
-        除以 T 之后量纲变成"每帧平均对数概率",与音频长短无关,才能当门槛。
+        为什么排序分不能当绝对门槛:它在**所有帧**上累加负对数概率却只除音素数,
+        录音越长分越低 —— 同一个 bad,0.98 秒的 TTS 得 -0.78,4.58 秒的真人录音得 -15.19。
+        贴合分减掉了「自由听的最好分」,静音帧两边一起扣,长短抵掉了,所以它能当门槛。
         """
         return self._rank_on(self.logits(audio), candidates)
 
     def _rank_on(self, logp, candidates: Dict[str, List[str]]
-                 ) -> List[Tuple[str, float, float]]:
+                 ) -> List[Tuple[str, float, float, float]]:
         """在**已算好的** logits 上打分。rank() 和 rank_and_hear() 共用,
-        避免同一段音频推理两遍(CPU 上一次 0.65 秒)。"""
+        避免同一段音频推理两遍(CPU 上一次 0.65 秒)。
+
+        logp 可以是 torch 张量也可以是 numpy 数组(测试用后者,主应用 venv 不装 torch)。
+        """
         T = max(int(logp.shape[0]), 1)
+        mx = logp.max(-1)
+        best_path = float(getattr(mx, "values", mx).sum())   # 每帧都取最像的那个 token
         scored = []
         for word, toks in candidates.items():
             ids = self._ids(toks)
             if not ids:
                 continue
             s = self.ctc_logprob(logp, ids)
-            per_frame = s * len(ids) / T if s > -math.inf else -math.inf
-            scored.append((word, s, per_frame))
+            if s > -math.inf:
+                per_frame = s * len(ids) / T
+                gop = (s * len(ids) - best_path) / len(ids)
+            else:
+                per_frame = gop = -math.inf
+            scored.append((word, s, per_frame, gop))
         scored.sort(key=lambda x: -x[1])
         return scored
 
@@ -225,55 +236,61 @@ class ClosedSetScorer:
 # 真实童声会更糊,所以这个值将来只该调大不该调小。
 MARGIN_UNCERTAIN = 0.6
 
-# 绝对分数地板 —— 判「这段音压根不是在读本节任何词」(静音/噪音/说中文)。
-# ⚠️ 比的是 rank() 的**逐帧分**(第 3 个值),不是排序分。原因见 rank() 的说明:
-#    排序分随录音长度漂移,拿它当门槛会把真人全拦掉。
+# ── 两道门(2026-10-30,用户「乱读不要过 还是要有一定的正确率」)──────────────
+# 免费方案里实测最好的一种:还是现在这个模型,只是多问一句「这段音和目标词贴得多近」。
+# (试过的另外两种都更差: 和标准录音逐帧比 DTW、换 L2-ARCTIC 中国学生英语模型 ——
+#  后者把真孩子的录音拦掉一半。收费的讯飞更准,用户嫌按次收费没用。)
 #
-# 为什么必须有这道闸:judge() 的 pass/confused 只看**相对排序**,从不看绝对值。
-# 一段静音照样有个"最像"的词,分差还可能落进 MARGIN_UNCERTAIN 被
-# 「差距小,按读对处理」放过 —— 实测 1 秒真实静音 webm 判 pass(best=bee,
-# margin=0.553)。前端 VAD 只看音量,空调声/手机摩擦声都能过。
+# 标定(/tmp/pron_eval,生产机跑的): 本节 20 个词 × 7 个声音(含 2 个中国口音 TTS)+
+# 15 段乱读 / 中文 / 噪音 + 生产 52 条真实录音。在「10-03 那批认真读的真孩子录音 9/9 都过、
+# 10-30 那 5 条乱读 / 说中文 / 说一句话的真实录音都拦」的前提下挑放过乱读最少的:
+#     读对的过 133/140(中国口音 35/40)   乱读放过 5.3%   念成本节别的词放过 23.6%
+# 9 条真孩子录音里最低的贴合分 -3.59、最低的相对分 -3.12 —— 门槛离它们还有一截,
+# 5 条乱读最高的贴合分 -11.91。
 #
-# 数值由 scripts/calibrate_score_floor.py 标定(真人录音 + 标准音 + 各类非语音)。
-# 标定口径:取真人真实读词的最低逐帧分,再往下留一截余量。
-#
-# ⚠️ 童声比 Edge TTS 糊,分数更低。这个值和 MARGIN_UNCERTAIN 方向相反 ——
-#    只该**调小**(更宽松)。孩子反复读同一个词过不去,先查是不是撞了这条。
-# 2026-09-03 标定结论:**这条门槛做不到,已停用**(设成极小值 = 永不触发)。
-# scripts/calibrate_score_floor.py 在真人录音上跑出来:
-#     真人读词最低逐帧分  -1.019
-#     非语音最高逐帧分    -0.354   ← 比真人还高
-# 两簇完全重叠,任何门槛要么漏噪音、要么拦真人。而误拦一个认真读的孩子
-# 比漏过一次噪音严重得多(判错一次孩子就不敢开口),所以放弃绝对门槛。
-# 静音由前端 VAD + 服务端 0.2 秒最短时长兜。
-# 想重开先跑那个标定脚本,两簇分开了再谈。
-SCORE_FLOOR = -99.0
+# ⚠️ 方向: 孩子认真读却过不了,比乱读偶尔过一次严重得多。这两个值**只该往宽调**
+#    (更负)。要收紧先拿生产 private_media/phonetic_audio 里新攒的真孩子录音重跑标定。
+GOP_FLOOR = -5.5       # 目标词贴合分低于它 = 读得不像这个词
+GATE_MARGIN = -3.25    # 目标词排序分比本节最像的别的词低这么多 = 明显在读别的词
 
 
 def judge(scores: List[Tuple], target: str) -> dict:
     """闭集得分 → 判定
 
-    scores: rank() 的输出 [(词, 排序分, 逐帧分)]。也兼容只有 2 元的老格式
-            (那时地板检查自动跳过 —— 拿排序分当门槛会误拦真人,宁可不判)。
+    scores: rank() 的输出 [(词, 排序分, 逐帧分, 贴合分)]。也兼容只有 2 / 3 元的老格式
+            (那时两道门自动跳过,只按相对排序判)。
 
-    verdict: pass / confused(念成了本节另一个词) / not_speech(压根没在读词) /
-             uncertain
+    verdict:
+      not_close  读得不像这个词(乱读 / 说中文 / 只「啊」一声)—— 拦
+      wrong_word 明显读成了本节另一个词 —— 拦,best 是那个词
+      pass       读对了
+      confused   过了两道门,但另一个词更像(差 ≥ MARGIN_UNCERTAIN)—— 放过,只当提示
+      uncertain  判不准 —— 放过
+    返回里带 gop / gate_margin,存库供以后重新标定。
     """
     if not scores:
         return {"verdict": "uncertain", "best": None, "margin": 0.0}
 
-    # 先过绝对分数地板:连最像的那个都低于地板 = 这段音不是在读本节的词
-    # (静音/噪音/说中文/哼歌)。必须在相对排序之前判 —— 排序对噪音输入
-    # 本来就不可靠(同一段静音换个候选集,verdict 会从 pass 抖成 confused)。
-    #
-    # ⚠️ 用**逐帧分**(下标 2)。用排序分会随录音长短漂移:实测 11 条真人录音
-    #    100% 被排序分的地板拦掉,而音频质量完全正常。
-    if len(scores[0]) >= 3:
-        per_frame = scores[0][2]
-        if per_frame < SCORE_FLOOR:
-            return {"verdict": "not_speech", "best": scores[0][0],
-                    "margin": 0.0, "score": round(per_frame, 3),
-                    "note": "没听出在读这一节的词"}
+    tgt_row = next((r for r in scores if r[0] == target), None)
+    if tgt_row is None:
+        return {"verdict": "uncertain", "best": scores[0][0], "margin": 0.0}
+
+    # ── 两道门。必须在相对排序之前判: 排序只说「更像哪个」,不说「像不像」 ──
+    if len(tgt_row) >= 4:
+        gop = tgt_row[3]
+        others = [r for r in scores if r[0] != target]
+        top_other = max(others, key=lambda r: r[1]) if others else None
+        gate_margin = (tgt_row[1] - top_other[1]) if top_other else math.inf
+        info = {"gop": _r(gop), "gate_margin": _r(gate_margin)}
+        if gate_margin < GATE_MARGIN and top_other[3] >= GOP_FLOOR:
+            # 另一个词既明显更像、本身也读得像 —— 能明确说读成了哪个
+            return {"verdict": "wrong_word", "best": top_other[0],
+                    "margin": _r(-gate_margin), **info}
+        if gop < GOP_FLOOR or gate_margin < GATE_MARGIN:
+            return {"verdict": "not_close", "best": scores[0][0], "margin": 0.0,
+                    "note": "读得不像这个词", **info}
+    else:
+        info = {}
 
     tgt = next((s for w, s, *_ in scores if w == target), None)
     if tgt is None:
@@ -287,11 +304,16 @@ def judge(scores: List[Tuple], target: str) -> dict:
 
     if best_word == target:
         return {"verdict": "pass", "best": target, "margin": 0.0,
-                "runner_up": next((w for w, *_ in scores if w != target), None)}
+                "runner_up": next((w for w, *_ in scores if w != target), None), **info}
 
     margin = best_score - tgt
     if margin < MARGIN_UNCERTAIN:
         # 差距太小,声学上分不开 —— 判不准就当读对,不冤枉孩子
         return {"verdict": "pass", "best": best_word, "margin": round(margin, 3),
-                "note": "差距小,按读对处理"}
-    return {"verdict": "confused", "best": best_word, "margin": round(margin, 3)}
+                "note": "差距小,按读对处理", **info}
+    return {"verdict": "confused", "best": best_word, "margin": round(margin, 3), **info}
+
+
+def _r(x: float) -> Optional[float]:
+    """-inf(音频太短装不下这个词)给 None,JSON 里放不下无穷"""
+    return round(x, 3) if x > -math.inf and x < math.inf else None

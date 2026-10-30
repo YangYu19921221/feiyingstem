@@ -154,8 +154,15 @@ class PhoneticReading(Base):
     teacher_note = Column(String(200), nullable=True)
     marked_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-    # 预留:将来接音素级评测再回填,第一期恒为 NULL 且不给学生看
+    # 判定结果(2026-10-30 起写,之前的行都是 NULL)。**不给学生看分数**,只为以后重新标定门槛:
+    #   verdict      这一次判成什么(pass / not_close / wrong_word / confused / off …)
+    #   pron_score   贴合分 GOP × 100 取整(services/phoneme_closed_set.GOP_FLOOR 用的那个量)
+    #   judge_detail JSON: gop / gate_margin / best / 听到的音素,排查误判用
+    #   self_passed  孩子读了几次没过,自己点了「我读对了」—— 这种多了说明门槛太严
     pron_score = Column(Integer, nullable=True)
+    verdict = Column(String(12), nullable=True)
+    judge_detail = Column(Text, nullable=True)
+    self_passed = Column(Boolean, nullable=True)
 
     org_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
