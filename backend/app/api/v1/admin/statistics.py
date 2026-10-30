@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from app.core.database import get_db
 from app.core.timeutil import local_today, local_day_utc_range
 from app.models.user import User
-from app.models.word import Word, WordBook, Unit
+from app.models.word import WordBook
 from app.models.learning import LearningProgress, StudySession
 from app.api.v1.auth import get_current_admin_or_org_admin
 
@@ -30,17 +30,17 @@ async def get_statistics(
     result = await db.execute(select(func.count()).select_from(User))
     total_users = result.scalar() or 0
 
-    # 2. 总单词数
-    result = await db.execute(select(func.count()).select_from(Word))
-    total_words = result.scalar() or 0
+    # 2. 总单词数: 只数还在的书里的(删了书 / 单元会跟着少),口径见 services/word_stats
+    from app.services import word_stats
+    wc = await word_stats.word_counts(db)
+    total_words = wc["total_words"]
 
     # 3. 总单词本数
     result = await db.execute(select(func.count()).select_from(WordBook))
     total_books = result.scalar() or 0
 
-    # 4. 总单元数
-    result = await db.execute(select(func.count()).select_from(Unit))
-    total_units = result.scalar() or 0
+    # 4. 总单元数(书已删的单元不算)
+    total_units = await word_stats.unit_count(db)
 
     # 5-8. 活跃/学习次数统计。join User(租户锚点): StudySession 非锚点表,
     # 不 join 的话 org_admin 会看到全平台数字而非本机构
@@ -88,6 +88,7 @@ async def get_statistics(
     return {
         "total_users": total_users,
         "total_words": total_words,
+        "distinct_words": wc["distinct_words"],
         "total_books": total_books,
         "total_units": total_units,
         "active_users_today": active_users_today,

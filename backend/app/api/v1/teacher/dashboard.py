@@ -26,9 +26,9 @@ async def get_teacher_dashboard_stats(
     now = datetime.utcnow()
     week_start = now - timedelta(days=now.weekday())  # 本周一
 
-    # 1. 总单词数(全局词库:词是批量导入的,created_by 为空;词库全校共享,按全局统计)
-    result = await db.execute(select(func.count()).select_from(Word))
-    total_words = result.scalar() or 0
+    # 1. 总单词数: 看得到的书(平台书 + 本机构)里的词,删了书 / 单元会跟着少(口径见 services/word_stats)
+    from app.services import word_stats
+    total_words = (await word_stats.word_counts(db))["total_words"]
 
     # 2. 单词本数(同上,全局)
     result = await db.execute(select(func.count()).select_from(WordBook))

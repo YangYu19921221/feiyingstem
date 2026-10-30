@@ -13,7 +13,7 @@ from sqlalchemy import select, func, or_, desc
 from app.core.database import get_db
 from app.api.v1.auth import get_current_admin, get_current_admin_or_org_admin
 from app.models.user import User
-from app.models.word import WordBook, Unit, Word, WordDefinition
+from app.models.word import WordBook, Word, WordDefinition
 from app.models.reading import ReadingPassage
 
 
@@ -47,15 +47,11 @@ async def get_content_stats(
     public_book_result = await db.execute(public_book_query)
     public_books = public_book_result.scalar()
 
-    # 单词统计
-    word_query = select(func.count()).select_from(Word)
-    word_result = await db.execute(word_query)
-    total_words = word_result.scalar()
-
-    # 单元统计
-    unit_query = select(func.count()).select_from(Unit)
-    unit_result = await db.execute(unit_query)
-    total_units = unit_result.scalar()
+    # 单词 / 单元: 只数还在的书里的(删了书 / 单元会跟着少),口径见 services/word_stats
+    from app.services import word_stats
+    wc = await word_stats.word_counts(db)
+    total_words = wc["total_words"]
+    total_units = await word_stats.unit_count(db)
 
     # 阅读文章统计
     passage_query = select(func.count()).select_from(ReadingPassage)
@@ -69,6 +65,7 @@ async def get_content_stats(
             "private": total_books - public_books
         },
         "words": total_words,
+        "distinct_words": wc["distinct_words"],
         "units": total_units,
         "reading_passages": total_passages
     }
