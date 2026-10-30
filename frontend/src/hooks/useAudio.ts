@@ -121,9 +121,11 @@ function handleAutoplayBlocked(retry: () => void) {
   window.addEventListener('keydown', onFirstGesture, true);
 }
 
-async function fetchAudioBlob(word: string, wordId?: number): Promise<string> {
-  // 缓存键带 word_id,避免一词多音(同拼写不同 id)共用同一音频
-  const key = wordId != null ? `id:${wordId}` : word.trim().toLowerCase();
+async function fetchAudioBlob(word: string, wordId?: number, raw = false): Promise<string> {
+  // 缓存键带 word_id,避免一词多音(同拼写不同 id)共用同一音频。
+  // raw(逐字合成老师指定的发音)单独一个前缀: 文本 seed 和单词 seed 走的接口不同,不能共用
+  const key = raw ? `raw:${word.trim().toLowerCase()}`
+    : wordId != null ? `id:${wordId}` : word.trim().toLowerCase();
 
   // 命中缓存
   if (audioCache.has(key)) {
@@ -136,7 +138,7 @@ async function fetchAudioBlob(word: string, wordId?: number): Promise<string> {
   }
 
   const promise = (async () => {
-    const url = edgeTtsUrl(word, wordId);
+    const url = raw ? rawTtsUrl(word.trim()) : edgeTtsUrl(word, wordId);
     const maxRetries = 2;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController();
@@ -208,13 +210,19 @@ export function useAudio() {
    * 正常 resolve(被新播放顶掉/被自动播放策略拦/拉音频失败),
    * 早先按"调用成功"计数会把没出声的尝试也扣掉次数,把喇叭按钮扣成灰的。
    */
-  const playAudio = useCallback(async (text: string, rate: number = 1, wordId?: number): Promise<boolean> => {
+  /**
+   * raw=true: 把 text 当成最终发音文本逐字合成(音标教材里老师指定的「发音」,cede → seed),
+   * 不按拼写查词库。和老师后台「试听」走同一个接口,听到的一字不差
+   */
+  const playAudio = useCallback(async (
+    text: string, rate: number = 1, wordId?: number, raw = false,
+  ): Promise<boolean> => {
     const audio = audioRef.current;
     // 全局打断：掐断所有 <audio> 与浏览器 TTS，拿到本次播放的全局令牌
     const token = interruptAllAudio();
     if (audio) activeAudioEl = audio;
     try {
-      const blobUrl = await fetchAudioBlob(text, wordId);
+      const blobUrl = await fetchAudioBlob(text, wordId, raw);
       // fetch 期间若已发起新的播放（快速切词/循环重播），本次已过期，直接放弃，
       // 否则慢请求 resolve 后会把 audio.src 改回旧词并打断当前播放，造成静音/串音
       if (!audio || globalPlayToken !== token) return false;

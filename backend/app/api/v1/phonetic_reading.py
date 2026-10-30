@@ -66,6 +66,9 @@ class ReadingItemOut(BaseModel):
     phonetic: str
     meaning: Optional[str] = None
     word_reveal: str
+    # 老师指定的发音(cede 读 seed)。「听标准音」按它逐字合成;None = 按单词读。
+    # 这里可以先给: 跟读页本来就下发了 word_reveal,标准音也是读之前就能听的
+    tts_text: Optional[str] = None
 
 
 class ReadingLessonOut(BaseModel):
@@ -113,6 +116,7 @@ async def get_reading_lesson(
             phonetic=it.answer_display or f"[{''.join(toks)}]",
             meaning=it.meaning,
             word_reveal=it.word,
+            tts_text=it.tts_text,
         ))
     return ReadingLessonOut(id=ls.id, code=ls.code, title=ls.title, items=out)
 

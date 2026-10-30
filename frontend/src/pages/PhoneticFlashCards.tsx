@@ -181,7 +181,11 @@ export default function PhoneticFlashCards() {
 
   // ---- 判分 / 翻面 / 下一张 ----
 
-  const say = useCallback((w: string) => { playAudio(w).catch(() => {}); }, [playAudio]);
+  // 老师给这个词指定了发音(cede 读 seed)就逐字读它,否则按单词读。
+  // 发音只在卡片结束后随判分结果下发(提前给等于提示答案),所以背面才有
+  const say = useCallback((w: string, tts?: string | null) => {
+    (tts ? playAudio(tts, 1, undefined, true) : playAudio(w)).catch(() => {});
+  }, [playAudio]);
 
   /** 收尾一张卡:记成绩、翻到背面揭示答案并读一遍 */
   const finish = useCallback((it: PhoneticItem, res: CheckResult, firstTry: boolean) => {
@@ -189,7 +193,7 @@ export default function PhoneticFlashCards() {
     setResult(res);
     enterPhase('back');
     setFlipped(true);
-    say(it.word);
+    say(it.word, res.tts_text);
   }, [say, enterPhase]);
 
   const submit = async (giveUp = false) => {
@@ -514,7 +518,7 @@ export default function PhoneticFlashCards() {
                     />
                   </span>
                   <button
-                    onClick={() => card && say(card.word)}
+                    onClick={() => card && say(card.word, result?.tts_text)}
                     className="flex items-center gap-2 rounded-full bg-white/25 px-4 py-2
                                text-sm backdrop-blur transition active:scale-95 hover:bg-white/35"
                   >

@@ -15,6 +15,8 @@ export interface ReadingItem {
   meaning?: string | null;
   /** 读完之后才显示的单词 */
   word_reveal: string;
+  /** 老师指定的发音(cede 读 seed)。「听标准音」按它读;没指定 = 按单词读 */
+  tts_text?: string | null;
 }
 
 export interface ReadingLesson {

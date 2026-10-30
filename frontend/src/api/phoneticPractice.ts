@@ -69,6 +69,8 @@ export interface CheckResult {
   prefill?: (string | null)[] | null;
   /** 卡片背面揭示用。只在「做对了 / 第二遍判完」时下发,第一遍做错不给 */
   answer_tokens?: string[] | null;
+  /** 老师指定的发音(cede 读 seed)。和 answer_tokens 同时下发;没指定 = 按单词读 */
+  tts_text?: string | null;
 }
 
 export interface PageItemResult {

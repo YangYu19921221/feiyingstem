@@ -26,6 +26,7 @@ import {
   fetchReadingLesson, judgeReading, markSelfPass, type ReadingLesson, type JudgeResult,
 } from '../api/phoneticReading';
 import { API_BASE_URL } from '../config/env';
+import { rawTtsUrl } from '../hooks/useAudio';
 
 type RowStatus = 'todo' | 'done' | 'retry';
 
@@ -48,9 +49,13 @@ type RowStatus = 'todo' | 'done' | 'retry';
 const STD_HINT_AFTER_TRIES = 2;   // 同一个词读这么多次还没绿,主动提示听标准音
 const SELF_PASS_AFTER_MISSES = 3; // 被判定拦了这么多次,才给「我读对了」
 
-/** 标准音走现有 edge-tts 端点(英式女声,与全 App 单词发音同一个声音) */
-const stdUrl = (word: string) =>
-  `${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(word)}`;
+/**
+ * 标准音走现有 edge-tts 端点(英式女声,与全 App 单词发音同一个声音)。
+ * 老师给这个词指定了发音(cede 读 seed)就逐字合成那段文字 —— 和后台「试听」同一个接口
+ */
+const stdUrl = (word: string, tts?: string | null) =>
+  tts ? rawTtsUrl(tts)
+    : `${API_BASE_URL}/pronunciation/edge-tts?word=${encodeURIComponent(word)}`;
 
 export default function PhoneticReading() {
   const { lessonId } = useParams<{ lessonId: string }>();
@@ -507,7 +512,7 @@ export default function PhoneticReading() {
         </aside>
       </div>
 
-      <audio ref={stdRef} src={item ? stdUrl(item.word_reveal) : undefined} preload="auto" hidden />
+      <audio ref={stdRef} src={item ? stdUrl(item.word_reveal, item.tts_text) : undefined} preload="auto" hidden />
       <audio ref={mineRef} src={myUrl ?? undefined} preload="auto" hidden />
     </div>
   );

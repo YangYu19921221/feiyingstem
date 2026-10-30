@@ -17,6 +17,8 @@ export interface PhoneticBookOut {
   /** 平台预置(所有机构共享)。机构只能看不能改 */
   is_preset: boolean;
   can_edit: boolean;
+  /** 指定了发音的词数 */
+  tts_count?: number;
 }
 
 export interface PhoneticLessonBrief {
@@ -26,12 +28,15 @@ export interface PhoneticLessonBrief {
   lesson_number: number;
   item_count: number;
   removed_count: number;
+  tts_count?: number;
 }
 
 export interface ImportRow {
   word: string;
   phonetic: string;
   meaning?: string | null;
+  /** 「发音」列:标准音按这个读(cede 填 seed)。空 = 按单词读 */
+  tts?: string | null;
 }
 
 export interface ImportLesson {
@@ -61,6 +66,8 @@ export interface ValidateOut {
   errors: RowError[];
   existing_book_id?: number | null;
   existing_item_count?: number | null;
+  /** 填了「发音」的行数 */
+  tts_count?: number;
 }
 
 export interface ImportOut {
@@ -93,6 +100,30 @@ export const updatePhoneticBook = (
   patch: Partial<Pick<PhoneticBookOut, 'name' | 'volume' | 'description' | 'is_active'>>,
 ): Promise<PhoneticBookOut> =>
   api.patch(`${B}/books/${bookId}`, patch) as unknown as Promise<PhoneticBookOut>;
+
+/** 一本书的全部题(改发音用) */
+export interface BookItem {
+  id: number;
+  lesson_id: number;
+  code: string;
+  word: string;
+  phonetic: string;
+  meaning?: string | null;
+  tts_text?: string | null;
+}
+
+export const fetchBookItems = (bookId: number): Promise<BookItem[]> =>
+  api.get(`${B}/books/${bookId}/items`) as unknown as Promise<BookItem[]>;
+
+/**
+ * 只改发音,按题目 id。题目、id、学生进度和录音都不动(整本替换会换掉所有 id)。
+ * tts 空 = 改回按单词读。有一个不合格后端一个都不改(400)
+ */
+export const updateBookTts = (
+  bookId: number,
+  items: Array<{ id: number; tts: string | null }>,
+): Promise<{ updated: number; with_tts: number }> =>
+  api.post(`${B}/books/${bookId}/tts`, { items }) as unknown as Promise<{ updated: number; with_tts: number }>;
 
 export const deletePhoneticBook = (bookId: number): Promise<{ deleted: boolean }> =>
   api.delete(`${B}/books/${bookId}`) as unknown as Promise<{ deleted: boolean }>;

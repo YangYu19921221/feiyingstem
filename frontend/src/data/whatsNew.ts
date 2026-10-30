@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-tts-override-2026-10',
+    date: '2026-10-30',
+    title: '🔈 音标教材可以改发音了:读错长短音的词,按你给的词读',
+    desc: '学生「听标准音」是机器按单词拼写读的,cede、faff 这类生僻词有时会读错长音短音。现在每个词都能指定按哪个词读:比如 cede 填 seed,学生听到的就是 seed 的读音。先点「听默认」听现在学生听到的,再填、点「试听」对比,听着对再保存。只改发音,学生的进度和录音都不受影响。新上传的教材也可以在 Excel 里加一列「发音」(模板里有示例)。',
+    where: '教师工作台「内容准备 → 音标教材」(或顶部「更多 → 音标教材」)→ 每本书右边「改发音」',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/phonetic-books',
+  },
+  {
     id: 'phonetic-reading-gate-student-2026-10',
     date: '2026-10-30',
     title: '🎙️ 读音标:要读得像才会变绿',

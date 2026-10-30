@@ -271,6 +271,22 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标教材每个词可以改发音(2026-10-30,用户「有的长音或者短音发音的后台传的时候可以增加个重发音按我给的单词发音吗」):
+  标准音是 Edge TTS 按拼写读的,cede / faff 这类生僻词常读错长短音。phonetic_items 加列 tts_text(database.py 1 条 ALTER,NULL = 按单词读),
+  填了学生端就**逐字合成**这段文字(rawTtsUrl,和老师「试听」同一个接口,一字不差)。只收英文字母 / 空格 / 撇号 / 连字符、≤60
+  (真源 services/phonetic_tokenize.check_tts_text,前端 PhoneticTtsEditor 同口径只做当场提示)—— 填音标符号 TTS 读不出来。
+  两个入口: ①新教材在上传的 Excel 里加「发音」列(网页上传和命令行脚本 import_phonetic_book.py 都认,模板里有 cede → seed 示例)
+  ②已经在用的教材在「音标教材」页每本书右边「改发音」弹层(components/phonetics/PhoneticTtsEditor): 每个词「听默认 / 发音 / 试听」,
+  按节看、搜整本、只看填了的;`POST /teacher/phonetic-books/books/{id}/tts` **按题目 id 只写 tts_text**,
+  **不走整本替换**(替换会删题重建,id 全换,学生「写对 N 个」和跟读录音都对不上)。有一个不合格或混进别的书的题就一个都不改。
+  平台预置教材老师能打开听(按钮写「听发音」,只读),改要平台管理员(_own_book 403);别的机构的书 404。
+  学生端三处: 读音标页「听标准音」、写音标卡片翻到背面自动读、「再听一遍」。**写音标卡片的发音和答案同一个闸门**:
+  /check 只在卡片结束(做对 / 第二遍判完)时随 answer_tokens 一起给 tts_text —— 「读起来像 seed」是很强的提示,作答前不能下发;
+  读音标页本来就下发 word_reveal,所以 tts_text 跟着题目一起给。useAudio.playAudio 加第 4 个参数 raw(缓存键 raw: 前缀,和按单词读的分开)。
+  测试 tests/test_phonetic_tts.py(6 例);卡片没结束就给发音 / 改一半 / 混进别的书 / 不判归属 / 放行音标符号 五处各让对应用例失败(回归锁验证过)。
+  本机浏览器(库副本,1366 / 390)验过: 老师看预置书只读、管理员填音标当场拦、试听请求 raw=1&word=seed、保存后题目 id 不变、
+  列表显示改了几个、学生读音标页 cede 按 seed 读而 bad 照旧、卡片正面不请求发音文字、看答案后背面和「再听一遍」都按指定发音;
+  无横向溢出、控制台 0 报错。入口: 教师工作台「内容准备 → 音标教材」/ 顶部「更多 → 音标教材」→ 每本书「改发音」;公告一条(老师 / 机构 / 平台)
 - ✅ 音标跟读乱读不能过(2026-10-30 19:40 **已部署生产**,提交 7822d61;4 个后端文件生产==HEAD~1 整推,database.py 生产有 drift 走 anchor patch 只加 3 条 ALTER(先在生产库副本上跑过);english-helper / english-helper-workers / phoneme-judge 三个服务都重启;前端干净 worktree 构建 mvuwesua 整推;备份 /root/eh_db_before_gate_20261030_1934.db、/root/eh_code_before_gate_20261030_1934.tgz、frontend/dist_bak_20261030_1934。生产冒烟(临时学生,跑完删净): 公网传一条「说一句话」录音 → not_close 2.1 秒,传一条孩子认真读 babe → pass 0.6 秒;两条判定都存了、self-pass 200。生产 39 条存量录音经线上判定服务重判: 10-03 那批真孩子 9 条全过,10-30 乱读的全拦,用户「现在我乱读都能过」→「没有更好的方案了对吧 乱读不要过 还是要有一定的正确率」):
   以前闭集判定只看「本节 20 个词里更像哪个」,乱读也总有个最像的词,前端又只拦没声音 → 整页都绿。
   讯飞 ISE 实测最准(乱读直接 is_rejected),用户嫌按次收费,所以用免费方案: **还是现在的 wav2vec2,先过两道门**

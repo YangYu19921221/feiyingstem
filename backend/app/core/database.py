@@ -558,6 +558,8 @@ async def init_db():
             "ALTER TABLE phonetic_readings ADD COLUMN verdict VARCHAR(12)",
             "ALTER TABLE phonetic_readings ADD COLUMN judge_detail TEXT",
             "ALTER TABLE phonetic_readings ADD COLUMN self_passed BOOLEAN",
+            # 音标教材每个词可以指定发音(2026-10-30,NULL = 按单词读)
+            "ALTER TABLE phonetic_items ADD COLUMN tts_text VARCHAR(200)",
         ]:
             try:
                 await conn.execute(text(_sql))

@@ -35,7 +35,7 @@ from app.models.phonetic_practice import (
 # 曾经只有这里有一份,加教师端上传时抽了出去;不要在这里再复制一份,
 # 两份归一规则漂移的后果是学生做不对的死题(切出键盘上没有的音素)。
 from app.services.phonetic_tokenize import (  # noqa: E402
-    VOWELS, check_item, lesson_highlight, normalize, tokenize,
+    VOWELS, check_item, check_tts_text, lesson_highlight, normalize, tokenize,
 )
 
 
@@ -60,6 +60,8 @@ async def main():
             print(f"  跳过 sheet「{sheet}」:没有 单词/音标 列")
             continue
         ci_m = hdr.index('释义') if '释义' in hdr else None
+        # 「发音」列可选(2026-10-30): 标准音按它读,与网页上传同一个校验
+        ci_t = hdr.index('发音') if '发音' in hdr else None
 
         m = re.match(r'^([\d]+[—\-][\d]+)', sheet)
         code = m.group(1).replace('-', '—') if m else sheet
@@ -82,10 +84,14 @@ async def main():
             if not core:
                 errors.append(f"  {sheet} 的 {word} 切不出元音,第二遍无法挖空:{toks}")
                 continue
+            tts, terr = check_tts_text(r[ci_t] if ci_t is not None else None)
+            if terr:
+                errors.append(f"  {sheet} 的 {word} {terr}")
+                continue
             items.append(dict(
                 word=word,
                 meaning=(str(r[ci_m]).strip() if ci_m is not None and r[ci_m] else None),
-                answer=toks, core=core,
+                answer=toks, core=core, tts_text=tts,
             ))
         if items:
             # 这一节教什么:出现 3 次以上的元音,给键盘做高亮
@@ -148,6 +154,7 @@ async def main():
                     answer_display=f"[{''.join(it['answer'])}]",
                     core_indexes_json=json.dumps(it['core']),
                     order_index=oi,
+                    tts_text=it['tts_text'],
                 ))
         await db.commit()
         print(f"导入完成:book_id={book.id}  {len(parsed)} 节  {total} 题")

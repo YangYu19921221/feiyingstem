@@ -34,7 +34,7 @@ from app.models.phonetic_practice import (
     PhoneticBook, PhoneticItem, PhoneticLesson,
 )
 from app.models.user import User
-from app.services.phonetic_tokenize import check_item, lesson_highlight
+from app.services.phonetic_tokenize import check_item, check_tts_text, lesson_highlight
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,8 @@ class LessonBrief(BaseModel):
     lesson_number: int
     item_count: int
     removed_count: int
+    # 这一节有几个词指定了发音
+    tts_count: int = 0
 
 
 class BookOut(BaseModel):
@@ -93,6 +95,8 @@ class BookOut(BaseModel):
     # 平台预置(org_id 为 NULL)对机构只读,前端据此隐藏编辑按钮
     is_preset: bool
     can_edit: bool
+    # 指定了发音的词数
+    tts_count: int = 0
 
 
 @router.get("/books", response_model=List[BookOut])
@@ -122,12 +126,13 @@ async def list_books(
     )).all()
     ls_cnt = {bid: n for bid, n in ls_rows}
     it_rows = (await db.execute(
-        select(PhoneticLesson.book_id, func.count(PhoneticItem.id))
+        select(PhoneticLesson.book_id, func.count(PhoneticItem.id), func.count(PhoneticItem.tts_text))
         .join(PhoneticItem, PhoneticItem.lesson_id == PhoneticLesson.id)
         .where(PhoneticLesson.book_id.in_(ids))
         .group_by(PhoneticLesson.book_id)
     )).all()
-    it_cnt = {bid: n for bid, n in it_rows}
+    it_cnt = {bid: n for bid, n, _ in it_rows}
+    tts_cnt = {bid: nt for bid, _, nt in it_rows}
 
     out = []
     for b in books:
@@ -138,6 +143,7 @@ async def list_books(
             lesson_count=ls_cnt.get(b.id, 0), item_count=it_cnt.get(b.id, 0),
             is_preset=preset,
             can_edit=(current_user.role == "admin") or not preset,
+            tts_count=tts_cnt.get(b.id, 0),
         ))
     return out
 
@@ -161,7 +167,7 @@ async def list_lessons(
         raise HTTPException(status_code=404, detail="教材不存在")
 
     rows = (await db.execute(
-        select(PhoneticLesson, func.count(PhoneticItem.id))
+        select(PhoneticLesson, func.count(PhoneticItem.id), func.count(PhoneticItem.tts_text))
         .outerjoin(PhoneticItem, PhoneticItem.lesson_id == PhoneticLesson.id)
         .where(PhoneticLesson.book_id == book_id)
         .group_by(PhoneticLesson.id)
@@ -170,8 +176,8 @@ async def list_lessons(
     return [LessonBrief(
         id=ls.id, code=ls.code, title=ls.title,
         lesson_number=ls.lesson_number, item_count=n,
-        removed_count=ls.removed_count or 0,
-    ) for ls, n in rows]
+        removed_count=ls.removed_count or 0, tts_count=nt,
+    ) for ls, n, nt in rows]
 
 
 # ---------------------------------------------------------------- 校验 / 导入
@@ -181,6 +187,8 @@ class ImportRow(BaseModel):
     word: str = Field(..., min_length=1, max_length=100)
     phonetic: str = Field(..., min_length=1, max_length=200)
     meaning: Optional[str] = Field(None, max_length=200)
+    # 「发音」列(可选): 标准音按这个读。空 = 按单词读。校验在 phonetic_tokenize.check_tts_text
+    tts: Optional[str] = Field(None, max_length=200)
 
 
 class ImportLesson(BaseModel):
@@ -213,6 +221,8 @@ class ValidateOut(BaseModel):
     # 同名教材是否已存在 —— 前端据此决定要不要弹「覆盖」确认
     existing_book_id: Optional[int] = None
     existing_item_count: Optional[int] = None
+    # 填了「发音」的行数
+    tts_count: int = 0
 
 
 def _parse(payload: ImportIn):
@@ -244,7 +254,12 @@ def _parse(payload: ImportIn):
             if err:
                 errors.append(RowError(lesson=ls.title, word=word, reason=err))
                 continue
+            tts, terr = check_tts_text(r.tts)
+            if terr:
+                errors.append(RowError(lesson=ls.title, word=word, reason=terr))
+                continue
             ok["meaning"] = (r.meaning or "").strip() or None
+            ok["tts_text"] = tts
             items.append(ok)
         if items:
             parsed.append(dict(code=code, title=ls.title.strip(),
@@ -291,6 +306,7 @@ async def validate_import(
         errors=errors[:200],
         existing_book_id=same.id if same else None,
         existing_item_count=exist_n,
+        tts_count=sum(1 for p in parsed for it in p["items"] if it.get("tts_text")),
     )
 
 
@@ -370,6 +386,7 @@ async def import_book(
                 answer_display=f"[{''.join(it['answer'])}]",
                 core_indexes_json=json.dumps(it["core"]),
                 order_index=oi,
+                tts_text=it.get("tts_text"),
             ))
             total += 1
     await db.commit()
@@ -378,6 +395,118 @@ async def import_book(
     return ImportOut(book_id=book.id, book_name=name,
                      lesson_count=len(parsed), item_count=total,
                      replaced=replaced)
+
+
+# ---------------------------------------------------------------- 发音(只改发音,不动题)
+#
+# 2026-10-30 用户「有的长音或者短音发音的后台传的时候可以增加个重发音按我给的单词发音吗」。
+# 新教材在上传的 Excel 里加「发音」列就行(见 ImportRow.tts)。已经在用的教材要改发音,
+# **不能走整本替换**: 替换会删掉所有题重建,id 全换,学生「写对 N 个」、跟读录音都对不上了。
+# 所以单独两条: 列出整本的题 → 在页面上逐个填、试听 → 按题目 id 只写 tts_text。
+
+
+class TtsItemOut(BaseModel):
+    id: int
+    lesson_id: int
+    code: str
+    word: str
+    phonetic: str
+    meaning: Optional[str] = None
+    tts_text: Optional[str] = None
+
+
+@router.get("/books/{book_id}/items", response_model=List[TtsItemOut])
+async def list_book_items(
+    book_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """整本的题(改发音用)。平台预置的也能看,只是改要平台管理员"""
+    _require_staff(current_user)
+    b = (await db.execute(
+        select(PhoneticBook).where(PhoneticBook.id == book_id)
+        .execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none()
+    if not b or (current_user.role != "admin" and b.org_id is not None
+                 and b.org_id != current_user.org_id):
+        raise HTTPException(status_code=404, detail="教材不存在")
+    rows = (await db.execute(
+        select(PhoneticItem, PhoneticLesson.code)
+        .join(PhoneticLesson, PhoneticLesson.id == PhoneticItem.lesson_id)
+        .where(PhoneticLesson.book_id == book_id)
+        .order_by(PhoneticLesson.lesson_number, PhoneticLesson.id,
+                  PhoneticItem.order_index, PhoneticItem.id)
+    )).all()
+    return [TtsItemOut(
+        id=it.id, lesson_id=it.lesson_id, code=code, word=it.word,
+        phonetic=it.answer_display or f"[{''.join(json.loads(it.answer_json or '[]'))}]",
+        meaning=it.meaning, tts_text=it.tts_text,
+    ) for it, code in rows]
+
+
+class TtsChange(BaseModel):
+    id: int
+    # 空 / null = 改回按单词读
+    tts: Optional[str] = Field(None, max_length=200)
+
+
+class TtsIn(BaseModel):
+    items: List[TtsChange] = Field(..., min_length=1, max_length=2000)
+
+
+class TtsOut(BaseModel):
+    updated: int
+    # 这本书现在一共有几个词指定了发音
+    with_tts: int
+
+
+@router.post("/books/{book_id}/tts", response_model=TtsOut)
+async def update_book_tts(
+    book_id: int,
+    payload: TtsIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """只改发音,按题目 id。题目、id、学生进度和录音都不动
+
+    有一个不合格(发音不是英文 / 题不是这本书的)就一个都不改 —— 和导入一样不改一半。
+    平台预置教材只有平台管理员能改(_own_book)。
+    """
+    _require_staff(current_user)
+    book = await _own_book(db, book_id, current_user)
+
+    errors, wanted = [], {}
+    for c in payload.items:
+        tts, err = check_tts_text(c.tts)
+        if err:
+            errors.append(err)
+        else:
+            wanted[c.id] = tts
+    if errors:
+        raise HTTPException(status_code=400, detail=f"一个都没改:{errors[0]}")
+
+    rows = (await db.execute(
+        select(PhoneticItem)
+        .join(PhoneticLesson, PhoneticLesson.id == PhoneticItem.lesson_id)
+        .where(PhoneticLesson.book_id == book.id, PhoneticItem.id.in_(list(wanted)))
+    )).scalars().all()
+    if len(rows) != len(wanted):
+        # 别的书的题混进来了(或者刚被删掉)—— 不能顺手改到别人的书上
+        raise HTTPException(status_code=400, detail="有的题不在这本书里,一个都没改。刷新页面再试")
+    updated = 0
+    for it in rows:
+        if it.tts_text != wanted[it.id]:
+            it.tts_text = wanted[it.id]
+            updated += 1
+    await db.flush()
+    with_tts = (await db.execute(
+        select(func.count(PhoneticItem.tts_text))
+        .join(PhoneticLesson, PhoneticLesson.id == PhoneticItem.lesson_id)
+        .where(PhoneticLesson.book_id == book.id)
+    )).scalar() or 0
+    await db.commit()
+    logger.info("音标教材改发音: book_id=%s 改 %s 个 by user=%s", book.id, updated, current_user.id)
+    return TtsOut(updated=updated, with_tts=with_tts)
 
 
 class BookPatch(BaseModel):

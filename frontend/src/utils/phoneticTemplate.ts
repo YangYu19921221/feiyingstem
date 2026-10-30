@@ -19,6 +19,7 @@ const SAMPLE_1 = [
   { 单词: 'babe', 音标: '[beɪb]', 释义: '婴儿' },
   { 单词: 'cab', 音标: '[kæb]', 释义: '出租车' },
   { 单词: 'fee', 音标: '[fiː]', 释义: '费用' },
+  { 单词: 'cede', 音标: '[siːd]', 释义: '放弃', 发音: 'seed' },
   { 单词: 'bed', 音标: '[bed]', 释义: '床' },
 ];
 
@@ -57,7 +58,13 @@ const HOW_TO: string[][] = [
   ['五、每个词至少要有一个元音'],
   ['  第二遍练习只挖元音那一格(元音才是拼读的关键),没有元音就没法出题。'],
   [''],
-  ['六、整本要么全进要么全不进'],
+  ['六、「发音」列可以不填(标准音读得不对时才填)'],
+  ['  学生听到的标准音是机器按单词拼写读的,生僻词有时会读错长音短音。'],
+  ['  这时在「发音」里填一个读音一样的常见词,学生听到的就按它读,比如 cede 填 seed。'],
+  ['  只能填英文单词,不能填音标或中文;空着 = 按单词读。'],
+  ['  已经上传过的教材不用重新传:在「音标教材」页每本书右边点「改发音」,能逐个试听再改。'],
+  [''],
+  ['七、整本要么全进要么全不进'],
   ['  有任何一行不合格,整本都不会导入 —— 不会留半本残缺教材在系统里。'],
   [''],
   ['———————— 可用音标总表(48 个,与学生软键盘完全一致)————————'],
@@ -80,9 +87,9 @@ export function downloadPhoneticTemplate(): void {
   // 两个示例小节
   for (const [name, data] of [
     ['1—1 拼读', SAMPLE_1], ['1—2 拼读', SAMPLE_2],
-  ] as [string, typeof SAMPLE_1][]) {
-    const ws = XLSX.utils.json_to_sheet(data, { header: ['单词', '音标', '释义'] });
-    ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 20 }];
+  ] as [string, Array<Record<string, string>>][]) {
+    const ws = XLSX.utils.json_to_sheet(data, { header: ['单词', '音标', '释义', '发音'] });
+    ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, ws, name);
   }
 

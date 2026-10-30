@@ -92,6 +92,30 @@ def check_item(word: str, phonetic: str) -> Tuple[Optional[dict], Optional[str]]
     return {"word": word, "answer": toks, "core": core}, None
 
 
+# 「发音」列(2026-10-30): 标准音读得不对时,老师填一个读音一样的词让 TTS 照着读。
+# 只收英文字母、空格、撇号、连字符 —— TTS 读的是英文文本,填音标符号它会一个个念字母名或干脆跳过,
+# 填中文会读成中文。60 字够写一个短语,再长多半是填错了列。
+TTS_MAX = 60
+_TTS_OK = re.compile(r"^[A-Za-z][A-Za-z '\-]*$")
+
+
+def check_tts_text(raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """「发音」那一格 → (要存的文字 / None 表示按单词读, 错误说明)
+
+    空 / 全空白 = 不改发音(None)。连续空白并成一个,弯撇号换成直撇号。
+    """
+    if raw is None:
+        return None, None
+    t = re.sub(r"\s+", " ", str(raw).replace("\u2019", "'").replace("\u2018", "'")).strip()
+    if not t:
+        return None, None
+    if len(t) > TTS_MAX:
+        return None, f"发音最多 {TTS_MAX} 个字母,现在 {len(t)} 个"
+    if not _TTS_OK.match(t):
+        return None, (f"发音只能填英文单词(如 cede 填 seed),不能填音标或中文:{t}")
+    return t, None
+
+
 def lesson_highlight(items: List[dict], top: int = 4, min_hits: int = 3) -> List[str]:
     """这一节主要教哪几个元音 → 给软键盘做高亮。出现 min_hits 次以上才算"""
     vc = Counter(t for it in items for t in it.get('answer', []) if t in VOWELS)

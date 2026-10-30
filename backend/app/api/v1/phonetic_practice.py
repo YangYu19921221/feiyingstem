@@ -216,6 +216,9 @@ class CheckOut(BaseModel):
     # 这张卡已经结束(做对了 / 第二遍判完)时才给完整答案,供卡片背面揭示。
     # ⚠️ 第一遍做错**不给** —— 那等于按一下就能白拿答案。
     answer_tokens: Optional[List[str]] = None
+    # 老师指定的发音(cede 读 seed)。和 answer_tokens 同一个闸门: 卡片结束才给 ——
+    # 「读起来像 seed」对写音标是很强的提示,不能在作答前就下发。没指定 = None,前端按单词读
+    tts_text: Optional[str] = None
 
 
 # 元音音素(含双元音)。第二遍只挖元音格:元音是拼读教学点,辅音是送分的
@@ -317,6 +320,7 @@ async def check_answer(
     if not wrong or payload.pass_number >= 2:
         out.answer_tokens = answer
         out.answer_display = it.answer_display or f"[{''.join(answer)}]"
+        out.tts_text = it.tts_text
     return out
 
 

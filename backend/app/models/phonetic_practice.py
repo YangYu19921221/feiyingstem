@@ -87,6 +87,13 @@ class PhoneticItem(Base):
 
     order_index = Column(Integer, nullable=False, default=0)
 
+    # 发音按这个读(2026-10-30,用户「有的长音或者短音发音…按我给的单词发音」)。
+    # NULL = 按单词读(走 /pronunciation/edge-tts?word=,会套 words 表里同拼写那条的 tts_text);
+    # 填了 = 学生端逐字合成这段文字(raw),和老师「试听」听到的一字不差。
+    # 生僻词换成同音常见词最稳(cede → seed),也可以写成按拼读规则读得出的拼法。
+    # 只收英文字母(services/phonetic_tokenize.check_tts_text),音标符号 TTS 读不出来
+    tts_text = Column(String(200), nullable=True)
+
     created_at = Column(DateTime, server_default=func.now())
 
 

@@ -13,8 +13,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  BookOpen, Upload, Trash2, Eye, EyeOff, AlertTriangle, Download,
+  BookOpen, Upload, Trash2, Eye, EyeOff, AlertTriangle, Download, Volume2,
 } from 'lucide-react';
+import PhoneticTtsEditor from '../components/phonetics/PhoneticTtsEditor';
 import { downloadPhoneticTemplate } from '../utils/phoneticTemplate';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -26,11 +27,13 @@ import {
   type ImportLesson, type ValidateOut,
 } from '../api/phoneticBooks';
 
-/** 表头认哪些写法。与命令行脚本一致(单词/音标/释义) */
+/** 表头认哪些写法。与命令行脚本一致(单词/音标/释义/发音) */
 const COL = {
   word: ['单词', 'word', 'Word'],
   phonetic: ['音标', 'phonetic', 'Phonetic', '音標'],
   meaning: ['释义', '意思', '中文', 'meaning', 'Meaning'],
+  // 可选:标准音按这个读(cede 填 seed)。空着 = 按单词读
+  tts: ['发音', '读音', '發音'],
 };
 
 const pick = (row: Record<string, unknown>, names: string[]): string => {
@@ -61,6 +64,8 @@ export default function TeacherPhoneticBooks() {
   const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // 正在改发音的那本
+  const [ttsBook, setTtsBook] = useState<PhoneticBookOut | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +120,7 @@ export default function TeacherPhoneticBooks() {
             word: pick(r, COL.word),
             phonetic: pick(r, COL.phonetic),
             meaning: pick(r, COL.meaning) || null,
+            tts: pick(r, COL.tts) || null,
           }))
           .filter(r => r.word && r.phonetic);
         if (got.length) ls.push({ code: codeOf(name), title: name.slice(0, 200), rows: got });
@@ -143,7 +149,10 @@ export default function TeacherPhoneticBooks() {
         lessons: staged.lessons,
       });
       setChecked(r);
-      if (r.ok) toast.success(`校验通过:${r.lesson_count} 节 / ${r.item_count} 题`);
+      if (r.ok) {
+        toast.success(`校验通过:${r.lesson_count} 节 / ${r.item_count} 题`
+          + (r.tts_count ? `,${r.tts_count} 个词指定了发音` : ''));
+      }
       else toast.warning(`有 ${r.errors.length} 行音标不合格,改好再传`);
     } catch (e) {
       toast.error(getErrorMessage(e, '校验失败'));
@@ -219,6 +228,9 @@ export default function TeacherPhoneticBooks() {
             <strong className="text-slate-700">「音标」</strong>两列,
             「释义」可选。音标写法不限(<code>[eɪ]</code>/<code>/ei/</code> 都认),
             系统会统一归一成软键盘上的音素。
+            标准音读错长短音的词,可以加一列<strong className="text-slate-700">「发音」</strong>,
+            填一个读音一样的常见词(cede 填 seed),学生听到的就按它读。
+            已经在用的教材,点下面每本的「改发音」改,不用重新上传。
           </p>
 
           {!staged && (
@@ -385,6 +397,16 @@ export default function TeacherPhoneticBooks() {
                         {b.lesson_count} 节 · {b.item_count} 题 · 点开看分节
                       </p>
                     </button>
+                    {/* 改发音: 平台预置的也能点开看(只读),老师常想先听听哪些词读得不对 */}
+                    <button
+                      onClick={() => setTtsBook(b)}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-[#24707a]
+                                 ring-1 ring-[#2f8791]/30 hover:bg-[#2f8791]/10"
+                    >
+                      <Volume2 className="h-3.5 w-3.5" />
+                      {b.can_edit ? '改发音' : '听发音'}
+                      {!!b.tts_count && <span className="text-slate-400">· {b.tts_count}</span>}
+                    </button>
                     {b.can_edit ? (
                       <>
                         <button
@@ -419,6 +441,9 @@ export default function TeacherPhoneticBooks() {
                                  className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs">
                               <span className="font-mono text-slate-600">{l.code}</span>
                               <span className="ml-1.5 text-slate-500">{l.item_count} 题</span>
+                              {!!l.tts_count && (
+                                <span className="ml-1 text-[#24707a]">· {l.tts_count} 个改了发音</span>
+                              )}
                               {l.removed_count > 0 && (
                                 <span className="ml-1 text-amber-600">
                                   已剔{l.removed_count}词
@@ -436,6 +461,18 @@ export default function TeacherPhoneticBooks() {
           )}
         </section>
       </div>
+      {ttsBook && (
+        <PhoneticTtsEditor
+          book={ttsBook}
+          onClose={(changed) => {
+            setTtsBook(null);
+            if (changed) {
+              void load();
+              if (openId === ttsBook.id) void fetchPhoneticLessons(ttsBook.id).then(setLessons).catch(() => {});
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
