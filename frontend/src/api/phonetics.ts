@@ -67,6 +67,11 @@ export interface PhoneticVideo {
    * 老师/管理员恒 false。前端据此画 🔒 并拦截打开动作。
    */
   locked?: boolean;
+  /**
+   * 不在电教室(2026-10-30): 机构把音标视频设成「只能在电教室看」,而这个请求不是从电教室网络来的。
+   * 整个列表一致。与 locked 不同: locked 要兑换码,这个要换个地方。两个都为 true 先提示兑换码
+   */
+  place_locked?: boolean;
   // 教师端列表额外带的字段
   is_active?: boolean;
   created_at?: string | null;

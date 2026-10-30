@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { onUnauthorized, isUnauthorizedError } from './_authInterceptors';
+import { withClassroomHeader } from '../utils/classroomDevice';
 
 // 给“全局 axios”注册请求/响应拦截器
 // - 自动注入 Bearer token
@@ -19,6 +20,7 @@ export function ensureAxiosAuthInstalled() {
       if (token && config.headers) {
         (config.headers as any).Authorization = `Bearer ${token}`;
       }
+      withClassroomHeader(config.headers as unknown as Record<string, unknown>);
       return config;
     },
     (error) => Promise.reject(error),

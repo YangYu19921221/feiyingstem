@@ -24,6 +24,7 @@ import {
   Ticket,
   Trophy,
   Users,
+  School,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
@@ -64,6 +65,7 @@ const toolGroups: Array<{ title: string; description: string; items: ToolItem[] 
       { title: '内容管理', description: '单词与单词本', path: '/admin/content', icon: BookOpen, tone: 'green' },
       { title: 'AI 配置', description: '模型与服务设置', path: '/admin/ai-config', icon: Sparkles, tone: 'violet' },
       { title: '订阅管理', description: '兑换码与订阅', path: '/admin/subscriptions', icon: Ticket, tone: 'amber' },
+      { title: '电教室网络', description: '直营音标视频只能在电教室看(开关)', path: '/admin/classroom-net', icon: School, tone: 'teal' },
       { title: '单词比赛', description: '竞赛排行与概览', path: '/admin/competition', icon: Trophy, tone: 'orange' },
     ],
   },

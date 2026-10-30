@@ -33,6 +33,7 @@ from app.models.phonetic import (
 from app.services import phonetic_material_service, rate_limit, watermark_service
 from app.services import auth_service, video_question, video_watch
 from app.services import phonetic_access_service, audit_log, video_lite, cos_video
+from app.services import classroom_net
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,10 @@ class PhoneticVideoOut(BaseModel):
     # 卡片置灰、点开提示去兑换;老师/管理员恒 False。
     # 2026-10-16 起**按节判**: 整库授权开全部,单节码只开那一节 —— 同一响应里 locked 可以不一致
     locked: bool = False
+    # 不在电教室(2026-10-30): 机构把音标视频设成「只能在电教室看」,学生这个请求不是从电教室网络来的。
+    # 整个列表一致(按请求判,不按节)。与 locked 分开: locked 要兑换码,这个要换个地方,提示不一样。
+    # 两个都为 True 时前端先提示兑换码。老师/管理员恒 False。真源 services/classroom_net
+    place_locked: bool = False
 
     # 播放地址:鉴权串流端点。刻意不下发 file_path —— 磁盘路径不该出现在响应里
     play_url: str = ""
@@ -100,6 +105,7 @@ def to_out(
     stats: Optional[video_watch.VideoStats] = None,
     mine: Optional[PhoneticVideoView] = None,
     locked: bool = False,
+    place_locked: bool = False,
 ) -> PhoneticVideoOut:
     return PhoneticVideoOut(
         id=v.id,
@@ -120,6 +126,7 @@ def to_out(
         my_watch_seconds=(mine.watch_seconds or 0) if mine else 0,
         my_completed=bool(mine.completed) if mine else False,
         locked=locked,
+        place_locked=place_locked,
         play_url=f"/api/v1/phonetics/videos/{v.id}/stream",
         has_lite=video_lite.has_lite(_video_file(v)),
     )
@@ -185,8 +192,19 @@ async def _locked_ids(db: AsyncSession, user: User, video_ids: list[int]) -> set
     return set(video_ids) - granted
 
 
+def _away_exc() -> HTTPException:
+    """不在电教室的 403。detail 带 code,前端据此显示「到电教室看」而不是「去兑换码」"""
+    return HTTPException(status_code=403, detail={
+        "code": "classroom_only", "message": classroom_net.AWAY_MESSAGE})
+
+
+async def _place_ok(db: AsyncSession, request: Optional[Request], user: User) -> bool:
+    return (await classroom_net.watch_place(db, request, user)) == "ok"
+
+
 async def _enforce_gate(
-    db: AsyncSession, user: User, detail: str, video_id: Optional[int] = None
+    db: AsyncSession, user: User, detail: str, video_id: Optional[int],
+    request: Optional[Request],
 ) -> None:
     """**交付内容**的端点用(换票 / Bearer 串流 / 讲义列表 / 讲义页图):
     锁住就 403;放行且是靠授权进来的,当天扣一次次卡(按北京日幂等,原子扣减)。
@@ -194,16 +212,23 @@ async def _enforce_gate(
     四处都扣,不只扣换票 —— 只扣换票的话,直接调 Bearer 串流或只翻讲义的人永远不掉天数,
     1 天的次卡等于永久卡。open 模式(free)**不扣**:免费期间看视频不该消耗学生买的次卡。
     video_id 必须传: 不传就只认整库授权,单节码开的那一节会被误拦。
+
+    地点闸门(2026-10-30,services/classroom_net): 兑换码那道过了之后再判在不在电教室,
+    **两道都过了才扣次卡** —— 因为在家被拦的那次不该扣掉孩子一天。request 必须传(位置参数,
+    漏传就是在家也能看)。
     """
     state, grant = await _gate(db, user, video_id)
     if state == "locked":
         raise HTTPException(status_code=403, detail=detail)
+    if not await _place_ok(db, request, user):
+        raise _away_exc()
     if state == "times_due" and grant is not None:
         await phonetic_access_service.consume_times_if_needed(db, grant)
 
 
 @router.get("/videos", response_model=list[PhoneticVideoOut])
 async def list_videos(
+    request: Request,
     category: Optional[str] = Query(None, description="basic/vowel/consonant/other"),
     q: Optional[str] = Query(None, description="搜索标题/音标/描述"),
     db: AsyncSession = Depends(get_db),
@@ -250,7 +275,9 @@ async def list_videos(
     mine = await _my_views(db, user.id, ids)
     # 锁态按节判:整库授权开全部,单节码只开那一节(一次整库判定 + 一次单节批量查)
     locked = await _locked_ids(db, user, ids)
-    return [to_out(v, stats.get(v.id), mine.get(v.id), v.id in locked) for v in rows]
+    # 在不在电教室按请求判一次(整个列表一致)
+    away = not await _place_ok(db, request, user)
+    return [to_out(v, stats.get(v.id), mine.get(v.id), v.id in locked, away) for v in rows]
 
 
 async def _my_views(
@@ -275,6 +302,7 @@ async def _my_views(
 @router.get("/videos/{video_id}", response_model=PhoneticVideoOut)
 async def get_video(
     video_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -297,7 +325,9 @@ async def get_video(
     # 被锁的学生拿到的是「可以看见元数据但不能播」—— 不记打开次数/观看行,
     # 否则「几个人看过」里混进了压根没播成的人(锁住时真正的闸门在 /ticket)
     locked = await _is_locked_for(db, user, v.id)
-    if not locked:
+    # 不在电教室: 同样「看得见元数据但不能播」,不记打开次数
+    away = not await _place_ok(db, request, user)
+    if not locked and not away:
         v.view_count = (v.view_count or 0) + 1
         # 同一动作记两处: view_count 是历史遗留的「打开次数」(老界面在用,不动它),
         # 新的按人一行用来回答「几个人看过」。**只有学生算观看** ——
@@ -308,7 +338,7 @@ async def get_video(
 
     stats = await video_watch.stats_for_videos(db, [v.id], org_id=current_org_id.get())
     mine = await _my_views(db, user.id, [v.id])
-    return to_out(v, stats.get(v.id), mine.get(v.id), locked)
+    return to_out(v, stats.get(v.id), mine.get(v.id), locked, away)
 
 
 async def _touch_view(db: AsyncSession, video_id: int, user_id: int) -> None:
@@ -485,6 +515,7 @@ class MaterialBrief(BaseModel):
 @router.get("/videos/{video_id}/materials", response_model=list[MaterialBrief])
 async def list_video_materials(
     video_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -506,7 +537,7 @@ async def list_video_materials(
 
     # 闸门:讲义是视频的一部分,没开通的学生连带看不到(否则逐页 PNG 照看不误,
     # 等于绕开了视频锁)。与 ticket/stream/get_video 同一道闸,按这一节判
-    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义", video_id)
+    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义", video_id, request)
 
     rows = (await db.execute(
         select(PhoneticMaterial)
@@ -713,6 +744,7 @@ async def my_watch_summary(
 async def material_page(
     material_id: int,
     page_no: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -739,7 +771,7 @@ async def material_page(
     mat_video_id = (await db.execute(
         select(PhoneticMaterial.video_id).where(PhoneticMaterial.id == material_id)
     )).scalar_one_or_none()
-    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义", mat_video_id)
+    await _enforce_gate(db, user, "音标视频需要兑换码开通后才能看讲义", mat_video_id, request)
 
     row = (await db.execute(
         _scope_org(
@@ -930,10 +962,12 @@ async def video_ticket(
         state, _ = await _gate(db, user, v.id)
         if state == "locked":
             raise HTTPException(status_code=403, detail=locked_msg)
+        if not await _place_ok(db, request, user):
+            raise _away_exc()
         if state == "times_due":
             raise HTTPException(status_code=409, detail="这一节点开时才扣次卡,先不预加载")
     else:
-        await _enforce_gate(db, user, locked_msg, v.id)
+        await _enforce_gate(db, user, locked_msg, v.id, request)
 
     # 访问日志:每次签票记一条(靠 IP+设备+时间追到人,与防盗同口径)。
     # **不写 operation_logs** —— 那是教职工追责日志(学生不记,量大;见 CLAUDE.md)。
@@ -981,7 +1015,7 @@ async def stream_video(
         await _enforce_gate(
             db, u,
             "这一节音标视频需要兑换码开通，请找老师领取兑换码，点开这一节输入激活",
-            video_id)
+            video_id, request)
         # 访问日志只在「从头开始取」时记一条(无 Range 或 bytes=0-):播放器拖进度会发
         # 几十个 Range 请求,每个都记会把表撑爆;换票那条路径已在 /ticket 记过
         _rng = (request.headers.get("range") or "").replace(" ", "")
@@ -993,7 +1027,12 @@ async def stream_video(
             )
             await db.commit()
     elif t:
-        await _user_from_ticket(t, video_id, db)
+        u = await _user_from_ticket(t, video_id, db)
+        # 票据是在电教室签的,但人可能已经走了(手机从学校 Wi-Fi 切到 4G、平板带回家)。
+        # 本机串流**每个片段**都再判一次地点(15 秒缓存,不慢);走 COS 的只在这第一跳判得到,
+        # 之后 COS 签名地址 3 小时内照样能取 —— COS 地址绑不了 IP,页面上写明了
+        if not await _place_ok(db, request, u):
+            raise _away_exc()
     else:
         raise HTTPException(status_code=401, detail="需要登录后观看")
 
@@ -1086,3 +1125,11 @@ async def stream_video(
             "Content-Length": str(end - start + 1),
         },
     )
+
+
+# 电教室网络设置(2026-10-30): 路由写在 api/v1/classroom_net.py,挂在这个 router 下
+# → /api/v1/phonetics/classroom-net/...。main.py 生产有 drift,不为它改 main.py。
+# 表(models/classroom_net)经 services/classroom_net 的 import 进 Base.metadata,init_db 的 create_all 建
+from app.api.v1 import classroom_net as _classroom_net_api  # noqa: E402
+
+router.include_router(_classroom_net_api.router, prefix="/classroom-net")

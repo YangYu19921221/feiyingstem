@@ -13,7 +13,8 @@ import {
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
-import { BarChart3, ListOrdered, MessageCircleQuestion, Upload, Volume2 } from 'lucide-react';
+import { BarChart3, ListOrdered, MessageCircleQuestion, School, Upload, Volume2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
 import ViewerStatsDialog from '../components/phonetics/ViewerStatsDialog';
@@ -61,6 +62,7 @@ const CATEGORY_COVER: Record<string, string> = {
 };
 
 export default function TeacherPhonetics() {
+  const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<PhoneticVideo[]>([]);
@@ -454,6 +456,15 @@ export default function TeacherPhonetics() {
                 <BarChart3 className="h-4 w-4" />
                 学情总览
                 <span className="font-normal text-xs text-[#4b8f97]">哪几节没人看 · 谁还没学</span>
+              </button>
+              <button
+                onClick={() => navigate('/teacher/classroom-net')}
+                className="flex items-center gap-1.5 rounded-xl bg-sky-50 px-3 py-2 text-sm
+                           font-semibold text-sky-800 transition hover:bg-sky-100 active:scale-[0.98]"
+              >
+                <School className="h-4 w-4" />
+                电教室网络
+                <span className="font-normal text-xs text-sky-700">只能在电教室看</span>
               </button>
               <button
                 onClick={() => setInbox({})}

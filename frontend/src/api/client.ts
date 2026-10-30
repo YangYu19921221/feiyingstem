@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { onUnauthorized, isUnauthorizedError } from './_authInterceptors';
+import { withClassroomHeader } from '../utils/classroomDevice';
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
@@ -19,6 +20,8 @@ instance.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // 电教室电脑的设备码(音标视频「只能在电教室看」用,见 utils/classroomDevice)
+    withClassroomHeader(config.headers as unknown as Record<string, unknown>);
     return config;
   },
   (error) => {

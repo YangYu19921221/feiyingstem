@@ -121,6 +121,8 @@ export default function PhoneticsHub() {
    * 这里只做拦截与引导;真正的判定在后端,前端 locked 只是省一次 403 往返。
    */
   const [lockNudge, setLockNudge] = useState<PhoneticVideo | null>(null);
+  /** 点了一节但现在不在电教室(机构开了「只能在电教室看」)→ 弹一句说明,不进播放器 */
+  const [placeNudge, setPlaceNudge] = useState(false);
   /** 播放面板 DOM:全屏时把它整个送进 requestFullscreen */
   const panelRef = useRef<HTMLDivElement>(null);
   /**
@@ -364,6 +366,10 @@ export default function PhoneticsHub() {
       setLockNudge(v);
       return;
     }
+    if (v.place_locked) {
+      setPlaceNudge(true);
+      return;
+    }
     // 选集里连点几下「下一节」时,只认最后一次: 慢回来的旧详情不能把播放器切回上一节;
     // 关播放器也会让序号作废(见 playingId 那个 effect),否则详情晚回来会把关掉的播放器又打开
     const my = ++openSeq.current;
@@ -383,6 +389,13 @@ export default function PhoneticsHub() {
         setVideos((prev) => prev.map((x) => (x.id === v.id ? { ...x, locked: true } : x)));
         setPlaying(null);
         setLockNudge(v);
+        return;
+      }
+      if (fresh.place_locked) {
+        // 列表取的时候还在电教室,现在出来了(手机从学校 Wi-Fi 切到流量)。地点按请求判,整个列表一起标
+        setVideos((prev) => prev.map((x) => ({ ...x, place_locked: true })));
+        setPlaying(null);
+        setPlaceNudge(true);
         return;
       }
       setPlaying(fresh);
@@ -405,6 +418,7 @@ export default function PhoneticsHub() {
     if (!v) return;
     setEpisodesOpen(false);
     if (v.locked) { setLockNudge(v); return; }
+    if (v.place_locked) { setPlaceNudge(true); return; }
     void openVideo(v);
   };
   // 给播放器的「下一节」: 倒计时到点要调它,引用不稳定会让倒计时 effect 每次渲染都重来
@@ -524,6 +538,16 @@ export default function PhoneticsHub() {
                 <p className="mt-0.5 text-[11px] text-ink-soft">累计观看</p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 不在电教室: 列表上面先说一句,别让孩子一张张点过去才发现全都看不了 */}
+        {videos.length > 0 && videos.every((v) => v.place_locked) && (
+          <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-relaxed text-sky-900">
+            <p className="font-bold">🏫 音标视频要到电教室看</p>
+            <p className="mt-0.5">
+              你现在连的不是电教室的网络。到电教室连上那里的 Wi-Fi 就能看。下面的「音标练习」在哪都能做。
+            </p>
           </div>
         )}
 
@@ -776,6 +800,13 @@ export default function PhoneticsHub() {
                             🔒 需兑换码
                           </span>
                         </>
+                      ) : v.place_locked ? (
+                        <>
+                          <span className="absolute inset-0 bg-black/35" aria-hidden="true" />
+                          <span className="absolute right-2 top-2 rounded-lg bg-black/70 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                            🏫 到电教室看
+                          </span>
+                        </>
                       ) : v.my_completed ? (
                         <span className="absolute right-2 top-2 rounded-lg bg-success px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
                           ✓ 已看完
@@ -864,6 +895,45 @@ export default function PhoneticsHub() {
                 className="mt-3 min-h-11 w-full shrink-0 rounded-2xl bg-black/5 px-4 text-sm font-semibold text-ink-soft transition hover:bg-black/10"
               >
                 先都看看
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 不在电教室(机构开了「只能在电教室看」)→ 点任意一节弹这个。只说清原因和怎么办,没有按钮能绕过去 */}
+      <AnimatePresence>
+        {placeNudge && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+            role="dialog" aria-modal="true" aria-label="音标视频要到电教室看"
+            onClick={() => setPlaceNudge(false)}
+          >
+            <motion.div
+              initial={{ y: 24, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 24, opacity: 0 }}
+              className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sky-50 text-3xl">🏫</div>
+              <p className="mt-4 font-display text-lg font-bold text-ink">音标视频要到电教室看</p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+                你现在连的不是电教室的网络。到电教室连上那里的 Wi-Fi(用手机流量也不行),回到这一页就能看了。
+                在家需要看的话,请老师帮你开「允许在家看」。
+              </p>
+              <button
+                type="button"
+                onClick={() => { setPlaceNudge(false); setReloadKey((k) => k + 1); }}
+                className="mt-5 min-h-11 w-full rounded-2xl bg-primary px-5 text-sm font-bold text-white transition hover:brightness-105 active:scale-[0.99]"
+              >
+                我连好电教室的网络了,再试一次
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlaceNudge(false)}
+                className="mt-2 min-h-11 w-full rounded-2xl bg-black/5 px-5 text-sm font-semibold text-ink-soft transition hover:bg-black/10"
+              >
+                知道了
               </button>
             </motion.div>
           </motion.div>
@@ -1068,6 +1138,7 @@ export default function PhoneticsHub() {
                                     <span className="shrink-0 text-[11px]">
                                       {current ? '▶ 正在看'
                                         : v.locked ? '🔒'
+                                          : v.place_locked ? '🏫'
                                           : v.my_completed ? <span className="text-green-400">✓</span>
                                             : frac > 0 ? <span className="font-numeric text-slate-400">{Math.round(frac * 100)}%</span>
                                               : ''}

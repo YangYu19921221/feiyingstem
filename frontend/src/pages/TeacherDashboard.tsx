@@ -30,6 +30,7 @@ import {
   HeartHandshake,
   MessageSquareHeart,
   MessageCircle,
+  School,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
@@ -64,6 +65,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '句子背诵', description: '句子集和导入', route: '/teacher/sentences', icon: PencilLine, tone: 'green' },
       { title: '音标视频', description: '上传与管理音标课', route: '/teacher/phonetics', icon: Volume2, tone: 'teal' },
       { title: '音标教材', description: 'Excel 上传拼读题', route: '/teacher/phonetic-books', icon: Volume2, tone: 'teal' },
+      { title: '电教室网络', description: '登记电教室电脑,音标视频只能在电教室看', route: '/teacher/classroom-net', icon: School, tone: 'teal' },
     ],
   },
   {

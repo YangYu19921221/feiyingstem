@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { fetchVideoTicket, mediaUrl, type PhoneticVideo, type StudentMaterial } from '../../api/phonetics';
 import { useMaterialPages } from './useMaterialPages';
+import { getErrorCode } from '../../utils/errorMessage';
 import { useWatchHeartbeat } from './useWatchHeartbeat';
 import { prefetchVideo, takePrefetchedTicket } from './nextPrefetch';
 import {
@@ -385,7 +386,10 @@ export default function LessonStage({
       setSrcError('');
       return;
     }
-    loadTicket().catch(() => setSrcError('视频地址获取失败,请刷新页面重试'));
+    loadTicket().catch((e) => setSrcError(
+      getErrorCode(e) === 'classroom_only'
+        ? '音标视频只能在电教室看,你现在连的不是电教室的网络'
+        : '视频地址获取失败,请刷新页面重试'));
   }, [loadTicket, video.id]);
 
   // ---- 画质 ----

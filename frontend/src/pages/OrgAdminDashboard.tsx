@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, Gift, GraduationCap, HeartHandshake, History, KeyRound, Megaphone, MessageCircle, Plus, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Building2, CalendarCheck, Edit3, Gift, GraduationCap, HeartHandshake, History, KeyRound, Megaphone, MessageCircle, Plus, School, Search, Ticket, Trophy, TrendingUp, Users } from 'lucide-react';
 import { getAdminAlerts } from '../api/tutor';
 import { orgAdminApi } from '../api/organizations';
 import { InitialPasswordModal, QuotaBar, quotaPercent } from '../components/OrgWidgets';
@@ -196,6 +196,7 @@ export default function OrgAdminDashboard() {
     { icon: Trophy, title: '单词比赛', desc: '赛事排行与概览', path: '/admin/competition', tone: 'orange' },
     { icon: Megaphone, title: '地推体验卡', desc: '销售发卡 · 扫码线索 · 跟单看板', path: '/admin/promo', tone: 'orange' },
     { icon: Gift, title: '家长推荐', desc: '老带新线索与奖励设置', path: '/admin/referrals', tone: 'orange' },
+    { icon: School, title: '电教室网络', desc: '音标视频只能在电教室看(开关)', path: '/admin/classroom-net', tone: 'teal' },
     { icon: BookOpen, title: '运营资料', desc: '家长手册 · 推荐运营方案', path: '/admin/franchise-kit?doc=referral', tone: 'violet' },
     // 「发码上限=学生名额」已不成立(2026-09-11 卡额度与学生名额分账),别改回去
     { icon: Ticket, title: '兑换码', desc: '按学习卡额度发卡', path: '/admin/subscriptions', tone: 'amber' },

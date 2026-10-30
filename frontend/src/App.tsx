@@ -7,6 +7,7 @@ import FloatingPetWidget from './components/FloatingPetWidget';
 import OldBrowserBanner from './components/OldBrowserBanner';
 import UpdateNudge from './components/UpdateNudge';
 import WhatsNewNudge from './components/WhatsNewNudge';
+import ClassroomPing from './components/ClassroomPing';
 import ContestNoticeBanner from './components/ContestNoticeBanner';
 import StudentMobileNav from './components/student/StudentMobileNav';
 import StaffMobileNav from './components/staff/StaffMobileNav';
@@ -54,6 +55,7 @@ const TeacherCardRules = lazyWithRetry(() => import('./pages/TeacherCardRules'))
 const TeacherPhonetics = lazyWithRetry(() => import('./pages/TeacherPhonetics'));
 const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhoneticBooks'));
 const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
+const ClassroomNet = lazyWithRetry(() => import('./pages/ClassroomNet'));
 const PhoneticFillBlank = lazyWithRetry(() => import('./pages/PhoneticFillBlank'));
 const PhoneticFlashCards = lazyWithRetry(() => import('./pages/PhoneticFlashCards'));
 const PhoneticLessons = lazyWithRetry(() => import('./pages/PhoneticLessons'));
@@ -891,6 +893,23 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* 电教室网络(音标视频只能在电教室看): 同一页挂两条,工作台布局按路径前缀认角色 */}
+        <Route
+          path="/teacher/classroom-net"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <ClassroomNet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/classroom-net"
+          element={
+            <ProtectedRoute allowedRoles={ADMIN_AND_ORG}>
+              <ClassroomNet />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin/referrals"
           element={
@@ -1391,6 +1410,7 @@ function App() {
       <FloatingPetWidget />
       <UpdateNudge />
       <WhatsNewNudge />
+      <ClassroomPing />
       <ContestNoticeBanner />
         </Router>
       </MotionConfig>

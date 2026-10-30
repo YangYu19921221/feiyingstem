@@ -271,6 +271,27 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频「只能在电教室看」(2026-10-30,用户「音标视频可以通过 ip 判断在机构中使用家里不能使用」→「这是最好的方案吗 如果是就按这个来」):
+  先查的生产实情: 直营学校出网 IP 几天一换(10 月 182.245.66.228 → .245 → .142 → .180 → .249),同一天还从 116.249.228.x 出去
+  (多半第二条线路);10 月音标访问 359 次学生观看里 197 次不在学校网段(96 次晚上/周末),17 个学生 12 个在外面看过。
+  所以**不让老师填 IP、不放行整段**。规则真源 services/classroom_net.py 文件头(老师页 pages/ClassroomNet.tsx 底部说明同步):
+  ①在电教室电脑上点「这台电脑在电教室」→ localStorage 存设备码 eh_classroom_device(库里只存 sha256),之后每个请求带
+  X-EH-Classroom 头(api/client.ts + _axiosBootstrap 两个拦截器),components/ClassroomPing 开页面 + 每 5 分钟 ping 一次
+  (**没登录也报**),服务器记下它的 IP ②电教室 IP = 没移除的电脑**最近 7 天**报过的 IP(不是换了就作废: 两条线路来回跳)
+  + 「今天先把这个网络算作电教室」(classroom_temp_nets,当天北京日,不登记设备,IP 刚换电脑没开机时用)③学生带本机构设备码直接放行
+  ④老师给本班孩子开「允许在家看」(classroom_home_allows,可设到期日;机构管理员全机构)⑤**IP 只认 nginx 写的 X-Real-IP,不读 X-Forwarded-For**
+  (客户端能填;生产 8000/8001 外网不通)⑥开关 classroom_net_settings.phonetic_mode any(默认,**没有行 = any,上线零变化**)/ classroom,
+  只给 org_admin / admin,**没认出电教室 IP 时 409 不让开**;打开前列出最近 14 天在外面看过的孩子(GET /impact,学校旧 IP 靠「≥3 位老师登录过」认)。
+  闸门挂在 api/v1/phonetics._enforce_gate(换票 / Bearer 串流 / 讲义列表 / 讲义页四处,request 改成**位置参数**,漏传就是在家也能看),
+  **兑换码那道先判、地点再判、两道都过才扣次卡**(在家被拦不扣);?t= 票据串流**每个片段**再判一次(出了学校本机串流就停);
+  列表 / 详情给 place_locked(整表一致,不记打开次数);403 detail.code=classroom_only。老师 / 助教 / 管理员不受限。
+  判定缓存进程内 15 秒(CACHE_TTL);同一台电脑同一 IP 5 分钟只写一次库(shared_store 节流,键用设备码散列不用 id —— id 会被回收)。
+  **挡不住**: 走 COS 的那一节签名地址 3 小时内出了学校还能取(绑不了 IP);在学校用手机流量算不在电教室;设备码被抄回家 → 设备列表里冒出标「新」的 IP,老师移除那台。
+  五张新表 models/classroom_net.py(create_all 建,不进 tenancy 锚点,查询显式写 org_id);路由 api/v1/classroom_net.py 挂在 phonetics.router 的
+  /classroom-net 下(**main.py 没动**)。操作记录 classroom.*。测试 tests/test_classroom_net.py(20 例),13 处守卫逐一破坏各自对应用例失败(回归锁验证过)。
+  本机浏览器(库副本,X-Real-IP 模拟三个网络)验过: 登记 → 打开 → 在家角标 + 说明不进播放器 → 电教室能播 → 换 IP 后没登录的电教室电脑报到、新 IP 学生能看
+  → 老师开允许在家看 → 在家能看;1366 / 390 无横向溢出。入口: 教师工作台「内容准备 → 电教室网络」/ 顶部「更多」/ 音标视频管理页顶上;
+  机构管理首页「管理 → 电教室网络」;平台「运营工具箱 → 内容与服务 → 电教室网络」;学生端卡片「🏫 到电教室看」。公告老师 / 机构+平台各一条
 - ✅ 小鹰老师自动布置作业(2026-10-30 04:10 **已部署生产**,提交 d5b0b98;11 个改动的后端文件生产==HEAD~1 整推(git archive 导出)+ 新文件 services/autopilot.py、models/autopilot.py、api/v1/autopilot.py;六张新表 create_all 建(先在生产库副本跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvtyxld2 整推(补了 3 张 .gitignore 挡住的 eagle-original-cutout*.png);备份 /root/eh_db_before_autopilot_20261030_0403.db、/root/eh_code_before_autopilot_20261030_0403.tgz、frontend/dist_bak_20261030_0403。上线后所有班都是「给建议」,没有班签到就派 = 孩子那边零变化,直到老师自己点「按建议布置」或改成签到就派。生产库副本量过: 70 人的班全班建议 3.9 秒(单人最慢 0.47 秒)。生产冒烟(临时老师 + 学生 + 班,跑完删净): 建议 25 个词 → 按建议布置 → 撤回 → 改签到就派 → 签到当场派 2 份 → 学习页 15 个词过关线 80 → 考 70 没过不标完成 → 考 95 第 1 份完成 → 第 2 份过关全部完成、金币 +1 → 6 秒后 AI 点评写好(1045 token,署名小鹰老师)→ 再来一份出加练;用户「我的目的就是需要解放老师 让ai全自动」→ 一路定规则 →「开始 怎么用我们的逻辑是什么你需要在教师端写清楚，什么时候需要人工什么时候不需要」):
   规则真源 services/autopilot.py 文件头(1–10 条),**老师页的说明(pages/TeacherAutopilot.tsx Guide)要和它同步**。
   ①**按班两种**: 给建议(默认,老师看建议点「按建议布置」才写作业)/ 签到就派(checkin.py 签到成功顺手 ensure_dispatch);

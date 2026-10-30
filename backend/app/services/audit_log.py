@@ -48,6 +48,11 @@ ACTION_LABELS: dict[str, str] = {
     "tutor.grant": "给学生加学习助手次数",
     "org.tutor_pool": "机构学习助手次数到账",
     "tutor.picture_remove": "删掉学习助手记忆图",
+    "classroom.mode": "切换音标视频观看地点",
+    "classroom.device_add": "登记电教室电脑",
+    "classroom.device_remove": "移除电教室电脑",
+    "classroom.temp_net": "临时算作电教室网络",
+    "classroom.home_allow": "设置允许在家看音标视频",
     # 注:音标观看**不进** operation_logs(学生不记,见 CLAUDE.md),单独落
     # phonetic_access_logs(见 models/phonetic.PhoneticAccessLog),故这里没有 phonetic.* 项
 }
@@ -61,6 +66,7 @@ ACTION_GROUPS: dict[str, str] = {
     "assistant": "助教",
     "referral": "家长推荐",
     "parent": "家长绑定",
+    "classroom": "电教室网络",
 }
 
 _MAX_DETAIL = 20000  # detail JSON 上限:被删作业的学生名单可能很长,截断防止单行过大
