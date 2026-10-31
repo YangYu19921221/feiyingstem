@@ -140,13 +140,20 @@ async def get_memory_hook(
         .order_by(WordDefinition.is_primary.desc()).limit(1)
     )).scalar_one_or_none()
 
+    from app.services import ai_errors
+    from app.services.ai_quota import refund
     try:
         hook = await ai_service.generate_memory_hook(
             word.word, defn.meaning if defn else "", word.syllables)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"AI服务暂不可用: {e}")
+        # 孩子看得懂的原因,不把上游英文报错原样甩出去;没拿到东西就退回今天的次数
+        await refund(current_user.id, "memory_hook")
+        code = ai_errors.classify(e)
+        raise HTTPException(status_code=503, detail={
+            "code": code, "message": f"记忆妙招暂时用不了: {ai_errors.REASONS[code]}。先靠自己记~"})
     if not hook:
-        raise HTTPException(status_code=503, detail="AI未返回内容")
+        await refund(current_user.id, "memory_hook")
+        raise HTTPException(status_code=503, detail={"code": "ai_error", "message": "AI 这次没想出妙招,再点一次试试"})
 
     word.memory_hook = hook  # 写入全平台缓存,之后所有学生免费复用
     await db.commit()
@@ -266,7 +273,8 @@ async def generate_complete(
     except Exception as e:
         # 此前 AI 失败会静默返回空字段的 200,老师点"AI填充"后各栏空白无提示;
         # 现在如实报错,前端 toast 能看到原因
-        raise HTTPException(status_code=502, detail=f"AI 生成失败: {e}")
+        from app.services import ai_errors
+        raise HTTPException(status_code=502, detail=f"AI 生成失败: {ai_errors.reason_of(e)}")
 
     return GenerateCompleteResponse(
         word=request.word,

@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { AlertCircle, CheckCircle2, Clock3, HelpCircle, Lightbulb, Volume2 } from 'lucide-react';
 import type { WordData } from '../../api/progress';
 import client from '../../api/client';
+import { getErrorMessage } from '../../utils/errorMessage';
 import ColoredWord from '../ColoredWord';
 import ColoredPhonetic from '../ColoredPhonetic';
 import AutoFitText from '../AutoFitText';
@@ -389,7 +390,8 @@ export default function ClassificationPhase({
       const r = await client.post<{ hook: string }>(`/ai/memory-hook/${wordId}`);
       setMemoryHook({ wordId, text: r.hook });
     } catch (e: any) {
-      setMemoryHook({ wordId, text: e?.response?.data?.detail || '妙招获取失败,先靠自己记~' });
+      // 后端会说清为什么(欠费 / 太忙…),detail 现在是 {code, message}
+      setMemoryHook({ wordId, text: getErrorMessage(e, '妙招获取失败,先靠自己记~') });
     } finally {
       setHookLoading(false);
     }

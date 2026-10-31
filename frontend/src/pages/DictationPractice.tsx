@@ -7,6 +7,7 @@ import {useParams} from 'react-router-dom';
 import useGoBack from '../hooks/useGoBack';
 import { ArrowLeft } from 'lucide-react';
 import { startLearning, updateProgress } from '../api/progress';
+import { getErrorMessage } from '../utils/errorMessage';
 import type { StartLearningResponse } from '../api/progress';
 import DictationPhase, { type DictationResult } from '../components/classify/DictationPhase';
 import { useAudio } from '../hooks/useAudio';
@@ -35,7 +36,7 @@ export default function DictationPractice() {
         const data = await startLearning({ unit_id: parseInt(unitId), learning_mode: 'dictation' });
         setLearningData(data);
       } catch (e: any) {
-        setError(e?.response?.data?.detail || '加载失败');
+        setError(getErrorMessage(e, '加载失败'));
       } finally {
         setLoading(false);
       }

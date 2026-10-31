@@ -78,6 +78,13 @@ async def require_admin(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+@router.get("/status")
+async def ai_status(current_user: User = Depends(require_admin)):
+    """默认 AI 通道最近一次失败的原因(欠费 / Key 失效…);成功调用一次就清掉。管理端首页顶上显示"""
+    from app.services import ai_errors
+    return {"last_error": await ai_errors.last_error()}
+
+
 @router.get("/providers", response_model=List[AIProviderResponse])
 async def get_ai_providers(
     db: AsyncSession = Depends(get_db),

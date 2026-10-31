@@ -3,6 +3,7 @@
  * 管理5个阶段的流转：分类 → 语音校验 → 听写 → 过关检测 → 总结
  * 支持分组学习：小学每组10个，初中/高中每组20个
  */
+import { getErrorMessage } from '../utils/errorMessage';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { usePreventCopy } from '../hooks/usePreventCopy';
 import {useParams, useLocation} from 'react-router-dom';
@@ -421,12 +422,13 @@ const WordClassifyLearning = () => {
       const status = e?.response?.status;
       // detail 优先取 response,取不到退回 message:progress.ts 拦截器会把后端
       // detail 写进 message,不能只依赖 response 存在(曾因拦截器偷换对象而失效)
-      const detail = String(e?.response?.data?.detail ?? e?.message ?? '');
+      // detail 可能是 {code, message}(书被删了 / 签到),getErrorMessage 两种都认
+      const detail = getErrorMessage(e, '');
       if (detail.includes('签到')) {
         // 未签到(后端 403 兜底):显示签到引导页,不算错误
         setNeedCheckin(true);
-      } else if (status === 403 && detail) {
-        // 其他 403(如"单元未分配")给真实原因,别让学生看"加载失败"干着急
+      } else if ((status === 403 || status === 404) && detail) {
+        // 其他 403(如"单元未分配")/ 404(书被删了)给真实原因,别让学生看"加载失败"干着急
         setError(detail);
       } else {
         console.error('初始化学习失败:', e);

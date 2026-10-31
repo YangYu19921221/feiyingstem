@@ -247,6 +247,15 @@ async def start_homework(
     _book_id = (await db.execute(
         select(_Unit.book_id).where(_Unit.id == homework.unit_id)
     )).scalar_one_or_none()
+    # 书被删了(删书只删 word_books 一行,作业和单元还在): 在这里说清楚,别让孩子进了学习页只看到「加载失败」
+    from app.models.word import WordBook as _WordBook
+    # 查库不用 db.get: 会话里还缓存着这本书的对象时 get 不看库
+    if _book_id is not None and (await db.execute(
+            select(_WordBook.id).where(_WordBook.id == _book_id).execution_options(skip_tenant_filter=True)
+    )).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "book_deleted",
+            "message": "这份作业用的书已经被删掉了,做不了。跟老师说一声,让老师换一份"})
     if _book_id is not None and await is_exclusive_locked(db, current_user.id, _book_id):
         raise HTTPException(status_code=403, detail=EXCLUSIVE_REQUIRED_MSG)
     if _book_id is not None and await is_gated_for_student(db, current_user.id, _book_id) \

@@ -36,6 +36,7 @@ import AutopilotAdminCard from '../components/admin/AutopilotAdminCard';
 interface UserData { full_name: string }
 interface Statistics { total_users: number; students?: number; total_words: number; total_books: number; active_users_today: number; active_users_week: number; learning_records_today: number; learning_records_week: number }
 /** 发音组件夜间自检(后端 services/tts_guard.py 写的最近一条) */
+interface AiIssue { code: string; message: string; model: string; at: string }
 interface TtsStatus { checked_at: string; ok: boolean; action: string; message: string; version_after: string | null; recent_upgrade?: { checked_at: string; message: string } | null }
 interface RecentUser { id: number; username: string; full_name: string | null; role: string; is_active: boolean; created_at: string | null }
 interface ToolItem { title: string; description: string; path: string; icon: LucideIcon; tone: 'orange' | 'blue' | 'teal' | 'green' | 'indigo' | 'amber' | 'violet' }
@@ -110,6 +111,8 @@ export default function AdminDashboard() {
   // 发音组件夜间自检: null = 还没跑过(不算故障),undefined = 还没取到
   const [ttsStatus, setTtsStatus] = useState<TtsStatus | null | undefined>(undefined);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  // 默认 AI 通道最近一次失败的原因(欠费 / Key 失效…),成功一次后端就清掉
+  const [aiIssue, setAiIssue] = useState<AiIssue | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -120,8 +123,10 @@ export default function AdminDashboard() {
       axios.get(`${API_BASE_URL}/admin/users`, { params: { page: 1, page_size: 5 }, headers }),
       axios.get(`${API_BASE_URL}/admin/system/version`, { headers }),
       axios.get(`${API_BASE_URL}/admin/system/tts-status`, { headers }),
+      axios.get(`${API_BASE_URL}/admin/ai/status`, { headers }),
     ]);
-    const [statsResult, usersResult, versionResult, ttsResult] = results;
+    const [statsResult, usersResult, versionResult, ttsResult, aiResult] = results;
+    setAiIssue(aiResult.status === 'fulfilled' ? aiResult.value.data?.last_error ?? null : null);
     const errors: string[] = [];
     if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
     else errors.push('系统指标');
@@ -161,6 +166,29 @@ export default function AdminDashboard() {
 
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 py-4 sm:space-y-6 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
         {loadErrors.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status"><span>部分数据暂时不可用：{loadErrors.join('、')}。</span><button type="button" onClick={() => void loadDashboard()} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100">重新加载</button></div>}
+        {aiIssue && (() => {
+          // 欠费 / Key 失效 / 没配置要人去处理: 红;太忙 / 超时 / 连不上多半自己会好: 黄
+          const mustFix = ['ai_arrears', 'ai_key_invalid', 'ai_not_configured'].includes(aiIssue.code);
+          return (
+          <div className={`flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center ${mustFix ? 'border-red-200 bg-red-50 text-red-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`} role={mustFix ? 'alert' : 'status'}>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{mustFix ? 'AI 服务用不了' : 'AI 服务刚才出了一次错'}: {aiIssue.message}</p>
+              <p className={`mt-1 text-xs leading-5 ${mustFix ? 'text-red-800' : 'text-amber-800'}`}>
+                最近一次失败 {new Date(aiIssue.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                {aiIssue.model ? ` · 模型 ${aiIssue.model}` : ''}。
+                {mustFix
+                  ? '受影响: 学生「记忆妙招」、老师「AI 填充 / 例句」、周报、AI 组卷;「小鹰老师」学习助手用的是另一个 Key,不受影响。'
+                  : '偶尔一次不用管;一直出现再去「AI 配置」点「测试」看看。'}
+                恢复后这条自己消失。
+              </p>
+            </div>
+            <button type="button" onClick={() => navigate('/admin/ai-config')}
+              className={`inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-white px-3 text-xs font-semibold shadow-sm ring-1 transition ${mustFix ? 'text-red-800 ring-red-200 hover:bg-red-100' : 'text-amber-800 ring-amber-200 hover:bg-amber-100'}`}>
+              去 AI 配置
+            </button>
+          </div>
+          );
+        })()}
         <section className="admin-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="admin-pill mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold text-[#173047] sm:text-3xl">欢迎回来，{displayName}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">先确认系统服务和用户活动，再处理机构、内容与账号任务。</p><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3"><button type="button" onClick={() => navigate('/admin/statistics')} className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">查看数据报告 <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">检查服务状态 <Server className="h-4 w-4" /></button></div></div><div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]"><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">今日活跃</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl">{formatNumber(stats?.active_users_today)}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">位用户有学习记录</p></div><div className="min-w-0 rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4">{(() => { const when = deployTime(deployedAt); return <><p className="flex items-baseline justify-between gap-2 text-xs text-slate-500"><span>最近部署</span>{when && <span className="font-semibold text-slate-600">{when.day}</span>}</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl" title={when?.full}>{when ? when.time : '—'}</p></>; })()}<p className="mt-1 truncate text-[11px] text-slate-500 sm:text-xs" title={deployedBuild ? `线上前端构建号 ${deployedBuild}` : undefined}>{deployedBuild ? <>前端 <span className="font-numeric">{deployedBuild}</span></> : '线上前端版本'}</p></div>{ttsStatus !== undefined && <div className={`col-span-2 rounded-xl border p-3.5 sm:p-4 ${ttsStatus && !ttsStatus.ok ? 'border-red-200 bg-red-50' : ttsStatus?.recent_upgrade ? 'border-amber-200 bg-amber-50' : 'border-[#d6e2eb] bg-white'}`} role="status"><p className="text-xs text-slate-500">发音检查(每晚自动)</p>{ttsStatus ? <><p className={`mt-1.5 text-sm font-bold ${ttsStatus.ok ? 'text-[#173047]' : 'text-red-700'}`}>{ttsStatus.ok ? '✓ 发音正常' : '✗ 发音异常'}{ttsStatus.version_after ? <span className="ml-1.5 text-xs font-normal text-slate-500">组件 {ttsStatus.version_after}</span> : null}</p><p className="mt-1 text-[11px] leading-5 text-slate-600 sm:text-xs">{ttsStatus.recent_upgrade && ttsStatus.ok ? ttsStatus.recent_upgrade.message : ttsStatus.ok ? `上次检查 ${new Date(ttsStatus.checked_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}` : ttsStatus.message}</p></> : <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">还没检查过,今晚 3:37 第一次自动检查</p>}</div>}</div></div>
         </section>

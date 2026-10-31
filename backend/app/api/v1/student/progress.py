@@ -72,6 +72,11 @@ async def start_learning(
     row = result.one_or_none()
 
     if not row:
+        # 单元还在、书被删了(删书只删 word_books 一行): 说清楚,别让孩子只看到「加载失败」
+        if await db.get(Unit, unit_id) is not None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={
+                "code": "book_deleted",
+                "message": "这个单元所在的书已经被删掉了,学不了。跟老师说一声,让老师换一份"})
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"单元ID {unit_id} 不存在"

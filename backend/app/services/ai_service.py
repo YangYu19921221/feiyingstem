@@ -1249,9 +1249,22 @@ class AIService:
     async def _call_llm(self, prompt: str, max_tokens: int = 1000) -> str:
         """
         调用大模型API
-        优先从数据库读取配置,降级到环境变量
+        优先从数据库读取配置,降级到环境变量。
+        失败的原因(欠费 / Key 失效 / 没配置…)记下来给管理端首页看,成功一次就清掉(services/ai_errors)
         """
-        config = await self._get_ai_config()
+        from app.services import ai_errors
+        model = None
+        try:
+            config = await self._get_ai_config()
+            model = (config or {}).get("model_name")
+            out = await self._call_llm_inner(config, prompt, max_tokens)
+        except Exception as e:
+            await ai_errors.note_failure(e, model)
+            raise
+        await ai_errors.note_ok()
+        return out
+
+    async def _call_llm_inner(self, config, prompt: str, max_tokens: int) -> str:
 
         if not config:
             raise ValueError("未配置任何AI模型")
