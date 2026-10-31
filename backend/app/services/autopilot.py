@@ -1201,7 +1201,8 @@ async def today_view(db: AsyncSession, student: User) -> dict:
     settings = await get_settings(db)
     today = local_today()
     ts = _ds(today)
-    if settings["enabled"] and await has_checked_in_today(db, student.id):
+    checked_in = await has_checked_in_today(db, student.id)
+    if settings["enabled"] and checked_in:
         try:
             await ensure_dispatch(db, student)
         except Exception:  # noqa: BLE001
@@ -1211,7 +1212,15 @@ async def today_view(db: AsyncSession, student: User) -> dict:
     st = (await db.execute(select(AutopilotStudent).where(AutopilotStudent.student_id == student.id))).scalar_one_or_none()
     line, line_reason = await pass_line_for(db, student.id, st)
     if row is None or row.status != "dispatched":
-        return {"active": False, "pass_line": line, "pass_line_reason": line_reason}
+        # 没签到: 签到那一刻才派(ensure_dispatch 的条件照抄一遍),首页要告诉孩子「签到后小鹰老师就给你排」
+        waiting = False
+        if settings["enabled"] and not checked_in:
+            _, ac = await class_of_student(db, student.id)
+            waiting = (ac is not None and ac.mode == "auto" and not ac.paused
+                       and not (st is not None and st.paused)
+                       and not await manual_homework_today(db, student.id, today))
+        return {"active": False, "pass_line": line, "pass_line_reason": line_reason,
+                "checked_in": checked_in, "waiting_checkin": waiting}
     tasks = await today_tasks(db, student.id, ts)
     base = [x for x in tasks if x.task.batch == 0]
     extra_tasks = [x for x in tasks if x.task.batch > 0]
@@ -1228,6 +1237,7 @@ async def today_view(db: AsyncSession, student: User) -> dict:
 
     return {
         "active": True, "pass_line": line, "pass_line_reason": line_reason,
+        "checked_in": checked_in,
         "tier": row.tier, "location": row.location,
         "items": [item(x) for x in base],
         "extra_items": [item(x) for x in extra_tasks],

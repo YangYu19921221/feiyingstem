@@ -14,7 +14,8 @@ from httpx import AsyncClient
 from app.core import tenancy
 from app.models.learning import HomeworkAssignment, HomeworkStudentAssignment
 from app.models.organization import Organization
-from app.models.user import User, Class, ClassStudent
+from app.models.user import User, Class, ClassStudent, DailyCheckin
+from app.core.timeutil import local_today
 from app.models.word import WordBook, Unit
 from tests.conftest import _make_token
 
@@ -47,6 +48,7 @@ async def student_with_tasks(db_session):
     db_session.add(cls)
     await db_session.flush()
     db_session.add(ClassStudent(class_id=cls.id, student_id=stu.id, is_active=True))
+    db_session.add(DailyCheckin(user_id=stu.id, checkin_date=local_today()))  # 没签到不能开始做(10-31)
 
     book = WordBook(name="人教版三上", is_public=True)
     db_session.add(book)

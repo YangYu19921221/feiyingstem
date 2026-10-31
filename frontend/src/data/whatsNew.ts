@@ -28,6 +28,23 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'checkin-before-homework-student-2026-10',
+    date: '2026-10-31',
+    title: '📍 先签到,再做作业',
+    desc: '每天要先签到才能做作业。还没签到时,作业的按钮会写「签到并开始」,点一下就签好并打开作业。班里开了「小鹰老师自动布置」的,签到那一刻小鹰老师才给你排今天要学的。',
+    where: '学生首页最上面「立即签到」;或者直接点作业上的「签到并开始」',
+    roles: ['student'],
+    route: '/student/dashboard',
+  },
+  {
+    id: 'checkin-before-homework-staff-2026-10',
+    date: '2026-10-31',
+    title: '📍 学生要先签到才能做作业(含小鹰老师排的)',
+    desc: '以前没签到的孩子点作业,要进了学习页才被拦下;现在作业一点开始就先判签到,没签到首页和「我的作业」都写着「签到后才能做作业」,按钮变成「签到并开始」,一点就签上并打开。小鹰老师排的任务也一样: 自动班签到才派;你点「按建议布置」先派了的,孩子也要先签到才能开始做、才能「再来一份」。签到名单照常在「签到」页看。',
+    where: '不用设置,已经生效;看谁签了到: 教师工作台「签到」',
+    roles: ['teacher', 'org_admin', 'admin'],
+  },
+  {
     id: 'phonetic-reading-ise-referee-2026-10',
     date: '2026-10-31',
     title: '🎯 读音标判不清楚时,自动请讯飞再判一次',

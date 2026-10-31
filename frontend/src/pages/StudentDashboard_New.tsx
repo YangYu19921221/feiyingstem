@@ -20,6 +20,8 @@ import TutorEntryCard from '../components/tutor/TutorEntryCard';
 import CoachNoteCard from '../components/coach/CoachNoteCard';
 import AutopilotTodayCard from '../components/autopilot/AutopilotTodayCard';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
+import { isNeedCheckin, NEED_CHECKIN_TIP } from '../utils/checkin';
 import PetWidget from '../components/PetWidget';
 import MyCoinsCard from '../components/MyCoinsCard';
 import RankingBanner from '../components/leaderboard/RankingBanner';
@@ -128,8 +130,9 @@ const StudentDashboard = () => {
     } catch { /* 静默 */ }
   };
 
-  const handleCheckin = async () => {
-    if (checkinBusy) return;
+  // 返回签没签上: 「签到并开始」要先签上才接着开作业
+  const handleCheckin = async (): Promise<boolean> => {
+    if (checkinBusy) return false;
     setCheckinBusy(true);
     try {
       const token = localStorage.getItem('access_token');
@@ -140,8 +143,11 @@ const StudentDashboard = () => {
       // 自动班是签到那一刻派任务的: 重新取小鹰老师那张卡和作业列表
       setAutopilotKey((k) => k + 1);
       loadPendingHomework();
+      return true;
     } catch (e) {
       console.error('签到失败:', e);
+      toast.error('签到没成功,稍后再试');
+      return false;
     } finally {
       setCheckinBusy(false);
     }
@@ -291,7 +297,11 @@ const StudentDashboard = () => {
     }
   };
 
+  const needCheckin = checkin !== null && !checkin.checked_in;
+
   const handleStartTask = async (task: StudentHomeworkResponse) => {
+    // 签到才能做作业: 没签就先签(按钮写的是「签到并开始」),签上了接着开
+    if (needCheckin && !(await handleCheckin())) return;
     try {
       const result = await startHomework(task.id);
       navigate(`/student/units/${result.unit_id}/${result.learning_mode}`, {
@@ -299,6 +309,12 @@ const StudentDashboard = () => {
       });
     } catch (error: any) {
       console.error('开始作业失败:', error);
+      if (isNeedCheckin(error)) {
+        toast.info(NEED_CHECKIN_TIP);
+        loadCheckin();   // 首页开着过了半夜: 重取签到状态
+      } else {
+        toast.error(getErrorMessage(error, '开始作业失败'));
+      }
     }
   };
 
@@ -517,7 +533,10 @@ const StudentDashboard = () => {
                   今天还没签到
                 </h2>
                 <p className="mt-1 text-sm text-ink-soft">
-                  签到后再开始今天的学习，老师也能看到你的记录。
+                  签到后才能做作业和学习，老师也能看到你的记录。
+                  {shownOpenCount > 0 && (
+                    <span className="font-semibold text-accent-warm"> 有 {shownOpenCount} 份作业等你签到后开始。</span>
+                  )}
                 </p>
                 </div>
               </div>
@@ -637,7 +656,7 @@ const StudentDashboard = () => {
         </section>
 
         {/* 小鹰老师今天排的任务: 班级开了自动布置、签了到才出现 */}
-        <AutopilotTodayCard refreshKey={autopilotKey} onTasks={setAutopilotIds} />
+        <AutopilotTodayCard refreshKey={autopilotKey} onTasks={setAutopilotIds} onCheckin={handleCheckin} />
 
         {/* 老师的话(陪跑点评):最近 3 天老师留了才出现 */}
         <CoachNoteCard />
@@ -771,7 +790,8 @@ const StudentDashboard = () => {
                       >
                         {locked
                           ? `${openDay}开放`
-                          : task.attempts_count > 0 ? '再战一次 →' : task.status === 'in_progress' ? '继续 →' : '去完成 →'}
+                          : needCheckin ? '签到并开始 →'
+                            : task.attempts_count > 0 ? '再战一次 →' : task.status === 'in_progress' ? '继续 →' : '去完成 →'}
                       </button>
                     </div>
                   );

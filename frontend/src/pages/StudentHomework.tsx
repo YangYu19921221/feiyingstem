@@ -26,6 +26,7 @@ import {
 import { toast } from '../components/Toast';
 import { formatOpenDay } from '../utils/openDay';
 import { getErrorMessage } from '../utils/errorMessage';
+import { checkInToday, getTodayCheckin, isNeedCheckin, NEED_CHECKIN_TIP, type CheckinState } from '../utils/checkin';
 import ContentHomeworkList from '../components/student/ContentHomeworkList';
 
 // 学习模式中文映射
@@ -65,6 +66,29 @@ const StudentHomework = () => {
   const [expandedHomework, setExpandedHomework] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<Record<number, HomeworkAttemptResponse[]>>({});
   const [loadingAttempts, setLoadingAttempts] = useState<Record<number, boolean>>({});
+  // 签到才能做作业(2026-10-31): 没签到顶上说清楚,按钮写「签到并开始」
+  const [checkin, setCheckin] = useState<CheckinState | null>(null);
+  const [checkinBusy, setCheckinBusy] = useState(false);
+  const needCheckin = checkin !== null && !checkin.checked_in;
+
+  const loadCheckin = () => {
+    getTodayCheckin().then(setCheckin).catch(() => { /* 取不到不挡: 后端开始作业时还会再判 */ });
+  };
+
+  const doCheckin = async (): Promise<boolean> => {
+    if (checkinBusy) return false;
+    setCheckinBusy(true);
+    try {
+      const r = await checkInToday();
+      setCheckin({ checked_in: true, checkin_time: r.checkin_time });
+      return true;
+    } catch {
+      toast.error('签到没成功,稍后再试');
+      return false;
+    } finally {
+      setCheckinBusy(false);
+    }
+  };
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -72,6 +96,7 @@ const StudentHomework = () => {
       setUser(JSON.parse(userStr));
     }
     loadHomeworks();
+    loadCheckin();
   }, []);
 
   const loadHomeworks = async () => {
@@ -89,6 +114,7 @@ const StudentHomework = () => {
   };
 
   const handleStartHomework = async (assignmentId: number) => {
+    if (needCheckin && !(await doCheckin())) return;
     try {
       const result = await startHomework(assignmentId);
       // 跳转到学习页面
@@ -96,7 +122,12 @@ const StudentHomework = () => {
         state: { fromHomework: true, assignmentId, groupIndex: result.group_index ?? null },
       });
     } catch (error: any) {
-      toast.error(getErrorMessage(error, '开始作业失败'));
+      if (isNeedCheckin(error)) {
+        toast.info(NEED_CHECKIN_TIP);
+        loadCheckin();
+      } else {
+        toast.error(getErrorMessage(error, '开始作业失败'));
+      }
     }
   };
 
@@ -317,8 +348,25 @@ const StudentHomework = () => {
           </div>
         </section>
 
+        {needCheckin && (
+          <section className="mb-6 flex flex-col gap-3 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:p-5">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-lg font-semibold text-ink">今天还没签到</h2>
+              <p className="mt-1 text-sm text-ink-soft">签到后才能做作业,老师也能看到你的记录。</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void doCheckin(); }}
+              disabled={checkinBusy}
+              className="btn-glow inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {checkinBusy ? '签到中…' : '立即签到'}
+            </button>
+          </section>
+        )}
+
         {/* 句子 / 音标视频作业(2026-10-21): 学完自动算完成,没有就不显示 */}
-        <ContentHomeworkList />
+        <ContentHomeworkList needCheckin={needCheckin} onCheckin={doCheckin} />
 
         {/* 状态筛选标签 */}
         <div className="card-soft mb-6 rounded-xl p-2">
@@ -556,7 +604,7 @@ const StudentHomework = () => {
                                 onClick={() => handleStartHomework(homework.id)}
                                 className="min-h-11 flex-1 rounded-xl bg-accent-warm px-6 py-3 font-semibold text-white transition hover:opacity-90"
                               >
-                                {homework.status === 'pending' ? '开始作业' : '继续作业'}
+                                {needCheckin ? '签到并开始' : homework.status === 'pending' ? '开始作业' : '继续作业'}
                               </button>
                             )
                           )}

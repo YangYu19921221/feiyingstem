@@ -98,6 +98,10 @@ export interface Suggestion {
 
 export interface StudentToday {
   active: boolean;
+  /** 今天签没签到(签到才能做,2026-10-31) */
+  checked_in?: boolean;
+  /** 自动班还没签到: 签到那一刻才派 */
+  waiting_checkin?: boolean;
   pass_line: number;
   pass_line_reason: string;
   tier?: number;

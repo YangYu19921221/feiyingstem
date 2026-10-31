@@ -4,6 +4,7 @@
  * 单独一块放在单词作业上面: 这类作业学完自动算完成,没有分数/尝试次数,和单词作业卡片的字段对不上。
  * 「去完成」直接跳到学习页: 句子进那个单元;视频进音标页并直接打开那一节(navigate state 的 openVideoId,
  * PhoneticsHub 兑换单节码跳回来用的也是这条路)。
+ * 签到才能做作业(2026-10-31): 没签到时按钮写「签到并开始」,先签到再跳。
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -22,7 +23,12 @@ function dayText(iso: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-export default function ContentHomeworkList() {
+interface Props {
+  needCheckin?: boolean;
+  onCheckin?: () => Promise<boolean>;
+}
+
+export default function ContentHomeworkList({ needCheckin = false, onCheckin }: Props) {
   const navigate = useNavigate();
   const [items, setItems] = useState<StudentContentHomework[] | null>(null);
 
@@ -36,7 +42,8 @@ export default function ContentHomeworkList() {
   const sorted = [...items].sort((a, b) => Number(a.status === 'completed') - Number(b.status === 'completed'));
   const todo = items.filter((x) => x.status === 'pending').length;
 
-  const go = (h: StudentContentHomework) => {
+  const go = async (h: StudentContentHomework) => {
+    if (needCheckin && onCheckin && !(await onCheckin())) return;
     if (h.kind === 'phonetic_video') {
       navigate(h.route, { state: { openVideoId: h.target_id } });
     } else {
@@ -81,11 +88,11 @@ export default function ContentHomeworkList() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => go(h)}
+                  onClick={() => { void go(h); }}
                   className="min-h-9 shrink-0 rounded-lg bg-accent-warm px-3 text-xs font-semibold text-white hover:opacity-90"
                   aria-label={`去完成「${h.title}」`}
                 >
-                  去完成
+                  {needCheckin ? '签到并开始' : '去完成'}
                 </button>
               )}
             </li>

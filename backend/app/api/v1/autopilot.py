@@ -326,6 +326,8 @@ async def my_autopilot_today(db: AsyncSession = Depends(get_db), student: User =
 
 @student_router.post("/autopilot/extra")
 async def my_autopilot_extra(db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
+    from app.api.v1.checkin import require_checkin
+    await require_checkin(db, student.id)   # 小鹰老师排的每一步都要先签到
     out = await ap.dispatch_extra(db, student)
     if not out["ok"]:
         raise HTTPException(409, out["message"])

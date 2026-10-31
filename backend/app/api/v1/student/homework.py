@@ -261,6 +261,11 @@ async def start_homework(
         await db.commit()
         raise HTTPException(status_code=400, detail="这份任务只能在当天完成,已经过期了")
 
+    # 今天没签到不能开始做作业(学习入口 /units/{id}/start 本来就拦,这里先拦:
+    # 前端拿到 need_checkin 就地给「立即签到」,不用进了学习页才发现)
+    from app.api.v1.checkin import require_checkin
+    await require_checkin(db, current_user.id)
+
     # 检查是否超过最大尝试次数
     if assignment.attempts_count >= homework.max_attempts:
         raise HTTPException(status_code=400, detail="已达到最大尝试次数")

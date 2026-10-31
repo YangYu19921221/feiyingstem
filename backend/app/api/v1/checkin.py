@@ -52,6 +52,17 @@ async def has_checked_in_today(db: AsyncSession, user_id: int) -> bool:
     return res.scalar_one_or_none() is not None
 
 
+# 没签到就开始作业 / 小鹰老师的任务时回这个(2026-10-31,用户「告诉学生签到才能做作业…小鹰助手布置的必须签到才能执行下一步」)。
+# 前端看 code 认出来,就地给「立即签到」,不用孩子自己找回首页
+NEED_CHECKIN = {"code": "need_checkin", "message": "今天还没签到,先点首页的「立即签到」,签到后才能做作业"}
+
+
+async def require_checkin(db: AsyncSession, user_id: int) -> None:
+    """今天没签到 → 403 need_checkin。作业开始、小鹰老师「再来一份」都走这里"""
+    if not await has_checked_in_today(db, user_id):
+        raise HTTPException(status_code=403, detail=NEED_CHECKIN)
+
+
 @router.get("/student/checkin/today")
 async def get_today_checkin(
     db: AsyncSession = Depends(get_db),

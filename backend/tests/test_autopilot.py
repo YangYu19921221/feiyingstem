@@ -630,3 +630,55 @@ async def test_undo_keeps_started_task_and_day_row(client, db_session, env, cloc
     assert [x.homework_id for x in left] == [tasks[0].homework_id]
     assert (await db_session.execute(select(AutopilotDispatch).where(
         AutopilotDispatch.id == r["dispatch_id"]))).scalar_one_or_none() is not None
+
+
+# ---------------------------------------------------------------- 11. 签到才能做(2026-10-31)
+
+@pytest.mark.asyncio
+async def test_must_check_in_before_homework_and_extra(client, db_session, env):
+    """老师点「按建议布置」时孩子还没签到: 首页列得出来,但开始做 / 再来一份都要先签到;
+    被拦的那次不算尝试次数"""
+    s, t, c = env["s"], env["t"], env["c"]
+    r = await client.post(f"/api/v1/teacher/autopilot/classes/{c.id}/dispatch",
+                          json={"student_ids": [s.id]}, headers=_h(t.id))
+    assert r.json()["dispatched"] == 1
+    v = (await client.get("/api/v1/student/autopilot/today", headers=_h(s.id))).json()
+    assert v["active"] and v["checked_in"] is False
+    aid = v["items"][0]["assignment_id"]
+    r = await client.post(f"/api/v1/student/homework/{aid}/start", headers=_h(s.id))
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "need_checkin"
+    hsa = (await db_session.execute(select(HomeworkStudentAssignment).where(
+        HomeworkStudentAssignment.id == aid))).scalar_one()
+    await db_session.refresh(hsa)
+    assert hsa.status != "in_progress" and (hsa.attempts_count or 0) == 0
+    r = await client.post("/api/v1/student/autopilot/extra", headers=_h(s.id))
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "need_checkin"
+
+    await client.post("/api/v1/student/checkin", headers=_h(s.id))
+    v = (await client.get("/api/v1/student/autopilot/today", headers=_h(s.id))).json()
+    assert v["checked_in"] is True
+    r = await client.post(f"/api/v1/student/homework/{aid}/start", headers=_h(s.id))
+    assert r.status_code == 200, r.text
+    r = await client.post("/api/v1/student/autopilot/extra", headers=_h(s.id))
+    assert r.status_code == 409, "签了到才轮到「今天的还没做完」那道判断"
+
+
+@pytest.mark.asyncio
+async def test_waiting_checkin_only_for_auto_class_that_will_dispatch(client, db_session, env):
+    """首页「签到后小鹰老师就给你排」只在签到真的会派的时候说"""
+    s, c = env["s"], env["c"]
+
+    async def view():
+        return (await client.get("/api/v1/student/autopilot/today", headers=_h(s.id))).json()
+
+    v = await view()
+    assert v["active"] is False and v["waiting_checkin"] is False, "手动班签到也不派"
+    await _set_class(db_session, c, mode="auto")
+    v = await view()
+    assert v["active"] is False and v["waiting_checkin"] is True and v["checked_in"] is False
+    await _set_class(db_session, c, paused=True)
+    assert (await view())["waiting_checkin"] is False, "暂停了"
+    await _set_class(db_session, c, paused=False)
+    await client.post("/api/v1/student/checkin", headers=_h(s.id))
+    v = await view()
+    assert v["active"] is True and v["checked_in"] is True
