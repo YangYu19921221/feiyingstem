@@ -375,11 +375,19 @@ async def teacher_parent_binding_students(
     pending_of = {sid: {"code": code, "expires_at": exp}
                   for sid, code, exp in pending if is_teacher_code(code)}
 
+    # 摄像头看在不在: 家长同意了没有(家长端自己点的 / 老师登记的纸质同意书),见 services/focus_watch
+    from app.models.focus_watch import CameraConsent
+    from app.services.focus_watch import consent_out
+    consent_of = {r.student_id: consent_out(r) for r in (await db.execute(
+        select(CameraConsent).where(CameraConsent.student_id.in_(sids))
+    )).scalars().all()}
+
     items = [{
         "id": sid, "username": uname, "full_name": fname or "",
         "class_name": class_of.get(sid, ""),
         "parents": parents_of.get(sid, []),
         "pending": pending_of.get(sid),
+        "camera": consent_of.get(sid),
     } for sid, uname, fname in students]
     # 没绑家长的排前面: 打开这页就是为了挨个发链接
     items.sort(key=lambda x: (len(x["parents"]) > 0, x["class_name"], x["full_name"] or x["username"]))

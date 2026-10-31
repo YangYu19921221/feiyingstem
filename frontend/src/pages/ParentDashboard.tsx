@@ -15,6 +15,9 @@ import {
 } from '../api/parent';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import ParentCoachNotes from '../components/coach/ParentCoachNotes';
+import ParentTodayCard from '../components/parent/ParentTodayCard';
+import CameraConsentCard from '../components/parent/CameraConsentCard';
+import DeviceLockGuide from '../components/parent/DeviceLockGuide';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import InviteShareDialog from '../components/referral/InviteShareDialog';
@@ -212,6 +215,9 @@ const ParentDashboard = () => {
           </div>
         )}
 
+        {/* 今天: 作业 / 时长 / 切出去多久 / 摄像头离开 / 卡住的词,正在学时带实时状态 */}
+        {activeStudentId !== null && <ParentTodayCard studentId={activeStudentId} />}
+
         {/* 邀请朋友(家长裂变入口): 放在周报上面,一进来就看得见 */}
         {activeStudentId !== null && (
           <section className="card-soft mb-6 flex items-center gap-4 rounded-2xl p-5">
@@ -232,6 +238,14 @@ const ParentDashboard = () => {
         )}
 
         {activeStudentId !== null && <ParentCoachNotes studentId={activeStudentId} />}
+
+        {activeStudentId !== null && (
+          <CameraConsentCard
+            studentId={activeStudentId}
+            childName={(() => { const c = children.find(x => x.student_id === activeStudentId); return c ? (c.full_name || c.username) : '孩子'; })()}
+          />
+        )}
+        {activeStudentId !== null && <DeviceLockGuide />}
 
         {activeStudentId !== null && (
           <WeeklyReportCard

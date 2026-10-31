@@ -12,7 +12,8 @@ import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
 import { teacherMonitor } from '../api/teacherMonitor';
-import type { DailyContentItem, StuckWordItem, ClassRankingEntry, ClassRankingMetric, ClassRankingPeriod } from '../api/teacherMonitor';
+import type { DailyContentItem, StuckWordItem, DayAway, ClassRankingEntry, ClassRankingMetric, ClassRankingPeriod } from '../api/teacherMonitor';
+import { fmtAway } from '../api/focusWatch';
 
 interface ClassInfo {
   id: number;
@@ -216,6 +217,7 @@ const TeacherClassManagement = () => {
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
   const [dailyContent, setDailyContent] = useState<DailyContentItem[]>([]);
   const [stuckWords, setStuckWords] = useState<StuckWordItem[]>([]);
+  const [dayAway, setDayAway] = useState<DayAway | null>(null);
   // 学生单日行为时间线(签到→活跃段→空窗段→作业事件),回答"这两小时他在干嘛"
   const [dayTimeline, setDayTimeline] = useState<{ type: string; time: string; text: string }[] | null>(null);
   // 全班"实际学习时段"(首次~末次答题),表格与家长日报图共用
@@ -249,7 +251,7 @@ const TeacherClassManagement = () => {
       loadDailyStats(selectedClass.id, selectedDate);
     }
     setExpandedStudentId(null);
-    setDailyContent([]); setStuckWords([]);
+    setDailyContent([]); setStuckWords([]); setDayAway(null);
     setDailySearch('');  // 切换班级/日期时清空搜索，避免残留过滤
   }, [selectedClass, selectedDate]);
 
@@ -356,7 +358,7 @@ const TeacherClassManagement = () => {
     if (!selectedClass) return;
     if (expandedStudentId === studentId) {
       setExpandedStudentId(null);
-      setDailyContent([]); setStuckWords([]);
+      setDailyContent([]); setStuckWords([]); setDayAway(null);
       setContentSummary(null);
       setDayTimeline(null);
       return;
@@ -370,7 +372,7 @@ const TeacherClassManagement = () => {
   /** 拉某学生某天的明细 + 汇总(明细面板内翻日期用) */
   const loadDailyContentFor = async (studentId: number, date: string) => {
     if (!selectedClass) return;
-    setDailyContent([]); setStuckWords([]);
+    setDailyContent([]); setStuckWords([]); setDayAway(null);
     setDayTimeline(null);
     setLoadingDailyContent(true);
     // 行为时间线并行拉取,失败不影响学习内容展示
@@ -388,6 +390,7 @@ const TeacherClassManagement = () => {
       const res = await teacherMonitor.dailyStatsContent(selectedClass.id, studentId, date);
       setDailyContent(res.items || []);
       setStuckWords(res.stuck_words || []);
+      setDayAway(res.away || null);
       // 该日汇总:当天=直接用表格行;历史=单独拉该日 daily-stats 找此学生
       if (date === selectedDate) {
         const row = dailyStats.find(s => s.user_id === studentId);
@@ -403,6 +406,7 @@ const TeacherClassManagement = () => {
       }
     } catch (error) {
       setStuckWords([]);
+      setDayAway(null);
       console.error('加载学习内容明细失败:', error);
     } finally {
       setLoadingDailyContent(false);
@@ -1356,7 +1360,8 @@ const TeacherClassManagement = () => {
                               <td className="py-3 px-3 text-center">
                                 <button
                                   onClick={() => toggleDailyContent(s.user_id)}
-                                  disabled={s.words_learned === 0 && s.sessions_count === 0}
+                                  // 一个词没学但切出去 / 发呆 / 卡住过的也要能点开: 老师要看的正是他这段时间去哪了
+                                  disabled={s.words_learned === 0 && s.sessions_count === 0 && !s.switch_count && !s.distracted_count && !s.stuck_count}
                                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition font-medium disabled:opacity-40 disabled:cursor-not-allowed bg-orange-50 text-orange-600 hover:bg-orange-100"
                                 >
                                   {expandedStudentId === s.user_id ? (
@@ -1542,6 +1547,27 @@ const TeacherClassManagement = () => {
                                           </div>
                                         ))}
                                       </div>
+                                    </div>
+                                  )}
+                                  {/* 当天离开了多久(切出页面 / 摄像头里看不到人) */}
+                                  {!loadingDailyContent && dayAway && (dayAway.switch.count > 0 || dayAway.no_face.count > 0) && (
+                                    <div className="mb-3 bg-white rounded-xl border border-red-100 shadow-sm px-4 py-3 text-xs text-gray-600 space-y-1">
+                                      {dayAway.switch.count > 0 && (
+                                        <div>
+                                          <span className="font-semibold text-red-600">切出学习页面 {dayAway.switch.count} 次</span>
+                                          {dayAway.switch.seconds > 0 && <> · 共 {fmtAway(dayAway.switch.seconds)},最长一次 {fmtAway(dayAway.switch.longest_seconds)}</>}
+                                          {dayAway.switch.episodes.length > 0 && (
+                                            <span className="text-gray-400"> ({dayAway.switch.episodes.map(e => `${e.at} ${fmtAway(e.seconds)}`).join('、')})</span>
+                                          )}
+                                        </div>
+                                      )}
+                                      {dayAway.no_face.count > 0 && (
+                                        <div>
+                                          <span className="font-semibold text-amber-600">摄像头里离开座位 {dayAway.no_face.count} 次</span>
+                                          {' '}· 共 {fmtAway(dayAway.no_face.seconds)}
+                                          <span className="text-gray-400"> ({dayAway.no_face.episodes.map(e => `${e.at} ${fmtAway(e.seconds)}`).join('、')})</span>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                   {/* 听写卡住的词:想了多久、最后怎样 —— 回答「他这几十分钟卡在哪」 */}

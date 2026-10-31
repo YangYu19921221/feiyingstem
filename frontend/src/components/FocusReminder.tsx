@@ -5,9 +5,13 @@
  * - 切屏回来: 全屏大提示框(和发呆同级醒目) → 记一次"切屏"
  * 事件通过 /student/presence/focus-event 落库,教师端每日数据展示走神次数
  */
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE_URL } from '../config/env';
+import { reportFocusEvent } from '../utils/focusEvents';
+import { useCameraAllowed } from '../hooks/useCameraAllowed';
+
+// 摄像头看在不在(家长同意了才开): 检测库约 1MB,只在真要开的时候才下载
+const CameraPresence = lazy(() => import('./CameraPresence'));
 
 interface Props {
   nudge: boolean;
@@ -38,19 +42,9 @@ const playChime = () => {
   } catch { /* 声音失败不影响提醒 */ }
 };
 
-/** 走神事件落库(静默失败) */
-const reportFocusEvent = (kind: 'switch' | 'distracted') => {
-  const token = localStorage.getItem('access_token');
-  if (!token) return;
-  fetch(`${API_BASE_URL}/student/presence/focus-event`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ kind }),
-    keepalive: true,
-  }).catch(() => {});
-};
 
 export default function FocusReminder({ nudge, block }: Props) {
+  const cameraAllowed = useCameraAllowed();
   // 发呆拦截:出现时响一声+记一次;并保证最短展示 1.5 秒 ——
   // 否则孩子恰好在临界点动了一下,全屏遮罩弹出即消失,看起来像"屏幕闪了一下"
   const [blockShown, setBlockShown] = useState(false);
@@ -92,7 +86,7 @@ export default function FocusReminder({ nudge, block }: Props) {
         const awayMs = Date.now() - hiddenAtRef.current;
         hiddenAtRef.current = 0;
         if (awayMs >= 5000) {
-          reportFocusEvent('switch');
+          reportFocusEvent('switch', awayMs);
           setSwitchBack(true);
           playChime();
           clearTimeout(switchHideTimerRef.current);
@@ -109,6 +103,11 @@ export default function FocusReminder({ nudge, block }: Props) {
 
   return (
     <>
+      {cameraAllowed && (
+        <Suspense fallback={null}>
+          <CameraPresence />
+        </Suspense>
+      )}
       {/* 第一级:底部轻提醒 */}
       <AnimatePresence>
         {nudge && !blockShown && (

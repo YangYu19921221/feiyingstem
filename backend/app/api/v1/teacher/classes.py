@@ -748,9 +748,14 @@ async def get_class_daily_stats_student_content(
         for wid, ms, oc, w in stuck_rows
     ]
 
+    # 当天离开了多久: 切出页面 / 摄像头里看不到人(家长同意了才有),见 services/focus_watch
+    from app.services.focus_watch import away_summary
+    away = await away_summary(db, student_id, dt)
+
     unit_ids = set(sess_map.keys()) | set(groups_by_unit.keys())
     if not unit_ids:
-        return {"student_id": student_id, "date": dt.isoformat(), "items": [], "stuck_words": stuck_words}
+        return {"student_id": student_id, "date": dt.isoformat(), "items": [],
+                "stuck_words": stuck_words, "away": away}
 
     # 3. 单元 + 单词本信息
     units_res = await db.execute(select(Unit).where(Unit.id.in_(unit_ids)))
@@ -781,7 +786,8 @@ async def get_class_daily_stats_student_content(
     # 按学习词数从多到少排序,方便老师一眼看到主要学习内容
     items.sort(key=lambda x: x["words_studied"], reverse=True)
 
-    return {"student_id": student_id, "date": dt.isoformat(), "items": items, "stuck_words": stuck_words}
+    return {"student_id": student_id, "date": dt.isoformat(), "items": items,
+            "stuck_words": stuck_words, "away": away}
 
 
 @router.get("/classes/{class_id}/student/{student_id}/detail")

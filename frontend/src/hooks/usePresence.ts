@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config/env';
+import { cameraPresenceStore } from '../utils/cameraPresenceStore';
 
 const HEARTBEAT_MS = 15_000;
 
@@ -41,6 +42,8 @@ export default function usePresence(opts: {
         idle: s.idle,
         unit_id: s.unitId ?? null,
         unit_name: s.unitName ?? null,
+        // 摄像头开着时才带: 此刻连续 10 秒以上看不到人(家长端实时状态用)
+        ...(cameraPresenceStore.get().active ? { no_face: cameraPresenceStore.get().noFace } : {}),
       });
     };
 
@@ -52,10 +55,12 @@ export default function usePresence(opts: {
     beat(); // 进页面立即报一次
     const timer = setInterval(beat, HEARTBEAT_MS);
     document.addEventListener('visibilitychange', onVisibility);
+    const offCamera = cameraPresenceStore.subscribe(beat);
 
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
+      offCamera();
     };
   }, [enabled]);
 }

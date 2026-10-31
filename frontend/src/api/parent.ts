@@ -1,4 +1,5 @@
 import client from './client';
+import type { CameraConsentInfo } from './focusWatch';
 import axios from 'axios';
 import './_axiosBootstrap';
 import { API_BASE_URL } from '../config/env';
@@ -121,6 +122,8 @@ export interface ParentBindingStudent {
   class_name: string;
   parents: BoundParent[];
   pending: { code: string; expires_at: string } | null;  // 已发出、还没用掉的链接
+  /** 摄像头看在不在: 家长同意了没有(家长端自己点的 / 老师登记的纸质同意书) */
+  camera?: CameraConsentInfo | null;
 }
 
 export interface TeacherBindCode {

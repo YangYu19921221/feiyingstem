@@ -34,6 +34,8 @@ class HeartbeatRequest(BaseModel):
     idle: bool = False
     unit_id: Optional[int] = None
     unit_name: Optional[str] = None
+    # 摄像头(家长同意了才开)此刻连续 10 秒以上看不到人;没开摄像头的页面不传
+    no_face: Optional[bool] = None
 
 
 class SwitchRequest(BaseModel):
@@ -41,7 +43,10 @@ class SwitchRequest(BaseModel):
 
 
 class FocusEventRequest(BaseModel):
-    kind: str  # 'switch'(切屏) | 'distracted'(发呆60秒被全屏提醒)
+    kind: str  # 'switch'(切屏) | 'distracted'(发呆60秒被全屏提醒) | 'no_face'(摄像头里看不到人)
+    # 离开了多久(毫秒)。switch / no_face 带;老页面不带,只记次数(services/focus_watch 第 1 条)
+    away_ms: Optional[int] = None
+    page: Optional[str] = None   # 离开时在哪个学习页(路径)
 
 
 @router.post("/student/presence/focus-event")
@@ -55,8 +60,19 @@ async def report_focus_event(
     from app.core.timeutil import local_today
     from sqlalchemy import func as sa_func
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-    if data.kind not in ("switch", "distracted"):
-        raise HTTPException(status_code=422, detail="kind 必须是 switch/distracted")
+    from app.services import focus_watch as fw
+    if data.kind not in ("switch", "distracted", "no_face"):
+        raise HTTPException(status_code=422, detail="kind 必须是 switch/distracted/no_face")
+    if data.kind == "no_face":
+        # 摄像头只在家长同意后才开;没同意就收不到这种事件(前端不会开,这里再挡一道)
+        if not await fw.consent_active(db, current_user.id):
+            raise HTTPException(status_code=403, detail="家长还没同意用摄像头")
+        if (data.away_ms or 0) >= fw.NO_FACE_MS:
+            await fw.record_away(db, current_user.id, "no_face", data.away_ms, data.page)
+            await db.commit()
+        return {"ok": True}
+    if data.kind == "switch" and (data.away_ms or 0) >= fw.SWITCH_MIN_MS:
+        await fw.record_away(db, current_user.id, "switch", data.away_ms, data.page)
     today = local_today()
     # UPSERT 原子累加:先查后插会和学习记录提交竞态,当天首个事件可能撞唯一约束 500
     is_switch = data.kind == "switch"
@@ -145,6 +161,7 @@ async def presence_heartbeat(
         idle=data.idle,
         unit_id=data.unit_id,
         unit_name=data.unit_name,
+        no_face=data.no_face,
     )
     return {"ok": True}
 
@@ -430,3 +447,9 @@ async def all_classes_live_status(
     # 有人在线的班排前面,按在学人数降序;全离线的班沉底
     out.sort(key=lambda c: (-(c["studying"] + c["away"]), c["class_id"]))
     return {"classes": out}
+
+
+# 离开记录 / 摄像头同意 / 家长「今天」(services/focus_watch.py)。挂在这里,main.py 不用动
+from app.api.v1 import focus_watch as _focus_watch_api  # noqa: E402
+
+router.include_router(_focus_watch_api.router)

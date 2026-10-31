@@ -7,13 +7,17 @@
  * 规则真源 backend/app/api/v1/parent.py: 链接 7 天有效、只能用一次;已有没用掉的链接
  * 再点「复制」还是同一条(老师可能已经发出去了),要作废才点「换新」。
  * 链接要一人一条私发 —— 谁点开都能绑上这个孩子,发到群里等于把孩子的学情给全群看。
+ *
+ * 摄像头看在不在(2026-10-31,规则真源 backend services/focus_watch.py): 家长没绑家长号的,
+ * 打印纸质同意书给家长签,签回来老师在这里登记打开;家长端自己点的也显示在这里。老师随时能关。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { Copy, KeyRound, LoaderCircle, Printer, RefreshCw, Search, Unlink, UsersRound, X } from 'lucide-react';
+import { Camera, Copy, KeyRound, LoaderCircle, Printer, RefreshCw, Search, Unlink, UsersRound, X } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { parentBindingApi, parentRegisterUrl, type ParentBindingStudent } from '../api/parent';
 import { toast } from '../components/Toast';
+import { focusWatchApi, type CameraNotice } from '../api/focusWatch';
 import { getErrorMessage } from '../utils/errorMessage';
 
 type Filter = 'unbound' | 'bound' | 'all';
@@ -52,6 +56,7 @@ export default function TeacherParentBinding() {
   const [busy, setBusy] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState<{ who: string; password: string } | null>(null);
   const [slips, setSlips] = useState<Slip[] | null>(null);
+  const [consentForm, setConsentForm] = useState<CameraNotice | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +78,42 @@ export default function TeacherParentBinding() {
     const t = window.setTimeout(() => window.print(), 300);
     return () => window.clearTimeout(t);
   }, [slips]);
+  useEffect(() => {
+    if (!consentForm) return;
+    const t = window.setTimeout(() => window.print(), 300);
+    return () => window.clearTimeout(t);
+  }, [consentForm]);
+
+  const printConsentForm = async () => {
+    setBusy('consent-form');
+    try {
+      const n = await focusWatchApi.teacherNotice();
+      setSlips(null);
+      setConsentForm({ ...n });   // 新对象: 连着点两次也会再弹一次打印框
+    } catch (e) {
+      toast.error(getErrorMessage(e, '同意书没生成出来,请重试'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setCamera = async (s: ParentBindingStudent, enable: boolean) => {
+    const name = displayName(s);
+    const ok = window.confirm(enable
+      ? `确认「${name}」的家长已经在纸质同意书上签了字?\n登记后,孩子打开学习页面时会用摄像头看人在不在。同意书请留存。`
+      : `关掉「${name}」的摄像头?关掉后孩子的学习页面不再开摄像头。`);
+    if (!ok) return;
+    setBusy(`cam-${s.id}`);
+    try {
+      const r = await focusWatchApi.teacherSetCamera(s.id, enable, enable);
+      setItems((prev) => prev.map((x) => (x.id === s.id ? { ...x, camera: r.consent } : x)));
+      toast.success(enable ? '已登记,摄像头打开了' : '已关掉');
+    } catch (e) {
+      toast.error(getErrorMessage(e, '没保存成功,请重试'));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const shown = useMemo(() => {
     const kw = q.trim().toLowerCase();
@@ -143,6 +184,7 @@ export default function TeacherParentBinding() {
           qr: await QRCode.toDataURL(url, { margin: 1, width: 240, errorCorrectionLevel: 'M' }),
         };
       }));
+      setConsentForm(null);
       setSlips(list);
       const pendingOf = new Map(r.items.map((it) => [it.student_id, { code: it.code, expires_at: it.expires_at }]));
       setItems((prev) => prev.map((x) => (pendingOf.has(x.id) ? { ...x, pending: pendingOf.get(x.id)! } : x)));
@@ -163,6 +205,7 @@ export default function TeacherParentBinding() {
             <p>① 点学生右边的「复制链接」,在微信里<b>一人一条私发</b>给这个孩子的家长。家长点开,用自己的手机号注册就绑上了。</p>
             <p>② 家长的手机号<b>可以和孩子的学生账号一样</b>。链接 7 天有效、只能用一次。</p>
             <p className="text-orange-700">③ 别把链接发到家长群:谁点开都能绑上这个孩子。不方便私发就「打印绑定条」,让孩子带回家。</p>
+            <p>④ 用摄像头看孩子在家学习时在不在座位前,<b>要家长同意</b>。家长在家长端自己打开;没绑家长号的,点「打印摄像头同意书」让家长签字,签回来点学生下面的「登记纸质同意书」。</p>
           </section>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -176,6 +219,11 @@ export default function TeacherParentBinding() {
               className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50">
               {busy === 'print' ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Printer className="h-4 w-4" aria-hidden />}
               打印绑定条{unbound.length > 0 ? `(未绑定 ${unbound.length} 人)` : ''}
+            </button>
+            <button type="button" onClick={printConsentForm} disabled={busy !== null}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              {busy === 'consent-form' ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Camera className="h-4 w-4" aria-hidden />}
+              打印摄像头同意书
             </button>
           </div>
 
@@ -235,6 +283,23 @@ export default function TeacherParentBinding() {
                         {s.pending ? `链接已生成,${fmtDay(s.pending.expires_at)}前有效` : '还没发过链接'}
                       </p>
                     )}
+                    <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                      <Camera className="h-3.5 w-3.5" aria-hidden />
+                      {s.camera?.status === 'granted' ? (
+                        <>
+                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">摄像头开着</span>
+                          <span>{s.camera.method === 'paper' ? '纸质同意书' : '家长在家长端打开的'} · {s.camera.granted_at}</span>
+                          <button type="button" onClick={() => setCamera(s, false)} disabled={busy !== null}
+                            className="min-h-8 rounded-md px-1.5 text-slate-500 underline hover:bg-slate-100 disabled:opacity-50">关掉</button>
+                        </>
+                      ) : (
+                        <>
+                          <span>摄像头没开{s.camera?.status === 'revoked' ? `(${s.camera.revoked_by_name || ''}关掉的)` : ''}</span>
+                          <button type="button" onClick={() => setCamera(s, true)} disabled={busy !== null}
+                            className="min-h-8 rounded-md px-1.5 text-[#FF6B35] underline hover:bg-orange-50 disabled:opacity-50">登记纸质同意书</button>
+                        </>
+                      )}
+                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <button type="button" onClick={() => copyLink(s)} disabled={busy !== null}
@@ -277,6 +342,33 @@ export default function TeacherParentBinding() {
           </div>
         )}
       </div>
+
+      {/* 打印用的摄像头同意书: 告知文字和家长端是同一份(后端给的),下面留签字栏 */}
+      {consentForm && !slips && (
+        <div className="hidden print:block text-black">
+          <h1 className="text-xl font-bold">{consentForm.title} · 家长同意书</h1>
+          <p className="mt-1 text-xs text-slate-600">说明版本 {consentForm.version}</p>
+          <dl className="mt-4 space-y-3 text-sm leading-6">
+            {consentForm.sections.map((sec) => (
+              <div key={sec.h}>
+                <dt className="font-bold">{sec.h}</dt>
+                <dd>{sec.p}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-6 text-sm leading-7">
+            我是 ________________ (孩子姓名)的父母 / 其他监护人,已看过上面的说明,同意在孩子学习时打开摄像头看他是否在座位前。
+            我知道可以随时请老师关掉,或在家长端自己关掉。
+          </p>
+          <div className="mt-8 grid grid-cols-2 gap-8 text-sm">
+            <p>监护人签字: ______________________</p>
+            <p>与孩子的关系: ____________________</p>
+            <p>联系电话: ________________________</p>
+            <p>日期: ______ 年 ____ 月 ____ 日</p>
+          </div>
+          <p className="mt-8 text-xs text-slate-600">本同意书由校区留存。</p>
+        </div>
+      )}
 
       {/* 打印用的绑定条: 平时不显示,打印时只出这一块 */}
       {slips && (

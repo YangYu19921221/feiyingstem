@@ -63,6 +63,10 @@ export interface StuckWordItem {
   outcome: 'correct' | 'wrong' | 'gave_up';
 }
 
+/** 当天离开了多久: 切出学习页面 / 摄像头里看不到人(家长同意了才有),backend services/focus_watch.away_summary */
+export interface DayAwayPart { count: number; minutes: number; seconds: number; longest_minutes: number; longest_seconds: number; episodes: { at: string; minutes: number; seconds: number }[] }
+export interface DayAway { switch: DayAwayPart; no_face: DayAwayPart }
+
 export interface ClassRankingEntry {
   rank: number;
   user_id: number;
@@ -115,7 +119,7 @@ export const teacherMonitor = {
 
   dailyStatsContent: async (
     class_id: number, student_id: number, target_date: string
-  ): Promise<{ student_id: number; date: string; items: DailyContentItem[]; stuck_words?: StuckWordItem[] }> => {
+  ): Promise<{ student_id: number; date: string; items: DailyContentItem[]; stuck_words?: StuckWordItem[]; away?: DayAway }> => {
     const r = await axios.get(
       `${BASE}/classes/${class_id}/daily-stats/${student_id}/content`,
       { params: { target_date } }

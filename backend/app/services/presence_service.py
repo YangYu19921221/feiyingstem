@@ -40,8 +40,9 @@ async def heartbeat(
     idle: bool = False,
     unit_id: Optional[int] = None,
     unit_name: Optional[str] = None,
+    no_face: Optional[bool] = None,
 ) -> None:
-    """学习页周期心跳(30s)与状态变化时调用"""
+    """学习页周期心跳(30s)与状态变化时调用。no_face=None 表示这个页面没开摄像头"""
     st = await store.get_json(_key(user_id)) or {
         "away_since": None,
         "switch_count_today": 0,
@@ -54,6 +55,7 @@ async def heartbeat(
         st["unit_id"] = unit_id
     if unit_name:
         st["unit_name"] = unit_name
+    st["no_face"] = bool(no_face)
     # 心跳兜底:切走期间浏览器可能限流定时器,visible=False 的心跳也维持 away_since
     if visible:
         st["away_since"] = None
@@ -124,6 +126,7 @@ async def snapshot(student_ids: list[int]) -> list[dict]:
                 if st.get("count_date") == now.date().isoformat() else 0,
             "unit_id": st.get("unit_id"),
             "unit_name": st.get("unit_name"),
+            "no_face": bool(st.get("no_face")) and status != "offline",
             "last_seen_ago": int(age),
         })
     return out
