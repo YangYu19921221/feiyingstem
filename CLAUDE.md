@@ -271,6 +271,12 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 记忆妙招改走 Claude(2026-10-31 19:27 **已部署生产**,提交 14613b7 + 136266b;4 个后端文件(新文件 services/memory_hook.py)生产==HEAD~1 整推,两个服务都重启;前端干净 worktree 构建 mvwbfqh2 整推;备份 /root/eh_code_before_memhook_claude_20261031_1927.tgz、frontend/dist_bak_20261031_1927。生产实测: 古雨菲点 nice 2.9 秒出「"耐死"都不变的好心情…」,587 token,Redis eh:memhook:{日}:n / :tok 记上了。用户「记忆妙招你接入 claude 的吧」):
+  默认通道(阿里云百炼)欠费,记忆妙招一直出不来。**用户 10-31 明确同意记忆妙招也用 claude_tutor 那个 Key**(原规矩「这个 Key 只用在学习 agent」的例外,周报等别的仍不许用)。
+  services/memory_hook: 先 relay_conf 的备用模型(sonnet-4-6,不开思考,约 2–3 秒)再主模型,max_tokens 200;Claude 没配 / 没调通退回默认通道(ai_service.generate_memory_hook,
+  提示词共用 ai_service.memory_hook_prompt);两条都不行报 Claude 的原因(ai_errors 分类)。成本有上界: 一个词全平台只生成一次(words.memory_hook),每个孩子每天最多真生成 20 个。
+  clean(): 去 markdown;**只去掉整段外面那对引号**(第一版 strip 引号字符,把生产第一条开头的引号削了,已手动补回)。
+  管理端「AI 学习助手」卡片多一行「记忆妙招近 7 天: 新生成 N 个词 · token」。测试 test_error_reasons 加 3 例;不走 Claude / 两条都挂报错不报主通道 两处各让对应用例失败(回归锁验证过)
 - ✅ 出错时告诉用户是什么原因(2026-10-31 19:13 **已部署生产**,提交 5f227e2;5 个后端文件生产==HEAD~1 整推 + 新文件 services/ai_errors.py,两个服务都重启;前端干净 worktree 构建 mvwawd6s 整推;备份 /root/eh_code_before_errreason_20261031_1913.tgz、frontend/dist_bak_20261031_1913。生产冒烟: 记忆妙招回 503 ai_arrears「平台的 AI 服务账户欠费了,管理员充值后恢复」且没扣次数、unit 150 回 404 book_deleted、/admin/ai/status 记下 qwen3.8-max 欠费。用户「下次如果出现这样的问题你要提示让用户知道这是什么原因」):
   ①**AI 失败翻成中文原因**(services/ai_errors.classify / reason_of): 欠费(Arrearage / overdue-payment / 余额不足)、Key 失效(401)、太忙(429)、超时、连不上、没配置。
   ai_service._call_llm 外面包一层: 失败 note_failure(存 shared_store ai:default:last_error,2 天)、成功 note_ok 清掉。只管默认 AI 通道;小鹰老师 / 出图有自己的钱包检查
