@@ -233,3 +233,27 @@ def test_blocked_vowel_only_wrong_vowel_is_red_not_yellow():
     r = judge(scores, "fee", heard="aa", target_tokens=["f", "iː"])
     assert r["verdict"] == "not_close" and r["error_code"] == "wrong_vowel"
     assert grade(r["verdict"], r["gop"], r["error_code"]) == "red"
+
+
+# ── 爆破音开头却没听到开头辅音(2026-10-31,用户「第一个词我读ooo也能过」)────────
+
+@pytest.mark.parametrize("heard", ["ʌnaː", "alʔa", "ʔɑɑ", "ahʔa"])
+def test_stop_initial_word_without_onset_is_red(heard):
+    """第一个词 bad 读「ooo」,模型听成 ʌnaː / alʔa(元音大类 a 和 æ 对得上,元音否决拦不住)"""
+    from app.services.phoneme_closed_set import grade
+    scores = [("bad", -3.0, -0.3, -4.1), ("dad", -3.5, -0.3, -5.0)]
+    r = judge(scores, "bad", heard=heard, target_tokens=["b", "æ", "d"])
+    assert r["verdict"] == "not_close" and r["error_code"] == "missing_onset"
+    assert "/b/" in r["error_hint"]
+    assert grade(r["verdict"], r["gop"], r["error_code"]) == "red"
+
+
+@pytest.mark.parametrize("heard,word,toks,why", [
+    ("ɑ5", "faff", ["f", "æ", "f"], "f 开头: 标准音 faff 会听成 ɑ5,不否决"),
+    ("i5", "cede", ["s", "iː", "d"], "s 开头: 标准音 cede 会听成 i5,不否决"),
+    ("pa", "bad", ["b", "æ", "d"], "听到了 p(清浊不分)"),
+    ("ad", "add", ["æ", "d"], "元音开头的词本来就没有开头辅音"),
+])
+def test_onset_veto_spares_correct_readings(heard, word, toks, why):
+    scores = [(word, -3.0, -0.3, -2.0), ("bed", -4.0, -0.4, -6.0)]
+    assert judge(scores, word, heard=heard, target_tokens=toks)["verdict"] == "pass", why

@@ -343,17 +343,41 @@ def vowel_mismatch(heard: Optional[str], target_tokens: Optional[List[str]]) -> 
     return None if vowel in allowed else tv
 
 
+_STOPS = {"p", "b", "t", "d", "k", "ɡ", "g"}
+
+
+def onset_missing(heard: Optional[str], target_tokens: Optional[List[str]]) -> Optional[str]:
+    """目标词**爆破音开头**(b / p / d / t / k / g)而听到的没有开头辅音 → 返回那个辅音;否则 None
+
+    2026-10-31 用户「第一个词我读ooo也能过」: 第一个词 bad,读「ooo」模型听成 ʌnaː / alʔa,
+    元音大类是 a,和 æ 对得上(元音否决拦不住),两道门也放过了。
+    只管爆破音: 5 个声音读对的 100 次里,爆破音开头的词没有一次听丢开头辅音;
+    f / s 开头的会丢(标准音 faff 听成 ɑ5、cede 听成 i5),拿它否决会冤枉读对的。
+    """
+    toks = [t for t in (target_tokens or []) if t not in ("ˈ", "ˌ")]
+    if heard is None or not toks or toks[0] not in _STOPS:
+        return None
+    onset, vowel, _ = _heard_skeleton(heard)
+    return toks[0] if onset is None and vowel is not None else None
+
+
 def judge(scores: List[Tuple], target: str, heard: Optional[str] = None,
           target_tokens: Optional[List[str]] = None) -> dict:
-    """闭集得分 → 判定。见 _judge_core;外面再加一道「元音对不上」的否决(vowel_mismatch)"""
+    """闭集得分 → 判定。见 _judge_core;外面再加两道否决: 元音对不上(vowel_mismatch)、
+    爆破音开头却没听到开头辅音(onset_missing)。都只在传了 heard 时生效"""
     r = _judge_core(scores, target, heard, target_tokens)
-    # 过了的拦下;本来就没过的(not_close)也标上,颜色从「差一点」的黄改成红 —— 元音都不对不算接近
+    # 过了的拦下;本来就没过的(not_close)也标上,颜色从「差一点」的黄改成红 —— 这两种都不算接近
     if r["verdict"] in ("pass", "confused", "uncertain", "not_close"):
         tv = vowel_mismatch(heard, target_tokens)
         if tv:
             return {**r, "verdict": "not_close", "best": r.get("best"), "accent": False,
                     "note": "元音对不上", "error_code": "wrong_vowel",
                     "error_hint": f"听着元音不对,这个词要读 /{tv}/,先点「听标准音」听清楚再读"}
+        c = onset_missing(heard, target_tokens)
+        if c:
+            return {**r, "verdict": "not_close", "best": r.get("best"), "accent": False,
+                    "note": "开头辅音没听到", "error_code": "missing_onset",
+                    "error_hint": f"开头的 /{c}/ 没听到,先点「听标准音」,注意第一个音"}
     return r
 
 
@@ -448,8 +472,8 @@ def grade(verdict: Optional[str], gop: Optional[float], error_code: Optional[str
     if verdict in ("pass", "confused", "uncertain"):
         return "yellow" if (error_code or accent) else "green"
     if verdict == "not_close":
-        if error_code == "wrong_vowel":
-            return "red"                  # 元音都不对(读「ooo」),不算接近
+        if error_code in ("wrong_vowel", "missing_onset"):
+            return "red"                  # 元音都不对 / 开头辅音没读(读「ooo」),不算接近
         return "yellow" if gop is not None and gop >= NEAR_FLOOR else "red"
     if verdict in ("wrong_word", "not_speech"):
         return "red"
