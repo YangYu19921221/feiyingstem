@@ -51,6 +51,9 @@ from app.models.tutor import (  # AI 学习助手对话 + 次数 + 机构次数�
 from app.models.autopilot import (  # 小鹰老师自动布置作业
     AutopilotClass, AutopilotStudent, AutopilotGroup, AutopilotAttempt, AutopilotDispatch, AutopilotTask,
 )
+# 离开记录 / 摄像头同意。必须在这里导入: init_db 的 create_all 只建已导入的模型,
+# 只在路由里导入的话本机测试库碰巧有表(应用先加载了路由),生产首次启动却建不出来
+from app.models.focus_watch import FocusAwayEvent, CameraConsent, CameraDayStatus
 from app.models.promo import (  # 地推体验卡 + 销售跟单
     PromoSalesProfile, PromoChannel, PromoLead, PromoOrgSettings, PromoFollowUp, PromoCardDesign,
 )
