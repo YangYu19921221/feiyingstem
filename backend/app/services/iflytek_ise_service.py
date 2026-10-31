@@ -265,9 +265,10 @@ async def _ws_evaluate(config: dict, pcm_data: bytes,
                 await ws.send(frame)
                 offset += FRAME_SIZE
 
-                # 控制发送速率
+                # 控制发送速率。原来 0.04 秒一帧(1280 字节 = 40 毫秒音频)= 按实时速度发,
+                # 3 秒的录音光发就要 3 秒;10-31 实测 0.01 秒一帧 100 多次都正常,一次评测 1.8–2.2 秒
                 if not is_last:
-                    await asyncio.sleep(0.04)
+                    await asyncio.sleep(0.01)
 
             # 接收结果
             while True:

@@ -38,7 +38,7 @@ NEAR_SCORE = 20.0
 DAILY_CAP = 5000
 PER_STUDENT_CAP = 300
 DOWN_SECONDS = 600
-TIMEOUT = 4.5
+TIMEOUT = 6.0      # 本地判定最多 8 秒 + 这 6 秒 < 前端判定请求的 15 秒
 
 _TTL = 2 * 86400
 _SEM = asyncio.Semaphore(4)
