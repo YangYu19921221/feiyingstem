@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标跟读「乱读也绿」第二个根因: 判定服务睡着了(2026-10-31,用户「我怎么乱读都是绿色通过呢」): 10-30 上线两道门后,
+- ✅ 音标跟读「乱读也绿」第二个根因: 判定服务睡着了(2026-10-31 13:45 **已部署生产**,提交 63acd55;3 个后端文件生产==HEAD~1 整推,english-helper / workers / phoneme-judge 三个服务都重启;前端干净 worktree 构建 mvvz0ec3 整推;备份 /root/eh_code_before_judgewarm_20261031_1337.tgz、frontend/dist_bak_20261031_1337。上线后 /health 看到启动那次空跑 1.72 秒、一分钟后 0.39 秒;公网冒烟(临时学生,跑完删净): 说一句话 not_close 1.9 秒、乱读 not_close 0.7 秒、孩子认真读 pass 0.5 秒,三条判定都存了。**明早第一个孩子来读之前要看一眼**: journalctl -u phoneme-judge 里有没有「保温空跑用了 N 秒」的 warning、phonetic_readings 里有没有 off;用户「我怎么乱读都是绿色通过呢」): 10-30 上线两道门后,
   生产 10-31 13:00 那 4 条录音(42–45)**库里 verdict 是空的** —— 判定根本没判出来。phoneme-judge 日志: 第一条请求 65 秒才回,
   后面排队的 54 / 41 / 32 秒;而主应用只等 3 秒(phoneme_judge_client._TIMEOUT)→ 当判定不可用(off)→ **前端 off 一律变绿**。
   同样的录音事后重判 0.5–1 秒,3 条乱读全是 not_close。根因: 模型 1.2G 权重是**从文件映射**进内存的(/proc/<pid>/maps 有 pytorch_model.bin,
