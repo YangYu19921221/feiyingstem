@@ -16,13 +16,21 @@ interface Props {
   phonetic: string;
   word: string;
   meaning?: string | null;
-  /** todo=没读 / done=读了(绿) / retry=没听到(琥珀) */
-  status: 'todo' | 'done' | 'retry';
+  /**
+   * todo 没读 / green 读对了 / yellow 过了但接近(词尾多带一个音、自己点的)/
+   * near 没过但差一点(黄)/ red 没过、差得多(红)。green / yellow 揭示单词
+   */
+  status: 'todo' | 'green' | 'yellow' | 'near' | 'red';
   active: boolean;
   /** 刚刚变绿(用来只对新变绿的那一格放特效,不是每次重渲染都放) */
   justDone: boolean;
   onClick: () => void;
 }
+
+/** 读屏软件念出的颜色含义(颜色本身读屏读不出来) */
+const STATUS_SAY: Record<Props['status'], string> = {
+  todo: '', green: ',读对了', yellow: ',接近', near: ',差一点', red: ',差得多',
+};
 
 /** 星星散开的方向,六个角度均分 */
 const SPARKS = [0, 60, 120, 180, 240, 300];
@@ -37,18 +45,23 @@ function cellTone(status: Props['status'], active: boolean): string {
   // ⚠️ 白底不能写 bg-white: index.css 里 `body.student-interface .bg-white.rounded-xl` 会把 box-shadow
   // 整个改掉,而 Tailwind 的 ring 就是 box-shadow —— 写 bg-white 的话选中框、悬停框一律画不出来
   // (浏览器实测: 白格点中后 box-shadow 仍是那条全局卡片阴影)。bg-white/95 是另一个类名,那条规则匹配不到
-  const bg = status === 'done' ? 'bg-emerald-50' : status === 'retry' ? 'bg-amber-50' : 'bg-white/95';
+  const bg = status === 'green' ? 'bg-emerald-50'
+    : status === 'yellow' || status === 'near' ? 'bg-amber-50'
+      : status === 'red' ? 'bg-rose-50' : 'bg-white/95';
   if (active) {
     // 没读的那一格选中时底色换成浅橙,和别的白格一眼分开。
     // ⚠️ 不能加 shadow-md / shadow-lg: index.css 的 `body.student-interface .shadow-md` 同样会把 box-shadow
     // 整个改掉,ring 跟着没了(浏览器实测)
     return `${status === 'todo' ? 'bg-orange-50' : bg} ring-[3px] ring-[#FF6B35]`;
   }
-  const idle = status === 'done'
+  // 黄 / 红用 2px 框: 1px 的浅色框在平板上看不出是黄还是红
+  const idle = status === 'green'
     ? 'ring-1 ring-emerald-300 hover:ring-2 hover:ring-emerald-400'
-    : status === 'retry'
-      ? 'ring-1 ring-amber-300 hover:ring-2 hover:ring-amber-400'
-      : 'ring-1 ring-slate-200 hover:ring-2 hover:ring-orange-300 hover:bg-orange-50/40';
+    : status === 'yellow' || status === 'near'
+      ? 'ring-2 ring-amber-300 hover:ring-amber-400'
+      : status === 'red'
+        ? 'ring-2 ring-rose-300 hover:ring-rose-400'
+        : 'ring-1 ring-slate-200 hover:ring-2 hover:ring-orange-300 hover:bg-orange-50/40';
   return `${bg} ${idle} hover:shadow-sm`;
 }
 
@@ -56,7 +69,9 @@ export default function PhonemeCell({
   phonetic, word, meaning, status, active, justDone, onClick,
 }: Props) {
   const reduce = useReducedMotion();
-  const done = status === 'done';
+  // 过了(绿 / 黄)才揭示单词
+  const done = status === 'green' || status === 'yellow';
+  const wordTone = status === 'green' ? 'text-emerald-600' : 'text-amber-600';
 
   return (
     <motion.div
@@ -65,7 +80,7 @@ export default function PhonemeCell({
       role="button"
       tabIndex={0}
       aria-pressed={active}
-      aria-label={`${phonetic}${done ? ` ${word}` : ''}`}
+      aria-label={`${phonetic}${done ? ` ${word}` : ''}${STATUS_SAY[status]}`}
       onKeyDown={(e) => {
         if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); onClick(); }
       }}
@@ -115,7 +130,9 @@ export default function PhonemeCell({
 
       <p className={[
         'relative font-mono text-xl transition-colors',
-        done ? 'text-emerald-700' : 'text-slate-800',
+        status === 'green' ? 'text-emerald-700'
+          : status === 'yellow' || status === 'near' ? 'text-amber-800'
+            : status === 'red' ? 'text-rose-700' : 'text-slate-800',
       ].join(' ')}>
         {phonetic}
       </p>
@@ -130,7 +147,7 @@ export default function PhonemeCell({
               animate={{ opacity: 1, y: 0 }}
               exit={reduce ? {} : { opacity: 0, y: -6 }}
               transition={{ duration: 0.28 }}
-              className="font-mono text-xs text-emerald-600"
+              className={`font-mono text-xs ${wordTone}`}
             >
               {word}
             </motion.p>

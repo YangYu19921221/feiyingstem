@@ -231,6 +231,9 @@ class JudgeOut(BaseModel):
     # 给不出就是 None,前端那时才退回「机器听着更像 X」。
     error_code: Optional[str] = None
     error_hint: Optional[str] = None
+    # 格子颜色 green / yellow / red(真源 services/phoneme_closed_set.grade)。
+    # 只管颜色,过不过关看 verdict;None = 没声音 / 没判出来,不改颜色
+    grade: Optional[str] = None
 
 
 @router.post("/readings/judge", response_model=JudgeOut)
@@ -285,12 +288,15 @@ async def judge_and_save(
         await _save_verdict(db, reading_id, {"verdict": "off"})
         return JudgeOut(verdict="off", reason="judge_unavailable", reading_id=reading_id)
 
+    from app.services.phoneme_closed_set import grade as grade_of
+    r["grade"] = grade_of(r.get("verdict"), r.get("gop"), r.get("error_code"))
     await _save_verdict(db, reading_id, r)
     return JudgeOut(verdict=r.get("verdict", "off"),
                     heard=r.get("best"),
                     reason=r.get("note") or r.get("reason"),
                     error_code=r.get("error_code"),
                     error_hint=r.get("error_hint"),
+                    grade=r["grade"],
                     reading_id=reading_id)
 
 
@@ -306,7 +312,7 @@ async def _save_verdict(db, reading_id: Optional[int], r: dict) -> None:
         row.verdict = (r.get("verdict") or "")[:12] or None
         row.pron_score = round(gop * 100) if isinstance(gop, (int, float)) else None
         row.judge_detail = json.dumps({
-            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code")
+            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code", "grade")
             if r.get(k) is not None
         }, ensure_ascii=False)[:2000]
         await db.commit()

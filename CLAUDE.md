@@ -271,6 +271,20 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标跟读格子三种颜色(2026-10-31,用户「如果完全不对的差别大的标红 接近标黄 完全正确就绿」):
+  颜色真源 services/phoneme_closed_set.grade(verdict, gop, error_code),接口 JudgeOut 多给 grade,存进 judge_detail;
+  **颜色只管给孩子看,过不过关仍按 verdict**(两道门不变)。绿 = 过了且没挑出毛病;黄 = 过了但词尾多带一个音(error_code,
+  揭示单词、算读过、跳下一个、再读能变绿)/ 没过但贴合分 ≥ NEAR_FLOOR(-7,差一点,不揭示、不跳)/ 自己点的「我读对了」(机器没确认);
+  红 = 贴合分更低或明显读成别的词。**confused 仍算绿**: 线上 Edge TTS 英美标准音读对的 60 次里 7 次被判 confused
+  (beef→bee、bed→bad、bade→bad,模型分不开),标黄就冤枉读对的孩子。没声音 / 没判出来不改颜色。
+  NEAR_FLOOR 标定(10-31 线上判定服务): 100 次读对(5 个声音含 2 个中国口音)8 次没过门,贴合分 -5.5 ~ -6.6 全在黄;
+  48 段乱读 / 中文 / 别的英语词全没过,只有「啊」「嗯嗯」「你好」这种很短的声音落在黄(7 段),其余 41 段红。
+  ⚠️ 中国孩子词尾多带一个音很普遍(10-30 以来线上 16 条 not_close 全带 extra_final_vowel),所以辅音结尾的词起初多是黄,这是有意的。
+  前端 PhoneticReading 状态 todo / green / yellow / near / red(isPassed = green|yellow),庆祝特效只给绿;顶上「读过 N / M · 绿 a · 黄 b · 红 c」;
+  格子上方颜色说明;PhonemeCell 黄 / 红用 2px 框,读屏念出颜色含义。测试 test_phoneme_gate 加 3 组(颜色映射 / 真孩子不红 / 乱读都红)
+  + test_phonetic_practice 1 例;忽略 error_code / NEAR_FLOOR 放到 -20 / 收到 -5 / confused 不算绿 四处各让对应用例失败(回归锁验证过)。
+  本机浏览器(空库 + 假判定 + 假麦克风,1366 / 390)验过: 乱读红、差一点黄不跳、多带一个音黄并跳下一个、读对绿、计数、读屏;控制台 0 报错。
+  入口: 学生首页「音标」→ 教材目录 → 任意一节「读音标」;公告一条(学生 / 老师 / 机构 / 平台)
 - ✅ 音标跟读「乱读也绿」第二个根因: 判定服务睡着了(2026-10-31 13:45 **已部署生产**,提交 63acd55;3 个后端文件生产==HEAD~1 整推,english-helper / workers / phoneme-judge 三个服务都重启;前端干净 worktree 构建 mvvz0ec3 整推;备份 /root/eh_code_before_judgewarm_20261031_1337.tgz、frontend/dist_bak_20261031_1337。上线后 /health 看到启动那次空跑 1.72 秒、一分钟后 0.39 秒;公网冒烟(临时学生,跑完删净): 说一句话 not_close 1.9 秒、乱读 not_close 0.7 秒、孩子认真读 pass 0.5 秒,三条判定都存了。**明早第一个孩子来读之前要看一眼**: journalctl -u phoneme-judge 里有没有「保温空跑用了 N 秒」的 warning、phonetic_readings 里有没有 off;用户「我怎么乱读都是绿色通过呢」): 10-30 上线两道门后,
   生产 10-31 13:00 那 4 条录音(42–45)**库里 verdict 是空的** —— 判定根本没判出来。phoneme-judge 日志: 第一条请求 65 秒才回,
   后面排队的 54 / 41 / 32 秒;而主应用只等 3 秒(phoneme_judge_client._TIMEOUT)→ 当判定不可用(off)→ **前端 off 一律变绿**。

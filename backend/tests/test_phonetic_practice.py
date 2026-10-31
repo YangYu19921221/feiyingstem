@@ -438,6 +438,7 @@ async def test_judge_result_is_stored_for_recalibration(
     assert r.status_code == 200
     body = r.json()
     assert body["verdict"] == "not_close"
+    assert body["grade"] == "red", "贴合分 -9.9 = 差得多"
     assert "gop" not in body, "分数不下发给学生(会被当成评价)"
     row = await db_session.get(PhoneticReading, body["reading_id"])
     await db_session.refresh(row)
@@ -497,3 +498,31 @@ def test_judge_client_waits_long_enough():
     """热的时候一次 0.5–1 秒,2 并发排队;3 秒超时在一个班同时读时会成片 off"""
     from app.services import phoneme_judge_client
     assert phoneme_judge_client._TIMEOUT >= 8
+
+
+
+async def test_judge_returns_yellow_for_near_miss_and_extra_vowel(
+        client: AsyncClient, two_orgs_with_books, monkeypatch):
+    """差一点没过 → 黄;过了但词尾多带一个音 → 黄;读对了 → 绿"""
+    from app.services import phoneme_judge_client
+    queue = [
+        {"verdict": "not_close", "best": "bad", "gop": -6.2, "gate_margin": -0.9},
+        {"verdict": "pass", "best": "bad", "gop": -2.0, "gate_margin": 1.0,
+         "error_code": "extra_final_vowel", "error_hint": "词尾多带了一个音"},
+        {"verdict": "pass", "best": "bad", "gop": -1.0, "gate_margin": 2.0},
+    ]
+
+    async def fake(audio, target, cands):
+        return queue.pop(0)
+    monkeypatch.setattr(phoneme_judge_client, "judge", fake)
+    d = two_orgs_with_books
+    got = []
+    for _ in range(3):
+        r = await client.post(
+            "/api/v1/phonetic-practice/readings/judge",
+            headers={"Authorization": f"Bearer {d['s1']}"},
+            files={"audio": ("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 3000, "audio/webm")},
+            data={"item_id": str(d["item_bad"])},
+        )
+        got.append(r.json()["grade"])
+    assert got == ["yellow", "yellow", "green"]

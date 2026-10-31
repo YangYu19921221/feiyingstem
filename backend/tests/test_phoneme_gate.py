@@ -120,3 +120,35 @@ def test_far_behind_another_word_is_blocked():
     scores = [("bead", -16.0, -0.5, -6.0), ("bee", -20.0, -0.6, -5.0)]
     r = judge(scores, "bee")
     assert r["verdict"] == "not_close", r
+
+
+# ── 三种颜色(2026-10-31)──────────────────────────────────────────────
+
+def test_grade_colors():
+    """绿 = 读对了;黄 = 接近(过了但词尾多带一个音 / 没过但差一点);红 = 差得多"""
+    from app.services.phoneme_closed_set import grade, NEAR_FLOOR
+    assert grade("pass", -1.0) == "green"
+    assert grade("confused", -2.0) == "green", "模型分不开的词(bed/bad)读对了不能标黄"
+    assert grade("pass", -1.0, "extra_final_vowel") == "yellow"
+    assert grade("not_close", NEAR_FLOOR + 0.5) == "yellow"
+    assert grade("not_close", NEAR_FLOOR - 0.5) == "red"
+    assert grade("not_close", None) == "red"
+    assert grade("wrong_word", -3.0) == "red"
+    assert grade("off", None) is None and grade("silent", None) is None, "没判出来不是对读音的判断"
+    assert NEAR_FLOOR <= -6.7, "标定里读对却没过门的最低 -6.62,要落在黄里"
+
+
+@pytest.mark.parametrize("rec", DATA["kids"], ids=lambda r: r["target"])
+def test_kids_never_red(rec):
+    """认真读的真孩子不能标红"""
+    from app.services.phoneme_closed_set import grade
+    r = judge(_rows(rec), rec["target"])
+    assert grade(r["verdict"], r.get("gop")) in ("green", "yellow")
+
+
+@pytest.mark.parametrize("rec", DATA["garbage"], ids=lambda r: f"{r['target']}-{r['note']}")
+def test_nonsense_is_red(rec):
+    """10-30 那 5 条乱读 / 说中文 / 说一句话都是红"""
+    from app.services.phoneme_closed_set import grade
+    r = judge(_rows(rec), rec["target"])
+    assert grade(r["verdict"], r.get("gop")) == "red"

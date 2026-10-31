@@ -82,6 +82,11 @@ export interface JudgeResult {
    */
   error_code?: string | null;
   error_hint?: string | null;
+  /**
+   * 格子颜色(2026-10-31): green 读对了 / yellow 接近 / red 差得多。只管颜色,过不过关看 verdict。
+   * 没声音 / 没判出来时为空(不改颜色)。真源 backend services/phoneme_closed_set.grade
+   */
+  grade?: 'green' | 'yellow' | 'red' | null;
   reason?: string | null;
   reading_id?: number | null;
 }

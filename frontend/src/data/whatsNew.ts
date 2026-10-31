@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-reading-colors-2026-10',
+    date: '2026-10-31',
+    title: '🟢🟡🔴 读音标:格子分三种颜色了',
+    desc: '读完一个音标,格子会变颜色:绿色 = 读对了;黄色 = 接近了(比如词尾多带了一个音),再读一次能变绿;红色 = 差得多,先点「听标准音」跟着读。页面顶上写着这一页绿、黄、红各几个。',
+    where: '首页「音标」→ 教材目录 → 任意一节「读音标」',
+    roles: ['student', 'teacher', 'org_admin', 'admin'],
+    route: '/student/phonetics/textbook',
+  },
+  {
     id: 'phonetic-tts-override-2026-10',
     date: '2026-10-30',
     title: '🔈 音标教材可以改发音了:读错长短音的词,按你给的词读',

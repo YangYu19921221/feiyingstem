@@ -314,6 +314,32 @@ def judge(scores: List[Tuple], target: str) -> dict:
     return {"verdict": "confused", "best": best_word, "margin": round(margin, 3), **info}
 
 
+# ── 三种颜色(2026-10-31,用户「完全不对的差别大的标红 接近标黄 完全正确就绿」)──────
+# 颜色只管「给孩子看读得怎么样」,**过不过关仍按 judge() 的 verdict**,这里不改门槛。
+#   绿 = 判定通过且没挑出毛病
+#   黄 = 接近: ①通过了但词尾多带了一个音(error_code,中国孩子最常见、能照着改)
+#              ②没通过但贴合分 ≥ NEAR_FLOOR(差一点)
+#   红 = 差得多: 贴合分更低,或明显读成了本节另一个词
+# confused(另一个词更像一点)仍算绿: 用 Edge TTS 英美标准音读对的 60 次里有 7 次被判 confused
+# (beef→bee、bed→bad、bade→bad),是模型分不开,不是读错 —— 标黄就是冤枉读对的孩子。
+#
+# NEAR_FLOOR 标定(10-31 线上判定服务,第 1 册 1—1): 100 次读对的(5 个声音含 2 个中国口音)里
+# 8 次没过两道门,贴合分 -5.5 ~ -6.6,全落在黄;48 段乱读 / 中文 / 别的英语词全部没过,
+# 其中只有「啊」「嗯嗯」「你好」这类很短的声音落在 -5.5 ~ -6.9(7 段黄),其余 41 段红。
+NEAR_FLOOR = -7.0
+
+
+def grade(verdict: Optional[str], gop: Optional[float], error_code: Optional[str] = None) -> Optional[str]:
+    """→ 'green' / 'yellow' / 'red';没声音(silent)/ 没判出来(off)不是对读音的判断,返回 None 不上色"""
+    if verdict in ("pass", "confused", "uncertain"):
+        return "yellow" if error_code else "green"
+    if verdict == "not_close":
+        return "yellow" if gop is not None and gop >= NEAR_FLOOR else "red"
+    if verdict in ("wrong_word", "not_speech"):
+        return "red"
+    return None
+
+
 def _r(x: float) -> Optional[float]:
     """-inf(音频太短装不下这个词)给 None,JSON 里放不下无穷"""
     return round(x, 3) if x > -math.inf and x < math.inf else None

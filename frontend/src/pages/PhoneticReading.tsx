@@ -28,7 +28,17 @@ import {
 import { API_BASE_URL } from '../config/env';
 import { rawTtsUrl } from '../hooks/useAudio';
 
-type RowStatus = 'todo' | 'done' | 'retry';
+/**
+ * 格子状态 = 颜色(2026-10-31,用户「完全不对的差别大的标红 接近标黄 完全正确就绿」)。
+ * 颜色来自后端 JudgeResult.grade(真源 services/phoneme_closed_set.grade),过不过关仍看 verdict:
+ *   green  过了,没挑出毛病
+ *   yellow 过了,但接近: 词尾多带了一个音 / 自己点的「我读对了」(机器没确认)—— 揭示单词、算读过,再读一次能变绿
+ *   near   没过,但差一点(黄色,不揭示单词)
+ *   red    没过,差得多(红色)
+ * 没声音 / 没判出来不改颜色: 那不是对读音的判断
+ */
+type RowStatus = 'todo' | 'green' | 'yellow' | 'near' | 'red';
+const isPassed = (s: RowStatus | undefined) => s === 'green' || s === 'yellow';
 
 /**
  * 变色口径:**绿色 = 判定认可**(真源 backend/app/services/phoneme_closed_set.judge)。
@@ -92,7 +102,10 @@ export default function PhoneticReading() {
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const item = lesson?.items[active];
-  const doneCount = status.filter(s => s === 'done').length;
+  const doneCount = status.filter(isPassed).length;
+  const greenCount = status.filter(s => s === 'green').length;
+  const yellowCount = status.filter(s => s === 'yellow' || s === 'near').length;
+  const redCount = status.filter(s => s === 'red').length;
 
   useEffect(() => {
     if (!lessonId) { setError('没有找到这一节'); setLoading(false); return; }
@@ -113,8 +126,8 @@ export default function PhoneticReading() {
 
   /** 跳到下一个还没读的 */
   const gotoNextTodo = useCallback((from: number, st: RowStatus[]) => {
-    for (let i = from + 1; i < st.length; i++) if (st[i] !== 'done') return i;
-    for (let i = 0; i <= from; i++) if (st[i] !== 'done') return i;
+    for (let i = from + 1; i < st.length; i++) if (!isPassed(st[i])) return i;
+    for (let i = 0; i <= from; i++) if (!isPassed(st[i])) return i;
     return -1;
   }, []);
 
@@ -151,8 +164,7 @@ export default function PhoneticReading() {
     setTries(prev => { const n = [...prev]; n[active] += 1; return n; });
 
     if (!res.hadSpeech) {
-      // 没听到人声:不算完成,但说的是「没听到」而不是「你读错了」
-      setStatus(prev => { const n = [...prev]; n[active] = 'retry'; return n; });
+      // 没听到人声:不算完成,也不上色 —— 说的是「没听到」而不是「你读错了」
       setFeedback({ verdict: 'silent' });
       return;
     }
@@ -177,33 +189,29 @@ export default function PhoneticReading() {
     if (r.reading_id) lastReading.current[idx] = r.reading_id;
     setJudgeDown(prev => ({ ...prev, [idx]: r.verdict === 'off' }));
 
-    // 判定没判出来:不变绿(不能替孩子判过),也不算被拦(不是他读得不对)
-    if (r.verdict === 'off') {
-      setStatus(prev => { const n = [...prev]; n[idx] = 'retry'; return n; });
+    // 判定没判出来 / 没声音: 不改颜色(不能替孩子判过),也不算被拦(不是他读得不对)
+    if (r.verdict === 'off' || r.verdict === 'silent') {
       setFeedback(r);
       return;
     }
 
     // 拦:读得不像这个音标 / 明显读成了别的词。旧值 not_speech 也拦(页面没刷新时后端可能已经是新的)
+    // 差一点的标黄,差得多的标红(后端 grade;旧后端没有 grade 一律红)
     if (r.verdict === 'not_close' || r.verdict === 'wrong_word' || r.verdict === 'not_speech') {
-      setStatus(prev => { const n = [...prev]; n[idx] = 'retry'; return n; });
+      const tone: RowStatus = r.grade === 'yellow' ? 'near' : 'red';
+      setStatus(prev => { const n = [...prev]; n[idx] = tone; return n; });
       setMisses(prev => { const n = [...prev]; n[idx] += 1; return n; });
       setFeedback(r);
       return;
     }
-    if (r.verdict === 'silent') {
-      setStatus(prev => { const n = [...prev]; n[idx] = 'retry'; return n; });
-      setFeedback(r);
-      return;
-    }
-    // pass / uncertain / off / confused → 变绿跳下一个
-    // 但反馈要留着显示:
-    //   有 error_hint → 「读对了。词尾多带了一个音…」(读对≠读得好,这条值得说)
+    // pass / uncertain / confused → 过了,跳下一个。颜色: 词尾多带了一个音的标黄,其余绿
+    // 反馈要留着显示:
+    //   有 error_hint → 「差一点就全对了。词尾多带了一个音…」(读对≠读得好,这条值得说)
     //   只有 confused → 兜底的「机器听着更像 X」
     const hasFeedback = !!(r.error_hint || r.verdict === 'confused');
     if (hasFeedback) setFeedback(r);
     // 有话要说就多停一会儿,否则提示一闪而过等于没给
-    markDone(idx, hasFeedback ? 3200 : 700);
+    markDone(idx, hasFeedback ? 3200 : 700, r.grade === 'yellow' ? 'yellow' : 'green');
   };
 
   /** 标记这一格读对了:放庆祝特效 → 自动跳下一个
@@ -213,12 +221,15 @@ export default function PhoneticReading() {
    * `holdMs` 是停留时间:有具体错误提示时给到 3.2 秒,让孩子**来得及读完**
    * 那句话再跳走。700ms 只够看到一闪 —— 提示等于没给。
    */
-  const markDone = useCallback((idx: number, holdMs = 700) => {
-    setJustDone(idx);
-    setTimeout(() => setJustDone(null), 900);
+  const markDone = useCallback((idx: number, holdMs = 700, tone: 'green' | 'yellow' = 'green') => {
+    // 庆祝特效只给绿的: 黄的是「接近」,放星星等于告诉他已经完美了
+    if (tone === 'green') {
+      setJustDone(idx);
+      setTimeout(() => setJustDone(null), 900);
+    }
     setStatus(prev => {
       const next = [...prev];
-      next[idx] = 'done';
+      next[idx] = tone;
       const to = gotoNextTodo(idx, next);
       if (to >= 0) setTimeout(() => {
         setActive(to); setFeedback(null); setMyUrl(null);
@@ -231,7 +242,8 @@ export default function PhoneticReading() {
     const rid = lastReading.current[active];
     // 记下来就行,失败不挡孩子
     if (rid) markSelfPass(rid).catch(() => { /* 忽略 */ });
-    markDone(active);
+    // 自己认的标黄: 机器没确认读对,绿色只留给机器认可的
+    markDone(active, 700, 'yellow');
   };
 
   const play = (which: 'std' | 'mine') => {
@@ -291,7 +303,15 @@ export default function PhoneticReading() {
         <div className="flex-1">
           <p className="text-sm font-medium text-slate-700">{lesson?.title} · 看音标读出来</p>
           <p className="text-xs text-slate-400">
-            读对 {doneCount} / {lesson?.items.length}
+            读过 {doneCount} / {lesson?.items.length}
+            {/* 三种颜色各几个: 一眼看出这一页读得怎么样 */}
+            {(greenCount + yellowCount + redCount) > 0 && (
+              <span className="ml-2">
+                <span className="text-emerald-600">绿 {greenCount}</span>
+                {' · '}<span className="text-amber-600">黄 {yellowCount}</span>
+                {' · '}<span className="text-rose-600">红 {redCount}</span>
+              </span>
+            )}
           </p>
         </div>
         {allDone && (
@@ -304,6 +324,12 @@ export default function PhoneticReading() {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* 左:一页全部音标 */}
         <main className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          {/* 颜色说明: 第一次看到红黄格子的孩子要知道是什么意思 */}
+          <div className="mx-auto mb-2 flex max-w-2xl flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-slate-500">
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-400" aria-hidden />读对了</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" aria-hidden />接近,再读一次能变绿</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-rose-400" aria-hidden />差得多,先听标准音</span>
+          </div>
           <div className="mx-auto grid max-w-2xl grid-cols-2 gap-2 sm:grid-cols-3">
             {lesson?.items.map((it, i) => (
               <div key={it.id} ref={el => { rowRefs.current[i] = el; }}>
@@ -418,14 +444,20 @@ export default function PhoneticReading() {
               {(feedback.verdict === 'not_speech'
                 || (feedback.verdict === 'not_close' && !feedback.error_hint)) && (
                 // 读得不像这个音标。不说「你读错了」—— 也可能是声音太小、离麦克风远
-                <p className="text-amber-700">
-                  听着不太像 <span className="font-mono">{item?.phonetic}</span>
-                  ,先点上面「听标准音」,跟着一个音一个音读
-                </p>
+                feedback.grade === 'yellow' ? (
+                  <p className="text-amber-700">
+                    差一点了!再听一遍标准音,跟着 <span className="font-mono">{item?.phonetic}</span> 一个音一个音读
+                  </p>
+                ) : (
+                  <p className="text-rose-700">
+                    听着不太像 <span className="font-mono">{item?.phonetic}</span>
+                    ,先点上面「听标准音」,跟着一个音一个音读
+                  </p>
+                )
               )}
               {feedback.verdict === 'wrong_word' && (
                 // 读成了本节另一个词:把那个词的音标摆出来对比,比只说单词有用(孩子看的是音标)
-                <p className="text-amber-700">
+                <p className="text-rose-700">
                   听着像在读 <span className="font-mono">{
                     lesson?.items.find(x => x.word_reveal === feedback.heard)?.phonetic ?? feedback.heard
                   }</span>,这一个是 <span className="font-mono">{item?.phonetic}</span>
@@ -438,10 +470,11 @@ export default function PhoneticReading() {
                   会让孩子以为自己到底对没对都搞不清。 */}
               {feedback.error_hint ? (
                 <p className="text-amber-700">
-                  {status[active] === 'done' && (
-                    <span className="text-emerald-600">读对了。</span>
+                  {isPassed(status[active]) && (
+                    <span className="font-medium">差一点就全对了。</span>
                   )}
                   {feedback.error_hint}
+                  {isPassed(status[active]) && '。再读一次能变绿'}
                 </p>
               ) : feedback.verdict === 'confused' ? (
                 // 说不出具体错在哪时的兜底。只是参考,格子已经绿了
@@ -473,7 +506,7 @@ export default function PhoneticReading() {
           )}
 
           {/* 同一个词读了两次还想再读,主动提示先听标准音 */}
-          {tries[active] >= STD_HINT_AFTER_TRIES && status[active] !== 'done' && (
+          {tries[active] >= STD_HINT_AFTER_TRIES && !isPassed(status[active]) && (
             <p className="mt-2 text-center text-xs text-slate-400">
               先点上面「听标准音」听两遍,再跟着读
             </p>
@@ -500,12 +533,12 @@ export default function PhoneticReading() {
           {/* 「我读对了」自评按钮。两个用处:①录音不可用的设备(老 iOS、非 https 入口)也能推进
               ②判定判错时孩子有出口,不至于卡在一格上反复读。
               但一直摆着就成了乱读的后门,所以**被拦 3 次**才出现(10-30),点了记到录音上 */}
-          {status[active] !== 'done' && misses[active] >= SELF_PASS_AFTER_MISSES && !blocker && !recError && (
+          {!isPassed(status[active]) && misses[active] >= SELF_PASS_AFTER_MISSES && !blocker && !recError && (
             <p className="mt-3 text-center text-xs text-slate-400">
               读了 {misses[active]} 次还没过?实在读不过可以点下面「我读对了」
             </p>
           )}
-          {status[active] !== 'done'
+          {!isPassed(status[active])
             && (misses[active] >= SELF_PASS_AFTER_MISSES || !!judgeDown[active] || !!blocker || !!recError) && (
             <button
               onClick={markSelfDone}
