@@ -394,6 +394,8 @@ export interface TutorAdminState {
   teacher: { enabled: boolean; monthly: number; month: string; teachers: number; used: number; price: number };
   /** 作业批改(services/homework_check)近 7 天 */
   homework?: { days: number; done: number; failed: number; students: number; input_tokens: number; output_tokens: number };
+  /** 记忆妙招(10-31 起走同一个 Key): 近几天新生成了几个词 */
+  memory_hook?: { days: number; generated: number; tokens: number };
 }
 export const saveTeacherTutorAdmin = (body: { enabled: boolean; monthly: number }) =>
   client.put<TutorAdminState['teacher']>('/admin/tutor/teacher', body);

@@ -145,6 +145,13 @@ export default function TutorAdminCard() {
               <span className="text-slate-400"> · {k(state.homework.input_tokens)} 入 / {k(state.homework.output_tokens)} 出 token</span>
             </p>
           )}
+          {/* 记忆妙招(10-31): 一个词全平台只生成一次,之后所有孩子免费看 */}
+          {state?.memory_hook && state.memory_hook.generated > 0 && (
+            <p className="mt-1 text-sm text-slate-600">
+              记忆妙招近 {state.memory_hook.days} 天: 新生成 {state.memory_hook.generated} 个词
+              <span className="text-slate-400"> · {k(state.memory_hook.tokens)} token(一个词只生成一次,之后大家免费看)</span>
+            </p>
+          )}
         </div>
       </div>
 

@@ -141,10 +141,11 @@ async def get_memory_hook(
     )).scalar_one_or_none()
 
     from app.services import ai_errors
+    from app.services import memory_hook as mh
     from app.services.ai_quota import refund
     try:
-        hook = await ai_service.generate_memory_hook(
-            word.word, defn.meaning if defn else "", word.syllables)
+        # 先走 Claude(学习助手那个 Key),没配 / 没调通再用默认通道(10-31)
+        hook, _src = await mh.generate(db, word.word, defn.meaning if defn else "", word.syllables)
     except Exception as e:
         # 孩子看得懂的原因,不把上游英文报错原样甩出去;没拿到东西就退回今天的次数
         await refund(current_user.id, "memory_hook")

@@ -114,3 +114,79 @@ async def test_deleted_book_says_so(client, db_session, stu):
     r = await client.post(f"/api/v1/student/units/{stu['u'].id}/start", json={"learning_mode": "flashcard"},
                           headers=_h(sid))
     assert r.status_code == 404 and r.json()["detail"]["code"] == "book_deleted"
+
+
+# ---------------------------------------------------------------- 记忆妙招走 Claude(10-31)
+
+def _relay_row(db_session):
+    from app.api.v1.admin.ai_config import encrypt_api_key
+    from app.models.system_config import AIProvider
+    from app.services import tutor as tt
+    db_session.add(AIProvider(provider_name=tt.PROVIDER_NAME, display_name="Claude(学习助手专用)",
+                              api_key=encrypt_api_key("sk-relay"), base_url="https://relay.example",
+                              model_name="claude-sonnet-5-5", enabled=True, is_default=False,
+                              extra_config={"fallback_model": "claude-sonnet-4-6"}))
+
+
+@pytest.fixture
+def relay(monkeypatch):
+    import httpx
+    from app.services import tutor as tt
+    state = {"status": 200, "calls": []}
+
+    def handler(req: httpx.Request):
+        import json as _j
+        body = _j.loads(req.content)
+        state["calls"].append(body["model"])
+        if state["status"] != 200:
+            return httpx.Response(state["status"], json={"error": {"message": state.get("msg", "boom")}})
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "**nice** 像「耐死」: 好到耐看死了"}],
+                                         "usage": {"input_tokens": 80, "output_tokens": 30}})
+    monkeypatch.setattr(tt, "new_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    return state
+
+
+@pytest.mark.asyncio
+async def test_memory_hook_uses_claude_first(client, db_session, stu, relay, monkeypatch):
+    from app.services.ai_service import ai_service
+    from app.services import memory_hook as mh
+
+    async def default_should_not_run(*a, **k):
+        raise AssertionError("Claude 能用时不该走默认通道")
+    monkeypatch.setattr(ai_service, "generate_memory_hook", default_should_not_run)
+    _relay_row(db_session)
+    await db_session.commit()
+    r = await client.post(f"/api/v1/ai/memory-hook/{stu['w'].id}", headers=_h(stu["s"].id))
+    assert r.status_code == 200, r.text
+    assert r.json()["hook"] == "nice 像「耐死」: 好到耐看死了", "去掉 markdown"
+    assert relay["calls"] == ["claude-sonnet-4-6"], "先用不开思考的备用模型"
+    assert (await mh.usage(7))["generated"] == 1
+    # 第二个孩子来看: 全平台缓存,不再调模型
+    r = await client.post(f"/api/v1/ai/memory-hook/{stu['w'].id}", headers=_h(stu["s"].id))
+    assert r.json()["cached"] is True and relay["calls"] == ["claude-sonnet-4-6"]
+
+
+@pytest.mark.asyncio
+async def test_memory_hook_falls_back_then_says_why(client, db_session, stu, relay, monkeypatch):
+    from app.services.ai_service import ai_service
+    wid, sid = stu["w"].id, stu["s"].id
+    _relay_row(db_session)
+    await db_session.commit()
+    relay["status"], relay["msg"] = 401, "invalid x-api-key"
+
+    async def default_ok(*a, **k):
+        return "默认通道写的"
+    monkeypatch.setattr(ai_service, "generate_memory_hook", default_ok)
+    r = await client.post(f"/api/v1/ai/memory-hook/{wid}", headers=_h(sid))
+    assert r.status_code == 200 and r.json()["hook"] == "默认通道写的", "Claude 不行退回默认通道"
+
+    await db_session.execute(sql_text("UPDATE words SET memory_hook=NULL WHERE id=:w"), {"w": wid})
+    await db_session.commit()
+    db_session.expire_all()   # 测试和接口共用一个会话: 别拿缓存里那份已有妙招的词
+
+    async def default_arrears(*a, **k):
+        raise ARREARS
+    monkeypatch.setattr(ai_service, "generate_memory_hook", default_arrears)
+    r = await client.post(f"/api/v1/ai/memory-hook/{wid}", headers=_h(sid))
+    assert r.status_code == 503
+    assert r.json()["detail"]["code"] == "ai_key_invalid", "两条都不行: 报主通道(Claude)的原因"

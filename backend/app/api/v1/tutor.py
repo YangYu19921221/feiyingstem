@@ -925,7 +925,14 @@ async def _admin_state(db: AsyncSession) -> dict:
         "picture": await _picture_state(db),
         "teacher": await _teacher_state(db),
         "homework": await _homework_state(db),
+        "memory_hook": await _memory_hook_state(),
     }
+
+
+async def _memory_hook_state() -> dict:
+    """记忆妙招(services/memory_hook)近 7 天新生成了几个词、token(一个词全平台只生成一次)"""
+    from app.services import memory_hook as mh
+    return await mh.usage(7)
 
 
 async def _homework_state(db: AsyncSession) -> dict:
