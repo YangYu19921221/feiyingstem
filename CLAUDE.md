@@ -281,6 +281,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   同日再补(用户「第一个词我读ooo也能过」): 第一个词 bad 读「ooo」听成 ʌnaː / alʔa,元音大类 a 和 æ 对得上,元音否决拦不住、两道门放过还标绿。
   加 onset_missing: **爆破音开头**(b p d t k g)的词没听到开头辅音 → not_close missing_onset 标红(「开头的 /b/ 没听到」)。
   只管爆破音: 读对 100 次里爆破音开头的没一次听丢开头辅音,f / s 开头会丢(标准音 faff→ɑ5、cede→i5)。读对仍 93 过 / 92 绿 / 0 红,线上 #120–125 全红。
+  10-31 15:10 **已部署生产**(提交 a968a6e,只推 phoneme_closed_set.py,三个服务重启;备份 /root/phoneme_closed_set_before_onset_*.py)。公网冒烟: 用户 bad 读「ooo」4 条全红「开头的 /b/ 没听到」;标准音 bad、中国口音 bad、faff、cede 仍绿
   同日补: 本来就没过的(not_close)也走 vowel_mismatch,颜色从「差一点」黄改红(线上 #112 对 fee 读成 aa,-5.6)。
   10-31 15:05 **已部署生产**(phoneme_closed_set.py / phoneme_judge_server.py 整推,三个服务重启,前端 mvw1oslo;备份 /root/eh_code_before_vowelveto_*.tgz)。线上重判: #111 / 115 / 116 / 112 全红,标准音 fee / cab 仍绿
 - ✅ 听写「卡住了吗」+ 每个词的真实用时(2026-10-31 15:00 **已部署生产**,提交 d5be203;6 个后端文件生产==HEAD~1 整推,database.py 没动,新表 word_stuck_events 由 create_all 建(先在生产库副本上跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvw1lm5u 整推;备份 /root/eh_db_before_stuck_20261031_1447.db、/root/eh_code_before_stuck_20261031_1447.tgz、frontend/dist_bak_20261031_1447。生产冒烟(临时机构 + 老师 + 学生,跑完删净): 上报两次只有一行、records 带 stuck 200、老师每日数据 stuck_count 1、展开看到 English 51 秒写对、那个词 next_review_at 在明天北京 0 点前。⚠️ 14:38 另一会话从工作区构建的 dist 已带上了这次的听写卡片和公告(那时后端还没上,上报 404 被静默丢掉),15:00 前后端一起补齐。用户「学生表面在学习但是自己在发呆」→「这个也要做」):
