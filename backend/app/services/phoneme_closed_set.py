@@ -347,7 +347,8 @@ def judge(scores: List[Tuple], target: str, heard: Optional[str] = None,
           target_tokens: Optional[List[str]] = None) -> dict:
     """闭集得分 → 判定。见 _judge_core;外面再加一道「元音对不上」的否决(vowel_mismatch)"""
     r = _judge_core(scores, target, heard, target_tokens)
-    if r["verdict"] in ("pass", "confused", "uncertain"):
+    # 过了的拦下;本来就没过的(not_close)也标上,颜色从「差一点」的黄改成红 —— 元音都不对不算接近
+    if r["verdict"] in ("pass", "confused", "uncertain", "not_close"):
         tv = vowel_mismatch(heard, target_tokens)
         if tv:
             return {**r, "verdict": "not_close", "best": r.get("best"), "accent": False,

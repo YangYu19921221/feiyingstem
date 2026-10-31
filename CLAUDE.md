@@ -278,6 +278,8 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   (标准音 fee 听成 fei5、babe 听成 paɪ),不分有没有辅音一律否决会拦掉 100 次读对里的 10 次;现在 100 次读对 0 次被拦,
   「啊」对 fee / bee 也拦了(乱读放过 11 → 9)。e 开头(ebb / def)中国口音常读成 a,不拿 a 否决。判定服务的「多带一个音」提示不覆盖这个。
   测试 test_phoneme_gate 加 5 例;有辅音也否决 / 不否决 / 标黄 / e 不放 a 四处各让对应用例失败(回归锁验证过)
+  同日补: 本来就没过的(not_close)也走 vowel_mismatch,颜色从「差一点」黄改红(线上 #112 对 fee 读成 aa,-5.6)。
+  10-31 15:05 **已部署生产**(phoneme_closed_set.py / phoneme_judge_server.py 整推,三个服务重启,前端 mvw1oslo;备份 /root/eh_code_before_vowelveto_*.tgz)。线上重判: #111 / 115 / 116 / 112 全红,标准音 fee / cab 仍绿
 - ✅ 听写「卡住了吗」+ 每个词的真实用时(2026-10-31 15:00 **已部署生产**,提交 d5be203;6 个后端文件生产==HEAD~1 整推,database.py 没动,新表 word_stuck_events 由 create_all 建(先在生产库副本上跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvw1lm5u 整推;备份 /root/eh_db_before_stuck_20261031_1447.db、/root/eh_code_before_stuck_20261031_1447.tgz、frontend/dist_bak_20261031_1447。生产冒烟(临时机构 + 老师 + 学生,跑完删净): 上报两次只有一行、records 带 stuck 200、老师每日数据 stuck_count 1、展开看到 English 51 秒写对、那个词 next_review_at 在明天北京 0 点前。⚠️ 14:38 另一会话从工作区构建的 dist 已带上了这次的听写卡片和公告(那时后端还没上,上报 404 被静默丢掉),15:00 前后端一起补齐。用户「学生表面在学习但是自己在发呆」→「这个也要做」):
   先查的生产实情: 发呆判定只看有没有操作(动鼠标 / 滑屏都算人在),孩子隔几十秒点一下就一直算「在学」;
   分类学习逐题 time_spent 是**整组净时长均摊**的(每个词一样长),learning_quality 的防划水打分因此每次都判

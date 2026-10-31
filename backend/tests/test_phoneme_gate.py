@@ -224,3 +224,12 @@ def test_vowel_only_with_wrong_vowel_is_blocked_red():
 def test_vowel_veto_does_not_hit_correct_readings(heard, word, toks, why):
     scores = [(word, -3.0, -0.3, -2.0), ("bed", -4.0, -0.4, -6.0)]
     assert judge(scores, word, heard=heard, target_tokens=toks)["verdict"] == "pass", why
+
+
+def test_blocked_vowel_only_wrong_vowel_is_red_not_yellow():
+    """线上 #112: 对 fee 读「ooo」听成 aa,贴合分 -5.6 本来就没过,但「差一点」会标黄 —— 元音都不对要标红"""
+    from app.services.phoneme_closed_set import grade
+    scores = [("fee", -3.0, -0.3, -5.64), ("beef", -2.2, -0.2, -5.0)]
+    r = judge(scores, "fee", heard="aa", target_tokens=["f", "iː"])
+    assert r["verdict"] == "not_close" and r["error_code"] == "wrong_vowel"
+    assert grade(r["verdict"], r["gop"], r["error_code"]) == "red"
