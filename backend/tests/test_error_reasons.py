@@ -190,3 +190,10 @@ async def test_memory_hook_falls_back_then_says_why(client, db_session, stu, rel
     r = await client.post(f"/api/v1/ai/memory-hook/{wid}", headers=_h(sid))
     assert r.status_code == 503
     assert r.json()["detail"]["code"] == "ai_key_invalid", "两条都不行: 报主通道(Claude)的原因"
+
+
+def test_memory_hook_clean_keeps_inner_quotes():
+    from app.services.memory_hook import clean
+    assert clean('"耐死"都不变的好心情') == '"耐死"都不变的好心情', "不能削掉开头那个引号(生产 10-31 踩到)"
+    assert clean('“像耐死一样好”') == "像耐死一样好"
+    assert clean("**nice** 好") == "nice 好"

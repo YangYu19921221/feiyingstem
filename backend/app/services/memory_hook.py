@@ -31,9 +31,15 @@ class RelayError(Exception):
         self.status_code = status_code
 
 
+_PAIRS = {'"': '"', "“": "”", "「": "」"}
+
+
 def clean(text: str) -> str:
+    """去 markdown;整段被一对引号包着才去掉那对(不能 strip 引号字符: 「"耐死"都…」会被削掉开头那个)"""
     from app.services import tutor as tt
-    t = tt.plain(text or "").strip().strip('"“”')
+    t = tt.plain(text or "").strip()
+    if len(t) >= 2 and _PAIRS.get(t[0]) == t[-1] and t[0] not in t[1:-1] and t[-1] not in t[1:-1]:
+        t = t[1:-1].strip()
     return t[:MAX_LEN].strip()
 
 
