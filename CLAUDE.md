@@ -271,6 +271,15 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 出错时告诉用户是什么原因(2026-10-31 19:13 **已部署生产**,提交 5f227e2;5 个后端文件生产==HEAD~1 整推 + 新文件 services/ai_errors.py,两个服务都重启;前端干净 worktree 构建 mvwawd6s 整推;备份 /root/eh_code_before_errreason_20261031_1913.tgz、frontend/dist_bak_20261031_1913。生产冒烟: 记忆妙招回 503 ai_arrears「平台的 AI 服务账户欠费了,管理员充值后恢复」且没扣次数、unit 150 回 404 book_deleted、/admin/ai/status 记下 qwen3.8-max 欠费。用户「下次如果出现这样的问题你要提示让用户知道这是什么原因」):
+  ①**AI 失败翻成中文原因**(services/ai_errors.classify / reason_of): 欠费(Arrearage / overdue-payment / 余额不足)、Key 失效(401)、太忙(429)、超时、连不上、没配置。
+  ai_service._call_llm 外面包一层: 失败 note_failure(存 shared_store ai:default:last_error,2 天)、成功 note_ok 清掉。只管默认 AI 通道;小鹰老师 / 出图有自己的钱包检查
+  ②**记忆妙招**: 失败 detail={code, message}「记忆妙招暂时用不了: …。先靠自己记~」,**退回今天的次数**(以前不退,还把上游英文报错原样给孩子);老师「AI 填充」502 也只给中文原因
+  ③**管理端首页顶上**(GET /admin/ai/status,仅 admin): 欠费 / Key 失效 / 没配置标红「AI 服务用不了」+ 受影响的功能 +「去 AI 配置」;太忙 / 超时标黄「刚才出了一次错」;恢复后自己消失
+  ④**书被删了**: 开始作业(查库不用 db.get,会话缓存会骗人)和 /units/{id}/start 都回 404 detail {code: book_deleted, message}「书已经被删掉了…跟老师说一声,让老师换一份」;
+  分类学习 / 听写页 detail 是对象也能显示(改用 getErrorMessage,以前 String(detail) 会变成 [object Object]、ClassificationPhase 会把对象塞进 JSX)
+  测试 tests/test_error_reasons.py(4 例);不退次数 / 开始作业不判书 两处各让对应用例失败(回归锁验证过)。本机浏览器(1366 / 390)看过管理端横幅和学生「去做」的提示,无横向溢出、控制台 0 报错。
+  ⚠️ **阿里云百炼仍欠费**: 上线那一刻管理端首页就是红条,充值后第一次 AI 调用成功就消失
 - ✅ 小鹰老师不再派已删的书 + 老师端「孩子们今天」搜索分页(2026-10-31 17:11 **已部署生产**,提交 b2e7283;services/autopilot.py 生产==HEAD~1 整推,两个服务都重启;前端干净 worktree 构建 mvw6kg1i 整推;备份 /root/autopilot_before_deadbook_20261031_1711.py、frontend/dist_bak_20261031_1711。用户「学生端小鹰助手布置的任务有点点开找不到网页,姓古的孩子;教师端小鹰助手孩子们今天这里加个搜索和分页」):
   ①**根因**: 古雨菲(431)今天第 3 轮派了 unit 150,它的书 26 已经删了 —— 删书只删 word_books 一行(生产外键关着),单元、autopilot_groups 都还在;
   get_allowed_unit_ids 对已删的书照样回 None(全托 / 还留着 book_assignments),到期轮次照派,孩子点开 /units/150/start 404。
