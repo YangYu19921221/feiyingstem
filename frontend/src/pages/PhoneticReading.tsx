@@ -208,7 +208,7 @@ export default function PhoneticReading() {
     // 反馈要留着显示:
     //   有 error_hint → 「差一点就全对了。词尾多带了一个音…」(读对≠读得好,这条值得说)
     //   只有 confused → 兜底的「机器听着更像 X」
-    const hasFeedback = !!(r.error_hint || r.verdict === 'confused');
+    const hasFeedback = !!(r.error_hint || r.verdict === 'confused' || r.grade === 'yellow');
     if (hasFeedback) setFeedback(r);
     // 有话要说就多停一会儿,否则提示一闪而过等于没给
     markDone(idx, hasFeedback ? 3200 : 700, r.grade === 'yellow' ? 'yellow' : 'green');
@@ -475,6 +475,12 @@ export default function PhoneticReading() {
                   )}
                   {feedback.error_hint}
                   {isPassed(status[active]) && '。再读一次能变绿'}
+                </p>
+              ) : feedback.grade === 'yellow' && isPassed(status[active]) ? (
+                // 靠口音放宽才过的(后端 phoneme_closed_set.ACCENT_FLOOR): 过了,但跟标准音比还有差距
+                <p className="text-amber-700">
+                  <span className="font-medium">过了!</span>跟标准音比还有点口音,
+                  点下面「对比听」听听差在哪,再读一次能变绿
                 </p>
               ) : feedback.verdict === 'confused' ? (
                 // 说不出具体错在哪时的兜底。只是参考,格子已经绿了

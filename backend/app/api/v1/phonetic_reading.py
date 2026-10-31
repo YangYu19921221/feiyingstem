@@ -289,7 +289,7 @@ async def judge_and_save(
         return JudgeOut(verdict="off", reason="judge_unavailable", reading_id=reading_id)
 
     from app.services.phoneme_closed_set import grade as grade_of
-    r["grade"] = grade_of(r.get("verdict"), r.get("gop"), r.get("error_code"))
+    r["grade"] = grade_of(r.get("verdict"), r.get("gop"), r.get("error_code"), bool(r.get("accent")))
     await _save_verdict(db, reading_id, r)
     return JudgeOut(verdict=r.get("verdict", "off"),
                     heard=r.get("best"),
@@ -312,7 +312,7 @@ async def _save_verdict(db, reading_id: Optional[int], r: dict) -> None:
         row.verdict = (r.get("verdict") or "")[:12] or None
         row.pron_score = round(gop * 100) if isinstance(gop, (int, float)) else None
         row.judge_detail = json.dumps({
-            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code", "grade")
+            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code", "grade", "accent")
             if r.get(k) is not None
         }, ensure_ascii=False)[:2000]
         await db.commit()

@@ -134,7 +134,8 @@ async def handle_judge(request):
         log.warning("判定出错: %s", e)
         return web.json_response({"verdict": "off", "reason": str(e)})
 
-    r = verdict_of(scores, target)
+    # heard / 目标音素: 口音放宽要看听到的音素骨架(phoneme_closed_set.ACCENT_FLOOR)
+    r = verdict_of(scores, target, heard=''.join(heard), target_tokens=candidates.get(target))
     # top3 = 排序分(候选间比大小的那个),排查误判用。贴合分(GOP)判定里已经带着(gop / gate_margin)
     r["top3"] = [[w, round(s, 2)] for w, s, *_ in scores[:3] if s > float("-inf")]
 

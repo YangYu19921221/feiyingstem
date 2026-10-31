@@ -20,6 +20,14 @@
 另用 Edge TTS 故意合成两音节做交叉验证:「bay duh」→ beːda(末音 a),
 而正常「bad」→ bæd —— 说明这个信号来自音节结构,不是模型对童声的偏差。
 
+## 10-31 收紧: 必须真的多出一个音节
+原来只看「听到的以元音结尾」。线上判定服务把 5 个声音(英美 3 个 + 中国口音 2 个)读对的 100 次跑了一遍:
+**30 次被误报** —— 模型常听不出词尾的塞音(标准音 cab 听成 ka、babe 听成 beɪ、bad 听成 ba),
+末尾自然就是元音。这 30 次在格子上全成了黄色,读对了也很难绿(用户「现在是不是有点严格很难绿」)。
+现在还要求**听到的元音段比目标词多**(bad 一个元音段,pei5tə1 两个): 100 次读对 0 次误报,
+真人读成两音节的照样抓得到(pei5tə1pei5tə1、pai5tə1、pitəɜ、pei5təɜ、beːda 都是 2 段以上)。
+只是没读出词尾辅音(ka)不再报 —— 那种模型对标准音也一样,分不出是孩子没读还是模型没听见。
+
 ## 边界
 - 只对**词尾是辅音**的目标词有效。词尾本来是元音的(fee/bee/ace)不适用,
   那类词多加音听不出来,直接返回 None 不下结论。
@@ -31,7 +39,7 @@ from typing import List, Optional
 
 # 元音字符。**含中文那一侧的韵母字符**:多加的那个音常被 espeak 多语言模型
 # 识别成中文韵母(ə1/ɑ5/a),只认英语元音会漏掉大半
-_VOWEL_CHARS = set('iɪeæɑʌɒɔʊuɜəaoy')
+_VOWEL_CHARS = set('iɪeɛæɑɐʌɒɔʊuɜəɚaoy')
 
 # 目标词音标里,词尾算「辅音收尾」的音素
 _CONSONANTS = set('pbtdkɡfvszθðʃʒmnŋhrlwj')
@@ -52,6 +60,19 @@ def ends_with_vowel(tokens: List[str]) -> bool:
     return bool(last) and last[-1] in _VOWEL_CHARS
 
 
+def vowel_groups(tokens: List[str]) -> int:
+    """元音段数(连着的元音算一段,声调数字 / 长音符 / 送气符剥掉)≈ 音节数。
+    eɪ、ei5 是一段;pei5tə1 是两段"""
+    s = re.sub(r'[\dːʰˈˌ]', '', ''.join(tokens or []))
+    n, prev = 0, False
+    for ch in s:
+        v = ch in _VOWEL_CHARS
+        if v and not prev:
+            n += 1
+        prev = v
+    return n
+
+
 def target_ends_with_consonant(target_tokens: List[str]) -> bool:
     last = _last_real(target_tokens)
     return bool(last) and last[-1] in _CONSONANTS
@@ -70,6 +91,8 @@ def detect(heard_tokens: List[str], target_tokens: List[str]) -> Optional[dict]:
         return None                       # 词尾本来是元音,这个判据不适用
     if not ends_with_vowel(heard_tokens):
         return None                       # 收音干净,没有这个问题
+    if vowel_groups(heard_tokens) <= vowel_groups(target_tokens):
+        return None                       # 没多出音节: 多半是模型没听见词尾辅音(标准音也这样),不报
     tail = _last_real(target_tokens)
     return {
         "code": "extra_final_vowel",

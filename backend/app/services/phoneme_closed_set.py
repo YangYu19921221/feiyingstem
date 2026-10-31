@@ -254,11 +254,82 @@ GOP_FLOOR = -5.5       # 目标词贴合分低于它 = 读得不像这个词
 GATE_MARGIN = -3.25    # 目标词排序分比本节最像的别的词低这么多 = 明显在读别的词
 
 
-def judge(scores: List[Tuple], target: str) -> dict:
+# ── 中国口音放宽(2026-10-31,用户「现在是不是有点严格很难绿」)───────────────────
+# 线上那 40 条录音里,cab 读了 15 遍: 模型每次都听成 kha5 / khɑu5(æ 听成中文的 a、词尾 b 没听见),
+# 贴合分 -7.0 ~ -7.7,和说「hello」「water」对 cab 的分数一样低 —— 光看贴合分分不开「带口音读对」和「乱说」。
+# 第二个信号是**听到的音素骨架**: 开头辅音(清浊不分,b=p)+ 第一个元音的大类(æ=a=ɑ)对得上目标词。
+# 「啊」没有开头辅音、「hello」开头是 h、「water」开头是 w,都对不上;kha 对 cab 对得上。
+# 两道门没过、但贴合分 ≥ ACCENT_FLOOR 且骨架对上 → 算过(标黄: 过了,但口音还重)。
+# 线上判定服务实测(10-31): 读对 100 次 92 → 93 过;240 段乱读 / 中文 / 别的英语词放过 9 → 11
+# (多放的是「嗯嗯」对 dab / dad,听成 thai5ti5);那 40 条录音 5 → 22 过。
+# 元音开头的词(ace / add / ebb)不放宽: 只有一个元音可比,「啊」对 add 就能对上。
+ACCENT_FLOOR = -8.5
+
+_CONS_CLASS = {
+    "p": "P", "b": "P", "t": "T", "d": "T", "k": "K", "ɡ": "K", "g": "K",
+    "f": "F", "v": "F", "θ": "TH", "ð": "TH", "s": "S", "z": "S", "ʃ": "SH", "ʒ": "SH", "ɕ": "SH", "ʂ": "SH",
+    "tʃ": "CH", "dʒ": "CH", "tɕ": "CH", "ʈʂ": "CH", "ts": "TS", "dz": "TS", "tr": "TR", "dr": "TR",
+    "m": "M", "n": "N", "ŋ": "NG", "h": "H", "x": "H", "l": "L", "r": "R", "ɹ": "R", "w": "W", "j": "J",
+}
+_HEARD_VOWEL = {
+    "i": "I", "ɪ": "I", "y": "I", "e": "E", "ɛ": "E",
+    "a": "A", "æ": "A", "ɑ": "A", "ɐ": "A", "ʌ": "A",
+    "o": "O", "ɔ": "O", "ɒ": "O", "u": "U", "ʊ": "U", "ə": "@", "ɜ": "@", "ɚ": "@",
+}
+# 目标元音 → 听到哪些元音大类算对得上(中国口音 æ 常听成 a、eɪ 听成 ei / e、əʊ 听成 o / ə)
+_TARGET_VOWEL = {
+    "iː": {"I"}, "ɪ": {"I"}, "i": {"I"}, "e": {"E"}, "æ": {"A", "E"}, "ɑː": {"A"}, "ʌ": {"A", "@"},
+    "ɒ": {"O", "A"}, "ɔː": {"O"}, "ʊ": {"U"}, "uː": {"U"}, "ɜː": {"@"}, "ə": {"@", "A"},
+    "eɪ": {"E"}, "aɪ": {"A"}, "ɔɪ": {"O"}, "əʊ": {"O", "@"}, "aʊ": {"A"}, "ɪə": {"I"}, "eə": {"E"}, "ʊə": {"U"},
+}
+
+
+def _heard_skeleton(heard: str):
+    """听到的音素串 → (开头辅音大类 / None, 第一个元音大类 / None, 元音段数)"""
+    import re
+    s = re.sub(r"[0-9ːʰʔˈˌ]", "", heard or "")
+    # 中文送气音模型写成 kh / th / ph / tɕh: 送气不送气不区分
+    s = s.replace("tɕh", "tɕ").replace("ʈʂh", "ʈʂ").replace("tsh", "ts").replace("kh", "k").replace("th", "t").replace("ph", "p")
+    onset = None
+    if s and s[0] not in _HEARD_VOWEL:
+        for n in (2, 1):
+            if s[:n] in _CONS_CLASS:
+                onset = _CONS_CLASS[s[:n]]
+                break
+        else:
+            onset = "?"
+    vowel = next((_HEARD_VOWEL[c] for c in s if c in _HEARD_VOWEL), None)
+    groups, prev = 0, False
+    for c in s:
+        v = c in _HEARD_VOWEL
+        if v and not prev:
+            groups += 1
+        prev = v
+    return onset, vowel, groups
+
+
+def skeleton_match(heard: str, target_tokens: List[str]) -> bool:
+    """开头辅音(清浊不分)+ 第一个元音大类对得上,且没多出一个以上音节"""
+    toks = [t for t in (target_tokens or []) if t not in ("ˈ", "ˌ")]
+    if not toks or toks[0] not in _CONS_CLASS:
+        return False                      # 元音开头的词不放宽(见上)
+    t_vowels = [t for t in toks if t in _TARGET_VOWEL]
+    if not t_vowels:
+        return False
+    onset, vowel, groups = _heard_skeleton(heard)
+    if onset != _CONS_CLASS[toks[0]] or vowel not in _TARGET_VOWEL[t_vowels[0]]:
+        return False
+    return groups <= len(t_vowels) + 1
+
+
+def judge(scores: List[Tuple], target: str, heard: Optional[str] = None,
+          target_tokens: Optional[List[str]] = None) -> dict:
     """闭集得分 → 判定
 
     scores: rank() 的输出 [(词, 排序分, 逐帧分, 贴合分)]。也兼容只有 2 / 3 元的老格式
             (那时两道门自动跳过,只按相对排序判)。
+
+    heard / target_tokens: 听到的音素串、目标词音素(判定服务传;不传就不做口音放宽)
 
     verdict:
       not_close  读得不像这个词(乱读 / 说中文 / 只「啊」一声)—— 拦
@@ -287,6 +358,10 @@ def judge(scores: List[Tuple], target: str) -> dict:
             return {"verdict": "wrong_word", "best": top_other[0],
                     "margin": _r(-gate_margin), **info}
         if gop < GOP_FLOOR or gate_margin < GATE_MARGIN:
+            if heard is not None and gop >= ACCENT_FLOOR and skeleton_match(heard, target_tokens):
+                # 带中国口音读对了: 贴合分不够,但听到的骨架对得上(见 ACCENT_FLOOR)
+                return {"verdict": "pass", "best": target, "margin": 0.0, "accent": True,
+                        "note": "口音放宽", **info}
             return {"verdict": "not_close", "best": scores[0][0], "margin": 0.0,
                     "note": "读得不像这个词", **info}
     else:
@@ -318,7 +393,8 @@ def judge(scores: List[Tuple], target: str) -> dict:
 # 颜色只管「给孩子看读得怎么样」,**过不过关仍按 judge() 的 verdict**,这里不改门槛。
 #   绿 = 判定通过且没挑出毛病
 #   黄 = 接近: ①通过了但词尾多带了一个音(error_code,中国孩子最常见、能照着改)
-#              ②没通过但贴合分 ≥ NEAR_FLOOR(差一点)
+#              ②靠口音放宽才过的(accent,见 ACCENT_FLOOR)
+#              ③没通过但贴合分 ≥ NEAR_FLOOR(差一点)
 #   红 = 差得多: 贴合分更低,或明显读成了本节另一个词
 # confused(另一个词更像一点)仍算绿: 用 Edge TTS 英美标准音读对的 60 次里有 7 次被判 confused
 # (beef→bee、bed→bad、bade→bad),是模型分不开,不是读错 —— 标黄就是冤枉读对的孩子。
@@ -329,10 +405,13 @@ def judge(scores: List[Tuple], target: str) -> dict:
 NEAR_FLOOR = -7.0
 
 
-def grade(verdict: Optional[str], gop: Optional[float], error_code: Optional[str] = None) -> Optional[str]:
-    """→ 'green' / 'yellow' / 'red';没声音(silent)/ 没判出来(off)不是对读音的判断,返回 None 不上色"""
+def grade(verdict: Optional[str], gop: Optional[float], error_code: Optional[str] = None,
+          accent: bool = False) -> Optional[str]:
+    """→ 'green' / 'yellow' / 'red';没声音(silent)/ 没判出来(off)不是对读音的判断,返回 None 不上色
+
+    accent = 靠口音放宽才过的(见 ACCENT_FLOOR): 过了但标黄,跟标准音比还有差距"""
     if verdict in ("pass", "confused", "uncertain"):
-        return "yellow" if error_code else "green"
+        return "yellow" if (error_code or accent) else "green"
     if verdict == "not_close":
         return "yellow" if gop is not None and gop >= NEAR_FLOOR else "red"
     if verdict in ("wrong_word", "not_speech"):

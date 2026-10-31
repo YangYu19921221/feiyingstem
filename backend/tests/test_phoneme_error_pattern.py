@@ -78,3 +78,26 @@ class TestDetect:
     def test_空输入不崩(self):
         assert detect([], ['b', 'æ', 'd']) is None
         assert detect(['b', 'æ', 'd'], []) is None
+
+
+class TestNoExtraSyllable:
+    """10-31: 只是没听见词尾辅音(模型对标准音也这样)不算多带一个音
+
+    线上判定服务: 英美标准音读对的 cab 听成 ka、babe 听成 beɪ、bad 听成 ba ——
+    旧规则(只看结尾是不是元音)把 100 次读对里的 30 次标成「多带一个音」,格子全是黄的。
+    """
+
+    def test_标准音没听见词尾辅音不报(self):
+        cases = [
+            (["k", "a"], ["k", "æ", "b"]),           # cab → ka(Sonia / Jenny)
+            (["b", "e", "ɪ"], ["b", "eɪ", "b"]),     # babe → beɪ
+            (["b", "a"], ["b", "æ", "d"]),           # bad → ba(Ryan)
+            (["p", "i5"], ["b", "iː", "f"]),         # beef → pi5
+            (["th", "ɑ5"], ["d", "æ", "b"]),         # dab → tɑ5
+        ]
+        for heard, target in cases:
+            assert detect(heard, target) is None, f"{heard} 没多出音节,不该报"
+
+    def test_真的读成两个音节照样报(self):
+        for heard in (["p", "ei5", "t", "əɜ"], ["p", "a", "i5", "t", "ə1"], ["b", "e", "ː", "d", "a"]):
+            assert detect(heard, ["b", "æ", "d"]) is not None, f"{heard} 是两个音节,该报"

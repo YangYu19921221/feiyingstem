@@ -152,3 +152,48 @@ def test_nonsense_is_red(rec):
     from app.services.phoneme_closed_set import grade
     r = judge(_rows(rec), rec["target"])
     assert grade(r["verdict"], r.get("gop")) == "red"
+
+
+# ── 中国口音放宽(2026-10-31)──────────────────────────────────────────
+
+def _cab_scores(gop):
+    # 只关心目标词那一行: 排序分随便给,贴合分 = gop,另一个词更差
+    return [("cab", -4.0, -0.4, gop), ("bad", -5.0, -0.5, gop - 1.0)]
+
+
+def test_accent_reading_passes_yellow():
+    """线上 cab 读了 15 遍,模型听成 kha5 / khɑu5,贴合分 -7.0 ~ -7.7 —— 骨架对得上就算过,标黄"""
+    from app.services.phoneme_closed_set import grade
+    r = judge(_cab_scores(-7.3), "cab", heard="kha5", target_tokens=["k", "æ", "b"])
+    assert r["verdict"] == "pass" and r.get("accent") is True
+    assert grade(r["verdict"], r["gop"], None, True) == "yellow"
+
+
+@pytest.mark.parametrize("heard,why", [
+    ("aː", "「啊」没有开头辅音"),
+    ("hʌloʊ", "说 hello: 开头是 h"),
+    ("woʊtɚ", "说 water: 开头是 w"),
+    ("tha5", "开头听成 t 不是 k"),
+    ("khɑ5khɑ5khɑ5", "多出两个以上音节"),
+])
+def test_accent_allowance_needs_matching_skeleton(heard, why):
+    r = judge(_cab_scores(-7.3), "cab", heard=heard, target_tokens=["k", "æ", "b"])
+    assert r["verdict"] == "not_close", why
+
+
+def test_accent_allowance_has_a_floor():
+    """贴合分太低(-12)骨架对上也不放: 那是一长串里碰巧开头像"""
+    r = judge(_cab_scores(-12.0), "cab", heard="kha5", target_tokens=["k", "æ", "b"])
+    assert r["verdict"] == "not_close"
+
+
+def test_vowel_initial_words_not_relaxed():
+    """ace / add / ebb 只有一个元音能比,「啊」对 add 就对上了 —— 不放宽"""
+    scores = [("add", -4.0, -0.4, -6.7), ("bad", -5.0, -0.5, -7.7)]
+    r = judge(scores, "add", heard="aː", target_tokens=["æ", "d"])
+    assert r["verdict"] == "not_close"
+
+
+def test_no_heard_no_allowance():
+    """老调用方不传 heard: 行为和以前一样"""
+    assert judge(_cab_scores(-7.3), "cab")["verdict"] == "not_close"
