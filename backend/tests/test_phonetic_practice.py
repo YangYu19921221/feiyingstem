@@ -526,3 +526,36 @@ async def test_judge_returns_yellow_for_near_miss_and_extra_vowel(
         )
         got.append(r.json()["grade"])
     assert got == ["yellow", "yellow", "green"]
+
+
+
+async def test_judge_endpoint_uses_ise_referee(
+        client: AsyncClient, db_session, two_orgs_with_books, monkeypatch):
+    """本地靠口音放宽过了、讯飞拒了 → 最终没过、红,讯飞的结果存进录音(services/phoneme_referee)"""
+    from app.services import phoneme_judge_client, iflytek_ise_service
+    from app.models.phonetic_practice import PhoneticReading
+
+    async def local(audio, target, cands):
+        return {"verdict": "pass", "gop": -7.2, "accent": True, "best": "bad"}
+
+    async def evaluate(audio, text, category="read_word"):
+        return {"total_score": 0.0, "is_rejected": True, "except_info": "28676"}
+
+    async def get_config():
+        return {"app_id": "x"}
+    monkeypatch.setattr(phoneme_judge_client, "judge", local)
+    monkeypatch.setattr(iflytek_ise_service, "evaluate", evaluate)
+    monkeypatch.setattr(iflytek_ise_service, "get_config", get_config)
+    d = two_orgs_with_books
+    r = await client.post(
+        "/api/v1/phonetic-practice/readings/judge",
+        headers={"Authorization": f"Bearer {d['s1']}"},
+        files={"audio": ("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 3000, "audio/webm")},
+        data={"item_id": str(d["item_bad"])},
+    )
+    body = r.json()
+    assert body["verdict"] == "not_close" and body["grade"] == "red", body
+    row = await db_session.get(PhoneticReading, body["reading_id"])
+    await db_session.refresh(row)
+    detail = json.loads(row.judge_detail)
+    assert detail["referee"] == "ise" and detail["ise_rejected"] is True

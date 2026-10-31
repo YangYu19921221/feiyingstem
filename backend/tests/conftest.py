@@ -10,6 +10,18 @@ from app import models  # noqa: F401  确保所有 SQLAlchemy 模型注册到 Ba
 
 
 @pytest.fixture(autouse=True)
+def _no_real_iflytek(monkeypatch):
+    """测试里默认当讯飞没配: iflytek_ise_service.get_config 自己开 AsyncSessionLocal 读的是**本机真库**,
+    本机库里讯飞是开着的 —— 不挡住的话音标跟读的用例会真的去调讯飞(按次收费)。要测讯飞的用例自己再 monkeypatch"""
+    from app.services import iflytek_ise_service
+
+    async def _none():
+        return None
+    monkeypatch.setattr(iflytek_ise_service, "get_config", _none)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _clean_shared_store():
     """每个用例前清空进程内共享存储(限流 / 登录尝试计数 / 验证码)。
     登录尝试按用户 id 计,而每个用例的内存库 id 都从 1 开始,不清就会串到下一个用例"""

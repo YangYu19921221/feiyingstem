@@ -288,8 +288,12 @@ async def judge_and_save(
         await _save_verdict(db, reading_id, {"verdict": "off"})
         return JudgeOut(verdict="off", reason="judge_unavailable", reading_id=reading_id)
 
+    # 本地判不清楚的请讯飞再判一次(services/phoneme_referee: 什么算判不清、讯飞的分怎么用、上限)
+    from app.services import phoneme_referee
+    r = await phoneme_referee.referee(data, it.word, r, current_user.id)
     from app.services.phoneme_closed_set import grade as grade_of
-    r["grade"] = grade_of(r.get("verdict"), r.get("gop"), r.get("error_code"), bool(r.get("accent")))
+    r["grade"] = phoneme_referee.grade_of(r) or grade_of(
+        r.get("verdict"), r.get("gop"), r.get("error_code"), bool(r.get("accent")))
     await _save_verdict(db, reading_id, r)
     return JudgeOut(verdict=r.get("verdict", "off"),
                     heard=r.get("best"),
@@ -312,7 +316,8 @@ async def _save_verdict(db, reading_id: Optional[int], r: dict) -> None:
         row.verdict = (r.get("verdict") or "")[:12] or None
         row.pron_score = round(gop * 100) if isinstance(gop, (int, float)) else None
         row.judge_detail = json.dumps({
-            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code", "grade", "accent")
+            k: r.get(k) for k in ("gop", "gate_margin", "best", "margin", "top3", "heard_phonemes", "error_code", "grade", "accent",
+                      "referee", "ise_score", "ise_rejected", "ise_except")
             if r.get(k) is not None
         }, ensure_ascii=False)[:2000]
         await db.commit()

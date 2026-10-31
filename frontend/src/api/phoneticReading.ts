@@ -100,7 +100,8 @@ export const judgeReading = (
   fd.append('audio', blob, `reading.${ext}`);
   fd.append('item_id', String(itemId));
   if (durationMs) fd.append('duration_ms', String(durationMs));
-  return api.post('/phonetic-practice/readings/judge', fd) as unknown as Promise<JudgeResult>;
+  // 本地判不清时服务器还会请讯飞再判一次(约 2 秒),默认 10 秒不够兜住两段都慢的时候
+  return api.post('/phonetic-practice/readings/judge', fd, { timeout: 15000 }) as unknown as Promise<JudgeResult>;
 };
 
 /** 孩子读了几次没过,自己点了「我读对了」—— 记在他最后那条录音上(门槛是不是太严的信号) */

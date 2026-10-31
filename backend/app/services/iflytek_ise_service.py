@@ -182,6 +182,9 @@ def _parse_result(xml_text: str, category: str = "read_word") -> dict:
         "accuracy": 0.0,
         "fluency": 0.0,
         "integrity": 0.0,
+        # 讯飞判定「不是在读这段文字」(乱读 / 说中文 / 读了别的)。音标跟读靠它拦乱读(phoneme_referee)
+        "is_rejected": False,
+        "except_info": None,
     }
     try:
         root = ET.fromstring(xml_text)
@@ -197,6 +200,8 @@ def _parse_result(xml_text: str, category: str = "read_word") -> dict:
                 result["accuracy"] = float(node.get("accuracy_score", 0))
                 result["fluency"] = float(node.get("fluency_score", 0))
                 result["integrity"] = float(node.get("integrity_score", 0))
+                result["is_rejected"] = (node.get("is_rejected") or "").lower() == "true"
+                result["except_info"] = node.get("except_info")
                 break
     except ET.ParseError:
         pass
