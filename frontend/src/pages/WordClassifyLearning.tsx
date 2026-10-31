@@ -20,6 +20,7 @@ import {
   reportStudyTime,
   type WordAnswerCreate,
   type StudySessionResponse,
+  reportStuckWord,
 } from '../api/learningRecords';
 import { earnFood } from '../api/pet';
 import type { StartLearningResponse, WordData } from '../api/progress';
@@ -479,7 +480,8 @@ const WordClassifyLearning = () => {
     // 填入实际用时(净活动时长均摊,不含发呆/切屏;逐题 time_spent 只用于
     // 教师端时间线回铺与质量分,日历时长走 session_seconds)
     const elapsed = Math.round((netSeconds() * 1000) / wrongRecords.length);
-    const withTime = wrongRecords.map(r => ({ ...r, time_spent: elapsed }));
+    // 听写带了这个词真实用时的就用真的(不然老师看到的每个词都一样长),其余照旧均摊
+    const withTime = wrongRecords.map(r => ({ ...r, time_spent: r.time_spent > 0 ? r.time_spent : elapsed }));
     // 复习/错题模式(unit 0):/student/records 会因"单元ID 0 不存在"404,记录全丢。
     // 走专用 review-records 接口(不需要 unit_id,mastery/日历照常更新)。
     if (parseInt(unitId) === 0) {
@@ -567,6 +569,12 @@ const WordClassifyLearning = () => {
     setPhase('dictation');
   };
 
+  // 听写时卡住的词报给老师(每日数据「卡住」列);失败进本地队列补交,不挡学习
+  const handleDictationStuck = useCallback((info: { wordId: number; ms: number; outcome: 'correct' | 'wrong' | 'gave_up' }) => {
+    const uid = parseInt(unitId || '0');
+    reportStuckWord({ word_id: info.wordId, unit_id: uid || undefined, ms: info.ms, outcome: info.outcome }).catch(() => {});
+  }, [unitId]);
+
   // 听写完成 → 来自 recap 的二次听写直接进 summary, 否则进过关检测
   const handleDictationComplete = (results: DictationResult[]) => {
     const mistakes = results.filter(r => !r.isCorrect);
@@ -602,7 +610,7 @@ const WordClassifyLearning = () => {
       }));
     }
     submitMistakesRealtime(
-      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: 0, learning_mode: 'spelling' as string, user_answer: r.userInput || undefined }))
+      mistakes.map(r => ({ word_id: r.wordId, is_correct: false, time_spent: r.ms ?? 0, learning_mode: 'spelling' as string, user_answer: r.userInput || undefined }))
     );
     saveGroupProgress(results);
     setPhase('exam');
@@ -685,7 +693,11 @@ const WordClassifyLearning = () => {
 
       const dictResult = dictMap.get(w.id);
       if (dictResult?.isCorrect) {
-        records.push({ word_id: w.id, is_correct: true, time_spent: avgTime, learning_mode: 'spelling' });
+        // 用这个词真实的用时;卡住过才拼对的带 stuck,后端把下次复习排到明天
+        records.push({
+          word_id: w.id, is_correct: true, time_spent: dictResult.ms ?? avgTime, learning_mode: 'spelling',
+          ...(dictResult.stuck ? { stuck: true } : {}),
+        });
         passedWordIds.push(w.id);
       }
 
@@ -1259,6 +1271,7 @@ const WordClassifyLearning = () => {
                 onComplete={handleDictationComplete}
                 playAudioSlow={playAudioSlow}
                 copyRequired={isReviewRef.current ? 1 : 3}
+                onStuck={dictationSource === 'recap' ? undefined : handleDictationStuck}
               />
             </motion.div>
           )}

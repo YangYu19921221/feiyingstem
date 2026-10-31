@@ -55,6 +55,14 @@ export interface DailyContentItem {
   sessions_count: number;
 }
 
+/** 听写时卡住的词(一人一天一个词一条,想得最久的在前) */
+export interface StuckWordItem {
+  word_id: number;
+  word: string;
+  seconds: number;
+  outcome: 'correct' | 'wrong' | 'gave_up';
+}
+
 export interface ClassRankingEntry {
   rank: number;
   user_id: number;
@@ -107,7 +115,7 @@ export const teacherMonitor = {
 
   dailyStatsContent: async (
     class_id: number, student_id: number, target_date: string
-  ): Promise<{ student_id: number; date: string; items: DailyContentItem[] }> => {
+  ): Promise<{ student_id: number; date: string; items: DailyContentItem[]; stuck_words?: StuckWordItem[] }> => {
     const r = await axios.get(
       `${BASE}/classes/${class_id}/daily-stats/${student_id}/content`,
       { params: { target_date } }

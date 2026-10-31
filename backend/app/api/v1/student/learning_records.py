@@ -243,7 +243,8 @@ async def create_learning_records(
         # 更新或创建单词掌握度记录
         await update_word_mastery(
             db, user_id, record_data.word_id,
-            record_data.learning_mode, record_data.is_correct
+            record_data.learning_mode, record_data.is_correct,
+            slow=record_data.stuck,
         )
 
     # 逐题时间戳按净时长回铺,教师端时间线才能还原真实学习时段
@@ -318,7 +319,9 @@ async def update_word_mastery(
     user_id: int,
     word_id: int,
     learning_mode: str,
-    is_correct: bool
+    is_correct: bool,
+    *,
+    slow: bool = False,
 ):
     """
     更新单词掌握度。
@@ -326,7 +329,7 @@ async def update_word_mastery(
     实现已收到 services/mastery.py —— 单元考试/错题闯关原先各自手写计数器,
     漏掉 total_encounters 把等级算歪(见该模块 docstring),现在三条路径共用一份。
     """
-    await apply_answer(db, user_id, word_id, learning_mode, is_correct)
+    await apply_answer(db, user_id, word_id, learning_mode, is_correct, slow=slow)
 
 
 # ========================================
@@ -990,7 +993,8 @@ async def submit_review_records(
         # 更新单词掌握度
         await update_word_mastery(
             db, user_id, record_data.word_id,
-            record_data.learning_mode, record_data.is_correct
+            record_data.learning_mode, record_data.is_correct,
+            slow=record_data.stuck,
         )
 
     # 逐题时间戳按净时长回铺,教师端时间线才能还原真实学习时段

@@ -12,7 +12,7 @@ import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { API_BASE_URL } from '../config/env';
 import { getErrorMessage } from '../utils/errorMessage';
 import { teacherMonitor } from '../api/teacherMonitor';
-import type { DailyContentItem, ClassRankingEntry, ClassRankingMetric, ClassRankingPeriod } from '../api/teacherMonitor';
+import type { DailyContentItem, StuckWordItem, ClassRankingEntry, ClassRankingMetric, ClassRankingPeriod } from '../api/teacherMonitor';
 
 interface ClassInfo {
   id: number;
@@ -58,6 +58,7 @@ interface DailyStudentData {
   sessions_count: number;
   switch_count?: number;
   distracted_count?: number;
+  stuck_count?: number;
   review_due_today?: number;
   review_done_today?: number;
   graduated_words?: number;
@@ -91,7 +92,7 @@ const headers = () => ({ Authorization: `Bearer ${getToken()}` });
 const AVAILABLE_PAGE_SIZE = 50;
 
 // 每日数据表列数：基础列(不含首列勾选框) + 可收起的次要列。展开行 colSpan 据此计算，避免魔法数字。
-const DAILY_BASE_COLS = 10;      // 学生/学习内容/学习单词/学习时长/效率/正确错误/准确率/切屏/发呆/操作
+const DAILY_BASE_COLS = 11;      // 学生/学习内容/学习单词/学习时长/效率/正确错误/准确率/切屏/发呆/卡住/操作
 const DAILY_SECONDARY_COLS = 4;  // 会话数/复习待/复习已/已毕业
 
 // 分段切换按钮组（排行榜的"时间维度""指标"共用）
@@ -214,6 +215,7 @@ const TeacherClassManagement = () => {
   // 每日数据 - 展开某学生查看当天具体背了哪本书/哪个单元/第几组
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
   const [dailyContent, setDailyContent] = useState<DailyContentItem[]>([]);
+  const [stuckWords, setStuckWords] = useState<StuckWordItem[]>([]);
   // 学生单日行为时间线(签到→活跃段→空窗段→作业事件),回答"这两小时他在干嘛"
   const [dayTimeline, setDayTimeline] = useState<{ type: string; time: string; text: string }[] | null>(null);
   // 全班"实际学习时段"(首次~末次答题),表格与家长日报图共用
@@ -247,7 +249,7 @@ const TeacherClassManagement = () => {
       loadDailyStats(selectedClass.id, selectedDate);
     }
     setExpandedStudentId(null);
-    setDailyContent([]);
+    setDailyContent([]); setStuckWords([]);
     setDailySearch('');  // 切换班级/日期时清空搜索，避免残留过滤
   }, [selectedClass, selectedDate]);
 
@@ -354,7 +356,7 @@ const TeacherClassManagement = () => {
     if (!selectedClass) return;
     if (expandedStudentId === studentId) {
       setExpandedStudentId(null);
-      setDailyContent([]);
+      setDailyContent([]); setStuckWords([]);
       setContentSummary(null);
       setDayTimeline(null);
       return;
@@ -368,7 +370,7 @@ const TeacherClassManagement = () => {
   /** 拉某学生某天的明细 + 汇总(明细面板内翻日期用) */
   const loadDailyContentFor = async (studentId: number, date: string) => {
     if (!selectedClass) return;
-    setDailyContent([]);
+    setDailyContent([]); setStuckWords([]);
     setDayTimeline(null);
     setLoadingDailyContent(true);
     // 行为时间线并行拉取,失败不影响学习内容展示
@@ -385,6 +387,7 @@ const TeacherClassManagement = () => {
     try {
       const res = await teacherMonitor.dailyStatsContent(selectedClass.id, studentId, date);
       setDailyContent(res.items || []);
+      setStuckWords(res.stuck_words || []);
       // 该日汇总:当天=直接用表格行;历史=单独拉该日 daily-stats 找此学生
       if (date === selectedDate) {
         const row = dailyStats.find(s => s.user_id === studentId);
@@ -399,6 +402,7 @@ const TeacherClassManagement = () => {
         setContentSummary(row ? { words: row.words_learned, duration: row.study_duration, accuracy: row.accuracy_rate } : null);
       }
     } catch (error) {
+      setStuckWords([]);
       console.error('加载学习内容明细失败:', error);
     } finally {
       setLoadingDailyContent(false);
@@ -1282,6 +1286,7 @@ const TeacherClassManagement = () => {
                             </th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="离开学习页面的次数(切去别的标签页/应用)">切屏</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="60秒无操作被全屏提醒的次数">发呆</th>
+                            <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="听写时一个词40秒没写出来、15秒没打字,页面问过「卡住了吗」的词数。点开学生看是哪几个词">卡住</th>
                             {showSecondaryCols && <>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm">会话数</th>
                             <th className="text-center py-3 px-3 font-semibold text-gray-700 text-sm" title="艾宾浩斯曲线下今日还应回顾的单词">复习待</th>
@@ -1434,6 +1439,11 @@ const TeacherClassManagement = () => {
                                   {s.distracted_count || '-'}
                                 </span>
                               </td>
+                              <td className="py-3 px-3 text-center text-sm">
+                                <span className={(s.stuck_count ?? 0) > 5 ? 'font-bold text-red-500' : (s.stuck_count ?? 0) > 0 ? 'text-amber-600' : 'text-gray-300'}>
+                                  {s.stuck_count || '-'}
+                                </span>
+                              </td>
                               {showSecondaryCols && <>
                               <td className="py-3 px-3 text-center text-sm text-gray-600">
                                 {s.sessions_count || '-'}
@@ -1532,6 +1542,26 @@ const TeacherClassManagement = () => {
                                           </div>
                                         ))}
                                       </div>
+                                    </div>
+                                  )}
+                                  {/* 听写卡住的词:想了多久、最后怎样 —— 回答「他这几十分钟卡在哪」 */}
+                                  {!loadingDailyContent && stuckWords.length > 0 && (
+                                    <div className="mb-3 bg-white rounded-xl border border-amber-200 shadow-sm px-4 py-3">
+                                      <div className="text-xs font-semibold text-gray-500 mb-2">
+                                        🤔 听写卡住的词({stuckWords.length} 个,40 秒没写出来、15 秒没打字时问过「卡住了吗」)
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {stuckWords.map(w => (
+                                          <span key={w.word_id} className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2 py-1 text-xs">
+                                            <span className="font-semibold text-gray-800">{w.word}</span>
+                                            <span className="text-amber-700">想了 {w.seconds} 秒</span>
+                                            <span className={w.outcome === 'correct' ? 'text-green-600' : 'text-red-500'}>
+                                              · {w.outcome === 'correct' ? '后来写对了' : w.outcome === 'gave_up' ? '看了答案' : '写错了'}
+                                            </span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <div className="mt-2 text-[11px] text-gray-400">写对了的也会排进明天的每日复习。</div>
                                     </div>
                                   )}
                                   {loadingDailyContent ? (

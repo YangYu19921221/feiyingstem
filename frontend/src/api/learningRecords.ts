@@ -13,6 +13,8 @@ export interface WordAnswerCreate {
   time_spent: number; // 毫秒
   learning_mode: string; // flashcard/quiz/spelling/fillblank
   user_answer?: string; // 答错时的实际输入(拼写/听写),拼写错误模式诊断用
+  /** 听写时这个词卡住很久才拼对: 照常算对,下次复习最晚排到明天(后端 services/mastery 的 slow) */
+  stuck?: boolean;
 }
 
 export interface LearningRecordBatchCreate {
@@ -115,6 +117,19 @@ export const submitMistakePracticeRecord = async (
 export const reportStudyTime = async (sessionSeconds: number): Promise<void> => {
   if (!sessionSeconds || sessionSeconds <= 0) return;
   await submitReliably('/student/study-time', { session_seconds: Math.round(sessionSeconds) });
+};
+
+/**
+ * 听写时这个词卡住了(40 秒没交、15 秒没打字,页面问过「卡住了吗」)。
+ * 后端一人一天一个词一行,重发不会把次数刷高;走可靠队列,关页面也补交。
+ */
+export const reportStuckWord = async (payload: {
+  word_id: number;
+  unit_id?: number;
+  ms: number;
+  outcome: 'correct' | 'wrong' | 'gave_up';
+}): Promise<void> => {
+  await submitReliably('/student/presence/stuck-word', payload, { dedupe: false });
 };
 
 /**

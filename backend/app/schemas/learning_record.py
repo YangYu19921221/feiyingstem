@@ -14,6 +14,9 @@ class WordAnswerCreate(BaseModel):
     learning_mode: str = Field(description="学习模式: flashcard/quiz/spelling/fillblank")
     # 学生实际输入(拼写/听写答错时携带): 拼写错误模式诊断的数据地基,选填兼容旧客户端
     user_answer: Optional[str] = Field(default=None, max_length=100)
+    # 听写时这个词卡住很久(页面问过「卡住了吗」)。拼对了照常算对,
+    # 但下次复习最晚排到明天(services/mastery.apply_answer 的 slow)。选填兼容旧客户端
+    stuck: bool = False
 
 
 class LearningRecordBatchCreate(BaseModel):

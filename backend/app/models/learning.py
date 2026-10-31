@@ -327,3 +327,29 @@ class WeeklyReport(Base):
     __table_args__ = (
         UniqueConstraint('user_id', 'week_start', name='uq_weekly_report_user_week'),
     )
+
+
+class WordStuckEvent(Base):
+    """听写时「卡住」的词 —— 一人一天一个词一行(2026-10-31)
+
+    词出现后 40 秒还没交、且最近 15 秒没打字,页面问一句「卡住了吗」并记一行。
+    发呆提醒只看有没有操作(动鼠标也算人在),抓不到「手偶尔动一下、人在走神」,
+    这张表补的就是这一块: 老师看得到今天卡在哪几个词、各想了多久。
+    ms 取同一天同一个词最长的那次;outcome: correct 想出来了 / wrong 写错 / gave_up 点了看答案。
+    新表由 create_all 建,不进 tenancy 锚点,查询按学生 id 走老师本班名单。
+    """
+    __tablename__ = "word_stuck_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    word_id = Column(Integer, ForeignKey("words.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(Integer, nullable=True)
+    study_date = Column(Date, nullable=False)       # 北京日
+    ms = Column(Integer, nullable=False, default=0)
+    outcome = Column(String(10), nullable=False, default="wrong")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'study_date', 'word_id', name='uq_word_stuck_user_day_word'),
+    )

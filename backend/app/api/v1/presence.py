@@ -79,6 +79,61 @@ async def report_focus_event(
     return {"ok": True}
 
 
+STUCK_OUTCOMES = ("correct", "wrong", "gave_up")
+STUCK_MS_MAX = 30 * 60 * 1000  # 单词再久也按 30 分钟记(页面开着人走了)
+
+
+class StuckWordRequest(BaseModel):
+    word_id: int
+    unit_id: Optional[int] = None
+    ms: int = 0
+    outcome: str = "wrong"  # correct 想出来了 / wrong 写错 / gave_up 点了看答案
+
+
+@router.post("/student/presence/stuck-word")
+async def report_stuck_word(
+    data: StuckWordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """听写时这个词卡住了(40 秒没交、15 秒没打字,页面问过「卡住了吗」)。
+
+    一人一天一个词一行: 同一天又卡在同一个词上,留最长的那次和最后的结果,
+    所以重试补交、换页面再卡都不会把次数刷高。老师「每日数据」的「卡住」= 当天行数。
+    """
+    from app.models.learning import WordStuckEvent
+    from app.models.word import Word
+    from app.core.timeutil import local_today, utc_now
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+    if data.outcome not in STUCK_OUTCOMES:
+        raise HTTPException(status_code=422, detail="outcome 必须是 correct/wrong/gave_up")
+    if (await db.execute(select(Word.id).where(Word.id == data.word_id))).scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="单词不存在")
+    ms = max(0, min(int(data.ms or 0), STUCK_MS_MAX))
+    stmt = sqlite_insert(WordStuckEvent).values(
+        user_id=current_user.id,
+        word_id=data.word_id,
+        unit_id=data.unit_id,
+        study_date=local_today(),
+        ms=ms,
+        outcome=data.outcome,
+        created_at=utc_now(),
+        updated_at=utc_now(),
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_id", "study_date", "word_id"],
+        set_={
+            "ms": func.max(WordStuckEvent.ms, stmt.excluded.ms),
+            "outcome": stmt.excluded.outcome,
+            "unit_id": func.coalesce(stmt.excluded.unit_id, WordStuckEvent.unit_id),
+            "updated_at": utc_now(),  # Python 写,和 SQLAlchemy 别处同一种带微秒的格式
+        },
+    )
+    await db.execute(stmt)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.post("/student/presence/heartbeat")
 async def presence_heartbeat(
     data: HeartbeatRequest,

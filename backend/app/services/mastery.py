@@ -103,6 +103,7 @@ async def apply_answer(
     is_correct: bool,
     *,
     advance_srs: bool = True,
+    slow: bool = False,
 ) -> WordMastery:
     """
     记一次答题:计数器 + 掌握度阶梯 + SRS 排期,一次全做对。
@@ -112,6 +113,10 @@ async def apply_answer(
 
     advance_srs=False 时只记计数与等级,不动 review_stage/next_review_at
     (用于"考试错题顺带扣一下"这类不该重排复习节奏的场景)。
+
+    slow=True(听写时卡住很久才拼对,见 models.learning.WordStuckEvent):
+    照常算对、照常进阶,但下次复习最晚排到明天北京 0 点 —— 想了一分钟才拼出来
+    不等于记住了,按正常间隔要隔两天、四天才再见,明天的「今日复习」要能挑到它。
     """
     mastery = await get_or_create(db, user_id, word_id)
 
@@ -133,8 +138,18 @@ async def apply_answer(
 
     if advance_srs:
         _advance_srs(mastery, is_correct)
+        if slow and is_correct:
+            cap = tomorrow_start_utc()
+            if mastery.next_review_at is None or mastery.next_review_at > cap:
+                mastery.next_review_at = cap
 
     return mastery
+
+
+def tomorrow_start_utc() -> datetime:
+    """明天北京 0 点(UTC naive,与 next_review_at 同口径)。"""
+    from app.core.timeutil import local_today_utc_range
+    return local_today_utc_range()[1]
 
 
 def _advance_srs(mastery: WordMastery, is_correct: bool) -> None:

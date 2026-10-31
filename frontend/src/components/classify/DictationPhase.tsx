@@ -2,6 +2,11 @@
  * 听写阶段（循环模式）
  * 拼错显示正确答案，一轮结束后错词再来
  * 只有首次拼对才算通过，用于错题集记录
+ *
+ * 「卡住了吗」(2026-10-31): 第一次听写这个词,STUCK_MS 还没交、且 QUIET_MS 没打过字
+ * → 卡片上问一句,给「再听一遍 / 不会,看答案」。发呆提醒只看有没有操作,
+ * 孩子隔一会儿动下鼠标就一直算「在学」;这里看的是「有没有进展」。
+ * 每个词第一次作答的真实用时(切出页面的时间不算)随结果带出去,卡住过的词经 onStuck 上报。
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,7 +22,17 @@ export interface DictationResult {
   word: string;
   userInput: string;
   isCorrect: boolean;  // 首次是否拼对
+  /** 首次作答用时(毫秒,不含切出页面的时间);没作答过(断点恢复前的旧结果)为空 */
+  ms?: number;
+  /** 首次作答前问过「卡住了吗」 */
+  stuck?: boolean;
 }
+
+export type StuckOutcome = 'correct' | 'wrong' | 'gave_up';
+
+/** 多久没交算卡住 / 最近多久没打字(还在打字说明在想,不打断) */
+export const STUCK_MS = 40_000;
+export const QUIET_MS = 15_000;
 
 interface DictationPhaseProps {
   words: WordData[];
@@ -26,6 +41,8 @@ interface DictationPhaseProps {
   /** 拼错后订正需连续正确几遍才放行。默认 3(正常学习强化记忆);
    *  复习模式传 1,拼错订正 1 遍即过,不再重复抄。 */
   copyRequired?: number;
+  /** 卡住过的词第一次作答后调一次(单元复习里的二次听写不传,不记) */
+  onStuck?: (info: { wordId: number; ms: number; outcome: StuckOutcome }) => void;
 }
 
 export default function DictationPhase({
@@ -33,6 +50,7 @@ export default function DictationPhase({
   onComplete,
   playAudioSlow,
   copyRequired = 3,
+  onStuck,
 }: DictationPhaseProps) {
   const [roundWords, setRoundWords] = useState<WordData[]>(words);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -57,6 +75,22 @@ export default function DictationPhase({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 这个词第一次作答的计时: 出现时刻、切出页面累计的时间、最近一次打字
+  const shownAtRef = useRef(Date.now());
+  const hiddenMsRef = useRef(0);
+  const hiddenSinceRef = useRef<number | null>(null);
+  const lastTypeAtRef = useRef(Date.now());
+  const firstMsRef = useRef<Map<number, number>>(new Map());
+  const stuckIdsRef = useRef<Set<number>>(new Set());
+  const [stuckAsk, setStuckAsk] = useState(false);
+  const onStuckRef = useRef(onStuck);
+  onStuckRef.current = onStuck;
+  const elapsedMs = () => {
+    const now = Date.now();
+    const hiddenNow = hiddenSinceRef.current !== null ? now - hiddenSinceRef.current : 0;
+    return Math.max(0, now - shownAtRef.current - hiddenMsRef.current - hiddenNow);
+  };
+
   const currentWord = roundWords[currentIndex];
   const wordLength = currentWord?.word.replace(/\s+/g, '').length || 0;
   const wordLengthWithSpaces = currentWord?.word.length || 0;
@@ -73,12 +107,63 @@ export default function DictationPhase({
     return () => clearTimeout(t);
   }, [currentIndex, currentWord, playAudioSlow, round, showRoundSummary, retryMode, copyDoneCount, retryPassed]);
 
+  // 换词重新计时
+  useEffect(() => {
+    const now = Date.now();
+    shownAtRef.current = now;
+    lastTypeAtRef.current = now;
+    hiddenMsRef.current = 0;
+    hiddenSinceRef.current = document.hidden ? now : null;
+    setStuckAsk(false);
+  }, [currentIndex, round]);
+
+  // 切出页面的时间不算进用时(那段由切屏提醒管)
+  useEffect(() => {
+    const onVis = () => {
+      const now = Date.now();
+      if (document.hidden) {
+        if (hiddenSinceRef.current === null) hiddenSinceRef.current = now;
+      } else if (hiddenSinceRef.current !== null) {
+        hiddenMsRef.current += now - hiddenSinceRef.current;
+        hiddenSinceRef.current = null;
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  // 第一次听写这个词: 想了很久还没交、最近也没在打字 → 问一句「卡住了吗」(每个词只问一次)
+  const firstTry = !!currentWord && !firstAttemptResults.has(currentWord.id);
+  useEffect(() => {
+    if (!currentWord || submitted || showRoundSummary || !firstTry || stuckAsk) return;
+    if (stuckIdsRef.current.has(currentWord.id)) return;
+    const id = currentWord.id;
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      if (elapsedMs() >= STUCK_MS && Date.now() - lastTypeAtRef.current >= QUIET_MS) {
+        stuckIdsRef.current.add(id);
+        setStuckAsk(true);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [currentWord, submitted, showRoundSummary, firstTry, stuckAsk]);
+
+  /** 第一次作答落定: 记用时;问过「卡住了吗」的词上报一次 */
+  const settleFirstAttempt = (wordId: number, outcome: StuckOutcome) => {
+    if (firstMsRef.current.has(wordId)) return;
+    const ms = elapsedMs();
+    firstMsRef.current.set(wordId, ms);
+    if (stuckIdsRef.current.has(wordId)) onStuckRef.current?.({ wordId, ms, outcome });
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (retryMode) {
       setRetryInput(e.target.value.slice(0, wordLengthWithSpaces));
       return;
     }
     if (submitted) return;
+    lastTypeAtRef.current = Date.now();
+    setStuckAsk(false);  // 开始写了就不挡着
     setUserInput(e.target.value.slice(0, wordLengthWithSpaces));
   };
 
@@ -102,6 +187,8 @@ export default function DictationPhase({
     if (!correct && !firstWrongInputsRef.current.has(currentWord.id)) {
       firstWrongInputsRef.current.set(currentWord.id, userInput.trim());
     }
+    settleFirstAttempt(currentWord.id, correct ? 'correct' : 'wrong');
+    setStuckAsk(false);
 
     if (!correct) {
       setRoundErrorWords(prev => {
@@ -121,6 +208,8 @@ export default function DictationPhase({
         word: w.word,
         userInput: firstWrongInputsRef.current.get(w.id) ?? w.word,
         isCorrect: firstAttemptResults.get(w.id) ?? true,
+        ms: firstMsRef.current.get(w.id),
+        stuck: stuckIdsRef.current.has(w.id) || undefined,
       }));
       onComplete(results);
     } else {
@@ -177,6 +266,28 @@ export default function DictationPhase({
       setTimeout(() => playAudioSlow(currentWord.word, currentWord.id), 200);
     }
   }, [currentWord, retryInput, copyDoneCount, playAudioSlow]);
+
+  // 跳过 / 卡住时点「不会,看答案」= 交空答案、算没拼对、进抄写
+  const giveUp = () => {
+    if (!currentWord || submitted) return;
+    settleFirstAttempt(currentWord.id, 'gave_up');
+    setStuckAsk(false);
+    setUserInput('');
+    setIsCorrect(false);
+    setSubmitted(true);
+    setRetryMode(true);
+    setFirstAttemptResults(prev => {
+      if (prev.has(currentWord.id)) return prev;
+      const next = new Map(prev);
+      next.set(currentWord.id, false);
+      return next;
+    });
+    setRoundErrorWords(prev => {
+      if (prev.some(w => w.id === currentWord.id)) return prev;
+      return [...prev, currentWord];
+    });
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -285,6 +396,43 @@ export default function DictationPhase({
             <span className="text-3xl md:text-4xl">🔊</span>
           </button>
           <p className="text-xs md:text-sm text-gray-400 mb-6">点击重新播放</p>
+
+          {/* 卡住了吗: 想了很久、最近也没打字。开始打字就收起 */}
+          <AnimatePresence>
+            {stuckAsk && !submitted && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                role="status"
+                className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-left"
+              >
+                <p className="text-sm md:text-base font-semibold text-amber-800">这个词想了好一会儿了,卡住了吗?</p>
+                <p className="mt-0.5 text-xs md:text-sm text-amber-700">再听一遍,或者看答案照着写,都比一直空着强。</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      lastTypeAtRef.current = Date.now();
+                      setStuckAsk(false);
+                      playAudioSlow(currentWord.word, currentWord.id);
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                    className="min-h-11 rounded-xl bg-white px-4 text-sm font-medium text-amber-800 border border-amber-300 hover:bg-amber-100 transition"
+                  >
+                    🔊 再听一遍
+                  </button>
+                  <button
+                    type="button"
+                    onClick={giveUp}
+                    className="min-h-11 rounded-xl bg-amber-500 px-4 text-sm font-medium text-white hover:bg-amber-600 transition"
+                  >
+                    不会,看答案
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {!submitted ? (
             <div className="mb-4 px-2 md:px-6">
@@ -435,23 +583,7 @@ export default function DictationPhase({
               transition={{ delay: 0.5 }}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                setUserInput('');
-                setIsCorrect(false);
-                setSubmitted(true);
-                setRetryMode(true);
-                setFirstAttemptResults(prev => {
-                  if (prev.has(currentWord.id)) return prev;
-                  const next = new Map(prev);
-                  next.set(currentWord.id, false);
-                  return next;
-                });
-                setRoundErrorWords(prev => {
-                  if (prev.some(w => w.id === currentWord.id)) return prev;
-                  return [...prev, currentWord];
-                });
-                setTimeout(() => inputRef.current?.focus(), 100);
-              }}
+              onClick={giveUp}
               className="mt-3 min-h-11 rounded-xl bg-gray-100 px-6 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
             >
               跳过（标记为未掌握）

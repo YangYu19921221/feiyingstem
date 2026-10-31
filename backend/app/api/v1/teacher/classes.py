@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.models.user import User, Class, ClassStudent, StudyCalendar, ClassInviteCode
-from app.models.learning import WordMastery, LearningRecord, StudySession, GroupExamRecord
+from app.models.learning import WordMastery, LearningRecord, StudySession, GroupExamRecord, WordStuckEvent
 from app.models.word import Word, Unit, WordBook, UnitWord
 from app.core.actor import forbid_assistant
 from app.api.v1.auth import get_current_teacher
@@ -490,6 +490,14 @@ async def get_class_daily_stats(
     )
     cal_map = {c.user_id: c for c in cal_result.scalars().all()}
 
+    # 听写卡住的词数(一人一天一个词一行,见 models.learning.WordStuckEvent)
+    stuck_res = await db.execute(
+        select(WordStuckEvent.user_id, func.count(WordStuckEvent.id))
+        .where(WordStuckEvent.user_id.in_(student_ids), WordStuckEvent.study_date == dt)
+        .group_by(WordStuckEvent.user_id)
+    )
+    stuck_map = {uid: int(n) for uid, n in stuck_res.all()}
+
     # 批量查询学习记录(答对/答错/正确率)——**只算计分模式**,与教师端排行榜、
     # 学生端 /overview 全站一致。原先不过滤,classify(自评熟/生)和 review(复习)
     # 会写大量 is_correct=0 的记录,把正确率结构性拉低(实测某学生 1.9% vs 45.0%)。
@@ -625,6 +633,7 @@ async def get_class_daily_stats(
             "sessions_count": sessions,
             "switch_count": int(getattr(cal, "switch_count", 0) or 0) if cal else 0,
             "distracted_count": int(getattr(cal, "distracted_count", 0) or 0) if cal else 0,
+            "stuck_count": stuck_map.get(student.id, 0),
             "review_due_today": rev["review_due_today"],
             "review_done_today": rev["review_done_today"],
             "graduated_words": rev["graduated_words"],
@@ -726,9 +735,22 @@ async def get_class_daily_stats_student_content(
         elif sess_map[uid]["words_studied"] < int(wc):
             sess_map[uid]["words_studied"] = int(wc)
 
+    # 当天听写卡住的词,想得最久的排前面(老师要看的是「卡在哪几个词、想了多久」)
+    stuck_rows = (await db.execute(
+        select(WordStuckEvent.word_id, WordStuckEvent.ms, WordStuckEvent.outcome, Word.word)
+        .join(Word, Word.id == WordStuckEvent.word_id)
+        .where(WordStuckEvent.user_id == student_id, WordStuckEvent.study_date == dt)
+        .order_by(WordStuckEvent.ms.desc())
+        .limit(20)
+    )).all()
+    stuck_words = [
+        {"word_id": wid, "word": w, "seconds": round((ms or 0) / 1000), "outcome": oc}
+        for wid, ms, oc, w in stuck_rows
+    ]
+
     unit_ids = set(sess_map.keys()) | set(groups_by_unit.keys())
     if not unit_ids:
-        return {"student_id": student_id, "date": dt.isoformat(), "items": []}
+        return {"student_id": student_id, "date": dt.isoformat(), "items": [], "stuck_words": stuck_words}
 
     # 3. 单元 + 单词本信息
     units_res = await db.execute(select(Unit).where(Unit.id.in_(unit_ids)))
@@ -759,7 +781,7 @@ async def get_class_daily_stats_student_content(
     # 按学习词数从多到少排序,方便老师一眼看到主要学习内容
     items.sort(key=lambda x: x["words_studied"], reverse=True)
 
-    return {"student_id": student_id, "date": dt.isoformat(), "items": items}
+    return {"student_id": student_id, "date": dt.isoformat(), "items": items, "stuck_words": stuck_words}
 
 
 @router.get("/classes/{class_id}/student/{student_id}/detail")
