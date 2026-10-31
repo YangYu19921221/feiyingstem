@@ -271,6 +271,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 小鹰老师不再派已删的书 + 老师端「孩子们今天」搜索分页(2026-10-31 17:11 **已部署生产**,提交 b2e7283;services/autopilot.py 生产==HEAD~1 整推,两个服务都重启;前端干净 worktree 构建 mvw6kg1i 整推;备份 /root/autopilot_before_deadbook_20261031_1711.py、frontend/dist_bak_20261031_1711。用户「学生端小鹰助手布置的任务有点点开找不到网页,姓古的孩子;教师端小鹰助手孩子们今天这里加个搜索和分页」):
+  ①**根因**: 古雨菲(431)今天第 3 轮派了 unit 150,它的书 26 已经删了 —— 删书只删 word_books 一行(生产外键关着),单元、autopilot_groups 都还在;
+  get_allowed_unit_ids 对已删的书照样回 None(全托 / 还留着 book_assignments),到期轮次照派,孩子点开 /units/150/start 404。
+  上线时全平台 16 个孩子共 252 个没学会的组挂在已删的书上,今天派出去 3 份(古雨菲 1、蒋轩 2)。
+  修: services/autopilot.live_books / dead_units —— 到期轮次、能学的书(accessible_books,新词也可能从已删的书出)、老师指定的书(删了就按能学的书来)、
+  老师待办「3 轮没学会」、班级统计都跳过已删的书。这 3 份作业在生产按老师「关闭」同口径关掉(is_closed=1 + _settle_coins_for_homework,0 枚要补)。
+  测试 test_autopilot 加 1 例;到期轮次 / 待办 两处过滤各让它失败(回归锁验证过)
+  ②**老师端**(pages/TeacherAutopilot.tsx): 「孩子们今天」按名字搜(前端过滤,一次取全班)、按今天进度筛(今天还没派 / 没做完 / 做完了,带人数)、
+  每页 20 个,换班 / 搜索 / 筛选回第 1 页;「按建议布置勾选的 N 个」仍按全班勾选的算(翻页、筛选时底下写明)。
+  本机浏览器(45 人的班,1366 / 390)验过: 3 页、搜「古」2 个、筛选人数对、搜不到给「看全部孩子」;无横向溢出、控制台 0 报错。
+  ⚠️ 用户贴的控制台 503 是 /ai/memory-hook(记忆钩子)走默认 AI 通道,**阿里云百炼仍欠费**(overdue-payment),和这次无关,充值后恢复
 - ✅ 签到才能做作业 + 小鹰老师的任务先签到(2026-10-31 16:13 **已部署生产**,提交 1c49020;4 个后端文件生产==HEAD~1 整推,两个服务都重启;前端干净 worktree 构建 mvw4ha1r 整推;备份 /root/eh_code_before_checkingate_20261031_1613.tgz、frontend/dist_bak_20261031_1613。生产冒烟(临时老师 + 学生 + 班,跑完删净): 自动班没签到 waiting_checkin=true、开始作业 403 need_checkin 且没记尝试次数、再来一份 403、签到后开始作业 200。用户「告诉学生签到才能做作业…小鹰助手布置的必须签到才能执行下一步操作」):
   以前只有学习入口 /units/{id}/start 拦没签到的,孩子点作业要进了学习页才被拦(分类学习有签到页,别的模式显示「加载失败」)。
   ①**后端**: api/v1/checkin.require_checkin → 403 detail {code: need_checkin, message}。挂在开始作业(放在次数检查**之前**,被拦不算尝试)
