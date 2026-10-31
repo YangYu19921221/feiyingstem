@@ -22,9 +22,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# 判定要在孩子的耐心之内返回。实测单次推理 0.25s(含 20 个候选打分),
-# 3 秒足够;超时就当判定不可用,不让孩子干等
-_TIMEOUT = 3.0
+# 判定要在孩子的耐心之内返回。热的时候单次 0.5–1 秒(含 20 个候选打分),判定进程限 2 并发,
+# 一个班同时读会排队,所以给到 8 秒(前端这段时间显示「正在听…」)。
+# 超时 = 判定不可用(verdict off)。⚠️ 10-31 以前 off 一律放过,判定服务空闲一夜后第一次要 65 秒,
+# 3 秒超时 → 乱读也变绿(用户「我怎么乱读都是绿色通过呢」)。现在判定服务每分钟保温一次,
+# 前端 off 也不再自动变绿(见 PhoneticReading.tsx)
+_TIMEOUT = 8.0
 
 
 async def judge(audio: bytes, target_word: str,

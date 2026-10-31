@@ -33,7 +33,16 @@ MODEL_DIR = os.environ.get("PHONEME_MODEL_DIR", "/root/wav2vec2-phoneme")
 # 实测单次 0.25s。限 2 并发:不限会把 4 核打满,连带拖慢同机的主应用
 _SEM = asyncio.Semaphore(2)
 
-_state = {"scorer": None, "err": None}
+_state = {"scorer": None, "err": None, "warm_at": None, "warm_sec": None}
+
+# ── 保温(2026-10-31) ─────────────────────────────────────────────────────
+# 模型权重是**从文件映射**进内存的(1.2G,/proc/<pid>/maps 里能看到 pytorch_model.bin)。
+# 这种页是「干净的文件页」,机器内存一紧(夜里备份、数据库拷贝)内核就先把它们扔掉,不用换出。
+# 空闲一夜之后第一个孩子来读,模型要从磁盘重新读回 1.2G: 10-31 实测 65 秒,后面排队的 32–54 秒。
+# 而主应用只等 3 秒,超时当判定不可用 —— 用户「我怎么乱读都是绿色通过呢」就是这么来的。
+# 每分钟拿 1 秒静音空跑一次,所有权重页都被碰一遍,就一直留在内存里。一次约 0.3–0.6 秒、2 个线程。
+WARM_EVERY = 60
+WARM_SLOW = 3.0      # 空跑超过这么久 = 页又被挤出去过,打一条 warning 方便查
 
 
 def _load():
@@ -151,7 +160,47 @@ async def handle_health(request):
         "ok": _state["scorer"] is not None,
         "error": _state["err"],
         "model_dir": MODEL_DIR,
+        "warm_at": _state["warm_at"],
+        "warm_sec": _state["warm_sec"],
     }, status=200 if _state["scorer"] else 503)
+
+
+def _warm_once() -> float:
+    """1 秒静音跑一遍前向,返回用时。trim_silence 对全静音原样返回,所以整段都进模型"""
+    import time
+    import numpy as np
+    t0 = time.time()
+    _state["scorer"].logits(np.zeros(16000, dtype="float32"))
+    return time.time() - t0
+
+
+async def _keep_warm(app):
+    """启动时先加载 + 跑一遍(第一个孩子不用等),之后每 WARM_EVERY 秒空跑一次"""
+    import time
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _load)
+    while True:
+        if _state["scorer"]:
+            try:
+                async with _SEM:      # 和真请求排同一个队,不多抢 CPU
+                    sec = await loop.run_in_executor(None, _warm_once)
+                _state["warm_at"] = int(time.time())
+                _state["warm_sec"] = round(sec, 2)
+                if sec > WARM_SLOW:
+                    log.warning("保温空跑用了 %.1f 秒(模型页被系统挤出去过,这次已读回)", sec)
+            except Exception as e:
+                log.warning("保温空跑失败: %s", e)
+        await asyncio.sleep(WARM_EVERY)
+
+
+async def _start_warm(app):
+    app["warm_task"] = asyncio.create_task(_keep_warm(app))
+
+
+async def _stop_warm(app):
+    t = app.get("warm_task")
+    if t:
+        t.cancel()
 
 
 def main():
@@ -164,6 +213,8 @@ def main():
     app = web.Application(client_max_size=4 * 1024 * 1024)
     app.router.add_post("/judge", handle_judge)
     app.router.add_get("/health", handle_health)
+    app.on_startup.append(_start_warm)
+    app.on_cleanup.append(_stop_warm)
     log.info("判定服务启动 %s:%s", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None)
 

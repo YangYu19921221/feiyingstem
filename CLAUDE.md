@@ -271,6 +271,21 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标跟读「乱读也绿」第二个根因: 判定服务睡着了(2026-10-31,用户「我怎么乱读都是绿色通过呢」): 10-30 上线两道门后,
+  生产 10-31 13:00 那 4 条录音(42–45)**库里 verdict 是空的** —— 判定根本没判出来。phoneme-judge 日志: 第一条请求 65 秒才回,
+  后面排队的 54 / 41 / 32 秒;而主应用只等 3 秒(phoneme_judge_client._TIMEOUT)→ 当判定不可用(off)→ **前端 off 一律变绿**。
+  同样的录音事后重判 0.5–1 秒,3 条乱读全是 not_close。根因: 模型 1.2G 权重是**从文件映射**进内存的(/proc/<pid>/maps 有 pytorch_model.bin,
+  smaps 里 Pss_File 1.3G、Anonymous 0.5G),这种干净文件页机器内存一紧(夜里备份 / 拷库)内核就先扔掉,不用换出;
+  空闲一夜后第一个孩子来读要从磁盘读回来。历史日志里 10-03 / 10-18 / 10-30 每次空闲后第一批都是 40–94 秒,一直存在,
+  以前 off 和 pass 一样都变绿所以看不出来。cgroup memory.events max=0(没撞 2500M 上限,是全机回收)。修了三处:
+  ①**保温**(scripts/phoneme_judge_server.py `_keep_warm`): 启动就加载 + 跑一遍,之后每 WARM_EVERY(60)秒拿 1 秒静音跑一次前向
+  (和真请求排同一个 _SEM 队),所有权重页一直被碰到;空跑超过 3 秒打 warning「模型页被系统挤出去过」;/health 多给 warm_at / warm_sec
+  ②主应用等 8 秒(热的时候一次 0.5–1 秒,2 并发,一个班同时读会排队)③**off 不再变绿**: 后端把 off 存进 phonetic_readings.verdict
+  (reason=judge_unavailable;查「乱读也过了」先看有没有成片的 off),前端不变绿、写「这次没判出来(网络慢或服务器忙),再读一次」、
+  **马上**给「我读对了」(不用等被拦 3 次 —— 不能挡住上课,也不能替孩子判过)。
+  测试 tests/test_phoneme_judge_warm.py(3 例)+ test_phonetic_practice 加 2 例;保温没挂 on_startup / 空跑不跑模型 / off 不存 / 超时改回 3 秒
+  四处各让对应用例失败(回归锁验证过)。本机浏览器(空库 + 判定服务指向不存在的端口 + 假麦克风,1366 / 390)验过: off 不变绿、
+  写明没判出来、马上出「我读对了」、点了才绿且记 self_passed、下一格不出;控制台 0 报错
 - ✅ 音标教材每个词可以改发音(2026-10-30 21:05 **已部署生产**,提交 af81c18;6 个后端文件生产==HEAD~1 整推,database.py 走 anchor patch 只加 1 条 ALTER(先在生产库副本上跑过);两个服务都重启;前端干净 worktree 构建 mvuz6qbh 整推;备份 /root/eh_db_before_phtts_20261030_2054.db、/root/eh_code_before_phtts_20261030_2054.tgz、frontend/dist_bak_20261030_2054。生产冒烟(临时机构管理员 + 学生 + 教材,跑完删净): 填音标被拒、填 seed 保存、机构管理员改平台预置书 403、题目列表不带发音、做错不给、做对给 seed、跟读页给 seed、raw 合成 200。**上线时生产没有任何词填了发音**(938 题全是 NULL = 和以前一样),用户「有的长音或者短音发音的后台传的时候可以增加个重发音按我给的单词发音吗」):
   标准音是 Edge TTS 按拼写读的,cede / faff 这类生僻词常读错长短音。phonetic_items 加列 tts_text(database.py 1 条 ALTER,NULL = 按单词读),
   填了学生端就**逐字合成**这段文字(rawTtsUrl,和老师「试听」同一个接口,一字不差)。只收英文字母 / 空格 / 撇号 / 连字符、≤60

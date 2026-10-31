@@ -467,3 +467,33 @@ async def test_self_pass_only_on_own_reading(
     row = await db_session.get(PhoneticReading, rid)
     await db_session.refresh(row)
     assert row.self_passed is True
+
+
+async def test_judge_unavailable_is_recorded_not_passed(
+        client: AsyncClient, db_session, two_orgs_with_books, monkeypatch):
+    """10-31「我怎么乱读都是绿色通过呢」: 判定服务空闲一夜后第一次要 65 秒,主应用超时 → off。
+    off 要存下来(查问题先看有没有成片的 off),而且不带 pass —— 前端据此不变绿"""
+    from app.services import phoneme_judge_client
+    from app.models.phonetic_practice import PhoneticReading
+
+    async def down(audio, target, cands):
+        return None
+    monkeypatch.setattr(phoneme_judge_client, "judge", down)
+    d = two_orgs_with_books
+    r = await client.post(
+        "/api/v1/phonetic-practice/readings/judge",
+        headers={"Authorization": f"Bearer {d['s1']}"},
+        files={"audio": ("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 3000, "audio/webm")},
+        data={"item_id": str(d["item_bad"])},
+    )
+    body = r.json()
+    assert body["verdict"] == "off" and body["reason"] == "judge_unavailable"
+    row = await db_session.get(PhoneticReading, body["reading_id"])
+    await db_session.refresh(row)
+    assert row.verdict == "off", "判定没判出来也要记下来"
+
+
+def test_judge_client_waits_long_enough():
+    """热的时候一次 0.5–1 秒,2 并发排队;3 秒超时在一个班同时读时会成片 off"""
+    from app.services import phoneme_judge_client
+    assert phoneme_judge_client._TIMEOUT >= 8

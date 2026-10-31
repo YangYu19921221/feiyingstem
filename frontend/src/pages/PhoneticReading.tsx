@@ -39,8 +39,10 @@ type RowStatus = 'todo' | 'done' | 'retry';
  * 10-03 认真读的 9 条全过,10-30 乱读 / 说中文 / 说一句话的 5 条全拦。
  *
  *   not_close / wrong_word / not_speech / silent → 不变绿,琥珀色,说清楚再怎么读
- *   pass / confused / uncertain / off / 请求失败 → 变绿。判定服务没起、网络断照旧放过,
- *     不能挡住孩子读下一个
+ *   pass / confused / uncertain → 变绿
+ *   off / 请求失败(判定服务没起、超时、网络断)→ **不变绿**,马上给「我读对了」,课照样能往下走。
+ *     ⚠️ 10-31 以前 off 一律变绿: 判定服务空闲一夜后第一次要 65 秒,主应用 3 秒就超时 →
+ *     用户「我怎么乱读都是绿色通过呢」。判定不可用 ≠ 读对了
  *
  * ## 「我读对了」
  * 以前一直摆着 = 乱读一遍点它就过,判定形同虚设。现在**被拦 3 次**才出现(录不了音的设备一直有),
@@ -73,6 +75,8 @@ export default function PhoneticReading() {
   const [misses, setMisses] = useState<number[]>([]);
   // 每一格最后那条录音的 id,「我读对了」记在它上面
   const lastReading = useRef<Record<number, number>>({});
+  // 最近一次判定没判出来(off)的格子。这些格子马上给「我读对了」,不用等被拦 3 次
+  const [judgeDown, setJudgeDown] = useState<Record<number, boolean>>({});
   // 只让**刚**变绿的那一格放庆祝特效;900ms 后清掉,否则重渲染会重复播
   const [justDone, setJustDone] = useState<number | null>(null);
   // 判定在路上(录完到出结果之间)。这段时间不给再录,避免两次判定串结果
@@ -171,6 +175,14 @@ export default function PhoneticReading() {
     if (idx !== activeRef.current) return;
 
     if (r.reading_id) lastReading.current[idx] = r.reading_id;
+    setJudgeDown(prev => ({ ...prev, [idx]: r.verdict === 'off' }));
+
+    // 判定没判出来:不变绿(不能替孩子判过),也不算被拦(不是他读得不对)
+    if (r.verdict === 'off') {
+      setStatus(prev => { const n = [...prev]; n[idx] = 'retry'; return n; });
+      setFeedback(r);
+      return;
+    }
 
     // 拦:读得不像这个音标 / 明显读成了别的词。旧值 not_speech 也拦(页面没刷新时后端可能已经是新的)
     if (r.verdict === 'not_close' || r.verdict === 'wrong_word' || r.verdict === 'not_speech') {
@@ -398,6 +410,11 @@ export default function PhoneticReading() {
               {feedback.verdict === 'silent' && (
                 <p className="text-slate-500">没听到声音,离麦克风近一点再读一次</p>
               )}
+              {feedback.verdict === 'off' && (
+                <p className="text-slate-500">
+                  这次没判出来(网络慢或服务器忙),再读一次;读得有把握可以点下面「我读对了」
+                </p>
+              )}
               {(feedback.verdict === 'not_speech'
                 || (feedback.verdict === 'not_close' && !feedback.error_hint)) && (
                 // 读得不像这个音标。不说「你读错了」—— 也可能是声音太小、离麦克风远
@@ -489,7 +506,7 @@ export default function PhoneticReading() {
             </p>
           )}
           {status[active] !== 'done'
-            && (misses[active] >= SELF_PASS_AFTER_MISSES || !!blocker || !!recError) && (
+            && (misses[active] >= SELF_PASS_AFTER_MISSES || !!judgeDown[active] || !!blocker || !!recError) && (
             <button
               onClick={markSelfDone}
               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl

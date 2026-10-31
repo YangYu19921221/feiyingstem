@@ -214,7 +214,8 @@ class JudgeOut(BaseModel):
       拦的两种 —— not_close=读得不像这个词(乱读 / 说中文 / 只「啊」一声)/
                   wrong_word=明显读成了本节另一个词(heard 是那个词)
       放的三种 —— pass=读对了 / confused=过了门槛但另一个词更像一点(只当提示)/ uncertain=判不准
-      另有 silent=没听到 / off=判定不可用(放过)。not_speech 是 10-30 之前的旧值,新判定不再发
+      另有 silent=没听到 / off=判定不可用(10-31 起不再自动放过: 前端不变绿,直接给「我读对了」)。
+      not_speech 是 10-30 之前的旧值,新判定不再发
     刻意不给分数:分数会被当成评价,而这个判定只够决定「要不要变绿」。分数存库(pron_score)只给标定用。
 
     ⚠️ near_miss / mismatch 是**旧 whisper 判定**的字符串,换成闭集打分后
@@ -279,8 +280,10 @@ async def judge_and_save(
     from app.services import phoneme_judge_client
     r = await phoneme_judge_client.judge(data, it.word, candidates)
     if not r:
-        # 判定服务没起/超时 —— 前端退回纯对比回放模式,课照上
-        return JudgeOut(verdict="off", reading_id=reading_id)
+        # 判定服务没起 / 超时。记下来(查「乱读也过了」先看这里有没有成片的 off),
+        # 前端不变绿,让孩子再读一次或自己点「我读对了」—— 不能拦住上课,也不能替孩子判过
+        await _save_verdict(db, reading_id, {"verdict": "off"})
+        return JudgeOut(verdict="off", reason="judge_unavailable", reading_id=reading_id)
 
     await _save_verdict(db, reading_id, r)
     return JudgeOut(verdict=r.get("verdict", "off"),
