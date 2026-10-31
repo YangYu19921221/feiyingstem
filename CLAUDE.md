@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 家长看得到孩子在家学习时离开了多久 + 摄像头看人在不在 + 锁屏教程(2026-10-31,用户「摄像头看脸的话家长端可以,如果切屏玩游戏这些家长端也可以看到可以做到吗」→「做」):
+- ✅ 家长看得到孩子在家学习时离开了多久 + 摄像头看人在不在 + 锁屏教程(2026-10-31 16:05 **已部署生产**,提交 91aaa71 + 88a5028;4 个改动的后端文件生产==HEAD~1 整推(git archive 导出)+ 新文件 api/v1/focus_watch.py、models/focus_watch.py、services/focus_watch.py + models/__init__.py;三张新表 create_all 建(先在生产库副本跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvw453ck 整推(模型文件公网 200);备份 /root/eh_db_before_focuswatch_20261031_1558.db、/root/eh_code_before_focuswatch_20261031_1558.tgz、frontend/dist_bak_20261031_1558。生产冒烟(临时机构 + 老师 + 两个学生 + 家长,跑完删净): 没同意时 no_face 403、不勾同意 400、同意后上报 200、家长「今天」切出 1 次 420 秒 / 摄像头离开 1 次 / 今天摄像头开着 / 实时「在学 U1、看不到人」(工作进程读到主进程的心跳)、老师登记纸质同意书 + 操作记录 1 条、撤回后 no_face 又 403。⚠️ **第一次在生产库副本上跑 init_db 三张表没建出来**: create_all 只建已导入的模型,新模型只在路由里导入,本机测试库是先加载了路由才碰巧有表;在 models/__init__.py 里导入后建出来了(88a5028)。**以后加新表,模型要在 models/__init__ 里导入,并用生产库副本单独跑 init_db 看表在不在**。用户「摄像头看脸的话家长端可以,如果切屏玩游戏这些家长端也可以看到可以做到吗」→「做」):
   规则真源 services/focus_watch.py 文件头(1–5 条)。**网页只知道离开了学习页面,不知道去了哪个应用**,这条写进了家长端文案。
   ①**切出页面记时长**: FocusReminder 离开满 5 秒的那次 focus-event 多带 away_ms + page,记一行 focus_away_events(几点走、多久,封顶 4 小时);
   次数仍以 study_calendar.switch_count 为准(老页面只报次数,家长端取两者较大)。
