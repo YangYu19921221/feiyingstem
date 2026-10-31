@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, BookOpen, Bot, CheckCircle2, ChevronDown, ChevronUp, LoaderCircle, Pause, Play, RefreshCw,
-  Settings2, Undo2, X,
+  AlertTriangle, BookOpen, Bot, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, LoaderCircle, Pause,
+  Play, RefreshCw, Search, Settings2, Undo2, X,
 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import {
@@ -20,6 +20,22 @@ import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
 const GUIDE_KEY = 'autopilot_guide_open_v1';
+
+// 「孩子们今天」按名字搜 + 按今天的进度筛 + 分页(2026-10-31,一个班几十个孩子一屏翻不完)
+const PAGE_SIZE = 20;
+type TodayFilter = 'all' | 'none' | 'doing' | 'done';
+const TODAY_FILTERS: { key: TodayFilter; label: string }[] = [
+  { key: 'all', label: '全部' },
+  { key: 'none', label: '今天还没派' },
+  { key: 'doing', label: '没做完' },
+  { key: 'done', label: '做完了' },
+];
+
+function todayStateOf(s: BoardStudent): Exclude<TodayFilter, 'all'> {
+  const t = s.today;
+  if (!t || t.status !== 'dispatched') return 'none';
+  return t.total > 0 && t.done >= t.total ? 'done' : 'doing';
+}
 
 function Guide({ rules }: { rules: Overview['rules'] | null }) {
   const [open, setOpen] = useState(() => {
@@ -381,6 +397,9 @@ export default function TeacherAutopilot() {
   const [busy, setBusy] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [editing, setEditing] = useState<BoardStudent | null>(null);
+  const [query, setQuery] = useState('');
+  const [todayFilter, setTodayFilter] = useState<TodayFilter>('all');
+  const [page, setPage] = useState(1);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -416,6 +435,8 @@ export default function TeacherAutopilot() {
     }
   }, []);
   useEffect(() => { if (classId) loadBoard(classId); }, [classId, loadBoard]);
+  // 换班 / 换搜索 / 换筛选都回第 1 页
+  useEffect(() => { setPage(1); }, [classId, query, todayFilter]);
 
   const saveClass = async (body: Parameters<typeof autopilotApi.saveClass>[1]) => {
     if (!classId) return;
@@ -466,6 +487,22 @@ export default function TeacherAutopilot() {
   const pending = useMemo(() => (board?.students ?? []).filter((s) => suggestions[String(s.id)]?.status === 'ok'), [board, suggestions]);
   const pickedOk = pending.filter((s) => picked.has(s.id));
 
+  const allStudents = useMemo(() => board?.students ?? [], [board]);
+  const filterCounts = useMemo(() => {
+    const c: Record<TodayFilter, number> = { all: allStudents.length, none: 0, doing: 0, done: 0 };
+    for (const s of allStudents) c[todayStateOf(s)] += 1;
+    return c;
+  }, [allStudents]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return allStudents.filter((s) => (todayFilter === 'all' || todayStateOf(s) === todayFilter)
+      && (!q || s.name.toLowerCase().includes(q)));
+  }, [allStudents, query, todayFilter]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const curPage = Math.min(page, pageCount);
+  const shown = filtered.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
+  const isFiltered = query.trim() !== '' || todayFilter !== 'all';
+
   return (
     <div className="min-h-screen bg-[#f5f8fc] text-slate-800">
       <StaffWorkspaceHeader role="teacher" title="小鹰老师 · 自动布置" subtitle="每天给每个孩子排任务、复习、点评;你只处理它解决不了的"
@@ -511,13 +548,45 @@ export default function TeacherAutopilot() {
                   <RefreshCw className={`h-4 w-4 ${boardLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
+              {board && board.students.length > 0 && (
+                <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-2.5 sm:flex-row sm:items-center">
+                  <label className="relative block sm:w-60">
+                    <span className="sr-only">搜孩子名字</span>
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                    <input
+                      type="text" inputMode="search" enterKeyHint="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜孩子名字"
+                      className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-100"
+                    />
+                    {query && (
+                      <button type="button" onClick={() => setQuery('')} aria-label="清空搜索"
+                        className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-slate-400 hover:text-slate-600">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </label>
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="按今天的进度筛">
+                    {TODAY_FILTERS.map((f) => (
+                      <button key={f.key} type="button" aria-pressed={todayFilter === f.key} onClick={() => setTodayFilter(f.key)}
+                        className={`min-h-8 rounded-lg px-2.5 text-xs font-medium ${todayFilter === f.key ? 'bg-slate-800 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                        {f.label} <span className={todayFilter === f.key ? 'text-orange-300' : 'text-slate-400'}>{filterCounts[f.key]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {boardLoading && !board ? (
                 <div className="flex justify-center py-12"><LoaderCircle className="h-6 w-6 animate-spin text-orange-500" aria-label="加载中" /></div>
               ) : !board || board.students.length === 0 ? (
                 <p className="py-12 text-center text-sm text-slate-500">这个班还没有学生</p>
+              ) : filtered.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-500">
+                  <p>{query.trim() ? `没有名字里带「${query.trim()}」的孩子` : '没有符合的孩子'}{todayFilter !== 'all' ? `(只看「${TODAY_FILTERS.find((f) => f.key === todayFilter)?.label}」)` : ''}</p>
+                  <button type="button" onClick={() => { setQuery(''); setTodayFilter('all'); }}
+                    className="mt-2 text-sm font-semibold text-orange-600 hover:underline">看全部孩子</button>
+                </div>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {board.students.map((s) => {
+                  {shown.map((s) => {
                     const sug = suggestions[String(s.id)];
                     const dispatched = s.today?.status === 'dispatched';
                     return (
@@ -569,6 +638,28 @@ export default function TeacherAutopilot() {
                     );
                   })}
                 </ul>
+              )}
+              {filtered.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
+                  <span>
+                    {isFiltered ? `找到 ${filtered.length} 个 / 全班 ${allStudents.length} 个` : `全班 ${allStudents.length} 个`}
+                    {pageCount > 1 ? ` · 每页 ${PAGE_SIZE} 个` : ''}
+                    {cls?.mode === 'manual' && pickedOk.length > 0 && (isFiltered || pageCount > 1) ? ` · 「按建议布置」按全班勾选的 ${pickedOk.length} 个算,不只这一页` : ''}
+                  </span>
+                  {pageCount > 1 && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <button type="button" disabled={curPage <= 1} onClick={() => setPage(curPage - 1)} aria-label="上一页"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <span className="min-w-[4.5rem] text-center tabular-nums">第 {curPage} / {pageCount} 页</span>
+                      <button type="button" disabled={curPage >= pageCount} onClick={() => setPage(curPage + 1)} aria-label="下一页"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </section>
           </>

@@ -307,6 +307,25 @@ async def _book_groups(db: AsyncSession, book_id: int) -> list[Grp]:
     return out
 
 
+async def live_books(db: AsyncSession, book_ids) -> set[int]:
+    """还在的书。删书只删 word_books 那一行(生产外键关着),单元、组、学习记录都留着 ——
+    不过滤的话小鹰老师会把已删书的单元派出去,孩子点开 /units/{id}/start 404(10-31 古雨菲 unit 150 踩到)"""
+    ids = {b for b in book_ids if b is not None}
+    if not ids:
+        return set()
+    return {b for (b,) in (await db.execute(select(WordBook.id).where(WordBook.id.in_(ids)))).all()}
+
+
+async def dead_units(db: AsyncSession, unit_ids) -> set[int]:
+    """书已经删了的单元(老师待办 / 统计里别再提它们: 孩子学不了,老师也处理不了)"""
+    ids = {u for u in unit_ids if u is not None}
+    if not ids:
+        return set()
+    rows = (await db.execute(select(Unit.id, Unit.book_id).where(Unit.id.in_(ids)))).all()
+    alive = await live_books(db, [b for _, b in rows])
+    return {u for u, b in rows if b not in alive} | (ids - {u for u, _ in rows})
+
+
 async def accessible_books(db: AsyncSession, student_id: int) -> list[int]:
     """孩子能学的书: 分配给他的 + 学过的(全托机构没分配也能学),按最近学过的排前"""
     assigned = [b for (b,) in (await db.execute(
@@ -317,8 +336,9 @@ async def accessible_books(db: AsyncSession, student_id: int) -> list[int]:
         .group_by(LearningProgress.book_id).order_by(func.max(LearningProgress.last_studied_at).desc())
     )).all()]
     seen: list[int] = []
+    alive = await live_books(db, studied + assigned)
     for b in studied + assigned:
-        if b is not None and b not in seen:
+        if b is not None and b in alive and b not in seen:
             seen.append(b)
     out = []
     for b in seen:
@@ -330,7 +350,7 @@ async def accessible_books(db: AsyncSession, student_id: int) -> list[int]:
 
 async def candidate_books(db: AsyncSession, student_id: int, st: AutopilotStudent) -> tuple[list[int], str]:
     """(按先后的书, 原因): ok / no_book 没有能学的书 / gated 老师指定的书要兑换学习卡"""
-    if st.book_id:
+    if st.book_id and st.book_id in await live_books(db, [st.book_id]):   # 老师指定的书被删了: 按能学的书来
         allowed = await get_allowed_unit_ids(db, student_id, st.book_id)
         if allowed is None or allowed:
             return [st.book_id], "ok"
@@ -672,13 +692,14 @@ async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget
         AutopilotGroup.next_due.is_not(None), AutopilotGroup.next_due <= ts))).scalars())
     due = sorted(rows, key=lambda r: (-r.rounds, r.next_due, r.unit_id, r.group_index))
     names = await _unit_names(db, [r.unit_id for r in due])
+    alive = await live_books(db, [b for _, b in names.values()])
     picked: list[tuple[str, Grp, int, Optional[int]]] = []
     left = budget
     for r in due:
         if left <= 0:
             break
         name, b = names.get(r.unit_id, ("", None))
-        if b is None or (r.unit_id, r.group_index) in skip_units:
+        if b is None or b not in alive or (r.unit_id, r.group_index) in skip_units:
             continue
         a = await allowed_of(b)
         if a is not None and r.unit_id not in a:
@@ -1515,7 +1536,11 @@ async def group_stats(db: AsyncSession, student_ids: list[int], ts: str) -> dict
     out = {sid: {"learning": 0, "graduated": 0, "stuck": 0, "due": 0} for sid in student_ids}
     if not student_ids:
         return out
-    for r in (await db.execute(select(AutopilotGroup).where(AutopilotGroup.student_id.in_(student_ids)))).scalars():
+    rows = list((await db.execute(select(AutopilotGroup).where(AutopilotGroup.student_id.in_(student_ids)))).scalars())
+    dead = await dead_units(db, [r.unit_id for r in rows])
+    for r in rows:
+        if r.unit_id in dead:
+            continue
         o = out[r.student_id]
         if r.graduated_at is not None:
             o["graduated"] += 1
@@ -1623,6 +1648,8 @@ async def todo(db: AsyncSession, teacher_id: int) -> list[dict]:
             AutopilotGroup.student_id.in_(sids), AutopilotGroup.graduated_at.is_(None),
             AutopilotGroup.rounds >= GRADUATE_ROUNDS))).scalars():
         stuck[(g.student_id, g.unit_id)].append(g)
+    dead = await dead_units(db, [u for _, u in stuck])
+    stuck = {k: v for k, v in stuck.items() if k[1] not in dead}
     names = await _unit_names(db, [u for _, u in stuck])
     for (sid, uid), gs in stuck.items():
         gs.sort(key=lambda g: g.group_index)

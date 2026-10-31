@@ -682,3 +682,40 @@ async def test_waiting_checkin_only_for_auto_class_that_will_dispatch(client, db
     await client.post("/api/v1/student/checkin", headers=_h(s.id))
     v = await view()
     assert v["active"] is True and v["checked_in"] is True
+
+
+@pytest.mark.asyncio
+async def test_deleted_book_units_are_never_dispatched(client, db_session, env):
+    """删书只删 word_books 那一行,单元和组都还在: 到期的轮次不能派出去(孩子点开 404),
+    老师待办里也别再提它(10-31 古雨菲 unit 150 踩到)"""
+    s, t, c = env["s"], env["t"], env["c"]
+    old = WordBook(name="删掉的书", is_public=True)
+    db_session.add(old)
+    await db_session.flush()
+    ou = Unit(book_id=old.id, unit_number=1, name="old unit", order_index=1, group_size=10)
+    db_session.add(ou)
+    await db_session.flush()
+    for i in range(10):
+        w = Word(word=f"apold{i}")
+        db_session.add(w)
+        await db_session.flush()
+        db_session.add(UnitWord(unit_id=ou.id, word_id=w.id, order_index=i))
+    ts = local_today().isoformat()
+    db_session.add_all([
+        AutopilotGroup(student_id=s.id, unit_id=ou.id, group_index=1, book_id=old.id, word_count=10,
+                       rounds=2, last_day=ts, next_due=ts),
+        AutopilotGroup(student_id=s.id, unit_id=ou.id, group_index=2, book_id=old.id, word_count=10,
+                       rounds=3, last_day=ts, next_due="2099-01-01"),
+        BookAssignment(student_id=s.id, book_id=old.id, scope_type="book", teacher_id=t.id),
+    ])
+    await db_session.commit()
+    await db_session.execute(sql_text("DELETE FROM word_books WHERE id=:b"), {"b": old.id})
+    await db_session.commit()
+
+    await _set_class(db_session, c, mode="auto")
+    r = await client.post("/api/v1/student/checkin", headers=_h(s.id))
+    assert r.json()["autopilot"] == "dispatched"
+    tasks = await _tasks(db_session, s.id)
+    assert tasks and all(x.unit_id != ou.id for x in tasks if x.unit_id), "已删书的单元派出去了"
+    todo = (await client.get("/api/v1/teacher/autopilot/todo", headers=_h(t.id))).json()["items"]
+    assert not any(i["kind"] == "stuck" and i.get("unit_id") == ou.id for i in todo)
