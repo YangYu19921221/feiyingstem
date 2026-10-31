@@ -145,7 +145,8 @@ async def handle_judge(request):
         from app.services.phoneme_error_pattern import detect
         tgt_toks = candidates.get(target) or []
         hint = detect(heard, tgt_toks)
-        if hint:
+        # judge() 已经给了更要紧的毛病(元音对不上)就不覆盖
+        if hint and not r.get("error_code"):
             r["error_code"] = hint["code"]
             r["error_hint"] = hint["message"]
         r["heard_phonemes"] = ''.join(heard)[:60]   # 排查用,前端不展示

@@ -322,8 +322,42 @@ def skeleton_match(heard: str, target_tokens: List[str]) -> bool:
     return groups <= len(t_vowels) + 1
 
 
+def vowel_mismatch(heard: Optional[str], target_tokens: Optional[List[str]]) -> Optional[str]:
+    """听到的**只有元音没有开头辅音**、且元音大类对不上目标词 → 返回目标元音(拦下用);否则 None
+
+    2026-10-31 用户「我发现乱读会过 我读ooo 给我过了」: 对 fee 读「ooo」,模型听成 aː,
+    两道门给过了(fee 只有 f + iː 两个音,一个拖长的元音和它的分差不大)。
+    只在**没听到开头辅音**时否决: 有辅音开头的,模型常把元音听偏(标准音 fee 听成 fei5、
+    babe 听成 paɪ),拿元音否决会冤枉读对的 —— 实测那样会拦掉 100 次读对里的 10 次;
+    只看没辅音开头的,100 次读对 0 次被拦,「ooo」「啊」照样拦。
+    """
+    toks = [t for t in (target_tokens or []) if t not in ("ˈ", "ˌ")]
+    tv = next((t for t in toks if t in _TARGET_VOWEL), None)
+    if heard is None or tv is None:
+        return None
+    onset, vowel, _ = _heard_skeleton(heard)
+    if onset is not None or vowel is None:
+        return None
+    # e 开头的 ebb / def: 中国口音常读成 a(美音 ebb 也听成 aːb),不拿 a 否决
+    allowed = _TARGET_VOWEL[tv] | ({"A"} if tv == "e" else set())
+    return None if vowel in allowed else tv
+
+
 def judge(scores: List[Tuple], target: str, heard: Optional[str] = None,
           target_tokens: Optional[List[str]] = None) -> dict:
+    """闭集得分 → 判定。见 _judge_core;外面再加一道「元音对不上」的否决(vowel_mismatch)"""
+    r = _judge_core(scores, target, heard, target_tokens)
+    if r["verdict"] in ("pass", "confused", "uncertain"):
+        tv = vowel_mismatch(heard, target_tokens)
+        if tv:
+            return {**r, "verdict": "not_close", "best": r.get("best"), "accent": False,
+                    "note": "元音对不上", "error_code": "wrong_vowel",
+                    "error_hint": f"听着元音不对,这个词要读 /{tv}/,先点「听标准音」听清楚再读"}
+    return r
+
+
+def _judge_core(scores: List[Tuple], target: str, heard: Optional[str] = None,
+                target_tokens: Optional[List[str]] = None) -> dict:
     """闭集得分 → 判定
 
     scores: rank() 的输出 [(词, 排序分, 逐帧分, 贴合分)]。也兼容只有 2 / 3 元的老格式
@@ -413,6 +447,8 @@ def grade(verdict: Optional[str], gop: Optional[float], error_code: Optional[str
     if verdict in ("pass", "confused", "uncertain"):
         return "yellow" if (error_code or accent) else "green"
     if verdict == "not_close":
+        if error_code == "wrong_vowel":
+            return "red"                  # 元音都不对(读「ooo」),不算接近
         return "yellow" if gop is not None and gop >= NEAR_FLOOR else "red"
     if verdict in ("wrong_word", "not_speech"):
         return "red"

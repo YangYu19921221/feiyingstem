@@ -469,7 +469,8 @@ export default function PhoneticReading() {
                   已经变绿时口吻要变成「读对了,不过…」,否则绿灯配一句错误提示
                   会让孩子以为自己到底对没对都搞不清。 */}
               {feedback.error_hint ? (
-                <p className="text-amber-700">
+                // 红的(元音都不对,比如读「ooo」)用红字;其余提示是「接近」,用黄字
+                <p className={feedback.grade === 'red' ? 'text-rose-700' : 'text-amber-700'}>
                   {isPassed(status[active]) && (
                     <span className="font-medium">差一点就全对了。</span>
                   )}

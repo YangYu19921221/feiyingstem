@@ -197,3 +197,30 @@ def test_vowel_initial_words_not_relaxed():
 def test_no_heard_no_allowance():
     """老调用方不传 heard: 行为和以前一样"""
     assert judge(_cab_scores(-7.3), "cab")["verdict"] == "not_close"
+
+
+# ── 元音对不上就拦(2026-10-31,用户「我发现乱读会过 我读ooo 给我过了」)──────────
+
+def _fee_pass_scores():
+    # 两道门都过得去的分数(用户对 fee 读「ooo」时的实际情况: 贴合分 -5.3,分差不大)
+    return [("fee", -3.0, -0.3, -5.27), ("bed", -3.2, -0.3, -6.0)]
+
+
+def test_vowel_only_with_wrong_vowel_is_blocked_red():
+    """对 fee 读「ooo」,模型听成 aː: 两道门放过了,元音否决要拦下,标红"""
+    from app.services.phoneme_closed_set import grade
+    r = judge(_fee_pass_scores(), "fee", heard="aː", target_tokens=["f", "iː"])
+    assert r["verdict"] == "not_close" and r["error_code"] == "wrong_vowel"
+    assert "/iː/" in r["error_hint"]
+    assert grade(r["verdict"], r["gop"], r["error_code"]) == "red"
+
+
+@pytest.mark.parametrize("heard,word,toks,why", [
+    ("fei5", "fee", ["f", "iː"], "有开头辅音: 模型常把元音听偏(标准音 fee 听成 fei5),不否决"),
+    ("a", "ebb", ["e", "b"], "e 开头中国口音常读成 a,不否决"),
+    ("i5", "cede", ["s", "iː", "d"], "元音对得上"),
+    (None, "fee", ["f", "iː"], "没传听到的音素: 不否决(和以前一样)"),
+])
+def test_vowel_veto_does_not_hit_correct_readings(heard, word, toks, why):
+    scores = [(word, -3.0, -0.3, -2.0), ("bed", -4.0, -0.4, -6.0)]
+    assert judge(scores, word, heard=heard, target_tokens=toks)["verdict"] == "pass", why
