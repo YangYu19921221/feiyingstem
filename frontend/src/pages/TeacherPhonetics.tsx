@@ -13,7 +13,7 @@ import {
 } from '../api/phonetics';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
-import { BarChart3, ListOrdered, MessageCircleQuestion, School, Upload, Volume2 } from 'lucide-react';
+import { BarChart3, ListOrdered, MessageCircleQuestion, School, Search, Upload, Volume2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import MaterialManagerDialog from '../components/phonetics/MaterialManagerDialog';
@@ -108,8 +108,8 @@ export default function TeacherPhonetics() {
   const [materialFor, setMaterialFor] = useState<PhoneticVideo | null>(null);
   /** 正在看哪个视频的观看数据 */
   const [statsFor, setStatsFor] = useState<PhoneticVideo | null>(null);
-  /** 跨视频学情总览弹层开着吗 */
-  const [overviewOpen, setOverviewOpen] = useState(false);
+  /** 跨视频学情总览弹层开着吗;'search' = 从「查学生」进来,光标直接放在搜索框 */
+  const [overviewOpen, setOverviewOpen] = useState<false | 'overview' | 'search'>(false);
   /** 手动排序弹层开着吗 */
   const [reorderOpen, setReorderOpen] = useState(false);
   /**
@@ -449,13 +449,22 @@ export default function TeacherPhonetics() {
                 行上的「数据」按钮只管一节课,这两个是跨视频的,必须在页面顶部 */}
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <button
-                onClick={() => setOverviewOpen(true)}
+                onClick={() => setOverviewOpen('overview')}
                 className="flex items-center gap-1.5 rounded-xl bg-[#e8f3f4] px-3 py-2 text-sm
                            font-semibold text-[#276f78] transition hover:bg-[#d7ebed] active:scale-[0.98]"
               >
                 <BarChart3 className="h-4 w-4" />
                 学情总览
                 <span className="font-normal text-xs text-[#4b8f97]">哪几节没人看 · 谁还没学</span>
+              </button>
+              <button
+                onClick={() => setOverviewOpen('search')}
+                className="flex items-center gap-1.5 rounded-xl bg-[#e8f3f4] px-3 py-2 text-sm
+                           font-semibold text-[#276f78] transition hover:bg-[#d7ebed] active:scale-[0.98]"
+              >
+                <Search className="h-4 w-4" />
+                查学生
+                <span className="font-normal text-xs text-[#4b8f97]">他看了哪几节</span>
               </button>
               <button
                 onClick={() => navigate('/teacher/classroom-net')}
@@ -1050,6 +1059,7 @@ export default function TeacherPhonetics() {
       {overviewOpen && (
         <OverviewDialog
           lecturers={lecturers}
+          focusSearch={overviewOpen === 'search'}
           onClose={() => setOverviewOpen(false)}
         />
       )}

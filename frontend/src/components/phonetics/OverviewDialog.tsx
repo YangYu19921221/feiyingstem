@@ -12,11 +12,11 @@
  *    并且学生表里只有有记录的人(名册补 0 行这件事 admin 做不到)
  * 3. 时长为空的视频不显示看完率相关的百分比
  */
-import { useCallback, useEffect, useState } from 'react';
-import { BarChart3, ChevronLeft, ChevronRight, Download, Loader2, Radio, TriangleAlert, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, ChevronLeft, ChevronRight, Download, Loader2, Radio, Search, TriangleAlert, X } from 'lucide-react';
 import {
   phoneticsApi, CATEGORY_LABELS, NO_LECTURER,
-  type PhoneticOverview, type LecturerStat,
+  type PhoneticOverview, type LecturerStat, type OverviewStudentRow,
 } from '../../api/phonetics';
 import { toast } from '../Toast';
 import { getErrorMessage } from '../../utils/errorMessage';
@@ -26,9 +26,11 @@ import StudentVideoWatchList from './StudentVideoWatchList';
 interface Props {
   lecturers: LecturerStat[];
   onClose: () => void;
+  /** 从「查学生」按钮进来: 一打开就把光标放在搜索框里 */
+  focusSearch?: boolean;
 }
 
-export default function OverviewDialog({ lecturers, onClose }: Props) {
+export default function OverviewDialog({ lecturers, onClose, focusSearch }: Props) {
   const [data, setData] = useState<PhoneticOverview | null>(null);
   const [loading, setLoading] = useState(true);
   /** '' = 全部讲师;NO_LECTURER = 只看未指定讲师的 */
@@ -37,6 +39,9 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
   /** 点了某个学生 → 看他每节课的情况 */
   const [selected, setSelected] = useState<{ id: number; name: string } | null>(null);
   const [exporting, setExporting] = useState(false);
+  /** 搜学生名字。从学生详情返回时保留,方便接着看下一个 */
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,15 +57,29 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    // 看某个学生时 Esc 先回总览,再按一次才关
+    // Esc 一层一层退: 学生详情 → 清掉搜索 → 关掉弹层
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (selected) setSelected(null);
+      else if (query) setQuery('');
       else onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, selected]);
+  }, [onClose, selected, query]);
+
+  // 数据到了、且不在看某个学生时才聚焦(加载中搜索框还没渲染)
+  useEffect(() => {
+    if (focusSearch && data && !selected) searchRef.current?.focus();
+  }, [focusSearch, data, selected]);
+
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(
+    () => (q ? (data?.students || []).filter((st) => st.name.toLowerCase().includes(q)) : []),
+    [data, q],
+  );
+
+  const openStudent = (st: OverviewStudentRow) => setSelected({ id: st.student_id, name: st.name });
 
   const lecturerLabel = lecturer === ''
     ? '全部讲师'
@@ -107,6 +126,36 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
       toast.error('复制失败,请手动选中名单');
     }
   };
+
+  /** 学生一行: 搜索结果和「按学生」列表共用 */
+  const studentRow = (st: OverviewStudentRow) => (
+    <li key={st.student_id}>
+      <button
+        onClick={() => openStudent(st)}
+        className="flex w-full items-center gap-2.5 rounded-lg py-2 text-left transition hover:bg-gray-50"
+      >
+        <span className="min-w-0 flex-1 truncate text-sm text-ink">{st.name}</span>
+        {st.videos_started === 0 ? (
+          <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
+            一节都没看
+          </span>
+        ) : (
+          <>
+            <span className="shrink-0 font-numeric text-xs text-ink-mute">
+              看完 {st.videos_completed} / 看过 {st.videos_started}
+            </span>
+            <span className="shrink-0 font-numeric text-xs text-ink-soft">
+              {humanDuration(st.total_watch_seconds)}
+            </span>
+            <span className="w-10 shrink-0 text-right font-numeric text-xs text-ink-mute">
+              {shortDay(st.last_viewed_at)}
+            </span>
+          </>
+        )}
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-mute" aria-hidden="true" />
+      </button>
+    </li>
+  );
 
   return (
     <div
@@ -184,6 +233,57 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
 
           {!selected && !loading && data && sum && (
             <>
+              {/* 搜学生: 输名字 → 点他 → 看他每节课。放在最上面,这是老师最常用的一步 */}
+              <div className="relative mb-3">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
+                <input
+                  ref={searchRef}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    // 回车直接打开第一个(输入法组字时的回车不算)
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing && matches.length > 0) {
+                      openStudent(matches[0]);
+                    }
+                  }}
+                  placeholder={isAdmin ? '搜学生名字,看他看了哪些视频' : '搜班上的学生,看他看了哪些视频'}
+                  aria-label="搜学生名字"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-9 text-base text-ink
+                             placeholder:text-ink-mute focus:border-[#2f8791] focus:outline-none sm:text-sm
+                             [&::-webkit-search-cancel-button]:hidden"
+                />
+                {query && (
+                  <button
+                    onClick={() => { setQuery(''); searchRef.current?.focus(); }}
+                    aria-label="清掉搜索"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-ink-mute hover:bg-gray-100 hover:text-ink"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {q ? (
+                matches.length === 0 ? (
+                  <p className="rounded-xl bg-gray-50 px-3 py-3 text-sm text-ink-mute">
+                    没找到「{query.trim()}」。
+                    {isAdmin
+                      ? '这里只列看过音标视频的学生。'
+                      : '只能搜你班上的学生;要是学生不在你的班上,先把他加进班级。'}
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-ink-mute">
+                      找到 {matches.length} 个,点名字看他每节课{matches.length > 1 ? '(回车打开第一个)' : ''}
+                    </p>
+                    <ul className="mt-1 divide-y divide-gray-100">
+                      {matches.map((st) => studentRow(st))}
+                    </ul>
+                  </>
+                )
+              ) : (
+              <>
               {/* 讲师筛选:一个机构几位老师各讲一套,看自己那套才有意义 */}
               {lecturers.length > 0 && (
                 <div className="mb-3 flex flex-wrap items-center gap-1.5">
@@ -350,37 +450,12 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
                       看得最少的排在前面{isAdmin ? '' : ',一节没看的学生也在表里'}。点名字看他每节课的情况
                     </p>
                     <ul className="mt-1 divide-y divide-gray-100">
-                      {data.students.map((s) => (
-                        <li key={s.student_id}>
-                          <button
-                            onClick={() => setSelected({ id: s.student_id, name: s.name })}
-                            className="flex w-full items-center gap-2.5 rounded-lg py-2 text-left transition hover:bg-gray-50"
-                          >
-                          <span className="min-w-0 flex-1 truncate text-sm text-ink">{s.name}</span>
-                          {s.videos_started === 0 ? (
-                            <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
-                              一节都没看
-                            </span>
-                          ) : (
-                            <>
-                              <span className="shrink-0 font-numeric text-xs text-ink-mute">
-                                看完 {s.videos_completed} / 看过 {s.videos_started}
-                              </span>
-                              <span className="shrink-0 font-numeric text-xs text-ink-soft">
-                                {humanDuration(s.total_watch_seconds)}
-                              </span>
-                              <span className="w-10 shrink-0 text-right font-numeric text-xs text-ink-mute">
-                                {shortDay(s.last_viewed_at)}
-                              </span>
-                            </>
-                          )}
-                          <ChevronRight className="h-4 w-4 shrink-0 text-ink-mute" aria-hidden="true" />
-                          </button>
-                        </li>
-                      ))}
+                      {data.students.map((st) => studentRow(st))}
                     </ul>
                   </>
                 )
+              )}
+              </>
               )}
             </>
           )}
