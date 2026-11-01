@@ -286,6 +286,14 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **只认当前这一题**(防乱交),选项按 (摸底 id, 词) 种子现算不存,下发的题不带答案。结束: 会的单元每组插 autopilot_groups graduated(legacy,已有的不动)= 不再派新词;
   要补的进 catchup_gaps,补上 = 这个单元的组都学会(还是三轮)
   ⑤补漏只派孩子能学的单元(get_allowed_unit_ids);要补的书没开 → 老师待办「要补的书没开」
+  ⑤c **书没开怎么办**(11-01 11:24 已部署,提交 2cb5858 + bf36c44;3 个后端文件生产==HEAD~1 整推,两个服务都重启;前端 mvx9r06b;备份 /root/eh_code_before_openbooks_20261101_1124.tgz、frontend/dist_bak_20261101_1124。用户「你需要考虑如果没有开书的情况下应该怎么弄」):
+  **小鹰老师不自己开书**(分配即权限照旧)。老师页 SyncCard 里黄框「开书」(components/autopilot/OpenBooksPanel,接口 GET book-gaps / POST open-books)一次列全:
+  ①在学的那本没开整本(常见: 一本都没分配、只靠作业单元)→ 开那本 ②摸底测出前几册有漏洞、那本没开 → 只开测出漏洞的那几本(不按年级一口气全开)
+  ③卡包机构要兑卡 / 专属没开通 → 只写原因、不能勾(open-books 走 card_pack.lock_reason,跳过)④不知道在学哪本 → 指去「分配单词本」。
+  默认全勾、可取消,开了 = 分配单词本整本(teacher_id 记班主任,操作记录 book.assign),只能开本班的,开过的不重复。
+  等开书的单元不算进补漏进度(gap_progress.blocked_units 单独数);孩子摸底结果和首页单独写「等老师开了再补」。
+  上线时生产 class 59: 67 个孩子在学的书没开整本(四上 21、五上 11、三上 11、六上 9…),0 本要兑卡,1 个不知道在学哪本(高张蕊);**没替老师开**,等老师 / 用户自己在页面上看了勾。
+  测试 test_catchup 加 4 例(共 11);不判锁书 / 不判本班 / 等开书的算进进度 三处各让对应用例失败(回归锁验证过)。⚠️ rsync 传 dist 中途被打断会留下 dist/.~tmp~(--delay-updates 的暂存),下一次整推会自己删掉
   ⑤b **11-01 11:05 改成第一次也自动**(提交 5303b66,用户「一开始应该怎么用…能自动还是需要第一次老师手动」;api/v1/autopilot.py、services/catchup.py 生产==HEAD~1 整推,两个服务都重启;前端 mvx8z3is;备份 /root/eh_code_before_catchupauto_20261101_1105.tgz、frontend/dist_bak_20261101_1105):
   老师只要点一次「这个班打开」→ 全班每人建一次摸底(已经有 pending / doing / done 的不重建,关了再开不重复);之后新来的孩子打开首页自动建。
   老师页 SyncCard 分三块「已经自动在做 / 可以设(不设也行)/ 需要你的」,打开前确认框写清楚会发生什么;按钮改「让全班再摸一次底」。
