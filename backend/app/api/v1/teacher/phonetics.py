@@ -22,7 +22,7 @@ from app.core.database import get_db
 from app.core.tenancy import current_org_id
 from app.core.timeutil import utc_now
 from app.api.v1.auth import get_current_teacher
-from app.models.user import User
+from app.models.user import User, Class, ClassStudent
 from app.models.phonetic import PhoneticVideo, PhoneticMaterial, PhoneticVideoView
 from app.api.v1.phonetics import PhoneticVideoOut, to_out, CATEGORY_LABELS, CATEGORY_ORDER
 from app.api.v1.teacher._permissions import get_my_class_student_ids
@@ -580,6 +580,42 @@ async def list_viewers(
     }
 
 
+async def _watch_scope(db: AsyncSession, user: User, lecturer: Optional[str]):
+    """学情总览和观看明细**共用的范围**: 哪些视频、哪些学生。
+
+    两个端点各写一份的话,总览里「看过的学生 8 人」和导出表里数出来的人对不上,
+    老师没法拿导出的表去核对页面(学习时长那次五套口径的教训)。
+
+    - 视频: 本机构可见的(含平台预置、含已下架),可按讲师收窄;顺序 = 学生端顺序
+    - 学生: 本教师班上的(get_my_class_student_ids,与 list_viewers 同一套);
+      平台 admin 没有班级名册 → allowed=None(不收范围),roster 为空
+
+    返回 (is_admin, videos, roster{学生id: 名字}, allowed)
+    """
+    is_admin = user.role == "admin"
+
+    vq = _org_scope(select(PhoneticVideo), PhoneticVideo)
+    if lecturer is not None:
+        if lecturer == NO_LECTURER:
+            vq = vq.where(or_(PhoneticVideo.lecturer.is_(None),
+                              PhoneticVideo.lecturer == ""))
+        else:
+            vq = vq.where(PhoneticVideo.lecturer == lecturer)
+    videos = (await db.execute(vq.order_by(*_display_order()))).scalars().all()
+
+    roster: dict[int, str] = {}
+    if is_admin:
+        allowed = None
+    else:
+        allowed = await get_my_class_student_ids(db, user.id)
+        if allowed:
+            for sid, uname, fname in (await db.execute(
+                select(User.id, User.username, User.full_name).where(User.id.in_(allowed))
+            )).all():
+                roster[sid] = fname or uname
+    return is_admin, videos, roster, allowed
+
+
 @router.get("/overview")
 async def watch_overview(
     lecturer: Optional[str] = Query(None, description="只统计这位讲师的课;' none' = 未指定讲师"),
@@ -607,32 +643,8 @@ async def watch_overview(
     ⚠️ 视频范围包含**已下架**的(is_active=False): 这是管理视角,老师要能看到
     "我下架的那节课当时有多少人看过";而"零观看"的盘点若漏掉下架的课会虚低。
     """
-    is_admin = user.role == "admin"
-
-    # ① 视频范围:本机构可见的(含预置、含下架),可按讲师收窄
-    vq = _org_scope(select(PhoneticVideo), PhoneticVideo)
-    if lecturer is not None:
-        if lecturer == NO_LECTURER:
-            vq = vq.where(or_(PhoneticVideo.lecturer.is_(None),
-                              PhoneticVideo.lecturer == ""))
-        else:
-            vq = vq.where(PhoneticVideo.lecturer == lecturer)
-    videos = (await db.execute(
-        vq.order_by(PhoneticVideo.sort_order.asc(), PhoneticVideo.id.asc())
-    )).scalars().all()
+    is_admin, videos, roster, allowed = await _watch_scope(db, user, lecturer)
     vids = [v.id for v in videos]
-
-    # ② 学生范围(与 list_viewers 同一套)
-    roster: dict[int, str] = {}
-    if is_admin:
-        allowed = None
-    else:
-        allowed = await get_my_class_student_ids(db, user.id)
-        if allowed:
-            for sid, uname, fname in (await db.execute(
-                select(User.id, User.username, User.full_name).where(User.id.in_(allowed))
-            )).all():
-                roster[sid] = fname or uname
 
     org = current_org_id.get()
     stats = await video_watch.stats_for_videos(
@@ -714,6 +726,117 @@ async def watch_overview(
         },
         "videos": video_rows,
         "students": student_rows,
+    }
+
+
+@router.get("/watch-records")
+async def watch_records(
+    lecturer: Optional[str] = Query(None, description="只看这位讲师的课;' none' = 未指定讲师"),
+    student_id: Optional[int] = Query(None, description="只看这一个学生"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """**每个学生 × 每节课**的观看明细(2026-11-01,用户「要知道每个学生看了哪些音标视频的
+    详细数据,我们好分析」)。
+
+    总览只给到「看完几节 / 看过几节 / 累计多久」,看不出是**哪几节**。这里把
+    phonetic_video_views 的每一行原样给出来: 打开几次、看了多久、看到过多远、
+    上次停在哪、看完没有、第一次 / 最后一次是什么时候。前端拿它做两件事:
+    点一个学生看他每节课的情况;导出 Excel(三张表)自己分析。
+
+    - 范围与总览同一份(_watch_scope),导出表和页面上的数对得上
+    - `records` 只有**看过的**(一人一节一行);没看的不发行,由前端按 videos × students 补 ——
+      全班 × 全部视频补齐了发,大部分是空行
+    - `completed` 用库里存的那个(与总览、单节数据同口径),不在这里重算
+    - 带 student_id 时只给这一个学生;不是本班的 404(不说「有这个人但你看不了」)
+    """
+    is_admin, videos, roster, allowed = await _watch_scope(db, user, lecturer)
+    vids = [v.id for v in videos]
+    org = current_org_id.get()
+
+    if student_id is not None:
+        if is_admin:
+            q = select(User.id, User.username, User.full_name).where(
+                User.id == student_id, User.role == "student")
+            if org is not None:
+                q = q.where(User.org_id == org)
+            row = (await db.execute(q)).first()
+            if row is None:
+                raise HTTPException(404, "找不到这个学生")
+            roster = {row[0]: row[2] or row[1]}
+        elif student_id not in roster:
+            raise HTTPException(404, "这个学生不在你的班上")
+        else:
+            roster = {student_id: roster[student_id]}
+        allowed = {student_id}
+
+    V = PhoneticVideoView
+    records = []
+    if vids and (allowed is None or allowed):
+        rq = select(V).join(User, User.id == V.user_id).where(V.video_id.in_(vids))
+        if allowed is not None:
+            rq = rq.where(V.user_id.in_(list(allowed)))
+        if org is not None:
+            # 这张表没有 org_id 列,归属经 User 推导(与 stats_for_videos 同一条)
+            rq = rq.where(User.org_id == org)
+        records = (await db.execute(rq)).scalars().all()
+
+    # 学生名单: 老师 = 班级名册(一节没看的也在);admin = 有观看记录的人
+    if is_admin and student_id is None:
+        uids = sorted({r.user_id for r in records})
+        if uids:
+            for sid, uname, fname in (await db.execute(
+                select(User.id, User.username, User.full_name).where(User.id.in_(uids))
+            )).all():
+                roster[sid] = fname or uname
+
+    # 学生在我的哪个班(导出时按班分析要用)。一人可能在我的两个班里,都列上
+    classes: dict[int, list[str]] = {}
+    if not is_admin and roster:
+        for sid, cname in (await db.execute(
+            select(ClassStudent.student_id, Class.name)
+            .join(Class, Class.id == ClassStudent.class_id)
+            .where(Class.teacher_id == user.id,
+                   ClassStudent.is_active.is_(True),
+                   ClassStudent.student_id.in_(list(roster)))
+            .order_by(Class.id.asc())
+        )).all():
+            names = classes.setdefault(sid, [])
+            if cname not in names:
+                names.append(cname)
+
+    return {
+        "scope": "all" if is_admin else "my_classes",
+        "roster_size": None if is_admin else len(roster),
+        "videos": [
+            {
+                "id": v.id,
+                "title": v.title,
+                "category": v.category,
+                "lecturer": v.lecturer,
+                "is_active": bool(v.is_active),
+                "duration_seconds": v.duration_seconds,
+            }
+            for v in videos
+        ],
+        "students": [
+            {"student_id": sid, "name": name, "classes": classes.get(sid, [])}
+            for sid, name in sorted(roster.items(), key=lambda kv: kv[1])
+        ],
+        "records": [
+            {
+                "student_id": r.user_id,
+                "video_id": r.video_id,
+                "play_count": r.play_count or 0,
+                "watch_seconds": r.watch_seconds or 0,
+                "max_position_seconds": r.max_position_seconds or 0,
+                "last_position_seconds": r.last_position_seconds or 0,
+                "completed": bool(r.completed),
+                "first_viewed_at": r.first_viewed_at,
+                "last_viewed_at": r.last_viewed_at,
+            }
+            for r in records
+        ],
     }
 
 

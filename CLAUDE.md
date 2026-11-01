@@ -271,6 +271,20 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标视频「每个学生 × 每节课」观看明细(2026-11-01,用户「教师端需要知道每个学生看了哪些音标视频的详细数据我们好分析」):
+  以前总览只有「看完 3 节 / 看过 5 节」,看不出是哪几节。新接口 `GET /teacher/phonetics/watch-records`(lecturer / student_id 可选)
+  原样给 phonetic_video_views 每一行(打开次数 / 观看秒数 / 看到过最远 / 上次停在哪 / completed / 第一次和最后一次时间)+ 视频表 + 学生名单(带所在班级)。
+  **范围与总览同一份**(抽成 `_watch_scope`,总览也改用它): 本班学生、本机构可见视频(含预置、含下架),admin 只有有记录的人(roster_size None);
+  视频顺序改成和学生端一样(_display_order,总览以前只按 sort_order)。没看的不发行,前端按 videos × students 补。
+  student_id 不在本班 404。completed 用库里存的,不重算。
+  前端: components/phonetics/StudentVideoWatchList(一个学生全部视频: 看完 / 看到 N% / 没看,观看时长、打开次数、最后一次,筛「没看 / 没看完 / 看完」);
+  学情总览「按学生」点名字进去(Esc 先回总览);右上角「导出 Excel」(utils/phoneticWatch.exportWatchRecords,xlsx 动态加载)三张表:
+  每人每节(没看的也有一行,能直接透视)/ 学生×视频(✓ / 百分比 / 空)/ 视频汇总(看完率 = 看完 ÷ 看过,与页面同口径);
+  学生详情页多一块「音标视频」(components/teacher/PhoneticWatchPanel,本机构没视频时不显示)。
+  顺手: **视频时长未知时总览看完率写「—」不写 0%**(后端判不了看完,恒为 0 人)。后端时间是 UTC 不带后缀,utils/phoneticWatch.parseServerTime 补 Z。
+  测试 tests/test_phonetic_watch_records.py(6 例,含「明细加起来 == 总览那一行」);去掉本班过滤 / 去掉不在本班 404 两处各让对应用例失败(回归锁验证过)。
+  本机浏览器(库副本 + 造的 8 节视频 94 条观看,1366 / 390)走过: 总览 → 按学生 → 点名字 → 筛没看;导出的表 216 行 = 27 人 × 8 节,看完 27 / 看过 94 与库一致;
+  学生详情页那块;无横向溢出、控制台 0 报错。入口: 教师端「音标视频」→「学情总览」→「按学生」点名字 / 右上角「导出 Excel」;学生详情页往下「音标视频」。公告一条(teacher / admin)
 - ✅ 小鹰老师「跟学校进度 + 查缺补漏」(2026-11-01 10:51 **已部署生产**,提交 a540321;3 个后端文件生产==HEAD~1 整推 + 新文件 services/catchup.py,四张新表 create_all 建(先在生产库副本跑过 init_db);两个服务都重启;前端干净 worktree 构建 mvx8iagn 整推;备份 /root/eh_db_before_catchup_20261101_1051.db、/root/eh_code_before_catchup_20261101_1051.tgz、frontend/dist_bak_20261101_1051。
   **已在「单词班40次班」(class 59,86 人)打开试点**(autopilot_class_sync 一行,updated_by_name「平台开通试点(11-01)」);其余班没有行 = 和以前一样。
   生产冒烟(临时老师 + 学生 + 班,跑完删净): 打开 → 摸底第一题从孩子在学的四上 unit 2 开始、不带答案 → 全按不认识测 6 题先测到这 → 2 个单元要补 → 老师布置了作业后签到 gap_only、补漏 13 个词 batch -1 → 金币分母只有老师那 1 份。

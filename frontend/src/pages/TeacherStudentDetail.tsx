@@ -13,6 +13,7 @@ import SentenceSpeechPanel from '../components/teacher/SentenceSpeechPanel';
 import ReadAloudPanel from '../components/teacher/ReadAloudPanel';
 import TutorLogPanel from '../components/teacher/TutorLogPanel';
 import HomeworkCheckPanel from '../components/teacher/HomeworkCheckPanel';
+import PhoneticWatchPanel from '../components/teacher/PhoneticWatchPanel';
 import WordTrendChart from '../components/WordTrendChart';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import type { StudentMistakeAnalysis } from '../types/exam';
@@ -438,6 +439,7 @@ const TeacherStudentDetail = () => {
         )}
 
         {studentId && <ReadAloudPanel studentId={parseInt(studentId)} />}
+        {studentId && <PhoneticWatchPanel studentId={parseInt(studentId)} />}
         {studentId && <SentenceSpeechPanel studentId={parseInt(studentId)} />}
         {studentId && <TutorLogPanel studentId={parseInt(studentId)} />}
         {studentId && <HomeworkCheckPanel studentId={parseInt(studentId)} />}

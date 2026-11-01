@@ -13,36 +13,19 @@
  * 3. 时长为空的视频不显示看完率相关的百分比
  */
 import { useCallback, useEffect, useState } from 'react';
-import { BarChart3, Loader2, Radio, TriangleAlert, X } from 'lucide-react';
+import { BarChart3, ChevronLeft, ChevronRight, Download, Loader2, Radio, TriangleAlert, X } from 'lucide-react';
 import {
   phoneticsApi, CATEGORY_LABELS, NO_LECTURER,
   type PhoneticOverview, type LecturerStat,
 } from '../../api/phonetics';
 import { toast } from '../Toast';
 import { getErrorMessage } from '../../utils/errorMessage';
+import { exportWatchRecords, humanDuration, shortDay } from '../../utils/phoneticWatch';
+import StudentVideoWatchList from './StudentVideoWatchList';
 
 interface Props {
   lecturers: LecturerStat[];
   onClose: () => void;
-}
-
-/** 秒 → 「3 分 20 秒」。老师读的是"看了多久"不是时间码 */
-function humanDuration(sec: number): string {
-  if (!sec || sec <= 0) return '0 秒';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  if (h > 0) return m > 0 ? `${h} 小时 ${m} 分` : `${h} 小时`;
-  const s = Math.round(sec % 60);
-  if (m <= 0) return `${s} 秒`;
-  return s > 0 ? `${m} 分 ${s} 秒` : `${m} 分`;
-}
-
-/** ISO → 「9-24」。最后观看日期只需要精确到天 */
-function shortDate(iso?: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T'));
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getMonth() + 1}-${d.getDate()}`;
 }
 
 export default function OverviewDialog({ lecturers, onClose }: Props) {
@@ -51,6 +34,9 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
   /** '' = 全部讲师;NO_LECTURER = 只看未指定讲师的 */
   const [lecturer, setLecturer] = useState('');
   const [tab, setTab] = useState<'videos' | 'students'>('videos');
+  /** 点了某个学生 → 看他每节课的情况 */
+  const [selected, setSelected] = useState<{ id: number; name: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,10 +52,41 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // 看某个学生时 Esc 先回总览,再按一次才关
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selected) setSelected(null);
+      else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, selected]);
+
+  const lecturerLabel = lecturer === ''
+    ? '全部讲师'
+    : lecturer === NO_LECTURER ? '未指定讲师' : lecturer;
+
+  const doExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const rec = await phoneticsApi.watchRecords({ lecturer: lecturer || undefined });
+      if (rec.videos.length === 0) {
+        toast.error('没有视频可以导出');
+        return;
+      }
+      if (rec.students.length === 0) {
+        toast.error(rec.scope === 'all' ? '还没有人看过音标视频' : '班上还没有学生');
+        return;
+      }
+      await exportWatchRecords(rec, lecturerLabel);
+      toast.success(`已导出 ${rec.students.length} 个学生 × ${rec.videos.length} 节课`);
+    } catch (e) {
+      toast.error(getErrorMessage(e, '导出失败'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const isAdmin = data?.scope === 'all';
   const sum = data?.summary;
@@ -104,33 +121,68 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink">
-              <BarChart3 className="h-5 w-5 text-[#2f8791]" />音标学情总览
-            </h2>
-            <p className="mt-0.5 text-xs text-ink-mute">
-              {isAdmin
-                ? '统计范围:全平台'
-                : `统计范围:我的班级${data?.roster_size != null ? ` · ${data.roster_size} 人` : ''}`}
-            </p>
+          {selected ? (
+            <div className="min-w-0">
+              <button
+                onClick={() => setSelected(null)}
+                className="-ml-1 flex items-center gap-0.5 rounded-lg px-1 py-0.5 text-xs text-[#2f8791] transition hover:bg-[#e8f3f4]"
+              >
+                <ChevronLeft className="h-4 w-4" />返回学情总览
+              </button>
+              <h2 className="mt-0.5 truncate font-display text-lg font-bold text-ink">
+                {selected.name} 的音标课
+              </h2>
+              <p className="mt-0.5 text-xs text-ink-mute">{lecturerLabel}</p>
+            </div>
+          ) : (
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-ink">
+                <BarChart3 className="h-5 w-5 text-[#2f8791]" />音标学情总览
+              </h2>
+              <p className="mt-0.5 text-xs text-ink-mute">
+                {isAdmin
+                  ? '统计范围:全平台'
+                  : `统计范围:我的班级${data?.roster_size != null ? ` · ${data.roster_size} 人` : ''}`}
+              </p>
+            </div>
+          )}
+          <div className="flex shrink-0 items-center gap-1">
+            {!selected && (
+              <button
+                onClick={doExport}
+                disabled={exporting || loading}
+                title="每个学生 × 每节课的观看明细,按当前讲师筛选"
+                className="flex items-center gap-1 rounded-lg bg-[#e8f3f4] px-2.5 py-1.5 text-xs font-semibold
+                           text-[#276f78] transition hover:bg-[#d7ebed] disabled:opacity-50"
+              >
+                {exporting
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Download className="h-3.5 w-3.5" />}
+                导出 Excel
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              aria-label="关闭"
+              className="rounded-lg p-1.5 text-ink-mute transition hover:bg-gray-100 hover:text-ink"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="关闭"
-            className="shrink-0 rounded-lg p-1.5 text-ink-mute transition hover:bg-gray-100 hover:text-ink"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {loading && (
+          {!selected && loading && (
             <p className="flex items-center justify-center gap-2 py-10 text-sm text-ink-mute">
               <Loader2 className="h-4 w-4 animate-spin" /> 加载中…
             </p>
           )}
 
-          {!loading && data && sum && (
+          {selected && (
+            <StudentVideoWatchList studentId={selected.id} lecturer={lecturer || undefined} />
+          )}
+
+          {!selected && !loading && data && sum && (
             <>
               {/* 讲师筛选:一个机构几位老师各讲一套,看自己那套才有意义 */}
               {lecturers.length > 0 && (
@@ -271,12 +323,13 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
                           {v.lecturer && <span>{v.lecturer}</span>}
                           <span>{v.viewers} 人看过</span>
                           <span>{v.plays} 次播放</span>
-                          {/* null = 还没人看 → 「—」,显示 0% 会被读成"学生看不进去" */}
+                          {/* null = 还没人看 → 「—」,显示 0% 会被读成"学生看不进去";
+                              视频时长未知时后端判不了看完(恒为 0 人),同样写「—」 */}
                           <span>
-                            看完率 {v.completion_rate === null
+                            看完率 {v.completion_rate === null || !v.duration_seconds
                               ? '—'
                               : `${Math.round(v.completion_rate * 100)}%`}
-                            {` · ${v.completed} 人`}
+                            {v.duration_seconds ? ` · ${v.completed} 人` : ' · 不知道视频多长,判不了'}
                           </span>
                           <span>人均 {humanDuration(v.avg_watch_seconds)}</span>
                         </div>
@@ -294,11 +347,15 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
                 ) : (
                   <>
                     <p className="mt-2 text-[11px] text-ink-mute">
-                      看得最少的排在前面{isAdmin ? '' : ',一节没看的学生也在表里'}
+                      看得最少的排在前面{isAdmin ? '' : ',一节没看的学生也在表里'}。点名字看他每节课的情况
                     </p>
                     <ul className="mt-1 divide-y divide-gray-100">
                       {data.students.map((s) => (
-                        <li key={s.student_id} className="flex items-center gap-2.5 py-2">
+                        <li key={s.student_id}>
+                          <button
+                            onClick={() => setSelected({ id: s.student_id, name: s.name })}
+                            className="flex w-full items-center gap-2.5 rounded-lg py-2 text-left transition hover:bg-gray-50"
+                          >
                           <span className="min-w-0 flex-1 truncate text-sm text-ink">{s.name}</span>
                           {s.videos_started === 0 ? (
                             <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
@@ -312,11 +369,13 @@ export default function OverviewDialog({ lecturers, onClose }: Props) {
                               <span className="shrink-0 font-numeric text-xs text-ink-soft">
                                 {humanDuration(s.total_watch_seconds)}
                               </span>
-                              <span className="w-8 shrink-0 text-right font-numeric text-xs text-ink-mute">
-                                {shortDate(s.last_viewed_at)}
+                              <span className="w-10 shrink-0 text-right font-numeric text-xs text-ink-mute">
+                                {shortDay(s.last_viewed_at)}
                               </span>
                             </>
                           )}
+                          <ChevronRight className="h-4 w-4 shrink-0 text-ink-mute" aria-hidden="true" />
+                          </button>
                         </li>
                       ))}
                     </ul>

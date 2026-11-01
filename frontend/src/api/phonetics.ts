@@ -194,6 +194,51 @@ export interface PhoneticOverview {
   students: OverviewStudentRow[];
 }
 
+// ===== 每个学生 × 每节课的观看明细(2026-11-01) =====
+
+export interface WatchRecordVideo {
+  id: number;
+  title: string;
+  category: PhoneticCategory;
+  lecturer?: string | null;
+  is_active: boolean;
+  duration_seconds?: number | null;
+}
+
+export interface WatchRecordStudent {
+  student_id: number;
+  name: string;
+  /** 在我的哪几个班(admin 视角为空) */
+  classes: string[];
+}
+
+/** 一个学生看过的一节课(没看过的不发行,前端按 videos × students 补) */
+export interface WatchRecord {
+  student_id: number;
+  video_id: number;
+  play_count: number;
+  watch_seconds: number;
+  /** 看到过的最远处 */
+  max_position_seconds: number;
+  /** 上次停在哪 */
+  last_position_seconds: number;
+  completed: boolean;
+  /** UTC,不带时区后缀 */
+  first_viewed_at?: string | null;
+  last_viewed_at?: string | null;
+}
+
+export interface WatchRecords {
+  scope: 'my_classes' | 'all';
+  /** null = admin 没有班级名册,算不出 */
+  roster_size?: number | null;
+  /** 学生端顺序 */
+  videos: WatchRecordVideo[];
+  /** 老师 = 整个班级名册(一节没看的也在);admin = 有观看记录的人 */
+  students: WatchRecordStudent[];
+  records: WatchRecord[];
+}
+
 // ===== 看不懂就问(2026-09-24) =====
 
 /** 学生端看到的一条问答 */
@@ -406,6 +451,10 @@ export const phoneticsApi = {
    */
   overview: (params?: { lecturer?: string }) =>
     api.get<PhoneticOverview>('/teacher/phonetics/overview', { params }),
+
+  /** 每个学生 × 每节课的观看明细。传 student_id 只给这一个学生(不在本班 404) */
+  watchRecords: (params?: { lecturer?: string; student_id?: number }) =>
+    api.get<WatchRecords>('/teacher/phonetics/watch-records', { params }),
 
   /** 学生提问列表。默认只给待回答的(老师点红点过来就是为了处理它们) */
   teacherQuestions: (params?: {

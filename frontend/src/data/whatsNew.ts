@@ -28,6 +28,16 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-watch-detail-2026-11',
+    date: '2026-11-01',
+    title: '🎬 音标视频: 每个学生看了哪几节,一节一节看得到',
+    desc: '以前学情总览只写「看完 3 节 / 看过 5 节」,看不出是哪几节。现在在「按学生」里点一个名字,就能看到他每节课: 看完没有、看到了百分之几、看了多久、打开过几次、第一次和最后一次是什么时候,没看的那几节也列着,可以只看「没看」或「没看完」。学生详情页往下也多了「音标视频」这一块。要自己分析的,点右上角「导出 Excel」: 一张每人每节的明细(没看的也有一行,能直接做数据透视)、一张学生 × 视频的对照表、一张每节课的汇总,都按你当前选的讲师导出。',
+    where: '教师端「音标视频」→ 页面顶部「学情总览」→「按学生」点名字 / 右上角「导出 Excel」;或者学生详情页往下「音标视频」',
+    // 音标视频整套只对 teacher/admin 开放(后端 get_current_teacher),不投 org_admin
+    roles: ['teacher', 'admin'],
+    route: '/teacher/phonetics',
+  },
+  {
     id: 'catchup-student-2026-11',
     date: '2026-11-01',
     title: '🔍 小鹰老师帮你查缺补漏',
