@@ -1,7 +1,7 @@
 /**
  * 查缺补漏「开书」(2026-11-01,规则真源 backend/app/services/catchup.py 文件头第 6 条)。
  * 小鹰老师不自己开书(分配即权限照旧),这里把没开书的情况一次列全,老师勾了一键开:
- *   ①一本书都没开 → 开他在学的那本  ②摸底测出前几册有漏洞、那本没开 → 开那几本
+ *   ①在学的那本没开整本(常见: 一本都没分配,只靠作业单元)→ 开那本  ②摸底测出前几册有漏洞、那本没开 → 开那几本
  *   ③卡包机构要兑换学习卡 / 专属没开通 → 只写原因,不能勾  ④不知道在学哪本 → 让老师去分配单词本
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -66,7 +66,7 @@ export default function OpenBooksPanel({ classId, refreshKey, onOpened }: { clas
     <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-900">
       <p className="font-semibold">开书</p>
       <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
-        {nNo > 0 && <li><b>{nNo}</b> 个孩子一本书都没开,小鹰老师只能在你布置的作业单元里排</li>}
+        {nNo > 0 && <li><b>{nNo}</b> 个孩子在学的那本书没开整本,小鹰老师只能在你布置的作业单元里排</li>}
         {nGap > 0 && <li><b>{nGap}</b> 个孩子摸底测出前几册有漏洞,那几本没开,小鹰老师补不了</li>}
         {locked.length > 0 && <li>其中 <b>{locked.length}</b> 本要兑换学习卡 / 专属内容没开通,不能直接开,去「兑换码管理」发卡</li>}
         {nUnknown > 0 && (
