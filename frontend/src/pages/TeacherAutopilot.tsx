@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import {
-  autopilotApi, itemLabel, WEEKDAYS, type BoardStudent, type ClassSettings, type Overview, type Place,
+  autopilotApi, itemLabel, WEEKDAYS, type BoardStudent, type ClassSettings, type ClassSync, type Overview, type Place,
   type Suggestion, type TodoItem,
 } from '../api/autopilot';
 import { toast } from '../components/Toast';
@@ -33,7 +33,7 @@ const TODAY_FILTERS: { key: TodayFilter; label: string }[] = [
 
 function todayStateOf(s: BoardStudent): Exclude<TodayFilter, 'all'> {
   const t = s.today;
-  if (!t || t.status !== 'dispatched') return 'none';
+  if (!t || (t.status !== 'dispatched' && t.status !== 'gap_only')) return 'none';
   return t.total > 0 && t.done >= t.total ? 'done' : 'doing';
 }
 
@@ -86,6 +86,7 @@ function Guide({ rules }: { rules: Overview['rules'] | null }) {
                 <li><b>今天学得吃力</b>: 可以把他每天的量调小</li>
                 <li><b>连着几天没来</b>: 孩子不签到小鹰老师就派不了,要你联系家长</li>
                 <li><b>没有书 / 书要兑换学习卡 / 书学完了</b>: 给他分配书(「分配单词本」)</li>
+                <li><b>要补的书没开</b>(打开了查缺补漏的班): 摸底测出前几册有漏洞,但他没开那本书,要补就给他开</li>
               </ul>
               <p className="mt-1 text-slate-500">想自己定: 某个孩子每天固定几个、固定过关线、从哪本书哪个单元开始、暂停他 —— 在下面孩子那一行点「设置」。</p>
             </div>
@@ -117,6 +118,15 @@ function Guide({ rules }: { rules: Overview['rules'] | null }) {
                 <li>点评: 孩子做完今天的任务那一刻,或者晚上 {rules?.evening ?? '22:30'},落款「小鹰老师」。你当天自己写过的不会被盖掉</li>
                 <li>小鹰老师派的作业在「作业管理」里也看得到,布置人写「小鹰老师(自动)」,和你布置的一样能关、能删;不想要今天的就点「撤回今天的」</li>
                 <li>只派孩子自己能学的书,学习卡和专属内容的规矩照旧</li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-1 font-semibold text-slate-900">跟学校进度 + 查缺补漏(试点,按班打开)</h3>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>多一档每天 10 个词,做不完的孩子会降到 10;已经在学的孩子保持现在的量</li>
+                <li>每天大约 7 成跟学校: 你设的「学校讲到哪个单元」(没设就按孩子最近在学的往下);3 成补漏: 摸底测出的单元、别的书到期的轮次、复习词。一天只够 10 个词时,十天里三天补漏</li>
+                <li>你自己布置了单词作业的那天,小鹰老师<b>只补一小份漏洞(最多 10 个词)</b>,不算今天的任务、不影响金币</li>
+                <li>摸底: 你点了才做(新来的孩子自动做)。从现在学的单元往前测到前几册,每个单元先选 3 个,对 2 个再写 2 个;连着 3 个单元都会就停。会的单元不再派新词,要补的照样三轮才算学会</li>
               </ul>
             </div>
           </div>
@@ -256,6 +266,103 @@ function ClassCard({ c, onSave, busy }: {
   );
 }
 
+/** 跟学校进度 + 查缺补漏(11-01 试点,规则真源 backend/app/services/catchup.py 文件头) */
+function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
+  classId: number; sync: ClassSync; busy: boolean; onChanged: (s: ClassSync) => void; onCatchupAll: () => void;
+}) {
+  const [books, setBooks] = useState<{ id: number; name: string; kids: number; units: { id: number; name: string }[] }[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!sync.enabled) return;
+    autopilotApi.syncBooks(classId).then(setBooks).catch(() => setBooks([]));
+  }, [classId, sync.enabled]);
+  const save = async (body: Parameters<typeof autopilotApi.saveSync>[1]) => {
+    if (body.enabled === true && !window.confirm(
+      '打开后这个班:\n· 每天的量多一档 10 个词(做不完的孩子会降到 10)\n· 7 成跟学校进度、3 成补以前的漏洞\n'
+      + '· 你自己布置了作业的那天,小鹰老师只补一小份漏洞(不算今天的任务、不影响金币)\n已经在学的孩子保持现在的量和轮次。确定打开吗?')) return;
+    setSaving(true);
+    try {
+      onChanged(await autopilotApi.saveSync(classId, body));
+    } catch (e) {
+      toast.error(getErrorMessage(e, '保存失败'));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const book = books?.find((b) => b.id === sync.school_book_id) ?? null;
+  return (
+    <section className={`space-y-2 rounded-xl border px-4 py-3 shadow-sm ${sync.enabled ? 'border-sky-200 bg-sky-50/60' : 'border-slate-200 bg-white'}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold text-slate-800">跟学校进度 + 查缺补漏</h2>
+        <span className="rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-800">试点</span>
+        <button type="button" disabled={busy || saving} onClick={() => save({ enabled: !sync.enabled })}
+          className={`ml-auto min-h-9 rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${sync.enabled ? 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50' : 'bg-sky-600 text-white hover:bg-sky-700'}`}>
+          {sync.enabled ? '关掉' : '这个班打开'}
+        </button>
+      </div>
+      <p className="text-sm text-slate-600">
+        {sync.enabled
+          ? '每天 7 成跟学校在讲的单元、3 成补以前没学牢的;最少每天 10 个词。你自己布置了作业的那天,小鹰老师只补一小份漏洞,不算今天的任务、不影响金币。'
+          : '适合作业多、基础差的孩子: 每天量小一点(最少 10 个词),先跟上学校在讲的,再一点点补以前的漏洞。默认关,打开只影响这个班。'}
+      </p>
+      {sync.enabled && (
+        <>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-600">
+            <span>学校这周讲到:</span>
+            <select value={sync.school_book_id ?? ''} disabled={saving || !books}
+              onChange={(e) => save({ school_book_id: e.target.value ? Number(e.target.value) : null, school_unit_id: null })}
+              className="min-h-9 max-w-[14rem] rounded-lg border border-slate-200 bg-white px-2" aria-label="学校讲到哪本书">
+              <option value="">不设(按每个孩子最近在学的单元)</option>
+              {(books || []).map((b) => <option key={b.id} value={b.id}>{b.name}({b.kids} 人在学)</option>)}
+            </select>
+            {book && (
+              <select value={sync.school_unit_id ?? ''} disabled={saving}
+                onChange={(e) => save({ school_book_id: book.id, school_unit_id: e.target.value ? Number(e.target.value) : null })}
+                className="min-h-9 max-w-[14rem] rounded-lg border border-slate-200 bg-white px-2" aria-label="学校讲到哪个单元">
+                <option value="">选单元</option>
+                {book.units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            )}
+          </div>
+          <p className="text-xs text-slate-500">
+            班里孩子年级不一样就别设,按每个孩子自己在学的单元走;设了只对在学这本书的孩子起作用。
+          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button type="button" disabled={busy} onClick={onCatchupAll}
+              className="min-h-9 rounded-lg border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 hover:bg-sky-50 disabled:opacity-50">
+              让全班做一次摸底
+            </button>
+            <span className="text-xs text-slate-500">
+              孩子首页会出现「先摸摸底」,约 5 分钟: 从现在学的单元往前测到前几册,会的以后不再背,要补的小鹰老师每天带一点。新来的孩子会自动摸底。
+            </span>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function CatchupCell({ s, onRequest, busy }: { s: BoardStudent; onRequest: () => void; busy: boolean }) {
+  const c = s.catchup;
+  if (!c) return null;
+  const d = c.diagnosis;
+  const p = c.progress;
+  return (
+    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-sky-800">
+      {!d ? (
+        <button type="button" disabled={busy} onClick={onRequest} className="font-semibold text-sky-700 hover:underline disabled:opacity-50">让他摸底</button>
+      ) : d.status === 'pending' ? <span>等他摸底</span>
+        : d.status === 'doing' ? <span>摸底中(答了 {d.questions} 题)</span>
+          : d.status === 'skipped' ? <span className="text-slate-400">没什么要摸底的</span>
+            : <span>摸底: {d.known_units} 个单元会、{d.gap_units} 个要补</span>}
+      {p.units > 0 && <span>· 补上 {p.fixed_words}/{p.words} 个词</span>}
+      {d && (d.status === 'done' || d.status === 'skipped') && (
+        <button type="button" disabled={busy} onClick={onRequest} className="text-sky-700 hover:underline disabled:opacity-50">再摸一次</button>
+      )}
+    </p>
+  );
+}
+
 function StudentSettings({ s, onClose, onSaved }: { s: BoardStudent; onClose: () => void; onSaved: () => void }) {
   const [words, setWords] = useState(s.fixed_words ? String(s.fixed_words) : '');
   const [line, setLine] = useState(s.fixed_pass_line ? String(s.fixed_pass_line) : '');
@@ -355,21 +462,21 @@ function StudentSettings({ s, onClose, onSaved }: { s: BoardStudent; onClose: ()
 function TodayCell({ s }: { s: BoardStudent }) {
   const t = s.today;
   if (!t) return <span className="text-slate-400">今天还没派(没签到)</span>;
-  if (t.status !== 'dispatched') return <span className="text-slate-500">{t.reason || '今天没派'}</span>;
+  if (t.status !== 'dispatched' && t.status !== 'gap_only') return <span className="text-slate-500">{t.reason || '今天没派'}</span>;
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${t.done === t.total ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
           做了 {t.done}/{t.total} 份
         </span>
-        <span className="text-xs text-slate-400">{t.location === 'home' ? '在家' : '电教室'} · {t.source === 'auto' ? '签到自动派' : t.actor_name}</span>
+        <span className="text-xs text-slate-400">{t.location === 'home' ? '在家' : '电教室'} · {t.status === 'gap_only' ? '你布置了作业,小鹰老师只补漏(不算任务)' : t.source === 'auto' ? '签到自动派' : t.actor_name}</span>
         {t.extra_batches > 0 && <span className="rounded bg-violet-50 px-1.5 py-0.5 text-xs font-semibold text-violet-700">加练 {t.extra_batches} 份</span>}
         {t.comment_flag === 'struggling' && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-xs font-semibold text-rose-700">今天吃力</span>}
       </div>
       <ul className="space-y-0.5 text-xs text-slate-600">
         {t.items.map((i, k) => (
           <li key={k} className={i.done ? 'text-slate-400 line-through decoration-slate-300' : ''}>
-            {i.batch ? '加练 · ' : ''}{itemLabel(i)}
+            {(i.batch ?? 0) < 0 ? '补漏 · ' : i.batch ? '加练 · ' : ''}{itemLabel(i)}
           </li>
         ))}
       </ul>
@@ -390,7 +497,7 @@ function SuggestionCell({ sug }: { sug: Suggestion }) {
 export default function TeacherAutopilot() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [classId, setClassId] = useState<number | null>(null);
-  const [board, setBoard] = useState<{ class: ClassSettings; students: BoardStudent[] } | null>(null);
+  const [board, setBoard] = useState<{ class: ClassSettings; students: BoardStudent[]; sync?: ClassSync } | null>(null);
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({});
   const [loading, setLoading] = useState(true);
   const [boardLoading, setBoardLoading] = useState(false);
@@ -469,6 +576,21 @@ export default function TeacherAutopilot() {
     }
   };
 
+  const requestCatchup = async (ids: number[]) => {
+    if (!classId || ids.length === 0) return;
+    if (ids.length > 1 && !window.confirm(`让 ${ids.length} 个孩子各做一次摸底?孩子首页会出现「先摸摸底」,约 5 分钟。`)) return;
+    setBusy('catchup');
+    try {
+      const r = await autopilotApi.requestCatchup(classId, ids);
+      toast.success(r.requested ? `已让 ${r.requested} 个孩子摸底,他们打开首页就能做` : '这些孩子已经在等摸底了');
+      await loadBoard(classId);
+    } catch (e) {
+      toast.error(getErrorMessage(e, '没发出去'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const undo = async (s: BoardStudent) => {
     if (!window.confirm(`撤回小鹰老师今天给「${s.name}」派的任务?他已经开始做的那几份会留着。`)) return;
     setBusy(`undo-${s.id}`);
@@ -532,6 +654,11 @@ export default function TeacherAutopilot() {
               </div>
             )}
             {cls && <ClassCard key={`${cls.class_id}-${cls.max_words ?? ''}`} c={cls} busy={busy !== null} onSave={saveClass} />}
+            {classId && board?.sync && (
+              <SyncCard classId={classId} sync={board.sync} busy={busy !== null}
+                onChanged={(sy) => { setBoard((b) => (b ? { ...b, sync: sy } : b)); if (classId) void loadBoard(classId); }}
+                onCatchupAll={() => void requestCatchup(allStudents.map((x) => x.id))} />
+            )}
 
             <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
@@ -588,7 +715,7 @@ export default function TeacherAutopilot() {
                 <ul className="divide-y divide-slate-100">
                   {shown.map((s) => {
                     const sug = suggestions[String(s.id)];
-                    const dispatched = s.today?.status === 'dispatched';
+                    const dispatched = s.today?.status === 'dispatched' || s.today?.status === 'gap_only';
                     return (
                       <li key={s.id} className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(10rem,14rem)_1fr_auto]">
                         <div className="min-w-0">
@@ -609,6 +736,7 @@ export default function TeacherAutopilot() {
                           {(s.tier_reason || sug?.tier_reason) && (
                             <p className="mt-0.5 text-xs text-slate-400" title="小鹰老师为什么派这么多">{s.tier_reason || sug?.tier_reason}</p>
                           )}
+                          <CatchupCell s={s} busy={busy !== null} onRequest={() => void requestCatchup([s.id])} />
                         </div>
                         <div className="min-w-0 text-sm">
                           {dispatched || !sug ? <TodayCell s={s} /> : <SuggestionCell sug={sug} />}

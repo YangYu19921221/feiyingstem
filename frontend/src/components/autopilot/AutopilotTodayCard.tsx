@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, MapPin, Plus, Sparkles } from 'lucide-react';
+import { Check, MapPin, Plus, Search, Sparkles } from 'lucide-react';
 import { autopilotApi, itemLabel, type StudentToday } from '../../api/autopilot';
 import { startHomework } from '../../api/homework';
 import { getDailyReview } from '../../api/dailyReview';
@@ -76,9 +76,40 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
   // 旧后端没有这个字段: 当成签过了(不挡孩子)
   const checkedIn = data.checked_in !== false;
 
+  // 查缺补漏(开了的班才有): 老师让摸底 → 一进首页就看到;补了多少一直写着
+  const cu = data.catchup;
+  const diag = cu?.diagnosis;
+  const needDiag = !!diag && (diag.status === 'pending' || diag.status === 'doing');
+  const prog = cu?.progress;
+  const catchupBar = (needDiag || (prog && prog.units > 0)) ? (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-orange-100 bg-sky-50/70 px-4 py-2.5 sm:px-5">
+      {needDiag ? (
+        <>
+          <p className="min-w-0 flex-1 text-sm text-sky-900">
+            <b>小鹰老师想先摸摸底</b>:看看你哪些词已经会了,会的不用再背,只补不会的(大约 5 分钟)
+          </p>
+          <button type="button" onClick={() => navigate('/student/catchup')}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-sm font-semibold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100">
+            <Search className="h-4 w-4" aria-hidden />{diag?.status === 'doing' ? '接着测' : '开始摸底'}
+          </button>
+        </>
+      ) : prog && (
+        <p className="text-sm text-sky-900">
+          查缺补漏:要补 {prog.words} 个词,已经补上 <b>{prog.fixed_words}</b> 个
+          {prog.fixed_units > 0 ? `(${prog.fixed_units} 个单元补完了)` : ''}
+        </p>
+      )}
+    </div>
+  ) : null;
+
   if (!data.active) {
     // 自动班、没暂停、还没签到: 签到那一刻才派,先告诉孩子
-    if (!data.waiting_checkin || checkedIn) return null;
+    if (!data.waiting_checkin || checkedIn) {
+      return catchupBar ? (
+        <section data-dashboard-reveal className="mb-5 overflow-hidden rounded-2xl border-2 border-orange-200 bg-white sm:mb-8"
+          aria-label="小鹰老师查缺补漏">{catchupBar}</section>
+      ) : null;
+    }
     return (
       <section data-dashboard-reveal className="mb-5 sm:mb-8" aria-labelledby="autopilot-today-heading">
         <div className="flex flex-col gap-3 rounded-2xl border-2 border-orange-200 bg-white p-4 sm:flex-row sm:items-center sm:p-5">
@@ -105,6 +136,7 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
 
   const items = data.items || [];
   const extras = data.extra_items || [];
+  const gapItems = data.gap_items || [];
   const done = items.filter((x) => x.done).length;
 
   const go = async (it: Item) => {
@@ -174,7 +206,8 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
         <div className="min-w-0 flex-1">
           <p className={`text-sm font-medium ${it.done ? 'text-ink-mute line-through' : 'text-ink'}`}>{itemLabel(it)}</p>
           <p className="text-xs text-ink-mute">
-            {it.kind === 'review' ? '今天到期的旧词,先复习不容易忘'
+            {(it.batch ?? 0) < 0 ? '补以前没学牢的词,不算老师今天的作业'
+              : it.kind === 'review' ? '今天到期的旧词,先复习不容易忘'
               : it.kind === 'new' ? '第一次学,过关检测达到过关线算第 1 轮'
                 : `隔了几天再练一遍,走满 3 轮且过关才算学会`}
           </p>
@@ -202,7 +235,8 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
           <img src="/tutor-avatar.jpg" alt="" className="h-8 w-8 rounded-full object-cover" />
           <h2 id="autopilot-today-heading" className="text-base font-bold text-ink">小鹰老师今天给你排的</h2>
           <span className="text-xs text-ink-soft">
-            {done}/{items.length} 份 · {data.location === 'home' ? '在家做' : '在电教室做'}
+            {data.gap_only ? '老师今天布置了作业,这里只补一小份漏洞'
+              : `${done}/${items.length} 份 · ${data.location === 'home' ? '在家做' : '在电教室做'}`}
           </span>
           <span className="ml-auto rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-accent-warm ring-1 ring-orange-200">
             过关要 {data.pass_line} 分
@@ -222,7 +256,8 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
             </button>
           </div>
         )}
-        <ul className="divide-y divide-orange-100">{items.map(row)}</ul>
+        <ul className="divide-y divide-orange-100">{items.map(row)}{gapItems.map(row)}</ul>
+        {catchupBar}
         {data.pass_line_reason && (
           <p className="border-t border-orange-100 px-4 py-2 text-xs text-ink-mute sm:px-5">{data.pass_line_reason}</p>
         )}

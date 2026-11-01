@@ -34,6 +34,9 @@
 10. 安全: 只派孩子自己能学的书(卡包、专属内容的规矩照旧);一个孩子一天只派一次(唯一约束);
     班级 / 孩子可以暂停;每份作业「布置人」写「小鹰老师(自动)」;老师点「按建议布置」的记操作记录
     (签到自动派的不记,一天几十条会淹掉追责日志);老师照样能在「作业管理」关掉 / 删掉,也能「撤回今天的」
+
+11. **跟学校进度 + 查缺补漏**(11-01 试点,按班开关 autopilot_class_sync,默认关): 规则真源 services/catchup.py 文件头。
+    开了的班多一档 10 个词、7 成跟学校 3 成补漏、老师布置日只补一小份漏洞(batch -1,不算任务)、老师点了才摸底
 """
 from __future__ import annotations
 
@@ -491,9 +494,16 @@ async def initial_tier(db: AsyncSession, student_id: int, today: date) -> tuple[
     return NEW_KID_TIER, f"刚开始用,先每天 {NEW_KID_TIER} 个词,做得好每天往上加"
 
 
-async def update_tier(db: AsyncSession, st: AutopilotStudent, today: date) -> None:
+def tiers_for(sync: bool) -> tuple[int, ...]:
+    """开了「跟学校进度 + 查缺补漏」的班多一档 10 个(services/catchup)"""
+    from app.services.catchup import SYNC_TIER
+    return (SYNC_TIER,) + TIERS if sync else TIERS
+
+
+async def update_tier(db: AsyncSession, st: AutopilotStudent, today: date, sync: bool = False) -> None:
     """一天最多看一次: 第一次定档、按最近几天做得怎么样升降一档"""
     ts = _ds(today)
+    tiers = tiers_for(sync)
     if st.tier_checked_day == ts:
         return
     st.tier_checked_day = ts
@@ -516,7 +526,7 @@ async def update_tier(db: AsyncSession, st: AutopilotStudent, today: date) -> No
     scored = [v for v in avgs.values() if v is not None]
     avg = sum(scored) / len(scored) if scored else None
     n_done = sum(1 for d in look if done.get(d.id))
-    idx = tier_index(st.tier)
+    idx = max((i for i, t in enumerate(tiers) if t <= (st.tier or tiers[0])), default=0)
     move, why = 0, ""
     if new_kid:
         if n_done == 1 and avg is not None and avg >= UP_SCORE:
@@ -532,9 +542,9 @@ async def update_tier(db: AsyncSession, st: AutopilotStudent, today: date) -> No
                              else f"最近 3 天过关检测第一次平均 {round(avg)} 分")
         elif n_done == 3 and len(extra) >= 2:
             move, why = 1, "连续 3 天都做完了,还有 2 天自己多背"
-    new_idx = min(len(TIERS) - 1, max(0, idx + move))
+    new_idx = min(len(tiers) - 1, max(0, idx + move))
     if new_idx != idx:
-        st.tier = TIERS[new_idx]
+        st.tier = tiers[new_idx]
         st.tier_reason = f"{why},{'加到' if move > 0 else '减到'}每天 {st.tier} 个"
         st.tier_day = ts
 
@@ -598,7 +608,7 @@ class Item:
     def title(self) -> str:
         if self.kind == "review":
             return f"{AUTHOR} · 今天的复习词"
-        head = f"{AUTHOR} · 加练" if self.batch else AUTHOR
+        head = (f"{AUTHOR} · 补漏" if self.batch < 0 else f"{AUTHOR} · 加练") if self.batch else AUTHOR
         g = (f"第{self.groups[0]}组" if len(self.groups) == 1
              else f"第{self.groups[0]}–{self.groups[-1]}组")
         tail = "新词" if self.kind == "new" else f"第{self.round_no}轮"
@@ -647,12 +657,15 @@ async def _unit_names(db: AsyncSession, unit_ids: Iterable[int]) -> dict[int, tu
 
 
 async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget: int, *,
-                     with_review: bool = True, skip_units: Optional[set] = None) -> Plan:
+                     with_review: bool = True, skip_units: Optional[set] = None, sync=None,
+                     gaps_only: bool = False) -> Plan:
     """按顺序填满 budget 个词: 到期的高轮次 → 到期的第 2 轮 → 每日复习 → 新词。不写作业,只排(会补历史轮次,不 commit)。
     新词从最近在学的那本书接着往下;那本学完了换下一本能学的书(老师指定了书就只用那本)"""
     sid = st.student_id
     ts = _ds(today)
     skip_units = skip_units or set()
+    if sync is not None or gaps_only:
+        return await _build_sync_plan(db, st, today, budget, sync, skip_units, with_review, gaps_only)
     books, why = await candidate_books(db, sid, st)
     allowed_cache: dict[int, Optional[set]] = {}
 
@@ -738,11 +751,137 @@ async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget
     return Plan(status="ok", book_id=book_id, book_name=book_name, items=items, budget=budget)
 
 
+async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget: int, sync,
+                           skip_units: set, with_review: bool, gaps_only: bool) -> Plan:
+    """开了「跟学校进度 + 查缺补漏」的班(services/catchup 文件头): 7 成跟学校的书、3 成补漏(摸底测出的单元 +
+    别的书到期的轮次 + 每日复习);一边排不满,剩的给另一边。gaps_only = 老师今天自己布置了作业,只补一小份漏洞"""
+    from app.services import catchup
+    sid = st.student_id
+    ts = _ds(today)
+    books, why = await candidate_books(db, sid, st)
+    allowed_cache: dict[int, Optional[set]] = {}
+
+    async def allowed_of(b: int) -> Optional[set]:
+        if b not in allowed_cache:
+            allowed_cache[b] = await get_allowed_unit_ids(db, sid, b)
+        return allowed_cache[b]
+
+    school_book, school_unit = await catchup.current_point(db, sid, sync)
+    if st.book_id and st.book_id in books:
+        school_book, school_unit = st.book_id, st.start_unit_id or school_unit
+    if school_book not in books:
+        school_book = books[0] if books else None
+    known = {(u, g) for u, g in (await db.execute(select(AutopilotGroup.unit_id, AutopilotGroup.group_index)
+                                                   .where(AutopilotGroup.student_id == sid))).all()}
+    for b in books:
+        await bootstrap(db, st, b, await book_groups(db, b), today)
+    await db.flush()
+    known = {(u, g) for u, g in (await db.execute(select(AutopilotGroup.unit_id, AutopilotGroup.group_index)
+                                                   .where(AutopilotGroup.student_id == sid))).all()}
+    rows = list((await db.execute(select(AutopilotGroup).where(
+        AutopilotGroup.student_id == sid, AutopilotGroup.graduated_at.is_(None), AutopilotGroup.rounds >= 1,
+        AutopilotGroup.next_due.is_not(None), AutopilotGroup.next_due <= ts))).scalars())
+    names = await _unit_names(db, [r.unit_id for r in rows])
+    alive = await live_books(db, [b for _, b in names.values()] + books)
+
+    async def due_of(book_filter) -> list[tuple[str, Grp, int, Optional[int]]]:
+        out = []
+        for r in sorted(rows, key=lambda r: (-r.rounds, r.next_due, r.unit_id, r.group_index)):
+            name, b = names.get(r.unit_id, ("", None))
+            if b is None or b not in alive or (r.unit_id, r.group_index) in skip_units or not book_filter(b):
+                continue
+            a = await allowed_of(b)
+            if a is not None and r.unit_id not in a:
+                continue
+            out.append(("round", Grp(r.unit_id, name, r.group_index, [0] * (r.word_count or 0)), r.rounds + 1, b))
+        return out
+
+    async def new_in(book: Optional[int], units: Optional[list[int]] = None, from_unit: Optional[int] = None):
+        if book is None or book not in alive:
+            return []
+        a = await allowed_of(book)
+        groups = await book_groups(db, book)
+        seen = from_unit is None or not any(g.unit_id == from_unit for g in groups)
+        out = []
+        for g in groups:
+            if not seen:
+                if g.unit_id != from_unit:
+                    continue
+                seen = True
+            if units is not None and g.unit_id not in units:
+                continue
+            if (g.unit_id, g.index) in known or (g.unit_id, g.index) in skip_units or g.count == 0:
+                continue
+            if a is not None and g.unit_id not in a:
+                continue
+            out.append(("new", g, 1, book))
+        return out
+
+    def take(cands, left, first_ok=False):
+        got = []
+        for c in cands:
+            n = max(1, c[1].count)
+            if left <= 0 or (left * 2 < n and not (first_ok and not got)):
+                break
+            got.append(c)
+            left -= n
+        return got, left
+
+    # 补漏: 摸底测出的单元(新词) + 别的书到期的轮次
+    gap_units = await catchup.open_gap_units(db, sid)
+    gap_new = []
+    for u in gap_units:
+        b = (names.get(u) or (await _unit_names(db, [u])).get(u, ("", None)))[1]
+        if b is not None and b in alive:
+            gap_new += await new_in(b, [u])
+    gap_due = await due_of(lambda b: b != school_book)
+    school_due = await due_of(lambda b: b == school_book)
+    school_new = await new_in(school_book, from_unit=school_unit)
+
+    gaps, school = gap_due + gap_new, school_due + school_new
+    review = None
+    if gaps_only:
+        gap_pick, _ = take(gaps, budget, first_ok=True)
+        items = _merge(gap_pick)
+    elif budget < 2 * DEFAULT_GROUP_SIZE:
+        # 一天只够一组(10 个那一档): 十天里三天先补漏,其余先跟学校;先排的那边没有,就给另一边
+        first, second = (gaps, school) if today.toordinal() % 10 in (1, 4, 7) else (school, gaps)
+        pick, left = take(first, budget, first_ok=True)
+        if not pick:
+            pick, left = take(second, budget, first_ok=True)
+        items = _merge([c for c in pick if c in school]) + _merge([c for c in pick if c in gaps])
+    else:
+        gap_budget = max(1, round(budget * catchup.GAP_SHARE))
+        gap_pick, gleft = take(gaps, gap_budget, first_ok=True)
+        if with_review and gleft >= REVIEW_COST:
+            from app.services import daily_review
+            ids, _backlog = await daily_review.pick(db, sid, today)
+            if ids:
+                review = Item(kind="review", words=len(ids))
+                gleft -= REVIEW_COST
+        school_budget = budget - gap_budget + max(0, gleft)
+        school_pick, sleft = take(school, school_budget, first_ok=not gap_pick)
+        if sleft > 0:   # 学校那边排不满: 剩的给补漏
+            more, _ = take([c for c in gaps if c not in gap_pick], sleft)
+            gap_pick = gap_pick + more
+        items = _merge(school_pick) + _merge(gap_pick) + ([review] if review else [])
+    book_name = ((await db.execute(select(WordBook.name).where(WordBook.id == school_book))).scalar_one_or_none() or ""
+                 ) if school_book else ""
+    if not items:
+        if not books:
+            return Plan(status=why, reason={"no_book": "还没有能学的书",
+                                            "gated": "老师指定的书要先兑换学习卡"}.get(why, ""), budget=budget)
+        return Plan(status="finished", reason=("没有要补的漏洞" if gaps_only else f"《{book_name}》能学的都学完了"),
+                    book_id=school_book, book_name=book_name, budget=budget)
+    return Plan(status="ok", book_id=school_book, book_name=book_name, items=items, budget=budget)
+
+
 async def preview(db: AsyncSession, student: User, cls: Class, ac: Optional[AutopilotClass]) -> dict:
     """老师页面上「小鹰老师建议今天派什么」(手动班点了才发)。会补历史轮次、定档位(一天一次),不派作业"""
     today = local_today()
     st, tier, tier_reason, line, line_reason = await prepare(db, student, today, ac)
-    plan = await build_plan(db, st, today, tier)
+    from app.services import catchup
+    plan = await build_plan(db, st, today, tier, sync=await catchup.class_sync(db, cls.id))
     location, loc_reason = location_for(ac, today)
     return {"status": plan.status, "reason": plan.reason, "book_name": plan.book_name,
             "items": [i.out() for i in plan.items], "words": plan.words, "tier": tier, "tier_reason": tier_reason,
@@ -828,7 +967,9 @@ async def prepare(db: AsyncSession, student: User, today: date, ac: Optional[Aut
                   st: Optional[AutopilotStudent] = None) -> tuple[AutopilotStudent, int, str, int, str]:
     """(孩子那一行, 档位, 档位原因, 过关线, 过关线原因)。会更新档位 / 过关线(一天一次)"""
     st = st or await student_row(db, student.id, student.org_id)
-    await update_tier(db, st, today)
+    from app.services import catchup
+    sync = await catchup.student_sync(db, student.id) is not None
+    await update_tier(db, st, today, sync)
     await update_pass_line(db, st, today)
     tier, tier_reason = effective_tier(st, ac)
     line, line_reason = await pass_line_for(db, student.id, st, ac, with_class=False)
@@ -861,6 +1002,11 @@ async def ensure_dispatch(db: AsyncSession, student: User, *, source: str = "aut
     st = await student_row(db, sid, student.org_id)
     pause = (ac is not None and ac.paused) or st.paused
     manual_today = await manual_homework_today(db, sid, today)
+    from app.services import catchup
+    sync = await catchup.class_sync(db, cls.id)
+    if source == "auto" and manual_today and not pause and sync is not None:
+        # 开了跟学校进度的班: 老师今天自己布置了作业,小鹰老师只补一小份漏洞(不算今天的任务,不进金币)
+        return await _dispatch_gaps(db, student, cls, ac, st, today, ts, sync, existing)
     if source == "auto" and (pause or manual_today):
         status = "paused" if pause else "skipped_manual"
         reason = ("老师暂停了小鹰老师" if pause else "老师今天自己布置了作业,小鹰老师今天不派")
@@ -887,7 +1033,7 @@ async def ensure_dispatch(db: AsyncSession, student: User, *, source: str = "aut
         return {"status": "busy"}
     try:
         st, tier, tier_reason, line, line_reason = await prepare(db, student, today, ac, st)
-        plan = await build_plan(db, st, today, tier)
+        plan = await build_plan(db, st, today, tier, sync=sync)
         location, loc_reason = location_for(ac, today)
         actor_name = AUTO_BY if source == "auto" else f"{AUTHOR}({(actor.full_name or actor.username) if actor else '老师'}点的)"
         row.source, row.actor_name, row.tier, row.pass_line, row.location = source, actor_name[:100], tier, line, location
@@ -920,6 +1066,40 @@ async def ensure_dispatch(db: AsyncSession, student: User, *, source: str = "aut
                 "tier": tier, "pass_line": line}
     except Exception:
         # 占位那一行和这一次写的作业一起回滚,下次打开首页 / 签到会重来
+        await db.rollback()
+        raise
+
+
+async def _dispatch_gaps(db: AsyncSession, student: User, cls: Class, ac: Optional[AutopilotClass],
+                         st: AutopilotStudent, today: date, ts: str, sync, existing) -> dict:
+    """老师今天自己布置了作业的那天(开了跟学校进度的班): 小鹰老师只补一小份漏洞,batch = GAP_BATCH,
+    不算今天的任务(extra_homework_ids 认 batch != 0,不进金币分母 / 陪跑 / 今日报告)"""
+    from app.services import catchup
+    sid = student.id
+    if existing is not None and existing.status in ("dispatched", "gap_only"):
+        return {"status": existing.status, "already": True, "dispatch_id": existing.id}
+    row = await _claim(db, sid, ts, class_id=cls.id, org_id=student.org_id, teacher_id=cls.teacher_id)
+    if row is None:
+        await db.rollback()
+        return {"status": "busy"}
+    try:
+        _st, _tier, _tr, line, _lr = await prepare(db, student, today, ac, st)
+        plan = await build_plan(db, st, today, catchup.GAP_ON_TEACHER_DAY, sync=sync, gaps_only=True)
+        location, _ = location_for(ac, today)
+        row.source, row.actor_name, row.tier, row.pass_line, row.location = "auto", AUTO_BY, _tier, line, location
+        if plan.status != "ok":
+            row.status, row.reason = "skipped_manual", "老师今天自己布置了作业;没有要补的漏洞"
+            await db.commit()
+            return {"status": "skipped_manual", "reason": row.reason}
+        await _write_homework(db, student, cls, row, plan.items, today, line, location, AUTO_BY, None,
+                              catchup.GAP_BATCH)
+        row.status = "gap_only"
+        row.words = plan.words
+        row.reason = f"老师今天自己布置了作业,小鹰老师只补 {plan.words} 个漏洞(不算今天的任务)"
+        row.plan = json.dumps({"book_id": plan.book_id, "items": [i.out() for i in plan.items]}, ensure_ascii=False)
+        await db.commit()
+        return {"status": "gap_only", "dispatch_id": row.id, "items": [i.out() for i in plan.items]}
+    except Exception:
         await db.rollback()
         raise
 
@@ -1232,6 +1412,15 @@ async def today_view(db: AsyncSession, student: User) -> dict:
         AutopilotDispatch.student_id == student.id, AutopilotDispatch.day == ts))).scalar_one_or_none()
     st = (await db.execute(select(AutopilotStudent).where(AutopilotStudent.student_id == student.id))).scalar_one_or_none()
     line, line_reason = await pass_line_for(db, student.id, st)
+    cu = await _catchup_view(db, student)
+    if row is not None and row.status == "gap_only":
+        gtasks = await today_tasks(db, student.id, ts)
+        gnames = await _unit_names(db, [x.task.unit_id for x in gtasks if x.task.unit_id])
+        return {"active": True, "gap_only": True, "pass_line": line, "pass_line_reason": line_reason,
+                "checked_in": checked_in, "location": row.location, "items": [], "extra_items": [],
+                "gap_items": [_today_item(x, gnames) for x in gtasks if x.task.batch < 0],
+                "all_done": False, "extra_left": 0, "extra_open": False, "repeats_today": 0,
+                "dispatch_id": row.id, "comment_pending": False, "catchup": cu}
     if row is None or row.status != "dispatched":
         # 没签到: 签到那一刻才派(ensure_dispatch 的条件照抄一遍),首页要告诉孩子「签到后小鹰老师就给你排」
         waiting = False
@@ -1241,7 +1430,7 @@ async def today_view(db: AsyncSession, student: User) -> dict:
                        and not (st is not None and st.paused)
                        and not await manual_homework_today(db, student.id, today))
         return {"active": False, "pass_line": line, "pass_line_reason": line_reason,
-                "checked_in": checked_in, "waiting_checkin": waiting}
+                "checked_in": checked_in, "waiting_checkin": waiting, "catchup": cu}
     tasks = await today_tasks(db, student.id, ts)
     base = [x for x in tasks if x.task.batch == 0]
     extra_tasks = [x for x in tasks if x.task.batch > 0]
@@ -1251,10 +1440,7 @@ async def today_view(db: AsyncSession, student: User) -> dict:
     names = await _unit_names(db, [x.task.unit_id for x in tasks if x.task.unit_id])
 
     def item(x: TaskState) -> dict:
-        t = x.task
-        return {"kind": t.kind, "round": t.round_no, "words": t.words, "done": x.done, "batch": t.batch,
-                "groups": _task_groups(t), "unit_name": names.get(t.unit_id, ("", None))[0] if t.unit_id else "",
-                "assignment_id": x.assignment_id, "is_content": t.is_content}
+        return _today_item(x, names)
 
     return {
         "active": True, "pass_line": line, "pass_line_reason": line_reason,
@@ -1268,7 +1454,33 @@ async def today_view(db: AsyncSession, student: User) -> dict:
         "repeats_today": repeats,
         "dispatch_id": row.id,
         "comment_pending": all_done and row.comment_at is None,
+        "catchup": cu,
     }
+
+
+def _today_item(x: TaskState, names: dict) -> dict:
+    t = x.task
+    return {"kind": t.kind, "round": t.round_no, "words": t.words, "done": x.done, "batch": t.batch,
+            "groups": _task_groups(t), "unit_name": names.get(t.unit_id, ("", None))[0] if t.unit_id else "",
+            "assignment_id": x.assignment_id, "is_content": t.is_content}
+
+
+async def _catchup_view(db: AsyncSession, student: User) -> Optional[dict]:
+    """首页那张卡上的查缺补漏: 开了的班才有。新来的孩子(小鹰老师一组都没排过)自动建一次摸底"""
+    from app.services import catchup
+    sync = await catchup.student_sync(db, student.id)
+    if sync is None:
+        return None
+    d = await catchup.latest(db, student.id)
+    if d is None:
+        n = (await db.execute(select(func.count()).select_from(AutopilotGroup).where(
+            AutopilotGroup.student_id == student.id))).scalar() or 0
+        if n == 0:
+            d = await catchup.request(db, student.id, student.org_id, None, "新来的孩子自动摸底")
+            await db.commit()
+    prog = await catchup.gap_progress(db, student.id)
+    return {"diagnosis": None if d is None else {"status": d.status, "id": d.id},
+            "progress": prog}
 
 
 # ---------------------------------------------------------------- 点评(小鹰老师写)
@@ -1516,6 +1728,7 @@ TODO_KINDS = {
     "no_book": "还没有书",
     "gated": "书要兑换学习卡",
     "finished": "书学完了",
+    "gap_blocked": "要补的书没开",
 }
 
 
@@ -1579,7 +1792,7 @@ async def class_board(db: AsyncSession, cls: Class, ac: Optional[AutopilotClass]
         today_out = None
         if d is not None:
             items = []
-            if d.status == "dispatched":
+            if d.status in ("dispatched", "gap_only"):
                 tasks = await today_tasks(db, s.id, ts)
                 names = await _unit_names(db, [x.task.unit_id for x in tasks if x.task.unit_id])
                 for x in tasks:
@@ -1587,7 +1800,8 @@ async def class_board(db: AsyncSession, cls: Class, ac: Optional[AutopilotClass]
                     items.append({"kind": t.kind, "round": t.round_no, "words": t.words, "done": x.done,
                                   "batch": t.batch, "groups": _task_groups(t),
                                   "unit_name": names.get(t.unit_id, ("", None))[0] if t.unit_id else ""})
-            base = [i for i in items if i["batch"] == 0]
+            # 老师布置日只补漏(gap_only): 那一小份就是今天的全部
+            base = [i for i in items if (i["batch"] < 0 if d.status == "gap_only" else i["batch"] == 0)]
             today_out = {"status": d.status, "reason": d.reason or "", "source": d.source,
                          "actor_name": d.actor_name or "", "location": d.location, "items": items,
                          "done": sum(1 for i in base if i["done"]), "total": len(base),
@@ -1677,4 +1891,18 @@ async def todo(db: AsyncSession, teacher_id: int) -> list[dict]:
                 "gated": "老师指定的书要先兑换学习卡,给他发卡或换一本",
                 "finished": f"{d.reason or '这本书学完了'}。给他分配下一本书,或者在这里指定"}[d.status]
         add(d.status, d.student_id, text)
+    # 查缺补漏(services/catchup): 摸底测出要补,但那本书孩子没开 —— 小鹰老师补不了
+    from app.models.autopilot import AutopilotClassSync, CatchupGap
+    synced = set((await db.execute(
+        select(ClassStudent.student_id).join(AutopilotClassSync, AutopilotClassSync.class_id == ClassStudent.class_id)
+        .where(ClassStudent.student_id.in_(sids), ClassStudent.is_active.is_(True),
+               AutopilotClassSync.enabled.is_(True)))).scalars())
+    has_gap = set((await db.execute(select(CatchupGap.student_id).where(
+        CatchupGap.student_id.in_(list(synced))).distinct())).scalars()) if synced else set()
+    from app.services import catchup
+    for sid in has_gap:
+        names = await catchup.blocked_gap_books(db, sid)
+        if names:
+            add("gap_blocked", sid, f"摸底测出前面的《{'》《'.join(names[:3])}》有漏洞,但他没开这本书,小鹰老师补不了。"
+                                    f"要补的话在「分配单词本」里给他开")
     return out

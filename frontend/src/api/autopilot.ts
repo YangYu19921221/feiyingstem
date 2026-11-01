@@ -80,6 +80,9 @@ export interface BoardStudent {
   today: BoardToday | null;
   groups: { learning: number; graduated: number; stuck: number; due: number };
   last_day: string | null;
+  /** 开了跟学校进度的班才有 */
+  catchup?: { diagnosis: { status: string; known_units: number; gap_units: number; questions: number } | null;
+              progress: GapProgress };
 }
 
 export interface Suggestion {
@@ -102,6 +105,11 @@ export interface StudentToday {
   checked_in?: boolean;
   /** 自动班还没签到: 签到那一刻才派 */
   waiting_checkin?: boolean;
+  /** 老师今天自己布置了作业,小鹰老师只补了一小份漏洞(开了跟学校进度的班) */
+  gap_only?: boolean;
+  gap_items?: (PlanItem & { assignment_id: number | null; is_content: boolean })[];
+  /** 查缺补漏(开了的班才有) */
+  catchup?: CatchupBrief | null;
   pass_line: number;
   pass_line_reason: string;
   tier?: number;
@@ -112,6 +120,56 @@ export interface StudentToday {
   extra_left?: number;
   extra_open?: boolean;
   repeats_today?: number;
+}
+
+export interface GapProgress {
+  units: number; groups: number; words: number; fixed_groups: number; fixed_words: number; fixed_units: number;
+}
+
+export interface CatchupBrief {
+  diagnosis: { status: 'pending' | 'doing' | 'done' | 'skipped'; id: number } | null;
+  progress: GapProgress;
+}
+
+export interface CatchupResult {
+  id: number; status: string; known_units: number; gap_units: number; questions: number; note: string;
+  gaps: { unit_id: number; unit: string; book: string }[];
+  progress: GapProgress;
+  finished_at: string | null;
+  requested_by_name: string;
+}
+
+export interface CatchupQuestion {
+  word_id: number;
+  type: 'choice' | 'spell';
+  unit: string;
+  word?: string;
+  options?: string[];
+  meaning?: string;
+  letters?: number;
+  first?: string;
+}
+
+export interface CatchupState {
+  status: 'none' | 'pending' | 'doing' | 'done' | 'skipped';
+  answered?: number;
+  left?: number;
+  units_done?: number;
+  question?: CatchupQuestion | null;
+  result?: CatchupResult;
+  minutes?: number;
+  /** 刚交的那一题 */
+  correct?: boolean;
+  right?: string;
+  word?: string;
+  stale?: boolean;
+}
+
+export interface ClassSync {
+  enabled: boolean;
+  school_book_id: number | null; school_book_name: string;
+  school_unit_id: number | null; school_unit_name: string;
+  updated_by_name: string;
 }
 
 export interface AttemptResult {
@@ -129,7 +187,14 @@ export interface AttemptResult {
 export const autopilotApi = {
   overview: () => client.get<Overview>('/teacher/autopilot/overview'),
   board: (classId: number) =>
-    client.get<{ class: ClassSettings; students: BoardStudent[] }>(`/teacher/autopilot/classes/${classId}`, { timeout: 30000 }),
+    client.get<{ class: ClassSettings; students: BoardStudent[]; sync?: ClassSync }>(`/teacher/autopilot/classes/${classId}`, { timeout: 30000 }),
+  syncBooks: (classId: number) =>
+    client.get<{ books: { id: number; name: string; kids: number; units: { id: number; name: string }[] }[] }>(
+      `/teacher/autopilot/classes/${classId}/sync-books`).then(r => r.books),
+  saveSync: (classId: number, body: Partial<{ enabled: boolean; school_book_id: number | null; school_unit_id: number | null }>) =>
+    client.put<ClassSync>(`/teacher/autopilot/classes/${classId}/sync`, body),
+  requestCatchup: (classId: number, studentIds: number[]) =>
+    client.post<{ requested: number }>(`/teacher/autopilot/classes/${classId}/catchup`, { student_ids: studentIds }),
   suggestions: (classId: number) =>
     client.get<{ suggestions: Record<string, Suggestion> }>(`/teacher/autopilot/classes/${classId}/suggestions`, { timeout: 30000 })
       .then(r => r.suggestions),
@@ -150,6 +215,12 @@ export const autopilotApi = {
   undo: (studentId: number) =>
     client.post<{ removed: number }>(`/teacher/autopilot/students/${studentId}/undo`),
   todo: () => client.get<{ items: TodoItem[] }>('/teacher/autopilot/todo').then(r => r.items),
+
+  // 学生: 摸底
+  catchup: () => client.get<CatchupState>('/student/catchup', { timeout: 20000 }),
+  catchupAnswer: (body: { word_id: number; choice?: number; text?: string; dont_know?: boolean }) =>
+    client.post<CatchupState>('/student/catchup/answer', body, { timeout: 20000 }),
+  catchupFinish: () => client.post<CatchupState>('/student/catchup/finish', {}, { timeout: 20000 }),
 
   // 学生
   today: () => client.get<StudentToday>('/student/autopilot/today', { timeout: 20000 }),

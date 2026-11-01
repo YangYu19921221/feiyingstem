@@ -144,6 +144,7 @@ const DictationPractice = lazyWithRetry(() => import('./pages/DictationPractice'
 const HandwritingHub = lazyWithRetry(() => import('./pages/HandwritingHub'));
 const StudentTutor = lazyWithRetry(() => import('./pages/StudentTutor'));
 const StudentHomeworkCheck = lazyWithRetry(() => import('./pages/StudentHomeworkCheck'));
+const StudentCatchup = lazyWithRetry(() => import('./pages/StudentCatchup'));
 const HandwritingDictation = lazyWithRetry(() => import('./pages/HandwritingDictation'));
 const HandwritingSheet = lazyWithRetry(() => import('./pages/HandwritingSheet'));
 const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
@@ -422,6 +423,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <HandwritingHub />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 小鹰老师摸摸底(查缺补漏,11-01 试点) */}
+        <Route
+          path="/student/catchup"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentCatchup />
             </ProtectedRoute>
           }
         />

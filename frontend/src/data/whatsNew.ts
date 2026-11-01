@@ -28,6 +28,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'catchup-student-2026-11',
+    date: '2026-11-01',
+    title: '🔍 小鹰老师帮你查缺补漏',
+    desc: '首页出现「小鹰老师想先摸摸底」时,花 5 分钟测一测:会的词以后不用再背,只补不会的。不认识就点「不认识」,别猜。测完以后小鹰老师每天在任务里带一点漏洞,首页能看到补上了多少。',
+    where: '学生首页「小鹰老师今天给你排的」那张卡里「开始摸底」',
+    roles: ['student'],
+    route: '/student/dashboard',
+  },
+  {
+    id: 'catchup-teacher-2026-11',
+    date: '2026-11-01',
+    title: '🔍 小鹰老师: 跟学校进度 + 查缺补漏(试点)',
+    desc: '给作业多、基础差的班用: 打开后每天最少 10 个词,7 成跟学校在讲的单元、3 成补以前没学牢的;你自己布置了作业的那天,小鹰老师只补一小份漏洞,不算今天的任务、不影响金币。可以让全班或单个孩子做 5 分钟摸底,从现在学的单元往前测到前几册,会的不再背,要补的每天带一点,每个孩子补上了多少都看得到。默认关,打开只影响那个班。',
+    where: '教师工作台「课堂推进 → 小鹰老师 · 自动布置」→ 班级设置下面「跟学校进度 + 查缺补漏」',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/autopilot',
+  },
+  {
     id: 'checkin-before-homework-student-2026-10',
     date: '2026-10-31',
     title: '📍 先签到,再做作业',

@@ -29,6 +29,8 @@ const QUIET_PATTERNS = [
   '/student/live/', '/teacher/livestream',
   // 学习助手: 孩子正在打字提问
   '/student/tutor',
+  // 摸底: 孩子正在一题一题答
+  '/student/catchup',
 ];
 
 function readSeen(): string[] {

@@ -20,7 +20,7 @@ from app.api.v1.teacher._permissions import assert_student_in_my_class
 from app.core.actor import acting_user, forbid_assistant
 from app.core.database import get_db
 from app.core.timeutil import local_today
-from app.models.autopilot import AutopilotClass, AutopilotDispatch, AutopilotStudent
+from app.models.autopilot import AutopilotClass, AutopilotClassSync, AutopilotDispatch, AutopilotStudent
 from app.models.user import Class, User
 from app.models.word import Unit, WordBook
 from app.services import audit_log
@@ -83,7 +83,117 @@ async def autopilot_class(class_id: int, db: AsyncSession = Depends(get_db),
     ac = await _class_settings(db, class_id)
     students = await ap.class_board(db, c, ac)
     await db.commit()   # 第一次看会补历史轮次、定档位
-    return {"class": _class_out(c, ac), "students": students}
+    from app.services import catchup
+    sync = await db.get(AutopilotClassSync, class_id)
+    if sync is not None and sync.enabled:
+        diag = await catchup.count_by_status(db, [s["id"] for s in students])
+        for s_ in students:
+            s_["catchup"] = {"diagnosis": diag.get(s_["id"]), "progress": await catchup.gap_progress(db, s_["id"])}
+    return {"class": _class_out(c, ac), "students": students, "sync": await _sync_out(db, c, sync)}
+
+
+# ---------------------------------------------------------------- 跟学校进度 + 查缺补漏(services/catchup,试点)
+
+async def _sync_out(db: AsyncSession, c: Class, sync: Optional[AutopilotClassSync]) -> dict:
+    book = await db.get(WordBook, sync.school_book_id) if sync and sync.school_book_id else None
+    unit = await db.get(Unit, sync.school_unit_id) if sync and sync.school_unit_id else None
+    return {"enabled": bool(sync and sync.enabled),
+            "school_book_id": book.id if book else None, "school_book_name": book.name if book else "",
+            "school_unit_id": unit.id if unit else None, "school_unit_name": unit.name if unit else "",
+            "updated_by_name": (sync.updated_by_name if sync else None) or ""}
+
+
+@teacher_router.get("/autopilot/classes/{class_id}/sync-books")
+async def autopilot_sync_books(class_id: int, db: AsyncSession = Depends(get_db),
+                               teacher: User = Depends(get_current_teacher)):
+    """选「学校这周讲到哪」用: 班里孩子在学的书和每本的单元"""
+    c = await _my_class(db, teacher, class_id)
+    from app.models.learning import LearningProgress
+    from app.models.user import ClassStudent
+    rows = (await db.execute(
+        select(Unit.book_id, func.count(func.distinct(LearningProgress.user_id)))
+        .join(LearningProgress, LearningProgress.unit_id == Unit.id)
+        .join(ClassStudent, ClassStudent.student_id == LearningProgress.user_id)
+        .join(WordBook, WordBook.id == Unit.book_id)
+        .where(ClassStudent.class_id == c.id, ClassStudent.is_active.is_(True))
+        .group_by(Unit.book_id).order_by(func.count(func.distinct(LearningProgress.user_id)).desc()).limit(12))).all()
+    out = []
+    for bid, n in rows:
+        b = await db.get(WordBook, bid)
+        units = (await db.execute(select(Unit.id, Unit.name).where(Unit.book_id == bid)
+                                  .order_by(Unit.order_index, Unit.unit_number, Unit.id))).all()
+        out.append({"id": bid, "name": b.name if b else "", "kids": n,
+                    "units": [{"id": u, "name": nm or ""} for u, nm in units]})
+    return {"books": out}
+
+
+class SyncIn(BaseModel):
+    enabled: Optional[bool] = None
+    school_book_id: Optional[int] = None
+    school_unit_id: Optional[int] = None
+
+
+@teacher_router.put("/autopilot/classes/{class_id}/sync")
+async def update_autopilot_sync(class_id: int, body: SyncIn, request: Request, db: AsyncSession = Depends(get_db),
+                                teacher: User = Depends(get_current_teacher)):
+    c = await _my_class(db, teacher, class_id)
+    data = body.model_dump(exclude_unset=True)
+    sync = await db.get(AutopilotClassSync, class_id)
+    if sync is None:
+        sync = AutopilotClassSync(class_id=class_id, org_id=c.org_id, enabled=False)
+        db.add(sync)
+    changes = []
+    if "enabled" in data and bool(data["enabled"]) != bool(sync.enabled):
+        forbid_assistant(teacher, "打开 / 关掉跟学校进度")
+        sync.enabled = bool(data["enabled"])
+        changes.append("打开跟学校进度 + 查缺补漏" if sync.enabled else "关掉跟学校进度 + 查缺补漏")
+    # 「键在才改」;都传 null = 不设(按每个孩子最近在学的单元)
+    if "school_book_id" in data or "school_unit_id" in data:
+        bid, uid = data.get("school_book_id"), data.get("school_unit_id")
+        if uid is not None:
+            u = await db.get(Unit, uid)
+            if u is None or (bid is not None and u.book_id != bid):
+                raise HTTPException(400, "这个单元不在选的书里")
+            bid = u.book_id
+        if bid is not None and await db.get(WordBook, bid) is None:
+            raise HTTPException(400, "没有这本书")
+        sync.school_book_id, sync.school_unit_id = bid, uid
+        changes.append("学校讲到: " + (f"书 {bid} 单元 {uid}" if uid else "按每个孩子最近在学的单元"))
+    me = acting_user(teacher)
+    sync.updated_by = me.id
+    sync.updated_by_name = (me.full_name or me.username or "")[:100] or None
+    if changes:
+        audit_log.record(db, request, teacher, "autopilot.sync", f"「{c.name}」" + ";".join(changes),
+                         target_type="class", target_id=c.id, detail=data)
+    await db.commit()
+    return await _sync_out(db, c, sync)
+
+
+class CatchupIn(BaseModel):
+    student_ids: list[int] = Field(..., min_length=1, max_length=200)
+
+
+@teacher_router.post("/autopilot/classes/{class_id}/catchup")
+async def request_catchup(class_id: int, body: CatchupIn, request: Request, db: AsyncSession = Depends(get_db),
+                          teacher: User = Depends(get_current_teacher)):
+    """让这些孩子做一次摸底(孩子首页会出现「先摸摸底」)。有一个不是这个班的整批 403"""
+    c = await _my_class(db, teacher, class_id)
+    from app.services import catchup
+    roster = {u.id for u in await ap.class_students(db, class_id)}
+    bad = [i for i in body.student_ids if i not in roster]
+    if bad:
+        raise HTTPException(403, "有的孩子不在这个班")
+    me = acting_user(teacher)
+    n = 0
+    for sid in dict.fromkeys(body.student_ids):
+        stu = await db.get(User, sid)
+        before = await catchup.latest(db, sid)
+        d = await catchup.request(db, sid, stu.org_id if stu else c.org_id, me.id, me.full_name or me.username or "")
+        n += 1 if before is None or before.id != d.id else 0
+    audit_log.record(db, request, teacher, "autopilot.catchup", f"「{c.name}」让 {n} 个孩子做摸底",
+                     target_type="class", target_id=c.id, detail={"student_ids": body.student_ids})
+    await db.commit()
+    return {"requested": n}
 
 
 class ClassIn(BaseModel):
@@ -332,6 +442,75 @@ async def my_autopilot_extra(db: AsyncSession = Depends(get_db), student: User =
     if not out["ok"]:
         raise HTTPException(409, out["message"])
     return out
+
+
+# ---------------------------------------------------------------- 学生: 摸底
+
+async def _my_diag(db: AsyncSession, student: User):
+    from app.services import catchup
+    d = await catchup.latest(db, student.id)
+    if d is None or d.status not in ("pending", "doing", "done", "skipped"):
+        return None
+    return d
+
+
+async def _diag_out(db: AsyncSession, d) -> dict:
+    from app.services import catchup
+    if d.status in ("done", "skipped"):
+        return {"status": d.status, "result": await catchup.summary(db, d)}
+    s = await catchup.compute(db, d)
+    if s.next is None:   # 测完了(连着几个单元都会 / 测满 / 测到头): 自动结束
+        res = await catchup.finish(db, d)
+        await db.commit()
+        return {"status": "done", "result": res}
+    return {"status": d.status, "answered": s.answered, "left": catchup.est_left(s, d),
+            "units_done": len(s.verdicts), "question": await catchup.question_out(db, d, s),
+            "minutes": max(1, round(catchup.MAX_QUESTIONS * catchup.SECONDS_PER_Q / 60))}
+
+
+@student_router.get("/catchup")
+async def my_catchup(db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
+    d = await _my_diag(db, student)
+    if d is None:
+        return {"status": "none"}
+    from app.services import catchup
+    if d.units is None:
+        await catchup.begin(db, d)
+        await db.commit()
+    return await _diag_out(db, d)
+
+
+class CatchupAnswerIn(BaseModel):
+    word_id: int
+    choice: Optional[int] = Field(None, ge=0, le=5)
+    text: Optional[str] = Field(None, max_length=60)
+    dont_know: bool = False
+
+
+@student_router.post("/catchup/answer")
+async def answer_catchup(body: CatchupAnswerIn, db: AsyncSession = Depends(get_db),
+                         student: User = Depends(get_current_student)):
+    from app.services import catchup
+    d = await _my_diag(db, student)
+    if d is None or d.status not in ("pending", "doing") or d.units is None:
+        raise HTTPException(409, "现在没有要做的摸底")
+    r = await catchup.answer(db, d, body.word_id, body.choice, body.text, body.dont_know)
+    await db.commit()
+    return {**r, **await _diag_out(db, d)}
+
+
+@student_router.post("/catchup/finish")
+async def finish_catchup(db: AsyncSession = Depends(get_db), student: User = Depends(get_current_student)):
+    """孩子「先测到这」: 测过的单元照样算,没测的以后再说"""
+    from app.services import catchup
+    d = await _my_diag(db, student)
+    if d is None or d.status not in ("pending", "doing"):
+        raise HTTPException(409, "现在没有要做的摸底")
+    if d.units is None:
+        await catchup.begin(db, d)
+    res = await catchup.finish(db, d, early=True)
+    await db.commit()
+    return {"status": "done", "result": res}
 
 
 class AttemptIn(BaseModel):

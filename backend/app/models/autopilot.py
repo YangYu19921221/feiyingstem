@@ -150,7 +150,7 @@ class AutopilotTask(Base):
     group_index = Column(Integer, nullable=True)       # 第一组(homework_assignments.group_index 也写它)
     groups = Column(String(200), nullable=True)        # 这份作业的全部组 "3,4,5"
     round_no = Column(Integer, nullable=True)
-    batch = Column(Integer, nullable=False, default=0)  # 加练第几批(0 = 当天的任务)
+    batch = Column(Integer, nullable=False, default=0)  # 加练第几批(0 = 当天的任务;-1 = 老师布置日的补漏)
     words = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (Index("idx_autopilot_task_hw", "homework_id"),)
@@ -159,7 +159,8 @@ class AutopilotTask(Base):
 def extra_homework_ids():
     """「加练」那几份单词作业的 id(子查询)。今天的任务做完以后孩子自己要的,
     不进金币分母、陪跑看板、今日报告的「今天的任务」—— 否则多练一组反而让「全做完」变成没做完"""
-    return select(AutopilotTask.homework_id).where(AutopilotTask.batch > 0, AutopilotTask.is_content.is_(False))
+    # batch < 0 = 老师自己布置了作业那天小鹰老师补的一小份漏洞(services/catchup),同样不算今天的任务
+    return select(AutopilotTask.homework_id).where(AutopilotTask.batch != 0, AutopilotTask.is_content.is_(False))
 
 
 def auto_homework_ids(student_id=None, *, content: bool = False):
@@ -168,3 +169,71 @@ def auto_homework_ids(student_id=None, *, content: bool = False):
     if student_id is not None:
         q = q.where(AutopilotTask.student_id == student_id)
     return q
+
+
+# ---------------------------------------------------------------- 查缺补漏(2026-11-01,试点)
+
+class AutopilotClassSync(Base):
+    """班级「跟学校进度 + 查缺补漏」开关(没有行 = 关,和以前一样)。规则见 services/catchup.py 文件头"""
+    __tablename__ = "autopilot_class_sync"
+
+    class_id = Column(Integer, primary_key=True)
+    org_id = Column(Integer, nullable=True, index=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    # 学校这周讲到哪一本哪个单元(都 NULL = 按每个孩子最近在学的单元推算;混年级的班别设)
+    school_book_id = Column(Integer, nullable=True)
+    school_unit_id = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_by = Column(Integer, nullable=True)
+    updated_by_name = Column(String(100), nullable=True)
+
+
+class CatchupDiagnosis(Base):
+    """一次摸底。pending = 老师让做 / 还没开始;doing;done;skipped(没有能测的课本)"""
+    __tablename__ = "catchup_diagnoses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(Integer, nullable=False, index=True)
+    org_id = Column(Integer, nullable=True, index=True)
+    status = Column(String(10), nullable=False, default="pending")
+    requested_by = Column(Integer, nullable=True)
+    requested_by_name = Column(String(100), nullable=True)
+    units = Column(Text, nullable=True)            # 开始时排好的测试顺序 "12,11,10"(从现在学的往前)
+    start_book_id = Column(Integer, nullable=True)
+    start_unit_id = Column(Integer, nullable=True)
+    known_units = Column(Integer, nullable=False, default=0)
+    gap_units = Column(Integer, nullable=False, default=0)
+    questions = Column(Integer, nullable=False, default=0)
+    note = Column(String(200), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
+class CatchupAnswer(Base):
+    """摸底里每一题(一题一个词)。答案只在服务器算,不存选项"""
+    __tablename__ = "catchup_answers"
+    __table_args__ = (UniqueConstraint("diagnosis_id", "word_id", name="uq_catchup_answer"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    diagnosis_id = Column(Integer, nullable=False, index=True)
+    unit_id = Column(Integer, nullable=False)
+    word_id = Column(Integer, nullable=False)
+    qtype = Column(String(10), nullable=False)     # choice / spell
+    correct = Column(Boolean, nullable=False, default=False)
+    dont_know = Column(Boolean, nullable=False, default=False)
+    answer = Column(String(100), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class CatchupGap(Base):
+    """摸底测出来要补的单元(一个孩子一个单元一行)。补上 = 这个单元的组都学会了(autopilot_groups)"""
+    __tablename__ = "catchup_gaps"
+    __table_args__ = (UniqueConstraint("student_id", "unit_id", name="uq_catchup_gap"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(Integer, nullable=False, index=True)
+    unit_id = Column(Integer, nullable=False)
+    book_id = Column(Integer, nullable=True)
+    diagnosis_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
