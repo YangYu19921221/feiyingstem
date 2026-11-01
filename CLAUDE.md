@@ -286,6 +286,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **只认当前这一题**(防乱交),选项按 (摸底 id, 词) 种子现算不存,下发的题不带答案。结束: 会的单元每组插 autopilot_groups graduated(legacy,已有的不动)= 不再派新词;
   要补的进 catchup_gaps,补上 = 这个单元的组都学会(还是三轮)
   ⑤补漏只派孩子能学的单元(get_allowed_unit_ids);要补的书没开 → 老师待办「要补的书没开」
+  ⑤d **每一条规则老师都能自己选**(11-01 11:59 已部署,提交 0a46401;4 个后端文件生产==HEAD~1 整推,新表 autopilot_sync_options create_all 建(先在生产库副本跑过 init_db);两个服务都重启;前端 mvxaw7sn;备份 /root/eh_code_before_syncopts_20261101_1159.tgz、frontend/dist_bak_20261101_1159。生产冒烟(临时老师 + 班,删净): 9 条都带风险、改 5 成生效、33 回 400「只能选给的几个」、恢复默认回 30。用户「都需要可以自己选默认老师 你要把规则风险字面说明在教师端」):
+  **真源 services/catchup.OPTIONS**(每条: label / default / choices / effect「会怎样」/ risk「风险」),老师页 components/autopilot/SyncOptionsPanel 原样显示,**不在前端另写一份**;
+  改规则先改 OPTIONS,老师看到的跟着变。9 条: auto_diagnose_on_enable、auto_diagnose_new、gap_share(0/20/30/40/50,0 = 不补漏,连学校排不满也不拿漏洞凑、别的书到期复习也不派)、
+  teacher_day(gap / none)、teacher_day_words(5/10/20)、small_tier(最少 10 / 20)、mark_known、max_questions(30/60/90)、allow_finish_early。
+  只存和默认不一样的;check_options 不认的键 / 值 / **类型不对**一律 400(Python 里 1 == True,不判类型 small_tier=1 会被当成 True,测试锁住);{"reset": true} 全部恢复默认;改了记操作记录 autopilot.sync。
+  打开前的确认框、「已经自动在做」那块按老师选的写;孩子那边「先测到这」按 allow_finish_early 显示,后端 409 兜底。
+  测试 test_catchup 加 4 例(共 15);teacher_day / 打开自动摸底 / mark_known / 先测到这 / 类型判断 / 不补漏还凑 六处各让对应用例失败(回归锁验证过)
   ⑤c **书没开怎么办**(11-01 11:24 已部署,提交 2cb5858 + bf36c44;3 个后端文件生产==HEAD~1 整推,两个服务都重启;前端 mvx9r06b;备份 /root/eh_code_before_openbooks_20261101_1124.tgz、frontend/dist_bak_20261101_1124。用户「你需要考虑如果没有开书的情况下应该怎么弄」):
   **小鹰老师不自己开书**(分配即权限照旧)。老师页 SyncCard 里黄框「开书」(components/autopilot/OpenBooksPanel,接口 GET book-gaps / POST open-books)一次列全:
   ①在学的那本没开整本(常见: 一本都没分配、只靠作业单元)→ 开那本 ②摸底测出前几册有漏洞、那本没开 → 只开测出漏洞的那几本(不按年级一口气全开)
