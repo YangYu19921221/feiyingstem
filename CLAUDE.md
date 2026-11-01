@@ -286,6 +286,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   **只认当前这一题**(防乱交),选项按 (摸底 id, 词) 种子现算不存,下发的题不带答案。结束: 会的单元每组插 autopilot_groups graduated(legacy,已有的不动)= 不再派新词;
   要补的进 catchup_gaps,补上 = 这个单元的组都学会(还是三轮)
   ⑤补漏只派孩子能学的单元(get_allowed_unit_ids);要补的书没开 → 老师待办「要补的书没开」
+  ⑤b **11-01 11:05 改成第一次也自动**(提交 5303b66,用户「一开始应该怎么用…能自动还是需要第一次老师手动」;api/v1/autopilot.py、services/catchup.py 生产==HEAD~1 整推,两个服务都重启;前端 mvx8z3is;备份 /root/eh_code_before_catchupauto_20261101_1105.tgz、frontend/dist_bak_20261101_1105):
+  老师只要点一次「这个班打开」→ 全班每人建一次摸底(已经有 pending / doing / done 的不重建,关了再开不重复);之后新来的孩子打开首页自动建。
+  老师页 SyncCard 分三块「已经自动在做 / 可以设(不设也行)/ 需要你的」,打开前确认框写清楚会发生什么;按钮改「让全班再摸一次底」。
+  试点班 class 59 是 SQL 直接打开的(没走开关),上线后按同口径补建了 86 个 pending 摸底。测试 test_catchup 加 1 例
   ⑥前端: 学生 /student/catchup(pages/StudentCatchup,防误触 350ms、1–4 选 0 不认识、错了停一下给看对的);首页小鹰老师卡片「小鹰老师想先摸摸底 / 补上了 N 个」;
   老师页 SyncCard(打开、学校讲到哪、让全班摸底)+ 每个孩子一行摸底状态和补上多少。公告学生 / 老师各一条
   测试 tests/test_catchup.py(6 例);金币分母 / 老师布置日补漏 / 往前测 / 一组日补漏 / 只认当前题 / 只派能学的 六处各让对应用例失败(回归锁验证过)。
