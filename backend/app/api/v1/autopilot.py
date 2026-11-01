@@ -182,6 +182,74 @@ async def update_autopilot_sync(class_id: int, body: SyncIn, request: Request, d
     return {**await _sync_out(db, c, sync), "requested": requested}
 
 
+@teacher_router.get("/autopilot/classes/{class_id}/book-gaps")
+async def autopilot_book_gaps(class_id: int, db: AsyncSession = Depends(get_db),
+                              teacher: User = Depends(get_current_teacher)):
+    """「开书」: 没开书 / 要补的书没开 / 要兑卡 / 不知道在学哪本(规则见 services/catchup 文件头第 6 条)"""
+    c = await _my_class(db, teacher, class_id)
+    from app.services import catchup
+    return await catchup.book_gaps(db, await ap.class_students(db, c.id))
+
+
+class OpenBookItem(BaseModel):
+    student_id: int
+    book_id: int
+
+
+class OpenBooksIn(BaseModel):
+    items: list[OpenBookItem] = Field(..., min_length=1, max_length=500)
+
+
+@teacher_router.post("/autopilot/classes/{class_id}/open-books")
+async def autopilot_open_books(class_id: int, body: OpenBooksIn, request: Request, db: AsyncSession = Depends(get_db),
+                               teacher: User = Depends(get_current_teacher)):
+    """老师勾了一键开书(整本)。要兑卡 / 专属没开通的跳过并说明;有一个不是这个班的整批 403。
+    和「分配单词本」同一张表、同一套锁书规则,只是一次给好几个孩子各开各的"""
+    from sqlalchemy.exc import IntegrityError
+    from app.models.learning import BookAssignment
+    from app.services import card_pack
+    from app.services.scope_service import get_allowed_unit_ids
+    c = await _my_class(db, teacher, class_id)
+    roster = {u.id: u for u in await ap.class_students(db, class_id)}
+    if any(i.student_id not in roster for i in body.items):
+        raise HTTPException(403, "有的孩子不在这个班")
+    created, already, locked, missing = 0, 0, [], 0
+    done_names: dict[str, list[str]] = {}
+    me = acting_user(teacher)
+    for it in {(i.student_id, i.book_id): i for i in body.items}.values():
+        u = roster[it.student_id]
+        book = await db.get(WordBook, it.book_id)
+        if book is None:
+            missing += 1
+            continue
+        reason = await card_pack.lock_reason(db, u.org_id, book.id)
+        if reason:
+            locked.append({"student_id": u.id, "book_name": book.name, "reason": reason})
+            continue
+        if await get_allowed_unit_ids(db, u.id, book.id) is None:
+            already += 1
+            continue
+        try:
+            async with db.begin_nested():
+                db.add(BookAssignment(book_id=book.id, student_id=u.id, teacher_id=c.teacher_id, scope_type="book",
+                                      is_completed=False))
+                await db.flush()
+            created += 1
+            done_names.setdefault(book.name, []).append((u.full_name or u.username or "")[:20])
+        except IntegrityError:
+            already += 1
+    if created:
+        audit_log.record(
+            db, request, teacher, "book.assign",
+            f"「{c.name}」查缺补漏开书: 给 {created} 个孩子开了整本(" + ";".join(
+                f"《{b}》{len(v)} 人" for b, v in done_names.items()) + ")",
+            target_type="class", target_id=c.id,
+            detail={"by": me.id, "books": done_names, "locked": locked})
+    await db.commit()
+    ap._groups_cache.clear()
+    return {"created": created, "already": already, "locked": locked, "missing": missing}
+
+
 class CatchupIn(BaseModel):
     student_ids: list[int] = Field(..., min_length=1, max_length=200)
 

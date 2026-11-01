@@ -1904,5 +1904,5 @@ async def todo(db: AsyncSession, teacher_id: int) -> list[dict]:
         names = await catchup.blocked_gap_books(db, sid)
         if names:
             add("gap_blocked", sid, f"摸底测出前面的《{'》《'.join(names[:3])}》有漏洞,但他没开这本书,小鹰老师补不了。"
-                                    f"要补的话在「分配单词本」里给他开")
+                                    f"在下面「跟学校进度 + 查缺补漏」→「开书」里勾上就能一起开")
     return out

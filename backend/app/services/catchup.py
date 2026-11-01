@@ -18,6 +18,12 @@
    结果: 会的单元每组记成学会(autopilot_groups graduated,legacy),以后不再派新词;要补的单元记进 catchup_gaps,
    补漏那 3 成从这里出(还是走三轮才算学会)。**补上了 = 这个单元的组都学会了**
 5. 补漏只派孩子能学的单元(get_allowed_unit_ids,分配即权限不变);测出缺的书他没开,老师待办里写出来
+6. **书没开的三种情况**(book_gaps,老师页「开书」那一块一次看全、勾了一键开;小鹰老师**不自己开书**,分配即权限照旧):
+   ①一本书都没开(只能学老师作业里的单元)→ 开他在学的那本(最近学的 / 最近作业的书)
+   ②摸底测出前几册有漏洞、那本没开 → 开那几本(只开测出漏洞的,不按年级一口气全开)
+   ③卡包机构的平台书要兑换学习卡 / 专属内容没开通 → 不能直接开,列出来告诉老师去发卡
+   不知道在学哪本(没学过、也没作业)→ 列出来,让老师去「分配单词本」
+   孩子那边: 摸底结果里「要老师开书才能补」的单元单独写,补漏进度不算它们
 """
 import hashlib
 import random
@@ -398,8 +404,11 @@ async def gap_progress(db: AsyncSession, student_id: int) -> dict:
                                   .order_by(CatchupGap.id))).scalars())
     dead = await dead_units(db, [g.unit_id for g in gaps])
     gaps = [g for g in gaps if g.unit_id not in dead]
+    blocked = await _blocked_units(db, student_id, [(g.book_id, g.unit_id) for g in gaps])
+    gaps = [g for g in gaps if g.unit_id not in blocked]
     if not gaps:
-        return {"units": 0, "groups": 0, "words": 0, "fixed_groups": 0, "fixed_words": 0, "fixed_units": 0}
+        return {"units": 0, "groups": 0, "words": 0, "fixed_groups": 0, "fixed_words": 0, "fixed_units": 0,
+                "blocked_units": len(blocked)}
     grads = {(u, i) for u, i in (await db.execute(select(AutopilotGroup.unit_id, AutopilotGroup.group_index).where(
         AutopilotGroup.student_id == student_id, AutopilotGroup.graduated_at.is_not(None),
         AutopilotGroup.unit_id.in_([g.unit_id for g in gaps])))).all()}
@@ -418,7 +427,7 @@ async def gap_progress(db: AsyncSession, student_id: int) -> dict:
             fixed_words += sum(x.count for x in done)
             fixed_units += 1 if ug and len(done) == len(ug) else 0
     return {"units": len(gaps), "groups": total, "words": words, "fixed_groups": fixed,
-            "fixed_words": fixed_words, "fixed_units": fixed_units}
+            "fixed_words": fixed_words, "fixed_units": fixed_units, "blocked_units": len(blocked)}
 
 
 async def open_gap_units(db: AsyncSession, student_id: int) -> list[int]:
@@ -429,15 +438,81 @@ async def open_gap_units(db: AsyncSession, student_id: int) -> list[int]:
 
 
 async def summary(db: AsyncSession, d: CatchupDiagnosis) -> dict:
-    gaps = (await db.execute(select(CatchupGap.unit_id, Unit.name, WordBook.name)
+    gaps = (await db.execute(select(CatchupGap.unit_id, Unit.name, WordBook.name, WordBook.id)
                              .join(Unit, Unit.id == CatchupGap.unit_id).join(WordBook, WordBook.id == Unit.book_id)
                              .where(CatchupGap.diagnosis_id == d.id).order_by(CatchupGap.id))).all()
+    blocked = await _blocked_units(db, d.student_id, [(b, u) for u, _n, _bn, b in gaps])
     return {"id": d.id, "status": d.status, "known_units": d.known_units, "gap_units": d.gap_units,
             "questions": d.questions, "note": d.note or "",
-            "gaps": [{"unit_id": u, "unit": n, "book": b} for u, n, b in gaps],
+            "gaps": [{"unit_id": u, "unit": n, "book": b, "blocked": u in blocked} for u, n, b, _bid in gaps],
             "progress": await gap_progress(db, d.student_id),
             "finished_at": d.finished_at.isoformat() + "Z" if d.finished_at else None,
             "requested_by_name": d.requested_by_name or ""}
+
+
+async def _blocked_units(db: AsyncSession, student_id: int, rows) -> set[int]:
+    from app.services.scope_service import get_allowed_unit_ids
+    cache, out = {}, set()
+    for b, u in rows:
+        if b not in cache:
+            cache[b] = await get_allowed_unit_ids(db, student_id, b)
+        a = cache[b]
+        if a is not None and u not in a:
+            out.add(u)
+    return out
+
+
+async def _fully_open(db: AsyncSession, student_id: int, book_id: int) -> bool:
+    """这本书他整本能学(get_allowed_unit_ids 回 None)= 不用再开"""
+    from app.services.scope_service import get_allowed_unit_ids
+    return (await get_allowed_unit_ids(db, student_id, book_id)) is None
+
+
+async def book_gaps(db: AsyncSession, students: list) -> dict:
+    """老师页「开书」: 哪些孩子缺书、缺哪本、能不能直接开(规则见文件头第 6 条)"""
+    from app.services import card_pack
+    lock_cache: dict[tuple, Optional[str]] = {}
+
+    async def lock(org_id, book_id):
+        k = (org_id, book_id)
+        if k not in lock_cache:
+            lock_cache[k] = await card_pack.lock_reason(db, org_id, book_id)
+        return lock_cache[k]
+
+    names = {}
+    no_book, gap_books, unknown = [], [], []
+    for u in students:
+        nm = (u.full_name or "").strip() or u.username
+        book_id, _unit = await current_point(db, u.id, None)
+        if book_id is None:
+            if not await _has_any_book(db, u.id):
+                unknown.append({"student_id": u.id, "name": nm})
+        elif not await _fully_open(db, u.id, book_id):
+            names.setdefault(book_id, (await db.execute(select(WordBook.name).where(WordBook.id == book_id))).scalar() or "")
+            r = await lock(u.org_id, book_id)
+            no_book.append({"student_id": u.id, "name": nm, "book_id": book_id, "book_name": names[book_id],
+                            "locked": r or None})
+        rows = (await db.execute(select(CatchupGap.book_id, CatchupGap.unit_id).where(
+            CatchupGap.student_id == u.id))).all()
+        need = []
+        for b in dict.fromkeys(b for b, _ in rows if b is not None):
+            if b == book_id and not await _fully_open(db, u.id, b):
+                continue   # 已经在①里
+            if await _fully_open(db, u.id, b):
+                continue
+            names.setdefault(b, (await db.execute(select(WordBook.name).where(WordBook.id == b))).scalar() or "")
+            if not names[b]:
+                continue   # 书删了
+            need.append({"book_id": b, "book_name": names[b], "locked": (await lock(u.org_id, b)) or None})
+        if need:
+            gap_books.append({"student_id": u.id, "name": nm, "books": need})
+    return {"no_book": no_book, "gap_books": gap_books, "unknown": unknown}
+
+
+async def _has_any_book(db: AsyncSession, student_id: int) -> bool:
+    from app.models.learning import BookAssignment
+    return (await db.execute(select(BookAssignment.id).where(BookAssignment.student_id == student_id).limit(1))
+            ).first() is not None
 
 
 async def blocked_gap_books(db: AsyncSession, student_id: int) -> list[str]:

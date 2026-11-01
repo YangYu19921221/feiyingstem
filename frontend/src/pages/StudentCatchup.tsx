@@ -214,17 +214,25 @@ function Result({ s, onHome }: { s: CatchupState; onHome: () => void }) {
         答了 {r.questions} 题:{r.known_units} 个单元已经会了,以后不用再背;
         {r.gap_units ? ` ${r.gap_units} 个单元要补。` : ' 没有要补的,很棒!'}
       </p>
-      {r.gaps.length > 0 && (
-        <ul className="mt-4 space-y-1.5">
-          {r.gaps.map((g) => (
-            <li key={g.unit_id} className="rounded-lg bg-orange-50 px-3 py-2 text-sm text-ink">
-              {g.book.replace('人教版', '')} · {g.unit}
-            </li>
-          ))}
-        </ul>
+      {r.gaps.some((g) => !g.blocked) && (
+        <>
+          <ul className="mt-4 space-y-1.5">
+            {r.gaps.filter((g) => !g.blocked).map((g) => (
+              <li key={g.unit_id} className="rounded-lg bg-orange-50 px-3 py-2 text-sm text-ink">
+                {g.book.replace('人教版', '')} · {g.unit}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-sm text-ink-soft">小鹰老师会把这几个单元一点点放进每天的任务里,每天只多几个词,不会一下子很多。</p>
+        </>
       )}
-      {r.gap_units > 0 && (
-        <p className="mt-4 text-sm text-ink-soft">小鹰老师会把这几个单元一点点放进每天的任务里,每天只多几个词,不会一下子很多。</p>
+      {r.gaps.some((g) => g.blocked) && (
+        <div className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm text-ink-soft">
+          <p>这几个单元的书你还没开,<b className="text-ink">等老师开了</b>小鹰老师再帮你补(老师那边看得到):</p>
+          <p className="mt-1 text-ink">
+            {r.gaps.filter((g) => g.blocked).map((g) => `${g.book.replace('人教版', '')} · ${g.unit}`).join('、')}
+          </p>
+        </div>
       )}
       <button type="button" onClick={onHome} className="btn-glow mt-5 min-h-12 w-full rounded-xl text-base font-semibold text-white">回首页</button>
     </section>

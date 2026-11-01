@@ -124,6 +124,14 @@ export interface StudentToday {
 
 export interface GapProgress {
   units: number; groups: number; words: number; fixed_groups: number; fixed_words: number; fixed_units: number;
+  /** 测出要补、但书没开(要老师开书才能补)的单元数 */
+  blocked_units?: number;
+}
+
+export interface BookGaps {
+  no_book: { student_id: number; name: string; book_id: number; book_name: string; locked: string | null }[];
+  gap_books: { student_id: number; name: string; books: { book_id: number; book_name: string; locked: string | null }[] }[];
+  unknown: { student_id: number; name: string }[];
 }
 
 export interface CatchupBrief {
@@ -133,7 +141,7 @@ export interface CatchupBrief {
 
 export interface CatchupResult {
   id: number; status: string; known_units: number; gap_units: number; questions: number; note: string;
-  gaps: { unit_id: number; unit: string; book: string }[];
+  gaps: { unit_id: number; unit: string; book: string; blocked?: boolean }[];
   progress: GapProgress;
   finished_at: string | null;
   requested_by_name: string;
@@ -193,6 +201,10 @@ export const autopilotApi = {
       `/teacher/autopilot/classes/${classId}/sync-books`).then(r => r.books),
   saveSync: (classId: number, body: Partial<{ enabled: boolean; school_book_id: number | null; school_unit_id: number | null }>) =>
     client.put<ClassSync & { requested?: number }>(`/teacher/autopilot/classes/${classId}/sync`, body),
+  bookGaps: (classId: number) => client.get<BookGaps>(`/teacher/autopilot/classes/${classId}/book-gaps`, { timeout: 30000 }),
+  openBooks: (classId: number, items: { student_id: number; book_id: number }[]) =>
+    client.post<{ created: number; already: number; locked: { student_id: number; book_name: string; reason: string }[]; missing: number }>(
+      `/teacher/autopilot/classes/${classId}/open-books`, { items }, { timeout: 30000 }),
   requestCatchup: (classId: number, studentIds: number[]) =>
     client.post<{ requested: number }>(`/teacher/autopilot/classes/${classId}/catchup`, { student_ids: studentIds }),
   suggestions: (classId: number) =>

@@ -81,7 +81,7 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
   const diag = cu?.diagnosis;
   const needDiag = !!diag && (diag.status === 'pending' || diag.status === 'doing');
   const prog = cu?.progress;
-  const catchupBar = (needDiag || (prog && prog.units > 0)) ? (
+  const catchupBar = (needDiag || (prog && (prog.units > 0 || (prog.blocked_units ?? 0) > 0))) ? (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-orange-100 bg-sky-50/70 px-4 py-2.5 sm:px-5">
       {needDiag ? (
         <>
@@ -97,6 +97,7 @@ export default function AutopilotTodayCard({ refreshKey, onTasks, onCheckin }: P
         <p className="text-sm text-sky-900">
           查缺补漏:要补 {prog.words} 个词,已经补上 <b>{prog.fixed_words}</b> 个
           {prog.fixed_units > 0 ? `(${prog.fixed_units} 个单元补完了)` : ''}
+          {(prog.blocked_units ?? 0) > 0 ? `;还有 ${prog.blocked_units} 个单元的书没开,等老师开` : ''}
         </p>
       )}
     </div>

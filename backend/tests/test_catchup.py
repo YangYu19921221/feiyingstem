@@ -244,3 +244,73 @@ async def test_turning_on_starts_diagnosis_for_whole_class(client, db_session, e
     r = await client.put(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/sync", json={"enabled": True},
                          headers=_h(env["t"].id))
     assert r.json()["requested"] == 0, "关了再开不重复建"
+
+
+# ---------------------------------------------------------------- 书没开(文件头第 6 条)
+
+@pytest.mark.asyncio
+async def test_no_book_kid_listed_and_opened(client, db_session, env):
+    """一本书都没开(只能学作业里的单元): 列出来、勾了开在学的那本;小鹰老师自己不开"""
+    await _sync(db_session, env)
+    s, t, c = env["s"], env["t"], env["c"]
+    await db_session.execute(sql_text("DELETE FROM book_assignments WHERE student_id=:s"), {"s": s.id})
+    await db_session.commit()
+    await _teacher_hw(client, env, env["u4"][2])
+    g = (await client.get(f"/api/v1/teacher/autopilot/classes/{c.id}/book-gaps", headers=_h(t.id))).json()
+    assert [x["book_id"] for x in g["no_book"]] == [env["b4"].id] and g["no_book"][0]["locked"] is None
+    from app.services.scope_service import get_allowed_unit_ids
+    assert await get_allowed_unit_ids(db_session, s.id, env["b4"].id) is not None, "小鹰老师没自己开书"
+    r = await client.post(f"/api/v1/teacher/autopilot/classes/{c.id}/open-books",
+                          json={"items": [{"student_id": s.id, "book_id": env["b4"].id}]}, headers=_h(t.id))
+    assert r.json()["created"] == 1
+    assert await get_allowed_unit_ids(db_session, s.id, env["b4"].id) is None
+    g = (await client.get(f"/api/v1/teacher/autopilot/classes/{c.id}/book-gaps", headers=_h(t.id))).json()
+    assert g["no_book"] == []
+    r = await client.post(f"/api/v1/teacher/autopilot/classes/{c.id}/open-books",
+                          json={"items": [{"student_id": s.id, "book_id": env["b4"].id}]}, headers=_h(t.id))
+    assert r.json()["created"] == 0 and r.json()["already"] == 1, "开过的不重复开"
+
+
+@pytest.mark.asyncio
+async def test_gap_in_unopened_book_is_blocked_not_counted(client, db_session, env):
+    await _sync(db_session, env)
+    s, t, c = env["s"], env["t"], env["c"]
+    await db_session.execute(sql_text("DELETE FROM book_assignments WHERE book_id=:b"), {"b": env["b3"].id})
+    db_session.add(CatchupGap(student_id=s.id, unit_id=env["u3"][0].id, book_id=env["b3"].id))
+    await db_session.commit()
+    p = await catchup.gap_progress(db_session, s.id)
+    assert p["units"] == 0 and p["blocked_units"] == 1, "等开书的不算进补漏进度"
+    g = (await client.get(f"/api/v1/teacher/autopilot/classes/{c.id}/book-gaps", headers=_h(t.id))).json()
+    assert g["gap_books"][0]["books"][0]["book_id"] == env["b3"].id
+    await client.post(f"/api/v1/teacher/autopilot/classes/{c.id}/open-books",
+                      json={"items": [{"student_id": s.id, "book_id": env["b3"].id}]}, headers=_h(t.id))
+    p = await catchup.gap_progress(db_session, s.id)
+    assert p["units"] == 1 and p["blocked_units"] == 0
+
+
+@pytest.mark.asyncio
+async def test_pack_org_book_cannot_be_opened(client, db_session, env):
+    """卡包机构的平台课本要兑卡: 列出原因,开书跳过"""
+    await _sync(db_session, env)
+    s, t, c = env["s"], env["t"], env["c"]
+    await db_session.execute(sql_text("UPDATE organizations SET card_plan='pack' WHERE id=1"))
+    await db_session.execute(sql_text("UPDATE word_books SET pack_tier='basic', org_id=NULL WHERE id=:b"), {"b": env["b3"].id})
+    await db_session.execute(sql_text("DELETE FROM book_assignments WHERE book_id=:b"), {"b": env["b3"].id})
+    db_session.add(CatchupGap(student_id=s.id, unit_id=env["u3"][0].id, book_id=env["b3"].id))
+    await db_session.commit()
+    tenancy._org_cache.clear()
+    g = (await client.get(f"/api/v1/teacher/autopilot/classes/{c.id}/book-gaps", headers=_h(t.id))).json()
+    assert g["gap_books"][0]["books"][0]["locked"]
+    r = (await client.post(f"/api/v1/teacher/autopilot/classes/{c.id}/open-books",
+                           json={"items": [{"student_id": s.id, "book_id": env["b3"].id}]}, headers=_h(t.id))).json()
+    assert r["created"] == 0 and r["locked"], "卡包的书不能绕过兑换码"
+
+
+@pytest.mark.asyncio
+async def test_open_books_only_my_class(client, db_session, env):
+    other = User(username="cu_o", email="cu_o@e.com", hashed_password="x", role="student", is_active=True, org_id=1)
+    db_session.add(other)
+    await db_session.commit()
+    r = await client.post(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/open-books",
+                          json={"items": [{"student_id": other.id, "book_id": env["b3"].id}]}, headers=_h(env["t"].id))
+    assert r.status_code == 403

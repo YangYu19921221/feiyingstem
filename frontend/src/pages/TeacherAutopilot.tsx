@@ -12,6 +12,7 @@ import {
   Play, RefreshCw, Search, Settings2, Undo2, X,
 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
+import OpenBooksPanel from '../components/autopilot/OpenBooksPanel';
 import {
   autopilotApi, itemLabel, WEEKDAYS, type BoardStudent, type ClassSettings, type ClassSync, type Overview, type Place,
   type Suggestion, type TodoItem,
@@ -86,7 +87,7 @@ function Guide({ rules }: { rules: Overview['rules'] | null }) {
                 <li><b>今天学得吃力</b>: 可以把他每天的量调小</li>
                 <li><b>连着几天没来</b>: 孩子不签到小鹰老师就派不了,要你联系家长</li>
                 <li><b>没有书 / 书要兑换学习卡 / 书学完了</b>: 给他分配书(「分配单词本」)</li>
-                <li><b>要补的书没开</b>(打开了查缺补漏的班): 摸底测出前几册有漏洞,但他没开那本书,要补就给他开</li>
+                <li><b>要补的书没开</b>(打开了查缺补漏的班): 摸底测出前几册有漏洞,但他没开那本书。在「跟学校进度 + 查缺补漏」→「开书」里勾上一起开;要兑换学习卡的书要先发卡</li>
               </ul>
               <p className="mt-1 text-slate-500">想自己定: 某个孩子每天固定几个、固定过关线、从哪本书哪个单元开始、暂停他 —— 在下面孩子那一行点「设置」。</p>
             </div>
@@ -268,8 +269,9 @@ function ClassCard({ c, onSave, busy }: {
 }
 
 /** 跟学校进度 + 查缺补漏(11-01 试点,规则真源 backend/app/services/catchup.py 文件头) */
-function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
+function SyncCard({ classId, sync, onChanged, onCatchupAll, busy, refreshKey, onBooksOpened }: {
   classId: number; sync: ClassSync; busy: boolean; onChanged: (s: ClassSync) => void; onCatchupAll: () => void;
+  refreshKey: number; onBooksOpened: () => void;
 }) {
   const [books, setBooks] = useState<{ id: number; name: string; kids: number; units: { id: number; name: string }[] }[] | null>(null);
   const [saving, setSaving] = useState(false);
@@ -334,7 +336,7 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
           <div className="rounded-lg bg-white/70 px-3 py-2">
             <p className="font-semibold text-slate-800">需要你的</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
-              <li>顶上「需要你处理」出现<b>要补的书没开</b>: 摸底测出前几册有漏洞但他没开那本书,要补就在「分配单词本」里给他开</li>
+              <li><b>开书</b>(下面黄框): 没开书的孩子、摸底测出要补但没开的书,勾了一键开。小鹰老师不会自己开书</li>
               <li>孩子一直不摸底: 提醒他在首页点「开始摸底」</li>
             </ul>
           </div>
@@ -362,6 +364,7 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
           <p className="text-xs text-slate-500">
             班里孩子年级不一样就别设,按每个孩子自己在学的单元走;设了只对在学这本书的孩子起作用。
           </p>
+          <OpenBooksPanel classId={classId} refreshKey={refreshKey} onOpened={onBooksOpened} />
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button type="button" disabled={busy} onClick={onCatchupAll}
               className="min-h-9 rounded-lg border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 hover:bg-sky-50 disabled:opacity-50">
@@ -391,6 +394,7 @@ function CatchupCell({ s, onRequest, busy }: { s: BoardStudent; onRequest: () =>
           : d.status === 'skipped' ? <span className="text-slate-400">没什么要摸底的</span>
             : <span>摸底: {d.known_units} 个单元会、{d.gap_units} 个要补</span>}
       {p.units > 0 && <span>· 补上 {p.fixed_words}/{p.words} 个词</span>}
+      {(p.blocked_units ?? 0) > 0 && <span className="text-amber-700">· {p.blocked_units} 个单元等你开书</span>}
       {d && (d.status === 'done' || d.status === 'skipped') && (
         <button type="button" disabled={busy} onClick={onRequest} className="text-sky-700 hover:underline disabled:opacity-50">再摸一次</button>
       )}
@@ -533,6 +537,7 @@ export default function TeacherAutopilot() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [classId, setClassId] = useState<number | null>(null);
   const [board, setBoard] = useState<{ class: ClassSettings; students: BoardStudent[]; sync?: ClassSync } | null>(null);
+  const [boardTick, setBoardTick] = useState(0);
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({});
   const [loading, setLoading] = useState(true);
   const [boardLoading, setBoardLoading] = useState(false);
@@ -562,6 +567,7 @@ export default function TeacherAutopilot() {
     try {
       const b = await autopilotApi.board(id);
       setBoard(b);
+      setBoardTick((t) => t + 1);
       if (b.class.mode === 'manual' && !b.class.paused) {
         const sug = await autopilotApi.suggestions(id);
         setSuggestions(sug);
@@ -690,7 +696,8 @@ export default function TeacherAutopilot() {
             )}
             {cls && <ClassCard key={`${cls.class_id}-${cls.max_words ?? ''}`} c={cls} busy={busy !== null} onSave={saveClass} />}
             {classId && board?.sync && (
-              <SyncCard classId={classId} sync={board.sync} busy={busy !== null}
+              <SyncCard classId={classId} sync={board.sync} busy={busy !== null} refreshKey={boardTick}
+                onBooksOpened={() => { if (classId) void loadBoard(classId); }}
                 onChanged={(sy) => { setBoard((b) => (b ? { ...b, sync: sy } : b)); if (classId) void loadBoard(classId); }}
                 onCatchupAll={() => void requestCatchup(allStudents.map((x) => x.id))} />
             )}
