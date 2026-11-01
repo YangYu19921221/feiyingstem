@@ -95,9 +95,12 @@ async def autopilot_class(class_id: int, db: AsyncSession = Depends(get_db),
 # ---------------------------------------------------------------- 跟学校进度 + 查缺补漏(services/catchup,试点)
 
 async def _sync_out(db: AsyncSession, c: Class, sync: Optional[AutopilotClassSync]) -> dict:
+    from app.services import catchup
     book = await db.get(WordBook, sync.school_book_id) if sync and sync.school_book_id else None
     unit = await db.get(Unit, sync.school_unit_id) if sync and sync.school_unit_id else None
     return {"enabled": bool(sync and sync.enabled),
+            # 每一项老师自己选: 当前值 + 默认 + 会怎样 + 风险(真源 services/catchup.OPTIONS,页面原样显示)
+            "options": await catchup.class_options(db, c.id), "option_meta": catchup.OPTIONS,
             "school_book_id": book.id if book else None, "school_book_name": book.name if book else "",
             "school_unit_id": unit.id if unit else None, "school_unit_name": unit.name if unit else "",
             "updated_by_name": (sync.updated_by_name if sync else None) or ""}
@@ -131,6 +134,8 @@ class SyncIn(BaseModel):
     enabled: Optional[bool] = None
     school_book_id: Optional[int] = None
     school_unit_id: Optional[int] = None
+    # 只带改了的那几项;{"reset": true} = 全部恢复默认
+    options: Optional[dict] = None
 
 
 @teacher_router.put("/autopilot/classes/{class_id}/sync")
@@ -144,13 +149,37 @@ async def update_autopilot_sync(class_id: int, body: SyncIn, request: Request, d
         db.add(sync)
     changes = []
     requested = 0
+    from app.services import catchup
+    if "options" in data and data["options"] is not None:
+        from app.models.autopilot import AutopilotSyncOptions
+        raw = dict(data["options"])
+        reset = raw.pop("reset", False) is True
+        try:
+            new = {} if reset else catchup.check_options(raw)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        row = await db.get(AutopilotSyncOptions, class_id)
+        cur = {} if reset else {k: v for k, v in (await catchup.class_options(db, class_id)).items()
+                                if v != catchup.OPTION_DEFAULTS[k]}
+        cur.update(new)
+        cur = {k: v for k, v in cur.items() if v != catchup.OPTION_DEFAULTS[k]}   # 只存和默认不一样的
+        if row is None:
+            row = AutopilotSyncOptions(class_id=class_id)
+            db.add(row)
+        row.options = json.dumps(cur, ensure_ascii=False) if cur else None
+        labels = {o["key"]: o for o in catchup.OPTIONS}
+        if reset:
+            changes.append("查缺补漏的选择全部恢复默认")
+        for k, v in new.items():
+            ch = next((c_["label"] for c_ in labels[k]["choices"] if c_["value"] == v), str(v))
+            changes.append(f"{labels[k]['label']}: {ch}")
+        await db.flush()
     if "enabled" in data and bool(data["enabled"]) != bool(sync.enabled):
         forbid_assistant(teacher, "打开 / 关掉跟学校进度")
         sync.enabled = bool(data["enabled"])
         changes.append("打开跟学校进度 + 查缺补漏" if sync.enabled else "关掉跟学校进度 + 查缺补漏")
-        if sync.enabled:
+        if sync.enabled and (await catchup.class_options(db, class_id))["auto_diagnose_on_enable"]:
             # 第一次打开不用老师再点: 全班每人一次摸底(孩子首页出现「先摸摸底」;已经有没做完的不重复建)
-            from app.services import catchup
             me = acting_user(teacher)
             for u in await ap.class_students(db, class_id):
                 before = await catchup.latest(db, u.id)
@@ -544,9 +573,11 @@ async def _diag_out(db: AsyncSession, d) -> dict:
         res = await catchup.finish(db, d)
         await db.commit()
         return {"status": "done", "result": res}
-    return {"status": d.status, "answered": s.answered, "left": catchup.est_left(s, d),
+    opts = await catchup.student_options(db, d.student_id)
+    return {"status": d.status, "answered": s.answered, "left": catchup.est_left(s, d, opts["max_questions"]),
             "units_done": len(s.verdicts), "question": await catchup.question_out(db, d, s),
-            "minutes": max(1, round(catchup.MAX_QUESTIONS * catchup.SECONDS_PER_Q / 60))}
+            "minutes": max(1, round(opts["max_questions"] * catchup.SECONDS_PER_Q / 60)),
+            "can_finish_early": opts["allow_finish_early"]}
 
 
 @student_router.get("/catchup")
@@ -587,6 +618,8 @@ async def finish_catchup(db: AsyncSession = Depends(get_db), student: User = Dep
     d = await _my_diag(db, student)
     if d is None or d.status not in ("pending", "doing"):
         raise HTTPException(409, "现在没有要做的摸底")
+    if not (await catchup.student_options(db, student.id))["allow_finish_early"]:
+        raise HTTPException(409, "老师设了要测完才能结束,再坚持一下")
     if d.units is None:
         await catchup.begin(db, d)
     res = await catchup.finish(db, d, early=True)

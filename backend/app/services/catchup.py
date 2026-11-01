@@ -24,6 +24,8 @@
    ③卡包机构的平台书要兑换学习卡 / 专属内容没开通 → 不能直接开,列出来告诉老师去发卡
    不知道在学哪本(没学过、也没作业)→ 列出来,让老师去「分配单词本」
    孩子那边: 摸底结果里「要老师开书才能补」的单元单独写,补漏进度不算它们
+7. **每一条都能由老师自己选**(OPTIONS,存 autopilot_sync_options,没有行 = 全按默认)。每一项的「会怎样 / 风险」
+   写在 OPTIONS 里,老师页原样显示 —— 改规则先改这里,老师看到的就跟着变,不要在前端另写一份
 """
 import hashlib
 import random
@@ -51,6 +53,96 @@ SPELL_PER_UNIT = 2
 KNOWN_STREAK_STOP = 3
 MAX_QUESTIONS = 60
 SECONDS_PER_Q = 6
+
+# ---------------------------------------------------------------- 老师可以自己选的(默认值 + 会怎样 + 风险)
+
+OPTIONS: list[dict] = [
+    {"key": "auto_diagnose_on_enable", "label": "打开时全班自动摸底", "default": True,
+     "choices": [{"value": True, "label": "自动(默认)"}, {"value": False, "label": "不自动,我自己点"}],
+     "effect": "打开这个班的那一刻,每个孩子首页出现「先摸摸底」(约 5 分钟)",
+     "risk": "选「不自动」: 没摸底的孩子没有漏洞清单,那 3 成只补别的书到期的复习,补漏几乎不起作用;要记得自己点「让全班摸底」"},
+    {"key": "auto_diagnose_new", "label": "新来的孩子自动摸底", "default": True,
+     "choices": [{"value": True, "label": "自动(默认)"}, {"value": False, "label": "不自动"}],
+     "effect": "小鹰老师从没给他排过任务的孩子,打开首页就自动建一次摸底",
+     "risk": "选「不自动」: 新孩子会从书的第一个没学过的单元开始,前几册的漏洞查不出来"},
+    {"key": "gap_share", "label": "每天补漏占几成", "default": 30,
+     "choices": [{"value": 0, "label": "不补漏"}, {"value": 20, "label": "2 成"}, {"value": 30, "label": "3 成(默认)"},
+                 {"value": 40, "label": "4 成"}, {"value": 50, "label": "5 成"}],
+     "effect": "补漏 = 摸底测出要补的单元 + 别的书到期的复习 + 今天的复习词;剩下的跟学校在讲的单元。一天只够一组(10 个词)时,十天里有这么多成的天数先补漏",
+     "risk": "补得多: 学校正在讲的单元跟得慢,孩子第二天课上可能听不懂;补得少: 前面的漏洞一直在,越往后越吃力;选「不补漏」: 别的书到期的复习也不派了,只跟学校"},
+    {"key": "teacher_day", "label": "你自己布置了单词作业的那天", "default": "gap",
+     "choices": [{"value": "gap", "label": "小鹰老师补一小份漏洞(默认)"}, {"value": "none", "label": "小鹰老师不派"}],
+     "effect": "补的那一份不算今天的任务、不影响金币;你的作业做完照样发金币",
+     "risk": "选「补一小份」: 孩子那天多做几个词,作业已经很多的孩子可能做不完(做不完不扣什么);选「不派」: 你天天布置的话,漏洞就一直补不上"},
+    {"key": "teacher_day_words", "label": "那天补多少个词", "default": 10,
+     "choices": [{"value": 5, "label": "5 个"}, {"value": 10, "label": "10 个(默认)"}, {"value": 20, "label": "20 个"}],
+     "effect": "按组派,一组放不下时会多一点(一组最多十几个词)",
+     "risk": "多了: 加重作业日的负担;少了: 补得慢"},
+    {"key": "small_tier", "label": "每天最少几个词", "default": True,
+     "choices": [{"value": True, "label": "最少 10 个(默认)"}, {"value": False, "label": "最少 20 个(和其它班一样)"}],
+     "effect": "做不完的孩子自动往下降,最低降到这里;做得好自动往上加",
+     "risk": "最少 10 个: 基础差、作业多的孩子做得完,但学得慢;最少 20 个: 学得快,做不完的孩子会天天没做完"},
+    {"key": "mark_known", "label": "摸底「会」的单元", "default": True,
+     "choices": [{"value": True, "label": "记成学会,不再派新词(默认)"}, {"value": False, "label": "照样派"}],
+     "effect": "一个单元抽 3 个词都选对(或对 2 个、再写对 2 个)就算会",
+     "risk": "记成学会: 只抽了几个词,个别没抽到的词可能其实不会,不会再派(到期的复习词和错题还会出现);照样派: 孩子会重复背已经会的,浪费时间"},
+    {"key": "max_questions", "label": "摸底最多几题", "default": 60,
+     "choices": [{"value": 30, "label": "30 题(约 3 分钟)"}, {"value": 60, "label": "60 题(约 6 分钟,默认)"},
+                 {"value": 90, "label": "90 题(约 9 分钟)"}],
+     "effect": "连着 3 个单元都会就提前停,不一定答满",
+     "risk": "少: 测不到前几册,下面的漏洞查不出来;多: 坐不住的孩子容易中途不做"},
+    {"key": "allow_finish_early", "label": "孩子能不能「先测到这」", "default": True,
+     "choices": [{"value": True, "label": "能(默认)"}, {"value": False, "label": "不能,必须测完"}],
+     "effect": "测过的单元照样算,没测的以后再说",
+     "risk": "能: 有的孩子测两题就不测了,漏洞查不全;不能: 测不下去的孩子会一直卡在这一步"},
+]
+OPTION_DEFAULTS = {o["key"]: o["default"] for o in OPTIONS}
+_OPTION_VALUES = {o["key"]: [c["value"] for c in o["choices"]] for o in OPTIONS}
+
+
+def check_options(data: dict) -> dict:
+    """老师交上来的选择: 不认的键 / 值一律拒(ValueError 带中文原因)"""
+    out: dict = {}
+    for k, v in (data or {}).items():
+        if k not in _OPTION_VALUES:
+            raise ValueError(f"没有「{k}」这一项")
+        if v not in _OPTION_VALUES[k] or type(v) is not type(OPTION_DEFAULTS[k]):
+            raise ValueError(f"「{next(o['label'] for o in OPTIONS if o['key'] == k)}」只能选给的几个")
+        out[k] = v
+    return out
+
+
+async def class_options(db: AsyncSession, class_id: Optional[int]) -> dict:
+    import json
+    from app.models.autopilot import AutopilotSyncOptions
+    out = dict(OPTION_DEFAULTS)
+    if not class_id:
+        return out
+    row = await db.get(AutopilotSyncOptions, class_id)
+    if row and row.options:
+        try:
+            saved = json.loads(row.options)
+        except ValueError:
+            saved = {}
+        if isinstance(saved, dict):
+            try:
+                out.update(check_options({k: v for k, v in saved.items() if k in OPTION_DEFAULTS}))
+            except ValueError:
+                pass   # 存的值坏了: 按默认
+    return out
+
+
+async def student_options(db: AsyncSession, student_id: int) -> dict:
+    from app.services.autopilot import class_of_student
+    cls, _ = await class_of_student(db, student_id)
+    return await class_options(db, cls.id if cls else None)
+
+
+def gap_day(day_ordinal: int, share: int) -> bool:
+    """一天只够一组时,十天里哪几天先补漏: share 成就挑 share/10 天,尽量隔开(3 成 = 第 1、4、7 天)"""
+    k = max(0, min(10, round(share / 10)))
+    return (day_ordinal % 10) in {int(i * 10 / k) + 1 for i in range(k)} if k else False
+
 
 _CN = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 
@@ -240,6 +332,7 @@ class State:
 
 async def compute(db: AsyncSession, d: CatchupDiagnosis) -> State:
     s = State()
+    max_q = (await student_options(db, d.student_id))["max_questions"]
     order = [int(x) for x in (d.units or "").split(",") if x]
     answers = list((await db.execute(select(CatchupAnswer).where(CatchupAnswer.diagnosis_id == d.id)
                                      .order_by(CatchupAnswer.id))).scalars())
@@ -257,7 +350,7 @@ async def compute(db: AsyncSession, d: CatchupDiagnosis) -> State:
         if v == "skip":
             continue
         if v is None:
-            if s.answered >= MAX_QUESTIONS:
+            if s.answered >= max_q:
                 s.stop_reason = "max"
                 return s
             asked = {a.word_id for a in mine}
@@ -317,11 +410,11 @@ async def begin(db: AsyncSession, d: CatchupDiagnosis) -> None:
         d.status = "doing"
 
 
-def est_left(s: State, d: CatchupDiagnosis) -> int:
+def est_left(s: State, d: CatchupDiagnosis, max_q: int = MAX_QUESTIONS) -> int:
     """大约还要几题(给孩子看进度用,不用很准)"""
     order = [x for x in (d.units or "").split(",") if x]
     left_units = max(0, len(order) - len(s.verdicts))
-    return max(0, min(MAX_QUESTIONS - s.answered, left_units * CHOICE_PER_UNIT, 30))
+    return max(0, min(max_q - s.answered, left_units * CHOICE_PER_UNIT, 30))
 
 
 async def question_out(db: AsyncSession, d: CatchupDiagnosis, s: State) -> Optional[dict]:
@@ -377,7 +470,8 @@ async def finish(db: AsyncSession, d: CatchupDiagnosis, *, early: bool = False) 
     gaps = [u for u, v in s.verdicts.items() if v == "gap"]
     unit_book = dict((await db.execute(select(Unit.id, Unit.book_id).where(Unit.id.in_(known + gaps)))).all())
     now = utc_now()
-    for b in await live_books(db, set(unit_book.values())):
+    mark_known = (await student_options(db, d.student_id))["mark_known"]
+    for b in (await live_books(db, set(unit_book.values())) if mark_known else []):
         for g in await book_groups(db, b):
             if g.unit_id in known and g.count:
                 # 已经有这一组(小鹰老师学着的)不动
@@ -390,7 +484,7 @@ async def finish(db: AsyncSession, d: CatchupDiagnosis, *, early: bool = False) 
     d.status, d.finished_at = "done", now
     d.known_units, d.gap_units, d.questions = len(known), len(gaps), s.answered
     d.note = ("孩子自己先测到这" if early else
-              {"solid": "往前连着几个单元都会,下面是牢的", "max": f"测满 {MAX_QUESTIONS} 题",
+              {"solid": "往前连着几个单元都会,下面是牢的", "max": f"测满 {s.answered} 题",
                "end": "测到最前面的单元了"}.get(s.stop_reason or "", ""))
     return await summary(db, d)
 

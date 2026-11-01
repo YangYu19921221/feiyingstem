@@ -104,7 +104,7 @@ export default function StudentCatchup() {
           </button>
           <img src="/tutor-avatar.jpg" alt="" className="h-8 w-8 rounded-full object-cover" />
           <h1 className="text-base font-bold text-ink">小鹰老师摸摸底</h1>
-          {!done && state && state.status !== 'none' && (
+          {!done && state && state.status !== 'none' && state.can_finish_early !== false && (
             <button type="button" onClick={finishEarly} disabled={busy}
               className="ml-auto min-h-9 rounded-lg px-3 text-sm text-ink-soft hover:bg-slate-100 disabled:opacity-50">
               先测到这
@@ -133,7 +133,7 @@ export default function StudentCatchup() {
             {state.answered === 0 && (
               <p className="mb-4 rounded-xl bg-orange-50 px-4 py-3 text-sm text-ink-soft">
                 小鹰老师先看看你哪些词已经会了,会的以后就不用再背,只补不会的。
-                <b className="text-ink"> 不认识就点「不认识」,别猜</b> —— 猜对了反而补不上。大约 {state.minutes} 分钟,随时可以「先测到这」。
+                <b className="text-ink"> 不认识就点「不认识」,别猜</b> —— 猜对了反而补不上。大约 {state.minutes} 分钟{state.can_finish_early !== false ? ',随时可以「先测到这」' : ''}。
               </p>
             )}
             <div className="mb-3 flex items-center gap-3 text-xs text-ink-mute">

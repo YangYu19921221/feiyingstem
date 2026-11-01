@@ -237,3 +237,13 @@ class CatchupGap(Base):
     book_id = Column(Integer, nullable=True)
     diagnosis_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class AutopilotSyncOptions(Base):
+    """跟学校进度 + 查缺补漏的各项选择(老师自己选,没有行 = 全按默认)。
+    单开一张表: autopilot_class_sync 已经上线,create_all 不补列,database.py 生产有 drift 不动它"""
+    __tablename__ = "autopilot_sync_options"
+
+    class_id = Column(Integer, primary_key=True)
+    options = Column(Text, nullable=True)        # JSON,键见 services/catchup.OPTION_DEFAULTS
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

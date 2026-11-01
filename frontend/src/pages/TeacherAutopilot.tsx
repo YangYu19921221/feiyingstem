@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import OpenBooksPanel from '../components/autopilot/OpenBooksPanel';
+import SyncOptionsPanel from '../components/autopilot/SyncOptionsPanel';
 import {
   autopilotApi, itemLabel, WEEKDAYS, type BoardStudent, type ClassSettings, type ClassSync, type Overview, type Place,
   type Suggestion, type TodoItem,
@@ -123,6 +124,7 @@ function Guide({ rules }: { rules: Overview['rules'] | null }) {
             </div>
             <div>
               <h3 className="mb-1 font-semibold text-slate-900">跟学校进度 + 查缺补漏(试点,按班打开)</h3>
+              <p className="text-slate-500">下面写的是默认;每一条都能在那个班的「每一条规则都能自己选」里改,每条旁边写了风险。</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li>多一档每天 10 个词,做不完的孩子会降到 10;已经在学的孩子保持现在的量</li>
                 <li>每天大约 7 成跟学校: 你设的「学校讲到哪个单元」(没设就按孩子最近在学的往下);3 成补漏: 摸底测出的单元、别的书到期的轮次、复习词。一天只够 10 个词时,十天里三天补漏</li>
@@ -280,11 +282,16 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy, refreshKey, on
     autopilotApi.syncBooks(classId).then(setBooks).catch(() => setBooks([]));
   }, [classId, sync.enabled]);
   const save = async (body: Parameters<typeof autopilotApi.saveSync>[1]) => {
+    const o = sync.options;
+    const share = Number(o.gap_share ?? 30);
     if (body.enabled === true && !window.confirm(
-      '打开后马上:\n· 全班每个孩子首页出现「先摸摸底」(约 5 分钟,不用你再点)\n\n之后每天自动:\n'
-      + '· 7 成跟学校进度、3 成补摸底测出来的漏洞,每天最少 10 个词\n'
-      + '· 你自己布置了作业的那天,小鹰老师只补一小份漏洞(不算今天的任务、不影响金币)\n\n'
-      + '已经在学的孩子保持现在的量和复习轮次。随时可以关掉。确定打开吗?')) return;
+      '打开后马上:\n'
+      + (o.auto_diagnose_on_enable !== false ? '· 全班每个孩子首页出现「先摸摸底」(约 5 分钟,不用你再点)\n' : '· 不自动摸底(你选的),要你自己点「让全班摸底」\n')
+      + '\n之后每天自动:\n'
+      + (share ? `· ${10 - share / 10} 成跟学校进度、${share / 10} 成补漏洞` : '· 只跟学校进度,不补漏(你选的)')
+      + `,每天最少 ${o.small_tier !== false ? 10 : 20} 个词\n`
+      + (o.teacher_day !== 'none' ? `· 你自己布置了作业的那天,小鹰老师只补约 ${o.teacher_day_words ?? 10} 个词的漏洞(不算今天的任务、不影响金币)\n` : '· 你自己布置了作业的那天,小鹰老师不派(你选的)\n')
+      + '\n已经在学的孩子保持现在的量和复习轮次。下面「每一条规则都能自己选」里能改,随时可以关掉。确定打开吗?')) return;
     setSaving(true);
     try {
       const r = await autopilotApi.saveSync(classId, body);
@@ -319,10 +326,15 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy, refreshKey, on
           <div className="rounded-lg bg-white/70 px-3 py-2">
             <p className="font-semibold text-slate-800">已经自动在做</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
-              <li>每个孩子摸一次底(新来的孩子也自动)</li>
-              <li>每天 7 成跟学校、3 成补漏,最少 10 个词</li>
+              <li>{sync.options.auto_diagnose_on_enable !== false ? '每个孩子摸一次底' : '不自动摸底(你选的)'}
+                {sync.options.auto_diagnose_new !== false ? ',新来的孩子也自动' : ''}</li>
+              <li>{Number(sync.options.gap_share ?? 30)
+                ? `每天 ${10 - Number(sync.options.gap_share ?? 30) / 10} 成跟学校、${Number(sync.options.gap_share ?? 30) / 10} 成补漏`
+                : '只跟学校,不补漏(你选的)'},最少 {sync.options.small_tier !== false ? 10 : 20} 个词</li>
               <li>做不完自动减量,做得好自动加</li>
-              <li>你布置了作业的那天,只补一小份漏洞,不算任务、不影响金币</li>
+              <li>{sync.options.teacher_day !== 'none'
+                ? `你布置了作业的那天,只补约 ${sync.options.teacher_day_words ?? 10} 个词的漏洞,不算任务、不影响金币`
+                : '你布置了作业的那天,小鹰老师不派(你选的)'}</li>
             </ul>
           </div>
           <div className="rounded-lg bg-white/70 px-3 py-2">
@@ -330,6 +342,7 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy, refreshKey, on
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
               <li>学校这周讲到哪个单元(下面选;不设就按孩子自己在学的往下)</li>
               <li>隔一两个月「让全班再摸一次底」</li>
+              <li>每一条规则(下面「每一条规则都能自己选」,每条都写了风险)</li>
               <li>某个孩子单独的量、书、开始单元: 点他那一行「设置」</li>
             </ul>
           </div>
@@ -364,6 +377,8 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy, refreshKey, on
           <p className="text-xs text-slate-500">
             班里孩子年级不一样就别设,按每个孩子自己在学的单元走;设了只对在学这本书的孩子起作用。
           </p>
+          <SyncOptionsPanel sync={sync} saving={saving}
+            onSave={(opts) => void save({ options: opts })} />
           <OpenBooksPanel classId={classId} refreshKey={refreshKey} onOpened={onBooksOpened} />
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button type="button" disabled={busy} onClick={onCatchupAll}

@@ -758,6 +758,7 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
     from app.services import catchup
     sid = st.student_id
     ts = _ds(today)
+    share = (await catchup.class_options(db, sync.class_id if sync is not None else None))["gap_share"]
     books, why = await candidate_books(db, sid, st)
     allowed_cache: dict[int, Optional[set]] = {}
 
@@ -839,20 +840,22 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
     school_new = await new_in(school_book, from_unit=school_unit)
 
     gaps, school = gap_due + gap_new, school_due + school_new
+    if not share and not gaps_only:
+        gaps = []   # 老师选了「不补漏」: 学校那边排不满也不拿漏洞凑
     review = None
     if gaps_only:
         gap_pick, _ = take(gaps, budget, first_ok=True)
         items = _merge(gap_pick)
     elif budget < 2 * DEFAULT_GROUP_SIZE:
         # 一天只够一组(10 个那一档): 十天里三天先补漏,其余先跟学校;先排的那边没有,就给另一边
-        first, second = (gaps, school) if today.toordinal() % 10 in (1, 4, 7) else (school, gaps)
+        first, second = (gaps, school) if catchup.gap_day(today.toordinal(), share) else (school, gaps)
         pick, left = take(first, budget, first_ok=True)
         if not pick:
             pick, left = take(second, budget, first_ok=True)
         items = _merge([c for c in pick if c in school]) + _merge([c for c in pick if c in gaps])
     else:
-        gap_budget = max(1, round(budget * catchup.GAP_SHARE))
-        gap_pick, gleft = take(gaps, gap_budget, first_ok=True)
+        gap_budget = max(1, round(budget * share / 100)) if share else 0
+        gap_pick, gleft = take(gaps, gap_budget, first_ok=True) if gap_budget else ([], 0)
         if with_review and gleft >= REVIEW_COST:
             from app.services import daily_review
             ids, _backlog = await daily_review.pick(db, sid, today)
@@ -968,8 +971,9 @@ async def prepare(db: AsyncSession, student: User, today: date, ac: Optional[Aut
     """(孩子那一行, 档位, 档位原因, 过关线, 过关线原因)。会更新档位 / 过关线(一天一次)"""
     st = st or await student_row(db, student.id, student.org_id)
     from app.services import catchup
-    sync = await catchup.student_sync(db, student.id) is not None
-    await update_tier(db, st, today, sync)
+    sync = await catchup.student_sync(db, student.id)
+    small = sync is not None and (await catchup.class_options(db, sync.class_id))["small_tier"]
+    await update_tier(db, st, today, small)
     await update_pass_line(db, st, today)
     tier, tier_reason = effective_tier(st, ac)
     line, line_reason = await pass_line_for(db, student.id, st, ac, with_class=False)
@@ -1004,7 +1008,8 @@ async def ensure_dispatch(db: AsyncSession, student: User, *, source: str = "aut
     manual_today = await manual_homework_today(db, sid, today)
     from app.services import catchup
     sync = await catchup.class_sync(db, cls.id)
-    if source == "auto" and manual_today and not pause and sync is not None:
+    if (source == "auto" and manual_today and not pause and sync is not None
+            and (await catchup.class_options(db, cls.id))["teacher_day"] == "gap"):
         # 开了跟学校进度的班: 老师今天自己布置了作业,小鹰老师只补一小份漏洞(不算今天的任务,不进金币)
         return await _dispatch_gaps(db, student, cls, ac, st, today, ts, sync, existing)
     if source == "auto" and (pause or manual_today):
@@ -1084,7 +1089,8 @@ async def _dispatch_gaps(db: AsyncSession, student: User, cls: Class, ac: Option
         return {"status": "busy"}
     try:
         _st, _tier, _tr, line, _lr = await prepare(db, student, today, ac, st)
-        plan = await build_plan(db, st, today, catchup.GAP_ON_TEACHER_DAY, sync=sync, gaps_only=True)
+        words = (await catchup.class_options(db, cls.id))["teacher_day_words"]
+        plan = await build_plan(db, st, today, words, sync=sync, gaps_only=True)
         location, _ = location_for(ac, today)
         row.source, row.actor_name, row.tier, row.pass_line, row.location = "auto", AUTO_BY, _tier, line, location
         if plan.status != "ok":
@@ -1472,7 +1478,7 @@ async def _catchup_view(db: AsyncSession, student: User) -> Optional[dict]:
     if sync is None:
         return None
     d = await catchup.latest(db, student.id)
-    if d is None:
+    if d is None and (await catchup.class_options(db, sync.class_id))["auto_diagnose_new"]:
         n = (await db.execute(select(func.count()).select_from(AutopilotGroup).where(
             AutopilotGroup.student_id == student.id))).scalar() or 0
         if n == 0:

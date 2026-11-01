@@ -314,3 +314,82 @@ async def test_open_books_only_my_class(client, db_session, env):
     r = await client.post(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/open-books",
                           json={"items": [{"student_id": other.id, "book_id": env["b3"].id}]}, headers=_h(env["t"].id))
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------- 老师自己选(文件头第 7 条)
+
+async def _opt(client, env, **kw):
+    return await client.put(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/sync", json={"options": kw},
+                            headers=_h(env["t"].id))
+
+
+@pytest.mark.asyncio
+async def test_options_default_meta_and_validation(client, db_session, env):
+    r = await _opt(client, env)
+    body = r.json()
+    assert body["options"] == catchup.OPTION_DEFAULTS
+    assert all(o["risk"] and o["effect"] for o in body["option_meta"]), "每一项都写了会怎样和风险"
+    assert (await _opt(client, env, gap_share=33)).status_code == 400, "只能选给的几个"
+    assert (await _opt(client, env, nope=1)).status_code == 400
+    assert (await _opt(client, env, gap_share=True)).status_code == 400, "类型也要对"
+    assert (await _opt(client, env, small_tier=1)).status_code == 400, "1 不是 True(Python 里 1 == True)"
+    r = await _opt(client, env, gap_share=50, teacher_day="none")
+    assert r.json()["options"]["gap_share"] == 50 and r.json()["options"]["teacher_day"] == "none"
+    r = await _opt(client, env, gap_share=30)
+    assert r.json()["options"]["teacher_day"] == "none", "只改带了的那一项"
+    r = await _opt(client, env, reset=True)
+    assert r.json()["options"] == catchup.OPTION_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_teacher_day_none_and_no_auto_diagnose(client, db_session, env):
+    await _opt(client, env, teacher_day="none", auto_diagnose_on_enable=False)
+    r = await client.put(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/sync", json={"enabled": True},
+                         headers=_h(env["t"].id))
+    assert r.json()["requested"] == 0, "选了不自动摸底"
+    db_session.add(CatchupGap(student_id=env["s"].id, unit_id=env["u3"][0].id, book_id=env["b3"].id))
+    await db_session.commit()
+    await _teacher_hw(client, env, env["u4"][2])
+    r = await client.post("/api/v1/student/checkin", headers=_h(env["s"].id))
+    assert r.json()["autopilot"] == "skipped_manual", "选了老师布置日不派"
+
+
+@pytest.mark.asyncio
+async def test_gap_share_zero_and_small_tier_off(client, db_session, env):
+    await _sync(db_session, env)
+    await _opt(client, env, gap_share=0, small_tier=False)
+    s = env["s"]
+    db_session.add(CatchupGap(student_id=s.id, unit_id=env["u3"][0].id, book_id=env["b3"].id))
+    await db_session.commit()
+    st = await ap.student_row(db_session, s.id, 1)
+    sync = await catchup.class_sync(db_session, env["c"].id)
+    for i in range(10):
+        plan = await ap.build_plan(db_session, st, local_today() + timedelta(days=i), 10, sync=sync)
+        assert all(it.unit_id != env["u3"][0].id for it in plan.items), "不补漏就不派漏洞"
+    plan = await ap.build_plan(db_session, st, local_today(), 40, sync=sync)
+    assert all(it.unit_id != env["u3"][0].id for it in plan.items)
+
+
+@pytest.mark.asyncio
+async def test_mark_known_off_and_no_early_finish(client, db_session, env):
+    await _sync(db_session, env)
+    await _opt(client, env, mark_known=False, allow_finish_early=False)
+    s = env["s"]
+    await client.post(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/catchup",
+                      json={"student_ids": [s.id]}, headers=_h(env["t"].id))
+    q = (await client.get("/api/v1/student/catchup", headers=_h(s.id))).json()
+    assert q["can_finish_early"] is False
+    r = await client.post("/api/v1/student/catchup/finish", headers=_h(s.id))
+    assert r.status_code == 409, "选了要测完才能结束"
+    d = await catchup.latest(db_session, s.id)
+    # 直接把 Unit 2 测成「会」,结束: 不记学会
+    from app.models.word import WordDefinition as WD
+    for _ in range(3):
+        qq = q["question"]
+        m = (await db_session.execute(select(WD.meaning).where(WD.word_id == qq["word_id"]))).scalar()
+        q = (await client.post("/api/v1/student/catchup/answer", headers=_h(s.id), json={
+            "word_id": qq["word_id"], "choice": qq["options"].index(catchup._short_meaning(m))})).json()
+    await catchup.finish(db_session, d)
+    await db_session.commit()
+    n = (await db_session.execute(select(AutopilotGroup).where(AutopilotGroup.student_id == s.id))).scalars().all()
+    assert n == [], "选了「照样派」: 会的单元不记成学会"

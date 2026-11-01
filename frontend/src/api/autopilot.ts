@@ -166,6 +166,8 @@ export interface CatchupState {
   question?: CatchupQuestion | null;
   result?: CatchupResult;
   minutes?: number;
+  /** 老师选了必须测完时为 false */
+  can_finish_early?: boolean;
   /** 刚交的那一题 */
   correct?: boolean;
   right?: string;
@@ -173,7 +175,22 @@ export interface CatchupState {
   stale?: boolean;
 }
 
+export type SyncOptionValue = boolean | number | string;
+
+export interface SyncOptionMeta {
+  key: string;
+  label: string;
+  default: SyncOptionValue;
+  choices: { value: SyncOptionValue; label: string }[];
+  /** 选了会怎样 */
+  effect: string;
+  /** 风险(原样给老师看) */
+  risk: string;
+}
+
 export interface ClassSync {
+  options: Record<string, SyncOptionValue>;
+  option_meta: SyncOptionMeta[];
   enabled: boolean;
   school_book_id: number | null; school_book_name: string;
   school_unit_id: number | null; school_unit_name: string;
@@ -199,7 +216,8 @@ export const autopilotApi = {
   syncBooks: (classId: number) =>
     client.get<{ books: { id: number; name: string; kids: number; units: { id: number; name: string }[] }[] }>(
       `/teacher/autopilot/classes/${classId}/sync-books`).then(r => r.books),
-  saveSync: (classId: number, body: Partial<{ enabled: boolean; school_book_id: number | null; school_unit_id: number | null }>) =>
+  saveSync: (classId: number, body: Partial<{ enabled: boolean; school_book_id: number | null; school_unit_id: number | null;
+    options: Record<string, SyncOptionValue | boolean> }>) =>
     client.put<ClassSync & { requested?: number }>(`/teacher/autopilot/classes/${classId}/sync`, body),
   bookGaps: (classId: number) => client.get<BookGaps>(`/teacher/autopilot/classes/${classId}/book-gaps`, { timeout: 30000 }),
   openBooks: (classId: number, items: { student_id: number; book_id: number }[]) =>
