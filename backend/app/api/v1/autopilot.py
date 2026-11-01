@@ -143,10 +143,23 @@ async def update_autopilot_sync(class_id: int, body: SyncIn, request: Request, d
         sync = AutopilotClassSync(class_id=class_id, org_id=c.org_id, enabled=False)
         db.add(sync)
     changes = []
+    requested = 0
     if "enabled" in data and bool(data["enabled"]) != bool(sync.enabled):
         forbid_assistant(teacher, "打开 / 关掉跟学校进度")
         sync.enabled = bool(data["enabled"])
         changes.append("打开跟学校进度 + 查缺补漏" if sync.enabled else "关掉跟学校进度 + 查缺补漏")
+        if sync.enabled:
+            # 第一次打开不用老师再点: 全班每人一次摸底(孩子首页出现「先摸摸底」;已经有没做完的不重复建)
+            from app.services import catchup
+            me = acting_user(teacher)
+            for u in await ap.class_students(db, class_id):
+                before = await catchup.latest(db, u.id)
+                if before is not None and before.status in ("pending", "doing", "done"):
+                    continue
+                await catchup.request(db, u.id, u.org_id, me.id, me.full_name or me.username or "")
+                requested += 1
+            if requested:
+                changes.append(f"全班 {requested} 个孩子自动摸底")
     # 「键在才改」;都传 null = 不设(按每个孩子最近在学的单元)
     if "school_book_id" in data or "school_unit_id" in data:
         bid, uid = data.get("school_book_id"), data.get("school_unit_id")
@@ -166,7 +179,7 @@ async def update_autopilot_sync(class_id: int, body: SyncIn, request: Request, d
         audit_log.record(db, request, teacher, "autopilot.sync", f"「{c.name}」" + ";".join(changes),
                          target_type="class", target_id=c.id, detail=data)
     await db.commit()
-    return await _sync_out(db, c, sync)
+    return {**await _sync_out(db, c, sync), "requested": requested}
 
 
 class CatchupIn(BaseModel):

@@ -126,7 +126,8 @@ function Guide({ rules }: { rules: Overview['rules'] | null }) {
                 <li>多一档每天 10 个词,做不完的孩子会降到 10;已经在学的孩子保持现在的量</li>
                 <li>每天大约 7 成跟学校: 你设的「学校讲到哪个单元」(没设就按孩子最近在学的往下);3 成补漏: 摸底测出的单元、别的书到期的轮次、复习词。一天只够 10 个词时,十天里三天补漏</li>
                 <li>你自己布置了单词作业的那天,小鹰老师<b>只补一小份漏洞(最多 10 个词)</b>,不算今天的任务、不影响金币</li>
-                <li>摸底: 你点了才做(新来的孩子自动做)。从现在学的单元往前测到前几册,每个单元先选 3 个,对 2 个再写 2 个;连着 3 个单元都会就停。会的单元不再派新词,要补的照样三轮才算学会</li>
+                <li>摸底: 打开的那一刻全班自动做一次,之后新来的孩子自动做,你不用点(想再测一次点「让全班再摸一次底」)。从现在学的单元往前测到前几册,每个单元先选 3 个,对 2 个再写 2 个;连着 3 个单元都会就停。会的单元不再派新词,要补的照样三轮才算学会</li>
+                <li>你只需要第一次点「这个班打开」,之后都是自动的</li>
               </ul>
             </div>
           </div>
@@ -278,11 +279,17 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
   }, [classId, sync.enabled]);
   const save = async (body: Parameters<typeof autopilotApi.saveSync>[1]) => {
     if (body.enabled === true && !window.confirm(
-      '打开后这个班:\n· 每天的量多一档 10 个词(做不完的孩子会降到 10)\n· 7 成跟学校进度、3 成补以前的漏洞\n'
-      + '· 你自己布置了作业的那天,小鹰老师只补一小份漏洞(不算今天的任务、不影响金币)\n已经在学的孩子保持现在的量和轮次。确定打开吗?')) return;
+      '打开后马上:\n· 全班每个孩子首页出现「先摸摸底」(约 5 分钟,不用你再点)\n\n之后每天自动:\n'
+      + '· 7 成跟学校进度、3 成补摸底测出来的漏洞,每天最少 10 个词\n'
+      + '· 你自己布置了作业的那天,小鹰老师只补一小份漏洞(不算今天的任务、不影响金币)\n\n'
+      + '已经在学的孩子保持现在的量和复习轮次。随时可以关掉。确定打开吗?')) return;
     setSaving(true);
     try {
-      onChanged(await autopilotApi.saveSync(classId, body));
+      const r = await autopilotApi.saveSync(classId, body);
+      if (body.enabled === true) {
+        toast.success(r.requested ? `打开了,${r.requested} 个孩子打开首页就能摸底` : '打开了');
+      }
+      onChanged(r);
     } catch (e) {
       toast.error(getErrorMessage(e, '保存失败'));
     } finally {
@@ -300,11 +307,39 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
           {sync.enabled ? '关掉' : '这个班打开'}
         </button>
       </div>
-      <p className="text-sm text-slate-600">
-        {sync.enabled
-          ? '每天 7 成跟学校在讲的单元、3 成补以前没学牢的;最少每天 10 个词。你自己布置了作业的那天,小鹰老师只补一小份漏洞,不算今天的任务、不影响金币。'
-          : '适合作业多、基础差的孩子: 每天量小一点(最少 10 个词),先跟上学校在讲的,再一点点补以前的漏洞。默认关,打开只影响这个班。'}
-      </p>
+      {!sync.enabled ? (
+        <div className="space-y-1 text-sm text-slate-600">
+          <p>适合作业多、基础差的孩子: 每天量小一点(最少 10 个词),先跟上学校在讲的,再一点点补以前的漏洞。默认关,打开只影响这个班。</p>
+          <p><b className="text-slate-800">你只要做一件事: 点「这个班打开」。</b>打开那一刻全班自动摸底,之后每天小鹰老师自己排,不用你管。</p>
+        </div>
+      ) : (
+        <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+          <div className="rounded-lg bg-white/70 px-3 py-2">
+            <p className="font-semibold text-slate-800">已经自动在做</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
+              <li>每个孩子摸一次底(新来的孩子也自动)</li>
+              <li>每天 7 成跟学校、3 成补漏,最少 10 个词</li>
+              <li>做不完自动减量,做得好自动加</li>
+              <li>你布置了作业的那天,只补一小份漏洞,不算任务、不影响金币</li>
+            </ul>
+          </div>
+          <div className="rounded-lg bg-white/70 px-3 py-2">
+            <p className="font-semibold text-slate-800">可以设(不设也行)</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
+              <li>学校这周讲到哪个单元(下面选;不设就按孩子自己在学的往下)</li>
+              <li>隔一两个月「让全班再摸一次底」</li>
+              <li>某个孩子单独的量、书、开始单元: 点他那一行「设置」</li>
+            </ul>
+          </div>
+          <div className="rounded-lg bg-white/70 px-3 py-2">
+            <p className="font-semibold text-slate-800">需要你的</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-5">
+              <li>顶上「需要你处理」出现<b>要补的书没开</b>: 摸底测出前几册有漏洞但他没开那本书,要补就在「分配单词本」里给他开</li>
+              <li>孩子一直不摸底: 提醒他在首页点「开始摸底」</li>
+            </ul>
+          </div>
+        </div>
+      )}
       {sync.enabled && (
         <>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-600">
@@ -330,10 +365,10 @@ function SyncCard({ classId, sync, onChanged, onCatchupAll, busy }: {
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button type="button" disabled={busy} onClick={onCatchupAll}
               className="min-h-9 rounded-lg border border-sky-300 bg-white px-3 text-sm font-semibold text-sky-800 hover:bg-sky-50 disabled:opacity-50">
-              让全班做一次摸底
+              让全班再摸一次底
             </button>
             <span className="text-xs text-slate-500">
-              孩子首页会出现「先摸摸底」,约 5 分钟: 从现在学的单元往前测到前几册,会的以后不再背,要补的小鹰老师每天带一点。新来的孩子会自动摸底。
+              摸底约 5 分钟: 从孩子现在学的单元往前测到前几册,会的以后不再背,要补的小鹰老师每天带一点。只测小鹰老师还没排过的单元,不会打乱已经在复习的。
             </span>
           </div>
         </>

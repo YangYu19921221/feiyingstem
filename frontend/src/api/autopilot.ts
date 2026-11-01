@@ -192,7 +192,7 @@ export const autopilotApi = {
     client.get<{ books: { id: number; name: string; kids: number; units: { id: number; name: string }[] }[] }>(
       `/teacher/autopilot/classes/${classId}/sync-books`).then(r => r.books),
   saveSync: (classId: number, body: Partial<{ enabled: boolean; school_book_id: number | null; school_unit_id: number | null }>) =>
-    client.put<ClassSync>(`/teacher/autopilot/classes/${classId}/sync`, body),
+    client.put<ClassSync & { requested?: number }>(`/teacher/autopilot/classes/${classId}/sync`, body),
   requestCatchup: (classId: number, studentIds: number[]) =>
     client.post<{ requested: number }>(`/teacher/autopilot/classes/${classId}/catchup`, { student_ids: studentIds }),
   suggestions: (classId: number) =>

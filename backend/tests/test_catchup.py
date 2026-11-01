@@ -229,3 +229,18 @@ async def test_one_group_days_mostly_school(client, db_session, env):
         assert plan.words <= 10 and len(plan.items) == 1
         gap_days += 1 if plan.items[0].unit_id == env["u3"][0].id else 0
     assert gap_days == 3, "十天里三天补漏"
+
+
+@pytest.mark.asyncio
+async def test_turning_on_starts_diagnosis_for_whole_class(client, db_session, env):
+    """第一次打开不用老师再点: 全班每人一次摸底;已经做过的不重建"""
+    r = await client.put(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/sync", json={"enabled": True},
+                         headers=_h(env["t"].id))
+    assert r.status_code == 200 and r.json()["enabled"] is True and r.json()["requested"] == 1
+    q = (await client.get("/api/v1/student/catchup", headers=_h(env["s"].id))).json()
+    assert q["status"] == "doing"
+    await client.put(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/sync", json={"enabled": False},
+                     headers=_h(env["t"].id))
+    r = await client.put(f"/api/v1/teacher/autopilot/classes/{env['c'].id}/sync", json={"enabled": True},
+                         headers=_h(env["t"].id))
+    assert r.json()["requested"] == 0, "关了再开不重复建"
