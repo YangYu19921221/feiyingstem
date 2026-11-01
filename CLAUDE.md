@@ -271,7 +271,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 音标视频「每个学生 × 每节课」观看明细(2026-11-01,用户「教师端需要知道每个学生看了哪些音标视频的详细数据我们好分析」):
+- ✅ 音标视频「每个学生 × 每节课」观看明细(2026-11-01 15:35 **已部署生产**,提交 a3e5c4a;teacher/phonetics.py 生产==HEAD~1 整推,两个服务都重启;前端 mvxikfvn 整推;备份 /root/teacher_phonetics_before_watchrec_20261101_1531.py、frontend/dist_bak_20261101_1535。生产只读冒烟(真老师 247 人 / 42 节,临时 5 分钟 token): 主进程和工作进程都回 166 条记录、每个学生和总览 0 处对不上、不在本班的学生 404。用户「教师端需要知道每个学生看了哪些音标视频的详细数据我们好分析」):
   以前总览只有「看完 3 节 / 看过 5 节」,看不出是哪几节。新接口 `GET /teacher/phonetics/watch-records`(lecturer / student_id 可选)
   原样给 phonetic_video_views 每一行(打开次数 / 观看秒数 / 看到过最远 / 上次停在哪 / completed / 第一次和最后一次时间)+ 视频表 + 学生名单(带所在班级)。
   **范围与总览同一份**(抽成 `_watch_scope`,总览也改用它): 本班学生、本机构可见视频(含预置、含下架),admin 只有有记录的人(roster_size None);
