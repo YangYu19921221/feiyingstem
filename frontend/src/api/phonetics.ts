@@ -80,9 +80,7 @@ export interface PhoneticVideo {
   /** 平台预置(org_id 为空):机构只能看不能改,按钮要置灰 */
   is_preset?: boolean;
   can_edit?: boolean;
-  /** 共享给所有机构了(2026-11-02)。管理端首页的总开关决定,直营的视频跟着它走 */
-  shared_all?: boolean;
-  /** 别的机构共享过来的(写着是谁家的),只能看不能改;自己的 / 平台预置的为 null */
+  /** 直营给你们学校看的(写着是谁家的),只能看不能改;自己的 / 平台预置的为 null */
   shared_from?: string | null;
   // 教师端统计列
   /** 打开次数(所有人相加)。与 viewers 是「次」和「人」的区别 */
@@ -101,12 +99,18 @@ export interface PhoneticVideo {
   pending_question_count?: number;
 }
 
-/** 直营音标视频共享开关的状态。videos = 直营一共几节(含下架),other_orgs = 别的在用机构有几家 */
-export interface PhoneticShareStatus {
+/** 直营音标视频给哪些机构看。enabled = 这家看得到直营的(默认 true) */
+export interface PhoneticShareOrg {
+  id: number;
+  name: string;
+  status: string;
   enabled: boolean;
-  videos: number;
-  active_videos: number;
-  other_orgs: number;
+  students: number;
+}
+export interface PhoneticShareStatus {
+  hq_videos: number;
+  hq_active_videos: number;
+  orgs: PhoneticShareOrg[];
 }
 
 /** 一个学生在某个视频上的观看情况(教师端名单) */
@@ -152,6 +156,8 @@ export interface PhoneticVideoPage {
   page: number;
   page_size: number;
   items: PhoneticVideo[];
+  /** 能不能上传音标视频: 只有直营老师和平台管理员能(2026-11-02) */
+  can_upload?: boolean;
   /**
    * 全机构「待回答」的提问数 —— 红点用它,**不要拿 items 里的加起来**:
    * 那样翻页/筛讲师时红点会跟着变,老师会以为问题被处理掉了
@@ -596,9 +602,10 @@ export const phoneticsApi = {
   batchRemove: (ids: number[]) =>
     api.post<{ deleted: number; requested: number }>('/teacher/phonetics/videos/batch-delete', { ids }),
 
-  /** 管理端「直营音标视频共享给所有机构」开关(只有平台管理员) */
+  /** 管理端「直营音标视频给哪些机构看」(只有平台管理员) */
   shareStatus: () => api.get<PhoneticShareStatus>('/teacher/phonetics/share'),
-  setShare: (enabled: boolean) => api.put<PhoneticShareStatus>('/teacher/phonetics/share', { enabled }),
+  setShareOrg: (orgId: number, enabled: boolean) =>
+    api.put<PhoneticShareStatus>(`/teacher/phonetics/share/orgs/${orgId}`, { enabled }),
 
   // ---- 配套课件(讲义 PDF / PPT)----
 

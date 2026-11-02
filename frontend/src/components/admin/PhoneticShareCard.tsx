@@ -1,75 +1,95 @@
 /**
- * 管理端首页「直营音标视频共享给所有机构」(2026-11-02)。规则真源 backend/app/services/phonetic_share.py。
- * 一个总开关(用户「这个开关设置在管理端 总的管理端音标视频是否共享给别的机构」): 打开 = 直营的音标视频
- * 所有机构都看得到(以后直营新传的也是),别的机构只能看;关掉 = 别的机构马上看不到。
+ * 管理端首页「直营音标视频给哪些机构看」(2026-11-02)。规则真源 backend/app/services/phonetic_share.py。
+ * 用户「选择那些机构可以看那些不可以看 默认是打开 然后非直营机构教师端不能上传视频」:
+ * 每个机构一个开关,默认能看(新机构也是);能看 = 直营的全部音标视频(含以后新传的),只读。
  */
 import { useEffect, useState } from 'react';
 import { Share2 } from 'lucide-react';
-import { phoneticsApi, type PhoneticShareStatus } from '../../api/phonetics';
+import { phoneticsApi, type PhoneticShareOrg, type PhoneticShareStatus } from '../../api/phonetics';
 import { getErrorMessage } from '../../utils/errorMessage';
+
+const STATUS_LABEL: Record<string, string> = { active: '', suspended: '已停用', expired: '已到期' };
 
 export default function PhoneticShareCard() {
   const [state, setState] = useState<PhoneticShareStatus | null>(null);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   useEffect(() => {
-    phoneticsApi.shareStatus().then(setState).catch((e) => setError(getErrorMessage(e, '读不到音标视频共享的状态')));
+    phoneticsApi.shareStatus().then(setState).catch((e) => setError(getErrorMessage(e, '读不到音标视频共享的设置')));
   }, []);
 
-  const toggle = async () => {
-    if (!state || busy) return;
-    const next = !state.enabled;
-    const msg = next
-      ? `把直营的 ${state.videos} 节音标视频共享给所有机构?\n\n共享后每个机构的老师和学生都看得到(要不要兑换码按各机构自己的设置),以后直营新传的也会共享。别的机构只能看,不能改、不能删;直营老师照样能改。`
-      : '取消共享?\n\n别的机构的学生马上就看不到直营的音标视频了,他们兑过的码也打不开这些课。';
-    if (!window.confirm(msg)) return;
-    setBusy(true);
+  const toggle = async (org: PhoneticShareOrg) => {
+    if (busyId !== null) return;
+    const next = !org.enabled;
+    if (!next && !window.confirm(
+      `关掉后「${org.name}」的老师和学生马上看不到直营的音标视频,他们兑过的码也打不开这些课。确定关掉?`)) return;
+    setBusyId(org.id);
     setError('');
     try {
-      setState(await phoneticsApi.setShare(next));
+      setState(await phoneticsApi.setShareOrg(org.id, next));
     } catch (e) {
       setError(getErrorMessage(e, '保存失败,稍后再试'));
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   };
 
+  const onCount = state?.orgs.filter((o) => o.enabled).length ?? 0;
+
   return (
     <section className="admin-panel rounded-2xl p-5 sm:p-6" aria-labelledby="phonetic-share-heading">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e4f3f5] text-[#2f8791]">
-            <Share2 className="h-5 w-5" />
-          </span>
-          <div>
-            <h3 id="phonetic-share-heading" className="font-bold text-[#173047]">直营音标视频共享给所有机构</h3>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-              打开后,直营的音标视频每个机构的老师和学生都看得到,以后直营新传的也会共享;要不要兑换码按各机构自己的设置。
-              别的机构只能看,不能改、不能删、不能排序;直营老师照样能改。关掉后别的机构马上看不到。
-            </p>
-          </div>
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e4f3f5] text-[#2f8791]">
+          <Share2 className="h-5 w-5" />
+        </span>
+        <div>
+          <h3 id="phonetic-share-heading" className="font-bold text-[#173047]">直营音标视频给哪些机构看</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+            开着的机构,老师和学生都看得到直营的全部音标视频(以后直营新传的也是),只能看,不能改、不能删;
+            要不要兑换码按各机构自己的设置。新开的机构默认开着。音标视频只由直营上传,分校老师那边没有上传入口。
+          </p>
         </div>
-        {state && (
-          <button
-            type="button"
-            onClick={toggle}
-            disabled={busy}
-            aria-pressed={state.enabled}
-            className={`admin-focus-ring inline-flex min-h-11 shrink-0 items-center rounded-xl px-4 text-sm font-semibold transition disabled:opacity-60 ${
-              state.enabled ? 'bg-[#e8f6ef] text-[#32815f] hover:bg-[#d8efe3]' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
-          >
-            {busy ? '保存中…' : state.enabled ? '共享中(点击取消)' : '没共享(点击共享)'}
-          </button>
-        )}
       </div>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       {state && (
-        <p className="mt-3 text-sm text-slate-600">
-          {state.enabled
-            ? `现在: 直营的 ${state.videos} 节(上架 ${state.active_videos} 节)其他 ${state.other_orgs} 个机构都看得到`
-            : `现在: 直营的 ${state.videos} 节只有直营自己看得到,其他 ${state.other_orgs} 个机构看不到`}
-        </p>
+        <>
+          <p className="mt-4 text-sm text-slate-600">
+            直营现在有 {state.hq_videos} 节(上架 {state.hq_active_videos} 节),{state.orgs.length} 个机构里 {onCount} 个看得到
+          </p>
+          {state.orgs.length === 0 ? (
+            <p className="mt-3 rounded-xl bg-[#f5f8fa] px-3.5 py-3 text-sm text-slate-500">还没有别的机构</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
+              {state.orgs.map((o) => (
+                <li key={o.id} className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[#173047]">
+                      {o.name}
+                      {STATUS_LABEL[o.status] && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-500">
+                          {STATUS_LABEL[o.status]}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">{o.students} 个学生</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggle(o)}
+                    disabled={busyId !== null}
+                    aria-pressed={o.enabled}
+                    aria-label={`${o.name}: ${o.enabled ? '看得到,点击关掉' : '看不到,点击打开'}`}
+                    className={`admin-focus-ring inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-xl px-3.5 text-sm font-semibold transition disabled:opacity-60 ${
+                      o.enabled ? 'bg-[#e8f6ef] text-[#32815f] hover:bg-[#d8efe3]' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                  >
+                    {busyId === o.id ? '保存中…' : o.enabled ? '看得到' : '看不到'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );

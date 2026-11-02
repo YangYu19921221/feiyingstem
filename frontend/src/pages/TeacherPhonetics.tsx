@@ -70,6 +70,8 @@ export default function TeacherPhonetics() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [items, setItems] = useState<PhoneticVideo[]>([]);
+  /** 分校老师不能传(2026-11-02,后端 services/phonetic_share.can_upload)。列表回来前先当能传,免得直营老师看到上传区闪一下 */
+  const [canUpload, setCanUpload] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');
@@ -186,6 +188,7 @@ export default function TeacherPhonetics() {
       if (page > maxPage) { setPage(maxPage); return; }   // setPage 会触发重取
       setItems(data.items);
       setTotal(data.total);
+      setCanUpload(data.can_upload !== false);
       // 红点取响应里的全机构待回答数(不是本页那几行加起来的,见 pending state 注释)
       setPending(data.pending_questions || 0);
       setSelected(new Set());  // 换页/换搜索词后旧勾选已不可见,清掉防误删
@@ -445,8 +448,9 @@ export default function TeacherPhonetics() {
           <div>
             <h1 className="flex items-center gap-2 font-display text-2xl font-bold text-[#173047]"><Volume2 className="h-5 w-5 text-[#2f8791]" />音标视频管理</h1>
             <p className="mt-1 text-xs text-ink-mute">
-              音标是英语的基础,学生首页有独立入口。上传的视频只有登录的学生能看。
-              可一次选多个视频批量上传,标题自动取文件名。
+              音标是英语的基础,学生首页有独立入口。{canUpload
+                ? '上传的视频只有登录的学生能看。可一次选多个视频批量上传,标题自动取文件名。'
+                : '这里是直营给你们学校的音标视频,只有登录的学生能看。'}
             </p>
             {/* 学情总览 / 学生提问:两个一眼能看到的入口。
                 CLAUDE.md 硬性要求「不能只藏在二级页面的展开区里」——
@@ -507,6 +511,11 @@ export default function TeacherPhonetics() {
               </button>
             </div>
           </div>
+          {!canUpload ? (
+            <p className="max-w-xs rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800">
+              音标视频由直营统一上传,分校不能上传。你们学校的老师和学生看得到直营的音标视频,能看数据、看讲义、布置成作业。
+            </p>
+          ) : (
           <div className="flex flex-wrap items-end gap-2">
             {/* 讲师:**上传前必填**(2026-09-17 改成强制),整批用同一个值。
                 放在上传按钮左边而不是弹层里 —— 老师的动作是"选文件就传",
@@ -575,6 +584,7 @@ export default function TeacherPhonetics() {
               </p>
             )}
           </div>
+          )}
         </div>
 
         {/* 上传进度条:大文件没有进度条老师会以为卡死 */}
@@ -683,7 +693,7 @@ export default function TeacherPhonetics() {
                   ? '换个关键词试试'
                   : lecturerFilter
                     ? '点上面的「全部」看所有视频'
-                    : '点右上「上传视频」开始'}
+                    : canUpload ? '点右上「上传视频」开始' : '直营还没有共享音标视频给你们学校,或者平台把你们学校关了'}
               </p>
             </div>
           ) : (
@@ -779,10 +789,10 @@ export default function TeacherPhonetics() {
                         <span className="text-orange-500">{` · 讲义 ${v.material_count}`}</span>
                       )}
                       {v.is_preset && ' · 平台预置'}
-                      {/* 共享(2026-11-02): 自己的标「共享给所有机构」;别人家共享过来的写明是谁家的、只读 */}
+                      {/* 直营给的(2026-11-02): 写明是谁家的、只读 */}
                       {v.shared_from
                         ? <span className="font-medium text-sky-700">{` · 「${v.shared_from}」共享 · 只读`}</span>
-                        : v.shared_all && <span className="font-medium text-sky-700"> · 共享给所有机构中</span>}
+                        : null}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">

@@ -53,9 +53,6 @@ class PhoneticVideo(Base):
     # 多租户:NULL = 平台共享(所有机构可见),非 NULL = 该机构自建。
     # 与 word_books/reading_passages 同样式(shared_nullable),索引由 init_db 建
     org_id = Column(Integer, nullable=True)
-    # 共享给所有机构(2026-11-02,用户「子机构音标视频不是共享的吗」): 归属不变(org_id 照旧是上传的机构,
-    # 那边的老师照样能改),别的机构**只能看**。只有平台 admin 能开关。可见性口径真源 services/phonetic_share
-    shared_all = Column(Boolean, nullable=False, default=False, server_default="0")
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -19,6 +19,14 @@ pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("
                                 reason="本机没装 ffmpeg")
 
 
+
+@pytest.fixture(autouse=True)
+def _any_org_can_upload(monkeypatch):
+    """11-02 起只有直营能传音标视频(services/phonetic_share.can_upload)。这个文件测的是上传之后的事
+    (讲师归一 / 排序 / faststart),用的是别的机构的老师,上传规矩另有 test_phonetic_share 锁着"""
+    from app.services import phonetic_share
+    monkeypatch.setattr(phonetic_share, "can_upload", lambda role, org_id: True)
+
 def _make_mp4(path, faststart=False):
     cmd = ["ffmpeg", "-v", "error", "-y",
            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",

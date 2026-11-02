@@ -447,7 +447,7 @@ async def list_videos(
 
     # 别的机构共享过来的视频写明是谁家的(一次查,只查这一页里别人家的)
     from app.models.organization import Organization
-    other = {v.org_id for v in rows if v.shared_all and v.org_id is not None and v.org_id != user.org_id}
+    other = {v.org_id for v in rows if v.org_id is not None and v.org_id != user.org_id}
     owner_names = {oid: name for oid, name in (await db.execute(
         select(Organization.id, Organization.name).where(Organization.id.in_(other))))} if other else {}
 
@@ -461,10 +461,9 @@ async def list_videos(
         # 平台预置对机构只读:前端据此置灰按钮,别让老师点了才吃 403
         out["is_preset"] = v.org_id is None
         out["can_edit"] = phonetic_share.can_edit(v.org_id, user.role, user.org_id)
-        out["shared_all"] = bool(v.shared_all)
-        # 别的机构共享过来的: 写明是谁家的,前端标「XX 共享 · 只读」
-        out["shared_from"] = (owner_names.get(v.org_id, "别的机构")
-                              if v.shared_all and v.org_id is not None and not out["can_edit"] else None)
+        # 直营给的: 写明是谁家的,前端标「XX 共享 · 只读」(admin 看得到全部,不标)
+        out["shared_from"] = (owner_names.get(v.org_id, "直营")
+                              if v.org_id is not None and v.org_id != user.org_id and not out["can_edit"] else None)
         # 统计列。plays 与 view_count 的差别见 PhoneticVideoOut 注释(次 vs 人)
         out["plays"] = st.plays if st else 0
         out["completed_count"] = st.completed if st else 0
@@ -479,6 +478,8 @@ async def list_videos(
         items.append(out)
     return {
         "total": total, "page": page, "page_size": page_size, "items": items,
+        # 分校老师不能上传(services/phonetic_share 第 5 条),前端据此不给上传区
+        "can_upload": phonetic_share.can_upload(user.role, user.org_id),
         # 全机构待回答数:顶部红点用(翻页/筛选都不该让这个数变)
         "pending_questions": await video_question.pending_count(db, current_org_id.get()),
     }
@@ -944,8 +945,7 @@ async def list_for_reorder(
     if user.org_id is not None:
         preset = (await db.execute(
             select(func.count()).select_from(PhoneticVideo).where(
-                or_(PhoneticVideo.org_id.is_(None),
-                    and_(PhoneticVideo.shared_all.is_(True), PhoneticVideo.org_id != user.org_id)),
+                PhoneticVideo.org_id.is_distinct_from(user.org_id), phonetic_share.visible_cond(user.org_id),
                 PhoneticVideo.category == category,
                 PhoneticVideo.is_active.is_(True))
         )).scalar() or 0
@@ -1004,42 +1004,47 @@ async def reorder_videos(
     return {"updated": len(body.ids)}
 
 
-class ShareSwitch(BaseModel):
+class OrgShareSwitch(BaseModel):
     enabled: bool
 
 
 @router.get("/share")
-async def get_share_switch(
+async def get_share_orgs(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_teacher),
 ):
-    """管理端首页「直营音标视频共享给所有机构」的状态(规则见 services/phonetic_share)。只有平台 admin"""
+    """管理端首页「直营音标视频给哪些机构看」: 直营几节 + 每个机构开没开(规则见 services/phonetic_share)。只有平台 admin"""
     if user.role != "admin":
         raise HTTPException(403, "这个开关只有平台管理员能看")
-    return await phonetic_share.status(db)
+    return await phonetic_share.org_list(db)
 
 
-@router.put("/share")
-async def set_share_switch(
-    body: ShareSwitch,
+@router.put("/share/orgs/{org_id}")
+async def set_share_org(
+    org_id: int,
+    body: OrgShareSwitch,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_teacher),
 ):
-    """打开 = 直营的音标视频所有机构都看得到(以后直营新传的也是);关掉 = 别的机构马上看不到。
-    别的机构只能看不能改;上传的直营老师照样能改。只有平台 admin"""
+    """开 = 这家机构看得到直营的全部音标视频(以后直营新传的也是);关 = 一节都看不到。只有平台 admin"""
     if user.role != "admin":
-        raise HTTPException(403, "共享给所有机构要平台管理员来开")
-    before = await phonetic_share.get_enabled(db)
-    changed = await phonetic_share.set_enabled(db, body.enabled)
-    if before != body.enabled or changed:
+        raise HTTPException(403, "要平台管理员来改")
+    if org_id == phonetic_share.HQ_ORG_ID:
+        raise HTTPException(400, "直营自己的视频直营总是看得到")
+    from app.models.organization import Organization
+    org = (await db.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
+    if org is None:
+        raise HTTPException(404, "机构不存在")
+    if bool(org.phonetic_hq_videos) != body.enabled:
+        org.phonetic_hq_videos = body.enabled
         audit_log.record(
             db, request, user, "phonetic.share",
-            f"直营音标视频{'共享给所有机构' if body.enabled else '取消共享'}({changed} 节)",
-            target_type="phonetic_share", detail={"enabled": body.enabled, "videos": changed},
+            f"「{org.name}」{'能看' if body.enabled else '不能看'}直营的音标视频",
+            target_type="organization", target_id=org.id, detail={"org": org.name, "enabled": body.enabled},
         )
     await db.commit()
-    return await phonetic_share.status(db)
+    return await phonetic_share.org_list(db)
 
 
 @router.post("/videos/batch-lecturer")
@@ -1121,6 +1126,9 @@ async def upload_video(
     lecturer = 讲师姓名(自由文本,**上传时必填**)。批量上传时前端对整批传同一个值 ——
     老师一次传的通常就是同一位讲师的一套课。
     """
+    # 只有直营老师和平台管理员能传(services/phonetic_share 第 5 条)。放在最前面: 别让分校老师传完 200MB 才被拒
+    if not phonetic_share.can_upload(user.role, user.org_id):
+        raise HTTPException(403, "音标视频由直营统一上传,分校不能上传。你们学校的老师和学生看得到直营的音标视频")
     ext = ALLOWED_VIDEO_MIME.get(file.content_type or "")
     if not ext:
         raise HTTPException(400, "仅支持 mp4 / webm / mov 格式的视频")
@@ -1207,8 +1215,6 @@ async def upload_video(
                     else await _next_sort_order(db, user.org_id, final_category)),
         created_by=user.id,
         org_id=user.org_id,
-        # 直营新传的: 管理端开着「共享给所有机构」就直接共享(services/phonetic_share 第 2 条)
-        shared_all=await phonetic_share.shared_for_new(db, user.org_id),
     )
     db.add(v)
     await db.commit()

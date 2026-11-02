@@ -43,6 +43,9 @@ class Organization(Base):
     # 播放票据(见 api/v1/phonetics.py 的闸门);老师/管理员永不受限。
     # ⚠️ 机构应**先备好码再翻 code**,否则学生当场全被挡在外面
     phonetic_access_mode = Column(String(10), default="open", server_default="open", nullable=False)
+    # 看不看得到直营(org 1)的音标视频(2026-11-02,用户「选择那些机构可以看那些不可以看 默认是打开」)。
+    # 1 = 能看(默认,存量机构加列时也是 1);平台管理员在管理端首页逐个关。规则真源 services/phonetic_share
+    phonetic_hq_videos = Column(Boolean, default=True, server_default="1", nullable=False)
     # 音标兑换码额度(2026-10-02): 平台给机构发放的「可生成多少张音标码」。
     # NULL/0 = 平台还没给额度 → 机构不能自己发音标码(只能用平台发的)。
     # **不回退 student_quota**(与 card_quota 不同): 音标库是另卖的内容,不是合作费自带的。

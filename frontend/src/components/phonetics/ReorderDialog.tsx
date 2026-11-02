@@ -278,7 +278,7 @@ export default function ReorderDialog({ initialCategory, initialLecturer, onSave
 
         {presetCount > 0 && (
           <p className="mx-5 mt-3 rounded-xl bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-700">
-            这个分类还有 {presetCount} 个平台预置或别的机构共享过来的视频,学生端也会看到,这里调不了它们的位置。
+            这个分类还有 {presetCount} 个平台预置或直营给的视频,学生端也会看到,这里调不了它们的位置。
           </p>
         )}
 

@@ -68,7 +68,7 @@ async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Opti
         if v is None:
             return None
         from app.services import phonetic_share
-        if not phonetic_share.visible_to(v.org_id, v.shared_all, org_id):
+        if not await phonetic_share.visible_to(db, v.org_id, org_id):
             return None
         return {"name": v.title, "book_id": None}
     if kind == KIND_READ_ALOUD:

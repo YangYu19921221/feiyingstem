@@ -20,6 +20,14 @@ from tests.conftest import _make_token
 pytestmark = pytest.mark.asyncio
 
 
+
+@pytest.fixture(autouse=True)
+def _any_org_can_upload(monkeypatch):
+    """11-02 起只有直营能传音标视频(services/phonetic_share.can_upload)。这个文件测的是上传之后的事
+    (讲师归一 / 排序 / faststart),用的是别的机构的老师,上传规矩另有 test_phonetic_share 锁着"""
+    from app.services import phonetic_share
+    monkeypatch.setattr(phonetic_share, "can_upload", lambda role, org_id: True)
+
 @pytest_asyncio.fixture
 async def env(db_session):
     await db_session.execute(sql_text(

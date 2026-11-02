@@ -13,7 +13,7 @@
 import time
 from contextvars import ContextVar
 
-from sqlalchemy import event, or_, select, text
+from sqlalchemy import event, or_, text
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.core.config import settings
@@ -74,15 +74,11 @@ def register_tenant_models():
 
 
 def _criteria_for(model, shared: bool, org_id: int):
-    """每个锚点模型的读侧条件。音标视频 / 课件多一种「别的机构共享过来的」(2026-11-02,
-    规则见 services/phonetic_share): 视频看 shared_all;课件跟着父视频(课件自己的 org_id 是上传机构的)"""
-    name = model.__name__
-    if name == "PhoneticVideo":
-        return lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None), cls.shared_all.is_(True))
-    if name == "PhoneticMaterial":
-        from app.models.phonetic import PhoneticVideo
-        return lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None), cls.video_id.in_(
-            select(PhoneticVideo.id).where(PhoneticVideo.shared_all.is_(True)).scalar_subquery()))
+    """每个锚点模型的读侧条件。音标视频 / 课件多一种「直营给的」(2026-11-02,规则见 services/phonetic_share):
+    本机构开着「看直营的音标视频」时,直营的视频和课件也放行(课件的 org_id 跟父视频)"""
+    if model.__name__ in ("PhoneticVideo", "PhoneticMaterial"):
+        from app.services.phonetic_share import visible_cond_for
+        return lambda cls: visible_cond_for(cls, org_id)
     if shared:
         return lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None))
     return lambda cls: cls.org_id == org_id
