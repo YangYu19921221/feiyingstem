@@ -12,9 +12,9 @@ import time
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import case, select, func, or_, delete as sa_delete
+from sqlalchemy import and_, case, select, func, or_, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -31,6 +31,7 @@ from app.services import (
     phonetic_access_service, video_faststart, video_lite, cos_video,
 )
 from app.services.lecturer_name import NO_LECTURER
+from app.services import audit_log, phonetic_share
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +170,15 @@ def _org_scope(q, model):
     """
     org_id = current_org_id.get()
     if org_id is not None:
-        q = q.where(or_(model.org_id == org_id, model.org_id.is_(None)))
+        # 本机构的 + 平台预置的 + 别的机构共享出来的(2026-11-02,口径真源 services/phonetic_share)
+        q = q.where(phonetic_share.visible_cond(org_id))
     return q
+
+
+def _readonly_msg(org_id: Optional[int], what: str = "视频") -> str:
+    if org_id is None:
+        return f"平台预置{what}对机构只读,如需调整请联系平台管理员"
+    return f"这是别的机构共享给你们的{what},只能看不能改"
 
 
 def _display_order():
@@ -225,8 +233,9 @@ async def _own_video(db: AsyncSession, video_id: int, user: User) -> PhoneticVid
     只有平台 admin 能动预置内容。
     """
     v = await _visible_video(db, video_id, user)
-    if v.org_id is None and user.role != "admin":
-        raise HTTPException(403, "平台预置视频对机构只读,如需调整请联系平台管理员")
+    # 别的机构共享过来的也看得见(_visible_video 放行),但只能看 —— 判「改得动」只认归属
+    if not phonetic_share.can_edit(v.org_id, user.role, user.org_id):
+        raise HTTPException(403, _readonly_msg(v.org_id))
     return v
 
 
@@ -247,8 +256,8 @@ async def _own_material(db: AsyncSession, material_id: int, user: User) -> Phone
     )).scalar_one_or_none()
     if m is None:
         raise HTTPException(404, "课件不存在")
-    if m.org_id is None and user.role != "admin":
-        raise HTTPException(403, "平台预置课件对机构只读,如需调整请联系平台管理员")
+    if not phonetic_share.can_edit(m.org_id, user.role, user.org_id):
+        raise HTTPException(403, _readonly_msg(m.org_id, "课件"))
     return m
 
 
@@ -287,8 +296,7 @@ def _lecturer_scope(q, org_id: Optional[int]):
     """
     if org_id is None:
         return q.where(PhoneticVideo.org_id.is_(None))
-    return q.where(or_(PhoneticVideo.org_id == org_id,
-                       PhoneticVideo.org_id.is_(None)))
+    return q.where(phonetic_share.visible_cond(org_id))
 
 
 async def _existing_lecturers(
@@ -437,6 +445,12 @@ async def list_videos(
         db, [v.id for v in rows], current_org_id.get()
     )
 
+    # 别的机构共享过来的视频写明是谁家的(一次查,只查这一页里别人家的)
+    from app.models.organization import Organization
+    other = {v.org_id for v in rows if v.shared_all and v.org_id is not None and v.org_id != user.org_id}
+    owner_names = {oid: name for oid, name in (await db.execute(
+        select(Organization.id, Organization.name).where(Organization.id.in_(other))))} if other else {}
+
     items = []
     for v in rows:
         st = stats.get(v.id)
@@ -446,7 +460,11 @@ async def list_videos(
         out["material_count"] = counts.get(v.id, 0)
         # 平台预置对机构只读:前端据此置灰按钮,别让老师点了才吃 403
         out["is_preset"] = v.org_id is None
-        out["can_edit"] = (user.role == "admin") or v.org_id is not None
+        out["can_edit"] = phonetic_share.can_edit(v.org_id, user.role, user.org_id)
+        out["shared_all"] = bool(v.shared_all)
+        # 别的机构共享过来的: 写明是谁家的,前端标「XX 共享 · 只读」
+        out["shared_from"] = (owner_names.get(v.org_id, "别的机构")
+                              if v.shared_all and v.org_id is not None and not out["can_edit"] else None)
         # 统计列。plays 与 view_count 的差别见 PhoneticVideoOut 注释(次 vs 人)
         out["plays"] = st.plays if st else 0
         out["completed_count"] = st.completed if st else 0
@@ -926,7 +944,9 @@ async def list_for_reorder(
     if user.org_id is not None:
         preset = (await db.execute(
             select(func.count()).select_from(PhoneticVideo).where(
-                PhoneticVideo.org_id.is_(None), PhoneticVideo.category == category,
+                or_(PhoneticVideo.org_id.is_(None),
+                    and_(PhoneticVideo.shared_all.is_(True), PhoneticVideo.org_id != user.org_id)),
+                PhoneticVideo.category == category,
                 PhoneticVideo.is_active.is_(True))
         )).scalar() or 0
     return {
@@ -984,6 +1004,41 @@ async def reorder_videos(
     return {"updated": len(body.ids)}
 
 
+class ShareRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=200)
+    shared: bool
+
+
+@router.post("/videos/share")
+async def share_videos(
+    body: ShareRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """共享给所有机构 / 取消共享(2026-11-02,规则见 services/phonetic_share)。**只有平台 admin**。
+    归属不变: 上传的机构照样能改;别的机构只能看。平台预置的本来所有机构都看得到,跳过并说清几条"""
+    if user.role != "admin":
+        raise HTTPException(403, "共享给所有机构要平台管理员来开")
+    rows = (await db.execute(select(PhoneticVideo).where(PhoneticVideo.id.in_(body.ids)))).scalars().all()
+    preset = [v for v in rows if v.org_id is None]
+    target = [v for v in rows if v.org_id is not None]
+    changed = [v for v in target if bool(v.shared_all) != body.shared]
+    for v in changed:
+        v.shared_all = body.shared
+    if changed:
+        audit_log.record(
+            db, request, user, "phonetic.share",
+            f"{'共享给所有机构' if body.shared else '取消共享'} {len(changed)} 节音标视频",
+            target_type="phonetic_video", target_id=changed[0].id,
+            detail={"shared": body.shared, "ids": [v.id for v in changed],
+                    "titles": [v.title for v in changed][:50]},
+        )
+    await db.commit()
+    return {"updated": len(changed), "already": len(target) - len(changed),
+            "preset": len(preset), "missing": len(set(body.ids) - {v.id for v in rows})}
+
+
 @router.post("/videos/batch-lecturer")
 async def batch_set_lecturer(
     body: BatchLecturerRequest,
@@ -1007,12 +1062,13 @@ async def batch_set_lecturer(
         return {"updated": 0, "requested": len(body.ids), "lecturer": None}
 
     if user.role != "admin":
-        preset = [v.id for v in rows if v.org_id is None]
+        # 平台预置 / 别的机构共享过来的都只读(口径 services/phonetic_share.can_edit)
+        preset = [v.id for v in rows if not phonetic_share.can_edit(v.org_id, user.role, user.org_id)]
         if preset:
             raise HTTPException(
                 403,
-                f"选中的 {len(preset)} 条是平台预置视频,对机构只读,"
-                "请取消勾选后重试(如需调整请联系平台管理员)",
+                f"选中的 {len(preset)} 条是平台预置或别的机构共享的视频,对你们只读,"
+                "请取消勾选后重试",
             )
 
     # 消歧候选:按**每条视频各自的归属**取(不是调用者的 org —— admin 的是 None),
@@ -1320,12 +1376,13 @@ async def batch_delete_videos(
     # ⚠️ 与单条删除同口径:平台预置内容(org_id IS NULL)对机构只读。
     # **整批拒掉而不是静默跳过** —— 勾了 5 条只删掉 3 条又不说,老师会以为都删了
     if user.role != "admin":
-        preset = [v.id for v in rows if v.org_id is None]
+        # 别的机构共享过来的也在 rows 里(_org_scope 放行看),删不得
+        preset = [v.id for v in rows if not phonetic_share.can_edit(v.org_id, user.role, user.org_id)]
         if preset:
             raise HTTPException(
                 403,
-                f"选中的 {len(preset)} 条是平台预置视频,对机构只读,"
-                "请取消勾选后重试(如需调整请联系平台管理员)",
+                f"选中的 {len(preset)} 条是平台预置或别的机构共享的视频,对你们只读,"
+                "请取消勾选后重试",
             )
 
     stored = [os.path.basename(v.file_path) for v in rows if v.file_path]
@@ -1457,7 +1514,7 @@ def _material_out(m: PhoneticMaterial, user: User) -> MaterialOut:
         file_size=m.file_size, sort_order=m.sort_order or 0,
         is_active=bool(m.is_active),
         is_preset=preset,
-        can_edit=(user.role == "admin" or not preset),
+        can_edit=phonetic_share.can_edit(m.org_id, user.role, user.org_id),
     )
 
 

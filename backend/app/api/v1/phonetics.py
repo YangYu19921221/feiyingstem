@@ -501,7 +501,9 @@ def _scope_org(q, model):
     """
     org_id = current_org_id.get()
     if org_id is not None:
-        q = q.where(or_(model.org_id == org_id, model.org_id.is_(None)))
+        # 本机构的 + 平台预置的 + 别的机构共享出来的(2026-11-02,口径真源 services/phonetic_share)
+        from app.services import phonetic_share
+        q = q.where(phonetic_share.visible_cond(org_id))
     return q
 
 

@@ -24,6 +24,15 @@ import ReorderDialog from '../components/phonetics/ReorderDialog';
 
 const PAGE_SIZE = 10;
 
+/** 平台管理员才能把视频共享给所有机构(后端也只认 admin) */
+const IS_ADMIN = (() => {
+  try { return JSON.parse(localStorage.getItem('user') || 'null')?.role === 'admin'; } catch { return false; }
+})();
+
+/** 改不了的视频为什么改不了(平台预置 / 别的机构共享过来的) */
+const readonlyTip = (v: PhoneticVideo, what = '修改') =>
+  v.shared_from ? `「${v.shared_from}」共享给你们的视频,只能看不能${what}` : `平台预置视频,机构不可${what}`;
+
 /**
  * 讲师名是不是「看着填了其实是空的」—— 与后端 lecturer_name.normalize 同口径。
  *
@@ -395,6 +404,29 @@ export default function TeacherPhonetics() {
     }
   };
 
+  /** 共享给所有机构 / 取消共享(只有平台管理员)。归属不变,上传的机构照样能改,别的机构只能看 */
+  const shareVideos = async (ids: number[], shared: boolean) => {
+    if (ids.length === 0) return;
+    const msg = shared
+      ? `把这 ${ids.length} 个视频共享给所有机构?\n\n共享后每个机构的老师和学生都看得到(要不要兑换码按各机构自己的设置),他们只能看,不能改、不能删。`
+      : `取消这 ${ids.length} 个视频的共享?\n\n别的机构的学生马上就看不到了,他们兑过的码也打不开这几节。`;
+    if (!window.confirm(msg)) return;
+    try {
+      const r = await phoneticsApi.share(ids, shared);
+      const extra = [
+        r.already ? `${r.already} 个本来就${shared ? '共享了' : '没共享'}` : '',
+        r.preset ? `${r.preset} 个是平台预置,本来所有机构都看得到` : '',
+        r.missing ? `${r.missing} 个已经被删了` : '',
+      ].filter(Boolean).join(',');
+      if (r.updated === 0) toast.warning(`一个都没改${extra ? `: ${extra}` : ''}`);
+      else toast.success(`${shared ? '已共享给所有机构' : '已取消共享'}: ${r.updated} 个${extra ? `(${extra})` : ''}`);
+      setSelected(new Set());
+      await load();
+    } catch (e) {
+      toast.error(getErrorMessage(e, shared ? '共享失败' : '取消共享失败'));
+    }
+  };
+
   const batchRemove = async () => {
     const ids = [...selected];
     if (ids.length === 0) return;
@@ -685,7 +717,7 @@ export default function TeacherPhonetics() {
           ) : (
             <div className="divide-y divide-gray-100">
               {/* 全选条:勾选后出现批量删除按钮 */}
-              <div className="flex items-center gap-3 bg-gray-50/80 px-4 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-gray-50/80 px-4 py-2.5">
                 <input
                   type="checkbox" checked={allChecked} onChange={toggleAll}
                   aria-label="全选本页视频"
@@ -697,12 +729,12 @@ export default function TeacherPhonetics() {
                       («全选» 之后只勾上 6 个而屏幕上有 10 行) */}
                   {selectableItems.length < items.length && (
                     <span className="ml-1 text-amber-600">
-                      (平台预置的 {items.length - selectableItems.length} 条不可改,已跳过)
+                      (平台预置或别的机构共享的 {items.length - selectableItems.length} 条不可改,已跳过)
                     </span>
                   )}
                 </span>
                 {selected.size > 0 && (
-                  <div className="ml-auto flex items-center gap-1.5">
+                  <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 [&>button]:whitespace-nowrap">
                     {/* 批量设讲师排在删除左边:存量视频补归属是这里最常做的事,
                         而删除是危险动作,不该挨着高频按钮 */}
                     <button
@@ -711,6 +743,22 @@ export default function TeacherPhonetics() {
                     >
                       👤 设讲师({selected.size})
                     </button>
+                    {IS_ADMIN && (
+                      <>
+                        <button
+                          onClick={() => shareVideos([...selected], true)}
+                          className="rounded-lg bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+                        >
+                          共享给所有机构({selected.size})
+                        </button>
+                        <button
+                          onClick={() => shareVideos([...selected], false)}
+                          className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-ink-soft hover:bg-gray-200"
+                        >
+                          取消共享
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={batchRemove}
                       className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
@@ -727,7 +775,7 @@ export default function TeacherPhonetics() {
                   <input
                     type="checkbox" checked={selected.has(v.id)} onChange={() => toggleOne(v.id)}
                     disabled={v.can_edit === false}
-                    title={v.can_edit === false ? '平台预置视频,机构不可修改' : undefined}
+                    title={v.can_edit === false ? readonlyTip(v) : undefined}
                     aria-label={`选择 ${v.title}`}
                     className="h-4 w-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-40"
                   />
@@ -775,6 +823,10 @@ export default function TeacherPhonetics() {
                         <span className="text-orange-500">{` · 讲义 ${v.material_count}`}</span>
                       )}
                       {v.is_preset && ' · 平台预置'}
+                      {/* 共享(2026-11-02): 自己的标「共享给所有机构」;别人家共享过来的写明是谁家的、只读 */}
+                      {v.shared_from
+                        ? <span className="font-medium text-sky-700">{` · 「${v.shared_from}」共享 · 只读`}</span>
+                        : v.shared_all && <span className="font-medium text-sky-700"> · 已共享给所有机构</span>}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
@@ -807,18 +859,29 @@ export default function TeacherPhonetics() {
                     >
                       课件{v.material_count ? ` ${v.material_count}` : ''}
                     </button>
+                    {IS_ADMIN && !v.is_preset && (
+                      <button
+                        onClick={() => shareVideos([v.id], !v.shared_all)}
+                        className={`rounded-lg px-2.5 py-1.5 text-xs transition ${v.shared_all
+                          ? 'bg-sky-50 font-semibold text-sky-700 hover:bg-sky-100'
+                          : 'bg-gray-100 text-ink-soft hover:bg-sky-50'}`}
+                        title={v.shared_all ? '现在所有机构都看得到,点一下取消共享' : '共享给所有机构(别的机构只能看)'}
+                      >
+                        {v.shared_all ? '已共享' : '共享'}
+                      </button>
+                    )}
                     {/* 平台预置对机构只读:置灰而不是隐藏 —— 隐藏了老师会以为功能坏了 */}
                     <button
                       onClick={() => startEdit(v)}
                       disabled={v.can_edit === false}
-                      title={v.can_edit === false ? '平台预置视频,机构不可修改' : undefined}
+                      title={v.can_edit === false ? readonlyTip(v) : undefined}
                       className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100
                                  disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-100"
                     >编辑</button>
                     <button
                       onClick={() => toggleActive(v)}
                       disabled={v.can_edit === false}
-                      title={v.can_edit === false ? '平台预置视频,机构不可修改' : undefined}
+                      title={v.can_edit === false ? readonlyTip(v) : undefined}
                       className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs text-ink-soft hover:bg-orange-100
                                  disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-100"
                     >
@@ -827,7 +890,7 @@ export default function TeacherPhonetics() {
                     <button
                       onClick={() => remove(v)}
                       disabled={v.can_edit === false}
-                      title={v.can_edit === false ? '平台预置视频,机构不可删除' : undefined}
+                      title={v.can_edit === false ? readonlyTip(v, '删除') : undefined}
                       className="rounded-lg px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50
                                  disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                     >删除</button>

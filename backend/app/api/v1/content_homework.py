@@ -67,7 +67,8 @@ async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Opti
         )).scalar_one_or_none()
         if v is None:
             return None
-        if v.org_id is not None and org_id is not None and v.org_id != org_id:
+        from app.services import phonetic_share
+        if not phonetic_share.visible_to(v.org_id, v.shared_all, org_id):
             return None
         return {"name": v.title, "book_id": None}
     if kind == KIND_READ_ALOUD:
@@ -334,7 +335,8 @@ async def content_homework_targets(
             .execution_options(skip_tenant_filter=True) \
             .order_by(PhoneticVideo.lecturer, PhoneticVideo.category, PhoneticVideo.sort_order, PhoneticVideo.id)
         if org_id is not None:
-            q = q.where(or_(PhoneticVideo.org_id.is_(None), PhoneticVideo.org_id == org_id))
+            from app.services import phonetic_share
+            q = q.where(phonetic_share.visible_cond(org_id))
         groups: dict[str, dict] = {}
         for v in (await db.execute(q)).scalars():
             name = (v.lecturer or "").strip() or "全校通用"

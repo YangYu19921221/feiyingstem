@@ -26,7 +26,7 @@ from app.schemas.subscription import (
     PackCodeGenerate,
     BookTierUpdate,
 )
-from app.services import subscription_service, book_stage, phonetic_access_service, card_pack, audit_log
+from app.services import subscription_service, book_stage, phonetic_access_service, phonetic_share, card_pack, audit_log
 
 router = APIRouter()
 
@@ -521,8 +521,10 @@ async def phonetic_code_videos(
             "category_label": CATEGORY_LABELS.get(v.category, v.category),
             "lecturer": v.lecturer,
             "is_preset": v.org_id is None,
-            # 前端据此拦「混选两个机构的视频」(学生只属于一个机构,后端 resolve_code_videos 也会 400)
-            "org_id": v.org_id,
+            "shared": bool(v.shared_all) and v.org_id is not None,
+            # 前端据此拦「混选两个机构的视频」(学生只属于一个机构,后端 resolve_code_videos 也会 400)。
+            # 共享给所有机构的给 None: 和平台预置一样能和任何一家混选(services/phonetic_share.mix_org)
+            "org_id": phonetic_share.mix_org(v.org_id, v.shared_all),
             # 平台 admin 看得到所有机构的视频,得写明是谁家的,免得给 A 家的码开了 B 家的课
             "org_name": org_name if current_user.role == "admin" else None,
         }

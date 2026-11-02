@@ -521,6 +521,9 @@ async def init_db():
             # 讲师名单是按机构聚合的(group_by lecturer),org 打头
             "CREATE INDEX IF NOT EXISTS idx_phonetic_videos_lecturer "
             "ON phonetic_videos(org_id, lecturer)",
+            # 音标视频共享给所有机构(2026-11-02): 默认 0 = 和以前一样只给自己机构;平台 admin 打开。
+            # 可见性口径 services/phonetic_share
+            "ALTER TABLE phonetic_videos ADD COLUMN shared_all BOOLEAN NOT NULL DEFAULT 0",
             # 音标视频观看明细(2026-09-23): 表本体由 create_all 建,这两条索引在这里
             # **再保一遍** —— 唯一约束是这张表的命门: 缺了它并发心跳会插出多行,
             # 「几个人看过」和平均时长当场翻倍(word_mastery / live_attendance 都吃过,

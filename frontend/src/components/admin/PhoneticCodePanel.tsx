@@ -151,6 +151,7 @@ export default function PhoneticCodePanel({ policy }: { policy: CardPolicy }) {
   const videoMeta = (v: PhoneticCodeVideo) => [
     v.lecturer,
     v.org_name || (v.is_preset ? '平台预置' : null),
+    v.shared ? '共享给所有机构' : null,
   ].filter(Boolean).join(' · ');
 
   const quotaTotal = quota?.phonetic_code_quota ?? 0;

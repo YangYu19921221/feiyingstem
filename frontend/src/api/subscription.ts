@@ -125,6 +125,8 @@ export interface PhoneticCodeVideo {
   category_label: string;
   lecturer?: string | null;
   is_preset: boolean;
+  /** 别的机构共享给所有机构的视频(org_id 给 null,和平台预置一样能混选) */
+  shared?: boolean;
   /** 平台预置为 null。一张码不能混选两个机构的视频(学生只属于一个机构) */
   org_id: number | null;
   org_name?: string | null;

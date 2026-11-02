@@ -13,7 +13,7 @@
 import time
 from contextvars import ContextVar
 
-from sqlalchemy import event, or_, text
+from sqlalchemy import event, or_, select, text
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.core.config import settings
@@ -73,6 +73,21 @@ def register_tenant_models():
     ])
 
 
+def _criteria_for(model, shared: bool, org_id: int):
+    """每个锚点模型的读侧条件。音标视频 / 课件多一种「别的机构共享过来的」(2026-11-02,
+    规则见 services/phonetic_share): 视频看 shared_all;课件跟着父视频(课件自己的 org_id 是上传机构的)"""
+    name = model.__name__
+    if name == "PhoneticVideo":
+        return lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None), cls.shared_all.is_(True))
+    if name == "PhoneticMaterial":
+        from app.models.phonetic import PhoneticVideo
+        return lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None), cls.video_id.in_(
+            select(PhoneticVideo.id).where(PhoneticVideo.shared_all.is_(True)).scalar_subquery()))
+    if shared:
+        return lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None))
+    return lambda cls: cls.org_id == org_id
+
+
 @event.listens_for(Session, "do_orm_execute")
 def _tenant_filter(execute_state):
     """读侧安全网:对 SELECT 自动注入 org 过滤(TENANCY_ENFORCE 开启后生效)"""
@@ -94,8 +109,7 @@ def _tenant_filter(execute_state):
     crits = [
         with_loader_criteria(
             model,
-            (lambda cls: or_(cls.org_id == org_id, cls.org_id.is_(None))) if shared
-            else (lambda cls: cls.org_id == org_id),
+            _criteria_for(model, shared, org_id),
             include_aliases=True,
         )
         for model, shared in TENANT_MODELS

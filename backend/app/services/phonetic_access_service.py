@@ -468,7 +468,7 @@ async def redeem_phonetic_code(
         # skip_tenant_filter + 显式判归属: 别家机构的视频要说「不是你学校的」而不是「不存在」
         rows = (await db.execute(
             select(PhoneticCodeVideo.video_id, PhoneticVideo.org_id,
-                   PhoneticVideo.is_active, PhoneticVideo.title)
+                   PhoneticVideo.is_active, PhoneticVideo.title, PhoneticVideo.shared_all)
             .join(PhoneticVideo, PhoneticVideo.id == PhoneticCodeVideo.video_id)
             .where(PhoneticCodeVideo.code_id == code_id)
             .order_by(PhoneticCodeVideo.id)
@@ -476,7 +476,8 @@ async def redeem_phonetic_code(
         )).all()
         if not rows:
             return _fail("这张兑换码开的视频已被删除,请找老师换一张")
-        if any(r.org_id is not None and r.org_id != user.org_id for r in rows):
+        from app.services import phonetic_share
+        if any(not phonetic_share.visible_to(r.org_id, r.shared_all, user.org_id) for r in rows):
             return _fail("这张兑换码开的视频不是你所在学校的,请向自己的老师索取")
         if not any(r.is_active for r in rows):
             return _fail("这张兑换码开的视频暂时都下架了,码没有用掉,等老师重新上架后再兑换")
@@ -654,9 +655,11 @@ async def resolve_code_videos(
     )).scalars().all()
     by_id = {v.id: v for v in rows}
 
+    from app.services import phonetic_share
+
     def _visible(v: Optional[PhoneticVideo]) -> bool:
         return v is not None and (
-            user.role == "admin" or v.org_id is None or v.org_id == user.org_id)
+            user.role == "admin" or phonetic_share.visible_to(v.org_id, v.shared_all, user.org_id))
 
     missing = [i for i in ids if not _visible(by_id.get(i))]
     if missing:
@@ -668,7 +671,8 @@ async def resolve_code_videos(
         raise HTTPException(
             status_code=400,
             detail=f"{_titles(inactive)}已下架,学生兑了码也看不到。先在「音标视频」里上架,或取消勾选")
-    orgs = {by_id[i].org_id for i in ids if by_id[i].org_id is not None}
+    # 平台预置和别的机构共享出来的都能和任何一家混选(services/phonetic_share.mix_org)
+    orgs = {o for o in (phonetic_share.mix_org(by_id[i].org_id, by_id[i].shared_all) for i in ids) if o is not None}
     if len(orgs) > 1:
         raise HTTPException(
             status_code=400,
@@ -687,5 +691,6 @@ async def codeable_videos(db: AsyncSession, user: User) -> List[tuple]:
         .execution_options(skip_tenant_filter=True)
     )
     if user.role != "admin":
-        q = q.where(or_(PhoneticVideo.org_id == user.org_id, PhoneticVideo.org_id.is_(None)))
+        from app.services import phonetic_share
+        q = q.where(phonetic_share.visible_cond(user.org_id))
     return list((await db.execute(q)).all())
