@@ -21,7 +21,9 @@
    从第 4 轮还没学会起列进老师的「需要你处理」。同一天重复背、没到日子提前背 = 自己多背,不算轮次(记着,算能力)。
 4. 每天派的顺序: 到期的轮次 → 每日复习(有到期的复习词才派)→ 新词。到期的轮次**按书里的顺序**派
    (先在学的那本,单元、组从前往后,in_book_order),不按第几轮 / 哪天到期排 —— 11-02 前按到期日排,
-   按旧学习记录补出来的组到期日是当年哪天学的,派出来跳着走(王彬铜 unit 44 → 17 第4组 → 13 → 17 第1组)
+   按旧学习记录补出来的组到期日是当年哪天学的,派出来跳着走(王彬铜 unit 44 → 17 第4组 → 13 → 17 第1组)。
+   **旧账**(到期超过 7 天还没复习,多是用小鹰老师之前学的)和每日复习合起来每天最多占当天量的一半,另一半派新词;
+   没有新词可派时不限;按时到期的轮次不受这个限制(old_cap_count,11-02 用户同意)
 5. 过关线(过关检测要多少分): 头一周 80;之后每周看一次最近两周「当天第一次」过关检测(>= 10 次才看)的平均分:
    < 88 → 80、88–92 → 85、93–96 → 90、>= 97 → 95,一周最多动一档。老师可以给全班 / 某个孩子固定。
    失败的那次也记(group_exam_records 只记过了的,所以另记 autopilot_attempts)
@@ -85,6 +87,8 @@ PASS_LINE_DAYS = 14
 FIRST_WEEK_DAYS = 7
 REVIEW_COST = 10                # 每日复习 20 个复习词按 10 个新词算(复习是认过的词,快)
 MAX_EXTRA_BATCHES = 5
+OLD_OVERDUE_DAYS = 7            # 到期超过这么多天还没复习 = 旧账(多是用小鹰老师之前学的,按学习记录补出来的)
+OLD_SHARE = 50                  # 旧账每天最多占当天量的一半,另一半派新词;没有新词可派时不限
 EXTRA_MIN = 10
 HOMEWORK_ATTEMPTS = 9           # 自动派的作业能交几次(过不过看过关检测,不看这个)
 CLAIM_STALE = timedelta(minutes=5)
@@ -674,6 +678,30 @@ async def in_book_order(db: AsyncSession, rows: list[AutopilotGroup], books: lis
     return sorted(rows, key=key)
 
 
+def old_cap_count(old: list, cap: int, today: date) -> int:
+    """旧账(到期超过 OLD_OVERDUE_DAYS 天)今天派几组: 加起来最多 cap 个词(当天量的一半,普通班还要先扣掉每日复习),
+    最后一组超一点没关系(差不到半组就放进来)。一组就超过 cap(一天只够一两组)→ 隔一天派一次旧账,另一天派新词。
+    11-02 用户同意: 王彬铜 46 组旧账 536 词把每天 60 个全占了,要 9 天才见到新词"""
+    if not old:
+        return 0
+    if max(1, old[0][1].count) > cap:
+        return 1 if today.toordinal() % 2 == 0 else 0
+    n, used = 0, 0
+    for c in old:
+        cnt = max(1, c[1].count)
+        if used + cnt > cap and (cap - used) * 2 < cnt:
+            break
+        n += 1
+        used += cnt
+    return n
+
+
+def _in_order(picks: list, pos: dict) -> list:
+    """按时的轮次和旧账分开挑,挑完按书里的顺序排回去;新词照原样跟在后面"""
+    rounds = sorted((c for c in picks if c[0] == "round"), key=lambda c: pos.get((c[1].unit_id, c[1].index), 0))
+    return rounds + [c for c in picks if c[0] != "round"]
+
+
 async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget: int, *,
                      with_review: bool = True, skip_units: Optional[set] = None, sync=None,
                      gaps_only: bool = False) -> Plan:
@@ -724,38 +752,61 @@ async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget
     due = await in_book_order(db, rows, books)
     names = await _unit_names(db, [r.unit_id for r in due])
     alive = await live_books(db, [b for _, b in names.values()])
-    picked: list[tuple[str, Grp, int, Optional[int]]] = []
-    left = budget
+    cutoff = _ds(today - timedelta(days=OLD_OVERDUE_DAYS))
+    on_time: list[tuple[str, Grp, int, Optional[int]]] = []
+    old: list[tuple[str, Grp, int, Optional[int]]] = []
+    pos: dict[tuple[int, int], int] = {}
     for r in due:
-        if left <= 0:
-            break
         name, b = names.get(r.unit_id, ("", None))
         if b is None or b not in alive or (r.unit_id, r.group_index) in skip_units:
             continue
         a = await allowed_of(b)
         if a is not None and r.unit_id not in a:
             continue
-        g = Grp(r.unit_id, name, r.group_index, [0] * (r.word_count or 0))
-        picked.append(("round", g, r.rounds + 1, b))
-        left -= max(1, g.count)
-    items = _merge(picked)
-
-    if with_review and left >= REVIEW_COST:
+        pos[(r.unit_id, r.group_index)] = len(pos)
+        c = ("round", Grp(r.unit_id, name, r.group_index, [0] * (r.word_count or 0)), r.rounds + 1, b)
+        (old if r.next_due < cutoff else on_time).append(c)
+    picked: list[tuple[str, Grp, int, Optional[int]]] = []
+    left = budget
+    for c in on_time:               # 按时到期的轮次不限(三轮的间隔不能断)
+        if left <= 0:
+            break
+        picked.append(c)
+        left -= max(1, c[1].count)
+    review_ids: list = []
+    if with_review:
         from app.services import daily_review
-        ids, _backlog = await daily_review.pick(db, sid, today)
-        if ids:
-            items.append(Item(kind="review", words=len(ids)))
-            left -= REVIEW_COST
+        review_ids, _backlog = await daily_review.pick(db, sid, today)
+    # 旧账 + 每日复习合起来最多一半(只算旧账的话,每天 20 个的孩子 10 个旧账 + 10 个复习就满了,还是没有新词)
+    old_cap = budget * OLD_SHARE // 100 - (REVIEW_COST if review_ids else 0)
+    n_old = old_cap_count(old, old_cap, today) if new_groups else len(old)
+    rest_old = old[n_old:]
+    for i, c in enumerate(old[:n_old]):
+        if left <= 0:
+            rest_old = old[i:]
+            break
+        picked.append(c)
+        left -= max(1, c[1].count)
+
+    review = None
+    if review_ids and left >= REVIEW_COST:
+        review = Item(kind="review", words=len(review_ids))
+        left -= REVIEW_COST
 
     new_picked: list[tuple[str, Grp, int, Optional[int]]] = []
     for g in new_groups:
         # 剩的额度不到半组就不再加新组(一组 10 个,剩 3 个也塞一组 = 多派 7 个);一份都没有时至少给一组
-        if left * 2 >= g.count or (not items and not new_picked):
+        if left * 2 >= g.count or (not picked and review is None and not new_picked):
             new_picked.append(("new", g, 1, new_book))
             left -= g.count
         else:
             break
-    items += _merge(new_picked)
+    for c in rest_old:              # 新词派完了还有空: 旧账接着补
+        if left * 2 < max(1, c[1].count):
+            break
+        picked.append(c)
+        left -= max(1, c[1].count)
+    items = _merge(_in_order(picked, pos)) + ([review] if review else []) + _merge(new_picked)
 
     book_id = new_book or (books[0] if books else None)
     book_name = ((await db.execute(select(WordBook.name).where(WordBook.id == book_id))).scalar_one_or_none() or ""
@@ -803,12 +854,16 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
     rows = await in_book_order(db, rows, books)
     names = await _unit_names(db, [r.unit_id for r in rows])
     alive = await live_books(db, [b for _, b in names.values()] + books)
+    cutoff = _ds(today - timedelta(days=OLD_OVERDUE_DAYS))
+    pos = {(r.unit_id, r.group_index): i for i, r in enumerate(rows)}
 
-    async def due_of(book_filter) -> list[tuple[str, Grp, int, Optional[int]]]:
+    async def due_of(book_filter, old: Optional[bool] = None) -> list[tuple[str, Grp, int, Optional[int]]]:
         out = []
         for r in rows:
             name, b = names.get(r.unit_id, ("", None))
             if b is None or b not in alive or (r.unit_id, r.group_index) in skip_units or not book_filter(b):
+                continue
+            if old is not None and (r.next_due < cutoff) != old:
                 continue
             a = await allowed_of(b)
             if a is not None and r.unit_id not in a:
@@ -855,10 +910,16 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
         if b is not None and b in alive:
             gap_new += await new_in(b, [u])
     gap_due = await due_of(lambda b: b != school_book)
-    school_due = await due_of(lambda b: b == school_book)
+    school_on = await due_of(lambda b: b == school_book, old=False)
+    school_old = await due_of(lambda b: b == school_book, old=True)
     school_new = await new_in(school_book, from_unit=school_unit)
 
-    gaps, school = gap_due + gap_new, school_due + school_new
+    def school_for(b: int) -> list:
+        """学校那边: 按时的轮次 → 旧账(最多一半)→ 新词 → 新词派完了接着补旧账"""
+        n = old_cap_count(school_old, b * OLD_SHARE // 100, today) if school_new else len(school_old)
+        return school_on + school_old[:n] + school_new + school_old[n:]
+
+    gaps, school = gap_due + gap_new, school_for(budget)
     if not share and not gaps_only:
         gaps = []   # 老师选了「不补漏」: 学校那边排不满也不拿漏洞凑
     review = None
@@ -871,7 +932,8 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
         pick, left = take(first, budget, first_ok=True)
         if not pick:
             pick, left = take(second, budget, first_ok=True)
-        items = _merge([c for c in pick if c in school]) + _merge([c for c in pick if c in gaps])
+        items = (_merge(_in_order([c for c in pick if c in school], pos))
+                 + _merge(_in_order([c for c in pick if c in gaps], pos)))
     else:
         gap_budget = max(1, round(budget * share / 100)) if share else 0
         gap_pick, gleft = take(gaps, gap_budget, first_ok=True) if gap_budget else ([], 0)
@@ -882,11 +944,12 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
                 review = Item(kind="review", words=len(ids))
                 gleft -= REVIEW_COST
         school_budget = budget - gap_budget + max(0, gleft)
+        school = school_for(school_budget)
         school_pick, sleft = take(school, school_budget, first_ok=not gap_pick)
         if sleft > 0:   # 学校那边排不满: 剩的给补漏
             more, _ = take([c for c in gaps if c not in gap_pick], sleft)
             gap_pick = gap_pick + more
-        items = _merge(school_pick) + _merge(gap_pick) + ([review] if review else [])
+        items = _merge(_in_order(school_pick, pos)) + _merge(_in_order(gap_pick, pos)) + ([review] if review else [])
     book_name = ((await db.execute(select(WordBook.name).where(WordBook.id == school_book))).scalar_one_or_none() or ""
                  ) if school_book else ""
     if not items:

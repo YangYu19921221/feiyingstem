@@ -750,3 +750,84 @@ async def test_due_rounds_follow_book_order_not_due_date(db_session, env):
     plan = await ap.build_plan(db_session, st, today, 100, with_review=False,
                                sync=await catchup.class_sync(db_session, env["c"].id))
     assert order(plan) == want, order(plan)
+
+
+async def _due_groups(db, env, specs):
+    s = env["s"]
+    for unit, gi, rounds, due in specs:
+        db.add(AutopilotGroup(student_id=s.id, unit_id=unit.id, group_index=gi, book_id=env["book"].id,
+                              word_count=10, rounds=rounds, last_day="2026-07-01", next_due=due, legacy=True))
+    await db.commit()
+    return await ap.student_row(db, s.id, 1)
+
+
+def _kinds(plan):
+    return [(i.kind, i.unit_id, g) for i in plan.items for g in i.groups]
+
+
+@pytest.mark.asyncio
+async def test_old_overdue_takes_at_most_half_then_new_words(db_session, env):
+    """旧账(到期超过 7 天)每天最多占一半,另一半派新词(11-02 王彬铜 46 组旧账把每天的量全占了,9 天见不到新词)。
+    跟学校进度的班同一个规矩"""
+    from app.models.autopilot import AutopilotClassSync
+    from app.services import catchup
+    u1, u2 = env["u1"], env["u2"]
+    old = (local_today() - timedelta(days=30)).isoformat()
+    st = await _due_groups(db_session, env, [(u1, g, 1, old) for g in (1, 2, 3)])
+    want = [("round", u1.id, 1), ("round", u1.id, 2), ("new", u2.id, 1), ("new", u2.id, 2)]
+    plan = await ap.build_plan(db_session, st, local_today(), 40, with_review=False)
+    assert _kinds(plan) == want, _kinds(plan)
+
+    db_session.add(AutopilotClassSync(class_id=env["c"].id, org_id=1, enabled=True))
+    await db_session.commit()
+    plan = await ap.build_plan(db_session, st, local_today(), 40, with_review=False,
+                               sync=await catchup.class_sync(db_session, env["c"].id))
+    assert _kinds(plan) == want, _kinds(plan)
+
+
+@pytest.mark.asyncio
+async def test_on_time_rounds_are_not_capped(db_session, env):
+    """按时到期的轮次不受一半的限制(三轮的间隔不能断)"""
+    u1, u2 = env["u1"], env["u2"]
+    st = await _due_groups(db_session, env, [(u1, g, 1, local_today().isoformat()) for g in (1, 2, 3)])
+    plan = await ap.build_plan(db_session, st, local_today(), 40, with_review=False)
+    assert _kinds(plan) == [("round", u1.id, 1), ("round", u1.id, 2), ("round", u1.id, 3), ("new", u2.id, 1)]
+
+
+@pytest.mark.asyncio
+async def test_old_overdue_fills_the_day_when_no_new_words(db_session, env):
+    """书上没有新词可派了: 旧账不限,照样排满"""
+    u1, u2 = env["u1"], env["u2"]
+    old = (local_today() - timedelta(days=30)).isoformat()
+    st = await _due_groups(db_session, env, [(u, g, 1, old) for u in (u1, u2) for g in (1, 2, 3)])
+    plan = await ap.build_plan(db_session, st, local_today(), 40, with_review=False)
+    assert [k for k, _, _ in _kinds(plan)] == ["round"] * 4
+
+
+def test_old_cap_small_budget_alternates_days():
+    """一天只够一两组: 旧账隔一天派一次,另一天派新词,哪边都不会一直等"""
+    old = [("round", ap.Grp(1, "", g, [0] * 10), 2, 1) for g in (1, 2, 3)]
+    d = date(2026, 11, 2)
+    assert {ap.old_cap_count(old, 5, d), ap.old_cap_count(old, 5, d + timedelta(days=1))} == {0, 1}
+    assert {ap.old_cap_count(old, 0, d), ap.old_cap_count(old, 0, d + timedelta(days=1))} == {0, 1}
+    assert ap.old_cap_count(old, 30, d) == 3 and ap.old_cap_count(old, 20, d) == 2
+    assert ap.old_cap_count([], 30, d) == 0
+
+
+@pytest.mark.asyncio
+async def test_daily_review_counts_inside_the_old_half(db_session, env, monkeypatch):
+    """每天 20 个: 有旧账又有每日复习时,两样合起来最多一半 —— 旧账隔一天派一次,另一天复习 + 新词(11-02 生产副本 98 号)"""
+    from app.services import daily_review
+    u1, u2 = env["u1"], env["u2"]
+
+    async def fake_pick(db, sid, today):
+        return [1, 2, 3], 0
+    monkeypatch.setattr(daily_review, "pick", fake_pick)
+    old = (local_today() - timedelta(days=30)).isoformat()
+    st = await _due_groups(db_session, env, [(u1, g, 1, old) for g in (1, 2, 3)])
+    seen = []
+    for i in range(2):
+        plan = await ap.build_plan(db_session, st, local_today() + timedelta(days=i), 20)
+        seen.append([k for k, _, _ in _kinds(plan)])
+        assert any(x.kind == "review" for x in plan.items)
+    assert sorted(seen) == [["new"], ["round"]], seen
