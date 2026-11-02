@@ -1004,39 +1004,42 @@ async def reorder_videos(
     return {"updated": len(body.ids)}
 
 
-class ShareRequest(BaseModel):
-    ids: list[int] = Field(..., min_length=1, max_length=200)
-    shared: bool
+class ShareSwitch(BaseModel):
+    enabled: bool
 
 
-@router.post("/videos/share")
-async def share_videos(
-    body: ShareRequest,
+@router.get("/share")
+async def get_share_switch(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_teacher),
+):
+    """管理端首页「直营音标视频共享给所有机构」的状态(规则见 services/phonetic_share)。只有平台 admin"""
+    if user.role != "admin":
+        raise HTTPException(403, "这个开关只有平台管理员能看")
+    return await phonetic_share.status(db)
+
+
+@router.put("/share")
+async def set_share_switch(
+    body: ShareSwitch,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_teacher),
 ):
-    """共享给所有机构 / 取消共享(2026-11-02,规则见 services/phonetic_share)。**只有平台 admin**。
-    归属不变: 上传的机构照样能改;别的机构只能看。平台预置的本来所有机构都看得到,跳过并说清几条"""
+    """打开 = 直营的音标视频所有机构都看得到(以后直营新传的也是);关掉 = 别的机构马上看不到。
+    别的机构只能看不能改;上传的直营老师照样能改。只有平台 admin"""
     if user.role != "admin":
         raise HTTPException(403, "共享给所有机构要平台管理员来开")
-    rows = (await db.execute(select(PhoneticVideo).where(PhoneticVideo.id.in_(body.ids)))).scalars().all()
-    preset = [v for v in rows if v.org_id is None]
-    target = [v for v in rows if v.org_id is not None]
-    changed = [v for v in target if bool(v.shared_all) != body.shared]
-    for v in changed:
-        v.shared_all = body.shared
-    if changed:
+    before = await phonetic_share.get_enabled(db)
+    changed = await phonetic_share.set_enabled(db, body.enabled)
+    if before != body.enabled or changed:
         audit_log.record(
             db, request, user, "phonetic.share",
-            f"{'共享给所有机构' if body.shared else '取消共享'} {len(changed)} 节音标视频",
-            target_type="phonetic_video", target_id=changed[0].id,
-            detail={"shared": body.shared, "ids": [v.id for v in changed],
-                    "titles": [v.title for v in changed][:50]},
+            f"直营音标视频{'共享给所有机构' if body.enabled else '取消共享'}({changed} 节)",
+            target_type="phonetic_share", detail={"enabled": body.enabled, "videos": changed},
         )
     await db.commit()
-    return {"updated": len(changed), "already": len(target) - len(changed),
-            "preset": len(preset), "missing": len(set(body.ids) - {v.id for v in rows})}
+    return await phonetic_share.status(db)
 
 
 @router.post("/videos/batch-lecturer")
@@ -1204,6 +1207,8 @@ async def upload_video(
                     else await _next_sort_order(db, user.org_id, final_category)),
         created_by=user.id,
         org_id=user.org_id,
+        # 直营新传的: 管理端开着「共享给所有机构」就直接共享(services/phonetic_share 第 2 条)
+        shared_all=await phonetic_share.shared_for_new(db, user.org_id),
     )
     db.add(v)
     await db.commit()

@@ -80,7 +80,7 @@ export interface PhoneticVideo {
   /** 平台预置(org_id 为空):机构只能看不能改,按钮要置灰 */
   is_preset?: boolean;
   can_edit?: boolean;
-  /** 共享给所有机构了(2026-11-02)。只有平台管理员能开关 */
+  /** 共享给所有机构了(2026-11-02)。管理端首页的总开关决定,直营的视频跟着它走 */
   shared_all?: boolean;
   /** 别的机构共享过来的(写着是谁家的),只能看不能改;自己的 / 平台预置的为 null */
   shared_from?: string | null;
@@ -99,6 +99,14 @@ export interface PhoneticVideo {
   question_count?: number;
   /** 其中还没回答的。列表上要标出来,否则老师整理视频时不会想起去看提问 */
   pending_question_count?: number;
+}
+
+/** 直营音标视频共享开关的状态。videos = 直营一共几节(含下架),other_orgs = 别的在用机构有几家 */
+export interface PhoneticShareStatus {
+  enabled: boolean;
+  videos: number;
+  active_videos: number;
+  other_orgs: number;
 }
 
 /** 一个学生在某个视频上的观看情况(教师端名单) */
@@ -588,10 +596,9 @@ export const phoneticsApi = {
   batchRemove: (ids: number[]) =>
     api.post<{ deleted: number; requested: number }>('/teacher/phonetics/videos/batch-delete', { ids }),
 
-  /** 共享给所有机构 / 取消共享(只有平台管理员)。preset = 平台预置的,本来所有机构都看得到,跳过 */
-  share: (ids: number[], shared: boolean) =>
-    api.post<{ updated: number; already: number; preset: number; missing: number }>(
-      '/teacher/phonetics/videos/share', { ids, shared }),
+  /** 管理端「直营音标视频共享给所有机构」开关(只有平台管理员) */
+  shareStatus: () => api.get<PhoneticShareStatus>('/teacher/phonetics/share'),
+  setShare: (enabled: boolean) => api.put<PhoneticShareStatus>('/teacher/phonetics/share', { enabled }),
 
   // ---- 配套课件(讲义 PDF / PPT)----
 
