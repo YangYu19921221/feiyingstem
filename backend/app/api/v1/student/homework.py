@@ -128,7 +128,9 @@ async def get_my_homework(
             HomeworkAssignment,
             Unit,
             WordBook,
-            User.full_name.label('teacher_name')
+            # 老师没填姓名时用用户名(11-02 罗平新建的老师「安娜」没填姓名,
+            # teacher_name 是 None → 响应校验失败,学生的作业列表整个 500)
+            func.coalesce(func.nullif(User.full_name, ''), User.username).label('teacher_name')
         )
         .join(HomeworkAssignment, HomeworkStudentAssignment.homework_id == HomeworkAssignment.id)
         .join(Unit, HomeworkAssignment.unit_id == Unit.id)
