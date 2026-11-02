@@ -19,7 +19,9 @@
 3. 轮次: 每组第一次过关 = 第 1 轮,隔 1 天第 2 轮,再隔 3 天第 3 轮,之后每 3 天一轮。
    **三轮以上、且那一轮当天第一次过关检测就达到过关线,这组才算学会**;没达到就一直往后加轮(第 4、5 轮…),
    从第 4 轮还没学会起列进老师的「需要你处理」。同一天重复背、没到日子提前背 = 自己多背,不算轮次(记着,算能力)。
-4. 每天派的顺序: 到期的第 3 轮及以后 → 到期的第 2 轮 → 每日复习(有到期的复习词才派)→ 新词
+4. 每天派的顺序: 到期的轮次 → 每日复习(有到期的复习词才派)→ 新词。到期的轮次**按书里的顺序**派
+   (先在学的那本,单元、组从前往后,in_book_order),不按第几轮 / 哪天到期排 —— 11-02 前按到期日排,
+   按旧学习记录补出来的组到期日是当年哪天学的,派出来跳着走(王彬铜 unit 44 → 17 第4组 → 13 → 17 第1组)
 5. 过关线(过关检测要多少分): 头一周 80;之后每周看一次最近两周「当天第一次」过关检测(>= 10 次才看)的平均分:
    < 88 → 80、88–92 → 85、93–96 → 90、>= 97 → 95,一周最多动一档。老师可以给全班 / 某个孩子固定。
    失败的那次也记(group_exam_records 只记过了的,所以另记 autopilot_attempts)
@@ -656,10 +658,26 @@ async def _unit_names(db: AsyncSession, unit_ids: Iterable[int]) -> dict[int, tu
         select(Unit.id, Unit.name, Unit.book_id).where(Unit.id.in_(ids)))).all()}
 
 
+async def in_book_order(db: AsyncSession, rows: list[AutopilotGroup], books: list[int]) -> list[AutopilotGroup]:
+    """到期的轮次按书里的顺序排: 先他在学的那本(books 的顺序),同一本按单元、组从前往后。
+    以前按「轮次高的先、同轮次到期早的先」排: 上线时按 7–10 月学习记录补出来的组到期日是当年哪天学的,
+    和书里的顺序没关系,派出来 unit 44 → 17 第4组 → 13 第3组 → 17 第1组(11-02 王彬铜「跳着布置」)。
+    正常往下学时前面的组先学、轮次也高,按书排和按轮次排是同一个顺序"""
+    ids = {r.unit_id for r in rows}
+    pos = {u: (b, -1 if oi is None else oi, -1 if un is None else un) for u, b, oi, un in (await db.execute(
+        select(Unit.id, Unit.book_id, Unit.order_index, Unit.unit_number).where(Unit.id.in_(ids)))).all()} if ids else {}
+    rank = {b: i for i, b in enumerate(books)}
+
+    def key(r: AutopilotGroup):
+        b, oi, un = pos.get(r.unit_id, (None, -1, -1))
+        return (rank.get(b, len(rank)), b or 0, oi, un, r.unit_id, r.group_index)
+    return sorted(rows, key=key)
+
+
 async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget: int, *,
                      with_review: bool = True, skip_units: Optional[set] = None, sync=None,
                      gaps_only: bool = False) -> Plan:
-    """按顺序填满 budget 个词: 到期的高轮次 → 到期的第 2 轮 → 每日复习 → 新词。不写作业,只排(会补历史轮次,不 commit)。
+    """按顺序填满 budget 个词: 到期的轮次(按书里的顺序)→ 每日复习 → 新词。不写作业,只排(会补历史轮次,不 commit)。
     新词从最近在学的那本书接着往下;那本学完了换下一本能学的书(老师指定了书就只用那本)"""
     sid = st.student_id
     ts = _ds(today)
@@ -703,7 +721,7 @@ async def build_plan(db: AsyncSession, st: AutopilotStudent, today: date, budget
     rows = list((await db.execute(select(AutopilotGroup).where(
         AutopilotGroup.student_id == sid, AutopilotGroup.graduated_at.is_(None), AutopilotGroup.rounds >= 1,
         AutopilotGroup.next_due.is_not(None), AutopilotGroup.next_due <= ts))).scalars())
-    due = sorted(rows, key=lambda r: (-r.rounds, r.next_due, r.unit_id, r.group_index))
+    due = await in_book_order(db, rows, books)
     names = await _unit_names(db, [r.unit_id for r in due])
     alive = await live_books(db, [b for _, b in names.values()])
     picked: list[tuple[str, Grp, int, Optional[int]]] = []
@@ -782,12 +800,13 @@ async def _build_sync_plan(db: AsyncSession, st: AutopilotStudent, today: date, 
     rows = list((await db.execute(select(AutopilotGroup).where(
         AutopilotGroup.student_id == sid, AutopilotGroup.graduated_at.is_(None), AutopilotGroup.rounds >= 1,
         AutopilotGroup.next_due.is_not(None), AutopilotGroup.next_due <= ts))).scalars())
+    rows = await in_book_order(db, rows, books)
     names = await _unit_names(db, [r.unit_id for r in rows])
     alive = await live_books(db, [b for _, b in names.values()] + books)
 
     async def due_of(book_filter) -> list[tuple[str, Grp, int, Optional[int]]]:
         out = []
-        for r in sorted(rows, key=lambda r: (-r.rounds, r.next_due, r.unit_id, r.group_index)):
+        for r in rows:
             name, b = names.get(r.unit_id, ("", None))
             if b is None or b not in alive or (r.unit_id, r.group_index) in skip_units or not book_filter(b):
                 continue

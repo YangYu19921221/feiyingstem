@@ -719,3 +719,34 @@ async def test_deleted_book_units_are_never_dispatched(client, db_session, env):
     assert tasks and all(x.unit_id != ou.id for x in tasks if x.unit_id), "已删书的单元派出去了"
     todo = (await client.get("/api/v1/teacher/autopilot/todo", headers=_h(t.id))).json()["items"]
     assert not any(i["kind"] == "stuck" and i.get("unit_id") == ou.id for i in todo)
+
+
+@pytest.mark.asyncio
+async def test_due_rounds_follow_book_order_not_due_date(db_session, env):
+    """到期的轮次按书里的顺序派,不按第几轮 / 哪天到期(11-02 王彬铜: 按旧学习记录补出来的组到期日乱序,
+    派出来 unit 44 → 17 第4组 → 13 第3组 → 17 第1组)。跟学校进度的班(sync)同一个顺序"""
+    from app.models.autopilot import AutopilotClassSync
+    from app.services import catchup
+    s, u1, u2 = env["s"], env["u1"], env["u2"]
+    today = local_today()
+
+    def ago(n):
+        return (today - timedelta(days=n)).isoformat()
+    # 到期日、轮次故意和书里的顺序反着来
+    for unit, gi, rounds, due in ((u2, 1, 2, ago(90)), (u1, 3, 2, ago(60)), (u1, 2, 2, ago(10)), (u1, 1, 1, ago(100))):
+        db_session.add(AutopilotGroup(student_id=s.id, unit_id=unit.id, group_index=gi, book_id=env["book"].id,
+                                      word_count=10, rounds=rounds, last_day=ago(120), next_due=due, legacy=True))
+    await db_session.commit()
+    st = await ap.student_row(db_session, s.id, 1)
+    want = [(u1.id, 1), (u1.id, 2), (u1.id, 3), (u2.id, 1)]
+
+    def order(plan):
+        return [(i.unit_id, g) for i in plan.items if i.kind == "round" for g in i.groups]
+    plan = await ap.build_plan(db_session, st, today, 100, with_review=False)
+    assert order(plan) == want, order(plan)
+
+    db_session.add(AutopilotClassSync(class_id=env["c"].id, org_id=1, enabled=True))
+    await db_session.commit()
+    plan = await ap.build_plan(db_session, st, today, 100, with_review=False,
+                               sync=await catchup.class_sync(db_session, env["c"].id))
+    assert order(plan) == want, order(plan)

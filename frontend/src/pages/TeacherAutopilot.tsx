@@ -106,7 +106,7 @@ function Guide({ rules }: { rules: Overview['rules'] | null }) {
             </div>
             <div>
               <h3 className="mb-1 font-semibold text-slate-900">每天的顺序</h3>
-              <p>先派到期的老组(轮次高的最先)→ 到期的第 2 轮 → 今天的复习词 → 最后才是新词。新词接着他最近在学的那本书往下,那本学完了换下一本他能学的书。</p>
+              <p>先派到期该复习的组 → 今天的复习词 → 最后才是新词。到期的组按书里的顺序派(先他在学的那本,单元、组从前往后),不会跳着来。新词接着他最近在学的那本书往下,那本学完了换下一本他能学的书。</p>
             </div>
             <div>
               <h3 className="mb-1 font-semibold text-slate-900">过关线(过关检测要多少分)</h3>
