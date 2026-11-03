@@ -129,7 +129,10 @@ def test_grade_colors():
     from app.services.phoneme_closed_set import grade, NEAR_FLOOR
     assert grade("pass", -1.0) == "green"
     assert grade("confused", -2.0) == "green", "模型分不开的词(bed/bad)读对了不能标黄"
-    assert grade("pass", -1.0, "extra_final_vowel") == "yellow"
+    # 11-04 放宽: 只是词尾多带一个音(中国口音最普遍的)算绿,提示照给;别的毛病 / 靠口音放宽过的仍是黄
+    assert grade("pass", -1.0, "extra_final_vowel") == "green"
+    assert grade("pass", -7.5, "extra_final_vowel", accent=True) == "yellow"
+    assert grade("pass", -7.5, accent=True) == "yellow"
     assert grade("not_close", NEAR_FLOOR + 0.5) == "yellow"
     assert grade("not_close", NEAR_FLOOR - 0.5) == "red"
     assert grade("not_close", None) == "red"

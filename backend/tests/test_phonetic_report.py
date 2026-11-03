@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from httpx import AsyncClient
 
 from app.core import tenancy
@@ -196,3 +197,41 @@ async def test_homework_targets_list_lessons(client: AsyncClient, world):
     r = await client.get("/api/v1/teacher/content-homework/targets?kind=phonetic_write", headers=H(d["t"]))
     assert r.status_code == 200
     assert r.json()[0]["units"][0]["name"] == "3—7(6 词)"
+
+
+async def test_class_report_paging_search_status(client: AsyncClient, world, db_session):
+    """全班: 分页 / 搜名字 / 按状态 / 按班级;只能看自己的班"""
+    from app.api.v1 import phonetic_report as api
+    api._CACHE.clear()
+    d = world
+    # 再加 24 个本班学生(都没练过)
+    cls = (await db_session.execute(select(Class).where(Class.teacher_id == d["tid"]))).scalar_one()
+    for i in range(24):
+        u = User(username=f"rp_x{i}", email=f"rp_x{i}@e.com", hashed_password="x", role="student",
+                 is_active=True, org_id=cls.org_id, full_name=f"同学{i:02d}")
+        db_session.add(u)
+        await db_session.flush()
+        db_session.add(ClassStudent(class_id=cls.id, student_id=u.id, is_active=True))
+    await _write(db_session, d["sid"], d["items"][0], json.loads(d["items"][0].answer_json))
+    await db_session.commit()
+
+    r = (await client.get(f"{T}/class?page_size=20", headers=H(d["t"]))).json()
+    assert r["total"] == 25 and r["pages"] == 2 and len(r["students"]) == 20
+    assert r["counts"] == {"all": 25, "not_started": 24, "weak": 0, "ok": 1}
+    p2 = (await client.get(f"{T}/class?page_size=20&page=2", headers=H(d["t"]))).json()
+    assert len(p2["students"]) == 5
+    assert {s["id"] for s in r["students"]} & {s["id"] for s in p2["students"]} == set(), "两页不能重复"
+    # 页码超了夹回最后一页
+    assert (await client.get(f"{T}/class?page=9", headers=H(d["t"]))).json()["page"] == 2
+    # 搜名字
+    q = (await client.get(f"{T}/class", params={"q": "小明"}, headers=H(d["t"]))).json()
+    assert [s["name"] for s in q["students"]] == ["小明"] and q["class_total"] == 25
+    # 按状态
+    ok = (await client.get(f"{T}/class?status=ok", headers=H(d["t"]))).json()
+    assert [s["id"] for s in ok["students"]] == [d["sid"]]
+    assert (await client.get(f"{T}/class?status=not_started", headers=H(d["t"]))).json()["total"] == 24
+    # 参数校验 / 别人的班
+    assert (await client.get(f"{T}/class?page_size=7", headers=H(d["t"]))).status_code == 400
+    assert (await client.get(f"{T}/class?status=x", headers=H(d["t"]))).status_code == 400
+    assert (await client.get(f"{T}/class?class_id={cls.id}", headers=H(d["t2"]))).status_code == 403
+    assert (await client.get(f"{T}/class?class_id={cls.id}", headers=H(d["t"]))).json()["total"] == 25

@@ -450,8 +450,8 @@ def _judge_core(scores: List[Tuple], target: str, heard: Optional[str] = None,
 
 # ── 三种颜色(2026-10-31,用户「完全不对的差别大的标红 接近标黄 完全正确就绿」)──────
 # 颜色只管「给孩子看读得怎么样」,**过不过关仍按 judge() 的 verdict**,这里不改门槛。
-#   绿 = 判定通过且没挑出毛病
-#   黄 = 接近: ①通过了但词尾多带了一个音(error_code,中国孩子最常见、能照着改)
+#   绿 = 判定通过且没挑出毛病;11-04 起「只是词尾多带了一个音」也算绿(提示照给,见 grade())
+#   黄 = 接近: ①通过了但有别的毛病(error_code)
 #              ②靠口音放宽才过的(accent,见 ACCENT_FLOOR)
 #              ③没通过但贴合分 ≥ NEAR_FLOOR(差一点)
 #   红 = 差得多: 贴合分更低,或明显读成了本节另一个词
@@ -470,6 +470,9 @@ def grade(verdict: Optional[str], gop: Optional[float], error_code: Optional[str
 
     accent = 靠口音放宽才过的(见 ACCENT_FLOOR): 过了但标黄,跟标准音比还有差距"""
     if verdict in ("pass", "confused", "uncertain"):
+        # 11-04: 只多带了一个词尾音(中国孩子最普遍的口音)不再降黄,提示照给;靠口音放宽才过的仍是黄
+        if error_code == "extra_final_vowel" and not accent:
+            return "green"
         return "yellow" if (error_code or accent) else "green"
     if verdict == "not_close":
         if error_code in ("wrong_vowel", "missing_onset"):

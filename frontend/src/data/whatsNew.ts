@@ -28,6 +28,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-reading-looser-2026-11',
+    date: '2026-11-04',
+    title: '🎤 读音标判得宽一点了,带口音读对也能过',
+    desc: '读音标时,只是词尾多带了一点音(比如 bad 读成 bad-e)现在也算绿,提示照样会告诉你;以前机器把你的读音听偏、说「元音不对 / 开头的音没听到」的,现在会再请另一个评测核对一次,读对了就算过。乱读、说中文还是过不了。',
+    where: '首页「音标」→ 教材目录 → 任意一节「读音标」',
+    roles: ['student'],
+    route: '/student/phonetics/textbook',
+  },
+  {
+    id: 'phonetic-reading-looser-teacher-2026-11',
+    date: '2026-11-04',
+    title: '🎤 读音标放宽 + 音标报告全班页能搜、能分页',
+    desc: '①读音标判得宽一点: 只是词尾多带一个音算绿(提示照给);机器说「元音不对 / 开头辅音没听到」的会请讯飞再核对一次,讯飞判过就算过;讯飞判绿的线从 70 分降到 60 分。拿生产 31 条真实录音和 42 段乱读 / 中文 / 噪音试过: 乱读仍然 0 段能过,读对的全过。②「音标学习报告」全班页能搜名字、按班级、按「没练过 / 有弱音 / 没有弱音」筛,每页 20 / 50 / 100 人。',
+    where: '教师工作台「内容准备 → 音标学习报告」',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/phonetic-report',
+  },
+  {
     id: 'phonetic-report-teacher-2026-11',
     date: '2026-11-03',
     title: '📊 音标学习报告: 一眼看出学生差哪几个音',

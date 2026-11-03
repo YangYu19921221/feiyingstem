@@ -25,10 +25,12 @@ def test_needs_referee_only_when_unclear():
     assert pr.needs_referee(ACCENT), "靠口音放宽才过的要问"
     assert pr.needs_referee(NEAR), "差一点的要问"
     assert pr.needs_referee({"verdict": "pass", "gop": -4.8}), "贴合分在中间的要问"
-    assert not pr.needs_referee(VOWEL), "元音都不对: 本地有明确证据"
-    assert not pr.needs_referee({"verdict": "not_close", "gop": -6.0, "error_code": "missing_onset"})
-    assert not pr.needs_referee({"verdict": "wrong_word", "gop": -6.0})
-    assert not pr.needs_referee(FAR), "差得很远"
+    # 11-04 放宽: 本地「元音不对 / 开头辅音没听到」常是把中国口音听偏了(生产重问讯飞 16 条里 9 条 58–98 分),要问
+    assert pr.needs_referee(VOWEL), "元音不对: 本地常听偏,问讯飞"
+    assert pr.needs_referee({"verdict": "not_close", "gop": -6.0, "error_code": "missing_onset"})
+    assert pr.needs_referee(FAR), "贴合分 -14: 常是读了两遍 / 前后带「嗯」,问讯飞"
+    assert not pr.needs_referee({"verdict": "wrong_word", "gop": -6.0}), "读成本节别的词: 本地有明确证据"
+    assert not pr.needs_referee({"verdict": "not_close", "gop": -85.0}), "说了一整句中文: 不花钱"
     assert not pr.needs_referee({"verdict": "off", "gop": None})
 
 
@@ -37,6 +39,7 @@ def test_needs_referee_only_when_unclear():
     ({"total_score": 52.0, "is_rejected": True}, "not_close", "yellow"),  # 拒了但分不低: 差一点
     ({"total_score": 92.0, "is_rejected": False}, "pass", "green"),
     ({"total_score": 55.0, "is_rejected": False}, "pass", "yellow"),      # 用户带口音读 cab 实测 33–56
+    ({"total_score": 65.0, "is_rejected": False}, "pass", "green"),       # 11-04 绿线 60
     ({"total_score": 30.0, "is_rejected": False}, "not_close", "yellow"),
     ({"total_score": 10.0, "is_rejected": False}, "not_close", "red"),
 ])
@@ -46,10 +49,29 @@ def test_merge(ise, verdict, color):
     assert r["accent"] is False, "讯飞判过的不再算「口音放宽」"
 
 
-def test_extra_vowel_hint_keeps_it_yellow():
-    """讯飞给高分,但本地听出词尾多带了一个音 → 黄(能照着改的毛病)"""
-    r = pr.merge({**NEAR, "error_code": "extra_final_vowel"}, {"total_score": 90.0, "is_rejected": False})
-    assert pr.grade_of(r) == "yellow"
+def test_extra_vowel_hint_stays_but_green():
+    """11-04: 讯飞给高分、本地听出词尾多带一个音 → 绿(以前降黄,生产 12 次 84–95 分被这样卡着),提示照给"""
+    r = pr.merge({**NEAR, "error_code": "extra_final_vowel", "error_hint": "词尾多带了一个音"},
+                 {"total_score": 90.0, "is_rejected": False})
+    assert pr.grade_of(r) == "green"
+    assert r["error_code"] == "extra_final_vowel" and r["error_hint"]
+
+
+def test_vowel_veto_overruled_by_ise_but_kept_when_rejected():
+    """本地说元音不对,讯飞判过 → 过、不再显示「元音不对」;讯飞拒了(乱读 ooo 实测全拒)→ 照样拦"""
+    v = {**VOWEL, "error_hint": "听着元音不对"}
+    ok = pr.merge(v, {"total_score": 88.0, "is_rejected": False})
+    assert ok["verdict"] == "pass" and pr.grade_of(ok) == "green"
+    assert "error_hint" not in ok and ok.get("error_code") is None and ok["local_error_code"] == "wrong_vowel"
+    bad = pr.merge(v, {"total_score": 0.0, "is_rejected": True})
+    assert bad["verdict"] == "not_close" and pr.grade_of(bad) == "red"
+
+
+def test_green_line_60():
+    """11-04 绿线 70 → 60(生产 60–70 分的 7 次都是读对了带口音);及格线 40 不动"""
+    assert pr.grade_of(pr.merge(ACCENT, {"total_score": 62.0, "is_rejected": False})) == "green"
+    assert pr.grade_of(pr.merge(ACCENT, {"total_score": 58.0, "is_rejected": False})) == "yellow"
+    assert pr.merge(ACCENT, {"total_score": 35.0, "is_rejected": False})["verdict"] == "not_close"
 
 
 @pytest.fixture

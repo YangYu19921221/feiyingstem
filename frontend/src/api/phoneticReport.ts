@@ -61,8 +61,18 @@ export interface BriefReport {
   has_data: boolean;
 }
 
+export type ClassStatus = 'all' | 'not_started' | 'weak' | 'ok';
+
 export interface ClassReport {
   days: number;
+  class_id: number | null;
+  classes: { id: number; name: string; students: number }[];
+  class_total: number;
+  counts: Record<ClassStatus, number>;
+  total: number;
+  page: number;
+  pages: number;
+  page_size: number;
   not_started: number;
   class_weak: { phoneme: string; students: number; names: string[] }[];
   students: { id: number; name: string; active_days: number; minutes: number; write_words: number; write_first_right: number;
@@ -72,8 +82,12 @@ export interface ClassReport {
 
 export const studentPhoneticReport = (id: number, days: ReportDays): Promise<FullReport> =>
   api.get(`/teacher/phonetic-books/report/students/${id}`, { params: { days } });
-export const classPhoneticReport = (days: ReportDays): Promise<ClassReport> =>
-  api.get('/teacher/phonetic-books/report/class', { params: { days } });
+export const classPhoneticReport = (p: {
+  days: ReportDays; class_id?: number | null; q?: string; status?: ClassStatus; page?: number; page_size?: number;
+}): Promise<ClassReport> =>
+  api.get('/teacher/phonetic-books/report/class', {
+    params: { ...p, class_id: p.class_id ?? undefined, q: p.q?.trim() || undefined },
+  });
 export const myPhoneticReport = (days: ReportDays): Promise<BriefReport> =>
   api.get('/phonetic-practice/report/me', { params: { days } });
 export const childPhoneticReport = (id: number, days: ReportDays): Promise<BriefReport> =>

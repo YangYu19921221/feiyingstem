@@ -498,7 +498,7 @@ def test_judge_client_waits_long_enough():
 
 async def test_judge_returns_yellow_for_near_miss_and_extra_vowel(
         client: AsyncClient, two_orgs_with_books, monkeypatch):
-    """差一点没过 → 黄;过了但词尾多带一个音 → 黄;读对了 → 绿"""
+    """差一点没过 → 黄;过了但词尾多带一个音 → 绿(11-04 放宽,提示照给);读对了 → 绿"""
     from app.services import phoneme_judge_client
     queue = [
         {"verdict": "not_close", "best": "bad", "gop": -6.2, "gate_margin": -0.9},
@@ -519,8 +519,9 @@ async def test_judge_returns_yellow_for_near_miss_and_extra_vowel(
             files={"audio": ("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 3000, "audio/webm")},
             data={"item_id": str(d["item_bad"])},
         )
-        got.append(r.json()["grade"])
-    assert got == ["yellow", "yellow", "green"]
+        got.append((r.json()["grade"], r.json().get("error_hint")))
+    assert [g for g, _ in got] == ["yellow", "green", "green"]
+    assert got[1][1] == "词尾多带了一个音", "放宽了颜色,提示还要给孩子看"
 
 
 

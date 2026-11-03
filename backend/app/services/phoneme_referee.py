@@ -30,9 +30,17 @@ logger = logging.getLogger(__name__)
 
 CLEAR_PASS_GOP = -3.5
 CLEAR_FAIL_GOP = -10.0
+# 11-04 放宽(用户「纠音太严格了你稍微放松点 有的学生确实有点口音尤其是中国人」),拿生产 31 条被拦的真孩子录音重问讯飞定的:
+#   ①本地「元音不对 / 开头辅音没听到」以前直接拦、不问讯飞。重问后 16 条里 9 条讯飞给 58–98 分没拒 ——
+#     本地模型把中国孩子的 dig 听成 ikʌ、cab 听成 aːn(声母很轻),其实读对了。现在这两种**也问讯飞**,
+#     讯飞拒了照样拦(乱读「ooo」「啊」实测讯飞全拒,见上);只有讯飞问不了时才按本地拦
+#   ②本地「差得很远」(贴合分 < CLEAR_FAIL_GOP)以前不问。重问后 15 条里 10 条讯飞 76–98 分:
+#     孩子把词读了两遍、前后带了「嗯」「这个」(录音长、贴合分被拖到 -15 ~ -73)。现在贴合分 ≥ VERY_FAR_GOP 的也问,
+#     更低的(说了一整句中文)照旧不问
+VERY_FAR_GOP = -80.0
 
-GREEN_SCORE = 70.0
-PASS_SCORE = 40.0
+GREEN_SCORE = 60.0       # 11-04 70 → 60: 生产 56 次讯飞判过的里 60–70 分有 7 次(lack 61、babe 62、cab 62…),都是读对了带口音
+PASS_SCORE = 40.0        # 不动: 30–40 分那 3 次是 dab / daff 只读出「ta」,真没读完整
 NEAR_SCORE = 20.0
 
 DAILY_CAP = 5000
@@ -51,10 +59,11 @@ def needs_referee(local: dict) -> bool:
     gop = local.get("gop")
     if v in ("silent", "off") or gop is None:
         return False
-    if local.get("error_code") in ("wrong_vowel", "missing_onset") or v == "wrong_word":
-        return False                      # 本地有明确证据: 拦
-    if gop < CLEAR_FAIL_GOP:
-        return False
+    if v == "wrong_word":
+        return False                      # 明显读成了本节另一个词: 本地有明确证据,拦
+    # 元音不对 / 开头辅音没听到: 本地模型常把中国口音听偏,问讯飞(11-04,见 VERY_FAR_GOP 上面的注释)
+    if gop < VERY_FAR_GOP:
+        return False                      # 说了一整句中文 / 噪音
     if v in _PASSED and not local.get("accent") and gop >= CLEAR_PASS_GOP:
         return False                      # 本地很有把握: 过
     return True
@@ -73,18 +82,22 @@ def merge(local: dict, ise: dict) -> dict:
         return out
     out.update(verdict="pass", note="讯飞判过",
                ise_grade="green" if score >= GREEN_SCORE else "yellow")
+    # 讯飞判过了,本地那条「元音不对 / 开头辅音没听到」就是听偏了,不再给孩子看(词尾多带音的提示留着)
+    if local.get("error_code") in ("wrong_vowel", "missing_onset"):
+        out.pop("error_hint", None)
+        out["local_error_code"] = out.pop("error_code")
     return out
 
 
 def grade_of(final: dict) -> Optional[str]:
-    """讯飞判过的颜色;没问讯飞返回 None(调用方走 phoneme_closed_set.grade)"""
+    """讯飞判过的颜色;没问讯飞返回 None(调用方走 phoneme_closed_set.grade)
+
+    11-04 起讯飞给绿就是绿: 以前本地听出「词尾多带一个音」会降成黄,生产里讯飞 70 分以上的有 12 次被这样降黄
+    (bade 84、bad 89、cede 90、cede 95…)。词尾带一点「e」是中国孩子最普遍的口音,不该卡着不让变绿;
+    提示照样给(error_hint 还在,孩子能看到「词尾多带了一个音」),只是不再降颜色"""
     if final.get("referee") != "ise":
         return None
-    g = final.get("ise_grade")
-    # 讯飞给绿但本地听出词尾多带了一个音: 黄(能照着改的具体毛病)
-    if g == "green" and final.get("error_code") == "extra_final_vowel":
-        return "yellow"
-    return g
+    return final.get("ise_grade")
 
 
 async def _budget_ok(user_id: int) -> bool:
