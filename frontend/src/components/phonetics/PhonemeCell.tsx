@@ -137,7 +137,8 @@ export default function PhonemeCell({
         {phonetic}
       </p>
 
-      {/* 读对之后音标下方从释义换成单词:这是"揭示"动作,值得有过渡 */}
+      {/* 读对之后音标下方揭示单词:这是"揭示"动作,值得有过渡。
+          读音标页不传 meaning(不显示中文),没读对时这一行留空占位、格子不跳 */}
       <div className="relative mt-1 h-4">
         <AnimatePresence mode="wait" initial={false}>
           {done ? (

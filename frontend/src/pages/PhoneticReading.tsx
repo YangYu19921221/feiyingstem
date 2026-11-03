@@ -336,7 +336,6 @@ export default function PhoneticReading() {
                 <PhonemeCell
                   phonetic={it.phonetic}
                   word={it.word_reveal}
-                  meaning={it.meaning}
                   status={status[i] ?? 'todo'}
                   active={i === active}
                   justDone={justDone === i}
@@ -357,8 +356,8 @@ export default function PhoneticReading() {
           )}
 
           <div className="text-center">
+            {/* 读音标页不显示中文: 看着中文容易猜词,而这里练的是照音标读 */}
             <p className="font-mono text-4xl text-slate-800">{item?.phonetic}</p>
-            <p className="mt-1 text-sm text-slate-500">{item?.meaning}</p>
           </div>
 
           <button
