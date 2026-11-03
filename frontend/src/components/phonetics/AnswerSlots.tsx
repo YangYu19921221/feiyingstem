@@ -28,8 +28,9 @@ interface Props {
 type Size = 'xxs' | 'xs' | 'compact' | 'md' | 'lg';
 
 const BOX: Record<Size, { box: string; wrap: string; gap: string; bracket: boolean }> = {
-  xxs: { box: 'h-8 min-w-[1.15rem] px-0 text-sm md:h-10 md:min-w-[1.7rem] md:text-lg', wrap: 'text-sm md:text-lg', gap: 'gap-0.5', bracket: false },
-  xs: { box: 'h-8 min-w-[1.45rem] px-0.5 text-base md:h-10 md:min-w-[2rem] md:text-xl', wrap: 'text-base md:text-xl', gap: 'gap-0.5 md:gap-1', bracket: false },
+  // 三列 9 张卡时手机上一张卡约 115px: 8 个音 × 13px + 间距要塞得下,所以格子按字宽来、边框细一档
+  xxs: { box: 'h-7 min-w-[0.8rem] px-0 text-[13px] border md:h-10 md:min-w-[1.7rem] md:border-2 md:text-lg', wrap: 'text-[13px] md:text-lg', gap: 'gap-px md:gap-0.5', bracket: false },
+  xs: { box: 'h-8 min-w-[1.5rem] px-0.5 text-base md:h-10 md:min-w-[2rem] md:text-xl', wrap: 'text-base md:text-xl', gap: 'gap-0.5 md:gap-1', bracket: false },
   compact: { box: 'h-9 min-w-[2.1rem] px-1 text-lg', wrap: 'text-lg', gap: 'gap-1', bracket: true },
   md: { box: 'h-12 min-w-[2.5rem] px-1 text-2xl', wrap: 'text-2xl', gap: 'gap-1', bracket: true },
   lg: { box: 'h-14 min-w-[3rem] px-1 text-3xl', wrap: 'text-3xl', gap: 'gap-1', bracket: true },
@@ -95,7 +96,8 @@ export default function AnswerSlots({
             disabled={!editing || judged != null}
             aria-label={`第 ${i + 1} 格${v ? `:${v}` : ':空'}`}
             className={[
-              'flex shrink-0 items-center justify-center rounded-lg border-2',
+              'flex shrink-0 items-center justify-center',
+              size === 'xxs' ? 'rounded-md' : 'rounded-lg border-2',
               'transition disabled:cursor-default',
               box, tone,
               isCursor ? 'animate-pulse' : '',

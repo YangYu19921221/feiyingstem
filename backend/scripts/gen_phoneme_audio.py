@@ -20,6 +20,12 @@
   vow  元音: 取 s / h / 词首后面那段(see→/iː/、hat→/æ/),后面接塞音或词尾,边界最好找
   end  能拖长的辅音: 取词尾(bus→/s/、hum→/m/、beige→/ʒ/),词尾读得最长最清楚
   tail 爆破音和 r l w j h tr dr: 单独切只有「嗒」一下,带一小段后面的 /ʌ/ 再淡出(/bʌ/,老师也这么教)
+
+长元音(第 7 项 'slow',iː ɑː ɔː uː ɜː): 11-03 用户「有的音需要发长音」。切出来只有 0.35 秒左右,和短元音差不多长,
+听不出长短。两步拉长,音高都不变:
+  ① 源单词按 -50% 读(Edge TTS 最慢就到这,-70% / -90% 和 -50% 一样长,11-03 实测)
+  ② 切出来还不到 LONG_MIN 秒,用 ffmpeg 的 rubberband 拉到 LONG_TARGET(保共振峰,不会变成机器人音)
+短元音不拉长: iː / ɪ、uː / ʊ 的长短对比本身就是要教的
 """
 import json
 import sys
@@ -54,18 +60,18 @@ MANIFEST = {
  'm':  ('m',  'hum',    ['h','ʌ','m'], 2,3,'end'),
  'n':  ('n',  'bun',    ['b','ʌ','n'], 2,3,'end'),
  'ŋ':  ('ng', 'sung',   ['s','ʌ','ŋ'], 2,3,'end'),
- 'iː': ('ee', 'see',    ['s','iː'], 1,2,'vow'),
+ 'iː': ('ee', 'see',    ['s','iː'], 1,2,'vow','slow'),
  'ɪ':  ('ih', 'hit',    ['h','ɪ','t'], 1,2,'vow'),
  'i':  ('i',  'happy',  ['h','æ','p','i'], 3,4,'vow'),
  'e':  ('e',  'get',    ['ɡ','e','t'], 1,2,'vow'),
  'æ':  ('ae', 'hat',    ['h','æ','t'], 1,2,'vow'),
- 'ɑː': ('ar', 'car',    ['k','ɑː'], 1,2,'vow'),
+ 'ɑː': ('ar', 'car',    ['k','ɑː'], 1,2,'vow','slow'),
  'ʌ':  ('uh', 'hut',    ['h','ʌ','t'], 1,2,'vow'),
  'ɒ':  ('o',  'hot',    ['h','ɒ','t'], 1,2,'vow'),
- 'ɔː': ('or', 'saw',    ['s','ɔː'], 1,2,'vow'),
+ 'ɔː': ('or', 'saw',    ['s','ɔː'], 1,2,'vow','slow'),
  'ʊ':  ('u',  'hook',   ['h','ʊ','k'], 1,2,'vow'),
- 'uː': ('oo', 'shoe',   ['ʃ','uː'], 1,2,'vow'),
- 'ɜː': ('er', 'sir',    ['s','ɜː'], 1,2,'vow'),
+ 'uː': ('oo', 'shoe',   ['ʃ','uː'], 1,2,'vow','slow'),
+ 'ɜː': ('er', 'sir',    ['s','ɜː'], 1,2,'vow','slow'),
  'ə':  ('schwa','sofa', ['s','əʊ','f','ə'], 3,4,'vow'),
  'eɪ': ('ei', 'say',    ['s','eɪ'], 1,2,'vow'),
  'aɪ': ('ai', 'sigh',   ['s','aɪ'], 1,2,'vow'),
@@ -76,6 +82,20 @@ MANIFEST = {
  'eə': ('ea', 'hair',   ['h','eə'], 1,2,'vow'),
  'ʊə': ('ua', 'tour',   ['t','ʊə'], 1,2,'vow'),
 }
+LONG_MIN = 0.6       # 长元音短于这个就拉长(秒)
+LONG_TARGET = 0.7    # 拉到这么长
+SLOW_RATE = "-50%"   # 长元音的源单词这么慢读
+
+
+def src_name(entry):
+    """源单词文件名: 慢读的单独一份(同一个词快读慢读不能共用文件)"""
+    return entry[1] + ("_slow" if len(entry) > 6 and entry[6] == "slow" else "")
+
+
+def is_slow(entry):
+    return len(entry) > 6 and entry[6] == "slow"
+
+
 VOWELS = {'iː', 'ɪ', 'i', 'e', 'æ', 'ɑː', 'ʌ', 'ɒ', 'ɔː', 'ʊ', 'uː', 'ɜː', 'ə',
           'eɪ', 'aɪ', 'ɔɪ', 'əʊ', 'aʊ', 'ɪə', 'eə', 'ʊə'}
 
@@ -89,22 +109,23 @@ def cmd_tts(work):
 
     os.makedirs(work, exist_ok=True)
 
-    async def one(word):
-        # 慢一点读(-15%),切出来的音长一些
-        c = edge_tts.Communicate(word, "en-GB-SoniaNeural", rate="-15%")
+    async def one(word, name, rate):
+        # 平时慢一点读(-15%),长元音 -50%: 切出来的音长一些
+        c = edge_tts.Communicate(word, "en-GB-SoniaNeural", rate=rate)
         data = b""
         async for ch in c.stream():
             if ch["type"] == "audio":
                 data += ch["data"]
-        open(f"{work}/{word}.mp3", "wb").write(data)
+        open(f"{work}/{name}.mp3", "wb").write(data)
 
     async def main():
-        words = sorted({v[1] for v in MANIFEST.values()})
-        for w in words:
-            await one(w)
+        todo = sorted({(v[1], src_name(v), SLOW_RATE if is_slow(v) else "-15%") for v in MANIFEST.values()})
+        for word, name, rate in todo:
+            await one(word, name, rate)
             for sr in (16000, 24000):
-                subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"{work}/{w}.mp3", "-ac", "1",
-                                "-ar", str(sr), f"{work}/{w}.{sr // 1000}k.wav"], check=True)
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"{work}/{name}.mp3", "-ac", "1",
+                                "-ar", str(sr), f"{work}/{name}.{sr // 1000}k.wav"], check=True)
+        words = todo
         json.dump(MANIFEST, open(f"{work}/manifest.json", "w"), ensure_ascii=False)
         print(len(words), "个词")
 
@@ -158,7 +179,8 @@ def cmd_align(src, man, out):
 
     m = json.load(open(man, encoding="utf-8"))
     res, cache = {}, {}
-    for key, (_, word, toks, *_rest) in m.items():
+    for key, entry in m.items():
+        word, toks = src_name(entry), entry[2]
         if word not in cache:
             with wave.open(f"{src}/{word}.16k.wav") as w:
                 a = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype("float32") / 32768
@@ -239,8 +261,27 @@ def cmd_cut(src, spans_p, out):
         if no: a[-no:] *= np.linspace(1, 0, no) ** 1.5
         return a
     
+    def stretch(seg, target):
+        """音高不变地拉长到 target 秒(rubberband,保共振峰 —— 不保的话拉长后声音发闷发假)"""
+        import os
+        import tempfile
+        ratio = target / (len(seg) / SR)
+        d = tempfile.mkdtemp()
+        try:
+            write(f"{d}/in.wav", seg)
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"{d}/in.wav", "-af",
+                            f"rubberband=tempo={1 / ratio:.4f}:formant=preserved:pitchq=quality:window=long",
+                            f"{d}/out.wav"], check=True)
+            return read(f"{d}/out.wav")
+        finally:
+            for f in os.listdir(d):
+                os.remove(f"{d}/{f}")
+            os.rmdir(d)
+
     report = {}
-    for key, (fname, word, toks, A, B, how) in M.items():
+    for key, entry in M.items():
+        fname, toks, A, B, how = entry[0], entry[2], entry[3], entry[4], entry[5]
+        word = src_name(entry)
         a = read(f"{src}/{word}.24k.wav")
         db, zc, cen = features(a)
         loud = np.nonzero(db > db.max() - 40)[0]
@@ -264,15 +305,21 @@ def cmd_cut(src, spans_p, out):
             end = off if B == len(toks) else change_point(db, zc, cen, pk[A] + 0.08, nxt(A) + 0.06) - 0.005
             fin, fout = 0.02, 0.07
         seg = a[int(start * SR):int(end * SR)]
+        stretched = False
+        if is_slow(entry) and len(seg) / SR < LONG_MIN:
+            # 先拉长再淡入淡出: 淡出段拉长了听着像声音拖在空中,不像收住
+            seg = stretch(seg, LONG_TARGET)
+            stretched = True
         seg = fade(seg, fin, fout)
         peak = np.abs(seg).max() + 1e-9
         gain = min(10 ** (15 / 20), 10 ** (-2 / 20) / peak)     # 峰值拉到 -2dB,最多放大 15dB
         write(f"{out}/{fname}.wav", np.concatenate([np.zeros(int(0.03 * SR)), seg * gain, np.zeros(int(0.06 * SR))]))
-        report[key] = [word, round(float(start), 3), round(float(end), 3), round(float(end - start), 3)]
+        report[key] = [word, round(float(start), 3), round(float(end), 3), round(float(end - start), 3),
+                       round(len(seg) / SR, 3), "拉长" if stretched else ""]
     json.dump(report, open(f"{out}/cuts.json", "w"), ensure_ascii=False)
     for k, v in report.items():
         print(k, v, "<-- 太短" if v[3] < 0.06 else "")
-    for key, (fname, *_rest) in MANIFEST.items():
+    for key, (fname, *_rest) in M.items():
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"{out}/{fname}.wav", "-ac", "1", "-ar", "24000",
                         "-codec:a", "libmp3lame", "-b:a", "48k", f"{out}/{fname}.mp3"], check=True)
     print("mp3 在", out, "—— 听一遍,再拷到 frontend/public/phonemes/")

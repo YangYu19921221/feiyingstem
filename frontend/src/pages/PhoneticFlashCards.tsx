@@ -5,9 +5,10 @@
  *   整页版 = 纸书那一页,20 个词铺开,同韵词排在一起让规律浮出来,填完一次交卷
  *   卡片版 = 填完一张当场判一张、当场揭示答案 + 发音,错了立刻重来
  *
- * 11-03 用户要求「一个页面放够 6 个单词」,并选了「6 个都显示,但一个一个判」:
- * 一组 6 张卡(手机两列三行、电脑三列两行),点哪张往哪张里填;填满点「看看对不对」只判这一张,
- * 判完这张翻过来露出答案、读一遍,光标自动跳到下一张没做的;6 张都做完点「下一组」。
+ * 11-03 用户要求「一个页面放够 6 个单词」,并选了「6 个都显示,但一个一个判」;同日又改成 9 个
+ * (「9 个我看排的下」): 一组 9 张卡,手机和电脑都是三列三行,点哪张往哪张里填;
+ * 填满点「看看对不对」只判这一张,判完这张翻过来露出答案、读一遍,光标自动跳到下一张没做的;
+ * 9 张都做完点「下一组」。一节 20 个词分 3 组(9 + 9 + 2)。
  * 以前一屏只有一张卡,一节 20 个词要翻 20 次,也看不到旁边同韵的词。
  *
  * 两遍机制沿用整页版的教学口径(服务端 _grade_one 同一份判分):
@@ -33,8 +34,8 @@ import {
   type PhoneticLesson, type PhoneticItem, type CheckResult,
 } from '../api/phoneticPractice';
 
-/** 一组几张卡。改了要重新量: 手机两列三行、电脑三列两行,键盘和交卷键都要留在一屏里 */
-const PAGE_SIZE = 6;
+/** 一组几张卡。改了要重新量: 三列三行,手机 390×844 上卡片区 + 键盘 + 交卷键要在一屏里 */
+const PAGE_SIZE = 9;
 
 type Phase = 'loading' | 'error' | 'play' | 'summary';
 
@@ -66,8 +67,8 @@ function newCard(it: PhoneticItem): CardState {
   };
 }
 
-/** 答案格档位: 一张卡手机上约 170px 宽,7–8 个音要再小一档才不出横向滚动 */
-const slotSize = (n: number) => (n <= 6 ? 'xs' as const : 'xxs' as const);
+/** 答案格档位: 三列时一张卡手机上约 115px 宽,4 个音以上要小一档才不出横向滚动 */
+const slotSize = (n: number) => (n <= 3 ? 'xs' as const : 'xxs' as const);
 
 export default function PhoneticFlashCards() {
   const { lessonId } = useParams<{ lessonId: string }>();
@@ -463,9 +464,9 @@ export default function PhoneticFlashCards() {
         </div>
       </header>
 
-      {/* 6 张卡: 手机两列三行、电脑三列两行。矮屏放不下时只有这块滚,键盘和交卷键一直在 */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 sm:px-4 sm:py-3">
-        <div className="mx-auto grid w-full max-w-3xl grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
+      {/* 9 张卡: 三列三行。矮屏放不下时只有这块滚,键盘和交卷键一直在 */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-4 sm:py-3">
+        <div className="mx-auto grid w-full max-w-3xl grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {cards.map((c, i) => (
             <div key={`${page}-${c.item.id}`} ref={el => { cardRefs.current[i] = el; }}>
               <FlashCard
@@ -529,7 +530,8 @@ function FlashCard({ c, active, reduce, onSelect, onSlotClick, onReplay }: {
   onSlotClick: (i: number) => void;
   onReplay: () => void;
 }) {
-  const shell = 'relative flex h-full min-h-[6.75rem] w-full flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 py-2 md:min-h-[9.5rem] md:gap-2.5';
+  // 手机上一张卡约 115px 宽、四五十像素高的空间要放单词 + 释义 + 格子,所以字和间距都收一档
+  const shell = 'relative flex h-full min-h-[5.25rem] w-full flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 md:min-h-[7.25rem] md:gap-1.5 md:rounded-2xl md:px-1.5 md:py-2';
 
   if (c.status === 'done') {
     const right = !!c.result?.all_correct;
@@ -554,20 +556,20 @@ function FlashCard({ c, active, reduce, onSelect, onSlotClick, onReplay }: {
           type="button"
           onClick={e => { e.stopPropagation(); onReplay(); }}
           aria-label={`再听一遍 ${c.item.word}`}
-          className="absolute right-1.5 top-1.5 rounded-full bg-white/25 p-1.5 transition hover:bg-white/35 active:scale-95"
+          className="absolute right-0.5 top-0.5 rounded-full bg-white/25 p-1 transition hover:bg-white/35 active:scale-95 md:right-1.5 md:top-1.5 md:p-1.5"
         >
-          <Volume2 className="h-4 w-4" />
+          <Volume2 className="h-3.5 w-3.5 md:h-4 md:w-4" />
         </button>
-        <p className="text-xs text-white/90">
-          {right ? (c.pass === 1 ? '🎉 一遍就对' : '👍 第二遍对了') : '📖 正确答案'}
+        <p className="text-[11px] leading-none text-white/90 md:text-xs">
+          {right ? (c.pass === 1 ? '🎉 一遍对' : '👍 第二遍对') : '📖 答案'}
         </p>
-        <p className="max-w-full break-all px-6 text-center font-mono text-lg font-bold leading-tight md:text-2xl">
+        <p className="max-w-full break-all px-4 text-center font-mono text-base font-bold leading-tight md:px-6 md:text-xl">
           {c.item.word}
         </p>
         {/* 彩色音标是浅底浅字,放在饱和渐变上必须垫白底板;板子自己是 flex + shrink-0,
             否则 overflow-x-auto 会把它压成一条白缝(10-04 卡片版踩过) */}
-        <span className="flex max-w-full shrink-0 items-center justify-center overflow-x-auto rounded-xl bg-white/95 px-2 py-1">
-          <ColoredPhonetic phonetic={answer} size="sm" delimiter="bracket" />
+        <span className="flex max-w-full shrink-0 items-center justify-center overflow-x-auto rounded-lg bg-white/95 px-1 py-0.5 md:rounded-xl md:px-2 md:py-1">
+          <ColoredPhonetic phonetic={answer} size="sm" delimiter="none" />
         </span>
       </motion.div>
     );
@@ -584,11 +586,11 @@ function FlashCard({ c, active, reduce, onSelect, onSlotClick, onReplay }: {
           : judged ? 'ring-1 ring-rose-300' : 'ring-1 ring-slate-200 hover:ring-orange-300',
       ].join(' ')}
     >
-      <p className="max-w-full break-all text-center font-mono text-xl font-bold leading-tight text-slate-800 md:text-3xl">
+      <p className="max-w-full break-all text-center font-mono text-lg font-bold leading-tight text-slate-800 md:text-2xl">
         {c.item.word}
       </p>
       {c.item.meaning && (
-        <p className="max-w-full truncate px-1 text-xs text-slate-500">{c.item.meaning}</p>
+        <p className="max-w-full truncate px-0.5 text-[11px] leading-none text-slate-500 md:text-xs">{c.item.meaning}</p>
       )}
       <div className="max-w-full overflow-x-auto">
         <AnswerSlots
@@ -601,11 +603,11 @@ function FlashCard({ c, active, reduce, onSelect, onSlotClick, onReplay }: {
         />
       </div>
       {judged ? (
-        <p className="text-center text-xs text-rose-600">
-          错 {c.result?.wrong_indexes.length} 个音 · 再来一遍只填元音
+        <p className="text-center text-[11px] leading-tight text-rose-600 md:text-xs">
+          错 {c.result?.wrong_indexes.length} 个音<span className="hidden md:inline"> · 再来一遍只填元音</span>
         </p>
       ) : c.pass === 2 ? (
-        <p className="text-center text-xs text-orange-700">第二遍,只填元音</p>
+        <p className="text-center text-[11px] leading-tight text-orange-700 md:text-xs">只填元音</p>
       ) : null}
     </div>
   );

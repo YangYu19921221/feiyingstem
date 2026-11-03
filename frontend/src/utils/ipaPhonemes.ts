@@ -45,7 +45,7 @@ export const PHONEME_AUDIO: Record<string, string> = {
 };
 
 /** 换了切法就加 1,让浏览器不用旧文件 */
-const PHONEME_AUDIO_VERSION = 1;
+const PHONEME_AUDIO_VERSION = 2;
 
 export const phonemeAudioUrl = (k: string): string | null =>
   PHONEME_AUDIO[k] ? `/phonemes/${PHONEME_AUDIO[k]}.mp3?v=${PHONEME_AUDIO_VERSION}` : null;
