@@ -287,7 +287,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   改整套按题目 id 原地改(不删了重建,学生记录对得上);删套是软删。
   ⑤作业 content_homework 新 kind phonetic_listening: 开放后每题都结束过就算完成(只看做没做完,对几个在学情里看)。
   路由挂在已有的 phonetic_practice / teacher/phonetic_books 路由上(**main.py 没动**)。
-  前端: 学生 pages/PhoneticListening.tsx(一题一题来,大喇叭想听几遍都行,提示黄底大字,单词输入框 + 音标格 + dense 音标键盘);
+  前端: 学生 pages/PhoneticListening.tsx。**两种模式**(同日用户「听力可以一页 9 个单词或者 20 个单词吗 你设计下两种模式」),
+  右上角切换、按账号记(localStorage listening_mode_{uid}),换模式从第一题重来:
+  **一页 9 个** = 三列三行卡片,点哪张读哪张、往哪张填,填好判这一张(POST /check),判完当场翻出答案,光标跳下一张;
+  **一页 20 个** = 像练习本一页,一行一题(电脑两列),写完整页一起交(POST /check-page,和 /check 共用 _grade_and_record,
+  题目必须都属于这一套否则整页 400),错的再改一次再交;「连着读」像老师报听写: 没做完的按顺序每个读两遍、停 3.5 秒。
+  9 个那页 1366×768、390×844、768 宽都一屏放下(键盘 dense 档电脑上也只 36px 高、提示和喇叭同一行);1280×720 要滑一点。
+  ⚠️ 整页交卷第一版把「记成绩」写在 setStates 的更新函数里,开发模式跑两遍 → 小结「对了 4 / 40 题」(20 题算了两遍),已改成先算好再记;
   入口在音标教材目录最上面「音标听力」,作业列表直接跳;老师 pages/TeacherPhoneticListening.tsx(新建一套默认 10 行、
   Excel 整段粘贴(Tab 或两个以上空格分列)、每题「听系统读 / 录音(最长 5 秒,开回声消除)/ 传文件 / 改回系统读」、
   「学生做得怎么样」表格 ✓ 一遍对 ○ 第二遍对 ✗)。⚠️ 学生页第一版 play 依赖 item → 加载题目的 effect 跟着变 → 本机 3 秒拉了

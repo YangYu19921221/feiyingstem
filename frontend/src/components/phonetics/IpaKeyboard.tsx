@@ -101,6 +101,7 @@ export default function IpaKeyboard({
           highlight={hi.has(k)}
           disabled={disabled || full}
           compact={dense}
+          short={dense}
           title={`${group} ${k}${hi.has(k) ? ' · 这节课学的音' : ''}`}
           onClick={() => press(k)}
         />

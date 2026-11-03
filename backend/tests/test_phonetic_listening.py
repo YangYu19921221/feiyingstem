@@ -226,3 +226,34 @@ async def test_teacher_audio_upload_and_student_play(client: AsyncClient, orgs, 
     r = await client.post(f"{BASE_T}/items/{item_id}/audio", headers=H(d["t1"]),
                           files={"audio": ("a.png", b"\x89PNG" + b"\x00" * 3000, "image/png")})
     assert r.status_code == 400
+
+
+async def test_check_page_grades_like_single_and_rejects_foreign_items(client: AsyncClient, orgs):
+    """整页一次交: 逐题规则和单题一样(两部分都对才对、第一遍错不给答案);混进别的套的题整页拒"""
+    d = orgs
+    s = await _make_set(client, d)
+    other = (await client.post(f"{BASE_T}/books/{d['b1']}/sets", headers=H(d["t1"]),
+                               json={"title": "听-9", "items": ITEMS[:1]})).json()
+    a, b, c = s["items"]
+    r = await client.post(f"{BASE_S}/check-page", headers=H(d["s1"]), json={
+        "set_id": s["id"], "pass_number": 1, "answers": [
+            {"item_id": a["id"], "word": "block", "phonetic": ["b", "l", "ɒ", "k"]},      # 全对
+            {"item_id": b["id"], "word": "hoe", "phonetic": ["h", "æ"]},                  # 单词对音标错
+            {"item_id": c["id"], "word": "", "phonetic": [], "give_up": True},            # 看答案
+        ]})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["right_count"] == 1 and j["total"] == 3
+    r0, r1, r2 = j["results"]
+    assert r0["all_correct"] and r0["finished"] and r0["answer"]["word"] == "block"
+    assert r1["word_ok"] and not r1["phonetic_ok"] and not r1["finished"] and "answer" not in r1
+    assert "həʊ" not in json.dumps(r1)
+    assert r2["finished"] and not r2["all_correct"] and r2["answer"]["word"] == "rifle"
+    # 别的套的题混进来 → 整页拒,一题都不判
+    bad = await client.post(f"{BASE_S}/check-page", headers=H(d["s1"]), json={
+        "set_id": s["id"], "answers": [{"item_id": a["id"], "word": "x", "phonetic": []},
+                                       {"item_id": other["items"][0]["id"], "word": "x", "phonetic": []}]})
+    assert bad.status_code == 400
+    # 别家学生整页交 404
+    assert (await client.post(f"{BASE_S}/check-page", headers=H(d["s2"]), json={
+        "set_id": s["id"], "answers": [{"item_id": a["id"], "word": "block", "phonetic": []}]})).status_code == 404

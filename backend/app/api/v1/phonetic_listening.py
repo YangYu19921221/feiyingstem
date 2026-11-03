@@ -19,7 +19,8 @@
   GET  /sets/{id}                    题目: 只有提示、格子数、有没有老师录音 —— **不给单词音标**
   GET  /items/{id}/audio             这题的老师录音(没有 404,前端改用系统读 /listening/items/{id}/tts)
   GET  /items/{id}/tts               系统读这题(服务端按单词 / 老师指定的发音合成,单词不出现在网址里)
-  POST /check                        判一题
+  POST /check                        判一题(卡片模式,一页 9 个)
+  POST /check-page                   整页一次交(整页模式,一页 20 个)
 """
 from __future__ import annotations
 
@@ -542,32 +543,29 @@ class CheckIn(BaseModel):
     duration_ms: Optional[int] = Field(None, ge=0, le=3_600_000)
 
 
-@student_router.post("/check")
-async def check(body: CheckIn, db: AsyncSession = Depends(get_db),
-                user: User = Depends(get_current_user)):
-    """判一题。答案只在「这题结束了」才给: 做对 / 第二遍判完 / 看答案。第一遍错只说哪里错"""
-    org_id = None if user.role == "admin" else current_org_id.get()
-    row = await _item_with_set(db, body.item_id, org_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="这道题不存在")
-    it, s, _b = row
-    pass_number = 2 if body.give_up else body.pass_number
-    g = pl.grade(it, body.word, body.phonetic, pass_number)
-    if body.give_up:
+def _grade_and_record(db: AsyncSession, user: User, it: ListeningItem, s: ListeningSet,
+                      word: Optional[str], phonetic: List[Optional[str]], pass_number: int,
+                      give_up: bool, duration_ms: Optional[int]) -> dict:
+    """判一题 + 记一行作答(不 commit)。单题和整页共用这一份 —— 两处各判一遍口径会漂。
+
+    答案只在「这题结束了」才给: 做对 / 第二遍判完 / 看答案。第一遍错只说哪里错"""
+    pass_number = 2 if give_up else pass_number
+    g = pl.grade(it, word, phonetic, pass_number)
+    if give_up:
         g["all_correct"] = False
     db.add(ListeningAttempt(
         user_id=user.id, item_id=it.id, set_id=s.id, pass_number=pass_number,
-        word_submitted=(body.word or "")[:100], word_correct=g["word_ok"] and not body.give_up,
-        phonetic_submitted_json=json.dumps(body.phonetic, ensure_ascii=False),
-        phonetic_correct=g["phonetic_ok"] and not body.give_up,
-        is_correct=g["all_correct"], gave_up=body.give_up, duration_ms=body.duration_ms,
+        word_submitted=(word or "")[:100], word_correct=g["word_ok"] and not give_up,
+        phonetic_submitted_json=json.dumps(phonetic, ensure_ascii=False),
+        phonetic_correct=g["phonetic_ok"] and not give_up,
+        is_correct=g["all_correct"], gave_up=give_up, duration_ms=duration_ms,
         org_id=current_org_id.get(),
     ))
-    await db.commit()
     finished = g["all_correct"] or pass_number >= 2
     out = {
-        "all_correct": g["all_correct"], "word_ok": g["word_ok"] and not body.give_up,
-        "phonetic_ok": g["phonetic_ok"] and not body.give_up,
+        "item_id": it.id,
+        "all_correct": g["all_correct"], "word_ok": g["word_ok"] and not give_up,
+        "phonetic_ok": g["phonetic_ok"] and not give_up,
         "per_slot": g["per_slot"], "wrong_indexes": g["wrong_indexes"], "finished": finished,
     }
     if not finished:
@@ -579,3 +577,58 @@ async def check(body: CheckIn, db: AsyncSession = Depends(get_db),
         out["answer"] = {"word": it.word, "phonetic_tokens": g["answer"],
                          "phonetic": it.answer_display, "meaning": it.meaning}
     return out
+
+
+@student_router.post("/check")
+async def check(body: CheckIn, db: AsyncSession = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    """判一题(卡片模式)"""
+    org_id = None if user.role == "admin" else current_org_id.get()
+    row = await _item_with_set(db, body.item_id, org_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="这道题不存在")
+    it, s, _b = row
+    out = _grade_and_record(db, user, it, s, body.word, body.phonetic, body.pass_number,
+                            body.give_up, body.duration_ms)
+    await db.commit()
+    return out
+
+
+class PageAnswer(BaseModel):
+    item_id: int
+    word: Optional[str] = Field(None, max_length=100)
+    phonetic: List[Optional[str]] = Field(default_factory=list, max_length=20)
+    give_up: bool = False
+
+
+class PageCheckIn(BaseModel):
+    set_id: int
+    pass_number: int = Field(1, ge=1, le=2)
+    answers: List[PageAnswer] = Field(..., min_length=1, max_length=pl.ITEMS_MAX)
+    duration_ms: Optional[int] = Field(None, ge=0, le=3_600_000)
+
+
+@student_router.post("/check-page")
+async def check_page(body: PageCheckIn, db: AsyncSession = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    """整页一次交(整页模式): 一页 20 题一起判,逐题规则和 /check 完全一样。
+    题目必须都属于这一套(混进别的套的题整页拒,不判一半)"""
+    org_id = None if user.role == "admin" else current_org_id.get()
+    row = await _set_visible(db, body.set_id, org_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="这套听力不存在")
+    s, _b = row
+    ids = [a.item_id for a in body.answers]
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=400, detail="同一题交了两次,刷新页面再试")
+    items = {it.id: it for it in (await db.execute(
+        select(ListeningItem).where(ListeningItem.set_id == s.id, ListeningItem.id.in_(ids))
+    )).scalars()}
+    if len(items) != len(ids):
+        raise HTTPException(status_code=400, detail="有的题不在这一套里,刷新页面再试")
+    per = (body.duration_ms // len(ids)) if body.duration_ms else None
+    results = [_grade_and_record(db, user, items[a.item_id], s, a.word, a.phonetic, body.pass_number,
+                                 a.give_up, per) for a in body.answers]
+    await db.commit()
+    return {"right_count": sum(1 for r in results if r["all_correct"]), "total": len(results),
+            "results": results}

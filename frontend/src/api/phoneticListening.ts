@@ -43,6 +43,7 @@ export interface ListeningSetQ {
 }
 
 export interface ListeningCheckResult {
+  item_id?: number;
   all_correct: boolean;
   word_ok: boolean;
   phonetic_ok: boolean;
@@ -60,6 +61,13 @@ export const checkListening = (body: {
   item_id: number; pass_number: number; word: string; phonetic: (string | null)[];
   give_up?: boolean; duration_ms?: number;
 }): Promise<ListeningCheckResult> => api.post(`${S}/check`, body);
+
+/** 整页一次交(整页模式): 逐题规则和 checkListening 一样 */
+export const checkListeningPage = (body: {
+  set_id: number; pass_number: number; duration_ms?: number;
+  answers: { item_id: number; word: string; phonetic: (string | null)[]; give_up?: boolean }[];
+}): Promise<{ right_count: number; total: number; results: ListeningCheckResult[] }> =>
+  api.post(`${S}/check-page`, body);
 
 /** 这一题的读音地址: 老师录了就放老师的,否则系统读。都要带登录(用 fetch + Authorization 拉成 blob) */
 export const listeningAudioUrl = (it: { id: number; has_audio: boolean }, teacher = false) =>

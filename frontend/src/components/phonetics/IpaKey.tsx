@@ -22,10 +22,12 @@ interface Props {
   title?: string;
   /** 视频提问框里的小键盘: 手机 36px / 电脑 40px 高、字号不放大 —— 那里地方小 */
   compact?: boolean;
+  /** 卡片写音标 / 听力一屏放 9 张卡: 电脑上也只给 36px 高(一行 14 个键,4 行就够) */
+  short?: boolean;
   onClick?: () => void;
 }
 
-export default function IpaKey({ k, highlight, pressed, disabled, demo, title, compact, onClick }: Props) {
+export default function IpaKey({ k, highlight, pressed, disabled, demo, title, compact, short, onClick }: Props) {
   const vowel = isVowel(k);
 
   return (
@@ -42,7 +44,7 @@ export default function IpaKey({ k, highlight, pressed, disabled, demo, title, c
         compact ? 'px-0' : 'px-0.5',
         'ring-1 transition duration-150 ease-out active:scale-95 disabled:opacity-40',
         // 视频提问框里地方小: 手机上 36px 高(7 行要和输入框、发送键一起放进一屏)
-        compact ? 'h-9 md:h-10' : 'h-10 sm:h-11',
+        short ? 'h-9' : compact ? 'h-9 md:h-10' : 'h-10 sm:h-11',
         demo ? 'pointer-events-none' : '',
         vowel
           ? 'bg-orange-50 text-orange-700 ring-orange-200 hover:bg-orange-100'
