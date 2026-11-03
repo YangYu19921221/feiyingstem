@@ -19,7 +19,8 @@ from app.core.actor import acting_user, is_assistant_request
 from app.core.database import get_db
 from app.core.timeutil import local_day_utc_range, local_today
 from app.models.content_homework import (
-    KIND_DAILY_REVIEW, KIND_PHONETIC_LISTENING, KIND_PHONETIC_VIDEO, KIND_READ_ALOUD, KIND_SENTENCE, KINDS,
+    KIND_DAILY_REVIEW, KIND_PHONETIC_LISTENING, KIND_PHONETIC_READ, KIND_PHONETIC_VIDEO, KIND_PHONETIC_WRITE,
+    KIND_READ_ALOUD, KIND_SENTENCE, KINDS,
     ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo
@@ -102,6 +103,20 @@ async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Opti
         if not n:
             return None     # 一题都没有的布置了永远完成不了
         return {"name": f"{book.name} · {ls.title}", "book_id": None}
+    if kind in (KIND_PHONETIC_WRITE, KIND_PHONETIC_READ):
+        from app.models.phonetic_practice import PhoneticBook, PhoneticItem, PhoneticLesson
+        from app.services import phonetic_listening as pl
+        row = (await db.execute(pl.visible_books(
+            select(PhoneticLesson, PhoneticBook).join(PhoneticBook, PhoneticBook.id == PhoneticLesson.book_id)
+            .where(PhoneticLesson.id == target_id), org_id
+        ).execution_options(skip_tenant_filter=True))).first()
+        if row is None:
+            return None
+        ls, book = row
+        n = (await db.execute(select(func.count(PhoneticItem.id)).where(PhoneticItem.lesson_id == ls.id))).scalar()
+        if not n:
+            return None
+        return {"name": f"{book.name} · {ls.code}", "book_id": None}
     return None
 
 
@@ -393,6 +408,22 @@ async def content_homework_targets(
             books.setdefault(b.id, {"id": b.id, "name": b.name, "units": []})["units"].append(
                 {"id": ls.id, "name": f"{ls.title}({n} 题)"})
         return list(books.values())
+    if kind in (KIND_PHONETIC_WRITE, KIND_PHONETIC_READ):
+        # 音标教材 → 一节一节(和学生教材目录同一个顺序)
+        from app.models.phonetic_practice import PhoneticBook, PhoneticItem, PhoneticLesson
+        from app.services import phonetic_listening as pl
+        rows = (await db.execute(pl.visible_books(
+            select(PhoneticBook, PhoneticLesson, func.count(PhoneticItem.id))
+            .join(PhoneticLesson, PhoneticLesson.book_id == PhoneticBook.id)
+            .join(PhoneticItem, PhoneticItem.lesson_id == PhoneticLesson.id)
+            .group_by(PhoneticBook.id, PhoneticLesson.id), org_id
+        ).execution_options(skip_tenant_filter=True)
+         .order_by(PhoneticBook.id, PhoneticLesson.lesson_number, PhoneticLesson.id))).all()
+        books: dict[int, dict] = {}
+        for b, ls, n in rows:
+            books.setdefault(b.id, {"id": b.id, "name": b.name, "units": []})["units"].append(
+                {"id": ls.id, "name": f"{ls.code}({n} 词)"})
+        return list(books.values())
     raise HTTPException(400, "作业类型不对")
 
 
@@ -439,6 +470,10 @@ async def my_content_homework(
             route = f"/student/units/{h.target_id}/read-aloud"
         elif h.kind == KIND_PHONETIC_LISTENING:
             route = f"/student/phonetics/listening/{h.target_id}"
+        elif h.kind == KIND_PHONETIC_WRITE:
+            route = f"/student/phonetics/textbook/{h.target_id}/cards"
+        elif h.kind == KIND_PHONETIC_READ:
+            route = f"/student/phonetics/textbook/{h.target_id}/read"
         else:
             route = "/student/phonetics"
         out.append({

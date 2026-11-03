@@ -271,6 +271,27 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标学习报告 + 写音标 / 读音标能布置成作业(2026-11-03,用户「音标是不是也支持布置任务 我还需要学生音标的学习报告
+  越详细越好老师才知道学生差哪里」。问了三件事用户选: 写音标、读音标都要能布置 / 报告给老师、学生自己、家长看 / 老师能听录音):
+  规则真源 services/phonetic_report.py 文件头,**老师 / 学生 / 家长三个版本同一份数**(build → brief 裁剪)。只读已有的表,不另存:
+  phonetic_textbook_attempts / phonetic_readings / phonetic_listening_attempts / phonetic_video_views。口径:
+  ①**只认第一遍**算音素对错(第二遍辅音是服务端回填的)②按**音素**算不按词 ③一个音第一遍出现 < 4 次不下结论,
+  弱 = 正确率 < 75%;写混 = (该写, 写成) 出现 ≥ 2 次 ④读音毛病按判定服务 error_code(词尾多带音 / 元音不对 / 开头辅音没读 / 口音),
+  读得最差的词带最近一条录音 id(回放接口照旧鉴权)⑤自己点「我读对了」≥ 5 次给老师提示抽听(只老师版)
+  ⑥用时每次作答封顶 2 分钟(生产 96 号一题记了 719 秒,不封顶「练了 118 分钟」全是挂机)⑦建议是规则写的、每条带去练哪节,不调 AI、不排名
+  ⑧学生 / 家长简版: 练了几天多久、写对多少、最多 5 个还要练的音(学生能点「去练」进卡片写音标那一节)、建议;**没有录音、没有写成了什么**。
+  接口 api/v1/phonetic_report.py,挂在已有路由上(**main.py 没动**): 老师 /teacher/phonetic-books/report/students/{id}(只本班)、
+  /report/class(全班: 每人一行、没练过的排前、全班最多人弱的音);学生 /phonetic-practice/report/me;家长 /report/children/{id}(只绑定的)。
+  days 只收 7 / 30 / 90 / 0。生产库副本量过: 248 人的花名册全班报告 1.1 秒。
+  作业: content_homework 新 kind phonetic_write / phonetic_read,target = phonetic_lessons.id;
+  写 = 开放后这一节每个词都结束过(写对或第二遍判完,卡片 / 整页都算),读 = 每个词都判出了结果(verdict 不是 off / silent)或点了「我读对了」
+  (phonetic_report.lesson_completion)。学生作业「去完成」进卡片写音标 / 读音标那一节。
+  前端: 老师 components/teacher/PhoneticReportPanel(学生详情页 #phonetic-report)、pages/TeacherPhoneticReport(/teacher/phonetic-report,点名字跳
+  学生详情并滚到报告);学生 / 家长 components/phonetics/PhoneticBriefReport(音标教材目录最上面 / 家长端首页「今天」下面,没练过不显示)。
+  测试 tests/test_phonetic_report.py(7 例);算进第二遍 / 不要最少次数 / 不判本班 / 没判出来也算读过 四处各让对应用例失败(回归锁验证过)。
+  本机浏览器(生产库副本,1366 / 390)看过老师报告(965 号 48 节)、全班页、学生简版「去练 3—7」跳到那一节;布置写 / 读作业 → 写完整节写音标作业完成、读的仍未完成。
+  ⚠️ 生产写音标 / 读音标的真实数据只有 7 个学生、读音标 6 个,报告上线时大多数孩子是「没练过」。入口: 教师工作台「内容准备 → 音标学习报告」/
+  顶部「更多」/ 学生详情页;学生「音标」目录最上面;家长端首页。公告老师 / 学生各一条
 - ✅ 音标听力(2026-11-03,用户拍了《飞鹰英语专用教材听力练习本》一页: 每题「3—4 尾2」「4—5 [k]照抄 尾2」,
   「这块是听力你看看怎么加上去 老师后台也可以传 3-4 尾2 这些老师可以自己填」。问了三件事,用户选:
   **App 里听音打字**(不是写纸上拍照)/ **默认系统读、老师可换录音** / **单词和音标都写**):

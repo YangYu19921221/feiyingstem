@@ -14,6 +14,7 @@ import ReadAloudPanel from '../components/teacher/ReadAloudPanel';
 import TutorLogPanel from '../components/teacher/TutorLogPanel';
 import HomeworkCheckPanel from '../components/teacher/HomeworkCheckPanel';
 import PhoneticWatchPanel from '../components/teacher/PhoneticWatchPanel';
+import PhoneticReportPanel from '../components/teacher/PhoneticReportPanel';
 import WordTrendChart from '../components/WordTrendChart';
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import type { StudentMistakeAnalysis } from '../types/exam';
@@ -56,6 +57,13 @@ const TeacherStudentDetail = () => {
   // 无历史(直开链接/刷新)才兜底到数据分析
   const goBack = useGoBack('/teacher/analytics');
   const [loading, setLoading] = useState(true);
+
+  // 从「音标学习报告」全班页点名字过来带 #phonetic-report: 页面数据到了再滚过去(一开始那块还没渲染)
+  useEffect(() => {
+    if (loading || window.location.hash !== '#phonetic-report') return;
+    const t = window.setTimeout(() => document.getElementById('phonetic-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    return () => window.clearTimeout(t);
+  }, [loading]);
   const [stats, setStats] = useState<StudentStats | null>(null);
   const [weakPoints, setWeakPoints] = useState<WeakPoint[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -439,6 +447,7 @@ const TeacherStudentDetail = () => {
         )}
 
         {studentId && <ReadAloudPanel studentId={parseInt(studentId)} />}
+        <div id="phonetic-report">{studentId && <PhoneticReportPanel studentId={parseInt(studentId)} />}</div>
         {studentId && <PhoneticWatchPanel studentId={parseInt(studentId)} />}
         {studentId && <SentenceSpeechPanel studentId={parseInt(studentId)} />}
         {studentId && <TutorLogPanel studentId={parseInt(studentId)} />}

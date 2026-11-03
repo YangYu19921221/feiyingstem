@@ -16,6 +16,7 @@ import {
 import WeeklyReportCard from '../components/WeeklyReportCard';
 import ParentCoachNotes from '../components/coach/ParentCoachNotes';
 import ParentTodayCard from '../components/parent/ParentTodayCard';
+import PhoneticBriefReport from '../components/phonetics/PhoneticBriefReport';
 import CameraConsentCard from '../components/parent/CameraConsentCard';
 import DeviceLockGuide from '../components/parent/DeviceLockGuide';
 import { toast } from '../components/Toast';
@@ -217,6 +218,11 @@ const ParentDashboard = () => {
 
         {/* 今天: 作业 / 时长 / 切出去多久 / 摄像头离开 / 卡住的词,正在学时带实时状态 */}
         {activeStudentId !== null && <ParentTodayCard studentId={activeStudentId} />}
+
+        {/* 音标学得怎么样(简版: 哪几个音还要练),没练过音标的孩子整块不显示 */}
+        {activeStudentId !== null && (
+          <div className="mb-6"><PhoneticBriefReport childId={activeStudentId} title="音标学得怎么样" compact /></div>
+        )}
 
         {/* 邀请朋友(家长裂变入口): 放在周报上面,一进来就看得见 */}
         {activeStudentId !== null && (

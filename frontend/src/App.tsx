@@ -59,6 +59,7 @@ const ClassroomNet = lazyWithRetry(() => import('./pages/ClassroomNet'));
 const PhoneticFillBlank = lazyWithRetry(() => import('./pages/PhoneticFillBlank'));
 const PhoneticListening = lazyWithRetry(() => import('./pages/PhoneticListening'));
 const TeacherPhoneticListening = lazyWithRetry(() => import('./pages/TeacherPhoneticListening'));
+const TeacherPhoneticReport = lazyWithRetry(() => import('./pages/TeacherPhoneticReport'));
 const PhoneticFlashCards = lazyWithRetry(() => import('./pages/PhoneticFlashCards'));
 const PhoneticLessons = lazyWithRetry(() => import('./pages/PhoneticLessons'));
 const PhoneticReading = lazyWithRetry(() => import('./pages/PhoneticReading'));
@@ -622,6 +623,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
               <TeacherPhoneticBooks />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 音标学习报告(全班) */}
+        <Route
+          path="/teacher/phonetic-report"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherPhoneticReport />
             </ProtectedRoute>
           }
         />

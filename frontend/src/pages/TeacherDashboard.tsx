@@ -67,6 +67,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '音标视频', description: '上传与管理音标课', route: '/teacher/phonetics', icon: Volume2, tone: 'teal' },
       { title: '音标教材', description: 'Excel 上传拼读题', route: '/teacher/phonetic-books', icon: Volume2, tone: 'teal' },
       { title: '音标听力', description: '建听力题,学生听音写单词和音标', route: '/teacher/phonetic-listening', icon: Headphones, tone: 'teal' },
+      { title: '音标学习报告', description: '全班谁差哪几个音', route: '/teacher/phonetic-report', icon: BarChart3, tone: 'teal' },
       { title: '电教室网络', description: '登记电教室电脑,音标视频只能在电教室看', route: '/teacher/classroom-net', icon: School, tone: 'teal' },
     ],
   },

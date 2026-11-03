@@ -28,6 +28,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-report-teacher-2026-11',
+    date: '2026-11-03',
+    title: '📊 音标学习报告: 一眼看出学生差哪几个音',
+    desc: '每个学生一份: 下一步练什么、哪几个音写不对(常写成什么、错在哪几个词)、读音的毛病(词尾多带音 / 元音不对 / 开头辅音没读,能直接听孩子那一次录音)、写错的词、每个音的正确率、练过的每一节。全班一页: 全班最多人弱的音、谁这段时间没练。另外「写音标」「读音标」现在也能布置成作业了。',
+    where: '教师工作台「内容准备 → 音标学习报告」(全班)/ 学生详情页往下「音标学习报告」;布置: 作业管理 →「布置句子 / 音标 / 复习 / 跟读作业」→ 写音标 / 读音标',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/phonetic-report',
+  },
+  {
+    id: 'phonetic-report-student-2026-11',
+    date: '2026-11-03',
+    title: '📊 看看自己哪几个音还要多练',
+    desc: '音标页最上面多了「我的音标学习」: 练了几天、写对多少、哪几个音还要多练。点「去练」直接进那一节。',
+    where: '首页「音标」→ 教材目录最上面「我的音标学习」',
+    roles: ['student'],
+    route: '/student/phonetics/textbook',
+  },
+  {
     id: 'phonetic-listening-student-2026-11',
     date: '2026-11-03',
     title: '🎧 音标听力上线了',

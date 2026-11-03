@@ -443,3 +443,7 @@ async def check_page(
 # 音标听力(2026-11-03)挂在这里: /api/v1/phonetic-practice/listening/*。main.py 不动(生产有 drift)
 from app.api.v1 import phonetic_listening as _listening  # noqa: E402
 router.include_router(_listening.student_router, prefix="/listening")
+
+# 音标学习报告(2026-11-03)学生 / 家长简版: /api/v1/phonetic-practice/report/*
+from app.api.v1 import phonetic_report as _report  # noqa: E402
+router.include_router(_report.student_router, prefix="/report")

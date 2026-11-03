@@ -9,6 +9,7 @@ import useGoBack from '../hooks/useGoBack';
 import { segmentIpa } from '../utils/ipaPhonemes';
 import { listPhoneticBooks, type PhoneticBook } from '../api/phoneticPractice';
 import { listListeningSets, type ListeningBookGroup } from '../api/phoneticListening';
+import PhoneticBriefReport from '../components/phonetics/PhoneticBriefReport';
 
 export default function PhoneticLessons() {
   const navigate = useNavigate();
@@ -98,6 +99,9 @@ export default function PhoneticLessons() {
             <span className="shrink-0 text-slate-300">→</span>
           </button>
         )}
+        {/* 自己的音标报告: 哪几个音还要练 + 去练的按钮。一次都没练过不显示 */}
+        <div className="mb-5"><PhoneticBriefReport compact /></div>
+
         {/* 音标听力放在目录最上面: 一本书只有几套,不先放出来孩子要划过 48 节才看得到 */}
         {listening.some(g => g.sets.length) && (
           <section className="mb-6 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-sky-100">

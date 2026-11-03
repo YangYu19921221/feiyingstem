@@ -578,3 +578,7 @@ async def delete_book(
 # 音标听力(2026-11-03)老师端挂在这里: /api/v1/teacher/phonetic-books/listening/*。main.py 不动
 from app.api.v1 import phonetic_listening as _listening  # noqa: E402
 router.include_router(_listening.teacher_router, prefix="/listening")
+
+# 音标学习报告(2026-11-03)老师端: /api/v1/teacher/phonetic-books/report/*
+from app.api.v1 import phonetic_report as _report  # noqa: E402
+router.include_router(_report.teacher_router, prefix="/report")

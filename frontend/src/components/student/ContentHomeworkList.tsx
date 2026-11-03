@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookText, Brain, CheckCircle2, Clapperboard, Lock, Mic, Headphones } from 'lucide-react';
+import { BookText, Brain, CheckCircle2, Clapperboard, Lock, Mic, Headphones, Layers, Volume2 } from 'lucide-react';
 import { getMyContentHomework, type StudentContentHomework } from '../../api/contentHomework';
 
 function dayText(iso: string): string {
@@ -59,7 +59,7 @@ export default function ContentHomeworkList({ needCheckin = false, onCheckin }: 
       </div>
       <ul className="space-y-2">
         {sorted.map((h) => {
-          const Icon = h.kind === 'sentence' ? BookText : h.kind === 'daily_review' ? Brain : h.kind === 'read_aloud' ? Mic : h.kind === 'phonetic_listening' ? Headphones : Clapperboard;
+          const Icon = h.kind === 'sentence' ? BookText : h.kind === 'daily_review' ? Brain : h.kind === 'read_aloud' ? Mic : h.kind === 'phonetic_listening' ? Headphones : h.kind === 'phonetic_write' ? Layers : h.kind === 'phonetic_read' ? Volume2 : Clapperboard;
           const done = h.status === 'completed';
           const locked = h.status === 'locked';
           const overdue = h.status === 'overdue';

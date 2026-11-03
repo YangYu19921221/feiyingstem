@@ -51,6 +51,7 @@ const navByRole: Record<WorkspaceRole, { primary: NavItem[]; more: NavItem[] }> 
       { label: '音标视频', path: '/teacher/phonetics' },
       { label: '音标教材', path: '/teacher/phonetic-books' },
       { label: '音标听力', path: '/teacher/phonetic-listening' },
+      { label: '音标学习报告', path: '/teacher/phonetic-report' },
       { label: '电教室网络', path: '/teacher/classroom-net' },
       { label: '单词分配', path: '/teacher/assignments' },
       { label: '测评线索', path: '/teacher/leads' },

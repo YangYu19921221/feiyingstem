@@ -30,7 +30,11 @@ KIND_DAILY_REVIEW = "daily_review"
 KIND_READ_ALOUD = "read_aloud"
 # 音标听力(2026-11-03): target_id = phonetic_listening_sets.id
 KIND_PHONETIC_LISTENING = "phonetic_listening"
-KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO, KIND_DAILY_REVIEW, KIND_READ_ALOUD, KIND_PHONETIC_LISTENING)
+# 写音标 / 读音标(2026-11-03): target_id = phonetic_lessons.id(音标教材的一节)
+KIND_PHONETIC_WRITE = "phonetic_write"
+KIND_PHONETIC_READ = "phonetic_read"
+KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO, KIND_DAILY_REVIEW, KIND_READ_ALOUD, KIND_PHONETIC_LISTENING,
+         KIND_PHONETIC_WRITE, KIND_PHONETIC_READ)
 
 
 class ContentHomework(Base):
