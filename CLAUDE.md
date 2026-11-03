@@ -271,6 +271,26 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标键点了读音标本身 + 卡片写音标一页 6 个词(2026-11-03,用户「我音标上输入 b 字母你就发音音标 B 的音不要练出 bag,
+  下面 pig bag 这些单词也可以去了」「卡片写音标一个页面能不能放够 6 个单词」;同日先上线了读音标页去掉中文释义,提交 1787b45):
+  ①**48 个音的声音** = frontend/public/phonemes/*.mp3(共约 200KB),表 utils/ipaPhonemes.PHONEME_AUDIO(文件名用 ASCII)。
+  Edge TTS **不认 IPA**(`<phoneme alphabet="ipa">` 发过去 NoAudioReceived,11-03 实测),所以让同一个 Sonia 女声读单词再切:
+  元音取 s/h/词首后面那段(see→iː、hat→æ),能拖长的辅音取词尾(bus→s、hum→m、beige→ʒ),
+  爆破音和 r l w j h tr dr 单独切只有「嗒」一下,带约 90ms 的 /ʌ/ 再淡出(/bʌ/)。用户选的「从单词里切」,没让老师录。
+  脚本 backend/scripts/gen_phoneme_audio.py 三步: 本机 tts → 生产机 venv_judge 跑 align(wav2vec2 CTC 尖峰,nice 19)→ 本机 cut
+  (尖峰圈范围,按响度 / 过零率 / 频谱重心找边界)。**别拿模型当裁判**: 它按整词训练,单独一个 /s/ 常听成 l n m,
+  48 个里一半排不到第一,但频谱上切得对;核对用频谱图 + 人耳。换了切法要把 PHONEME_AUDIO_VERSION 加 1。
+  键盘(IpaKeyboard)打开就预加载全部 48 个;点键走 useAudio.playStatic(和单词发音同一把全局锁,不会叠音;
+  自动播放被拦同样等手势补放)。键上不再印例词,PHONEME_EXAMPLES 已删;「怎么打」演示文案同步。
+  视频提问框里的小键盘(IpaInsertPad)照旧不出声。
+  ②**卡片写音标一页 6 张**(pages/PhoneticFlashCards.tsx 重写): 手机两列三行、电脑三列两行,键盘和主按钮固定在底部;
+  用户选「6 个都显示,但一个一个判」: 点哪张往哪张填,填满「看看对不对」只判这一张(还是 POST /check 一次一张,后端没改),
+  做对 / 第二遍判完 / 看答案 → 这张翻过来露出答案并读一遍,光标跳到下一张没做的;第一遍错 → 红格 +「只填元音再来一遍」;
+  6 张都结束 →「下一组」。答案闸门不变(第一遍错不给)。防误跳 350ms、回车 e.repeat 照旧,多了左右键换卡。
+  键盘 dense 档(键 36px、去掉「清空」,主按钮挪进键盘最后一行省一条底栏);AnswerSlots 加 xs / xxs 两档(不印方括号)。
+  本机浏览器(库副本,390 / 1366 / 320)走过: 点 b 不请求 edge-tts、读的是 b.mp3;做对翻面、做错第二遍、看答案、
+  下一组;无横向溢出,320×568 主按钮在屏内,控制台 0 报错。测试 test_phonetic_practice::test_keyboard_every_key_has_its_own_sound_file
+  (删一个 mp3 会失败,回归锁验证过)。公告学生 / 老师各一条。⚠️ **真孩子听着像不像没验过**,用户听了哪个不好要重切
 - ✅ 直营音标视频给哪些机构看 + 只有直营能上传(2026-11-02,用户「子机构音标视频不是共享的吗」→「这个开关设置在管理端」→
   最后定:「不应该是选择那些机构可以看那些不可以看吗 默认是打开 然后非直营机构教师端不能上传视频」;中间按节勾 / 一个总开关两版
   各上线约半小时、没人用过,已删,phonetic_videos.shared_all 列留在库里不再用):

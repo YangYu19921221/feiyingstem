@@ -4,7 +4,9 @@
  * 为什么要软键盘:æ ɪ ʊ ə ŋ ʒ ɑː 这些符号系统键盘上打不出来。
  *
  * 孩子「不会打」卡在三处(10-28 按生产作答查的),各有对策:
- * ① 不认识 æ —— 每个键下面印一个他认识的词(c**a**t),点键还会读出这个词,听着对就是它
+ * ① 不认识 æ —— 点键就读出这个音本身(/æ/),听着对就是它。
+ *    10-28 起键下面印过例词(c**a**t)、点键读例词;11-03 用户要求去掉,直接发音标的音
+ *    (例词把注意力带到拼写上,而这里练的是「听到音 → 找符号」)。声音见 PHONEME_AUDIO
  * ② 不知道从哪下手 —— 第一次打开自动放一遍「怎么打」演示(IpaHowTo),工具条上随时再看
  * ③ 重音符 ˈ 当成一个音去填 —— 177 道题第 0 格是重音,孩子把第一个音填进去整排错位。
  *    重音判分本来就不算,所以题目里直接印好(后端 stress_at),键盘上不再放这个键
@@ -13,10 +15,10 @@
  * (爆破音 → 摩擦音 → … → 单元音 → 双元音),分组名在每个键的提示里。
  * 49 个键 = 辅音 28(4 行)+ 元音 21(3 行),每行 7 个正好排满。
  */
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { CircleHelp, Delete, Volume2, VolumeX } from 'lucide-react';
-import { PHONEME_GROUPS, PHONEME_EXAMPLES, STRESS_MARK, isVowel } from '../../utils/ipaPhonemes';
-import { useAudio } from '../../hooks/useAudio';
+import { PHONEME_GROUPS, STRESS_MARK, isVowel, phonemeAudioUrl } from '../../utils/ipaPhonemes';
+import { useAudio, preloadStaticAudio } from '../../hooks/useAudio';
 import IpaKey from './IpaKey';
 import IpaHowTo from './IpaHowTo';
 
@@ -53,14 +55,20 @@ interface Props {
    * 要调用方给而不是按视口判断: 整页版电脑上键盘在 26rem 的侧栏里,视口宽不代表键盘宽
    */
   gridClassName?: string;
+  /** 键矮一档(手机 36px): 卡片版一屏放 6 张卡,键盘要让出高度 */
+  dense?: boolean;
 }
 
 export default function IpaKeyboard({
   onKey, onBackspace, onClear, full = false, disabled = false, highlight = [],
-  clearLabel = '清空本行', action, gridClassName = 'grid-cols-7',
+  clearLabel = '清空本行', action, gridClassName = 'grid-cols-7', dense = false,
 }: Props) {
   const hi = new Set(highlight);
-  const { playAudio } = useAudio();
+  const { playStatic } = useAudio();
+  // 48 个音一共不到 200KB: 键盘一出来就全部拉下来,点键不用等网络
+  useEffect(() => {
+    preloadStaticAudio(KEYS.map(x => phonemeAudioUrl(x.k)).filter((u): u is string => !!u));
+  }, []);
   const [sound, setSound] = useState(() => localStorage.getItem(perUser('ipa_key_sound')) !== '0');
   // 第一次用键盘自动放一遍演示;看过(点了关闭)就不再自动弹
   const [howTo, setHowTo] = useState(() => !localStorage.getItem(perUser('ipa_howto_seen')));
@@ -79,9 +87,9 @@ export default function IpaKeyboard({
 
   const press = (k: string) => {
     onKey(k);
-    // 读键下面那个词: 孩子不认识 æ,但听到 cat 就知道是不是自己要的音
-    const ex = PHONEME_EXAMPLES[k];
-    if (sound && ex) playAudio(ex.join('')).catch(() => {});
+    // 读这个音本身: 孩子不认识 æ,听到 /æ/ 就知道是不是自己要的那个
+    const url = phonemeAudioUrl(k);
+    if (sound && url) playStatic(url).catch(() => {});
   };
 
   const keys = (list: typeof KEYS) => (
@@ -92,6 +100,7 @@ export default function IpaKeyboard({
           k={k}
           highlight={hi.has(k)}
           disabled={disabled || full}
+          compact={dense}
           title={`${group} ${k}${hi.has(k) ? ' · 这节课学的音' : ''}`}
           onClick={() => press(k)}
         />
@@ -100,8 +109,8 @@ export default function IpaKeyboard({
   );
 
   return (
-    <div className="rounded-2xl bg-white p-2.5 ring-1 ring-slate-200">
-      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+    <div className={`rounded-2xl bg-white ring-1 ring-slate-200 ${dense ? 'p-2' : 'p-2.5'}`}>
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 ${dense ? 'mb-1.5' : 'mb-2'}`}>
         {/* 图例: 颜色是这块键盘唯一的分区方式,要写出来 */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-slate-700">
           <span className="flex items-center gap-1.5">
@@ -120,32 +129,32 @@ export default function IpaKeyboard({
           type="button"
           onClick={toggleSound}
           aria-pressed={sound}
-          aria-label="点键时读出键下面的词"
-          title={sound ? '点键时会读出键下面的词,点这里关掉' : '点键时不出声,点这里打开'}
-          className="flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-[13px] font-semibold
-                     text-slate-700 ring-1 ring-slate-300 transition hover:bg-slate-50"
+          aria-label="点键时读出这个音"
+          title={sound ? '点键时会读出这个音,点这里关掉' : '点键时不出声,点这里打开'}
+          className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 text-[13px] font-semibold
+                     text-slate-700 ring-1 ring-slate-300 transition hover:bg-slate-50 ${dense ? 'h-8' : 'h-9'}`}
         >
           {sound
             ? <Volume2 className="h-4 w-4 text-sky-700" aria-hidden />
             : <VolumeX className="h-4 w-4 text-slate-500" aria-hidden />}
           {/* 手机上只留图标,图例和「怎么打?」才挤得进一行 */}
-          <span className="hidden sm:inline">{sound ? '读词' : '静音'}</span>
+          <span className="hidden sm:inline">{sound ? '发音' : '静音'}</span>
         </button>
         <button
           type="button"
           onClick={() => setHowTo(true)}
-          className="flex h-9 shrink-0 items-center gap-1 rounded-full bg-orange-50 px-3 text-sm font-bold
-                     text-accent-warm ring-1 ring-orange-300 transition hover:bg-orange-100"
+          className={`flex shrink-0 items-center gap-1 rounded-full bg-orange-50 px-3 text-sm font-bold
+                     text-accent-warm ring-1 ring-orange-300 transition hover:bg-orange-100 ${dense ? 'h-8' : 'h-9'}`}
         >
           <CircleHelp className="h-4 w-4" aria-hidden /> 怎么打?
         </button>
       </div>
 
       {keys(CONSONANTS)}
-      <div className="h-2" aria-hidden />
+      <div className={dense ? 'h-1.5' : 'h-2'} aria-hidden />
       {keys(VOWELS)}
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+      <div className={`flex flex-wrap items-center gap-2 ${dense ? 'mt-2' : 'mt-2.5'}`}>
         <button
           type="button"
           onClick={onBackspace}
@@ -155,16 +164,21 @@ export default function IpaKeyboard({
         >
           <Delete className="h-4 w-4" aria-hidden /> 退格
         </button>
-        <button
-          type="button"
-          onClick={onClear}
-          disabled={disabled}
-          className="h-10 rounded-lg bg-white px-3.5 text-sm text-slate-700 ring-1 ring-slate-300
-                     transition active:scale-95 hover:bg-slate-50 disabled:opacity-40"
-        >
-          {clearLabel}
-        </button>
-        {action && <div className="ml-auto">{action}</div>}
+        {/* 卡片版一个词最多 8 格,退格就够了;省下这个键的位置给交卷键 */}
+        {!dense && (
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={disabled}
+            className="h-10 rounded-lg bg-white px-3.5 text-sm text-slate-700 ring-1 ring-slate-300
+                       transition active:scale-95 hover:bg-slate-50 disabled:opacity-40"
+          >
+            {clearLabel}
+          </button>
+        )}
+        {action && (
+          <div className={dense ? 'flex min-w-0 flex-1 justify-end gap-2' : 'ml-auto'}>{action}</div>
+        )}
       </div>
 
       {howTo && <IpaHowTo onClose={closeHowTo} />}

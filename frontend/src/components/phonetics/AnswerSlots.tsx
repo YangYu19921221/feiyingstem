@@ -19,15 +19,20 @@ interface Props {
   compact?: boolean;
   /**
    * 显式指定尺寸(卡片模式用)。不传则按 compact 回落到原来两档,老调用点零改动。
-   * 卡片上要按音素个数选档 —— 8 个音素用 lg 会在手机上撑出横向滚动
+   * 卡片上要按音素个数选档 —— 8 个音素用 lg 会在手机上撑出横向滚动。
+   * xs / xxs: 一屏 6 张卡(手机两列)用,一张卡只有约 160px 宽,不印方括号;电脑上三列放大一档
    */
-  size?: 'compact' | 'md' | 'lg';
+  size?: Size;
 }
 
-const BOX: Record<'compact' | 'md' | 'lg', { box: string; wrap: string }> = {
-  compact: { box: 'h-9 min-w-[2.1rem] text-lg', wrap: 'text-lg' },
-  md: { box: 'h-12 min-w-[2.5rem] text-2xl', wrap: 'text-2xl' },
-  lg: { box: 'h-14 min-w-[3rem] text-3xl', wrap: 'text-3xl' },
+type Size = 'xxs' | 'xs' | 'compact' | 'md' | 'lg';
+
+const BOX: Record<Size, { box: string; wrap: string; gap: string; bracket: boolean }> = {
+  xxs: { box: 'h-8 min-w-[1.15rem] px-0 text-sm md:h-10 md:min-w-[1.7rem] md:text-lg', wrap: 'text-sm md:text-lg', gap: 'gap-0.5', bracket: false },
+  xs: { box: 'h-8 min-w-[1.45rem] px-0.5 text-base md:h-10 md:min-w-[2rem] md:text-xl', wrap: 'text-base md:text-xl', gap: 'gap-0.5 md:gap-1', bracket: false },
+  compact: { box: 'h-9 min-w-[2.1rem] px-1 text-lg', wrap: 'text-lg', gap: 'gap-1', bracket: true },
+  md: { box: 'h-12 min-w-[2.5rem] px-1 text-2xl', wrap: 'text-2xl', gap: 'gap-1', bracket: true },
+  lg: { box: 'h-14 min-w-[3rem] px-1 text-3xl', wrap: 'text-3xl', gap: 'gap-1', bracket: true },
 };
 
 import { isVowel, STRESS_MARK } from '../../utils/ipaPhonemes';
@@ -36,11 +41,11 @@ export default function AnswerSlots({
   slots, editable, cursor, correct, onSlotClick, compact = false, size,
 }: Props) {
   const canEdit = new Set(editable);
-  const { box, wrap } = BOX[size ?? (compact ? 'compact' : 'lg')];
+  const { box, wrap, gap, bracket } = BOX[size ?? (compact ? 'compact' : 'lg')];
 
   return (
-    <div className={`flex items-center gap-1 font-mono ${wrap}`}>
-      <span className="text-slate-300">[</span>
+    <div className={`flex items-center font-mono ${gap} ${wrap}`}>
+      {bracket && <span className="text-slate-300">[</span>}
       {slots.map((v, i) => {
         const editing = canEdit.has(i);
         const judged = correct?.[i];
@@ -90,7 +95,7 @@ export default function AnswerSlots({
             disabled={!editing || judged != null}
             aria-label={`第 ${i + 1} 格${v ? `:${v}` : ':空'}`}
             className={[
-              'flex items-center justify-center rounded-lg border-2 px-1',
+              'flex shrink-0 items-center justify-center rounded-lg border-2',
               'transition disabled:cursor-default',
               box, tone,
               isCursor ? 'animate-pulse' : '',
@@ -100,7 +105,7 @@ export default function AnswerSlots({
           </button>
         );
       })}
-      <span className="text-slate-300">]</span>
+      {bracket && <span className="text-slate-300">]</span>}
     </div>
   );
 }

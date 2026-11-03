@@ -23,29 +23,32 @@ export const PHONEME_GROUPS: { label: string; keys: string[] }[] = [
 ];
 
 /**
- * 键盘上每个音标的例词: [前半, 发这个音的字母, 后半] —— 键上印成 c**a**t。
- * 孩子不认识 æ,但认识 cat:看键上的小词就知道这是哪个音,点键时也读这个词。
- * 都是小学课本里的词,音标逐个用词库核对过(该音素确实在这个词里),
- * 最长 5 个字母: 320 宽的手机上一个键只有 35px 宽,再长就截断了。
- * 改了要保证每个键都有,测试会核对(重音符不是音,不进键盘也不要例词)
+ * 每个音标单独的发音: public/phonemes/{文件名}.mp3(点键时读的就是它,不再读例词)。
+ *
+ * 发音引擎(Edge TTS)只会读单词,不认 IPA 标签(11-03 实测 `<phoneme>` 发过去没有声音),
+ * 所以 48 个音是从**同一个女声**(en-GB-SoniaNeural)读的单词里切出来的,
+ * 守住「全站只有一个声音」。生成脚本 backend/scripts/gen_phoneme_audio.py:
+ *   元音取 s/h 后面那段(see→/iː/、hat→/æ/),能拖长的辅音取词尾(bus→/s/、hum→/m/),
+ *   爆破音和 r l w j 单独切只有「嗒」一下,带一小段 /ʌ/ 再淡出(/bʌ/,老师也这么教)。
+ * 文件名用 ASCII: 音标符号进 URL 要转义,nginx / CDN 缓存键也容易出岔子。
+ * 改了这张表要重跑脚本;测试核对每个键都有文件
  */
-export const PHONEME_EXAMPLES: Record<string, [string, string, string]> = {
-  p: ['', 'p', 'ig'], b: ['', 'b', 'ag'], t: ['', 't', 'en'], d: ['', 'd', 'og'],
-  k: ['', 'k', 'ite'], 'ɡ': ['', 'g', 'irl'],
-  f: ['', 'f', 'ish'], v: ['', 'v', 'an'], s: ['', 's', 'un'], z: ['', 'z', 'oo'],
-  'θ': ['', 'th', 'ank'], 'ð': ['', 'th', 'is'], 'ʃ': ['', 'sh', 'ip'], 'ʒ': ['u', 's', 'ual'],
-  ts: ['ca', 'ts', ''], dz: ['be', 'ds', ''], tr: ['', 'tr', 'ee'], dr: ['', 'dr', 'aw'],
-  'tʃ': ['', 'ch', 'ip'], 'dʒ': ['', 'j', 'ump'],
-  m: ['', 'm', 'ap'], n: ['', 'n', 'ose'], 'ŋ': ['si', 'ng', ''],
-  h: ['', 'h', 'at'], r: ['', 'r', 'ed'], l: ['', 'l', 'eg'],
-  'iː': ['s', 'ee', ''], 'ɪ': ['s', 'i', 't'], i: ['cit', 'y', ''], e: ['', 'e', 'gg'],
-  'æ': ['c', 'a', 't'], 'ɑː': ['c', 'ar', ''], 'ʌ': ['c', 'u', 'p'], 'ɒ': ['h', 'o', 't'],
-  'ɔː': ['b', 'a', 'll'], 'ʊ': ['b', 'oo', 'k'], 'uː': ['m', 'oo', 'n'], 'ɜː': ['b', 'ir', 'd'],
-  'ə': ['', 'a', 'bout'],
-  'eɪ': ['c', 'a', 'ke'], 'aɪ': ['f', 'i', 've'], 'ɔɪ': ['b', 'oy', ''], 'əʊ': ['h', 'o', 'me'],
-  'aʊ': ['c', 'ow', ''], 'ɪə': ['', 'ear', ''], 'eə': ['h', 'air', ''], 'ʊə': ['t', 'our', ''],
-  w: ['', 'w', 'e'], j: ['', 'y', 'es'],
+export const PHONEME_AUDIO: Record<string, string> = {
+  p: 'p', b: 'b', t: 't', d: 'd', k: 'k', 'ɡ': 'g',
+  f: 'f', v: 'v', s: 's', z: 'z', 'θ': 'th', 'ð': 'dh', 'ʃ': 'sh', 'ʒ': 'zh',
+  ts: 'ts', dz: 'dz', tr: 'tr', dr: 'dr', 'tʃ': 'ch', 'dʒ': 'dj',
+  m: 'm', n: 'n', 'ŋ': 'ng', h: 'h', r: 'r', l: 'l',
+  'iː': 'ee', 'ɪ': 'ih', i: 'i', e: 'e', 'æ': 'ae', 'ɑː': 'ar', 'ʌ': 'uh', 'ɒ': 'o',
+  'ɔː': 'or', 'ʊ': 'u', 'uː': 'oo', 'ɜː': 'er', 'ə': 'schwa',
+  'eɪ': 'ei', 'aɪ': 'ai', 'ɔɪ': 'oi', 'əʊ': 'ou', 'aʊ': 'au', 'ɪə': 'ia', 'eə': 'ea', 'ʊə': 'ua',
+  w: 'w', j: 'y',
 };
+
+/** 换了切法就加 1,让浏览器不用旧文件 */
+const PHONEME_AUDIO_VERSION = 1;
+
+export const phonemeAudioUrl = (k: string): string | null =>
+  PHONEME_AUDIO[k] ? `/phonemes/${PHONEME_AUDIO[k]}.mp3?v=${PHONEME_AUDIO_VERSION}` : null;
 
 /** 重音符不是一个音: 题目里它已经印好(后端下发 stress_at),键盘上不放这个键 */
 export const STRESS_MARK = 'ˈ';

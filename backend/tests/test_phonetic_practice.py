@@ -387,35 +387,30 @@ async def test_lesson_marks_stress_slot_without_leaking_answer(
         assert leaked not in r.text, f"响应里泄露了 {leaked}"
 
 
-def test_keyboard_examples_cover_every_key_and_hold_the_sound():
-    """音标键盘每个键下面印一个例词(c**a**t),点键还会读它。
-    例词必须①每个键都有 ②真的含这个音(按本机词库的音标核对)③不超过 5 个字母(320 宽手机一个键 35px)。
-    例词表在前端 utils/ipaPhonemes.ts,这里正则解析源文件,不维护 Python 副本"""
+def test_keyboard_every_key_has_its_own_sound_file():
+    """音标键盘点一个键读这个音本身(/b/,不是 bag;11-03 用户要求)。
+    声音表在前端 utils/ipaPhonemes.ts 的 PHONEME_AUDIO,这里正则解析源文件,不维护 Python 副本:
+    ①每个键都有 ②文件名不重复(两个键读同一个音就是错的)③文件真的在 public/phonemes 下、是能放的 mp3"""
     import re
-    import sqlite3
+    import subprocess
     from pathlib import Path
-    from app.services.phonetic_tokenize import GROUPS, tokenize
+    from app.services.phonetic_tokenize import GROUPS
 
-    src = (Path(__file__).resolve().parents[2] / "frontend/src/utils/ipaPhonemes.ts").read_text(encoding="utf-8")
-    block = src.split("PHONEME_EXAMPLES", 1)[1].split("};", 1)[0]
-    ex = {k: (a, b, c) for k, a, b, c in re.findall(
-        r"'?([^\s',:{]+)'?\s*:\s*\['([^']*)',\s*'([^']*)',\s*'([^']*)'\]", block)}
+    root = Path(__file__).resolve().parents[2] / "frontend"
+    src = (root / "src/utils/ipaPhonemes.ts").read_text(encoding="utf-8")
+    block = src.split("export const PHONEME_AUDIO", 1)[1].split("};", 1)[0]
+    table = dict(re.findall(r"'?([^\s',:{]+)'?\s*:\s*'([a-z]+)'", block))
     keys = [k for _, ks in GROUPS for k in ks if k != "ˈ"]
-    assert sorted(ex) == sorted(keys), "例词表和键盘上的键对不上"
-
-    db = Path(__file__).resolve().parents[1] / "english_helper.db"
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True) if db.exists() else None
-    for k, parts in ex.items():
-        word = "".join(parts)
-        assert parts[1] and len(word) <= 5, f"{k} 的例词 {word} 太长或没标发音字母"
-        if con is None:
-            continue
-        rows = con.execute("select phonetic from words where lower(word)=? and phonetic!='' limit 3",
-                           (word,)).fetchall()
-        if not rows:
-            continue   # CI 上的空库没有这个词,只查长度
-        toks = [tokenize(p)[0] if isinstance(tokenize(p), tuple) else tokenize(p) for (p,) in rows]
-        assert any(k in t for t in toks), f"{word} 里没有 /{k}/ 这个音: {rows}"
+    assert sorted(table) == sorted(keys), "声音表和键盘上的键对不上"
+    assert len(set(table.values())) == len(table), "有两个键用了同一个声音文件"
+    for k, name in table.items():
+        f = root / "public/phonemes" / f"{name}.mp3"
+        assert f.exists(), f"/{k}/ 的声音文件 {f.name} 不在"
+        assert f.read_bytes()[:3] in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"), f"{f.name} 不是 mp3"
+        dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(f)],
+                             capture_output=True, text=True).stdout.strip()
+        if dur:   # 没装 ffprobe 的机器只查文件在不在
+            assert 0.1 <= float(dur) <= 1.0, f"{f.name} 时长 {dur} 秒不对(太短是没切出来,太长是带进了别的音)"
 
 
 async def test_judge_result_is_stored_for_recalibration(

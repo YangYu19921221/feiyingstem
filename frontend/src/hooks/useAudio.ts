@@ -186,6 +186,31 @@ export function preloadAudio(words: Array<string | { word: string; id?: number }
   });
 }
 
+// ---- 静态音频文件(音标键盘上 48 个音,public/phonemes/*.mp3)----
+// 同一个 Sonia 声音切出来的,不走 TTS 接口;一样先拉成 blob 缓存,点键时不用等网络
+const staticCache = new Map<string, Promise<string>>();
+
+function fetchStaticBlob(url: string): Promise<string> {
+  let p = staticCache.get(url);
+  if (!p) {
+    p = fetch(url).then(async res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      if (!blob.size) throw new Error('empty audio blob');
+      return URL.createObjectURL(blob);
+    });
+    // 失败的不留在缓存里,下次再点还能重新拉
+    p.catch(() => staticCache.delete(url));
+    staticCache.set(url, p);
+  }
+  return p;
+}
+
+/** 预加载静态音频(音标键盘打开时把 48 个音一起拉下来,一共不到 200KB) */
+export function preloadStaticAudio(urls: string[]) {
+  urls.forEach(u => { fetchStaticBlob(u).catch(() => {}); });
+}
+
 export function useAudio() {
   const audioRef = useRef<HTMLAudioElement>(new Audio());
 
@@ -307,10 +332,43 @@ export function useAudio() {
     }
   }, []);
 
+  /**
+   * 放一个静态音频文件(音标键盘上的单个音)。和 playAudio 同一套打断 / 自动播放被拦的处理,
+   * 所以点键的音和单词发音不会叠在一起
+   */
+  const playStatic = useCallback(async (url: string): Promise<boolean> => {
+    const audio = audioRef.current;
+    const token = interruptAllAudio();
+    if (audio) activeAudioEl = audio;
+    try {
+      const blobUrl = await fetchStaticBlob(url);
+      if (!audio || globalPlayToken !== token) return false;
+      audio.pause();
+      audio.src = blobUrl;
+      audio.playbackRate = 1;
+      audio.currentTime = 0;
+      await audio.play();
+      return true;
+    } catch (e) {
+      if (globalPlayToken !== token) return false;
+      if ((e as Error)?.name === 'NotAllowedError') {
+        handleAutoplayBlocked(() => {
+          if (globalPlayToken === token && audio) {
+            audio.currentTime = 0;
+            audio.play().catch(() => {});
+          }
+        });
+      } else {
+        console.warn('音标发音播放失败,本次保持静默:', e);
+      }
+      return false;
+    }
+  }, []);
+
   const stopAudio = useCallback(() => {
     // 全局停止：同时掐断 <audio> 与浏览器 TTS，并令所有进行中的循环过期
     interruptAllAudio();
   }, []);
 
-  return { playAudio, playAudioLoop, stopAudio };
+  return { playAudio, playAudioLoop, playStatic, stopAudio };
 }

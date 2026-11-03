@@ -22,9 +22,9 @@ const DEMO_VOWELS = ['æ', 'e', 'ɪ'];
 
 const STEPS: { press?: string; text: string }[] = [
   { text: '先看单词 bed(床),心里读一读。三个格子 = 三个音,一格放一个音' },
-  { press: 'b', text: '第一个音是 /b/:点键下面写着 bag 的那个键。点了会读出 bag,听着像就对了' },
-  { press: 'e', text: '中间是元音,元音都是橙色键:点 egg 的 e' },
-  { press: 'd', text: '最后一个音 /d/:点 dog 的 d。格子会自己跳到下一格' },
+  { press: 'b', text: '第一个音是 /b/:点 b 这个键。点了会读出 /b/ 这个音,听着像就对了' },
+  { press: 'e', text: '中间是元音,元音都是橙色键:点 e' },
+  { press: 'd', text: '最后一个音 /d/:点 d。格子会自己跳到下一格' },
   { text: '填满了,点下面的「看看对不对」(整页版叫「交卷」)。点错了按「退格」' },
 ];
 const STEP_MS = [2600, 2800, 2600, 2600, 3600];

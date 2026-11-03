@@ -28,6 +28,23 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'ipa-key-sound-6cards-2026-11',
+    date: '2026-11-03',
+    title: '🔊 音标键点一下就读这个音,卡片一页 6 个词',
+    desc: '音标键盘上点 b 就读 /b/,点 æ 就读 /æ/,不再读 bag、cat 这些单词,键上也不印单词了,听着对就是它。「卡片写音标」一页放 6 个词:点哪张就往哪张里填,填好一张点「看看对不对」只判这一张,判完翻过来看答案,自动跳到下一张;6 张都做完点「下一组」。',
+    where: '首页「音标」→ 教材目录 → 任意一节「卡片写音标」',
+    roles: ['student'],
+    route: '/student/phonetics/textbook',
+  },
+  {
+    id: 'ipa-key-sound-6cards-teacher-2026-11',
+    date: '2026-11-03',
+    title: '🔊 学生写音标: 点键读音标本身,卡片一页 6 个词',
+    desc: '学生的音标键盘点 b 读 /b/(以前读 bag),键上不再印例词。「卡片写音标」一页 6 个词、填一张判一张,一节 20 个词翻 4 组就完。判分规则、两遍机制都没变。',
+    where: '学生端首页「音标」→ 教材目录 → 每节「卡片写音标」',
+    roles: ['teacher', 'org_admin', 'admin'],
+  },
+  {
     id: 'phonetic-share-all-orgs-admin-2026-11',
     date: '2026-11-02',
     title: '🎬 直营的音标视频分校也能看了,可以按机构开关',
