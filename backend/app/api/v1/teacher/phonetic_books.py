@@ -573,3 +573,8 @@ async def delete_book(
     await db.delete(b)
     await db.commit()
     return {"deleted": True, "lesson_count": len(ls_ids)}
+
+
+# 音标听力(2026-11-03)老师端挂在这里: /api/v1/teacher/phonetic-books/listening/*。main.py 不动
+from app.api.v1 import phonetic_listening as _listening  # noqa: E402
+router.include_router(_listening.teacher_router, prefix="/listening")

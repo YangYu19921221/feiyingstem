@@ -57,6 +57,8 @@ const TeacherPhoneticBooks = lazyWithRetry(() => import('./pages/TeacherPhonetic
 const PhoneticsHub = lazyWithRetry(() => import('./pages/PhoneticsHub'));
 const ClassroomNet = lazyWithRetry(() => import('./pages/ClassroomNet'));
 const PhoneticFillBlank = lazyWithRetry(() => import('./pages/PhoneticFillBlank'));
+const PhoneticListening = lazyWithRetry(() => import('./pages/PhoneticListening'));
+const TeacherPhoneticListening = lazyWithRetry(() => import('./pages/TeacherPhoneticListening'));
 const PhoneticFlashCards = lazyWithRetry(() => import('./pages/PhoneticFlashCards'));
 const PhoneticLessons = lazyWithRetry(() => import('./pages/PhoneticLessons'));
 const PhoneticReading = lazyWithRetry(() => import('./pages/PhoneticReading'));
@@ -584,6 +586,16 @@ function App() {
           }
         />
 
+        {/* 学生端 - 音标听力(听一个词,写单词和音标) */}
+        <Route
+          path="/student/phonetics/listening/:setId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <PhoneticListening />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 学生端 - 看单词写音标(整页版,纸书那一页)。与音标视频同属音标模块 */}
         <Route
           path="/student/phonetics/textbook/:lessonId/fill"
@@ -610,6 +622,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
               <TeacherPhoneticBooks />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 音标听力(建题、录音、看学情) */}
+        <Route
+          path="/teacher/phonetic-listening"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'org_admin', 'admin']}>
+              <TeacherPhoneticListening />
             </ProtectedRoute>
           }
         />

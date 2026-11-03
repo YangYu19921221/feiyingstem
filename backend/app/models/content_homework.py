@@ -28,7 +28,9 @@ KIND_PHONETIC_VIDEO = "phonetic_video"
 KIND_DAILY_REVIEW = "daily_review"
 # 例句跟读(2026-10-24): target_id = 单词单元 units.id,作业开放后在这个单元读满一轮就算完成,见 services/read_aloud.py
 KIND_READ_ALOUD = "read_aloud"
-KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO, KIND_DAILY_REVIEW, KIND_READ_ALOUD)
+# 音标听力(2026-11-03): target_id = phonetic_listening_sets.id
+KIND_PHONETIC_LISTENING = "phonetic_listening"
+KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO, KIND_DAILY_REVIEW, KIND_READ_ALOUD, KIND_PHONETIC_LISTENING)
 
 
 class ContentHomework(Base):

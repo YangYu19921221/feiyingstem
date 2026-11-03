@@ -18,6 +18,8 @@
   只认那一天 —— 「今天的 20 个」隔天就换了一批,补做不了,所以这类作业恒为当天截止
 - 例句跟读: 作业开放后在这个单词单元读满一轮(services/read_aloud.completion_times),
   完成时刻取读满那一句的时刻。只判读没读、不判读得对不对(第一版识别没验证过)
+- 音标听力: 作业开放后这一套每题都结束过(做对 / 判完第二遍 / 看答案),
+  services/phonetic_listening.completion_times。只看做没做完,对几个老师在学情里看
 """
 from __future__ import annotations
 
@@ -28,16 +30,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_homework import (
-    KIND_DAILY_REVIEW, KIND_PHONETIC_VIDEO, KIND_READ_ALOUD, KIND_SENTENCE, ContentHomework, ContentHomeworkStudent,
+    KIND_DAILY_REVIEW, KIND_PHONETIC_LISTENING, KIND_PHONETIC_VIDEO, KIND_READ_ALOUD, KIND_SENTENCE,
+    ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo, PhoneticVideoView
 from app.models.sentence import SentenceBook, SentenceUnit
 from app.models.sentence_learning import SentenceUnitProgress
 from app.models.word import Unit, WordBook
-from app.services import daily_review, read_aloud
+from app.services import daily_review, phonetic_listening, read_aloud
 
 KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频", KIND_DAILY_REVIEW: "每日复习",
-              KIND_READ_ALOUD: "例句跟读"}
+              KIND_READ_ALOUD: "例句跟读", KIND_PHONETIC_LISTENING: "音标听力"}
 DAILY_REVIEW_NAME = f"今天的 {daily_review.DAILY_SIZE} 个复习词"
 
 Link = tuple[ContentHomeworkStudent, ContentHomework]
@@ -68,6 +71,16 @@ async def target_names(db: AsyncSession, rows: Iterable[ContentHomework]) -> dic
     sids = {h.target_id for h in rows if h.kind == KIND_SENTENCE}
     vids = {h.target_id for h in rows if h.kind == KIND_PHONETIC_VIDEO}
     uids = {h.target_id for h in rows if h.kind == KIND_READ_ALOUD}
+    lids = {h.target_id for h in rows if h.kind == KIND_PHONETIC_LISTENING}
+    if lids:
+        from app.models.phonetic_listening import ListeningSet
+        from app.models.phonetic_practice import PhoneticBook
+        for ls, b in (await db.execute(
+            select(ListeningSet, PhoneticBook).join(PhoneticBook, PhoneticBook.id == ListeningSet.book_id)
+            .where(ListeningSet.id.in_(lids), ListeningSet.is_active.is_(True))
+            .execution_options(skip_tenant_filter=True)
+        )).all():
+            out[(KIND_PHONETIC_LISTENING, ls.id)] = f"{b.name} · {ls.title}"
     if uids:
         for u, b in (await db.execute(
             select(Unit, WordBook).join(WordBook, WordBook.id == Unit.book_id)
@@ -108,6 +121,8 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
     vids = {h.target_id for _, h in pending if h.kind == KIND_PHONETIC_VIDEO}
     rdays = {open_day(h) for _, h in pending if h.kind == KIND_DAILY_REVIEW}
     ra_pairs = {(s.student_id, h.target_id, h.available_from) for s, h in pending if h.kind == KIND_READ_ALOUD}
+    pl_pairs = {(s.student_id, h.target_id, h.available_from) for s, h in pending
+                if h.kind == KIND_PHONETIC_LISTENING}
 
     sent_done: dict[tuple[int, int], datetime] = {}
     if sids:
@@ -127,6 +142,7 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
             ))).all()}
     review_done = await daily_review.completion_times(db, uids, rdays) if rdays else {}
     ra_done = await read_aloud.completion_times(db, ra_pairs) if ra_pairs else {}
+    pl_done = await phonetic_listening.completion_times(db, pl_pairs) if pl_pairs else {}
 
     now = datetime.utcnow()
     wrote = False
@@ -145,6 +161,8 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
             at = review_done.get((s.student_id, open_day(h)))
         elif h.kind == KIND_READ_ALOUD:
             at = ra_done.get((s.student_id, h.target_id, h.available_from))
+        elif h.kind == KIND_PHONETIC_LISTENING:
+            at = pl_done.get((s.student_id, h.target_id, h.available_from))
         if at is not None:
             s.completed_at = at
             wrote = True

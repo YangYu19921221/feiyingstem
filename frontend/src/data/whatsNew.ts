@@ -28,6 +28,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-listening-student-2026-11',
+    date: '2026-11-03',
+    title: '🎧 音标听力上线了',
+    desc: '和听力练习本一样: 点喇叭听一个词,看老师写的提示(比如「3—4 尾2」),写出单词,再用音标键盘写出音标。单词和音标都对才算对;错了先告诉你哪里错,再改一次。想听几遍都行。',
+    where: '首页「音标」→ 教材目录最上面「音标听力」;老师布置了的在「我的作业」里',
+    roles: ['student'],
+    route: '/student/phonetics/textbook',
+  },
+  {
+    id: 'phonetic-listening-teacher-2026-11',
+    date: '2026-11-03',
+    title: '🎧 音标听力: 照练习本建题,学生在 App 里听写',
+    desc: '一套 = 练习本上一页(如「听-2」)。每题填单词、音标、提示(「3—4 尾2」「4—5 [k]照抄 尾2」照练习本写),能从 Excel 整段粘贴。读音默认系统读,某一题想用自己的声音可以现录一段替换。学生写单词和音标,两个都对才算对;每个学生每题对没对在「学生做得怎么样」里看。也能布置成作业。',
+    where: '教师工作台「内容准备 → 音标听力」/ 顶部「更多 → 音标听力」;布置: 作业管理 →「布置句子 / 音标 / 复习 / 跟读作业」→ 音标听力',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/phonetic-listening',
+  },
+  {
     id: 'ipa-key-sound-6cards-2026-11',
     date: '2026-11-03',
     title: '🔊 音标键点一下就读这个音,卡片一页 9 个词',

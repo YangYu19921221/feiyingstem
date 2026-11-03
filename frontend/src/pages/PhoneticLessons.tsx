@@ -4,16 +4,19 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, LoaderCircle, Video, Volume2, PenLine, Layers, History } from 'lucide-react';
+import { ArrowLeft, LoaderCircle, Video, Volume2, PenLine, Layers, History, Headphones } from 'lucide-react';
 import useGoBack from '../hooks/useGoBack';
 import { segmentIpa } from '../utils/ipaPhonemes';
 import { listPhoneticBooks, type PhoneticBook } from '../api/phoneticPractice';
+import { listListeningSets, type ListeningBookGroup } from '../api/phoneticListening';
 
 export default function PhoneticLessons() {
   const navigate = useNavigate();
   const goBack = useGoBack('/student/phonetics');
   const [books, setBooks] = useState<PhoneticBook[] | null>(null);
   const [error, setError] = useState('');
+  // 音标听力(老师建的): 拉不到不影响目录,当没有
+  const [listening, setListening] = useState<ListeningBookGroup[]>([]);
 
   /** 最后练过的那一节(跨教材取最近一次)。没练过就不显示这条 */
   const resume = useMemo(() => {
@@ -28,6 +31,7 @@ export default function PhoneticLessons() {
     listPhoneticBooks()
       .then(d => { if (alive) setBooks(d); })
       .catch(() => { if (alive) setError('目录加载失败,请检查网络后重试。'); });
+    listListeningSets().then(d => { if (alive) setListening(d); }).catch(() => {});
     return () => { alive = false; };
   }, []);
 
@@ -94,6 +98,37 @@ export default function PhoneticLessons() {
             <span className="shrink-0 text-slate-300">→</span>
           </button>
         )}
+        {/* 音标听力放在目录最上面: 一本书只有几套,不先放出来孩子要划过 48 节才看得到 */}
+        {listening.some(g => g.sets.length) && (
+          <section className="mb-6 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-sky-100">
+            <h2 className="mb-2 flex items-center gap-2 text-base font-medium text-slate-800">
+              <Headphones className="h-5 w-5 text-sky-500" /> 音标听力
+              <span className="text-xs font-normal text-slate-500">听一个词,写出单词和音标</span>
+            </h2>
+            {listening.map(g => (
+              <div key={g.id} className="mt-2">
+                {listening.length > 1 && <p className="mb-1 text-xs text-slate-500">{g.name}</p>}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {g.sets.map(st => (
+                    <button
+                      key={st.id}
+                      onClick={() => navigate(`/student/phonetics/listening/${st.id}`)}
+                      className="rounded-xl bg-sky-50 px-3 py-2.5 text-left transition active:scale-95 hover:bg-sky-100"
+                    >
+                      <span className="block font-medium text-sky-800">{st.title}</span>
+                      <span className="block text-[11px] text-slate-500">
+                        {st.done_count
+                          ? `做了 ${st.done_count}/${st.item_count} · 对 ${st.right_count}`
+                          : `${st.item_count} 题`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
         {books.map(b => (
           <section key={b.id} className="mb-8">
             <h2 className="mb-3 text-base font-medium text-slate-800">

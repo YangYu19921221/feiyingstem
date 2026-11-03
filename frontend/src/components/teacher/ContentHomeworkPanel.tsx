@@ -8,7 +8,7 @@
  * 完成不用学生交卷: 后端按真实学习数据判(句子: 开放后全部组过关;视频: 看完),这里只展示。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { BookText, Brain, Clapperboard, Mic, Plus, X } from 'lucide-react';
+import { BookText, Brain, Clapperboard, Headphones, Mic, Plus, X } from 'lucide-react';
 import {
   createContentHomework, deleteContentHomework, getContentHomeworkStudents, getContentTargets,
   listTeacherContentHomework, toggleContentHomework,
@@ -23,6 +23,7 @@ const KIND_META: Record<ContentKind, { label: string; icon: typeof BookText; hin
   phonetic_video: { label: '音标视频', icon: Clapperboard, hint: '学生把这节视频看完就算完成' },
   daily_review: { label: '每日复习', icon: Brain, hint: '每天 20 个该复习的词，做完当天那份就算完成' },
   read_aloud: { label: '例句跟读', icon: Mic, hint: '学生把这个单词单元的例句读满一轮（8 句）就算完成' },
+  phonetic_listening: { label: '音标听力', icon: Headphones, hint: '学生把这一套每题都做完（做对或看了答案）就算完成；对几题在「音标听力」页看' },
 };
 
 const STATUS_LABEL: Record<ContentHomeworkStudentStatus['status'], string> = {
@@ -282,7 +283,7 @@ function CreateDialog({ students, onClose, onCreated }: {
           ) : (
           <div>
             <label htmlFor="content-hw-group" className="mb-2 block text-sm font-semibold text-slate-700">
-              {kind === 'sentence' ? '句子集' : kind === 'read_aloud' ? '单词书' : '讲师'}
+              {kind === 'sentence' ? '句子集' : kind === 'read_aloud' ? '单词书' : kind === 'phonetic_listening' ? '音标教材' : '讲师'}
               <span className="ml-1 text-xs font-normal text-slate-500">(可多选，每个单元/每节各一份作业)</span>
             </label>
             <select id="content-hw-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}

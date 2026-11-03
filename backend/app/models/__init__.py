@@ -44,6 +44,9 @@ from app.models.audit import OperationLog  # 操作日志(追责)
 from app.models.referral import ReferralInvite, ReferralLead, OrgReferralSettings  # 家长推荐(老带新)
 from app.models.card_pack import OrgCardLedger, PackCardGrant  # 新政策卡包
 from app.models.read_aloud import ReadAloudRecording  # 例句跟读录音
+# 音标听力: 外键指向 phonetic_books,所以音标教材模型要先导入(create_all 只认已导入的表)
+from app.models.phonetic_practice import PhoneticBook, PhoneticLesson, PhoneticItem  # noqa: F401
+from app.models.phonetic_listening import ListeningSet, ListeningItem, ListeningAttempt  # 音标听力
 from app.models.tutor import (  # AI 学习助手对话 + 次数 + 机构次数池
     TutorAllowance, TutorConversation, TutorGrantLog, TutorMessage, TutorNote, TutorOrgPool, TutorPoolLedger,
     TutorPref, TutorQuiz, WordPicture, TutorHandoff, TeacherTutorUsage, HomeworkCheck,

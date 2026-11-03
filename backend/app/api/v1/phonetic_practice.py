@@ -438,3 +438,8 @@ async def check_page(
         await db.commit()
 
     return CheckPageOut(right_count=right, total=len(results), results=results)
+
+
+# 音标听力(2026-11-03)挂在这里: /api/v1/phonetic-practice/listening/*。main.py 不动(生产有 drift)
+from app.api.v1 import phonetic_listening as _listening  # noqa: E402
+router.include_router(_listening.student_router, prefix="/listening")
