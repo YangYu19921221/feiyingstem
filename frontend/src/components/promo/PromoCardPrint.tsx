@@ -7,14 +7,15 @@
  * 背面的二维码是这版卡的固定地址,扫码后显示什么由销售在「我的二维码」里换 —— 卡印出去不用重印。
  * 正面徽章里的价格 = 机构「设置」里的体验价,现画(10-24 起底图不再印死 ¥99);改了价格要重新下载印刷文件。
  * 正面名字电话下面的地址 = 机构「设置」里的地址(10-29 起),全机构的卡一样;搬了家改设置、重新下载就是新地址。
+ * 下载(11-04 起): 图片按 600dpi 重新画(预览只按 300dpi 画,快);PDF 正反面两页一个文件,二维码是矢量的,见 utils/promoPrint
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, Download, LoaderCircle, X } from 'lucide-react';
+import { Check, Copy, Download, FileText, LoaderCircle, X } from 'lucide-react';
 import { cardUrl, updateCardDesign, type CardDesign, type PromoChannel } from '../../api/promo';
 import { PROMO_TEMPLATES, TEMPLATE_GROUPS, templateOf, type TemplateGroup } from '../../data/promoTemplates';
 import PromoCardThumb from './PromoCardThumb';
 import { formatPrice } from '../../utils/promoPrice';
-import { downloadCanvas, drawCardBack, drawCardFront, trimmedDataUrl } from '../../utils/promoPrint';
+import { HI_RES, downloadCanvas, downloadCardPdf, drawCardBack, drawCardFront, trimmedDataUrl } from '../../utils/promoPrint';
 import { copyText } from '../../utils/copyText';
 import { toast } from '../Toast';
 
@@ -44,6 +45,8 @@ export default function PromoCardPrint({ channel, price, address, onClose, onSav
   const [front, setFront] = useState<HTMLCanvasElement | null>(null);
   const [back, setBack] = useState<HTMLCanvasElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // 正在下载哪一个(重新画 600dpi 要一两秒,按钮上转圈,别让人以为没点上)
+  const [busy, setBusy] = useState<'正面' | '背面' | 'pdf' | null>(null);
   const dirty = design.template_id !== saved.template_id || design.display_name !== saved.display_name
     || design.display_phone !== saved.display_phone;
 
@@ -86,14 +89,31 @@ export default function PromoCardPrint({ channel, price, address, onClose, onSav
   };
 
   const safe = `${design.display_name || channel.name}`.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 20);
-  const dl = async (c: HTMLCanvasElement | null, side: string) => {
-    if (!c) return;
+  const baseName = `体验卡_${safe}_${channel.code}_${templateOf(design.template_id).name}_${formatPrice(price)}元`;
+  const dl = async (side: '正面' | '背面') => {
+    if (busy) return;
     // 下载前先存卡面: 印出去的卡和系统里记的必须是同一套,否则以后补印会印错
     if (!(await save())) return;
+    setBusy(side);
     try {
-      await downloadCanvas(c, `体验卡_${safe}_${channel.code}_${templateOf(design.template_id).name}_${formatPrice(price)}元_${side}.png`);
-    } catch {
-      toast('下载失败,请换个浏览器再试', 'error');
+      const c = side === '正面' ? await drawCardFront(opts, HI_RES) : await drawCardBack(opts, HI_RES);
+      await downloadCanvas(c, `${baseName}_${side}.png`);
+    } catch (e) {
+      toast(`下载失败: ${String((e as Error)?.message || e)}。换个浏览器(电脑上的 Chrome / Edge)再试`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const dlPdf = async () => {
+    if (busy) return;
+    if (!(await save())) return;
+    setBusy('pdf');
+    try {
+      await downloadCardPdf(opts, `${baseName}_正反面.pdf`);
+    } catch (e) {
+      toast(`PDF 没生成出来: ${String((e as Error)?.message || e)}。可以先下载两张图片`, 'error');
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -125,20 +145,30 @@ export default function PromoCardPrint({ channel, price, address, onClose, onSav
                   </div>
                   <figcaption className="flex items-center justify-between text-sm text-slate-600">
                     <span>{label}</span>
-                    <button type="button" disabled={!c || saving} onClick={() => dl(c, label)}
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[#FF6B35] px-3 text-sm font-bold text-white disabled:opacity-40">
-                      <Download className="h-4 w-4" aria-hidden /> 下载{label}
+                    <button type="button" disabled={!c || saving || !!busy} onClick={() => dl(label as '正面' | '背面')}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#FF6B35]/40 bg-white px-3 text-sm font-bold text-[#c2451a] hover:bg-orange-50 disabled:opacity-40">
+                      {busy === label ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+                      {label}图片
                     </button>
                   </figcaption>
                 </figure>
               ))}
             </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <button type="button" disabled={!front || !back || saving || !!busy} onClick={dlPdf}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#FF6B35] px-4 text-sm font-bold text-white hover:bg-[#f05a24] disabled:opacity-40">
+                {busy === 'pdf' ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <FileText className="h-4 w-4" aria-hidden />}
+                {busy === 'pdf' ? '正在生成 PDF…' : '下载 PDF(正反面)'}
+              </button>
+              <span className="text-xs leading-5 text-slate-500">发给印刷厂用 PDF 最好;图片是 600dpi 的 PNG,一面一张</span>
+            </div>
           </div>
 
           <div className="order-last space-y-4 lg:order-none lg:col-start-1 lg:row-start-2">
             <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
-              <b>给印刷厂说:</b>成品 <b>90×60mm</b>(不是普通名片的 90×54),文件已含四边各 2mm 出血(94×64mm,300dpi),
+              <b>给印刷厂说:</b>成品 <b>90×60mm</b>(不是普通名片的 90×54),文件已含四边各 2mm 出血(94×64mm),
               双面彩印,按成品线裁切。同一版卡每张都一样,不用可变数据。
+              <br />优先发 <b>PDF</b>:正反面在一个文件里(第 1 页正面、第 2 页背面),二维码是矢量的;印刷厂要图片就发两张 PNG(600dpi)。
               <br />正面印的价格是 <b>¥{formatPrice(price)}</b>(「设置」里的体验价)
               {address ? <>、地址是 <b>{address}</b></> : '、没有印地址(在「设置」里填了才印)'}。
               改了价格或地址要重新下载、重新印 —— 已经印出去的卡改不了。
