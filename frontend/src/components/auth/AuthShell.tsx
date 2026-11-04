@@ -104,12 +104,12 @@ export default function AuthShell({ children, mode = 'login' }: Props) {
         <picture className="board-surface" aria-hidden="true">
           <source
             type="image/webp"
-            srcSet="/login/board-surface-960.webp 960w, /login/board-surface.webp 1672w"
+            srcSet="/board-art/board-surface-960.webp 960w, /board-art/board-surface.webp 1672w"
             sizes="(min-width: 1024px) 58vw, 100vw"
           />
           <img
-            src="/login/board-surface.jpg"
-            srcSet="/login/board-surface-960.jpg 960w, /login/board-surface.jpg 1672w"
+            src="/board-art/board-surface.jpg"
+            srcSet="/board-art/board-surface-960.jpg 960w, /board-art/board-surface.jpg 1672w"
             sizes="(min-width: 1024px) 58vw, 100vw"
             alt=""
             fetchPriority="high"
@@ -168,8 +168,8 @@ export default function AuthShell({ children, mode = 'login' }: Props) {
 
         <div className="board-ledge" aria-hidden="true">
           <picture>
-            <source type="image/webp" srcSet="/login/board-ledge.webp" />
-            <img src="/login/board-ledge.jpg" alt="" decoding="async" />
+            <source type="image/webp" srcSet="/board-art/board-ledge.webp" />
+            <img src="/board-art/board-ledge.jpg" alt="" decoding="async" />
           </picture>
         </div>
 
@@ -177,10 +177,10 @@ export default function AuthShell({ children, mode = 'login' }: Props) {
           <picture>
             <source
               type="image/webp"
-              srcSet="/login/eagle-480.webp 451w, /login/eagle-880.webp 827w"
+              srcSet="/board-art/eagle-480.webp 451w, /board-art/eagle-880.webp 827w"
               sizes="(min-width: 1024px) 24rem, 9rem"
             />
-            <img src="/login/eagle-480.png" alt="戴眼镜的折纸小鹰站在黑板前" decoding="async" />
+            <img src="/board-art/eagle-480.png" alt="戴眼镜的折纸小鹰站在黑板前" decoding="async" />
           </picture>
         </div>
       </section>

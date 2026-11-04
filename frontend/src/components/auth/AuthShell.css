@@ -3,6 +3,8 @@
  * 图层: 黑板面(cover,左上对齐留住窗外斜光)→ 斜光压暗层 → 粉笔字 → 粉笔槽(贴底,右对齐留住粉笔和板擦)→ 小鹰(站在槽上)。
  * 粉笔槽那张图上半截是黑板绿,顶上渐隐,和黑板面接得上。
  * 不用容器查询(iOS 12 要能看),尺寸都按视口和断点写;clamp() 前面都先写一个固定值兜底
+ * ⚠️ 图放在 public/board-art/。public 下的目录名不能和页面路由同名: 11-04 第一次放在 public/login/,
+ * nginx 把 /login 当目录 301 到 /login/ 再 403,线上登录页打不开了约 3 分钟
  */
 
 /* ---------- 黑板用的三种字(子集,只覆盖黑板上用得到的字) ---------- */
@@ -88,8 +90,8 @@
 .chalk {
   color: var(--chalk);
   text-shadow: 0 0 1px rgb(255 255 255 / 0.35), 0 0 18px rgb(8 28 18 / 0.55);
-  -webkit-mask-image: url('/login/chalk-grain.png');
-  mask-image: url('/login/chalk-grain.png');
+  -webkit-mask-image: url('/board-art/chalk-grain.png');
+  mask-image: url('/board-art/chalk-grain.png');
   -webkit-mask-size: 160px 160px;
   mask-size: 160px 160px;
 }
@@ -202,8 +204,8 @@
   width: 100%;
   height: 100%;
   overflow: visible;
-  -webkit-mask-image: url('/login/chalk-grain.png');
-  mask-image: url('/login/chalk-grain.png');
+  -webkit-mask-image: url('/board-art/chalk-grain.png');
+  mask-image: url('/board-art/chalk-grain.png');
   -webkit-mask-size: 160px 160px;
   mask-size: 160px 160px;
 }
