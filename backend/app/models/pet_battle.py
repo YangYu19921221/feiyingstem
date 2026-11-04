@@ -56,7 +56,7 @@ class PetBattle(Base):
     finished_at = Column(TIMESTAMP)
     expires_at = Column(TIMESTAMP)
 
-    # 普通真人对战结束后的精灵球收服结算（JSON 用于断线后复用同一结果）。
+    # 普通真人对战结束后的收服结算（JSON 用于断线后复用同一结果）。
     capture_attempted = Column(Boolean, default=False)
     capture_succeeded = Column(Boolean, default=False)
     captured_pet_id = Column(Integer, nullable=True)

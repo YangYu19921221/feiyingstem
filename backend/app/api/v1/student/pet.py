@@ -182,7 +182,7 @@ async def get_pet_collection(
         active_pet_id=active_pet.id if active_pet else None,
         learned_words=learned_words,
         unlocked_slots=unlocked_slots,
-        # 普通格只统计普通宝可梦,传说不占普通格
+        # 普通格只统计普通伙伴,传说不占普通格
         used_slots=len(pets) - legend_used,
         max_slots=MAX_PET_SLOTS,
         words_per_slot=WORDS_PER_PET_SLOT,
@@ -250,7 +250,7 @@ async def adopt_pet(
     )
     existing_pets = list(result.scalars().all())
     if any(pet.species == data.species for pet in existing_pets):
-        raise HTTPException(status_code=400, detail="这个宝可梦家族已经领养过了")
+        raise HTTPException(status_code=400, detail="这个伙伴家族已经领养过了")
 
     learned_words = await get_learned_word_count(db, current_user.id)
     recovery_goal = current_user.pet_recovery_goal_words
@@ -270,7 +270,7 @@ async def adopt_pet(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"{get_pet_label(data.species)}是{tier_label}宝可梦，"
+                    f"{get_pet_label(data.species)}是{tier_label}伙伴，"
                     f"需累计学习{required}个不同单词才会现身，还差{remaining}个"
                 ),
             )
@@ -278,7 +278,7 @@ async def adopt_pet(
         if legend_used >= legend_slots_for_words(learned_words):
             next_threshold = next_legend_slot_threshold(learned_words)
             if next_threshold is None:
-                detail = f"传说队伍已满，最多可以拥有{MAX_LEGEND_SLOTS}只传说宝可梦"
+                detail = f"传说队伍已满，最多可以拥有{MAX_LEGEND_SLOTS}只传说伙伴"
             else:
                 remaining = max(0, next_threshold - learned_words)
                 detail = f"下一个传说名额需累计学习{next_threshold}个不同单词，还差{remaining}个"
@@ -289,7 +289,7 @@ async def adopt_pet(
         if normal_used >= unlocked_slots:
             next_threshold = next_pet_slot_threshold(learned_words)
             if next_threshold is None:
-                detail = f"宠物队伍已满，最多可以拥有{MAX_PET_SLOTS}只普通宝可梦"
+                detail = f"宠物队伍已满，最多可以拥有{MAX_PET_SLOTS}只普通伙伴"
             else:
                 remaining = max(0, next_threshold - learned_words)
                 detail = f"下一个领养名额需累计学习{next_threshold}个不同单词，还差{remaining}个"

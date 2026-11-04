@@ -1,3 +1,5 @@
+import pytest
+
 from app.core.pet_species import (
     ALLOWED_PET_SPECIES,
     LEGENDARY_SPECIES,
@@ -51,17 +53,17 @@ def test_all_pet_families_have_complete_evolution_metadata():
 
 
 def test_legendary_tiers_and_word_requirements():
-    assert {"articuno", "zapdos", "moltres", "suicune"} <= LEGENDARY_SPECIES
-    assert {"mew", "mewtwo", "rayquaza", "arceus"} <= LEGENDARY_SPECIES
+    assert {"baize", "thunderkui", "vermilion", "kun"} <= LEGENDARY_SPECIES
+    assert {"jaderabbit", "ninecolordeer", "yinglong", "qilin"} <= LEGENDARY_SPECIES
     assert len(LEGENDARY_SPECIES) == 8
 
-    assert words_required_for("articuno") == SEMI_LEGEND_WORDS == 5000
-    assert words_required_for("mew") == LEGEND_WORDS == 8000
+    assert words_required_for("baize") == SEMI_LEGEND_WORDS == 5000
+    assert words_required_for("jaderabbit") == LEGEND_WORDS == 8000
     # 普通种族没有学词门槛，只受队伍格约束
-    assert words_required_for("pikachu") == 0
-    assert not is_legendary("pikachu")
+    assert words_required_for("sparkhog") == 0
+    assert not is_legendary("sparkhog")
 
-    # 传说不进 AI 对手池：随手一场练习赛就撞见超梦会让门槛失去意义
+    # 传说不进 AI 对手池：随手一场练习赛就撞见麒麟会让门槛失去意义
     assert not (LEGENDARY_SPECIES & set(AI_PET_SPECIES))
     assert len(AI_PET_SPECIES) == len(PET_SPECIES) - len(LEGENDARY_SPECIES)
 
@@ -88,43 +90,43 @@ def test_rarity_grants_real_combat_advantage():
 
     孩子攢 5000/8000 词换来的传说如果和普通一样强,门槛就只是收集门票。
     """
-    normal = tier_power_bonus("pikachu")
-    semi = tier_power_bonus("articuno")
-    legend = tier_power_bonus("mew")
+    normal = tier_power_bonus("sparkhog")
+    semi = tier_power_bonus("baize")
+    legend = tier_power_bonus("jaderabbit")
 
     assert normal == {"damage": 0, "ultimate": 0, "hp": 0}
     for key in ("damage", "ultimate", "hp"):
         assert normal[key] < semi[key] < legend[key], key
 
     # 同等级同阶段下,传说的血量与大招都该高出来
-    assert calculate_max_hp(10, 2, "mew") > calculate_max_hp(10, 2, "articuno") > calculate_max_hp(10, 2, "pikachu")
-    assert calculate_ultimate_damage("mew", 2) > calculate_ultimate_damage("pikachu", 2)
+    assert calculate_max_hp(10, 2, "jaderabbit") > calculate_max_hp(10, 2, "baize") > calculate_max_hp(10, 2, "sparkhog")
+    assert calculate_ultimate_damage("jaderabbit", 2) > calculate_ultimate_damage("sparkhog", 2)
 
     # 但不能强到让答题失去意义:传说的平A加成要小于"三连击"带来的收益(3×5=15)
     assert legend["damage"] < 15
 
     # 不传 species 时保持原公式(既有调用点不会因为加参数而改变数值)
-    assert calculate_max_hp(10, 2) == calculate_max_hp(10, 2, "pikachu")
+    assert calculate_max_hp(10, 2) == calculate_max_hp(10, 2, "sparkhog")
 
 
 def test_every_element_has_its_own_ultimate_damage():
     """五个新属性此前不在大招表里,全走 40 兜底 —— 补齐后不该再有并列兜底。"""
-    for element_species in ("swinub", "deino", "trapinch", "nidoran", "zubat", "rookidee"):
+    for element_species in ("snowleopard", "shadowcat", "digmole", "dartfrog", "swallow", "ironrhino"):
         # 兜底值是 40,补齐后这些属性都应有自己的值
         assert calculate_ultimate_damage(element_species, 0) != 40
 
 
 def test_new_normal_families_cover_previously_empty_types():
-    # 冰/恶/地面/毒/飞行 此前一只宝可梦都没有，TYPE_CHART 里那几行等于摆设
+    # 冰/恶/地面/毒/飞行 此前一只都没有，TYPE_CHART 里那几行等于摆设
     elements = {get_pet_element(species) for species in PET_SPECIES if not is_legendary(species)}
     assert {"ice", "dark", "ground", "poison", "flying"} <= elements
 
 
 def test_new_families_are_available_to_ai_and_battle():
     new_families = {
-        "chikorita", "cyndaquil", "totodile", "treecko", "torchic", "mudkip",
-        "bagon", "beldum", "gible", "snivy", "tepig", "oshawott", "rowlet",
-        "litten", "popplio",
+        "lotuscalf", "flamepanda", "otterwave", "chameleaf", "sunrooster", "mudhippo",
+        "cloudkite", "clockbot", "dunewhale", "bambooweasel", "lavaboar", "shellpenguin", "acornsquirrel",
+        "firetanuki", "jellyfish",
     }
 
     assert new_families.issubset(AI_PET_SPECIES)
@@ -163,3 +165,72 @@ def test_capture_roll_and_last_pet_recovery_threshold():
     assert not capture_roll_succeeds(0.99)
     assert pet_recovery_goal(0) == 2000
     assert pet_recovery_goal(6400) == 8400
+
+
+# ---------------------------------------------------------------- 2026-11-04 换成原创伙伴
+
+def test_legacy_species_map_covers_every_replaced_family_one_to_one():
+    """旧 id 一格对一格换成新 id: 每个旧 id 都有去处、不重名、去的地方真存在,
+    元素和稀有度一点不变(孩子的宠物换完对战强弱不能变)。"""
+    import re
+    from pathlib import Path
+
+    from app.core.pet_species import LEGACY_SPECIES, PET_SPECIES, normalize_species
+    assert len(LEGACY_SPECIES) == 67
+    assert len(set(LEGACY_SPECIES.values())) == len(LEGACY_SPECIES)
+    assert set(LEGACY_SPECIES.values()) <= set(PET_SPECIES)
+    assert not set(LEGACY_SPECIES) & set(PET_SPECIES), "旧 id 不能还留在注册表里"
+    assert normalize_species("pikachu") == "sparkhog"
+    assert normalize_species("book_fox") == "book_fox"
+
+    # 元素 / 稀有度沿用旧那一格: 用设计表 + git 里旧注册表对不上会直接失败太重,这里锁住几只有代表性的
+    expect = {"pikachu": ("electric", "normal"), "mewtwo": ("psychic", "legend"),
+              "articuno": ("ice", "semi_legend"), "deino": ("dark", "normal"), "arceus": ("normal", "legend")}
+    for old, (element, tier) in expect.items():
+        new = PET_SPECIES[LEGACY_SPECIES[old]]
+        assert (new["element"], new["tier"]) == (element, tier), old
+
+    # 前端那份对照表必须和后端一模一样(没刷新的旧页面靠它显示)
+    ts = (Path(__file__).resolve().parents[2] / "frontend/src/config/petSpecies.ts").read_text(encoding="utf-8")
+    block = ts[ts.index("export const LEGACY_SPECIES"):]
+    block = block[: block.index("};")]
+    assert dict(re.findall(r"^  (\w+): '(\w+)',?$", block, re.M)) == LEGACY_SPECIES
+    assert "export const DEFAULT_SPECIES = 'sparkhog';" in ts
+
+
+def test_no_pokemon_names_left_in_user_facing_registry():
+    from app.core.pet_species import PET_SPECIES
+    banned = ("皮卡丘", "伊布", "妙蛙", "小火龙", "杰尼龟", "胖丁", "耿鬼", "快龙", "超梦", "梦幻",
+              "急冻鸟", "闪电鸟", "火焰鸟", "水君", "烈空坐", "阿尔宙斯", "卡比兽", "路卡利欧")
+    text = repr(PET_SPECIES)
+    assert not [b for b in banned if b in text]
+
+
+@pytest.mark.asyncio
+async def test_migrate_legacy_species_rewrites_rows_once(tmp_path):
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.pet_species import migrate_legacy_species
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'm.db'}")
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE TABLE user_pets (id INTEGER PRIMARY KEY, species VARCHAR(32))"))
+        await conn.execute(text(
+            "INSERT INTO user_pets (species) VALUES ('pikachu'), ('mewtwo'), ('book_fox'), ('sparkhog')"))
+    assert await migrate_legacy_species(engine) == 2
+    assert await migrate_legacy_species(engine) == 0          # 幂等
+    async with engine.connect() as conn:
+        rows = [r[0] for r in (await conn.execute(text("SELECT species FROM user_pets ORDER BY id"))).all()]
+    assert rows == ["sparkhog", "ninecolordeer", "book_fox", "sparkhog"]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_migrate_legacy_species_without_table_is_noop(tmp_path):
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.pet_species import migrate_legacy_species
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}")
+    assert await migrate_legacy_species(engine) == 0
+    await engine.dispose()

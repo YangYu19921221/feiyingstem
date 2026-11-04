@@ -813,9 +813,9 @@ function TypeMatchupBanner({
     } else if (myEffectiveness === 0.5 && opponentEffectiveness === 2) {
       return { text: '对手占优势！', color: 'text-red-600', emoji: '⚠️' };
     } else if (myEffectiveness === 2) {
-      return { text: '你的攻击效果拔群！', color: 'text-green-600', emoji: '💥' };
+      return { text: '属性克制！你的攻击伤害翻倍', color: 'text-green-600', emoji: '💥' };
     } else if (opponentEffectiveness === 2) {
-      return { text: '对手攻击效果拔群！', color: 'text-orange-600', emoji: '🛡️' };
+      return { text: '被克制了！对手的攻击伤害翻倍', color: 'text-orange-600', emoji: '🛡️' };
     } else if (myEffectiveness === 0) {
       return { text: '你的攻击完全无效！', color: 'text-gray-600', emoji: '❌' };
     } else if (opponentEffectiveness === 0) {
@@ -853,7 +853,7 @@ function TypeMatchupBanner({
   );
 }
 
-// 宠物卡片 3D 组件 - 宝可梦风格立体对战
+// 宠物卡片 3D 组件 - 立体对战
 function PetCard({
   pet,
   username,
@@ -1218,22 +1218,22 @@ function EndResultPanel({
     }
     if (capture.winner_id !== myPlayerId) return null;
     if (capture.reason === 'escaped') {
-      return { tone: 'amber', title: `${capture.pet_name} 挣脱了精灵球`, detail: `本次 ${capture.chance}% 收服判定未成功。` };
+      return { tone: 'amber', title: `${capture.pet_name} 挣脱了收服光环`, detail: `本次 ${capture.chance}% 收服判定未成功。` };
     }
     if (capture.reason === 'slot_locked') {
-      return { tone: 'gray', title: '精灵球暂时无法使用', detail: `先累计学习 ${capture.required_words || '更多'} 个不同单词，解锁新的队伍名额。` };
+      return { tone: 'gray', title: '收服光环暂时无法使用', detail: `先累计学习 ${capture.required_words || '更多'} 个不同单词，解锁新的队伍名额。` };
     }
     if (capture.reason === 'duplicate_species') {
-      return { tone: 'gray', title: '没有投出精灵球', detail: '你的队伍里已经有这个宝可梦家族。' };
+      return { tone: 'gray', title: '没有放出收服光环', detail: '你的队伍里已经有这个伙伴家族。' };
     }
     if (capture.reason === 'roster_full') {
-      return { tone: 'gray', title: '队伍已满', detail: '最多同时拥有 5 只普通宝可梦，本次无法收服。' };
+      return { tone: 'gray', title: '队伍已满', detail: '最多同时拥有 5 只普通伙伴，本次无法收服。' };
     }
     // 传说三种拒绝：没到学词门槛 / 传说格没开 / 传说格已满。分开说，孩子才知道差在哪。
     if (capture.reason === 'legend_words_locked') {
       return {
         tone: 'gray',
-        title: `${capture.pet_name} 是传说宝可梦`,
+        title: `${capture.pet_name} 是传说伙伴`,
         detail: `需要累计学会 ${capture.required_words?.toLocaleString() || '更多'} 个不同单词才能收服它。`,
       };
     }
@@ -1245,7 +1245,7 @@ function EndResultPanel({
       };
     }
     if (capture.reason === 'legend_roster_full') {
-      return { tone: 'gray', title: '传说队伍已满', detail: '最多同时拥有 2 只传说宝可梦，本次无法收服。' };
+      return { tone: 'gray', title: '传说队伍已满', detail: '最多同时拥有 2 只传说伙伴，本次无法收服。' };
     }
     return null;
   })();

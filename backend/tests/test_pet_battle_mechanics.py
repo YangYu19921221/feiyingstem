@@ -61,7 +61,7 @@ async def _battle_fixture(db_session):
     pet1 = UserPet(
         user_id=player1.id,
         name="先锋",
-        species="pikachu",
+        species="sparkhog",
         level=5,
         evolution_stage=1,
         current_hp=120,
@@ -70,7 +70,7 @@ async def _battle_fixture(db_session):
     reserve = UserPet(
         user_id=player1.id,
         name="后援",
-        species="charmander",
+        species="emberham",
         level=10,
         evolution_stage=2,
         current_hp=160,
@@ -78,7 +78,7 @@ async def _battle_fixture(db_session):
     pet2 = UserPet(
         user_id=player2.id,
         name="对手",
-        species="squirtle",
+        species="narwhee",
         level=5,
         evolution_stage=1,
         current_hp=120,
@@ -192,7 +192,7 @@ async def test_wrong_answer_does_not_fire_or_consume_skill(db_session):
 
 @pytest.mark.asyncio
 async def test_finalize_round_applies_type_multiplier(db_session):
-    """皮卡丘(电)打杰尼龟(水)效果拔群×2;水打电普通×1。"""
+    """蒲电猬(电)打螺角鲸(水)克制×2;水打电普通×1。"""
     player1, player2, _, _, _, battle = await _battle_fixture(db_session)
     p1_hp_before = battle.player1_hp
     p2_hp_before = battle.player2_hp
@@ -210,7 +210,7 @@ async def test_finalize_round_applies_type_multiplier(db_session):
     battle, round_obj = await finalize_round(db_session, battle.id, 1)
 
     assert round_obj.player1_type_multiplier == 2.0
-    assert round_obj.player1_type_text == "效果拔群！"
+    assert round_obj.player1_type_text == "属性克制，伤害翻倍！"
     assert round_obj.player1_damage == base_p1 * 2
     assert battle.player2_hp == max(0, p2_hp_before - base_p1 * 2)
 

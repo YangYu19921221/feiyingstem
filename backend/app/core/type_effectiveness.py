@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-宝可梦属性克制系统
+宠物属性克制系统
 基于经典18属性体系
 """
 
@@ -8,8 +8,8 @@ from enum import Enum
 from typing import Dict, List
 from app.core.pet_species import PET_SPECIES
 
-class PokemonType(str, Enum):
-    """宝可梦属性枚举"""
+class PetType(str, Enum):
+    """宠物属性枚举"""
     NORMAL = "normal"      # 普通
     FIRE = "fire"          # 火
     WATER = "water"        # 水
@@ -191,11 +191,11 @@ def get_effectiveness(attacker_type: str, defender_type: str) -> float:
     if defender_type in effectiveness["immune"]:
         return 0.0
 
-    # 效果拔群 (2倍)
+    # 克制 (2倍)
     if defender_type in effectiveness["super"]:
         return 2.0
 
-    # 效果不好 (0.5倍)
+    # 被克制 (0.5倍)
     if defender_type in effectiveness["weak"]:
         return 0.5
 
@@ -208,9 +208,9 @@ def get_effectiveness_text(multiplier: float) -> str:
     if multiplier == 0.0:
         return "完全无效！"
     elif multiplier == 0.5:
-        return "效果不好..."
+        return "被克制了，伤害减半…"
     elif multiplier == 2.0:
-        return "效果拔群！"
+        return "属性克制，伤害翻倍！"
     else:
         return ""
 

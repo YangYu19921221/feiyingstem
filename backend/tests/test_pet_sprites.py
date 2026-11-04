@@ -63,7 +63,7 @@ def test_no_sprite_is_a_truncated_png():
 def test_back_sprite_exists_for_every_front_sprite():
     """对战里玩家侧用 back/ 翻转图,缺一张就是背对镜头的空白。
 
-    只查注册表真正引用的图:pets/ 下有历史遗留的孤儿文件(pikachu_adult/pikachu_baby,
+    只查注册表真正引用的图:pets/ 下有历史遗留的孤儿文件(早年的 *_adult / *_baby,
     全仓库零引用),为它们要求 back/ 图只会制造假警报。
     """
     back_dir = os.path.join(PETS_DIR, "back")

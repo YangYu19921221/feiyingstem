@@ -1,13 +1,13 @@
 import { PET_SPECIES_BY_ID, type PetElement } from '../config/petSpecies';
 
 /**
- * 宝可梦属性克制系统 - 前端配置
+ * 宠物属性克制系统 - 前端配置
  */
 
-export type PokemonType = PetElement;
+export type PetType = PetElement;
 
 // 属性中文名称
-export const TYPE_NAMES: Record<PokemonType, string> = {
+export const TYPE_NAMES: Record<PetType, string> = {
   normal: '普通',
   fire: '火',
   water: '水',
@@ -29,7 +29,7 @@ export const TYPE_NAMES: Record<PokemonType, string> = {
 };
 
 // 属性emoji图标
-export const TYPE_ICONS: Record<PokemonType, string> = {
+export const TYPE_ICONS: Record<PetType, string> = {
   normal: '⚪',
   fire: '🔥',
   water: '💧',
@@ -51,7 +51,7 @@ export const TYPE_ICONS: Record<PokemonType, string> = {
 };
 
 // 属性颜色
-export const TYPE_COLORS: Record<PokemonType, string> = {
+export const TYPE_COLORS: Record<PetType, string> = {
   normal: '#A8A878',
   fire: '#F08030',
   water: '#6890F0',
@@ -74,12 +74,12 @@ export const TYPE_COLORS: Record<PokemonType, string> = {
 
 // 属性克制关系表
 interface TypeEffectiveness {
-  super: PokemonType[];  // 克制的属性 (2x)
-  weak: PokemonType[];   // 被抵抗的属性 (0.5x)
-  immune: PokemonType[]; // 无效的属性 (0x)
+  super: PetType[];  // 克制的属性 (2x)
+  weak: PetType[];   // 被抵抗的属性 (0.5x)
+  immune: PetType[]; // 无效的属性 (0x)
 }
 
-const TYPE_EFFECTIVENESS: Record<PokemonType, TypeEffectiveness> = {
+const TYPE_EFFECTIVENESS: Record<PetType, TypeEffectiveness> = {
   normal: {
     super: [],
     weak: ['rock', 'steel'],
@@ -178,7 +178,7 @@ const TYPE_EFFECTIVENESS: Record<PokemonType, TypeEffectiveness> = {
  * @param defenderType 防守方属性
  * @returns 伤害倍率 (0, 0.5, 1, 2)
  */
-export function getEffectiveness(attackerType: PokemonType, defenderType: PokemonType): number {
+export function getEffectiveness(attackerType: PetType, defenderType: PetType): number {
   const effectiveness = TYPE_EFFECTIVENESS[attackerType];
 
   if (!effectiveness) return 1;
@@ -187,10 +187,10 @@ export function getEffectiveness(attackerType: PokemonType, defenderType: Pokemo
   // 答对题打出0伤害太挫败,且 normal↔ghost 互免会出现谁也打不倒谁的死局
   if (effectiveness.immune.includes(defenderType)) return 0.5;
 
-  // 效果拔群 (2倍)
+  // 克制 (2倍)
   if (effectiveness.super.includes(defenderType)) return 2;
 
-  // 效果不好 (0.5倍)
+  // 被克制 (0.5倍)
   if (effectiveness.weak.includes(defenderType)) return 0.5;
 
   // 普通效果 (1倍)
@@ -202,8 +202,8 @@ export function getEffectiveness(attackerType: PokemonType, defenderType: Pokemo
  */
 export function getEffectivenessText(multiplier: number): string {
   if (multiplier === 0) return '完全无效！';
-  if (multiplier === 0.5) return '效果不好...';
-  if (multiplier === 2) return '效果拔群！';
+  if (multiplier === 0.5) return '被克制了，伤害减半…';
+  if (multiplier === 2) return '属性克制，伤害翻倍！';
   return '';
 }
 
@@ -220,20 +220,20 @@ export function getEffectivenessEmoji(multiplier: number): string {
 /**
  * 项目中宠物的属性配置
  */
-export const PET_TYPES: Record<string, PokemonType> = Object.fromEntries(
+export const PET_TYPES: Record<string, PetType> = Object.fromEntries(
   Object.values(PET_SPECIES_BY_ID).map((definition) => [definition.id, definition.element]),
 );
 
 /**
  * 获取宠物的属性
  */
-export function getPetType(species: string): PokemonType {
+export function getPetType(species: string): PetType {
   return PET_TYPES[species.toLowerCase()] || 'normal';
 }
 
 /**
  * 获取属性优势信息
  */
-export function getTypeAdvantages(type: PokemonType) {
+export function getTypeAdvantages(type: PetType) {
   return TYPE_EFFECTIVENESS[type] || { super: [], weak: [], immune: [] };
 }

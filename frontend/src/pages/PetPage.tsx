@@ -7,11 +7,12 @@ import { getMyPet, getPetCollection, createPet, switchPet, feedPet, getPetEvents
 import { quickMatchBattle } from '../api/petBattle';
 import PetArtwork from '../components/PetArtwork';
 import useGoBack from '../hooks/useGoBack';
-import { TYPE_COLORS, TYPE_ICONS, TYPE_NAMES, type PokemonType } from '../utils/typeEffectiveness';
+import { TYPE_COLORS, TYPE_ICONS, TYPE_NAMES, type PetType } from '../utils/typeEffectiveness';
 import {
   PET_SPECIES,
   NORMAL_SPECIES,
   LEGENDARY_SPECIES,
+  DEFAULT_SPECIES,
   SEMI_LEGEND_WORDS,
   LEGEND_WORDS,
   TIER_LABEL,
@@ -29,12 +30,12 @@ import {
 } from '../config/petSpecies';
 
 const PET_MOODS: Record<string, { emoji: string; text: string }[]> = {
-  pikachu:    [{ emoji: '⚡', text: '皮卡需要补充一点能量' }, { emoji: '⚡', text: '皮卡~还不错' }, { emoji: '⚡', text: '皮卡皮卡！超开心！' }],
-  eevee:      [{ emoji: '🦊', text: '布咿正在休息，补充能量再出发' }, { emoji: '🦊', text: '布咿~心情不错' }, { emoji: '🦊', text: '布咿布咿！太开心了！' }],
-  bulbasaur:  [{ emoji: '🌱', text: '种子正在积蓄能量' }, { emoji: '🌱', text: '种子~状态还行' }, { emoji: '🌿', text: '种子种子！活力满满！' }],
-  charmander: [{ emoji: '🔥', text: '小火龙正在休息' }, { emoji: '🔥', text: '嗯，火焰还旺' }, { emoji: '🔥', text: '火焰全开！超级棒！' }],
-  squirtle:   [{ emoji: '💧', text: '杰尼龟需要补充一点能量' }, { emoji: '💧', text: '杰尼~还可以' }, { emoji: '💧', text: '杰尼杰尼！水力全开！' }],
-  jigglypuff: [{ emoji: '🎀', text: '胖丁正在休息嗓子' }, { emoji: '🎀', text: '丁~心情还行' }, { emoji: '🎀', text: '胖丁胖丁~要唱歌！' }],
+  sparkhog:   [{ emoji: '⚡', text: '蒲蒲猬的绒球没电了，要充一充' }, { emoji: '⚡', text: '噼啪~状态还行' }, { emoji: '⚡', text: '绒球噼里啪啦全亮啦！' }],
+  alpaca:     [{ emoji: '☁️', text: '绒绒驼窝在毛里打盹' }, { emoji: '☁️', text: '软绵绵~心情不错' }, { emoji: '✨', text: '毛里的星星都在闪！' }],
+  leafkoala:  [{ emoji: '🌱', text: '叶团团抱着树枝在晒太阳' }, { emoji: '🌱', text: '叶子耳朵竖起来了' }, { emoji: '🌿', text: '叶子哗啦啦，活力满满！' }],
+  emberham:   [{ emoji: '🔥', text: '火芯仔的耳朵火苗变小了' }, { emoji: '🔥', text: '嗯，小火苗还旺' }, { emoji: '🔥', text: '火苗烧得旺旺的！' }],
+  narwhee:    [{ emoji: '💧', text: '小螺鲸在慢慢漂着休息' }, { emoji: '💧', text: '咕噜~还可以' }, { emoji: '💧', text: '螺旋角亮闪闪，游起来啦！' }],
+  melopuff:   [{ emoji: '🎵', text: '音团团在休息嗓子' }, { emoji: '🎵', text: '哼~心情还行' }, { emoji: '🎶', text: '要唱歌给你听！' }],
   cat:    [{ emoji: '😺', text: '小猫正在休息，稍后再玩' }, { emoji: '😺', text: '喵~还不错' }, { emoji: '😸', text: '呼噜呼噜~超开心！' }],
   dog:    [{ emoji: '🐶', text: '小狗正在补充能量' }, { emoji: '🐶', text: '汪汪！心情不错' }, { emoji: '🦮', text: '汪汪汪！超级开心！' }],
   rabbit: [{ emoji: '🐰', text: '小兔正在休息' }, { emoji: '🐰', text: '蹦蹦~还可以' }, { emoji: '🐰', text: '蹦蹦跳跳~太开心了！' }],
@@ -110,7 +111,7 @@ function Bar({ value, max, color, label }: { value: number; max: number; color: 
 // ========== 领养界面 ==========
 function AdoptView({ onAdopted }: { onAdopted: () => void }) {
   const goBack = useGoBack();
-  const [selected, setSelected] = useState('pikachu');
+  const [selected, setSelected] = useState(DEFAULT_SPECIES);
   const [name, setName] = useState('');
   const [hoveredSpecies, setHoveredSpecies] = useState<string | null>(null);
   const [speciesQuery, setSpeciesQuery] = useState('');
@@ -212,7 +213,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
                 type="search"
                 value={speciesQuery}
                 onChange={(event) => setSpeciesQuery(event.target.value)}
-                placeholder={`搜索 ${NORMAL_SPECIES.length} 个宝可梦家族`}
+                placeholder={`搜索 ${NORMAL_SPECIES.length} 个伙伴家族`}
                 className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               />
             </label>
@@ -221,7 +222,7 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
             <div className="mb-4 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 p-3">
               <div className="flex items-center gap-1.5 text-sm font-bold text-violet-900">
                 <Sparkles className="h-4 w-4 text-violet-500" />
-                还有 {LEGENDARY_SPECIES.length} 只传说宝可梦在等你
+                还有 {LEGENDARY_SPECIES.length} 只传说伙伴在等你
               </div>
               <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
                 {LEGENDARY_SPECIES.map((definition) => (
@@ -239,8 +240,8 @@ function AdoptView({ onAdopted }: { onAdopted: () => void }) {
               </div>
               <p className="mt-1 text-xs leading-5 text-violet-800/85">
                 累计学会 <span className="font-bold">{SEMI_LEGEND_WORDS.toLocaleString()}</span> 个不同单词，
-                急冻鸟、闪电鸟、火焰鸟、水君会现身；累计 <span className="font-bold">{LEGEND_WORDS.toLocaleString()}</span> 个，
-                梦幻、超梦、烈空坐、阿尔宙斯才会认你当训练家。它们有专属队伍格，不占普通名额。
+                白泽、雷鼓夔、朱雀、北冥鲲会现身；累计 <span className="font-bold">{LEGEND_WORDS.toLocaleString()}</span> 个，
+                玉兔、九色鹿、应龙、麒麟才会认你当伙伴。它们有专属队伍格，不占普通名额。
               </p>
             </div>
 
@@ -363,7 +364,7 @@ function PetRecoveryView({ collection }: { collection: PetCollection }) {
   );
 }
 
-const CATALOG_FILTERS: { id: 'all' | PokemonType | 'other'; label: string }[] = [
+const CATALOG_FILTERS: { id: 'all' | PetType | 'other'; label: string }[] = [
   { id: 'all', label: '全部' },
   { id: 'fire', label: '火' },
   { id: 'water', label: '水' },
@@ -374,7 +375,7 @@ const CATALOG_FILTERS: { id: 'all' | PokemonType | 'other'; label: string }[] = 
   { id: 'other', label: '其他' },
 ];
 
-const FEATURED_TYPES = new Set<PokemonType>(['fire', 'water', 'grass', 'electric', 'psychic', 'dragon']);
+const FEATURED_TYPES = new Set<PetType>(['fire', 'water', 'grass', 'electric', 'psychic', 'dragon']);
 
 function CatalogView({
   pet,
@@ -389,7 +390,7 @@ function CatalogView({
 }) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | PokemonType | 'other'>('all');
+  const [filter, setFilter] = useState<'all' | PetType | 'other'>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [newName, setNewName] = useState('');
@@ -477,7 +478,7 @@ function CatalogView({
             <span className="hidden text-sm font-medium sm:inline">返回养成</span>
           </button>
           <div className="text-center">
-            <h1 className="font-bold text-gray-900">宝可梦图鉴</h1>
+            <h1 className="font-bold text-gray-900">伙伴图鉴</h1>
             <p className="text-xs text-gray-400">{PET_SPECIES.length} 个家族</p>
           </div>
           <div className="flex items-center gap-1 rounded-lg bg-cyan-50 px-2.5 py-1.5 text-xs font-bold text-cyan-700">
@@ -493,7 +494,7 @@ function CatalogView({
             <div>
               <div className="flex items-center gap-2 font-bold text-gray-900">
                 <Users className="h-5 w-5 text-orange-500" />
-                我的宝可梦队伍
+                我的伙伴队伍
               </div>
               <p className="mt-1 text-xs text-gray-500">
                 已学习 {collection.learned_words.toLocaleString()} 个不同单词 · {collection.used_slots}/{collection.max_slots} 只
@@ -702,17 +703,17 @@ function CatalogView({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="flex items-center gap-1.5 font-bold text-violet-900">
                 <Sparkles className="h-5 w-5 text-violet-500" />
-                传说宝可梦
+                传说伙伴
               </h2>
               <span className="rounded-md bg-white/80 px-2 py-0.5 text-[11px] font-bold text-violet-700">
                 {visibleLegends.length} 只
               </span>
             </div>
             <p className="mt-1 text-xs leading-5 text-violet-800/80">
-              传说宝可梦不是喂食就能得到的，只认一件事：<span className="font-bold">你一共学会了多少个单词。</span>
-              累计 {collection.semi_legend_words.toLocaleString()} 个不同单词，三神鸟和圣兽会现身；
-              累计 {collection.legend_words.toLocaleString()} 个，梦幻、超梦、烈空坐、阿尔宙斯才会认你当训练家。
-              它们走专属队伍格，不占普通名额，<span className="font-bold">战力也比普通宝可梦更强，越稀有越强。</span>
+              传说伙伴不是喂食就能得到的，只认一件事：<span className="font-bold">你一共学会了多少个单词。</span>
+              累计 {collection.semi_legend_words.toLocaleString()} 个不同单词，白泽、雷鼓夔、朱雀、北冥鲲会现身；
+              累计 {collection.legend_words.toLocaleString()} 个，玉兔、九色鹿、应龙、麒麟才会认你当伙伴。
+              它们走专属队伍格，不占普通名额，<span className="font-bold">战力也比普通伙伴更强，越稀有越强。</span>
               你已学 <span className="font-bold">{collection.learned_words.toLocaleString()}</span> 词。
             </p>
 
@@ -853,7 +854,7 @@ function CatalogView({
         </div>
 
         {visibleSpecies.length === 0 && (
-          <div className="py-20 text-center text-sm text-gray-400">没有找到匹配的宝可梦</div>
+          <div className="py-20 text-center text-sm text-gray-400">没有找到匹配的伙伴</div>
         )}
       </main>
 
@@ -901,7 +902,7 @@ function CatalogView({
                   <span className="font-bold">收服条件：累计学会 {legendWordsFor(selected).toLocaleString()} 个不同单词。</span>
                   {meetsLegendWords(selected)
                     ? ' 你已经达成门槛，它占传说专属格，不挤占普通名额。'
-                    : ` 你已学 ${collection.learned_words.toLocaleString()} 词，还差 ${(legendWordsFor(selected) - collection.learned_words).toLocaleString()} 词。传说宝可梦只认真正背下来的单词量。`}
+                    : ` 你已学 ${collection.learned_words.toLocaleString()} 词，还差 ${(legendWordsFor(selected) - collection.learned_words).toLocaleString()} 词。传说伙伴只认真正背下来的单词量。`}
                 </div>
               )}
 
@@ -958,7 +959,7 @@ function CatalogView({
                     ? (!meetsLegendWords(selected)
                         ? `再学 ${(legendWordsFor(selected) - collection.learned_words).toLocaleString()} 个不同单词，它就会现身`
                         : collection.legend_used_slots >= collection.legend_max_slots
-                          ? `传说队伍已满，最多可以拥有 ${collection.legend_max_slots} 只传说宝可梦`
+                          ? `传说队伍已满，最多可以拥有 ${collection.legend_max_slots} 只传说伙伴`
                           : `下一个传说名额需累计学习 ${collection.next_legend_slot_words?.toLocaleString()} 个不同单词`)
                     : collection.used_slots >= collection.max_slots
                       ? `普通队伍已满，最多可以拥有 ${collection.max_slots} 只`
@@ -967,7 +968,7 @@ function CatalogView({
               ) : confirming ? (
                 <div className="mt-5">
                   <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
-                    新领养的伙伴从 Lv.1 {selected.stages[0].name}开始培养；其他宝可梦的等级、进化和属性都会保留。
+                    新领养的伙伴从 Lv.1 {selected.stages[0].name}开始培养；其他伙伴的等级、进化和属性都会保留。
                   </div>
                   <label className="mt-3 block text-sm font-medium text-gray-700">
                     新伙伴名字
@@ -1165,7 +1166,7 @@ function NurtureView({
             <button
               onClick={onShowCatalog}
               className="flex min-h-11 items-center gap-1 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-100"
-              title="宝可梦队伍与图鉴"
+              title="伙伴队伍与图鉴"
             >
               <Users className="h-4 w-4" />
               队伍
@@ -1262,8 +1263,8 @@ function NurtureView({
           </motion.div>
         )}
 
-        {/* 传说宝可梦入口。放在养成页首屏而不是只留在图鉴里：
-            孩子得先知道"有梦幻超梦这回事、门槛是学词"，这个门槛才会变成学习动力。 */}
+        {/* 传说伙伴入口。放在养成页首屏而不是只留在图鉴里：
+            孩子得先知道"有麒麟应龙这回事、门槛是学词"，这个门槛才会变成学习动力。 */}
         <button
           type="button"
           onClick={onShowCatalog}
@@ -1284,16 +1285,16 @@ function NurtureView({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 font-bold text-violet-900">
               <Sparkles className="h-4 w-4 shrink-0 text-violet-500" />
-              <span className="truncate">传说宝可梦 · 梦幻 / 超梦等 {LEGENDARY_SPECIES.length} 只</span>
+              <span className="truncate">传说伙伴 · 麒麟 / 应龙等 {LEGENDARY_SPECIES.length} 只</span>
             </div>
             <p className="mt-0.5 text-xs leading-5 text-violet-800/85">
               {collection ? (
                 collection.learned_words >= collection.legend_words
                   ? `你已达成 ${collection.legend_words.toLocaleString()} 词门槛，顶级传说都可以收服了`
                   : collection.learned_words >= collection.semi_legend_words
-                    ? `已学 ${collection.learned_words.toLocaleString()} 词 · 准传说已解锁，再学 ${(collection.legend_words - collection.learned_words).toLocaleString()} 词可收服梦幻和超梦`
+                    ? `已学 ${collection.learned_words.toLocaleString()} 词 · 准传说已解锁，再学 ${(collection.legend_words - collection.learned_words).toLocaleString()} 词可收服玉兔、麒麟这些顶级传说`
                     : `已学 ${collection.learned_words.toLocaleString()} 词 · 还差 ${(collection.semi_legend_words - collection.learned_words).toLocaleString()} 词现身第一只传说`
-              ) : `累计学 ${SEMI_LEGEND_WORDS.toLocaleString()} 个单词现身三神鸟，${LEGEND_WORDS.toLocaleString()} 个才能收服梦幻和超梦`}
+              ) : `累计学 ${SEMI_LEGEND_WORDS.toLocaleString()} 个单词现身白泽和朱雀，${LEGEND_WORDS.toLocaleString()} 个才能收服麒麟和应龙`}
             </p>
           </div>
           <ChevronRight className="h-5 w-5 shrink-0 text-violet-400" />

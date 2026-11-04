@@ -1,14 +1,20 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 from datetime import datetime
 
-from app.core.pet_species import LEGEND_WORDS, SEMI_LEGEND_WORDS
+from app.core.pet_species import DEFAULT_SPECIES, LEGEND_WORDS, SEMI_LEGEND_WORDS, normalize_species
 
 
 class PetCreate(BaseModel):
     """领养宠物请求"""
     name: str = Field(default="小伙伴", min_length=1, max_length=50)
-    species: str = Field(default="pikachu", min_length=1, max_length=32)
+    species: str = Field(default=DEFAULT_SPECIES, min_length=1, max_length=32)
+
+    @field_validator("species", mode="before")
+    @classmethod
+    def _legacy_species(cls, v):
+        # 没刷新的旧页面还会发宝可梦时代的 id(pikachu…),按对照表换成新的
+        return normalize_species(v) if isinstance(v, str) else v
 
 
 class PetSwitchRequest(BaseModel):

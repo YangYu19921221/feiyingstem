@@ -66,7 +66,7 @@ function getAttackVfx(species: string) {
 }
 
 // ==============================
-// 3D 宠物 Sprite - PNG 立绘做成永远面向相机的广告牌(宝可梦经典风格)
+// 3D 宠物 Sprite - PNG 立绘做成永远面向相机的广告牌(经典回合制对战的做法)
 // ==============================
 function PetSprite({
   imageUrl,
@@ -205,7 +205,7 @@ function PetSprite({
 }
 
 // ==============================
-// 宝可梦风格战场:草地圆台 + 对战白圈 + 天空
+// 对战场地:草地圆台 + 对战白圈 + 天空
 // ==============================
 function BattleArena() {
   return (
@@ -222,7 +222,7 @@ function BattleArena() {
         <meshStandardMaterial color="#3d8b3d" />
       </mesh>
 
-      {/* 对战场白色外圈(宝可梦竞技场经典标线) */}
+      {/* 对战场白色外圈(竞技场标线) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.09, 0]}>
         <ringGeometry args={[6.1, 6.35, 64]} />
         <meshBasicMaterial color="#ffffff" transparent opacity={0.85} />
@@ -1066,7 +1066,7 @@ export default function BattleScene3D({
           myPetUsesBackFallback={myPetUsesBackFallback}
         />
 
-        {/* 视角:限制在小范围内可拖动,保持宝可梦式镜头 */}
+        {/* 视角:限制在小范围内可拖动,保持斜俯视的对战镜头 */}
         <OrbitControls
           enablePan={false}
           enableZoom={false}

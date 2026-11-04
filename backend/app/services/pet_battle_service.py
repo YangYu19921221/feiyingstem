@@ -32,7 +32,7 @@ PET_CAPTURE_CHANCE = 0.20
 
 
 def capture_roll_succeeds(roll: float) -> bool:
-    """精灵球收服判定，单独保留为纯函数便于验证边界。"""
+    """收服判定，单独保留为纯函数便于验证边界。"""
     return 0 <= roll < PET_CAPTURE_CHANCE
 
 
@@ -173,7 +173,7 @@ async def _settle_pet_capture(
     db.add(PetEventLog(
         pet_id=loser_pet.id,
         event_type="captured",
-        detail="在真人对战落败后被精灵球收服，培养等级与进化阶段已保留",
+        detail="在真人对战落败后被收服，培养等级与进化阶段已保留",
     ))
 
     loser_user = await db.get(User, loser_id)

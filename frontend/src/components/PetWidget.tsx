@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getMyPet, type Pet } from '../api/pet';
-import { getPetImage, getPetStage } from '../config/petSpecies';
+import { DEFAULT_SPECIES, getPetImage, getPetStage } from '../config/petSpecies';
 import PetArtwork from './PetArtwork';
 
 const PET_SAYINGS: Record<string, string[]> = {
-  pikachu:    ['皮卡~ 准备好就出发！', '皮卡皮卡...正在充电', '皮卡~ 今天也慢慢来！', '电击！学习充电中！'],
-  eevee:      ['布咿~ 一起学习！', '布咿布咿...正在休息', '今天也按自己的节奏来~', '想进化呢~'],
-  bulbasaur:  ['种子~ 学习时间到！', '种子种子...晒太阳中', '一起加油吧~', '藤鞭！学习出击！'],
-  charmander: ['小火~ 来修炼吧！', '火焰在燃烧...', '今天要变更强！', '喷火！学习之火！'],
-  squirtle:   ['杰尼~ 一起学习！', '水枪准备中...', '今天也要加油！', '水之力量！'],
-  jigglypuff: ['胖丁~ 来唱歌学习！', '要唱歌给你听~', '今天也要开心哦！', '唱歌中...zzz'],
+  sparkhog:   ['噼啪~ 准备好就出发！', '绒球充电中...', '今天也慢慢来！', '放电！学习充电中！'],
+  alpaca:     ['软绵绵~ 一起学习！', '窝在毛里休息中...', '今天也按自己的节奏来~', '毛里又多了一颗星~'],
+  leafkoala:  ['叶团团~ 学习时间到！', '抱着树枝晒太阳中', '一起加油吧~', '叶子旋风！学习出击！'],
+  emberham:   ['火芯仔~ 来修炼吧！', '耳朵上的火苗在跳...', '今天要变更强！', '烈焰披风！学习之火！'],
+  narwhee:    ['小螺鲸~ 一起学习！', '漂呀漂...', '今天也要加油！', '潮汐之力！'],
+  melopuff:   ['音团团~ 来唱歌学习！', '要唱歌给你听~', '今天也要开心哦！', '哼着歌...zzz'],
   cat:    ['喵~ 准备好就学习吧！', '呼噜呼噜...正在晒太阳', '喵呜~ 今天也慢慢来！', '喵~状态不错'],
   dog:    ['汪汪！一起学习！', '尾巴摇摇~ 状态不错', '汪！今天也按节奏来！', '来玩来玩！'],
   rabbit: ['蹦蹦~ 学习时间到！', '嘿嘿，想吃胡萝卜', '一起加油吧~', '蹦蹦跳跳好开心！'],
@@ -21,6 +21,8 @@ const PET_SAYINGS: Record<string, string[]> = {
   paper_owl:   ['咕咕~学习时间到', '羽毛笔已备好', '博学越多越好', '一起做个小博士吧'],
   word_turtle: ['慢慢来，一步一个字', '壳上又多了一道纹', '稳扎稳打~', '厚积薄发！'],
 };
+
+const GENERIC_SAYINGS = ['准备好就出发！', '今天也慢慢来~', '一起学习吧！', '又学会一个词啦！'];
 
 function getMoodColor(happiness: number, hunger: number): string {
   const avg = (happiness + hunger) / 2;
@@ -75,7 +77,8 @@ export default function PetWidget() {
     setShowHeart(true);
     setTimeout(() => setShowHeart(false), 600);
 
-    const sayings = PET_SAYINGS[pet?.species || 'pikachu'] || PET_SAYINGS.pikachu;
+    // 没写专属台词的伙伴用通用的几句,别都说成蒲电猬的「绒球充电中」
+    const sayings = PET_SAYINGS[pet?.species || DEFAULT_SPECIES] || GENERIC_SAYINGS;
     setSaying(sayings[Math.floor(Math.random() * sayings.length)]);
     setShowBubble(true);
     setTimeout(() => setShowBubble(false), 2500);

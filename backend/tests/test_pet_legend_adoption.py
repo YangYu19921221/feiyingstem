@@ -1,7 +1,7 @@
-"""传说宝可梦的领养门槛与独立队伍格。
+"""传说伙伴的领养门槛与独立队伍格。
 
 两条入队路径必须同口径：领养(adopt_pet)与对战收服(_settle_pet_capture)。
-只堵一条,另一条就是后门 —— 学了 300 词的孩子打赢一场把别人的梦幻抱走,门槛形同虚设。
+只堵一条,另一条就是后门 —— 学了 300 词的孩子打赢一场把别人的玉兔抱走,门槛形同虚设。
 """
 import pytest
 import pytest_asyncio
@@ -76,7 +76,7 @@ async def test_legend_adoption_rejected_below_threshold(client, legend_student, 
 
     response = await client.post(
         "/api/v1/student/pet",
-        json={"species": "mew", "name": "小梦"},
+        json={"species": "jaderabbit", "name": "小梦"},
         headers=headers,
     )
     assert response.status_code == 400
@@ -94,11 +94,11 @@ async def test_semi_legend_unlocks_at_threshold_and_does_not_consume_normal_slot
 
     # 先用掉普通名额：0 词只开 1 格普通
     first = await client.post(
-        "/api/v1/student/pet", json={"species": "pikachu", "name": "皮皮"}, headers=headers
+        "/api/v1/student/pet", json={"species": "sparkhog", "name": "皮皮"}, headers=headers
     )
     assert first.status_code == 200
     blocked = await client.post(
-        "/api/v1/student/pet", json={"species": "eevee", "name": "布布"}, headers=headers
+        "/api/v1/student/pet", json={"species": "alpaca", "name": "布布"}, headers=headers
     )
     assert blocked.status_code == 400  # 普通格已满
 
@@ -106,13 +106,13 @@ async def test_semi_legend_unlocks_at_threshold_and_does_not_consume_normal_slot
 
     # 顶级传说仍差 3000 词
     top = await client.post(
-        "/api/v1/student/pet", json={"species": "mewtwo", "name": "超超"}, headers=headers
+        "/api/v1/student/pet", json={"species": "ninecolordeer", "name": "超超"}, headers=headers
     )
     assert top.status_code == 400
 
     # 准传说达标，且不受"普通格已满"影响 —— 这正是独立专属格的意义
     semi = await client.post(
-        "/api/v1/student/pet", json={"species": "articuno", "name": "冰冰"}, headers=headers
+        "/api/v1/student/pet", json={"species": "baize", "name": "冰冰"}, headers=headers
     )
     assert semi.status_code == 200
     assert semi.json()["evolution_stage_name"] == "传说之卵"
@@ -121,13 +121,13 @@ async def test_semi_legend_unlocks_at_threshold_and_does_not_consume_normal_slot
     assert collection["legend_used_slots"] == 1
     assert collection["legend_unlocked_slots"] == 1
     assert collection["next_legend_slot_words"] == 8000
-    # 普通格计数不含传说：5000 词开 3 格普通，皮卡丘占 1 格
+    # 普通格计数不含传说：5000 词开 3 格普通，蒲电猬占 1 格
     assert collection["used_slots"] == 1
     assert collection["unlocked_slots"] == 3
 
     # 第二只传说需要 8000 词，此时传说格只开了 1 个
     second_legend = await client.post(
-        "/api/v1/student/pet", json={"species": "zapdos", "name": "电电"}, headers=headers
+        "/api/v1/student/pet", json={"species": "thunderkui", "name": "电电"}, headers=headers
     )
     assert second_legend.status_code == 400
     assert "8000" in second_legend.json()["detail"]
@@ -149,7 +149,7 @@ async def test_collection_counts_stay_separate_when_legend_sits_mid_roster(
     await _give_learned_words(db_session, user_id, 5000)
 
     # 领养顺序:普通 → 传说 → 普通,让传说落在中间
-    for species, name in (("pikachu", "皮皮"), ("articuno", "冰冰"), ("eevee", "布布")):
+    for species, name in (("sparkhog", "皮皮"), ("baize", "冰冰"), ("alpaca", "布布")):
         response = await client.post(
             "/api/v1/student/pet", json={"species": species, "name": name}, headers=headers
         )
@@ -157,7 +157,7 @@ async def test_collection_counts_stay_separate_when_legend_sits_mid_roster(
 
     collection = (await client.get("/api/v1/student/pet/collection", headers=headers)).json()
     assert len(collection["pets"]) == 3
-    assert collection["used_slots"] == 2          # 皮卡丘 + 伊布
+    assert collection["used_slots"] == 2          # 蒲电猬 + 云絮羊驼
     assert collection["legend_used_slots"] == 1   # 急冻鸟
     assert collection["used_slots"] + collection["legend_used_slots"] == len(collection["pets"])
     # 5000 词开 3 格普通,两只普通占 2 格 —— 传说格照旧独立
@@ -181,8 +181,8 @@ async def test_capture_applies_the_same_legend_gate(db_session):
     await db_session.refresh(winner)
     await db_session.refresh(loser)
 
-    winner_pet = UserPet(user_id=winner.id, name="赢家伙伴", species="pikachu", is_active=True)
-    loser_pet = UserPet(user_id=loser.id, name="梦幻", species="mew", is_active=True)
+    winner_pet = UserPet(user_id=winner.id, name="赢家伙伴", species="sparkhog", is_active=True)
+    loser_pet = UserPet(user_id=loser.id, name="玉兔", species="jaderabbit", is_active=True)
     db_session.add_all([winner_pet, loser_pet])
     await db_session.commit()
     await db_session.refresh(winner_pet)
@@ -203,3 +203,17 @@ async def test_capture_applies_the_same_legend_gate(db_session):
     # 宠物没易主
     await db_session.refresh(loser_pet)
     assert loser_pet.user_id == loser.id
+
+
+@pytest.mark.asyncio
+async def test_stale_page_adopting_with_old_pokemon_id_gets_new_species(client, legend_student):
+    """2026-11-04 换成原创伙伴后,没刷新的旧页面还会发 pikachu。按对照表换成 sparkhog 领养,
+    而不是 400「暂不支持这种宠物」(孩子会以为宠物系统坏了)。"""
+    token, _ = legend_student
+    headers = {"Authorization": f"Bearer {token}"}
+    r = await client.post("/api/v1/student/pet", json={"species": "pikachu", "name": "皮皮"}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["species"] == "sparkhog"
+    # 再用另一个旧 id 指向同一只 —— 算同一个家族,不能领两次
+    again = await client.post("/api/v1/student/pet", json={"species": "sparkhog", "name": "二号"}, headers=headers)
+    assert again.status_code == 400

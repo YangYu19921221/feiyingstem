@@ -6,12 +6,12 @@ from app.core.pet_species import ALLOWED_PET_SPECIES, LEGENDARY_SPECIES
 
 # AI对手名称池
 AI_NAMES = [
-    "AI训练师·小智",
-    "AI训练师·小霞",
-    "AI训练师·小刚",
-    "AI训练师·小茂",
-    "AI训练师·小蓝",
-    "电脑精灵训练师",
+    "AI陪练·星星",
+    "AI陪练·豆豆",
+    "AI陪练·乐乐",
+    "AI陪练·团团",
+    "AI陪练·果果",
+    "电脑伙伴大师",
     "虚拟对战助手",
     "智能陪练",
     "数码训练大师",
@@ -19,7 +19,7 @@ AI_NAMES = [
 ]
 
 # AI宠物种类池（可以选择与玩家不同的）
-# 排除传说：孩子要学 5000/8000 词才能拥有一只，若随手一场练习赛就撞见 AI 牵着超梦出场,
+# 排除传说：孩子要学 5000/8000 词才能拥有一只，若随手一场练习赛就撞见 AI 牵着麒麟出场,
 # 稀有感当场归零 —— 门槛激励的全部效力来自"平时见不到"。
 AI_PET_SPECIES = sorted(ALLOWED_PET_SPECIES - LEGENDARY_SPECIES)
 

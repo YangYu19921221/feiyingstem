@@ -156,116 +156,116 @@ const legendPet = (
 });
 
 export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
-  pet('pikachu', '皮卡丘家族', '电气伙伴，最终进化为雷丘', 'electric', '⚡', '十万伏特', 'electric', [
-    ['皮丘', '/pets/pichu.png'], ['皮卡丘', '/pets/pikachu.png'], ['雷丘', '/pets/raichu.png'],
+  pet('sparkhog', '蒲电猬家族', '背上是蒲公英绒球的小刺猬，一抖就噼啪放电，最终长出雷电王冠', 'electric', '⚡', '蒲公英雷暴', 'electric', [
+    ['蒲蒲猬', '/pets/sparkhog_1.png'], ['闪蒲猬', '/pets/sparkhog_2.png'], ['雷冠猬', '/pets/sparkhog_3.png'],
   ]),
-  pet('eevee', '伊布', '进化潜力丰富，成长后建立最强羁绊', 'normal', '✨', '高速星星', 'star', [
-    ['伊布', '/pets/eevee.png'], ['成长伊布', '/pets/eevee_grown.png'], ['羁绊伊布', '/pets/eevee_bond.png'],
+  pet('alpaca', '云絮羊驼家族', '毛像云朵一样蓬松的小羊驼，越长大毛里藏的星星越多', 'normal', '✨', '星絮回旋', 'star', [
+    ['绒绒驼', '/pets/alpaca_1.png'], ['云絮羊驼', '/pets/alpaca_2.png'], ['星光羊驼', '/pets/alpaca_3.png'],
   ]),
-  pet('bulbasaur', '妙蛙种子家族', '草系伙伴，温柔而可靠', 'grass', '🍃', '飞叶快刀', 'leaf', [
-    ['妙蛙种子', '/pets/bulbasaur.png'], ['妙蛙草', '/pets/ivysaur.png'], ['妙蛙花', '/pets/venusaur.png'],
+  pet('leafkoala', '叶耳熊家族', '耳朵是两片大叶子的小考拉，抱着树枝长大，最后头顶长成一片小森林', 'grass', '🍃', '万叶旋舞', 'leaf', [
+    ['叶团团', '/pets/leafkoala_1.png'], ['藤叶熊', '/pets/leafkoala_2.png'], ['森冠熊', '/pets/leafkoala_3.png'],
   ]),
-  pet('charmander', '小火龙家族', '火焰尾巴，热情勇敢', 'fire', '🔥', '火焰喷射', 'fire', [
-    ['小火龙', '/pets/charmander.png'], ['火恐龙', '/pets/charmeleon.png'], ['喷火龙', '/pets/charizard.png'],
+  pet('emberham', '火芯鼠家族', '耳朵尖是两朵小蜡烛火苗的仓鼠，最后披上了火焰披风', 'fire', '🔥', '烈焰披风', 'fire', [
+    ['火芯仔', '/pets/emberham_1.png'], ['焰团鼠', '/pets/emberham_2.png'], ['炎披鼠王', '/pets/emberham_3.png'],
   ]),
-  pet('squirtle', '杰尼龟家族', '沉稳聪明的水系伙伴', 'water', '💧', '水炮', 'water', [
-    ['杰尼龟', '/pets/squirtle.png'], ['卡咪龟', '/pets/wartortle.png'], ['水箭龟', '/pets/blastoise.png'],
+  pet('narwhee', '螺角鲸家族', '额头长着一根螺旋小角的独角鲸宝宝，能浮在空中游来游去', 'water', '💧', '潮汐螺旋', 'water', [
+    ['小螺鲸', '/pets/narwhee_1.png'], ['涡角鲸', '/pets/narwhee_2.png'], ['潮冠角鲸', '/pets/narwhee_3.png'],
   ]),
-  pet('jigglypuff', '胖丁家族', '爱唱歌的妖精系伙伴', 'fairy', '🎵', '魔法闪耀', 'star', [
-    ['胖丁', '/pets/jigglypuff.png'], ['成长胖丁', '/pets/jigglypuff_grown.png'], ['胖可丁', '/pets/wigglytuff.png'],
+  pet('melopuff', '音团绒家族', '圆滚滚的棉花糖小猫，尾巴是一个音符，一唱歌大家就想睡觉', 'fairy', '🎵', '甜梦摇篮曲', 'star', [
+    ['音团团', '/pets/melopuff_1.png'], ['乐符绒', '/pets/melopuff_2.png'], ['交响绒王', '/pets/melopuff_3.png'],
   ]),
-  pet('gastly', '鬼斯家族', '神出鬼没的幽灵系伙伴', 'ghost', '👻', '暗影球', 'star', [
-    ['鬼斯', '/pets/gastly.png'], ['鬼斯通', '/pets/haunter.png'], ['耿鬼', '/pets/gengar.png'],
+  pet('umbrellaspirit', '伞灵家族', '一把会飘的油纸伞成了精，害羞地躲在伞下，晚上会发出紫色的光', 'ghost', '👻', '幽伞夜雨', 'star', [
+    ['伞宝灵', '/pets/umbrellaspirit_1.png'], ['油纸伞灵', '/pets/umbrellaspirit_2.png'], ['千伞幽灵', '/pets/umbrellaspirit_3.png'],
   ]),
-  pet('dratini', '迷你龙家族', '优雅而强大的龙系伙伴', 'dragon', '🐉', '龙之波动', 'star', [
-    ['迷你龙', '/pets/dratini.png'], ['哈克龙', '/pets/dragonair.png'], ['快龙', '/pets/dragonite.png'],
+  pet('candydrake', '糖画龙家族', '像街边糖画一样晶莹的金色小龙，越长越大，龙鳞闪着焦糖光', 'dragon', '🐉', '金糖龙息', 'star', [
+    ['糖糖龙', '/pets/candydrake_1.png'], ['糖画龙', '/pets/candydrake_2.png'], ['金糖龙王', '/pets/candydrake_3.png'],
   ]),
-  pet('machop', '腕力家族', '坚持训练的格斗系伙伴', 'fighting', '🥊', '爆裂拳', 'star', [
-    ['腕力', '/pets/machop.png'], ['豪力', '/pets/machoke.png'], ['怪力', '/pets/machamp.png'],
+  pet('boxaroo', '拳袋鼠家族', '戴着红色拳套的小袋鼠，每天练拳，最后拿到了冠军金腰带', 'fighting', '🥊', '冠军连环拳', 'star', [
+    ['拳仔袋', '/pets/boxaroo_1.png'], ['擂台袋鼠', '/pets/boxaroo_2.png'], ['袋鼠拳王', '/pets/boxaroo_3.png'],
   ]),
-  pet('abra', '凯西家族', '聪明敏锐的超能力伙伴', 'psychic', '🔮', '精神强念', 'star', [
-    ['凯西', '/pets/abra.png'], ['勇基拉', '/pets/kadabra.png'], ['胡地', '/pets/alakazam.png'],
+  pet('mindslug', '念力海蛞蝓家族', '会飘在空中的粉紫色海蛞蝓，触角一亮就能用念力把东西浮起来', 'psychic', '🔮', '星念涟漪', 'star', [
+    ['念念蝓', '/pets/mindslug_1.png'], ['星念蝓', '/pets/mindslug_2.png'], ['灵光蝓仙', '/pets/mindslug_3.png'],
   ]),
-  pet('geodude', '小拳石家族', '坚韧可靠的岩石系伙伴', 'rock', '🪨', '岩崩', 'star', [
-    ['小拳石', '/pets/geodude.png'], ['隆隆石', '/pets/graveler.png'], ['隆隆岩', '/pets/golem.png'],
+  pet('pebbadillo', '卵石犰狳家族', '背着鹅卵石甲壳的小犰狳，缩成一团就能滚着撞过去', 'rock', '🪨', '滚石轰隆', 'star', [
+    ['石豆犰', '/pets/pebbadillo_1.png'], ['岩甲犰', '/pets/pebbadillo_2.png'], ['山岳犰王', '/pets/pebbadillo_3.png'],
   ]),
-  pet('vulpix', '六尾家族', '美丽优雅的火系伙伴', 'fire', '🔥', '大字爆炎', 'fire', [
-    ['六尾', '/pets/vulpix.png'], ['成长六尾', '/pets/vulpix_grown.png'], ['九尾', '/pets/ninetales.png'],
+  pet('blazekat', '焰尾獴家族', '站岗放哨的小獴，尾巴是一簇火苗，最后头顶出现太阳一样的光环', 'fire', '🔥', '日冕爆炎', 'fire', [
+    ['火獴仔', '/pets/blazekat_1.png'], ['焰尾獴', '/pets/blazekat_2.png'], ['日冕獴王', '/pets/blazekat_3.png'],
   ]),
-  pet('growlithe', '卡蒂狗家族', '忠诚勇敢的火系伙伴', 'fire', '🔥', '神速烈焰', 'fire', [
-    ['卡蒂狗', '/pets/growlithe.png'], ['成长卡蒂狗', '/pets/growlithe_grown.png'], ['风速狗', '/pets/arcanine.png'],
+  pet('liondog', '醒狮家族', '像过年舞的醒狮一样的小狮子，鬃毛是火做的，会守护大家', 'fire', '🔥', '醒狮烈焰', 'fire', [
+    ['醒狮仔', '/pets/liondog_1.png'], ['焰鬃狮', '/pets/liondog_2.png'], ['瑞火狮王', '/pets/liondog_3.png'],
   ]),
-  pet('magikarp', '鲤鱼王家族', '坚持成长，终会一飞冲天', 'water', '💧', '水流尾', 'water', [
-    ['鲤鱼王', '/pets/magikarp.png'], ['跃动鲤鱼王', '/pets/magikarp_leaping.png'], ['暴鲤龙', '/pets/gyarados.png'],
+  pet('surfduck', '浪羽鸭家族', '灰扑扑的小鸭子总被笑话，努力冲浪长大后变成了闪着水光的白天鹅', 'water', '💧', '潮光羽浪', 'water', [
+    ['灰绒鸭', '/pets/surfduck_1.png'], ['浪羽鸭', '/pets/surfduck_2.png'], ['潮光天鹅', '/pets/surfduck_3.png'],
   ]),
-  pet('oddish', '走路草家族', '安静可爱的草系伙伴', 'grass', '🍃', '花瓣舞', 'leaf', [
-    ['走路草', '/pets/oddish.png'], ['臭臭花', '/pets/gloom.png'], ['霸王花', '/pets/vileplume.png'],
+  pet('potsprout', '盆栽精家族', '一只会走路的小花盆，头上的嫩芽慢慢开成了一大片花', 'grass', '🍃', '百花盛放', 'leaf', [
+    ['盆芽芽', '/pets/potsprout_1.png'], ['花盆灵', '/pets/potsprout_2.png'], ['百花盆王', '/pets/potsprout_3.png'],
   ]),
-  pet('poliwag', '蚊香蝌蚪家族', '活泼好动的水系伙伴', 'water', '💧', '水流裂破', 'water', [
-    ['蚊香蝌蚪', '/pets/poliwag.png'], ['蚊香君', '/pets/poliwhirl.png'], ['蚊香泳士', '/pets/poliwrath.png'],
+  pet('bubbleoct', '泡泡章家族', '爱吹泡泡的小章鱼，泡泡越吹越大，最后能用漩涡把对手卷起来', 'water', '💧', '漩涡泡泡阵', 'water', [
+    ['泡泡章', '/pets/bubbleoct_1.png'], ['涡泡章', '/pets/bubbleoct_2.png'], ['深海章王', '/pets/bubbleoct_3.png'],
   ]),
-  pet('caterpie', '绿毛虫家族', '快速蜕变的虫系伙伴', 'bug', '🐛', '银色旋风', 'leaf', [
-    ['绿毛虫', '/pets/caterpie.png'], ['铁甲蛹', '/pets/metapod.png'], ['巴大蝶', '/pets/butterfree.png'],
+  pet('silkmoth', '蚕蛾家族', '爱吃桑叶的蚕宝宝，吐丝结茧，最后变成翅膀带月光的白蚕蛾', 'bug', '🐛', '银丝月光', 'leaf', [
+    ['蚕宝宝', '/pets/silkmoth_1.png'], ['银茧蚕', '/pets/silkmoth_2.png'], ['月光蚕蛾', '/pets/silkmoth_3.png'],
   ]),
-  pet('weedle', '独角虫家族', '小小身躯也能爆发强大力量', 'bug', '🐛', '飞弹针', 'leaf', [
-    ['独角虫', '/pets/weedle.png'], ['铁壳蛹', '/pets/kakuna.png'], ['大针蜂', '/pets/beedrill.png'],
+  pet('honeybee', '蜜囊蜂家族', '圆滚滚的小蜜蜂，背着一罐蜂蜜，长大后成了守护蜂巢的骑士', 'bug', '🐝', '蜂巢针雨', 'leaf', [
+    ['蜜豆蜂', '/pets/honeybee_1.png'], ['巢卫蜂', '/pets/honeybee_2.png'], ['蜂巢骑士', '/pets/honeybee_3.png'],
   ]),
-  pet('bellsprout', '喇叭芽家族', '灵活坚韧的草系伙伴', 'grass', '🍃', '强力鞭打', 'leaf', [
-    ['喇叭芽', '/pets/bellsprout.png'], ['口呆花', '/pets/weepinbell.png'], ['大食花', '/pets/victreebel.png'],
+  pet('pitcherplant', '瓶子草家族', '像小水瓶一样的瓶子草，盖子一开一合在说话，藤蔓能当鞭子', 'grass', '🍃', '露珠鞭击', 'leaf', [
+    ['小瓶草', '/pets/pitcherplant_1.png'], ['露瓶草', '/pets/pitcherplant_2.png'], ['瓶草女王', '/pets/pitcherplant_3.png'],
   ]),
-  pet('horsea', '墨海马家族', '在水流中不断磨炼的伙伴', 'water', '💧', '龙卷水炮', 'water', [
-    ['墨海马', '/pets/horsea.png'], ['海刺龙', '/pets/seadra.png'], ['刺龙王', '/pets/kingdra.png'],
+  pet('axolotl', '六角螈家族', '头上有六根粉色羽鳃的小蝾螈，一直在笑，最后鳃长成了珊瑚', 'water', '💧', '珊瑚漩流', 'water', [
+    ['萌螈宝', '/pets/axolotl_1.png'], ['珊鳃螈', '/pets/axolotl_2.png'], ['珊瑚螈王', '/pets/axolotl_3.png'],
   ]),
-  pet('larvitar', '幼基拉斯家族', '从岩石中积蓄力量的伙伴', 'rock', '🪨', '尖石攻击', 'star', [
-    ['幼基拉斯', '/pets/larvitar.png'], ['沙基拉斯', '/pets/pupitar.png'], ['班基拉斯', '/pets/tyranitar.png'],
+  pet('geocub', '晶洞兽家族', '背上裂开就是一个闪光晶洞的小石兽，越长背上的紫水晶越大', 'rock', '🪨', '水晶山崩', 'star', [
+    ['晶豆兽', '/pets/geocub_1.png'], ['晶洞兽', '/pets/geocub_2.png'], ['紫晶山君', '/pets/geocub_3.png'],
   ]),
-  pet('ralts', '拉鲁拉丝家族', '能感知情绪的超能力伙伴', 'psychic', '🔮', '精神冲击', 'star', [
-    ['拉鲁拉丝', '/pets/ralts.png'], ['奇鲁莉安', '/pets/kirlia.png'], ['沙奈朵', '/pets/gardevoir.png'],
+  pet('lanternfairy', '灯笼仙家族', '提着小灯笼的仙子精灵，灯光能照见别人的心情', 'psychic', '🔮', '千灯祈愿', 'star', [
+    ['灯芯灵', '/pets/lanternfairy_1.png'], ['灯笼仙', '/pets/lanternfairy_2.png'], ['千灯仙子', '/pets/lanternfairy_3.png'],
   ]),
-  pet('chikorita', '菊草叶家族', '温和坚定的草系伙伴', 'grass', '🍃', '日光束', 'leaf', [
-    ['菊草叶', '/pets/chikorita.png'], ['月桂叶', '/pets/bayleef.png'], ['大竺葵', '/pets/meganium.png'],
+  pet('lotuscalf', '莲叶鹿家族', '头上顶着一片荷叶的小鹿，走过的地方都会开出莲花', 'grass', '🍃', '清荷落雨', 'leaf', [
+    ['荷芽鹿', '/pets/lotuscalf_1.png'], ['莲叶鹿', '/pets/lotuscalf_2.png'], ['千荷鹿神', '/pets/lotuscalf_3.png'],
   ]),
-  pet('cyndaquil', '火球鼠家族', '背上的火焰会随斗志燃烧', 'fire', '🔥', '喷火', 'fire', [
-    ['火球鼠', '/pets/cyndaquil.png'], ['火岩鼠', '/pets/quilava.png'], ['火暴兽', '/pets/typhlosion.png'],
+  pet('flamepanda', '焰熊猫家族', '毛色是火红和奶白的小熊猫，抱着一根着火的竹子当魔杖', 'fire', '🔥', '竹火冲天', 'fire', [
+    ['火团团', '/pets/flamepanda_1.png'], ['焰纹熊猫', '/pets/flamepanda_2.png'], ['火竹熊猫王', '/pets/flamepanda_3.png'],
   ]),
-  pet('totodile', '小锯鳄家族', '精力充沛的水系伙伴', 'water', '💧', '水流尾', 'water', [
-    ['小锯鳄', '/pets/totodile.png'], ['蓝鳄', '/pets/croconaw.png'], ['大力鳄', '/pets/feraligatr.png'],
+  pet('otterwave', '浪花獭家族', '抱着贝壳的小水獭，喜欢冲浪，长大后能召唤海浪', 'water', '💧', '浪花连环掌', 'water', [
+    ['浪花獭', '/pets/otterwave_1.png'], ['冲浪獭', '/pets/otterwave_2.png'], ['海潮獭王', '/pets/otterwave_3.png'],
   ]),
-  pet('treecko', '木守宫家族', '冷静敏捷的森林伙伴', 'grass', '🍃', '叶刃', 'leaf', [
-    ['木守宫', '/pets/treecko.png'], ['森林蜥蜴', '/pets/grovyle.png'], ['蜥蜴王', '/pets/sceptile.png'],
+  pet('chameleaf', '变色龙家族', '尾巴卷成蚊香一样的小变色龙，身上能变出叶子的花纹藏起来', 'grass', '🍃', '千叶隐身斩', 'leaf', [
+    ['叶纹蜥', '/pets/chameleaf_1.png'], ['藤卷变色龙', '/pets/chameleaf_2.png'], ['森影变色龙', '/pets/chameleaf_3.png'],
   ]),
-  pet('torchic', '火稚鸡家族', '越训练越勇猛的火系伙伴', 'fire', '🔥', '爆炸烈焰', 'fire', [
-    ['火稚鸡', '/pets/torchic.png'], ['力壮鸡', '/pets/combusken.png'], ['火焰鸡', '/pets/blaziken.png'],
+  pet('sunrooster', '朝阳鸡家族', '每天第一个叫醒太阳的小鸡，越长大羽毛越像燃烧的朝霞', 'fire', '🔥', '破晓金焰', 'fire', [
+    ['朝阳雏', '/pets/sunrooster_1.png'], ['啼晓鸡', '/pets/sunrooster_2.png'], ['金乌鸡神', '/pets/sunrooster_3.png'],
   ]),
-  pet('mudkip', '水跃鱼家族', '能感知水流变化的可靠伙伴', 'water', '💧', '浊流', 'water', [
-    ['水跃鱼', '/pets/mudkip.png'], ['沼跃鱼', '/pets/marshtomp.png'], ['巨沼怪', '/pets/swampert.png'],
+  pet('mudhippo', '泥潭河马家族', '爱在泥坑里打滚的小河马，长大后一个翻身就能掀起泥浪', 'water', '💧', '泥浪大翻滚', 'water', [
+    ['泥豆马', '/pets/mudhippo_1.png'], ['泥潭河马', '/pets/mudhippo_2.png'], ['沼泽河马王', '/pets/mudhippo_3.png'],
   ]),
-  pet('bagon', '宝贝龙家族', '怀抱飞翔梦想的龙系伙伴', 'dragon', '🐉', '龙星群', 'star', [
-    ['宝贝龙', '/pets/bagon.png'], ['甲壳龙', '/pets/shelgon.png'], ['暴飞龙', '/pets/salamence.png'],
+  pet('cloudkite', '风筝龙家族', '像一只会飞的风筝的小龙，尾巴是彩色飘带，最后能飞上九霄', 'dragon', '🐉', '万丈风筝阵', 'star', [
+    ['纸鸢龙', '/pets/cloudkite_1.png'], ['风筝龙', '/pets/cloudkite_2.png'], ['云霄龙王', '/pets/cloudkite_3.png'],
   ]),
-  pet('beldum', '铁哑铃家族', '以磁力凝聚力量的钢系伙伴', 'steel', '⚙️', '彗星拳', 'star', [
-    ['铁哑铃', '/pets/beldum.png'], ['金属怪', '/pets/metang.png'], ['巨金怪', '/pets/metagross.png'],
+  pet('clockbot', '发条机兽家族', '背上插着发条钥匙的小机器兽，越转越快，最后变成会走的钟塔', 'steel', '⚙️', '齿轮星爆拳', 'star', [
+    ['发条仔', '/pets/clockbot_1.png'], ['齿轮兽', '/pets/clockbot_2.png'], ['钟塔机神', '/pets/clockbot_3.png'],
   ]),
-  pet('gible', '圆陆鲨家族', '拥有惊人成长潜力的龙系伙伴', 'dragon', '🐉', '龙神俯冲', 'star', [
-    ['圆陆鲨', '/pets/gible.png'], ['尖牙陆鲨', '/pets/gabite.png'], ['烈咬陆鲨', '/pets/garchomp.png'],
+  pet('dunewhale', '沙海鲸家族', '在沙漠里游泳的小鲸龙，鳍像船帆，能在沙子里潜行', 'dragon', '🐉', '沙海龙卷', 'star', [
+    ['沙鲸仔', '/pets/dunewhale_1.png'], ['沙鳍龙', '/pets/dunewhale_2.png'], ['沙海龙鲸', '/pets/dunewhale_3.png'],
   ]),
-  pet('snivy', '藤藤蛇家族', '从容优雅的草系伙伴', 'grass', '🍃', '疯狂植物', 'leaf', [
-    ['藤藤蛇', '/pets/snivy.png'], ['青藤蛇', '/pets/servine.png'], ['君主蛇', '/pets/serperior.png'],
+  pet('bambooweasel', '竹叶貂家族', '披着竹叶斗篷的小貂，动作很快，召唤竹子从地里长出来', 'grass', '🍃', '千竹破土', 'leaf', [
+    ['竹芽貂', '/pets/bambooweasel_1.png'], ['竹叶貂', '/pets/bambooweasel_2.png'], ['青竹貂君', '/pets/bambooweasel_3.png'],
   ]),
-  pet('tepig', '暖暖猪家族', '食欲和斗志同样旺盛', 'fire', '🔥', '高温重压', 'fire', [
-    ['暖暖猪', '/pets/tepig.png'], ['炒炒猪', '/pets/pignite.png'], ['炎武王', '/pets/emboar.png'],
+  pet('lavaboar', '熔岩野猪家族', '背上有熔岩纹的小野猪，鼻子一喷就冒火星', 'fire', '🔥', '熔岩冲撞', 'fire', [
+    ['火炭猪', '/pets/lavaboar_1.png'], ['熔岩猪', '/pets/lavaboar_2.png'], ['火山猪王', '/pets/lavaboar_3.png'],
   ]),
-  pet('oshawott', '水水獭家族', '认真磨炼贝壳刀法的伙伴', 'water', '💧', '贝壳刃', 'water', [
-    ['水水獭', '/pets/oshawott.png'], ['双刃丸', '/pets/dewott.png'], ['大剑鬼', '/pets/samurott.png'],
+  pet('shellpenguin', '贝甲企鹅家族', '背着扇贝当小盾牌的企鹅宝宝，长大后挥着贝壳刀保护大家', 'water', '💧', '贝刃回旋', 'water', [
+    ['贝贝鹅', '/pets/shellpenguin_1.png'], ['贝刃企鹅', '/pets/shellpenguin_2.png'], ['海螺企鹅帝', '/pets/shellpenguin_3.png'],
   ]),
-  pet('rowlet', '木木枭家族', '安静专注的森林射手', 'grass', '🍃', '缝影', 'leaf', [
-    ['木木枭', '/pets/rowlet.png'], ['投羽枭', '/pets/dartrix.png'], ['狙射树枭', '/pets/decidueye.png'],
+  pet('acornsquirrel', '橡果松鼠家族', '戴着橡果帽的小松鼠，练成了用松果和树叶当箭的神射手', 'grass', '🌰', '松果箭雨', 'leaf', [
+    ['橡果鼠', '/pets/acornsquirrel_1.png'], ['松果射手', '/pets/acornsquirrel_2.png'], ['森林神射手', '/pets/acornsquirrel_3.png'],
   ]),
-  pet('litten', '火斑喵家族', '骄傲又可靠的火系伙伴', 'fire', '🔥', '极恶飞跃粉碎击', 'fire', [
-    ['火斑喵', '/pets/litten.png'], ['炎热喵', '/pets/torracat.png'], ['炽焰咆哮虎', '/pets/incineroar.png'],
+  pet('firetanuki', '火狸家族', '拍着肚皮打鼓的小狸猫，鼓声越响火越旺', 'fire', '🔥', '烈火战鼓', 'fire', [
+    ['火狸仔', '/pets/firetanuki_1.png'], ['鼓焰狸', '/pets/firetanuki_2.png'], ['烈鼓狸王', '/pets/firetanuki_3.png'],
   ]),
-  pet('popplio', '球球海狮家族', '用水泡和歌声鼓舞伙伴', 'water', '💧', '海神庄严交响乐', 'water', [
-    ['球球海狮', '/pets/popplio.png'], ['花漾海狮', '/pets/brionne.png'], ['西狮海壬', '/pets/primarina.png'],
+  pet('jellyfish', '彩纱水母家族', '像一朵会发光的小伞在海里跳舞的水母，最后能放出极光', 'water', '🪼', '极光水母舞', 'water', [
+    ['泡泡母', '/pets/jellyfish_1.png'], ['彩纱水母', '/pets/jellyfish_2.png'], ['极光水母后', '/pets/jellyfish_3.png'],
   ]),
   pet('book_fox', '书狐', '爱读书的折纸小狐，最终成为贤者狐', 'normal', '📚', '知识星辉', 'star', [
     ['书页幼狐', '/pets/fox-1.jpeg'], ['博闻书狐', '/pets/fox-2.jpeg'], ['贤者书狐', '/pets/fox-3.jpeg'],
@@ -278,98 +278,98 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
   ]),
   // ===== 2026-08 新增 12 个普通家族。优先补 TYPE_CHART 里此前一只都没有的属性
   // (冰/恶/地面/毒/飞行),让属性克制在对战里真正转得起来。=====
-  pet('mareep', '咩利羊家族', '毛茸茸的电气伙伴，最终进化为电龙', 'electric', '⚡', '放电', 'electric', [
-    ['咩利羊', '/pets/mareep.png'], ['茸茸羊', '/pets/flaaffy.png'], ['电龙', '/pets/ampharos.png'],
+  pet('voltaeel', '霓虹电鳗家族', '身上亮着霓虹灯条纹的小电鳗，可以在空中游动、放出闪电', 'electric', '⚡', '霓虹雷暴', 'electric', [
+    ['电鳗宝', '/pets/voltaeel_1.png'], ['霓虹鳗', '/pets/voltaeel_2.png'], ['雷霆鳗龙', '/pets/voltaeel_3.png'],
   ]),
-  pet('swinub', '小山猪家族', '雪原里长大的冰系伙伴', 'ice', '❄️', '暴风雪', 'star', [
-    ['小山猪', '/pets/swinub.png'], ['长毛猪', '/pets/piloswine.png'], ['象牙猪', '/pets/mamoswine.png'],
+  pet('snowleopard', '雪豹家族', '住在雪山上的小雪豹，尾巴又长又粗，最后身上结出了冰晶铠甲', 'ice', '❄️', '冰川暴雪', 'star', [
+    ['雪团豹', '/pets/snowleopard_1.png'], ['霜纹豹', '/pets/snowleopard_2.png'], ['冰川豹王', '/pets/snowleopard_3.png'],
   ]),
-  pet('deino', '单首龙家族', '从看不见路到三头齐吼的恶系伙伴', 'dark', '🌑', '恶之波动', 'star', [
-    ['单首龙', '/pets/deino.png'], ['双首暴龙', '/pets/zweilous.png'], ['三首恶龙', '/pets/hydreigon.png'],
+  pet('shadowcat', '夜影猫家族', '额头有一弯月牙的小黑猫，能躲进影子里，最后召唤月蚀', 'dark', '🌑', '月蚀暗光', 'star', [
+    ['影喵', '/pets/shadowcat_1.png'], ['夜影猫', '/pets/shadowcat_2.png'], ['月蚀猫王', '/pets/shadowcat_3.png'],
   ]),
-  pet('nidoran', '尼多朗家族', '有毒尖角的坚韧伙伴', 'poison', '☠️', '剧毒突袭', 'star', [
-    ['尼多朗', '/pets/nidoran.png'], ['尼多利诺', '/pets/nidorino.png'], ['尼多王', '/pets/nidoking.png'],
+  pet('dartfrog', '彩毒蛙家族', '颜色越鲜艳越厉害的小毒蛙，警告大家别靠近，最后能喷出七彩毒雾', 'poison', '☠️', '七彩毒雾', 'star', [
+    ['彩毒蛙', '/pets/dartfrog_1.png'], ['毒雾蛙', '/pets/dartfrog_2.png'], ['剧彩蛙王', '/pets/dartfrog_3.png'],
   ]),
-  pet('trapinch', '大颚蚁家族', '沙漠里潜伏，长成天空的舞者', 'ground', '🏜️', '地震', 'star', [
-    ['大颚蚁', '/pets/trapinch.png'], ['超音波幼虫', '/pets/vibrava.png'], ['沙漠蜻蜓', '/pets/flygon.png'],
+  pet('digmole', '掘地鼹家族', '戴着矿工帽的小鼹鼠，挖遍地下的宝石，最后一跺脚就地震', 'ground', '🏜️', '大地震裂', 'star', [
+    ['土豆鼹', '/pets/digmole_1.png'], ['矿灯鼹', '/pets/digmole_2.png'], ['大地鼹王', '/pets/digmole_3.png'],
   ]),
-  pet('sandile', '黑眼鳄家族', '沙中前行的地面系伙伴', 'ground', '🏜️', '大地之力', 'star', [
-    ['黑眼鳄', '/pets/sandile.png'], ['混混鳄', '/pets/krokorok.png'], ['流氓鳄', '/pets/krookodile.png'],
+  pet('dunecamel', '沙丘骆驼家族', '背着两个驼峰的小骆驼，走过沙漠时脚下会卷起沙尘', 'ground', '🐫', '沙丘风暴', 'star', [
+    ['沙驼仔', '/pets/dunecamel_1.png'], ['沙丘骆驼', '/pets/dunecamel_2.png'], ['沙漠驼王', '/pets/dunecamel_3.png'],
   ]),
-  pet('zubat', '超音蝠家族', '用声波认路的飞行系伙伴', 'flying', '🦇', '空气斩', 'star', [
-    ['超音蝠', '/pets/zubat.png'], ['大嘴蝠', '/pets/golbat.png'], ['叉字蝠', '/pets/crobat.png'],
+  pet('swallow', '剪尾燕家族', '尾巴像剪刀的小燕子，飞得最快，翅膀一挥就是一道风刃', 'flying', '🐦', '剪风斩', 'star', [
+    ['春燕仔', '/pets/swallow_1.png'], ['剪尾燕', '/pets/swallow_2.png'], ['疾风燕王', '/pets/swallow_3.png'],
   ]),
-  pet('starly', '姆克儿家族', '从小麻雀长成天空猛禽', 'flying', '🕊️', '勇鸟猛攻', 'star', [
-    ['姆克儿', '/pets/starly.png'], ['姆克鸟', '/pets/staravia.png'], ['姆克鹰', '/pets/staraptor.png'],
+  pet('hummingbird', '翠羽蜂鸟家族', '最小的鸟，翅膀扇得看不清，长大后羽毛像彩虹一样发光', 'flying', '🕊️', '虹光俯冲', 'star', [
+    ['蜂鸟仔', '/pets/hummingbird_1.png'], ['翠羽蜂鸟', '/pets/hummingbird_2.png'], ['虹光蜂鸟', '/pets/hummingbird_3.png'],
   ]),
-  pet('rookidee', '稚山雀家族', '披上钢铁羽甲的空中骑士', 'steel', '⚙️', '铁头功', 'star', [
-    ['稚山雀', '/pets/rookidee.png'], ['蓝鸦', '/pets/corvisquire.png'], ['钢铠鸦', '/pets/corviknight.png'],
+  pet('ironrhino', '钢甲犀家族', '角是闪亮钢铁做的小犀牛，长大后全身披上钢甲', 'steel', '⚙️', '钢角冲锋', 'star', [
+    ['铁角犀', '/pets/ironrhino_1.png'], ['钢甲犀', '/pets/ironrhino_2.png'], ['钢铁犀王', '/pets/ironrhino_3.png'],
   ]),
-  pet('froakie', '呱呱泡蛙家族', '悄无声息的水系忍者', 'water', '💧', '水手里剑', 'water', [
-    ['呱呱泡蛙', '/pets/froakie.png'], ['呱头蛙', '/pets/frogadier.png'], ['甲贺忍蛙', '/pets/greninja.png'],
+  pet('seahorse', '潮剑海马家族', '卷着尾巴的小海马，用水流练剑，最后成了守护珊瑚礁的骑士', 'water', '💧', '潮流剑舞', 'water', [
+    ['小海马', '/pets/seahorse_1.png'], ['潮剑海马', '/pets/seahorse_2.png'], ['海马骑士', '/pets/seahorse_3.png'],
   ]),
-  pet('fennekin', '火狐狸家族', '会用树枝施展火焰魔法', 'fire', '🔥', '魔法火焰', 'fire', [
-    ['火狐狸', '/pets/fennekin.png'], ['长尾火狐', '/pets/braixen.png'], ['妖火红狐', '/pets/delphox.png'],
+  pet('flamingo', '焰舞烈鸟家族', '单脚站着跳芭蕾的火烈鸟，跳起来羽毛会变成火焰', 'fire', '🔥', '烈焰芭蕾', 'fire', [
+    ['粉焰雏', '/pets/flamingo_1.png'], ['焰羽烈鸟', '/pets/flamingo_2.png'], ['焰舞烈鸟', '/pets/flamingo_3.png'],
   ]),
-  pet('chespin', '哈力栗家族', '带刺硬壳的可靠草系伙伴', 'grass', '🌰', '木锤', 'leaf', [
-    ['哈力栗', '/pets/chespin.png'], ['胖胖哈力', '/pets/quilladin.png'], ['布里卡隆', '/pets/chesnaught.png'],
+  pet('cactus', '仙人掌家族', '头上开着小花的仙人球，长大后成了戴拳套的仙人掌拳手', 'grass', '🌵', '千刺重锤', 'leaf', [
+    ['仙人球', '/pets/cactus_1.png'], ['掌刺拳手', '/pets/cactus_2.png'], ['沙漠掌王', '/pets/cactus_3.png'],
   ]),
-  // ===== 小智主力阵容(2026-08-11)。与后端 core/pet_species 同一批 key。=====
-  pet('pidgey', '波波家族', '小智最早的空中伙伴，最终成为大比鸟', 'flying', '🕊️', '暴风', 'star', [
-    ['波波', '/pets/pidgey.png'], ['比比鸟', '/pets/pidgeotto.png'], ['大比鸟', '/pets/pidgeot.png'],
+  // ===== 第三批 10 个家族(2026-08-11 上线,11-04 换成原创)。与后端 core/pet_species 同一批 key。=====
+  pet('flyingsquirrel', '滑翔鼯鼠家族', '张开身上的皮膜就能滑翔的小鼯鼠，飞过之处刮起大风', 'flying', '🌬️', '狂风滑翔', 'star', [
+    ['飞鼠仔', '/pets/flyingsquirrel_1.png'], ['滑翔鼯鼠', '/pets/flyingsquirrel_2.png'], ['风翼鼯鼠王', '/pets/flyingsquirrel_3.png'],
   ]),
-  pet('onix', '大岩蛇家族', '岩石巨蛇，练到最后浑身钢铁', 'rock', '🪨', '岩石炮', 'star', [
-    ['大岩蛇', '/pets/onix.png'], ['钢岩蛇', '/pets/steelix_mid.png'], ['大钢蛇', '/pets/steelix.png'],
+  pet('terracotta', '陶俑家族', '陶土捏成的小士兵活了过来，守护着古老的宝藏', 'rock', '🪨', '陶石炮', 'star', [
+    ['陶俑仔', '/pets/terracotta_1.png'], ['陶甲俑', '/pets/terracotta_2.png'], ['石甲将军', '/pets/terracotta_3.png'],
   ]),
-  pet('scyther', '飞天螳螂家族', '双刀高速斩击，进化后化为红色钢钳', 'bug', '🗡️', '十字剪', 'star', [
-    ['飞天螳螂', '/pets/scyther.png'], ['钢化螳螂', '/pets/scizor_mid.png'], ['巨钳螳螂', '/pets/scizor.png'],
+  pet('dragonfly', '翠翼蜻蜓家族', '停在荷叶上的小蜻蜓，翅膀像玻璃，飞得又快又稳', 'bug', '🪽', '疾风剪翼', 'star', [
+    ['小蜻蜓', '/pets/dragonfly_1.png'], ['翠翼蜻蜓', '/pets/dragonfly_2.png'], ['疾翼蜻蜓王', '/pets/dragonfly_3.png'],
   ]),
-  pet('riolu', '利欧路家族', '波导之力的格斗伙伴', 'fighting', '🥊', '波导弹', 'star', [
-    ['利欧路', '/pets/riolu.png'], ['波导利欧', '/pets/lucario_mid.png'], ['路卡利欧', '/pets/lucario.png'],
+  pet('goldmonkey', '金丝猴家族', '毛色金灿灿的小猴子，每天在山顶练拳，最后拳风能吹开云海', 'fighting', '🥊', '云海拳风', 'star', [
+    ['金丝猴仔', '/pets/goldmonkey_1.png'], ['拳法金猴', '/pets/goldmonkey_2.png'], ['齐云拳圣', '/pets/goldmonkey_3.png'],
   ]),
-  pet('munchlax', '小卡比兽家族', '吃饱睡足，力气大得惊人', 'normal', '🍙', '舍身冲撞', 'star', [
-    ['小卡比兽', '/pets/munchlax.png'], ['贪吃卡比', '/pets/snorlax_mid.png'], ['卡比兽', '/pets/snorlax.png'],
+  pet('sloth', '树懒家族', '动作超慢、一直在笑的小树懒，看起来懒，压下来却力气超大', 'normal', '🦥', '慢慢大压制', 'star', [
+    ['懒懒宝', '/pets/sloth_1.png'], ['抱树懒', '/pets/sloth_2.png'], ['树懒长老', '/pets/sloth_3.png'],
   ]),
-  pet('magnemite', '小磁怪家族', '磁力钢铁伙伴，越合体越强', 'steel', '🧲', '电磁炮', 'electric', [
-    ['小磁怪', '/pets/magnemite.png'], ['三合一磁怪', '/pets/magneton.png'], ['自爆磁怪', '/pets/magnezone.png'],
+  pet('magnetcrab', '磁钳蟹家族', '两只钳子是马蹄形磁铁的小螃蟹，一靠近铁东西就吸过来', 'steel', '🧲', '电磁钳炮', 'electric', [
+    ['磁钳蟹', '/pets/magnetcrab_1.png'], ['磁甲蟹', '/pets/magnetcrab_2.png'], ['磁暴蟹王', '/pets/magnetcrab_3.png'],
   ]),
-  pet('tauros', '肯泰罗家族', '三条尾巴的猛牛，冲起来挡不住', 'normal', '🐂', '狂牛冲撞', 'star', [
-    ['肯泰罗', '/pets/tauros.png'], ['冲锋肯泰罗', '/pets/tauros_charge.png'], ['狂怒肯泰罗', '/pets/tauros_rage.png'],
+  pet('yak', '牦牛家族', '披着长长厚毛的高原小牦牛，冲起来像一座会跑的小山', 'normal', '🐂', '雪原狂奔', 'star', [
+    ['小牦牛', '/pets/yak_1.png'], ['冲锋牦牛', '/pets/yak_2.png'], ['雪原牦牛王', '/pets/yak_3.png'],
   ]),
-  pet('doduo', '嘟嘟家族', '两个头跑得快，三个头更快', 'flying', '🐦', '三连啄', 'star', [
-    ['嘟嘟', '/pets/doduo.png'], ['嘟嘟利', '/pets/dodrio.png'], ['王者嘟嘟利', '/pets/dodrio_prime.png'],
+  pet('peacock', '孔雀家族', '小时候毛茸茸的孔雀宝宝，长大一开屏，羽毛上全是会发光的眼睛花纹', 'flying', '🦚', '百羽开屏', 'star', [
+    ['孔雀雏', '/pets/peacock_1.png'], ['开屏孔雀', '/pets/peacock_2.png'], ['百羽孔雀王', '/pets/peacock_3.png'],
   ]),
-  pet('pinsir', '凯罗斯家族', '巨大钢钳一夹就赢', 'bug', '🦬', '巨钳夹击', 'star', [
-    ['凯罗斯', '/pets/pinsir.png'], ['重钳凯罗斯', '/pets/pinsir_mid.png'], ['霸钳凯罗斯', '/pets/pinsir_prime.png'],
+  pet('ladybug', '七星瓢虫家族', '背上有七颗黑点的小瓢虫，长大后穿上红色甲胄成了七星甲士', 'bug', '🐞', '七星连撞', 'star', [
+    ['瓢虫宝', '/pets/ladybug_1.png'], ['七星瓢虫', '/pets/ladybug_2.png'], ['七星甲士', '/pets/ladybug_3.png'],
   ]),
-  pet('tropius', '热带龙家族', '背着棕榈叶翅膀的果实恐龙', 'grass', '🍌', '飞叶风暴', 'leaf', [
-    ['幼热带龙', '/pets/tropius_young.png'], ['热带龙', '/pets/tropius.png'], ['丰实热带龙', '/pets/tropius_prime.png'],
+  pet('mosssnail', '苔壳蜗牛家族', '背着长满青苔小花园的蜗牛，走得慢，壳上的花园越长越大', 'grass', '🐌', '苔藓风暴', 'leaf', [
+    ['苔壳蜗', '/pets/mosssnail_1.png'], ['花园蜗牛', '/pets/mosssnail_2.png'], ['森林蜗牛王', '/pets/mosssnail_3.png'],
   ]),
-  // ===== 传说宝可梦。准传说需累计学 5000 个不同单词，顶级传说需 8000，
+  // ===== 传说伙伴(取材中国神话)。准传说需累计学 5000 个不同单词，顶级传说需 8000，
   // 且走独立于普通 5 格的专属队伍格(后端 pet_formulas.MAX_LEGEND_SLOTS)。=====
-  legendPet('articuno', '急冻鸟', '准传说 · 掠过雪原的冰之神鸟', 'ice', '❄️', '绝对零度', 'star', 'semi_legend', [
-    ['急冻鸟', '/pets/articuno.png'], ['觉醒急冻鸟', '/pets/articuno_awake.png'], ['究极急冻鸟', '/pets/articuno_ultra.png'],
+  legendPet('baize', '白泽', '准传说 · 雪山深处的神兽白泽，懂得世间万物的名字', 'ice', '❄️', '玄冰千里', 'star', 'semi_legend', [
+    ['白泽', '/pets/baize_1.png'], ['觉醒白泽', '/pets/baize_2.png'], ['究极白泽', '/pets/baize_3.png'],
   ]),
-  legendPet('zapdos', '闪电鸟', '准传说 · 乘着雷云现身的雷之神鸟', 'electric', '⚡', '雷神之怒', 'electric', 'semi_legend', [
-    ['闪电鸟', '/pets/zapdos.png'], ['觉醒闪电鸟', '/pets/zapdos_awake.png'], ['究极闪电鸟', '/pets/zapdos_ultra.png'],
+  legendPet('thunderkui', '雷鼓夔', '准传说 · 传说中只有一条腿的雷兽夔，一跺脚就像擂响了天鼓', 'electric', '⚡', '夔鼓雷鸣', 'electric', 'semi_legend', [
+    ['雷鼓夔', '/pets/thunderkui_1.png'], ['觉醒雷鼓夔', '/pets/thunderkui_2.png'], ['究极雷鼓夔', '/pets/thunderkui_3.png'],
   ]),
-  legendPet('moltres', '火焰鸟', '准传说 · 双翼即烈焰的炎之神鸟', 'fire', '🔥', '神圣之火', 'fire', 'semi_legend', [
-    ['火焰鸟', '/pets/moltres.png'], ['觉醒火焰鸟', '/pets/moltres_awake.png'], ['究极火焰鸟', '/pets/moltres_ultra.png'],
+  legendPet('vermilion', '朱雀', '准传说 · 守护南方的神鸟朱雀，飞过的地方天空都被染红', 'fire', '🔥', '南明离火', 'fire', 'semi_legend', [
+    ['朱雀', '/pets/vermilion_1.png'], ['觉醒朱雀', '/pets/vermilion_2.png'], ['究极朱雀', '/pets/vermilion_3.png'],
   ]),
-  legendPet('suicune', '水君', '准传说 · 奔跑时净化流水的圣兽', 'water', '💧', '极巨水流', 'water', 'semi_legend', [
-    ['水君', '/pets/suicune.png'], ['觉醒水君', '/pets/suicune_awake.png'], ['究极水君', '/pets/suicune_ultra.png'],
+  legendPet('kun', '北冥鲲', '准传说 · 庄子写过的大鱼，北海里的鲲，传说能化身为鹏飞上九万里', 'water', '💧', '鲲鹏扶摇', 'water', 'semi_legend', [
+    ['北冥鲲', '/pets/kun_1.png'], ['觉醒北冥鲲', '/pets/kun_2.png'], ['究极北冥鲲', '/pets/kun_3.png'],
   ]),
-  legendPet('mew', '梦幻', '顶级传说 · 传说中只有极少数人见过', 'psychic', '🌸', '超能预知', 'star', 'legend', [
-    ['梦幻', '/pets/mew.png'], ['觉醒梦幻', '/pets/mew_awake.png'], ['究极梦幻', '/pets/mew_ultra.png'],
+  legendPet('jaderabbit', '玉兔', '顶级传说 · 住在月亮上捣药的玉兔，能听懂所有人的心愿', 'psychic', '🌙', '广寒月光', 'star', 'legend', [
+    ['玉兔', '/pets/jaderabbit_1.png'], ['觉醒玉兔', '/pets/jaderabbit_2.png'], ['究极玉兔', '/pets/jaderabbit_3.png'],
   ]),
-  legendPet('mewtwo', '超梦', '顶级传说 · 最强超能力宝可梦', 'psychic', '🔮', '精神强念', 'star', 'legend', [
-    ['超梦', '/pets/mewtwo.png'], ['觉醒超梦', '/pets/mewtwo_awake.png'], ['究极超梦', '/pets/mewtwo_ultra.png'],
+  legendPet('ninecolordeer', '九色鹿', '顶级传说 · 敦煌壁画里的九色鹿，身上的九种颜色是九种力量', 'psychic', '🦌', '九色神光', 'star', 'legend', [
+    ['九色鹿', '/pets/ninecolordeer_1.png'], ['觉醒九色鹿', '/pets/ninecolordeer_2.png'], ['究极九色鹿', '/pets/ninecolordeer_3.png'],
   ]),
-  legendPet('rayquaza', '烈空坐', '顶级传说 · 遨游臭氧层的天空之王', 'dragon', '🐉', '画龙点睛', 'star', 'legend', [
-    ['烈空坐', '/pets/rayquaza.png'], ['觉醒烈空坐', '/pets/rayquaza_awake.png'], ['究极烈空坐', '/pets/rayquaza_ultra.png'],
+  legendPet('yinglong', '应龙', '顶级传说 · 长着翅膀的神龙应龙，能呼风唤雨、帮大禹治水', 'dragon', '🐉', '画龙点睛', 'star', 'legend', [
+    ['应龙', '/pets/yinglong_1.png'], ['觉醒应龙', '/pets/yinglong_2.png'], ['究极应龙', '/pets/yinglong_3.png'],
   ]),
-  legendPet('arceus', '阿尔宙斯', '顶级传说 · 被称为创造万物的存在', 'normal', '✨', '裁决之光', 'star', 'legend', [
-    ['阿尔宙斯', '/pets/arceus.png'], ['觉醒阿尔宙斯', '/pets/arceus_awake.png'], ['究极阿尔宙斯', '/pets/arceus_ultra.png'],
+  legendPet('qilin', '麒麟', '顶级传说 · 只在太平盛世出现的瑞兽麒麟，被称为百兽之首', 'normal', '✨', '祥瑞之光', 'star', 'legend', [
+    ['麒麟', '/pets/qilin_1.png'], ['觉醒麒麟', '/pets/qilin_2.png'], ['究极麒麟', '/pets/qilin_3.png'],
   ]),
 ];
 
@@ -413,79 +413,79 @@ export type SkillVfxRecipe = {
 };
 
 const SKILL_VFX: Record<string, SkillVfxRecipe> = {
-  pikachu:    { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy', particle: 'spark' },  // 十万伏特:天雷
-  eevee:      { skeleton: 'projectile', color: '#fbbf24', core: '#fff7ed', particle: 'star' },              // 高速星星
-  bulbasaur:  { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 飞叶快刀
-  charmander: { skeleton: 'beam', color: '#fb923c', core: '#fef08a', shake: 'heavy', particle: 'ember' },     // 火焰喷射
-  squirtle:   { skeleton: 'beam', color: '#22d3ee', core: '#e0f2fe', shake: 'heavy', particle: 'bubble' },     // 水炮
-  jigglypuff: { skeleton: 'aura', color: '#f9a8d4', particle: 'star' },                                      // 魔法闪耀
-  gastly:     { skeleton: 'projectile', color: '#a78bfa', core: '#4c1d95', particle: 'wisp' },               // 暗影球
-  dratini:    { skeleton: 'beam', color: '#818cf8', core: '#e0e7ff', particle: 'star' },                     // 龙之波动
-  machop:     { skeleton: 'slash', color: '#ef4444', shake: 'heavy', particle: 'shard' },                     // 爆裂拳
-  abra:       { skeleton: 'aura', color: '#e879f9', particle: 'star' },                                      // 精神强念
-  geodude:    { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy', particle: 'shard' },   // 岩崩:落石
-  vulpix:     { skeleton: 'burst', color: '#fb923c', core: '#fef08a', particle: 'ember' },                    // 大字爆炎
-  growlithe:  { skeleton: 'slash', color: '#fb923c', shake: 'medium', particle: 'ember' },                    // 神速烈焰
-  magikarp:   { skeleton: 'slash', color: '#22d3ee', particle: 'bubble' },                                     // 水流尾
-  oddish:     { skeleton: 'aura', color: '#f472b6', particle: 'petal' },                                      // 花瓣舞
-  poliwag:    { skeleton: 'burst', color: '#22d3ee', particle: 'bubble' },                                     // 水流裂破
-  caterpie:   { skeleton: 'aura', color: '#cbd5e1', particle: 'metal' },                                      // 银色旋风
-  weedle:     { skeleton: 'projectile', color: '#a3e635', particle: 'leaf' },                                // 飞弹针
-  bellsprout: { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 强力鞭打
-  horsea:     { skeleton: 'beam', color: '#22d3ee', core: '#cffafe', particle: 'bubble' },                     // 龙卷水炮
-  larvitar:   { skeleton: 'projectile', color: '#a16207', shake: 'heavy', particle: 'shard' },                // 尖石攻击
-  ralts:      { skeleton: 'aura', color: '#e879f9', particle: 'star' },                                      // 精神冲击
-  chikorita:  { skeleton: 'beam', color: '#facc15', core: '#fefce8', particle: 'leaf' },                     // 日光束
-  cyndaquil:  { skeleton: 'beam', color: '#fb923c', core: '#fef08a', particle: 'ember' },                     // 喷火
-  totodile:   { skeleton: 'slash', color: '#22d3ee', particle: 'bubble' },                                     // 水流尾
-  treecko:    { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 叶刃
-  torchic:    { skeleton: 'burst', color: '#fb923c', core: '#fde047', shake: 'heavy', particle: 'ember' },    // 爆炸烈焰
-  mudkip:     { skeleton: 'burst', color: '#b45309', core: '#67e8f9', particle: 'bubble' },                    // 浊流
-  bagon:      { skeleton: 'pillar', color: '#818cf8', core: '#fbcfe8', shake: 'heavy', particle: 'star' },   // 龙星群:天降流星
-  beldum:     { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 彗星拳
-  gible:      { skeleton: 'slash', color: '#818cf8', shake: 'heavy', particle: 'shard' },                     // 龙神俯冲
-  snivy:      { skeleton: 'pillar', color: '#84cc16', from: 'ground', shake: 'heavy', particle: 'leaf' },    // 疯狂植物:藤蔓地涌
-  tepig:      { skeleton: 'burst', color: '#fb923c', shake: 'heavy', particle: 'ember' },                     // 高温重压
-  oshawott:   { skeleton: 'slash', color: '#22d3ee', core: '#f0fdfa', particle: 'bubble' },                    // 贝壳刃
-  rowlet:     { skeleton: 'projectile', color: '#84cc16', core: '#fef9c3', particle: 'leaf' },               // 缝影:羽箭
-  litten:     { skeleton: 'slash', color: '#ef4444', core: '#fde047', shake: 'heavy', particle: 'ember' },    // 极恶飞跃粉碎击
-  popplio:    { skeleton: 'aura', color: '#22d3ee', core: '#fce7f3', shake: 'medium', particle: 'bubble' },    // 海神庄严交响乐
+  sparkhog:       { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy', particle: 'spark' },  // 蒲公英雷暴
+  alpaca:         { skeleton: 'projectile', color: '#fbbf24', core: '#fff7ed', particle: 'star' },              // 星絮回旋
+  leafkoala:      { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 万叶旋舞
+  emberham:       { skeleton: 'beam', color: '#fb923c', core: '#fef08a', shake: 'heavy', particle: 'ember' },     // 烈焰披风
+  narwhee:        { skeleton: 'beam', color: '#22d3ee', core: '#e0f2fe', shake: 'heavy', particle: 'bubble' },     // 潮汐螺旋
+  melopuff:       { skeleton: 'aura', color: '#f9a8d4', particle: 'star' },                                      // 甜梦摇篮曲
+  umbrellaspirit: { skeleton: 'projectile', color: '#a78bfa', core: '#4c1d95', particle: 'wisp' },               // 幽伞夜雨
+  candydrake:     { skeleton: 'beam', color: '#818cf8', core: '#e0e7ff', particle: 'star' },                     // 金糖龙息
+  boxaroo:        { skeleton: 'slash', color: '#ef4444', shake: 'heavy', particle: 'shard' },                     // 冠军连环拳
+  mindslug:       { skeleton: 'aura', color: '#e879f9', particle: 'star' },                                      // 星念涟漪
+  pebbadillo:     { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy', particle: 'shard' },   // 滚石轰隆
+  blazekat:       { skeleton: 'burst', color: '#fb923c', core: '#fef08a', particle: 'ember' },                    // 日冕爆炎
+  liondog:        { skeleton: 'slash', color: '#fb923c', shake: 'medium', particle: 'ember' },                    // 醒狮烈焰
+  surfduck:       { skeleton: 'slash', color: '#22d3ee', particle: 'bubble' },                                     // 潮光羽浪
+  potsprout:      { skeleton: 'aura', color: '#f472b6', particle: 'petal' },                                      // 百花盛放
+  bubbleoct:      { skeleton: 'burst', color: '#22d3ee', particle: 'bubble' },                                     // 漩涡泡泡阵
+  silkmoth:       { skeleton: 'aura', color: '#cbd5e1', particle: 'metal' },                                      // 银丝月光
+  honeybee:       { skeleton: 'projectile', color: '#a3e635', particle: 'leaf' },                                // 蜂巢针雨
+  pitcherplant:   { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 露珠鞭击
+  axolotl:        { skeleton: 'beam', color: '#22d3ee', core: '#cffafe', particle: 'bubble' },                     // 珊瑚漩流
+  geocub:         { skeleton: 'projectile', color: '#a16207', shake: 'heavy', particle: 'shard' },                // 水晶山崩
+  lanternfairy:   { skeleton: 'aura', color: '#e879f9', particle: 'star' },                                      // 千灯祈愿
+  lotuscalf:      { skeleton: 'beam', color: '#facc15', core: '#fefce8', particle: 'leaf' },                     // 清荷落雨
+  flamepanda:     { skeleton: 'beam', color: '#fb923c', core: '#fef08a', particle: 'ember' },                     // 竹火冲天
+  otterwave:      { skeleton: 'slash', color: '#22d3ee', particle: 'bubble' },                                     // 浪花连环掌
+  chameleaf:      { skeleton: 'slash', color: '#84cc16', particle: 'leaf' },                                     // 千叶隐身斩
+  sunrooster:     { skeleton: 'burst', color: '#fb923c', core: '#fde047', shake: 'heavy', particle: 'ember' },    // 破晓金焰
+  mudhippo:       { skeleton: 'burst', color: '#b45309', core: '#67e8f9', particle: 'bubble' },                    // 泥浪大翻滚
+  cloudkite:      { skeleton: 'pillar', color: '#818cf8', core: '#fbcfe8', shake: 'heavy', particle: 'star' },   // 万丈风筝阵
+  clockbot:       { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 齿轮星爆拳
+  dunewhale:      { skeleton: 'slash', color: '#818cf8', shake: 'heavy', particle: 'shard' },                     // 沙海龙卷
+  bambooweasel:   { skeleton: 'pillar', color: '#84cc16', from: 'ground', shake: 'heavy', particle: 'leaf' },    // 千竹破土
+  lavaboar:       { skeleton: 'burst', color: '#fb923c', shake: 'heavy', particle: 'ember' },                     // 熔岩冲撞
+  shellpenguin:   { skeleton: 'slash', color: '#22d3ee', core: '#f0fdfa', particle: 'bubble' },                    // 贝刃回旋
+  acornsquirrel:  { skeleton: 'projectile', color: '#84cc16', core: '#fef9c3', particle: 'leaf' },               // 松果箭雨
+  firetanuki:     { skeleton: 'slash', color: '#ef4444', core: '#fde047', shake: 'heavy', particle: 'ember' },    // 烈火战鼓
+  jellyfish:      { skeleton: 'aura', color: '#22d3ee', core: '#fce7f3', shake: 'medium', particle: 'bubble' },    // 极光水母舞
   book_fox:   { skeleton: 'aura', color: '#fbbf24', particle: 'star' },                                      // 知识星辉
   paper_owl:  { skeleton: 'beam', color: '#e879f9', core: '#fdf4ff', particle: 'star' },                     // 智慧光束
   word_turtle: { skeleton: 'beam', color: '#22d3ee', core: '#dbeafe', particle: 'bubble' },                    // 词海奔流
   // ---- 2026-08 新增普通家族 ----
-  mareep:     { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy', particle: 'spark' },   // 放电
-  swinub:     { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' },      // 暴风雪
-  deino:      { skeleton: 'beam', color: '#64748b', core: '#c084fc', shake: 'heavy', particle: 'wisp' },      // 恶之波动
-  nidoran:    { skeleton: 'projectile', color: '#c084fc', core: '#f5d0fe', particle: 'shard' },              // 剧毒突袭
-  trapinch:   { skeleton: 'pillar', color: '#d97706', from: 'ground', shake: 'heavy', particle: 'shard' },    // 地震
-  sandile:    { skeleton: 'pillar', color: '#a16207', from: 'ground', shake: 'heavy', particle: 'shard' },    // 大地之力
-  zubat:      { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', particle: 'wisp' },                     // 空气斩
-  starly:     { skeleton: 'projectile', color: '#bae6fd', core: '#fff7ed', shake: 'medium', particle: 'star' }, // 勇鸟猛攻
-  rookidee:   { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 铁头功
-  froakie:    { skeleton: 'slash', color: '#22d3ee', core: '#ecfeff', particle: 'bubble' },                    // 水手里剑
-  fennekin:   { skeleton: 'burst', color: '#fb923c', core: '#fde047', particle: 'ember' },                     // 魔法火焰
-  chespin:    { skeleton: 'slash', color: '#84cc16', shake: 'heavy', particle: 'leaf' },                      // 木锤
-  // ---- 小智主力阵容 ----
-  pidgey:     { skeleton: 'burst', color: '#bae6fd', core: '#fff7ed', shake: 'heavy', particle: 'wisp' },      // 暴风
-  onix:       { skeleton: 'projectile', color: '#a8a29e', core: '#e7e5e4', shake: 'heavy', particle: 'shard' }, // 岩石炮
-  scyther:    { skeleton: 'slash', color: '#4ade80', core: '#f0fdf4', shake: 'medium', particle: 'shard' },     // 十字剪
-  riolu:      { skeleton: 'projectile', color: '#38bdf8', core: '#e0f2fe', shake: 'heavy', particle: 'spark' }, // 波导弹
-  munchlax:   { skeleton: 'slash', color: '#14b8a6', core: '#fef3c7', shake: 'heavy', particle: 'shard' },      // 舍身冲撞
-  magnemite:  { skeleton: 'beam', color: '#cbd5e1', core: '#fef9c3', shake: 'heavy', particle: 'spark' },       // 电磁炮
-  tauros:     { skeleton: 'slash', color: '#a16207', core: '#fed7aa', shake: 'heavy', particle: 'shard' },      // 狂牛冲撞
-  doduo:      { skeleton: 'projectile', color: '#d6d3d1', core: '#fff7ed', shake: 'medium', particle: 'wisp' }, // 三连啄
-  pinsir:     { skeleton: 'slash', color: '#92400e', core: '#fde68a', shake: 'heavy', particle: 'shard' },      // 巨钳夹击
-  tropius:    { skeleton: 'burst', color: '#65a30d', core: '#ecfccb', shake: 'medium', particle: 'leaf' },      // 飞叶风暴
+  voltaeel:       { skeleton: 'pillar', color: '#38bdf8', core: '#fef9c3', shake: 'heavy', particle: 'spark' },   // 霓虹雷暴
+  snowleopard:    { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' },      // 冰川暴雪
+  shadowcat:      { skeleton: 'beam', color: '#64748b', core: '#c084fc', shake: 'heavy', particle: 'wisp' },      // 月蚀暗光
+  dartfrog:       { skeleton: 'projectile', color: '#c084fc', core: '#f5d0fe', particle: 'shard' },              // 七彩毒雾
+  digmole:        { skeleton: 'pillar', color: '#d97706', from: 'ground', shake: 'heavy', particle: 'shard' },    // 大地震裂
+  dunecamel:      { skeleton: 'pillar', color: '#a16207', from: 'ground', shake: 'heavy', particle: 'shard' },    // 沙丘风暴
+  swallow:        { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', particle: 'wisp' },                     // 剪风斩
+  hummingbird:    { skeleton: 'projectile', color: '#bae6fd', core: '#fff7ed', shake: 'medium', particle: 'star' }, // 虹光俯冲
+  ironrhino:      { skeleton: 'projectile', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 钢角冲锋
+  seahorse:       { skeleton: 'slash', color: '#22d3ee', core: '#ecfeff', particle: 'bubble' },                    // 潮流剑舞
+  flamingo:       { skeleton: 'burst', color: '#fb923c', core: '#fde047', particle: 'ember' },                     // 烈焰芭蕾
+  cactus:         { skeleton: 'slash', color: '#84cc16', shake: 'heavy', particle: 'leaf' },                      // 千刺重锤
+  // ---- 第三批家族 ----
+  flyingsquirrel: { skeleton: 'burst', color: '#bae6fd', core: '#fff7ed', shake: 'heavy', particle: 'wisp' },      // 狂风滑翔
+  terracotta:     { skeleton: 'projectile', color: '#a8a29e', core: '#e7e5e4', shake: 'heavy', particle: 'shard' }, // 陶石炮
+  dragonfly:      { skeleton: 'slash', color: '#4ade80', core: '#f0fdf4', shake: 'medium', particle: 'shard' },     // 疾风剪翼
+  goldmonkey:     { skeleton: 'projectile', color: '#38bdf8', core: '#e0f2fe', shake: 'heavy', particle: 'spark' }, // 云海拳风
+  sloth:          { skeleton: 'slash', color: '#14b8a6', core: '#fef3c7', shake: 'heavy', particle: 'shard' },      // 慢慢大压制
+  magnetcrab:     { skeleton: 'beam', color: '#cbd5e1', core: '#fef9c3', shake: 'heavy', particle: 'spark' },       // 电磁钳炮
+  yak:            { skeleton: 'slash', color: '#a16207', core: '#fed7aa', shake: 'heavy', particle: 'shard' },      // 雪原狂奔
+  peacock:        { skeleton: 'projectile', color: '#14b8a6', core: '#fef9c3', shake: 'medium', particle: 'star' }, // 百羽开屏
+  ladybug:        { skeleton: 'slash', color: '#92400e', core: '#fde68a', shake: 'heavy', particle: 'shard' },      // 七星连撞
+  mosssnail:      { skeleton: 'burst', color: '#65a30d', core: '#ecfccb', shake: 'medium', particle: 'leaf' },      // 苔藓风暴
   // ---- 传说:统一给最重的震屏与双色内芯,大招观感必须压过普通宠物 ----
-  articuno:   { skeleton: 'burst', color: '#a5f3fc', core: '#ffffff', shake: 'heavy', particle: 'ice' },      // 绝对零度
-  zapdos:     { skeleton: 'pillar', color: '#facc15', core: '#ffffff', shake: 'heavy', particle: 'spark' },   // 雷神之怒
-  moltres:    { skeleton: 'beam', color: '#f97316', core: '#fef9c3', shake: 'heavy', particle: 'ember' },     // 神圣之火
-  suicune:    { skeleton: 'pillar', color: '#22d3ee', from: 'ground', shake: 'heavy', particle: 'bubble' },   // 极巨水流
-  mew:        { skeleton: 'aura', color: '#f9a8d4', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 超能预知
-  mewtwo:     { skeleton: 'beam', color: '#e879f9', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 精神强念
-  rayquaza:   { skeleton: 'beam', color: '#22c55e', core: '#fef9c3', shake: 'heavy', particle: 'shard' },     // 画龙点睛
-  arceus:     { skeleton: 'pillar', color: '#fbbf24', core: '#ffffff', shake: 'heavy', particle: 'star' },    // 裁决之光
+  baize:          { skeleton: 'burst', color: '#a5f3fc', core: '#ffffff', shake: 'heavy', particle: 'ice' },      // 玄冰千里
+  thunderkui:     { skeleton: 'pillar', color: '#facc15', core: '#ffffff', shake: 'heavy', particle: 'spark' },   // 夔鼓雷鸣
+  vermilion:      { skeleton: 'beam', color: '#f97316', core: '#fef9c3', shake: 'heavy', particle: 'ember' },     // 南明离火
+  kun:            { skeleton: 'pillar', color: '#22d3ee', from: 'ground', shake: 'heavy', particle: 'bubble' },   // 鲲鹏扶摇
+  jaderabbit:     { skeleton: 'aura', color: '#f9a8d4', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 广寒月光
+  ninecolordeer:  { skeleton: 'beam', color: '#e879f9', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 九色神光
+  yinglong:       { skeleton: 'beam', color: '#f59e0b', core: '#fef9c3', shake: 'heavy', particle: 'star' },     // 画龙点睛
+  qilin:          { skeleton: 'pillar', color: '#fbbf24', core: '#ffffff', shake: 'heavy', particle: 'star' },    // 祥瑞之光
 };
 
 // 没写配方的种族按元素兜底,保证新增宠物漏配也有像样的大招
@@ -510,13 +510,89 @@ const ELEMENT_VFX_FALLBACK: Record<PetElement, SkillVfxRecipe> = {
   fairy: { skeleton: 'aura', color: '#f9a8d4' },
 };
 
+/** 默认种族(没养宠物 / 认不出的 id 一律按它显示)。与后端 core/pet_species.DEFAULT_SPECIES 同值。 */
+export const DEFAULT_SPECIES = 'sparkhog';
+
+/** 2026-11-04 宝可梦种族换成原创伙伴: 旧 id → 新 id(真源后端 core/pet_species.LEGACY_SPECIES)。
+ *  库里的 user_pets 启动时已整体换掉,这里只兜住还没刷新的旧页面 / 旧对战记录里的旧 id,
+ *  否则它们会全部显示成默认那一只。 */
+export const LEGACY_SPECIES: Record<string, string> = {
+  pikachu: 'sparkhog',
+  eevee: 'alpaca',
+  bulbasaur: 'leafkoala',
+  charmander: 'emberham',
+  squirtle: 'narwhee',
+  jigglypuff: 'melopuff',
+  gastly: 'umbrellaspirit',
+  dratini: 'candydrake',
+  machop: 'boxaroo',
+  abra: 'mindslug',
+  geodude: 'pebbadillo',
+  vulpix: 'blazekat',
+  growlithe: 'liondog',
+  magikarp: 'surfduck',
+  oddish: 'potsprout',
+  poliwag: 'bubbleoct',
+  caterpie: 'silkmoth',
+  weedle: 'honeybee',
+  bellsprout: 'pitcherplant',
+  horsea: 'axolotl',
+  larvitar: 'geocub',
+  ralts: 'lanternfairy',
+  chikorita: 'lotuscalf',
+  cyndaquil: 'flamepanda',
+  totodile: 'otterwave',
+  treecko: 'chameleaf',
+  torchic: 'sunrooster',
+  mudkip: 'mudhippo',
+  bagon: 'cloudkite',
+  beldum: 'clockbot',
+  gible: 'dunewhale',
+  snivy: 'bambooweasel',
+  tepig: 'lavaboar',
+  oshawott: 'shellpenguin',
+  rowlet: 'acornsquirrel',
+  litten: 'firetanuki',
+  popplio: 'jellyfish',
+  mareep: 'voltaeel',
+  swinub: 'snowleopard',
+  deino: 'shadowcat',
+  nidoran: 'dartfrog',
+  trapinch: 'digmole',
+  sandile: 'dunecamel',
+  zubat: 'swallow',
+  starly: 'hummingbird',
+  rookidee: 'ironrhino',
+  froakie: 'seahorse',
+  fennekin: 'flamingo',
+  chespin: 'cactus',
+  pidgey: 'flyingsquirrel',
+  onix: 'terracotta',
+  scyther: 'dragonfly',
+  riolu: 'goldmonkey',
+  munchlax: 'sloth',
+  magnemite: 'magnetcrab',
+  tauros: 'yak',
+  doduo: 'peacock',
+  pinsir: 'ladybug',
+  tropius: 'mosssnail',
+  articuno: 'baize',
+  zapdos: 'thunderkui',
+  moltres: 'vermilion',
+  suicune: 'kun',
+  mew: 'jaderabbit',
+  mewtwo: 'ninecolordeer',
+  rayquaza: 'yinglong',
+  arceus: 'qilin',
+};
+
 export function getSkillVfxRecipe(species: string): SkillVfxRecipe {
   const definition = getPetDefinition(species);
   return SKILL_VFX[definition.id] || ELEMENT_VFX_FALLBACK[definition.element];
 }
 
 export function getPetDefinition(species: string): PetSpeciesDefinition {
-  return PET_SPECIES_BY_ID[species] || PET_SPECIES_BY_ID.pikachu;
+  return PET_SPECIES_BY_ID[species] || PET_SPECIES_BY_ID[LEGACY_SPECIES[species]] || PET_SPECIES_BY_ID[DEFAULT_SPECIES];
 }
 
 export function getPetStage(species: string, evolutionStage: number): PetStage {

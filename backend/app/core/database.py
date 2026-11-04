@@ -101,7 +101,7 @@ async def _migrate_user_pets_collection() -> None:
             "last_fed_at", "last_interaction_at", "created_at", "updated_at",
         ]
         defaults = {
-            "name": "'小伙伴'", "species": "'pikachu'", "level": "1", "experience": "0",
+            "name": "'小伙伴'", "species": "'sparkhog'", "level": "1", "experience": "0",
             "happiness": "80", "hunger": "80", "evolution_stage": "0", "food_balance": "10",
             "current_hp": "105", "is_injured": "FALSE", "is_active": "TRUE",
             "last_fed_at": "NULL", "last_interaction_at": "CURRENT_TIMESTAMP",
@@ -122,7 +122,7 @@ async def _migrate_user_pets_collection() -> None:
                     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
                     name VARCHAR(50) NOT NULL DEFAULT '小伙伴',
-                    species VARCHAR(32) NOT NULL DEFAULT 'pikachu',
+                    species VARCHAR(32) NOT NULL DEFAULT 'sparkhog',
                     level INTEGER DEFAULT 1,
                     experience INTEGER DEFAULT 0,
                     happiness INTEGER DEFAULT 80,
@@ -185,6 +185,13 @@ async def init_db():
             Base.metadata.create_all(sync_conn)
 
         await conn.run_sync(create_tables)
+
+    # 2026-11-04 宝可梦种族换成原创伙伴: 库里的旧种族 id 一一换成新的(幂等,换过的不会再命中)。
+    # 放在 create_all 之后、事务之外: 它自己开事务,新库此时 user_pets 也已经建好。
+    from app.core.pet_species import migrate_legacy_species
+    await migrate_legacy_species(engine)
+
+    async with engine.begin() as conn:
 
         # 迁移: 为 user_scores 表添加段位字段
         try:
