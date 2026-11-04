@@ -271,6 +271,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 登录页「小鹰的一周」(2026-11-04 **已部署生产**,提交 7773c87,纯前端;干净 worktree 构建 mw1qm1lj 整推,备份 frontend/dist_bak_20261104_week。
+  用户「你做一周的不重样 每天的登录界面都不一样」→「不要加动画了」→「背景不要乱动 图片上的动画可以」): 按本地星期几换场景,
+  真源 components/auth/loginScenes.ts: 周一黑板(沿用上一版)/ 周二书桌笔记本 / 周三太空 / 周四海底 / 周五放风筝 / 周六花园 / 周日夜晚书房。
+  每天一张背景 + 一只换装的小鹰(AI 出图,public/board-art/week/,原图和提示词只在本机 frontend/.impeccable/mocks/login-week/,不进 git),
+  问候、日期、今日单词都是网页真字;**今日单词按场景选词**(boardWords.WEEK_WORDS,同一个星期几每周换下一个,点喇叭读);单词卡七种样子(AuthScenes.css)。
+  **背景图不动**,只有叠在上面的小东西会动(SceneAmbient.tsx + AuthAmbient.css: 粉笔灰 / 纸飞机 / 星星流星 / 气泡 / 小云 / 蝴蝶花瓣 / 萤火虫,
+  周五风筝摆、周三卫星绕单词卡、太空海底的小鹰轻轻漂),减少动态效果时全停。背景位置 AuthShell.useStageBox 按 cover 现算,
+  小鹰脚踩在图里的地面上(loginScenes 的 ground 是量出来的,换图要重量);右上角「一 … 日」能预览别的几天(手机 < 640 不显示)。只下载当天那一套图。
+  ⚠️ 出图中转(image_tutor 那行的 Key)**不认 size**: 要 2560×1440 / 2048×2048 / 3840×2160,gpt-image-2 / 2.5-flare / 2.5-sunburst 一律回 1672×941,
+  所以电脑 2 倍屏上背景放大约 1.9 倍、有一点软(字和小鹰是清楚的);要 2K 只能服务器上 AI 放大,没做。
+  ⚠️ 坑: 场景外层曾带 `card-orbit` 类名,和周三单词卡的轨道环同名,整块场景被转 -6° 放大、按钮点不动 —— 外层别用 card-* 这类组件类名
 - ✅ 登录 / 注册页改成教室黑板(2026-11-04 **已部署生产**,提交 8d09de9 + 9db1ee6,纯前端;干净 worktree 构建 mw1mr6hm 整推(补了 3 张 .gitignore 挡住的 eagle-original-cutout*.png);
   备份 frontend/dist_bak_20261104_login): 左边(手机在上面)一块黑板,小鹰站在粉笔槽上;粉笔字是网页真字:按时间换的问候(注册页 Welcome!)、
   日期、「今日单词」(components/auth/boardWords.ts 38 个小学常用词按本地日期轮换,点喇叭走 useAudio,/pronunciation/edge-tts 不用登录)。
