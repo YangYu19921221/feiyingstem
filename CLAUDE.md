@@ -271,6 +271,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 登录 / 注册页改成教室黑板(2026-11-04 **已部署生产**,提交 8d09de9 + 9db1ee6,纯前端;干净 worktree 构建 mw1mr6hm 整推(补了 3 张 .gitignore 挡住的 eagle-original-cutout*.png);
+  备份 frontend/dist_bak_20261104_login): 左边(手机在上面)一块黑板,小鹰站在粉笔槽上;粉笔字是网页真字:按时间换的问候(注册页 Welcome!)、
+  日期、「今日单词」(components/auth/boardWords.ts 38 个小学常用词按本地日期轮换,点喇叭走 useAudio,/pronunciation/edge-tts 不用登录)。
+  黑板面 / 粉笔槽 / 小鹰三张图分层(public/board-art/,AI 出图原件在 .impeccable/mocks/login-parts/),字体子集在 public/fonts/chalk/(共约 64KB);
+  **改了黑板上的中文要跑 backend/scripts/subset_board_font.py**(不跑新字退回系统字体,不会方块)。登录 / 注册逻辑没动,旧图 /hero-login.jpeg 已不引用、文件没删。
+  ⚠️ **public 下的目录名不能和页面路由同名**: 第一次图放在 public/login/,nginx 把 /login 当目录 301 到 /login/ 再 403,线上登录页打不开约 3 分钟
+  (先在线上挪走目录恢复,再改名 board-art 重新部署)。以后往 public 加目录先对一遍 App.tsx 里的路由
 - ✅ 读音标判定放宽 + 音标报告全班页分页搜索(2026-11-04,用户「教师端的英标报告要不要做个分页和搜索啊 还有现在纠音太严格了
   你稍微放松点有的学生确实有点口音尤其是中国人」):
   **先查的生产实情**(真孩子 142 条判过的录音): 绿 49 黄 58 红 35,96 号同一个 cede 读了 18 遍才过。拿被拦的 31 条录音**重问讯飞**:
