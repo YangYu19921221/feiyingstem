@@ -52,6 +52,8 @@
  *     「…(一次付清)」,同一个组件传 fullPay。只有付款相关的几处不同: 协议第三条第 2/3/5/7 款、费用表、副标题;
  *     招商手册第六章。一次付清 = 签约付 ¥60,000、当天开全部 300 张 + 赠 5本卡 10 张(= card_pack.BONUS_FULL_PAY,
  *     平台「卡包到账 → 一次结清」会自动开),方法课 12 套一次寄出。改赠送张数先改 card_pack.py,再改这两份
+ *  7. 系统操作手册(2026-11-04)—— 每种账号做什么、开学怎么上手、每个功能在哪儿点、常见问题,见 FranchiseOpsDoc.tsx;
+ *     **对合作机构开放**(partner: true)。改了菜单名 / 规则要回来改它
  *  6. 抖音直播招生方案(2026-10-22)—— 卖「每日陪跑」的直播话术/定价/交付/绩效,培训员工和主播用,
  *     见 FranchiseDouyinDoc.tsx。**只给平台 admin**(第四章有用人成本和利润测算);第四章参数可改,全文数字跟着变
  *
@@ -61,14 +63,15 @@
  */
 import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Download, FileSignature, Gift, Handshake, LoaderCircle, Printer, Radio, Sparkles, Users } from 'lucide-react';
+import { ArrowLeft, BookOpenCheck, Download, FileSignature, Gift, Handshake, LoaderCircle, Printer, Radio, Sparkles, Users } from 'lucide-react';
 import { downloadElementAsPdf } from '../utils/downloadPdf';
 import FranchiseRecruitDoc from './FranchiseRecruitDoc';
 import FranchiseParentDoc from './FranchiseParentDoc';
 import FranchiseReferralDoc from './FranchiseReferralDoc';
 import FranchiseDouyinDoc from './FranchiseDouyinDoc';
+import FranchiseOpsDoc from './FranchiseOpsDoc';
 
-type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral' | 'douyin' | 'recruitFull' | 'contractFull';
+type DocKey = 'contract' | 'pitch' | 'recruit' | 'parent' | 'referral' | 'douyin' | 'recruitFull' | 'contractFull' | 'ops';
 
 const DOC_FILENAME: Record<DocKey, string> = {
   recruit: '飞鹰英语-招商手册',
@@ -76,6 +79,7 @@ const DOC_FILENAME: Record<DocKey, string> = {
   parent: '飞鹰英语-家长手册',
   referral: '飞鹰英语-家长推荐运营方案',
   douyin: '飞鹰英语-抖音直播招生方案',
+  ops: '飞鹰AI英语-系统功能与操作流程',
   pitch: '飞鹰AI英语-功能详解与提分方案',
   contract: '飞鹰AI英语-合作协议',
   contractFull: '飞鹰AI英语-合作协议(一次付清)',
@@ -725,6 +729,8 @@ const DOC_TABS: Array<{ key: DocKey; label: string; icon: typeof Users; partner:
   { key: 'recruitFull', label: '招商手册(一次付清)', icon: Handshake, partner: false },
   { key: 'parent', label: '家长手册', icon: Users, partner: true },
   { key: 'referral', label: '推荐运营方案', icon: Gift, partner: true },
+  // 系统操作手册(11-04): 合作机构的管理员和老师照着上手用,所以对机构开放
+  { key: 'ops', label: '系统操作手册', icon: BookOpenCheck, partner: true },
   // 有用人成本和利润测算,先只给平台;要给加盟商用,改 true 前先让对方把第四章参数换成自己的
   { key: 'douyin', label: '抖音直播招生', icon: Radio, partner: false },
   { key: 'pitch', label: '提分方案', icon: Sparkles, partner: false },
@@ -837,6 +843,7 @@ export default function AdminFranchiseKit() {
             : doc === 'parent' ? <FranchiseParentDoc />
             : doc === 'referral' ? <FranchiseReferralDoc />
             : doc === 'douyin' ? <FranchiseDouyinDoc />
+            : doc === 'ops' ? <FranchiseOpsDoc />
             : <PitchDoc />}
         </div>
       </div>

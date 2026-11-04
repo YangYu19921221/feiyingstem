@@ -86,6 +86,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '课件资料', description: '带水印,学生只能看', route: '/teacher/materials', icon: FileText, tone: 'blue' },
       { title: '签到记录', description: '每日签到与历史', route: '/teacher/checkins', icon: CalendarCheck2, tone: 'blue' },
       { title: '我的助教', description: '共用账号的老师各开一个号', route: '/teacher/assistants', icon: Users, tone: 'violet' },
+      { title: '系统操作手册', description: '每个功能在哪儿、开学怎么上手、常见问题', route: '/admin/franchise-kit?doc=ops', icon: BookOpen, tone: 'blue' },
     ],
   },
   {

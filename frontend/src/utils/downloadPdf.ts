@@ -69,9 +69,24 @@ function patchModernColors(root: HTMLElement): () => void {
  * 把一个 DOM 元素导出成 PDF 并触发下载。
  * 失败时给用户 toast 提示并抛出,调用方负责恢复 loading 状态。
  */
+/**
+ * 默认页边距(mm,上右下左)。不是随手取的整数 ——
+ * html2pdf 算分页避让时按「内容区高度取整成像素」(1031),真正切图时按「画布宽 × 高宽比」切,
+ * 内容区宽度不是整像素时两者对不上: 10mm 边距时宽 718.1px,每页实际多切 2px,
+ * 13 页累计差 24px,标题被留在上一页页底、内容跑到下一页(11-04 系统操作手册导出时发现)。
+ * 这里让内容区正好 720 × 1031px(190.5mm 宽),每页误差 -0.5px,不再越切越偏
+ */
+const A4_MARGIN: [number, number, number, number] = (() => {
+  const w = 190.5;                 // 720px
+  const h = (1031 * w) / 720;      // 1031px 高对应的 mm
+  const side = (210 - w) / 2;
+  const tb = (297 - h) / 2;
+  return [tb, side, tb, side];
+})();
+
 export async function downloadElementAsPdf(
   element: HTMLElement,
-  { filename, desktopWidth = 794, margin = [12, 10, 12, 10] }: DownloadPdfOptions
+  { filename, desktopWidth = 794, margin = A4_MARGIN }: DownloadPdfOptions
 ): Promise<void> {
   // 动态 import:html2pdf 连带 html2canvas + jspdf 有 700KB+,
   // 只有真的点下载才加载,不拖慢首屏

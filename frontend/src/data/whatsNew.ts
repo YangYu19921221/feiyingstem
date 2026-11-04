@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'ops-manual-2026-11',
+    date: '2026-11-04',
+    title: '📘 系统操作手册上线:每个功能在哪儿点,一本都写清楚了',
+    desc: '有哪几种账号、开学第一周照着做的步骤、布置作业的每个选项、小鹰老师、音标课、金币规则、家长端、招生工具、要找平台办的事和常见问题。能直接在页面上看,也能下载 PDF 发给新来的老师。',
+    where: '教师工作台「课堂推进 → 系统操作手册」;机构管理首页「运营资料」→「系统操作手册」',
+    roles: ['teacher', 'org_admin'],
+    route: '/admin/franchise-kit?doc=ops',
+  },
+  {
     id: 'phonetic-reading-looser-2026-11',
     date: '2026-11-04',
     title: '🎤 读音标判得宽一点了,带口音读对也能过',
