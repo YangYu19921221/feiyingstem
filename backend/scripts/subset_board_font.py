@@ -1,7 +1,7 @@
 """登录页黑板上的中文字体子集(2026-11-04)。
 
 黑板上的中文用站酷快乐体(ZCOOL KuaiLe,SIL OFL),整套 5MB 太大,只留黑板上真用到的字。
-字从前端两个文件里扫出来: AuthShell.tsx(问候)和 boardWords.ts(今日单词的释义、日期)。
+字从前端三个文件里扫出来: AuthShell.tsx(问候)、loginScenes.ts(每天的话)和 boardWords.ts(今日单词的释义、日期)。
 改了这两个文件里的中文就跑一次:
 
     pip install fonttools brotli
@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCES = [
     ROOT / "frontend/src/components/auth/AuthShell.tsx",
     ROOT / "frontend/src/components/auth/boardWords.ts",
+    ROOT / "frontend/src/components/auth/loginScenes.ts",
 ]
 OUT = ROOT / "frontend/public/fonts/chalk/kuaile-board.woff2"
 FONT_URL = "https://github.com/google/fonts/raw/main/ofl/zcoolkuaile/ZCOOLKuaiLe-Regular.ttf"

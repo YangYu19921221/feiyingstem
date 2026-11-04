@@ -1,71 +1,106 @@
 /*
- * 登录 / 注册页黑板(2026-11-04)。
- * 图层: 黑板面(cover,左上对齐留住窗外斜光)→ 斜光压暗层 → 粉笔字 → 粉笔槽(贴底,右对齐留住粉笔和板擦)→ 小鹰(站在槽上)。
- * 粉笔槽那张图上半截是黑板绿,顶上渐隐,和黑板面接得上。
- * 不用容器查询(iOS 12 要能看),尺寸都按视口和断点写;clamp() 前面都先写一个固定值兜底
+ * 登录 / 注册页「小鹰的一周」—— 第 1 部分: 字体、版面、断点(七天共用)。
+ * 每天的颜色和单词卡样子在 AuthScenes.css,会动的小东西在 AuthAmbient.css。
+ *
+ * 图层(下 → 上): 背景(周一是黑板面 + 粉笔槽两张;其余一张,位置 JS 算)→ 压暗层 → 动效 → 字和单词卡 → 小鹰。
+ * 不用容器查询(iOS 12 要能看),尺寸按视口和断点写;clamp() 前面都先写一个固定值兜底。
  * ⚠️ 图放在 public/board-art/。public 下的目录名不能和页面路由同名: 11-04 第一次放在 public/login/,
  * nginx 把 /login 当目录 301 到 /login/ 再 403,线上登录页打不开了约 3 分钟
  */
 
-/* ---------- 黑板用的三种字(子集,只覆盖黑板上用得到的字) ---------- */
+/* ---------- 字体(子集,只覆盖用得到的字;只有当天用到的那几种会下载) ---------- */
 @font-face {
   font-family: 'BoardHand';
   src: url('/fonts/chalk/schoolbell-latin-400.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0020-007E;
+}
+@font-face {
+  font-family: 'BoardPen';
+  src: url('/fonts/chalk/patrick-hand-latin-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0020-007E;
+}
+@font-face {
+  font-family: 'BoardMarker';
+  src: url('/fonts/chalk/gochi-hand-latin-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0020-007E;
+}
+@font-face {
+  font-family: 'BoardRound';
+  src: url('/promo-card/fonts/baloo-2-latin-800.woff2') format('woff2');
+  font-weight: 800; font-style: normal; font-display: swap;
   unicode-range: U+0020-007E;
 }
 @font-face {
   font-family: 'BoardWord';
   src: url('/fonts/chalk/andika-latin-700.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
+  font-weight: 700; font-style: normal; font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+2212;
 }
 @font-face {
   font-family: 'BoardWord';
   src: url('/fonts/chalk/board-ipa.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
+  font-weight: 700; font-style: normal; font-display: swap;
   unicode-range: U+0250-02FF;
 }
 @font-face {
   font-family: 'BoardZh';
   src: url('/fonts/chalk/kuaile-board.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
+  font-weight: 400; font-style: normal; font-display: swap;
   unicode-range: U+0030-0039, U+00B7, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
 }
 
 .auth-shell {
-  --chalk: #f5f2e9;
-  --chalk-dim: rgb(245 242 233 / 0.84);
-  --chalk-yellow: #ffe07a;
-  --chalk-blue: #9ee8ff;
-  --ink: #293545;
   min-height: 100vh;
   min-height: 100dvh;
   background: #f6f1e7;
-  color: var(--ink);
+  color: #293545;
 }
 
-/* ---------- 黑板 ---------- */
-.board {
-  --board-h: 16.5rem;
+/* ---------- 场景面板 ---------- */
+.scene {
+  /* 每天的颜色(AuthScenes.css 里按天覆盖) */
+  --ink: #f5f2e9;
+  --ink-dim: rgb(245 242 233 / 0.84);
+  --accent: #ffe07a;
+  --halo: none;
+  --hand: 'BoardHand', 'Comic Sans MS', 'Chalkboard SE', cursive;
+  --card-ink: var(--ink);
+  --card-dim: var(--ink-dim);
+  --card-accent: var(--accent);
+  --ipa: #9ee8ff;
+  /* 尺寸(断点里覆盖) */
+  --scene-h: 16.5rem;
   --ledge-h: 4rem;
-  --eagle-h: calc(var(--board-h) * 0.58);
+  --eagle-h: calc(var(--scene-h) * 0.58);
   position: relative;
   isolation: isolate;
-  height: var(--board-h);
+  height: var(--scene-h);
   overflow: hidden;
   background: #24402f;
 }
 
-.board-surface img {
+/* 一张背景的六天: 图的位置和大小由 JS 写在 style 上(cover + 底边对齐);没算出来之前按 cover 铺满 */
+.scene-stage {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.scene-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 100%;
+}
+
+/* 周一黑板: 黑板面左上对齐留住斜光,粉笔槽贴底右对齐留住粉笔和板擦,槽那张图顶上渐隐接黑板面 */
+.scene-board-surface img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -75,243 +110,7 @@
   filter: saturate(0.88) brightness(0.9);
 }
 
-/* 斜光那一片压暗一点,问候写在上面才看得清;四周再收一圈暗角 */
-.board-shade {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 62% 44% at 20% 14%, rgb(9 30 20 / 0.5), transparent 72%),
-    radial-gradient(ellipse 120% 90% at 50% 45%, transparent 55%, rgb(6 22 14 / 0.42) 100%),
-    linear-gradient(rgb(14 38 26 / 0.16), rgb(14 38 26 / 0.16));
-}
-
-/* 粉笔质感: 一张颗粒蒙版,字边缘有点断续,像粉笔写的 */
-.chalk {
-  color: var(--chalk);
-  text-shadow: 0 0 1px rgb(255 255 255 / 0.35), 0 0 18px rgb(8 28 18 / 0.55);
-  -webkit-mask-image: url('/board-art/chalk-grain.png');
-  mask-image: url('/board-art/chalk-grain.png');
-  -webkit-mask-size: 160px 160px;
-  mask-size: 160px 160px;
-}
-
-.board-chalk {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-}
-
-.board-greet {
-  position: absolute;
-  left: 1.1rem;
-  top: 0.9rem;
-  right: 1.1rem;
-}
-
-.board-greet-line { margin: 0; }
-
-.board-greet-en {
-  font-family: 'BoardHand', 'Comic Sans MS', 'Chalkboard SE', cursive;
-  font-size: 2rem;
-  line-height: 1.05;
-  letter-spacing: 0.01em;
-}
-
-.board-underline {
-  display: block;
-  width: 9.5rem;
-  height: 0.7rem;
-  margin: 0.15rem 0 0.35rem 0.2rem;
-  overflow: visible;
-}
-
-.board-underline path,
-.board-frame path {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.board-underline path {
-  stroke: var(--chalk-yellow);
-  stroke-width: 3.5;
-  opacity: 0.9;
-}
-
-.board-sparkle {
-  display: inline-block;
-  width: 0.62em;
-  height: 0.62em;
-  margin-left: 0.12em;
-  vertical-align: 0.55em;
-  overflow: visible;
-}
-
-.board-sparkle path {
-  fill: none;
-  stroke: var(--chalk-yellow);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.board-greet-zh {
-  display: none;
-  font-family: 'BoardZh', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  font-size: 0.95rem;
-  line-height: 1.3;
-  color: var(--chalk-dim);
-}
-
-.board-date {
-  display: none;
-  position: absolute;
-  top: 1.15rem;
-  right: 1.4rem;
-  margin: 0;
-  text-align: right;
-  line-height: 1.25;
-}
-
-.board-date-en {
-  display: block;
-  font-family: 'BoardHand', 'Comic Sans MS', cursive;
-  font-size: 1.15rem;
-}
-
-.board-date-zh {
-  display: block;
-  font-family: 'BoardZh', 'PingFang SC', sans-serif;
-  font-size: 0.82rem;
-  color: var(--chalk-dim);
-}
-
-/* ---------- 今日单词 ---------- */
-.board-word {
-  position: absolute;
-  left: 47%;
-  right: 0.8rem;
-  top: 4.1rem;
-  padding: 0.55rem 0.6rem 0.6rem;
-  text-align: center;
-}
-
-.board-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  -webkit-mask-image: url('/board-art/chalk-grain.png');
-  mask-image: url('/board-art/chalk-grain.png');
-  -webkit-mask-size: 160px 160px;
-  mask-size: 160px 160px;
-}
-
-.board-frame path {
-  stroke: rgb(245 242 233 / 0.62);
-  stroke-width: 2.25;
-}
-
-.board-word-tag {
-  position: relative;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  margin: 0;
-  font-family: 'BoardZh', 'PingFang SC', sans-serif;
-  font-size: 0.8rem;
-  line-height: 1;
-  color: var(--chalk-yellow);
-}
-
-.board-word-tag-en {
-  display: none;
-  font-family: 'BoardHand', 'Comic Sans MS', cursive;
-  font-size: 0.95em;
-  color: var(--chalk-dim);
-}
-
-.board-word-text {
-  position: relative;
-  margin: 0.15rem 0 0;
-  font-family: 'BoardWord', 'Andika', 'Trebuchet MS', sans-serif;
-  font-weight: 700;
-  font-size: 2.2rem;
-  font-size: calc(2.2rem * var(--word-scale, 1));
-  line-height: 1.1;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.board-word-meta {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0 0.4rem;
-  margin-top: 0.15rem;
-}
-
-.board-ipa {
-  font-family: 'BoardWord', 'Lucida Sans Unicode', 'Arial Unicode MS', sans-serif;
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: var(--chalk-blue);
-}
-
-.board-meaning {
-  font-family: 'BoardZh', 'PingFang SC', sans-serif;
-  font-size: 0.85rem;
-  color: var(--chalk-dim);
-}
-
-.board-meaning [lang='en'] {
-  font-family: 'BoardHand', 'Comic Sans MS', cursive;
-}
-
-.board-speak {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  flex-shrink: 0;
-  border-radius: 999px;
-  border: 2px solid rgb(245 242 233 / 0.7);
-  color: var(--chalk);
-  background: rgb(255 255 255 / 0.04);
-  transition: background-color 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.board-speak:hover {
-  background: rgb(255 255 255 / 0.12);
-  border-color: var(--chalk);
-}
-
-.board-speak:active { transform: scale(0.94); }
-
-.board-speak:focus-visible {
-  outline: 3px solid var(--chalk-yellow);
-  outline-offset: 3px;
-}
-
-.board-speak.is-speaking {
-  border-color: var(--chalk-yellow);
-  color: var(--chalk-yellow);
-  animation: board-speak-ring 1.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes board-speak-ring {
-  0% { box-shadow: 0 0 0 0 rgb(255 224 122 / 0.45); }
-  100% { box-shadow: 0 0 0 14px rgb(255 224 122 / 0); }
-}
-
-/* ---------- 粉笔槽和小鹰 ---------- */
-.board-ledge {
+.scene-board-ledge {
   position: absolute;
   left: 0;
   right: 0;
@@ -323,7 +122,7 @@
   mask-image: linear-gradient(180deg, transparent 0%, #000 22%);
 }
 
-.board-ledge img {
+.scene-board-ledge img {
   display: block;
   width: 100%;
   height: 100%;
@@ -331,36 +130,247 @@
   object-position: 100% 100%;
 }
 
-.board-eagle {
+.scene-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ---------- 小鹰 ---------- */
+.scene-eagle {
   position: absolute;
   z-index: 3;
   left: 3%;
-  /* 槽面在那张图从上往下 64% 的地方;脚踩上去再往里一点 */
-  bottom: calc(var(--ledge-h) * 0.3);
+  bottom: calc(var(--scene-h) * 0.1);
   height: var(--eagle-h);
-  width: calc(var(--eagle-h) * 0.94);
+  width: calc(var(--eagle-h) * var(--eagle-aspect, 0.94));
   pointer-events: none;
-  transform-origin: 40% 100%;
 }
 
-.board-eagle img {
+/* 周一站在粉笔槽上: 槽面在那张图从上往下 64% 的地方,脚踩上去再往里一点 */
+.scene-mon .scene-eagle { bottom: calc(var(--ledge-h) * 0.3); }
+
+.scene-eagle img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: 0% 100%;
-  filter: drop-shadow(0 10px 10px rgb(6 18 10 / 0.35));
+  transform-origin: 40% 100%;
+  filter: drop-shadow(0 10px 10px rgb(6 18 10 / 0.3));
 }
 
-/* 点喇叭时小鹰点一下头 */
-.board-eagle.is-speaking img {
-  animation: board-eagle-nod 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+/* ---------- 字 ---------- */
+.scene-text {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 
-@keyframes board-eagle-nod {
-  0% { transform: rotate(0deg); }
-  35% { transform: rotate(-3.5deg); }
-  100% { transform: rotate(0deg); }
+.scene-greet {
+  position: absolute;
+  left: 1.1rem;
+  top: 0.9rem;
+  right: 1.1rem;
+  color: var(--ink);
+}
+
+.scene-greet-line { margin: 0; }
+
+.scene-greet-en {
+  font-family: var(--hand);
+  font-size: 2rem;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-shadow: var(--halo);
+}
+
+.scene-sparkle {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-left: 0.12em;
+  vertical-align: 0.55em;
+  overflow: visible;
+}
+
+.scene-sparkle path,
+.scene-underline path,
+.card-frame path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.scene-sparkle path { stroke: var(--accent); stroke-width: 2.4; }
+
+.scene-underline {
+  display: block;
+  width: 9.5rem;
+  height: 0.7rem;
+  margin: 0.15rem 0 0.35rem 0.2rem;
+  overflow: visible;
+}
+
+.scene-underline path { stroke: var(--accent); stroke-width: 3.5; opacity: 0.92; }
+
+.scene-greet-zh {
+  display: none;
+  font-family: 'BoardZh', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: var(--ink-dim);
+  text-shadow: var(--halo);
+}
+
+/* 右上角: 日期 + 一周七天 */
+.scene-corner {
+  display: none;
+  position: absolute;
+  top: 1.15rem;
+  right: 1.4rem;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+
+.scene-date {
+  font-family: 'BoardZh', 'PingFang SC', sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  color: var(--ink-dim);
+  text-shadow: var(--halo);
+}
+
+.scene-week {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.22rem;
+  border-radius: 999px;
+  background: rgb(255 253 248 / 0.9);
+  box-shadow: 0 6px 18px rgb(20 30 40 / 0.16), 0 1px 2px rgb(20 30 40 / 0.1);
+}
+
+.scene-week-day {
+  position: relative;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  font-family: 'BoardZh', 'PingFang SC', sans-serif;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: #4a5563;
+  transition: background-color 200ms cubic-bezier(0.16, 1, 0.3, 1), color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scene-week-day:hover { background: #fff1e9; color: #a9441c; }
+.scene-week-day.is-active { background: #ff6b35; color: #fff; }
+.scene-week-day:focus-visible { outline: 2px solid #ff6b35; outline-offset: 2px; }
+
+/* 今天那一天下面一个小点 */
+.scene-week-day.is-today::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0.14rem;
+  width: 0.24rem;
+  height: 0.24rem;
+  margin-left: -0.12rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+/* ---------- 今日单词卡(版面;每天长什么样在 AuthScenes.css) ---------- */
+.scene-card {
+  position: absolute;
+  left: 47%;
+  right: 0.8rem;
+  top: 4.1rem;
+  padding: 0.55rem 0.6rem 0.6rem;
+  text-align: center;
+  color: var(--card-ink);
+}
+
+.scene-card > :not(.card-frame):not(.card-orbit):not(.card-cloud):not(.card-deco) { position: relative; }
+
+.card-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  font-family: 'BoardZh', 'PingFang SC', sans-serif;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: var(--card-accent);
+}
+
+.card-tag-en {
+  display: none;
+  font-family: var(--hand);
+  font-size: 0.95em;
+  color: var(--card-dim);
+}
+
+.card-word {
+  margin: 0.15rem 0 0;
+  font-family: 'BoardWord', 'Andika', 'Trebuchet MS', sans-serif;
+  font-weight: 700;
+  font-size: 2.2rem;
+  font-size: calc(2.2rem * var(--word-scale, 1));
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.card-ipa {
+  font-family: 'BoardWord', 'Lucida Sans Unicode', 'Arial Unicode MS', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--ipa);
+}
+
+.card-meaning {
+  font-family: 'BoardZh', 'PingFang SC', sans-serif;
+  font-size: 0.85rem;
+  color: var(--card-dim);
+}
+
+.card-meaning [lang='en'] { font-family: var(--hand); }
+
+.card-speak {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  color: var(--card-ink);
+  background: transparent;
+  opacity: 0.88;
+  transition: opacity 200ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1), background-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-speak:hover { opacity: 1; background: rgb(255 255 255 / 0.14); }
+.card-speak:active { transform: scale(0.94); }
+.card-speak:focus-visible { outline: 3px solid #ffd23f; outline-offset: 3px; opacity: 1; }
+.card-speak.is-speaking { color: var(--card-accent); opacity: 1; animation: card-speak-ring 1.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@keyframes card-speak-ring {
+  0% { box-shadow: 0 0 0 0 rgb(255 210 63 / 0.5); }
+  100% { box-shadow: 0 0 0 14px rgb(255 210 63 / 0); }
 }
 
 /* ---------- 表单那一侧 ---------- */
@@ -373,10 +383,7 @@
   box-shadow: 0 -1px 0 rgb(38 66 92 / 0.08);
 }
 
-.auth-form-content {
-  width: 100%;
-  max-width: 420px;
-}
+.auth-form-content { width: 100%; max-width: 420px; }
 
 .auth-brand {
   display: flex;
@@ -386,12 +393,12 @@
 }
 
 .auth-brand-mark {
+  position: relative;
   flex-shrink: 0;
   width: 2.75rem;
   height: 2.75rem;
   border-radius: 14px;
   background: #fff1e9;
-  position: relative;
 }
 
 .auth-brand-mark::after {
@@ -405,55 +412,52 @@
 
 /* ---------- 断点 ---------- */
 @media (max-width: 359px) {
-  .board-greet-en { font-size: 1.75rem; }
-  .board-word { left: 48%; }
+  .scene-greet-en { font-size: 1.75rem; }
+  .scene-card { left: 48%; }
 }
 
 @media (min-width: 480px) {
-  .board { --board-h: 17.5rem; --ledge-h: 4.5rem; --eagle-h: calc(var(--board-h) * 0.52); }
-  .board-greet { left: 1.5rem; top: 1.2rem; }
-  .board-greet-en { font-size: 2.4rem; }
-  .board-greet-zh { display: block; }
-  .board-underline { width: 11.5rem; }
-  .board-word { left: 46%; right: 1.4rem; top: 32%; padding: 0.7rem 0.75rem 0.75rem; }
-  .board-word-text { font-size: 2.6rem; font-size: calc(2.6rem * var(--word-scale, 1)); }
+  .scene { --scene-h: 17.5rem; --ledge-h: 4.5rem; --eagle-h: calc(var(--scene-h) * 0.52); }
+  .scene-greet { left: 1.5rem; top: 1.2rem; }
+  .scene-greet-en { font-size: 2.4rem; }
+  .scene-greet-zh { display: block; }
+  .scene-underline { width: 11.5rem; }
+  .scene-card { left: 46%; right: 1.4rem; top: 32%; padding: 0.7rem 0.75rem 0.75rem; }
+  .card-word { font-size: 2.6rem; font-size: calc(2.6rem * var(--word-scale, 1)); }
 }
 
 @media (min-width: 640px) {
-  .board-date { display: block; }
-  .board-greet { right: 11rem; }
+  .scene-corner { display: flex; }
+  .scene-greet { right: 15rem; }
 
-  .auth-form-plane {
-    padding: 2.5rem 1.5rem 3rem;
-    background: #f6f1e7;
-  }
+  .auth-form-plane { padding: 2.5rem 1.5rem 3rem; background: #f6f1e7; }
 
   .auth-form-content {
     max-width: 460px;
     padding: 2.25rem 2.25rem 2rem;
     border-radius: 28px;
     background: #fffdf9;
-    box-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 18px 50px rgb(74 52 26 / 0.09), 0 2px 6px rgb(74 52 26 / 0.05);
     border: 1px solid rgb(120 92 58 / 0.08);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 18px 50px rgb(74 52 26 / 0.09), 0 2px 6px rgb(74 52 26 / 0.05);
   }
 }
 
 @media (min-width: 768px) {
-  .board { --board-h: 21rem; --ledge-h: 5.25rem; --eagle-h: calc(var(--board-h) * 0.5); }
-  .board-greet { left: 2rem; top: 1.6rem; }
-  .board-greet-en { font-size: 3rem; }
-  .board-greet-zh { font-size: 1.1rem; }
-  .board-underline { width: 14rem; height: 0.9rem; }
-  .board-date { top: 1.8rem; right: 2rem; }
-  .board-word { left: 44%; right: 2.5rem; top: 27%; padding: 1rem 1.25rem 1.1rem; }
-  .board-word-tag { font-size: 0.95rem; }
-  .board-word-tag-en { display: inline; }
-  .board-word-text { font-size: 3.4rem; font-size: calc(3.4rem * var(--word-scale, 1)); }
-  .board-ipa { font-size: 1.05rem; }
-  .board-meaning { font-size: 1rem; }
+  .scene { --scene-h: 21rem; --ledge-h: 5.25rem; --eagle-h: calc(var(--scene-h) * 0.5); }
+  .scene-greet { left: 2rem; top: 1.6rem; }
+  .scene-greet-en { font-size: 3rem; }
+  .scene-greet-zh { font-size: 1.1rem; }
+  .scene-underline { width: 14rem; height: 0.9rem; }
+  .scene-corner { top: 1.6rem; right: 2rem; }
+  .scene-card { left: 44%; right: 2.5rem; top: 27%; padding: 1rem 1.25rem 1.1rem; }
+  .card-tag { font-size: 0.95rem; }
+  .card-tag-en { display: inline; }
+  .card-word { font-size: 3.4rem; font-size: calc(3.4rem * var(--word-scale, 1)); }
+  .card-ipa { font-size: 1.05rem; }
+  .card-meaning { font-size: 1rem; }
 }
 
-/* 电脑: 左右分栏,黑板占 58%,表单在右边一张纸上;黑板钉住不跟着滚 */
+/* 电脑: 左右分栏,场景占 58%,表单在右边一张纸上;场景钉住不跟着滚 */
 @media (min-width: 1024px) {
   .auth-shell {
     display: grid;
@@ -461,8 +465,8 @@
     align-items: start;
   }
 
-  .board {
-    --board-h: 100vh;
+  .scene {
+    --scene-h: 100vh;
     --ledge-h: 8rem;
     --ledge-h: clamp(6rem, 15vh, 9.5rem);
     --eagle-h: 40vh;
@@ -472,26 +476,21 @@
     top: 0;
   }
 
-  .board-greet { left: 3.5vw; top: 6vh; right: auto; }
-  .board-greet-en { font-size: 4.2rem; font-size: clamp(3.4rem, 4.6vw, 5.4rem); }
-  .board-greet-zh { font-size: 1.2rem; font-size: clamp(1.05rem, 1.25vw, 1.45rem); }
-  .board-underline { width: 18rem; width: clamp(14rem, 20vw, 24rem); height: 1rem; }
-  .board-date { top: 7vh; right: 3vw; }
-  .board-date-en { font-size: 1.5rem; font-size: clamp(1.3rem, 1.6vw, 1.9rem); }
-  .board-date-zh { font-size: 0.95rem; font-size: clamp(0.9rem, 1vw, 1.15rem); }
+  .scene-greet { left: 3.5vw; top: 6vh; right: auto; }
+  .scene-greet-en { font-size: 4.2rem; font-size: clamp(3.4rem, 4.6vw, 5.4rem); }
+  .scene-greet-zh { font-size: 1.2rem; font-size: clamp(1.05rem, 1.25vw, 1.45rem); }
+  .scene-underline { width: 18rem; width: clamp(14rem, 20vw, 24rem); height: 1rem; }
+  .scene-corner { top: 6.5vh; right: 3vw; gap: 0.7rem; }
+  .scene-date { font-size: 1rem; font-size: clamp(0.95rem, 1.05vw, 1.2rem); }
+  .scene-week-day { width: 2rem; height: 2rem; font-size: 0.88rem; }
 
-  .board-word {
-    left: 43%;
-    right: 5%;
-    top: 27vh;
-    padding: 1.6rem 1.75rem 1.5rem;
-  }
-  .board-word-tag { font-size: 1.05rem; font-size: clamp(1rem, 1.15vw, 1.3rem); }
-  .board-word-text { font-size: 4.6rem; font-size: calc(clamp(3.6rem, 5.4vw, 6.4rem) * var(--word-scale, 1)); margin-top: 0.35rem; }
-  .board-word-meta { margin-top: 0.6rem; gap: 0.3rem 0.7rem; }
-  .board-ipa { font-size: 1.25rem; font-size: clamp(1.1rem, 1.35vw, 1.6rem); }
-  .board-meaning { font-size: 1.15rem; font-size: clamp(1.05rem, 1.25vw, 1.45rem); }
-  .board-speak { width: 2.85rem; height: 2.85rem; }
+  .scene-card { left: 43%; right: 5%; top: 27vh; padding: 1.6rem 1.75rem 1.5rem; }
+  .card-tag { font-size: 1.05rem; font-size: clamp(1rem, 1.15vw, 1.3rem); }
+  .card-word { font-size: 4.6rem; font-size: calc(clamp(3.6rem, 5.4vw, 6.4rem) * var(--word-scale, 1)); margin-top: 0.35rem; }
+  .card-meta { margin-top: 0.6rem; gap: 0.3rem 0.7rem; }
+  .card-ipa { font-size: 1.25rem; font-size: clamp(1.1rem, 1.35vw, 1.6rem); }
+  .card-meaning { font-size: 1.15rem; font-size: clamp(1.05rem, 1.25vw, 1.45rem); }
+  .card-speak { width: 2.85rem; height: 2.85rem; }
 
   .auth-form-plane {
     min-height: 100vh;
@@ -502,13 +501,22 @@
   }
 }
 
-/* 屏幕矮(笔记本开着浏览器栏)时单词框别压到小鹰 */
+/* 屏幕矮(笔记本开着浏览器栏)时单词卡别压到小鹰 */
 @media (min-width: 1024px) and (max-height: 700px) {
-  .board-word { top: 24vh; padding-top: 1.2rem; padding-bottom: 1.1rem; }
-  .board { --eagle-h: 37vh; }
+  .scene { --eagle-h: 37vh; }
+  .scene-card { top: 24vh; padding-top: 1.2rem; padding-bottom: 1.1rem; }
+}
+
+/* 点喇叭时小鹰点一下头 */
+.scene-eagle.is-speaking img { animation: eagle-nod 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@keyframes eagle-nod {
+  0% { transform: rotate(0deg); }
+  35% { transform: rotate(-3.5deg); }
+  100% { transform: rotate(0deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .board-speak.is-speaking,
-  .board-eagle.is-speaking img { animation: none; }
+  .card-speak.is-speaking,
+  .scene-eagle.is-speaking img { animation: none; }
 }

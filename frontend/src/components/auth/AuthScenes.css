@@ -1,0 +1,334 @@
+/*
+ * 登录页「小鹰的一周」—— 第 2 部分: 每天的颜色、字体和今日单词卡的样子。
+ * 颜色都对着各自的背景量过对比度(字 ≥ 4.5:1;大字 ≥ 3:1),换背景图要重量
+ */
+
+/* ===== 周一 · 教室黑板: 粉笔字 ===== */
+.scene-mon .scene-shade {
+  background:
+    radial-gradient(ellipse 62% 44% at 20% 14%, rgb(9 30 20 / 0.5), transparent 72%),
+    radial-gradient(ellipse 120% 90% at 50% 45%, transparent 55%, rgb(6 22 14 / 0.42) 100%),
+    linear-gradient(rgb(14 38 26 / 0.16), rgb(14 38 26 / 0.16));
+}
+
+.scene-mon {
+  --halo: 0 0 1px rgb(255 255 255 / 0.35), 0 0 18px rgb(8 28 18 / 0.55);
+}
+
+/* 粉笔质感: 一张颗粒蒙版,字边缘有点断续 */
+.scene-mon .scene-greet,
+.scene-mon .scene-date,
+.scene-mon .scene-card > p,
+.scene-mon .card-ipa,
+.scene-mon .card-meaning,
+.scene-mon .card-frame {
+  -webkit-mask-image: url('/board-art/chalk-grain.png');
+  mask-image: url('/board-art/chalk-grain.png');
+  -webkit-mask-size: 160px 160px;
+  mask-size: 160px 160px;
+}
+
+.scene-mon .scene-card > p,
+.scene-mon .card-meta { text-shadow: var(--halo); }
+
+.card-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.card-frame path { stroke: rgb(245 242 233 / 0.62); stroke-width: 2.25; }
+
+/* ===== 周二 · 书桌笔记本: 蓝墨水 + 便利贴 ===== */
+.scene-tue {
+  --ink: #1f3d68;
+  --ink-dim: #3c5579;
+  --accent: #e5603f;
+  --hand: 'BoardPen', 'Comic Sans MS', cursive;
+  --card-ink: #1f3d68;
+  --card-dim: #4d5a2e;
+  --card-accent: #c2452a;
+  --ipa: #1d6aa1;
+  background: #f4e7cb;
+}
+
+.scene-tue .scene-greet-en { letter-spacing: 0; }
+
+.scene-tue .scene-card {
+  background: #fff3a6;
+  background-image: linear-gradient(180deg, #fff6b8, #ffef8e);
+  border-radius: 4px 4px 18px 4px;
+  transform: rotate(-1.6deg);
+  box-shadow: 0 1px 1px rgb(90 70 20 / 0.12), 0 14px 24px -8px rgb(90 70 20 / 0.32);
+}
+
+/* 便利贴顶上一截胶带 */
+.scene-tue .card-deco {
+  position: absolute;
+  top: -0.7rem;
+  left: 50%;
+  width: 6.5rem;
+  height: 1.5rem;
+  margin-left: -3.25rem;
+  background: rgb(255 255 255 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  transform: rotate(2.5deg);
+  box-shadow: 0 1px 2px rgb(90 70 20 / 0.12);
+}
+
+.scene-tue .card-speak { border-width: 2px; }
+.scene-tue .card-speak:hover { background: rgb(31 61 104 / 0.08); }
+
+/* ===== 周三 · 太空: 发光的字 + 轨道 ===== */
+.scene-wed {
+  --ink: #fff7e8;
+  --ink-dim: rgb(255 244 224 / 0.86);
+  --accent: #ffd23f;
+  --halo: 0 0 18px rgb(255 190 110 / 0.35), 0 2px 10px rgb(0 10 20 / 0.6);
+  --hand: 'BoardRound', 'Arial Rounded MT Bold', sans-serif;
+  --card-ink: #fff7e8;
+  --card-dim: rgb(255 244 224 / 0.86);
+  --card-accent: #ffd23f;
+  --ipa: #9ee8ff;
+  background: #061a26;
+}
+
+.scene-wed .scene-greet-en { font-weight: 800; letter-spacing: -0.01em; }
+
+.scene-wed .scene-shade {
+  background: radial-gradient(ellipse 70% 50% at 20% 12%, rgb(2 12 20 / 0.45), transparent 75%);
+}
+
+.scene-wed .scene-card {
+  border-radius: 999px / 70%;
+  background: radial-gradient(ellipse at 50% 50%, rgb(3 16 28 / 0.62), rgb(3 16 28 / 0.25) 70%, transparent 100%);
+}
+
+.scene-wed .scene-card > p,
+.scene-wed .card-meta { text-shadow: var(--halo); }
+
+.card-orbit {
+  position: absolute;
+  inset: -0.6rem -0.4rem;
+  pointer-events: none;
+  transform: rotate(-6deg);
+}
+
+.card-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px dashed rgb(255 244 224 / 0.5);
+}
+
+/* 小卫星沿椭圆走: 外层左右来回、里层上下来回,差四分之一圈(动画在 AuthAmbient.css) */
+.card-orbit-x,
+.card-orbit-y {
+  position: absolute;
+  inset: 0;
+}
+
+.card-orbit-moon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin: -0.375rem 0 0 -0.375rem;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 35%, #fff4c2, #ffb347 60%, #e8743b);
+  box-shadow: 0 0 12px rgb(255 190 90 / 0.8);
+}
+
+/* ===== 周四 · 海底: 深海蓝墨 + 大泡泡 ===== */
+.scene-thu {
+  --ink: #0b3f4c;
+  --ink-dim: #12505f;
+  --accent: #ff8a3d;
+  --halo: 0 0 14px rgb(220 255 250 / 0.75), 0 0 2px rgb(220 255 250 / 0.9);
+  --hand: 'BoardRound', 'Arial Rounded MT Bold', sans-serif;
+  --card-ink: #0b3f4c;
+  --card-dim: #23596a;
+  --card-accent: #d4561c;
+  --ipa: #0f6e8c;
+  background: #2aa8ad;
+}
+
+.scene-thu .scene-greet-en { font-weight: 800; letter-spacing: -0.01em; }
+
+.scene-thu .scene-card {
+  border-radius: 46% 54% 52% 48% / 58% 52% 48% 42%;
+  background:
+    radial-gradient(ellipse 40% 26% at 30% 18%, rgb(255 255 255 / 0.75), transparent 70%),
+    radial-gradient(ellipse at 50% 50%, rgb(240 255 253 / 0.86), rgb(205 245 242 / 0.8) 70%, rgb(170 230 228 / 0.72));
+  border: 2px solid rgb(255 255 255 / 0.85);
+  box-shadow: inset -8px -10px 24px rgb(40 160 170 / 0.22), 0 16px 32px -12px rgb(4 60 70 / 0.4);
+}
+
+.scene-thu .card-speak:hover { background: rgb(11 63 76 / 0.08); }
+
+/* ===== 周五 · 蓝天: 海军蓝字 + 云朵卡 ===== */
+.scene-fri {
+  --ink: #163a62;
+  --ink-dim: #2b4d75;
+  --accent: #ff6b35;
+  --halo: 0 0 16px rgb(255 255 255 / 0.65);
+  --hand: 'BoardMarker', 'Comic Sans MS', cursive;
+  --card-ink: #163a62;
+  --card-dim: #3a5678;
+  --card-accent: #d4561c;
+  --ipa: #1b6fa8;
+  background: #9fd0ea;
+}
+
+.card-cloud {
+  position: absolute;
+  inset: -1.2rem -1.4rem -1rem;
+  width: calc(100% + 2.8rem);
+  height: calc(100% + 2.2rem);
+  overflow: visible;
+  filter: drop-shadow(0 14px 18px rgb(40 90 140 / 0.22));
+}
+
+.card-cloud path { fill: #fffefb; }
+
+.scene-fri .card-speak:hover { background: rgb(22 58 98 / 0.07); }
+
+/* 风筝 + 线(只在 640 以上放,手机上那条太窄) */
+.fri-kite,
+.fri-string { display: none; }
+
+@media (min-width: 640px) {
+  .fri-string {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .fri-string path { fill: none; stroke: rgb(255 255 255 / 0.9); stroke-width: 1.4; }
+
+  .fri-kite {
+    display: block;
+    position: absolute;
+    z-index: 2;
+    right: 27%;
+    top: 4%;
+    width: 6.5rem;
+    pointer-events: none;
+    /* 绕着拴线的那个角摆,线头就一直对得上 */
+    transform-origin: 60% 62%;
+  }
+
+  .fri-kite img {
+    display: block;
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 8px 10px rgb(40 90 140 / 0.25));
+  }
+}
+
+@media (min-width: 1024px) {
+  .fri-kite { right: 30%; top: 18vh; width: 9rem; width: clamp(7rem, 9vw, 11rem); }
+  .scene-fri .scene-card { top: 40vh; }
+}
+
+@media (min-width: 1024px) and (max-height: 700px) {
+  .scene-fri .scene-card { top: 34vh; }
+}
+
+/* ===== 周六 · 花园: 彩带问候 + 木牌 ===== */
+.scene-sat {
+  --ink: #2c4a1f;
+  --ink-dim: #41602f;
+  --accent: #ff6b35;
+  --hand: 'BoardMarker', 'Comic Sans MS', cursive;
+  --card-ink: #fff8ea;
+  --card-dim: rgb(255 248 234 / 0.9);
+  --card-accent: #ffe07a;
+  --ipa: #ffe9b0;
+  background: #b7cf7a;
+}
+
+/* 背景花叶比较花,问候写在一条米色彩带上 */
+.scene-sat .scene-greet {
+  right: auto;
+  padding: 0.5rem 1.4rem 0.55rem 1.1rem;
+  background: #fff8e8;
+  border-radius: 6px;
+  box-shadow: 0 10px 22px -10px rgb(60 50 20 / 0.45);
+  -webkit-clip-path: polygon(0 0, 100% 0, calc(100% - 0.9rem) 50%, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 0.9rem) 50%, 100% 100%, 0 100%);
+}
+
+.scene-sat .scene-date {
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgb(255 248 232 / 0.92);
+  color: #41602f;
+}
+
+.scene-sat .scene-card {
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(176deg, rgb(255 255 255 / 0.05) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, #9a5d2c, #84491f);
+  border: 3px solid #6c3a17;
+  box-shadow: inset 0 2px 0 rgb(255 220 170 / 0.25), 0 16px 26px -12px rgb(50 30 10 / 0.55);
+}
+
+/* 木牌四个角的钉子 */
+.scene-sat .card-deco {
+  position: absolute;
+  inset: 0.45rem;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0.3rem 0.3rem, #d9c7a8 0.17rem, transparent 0.2rem),
+    radial-gradient(circle at calc(100% - 0.3rem) 0.3rem, #d9c7a8 0.17rem, transparent 0.2rem),
+    radial-gradient(circle at 0.3rem calc(100% - 0.3rem), #d9c7a8 0.17rem, transparent 0.2rem),
+    radial-gradient(circle at calc(100% - 0.3rem) calc(100% - 0.3rem), #d9c7a8 0.17rem, transparent 0.2rem);
+}
+
+.scene-sat .card-speak:hover { background: rgb(255 248 234 / 0.12); }
+
+/* ===== 周日 · 夜晚书房: 暖光字 + 故事书页 ===== */
+.scene-sun {
+  --ink: #ffefcf;
+  --ink-dim: rgb(255 236 200 / 0.86);
+  --accent: #ffb547;
+  --halo: 0 0 20px rgb(255 180 80 / 0.35), 0 2px 8px rgb(0 8 20 / 0.55);
+  --hand: 'BoardPen', 'Comic Sans MS', cursive;
+  --card-ink: #3a2a1b;
+  --card-dim: #5d4632;
+  --card-accent: #b8541c;
+  --ipa: #8a4a16;
+  background: #1c2c3e;
+}
+
+.scene-sun .scene-card {
+  border-radius: 6px 16px 16px 6px;
+  background:
+    linear-gradient(90deg, rgb(120 80 40 / 0.16), transparent 9%),
+    linear-gradient(180deg, #fff6e2, #f7e7c4);
+  box-shadow: 0 0 60px rgb(255 190 100 / 0.25), 0 18px 30px -12px rgb(0 0 0 / 0.55);
+}
+
+/* 书签丝带 */
+.scene-sun .card-deco {
+  position: absolute;
+  top: -0.3rem;
+  right: 1.4rem;
+  width: 0.9rem;
+  height: 2.6rem;
+  background: #ff6b35;
+  -webkit-clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+}
+
+.scene-sun .card-speak:hover { background: rgb(58 42 27 / 0.07); }
