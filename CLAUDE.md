@@ -271,6 +271,23 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 宠物换成原创伙伴(2026-11-04 **已部署生产**,提交 29fc883;database.py 生产有 drift 走 anchor patch 只改 3 处,其余 9 个后端文件生产==HEAD~1 整推,
+  两个服务都重启;前端构建 mw249h78 整推;备份 /root/eh_db_before_petorig_20261104_2055.db、/root/eh_code_before_petorig_20261104_2055.tgz、frontend/dist_bak_20261104_2055_petorig。
+  用户「宝可梦换成别的没有版权的宝贝 你从新生成图片替换多开点并发替换」): 原来 67 个种族的名字、立绘、招式名都是宝可梦的,
+  **一格对一格**换成原创设计(蒲电猬 / 云絮羊驼 / 油纸伞灵 / 糖画龙 / 醒狮…;传说 = 白泽 / 雷鼓夔 / 朱雀 / 北冥鲲 / 玉兔 / 九色鹿 / 应龙 / 麒麟),
+  元素、稀有度、技能骨架和特效配方沿用原来那一格,对战平衡不变;书狐 / 文鸮 / 词龟本来就是原创没动。
+  **真源 backend/scripts/pet_original_designs.py**(名字、简介、外形描述);出图 scripts/gen_pet_originals.py: 先出成长形态,再拿它当参考图走
+  /images/edits 出幼年和最终形态(一家三张认得出是同一只),要用 image_tutor 那行的 Key 所以 gen 在生产机跑、process(抠图 + 475 透明底 + back/ 翻转 +
+  256 色调色板 PNG)在本机跑;pets 目录 ~100MB → 20MB。⚠️ 中转有并发上限(429 gateway_concurrency_limit),-c 12 时偶尔一张重试 6 次都失败,用 --only 补。
+  ⚠️ edits 接口有时回**透明底** PNG,直接 convert("RGB") 会变黑底,_matte 里先垫白。
+  **旧 id → 新 id** core/pet_species.LEGACY_SPECIES(只增不删;前端 config/petSpecies.ts 同名同值,测试正则比对):
+  init_db 里 migrate_legacy_species 整体改 user_pets.species(幂等,生产上线时改了 426 / 496 行,另 70 只是书狐等);
+  PetCreate 的 species 校验前先换(旧页面领养发 pikachu 不报「暂不支持」);前端 getPetDefinition 认旧 id。默认种族 DEFAULT_SPECIES = sparkhog。
+  「宝可梦 / 精灵球(→收服光环) / 效果拔群(→属性克制,伤害翻倍) / AI训练师·小智(→AI陪练·星星…)」全换;宠物页横幅 hero-pet.jpeg 里的皮卡丘、
+  全屏胜利图 fx-victory.jpeg 里的动漫人物(像龙珠)重画;旧公告两条里的宝可梦名字改成中性说法(id 不变);删掉三个旧出图脚本。
+  **以后加宠物 / 改提示词别写任何现有角色名,也别照着某只宝可梦去描述外形**。测试 test_pet_species 加 4 例 + test_pet_legend_adoption 加 1 例,
+  去掉 schema 换 id / 前端对照表少一条 两处各让对应用例失败(回归锁验证过)。本机浏览器(库副本,1366)看过养成页、图鉴 71 张图全 200、AI 对战。
+  公告一条(学生)
 - ✅ 加盟资料「系统操作手册」+ 体验卡 PDF(2026-11-04 **已部署生产**,提交 9c15179 + 2f9cc10,纯前端;构建 mw1yge3a 整推,备份 frontend/dist_bak_20261104_opsdoc):
   ①**系统操作手册**(pages/FranchiseOpsDoc.tsx,用户「加盟资料系统的所有功能流程你需要弄一份进去」): 十三章 —— 账号 / 开学第一周 / 学习卡兑换码 /
   老师每天的工作 / 小鹰老师 / 学生怎么学 / 音标课 / 金币和比赛 / 家长端 / 招生工具 / 机构管理员 / 找平台办的事 / 常见问题。
