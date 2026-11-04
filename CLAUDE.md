@@ -271,6 +271,17 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 加盟资料「系统操作手册」+ 体验卡 PDF(2026-11-04 **已部署生产**,提交 9c15179 + 2f9cc10,纯前端;构建 mw1yge3a 整推,备份 frontend/dist_bak_20261104_opsdoc):
+  ①**系统操作手册**(pages/FranchiseOpsDoc.tsx,用户「加盟资料系统的所有功能流程你需要弄一份进去」): 十三章 —— 账号 / 开学第一周 / 学习卡兑换码 /
+  老师每天的工作 / 小鹰老师 / 学生怎么学 / 音标课 / 金币和比赛 / 家长端 / 招生工具 / 机构管理员 / 找平台办的事 / 常见问题。
+  **入口路径照界面上的字写,改了菜单名(TeacherDashboard / OrgAdminDashboard / StudentDashboard_New / ParentDashboard / SalesWorkbench)要回来改它**;
+  规则数字的真源见文件头。对合作机构开放(DOC_TABS partner: true)。入口: 加盟资料「系统操作手册」/ 教师工作台「课堂推进 → 系统操作手册」/
+  机构首页「运营资料」(默认打开它)。公告老师 / 机构管理员一条。
+  ②**downloadPdf 默认边距改了**(影响所有网页导出 PDF: 加盟资料、默写纸、出卷): 原来 10mm 边距内容区宽 718.1px,html2pdf 分页避让按 1031px 算、
+  切图按「画布宽 × 高宽比」= 1033px 切,每页差 2px,越往后越偏,标题被留在上一页页底。现在边距让内容区正好 720×1031px。
+  另: html2pdf 不认标题上的 break-after,标题和下面第一块要包在一个 break-inside: avoid 里;行内灰底跨行在截图里会画到字上,入口块用 inline-block + nowrap。
+  ③**体验卡印刷**(utils/promoPrint.ts): 图片按 600dpi 重画;新增「下载 PDF(正反面)」—— 94×64mm 两页,底图原图 JPEG 直接放(约 406dpi,不重压),
+  字 600dpi 透明图,二维码矢量。jspdf 改成直接依赖(同 3.0.4)
 - ✅ 登录页「小鹰的一周」(2026-11-04 **已部署生产**,提交 7773c87,纯前端;干净 worktree 构建 mw1qm1lj 整推,备份 frontend/dist_bak_20261104_week。
   用户「你做一周的不重样 每天的登录界面都不一样」→「不要加动画了」→「背景不要乱动 图片上的动画可以」): 按本地星期几换场景,
   真源 components/auth/loginScenes.ts: 周一黑板(沿用上一版)/ 周二书桌笔记本 / 周三太空 / 周四海底 / 周五放风筝 / 周六花园 / 周日夜晚书房。
