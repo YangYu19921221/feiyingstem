@@ -8,18 +8,23 @@
  * 读音默认系统读(全站同一个女声);某一题想用自己的声音,点「录音」现录或「传文件」,
  * 录了就替换系统读,点「改回系统读」去掉。
  *
- * 建题有两种: 一行一行填;或者整段粘贴(从 Excel / 微信复制,一行一题,用 Tab 或两个以上空格隔开:
- * 单词 音标 提示 释义)。存的时候整套校验,有一题音标不合格就一题都不存,列出是哪题。
+ * 建题有三种: 一行一行填;整段粘贴(从 Excel / 微信复制,一行一题,用 Tab 或两个以上空格隔开:
+ * 单词 音标 提示 释义);或者传 Excel(一个工作表一套,一次导很多套,模板见 utils/listeningExcel)。
+ * 存的时候整套校验,有一题音标不合格就一题都不存,列出是哪题。平台管理员建 / 导入的是平台预置,所有机构都能用。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Headphones, Plus, Trash2, Save, Mic, Square, Upload, Volume2, X, ClipboardPaste, BarChart3, ArrowLeft, LoaderCircle,
+  FileSpreadsheet, Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 import { rawTtsUrl } from '../hooks/useAudio';
+import { downloadListeningTemplate, parseListeningWorkbook, type ParsedListeningSet } from '../utils/listeningExcel';
 import {
+  checkListeningImport, importListeningSets, type ListeningImportCheck,
   createListeningSet, deleteListeningAudio, deleteListeningSet, fetchAuthedAudio, listeningAudioUrl,
   listeningResults, teacherGetListeningSet, teacherListeningBooks, teacherListeningSets, updateListeningSet,
   uploadListeningAudio, type ListeningResults, type TeacherListeningBook, type TeacherListeningItem,
@@ -49,6 +54,9 @@ export default function TeacherPhoneticListening() {
   const [errors, setErrors] = useState<string[]>([]);
   const [paste, setPaste] = useState<string | null>(null);
   const [results, setResults] = useState<{ title: string; data: ListeningResults } | null>(null);
+  const [imp, setImp] = useState<ImportState | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const isAdmin = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null')?.role === 'admin'; } catch { return false; } })();
 
   useEffect(() => {
     teacherListeningBooks().then(b => {
@@ -133,6 +141,47 @@ export default function TeacherPhoneticListening() {
     }
   };
 
+  const pickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f || !bookId) return;
+    let parsed: { sets: ParsedListeningSet[]; skipped: string[] };
+    try {
+      parsed = parseListeningWorkbook(XLSX.read(await f.arrayBuffer()));
+    } catch {
+      toast.error('这个文件打不开,请传 .xlsx 或 .xls');
+      return;
+    }
+    if (!parsed.sets.length) {
+      toast.error('没认出题目: 每个工作表第一行要有「单词」「音标」两列。不确定格式就先下载模板');
+      return;
+    }
+    const st: ImportState = { file: f.name, ...parsed, check: null, errors: [], replace: false, busy: true };
+    setImp(st);
+    try {
+      const check = await checkListeningImport(bookId, parsed.sets.map(x => ({ title: x.title, items: x.items })));
+      setImp({ ...st, check, busy: false });
+    } catch (err) {
+      const d = (err as { response?: { data?: { detail?: { errors?: string[] } } } })?.response?.data?.detail;
+      setImp({ ...st, busy: false, errors: d && Array.isArray(d.errors) ? d.errors : [getErrorMessage(err, '校验失败')] });
+    }
+  };
+
+  const doImport = async () => {
+    if (!imp?.check || !bookId) return;
+    setImp({ ...imp, busy: true });
+    try {
+      const r = await importListeningSets(bookId, imp.sets.map(x => ({ title: x.title, items: x.items })), imp.replace);
+      toast.success(`导入了 ${r.items} 题: 新建 ${r.created} 套${r.replaced ? `、覆盖 ${r.replaced} 套` : ''}`
+        + (r.platform ? '。这些是平台预置,所有机构都能用' : '。学生端「音标」→ 教材目录最上面能看到'));
+      setImp(null);
+      void loadSets(bookId);
+    } catch (err) {
+      toast.error(getErrorMessage(err, '导入失败'));
+      setImp({ ...imp, busy: false });
+    }
+  };
+
   const setRow = (key: string, patch: Partial<Draft>) =>
     setEditing(ed => ed && { ...ed, rows: ed.rows.map(r => (r.key === key ? { ...r, ...patch } : r)) });
 
@@ -163,9 +212,18 @@ export default function TeacherPhoneticListening() {
                   {books.map(b => <option key={b.id} value={b.id}>{b.name}{b.is_preset ? '(平台预置)' : ''}</option>)}
                 </select>
                 {canEdit ? (
-                  <button onClick={newSet} className="ml-auto flex items-center gap-1.5 rounded-xl bg-[#2f8791] px-4 py-2 text-sm font-medium text-white">
-                    <Plus className="h-4 w-4" /> 新建一套听力
-                  </button>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <button onClick={downloadListeningTemplate} className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                      <Download className="h-4 w-4" /> 下载模板
+                    </button>
+                    <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5 rounded-xl bg-[#2f8791]/10 px-3 py-2 text-sm font-medium text-[#2f8791]">
+                      <FileSpreadsheet className="h-4 w-4" /> 导入 Excel
+                    </button>
+                    <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={pickFile} />
+                    <button onClick={newSet} className="flex items-center gap-1.5 rounded-xl bg-[#2f8791] px-4 py-2 text-sm font-medium text-white">
+                      <Plus className="h-4 w-4" /> 新建一套听力
+                    </button>
+                  </div>
                 ) : (
                   <span className="ml-auto text-sm text-slate-500">只能查看</span>
                 )}
@@ -175,6 +233,12 @@ export default function TeacherPhoneticListening() {
                 学生听读音,写出单词和音标,两个都对才算对。读音默认系统读,想用自己的声音每题可以录一段。
                 布置作业: 「作业管理 → 布置句子 / 音标 / 复习 / 跟读作业」选「音标听力」。
               </p>
+              {canEdit && (
+                <p className="mt-2 text-sm text-slate-500">
+                  一次建很多套: 先「下载模板」,一个工作表填一套(表名就是「听-1」这样的套名),填好点「导入 Excel」。
+                  {isAdmin && <span className="font-medium text-slate-700"> 你是平台管理员,建的和导入的都是平台预置,所有机构都能用。</span>}
+                </p>
+              )}
             </section>
 
             <section className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -234,11 +298,88 @@ export default function TeacherPhoneticListening() {
         </Modal>
       )}
 
+      {imp && (
+        <Modal title={`导入 Excel · ${imp.file}`} onClose={() => !imp.busy && setImp(null)} wide>
+          <ImportPanel imp={imp} setImp={setImp} onConfirm={doImport} onRepick={() => fileRef.current?.click()} />
+        </Modal>
+      )}
+
       {results && (
         <Modal title={`${results.title} · 学生做得怎么样`} onClose={() => setResults(null)} wide>
           <ResultsTable data={results.data} />
         </Modal>
       )}
+    </div>
+  );
+}
+
+interface ImportState {
+  file: string;
+  sets: ParsedListeningSet[];
+  skipped: string[];
+  check: ListeningImportCheck | null;
+  errors: string[];
+  replace: boolean;
+  busy: boolean;
+}
+
+function ImportPanel({ imp, setImp, onConfirm, onRepick }: {
+  imp: ImportState; setImp: (s: ImportState) => void; onConfirm: () => void; onRepick: () => void;
+}) {
+  const total = imp.sets.reduce((n, x) => n + x.items.length, 0);
+  const existing = new Set(imp.check?.existing ?? []);
+  const half = imp.sets.filter(x => x.halfRows.length);
+  const blocked = !imp.check || imp.errors.length > 0 || (existing.size > 0 && !imp.replace);
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-slate-700">认出 <b>{imp.sets.length}</b> 套、<b>{total}</b> 题:</p>
+      <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+        {imp.sets.map(x => (
+          <span key={x.title} className={`rounded-lg px-2 py-1 ${existing.has(x.title) ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
+            {x.title} · {x.items.length} 题{existing.has(x.title) ? ' · 已有' : ''}
+          </span>
+        ))}
+      </div>
+      {imp.skipped.length > 0 && (
+        <p className="text-slate-500">跳过了 {imp.skipped.length} 个没有「单词」「音标」两列的表: {imp.skipped.join('、')}</p>
+      )}
+      {half.length > 0 && (
+        <p className="rounded-lg bg-amber-50 p-2.5 text-amber-800">
+          这些行只填了单词或只填了音标,没导进来: {half.map(x => `「${x.title}」第 ${x.halfRows.join('、')} 行`).join(';')}
+        </p>
+      )}
+      {imp.busy && !imp.check && !imp.errors.length && (
+        <p className="flex items-center gap-2 text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" /> 正在校验音标…</p>
+      )}
+      {imp.errors.length > 0 && (
+        <div className="rounded-xl bg-rose-50 p-3 text-rose-700 ring-1 ring-rose-200">
+          <p className="font-medium">一套都没导入,先在 Excel 里改这些,再重新选文件:</p>
+          <ul className="mt-1 max-h-48 list-disc overflow-y-auto pl-5">{imp.errors.map(e => <li key={e}>{e}</li>)}</ul>
+        </div>
+      )}
+      {imp.check?.platform && (
+        <p className="rounded-lg bg-sky-50 p-2.5 text-sky-800">你是平台管理员: 导入的是平台预置,所有机构的老师和学生都看得到,只有平台管理员能改。</p>
+      )}
+      {existing.size > 0 && (
+        <label className="flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-amber-900">
+          <input type="checkbox" className="mt-0.5" checked={imp.replace} onChange={e => setImp({ ...imp, replace: e.target.checked })} />
+          <span>
+            覆盖同名的 {existing.size} 套。同一个单词对上原来那一题,学生做过的记录和录音都留着;
+            新单词加进去,Excel 里没有的题会删掉。不勾就改一下这几个工作表的名字。
+          </span>
+        </label>
+      )}
+      <div className="flex justify-end gap-2 pt-1">
+        {imp.errors.length > 0 ? (
+          <button onClick={onRepick} className="rounded-lg bg-[#2f8791] px-4 py-2 text-white">重新选文件</button>
+        ) : (
+          <button onClick={onConfirm} disabled={blocked || imp.busy}
+            className="flex items-center gap-1.5 rounded-lg bg-[#2f8791] px-4 py-2 text-white disabled:opacity-50">
+            {imp.busy && imp.check && <LoaderCircle className="h-4 w-4 animate-spin" />}
+            导入 {imp.sets.length} 套
+          </button>
+        )}
+      </div>
     </div>
   );
 }

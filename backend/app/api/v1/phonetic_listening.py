@@ -202,6 +202,39 @@ def _apply(item: ListeningItem, d: dict, order: int) -> None:
     item.order_index = order
 
 
+async def _items_of(db: AsyncSession, set_id: int) -> dict:
+    return {it.id: it for it in (await db.execute(
+        select(ListeningItem).where(ListeningItem.set_id == set_id))).scalars()}
+
+
+async def _replace_items(db: AsyncSession, s: ListeningSet, rows: List[dict], old: dict):
+    """按 rows 重写这一套的题 → (题目 list, 要删的录音文件)。
+
+    rows 里带 id 的原地改(id 不变,学生记录和老师录音都留着),不带 id 的新加,old 里没出现的删掉。
+    调用方先确认 rows 里的 id 都在 old 里"""
+    keep = {d["id"] for d in rows if d["id"] is not None}
+    removed_files = []
+    for iid, it in old.items():
+        if iid not in keep:
+            if it.audio_path:
+                removed_files.append(it.audio_path)
+            await db.delete(it)
+    items = []
+    for i, d in enumerate(rows):
+        it = old.get(d["id"]) if d["id"] is not None else None
+        if it is None:
+            it = ListeningItem(set_id=s.id)
+            db.add(it)
+        elif it.word != d["word"] and it.audio_path:
+            # 换了单词,老师之前录的是旧词 —— 留着就是读错的题
+            removed_files.append(it.audio_path)
+            it.audio_path = None
+            it.audio_mime = None
+        _apply(it, d, i)
+        items.append(it)
+    return items, removed_files
+
+
 def _set_out(s: ListeningSet, items: List[ListeningItem], can_edit: bool) -> dict:
     return {"id": s.id, "book_id": s.book_id, "title": s.title, "can_edit": can_edit, "items": [
         {"id": it.id, "word": it.word, "phonetic": it.answer_display, "meaning": it.meaning,
@@ -240,6 +273,108 @@ async def create_set(book_id: int, body: SetIn, request: Request, db: AsyncSessi
     return _set_out(s, items, True)
 
 
+IMPORT_SETS_MAX = 60      # 一本练习本几十页,一次导完
+
+
+class ImportIn(BaseModel):
+    """Excel 导入: 一个工作表 = 一套(表名就是套名)。前端用 SheetJS 解析成 JSON 传上来,后端不收文件"""
+    sets: List[SetIn] = Field(..., min_length=1, max_length=IMPORT_SETS_MAX)
+    replace: bool = False      # 同名的套覆盖(按单词对上原题,学生记录和录音留着)
+    dry_run: bool = False      # 只校验,不写
+
+
+def _norm_title(t: str) -> str:
+    return " ".join((t or "").split())[:100]
+
+
+@teacher_router.post("/books/{book_id}/import")
+async def import_sets(book_id: int, body: ImportIn, request: Request, db: AsyncSession = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """Excel 一次导入好几套。规则:
+    - 整批要么全进要么全不进: 有一题不合格、表名重复,一套都不写,错误逐条列出
+    - 导入的套归导入的人: 老师 / 机构管理员 = 本机构;平台 admin = 平台预置(所有机构都能用)
+    - 同名 = 这本教材里**自己这一层**(本机构 / 平台)已有同名的套。不带 replace 回 409 列出是哪几套;
+      带 replace 就改那一套: 同一个单词对上原来那一题(id 不变),新单词新加,表里没有的删掉。
+      别的机构或平台有同名的不算 —— 那不是你的,导入只会建你自己的一套"""
+    _require_staff(user)
+    b = await _book_visible(db, book_id, _org_of(user))
+    if b is None:
+        raise HTTPException(status_code=404, detail="教材不存在")
+    if not _can_add(user):
+        raise HTTPException(status_code=403, detail="你的账号不属于任何机构,建不了听力")
+    org = _org_of(user)
+
+    errors: List[str] = []
+    parsed: List[tuple[str, List[dict]]] = []
+    seen: set[str] = set()
+    for st in body.sets:
+        title = _norm_title(st.title)
+        if not title:
+            errors.append("有一个工作表没有名字")
+            continue
+        if title in seen:
+            errors.append(f"「{title}」出现了两次,改一下其中一个工作表的名字")
+            continue
+        seen.add(title)
+        for it in st.items:
+            it.id = None           # 导入不认前端带来的 id,按单词对题
+        rows, errs = _check_items(st.items)
+        errors.extend(f"「{title}」{e}" for e in errs)
+        parsed.append((title, rows))
+    if errors:
+        raise HTTPException(status_code=400, detail={"code": "invalid_items", "message": errors[0],
+                                                     "errors": errors})
+
+    owner = ListeningSet.org_id.is_(None) if org is None else ListeningSet.org_id == org
+    existing = {s.title: s for s in (await db.execute(
+        select(ListeningSet).where(ListeningSet.book_id == b.id, ListeningSet.is_active.is_(True), owner)
+        .order_by(ListeningSet.id))).scalars()}
+    clash = [t for t, _ in parsed if t in existing]
+    total = sum(len(r) for _, r in parsed)
+    if body.dry_run:
+        return {"sets": len(parsed), "items": total, "existing": clash,
+                "new": [t for t, _ in parsed if t not in existing], "platform": org is None}
+    if clash and not body.replace:
+        raise HTTPException(status_code=409, detail={
+            "code": "title_exists", "titles": clash,
+            "message": f"这本教材里已经有同名的 {len(clash)} 套(「{'」「'.join(clash[:5])}」"
+                       f"{'…' if len(clash) > 5 else ''}),勾上「覆盖同名的套」再导入,或者改一下工作表名"})
+
+    last = (await db.execute(select(func.max(ListeningSet.sort_order))
+                             .where(ListeningSet.book_id == b.id))).scalar() or 0
+    removed_files: List[str] = []
+    created = replaced = 0
+    for title, rows in parsed:
+        s = existing.get(title)
+        if s is None:
+            last += 10
+            s = ListeningSet(book_id=b.id, title=title, sort_order=last, org_id=org, created_by=user.id)
+            db.add(s)
+            await db.flush()
+            old: dict = {}
+            created += 1
+        else:
+            old = await _items_of(db, s.id)
+            pool: dict[str, list] = {}
+            for it in sorted(old.values(), key=lambda x: (x.order_index, x.id)):
+                pool.setdefault(pl.norm_word(it.word), []).append(it.id)
+            for d in rows:
+                ids = pool.get(pl.norm_word(d["word"]))
+                d["id"] = ids.pop(0) if ids else None
+            s.updated_at = datetime.utcnow()
+            replaced += 1
+        _items, gone = await _replace_items(db, s, rows, old)
+        removed_files.extend(gone)
+    where = "平台预置" if org is None else "本机构"
+    audit_log.record(db, request, user, "phonetic.listening_import",
+                     f"Excel 导入音标听力 {len(parsed)} 套 {total} 题({where},新建 {created} 套、覆盖 {replaced} 套)",
+                     target_type="phonetic_book", target_id=b.id)
+    await db.commit()
+    for p in removed_files:
+        _rm(p)
+    return {"created": created, "replaced": replaced, "items": total, "platform": org is None}
+
+
 @teacher_router.get("/sets/{set_id}")
 async def teacher_get_set(set_id: int, db: AsyncSession = Depends(get_db),
                           user: User = Depends(get_current_user)):
@@ -264,30 +399,10 @@ async def update_set(set_id: int, body: SetIn, request: Request, db: AsyncSessio
     if errors:
         raise HTTPException(status_code=400, detail={"code": "invalid_items", "message": errors[0],
                                                      "errors": errors})
-    old = {it.id: it for it in (await db.execute(
-        select(ListeningItem).where(ListeningItem.set_id == s.id))).scalars()}
+    old = await _items_of(db, s.id)
     if any(d["id"] is not None and d["id"] not in old for d in rows):
         raise HTTPException(status_code=400, detail="有的题不在这套里,一个都没改。刷新页面再试")
-    keep = {d["id"] for d in rows if d["id"] is not None}
-    removed_files = []
-    for iid, it in old.items():
-        if iid not in keep:
-            if it.audio_path:
-                removed_files.append(it.audio_path)
-            await db.delete(it)
-    items = []
-    for i, d in enumerate(rows):
-        it = old.get(d["id"]) if d["id"] is not None else None
-        if it is None:
-            it = ListeningItem(set_id=s.id)
-            db.add(it)
-        elif it.word != d["word"] and it.audio_path:
-            # 换了单词,老师之前录的是旧词 —— 留着就是读错的题
-            removed_files.append(it.audio_path)
-            it.audio_path = None
-            it.audio_mime = None
-        _apply(it, d, i)
-        items.append(it)
+    items, removed_files = await _replace_items(db, s, rows, old)
     s.title = body.title.strip()
     s.updated_at = datetime.utcnow()
     audit_log.record(db, request, user, "phonetic.listening_update",

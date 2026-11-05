@@ -122,6 +122,14 @@ export const createListeningSet = (bookId: number, body: { title: string; items:
 export const updateListeningSet = (id: number, body: { title: string; items: TeacherListeningItem[] }):
   Promise<TeacherListeningSet> => api.put(`${T}/sets/${id}`, body);
 export const deleteListeningSet = (id: number) => api.delete(`${T}/sets/${id}`);
+/** Excel 导入(一个工作表一套)。先 check 只校验不写;同名的套要 replace 才覆盖,否则 409 */
+type ImportSets = { title: string; items: TeacherListeningItem[] }[];
+export interface ListeningImportCheck { sets: number; items: number; existing: string[]; new: string[]; platform: boolean }
+export interface ListeningImportDone { created: number; replaced: number; items: number; platform: boolean }
+export const checkListeningImport = (bookId: number, sets: ImportSets): Promise<ListeningImportCheck> =>
+  api.post(`${T}/books/${bookId}/import`, { sets, dry_run: true });
+export const importListeningSets = (bookId: number, sets: ImportSets, replace: boolean): Promise<ListeningImportDone> =>
+  api.post(`${T}/books/${bookId}/import`, { sets, replace });
 export const uploadListeningAudio = (itemId: number, blob: Blob, name = 'audio') => {
   const fd = new FormData();
   fd.append('audio', blob, name);

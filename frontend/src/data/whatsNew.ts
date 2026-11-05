@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-listening-excel-2026-11',
+    date: '2026-11-05',
+    title: '🎧 音标听力能传 Excel 了,平台还送了 12 套现成的',
+    desc: '以前建听力只能一题一题填。现在先下载模板,一个工作表填一套(表名写「听-1」这样的套名),一个文件能放很多套,一次导完。有一题音标不合格就一套都不导,会列出是哪个表的哪一题。另外「听-1」到「听-12」12 套(240 题)已经是平台预置,所有机构都能直接用、直接布置。',
+    where: '教师工作台「内容准备 → 音标听力」→ 右上角「下载模板」「导入 Excel」',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/phonetic-listening',
+  },
+  {
     id: 'pet-second-batch-2026-11',
     date: '2026-11-05',
     title: '🐺 图鉴新来了 50 个伙伴家族,这批走帅气路线',

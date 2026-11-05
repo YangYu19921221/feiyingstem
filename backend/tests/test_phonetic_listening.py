@@ -257,3 +257,109 @@ async def test_check_page_grades_like_single_and_rejects_foreign_items(client: A
     # 别家学生整页交 404
     assert (await client.post(f"{BASE_S}/check-page", headers=H(d["s2"]), json={
         "set_id": s["id"], "answers": [{"item_id": a["id"], "word": "block", "phonetic": []}]})).status_code == 404
+
+
+# ---------------------------------------------------------------- Excel 导入(2026-11-05)
+
+SHEET_A = {"title": "听-1", "items": [
+    {"word": "dad", "phonetic": "[dæd]", "hint": "3—3"},
+    {"word": "face", "phonetic": "[feɪs]", "hint": "3—4 [s]不 尾+e", "meaning": "脸"},
+]}
+SHEET_B = {"title": "听-2", "items": [
+    {"word": "cats", "phonetic": "[kæts]", "hint": "4—4"},
+    {"word": "boats", "phonetic": "[bəʊts]", "hint": "4—5 元+a"},
+]}
+
+
+async def _admin_token(db_session):
+    a = User(username="ls_admin", email="ls_admin@e.com", hashed_password="x", role="admin",
+             full_name="平台", is_active=True, org_id=None)
+    db_session.add(a)
+    await db_session.commit()
+    return _make_token(a.id)
+
+
+async def _titles(client, tok, book_id):
+    r = await client.get(f"{BASE_T}/books/{book_id}/sets", headers=H(tok))
+    assert r.status_code == 200, r.text
+    return {s["title"]: s for s in r.json()["sets"]}
+
+
+async def test_import_is_all_or_nothing(client: AsyncClient, orgs):
+    """一题音标不合格 / 表名重复 → 一套都不写,错误带上是哪个表哪一题"""
+    d = orgs
+    bad = {"title": "听-2", "items": [{"word": "cats", "phonetic": "[kats]"}]}   # a 不是音标符号
+    r = await client.post(f"{BASE_T}/books/{d['preset']}/import", headers=H(d["t1"]),
+                          json={"sets": [SHEET_A, bad]})
+    assert r.status_code == 400
+    assert any("「听-2」" in e and "cats" in e for e in r.json()["detail"]["errors"])
+    r = await client.post(f"{BASE_T}/books/{d['preset']}/import", headers=H(d["t1"]),
+                          json={"sets": [SHEET_A, SHEET_A]})
+    assert r.status_code == 400 and "两次" in r.json()["detail"]["message"]
+    assert await _titles(client, d["t1"], d["preset"]) == {}
+
+    r = await client.post(f"{BASE_T}/books/{d['preset']}/import", headers=H(d["t1"]),
+                          json={"sets": [SHEET_A, SHEET_B], "dry_run": True})
+    assert r.json() == {"sets": 2, "items": 4, "existing": [], "new": ["听-1", "听-2"], "platform": False}
+    assert await _titles(client, d["t1"], d["preset"]) == {}     # 校验不写库
+
+    r = await client.post(f"{BASE_T}/books/{d['preset']}/import", headers=H(d["t1"]),
+                          json={"sets": [SHEET_A, SHEET_B]})
+    assert r.status_code == 200 and r.json()["created"] == 2
+    got = await _titles(client, d["t1"], d["preset"])
+    assert list(got) == ["听-1", "听-2"] and got["听-1"]["item_count"] == 2
+    assert not got["听-1"]["is_platform"]
+    # 老师导入的归本机构: 别家老师 / 学生看不到
+    assert await _titles(client, d["t2"], d["preset"]) == {}
+    assert (await client.get(f"{BASE_S}/sets/{got['听-1']['id']}", headers=H(d["s2"]))).status_code == 404
+
+
+async def test_import_same_title_needs_replace_and_keeps_item_ids(client: AsyncClient, orgs, db_session):
+    """同名不勾覆盖 → 409;勾了 → 同一个单词对上原题(id 不变,学生记录留着),表里没有的删掉"""
+    d = orgs
+    s = await _make_set(client, d)                 # 听-2: block / hoe / rifle
+    block_id = s["items"][0]["id"]
+    r = await client.post(f"{BASE_S}/check", headers=H(d["s1"]),
+                          json={"item_id": block_id, "pass_number": 1, "word": "block",
+                                "phonetic": ["b", "l", "ɒ", "k"]})
+    assert r.status_code == 200
+    sheet = {"title": "听-2", "items": [
+        {"word": "Block", "phonetic": "[blɒk]", "hint": "改过的提示"},
+        {"word": "cats", "phonetic": "[kæts]"},
+    ]}
+    r = await client.post(f"{BASE_T}/books/{d['b1']}/import", headers=H(d["t1"]), json={"sets": [sheet]})
+    assert r.status_code == 409 and r.json()["detail"]["titles"] == ["听-2"]
+    dry = await client.post(f"{BASE_T}/books/{d['b1']}/import", headers=H(d["t1"]),
+                            json={"sets": [sheet], "dry_run": True})
+    assert dry.json()["existing"] == ["听-2"]
+
+    r = await client.post(f"{BASE_T}/books/{d['b1']}/import", headers=H(d["t1"]),
+                          json={"sets": [sheet], "replace": True})
+    assert r.status_code == 200 and r.json()["replaced"] == 1 and r.json()["created"] == 0
+    body = (await client.get(f"{BASE_T}/sets/{s['id']}", headers=H(d["t1"]))).json()
+    assert [it["word"] for it in body["items"]] == ["Block", "cats"]
+    assert body["items"][0]["id"] == block_id and body["items"][0]["hint"] == "改过的提示"
+    from sqlalchemy import select
+    n = (await db_session.execute(select(ListeningAttempt).where(ListeningAttempt.item_id == block_id))).scalars().all()
+    assert len(n) == 1
+
+
+async def test_admin_import_is_platform_preset(client: AsyncClient, orgs, db_session):
+    """平台 admin 导入的 = 平台预置: 所有机构都看得到、都改不了;机构自己导同名的不会覆盖平台的"""
+    d = orgs
+    admin = await _admin_token(db_session)
+    r = await client.post(f"{BASE_T}/books/{d['preset']}/import", headers=H(admin), json={"sets": [SHEET_A]})
+    assert r.status_code == 200 and r.json()["platform"] is True
+    for tok in (d["t1"], d["t2"]):
+        got = await _titles(client, tok, d["preset"])
+        assert got["听-1"]["is_platform"] and not got["听-1"]["can_edit"]
+    sid = (await _titles(client, d["t1"], d["preset"]))["听-1"]["id"]
+    for stu in (d["s1"], d["s2"]):
+        assert (await client.get(f"{BASE_S}/sets/{sid}", headers=H(stu))).status_code == 200
+
+    # 机构老师导同名的: 不算撞名,建的是自己机构的一套,平台那套不动
+    r = await client.post(f"{BASE_T}/books/{d['preset']}/import", headers=H(d["t1"]),
+                          json={"sets": [{"title": "听-1", "items": [{"word": "cab", "phonetic": "[kæb]"}]}]})
+    assert r.status_code == 200 and r.json()["created"] == 1
+    plat = (await client.get(f"{BASE_T}/sets/{sid}", headers=H(admin))).json()
+    assert [it["word"] for it in plat["items"]] == ["dad", "face"]
