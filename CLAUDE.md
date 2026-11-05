@@ -281,7 +281,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   ④**Excel 同名覆盖改成原地改**: 书 id 不变(挂在下面的音标听力、作业都还在),同编号的节、同一节里同一个单词的题 id 不变;Excel 里没有的节 / 题删掉。
   以前是整本删了重建,所有 id 全换 —— 生产那本平台预置教材下面挂着 12 套听力,删书会让听力的 book_id 指空
   ⑤**新建的书 / 节 / 题 id 永不复用**(services/phonetic_ids.IdAllocator): 这几张表没有 AUTOINCREMENT,SQLite 会把删掉的最大 id 发给新行,
-  学生旧记录就算到新题头上。新 id = max(表里, 所有引用它的记录 / 作业 / 听力) + 1。命令行脚本 scripts/import_phonetic_book.py 没改(只在服务器上手动用)
+  学生旧记录就算到新题头上。新 id = max(表里, 所有引用它的记录 / 作业 / 听力) + 1。
+  **写库只有一个入口 services/phonetic_book_write**(write_book / sync_items): 网页导入、改一节、命令行脚本 scripts/import_phonetic_book.py 都调它。
+  命令行 --replace 同样原地改,只认平台预置(org_id NULL)的同名书,加 --dry-run 先打印「保留几题 / 新加几题 / 删掉几题 / 新加和删掉的节」不写库。
+  本机库副本实测: 同内容覆盖 938 题 id 一个不变;改一个词 + 删一节 → 保留 917、新加 1(id 939)、删 21
   ⑥**删之前看影响**(GET /books/{id}/usage、/lessons/{id}/usage): 多少学生练过、几份没关的作业、几套听力;前端弹窗列出来,勾「我知道删了不能恢复」才能删。
   删整本时挂在下面的听力一起停用(以前留着,book_id 指向不存在的书)
   前端: 音标教材页每本书多一个铅笔改名;点开一本,每节右边上下移 / 编辑 / 删除,最下面「加一节」(编号接着最后一节往下);

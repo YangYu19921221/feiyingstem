@@ -36,6 +36,7 @@ from app.models.phonetic_practice import (
 )
 from app.models.user import User
 from app.services import audit_log
+from app.services.phonetic_book_write import items_of as _items_of, sync_items as _sync_items, write_book
 from app.services.phonetic_ids import IdAllocator
 from app.services.phonetic_tokenize import check_item, check_tts_text, lesson_highlight
 
@@ -250,53 +251,10 @@ def _check_rows(lesson_label: str, rows) -> tuple[list, list]:
     return items, errors
 
 
-def _norm_word(w: Optional[str]) -> str:
-    return " ".join((w or "").replace("\u2019", "'").split()).lower()
-
-
 def _norm_code(raw: str) -> str:
     """小节编号: 「1-1」「1 — 1」都写成「1—1」(学生目录里显示的就是它)"""
     t = " ".join((raw or "").split())
     return re.sub(r"^(\d+)\s*[-–—]\s*(\d+)", r"\1—\2", t)[:20]
-
-
-async def _sync_items(db: AsyncSession, ls: PhoneticLesson, rows: List[dict],
-                      old: dict, item_ids: IdAllocator) -> List[PhoneticItem]:
-    """把 rows 写成这一节的题(rows 是 _check_rows 的输出,可带 id)。
-
-    - 带 id、单词没变的原地改: id 不变,学生写音标记录、跟读录音都还对得上
-    - **单词变了按新题**(新 id),旧题删掉: 原地改的话,学生写 bad 的记录和录音会算到 bed 头上
-    - 不带 id 的新加;old 里没出现的删掉。学生的作答 / 录音记录一律不删(那是学情)
-    调用方先确认 rows 里的 id 都在 old 里"""
-    keep: set[int] = set()
-    out = []
-    for i, d in enumerate(rows):
-        it = old.get(d.get("id")) if d.get("id") is not None else None
-        if it is not None and (it.id in keep or _norm_word(it.word) != _norm_word(d["word"])):
-            it = None
-        if it is None:
-            it = PhoneticItem(id=item_ids.next(), lesson_id=ls.id)
-            db.add(it)
-        else:
-            keep.add(it.id)
-        it.word = d["word"]
-        it.meaning = d.get("meaning")
-        it.answer_json = json.dumps(d["answer"], ensure_ascii=False)
-        it.answer_display = f"[{''.join(d['answer'])}]"
-        it.core_indexes_json = json.dumps(d["core"])
-        it.order_index = i
-        it.tts_text = d.get("tts_text")
-        out.append(it)
-    for iid, it in old.items():
-        if iid not in keep:
-            await db.delete(it)
-    ls.highlight_json = json.dumps(lesson_highlight(rows), ensure_ascii=False)
-    return out
-
-
-async def _items_of(db: AsyncSession, lesson_id: int) -> dict:
-    return {it.id: it for it in (await db.execute(
-        select(PhoneticItem).where(PhoneticItem.lesson_id == lesson_id))).scalars()}
 
 
 def _parse(payload: ImportIn):
@@ -404,58 +362,16 @@ async def import_book(
     org_id = None if current_user.role == "admin" else current_user.org_id
     name = payload.book_name.strip()
     same = await _find_same_name(db, name, org_id, current_user.role == "admin")
-    replaced = False
     if same and not payload.replace:
         raise HTTPException(
             status_code=409,
             detail=f"已经有一本叫「{name}」的教材了。要覆盖请勾选「替换同名教材」")
 
-    lesson_ids = await IdAllocator.for_phonetic_lessons(db)
-    item_ids = await IdAllocator.for_phonetic_items(db)
-    if same:
-        # 覆盖 = **原地改**,不是删了重建: 书 id 不变(挂在下面的音标听力、作业都还在),
-        # 同一个编号的节、同一节里同一个单词的题 id 不变(学生的写音标记录、跟读录音都还对得上)。
-        # Excel 里没有的节 / 题删掉;学生的作答记录一律不删
-        book = same
-        book.volume = (payload.volume or None) if payload.volume is not None else book.volume
-        if payload.description is not None:
-            book.description = payload.description or None
-        old_lessons = {ls.code: ls for ls in (await db.execute(
-            select(PhoneticLesson).where(PhoneticLesson.book_id == book.id))).scalars()}
-        replaced = True
-    else:
-        book = PhoneticBook(
-            id=(await IdAllocator.for_phonetic_books(db)).next(),
-            name=name, volume=(payload.volume or None),
-            description=(payload.description or None),
-            org_id=org_id, created_by=current_user.id,
-        )
-        db.add(book)
-        await db.flush()
-        old_lessons = {}
-
-    total = 0
-    for n, p in enumerate(parsed, 1):
-        ls = old_lessons.pop(p["code"], None)
-        old_items: dict = {}
-        if ls is None:
-            ls = PhoneticLesson(id=lesson_ids.next(), book_id=book.id, code=p["code"], removed_count=0)
-            db.add(ls)
-        else:
-            old_items = await _items_of(db, ls.id)
-            pool: dict[str, list] = {}
-            for it in sorted(old_items.values(), key=lambda x: (x.order_index, x.id)):
-                pool.setdefault(_norm_word(it.word), []).append(it.id)
-            for d in p["items"]:
-                ids = pool.get(_norm_word(d["word"]))
-                d["id"] = ids.pop(0) if ids else None
-        ls.title = p["title"]
-        ls.lesson_number = n
-        await _sync_items(db, ls, p["items"], old_items, item_ids)
-        total += len(p["items"])
-    for ls in old_lessons.values():
-        await db.execute(delete(PhoneticItem).where(PhoneticItem.lesson_id == ls.id))
-        await db.delete(ls)
+    # 覆盖同名 = 原地改(书 / 节 / 同一个单词的题 id 都不变),规矩在 services/phonetic_book_write
+    book, total = await write_book(
+        db, existing=same, name=name, volume=payload.volume, description=payload.description,
+        org_id=org_id, created_by=current_user.id, lessons=parsed)
+    replaced = same is not None
     audit_log.record(db, request, current_user, "phonetic.book_import",
                      f"{'覆盖' if replaced else '导入'}音标教材「{name}」{len(parsed)} 节 {total} 题",
                      target_type="phonetic_book", target_id=book.id)
