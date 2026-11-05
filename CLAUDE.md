@@ -271,6 +271,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 宠物第二批 50 个家族(2026-11-05,用户「有个性的帅气的不要太可爱」): 种族 70 → 120。42 个普通家族补的是第一批只有 1 个家族的
+  冰 / 恶 / 幽灵 / 妖精 / 毒(现在各 4–5 个),另有地面、飞行、电、钢、龙、格斗等;8 只新传说: 准传说 毕方 / 獬豸 / 重明鸟 / 狰(5000 词),
+  顶级传说 白虎 / 青龙 / 玄武 / 九尾天狐(8000 词)。传说专属格仍是 2 个(MAX_LEGEND_SLOTS 没动);练习赛对手池按 LEGENDARY_SPECIES 自动排除新传说。
+  真源 scripts/pet_original_designs.NEW_DESIGNS,出图提示词换成 STYLE_COOL(只对 NEW_IDS);两步出图照旧(先成长形态,再 edits 出幼年和最终)。
+  150 张原图 35 张是透明底(edits 接口回的),_matte 先垫白没问题;白色系(白虎 / 雪鸮 / 晶角鹿 / 天马)深色底上看过身体没被抠掉。
+  ⚠️ 在生产机跑 gen 要先 `cd /www/wwwroot/english-helper/backend`(库是相对路径,在别的目录跑会报 no such table 并在当前目录留一个空 db);
+  中转 -c 高了回 429 gateway_concurrency_limit,跑完看 DONE 那行,缺的再 --only 补。测试 test_pet_species 加 1 例(新批与设计表一致、五种属性各 ≥4)。公告一条(学生)
 - ✅ 宠物换成原创伙伴(2026-11-04 **已部署生产**,提交 29fc883;database.py 生产有 drift 走 anchor patch 只改 3 处,其余 9 个后端文件生产==HEAD~1 整推,
   两个服务都重启;前端构建 mw249h78 整推;备份 /root/eh_db_before_petorig_20261104_2055.db、/root/eh_code_before_petorig_20261104_2055.tgz、frontend/dist_bak_20261104_2055_petorig。
   用户「宝可梦换成别的没有版权的宝贝 你从新生成图片替换多开点并发替换」): 原来 67 个种族的名字、立绘、招式名都是宝可梦的,

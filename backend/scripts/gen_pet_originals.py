@@ -23,7 +23,10 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from pet_original_designs import DESIGNS  # noqa: E402
+from pet_original_designs import DESIGNS, NEW_DESIGNS  # noqa: E402
+
+ALL_DESIGNS = DESIGNS + NEW_DESIGNS
+NEW_IDS = {d['id'] for d in NEW_DESIGNS}
 
 PETS_DIR = os.path.join(os.path.dirname(os.path.dirname(HERE)), "frontend", "public", "pets")
 
@@ -34,6 +37,14 @@ STYLE = (
     "no scenery, friendly expression"
 )
 ORIGINAL = ("Completely original character design (not based on any existing anime, game or cartoon character). ")
+# 第二批(2026-11-05): 用户要「有个性的帅气的不要太可爱」
+STYLE_COOL = (
+    "Cool stylish creature design for a kids' monster-collecting game: confident, sleek, slightly fierce, NOT chibi, "
+    "NOT overly cute, no big baby eyes on the grown forms; dynamic heroic pose, sharp silhouette, anime monster art, "
+    "clean bold dark outlines, cel shading with dramatic rim light, bright saturated colors, full body fully visible, "
+    "three-quarter side view facing left, centered with generous margin, pure solid white background, "
+    "no text, no letters, no watermark, no ground shadow, no scenery"
+)
 
 LEGEND_OLDS = {"articuno", "zapdos", "moltres", "suicune", "mew", "mewtwo", "rayquaza", "arceus"}
 STAGE_WORDS = {
@@ -46,23 +57,36 @@ def file_for(design: dict, n: int) -> str:
     return f"{design['id']}_{n}.png"
 
 
+def _is_legend(d: dict) -> bool:
+    return d.get("old") in LEGEND_OLDS or d.get("tier", "normal") != "normal"
+
+
+def _style(d: dict) -> str:
+    return STYLE_COOL if d["id"] in NEW_IDS else STYLE
+
+
 def base_prompt(d: dict) -> str:
-    legend = d["old"] in LEGEND_OLDS
-    return (f"{ORIGINAL}{d['look']}. This picture shows its {STAGE_WORDS[legend][1]}: {d['forms'][1]}. {STYLE}")
+    legend = _is_legend(d)
+    return (f"{ORIGINAL}{d['look']}. This picture shows its {STAGE_WORDS[legend][1]}: {d['forms'][1]}. {_style(d)}")
 
 
 def form_prompt(d: dict, n: int) -> str:
-    legend = d["old"] in LEGEND_OLDS
+    legend = _is_legend(d)
     size_hint = {1: "smaller, rounder and cuter than the reference",
                  3: "bigger, more powerful and more impressive than the reference"}[n]
     return (f"{ORIGINAL}The SAME creature as in the reference image: keep the same species, the same colors, "
             f"markings and art style so it is clearly recognizable as the same family. {d['look']}. "
-            f"Now draw its {STAGE_WORDS[legend][n - 1]}, {size_hint}: {d['forms'][n - 1]}. {STYLE}")
+            f"Now draw its {STAGE_WORDS[legend][n - 1]}, {size_hint}: {d['forms'][n - 1]}. {_style(d)}")
 
 
 # ------------------------------------------------------------------ 出图(生产机上跑)
 
 async def _conf() -> dict:
+    # 用户另给了 Key / 模型时走环境变量(Key 不落盘、不进 git);没给就读库里 image_tutor 那行
+    if os.environ.get("PET_IMAGE_KEY"):
+        return {"key": os.environ["PET_IMAGE_KEY"], "base": os.environ.get("PET_IMAGE_BASE", "https://hk.hueling.cc"),
+                "model": os.environ.get("PET_IMAGE_MODEL", "gpt-image-2.5-sunburst"),
+                "quality": os.environ.get("PET_IMAGE_QUALITY", "low")}
     sys.path.insert(0, "/www/wwwroot/english-helper/backend")
     from app.core.database import AsyncSessionLocal
     from app.services.word_picture import image_conf
@@ -114,7 +138,7 @@ async def gen(out_dir: str, concurrency: int, only: set | None, force: bool) -> 
     import httpx
     os.makedirs(out_dir, exist_ok=True)
     cfg = await _conf()
-    todo = [d for d in DESIGNS if not only or d["id"] in only]
+    todo = [d for d in ALL_DESIGNS if not only or d["id"] in only]
     sem = asyncio.Semaphore(concurrency)
     failed: list = []
 
@@ -199,7 +223,7 @@ def _process_one(args):
 
 def process(raw_dir: str, only: set | None) -> None:
     from multiprocessing import Pool
-    names = [file_for(d, n) for d in DESIGNS for n in (1, 2, 3)
+    names = [file_for(d, n) for d in ALL_DESIGNS for n in (1, 2, 3)
              if (not only or d["id"] in only) and os.path.exists(os.path.join(raw_dir, file_for(d, n)))]
     os.makedirs(os.path.join(PETS_DIR, "back"), exist_ok=True)
     with Pool(max(2, (os.cpu_count() or 4) - 1)) as pool:
@@ -226,5 +250,5 @@ if __name__ == "__main__":
     elif a.cmd == "process":
         process(a.raw, only)
     else:
-        for d in DESIGNS:
+        for d in ALL_DESIGNS:
             print(d["id"], "|", base_prompt(d)[:160])

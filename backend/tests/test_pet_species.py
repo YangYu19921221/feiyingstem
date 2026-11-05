@@ -35,7 +35,7 @@ from types import SimpleNamespace
 
 
 def test_all_pet_families_have_complete_evolution_metadata():
-    assert len(PET_SPECIES) == 70
+    assert len(PET_SPECIES) == 120   # 70 + 2026-11-05 第二批 42 普通 + 8 稀有
     assert ALLOWED_PET_SPECIES == frozenset(PET_SPECIES)
 
     for species, definition in PET_SPECIES.items():
@@ -55,7 +55,9 @@ def test_all_pet_families_have_complete_evolution_metadata():
 def test_legendary_tiers_and_word_requirements():
     assert {"baize", "thunderkui", "vermilion", "kun"} <= LEGENDARY_SPECIES
     assert {"jaderabbit", "ninecolordeer", "yinglong", "qilin"} <= LEGENDARY_SPECIES
-    assert len(LEGENDARY_SPECIES) == 8
+    assert {"bifang", "xiezhi", "chongming", "zheng"} <= LEGENDARY_SPECIES
+    assert {"whitetiger", "azuredragon", "blacktortoise", "ninetailfox"} <= LEGENDARY_SPECIES
+    assert len(LEGENDARY_SPECIES) == 16
 
     assert words_required_for("baize") == SEMI_LEGEND_WORDS == 5000
     assert words_required_for("jaderabbit") == LEGEND_WORDS == 8000
@@ -234,3 +236,21 @@ async def test_migrate_legacy_species_without_table_is_noop(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}")
     assert await migrate_legacy_species(engine) == 0
     await engine.dispose()
+
+
+def test_second_batch_matches_design_table_and_fills_thin_elements():
+    """第二批(2026-11-05)注册表与设计表一致;第一批只有 1 个家族的属性至少补到 4 个。"""
+    import collections
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from pet_original_designs import NEW_DESIGNS
+
+    for d in NEW_DESIGNS:
+        got = PET_SPECIES[d["id"]]
+        assert got["element"] == d["element"], d["id"]
+        assert got["tier"] == d.get("tier", "normal"), d["id"]
+        assert got["stages"][1:4] == tuple(d["names"]), d["id"]
+    normal = collections.Counter(v["element"] for v in PET_SPECIES.values() if v["tier"] == "normal")
+    for element in ("ice", "dark", "ghost", "fairy"):
+        assert normal[element] >= 4, element

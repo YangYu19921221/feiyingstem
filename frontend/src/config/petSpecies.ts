@@ -345,6 +345,133 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
   pet('mosssnail', '苔壳蜗牛家族', '背着长满青苔小花园的蜗牛，走得慢，壳上的花园越长越大', 'grass', '🐌', '苔藓风暴', 'leaf', [
     ['苔壳蜗', '/pets/mosssnail_1.png'], ['花园蜗牛', '/pets/mosssnail_2.png'], ['森林蜗牛王', '/pets/mosssnail_3.png'],
   ]),
+  // ===== 第二批 42 个普通家族(2026-11-05,画风更酷,补冰/恶/幽灵/妖精/毒)。与后端同一批 key。=====
+  pet('aurorawolf', '极光狼家族', '在雪夜里奔跑的狼，鬃毛会流出彩色的极光', 'fairy', '🐺', '极光狼嚎', 'star', [
+    ['光幼狼', '/pets/aurorawolf_1.png'], ['极光狼', '/pets/aurorawolf_2.png'], ['极光狼王', '/pets/aurorawolf_3.png'],
+  ]),
+  pet('crystalstag', '晶角鹿家族', '鹿角是一簇簇水晶，月光照上去会折出七彩的光', 'fairy', '💎', '晶光之角', 'star', [
+    ['晶芽鹿', '/pets/crystalstag_1.png'], ['晶角鹿', '/pets/crystalstag_2.png'], ['棱晶鹿王', '/pets/crystalstag_3.png'],
+  ]),
+  pet('dawnpegasus', '晨曦天马家族', '背上长着金色羽翼的天马，第一缕晨光照到它就飞起来', 'fairy', '🦄', '晨曦冲锋', 'star', [
+    ['晨驹', '/pets/dawnpegasus_1.png'], ['晨曦天马', '/pets/dawnpegasus_2.png'], ['破晓天马', '/pets/dawnpegasus_3.png'],
+  ]),
+  pet('rosefencer', '蔷薇剑猫家族', '披着蔷薇花瓣斗篷的剑士猫，剑术又快又优雅', 'fairy', '🌹', '蔷薇百花斩', 'star', [
+    ['蔷薇猫', '/pets/rosefencer_1.png'], ['剑士猫', '/pets/rosefencer_2.png'], ['蔷薇剑圣', '/pets/rosefencer_3.png'],
+  ]),
+  pet('armorghost', '空甲武士家族', '一套没有人的古代盔甲，里面燃着蓝色的火，守护着古城', 'ghost', '👻', '青焰一闪', 'star', [
+    ['空盔灵', '/pets/armorghost_1.png'], ['空甲武士', '/pets/armorghost_2.png'], ['青焰大将', '/pets/armorghost_3.png'],
+  ]),
+  pet('piyinglong', '皮影龙家族', '皮影戏里的龙活了过来，身体是镂空雕花的彩色皮影', 'ghost', '🎭', '灯影龙舞', 'star', [
+    ['皮影蛇', '/pets/piyinglong_1.png'], ['皮影龙', '/pets/piyinglong_2.png'], ['千灯影龙', '/pets/piyinglong_3.png'],
+  ]),
+  pet('operamask', '脸谱灵家族', '京剧脸谱成了精，一转身就换一张脸', 'ghost', '🎭', '变脸幻影', 'star', [
+    ['小脸谱', '/pets/operamask_1.png'], ['脸谱灵', '/pets/operamask_2.png'], ['千面戏王', '/pets/operamask_3.png'],
+  ]),
+  pet('wispmoth', '冥灯蛾家族', '翅膀上的花纹像一盏盏小灯笼，夜里会发出幽蓝的光', 'ghost', '🦋', '冥灯幻舞', 'star', [
+    ['冥灯虫', '/pets/wispmoth_1.png'], ['冥灯蛾', '/pets/wispmoth_2.png'], ['幽灯蛾皇', '/pets/wispmoth_3.png'],
+  ]),
+  pet('frostlynx', '霜耳猞猁家族', '耳尖长着冰棱的猞猁，在雪地里一点声音都没有', 'ice', '❄️', '冰棱突袭', 'star', [
+    ['霜耳猞', '/pets/frostlynx_1.png'], ['冰爪猞猁', '/pets/frostlynx_2.png'], ['寒刃猞猁', '/pets/frostlynx_3.png'],
+  ]),
+  pet('glacierpenguin', '冰川骑士家族', '戴着冰做的头盔的企鹅，长大成了扛着冰锤的骑士', 'ice', '🐧', '冰川重锤', 'star', [
+    ['冰盔鹅', '/pets/glacierpenguin_1.png'], ['冰甲企鹅', '/pets/glacierpenguin_2.png'], ['冰川骑士', '/pets/glacierpenguin_3.png'],
+  ]),
+  pet('icewyvern', '霜翼飞龙家族', '翅膀像冰片一样透明的飞龙，飞过的地方都会下雪', 'ice', '🐲', '霜翼风暴', 'star', [
+    ['霜翼仔', '/pets/icewyvern_1.png'], ['霜翼飞龙', '/pets/icewyvern_2.png'], ['冰原翼王', '/pets/icewyvern_3.png'],
+  ]),
+  pet('snowowl', '雪鸮家族', '夜里在雪原上无声飞行的猫头鹰，眼睛像两盏金灯', 'ice', '🦉', '雪夜猎影', 'star', [
+    ['雪鸮雏', '/pets/snowowl_1.png'], ['雪鸮', '/pets/snowowl_2.png'], ['雪原鸮王', '/pets/snowowl_3.png'],
+  ]),
+  pet('shadowfox', '影刃狐家族', '尾巴像影子做的刀刃，跑起来只看得见一道黑影', 'dark', '🌑', '影刃乱舞', 'star', [
+    ['影狐仔', '/pets/shadowfox_1.png'], ['影刃狐', '/pets/shadowfox_2.png'], ['夜行狐将', '/pets/shadowfox_3.png'],
+  ]),
+  pet('nightraven', '夜鸦家族', '羽毛黑得发亮的乌鸦，很聪明，喜欢收集闪光的东西', 'dark', '🐦‍⬛', '黑羽风暴', 'star', [
+    ['夜鸦雏', '/pets/nightraven_1.png'], ['夜鸦', '/pets/nightraven_2.png'], ['夜幕鸦王', '/pets/nightraven_3.png'],
+  ]),
+  pet('obsidianpanther', '黑曜豹家族', '身上镶着黑曜石的黑豹，在夜里跑得最快', 'dark', '🐆', '黑曜突刺', 'star', [
+    ['黑曜豹仔', '/pets/obsidianpanther_1.png'], ['黑曜豹', '/pets/obsidianpanther_2.png'], ['黑曜豹王', '/pets/obsidianpanther_3.png'],
+  ]),
+  pet('cloakbat', '斗篷蝠家族', '把翅膀当斗篷披着的蝙蝠，是黑夜里的侠客', 'dark', '🦇', '月下夜袭', 'star', [
+    ['斗篷蝠', '/pets/cloakbat_1.png'], ['夜斗蝠', '/pets/cloakbat_2.png'], ['暗夜蝠侠', '/pets/cloakbat_3.png'],
+  ]),
+  pet('venomscorpion', '紫晶蝎家族', '尾巴尖是一颗发光紫晶的蝎子，甲壳像宝石一样亮', 'poison', '🦂', '紫晶毒刺', 'star', [
+    ['晶蝎仔', '/pets/venomscorpion_1.png'], ['紫晶蝎', '/pets/venomscorpion_2.png'], ['毒晶蝎王', '/pets/venomscorpion_3.png'],
+  ]),
+  pet('mistserpent', '毒雾蛇家族', '在沼泽迷雾里游走的长蛇，鳞片上的花纹像毒蘑菇', 'poison', '🐍', '迷雾缠绕', 'star', [
+    ['雾鳞蛇', '/pets/mistserpent_1.png'], ['毒雾蛇', '/pets/mistserpent_2.png'], ['雾沼蛇王', '/pets/mistserpent_3.png'],
+  ]),
+  pet('mushknight', '菌盔骑士家族', '戴着毒蘑菇头盔的小骑士，一挥剑就飘出孢子', 'poison', '🍄', '孢子突击', 'star', [
+    ['小菌盔', '/pets/mushknight_1.png'], ['菌盔卫士', '/pets/mushknight_2.png'], ['孢子骑士', '/pets/mushknight_3.png'],
+  ]),
+  pet('rockrhino', '岩角犀家族', '角是一块尖石头的犀牛，冲过去连山都会震', 'ground', '🦏', '大地冲锋', 'star', [
+    ['岩角犀仔', '/pets/rockrhino_1.png'], ['岩甲犀', '/pets/rockrhino_2.png'], ['山岳犀王', '/pets/rockrhino_3.png'],
+  ]),
+  pet('canyoneagle', '峡谷鹰家族', '住在红色峡谷的鹰，俯冲时能卷起沙暴', 'ground', '🦅', '沙暴俯冲', 'star', [
+    ['砂羽雏', '/pets/canyoneagle_1.png'], ['峡谷鹰', '/pets/canyoneagle_2.png'], ['红岩鹰王', '/pets/canyoneagle_3.png'],
+  ]),
+  pet('sandmantis', '沙镰螳家族', '沙漠里的螳螂，两把镰刀像弯月，藏在沙里伏击', 'ground', '🏜️', '沙镰旋斩', 'star', [
+    ['沙螳仔', '/pets/sandmantis_1.png'], ['沙镰螳', '/pets/sandmantis_2.png'], ['沙漠镰王', '/pets/sandmantis_3.png'],
+  ]),
+  pet('stormfalcon', '风暴隼家族', '飞得比风还快的隼，翅膀一扇就是一阵旋风', 'flying', '🌪️', '风暴疾斩', 'star', [
+    ['风隼雏', '/pets/stormfalcon_1.png'], ['风暴隼', '/pets/stormfalcon_2.png'], ['雷云隼王', '/pets/stormfalcon_3.png'],
+  ]),
+  pet('skywhale', '云鲸家族', '在云海里游泳的鲸，背上住着一座小小的云岛', 'flying', '☁️', '云海轰鸣', 'star', [
+    ['云鲸仔', '/pets/skywhale_1.png'], ['云鲸', '/pets/skywhale_2.png'], ['天穹云鲸', '/pets/skywhale_3.png'],
+  ]),
+  pet('swordkite', '剑翎鸢家族', '每根羽毛都像一把小剑的鸢鸟，展翅时羽毛闪着金属光', 'flying', '🪶', '万剑翎雨', 'star', [
+    ['剑翎雏', '/pets/swordkite_1.png'], ['剑翎鸢', '/pets/swordkite_2.png'], ['剑翎王', '/pets/swordkite_3.png'],
+  ]),
+  pet('gryphon', '狮鹫家族', '鹰的头、狮子的身子，守护着高山上的宝藏', 'flying', '🦁', '狮鹫天降', 'star', [
+    ['狮鹫仔', '/pets/gryphon_1.png'], ['狮鹫', '/pets/gryphon_2.png'], ['金冠狮鹫', '/pets/gryphon_3.png'],
+  ]),
+  pet('thundertiger', '雷纹虎家族', '身上的条纹是一道道闪电，吼一声天上就打雷', 'electric', '⚡', '雷纹猛扑', 'electric', [
+    ['雷纹虎仔', '/pets/thundertiger_1.png'], ['雷纹虎', '/pets/thundertiger_2.png'], ['雷霆虎王', '/pets/thundertiger_3.png'],
+  ]),
+  pet('voltbeetle', '电角甲虫家族', '头上的长角能接住闪电的甲虫，甲壳闪着金属光', 'electric', '🪲', '电磁犄角', 'electric', [
+    ['电角虫', '/pets/voltbeetle_1.png'], ['雷角甲虫', '/pets/voltbeetle_2.png'], ['电磁甲帝', '/pets/voltbeetle_3.png'],
+  ]),
+  pet('sparkfox', '电光狐家族', '尾巴里装满了电的狐狸，跑起来像一道闪电', 'electric', '🦊', '电光九连闪', 'electric', [
+    ['电光狐仔', '/pets/sparkfox_1.png'], ['电光狐', '/pets/sparkfox_2.png'], ['雷尾狐王', '/pets/sparkfox_3.png'],
+  ]),
+  pet('ironwolf', '铁甲狼家族', '身上披着钢甲的狼，牙齿像钢刀一样硬', 'steel', '🐺', '钢牙裂斩', 'star', [
+    ['铁甲狼仔', '/pets/ironwolf_1.png'], ['铁甲狼', '/pets/ironwolf_2.png'], ['钢铁狼王', '/pets/ironwolf_3.png'],
+  ]),
+  pet('mechadragon', '机甲龙家族', '齿轮和钢铁做成的机械龙，胸口有一颗蓝色的能量核心', 'steel', '🤖', '机甲龙炮', 'star', [
+    ['机甲龙仔', '/pets/mechadragon_1.png'], ['机甲龙', '/pets/mechadragon_2.png'], ['机甲龙皇', '/pets/mechadragon_3.png'],
+  ]),
+  pet('bladeknight', '剑灵骑士家族', '一把古剑化成的骑士，身边总飘着几把小剑', 'steel', '⚔️', '千剑归一', 'star', [
+    ['小剑灵', '/pets/bladeknight_1.png'], ['剑灵骑士', '/pets/bladeknight_2.png'], ['圣剑骑士', '/pets/bladeknight_3.png'],
+  ]),
+  pet('rockgolem', '符文石巨人家族', '刻满古老符文的石头巨人，符文一亮就充满力量', 'rock', '🗿', '符文崩山拳', 'star', [
+    ['符文石', '/pets/rockgolem_1.png'], ['石巨人', '/pets/rockgolem_2.png'], ['符文山岳', '/pets/rockgolem_3.png'],
+  ]),
+  pet('crystalturtle', '晶岩龟家族', '背上长着一座水晶山的龟，是走得最慢也最结实的伙伴', 'rock', '🐢', '晶岩堡垒', 'star', [
+    ['晶石龟', '/pets/crystalturtle_1.png'], ['晶岩龟', '/pets/crystalturtle_2.png'], ['晶山龟王', '/pets/crystalturtle_3.png'],
+  ]),
+  pet('lavadrake', '熔岩飞龙家族', '住在火山口的飞龙，鳞片缝里流着岩浆', 'dragon', '🐉', '熔岩龙吼', 'fire', [
+    ['熔岩幼龙', '/pets/lavadrake_1.png'], ['熔岩飞龙', '/pets/lavadrake_2.png'], ['火山龙王', '/pets/lavadrake_3.png'],
+  ]),
+  pet('stormdragon', '雷云龙家族', '在雷雨云里游的长龙，龙须一甩就是闪电', 'dragon', '🌩️', '雷云龙卷', 'electric', [
+    ['云纹幼龙', '/pets/stormdragon_1.png'], ['雷云龙', '/pets/stormdragon_2.png'], ['苍穹雷龙', '/pets/stormdragon_3.png'],
+  ]),
+  pet('jadeserpent', '翡翠蛟家族', '鳞片像翡翠一样温润的蛟，住在深山的瀑布下', 'dragon', '🐍', '翠玉龙息', 'star', [
+    ['翠蛟仔', '/pets/jadeserpent_1.png'], ['翡翠蛟', '/pets/jadeserpent_2.png'], ['碧玉蛟王', '/pets/jadeserpent_3.png'],
+  ]),
+  pet('kungfucrane', '鹤拳家族', '练白鹤拳的丹顶鹤，单脚一站就是一个漂亮的架势', 'fighting', '🥋', '白鹤亮翅', 'star', [
+    ['鹤拳雏', '/pets/kungfucrane_1.png'], ['鹤拳师', '/pets/kungfucrane_2.png'], ['鹤拳宗师', '/pets/kungfucrane_3.png'],
+  ]),
+  pet('bullwarrior', '斗牛勇士家族', '戴着护腕的水牛勇士，力气大、讲义气', 'fighting', '🐃', '斗牛冲天拳', 'star', [
+    ['小斗牛', '/pets/bullwarrior_1.png'], ['斗牛勇士', '/pets/bullwarrior_2.png'], ['斗牛战神', '/pets/bullwarrior_3.png'],
+  ]),
+  pet('mantisninja', '螳影忍者家族', '戴着忍者面巾的绿螳螂，两把刀快得看不见', 'bug', '🗡️', '螳影双刀', 'star', [
+    ['螳忍仔', '/pets/mantisninja_1.png'], ['螳影忍者', '/pets/mantisninja_2.png'], ['螳影上忍', '/pets/mantisninja_3.png'],
+  ]),
+  pet('lionknight', '狮心骑士家族', '最勇敢的狮子骑士，从不在朋友前面后退一步', 'normal', '🦁', '狮心怒吼', 'star', [
+    ['狮心仔', '/pets/lionknight_1.png'], ['狮心骑士', '/pets/lionknight_2.png'], ['狮心王', '/pets/lionknight_3.png'],
+  ]),
+  pet('starmage', '星术猫头鹰家族', '戴着星星法师帽的猫头鹰，看一眼星空就知道明天的天气', 'psychic', '🔮', '星轨禁咒', 'star', [
+    ['星术雏', '/pets/starmage_1.png'], ['星术鸮', '/pets/starmage_2.png'], ['星辰大法师', '/pets/starmage_3.png'],
+  ]),
   // ===== 传说伙伴(取材中国神话)。准传说需累计学 5000 个不同单词，顶级传说需 8000，
   // 且走独立于普通 5 格的专属队伍格(后端 pet_formulas.MAX_LEGEND_SLOTS)。=====
   legendPet('baize', '白泽', '准传说 · 雪山深处的神兽白泽，懂得世间万物的名字', 'ice', '❄️', '玄冰千里', 'star', 'semi_legend', [
@@ -370,6 +497,31 @@ export const PET_SPECIES: readonly PetSpeciesDefinition[] = [
   ]),
   legendPet('qilin', '麒麟', '顶级传说 · 只在太平盛世出现的瑞兽麒麟，被称为百兽之首', 'normal', '✨', '祥瑞之光', 'star', 'legend', [
     ['麒麟', '/pets/qilin_1.png'], ['觉醒麒麟', '/pets/qilin_2.png'], ['究极麒麟', '/pets/qilin_3.png'],
+  ]),
+  // ---- 第二批稀有(2026-11-05): 准传说 毕方/獬豸/重明鸟/狰,顶级传说 四象白虎/青龙/玄武 + 九尾天狐 ----
+  legendPet('bifang', '毕方', '准传说 · 只有一条腿的火鹤神鸟，它出现的地方会燃起天火', 'fire', '🔥', '毕方焚天', 'fire', 'semi_legend', [
+    ['毕方', '/pets/bifang_1.png'], ['觉醒毕方', '/pets/bifang_2.png'], ['究极毕方', '/pets/bifang_3.png'],
+  ]),
+  legendPet('xiezhi', '獬豸', '准传说 · 头上一只角的神兽獬豸，能分辨对错，专撞说谎的人', 'fighting', '⚖️', '正义独角', 'star', 'semi_legend', [
+    ['獬豸', '/pets/xiezhi_1.png'], ['觉醒獬豸', '/pets/xiezhi_2.png'], ['究极獬豸', '/pets/xiezhi_3.png'],
+  ]),
+  legendPet('chongming', '重明鸟', '准传说 · 每只眼睛里有两个瞳孔的神鸟，能看穿一切妖邪', 'psychic', '👁️', '重明破邪', 'star', 'semi_legend', [
+    ['重明鸟', '/pets/chongming_1.png'], ['觉醒重明', '/pets/chongming_2.png'], ['究极重明', '/pets/chongming_3.png'],
+  ]),
+  legendPet('zheng', '狰', '准传说 · 红豹子一样的山中神兽，一只角、五条尾巴，叫声像敲石头', 'rock', '🐆', '五尾崩石', 'star', 'semi_legend', [
+    ['狰', '/pets/zheng_1.png'], ['觉醒狰', '/pets/zheng_2.png'], ['究极狰', '/pets/zheng_3.png'],
+  ]),
+  legendPet('whitetiger', '白虎', '顶级传说 · 镇守西方的神兽白虎，一啸能让风停下来', 'steel', '🐅', '白虎啸天', 'star', 'legend', [
+    ['白虎', '/pets/whitetiger_1.png'], ['觉醒白虎', '/pets/whitetiger_2.png'], ['究极白虎', '/pets/whitetiger_3.png'],
+  ]),
+  legendPet('azuredragon', '青龙', '顶级传说 · 镇守东方的神龙青龙，管着春天和万物生长', 'dragon', '🐉', '青龙腾云', 'leaf', 'legend', [
+    ['青龙', '/pets/azuredragon_1.png'], ['觉醒青龙', '/pets/azuredragon_2.png'], ['究极青龙', '/pets/azuredragon_3.png'],
+  ]),
+  legendPet('blacktortoise', '玄武', '顶级传说 · 镇守北方的神兽玄武，龟和蛇合在一起，最能守', 'ground', '🐢', '玄武镇岳', 'water', 'legend', [
+    ['玄武', '/pets/blacktortoise_1.png'], ['觉醒玄武', '/pets/blacktortoise_2.png'], ['究极玄武', '/pets/blacktortoise_3.png'],
+  ]),
+  legendPet('ninetailfox', '九尾天狐', '顶级传说 · 修炼千年的九尾天狐，九条尾巴各藏着一团狐火', 'fairy', '🦊', '九尾狐火', 'star', 'legend', [
+    ['天狐', '/pets/ninetailfox_1.png'], ['觉醒天狐', '/pets/ninetailfox_2.png'], ['究极天狐', '/pets/ninetailfox_3.png'],
   ]),
 ];
 
@@ -477,6 +629,49 @@ const SKILL_VFX: Record<string, SkillVfxRecipe> = {
   peacock:        { skeleton: 'projectile', color: '#14b8a6', core: '#fef9c3', shake: 'medium', particle: 'star' }, // 百羽开屏
   ladybug:        { skeleton: 'slash', color: '#92400e', core: '#fde68a', shake: 'heavy', particle: 'shard' },      // 七星连撞
   mosssnail:      { skeleton: 'burst', color: '#65a30d', core: '#ecfccb', shake: 'medium', particle: 'leaf' },      // 苔藓风暴
+  // ---- 第二批家族 ----
+  aurorawolf:     { skeleton: 'aura', color: '#f9a8d4', core: '#fdf4ff', shake: 'medium', particle: 'petal' }, // 极光狼嚎
+  crystalstag:    { skeleton: 'aura', color: '#f9a8d4', core: '#fdf4ff', shake: 'medium', particle: 'petal' }, // 晶光之角
+  dawnpegasus:    { skeleton: 'aura', color: '#f9a8d4', core: '#fdf4ff', shake: 'medium', particle: 'petal' }, // 晨曦冲锋
+  rosefencer:     { skeleton: 'aura', color: '#f9a8d4', core: '#fdf4ff', shake: 'medium', particle: 'petal' }, // 蔷薇百花斩
+  armorghost:     { skeleton: 'projectile', color: '#22d3ee', core: '#312e81', shake: 'medium', particle: 'wisp' }, // 青焰一闪
+  piyinglong:     { skeleton: 'projectile', color: '#22d3ee', core: '#312e81', shake: 'medium', particle: 'wisp' }, // 灯影龙舞
+  operamask:      { skeleton: 'projectile', color: '#22d3ee', core: '#312e81', shake: 'medium', particle: 'wisp' }, // 变脸幻影
+  wispmoth:       { skeleton: 'projectile', color: '#22d3ee', core: '#312e81', shake: 'medium', particle: 'wisp' }, // 冥灯幻舞
+  frostlynx:      { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' }, // 冰棱突袭
+  glacierpenguin: { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' }, // 冰川重锤
+  icewyvern:      { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' }, // 霜翼风暴
+  snowowl:        { skeleton: 'burst', color: '#a5f3fc', core: '#f0f9ff', shake: 'heavy', particle: 'ice' }, // 雪夜猎影
+  shadowfox:      { skeleton: 'slash', color: '#7c3aed', core: '#1e1b4b', shake: 'heavy', particle: 'wisp' }, // 影刃乱舞
+  nightraven:     { skeleton: 'slash', color: '#7c3aed', core: '#1e1b4b', shake: 'heavy', particle: 'wisp' }, // 黑羽风暴
+  obsidianpanther:{ skeleton: 'slash', color: '#7c3aed', core: '#1e1b4b', shake: 'heavy', particle: 'wisp' }, // 黑曜突刺
+  cloakbat:       { skeleton: 'slash', color: '#7c3aed', core: '#1e1b4b', shake: 'heavy', particle: 'wisp' }, // 月下夜袭
+  venomscorpion:  { skeleton: 'projectile', color: '#a855f7', core: '#f5d0fe', particle: 'shard' }, // 紫晶毒刺
+  mistserpent:    { skeleton: 'projectile', color: '#a855f7', core: '#f5d0fe', particle: 'shard' }, // 迷雾缠绕
+  mushknight:     { skeleton: 'projectile', color: '#a855f7', core: '#f5d0fe', particle: 'shard' }, // 孢子突击
+  rockrhino:      { skeleton: 'pillar', color: '#d97706', from: 'ground', shake: 'heavy', particle: 'shard' }, // 大地冲锋
+  canyoneagle:    { skeleton: 'pillar', color: '#d97706', from: 'ground', shake: 'heavy', particle: 'shard' }, // 沙暴俯冲
+  sandmantis:     { skeleton: 'pillar', color: '#d97706', from: 'ground', shake: 'heavy', particle: 'shard' }, // 沙镰旋斩
+  stormfalcon:    { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', shake: 'medium', particle: 'wisp' }, // 风暴疾斩
+  skywhale:       { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', shake: 'medium', particle: 'wisp' }, // 云海轰鸣
+  swordkite:      { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', shake: 'medium', particle: 'wisp' }, // 万剑翎雨
+  gryphon:        { skeleton: 'slash', color: '#bae6fd', core: '#f8fafc', shake: 'medium', particle: 'wisp' }, // 狮鹫天降
+  thundertiger:   { skeleton: 'pillar', color: '#facc15', core: '#fefce8', shake: 'heavy', particle: 'spark' }, // 雷纹猛扑
+  voltbeetle:     { skeleton: 'pillar', color: '#facc15', core: '#fefce8', shake: 'heavy', particle: 'spark' }, // 电磁犄角
+  sparkfox:       { skeleton: 'pillar', color: '#facc15', core: '#fefce8', shake: 'heavy', particle: 'spark' }, // 电光九连闪
+  ironwolf:       { skeleton: 'slash', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 钢牙裂斩
+  mechadragon:    { skeleton: 'slash', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 机甲龙炮
+  bladeknight:    { skeleton: 'slash', color: '#cbd5e1', core: '#f8fafc', shake: 'heavy', particle: 'metal' }, // 千剑归一
+  rockgolem:      { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy', particle: 'shard' }, // 符文崩山拳
+  crystalturtle:  { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy', particle: 'shard' }, // 晶岩堡垒
+  lavadrake:      { skeleton: 'beam', color: '#f97316', core: '#fef08a', shake: 'heavy', particle: 'ember' }, // 熔岩龙吼
+  stormdragon:    { skeleton: 'pillar', color: '#60a5fa', core: '#fefce8', shake: 'heavy', particle: 'spark' }, // 雷云龙卷
+  jadeserpent:    { skeleton: 'beam', color: '#818cf8', core: '#fef9c3', shake: 'heavy', particle: 'star' }, // 翠玉龙息
+  kungfucrane:    { skeleton: 'slash', color: '#ef4444', core: '#fef2f2', shake: 'heavy', particle: 'shard' }, // 白鹤亮翅
+  bullwarrior:    { skeleton: 'slash', color: '#ef4444', core: '#fef2f2', shake: 'heavy', particle: 'shard' }, // 斗牛冲天拳
+  mantisninja:    { skeleton: 'slash', color: '#4ade80', core: '#f0fdf4', shake: 'medium', particle: 'leaf' }, // 螳影双刀
+  lionknight:     { skeleton: 'burst', color: '#fbbf24', core: '#fffbeb', shake: 'heavy', particle: 'star' }, // 狮心怒吼
+  starmage:       { skeleton: 'aura', color: '#a78bfa', core: '#ede9fe', shake: 'medium', particle: 'star' }, // 星轨禁咒
   // ---- 传说:统一给最重的震屏与双色内芯,大招观感必须压过普通宠物 ----
   baize:          { skeleton: 'burst', color: '#a5f3fc', core: '#ffffff', shake: 'heavy', particle: 'ice' },      // 玄冰千里
   thunderkui:     { skeleton: 'pillar', color: '#facc15', core: '#ffffff', shake: 'heavy', particle: 'spark' },   // 夔鼓雷鸣
@@ -486,6 +681,14 @@ const SKILL_VFX: Record<string, SkillVfxRecipe> = {
   ninecolordeer:  { skeleton: 'beam', color: '#e879f9', core: '#ffffff', shake: 'heavy', particle: 'star' },      // 九色神光
   yinglong:       { skeleton: 'beam', color: '#f59e0b', core: '#fef9c3', shake: 'heavy', particle: 'star' },     // 画龙点睛
   qilin:          { skeleton: 'pillar', color: '#fbbf24', core: '#ffffff', shake: 'heavy', particle: 'star' },    // 祥瑞之光
+  bifang:         { skeleton: 'beam', color: '#3b82f6', core: '#fef2f2', shake: 'heavy', particle: 'ember' }, // 毕方焚天
+  xiezhi:         { skeleton: 'slash', color: '#ef4444', core: '#fef2f2', shake: 'heavy', particle: 'shard' }, // 正义独角
+  chongming:      { skeleton: 'aura', color: '#a78bfa', core: '#ede9fe', shake: 'medium', particle: 'star' }, // 重明破邪
+  zheng:          { skeleton: 'pillar', color: '#a16207', core: '#fde68a', shake: 'heavy', particle: 'shard' }, // 五尾崩石
+  whitetiger:     { skeleton: 'slash', color: '#e2e8f0', core: '#ffffff', shake: 'heavy', particle: 'metal' }, // 白虎啸天
+  azuredragon:    { skeleton: 'beam', color: '#14b8a6', core: '#f0fdfa', shake: 'heavy', particle: 'leaf' }, // 青龙腾云
+  blacktortoise:  { skeleton: 'pillar', color: '#0e7490', core: '#ecfeff', from: 'ground', shake: 'heavy', particle: 'bubble' }, // 玄武镇岳
+  ninetailfox:    { skeleton: 'aura', color: '#c084fc', core: '#ffffff', shake: 'heavy', particle: 'petal' }, // 九尾狐火
 };
 
 // 没写配方的种族按元素兜底,保证新增宠物漏配也有像样的大招
