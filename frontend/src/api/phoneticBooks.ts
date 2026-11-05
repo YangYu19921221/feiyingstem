@@ -127,3 +127,52 @@ export const updateBookTts = (
 
 export const deletePhoneticBook = (bookId: number): Promise<{ deleted: boolean }> =>
   api.delete(`${B}/books/${bookId}`) as unknown as Promise<{ deleted: boolean }>;
+
+// ---------------------------------------------------------------- 分节 / 题目增删改(2026-11-05)
+
+/** 删之前看影响: 多少学生练过、几份没关的作业、几套听力 */
+export interface PhoneticUsage {
+  students: number;
+  attempts: number;
+  readings: number;
+  homework: number;
+  listening_sets: number;
+}
+
+export interface LessonEditItem {
+  id?: number;
+  word: string;
+  phonetic: string;
+  meaning?: string | null;
+  tts?: string | null;
+}
+
+export interface LessonForEdit {
+  id: number;
+  book_id: number;
+  code: string;
+  title: string;
+  can_edit: boolean;
+  items: LessonEditItem[];
+}
+
+export interface LessonBody {
+  code: string;
+  title?: string | null;
+  rows: LessonEditItem[];
+}
+
+export const fetchBookUsage = (bookId: number): Promise<PhoneticUsage> =>
+  api.get(`${B}/books/${bookId}/usage`) as unknown as Promise<PhoneticUsage>;
+export const fetchLessonUsage = (lessonId: number): Promise<PhoneticUsage> =>
+  api.get(`${B}/lessons/${lessonId}/usage`) as unknown as Promise<PhoneticUsage>;
+export const fetchLessonForEdit = (lessonId: number): Promise<LessonForEdit> =>
+  api.get(`${B}/lessons/${lessonId}`) as unknown as Promise<LessonForEdit>;
+export const addPhoneticLesson = (bookId: number, body: LessonBody): Promise<LessonForEdit> =>
+  api.post(`${B}/books/${bookId}/lessons`, body) as unknown as Promise<LessonForEdit>;
+export const updatePhoneticLesson = (lessonId: number, body: LessonBody): Promise<LessonForEdit> =>
+  api.put(`${B}/lessons/${lessonId}`, body) as unknown as Promise<LessonForEdit>;
+export const deletePhoneticLesson = (lessonId: number): Promise<{ deleted: boolean; item_count: number }> =>
+  api.delete(`${B}/lessons/${lessonId}`) as unknown as Promise<{ deleted: boolean; item_count: number }>;
+export const reorderPhoneticLessons = (bookId: number, lessonIds: number[]): Promise<{ ok: boolean }> =>
+  api.post(`${B}/books/${bookId}/lessons/reorder`, { lesson_ids: lessonIds }) as unknown as Promise<{ ok: boolean }>;

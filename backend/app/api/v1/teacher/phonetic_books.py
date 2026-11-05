@@ -20,11 +20,12 @@
 """
 import json
 import logging
+import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user
@@ -34,6 +35,8 @@ from app.models.phonetic_practice import (
     PhoneticBook, PhoneticItem, PhoneticLesson,
 )
 from app.models.user import User
+from app.services import audit_log
+from app.services.phonetic_ids import IdAllocator
 from app.services.phonetic_tokenize import check_item, check_tts_text, lesson_highlight
 
 logger = logging.getLogger(__name__)
@@ -225,6 +228,77 @@ class ValidateOut(BaseModel):
     tts_count: int = 0
 
 
+def _check_rows(lesson_label: str, rows) -> tuple[list, list]:
+    """一节的行 → (可入库的题, 错误)。导入、加一节、改题三处共用,口径只有这一份"""
+    items, errors = [], []
+    for r in rows:
+        word = " ".join((r.word or "").split())
+        if not word:
+            continue
+        ok, err = check_item(word, r.phonetic)
+        if err:
+            errors.append(RowError(lesson=lesson_label, word=word, reason=err))
+            continue
+        tts, terr = check_tts_text(r.tts)
+        if terr:
+            errors.append(RowError(lesson=lesson_label, word=word, reason=terr))
+            continue
+        ok["meaning"] = (r.meaning or "").strip() or None
+        ok["tts_text"] = tts
+        ok["id"] = getattr(r, "id", None)
+        items.append(ok)
+    return items, errors
+
+
+def _norm_word(w: Optional[str]) -> str:
+    return " ".join((w or "").replace("\u2019", "'").split()).lower()
+
+
+def _norm_code(raw: str) -> str:
+    """小节编号: 「1-1」「1 — 1」都写成「1—1」(学生目录里显示的就是它)"""
+    t = " ".join((raw or "").split())
+    return re.sub(r"^(\d+)\s*[-–—]\s*(\d+)", r"\1—\2", t)[:20]
+
+
+async def _sync_items(db: AsyncSession, ls: PhoneticLesson, rows: List[dict],
+                      old: dict, item_ids: IdAllocator) -> List[PhoneticItem]:
+    """把 rows 写成这一节的题(rows 是 _check_rows 的输出,可带 id)。
+
+    - 带 id、单词没变的原地改: id 不变,学生写音标记录、跟读录音都还对得上
+    - **单词变了按新题**(新 id),旧题删掉: 原地改的话,学生写 bad 的记录和录音会算到 bed 头上
+    - 不带 id 的新加;old 里没出现的删掉。学生的作答 / 录音记录一律不删(那是学情)
+    调用方先确认 rows 里的 id 都在 old 里"""
+    keep: set[int] = set()
+    out = []
+    for i, d in enumerate(rows):
+        it = old.get(d.get("id")) if d.get("id") is not None else None
+        if it is not None and (it.id in keep or _norm_word(it.word) != _norm_word(d["word"])):
+            it = None
+        if it is None:
+            it = PhoneticItem(id=item_ids.next(), lesson_id=ls.id)
+            db.add(it)
+        else:
+            keep.add(it.id)
+        it.word = d["word"]
+        it.meaning = d.get("meaning")
+        it.answer_json = json.dumps(d["answer"], ensure_ascii=False)
+        it.answer_display = f"[{''.join(d['answer'])}]"
+        it.core_indexes_json = json.dumps(d["core"])
+        it.order_index = i
+        it.tts_text = d.get("tts_text")
+        out.append(it)
+    for iid, it in old.items():
+        if iid not in keep:
+            await db.delete(it)
+    ls.highlight_json = json.dumps(lesson_highlight(rows), ensure_ascii=False)
+    return out
+
+
+async def _items_of(db: AsyncSession, lesson_id: int) -> dict:
+    return {it.id: it for it in (await db.execute(
+        select(PhoneticItem).where(PhoneticItem.lesson_id == lesson_id))).scalars()}
+
+
 def _parse(payload: ImportIn):
     """全量校验 → (可入库的节列表, 错误清单)。不写库"""
     parsed, errors = [], []
@@ -245,22 +319,8 @@ def _parse(payload: ImportIn):
             continue
         seen_code[code] = ls.title.strip()
 
-        items = []
-        for r in ls.rows:
-            word = r.word.strip()
-            if not word:
-                continue
-            ok, err = check_item(word, r.phonetic)
-            if err:
-                errors.append(RowError(lesson=ls.title, word=word, reason=err))
-                continue
-            tts, terr = check_tts_text(r.tts)
-            if terr:
-                errors.append(RowError(lesson=ls.title, word=word, reason=terr))
-                continue
-            ok["meaning"] = (r.meaning or "").strip() or None
-            ok["tts_text"] = tts
-            items.append(ok)
+        items, errs = _check_rows(ls.title, ls.rows)
+        errors.extend(errs)
         if items:
             parsed.append(dict(code=code, title=ls.title.strip(),
                                items=items, highlight=lesson_highlight(items)))
@@ -321,6 +381,7 @@ class ImportOut(BaseModel):
 @router.post("/books/import", response_model=ImportOut)
 async def import_book(
     payload: ImportIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -344,51 +405,60 @@ async def import_book(
     name = payload.book_name.strip()
     same = await _find_same_name(db, name, org_id, current_user.role == "admin")
     replaced = False
-    if same:
-        if not payload.replace:
-            raise HTTPException(
-                status_code=409,
-                detail=f"已经有一本叫「{name}」的教材了。要覆盖请勾选「替换同名教材」")
-        # 覆盖 = 连节带题全删。学生的答题记录(phonetic_textbook_attempts)
-        # 引用 item_id,这里不动它 —— 删了历史记录等于抹掉学情
-        ls_ids = [r[0] for r in await db.execute(
-            select(PhoneticLesson.id).where(PhoneticLesson.book_id == same.id))]
-        if ls_ids:
-            await db.execute(delete(PhoneticItem).where(
-                PhoneticItem.lesson_id.in_(ls_ids)))
-        await db.execute(delete(PhoneticLesson).where(
-            PhoneticLesson.book_id == same.id))
-        await db.delete(same)
-        await db.flush()
-        replaced = True
+    if same and not payload.replace:
+        raise HTTPException(
+            status_code=409,
+            detail=f"已经有一本叫「{name}」的教材了。要覆盖请勾选「替换同名教材」")
 
-    book = PhoneticBook(
-        name=name, volume=(payload.volume or None),
-        description=(payload.description or None),
-        org_id=org_id, created_by=current_user.id,
-    )
-    db.add(book)
-    await db.flush()
+    lesson_ids = await IdAllocator.for_phonetic_lessons(db)
+    item_ids = await IdAllocator.for_phonetic_items(db)
+    if same:
+        # 覆盖 = **原地改**,不是删了重建: 书 id 不变(挂在下面的音标听力、作业都还在),
+        # 同一个编号的节、同一节里同一个单词的题 id 不变(学生的写音标记录、跟读录音都还对得上)。
+        # Excel 里没有的节 / 题删掉;学生的作答记录一律不删
+        book = same
+        book.volume = (payload.volume or None) if payload.volume is not None else book.volume
+        if payload.description is not None:
+            book.description = payload.description or None
+        old_lessons = {ls.code: ls for ls in (await db.execute(
+            select(PhoneticLesson).where(PhoneticLesson.book_id == book.id))).scalars()}
+        replaced = True
+    else:
+        book = PhoneticBook(
+            id=(await IdAllocator.for_phonetic_books(db)).next(),
+            name=name, volume=(payload.volume or None),
+            description=(payload.description or None),
+            org_id=org_id, created_by=current_user.id,
+        )
+        db.add(book)
+        await db.flush()
+        old_lessons = {}
 
     total = 0
     for n, p in enumerate(parsed, 1):
-        ls = PhoneticLesson(
-            book_id=book.id, code=p["code"], title=p["title"],
-            lesson_number=n, removed_count=0,
-            highlight_json=json.dumps(p["highlight"], ensure_ascii=False),
-        )
-        db.add(ls)
-        await db.flush()
-        for oi, it in enumerate(p["items"]):
-            db.add(PhoneticItem(
-                lesson_id=ls.id, word=it["word"], meaning=it.get("meaning"),
-                answer_json=json.dumps(it["answer"], ensure_ascii=False),
-                answer_display=f"[{''.join(it['answer'])}]",
-                core_indexes_json=json.dumps(it["core"]),
-                order_index=oi,
-                tts_text=it.get("tts_text"),
-            ))
-            total += 1
+        ls = old_lessons.pop(p["code"], None)
+        old_items: dict = {}
+        if ls is None:
+            ls = PhoneticLesson(id=lesson_ids.next(), book_id=book.id, code=p["code"], removed_count=0)
+            db.add(ls)
+        else:
+            old_items = await _items_of(db, ls.id)
+            pool: dict[str, list] = {}
+            for it in sorted(old_items.values(), key=lambda x: (x.order_index, x.id)):
+                pool.setdefault(_norm_word(it.word), []).append(it.id)
+            for d in p["items"]:
+                ids = pool.get(_norm_word(d["word"]))
+                d["id"] = ids.pop(0) if ids else None
+        ls.title = p["title"]
+        ls.lesson_number = n
+        await _sync_items(db, ls, p["items"], old_items, item_ids)
+        total += len(p["items"])
+    for ls in old_lessons.values():
+        await db.execute(delete(PhoneticItem).where(PhoneticItem.lesson_id == ls.id))
+        await db.delete(ls)
+    audit_log.record(db, request, current_user, "phonetic.book_import",
+                     f"{'覆盖' if replaced else '导入'}音标教材「{name}」{len(parsed)} 节 {total} 题",
+                     target_type="phonetic_book", target_id=book.id)
     await db.commit()
     logger.info("音标教材导入: book_id=%s %s 节 %s 题 by user=%s",
                 book.id, len(parsed), total, current_user.id)
@@ -520,49 +590,73 @@ class BookPatch(BaseModel):
 async def update_book(
     book_id: int,
     patch: BookPatch,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """改教材名/册次/上下架。
+    """改教材名 / 册次 / 简介 / 上下架。
 
-    「留空=不修改」必须走 exclude_unset —— 直接 `if patch.x` 会让空串
-    静默跳过(CLAUDE.md 记过 AI 配置密钥被这么清空过)。
+    「留空=不修改」走 exclude_unset;名字传了空串是 422(min_length=1),不会被静默跳过。
+    改名要查重: 同一层(本机构 / 平台)里不能有两本同名 —— 导入时按名字找「要覆盖的那本」,重名就找错书。
     """
     _require_staff(current_user)
     b = await _own_book(db, book_id, current_user)
     data = patch.model_dump(exclude_unset=True)
-    if "name" in data and data["name"]:
-        b.name = data["name"].strip()
+    changes = []
+    if "name" in data:
+        name = " ".join((data["name"] or "").split())
+        if not name:
+            raise HTTPException(status_code=400, detail="教材名不能为空")
+        if name != b.name:
+            same = await _find_same_name(db, name, b.org_id, b.org_id is None)
+            if same and same.id != b.id:
+                raise HTTPException(status_code=409, detail=f"已经有一本叫「{name}」的教材了,换个名字")
+            changes.append(f"名字「{b.name}」→「{name}」")
+            b.name = name
     if "volume" in data:
         b.volume = (data["volume"] or "").strip() or None
     if "description" in data:
         b.description = (data["description"] or "").strip() or None
-    if "is_active" in data and data["is_active"] is not None:
+    if "is_active" in data and data["is_active"] is not None and bool(data["is_active"]) != bool(b.is_active):
         b.is_active = bool(data["is_active"])
+        changes.append("上架" if b.is_active else "下架")
+    audit_log.record(db, request, current_user, "phonetic.book_update",
+                     f"改音标教材「{b.name}」" + (":" + "、".join(changes) if changes else ""),
+                     target_type="phonetic_book", target_id=b.id)
     await db.commit()
+    return await _book_out(db, b, current_user)
 
+
+async def _book_out(db: AsyncSession, b: PhoneticBook, user: User) -> BookOut:
     n_ls = (await db.execute(select(func.count(PhoneticLesson.id))
                              .where(PhoneticLesson.book_id == b.id))).scalar() or 0
-    n_it = (await db.execute(
-        select(func.count(PhoneticItem.id))
+    n_it, n_tts = (await db.execute(
+        select(func.count(PhoneticItem.id), func.count(PhoneticItem.tts_text))
         .join(PhoneticLesson, PhoneticLesson.id == PhoneticItem.lesson_id)
-        .where(PhoneticLesson.book_id == b.id))).scalar() or 0
+        .where(PhoneticLesson.book_id == b.id))).one()
     return BookOut(id=b.id, name=b.name, volume=b.volume,
                    description=b.description, is_active=bool(b.is_active),
-                   lesson_count=n_ls, item_count=n_it,
+                   lesson_count=n_ls, item_count=n_it or 0,
                    is_preset=b.org_id is None,
-                   can_edit=True)
+                   can_edit=user.role == "admin" or b.org_id is not None,
+                   tts_count=n_tts or 0)
 
 
 @router.delete("/books/{book_id}")
 async def delete_book(
     book_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """删整本。学生的答题记录不删(那是学情,抹掉等于丢数据)"""
+    """删整本。学生的答题记录不删(那是学情,抹掉等于丢数据);挂在下面的音标听力一起停用。
+    删之前前端先调 /usage 把影响摆给老师看"""
     _require_staff(current_user)
     b = await _own_book(db, book_id, current_user)
+    from app.models.phonetic_listening import ListeningSet
+    n_sets = (await db.execute(
+        update(ListeningSet).where(ListeningSet.book_id == b.id, ListeningSet.is_active.is_(True))
+        .values(is_active=False))).rowcount or 0
     ls_ids = [r[0] for r in await db.execute(
         select(PhoneticLesson.id).where(PhoneticLesson.book_id == b.id))]
     if ls_ids:
@@ -570,9 +664,238 @@ async def delete_book(
             PhoneticItem.lesson_id.in_(ls_ids)))
     await db.execute(delete(PhoneticLesson).where(
         PhoneticLesson.book_id == b.id))
+    audit_log.record(db, request, current_user, "phonetic.book_delete",
+                     f"删除音标教材「{b.name}」{len(ls_ids)} 节" + (f",停用 {n_sets} 套听力" if n_sets else ""),
+                     target_type="phonetic_book", target_id=b.id)
     await db.delete(b)
     await db.commit()
-    return {"deleted": True, "lesson_count": len(ls_ids)}
+    return {"deleted": True, "lesson_count": len(ls_ids), "listening_sets": n_sets}
+
+
+# ---------------------------------------------------------------- 分节 / 题目的增删改(2026-11-05)
+#
+# 用户「我需要可以改教材的名字 还有些增删改查的功能你设计完善点」。以前一本教材建好后只能整本替换,
+# 想改一个词、加一节、调个顺序都得重新传 Excel。这里补齐按节、按题改,规矩和导入一样:
+# - 平台预置只有平台 admin 能改(_own_book),别家的书 404
+# - 有一题音标不合格整批不写,错误逐条列出
+# - 题目 id 尽量不变: 单词没改的题原地改;**单词改了算新题**(否则学生写 bad 的记录会算到 bed 头上)
+# - 学生的作答 / 跟读录音一律不删;删节 / 删题前先给老师看会影响多少(/usage)
+# - 新建的节 / 题用不复用的 id(services/phonetic_ids)
+
+
+async def _own_lesson(db: AsyncSession, lesson_id: int, user: User) -> tuple[PhoneticLesson, PhoneticBook]:
+    ls = (await db.execute(select(PhoneticLesson).where(PhoneticLesson.id == lesson_id))).scalar_one_or_none()
+    if ls is None:
+        raise HTTPException(status_code=404, detail="这一节不存在")
+    b = await _own_book(db, ls.book_id, user)
+    return ls, b
+
+
+async def _usage(db: AsyncSession, lesson_ids: List[int], book_id: Optional[int] = None) -> dict:
+    """这些节有多少学生记录 / 作业 / 听力 —— 删之前给老师看"""
+    from app.models.content_homework import ContentHomework, KIND_PHONETIC_READ, KIND_PHONETIC_WRITE
+    from app.models.phonetic_listening import ListeningSet
+    from app.models.phonetic_practice import PhoneticAttempt, PhoneticReading
+    out = {"students": 0, "attempts": 0, "readings": 0, "homework": 0, "listening_sets": 0}
+    if lesson_ids:
+        a = (await db.execute(select(func.count(PhoneticAttempt.id), func.count(func.distinct(PhoneticAttempt.user_id)))
+                              .where(PhoneticAttempt.lesson_id.in_(lesson_ids)))).one()
+        r = (await db.execute(select(func.count(PhoneticReading.id), func.count(func.distinct(PhoneticReading.user_id)))
+                              .where(PhoneticReading.lesson_id.in_(lesson_ids)))).one()
+        uids = set((await db.execute(select(func.distinct(PhoneticAttempt.user_id))
+                                     .where(PhoneticAttempt.lesson_id.in_(lesson_ids)))).scalars())
+        uids |= set((await db.execute(select(func.distinct(PhoneticReading.user_id))
+                                      .where(PhoneticReading.lesson_id.in_(lesson_ids)))).scalars())
+        out.update(attempts=a[0] or 0, readings=r[0] or 0, students=len(uids))
+        out["homework"] = (await db.execute(select(func.count(ContentHomework.id)).where(
+            ContentHomework.kind.in_((KIND_PHONETIC_WRITE, KIND_PHONETIC_READ)),
+            ContentHomework.target_id.in_(lesson_ids), ContentHomework.is_closed.is_(False))
+            .execution_options(skip_tenant_filter=True))).scalar() or 0
+    if book_id is not None:
+        out["listening_sets"] = (await db.execute(select(func.count(ListeningSet.id)).where(
+            ListeningSet.book_id == book_id, ListeningSet.is_active.is_(True))
+            .execution_options(skip_tenant_filter=True))).scalar() or 0
+    return out
+
+
+@router.get("/books/{book_id}/usage")
+async def book_usage(book_id: int, db: AsyncSession = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    """删整本前看影响: 多少学生练过、几份没关的作业、几套听力(所有机构一起算 —— 平台预置删了大家都没了)"""
+    _require_staff(current_user)
+    b = await _own_book(db, book_id, current_user)
+    ids = list((await db.execute(select(PhoneticLesson.id).where(PhoneticLesson.book_id == b.id))).scalars())
+    return await _usage(db, ids, b.id)
+
+
+@router.get("/lessons/{lesson_id}/usage")
+async def lesson_usage(lesson_id: int, db: AsyncSession = Depends(get_db),
+                       current_user: User = Depends(get_current_user)):
+    _require_staff(current_user)
+    ls, _b = await _own_lesson(db, lesson_id, current_user)
+    return await _usage(db, [ls.id])
+
+
+class LessonItemOut(BaseModel):
+    id: int
+    word: str
+    phonetic: str
+    meaning: Optional[str] = None
+    tts: Optional[str] = None
+
+
+class LessonDetailOut(BaseModel):
+    id: int
+    book_id: int
+    code: str
+    title: str
+    can_edit: bool
+    items: List[LessonItemOut]
+
+
+async def _lesson_detail(db: AsyncSession, ls: PhoneticLesson, can_edit: bool) -> LessonDetailOut:
+    items = (await db.execute(select(PhoneticItem).where(PhoneticItem.lesson_id == ls.id)
+                              .order_by(PhoneticItem.order_index, PhoneticItem.id))).scalars().all()
+    return LessonDetailOut(id=ls.id, book_id=ls.book_id, code=ls.code, title=ls.title, can_edit=can_edit, items=[
+        LessonItemOut(id=it.id, word=it.word, meaning=it.meaning, tts=it.tts_text,
+                      phonetic=it.answer_display or f"[{''.join(json.loads(it.answer_json or '[]'))}]")
+        for it in items])
+
+
+@router.get("/lessons/{lesson_id}", response_model=LessonDetailOut)
+async def get_lesson_for_edit(lesson_id: int, db: AsyncSession = Depends(get_db),
+                              current_user: User = Depends(get_current_user)):
+    """一节的题(带答案,老师编辑用)。平台预置的老师也能看,只读"""
+    _require_staff(current_user)
+    ls = (await db.execute(select(PhoneticLesson).where(PhoneticLesson.id == lesson_id))).scalar_one_or_none()
+    if ls is None:
+        raise HTTPException(status_code=404, detail="这一节不存在")
+    b = (await db.execute(select(PhoneticBook).where(PhoneticBook.id == ls.book_id)
+                          .execution_options(skip_tenant_filter=True))).scalar_one_or_none()
+    if b is None or (current_user.role != "admin" and b.org_id is not None and b.org_id != current_user.org_id):
+        raise HTTPException(status_code=404, detail="这一节不存在")
+    return await _lesson_detail(db, ls, current_user.role == "admin" or b.org_id is not None)
+
+
+class EditRow(BaseModel):
+    id: Optional[int] = None            # 改的时候带上;新加的题不带
+    word: str = Field(..., min_length=1, max_length=100)
+    phonetic: str = Field(..., min_length=1, max_length=200)
+    meaning: Optional[str] = Field(None, max_length=200)
+    tts: Optional[str] = Field(None, max_length=200)
+
+
+class LessonIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=20)
+    title: Optional[str] = Field(None, max_length=200)
+    rows: List[EditRow] = Field(default_factory=list, max_length=200)
+
+
+def _rows_or_400(label: str, rows: List[EditRow]) -> List[dict]:
+    items, errors = _check_rows(label, rows)
+    if errors:
+        raise HTTPException(status_code=400, detail={
+            "code": "invalid_items", "message": f"{errors[0].word}: {errors[0].reason}",
+            "errors": [f"{e.word}: {e.reason}" for e in errors]})
+    return items
+
+
+async def _code_taken(db: AsyncSession, book_id: int, code: str, except_id: Optional[int] = None) -> bool:
+    q = select(PhoneticLesson.id).where(PhoneticLesson.book_id == book_id, PhoneticLesson.code == code)
+    if except_id is not None:
+        q = q.where(PhoneticLesson.id != except_id)
+    return (await db.execute(q)).first() is not None
+
+
+@router.post("/books/{book_id}/lessons", response_model=LessonDetailOut)
+async def add_lesson(book_id: int, body: LessonIn, request: Request, db: AsyncSession = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    """加一节(排在最后)。题可以先空着,之后在「编辑」里加"""
+    _require_staff(current_user)
+    b = await _own_book(db, book_id, current_user)
+    code = _norm_code(body.code)
+    if not code:
+        raise HTTPException(status_code=400, detail="小节编号不能为空,写成「1—1」这样")
+    if await _code_taken(db, b.id, code):
+        raise HTTPException(status_code=409, detail=f"这本教材里已经有「{code}」这一节了,换个编号")
+    title = " ".join((body.title or "").split()) or code
+    items = _rows_or_400(title, body.rows)
+    last = (await db.execute(select(func.max(PhoneticLesson.lesson_number))
+                             .where(PhoneticLesson.book_id == b.id))).scalar() or 0
+    ls = PhoneticLesson(id=(await IdAllocator.for_phonetic_lessons(db)).next(), book_id=b.id, code=code,
+                        title=title[:200], lesson_number=last + 1, removed_count=0)
+    db.add(ls)
+    await _sync_items(db, ls, [dict(d, id=None) for d in items], {}, await IdAllocator.for_phonetic_items(db))
+    audit_log.record(db, request, current_user, "phonetic.lesson_add",
+                     f"音标教材「{b.name}」加一节 {code}({len(items)} 题)",
+                     target_type="phonetic_lesson", target_id=ls.id)
+    await db.commit()
+    return await _lesson_detail(db, ls, True)
+
+
+@router.put("/lessons/{lesson_id}", response_model=LessonDetailOut)
+async def update_lesson(lesson_id: int, body: LessonIn, request: Request, db: AsyncSession = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """改一节: 编号、名字、题目一次存。有一题不合格一题都不改"""
+    _require_staff(current_user)
+    ls, b = await _own_lesson(db, lesson_id, current_user)
+    code = _norm_code(body.code)
+    if not code:
+        raise HTTPException(status_code=400, detail="小节编号不能为空,写成「1—1」这样")
+    if await _code_taken(db, b.id, code, except_id=ls.id):
+        raise HTTPException(status_code=409, detail=f"这本教材里已经有「{code}」这一节了,换个编号")
+    title = " ".join((body.title or "").split()) or code
+    items = _rows_or_400(title, body.rows)
+    if not items:
+        raise HTTPException(status_code=400, detail="一节至少要有一题。整节不要了点「删除这一节」")
+    old = await _items_of(db, ls.id)
+    if any(d["id"] is not None and d["id"] not in old for d in items):
+        raise HTTPException(status_code=400, detail="有的题不在这一节里,一个都没改。刷新页面再试")
+    before = len(old)
+    ls.code, ls.title = code, title[:200]
+    await _sync_items(db, ls, items, old, await IdAllocator.for_phonetic_items(db))
+    audit_log.record(db, request, current_user, "phonetic.lesson_update",
+                     f"改音标教材「{b.name}」{code}: {before} 题 → {len(items)} 题",
+                     target_type="phonetic_lesson", target_id=ls.id)
+    await db.commit()
+    return await _lesson_detail(db, ls, True)
+
+
+@router.delete("/lessons/{lesson_id}")
+async def delete_lesson(lesson_id: int, request: Request, db: AsyncSession = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """删一节。学生的记录留着(学情);布置了这一节的作业学生那边不再显示(内容已删)"""
+    _require_staff(current_user)
+    ls, b = await _own_lesson(db, lesson_id, current_user)
+    n = (await db.execute(delete(PhoneticItem).where(PhoneticItem.lesson_id == ls.id))).rowcount or 0
+    audit_log.record(db, request, current_user, "phonetic.lesson_delete",
+                     f"删除音标教材「{b.name}」{ls.code}({n} 题)",
+                     target_type="phonetic_lesson", target_id=ls.id)
+    await db.delete(ls)
+    await db.commit()
+    return {"deleted": True, "item_count": n}
+
+
+class ReorderIn(BaseModel):
+    lesson_ids: List[int] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/books/{book_id}/lessons/reorder")
+async def reorder_lessons(book_id: int, body: ReorderIn, request: Request, db: AsyncSession = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """整本重排。名单必须恰好是这本书的全部节,少了 / 多了 409 一条不写(中途有人加了节就别按旧名单写)"""
+    _require_staff(current_user)
+    b = await _own_book(db, book_id, current_user)
+    rows = {ls.id: ls for ls in (await db.execute(
+        select(PhoneticLesson).where(PhoneticLesson.book_id == b.id))).scalars()}
+    if len(body.lesson_ids) != len(set(body.lesson_ids)) or set(body.lesson_ids) != set(rows):
+        raise HTTPException(status_code=409, detail="小节名单和现在的对不上(可能刚有人加了或删了一节),刷新页面再排")
+    for n, lid in enumerate(body.lesson_ids, 1):
+        rows[lid].lesson_number = n
+    audit_log.record(db, request, current_user, "phonetic.lesson_reorder", f"调整音标教材「{b.name}」小节顺序",
+                     target_type="phonetic_book", target_id=b.id)
+    await db.commit()
+    return {"ok": True}
 
 
 # 音标听力(2026-11-03)老师端挂在这里: /api/v1/teacher/phonetic-books/listening/*。main.py 不动

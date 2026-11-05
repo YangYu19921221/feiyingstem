@@ -9,13 +9,19 @@
  * 音标里只要有一个键盘上没有的符号,那题学生就永远填不出来(软键盘上打不出)。
  * 所以选完文件先调 validate,把有问题的行**指名道姓**列出来,老师改好 Excel
  * 再传。后端也拦:有任何一行不合格就整本不导,不会留个残缺教材在库里。
+ *
+ * ## 建好之后的增删改(2026-11-05)
+ * 改教材名 / 册次、上下架、删整本(先看影响);点开一本: 每节「编辑」(改编号、名字、题)、「删除」、上下移、「加一节」。
+ * 同名覆盖导入现在是原地改,题目 id 不换,学生记录和挂在下面的音标听力都还在。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  BookOpen, Upload, Trash2, Eye, EyeOff, AlertTriangle, Download, Volume2,
+  BookOpen, Upload, Trash2, Eye, EyeOff, AlertTriangle, Download, Volume2, Pencil, Plus, ArrowUp, ArrowDown, X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import PhoneticTtsEditor from '../components/phonetics/PhoneticTtsEditor';
+import PhoneticLessonEditor from '../components/phonetics/PhoneticLessonEditor';
 import { downloadPhoneticTemplate } from '../utils/phoneticTemplate';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -23,6 +29,8 @@ import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import {
   fetchPhoneticBooks, fetchPhoneticLessons, validatePhoneticImport,
   importPhoneticBook, updatePhoneticBook, deletePhoneticBook,
+  fetchBookUsage, fetchLessonUsage, deletePhoneticLesson, reorderPhoneticLessons,
+  type PhoneticUsage,
   type PhoneticBookOut, type PhoneticLessonBrief,
   type ImportLesson, type ValidateOut,
 } from '../api/phoneticBooks';
@@ -46,7 +54,7 @@ const pick = (row: Record<string, unknown>, names: string[]): string => {
 
 /** sheet 名里取小节编号:「1—1 拼读」→ 1—1。取不到就用整个 sheet 名 */
 const codeOf = (sheet: string): string => {
-  const m = sheet.match(/^(\d+[—\-]\d+)/);
+  const m = sheet.match(/^(\d+[—-]\d+)/);
   return m ? m[1].replace('-', '—') : sheet.slice(0, 20);
 };
 
@@ -66,6 +74,12 @@ export default function TeacherPhoneticBooks() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   // 正在改发音的那本
   const [ttsBook, setTtsBook] = useState<PhoneticBookOut | null>(null);
+  // 改名 / 册次
+  const [renaming, setRenaming] = useState<{ book: PhoneticBookOut; name: string; volume: string } | null>(null);
+  // 编辑 / 新加的那一节(lessonId null = 新加)
+  const [lessonEdit, setLessonEdit] = useState<{ book: PhoneticBookOut; lessonId: number | null; suggest?: string } | null>(null);
+  // 删除前的影响确认
+  const [confirmDel, setConfirmDel] = useState<{ title: string; usage: PhoneticUsage | null; isPreset: boolean; run: () => Promise<void> } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -192,17 +206,68 @@ export default function TeacherPhoneticBooks() {
     }
   };
 
+  const reloadLessons = async (id: number) => {
+    try { setLessons(await fetchPhoneticLessons(id)); } catch { /* 列表那边已经提示过 */ }
+  };
+
   const removeBook = async (b: PhoneticBookOut) => {
-    if (!window.confirm(
-      `删除「${b.name}」?${b.lesson_count} 节 / ${b.item_count} 题会一起删掉。\n`
-      + '学生已有的答题记录会保留(那是学情数据)。此操作不可撤销。')) return;
+    let usage: PhoneticUsage | null = null;
+    try { usage = await fetchBookUsage(b.id); } catch { /* 查不到也让删,弹窗里写明 */ }
+    setConfirmDel({
+      title: `删除「${b.name}」整本(${b.lesson_count} 节 / ${b.item_count} 题)`, usage, isPreset: b.is_preset,
+      run: async () => {
+        const r = await deletePhoneticBook(b.id) as { listening_sets?: number };
+        toast.success('已删除' + (r.listening_sets ? `,挂在下面的 ${r.listening_sets} 套听力也停用了` : ''));
+        if (openId === b.id) setOpenId(null);
+        await load();
+      },
+    });
+  };
+
+  const removeLesson = async (b: PhoneticBookOut, l: PhoneticLessonBrief) => {
+    let usage: PhoneticUsage | null = null;
+    try { usage = await fetchLessonUsage(l.id); } catch { /* 同上 */ }
+    setConfirmDel({
+      title: `删除「${l.code}」这一节(${l.item_count} 题)`, usage, isPreset: b.is_preset,
+      run: async () => {
+        await deletePhoneticLesson(l.id);
+        toast.success(`「${l.code}」已删除`);
+        await Promise.all([reloadLessons(b.id), load()]);
+      },
+    });
+  };
+
+  const moveLesson = async (b: PhoneticBookOut, i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= lessons.length) return;
+    const next = [...lessons];
+    [next[i], next[j]] = [next[j], next[i]];
+    setLessons(next);
     try {
-      await deletePhoneticBook(b.id);
-      toast.success('已删除');
-      if (openId === b.id) setOpenId(null);
+      await reorderPhoneticLessons(b.id, next.map(x => x.id));
+    } catch (e) {
+      toast.error(getErrorMessage(e, '调顺序失败'));
+      await reloadLessons(b.id);
+    }
+  };
+
+  /** 接着最后一节往下编号: 1—12 → 1—13 */
+  const nextCode = () => {
+    const m = lessons.length ? lessons[lessons.length - 1].code.match(/^(\d+)—(\d+)$/) : null;
+    return m ? `${m[1]}—${Number(m[2]) + 1}` : '';
+  };
+
+  const saveRename = async () => {
+    if (!renaming) return;
+    const name = renaming.name.trim();
+    if (!name) { toast.warning('教材名不能为空'); return; }
+    try {
+      await updatePhoneticBook(renaming.book.id, { name, volume: renaming.volume.trim() || null });
+      toast.success('已保存。学生端刷新就是新名字');
+      setRenaming(null);
       await load();
     } catch (e) {
-      toast.error(getErrorMessage(e, '删除失败'));
+      toast.error(getErrorMessage(e, '保存失败'));
     }
   };
 
@@ -317,8 +382,8 @@ export default function TeacherPhoneticBooks() {
                   />
                   <span>
                     已存在同名教材(现有 {checked.existing_item_count} 题)。
-                    勾选表示<strong>替换</strong> —— 旧的节和题会被删掉,
-                    学生的答题记录保留。
+                    勾选表示<strong>按 Excel 改这本</strong>: 同一个编号的节、同一节里同一个单词的题原地改,
+                    学生做过的记录、挂在这本下面的听力都还在;Excel 里没有的节和题会删掉。
                   </span>
                 </label>
               )}
@@ -394,7 +459,7 @@ export default function TeacherPhoneticBooks() {
                         )}
                       </p>
                       <p className="text-xs text-slate-400">
-                        {b.lesson_count} 节 · {b.item_count} 题 · 点开看分节
+                        {b.lesson_count} 节 · {b.item_count} 题 · {openId === b.id ? '收起' : b.can_edit ? '点开改分节和题目' : '点开看分节'}
                       </p>
                     </button>
                     {/* 改发音: 平台预置的也能点开看(只读),老师常想先听听哪些词读得不对 */}
@@ -409,6 +474,14 @@ export default function TeacherPhoneticBooks() {
                     </button>
                     {b.can_edit ? (
                       <>
+                        <button
+                          onClick={() => setRenaming({ book: b, name: b.name, volume: b.volume ?? '' })}
+                          title="改名字 / 册次"
+                          aria-label={`改「${b.name}」的名字`}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => void toggleActive(b)}
                           title={b.is_active ? '下架' : '上架'}
@@ -432,26 +505,52 @@ export default function TeacherPhoneticBooks() {
                   </div>
                   {openId === b.id && (
                     <div className="border-t border-slate-100 p-3">
-                      {lessons.length === 0 ? (
+                      {lessons.length === 0 && b.lesson_count > 0 ? (
                         <p className="text-xs text-slate-400">加载中…</p>
                       ) : (
-                        <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                          {lessons.map(l => (
-                            <div key={l.id}
-                                 className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs">
-                              <span className="font-mono text-slate-600">{l.code}</span>
-                              <span className="ml-1.5 text-slate-500">{l.item_count} 题</span>
-                              {!!l.tts_count && (
-                                <span className="ml-1 text-[#24707a]">· {l.tts_count} 个改了发音</span>
-                              )}
-                              {l.removed_count > 0 && (
-                                <span className="ml-1 text-amber-600">
-                                  已剔{l.removed_count}词
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                        <>
+                          {lessons.length === 0 && <p className="text-xs text-slate-400">这本还没有小节</p>}
+                          <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                            {lessons.map((l, i) => (
+                              <div key={l.id} className="flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs">
+                                <button onClick={() => setLessonEdit({ book: b, lessonId: l.id })}
+                                  className="min-w-0 flex-1 truncate text-left hover:text-[#24707a]"
+                                  title={b.can_edit ? '编辑这一节' : '查看这一节'}>
+                                  <span className="font-mono text-slate-600">{l.code}</span>
+                                  {l.title && !l.title.startsWith(l.code) && <span className="ml-1 text-slate-500">{l.title}</span>}
+                                  {l.title.startsWith(l.code) && l.title.length > l.code.length && (
+                                    <span className="ml-1 text-slate-500">{l.title.slice(l.code.length).trim()}</span>
+                                  )}
+                                  <span className="ml-1.5 text-slate-400">{l.item_count} 题</span>
+                                  {!!l.tts_count && <span className="ml-1 text-[#24707a]">· {l.tts_count} 改了发音</span>}
+                                  {l.removed_count > 0 && <span className="ml-1 text-amber-600">已剔{l.removed_count}词</span>}
+                                </button>
+                                {b.can_edit && (
+                                  <span className="flex shrink-0">
+                                    <button onClick={() => void moveLesson(b, i, -1)} disabled={i === 0}
+                                      aria-label={`${l.code} 上移`} className="rounded p-1 text-slate-400 hover:bg-white disabled:opacity-30">
+                                      <ArrowUp className="h-3.5 w-3.5" /></button>
+                                    <button onClick={() => void moveLesson(b, i, 1)} disabled={i === lessons.length - 1}
+                                      aria-label={`${l.code} 下移`} className="rounded p-1 text-slate-400 hover:bg-white disabled:opacity-30">
+                                      <ArrowDown className="h-3.5 w-3.5" /></button>
+                                    <button onClick={() => setLessonEdit({ book: b, lessonId: l.id })}
+                                      aria-label={`编辑 ${l.code}`} className="rounded p-1 text-slate-500 hover:bg-white">
+                                      <Pencil className="h-3.5 w-3.5" /></button>
+                                    <button onClick={() => void removeLesson(b, l)}
+                                      aria-label={`删除 ${l.code}`} className="rounded p-1 text-rose-500 hover:bg-white">
+                                      <Trash2 className="h-3.5 w-3.5" /></button>
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          {b.can_edit && (
+                            <button onClick={() => setLessonEdit({ book: b, lessonId: null, suggest: nextCode() })}
+                              className="mt-2 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#2f8791] hover:bg-[#2f8791]/10">
+                              <Plus className="h-3.5 w-3.5" /> 加一节
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -461,6 +560,42 @@ export default function TeacherPhoneticBooks() {
           )}
         </section>
       </div>
+      {lessonEdit && (
+        <PhoneticLessonEditor
+          book={lessonEdit.book} lessonId={lessonEdit.lessonId} suggestCode={lessonEdit.suggest}
+          onClose={(changed) => {
+            const bid = lessonEdit.book.id;
+            setLessonEdit(null);
+            if (changed) { void reloadLessons(bid); void load(); }
+          }}
+        />
+      )}
+      {renaming && (
+        <SmallDialog title="改名字 / 册次" onClose={() => setRenaming(null)}>
+          <label className="block text-sm text-slate-600">
+            教材名
+            <input value={renaming.name} autoFocus maxLength={200}
+              onChange={e => setRenaming({ ...renaming, name: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void saveRename(); }}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800" />
+          </label>
+          <label className="mt-3 block text-sm text-slate-600">
+            册次(可空,如「第1册」)
+            <input value={renaming.volume} maxLength={50}
+              onChange={e => setRenaming({ ...renaming, volume: e.target.value })}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800" />
+          </label>
+          {renaming.book.is_preset && (
+            <p className="mt-3 rounded-lg bg-sky-50 p-2.5 text-xs text-sky-800">这是平台预置教材,改了所有机构看到的都是新名字。</p>
+          )}
+          <p className="mt-3 text-xs text-slate-500">以后用 Excel 覆盖这本,要用新名字当文件名(系统按名字找要覆盖的那本)。</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={() => setRenaming(null)} className="rounded-lg px-4 py-2 text-sm text-slate-500">取消</button>
+            <button onClick={() => void saveRename()} className="rounded-lg bg-[#2f8791] px-4 py-2 text-sm font-medium text-white">保存</button>
+          </div>
+        </SmallDialog>
+      )}
+      {confirmDel && <DeleteConfirm {...confirmDel} onClose={() => setConfirmDel(null)} />}
       {ttsBook && (
         <PhoneticTtsEditor
           book={ttsBook}
@@ -474,5 +609,64 @@ export default function TeacherPhoneticBooks() {
         />
       )}
     </div>
+  );
+}
+
+
+function SmallDialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-[85] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <h3 className="text-base font-bold text-[#173047]">{title}</h3>
+          <button onClick={onClose} aria-label="关闭" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** 删整本 / 删一节前: 把会影响什么摆出来,勾了「我知道」才能删 */
+function DeleteConfirm({ title, usage, isPreset, run, onClose }: {
+  title: string; usage: PhoneticUsage | null; isPreset: boolean; run: () => Promise<void>; onClose: () => void;
+}) {
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true);
+    try { await run(); onClose(); } catch (e) { toast.error(getErrorMessage(e, '删除失败')); setBusy(false); }
+  };
+  const hits = usage ? [
+    usage.students ? `${usage.students} 个学生练过(写音标 ${usage.attempts} 次、读音标录音 ${usage.readings} 条),记录会留着,但学生在目录里就看不到这些题了` : '',
+    usage.homework ? `${usage.homework} 份没关闭的作业布置了这里,学生那边不再显示` : '',
+    usage.listening_sets ? `挂在这本下面的 ${usage.listening_sets} 套音标听力会一起停用` : '',
+  ].filter(Boolean) : [];
+  return (
+    <SmallDialog title={title} onClose={() => !busy && onClose()}>
+      {usage === null ? (
+        <p className="text-sm text-amber-700">没查到会影响多少学生,删之前请自己确认没人在用。</p>
+      ) : hits.length ? (
+        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">{hits.map(h => <li key={h}>{h}</li>)}</ul>
+      ) : (
+        <p className="text-sm text-slate-600">还没有学生练过,也没有作业和听力挂在这里。</p>
+      )}
+      {isPreset && <p className="mt-3 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700">这是平台预置教材,所有机构都会一起没了。</p>}
+      <p className="mt-3 text-xs text-slate-500">删了不能恢复。只是暂时不想让学生看到,用「下架」更好。</p>
+      <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} /> 我知道删了不能恢复
+      </label>
+      <div className="mt-4 flex justify-end gap-2">
+        <button onClick={onClose} disabled={busy} className="rounded-lg px-4 py-2 text-sm text-slate-500">取消</button>
+        <button onClick={() => void go()} disabled={!ok || busy}
+          className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">{busy ? '删除中…' : '删除'}</button>
+      </div>
+    </SmallDialog>
   );
 }

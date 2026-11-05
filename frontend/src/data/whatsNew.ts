@@ -28,6 +28,15 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'phonetic-book-edit-2026-11',
+    date: '2026-11-05',
+    title: '✏️ 音标教材能直接改了: 改名、改题、加节、删节、调顺序',
+    desc: '以前教材建好只能整本重新传 Excel。现在每本书能改名字和册次;点开一本,每一节都能「编辑」(改编号、名字、单词、音标、释义、发音,加题删题)、删除、上下移,最下面能「加一节」。只改释义、音标、发音的题,学生做过的记录还在。删整本或删一节之前,会先告诉你有多少学生练过、几份作业布置了它。用 Excel 覆盖同名教材也不再删了重建,学生记录和挂在下面的听力都留着。',
+    where: '教师工作台「内容准备 → 音标教材」→ 书名右边的铅笔改名;点书名展开,每节右边编辑 / 删除 / 上下移,最下面「加一节」',
+    roles: ['teacher', 'org_admin', 'admin'],
+    route: '/teacher/phonetic-books',
+  },
+  {
     id: 'phonetic-listening-excel-2026-11',
     date: '2026-11-05',
     title: '🎧 音标听力能传 Excel 了,平台还送了 12 套现成的',

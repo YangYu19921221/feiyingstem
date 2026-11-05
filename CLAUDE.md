@@ -271,6 +271,25 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 音标教材增删改(2026-11-05,用户「我需要可以改教材的名字 还有些增删改查的功能你设计完善点」):
+  以前一本建好后只能整本重新传 Excel(还是删了重建)。接口都在 api/v1/teacher/phonetic_books.py「分节 / 题目的增删改」那段:
+  ①**改名 / 册次**(PATCH /books/{id}): 同一层(本机构 / 平台)查重 409 —— Excel 覆盖按名字找那本,重名会找错;空名 400;记操作记录 phonetic.book_update
+  ②**一节**: GET /lessons/{id}(带答案,老师编辑用;平台预置老师只读)、POST /books/{id}/lessons 加一节(排最后)、PUT /lessons/{id} 改编号 / 名字 / 题、
+  DELETE /lessons/{id}、POST /books/{id}/lessons/reorder(名单必须恰好是这本的全部节,否则 409)。编号「1-1」统一写成「1—1」,同一本里不能重复
+  ③**题目 id 规矩**(_sync_items): 单词没改的题原地改(id 不变,学生写音标记录、跟读录音对得上);**单词改了算新题**(否则写 bad 的记录会算到 bed 头上);
+  一题音标不合格整节不改;学生的作答 / 录音一律不删
+  ④**Excel 同名覆盖改成原地改**: 书 id 不变(挂在下面的音标听力、作业都还在),同编号的节、同一节里同一个单词的题 id 不变;Excel 里没有的节 / 题删掉。
+  以前是整本删了重建,所有 id 全换 —— 生产那本平台预置教材下面挂着 12 套听力,删书会让听力的 book_id 指空
+  ⑤**新建的书 / 节 / 题 id 永不复用**(services/phonetic_ids.IdAllocator): 这几张表没有 AUTOINCREMENT,SQLite 会把删掉的最大 id 发给新行,
+  学生旧记录就算到新题头上。新 id = max(表里, 所有引用它的记录 / 作业 / 听力) + 1。命令行脚本 scripts/import_phonetic_book.py 没改(只在服务器上手动用)
+  ⑥**删之前看影响**(GET /books/{id}/usage、/lessons/{id}/usage): 多少学生练过、几份没关的作业、几套听力;前端弹窗列出来,勾「我知道删了不能恢复」才能删。
+  删整本时挂在下面的听力一起停用(以前留着,book_id 指向不存在的书)
+  前端: 音标教材页每本书多一个铅笔改名;点开一本,每节右边上下移 / 编辑 / 删除,最下面「加一节」(编号接着最后一节往下);
+  编辑弹层 components/phonetics/PhoneticLessonEditor(同一节里重复的单词标黄)。顺手修了 codeOf 正则的存量 lint 报错。
+  测试 tests/test_phonetic_book_edit.py(7 例);改名不查重 / 单词改了也原地改 / 覆盖不按单词对原题 / 新节用自增 id / 重排不核对名单 /
+  改节不判归属 / 改节新题 id 从 0 发 七处各让对应用例失败(回归锁验证过)。本机浏览器(库副本,1366 / 390)走过: 改名 → 打开 1—1 改释义加一题 →
+  错音标被拦并指名 → 改对保存(21 题,新题 id 939 = 原最大 +1)→ 删 1—2 弹出影响 → 取消 → 手机上加一节编号预填 6—16。公告一条(teacher / org_admin / admin)。
+  ⚠️ 生产那本是平台预置,只有平台 admin(feiying)能改,直营老师只读
 - ✅ 音标听力 Excel 导入 + 模板 + 12 套转平台预置(2026-11-05,用户「音标听力这里也支持 Excel 而且也要个模版 平台预置的给他加入正式」):
   ①**导入** `POST /teacher/phonetic-books/listening/books/{id}/import`: 一个工作表 = 一套(表名 = 套名),前端 SheetJS 解析成 JSON
   (utils/listeningExcel.ts,表头认 单词 / 音标 / 提示 / 释义 / 发音),后端走和网页填题同一个 _check_items。**整批要么全进要么全不进**;
