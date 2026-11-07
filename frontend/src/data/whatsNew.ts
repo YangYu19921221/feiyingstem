@@ -28,6 +28,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'classify-word-art-all-books-2026-11',
+    date: '2026-11-07',
+    title: '🖼️ 所有书的分类记忆都有图了',
+    desc: '上午只有三年级上册,现在每本书都有: 分类记忆里每个词卡片中间多了一张图,画的就是这个词在这本书里的意思(同一个词意思不一样,图也不一样),图下面的单词按音节上了颜色。图只在「分类」这一步出现,听写和拼写不会给你看。',
+    where: '学生端首页 → 我的书架 → 任意一本书 → 任意一个单元 →「分类」',
+    roles: ['student'],
+  },
+  {
     id: 'classify-word-art-2026-11',
     date: '2026-11-07',
     title: '🖼️ 分类记忆的单词卡有图了',
