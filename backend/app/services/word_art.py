@@ -8,7 +8,9 @@
   所以 URL 带 ?v=文件内容散列,换图就换地址。
 - 文件名 = 单词拼写的 slug。老师改了拼写(改错字 / fork 出副本改词)以后,
   图上画的还是旧拼写 —— visible_url 发现 slug 对不上就不给,不用去每条改词路径里清字段。
-- 只填书里的词(按 book_id),不按拼写全站铺: 同一个拼写在别的书里可能是另一个意思。
+- 只填指定书里的词。全库那批(2026-11-07)一个拼写只画一张,按最低学段那条的第一个意思画;
+  别的书里同拼写的词条,释义里没有这个意思就不配(bank 画的是银行,释义是「河岸」的那条不配)。
+- 图片目录里有 color/ 就用 color/ 里的(单词按音节上了色),没有才用顶层那张。
 """
 from __future__ import annotations
 
@@ -20,10 +22,10 @@ import shutil
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.word import Unit, UnitWord, Word
+from app.models.word import Unit, UnitWord, Word, WordBook, WordDefinition
 
 SUBDIR = "word-art"
 URL_PREFIX = f"/api/v1/files/{SUBDIR}/"
@@ -62,6 +64,30 @@ def visible_url(word_text: str, image_url: Optional[str], learning_mode: Optiona
     return image_url if s == slug(word_text) else None
 
 
+_CJK = re.compile(r"[^\u4e00-\u9fff]")
+
+
+def first_sense(m: Optional[str]) -> str:
+    """释义里的第一个意思(出图时只把它给模型)"""
+    m = (m or "").strip()
+    m = re.split(r"\s*(?:[；;]|\s2[\.、]|\[)", m)[0]
+    return re.sub(r"^1[\.、]\s*", "", m).strip()
+
+
+def meaning_matches(img_meaning: Optional[str], word_meaning: Optional[str]) -> bool:
+    """图是照 img_meaning 的第一个意思画的;这条词的释义里有这个意思才配。
+    按汉字比: 第一个意思里任意两个连着的字出现在词条释义里就算(「名字」对「n. 名字；名称」);
+    只有一个汉字的看这个字在不在。没记图的释义(三上那批)不比"""
+    if not img_meaning:
+        return True
+    a, b = _CJK.sub("", first_sense(img_meaning)), _CJK.sub("", word_meaning or "")
+    if not a or not b:
+        return " ".join((img_meaning or "").lower().split()) == " ".join((word_meaning or "").lower().split())
+    if len(a) == 1:
+        return a in b
+    return any(a[i:i + 2] in b for i in range(len(a) - 1))
+
+
 @dataclass
 class ImportReport:
     matched: int = 0            # 书里有图可配的词条(按 word id 去重)
@@ -70,22 +96,29 @@ class ImportReport:
     kept_other: int = 0         # 已有别的图(不是配图),不覆盖
     unmatched_words: list = field(default_factory=list)   # 书里没图的词
     unused_images: list = field(default_factory=list)     # 有图但书里没这个词
+    meaning_mismatch: list = field(default_factory=list)  # 同拼写但意思不一样,没配
     copied: int = 0
 
 
-def _load_results(src_dir: str) -> dict[str, str]:
-    """results.json → {slug: 文件路径}。只认 OCR 核对过的(ok)和退回不带字的(no_text)"""
+def _load_results(src_dir: str) -> dict[str, tuple[str, str]]:
+    """results.json → {slug: (文件路径, 画图时用的释义)}。只认 OCR 核对过的(ok)和退回不带字的(no_text)"""
     with open(os.path.join(src_dir, "results.json"), encoding="utf-8") as f:
         results = json.load(f)
+    color_dir = os.path.join(src_dir, "color")
     out = {}
     for text, rec in results.items():
         if rec.get("status") not in ("ok", "no_text"):
             continue
         s = rec.get("slug") or slug(text)
-        path = os.path.join(src_dir, f"{s}.jpg")
-        if os.path.isfile(path):
-            out[s] = path
+        for path in (os.path.join(color_dir, f"{s}.jpg"), os.path.join(src_dir, f"{s}.jpg")):
+            if os.path.isfile(path):
+                out[s] = (path, rec.get("meaning") or "")
+                break
     return out
+
+
+async def all_book_ids(db: AsyncSession) -> list[int]:
+    return [r[0] for r in (await db.execute(select(WordBook.id))).all()]
 
 
 def _version(path: str) -> str:
@@ -109,6 +142,17 @@ async def import_from_dir(
         .distinct()
     )).all()
 
+    # 释义一次读进来(word_definitions.word_id 上没有索引,逐条子查询几万行会很慢)
+    meanings: dict[int, str] = {}
+    if any(m for _, m in images.values()):
+        wanted = {r[0] for r in rows}
+        for wid, mn in (await db.execute(
+            select(WordDefinition.word_id, WordDefinition.meaning)
+            .order_by(WordDefinition.word_id, WordDefinition.is_primary.desc(), WordDefinition.id)
+        )).all():
+            if wid in wanted and wid not in meanings:
+                meanings[wid] = mn or ""
+
     rep = ImportReport()
     plan: dict[int, str] = {}      # word id → 新 URL
     used: set[str] = set()         # 书里有这个词的图
@@ -116,9 +160,13 @@ async def import_from_dir(
     versions: dict[str, str] = {}
     for wid, text, cur in rows:
         s = slug(text)
-        path = images.get(s)
-        if not path:
+        hit = images.get(s)
+        if not hit:
             rep.unmatched_words.append(text)
+            continue
+        path, img_meaning = hit
+        if not meaning_matches(img_meaning, meanings.get(wid)):
+            rep.meaning_mismatch.append(f"{text}: 图={first_sense(img_meaning)} / 这条={first_sense(meanings.get(wid))}")
             continue
         rep.matched += 1
         used.add(s)
@@ -135,6 +183,7 @@ async def import_from_dir(
         plan[wid] = url
     rep.unused_images = sorted(set(images) - used)
     rep.unmatched_words.sort()
+    rep.meaning_mismatch.sort()
     rep.filled = len(plan)
     if dry_run:
         return rep
@@ -146,15 +195,17 @@ async def import_from_dir(
         if os.path.isfile(dest) and _version(dest) == versions[s]:
             continue
         tmp = dest + ".tmp"
-        shutil.copyfile(images[s], tmp)
+        shutil.copyfile(images[s][0], tmp)
         os.replace(tmp, dest)       # 原子替换,正在看的孩子不会取到半张图
         rep.copied += 1
-    for wid, url in plan.items():
+    for i, (wid, url) in enumerate(plan.items(), 1):
         # 条件写: 导入过程中老师刚给这个词传了别的图,不覆盖
         await db.execute(
             update(Word).where(Word.id == wid)
             .where(or_(Word.image_url.is_(None), Word.image_url == "", Word.image_url.like(f"{URL_PREFIX}%")))
             .values(image_url=url)
         )
+        if i % 500 == 0:
+            await db.commit()      # 分批提交: 一次写几万行会把学生的写请求堵在后面
     await db.commit()
     return rep

@@ -158,3 +158,34 @@ async def test_renamed_word_loses_art(client: AsyncClient, db_session, art_unit,
                           json={"learning_mode": "classify"}, headers=_h(stu.id))
     got = {x["word"]: x["image_url"] for x in r.json()["words"]}
     assert got["apples"] is None
+
+
+async def test_color_file_preferred_and_meaning_mismatch_skipped(db_session, art_unit, tmp_path):
+    """全库那批: color/ 里的彩色图优先;同拼写别的书里意思不一样的不配"""
+    _stu, book, _unit, words = art_unit
+    other_book = (await db_session.execute(
+        select(WordBook).where(WordBook.name == "别的书"))).scalar_one()
+    # 别的书那条 apple 的释义改成和图不一样的意思
+    db_session.add(WordDefinition(word_id=words["other_apple"].id, meaning="n. 苹果公司的股票", is_primary=True))
+    await db_session.commit()
+    src = tmp_path / "src"
+    (src / "color").mkdir(parents=True)
+    (src / "apple.jpg").write_bytes(b"dark")
+    (src / "color" / "apple.jpg").write_bytes(b"colored")
+    (src / "results.json").write_text(json.dumps({"apple": {"slug": "apple", "status": "ok", "meaning": "释义0"}}),
+                                      encoding="utf-8")
+    up = tmp_path / "uploads"
+    rep = await word_art.import_from_dir(db_session, str(src), [book.id, other_book.id], str(up), dry_run=False)
+    assert rep.filled == 1 and len(rep.meaning_mismatch) == 1
+    assert (up / "word-art" / "apple.jpg").read_bytes() == b"colored"
+    await db_session.refresh(words["apple"]); await db_session.refresh(words["other_apple"])
+    assert words["apple"].image_url.startswith("/api/v1/files/word-art/apple.jpg?v=")
+    assert words["other_apple"].image_url is None
+
+
+def test_meaning_matches():
+    m = word_art.meaning_matches
+    assert m("n. 银行", "n.银行；存款处") and not m("n. 银行", "n. 河岸，堤")
+    assert m("书", "n. 书；书籍") and not m("n. 书", "v. 预订")
+    assert m("", "随便")                       # 三上那批没记释义,不比
+    assert m("1. 蟑螂 2. 大麻卷烟的烟蒂", "n. 蟑螂")  # 只看第一个意思
