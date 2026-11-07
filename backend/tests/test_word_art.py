@@ -189,3 +189,30 @@ def test_meaning_matches():
     assert m("书", "n. 书；书籍") and not m("n. 书", "v. 预订")
     assert m("", "随便")                       # 三上那批没记释义,不比
     assert m("1. 蟑螂 2. 大麻卷烟的烟蒂", "n. 蟑螂")  # 只看第一个意思
+
+
+async def test_second_sense_image_goes_to_matching_entry(db_session, art_unit, tmp_path):
+    """一个拼写两张图: 主图按「释义0」画,补画那张按「苹果公司」画,别的书那条拿补画的"""
+    _stu, book, _unit, words = art_unit
+    other_book = (await db_session.execute(
+        select(WordBook).where(WordBook.name == "别的书"))).scalar_one()
+    db_session.add(WordDefinition(word_id=words["other_apple"].id, meaning="n. 苹果公司", is_primary=True))
+    await db_session.commit()
+    src = tmp_path / "src"
+    (src / "color").mkdir(parents=True)
+    (src / "color" / "apple.jpg").write_bytes(b"fruit")
+    (src / "color" / "apple__abc123.jpg").write_bytes(b"company")
+    (src / "results.json").write_text(json.dumps({
+        "apple": {"slug": "apple", "status": "ok", "meaning": "释义0"},
+        "apple||苹果公司": {"slug": "apple__abc123", "base": "apple", "status": "ok", "meaning": "苹果公司"},
+    }), encoding="utf-8")
+    up = tmp_path / "uploads"
+    rep = await word_art.import_from_dir(db_session, str(src), [book.id, other_book.id], str(up), dry_run=False)
+    assert rep.filled == 2 and not rep.meaning_mismatch
+    await db_session.refresh(words["apple"]); await db_session.refresh(words["other_apple"])
+    assert words["apple"].image_url.startswith("/api/v1/files/word-art/apple.jpg?v=")
+    assert words["other_apple"].image_url.startswith("/api/v1/files/word-art/apple__abc123.jpg?v=")
+    assert (up / "word-art" / "apple__abc123.jpg").read_bytes() == b"company"
+    # 补画的那张照样只给分类、拼写对得上才给
+    assert word_art.visible_url("apple", words["other_apple"].image_url, "classify")
+    assert word_art.visible_url("apple", words["other_apple"].image_url, "dictation") is None
