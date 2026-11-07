@@ -28,6 +28,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'classify-word-art-2026-11',
+    date: '2026-11-07',
+    title: '🖼️ 分类记忆的单词卡有图了',
+    desc: '人教版三年级上册(单词和短语)先上: 每个词卡片中间多了一张图,画的就是这个词的意思,图下面的单词按音节上了颜色,和卡片最上面的大字一样。别的书陆续加。图只在「分类」这一步出现,听写和拼写不会给你看(那样就等于告诉你答案了)。',
+    where: '学生端首页 → 我的书架 → 人教版三年级上册 → 任意一个单元 →「分类」',
+    roles: ['student'],
+  },
+  {
     id: 'phonetic-book-edit-2026-11',
     date: '2026-11-05',
     title: '✏️ 音标教材能直接改了: 改名、改题、加节、删节、调顺序',

@@ -876,6 +876,74 @@ body.staff-interface .staff-focus-ring:focus-visible { outline: 3px solid rgb(93
 .classify-decision-panel {
   padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
 }
+/* 分类卡单词配图(2026-11-06): 原卡不动,只加一张图。
+   手机 / 平板图在中文那一栏左边;电脑上 单词 → 图 → 中文和例句左右并排。
+   电脑上的图大小由 ClassificationPhase 按屏幕高度算(--classify-art),保证一屏放下不滚动 */
+.classify-art-info {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  max-width: 34rem;
+  text-align: left;
+  width: 100%;
+}
+.classify-word-art {
+  background: #fff;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  flex: none;
+  height: 150px;
+  overflow: hidden;
+  width: 150px;
+}
+.classify-word-art img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+  user-select: none;
+  width: 100%;
+}
+.classify-art-txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .classify-art-info { gap: 10px; }
+  .classify-word-art { height: 108px; width: 108px; }
+  .classify-art-txt { gap: 8px; }
+}
+@media (min-width: 641px) and (max-height: 700px) {
+  .classify-word-art { height: 136px; width: 136px; }
+  .classify-art-txt { gap: 6px; }
+}
+@media (min-width: 1024px) {
+  .classify-art-info { flex-direction: column; gap: 8px; max-width: 46rem; }
+  .classify-word-art {
+    border-radius: 16px;
+    height: var(--classify-art, 240px);
+    width: var(--classify-art, 240px);
+  }
+  .classify-art-txt {
+    align-items: start;
+    display: grid;
+    gap: 6px 14px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+  }
+  .classify-art-mean { grid-column: 1; grid-row: 1; }
+  .classify-art-hook { grid-column: 1; grid-row: 2; }
+  .classify-art-ex { grid-column: 2; grid-row: 1 / span 2; }
+  /* 没有例句: 中文和妙招一栏居中,不留半边空白 */
+  .classify-art-txt.no-ex { grid-template-columns: minmax(0, 34rem); justify-content: center; }
+}
+/* 笔记本屏幕矮: 有图的卡收掉「先想意思」那行小字,把地方让给图(定稿样稿矮屏也是这样) */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .classify-has-art .classify-tip-line { display: none; }
+}
 .classify-decision-card {
   border-width: 1px;
   box-shadow: 0 1px 2px rgba(38, 59, 78, 0.04);

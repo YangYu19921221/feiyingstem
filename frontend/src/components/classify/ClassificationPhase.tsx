@@ -4,7 +4,7 @@
  * 直到全部标为熟悉才结束
  * 每连续标记3个熟悉，插入快速回顾卡确认
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, CheckCircle2, Clock3, HelpCircle, Lightbulb, Volume2 } from 'lucide-react';
 import type { WordData } from '../../api/progress';
@@ -182,6 +182,53 @@ export default function ClassificationPhase({
 
   const currentWord = roundWords[currentIndex];
   currentWordRef.current = currentWord;
+
+  // 单词配图(2026-11-06): 后端只在分类模式下发(图里画着单词,听写拿到等于给答案,见 services/word_art)。
+  // 加载失败的图记下来,这个词退回原来的卡,不留一个破图框
+  const [brokenArt, setBrokenArt] = useState<Set<string>>(() => new Set());
+  const artUrl = currentWord?.image_url && !brokenArt.has(currentWord.image_url) ? currentWord.image_url : null;
+  // 用 state 当 ref: 看完玩法 / 回顾卡回来时卡片是重新挂上的,artUrl 没变也要重新算一次尺寸
+  const [artBox, setArtBox] = useState<HTMLDivElement | null>(null);
+  // 电脑上图在中间,按屏幕高度定大小: 从 300px 往下缩,缩到整页不用滚动为止(最小 96px)。
+  // 手机 / 平板图在中文左边,尺寸写在 CSS 里不用算
+  useLayoutEffect(() => {
+    const box = artBox;
+    if (!box) return;
+    const fit = () => {
+      if (!window.matchMedia('(min-width: 1024px)').matches) {
+        box.style.removeProperty('--classify-art');
+        return;
+      }
+      // 以最下面那排按钮(熟悉/夹生/陌生 + 不限时)整个露出来为准,按钮下面的留白滚不滚无所谓
+      const panel = box.closest('.classify-study-grid')?.querySelector('.classify-decision-panel');
+      const fits = () => panel
+        ? panel.getBoundingClientRect().bottom + window.scrollY <= window.innerHeight - 4
+        : document.documentElement.scrollHeight <= window.innerHeight;
+      for (let px = 300; px >= 96; px -= 4) {
+        box.style.setProperty('--classify-art', `${px}px`);
+        if (fits()) break;
+      }
+    };
+    fit();
+    // 任务横幅晚到、妙招展开都会让页面变高;放到下一帧再算,免得在 ResizeObserver 回调里改尺寸报循环
+    let raf = 0;
+    const later = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(fit); };
+    const ro = new ResizeObserver(later);
+    ro.observe(document.body);
+    window.addEventListener('resize', later);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener('resize', later);
+    };
+  }, [artBox]);
+  // 下一个词的图先取回来,切词时不闪白
+  const nextArt = roundWords[currentIndex + 1]?.image_url;
+  useEffect(() => {
+    if (!nextArt) return;
+    const im = new Image();
+    im.src = nextArt;
+  }, [nextArt]);
 
   // 循环播放发音(走神/切屏暂停时停播,人回来自动续上;
   // 回顾/消化卡打开时也停——弹卡前 index 已+1,不停会循环播孩子还没见过的下一词)
@@ -698,6 +745,40 @@ export default function ClassificationPhase({
     },
   ];
 
+  const meaningPanel = (cls: string) => currentWord.meaning && (
+    <div className={`classify-meaning-panel w-full px-3.5 py-2.5 text-left ${cls}`}>
+      <p className="text-base font-semibold text-slate-700 sm:text-lg">
+        {currentWord.part_of_speech && <span className="mr-2 text-sm font-medium text-slate-400">{currentWord.part_of_speech}</span>}
+        {currentWord.meaning}
+      </p>
+    </div>
+  );
+  const memoryHookRow = (cls: string) => (
+    <div className={`flex min-h-8 items-center ${cls}`}>
+      {memoryHook?.wordId === currentWord.id ? (
+        <div className="classify-memory-tip flex max-w-lg items-start gap-2 px-3 py-2 text-left text-xs sm:text-sm">
+          <Lightbulb className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{memoryHook.text}</span>
+        </div>
+      ) : (
+        <button
+          onClick={fetchMemoryHook}
+          disabled={hookLoading}
+          className="classify-memory-button inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition disabled:opacity-60"
+        >
+          <Lightbulb className="h-3.5 w-3.5" />
+          {hookLoading ? '妙招生成中…' : '记忆妙招'}
+        </button>
+      )}
+    </div>
+  );
+  const examplePanel = (cls: string) => currentWord.example_sentence && (
+    <div className={`classify-example-panel w-full px-3.5 py-2.5 text-left ${cls}`}>
+      <p className="text-sm leading-relaxed text-slate-600">{currentWord.example_sentence}</p>
+      {currentWord.example_translation && <p className="mt-1 text-xs text-slate-400">{currentWord.example_translation}</p>}
+    </div>
+  );
+
   return (
     <div className="classify-study-flow flex flex-col gap-3 px-3 pb-4 sm:px-4">
       <div className="classify-study-grid">
@@ -706,7 +787,7 @@ export default function ClassificationPhase({
           key={`${round}-${currentWord.id}`}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="classify-word-card mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white"
+          className={`classify-word-card mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white ${artUrl ? 'classify-has-art lg:max-w-4xl' : ''}`}
         >
         <div className="h-1.5 w-full bg-slate-100">
           <motion.div
@@ -739,7 +820,7 @@ export default function ClassificationPhase({
         </div>
 
         <div className="flex flex-col items-center px-4 py-4 text-center sm:px-8 sm:py-5">
-          <p className="mb-2 text-[11px] font-semibold tracking-[0.12em] text-slate-400">先想意思，再看提示</p>
+          <p className="classify-tip-line mb-2 text-[11px] font-semibold tracking-[0.12em] text-slate-400">先想意思，再看提示</p>
           <AutoFitText maxPx={44} minPx={22} fitKey={currentWord.word} className="mb-2 w-full">
             <ColoredWord
               word={currentWord.word}
@@ -763,44 +844,37 @@ export default function ClassificationPhase({
             </div>
           )}
 
-          {currentWord.meaning && (
-            <div className="classify-meaning-panel mb-3 w-full max-w-lg px-3.5 py-2.5 text-left">
-              <p className="text-base font-semibold text-slate-700 sm:text-lg">
-                {currentWord.part_of_speech && <span className="mr-2 text-sm font-medium text-slate-400">{currentWord.part_of_speech}</span>}
-                {currentWord.meaning}
-              </p>
-            </div>
-          )}
-
-          <div className="flex min-h-8 items-center justify-center">
-            {memoryHook?.wordId === currentWord.id ? (
-              <div className="classify-memory-tip flex max-w-lg items-start gap-2 px-3 py-2 text-left text-xs sm:text-sm">
-                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{memoryHook.text}</span>
+          {artUrl ? (
+            // 有配图: 手机 / 平板图在中文左边;电脑上 单词 → 图 → 中文和例句左右并排
+            <div className="classify-art-info">
+              <div ref={setArtBox} className="classify-word-art">
+                <img
+                  src={artUrl}
+                  alt={`配图:${currentWord.meaning || currentWord.word}`}
+                  width={512}
+                  height={512}
+                  draggable={false}
+                  onError={() => setBrokenArt(prev => new Set(prev).add(artUrl))}
+                />
               </div>
-            ) : (
-              <button
-                onClick={fetchMemoryHook}
-                disabled={hookLoading}
-                className="classify-memory-button inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition disabled:opacity-60"
-              >
-                <Lightbulb className="h-3.5 w-3.5" />
-                {hookLoading ? '妙招生成中…' : '记忆妙招'}
-              </button>
-            )}
-          </div>
-
-          {currentWord.example_sentence && (
-            <div className="classify-example-panel mt-3 w-full max-w-lg px-3.5 py-2.5 text-left">
-              <p className="text-sm leading-relaxed text-slate-600">{currentWord.example_sentence}</p>
-              {currentWord.example_translation && <p className="mt-1 text-xs text-slate-400">{currentWord.example_translation}</p>}
+              <div className={`classify-art-txt${currentWord.example_sentence ? '' : ' no-ex'}`}>
+                {meaningPanel('classify-art-mean')}
+                {memoryHookRow('classify-art-hook justify-start')}
+                {examplePanel('classify-art-ex')}
+              </div>
             </div>
+          ) : (
+            <>
+              {meaningPanel('mb-3 max-w-lg')}
+              {memoryHookRow('justify-center')}
+              {examplePanel('mt-3 max-w-lg')}
+            </>
           )}
         </div>
         </motion.section>
 
         {/* 三个分类卡：不再用大块高饱色，让学生依靠图标、文案和边框做快速判断 */}
-        <section className="classify-decision-panel mx-auto w-full max-w-2xl">
+        <section className={`classify-decision-panel mx-auto w-full max-w-2xl ${artUrl ? 'lg:max-w-4xl' : ''}`}>
         {studyMode ? (
           <>
             <div className="mb-2 flex items-end justify-between gap-3 px-1">

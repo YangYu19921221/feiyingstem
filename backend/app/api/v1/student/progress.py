@@ -16,6 +16,7 @@ from app.schemas.progress import (
     StudentBookListItem
 )
 from app.api.v1.auth import get_current_student, get_current_user
+from app.services import word_art
 from app.services.scope_service import (
     get_allowed_unit_ids, get_group_word_ids, can_enter_unit, deny_message,
 )
@@ -173,7 +174,8 @@ async def start_learning(
             "tts_text": word.tts_text,
             "difficulty": word.difficulty,
             "audio_url": word.audio_url,
-            "image_url": word.image_url,
+            # 分类卡配图里画着单词,只给分类模式(听写/拼写拿到等于给答案),见 services/word_art
+            "image_url": word_art.visible_url(word.word, word.image_url, learning_mode),
             "order_index": order_idx,
             "meaning": meaning_text,
             "part_of_speech": pos_text,
