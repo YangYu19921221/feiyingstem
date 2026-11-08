@@ -271,6 +271,20 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 每晚自动备份(2026-11-08 **已上线**,用户「如果我那天突然情况不在了…傻瓜也能维护」→「自动备份做了没 每天晚上12点备份,次日备份好的就把前一天的删除」;
+  选了「数据库 + 上传文件」「也传一份到腾讯云 COS」)。在这之前**生产没有任何定时备份**(最近一份整库是 07-15 手动的),只有改库前手动留的快照。
+  脚本 backend/scripts/nightly_backup.py,systemd 定时器 eh-nightly-backup.timer(deploy/nightly-backup/,北京 00:00,Persistent=true 关机错过开机补跑,
+  Nice 10 + IOSchedulingClass idle)。每晚: ①数据库走 SQLite 在线备份 API(不停服务;库是 WAL,**直接 cp 会拷坏**,见记忆 sqlite3 .backup 那条),
+  拷完改成非 WAL 单文件,打开跑 quick_check + 数 users,不对就不用 ②uploads 整个打 tar.gz(配图 / 封面 / 二维码,约 1.2G),读一遍核对文件数
+  ③存本机 /www/backup/english-helper/nightly/ + COS 桶 backup/nightly/(桶是私有的,匿名 403),传完比对大小
+  ④**三样都成功才删前一天那份**(本机和 COS 两处);任何一步失败: 旧的留着、退出码 1。磁盘剩不到 5G 不备份。
+  **不备份 private_media/phonetics(音标视频 4.9G)**: 原片已经在 COS 桶 phonetics/ 下。private_media 里别的(跟读录音、讲义渲染)也没备份,要的话加进 tar。
+  结果写 private_media/backup/status.json(最近 30 次);管理端首页「数据备份(每晚 0 点自动)」卡片(GET /admin/system/backup-status,仅 admin):
+  正常写几点、多大、几个账号、存了几处;**失败或超过 36 小时没成功就标红**写原因。
+  生产实测: 数据库 590MB(848 个账号)7.6 秒、上传文件 1.2GB(2.7 万个)110 秒、传 COS 15 秒,共约 2.5 分钟,备份期间网站 200、0 次 database is locked。
+  手动跑一次: `ssh feiying "systemctl start eh-nightly-backup.service"`;看日志 `journalctl -u eh-nightly-backup -n 20`。
+  **从备份恢复**: 停两个服务 → 把 nightly/eh-db-*.db 拷成 backend/english_helper.db(先把现在的挪走,别删)→ 删掉旧的 -wal / -shm →
+  tar -xzf eh-uploads-*.tar.gz -C backend/ → 启动两个服务。本机那份没了就从 COS 桶 backup/nightly/ 下载。**还没做过一次真的恢复演练**
 - ✅ 分类记忆卡单词配图(2026-11-07 10:12 **已部署生产**,提交 6cf5b01;progress.py 生产==HEAD~1 整推 + 新文件 services/word_art.py、scripts/import_word_art.py,两个服务都重启;
   前端 mw5rfp6b 整推;214 张彩色图在生产 backend/uploads/word-art/(源图 /root/word_art_g3_color);备份 /root/eh_db_before_wordart_20261107_1007.db、
   /root/eh_code_before_wordart_20261107_1007.tgz、frontend/dist_bak_20261107_1007_wordart。用户「分类的单词如果配图应该怎么设计」→ 定布局 →「图片就存在我自己服务器硬盘上」→「后续的图片上的单词弄成彩色的」):

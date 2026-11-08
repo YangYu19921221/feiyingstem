@@ -1,0 +1,13 @@
+[Unit]
+Description=English Helper nightly backup (database + uploads -> local + Tencent COS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/www/wwwroot/english-helper/backend
+ExecStart=/www/wwwroot/english-helper/backend/venv/bin/python scripts/nightly_backup.py
+# 低优先级: 半夜也别跟网站抢 CPU / 磁盘
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=2h

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run English Helper backup every night at 00:00 Beijing time
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 Asia/Shanghai
+# 关机 / 重启错过了,开机后补跑一次
+Persistent=true
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

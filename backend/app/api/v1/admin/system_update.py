@@ -147,6 +147,35 @@ async def get_tts_status(current_user: User = Depends(get_current_admin)):
     return {"status": tts_guard.read_status()}
 
 
+@router.get("/backup-status")
+async def get_backup_status(current_user: User = Depends(get_current_admin)):
+    """每晚 0 点自动备份(scripts/nightly_backup.py)最近一次的结果。
+
+    还没跑过 = {"last": None}。ok=false 时 error 是给人看的中文原因;
+    stale = 最近一次成功已经超过 36 小时(定时器没跑 / 机器关过),也要提醒"""
+    import json
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[4] / "private_media" / "backup" / "status.json"
+    try:
+        runs = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        runs = []
+    if not isinstance(runs, list) or not runs:
+        return {"last": None, "last_ok": None, "stale": False}
+    keep = ("at", "ok", "error", "db", "uploads", "cos", "secs")
+    last = {k: runs[-1].get(k) for k in keep}
+    ok_runs = [r for r in runs if r.get("ok")]
+    last_ok = {k: ok_runs[-1].get(k) for k in keep} if ok_runs else None
+    stale = True
+    if last_ok and last_ok.get("at"):
+        try:
+            stale = datetime.now(timezone.utc) - datetime.fromisoformat(last_ok["at"]) > timedelta(hours=36)
+        except ValueError:
+            stale = True
+    return {"last": last, "last_ok": last_ok, "stale": stale}
+
+
 # ---------- 音标视频走 CDN 的开关(services/cos_video) ----------
 
 class VideoCdnSwitchIn(BaseModel):
