@@ -7,8 +7,12 @@
  * → 卡片上问一句,给「再听一遍 / 不会,看答案」。发呆提醒只看有没有操作,
  * 孩子隔一会儿动下鼠标就一直算「在学」;这里看的是「有没有进展」。
  * 每个词第一次作答的真实用时(切出页面的时间不算)随结果带出去,卡住过的词经 onStuck 上报。
+ *
+ * 界面(2026-11-08 重做): 配图 + 喇叭按钮章 + 字母格。
+ * 配图里画着单词(下面三成),听写时只露出上面 62%(全库量过单词最高在 70% 往下,见 index.css「分类记忆 · 听写」);
+ * 交卷后图往上滑,露出画着的词。图只在分类模式下发,单独的听写练习没有图,就是一个大喇叭。
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { posMeaning } from '../../utils/wordMeaning';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
@@ -16,6 +20,8 @@ import ColoredPhonetic from '../ColoredPhonetic';
 import ColoredWord from '../ColoredWord';
 import { normalizeAnswer } from '../../utils/normalizeAnswer';
 import { imeSafeInputProps } from '../../utils/noSuggestInput';
+import SpeakerButton, { SpeakerGlyph } from './SpeakerButton';
+import { isDictationArtSafe } from '../../data/dictationArtUnsafe';
 
 
 export interface DictationResult {
@@ -93,8 +99,28 @@ export default function DictationPhase({
   };
 
   const currentWord = roundWords[currentIndex];
-  const wordLength = currentWord?.word.replace(/\s+/g, '').length || 0;
   const wordLengthWithSpaces = currentWord?.word.length || 0;
+
+  // 配图: 只有分类模式下发(单独的听写练习拿不到)。图里画着单词的少数几张(单词画在了上半截)不用,
+  // 名单见 data/dictationArtUnsafe;背景图没有 onError,先用 Image 试着取一下,取不到就不显示
+  const [brokenArt, setBrokenArt] = useState<Set<string>>(() => new Set());
+  const candidateArt = currentWord?.image_url && isDictationArtSafe(currentWord.image_url) ? currentWord.image_url : null;
+  const [loadedArt, setLoadedArt] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!candidateArt || loadedArt.has(candidateArt) || brokenArt.has(candidateArt)) return;
+    const im = new Image();
+    im.onload = () => setLoadedArt(prev => new Set(prev).add(candidateArt));
+    im.onerror = () => setBrokenArt(prev => new Set(prev).add(candidateArt));
+    im.src = candidateArt;
+  }, [candidateArt, loadedArt, brokenArt]);
+  // 没取回来之前先按有图排版(占位底色),免得取回来时整张卡往下一跳;取失败才退回声音台
+  const artUrl = candidateArt && !brokenArt.has(candidateArt) ? candidateArt : null;
+  const nextArt = roundWords[currentIndex + 1]?.image_url;
+  useEffect(() => {
+    if (!nextArt) return;
+    const im = new Image();
+    im.src = nextArt;
+  }, [nextArt]);
 
   // 自动播放发音 (含 retry 抄写阶段每次状态变化都重新播一次, 让学生听不止 1 遍)
   useEffect(() => {
@@ -290,22 +316,21 @@ export default function DictationPhase({
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
+  // 换状态后 350ms 内的点击 / 回车不算: 「提交」和「下一个」在同一个位置,连按两下会把答案一闪就跳走
+  const settledAtRef = useRef(0);
+  useEffect(() => { settledAtRef.current = Date.now(); }, [submitted, retryPassed, currentIndex, round]);
+  const tooSoon = () => Date.now() - settledAtRef.current < 350;
+
+  // 输入框里的回车只管第一次交卷;交卷之后的回车由下面挂在 window 上的那个处理
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      if (retryMode && !retryPassed) {
-        handleRetrySubmit();
-      } else if (retryPassed || (submitted && isCorrect)) {
-        handleNext();
-      } else if (!submitted && userInput.length > 0) {
-        handleSubmit();
-      }
-    }
+    if (e.key !== 'Enter' || e.repeat || e.nativeEvent.isComposing) return;
+    if (!submitted && userInput.length > 0 && !tooSoon()) handleSubmit();
   };
 
   useEffect(() => {
     if (!submitted) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.repeat && !e.isComposing && Date.now() - settledAtRef.current >= 350) {
         if (retryMode && !retryPassed) {
           handleRetrySubmit();
         } else if (retryPassed || isCorrect) {
@@ -328,27 +353,25 @@ export default function DictationPhase({
 
   if (showRoundSummary) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
+      <div className="flex min-h-[70vh] flex-col items-center justify-center px-4">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-lg text-center"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="dict-card w-full max-w-md px-8 py-9 text-center"
         >
-          <div className="text-5xl md:text-6xl mb-4">🔄</div>
-          <h3 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">听写第 {round} 轮完成</h3>
-          <div className="flex justify-center gap-6 md:gap-10 mb-4">
-            <div className="text-center">
-              <div className="text-2xl md:text-3xl font-bold text-green-500">{roundCorrectCount}</div>
-              <div className="text-xs md:text-sm text-gray-400">✅ 拼对</div>
+          <h3 className="font-display text-2xl font-bold text-ink">第 {round} 轮听写写完了</h3>
+          <div className="mt-6 flex justify-center gap-10">
+            <div>
+              <div className="font-numeric text-4xl font-bold text-green-600">{roundCorrectCount}</div>
+              <div className="mt-1 text-sm text-ink-soft">一次拼对</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl md:text-3xl font-bold text-red-500">{roundErrorWords.length}</div>
-              <div className="text-xs md:text-sm text-gray-400">❌ 拼错</div>
+            <div>
+              <div className="font-numeric text-4xl font-bold text-accent-warm">{roundErrorWords.length}</div>
+              <div className="mt-1 text-sm text-ink-soft">还要再写</div>
             </div>
           </div>
-          <p className="text-gray-500 text-sm md:text-base">
-            还有 <span className="font-bold text-red-500">{roundErrorWords.length}</span> 个词需要重新听写...
-          </p>
+          <p className="mt-6 text-[15px] text-ink-soft">拼错的 {roundErrorWords.length} 个词马上再听写一遍</p>
         </motion.div>
       </div>
     );
@@ -356,20 +379,88 @@ export default function DictationPhase({
 
   if (!currentWord) return null;
 
+  const word = currentWord.word;
+  const isPhrase = word.includes(' ');
+  const groups = word.split(' ');
+  const letters = word.replace(/\s+/g, '').length;
+  // 格子大小: 11 格以内整个放一行;再长按最长那个词算(一个词不拆行,词和词之间换行),手机上格子不至于太小
+  const longest = Math.max(...groups.map(g => g.length));
+  const total = letters + groups.length - 1;
+  const tileN = total <= 11 ? Math.max(5, total) : Math.max(8, longest);
+  const typing = !submitted || (retryMode && !retryPassed);
+  const typedValue = retryMode ? retryInput : userInput;
+  const showResult = submitted && !retryMode;      // 拼对了: 格子按对错上色
+  const art = artUrl;
+
+  /** 一排字母格。mode=type 显示正在打的字,mode=result 显示第一次写的和对错 */
+  const renderSlots = (mode: 'type' | 'result') => {
+    let idx = 0;
+    const nextAt = typedValue.length;
+    return (
+      <div
+        className={`dict-slots${mode === 'result' && isCorrect ? ' is-correct' : ''}`}
+        style={{ ['--n' as string]: tileN }}
+        aria-hidden="true"
+      >
+        {groups.map((g, gi) => {
+          const start = idx;
+          idx += g.length + 1;
+          // 词和词之间的空格也占一位: 孩子没打空格时,打的那个字母显示在这里,不会「消失」
+          const sp = start - 1;
+          const spCh = mode === 'type' ? typedValue[sp] : undefined;
+          return (
+            <Fragment key={gi}>
+            {gi > 0 && (
+              <span className={`dict-space${spCh !== undefined ? (spCh === ' ' ? ' is-filled' : ' is-bad') : ''}${mode === 'type' && sp === nextAt ? ' is-next' : ''}`}>
+                {spCh !== undefined && spCh !== ' ' && <span>{spCh}</span>}
+              </span>
+            )}
+            <span className="dict-group">
+              {Array.from(g).map((ch, ci) => {
+                const at = start + ci;
+                if (mode === 'result') {
+                  const { result, displayChar } = getCharInfo(at);
+                  const cls = result === 'correct' ? 'is-right' : result === 'wrong' ? 'is-wrong' : 'is-missing';
+                  return (
+                    <span key={ci} className={`dict-tile ${cls}`} style={{ ['--i' as string]: at }}>
+                      <span>{displayChar}</span>
+                    </span>
+                  );
+                }
+                const typedCh = typedValue[at];
+                const filled = typedCh !== undefined;
+                const done = retryPassed && filled;
+                return (
+                  <span key={ci} className={`dict-tile${done ? ' is-right' : filled ? ' is-filled' : ''}${!done && at === nextAt ? ' is-next' : ''}`}>
+                    {filled && <span>{typedCh === ' ' ? ' ' : typedCh}</span>}
+                  </span>
+                );
+              })}
+            </span>
+            </Fragment>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
+    <div className="flex min-h-[70vh] flex-col items-center px-3 pb-6 pt-2 sm:px-6 md:justify-center">
       {/* 进度 */}
-      <div className="mb-6 text-center">
-        {round > 1 && (
-          <span className="text-xs md:text-sm text-orange-500 font-medium mr-2">第{round}轮</span>
-        )}
-        <span className="text-sm md:text-base text-gray-500">
-          听写 {currentIndex + 1} / {roundWords.length}
-        </span>
-        <div className="w-48 md:w-72 h-1.5 bg-gray-200 rounded-full mt-2 mx-auto overflow-hidden">
+      <div className="mb-4 w-full max-w-2xl sm:mb-5">
+        <div className="mb-2 flex items-center justify-between text-sm">
+          <span className="font-medium text-ink-soft">
+            听写 <span className="font-numeric">{currentIndex + 1} / {roundWords.length}</span>
+          </span>
+          {round > 1 && (
+            <span className="rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-semibold text-accent-warm">第 {round} 轮 · 错的再写</span>
+          )}
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[#f1e6dc]">
           <motion.div
-            className="h-full bg-accent rounded-full"
-            animate={{ width: `${((currentIndex + 1) / roundWords.length) * 100}%` }}
+            className="h-full rounded-full bg-[#e8743a]"
+            animate={{ width: `${((currentIndex + (submitted ? 1 : 0)) / roundWords.length) * 100}%` }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
           />
         </div>
       </div>
@@ -377,26 +468,34 @@ export default function DictationPhase({
       <AnimatePresence mode="wait">
         <motion.div
           key={`${round}-${currentWord.id}`}
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="bg-white rounded-3xl shadow-lg p-8 md:p-10 w-full max-w-md md:max-w-xl text-center"
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+          className="dict-card w-full max-w-2xl px-5 pb-6 pt-5 text-center sm:px-10 sm:pb-8 sm:pt-7"
         >
-          <div className="mb-4">
-            <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-              ✍️ 听写模式
-            </span>
-          </div>
+          {/* 配图(只露上半截)+ 喇叭;没有图就是一个声音台 */}
+          {art ? (
+            <div className={`dict-art${retryMode ? ' is-compact' : ''}`}>
+              <div
+                className={`dict-art-window${submitted ? ' is-revealed' : ''}`}
+                style={{ backgroundImage: `url("${art}")` }}
+                role="img"
+                aria-label={submitted ? `配图:${word}` : '这个词的配图'}
+              />
+              <div className="dict-medal-dock">
+                <SpeakerButton keepFocus onClick={() => playAudioSlow(word, currentWord.id)} />
+              </div>
+            </div>
+          ) : (
+            <div className="dict-stage">
+              <SpeakerButton keepFocus size="xl" onClick={() => playAudioSlow(word, currentWord.id)} />
+            </div>
+          )}
 
-          <p className="text-lg md:text-2xl text-gray-600 mb-4 md:mb-6">{posMeaning(currentWord)}</p>
-
-          <button
-            onClick={() => playAudioSlow(currentWord.word, currentWord.id)}
-            className="mb-6 p-4 md:p-5 rounded-full bg-blue-50 hover:bg-blue-100 transition"
-          >
-            <span className="text-3xl md:text-4xl">🔊</span>
-          </button>
-          <p className="text-xs md:text-sm text-gray-400 mb-6">点击重新播放</p>
+          <p className={`font-display text-xl text-ink sm:text-2xl ${art ? 'mt-12 sm:mt-14' : 'mt-5'}`}>
+            {posMeaning(currentWord)}
+          </p>
 
           {/* 卡住了吗: 想了很久、最近也没打字。开始打字就收起 */}
           <AnimatePresence>
@@ -406,27 +505,27 @@ export default function DictationPhase({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 role="status"
-                className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-left"
+                className="mx-auto mt-4 max-w-md rounded-2xl bg-amber-50 px-4 py-3 text-left ring-1 ring-amber-200"
               >
-                <p className="text-sm md:text-base font-semibold text-amber-800">这个词想了好一会儿了,卡住了吗?</p>
-                <p className="mt-0.5 text-xs md:text-sm text-amber-700">再听一遍,或者看答案照着写,都比一直空着强。</p>
+                <p className="text-[15px] font-semibold text-amber-900">这个词想了好一会儿了,卡住了吗?</p>
+                <p className="mt-0.5 text-sm text-amber-800">再听一遍,或者看答案照着写,都比一直空着强。</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       lastTypeAtRef.current = Date.now();
                       setStuckAsk(false);
-                      playAudioSlow(currentWord.word, currentWord.id);
+                      playAudioSlow(word, currentWord.id);
                       setTimeout(() => inputRef.current?.focus(), 50);
                     }}
-                    className="min-h-11 rounded-xl bg-white px-4 text-sm font-medium text-amber-800 border border-amber-300 hover:bg-amber-100 transition"
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-white px-4 text-sm font-semibold text-amber-900 ring-1 ring-amber-300 transition hover:bg-amber-100"
                   >
-                    🔊 再听一遍
+                    <SpeakerGlyph className="h-[18px] w-[18px]" /> 再听一遍
                   </button>
                   <button
                     type="button"
                     onClick={giveUp}
-                    className="min-h-11 rounded-xl bg-amber-500 px-4 text-sm font-medium text-white hover:bg-amber-600 transition"
+                    className="min-h-11 rounded-xl bg-amber-500 px-4 text-sm font-semibold text-white transition hover:bg-amber-600"
                   >
                     不会,看答案
                   </button>
@@ -435,161 +534,112 @@ export default function DictationPhase({
             )}
           </AnimatePresence>
 
-          {!submitted ? (
-            <div className="mb-4 px-2 md:px-6">
-              <input
-                {...imeSafeInputProps()}
-                ref={inputRef}
-                value={userInput}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                maxLength={wordLengthWithSpaces}
-                placeholder="输入单词..."
-                className="w-full text-center text-3xl md:text-4xl font-mono font-bold bg-transparent border-0 border-b-4 border-primary/40 focus:border-primary outline-none transition-colors duration-200 py-2 text-gray-800 placeholder:text-gray-300"
-              />
-            </div>
-          ) : (
-            <div className="mb-4 flex justify-center items-baseline gap-0.5 flex-wrap">
-              {Array.from(currentWord.word).map((ch, i) => {
-                if (ch === ' ') {
-                  return <span key={i} className="w-3 inline-block" />;
-                }
-                const { result, displayChar } = getCharInfo(i);
-                const colorClass =
-                  result === 'correct' ? 'text-green-600' :
-                  result === 'wrong'   ? 'text-red-500 line-through decoration-2' :
-                                         'text-red-300';
-                return (
-                  <span key={i} className={`text-3xl md:text-4xl font-mono font-bold ${colorClass}`}>
-                    {displayChar}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {!submitted && (
-            <p className="text-xs text-gray-400 mb-2">
-              {wordLength} 个字母{currentWord.word.includes(' ') ? `（短语，共 ${wordLengthWithSpaces} 个字符含空格）` : ''} · {userInput.length}/{wordLengthWithSpaces}
-            </p>
-          )}
-
-          {/* 反馈 */}
-          {submitted && (
+          {/* 拼错了: 正确写法 + 照着写几遍 */}
+          {submitted && !isCorrect && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-4"
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="mx-auto mt-4 max-w-md rounded-2xl bg-[#fff6ef] px-4 py-3"
             >
-              {isCorrect ? (
-                <>
-                  <div className="text-green-600 font-medium text-lg">✅ 正确！</div>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleNext}
-                    className="mt-4 px-8 py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90 cursor-pointer"
-                  >
-                    下一个
-                  </motion.button>
-                </>
-              ) : (
-                <div>
-                  <div className="text-red-600 font-medium text-lg mb-2">❌ 不对哦</div>
-                  <p className="text-gray-500 text-sm mb-1">正确拼写：</p>
-                  <div className="flex justify-center mb-1">
-                    <ColoredWord
-                      word={currentWord.word}
-                      syllables={currentWord.syllables}
-                      className="text-2xl md:text-3xl font-bold"
-                    />
-                  </div>
-                  {currentWord.phonetic && (
-                    <div className="mt-1 flex justify-center">
-                      <ColoredPhonetic phonetic={currentWord.phonetic} size="sm" />
-                    </div>
-                  )}
-
-                  {/* 重新输入区域：需连续 3 次正确 */}
-                  {!retryPassed ? (
-                    <div className="mt-4">
-                      <p className="text-sm text-orange-600 font-medium mb-2">
-                        请重新输入正确拼写 <span className="font-numeric">({copyDoneCount} / {COPY_REQUIRED})</span>
-                      </p>
-                      <input
-                        {...imeSafeInputProps()}
-                        value={retryInput}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        maxLength={wordLengthWithSpaces}
-                        className="w-full md:max-w-md md:mx-auto block px-4 py-3 text-center text-xl md:text-2xl font-mono border-2 border-orange-300 rounded-xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition"
-                        placeholder="输入正确的单词"
-                        autoFocus
-                      />
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleRetrySubmit}
-                        disabled={retryInput.length === 0}
-                        className={`mt-3 px-8 py-3 rounded-2xl text-lg font-medium shadow-lg cursor-pointer transition ${
-                          retryInput.length > 0
-                            ? 'bg-accent text-white hover:opacity-90'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        }`}
-                      >
-                        提交本遍（{copyDoneCount + 1} / {COPY_REQUIRED}）
-                      </motion.button>
-                    </div>
-                  ) : (
-                    <div className="mt-4">
-                      <div className="text-green-600 font-medium">✅ 已抄写 {COPY_REQUIRED} 遍</div>
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleNext}
-                        className="mt-3 px-8 py-3 rounded-2xl text-lg font-medium bg-primary text-white shadow-lg hover:opacity-90 cursor-pointer"
-                      >
-                        下一个
-                      </motion.button>
-                    </div>
-                  )}
+              <div className="text-sm text-ink-soft">
+                {userInput ? <>你写的 <span className="font-mono text-[#cf3f32] line-through decoration-2">{userInput}</span>,正确写法</> : '正确写法'}
+              </div>
+              <div className="mt-1 flex justify-center">
+                <ColoredWord word={word} syllables={currentWord.syllables} className="font-display text-3xl font-bold sm:text-4xl" />
+              </div>
+              {currentWord.phonetic && (
+                <div className="mt-1 flex justify-center">
+                  <ColoredPhonetic phonetic={currentWord.phonetic} size="sm" />
                 </div>
               )}
             </motion.div>
           )}
 
-          {/* 提交按钮 */}
-          {!submitted && userInput.length > 0 && (
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleSubmit}
-              className={`mt-4 px-8 py-3 rounded-2xl text-lg font-medium shadow-lg cursor-pointer transition ${
-                userInput.length === wordLengthWithSpaces
-                  ? 'bg-accent text-white hover:opacity-90'
-                  : 'bg-gray-200 text-gray-500'
-              }`}
-            >
-              提交 (Enter)
-            </motion.button>
+          {/* 字母格: 透明输入框盖在上面,点哪里都能打字;读屏读输入框 */}
+          <div className={`dict-type-area mx-auto ${submitted && !isCorrect ? 'mt-4' : 'mt-5 sm:mt-6'}`}>
+            {typing ? renderSlots('type') : showResult ? renderSlots('result') : renderSlots('type')}
+            {typing && (
+              <input
+                {...imeSafeInputProps()}
+                ref={inputRef}
+                value={typedValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                maxLength={wordLengthWithSpaces}
+                aria-label={retryMode ? `照着正确写法再写一遍,第 ${copyDoneCount + 1} 遍` : `听写:${posMeaning(currentWord)},${letters} 个字母`}
+                className="dict-type-input"
+                autoFocus
+              />
+            )}
+          </div>
+
+          {/* 格子下面的一行小字 */}
+          {!submitted && (
+            <p className="mt-3 text-sm text-ink-mute">
+              {letters} 个字母{isPhrase ? ' · 词和词之间要打空格' : ''}
+            </p>
+          )}
+          {retryMode && !retryPassed && (
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm font-medium text-accent-warm">
+              照着写 {COPY_REQUIRED} 遍
+              <span className="dict-copy-dots" aria-label={`已写 ${copyDoneCount} 遍`}>
+                {Array.from({ length: COPY_REQUIRED }, (_, k) => <span key={k} className={k < copyDoneCount ? 'is-done' : ''} />)}
+              </span>
+            </div>
           )}
 
-          {/* 跳过 = 提交空答案，显示正确答案 */}
-          {!submitted && (
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={giveUp}
-              className="mt-3 min-h-11 rounded-xl bg-gray-100 px-6 text-sm font-medium text-gray-500 transition hover:bg-gray-200"
-            >
-              跳过（标记为未掌握）
-            </motion.button>
-          )}
+          {/* 按钮 */}
+          <div className="mt-5 flex flex-col items-center gap-2 sm:mt-6">
+            {!submitted && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { if (!tooSoon()) handleSubmit(); }}
+                  disabled={userInput.length === 0}
+                  className="btn-glow h-14 w-full rounded-2xl px-10 text-lg font-bold text-white sm:w-auto sm:min-w-[220px]"
+                >
+                  写好了 <span className="ml-1 hidden text-sm font-medium opacity-75 sm:inline">Enter</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={giveUp}
+                  className="min-h-11 px-4 text-[15px] font-medium text-ink-mute underline-offset-4 transition hover:text-ink-soft hover:underline"
+                >
+                  不会，看答案（算没拼对）
+                </button>
+              </>
+            )}
+            {retryMode && !retryPassed && (
+              <button
+                type="button"
+                onClick={() => { if (!tooSoon()) handleRetrySubmit(); }}
+                disabled={retryInput.length === 0}
+                className="btn-glow h-14 w-full rounded-2xl px-10 text-lg font-bold text-white sm:w-auto sm:min-w-[220px]"
+              >
+                写好第 {copyDoneCount + 1} 遍
+              </button>
+            )}
+            {(retryPassed || (submitted && isCorrect)) && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                className="flex w-full flex-col items-center gap-3"
+              >
+                <div className={`font-display text-lg font-semibold ${isCorrect ? 'text-green-700' : 'text-accent-warm'}`} role="status">
+                  {isCorrect ? '拼对了！' : `照着写了 ${COPY_REQUIRED} 遍，记住它`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (!tooSoon()) handleNext(); }}
+                  className="btn-glow h-14 w-full rounded-2xl px-10 text-lg font-bold text-white sm:w-auto sm:min-w-[220px]"
+                >
+                  下一个 <span className="ml-1 hidden text-sm font-medium opacity-75 sm:inline">Enter</span>
+                </button>
+              </motion.div>
+            )}
+          </div>
         </motion.div>
       </AnimatePresence>
     </div>

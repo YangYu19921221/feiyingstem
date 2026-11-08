@@ -2121,3 +2121,190 @@ body.student-interface textarea.tutor-composer-input:focus {
   .book-jacket, .book-jacket-cover { transition: none; }
   .book-shelf-item:hover .book-jacket, .book-shelf-item:active .book-jacket { transform: none; }
 }
+
+/* ===== 分类记忆 · 听写(2026-11-08 重做,components/classify/DictationPhase + SpeakerButton) =====
+   配图下面三成画着单词(全库量过: 单词最高也在图片 70% 往下),听写时只露出上面 62%;
+   用背景图不用 <img>,长按存不下整张图。交卷后图往上滑,露出画着的那个词。 */
+.dict-card {
+  background: #fff;
+  border: 1px solid #f0e2d6;
+  border-radius: 28px;
+  box-shadow: 0 1px 2px rgba(122, 78, 44, 0.05), 0 14px 40px -18px rgba(189, 82, 39, 0.22);
+}
+/* 图的高度跟着屏幕高度走: 笔记本 768 高约 208px,高屏最多 300px;宽 = 高 ÷ 0.62 */
+.dict-art { margin: 0 auto; position: relative; width: min(100%, calc(clamp(150px, 100vh - 560px, 300px) * 1.613)); }
+.dict-art-window {
+  background-color: #f6eee6;
+  background-position: 50% 0%;
+  background-repeat: no-repeat;
+  background-size: 100% auto;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 1px rgba(122, 78, 44, 0.08), 0 12px 24px -16px rgba(122, 78, 44, 0.45);
+  overflow: hidden;
+  padding-top: 62%;
+  transition: background-position 1100ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dict-art-window.is-revealed { background-position: 50% 100%; }
+.dict-medal-dock { bottom: 0; left: 50%; position: absolute; transform: translate(-50%, 50%); }
+.dict-stage {
+  align-items: center;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(232, 116, 58, 0.09) 0 1.5px, transparent 1.5px 24px),
+    #fffaf5;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 1px rgba(122, 78, 44, 0.07);
+  display: flex;
+  height: 168px;
+  justify-content: center;
+}
+@media (max-width: 640px) { .dict-stage { height: 140px; } }
+
+/* 喇叭按钮章: 暖橙径向渐变 + 白边 + 带偏移的软阴影,按下去往下沉 */
+.speaker-medal {
+  -webkit-tap-highlight-color: transparent;
+  align-items: center;
+  background: radial-gradient(120% 120% at 32% 24%, #ffb47c 0%, #f47a3c 44%, #c4521d 100%);
+  border-radius: 9999px;
+  box-shadow: 0 0 0 5px #fff, 0 12px 22px -6px rgba(170, 72, 26, 0.55),
+    inset 0 2px 1px rgba(255, 255, 255, 0.55), inset 0 -4px 8px rgba(120, 40, 8, 0.28);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  position: relative;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.speaker-medal:hover { transform: translateY(-1px); }
+.speaker-medal:active {
+  box-shadow: 0 0 0 5px #fff, 0 5px 10px -4px rgba(170, 72, 26, 0.5),
+    inset 0 2px 1px rgba(255, 255, 255, 0.4), inset 0 -2px 6px rgba(120, 40, 8, 0.3);
+  transform: translateY(2px) scale(0.97);
+}
+.speaker-medal:focus-visible { outline: 3px solid rgba(189, 82, 39, 0.55); outline-offset: 7px; }
+.speaker-lg { height: 76px; width: 76px; }
+.speaker-xl { height: 92px; width: 92px; }
+.speaker-sm { box-shadow: 0 0 0 3px #fff, 0 6px 12px -4px rgba(170, 72, 26, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.5); height: 40px; width: 40px; }
+@media (max-width: 640px) { .speaker-lg { height: 68px; width: 68px; } }
+.speaker-medal-glyph { filter: drop-shadow(0 1px 1px rgba(120, 40, 8, 0.35)); height: 46%; width: 46%; }
+.speaker-glyph { display: inline-block; flex: none; }
+.speaker-glyph .speaker-body { fill: currentColor; }
+.speaker-glyph .speaker-wave { fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 2; }
+.speaker-glyph .w3 { opacity: 0.55; }
+.speaker-glyph.is-playing .speaker-wave { animation: speaker-wave 1.1s ease-in-out infinite; }
+.speaker-glyph.is-playing .w2 { animation-delay: 0.14s; }
+.speaker-glyph.is-playing .w3 { animation-delay: 0.28s; }
+@keyframes speaker-wave { 0%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.speaker-ripple { border-radius: inherit; inset: 0; pointer-events: none; position: absolute; }
+.speaker-medal.is-playing .speaker-ripple { animation: speaker-ripple 1.3s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+@keyframes speaker-ripple {
+  0% { box-shadow: 0 0 0 5px rgba(244, 122, 60, 0.42); }
+  100% { box-shadow: 0 0 0 26px rgba(244, 122, 60, 0); }
+}
+
+/* 字母格: 字母用 Baloo 2(书封那份),和图里画的圆体字一个味道。格子大小按最长那个词的字母数算 */
+.dict-type-area { position: relative; }
+.dict-type-input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  caret-color: transparent;
+  color: transparent;
+  cursor: text;
+  font-size: 16px;
+  height: 100%;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+}
+.dict-slots {
+  --dict-s: clamp(1.15rem, calc((min(100vw, 40rem) - 4.25rem) / (var(--n, 6) * 1.15)), 3rem);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0;
+  justify-content: center;
+}
+/* 词和词之间的空格位: 平时只是一道浅浅的点,打了空格变实,打成字母就把字母红着显示出来 */
+.dict-space {
+  align-items: center;
+  color: #cf3f32;
+  display: inline-flex;
+  font-family: 'JacketMark', ui-rounded, system-ui, sans-serif;
+  font-size: calc(var(--dict-s) * 0.5);
+  font-weight: 800;
+  height: calc(var(--dict-s) * 1.2);
+  justify-content: center;
+  position: relative;
+  width: calc(var(--dict-s) * 0.62);
+}
+.dict-space::before {
+  background: #f1dccb;
+  border-radius: 9999px;
+  bottom: 18%;
+  content: '';
+  height: 4px;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 4px;
+}
+.dict-space.is-filled::before { background: #e8743a; width: 10px; }
+.dict-space.is-bad::before { background: #f2b0a8; width: 10px; }
+.dict-type-area:focus-within .dict-space.is-next::before { animation: dict-caret 1s steps(1) infinite; background: #e8743a; width: 10px; }
+.dict-group { display: inline-flex; gap: calc(var(--dict-s) * 0.15); }
+.dict-tile {
+  align-items: center;
+  background: #fff8f1;
+  border-radius: calc(var(--dict-s) * 0.28);
+  box-shadow: inset 0 0 0 1.5px #f1dccb, inset 0 -3px 0 #f1dccb;
+  color: #3a2a1f;
+  display: inline-flex;
+  font-family: 'JacketMark', ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif;
+  font-size: calc(var(--dict-s) * 0.64);
+  font-weight: 800;
+  height: calc(var(--dict-s) * 1.2);
+  justify-content: center;
+  line-height: 1;
+  transition: background-color 160ms, box-shadow 160ms, color 160ms;
+  width: var(--dict-s);
+}
+.dict-fixed {
+  align-items: center;
+  color: #8a7767;
+  display: inline-flex;
+  font-family: 'JacketMark', ui-rounded, system-ui, sans-serif;
+  font-size: calc(var(--dict-s) * 0.64);
+  font-weight: 800;
+  height: calc(var(--dict-s) * 1.2);
+}
+.dict-tile.is-filled { background: #fff; box-shadow: inset 0 0 0 1.5px #f0b48a, inset 0 -3px 0 #f0b48a; }
+.dict-tile.is-filled > span { animation: dict-pop 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+.dict-type-area:focus-within .dict-tile.is-next { background: #fff; box-shadow: inset 0 0 0 2px #e8743a, inset 0 -3px 0 #e8743a; }
+.dict-type-area:focus-within .dict-tile.is-next::after {
+  animation: dict-caret 1s steps(1) infinite;
+  background: #e8743a;
+  border-radius: 2px;
+  content: '';
+  height: 50%;
+  width: 2px;
+}
+.dict-tile.is-right { background: #ecf8ee; box-shadow: inset 0 0 0 1.5px #a6dab0, inset 0 -3px 0 #a6dab0; color: #23803a; }
+.dict-tile.is-wrong { background: #fff0ee; box-shadow: inset 0 0 0 1.5px #f2b0a8, inset 0 -3px 0 #f2b0a8; color: #cf3f32; }
+.dict-tile.is-wrong > span { text-decoration: line-through; text-decoration-thickness: 2px; }
+.dict-tile.is-missing { background: #fffaf9; box-shadow: inset 0 0 0 1.5px #f6cfca; color: #e6a49c; }
+.dict-slots.is-correct .dict-tile { animation: dict-hop 460ms cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: calc(var(--i, 0) * 38ms); }
+.dict-copy-dots { display: inline-flex; gap: 6px; }
+.dict-copy-dots > span { background: #f1dccb; border-radius: 9999px; height: 8px; transition: background-color 200ms, width 200ms; width: 8px; }
+.dict-copy-dots > span.is-done { background: #e8743a; width: 18px; }
+@keyframes dict-pop { 0% { opacity: 0.2; transform: scale(0.6) translateY(4px); } 100% { opacity: 1; transform: none; } }
+@keyframes dict-hop { 0% { transform: none; } 35% { transform: translateY(-7px); } 100% { transform: none; } }
+@keyframes dict-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .dict-art-window { transition: none; }
+  .speaker-glyph.is-playing .speaker-wave, .speaker-medal.is-playing .speaker-ripple,
+  .dict-tile.is-filled > span, .dict-slots.is-correct .dict-tile { animation: none; }
+  .speaker-medal, .speaker-medal:hover, .speaker-medal:active { transition: none; transform: none; }
+}
+/* 拼错了要照着写: 图缩小一点,给正确写法和格子让地方(手机上一屏放得下) */
+.dict-art.is-compact { width: min(100%, calc(clamp(100px, 100vh - 700px, 170px) * 1.613)); }
+@media (min-width: 641px) { .dict-art { transition: width 500ms cubic-bezier(0.16, 1, 0.3, 1); } }

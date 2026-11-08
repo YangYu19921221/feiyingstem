@@ -271,6 +271,24 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 分类记忆「听写」重做: 配图 + 喇叭按钮章 + 字母格(2026-11-08,用户「听写部分 UI 也需要图片…喇叭图片你也从新设计下…有质感看着舒服」):
+  components/classify/DictationPhase(逻辑没动: 首次结果、抄 N 遍、卡住了吗、用时上报照旧)+ SpeakerButton + index.css「分类记忆 · 听写」那段。
+  ①**配图只露上半截**: 图里画着单词,全库 27,118 张 OCR 量过(11-08): 单词顶边 p0.1 在图片 68.2%、p1 71.7%、中位 78.7%,
+  听写时窗口 padding-top 62% 只露上面那截;**用背景图不用 <img>**(长按存下整张 = 拿到答案);交卷后图往上滑,露出画着的词。
+  顶边在 66% 以内的 15 张(ten / four / five / nine / seven / three / jar / zip / plus / hash / long …,短词字画得大)
+  列在 data/dictationArtUnsafe.ts,听写时不显示图,退回声音台。**以后新出的图要重扫**: 工具在
+  frontend/.impeccable/mocks/word-art/tools/dictation_scan(从 COS 夜间备份下载 uploads → OCR → gen_unsafe.py 写名单)。
+  ⚠️ 生产 uploads/word-art/sunshine.jpg 是 0 字节空文件(11-07 12:02,15 个词条引用),分类卡和听写取不到会自动退回无图,要重新出图
+  测试 tests/test_dictation_art_guard.py 锁住: 露出比例 ≤ 65%、不用 <img>、没交卷前配图说明不带单词。
+  图只有分类模式下发,单独的「听写练习」(DictationPractice)没有图 —— 那边是一个大喇叭的声音台
+  ②**喇叭按钮章**: 自己画的 SVG(喇叭 + 三道声波,不用 🔊 emoji),暖橙径向渐变 + 白边 + 带偏移的软阴影,按下去往下沉;
+  正在发音时声波一圈圈亮、外面扩一道波纹。「在不在响」读 useAudio 新加的 useAudioPlaying(每个 <audio> 挂 playing / pause / ended,
+  全局同一时刻只有一个在响;interruptAllAudio 先置 false)。点喇叭不抢输入框焦点(手机键盘不收起再弹)
+  ③**字母格**: 一个字母一格(Baloo 2,书封那份字体),打一个亮一格,下一格有闪烁光标;透明输入框盖在格子上,读屏读输入框;
+  短语词和词之间有个空格位(没打空格时那个字母红着显示在这里,不会「消失」);拼对了格子变绿跳一下,拼错了按位标对 / 错 / 漏
+  ④图的大小跟着屏幕高度走(1366×768 笔记本一屏放下不滚动,手机 390×844 卡片底到 689px);拼错要抄写时图缩小给正确写法让地方
+  ⑤顺手修: 输入框里的回车和 window 上的回车以前会一起响(交卷那一下顺便把「下一个」也按了),现在输入框只管第一次交卷;
+  换状态 350ms 内的点击 / 回车不算(「写好了」和「下一个」在同一个位置)。公告学生一条
 - ✅ 分类记忆每一步都显示「词性 中文」+ 导入模板合成一列「释义」(2026-11-08,用户「分类中所有模块词性和释义都要显示,而且要显示一起,并且上传文档也需要改」,
   选了「词性在前、紧挨中文」「合成一列释义」): 真源 frontend/src/utils/wordMeaning.ts(posMeaning / posMeaningParts / splitPosMeaning / meaningHasPos)。
   库里三种写法并存(生产 14.3 万条释义): ①词性写在释义里 `n.书房；学习 v.学习`(约 9.3 万,part_of_speech 空)②单独一栏 `n.` + `英语`(约 2 万)

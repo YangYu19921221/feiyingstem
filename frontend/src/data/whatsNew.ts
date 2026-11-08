@@ -28,6 +28,14 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'classify-dictation-redesign-2026-11',
+    date: '2026-11-08',
+    title: '✍️ 听写换新样子了: 有图、有格子',
+    desc: '分类记忆的听写这一步,上面多了这个词的图(只露出画面,单词藏在下面,写完才滑出来给你看);一个字母一个格子,打一个亮一格;中间的橙色喇叭点一下再听一遍,正在读的时候它会一圈圈动。',
+    where: '学生端首页 → 我的书架 → 任意一本书 → 任意一个单元 →「分类」→ 分完类后的听写',
+    roles: ['student'],
+  },
+  {
     id: 'word-pos-meaning-together-2026-11',
     date: '2026-11-08',
     title: '📝 单词模板改了: 词性和中文写在同一格',

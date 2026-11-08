@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState, useSyncExternalStore } from 'react';
 import { API_BASE_URL } from '../config/env';
 
 /**
@@ -56,6 +56,8 @@ let globalPlayToken = 0;
  */
 function interruptAllAudio(): number {
   globalPlayToken++;
+  // 先算「没在响」: 新的这次真响了 <audio> 会发 playing 再改回来;拉音频失败也不会一直亮着
+  setAudioPlaying(false);
   if (activeAudioEl) {
     try { activeAudioEl.pause(); activeAudioEl.currentTime = 0; } catch {}
   }
@@ -97,6 +99,28 @@ export function useAudioBlocked(): boolean {
     };
   }, []);
   return blocked;
+}
+
+// ---- 现在有没有声音在响(2026-11-08 听写页的喇叭按钮播放时会动)----
+// 每个 useAudio 实例的 <audio> 都挂上 playing / pause / ended,全局同一时刻只有一个在响
+// (见上面的互斥),所以一个布尔值就够了
+let audioPlaying = false;
+let playingListeners: Array<(playing: boolean) => void> = [];
+function setAudioPlaying(p: boolean) {
+  if (audioPlaying === p) return;
+  audioPlaying = p;
+  playingListeners.forEach((l) => l(p));
+}
+
+function subscribePlaying(cb: () => void) {
+  const l = () => cb();
+  playingListeners.push(l);
+  return () => { playingListeners = playingListeners.filter((x) => x !== l); };
+}
+
+/** 有没有单词发音正在响(只读,不影响播放) */
+export function useAudioPlaying(): boolean {
+  return useSyncExternalStore(subscribePlaying, () => audioPlaying, () => false);
 }
 
 let pendingUnlockRetry: (() => void) | null = null;
@@ -216,7 +240,18 @@ export function useAudio() {
 
   useEffect(() => {
     const audio = audioRef.current;
+    const onPlaying = () => setAudioPlaying(true);
+    const onStop = () => { if (!activeAudioEl || activeAudioEl === audio) setAudioPlaying(false); };
+    audio.addEventListener('playing', onPlaying);
+    audio.addEventListener('pause', onStop);
+    audio.addEventListener('ended', onStop);
+    audio.addEventListener('error', onStop);
     return () => {
+      audio.removeEventListener('playing', onPlaying);
+      audio.removeEventListener('pause', onStop);
+      audio.removeEventListener('ended', onStop);
+      audio.removeEventListener('error', onStop);
+      if (activeAudioEl === audio) setAudioPlaying(false);
       try { audio.pause(); } catch {}
       // 卸载时若本实例是当前在响的音频，连同浏览器 TTS 一并停掉并清登记
       if (activeAudioEl === audio) {
