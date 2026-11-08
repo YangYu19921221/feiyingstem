@@ -6,6 +6,7 @@ import { toast } from '../components/Toast';
 import { BookOpen, FileText, LibraryBig, PackageOpen } from 'lucide-react';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import BookJacket from '../components/book/BookJacket';
+import { splitPosMeaning } from '../utils/wordMeaning';
 
 interface ContentStats {
   word_books: {
@@ -246,12 +247,13 @@ const AdminContentManagement: React.FC = () => {
   };
 
   const downloadTemplate = () => {
-    const csvContent = `单词,音标,释义,词性,例句,例句翻译,难度,年级
-apple,/ˈæp.əl/,苹果,n.,I like to eat an apple every day.,我喜欢每天吃一个苹果。,2,primary
-book,/bʊk/,书,n.,She is reading a book in the library.,她在图书馆读书。,1,primary
-computer,/kəmˈpjuː.tər/,计算机,n.,I use my computer for work and study.,我用电脑工作和学习。,3,junior
-beautiful,/ˈbjuː.tɪ.fəl/,美丽的,adj.,The garden is very beautiful in spring.,春天的花园非常美丽。,2,primary
-study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上学英语。,2,primary`;
+    // 2026-11-08 起词性写进「释义」(n. 苹果),「词性」那一列留空即可;老文件两列分开写照样认
+    const csvContent = `单词,音标,释义,词性(可不填),例句,例句翻译,难度,年级
+apple,/ˈæp.əl/,n. 苹果,,I like to eat an apple every day.,我喜欢每天吃一个苹果。,2,primary
+book,/bʊk/,n. 书,,She is reading a book in the library.,她在图书馆读书。,1,primary
+beautiful,/ˈbjuː.tɪ.fəl/,adj. 美丽的,,The garden is very beautiful in spring.,春天的花园非常美丽。,2,primary
+study,/ˈstʌd.i/,n. 书房；学习  v. 学习；研究,,We study English every morning.,我们每天早上学英语。,2,primary
+at the weekend,,在周末,,I play football at the weekend.,我周末踢足球。,1,primary`;
 
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -280,12 +282,14 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
       const words = rows.slice(1).flatMap((row) => {
         const parts = row.map((cell) => String(cell ?? '').trim());
         if (!parts[0] || !parts[2]) return [];
+        // 释义里写了词性(n. 苹果)就拆出来;老文件单独的词性列有值就用它
+        const pm = splitPosMeaning(parts[2], parts[3]);
         return [{
           word: parts[0],
           phonetic: parts[1] || null,
           definitions: [{
-            meaning: parts[2],
-            part_of_speech: parts[3] || 'n.',
+            meaning: pm.meaning,
+            part_of_speech: pm.part_of_speech || null,
             example_sentence: parts[4] || null,
             example_translation: parts[5] || null,
             is_primary: true,
@@ -783,7 +787,7 @@ study,/ˈstʌd.i/,学习,v.,We study English every morning.,我们每天早上�
                   请上传CSV或Excel文件,每行一个单词,按以下顺序排列:
                 </p>
                 <code className="block text-xs bg-white p-3 rounded border border-blue-200 text-gray-800">
-                  单词, 音标, 释义, 词性, 例句, 例句翻译, 难度(1-5), 年级(primary/junior/senior)
+                  单词, 音标, 释义(词性写在前面,如 n. 苹果), 词性(可不填), 例句, 例句翻译, 难度(1-5), 年级(primary/junior/senior)
                 </code>
                 <p className="text-xs text-blue-700 mt-2">
                   * 第一行为标题行(将被跳过)<br />

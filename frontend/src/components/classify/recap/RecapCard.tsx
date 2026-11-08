@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { motion, type PanInfo } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
+import { posMeaning } from '../../../utils/wordMeaning'
 import { cardWidthFor, wordFontSizeFor } from './cardSize'
 
 export type Verdict = 'unknown' | 'mastered' | 'practice'
@@ -168,7 +169,7 @@ export default function RecapCard({
           }}
         >
           <div className="text-center text-base font-semibold text-ink">
-            {card.word.meaning}
+            {posMeaning(card.word)}
           </div>
           {card.word.example_sentence && (
             <div className="mt-1 text-[10px] text-center line-clamp-2" style={{ color: 'oklch(0.42 0.05 230)' }}>

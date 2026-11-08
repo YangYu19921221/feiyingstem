@@ -4,6 +4,7 @@
  * ≥60% 通过，否则可选重考或重学
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { posMeaning } from '../../utils/wordMeaning';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import VictoryScreen, { type WrongAnswer } from './VictoryScreen';
@@ -36,7 +37,8 @@ interface GroupExamPhaseProps {
 function generateQuestions(words: WordData[]): ExamQuestion[] {
   const questions: ExamQuestion[] = [];
   const shuffled = [...words].sort(() => Math.random() - 0.5);
-  const allMeanings = words.map(w => w.meaning).filter(Boolean);
+  // 释义一律带词性(「n. 苹果」),选项和题干同一种写法,答案比对也用这串
+  const allMeanings = words.map(w => posMeaning(w)).filter(Boolean);
   const allWords = words.map(w => w.word);
 
   // 按比例分配题型：英译中 30% + 中译英 30% + 听写 20% + 拼写 20%
@@ -68,13 +70,13 @@ function generateQuestions(words: WordData[]): ExamQuestion[] {
     switch (type) {
       case 'en_to_cn': {
         q.prompt = word.word;
-        q.correctAnswer = word.meaning || '';
-        const distractors = allMeanings.filter(m => m !== word.meaning).sort(() => Math.random() - 0.5).slice(0, 3);
+        q.correctAnswer = posMeaning(word);
+        const distractors = allMeanings.filter(m => m !== q.correctAnswer).sort(() => Math.random() - 0.5).slice(0, 3);
         q.options = [...distractors, q.correctAnswer].sort(() => Math.random() - 0.5);
         break;
       }
       case 'cn_to_en': {
-        q.prompt = word.meaning || '';
+        q.prompt = posMeaning(word);
         q.correctAnswer = word.word;
         const distractors = allWords.filter(w => w !== word.word).sort(() => Math.random() - 0.5).slice(0, 3);
         q.options = [...distractors, q.correctAnswer].sort(() => Math.random() - 0.5);
@@ -85,7 +87,7 @@ function generateQuestions(words: WordData[]): ExamQuestion[] {
         break;
       }
       case 'spelling': {
-        q.prompt = word.meaning || '';
+        q.prompt = posMeaning(word);
         q.hint = word.word[0] + '_'.repeat(word.word.length - 1);
         q.correctAnswer = word.word;
         break;

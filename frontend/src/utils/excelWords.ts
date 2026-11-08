@@ -15,6 +15,8 @@ export interface ParsedWord {
   example_translation?: string;
 }
 
+import { splitPosMeaning } from './wordMeaning';
+
 const norm = (s: string) => s.toString().replace(/\s+/g, '').toLowerCase();
 
 export const TTS_ALIASES = ['发音文本', 'tts_text', 'tts', '读音', '发音'];
@@ -62,13 +64,18 @@ export function parseWordRows(rows: Record<string, unknown>[]): { words: ParsedW
   for (const row of rows) {
     const word = pickCell(row, ['单词', 'word']);
     if (!word) continue;
+    // 2026-11-08 起模板只有一列「释义」,老师写「n. 苹果」;老表分开的「词性」列照样认(有就用它)
+    const pm = splitPosMeaning(
+      pickCell(row, ['释义', 'meaning', '意思', '中文释义', '词性和释义', '词性释义']),
+      pickCell(row, ['词性', 'part_of_speech', '词类']),
+    );
     words.push({
       word: word.slice(0, 100),
       phonetic: cut(pickCell(row, ['音标', 'phonetic']), 100),
       syllables: cut(normalizeSyllables(pickCell(row, ['音节', 'syllables', '音节划分']), word), 200),
       tts_text: cut(pickCell(row, TTS_ALIASES), 200),
-      part_of_speech: cut(pickCell(row, ['词性', 'part_of_speech', '词类']), 20),
-      meaning: pickCell(row, ['释义', 'meaning', '意思', '中文释义']) || undefined,
+      part_of_speech: cut(pm.part_of_speech, 20),
+      meaning: pm.meaning || undefined,
       example_sentence: pickCell(row, ['例句', 'example', 'example_sentence']) || undefined,
       example_translation: pickCell(row, ['例句翻译', 'translation', 'example_translation', '例句中文']) || undefined,
     });

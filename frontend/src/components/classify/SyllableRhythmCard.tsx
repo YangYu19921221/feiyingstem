@@ -4,6 +4,7 @@
  * 陌生词：先播放4遍完整发音，再进入音节加速度动画，循环3轮
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { posMeaningParts } from '../../utils/wordMeaning';
 import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
@@ -148,14 +149,12 @@ export default function SyllableRhythmCard({
           </div>
         )}
 
-        {word.meaning && (
+        {(() => { const mp = posMeaningParts(word); return (mp.pos || mp.text) && (
           <p className="text-lg text-gray-600 mb-6">
-            {word.part_of_speech && (
-              <span className="text-sm text-gray-400 mr-1">{word.part_of_speech}</span>
-            )}
-            {word.meaning}
+            {mp.pos && <span className="text-sm text-gray-400 mr-1">{mp.pos}</span>}
+            {mp.text}
           </p>
-        )}
+        ); })()}
 
         {/* 播放进度 */}
         <div className="mb-6">
@@ -257,14 +256,12 @@ export default function SyllableRhythmCard({
       )}
 
       {/* 释义 */}
-      {word.meaning && (
+      {(() => { const mp = posMeaningParts(word); return (mp.pos || mp.text) && (
         <p className="text-gray-600 mb-4">
-          {word.part_of_speech && (
-            <span className="text-sm text-gray-400 mr-1">{word.part_of_speech}</span>
-          )}
-          {word.meaning}
+          {mp.pos && <span className="text-sm text-gray-400 mr-1">{mp.pos}</span>}
+          {mp.text}
         </p>
-      )}
+      ); })()}
 
       {/* 轮次进度 */}
       <div className="flex justify-center gap-2">

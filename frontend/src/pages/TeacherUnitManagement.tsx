@@ -20,6 +20,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import * as XLSX from 'xlsx';
 import { normalizeSyllables, parseWordRows } from '../utils/excelWords';
+import { posMeaning } from '../utils/wordMeaning';
 import { toast } from '../components/Toast';
 import { getErrorMessage } from '../utils/errorMessage';
 
@@ -468,17 +469,23 @@ const TeacherUnitManagement = () => {
   };
 
   const handleDownloadTemplate = () => {
+    // 2026-11-08 起词性和中文写在同一列「释义」里(「n. 苹果」),学生端也是这样连在一起显示;
+    // 短语没有词性就只写中文。老模板分开的「词性」列照样能导入
     const templateData = [
-      { '单词': 'apple', '音标': '/ˈæp.l/', '音节': 'ap#ple', '发音文本': '', '词性': 'n.', '释义': '苹果', '例句': 'I like to eat apples.', '例句翻译': '我喜欢吃苹果。' },
-      { '单词': 'happy', '音标': '/ˈhæp.i/', '音节': 'hap#py', '发音文本': '', '词性': 'adj.', '释义': '快乐的', '例句': 'She is very happy today.', '例句翻译': '她今天很开心。' },
+      { '单词': 'apple', '音标': '/ˈæp.l/', '音节': 'ap#ple', '发音文本': '', '释义': 'n. 苹果', '例句': 'I like to eat apples.', '例句翻译': '我喜欢吃苹果。' },
+      { '单词': 'happy', '音标': '/ˈhæp.i/', '音节': 'hap#py', '发音文本': '', '释义': 'adj. 快乐的', '例句': 'She is very happy today.', '例句翻译': '她今天很开心。' },
+      // 一个词好几个词性: 依次写在一格里
+      { '单词': 'study', '音标': '/ˈstʌd.i/', '音节': 'stud#y', '发音文本': '', '释义': 'n. 书房；学习  v. 学习；研究', '例句': 'I study English every day.', '例句翻译': '我每天学英语。' },
+      // 短语没有词性: 只写中文
+      { '单词': 'at the weekend', '音标': '', '音节': '', '发音文本': '', '释义': '在周末', '例句': 'I play football at the weekend.', '例句翻译': '我周末踢足球。' },
       // 发音文本：只在“读音和拼写不一样”时才填，用普通字母拼出实际读音；普通单词留空
-      { '单词': 'Ms', '音标': '/mɪz/', '音节': 'Ms', '发音文本': 'miz', '词性': 'n.', '释义': '女士（用于女子姓名前）', '例句': 'This is Ms Green.', '例句翻译': '这是格林女士。' },
-      // 一词多音（同形不同音）：拆成两行，单词写同一拼写，发音文本/词性/释义各填各的
-      { '单词': 'record', '音标': '/ˈrek.ɔːd/', '音节': 're#cord', '发音文本': 'rekord', '词性': 'n.', '释义': '记录；唱片', '例句': 'She broke the world record.', '例句翻译': '她打破了世界纪录。' },
-      { '单词': 'record', '音标': '/rɪˈkɔːd/', '音节': 're#cord', '发音文本': 'rikord', '词性': 'v.', '释义': '记录；录制', '例句': 'Please record the meeting.', '例句翻译': '请把会议录下来。' },
+      { '单词': 'Ms', '音标': '/mɪz/', '音节': 'Ms', '发音文本': 'miz', '释义': 'n. 女士（用于女子姓名前）', '例句': 'This is Ms Green.', '例句翻译': '这是格林女士。' },
+      // 一词多音（同形不同音）：拆成两行，单词写同一拼写，发音文本/释义各填各的
+      { '单词': 'record', '音标': '/ˈrek.ɔːd/', '音节': 're#cord', '发音文本': 'rekord', '释义': 'n. 记录；唱片', '例句': 'She broke the world record.', '例句翻译': '她打破了世界纪录。' },
+      { '单词': 'record', '音标': '/rɪˈkɔːd/', '音节': 're#cord', '发音文本': 'rikord', '释义': 'v. 记录；录制', '例句': 'Please record the meeting.', '例句翻译': '请把会议录下来。' },
     ];
     const ws = XLSX.utils.json_to_sheet(templateData);
-    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 18 }, { wch: 30 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 32 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '单词导入模板');
     XLSX.writeFile(wb, '单词导入模板.xlsx');
@@ -490,13 +497,12 @@ const TeacherUnitManagement = () => {
     '音标': w.phonetic || '',
     '音节': w.syllables || '',
     '发音文本': w.tts_text || '',
-    '词性': w.part_of_speech || '',
-    '释义': w.meaning || '',
+    '释义': posMeaning(w),
     '例句': w.example_sentence || '',
     '例句翻译': w.example_translation || '',
   });
 
-  const EXPORT_COLS = [{ wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 32 }, { wch: 22 }];
+  const EXPORT_COLS = [{ wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 32 }, { wch: 22 }];
   const sanitizeSheetName = (name: string) =>
     (name || '单元').replace(/[\\/?*[\]:]/g, ' ').slice(0, 28) || '单元';
 
@@ -535,7 +541,7 @@ const TeacherUnitManagement = () => {
         let base = name, n = 2;
         while (usedNames.has(name)) { name = `${base.slice(0, 25)}_${n++}`; }
         usedNames.add(name);
-        const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '单词': '', '音标': '', '音节': '', '发音文本': '', '词性': '', '释义': '', '例句': '', '例句翻译': '' }]);
+        const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '单词': '', '音标': '', '音节': '', '发音文本': '', '释义': '', '例句': '', '例句翻译': '' }]);
         ws['!cols'] = EXPORT_COLS;
         XLSX.utils.book_append_sheet(wb, ws, name);
       }

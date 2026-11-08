@@ -9,6 +9,7 @@
  * 每个词第一次作答的真实用时(切出页面的时间不算)随结果带出去,卡住过的词经 onStuck 上报。
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { posMeaning } from '../../utils/wordMeaning';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredPhonetic from '../ColoredPhonetic';
@@ -387,7 +388,7 @@ export default function DictationPhase({
             </span>
           </div>
 
-          <p className="text-lg md:text-2xl text-gray-600 mb-4 md:mb-6">{currentWord.meaning}</p>
+          <p className="text-lg md:text-2xl text-gray-600 mb-4 md:mb-6">{posMeaning(currentWord)}</p>
 
           <button
             onClick={() => playAudioSlow(currentWord.word, currentWord.id)}

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { WordData } from '../../../api/progress'
+import { posMeaning } from '../../../utils/wordMeaning'
 
 interface Props {
   words: WordData[]
@@ -112,7 +113,7 @@ export default function FlashStage({ words, playAudio, onDone }: Props) {
               {current.phonetic && (
                 <div className="text-base text-ink-soft mb-3">{current.phonetic}</div>
               )}
-              <div className="text-lg text-ink-soft">{current.meaning ?? ''}</div>
+              <div className="text-lg text-ink-soft">{posMeaning(current)}</div>
             </motion.div>
           )}
         </AnimatePresence>

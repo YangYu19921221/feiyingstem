@@ -3,6 +3,7 @@
  * 显示单词+释义，自动播放2遍（间隔0.5s），点😊确认快速过
  */
 import { useState, useEffect, useRef } from 'react';
+import { posMeaningParts } from '../../utils/wordMeaning';
 import { motion } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import ColoredWord from '../ColoredWord';
@@ -81,14 +82,12 @@ export default function FamiliarWordCard({
       )}
 
       {/* 释义 */}
-      {word.meaning && (
+      {(() => { const mp = posMeaningParts(word); return (mp.pos || mp.text) && (
         <p className="text-lg text-gray-600 mb-4">
-          {word.part_of_speech && (
-            <span className="text-sm text-gray-400 mr-1">{word.part_of_speech}</span>
-          )}
-          {word.meaning}
+          {mp.pos && <span className="text-sm text-gray-400 mr-1">{mp.pos}</span>}
+          {mp.text}
         </p>
-      )}
+      ); })()}
 
       {/* 播放状态 */}
       <div className="mb-6 text-sm text-gray-400">

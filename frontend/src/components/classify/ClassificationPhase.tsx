@@ -5,6 +5,7 @@
  * 每连续标记3个熟悉，插入快速回顾卡确认
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { posMeaning, posMeaningParts } from '../../utils/wordMeaning';
 import { motion } from 'framer-motion';
 import { AlertCircle, CheckCircle2, Clock3, HelpCircle, Lightbulb, Volume2 } from 'lucide-react';
 import type { WordData } from '../../api/progress';
@@ -550,7 +551,7 @@ export default function ClassificationPhase({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-bold text-gray-800 text-lg break-words min-w-0">{w.word}</span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-gray-500 text-sm">{w.meaning}</span>
+                    <span className="text-gray-500 text-sm">{posMeaning(w)}</span>
                     <button
                       onClick={() => playAudio(w.word, 1, w.id)}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/70 text-gray-500 transition hover:text-gray-700 active:scale-95"
@@ -745,11 +746,12 @@ export default function ClassificationPhase({
     },
   ];
 
-  const meaningPanel = (cls: string) => currentWord.meaning && (
+  const meaningParts = posMeaningParts(currentWord);
+  const meaningPanel = (cls: string) => (meaningParts.pos || meaningParts.text) && (
     <div className={`classify-meaning-panel w-full px-3.5 py-2.5 text-left ${cls}`}>
       <p className="text-base font-semibold text-slate-700 sm:text-lg">
-        {currentWord.part_of_speech && <span className="mr-2 text-sm font-medium text-slate-400">{currentWord.part_of_speech}</span>}
-        {currentWord.meaning}
+        {meaningParts.pos && <span className="mr-2 text-sm font-medium text-slate-400">{meaningParts.pos}</span>}
+        {meaningParts.text}
       </p>
     </div>
   );
@@ -850,7 +852,7 @@ export default function ClassificationPhase({
               <div ref={setArtBox} className="classify-word-art">
                 <img
                   src={artUrl}
-                  alt={`配图:${currentWord.meaning || currentWord.word}`}
+                  alt={`配图:${posMeaning(currentWord) || currentWord.word}`}
                   width={512}
                   height={512}
                   draggable={false}

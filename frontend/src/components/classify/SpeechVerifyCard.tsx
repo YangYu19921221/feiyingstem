@@ -3,6 +3,7 @@
  * 显示英文单词 → 自动录音3秒 → 发送后端 Whisper 识别 → 对了立马过，错了播放正确发音后自动重录
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { posMeaningParts } from '../../utils/wordMeaning';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WordData } from '../../api/progress';
 import { verifyWordPronunciation } from '../../api/pronunciation';
@@ -281,14 +282,12 @@ export default function SpeechVerifyCard({
       )}
 
       {/* 释义 */}
-      {word.meaning && (
+      {(() => { const mp = posMeaningParts(word); return (mp.pos || mp.text) && (
         <p className="text-gray-500 md:text-lg mb-6">
-          {word.part_of_speech && (
-            <span className="text-sm text-gray-400 mr-1">{word.part_of_speech}</span>
-          )}
-          {word.meaning}
+          {mp.pos && <span className="text-sm text-gray-400 mr-1">{mp.pos}</span>}
+          {mp.text}
         </p>
-      )}
+      ); })()}
 
       <AnimatePresence mode="wait">
         {/* 正在录音 */}

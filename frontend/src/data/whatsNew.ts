@@ -28,6 +28,22 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'word-pos-meaning-together-2026-11',
+    date: '2026-11-08',
+    title: '📝 单词模板改了: 词性和中文写在同一格',
+    desc: '学生分类记忆的每一步(分类、读一读、听写、过关检测、单元复习)现在都把词性和中文连在一起显示,比如「n. 英语」。导入模板跟着改成一列「释义」: 写「n. 苹果」,好几个词性就依次写「n. 书房；学习  v. 学习；研究」,短语只写中文。以前「词性」「释义」分两列的旧文件照样能导入。导出的 Excel 也是新格式,改完能直接导回去。',
+    where: '教师工作台「单词本」→ 进入一本书 → 单元管理 → 点开单元 →「下载模板」',
+    roles: ['teacher', 'org_admin', 'admin'],
+  },
+  {
+    id: 'classify-pos-meaning-2026-11',
+    date: '2026-11-08',
+    title: '📝 单词前面多了词性',
+    desc: '分类记忆的每一步都会在中文前面写上词性,比如「n. 英语」(n. 是名词、v. 是动词、adj. 是形容词)。过关检测的选项也带词性。',
+    where: '学生端首页 → 我的书架 → 任意一本书 → 任意一个单元 →「分类」',
+    roles: ['student'],
+  },
+  {
     id: 'classify-word-art-all-books-2026-11',
     date: '2026-11-07',
     title: '🖼️ 所有书的分类记忆都有图了',
