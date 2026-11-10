@@ -114,6 +114,16 @@ const StudentDashboard = () => {
   const [showTodayReport, setShowTodayReport] = useState(false);
   const closeTodayReport = useCallback(() => setShowTodayReport(false), []);
 
+  // 入学摸底：没有完成记录时在首页显示引导卡（只检查一次，不轮询）
+  const [needsPlacement, setNeedsPlacement] = useState(false);
+  useEffect(() => {
+    import('../api/placement').then(({ placementApi }) => {
+      placementApi.result()
+        .then(r => setNeedsPlacement(!r.has_placement))
+        .catch(() => { /* 静默：拿不到就不显示 */ });
+    });
+  }, []);
+
   const loadTodayReport = async () => {
     try {
       setTodayReport(await getTodayReport());
@@ -657,6 +667,26 @@ const StudentDashboard = () => {
 
         {/* 小鹰老师今天排的任务: 班级开了自动布置、签了到才出现 */}
         <AutopilotTodayCard refreshKey={autopilotKey} onTasks={setAutopilotIds} onCheckin={handleCheckin} />
+
+        {/* 入学摸底引导: 没有完成记录时显示,约3分钟测出起点 */}
+        {needsPlacement && (
+          <section data-dashboard-reveal className="mb-5 sm:mb-8">
+            <button
+              type="button"
+              onClick={() => navigate('/student/placement')}
+              className="flex w-full items-center gap-4 rounded-2xl border-2 border-orange-200 bg-orange-50 px-5 py-4 text-left transition hover:bg-orange-100"
+            >
+              <span className="text-3xl" aria-hidden="true">🎯</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-bold text-orange-800">先摸摸底,3 分钟测出你的起点</span>
+                <span className="mt-0.5 block text-xs text-orange-700">
+                  测出你已经会的词,以后只学不会的,提分更快
+                </span>
+              </span>
+              <span className="shrink-0 text-sm font-semibold text-orange-700">去测评 →</span>
+            </button>
+          </section>
+        )}
 
         {/* 老师的话(陪跑点评):最近 3 天老师留了才出现 */}
         <CoachNoteCard />

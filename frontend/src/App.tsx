@@ -148,6 +148,9 @@ const HandwritingHub = lazyWithRetry(() => import('./pages/HandwritingHub'));
 const StudentTutor = lazyWithRetry(() => import('./pages/StudentTutor'));
 const StudentHomeworkCheck = lazyWithRetry(() => import('./pages/StudentHomeworkCheck'));
 const StudentCatchup = lazyWithRetry(() => import('./pages/StudentCatchup'));
+const StudentPlacement = lazyWithRetry(() => import('./pages/StudentPlacement'));
+const TeacherPlacementOverview = lazyWithRetry(() => import('./pages/TeacherPlacementOverview'));
+const TeacherPlacementStudent = lazyWithRetry(() => import('./pages/TeacherPlacementStudent'));
 const HandwritingDictation = lazyWithRetry(() => import('./pages/HandwritingDictation'));
 const HandwritingSheet = lazyWithRetry(() => import('./pages/HandwritingSheet'));
 const SentenceFillPractice = lazyWithRetry(() => import('./pages/SentenceFillPractice'));
@@ -436,6 +439,36 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <StudentCatchup />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 入学摸底测评 */}
+        <Route
+          path="/student/placement"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentPlacement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 班级摸底总览 */}
+        <Route
+          path="/teacher/placement"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherPlacementOverview />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 单学生摸底结果与规划 */}
+        <Route
+          path="/teacher/placement/student/:student_id"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherPlacementStudent />
             </ProtectedRoute>
           }
         />

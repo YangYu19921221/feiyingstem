@@ -26,6 +26,7 @@ from app.models.reading import (
     ReadingAttempt,
     ReadingProgress
 )
+from app.models.placement import PlacementTest
 from app.models.system_config import AIProvider, SystemConfig
 from app.models.competition import (
     CompetitionSeason,

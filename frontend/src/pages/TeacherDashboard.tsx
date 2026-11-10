@@ -80,6 +80,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '问小鹰老师', description: '备课、出卷带答案、看全班卡在哪', route: '/teacher/tutor', icon: Sparkles, tone: 'orange' },
       { title: '每日陪跑', description: '谁没来、谁没做完,每天留一句话', route: '/teacher/coach', icon: MessageSquareHeart, tone: 'orange' },
       { title: '分配单词本', description: '规划学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'orange' },
+      { title: '入学摸底', description: '新生测起点、看规划建议', route: '/teacher/placement', icon: GraduationCap, tone: 'blue' },
       { title: '学习卡规则', description: '课本要先兑换,布置作业前必看', route: '/teacher/card-rules', icon: KeyRound, tone: 'amber' },
       { title: '实时课堂', description: '查看课堂状态', route: '/teacher/live', icon: Radio, tone: 'teal' },
       { title: '线上授课', description: '网页开播、上传课件', route: '/teacher/livestream', icon: Video, tone: 'violet' },

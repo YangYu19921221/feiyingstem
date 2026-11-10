@@ -570,6 +570,12 @@ async def init_db():
             "ALTER TABLE phonetic_readings ADD COLUMN self_passed BOOLEAN",
             # 音标教材每个词可以指定发音(2026-10-30,NULL = 按单词读)
             "ALTER TABLE phonetic_items ADD COLUMN tts_text VARCHAR(200)",
+            # 入学摸底测评(placement_tests 表由 create_all 建;这里再保索引——
+            # 核心查询是「某学生的最新已完成记录」,两个索引覆盖全部读路径)
+            "CREATE INDEX IF NOT EXISTS idx_placement_tests_user "
+            "ON placement_tests(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_placement_tests_user_status "
+            "ON placement_tests(user_id, status)",
         ]:
             try:
                 await conn.execute(text(_sql))
