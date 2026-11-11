@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, RefreshCw, Swords, WifiOff, Zap } from 'lucide-react';
@@ -10,57 +10,28 @@ import {
   BattlePetOption,
   QuestionData,
   RoundResult,
+  type BattleEndData,
 } from '../api/petBattle';
 import {
-  EFFECT_STAGGER,
-  FX_DURATION_NORMAL,
-  FX_DURATION_ULTIMATE,
-  getPetBackImage,
   getPetDefinition,
   getPetImage,
+  getPetBackImage,
   hasPetBackImage,
+  FINALE_KO_SECONDS,
+  FINALE_PLAIN_SECONDS,
 } from '../config/petSpecies';
-// three.js 场景懒加载:主对战逻辑(WS/答题)不等 3D 库,弱网下先可玩后有画面
-const BattleScene3D = lazy(() => import('../components/BattleScene3D'));
+import BattleStage, { type StagePet } from '../components/battle/BattleStage';
+import { buildRoundFx, pickArena, type BattleFx, type Side } from '../components/battle/fx';
+import { bindBattleSfxUnlock } from '../utils/battleSfx';
+import BattleEnd from '../components/battle/BattleEnd';
+import { useAudio } from '../hooks/useAudio';
 import {
   getPetType,
   getEffectiveness,
-  getEffectivenessText,
-  getEffectivenessEmoji,
   TYPE_ICONS,
   TYPE_COLORS,
   TYPE_NAMES
 } from '../utils/typeEffectiveness';
-
-type BattleVisualEffect = {
-  id: string;
-  attacker: 1 | 2;
-  target: 1 | 2;
-  damage: number;
-  species: string;
-  typeText?: string;
-  ultimate?: {
-    species: string;
-    name: string;
-    cutInImage?: string;
-  };
-};
-
-type CaptureResult = {
-  eligible: boolean;
-  attempted: boolean;
-  success: boolean;
-  chance: number;
-  winner_id: number;
-  loser_id: number;
-  pet_name: string;
-  pet_species: string;
-  loser_has_no_pets: boolean;
-  recovery_goal_words: number | null;
-  reason: 'captured' | 'escaped' | 'roster_full' | 'slot_locked' | 'duplicate_species'
-    | 'legend_words_locked' | 'legend_slot_locked' | 'legend_roster_full' | string;
-  required_words?: number | null;
-};
 
 type BattlePhase = 'waiting' | 'countdown' | 'question' | 'answering' | 'result' | 'end';
 
@@ -69,6 +40,8 @@ export default function PetBattlePage() {
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const { battleId } = useParams<{ battleId: string }>();
+  const { playAudio } = useAudio();
+
   const [phase, setPhase] = useState<BattlePhase>('waiting');
   const [battle, setBattle] = useState<Battle | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<QuestionData | null>(null);
@@ -79,19 +52,33 @@ export default function PetBattlePage() {
   const [opponentAnswered, setOpponentAnswered] = useState(false);
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
   const [countdown, setCountdown] = useState(3);
-  const [endResult, setEndResult] = useState<any>(null);
-  const [battleEffects, setBattleEffects] = useState<BattleVisualEffect[]>([]);
+  const [endResult, setEndResult] = useState<BattleEndData | null>(null);
+  // 当前回合的特效列表; 回合开始时清空
+  const [battleFx, setBattleFx] = useState<BattleFx[]>([]);
+  // 结算页是否已可见(等特效和终幕动画播完才打开)
+  const [endVisible, setEndVisible] = useState(false);
   const [switchingPetId, setSwitchingPetId] = useState<number | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState('');
+  // 场地背景(battle_start 时按属性和对战编号固定)
+  const arenaUrlRef = useRef<string>('/battle-arena/meadow.jpg');
+  const [arenaUrl, setArenaUrl] = useState('/battle-arena/meadow.jpg');
 
   const battleWs = useRef<BattleWebSocket | null>(null);
   const answerWs = useRef<AnswerWebSocket | null>(null);
   const battleStateRef = useRef<Battle | null>(null);
-  const effectTimerRef = useRef<number | null>(null);
+  const fxClearTimer = useRef<number | null>(null);
   const questionStartTime = useRef<number>(0);
   // 战斗结束后忽略一切残留的回合消息,防止结算页被拉回答题界面
   const battleEndedRef = useRef(false);
+  // 保存最后一回合结果里的 KO 信息,用于决定终幕等待时长
+  const lastRoundKoRef = useRef(false);
+
+  // 解锁 Web Audio(首次用户交互后激活,对战页每次点答案都算)
+  useEffect(() => {
+    const cleanup = bindBattleSfxUnlock();
+    return cleanup;
+  }, []);
 
   // 获取Token
   // 注意：全项目登录时存的是 access_token 和 user(对象)，
@@ -104,8 +91,6 @@ export default function PetBattlePage() {
       return 0;
     }
   })();
-
-  console.log('PetBattlePage render - battleId:', battleId, 'token:', token ? 'exists' : 'missing', 'userId:', currentUserId);
 
   // 判断是玩家1还是玩家2
   const isPlayer1 = battle?.player1_id === currentUserId;
@@ -181,6 +166,14 @@ export default function PetBattlePage() {
     ws.on('battle_start', (data) => {
       battleStateRef.current = data.battle;
       setBattle(data.battle);
+      // 场地按双方属性 + 对战编号固定,整场不变
+      const b = data.battle;
+      const myIsP1 = b.player1_id === currentUserId;
+      const myEl = getPetDefinition(myIsP1 ? b.player1_pet.species : b.player2_pet.species).element;
+      const oppEl = getPetDefinition(myIsP1 ? b.player2_pet.species : b.player1_pet.species).element;
+      const url = `/battle-arena/${pickArena(b.id, myEl, oppEl)}.jpg`;
+      arenaUrlRef.current = url;
+      setArenaUrl(url);
     });
 
     ws.on('new_round', (data) => {
@@ -193,12 +186,12 @@ export default function PetBattlePage() {
       setMyAnswer(null);
       setOpponentAnswered(false);
       setRoundResult(null);
-      setBattleEffects([]);
+      setBattleFx([]);
       setSwitchingPetId(null);
       setSwitchError(null);
-      if (effectTimerRef.current) {
-        window.clearTimeout(effectTimerRef.current);
-        effectTimerRef.current = null;
+      if (fxClearTimer.current) {
+        window.clearTimeout(fxClearTimer.current);
+        fxClearTimer.current = null;
       }
       questionStartTime.current = Date.now();
 
@@ -256,82 +249,21 @@ export default function PetBattlePage() {
       battleStateRef.current = newBattle;
       setBattle(newBattle);
 
-      const effectId = `${result.round_number}-${Date.now()}`;
-      const effects: BattleVisualEffect[] = [];
+      // 用 fx.ts 的纯函数生成这一回合的特效时间轴
       const localIsPlayer1 = currentBattle.player1_id === currentUserId;
-      const displaySide = (serverPlayer: 1 | 2): 1 | 2 => (
-        serverPlayer === (localIsPlayer1 ? 1 : 2) ? 1 : 2
-      );
-      if (result.player1_damage > 0) {
-        const species = currentBattle.player1_pet.species;
-        effects.push({
-          id: `${effectId}-p1`,
-          attacker: displaySide(1),
-          target: displaySide(2),
-          damage: result.player1_damage,
-          species,
-          typeText: result.player1_type_text,
-          ultimate: result.player1_used_ultimate
-            ? {
-                species,
-                name: getPetDefinition(species).ultimate.name,
-                cutInImage: getPetImage(species, currentBattle.player1_pet.evolution_stage),
-              }
-            : undefined,
-        });
-      }
-      if (result.player2_damage > 0) {
-        const species = currentBattle.player2_pet.species;
-        effects.push({
-          id: `${effectId}-p2`,
-          attacker: displaySide(2),
-          target: displaySide(1),
-          damage: result.player2_damage,
-          species,
-          typeText: result.player2_type_text,
-          ultimate: result.player2_used_ultimate
-            ? {
-                species,
-                name: getPetDefinition(species).ultimate.name,
-                cutInImage: getPetImage(species, currentBattle.player2_pet.evolution_stage),
-              }
-            : undefined,
-        });
-      }
+      const fx = buildRoundFx(result, currentBattle, localIsPlayer1);
+      setBattleFx(fx);
 
-      // 答错扣自己血(damage<0)此前毫无画面表现,血条悄悄掉,孩子看不懂。
-      // 表现成"对手趁机反击":对方宠物一记攻击打向答错的一方。
-      if (result.player1_damage < 0) {
-        effects.push({
-          id: `${effectId}-p1-counter`,
-          attacker: displaySide(2),
-          target: displaySide(1),
-          damage: -result.player1_damage,
-          species: currentBattle.player2_pet.species,
-          typeText: '答错被反击！',
-        });
-      }
-      if (result.player2_damage < 0) {
-        effects.push({
-          id: `${effectId}-p2-counter`,
-          attacker: displaySide(1),
-          target: displaySide(2),
-          damage: -result.player2_damage,
-          species: currentBattle.player1_pet.species,
-          typeText: '答错被反击！',
-        });
-      }
+      // 记录是否有 KO(血量归零),决定终幕等待时长
+      const myIsP1 = currentBattle.player1_id === currentUserId;
+      const myHpAfter = myIsP1 ? result.player1_hp_after : result.player2_hp_after;
+      const oppHpAfter = myIsP1 ? result.player2_hp_after : result.player1_hp_after;
+      lastRoundKoRef.current = myHpAfter <= 0 || oppHpAfter <= 0;
 
-      setBattleEffects(effects);
-      if (effectTimerRef.current) window.clearTimeout(effectTimerRef.current);
-      // 特效一条一条依次播(BattleScene3D 里按 index * EFFECT_STAGGER 错开),
-      // 清场时间 = 最后一条的起播时刻 + 它自己的时长,否则最后一记打不完就被清掉。
-      // 时长常量与时间轴同源放在 config/petSpecies,别在这里写魔数。
-      const lastIsUltimate = !!effects[effects.length - 1]?.ultimate;
-      const lastStart = Math.max(0, effects.length - 1) * EFFECT_STAGGER;
-      const clearAfterMs =
-        (lastStart + (lastIsUltimate ? FX_DURATION_ULTIMATE : FX_DURATION_NORMAL)) * 1000;
-      effectTimerRef.current = window.setTimeout(() => setBattleEffects([]), clearAfterMs);
+      if (fxClearTimer.current) window.clearTimeout(fxClearTimer.current);
+      // fx 由 buildRoundFx 负责,旧的手工 effects 构建已移除
+
+      // 结算等到特效播完再出现(由 BattleStage.onFinale 回调触发)
     });
 
     ws.on('pet_switched', (data) => {
@@ -341,9 +273,9 @@ export default function PetBattlePage() {
       setSwitchError(null);
     });
 
-    ws.on('battle_end', (data) => {
+    ws.on('battle_end', (data: BattleEndData) => {
       battleEndedRef.current = true;
-      setPhase('end');
+      // 先保存结果,等 BattleStage 播完终幕动画后再显示结算页
       setEndResult(data);
       if (data.capture?.success) {
         void Promise.all([
@@ -352,6 +284,12 @@ export default function PetBattlePage() {
           queryClient.invalidateQueries({ queryKey: ['petEvents'] }),
         ]);
       }
+      // 如果最后一回合有 KO 就等更长的终幕
+      const finaleMs = (lastRoundKoRef.current ? FINALE_KO_SECONDS : FINALE_PLAIN_SECONDS) * 1000;
+      window.setTimeout(() => {
+        setPhase('end');
+        setEndVisible(true);
+      }, finaleMs);
     });
 
     ws.on('error', (data) => {
@@ -368,7 +306,7 @@ export default function PetBattlePage() {
     });
 
     return () => {
-      if (effectTimerRef.current) window.clearTimeout(effectTimerRef.current);
+      if (fxClearTimer.current) window.clearTimeout(fxClearTimer.current);
       ws.close();
       ansWs.close();
     };
@@ -453,7 +391,7 @@ export default function PetBattlePage() {
           <div className="mx-auto mt-4 h-2 w-48 overflow-hidden rounded-full bg-orange-100">
             <motion.div
               className="h-full w-1/2 rounded-full bg-accent-warm"
-              animate={reduceMotion ? undefined : { xPercent: [-100, 200] }}
+              animate={reduceMotion ? undefined : { x: ['-100%', '200%'] }}
               transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
             />
           </div>
@@ -518,39 +456,59 @@ export default function PetBattlePage() {
         )}
 
         {/* 战斗阶段 */}
-        {(phase === 'question' || phase === 'answering' || phase === 'result') && (
-          <div className="space-y-3 sm:space-y-6">
+        {(phase === 'question' || phase === 'answering' || phase === 'result' || phase === 'end') && battle && myPet && opponentPet && (
+          <div className="space-y-3 sm:space-y-4">
             {/* 属性克制提示 */}
-            <TypeMatchupBanner
-              myType={myType}
-              opponentType={opponentType}
-              myTypeIcon={myTypeIcon}
-              opponentTypeIcon={opponentTypeIcon}
-              myEffectiveness={myEffectiveness}
-              opponentEffectiveness={opponentEffectiveness}
-            />
-
-            {/* 宠物对战区域 - 真 3D 场景(懒加载,加载中先显示占位) */}
-            <Suspense fallback={
-              <div className="flex h-[clamp(260px,72vw,460px)] w-full items-center justify-center rounded-xl bg-[#dce8cf] shadow-sm sm:h-[360px] sm:rounded-2xl lg:h-[460px] lg:rounded-3xl">
-                <div className="text-base font-bold text-emerald-900 sm:text-xl">⚔️ 3D 战场加载中...</div>
-              </div>
-            }>
-              <BattleScene3D
-                myPetImage={getPetBackImage(myPet!.species, myPet!.evolution_stage)}
-                opponentPetImage={getPetImage(opponentPet!.species, opponentPet!.evolution_stage)}
-                myPetName={`Lv.${myPet!.level} ${myPet!.name}`}
-                opponentPetName={`Lv.${opponentPet!.level} ${opponentPet!.name}`}
-                myHp={myPet!.hp}
-                myMaxHp={myPet!.max_hp}
-                opponentHp={opponentPet!.hp}
-                opponentMaxHp={opponentPet!.max_hp}
-                myPetIsGem={myPet!.evolution_stage >= 4}
-                opponentPetIsGem={opponentPet!.evolution_stage >= 4}
-                myPetUsesBackFallback={!hasPetBackImage(myPet!.species, myPet!.evolution_stage)}
-                effects={battleEffects}
+            {phase !== 'end' && (
+              <TypeMatchupBanner
+                myType={myType}
+                opponentType={opponentType}
+                myTypeIcon={myTypeIcon}
+                opponentTypeIcon={TYPE_ICONS[opponentType]}
+                myEffectiveness={myEffectiveness}
+                opponentEffectiveness={opponentEffectiveness}
               />
-            </Suspense>
+            )}
+
+            {/* 3D 战场(BattleStage 自带懒加载降级,不需要再套 Suspense) */}
+            <div className="h-[clamp(260px,52vw,460px)] w-full sm:h-[360px] lg:h-[460px]">
+            <BattleStage
+              arenaUrl={arenaUrl}
+              arenaName=""
+              my={{
+                image: getPetBackImage(myPet.species, myPet.evolution_stage)
+                  || getPetImage(myPet.species, myPet.evolution_stage),
+                name: myPet.name,
+                level: myPet.level,
+                hp: myPet.hp,
+                maxHp: myPet.max_hp,
+                gem: myPet.evolution_stage >= 4,
+                typeIcon: TYPE_ICONS[getPetType(myPet.species)] ?? '',
+                typeName: TYPE_NAMES[getPetType(myPet.species)] ?? '',
+                combo: myPet.combo,
+              }}
+              opp={{
+                image: getPetImage(opponentPet.species, opponentPet.evolution_stage),
+                name: opponentPet.name,
+                level: opponentPet.level,
+                hp: opponentPet.hp,
+                maxHp: opponentPet.max_hp,
+                gem: opponentPet.evolution_stage >= 4,
+                typeIcon: TYPE_ICONS[getPetType(opponentPet.species)] ?? '',
+                typeName: TYPE_NAMES[getPetType(opponentPet.species)] ?? '',
+                combo: opponentPet.combo,
+              }}
+              fx={battleFx}
+              fxKey={`${currentRound}`}
+              finale={phase === 'end' && endResult ? (() => {
+                const winnerId = endResult.winner_id;
+                if (!winnerId) return { loser: null, winner: null };
+                const winnerIsMe = winnerId === currentUserId;
+                return { loser: winnerIsMe ? (2 as const) : (1 as const), winner: winnerIsMe ? (1 as const) : (2 as const) };
+              })() : null}
+              calm={false}
+            />
+            </div>
 
             {/* 题目区域 */}
             {currentQuestion && phase !== 'result' && (
@@ -682,12 +640,13 @@ export default function PetBattlePage() {
         )}
 
         {/* 结束阶段 */}
-        {phase === 'end' && endResult && (
-          <EndResultPanel
+        {phase === 'end' && endResult && endVisible && battle && (
+          <BattleEnd
             result={endResult}
-            isPlayer1={isPlayer1}
             battle={battle}
+            isPlayer1={isPlayer1}
             onBack={() => navigate('/student/pet')}
+            onSpeak={(word, wordId) => playAudio(word, 1, wordId)}
           />
         )}
       </div>
@@ -1167,187 +1126,3 @@ function RoundResultPanel({ result, isPlayer1 }: { result: RoundResult; isPlayer
   );
 }
 
-function CaptureBall({ success }: { success: boolean }) {
-  return (
-    <motion.div
-      aria-hidden="true"
-      className="relative mx-auto h-16 w-16 overflow-hidden rounded-full border-[5px] border-gray-800 bg-white shadow-lg"
-      animate={success
-        ? { y: [0, -18, 0, -8, 0], rotate: [0, 180, 360, 520, 720] }
-        : { x: [0, -9, 9, -7, 7, 0], rotate: [0, -12, 12, -8, 8, 0] }}
-      transition={{ duration: success ? 1.25 : 0.8, ease: 'easeInOut' }}
-    >
-      <div className="h-1/2 bg-red-500" />
-      <div className="absolute left-0 top-1/2 h-[6px] w-full -translate-y-1/2 bg-gray-800" />
-      <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-gray-800 bg-white" />
-    </motion.div>
-  );
-}
-
-// 结束结果面板
-function EndResultPanel({
-  result,
-  isPlayer1,
-  battle,
-  onBack,
-}: {
-  result: any;
-  isPlayer1: boolean;
-  battle: Battle;
-  onBack: () => void;
-}) {
-  const isWinner = result.winner_id === (isPlayer1 ? battle.player1_id : battle.player2_id);
-  const isDraw = !result.winner_id;
-  const myPlayerId = isPlayer1 ? battle.player1_id : battle.player2_id;
-  const capture = result.capture as CaptureResult | undefined;
-  const myStats = isPlayer1 ? result.player1_final_stats : result.player2_final_stats;
-  const opponentStats = isPlayer1 ? result.player2_final_stats : result.player1_final_stats;
-  const captureStatus = (() => {
-    if (!capture) return null;
-    if (capture.success && capture.winner_id === myPlayerId) {
-      return { tone: 'emerald', title: `收服成功！${capture.pet_name} 加入了你的队伍`, detail: '等级、进化阶段和培养状态全部保留。' };
-    }
-    if (capture.success && capture.loser_id === myPlayerId) {
-      return {
-        tone: 'red',
-        title: `你的 ${capture.pet_name} 被对方收服了`,
-        detail: capture.loser_has_no_pets
-          ? '当前已经没有伙伴，再学习 2000 个不同单词即可重新领养。'
-          : '系统已自动派出队伍中等级最高的伙伴。',
-      };
-    }
-    if (capture.winner_id !== myPlayerId) return null;
-    if (capture.reason === 'escaped') {
-      return { tone: 'amber', title: `${capture.pet_name} 挣脱了收服光环`, detail: `本次 ${capture.chance}% 收服判定未成功。` };
-    }
-    if (capture.reason === 'slot_locked') {
-      return { tone: 'gray', title: '收服光环暂时无法使用', detail: `先累计学习 ${capture.required_words || '更多'} 个不同单词，解锁新的队伍名额。` };
-    }
-    if (capture.reason === 'duplicate_species') {
-      return { tone: 'gray', title: '没有放出收服光环', detail: '你的队伍里已经有这个伙伴家族。' };
-    }
-    if (capture.reason === 'roster_full') {
-      return { tone: 'gray', title: '队伍已满', detail: '最多同时拥有 5 只普通伙伴，本次无法收服。' };
-    }
-    // 传说三种拒绝：没到学词门槛 / 传说格没开 / 传说格已满。分开说，孩子才知道差在哪。
-    if (capture.reason === 'legend_words_locked') {
-      return {
-        tone: 'gray',
-        title: `${capture.pet_name} 是传说伙伴`,
-        detail: `需要累计学会 ${capture.required_words?.toLocaleString() || '更多'} 个不同单词才能收服它。`,
-      };
-    }
-    if (capture.reason === 'legend_slot_locked') {
-      return {
-        tone: 'gray',
-        title: '传说专属格还没开启',
-        detail: `先累计学习 ${capture.required_words?.toLocaleString() || '更多'} 个不同单词，解锁下一个传说名额。`,
-      };
-    }
-    if (capture.reason === 'legend_roster_full') {
-      return { tone: 'gray', title: '传说队伍已满', detail: '最多同时拥有 2 只传说伙伴，本次无法收服。' };
-    }
-    return null;
-  })();
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="max-w-2xl mx-auto"
-    >
-      <div className="rounded-xl bg-gradient-to-b from-white to-gray-50 p-4 text-center shadow-2xl sm:rounded-3xl sm:p-8">
-        {/* 胜负标题 */}
-        <div className="mb-4 sm:mb-6">
-          {isWinner && (
-            <>
-              <div className="mb-2 text-6xl sm:mb-4 sm:text-8xl">🏆</div>
-              <div className="mb-2 text-3xl font-bold text-yellow-600 sm:text-4xl">胜利!</div>
-            </>
-          )}
-          {!isWinner && !isDraw && (
-            <>
-              <div className="mb-2 text-6xl sm:mb-4 sm:text-8xl">🌱</div>
-              <div className="mb-2 text-3xl font-bold text-gray-700 sm:text-4xl">本局未胜</div>
-            </>
-          )}
-          {isDraw && (
-            <>
-              <div className="mb-2 text-6xl sm:mb-4 sm:text-8xl">🤝</div>
-              <div className="mb-2 text-3xl font-bold text-orange-700 sm:text-4xl">平局</div>
-            </>
-          )}
-          {result.winner_name && (
-            <div className="text-xl text-gray-600">
-              胜者: <span className="font-bold">{result.winner_name}</span>
-            </div>
-          )}
-        </div>
-
-        {captureStatus && (
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className={`mb-4 rounded-xl border p-4 sm:mb-6 sm:rounded-2xl sm:p-5 ${
-              captureStatus.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50'
-                : captureStatus.tone === 'red' ? 'border-red-200 bg-red-50'
-                  : captureStatus.tone === 'amber' ? 'border-amber-200 bg-amber-50'
-                    : 'border-gray-200 bg-gray-50'
-            }`}
-          >
-            <CaptureBall success={Boolean(capture?.success)} />
-            <div className="mt-3 break-words text-base font-bold text-gray-900 sm:text-lg">{captureStatus.title}</div>
-            <div className="mt-1 break-words text-sm leading-6 text-gray-600">{captureStatus.detail}</div>
-          </motion.div>
-        )}
-
-        {/* 奖励 */}
-        <div className="mb-4 rounded-xl bg-orange-50 p-4 sm:mb-6 sm:rounded-2xl sm:p-6">
-          <div className="text-lg font-bold text-gray-800 mb-4">对战奖励</div>
-          <div className="grid grid-cols-2 gap-4 text-center">
-            <div>
-              <div className="text-3xl mb-1">🦴</div>
-              <div className="text-2xl font-bold text-orange-500">+{result.food_earned}</div>
-              <div className="text-sm text-gray-600">粮食</div>
-            </div>
-            <div>
-              <div className="text-3xl mb-1">⭐</div>
-              <div className="text-2xl font-bold text-accent-warm">+{result.xp_earned}</div>
-              <div className="text-sm text-gray-600">经验值</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 对战数据 */}
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:mb-6 sm:gap-4">
-          <div className="rounded-xl bg-orange-50 p-2.5 sm:p-4">
-            <div className="font-bold text-gray-700 mb-2">你的数据</div>
-            <div className="text-sm text-gray-600 space-y-1">
-              <div>正确: {myStats?.correct || 0}</div>
-              <div>伤害: {myStats?.damage || 0}</div>
-              <div>剩余HP: {myStats?.hp || 0}</div>
-            </div>
-          </div>
-          <div className="rounded-xl bg-red-50 p-2.5 sm:p-4">
-            <div className="font-bold text-gray-700 mb-2">对手数据</div>
-            <div className="text-sm text-gray-600 space-y-1">
-              <div>正确: {opponentStats?.correct || 0}</div>
-              <div>伤害: {opponentStats?.damage || 0}</div>
-              <div>剩余HP: {opponentStats?.hp || 0}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 返回按钮 */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="btn-glow min-h-12 w-full rounded-xl px-5 text-lg font-bold text-white"
-        >
-          返回宠物页面
-        </button>
-      </div>
-    </motion.div>
-  );
-}

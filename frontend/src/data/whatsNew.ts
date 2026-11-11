@@ -28,6 +28,24 @@ export interface WhatsNewEntry {
 /** 新到旧排列 */
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    id: 'battle-3d-rewrite-2026-11',
+    date: '2026-11-11',
+    title: '⚔️ 宠物对战升级: 真 3D 战场',
+    desc: '对战画面完全重做: 3D 战场背景会按双方宠物的属性自动选(火属性打火山、水属性打海滩……),宠物有入场、待机、起手、冲刺、受击、KO 和胜利一整套动画;大招会全屏飞出切入画面然后冲出去;答错被反击也有对应特效和音效。同时新增「对战场数」规则——每天免费 3 场,做作业和复习可以额外拿场数。',
+    where: '学生端「我的伙伴」→ 右上角「挑战」或「快速匹配」',
+    roles: ['student'],
+    route: '/student/pet/battle-hall',
+  },
+  {
+    id: 'battle-tickets-2026-11',
+    date: '2026-11-11',
+    title: '🎟️ 对战场数: 做作业可以多拿',
+    desc: '每天有基础的 3 场对战机会。完成当天作业多拿 1 场,连续复习单词多拿 1 场,最多共 5 场。场数在宠物页和对战大厅都能看到今天还剩几场、怎么能再拿。',
+    where: '学生端「我的伙伴」→ 页面里的「今日对战」卡片,或进入对战大厅后右上角',
+    roles: ['student'],
+    route: '/student/pet/battle-hall',
+  },
+  {
     id: 'classify-dictation-redesign-2026-11',
     date: '2026-11-08',
     title: '✍️ 听写换新样子了: 有图、有格子',

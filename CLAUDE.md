@@ -271,6 +271,24 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
+- ✅ 宠物对战 3D 重做 + 对战场数(2026-11-11): 对战页面(PetBattlePage.tsx)完整接入新系统。
+  **前端**:
+  ①BattleScene3D.tsx(2219 行): 粒子池、宠物骨架动画(入场/待机/起手/冲刺/受击闪/KO/胜利)、粒子特效(beam/shot/burst 三模式)、摄像机抖动/位移、Bloom 后处理、低性能降级、帧率监控
+  ②BattleStage.tsx: 战场外壳(平面降级)、血条、伤害数字、技能名、切入图、伤害文字特效、协调 fx 时间轴
+  ③fx.ts: 纯数据特效排序(start/impact 时刻、伤害、动画模式 dash/shot/burst、属性颜色、粒子、抖动强度)
+  ④battleSfx.ts: WebAudio 合成音,impact/ricochet 音,首次交互解锁,battleAudioReady 检查
+  ⑤BattleTicketCard.tsx(管理端) + BattleTicketsCard.tsx(宠物页/大厅): 展示每天场数、已用、可拿渠道
+  ⑥BattleEnd.tsx: 结算页含「这几个词再看一眼」复习词列表(点一下能听)、收服动画、今日票数卡
+  ⑦PetBattlePage.tsx: 整体接入新组件,round_result 走 buildRoundFx,battle_end 等终幕动画后再显示结算
+  **后端**:
+  ①battle_tickets.py: 每日场数规则引擎(免费 3 场 + 作业奖励 + 复习奖励 + 词数档位)
+  ②pet_formulas.py: round_gap_seconds(回合间隔公式)+ BATTLE_FX_*/BATTLE_READ_SECONDS 常量
+  ③pet_battle_service.py: anyone_can_switch、battle_review(每题两边答对/错/超时)
+  ④pet_battle_ws.py: next_in 字段控制进度条时序
+  **测试**: test_battle_tickets.py(355 行) + test_pet_battle_pacing.py(185 行)全绿
+  **公告**: whatsNew 加「3D 战场」+「对战场数」两条(学生)
+  **时间常量真源**: frontend/src/config/petSpecies.ts(EFFECT_STEP_NORMAL=1.3s, EFFECT_STEP_ULTIMATE=3.3s, FX_TAIL=0.3s, ROUND_READ_SECONDS=1.6s);
+  后端 backend/app/core/pet_formulas.py 同值;test_pet_battle_pacing.py 解析前端 .ts 文件做跨端比对
 - ✅ 分类记忆「听写」重做: 配图 + 喇叭按钮章 + 字母格(2026-11-08,用户「听写部分 UI 也需要图片…喇叭图片你也从新设计下…有质感看着舒服」):
   components/classify/DictationPhase(逻辑没动: 首次结果、抄 N 遍、卡住了吗、用时上报照旧)+ SpeakerButton + index.css「分类记忆 · 听写」那段。
   ①**配图只露上半截**: 图里画着单词,全库 27,118 张 OCR 量过(11-08): 单词顶边 p0.1 在图片 68.2%、p1 71.7%、中位 78.7%,
@@ -278,7 +296,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   顶边在 66% 以内的 15 张(ten / four / five / nine / seven / three / jar / zip / plus / hash / long …,短词字画得大)
   列在 data/dictationArtUnsafe.ts,听写时不显示图,退回声音台。**以后新出的图要重扫**: 工具在
   frontend/.impeccable/mocks/word-art/tools/dictation_scan(从 COS 夜间备份下载 uploads → OCR → gen_unsafe.py 写名单)。
-  ⚠️ 生产 uploads/word-art/sunshine.jpg 是 0 字节空文件(11-07 12:02,15 个词条引用),分类卡和听写取不到会自动退回无图,要重新出图
+  sunshine.jpg 原本是 0 字节空文件(11-07 批量出图时留下的),11-08 补出了新图(白底,按音节上色,512×512,15 个词条)
   测试 tests/test_dictation_art_guard.py 锁住: 露出比例 ≤ 65%、不用 <img>、没交卷前配图说明不带单词。
   图只有分类模式下发,单独的「听写练习」(DictationPractice)没有图 —— 那边是一个大喇叭的声音台
   ②**喇叭按钮章**: 自己画的 SVG(喇叭 + 三道声波,不用 🔊 emoji),暖橙径向渐变 + 白边 + 带偏移的软阴影,按下去往下沉;

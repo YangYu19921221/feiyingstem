@@ -86,6 +86,47 @@ export interface Battle {
   expires_at: string | null;
 }
 
+/** 结算页用: 这一场每一题两边答得怎么样(后端 pet_battle_service.battle_review) */
+export interface BattleReviewItem {
+  round: number;
+  word_id: number;
+  word: string;
+  meaning: string;
+  player1_correct: boolean;
+  player2_correct: boolean;
+  /** 真选了 A–D(超时没答是 false) */
+  player1_answered: boolean;
+  player2_answered: boolean;
+}
+
+export interface BattleCapture {
+  eligible: boolean;
+  attempted: boolean;
+  success: boolean;
+  chance: number;
+  winner_id: number;
+  loser_id: number;
+  pet_name: string;
+  pet_species: string;
+  loser_has_no_pets: boolean;
+  recovery_goal_words: number | null;
+  reason: string;
+  required_words?: number | null;
+}
+
+/** WS battle_end 消息 */
+export interface BattleEndData {
+  winner_id: number | null;
+  winner_name: string | null;
+  food_earned: number;
+  xp_earned: number;
+  rating_change: number;
+  capture?: BattleCapture | null;
+  player1_final_stats: { correct: number; damage: number; hp: number };
+  player2_final_stats: { correct: number; damage: number; hp: number };
+  review?: BattleReviewItem[];
+}
+
 export interface BattleListItem {
   id: number;
   opponent_username: string;
@@ -178,6 +219,63 @@ export const getReadyBattle = async (): Promise<{ battle_id: number | null; oppo
 
 export const getPendingInvites = async (): Promise<Battle[]> => {
   return api.get('/student/battles/invites');
+};
+
+// ========== 对战场数(规则真源 backend/app/services/battle_tickets.py) ==========
+
+export interface BattleTicketSource {
+  key: 'free' | 'task' | 'review' | 'words' | string;
+  label: string;
+  /** 今天这一项拿到了几场 */
+  got: number;
+  /** 今天还能不能靠这一项再拿 */
+  more: boolean;
+  detail: string;
+  /** 去哪儿做;null = 现在没得做 */
+  route: string | null;
+}
+
+export interface BattleTickets {
+  /** false = 平台关了这条规则,不限场数(下面几个数都是 null) */
+  enabled: boolean;
+  cap: number | null;
+  earned: number | null;
+  used: number | null;
+  left: number | null;
+  /** 今天挣到的已经到了一天的上限 */
+  capped: boolean;
+  sources: BattleTicketSource[];
+  /** 规则说明,一行一句,原样显示 */
+  lines: string[];
+}
+
+export const getBattleTickets = async (): Promise<BattleTickets> => {
+  return api.get('/student/battles/tickets');
+};
+
+export interface TicketOption {
+  key: string;
+  label: string;
+  default: boolean | number;
+  choices: Array<{ value: boolean | number; label: string }>;
+  effect: string;
+  risk: string;
+}
+
+export interface TicketSettings {
+  options: TicketOption[];
+  values: Record<string, boolean | number>;
+  defaults: Record<string, boolean | number>;
+}
+
+export const getTicketSettings = async (): Promise<TicketSettings> => {
+  return api.get('/student/battles/ticket-settings');
+};
+
+export const saveTicketSettings = async (
+  data: Record<string, boolean | number> | { reset: true },
+): Promise<TicketSettings> => {
+  return api.put('/student/battles/ticket-settings', data);
 };
 
 export const getBattleStats = async (): Promise<BattleStats> => {
