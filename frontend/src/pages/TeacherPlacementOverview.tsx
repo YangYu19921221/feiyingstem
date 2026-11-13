@@ -79,6 +79,18 @@ export default function TeacherPlacementOverview() {
       </nav>
 
       <main className="mx-auto max-w-3xl px-4 py-6 space-y-5">
+
+        {/* 测评规则说明 */}
+        <section className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
+          <p className="mb-2 text-sm font-semibold text-orange-800">📋 测评规则</p>
+          <div className="space-y-1.5 text-xs text-orange-700 leading-relaxed">
+            <p>✦ <b>12 道题，约 3 分钟</b>：10 道认知题（看英文选中文，4选1）+ 2 道拼写题（看中文写英文）</p>
+            <p>✦ <b>5 个难度档</b>：小学低段（三四年级）→ 小学高段（五六年级）→ 初中入门（七年级）→ 初中进阶（八九年级）→ 高中</p>
+            <p>✦ <b>推荐起点</b>：由「连续全对的最高档 + 1」决定；拼写失败时下调一档，确保学生不会跳过弱项</p>
+            <p>✦ <b>查缺补漏</b>：测评中答错的档位会标注漏洞，小鹰老师每天任务里的 30% 会自动安排补漏</p>
+            <p>✦ <b>你需要做的</b>：测评完成后按「推荐起点」给学生分配对应年级教材，然后小鹰老师自动接手每日安排</p>
+          </div>
+        </section>
         {/* 完成率漏斗 */}
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-end justify-between">

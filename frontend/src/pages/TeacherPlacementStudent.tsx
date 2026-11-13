@@ -106,6 +106,22 @@ export default function TeacherPlacementStudent() {
       <BackNav name={studentName || '学生摸底'} onBack={() => navigate('/teacher/placement')} />
 
       <main className="mx-auto max-w-2xl px-4 py-6 space-y-5">
+        {/* 测评规则说明（折叠） */}
+        <details className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-3">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-orange-800">
+            📋 测评规则说明（点击展开）
+          </summary>
+          <div className="mt-3 space-y-1.5 text-xs text-orange-700 leading-relaxed">
+            <p>✦ <b>12 道题</b>：10 道认知题（看英文选中文，4选1）+ 2 道拼写题（看中文写英文，测第2、3档）</p>
+            <p>✦ <b>5 个难度档</b>：小学低段 → 小学高段 → 初中入门 → 初中进阶 → 高中</p>
+            <p>✦ <b>推荐起点</b> = 连续全对的最高档 + 1；拼写准确率低于 50% 时下调一档</p>
+            <p>✦ <b>识别准确率</b>：认知题正确数 / 认知题总数</p>
+            <p>✦ <b>拼写准确率</b>：拼写题正确数 / 拼写题总数（共2题）</p>
+            <p>✦ <b>第一个漏洞</b>：第一个认知题答错的档位，需重点补齐</p>
+            <p>✦ <b>查缺补漏</b>：漏洞档位会进入小鹰老师每日任务的 30% 补漏配额，自动安排</p>
+          </div>
+        </details>
+
         {/* 推荐起点 */}
         <section className="rounded-2xl bg-white p-5 shadow-sm text-center">
           <p className="text-xs text-ink-soft mb-1">{studentName} · 推荐起点</p>

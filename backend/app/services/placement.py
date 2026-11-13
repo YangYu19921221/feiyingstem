@@ -7,6 +7,16 @@
   拼写题放在第2、3档——最能暴露「认识但不会写」的典型问题，同时不让低年级学生
   一开始就遇到高难度拼写而直接放弃。
 
+难度档划分（以书目 grade_level 为准，不用 Word.difficulty）：
+  1 = 小学低段：三、四年级
+  2 = 小学高段：五、六年级
+  3 = 初中入门：七年级
+  4 = 初中进阶：八、九年级
+  5 = 高中：高一、高二、高三
+
+  没有 grade_level 的书（机构自编、语法书等）不参与摸底出题。
+  干扰项优先从同档位词库取，不够时全库补——保证4选1始终能生成。
+
 诊断逻辑：
   - band_score[d] = 该档认知题正确率（0.0–1.0）
   - solid_through_band = 最高的「认知题全对」档位；0=第一档就有漏洞
@@ -19,9 +29,7 @@
 
 预埋掌握度（节省已知词的未来学习时间）：
   只走 mastery.apply_answer()，不手写字段，保持全站唯一写入口。
-  认知答对 difficulty>=3：写一次正确 flashcard 答题（mastery_level 会升到1，
-  review_stage 由 SRS 正常推进——不直接写 mastery_level=3，
-  因为测评只是4选1识别，不代表真正掌握）。
+  认知答对 difficulty>=3：写一次正确 flashcard 答题。
 """
 import json
 import random
@@ -29,10 +37,10 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.word import Word, WordDefinition
+from app.models.word import Word, WordDefinition, Unit, UnitWord, WordBook
 from app.models.placement import PlacementTest
 from app.services import mastery as mastery_svc
 
@@ -52,26 +60,96 @@ LABEL = {
     5: "高中",
 }
 
+# grade_level 字符串 → 难度档映射
+# 书目的 grade_level 是中文年级名，统一映射到 1-5 档
+_GRADE_TO_BAND: dict[str, int] = {
+    "一年级": 1, "二年级": 1, "三年级": 1, "四年级": 1,
+    "五年级": 2, "六年级": 2,
+    "七年级": 3,
+    "八年级": 4, "九年级": 4,
+    "高一": 5, "高二": 5, "高三": 5,
+    # 兼容英文写法
+    "primary": 1, "junior": 3, "senior": 5,
+}
+
+
+def _grade_to_band(grade_level: Optional[str]) -> Optional[int]:
+    """把书的 grade_level 映射到难度档，识别不了返回 None（不参与出题）。"""
+    if not grade_level:
+        return None
+    gl = grade_level.strip()
+    if gl in _GRADE_TO_BAND:
+        return _GRADE_TO_BAND[gl]
+    # 模糊匹配：「旧人教版五年级上册」里包含「五年级」
+    for key, band in _GRADE_TO_BAND.items():
+        if key in gl:
+            return band
+    return None
+
 
 # ── 出题 ─────────────────────────────────────────────────────────────────────
 
+async def _words_for_band(db: AsyncSession, band: int, limit: int) -> list[tuple]:
+    """
+    从指定难度档的书目里随机取词（带主释义）。
+    通过 unit_words → units → word_books.grade_level 确定档位。
+    排除短语（词里含空格）和无释义的词。
+    返回 [(Word, WordDefinition), ...]
+    """
+    # 该档的 grade_level 列表
+    grades = [g for g, b in _GRADE_TO_BAND.items() if b == band and not g.isascii()]
+
+    rows = (await db.execute(
+        select(Word, WordDefinition)
+        .join(WordDefinition, and_(
+            WordDefinition.word_id == Word.id,
+            WordDefinition.is_primary == True,
+        ))
+        .join(UnitWord, UnitWord.word_id == Word.id)
+        .join(Unit, Unit.id == UnitWord.unit_id)
+        .join(WordBook, and_(
+            WordBook.id == Unit.book_id,
+            WordBook.grade_level.in_(grades),
+        ))
+        .where(
+            Word.word.notlike('% %'),   # 排除短语
+        )
+        .group_by(Word.id)
+        .order_by(func.random())
+        .limit(limit)
+    )).all()
+
+    return list(rows)
+
+
 async def _distractors_for(
-    db: AsyncSession, word_id: int, diff: int, correct_meaning: str, n: int
+    db: AsyncSession, word_id: int, band: int, correct_meaning: str, n: int
 ) -> list[str]:
     """同档位或全库干扰释义，确保和正确答案不同。"""
+    grades = [g for g, b in _GRADE_TO_BAND.items() if b == band and not g.isascii()]
+
     rows = (await db.execute(
         select(WordDefinition.meaning)
         .join(Word, Word.id == WordDefinition.word_id)
+        .join(UnitWord, UnitWord.word_id == Word.id)
+        .join(Unit, Unit.id == UnitWord.unit_id)
+        .join(WordBook, and_(
+            WordBook.id == Unit.book_id,
+            WordBook.grade_level.in_(grades),
+        ))
         .where(
             WordDefinition.is_primary == True,
             Word.id != word_id,
-            Word.difficulty == diff,
+            Word.word.notlike('% %'),
         )
+        .group_by(WordDefinition.meaning)
         .order_by(func.random())
         .limit(n * 3)
     )).scalars().all()
 
     pool = [m for m in rows if m and m.strip() != correct_meaning]
+
+    # 不够时从全库补
     if len(pool) < n:
         extra = (await db.execute(
             select(WordDefinition.meaning)
@@ -79,6 +157,7 @@ async def _distractors_for(
             .where(
                 WordDefinition.is_primary == True,
                 Word.id != word_id,
+                Word.word.notlike('% %'),
                 WordDefinition.meaning.notin_(pool + [correct_meaning]),
             )
             .order_by(func.random())
@@ -91,33 +170,112 @@ async def _distractors_for(
 
 async def generate_questions(db: AsyncSession) -> list[dict]:
     """
-    生成摸底题目列表。
-    返回带 correct_index / correct_answer 的完整题目（服务端保留，下发时剔除）。
+    生成摸底题目列表（2次DB查询完成，不做N+1）。
+
+    查询1：从各档位书目里各取题目用词（一次查询，CASE按档位标记）。
+    查询2：取全库干扰项候选池（一次查询，Python侧按档位筛选）。
     """
+    # ── 查询1：各档位词（每档最多3个：认知2+拼写1） ────────────────────────
+    # 用 CASE WHEN 给每个词打上档位标签，一次拿到所有档的候选
+    from sqlalchemy import case as sa_case, literal_column
+    from sqlalchemy.orm import aliased
+
+    WB = aliased(WordBook)
+    U  = aliased(Unit)
+    UW = aliased(UnitWord)
+
+    # 构造 grade_level -> band 的 CASE 表达式
+    band_case = sa_case(
+        *[
+            (WB.grade_level.contains(grade), band)
+            for grade, band in _GRADE_TO_BAND.items()
+            if not grade.isascii()          # 只用中文年级名匹配
+        ],
+        else_=0,
+    )
+
+    rows = (await db.execute(
+        select(
+            Word,
+            WordDefinition,
+            band_case.label("band"),
+        )
+        .join(WordDefinition, and_(
+            WordDefinition.word_id == Word.id,
+            WordDefinition.is_primary == True,
+        ))
+        .join(UW, UW.word_id == Word.id)
+        .join(U, U.id == UW.unit_id)
+        .join(WB, WB.id == U.book_id)
+        .where(
+            Word.word.notlike('% %'),
+            band_case != 0,
+        )
+        .group_by(Word.id)
+        .order_by(func.random())
+        .limit(200)         # 足够各档各取3个用的候选池
+    )).all()
+
+    # 按档位分组，每档随机取最多3个（认知2 + 可选拼写1）
+    band_pool: dict[int, list] = {d: [] for d in DIFFICULTY_BANDS}
+    for word, defn, band in rows:
+        if band in band_pool and len(band_pool[band]) < 3:
+            band_pool[band].append((word, defn))
+
+    # ── 查询2：干扰项候选池（全库，一次拿完，Python侧筛选） ──────────────────
+    dist_rows = (await db.execute(
+        select(
+            WordDefinition.meaning,
+            band_case.label("band"),
+        )
+        .join(Word, Word.id == WordDefinition.word_id)
+        .join(UW, UW.word_id == Word.id)
+        .join(U, U.id == UW.unit_id)
+        .join(WB, WB.id == U.book_id)
+        .where(
+            WordDefinition.is_primary == True,
+            Word.word.notlike('% %'),
+            band_case != 0,
+            WordDefinition.meaning.isnot(None),
+        )
+        .group_by(WordDefinition.meaning, band_case)
+        .order_by(func.random())
+        .limit(500)
+    )).all()
+
+    # 按档位整理干扰项池
+    dist_pool: dict[int, list[str]] = {d: [] for d in DIFFICULTY_BANDS}
+    for meaning, band in dist_rows:
+        if band in dist_pool and meaning:
+            dist_pool[band].append(meaning.strip())
+
+    # 全库备用池（档位不够时补）
+    all_meanings = [m for m, _ in dist_rows if m]
+
+    # ── 组题 ──────────────────────────────────────────────────────────────────
     questions: list[dict] = []
 
     for diff in DIFFICULTY_BANDS:
-        rows = (await db.execute(
-            select(Word, WordDefinition)
-            .join(WordDefinition, and_(
-                WordDefinition.word_id == Word.id,
-                WordDefinition.is_primary == True,
-            ))
-            .where(Word.difficulty == diff)
-            .order_by(func.random())
-            # 认知题2个 + 拼写题（若该档需要）1个，最多3个词
-            .limit(QUESTIONS_PER_BAND + (1 if diff in SPELL_BANDS else 0))
-        )).all()
+        word_pool = band_pool[diff]
+        need = QUESTIONS_PER_BAND + (1 if diff in SPELL_BANDS else 0)
+        word_pool = word_pool[:need]
 
-        word_pool = list(rows)
-
-        # ── 认知题 ──────────────────────────────────────────────────────────
+        # 认知题
         for word, defn in word_pool[:QUESTIONS_PER_BAND]:
-            dist = await _distractors_for(db, word.id, diff, defn.meaning, DISTRACTORS)
-            if len(dist) < 2:
-                # 词库严重不足时退化成2选1，不直接失败
-                dist = dist or ["（无选项）"]
-            options = dist[:DISTRACTORS] + [defn.meaning]
+            correct = defn.meaning.strip()
+            # 同档位干扰项，排除自身
+            cands = [m for m in dist_pool[diff] if m != correct]
+            random.shuffle(cands)
+            dist = cands[:DISTRACTORS]
+            # 不够时从全库补
+            if len(dist) < DISTRACTORS:
+                extra = [m for m in all_meanings if m != correct and m not in dist]
+                random.shuffle(extra)
+                dist += extra[:DISTRACTORS - len(dist)]
+            if not dist:
+                dist = ["（无）"]
+
+            options = dist[:DISTRACTORS] + [correct]
             random.shuffle(options)
             questions.append({
                 "word_id": word.id,
@@ -125,11 +283,11 @@ async def generate_questions(db: AsyncSession) -> list[dict]:
                 "phonetic": word.phonetic or "",
                 "question_type": "recognition",
                 "options": options,
-                "correct_index": options.index(defn.meaning),
+                "correct_index": options.index(correct),
                 "difficulty": diff,
             })
 
-        # ── 拼写题 ──────────────────────────────────────────────────────────
+        # 拼写题
         if diff in SPELL_BANDS and len(word_pool) > QUESTIONS_PER_BAND:
             spell_word, spell_defn = word_pool[QUESTIONS_PER_BAND]
             questions.append({
@@ -137,13 +295,14 @@ async def generate_questions(db: AsyncSession) -> list[dict]:
                 "word": spell_word.word,
                 "phonetic": spell_word.phonetic or "",
                 "question_type": "spelling",
-                "prompt": spell_defn.meaning,   # 给学生看中文
+                "prompt": spell_defn.meaning,
                 "correct_answer": spell_word.word.lower().strip(),
                 "difficulty": diff,
             })
 
     random.shuffle(questions)
     return questions
+
 
 
 # ── 判分 & 画像 ───────────────────────────────────────────────────────────────
