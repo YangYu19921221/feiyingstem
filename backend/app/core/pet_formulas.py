@@ -123,3 +123,43 @@ def apply_xp_and_level(pet) -> tuple[bool, bool]:
         evolved = True
 
     return leveled_up, evolved
+
+
+# ========== 对战演出时间(秒) ==========
+# 与前端 frontend/src/config/petSpecies.ts 的 EFFECT_STEP_NORMAL / EFFECT_STEP_ULTIMATE / FX_TAIL /
+# ROUND_READ_SECONDS **同名同值**(tests/test_pet_battle_pacing.py 解析那个文件比对)。
+# 一回合里的招式一记接一记演: 普通攻击起手后 1.3 秒下一记起手,大招起手后 3.3 秒下一记起手,
+# 最后一记再多演 0.3 秒收尾(所以一记普通攻击共 1.6 秒、一记大招共 3.6 秒)。
+BATTLE_FX_STEP_NORMAL = 1.3
+BATTLE_FX_STEP_ULTIMATE = 3.3
+BATTLE_FX_TAIL = 0.3
+BATTLE_READ_SECONDS = 1.6    # 演完后留给孩子看正确答案的时间
+BATTLE_SWITCH_SECONDS = 8.0  # 有人能换宠物时,回合之间至少留这么久
+
+
+def round_fx_counts(d1: int, d2: int, u1: bool, u2: bool) -> tuple[int, int]:
+    """这一回合要演几记 → (普通攻击几记, 大招几记)。
+
+    d1 / d2 是两位玩家结算后的 damage(>0 打到对方多少,<0 自己答错扣多少),u1 / u2 是否放了大招。
+    和前端 components/battle/fx.ts 的 buildRoundFx **同一套合并规则**: 每一方一回合最多挨一记 ——
+    对手打过来的伤害和自己答错扣的血合成一记演(以前分成两记,一回合最多演四记,孩子看不清)。
+    """
+    hit_p2 = d1 > 0 or d2 < 0
+    hit_p1 = d2 > 0 or d1 < 0
+    ult = int(bool(u1) and d1 > 0) + int(bool(u2) and d2 > 0)
+    return int(hit_p1) + int(hit_p2) - ult, ult
+
+
+def round_gap_seconds(n_normal: int, n_ultimate: int, can_switch: bool) -> float:
+    """这一回合结算后隔多久发下一题 = 招式演完 + 看答案的时间。
+
+    以前固定等 8 秒(留给换宠物),但 464 个有宠物的学生里 440 个只有 1 只,换不了也要干等。
+    现在有人能换宠物才保证 8 秒。两记普通攻击 4.5 秒、一记大招一记普通 6.5 秒、两记大招 8.5 秒。
+    """
+    n_normal, n_ultimate = max(0, int(n_normal)), max(0, int(n_ultimate))
+    gap = BATTLE_READ_SECONDS
+    if n_normal or n_ultimate:
+        gap += n_normal * BATTLE_FX_STEP_NORMAL + n_ultimate * BATTLE_FX_STEP_ULTIMATE + BATTLE_FX_TAIL
+    if can_switch:
+        gap = max(gap, BATTLE_SWITCH_SECONDS)
+    return round(gap, 2)

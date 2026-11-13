@@ -271,24 +271,77 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ## 项目状态
 
 **已完成(截至 2026-07)**:
-- ✅ 宠物对战 3D 重做 + 对战场数(2026-11-11): 对战页面(PetBattlePage.tsx)完整接入新系统。
-  **前端**:
-  ①BattleScene3D.tsx(2219 行): 粒子池、宠物骨架动画(入场/待机/起手/冲刺/受击闪/KO/胜利)、粒子特效(beam/shot/burst 三模式)、摄像机抖动/位移、Bloom 后处理、低性能降级、帧率监控
-  ②BattleStage.tsx: 战场外壳(平面降级)、血条、伤害数字、技能名、切入图、伤害文字特效、协调 fx 时间轴
-  ③fx.ts: 纯数据特效排序(start/impact 时刻、伤害、动画模式 dash/shot/burst、属性颜色、粒子、抖动强度)
-  ④battleSfx.ts: WebAudio 合成音,impact/ricochet 音,首次交互解锁,battleAudioReady 检查
-  ⑤BattleTicketCard.tsx(管理端) + BattleTicketsCard.tsx(宠物页/大厅): 展示每天场数、已用、可拿渠道
-  ⑥BattleEnd.tsx: 结算页含「这几个词再看一眼」复习词列表(点一下能听)、收服动画、今日票数卡
-  ⑦PetBattlePage.tsx: 整体接入新组件,round_result 走 buildRoundFx,battle_end 等终幕动画后再显示结算
-  **后端**:
-  ①battle_tickets.py: 每日场数规则引擎(免费 3 场 + 作业奖励 + 复习奖励 + 词数档位)
-  ②pet_formulas.py: round_gap_seconds(回合间隔公式)+ BATTLE_FX_*/BATTLE_READ_SECONDS 常量
-  ③pet_battle_service.py: anyone_can_switch、battle_review(每题两边答对/错/超时)
-  ④pet_battle_ws.py: next_in 字段控制进度条时序
-  **测试**: test_battle_tickets.py(355 行) + test_pet_battle_pacing.py(185 行)全绿
-  **公告**: whatsNew 加「3D 战场」+「对战场数」两条(学生)
-  **时间常量真源**: frontend/src/config/petSpecies.ts(EFFECT_STEP_NORMAL=1.3s, EFFECT_STEP_ULTIMATE=3.3s, FX_TAIL=0.3s, ROUND_READ_SECONDS=1.6s);
-  后端 backend/app/core/pet_formulas.py 同值;test_pet_battle_pacing.py 解析前端 .ts 文件做跨端比对
+- 🚧 宠物对战重做(2026-11-11 ~ 11-12,**本机做完、整场真打验过,还没提交、还没部署**;线上仍是 11-10 的构建 mwadwekz:
+  绿色圆盘 + 5 棵圆锥树的旧战场、每回合固定等 8 秒、不限场数、没有闯关)。
+  用户 11-12:「功能一定要设计的孩子上瘾 也就是为了背单词 但是不要耽误老师给他每天布置的任务 目的玩游戏就是为了让他提升成绩
+  游戏特效可玩性尽量设计完整一点」→「还有什么更好的思路 技能设计之类的 玩法多点 战斗技巧多点」→「按你建议」。
+  **设计的总规矩**(记忆 feedback_game_serves_learning): 每个玩法都要长在背单词上(想打得好就得多背 / 拼得出 / 答得快),
+  入口受「对战场数」管着不抢作业的时间;不做抽卡开箱、断签扣东西、公开点名排行。
+  **先查的线上实情**(11-12 只读,近 30 天): 打了至少一回合的 571 场里 563 场是打 AI(60 个孩子)、真人 8 场;
+  孩子答题正确率 84.7%、平均 5.7 秒(全是看英文选中文);464 个有宠物的孩子 440 个只有 1 只;收服 0 次;一场平均 4.2 回合。
+  **规则各有一份真源(都在 backend/app/services/,文件头写着每一条;前端显示的字和数都是接口给的,不在前端另写)**:
+  ①**对战场数** battle_tickets.py: 默认每天送 1 场、今天每做完一份作业 +2、今日复习做完 +2、每学 20 个词 +1、一天最多 6;
+  练习赛 / 闯关 / 影子 / 发起和接受挑战都过 require_ticket。OPTIONS 里另有五个玩法开关(stances / spell_ultimate / study_buffs /
+  shadows / class_boss),管理端首页「宠物对战: 场数和玩法」卡片照 OPTIONS 画,每样能单独关(建对战时读一次,正在打的那场不变)。
+  ②**闯关** pet_trial.py(表 pet_trial_stages): 8 个区域 × 5 关,第 5 关守关,40 关一圈、不封顶;第 n 关的对手对所有孩子一样,
+  **等级和孩子同级**;对手的血按「几下」算(普通关 8 下、守关 10 下 —— 不用血量公式,它随等级涨得比伤害快,高等级会越打越长);
+  AI 答错不掉血;0 错 3 星 / 错 1 个 2 星 / 赢了 1 星;首通多给粮食经验;**属性克制只帮不坑、×1.3**(440 个孩子只有一只宠物,
+  被克制的区域会卡死;×2 时克制的孩子 4 回合就打完、走不到拼单词);**赢了体力回满不受伤**,输了照旧受伤 → 恢复训练 → 再来;
+  打满 10 回合按剩余血量的**比例**判;守关的题 100% 先从孩子的薄弱词里出。这一场是第几关记在 pet_battles.ai_config 的 trial 里(没加列)。
+  模拟(pet_trial.py 文件头有整张表): 普通孩子第一圈赢的场中位 6 回合、守关 7 回合,九成以上放得出大招。
+  ③**出招 / 咒语 / 学习增益** battle_moves.py: 重击答对 ×1.5、答错自己掉 20;防守答对 ×0.6、这回合挨的打 ×0.6、答错不掉血;
+  连对 3 题一格大招,**放大招要把一个单词拼出来**(给中文 + 一把字母,单词不下发;拼对伤害 ×1.5,拼错只算普通攻击、那一格不扣;
+  咒语回合时限 +10 秒;拼错的词进复习);防守答对的词标「拿不准」列在结算页;学习增益: 作业全做完伤害 +10%、今日复习做完开局 1 格大招、
+  今天学满 30 词体力 +10%。乘法顺序在 finalize_round 一处: 基础 × 出招 × 增益 × 克制 × 对方防守。
+  回合表加 player1_stance / player2_stance / extra_data,pet_battles 加 buffs_data(**database.py 4 条 ALTER,部署要按锚点补**)。
+  ④**三种题型**(generate_battle_questions,题目多 kind / display / meaning): 看英文选中文、看中文选英文(出题时 word 是空串)、
+  听读音选中文(有「听不到声音?显示单词」的退路);10 题 5 / 3 / 2,第 1 题固定看英文选中文。
+  ⑤**挑战同学的影子** pet_shadow.py(表 pet_shadow_logs): 同班、有宠物的同学;影子 = 他的宠物 + 他最近 50 个对战回合的正确率和用时
+  (不足 10 回合按 0.6;**正确率封顶 0.78** —— 0.88 时普通孩子五场只赢一场);等级夹在 [我的 − 1, 我的 + 3];
+  **节奏和闯关同一套**(pet_battle_service.paced_rules 一处判断: 血按「几下」、影子答错不掉血、克制只帮不坑 ×1.3、打满按比例判)——
+  按正常血量算时 5 级打 1 级的影子 2 回合就结束;**打赢体力回满**(和闯关同一条,结束消息顶层 healed),输了照旧受伤;
+  一个同学一天一次、吃场数;主人的真宠物不动;战报「守住了 / 被打败了」。真人对战近 30 天只有 8 场,这个不用两人同时在线。
+  ⑥**全班打大怪** class_boss.py(表 class_boss_claims): 一个班一周一只;**伤害只来自把该做的做完**(做完一份任务 10、今日复习做完 10、
+  每学 20 词 5,每人每天最多 30),打对战不加伤害;打死了这周出过力(≥10)的人领粮食 40、经验 60,上周的到周三前还能领;
+  血量 = 在学的人数(到周一为止 14 天内学过 + 这周来学了的,最少按 3 人)× 60;有宠物的粮食记在宠物上,没宠物的记在 users.pet_food_reserve。⚠️ 这个 60 没拿线上数据校过(11-12 生产只读查询被权限拦了),上线后看各班实际打掉几成再调。
+  ⑦**答题用时服务端掐表**(max(页面报的, 服务端的 − 1.5 秒)),改页面报假时间拿不到快答加成。
+  **修掉的老 bug**: (a)**对战打到一半卡死**(线上 35 天日志里 37 次): AI 答题任务和回合循环共用一个数据库会话,撞上就 MissingGreenlet,
+  孩子永远停在「等待对手答题」。现在各用各的会话;循环意外退出会广播 driver_crashed,页面自己重新接上、从那一回合接着打
+  (页面另有保险: 该来的消息 12–25 秒不来就自己重进,最多 2 次)(b)所有孩子共用同一行 AI 宠物,先开的那场对手会在中途变成别人的那只
+  → 每场各建一行 (c)**分校孩子一场 AI 对战都开不了**(AI 账号挂直营名下被租户过滤滤掉 → 当成第一次去新建 → 主键冲突 500)。
+  **立体战场**(frontend/src/components/BattleScene3D.tsx,three.js 懒加载;思路 = 立体绘本): 场地图(public/battle-arena/*.jpg,8 张,
+  地平线在正中)**从镜头平时的位置「投」到 一面墙 + 一块地 上**(PROJ_FRAG 逐像素算): 镜头不动就是原画、不糊,镜头一动地面 / 宠物 / 远山各走各的。
+  别改回「下半张图直接铺在地上」(近处会拉成一片糊的)。镜头按战场宽高比摆,跟着鼠标 / 手指 / 手机倾斜偏一点,开场从高处摇下来;
+  场地里飘雪 / 火星 / 雨点(fx.ts ARENA_AMBIENCE);站位圈、贴地影子 + 照轮廓投出去的影子;招式是 GPU 粒子;防守有护盾;
+  低配自动降级;系统开了「减少动态效果」不震不推不飘。四个坑: (a)**别写 `<planeGeometry onUpdate={g => g.translate()}>`** ——
+  这个 3D 库挂载时会把 onUpdate 调两遍,宠物被抬高半个身子(用 standingQuad)(b)立绘脚底下空着 0–25%,petTextureFrom 量出来往下挪
+  (c)three r163 起只认 WebGL2,老 iPad 走平面战场 FlatScene(以前查的是「webgl2 或 webgl」,WebGL1 设备会整页进错误页)
+  (d)粒子在屏幕上的大小有上限 uMaxPx,打在我方(离镜头近)身上的特效要收小,不然把自己的宠物盖成一团白。
+  **对战页**(pages/PetBattlePage.tsx + components/battle/{BattleStage,BattleActions,BattleEnd,fx}.tsx,index.css「宠物对战 · 一屏放下」):
+  电脑战场在左、题目在右,1366×768 不用滚动;手机上下排,390×844 一屏放下;键盘 1–4 / A–D 选、回车攻击、Q 重击、E 防守、空格大招;
+  念咒语时四个选项收成一个给字母块让地方;开打前是「谁 对 谁」的进场画面(带今天的学习增益);结算页有星星、下一关、受伤了去恢复训练。
+  对战大厅(PetBattleHallPage): 闯关地图(components/pet/TrialMap)→ 场数卡 → 学习增益卡 → 全班打大怪(ClassBossCard)→ 同学的影子(ShadowChallenge)。
+  「我的宠物」顶上第一个按钮是「闯第 N 关」(点了直接开打),第二个从「好友」改名「对战大厅」。
+  **新旧页面混用**: 新页面的答案带 `v: 2`;没带的(上线那一刻没刷新的老页面)点大招照老规矩直接放。老后端没有新接口时新页面不画那几张卡。
+  ⚠️ **老页面把报错的 detail 直接当一句话显示**(setBattleMsg(detail) / toast.error(detail)),detail 是 {code, message} 对象时整页进错误页 ——
+  「今天没场数了」是天天会碰到的提示。所以练习赛 / 发起挑战 / 接受挑战这三个老接口: 请求带 `X-EH-Battle` 头(新页面发的)才给对象,
+  没带的只给那句中文(pet_battle.py `_plain_for_old_pages`)。**以后给老接口的报错从字符串改成对象,先看线上的老页面怎么显示它**
+  (11-13 部署前核对才发现,测试和本机真打都测不出来 —— 它们用的都是新页面)。
+  **11-11 那版留下、11-12 修掉的前端 bug**(只在本机,没上过线): BattleStage 认「换了一组招式」靠回合号 → 没挨打的一方血条显示 0、
+  招式没声音、平面战场不动(现在认 fx 数组本身);最后一回合的结算在最后一记打中之前就弹出来;每题的倒计时定时器不清。
+  ⚠️ **只用预览页喂假数据测不出这类问题,改对战页必须用真对战整场走一遍**(这次两轮都是真打才抓到: 血条 / 结算时机 / 卡死 / 一场只有 3 回合)。
+  **本机怎么测**: 预览页 frontend/.impeccable/mocks/battle-3d/{preview,actions}.html(不进 git;preview 的 `?v=old` 是从 git 取出来的线上版,
+  控制台 `__play('both'|'ult'|'heavy'|'guard'|'ko'|'win')`);真对战: `sqlite3 .backup` 拷一份库 →
+  `DATABASE_URL=sqlite+aiosqlite:////tmp/x.db uvicorn --port 8011` → `VITE_DEV_API_TARGET=http://127.0.0.1:8011 npx vite --port 5199` →
+  浏览器里把 access_token / user 写进 localStorage。正确答案和咒语词在 pet_battles.questions_data 里,自动化要赢先查它。
+  测试: tests/test_pet_trial.py、test_battle_moves.py、test_pet_battle_ws_flow.py(真起服务走 WebSocket 打整场)、test_pet_shadow.py、
+  test_class_boss.py、test_battle_tickets.py、test_pet_battle_pacing.py。
+  公告: 学生四条(闯关 / 打法 / 场数和增益 / 大怪和影子)+ 教职工一条,**上线那天把 date 改成当天**;公告里故意不写可调的数字。
+  **部署时要做的**: database.py 按锚点补 4 条 ALTER;三张新表(pet_trial_stages / pet_shadow_logs / class_boss_claims)先在生产库副本上
+  单独跑 init_db 看建没建出来;后端重启两个服务;前后端一起上;一上线孩子的对战就按场数来(想先观察可以在管理端把场数关着上)。
+  **还没做 / 没验**: 低配平板、老 iPad 真机上的帧率;真孩子的过关率和一场打几回合(上线后看 pet_trial_stages.attempts、
+  pet_battle_rounds 里 stance / spell 的分布再调);自己的宠物挨打那一下画面仍偏白;收服(真人对战才有,线上 0 次)没动;
+  助战卡、属性各有效果(11-12 提过,先不做: 多数孩子只有一只宠物、还在前几关)。
 - ✅ 分类记忆「听写」重做: 配图 + 喇叭按钮章 + 字母格(2026-11-08,用户「听写部分 UI 也需要图片…喇叭图片你也从新设计下…有质感看着舒服」):
   components/classify/DictationPhase(逻辑没动: 首次结果、抄 N 遍、卡住了吗、用时上报照旧)+ SpeakerButton + index.css「分类记忆 · 听写」那段。
   ①**配图只露上半截**: 图里画着单词,全库 27,118 张 OCR 量过(11-08): 单词顶边 p0.1 在图片 68.2%、p1 71.7%、中位 78.7%,

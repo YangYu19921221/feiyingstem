@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Swords, Clock, Trophy, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Swords, Clock, TrendingUp } from 'lucide-react';
 import {
   getMyBattles,
   getPendingInvites,
@@ -12,12 +12,37 @@ import {
   acceptBattle,
   cancelBattle,
   searchOpponents,
+  getBattleTickets,
+  getTrial,
+  startTrialStage,
+  TRIAL_QUERY_KEY,
+  type TrialOverview,
+  getBattleBuffs,
+  BATTLE_BUFFS_QUERY_KEY,
+  type BattleBuffPreview,
+  getShadows,
+  startShadowBattle,
+  getShadowLogs,
+  SHADOWS_QUERY_KEY,
+  type ShadowOverview,
+  getClassBoss,
+  claimClassBoss,
+  CLASS_BOSS_QUERY_KEY,
+  type ClassBoss,
+  type BattleTickets,
   type OpponentOption,
   type BattleListItem,
   type Battle,
   type BattleStats,
 } from '../api/petBattle';
 import { toast } from '../components/Toast';
+import { getErrorMessage } from '../utils/errorMessage';
+import BattleTicketsCard from '../components/pet/BattleTicketsCard';
+import TrialMap from '../components/pet/TrialMap';
+import BattleBuffsCard from '../components/pet/BattleBuffsCard';
+import ShadowChallenge from '../components/pet/ShadowChallenge';
+import ClassBossCard from '../components/pet/ClassBossCard';
+import { BATTLE_TICKETS_QUERY_KEY, ticketBlockReason } from '../utils/battleTickets';
 
 export default function PetBattleHallPage() {
   const navigate = useNavigate();
@@ -67,6 +92,20 @@ export default function PetBattleHallPage() {
     queryFn: getBattleStats,
   });
 
+  // 今天还能打几场(规则在后端 services/battle_tickets)。回到这个页面就重取: 孩子去做完作业再回来要马上看到加了场数
+  const { data: tickets } = useQuery<BattleTickets>({
+    queryKey: BATTLE_TICKETS_QUERY_KEY,
+    queryFn: getBattleTickets,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+  const blockReason = ticketBlockReason(tickets);
+  /** 被后端拦下(403 need_battle_ticket)时: 显示原因 + 重取场数(页面开着过了半夜、或另一台设备刚打完) */
+  const onBattleError = (error: unknown, fallback: string) => {
+    toast.error(getErrorMessage(error, fallback));
+    queryClient.invalidateQueries({ queryKey: BATTLE_TICKETS_QUERY_KEY });
+  };
+
   // 可挑战的同学(同机构、已有出战宠物)。只在邀请弹窗打开时查,输入时防抖 300ms
   const [oppQueryDebounced, setOppQueryDebounced] = useState('');
   useEffect(() => {
@@ -80,6 +119,85 @@ export default function PetBattleHallPage() {
   });
 
   // 创建对战
+  // 闯关进度(规则在后端 services/pet_trial)。取不到(老后端)就不显示地图,不报错
+  const { data: trial } = useQuery<TrialOverview>({
+    queryKey: TRIAL_QUERY_KEY,
+    queryFn: getTrial,
+    retry: false,
+    refetchOnMount: 'always',
+  });
+  // 今天的学习增益(老后端没有这个接口就不显示)
+  const { data: buffs } = useQuery<BattleBuffPreview>({
+    queryKey: BATTLE_BUFFS_QUERY_KEY,
+    queryFn: getBattleBuffs,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+  // 同学的影子、全班的大怪(老后端没有这两个接口就不显示)
+  const { data: shadows } = useQuery<ShadowOverview>({
+    queryKey: SHADOWS_QUERY_KEY,
+    queryFn: getShadows,
+    retry: false,
+    refetchOnMount: 'always',
+  });
+  const [shadowStarting, setShadowStarting] = useState<number | null>(null);
+  const [shadowError, setShadowError] = useState('');
+  const startShadow = async (userId: number) => {
+    if (shadowStarting !== null) return;
+    setShadowError('');
+    setShadowStarting(userId);
+    try {
+      const b = await startShadowBattle(userId);
+      window.location.href = `/student/pet/battle/${b.id}`;
+    } catch (err) {
+      setShadowError(getErrorMessage(err, '没进去,稍后再试'));
+      setShadowStarting(null);
+      queryClient.invalidateQueries({ queryKey: BATTLE_TICKETS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: SHADOWS_QUERY_KEY });
+    }
+  };
+  const { data: classBoss } = useQuery<ClassBoss>({
+    queryKey: CLASS_BOSS_QUERY_KEY,
+    queryFn: getClassBoss,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+  const [bossError, setBossError] = useState('');
+  const claimBoss = async (week: 'this' | 'last') => {
+    setBossError('');
+    try {
+      const r = await claimClassBoss(week);
+      // 领了粮食和经验: 宠物页、大怪卡片都要重取
+      queryClient.invalidateQueries({ queryKey: CLASS_BOSS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ['myPet'] });
+      return r;
+    } catch (err) {
+      setBossError(getErrorMessage(err, '没领到,稍后再试'));
+      queryClient.invalidateQueries({ queryKey: CLASS_BOSS_QUERY_KEY });
+      throw err;
+    }
+  };
+  const [trialStarting, setTrialStarting] = useState<number | null>(null);
+  const [trialError, setTrialError] = useState('');
+  const startTrial = async (stage: number) => {
+    if (trialStarting !== null) return;
+    setTrialError('');
+    setTrialStarting(stage);
+    try {
+      const b = await startTrialStage(stage);
+      // 进对战页要整页重来: 那一页的状态(回合、血量、连接)都跟着这一场
+      window.location.href = `/student/pet/battle/${b.id}`;
+    } catch (err) {
+      // detail 可能是对象({code, message}: 没场数 / 宠物受伤 / 这一关还没开),不能直接塞进页面
+      setTrialError(getErrorMessage(err, '没进去,稍后再试'));
+      setTrialStarting(null);
+      queryClient.invalidateQueries({ queryKey: BATTLE_TICKETS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: TRIAL_QUERY_KEY });
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: createBattle,
     onSuccess: () => {
@@ -89,9 +207,7 @@ export default function PetBattleHallPage() {
       setShowInviteDialog(false);
       setPickedOpp(null); setOppQuery('');
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.detail || '创建对战失败');
-    },
+    onError: (error: unknown) => onBattleError(error, '创建对战失败'),
   });
 
   // 接受对战
@@ -102,9 +218,7 @@ export default function PetBattleHallPage() {
       // 跳转到对战页面
       navigate(`/student/pet/battle/${battle.id}`);
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.detail || '接受对战失败');
-    },
+    onError: (error: unknown) => onBattleError(error, '接受对战失败'),
   });
 
   // 取消对战
@@ -185,18 +299,51 @@ export default function PetBattleHallPage() {
         {/* 对战大厅 */}
         {view === 'hall' && (
           <div className="space-y-6">
+            {/* 闯关: 一关一关往前打(后端还没有这个接口时不显示) */}
+            {trial && (
+              <TrialMap
+                data={trial}
+                starting={trialStarting}
+                blockReason={blockReason}
+                error={trialError}
+                onStart={startTrial}
+              />
+            )}
+
+            {/* 今天还能打几场 + 怎么再拿 */}
+            <BattleTicketsCard tickets={tickets} />
+
+            {/* 今天的学习增益: 作业做完 / 复习做完 / 学满 30 词,对战里更强 */}
+            <BattleBuffsCard data={buffs} />
+
+            {/* 全班打大怪: 伤害只来自把该做的做完 */}
+            <ClassBossCard data={classBoss} onClaim={claimBoss} error={bossError} />
+
+            {/* 挑战同学的影子 */}
+            <ShadowChallenge
+              data={shadows}
+              starting={shadowStarting}
+              blockReason={blockReason}
+              error={shadowError}
+              onStart={startShadow}
+              loadLogs={async () => (await getShadowLogs(true)).items}
+            />
+
             {/* 快速对战按钮 */}
             <div className="rounded-2xl bg-[#4a2d22] p-5 text-white sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <h3 className="text-2xl font-bold mb-2">🎮 发起对战</h3>
-                  <p className="text-sm opacity-90">邀请好友一起对战</p>
+                  <p className="text-sm opacity-90">{blockReason || '邀请好友一起对战'}</p>
                 </div>
                 <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowInviteDialog(true)}
-                  className="min-h-12 rounded-xl bg-white px-5 font-bold text-[#6d351f] shadow-lg"
+                  whileHover={{ scale: blockReason ? 1 : 1.05 }}
+                  whileTap={{ scale: blockReason ? 1 : 0.95 }}
+                  onClick={() => (blockReason ? toast.info(blockReason) : setShowInviteDialog(true))}
+                  aria-disabled={!!blockReason}
+                  className={`min-h-12 shrink-0 rounded-xl px-5 font-bold shadow-lg ${
+                    blockReason ? 'bg-white/25 text-white/80' : 'bg-white text-[#6d351f]'
+                  }`}
                 >
                   发起挑战
                 </motion.button>

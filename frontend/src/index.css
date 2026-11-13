@@ -2308,3 +2308,71 @@ body.student-interface textarea.tutor-composer-input:focus {
 /* 拼错了要照着写: 图缩小一点,给正确写法和格子让地方(手机上一屏放得下) */
 .dict-art.is-compact { width: min(100%, calc(clamp(100px, 100vh - 700px, 170px) * 1.613)); }
 @media (min-width: 641px) { .dict-art { transition: width 500ms cubic-bezier(0.16, 1, 0.3, 1); } }
+
+/* ============================================================
+   宠物对战 · 一屏放下(2026-11-12)
+   电脑(≥1024): 战场在左、答题在右,整块的高度跟着屏幕走 —— 1366×768 的笔记本上不用滚动就能
+   同时看到战场、四个选项和攻击按钮(以前上下排,选项和按钮全在屏幕外)。
+   手机 / 平板: 上下排,战场按屏幕高度收矮,给题目和按钮留地方。
+   三行 height 是给老浏览器的退路: 不认 min() / dvh 的用上一行。
+   ============================================================ */
+.battle-stage-box {
+  height: 220px;
+  height: clamp(170px, 29vh, 300px);
+  height: clamp(170px, 29dvh, 300px);
+}
+@media (min-width: 640px) {
+  .battle-stage-box {
+    height: 320px;
+    height: clamp(240px, 38vh, 420px);
+    height: clamp(240px, 38dvh, 420px);
+  }
+}
+@media (min-width: 1024px) {
+  .battle-board {
+    height: 540px;
+    height: min(640px, calc(100vh - 7rem));
+    height: min(640px, calc(100dvh - 7rem));
+    min-height: 400px;
+  }
+  .battle-stage-box {
+    height: 100%;
+  }
+}
+
+/* 闯关地图: 「这一关」那个圆点一圈圈往外亮,告诉孩子点哪儿 */
+@keyframes trial-next-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 107, 53, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0); }
+}
+body .trial-next-pulse {
+  animation: trial-next-pulse 1.6s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  body .trial-next-pulse { animation: none; }
+}
+
+/* 对战倒计时条: 整条从右往左被裁掉(时长由行内 animation-duration 给)。
+   不认 clip-path 的老浏览器条不动,下面那行「还有 N 秒」照常走 */
+@keyframes battle-speed-drain {
+  from { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); }
+  to { -webkit-clip-path: inset(0 100% 0 0); clip-path: inset(0 100% 0 0); }
+}
+body .battle-speed-fill {
+  animation: battle-speed-drain 15s linear forwards;
+}
+
+/* 大招攒好了: 按钮外面一圈金边往外扩(用 outline —— 学生端全局样式会盖掉带 shadow-md 元素的 box-shadow) */
+@keyframes battle-ult-ready {
+  0% { outline-color: rgba(255, 210, 63, 0.95); outline-offset: 0; }
+  70% { outline-color: rgba(255, 210, 63, 0); outline-offset: 7px; }
+  100% { outline-color: rgba(255, 210, 63, 0); outline-offset: 7px; }
+}
+body .battle-ult-ready {
+  outline: 3px solid rgba(255, 210, 63, 0);
+  animation: battle-ult-ready 1.3s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  body .battle-ult-ready { animation: none; outline-color: rgba(255, 210, 63, 0.9); }
+}

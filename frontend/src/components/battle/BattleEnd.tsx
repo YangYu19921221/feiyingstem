@@ -9,13 +9,14 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { Volume2 } from 'lucide-react';
+import { Star, Volume2 } from 'lucide-react';
 import {
   getBattleTickets,
   quickMatchBattle,
   type Battle,
   type BattleEndData,
   type BattleTickets,
+  startTrialStage,
 } from '../../api/petBattle';
 import { getPetImage } from '../../config/petSpecies';
 import { BATTLE_TICKETS_QUERY_KEY, ticketBlockReason } from '../../utils/battleTickets';
@@ -85,8 +86,10 @@ const TONE_CLASS: Record<string, string> = {
 };
 
 export default function BattleEnd({
-  result, battle, isPlayer1, onBack, onSpeak,
+  result, battle, isPlayer1, onBack, onSpeak, onHeal,
 }: {
+  /** 宠物打完受伤了(体力不到一半): 去恢复训练(答几个单词回血) */
+  onHeal?: () => void;
   result: BattleEndData;
   battle: Battle;
   isPlayer1: boolean;
@@ -107,10 +110,14 @@ export default function BattleEnd({
       ...r,
       correct: isPlayer1 ? r.player1_correct : r.player2_correct,
       answered: isPlayer1 ? r.player1_answered : r.player2_answered,
+      unsure: !!(isPlayer1 ? r.player1_unsure : r.player2_unsure),
     }))
-    .filter((r) => !r.correct && r.word);
-  const total = review.length;
-  const right = total - review.filter((r) => !(isPlayer1 ? r.player1_correct : r.player2_correct)).length;
+    // 答错的、没来得及答的、咒语拼错的,加上「选了防守又答对」的(拿不准,多半是蒙的)
+    .filter((r) => (!r.correct || r.unsure) && r.word);
+  // 「答对几题」只数选择题: 念咒语拼错的词是另外一行(spell),不算一道题
+  const asked = review.filter((r) => !r.spell);
+  const total = asked.length;
+  const right = total - asked.filter((r) => !(isPlayer1 ? r.player1_correct : r.player2_correct)).length;
 
   // 今天还能打几场(打完这一场要重取)
   const { data: tickets } = useQuery<BattleTickets>({
@@ -121,12 +128,17 @@ export default function BattleEnd({
   const blockReason = ticketBlockReason(tickets);
   const [starting, setStarting] = useState(false);
   const [againError, setAgainError] = useState('');
+  // 闯关: 赢了去下一关,没赢再挑战这一关;练习赛照旧随手再配一场
+  const trial = result.trial ?? null;
+  // 打同学的影子: 一个同学一天一次,没有「再打一场」,回大厅换一个人
+  const shadow = battle.shadow ?? null;
+  const trialTarget = trial ? (trial.won && trial.next_stage ? trial.next_stage : trial.stage) : null;
   const again = async () => {
     if (starting) return;
     setAgainError('');
     setStarting(true);
     try {
-      const next = await quickMatchBattle();
+      const next = trialTarget ? await startTrialStage(trialTarget) : await quickMatchBattle();
       // 换一场要整页重来: 对战页的状态(回合、血量、连接)都跟着这一场
       window.location.href = `/student/pet/battle/${next.id}`;
     } catch (error) {
@@ -135,10 +147,26 @@ export default function BattleEnd({
     }
   };
 
-  const title = isDraw ? '平局' : isWinner ? '胜利!' : '这一场没赢';
-  const sub = isDraw
-    ? '两边打成平手'
-    : isWinner ? `${myPet.name} 赢下了这一场` : `${myPet.name} 尽力了,下一场再来`;
+  const title = trial
+    ? (trial.won ? `第 ${trial.stage} 关 通过!` : `第 ${trial.stage} 关没过`)
+    : shadow
+      ? (isWinner ? `打败了 ${shadow.owner_name} 的影子!` : isDraw ? '和影子打成平手' : `${shadow.owner_name} 的影子守住了`)
+      : isDraw ? '平局' : isWinner ? '胜利!' : '这一场没赢';
+  const sub = trial
+    ? (trial.won
+      ? (trial.stars >= 3 ? '一个都没错,三颗星' : trial.stars === 2 ? '只错了一个,差一点三颗星' : '过关了。少错几个能拿更多星')
+      : `${myPet.name} 尽力了。把下面这几个词看一眼再来`)
+    : isDraw
+      ? '两边打成平手'
+      : isWinner ? `${myPet.name} 赢下了这一场` : `${myPet.name} 尽力了,下一场再来`;
+  const isAi = !shadow && (battle.mode === 'ai' || !!battle.trial || !!trial);
+  // 打完体力不到一半 = 受伤了(后端同一条线),再开一场会被拦。闯关赢了体力回满,不算
+  // 闯关 / 影子打赢了体力回满(后端给 healed),那就不算受伤
+  const healed = !!(result.healed ?? trial?.healed);
+  const hurt = !healed && (myStats?.hp ?? myPet.max_hp) < myPet.max_hp * 0.5;
+  const againLabel = trial
+    ? (trial.won && trial.next_stage ? `下一关(第 ${trial.next_stage} 关)` : '再挑战一次')
+    : '再打一场';
 
   return (
     <motion.div
@@ -162,7 +190,30 @@ export default function BattleEnd({
           />
           <div className="min-w-0">
             <h1 className="font-display text-3xl font-black leading-tight sm:text-4xl">{title}</h1>
+            {trial?.won && (
+              <div className="mt-1.5 flex items-center gap-1.5" aria-label={`${trial.stars} 颗星`}>
+                {[1, 2, 3].map((i) => (
+                  <motion.span
+                    key={i}
+                    aria-hidden="true"
+                    initial={{ scale: 0, rotate: -40, opacity: 0 }}
+                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                    transition={{ delay: 0.25 + i * 0.28, type: 'spring', stiffness: 380, damping: 14 }}
+                  >
+                    <Star className={`h-8 w-8 sm:h-9 sm:w-9 ${i <= trial.stars ? 'fill-[#FFD23F] text-[#d99a00]' : 'fill-transparent text-black/20'}`} />
+                  </motion.span>
+                ))}
+              </div>
+            )}
             <p className="mt-1 break-words text-sm text-ink-soft sm:text-base">{sub}</p>
+            {healed && (
+              <p className="mt-1 text-xs font-bold text-[#15803d] sm:text-sm">{trial ? '过关了' : '打赢了'},{myPet.name} 的体力回满了</p>
+            )}
+            {trial?.first_clear && trial.bonus && (trial.bonus.food > 0 || trial.bonus.xp > 0) && (
+              <p className="mt-1 text-xs font-bold text-[#b45309] sm:text-sm">
+                第一次通过,多给了 {trial.bonus.food} 粮食、{trial.bonus.xp} 经验(已经算在下面)
+              </p>
+            )}
           </div>
         </div>
 
@@ -198,11 +249,11 @@ export default function BattleEnd({
               {missed.length > 0 && (
                 <>
                   <p className="mt-0.5 text-xs leading-5 text-ink-soft sm:text-sm">
-                    学过的词答错了,会排进你后面的「今日复习」。点一下能听。
+                    学过的词答错了,会排进你后面的「今日复习」。{missed.some((r) => r.unsure && r.correct) ? '标着「拿不准」的是防守时答对的,也再看一眼。' : ''}点一下能听。
                   </p>
-                  <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <ul className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                     {missed.map((r) => (
-                      <li key={r.round}>
+                      <li key={`${r.round}-${r.spell ? 'spell' : 'q'}`}>
                         <button
                           type="button"
                           onClick={() => onSpeak(r.word, r.word_id)}
@@ -214,7 +265,11 @@ export default function BattleEnd({
                             <span className="block break-words text-base font-bold leading-5">{r.word}</span>
                             <span className="block break-words text-xs leading-5 text-ink-soft sm:text-sm">{r.meaning}</span>
                           </span>
-                          {!r.answered && (
+                          {r.spell ? (
+                            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">咒语拼错</span>
+                          ) : r.unsure && r.correct ? (
+                            <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">拿不准</span>
+                          ) : !r.answered && (
                             <span className="shrink-0 rounded-full bg-[#f7f1ea] px-2 py-0.5 text-[11px] text-ink-soft">没来得及答</span>
                           )}
                         </button>
@@ -229,31 +284,46 @@ export default function BattleEnd({
           {/* 今天还能打几场 */}
           {tickets?.enabled && <BattleTicketsCard tickets={tickets} compact />}
 
+          {hurt && onHeal && (
+            <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-sm text-[#7c4a03]">
+              体力不到一半,要先恢复才能再打。恢复训练是答几道学过的单词,答对就回血;不答的话它歇着也会慢慢好(每小时回一点,比较慢)。
+            </p>
+          )}
+
           {againError && (
             <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{againError}</p>
           )}
 
           <div className="flex flex-col gap-2 sm:flex-row">
-            {battle.mode === 'ai' && (
+            {hurt && onHeal && (
+              <button
+                type="button"
+                onClick={onHeal}
+                className="btn-glow min-h-12 flex-1 rounded-xl px-5 text-base font-bold text-white"
+              >
+                {myPet.name} 受伤了,去恢复训练
+              </button>
+            )}
+            {isAi && !(hurt && onHeal) && (
               <button
                 type="button"
                 onClick={again}
                 disabled={starting || !!blockReason}
                 className="btn-glow min-h-12 flex-1 rounded-xl px-5 text-base font-bold text-white"
               >
-                {starting ? '正在找对手…' : blockReason ? '今天的场数用完了' : '再打一场'}
+                {starting ? '正在进场…' : blockReason ? '今天的场数用完了' : againLabel}
               </button>
             )}
             <button
               type="button"
               onClick={onBack}
               className={`min-h-12 flex-1 rounded-xl px-5 text-base font-bold transition ${
-                battle.mode === 'ai'
+                isAi
                   ? 'bg-[#f1e7dc] text-ink hover:bg-[#eadccd]'
                   : 'btn-glow text-white'
               }`}
             >
-              返回宠物页面
+              {trial ? '回闯关地图' : shadow ? '回对战大厅,换一位同学' : '返回宠物页面'}
             </button>
           </div>
         </div>

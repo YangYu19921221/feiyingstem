@@ -570,6 +570,12 @@ async def init_db():
             "ALTER TABLE phonetic_readings ADD COLUMN self_passed BOOLEAN",
             # 音标教材每个词可以指定发音(2026-10-30,NULL = 按单词读)
             "ALTER TABLE phonetic_items ADD COLUMN tts_text VARCHAR(200)",
+            # 宠物对战的玩法(2026-11-12,规则见 services/battle_moves): 每回合的出招、这一回合的小账、
+            # 这一场带的学习增益。都可空,老记录是 NULL = 以前的打法
+            "ALTER TABLE pet_battle_rounds ADD COLUMN player1_stance VARCHAR(10)",
+            "ALTER TABLE pet_battle_rounds ADD COLUMN player2_stance VARCHAR(10)",
+            "ALTER TABLE pet_battle_rounds ADD COLUMN extra_data TEXT",
+            "ALTER TABLE pet_battles ADD COLUMN buffs_data TEXT",
             # 入学摸底测评(placement_tests 表由 create_all 建;这里再保索引——
             # 核心查询是「某学生的最新已完成记录」,两个索引覆盖全部读路径)
             "CREATE INDEX IF NOT EXISTS idx_placement_tests_user "

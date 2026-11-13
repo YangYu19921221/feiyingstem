@@ -239,3 +239,34 @@ async def words_by_day(
 
     got = {str(r.d): (r.cnt or 0) for r in rows}
     return {d: got.get(d.isoformat(), 0) for d in day_list}
+
+
+async def words_by_student_day(
+    db: AsyncSession,
+    user_ids: Iterable[int],
+    start_day: date,
+    end_day: date,
+) -> dict[tuple[int, str], int]:
+    """一批学生在一段日子里**每人每天**的去重学词数 → {(user_id, "YYYY-MM-DD"): 词数}。
+
+    用于「多个学生 × 多天」(全班打大怪: 全班一周每人每天学了几个词)。和 words_by_student / words_by_day
+    是同一个数(同一组条件、当天按拼写去重),只是按 (学生, 北京日) 一起分组 —— 一条 SQL,别按人或按天循环。
+    没学的那天不在返回里,调用方用 .get(..., 0)。
+    """
+    uids = list(user_ids)
+    if not uids:
+        return {}
+    start, _ = local_day_utc_range(start_day)
+    _, end = local_day_utc_range(end_day)
+    local_day = func.date(LearningRecord.created_at, "+8 hours")
+    rows = (await db.execute(
+        select(
+            LearningRecord.user_id,
+            local_day.label("d"),
+            func.count(func.distinct(func.lower(Word.word))).label("cnt"),
+        )
+        .join(Word, Word.id == LearningRecord.word_id)
+        .where(and_(*_base_conditions(uids, start, end)))
+        .group_by(LearningRecord.user_id, local_day)
+    )).all()
+    return {(r.user_id, str(r.d)): int(r.cnt or 0) for r in rows}

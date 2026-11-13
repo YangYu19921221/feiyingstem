@@ -1,20 +1,25 @@
-/** 一回合内多条战斗特效的错开间隔(秒)。
+/** 对战演出时间(秒)。
  *
- *  一回合最多 4 条(双方攻击 + 双方答错反击)。过去全部同时播,糊成一团闪一下,
- *  孩子看不清谁打了谁,所以按顺序一记一记打出来。
- *  放在这里(纯数据模块)而不是 BattleScene3D:后者会把 three.js 拖进主包,
- *  PetBattlePage 只为拿个常量就 import 会毁掉 lazy 分包。
- *  BattleScene3D 用它错开挂载,PetBattlePage 用它算清场时间,两边必须同源。 */
-//  为什么是 1.3 而不是更大:最坏情况(4 条特效、末条是大招)总长 = 3*1.3 + 3.6 = 7.5s,
-//  必须小于服务端回合间隔 8s(pet_battle_ws.py 的 asyncio.sleep(8)),
-//  否则最后一记会被下一题的 new_round 清空、孩子看不到自己的大招。
-export const EFFECT_STAGGER = 1.3;
+ *  一回合里的招式一记接一记演: 普通攻击起手后 EFFECT_STEP_NORMAL 秒下一记起手,
+ *  大招起手后 EFFECT_STEP_ULTIMATE 秒下一记起手,最后一记再多演 FX_TAIL 秒收尾;
+ *  全部演完后留 ROUND_READ_SECONDS 秒看正确答案,服务端才发下一题。
+ *
+ *  **与后端 backend/app/core/pet_formulas.py 的 BATTLE_FX_* / BATTLE_READ_SECONDS 同值**
+ *  (tests/test_pet_battle_pacing.py 解析这个文件比对): 服务端按它算「几秒后发下一题」,
+ *  这里按它排动画,对不上就是最后一记被下一题掐断。
+ *  放在这个纯数据文件里而不是对战场景里: 场景文件会把 three.js 拖进主包。 */
+export const EFFECT_STEP_NORMAL = 1.3;
+export const EFFECT_STEP_ULTIMATE = 3.3;
+export const FX_TAIL = 0.3;
+export const ROUND_READ_SECONDS = 1.6;
 
-/** 单条特效从挂载到演完的时长(秒),用于算清场时间。
- *  大招 = cut-in(1.7) + 命中(2.55) + 冲击波余韵(约0.9);普攻约 1.7。
- *  改 BattleScene3D 顶部那三个时间轴常量时,这里要跟着调,否则最后一记会被掐断。 */
-export const FX_DURATION_ULTIMATE = 3.6;
-export const FX_DURATION_NORMAL = 2.0;
+/** 一记招式从起手到「打中」的时刻(秒): 血条、伤害数字、受击动作都对齐它 */
+export const IMPACT_AT_NORMAL = 0.45;
+export const IMPACT_AT_ULTIMATE = 2.25;
+
+/** 最后一击打中之后,倒下 + 胜利动作演多久才出结算页(秒) */
+export const FINALE_KO_SECONDS = 2.4;
+export const FINALE_PLAIN_SECONDS = 1.3;
 
 export type PetElement =
   | 'normal' | 'fire' | 'water' | 'grass' | 'electric' | 'ice'

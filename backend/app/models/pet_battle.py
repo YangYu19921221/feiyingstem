@@ -66,6 +66,10 @@ class PetBattle(Base):
     is_ai_battle = Column(Boolean, default=False)
     ai_config = Column(Text)  # JSON格式的AI配置
 
+    # 学习增益 + 这一场开没开「出招三选一 / 大招要拼咒语」(规则见 services/battle_moves)。
+    # JSON: {"<玩家 id>": [{key, label, detail}], "_play": {stances, spell_ultimate}}。老对战是 NULL = 都没有
+    buffs_data = Column(Text)
+
     # 关系
     player1 = relationship("User", foreign_keys=[player1_id])
     player2 = relationship("User", foreign_keys=[player2_id])
@@ -97,6 +101,8 @@ class PetBattleRound(Base):
     player1_used_ultimate = Column(Boolean, default=False)
     player1_type_multiplier = Column(Float, default=1.0)
     player1_type_text = Column(String(50))
+    # 这一回合的出招: normal / heavy / guard / ultimate(真的放出了大招)。老记录是 NULL = normal
+    player1_stance = Column(String(10))
 
     # 玩家2答题
     player2_answer = Column(String(1))
@@ -107,10 +113,14 @@ class PetBattleRound(Base):
     player2_used_ultimate = Column(Boolean, default=False)
     player2_type_multiplier = Column(Float, default=1.0)
     player2_type_text = Column(String(50))
+    player2_stance = Column(String(10))
 
     # 回合结果
     player1_hp_after = Column(Integer)
     player2_hp_after = Column(Integer)
+    # 这一回合的小账(JSON): 谁挨的打被防守减过、谁试了咒语拼成了什么。
+    # {"p1": {"guarded": bool, "spell": {ok, word, meaning, typed}}, "p2": {...}}。老记录是 NULL
+    extra_data = Column(Text)
 
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 

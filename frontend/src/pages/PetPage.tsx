@@ -2,9 +2,15 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { ArrowLeft, Bone, BookOpen, Check, ChevronRight, Gem, HeartPulse, LockKeyhole, Plus, RefreshCw, Search, ShieldAlert, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, Bone, BookOpen, Check, ChevronRight, Gem, HeartPulse, LockKeyhole, Map as MapIcon, Plus, RefreshCw, Search, ShieldAlert, Sparkles, Swords, Trophy, Users, X } from 'lucide-react';
 import { getMyPet, getPetCollection, createPet, switchPet, feedPet, getPetEvents, getPetLeaderboard, type Pet, type PetCollection, type PetEvent, type PetLeaderboardEntry } from '../api/pet';
-import { quickMatchBattle } from '../api/petBattle';
+import {
+  quickMatchBattle, getBattleTickets, getTrial, startTrialStage, TRIAL_QUERY_KEY,
+  type BattleTickets, type TrialOverview,
+} from '../api/petBattle';
+import BattleTicketsCard from '../components/pet/BattleTicketsCard';
+import { BATTLE_TICKETS_QUERY_KEY, ticketBlockReason } from '../utils/battleTickets';
+import { getErrorMessage } from '../utils/errorMessage';
 import PetArtwork from '../components/PetArtwork';
 import useGoBack from '../hooks/useGoBack';
 import { TYPE_COLORS, TYPE_ICONS, TYPE_NAMES, type PetType } from '../utils/typeEffectiveness';
@@ -1054,15 +1060,37 @@ function NurtureView({
     },
   });
 
+  // 今天还能打几场对战(规则在后端 services/battle_tickets);回到这页就重取
+  const { data: tickets } = useQuery<BattleTickets>({
+    queryKey: BATTLE_TICKETS_QUERY_KEY,
+    queryFn: getBattleTickets,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+  const ticketBlock = ticketBlockReason(tickets);
+
+  // 闯关打到第几关了。顶上那个对战按钮直接进「下一关」(一下就开打,和以前一样快);
+  // 取不到(老后端)就还是随手配一场练习赛
+  const { data: trial } = useQuery<TrialOverview>({
+    queryKey: TRIAL_QUERY_KEY,
+    queryFn: getTrial,
+    retry: false,
+    refetchOnMount: 'always',
+  });
+  const battleLabel = trial ? `闯第 ${trial.next_stage} 关` : '对战';
+  const battleLabelShort = trial ? `第 ${trial.next_stage} 关` : '对战';
+
   const quickMatchMutation = useMutation({
-    mutationFn: quickMatchBattle,
+    mutationFn: () => (trial ? startTrialStage(trial.next_stage) : quickMatchBattle()),
     onSuccess: (battle) => {
       // 使用window.location直接跳转，确保刷新
       window.location.href = `/student/pet/battle/${battle.id}`;
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.error('快速对战失败:', err);
-      const msg = err?.response?.data?.detail || '匹配失败，请稍后再试';
+      // detail 可能是对象({code, message}: 没有对战场数了),不能直接塞进页面
+      const msg = getErrorMessage(err, '匹配失败，请稍后再试');
+      queryClient.invalidateQueries({ queryKey: BATTLE_TICKETS_QUERY_KEY });
       // 提示必须出现在按钮附近（顶部 toast），不能落在页面中部的喂食卡片里——
       // 受伤/无宠物被 400 拒绝时，用户点的是顶栏按钮，喂食区的提示根本看不见
       setBattleMsg(msg);
@@ -1076,6 +1104,12 @@ function NurtureView({
     // 受伤时后端必拒（400），不发注定失败的请求，直接带去恢复训练
     if (pet.is_injured) {
       navigate('/student/pet/heal');
+      return;
+    }
+    // 今天没场数了: 不发注定被拒的请求,直接说原因(下面那张卡写着怎么再拿)
+    if (ticketBlock) {
+      setBattleMsg(ticketBlock);
+      setTimeout(() => setBattleMsg(''), 4000);
       return;
     }
     quickMatchMutation.mutate();
@@ -1154,14 +1188,14 @@ function NurtureView({
               {pet.is_injured
                 ? <HeartPulse className="h-4 w-4" aria-hidden="true" />
                 : <Swords className="h-4 w-4" aria-hidden="true" />}
-              {pet.is_injured ? '去治疗' : quickMatchMutation.isPending ? '匹配中...' : '对战'}
+              {pet.is_injured ? '去治疗' : quickMatchMutation.isPending ? '进场中...' : battleLabel}
             </button>
             <button
               onClick={() => navigate('/student/pet/battle-hall')}
               className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-50 px-3 text-sm font-semibold text-orange-700 transition-colors hover:bg-orange-100"
             >
-              <Users className="h-4 w-4" aria-hidden="true" />
-              好友
+              <MapIcon className="h-4 w-4" aria-hidden="true" />
+              对战大厅
             </button>
             <button
               onClick={onShowCatalog}
@@ -1213,11 +1247,11 @@ function NurtureView({
             {pet.is_injured
               ? <HeartPulse className="h-4 w-4" aria-hidden="true" />
               : <Swords className="h-4 w-4" aria-hidden="true" />}
-            {pet.is_injured ? '去治疗' : quickMatchMutation.isPending ? '匹配中' : '对战'}
+            {pet.is_injured ? '去治疗' : quickMatchMutation.isPending ? '进场中' : battleLabelShort}
           </button>
           <button type="button" onClick={() => navigate('/student/pet/battle-hall')} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700">
-            <Users className="h-4 w-4" aria-hidden="true" />
-            好友
+            <MapIcon className="h-4 w-4" aria-hidden="true" />
+            大厅
           </button>
           <button type="button" onClick={onShowCatalog} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl bg-orange-50 px-2 text-[11px] font-semibold text-orange-700">
             <Users className="h-4 w-4" aria-hidden="true" />
@@ -1231,6 +1265,13 @@ function NurtureView({
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6">
+        {/* 今天还能打几场对战: 一行,点开看怎么再拿(平台关了这条规则时不显示) */}
+        {tickets?.enabled && (
+          <div className="mb-5">
+            <BattleTicketsCard tickets={tickets} compact />
+          </div>
+        )}
+
         {/* 受伤状态提示 */}
         {pet.is_injured && (
           <motion.div

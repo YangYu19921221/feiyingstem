@@ -58,6 +58,10 @@ from app.models.autopilot import (  # 小鹰老师自动布置作业
 # 离开记录 / 摄像头同意。必须在这里导入: init_db 的 create_all 只建已导入的模型,
 # 只在路由里导入的话本机测试库碰巧有表(应用先加载了路由),生产首次启动却建不出来
 from app.models.focus_watch import FocusAwayEvent, CameraConsent, CameraDayStatus
+# 宠物对战闯关进度。同上: 必须在这里导入,create_all 才建得出这张表
+from app.models.pet_trial import PetTrialStage  # noqa: F401
+from app.models.pet_shadow import PetShadowLog  # noqa: F401
+from app.models.class_boss import ClassBossClaim  # noqa: F401
 from app.models.promo import (  # 地推体验卡 + 销售跟单
     PromoSalesProfile, PromoChannel, PromoLead, PromoOrgSettings, PromoFollowUp, PromoCardDesign,
 )

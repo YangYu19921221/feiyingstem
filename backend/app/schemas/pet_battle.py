@@ -54,16 +54,26 @@ class BattlePetOption(BaseModel):
 
 
 class QuestionData(BaseModel):
-    """题目数据"""
+    """题目数据(答题结束之前发给孩子的那一份,由 pet_battle_service.public_question 做出来)"""
     word_id: int
+    # zh2en(看中文选英文)出题时是空串 —— 单词就是答案,结算时才给
     word: str
     question_text: str
-    options: List[str]  # ["A. 快乐的", "B. 悲伤的", "C. 生气的", "D. 害怕的"]
+    options: List[str]  # ["A. 快乐的", "B. 悲伤的", "C. 生气的", "D. 害怕的"];zh2en 是 ["A. apple", ...]
+    # 题型: en2zh 看英文选中文 / zh2en 看中文选英文 / listen 听读音选中文。老题目没有这个键 = en2zh
+    kind: str = "en2zh"
+    # 题目里大字显示什么: en2zh 是单词,zh2en 是中文意思,listen 是 None(只放读音,不显示)
+    display: Optional[str] = None
+    # 放大招要拼的咒语(规则见 services/battle_moves): 只有这一回合手里有大招的孩子才有。
+    # {meaning: 中文意思, length: 几个字母, letters: 打乱的字母(含 2 个干扰字母)}。**不带单词**
+    spell: Optional[dict] = None
 
 
 class RoundQuestionData(QuestionData):
     """结算时才返回正确答案，避免在新回合消息里提前泄题。"""
     correct_answer: str
+    # 这个词的中文意思(结算时给,三种题型都有;很老的题目可能是 None)
+    meaning: Optional[str] = None
 
 
 class RoundResult(BaseModel):
@@ -82,6 +92,12 @@ class RoundResult(BaseModel):
     player1_hp_after: int
     player1_combo: int
     player1_ultimate_charges: int
+    # 这一回合的出招: normal / heavy / guard / ultimate(真的放出了大招)
+    player1_stance: str = "normal"
+    # 这一回合挨的打被自己的防守减过
+    player1_guarded: bool = False
+    # 咒语: 没试是 None;试了是 {ok, word, meaning, typed}(结算时才给答案)
+    player1_spell: Optional[dict] = None
 
     # 玩家2
     player2_answer: Optional[str]
@@ -94,6 +110,9 @@ class RoundResult(BaseModel):
     player2_hp_after: int
     player2_combo: int
     player2_ultimate_charges: int
+    player2_stance: str = "normal"
+    player2_guarded: bool = False
+    player2_spell: Optional[dict] = None
 
 
 class BattleResponse(BaseModel):
@@ -128,6 +147,23 @@ class BattleResponse(BaseModel):
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
     expires_at: Optional[datetime]
+
+    # 闯关的这一场是第几关(规则见 services/pet_trial);练习赛 / 真人对战是 None
+    # {stage, boss, arena, area_name, title, lap, area_index, pos, type_rule, result?}
+    # result 只有打完才有: {stage, boss, won, stars, best_stars, first_clear, next_stage, bonus, cleared}
+    trial: Optional[dict] = None
+
+    # 学习增益(规则见 services/battle_moves): {"player1": [{key, label, detail}], "player2": [...]},没有是空数组
+    buffs: dict = Field(default_factory=lambda: {"player1": [], "player2": []})
+    # 这一场开没开「出招三选一 / 大招要拼咒语」: 前端按它决定画不画那几个按钮。
+    # hints = 三个出招按钮下面那行带数字的小字 {heavy, normal, guard}(后端从常量拼的;出招关着是 None)
+    # spell_bonus = 念咒语那一块上写的「拼对咒语 大招伤害 ×1.5」(后端从常量拼的;咒语关着是 None)
+    play: dict = Field(default_factory=lambda: {
+        "stances": False, "spell_ultimate": False, "hints": None, "spell_bonus": None,
+    })
+    # 挑战同学的影子(规则见 services/pet_shadow): {owner_name, pet_name, type_rule, type_mult};别的对战是 None。
+    # 只给名字和这一场的克制规矩(type_rule = "help_only"、type_mult = 1.3),不给影子主人的 id
+    shadow: Optional[dict] = None
 
     class Config:
         from_attributes = True
@@ -186,7 +222,8 @@ class WSBattleStart(BaseModel):
 
 
 class WSNewRound(BaseModel):
-    """新回合消息"""
+    """新回合消息。真人对战时两个孩子各收各的一份(咒语不一样);time_limit 是这一回合实际的时限
+    (有人要拼咒语的回合已经加过 10 秒)"""
     type: str = "new_round"
     round_number: int
     question: QuestionData
@@ -204,6 +241,8 @@ class WSRoundResult(BaseModel):
     """回合结果消息"""
     type: str = "round_result"
     result: RoundResult
+    # 几秒后发下一题(招式演完 + 看答案的时间);最后一回合为 None。前端用它画「下一回合」的进度
+    next_in: Optional[float] = None
 
 
 class WSBattleEnd(BaseModel):
@@ -221,10 +260,20 @@ class WSBattleEnd(BaseModel):
     player1_reward: Optional[dict] = None
     player2_reward: Optional[dict] = None
     capture: Optional[dict] = None
+    # 打赢了、出战的宠物体力回满(闯关和挑战影子;练习赛 / 真人对战恒为 False)。闯关的 trial.healed 是同一个值
+    healed: bool = False
 
     # 统计
     player1_final_stats: dict
     player2_final_stats: dict
+
+    # 这一场每一题: 单词、正确的中文、两边答对没有(结算页列出答错的词,让孩子再看一眼)
+    # [{round, word_id, word, meaning, player1_correct, player2_correct, player1_answered, player2_answered}]
+    review: list = []
+
+    # 闯关的这一场打完的结果(不是闯关就是 None):
+    # {stage, boss, title, won, stars, best_stars, first_clear, next_stage, bonus: {food, xp}, cleared}
+    trial: Optional[dict] = None
 
 
 class WSError(BaseModel):

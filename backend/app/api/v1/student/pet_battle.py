@@ -1,5 +1,5 @@
 """宠物对战系统 - HTTP API"""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_, desc
 from typing import List
@@ -20,8 +20,10 @@ from app.schemas.pet_battle import (
 from app.services import pet_battle_service
 from app.api.v1.student.pet import apply_natural_heal
 from app.services.ai_opponent_service import generate_ai_opponent
-from app.api.v1.auth import get_current_student
-from app.core.pet_formulas import calculate_max_hp, evolution_stage_for_level
+from app.api.v1.auth import get_current_student, get_current_admin
+from app.services import battle_moves, battle_tickets
+from app.services import class_boss, pet_shadow, pet_trial
+from app.core.pet_formulas import calculate_max_hp
 import json
 
 router = APIRouter()
@@ -29,15 +31,25 @@ router = APIRouter()
 
 async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleResponse:
     """构建对战响应"""
-    # 查询用户信息
-    player1 = await db.get(User, battle.player1_id)
-    player2 = await db.get(User, battle.player2_id)
+    # 查询用户信息(AI 账号要绕开租户过滤才取得到,见 pet_battle_service.load_player)
+    player1 = await pet_battle_service.load_player(db, battle.player1_id)
+    player2 = await pet_battle_service.load_player(db, battle.player2_id)
     pet1 = await db.get(UserPet, battle.player1_pet_id)
     pet2 = await db.get(UserPet, battle.player2_pet_id)
 
     hp_data = pet_battle_service.get_battle_pet_hp_data(battle)
 
     async def build_roster(player_id: int, current_pet_id: int, hp: int):
+        if player_id <= 0:
+            # AI 一方只有场上这一只: AI 账号名下是「每场一只」的一大堆行,不是它的队伍,不能按账号列。
+            # 血量上限用这一场记的(闯关的守关比公式多),不按公式重算
+            pet = pet1 if current_pet_id == pet1.id else pet2
+            max_hp = battle.player1_initial_hp if current_pet_id == pet1.id else battle.player2_initial_hp
+            return [BattlePetOption(
+                pet_id=pet.id, name=pet.name, species=pet.species, level=pet.level,
+                evolution_stage=pet.evolution_stage, hp=max(0, hp), max_hp=max_hp,
+                is_current=True, can_switch=False,
+            )]
         result = await db.execute(
             select(UserPet)
             .where(UserPet.user_id == player_id)
@@ -46,6 +58,11 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
         roster = []
         for pet in result.scalars().all():
             pet_max_hp = calculate_max_hp(pet.level, pet.evolution_stage, pet.species)
+            if pet.id == current_pet_id:
+                # 场上这一只的上限用这一场记的数(「今天学满 30 个词」的增益会让它比公式多一成),
+                # 不然队伍列表里它的血量会比上面那条血条少一截
+                pet_max_hp = max(pet_max_hp, battle.player1_initial_hp if player_id == battle.player1_id
+                                 else battle.player2_initial_hp)
             pet_hp = (
                 hp if pet.id == current_pet_id
                 else hp_data.get(str(pet.id), pet_battle_service.get_pet_current_hp(pet))
@@ -119,6 +136,13 @@ async def build_battle_response(battle: PetBattle, db: AsyncSession) -> BattleRe
         started_at=battle.started_at,
         finished_at=battle.finished_at,
         expires_at=battle.expires_at,
+        trial=pet_trial.trial_of(battle),
+        buffs={
+            "player1": battle_moves.battle_buffs(battle, battle.player1_id),
+            "player2": battle_moves.battle_buffs(battle, battle.player2_id),
+        },
+        play=battle_moves.battle_play(battle),
+        shadow=pet_shadow.shadow_public(battle),
     )
 
 
@@ -177,13 +201,226 @@ async def search_opponents(
     ]
 
 
+async def _fighting_pet(db: AsyncSession, current_user: User, *, structured: bool = False) -> UserPet:
+    """开打前共用的两道门: 有没有宠物、是不是还伤着。返回出战的那只。
+    structured=True 时报错给 {code, message}(新接口用);练习赛沿用原来的一句话。"""
+    def deny(code: str, message: str) -> HTTPException:
+        return HTTPException(status_code=400, detail={"code": code, "message": message} if structured else message)
+
+    my_pet = (await db.execute(
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
+    )).scalar_one_or_none()
+    if not my_pet:
+        raise deny("no_pet", "你还没有宠物")
+    # 受伤会随时间自己好: 判受伤之前先按时间回血,休息够了的不该被挡在门外
+    if await apply_natural_heal(db, my_pet):
+        await db.commit()
+    if my_pet.is_injured:
+        raise deny("pet_injured", "🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
+    return my_pet
+
+
+async def _open_ai_battle(
+    db: AsyncSession,
+    current_user: User,
+    ai_config: dict,
+    *,
+    mode: str,
+    wordbook_id: int | None = None,
+    opponent_max_hp: int | None = None,
+    weak_share: float = 0.6,
+    stats: dict | None = None,
+) -> PetBattle:
+    """开一场打 AI 的对战(练习赛和闯关共用),开出来就是进行中。
+
+    这一场有自己的一只 AI 宠物(一场一行),不再去改 AI 账号名下那只公用的 ——
+    以前所有孩子共用一行,B 一开打就把 A 正在打的对手改成了另一只。
+    """
+    await pet_battle_service.ensure_ai_user(db)
+    ai_pet = await pet_battle_service.spawn_ai_pet(
+        db, name=ai_config["name"], species=ai_config["species"], level=ai_config["level"],
+        max_hp=opponent_max_hp,
+    )
+    try:
+        battle = await pet_battle_service.create_battle(
+            db=db,
+            player1_id=current_user.id,
+            player2_id=pet_battle_service.AI_USER_ID,
+            wordbook_id=wordbook_id,
+            mode=mode,
+            max_rounds=10,
+            pet2=ai_pet,
+            pet2_max_hp=opponent_max_hp,
+            weak_share=weak_share,
+            stats=stats,
+        )
+    except ValueError as e:
+        # 没开成(比如库里一个能出题的词都没有): 刚建的那只 AI 宠物别留着;以前这里没接住,直接 500
+        await db.delete(ai_pet)
+        await db.commit()
+        raise HTTPException(status_code=400, detail={"code": "battle_unavailable", "message": str(e)})
+
+    # 标记为AI对战并保存配置;AI 对战立即开始(不需要接受)
+    battle.is_ai_battle = True
+    battle.ai_config = json.dumps(ai_config, ensure_ascii=False)
+    battle.status = 'active'
+    battle.started_at = datetime.utcnow()
+    await db.commit()
+    # 一人同时只打一场:这场开打后作废自己其它进行中的对战(多开标签刷经验的根因)
+    if not await pet_battle_service.claim_exclusive_battle(db, battle):
+        raise HTTPException(status_code=409, detail="你在另一个页面开了新的对战,请回到那个页面继续")
+    await db.refresh(battle)
+    return battle
+
+
+@router.get("/battle/trial")
+async def get_trial(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """闯关地图: 现在这一圈的 8 个区域 40 关,每关的对手、几星、通过没有、能不能打(规则见 services/pet_trial)。
+    对手的等级跟着孩子出战宠物的等级算;还没宠物按 1 级显示。"""
+    my_pet = (await db.execute(
+        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
+    )).scalar_one_or_none()
+    return await pet_trial.overview(db, current_user.id, my_pet.level if my_pet else 1)
+
+
+@router.post("/battle/trial/{stage}/start", response_model=BattleResponse)
+async def start_trial(
+    stage: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """开打闯关的第 stage 关。闸门的顺序: 没宠物 → 宠物受伤 → 这一关还没解锁 → 今天没有对战场数。"""
+    my_pet = await _fighting_pet(db, current_user, structured=True)
+    await pet_trial.check_unlocked(db, current_user.id, stage)
+    await battle_tickets.require_ticket(db, current_user)
+
+    p = pet_trial.plan(stage, my_pet.level)
+    stats: dict = {}
+    battle = await _open_ai_battle(
+        db, current_user, pet_trial.ai_config_from(p), mode="trial",
+        # 闯关每一关的对手血量都是 plan 算的(比公式厚,一场才打得够长;规则见 services/pet_trial 第 5 条)
+        opponent_max_hp=p["max_hp"],
+        # 守关专考他自己错过的词: 薄弱词能占满 10 题(平时最多六成),不够再照旧补
+        weak_share=pet_trial.BOSS_WEAK_SHARE if p["boss"] else 0.6,
+        stats=stats,
+    )
+    # 这一场 10 题里有几道是他的薄弱词: 记进 trial 那一段,前端写「这一关有 N 个是你错过的词」
+    battle.ai_config = pet_trial.with_weak_words(battle.ai_config, int(stats.get("weak_words") or 0))
+    await db.commit()
+    await db.refresh(battle)
+    return await build_battle_response(battle, db)
+
+
+# ---------------------------------------------------------------- 挑战同学的影子(规则见 services/pet_shadow)
+
+@router.get("/battle/shadows")
+async def list_shadows(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """对战大厅「同学的影子」: 同班有宠物的同学(最多 30 个)、我的影子守住 / 被打败几次、有几条战报没看。
+    平台关了 → {enabled: false, items: []}"""
+    if not (await battle_tickets.get_settings(db)).get("shadows"):
+        return {"enabled": False, "items": []}
+    return await pet_shadow.list_view(db, current_user)
+
+
+@router.get("/battle/shadow-logs")
+async def shadow_logs(
+    mark: int = Query(0, ge=0, le=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """我的影子最近 20 条战报(谁来挑战、守住没有)。mark=1 顺手把没看过的标成看过。"""
+    return await pet_shadow.logs_view(db, current_user.id, mark=bool(mark))
+
+
+@router.post("/battle/shadow/{user_id}/start", response_model=BattleResponse)
+async def start_shadow(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """挑战这位同学的影子。闸门的顺序: 平台关了 → 没宠物 → 宠物受伤 → 这个人不能挑战 → 今天已经挑战过他 → 今天没有对战场数。"""
+    if not (await battle_tickets.get_settings(db)).get("shadows"):
+        raise HTTPException(status_code=403, detail={"code": "shadow_off", "message": "「挑战同学的影子」现在没有开放。"})
+    my_pet = await _fighting_pet(db, current_user, structured=True)
+    owner, owner_pet = await pet_shadow.check_target(db, current_user, user_id)
+    await pet_shadow.check_not_done_today(db, current_user, owner)
+    await battle_tickets.require_ticket(db, current_user)
+
+    skill = (await pet_shadow.skills_of(db, [owner.id])).get(owner.id) or pet_shadow.skill_from([])
+    ai_config = pet_shadow.plan(owner, owner_pet, my_pet.level, skill)
+    # 血量和闯关普通关同一档(比公式厚,一场才打得够长;规则见 services/pet_shadow 第 3 条);薄弱词照练习赛的六成
+    battle = await _open_ai_battle(db, current_user, ai_config, mode=pet_shadow.MODE,
+                                   opponent_max_hp=pet_shadow.shadow_max_hp(ai_config["level"]))
+    return await build_battle_response(battle, db)
+
+
+# ---------------------------------------------------------------- 全班打大怪(规则见 services/class_boss)
+
+@router.get("/battle/class-boss")
+async def get_class_boss(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """这一周全班的大怪: 血量、我打了多少、今天还能怎么打、能不能领奖。平台关了 → {enabled: false}"""
+    return await class_boss.overview(db, current_user)
+
+
+@router.post("/battle/class-boss/claim")
+async def claim_class_boss(
+    week: str = Query("this", pattern="^(this|last)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """领大怪的奖励(week=this 这一周 / last 上一周,上一周的只能在周一到周三领)。领不了 409 {code, message}"""
+    return await class_boss.claim(db, current_user, week)
+
+
+# ---------------------------------------------------------------- 没刷新的老页面
+# 上线那一刻(以及之后好几天)有孩子的页面还是老的。老页面把这三个老接口(练习赛 / 发起挑战 / 接受挑战)报错里的
+# detail **直接当一句话显示**(setBattleMsg(detail) / toast.error(detail)): detail 是 {code, message} 这种对象时,
+# 页面不是显示一句话,而是整页进错误页 —— 「今天没场数了」本来是天天都会碰到的正常提示。
+# 所以这三个接口: 请求里带 X-EH-Battle 头(新页面发的)才给对象,没带的只给那句中文。
+# 新加的接口(闯关 / 影子 / 大怪)只有新页面会调,不用管。
+NEW_PAGE_HEADER = "x-eh-battle"
+
+
+def _plain_for_old_pages(request: Request, exc: HTTPException) -> HTTPException:
+    if isinstance(exc.detail, dict) and not request.headers.get(NEW_PAGE_HEADER):
+        return HTTPException(
+            status_code=exc.status_code,
+            detail=str(exc.detail.get("message") or "操作没成功,请稍后再试"),
+            headers=exc.headers,
+        )
+    return exc
+
+
 @router.post("/battle/create", response_model=BattleResponse)
 async def create_battle(
+    request: Request,
     data: BattleCreateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
     """创建对战邀请"""
+    try:
+        return await _create_battle(data, db, current_user)
+    except HTTPException as e:
+        raise _plain_for_old_pages(request, e)
+
+
+async def _create_battle(data: BattleCreateRequest, db: AsyncSession, current_user: User):
+    # AI 这类系统账号(负数 id)不会来接受挑战: 以前传 -1 能建出一场永远没人接的挑战
+    if data.opponent_id <= 0:
+        raise HTTPException(status_code=400, detail={
+            "code": "bad_opponent",
+            "message": "只能向同学发起挑战。想和电脑打,回宠物页点「对战」,或者去闯关。",
+        })
     # 检查对手存在
     opponent = await db.get(User, data.opponent_id)
     if not opponent:
@@ -204,6 +441,8 @@ async def create_battle(
         await db.commit()
     if my_pet.is_injured:
         raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
+    # 今天还有没有对战场数(规则见 services/battle_tickets)。发挑战时就拦: 没场数的人发出去,对方接了他也进不来
+    await battle_tickets.require_ticket(db, current_user)
 
     # 检查对手的宠物
     opponent_pet_result = await db.execute(
@@ -231,11 +470,19 @@ async def create_battle(
 
 @router.post("/battle/{battle_id}/accept", response_model=BattleResponse)
 async def accept_battle(
+    request: Request,
     battle_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
 ):
     """接受对战邀请"""
+    try:
+        return await _accept_battle(battle_id, db, current_user)
+    except HTTPException as e:
+        raise _plain_for_old_pages(request, e)
+
+
+async def _accept_battle(battle_id: int, db: AsyncSession, current_user: User):
     battle = await db.get(PetBattle, battle_id)
     if not battle:
         raise HTTPException(status_code=404, detail="对战不存在")
@@ -251,6 +498,7 @@ async def accept_battle(
         await db.commit()
     if accept_pet and accept_pet.is_injured:
         raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能应战哦！")
+    await battle_tickets.require_ticket(db, current_user)
 
     try:
         battle = await pet_battle_service.accept_battle(db, battle_id)
@@ -356,7 +604,7 @@ async def get_my_battles(
         is_player1 = battle.player1_id == current_user.id
         opponent_id = battle.player2_id if is_player1 else battle.player1_id
 
-        opponent = await db.get(User, opponent_id)
+        opponent = await pet_battle_service.load_player(db, opponent_id)
         opponent_pet_id = battle.player2_pet_id if is_player1 else battle.player1_pet_id
         opponent_pet = await db.get(UserPet, opponent_pet_id)
 
@@ -373,8 +621,8 @@ async def get_my_battles(
         items.append(
             BattleListItem(
                 id=battle.id,
-                opponent_username=opponent.username,
-                opponent_pet_name=opponent_pet.name,
+                opponent_username=opponent.username if opponent else "对手",
+                opponent_pet_name=opponent_pet.name if opponent_pet else "伙伴",
                 status=battle.status,
                 mode=battle.mode,
                 result=result_text,
@@ -441,6 +689,70 @@ async def get_ready_battle(
     }
 
 
+@router.get("/battles/buffs")
+async def get_battle_buffs(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """现在开一场对战会带哪些学习增益、哪些还没拿到、怎么拿(规则见 services/battle_moves)。
+    {enabled, items: [{key, label, detail, got, how, route}]};平台关了这一项 enabled=false、items 为空"""
+    settings = await battle_tickets.get_settings(db)
+    return await battle_moves.buff_overview(db, current_user, bool(settings.get("study_buffs")))
+
+
+@router.get("/battles/tickets")
+async def get_battle_tickets(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_student),
+):
+    """今天的对战场数: 挣了几场、打了几场、还剩几场、每一项怎么来的(规则见 services/battle_tickets)"""
+    return await battle_tickets.status(db, current_user.id)
+
+
+async def _ticket_settings_view(db: AsyncSession) -> dict:
+    return {"options": battle_tickets.OPTIONS, "values": await battle_tickets.get_settings(db),
+            "defaults": battle_tickets.OPTION_DEFAULTS}
+
+
+@router.get("/battles/ticket-settings")
+async def get_ticket_settings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """对战场数的规则和当前设置(仅平台管理员)。每一条的「会怎样 / 风险」都在 options 里,页面原样显示"""
+    return await _ticket_settings_view(db)
+
+
+@router.put("/battles/ticket-settings")
+async def put_ticket_settings(
+    request: Request,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """改对战场数的规则(仅平台管理员)。{"reset": true} = 全部恢复默认;否则只改交上来的那几项"""
+    from app.services import audit_log
+    before = await battle_tickets.get_settings(db)
+    if data.get("reset") is True:
+        values = dict(battle_tickets.OPTION_DEFAULTS)
+    else:
+        try:
+            values = {**before, **battle_tickets.check_options(data)}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail={"code": "bad_option", "message": str(e)})
+    after = await battle_tickets.save_settings(db, values)
+    changed = {k: [before[k], after[k]] for k in after if before[k] != after[k]}
+    if changed:
+        labels = {o["key"]: o["label"] for o in battle_tickets.OPTIONS}
+        audit_log.record(
+            db, request, admin, "pet.battle_tickets",
+            "改了宠物对战场数规则: " + ";".join(f"{labels[k]} {a} → {b}" for k, (a, b) in changed.items()),
+            detail={"before": before, "after": after},
+        )
+    await db.commit()
+    return await _ticket_settings_view(db)
+
+
 @router.get("/battles/stats", response_model=BattleStatsResponse)
 async def get_battle_stats(
     db: AsyncSession = Depends(get_db),
@@ -492,6 +804,7 @@ async def get_battle_stats(
 
 @router.post("/battle/quick-match", response_model=BattleResponse)
 async def quick_match_battle(
+    request: Request,
     wordbook_id: int = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_student),
@@ -501,109 +814,22 @@ async def quick_match_battle(
     
     优先匹配真人玩家（3秒），无真人则生成AI对手
     """
-    # 检查自己的宠物
-    my_pet_result = await db.execute(
-        select(UserPet).where(UserPet.user_id == current_user.id, UserPet.is_active.is_(True))
-    )
-    my_pet = my_pet_result.scalar_one_or_none()
-    if not my_pet:
-        raise HTTPException(status_code=400, detail="你还没有宠物")
-    # 受伤会随时间自己好: 判受伤之前先按时间回血,休息够了的不该被挡在门外
-    if await apply_natural_heal(db, my_pet):
-        await db.commit()
-    if my_pet.is_injured:
-        raise HTTPException(status_code=400, detail="🩹 宠物受伤了，先去「宠物治疗」恢复才能出战哦！")
+    try:
+        return await _quick_match(wordbook_id, db, current_user)
+    except HTTPException as e:
+        raise _plain_for_old_pages(request, e)
 
-    # TODO: 这里可以添加真人匹配逻辑（查找在线等待的玩家）
-    # 暂时直接生成AI对手
-    
-    # 生成AI对手配置
+
+async def _quick_match(wordbook_id, db: AsyncSession, current_user: User):
+    my_pet = await _fighting_pet(db, current_user)
+    await battle_tickets.require_ticket(db, current_user)
+
+    # 生成AI对手配置(随机一只、等级在自己上下 2 级;想一关一关往前打的走闯关 /battle/trial)
     ai_config = generate_ai_opponent(
         player_level=my_pet.level,
         player_pet_species=my_pet.species
     )
-    
-    # 创建虚拟AI用户（使用负数ID）
-    ai_user_id = -1  # 固定的AI用户ID
-    ai_user = await db.get(User, ai_user_id)
-    
-    if not ai_user:
-        # 首次创建AI用户
-        ai_user = User(
-            id=ai_user_id,
-            username="AI训练师",
-            email="ai@system.local",
-            hashed_password="",  # AI不需要密码
-            role="student",
-            is_active=True
-        )
-        db.add(ai_user)
-        await db.commit()
-        await db.refresh(ai_user)
-    
-    # 创建或获取AI宠物
-    ai_pet_result = await db.execute(
-        select(UserPet).where(UserPet.user_id == ai_user_id, UserPet.is_active.is_(True))
-    )
-    ai_pet = ai_pet_result.scalar_one_or_none()
-    
-    if not ai_pet:
-        # 创建AI宠物
-        from app.services.pet_battle_service import calculate_initial_hp
-        
-        ai_pet = UserPet(
-            user_id=ai_user_id,
-            name=ai_config['name'],
-            species=ai_config['species'],
-            level=ai_config['level'],
-            experience=0,
-            evolution_stage=evolution_stage_for_level(ai_config['level']),
-            happiness=100,
-            hunger=100,
-            current_hp=calculate_initial_hp(
-                ai_config['level'], evolution_stage_for_level(ai_config['level']), ai_config['species'],
-            ),
-            is_active=True,
-        )
-        db.add(ai_pet)
-        await db.commit()
-        await db.refresh(ai_pet)
-    else:
-        # 更新AI宠物属性
-        from app.services.pet_battle_service import calculate_initial_hp
-        
-        ai_pet.name = ai_config['name']
-        ai_pet.species = ai_config['species']
-        ai_pet.level = ai_config['level']
-        ai_pet.evolution_stage = evolution_stage_for_level(ai_config['level'])
-        ai_pet.current_hp = calculate_initial_hp(ai_config['level'], ai_pet.evolution_stage, ai_pet.species)
-        await db.commit()
-        await db.refresh(ai_pet)
-    
-    # 创建AI对战
-    battle = await pet_battle_service.create_battle(
-        db=db,
-        player1_id=current_user.id,
-        player2_id=ai_user_id,
-        wordbook_id=wordbook_id,
-        mode='ai',  # AI对战模式
-        max_rounds=10,
-    )
-    
-    # 标记为AI对战并保存配置
-    battle.is_ai_battle = True
-    battle.ai_config = json.dumps(ai_config, ensure_ascii=False)
-    
-    # AI对战立即开始（不需要接受）
-    battle.status = 'active'
-    from datetime import datetime
-    battle.started_at = datetime.utcnow()
-    
-    await db.commit()
-    # 一人同时只打一场:这场开打后作废自己其它进行中的对战(多开标签刷经验的根因)
-    if not await pet_battle_service.claim_exclusive_battle(db, battle):
-        raise HTTPException(status_code=409, detail="你在另一个页面开了新的对战,请回到那个页面继续")
-    await db.refresh(battle)
-    
+    battle = await _open_ai_battle(db, current_user, ai_config, mode='ai', wordbook_id=wordbook_id)
+
     print(f"快速对战创建成功: battle_id={battle.id}, status={battle.status}, is_ai={battle.is_ai_battle}")
     return await build_battle_response(battle, db)
