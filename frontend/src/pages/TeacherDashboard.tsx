@@ -16,6 +16,7 @@ import {
   GraduationCap,
   LibraryBig,
   PencilLine,
+  Puzzle,
   Radio,
   Video,
   FileText,
@@ -40,6 +41,8 @@ import { useCardPlan } from '../hooks/useCardPlan';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { getTutorAvailable } from '../api/tutor';
+import GrammarTrialCard from '../components/grammar/GrammarTrialCard';
+import { GRAMMAR_HOME, useGrammarEntry } from '../components/grammar/grammarEntry';
 
 interface UserData { username: string; full_name: string }
 interface DashboardStats {
@@ -64,6 +67,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '单词本管理', description: '管理单元和词汇', route: '/teacher/books', icon: BookOpenText, tone: 'orange' },
       { title: '阅读理解', description: '文章和题目', route: '/teacher/reading', icon: LibraryBig, tone: 'blue' },
       { title: '句子背诵', description: '句子集和导入', route: '/teacher/sentences', icon: PencilLine, tone: 'green' },
+      { title: '句子积木(语法小课 · 试课)', description: '小鹰老师讲语法,10 节可以点开试', route: GRAMMAR_HOME, icon: Puzzle, tone: 'orange' },
       { title: '音标视频', description: '上传与管理音标课', route: '/teacher/phonetics', icon: Volume2, tone: 'teal' },
       { title: '音标教材', description: 'Excel 上传拼读题', route: '/teacher/phonetic-books', icon: Volume2, tone: 'teal' },
       { title: '音标听力', description: '建听力题,学生听音写单词和音标', route: '/teacher/phonetic-listening', icon: Headphones, tone: 'teal' },
@@ -149,9 +153,12 @@ const TeacherDashboard = () => {
   const isAssistant = !!(user as { owner_teacher_id?: number | null } | null)?.owner_teacher_id;
   // 学习卡规则只对新卡包政策机构有意义,老政策机构不给这个入口
   const cardPlan = useCardPlan();
+  // 「句子积木」试课的入口(样课阶段只有直营老师有,放不放由后端定)
+  const grammarEntry = useGrammarEntry();
   const visibleToolGroups = useMemo(() => toolGroups.map(g => ({
     ...g,
     items: g.items.filter(i =>
+      !(!grammarEntry && i.route === GRAMMAR_HOME) &&
       !(isAssistant && i.route === '/teacher/assistants') &&
       !(cardPlan !== 'pack' && i.route === '/teacher/card-rules') &&
       !(!tutor?.enabled && (i.route === '/teacher/tutor-quota' || i.route === '/teacher/tutor-class')) &&
@@ -159,7 +166,7 @@ const TeacherDashboard = () => {
       .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested }
         : i.route === '/teacher/tutor-class' && ((tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0))
           ? { ...i, badge: (tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0) } : i)),
-  })), [isAssistant, cardPlan, tutor]);
+  })), [isAssistant, cardPlan, tutor, grammarEntry]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
       <StaffWorkspaceHeader role="teacher" title="教师工作台" subtitle="今日教学、学生进度与内容管理" action={<div className="flex items-center gap-1"><button type="button" onClick={() => setShowChangeUsername(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button></div>} />
@@ -189,6 +196,7 @@ const TeacherDashboard = () => {
             <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
           </button>
         )}
+        <GrammarTrialCard show={grammarEntry} />
         <section className="teacher-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div className="max-w-2xl">

@@ -143,6 +143,35 @@ async def test_scope_decides_which_students_get_in(client, people, db_session):
     assert view["run_id"] and view["resumed"] is False
 
 
+@pytest.mark.asyncio
+async def test_dashboard_entry_is_for_admin_and_hq_staff_only(client, people, db_session):
+    """工作台上的入口: 平台管理员和直营老师有;分校老师没有(但知道地址仍然进得去);开给所有学生以后各机构都有"""
+    await db_session.execute(sql_text(
+        "INSERT INTO organizations (id, name, code, status, access_mode) VALUES (1, '直营', 'HQ001', 'active', 'assigned')"))
+    hq = User(username="tchhq", email="tchhq@example.com", hashed_password="x", role="teacher", full_name="直营老师",
+              is_active=True, org_id=1)
+    boss = User(username="bossadmin", email="bossadmin@example.com", hashed_password="x", role="admin",
+                full_name="平台管理员", is_active=True, org_id=1)
+    db_session.add_all([hq, boss])
+    await db_session.commit()
+    await db_session.refresh(hq)
+    await db_session.refresh(boss)
+
+    async def entry(headers):
+        r = await client.get("/api/v1/student/grammar/lessons", headers=headers)
+        assert r.status_code == 200
+        return r.json()["enabled"], r.json()["entry"]
+
+    assert await entry(_headers(boss.id)) == (True, True)
+    assert await entry(_headers(hq.id)) == (True, True)
+    assert await entry(people["teacher"]) == (True, False)      # 分校老师: 进得去,但工作台上不放入口
+    assert await entry(people["kid"]) == (False, False)
+
+    await _open_to(db_session, "all")
+    assert await entry(people["teacher"]) == (True, True)
+    assert await entry(people["kid"]) == (True, False)          # 学生不是工作台的入口
+
+
 # ---------------------------------------------------------------- 上课
 
 @pytest.mark.asyncio

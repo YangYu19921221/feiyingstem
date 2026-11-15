@@ -161,6 +161,8 @@ export interface LessonsView {
   reason: string;
   /** 老师 / 管理员在试课(学生还看不到) */
   preview: boolean;
+  /** 管理端首页 / 教师工作台上放不放入口(样课阶段: 平台管理员和直营老师) */
+  entry: boolean;
   lines: { id: string; name: string; sub: string; lessons: LessonRow[] }[];
 }
 

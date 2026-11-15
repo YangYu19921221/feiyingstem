@@ -3,7 +3,7 @@
 路由挂在 tutor.py 的 student_router 上(main.py 生产有 drift,不动它),地址是 /api/v1/student/grammar/*。
 老师、机构管理员、平台管理员试课也走这几个接口: 用 get_current_user,谁能进由 grammar_course.can_enter 判。
 
-GET  /student/grammar/lessons                     课表: 开没开、每节上完过没有
+GET  /student/grammar/lessons                     课表: 开没开、每节上完过没有;entry = 工作台上放不放入口
 POST /student/grammar/lessons/{lesson_id}/start   开始 / 接着上一节课: 整节课要用的东西(没有答案)+ 做到哪了
 GET  /student/grammar/runs/{run_id}               这次上课现在做到哪了(页面上的进度旧了时重新取)
 POST /student/grammar/runs/{run_id}/answer        孩子点了一下: 判对错,给提示或给整句;全做完了带上小结
@@ -73,7 +73,9 @@ async def grammar_lessons(db: AsyncSession = Depends(get_db), user: User = Depen
             lessons.append({**gc.lesson_brief(ls), "done": d is not None, "times": d["times"] if d else 0,
                             "best": d["best"] if d else None})
         lines.append({"id": line["id"], "name": line["name"], "sub": line["sub"], "lessons": lessons})
-    return {"enabled": ok, "reason": reason, "preview": user.role in gc.STAFF_ROLES, "lines": lines}
+    scope = (await gc.get_settings(db))["scope"]
+    return {"enabled": ok, "reason": reason, "preview": user.role in gc.STAFF_ROLES,
+            "entry": gc.show_staff_entry(user, scope), "lines": lines}
 
 
 @student_router.post("/grammar/lessons/{lesson_id}/start")

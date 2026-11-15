@@ -16,6 +16,7 @@ import {
   Handshake,
   History,
   Megaphone,
+  Puzzle,
   Radio,
   Server,
   Settings,
@@ -34,6 +35,8 @@ import PhoneticShareCard from '../components/admin/PhoneticShareCard';
 import TutorAdminCard from '../components/admin/TutorAdminCard';
 import AutopilotAdminCard from '../components/admin/AutopilotAdminCard';
 import BattleTicketCard from '../components/admin/BattleTicketCard';
+import GrammarTrialCard from '../components/grammar/GrammarTrialCard';
+import { GRAMMAR_HOME, useGrammarEntry } from '../components/grammar/grammarEntry';
 
 interface UserData { full_name: string }
 interface Statistics { total_users: number; students?: number; total_words: number; total_books: number; active_users_today: number; active_users_week: number; learning_records_today: number; learning_records_week: number }
@@ -69,6 +72,7 @@ const toolGroups: Array<{ title: string; description: string; items: ToolItem[] 
     description: '保持学习内容和智能服务稳定',
     items: [
       { title: '内容管理', description: '单词与单词本', path: '/admin/content', icon: BookOpen, tone: 'green' },
+      { title: '句子积木(语法小课 · 试课)', description: '小鹰老师讲语法,10 节可以点开试', path: GRAMMAR_HOME, icon: Puzzle, tone: 'orange' },
       { title: 'AI 配置', description: '模型与服务设置', path: '/admin/ai-config', icon: Sparkles, tone: 'violet' },
       { title: '订阅管理', description: '兑换码与订阅', path: '/admin/subscriptions', icon: Ticket, tone: 'amber' },
       { title: '电教室网络', description: '直营音标视频只能在电教室看(开关)', path: '/admin/classroom-net', icon: School, tone: 'teal' },
@@ -119,6 +123,8 @@ export default function AdminDashboard() {
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
   // 默认 AI 通道最近一次失败的原因(欠费 / Key 失效…),成功一次后端就清掉
   const [aiIssue, setAiIssue] = useState<AiIssue | null>(null);
+  // 「句子积木」试课的入口卡(放不放由后端定)
+  const grammarEntry = useGrammarEntry();
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -197,6 +203,7 @@ export default function AdminDashboard() {
           </div>
           );
         })()}
+        <GrammarTrialCard show={grammarEntry} />
         <section className="admin-hero overflow-hidden rounded-2xl border p-5 sm:p-6 lg:p-7">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end"><div className="max-w-2xl"><div className="admin-pill mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"><ShieldCheck className="h-3.5 w-3.5" /> 系统运行概览</div><h2 className="text-2xl font-bold text-[#173047] sm:text-3xl">欢迎回来，{displayName}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">先确认系统服务和用户活动，再处理机构、内容与账号任务。</p><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3"><button type="button" onClick={() => navigate('/admin/statistics')} className="admin-primary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition">查看数据报告 <ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => navigate('/admin/server-monitor')} className="admin-secondary admin-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition">检查服务状态 <Server className="h-4 w-4" /></button></div></div><div className="grid w-full grid-cols-2 gap-2 sm:max-w-sm sm:gap-3 md:w-[19rem]"><div className="rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4"><p className="text-xs text-slate-500">今日活跃</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl">{formatNumber(stats?.active_users_today)}</p><p className="mt-1 text-[11px] text-slate-500 sm:text-xs">位用户有学习记录</p></div><div className="min-w-0 rounded-xl border border-[#d6e2eb] bg-white p-3.5 sm:p-4">{(() => { const when = deployTime(deployedAt); return <><p className="flex items-baseline justify-between gap-2 text-xs text-slate-500"><span>最近部署</span>{when && <span className="font-semibold text-slate-600">{when.day}</span>}</p><p className="mt-2 text-2xl font-bold text-[#173047] font-numeric sm:text-3xl" title={when?.full}>{when ? when.time : '—'}</p></>; })()}<p className="mt-1 truncate text-[11px] text-slate-500 sm:text-xs" title={deployedBuild ? `线上前端构建号 ${deployedBuild}` : undefined}>{deployedBuild ? <>前端 <span className="font-numeric">{deployedBuild}</span></> : '线上前端版本'}</p></div>{ttsStatus !== undefined && <div className={`col-span-2 rounded-xl border p-3.5 sm:p-4 ${ttsStatus && !ttsStatus.ok ? 'border-red-200 bg-red-50' : ttsStatus?.recent_upgrade ? 'border-amber-200 bg-amber-50' : 'border-[#d6e2eb] bg-white'}`} role="status"><p className="text-xs text-slate-500">发音检查(每晚自动)</p>{ttsStatus ? <><p className={`mt-1.5 text-sm font-bold ${ttsStatus.ok ? 'text-[#173047]' : 'text-red-700'}`}>{ttsStatus.ok ? '✓ 发音正常' : '✗ 发音异常'}{ttsStatus.version_after ? <span className="ml-1.5 text-xs font-normal text-slate-500">组件 {ttsStatus.version_after}</span> : null}</p><p className="mt-1 text-[11px] leading-5 text-slate-600 sm:text-xs">{ttsStatus.recent_upgrade && ttsStatus.ok ? ttsStatus.recent_upgrade.message : ttsStatus.ok ? `上次检查 ${new Date(ttsStatus.checked_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}` : ttsStatus.message}</p></> : <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">还没检查过,今晚 3:37 第一次自动检查</p>}</div>}{backupStatus !== undefined && (() => { const b = backupStatus; const bad = !!b.last && (!b.last.ok || b.stale); const when = (iso?: string) => iso ? new Date(iso).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : ''; const mb = (n?: number) => n ? `${(n / 1048576).toFixed(0)}MB` : '—'; return <div className={`col-span-2 rounded-xl border p-3.5 sm:p-4 ${bad ? 'border-red-200 bg-red-50' : 'border-[#d6e2eb] bg-white'}`} role="status"><p className="text-xs text-slate-500">数据备份(每晚 0 点自动)</p>{!b.last ? <p className="mt-1.5 text-[11px] text-slate-500 sm:text-xs">还没备份过,今晚 0 点第一次自动备份</p> : !b.last.ok ? <><p className="mt-1.5 text-sm font-bold text-red-700">✗ 昨晚备份失败</p><p className="mt-1 text-[11px] leading-5 text-red-700 sm:text-xs">{b.last.error}。前一份备份留着没删{b.last_ok ? `(${when(b.last_ok.at)})` : ''},请让技术人员看一下</p></> : b.stale ? <><p className="mt-1.5 text-sm font-bold text-red-700">✗ 超过一天半没有备份了</p><p className="mt-1 text-[11px] leading-5 text-red-700 sm:text-xs">最近一次成功是 {when(b.last_ok?.at)},每晚的自动备份可能没在跑,请让技术人员看一下</p></> : <><p className="mt-1.5 text-sm font-bold text-[#173047]">✓ 备份正常</p><p className="mt-1 text-[11px] leading-5 text-slate-600 sm:text-xs">{when(b.last.at)} · 数据库 {mb(b.last.db?.size)}({b.last.db?.users ?? '—'} 个账号)+ 上传文件 {mb(b.last.uploads?.size)} · {b.last.cos?.ok ? '本机和腾讯云各一份' : '只存了本机'}</p></>}</div>; })()}</div></div>
         </section>

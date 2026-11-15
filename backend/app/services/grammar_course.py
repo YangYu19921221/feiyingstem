@@ -7,6 +7,8 @@ lessons_present 第一条线「是什么 · 做什么」10 节。这里管: 谁�
 1. **谁能进**(system_configs 里 grammar_settings 的 scope;没有这一行 = staff):
    off 全关 / staff 只有老师、机构管理员、平台管理员能点开试(样课阶段的默认)/ hq 直营的学生也能学 / all 所有学生。
    老师随时能进(试课、备课)。老师自己的上课记录也存在 grammar_runs 里,以后做学生统计要按角色排掉。
+   **工作台上放不放入口**(show_staff_entry)比「能不能进」窄: 平台管理员一直有;老师 / 机构管理员在样课阶段(staff)和只开直营(hq)时
+   只有直营的才有 —— 内容还没让老师审过,不先摆到加盟校面前(知道地址的仍然进得去);开给所有学生(all)以后各机构都有。
 2. **一节课的顺序**: 几步「看和听」和「跟着做」交替(lesson.steps)→ 6 道左右「自己练」(lesson.practice)→ 小结。
    回头考(lesson.pool)还没接,这些题不下发。
 3. **答案只在服务器**: 下发的题没有答案(items.public)。孩子每点一下交一次,服务器判(items.grade)。
@@ -86,6 +88,15 @@ async def can_enter(db: AsyncSession, user: User) -> tuple[bool, str]:
     if scope == "all" or (scope == "hq" and user.org_id == HQ_ORG_ID):
         return True, ""
     return False, "句子积木还在准备,过几天就能学啦"
+
+
+def show_staff_entry(user: User, scope: str) -> bool:
+    """管理端首页 / 教师工作台上放不放「句子积木」的入口。规则见文件头第 1 条"""
+    if scope == "off" or user.role not in STAFF_ROLES:
+        return False
+    if user.role == "admin" or scope == "all":
+        return True
+    return user.org_id == HQ_ORG_ID
 
 
 # ---------------------------------------------------------------- 发给页面的样子
