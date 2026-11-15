@@ -1645,3 +1645,8 @@ from app.api.v1 import homework_check as _homework_check_api  # noqa: E402
 
 student_router.include_router(_homework_check_api.student_router)
 teacher_router.include_router(_homework_check_api.teacher_router)
+
+# 语法小课「句子积木」(api/v1/grammar.py,2026-11-15 样课): 同样挂在这里,不为它改 main.py
+from app.api.v1 import grammar as _grammar_api  # noqa: E402
+
+student_router.include_router(_grammar_api.student_router)

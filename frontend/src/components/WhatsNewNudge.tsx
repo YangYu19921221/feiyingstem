@@ -31,6 +31,8 @@ const QUIET_PATTERNS = [
   '/student/tutor',
   // 摸底: 孩子正在一题一题答
   '/student/catchup',
+  // 句子积木: 孩子正在上一节小课(课表页 /student/grammar 不算)
+  '/student/grammar/',
 ];
 
 function readSeen(): string[] {

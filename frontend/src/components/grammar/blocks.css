@@ -1,0 +1,719 @@
+/*
+ * 句子积木(语法小课)。类名都以 gb- 开头,只在 .gb-root 里生效;状态类是 is-xxx。
+ *
+ * 学生端有一批全站样式(body.student-interface button / textarea …)。这里的按钮先 all: unset 再自己写,
+ * 选择器带 .gb-root(优先级比全站那批高),所以不会被改掉样子。
+ * 积木的「厚度」用 filter: drop-shadow 画(跟着圆头、尖头、缺口的轮廓走),不用 box-shadow。
+ */
+
+.gb-root {
+  --gb-h: 48px;                 /* 一块积木的高度。字号、帽子的宽度都按它算 */
+  --gb-paper: #fff8f0;
+  --gb-line: #f1dfcd;
+  --gb-ink: #293545;
+  --gb-soft: #5f6b7a;
+  --gb-orange: #ff6b35;
+  --gb-orange-deep: #d4521f;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--gb-paper);
+  color: var(--gb-ink);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  overflow-x: hidden;
+}
+
+.gb-col {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* ---------- 顶栏: 退出 + 进度 ---------- */
+
+.gb-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 6px;
+}
+
+.gb-root button.gb-icon {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: var(--gb-soft);
+  cursor: pointer;
+}
+
+.gb-root button.gb-icon:hover { background: #fdeee0; color: var(--gb-orange-deep); }
+.gb-root button.gb-icon:focus-visible { outline: 3px solid var(--gb-orange); outline-offset: 2px; }
+
+.gb-progress {
+  flex: 1;
+  height: 12px;
+  border-radius: 999px;
+  background: #f6e6d6;
+  overflow: hidden;
+}
+
+.gb-progress > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff6b35, #ffd23f);
+  transition: width 0.35s ease;
+}
+
+.gb-stagelabel {
+  flex: none;
+  min-width: 56px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gb-soft);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 小鹰老师说的那一行(字幕) ---------- */
+
+.gb-caption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 14px 0;
+  padding: 8px 8px 8px 10px;
+  min-height: 60px;
+  border-radius: 18px;
+  border: 2px solid var(--gb-line);
+  background: #fff;
+}
+
+.gb-avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #ffd9c2;
+}
+
+.gb-avatar.is-talking { animation: gb-talk 0.7s ease-in-out infinite; }
+
+.gb-caption-text {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--gb-ink);
+}
+
+.gb-en {
+  font-family: 'JacketMark', 'Baloo 2', ui-rounded, 'Nunito', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 800;
+  color: #0b4a85;
+  white-space: nowrap;
+}
+
+.gb-caption-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #a16207;
+}
+
+/* ---------- 舞台: 情景 + 一排排积木 ---------- */
+
+.gb-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.gb-stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 8px;
+  min-height: 0;
+}
+
+.gb-scene {
+  font-size: 56px;
+  line-height: 1.1;
+  letter-spacing: 4px;
+}
+
+.gb-rows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.gb-row {
+  position: relative;            /* AnimatePresence popLayout 要求 */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  row-gap: 12px;
+  max-width: 100%;
+}
+
+.gb-row--tight { --gb-h: 42px; }
+.gb-row--xtight { --gb-h: 36px; }
+.gb-row--big { --gb-h: 60px; }
+/* 带空隙按钮的一排: 积木缩一号、空隙按钮收窄、块和块挨近一点,手机上才排得成一行 */
+.gb-row--gaps { --gb-h: 38px; }
+.gb-row--gaps .gb-wrap { margin-left: 4px; }
+.gb-row--gaps .gb-wrap:first-child { margin-left: 0; }
+
+.gb-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-left: 8px;
+}
+
+.gb-wrap:first-child { margin-left: 0; }
+/* 头伸进后一块的口里: 头伸出 14 格,口的那块往回靠 12.5 格(留 1.5 格的缝)。尺寸见 BlockView.tsx 的 CAPS */
+.gb-wrap--lock { margin-left: calc(var(--gb-h) * -12.5 / 48); }
+.gb-wrap--top { z-index: 2; }
+
+/* 一组里的一个: 一块积木,或者贴在它后面的标点 */
+.gb-unit { display: inline-flex; align-items: center; flex: none; }
+.gb-unit--x { align-self: flex-end; margin-left: 3px; padding-bottom: calc(var(--gb-h) * 0.12); }
+.gb-unit--x .gb-gap { margin-left: 3px; }
+
+.gb-zh {
+  margin: 0;
+  font-size: 16px;
+  color: var(--gb-soft);
+}
+
+.gb-tag {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #fff1d6;
+  color: #92580b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ---------- 一块积木 ---------- */
+
+.gb-root .gb {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+  height: var(--gb-h);
+  color: var(--gb-c-ink);
+  font-family: 'JacketMark', 'Baloo 2', ui-rounded, 'Nunito', 'Helvetica Neue', Arial, sans-serif;
+  font-size: calc(var(--gb-h) * 0.46);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  filter: drop-shadow(0 3px 0 var(--gb-c-edge));
+  transition: opacity 0.2s ease;
+}
+
+.gb-root button.gb { cursor: pointer; }
+.gb-root button.gb:active { transform: translateY(2px); filter: drop-shadow(0 1px 0 var(--gb-c-edge)); }
+.gb-root button.gb:focus-visible { outline: 3px solid var(--gb-orange); outline-offset: 3px; border-radius: 12px; }
+.gb-root button.gb[disabled] { cursor: default; }
+
+.gb-cap {
+  display: block;
+  flex: none;
+  height: var(--gb-h);
+  fill: var(--gb-c-fill);
+}
+
+.gb-cap--flip { transform: scaleX(-1); }
+
+.gb-body {
+  display: inline-flex;
+  align-items: center;
+  /* 左右各缩进半个像素盖住和帽子之间的缝 */
+  margin: 0 -0.5px;
+  padding: 0 calc(var(--gb-h) * 0.06) calc(var(--gb-h) * 0.04);
+  background: var(--gb-c-fill);
+}
+
+.gb-tail {
+  margin-left: 1px;
+  padding: 1px 3px 2px;
+  border-radius: 6px;
+  background: #fff;
+  color: #e11d48;
+}
+
+.gb-neg { color: #be123c; }
+
+.gb-slot {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: var(--gb-h);
+  min-width: calc(var(--gb-h) * 1.5);
+  border: 3px dashed var(--gb-c-edge);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--gb-c-edge);
+  font-size: calc(var(--gb-h) * 0.5);
+  font-weight: 800;
+  animation: gb-breathe 1.6s ease-in-out infinite;
+}
+
+.gb-punct {
+  font-family: 'JacketMark', 'Baloo 2', ui-rounded, 'Nunito', 'Helvetica Neue', Arial, sans-serif;
+  font-size: calc(var(--gb-h) * 0.62);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--gb-ink);
+}
+
+/* ---------- 状态 ---------- */
+
+.gb-root .is-hl { animation: gb-pop 0.7s ease 2; }
+/* 光圈收小、用暖黄色: 太大太红会把头和口的形状盖住(11-15 浏览器里看过) */
+.gb-root .gb.is-hl { filter: drop-shadow(0 3px 0 var(--gb-c-edge)) drop-shadow(0 0 4px rgba(255, 176, 0, 0.95)); }
+.gb-root .is-wrong { animation: gb-shake 0.4s ease; }
+.gb-root .is-dim { opacity: 0.4; }
+.gb-root .is-right { animation: gb-pop 0.5s ease 1; }
+.gb-root .gb.is-right { filter: drop-shadow(0 3px 0 var(--gb-c-edge)) drop-shadow(0 0 7px rgba(34, 197, 94, 0.95)); }
+.gb-root .gb.is-bad { filter: drop-shadow(0 3px 0 #e11d48) drop-shadow(0 0 6px rgba(225, 29, 72, 0.8)); animation: gb-wobble 1.2s ease-in-out infinite; }
+.gb-pt { position: relative; display: inline-flex; }
+.gb-root .is-point { animation: gb-bounce 0.9s ease-in-out infinite; }
+
+.gb-root .is-point::after {
+  content: '👆';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-top: 2px;
+  transform: translateX(-50%);
+  font-size: 24px;
+  line-height: 1;
+  filter: none;
+  pointer-events: none;
+}
+
+/* ---------- 空隙(把一块插进去的那种题) ---------- */
+
+.gb-root button.gb-gap {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: calc(var(--gb-h) + 8px);     /* 比积木高一点: 窄,但手指上下好点中 */
+  margin-right: 4px;
+  border: 2px dashed #cbb9a6;
+  border-radius: 10px;
+  color: #b39c86;
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gb-root button.gb-gap:hover,
+.gb-root button.gb-gap.is-point { border-color: var(--gb-orange); background: #ffe9dd; color: var(--gb-orange-deep); }
+.gb-root button.gb-gap:focus-visible { outline: 3px solid var(--gb-orange); outline-offset: 2px; }
+
+.gb-insert {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  animation: gb-float 1.6s ease-in-out infinite;
+}
+
+.gb-insert-arrow { font-size: 18px; color: #b39c86; line-height: 1; }
+
+/* ---------- 下半屏: 孩子动手的地方 ---------- */
+
+.gb-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px 4px;
+}
+
+.gb-options {
+  --gb-h: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px 14px;
+  width: 100%;
+  padding-bottom: 26px;          /* 给「👆」留地方 */
+}
+
+.gb-options--pool { --gb-h: 48px; gap: 14px 10px; }
+
+.gb-hidden { visibility: hidden; }
+
+.gb-tray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 8px;
+  width: 100%;
+  max-width: 600px;
+  min-height: calc(var(--gb-h) + 22px);
+  padding: 8px 6px 12px;
+  border-bottom: 3px dashed #cbb9a6;
+}
+
+.gb-tray-hint { font-size: 15px; color: #a8927c; }
+
+.gb-root button.gb-speaker {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--gb-orange);
+  color: #fff;
+  box-shadow: 0 6px 0 var(--gb-orange-deep);
+  cursor: pointer;
+}
+
+.gb-root button.gb-speaker:active { transform: translateY(3px); box-shadow: 0 3px 0 var(--gb-orange-deep); }
+.gb-root button.gb-speaker.is-talking { animation: gb-talk 0.7s ease-in-out infinite; }
+.gb-root button.gb-speaker:focus-visible { outline: 3px solid #0b4a85; outline-offset: 3px; }
+
+.gb-cards,
+.gb-bins {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+  padding-bottom: 26px;
+}
+
+.gb-root button.gb-card,
+.gb-root button.gb-bin {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 116px;
+  padding: 12px 8px;
+  border-radius: 22px;
+  border: 3px solid var(--gb-line);
+  background: #fff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.gb-root button.gb-bin { border-style: dashed; border-color: #cbb9a6; justify-content: flex-start; }
+.gb-root button.gb-card:hover,
+.gb-root button.gb-bin:hover { border-color: var(--gb-orange); background: #fff6ef; }
+.gb-root button.gb-card:focus-visible,
+.gb-root button.gb-bin:focus-visible { outline: 3px solid var(--gb-orange); outline-offset: 2px; }
+.gb-root button.gb-card[disabled],
+.gb-root button.gb-bin[disabled] { cursor: default; }
+
+.gb-card-emoji { font-size: 46px; line-height: 1.1; letter-spacing: 2px; }
+.gb-card-zh { font-size: 16px; color: var(--gb-ink); font-weight: 600; }
+
+.gb-bin-label { font-size: 24px; font-weight: 800; color: var(--gb-ink); }
+.gb-bin-sub { font-size: 13px; color: var(--gb-soft); }
+
+.gb-bin-got {
+  --gb-h: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 6px;
+  margin-top: 6px;
+}
+
+.gb-cur { --gb-h: 68px; position: relative; }
+.gb-sort-count { font-size: 14px; color: var(--gb-soft); font-variant-numeric: tabular-nums; }
+
+/* ---------- 最下面那个大按钮 ---------- */
+
+.gb-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  min-height: 86px;
+}
+
+.gb-root button.gb-primary {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+  min-height: 58px;
+  border-radius: 18px;
+  background: var(--gb-orange);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  box-shadow: 0 5px 0 var(--gb-orange-deep);
+  cursor: pointer;
+}
+
+.gb-root button.gb-primary:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--gb-orange-deep); }
+.gb-root button.gb-primary:focus-visible { outline: 3px solid #0b4a85; outline-offset: 3px; }
+.gb-root button.gb-primary[disabled] { opacity: 0.45; cursor: default; }
+.gb-root button.gb-primary.is-ready { animation: gb-ready 1.2s ease-in-out infinite; }
+
+.gb-root button.gb-secondary {
+  all: unset;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 14px;
+  color: var(--gb-soft);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.gb-root button.gb-secondary:hover { background: #fdeee0; color: var(--gb-orange-deep); }
+.gb-root button.gb-secondary:focus-visible { outline: 3px solid var(--gb-orange); outline-offset: 2px; }
+
+/* ---------- 开头、练习前、小结 ---------- */
+
+.gb-hero-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #ffe2d2;
+  color: var(--gb-orange-deep);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.gb-hero-name { margin: 0; font-size: 34px; font-weight: 800; color: var(--gb-ink); text-align: center; }
+
+.gb-hero-title {
+  margin: 0;
+  font-family: 'JacketMark', 'Baloo 2', ui-rounded, 'Nunito', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0b4a85;
+  text-align: center;
+}
+
+.gb-hero-goal { margin: 0; max-width: 420px; font-size: 17px; line-height: 1.5; color: var(--gb-soft); text-align: center; }
+
+.gb-big-emoji { font-size: 64px; line-height: 1.1; }
+
+.gb-dots { display: flex; gap: 10px; }
+
+.gb-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #eadbcb;
+}
+
+.gb-dot.is-hit { background: #5fd35f; }
+.gb-dot.is-miss { background: #ffc24d; }
+
+.gb-score { margin: 0; font-size: 18px; color: var(--gb-ink); }
+.gb-score b { font-size: 30px; color: var(--gb-orange-deep); font-variant-numeric: tabular-nums; }
+
+.gb-rule {
+  width: 100%;
+  max-width: 600px;
+  padding: 12px 8px;
+  border-radius: 20px;
+  border: 2px solid var(--gb-line);
+  background: #fff;
+}
+
+/* 小结页里的规则积木统一用小一号: 有的课规则是三排,照正常大小手机上一屏放不下(11-15 第 108 节要滚 34px) */
+.gb-rule .gb-rows { gap: 10px; }
+.gb-rule .gb-row,
+.gb-rule .gb-row--big,
+.gb-rule .gb-row--tight { --gb-h: 40px; }
+
+.gb-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  color: var(--gb-soft);
+  font-size: 16px;
+}
+
+/* ---------- 电脑 / 平板: 积木大一号 ---------- */
+
+@media (min-width: 768px) {
+  .gb-root { --gb-h: 60px; }
+  .gb-row--tight { --gb-h: 54px; }
+  .gb-row--xtight { --gb-h: 48px; }
+  .gb-row--big { --gb-h: 76px; }
+  .gb-row--gaps { --gb-h: 56px; }
+  .gb-row--gaps .gb-wrap { margin-left: 8px; }
+  .gb-options { --gb-h: 66px; gap: 18px 16px; }
+  .gb-options--pool { --gb-h: 58px; }
+  .gb-scene { font-size: 72px; }
+  .gb-caption-text { font-size: 20px; }
+  .gb-zh { font-size: 18px; }
+  .gb-cur { --gb-h: 80px; }
+  .gb-root button.gb-gap { width: 36px; }
+  .gb-rule .gb-row,
+  .gb-rule .gb-row--big,
+  .gb-rule .gb-row--tight { --gb-h: 50px; }
+}
+
+/* 矮屏(笔记本 1366×768、横着的手机): 压一压,一屏放得下不用滚 */
+@media (max-height: 700px) {
+  .gb-stage { gap: 10px; padding: 8px 12px; }
+  .gb-scene { font-size: 44px; }
+  .gb-caption { min-height: 52px; }
+  .gb-root button.gb-card,
+  .gb-root button.gb-bin { min-height: 92px; }
+  .gb-card-emoji { font-size: 36px; }
+  .gb-foot { min-height: 72px; }
+  .gb-root button.gb-primary { min-height: 52px; }
+}
+
+/* 小结页在矮屏上(1366×768 的笔记本: 第 108 节规则有三排,要滚 38px)再压一压 */
+@media (max-height: 800px) {
+  .gb-big-emoji { font-size: 44px; }
+  .gb-rule { padding: 10px 8px; }
+  .gb-rule .gb-row,
+  .gb-rule .gb-row--big,
+  .gb-rule .gb-row--tight { --gb-h: 38px; }
+}
+
+/* 小屏手机(375×667 这一类): 小结页再小一号;带空隙按钮的一排再窄一点(They are my friends 那句会换行) */
+@media (max-height: 700px) {
+  .gb-big-emoji { font-size: 32px; }
+  .gb-score { font-size: 16px; }
+  .gb-score b { font-size: 24px; }
+  .gb-hero-goal { font-size: 15px; }
+  .gb-rule .gb-rows { gap: 8px; }
+  .gb-rule .gb-row,
+  .gb-rule .gb-row--big,
+  .gb-rule .gb-row--tight { --gb-h: 34px; }
+}
+
+@media (max-width: 380px) {
+  .gb-row--gaps { --gb-h: 34px; }
+  .gb-row--gaps .gb-wrap { margin-left: 3px; }
+  .gb-root button.gb-gap { width: 20px; margin-right: 3px; }
+}
+
+@media (max-width: 360px) {
+  .gb-root { --gb-h: 42px; }
+  .gb-row--tight { --gb-h: 38px; }
+  .gb-row--xtight { --gb-h: 32px; }
+  .gb-row--big { --gb-h: 52px; }
+  .gb-row--gaps { --gb-h: 34px; }
+  .gb-options { --gb-h: 50px; }
+  .gb-wrap { margin-left: 6px; }
+}
+
+/* ---------- 动画 ---------- */
+
+@keyframes gb-pop {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.16); }
+}
+
+@keyframes gb-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+
+@keyframes gb-wobble {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-3deg); }
+  75% { transform: rotate(3deg); }
+}
+
+@keyframes gb-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes gb-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes gb-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes gb-talk {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes gb-ready {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gb-root *,
+  .gb-root *::after { animation: none !important; transition: none !important; }
+}

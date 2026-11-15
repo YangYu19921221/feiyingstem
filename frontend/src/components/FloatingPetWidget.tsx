@@ -41,6 +41,8 @@ export default function FloatingPetWidget() {
     || location.pathname.startsWith('/student/phonetics/listening/')
     // 摸底: 「不认识」按钮在底部
     || location.pathname.startsWith('/student/catchup')
+    // 句子积木(语法小课): 大按钮和选项都在底部
+    || location.pathname.startsWith('/student/grammar')
     // 句子背诵学习页: 主按钮都在底部,宠物浮标会压住(浏览器实测)
     || /^\/student\/sentences\/\d+\/\d+\/learn/.test(location.pathname)
     || location.pathname.startsWith('/pk/')

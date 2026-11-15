@@ -62,6 +62,8 @@ from app.models.focus_watch import FocusAwayEvent, CameraConsent, CameraDayStatu
 from app.models.pet_trial import PetTrialStage  # noqa: F401
 from app.models.pet_shadow import PetShadowLog  # noqa: F401
 from app.models.class_boss import ClassBossClaim  # noqa: F401
+# 语法小课(句子积木)的上课记录。同上: 必须在这里导入,create_all 才建得出这张表
+from app.models.grammar import GrammarRun  # noqa: F401
 from app.models.promo import (  # 地推体验卡 + 销售跟单
     PromoSalesProfile, PromoChannel, PromoLead, PromoOrgSettings, PromoFollowUp, PromoCardDesign,
 )

@@ -148,6 +148,9 @@ const HandwritingHub = lazyWithRetry(() => import('./pages/HandwritingHub'));
 const StudentTutor = lazyWithRetry(() => import('./pages/StudentTutor'));
 const StudentHomeworkCheck = lazyWithRetry(() => import('./pages/StudentHomeworkCheck'));
 const StudentCatchup = lazyWithRetry(() => import('./pages/StudentCatchup'));
+// 语法小课「句子积木」(2026-11-15 样课: 默认只有老师 / 管理员点得开,学生端还没有入口)
+const GrammarHome = lazyWithRetry(() => import('./pages/GrammarHome'));
+const GrammarLesson = lazyWithRetry(() => import('./pages/GrammarLesson'));
 const StudentPlacement = lazyWithRetry(() => import('./pages/StudentPlacement'));
 const TeacherPlacementOverview = lazyWithRetry(() => import('./pages/TeacherPlacementOverview'));
 const TeacherPlacementStudent = lazyWithRetry(() => import('./pages/TeacherPlacementStudent'));
@@ -399,6 +402,24 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <QuizPractice />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 语法小课「句子积木」: 课表 + 上一节课。老师 / 管理员也能进(试课);谁能学由后端 grammar_course.can_enter 判 */}
+        <Route
+          path="/student/grammar"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'teacher', 'org_admin', 'admin']}>
+              <GrammarHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/grammar/:lessonId"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'teacher', 'org_admin', 'admin']}>
+              <GrammarLesson />
             </ProtectedRoute>
           }
         />
