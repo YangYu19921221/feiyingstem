@@ -73,6 +73,10 @@ ART = {
     "homework_check": (3.0, 960, "The eagle teacher holds a big red paper pencil and happily checks a sheet of "
                        "homework paper covered in squiggly lines (no readable letters), drawing big red tick marks "
                        "and one small circle on it; a paper smartphone and a small paper webcam beside the sheet."),
+    "paper_quiz": (3.0, 960, "The eagle teacher holds up a short paper quiz sheet with a few squiggly lines and "
+                   "small tick boxes (no readable letters); beside it a round paper archery target with a paper "
+                   "arrow right in the center, and a small paper calendar page, meaning one small quiz every day "
+                   "that hits exactly what the child needs."),
     "tutor": (1.0, 512, "The eagle teacher smiles warmly and raises one wing as if answering a question, a "
               "big round sky-blue paper speech bubble with a paper question mark shape and a small paper "
               "lightbulb floating beside its head."),

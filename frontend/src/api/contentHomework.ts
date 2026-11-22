@@ -7,7 +7,7 @@
 import client from './client';
 
 export type ContentKind = 'sentence' | 'phonetic_video' | 'daily_review' | 'read_aloud' | 'phonetic_listening'
-  | 'phonetic_write' | 'phonetic_read';
+  | 'phonetic_write' | 'phonetic_read' | 'paper_quiz';
 
 export interface ContentTargetGroup {
   /** 句子/跟读 = 书 id;视频 = 讲师名 */

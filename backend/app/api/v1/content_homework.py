@@ -19,8 +19,8 @@ from app.core.actor import acting_user, is_assistant_request
 from app.core.database import get_db
 from app.core.timeutil import local_day_utc_range, local_today
 from app.models.content_homework import (
-    KIND_DAILY_REVIEW, KIND_PHONETIC_LISTENING, KIND_PHONETIC_READ, KIND_PHONETIC_VIDEO, KIND_PHONETIC_WRITE,
-    KIND_READ_ALOUD, KIND_SENTENCE, KINDS,
+    KIND_DAILY_REVIEW, KIND_PAPER_QUIZ, KIND_PHONETIC_LISTENING, KIND_PHONETIC_READ, KIND_PHONETIC_VIDEO,
+    KIND_PHONETIC_WRITE, KIND_READ_ALOUD, KIND_SENTENCE, KINDS,
     ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo
@@ -46,6 +46,11 @@ async def _target_info(db: AsyncSession, kind: str, target_id: int, org_id: Opti
     可见性**显式写**(本机构的 + 平台共享的),不押在隐式租户过滤器上"""
     if kind == KIND_DAILY_REVIEW:
         return {"name": DAILY_REVIEW_NAME, "book_id": None}
+    if kind == KIND_PAPER_QUIZ:
+        from app.services.paper_bank import GRADES
+        if not 0 <= target_id <= len(GRADES):
+            return None
+        return {"name": chw.paper_quiz_name(target_id), "book_id": None}
     if kind == KIND_SENTENCE:
         row = (await db.execute(
             select(SentenceUnit, SentenceBook)
@@ -164,9 +169,15 @@ async def create_content_homework(
     if body.kind not in KINDS:
         raise HTTPException(400, "作业类型不对")
     actor = acting_user(teacher)
-    is_review = body.kind == KIND_DAILY_REVIEW
+    # 每日复习 / 每日小卷: 一天一份,「连续几天」= 逐天各建一份,恒为当天截止
+    is_review = body.kind in (KIND_DAILY_REVIEW, KIND_PAPER_QUIZ)
     org_scope = teacher.org_id if teacher.role != "admin" else None
     targets = [] if is_review else list(dict.fromkeys(body.target_ids))
+    review_target = 0
+    if body.kind == KIND_PAPER_QUIZ:
+        review_target = body.target_ids[0] if body.target_ids else 0
+        if await _target_info(db, body.kind, review_target, org_scope) is None:
+            raise HTTPException(400, "出题用的年级不对")
     if not is_review and not targets:
         raise HTTPException(400, f"先选要布置的{KIND_LABEL[body.kind]}")
     infos = {}
@@ -196,7 +207,8 @@ async def create_content_homework(
         for i in range(body.days):
             day = base + timedelta(days=i)
             label = f"{KIND_LABEL[body.kind]} · {day.month}月{day.day}日"
-            items.append((0, day, f"{body.title.strip()} · {day.month}月{day.day}日" if (body.title or "").strip() else label))
+            items.append((review_target, day,
+                          f"{body.title.strip()} · {day.month}月{day.day}日" if (body.title or "").strip() else label))
     else:
         items = []
         for i, tid in enumerate(targets):
@@ -348,6 +360,12 @@ async def content_homework_targets(
     """布置弹窗里的可选项: 句子 = 书 → 单元;视频 = 按讲师分组的视频列表;每日复习不用选"""
     if kind == KIND_DAILY_REVIEW:
         return []
+    if kind == KIND_PAPER_QUIZ:
+        # 选用哪个年级的卷子出题(0 = 按每个孩子自己的年级)
+        from app.services.paper_bank import GRADES
+        return [{"id": "grade", "name": "用哪个年级的卷子出题",
+                 "units": [{"id": 0, "name": "按每个孩子自己的年级"}]
+                 + [{"id": i + 1, "name": f"{g}及以下的卷子"} for i, g in enumerate(GRADES)]}]
     org_id = teacher.org_id if teacher.role != "admin" else None
     if kind == KIND_SENTENCE:
         q = select(SentenceBook, SentenceUnit).join(SentenceUnit, SentenceUnit.book_id == SentenceBook.id) \
@@ -466,6 +484,8 @@ async def my_content_homework(
             route = f"/student/sentences/{book_of.get(h.target_id, 0)}/{h.target_id}/learn"
         elif h.kind == KIND_DAILY_REVIEW:
             route = "/student/memory-curve"
+        elif h.kind == KIND_PAPER_QUIZ:
+            route = "/student/paper-quiz"
         elif h.kind == KIND_READ_ALOUD:
             route = f"/student/units/{h.target_id}/read-aloud"
         elif h.kind == KIND_PHONETIC_LISTENING:
@@ -486,3 +506,10 @@ async def my_content_homework(
             "teacher_name": teachers.get(h.teacher_id, ""),
         })
     return out
+
+
+# 试卷库 + 专项小卷(api/v1/paper_bank.py)挂在这里,main.py 不用动
+from app.api.v1 import paper_bank as _paper_bank_api  # noqa: E402
+
+teacher_router.include_router(_paper_bank_api.teacher_router)
+student_router.include_router(_paper_bank_api.student_router)

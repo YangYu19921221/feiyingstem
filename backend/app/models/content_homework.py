@@ -33,8 +33,11 @@ KIND_PHONETIC_LISTENING = "phonetic_listening"
 # 写音标 / 读音标(2026-11-03): target_id = phonetic_lessons.id(音标教材的一节)
 KIND_PHONETIC_WRITE = "phonetic_write"
 KIND_PHONETIC_READ = "phonetic_read"
+# 每日小卷(2026-11-22,services/paper_bank): 和每日复习一样一天一份、恒为当天截止,那天的小卷做完就算完成。
+# target_id = 用哪个年级的卷子出题(paper_bank.GRADES 下标 + 1),0 = 按孩子自己的年级
+KIND_PAPER_QUIZ = "paper_quiz"
 KINDS = (KIND_SENTENCE, KIND_PHONETIC_VIDEO, KIND_DAILY_REVIEW, KIND_READ_ALOUD, KIND_PHONETIC_LISTENING,
-         KIND_PHONETIC_WRITE, KIND_PHONETIC_READ)
+         KIND_PHONETIC_WRITE, KIND_PHONETIC_READ, KIND_PAPER_QUIZ)
 
 
 class ContentHomework(Base):

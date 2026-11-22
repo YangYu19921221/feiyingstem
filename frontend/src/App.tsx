@@ -47,6 +47,11 @@ const TeacherAssistants = lazyWithRetry(() => import('./pages/TeacherAssistants'
 const TeacherParentBinding = lazyWithRetry(() => import('./pages/TeacherParentBinding'));
 const TeacherTutorQuota = lazyWithRetry(() => import('./pages/TeacherTutorQuota'));
 const TeacherTutorClass = lazyWithRetry(() => import('./pages/TeacherTutorClass'));
+// 试卷库 + 专项小卷(2026-11-22)
+const TeacherPaperBank = lazyWithRetry(() => import('./pages/TeacherPaperBank'));
+const TeacherPaperReview = lazyWithRetry(() => import('./pages/TeacherPaperReview'));
+const TeacherPaperClass = lazyWithRetry(() => import('./pages/TeacherPaperClass'));
+const StudentPaperQuiz = lazyWithRetry(() => import('./pages/StudentPaperQuiz'));
 const TeacherTutor = lazyWithRetry(() => import('./pages/TeacherTutor'));
 const AdminTutorAlerts = lazyWithRetry(() => import('./pages/AdminTutorAlerts'));
 const TeacherCoach = lazyWithRetry(() => import('./pages/TeacherCoach'));
@@ -469,6 +474,16 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherPlacementStudent />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 学生端 - 今日小卷(试卷库里按他的薄弱点挑的题) */}
+        <Route
+          path="/student/paper-quiz"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentPaperQuiz />
             </ProtectedRoute>
           }
         />
@@ -901,6 +916,32 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <TeacherTutor />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 教师端 - 试卷库: 传卷子、核对拆出来的题、全班薄弱点和每日小卷 */}
+        <Route
+          path="/teacher/paper-bank"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherPaperBank />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/paper-bank/class"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherPaperClass />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/paper-bank/:docId"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherPaperReview />
             </ProtectedRoute>
           }
         />

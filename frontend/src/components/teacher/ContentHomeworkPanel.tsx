@@ -8,7 +8,8 @@
  * 完成不用学生交卷: 后端按真实学习数据判(句子: 开放后全部组过关;视频: 看完),这里只展示。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { BookText, Brain, Clapperboard, Headphones, Layers, Mic, Plus, Volume2, X } from 'lucide-react';
+import { BookText, Brain, Clapperboard, ClipboardList, Headphones, Layers, Mic, Plus, Volume2, X } from 'lucide-react';
+import { getPaperStatus } from '../../api/paperBank';
 import {
   createContentHomework, deleteContentHomework, getContentHomeworkStudents, getContentTargets,
   listTeacherContentHomework, toggleContentHomework,
@@ -26,6 +27,7 @@ const KIND_META: Record<ContentKind, { label: string; icon: typeof BookText; hin
   phonetic_listening: { label: '音标听力', icon: Headphones, hint: '学生把这一套每题都做完（做对或看了答案）就算完成；对几题在「音标听力」页看' },
   phonetic_write: { label: '写音标', icon: Layers, hint: '学生把这一节每个词都写过（写对或第二遍判完、看了答案）就算完成；卡片版和整页版都算。错在哪看学生的「音标学习报告」' },
   phonetic_read: { label: '读音标', icon: Volume2, hint: '学生把这一节每个词都读过一遍（机器判出了结果，或自己点了「我读对了」）就算完成。读得怎么样看「音标学习报告」' },
+  paper_quiz: { label: '每日小卷', icon: ClipboardList, hint: '每天一份专项小卷（从试卷库里挑他不会的知识点和没记牢的词），当天做完就算完成' },
 };
 
 const STATUS_LABEL: Record<ContentHomeworkStudentStatus['status'], string> = {
@@ -194,7 +196,12 @@ function CreateDialog({ students, onClose, onCreated }: {
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [days, setDays] = useState(7);
-  const isReview = kind === 'daily_review';
+  // 每日复习 / 每日小卷: 一天一份、当天截止,「连续几天」
+  const isReview = kind === 'daily_review' || kind === 'paper_quiz';
+  // 每日小卷只在试卷库开放了的学校出现
+  const [paperOpen, setPaperOpen] = useState(false);
+  useEffect(() => { getPaperStatus().then((r) => setPaperOpen(r.enabled)).catch(() => setPaperOpen(false)); }, []);
+  const [quizGrade, setQuizGrade] = useState(0);
 
   useEffect(() => {
     setGroups([]); setGroupId(''); setTargetIds([]);
@@ -223,7 +230,7 @@ function CreateDialog({ students, onClose, onCreated }: {
     setSaving(true);
     try {
       const r = await createContentHomework({
-        kind, target_ids: targetIds, student_ids: studentIds, available_date: date,
+        kind, target_ids: kind === 'paper_quiz' ? [quizGrade] : targetIds, student_ids: studentIds, available_date: date,
         daily_sequence: dailySequence && targetIds.length > 1, same_day_only: sameDayOnly,
         title: title.trim() || undefined,
         ...(isReview ? { days } : {}),
@@ -253,7 +260,7 @@ function CreateDialog({ students, onClose, onCreated }: {
           <fieldset>
             <legend className="mb-2 text-sm font-semibold text-slate-700">布置什么</legend>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {(Object.keys(KIND_META) as ContentKind[]).map((k) => {
+              {(Object.keys(KIND_META) as ContentKind[]).filter((k) => k !== 'paper_quiz' || paperOpen).map((k) => {
                 const M = KIND_META[k];
                 return (
                   <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k}
@@ -270,7 +277,25 @@ function CreateDialog({ students, onClose, onCreated }: {
             </div>
           </fieldset>
 
-          {isReview ? (
+          {kind === 'paper_quiz' ? (
+            <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
+              <p>每个孩子每天一份专项小卷：从试卷库里通过核对的题中，挑他不会的知识点、没记牢的单词和该回头考的点，同一道题不出第二次。孩子在首页「今日小卷」做完，当天的作业就自动完成。</p>
+              <label className="mt-2 block font-semibold">
+                用哪个年级的卷子出题
+                <select value={quizGrade} onChange={(e) => setQuizGrade(Number(e.target.value))}
+                        className="mt-1 w-full rounded-lg border border-orange-300 bg-white px-2 py-1.5 font-normal">
+                  {(groups[0]?.units ?? [{ id: 0, name: '按每个孩子自己的年级' }]).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </label>
+              <label className="mt-2 flex items-center gap-2 font-semibold">
+                连续
+                <input type="number" min={1} max={31} value={days}
+                       onChange={(e) => setDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))}
+                       className="w-16 rounded-lg border border-orange-300 bg-white px-2 py-1 text-center" aria-label="连续几天" />
+                天，每天一份
+              </label>
+            </div>
+          ) : isReview ? (
             <div className="rounded-xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
               <p>每个孩子每天一份 20 个词：先挑最近学过、快要忘的，再捡回几个以前错过的。孩子在「今日复习」做完这 20 个，当天的作业就自动完成。</p>
               <p className="mt-1 text-orange-700">当天的 20 个第二天就换一批，所以每份作业只能当天做。</p>

@@ -64,7 +64,8 @@ def mask_api_key(api_key: str) -> str:
 # 不能设成默认 —— 设成默认,周报 / 例句 / 组卷这些全站 AI 调用都会走它
 TUTOR_PROVIDER = "claude_tutor"
 # 10-27 起学习助手画记忆图另有一个 Key(services/word_picture),同样只给学习助手用
-DEDICATED_PROVIDERS = (TUTOR_PROVIDER, "image_tutor")
+# claude_paper: 拆卷专用(services/paper_parse,2026-11-22),同样不能设默认、别的功能读不到
+DEDICATED_PROVIDERS = (TUTOR_PROVIDER, "image_tutor", "claude_paper")
 TUTOR_NOT_DEFAULT = "学习助手专用的通道不能设为默认(设了周报、例句这些都会走它,很贵)"
 
 

@@ -32,6 +32,7 @@ import {
   MessageSquareHeart,
   MessageCircle,
   School,
+  FileStack,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { API_BASE_URL } from '../config/env';
@@ -40,6 +41,7 @@ import { useCardPlan } from '../hooks/useCardPlan';
 import ChangeUsernameModal from '../components/ChangeUsernameModal';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { getTutorAvailable } from '../api/tutor';
+import { getPaperStatus } from '../api/paperBank';
 
 interface UserData { username: string; full_name: string }
 interface DashboardStats {
@@ -62,6 +64,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
     description: '把今天要教的内容放到学生面前',
     items: [
       { title: '单词本管理', description: '管理单元和词汇', route: '/teacher/books', icon: BookOpenText, tone: 'orange' },
+      { title: '试卷库', description: '传高频真题卷,拆成一道道题进题库', route: '/teacher/paper-bank', icon: FileStack, tone: 'orange' },
       { title: '阅读理解', description: '文章和题目', route: '/teacher/reading', icon: LibraryBig, tone: 'blue' },
       { title: '句子背诵', description: '句子集和导入', route: '/teacher/sentences', icon: PencilLine, tone: 'green' },
       { title: '音标视频', description: '上传与管理音标课', route: '/teacher/phonetics', icon: Volume2, tone: 'teal' },
@@ -77,6 +80,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
     items: [
       { title: '小鹰老师 · 自动布置', description: '每天给每个孩子排任务、复习、点评,你只处理它解决不了的', route: '/teacher/autopilot', icon: Bot, tone: 'orange' },
       { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'green' },
+      { title: '专项小卷 · 全班薄弱点', description: '每个孩子每天一份,专补他不会的知识点', route: '/teacher/paper-bank/class', icon: ClipboardList, tone: 'orange' },
       { title: '问小鹰老师', description: '备课、出卷带答案、看全班卡在哪', route: '/teacher/tutor', icon: Sparkles, tone: 'orange' },
       { title: '每日陪跑', description: '谁没来、谁没做完,每天留一句话', route: '/teacher/coach', icon: MessageSquareHeart, tone: 'orange' },
       { title: '分配单词本', description: '规划学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'orange' },
@@ -131,6 +135,11 @@ const TeacherDashboard = () => {
   useEffect(() => {
     getTutorAvailable().then(setTutor).catch(() => setTutor(null));
   }, []);
+  // 试卷库: 本校没开放就不放入口(试用期只开直营)
+  const [paperOpen, setPaperOpen] = useState(false);
+  useEffect(() => {
+    getPaperStatus().then((r) => setPaperOpen(r.enabled)).catch(() => setPaperOpen(false));
+  }, []);
 
   useEffect(() => {
     const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
@@ -155,11 +164,12 @@ const TeacherDashboard = () => {
       !(isAssistant && i.route === '/teacher/assistants') &&
       !(cardPlan !== 'pack' && i.route === '/teacher/card-rules') &&
       !(!tutor?.enabled && (i.route === '/teacher/tutor-quota' || i.route === '/teacher/tutor-class')) &&
-      !(!tutor?.me_enabled && i.route === '/teacher/tutor'))
+      !(!tutor?.me_enabled && i.route === '/teacher/tutor') &&
+      !(!paperOpen && i.route.startsWith('/teacher/paper-bank')))
       .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested }
         : i.route === '/teacher/tutor-class' && ((tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0))
           ? { ...i, badge: (tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0) } : i)),
-  })), [isAssistant, cardPlan, tutor]);
+  })), [isAssistant, cardPlan, tutor, paperOpen]);
   return (
     <div className="teacher-dashboard min-h-screen text-slate-900">
       <StaffWorkspaceHeader role="teacher" title="教师工作台" subtitle="今日教学、学生进度与内容管理" action={<div className="flex items-center gap-1"><button type="button" onClick={() => setShowChangeUsername(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改用户名" aria-label="修改用户名"><PencilLine className="h-4 w-4" /></button><button type="button" onClick={() => setShowChangePassword(true)} className="teacher-focus-ring rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800" title="修改密码" aria-label="修改密码"><Settings2 className="h-4 w-4" /></button></div>} />

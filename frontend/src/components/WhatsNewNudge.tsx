@@ -31,6 +31,8 @@ const QUIET_PATTERNS = [
   '/student/tutor',
   // 摸底: 孩子正在一题一题答
   '/student/catchup',
+  // 今日小卷: 一题一题做("/paper-quiz" 不含 "/quiz",要单独列)
+  '/student/paper-quiz',
 ];
 
 function readSeen(): string[] {
@@ -86,6 +88,18 @@ export default function WhatsNewNudge() {
   const [gates, setGates] = useState<Record<string, boolean>>({});
   const needTutorGate = ready && !!role && WHATS_NEW.some((e) =>
     e.gate === 'tutor' && e.roles.includes(role as WhatsNewEntry['roles'][number]) && !seen.includes(e.id));
+  // 试卷库(试用期只开直营): 老师 / 平台问 /teacher/paper-bank/status,学生问 /student/paper-quiz/status
+  const needPaperGate = ready && !!role && WHATS_NEW.some((e) =>
+    e.gate === 'paper' && e.roles.includes(role as WhatsNewEntry['roles'][number]) && !seen.includes(e.id));
+  useEffect(() => {
+    if (!needPaperGate || 'paper' in gates) return;
+    const url = role === 'student' ? '/student/paper-quiz/status'
+      : role === 'teacher' || role === 'admin' ? '/teacher/paper-bank/status' : null;
+    if (!url) return;      // 别的角色: gates 里没有 paper = 不弹
+    client.get<{ enabled?: boolean }>(url)
+      .then((r) => setGates((g) => ({ ...g, paper: !!r.enabled })))
+      .catch(() => setGates((g) => ({ ...g, paper: false })));
+  }, [needPaperGate, gates, role]);
   useEffect(() => {
     if (!needTutorGate || 'tutor' in gates) return;
     // 机构管理员: 本机构有学习助手次数池(开放了、又是加盟机构)才弹

@@ -92,11 +92,11 @@ def kind_of(name: str) -> Optional[str]:
     return KINDS.get(os.path.splitext(name.lower())[1])
 
 
-def _clip(text: str) -> tuple[str, bool]:
+def _clip(text: str, max_chars: int = MAX_CHARS) -> tuple[str, bool]:
     text = re.sub(r"[ \t　]+", " ", text or "")
     text = re.sub(r"\n\s*\n+", "\n\n", text).strip()
-    if len(text) > MAX_CHARS:
-        return text[:MAX_CHARS], True
+    if len(text) > max_chars:
+        return text[:max_chars], True
     return text, False
 
 
@@ -147,7 +147,8 @@ def _read_pdf(raw: bytes, name: str, kind: str = "pdf") -> Extracted:
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
-def _read_docx(raw: bytes, name: str) -> Extracted:
+def _read_docx(raw: bytes, name: str, max_chars: int = MAX_CHARS) -> Extracted:
+    """max_chars: 学习助手只读前 MAX_CHARS 个字;试卷库(services/paper_tiles)要读整份卷子"""
     import xml.etree.ElementTree as ET
 
     try:
@@ -182,9 +183,9 @@ def _read_docx(raw: bytes, name: str) -> Extracted:
             for tr in el.iter(f"{_W}tr"):
                 cells = [" ".join(para_text(p) for p in tc.iter(f"{_W}p")).strip() for tc in tr.iter(f"{_W}tc")]
                 lines.append(" | ".join(c for c in cells))
-        if sum(len(x) for x in lines) > MAX_CHARS * 2:
+        if sum(len(x) for x in lines) > max_chars * 2:
             break
-    text, truncated = _clip("\n".join(lines))
+    text, truncated = _clip("\n".join(lines), max_chars)
     if not text:
         raise FileRejected("这份 Word 文件里没有文字(可能全是图片)。截图或者拍照发过来")
     return Extracted(name=name, kind="docx", text=text, truncated=truncated)

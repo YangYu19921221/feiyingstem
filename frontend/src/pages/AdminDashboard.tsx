@@ -33,6 +33,7 @@ import VideoCdnSwitch from '../components/admin/VideoCdnSwitch';
 import PhoneticShareCard from '../components/admin/PhoneticShareCard';
 import TutorAdminCard from '../components/admin/TutorAdminCard';
 import AutopilotAdminCard from '../components/admin/AutopilotAdminCard';
+import PaperBankAdminCard from '../components/admin/PaperBankAdminCard';
 import BattleTicketCard from '../components/admin/BattleTicketCard';
 
 interface UserData { full_name: string }
@@ -219,6 +220,9 @@ export default function AdminDashboard() {
         <TutorAdminCard />
 
         <AutopilotAdminCard />
+
+        {/* 试卷库 · 拆卷用的 Key、开放范围、每天能拆几页(2026-11-22) */}
+        <PaperBankAdminCard />
 
         <BattleTicketCard />
 

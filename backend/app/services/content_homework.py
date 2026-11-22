@@ -22,6 +22,8 @@
   services/phonetic_listening.completion_times。只看做没做完,对几个老师在学情里看
 - 写音标 / 读音标: 作业开放后这一节每个词都结束过(写: 写对或判完第二遍;读: 判出了结果或点了「我读对了」),
   services/phonetic_report.lesson_completion
+- 每日小卷: 开放那天的那一份小卷每题都交了(services/paper_bank.completion_times),完成时刻取交完最后一题的时刻。
+  和每日复习一样只认那一天
 """
 from __future__ import annotations
 
@@ -32,8 +34,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_homework import (
-    KIND_DAILY_REVIEW, KIND_PHONETIC_LISTENING, KIND_PHONETIC_READ, KIND_PHONETIC_VIDEO, KIND_PHONETIC_WRITE,
-    KIND_READ_ALOUD, KIND_SENTENCE, ContentHomework, ContentHomeworkStudent,
+    KIND_DAILY_REVIEW, KIND_PAPER_QUIZ, KIND_PHONETIC_LISTENING, KIND_PHONETIC_READ, KIND_PHONETIC_VIDEO,
+    KIND_PHONETIC_WRITE, KIND_READ_ALOUD, KIND_SENTENCE, ContentHomework, ContentHomeworkStudent,
 )
 from app.models.phonetic import PhoneticVideo, PhoneticVideoView
 from app.models.sentence import SentenceBook, SentenceUnit
@@ -43,8 +45,16 @@ from app.services import daily_review, phonetic_listening, phonetic_report, read
 
 KIND_LABEL = {KIND_SENTENCE: "句子背诵", KIND_PHONETIC_VIDEO: "音标视频", KIND_DAILY_REVIEW: "每日复习",
               KIND_READ_ALOUD: "例句跟读", KIND_PHONETIC_LISTENING: "音标听力",
-              KIND_PHONETIC_WRITE: "写音标", KIND_PHONETIC_READ: "读音标"}
+              KIND_PHONETIC_WRITE: "写音标", KIND_PHONETIC_READ: "读音标", KIND_PAPER_QUIZ: "每日小卷"}
 DAILY_REVIEW_NAME = f"今天的 {daily_review.DAILY_SIZE} 个复习词"
+
+
+def paper_quiz_name(target_id: int) -> str:
+    """每日小卷的 target_id = 用哪个年级的卷子出题(下标 + 1),0 = 按孩子自己的年级"""
+    from app.services.paper_bank import GRADES
+    if 1 <= (target_id or 0) <= len(GRADES):
+        return f"今天的专项小卷(用{GRADES[target_id - 1]}及以下的卷子出题)"
+    return "今天的专项小卷(按孩子自己的年级出题)"
 
 Link = tuple[ContentHomeworkStudent, ContentHomework]
 
@@ -71,6 +81,8 @@ async def target_names(db: AsyncSession, rows: Iterable[ContentHomework]) -> dic
     for h in rows:
         if h.kind == KIND_DAILY_REVIEW:
             out[(KIND_DAILY_REVIEW, h.target_id)] = DAILY_REVIEW_NAME
+        elif h.kind == KIND_PAPER_QUIZ:
+            out[(KIND_PAPER_QUIZ, h.target_id)] = paper_quiz_name(h.target_id)
     sids = {h.target_id for h in rows if h.kind == KIND_SENTENCE}
     vids = {h.target_id for h in rows if h.kind == KIND_PHONETIC_VIDEO}
     uids = {h.target_id for h in rows if h.kind == KIND_READ_ALOUD}
@@ -115,7 +127,7 @@ async def target_names(db: AsyncSession, rows: Iterable[ContentHomework]) -> dic
 
 def short_label(h: ContentHomework, name: str) -> str:
     """看板/提醒家长那句话里用的短名: 「每日复习」「音标视频「元音 /æ/」」"""
-    if h.kind == KIND_DAILY_REVIEW:
+    if h.kind in (KIND_DAILY_REVIEW, KIND_PAPER_QUIZ):
         return KIND_LABEL[h.kind]
     return f"{KIND_LABEL.get(h.kind, h.kind)}「{name[:16]}」"
 
@@ -132,6 +144,7 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
     sids = {h.target_id for _, h in pending if h.kind == KIND_SENTENCE}
     vids = {h.target_id for _, h in pending if h.kind == KIND_PHONETIC_VIDEO}
     rdays = {open_day(h) for _, h in pending if h.kind == KIND_DAILY_REVIEW}
+    qdays = {open_day(h) for _, h in pending if h.kind == KIND_PAPER_QUIZ}
     ra_pairs = {(s.student_id, h.target_id, h.available_from) for s, h in pending if h.kind == KIND_READ_ALOUD}
     pl_pairs = {(s.student_id, h.target_id, h.available_from) for s, h in pending
                 if h.kind == KIND_PHONETIC_LISTENING}
@@ -155,6 +168,10 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
                 PhoneticVideoView.completed.is_(True),
             ))).all()}
     review_done = await daily_review.completion_times(db, uids, rdays) if rdays else {}
+    quiz_done: dict = {}
+    if qdays:
+        from app.services import paper_bank
+        quiz_done = await paper_bank.completion_times(db, uids, qdays)
     ra_done = await read_aloud.completion_times(db, ra_pairs) if ra_pairs else {}
     pl_done = await phonetic_listening.completion_times(db, pl_pairs) if pl_pairs else {}
     pw_done = await phonetic_report.lesson_completion(db, "write", pw_pairs) if pw_pairs else {}
@@ -175,6 +192,8 @@ async def refresh_completion(db: AsyncSession, links: Iterable[Link]) -> bool:
                 at = min(now, max(h.available_from, seen))
         elif h.kind == KIND_DAILY_REVIEW:
             at = review_done.get((s.student_id, open_day(h)))
+        elif h.kind == KIND_PAPER_QUIZ:
+            at = quiz_done.get((s.student_id, open_day(h)))
         elif h.kind == KIND_READ_ALOUD:
             at = ra_done.get((s.student_id, h.target_id, h.available_from))
         elif h.kind == KIND_PHONETIC_LISTENING:

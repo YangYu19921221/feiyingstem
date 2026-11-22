@@ -15,6 +15,7 @@ import { getMyHomework, startHomework, type StudentHomeworkResponse } from '../a
 import { formatOpenDay } from '../utils/openDay';
 import { getTodayReport, type TodayReportData } from '../api/todayReport';
 import { getTutorStatus, type TutorStatus } from '../api/tutor';
+import { getQuizStatus, type QuizStatus } from '../api/paperBank';
 import TodayReportDialog from '../components/report/TodayReportDialog';
 import TutorEntryCard from '../components/tutor/TutorEntryCard';
 import CoachNoteCard from '../components/coach/CoachNoteCard';
@@ -108,6 +109,11 @@ const StudentDashboard = () => {
   const [todayReport, setTodayReport] = useState<TodayReportData | null>(null);
   // 学习助手只在开放给本校时才放入口(试用期只开直营;没开放的学校点进去只会看到「暂时用不了」)
   const [tutorStatus, setTutorStatus] = useState<TutorStatus | null>(null);
+  // 今日小卷(试卷库,2026-11-22): 本校开放了、题库里有适合他的题才放卡片
+  const [paperQuiz, setPaperQuiz] = useState<QuizStatus | null>(null);
+  useEffect(() => {
+    getQuizStatus().then(setPaperQuiz).catch(() => setPaperQuiz(null));
+  }, []);
   useEffect(() => {
     getTutorStatus().then(setTutorStatus).catch(() => setTutorStatus(null));
   }, []);
@@ -449,6 +455,12 @@ const StudentDashboard = () => {
   const quickTools = [
     // 前 4 个默认可见(见下面 slice(0,4)),线上课要让孩子一眼看到,放第一个
     { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/tools/live.jpg' },
+    // 今日小卷: 放前 4 个里(一眼看得到);做完了写做完了
+    ...(paperQuiz?.enabled
+      ? [{ title: '今日小卷', route: '/student/paper-quiz', image: '/tools/paper_quiz.jpg',
+          desc: paperQuiz.today?.status === 'done' ? `今天的做完了,对 ${paperQuiz.today.right}/${paperQuiz.today.total}`
+            : paperQuiz.today ? `做到 ${paperQuiz.today.answered}/${paperQuiz.today.total},接着做` : '从真题里挑你要补的点,每天一小份' }]
+      : []),
     // 作业批改(10-30): 拍一页做完的英语作业给小鹰老师批,和问小鹰老师同一份次数,本校没开放不放
     ...(tutorStatus?.enabled
       ? [{ title: '作业批改', desc: '拍一页作业，小鹰老师逐题批', route: '/student/homework-check', image: '/tools/homework_check.jpg' }]
