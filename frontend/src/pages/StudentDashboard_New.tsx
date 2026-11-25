@@ -457,7 +457,7 @@ const StudentDashboard = () => {
     { title: '线上课堂', desc: '看老师直播、查课件', route: '/student/live', image: '/tools/live.jpg' },
     // 今日小卷: 放前 4 个里(一眼看得到);做完了写做完了
     ...(paperQuiz?.enabled
-      ? [{ title: '今日小卷', route: '/student/paper-quiz', image: '/tools/paper_quiz.jpg',
+      ? [{ title: '今日小卷', route: '/student/paper-quiz', image: '/tools/paper_quiz.jpg?v=2',
           desc: paperQuiz.today?.status === 'done' ? `今天的做完了,对 ${paperQuiz.today.right}/${paperQuiz.today.total}`
             : paperQuiz.today ? `做到 ${paperQuiz.today.answered}/${paperQuiz.today.total},接着做` : '从真题里挑你要补的点,每天一小份' }]
       : []),

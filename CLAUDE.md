@@ -386,9 +386,10 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   备份 /root/eh_db_before_paperbank_20261125_1652.db(quick_check ok)、/root/eh_code_before_paperbank_20261125_1652.tgz(8 个原有文件)、
   frontend/dist_bak_20261125_1652_paperbank。公网冒烟: 首页 / 登录 / 试卷库页 / 今日小卷页 200,四个新接口没登录 401(工作进程),
   句子积木音频 200;线上用小鹰老师的 Key 试拆一道 7.5 秒答案对(B)之后才把开放范围 off → hq(写了操作记录 system.paper_bank)。
-  ⚠️ **今日小卷卡片图仍是本机画的占位图**: 上线时出图中转回 402「上游图片账户余额不足」/ 503「没有可用账号」(sunburst 和 gpt-image-2 都是),
-  中转恢复后在生产机用 image_tutor 那行的 Key 跑 `gen_student_tool_art.py --only paper_quiz`,图拿回来放 frontend/public/tools/ 提交再构建。
-  同一个出图 Key 也是孩子「单词记忆图」用的,中转没恢复前那边也画不出来(会退回次数)。
+  今日小卷卡片图: 上线时 image_tutor 那行的 Key 出图回 402「上游图片账户余额不足」/ 503「没有可用账号」(Key 自己的余额还有 70.69,是那个分组上游没号),
+  先用占位图上线;同日用户另给了一个出图 Key(只用来出这一张,没存进系统),gpt-image-2.5-sunburst 画好折纸鹰那张换上,
+  地址改成 /tools/paper_quiz.jpg?v=2(/tools/* 是 30 天 immutable 缓存,同名换图看过占位图的孩子一个月都换不掉)。
+  ⚠️ 孩子「单词记忆图」用的还是 image_tutor 那行,那边没恢复前画不出来(会退回次数)。
   **只想停用不用回滚**: 管理端首页「试卷库 · 拆卷 AI」卡片开放范围改回「关」。**真要回滚**: 前端把 dist_bak_20261125_1652_paperbank 换回 dist;
   后端从 tgz 里解出 8 个原有文件覆盖回去(6 个新文件留着没人引用)、重启两个服务;新表留着不碍事。
   **上线后要看的**: 老师第一次传真卷拆得怎么样(标黄多少、卷名认没认出来);一份卷实际扣多少钱(按标价估一页 6–8 美分,中转钱包和小鹰老师共用)
