@@ -272,7 +272,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 **在做(只对老师 / 管理员上线了)**:
 - 🚧 语法小课「句子积木」样课(2026-11-15 写,**11-15 14:03 已部署生产,但只有老师 / 机构管理员 / 平台管理员点得开**(用户「部署」,要在自己手机上试);
-  **没合进 main**,分支 worktree-grammar-sample-lesson,提交 db95af2;规划 docs/语法带学规划.md。
+  分支 worktree-grammar-sample-lesson(提交 db95af2 … 8d62e71)**11-25 已合进 main**(35c4509,和试卷库一起从 main 构建上线);规划 docs/语法带学规划.md。
   部署: 后端 10 个文件 —— 8 个新文件 + api/v1/tutor.py、models/__init__.py(这两个生产 == main 无 drift,整推),main.py / database.py 没动;
   新表 grammar_runs 先在生产库副本上跑过 init_db(178 → 179 张,连跑两遍),再用新代码在副本上进程内把 10 节课各上了一遍、
   学生(直营 / 分校各一个)确认进不来;两个服务都重启(重启前 10 分钟 0 条实时连接,21 秒恢复)。前端干净 worktree 构建 mwhf8tss 整推
@@ -332,7 +332,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   管理端开关;老师审内容。上线时按「新功能必须同步公告」补公告和显眼入口。
 
 **已完成(截至 2026-07)**:
-- 🚧 试卷库 + 专项小卷(2026-11-22 本机做完、**还没上线**;用户「老师传高分高频的试卷,学生背单词出现薄弱,从试卷库匹配出试卷给学生做,
+- ✅ 试卷库 + 专项小卷(2026-11-22 做完,**11-25 16:55 已部署生产,只开直营**(用户「按你建议做完上线」);用户「老师传高分高频的试卷,学生背单词出现薄弱,从试卷库匹配出试卷给学生做,
   也能打印下载」→ 方案「按题入库、按知识点和薄弱单词组卷、每天一小份、回头考」→「按你建议来,拆卷用 claude」):
   规则真源 services/paper_bank.py 文件头(组卷、判分、把握度)、services/paper_parse.py(拆卷)、services/paper_kp.py(知识点地图)、
   services/paper_tiles.py(切图)。六张新表 models/paper_bank.py(已在 models/__init__ 导入,本机库副本上 init_db 建出来了)。
@@ -379,10 +379,19 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
   布置 5 天 → 打印 5 份(另 7 个孩子按书推年级低于初一,出不了)→ 学生签到、做完 10 道、看总结 → 作业完成、全班页更新;无横向溢出。
   入口: 教师工作台「内容准备 → 试卷库」/「课堂推进 → 专项小卷 · 全班薄弱点」/ 作业管理「布置句子 / 音标 / 复习作业 → 每日小卷」;
   学生首页「学习工具」第二张「今日小卷」;管理端首页「试卷库 · 拆卷 AI」。公告老师+平台 / 学生各一条(gate paper,没开放的学校不弹)。
-  **上线前要做的**: ⓐ(11-25 已做,见上: 用小鹰老师的 Key 真模型拆过,180 道全对上;y0/y1 截图大致对,有的起点偏上一点)ⓑ**前端上线前先合 worktree-grammar-sample-lesson 分支**
-  (句子积木样课 11-15 是从那个分支构建上线的,直接从 main 构建会把样课从线上抹掉;合并前先挪走主目录里没进 git 的 backend/app/grammar/)
-  ⓒ public/tools/paper_quiz.jpg 现在是本机画的占位图,上线时在生产机用 image_tutor 的 Key 跑 `gen_student_tool_art.py --only paper_quiz`
-  ⓓ后端改了 content_homework / ai_config / ai_service / tutor_files,部署前逐个对生产 drift。拆一份卷按标价估一页 6–8 美分(上面那段)
+  **11-25 上线**: 先把 worktree-grammar-sample-lesson 合进 main(35c4509;主目录里没进 git 的 backend/app/grammar/ 和 docs/语法带学规划.md
+  是比分支旧的副本,挪到 ~/Desktop/eh_untracked_backup_20261125/,生产上跑的是分支那份)。后端 14 个文件: 8 个原有的生产 == 8d62e71 无 drift 整推、
+  6 个新文件;六张新表先在生产库副本上跑过 init_db(179 → 185 张);main.py / database.py 没动;两个服务都重启、启动日志 0 报错、生产库 paper_* 六张表在。
+  前端干净 worktree 构建 mwvvr05h 整推(上一版 mwhgtehm = 句子积木入口那版,补了 3 张 .gitignore 挡住的 eagle-original-cutout*.png)。
+  备份 /root/eh_db_before_paperbank_20261125_1652.db(quick_check ok)、/root/eh_code_before_paperbank_20261125_1652.tgz(8 个原有文件)、
+  frontend/dist_bak_20261125_1652_paperbank。公网冒烟: 首页 / 登录 / 试卷库页 / 今日小卷页 200,四个新接口没登录 401(工作进程),
+  句子积木音频 200;线上用小鹰老师的 Key 试拆一道 7.5 秒答案对(B)之后才把开放范围 off → hq(写了操作记录 system.paper_bank)。
+  ⚠️ **今日小卷卡片图仍是本机画的占位图**: 上线时出图中转回 402「上游图片账户余额不足」/ 503「没有可用账号」(sunburst 和 gpt-image-2 都是),
+  中转恢复后在生产机用 image_tutor 那行的 Key 跑 `gen_student_tool_art.py --only paper_quiz`,图拿回来放 frontend/public/tools/ 提交再构建。
+  同一个出图 Key 也是孩子「单词记忆图」用的,中转没恢复前那边也画不出来(会退回次数)。
+  **只想停用不用回滚**: 管理端首页「试卷库 · 拆卷 AI」卡片开放范围改回「关」。**真要回滚**: 前端把 dist_bak_20261125_1652_paperbank 换回 dist;
+  后端从 tgz 里解出 8 个原有文件覆盖回去(6 个新文件留着没人引用)、重启两个服务;新表留着不碍事。
+  **上线后要看的**: 老师第一次传真卷拆得怎么样(标黄多少、卷名认没认出来);一份卷实际扣多少钱(按标价估一页 6–8 美分,中转钱包和小鹰老师共用)
 - ✅ 宠物对战重做(2026-11-11 ~ 11-12 做,**11-13 10:07 已部署生产**,提交 328c52f + d0ad263。后端 17 个文件: 9 个原有的生产==56eae23 无 drift 整推、
   8 个新文件;database.py 4 条 ALTER + 三张新表先在生产库副本上跑过 init_db(173 → 176 张表,连跑两遍没问题),再用新代码对副本上的真实数据
   把场数 / 增益 / 闯关地图 / 影子 / 大怪 / 开一场闯关各调了一遍;两个服务都重启(重启那一刻 0 个对战连接)。前端干净 worktree 构建 mwebpqvj 整推
