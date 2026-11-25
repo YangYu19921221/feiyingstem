@@ -62,6 +62,8 @@ from app.models.focus_watch import FocusAwayEvent, CameraConsent, CameraDayStatu
 from app.models.pet_trial import PetTrialStage  # noqa: F401
 from app.models.pet_shadow import PetShadowLog  # noqa: F401
 from app.models.class_boss import ClassBossClaim  # noqa: F401
+# 语法小课(句子积木)的上课记录。同上: 必须在这里导入,create_all 才建得出这张表
+from app.models.grammar import GrammarRun  # noqa: F401
 # 试卷库 + 专项小卷(2026-11-22)。同上: 必须在这里导入
 from app.models.paper_bank import (  # noqa: F401
     PaperDoc, PaperPage, PaperItem, PaperQuiz, PaperAnswer, PaperKpMastery,

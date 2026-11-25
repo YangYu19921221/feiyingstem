@@ -33,6 +33,8 @@ const QUIET_PATTERNS = [
   '/student/catchup',
   // 今日小卷: 一题一题做("/paper-quiz" 不含 "/quiz",要单独列)
   '/student/paper-quiz',
+  // 句子积木: 孩子正在上一节小课(课表页 /student/grammar 不算)
+  '/student/grammar/',
 ];
 
 function readSeen(): string[] {
