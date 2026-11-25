@@ -1,6 +1,6 @@
 /**
- * 管理端「试卷库 · 拆卷 AI」卡片(2026-11-22,只给平台管理员): 拆卷用的 Key / 模型、开放范围、每天能拆几页、小卷几题。
- * 规则见后端 services/paper_parse.py(Key 单独一行 claude_paper,不能设默认、别的功能读不到)。
+ * 管理端「试卷库 · 拆卷 AI」卡片(2026-11-22,只给平台管理员): 拆卷用的模型、开放范围、每天能拆几页、小卷几题。
+ * 规则见后端 services/paper_parse.py: 默认用小鹰老师那个 Key(用户 11-25 定);想分开记钱可以另填一个拆卷专用的。
  * Key 留空 = 不改(显式分支,空串不会把密钥清掉)。
  */
 import { useEffect, useState } from 'react';
@@ -65,8 +65,9 @@ export default function PaperBankAdminCard({ compact = false }: { compact?: bool
       <div className="flex flex-wrap items-center gap-2">
         <FileStack className="h-5 w-5 text-[#FF6B35]" />
         <h3 className="text-base font-semibold text-slate-900">试卷库 · 拆卷 AI</h3>
-        <span className={`rounded-full px-2 py-0.5 text-xs ${st.provider.configured && st.provider.enabled ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-          {st.provider.configured ? (st.provider.enabled ? 'Key 已填' : 'Key 已停用') : '还没填 Key,老师传不了卷子'}
+        <span className={`rounded-full px-2 py-0.5 text-xs ${st.provider.source ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+          {st.provider.source === 'paper' ? '用拆卷专用的 Key' : st.provider.source === 'tutor' ? '用小鹰老师的 Key'
+            : '没有可用的 Key,老师传不了卷子'}
         </span>
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{SCOPE_LABEL[s.scope]}</span>
         <div className="ml-auto flex gap-2">
@@ -80,14 +81,15 @@ export default function PaperBankAdminCard({ compact = false }: { compact?: bool
       </div>
       <p className="mt-1 text-xs text-slate-500">
         近 {st.usage.days} 天拆了 {st.usage.docs} 份 / {st.usage.pages} 页,用了 {(tokens / 1000).toFixed(0)}k token。
-        这个 Key 只用来拆卷,和「问小鹰老师」的 Key 分开记钱。
+        {st.provider.source === 'paper' ? '拆卷用单独的 Key,和「问小鹰老师」分开记钱。'
+          : '拆卷和「问小鹰老师」用同一个 Key、同一个钱包;钱包余额在「AI 学习助手」卡片顶上。'}
       </p>
       {open && (
         <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <label className="sm:col-span-2">
-            <span className="mb-1 block text-slate-600">Claude 中转的 Key(留空不改)</span>
+            <span className="mb-1 block text-slate-600">拆卷专用的 Key(可不填: 不填就用小鹰老师那个;想分开记钱才填)</span>
             <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off"
-              placeholder={st.provider.configured ? '已经填过,要换才填' : 'sk-…'}
+              placeholder={st.provider.configured ? '已经填过,要换才填' : '不填 = 用小鹰老师的 Key'}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-orange-400" />
           </label>
           <label>
@@ -99,7 +101,7 @@ export default function PaperBankAdminCard({ compact = false }: { compact?: bool
             <input value={fallback} onChange={(e) => setFallback(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-orange-400" />
           </label>
           <label className="sm:col-span-2">
-            <span className="mb-1 block text-slate-600">中转地址</span>
+            <span className="mb-1 block text-slate-600">中转地址(只对拆卷专用的 Key 有用)</span>
             <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-orange-400" />
           </label>
           <div className="sm:col-span-2 flex flex-wrap gap-2">
@@ -108,14 +110,14 @@ export default function PaperBankAdminCard({ compact = false }: { compact?: bool
               className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-slate-900 px-4 font-semibold text-white disabled:bg-slate-300">
               {busy === 'save' && <LoaderCircle className="h-4 w-4 animate-spin" />} 保存 Key 和模型
             </button>
-            <button type="button" disabled={busy !== null || !st.provider.configured} onClick={test}
+            <button type="button" disabled={busy !== null || !st.provider.source} onClick={test}
               className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-4 text-slate-700 ring-1 ring-slate-200 disabled:opacity-50">
               {busy === 'test' && <LoaderCircle className="h-4 w-4 animate-spin" />} 试一下通不通
             </button>
             {st.provider.configured && (
               <button type="button" disabled={busy !== null} onClick={() => save({ enabled: !st.provider.enabled })}
                 className="min-h-10 rounded-lg px-4 text-slate-600 ring-1 ring-slate-200">
-                {st.provider.enabled ? '停用这个 Key' : '启用这个 Key'}
+                {st.provider.enabled ? '停用专用 Key(改回用小鹰老师的)' : '启用专用 Key'}
               </button>
             )}
           </div>

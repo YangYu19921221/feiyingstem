@@ -164,7 +164,7 @@ export default function TeacherPaperBank() {
               <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900"><FileUp className="h-5 w-5 text-[#FF6B35]" /> 传一份卷子</h2>
               {!status.configured && (
                 <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                  拆卷用的 AI 还没配好,现在传不了。请平台管理员在管理端首页「试卷库 · 拆卷 AI」里填 Key。
+                  拆卷用的 AI 还没配好(小鹰老师的 Key 没填或停用了),现在传不了。请平台管理员在管理端首页「AI 学习助手」里看一下。
                 </p>
               )}
               <div className="grid gap-3 sm:grid-cols-2">

@@ -259,6 +259,37 @@ def test_merge_inherits_titles_dedupes_and_applies_answer_key():
     assert skipped and skipped[0]["name"] == "阅读理解"
 
 
+def test_merge_untitled_restart_is_a_new_paper_not_duplicates():
+    """11-25 真模型拆七上卷: Unit 5 第一页模型没写卷名 → 照前一道补成 Unit 4,题号又一样 → 被当成重复删掉"""
+    p1 = pp.normalize_page({"items": [
+        _mc(str(n), f"U4 q{n} He ___ football.", ["play", "plays"], "B", ["pres_3sg"],
+            title="Unit 4 综合能力测评卷" if n == 21 else "", section="二、单项选择") for n in range(21, 31)]}, 8)
+    p2 = pp.normalize_page({"items": [
+        # 上一页最后两道在重叠处又拆了一次 → 照旧算重复
+        _mc("29", "U4 q29 He ___ football.", ["play", "plays"], "B", ["pres_3sg"]),
+        _mc("30", "U4 q30 He ___ football.", ["play", "plays"], "B", ["pres_3sg"]),
+        *[_fill(str(n), f"U4 f{n} She ___ painting.", ["likes"], ["pres_3sg"], section="五、短文填空")
+          for n in range(61, 71)]]}, 8)
+    p3 = pp.normalize_page({"items": [   # Unit 5 第一页: 模型没写卷名
+        _mc(str(n), f"U5 q{n} They ___ to school.", ["go", "goes"], "A", ["pres_base"], section="二、单项选择")
+        for n in range(21, 31)]}, 8)
+    p4 = pp.normalize_page({"items": [   # 同一套卷接着往下(大题名带括号说明)
+        _fill(str(n), f"U5 f{n} I ___ a boy.", ["am"], ["be"], section="短文填空(接上一页)") for n in range(61, 66)]}, 8)
+    items, _ = pp.merge("七上测评卷", [(9, p1, {}), (10, p2, {}), (11, p3, {}), (12, p4, {})])
+    assert len(items) == 35
+    titles = {x["paper_title"] for x in items}
+    assert titles == {"Unit 4 综合能力测评卷", pp.untitled_paper(11)}
+    u5 = [x for x in items if x["paper_title"] == pp.untitled_paper(11)]
+    assert len(u5) == 15 and all(x["stem"].startswith("U5") for x in u5)
+    # 按大题各自编号的练习(一、1–5 / 二、1–5)不算新的一套
+    q = pp.normalize_page({"items": [
+        *[_mc(str(n), f"a{n} He ___ it.", ["do", "does"], "B", ["pres_3sg"], title="Unit 1 练习", section="一、单项选择")
+          for n in range(1, 6)],
+        *[_fill(str(n), f"b{n} She ___ it.", ["likes"], ["pres_3sg"], section="二、词形填空") for n in range(1, 6)]]}, 8)
+    items, _ = pp.merge("练习", [(1, q, {})])
+    assert len(items) == 10 and {x["paper_title"] for x in items} == {"Unit 1 练习"}
+
+
 def test_tag_words_test_vs_context():
     x = pp.normalize_item(_mc("1", "The teacher says science is very ___ because we learn a lot.",
                               ["useful", "easy", "boring"], "A", ["vocab_meaning"]), 8)
@@ -338,6 +369,15 @@ async def test_upload_parse_review_flow(client, db_session, env, relay):
     assert (await client.get(f"/api/v1/teacher/paper-bank/items/{items['21']['id']}/image",
                              headers=_h(u["ot"].id))).status_code == 404
     assert (await client.get("/api/v1/teacher/paper-bank/docs", headers=_h(u["ot"].id))).json()["items"] == []
+    # 整套改卷名: 只改这份文件里这一套;别的机构的老师改不了
+    ren = {"old": "Unit 1 综合能力测评卷", "new": "  Unit 1  测评卷 "}
+    assert (await client.post(f"/api/v1/teacher/paper-bank/docs/{doc_id}/rename-paper", headers=_h(u["ot"].id),
+                              json=ren)).status_code == 404
+    r = await client.post(f"/api/v1/teacher/paper-bank/docs/{doc_id}/rename-paper", headers=_h(u["t"].id), json=ren)
+    assert r.status_code == 200 and r.json() == {"renamed": len(PAGE_ITEMS), "paper_title": "Unit 1 测评卷"}
+    r = await client.post(f"/api/v1/teacher/paper-bank/docs/{doc_id}/rename-paper", headers=_h(u["t"].id),
+                          json={"old": "Unit 1 测评卷", "new": "   "})
+    assert r.status_code == 400
     await pb.save_settings(db_session, {"scope": "hq"})
     await db_session.commit()
     # 同一份文件不重复拆
@@ -661,3 +701,36 @@ async def test_off_by_default(client, db_session):
     """没设过 = 关着(上线后平台管理员填好 Key、试拆没问题再打开)"""
     assert (await pb.get_settings(db_session))["scope"] == "off"
     assert pb.scope_allows("off", 1) is False and pb.scope_allows("hq", 1) is True and pb.scope_allows("hq", 2) is False
+
+
+@pytest.mark.asyncio
+async def test_uses_tutor_key_unless_own_key(client, db_session, env, relay):
+    """用户 11-25: 拆卷和小鹰老师用同一个 Key;管理端另填了拆卷专用的就用那个"""
+    u = await env(provider=False)
+    assert await pp.relay_conf(db_session) is None
+    assert (await _upload(client, u["t"].id)).status_code == 409
+    db_session.add(AIProvider(provider_name=tt.PROVIDER_NAME, display_name="学习助手专用",
+                              api_key=encrypt_api_key("sk-tutor"), base_url="https://tutor-relay.example/v1",
+                              model_name="claude-sonnet-5-5", enabled=True, is_default=False,
+                              extra_config={"fallback_model": "claude-sonnet-4-6"}))
+    await db_session.commit()
+    conf = await pp.relay_conf(db_session)
+    assert conf.api_key == "sk-tutor" and conf.base_url == "https://tutor-relay.example"
+    assert conf.chain("fast") == [pp.DEFAULT_MODEL, pp.DEFAULT_FALLBACK]
+    assert await pp.key_source(db_session) == "tutor"
+    # 只改模型(不填 Key): 仍用小鹰老师的 Key
+    r = await client.put("/api/v1/teacher/paper-bank/admin", headers=_h(u["a"].id),
+                         json={"model": "claude-opus-5-5", "fallback_model": ""})
+    assert r.status_code == 200 and r.json()["provider"]["source"] == "tutor"
+    conf = await pp.relay_conf(db_session)
+    assert conf.api_key == "sk-tutor" and conf.chain("fast") == ["claude-opus-5-5"]
+    # 填了拆卷专用的 Key: 用它
+    r = await client.put("/api/v1/teacher/paper-bank/admin", headers=_h(u["a"].id), json={"api_key": "sk-paper-own"})
+    assert r.json()["provider"]["source"] == "paper"
+    assert (await pp.relay_conf(db_session)).api_key == "sk-paper-own"
+    # 拆卷那一行永远不当默认
+    row = await pp.provider_row(db_session)
+    assert row.is_default is False or row.is_default == 0
+    fake = relay([(200, _tool_reply(PAGE_ITEMS))])
+    assert (await _upload(client, u["t"].id)).status_code == 200
+    assert fake.requests and fake.requests[0]["model"] == "claude-opus-5-5"

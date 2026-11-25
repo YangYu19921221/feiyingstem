@@ -61,7 +61,7 @@ teacher_router = APIRouter()
 student_router = APIRouter()
 
 MAX_BYTES = 80 * 1024 * 1024
-NO_AI = "拆卷用的 AI 还没配好,请平台管理员在管理端首页「试卷库 · 拆卷 AI」里填 Key"
+NO_AI = "拆卷用的 AI 还没配好(小鹰老师的 Key 没填或停用了),请平台管理员在管理端首页「AI 学习助手」里看一下"
 IMG_HEADERS = {"Cache-Control": "private, max-age=3600"}
 
 
@@ -225,6 +225,28 @@ async def patch_doc(doc_id: int, body: DocPatch, db: AsyncSession = Depends(get_
                          .execution_options(synchronize_session=False))
     await db.commit()
     return pb.doc_out(d, (await pb.doc_counts(db, [d.id])).get(d.id))
+
+
+class PaperRename(BaseModel):
+    old: str = Field(..., max_length=200)
+    new: str = Field(..., max_length=200)
+
+
+@teacher_router.post("/paper-bank/docs/{doc_id}/rename-paper")
+async def rename_paper(doc_id: int, body: PaperRename, db: AsyncSession = Depends(get_db),
+                       teacher: User = Depends(get_current_teacher)):
+    """把这份文件里一套卷的卷名整套改掉(模型没认出卷名时叫「第 N 页开始的一套卷」)"""
+    await _teacher_ok(db, teacher)
+    d = await _own_doc(db, teacher, doc_id)
+    new = " ".join((body.new or "").split())[:120]
+    if not new:
+        raise HTTPException(400, "卷名不能空着")
+    r = await db.execute(update(PaperItem).where(PaperItem.doc_id == d.id, PaperItem.paper_title == body.old)
+                         .values(paper_title=new).execution_options(synchronize_session=False))
+    if not r.rowcount:
+        raise HTTPException(404, "这份文件里没有这套卷,刷新一下再试")
+    await db.commit()
+    return {"renamed": r.rowcount, "paper_title": new}
 
 
 @teacher_router.post("/paper-bank/docs/{doc_id}/retry")
@@ -467,6 +489,8 @@ async def _admin_state(db: AsyncSession) -> dict:
     return {
         "settings": s, "scopes": list(pb.SCOPES),
         "provider": {
+            # source: paper 用单独的 Key / tutor 用小鹰老师那个 / None 都没有
+            "source": await pp.key_source(db),
             "configured": bool(row and row.api_key), "enabled": bool(row.enabled) if row else False,
             "model": (row.model_name if row else None) or pp.DEFAULT_MODEL,
             "fallback_model": extra.get("fallback_model", pp.DEFAULT_FALLBACK) if row else pp.DEFAULT_FALLBACK,
@@ -512,10 +536,12 @@ async def admin_put(body: AdminIn, request: Request, db: AsyncSession = Depends(
                        f"小卷 {after['quiz_size']} 题")
     row = await pp.provider_row(db)
     key = (data.get("api_key") or "").strip()
-    if row is None and key:
+    wants_model = any((data.get(k) or "").strip() for k in ("model", "fallback_model")) or "fallback_model" in data
+    if row is None and (key or wants_model):
+        # 没填单独的 Key 也建这一行(只存模型),api_key 空 = 用小鹰老师的 Key
         row = AIProvider(provider_name=pp.PROVIDER_NAME, display_name="Claude(拆卷专用)", enabled=True,
                          is_default=False, model_name=pp.DEFAULT_MODEL, base_url=pp.DEFAULT_BASE_URL,
-                         extra_config={"fallback_model": pp.DEFAULT_FALLBACK})
+                         api_key="", extra_config={"fallback_model": pp.DEFAULT_FALLBACK})
         db.add(row)
     if row is not None:
         # 「留空 = 不改」走显式分支: 空串不能把密钥清掉(AI 配置那次就是这样被抹掉的)

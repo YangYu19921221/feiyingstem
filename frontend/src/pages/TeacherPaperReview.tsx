@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import StaffWorkspaceHeader from '../components/staff/StaffWorkspaceHeader';
 import { toast } from '../components/Toast';
 import {
-  approveCleanItems, editPaperItem, getKpMap, getPaperDoc, paperItemImageUrl, paperTileUrl,
+  approveCleanItems, editPaperItem, getKpMap, getPaperDoc, paperItemImageUrl, paperTileUrl, renamePaper,
   type ItemEdit, type KpPoint, type PaperDocDetail, type PaperItem,
 } from '../api/paperBank';
 import { getErrorMessage } from '../utils/errorMessage';
@@ -323,6 +323,24 @@ export default function TeacherPaperReview() {
 
   const onSaved = (it: PaperItem) => setDoc((d) => d && { ...d, items: d.items.map((x) => (x.id === it.id ? it : x)) });
 
+  const renameGroup = async (oldTitle: string) => {
+    const unknown = oldTitle.includes('卷名没认出来');
+    const next = window.prompt('这一套卷叫什么?(整套一起改,照卷子最上面的大标题写,如「Unit 5 综合能力测评卷」)',
+      unknown ? '' : oldTitle);
+    if (next === null) return;
+    const t = next.trim();
+    if (!t || t === oldTitle) return;
+    try {
+      const r = await renamePaper(id, oldTitle, t);
+      setDoc((d) => d && {
+        ...d, items: d.items.map((x) => (x.paper_title === oldTitle ? { ...x, paper_title: r.paper_title } : x)),
+      });
+      toast.success(`改好了,${r.renamed} 道题`);
+    } catch (e) {
+      toast.error(getErrorMessage(e, '没改成'));
+    }
+  };
+
   const approveClean = async () => {
     if (!window.confirm(`把 ${counts.clean} 道没标黄的题一起通过?\n\n这些题的答案是卷面上标的或答案页上的。建议先在「等核对」里随手翻几道看看拆得对不对。`)) return;
     setBulkBusy(true);
@@ -378,7 +396,13 @@ export default function TeacherPaperReview() {
             )}
             {groups.map((g) => (
               <section key={g.key + g.items[0].id} className="space-y-2">
-                <h3 className="pt-2 text-sm font-semibold text-slate-600">{g.title} · {g.section || '题'}</h3>
+                <h3 className={`flex flex-wrap items-center gap-x-2 pt-2 text-sm font-semibold ${g.title.includes('卷名没认出来') ? 'text-amber-800' : 'text-slate-600'}`}>
+                  <span>{g.title} · {g.section || '题'}</span>
+                  <button type="button" onClick={() => void renameGroup(g.title)}
+                    className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+                    <PencilLine className="h-3.5 w-3.5" /> 改卷名
+                  </button>
+                </h3>
                 {g.items.map((it) => <ItemCard key={it.id} docId={id} item={it} points={points} onSaved={onSaved} />)}
               </section>
             ))}

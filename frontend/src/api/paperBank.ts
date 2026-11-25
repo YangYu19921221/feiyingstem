@@ -127,6 +127,10 @@ export const retryPaperDoc = (id: number) => client.post<{ ok: boolean }>(`/teac
 export const approveCleanItems = (id: number) =>
   client.post<{ approved: number }>(`/teacher/paper-bank/docs/${id}/approve-clean`);
 export const deletePaperDoc = (id: number) => client.delete<{ ok: boolean }>(`/teacher/paper-bank/docs/${id}`);
+/** 整套改卷名(拆卷 AI 没认出卷名时叫「第 N 页开始的一套卷(卷名没认出来)」) */
+export const renamePaper = (id: number, oldTitle: string, newTitle: string) =>
+  client.post<{ renamed: number; paper_title: string }>(`/teacher/paper-bank/docs/${id}/rename-paper`,
+    { old: oldTitle, new: newTitle });
 
 export interface ItemEdit {
   stem?: string;
@@ -204,7 +208,8 @@ export const assignPaperQuiz = (studentIds: number[], days: number, gradeTarget:
 export interface PaperAdminState {
   settings: { scope: 'off' | 'hq' | 'all'; daily_pages: number; daily_pages_all: number; quiz_size: number };
   scopes: string[];
-  provider: { configured: boolean; enabled: boolean; model: string; fallback_model: string; base_url: string };
+  /** source: paper 用单独的 Key / tutor 用小鹰老师那个 Key / null 都没有(传不了卷子) */
+  provider: { source: 'paper' | 'tutor' | null; configured: boolean; enabled: boolean; model: string; fallback_model: string; base_url: string };
   usage: { days: number; docs: number; pages: number; input_tokens: number; output_tokens: number };
 }
 export const getPaperAdmin = () => client.get<PaperAdminState>('/teacher/paper-bank/admin');
