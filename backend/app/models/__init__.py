@@ -68,6 +68,10 @@ from app.models.grammar import GrammarRun  # noqa: F401
 from app.models.paper_bank import (  # noqa: F401
     PaperDoc, PaperPage, PaperItem, PaperQuiz, PaperAnswer, PaperKpMastery,
 )
+# 学校考试 · 丢分分析(2026-11-26)。同上
+from app.models.school_exam import (  # noqa: F401
+    SchoolExam, SchoolExamScore, SchoolExamSheet, SchoolExamAnswer,
+)
 from app.models.promo import (  # 地推体验卡 + 销售跟单
     PromoSalesProfile, PromoChannel, PromoLead, PromoOrgSettings, PromoFollowUp, PromoCardDesign,
 )

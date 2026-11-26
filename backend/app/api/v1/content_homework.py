@@ -513,3 +513,9 @@ from app.api.v1 import paper_bank as _paper_bank_api  # noqa: E402
 
 teacher_router.include_router(_paper_bank_api.teacher_router)
 student_router.include_router(_paper_bank_api.student_router)
+
+# 学校考试 · 丢分分析(api/v1/school_exam.py)同样挂在这里
+from app.api.v1 import school_exam as _school_exam_api  # noqa: E402
+
+teacher_router.include_router(_school_exam_api.teacher_router)
+student_router.include_router(_school_exam_api.student_router)

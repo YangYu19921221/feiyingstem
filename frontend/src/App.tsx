@@ -52,6 +52,11 @@ const TeacherPaperBank = lazyWithRetry(() => import('./pages/TeacherPaperBank'))
 const TeacherPaperReview = lazyWithRetry(() => import('./pages/TeacherPaperReview'));
 const TeacherPaperClass = lazyWithRetry(() => import('./pages/TeacherPaperClass'));
 const StudentPaperQuiz = lazyWithRetry(() => import('./pages/StudentPaperQuiz'));
+// 学校考试 · 丢分分析(2026-11-26)
+const TeacherSchoolExams = lazyWithRetry(() => import('./pages/TeacherSchoolExams'));
+const TeacherSchoolExam = lazyWithRetry(() => import('./pages/TeacherSchoolExam'));
+const TeacherSchoolExamStudent = lazyWithRetry(() => import('./pages/TeacherSchoolExamStudent'));
+const StudentSchoolExams = lazyWithRetry(() => import('./pages/StudentSchoolExams'));
 const TeacherTutor = lazyWithRetry(() => import('./pages/TeacherTutor'));
 const AdminTutorAlerts = lazyWithRetry(() => import('./pages/AdminTutorAlerts'));
 const TeacherCoach = lazyWithRetry(() => import('./pages/TeacherCoach'));
@@ -509,6 +514,16 @@ function App() {
           }
         />
 
+        {/* 学生端 - 学校考卷(拍学校批改过的卷子,看丢分在哪) */}
+        <Route
+          path="/student/school-exams"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentSchoolExams />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 学生端 - 作业批改(拍一页做完的英语作业,小鹰老师逐题批改) */}
         <Route
           path="/student/homework-check"
@@ -955,6 +970,30 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['teacher', 'admin']}>
               <TeacherPaperClass />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/school-exams"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherSchoolExams />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/school-exams/:id"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherSchoolExam />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/school-exams/:id/students/:sid"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <TeacherSchoolExamStudent />
             </ProtectedRoute>
           }
         />

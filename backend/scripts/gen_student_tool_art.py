@@ -77,6 +77,10 @@ ART = {
                    "small tick boxes (no readable letters); beside it a round paper archery target with a paper "
                    "arrow right in the center, and a small paper calendar page, meaning one small quiz every day "
                    "that hits exactly what the child needs."),
+    "school_exam": (3.0, 960, "The eagle teacher holds a paper magnifying glass over a graded school test paper "
+                    "(squiggly lines only, no readable letters) with a few red tick marks and one red cross, a small "
+                    "paper phone camera beside it taking a photo of the paper, and two small paper sticky notes, "
+                    "meaning finding exactly where points were lost on the school exam."),
     "tutor": (1.0, 512, "The eagle teacher smiles warmly and raises one wing as if answering a question, a "
               "big round sky-blue paper speech bubble with a paper question mark shape and a small paper "
               "lightbulb floating beside its head."),

@@ -16,6 +16,7 @@ import { formatOpenDay } from '../utils/openDay';
 import { getTodayReport, type TodayReportData } from '../api/todayReport';
 import { getTutorStatus, type TutorStatus } from '../api/tutor';
 import { getQuizStatus, type QuizStatus } from '../api/paperBank';
+import { listMyExams } from '../api/schoolExam';
 import TodayReportDialog from '../components/report/TodayReportDialog';
 import TutorEntryCard from '../components/tutor/TutorEntryCard';
 import CoachNoteCard from '../components/coach/CoachNoteCard';
@@ -113,6 +114,13 @@ const StudentDashboard = () => {
   const [paperQuiz, setPaperQuiz] = useState<QuizStatus | null>(null);
   useEffect(() => {
     getQuizStatus().then(setPaperQuiz).catch(() => setPaperQuiz(null));
+  }, []);
+  // 学校考卷(11-26): 老师给他的班建了学校考试才放卡片(和今日小卷分开判: 题库里没有适合他的题也能传卷子)
+  const [schoolExams, setSchoolExams] = useState<{ n: number; todo: number } | null>(null);
+  useEffect(() => {
+    listMyExams().then((r) => setSchoolExams(r.enabled ? {
+      n: r.items.length, todo: r.items.filter((e) => e.can_upload && !e.sheet).length,
+    } : null)).catch(() => setSchoolExams(null));
   }, []);
   useEffect(() => {
     getTutorStatus().then(setTutorStatus).catch(() => setTutorStatus(null));
@@ -460,6 +468,11 @@ const StudentDashboard = () => {
       ? [{ title: '今日小卷', route: '/student/paper-quiz', image: '/tools/paper_quiz.jpg?v=2',
           desc: paperQuiz.today?.status === 'done' ? `今天的做完了,对 ${paperQuiz.today.right}/${paperQuiz.today.total}`
             : paperQuiz.today ? `做到 ${paperQuiz.today.answered}/${paperQuiz.today.total},接着做` : '从真题里挑你要补的点,每天一小份' }]
+      : []),
+    // 学校考卷(11-26): 拍学校批改过的卷子,看丢分在哪;老师建了考试才放
+    ...(schoolExams?.n
+      ? [{ title: '学校考卷', route: '/student/school-exams', image: '/tools/school_exam.jpg',
+          desc: schoolExams.todo ? `有 ${schoolExams.todo} 次考试的卷子还没传` : '考完拍卷子,看丢分丢在哪' }]
       : []),
     // 作业批改(10-30): 拍一页做完的英语作业给小鹰老师批,和问小鹰老师同一份次数,本校没开放不放
     ...(tutorStatus?.enabled

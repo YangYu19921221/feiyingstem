@@ -85,6 +85,7 @@ const toolGroups: Array<{ title: string; description: string; items: ActionItem[
       { title: '小鹰老师 · 自动布置', description: '每天给每个孩子排任务、复习、点评,你只处理它解决不了的', route: '/teacher/autopilot', icon: Bot, tone: 'orange' },
       { title: '作业管理', description: '布置与追踪作业', route: '/teacher/homework', icon: CheckCircle2, tone: 'green' },
       { title: '专项小卷 · 全班薄弱点', description: '每个孩子每天一份,专补他不会的知识点', route: '/teacher/paper-bank/class', icon: ClipboardList, tone: 'orange' },
+      { title: '学校考试 · 丢分分析', description: '孩子拍学校批改过的卷子,看丢分丢在哪个知识点', route: '/teacher/school-exams', icon: GraduationCap, tone: 'orange' },
       { title: '问小鹰老师', description: '备课、出卷带答案、看全班卡在哪', route: '/teacher/tutor', icon: Sparkles, tone: 'orange' },
       { title: '每日陪跑', description: '谁没来、谁没做完,每天留一句话', route: '/teacher/coach', icon: MessageSquareHeart, tone: 'orange' },
       { title: '分配单词本', description: '规划学习范围', route: '/teacher/assignments', icon: ClipboardList, tone: 'orange' },
@@ -172,7 +173,7 @@ const TeacherDashboard = () => {
       !(cardPlan !== 'pack' && i.route === '/teacher/card-rules') &&
       !(!tutor?.enabled && (i.route === '/teacher/tutor-quota' || i.route === '/teacher/tutor-class')) &&
       !(!tutor?.me_enabled && i.route === '/teacher/tutor') &&
-      !(!paperOpen && i.route.startsWith('/teacher/paper-bank')))
+      !(!paperOpen && (i.route.startsWith('/teacher/paper-bank') || i.route.startsWith('/teacher/school-exams'))))
       .map(i => (i.route === '/teacher/tutor-quota' && tutor?.requested ? { ...i, badge: tutor.requested }
         : i.route === '/teacher/tutor-class' && ((tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0))
           ? { ...i, badge: (tutor?.alerts?.open ?? 0) + (tutor?.handoffs ?? 0) } : i)),
